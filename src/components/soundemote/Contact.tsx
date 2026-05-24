@@ -17,23 +17,17 @@ export const Contact = () => {
 
   return (
     <section id="contact" className="relative py-24 md:py-32 border-t border-border/40">
-      <div className="container grid gap-12 md:grid-cols-2 max-w-6xl">
-        <div className="text-center md:text-left">
-          <p className="mono text-xs uppercase tracking-[0.3em] text-scope mb-4">// contact</p>
-          <h2 className="display text-3xl md:text-5xl text-warm-white leading-tight">
-            Say hello, share a signal.
-          </h2>
-          <p className="mt-6 text-muted-foreground leading-relaxed max-w-md mx-auto md:mx-0">
-            Drop a line if you're building, testing, or just curious.
-          </p>
-          <div className="mt-10 rounded-xl border border-border bg-card/40 p-6 mono text-sm hidden md:block">
-            <div className="text-scope mb-2">⌁ soundemote, llc</div>
-            <div className="text-warm-white">Small studio, big signals.</div>
-          </div>
-        </div>
+      <div className="container max-w-2xl text-center">
+        <p className="mono text-xs uppercase tracking-[0.3em] text-scope mb-4">// contact</p>
+        <h2 className="display text-3xl md:text-5xl text-warm-white leading-tight">
+          Say hello, share a signal.
+        </h2>
+        <p className="mt-6 text-muted-foreground leading-relaxed mx-auto max-w-md">
+          Drop a line if you're building, testing, or just curious.
+        </p>
         <form
           onSubmit={handleSubmit}
-          className="rounded-2xl border border-border bg-[var(--gradient-panel)] p-8 space-y-5 w-full max-w-md mx-auto md:max-w-none"
+          className="mt-12 rounded-2xl border border-border bg-[var(--gradient-panel)] p-8 space-y-5 w-full max-w-md mx-auto text-left"
         >
           <div>
             <label className="mono text-xs uppercase tracking-[0.2em] text-muted-foreground block mb-2">
