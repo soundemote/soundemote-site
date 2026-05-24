@@ -858,6 +858,31 @@ registerProcessor('lorenz', LorenzProcessor);
             <Plus className="h-3.5 w-3.5" />
           </button>
         </div>
+        <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-1.5 py-1 backdrop-blur-sm">
+          <button
+            type="button"
+            onClick={toggleAudio}
+            className={`rounded-full p-1.5 transition-colors ${audioOn ? "text-scope hover:bg-scope/10" : "text-muted-foreground hover:text-scope hover:bg-scope/10"}`}
+            aria-label={audioOn ? "Mute audio" : "Enable audio"}
+            title={audioOn ? "Mute" : "Enable audio output"}
+          >
+            {audioOn ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={volumeRef.current}
+            onChange={(e) => setVolume(parseFloat(e.target.value))}
+            disabled={!audioOn}
+            className="h-1 w-20 cursor-pointer accent-scope bg-border/40 rounded-full appearance-none disabled:opacity-40"
+            aria-label="Volume"
+          />
+          <span className="mono text-[10px] tracking-[0.15em] text-muted-foreground tabular-nums w-8 text-center">
+            {Math.round(volumeRef.current * 100)}
+          </span>
+        </div>
       </div>
       {/* Rotation sliders */}
       <div className="absolute top-12 right-3 flex flex-col gap-2 rounded-lg border border-border/60 bg-background/70 px-3 py-2 backdrop-blur-sm mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
