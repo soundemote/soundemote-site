@@ -1197,8 +1197,8 @@ registerProcessor('lorenz', LorenzProcessor);
             <input
               key="spinX"
               type="range"
-              min={-0.05}
-              max={0.05}
+              min={-0.15}
+              max={0.15}
               step={0.001}
               defaultValue={spinSpeedXRef.current}
               onChange={(e) => { spinSpeedXRef.current = parseFloat(e.target.value); }}
@@ -1223,8 +1223,8 @@ registerProcessor('lorenz', LorenzProcessor);
             <input
               key="spinY"
               type="range"
-              min={-0.05}
-              max={0.05}
+              min={-0.15}
+              max={0.15}
               step={0.001}
               defaultValue={spinSpeedYRef.current}
               onChange={(e) => { spinSpeedYRef.current = parseFloat(e.target.value); }}

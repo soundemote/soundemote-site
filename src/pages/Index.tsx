@@ -10,7 +10,7 @@ import Footer from "@/components/soundemote/Footer";
 
 const Index = () => (
   <main className="min-h-screen text-foreground scroll-smooth">
-    <StarField />
+    {/* <StarField /> — saved for later */}
     <Nav />
     <Hero />
     <Projects />
