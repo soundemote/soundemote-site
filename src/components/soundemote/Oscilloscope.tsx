@@ -470,23 +470,52 @@ export const Oscilloscope = () => {
       if (prevPx !== null && prevPy !== null) {
         pts.push((prevPx / w) * 2 - 1, 1 - (prevPy / h) * 2);
       }
-      const stepsPerFrame = Math.max(
-        1,
-        Math.min(8000, Math.round(freqRef.current * dtSeconds))
-      );
-      for (let i = 0; i < stepsPerFrame; i++) {
-        // Runge-Kutta-ish: simple Euler is fine at this dt
-        const dx = sigma * (y - x);
-        const dy = x * (rho - z) - y;
-        const dz = x * y - beta * z;
-        x += dx * dt;
-        y += dy * dt;
-        z += dz * dt;
+      // Source the (x,y,z) triples: either drain audio worklet's queue
+      // (so visual and audio are guaranteed to derive from the same
+      // numerical state) or integrate locally as a fallback.
+      const triples: number[] = [];
+      const audioActive =
+        audioOn && audioRef.current && audioRef.current.ctx.state === "running";
+      if (audioActive && ptsQueueRef.current.length >= 3) {
+        const q = ptsQueueRef.current;
+        // Cap per-frame draw count so we never fall further behind
+        const maxPts = 2400;
+        const take = Math.min(q.length, maxPts * 3);
+        for (let i = 0; i < take; i++) triples.push(q.shift()!);
+        // sync last sample back to shared state
+        const L = triples.length;
+        if (L >= 3) {
+          stateRef.current.x = triples[L - 3];
+          stateRef.current.y = triples[L - 2];
+          stateRef.current.z = triples[L - 1];
+        }
+      } else {
+        const steps = Math.max(
+          1,
+          Math.min(8000, Math.round(freqRef.current * dtSeconds))
+        );
+        const st = stateRef.current;
+        for (let i = 0; i < steps; i++) {
+          const dx = sigma * (st.y - st.x);
+          const dy = st.x * (rho - st.z) - st.y;
+          const dz = st.x * st.y - beta * st.z;
+          st.x += dx * dt;
+          st.y += dy * dt;
+          st.z += dz * dt;
+          // explosion guard
+          if (!isFinite(st.x) || Math.abs(st.x) > 1e4) {
+            st.x = 0.01; st.y = 0; st.z = 0;
+            prevPx = null; prevPy = null;
+            break;
+          }
+          triples.push(st.x, st.y, st.z);
+        }
+      }
 
-        // Center attractor at origin, rotate, then project
-        const x0 = x;
-        const y0 = y;
-        const z0 = z - 45;
+      for (let i = 0; i < triples.length; i += 3) {
+        const x0 = triples[i];
+        const y0 = triples[i + 1];
+        const z0 = triples[i + 2] - 45;
         // Rotate around Y axis
         const xr = x0 * cosY + z0 * sinY;
         const zr = -x0 * sinY + z0 * cosY;
