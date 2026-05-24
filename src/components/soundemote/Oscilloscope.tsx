@@ -951,6 +951,8 @@ registerProcessor('lorenz', LorenzProcessor);
         rho: rhoRef.current,
         beta: betaRef.current,
         dt: (freqRef.current * 0.006) / ctx.sampleRate,
+        rotX: rotXRef.current,
+        rotY: rotYRef.current,
         decim,
         smoothOn: smoothingRef.current,
       });
@@ -976,6 +978,8 @@ registerProcessor('lorenz', LorenzProcessor);
           rho: rhoRef.current,
           beta: betaRef.current,
           dt: (freqRef.current * 0.006) / a.ctx.sampleRate,
+          rotX: rotXRef.current,
+          rotY: rotYRef.current,
           decim: dc,
           smoothOn: smoothingRef.current,
         });
