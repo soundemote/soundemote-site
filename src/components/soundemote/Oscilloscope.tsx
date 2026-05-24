@@ -255,19 +255,11 @@ export const Oscilloscope = () => {
       ctx.putImageData(img, 0, 0);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      // ---- Beam: two additive passes (wide dim glow + narrow bright core) ----
-      // butt caps prevent zero-length / near-zero segments from rendering as
-      // round dots at the endpoints of each frame's stroke.
-      ctx.lineCap = "butt";
-      ctx.lineJoin = "round";
+      // ---- Beam: dot-only rendering (no lines) ----
       ctx.globalCompositeOperation = "lighter";
-
-      ctx.beginPath();
-      // Single continuous polyline — no per-segment moveTo, so round caps
-      // can never render as standalone dots between adjacent samples.
-      if (prevPx !== null && prevPy !== null) {
-        ctx.moveTo(prevPx, prevPy);
-      }
+      const coreW = traceWidthRef.current;
+      const glowSize = coreW * 3.2;
+      const coreSize = coreW;
       for (let i = 0; i < stepsPerFrame; i++) {
         // Runge-Kutta-ish: simple Euler is fine at this dt
         const dx = sigma * (y - x);
@@ -290,23 +282,16 @@ export const Oscilloscope = () => {
         const px = cx + xr * s * 8;
         const py = cy + yr * s * 8;
 
-        if (prevPx === null || prevPy === null) {
-          ctx.moveTo(px, py);
-        } else {
-          ctx.lineTo(px, py);
-        }
+        // Wide dim glow dot
+        ctx.fillStyle = "rgba(40, 235, 158, 0.18)";
+        ctx.fillRect(px - glowSize * 0.5, py - glowSize * 0.5, glowSize, glowSize);
+        // Narrow bright core dot
+        ctx.fillStyle = "rgba(184, 255, 82, 0.95)";
+        ctx.fillRect(px - coreSize * 0.5, py - coreSize * 0.5, coreSize, coreSize);
+
         prevPx = px;
         prevPy = py;
       }
-      // Wide cyan/green glow pass
-      const coreW = traceWidthRef.current;
-      ctx.lineWidth = coreW * 3.2;
-      ctx.strokeStyle = "rgba(40, 235, 158, 0.18)";
-      ctx.stroke();
-      // Narrow bright core
-      ctx.lineWidth = coreW;
-      ctx.strokeStyle = "rgba(184, 255, 82, 0.95)";
-      ctx.stroke();
 
       ctx.globalCompositeOperation = "source-over";
       raf = requestAnimationFrame(draw);
