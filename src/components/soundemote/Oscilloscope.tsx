@@ -8,6 +8,7 @@ export const Oscilloscope = () => {
   const rotXRef = useRef(0.35); // tilt
   const rotYRef = useRef(0);    // spin
   const autoSpinRef = useRef(true);
+  const traceWidthRef = useRef(2.2);
   const [, setTick] = useState(0); // force re-render of overlay labels
 
   useEffect(() => {
