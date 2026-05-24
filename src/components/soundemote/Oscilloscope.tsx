@@ -21,7 +21,7 @@ export const Oscilloscope = () => {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) return;
 
     let raf = 0;
@@ -51,6 +51,43 @@ export const Oscilloscope = () => {
 
     let prevPx: number | null = null;
     let prevPy: number | null = null;
+
+    // ---- Phosphor decay (Tracer / PrettyScope port, identity-reset on tab focus) ----
+    // Per-frame LUTs so we don't call Math.pow inside the hot per-pixel loop.
+    const persistence = 0.98;
+    const fastDecay = 0.25;
+    const afterglow = 0.95;
+    const maxKeep = 0.982 + (0.9975 - 0.982) * afterglow;
+    const floorBase = 0.0009 + (0.00018 - 0.0009) * afterglow;
+    const gammaExp = 1.035 + (1.012 - 1.035) * afterglow;
+    const smoothstep = (a: number, b: number, v: number) => {
+      const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
+      return t * t * (3 - 2 * t);
+    };
+    const keepLUT = new Float32Array(256);
+    const floorLUT = new Float32Array(256); // byte units
+    const gammaLUT = new Uint8ClampedArray(256);
+    let lastFrameScale = -1;
+    const rebuildLUTs = (frameScale: number) => {
+      if (frameScale === lastFrameScale) return;
+      lastFrameScale = frameScale;
+      for (let b = 0; b < 256; b++) {
+        const brightness = b / 255;
+        const dimTail = 1 - smoothstep(0.015, 0.34, brightness);
+        const softTail = 1 - smoothstep(0.18, 0.82, brightness);
+        const brightDrain = brightness * (0.035 + (0.24 - 0.035) * fastDecay);
+        const tailBoost = dimTail * (0.055 * afterglow) + softTail * afterglow * 0.012;
+        let keep = persistence + tailBoost - brightDrain;
+        if (keep < 0) keep = 0;
+        if (keep > maxKeep) keep = maxKeep;
+        keepLUT[b] = Math.pow(keep, frameScale);
+        floorLUT[b] = floorBase * frameScale * 255;
+        // gamma LUT mapping byte -> byte after pow(v, gammaExp)
+        gammaLUT[b] = Math.min(255, Math.max(0, Math.pow(b / 255, gammaExp) * 255));
+      }
+    };
+
+    let lastT = performance.now();
 
     // Pointer drag to pan (move tracer origin)
     let dragging = false;
@@ -85,6 +122,13 @@ export const Oscilloscope = () => {
     canvas.addEventListener("wheel", onWheel, { passive: false });
 
     const draw = () => {
+      const now = performance.now();
+      let dtSeconds = (now - lastT) / 1000;
+      lastT = now;
+      if (dtSeconds > 0.1) dtSeconds = 0.1; // clamp huge gaps (tab switch)
+      const frameScale = Math.max(0.1, Math.min(8, dtSeconds * 60));
+      rebuildLUTs(frameScale);
+
       const rect = canvas.getBoundingClientRect();
       const w = rect.width;
       const h = rect.height;
@@ -107,15 +151,43 @@ export const Oscilloscope = () => {
       const cosX = Math.cos(rotXRef.current);
       const sinX = Math.sin(rotXRef.current);
 
-      // Phosphor decay — fade prior frame toward black
-      ctx.fillStyle = "hsla(0, 0%, 0%, 0.12)";
-      ctx.fillRect(0, 0, w, h);
+      // ---- Phosphor decay pass: physically-modeled per-pixel persistence ----
+      // Bright pixels drain faster, dim pixels get a retention boost, with a
+      // subtractive floor and gentle gamma compression so the burn eventually dies.
+      const W = canvas.width;
+      const H = canvas.height;
+      // reset identity so getImageData uses raw device pixels
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      const img = ctx.getImageData(0, 0, W, H);
+      const data = img.data;
+      const floorByte = floorLUT[0]; // floor amount is brightness-independent
+      for (let i = 0, n = data.length; i < n; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const bright = r > g ? (r > b ? r : b) : (g > b ? g : b);
+        if (bright <= floorByte + 1) {
+          data[i] = 0; data[i + 1] = 0; data[i + 2] = 0;
+          continue;
+        }
+        const keep = keepLUT[bright];
+        let nr = r * keep - floorByte;
+        let ng = g * keep - floorByte;
+        let nb = b * keep - floorByte;
+        if (nr < 0) nr = 0;
+        if (ng < 0) ng = 0;
+        if (nb < 0) nb = 0;
+        data[i] = gammaLUT[nr | 0];
+        data[i + 1] = gammaLUT[ng | 0];
+        data[i + 2] = gammaLUT[nb | 0];
+      }
+      ctx.putImageData(img, 0, 0);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      ctx.lineWidth = traceWidthRef.current;
+      // ---- Beam: two additive passes (wide dim glow + narrow bright core) ----
       ctx.lineCap = "round";
-      ctx.shadowColor = "hsla(165, 95%, 60%, 0.9)";
-      ctx.shadowBlur = 12;
-      ctx.strokeStyle = "hsla(165, 95%, 65%, 0.9)";
+      ctx.lineJoin = "round";
+      ctx.globalCompositeOperation = "lighter";
 
       ctx.beginPath();
       for (let i = 0; i < stepsPerFrame; i++) {
@@ -149,9 +221,21 @@ export const Oscilloscope = () => {
         prevPx = px;
         prevPy = py;
       }
+      // Wide cyan/green glow pass
+      const coreW = traceWidthRef.current;
+      ctx.lineWidth = coreW * 3.2;
+      ctx.strokeStyle = "rgba(40, 235, 158, 0.18)";
+      ctx.stroke();
+      // Narrow bright core
+      ctx.lineWidth = coreW;
+      ctx.strokeStyle = "rgba(184, 255, 82, 0.95)";
+      ctx.stroke();
+      // Hotspot center
+      ctx.lineWidth = Math.max(0.6, coreW * 0.4);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
       ctx.stroke();
 
-      ctx.shadowBlur = 0;
+      ctx.globalCompositeOperation = "source-over";
       raf = requestAnimationFrame(draw);
     };
     draw();
