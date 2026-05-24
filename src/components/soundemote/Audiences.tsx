@@ -25,11 +25,11 @@ const groups = [
 
 export const Audiences = () => (
   <section id="developers" className="relative py-24 md:py-32 border-t border-border/40">
-    <div className="container grid gap-6 md:grid-cols-2 max-w-xl md:max-w-none mx-auto">
+    <div className="container max-w-2xl mx-auto space-y-6">
       {groups.map((g) => (
         <div
           key={g.label}
-          className="relative rounded-2xl border border-border bg-[var(--gradient-panel)] p-8 md:p-10 overflow-hidden text-center md:text-left"
+          className="relative rounded-2xl border border-border bg-[var(--gradient-panel)] p-8 md:p-10 overflow-hidden text-center"
         >
           <div
             className={`absolute -top-24 -right-24 h-64 w-64 rounded-full blur-3xl opacity-20 ${
@@ -47,7 +47,7 @@ export const Audiences = () => (
           <h3 className="display text-2xl md:text-3xl text-warm-white mb-6 leading-tight">
             {g.title}
           </h3>
-          <ul className="space-y-3 inline-block text-left md:block">
+          <ul className="space-y-3 inline-block text-left">
             {g.items.map((i) => (
               <li key={i} className="flex items-start gap-3 text-warm-white/80">
                 <span className={`mono mt-1 text-xs ${g.accent === "scope" ? "text-scope" : "text-accent"}`}>
