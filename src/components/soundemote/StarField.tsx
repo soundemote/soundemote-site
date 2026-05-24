@@ -42,7 +42,7 @@ export const StarField = () => {
 
     const seed = () => {
       const area = width * height;
-      const density = 0.00018; // stars per pixel (sparser)
+      const density = 0.00008; // stars per pixel (very sparse)
       const count = Math.floor(area * density);
       const stars: Star[] = [];
       for (let i = 0; i < count; i++) {
@@ -100,7 +100,7 @@ export const StarField = () => {
     const tick = (now: number) => {
       const t = (now - start) / 1000;
       // near-black wash with a faint vignette feel
-      ctx.fillStyle = "#040508";
+      ctx.fillStyle = "#010103";
       ctx.fillRect(0, 0, width, height);
 
       ctx.font = `12px "JetBrains Mono", ui-monospace, monospace`;
