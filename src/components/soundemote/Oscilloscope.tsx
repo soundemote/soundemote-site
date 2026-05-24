@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Minus, Plus, Volume2, VolumeX, RotateCcw, Waves } from "lucide-react";
+import { Minus, Plus, Volume2, VolumeX, RotateCcw } from "lucide-react";
 
 // Click-and-hold repeat button. Fires onTick at ~60Hz while held, with the
 // step multiplier accelerating the longer the user holds.
