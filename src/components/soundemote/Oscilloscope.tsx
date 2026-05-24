@@ -609,6 +609,124 @@ export const Oscilloscope = () => {
     setTick((n) => n + 1);
   };
 
+  // ---- Audio: Lorenz running at sampleRate inside an AudioWorklet ----
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      const a = audioRef.current;
+      if (a) {
+        try { a.node.disconnect(); } catch {}
+        try { a.gain.disconnect(); } catch {}
+        try { a.ctx.close(); } catch {}
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  const enableAudio = async () => {
+    if (audioRef.current) {
+      const a = audioRef.current;
+      if (a.ctx.state === "suspended") await a.ctx.resume();
+      setAudioOn(true);
+      return;
+    }
+    const workletCode = `
+class LorenzProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.x = 0.01; this.y = 0; this.z = 0;
+    this.sigma = 16; this.rho = 45.92; this.beta = 4; this.dt = 0.003;
+    // simple DC blockers per channel
+    this.lx = 0; this.ly = 0; this.px = 0; this.py = 0;
+    this.port.onmessage = (e) => {
+      const d = e.data;
+      if (d.sigma !== undefined) this.sigma = d.sigma;
+      if (d.rho !== undefined) this.rho = d.rho;
+      if (d.beta !== undefined) this.beta = d.beta;
+      if (d.dt !== undefined) this.dt = d.dt;
+    };
+  }
+  process(_, outputs) {
+    const out = outputs[0];
+    const L = out[0]; const R = out[1] || out[0];
+    const n = L.length;
+    const s = this.sigma, r = this.rho, b = this.beta, dt = this.dt;
+    for (let i = 0; i < n; i++) {
+      const dx = s*(this.y-this.x);
+      const dy = this.x*(r-this.z)-this.y;
+      const dz = this.x*this.y-b*this.z;
+      this.x += dx*dt; this.y += dy*dt; this.z += dz*dt;
+      // normalize roughly to [-1,1]
+      const sx = this.x * 0.035;
+      const sy = this.y * 0.035;
+      // 1-pole DC block
+      const ox = sx - this.px + 0.995 * this.lx;
+      const oy = sy - this.py + 0.995 * this.ly;
+      this.px = sx; this.py = sy; this.lx = ox; this.ly = oy;
+      L[i] = Math.max(-1, Math.min(1, ox));
+      R[i] = Math.max(-1, Math.min(1, oy));
+    }
+    return true;
+  }
+}
+registerProcessor('lorenz', LorenzProcessor);
+`;
+    try {
+      const ctx = new AudioContext();
+      const blob = new Blob([workletCode], { type: "application/javascript" });
+      const url = URL.createObjectURL(blob);
+      await ctx.audioWorklet.addModule(url);
+      URL.revokeObjectURL(url);
+      const node = new AudioWorkletNode(ctx, "lorenz", {
+        outputChannelCount: [2],
+      });
+      const gain = ctx.createGain();
+      gain.gain.value = volumeRef.current;
+      node.connect(gain).connect(ctx.destination);
+      node.port.postMessage({
+        sigma: sigmaRef.current,
+        rho: rhoRef.current,
+        beta: betaRef.current,
+        dt: 0.003,
+      });
+      audioRef.current = { ctx, node, gain };
+      setAudioOn(true);
+      // push param updates ~30Hz
+      const id = window.setInterval(() => {
+        const a = audioRef.current;
+        if (!a) { window.clearInterval(id); return; }
+        a.node.port.postMessage({
+          sigma: sigmaRef.current,
+          rho: rhoRef.current,
+          beta: betaRef.current,
+        });
+      }, 33);
+    } catch (err) {
+      console.error("audio init failed", err);
+    }
+  };
+
+  const toggleAudio = async () => {
+    if (audioOn && audioRef.current) {
+      await audioRef.current.ctx.suspend();
+      setAudioOn(false);
+    } else {
+      await enableAudio();
+    }
+  };
+
+  const setVolume = (v: number) => {
+    volumeRef.current = v;
+    if (audioRef.current) {
+      audioRef.current.gain.gain.setTargetAtTime(
+        v,
+        audioRef.current.ctx.currentTime,
+        0.01
+      );
+    }
+    setTick((n) => n + 1);
+  };
+
   const radToDeg = (r: number) => ((r * 180) / Math.PI).toFixed(0);
   const wrapDeg = (d: number) => {
     let v = d % 360;
