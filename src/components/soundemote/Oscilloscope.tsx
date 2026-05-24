@@ -10,50 +10,80 @@ export const Oscilloscope = () => {
     if (!ctx) return;
 
     let raf = 0;
-    let t = 0;
+    let dpr = window.devicePixelRatio || 1;
 
     const resize = () => {
-      const dpr = window.devicePixelRatio || 1;
+      dpr = window.devicePixelRatio || 1;
       const rect = canvas.getBoundingClientRect();
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
-      ctx.scale(dpr, dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // Prime background so the phosphor fade has something to blend into
+      ctx.fillStyle = "hsla(0, 0%, 0%, 1)";
+      ctx.fillRect(0, 0, rect.width, rect.height);
     };
     resize();
     window.addEventListener("resize", resize);
+
+    // Lorenz system parameters (classic chaotic regime)
+    const sigma = 10;
+    const rho = 28;
+    const beta = 8 / 3;
+    let x = 0.01;
+    let y = 0;
+    let z = 0;
+    const dt = 0.006;
+    const stepsPerFrame = 24;
+    // Lorenz attractor bounds (approx): x ±20, y ±27, z 0..50
+    const scale = 0.018; // fraction of min(w,h) per unit
+
+    let prevPx: number | null = null;
+    let prevPy: number | null = null;
 
     const draw = () => {
       const rect = canvas.getBoundingClientRect();
       const w = rect.width;
       const h = rect.height;
-      ctx.clearRect(0, 0, w, h);
+      const s = Math.min(w, h) * scale;
+      const cx = w / 2;
+      const cy = h / 2;
 
-      // Layered waveforms
-      const layers = [
-        { amp: h * 0.18, freq: 0.012, speed: 0.04, color: "hsla(165, 90%, 60%, 0.9)", width: 1.6, glow: 16 },
-        { amp: h * 0.12, freq: 0.022, speed: 0.07, color: "hsla(190, 95%, 65%, 0.7)", width: 1.2, glow: 10 },
-        { amp: h * 0.08, freq: 0.04, speed: 0.11, color: "hsla(150, 100%, 70%, 0.4)", width: 1.0, glow: 6 },
-      ];
+      // Phosphor decay — fade prior frame toward black
+      ctx.fillStyle = "hsla(0, 0%, 0%, 0.12)";
+      ctx.fillRect(0, 0, w, h);
 
-      layers.forEach((L, i) => {
-        ctx.beginPath();
-        ctx.strokeStyle = L.color;
-        ctx.lineWidth = L.width;
-        ctx.shadowColor = L.color;
-        ctx.shadowBlur = L.glow;
-        for (let x = 0; x <= w; x += 1) {
-          const y =
-            h / 2 +
-            Math.sin(x * L.freq + t * L.speed) * L.amp * Math.sin(t * 0.01 + i) +
-            Math.sin(x * L.freq * 2.3 + t * L.speed * 1.7) * (L.amp * 0.3);
-          if (x === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
+      ctx.lineWidth = 1.1;
+      ctx.lineCap = "round";
+      ctx.shadowColor = "hsla(165, 95%, 60%, 0.9)";
+      ctx.shadowBlur = 12;
+      ctx.strokeStyle = "hsla(165, 95%, 65%, 0.9)";
+
+      ctx.beginPath();
+      for (let i = 0; i < stepsPerFrame; i++) {
+        // Runge-Kutta-ish: simple Euler is fine at this dt
+        const dx = sigma * (y - x);
+        const dy = x * (rho - z) - y;
+        const dz = x * y - beta * z;
+        x += dx * dt;
+        y += dy * dt;
+        z += dz * dt;
+
+        // Project XZ to screen (classic butterfly view)
+        const px = cx + x * s * 8;
+        const py = cy + (z - 25) * s * 8;
+
+        if (prevPx === null || prevPy === null) {
+          ctx.moveTo(px, py);
+        } else {
+          ctx.moveTo(prevPx, prevPy);
+          ctx.lineTo(px, py);
         }
-        ctx.stroke();
-      });
+        prevPx = px;
+        prevPy = py;
+      }
+      ctx.stroke();
 
       ctx.shadowBlur = 0;
-      t += 1;
       raf = requestAnimationFrame(draw);
     };
     draw();
@@ -69,9 +99,9 @@ export const Oscilloscope = () => {
       <div className="flex items-center justify-between border-b border-border/60 px-4 py-2 mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
         <div className="flex items-center gap-2">
           <span className="h-1.5 w-1.5 rounded-full bg-scope animate-pulse-glow" />
-          scope · ch1
+          xy scope · lorenz
         </div>
-        <span>20ms / div</span>
+        <span>σ=10 ρ=28 β=8/3</span>
         <span className="text-scope">● rec</span>
       </div>
       <canvas ref={canvasRef} className="h-[calc(100%-2.25rem)] w-full" aria-label="Animated oscilloscope waveform" />
