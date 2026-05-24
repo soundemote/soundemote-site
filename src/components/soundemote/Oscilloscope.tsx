@@ -74,7 +74,7 @@ export const Oscilloscope = () => {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const next = zoomRef.current * (e.deltaY < 0 ? 1.1 : 0.9);
-      zoomRef.current = Math.max(0.3, Math.min(20, next));
+      zoomRef.current = Math.max(0.1, Math.min(20, next));
       setTick((n) => n + 1);
     };
     canvas.addEventListener("pointerdown", onDown);
