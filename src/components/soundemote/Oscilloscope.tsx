@@ -1057,44 +1057,35 @@ registerProcessor('lorenz', LorenzProcessor);
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-1">
             σ=
-            <input
+            <DragNumber
               key={`sigma-${resetSeq}`}
-              type="number"
-              step="0.1"
-              defaultValue={sigmaRef.current}
-              onChange={(e) => {
-                const v = parseFloat(e.target.value);
-                if (!Number.isNaN(v)) sigmaRef.current = v;
-              }}
-              className={coeffInputClass}
+              value={sigmaRef.current}
+              onChange={(v) => { sigmaRef.current = v; setTick((n) => n + 1); }}
+              min={0}
+              max={200}
+              format={(v) => v.toFixed(2)}
             />
           </label>
           <label className="flex items-center gap-1">
             ρ=
-            <input
+            <DragNumber
               key={`rho-${resetSeq}`}
-              type="number"
-              step="0.1"
-              defaultValue={rhoRef.current}
-              onChange={(e) => {
-                const v = parseFloat(e.target.value);
-                if (!Number.isNaN(v)) rhoRef.current = v;
-              }}
-              className={coeffInputClass}
+              value={rhoRef.current}
+              onChange={(v) => { rhoRef.current = v; setTick((n) => n + 1); }}
+              min={0}
+              max={500}
+              format={(v) => v.toFixed(2)}
             />
           </label>
           <label className="flex items-center gap-1">
             β=
-            <input
+            <DragNumber
               key={`beta-${resetSeq}`}
-              type="number"
-              step="0.1"
-              defaultValue={betaRef.current}
-              onChange={(e) => {
-                const v = parseFloat(e.target.value);
-                if (!Number.isNaN(v)) betaRef.current = v;
-              }}
-              className={coeffInputClass}
+              value={betaRef.current}
+              onChange={(v) => { betaRef.current = v; setTick((n) => n + 1); }}
+              min={0}
+              max={50}
+              format={(v) => v.toFixed(2)}
             />
           </label>
           <label className="flex items-center gap-1">
