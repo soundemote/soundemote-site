@@ -663,6 +663,21 @@ export const Oscilloscope = () => {
               className={coeffInputClass}
             />
           </label>
+          <label className="flex items-center gap-1">
+            f=
+            <DragNumber
+              value={freqRef.current}
+              onChange={(v) => { freqRef.current = v; setTick((n) => n + 1); }}
+              min={0.5}
+              max={48000}
+              suffix="Hz"
+              format={(v) =>
+                v >= 1000 ? (v / 1000).toFixed(v >= 10000 ? 1 : 2) + "k"
+                : v >= 10 ? v.toFixed(0)
+                : v.toFixed(2)
+              }
+            />
+          </label>
         </div>
         <span className="tabular-nums text-scope/80">
           rX={radToDeg(rotXRef.current)}° rY={wrapDeg((rotYRef.current * 180) / Math.PI)}°
