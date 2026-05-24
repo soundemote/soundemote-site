@@ -144,7 +144,8 @@ export const Oscilloscope = () => {
   const zoomRef = useRef(1);
   const rotXRef = useRef(0.35); // tilt
   const rotYRef = useRef(0);    // spin
-  const autoSpinRef = useRef(false);
+  const autoSpinXRef = useRef(false);
+  const autoSpinYRef = useRef(false);
   const panXRef = useRef(0);
   const panYRef = useRef(0);
   const panTargetXRef = useRef(0);
@@ -551,9 +552,10 @@ export const Oscilloscope = () => {
       const cx = w / 2 + panXRef.current;
       const cy = h / 2 + panYRef.current;
 
-      if (autoSpinRef.current) {
-        // In auto-spin mode, rX/rY sliders act as rotation speeds (rad/frame)
+      if (autoSpinXRef.current) {
         rotXRef.current += spinSpeedXRef.current;
+      }
+      if (autoSpinYRef.current) {
         rotYRef.current += spinSpeedYRef.current;
       }
 
@@ -1192,8 +1194,15 @@ registerProcessor('lorenz', LorenzProcessor);
       {/* Rotation sliders */}
       <div className="absolute top-12 right-3 flex flex-col gap-2 rounded-lg border border-border/60 bg-background/70 px-3 py-2 backdrop-blur-sm mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
         <label className="flex items-center gap-2">
-          <span className="w-10">{autoSpinRef.current ? "ωX" : "rX"}</span>
-          {autoSpinRef.current ? (
+          <input
+            type="checkbox"
+            checked={autoSpinXRef.current}
+            onChange={(e) => { autoSpinXRef.current = e.target.checked; setTick((n) => n + 1); }}
+            className="accent-scope"
+          />
+          <span className="text-scope/80">⟳</span>
+          <span className="w-10">{autoSpinXRef.current ? "ωX" : "rX"}</span>
+          {autoSpinXRef.current ? (
             <input
               key="spinX"
               type="range"
@@ -1218,8 +1227,15 @@ registerProcessor('lorenz', LorenzProcessor);
           )}
         </label>
         <label className="flex items-center gap-2">
-          <span className="w-10">{autoSpinRef.current ? "ωY" : "rY"}</span>
-          {autoSpinRef.current ? (
+          <input
+            type="checkbox"
+            checked={autoSpinYRef.current}
+            onChange={(e) => { autoSpinYRef.current = e.target.checked; setTick((n) => n + 1); }}
+            className="accent-scope"
+          />
+          <span className="text-scope/80">⟳</span>
+          <span className="w-10">{autoSpinYRef.current ? "ωY" : "rY"}</span>
+          {autoSpinYRef.current ? (
             <input
               key="spinY"
               type="range"
@@ -1242,15 +1258,6 @@ registerProcessor('lorenz', LorenzProcessor);
               className={sliderClass}
             />
           )}
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            defaultChecked={autoSpinRef.current}
-            onChange={(e) => { autoSpinRef.current = e.target.checked; setTick((n) => n + 1); }}
-            className="accent-scope"
-          />
-          <span>auto-spin</span>
         </label>
       </div>
       <div className="pointer-events-none absolute bottom-3 left-3 mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/70">
