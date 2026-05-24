@@ -1,6 +1,86 @@
 import { useEffect, useRef, useState } from "react";
 import { Minus, Plus } from "lucide-react";
 
+// Click-and-drag number input. Vertical drag changes the value on a log
+// scale so it can sweep many orders of magnitude (slow → audio rate).
+// Double-click to type a value directly.
+const DragNumber = ({
+  value,
+  onChange,
+  min,
+  max,
+  format,
+  suffix,
+  sensitivity = 0.008,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  min: number;
+  max: number;
+  format: (v: number) => string;
+  suffix?: string;
+  sensitivity?: number;
+}) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const startRef = useRef({ y: 0, v: 0 });
+  const movedRef = useRef(false);
+
+  const onDown = (e: React.PointerEvent<HTMLSpanElement>) => {
+    if (editing) return;
+    e.preventDefault();
+    movedRef.current = false;
+    startRef.current = { y: e.clientY, v: value };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onMove = (e: React.PointerEvent<HTMLSpanElement>) => {
+    if (!(e.target as HTMLElement).hasPointerCapture?.(e.pointerId)) return;
+    const dy = e.clientY - startRef.current.y;
+    if (Math.abs(dy) > 2) movedRef.current = true;
+    // log-scale drag: dragging up multiplies, dragging down divides
+    const logV = Math.log(Math.max(1e-6, startRef.current.v));
+    const next = Math.exp(logV - dy * sensitivity);
+    onChange(Math.max(min, Math.min(max, next)));
+  };
+  const onUp = (e: React.PointerEvent<HTMLSpanElement>) => {
+    try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+  };
+  const commit = () => {
+    const n = parseFloat(draft);
+    if (!Number.isNaN(n)) onChange(Math.max(min, Math.min(max, n)));
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        type="number"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") setEditing(false);
+        }}
+        className="w-16 bg-transparent border-b border-scope outline-none text-foreground tabular-nums text-center"
+      />
+    );
+  }
+  return (
+    <span
+      onPointerDown={onDown}
+      onPointerMove={onMove}
+      onPointerUp={onUp}
+      onDoubleClick={() => { setDraft(String(value)); setEditing(true); }}
+      className="cursor-ns-resize select-none tabular-nums border-b border-border/40 hover:border-scope/60 px-1 text-foreground"
+      title="Drag vertically · double-click to type"
+    >
+      {format(value)}{suffix}
+    </span>
+  );
+};
+
 export const Oscilloscope = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Live params held in refs so the rAF loop reads the latest values
