@@ -791,6 +791,11 @@ export const Oscilloscope = () => {
     setTick((n) => n + 1);
   };
 
+  const adjustDecay = (delta: number) => {
+    decayRef.current = Math.max(0, Math.min(1, decayRef.current + delta));
+    setTick((n) => n + 1);
+  };
+
   // ---- Audio: Lorenz running at sampleRate inside an AudioWorklet ----
   // Cleanup on unmount
   useEffect(() => {
