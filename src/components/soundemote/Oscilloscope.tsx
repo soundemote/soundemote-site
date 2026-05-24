@@ -109,6 +109,11 @@ export const Oscilloscope = () => {
     gain: GainNode;
   } | null>(null);
   const [audioOn, setAudioOn] = useState(false);
+  // Shared Lorenz state. When audio is running the worklet is master and
+  // pushes (x,y,z) triples back here; otherwise the visual integrator
+  // writes to it. Either way both renderers consume the same data.
+  const stateRef = useRef({ x: 0.01, y: 0, z: 0 });
+  const ptsQueueRef = useRef<number[]>([]); // flat x,y,z,x,y,z,...
   const [, setTick] = useState(0); // force re-render of overlay labels
 
   useEffect(() => {
