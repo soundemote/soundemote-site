@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Minus, Plus, RotateCcw } from "lucide-react";
+import { Minus, Plus } from "lucide-react";
 
 export const Oscilloscope = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -32,17 +32,18 @@ export const Oscilloscope = () => {
     resize();
     window.addEventListener("resize", resize);
 
-    // Lorenz system parameters (classic chaotic regime)
-    const sigma = 10;
-    const rho = 28;
-    const beta = 8 / 3;
+    // Lorenz system — alternative chaotic regime (tighter, more elegant double scroll)
+    const sigma = 16;
+    const rho = 45.92;
+    const beta = 4;
     let x = 0.01;
     let y = 0;
     let z = 0;
     const dt = 0.006;
     const stepsPerFrame = 24;
-    // Lorenz attractor bounds (approx): x ±20, y ±27, z 0..50
-    const scale = 0.018; // fraction of min(w,h) per unit
+    // Base scale chosen so zoom=1.0 fits the full attractor in-frame.
+    // (Previously this was 0.018 with a 0.3x default — collapsed into one constant.)
+    const scale = 0.018 * 0.3;
 
     let prevPx: number | null = null;
     let prevPy: number | null = null;
@@ -118,7 +119,7 @@ export const Oscilloscope = () => {
         // Center attractor at origin, rotate, then project
         const x0 = x;
         const y0 = y;
-        const z0 = z - 25;
+        const z0 = z - 45;
         // Rotate around Y axis
         const xr = x0 * cosY + z0 * sinY;
         const zr = -x0 * sinY + z0 * cosY;
@@ -157,13 +158,6 @@ export const Oscilloscope = () => {
     zoomRef.current = Math.max(0.3, Math.min(6, zoomRef.current * factor));
     setTick((n) => n + 1);
   };
-  const reset = () => {
-    zoomRef.current = 1;
-    rotXRef.current = 0.35;
-    rotYRef.current = 0;
-    autoSpinRef.current = true;
-    setTick((n) => n + 1);
-  };
 
   return (
     <div className="relative h-full w-full overflow-hidden rounded-xl border border-border bg-[var(--gradient-panel)] scope-grid">
@@ -173,7 +167,7 @@ export const Oscilloscope = () => {
           <span className="h-1.5 w-1.5 rounded-full bg-scope animate-pulse-glow" />
           xy scope · lorenz
         </div>
-        <span>σ=10 ρ=28 β=8/3</span>
+        <span>σ=16 ρ=45.92 β=4</span>
         <span className="text-scope">● rec</span>
       </div>
       <canvas
@@ -201,15 +195,6 @@ export const Oscilloscope = () => {
           aria-label="Zoom in"
         >
           <Plus className="h-3.5 w-3.5" />
-        </button>
-        <span className="mx-1 h-3 w-px bg-border/60" />
-        <button
-          type="button"
-          onClick={reset}
-          className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
-          aria-label="Reset view"
-        >
-          <RotateCcw className="h-3.5 w-3.5" />
         </button>
       </div>
       <div className="pointer-events-none absolute bottom-3 left-3 mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/70">
