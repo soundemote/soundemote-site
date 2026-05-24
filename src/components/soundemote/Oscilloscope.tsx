@@ -167,6 +167,8 @@ export const Oscilloscope = () => {
   } | null>(null);
   const [audioOn, setAudioOn] = useState(false);
   const [resetSeq, setResetSeq] = useState(0);
+  const smoothingRef = useRef(true);
+  const [smoothingOn, setSmoothingOn] = useState(true);
   // Shared Lorenz state. When audio is running the worklet is master and
   // pushes (x,y,z) triples back here; otherwise the visual integrator
   // writes to it. Either way both renderers consume the same data.
