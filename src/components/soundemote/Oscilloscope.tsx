@@ -339,6 +339,27 @@ export const Oscilloscope = () => {
     let sBeta = betaRef.current;
     let sFreq = freqRef.current;
 
+    // ---- Lanczos upsampler (dood.al / woscope trick) ---------------------
+    // Between every pair of input (x,y,z) triples, insert UP_STEPS-1 points
+    // computed with a windowed-sinc kernel (a=2). This turns the polyline
+    // into a smooth curve that traces the Lorenz manifold instead of cutting
+    // chords between sparse audio samples.
+    const UP_STEPS = 8;
+    const UP_A = 2;
+    const UP_R = UP_A * UP_STEPS;
+    const upK = new Float32Array(UP_R);
+    upK[0] = 1;
+    for (let i = 1; i < UP_R; i++) {
+      const piX = (Math.PI * i) / UP_STEPS;
+      const sinc = Math.sin(piX) / piX;
+      const win = (UP_A * Math.sin(piX / UP_A)) / piX;
+      upK[i] = sinc * Math.pow(win, 1.5);
+    }
+    // Sliding context of 3 triples (positions p-1, p, p+1)
+    const upCtx = new Float32Array(9);
+    let upFill = 0;
+    const resetUpsampler = () => { upFill = 0; };
+
     let lastT = performance.now();
 
     // Pointer drag to pan (move tracer origin)
