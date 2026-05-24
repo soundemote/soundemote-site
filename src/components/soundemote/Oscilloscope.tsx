@@ -11,6 +11,8 @@ export const Oscilloscope = () => {
   const panXRef = useRef(0);
   const panYRef = useRef(0);
   const traceWidthRef = useRef(2.2);
+  const spinSpeedXRef = useRef(0);
+  const spinSpeedYRef = useRef(0.003);
   const sigmaRef = useRef(16);
   const rhoRef = useRef(45.92);
   const betaRef = useRef(4);
@@ -90,7 +92,11 @@ export const Oscilloscope = () => {
       const cx = w / 2 + panXRef.current;
       const cy = h / 2 + panYRef.current;
 
-      if (autoSpinRef.current) rotYRef.current += 0.003;
+      if (autoSpinRef.current) {
+        // In auto-spin mode, rX/rY sliders act as rotation speeds (rad/frame)
+        rotXRef.current += spinSpeedXRef.current;
+        rotYRef.current += spinSpeedYRef.current;
+      }
 
       const sigma = sigmaRef.current;
       const rho = rhoRef.current;
@@ -168,7 +174,7 @@ export const Oscilloscope = () => {
   };
 
   const adjustTrace = (delta: number) => {
-    traceWidthRef.current = Math.max(0.4, Math.min(20, traceWidthRef.current + delta));
+    traceWidthRef.current = Math.max(0.4, Math.min(40, traceWidthRef.current + delta));
     setTick((n) => n + 1);
   };
 
@@ -292,34 +298,62 @@ export const Oscilloscope = () => {
       {/* Rotation sliders */}
       <div className="absolute top-12 right-3 flex flex-col gap-2 rounded-lg border border-border/60 bg-background/70 px-3 py-2 backdrop-blur-sm mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
         <label className="flex items-center gap-2">
-          <span className="w-6">rX</span>
-          <input
-            type="range"
-            min={-1.4}
-            max={1.4}
-            step={0.01}
-            defaultValue={rotXRef.current}
-            onChange={(e) => { rotXRef.current = parseFloat(e.target.value); }}
-            className={sliderClass}
-          />
+          <span className="w-10">{autoSpinRef.current ? "ωX" : "rX"}</span>
+          {autoSpinRef.current ? (
+            <input
+              key="spinX"
+              type="range"
+              min={-0.05}
+              max={0.05}
+              step={0.001}
+              defaultValue={spinSpeedXRef.current}
+              onChange={(e) => { spinSpeedXRef.current = parseFloat(e.target.value); }}
+              className={sliderClass}
+            />
+          ) : (
+            <input
+              key="rotX"
+              type="range"
+              min={-1.4}
+              max={1.4}
+              step={0.01}
+              defaultValue={rotXRef.current}
+              onChange={(e) => { rotXRef.current = parseFloat(e.target.value); }}
+              className={sliderClass}
+            />
+          )}
         </label>
         <label className="flex items-center gap-2">
-          <span className="w-6">rY</span>
-          <input
-            type="range"
-            min={-Math.PI}
-            max={Math.PI}
-            step={0.01}
-            defaultValue={rotYRef.current}
-            onChange={(e) => { rotYRef.current = parseFloat(e.target.value); }}
-            className={sliderClass}
-          />
+          <span className="w-10">{autoSpinRef.current ? "ωY" : "rY"}</span>
+          {autoSpinRef.current ? (
+            <input
+              key="spinY"
+              type="range"
+              min={-0.05}
+              max={0.05}
+              step={0.001}
+              defaultValue={spinSpeedYRef.current}
+              onChange={(e) => { spinSpeedYRef.current = parseFloat(e.target.value); }}
+              className={sliderClass}
+            />
+          ) : (
+            <input
+              key="rotY"
+              type="range"
+              min={-Math.PI}
+              max={Math.PI}
+              step={0.01}
+              defaultValue={rotYRef.current}
+              onChange={(e) => { rotYRef.current = parseFloat(e.target.value); }}
+              className={sliderClass}
+            />
+          )}
         </label>
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
             defaultChecked={autoSpinRef.current}
-            onChange={(e) => { autoSpinRef.current = e.target.checked; }}
+            onChange={(e) => { autoSpinRef.current = e.target.checked; setTick((n) => n + 1); }}
             className="accent-scope"
           />
           <span>auto-spin</span>
