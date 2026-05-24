@@ -332,6 +332,12 @@ export const Oscilloscope = () => {
     let prevPy: number | null = null;
     // Phosphor decay (single multiplicative fade, dood.al style)
     const persistence = 0.86; // per-60fps-frame keep factor
+    // Smoothed shadows of the coefficients used by the visual fallback
+    // integrator. The audio worklet smooths internally per-sample.
+    let sSigma = sigmaRef.current;
+    let sRho = rhoRef.current;
+    let sBeta = betaRef.current;
+    let sFreq = freqRef.current;
 
     let lastT = performance.now();
 
@@ -456,9 +462,15 @@ export const Oscilloscope = () => {
         rotYRef.current += spinSpeedYRef.current;
       }
 
-      const sigma = sigmaRef.current;
-      const rho = rhoRef.current;
-      const beta = betaRef.current;
+      // Smooth coefficient + freq changes (~30ms time constant)
+      const smooth = 1 - Math.exp(-dtSeconds / 0.030);
+      sSigma += (sigmaRef.current - sSigma) * smooth;
+      sRho   += (rhoRef.current   - sRho)   * smooth;
+      sBeta  += (betaRef.current  - sBeta)  * smooth;
+      sFreq  += (freqRef.current  - sFreq)  * smooth;
+      const sigma = sSigma;
+      const rho = sRho;
+      const beta = sBeta;
 
       const cosY = Math.cos(rotYRef.current);
       const sinY = Math.sin(rotYRef.current);
@@ -493,7 +505,7 @@ export const Oscilloscope = () => {
       } else {
         const steps = Math.max(
           1,
-          Math.min(8000, Math.round(freqRef.current * dtSeconds))
+          Math.min(8000, Math.round(sFreq * dtSeconds))
         );
         const st = stateRef.current;
         for (let i = 0; i < steps; i++) {
@@ -667,7 +679,11 @@ class LorenzProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.x = 0.01; this.y = 0; this.z = 0;
+    // current (smoothed) and target values — per-sample 1-pole lerp toward target
     this.sigma = 16; this.rho = 45.92; this.beta = 4; this.dt = 0.003;
+    this.tSigma = 16; this.tRho = 45.92; this.tBeta = 4; this.tDt = 0.003;
+    // smoothing coefficient (~30ms time constant @ 48k → recomputed in process)
+    this.smooth = 0;
     // simple DC blockers per channel
     this.lx = 0; this.ly = 0; this.px = 0; this.py = 0;
     // visual decimation: every Nth sample is sent to main thread
@@ -680,12 +696,17 @@ class LorenzProcessor extends AudioWorkletProcessor {
         this.x = 0.01; this.y = 0; this.z = 0;
         this.lx = 0; this.ly = 0; this.px = 0; this.py = 0;
         this.bIdx = 0;
+        // snap smoothed values to targets on reset
+        if (d.snap) {
+          this.sigma = this.tSigma; this.rho = this.tRho;
+          this.beta = this.tBeta; this.dt = this.tDt;
+        }
         return;
       }
-      if (d.sigma !== undefined) this.sigma = d.sigma;
-      if (d.rho !== undefined) this.rho = d.rho;
-      if (d.beta !== undefined) this.beta = d.beta;
-      if (d.dt !== undefined) this.dt = d.dt;
+      if (d.sigma !== undefined) this.tSigma = d.sigma;
+      if (d.rho !== undefined) this.tRho = d.rho;
+      if (d.beta !== undefined) this.tBeta = d.beta;
+      if (d.dt !== undefined) this.tDt = d.dt;
       if (d.decim !== undefined) this.decim = Math.max(1, d.decim|0);
     };
   }
@@ -693,8 +714,18 @@ class LorenzProcessor extends AudioWorkletProcessor {
     const out = outputs[0];
     const L = out[0]; const R = out[1] || out[0];
     const n = L.length;
-    const s = this.sigma, r = this.rho, b = this.beta, dt = this.dt;
+    if (this.smooth === 0) {
+      // ~30ms time constant
+      this.smooth = 1 - Math.exp(-1 / (0.030 * sampleRate));
+    }
+    const k = this.smooth;
     for (let i = 0; i < n; i++) {
+      // per-sample smoothing of params (denormal-safe: targets are O(1))
+      this.sigma += (this.tSigma - this.sigma) * k;
+      this.rho   += (this.tRho   - this.rho)   * k;
+      this.beta  += (this.tBeta  - this.beta)  * k;
+      this.dt    += (this.tDt    - this.dt)    * k;
+      const s = this.sigma, r = this.rho, b = this.beta, dt = this.dt;
       const dx = s*(this.y-this.x);
       const dy = this.x*(r-this.z)-this.y;
       const dz = this.x*this.y-b*this.z;
