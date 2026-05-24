@@ -5,7 +5,7 @@ export const Hero = () => (
     <div className="absolute inset-0 scope-grid opacity-40" aria-hidden />
     <div className="absolute inset-0 bg-[var(--gradient-hero)]" aria-hidden />
     <div className="container relative grid gap-12 lg:grid-cols-[1.05fr_1fr] lg:items-center">
-      <div className="animate-fade-in">
+      <div className="animate-fade-in text-center lg:text-left">
         <p className="mono text-xs uppercase tracking-[0.35em] text-scope mb-6">
           ⋆⁺₊✧ soundemote ✧₊⁺⋆
         </p>
@@ -15,11 +15,11 @@ export const Hero = () => (
           <span className="text-accent text-glow">shaping</span>, and{" "}
           <span className="italic text-warm-white/90">feeling</span> sound.
         </h1>
-        <p className="mt-8 max-w-xl text-lg leading-relaxed text-muted-foreground">
+        <p className="mt-8 max-w-xl mx-auto lg:mx-0 text-lg leading-relaxed text-muted-foreground">
           Soundemote makes audio-visual plugins, DSP libraries, and experimental
           tools for anyone who cares about signal, motion, and beauty.
         </p>
-        <div className="mt-10 flex flex-wrap items-center gap-4">
+        <div className="mt-10 flex flex-wrap items-center justify-center lg:justify-start gap-4">
           <a
             href="#projects"
             className="group inline-flex items-center gap-2 rounded-full bg-scope px-6 py-3 mono text-xs uppercase tracking-[0.2em] text-primary-foreground transition-all hover:shadow-[0_0_30px_hsl(var(--scope)/0.6)]"
@@ -36,7 +36,7 @@ export const Hero = () => (
             Join Discord
           </a>
         </div>
-        <div className="mt-12 grid grid-cols-3 max-w-md gap-6 mono text-xs text-muted-foreground">
+        <div className="mt-12 grid grid-cols-3 max-w-md mx-auto lg:mx-0 gap-6 mono text-xs text-muted-foreground">
           <div>
             <div className="text-scope text-2xl display">04</div>
             open projects
@@ -51,7 +51,7 @@ export const Hero = () => (
           </div>
         </div>
       </div>
-      <div className="relative aspect-[5/4] w-full animate-fade-in [animation-delay:200ms]">
+      <div className="relative aspect-[5/4] w-full animate-fade-in [animation-delay:200ms] hidden lg:block">
         <Oscilloscope />
       </div>
     </div>

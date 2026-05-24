@@ -9,17 +9,17 @@ export const Community = () => (
   <section id="community" className="relative py-24 md:py-32 border-t border-border/40 bg-secondary/20">
     <div className="container max-w-5xl">
       <div className="grid gap-12 md:grid-cols-[1fr_1.2fr] items-start">
-        <div>
+        <div className="text-center md:text-left">
           <p className="mono text-xs uppercase tracking-[0.3em] text-scope mb-4">// community</p>
           <h2 className="display text-3xl md:text-5xl text-warm-white leading-tight">
             Follow the build. Shape what comes next.
           </h2>
-          <p className="mt-6 text-muted-foreground leading-relaxed">
+          <p className="mt-6 text-muted-foreground leading-relaxed max-w-md mx-auto md:mx-0">
             We build in public. Come hang out, try early stuff, and talk signal
             with other weirdos who care about sound.
           </p>
         </div>
-        <ul className="grid gap-3">
+        <ul className="grid gap-3 w-full max-w-md mx-auto md:max-w-none">
           {socials.map((s) => (
             <li key={s.name}>
               <a
