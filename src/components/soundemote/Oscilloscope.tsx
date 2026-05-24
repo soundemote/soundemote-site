@@ -769,15 +769,6 @@ export const Oscilloscope = () => {
     setTick((n) => n + 1);
   };
 
-  const toggleSmoothing = () => {
-    const next = !smoothingRef.current;
-    smoothingRef.current = next;
-    setSmoothingOn(next);
-    if (audioRef.current) {
-      audioRef.current.node.port.postMessage({ smoothOn: next });
-    }
-  };
-
   // ---- Audio: Lorenz running at sampleRate inside an AudioWorklet ----
   // Cleanup on unmount
   useEffect(() => {
