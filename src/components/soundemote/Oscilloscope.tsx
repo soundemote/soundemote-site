@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Minus, Plus, Volume2, VolumeX } from "lucide-react";
+import { Minus, Plus, Volume2, VolumeX, RotateCcw } from "lucide-react";
 
 // Click-and-drag number input. Vertical drag changes the value on a log
 // scale so it can sweep many orders of magnitude (slow → audio rate).
