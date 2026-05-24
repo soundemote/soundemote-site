@@ -822,6 +822,7 @@ registerProcessor('lorenz', LorenzProcessor);
         dt: (freqRef.current * 0.006) / audioRef.current.ctx.sampleRate,
       });
     }
+    setResetSeq((n) => n + 1);
     setTick((n) => n + 1);
   };
 
