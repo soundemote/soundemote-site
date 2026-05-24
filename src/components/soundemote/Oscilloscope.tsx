@@ -1145,6 +1145,25 @@ registerProcessor('lorenz', LorenzProcessor);
           </HoldButton>
         </div>
         <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-1.5 py-1 backdrop-blur-sm">
+          <HoldButton
+            onTick={(a) => adjustDecay(-0.01 * a)}
+            className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
+            ariaLabel="Longer phosphor burn"
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </HoldButton>
+          <span className="mono text-[10px] tracking-[0.15em] text-muted-foreground tabular-nums w-12 text-center">
+            burn{(1 - decayRef.current).toFixed(2)}
+          </span>
+          <HoldButton
+            onTick={(a) => adjustDecay(0.01 * a)}
+            className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
+            ariaLabel="Shorter phosphor burn"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </HoldButton>
+        </div>
+        <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-1.5 py-1 backdrop-blur-sm">
           <button
             type="button"
             onClick={toggleAudio}
