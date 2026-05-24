@@ -799,6 +799,7 @@ class LorenzProcessor extends AudioWorkletProcessor {
     this.tSigma = 16; this.tRho = 45.92; this.tBeta = 4; this.tDt = 0.003;
     // smoothing coefficient (~30ms time constant @ 48k → recomputed in process)
     this.smooth = 0;
+    this.smoothOn = true;
     // simple DC blockers per channel
     this.lx = 0; this.ly = 0; this.px = 0; this.py = 0;
     // visual decimation: every Nth sample is sent to main thread
@@ -823,6 +824,7 @@ class LorenzProcessor extends AudioWorkletProcessor {
       if (d.beta !== undefined) this.tBeta = d.beta;
       if (d.dt !== undefined) this.tDt = d.dt;
       if (d.decim !== undefined) this.decim = Math.max(1, d.decim|0);
+      if (d.smoothOn !== undefined) this.smoothOn = !!d.smoothOn;
     };
   }
   process(_, outputs) {
@@ -833,7 +835,7 @@ class LorenzProcessor extends AudioWorkletProcessor {
       // ~30ms time constant
       this.smooth = 1 - Math.exp(-1 / (0.030 * sampleRate));
     }
-    const k = this.smooth;
+    const k = this.smoothOn ? this.smooth : 1;
     for (let i = 0; i < n; i++) {
       // per-sample smoothing of params (denormal-safe: targets are O(1))
       this.sigma += (this.tSigma - this.sigma) * k;
