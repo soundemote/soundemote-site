@@ -144,7 +144,8 @@ export const Oscilloscope = () => {
   const zoomRef = useRef(1);
   const rotXRef = useRef(0.35); // tilt
   const rotYRef = useRef(0);    // spin
-  const autoSpinRef = useRef(false);
+  const autoSpinXRef = useRef(false);
+  const autoSpinYRef = useRef(false);
   const panXRef = useRef(0);
   const panYRef = useRef(0);
   const panTargetXRef = useRef(0);
