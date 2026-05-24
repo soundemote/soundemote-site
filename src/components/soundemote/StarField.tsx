@@ -100,7 +100,7 @@ export const StarField = () => {
     const tick = (now: number) => {
       const t = (now - start) / 1000;
       // near-black wash with a faint vignette feel
-      ctx.fillStyle = "#010103";
+      ctx.fillStyle = "#000000";
       ctx.fillRect(0, 0, width, height);
 
       ctx.font = `12px "JetBrains Mono", ui-monospace, monospace`;
