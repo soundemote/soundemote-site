@@ -170,22 +170,31 @@ export const Oscilloscope = () => {
         if (Math.abs(velX) < 0.5) velX = 0;
         if (Math.abs(velY) < 0.5) velY = 0;
       }
-      // Wrap the origin around when it leaves the visible canvas. Wrap target
-      // AND current together so the smoothed pan doesn't animate across screen.
+      // Wrap the origin around when it leaves the visible canvas, with a
+      // margin so the trace can drift a bit past the edge before snapping.
+      // Wrap is driven by the *visible* pan (panXRef), not the target — that
+      // way you only see a teleport when the visible origin actually leaves
+      // the boundary, not when an inertial target overshoots far ahead.
+      const marginX = w * 0.25;
+      const marginY = h * 0.25;
+      const spanX = w + marginX * 2;
+      const spanY = h + marginY * 2;
       const wrap = (v: number, span: number) => {
         const half = span / 2;
         if (v > half) return v - span;
         if (v < -half) return v + span;
         return v;
       };
-      const beforeTX = panTargetXRef.current;
-      const beforeTY = panTargetYRef.current;
-      panTargetXRef.current = wrap(beforeTX, w);
-      panTargetYRef.current = wrap(beforeTY, h);
-      const wrappedX = panTargetXRef.current !== beforeTX;
-      const wrappedY = panTargetYRef.current !== beforeTY;
-      panXRef.current += panTargetXRef.current - beforeTX;
-      panYRef.current += panTargetYRef.current - beforeTY;
+      const beforeX = panXRef.current;
+      const beforeY = panYRef.current;
+      panXRef.current = wrap(beforeX, spanX);
+      panYRef.current = wrap(beforeY, spanY);
+      const wrappedX = panXRef.current !== beforeX;
+      const wrappedY = panYRef.current !== beforeY;
+      // Shift the target by the same delta so the smoothed lerp doesn't
+      // immediately animate the origin back across the screen.
+      panTargetXRef.current += panXRef.current - beforeX;
+      panTargetYRef.current += panYRef.current - beforeY;
       if (wrappedX || wrappedY) {
         // Break the trail so the next segment doesn't streak across screen
         prevPx = null;
