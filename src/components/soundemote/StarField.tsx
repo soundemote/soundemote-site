@@ -14,9 +14,20 @@ type Star = {
   hue: number;
 };
 
+type Shooter = {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number; // 0..1, decays
+  trail: { x: number; y: number; glyph: string }[];
+  hue: number;
+};
+
 export const StarField = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const starsRef = useRef<Star[]>([]);
+  const shootersRef = useRef<Shooter[]>([]);
   const rafRef = useRef<number>();
 
   useEffect(() => {
@@ -31,7 +42,7 @@ export const StarField = () => {
 
     const seed = () => {
       const area = width * height;
-      const density = 0.00045; // stars per pixel
+      const density = 0.00018; // stars per pixel (sparser)
       const count = Math.floor(area * density);
       const stars: Star[] = [];
       for (let i = 0; i < count; i++) {
@@ -47,6 +58,26 @@ export const StarField = () => {
         });
       }
       starsRef.current = stars;
+    };
+
+    const spawnShooter = () => {
+      // launch from upper-left-ish, travel down-right (or mirror)
+      const fromLeft = Math.random() < 0.5;
+      const y0 = Math.random() * height * 0.6;
+      const x0 = fromLeft ? -40 : width + 40;
+      const speed = 6 + Math.random() * 4;
+      const angle = (Math.random() * 0.3 + 0.15) * Math.PI; // ~27-81deg
+      const vx = (fromLeft ? 1 : -1) * Math.cos(angle) * speed;
+      const vy = Math.sin(angle) * speed;
+      shootersRef.current.push({
+        x: x0,
+        y: y0,
+        vx,
+        vy,
+        life: 1,
+        trail: [],
+        hue: Math.random() < 0.3 ? 40 : 180,
+      });
     };
 
     const resize = () => {
@@ -65,6 +96,7 @@ export const StarField = () => {
     window.addEventListener("resize", resize);
 
     let start = performance.now();
+    let nextShooterAt = 1.5;
     const tick = (now: number) => {
       const t = (now - start) / 1000;
       // near-black wash with a faint vignette feel
@@ -87,6 +119,44 @@ export const StarField = () => {
         }
         ctx.fillStyle = `hsla(${s.hue}, 70%, ${60 + tw * 20}%, ${alpha})`;
         ctx.fillText(s.glyph, s.x, s.y);
+      }
+
+      // shooting stars
+      if (t >= nextShooterAt) {
+        spawnShooter();
+        nextShooterAt = t + 2 + Math.random() * 4;
+      }
+      const shooters = shootersRef.current;
+      const trailGlyphs = ["*", "+", "·", ".", " "];
+      for (let i = shooters.length - 1; i >= 0; i--) {
+        const sh = shooters[i];
+        sh.x += sh.vx;
+        sh.y += sh.vy;
+        sh.trail.unshift({
+          x: sh.x,
+          y: sh.y,
+          glyph: trailGlyphs[Math.floor(Math.random() * trailGlyphs.length)],
+        });
+        if (sh.trail.length > 14) sh.trail.pop();
+
+        // draw trail (oldest = dimmest)
+        for (let j = sh.trail.length - 1; j >= 0; j--) {
+          const p = sh.trail[j];
+          const a = (1 - j / sh.trail.length) * 0.8;
+          ctx.fillStyle = `hsla(${sh.hue}, 80%, ${65 + (1 - j / sh.trail.length) * 25}%, ${a})`;
+          ctx.fillText(p.glyph, p.x, p.y);
+        }
+        // head
+        ctx.fillStyle = `hsla(${sh.hue}, 90%, 90%, 1)`;
+        ctx.fillRect(sh.x - 1.5, sh.y - 1.5, 3, 3);
+        ctx.fillText("✦", sh.x, sh.y);
+
+        if (
+          sh.x < -60 || sh.x > width + 60 ||
+          sh.y < -60 || sh.y > height + 60
+        ) {
+          shooters.splice(i, 1);
+        }
       }
 
       rafRef.current = requestAnimationFrame(tick);
