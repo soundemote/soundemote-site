@@ -321,9 +321,6 @@ export const Oscilloscope = () => {
     resize();
     window.addEventListener("resize", resize);
 
-    let x = 0.01;
-    let y = 0;
-    let z = 0;
     const dt = 0.006;
     // stepsPerFrame is computed each frame from freqRef + dtSeconds
     // Base scale chosen so zoom=1.0 shows the attractor at its most readable "default" size.
