@@ -150,6 +150,9 @@ export const Oscilloscope = () => {
   const panTargetXRef = useRef(0);
   const panTargetYRef = useRef(0);
   const traceWidthRef = useRef(2.2);
+  // Phosphor decay (0 = long burn-in, 1 = quick clean fade). Default in the
+  // middle gives a nice screen-burn that still eventually clears.
+  const decayRef = useRef(0.45);
   const spinSpeedXRef = useRef(0);
   const spinSpeedYRef = useRef(0.003);
   const sigmaRef = useRef(16);
