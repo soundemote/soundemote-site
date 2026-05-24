@@ -7,7 +7,9 @@ export const Oscilloscope = () => {
   const zoomRef = useRef(1);
   const rotXRef = useRef(0.35); // tilt
   const rotYRef = useRef(0);    // spin
-  const autoSpinRef = useRef(true);
+  const autoSpinRef = useRef(false);
+  const panXRef = useRef(0);
+  const panYRef = useRef(0);
   const traceWidthRef = useRef(2.2);
   const sigmaRef = useRef(16);
   const rhoRef = useRef(45.92);
@@ -48,21 +50,20 @@ export const Oscilloscope = () => {
     let prevPx: number | null = null;
     let prevPy: number | null = null;
 
-    // Pointer drag to rotate
+    // Pointer drag to pan (move tracer origin)
     let dragging = false;
     let lastX = 0;
     let lastY = 0;
     const onDown = (e: PointerEvent) => {
       dragging = true;
-      autoSpinRef.current = false;
       lastX = e.clientX;
       lastY = e.clientY;
       canvas.setPointerCapture(e.pointerId);
     };
     const onMove = (e: PointerEvent) => {
       if (!dragging) return;
-      rotYRef.current += (e.clientX - lastX) * 0.01;
-      rotXRef.current = Math.max(-1.4, Math.min(1.4, rotXRef.current + (e.clientY - lastY) * 0.01));
+      panXRef.current += e.clientX - lastX;
+      panYRef.current += e.clientY - lastY;
       lastX = e.clientX;
       lastY = e.clientY;
     };
@@ -86,8 +87,8 @@ export const Oscilloscope = () => {
       const w = rect.width;
       const h = rect.height;
       const s = Math.min(w, h) * scale * zoomRef.current;
-      const cx = w / 2;
-      const cy = h / 2;
+      const cx = w / 2 + panXRef.current;
+      const cy = h / 2 + panYRef.current;
 
       if (autoSpinRef.current) rotYRef.current += 0.003;
 
@@ -182,6 +183,9 @@ export const Oscilloscope = () => {
   const coeffInputClass =
     "w-12 bg-transparent border-b border-border/40 focus:border-scope outline-none text-foreground tabular-nums text-center";
 
+  const sliderClass =
+    "h-1 w-24 cursor-pointer accent-scope bg-border/40 rounded-full appearance-none";
+
   return (
     <div className="relative h-full w-full overflow-hidden rounded-xl border border-border bg-[var(--gradient-panel)] scope-grid">
       {/* Top bar */}
@@ -237,7 +241,7 @@ export const Oscilloscope = () => {
       </div>
       <canvas
         ref={canvasRef}
-        className="h-[calc(100%-2.25rem)] w-full touch-none cursor-grab active:cursor-grabbing"
+        className="h-[calc(100%-2.25rem)] w-full touch-none cursor-move"
         aria-label="Animated Lorenz attractor XY scope"
       />
       {/* Controls */}
@@ -285,8 +289,44 @@ export const Oscilloscope = () => {
           </button>
         </div>
       </div>
+      {/* Rotation sliders */}
+      <div className="absolute top-12 right-3 flex flex-col gap-2 rounded-lg border border-border/60 bg-background/70 px-3 py-2 backdrop-blur-sm mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
+        <label className="flex items-center gap-2">
+          <span className="w-6">rX</span>
+          <input
+            type="range"
+            min={-1.4}
+            max={1.4}
+            step={0.01}
+            defaultValue={rotXRef.current}
+            onChange={(e) => { rotXRef.current = parseFloat(e.target.value); }}
+            className={sliderClass}
+          />
+        </label>
+        <label className="flex items-center gap-2">
+          <span className="w-6">rY</span>
+          <input
+            type="range"
+            min={-Math.PI}
+            max={Math.PI}
+            step={0.01}
+            defaultValue={rotYRef.current}
+            onChange={(e) => { rotYRef.current = parseFloat(e.target.value); }}
+            className={sliderClass}
+          />
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            defaultChecked={autoSpinRef.current}
+            onChange={(e) => { autoSpinRef.current = e.target.checked; }}
+            className="accent-scope"
+          />
+          <span>auto-spin</span>
+        </label>
+      </div>
       <div className="pointer-events-none absolute bottom-3 left-3 mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/70">
-        drag to rotate · scroll to zoom
+        drag to pan · scroll to zoom
       </div>
       {/* Sweep */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
