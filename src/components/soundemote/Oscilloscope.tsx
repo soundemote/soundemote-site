@@ -852,6 +852,7 @@ registerProcessor('lorenz', LorenzProcessor);
           <label className="flex items-center gap-1">
             σ=
             <input
+              key={`sigma-${resetSeq}`}
               type="number"
               step="0.1"
               defaultValue={sigmaRef.current}
@@ -865,6 +866,7 @@ registerProcessor('lorenz', LorenzProcessor);
           <label className="flex items-center gap-1">
             ρ=
             <input
+              key={`rho-${resetSeq}`}
               type="number"
               step="0.1"
               defaultValue={rhoRef.current}
@@ -878,6 +880,7 @@ registerProcessor('lorenz', LorenzProcessor);
           <label className="flex items-center gap-1">
             β=
             <input
+              key={`beta-${resetSeq}`}
               type="number"
               step="0.1"
               defaultValue={betaRef.current}
@@ -903,6 +906,16 @@ registerProcessor('lorenz', LorenzProcessor);
               }
             />
           </label>
+          <button
+            type="button"
+            onClick={resetAll}
+            className="ml-1 flex items-center gap-1 rounded-full border border-border/60 px-2 py-1 text-muted-foreground hover:text-scope hover:border-scope/60 transition-colors"
+            title="Reset coefficients, integrator state, and audio engine"
+            aria-label="Reset"
+          >
+            <RotateCcw className="h-3 w-3" />
+            <span className="text-[10px] tracking-[0.15em]">reset</span>
+          </button>
         </div>
         <span className="tabular-nums text-scope/80">
           rX={radToDeg(rotXRef.current)}° rY={wrapDeg((rotYRef.current * 180) / Math.PI)}°
