@@ -97,7 +97,7 @@ export const Projects = () => (
               <AsciiWave rows={5} cols={48} />
             </div>
 
-            <p className="text-warm-white/80 leading-relaxed">{p.blurb}</p>
+            <p className="text-warm-white/80 leading-relaxed whitespace-pre-line">{p.blurb}</p>
 
             <div className="mt-6 flex flex-wrap gap-2">
               {p.tags.map((t) => (
