@@ -119,7 +119,7 @@ export const Oscilloscope = () => {
         // Center attractor at origin, rotate, then project
         const x0 = x;
         const y0 = y;
-        const z0 = z - 25;
+        const z0 = z - 45;
         // Rotate around Y axis
         const xr = x0 * cosY + z0 * sinY;
         const zr = -x0 * sinY + z0 * cosY;
