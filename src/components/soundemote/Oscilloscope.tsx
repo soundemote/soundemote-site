@@ -690,8 +690,17 @@ export const Oscilloscope = () => {
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, fboB.tex);
       gl.uniform1i(fadeU_tex, 0);
-      const fade = Math.pow(persistence, frameScale);
-      gl.uniform1f(fadeU_fade, fade);
+      // Map decayRef (0 = long burn, 1 = quick fade) → per-frame keep factors.
+      // Bright pixels use uFadeFast (lots of headroom), dim "burn" pixels use
+      // uFadeBurn (very close to 1). Floor subtracts a tiny amount so even
+      // burn-in eventually dies.
+      const d = Math.max(0, Math.min(1, decayRef.current));
+      const fastBase = 0.55 + (1 - d) * 0.42;   // 0.55 .. 0.97
+      const burnBase = 0.985 + (1 - d) * 0.014; // 0.985 .. 0.999
+      const floorBase = 0.00008 + d * 0.003;    // 0.00008 .. 0.003
+      gl.uniform1f(fadeU_fadeFast, Math.pow(fastBase, frameScale));
+      gl.uniform1f(fadeU_fadeBurn, Math.pow(burnBase, frameScale));
+      gl.uniform1f(fadeU_floor, floorBase * frameScale);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       gl.disableVertexAttribArray(fadeA_pos);
 
