@@ -1105,46 +1105,42 @@ registerProcessor('lorenz', LorenzProcessor);
       {/* Controls */}
       <div className="absolute bottom-3 right-3 flex items-center gap-2">
         <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-1.5 py-1 backdrop-blur-sm">
-          <button
-            type="button"
-            onClick={() => adjustZoom(0.8)}
+          <HoldButton
+            onTick={(a) => adjustZoom(Math.pow(0.97, a))}
             className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
-            aria-label="Zoom out"
+            ariaLabel="Zoom out"
           >
             <Minus className="h-3.5 w-3.5" />
-          </button>
+          </HoldButton>
           <span className="mono text-[10px] tracking-[0.15em] text-muted-foreground tabular-nums w-10 text-center">
             {zoomRef.current.toFixed(2)}x
           </span>
-          <button
-            type="button"
-            onClick={() => adjustZoom(1.25)}
+          <HoldButton
+            onTick={(a) => adjustZoom(Math.pow(1.03, a))}
             className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
-            aria-label="Zoom in"
+            ariaLabel="Zoom in"
           >
             <Plus className="h-3.5 w-3.5" />
-          </button>
+          </HoldButton>
         </div>
         <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-1.5 py-1 backdrop-blur-sm">
-          <button
-            type="button"
-            onClick={() => adjustTrace(-0.4)}
+          <HoldButton
+            onTick={(a) => adjustTrace(-0.15 * a)}
             className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
-            aria-label="Thinner trace"
+            ariaLabel="Thinner trace"
           >
             <Minus className="h-3.5 w-3.5" />
-          </button>
+          </HoldButton>
           <span className="mono text-[10px] tracking-[0.15em] text-muted-foreground tabular-nums w-10 text-center">
             w{traceWidthRef.current.toFixed(1)}
           </span>
-          <button
-            type="button"
-            onClick={() => adjustTrace(0.4)}
+          <HoldButton
+            onTick={(a) => adjustTrace(0.15 * a)}
             className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
-            aria-label="Thicker trace"
+            ariaLabel="Thicker trace"
           >
             <Plus className="h-3.5 w-3.5" />
-          </button>
+          </HoldButton>
         </div>
         <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-1.5 py-1 backdrop-blur-sm">
           <button
