@@ -4,9 +4,9 @@ const groups = [
     title: "Build with the same primitives we use.",
     items: [
       "C++ DSP objects with SIMD-friendly internals",
-      "CLAP plugin foundations and JUCE-based scaffolding",
-      "Parameters, metadata, wires, and routing primitives",
-      "Permissive open-source licensing (MIT)",
+      "CLAP plugins and JUCE-based scaffolding",
+      "Parameters, metadata, wires, and routing",
+      "MIT license — use it however you want",
     ],
     accent: "scope",
   },
@@ -16,7 +16,7 @@ const groups = [
     items: [
       "Aesthetic oscilloscopes and waveform visualizers",
       "Expressive synth interfaces designed by ear",
-      "Recordable plugin windows for clips and study",
+      "Recordable plugin windows for clips and screenshots",
       "Experimental instruments built in the open",
     ],
     accent: "accent",

@@ -11,8 +11,8 @@ const tenets = [
   },
   {
     n: "03",
-    title: "Open foundations",
-    body: "Open-source libraries, artist-facing interfaces, and the next generation of plugin formats.",
+    title: "Open by default",
+    body: "Open-source libraries, interfaces made for artists, and code that plays nice with whatever you're building.",
   },
 ];
 

@@ -3,7 +3,7 @@ export const Footer = () => (
     <div className="container flex flex-col md:flex-row items-center justify-between gap-4 mono text-xs text-muted-foreground">
       <div className="flex items-center gap-2">
         <span className="text-scope">✧</span>
-        <span>© 2026 Soundemote, LLC · Mesa, AZ</span>
+        <span>© 2026 Soundemote, LLC</span>
       </div>
       <div className="flex items-center gap-6">
         <a href="https://github.com/soundemote" target="_blank" rel="noreferrer" className="hover:text-scope transition-colors uppercase tracking-[0.2em]">GitHub</a>
