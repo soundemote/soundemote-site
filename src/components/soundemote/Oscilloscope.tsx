@@ -469,6 +469,7 @@ export const Oscilloscope = () => {
         // Break the trail so the next segment doesn't streak across screen
         prevPx = null;
         prevPy = null;
+        resetUpsampler();
       }
       // Critically-damped lerp toward drag target for smooth pan
       const panLerp = 1 - Math.pow(0.001, dtSeconds);
