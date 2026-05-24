@@ -10,6 +10,8 @@ export const Oscilloscope = () => {
   const autoSpinRef = useRef(false);
   const panXRef = useRef(0);
   const panYRef = useRef(0);
+  const panTargetXRef = useRef(0);
+  const panTargetYRef = useRef(0);
   const traceWidthRef = useRef(2.2);
   const spinSpeedXRef = useRef(0);
   const spinSpeedYRef = useRef(0.003);
