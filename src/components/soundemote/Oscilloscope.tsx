@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Minus, Plus, Volume2, VolumeX, RotateCcw, Waves } from "lucide-react";
+import { Minus, Plus, Volume2, VolumeX, RotateCcw } from "lucide-react";
 
 // Click-and-hold repeat button. Fires onTick at ~60Hz while held, with the
 // step multiplier accelerating the longer the user holds.
@@ -167,8 +167,9 @@ export const Oscilloscope = () => {
   } | null>(null);
   const [audioOn, setAudioOn] = useState(false);
   const [resetSeq, setResetSeq] = useState(0);
-  const smoothingRef = useRef(true);
-  const [smoothingOn, setSmoothingOn] = useState(true);
+  // NOTE: Lanczos upsampler / coefficient smoothing experiment disabled.
+  // This was a failed attempt at signal smoothing — revisit later.
+  const smoothingRef = useRef(false);
   // Shared Lorenz state. When audio is running the worklet is master and
   // pushes (x,y,z) triples back here; otherwise the visual integrator
   // writes to it. Either way both renderers consume the same data.
@@ -398,11 +399,12 @@ export const Oscilloscope = () => {
     let sBeta = betaRef.current;
     let sFreq = freqRef.current;
 
-    // ---- Lanczos upsampler (dood.al / woscope trick) ---------------------
-    // Between every pair of input (x,y,z) triples, insert UP_STEPS-1 points
-    // computed with a windowed-sinc kernel (a=2). This turns the polyline
-    // into a smooth curve that traces the Lorenz manifold instead of cutting
-    // chords between sparse audio samples.
+    // ---- Lanczos upsampler (DISABLED — failed experiment) ------------------
+    // NOTE: This was an attempt to smooth the Lorenz signal like dood.al's
+    // oscilloscope. It produced undesirable artifacts and is disabled.
+    // We will revisit proper signal smoothing another time.
+    // Code kept for reference — smoothingRef is hardcoded to false so this
+    // block is effectively dead. Raw triples pass through instead.
     const UP_STEPS = 8;
     const UP_A = 2;
     const UP_R = UP_A * UP_STEPS;
@@ -768,15 +770,6 @@ export const Oscilloscope = () => {
     setTick((n) => n + 1);
   };
 
-  const toggleSmoothing = () => {
-    const next = !smoothingRef.current;
-    smoothingRef.current = next;
-    setSmoothingOn(next);
-    if (audioRef.current) {
-      audioRef.current.node.port.postMessage({ smoothOn: next });
-    }
-  };
-
   // ---- Audio: Lorenz running at sampleRate inside an AudioWorklet ----
   // Cleanup on unmount
   useEffect(() => {
@@ -1074,23 +1067,6 @@ registerProcessor('lorenz', LorenzProcessor);
           >
             <RotateCcw className="h-3 w-3" />
             <span className="text-[10px] tracking-[0.15em]">reset</span>
-          </button>
-          <button
-            type="button"
-            onClick={toggleSmoothing}
-            className={`flex items-center gap-1 rounded-full border px-2 py-1 transition-colors ${
-              smoothingOn
-                ? "border-scope/60 text-scope"
-                : "border-border/60 text-muted-foreground hover:text-scope hover:border-scope/60"
-            }`}
-            title={smoothingOn ? "Smoothing on — click to disable" : "Smoothing off — click to enable"}
-            aria-pressed={smoothingOn}
-            aria-label="Toggle smoothing"
-          >
-            <Waves className="h-3 w-3" />
-            <span className="text-[10px] tracking-[0.15em]">
-              smooth {smoothingOn ? "on" : "off"}
-            </span>
           </button>
         </div>
         <span className="tabular-nums text-scope/80">
