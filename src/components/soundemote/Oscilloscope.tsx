@@ -687,7 +687,7 @@ registerProcessor('lorenz', LorenzProcessor);
         sigma: sigmaRef.current,
         rho: rhoRef.current,
         beta: betaRef.current,
-        dt: 0.003,
+        dt: (freqRef.current * 0.006) / ctx.sampleRate,
       });
       audioRef.current = { ctx, node, gain };
       setAudioOn(true);
@@ -699,6 +699,7 @@ registerProcessor('lorenz', LorenzProcessor);
           sigma: sigmaRef.current,
           rho: rhoRef.current,
           beta: betaRef.current,
+          dt: (freqRef.current * 0.006) / a.ctx.sampleRate,
         });
       }, 33);
     } catch (err) {
