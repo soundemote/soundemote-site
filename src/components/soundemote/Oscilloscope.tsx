@@ -41,9 +41,9 @@ export const Oscilloscope = () => {
     let z = 0;
     const dt = 0.006;
     const stepsPerFrame = 24;
-    // Base scale chosen so zoom=1.0 fits the full attractor in-frame.
-    // (Previously this was 0.018 with a 0.3x default — collapsed into one constant.)
-    const scale = 0.018 * 0.3;
+    // Base scale chosen so zoom=1.0 shows the attractor at its most readable "default" size.
+    // (What used to render at 0.3x zoom is now the 1.0x baseline.)
+    const scale = 0.018 * 0.3 * 0.3;
 
     let prevPx: number | null = null;
     let prevPy: number | null = null;
@@ -73,7 +73,7 @@ export const Oscilloscope = () => {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const next = zoomRef.current * (e.deltaY < 0 ? 1.1 : 0.9);
-      zoomRef.current = Math.max(0.3, Math.min(6, next));
+      zoomRef.current = Math.max(0.3, Math.min(20, next));
       setTick((n) => n + 1);
     };
     canvas.addEventListener("pointerdown", onDown);
@@ -155,7 +155,7 @@ export const Oscilloscope = () => {
   }, []);
 
   const adjustZoom = (factor: number) => {
-    zoomRef.current = Math.max(0.3, Math.min(6, zoomRef.current * factor));
+    zoomRef.current = Math.max(0.3, Math.min(20, zoomRef.current * factor));
     setTick((n) => n + 1);
   };
 
