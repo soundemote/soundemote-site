@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Minus, Plus } from "lucide-react";
+import { Minus, Plus, Volume2, VolumeX } from "lucide-react";
 
 // Click-and-drag number input. Vertical drag changes the value on a log
 // scale so it can sweep many orders of magnitude (slow → audio rate).
@@ -101,6 +101,14 @@ export const Oscilloscope = () => {
   // Steps per second of Lorenz integration. ~1440 matches the old
   // 24 steps/frame @ 60fps. Range covers slow drift → audio-rate buzz.
   const freqRef = useRef(1440);
+  // Audio output
+  const volumeRef = useRef(0.15);
+  const audioRef = useRef<{
+    ctx: AudioContext;
+    node: AudioWorkletNode;
+    gain: GainNode;
+  } | null>(null);
+  const [audioOn, setAudioOn] = useState(false);
   const [, setTick] = useState(0); // force re-render of overlay labels
 
   useEffect(() => {
