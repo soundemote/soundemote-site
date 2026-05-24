@@ -1075,6 +1075,23 @@ registerProcessor('lorenz', LorenzProcessor);
             <RotateCcw className="h-3 w-3" />
             <span className="text-[10px] tracking-[0.15em]">reset</span>
           </button>
+          <button
+            type="button"
+            onClick={toggleSmoothing}
+            className={`flex items-center gap-1 rounded-full border px-2 py-1 transition-colors ${
+              smoothingOn
+                ? "border-scope/60 text-scope"
+                : "border-border/60 text-muted-foreground hover:text-scope hover:border-scope/60"
+            }`}
+            title={smoothingOn ? "Smoothing on — click to disable" : "Smoothing off — click to enable"}
+            aria-pressed={smoothingOn}
+            aria-label="Toggle smoothing"
+          >
+            <Waves className="h-3 w-3" />
+            <span className="text-[10px] tracking-[0.15em]">
+              smooth {smoothingOn ? "on" : "off"}
+            </span>
+          </button>
         </div>
         <span className="tabular-nums text-scope/80">
           rX={radToDeg(rotXRef.current)}° rY={wrapDeg((rotYRef.current * 180) / Math.PI)}°
