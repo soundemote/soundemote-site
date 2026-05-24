@@ -11,6 +11,8 @@ export const Oscilloscope = () => {
   const panXRef = useRef(0);
   const panYRef = useRef(0);
   const traceWidthRef = useRef(2.2);
+  const spinSpeedXRef = useRef(0);
+  const spinSpeedYRef = useRef(0.003);
   const sigmaRef = useRef(16);
   const rhoRef = useRef(45.92);
   const betaRef = useRef(4);
@@ -90,7 +92,11 @@ export const Oscilloscope = () => {
       const cx = w / 2 + panXRef.current;
       const cy = h / 2 + panYRef.current;
 
-      if (autoSpinRef.current) rotYRef.current += 0.003;
+      if (autoSpinRef.current) {
+        // In auto-spin mode, rX/rY sliders act as rotation speeds (rad/frame)
+        rotXRef.current += spinSpeedXRef.current;
+        rotYRef.current += spinSpeedYRef.current;
+      }
 
       const sigma = sigmaRef.current;
       const rho = rhoRef.current;
@@ -168,7 +174,7 @@ export const Oscilloscope = () => {
   };
 
   const adjustTrace = (delta: number) => {
-    traceWidthRef.current = Math.max(0.4, Math.min(20, traceWidthRef.current + delta));
+    traceWidthRef.current = Math.max(0.4, Math.min(40, traceWidthRef.current + delta));
     setTick((n) => n + 1);
   };
 
