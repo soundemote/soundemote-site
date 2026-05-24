@@ -827,6 +827,10 @@ class LorenzProcessor extends AudioWorkletProcessor {
     // current (smoothed) and target values — per-sample 1-pole lerp toward target
     this.sigma = 16; this.rho = 45.92; this.beta = 4; this.dt = 0.003;
     this.tSigma = 16; this.tRho = 45.92; this.tBeta = 4; this.tDt = 0.003;
+    // 3D rotation (radians) — mirrors the visual projection so the audio
+    // L/R channels correspond to what's on screen.
+    this.rotX = 0; this.rotY = 0;
+    this.tRotX = 0; this.tRotY = 0;
     // smoothing coefficient (~30ms time constant @ 48k → recomputed in process)
     this.smooth = 0;
     this.smoothOn = true;
@@ -853,6 +857,8 @@ class LorenzProcessor extends AudioWorkletProcessor {
       if (d.rho !== undefined) this.tRho = d.rho;
       if (d.beta !== undefined) this.tBeta = d.beta;
       if (d.dt !== undefined) this.tDt = d.dt;
+      if (d.rotX !== undefined) this.tRotX = d.rotX;
+      if (d.rotY !== undefined) this.tRotY = d.rotY;
       if (d.decim !== undefined) this.decim = Math.max(1, d.decim|0);
       if (d.smoothOn !== undefined) this.smoothOn = !!d.smoothOn;
     };
@@ -872,6 +878,15 @@ class LorenzProcessor extends AudioWorkletProcessor {
       this.rho   += (this.tRho   - this.rho)   * k;
       this.beta  += (this.tBeta  - this.beta)  * k;
       this.dt    += (this.tDt    - this.dt)    * k;
+      // rotation smoothing — wrap delta into [-π,π] so spinning across
+      // the seam doesn't cause a long lerp around the circle.
+      let drX = this.tRotX - this.rotX;
+      let drY = this.tRotY - this.rotY;
+      const PI = Math.PI, TAU = 2*PI;
+      if (drX > PI) drX -= TAU; else if (drX < -PI) drX += TAU;
+      if (drY > PI) drY -= TAU; else if (drY < -PI) drY += TAU;
+      this.rotX += drX * k;
+      this.rotY += drY * k;
       const s = this.sigma, r = this.rho, b = this.beta, dt = this.dt;
       const dx = s*(this.y-this.x);
       const dy = this.x*(r-this.z)-this.y;
@@ -882,9 +897,16 @@ class LorenzProcessor extends AudioWorkletProcessor {
         this.x = 0.01; this.y = 0; this.z = 0;
         this.lx = 0; this.ly = 0; this.px = 0; this.py = 0;
       }
+      // Apply the same 3D rotation the visual uses, so L/R == on-screen X/Y.
+      const x0 = this.x, y0 = this.y, z0 = this.z - 45;
+      const cY = Math.cos(this.rotY), sY = Math.sin(this.rotY);
+      const cX = Math.cos(this.rotX), sX = Math.sin(this.rotX);
+      const xr = x0 * cY + z0 * sY;
+      const zr = -x0 * sY + z0 * cY;
+      const yr = y0 * cX - zr * sX;
       // normalize roughly to [-1,1]
-      const sx = this.x * 0.035;
-      const sy = this.y * 0.035;
+      const sx = xr * 0.035;
+      const sy = yr * 0.035;
       // 1-pole DC block
       const ox = sx - this.px + 0.995 * this.lx;
       const oy = sy - this.py + 0.995 * this.ly;
