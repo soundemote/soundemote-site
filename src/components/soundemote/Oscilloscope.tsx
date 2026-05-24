@@ -1,5 +1,62 @@
 import { useEffect, useRef, useState } from "react";
-import { Minus, Plus, Volume2, VolumeX, RotateCcw } from "lucide-react";
+import { Minus, Plus, Volume2, VolumeX, RotateCcw, Waves } from "lucide-react";
+
+// Click-and-hold repeat button. Fires onTick at ~60Hz while held, with the
+// step multiplier accelerating the longer the user holds.
+const HoldButton = ({
+  onTick,
+  className,
+  children,
+  ariaLabel,
+}: {
+  onTick: (accel: number) => void;
+  className?: string;
+  children: React.ReactNode;
+  ariaLabel?: string;
+}) => {
+  const rafRef = useRef(0);
+  const startRef = useRef(0);
+  const stop = () => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = 0;
+  };
+  const begin = (e: React.PointerEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    startRef.current = performance.now();
+    // single tick immediately
+    onTick(1);
+    const loop = () => {
+      const held = (performance.now() - startRef.current) / 1000;
+      // accelerate: 1x → ~6x after ~1.2s held
+      const accel = 1 + Math.min(8, held * 5);
+      onTick(accel);
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    // small delay before auto-repeat starts
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = requestAnimationFrame(loop);
+    });
+  };
+  const end = (e: React.PointerEvent<HTMLButtonElement>) => {
+    try { (e.target as HTMLElement).releasePointerCapture?.(e.pointerId); } catch {}
+    stop();
+  };
+  useEffect(() => () => stop(), []);
+  return (
+    <button
+      type="button"
+      onPointerDown={begin}
+      onPointerUp={end}
+      onPointerCancel={end}
+      onPointerLeave={end}
+      className={className}
+      aria-label={ariaLabel}
+    >
+      {children}
+    </button>
+  );
+};
 
 // Click-and-drag number input. Vertical drag changes the value on a log
 // scale so it can sweep many orders of magnitude (slow → audio rate).
