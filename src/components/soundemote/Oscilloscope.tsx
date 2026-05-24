@@ -256,7 +256,9 @@ export const Oscilloscope = () => {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       // ---- Beam: two additive passes (wide dim glow + narrow bright core) ----
-      ctx.lineCap = "round";
+      // butt caps prevent zero-length / near-zero segments from rendering as
+      // round dots at the endpoints of each frame's stroke.
+      ctx.lineCap = "butt";
       ctx.lineJoin = "round";
       ctx.globalCompositeOperation = "lighter";
 
