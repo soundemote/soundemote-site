@@ -7,7 +7,7 @@ export const Hero = () => (
     <div className="container relative grid gap-12 lg:grid-cols-[1.05fr_1fr] lg:items-center">
       <div className="animate-fade-in">
         <p className="mono text-xs uppercase tracking-[0.35em] text-scope mb-6">
-          ⋆⁺₊✧ soundemote ✧₊⁺⋆ &nbsp;·&nbsp; mesa, az
+          ⋆⁺₊✧ soundemote ✧₊⁺⋆
         </p>
         <h1 className="display text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-medium leading-[1.05] text-warm-white">
           Audio tools for{" "}

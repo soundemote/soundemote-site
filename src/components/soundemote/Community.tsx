@@ -15,9 +15,8 @@ export const Community = () => (
             Follow the build. Shape what comes next.
           </h2>
           <p className="mt-6 text-muted-foreground leading-relaxed">
-            Soundemote is a small studio building in public. Test prototypes,
-            file ideas, and trade signals with other audio engineers, plugin
-            developers, and musicians.
+            We build in public. Come hang out, try early stuff, and talk signal
+            with other weirdos who care about sound.
           </p>
         </div>
         <ul className="grid gap-3">

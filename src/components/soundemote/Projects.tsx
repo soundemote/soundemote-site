@@ -14,7 +14,7 @@ const projects: Project[] = [
     name: "Hydrus",
     status: "in development",
     blurb:
-      "The next Soundemote instrument and plugin ecosystem. Details emerging as the foundation solidifies.",
+      "The next Soundemote instrument. Still forming — check back as it grows.",
     tags: ["instrument", "ecosystem", "soon"],
     accent: "accent",
   },

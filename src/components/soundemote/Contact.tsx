@@ -24,14 +24,11 @@ export const Contact = () => {
             Say hello, share a signal.
           </h2>
           <p className="mt-6 text-muted-foreground leading-relaxed max-w-md">
-            For collaboration, press, plugin testing, or general curiosity — we'd love to hear from you.
+            Drop a line if you're building, testing, or just curious.
           </p>
           <div className="mt-10 rounded-xl border border-border bg-card/40 p-6 mono text-sm">
             <div className="text-scope mb-2">⌁ soundemote, llc</div>
-            <div className="text-warm-white">Mesa, Arizona</div>
-            <div className="text-muted-foreground mt-4 text-xs">
-              33.4152° N · 111.8315° W
-            </div>
+            <div className="text-warm-white">Small studio, big signals.</div>
           </div>
         </div>
         <form
