@@ -37,10 +37,10 @@ const projects: Project[] = [
     accent: "scope",
   },
   {
-    name: "Asciiscope CLAP",
+    name: "Asciiscope",
     status: "plugin · experimental",
     blurb:
-      "Terminal-inspired audio-reactive oscilloscope visuals for live signals, social clips, and experimental plugin windows.",
+      "Terminal-inspired audio-reactive oscilloscope visuals for live signals, social clips, and experimental plugin windows.\n\nBuilt on soemdsp: SIMD-minded, easy-to-use low-level DSP objects for oscillators, filters, modulation, dynamics, random, timing, and plugin infrastructure.",
     href: "https://github.com/soundemote/asciiscope-clap",
     tags: ["clap", "juce", "visual"],
     accent: "warm",
@@ -97,7 +97,7 @@ export const Projects = () => (
               <AsciiWave rows={5} cols={48} />
             </div>
 
-            <p className="text-warm-white/80 leading-relaxed">{p.blurb}</p>
+            <p className="text-warm-white/80 leading-relaxed whitespace-pre-line">{p.blurb}</p>
 
             <div className="mt-6 flex flex-wrap gap-2">
               {p.tags.map((t) => (
