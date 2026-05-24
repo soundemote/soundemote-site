@@ -462,9 +462,15 @@ export const Oscilloscope = () => {
         rotYRef.current += spinSpeedYRef.current;
       }
 
-      const sigma = sigmaRef.current;
-      const rho = rhoRef.current;
-      const beta = betaRef.current;
+      // Smooth coefficient + freq changes (~30ms time constant)
+      const smooth = 1 - Math.exp(-dtSeconds / 0.030);
+      sSigma += (sigmaRef.current - sSigma) * smooth;
+      sRho   += (rhoRef.current   - sRho)   * smooth;
+      sBeta  += (betaRef.current  - sBeta)  * smooth;
+      sFreq  += (freqRef.current  - sFreq)  * smooth;
+      const sigma = sSigma;
+      const rho = sRho;
+      const beta = sBeta;
 
       const cosY = Math.cos(rotYRef.current);
       const sinY = Math.sin(rotYRef.current);
@@ -499,7 +505,7 @@ export const Oscilloscope = () => {
       } else {
         const steps = Math.max(
           1,
-          Math.min(8000, Math.round(freqRef.current * dtSeconds))
+          Math.min(8000, Math.round(sFreq * dtSeconds))
         );
         const st = stateRef.current;
         for (let i = 0; i < steps; i++) {
