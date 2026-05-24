@@ -614,6 +614,12 @@ export const Oscilloscope = () => {
       // Produces UP_STEPS output triples per input interval. Carries upCtx
       // across frames so we never see a chord boundary.
       const up: number[] = [];
+      if (!smoothingRef.current) {
+        // Smoothing disabled: pass raw triples through, reset context so
+        // re-enabling doesn't blend across the gap.
+        upFill = 0;
+        for (let i = 0; i < triples.length; i++) up.push(triples[i]);
+      } else
       for (let i = 0; i < triples.length; i += 3) {
         // shift context left by one triple
         upCtx[0]=upCtx[3]; upCtx[1]=upCtx[4]; upCtx[2]=upCtx[5];
