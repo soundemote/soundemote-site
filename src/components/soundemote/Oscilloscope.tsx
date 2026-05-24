@@ -23,21 +23,204 @@ export const Oscilloscope = () => {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) return;
+    const gl = canvas.getContext("webgl", {
+      alpha: false,
+      antialias: false,
+      premultipliedAlpha: false,
+      preserveDrawingBuffer: false,
+    }) as WebGLRenderingContext | null;
+    if (!gl) return;
 
     let raf = 0;
     let dpr = window.devicePixelRatio || 1;
 
+    // ---------- Shader helpers ----------
+    const compile = (type: number, src: string) => {
+      const sh = gl.createShader(type)!;
+      gl.shaderSource(sh, src);
+      gl.compileShader(sh);
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+        console.error("shader", gl.getShaderInfoLog(sh), src);
+      }
+      return sh;
+    };
+    const program = (vs: string, fs: string) => {
+      const p = gl.createProgram()!;
+      gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
+      gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+      gl.linkProgram(p);
+      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+        console.error("link", gl.getProgramInfoLog(p));
+      }
+      return p;
+    };
+
+    // Woscope-style Gaussian segment shader (adapted from dood.al / m1el woscope)
+    const beamProg = program(
+      `attribute vec2 aStart, aEnd;
+       attribute float aIdx;
+       uniform float uSize;
+       uniform float uIntensity;
+       varying vec4 uvl;
+       varying float vSize;
+       void main(){
+         float idx = mod(aIdx, 4.0);
+         vec2 dir = aEnd - aStart;
+         uvl.z = length(dir);
+         if (uvl.z > 1e-6) dir = dir / uvl.z; else dir = vec2(1.0, 0.0);
+         vSize = uSize;
+         vec2 norm = vec2(-dir.y, dir.x);
+         vec2 current; float tang;
+         if (idx >= 2.0) { current = aEnd; tang = 1.0; uvl.x = -vSize; }
+         else { current = aStart; tang = -1.0; uvl.x = uvl.z + vSize; }
+         float side = (mod(idx, 2.0) - 0.5) * 2.0;
+         uvl.y = side * vSize;
+         uvl.w = uIntensity;
+         vec2 pos = current + (tang * dir + norm * side) * vSize;
+         gl_Position = vec4(pos, 0.0, 1.0);
+       }`,
+      `precision highp float;
+       #define SQRT2 1.4142135623730951
+       #define TAUR 2.5066282746310002
+       varying vec4 uvl;
+       varying float vSize;
+       float erf(float x){
+         float s = sign(x), a = abs(x);
+         float r = 1.0 + (0.278393 + (0.230389 + 0.078108 * (a*a)) * a) * a;
+         r *= r;
+         return s - s / (r * r);
+       }
+       float gaussian(float x, float sigma){
+         return exp(-(x*x)/(2.0*sigma*sigma)) / (TAUR * sigma);
+       }
+       void main(){
+         float len = uvl.z;
+         vec2 xy = uvl.xy;
+         float sigma = vSize / 5.0;
+         float b;
+         if (len < 1e-6) {
+           b = gaussian(length(xy), sigma);
+         } else {
+           b = erf(xy.x/SQRT2/sigma) - erf((xy.x-len)/SQRT2/sigma);
+           b *= exp(-xy.y*xy.y/(2.0*sigma*sigma)) / 2.0 / len;
+         }
+         b *= uvl.w;
+         gl_FragColor = vec4(b, b, b, 1.0);
+       }`
+    );
+    const beamA_start = gl.getAttribLocation(beamProg, "aStart");
+    const beamA_end = gl.getAttribLocation(beamProg, "aEnd");
+    const beamA_idx = gl.getAttribLocation(beamProg, "aIdx");
+    const beamU_size = gl.getUniformLocation(beamProg, "uSize");
+    const beamU_intensity = gl.getUniformLocation(beamProg, "uIntensity");
+
+    // Fullscreen quad shaders (fade + output)
+    const quadVS = `attribute vec2 aPos; varying vec2 vUv;
+      void main(){ vUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }`;
+
+    const fadeProg = program(
+      quadVS,
+      `precision highp float;
+       uniform sampler2D uTex;
+       uniform float uFade;
+       varying vec2 vUv;
+       void main(){
+         vec4 c = texture2D(uTex, vUv) * uFade;
+         // hard floor so trailing dim pixels actually die
+         c = max(c - vec4(0.002), vec4(0.0));
+         gl_FragColor = vec4(c.rgb, 1.0);
+       }`
+    );
+    const fadeA_pos = gl.getAttribLocation(fadeProg, "aPos");
+    const fadeU_tex = gl.getUniformLocation(fadeProg, "uTex");
+    const fadeU_fade = gl.getUniformLocation(fadeProg, "uFade");
+
+    const outProg = program(
+      quadVS,
+      `precision highp float;
+       uniform sampler2D uTex;
+       uniform vec3 uColor;
+       uniform float uExposure;
+       varying vec2 vUv;
+       void main(){
+         float l = texture2D(uTex, vUv).r;
+         float t = 1.0 - exp(-l * uExposure);
+         vec3 col = mix(uColor, vec3(1.0), t * t * 0.6) * t;
+         gl_FragColor = vec4(col, 1.0);
+       }`
+    );
+    const outA_pos = gl.getAttribLocation(outProg, "aPos");
+    const outU_tex = gl.getUniformLocation(outProg, "uTex");
+    const outU_color = gl.getUniformLocation(outProg, "uColor");
+    const outU_exposure = gl.getUniformLocation(outProg, "uExposure");
+
+    // Fullscreen quad buffer
+    const quadBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
+      gl.STATIC_DRAW
+    );
+
+    // Segment vertex buffer: 4 verts * (aStart.xy + aEnd.xy + aIdx) = 20 floats / segment.
+    // Indices: 6 per segment (two triangles).
+    const MAX_SEGS = 4096;
+    const segData = new Float32Array(MAX_SEGS * 20);
+    const idxData = new Uint16Array(MAX_SEGS * 6);
+    for (let s = 0; s < MAX_SEGS; s++) {
+      const v = s * 4;
+      const o = s * 6;
+      idxData[o + 0] = v + 0;
+      idxData[o + 1] = v + 1;
+      idxData[o + 2] = v + 2;
+      idxData[o + 3] = v + 2;
+      idxData[o + 4] = v + 1;
+      idxData[o + 5] = v + 3;
+    }
+    const segBuf = gl.createBuffer();
+    const segIdxBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, segIdxBuf);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idxData, gl.STATIC_DRAW);
+
+    // Ping-pong FBOs
+    type FBO = { tex: WebGLTexture; fbo: WebGLFramebuffer; w: number; h: number };
+    const makeFBO = (w: number, h: number): FBO => {
+      const tex = gl.createTexture()!;
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      const fbo = gl.createFramebuffer()!;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      return { tex, fbo, w, h };
+    };
+    let fboA: FBO | null = null;
+    let fboB: FBO | null = null;
+
     const resize = () => {
       dpr = window.devicePixelRatio || 1;
       const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      // Prime background so the phosphor fade has something to blend into
-      ctx.fillStyle = "hsla(0, 0%, 0%, 1)";
-      ctx.fillRect(0, 0, rect.width, rect.height);
+      const W = Math.max(1, Math.floor(rect.width * dpr));
+      const H = Math.max(1, Math.floor(rect.height * dpr));
+      canvas.width = W;
+      canvas.height = H;
+      if (fboA) { gl.deleteTexture(fboA.tex); gl.deleteFramebuffer(fboA.fbo); }
+      if (fboB) { gl.deleteTexture(fboB.tex); gl.deleteFramebuffer(fboB.fbo); }
+      fboA = makeFBO(W, H);
+      fboB = makeFBO(W, H);
+      // clear both
+      for (const f of [fboA, fboB]) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, f.fbo);
+        gl.viewport(0, 0, W, H);
+        gl.clearColor(0, 0, 0, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     };
     resize();
     window.addEventListener("resize", resize);
@@ -53,41 +236,8 @@ export const Oscilloscope = () => {
 
     let prevPx: number | null = null;
     let prevPy: number | null = null;
-
-    // ---- Phosphor decay (Tracer / PrettyScope port, identity-reset on tab focus) ----
-    // Per-frame LUTs so we don't call Math.pow inside the hot per-pixel loop.
-    const persistence = 0.98;
-    const fastDecay = 0.25;
-    const afterglow = 0.95;
-    const maxKeep = 0.982 + (0.9975 - 0.982) * afterglow;
-    const floorBase = 0.0009 + (0.00018 - 0.0009) * afterglow;
-    const gammaExp = 1.035 + (1.012 - 1.035) * afterglow;
-    const smoothstep = (a: number, b: number, v: number) => {
-      const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
-      return t * t * (3 - 2 * t);
-    };
-    const keepLUT = new Float32Array(256);
-    const floorLUT = new Float32Array(256); // byte units
-    const gammaLUT = new Uint8ClampedArray(256);
-    let lastFrameScale = -1;
-    const rebuildLUTs = (frameScale: number) => {
-      if (frameScale === lastFrameScale) return;
-      lastFrameScale = frameScale;
-      for (let b = 0; b < 256; b++) {
-        const brightness = b / 255;
-        const dimTail = 1 - smoothstep(0.015, 0.34, brightness);
-        const softTail = 1 - smoothstep(0.18, 0.82, brightness);
-        const brightDrain = brightness * (0.035 + (0.24 - 0.035) * fastDecay);
-        const tailBoost = dimTail * (0.055 * afterglow) + softTail * afterglow * 0.012;
-        let keep = persistence + tailBoost - brightDrain;
-        if (keep < 0) keep = 0;
-        if (keep > maxKeep) keep = maxKeep;
-        keepLUT[b] = Math.pow(keep, frameScale);
-        floorLUT[b] = floorBase * frameScale * 255;
-        // gamma LUT mapping byte -> byte after pow(v, gammaExp)
-        gammaLUT[b] = Math.min(255, Math.max(0, Math.pow(b / 255, gammaExp) * 255));
-      }
-    };
+    // Phosphor decay (single multiplicative fade, dood.al style)
+    const persistence = 0.86; // per-60fps-frame keep factor
 
     let lastT = performance.now();
 
@@ -153,7 +303,6 @@ export const Oscilloscope = () => {
       lastT = now;
       if (dtSeconds > 0.1) dtSeconds = 0.1; // clamp huge gaps (tab switch)
       const frameScale = Math.max(0.1, Math.min(8, dtSeconds * 60));
-      rebuildLUTs(frameScale);
 
       const rect = canvas.getBoundingClientRect();
       const w = rect.width;
@@ -222,44 +371,12 @@ export const Oscilloscope = () => {
       const cosX = Math.cos(rotXRef.current);
       const sinX = Math.sin(rotXRef.current);
 
-      // ---- Phosphor decay pass: physically-modeled per-pixel persistence ----
-      // Bright pixels drain faster, dim pixels get a retention boost, with a
-      // subtractive floor and gentle gamma compression so the burn eventually dies.
-      const W = canvas.width;
-      const H = canvas.height;
-      // reset identity so getImageData uses raw device pixels
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      const img = ctx.getImageData(0, 0, W, H);
-      const data = img.data;
-      const floorByte = floorLUT[0]; // floor amount is brightness-independent
-      for (let i = 0, n = data.length; i < n; i += 4) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        const bright = r > g ? (r > b ? r : b) : (g > b ? g : b);
-        if (bright <= floorByte + 1) {
-          data[i] = 0; data[i + 1] = 0; data[i + 2] = 0;
-          continue;
-        }
-        const keep = keepLUT[bright];
-        let nr = r * keep - floorByte;
-        let ng = g * keep - floorByte;
-        let nb = b * keep - floorByte;
-        if (nr < 0) nr = 0;
-        if (ng < 0) ng = 0;
-        if (nb < 0) nb = 0;
-        data[i] = gammaLUT[nr | 0];
-        data[i + 1] = gammaLUT[ng | 0];
-        data[i + 2] = gammaLUT[nb | 0];
+      // ---- Integrate Lorenz → screen-space points (NDC) ----
+      const pts: number[] = []; // [x0,y0,x1,y1,...] in NDC
+      // start with prev point if we have one, so continuous between frames
+      if (prevPx !== null && prevPy !== null) {
+        pts.push((prevPx / w) * 2 - 1, 1 - (prevPy / h) * 2);
       }
-      ctx.putImageData(img, 0, 0);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-      // ---- Beam: dot-only rendering (no lines) ----
-      ctx.globalCompositeOperation = "lighter";
-      const coreW = traceWidthRef.current;
-      const glowSize = coreW * 3.2;
-      const coreSize = coreW;
       for (let i = 0; i < stepsPerFrame; i++) {
         // Runge-Kutta-ish: simple Euler is fine at this dt
         const dx = sigma * (y - x);
@@ -281,19 +398,94 @@ export const Oscilloscope = () => {
         // (zr2 unused for orthographic projection)
         const px = cx + xr * s * 8;
         const py = cy + yr * s * 8;
-
-        // Wide dim glow dot
-        ctx.fillStyle = "rgba(40, 235, 158, 0.18)";
-        ctx.fillRect(px - glowSize * 0.5, py - glowSize * 0.5, glowSize, glowSize);
-        // Narrow bright core dot
-        ctx.fillStyle = "rgba(184, 255, 82, 0.95)";
-        ctx.fillRect(px - coreSize * 0.5, py - coreSize * 0.5, coreSize, coreSize);
-
+        pts.push((px / w) * 2 - 1, 1 - (py / h) * 2);
         prevPx = px;
         prevPy = py;
       }
 
-      ctx.globalCompositeOperation = "source-over";
+      const W = canvas.width;
+      const H = canvas.height;
+      if (!fboA || !fboB) {
+        raf = requestAnimationFrame(draw);
+        return;
+      }
+
+      // ---- Pass 1: fade previous (read fboB → write fboA) ----
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fboA.fbo);
+      gl.viewport(0, 0, W, H);
+      gl.disable(gl.BLEND);
+      gl.useProgram(fadeProg);
+      gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+      gl.enableVertexAttribArray(fadeA_pos);
+      gl.vertexAttribPointer(fadeA_pos, 2, gl.FLOAT, false, 0, 0);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, fboB.tex);
+      gl.uniform1i(fadeU_tex, 0);
+      const fade = Math.pow(persistence, frameScale);
+      gl.uniform1f(fadeU_fade, fade);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      gl.disableVertexAttribArray(fadeA_pos);
+
+      // ---- Pass 2: additively draw segments into fboA ----
+      const nSegs = Math.max(0, Math.min(MAX_SEGS, (pts.length / 2) - 1));
+      if (nSegs > 0) {
+        for (let i = 0; i < nSegs; i++) {
+          const sx = pts[i * 2], sy = pts[i * 2 + 1];
+          const ex = pts[i * 2 + 2], ey = pts[i * 2 + 3];
+          const base = i * 20;
+          for (let v = 0; v < 4; v++) {
+            const o = base + v * 5;
+            segData[o + 0] = sx;
+            segData[o + 1] = sy;
+            segData[o + 2] = ex;
+            segData[o + 3] = ey;
+            segData[o + 4] = v;
+          }
+        }
+        gl.bindBuffer(gl.ARRAY_BUFFER, segBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, segData.subarray(0, nSegs * 20), gl.STREAM_DRAW);
+        gl.useProgram(beamProg);
+        const stride = 5 * 4;
+        gl.enableVertexAttribArray(beamA_start);
+        gl.vertexAttribPointer(beamA_start, 2, gl.FLOAT, false, stride, 0);
+        gl.enableVertexAttribArray(beamA_end);
+        gl.vertexAttribPointer(beamA_end, 2, gl.FLOAT, false, stride, 8);
+        gl.enableVertexAttribArray(beamA_idx);
+        gl.vertexAttribPointer(beamA_idx, 1, gl.FLOAT, false, stride, 16);
+        // size in NDC units (width in pixels → fraction of min dim)
+        const sizeNdc = (traceWidthRef.current * dpr) / Math.min(W, H) * 2.0;
+        gl.uniform1f(beamU_size, sizeNdc);
+        gl.uniform1f(beamU_intensity, 0.22);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE);
+        gl.blendEquation(gl.FUNC_ADD);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, segIdxBuf);
+        gl.drawElements(gl.TRIANGLES, nSegs * 6, gl.UNSIGNED_SHORT, 0);
+        gl.disable(gl.BLEND);
+        gl.disableVertexAttribArray(beamA_start);
+        gl.disableVertexAttribArray(beamA_end);
+        gl.disableVertexAttribArray(beamA_idx);
+      }
+
+      // ---- Pass 3: composite fboA to canvas with tone-map + color ----
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, W, H);
+      gl.useProgram(outProg);
+      gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+      gl.enableVertexAttribArray(outA_pos);
+      gl.vertexAttribPointer(outA_pos, 2, gl.FLOAT, false, 0, 0);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, fboA.tex);
+      gl.uniform1i(outU_tex, 0);
+      // scope green: rgb(40,235,158) ≈ (0.157, 0.921, 0.620)
+      gl.uniform3f(outU_color, 0.18, 0.95, 0.42);
+      gl.uniform1f(outU_exposure, 2.4);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      gl.disableVertexAttribArray(outA_pos);
+
+      // swap
+      const tmp = fboA; fboA = fboB; fboB = tmp;
+
       raf = requestAnimationFrame(draw);
     };
     draw();
@@ -307,6 +499,8 @@ export const Oscilloscope = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       canvas.removeEventListener("wheel", onWheel);
+      if (fboA) { gl.deleteTexture(fboA.tex); gl.deleteFramebuffer(fboA.fbo); }
+      if (fboB) { gl.deleteTexture(fboB.tex); gl.deleteFramebuffer(fboB.fbo); }
     };
   }, []);
 
