@@ -669,12 +669,23 @@ class LorenzProcessor extends AudioWorkletProcessor {
     this.sigma = 16; this.rho = 45.92; this.beta = 4; this.dt = 0.003;
     // simple DC blockers per channel
     this.lx = 0; this.ly = 0; this.px = 0; this.py = 0;
+    // visual decimation: every Nth sample is sent to main thread
+    this.decim = 32; this.dCount = 0;
+    this.batch = new Float32Array(768); // up to 256 triples
+    this.bIdx = 0;
     this.port.onmessage = (e) => {
       const d = e.data;
+      if (d.type === 'reset') {
+        this.x = 0.01; this.y = 0; this.z = 0;
+        this.lx = 0; this.ly = 0; this.px = 0; this.py = 0;
+        this.bIdx = 0;
+        return;
+      }
       if (d.sigma !== undefined) this.sigma = d.sigma;
       if (d.rho !== undefined) this.rho = d.rho;
       if (d.beta !== undefined) this.beta = d.beta;
       if (d.dt !== undefined) this.dt = d.dt;
+      if (d.decim !== undefined) this.decim = Math.max(1, d.decim|0);
     };
   }
   process(_, outputs) {
@@ -687,6 +698,11 @@ class LorenzProcessor extends AudioWorkletProcessor {
       const dy = this.x*(r-this.z)-this.y;
       const dz = this.x*this.y-b*this.z;
       this.x += dx*dt; this.y += dy*dt; this.z += dz*dt;
+      // explosion / NaN guard
+      if (!isFinite(this.x) || Math.abs(this.x) > 1e4) {
+        this.x = 0.01; this.y = 0; this.z = 0;
+        this.lx = 0; this.ly = 0; this.px = 0; this.py = 0;
+      }
       // normalize roughly to [-1,1]
       const sx = this.x * 0.035;
       const sy = this.y * 0.035;
@@ -696,6 +712,18 @@ class LorenzProcessor extends AudioWorkletProcessor {
       this.px = sx; this.py = sy; this.lx = ox; this.ly = oy;
       L[i] = Math.max(-1, Math.min(1, ox));
       R[i] = Math.max(-1, Math.min(1, oy));
+      if (++this.dCount >= this.decim) {
+        this.dCount = 0;
+        if (this.bIdx + 3 <= this.batch.length) {
+          this.batch[this.bIdx++] = this.x;
+          this.batch[this.bIdx++] = this.y;
+          this.batch[this.bIdx++] = this.z;
+        }
+      }
+    }
+    if (this.bIdx > 0) {
+      this.port.postMessage({ pts: this.batch.slice(0, this.bIdx) });
+      this.bIdx = 0;
     }
     return true;
   }
@@ -714,23 +742,39 @@ registerProcessor('lorenz', LorenzProcessor);
       const gain = ctx.createGain();
       gain.gain.value = volumeRef.current;
       node.connect(gain).connect(ctx.destination);
+      // Compute decimation: target ~freqRef visual points/sec, capped
+      const targetVisRate = Math.max(60, Math.min(4000, freqRef.current));
+      const decim = Math.max(1, Math.round(ctx.sampleRate / targetVisRate));
       node.port.postMessage({
         sigma: sigmaRef.current,
         rho: rhoRef.current,
         beta: betaRef.current,
         dt: (freqRef.current * 0.006) / ctx.sampleRate,
+        decim,
       });
+      node.port.onmessage = (e) => {
+        const pts = e.data && e.data.pts;
+        if (!pts) return;
+        const q = ptsQueueRef.current;
+        for (let i = 0; i < pts.length; i++) q.push(pts[i]);
+        // cap queue growth (~2s of points at 4000/s)
+        const max = 8000 * 3;
+        if (q.length > max) q.splice(0, q.length - max);
+      };
       audioRef.current = { ctx, node, gain };
       setAudioOn(true);
       // push param updates ~30Hz
       const id = window.setInterval(() => {
         const a = audioRef.current;
         if (!a) { window.clearInterval(id); return; }
+        const tvr = Math.max(60, Math.min(4000, freqRef.current));
+        const dc = Math.max(1, Math.round(a.ctx.sampleRate / tvr));
         a.node.port.postMessage({
           sigma: sigmaRef.current,
           rho: rhoRef.current,
           beta: betaRef.current,
           dt: (freqRef.current * 0.006) / a.ctx.sampleRate,
+          decim: dc,
         });
       }, 33);
     } catch (err) {
