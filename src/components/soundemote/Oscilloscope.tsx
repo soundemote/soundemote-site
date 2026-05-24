@@ -543,8 +543,11 @@ export const Oscilloscope = () => {
         rotYRef.current += spinSpeedYRef.current;
       }
 
-      // Smooth coefficient + freq changes (~30ms time constant)
-      const smooth = 1 - Math.exp(-dtSeconds / 0.030);
+      // Smooth coefficient + freq changes (~30ms time constant). If the
+      // user turned smoothing off, snap to the targets each frame.
+      const smooth = smoothingRef.current
+        ? 1 - Math.exp(-dtSeconds / 0.030)
+        : 1;
       sSigma += (sigmaRef.current - sSigma) * smooth;
       sRho   += (rhoRef.current   - sRho)   * smooth;
       sBeta  += (betaRef.current  - sBeta)  * smooth;
