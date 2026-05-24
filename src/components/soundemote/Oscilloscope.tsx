@@ -150,6 +150,9 @@ export const Oscilloscope = () => {
   const panTargetXRef = useRef(0);
   const panTargetYRef = useRef(0);
   const traceWidthRef = useRef(2.2);
+  // Phosphor decay (0 = long burn-in, 1 = quick clean fade). Default in the
+  // middle gives a nice screen-burn that still eventually clears.
+  const decayRef = useRef(0.45);
   const spinSpeedXRef = useRef(0);
   const spinSpeedYRef = useRef(0.003);
   const sigmaRef = useRef(16);
@@ -279,18 +282,28 @@ export const Oscilloscope = () => {
       quadVS,
       `precision highp float;
        uniform sampler2D uTex;
-       uniform float uFade;
+       uniform float uFadeFast;  // bright-pixel keep factor (per frame)
+       uniform float uFadeBurn;  // dim-pixel  keep factor (per frame, ~1.0)
+       uniform float uFloor;     // hard subtractive floor so burn eventually dies
        varying vec2 vUv;
        void main(){
-         vec4 c = texture2D(uTex, vUv) * uFade;
-         // hard floor so trailing dim pixels actually die
-         c = max(c - vec4(0.002), vec4(0.0));
+         vec4 c = texture2D(uTex, vUv);
+         // Non-linear phosphor decay: bright pixels lose energy fast,
+         // dim pixels (the "burn-in") lose energy very slowly. This gives
+         // a CRT screen-burn look while still letting the burn fade out.
+         vec4 t = clamp(c, 0.0, 1.0);
+         vec4 k = mix(vec4(uFadeBurn), vec4(uFadeFast), t);
+         c = c * k;
+         // tiny subtractive floor — guarantees the burn eventually clears
+         c = max(c - vec4(uFloor), vec4(0.0));
          gl_FragColor = vec4(c.rgb, 1.0);
        }`
     );
     const fadeA_pos = gl.getAttribLocation(fadeProg, "aPos");
     const fadeU_tex = gl.getUniformLocation(fadeProg, "uTex");
-    const fadeU_fade = gl.getUniformLocation(fadeProg, "uFade");
+    const fadeU_fadeFast = gl.getUniformLocation(fadeProg, "uFadeFast");
+    const fadeU_fadeBurn = gl.getUniformLocation(fadeProg, "uFadeBurn");
+    const fadeU_floor = gl.getUniformLocation(fadeProg, "uFloor");
 
     const outProg = program(
       quadVS,
@@ -390,8 +403,7 @@ export const Oscilloscope = () => {
 
     let prevPx: number | null = null;
     let prevPy: number | null = null;
-    // Phosphor decay (single multiplicative fade, dood.al style)
-    const persistence = 0.86; // per-60fps-frame keep factor
+    // Phosphor decay is now driven by decayRef via the fade shader uniforms.
     // Smoothed shadows of the coefficients used by the visual fallback
     // integrator. The audio worklet smooths internally per-sample.
     let sSigma = sigmaRef.current;
@@ -677,8 +689,17 @@ export const Oscilloscope = () => {
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, fboB.tex);
       gl.uniform1i(fadeU_tex, 0);
-      const fade = Math.pow(persistence, frameScale);
-      gl.uniform1f(fadeU_fade, fade);
+      // Map decayRef (0 = long burn, 1 = quick fade) → per-frame keep factors.
+      // Bright pixels use uFadeFast (lots of headroom), dim "burn" pixels use
+      // uFadeBurn (very close to 1). Floor subtracts a tiny amount so even
+      // burn-in eventually dies.
+      const d = Math.max(0, Math.min(1, decayRef.current));
+      const fastBase = 0.55 + (1 - d) * 0.42;   // 0.55 .. 0.97
+      const burnBase = 0.985 + (1 - d) * 0.014; // 0.985 .. 0.999
+      const floorBase = 0.00008 + d * 0.003;    // 0.00008 .. 0.003
+      gl.uniform1f(fadeU_fadeFast, Math.pow(fastBase, frameScale));
+      gl.uniform1f(fadeU_fadeBurn, Math.pow(burnBase, frameScale));
+      gl.uniform1f(fadeU_floor, floorBase * frameScale);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       gl.disableVertexAttribArray(fadeA_pos);
 
@@ -767,6 +788,11 @@ export const Oscilloscope = () => {
 
   const adjustTrace = (delta: number) => {
     traceWidthRef.current = Math.max(0.4, Math.min(40, traceWidthRef.current + delta));
+    setTick((n) => n + 1);
+  };
+
+  const adjustDecay = (delta: number) => {
+    decayRef.current = Math.max(0, Math.min(1, decayRef.current + delta));
     setTick((n) => n + 1);
   };
 
@@ -1114,6 +1140,25 @@ registerProcessor('lorenz', LorenzProcessor);
             onTick={(a) => adjustTrace(0.15 * a)}
             className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
             ariaLabel="Thicker trace"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </HoldButton>
+        </div>
+        <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-1.5 py-1 backdrop-blur-sm">
+          <HoldButton
+            onTick={(a) => adjustDecay(-0.01 * a)}
+            className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
+            ariaLabel="Longer phosphor burn"
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </HoldButton>
+          <span className="mono text-[10px] tracking-[0.15em] text-muted-foreground tabular-nums w-12 text-center">
+            burn{(1 - decayRef.current).toFixed(2)}
+          </span>
+          <HoldButton
+            onTick={(a) => adjustDecay(0.01 * a)}
+            className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
+            ariaLabel="Shorter phosphor burn"
           >
             <Plus className="h-3.5 w-3.5" />
           </HoldButton>
