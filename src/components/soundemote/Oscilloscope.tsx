@@ -403,8 +403,7 @@ export const Oscilloscope = () => {
 
     let prevPx: number | null = null;
     let prevPy: number | null = null;
-    // Phosphor decay (single multiplicative fade, dood.al style)
-    const persistence = 0.86; // per-60fps-frame keep factor
+    // Phosphor decay is now driven by decayRef via the fade shader uniforms.
     // Smoothed shadows of the coefficients used by the visual fallback
     // integrator. The audio worklet smooths internally per-sample.
     let sSigma = sigmaRef.current;
