@@ -282,18 +282,28 @@ export const Oscilloscope = () => {
       quadVS,
       `precision highp float;
        uniform sampler2D uTex;
-       uniform float uFade;
+       uniform float uFadeFast;  // bright-pixel keep factor (per frame)
+       uniform float uFadeBurn;  // dim-pixel  keep factor (per frame, ~1.0)
+       uniform float uFloor;     // hard subtractive floor so burn eventually dies
        varying vec2 vUv;
        void main(){
-         vec4 c = texture2D(uTex, vUv) * uFade;
-         // hard floor so trailing dim pixels actually die
-         c = max(c - vec4(0.002), vec4(0.0));
+         vec4 c = texture2D(uTex, vUv);
+         // Non-linear phosphor decay: bright pixels lose energy fast,
+         // dim pixels (the "burn-in") lose energy very slowly. This gives
+         // a CRT screen-burn look while still letting the burn fade out.
+         vec4 t = clamp(c, 0.0, 1.0);
+         vec4 k = mix(vec4(uFadeBurn), vec4(uFadeFast), t);
+         c = c * k;
+         // tiny subtractive floor — guarantees the burn eventually clears
+         c = max(c - vec4(uFloor), vec4(0.0));
          gl_FragColor = vec4(c.rgb, 1.0);
        }`
     );
     const fadeA_pos = gl.getAttribLocation(fadeProg, "aPos");
     const fadeU_tex = gl.getUniformLocation(fadeProg, "uTex");
-    const fadeU_fade = gl.getUniformLocation(fadeProg, "uFade");
+    const fadeU_fadeFast = gl.getUniformLocation(fadeProg, "uFadeFast");
+    const fadeU_fadeBurn = gl.getUniformLocation(fadeProg, "uFadeBurn");
+    const fadeU_floor = gl.getUniformLocation(fadeProg, "uFloor");
 
     const outProg = program(
       quadVS,
