@@ -8,6 +8,7 @@ export const Oscilloscope = () => {
   const rotXRef = useRef(0.35); // tilt
   const rotYRef = useRef(0);    // spin
   const autoSpinRef = useRef(true);
+  const traceWidthRef = useRef(2.2);
   const [, setTick] = useState(0); // force re-render of overlay labels
 
   useEffect(() => {
@@ -73,7 +74,7 @@ export const Oscilloscope = () => {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const next = zoomRef.current * (e.deltaY < 0 ? 1.1 : 0.9);
-      zoomRef.current = Math.max(0.3, Math.min(20, next));
+      zoomRef.current = Math.max(0.1, Math.min(20, next));
       setTick((n) => n + 1);
     };
     canvas.addEventListener("pointerdown", onDown);
@@ -100,7 +101,7 @@ export const Oscilloscope = () => {
       ctx.fillStyle = "hsla(0, 0%, 0%, 0.12)";
       ctx.fillRect(0, 0, w, h);
 
-      ctx.lineWidth = 1.1;
+      ctx.lineWidth = traceWidthRef.current;
       ctx.lineCap = "round";
       ctx.shadowColor = "hsla(165, 95%, 60%, 0.9)";
       ctx.shadowBlur = 12;
@@ -155,7 +156,12 @@ export const Oscilloscope = () => {
   }, []);
 
   const adjustZoom = (factor: number) => {
-    zoomRef.current = Math.max(0.3, Math.min(20, zoomRef.current * factor));
+    zoomRef.current = Math.max(0.1, Math.min(20, zoomRef.current * factor));
+    setTick((n) => n + 1);
+  };
+
+  const adjustTrace = (delta: number) => {
+    traceWidthRef.current = Math.max(0.4, Math.min(8, traceWidthRef.current + delta));
     setTick((n) => n + 1);
   };
 
@@ -176,26 +182,49 @@ export const Oscilloscope = () => {
         aria-label="Animated Lorenz attractor XY scope"
       />
       {/* Controls */}
-      <div className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-1.5 py-1 backdrop-blur-sm">
-        <button
-          type="button"
-          onClick={() => adjustZoom(0.8)}
-          className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
-          aria-label="Zoom out"
-        >
-          <Minus className="h-3.5 w-3.5" />
-        </button>
-        <span className="mono text-[10px] tracking-[0.15em] text-muted-foreground tabular-nums w-10 text-center">
-          {zoomRef.current.toFixed(2)}x
-        </span>
-        <button
-          type="button"
-          onClick={() => adjustZoom(1.25)}
-          className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
-          aria-label="Zoom in"
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </button>
+      <div className="absolute bottom-3 right-3 flex items-center gap-2">
+        <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-1.5 py-1 backdrop-blur-sm">
+          <button
+            type="button"
+            onClick={() => adjustZoom(0.8)}
+            className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
+            aria-label="Zoom out"
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </button>
+          <span className="mono text-[10px] tracking-[0.15em] text-muted-foreground tabular-nums w-10 text-center">
+            {zoomRef.current.toFixed(2)}x
+          </span>
+          <button
+            type="button"
+            onClick={() => adjustZoom(1.25)}
+            className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
+            aria-label="Zoom in"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-1.5 py-1 backdrop-blur-sm">
+          <button
+            type="button"
+            onClick={() => adjustTrace(-0.4)}
+            className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
+            aria-label="Thinner trace"
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </button>
+          <span className="mono text-[10px] tracking-[0.15em] text-muted-foreground tabular-nums w-10 text-center">
+            w{traceWidthRef.current.toFixed(1)}
+          </span>
+          <button
+            type="button"
+            onClick={() => adjustTrace(0.4)}
+            className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
+            aria-label="Thicker trace"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
       <div className="pointer-events-none absolute bottom-3 left-3 mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/70">
         drag to rotate · scroll to zoom
