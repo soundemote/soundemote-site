@@ -900,6 +900,7 @@ registerProcessor('lorenz', LorenzProcessor);
         beta: betaRef.current,
         dt: (freqRef.current * 0.006) / ctx.sampleRate,
         decim,
+        smoothOn: smoothingRef.current,
       });
       node.port.onmessage = (e) => {
         const pts = e.data && e.data.pts;
@@ -924,6 +925,7 @@ registerProcessor('lorenz', LorenzProcessor);
           beta: betaRef.current,
           dt: (freqRef.current * 0.006) / a.ctx.sampleRate,
           decim: dc,
+          smoothOn: smoothingRef.current,
         });
       }, 33);
     } catch (err) {
