@@ -60,11 +60,11 @@ export const Projects = () => (
         <div>
           <p className="mono text-xs uppercase tracking-[0.3em] text-scope mb-3">// projects</p>
           <h2 className="display text-3xl md:text-5xl text-warm-white max-w-2xl leading-tight">
-            A foundation being assembled, one signal at a time.
+            Built in the open, one signal at a time.
           </h2>
         </div>
         <p className="mono text-xs text-muted-foreground max-w-xs">
-          Open-source DSP, plugin formats, and visual instruments — built in the open.
+          DSP code, plugin experiments, and visual instruments.
         </p>
       </div>
 

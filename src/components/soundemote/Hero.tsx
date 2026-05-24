@@ -16,8 +16,8 @@ export const Hero = () => (
           <span className="italic text-warm-white/90">feeling</span> sound.
         </h1>
         <p className="mt-8 max-w-xl text-lg leading-relaxed text-muted-foreground">
-          Soundemote builds audio-visual plugins, DSP libraries, and experimental
-          music technology for creators who care about signal, motion, and beauty.
+          Soundemote makes audio-visual plugins, DSP libraries, and experimental
+          tools for anyone who cares about signal, motion, and beauty.
         </p>
         <div className="mt-10 flex flex-wrap items-center gap-4">
           <a
