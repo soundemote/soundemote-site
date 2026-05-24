@@ -5,7 +5,7 @@ export const Hero = () => (
     <div className="absolute inset-0 scope-grid opacity-40" aria-hidden />
     <div className="absolute inset-0 bg-[var(--gradient-hero)]" aria-hidden />
     <div className="container relative max-w-3xl mx-auto text-center animate-fade-in">
-      <p className="mono text-xs uppercase tracking-[0.35em] text-scope mb-6">
+      <p className="mono text-xs tracking-[0.35em] text-scope mb-6 normal-case lowercase">
         ⋆⁺₊✧ soemdsp ✧₊⁺⋆
       </p>
       <h1 className="display text-4xl sm:text-5xl md:text-6xl font-medium leading-[1.05] text-warm-white">
