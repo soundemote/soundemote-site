@@ -1096,7 +1096,7 @@ registerProcessor('lorenz', LorenzProcessor);
           </button>
         </div>
         <span className="tabular-nums text-scope/80">
-          rX={radToDeg(rotXRef.current)}° rY={wrapDeg((rotYRef.current * 180) / Math.PI)}°
+          rX={wrapDeg((rotXRef.current * 180) / Math.PI)}° rY={wrapDeg((rotYRef.current * 180) / Math.PI)}°
         </span>
       </div>
       <canvas
@@ -1197,8 +1197,8 @@ registerProcessor('lorenz', LorenzProcessor);
             <input
               key="spinX"
               type="range"
-              min={-0.15}
-              max={0.15}
+              min={-0.45}
+              max={0.45}
               step={0.001}
               defaultValue={spinSpeedXRef.current}
               onChange={(e) => { spinSpeedXRef.current = parseFloat(e.target.value); }}
@@ -1223,8 +1223,8 @@ registerProcessor('lorenz', LorenzProcessor);
             <input
               key="spinY"
               type="range"
-              min={-0.15}
-              max={0.15}
+              min={-0.45}
+              max={0.45}
               step={0.001}
               defaultValue={spinSpeedYRef.current}
               onChange={(e) => { spinSpeedYRef.current = parseFloat(e.target.value); }}
