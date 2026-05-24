@@ -540,16 +540,41 @@ export const Oscilloscope = () => {
           if (!isFinite(st.x) || Math.abs(st.x) > 1e4) {
             st.x = 0.01; st.y = 0; st.z = 0;
             prevPx = null; prevPy = null;
+            resetUpsampler();
             break;
           }
           triples.push(st.x, st.y, st.z);
         }
       }
 
+      // ---- Lanczos upsample triples (a=2, steps=UP_STEPS) ----
+      // Produces UP_STEPS output triples per input interval. Carries upCtx
+      // across frames so we never see a chord boundary.
+      const up: number[] = [];
       for (let i = 0; i < triples.length; i += 3) {
-        const x0 = triples[i];
-        const y0 = triples[i + 1];
-        const z0 = triples[i + 2] - 45;
+        // shift context left by one triple
+        upCtx[0]=upCtx[3]; upCtx[1]=upCtx[4]; upCtx[2]=upCtx[5];
+        upCtx[3]=upCtx[6]; upCtx[4]=upCtx[7]; upCtx[5]=upCtx[8];
+        upCtx[6]=triples[i]; upCtx[7]=triples[i+1]; upCtx[8]=triples[i+2];
+        if (upFill < 3) { upFill++; continue; }
+        // emit output for interval between upCtx[3..5] (p) and upCtx[6..8] (p+1)
+        // r=0: the raw sample at p
+        up.push(upCtx[3], upCtx[4], upCtx[5]);
+        for (let r = 1; r < UP_STEPS; r++) {
+          const k_m1 = upK[r + UP_STEPS];   // |s*steps - r| with s=-1
+          const k_0  = upK[r];               // s=0
+          const k_p1 = upK[UP_STEPS - r];    // s=1 (UP_STEPS > r always)
+          const ux = upCtx[0]*k_m1 + upCtx[3]*k_0 + upCtx[6]*k_p1;
+          const uy = upCtx[1]*k_m1 + upCtx[4]*k_0 + upCtx[7]*k_p1;
+          const uz = upCtx[2]*k_m1 + upCtx[5]*k_0 + upCtx[8]*k_p1;
+          up.push(ux, uy, uz);
+        }
+      }
+
+      for (let i = 0; i < up.length; i += 3) {
+        const x0 = up[i];
+        const y0 = up[i + 1];
+        const z0 = up[i + 2] - 45;
         // Rotate around Y axis
         const xr = x0 * cosY + z0 * sinY;
         const zr = -x0 * sinY + z0 * cosY;
