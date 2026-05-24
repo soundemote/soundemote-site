@@ -399,11 +399,12 @@ export const Oscilloscope = () => {
     let sBeta = betaRef.current;
     let sFreq = freqRef.current;
 
-    // ---- Lanczos upsampler (dood.al / woscope trick) ---------------------
-    // Between every pair of input (x,y,z) triples, insert UP_STEPS-1 points
-    // computed with a windowed-sinc kernel (a=2). This turns the polyline
-    // into a smooth curve that traces the Lorenz manifold instead of cutting
-    // chords between sparse audio samples.
+    // ---- Lanczos upsampler (DISABLED — failed experiment) ------------------
+    // NOTE: This was an attempt to smooth the Lorenz signal like dood.al's
+    // oscilloscope. It produced undesirable artifacts and is disabled.
+    // We will revisit proper signal smoothing another time.
+    // Code kept for reference — smoothingRef is hardcoded to false so this
+    // block is effectively dead. Raw triples pass through instead.
     const UP_STEPS = 8;
     const UP_A = 2;
     const UP_R = UP_A * UP_STEPS;
