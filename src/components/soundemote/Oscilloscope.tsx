@@ -167,7 +167,7 @@ export const Oscilloscope = () => {
   };
 
   const adjustTrace = (delta: number) => {
-    traceWidthRef.current = Math.max(0.4, Math.min(8, traceWidthRef.current + delta));
+    traceWidthRef.current = Math.max(0.4, Math.min(20, traceWidthRef.current + delta));
     setTick((n) => n + 1);
   };
 
