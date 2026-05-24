@@ -1,5 +1,62 @@
 import { useEffect, useRef, useState } from "react";
-import { Minus, Plus, Volume2, VolumeX, RotateCcw } from "lucide-react";
+import { Minus, Plus, Volume2, VolumeX, RotateCcw, Waves } from "lucide-react";
+
+// Click-and-hold repeat button. Fires onTick at ~60Hz while held, with the
+// step multiplier accelerating the longer the user holds.
+const HoldButton = ({
+  onTick,
+  className,
+  children,
+  ariaLabel,
+}: {
+  onTick: (accel: number) => void;
+  className?: string;
+  children: React.ReactNode;
+  ariaLabel?: string;
+}) => {
+  const rafRef = useRef(0);
+  const startRef = useRef(0);
+  const stop = () => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = 0;
+  };
+  const begin = (e: React.PointerEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    startRef.current = performance.now();
+    // single tick immediately
+    onTick(1);
+    const loop = () => {
+      const held = (performance.now() - startRef.current) / 1000;
+      // accelerate: 1x → ~6x after ~1.2s held
+      const accel = 1 + Math.min(8, held * 5);
+      onTick(accel);
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    // small delay before auto-repeat starts
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = requestAnimationFrame(loop);
+    });
+  };
+  const end = (e: React.PointerEvent<HTMLButtonElement>) => {
+    try { (e.target as HTMLElement).releasePointerCapture?.(e.pointerId); } catch {}
+    stop();
+  };
+  useEffect(() => () => stop(), []);
+  return (
+    <button
+      type="button"
+      onPointerDown={begin}
+      onPointerUp={end}
+      onPointerCancel={end}
+      onPointerLeave={end}
+      className={className}
+      aria-label={ariaLabel}
+    >
+      {children}
+    </button>
+  );
+};
 
 // Click-and-drag number input. Vertical drag changes the value on a log
 // scale so it can sweep many orders of magnitude (slow → audio rate).
@@ -110,6 +167,8 @@ export const Oscilloscope = () => {
   } | null>(null);
   const [audioOn, setAudioOn] = useState(false);
   const [resetSeq, setResetSeq] = useState(0);
+  const smoothingRef = useRef(true);
+  const [smoothingOn, setSmoothingOn] = useState(true);
   // Shared Lorenz state. When audio is running the worklet is master and
   // pushes (x,y,z) triples back here; otherwise the visual integrator
   // writes to it. Either way both renderers consume the same data.
@@ -484,8 +543,11 @@ export const Oscilloscope = () => {
         rotYRef.current += spinSpeedYRef.current;
       }
 
-      // Smooth coefficient + freq changes (~30ms time constant)
-      const smooth = 1 - Math.exp(-dtSeconds / 0.030);
+      // Smooth coefficient + freq changes (~30ms time constant). If the
+      // user turned smoothing off, snap to the targets each frame.
+      const smooth = smoothingRef.current
+        ? 1 - Math.exp(-dtSeconds / 0.030)
+        : 1;
       sSigma += (sigmaRef.current - sSigma) * smooth;
       sRho   += (rhoRef.current   - sRho)   * smooth;
       sBeta  += (betaRef.current  - sBeta)  * smooth;
@@ -552,6 +614,12 @@ export const Oscilloscope = () => {
       // Produces UP_STEPS output triples per input interval. Carries upCtx
       // across frames so we never see a chord boundary.
       const up: number[] = [];
+      if (!smoothingRef.current) {
+        // Smoothing disabled: pass raw triples through, reset context so
+        // re-enabling doesn't blend across the gap.
+        upFill = 0;
+        for (let i = 0; i < triples.length; i++) up.push(triples[i]);
+      } else
       for (let i = 0; i < triples.length; i += 3) {
         // shift context left by one triple
         upCtx[0]=upCtx[3]; upCtx[1]=upCtx[4]; upCtx[2]=upCtx[5];
@@ -700,6 +768,15 @@ export const Oscilloscope = () => {
     setTick((n) => n + 1);
   };
 
+  const toggleSmoothing = () => {
+    const next = !smoothingRef.current;
+    smoothingRef.current = next;
+    setSmoothingOn(next);
+    if (audioRef.current) {
+      audioRef.current.node.port.postMessage({ smoothOn: next });
+    }
+  };
+
   // ---- Audio: Lorenz running at sampleRate inside an AudioWorklet ----
   // Cleanup on unmount
   useEffect(() => {
@@ -731,6 +808,7 @@ class LorenzProcessor extends AudioWorkletProcessor {
     this.tSigma = 16; this.tRho = 45.92; this.tBeta = 4; this.tDt = 0.003;
     // smoothing coefficient (~30ms time constant @ 48k → recomputed in process)
     this.smooth = 0;
+    this.smoothOn = true;
     // simple DC blockers per channel
     this.lx = 0; this.ly = 0; this.px = 0; this.py = 0;
     // visual decimation: every Nth sample is sent to main thread
@@ -755,6 +833,7 @@ class LorenzProcessor extends AudioWorkletProcessor {
       if (d.beta !== undefined) this.tBeta = d.beta;
       if (d.dt !== undefined) this.tDt = d.dt;
       if (d.decim !== undefined) this.decim = Math.max(1, d.decim|0);
+      if (d.smoothOn !== undefined) this.smoothOn = !!d.smoothOn;
     };
   }
   process(_, outputs) {
@@ -765,7 +844,7 @@ class LorenzProcessor extends AudioWorkletProcessor {
       // ~30ms time constant
       this.smooth = 1 - Math.exp(-1 / (0.030 * sampleRate));
     }
-    const k = this.smooth;
+    const k = this.smoothOn ? this.smooth : 1;
     for (let i = 0; i < n; i++) {
       // per-sample smoothing of params (denormal-safe: targets are O(1))
       this.sigma += (this.tSigma - this.sigma) * k;
@@ -830,6 +909,7 @@ registerProcessor('lorenz', LorenzProcessor);
         beta: betaRef.current,
         dt: (freqRef.current * 0.006) / ctx.sampleRate,
         decim,
+        smoothOn: smoothingRef.current,
       });
       node.port.onmessage = (e) => {
         const pts = e.data && e.data.pts;
@@ -854,6 +934,7 @@ registerProcessor('lorenz', LorenzProcessor);
           beta: betaRef.current,
           dt: (freqRef.current * 0.006) / a.ctx.sampleRate,
           decim: dc,
+          smoothOn: smoothingRef.current,
         });
       }, 33);
     } catch (err) {
@@ -994,6 +1075,23 @@ registerProcessor('lorenz', LorenzProcessor);
             <RotateCcw className="h-3 w-3" />
             <span className="text-[10px] tracking-[0.15em]">reset</span>
           </button>
+          <button
+            type="button"
+            onClick={toggleSmoothing}
+            className={`flex items-center gap-1 rounded-full border px-2 py-1 transition-colors ${
+              smoothingOn
+                ? "border-scope/60 text-scope"
+                : "border-border/60 text-muted-foreground hover:text-scope hover:border-scope/60"
+            }`}
+            title={smoothingOn ? "Smoothing on — click to disable" : "Smoothing off — click to enable"}
+            aria-pressed={smoothingOn}
+            aria-label="Toggle smoothing"
+          >
+            <Waves className="h-3 w-3" />
+            <span className="text-[10px] tracking-[0.15em]">
+              smooth {smoothingOn ? "on" : "off"}
+            </span>
+          </button>
         </div>
         <span className="tabular-nums text-scope/80">
           rX={radToDeg(rotXRef.current)}° rY={wrapDeg((rotYRef.current * 180) / Math.PI)}°
@@ -1007,46 +1105,42 @@ registerProcessor('lorenz', LorenzProcessor);
       {/* Controls */}
       <div className="absolute bottom-3 right-3 flex items-center gap-2">
         <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-1.5 py-1 backdrop-blur-sm">
-          <button
-            type="button"
-            onClick={() => adjustZoom(0.8)}
+          <HoldButton
+            onTick={(a) => adjustZoom(Math.pow(0.97, a))}
             className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
-            aria-label="Zoom out"
+            ariaLabel="Zoom out"
           >
             <Minus className="h-3.5 w-3.5" />
-          </button>
+          </HoldButton>
           <span className="mono text-[10px] tracking-[0.15em] text-muted-foreground tabular-nums w-10 text-center">
             {zoomRef.current.toFixed(2)}x
           </span>
-          <button
-            type="button"
-            onClick={() => adjustZoom(1.25)}
+          <HoldButton
+            onTick={(a) => adjustZoom(Math.pow(1.03, a))}
             className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
-            aria-label="Zoom in"
+            ariaLabel="Zoom in"
           >
             <Plus className="h-3.5 w-3.5" />
-          </button>
+          </HoldButton>
         </div>
         <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-1.5 py-1 backdrop-blur-sm">
-          <button
-            type="button"
-            onClick={() => adjustTrace(-0.4)}
+          <HoldButton
+            onTick={(a) => adjustTrace(-0.15 * a)}
             className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
-            aria-label="Thinner trace"
+            ariaLabel="Thinner trace"
           >
             <Minus className="h-3.5 w-3.5" />
-          </button>
+          </HoldButton>
           <span className="mono text-[10px] tracking-[0.15em] text-muted-foreground tabular-nums w-10 text-center">
             w{traceWidthRef.current.toFixed(1)}
           </span>
-          <button
-            type="button"
-            onClick={() => adjustTrace(0.4)}
+          <HoldButton
+            onTick={(a) => adjustTrace(0.15 * a)}
             className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
-            aria-label="Thicker trace"
+            ariaLabel="Thicker trace"
           >
             <Plus className="h-3.5 w-3.5" />
-          </button>
+          </HoldButton>
         </div>
         <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-1.5 py-1 backdrop-blur-sm">
           <button
