@@ -10,6 +10,8 @@ export const Oscilloscope = () => {
   const autoSpinRef = useRef(false);
   const panXRef = useRef(0);
   const panYRef = useRef(0);
+  const panTargetXRef = useRef(0);
+  const panTargetYRef = useRef(0);
   const traceWidthRef = useRef(2.2);
   const spinSpeedXRef = useRef(0);
   const spinSpeedYRef = useRef(0.003);
@@ -101,8 +103,8 @@ export const Oscilloscope = () => {
     };
     const onMove = (e: PointerEvent) => {
       if (!dragging) return;
-      panXRef.current += e.clientX - lastX;
-      panYRef.current += e.clientY - lastY;
+      panTargetXRef.current += e.clientX - lastX;
+      panTargetYRef.current += e.clientY - lastY;
       lastX = e.clientX;
       lastY = e.clientY;
     };
@@ -133,6 +135,10 @@ export const Oscilloscope = () => {
       const w = rect.width;
       const h = rect.height;
       const s = Math.min(w, h) * scale * zoomRef.current;
+      // Critically-damped lerp toward drag target for smooth pan
+      const panLerp = 1 - Math.pow(0.001, dtSeconds); // ~frame-rate independent
+      panXRef.current += (panTargetXRef.current - panXRef.current) * panLerp;
+      panYRef.current += (panTargetYRef.current - panYRef.current) * panLerp;
       const cx = w / 2 + panXRef.current;
       const cy = h / 2 + panYRef.current;
 
@@ -190,6 +196,11 @@ export const Oscilloscope = () => {
       ctx.globalCompositeOperation = "lighter";
 
       ctx.beginPath();
+      // Single continuous polyline — no per-segment moveTo, so round caps
+      // can never render as standalone dots between adjacent samples.
+      if (prevPx !== null && prevPy !== null) {
+        ctx.moveTo(prevPx, prevPy);
+      }
       for (let i = 0; i < stepsPerFrame; i++) {
         // Runge-Kutta-ish: simple Euler is fine at this dt
         const dx = sigma * (y - x);
@@ -215,7 +226,6 @@ export const Oscilloscope = () => {
         if (prevPx === null || prevPy === null) {
           ctx.moveTo(px, py);
         } else {
-          ctx.moveTo(prevPx, prevPy);
           ctx.lineTo(px, py);
         }
         prevPx = px;
@@ -229,10 +239,6 @@ export const Oscilloscope = () => {
       // Narrow bright core
       ctx.lineWidth = coreW;
       ctx.strokeStyle = "rgba(184, 255, 82, 0.95)";
-      ctx.stroke();
-      // Hotspot center
-      ctx.lineWidth = Math.max(0.6, coreW * 0.4);
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
       ctx.stroke();
 
       ctx.globalCompositeOperation = "source-over";
