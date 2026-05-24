@@ -8,16 +8,8 @@ export const Hero = () => (
       <p className="mono tracking-[0.35em] text-scope mb-6 normal-case lowercase font-medium text-3xl font-sans">
         ⋆⁺₊✧ soemdsp ✧₊⁺⋆
       </p>
-      <h1 className="display text-4xl sm:text-5xl md:text-6xl font-medium leading-[1.05] text-warm-white">
-        Audio tools for{" "}
-        <span className="text-scope text-glow">seeing</span>,{" "}
-        <span className="text-accent text-glow">shaping</span>, and{" "}
-        <span className="italic text-warm-white/90">feeling</span> sound.
-      </h1>
-      <p className="mt-8 mx-auto max-w-xl text-lg leading-relaxed text-muted-foreground">
-        Soundemote makes audio-visual plugins, DSP libraries, and experimental
-        tools for anyone who cares about signal, motion, and beauty.
-      </p>
+      <p className="mt-8 mx-auto max-w-xl text-lg leading-relaxed text-muted-foreground" />
+      
       <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
         <a
           href="#projects"
