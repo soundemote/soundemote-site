@@ -95,21 +95,45 @@ export const Oscilloscope = () => {
     let dragging = false;
     let lastX = 0;
     let lastY = 0;
+    let lastMoveT = performance.now();
+    // Velocity in CSS px / second, used to "throw" the origin on release
+    let velX = 0;
+    let velY = 0;
     const onDown = (e: PointerEvent) => {
       dragging = true;
       lastX = e.clientX;
       lastY = e.clientY;
+      lastMoveT = performance.now();
+      velX = 0;
+      velY = 0;
       canvas.setPointerCapture(e.pointerId);
     };
     const onMove = (e: PointerEvent) => {
       if (!dragging) return;
-      panTargetXRef.current += e.clientX - lastX;
-      panTargetYRef.current += e.clientY - lastY;
+      const t = performance.now();
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+      const dt = Math.max(1, t - lastMoveT) / 1000;
+      // Blend new instantaneous velocity into a tracked one so a single jitter
+      // doesn't dominate the throw.
+      const sampleVx = dx / dt;
+      const sampleVy = dy / dt;
+      const blend = 0.35;
+      velX = velX * (1 - blend) + sampleVx * blend;
+      velY = velY * (1 - blend) + sampleVy * blend;
+      panTargetXRef.current += dx;
+      panTargetYRef.current += dy;
       lastX = e.clientX;
       lastY = e.clientY;
+      lastMoveT = t;
     };
     const onUp = (e: PointerEvent) => {
       dragging = false;
+      // If the gesture ended stale (no recent move), don't throw
+      if (performance.now() - lastMoveT > 80) {
+        velX = 0;
+        velY = 0;
+      }
       try { canvas.releasePointerCapture(e.pointerId); } catch {}
     };
     const onWheel = (e: WheelEvent) => {
@@ -135,8 +159,33 @@ export const Oscilloscope = () => {
       const w = rect.width;
       const h = rect.height;
       const s = Math.min(w, h) * scale * zoomRef.current;
+      // Throw inertia: when not dragging, integrate velocity into the pan
+      // target and apply exponential damping until it settles to 0.
+      if (!dragging && (velX !== 0 || velY !== 0)) {
+        panTargetXRef.current += velX * dtSeconds;
+        panTargetYRef.current += velY * dtSeconds;
+        const damp = Math.pow(0.12, dtSeconds); // ~half-life around 0.3s
+        velX *= damp;
+        velY *= damp;
+        if (Math.abs(velX) < 0.5) velX = 0;
+        if (Math.abs(velY) < 0.5) velY = 0;
+      }
+      // Wrap the origin around when it leaves the visible canvas. Wrap target
+      // AND current together so the smoothed pan doesn't animate across screen.
+      const wrap = (v: number, span: number) => {
+        const half = span / 2;
+        if (v > half) return v - span;
+        if (v < -half) return v + span;
+        return v;
+      };
+      const beforeTX = panTargetXRef.current;
+      const beforeTY = panTargetYRef.current;
+      panTargetXRef.current = wrap(beforeTX, w);
+      panTargetYRef.current = wrap(beforeTY, h);
+      panXRef.current += panTargetXRef.current - beforeTX;
+      panYRef.current += panTargetYRef.current - beforeTY;
       // Critically-damped lerp toward drag target for smooth pan
-      const panLerp = 1 - Math.pow(0.001, dtSeconds); // ~frame-rate independent
+      const panLerp = 1 - Math.pow(0.001, dtSeconds);
       panXRef.current += (panTargetXRef.current - panXRef.current) * panLerp;
       panYRef.current += (panTargetYRef.current - panYRef.current) * panLerp;
       const cx = w / 2 + panXRef.current;
