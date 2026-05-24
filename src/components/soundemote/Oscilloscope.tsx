@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Minus, Plus, Volume2, VolumeX } from "lucide-react";
+import { Minus, Plus, Volume2, VolumeX, RotateCcw } from "lucide-react";
 
 // Click-and-drag number input. Vertical drag changes the value on a log
 // scale so it can sweep many orders of magnitude (slow → audio rate).
@@ -109,6 +109,12 @@ export const Oscilloscope = () => {
     gain: GainNode;
   } | null>(null);
   const [audioOn, setAudioOn] = useState(false);
+  const [resetSeq, setResetSeq] = useState(0);
+  // Shared Lorenz state. When audio is running the worklet is master and
+  // pushes (x,y,z) triples back here; otherwise the visual integrator
+  // writes to it. Either way both renderers consume the same data.
+  const stateRef = useRef({ x: 0.01, y: 0, z: 0 });
+  const ptsQueueRef = useRef<number[]>([]); // flat x,y,z,x,y,z,...
   const [, setTick] = useState(0); // force re-render of overlay labels
 
   useEffect(() => {
@@ -316,9 +322,6 @@ export const Oscilloscope = () => {
     resize();
     window.addEventListener("resize", resize);
 
-    let x = 0.01;
-    let y = 0;
-    let z = 0;
     const dt = 0.006;
     // stepsPerFrame is computed each frame from freqRef + dtSeconds
     // Base scale chosen so zoom=1.0 shows the attractor at its most readable "default" size.
@@ -468,23 +471,52 @@ export const Oscilloscope = () => {
       if (prevPx !== null && prevPy !== null) {
         pts.push((prevPx / w) * 2 - 1, 1 - (prevPy / h) * 2);
       }
-      const stepsPerFrame = Math.max(
-        1,
-        Math.min(8000, Math.round(freqRef.current * dtSeconds))
-      );
-      for (let i = 0; i < stepsPerFrame; i++) {
-        // Runge-Kutta-ish: simple Euler is fine at this dt
-        const dx = sigma * (y - x);
-        const dy = x * (rho - z) - y;
-        const dz = x * y - beta * z;
-        x += dx * dt;
-        y += dy * dt;
-        z += dz * dt;
+      // Source the (x,y,z) triples: either drain audio worklet's queue
+      // (so visual and audio are guaranteed to derive from the same
+      // numerical state) or integrate locally as a fallback.
+      const triples: number[] = [];
+      const audioActive =
+        audioOn && audioRef.current && audioRef.current.ctx.state === "running";
+      if (audioActive && ptsQueueRef.current.length >= 3) {
+        const q = ptsQueueRef.current;
+        // Cap per-frame draw count so we never fall further behind
+        const maxPts = 2400;
+        const take = Math.min(q.length, maxPts * 3);
+        for (let i = 0; i < take; i++) triples.push(q.shift()!);
+        // sync last sample back to shared state
+        const L = triples.length;
+        if (L >= 3) {
+          stateRef.current.x = triples[L - 3];
+          stateRef.current.y = triples[L - 2];
+          stateRef.current.z = triples[L - 1];
+        }
+      } else {
+        const steps = Math.max(
+          1,
+          Math.min(8000, Math.round(freqRef.current * dtSeconds))
+        );
+        const st = stateRef.current;
+        for (let i = 0; i < steps; i++) {
+          const dx = sigma * (st.y - st.x);
+          const dy = st.x * (rho - st.z) - st.y;
+          const dz = st.x * st.y - beta * st.z;
+          st.x += dx * dt;
+          st.y += dy * dt;
+          st.z += dz * dt;
+          // explosion guard
+          if (!isFinite(st.x) || Math.abs(st.x) > 1e4) {
+            st.x = 0.01; st.y = 0; st.z = 0;
+            prevPx = null; prevPy = null;
+            break;
+          }
+          triples.push(st.x, st.y, st.z);
+        }
+      }
 
-        // Center attractor at origin, rotate, then project
-        const x0 = x;
-        const y0 = y;
-        const z0 = z - 45;
+      for (let i = 0; i < triples.length; i += 3) {
+        const x0 = triples[i];
+        const y0 = triples[i + 1];
+        const z0 = triples[i + 2] - 45;
         // Rotate around Y axis
         const xr = x0 * cosY + z0 * sinY;
         const zr = -x0 * sinY + z0 * cosY;
@@ -638,12 +670,23 @@ class LorenzProcessor extends AudioWorkletProcessor {
     this.sigma = 16; this.rho = 45.92; this.beta = 4; this.dt = 0.003;
     // simple DC blockers per channel
     this.lx = 0; this.ly = 0; this.px = 0; this.py = 0;
+    // visual decimation: every Nth sample is sent to main thread
+    this.decim = 32; this.dCount = 0;
+    this.batch = new Float32Array(768); // up to 256 triples
+    this.bIdx = 0;
     this.port.onmessage = (e) => {
       const d = e.data;
+      if (d.type === 'reset') {
+        this.x = 0.01; this.y = 0; this.z = 0;
+        this.lx = 0; this.ly = 0; this.px = 0; this.py = 0;
+        this.bIdx = 0;
+        return;
+      }
       if (d.sigma !== undefined) this.sigma = d.sigma;
       if (d.rho !== undefined) this.rho = d.rho;
       if (d.beta !== undefined) this.beta = d.beta;
       if (d.dt !== undefined) this.dt = d.dt;
+      if (d.decim !== undefined) this.decim = Math.max(1, d.decim|0);
     };
   }
   process(_, outputs) {
@@ -656,6 +699,11 @@ class LorenzProcessor extends AudioWorkletProcessor {
       const dy = this.x*(r-this.z)-this.y;
       const dz = this.x*this.y-b*this.z;
       this.x += dx*dt; this.y += dy*dt; this.z += dz*dt;
+      // explosion / NaN guard
+      if (!isFinite(this.x) || Math.abs(this.x) > 1e4) {
+        this.x = 0.01; this.y = 0; this.z = 0;
+        this.lx = 0; this.ly = 0; this.px = 0; this.py = 0;
+      }
       // normalize roughly to [-1,1]
       const sx = this.x * 0.035;
       const sy = this.y * 0.035;
@@ -665,6 +713,18 @@ class LorenzProcessor extends AudioWorkletProcessor {
       this.px = sx; this.py = sy; this.lx = ox; this.ly = oy;
       L[i] = Math.max(-1, Math.min(1, ox));
       R[i] = Math.max(-1, Math.min(1, oy));
+      if (++this.dCount >= this.decim) {
+        this.dCount = 0;
+        if (this.bIdx + 3 <= this.batch.length) {
+          this.batch[this.bIdx++] = this.x;
+          this.batch[this.bIdx++] = this.y;
+          this.batch[this.bIdx++] = this.z;
+        }
+      }
+    }
+    if (this.bIdx > 0) {
+      this.port.postMessage({ pts: this.batch.slice(0, this.bIdx) });
+      this.bIdx = 0;
     }
     return true;
   }
@@ -683,23 +743,39 @@ registerProcessor('lorenz', LorenzProcessor);
       const gain = ctx.createGain();
       gain.gain.value = volumeRef.current;
       node.connect(gain).connect(ctx.destination);
+      // Compute decimation: target ~freqRef visual points/sec, capped
+      const targetVisRate = Math.max(60, Math.min(4000, freqRef.current));
+      const decim = Math.max(1, Math.round(ctx.sampleRate / targetVisRate));
       node.port.postMessage({
         sigma: sigmaRef.current,
         rho: rhoRef.current,
         beta: betaRef.current,
         dt: (freqRef.current * 0.006) / ctx.sampleRate,
+        decim,
       });
+      node.port.onmessage = (e) => {
+        const pts = e.data && e.data.pts;
+        if (!pts) return;
+        const q = ptsQueueRef.current;
+        for (let i = 0; i < pts.length; i++) q.push(pts[i]);
+        // cap queue growth (~2s of points at 4000/s)
+        const max = 8000 * 3;
+        if (q.length > max) q.splice(0, q.length - max);
+      };
       audioRef.current = { ctx, node, gain };
       setAudioOn(true);
       // push param updates ~30Hz
       const id = window.setInterval(() => {
         const a = audioRef.current;
         if (!a) { window.clearInterval(id); return; }
+        const tvr = Math.max(60, Math.min(4000, freqRef.current));
+        const dc = Math.max(1, Math.round(a.ctx.sampleRate / tvr));
         a.node.port.postMessage({
           sigma: sigmaRef.current,
           rho: rhoRef.current,
           beta: betaRef.current,
           dt: (freqRef.current * 0.006) / a.ctx.sampleRate,
+          decim: dc,
         });
       }, 33);
     } catch (err) {
@@ -725,6 +801,28 @@ registerProcessor('lorenz', LorenzProcessor);
         0.01
       );
     }
+    setTick((n) => n + 1);
+  };
+
+  // Reset coefficients, integrator state, and audio engine — recovers
+  // from chaotic collapse / explosion / silenced denormals.
+  const resetAll = () => {
+    sigmaRef.current = 16;
+    rhoRef.current = 45.92;
+    betaRef.current = 4;
+    freqRef.current = 1440;
+    stateRef.current = { x: 0.01, y: 0, z: 0 };
+    ptsQueueRef.current.length = 0;
+    if (audioRef.current) {
+      audioRef.current.node.port.postMessage({ type: "reset" });
+      audioRef.current.node.port.postMessage({
+        sigma: sigmaRef.current,
+        rho: rhoRef.current,
+        beta: betaRef.current,
+        dt: (freqRef.current * 0.006) / audioRef.current.ctx.sampleRate,
+      });
+    }
+    setResetSeq((n) => n + 1);
     setTick((n) => n + 1);
   };
 
@@ -754,6 +852,7 @@ registerProcessor('lorenz', LorenzProcessor);
           <label className="flex items-center gap-1">
             σ=
             <input
+              key={`sigma-${resetSeq}`}
               type="number"
               step="0.1"
               defaultValue={sigmaRef.current}
@@ -767,6 +866,7 @@ registerProcessor('lorenz', LorenzProcessor);
           <label className="flex items-center gap-1">
             ρ=
             <input
+              key={`rho-${resetSeq}`}
               type="number"
               step="0.1"
               defaultValue={rhoRef.current}
@@ -780,6 +880,7 @@ registerProcessor('lorenz', LorenzProcessor);
           <label className="flex items-center gap-1">
             β=
             <input
+              key={`beta-${resetSeq}`}
               type="number"
               step="0.1"
               defaultValue={betaRef.current}
@@ -805,6 +906,16 @@ registerProcessor('lorenz', LorenzProcessor);
               }
             />
           </label>
+          <button
+            type="button"
+            onClick={resetAll}
+            className="ml-1 flex items-center gap-1 rounded-full border border-border/60 px-2 py-1 text-muted-foreground hover:text-scope hover:border-scope/60 transition-colors"
+            title="Reset coefficients, integrator state, and audio engine"
+            aria-label="Reset"
+          >
+            <RotateCcw className="h-3 w-3" />
+            <span className="text-[10px] tracking-[0.15em]">reset</span>
+          </button>
         </div>
         <span className="tabular-nums text-scope/80">
           rX={radToDeg(rotXRef.current)}° rY={wrapDeg((rotYRef.current * 180) / Math.PI)}°
