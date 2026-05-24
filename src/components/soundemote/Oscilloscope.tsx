@@ -182,8 +182,15 @@ export const Oscilloscope = () => {
       const beforeTY = panTargetYRef.current;
       panTargetXRef.current = wrap(beforeTX, w);
       panTargetYRef.current = wrap(beforeTY, h);
+      const wrappedX = panTargetXRef.current !== beforeTX;
+      const wrappedY = panTargetYRef.current !== beforeTY;
       panXRef.current += panTargetXRef.current - beforeTX;
       panYRef.current += panTargetYRef.current - beforeTY;
+      if (wrappedX || wrappedY) {
+        // Break the trail so the next segment doesn't streak across screen
+        prevPx = null;
+        prevPy = null;
+      }
       // Critically-damped lerp toward drag target for smooth pan
       const panLerp = 1 - Math.pow(0.001, dtSeconds);
       panXRef.current += (panTargetXRef.current - panXRef.current) * panLerp;
