@@ -18,6 +18,9 @@ export const Oscilloscope = () => {
   const sigmaRef = useRef(16);
   const rhoRef = useRef(45.92);
   const betaRef = useRef(4);
+  // Steps per second of Lorenz integration. ~1440 matches the old
+  // 24 steps/frame @ 60fps. Range covers slow drift → audio-rate buzz.
+  const freqRef = useRef(1440);
   const [, setTick] = useState(0); // force re-render of overlay labels
 
   useEffect(() => {
@@ -229,7 +232,7 @@ export const Oscilloscope = () => {
     let y = 0;
     let z = 0;
     const dt = 0.006;
-    const stepsPerFrame = 24;
+    // stepsPerFrame is computed each frame from freqRef + dtSeconds
     // Base scale chosen so zoom=1.0 shows the attractor at its most readable "default" size.
     // (What used to render at 0.3x zoom is now the 1.0x baseline.)
     const scale = 0.018 * 0.3 * 0.3;
@@ -377,6 +380,10 @@ export const Oscilloscope = () => {
       if (prevPx !== null && prevPy !== null) {
         pts.push((prevPx / w) * 2 - 1, 1 - (prevPy / h) * 2);
       }
+      const stepsPerFrame = Math.max(
+        1,
+        Math.min(8000, Math.round(freqRef.current * dtSeconds))
+      );
       for (let i = 0; i < stepsPerFrame; i++) {
         // Runge-Kutta-ish: simple Euler is fine at this dt
         const dx = sigma * (y - x);
