@@ -9,6 +9,9 @@ export const Oscilloscope = () => {
   const rotYRef = useRef(0);    // spin
   const autoSpinRef = useRef(true);
   const traceWidthRef = useRef(2.2);
+  const sigmaRef = useRef(16);
+  const rhoRef = useRef(45.92);
+  const betaRef = useRef(4);
   const [, setTick] = useState(0); // force re-render of overlay labels
 
   useEffect(() => {
@@ -33,10 +36,6 @@ export const Oscilloscope = () => {
     resize();
     window.addEventListener("resize", resize);
 
-    // Lorenz system — alternative chaotic regime (tighter, more elegant double scroll)
-    const sigma = 16;
-    const rho = 45.92;
-    const beta = 4;
     let x = 0.01;
     let y = 0;
     let z = 0;
@@ -92,6 +91,10 @@ export const Oscilloscope = () => {
 
       if (autoSpinRef.current) rotYRef.current += 0.003;
 
+      const sigma = sigmaRef.current;
+      const rho = rhoRef.current;
+      const beta = betaRef.current;
+
       const cosY = Math.cos(rotYRef.current);
       const sinY = Math.sin(rotYRef.current);
       const cosX = Math.cos(rotXRef.current);
@@ -145,8 +148,11 @@ export const Oscilloscope = () => {
       raf = requestAnimationFrame(draw);
     };
     draw();
+    // Periodically refresh overlay labels (rotation read-outs)
+    const labelTimer = window.setInterval(() => setTick((n) => n + 1), 100);
     return () => {
       cancelAnimationFrame(raf);
+      window.clearInterval(labelTimer);
       window.removeEventListener("resize", resize);
       canvas.removeEventListener("pointerdown", onDown);
       window.removeEventListener("pointermove", onMove);
@@ -165,16 +171,69 @@ export const Oscilloscope = () => {
     setTick((n) => n + 1);
   };
 
+  const radToDeg = (r: number) => ((r * 180) / Math.PI).toFixed(0);
+  const wrapDeg = (d: number) => {
+    let v = d % 360;
+    if (v > 180) v -= 360;
+    if (v < -180) v += 360;
+    return v.toFixed(0);
+  };
+
+  const coeffInputClass =
+    "w-12 bg-transparent border-b border-border/40 focus:border-scope outline-none text-foreground tabular-nums text-center";
+
   return (
     <div className="relative h-full w-full overflow-hidden rounded-xl border border-border bg-[var(--gradient-panel)] scope-grid">
       {/* Top bar */}
-      <div className="flex items-center justify-between border-b border-border/60 px-4 py-2 mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+      <div className="flex items-center justify-between gap-4 border-b border-border/60 px-4 py-2 mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
         <div className="flex items-center gap-2">
           <span className="h-1.5 w-1.5 rounded-full bg-scope animate-pulse-glow" />
           xy scope · lorenz
         </div>
-        <span>σ=16 ρ=45.92 β=4</span>
-        <span className="text-scope">● rec</span>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-1">
+            σ=
+            <input
+              type="number"
+              step="0.1"
+              defaultValue={sigmaRef.current}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                if (!Number.isNaN(v)) sigmaRef.current = v;
+              }}
+              className={coeffInputClass}
+            />
+          </label>
+          <label className="flex items-center gap-1">
+            ρ=
+            <input
+              type="number"
+              step="0.1"
+              defaultValue={rhoRef.current}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                if (!Number.isNaN(v)) rhoRef.current = v;
+              }}
+              className={coeffInputClass}
+            />
+          </label>
+          <label className="flex items-center gap-1">
+            β=
+            <input
+              type="number"
+              step="0.1"
+              defaultValue={betaRef.current}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                if (!Number.isNaN(v)) betaRef.current = v;
+              }}
+              className={coeffInputClass}
+            />
+          </label>
+        </div>
+        <span className="tabular-nums text-scope/80">
+          rX={radToDeg(rotXRef.current)}° rY={wrapDeg((rotYRef.current * 180) / Math.PI)}°
+        </span>
       </div>
       <canvas
         ref={canvasRef}
