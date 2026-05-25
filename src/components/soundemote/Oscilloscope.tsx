@@ -154,10 +154,21 @@ const DragNumber = ({
   );
 };
 
-export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {}) => {
+export const Oscilloscope = ({
+  kind = "lorenz",
+  traceColor,
+  bgColor,
+}: {
+  kind?: AttractorKind;
+  traceColor?: [number, number, number];
+  bgColor?: [number, number, number];
+} = {}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Live attractor selection (held in ref so the rAF loop reads latest value).
   const kindRef = useRef<AttractorKind>(kind);
+  // Live colors (rAF loop reads latest)
+  const traceColorRef = useRef<[number, number, number]>(traceColor ?? [0.18, 0.95, 0.42]);
+  const bgColorRef = useRef<[number, number, number]>(bgColor ?? [0, 0, 0]);
   // Live params held in refs so the rAF loop reads the latest values
   const zoomRef = useRef(1);
   const zoomTargetRef = useRef(1);
