@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Minus, Plus, Volume2, VolumeX, RotateCcw } from "lucide-react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { Minus, Plus, Volume2, VolumeX } from "lucide-react";
 import {
   ATTRACTORS,
   attractorStepFns,
