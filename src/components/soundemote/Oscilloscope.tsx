@@ -955,6 +955,16 @@ class AttractorProcessor extends AudioWorkletProcessor {
     this.prevX = this.x; this.prevY = this.y; this.prevZ = this.z;
     this.batch = new Float32Array(2400); // up to 800 triples
     this.bIdx = 0;
+    // Optional SharedArrayBuffer ring (set by 'sab' message). When present
+    // we write triples lock-free into a SPSC ring and skip postMessage
+    // entirely — the main thread polls via Atomics each rAF.
+    // Layout:
+    //   ctrl: Int32Array(2) = [writeIdx, readIdx] in float positions
+    //         (always multiples of 3). cap is data.length.
+    //   data: Float32Array(cap) of interleaved x,y,z triples.
+    this.sabCtrl = null;
+    this.sabData = null;
+    this.sabCap = 0;
     this.port.onmessage = (e) => {
       const d = e.data;
       if (d.type === 'reset') {
@@ -991,6 +1001,11 @@ class AttractorProcessor extends AudioWorkletProcessor {
       if (d.rotYVel !== undefined) this.startLinearRamp('rotYVel', 'tRotYVel', 'rotYVelStep', 'rotYVelRemain', d.rotYVel, false);
       if (d.visRate !== undefined) this.visRate = Math.max(60, Math.min(20000, +d.visRate));
       if (d.smoothOn !== undefined) this.smoothOn = !!d.smoothOn;
+      if (d.sab !== undefined) {
+        this.sabCtrl = new Int32Array(d.sab.ctrl);
+        this.sabData = new Float32Array(d.sab.data);
+        this.sabCap = this.sabData.length;
+      }
     };
   }
   blockRampSamples() {
