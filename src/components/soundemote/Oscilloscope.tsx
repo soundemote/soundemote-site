@@ -1469,7 +1469,13 @@ registerProcessor('attractor', AttractorProcessor);
   };
 
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-xl border border-border bg-[var(--gradient-panel)] scope-grid">
+    <div className="relative h-full w-full flex items-stretch gap-2">
+      {/* Vertical zoom slider (outside the scope box) */}
+      <VerticalZoomBar
+        getZoom={() => zoomRef.current}
+        onSetFraction={setZoomFromFraction}
+      />
+      <div className="relative h-full flex-1 overflow-hidden rounded-xl border border-border bg-[var(--gradient-panel)] scope-grid">
       {/* Top bar */}
       <div className="flex items-center justify-between gap-4 border-b border-border/60 px-4 py-2 mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
         <div className="flex items-center gap-3">
@@ -1502,16 +1508,6 @@ registerProcessor('attractor', AttractorProcessor);
               }
             />
           </label>
-          <button
-            type="button"
-            onClick={resetAll}
-            className="ml-1 flex items-center gap-1 rounded-full border border-border/60 px-2 py-1 text-muted-foreground hover:text-scope hover:border-scope/60 transition-colors"
-            title="Reset coefficients, integrator state, and audio engine"
-            aria-label="Reset"
-          >
-            <RotateCcw className="h-3 w-3" />
-            <span className="text-[10px] tracking-[0.15em]">reset</span>
-          </button>
         </div>
       </div>
       <canvas
@@ -1521,25 +1517,16 @@ registerProcessor('attractor', AttractorProcessor);
       />
       {/* Controls */}
       <div className="absolute bottom-3 right-3 flex items-center gap-2">
-        <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-1.5 py-1 backdrop-blur-sm">
-          <HoldButton
-            onTick={(a) => adjustZoom(Math.pow(0.97, a))}
-            className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
-            ariaLabel="Zoom out"
-          >
-            <Minus className="h-3.5 w-3.5" />
-          </HoldButton>
-          <span className="mono text-[10px] tracking-[0.15em] text-muted-foreground tabular-nums w-10 text-center">
-            {zoomRef.current.toFixed(2)}x
-          </span>
-          <HoldButton
-            onTick={(a) => adjustZoom(Math.pow(1.03, a))}
-            className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
-            ariaLabel="Zoom in"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </HoldButton>
-        </div>
+        <button
+          type="button"
+          onClick={resetAll}
+          className="flex items-center gap-1 rounded-full border border-border/60 bg-background/70 backdrop-blur-sm px-2 py-1 text-muted-foreground hover:text-scope hover:border-scope/60 transition-colors"
+          title="Reset coefficients, integrator state, and audio engine"
+          aria-label="Reset"
+        >
+          <RotateCcw className="h-3 w-3" />
+          <span className="mono text-[10px] tracking-[0.15em]">reset</span>
+        </button>
         <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-1.5 py-1 backdrop-blur-sm">
           <HoldButton
             onTick={(a) => adjustTrace(-0.15 * a)}
