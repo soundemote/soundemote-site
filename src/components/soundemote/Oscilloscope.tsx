@@ -1113,41 +1113,20 @@ registerProcessor('attractor', AttractorProcessor);
           xy scope · {ATTRACTORS[kind].label}
         </div>
         <div className="flex items-center gap-3">
-          {kind === "lorenz" && <>
-          <label className="flex items-center gap-1">
-            σ=
-            <DragNumber
-              key={`sigma-${resetSeq}`}
-              value={sigmaRef.current}
-              onChange={(v) => { sigmaRef.current = v; setTick((n) => n + 1); }}
-              min={0}
-              max={200}
-              format={(v) => v.toFixed(2)}
-            />
-          </label>
-          <label className="flex items-center gap-1">
-            ρ=
-            <DragNumber
-              key={`rho-${resetSeq}`}
-              value={rhoRef.current}
-              onChange={(v) => { rhoRef.current = v; setTick((n) => n + 1); }}
-              min={0}
-              max={500}
-              format={(v) => v.toFixed(2)}
-            />
-          </label>
-          <label className="flex items-center gap-1">
-            β=
-            <DragNumber
-              key={`beta-${resetSeq}`}
-              value={betaRef.current}
-              onChange={(v) => { betaRef.current = v; setTick((n) => n + 1); }}
-              min={0}
-              max={50}
-              format={(v) => v.toFixed(2)}
-            />
-          </label>
-          </>}
+          {ATTRACTORS[kind].paramSchema.map((p, i) => (
+            <label key={`${kind}-p${i}`} className="flex items-center gap-1">
+              {p.label}=
+              <DragNumber
+                key={`${kind}-p${i}-${resetSeq}`}
+                value={paramsRef.current[i] ?? 0}
+                onChange={(v) => { paramsRef.current[i] = v; setTick((n) => n + 1); }}
+                min={p.min}
+                max={p.max}
+                mode={p.mode ?? "log"}
+                format={(v) => v.toFixed(p.precision ?? 2)}
+              />
+            </label>
+          ))}
           <label className="flex items-center gap-1">
             f=
             <DragNumber
