@@ -160,6 +160,7 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
   const kindRef = useRef<AttractorKind>(kind);
   // Live params held in refs so the rAF loop reads the latest values
   const zoomRef = useRef(1);
+  const zoomTargetRef = useRef(1);
   const rotXRef = useRef(0.35); // tilt
   const rotYRef = useRef(0);    // spin
   const autoSpinXRef = useRef(false);
@@ -499,8 +500,8 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
     };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const next = zoomRef.current * (e.deltaY < 0 ? 1.1 : 0.9);
-      zoomRef.current = Math.max(0.05, Math.min(20, next));
+      const next = zoomTargetRef.current * (e.deltaY < 0 ? 1.1 : 0.9);
+      zoomTargetRef.current = Math.max(0.05, Math.min(20, next));
       setTick((n) => n + 1);
     };
     canvas.addEventListener("pointerdown", onDown);
@@ -514,6 +515,11 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
       lastT = now;
       if (dtSeconds > 0.1) dtSeconds = 0.1; // clamp huge gaps (tab switch)
       const frameScale = Math.max(0.1, Math.min(8, dtSeconds * 60));
+
+      // Smooth zoom toward target (exponential lerp, longer half-life for
+      // a slower, more cinematic zoom feel).
+      const zoomLerp = 1 - Math.pow(0.02, dtSeconds);
+      zoomRef.current += (zoomTargetRef.current - zoomRef.current) * zoomLerp;
 
       const rect = canvas.getBoundingClientRect();
       const w = rect.width;
@@ -808,7 +814,7 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
   }, []);
 
   const adjustZoom = (factor: number) => {
-    zoomRef.current = Math.max(0.05, Math.min(20, zoomRef.current * factor));
+    zoomTargetRef.current = Math.max(0.05, Math.min(20, zoomTargetRef.current * factor));
     setTick((n) => n + 1);
   };
 
@@ -1297,7 +1303,7 @@ registerProcessor('attractor', AttractorProcessor);
         </div>
         <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-1.5 py-1 backdrop-blur-sm">
           <HoldButton
-            onTick={(a) => adjustDecay(-0.01 * a)}
+            onTick={(a) => adjustDecay(0.01 * a)}
             className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
             ariaLabel="Longer phosphor burn"
           >
@@ -1307,7 +1313,7 @@ registerProcessor('attractor', AttractorProcessor);
             burn{(1 - decayRef.current).toFixed(2)}
           </span>
           <HoldButton
-            onTick={(a) => adjustDecay(0.01 * a)}
+            onTick={(a) => adjustDecay(-0.01 * a)}
             className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
             ariaLabel="Shorter phosphor burn"
           >
