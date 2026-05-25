@@ -1016,6 +1016,8 @@ registerProcessor('attractor', AttractorProcessor);
           dt: (freqRef.current * def.dt) / ctx.sampleRate,
           rotX: rotXRef.current,
           rotY: rotYRef.current,
+          rotXVel: autoSpinXRef.current ? spinSpeedXRef.current * 60 : 0,
+          rotYVel: autoSpinYRef.current ? spinSpeedYRef.current * 60 : 0,
           decim,
           smoothOn: smoothingRef.current,
         });
@@ -1043,6 +1045,8 @@ registerProcessor('attractor', AttractorProcessor);
           dt: (freqRef.current * def.dt) / a.ctx.sampleRate,
           rotX: rotXRef.current,
           rotY: rotYRef.current,
+          rotXVel: autoSpinXRef.current ? spinSpeedXRef.current * 60 : 0,
+          rotYVel: autoSpinYRef.current ? spinSpeedYRef.current * 60 : 0,
           decim: dc,
           smoothOn: smoothingRef.current,
         });
