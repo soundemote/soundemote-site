@@ -14,7 +14,7 @@ const projects: Project[] = [
     name: "soemdsp-sandbox",
     status: "in development",
     blurb:
-      "Next-generation analog-emulative inustrument prototyping environment. Musical, sonically pleasing, aggressive filters, warm saturation, graphs, oscilloscopes, metaparameters, SIMD backend, easy to use for the average producer.",
+      "Next-generation analog-emulative audio plugin prototyping environment. Musical, sonically pleasing, aggressive filters, warm saturation, graphs, oscilloscopes, metaparameters, SIMD backend, easy to use for the average producer, open source, MIT license, no strings attached.",
     tags: ["instrument", "ecosystem", "soon"],
     accent: "accent",
   },
