@@ -75,6 +75,8 @@ const DragNumber = ({
   format,
   suffix,
   sensitivity = 0.008,
+  mode = "log",
+  linearStep,
 }: {
   value: number;
   onChange: (v: number) => void;
@@ -83,6 +85,8 @@ const DragNumber = ({
   format: (v: number) => string;
   suffix?: string;
   sensitivity?: number;
+  mode?: "log" | "linear";
+  linearStep?: number;
 }) => {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -100,9 +104,15 @@ const DragNumber = ({
     if (!(e.target as HTMLElement).hasPointerCapture?.(e.pointerId)) return;
     const dy = e.clientY - startRef.current.y;
     if (Math.abs(dy) > 2) movedRef.current = true;
-    // log-scale drag: dragging up multiplies, dragging down divides
-    const logV = Math.log(Math.max(1e-6, startRef.current.v));
-    const next = Math.exp(logV - dy * sensitivity);
+    let next: number;
+    if (mode === "linear") {
+      const step = linearStep ?? (max - min) * 0.004;
+      next = startRef.current.v - dy * step;
+    } else {
+      // log-scale drag: dragging up multiplies, dragging down divides
+      const logV = Math.log(Math.max(1e-6, startRef.current.v));
+      next = Math.exp(logV - dy * sensitivity);
+    }
     onChange(Math.max(min, Math.min(max, next)));
   };
   const onUp = (e: React.PointerEvent<HTMLSpanElement>) => {
@@ -164,9 +174,8 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
   const decayRef = useRef(0.45);
   const spinSpeedXRef = useRef(0);
   const spinSpeedYRef = useRef(0.003);
-  const sigmaRef = useRef(16);
-  const rhoRef = useRef(45.92);
-  const betaRef = useRef(4);
+  // Live coefficient values for the *current* attractor (parallel to its paramSchema).
+  const paramsRef = useRef<number[]>([...ATTRACTORS[kind].params]);
   // Steps per second of Lorenz integration. ~1440 matches the old
   // 24 steps/frame @ 60fps. Range covers slow drift → audio-rate buzz.
   const freqRef = useRef(1440);
@@ -415,9 +424,8 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
     // Phosphor decay is now driven by decayRef via the fade shader uniforms.
     // Smoothed shadows of the coefficients used by the visual fallback
     // integrator. The audio worklet smooths internally per-sample.
-    let sSigma = sigmaRef.current;
-    let sRho = rhoRef.current;
-    let sBeta = betaRef.current;
+    // Smoothed shadow of the active attractor's coefficient array.
+    let sParams: number[] = paramsRef.current.slice();
     let sFreq = freqRef.current;
 
     /* ---- Lanczos upsampler (DISABLED — failed experiment) ------------------ */
@@ -572,13 +580,12 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
       const smooth = smoothingRef.current
         ? 1 - Math.exp(-dtSeconds / 0.030)
         : 1;
-      sSigma += (sigmaRef.current - sSigma) * smooth;
-      sRho   += (rhoRef.current   - sRho)   * smooth;
-      sBeta  += (betaRef.current  - sBeta)  * smooth;
+      const target = paramsRef.current;
+      if (sParams.length !== target.length) sParams = target.slice();
+      for (let i = 0; i < target.length; i++) {
+        sParams[i] += (target[i] - sParams[i]) * smooth;
+      }
       sFreq  += (freqRef.current  - sFreq)  * smooth;
-      const sigma = sSigma;
-      const rho = sRho;
-      const beta = sBeta;
 
       const cosY = Math.cos(rotYRef.current);
       const sinY = Math.sin(rotYRef.current);
@@ -613,7 +620,7 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
       } else {
         const def = ATTRACTORS[kindRef.current];
         const stepFn = attractorStepFns[def.id];
-        const params = def.id === "lorenz" ? [sigma, rho, beta] : def.params;
+        const params = sParams;
         const dtA = def.dt;
         const steps = Math.max(
           1,
@@ -838,12 +845,11 @@ class AttractorProcessor extends AudioWorkletProcessor {
     super();
     this.kind = 'lorenz';
     this.x = 0.01; this.y = 0; this.z = 0;
-    // params array used by step (per-attractor coefficients)
-    this.params = [16, 45.92, 4];
-    // For Lorenz we still want per-param smoothing so the σ/ρ/β knobs feel
-    // continuous; for other attractors params are fixed.
-    this.sigma = 16; this.rho = 45.92; this.beta = 4; this.dt = 0.003;
-    this.tSigma = 16; this.tRho = 45.92; this.tBeta = 4; this.tDt = 0.003;
+    // Smoothed coefficient array used by the step. tParams is the target
+    // (what the UI just set); params chases it via the per-sample smoother.
+    this.params  = [16, 45.92, 4];
+    this.tParams = [16, 45.92, 4];
+    this.dt = 0.003; this.tDt = 0.003;
     // visual / audio scaling
     this.zOffset = 45; this.audioScale = 0.035;
     // 3D rotation (radians) — mirrors the visual projection so the audio
@@ -868,19 +874,22 @@ class AttractorProcessor extends AudioWorkletProcessor {
         this.bIdx = 0;
         // snap smoothed values to targets on reset
         if (d.snap) {
-          this.sigma = this.tSigma; this.rho = this.tRho;
-          this.beta = this.tBeta; this.dt = this.tDt;
+          for (let i = 0; i < this.tParams.length; i++) this.params[i] = this.tParams[i];
+          this.dt = this.tDt;
         }
         return;
       }
       if (d.kind !== undefined) this.kind = d.kind;
-      if (d.params !== undefined) this.params = d.params.slice();
+      if (d.params !== undefined) {
+        this.tParams = d.params.slice();
+        // resize / snap params array if length changed (attractor switch)
+        if (this.params.length !== this.tParams.length) {
+          this.params = this.tParams.slice();
+        }
+      }
       if (d.init !== undefined) { this.x = d.init.x; this.y = d.init.y; this.z = d.init.z; }
       if (d.zOffset !== undefined) this.zOffset = d.zOffset;
       if (d.audioScale !== undefined) this.audioScale = d.audioScale;
-      if (d.sigma !== undefined) this.tSigma = d.sigma;
-      if (d.rho !== undefined) this.tRho = d.rho;
-      if (d.beta !== undefined) this.tBeta = d.beta;
       if (d.dt !== undefined) this.tDt = d.dt;
       if (d.rotX !== undefined) this.tRotX = d.rotX;
       if (d.rotY !== undefined) this.tRotY = d.rotY;
@@ -899,10 +908,10 @@ class AttractorProcessor extends AudioWorkletProcessor {
     const k = this.smoothOn ? this.smooth : 1;
     for (let i = 0; i < n; i++) {
       // per-sample smoothing of params (denormal-safe: targets are O(1))
-      this.sigma += (this.tSigma - this.sigma) * k;
-      this.rho   += (this.tRho   - this.rho)   * k;
-      this.beta  += (this.tBeta  - this.beta)  * k;
-      this.dt    += (this.tDt    - this.dt)    * k;
+      for (let p = 0; p < this.params.length; p++) {
+        this.params[p] += (this.tParams[p] - this.params[p]) * k;
+      }
+      this.dt += (this.tDt - this.dt) * k;
       // rotation smoothing — wrap delta into [-π,π] so spinning across
       // the seam doesn't cause a long lerp around the circle.
       let drX = this.tRotX - this.rotX;
@@ -913,11 +922,6 @@ class AttractorProcessor extends AudioWorkletProcessor {
       this.rotX += drX * k;
       this.rotY += drY * k;
       const dt = this.dt;
-      // For Lorenz, mirror the smoothed σ/ρ/β knobs into params so the
-      // user's drag-edits take effect; other attractors keep fixed params.
-      if (this.kind === 'lorenz') {
-        this.params[0] = this.sigma; this.params[1] = this.rho; this.params[2] = this.beta;
-      }
       switch (this.kind) {
       ${stepCases}
       }
@@ -979,15 +983,10 @@ registerProcessor('attractor', AttractorProcessor);
         const def = ATTRACTORS[kindRef.current];
         node.port.postMessage({
           kind: def.id,
-          params: def.id === "lorenz"
-            ? [sigmaRef.current, rhoRef.current, betaRef.current]
-            : def.params,
+          params: paramsRef.current.slice(),
           init: def.init,
           zOffset: def.zOffset,
           audioScale: def.audioScale,
-          sigma: sigmaRef.current,
-          rho: rhoRef.current,
-          beta: betaRef.current,
           dt: (freqRef.current * def.dt) / ctx.sampleRate,
           rotX: rotXRef.current,
           rotY: rotYRef.current,
@@ -1014,9 +1013,7 @@ registerProcessor('attractor', AttractorProcessor);
         const dc = Math.max(1, Math.round(a.ctx.sampleRate / tvr));
         const def = ATTRACTORS[kindRef.current];
         a.node.port.postMessage({
-          sigma: sigmaRef.current,
-          rho: rhoRef.current,
-          beta: betaRef.current,
+          params: paramsRef.current.slice(),
           dt: (freqRef.current * def.dt) / a.ctx.sampleRate,
           rotX: rotXRef.current,
           rotY: rotYRef.current,
@@ -1057,18 +1054,12 @@ registerProcessor('attractor', AttractorProcessor);
     kindRef.current = kind;
     stateRef.current = { ...def.init };
     ptsQueueRef.current.length = 0;
-    if (def.id === "lorenz") {
-      sigmaRef.current = def.params[0];
-      rhoRef.current = def.params[1];
-      betaRef.current = def.params[2];
-    }
+    paramsRef.current = [...def.params];
     if (audioRef.current) {
       const { ctx, node } = audioRef.current;
       node.port.postMessage({
         kind: def.id,
-        params: def.id === "lorenz"
-          ? [sigmaRef.current, rhoRef.current, betaRef.current]
-          : def.params,
+        params: paramsRef.current.slice(),
         init: def.init,
         zOffset: def.zOffset,
         audioScale: def.audioScale,
@@ -1084,20 +1075,14 @@ registerProcessor('attractor', AttractorProcessor);
   // from chaotic collapse / explosion / silenced denormals.
   const resetAll = () => {
     const def = ATTRACTORS[kindRef.current];
-    if (def.id === "lorenz") {
-      sigmaRef.current = def.params[0];
-      rhoRef.current = def.params[1];
-      betaRef.current = def.params[2];
-    }
+    paramsRef.current = [...def.params];
     freqRef.current = 1440;
     stateRef.current = { ...def.init };
     ptsQueueRef.current.length = 0;
     if (audioRef.current) {
       audioRef.current.node.port.postMessage({ type: "reset", init: def.init });
       audioRef.current.node.port.postMessage({
-        sigma: sigmaRef.current,
-        rho: rhoRef.current,
-        beta: betaRef.current,
+        params: paramsRef.current.slice(),
         dt: (freqRef.current * def.dt) / audioRef.current.ctx.sampleRate,
       });
     }
@@ -1128,41 +1113,20 @@ registerProcessor('attractor', AttractorProcessor);
           xy scope · {ATTRACTORS[kind].label}
         </div>
         <div className="flex items-center gap-3">
-          {kind === "lorenz" && <>
-          <label className="flex items-center gap-1">
-            σ=
-            <DragNumber
-              key={`sigma-${resetSeq}`}
-              value={sigmaRef.current}
-              onChange={(v) => { sigmaRef.current = v; setTick((n) => n + 1); }}
-              min={0}
-              max={200}
-              format={(v) => v.toFixed(2)}
-            />
-          </label>
-          <label className="flex items-center gap-1">
-            ρ=
-            <DragNumber
-              key={`rho-${resetSeq}`}
-              value={rhoRef.current}
-              onChange={(v) => { rhoRef.current = v; setTick((n) => n + 1); }}
-              min={0}
-              max={500}
-              format={(v) => v.toFixed(2)}
-            />
-          </label>
-          <label className="flex items-center gap-1">
-            β=
-            <DragNumber
-              key={`beta-${resetSeq}`}
-              value={betaRef.current}
-              onChange={(v) => { betaRef.current = v; setTick((n) => n + 1); }}
-              min={0}
-              max={50}
-              format={(v) => v.toFixed(2)}
-            />
-          </label>
-          </>}
+          {ATTRACTORS[kind].paramSchema.map((p, i) => (
+            <label key={`${kind}-p${i}`} className="flex items-center gap-1">
+              {p.label}=
+              <DragNumber
+                key={`${kind}-p${i}-${resetSeq}`}
+                value={paramsRef.current[i] ?? 0}
+                onChange={(v) => { paramsRef.current[i] = v; setTick((n) => n + 1); }}
+                min={p.min}
+                max={p.max}
+                mode={p.mode ?? "log"}
+                format={(v) => v.toFixed(p.precision ?? 2)}
+              />
+            </label>
+          ))}
           <label className="flex items-center gap-1">
             f=
             <DragNumber

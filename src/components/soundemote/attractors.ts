@@ -6,10 +6,19 @@ export type AttractorKind = "lorenz" | "aizawa" | "halvorsen" | "thomas" | "chen
 
 export type AttractorState = { x: number; y: number; z: number };
 
+export type AttractorParam = {
+  label: string;
+  min: number;
+  max: number;
+  mode?: "log" | "linear";
+  precision?: number;
+};
+
 export type AttractorDef = {
   id: AttractorKind;
   label: string;
   params: number[];      // coefficients used by step
+  paramSchema: AttractorParam[]; // UI metadata, parallel to params
   init: AttractorState;  // initial state on reset
   dt: number;            // Euler step size (visual + audio)
   viewScale: number;     // multiplier on the on-screen size
@@ -59,30 +68,54 @@ export const ATTRACTORS: Record<AttractorKind, AttractorDef> = {
   lorenz: {
     id: "lorenz", label: "lorenz",
     params: [16, 45.92, 4],
+    paramSchema: [
+      { label: "σ", min: 0.01, max: 200, mode: "log", precision: 2 },
+      { label: "ρ", min: 0.01, max: 500, mode: "log", precision: 2 },
+      { label: "β", min: 0.01, max: 50,  mode: "log", precision: 2 },
+    ],
     init: { x: 0.01, y: 0, z: 0 },
     dt: 0.006, viewScale: 1.0, zOffset: 45, audioScale: 0.035,
   },
   aizawa: {
     id: "aizawa", label: "aizawa",
     params: [0.95, 0.7, 0.6, 3.5, 0.25, 0.1],
+    paramSchema: [
+      { label: "a", min: 0.01, max: 5,  mode: "log",    precision: 3 },
+      { label: "b", min: 0.01, max: 5,  mode: "log",    precision: 3 },
+      { label: "c", min: 0.01, max: 5,  mode: "log",    precision: 3 },
+      { label: "d", min: 0.01, max: 10, mode: "log",    precision: 3 },
+      { label: "e", min: 0.01, max: 2,  mode: "log",    precision: 3 },
+      { label: "f", min: 0.01, max: 2,  mode: "log",    precision: 3 },
+    ],
     init: { x: 0.1, y: 0, z: 0 },
     dt: 0.01, viewScale: 12, zOffset: 0, audioScale: 0.6,
   },
   halvorsen: {
     id: "halvorsen", label: "halvorsen",
     params: [1.4],
+    paramSchema: [
+      { label: "a", min: 0.05, max: 5, mode: "log", precision: 3 },
+    ],
     init: { x: 1, y: 0, z: 0 },
     dt: 0.005, viewScale: 1.5, zOffset: 0, audioScale: 0.12,
   },
   thomas: {
     id: "thomas", label: "thomas",
     params: [0.19],
+    paramSchema: [
+      { label: "b", min: 0.005, max: 2, mode: "log", precision: 3 },
+    ],
     init: { x: 0.1, y: 0, z: 0 },
     dt: 0.05, viewScale: 4, zOffset: 0, audioScale: 0.3,
   },
   chenlee: {
     id: "chenlee", label: "chenlee",
     params: [5, -10, -0.38],
+    paramSchema: [
+      { label: "a", min: -20, max: 20,  mode: "linear", precision: 3 },
+      { label: "b", min: -20, max: 20,  mode: "linear", precision: 3 },
+      { label: "c", min: -5,  max: 5,   mode: "linear", precision: 3 },
+    ],
     init: { x: 1, y: 0, z: 4.5 },
     dt: 0.002, viewScale: 0.5, zOffset: 0, audioScale: 0.04,
   },
