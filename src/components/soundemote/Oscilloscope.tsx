@@ -567,10 +567,18 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
         prevPy = null;
         resetUpsampler();
       }
-      // Critically-damped lerp toward drag target for smooth pan
-      const panLerp = 1 - Math.pow(0.001, dtSeconds);
-      panXRef.current += (panTargetXRef.current - panXRef.current) * panLerp;
-      panYRef.current += (panTargetYRef.current - panYRef.current) * panLerp;
+      // Linear smoother (port of soemdsp::filter::LinearSmoother): constant
+      // velocity toward the target, snap on overshoot. Increment is recomputed
+      // each frame against the current target so drag/inertia stay responsive.
+      const panSmoothTime = 0.12; // seconds to traverse current gap
+      const incX = (panTargetXRef.current - panXRef.current) / panSmoothTime;
+      const incY = (panTargetYRef.current - panYRef.current) / panSmoothTime;
+      const nextPanX = panXRef.current + incX * dtSeconds;
+      const nextPanY = panYRef.current + incY * dtSeconds;
+      const overshotX = incX > 0 ? nextPanX > panTargetXRef.current : nextPanX < panTargetXRef.current;
+      const overshotY = incY > 0 ? nextPanY > panTargetYRef.current : nextPanY < panTargetYRef.current;
+      panXRef.current = overshotX ? panTargetXRef.current : nextPanX;
+      panYRef.current = overshotY ? panTargetYRef.current : nextPanY;
       const cx = w / 2 + panXRef.current;
       const cy = h / 2 + panYRef.current;
 
