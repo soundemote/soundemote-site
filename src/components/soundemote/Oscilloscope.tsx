@@ -1277,9 +1277,6 @@ registerProcessor('lorenz', LorenzProcessor);
           )}
         </label>
       </div>
-      <div className="pointer-events-none absolute bottom-3 left-3 mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/70">
-        drag to pan · scroll to zoom
-      </div>
     </div>
   );
 };

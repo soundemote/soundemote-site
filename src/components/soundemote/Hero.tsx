@@ -30,6 +30,9 @@ export const Hero = () => (
       <div className="relative aspect-[5/4] w-full max-w-xl mx-auto mt-16 animate-fade-in [animation-delay:200ms]">
         <Oscilloscope />
       </div>
+      <div className="max-w-xl mx-auto mt-2 flex justify-start mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/70">
+        drag to pan · scroll to zoom
+      </div>
       <div className="mt-12 grid grid-cols-3 max-w-md mx-auto gap-6 mono text-xs text-muted-foreground">
         <div>
           <div className="text-scope text-2xl display">04</div>
