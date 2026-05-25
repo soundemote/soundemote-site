@@ -11,10 +11,10 @@ type Project = {
 
 const projects: Project[] = [
   {
-    name: "hydrus",
+    name: "soemdsp-sandbox",
     status: "in development",
     blurb:
-      "Next-generation analog-emulative instrument. Still forming < check back as it grows.",
+      "Next-generation analog-emulative inustrument prototyping environment. Musical, sonically pleasing, aggressive filters, warm saturation, graphs, oscilloscopes, metaparameters, SIMD backend, easy to use for the average producer.",
     tags: ["instrument", "ecosystem", "soon"],
     accent: "accent",
   },
