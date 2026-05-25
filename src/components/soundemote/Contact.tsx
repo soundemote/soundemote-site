@@ -18,7 +18,7 @@ export const Contact = () => {
   return (
     <section id="contact" className="relative py-24 md:py-32 border-t border-border/40">
       <div className="container max-w-2xl text-center">
-        <p className="mono text-xs uppercase tracking-[0.3em] text-scope mb-4">// contact</p>
+        <p className="mono text-xs uppercase tracking-[0.3em] text-scope mb-4">/* contact */</p>
         <h2 className="display text-3xl md:text-5xl text-warm-white leading-tight">
           Say hello, share a signal.
         </h2>
