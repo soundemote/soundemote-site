@@ -120,20 +120,22 @@ export const Hero = () => {
           );
         })}
       </div>
-      <div className="w-fit mx-auto mt-3 flex items-stretch gap-0 animate-fade-in [animation-delay:200ms]">
-        <button
-          type="button"
-          onClick={() => scopeRef.current?.reset()}
-          className="flex flex-col items-center justify-center rounded-l-xl border border-r-0 border-red-500/30 bg-background/50 px-1.5 py-4 text-red-500/40 transition-colors hover:border-red-500 hover:text-red-400 mono text-[10px] uppercase tracking-[0.2em]"
-          title="Reset coefficients, integrator state, and audio engine"
-          aria-label="Reset"
-        >
-          <span>r</span>
-          <span>e</span>
-          <span>s</span>
-          <span>e</span>
-          <span>t</span>
-        </button>
+      <div className="w-fit mx-auto mt-3 flex items-start gap-0 animate-fade-in [animation-delay:200ms]">
+        <div className="relative aspect-[5/4] w-[36rem] max-w-[calc(100vw-6rem)] flex">
+          <button
+            type="button"
+            onClick={() => scopeRef.current?.reset()}
+            className="flex flex-col items-center justify-center self-stretch rounded-l-xl border border-r-0 border-red-500/30 bg-background/50 px-1.5 text-red-500/40 transition-colors hover:border-red-500 hover:text-red-400 mono text-[10px] uppercase tracking-[0.2em]"
+            title="Reset coefficients, integrator state, and audio engine"
+            aria-label="Reset"
+          >
+            <span>r</span>
+            <span>e</span>
+            <span>s</span>
+            <span>e</span>
+            <span>t</span>
+          </button>
+        </div>
         <div className="flex flex-col">
           <div className="relative aspect-[5/4] w-[36rem] max-w-[calc(100vw-6rem)]">
             <Oscilloscope ref={scopeRef} kind={kind} tracerColor={tracerColor} bgColor={bgColor} />
