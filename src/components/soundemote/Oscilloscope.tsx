@@ -662,18 +662,19 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
         }
       }
 
+      const defView = ATTRACTORS[kindRef.current];
       for (let i = 0; i < up.length; i += 3) {
         const x0 = up[i];
         const y0 = up[i + 1];
-        const z0 = up[i + 2] - 45;
+        const z0 = up[i + 2] - defView.zOffset;
         // Rotate around Y axis
         const xr = x0 * cosY + z0 * sinY;
         const zr = -x0 * sinY + z0 * cosY;
         // Rotate around X axis
         const yr = y0 * cosX - zr * sinX;
         // (zr2 unused for orthographic projection)
-        const px = cx + xr * s * 8;
-        const py = cy + yr * s * 8;
+        const px = cx + xr * s * 8 * defView.viewScale;
+        const py = cy + yr * s * 8 * defView.viewScale;
         pts.push((px / w) * 2 - 1, 1 - (py / h) * 2);
         prevPx = px;
         prevPy = py;
