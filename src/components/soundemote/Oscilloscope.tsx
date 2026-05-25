@@ -896,6 +896,7 @@ export const Oscilloscope = ({
     if (audioRef.current) {
       const a = audioRef.current;
       if (a.ctx.state === "suspended") await a.ctx.resume();
+      audioOnRef.current = true;
       setAudioOn(true);
       return;
     }
@@ -1128,6 +1129,7 @@ registerProcessor('attractor', AttractorProcessor);
         if (q.length > max) q.splice(0, q.length - max);
       };
       audioRef.current = { ctx, node, gain };
+      audioOnRef.current = true;
       setAudioOn(true);
       // push param updates ~30Hz
       const id = window.setInterval(() => {
@@ -1158,6 +1160,7 @@ registerProcessor('attractor', AttractorProcessor);
   const toggleAudio = async () => {
     if (audioOn && audioRef.current) {
       await audioRef.current.ctx.suspend();
+      audioOnRef.current = false;
       setAudioOn(false);
     } else {
       await enableAudio();
