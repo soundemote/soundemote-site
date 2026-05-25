@@ -132,6 +132,11 @@ All colors MUST be HSL.
   }
 }
 
+@keyframes rainbow-spin {
+  from { filter: hue-rotate(0deg); }
+  to { filter: hue-rotate(360deg); }
+}
+
 @layer base {
   * {
     @apply border-border;

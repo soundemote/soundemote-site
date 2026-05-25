@@ -102,7 +102,7 @@ export const Projects = () => (
             <div className="flex items-start justify-between mb-6">
               <div>
                 {p.name === "prettyscope" ? (
-                  <h3 className="display text-3xl bg-[linear-gradient(90deg,#ff5757,#ffb547,#ffe156,#7bd66a,#5ad1ff,#9d7bff,#ff7bdc)] bg-clip-text text-transparent">
+                  <h3 className="display text-3xl bg-[linear-gradient(90deg,#ff5757,#ffb547,#ffe156,#7bd66a,#5ad1ff,#9d7bff,#ff7bdc)] bg-clip-text text-transparent animate-[rainbow-spin_3s_linear_infinite]">
                     {p.name}
                   </h3>
                 ) : p.name === "asciiscope" ? (
