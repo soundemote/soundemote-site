@@ -72,6 +72,7 @@ export const Hero = () => {
   const [kind, setKind] = useState<AttractorKind>("lorenz");
   const [tracerColor, setTracerColor] = useState<HSL>({ h: 157, s: 0.84, l: 0.54 });
   const [bgColor, setBgColor] = useState<HSL>({ h: 0, s: 0, l: 0 });
+  const scopeRef = useRef<OscilloscopeRef>(null);
   return (
   <section id="top" className="relative overflow-hidden pt-32 pb-24 md:pt-40 md:pb-32">
     <div className="absolute inset-0 scope-grid opacity-40" aria-hidden />
