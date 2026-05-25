@@ -856,16 +856,18 @@ class AttractorProcessor extends AudioWorkletProcessor {
     // L/R channels correspond to what's on screen.
     this.rotX = 0; this.rotY = 0;
     this.tRotX = 0; this.tRotY = 0;
-    // per-sample rotation velocity (rad/sec). Continuous integration avoids
-    // the per-block derivative discontinuities that come from only smoothing
-    // a target position the main thread updates at ~30Hz (audible as clicks
-    // while spinning).
+    // per-sample rotation velocity (rad/sec).
     this.rotXVel = 0; this.rotYVel = 0;
     this.tRotXVel = 0; this.tRotYVel = 0;
+    // Linear ramp state for rotation smoothing. Ramp length is derived from
+    // the current audio block duration and set to 2 blocks.
+    this.blockSize = 128;
+    this.rotXStep = 0; this.rotYStep = 0;
+    this.rotXVelStep = 0; this.rotYVelStep = 0;
+    this.rotXRemain = 0; this.rotYRemain = 0;
+    this.rotXVelRemain = 0; this.rotYVelRemain = 0;
     // smoothing coefficient (~30ms time constant @ 48k → recomputed in process)
     this.smooth = 0;
-    // slower coefficient for rotation position correction (~120ms)
-    this.rotSmooth = 0;
     this.smoothOn = true;
     // 10Hz one-pole high-pass DC blocker per channel (soemdsp OnePoleHP / IIT).
     // y[n] = b0*x[n] - b0*x[n-1] + a1*y[n-1]
@@ -888,6 +890,10 @@ class AttractorProcessor extends AudioWorkletProcessor {
         else { this.x = 0.01; this.y = 0; this.z = 0; }
         this.dcXL = 0; this.dcYL = 0; this.dcXR = 0; this.dcYR = 0;
         this.bIdx = 0;
+        this.rotXStep = 0; this.rotYStep = 0;
+        this.rotXVelStep = 0; this.rotYVelStep = 0;
+        this.rotXRemain = 0; this.rotYRemain = 0;
+        this.rotXVelRemain = 0; this.rotYVelRemain = 0;
         // snap smoothed values to targets on reset
         if (d.snap) {
           for (let i = 0; i < this.tParams.length; i++) this.params[i] = this.tParams[i];
@@ -907,51 +913,70 @@ class AttractorProcessor extends AudioWorkletProcessor {
       if (d.zOffset !== undefined) this.zOffset = d.zOffset;
       if (d.audioScale !== undefined) this.audioScale = d.audioScale;
       if (d.dt !== undefined) this.tDt = d.dt;
-      if (d.rotX !== undefined) this.tRotX = d.rotX;
-      if (d.rotY !== undefined) this.tRotY = d.rotY;
-      if (d.rotXVel !== undefined) this.tRotXVel = d.rotXVel;
-      if (d.rotYVel !== undefined) this.tRotYVel = d.rotYVel;
+      if (d.rotX !== undefined) this.startLinearRamp('rotX', 'tRotX', 'rotXStep', 'rotXRemain', d.rotX, true);
+      if (d.rotY !== undefined) this.startLinearRamp('rotY', 'tRotY', 'rotYStep', 'rotYRemain', d.rotY, true);
+      if (d.rotXVel !== undefined) this.startLinearRamp('rotXVel', 'tRotXVel', 'rotXVelStep', 'rotXVelRemain', d.rotXVel, false);
+      if (d.rotYVel !== undefined) this.startLinearRamp('rotYVel', 'tRotYVel', 'rotYVelStep', 'rotYVelRemain', d.rotYVel, false);
       if (d.decim !== undefined) this.decim = Math.max(1, d.decim|0);
       if (d.smoothOn !== undefined) this.smoothOn = !!d.smoothOn;
     };
+  }
+  blockRampSamples() {
+    const blockTime = this.blockSize / sampleRate;
+    return Math.max(1, Math.round(blockTime * 2 * sampleRate));
+  }
+  shortestAngleDiff(target, current) {
+    const PI = Math.PI;
+    const TAU = 2 * PI;
+    let d = target - current;
+    if (d > PI) d -= TAU;
+    else if (d < -PI) d += TAU;
+    return d;
+  }
+  startLinearRamp(currentKey, targetKey, stepKey, remainKey, target, wrapAngle) {
+    this[targetKey] = target;
+    const rampSamples = this.blockRampSamples();
+    const delta = wrapAngle
+      ? this.shortestAngleDiff(target, this[currentKey])
+      : target - this[currentKey];
+    this[stepKey] = delta / rampSamples;
+    this[remainKey] = rampSamples;
   }
   process(_, outputs) {
     const out = outputs[0];
     const L = out[0]; const R = out[1] || out[0];
     const n = L.length;
+    this.blockSize = n;
     if (this.smooth === 0) {
       // ~30ms time constant
       this.smooth = 1 - Math.exp(-1 / (0.030 * sampleRate));
-      // ~120ms time constant for rotation position correction — long enough
-      // that the per-message target steps fade smoothly without clicks.
-      this.rotSmooth = 1 - Math.exp(-1 / (0.120 * sampleRate));
     }
     const k = this.smoothOn ? this.smooth : 1;
-    const kr = this.smoothOn ? this.rotSmooth : 1;
     const invSR = 1 / sampleRate;
-    const PI = Math.PI, TAU = 2*PI;
     for (let i = 0; i < n; i++) {
       // per-sample smoothing of params (denormal-safe: targets are O(1))
       for (let p = 0; p < this.params.length; p++) {
         this.params[p] += (this.tParams[p] - this.params[p]) * k;
       }
       this.dt += (this.tDt - this.dt) * k;
-      // Smooth rotation velocity per-sample so message-rate jumps in target
-      // angular velocity (auto-spin toggle, slider drag) ramp over many audio
-      // blocks instead of stepping at block boundaries (which causes clicks).
-      this.rotXVel += (this.tRotXVel - this.rotXVel) * kr;
-      this.rotYVel += (this.tRotYVel - this.rotYVel) * kr;
-      // Integrate per-sample velocity for click-free continuous spin, then
-      // softly correct toward the main-thread target to absorb drift and
-      // manual rotation changes.
+      if (this.rotXVelRemain > 0) {
+        this.rotXVel += this.rotXVelStep;
+        if (--this.rotXVelRemain === 0) this.rotXVel = this.tRotXVel;
+      }
+      if (this.rotYVelRemain > 0) {
+        this.rotYVel += this.rotYVelStep;
+        if (--this.rotYVelRemain === 0) this.rotYVel = this.tRotYVel;
+      }
       this.rotX += this.rotXVel * invSR;
       this.rotY += this.rotYVel * invSR;
-      let drX = this.tRotX - this.rotX;
-      let drY = this.tRotY - this.rotY;
-      if (drX > PI) drX -= TAU; else if (drX < -PI) drX += TAU;
-      if (drY > PI) drY -= TAU; else if (drY < -PI) drY += TAU;
-      this.rotX += drX * kr;
-      this.rotY += drY * kr;
+      if (this.rotXRemain > 0) {
+        this.rotX += this.rotXStep;
+        if (--this.rotXRemain === 0) this.rotX = this.tRotX;
+      }
+      if (this.rotYRemain > 0) {
+        this.rotY += this.rotYStep;
+        if (--this.rotYRemain === 0) this.rotY = this.tRotY;
+      }
       const dt = this.dt;
       switch (this.kind) {
       ${stepCases}
