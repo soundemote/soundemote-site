@@ -983,7 +983,7 @@ class AttractorProcessor extends AudioWorkletProcessor {
     // (x,y,z) triple whenever the phase crosses 1. This gives uniformly
     // spaced visual samples regardless of integration frequency, so the
     // on-screen chord length is constant and the curve looks smooth.
-    this.visRate = 12000;
+    this.visRate = 24000;
     this.visAcc = 0;
     this.prevX = this.x; this.prevY = this.y; this.prevZ = this.z;
     this.batch = new Float32Array(3600); // up to 1200 triples (fallback path)
@@ -1189,7 +1189,7 @@ registerProcessor('attractor', AttractorProcessor);
       node.connect(gain).connect(ctx.destination);
       // Fixed visual emission rate, independent of integration frequency.
       // Matches the drain pacing target in the draw loop.
-      const VIS_RATE = 12000;
+      const VIS_RATE = 24000;
       // Allocate a SharedArrayBuffer ring if the page is crossOriginIsolated.
       // 16384 triples = 192 KB float data; at 4000 pts/sec that's ~4 sec of
       // buffer — orders of magnitude more than a single rAF interval.
