@@ -656,7 +656,19 @@ export const Oscilloscope = ({
         const cap = data.length;
         const w = Atomics.load(ctrl, 0);
         let r = Atomics.load(ctrl, 1);
-        const maxPts = 4000;
+        // Drain pacing: take what we *should* have produced in this wall-clock
+        // interval (visRate * dtSeconds) plus a small catch-up margin. This
+        // removes per-frame chord-count jitter that made audio mode look
+        // jaggy compared to video-only mode (where step count is also tied
+        // to wall-clock).
+        const VIS_RATE = 12000;
+        const target = Math.max(1, Math.round(VIS_RATE * dtSeconds));
+        // available triples in ring
+        const avail = ((w - r + cap) % cap) / 3;
+        // Allow up to 1.25x target to gently catch up; if buffer is way ahead
+        // (e.g. tab was hidden), let it drain faster but still capped.
+        const catchUp = avail > target * 4 ? Math.min(avail, target * 4) : Math.min(avail, target * 1.25);
+        const maxPts = Math.max(1, Math.floor(catchUp));
         let taken = 0;
         while (r !== w && taken < maxPts) {
           triples.push(data[r], data[r + 1], data[r + 2]);
@@ -672,9 +684,14 @@ export const Oscilloscope = ({
         }
       } else if (audioActive && ptsQueueRef.current.length >= 3) {
         const q = ptsQueueRef.current;
-        // Cap per-frame draw count so we never fall further behind
-        const maxPts = 2400;
-        const take = Math.min(q.length, maxPts * 3);
+        // Same wall-clock pacing for the postMessage fallback path.
+        const VIS_RATE = 12000;
+        const target = Math.max(1, Math.round(VIS_RATE * dtSeconds));
+        const availTriples = (q.length / 3) | 0;
+        const catchUp = availTriples > target * 4
+          ? Math.min(availTriples, target * 4)
+          : Math.min(availTriples, Math.ceil(target * 1.25));
+        const take = Math.max(3, catchUp * 3);
         for (let i = 0; i < take; i++) triples.push(q.shift()!);
         // sync last sample back to shared state
         const L = triples.length;
@@ -975,10 +992,10 @@ class AttractorProcessor extends AudioWorkletProcessor {
     // (x,y,z) triple whenever the phase crosses 1. This gives uniformly
     // spaced visual samples regardless of integration frequency, so the
     // on-screen chord length is constant and the curve looks smooth.
-    this.visRate = 4000;
+    this.visRate = 12000;
     this.visAcc = 0;
     this.prevX = this.x; this.prevY = this.y; this.prevZ = this.z;
-    this.batch = new Float32Array(2400); // up to 800 triples
+    this.batch = new Float32Array(3600); // up to 1200 triples (fallback path)
     this.bIdx = 0;
     // postMessage flush policy (fallback path only). We accumulate across
     // multiple process() blocks and flush every ~20ms instead of every
@@ -986,7 +1003,7 @@ class AttractorProcessor extends AudioWorkletProcessor {
     // main-thread jitter we used to see.
     this.flushBlocks = 8;           // ~21 ms at 128/48k
     this.blocksSince = 0;
-    this.flushThreshFloats = 240;   // ~80 triples ≈ 20 ms at 4 kHz
+    this.flushThreshFloats = 720;   // ~240 triples ≈ 20 ms at 12 kHz
     // Optional SharedArrayBuffer ring (set by 'sab' message). When present
     // we write triples lock-free into a SPSC ring and skip postMessage
     // entirely — the main thread polls via Atomics each rAF.
@@ -1180,7 +1197,8 @@ registerProcessor('attractor', AttractorProcessor);
       gain.gain.value = volumeRef.current;
       node.connect(gain).connect(ctx.destination);
       // Fixed visual emission rate, independent of integration frequency.
-      const VIS_RATE = 4000;
+      // Matches the drain pacing target in the draw loop.
+      const VIS_RATE = 12000;
       // Allocate a SharedArrayBuffer ring if the page is crossOriginIsolated.
       // 16384 triples = 192 KB float data; at 4000 pts/sec that's ~4 sec of
       // buffer — orders of magnitude more than a single rAF interval.
