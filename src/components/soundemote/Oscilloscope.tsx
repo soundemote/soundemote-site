@@ -484,6 +484,10 @@ export const Oscilloscope = ({
     const resetUpsampler = () => { upFill = 0; };
 
     let lastT = performance.now();
+    // Smoothed display refresh rate estimate (Hz). Used to compute a constant
+    // per-frame drain target so audio-driven visuals don't inherit rAF jitter.
+    let hzAvg = 60;
+    let hzInit = false;
 
     // Pointer drag to pan (move tracer origin)
     let dragging = false;
@@ -656,14 +660,20 @@ export const Oscilloscope = ({
         const cap = data.length;
         const w = Atomics.load(ctrl, 0);
         let r = Atomics.load(ctrl, 1);
-        // Drain *everything* available each frame. The worklet emits at a
-        // fixed visRate so each triple is already uniformly spaced in
-        // integration time — pacing here just reintroduces jitter when rAF
-        // dt fluctuates. Cap only to prevent catastrophic spikes if the tab
-        // was hidden for a long time.
-        const avail = ((w - r + cap) % cap) / 3;
-        const HARD_CAP = MAX_SEGS - 4; // never exceed segment buffer
-        const maxPts = Math.max(1, Math.min(avail | 0, HARD_CAP));
+        // Drain a *constant* number of triples per frame, tied to estimated
+        // display refresh rate (not instantaneous rAF dt). The SAB ring
+        // absorbs rAF jitter, so the visible trail advances at a perfectly
+        // uniform spatial rate — matching the "smoothness" of video-only
+        // mode where rAF dt directly drives integration speed.
+        const avail = (((w - r + cap) % cap) / 3) | 0;
+        const VIS_RATE = 24000;
+        const target = Math.max(1, Math.round(VIS_RATE / hzAvg));
+        // If buffer is more than ~250 ms ahead, catch up gently so we don't
+        // lag forever after a tab-switch. Otherwise stick to target.
+        const overflow = avail - Math.round(VIS_RATE * 0.25);
+        const catchUp = overflow > 0 ? Math.min(overflow, target) : 0;
+        const HARD_CAP = MAX_SEGS - 4;
+        const maxPts = Math.max(1, Math.min(avail, target + catchUp, HARD_CAP));
         let taken = 0;
         while (r !== w && taken < maxPts) {
           triples.push(data[r], data[r + 1], data[r + 2]);
@@ -679,10 +689,14 @@ export const Oscilloscope = ({
         }
       } else if (audioActive && ptsQueueRef.current.length >= 3) {
         const q = ptsQueueRef.current;
-        // Drain everything available (capped by segment buffer).
+        // Same constant-rate drain for postMessage fallback path.
         const availTriples = (q.length / 3) | 0;
+        const VIS_RATE = 24000;
+        const target = Math.max(1, Math.round(VIS_RATE / hzAvg));
+        const overflow = availTriples - Math.round(VIS_RATE * 0.25);
+        const catchUp = overflow > 0 ? Math.min(overflow, target) : 0;
         const HARD_CAP = MAX_SEGS - 4;
-        const take = Math.max(3, Math.min(availTriples, HARD_CAP) * 3);
+        const take = Math.max(3, Math.min(availTriples, target + catchUp, HARD_CAP) * 3);
         for (let i = 0; i < take; i++) triples.push(q.shift()!);
         // sync last sample back to shared state
         const L = triples.length;
