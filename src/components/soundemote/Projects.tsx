@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import AsciiWave from "./AsciiWave";
 
 type Project = {
@@ -53,6 +54,34 @@ const accentClass: Record<Project["accent"], string> = {
   warm: "text-warm-white",
 };
 
+function BlinkingTilde() {
+  const [visible, setVisible] = useState(true);
+  const [color, setColor] = useState(() => {
+    const hue = Math.floor(Math.random() * 360);
+    return `hsl(${hue}, 80%, 60%)`;
+  });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setVisible((v) => !v);
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (visible) {
+      const hue = Math.floor(Math.random() * 360);
+      setColor(`hsl(${hue}, 80%, 60%)`);
+    }
+  }, [visible]);
+
+  return (
+    <span style={{ color, opacity: visible ? 1 : 0 }} className="transition-none">
+      ~
+    </span>
+  );
+}
+
 export const Projects = () => (
   <section id="projects" className="relative py-24 md:py-32 border-t border-border/40">
     <div className="container max-w-2xl">
@@ -81,6 +110,11 @@ export const Projects = () => (
                     <span className="text-muted-foreground">$&nbsp;</span>
                     {p.name}
                     <span className="inline-block w-[0.6em] h-[1em] align-[-0.15em] bg-scope ml-1 animate-pulse" />
+                  </h3>
+                ) : p.name === "(soemdsp-sandbox)~" ? (
+                  <h3 className={`display text-3xl ${accentClass[p.accent]}`}>
+                    (soemdsp-sandbox)
+                    <BlinkingTilde />
                   </h3>
                 ) : (
                   <h3 className={`display text-3xl ${accentClass[p.accent]}`}>{p.name}</h3>
