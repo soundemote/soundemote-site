@@ -11,7 +11,7 @@ type Project = {
 
 const projects: Project[] = [
   {
-    name: "Hydrus",
+    name: "hydrus",
     status: "in development",
     blurb:
       "The next Soundemote instrument. Still forming — check back as it grows.",
@@ -19,7 +19,7 @@ const projects: Project[] = [
     accent: "accent",
   },
   {
-    name: "Prettyscope",
+    name: "prettyscope",
     status: "library · in revival",
     blurb:
       "Aesthetic oscilloscope technology for musicians, synth builders, and visual sound explorers. Free forever, community-driven.",
@@ -28,7 +28,7 @@ const projects: Project[] = [
     accent: "scope",
   },
   {
-    name: "Asciiscope",
+    name: "asciiscope",
     status: "plugin · experimental",
     blurb:
       "Terminal-inspired audio-reactive oscilloscope visuals for live signals, social clips, and experimental plugin windows.\n\nBuilt on soemdsp: SIMD-minded, easy-to-use low-level DSP objects for oscillators, filters, modulation, dynamics, random, timing, and plugin infrastructure.",
