@@ -58,10 +58,7 @@ export const Projects = () => (
     <div className="container max-w-2xl">
       <div className="text-center mb-16">
         <p className="mono text-xs uppercase tracking-[0.3em] text-muted-foreground mb-3">/* projects */</p>
-        <h2 className="display text-3xl md:text-5xl text-warm-white leading-tight">
-          Built in the open, one signal at a time.
-        </h2>
-        <p className="mono text-xs text-muted-foreground mt-4">
+        <p className="mono text-xs text-muted-foreground">
           DSP / Audio / Visual
         </p>
       </div>
