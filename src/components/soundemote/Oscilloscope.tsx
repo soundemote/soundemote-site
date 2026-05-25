@@ -980,6 +980,13 @@ class AttractorProcessor extends AudioWorkletProcessor {
     this.prevX = this.x; this.prevY = this.y; this.prevZ = this.z;
     this.batch = new Float32Array(2400); // up to 800 triples
     this.bIdx = 0;
+    // postMessage flush policy (fallback path only). We accumulate across
+    // multiple process() blocks and flush every ~20ms instead of every
+    // 2.7ms block, which cuts message rate ~8x and removes most of the
+    // main-thread jitter we used to see.
+    this.flushBlocks = 8;           // ~21 ms at 128/48k
+    this.blocksSince = 0;
+    this.flushThreshFloats = 240;   // ~80 triples ≈ 20 ms at 4 kHz
     // Optional SharedArrayBuffer ring (set by 'sab' message). When present
     // we write triples lock-free into a SPSC ring and skip postMessage
     // entirely — the main thread polls via Atomics each rAF.
