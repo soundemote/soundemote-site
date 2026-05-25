@@ -845,12 +845,11 @@ class AttractorProcessor extends AudioWorkletProcessor {
     super();
     this.kind = 'lorenz';
     this.x = 0.01; this.y = 0; this.z = 0;
-    // params array used by step (per-attractor coefficients)
-    this.params = [16, 45.92, 4];
-    // For Lorenz we still want per-param smoothing so the σ/ρ/β knobs feel
-    // continuous; for other attractors params are fixed.
-    this.sigma = 16; this.rho = 45.92; this.beta = 4; this.dt = 0.003;
-    this.tSigma = 16; this.tRho = 45.92; this.tBeta = 4; this.tDt = 0.003;
+    // Smoothed coefficient array used by the step. tParams is the target
+    // (what the UI just set); params chases it via the per-sample smoother.
+    this.params  = [16, 45.92, 4];
+    this.tParams = [16, 45.92, 4];
+    this.dt = 0.003; this.tDt = 0.003;
     // visual / audio scaling
     this.zOffset = 45; this.audioScale = 0.035;
     // 3D rotation (radians) — mirrors the visual projection so the audio
@@ -875,19 +874,22 @@ class AttractorProcessor extends AudioWorkletProcessor {
         this.bIdx = 0;
         // snap smoothed values to targets on reset
         if (d.snap) {
-          this.sigma = this.tSigma; this.rho = this.tRho;
-          this.beta = this.tBeta; this.dt = this.tDt;
+          for (let i = 0; i < this.tParams.length; i++) this.params[i] = this.tParams[i];
+          this.dt = this.tDt;
         }
         return;
       }
       if (d.kind !== undefined) this.kind = d.kind;
-      if (d.params !== undefined) this.params = d.params.slice();
+      if (d.params !== undefined) {
+        this.tParams = d.params.slice();
+        // resize / snap params array if length changed (attractor switch)
+        if (this.params.length !== this.tParams.length) {
+          this.params = this.tParams.slice();
+        }
+      }
       if (d.init !== undefined) { this.x = d.init.x; this.y = d.init.y; this.z = d.init.z; }
       if (d.zOffset !== undefined) this.zOffset = d.zOffset;
       if (d.audioScale !== undefined) this.audioScale = d.audioScale;
-      if (d.sigma !== undefined) this.tSigma = d.sigma;
-      if (d.rho !== undefined) this.tRho = d.rho;
-      if (d.beta !== undefined) this.tBeta = d.beta;
       if (d.dt !== undefined) this.tDt = d.dt;
       if (d.rotX !== undefined) this.tRotX = d.rotX;
       if (d.rotY !== undefined) this.tRotY = d.rotY;
@@ -906,10 +908,10 @@ class AttractorProcessor extends AudioWorkletProcessor {
     const k = this.smoothOn ? this.smooth : 1;
     for (let i = 0; i < n; i++) {
       // per-sample smoothing of params (denormal-safe: targets are O(1))
-      this.sigma += (this.tSigma - this.sigma) * k;
-      this.rho   += (this.tRho   - this.rho)   * k;
-      this.beta  += (this.tBeta  - this.beta)  * k;
-      this.dt    += (this.tDt    - this.dt)    * k;
+      for (let p = 0; p < this.params.length; p++) {
+        this.params[p] += (this.tParams[p] - this.params[p]) * k;
+      }
+      this.dt += (this.tDt - this.dt) * k;
       // rotation smoothing — wrap delta into [-π,π] so spinning across
       // the seam doesn't cause a long lerp around the circle.
       let drX = this.tRotX - this.rotX;
@@ -920,11 +922,6 @@ class AttractorProcessor extends AudioWorkletProcessor {
       this.rotX += drX * k;
       this.rotY += drY * k;
       const dt = this.dt;
-      // For Lorenz, mirror the smoothed σ/ρ/β knobs into params so the
-      // user's drag-edits take effect; other attractors keep fixed params.
-      if (this.kind === 'lorenz') {
-        this.params[0] = this.sigma; this.params[1] = this.rho; this.params[2] = this.beta;
-      }
       switch (this.kind) {
       ${stepCases}
       }
