@@ -1303,7 +1303,7 @@ registerProcessor('attractor', AttractorProcessor);
         </div>
         <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-1.5 py-1 backdrop-blur-sm">
           <HoldButton
-            onTick={(a) => adjustDecay(-0.01 * a)}
+            onTick={(a) => adjustDecay(0.01 * a)}
             className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
             ariaLabel="Longer phosphor burn"
           >
@@ -1313,7 +1313,7 @@ registerProcessor('attractor', AttractorProcessor);
             burn{(1 - decayRef.current).toFixed(2)}
           </span>
           <HoldButton
-            onTick={(a) => adjustDecay(0.01 * a)}
+            onTick={(a) => adjustDecay(-0.01 * a)}
             className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
             ariaLabel="Shorter phosphor burn"
           >
