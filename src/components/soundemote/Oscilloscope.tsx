@@ -500,7 +500,7 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const next = zoomRef.current * (e.deltaY < 0 ? 1.1 : 0.9);
-      zoomRef.current = Math.max(0.1, Math.min(20, next));
+      zoomRef.current = Math.max(0.02, Math.min(20, next));
       setTick((n) => n + 1);
     };
     canvas.addEventListener("pointerdown", onDown);
@@ -808,7 +808,7 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
   }, []);
 
   const adjustZoom = (factor: number) => {
-    zoomRef.current = Math.max(0.1, Math.min(20, zoomRef.current * factor));
+    zoomRef.current = Math.max(0.02, Math.min(20, zoomRef.current * factor));
     setTick((n) => n + 1);
   };
 
@@ -1178,6 +1178,32 @@ registerProcessor('attractor', AttractorProcessor);
   const sliderClass =
     "h-1 w-24 cursor-pointer accent-scope bg-border/40 rounded-full appearance-none";
 
+  const GhostKnob: React.FC<{ getValue: () => number; min: number; max: number }> = ({ getValue, min, max }) => {
+    const dotRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+      let raf = 0;
+      const range = max - min;
+      const tick = () => {
+        const el = dotRef.current;
+        if (el) {
+          let v = getValue() - min;
+          v = ((v % range) + range) % range;
+          el.style.left = `${(v / range) * 100}%`;
+        }
+        raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+      return () => cancelAnimationFrame(raf);
+    }, [getValue, min, max]);
+    return (
+      <div
+        ref={dotRef}
+        className="pointer-events-none absolute top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-scope/60 ring-1 ring-scope/80 shadow-[0_0_6px_hsl(var(--scope)/0.6)]"
+        style={{ left: "0%" }}
+      />
+    );
+  };
+
   return (
     <div className="relative h-full w-full overflow-hidden rounded-xl border border-border bg-[var(--gradient-panel)] scope-grid">
       {/* Top bar */}
@@ -1223,9 +1249,6 @@ registerProcessor('attractor', AttractorProcessor);
             <span className="text-[10px] tracking-[0.15em]">reset</span>
           </button>
         </div>
-        <span className="tabular-nums text-scope/80">
-          rX={wrapDeg((rotXRef.current * 180) / Math.PI)}° rY={wrapDeg((rotYRef.current * 180) / Math.PI)}°
-        </span>
       </div>
       <canvas
         ref={canvasRef}
@@ -1328,29 +1351,32 @@ registerProcessor('attractor', AttractorProcessor);
           />
           <span className="text-scope/80">⟳</span>
           <span className="w-10">{autoSpinXRef.current ? "ωX" : "rX"}</span>
-          {autoSpinXRef.current ? (
-            <input
-              key="spinX"
-              type="range"
-              min={-0.45}
-              max={0.45}
-              step={0.001}
-              defaultValue={spinSpeedXRef.current}
-              onChange={(e) => { spinSpeedXRef.current = parseFloat(e.target.value); }}
-              className={sliderClass}
-            />
-          ) : (
-            <input
-              key="rotX"
-              type="range"
-              min={-1.4}
-              max={1.4}
-              step={0.01}
-              defaultValue={rotXRef.current}
-              onChange={(e) => { rotXRef.current = parseFloat(e.target.value); }}
-              className={sliderClass}
-            />
-          )}
+          <div className="relative flex items-center">
+            {autoSpinXRef.current ? (
+              <input
+                key="spinX"
+                type="range"
+                min={-0.45}
+                max={0.45}
+                step={0.001}
+                defaultValue={spinSpeedXRef.current}
+                onChange={(e) => { spinSpeedXRef.current = parseFloat(e.target.value); }}
+                className={sliderClass}
+              />
+            ) : (
+              <input
+                key="rotX"
+                type="range"
+                min={-1.4}
+                max={1.4}
+                step={0.01}
+                defaultValue={rotXRef.current}
+                onChange={(e) => { rotXRef.current = parseFloat(e.target.value); }}
+                className={sliderClass}
+              />
+            )}
+            <GhostKnob getValue={() => rotXRef.current} min={-1.4} max={1.4} />
+          </div>
         </label>
         <label className="flex items-center gap-2">
           <input
@@ -1361,29 +1387,32 @@ registerProcessor('attractor', AttractorProcessor);
           />
           <span className="text-scope/80">⟳</span>
           <span className="w-10">{autoSpinYRef.current ? "ωY" : "rY"}</span>
-          {autoSpinYRef.current ? (
-            <input
-              key="spinY"
-              type="range"
-              min={-0.45}
-              max={0.45}
-              step={0.001}
-              defaultValue={spinSpeedYRef.current}
-              onChange={(e) => { spinSpeedYRef.current = parseFloat(e.target.value); }}
-              className={sliderClass}
-            />
-          ) : (
-            <input
-              key="rotY"
-              type="range"
-              min={-Math.PI}
-              max={Math.PI}
-              step={0.01}
-              defaultValue={rotYRef.current}
-              onChange={(e) => { rotYRef.current = parseFloat(e.target.value); }}
-              className={sliderClass}
-            />
-          )}
+          <div className="relative flex items-center">
+            {autoSpinYRef.current ? (
+              <input
+                key="spinY"
+                type="range"
+                min={-0.45}
+                max={0.45}
+                step={0.001}
+                defaultValue={spinSpeedYRef.current}
+                onChange={(e) => { spinSpeedYRef.current = parseFloat(e.target.value); }}
+                className={sliderClass}
+              />
+            ) : (
+              <input
+                key="rotY"
+                type="range"
+                min={-Math.PI}
+                max={Math.PI}
+                step={0.01}
+                defaultValue={rotYRef.current}
+                onChange={(e) => { rotYRef.current = parseFloat(e.target.value); }}
+                className={sliderClass}
+              />
+            )}
+            <GhostKnob getValue={() => rotYRef.current} min={-Math.PI} max={Math.PI} />
+          </div>
         </label>
       </div>
     </div>

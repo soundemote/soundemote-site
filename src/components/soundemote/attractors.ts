@@ -216,7 +216,7 @@ export const ATTRACTORS: Record<AttractorKind, AttractorDef> = {
     // [density, zdepth, z_amount]
     params: [2, 0.0, 0.0],
     paramSchema: [
-      { label: "density",  min: 0.5, max: 8, mode: "log",    precision: 2 },
+      { label: "density",  min: 0.5, max: 30, mode: "log",   precision: 2 },
       { label: "z-depth",  min: -1,  max: 1, mode: "linear", precision: 2 },
       { label: "z-amount", min: 0,   max: 1, mode: "linear", precision: 2 },
     ],
