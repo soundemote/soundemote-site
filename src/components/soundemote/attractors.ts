@@ -160,6 +160,13 @@ export const attractorStepFns: Record<AttractorKind, (s: AttractorState, dt: num
 };
 
 export const ATTRACTORS: Record<AttractorKind, AttractorDef> = {
+  off: {
+    id: "off", label: "off",
+    params: [],
+    paramSchema: [],
+    init: { x: 0, y: 0, z: 0 },
+    dt: 0.01, viewScale: 1, zOffset: 0, audioScale: 0,
+  },
   lorenz: {
     id: "lorenz", label: "lorenz",
     params: [16, 45.92, 4],
@@ -232,12 +239,13 @@ export const ATTRACTORS: Record<AttractorKind, AttractorDef> = {
   },
 };
 
-export const ATTRACTOR_ORDER: AttractorKind[] = ["lorenz", "aizawa", "halvorsen", "thomas", "chenlee", "spiral"];
+export const ATTRACTOR_ORDER: AttractorKind[] = ["off", "lorenz", "aizawa", "halvorsen", "thomas", "chenlee", "spiral"];
 
 // Worklet-safe step source for each attractor. Embedded verbatim into the
 // AudioWorklet template — must reference `this.x/y/z` and `this.params[i]`
 // directly so production minifiers can't rename anything we depend on.
 export const attractorWorkletSteps: Record<AttractorKind, string> = {
+  off: `{ this.x = 0; this.y = 0; this.z = 0; }`,
   lorenz: `{
     const _dx = this.params[0]*(this.y-this.x);
     const _dy = this.x*(this.params[1]-this.z)-this.y;
