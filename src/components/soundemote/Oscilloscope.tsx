@@ -861,6 +861,7 @@ class AttractorProcessor extends AudioWorkletProcessor {
     // a target position the main thread updates at ~30Hz (audible as clicks
     // while spinning).
     this.rotXVel = 0; this.rotYVel = 0;
+    this.tRotXVel = 0; this.tRotYVel = 0;
     // smoothing coefficient (~30ms time constant @ 48k → recomputed in process)
     this.smooth = 0;
     // slower coefficient for rotation position correction (~120ms)
@@ -908,8 +909,8 @@ class AttractorProcessor extends AudioWorkletProcessor {
       if (d.dt !== undefined) this.tDt = d.dt;
       if (d.rotX !== undefined) this.tRotX = d.rotX;
       if (d.rotY !== undefined) this.tRotY = d.rotY;
-      if (d.rotXVel !== undefined) this.rotXVel = d.rotXVel;
-      if (d.rotYVel !== undefined) this.rotYVel = d.rotYVel;
+      if (d.rotXVel !== undefined) this.tRotXVel = d.rotXVel;
+      if (d.rotYVel !== undefined) this.tRotYVel = d.rotYVel;
       if (d.decim !== undefined) this.decim = Math.max(1, d.decim|0);
       if (d.smoothOn !== undefined) this.smoothOn = !!d.smoothOn;
     };
@@ -935,6 +936,11 @@ class AttractorProcessor extends AudioWorkletProcessor {
         this.params[p] += (this.tParams[p] - this.params[p]) * k;
       }
       this.dt += (this.tDt - this.dt) * k;
+      // Smooth rotation velocity per-sample so message-rate jumps in target
+      // angular velocity (auto-spin toggle, slider drag) ramp over many audio
+      // blocks instead of stepping at block boundaries (which causes clicks).
+      this.rotXVel += (this.tRotXVel - this.rotXVel) * kr;
+      this.rotYVel += (this.tRotYVel - this.rotYVel) * kr;
       // Integrate per-sample velocity for click-free continuous spin, then
       // softly correct toward the main-thread target to absorb drift and
       // manual rotation changes.
