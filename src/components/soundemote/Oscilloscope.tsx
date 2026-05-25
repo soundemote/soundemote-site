@@ -154,21 +154,10 @@ const DragNumber = ({
   );
 };
 
-export const Oscilloscope = ({
-  kind = "lorenz",
-  traceColor,
-  bgColor,
-}: {
-  kind?: AttractorKind;
-  traceColor?: [number, number, number];
-  bgColor?: [number, number, number];
-} = {}) => {
+export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Live attractor selection (held in ref so the rAF loop reads latest value).
   const kindRef = useRef<AttractorKind>(kind);
-  // Live colors (rAF loop reads latest)
-  const traceColorRef = useRef<[number, number, number]>(traceColor ?? [0.18, 0.95, 0.42]);
-  const bgColorRef = useRef<[number, number, number]>(bgColor ?? [0, 0, 0]);
   // Live params held in refs so the rAF loop reads the latest values
   const zoomRef = useRef(1);
   const zoomTargetRef = useRef(1);
@@ -340,20 +329,18 @@ export const Oscilloscope = ({
       `precision highp float;
        uniform sampler2D uTex;
        uniform vec3 uColor;
-       uniform vec3 uBg;
        uniform float uExposure;
        varying vec2 vUv;
        void main(){
          float l = texture2D(uTex, vUv).r;
          float t = 1.0 - exp(-l * uExposure);
          vec3 col = mix(uColor, vec3(1.0), t * t * 0.6) * t;
-         gl_FragColor = vec4(uBg * (1.0 - t) + col, 1.0);
+         gl_FragColor = vec4(col, 1.0);
        }`
     );
     const outA_pos = gl.getAttribLocation(outProg, "aPos");
     const outU_tex = gl.getUniformLocation(outProg, "uTex");
     const outU_color = gl.getUniformLocation(outProg, "uColor");
-    const outU_bg = gl.getUniformLocation(outProg, "uBg");
     const outU_exposure = gl.getUniformLocation(outProg, "uExposure");
 
     // Fullscreen quad buffer
@@ -815,11 +802,8 @@ export const Oscilloscope = ({
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, fboA.tex);
       gl.uniform1i(outU_tex, 0);
-      // scope trace + background colors (live, HSL-controlled from parent)
-      const tc = traceColorRef.current;
-      const bg = bgColorRef.current;
-      gl.uniform3f(outU_color, tc[0], tc[1], tc[2]);
-      gl.uniform3f(outU_bg, bg[0], bg[1], bg[2]);
+      // scope green: rgb(40,235,158) ≈ (0.157, 0.921, 0.620)
+      gl.uniform3f(outU_color, 0.18, 0.95, 0.42);
       gl.uniform1f(outU_exposure, 2.4);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       gl.disableVertexAttribArray(outA_pos);
@@ -873,13 +857,6 @@ export const Oscilloscope = ({
       }
     };
   }, []);
-
-  useEffect(() => {
-    if (traceColor) traceColorRef.current = traceColor;
-  }, [traceColor?.[0], traceColor?.[1], traceColor?.[2]]);
-  useEffect(() => {
-    if (bgColor) bgColorRef.current = bgColor;
-  }, [bgColor?.[0], bgColor?.[1], bgColor?.[2]]);
 
   const enableAudio = async () => {
     if (audioRef.current) {
