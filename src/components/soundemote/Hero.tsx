@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import Oscilloscope, { type HSL } from "./Oscilloscope";
+import Oscilloscope, { type HSL, type OscilloscopeRef } from "./Oscilloscope";
 import { ATTRACTOR_ORDER, ATTRACTORS, type AttractorKind } from "./attractors";
 
 const HSPicker = ({
@@ -72,6 +72,7 @@ export const Hero = () => {
   const [kind, setKind] = useState<AttractorKind>("lorenz");
   const [tracerColor, setTracerColor] = useState<HSL>({ h: 157, s: 0.84, l: 0.54 });
   const [bgColor, setBgColor] = useState<HSL>({ h: 0, s: 0, l: 0 });
+  const scopeRef = useRef<OscilloscopeRef>(null);
   return (
   <section id="top" className="relative overflow-hidden pt-32 pb-24 md:pt-40 md:pb-32">
     <div className="absolute inset-0 scope-grid opacity-40" aria-hidden />
@@ -119,8 +120,23 @@ export const Hero = () => {
           );
         })}
       </div>
-      <div className="relative aspect-[5/4] w-full max-w-xl mx-auto mt-3 animate-fade-in [animation-delay:200ms]">
-        <Oscilloscope kind={kind} tracerColor={tracerColor} bgColor={bgColor} />
+      <div className="flex w-full max-w-xl mx-auto mt-3 animate-fade-in [animation-delay:200ms]">
+        <button
+          type="button"
+          onClick={() => scopeRef.current?.reset()}
+          className="flex flex-col items-center justify-center rounded-l-xl border border-r-0 border-red-500/30 bg-background/50 px-1.5 py-4 text-red-500/40 transition-colors hover:border-red-500 hover:text-red-400 mono text-[10px] uppercase tracking-[0.2em]"
+          title="Reset coefficients, integrator state, and audio engine"
+          aria-label="Reset"
+        >
+          <span>r</span>
+          <span>e</span>
+          <span>s</span>
+          <span>e</span>
+          <span>t</span>
+        </button>
+        <div className="relative aspect-[5/4] flex-1">
+          <Oscilloscope ref={scopeRef} kind={kind} tracerColor={tracerColor} bgColor={bgColor} />
+        </div>
       </div>
       <div className="max-w-xl mx-auto mt-2 flex justify-start mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/70">
         drag to pan · scroll to zoom
