@@ -213,6 +213,7 @@ export const Oscilloscope = ({
     gain: GainNode;
   } | null>(null);
   const [audioOn, setAudioOn] = useState(false);
+  const audioOnRef = useRef(false);
   const [resetSeq, setResetSeq] = useState(0);
   // NOTE: Lanczos upsampler / coefficient smoothing experiment disabled.
   // This was a failed attempt at signal smoothing — revisit later.
@@ -644,7 +645,7 @@ export const Oscilloscope = ({
       // numerical state) or integrate locally as a fallback.
       const triples: number[] = [];
       const audioActive =
-        audioOn && audioRef.current && audioRef.current.ctx.state === "running";
+        audioOnRef.current && audioRef.current && audioRef.current.ctx.state === "running";
       if (audioActive && ptsQueueRef.current.length >= 3) {
         const q = ptsQueueRef.current;
         // Cap per-frame draw count so we never fall further behind
