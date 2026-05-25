@@ -1060,22 +1060,55 @@ registerProcessor('attractor', AttractorProcessor);
     setTick((n) => n + 1);
   };
 
+  // React to attractor switching: reset integrator state, snap defaults,
+  // and notify the audio worklet so visual + audio stay in sync.
+  useEffect(() => {
+    const def = ATTRACTORS[kind];
+    kindRef.current = kind;
+    stateRef.current = { ...def.init };
+    ptsQueueRef.current.length = 0;
+    if (def.id === "lorenz") {
+      sigmaRef.current = def.params[0];
+      rhoRef.current = def.params[1];
+      betaRef.current = def.params[2];
+    }
+    if (audioRef.current) {
+      const { ctx, node } = audioRef.current;
+      node.port.postMessage({
+        kind: def.id,
+        params: def.id === "lorenz"
+          ? [sigmaRef.current, rhoRef.current, betaRef.current]
+          : def.params,
+        init: def.init,
+        zOffset: def.zOffset,
+        audioScale: def.audioScale,
+        dt: (freqRef.current * def.dt) / ctx.sampleRate,
+      });
+      node.port.postMessage({ type: "reset", init: def.init });
+    }
+    setResetSeq((n) => n + 1);
+    setTick((n) => n + 1);
+  }, [kind]);
+
   // Reset coefficients, integrator state, and audio engine — recovers
   // from chaotic collapse / explosion / silenced denormals.
   const resetAll = () => {
-    sigmaRef.current = 16;
-    rhoRef.current = 45.92;
-    betaRef.current = 4;
+    const def = ATTRACTORS[kindRef.current];
+    if (def.id === "lorenz") {
+      sigmaRef.current = def.params[0];
+      rhoRef.current = def.params[1];
+      betaRef.current = def.params[2];
+    }
     freqRef.current = 1440;
-    stateRef.current = { x: 0.01, y: 0, z: 0 };
+    stateRef.current = { ...def.init };
     ptsQueueRef.current.length = 0;
     if (audioRef.current) {
-      audioRef.current.node.port.postMessage({ type: "reset" });
+      audioRef.current.node.port.postMessage({ type: "reset", init: def.init });
       audioRef.current.node.port.postMessage({
         sigma: sigmaRef.current,
         rho: rhoRef.current,
         beta: betaRef.current,
-        dt: (freqRef.current * 0.006) / audioRef.current.ctx.sampleRate,
+        dt: (freqRef.current * def.dt) / audioRef.current.ctx.sampleRate,
       });
     }
     setResetSeq((n) => n + 1);
