@@ -985,16 +985,26 @@ registerProcessor('attractor', AttractorProcessor);
       // Compute decimation: target ~freqRef visual points/sec, capped
       const targetVisRate = Math.max(60, Math.min(4000, freqRef.current));
       const decim = Math.max(1, Math.round(ctx.sampleRate / targetVisRate));
-      node.port.postMessage({
-        sigma: sigmaRef.current,
-        rho: rhoRef.current,
-        beta: betaRef.current,
-        dt: (freqRef.current * 0.006) / ctx.sampleRate,
-        rotX: rotXRef.current,
-        rotY: rotYRef.current,
-        decim,
-        smoothOn: smoothingRef.current,
-      });
+      {
+        const def = ATTRACTORS[kindRef.current];
+        node.port.postMessage({
+          kind: def.id,
+          params: def.id === "lorenz"
+            ? [sigmaRef.current, rhoRef.current, betaRef.current]
+            : def.params,
+          init: def.init,
+          zOffset: def.zOffset,
+          audioScale: def.audioScale,
+          sigma: sigmaRef.current,
+          rho: rhoRef.current,
+          beta: betaRef.current,
+          dt: (freqRef.current * def.dt) / ctx.sampleRate,
+          rotX: rotXRef.current,
+          rotY: rotYRef.current,
+          decim,
+          smoothOn: smoothingRef.current,
+        });
+      }
       node.port.onmessage = (e) => {
         const pts = e.data && e.data.pts;
         if (!pts) return;
@@ -1012,11 +1022,12 @@ registerProcessor('attractor', AttractorProcessor);
         if (!a) { window.clearInterval(id); return; }
         const tvr = Math.max(60, Math.min(4000, freqRef.current));
         const dc = Math.max(1, Math.round(a.ctx.sampleRate / tvr));
+        const def = ATTRACTORS[kindRef.current];
         a.node.port.postMessage({
           sigma: sigmaRef.current,
           rho: rhoRef.current,
           beta: betaRef.current,
-          dt: (freqRef.current * 0.006) / a.ctx.sampleRate,
+          dt: (freqRef.current * def.dt) / a.ctx.sampleRate,
           rotX: rotXRef.current,
           rotY: rotYRef.current,
           decim: dc,
