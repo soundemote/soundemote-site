@@ -1193,6 +1193,10 @@ registerProcessor('attractor', AttractorProcessor);
     setTick((n) => n + 1);
   }, [kind]);
 
+  // Sync color props into refs (read by rAF render loop).
+  useEffect(() => { tracerColorRef.current = tracerColor; }, [tracerColor.h, tracerColor.s, tracerColor.l]);
+  useEffect(() => { bgColorRef.current = bgColor; }, [bgColor.h, bgColor.s, bgColor.l]);
+
   // Reset coefficients, integrator state, and audio engine — recovers
   // from chaotic collapse / explosion / silenced denormals.
   const resetAll = () => {
