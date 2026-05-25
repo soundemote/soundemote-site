@@ -856,8 +856,15 @@ class AttractorProcessor extends AudioWorkletProcessor {
     // L/R channels correspond to what's on screen.
     this.rotX = 0; this.rotY = 0;
     this.tRotX = 0; this.tRotY = 0;
+    // per-sample rotation velocity (rad/sec). Continuous integration avoids
+    // the per-block derivative discontinuities that come from only smoothing
+    // a target position the main thread updates at ~30Hz (audible as clicks
+    // while spinning).
+    this.rotXVel = 0; this.rotYVel = 0;
     // smoothing coefficient (~30ms time constant @ 48k → recomputed in process)
     this.smooth = 0;
+    // slower coefficient for rotation position correction (~120ms)
+    this.rotSmooth = 0;
     this.smoothOn = true;
     // 10Hz one-pole high-pass DC blocker per channel (soemdsp OnePoleHP / IIT).
     // y[n] = b0*x[n] - b0*x[n-1] + a1*y[n-1]
@@ -901,6 +908,8 @@ class AttractorProcessor extends AudioWorkletProcessor {
       if (d.dt !== undefined) this.tDt = d.dt;
       if (d.rotX !== undefined) this.tRotX = d.rotX;
       if (d.rotY !== undefined) this.tRotY = d.rotY;
+      if (d.rotXVel !== undefined) this.rotXVel = d.rotXVel;
+      if (d.rotYVel !== undefined) this.rotYVel = d.rotYVel;
       if (d.decim !== undefined) this.decim = Math.max(1, d.decim|0);
       if (d.smoothOn !== undefined) this.smoothOn = !!d.smoothOn;
     };
@@ -912,23 +921,31 @@ class AttractorProcessor extends AudioWorkletProcessor {
     if (this.smooth === 0) {
       // ~30ms time constant
       this.smooth = 1 - Math.exp(-1 / (0.030 * sampleRate));
+      // ~120ms time constant for rotation position correction — long enough
+      // that the per-message target steps fade smoothly without clicks.
+      this.rotSmooth = 1 - Math.exp(-1 / (0.120 * sampleRate));
     }
     const k = this.smoothOn ? this.smooth : 1;
+    const kr = this.smoothOn ? this.rotSmooth : 1;
+    const invSR = 1 / sampleRate;
+    const PI = Math.PI, TAU = 2*PI;
     for (let i = 0; i < n; i++) {
       // per-sample smoothing of params (denormal-safe: targets are O(1))
       for (let p = 0; p < this.params.length; p++) {
         this.params[p] += (this.tParams[p] - this.params[p]) * k;
       }
       this.dt += (this.tDt - this.dt) * k;
-      // rotation smoothing — wrap delta into [-π,π] so spinning across
-      // the seam doesn't cause a long lerp around the circle.
+      // Integrate per-sample velocity for click-free continuous spin, then
+      // softly correct toward the main-thread target to absorb drift and
+      // manual rotation changes.
+      this.rotX += this.rotXVel * invSR;
+      this.rotY += this.rotYVel * invSR;
       let drX = this.tRotX - this.rotX;
       let drY = this.tRotY - this.rotY;
-      const PI = Math.PI, TAU = 2*PI;
       if (drX > PI) drX -= TAU; else if (drX < -PI) drX += TAU;
       if (drY > PI) drY -= TAU; else if (drY < -PI) drY += TAU;
-      this.rotX += drX * k;
-      this.rotY += drY * k;
+      this.rotX += drX * kr;
+      this.rotY += drY * kr;
       const dt = this.dt;
       switch (this.kind) {
       ${stepCases}
@@ -999,6 +1016,8 @@ registerProcessor('attractor', AttractorProcessor);
           dt: (freqRef.current * def.dt) / ctx.sampleRate,
           rotX: rotXRef.current,
           rotY: rotYRef.current,
+          rotXVel: autoSpinXRef.current ? spinSpeedXRef.current * 60 : 0,
+          rotYVel: autoSpinYRef.current ? spinSpeedYRef.current * 60 : 0,
           decim,
           smoothOn: smoothingRef.current,
         });
@@ -1026,6 +1045,8 @@ registerProcessor('attractor', AttractorProcessor);
           dt: (freqRef.current * def.dt) / a.ctx.sampleRate,
           rotX: rotXRef.current,
           rotY: rotYRef.current,
+          rotXVel: autoSpinXRef.current ? spinSpeedXRef.current * 60 : 0,
+          rotYVel: autoSpinYRef.current ? spinSpeedYRef.current * 60 : 0,
           decim: dc,
           smoothOn: smoothingRef.current,
         });
