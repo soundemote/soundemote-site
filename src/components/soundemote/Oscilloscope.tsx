@@ -1542,9 +1542,6 @@ registerProcessor('attractor', AttractorProcessor);
         <div
           ref={trackRef}
           onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
           className="relative flex-1 w-2 rounded-full border border-border/60 bg-background/40 cursor-pointer touch-none"
           role="slider"
           aria-label="Zoom"
