@@ -3,6 +3,7 @@ import { Minus, Plus, Volume2, VolumeX, RotateCcw } from "lucide-react";
 import {
   ATTRACTORS,
   attractorStepFns,
+  attractorWorkletSteps,
   type AttractorKind,
 } from "./attractors";
 
@@ -826,21 +827,10 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
       setAudioOn(true);
       return;
     }
-    // Build per-attractor step source by stripping the JS function wrapper
-    // and rewriting (s,p) → (this, this.params) so we can inline into the
-    // tight per-sample loop with no per-sample allocations.
-    const bodyOf = (fn: (...a: unknown[]) => unknown) => {
-      const src = fn.toString();
-      const start = src.indexOf("{") + 1;
-      const end = src.lastIndexOf("}");
-      return src.slice(start, end)
-        .replace(/\bs\.x\b/g, "this.x")
-        .replace(/\bs\.y\b/g, "this.y")
-        .replace(/\bs\.z\b/g, "this.z")
-        .replace(/\bp\[/g, "this.params[");
-    };
-    const stepCases = Object.entries(attractorStepFns)
-      .map(([k, fn]) => `case '${k}': { ${bodyOf(fn as never)} break; }`)
+    // Per-attractor step source — kept in attractors.ts as raw strings so
+    // production minification can't rename the identifiers we depend on.
+    const stepCases = Object.entries(attractorWorkletSteps)
+      .map(([k, body]) => `case '${k}': ${body} break;`)
       .join("\n      ");
     const workletCode = `
 class AttractorProcessor extends AudioWorkletProcessor {
