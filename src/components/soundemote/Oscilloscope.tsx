@@ -790,7 +790,7 @@ export const Oscilloscope = ({
       // derived from p0 and p3. This is purely visual — audio is unaffected.
       // It smooths the *rendered* polyline without the spectral artifacts
       // that sinc/Lanczos produced when applied to attractor state.
-      const SUBDIV = 4;
+      const SUBDIV = 8;
       const emitCR = (
         p0x: number, p0y: number,
         p1x: number, p1y: number,
