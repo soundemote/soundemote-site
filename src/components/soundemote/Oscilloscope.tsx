@@ -1151,9 +1151,16 @@ class AttractorProcessor extends AudioWorkletProcessor {
         this.visAcc -= 1;
       }
     }
-    if (!this.sabCtrl && this.bIdx > 0) {
-      this.port.postMessage({ pts: this.batch.slice(0, this.bIdx) });
-      this.bIdx = 0;
+    if (!this.sabCtrl) {
+      this.blocksSince++;
+      const full = this.bIdx + 3 > this.batch.length;
+      const enough = this.bIdx >= this.flushThreshFloats;
+      const timeout = this.blocksSince >= this.flushBlocks;
+      if (this.bIdx > 0 && (full || enough || timeout)) {
+        this.port.postMessage({ pts: this.batch.slice(0, this.bIdx) });
+        this.bIdx = 0;
+        this.blocksSince = 0;
+      }
     }
     return true;
   }
