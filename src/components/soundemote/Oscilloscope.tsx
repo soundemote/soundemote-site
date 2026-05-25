@@ -814,7 +814,7 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
   }, []);
 
   const adjustZoom = (factor: number) => {
-    zoomRef.current = Math.max(0.05, Math.min(20, zoomRef.current * factor));
+    zoomTargetRef.current = Math.max(0.05, Math.min(20, zoomTargetRef.current * factor));
     setTick((n) => n + 1);
   };
 
