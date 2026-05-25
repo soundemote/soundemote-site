@@ -621,7 +621,7 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
         const def = ATTRACTORS[kindRef.current];
         const stepFn = attractorStepFns[def.id];
         const params = sParams;
-        // Phasor-style oscillators (Kepler) want a fixed sample-rate-style
+        // Phasor-style oscillators (spiral) want a fixed sample-rate-style
         // integration; `dt` is a per-sample phase increment, so the normal
         // `steps = freq*dt_seconds` would either jump full cycles per step
         // or skip the polygon entirely.
