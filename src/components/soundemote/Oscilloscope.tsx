@@ -195,7 +195,7 @@ export const Oscilloscope = () => {
     let raf = 0;
     let dpr = window.devicePixelRatio || 1;
 
-    // ---------- Shader helpers ----------
+    /* ---------- Shader helpers ---------- */
     const compile = (type: number, src: string) => {
       const sh = gl.createShader(type)!;
       gl.shaderSource(sh, src);
@@ -412,7 +412,7 @@ export const Oscilloscope = () => {
     let sBeta = betaRef.current;
     let sFreq = freqRef.current;
 
-    // ---- Lanczos upsampler (DISABLED — failed experiment) ------------------
+    /* ---- Lanczos upsampler (DISABLED — failed experiment) ------------------ */
     // NOTE: This was an attempt to smooth the Lorenz signal like dood.al's
     // oscilloscope. It produced undesirable artifacts and is disabled.
     // We will revisit proper signal smoothing another time.
@@ -577,7 +577,7 @@ export const Oscilloscope = () => {
       const cosX = Math.cos(rotXRef.current);
       const sinX = Math.sin(rotXRef.current);
 
-      // ---- Integrate Lorenz → screen-space points (NDC) ----
+      /* ---- Integrate Lorenz → screen-space points (NDC) ---- */
       const pts: number[] = []; // [x0,y0,x1,y1,...] in NDC
       // start with prev point if we have one, so continuous between frames
       if (prevPx !== null && prevPy !== null) {
@@ -626,7 +626,7 @@ export const Oscilloscope = () => {
         }
       }
 
-      // ---- Lanczos upsample triples (a=2, steps=UP_STEPS) ----
+      /* ---- Lanczos upsample triples (a=2, steps=UP_STEPS) ---- */
       // Produces UP_STEPS output triples per input interval. Carries upCtx
       // across frames so we never see a chord boundary.
       const up: number[] = [];
@@ -680,7 +680,7 @@ export const Oscilloscope = () => {
         return;
       }
 
-      // ---- Pass 1: fade previous (read fboB → write fboA) ----
+      /* ---- Pass 1: fade previous (read fboB → write fboA) ---- */
       gl.bindFramebuffer(gl.FRAMEBUFFER, fboA.fbo);
       gl.viewport(0, 0, W, H);
       gl.disable(gl.BLEND);
@@ -705,7 +705,7 @@ export const Oscilloscope = () => {
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       gl.disableVertexAttribArray(fadeA_pos);
 
-      // ---- Pass 2: additively draw segments into fboA ----
+      /* ---- Pass 2: additively draw segments into fboA ---- */
       const nSegs = Math.max(0, Math.min(MAX_SEGS, (pts.length / 2) - 1));
       if (nSegs > 0) {
         for (let i = 0; i < nSegs; i++) {
@@ -746,7 +746,7 @@ export const Oscilloscope = () => {
         gl.disableVertexAttribArray(beamA_idx);
       }
 
-      // ---- Pass 3: composite fboA to canvas with tone-map + color ----
+      /* ---- Pass 3: composite fboA to canvas with tone-map + color ---- */
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, W, H);
       gl.useProgram(outProg);
@@ -798,7 +798,7 @@ export const Oscilloscope = () => {
     setTick((n) => n + 1);
   };
 
-  // ---- Audio: Lorenz running at sampleRate inside an AudioWorklet ----
+  /* ---- Audio: Lorenz running at sampleRate inside an AudioWorklet ---- */
   // Cleanup on unmount
   useEffect(() => {
     return () => {
