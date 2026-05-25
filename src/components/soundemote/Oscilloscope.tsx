@@ -1050,6 +1050,7 @@ class AttractorProcessor extends AudioWorkletProcessor {
         if (--this.rotYRemain === 0) this.rotY = this.tRotY;
       }
       const dt = this.dt;
+      this.prevX = this.x; this.prevY = this.y; this.prevZ = this.z;
       switch (this.kind) {
       ${stepCases}
       }
@@ -1075,13 +1076,17 @@ class AttractorProcessor extends AudioWorkletProcessor {
       this.dcXR = sy; this.dcYR = oy;
       L[i] = Math.max(-1, Math.min(1, ox));
       R[i] = Math.max(-1, Math.min(1, oy));
-      if (++this.dCount >= this.decim) {
-        this.dCount = 0;
-        if (this.bIdx + 3 <= this.batch.length) {
-          this.batch[this.bIdx++] = this.x;
-          this.batch[this.bIdx++] = this.y;
-          this.batch[this.bIdx++] = this.z;
-        }
+      // Fixed-rate visual emission with linear interpolation between the
+      // two adjacent integration samples.
+      const _visInc = this.visRate / sampleRate;
+      this.visAcc += _visInc;
+      while (this.visAcc >= 1 && this.bIdx + 3 <= this.batch.length) {
+        const frac = _visInc > 0 ? (this.visAcc - 1) / _visInc : 0;
+        const t = 1 - frac; // 0..1, position between prev and current sample
+        this.batch[this.bIdx++] = this.prevX + (this.x - this.prevX) * t;
+        this.batch[this.bIdx++] = this.prevY + (this.y - this.prevY) * t;
+        this.batch[this.bIdx++] = this.prevZ + (this.z - this.prevZ) * t;
+        this.visAcc -= 1;
       }
     }
     if (this.bIdx > 0) {
