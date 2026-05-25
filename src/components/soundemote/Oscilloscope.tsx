@@ -979,6 +979,16 @@ export const Oscilloscope = ({
     setTick((n) => n + 1);
   };
 
+  const setZoomFromFraction = (frac: number) => {
+    // frac in [0,1] -> log-mapped zoom in [0.05, 20]
+    const f = Math.max(0, Math.min(1, frac));
+    const minZ = 0.05;
+    const maxZ = 20;
+    const z = minZ * Math.pow(maxZ / minZ, f);
+    zoomTargetRef.current = z;
+    setTick((n) => n + 1);
+  };
+
   const adjustTrace = (delta: number) => {
     traceWidthRef.current = Math.max(0.4, Math.min(40, traceWidthRef.current + delta));
     setTick((n) => n + 1);
