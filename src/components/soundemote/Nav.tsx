@@ -1,15 +1,15 @@
 const links = [
-  { href: "#projects", label: "Projects" },
-  { href: "#philosophy", label: "Philosophy" },
-  { href: "#developers", label: "Developers" },
-  { href: "#community", label: "Community" },
-  { href: "#contact", label: "Contact" },
+  { href: "/#projects", label: "Projects" },
+  { href: "/#philosophy", label: "Philosophy" },
+  { href: "/#developers", label: "Developers" },
+  { href: "/#community", label: "Community" },
+  { href: "/#contact", label: "Contact" },
 ];
 
 export const Nav = () => (
   <header className="fixed top-0 z-50 w-full border-b border-border/40 bg-background/70 backdrop-blur-xl">
     <nav className="container flex h-16 items-center justify-between" aria-label="Primary">
-      <a href="#top" className="group flex items-center gap-2 mono text-sm tracking-wider">
+      <a href="/" className="group flex items-center gap-2 mono text-sm tracking-wider">
         <span className="text-scope text-glow">✧</span>
         <span className="display text-warm-white">soundemote</span>
         <span className="text-muted-foreground hidden sm:inline">, LLC</span>

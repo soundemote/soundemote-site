@@ -233,7 +233,7 @@ export const ATTRACTORS: Record<AttractorKind, AttractorDef> = {
     init: { x: 0, y: 0, z: 0 },
     // dt is a per-sample phase increment: `audio_dt = freq * def.dt / sr`
     // must equal `2π * freq / sr`, so def.dt = 2π.
-    dt: Math.PI * 2, viewScale: 90, zOffset: 0, audioScale: 0.8,
+    dt: Math.PI * 2, viewScale: 45, zOffset: 0, audioScale: 0.8,
     defaultFreq: 110,
     visualSamplesPerSec: 8000,
   },

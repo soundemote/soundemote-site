@@ -16,6 +16,7 @@ const projects: Project[] = [
     status: "in development",
     blurb:
       "Next-generation analog-emulation audio plugin prototyping environment. Musical, aggressive filters, warm saturation, graphs, oscilloscopes, visual fx, metaparameters, SIMD backend, easy for producers, great for devs, open source, MIT license, no strings attached.",
+    href: "https://github.com/soundemote/soemdsp",
     tags: ["instrument", "ecosystem", "soon"],
     accent: "accent",
   },
@@ -24,7 +25,7 @@ const projects: Project[] = [
     status: "library · in revival",
     blurb:
       "Aesthetic oscilloscope technology for musicians, synth builders, and visual sound explorers. Free forever, community-driven.",
-    href: "https://github.com/soundemote/asciiscope-clap",
+    href: "https://github.com/soundemote/prettyscope",
     tags: ["visualizer", "library", "open"],
     accent: "scope",
   },
@@ -130,10 +131,19 @@ export const Projects = () => (
                     </h3>
                   )
                 ) : p.name === "(soemdsp-sandbox)~" ? (
-                  <h3 className={`display text-3xl ${accentClass[p.accent]}`}>
-                    (soemdsp-sandbox)
-                    <BlinkingTilde />
-                  </h3>
+                  p.href ? (
+                    <a href={p.href} target="_blank" rel="noreferrer" className="inline-block hover:opacity-80 transition-opacity">
+                      <h3 className={`display text-3xl ${accentClass[p.accent]}`}>
+                        (soemdsp-sandbox)
+                        <BlinkingTilde />
+                      </h3>
+                    </a>
+                  ) : (
+                    <h3 className={`display text-3xl ${accentClass[p.accent]}`}>
+                      (soemdsp-sandbox)
+                      <BlinkingTilde />
+                    </h3>
+                  )
                 ) : p.name === "⋆⁺₊✧ soemdsp ✧₊⁺⋆" ? (
                   p.href ? (
                     <a href={p.href} target="_blank" rel="noreferrer" className="inline-block hover:opacity-80 transition-opacity">
