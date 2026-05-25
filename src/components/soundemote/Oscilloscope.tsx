@@ -223,6 +223,10 @@ export const Oscilloscope = ({
   // writes to it. Either way both renderers consume the same data.
   const stateRef = useRef({ x: 0.01, y: 0, z: 0 });
   const ptsQueueRef = useRef<number[]>([]); // flat x,y,z,x,y,z,...
+  // SharedArrayBuffer SPSC ring (worklet → main). Set when crossOriginIsolated.
+  // ctrl[0] = writeIdx (producer), ctrl[1] = readIdx (consumer), both in float
+  // positions and always multiples of 3. data holds interleaved x,y,z.
+  const sabRef = useRef<{ ctrl: Int32Array; data: Float32Array } | null>(null);
   const [, setTick] = useState(0); // force re-render of overlay labels
 
   useEffect(() => {
@@ -646,7 +650,27 @@ export const Oscilloscope = ({
       const triples: number[] = [];
       const audioActive =
         audioOnRef.current && audioRef.current && audioRef.current.ctx.state === "running";
-      if (audioActive && ptsQueueRef.current.length >= 3) {
+      // If a SAB ring is active, drain it directly (no postMessage involved).
+      if (audioActive && sabRef.current) {
+        const { ctrl, data } = sabRef.current;
+        const cap = data.length;
+        const w = Atomics.load(ctrl, 0);
+        let r = Atomics.load(ctrl, 1);
+        const maxPts = 4000;
+        let taken = 0;
+        while (r !== w && taken < maxPts) {
+          triples.push(data[r], data[r + 1], data[r + 2]);
+          r = (r + 3) % cap;
+          taken++;
+        }
+        Atomics.store(ctrl, 1, r);
+        const L = triples.length;
+        if (L >= 3) {
+          stateRef.current.x = triples[L - 3];
+          stateRef.current.y = triples[L - 2];
+          stateRef.current.z = triples[L - 1];
+        }
+      } else if (audioActive && ptsQueueRef.current.length >= 3) {
         const q = ptsQueueRef.current;
         // Cap per-frame draw count so we never fall further behind
         const maxPts = 2400;
@@ -889,6 +913,7 @@ export const Oscilloscope = ({
         try { a.ctx.close(); } catch {}
         audioRef.current = null;
       }
+      sabRef.current = null;
     };
   }, []);
 
@@ -955,6 +980,16 @@ class AttractorProcessor extends AudioWorkletProcessor {
     this.prevX = this.x; this.prevY = this.y; this.prevZ = this.z;
     this.batch = new Float32Array(2400); // up to 800 triples
     this.bIdx = 0;
+    // Optional SharedArrayBuffer ring (set by 'sab' message). When present
+    // we write triples lock-free into a SPSC ring and skip postMessage
+    // entirely — the main thread polls via Atomics each rAF.
+    // Layout:
+    //   ctrl: Int32Array(2) = [writeIdx, readIdx] in float positions
+    //         (always multiples of 3). cap is data.length.
+    //   data: Float32Array(cap) of interleaved x,y,z triples.
+    this.sabCtrl = null;
+    this.sabData = null;
+    this.sabCap = 0;
     this.port.onmessage = (e) => {
       const d = e.data;
       if (d.type === 'reset') {
@@ -991,6 +1026,11 @@ class AttractorProcessor extends AudioWorkletProcessor {
       if (d.rotYVel !== undefined) this.startLinearRamp('rotYVel', 'tRotYVel', 'rotYVelStep', 'rotYVelRemain', d.rotYVel, false);
       if (d.visRate !== undefined) this.visRate = Math.max(60, Math.min(20000, +d.visRate));
       if (d.smoothOn !== undefined) this.smoothOn = !!d.smoothOn;
+      if (d.sab !== undefined) {
+        this.sabCtrl = new Int32Array(d.sab.ctrl);
+        this.sabData = new Float32Array(d.sab.data);
+        this.sabCap = this.sabData.length;
+      }
     };
   }
   blockRampSamples() {
@@ -1080,16 +1120,31 @@ class AttractorProcessor extends AudioWorkletProcessor {
       // two adjacent integration samples.
       const _visInc = this.visRate / sampleRate;
       this.visAcc += _visInc;
-      while (this.visAcc >= 1 && this.bIdx + 3 <= this.batch.length) {
+      while (this.visAcc >= 1) {
         const frac = _visInc > 0 ? (this.visAcc - 1) / _visInc : 0;
         const t = 1 - frac; // 0..1, position between prev and current sample
-        this.batch[this.bIdx++] = this.prevX + (this.x - this.prevX) * t;
-        this.batch[this.bIdx++] = this.prevY + (this.y - this.prevY) * t;
-        this.batch[this.bIdx++] = this.prevZ + (this.z - this.prevZ) * t;
+        const ix = this.prevX + (this.x - this.prevX) * t;
+        const iy = this.prevY + (this.y - this.prevY) * t;
+        const iz = this.prevZ + (this.z - this.prevZ) * t;
+        if (this.sabCtrl) {
+          // SPSC ring write (producer). We overwrite older data if the
+          // consumer falls behind by a full lap (won't happen at 4kHz with
+          // a 16k-triple ring drained every rAF).
+          const w = Atomics.load(this.sabCtrl, 0);
+          this.sabData[w] = ix;
+          this.sabData[w + 1] = iy;
+          this.sabData[w + 2] = iz;
+          const nw = (w + 3) % this.sabCap;
+          Atomics.store(this.sabCtrl, 0, nw);
+        } else if (this.bIdx + 3 <= this.batch.length) {
+          this.batch[this.bIdx++] = ix;
+          this.batch[this.bIdx++] = iy;
+          this.batch[this.bIdx++] = iz;
+        }
         this.visAcc -= 1;
       }
     }
-    if (this.bIdx > 0) {
+    if (!this.sabCtrl && this.bIdx > 0) {
       this.port.postMessage({ pts: this.batch.slice(0, this.bIdx) });
       this.bIdx = 0;
     }
@@ -1112,6 +1167,30 @@ registerProcessor('attractor', AttractorProcessor);
       node.connect(gain).connect(ctx.destination);
       // Fixed visual emission rate, independent of integration frequency.
       const VIS_RATE = 4000;
+      // Allocate a SharedArrayBuffer ring if the page is crossOriginIsolated.
+      // 16384 triples = 192 KB float data; at 4000 pts/sec that's ~4 sec of
+      // buffer — orders of magnitude more than a single rAF interval.
+      let sabInit: { ctrl: SharedArrayBuffer; data: SharedArrayBuffer } | null = null;
+      const SAB_SUPPORTED =
+        typeof SharedArrayBuffer !== "undefined" &&
+        typeof (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated !== "undefined" &&
+        (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true;
+      if (SAB_SUPPORTED) {
+        try {
+          const TRIPLES = 16384;
+          const dataBuf = new SharedArrayBuffer(TRIPLES * 3 * 4);
+          const ctrlBuf = new SharedArrayBuffer(2 * 4);
+          sabRef.current = {
+            ctrl: new Int32Array(ctrlBuf),
+            data: new Float32Array(dataBuf),
+          };
+          sabInit = { ctrl: ctrlBuf, data: dataBuf };
+        } catch (e) {
+          // Fall back silently to postMessage path
+          sabRef.current = null;
+          sabInit = null;
+        }
+      }
       {
         const def = ATTRACTORS[kindRef.current];
         node.port.postMessage({
@@ -1127,6 +1206,7 @@ registerProcessor('attractor', AttractorProcessor);
           rotYVel: autoSpinYRef.current ? spinSpeedYRef.current * 60 : 0,
           visRate: VIS_RATE,
           smoothOn: smoothingRef.current,
+          ...(sabInit ? { sab: sabInit } : {}),
         });
       }
       node.port.onmessage = (e) => {
