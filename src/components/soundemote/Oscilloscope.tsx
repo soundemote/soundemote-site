@@ -1593,16 +1593,6 @@ registerProcessor('attractor', AttractorProcessor);
       />
       {/* Controls */}
       <div className="absolute bottom-3 right-3 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={resetAll}
-          className="flex items-center gap-1 rounded-full border border-border/60 bg-background/70 backdrop-blur-sm px-2 py-1 text-muted-foreground hover:text-scope hover:border-scope/60 transition-colors"
-          title="Reset coefficients, integrator state, and audio engine"
-          aria-label="Reset"
-        >
-          <RotateCcw className="h-3 w-3" />
-          <span className="mono text-[10px] tracking-[0.15em]">reset</span>
-        </button>
         <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-1.5 py-1 backdrop-blur-sm">
           <HoldButton
             onTick={(a) => adjustTrace(-0.15 * a)}
