@@ -829,8 +829,14 @@ export const Oscilloscope = ({
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, fboA.tex);
       gl.uniform1i(outU_tex, 0);
-      // scope green: rgb(40,235,158) ≈ (0.157, 0.921, 0.620)
-      gl.uniform3f(outU_color, 0.18, 0.95, 0.42);
+      {
+        const tc = tracerColorRef.current;
+        const bc = bgColorRef.current;
+        const [tr, tg, tb] = hslToRgb(tc.h, tc.s, tc.l);
+        const [br, bg2, bb] = hslToRgb(bc.h, bc.s, bc.l);
+        gl.uniform3f(outU_color, tr, tg, tb);
+        gl.uniform3f(outU_bg, br, bg2, bb);
+      }
       gl.uniform1f(outU_exposure, 2.4);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       gl.disableVertexAttribArray(outA_pos);
