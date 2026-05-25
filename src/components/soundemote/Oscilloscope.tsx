@@ -551,6 +551,14 @@ export const Oscilloscope = ({
       lastT = now;
       if (dtSeconds > 0.1) dtSeconds = 0.1; // clamp huge gaps (tab switch)
       const frameScale = Math.max(0.1, Math.min(8, dtSeconds * 60));
+      // Smoothed refresh-rate estimate. Seeded on first non-trivial frame,
+      // then low-passed (~1.5 s time constant) so transient jitter doesn't
+      // wobble the audio-drain target.
+      if (dtSeconds > 0.001 && dtSeconds < 0.1) {
+        const instHz = 1 / dtSeconds;
+        if (!hzInit) { hzAvg = instHz; hzInit = true; }
+        else { hzAvg += (instHz - hzAvg) * 0.02; }
+      }
 
       // Smooth zoom toward target (exponential lerp, longer half-life for
       // a slower, more cinematic zoom feel).
