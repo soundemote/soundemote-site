@@ -11,7 +11,7 @@ type Project = {
 
 const projects: Project[] = [
   {
-    name: "soemdsp-sandbox",
+    name: "(soemdsp-sandbox)~",
     status: "in development",
     blurb:
       "Next-generation analog-emulation audio plugin prototyping environment. Musical, aggressive filters, warm saturation, graphs, oscilloscopes, visual fx, metaparameters, SIMD backend, easy for producers, great for devs, open source, MIT license, no strings attached.",
@@ -37,7 +37,7 @@ const projects: Project[] = [
     accent: "warm",
   },
   {
-    name: "soemdsp",
+    name: "soundemote.io",
     status: "C++ · MIT",
     blurb:
       "SIMD-minded, easy-to-use low-level DSP objects for oscillators, filters, modulation, dynamics, random, timing, and plugin infrastructure.",
@@ -49,7 +49,7 @@ const projects: Project[] = [
 
 const accentClass: Record<Project["accent"], string> = {
   scope: "text-scope",
-  accent: "text-accent",
+  accent: "text-accent text-slate-300",
   warm: "text-warm-white",
 };
 
