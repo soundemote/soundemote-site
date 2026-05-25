@@ -610,21 +610,20 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
           stateRef.current.z = triples[L - 1];
         }
       } else {
+        const def = ATTRACTORS[kindRef.current];
+        const stepFn = attractorStepFns[def.id];
+        const params = def.id === "lorenz" ? [sigma, rho, beta] : def.params;
+        const dtA = def.dt;
         const steps = Math.max(
           1,
           Math.min(8000, Math.round(sFreq * dtSeconds))
         );
         const st = stateRef.current;
         for (let i = 0; i < steps; i++) {
-          const dx = sigma * (st.y - st.x);
-          const dy = st.x * (rho - st.z) - st.y;
-          const dz = st.x * st.y - beta * st.z;
-          st.x += dx * dt;
-          st.y += dy * dt;
-          st.z += dz * dt;
-          // explosion guard
+          stepFn(st, dtA, params);
+          // explosion guard — re-seed from this attractor's init
           if (!isFinite(st.x) || Math.abs(st.x) > 1e4) {
-            st.x = 0.01; st.y = 0; st.z = 0;
+            st.x = def.init.x; st.y = def.init.y; st.z = def.init.z;
             prevPx = null; prevPy = null;
             resetUpsampler();
             break;
