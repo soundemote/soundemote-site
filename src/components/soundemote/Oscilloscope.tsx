@@ -1095,16 +1095,31 @@ class AttractorProcessor extends AudioWorkletProcessor {
       // two adjacent integration samples.
       const _visInc = this.visRate / sampleRate;
       this.visAcc += _visInc;
-      while (this.visAcc >= 1 && this.bIdx + 3 <= this.batch.length) {
+      while (this.visAcc >= 1) {
         const frac = _visInc > 0 ? (this.visAcc - 1) / _visInc : 0;
         const t = 1 - frac; // 0..1, position between prev and current sample
-        this.batch[this.bIdx++] = this.prevX + (this.x - this.prevX) * t;
-        this.batch[this.bIdx++] = this.prevY + (this.y - this.prevY) * t;
-        this.batch[this.bIdx++] = this.prevZ + (this.z - this.prevZ) * t;
+        const ix = this.prevX + (this.x - this.prevX) * t;
+        const iy = this.prevY + (this.y - this.prevY) * t;
+        const iz = this.prevZ + (this.z - this.prevZ) * t;
+        if (this.sabCtrl) {
+          // SPSC ring write (producer). We overwrite older data if the
+          // consumer falls behind by a full lap (won't happen at 4kHz with
+          // a 16k-triple ring drained every rAF).
+          const w = Atomics.load(this.sabCtrl, 0);
+          this.sabData[w] = ix;
+          this.sabData[w + 1] = iy;
+          this.sabData[w + 2] = iz;
+          const nw = (w + 3) % this.sabCap;
+          Atomics.store(this.sabCtrl, 0, nw);
+        } else if (this.bIdx + 3 <= this.batch.length) {
+          this.batch[this.bIdx++] = ix;
+          this.batch[this.bIdx++] = iy;
+          this.batch[this.bIdx++] = iz;
+        }
         this.visAcc -= 1;
       }
     }
-    if (this.bIdx > 0) {
+    if (!this.sabCtrl && this.bIdx > 0) {
       this.port.postMessage({ pts: this.batch.slice(0, this.bIdx) });
       this.bIdx = 0;
     }
