@@ -913,6 +913,7 @@ export const Oscilloscope = ({
         try { a.ctx.close(); } catch {}
         audioRef.current = null;
       }
+      sabRef.current = null;
     };
   }, []);
 
