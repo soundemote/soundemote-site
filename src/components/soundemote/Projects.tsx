@@ -28,15 +28,6 @@ const projects: Project[] = [
     accent: "scope",
   },
   {
-    name: "soemdsp",
-    status: "C++ · MIT",
-    blurb:
-      "SIMD-minded, easy-to-use low-level DSP objects for oscillators, filters, modulation, dynamics, random, timing, and plugin infrastructure.",
-    href: "https://github.com/soundemote/soemdsp",
-    tags: ["dsp", "c++", "simd"],
-    accent: "scope",
-  },
-  {
     name: "Asciiscope",
     status: "plugin · experimental",
     blurb:
@@ -44,6 +35,15 @@ const projects: Project[] = [
     href: "https://github.com/soundemote/asciiscope-clap",
     tags: ["clap", "juce", "visual"],
     accent: "warm",
+  },
+  {
+    name: "soemdsp",
+    status: "C++ · MIT",
+    blurb:
+      "SIMD-minded, easy-to-use low-level DSP objects for oscillators, filters, modulation, dynamics, random, timing, and plugin infrastructure.",
+    href: "https://github.com/soundemote/soemdsp",
+    tags: ["dsp", "c++", "simd"],
+    accent: "scope",
   },
 ];
 
