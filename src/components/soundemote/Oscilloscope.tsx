@@ -174,9 +174,8 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
   const decayRef = useRef(0.45);
   const spinSpeedXRef = useRef(0);
   const spinSpeedYRef = useRef(0.003);
-  const sigmaRef = useRef(16);
-  const rhoRef = useRef(45.92);
-  const betaRef = useRef(4);
+  // Live coefficient values for the *current* attractor (parallel to its paramSchema).
+  const paramsRef = useRef<number[]>([...ATTRACTORS[kind].params]);
   // Steps per second of Lorenz integration. ~1440 matches the old
   // 24 steps/frame @ 60fps. Range covers slow drift → audio-rate buzz.
   const freqRef = useRef(1440);
