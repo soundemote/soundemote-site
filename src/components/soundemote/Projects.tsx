@@ -24,7 +24,7 @@ const projects: Project[] = [
     status: "library · in revival",
     blurb:
       "Aesthetic oscilloscope technology for musicians, synth builders, and visual sound explorers. Free forever, community-driven.",
-    href: "https://github.com/soundemote/prettyscope-old",
+    href: "https://github.com/soundemote/asciiscope-clap",
     tags: ["visualizer", "library", "open"],
     accent: "scope",
   },
@@ -102,20 +102,46 @@ export const Projects = () => (
             <div className="flex items-start justify-between mb-6">
               <div>
                 {p.name === "prettyscope" ? (
-                  <h3 className="display text-3xl bg-[linear-gradient(90deg,#ff5757,#ffb547,#ffe156,#7bd66a,#5ad1ff,#9d7bff,#ff7bdc)] bg-clip-text text-transparent animate-[rainbow-spin_3s_linear_infinite]">
-                    {p.name}
-                  </h3>
+                  p.href ? (
+                    <a href={p.href} target="_blank" rel="noreferrer" className="inline-block hover:opacity-80 transition-opacity">
+                      <h3 className="display text-3xl bg-[linear-gradient(90deg,#ff5757,#ffb547,#ffe156,#7bd66a,#5ad1ff,#9d7bff,#ff7bdc)] bg-clip-text text-transparent animate-[rainbow-spin_3s_linear_infinite]">
+                        {p.name}
+                      </h3>
+                    </a>
+                  ) : (
+                    <h3 className="display text-3xl bg-[linear-gradient(90deg,#ff5757,#ffb547,#ffe156,#7bd66a,#5ad1ff,#9d7bff,#ff7bdc)] bg-clip-text text-transparent animate-[rainbow-spin_3s_linear_infinite]">
+                      {p.name}
+                    </h3>
+                  )
                 ) : p.name === "asciiscope" ? (
-                  <h3 className="mono text-3xl text-scope tracking-tight">
-                    <span className="text-muted-foreground">$&nbsp;</span>
-                    {p.name}
-                    <span className="inline-block w-[0.6em] h-[1em] align-[-0.15em] bg-scope ml-1 animate-pulse" />
-                  </h3>
+                  p.href ? (
+                    <a href={p.href} target="_blank" rel="noreferrer" className="inline-block hover:opacity-80 transition-opacity">
+                      <h3 className="mono text-3xl text-scope tracking-tight">
+                        <span className="text-muted-foreground">$&nbsp;</span>
+                        {p.name}
+                        <span className="inline-block w-[0.6em] h-[1em] align-[-0.15em] bg-scope ml-1 animate-pulse" />
+                      </h3>
+                    </a>
+                  ) : (
+                    <h3 className="mono text-3xl text-scope tracking-tight">
+                      <span className="text-muted-foreground">$&nbsp;</span>
+                      {p.name}
+                      <span className="inline-block w-[0.6em] h-[1em] align-[-0.15em] bg-scope ml-1 animate-pulse" />
+                    </h3>
+                  )
                 ) : p.name === "(soemdsp-sandbox)~" ? (
                   <h3 className={`display text-3xl ${accentClass[p.accent]}`}>
                     (soemdsp-sandbox)
                     <BlinkingTilde />
                   </h3>
+                ) : p.name === "⋆⁺₊✧ soemdsp ✧₊⁺⋆" ? (
+                  p.href ? (
+                    <a href={p.href} target="_blank" rel="noreferrer" className="inline-block hover:opacity-80 transition-opacity">
+                      <h3 className={`display text-3xl ${accentClass[p.accent]}`}>{p.name}</h3>
+                    </a>
+                  ) : (
+                    <h3 className={`display text-3xl ${accentClass[p.accent]}`}>{p.name}</h3>
+                  )
                 ) : (
                   <h3 className={`display text-3xl ${accentClass[p.accent]}`}>{p.name}</h3>
                 )}
