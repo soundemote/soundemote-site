@@ -784,6 +784,42 @@ export const Oscilloscope = ({
       }
 
       const defView = ATTRACTORS[kindRef.current];
+      // Catmull-Rom subdivision in NDC space.
+      // Holds the last 4 projected points (p0..p3); for each new p3 we emit
+      // SUBDIV samples along the spline between p1 and p2 with tangents
+      // derived from p0 and p3. This is purely visual — audio is unaffected.
+      // It smooths the *rendered* polyline without the spectral artifacts
+      // that sinc/Lanczos produced when applied to attractor state.
+      const SUBDIV = 4;
+      const emitCR = (
+        p0x: number, p0y: number,
+        p1x: number, p1y: number,
+        p2x: number, p2y: number,
+        p3x: number, p3y: number,
+      ) => {
+        // Centripetal tension = 0.5 (standard Catmull-Rom).
+        for (let k = 1; k <= SUBDIV; k++) {
+          const t = k / SUBDIV;
+          const t2 = t * t;
+          const t3 = t2 * t;
+          const b0 = -0.5 * t3 +       t2 - 0.5 * t;
+          const b1 =  1.5 * t3 - 2.5 * t2 + 1.0;
+          const b2 = -1.5 * t3 + 2.0 * t2 + 0.5 * t;
+          const b3 =  0.5 * t3 - 0.5 * t2;
+          const ix = b0 * p0x + b1 * p1x + b2 * p2x + b3 * p3x;
+          const iy = b0 * p0y + b1 * p1y + b2 * p2y + b3 * p3y;
+          pts.push(ix, iy);
+        }
+      };
+      // Sliding window of projected NDC points (last 3 we've seen).
+      let q0x = 0, q0y = 0, q1x = 0, q1y = 0, q2x = 0, q2y = 0;
+      let qFill = 0;
+      // Seed from existing trail tail so we don't break continuity.
+      if (pts.length >= 2) {
+        q2x = pts[pts.length - 2];
+        q2y = pts[pts.length - 1];
+        qFill = 1;
+      }
       for (let i = 0; i < up.length; i += 3) {
         const x0 = up[i];
         const y0 = up[i + 1];
@@ -796,7 +832,28 @@ export const Oscilloscope = ({
         // (zr2 unused for orthographic projection)
         const px = cx + xr * s * 8 * defView.viewScale;
         const py = cy + yr * s * 8 * defView.viewScale;
-        pts.push((px / w) * 2 - 1, 1 - (py / h) * 2);
+        const nx = (px / w) * 2 - 1;
+        const ny = 1 - (py / h) * 2;
+        // Shift window: q0 <- q1 <- q2 <- new
+        q0x = q1x; q0y = q1y;
+        q1x = q2x; q1y = q2y;
+        q2x = nx;  q2y = ny;
+        if (qFill < 3) {
+          qFill++;
+          // Until we have 3 points, just push raw — segment count stays in
+          // sync and the first frame after a break degrades gracefully.
+          pts.push(nx, ny);
+        } else {
+          // p0=q0, p1=q1, p2=q2-prev (already in pts as last vertex),
+          // p3=new (q2). We need 4 points: previous-previous, previous,
+          // current, next. With the sliding window above:
+          //   p0 = q0 (oldest), p1 = q1, p2 = q2 (new), and p3 ≈ q2 too.
+          // Use mirrored extrapolation for p3 so the curve passes through
+          // the newest point without lag.
+          const p3x = q2x + (q2x - q1x);
+          const p3y = q2y + (q2y - q1y);
+          emitCR(q0x, q0y, q1x, q1y, q2x, q2y, p3x, p3y);
+        }
         prevPx = px;
         prevPy = py;
       }
