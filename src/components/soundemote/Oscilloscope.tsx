@@ -621,11 +621,20 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
         const def = ATTRACTORS[kindRef.current];
         const stepFn = attractorStepFns[def.id];
         const params = sParams;
-        const dtA = def.dt;
-        const steps = Math.max(
-          1,
-          Math.min(8000, Math.round(sFreq * dtSeconds))
-        );
+        // Phasor-style oscillators (Kepler) want a fixed sample-rate-style
+        // integration; `dt` is a per-sample phase increment, so the normal
+        // `steps = freq*dt_seconds` would either jump full cycles per step
+        // or skip the polygon entirely.
+        let dtA: number;
+        let steps: number;
+        if (def.visualSamplesPerSec) {
+          const sps = def.visualSamplesPerSec;
+          steps = Math.max(1, Math.min(8000, Math.round(sps * dtSeconds)));
+          dtA = (def.dt * sFreq) / sps;
+        } else {
+          dtA = def.dt;
+          steps = Math.max(1, Math.min(8000, Math.round(sFreq * dtSeconds)));
+        }
         const st = stateRef.current;
         for (let i = 0; i < steps; i++) {
           stepFn(st, dtA, params);
@@ -1119,6 +1128,7 @@ registerProcessor('attractor', AttractorProcessor);
     stateRef.current = { ...def.init };
     ptsQueueRef.current.length = 0;
     paramsRef.current = [...def.params];
+    if (def.defaultFreq !== undefined) freqRef.current = def.defaultFreq;
     if (audioRef.current) {
       const { ctx, node } = audioRef.current;
       node.port.postMessage({
@@ -1140,7 +1150,7 @@ registerProcessor('attractor', AttractorProcessor);
   const resetAll = () => {
     const def = ATTRACTORS[kindRef.current];
     paramsRef.current = [...def.params];
-    freqRef.current = 1440;
+    freqRef.current = def.defaultFreq ?? 1440;
     stateRef.current = { ...def.init };
     ptsQueueRef.current.length = 0;
     if (audioRef.current) {
