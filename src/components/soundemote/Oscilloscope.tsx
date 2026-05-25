@@ -340,18 +340,20 @@ export const Oscilloscope = ({
       `precision highp float;
        uniform sampler2D uTex;
        uniform vec3 uColor;
+       uniform vec3 uBg;
        uniform float uExposure;
        varying vec2 vUv;
        void main(){
          float l = texture2D(uTex, vUv).r;
          float t = 1.0 - exp(-l * uExposure);
          vec3 col = mix(uColor, vec3(1.0), t * t * 0.6) * t;
-         gl_FragColor = vec4(col, 1.0);
+         gl_FragColor = vec4(uBg * (1.0 - t) + col, 1.0);
        }`
     );
     const outA_pos = gl.getAttribLocation(outProg, "aPos");
     const outU_tex = gl.getUniformLocation(outProg, "uTex");
     const outU_color = gl.getUniformLocation(outProg, "uColor");
+    const outU_bg = gl.getUniformLocation(outProg, "uBg");
     const outU_exposure = gl.getUniformLocation(outProg, "uExposure");
 
     // Fullscreen quad buffer
