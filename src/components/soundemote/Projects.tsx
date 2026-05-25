@@ -19,7 +19,7 @@ const projects: Project[] = [
     accent: "accent",
   },
   {
-    name: "PrettyScope",
+    name: "Prettyscope",
     status: "library · in revival",
     blurb:
       "Aesthetic oscilloscope technology for musicians, synth builders, and visual sound explorers. Free forever, community-driven.",
@@ -62,7 +62,7 @@ export const Projects = () => (
           Built in the open, one signal at a time.
         </h2>
         <p className="mono text-xs text-muted-foreground mt-4">
-          DSP code, plugin experiments, and visual instruments.
+          DSP / Audio / Visual
         </p>
       </div>
 
