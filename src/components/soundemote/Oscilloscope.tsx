@@ -979,6 +979,16 @@ export const Oscilloscope = ({
     setTick((n) => n + 1);
   };
 
+  const setZoomFromFraction = (frac: number) => {
+    // frac in [0,1] -> log-mapped zoom in [0.05, 20]
+    const f = Math.max(0, Math.min(1, frac));
+    const minZ = 0.05;
+    const maxZ = 20;
+    const z = minZ * Math.pow(maxZ / minZ, f);
+    zoomTargetRef.current = z;
+    setTick((n) => n + 1);
+  };
+
   const adjustTrace = (delta: number) => {
     traceWidthRef.current = Math.max(0.4, Math.min(40, traceWidthRef.current + delta));
     setTick((n) => n + 1);
@@ -1458,8 +1468,89 @@ registerProcessor('attractor', AttractorProcessor);
     );
   };
 
+  const VerticalZoomBar: React.FC<{
+    getZoom: () => number;
+    onSetFraction: (f: number) => void;
+  }> = ({ getZoom, onSetFraction }) => {
+    const trackRef = useRef<HTMLDivElement>(null);
+    const thumbRef = useRef<HTMLDivElement>(null);
+    const draggingRef = useRef(false);
+
+    const fracFromZoom = (z: number) => {
+      const minZ = 0.05;
+      const maxZ = 20;
+      return Math.log(z / minZ) / Math.log(maxZ / minZ);
+    };
+
+    useEffect(() => {
+      let raf = 0;
+      const tick = () => {
+        const el = thumbRef.current;
+        if (el) {
+          const f = Math.max(0, Math.min(1, fracFromZoom(getZoom())));
+          // bottom = small zoom, top = big zoom
+          el.style.bottom = `calc(${f * 100}% - 6px)`;
+        }
+        raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+      return () => cancelAnimationFrame(raf);
+    }, [getZoom]);
+
+    const handleFromEvent = (clientY: number) => {
+      const track = trackRef.current;
+      if (!track) return;
+      const r = track.getBoundingClientRect();
+      const f = 1 - (clientY - r.top) / r.height;
+      onSetFraction(f);
+    };
+
+    const onPointerDown = (e: React.PointerEvent) => {
+      draggingRef.current = true;
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+      handleFromEvent(e.clientY);
+    };
+    const onPointerMove = (e: React.PointerEvent) => {
+      if (!draggingRef.current) return;
+      handleFromEvent(e.clientY);
+    };
+    const onPointerUp = (e: React.PointerEvent) => {
+      draggingRef.current = false;
+      (e.target as Element).releasePointerCapture?.(e.pointerId);
+    };
+
+    return (
+      <div className="flex flex-col items-center gap-1 py-1 select-none">
+        <span className="mono text-[8px] tracking-[0.15em] text-muted-foreground/70">+</span>
+        <div
+          ref={trackRef}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          className="relative flex-1 w-2 rounded-full border border-border/60 bg-background/40 cursor-pointer touch-none"
+          role="slider"
+          aria-label="Zoom"
+        >
+          <div
+            ref={thumbRef}
+            className="pointer-events-none absolute left-1/2 -translate-x-1/2 h-3 w-3 rounded-full bg-scope/70 ring-1 ring-scope shadow-[0_0_8px_hsl(var(--scope)/0.7)]"
+            style={{ bottom: "0%" }}
+          />
+        </div>
+        <span className="mono text-[8px] tracking-[0.15em] text-muted-foreground/70">−</span>
+      </div>
+    );
+  };
+
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-xl border border-border bg-[var(--gradient-panel)] scope-grid">
+    <div className="relative h-full w-full flex items-stretch gap-2">
+      {/* Vertical zoom slider (outside the scope box) */}
+      <VerticalZoomBar
+        getZoom={() => zoomRef.current}
+        onSetFraction={setZoomFromFraction}
+      />
+      <div className="relative h-full flex-1 overflow-hidden rounded-xl border border-border bg-[var(--gradient-panel)] scope-grid">
       {/* Top bar */}
       <div className="flex items-center justify-between gap-4 border-b border-border/60 px-4 py-2 mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
         <div className="flex items-center gap-3">
@@ -1492,16 +1583,6 @@ registerProcessor('attractor', AttractorProcessor);
               }
             />
           </label>
-          <button
-            type="button"
-            onClick={resetAll}
-            className="ml-1 flex items-center gap-1 rounded-full border border-border/60 px-2 py-1 text-muted-foreground hover:text-scope hover:border-scope/60 transition-colors"
-            title="Reset coefficients, integrator state, and audio engine"
-            aria-label="Reset"
-          >
-            <RotateCcw className="h-3 w-3" />
-            <span className="text-[10px] tracking-[0.15em]">reset</span>
-          </button>
         </div>
       </div>
       <canvas
@@ -1511,25 +1592,16 @@ registerProcessor('attractor', AttractorProcessor);
       />
       {/* Controls */}
       <div className="absolute bottom-3 right-3 flex items-center gap-2">
-        <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-1.5 py-1 backdrop-blur-sm">
-          <HoldButton
-            onTick={(a) => adjustZoom(Math.pow(0.97, a))}
-            className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
-            ariaLabel="Zoom out"
-          >
-            <Minus className="h-3.5 w-3.5" />
-          </HoldButton>
-          <span className="mono text-[10px] tracking-[0.15em] text-muted-foreground tabular-nums w-10 text-center">
-            {zoomRef.current.toFixed(2)}x
-          </span>
-          <HoldButton
-            onTick={(a) => adjustZoom(Math.pow(1.03, a))}
-            className="rounded-full p-1.5 text-muted-foreground hover:text-scope hover:bg-scope/10 transition-colors"
-            ariaLabel="Zoom in"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </HoldButton>
-        </div>
+        <button
+          type="button"
+          onClick={resetAll}
+          className="flex items-center gap-1 rounded-full border border-border/60 bg-background/70 backdrop-blur-sm px-2 py-1 text-muted-foreground hover:text-scope hover:border-scope/60 transition-colors"
+          title="Reset coefficients, integrator state, and audio engine"
+          aria-label="Reset"
+        >
+          <RotateCcw className="h-3 w-3" />
+          <span className="mono text-[10px] tracking-[0.15em]">reset</span>
+        </button>
         <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-1.5 py-1 backdrop-blur-sm">
           <HoldButton
             onTick={(a) => adjustTrace(-0.15 * a)}
@@ -1668,6 +1740,7 @@ registerProcessor('attractor', AttractorProcessor);
             <GhostKnob getValue={() => rotYRef.current} min={-Math.PI} max={Math.PI} />
           </div>
         </label>
+      </div>
       </div>
     </div>
   );
