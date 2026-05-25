@@ -580,13 +580,12 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
       const smooth = smoothingRef.current
         ? 1 - Math.exp(-dtSeconds / 0.030)
         : 1;
-      sSigma += (sigmaRef.current - sSigma) * smooth;
-      sRho   += (rhoRef.current   - sRho)   * smooth;
-      sBeta  += (betaRef.current  - sBeta)  * smooth;
+      const target = paramsRef.current;
+      if (sParams.length !== target.length) sParams = target.slice();
+      for (let i = 0; i < target.length; i++) {
+        sParams[i] += (target[i] - sParams[i]) * smooth;
+      }
       sFreq  += (freqRef.current  - sFreq)  * smooth;
-      const sigma = sSigma;
-      const rho = sRho;
-      const beta = sBeta;
 
       const cosY = Math.cos(rotYRef.current);
       const sinY = Math.sin(rotYRef.current);
@@ -621,7 +620,7 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
       } else {
         const def = ATTRACTORS[kindRef.current];
         const stepFn = attractorStepFns[def.id];
-        const params = def.id === "lorenz" ? [sigma, rho, beta] : def.params;
+        const params = sParams;
         const dtA = def.dt;
         const steps = Math.max(
           1,
