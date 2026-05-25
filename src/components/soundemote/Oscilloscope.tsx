@@ -945,9 +945,15 @@ class AttractorProcessor extends AudioWorkletProcessor {
     // per-channel state: x[n-1], y[n-1]
     this.dcXL = 0; this.dcYL = 0;
     this.dcXR = 0; this.dcYR = 0;
-    // visual decimation: every Nth sample is sent to main thread
-    this.decim = 32; this.dCount = 0;
-    this.batch = new Float32Array(768); // up to 256 triples
+    // Visual emission: fixed-rate, frequency-independent. We accumulate a
+    // phase at visRate/sampleRate per audio sample and emit an interpolated
+    // (x,y,z) triple whenever the phase crosses 1. This gives uniformly
+    // spaced visual samples regardless of integration frequency, so the
+    // on-screen chord length is constant and the curve looks smooth.
+    this.visRate = 4000;
+    this.visAcc = 0;
+    this.prevX = this.x; this.prevY = this.y; this.prevZ = this.z;
+    this.batch = new Float32Array(2400); // up to 800 triples
     this.bIdx = 0;
     this.port.onmessage = (e) => {
       const d = e.data;
@@ -983,7 +989,7 @@ class AttractorProcessor extends AudioWorkletProcessor {
       if (d.rotY !== undefined) this.startLinearRamp('rotY', 'tRotY', 'rotYStep', 'rotYRemain', d.rotY, true);
       if (d.rotXVel !== undefined) this.startLinearRamp('rotXVel', 'tRotXVel', 'rotXVelStep', 'rotXVelRemain', d.rotXVel, false);
       if (d.rotYVel !== undefined) this.startLinearRamp('rotYVel', 'tRotYVel', 'rotYVelStep', 'rotYVelRemain', d.rotYVel, false);
-      if (d.decim !== undefined) this.decim = Math.max(1, d.decim|0);
+      if (d.visRate !== undefined) this.visRate = Math.max(60, Math.min(20000, +d.visRate));
       if (d.smoothOn !== undefined) this.smoothOn = !!d.smoothOn;
     };
   }
@@ -1044,6 +1050,7 @@ class AttractorProcessor extends AudioWorkletProcessor {
         if (--this.rotYRemain === 0) this.rotY = this.tRotY;
       }
       const dt = this.dt;
+      this.prevX = this.x; this.prevY = this.y; this.prevZ = this.z;
       switch (this.kind) {
       ${stepCases}
       }
@@ -1069,13 +1076,17 @@ class AttractorProcessor extends AudioWorkletProcessor {
       this.dcXR = sy; this.dcYR = oy;
       L[i] = Math.max(-1, Math.min(1, ox));
       R[i] = Math.max(-1, Math.min(1, oy));
-      if (++this.dCount >= this.decim) {
-        this.dCount = 0;
-        if (this.bIdx + 3 <= this.batch.length) {
-          this.batch[this.bIdx++] = this.x;
-          this.batch[this.bIdx++] = this.y;
-          this.batch[this.bIdx++] = this.z;
-        }
+      // Fixed-rate visual emission with linear interpolation between the
+      // two adjacent integration samples.
+      const _visInc = this.visRate / sampleRate;
+      this.visAcc += _visInc;
+      while (this.visAcc >= 1 && this.bIdx + 3 <= this.batch.length) {
+        const frac = _visInc > 0 ? (this.visAcc - 1) / _visInc : 0;
+        const t = 1 - frac; // 0..1, position between prev and current sample
+        this.batch[this.bIdx++] = this.prevX + (this.x - this.prevX) * t;
+        this.batch[this.bIdx++] = this.prevY + (this.y - this.prevY) * t;
+        this.batch[this.bIdx++] = this.prevZ + (this.z - this.prevZ) * t;
+        this.visAcc -= 1;
       }
     }
     if (this.bIdx > 0) {
@@ -1099,9 +1110,8 @@ registerProcessor('attractor', AttractorProcessor);
       const gain = ctx.createGain();
       gain.gain.value = volumeRef.current;
       node.connect(gain).connect(ctx.destination);
-      // Compute decimation: target ~freqRef visual points/sec, capped
-      const targetVisRate = Math.max(60, Math.min(4000, freqRef.current));
-      const decim = Math.max(1, Math.round(ctx.sampleRate / targetVisRate));
+      // Fixed visual emission rate, independent of integration frequency.
+      const VIS_RATE = 4000;
       {
         const def = ATTRACTORS[kindRef.current];
         node.port.postMessage({
@@ -1115,7 +1125,7 @@ registerProcessor('attractor', AttractorProcessor);
           rotY: rotYRef.current,
           rotXVel: autoSpinXRef.current ? spinSpeedXRef.current * 60 : 0,
           rotYVel: autoSpinYRef.current ? spinSpeedYRef.current * 60 : 0,
-          decim,
+          visRate: VIS_RATE,
           smoothOn: smoothingRef.current,
         });
       }
@@ -1135,8 +1145,6 @@ registerProcessor('attractor', AttractorProcessor);
       const id = window.setInterval(() => {
         const a = audioRef.current;
         if (!a) { window.clearInterval(id); return; }
-        const tvr = Math.max(60, Math.min(4000, freqRef.current));
-        const dc = Math.max(1, Math.round(a.ctx.sampleRate / tvr));
         const def = ATTRACTORS[kindRef.current];
         a.node.port.postMessage({
           params: paramsRef.current.slice(),
@@ -1148,7 +1156,7 @@ registerProcessor('attractor', AttractorProcessor);
           ...(autoSpinYRef.current ? {} : { rotY: rotYRef.current }),
           rotXVel: autoSpinXRef.current ? spinSpeedXRef.current * 60 : 0,
           rotYVel: autoSpinYRef.current ? spinSpeedYRef.current * 60 : 0,
-          decim: dc,
+          visRate: VIS_RATE,
           smoothOn: smoothingRef.current,
         });
       }, 33);
