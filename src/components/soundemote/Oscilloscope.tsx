@@ -1135,9 +1135,10 @@ registerProcessor('attractor', AttractorProcessor);
       <div className="flex items-center justify-between gap-4 border-b border-border/60 px-4 py-2 mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
         <div className="flex items-center gap-2">
           <span className="h-1.5 w-1.5 rounded-full bg-scope animate-pulse-glow" />
-          xy scope · lorenz
+          xy scope · {ATTRACTORS[kind].label}
         </div>
         <div className="flex items-center gap-3">
+          {kind === "lorenz" && <>
           <label className="flex items-center gap-1">
             σ=
             <DragNumber
@@ -1171,6 +1172,7 @@ registerProcessor('attractor', AttractorProcessor);
               format={(v) => v.toFixed(2)}
             />
           </label>
+          </>}
           <label className="flex items-center gap-1">
             f=
             <DragNumber
