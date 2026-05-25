@@ -424,9 +424,8 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
     // Phosphor decay is now driven by decayRef via the fade shader uniforms.
     // Smoothed shadows of the coefficients used by the visual fallback
     // integrator. The audio worklet smooths internally per-sample.
-    let sSigma = sigmaRef.current;
-    let sRho = rhoRef.current;
-    let sBeta = betaRef.current;
+    // Smoothed shadow of the active attractor's coefficient array.
+    let sParams: number[] = paramsRef.current.slice();
     let sFreq = freqRef.current;
 
     /* ---- Lanczos upsampler (DISABLED — failed experiment) ------------------ */
