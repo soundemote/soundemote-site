@@ -143,8 +143,10 @@ const DragNumber = ({
   );
 };
 
-export const Oscilloscope = () => {
+export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Live attractor selection (held in ref so the rAF loop reads latest value).
+  const kindRef = useRef<AttractorKind>(kind);
   // Live params held in refs so the rAF loop reads the latest values
   const zoomRef = useRef(1);
   const rotXRef = useRef(0.35); // tilt
