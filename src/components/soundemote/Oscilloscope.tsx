@@ -1406,6 +1406,15 @@ registerProcessor('attractor', AttractorProcessor);
     setTick((n) => n + 1);
   }, [kind]);
 
+  // The "reset" button in the Hero (kind === "off") also clears the
+  // viewport: zoom snaps back to 1.0 and the pan target returns to origin.
+  useEffect(() => {
+    if (kind !== "off") return;
+    zoomTargetRef.current = 1;
+    panTargetXRef.current = 0;
+    panTargetYRef.current = 0;
+  }, [kind]);
+
   // Sync color props into refs (read by rAF render loop).
   useEffect(() => { tracerColorRef.current = tracerColor; }, [tracerColor.h, tracerColor.s, tracerColor.l]);
   useEffect(() => { bgColorRef.current = bgColor; }, [bgColor.h, bgColor.s, bgColor.l]);
@@ -1512,16 +1521,19 @@ registerProcessor('attractor', AttractorProcessor);
     const onPointerDown = (e: React.PointerEvent) => {
       draggingRef.current = true;
       pointerYRef.current = e.clientY;
-      (e.target as Element).setPointerCapture?.(e.pointerId);
-    };
-    const onPointerMove = (e: React.PointerEvent) => {
-      if (!draggingRef.current) return;
-      pointerYRef.current = e.clientY;
-    };
-    const onPointerUp = (e: React.PointerEvent) => {
-      draggingRef.current = false;
-      pointerYRef.current = null;
-      (e.target as Element).releasePointerCapture?.(e.pointerId);
+      const onMove = (ev: PointerEvent) => {
+        pointerYRef.current = ev.clientY;
+      };
+      const onUp = () => {
+        draggingRef.current = false;
+        pointerYRef.current = null;
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
     };
 
     return (
@@ -1530,9 +1542,6 @@ registerProcessor('attractor', AttractorProcessor);
         <div
           ref={trackRef}
           onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
           className="relative flex-1 w-2 rounded-full border border-border/60 bg-background/40 cursor-pointer touch-none"
           role="slider"
           aria-label="Zoom"
