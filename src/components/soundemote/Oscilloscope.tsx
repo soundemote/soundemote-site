@@ -172,11 +172,19 @@ const hslToRgb = (h: number, s: number, l: number): [number, number, number] => 
   return [r + m, g + m, b + m];
 };
 
-export const Oscilloscope = ({
+export interface OscilloscopeRef {
+  reset: () => void;
+}
+
+export const Oscilloscope = forwardRef<OscilloscopeRef, {
+  kind?: AttractorKind;
+  tracerColor?: HSL;
+  bgColor?: HSL;
+}>(({
   kind = "lorenz",
   tracerColor = { h: 157, s: 0.84, l: 0.54 },
   bgColor = { h: 0, s: 0, l: 0 },
-}: { kind?: AttractorKind; tracerColor?: HSL; bgColor?: HSL } = {}) => {
+}, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Live attractor selection (held in ref so the rAF loop reads latest value).
   const kindRef = useRef<AttractorKind>(kind);
@@ -1418,6 +1426,8 @@ registerProcessor('attractor', AttractorProcessor);
     setTick((n) => n + 1);
   };
 
+  useImperativeHandle(ref, () => ({ reset: resetAll }));
+
   const radToDeg = (r: number) => ((r * 180) / Math.PI).toFixed(0);
   const wrapDeg = (d: number) => {
     let v = d % 360;
@@ -1492,16 +1502,6 @@ registerProcessor('attractor', AttractorProcessor);
               }
             />
           </label>
-          <button
-            type="button"
-            onClick={resetAll}
-            className="ml-1 flex items-center gap-1 rounded-full border border-border/60 px-2 py-1 text-muted-foreground hover:text-scope hover:border-scope/60 transition-colors"
-            title="Reset coefficients, integrator state, and audio engine"
-            aria-label="Reset"
-          >
-            <RotateCcw className="h-3 w-3" />
-            <span className="text-[10px] tracking-[0.15em]">reset</span>
-          </button>
         </div>
       </div>
       <canvas
@@ -1671,6 +1671,7 @@ registerProcessor('attractor', AttractorProcessor);
       </div>
     </div>
   );
-};
+});
+Oscilloscope.displayName = "Oscilloscope";
 
 export default Oscilloscope;
