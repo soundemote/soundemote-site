@@ -120,12 +120,12 @@ export const Hero = () => {
           );
         })}
       </div>
-      <div className="w-fit mx-auto mt-3 flex items-start gap-0 animate-fade-in [animation-delay:200ms]">
-        <div className="relative aspect-[5/4] w-[36rem] max-w-[calc(100vw-6rem)] flex">
+      <div className="w-fit mx-auto mt-3 flex flex-col animate-fade-in [animation-delay:200ms]">
+        <div className="flex items-stretch">
           <button
             type="button"
             onClick={() => scopeRef.current?.reset()}
-            className="flex flex-col items-center justify-center self-stretch rounded-l-xl border border-r-0 border-red-500/30 bg-background/50 px-1.5 text-red-500/40 transition-colors hover:border-red-500 hover:text-red-400 mono text-[10px] uppercase tracking-[0.2em]"
+            className="flex flex-col items-center justify-center rounded-l-xl border border-r-0 border-red-500/30 bg-background/50 px-1.5 text-red-500/40 transition-colors hover:border-red-500 hover:text-red-400 mono text-[10px] uppercase tracking-[0.2em]"
             title="Reset coefficients, integrator state, and audio engine"
             aria-label="Reset"
           >
@@ -135,28 +135,26 @@ export const Hero = () => {
             <span>e</span>
             <span>t</span>
           </button>
-        </div>
-        <div className="flex flex-col">
           <div className="relative aspect-[5/4] w-[36rem] max-w-[calc(100vw-6rem)]">
             <Oscilloscope ref={scopeRef} kind={kind} tracerColor={tracerColor} bgColor={bgColor} />
           </div>
-          <div className="mt-2 flex justify-start mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/70">
-            drag to pan · scroll to zoom
-          </div>
-          <div className="mt-3 flex justify-center gap-6">
-            <HSPicker label="bg" color={bgColor} onChange={setBgColor} />
-            <HSPicker label="tracer" color={tracerColor} onChange={setTracerColor} />
+          <div
+            aria-hidden
+            className="invisible flex flex-col items-center justify-center rounded-l-xl border border-r-0 px-1.5 mono text-[10px] uppercase tracking-[0.2em]"
+          >
+            <span>r</span>
+            <span>e</span>
+            <span>s</span>
+            <span>e</span>
+            <span>t</span>
           </div>
         </div>
-        <div
-          aria-hidden
-          className="invisible flex flex-col items-center justify-center rounded-l-xl border border-r-0 px-1.5 py-4 mono text-[10px] uppercase tracking-[0.2em]"
-        >
-          <span>r</span>
-          <span>e</span>
-          <span>s</span>
-          <span>e</span>
-          <span>t</span>
+        <div className="mt-2 flex justify-start mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/70">
+          drag to pan · scroll to zoom
+        </div>
+        <div className="mt-3 flex justify-center gap-6">
+          <HSPicker label="bg" color={bgColor} onChange={setBgColor} />
+          <HSPicker label="tracer" color={tracerColor} onChange={setTracerColor} />
         </div>
       </div>
       <div className="mt-12 grid grid-cols-3 max-w-md mx-auto gap-6 mono text-xs text-muted-foreground">
