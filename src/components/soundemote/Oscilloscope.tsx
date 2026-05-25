@@ -500,7 +500,7 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const next = zoomRef.current * (e.deltaY < 0 ? 1.1 : 0.9);
-      zoomRef.current = Math.max(0.02, Math.min(20, next));
+      zoomRef.current = Math.max(1.05, Math.min(20, next));
       setTick((n) => n + 1);
     };
     canvas.addEventListener("pointerdown", onDown);
@@ -808,7 +808,7 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
   }, []);
 
   const adjustZoom = (factor: number) => {
-    zoomRef.current = Math.max(0.02, Math.min(20, zoomRef.current * factor));
+    zoomRef.current = Math.max(1.05, Math.min(20, zoomRef.current * factor));
     setTick((n) => n + 1);
   };
 
