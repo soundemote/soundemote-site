@@ -89,3 +89,44 @@ export const ATTRACTORS: Record<AttractorKind, AttractorDef> = {
 };
 
 export const ATTRACTOR_ORDER: AttractorKind[] = ["lorenz", "aizawa", "halvorsen", "thomas", "chenlee"];
+
+// Worklet-safe step source for each attractor. Embedded verbatim into the
+// AudioWorklet template — must reference `this.x/y/z` and `this.params[i]`
+// directly so production minifiers can't rename anything we depend on.
+export const attractorWorkletSteps: Record<AttractorKind, string> = {
+  lorenz: `{
+    const _dx = this.params[0]*(this.y-this.x);
+    const _dy = this.x*(this.params[1]-this.z)-this.y;
+    const _dz = this.x*this.y-this.params[2]*this.z;
+    this.x += _dx*dt; this.y += _dy*dt; this.z += _dz*dt;
+  }`,
+  aizawa: `{
+    const _t = this.z - this.params[1];
+    const _dx = _t*this.x - this.params[3]*this.y;
+    const _dy = this.params[3]*this.x + _t*this.y;
+    const _dz = this.params[2] + this.params[0]*this.z - (this.z*this.z*this.z)/3
+      - (this.x*this.x + this.y*this.y)*(1 + this.params[4]*this.z)
+      + this.params[5]*this.z*this.x*this.x*this.x;
+    this.x += _dx*dt; this.y += _dy*dt; this.z += _dz*dt;
+  }`,
+  halvorsen: `{
+    const _a = this.params[0];
+    const _dx = -_a*this.x - 4*this.y - 4*this.z - this.y*this.y;
+    const _dy = -_a*this.y - 4*this.z - 4*this.x - this.z*this.z;
+    const _dz = -_a*this.z - 4*this.x - 4*this.y - this.x*this.x;
+    this.x += _dx*dt; this.y += _dy*dt; this.z += _dz*dt;
+  }`,
+  thomas: `{
+    const _b = this.params[0];
+    const _dx = -_b*this.x + Math.sin(this.y);
+    const _dy = -_b*this.y + Math.sin(this.z);
+    const _dz = -_b*this.z + Math.sin(this.x);
+    this.x += _dx*dt; this.y += _dy*dt; this.z += _dz*dt;
+  }`,
+  chenlee: `{
+    const _dx = this.params[0]*this.x - this.y*this.z;
+    const _dy = this.params[1]*this.y + this.x*this.z;
+    const _dz = this.params[2]*this.z + (this.x*this.y)/3;
+    this.x += _dx*dt; this.y += _dy*dt; this.z += _dz*dt;
+  }`,
+};
