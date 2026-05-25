@@ -656,7 +656,19 @@ export const Oscilloscope = ({
         const cap = data.length;
         const w = Atomics.load(ctrl, 0);
         let r = Atomics.load(ctrl, 1);
-        const maxPts = 4000;
+        // Drain pacing: take what we *should* have produced in this wall-clock
+        // interval (visRate * dtSeconds) plus a small catch-up margin. This
+        // removes per-frame chord-count jitter that made audio mode look
+        // jaggy compared to video-only mode (where step count is also tied
+        // to wall-clock).
+        const VIS_RATE = 12000;
+        const target = Math.max(1, Math.round(VIS_RATE * dtSeconds));
+        // available triples in ring
+        const avail = ((w - r + cap) % cap) / 3;
+        // Allow up to 1.25x target to gently catch up; if buffer is way ahead
+        // (e.g. tab was hidden), let it drain faster but still capped.
+        const catchUp = avail > target * 4 ? Math.min(avail, target * 4) : Math.min(avail, target * 1.25);
+        const maxPts = Math.max(1, Math.floor(catchUp));
         let taken = 0;
         while (r !== w && taken < maxPts) {
           triples.push(data[r], data[r + 1], data[r + 2]);
@@ -672,9 +684,14 @@ export const Oscilloscope = ({
         }
       } else if (audioActive && ptsQueueRef.current.length >= 3) {
         const q = ptsQueueRef.current;
-        // Cap per-frame draw count so we never fall further behind
-        const maxPts = 2400;
-        const take = Math.min(q.length, maxPts * 3);
+        // Same wall-clock pacing for the postMessage fallback path.
+        const VIS_RATE = 12000;
+        const target = Math.max(1, Math.round(VIS_RATE * dtSeconds));
+        const availTriples = (q.length / 3) | 0;
+        const catchUp = availTriples > target * 4
+          ? Math.min(availTriples, target * 4)
+          : Math.min(availTriples, Math.ceil(target * 1.25));
+        const take = Math.max(3, catchUp * 3);
         for (let i = 0; i < take; i++) triples.push(q.shift()!);
         // sync last sample back to shared state
         const L = triples.length;
