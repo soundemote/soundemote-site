@@ -650,7 +650,27 @@ export const Oscilloscope = ({
       const triples: number[] = [];
       const audioActive =
         audioOnRef.current && audioRef.current && audioRef.current.ctx.state === "running";
-      if (audioActive && ptsQueueRef.current.length >= 3) {
+      // If a SAB ring is active, drain it directly (no postMessage involved).
+      if (audioActive && sabRef.current) {
+        const { ctrl, data } = sabRef.current;
+        const cap = data.length;
+        const w = Atomics.load(ctrl, 0);
+        let r = Atomics.load(ctrl, 1);
+        const maxPts = 4000;
+        let taken = 0;
+        while (r !== w && taken < maxPts) {
+          triples.push(data[r], data[r + 1], data[r + 2]);
+          r = (r + 3) % cap;
+          taken++;
+        }
+        Atomics.store(ctrl, 1, r);
+        const L = triples.length;
+        if (L >= 3) {
+          stateRef.current.x = triples[L - 3];
+          stateRef.current.y = triples[L - 2];
+          stateRef.current.z = triples[L - 1];
+        }
+      } else if (audioActive && ptsQueueRef.current.length >= 3) {
         const q = ptsQueueRef.current;
         // Cap per-frame draw count so we never fall further behind
         const maxPts = 2400;
