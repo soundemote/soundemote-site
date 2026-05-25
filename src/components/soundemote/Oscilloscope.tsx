@@ -1176,6 +1176,7 @@ registerProcessor('attractor', AttractorProcessor);
     ptsQueueRef.current.length = 0;
     paramsRef.current = [...def.params];
     if (def.defaultFreq !== undefined) freqRef.current = def.defaultFreq;
+    // (color refs synced in a separate effect)
     if (audioRef.current) {
       const { ctx, node } = audioRef.current;
       node.port.postMessage({
