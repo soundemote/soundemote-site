@@ -1406,6 +1406,15 @@ registerProcessor('attractor', AttractorProcessor);
     setTick((n) => n + 1);
   }, [kind]);
 
+  // The "reset" button in the Hero (kind === "off") also clears the
+  // viewport: zoom snaps back to 1.0 and the pan target returns to origin.
+  useEffect(() => {
+    if (kind !== "off") return;
+    zoomTargetRef.current = 1;
+    panTargetXRef.current = 0;
+    panTargetYRef.current = 0;
+  }, [kind]);
+
   // Sync color props into refs (read by rAF render loop).
   useEffect(() => { tracerColorRef.current = tracerColor; }, [tracerColor.h, tracerColor.s, tracerColor.l]);
   useEffect(() => { bgColorRef.current = bgColor; }, [bgColor.h, bgColor.s, bgColor.l]);
