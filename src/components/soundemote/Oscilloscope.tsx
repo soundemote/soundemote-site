@@ -1074,8 +1074,11 @@ registerProcessor('attractor', AttractorProcessor);
         a.node.port.postMessage({
           params: paramsRef.current.slice(),
           dt: (freqRef.current * def.dt) / a.ctx.sampleRate,
-          rotX: rotXRef.current,
-          rotY: rotYRef.current,
+          // While auto-spinning, omit position target so the worklet's velocity
+          // integration owns the angle; sending a moving target would fight it
+          // and create per-message discontinuities (clicks).
+          ...(autoSpinXRef.current ? {} : { rotX: rotXRef.current }),
+          ...(autoSpinYRef.current ? {} : { rotY: rotYRef.current }),
           rotXVel: autoSpinXRef.current ? spinSpeedXRef.current * 60 : 0,
           rotYVel: autoSpinYRef.current ? spinSpeedYRef.current * 60 : 0,
           decim: dc,
