@@ -154,10 +154,35 @@ const DragNumber = ({
   );
 };
 
-export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {}) => {
+export type HSL = { h: number; s: number; l: number };
+
+// HSL (h:0-360, s:0-1, l:0-1) → linear-ish RGB 0-1
+const hslToRgb = (h: number, s: number, l: number): [number, number, number] => {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const hp = (h % 360) / 60;
+  const x = c * (1 - Math.abs((hp % 2) - 1));
+  let r = 0, g = 0, b = 0;
+  if (hp < 1) [r, g, b] = [c, x, 0];
+  else if (hp < 2) [r, g, b] = [x, c, 0];
+  else if (hp < 3) [r, g, b] = [0, c, x];
+  else if (hp < 4) [r, g, b] = [0, x, c];
+  else if (hp < 5) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+  const m = l - c / 2;
+  return [r + m, g + m, b + m];
+};
+
+export const Oscilloscope = ({
+  kind = "lorenz",
+  tracerColor = { h: 157, s: 0.84, l: 0.54 },
+  bgColor = { h: 0, s: 0, l: 0 },
+}: { kind?: AttractorKind; tracerColor?: HSL; bgColor?: HSL } = {}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Live attractor selection (held in ref so the rAF loop reads latest value).
   const kindRef = useRef<AttractorKind>(kind);
+  // Live color refs (read inside the rAF loop).
+  const tracerColorRef = useRef<HSL>(tracerColor);
+  const bgColorRef = useRef<HSL>(bgColor);
   // Live params held in refs so the rAF loop reads the latest values
   const zoomRef = useRef(1);
   const zoomTargetRef = useRef(1);
@@ -329,18 +354,20 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
       `precision highp float;
        uniform sampler2D uTex;
        uniform vec3 uColor;
+       uniform vec3 uBg;
        uniform float uExposure;
        varying vec2 vUv;
        void main(){
          float l = texture2D(uTex, vUv).r;
          float t = 1.0 - exp(-l * uExposure);
          vec3 col = mix(uColor, vec3(1.0), t * t * 0.6) * t;
-         gl_FragColor = vec4(col, 1.0);
+         gl_FragColor = vec4(uBg * (1.0 - t) + col, 1.0);
        }`
     );
     const outA_pos = gl.getAttribLocation(outProg, "aPos");
     const outU_tex = gl.getUniformLocation(outProg, "uTex");
     const outU_color = gl.getUniformLocation(outProg, "uColor");
+    const outU_bg = gl.getUniformLocation(outProg, "uBg");
     const outU_exposure = gl.getUniformLocation(outProg, "uExposure");
 
     // Fullscreen quad buffer
@@ -802,8 +829,14 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, fboA.tex);
       gl.uniform1i(outU_tex, 0);
-      // scope green: rgb(40,235,158) ≈ (0.157, 0.921, 0.620)
-      gl.uniform3f(outU_color, 0.18, 0.95, 0.42);
+      {
+        const tc = tracerColorRef.current;
+        const bc = bgColorRef.current;
+        const [tr, tg, tb] = hslToRgb(tc.h, tc.s, tc.l);
+        const [br, bg2, bb] = hslToRgb(bc.h, bc.s, bc.l);
+        gl.uniform3f(outU_color, tr, tg, tb);
+        gl.uniform3f(outU_bg, br, bg2, bb);
+      }
       gl.uniform1f(outU_exposure, 2.4);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       gl.disableVertexAttribArray(outA_pos);
@@ -1151,6 +1184,7 @@ registerProcessor('attractor', AttractorProcessor);
     ptsQueueRef.current.length = 0;
     paramsRef.current = [...def.params];
     if (def.defaultFreq !== undefined) freqRef.current = def.defaultFreq;
+    // (color refs synced in a separate effect)
     if (audioRef.current) {
       const { ctx, node } = audioRef.current;
       node.port.postMessage({
@@ -1166,6 +1200,10 @@ registerProcessor('attractor', AttractorProcessor);
     setResetSeq((n) => n + 1);
     setTick((n) => n + 1);
   }, [kind]);
+
+  // Sync color props into refs (read by rAF render loop).
+  useEffect(() => { tracerColorRef.current = tracerColor; }, [tracerColor.h, tracerColor.s, tracerColor.l]);
+  useEffect(() => { bgColorRef.current = bgColor; }, [bgColor.h, bgColor.s, bgColor.l]);
 
   // Reset coefficients, integrator state, and audio engine — recovers
   // from chaotic collapse / explosion / silenced denormals.
