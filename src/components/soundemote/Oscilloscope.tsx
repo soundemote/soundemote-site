@@ -213,6 +213,7 @@ export const Oscilloscope = ({
     gain: GainNode;
   } | null>(null);
   const [audioOn, setAudioOn] = useState(false);
+  const audioOnRef = useRef(false);
   const [resetSeq, setResetSeq] = useState(0);
   // NOTE: Lanczos upsampler / coefficient smoothing experiment disabled.
   // This was a failed attempt at signal smoothing — revisit later.
@@ -644,7 +645,7 @@ export const Oscilloscope = ({
       // numerical state) or integrate locally as a fallback.
       const triples: number[] = [];
       const audioActive =
-        audioOn && audioRef.current && audioRef.current.ctx.state === "running";
+        audioOnRef.current && audioRef.current && audioRef.current.ctx.state === "running";
       if (audioActive && ptsQueueRef.current.length >= 3) {
         const q = ptsQueueRef.current;
         // Cap per-frame draw count so we never fall further behind
@@ -895,6 +896,7 @@ export const Oscilloscope = ({
     if (audioRef.current) {
       const a = audioRef.current;
       if (a.ctx.state === "suspended") await a.ctx.resume();
+      audioOnRef.current = true;
       setAudioOn(true);
       return;
     }
@@ -1127,6 +1129,7 @@ registerProcessor('attractor', AttractorProcessor);
         if (q.length > max) q.splice(0, q.length - max);
       };
       audioRef.current = { ctx, node, gain };
+      audioOnRef.current = true;
       setAudioOn(true);
       // push param updates ~30Hz
       const id = window.setInterval(() => {
@@ -1157,6 +1160,7 @@ registerProcessor('attractor', AttractorProcessor);
   const toggleAudio = async () => {
     if (audioOn && audioRef.current) {
       await audioRef.current.ctx.suspend();
+      audioOnRef.current = false;
       setAudioOn(false);
     } else {
       await enableAudio();
