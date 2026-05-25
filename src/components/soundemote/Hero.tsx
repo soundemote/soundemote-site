@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import Oscilloscope, { type HSL } from "./Oscilloscope";
+import Oscilloscope, { type HSL, type OscilloscopeRef } from "./Oscilloscope";
 import { ATTRACTOR_ORDER, ATTRACTORS, type AttractorKind } from "./attractors";
 
 const HSPicker = ({
