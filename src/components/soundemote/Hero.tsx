@@ -31,6 +31,17 @@ export const Hero = () => {
           Join Discord
         </a>
       </div>
+      <div className="max-w-xl mx-auto mt-12 grid grid-cols-7 gap-2">
+        {Array.from({ length: 7 }, (_, i) => (
+          <button
+            key={i}
+            type="button"
+            className="rounded-full border border-border/60 px-2 py-1.5 mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground hover:text-scope hover:border-scope/40 transition-colors"
+          >
+            {i + 1}
+          </button>
+        ))}
+      </div>
       <div className="max-w-xl mx-auto mt-16 flex flex-wrap items-center justify-center gap-2">
         {ATTRACTOR_ORDER.map((k) => {
           const active = k === kind;
