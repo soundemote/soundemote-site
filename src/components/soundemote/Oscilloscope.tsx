@@ -859,8 +859,16 @@ class AttractorProcessor extends AudioWorkletProcessor {
     // smoothing coefficient (~30ms time constant @ 48k → recomputed in process)
     this.smooth = 0;
     this.smoothOn = true;
-    // simple DC blockers per channel
-    this.lx = 0; this.ly = 0; this.px = 0; this.py = 0;
+    // 10Hz one-pole high-pass DC blocker per channel (soemdsp OnePoleHP / IIT).
+    // y[n] = b0*x[n] - b0*x[n-1] + a1*y[n-1]
+    // Coeffs computed once at construction (sampleRate is fixed for ctx lifetime).
+    const _fc = 10.0;
+    const _w = (2 * Math.PI * _fc) / sampleRate;
+    this.dcA1 = Math.exp(-_w);
+    this.dcB0 = 0.5 * (1 + this.dcA1);
+    // per-channel state: x[n-1], y[n-1]
+    this.dcXL = 0; this.dcYL = 0;
+    this.dcXR = 0; this.dcYR = 0;
     // visual decimation: every Nth sample is sent to main thread
     this.decim = 32; this.dCount = 0;
     this.batch = new Float32Array(768); // up to 256 triples
@@ -870,7 +878,7 @@ class AttractorProcessor extends AudioWorkletProcessor {
       if (d.type === 'reset') {
         if (d.init) { this.x = d.init.x; this.y = d.init.y; this.z = d.init.z; }
         else { this.x = 0.01; this.y = 0; this.z = 0; }
-        this.lx = 0; this.ly = 0; this.px = 0; this.py = 0;
+        this.dcXL = 0; this.dcYL = 0; this.dcXR = 0; this.dcYR = 0;
         this.bIdx = 0;
         // snap smoothed values to targets on reset
         if (d.snap) {
@@ -928,7 +936,7 @@ class AttractorProcessor extends AudioWorkletProcessor {
       // explosion / NaN guard
       if (!isFinite(this.x) || Math.abs(this.x) > 1e4) {
         this.x = 0.01; this.y = 0; this.z = 0;
-        this.lx = 0; this.ly = 0; this.px = 0; this.py = 0;
+        this.dcXL = 0; this.dcYL = 0; this.dcXR = 0; this.dcYR = 0;
       }
       // Apply the same 3D rotation the visual uses, so L/R == on-screen X/Y.
       const x0 = this.x, y0 = this.y, z0 = this.z - this.zOffset;
@@ -940,10 +948,11 @@ class AttractorProcessor extends AudioWorkletProcessor {
       // normalize roughly to [-1,1]
       const sx = xr * this.audioScale;
       const sy = yr * this.audioScale;
-      // 1-pole DC block
-      const ox = sx - this.px + 0.995 * this.lx;
-      const oy = sy - this.py + 0.995 * this.ly;
-      this.px = sx; this.py = sy; this.lx = ox; this.ly = oy;
+      // soemdsp OnePoleHP @ 10Hz — speaker-protection DC blocker
+      const ox = this.dcB0 * sx - this.dcB0 * this.dcXL + this.dcA1 * this.dcYL;
+      this.dcXL = sx; this.dcYL = ox;
+      const oy = this.dcB0 * sy - this.dcB0 * this.dcXR + this.dcA1 * this.dcYR;
+      this.dcXR = sy; this.dcYR = oy;
       L[i] = Math.max(-1, Math.min(1, ox));
       R[i] = Math.max(-1, Math.min(1, oy));
       if (++this.dCount >= this.decim) {
