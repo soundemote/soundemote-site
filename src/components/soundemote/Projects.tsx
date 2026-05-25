@@ -38,7 +38,7 @@ const projects: Project[] = [
     accent: "warm",
   },
   {
-    name: "soundemote.io",
+    name: "⋆⁺₊✧ soemdsp ✧₊⁺⋆",
     status: "C++ · MIT",
     blurb:
       "SIMD-minded, easy-to-use low-level DSP objects for oscillators, filters, modulation, dynamics, random, timing, and plugin infrastructure.",
