@@ -14,7 +14,7 @@ const projects: Project[] = [
     name: "hydrus",
     status: "in development",
     blurb:
-      "The next Soundemote instrument. Still forming — check back as it grows.",
+      "Next-generation analog-emulative instrument. Still forming < check back as it grows.",
     tags: ["instrument", "ecosystem", "soon"],
     accent: "accent",
   },
