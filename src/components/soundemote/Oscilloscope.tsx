@@ -560,9 +560,10 @@ export const Oscilloscope = ({
         else { hzAvg += (instHz - hzAvg) * 0.02; }
       }
 
-      // Smooth zoom toward target (exponential lerp, longer half-life for
-      // a slower, more cinematic zoom feel).
-      const zoomLerp = 1 - Math.pow(0.02, dtSeconds);
+      // Smooth zoom toward target (exponential lerp). Slower half-life so
+      // the zoom bar knob visibly trends toward the click/drag position
+      // instead of snapping to it.
+      const zoomLerp = 1 - Math.pow(0.25, dtSeconds);
       zoomRef.current += (zoomTargetRef.current - zoomRef.current) * zoomLerp;
 
       const rect = canvas.getBoundingClientRect();
