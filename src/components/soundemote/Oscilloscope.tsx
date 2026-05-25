@@ -1223,9 +1223,6 @@ registerProcessor('attractor', AttractorProcessor);
             <span className="text-[10px] tracking-[0.15em]">reset</span>
           </button>
         </div>
-        <span className="tabular-nums text-scope/80">
-          rX={wrapDeg((rotXRef.current * 180) / Math.PI)}° rY={wrapDeg((rotYRef.current * 180) / Math.PI)}°
-        </span>
       </div>
       <canvas
         ref={canvasRef}
