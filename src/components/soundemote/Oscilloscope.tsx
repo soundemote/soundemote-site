@@ -1133,7 +1133,7 @@ registerProcessor('attractor', AttractorProcessor);
             </label>
           ))}
           <label className="flex items-center gap-1">
-            f=
+            ƒ
             <DragNumber
               value={freqRef.current}
               onChange={(v) => { freqRef.current = v; setTick((n) => n + 1); }}
