@@ -223,6 +223,10 @@ export const Oscilloscope = ({
   // writes to it. Either way both renderers consume the same data.
   const stateRef = useRef({ x: 0.01, y: 0, z: 0 });
   const ptsQueueRef = useRef<number[]>([]); // flat x,y,z,x,y,z,...
+  // SharedArrayBuffer SPSC ring (worklet → main). Set when crossOriginIsolated.
+  // ctrl[0] = writeIdx (producer), ctrl[1] = readIdx (consumer), both in float
+  // positions and always multiples of 3. data holds interleaved x,y,z.
+  const sabRef = useRef<{ ctrl: Int32Array; data: Float32Array } | null>(null);
   const [, setTick] = useState(0); // force re-render of overlay labels
 
   useEffect(() => {
