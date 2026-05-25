@@ -1,6 +1,10 @@
+import { useState } from "react";
 import Oscilloscope from "./Oscilloscope";
+import { ATTRACTOR_ORDER, ATTRACTORS, type AttractorKind } from "./attractors";
 
-export const Hero = () => (
+export const Hero = () => {
+  const [kind, setKind] = useState<AttractorKind>("lorenz");
+  return (
   <section id="top" className="relative overflow-hidden pt-32 pb-24 md:pt-40 md:pb-32">
     <div className="absolute inset-0 scope-grid opacity-40" aria-hidden />
     <div className="absolute inset-0 bg-[var(--gradient-hero)]" aria-hidden />
@@ -27,8 +31,28 @@ export const Hero = () => (
           Join Discord
         </a>
       </div>
-      <div className="relative aspect-[5/4] w-full max-w-xl mx-auto mt-16 animate-fade-in [animation-delay:200ms]">
-        <Oscilloscope />
+      <div className="max-w-xl mx-auto mt-16 flex flex-wrap items-center justify-center gap-2">
+        {ATTRACTOR_ORDER.map((k) => {
+          const active = k === kind;
+          return (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setKind(k)}
+              className={`rounded-full border px-3 py-1.5 mono text-[10px] uppercase tracking-[0.2em] transition-colors ${
+                active
+                  ? "border-scope/70 text-scope bg-scope/10 shadow-[0_0_18px_hsl(var(--scope)/0.35)]"
+                  : "border-border/60 text-muted-foreground hover:text-scope hover:border-scope/40"
+              }`}
+              aria-pressed={active}
+            >
+              {ATTRACTORS[k].label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="relative aspect-[5/4] w-full max-w-xl mx-auto mt-3 animate-fade-in [animation-delay:200ms]">
+        <Oscilloscope kind={kind} />
       </div>
       <div className="max-w-xl mx-auto mt-2 flex justify-start mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/70">
         drag to pan · scroll to zoom
@@ -49,6 +73,7 @@ export const Hero = () => (
       </div>
     </div>
   </section>
-);
+  );
+};
 
 export default Hero;
