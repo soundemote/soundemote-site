@@ -983,15 +983,10 @@ registerProcessor('attractor', AttractorProcessor);
         const def = ATTRACTORS[kindRef.current];
         node.port.postMessage({
           kind: def.id,
-          params: def.id === "lorenz"
-            ? [sigmaRef.current, rhoRef.current, betaRef.current]
-            : def.params,
+          params: paramsRef.current.slice(),
           init: def.init,
           zOffset: def.zOffset,
           audioScale: def.audioScale,
-          sigma: sigmaRef.current,
-          rho: rhoRef.current,
-          beta: betaRef.current,
           dt: (freqRef.current * def.dt) / ctx.sampleRate,
           rotX: rotXRef.current,
           rotY: rotYRef.current,
@@ -1018,9 +1013,7 @@ registerProcessor('attractor', AttractorProcessor);
         const dc = Math.max(1, Math.round(a.ctx.sampleRate / tvr));
         const def = ATTRACTORS[kindRef.current];
         a.node.port.postMessage({
-          sigma: sigmaRef.current,
-          rho: rhoRef.current,
-          beta: betaRef.current,
+          params: paramsRef.current.slice(),
           dt: (freqRef.current * def.dt) / a.ctx.sampleRate,
           rotX: rotXRef.current,
           rotY: rotYRef.current,
@@ -1061,18 +1054,12 @@ registerProcessor('attractor', AttractorProcessor);
     kindRef.current = kind;
     stateRef.current = { ...def.init };
     ptsQueueRef.current.length = 0;
-    if (def.id === "lorenz") {
-      sigmaRef.current = def.params[0];
-      rhoRef.current = def.params[1];
-      betaRef.current = def.params[2];
-    }
+    paramsRef.current = [...def.params];
     if (audioRef.current) {
       const { ctx, node } = audioRef.current;
       node.port.postMessage({
         kind: def.id,
-        params: def.id === "lorenz"
-          ? [sigmaRef.current, rhoRef.current, betaRef.current]
-          : def.params,
+        params: paramsRef.current.slice(),
         init: def.init,
         zOffset: def.zOffset,
         audioScale: def.audioScale,
@@ -1088,20 +1075,14 @@ registerProcessor('attractor', AttractorProcessor);
   // from chaotic collapse / explosion / silenced denormals.
   const resetAll = () => {
     const def = ATTRACTORS[kindRef.current];
-    if (def.id === "lorenz") {
-      sigmaRef.current = def.params[0];
-      rhoRef.current = def.params[1];
-      betaRef.current = def.params[2];
-    }
+    paramsRef.current = [...def.params];
     freqRef.current = 1440;
     stateRef.current = { ...def.init };
     ptsQueueRef.current.length = 0;
     if (audioRef.current) {
       audioRef.current.node.port.postMessage({ type: "reset", init: def.init });
       audioRef.current.node.port.postMessage({
-        sigma: sigmaRef.current,
-        rho: rhoRef.current,
-        beta: betaRef.current,
+        params: paramsRef.current.slice(),
         dt: (freqRef.current * def.dt) / audioRef.current.ctx.sampleRate,
       });
     }
