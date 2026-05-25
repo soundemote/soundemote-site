@@ -874,6 +874,13 @@ export const Oscilloscope = ({
     };
   }, []);
 
+  useEffect(() => {
+    if (traceColor) traceColorRef.current = traceColor;
+  }, [traceColor?.[0], traceColor?.[1], traceColor?.[2]]);
+  useEffect(() => {
+    if (bgColor) bgColorRef.current = bgColor;
+  }, [bgColor?.[0], bgColor?.[1], bgColor?.[2]]);
+
   const enableAudio = async () => {
     if (audioRef.current) {
       const a = audioRef.current;
