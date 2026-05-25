@@ -102,19 +102,22 @@ export const Hero = () => {
       <div className="max-w-xl mx-auto mt-16 flex flex-wrap items-center justify-center gap-2">
         {ATTRACTOR_ORDER.map((k) => {
           const active = k === kind;
+          const isReset = k === "off";
           return (
             <button
               key={k}
               type="button"
               onClick={() => setKind(k)}
               className={`rounded-full border px-3 py-1.5 mono text-[10px] uppercase tracking-[0.2em] transition-colors ${
-                active
+                isReset
+                  ? "border-red-500/40 text-red-500/60 hover:text-red-500 hover:border-red-500 hover:shadow-[0_0_18px_hsl(0_85%_55%/0.45)]"
+                  : active
                   ? "border-scope/70 text-scope bg-scope/10 shadow-[0_0_18px_hsl(var(--scope)/0.35)]"
                   : "border-border/60 text-muted-foreground hover:text-scope hover:border-scope/40"
               }`}
               aria-pressed={active}
             >
-              {ATTRACTORS[k].label}
+              {isReset ? "reset" : ATTRACTORS[k].label}
             </button>
           );
         })}
