@@ -1237,8 +1237,8 @@ registerProcessor('attractor', AttractorProcessor);
         if (!pts) return;
         const q = ptsQueueRef.current;
         for (let i = 0; i < pts.length; i++) q.push(pts[i]);
-        // cap queue growth (~2s of points at 4000/s)
-        const max = 8000 * 3;
+        // cap queue growth (~1s of points at 24000/s)
+        const max = 24000 * 3;
         if (q.length > max) q.splice(0, q.length - max);
       };
       audioRef.current = { ctx, node, gain };
