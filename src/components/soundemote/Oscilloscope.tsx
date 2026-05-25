@@ -1468,6 +1468,81 @@ registerProcessor('attractor', AttractorProcessor);
     );
   };
 
+  const VerticalZoomBar: React.FC<{
+    getZoom: () => number;
+    onSetFraction: (f: number) => void;
+  }> = ({ getZoom, onSetFraction }) => {
+    const trackRef = useRef<HTMLDivElement>(null);
+    const thumbRef = useRef<HTMLDivElement>(null);
+    const draggingRef = useRef(false);
+
+    const fracFromZoom = (z: number) => {
+      const minZ = 0.05;
+      const maxZ = 20;
+      return Math.log(z / minZ) / Math.log(maxZ / minZ);
+    };
+
+    useEffect(() => {
+      let raf = 0;
+      const tick = () => {
+        const el = thumbRef.current;
+        if (el) {
+          const f = Math.max(0, Math.min(1, fracFromZoom(getZoom())));
+          // bottom = small zoom, top = big zoom
+          el.style.bottom = `calc(${f * 100}% - 6px)`;
+        }
+        raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+      return () => cancelAnimationFrame(raf);
+    }, [getZoom]);
+
+    const handleFromEvent = (clientY: number) => {
+      const track = trackRef.current;
+      if (!track) return;
+      const r = track.getBoundingClientRect();
+      const f = 1 - (clientY - r.top) / r.height;
+      onSetFraction(f);
+    };
+
+    const onPointerDown = (e: React.PointerEvent) => {
+      draggingRef.current = true;
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+      handleFromEvent(e.clientY);
+    };
+    const onPointerMove = (e: React.PointerEvent) => {
+      if (!draggingRef.current) return;
+      handleFromEvent(e.clientY);
+    };
+    const onPointerUp = (e: React.PointerEvent) => {
+      draggingRef.current = false;
+      (e.target as Element).releasePointerCapture?.(e.pointerId);
+    };
+
+    return (
+      <div className="flex flex-col items-center gap-1 py-1 select-none">
+        <span className="mono text-[8px] tracking-[0.15em] text-muted-foreground/70">+</span>
+        <div
+          ref={trackRef}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          className="relative flex-1 w-2 rounded-full border border-border/60 bg-background/40 cursor-pointer touch-none"
+          role="slider"
+          aria-label="Zoom"
+        >
+          <div
+            ref={thumbRef}
+            className="pointer-events-none absolute left-1/2 -translate-x-1/2 h-3 w-3 rounded-full bg-scope/70 ring-1 ring-scope shadow-[0_0_8px_hsl(var(--scope)/0.7)]"
+            style={{ bottom: "0%" }}
+          />
+        </div>
+        <span className="mono text-[8px] tracking-[0.15em] text-muted-foreground/70">−</span>
+      </div>
+    );
+  };
+
   return (
     <div className="relative h-full w-full flex items-stretch gap-2">
       {/* Vertical zoom slider (outside the scope box) */}
