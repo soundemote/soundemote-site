@@ -1110,9 +1110,8 @@ registerProcessor('attractor', AttractorProcessor);
       const gain = ctx.createGain();
       gain.gain.value = volumeRef.current;
       node.connect(gain).connect(ctx.destination);
-      // Compute decimation: target ~freqRef visual points/sec, capped
-      const targetVisRate = Math.max(60, Math.min(4000, freqRef.current));
-      const decim = Math.max(1, Math.round(ctx.sampleRate / targetVisRate));
+      // Fixed visual emission rate, independent of integration frequency.
+      const VIS_RATE = 4000;
       {
         const def = ATTRACTORS[kindRef.current];
         node.port.postMessage({
@@ -1126,7 +1125,7 @@ registerProcessor('attractor', AttractorProcessor);
           rotY: rotYRef.current,
           rotXVel: autoSpinXRef.current ? spinSpeedXRef.current * 60 : 0,
           rotYVel: autoSpinYRef.current ? spinSpeedYRef.current * 60 : 0,
-          decim,
+          visRate: VIS_RATE,
           smoothOn: smoothingRef.current,
         });
       }
@@ -1146,8 +1145,6 @@ registerProcessor('attractor', AttractorProcessor);
       const id = window.setInterval(() => {
         const a = audioRef.current;
         if (!a) { window.clearInterval(id); return; }
-        const tvr = Math.max(60, Math.min(4000, freqRef.current));
-        const dc = Math.max(1, Math.round(a.ctx.sampleRate / tvr));
         const def = ATTRACTORS[kindRef.current];
         a.node.port.postMessage({
           params: paramsRef.current.slice(),
@@ -1159,7 +1156,7 @@ registerProcessor('attractor', AttractorProcessor);
           ...(autoSpinYRef.current ? {} : { rotY: rotYRef.current }),
           rotXVel: autoSpinXRef.current ? spinSpeedXRef.current * 60 : 0,
           rotYVel: autoSpinYRef.current ? spinSpeedYRef.current * 60 : 0,
-          decim: dc,
+          visRate: VIS_RATE,
           smoothOn: smoothingRef.current,
         });
       }, 33);
