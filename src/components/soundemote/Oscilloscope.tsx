@@ -1666,6 +1666,7 @@ registerProcessor('attractor', AttractorProcessor);
           </div>
         </label>
       </div>
+      </div>
     </div>
   );
 };
