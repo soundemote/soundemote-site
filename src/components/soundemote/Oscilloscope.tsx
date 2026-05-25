@@ -826,14 +826,36 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
       setAudioOn(true);
       return;
     }
+    // Build per-attractor step source by stripping the JS function wrapper
+    // and rewriting (s,p) → (this, this.params) so we can inline into the
+    // tight per-sample loop with no per-sample allocations.
+    const bodyOf = (fn: (...a: unknown[]) => unknown) => {
+      const src = fn.toString();
+      const start = src.indexOf("{") + 1;
+      const end = src.lastIndexOf("}");
+      return src.slice(start, end)
+        .replace(/\bs\.x\b/g, "this.x")
+        .replace(/\bs\.y\b/g, "this.y")
+        .replace(/\bs\.z\b/g, "this.z")
+        .replace(/\bp\[/g, "this.params[");
+    };
+    const stepCases = Object.entries(attractorStepFns)
+      .map(([k, fn]) => `case '${k}': { ${bodyOf(fn as never)} break; }`)
+      .join("\n      ");
     const workletCode = `
-class LorenzProcessor extends AudioWorkletProcessor {
+class AttractorProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
+    this.kind = 'lorenz';
     this.x = 0.01; this.y = 0; this.z = 0;
-    // current (smoothed) and target values — per-sample 1-pole lerp toward target
+    // params array used by step (per-attractor coefficients)
+    this.params = [16, 45.92, 4];
+    // For Lorenz we still want per-param smoothing so the σ/ρ/β knobs feel
+    // continuous; for other attractors params are fixed.
     this.sigma = 16; this.rho = 45.92; this.beta = 4; this.dt = 0.003;
     this.tSigma = 16; this.tRho = 45.92; this.tBeta = 4; this.tDt = 0.003;
+    // visual / audio scaling
+    this.zOffset = 45; this.audioScale = 0.035;
     // 3D rotation (radians) — mirrors the visual projection so the audio
     // L/R channels correspond to what's on screen.
     this.rotX = 0; this.rotY = 0;
@@ -850,7 +872,8 @@ class LorenzProcessor extends AudioWorkletProcessor {
     this.port.onmessage = (e) => {
       const d = e.data;
       if (d.type === 'reset') {
-        this.x = 0.01; this.y = 0; this.z = 0;
+        if (d.init) { this.x = d.init.x; this.y = d.init.y; this.z = d.init.z; }
+        else { this.x = 0.01; this.y = 0; this.z = 0; }
         this.lx = 0; this.ly = 0; this.px = 0; this.py = 0;
         this.bIdx = 0;
         // snap smoothed values to targets on reset
@@ -860,6 +883,11 @@ class LorenzProcessor extends AudioWorkletProcessor {
         }
         return;
       }
+      if (d.kind !== undefined) this.kind = d.kind;
+      if (d.params !== undefined) this.params = d.params.slice();
+      if (d.init !== undefined) { this.x = d.init.x; this.y = d.init.y; this.z = d.init.z; }
+      if (d.zOffset !== undefined) this.zOffset = d.zOffset;
+      if (d.audioScale !== undefined) this.audioScale = d.audioScale;
       if (d.sigma !== undefined) this.tSigma = d.sigma;
       if (d.rho !== undefined) this.tRho = d.rho;
       if (d.beta !== undefined) this.tBeta = d.beta;
@@ -894,26 +922,30 @@ class LorenzProcessor extends AudioWorkletProcessor {
       if (drY > PI) drY -= TAU; else if (drY < -PI) drY += TAU;
       this.rotX += drX * k;
       this.rotY += drY * k;
-      const s = this.sigma, r = this.rho, b = this.beta, dt = this.dt;
-      const dx = s*(this.y-this.x);
-      const dy = this.x*(r-this.z)-this.y;
-      const dz = this.x*this.y-b*this.z;
-      this.x += dx*dt; this.y += dy*dt; this.z += dz*dt;
+      const dt = this.dt;
+      // For Lorenz, mirror the smoothed σ/ρ/β knobs into params so the
+      // user's drag-edits take effect; other attractors keep fixed params.
+      if (this.kind === 'lorenz') {
+        this.params[0] = this.sigma; this.params[1] = this.rho; this.params[2] = this.beta;
+      }
+      switch (this.kind) {
+      ${stepCases}
+      }
       // explosion / NaN guard
       if (!isFinite(this.x) || Math.abs(this.x) > 1e4) {
         this.x = 0.01; this.y = 0; this.z = 0;
         this.lx = 0; this.ly = 0; this.px = 0; this.py = 0;
       }
       // Apply the same 3D rotation the visual uses, so L/R == on-screen X/Y.
-      const x0 = this.x, y0 = this.y, z0 = this.z - 45;
+      const x0 = this.x, y0 = this.y, z0 = this.z - this.zOffset;
       const cY = Math.cos(this.rotY), sY = Math.sin(this.rotY);
       const cX = Math.cos(this.rotX), sX = Math.sin(this.rotX);
       const xr = x0 * cY + z0 * sY;
       const zr = -x0 * sY + z0 * cY;
       const yr = y0 * cX - zr * sX;
       // normalize roughly to [-1,1]
-      const sx = xr * 0.035;
-      const sy = yr * 0.035;
+      const sx = xr * this.audioScale;
+      const sy = yr * this.audioScale;
       // 1-pole DC block
       const ox = sx - this.px + 0.995 * this.lx;
       const oy = sy - this.py + 0.995 * this.ly;
@@ -936,7 +968,7 @@ class LorenzProcessor extends AudioWorkletProcessor {
     return true;
   }
 }
-registerProcessor('lorenz', LorenzProcessor);
+registerProcessor('attractor', AttractorProcessor);
 `;
     try {
       const ctx = new AudioContext();
@@ -944,7 +976,7 @@ registerProcessor('lorenz', LorenzProcessor);
       const url = URL.createObjectURL(blob);
       await ctx.audioWorklet.addModule(url);
       URL.revokeObjectURL(url);
-      const node = new AudioWorkletNode(ctx, "lorenz", {
+      const node = new AudioWorkletNode(ctx, "attractor", {
         outputChannelCount: [2],
       });
       const gain = ctx.createGain();
