@@ -1521,16 +1521,19 @@ registerProcessor('attractor', AttractorProcessor);
     const onPointerDown = (e: React.PointerEvent) => {
       draggingRef.current = true;
       pointerYRef.current = e.clientY;
-      (e.target as Element).setPointerCapture?.(e.pointerId);
-    };
-    const onPointerMove = (e: React.PointerEvent) => {
-      if (!draggingRef.current) return;
-      pointerYRef.current = e.clientY;
-    };
-    const onPointerUp = (e: React.PointerEvent) => {
-      draggingRef.current = false;
-      pointerYRef.current = null;
-      (e.target as Element).releasePointerCapture?.(e.pointerId);
+      const onMove = (ev: PointerEvent) => {
+        pointerYRef.current = ev.clientY;
+      };
+      const onUp = () => {
+        draggingRef.current = false;
+        pointerYRef.current = null;
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
     };
 
     return (
