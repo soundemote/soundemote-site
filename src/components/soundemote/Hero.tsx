@@ -146,7 +146,16 @@ export const Hero = () => {
             <HSPicker label="tracer" color={tracerColor} onChange={setTracerColor} />
           </div>
         </div>
-        <div aria-hidden className="w-[calc(0.375rem+1px+1.25rem)]" />
+        <div
+          aria-hidden
+          className="invisible flex flex-col items-center justify-center rounded-l-xl border border-r-0 px-1.5 py-4 mono text-[10px] uppercase tracking-[0.2em]"
+        >
+          <span>r</span>
+          <span>e</span>
+          <span>s</span>
+          <span>e</span>
+          <span>t</span>
+        </div>
       </div>
       <div className="mt-12 grid grid-cols-3 max-w-md mx-auto gap-6 mono text-xs text-muted-foreground">
         <div>
