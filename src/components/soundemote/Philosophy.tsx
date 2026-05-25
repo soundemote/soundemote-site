@@ -19,7 +19,7 @@ const tenets = [
 export const Philosophy = () => (
   <section id="philosophy" className="relative py-24 md:py-32 border-t border-border/40 bg-secondary/20">
     <div className="container max-w-2xl text-center">
-      <p className="mono text-xs uppercase tracking-[0.3em] text-scope mb-4">/* philosophy */</p>
+      <p className="mono text-xs uppercase tracking-[0.3em] text-muted-foreground mb-4">/* philosophy */</p>
       <h2 className="display text-3xl md:text-5xl text-warm-white leading-tight">
         Low-level DSP craft, met with visual beauty.
       </h2>
