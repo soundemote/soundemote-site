@@ -75,6 +75,8 @@ const DragNumber = ({
   format,
   suffix,
   sensitivity = 0.008,
+  mode = "log",
+  linearStep,
 }: {
   value: number;
   onChange: (v: number) => void;
@@ -83,6 +85,8 @@ const DragNumber = ({
   format: (v: number) => string;
   suffix?: string;
   sensitivity?: number;
+  mode?: "log" | "linear";
+  linearStep?: number;
 }) => {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -100,9 +104,15 @@ const DragNumber = ({
     if (!(e.target as HTMLElement).hasPointerCapture?.(e.pointerId)) return;
     const dy = e.clientY - startRef.current.y;
     if (Math.abs(dy) > 2) movedRef.current = true;
-    // log-scale drag: dragging up multiplies, dragging down divides
-    const logV = Math.log(Math.max(1e-6, startRef.current.v));
-    const next = Math.exp(logV - dy * sensitivity);
+    let next: number;
+    if (mode === "linear") {
+      const step = linearStep ?? (max - min) * 0.004;
+      next = startRef.current.v - dy * step;
+    } else {
+      // log-scale drag: dragging up multiplies, dragging down divides
+      const logV = Math.log(Math.max(1e-6, startRef.current.v));
+      next = Math.exp(logV - dy * sensitivity);
+    }
     onChange(Math.max(min, Math.min(max, next)));
   };
   const onUp = (e: React.PointerEvent<HTMLSpanElement>) => {
