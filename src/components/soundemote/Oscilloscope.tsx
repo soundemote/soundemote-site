@@ -945,9 +945,15 @@ class AttractorProcessor extends AudioWorkletProcessor {
     // per-channel state: x[n-1], y[n-1]
     this.dcXL = 0; this.dcYL = 0;
     this.dcXR = 0; this.dcYR = 0;
-    // visual decimation: every Nth sample is sent to main thread
-    this.decim = 32; this.dCount = 0;
-    this.batch = new Float32Array(768); // up to 256 triples
+    // Visual emission: fixed-rate, frequency-independent. We accumulate a
+    // phase at visRate/sampleRate per audio sample and emit an interpolated
+    // (x,y,z) triple whenever the phase crosses 1. This gives uniformly
+    // spaced visual samples regardless of integration frequency, so the
+    // on-screen chord length is constant and the curve looks smooth.
+    this.visRate = 4000;
+    this.visAcc = 0;
+    this.prevX = this.x; this.prevY = this.y; this.prevZ = this.z;
+    this.batch = new Float32Array(2400); // up to 800 triples
     this.bIdx = 0;
     this.port.onmessage = (e) => {
       const d = e.data;
@@ -983,7 +989,7 @@ class AttractorProcessor extends AudioWorkletProcessor {
       if (d.rotY !== undefined) this.startLinearRamp('rotY', 'tRotY', 'rotYStep', 'rotYRemain', d.rotY, true);
       if (d.rotXVel !== undefined) this.startLinearRamp('rotXVel', 'tRotXVel', 'rotXVelStep', 'rotXVelRemain', d.rotXVel, false);
       if (d.rotYVel !== undefined) this.startLinearRamp('rotYVel', 'tRotYVel', 'rotYVelStep', 'rotYVelRemain', d.rotYVel, false);
-      if (d.decim !== undefined) this.decim = Math.max(1, d.decim|0);
+      if (d.visRate !== undefined) this.visRate = Math.max(60, Math.min(20000, +d.visRate));
       if (d.smoothOn !== undefined) this.smoothOn = !!d.smoothOn;
     };
   }
