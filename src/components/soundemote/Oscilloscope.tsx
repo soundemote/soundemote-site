@@ -1128,6 +1128,7 @@ registerProcessor('attractor', AttractorProcessor);
     stateRef.current = { ...def.init };
     ptsQueueRef.current.length = 0;
     paramsRef.current = [...def.params];
+    if (def.defaultFreq !== undefined) freqRef.current = def.defaultFreq;
     if (audioRef.current) {
       const { ctx, node } = audioRef.current;
       node.port.postMessage({
@@ -1149,7 +1150,7 @@ registerProcessor('attractor', AttractorProcessor);
   const resetAll = () => {
     const def = ATTRACTORS[kindRef.current];
     paramsRef.current = [...def.params];
-    freqRef.current = 1440;
+    freqRef.current = def.defaultFreq ?? 1440;
     stateRef.current = { ...def.init };
     ptsQueueRef.current.length = 0;
     if (audioRef.current) {
