@@ -635,6 +635,13 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
         const def = ATTRACTORS[kindRef.current];
         const stepFn = attractorStepFns[def.id];
         const params = sParams;
+        if (def.id === "off") {
+          // No integration — emit a single zero triple so the tracer dot
+          // renders at origin (pan still works since it offsets the canvas).
+          const st = stateRef.current;
+          st.x = 0; st.y = 0; st.z = 0;
+          triples.push(0, 0, 0);
+        } else {
         // Phasor-style oscillators (spiral) want a fixed sample-rate-style
         // integration; `dt` is a per-sample phase increment, so the normal
         // `steps = freq*dt_seconds` would either jump full cycles per step
@@ -660,6 +667,7 @@ export const Oscilloscope = ({ kind = "lorenz" }: { kind?: AttractorKind } = {})
             break;
           }
           triples.push(st.x, st.y, st.z);
+        }
         }
       }
 
