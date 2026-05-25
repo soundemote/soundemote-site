@@ -72,7 +72,19 @@ export const Projects = () => (
             <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-scope/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
             <div className="flex items-start justify-between mb-6">
               <div>
-                <h3 className={`display text-3xl ${accentClass[p.accent]}`}>{p.name}</h3>
+                {p.name === "prettyscope" ? (
+                  <h3 className="display text-3xl bg-[linear-gradient(90deg,#ff5757,#ffb547,#ffe156,#7bd66a,#5ad1ff,#9d7bff,#ff7bdc)] bg-clip-text text-transparent">
+                    {p.name}
+                  </h3>
+                ) : p.name === "asciiscope" ? (
+                  <h3 className="mono text-3xl text-scope tracking-tight">
+                    <span className="text-muted-foreground">$&nbsp;</span>
+                    {p.name}
+                    <span className="inline-block w-[0.6em] h-[1em] align-[-0.15em] bg-scope ml-1 animate-pulse" />
+                  </h3>
+                ) : (
+                  <h3 className={`display text-3xl ${accentClass[p.accent]}`}>{p.name}</h3>
+                )}
                 <p className="mono text-[10px] uppercase tracking-[0.25em] text-muted-foreground mt-2">
                   {p.status}
                 </p>
