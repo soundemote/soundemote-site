@@ -1166,6 +1166,30 @@ registerProcessor('attractor', AttractorProcessor);
       node.connect(gain).connect(ctx.destination);
       // Fixed visual emission rate, independent of integration frequency.
       const VIS_RATE = 4000;
+      // Allocate a SharedArrayBuffer ring if the page is crossOriginIsolated.
+      // 16384 triples = 192 KB float data; at 4000 pts/sec that's ~4 sec of
+      // buffer — orders of magnitude more than a single rAF interval.
+      let sabInit: { ctrl: SharedArrayBuffer; data: SharedArrayBuffer } | null = null;
+      const SAB_SUPPORTED =
+        typeof SharedArrayBuffer !== "undefined" &&
+        typeof (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated !== "undefined" &&
+        (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true;
+      if (SAB_SUPPORTED) {
+        try {
+          const TRIPLES = 16384;
+          const dataBuf = new SharedArrayBuffer(TRIPLES * 3 * 4);
+          const ctrlBuf = new SharedArrayBuffer(2 * 4);
+          sabRef.current = {
+            ctrl: new Int32Array(ctrlBuf),
+            data: new Float32Array(dataBuf),
+          };
+          sabInit = { ctrl: ctrlBuf, data: dataBuf };
+        } catch (e) {
+          // Fall back silently to postMessage path
+          sabRef.current = null;
+          sabInit = null;
+        }
+      }
       {
         const def = ATTRACTORS[kindRef.current];
         node.port.postMessage({
@@ -1181,6 +1205,7 @@ registerProcessor('attractor', AttractorProcessor);
           rotYVel: autoSpinYRef.current ? spinSpeedYRef.current * 60 : 0,
           visRate: VIS_RATE,
           smoothOn: smoothingRef.current,
+          ...(sabInit ? { sab: sabInit } : {}),
         });
       }
       node.port.onmessage = (e) => {
