@@ -64,7 +64,7 @@ function BlinkingTilde() {
   useEffect(() => {
     const interval = setInterval(() => {
       setVisible((v) => !v);
-    }, 500);
+    }, 1000);
     return () => clearInterval(interval);
   }, []);
 
