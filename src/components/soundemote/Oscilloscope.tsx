@@ -1471,7 +1471,7 @@ registerProcessor('attractor', AttractorProcessor);
   return (
     <div className="relative h-full w-full overflow-hidden rounded-xl border border-border bg-[var(--gradient-panel)] scope-grid">
       {/* Top bar */}
-      <div className="flex items-center justify-between gap-4 border-b border-border/60 px-4 py-2 mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+      <div className="flex items-center justify-between gap-4 border-b border-border/60 px-4 py-2 mono text-[0.625rem] uppercase tracking-[0.2em] text-muted-foreground">
         <div className="flex items-center gap-3">
           {ATTRACTORS[kind].paramSchema.map((p, i) => (
             <label key={`${kind}-p${i}`} className="flex items-center gap-1">
@@ -1519,7 +1519,7 @@ registerProcessor('attractor', AttractorProcessor);
           >
             <Minus className="h-3.5 w-3.5" />
           </HoldButton>
-          <span className="mono text-[10px] tracking-[0.15em] text-muted-foreground tabular-nums w-10 text-center">
+          <span className="mono text-[0.625rem] tracking-[0.15em] text-muted-foreground tabular-nums w-10 text-center">
             {zoomRef.current.toFixed(2)}x
           </span>
           <HoldButton
@@ -1538,7 +1538,7 @@ registerProcessor('attractor', AttractorProcessor);
           >
             <Minus className="h-3.5 w-3.5" />
           </HoldButton>
-          <span className="mono text-[10px] tracking-[0.15em] text-muted-foreground tabular-nums w-10 text-center">
+          <span className="mono text-[0.625rem] tracking-[0.15em] text-muted-foreground tabular-nums w-10 text-center">
             w{traceWidthRef.current.toFixed(1)}
           </span>
           <HoldButton
@@ -1557,7 +1557,7 @@ registerProcessor('attractor', AttractorProcessor);
           >
             <Minus className="h-3.5 w-3.5" />
           </HoldButton>
-          <span className="mono text-[10px] tracking-[0.15em] text-muted-foreground tabular-nums w-12 text-center">
+          <span className="mono text-[0.625rem] tracking-[0.15em] text-muted-foreground tabular-nums w-12 text-center">
             burn{(1 - decayRef.current).toFixed(2)}
           </span>
           <HoldButton
@@ -1589,13 +1589,13 @@ registerProcessor('attractor', AttractorProcessor);
             className="h-1 w-20 cursor-pointer accent-scope bg-border/40 rounded-full appearance-none disabled:opacity-40"
             aria-label="Volume"
           />
-          <span className="mono text-[10px] tracking-[0.15em] text-muted-foreground tabular-nums w-8 text-center">
+          <span className="mono text-[0.625rem] tracking-[0.15em] text-muted-foreground tabular-nums w-8 text-center">
             {Math.round(volumeRef.current * 100)}
           </span>
         </div>
       </div>
       {/* Rotation sliders */}
-      <div className="absolute top-12 right-3 flex flex-col gap-2 rounded-lg border border-border/60 bg-background/70 px-3 py-2 backdrop-blur-sm mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
+      <div className="absolute top-12 right-3 flex flex-col gap-2 rounded-lg border border-border/60 bg-background/70 px-3 py-2 backdrop-blur-sm mono text-[0.625rem] uppercase tracking-[0.15em] text-muted-foreground">
         <label className="flex items-center gap-2">
           <input
             type="checkbox"

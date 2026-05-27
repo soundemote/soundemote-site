@@ -21,7 +21,7 @@ export const Philosophy = () => (
     <div className="container max-w-2xl text-center">
       <p className="mono mb-4 text-xs uppercase tracking-[0.3em] text-muted-foreground">/* philosophy */</p>
       <h2 className="display text-3xl leading-tight text-warm-white md:text-5xl">
-        An ecosystem for audiovisual prototyping, algorithmic music, and visual FX.
+        An ecosystem for modular audiovisuals.
       </h2>
       <div className="mt-16 space-y-10">
         {tenets.map((t) => (

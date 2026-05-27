@@ -25,7 +25,7 @@ export const AsciiWave = ({ rows = 6, cols = 60 }: { rows?: number; cols?: numbe
   }
 
   return (
-    <pre className="mono text-[10px] leading-[1.05] text-scope/80 select-none" aria-hidden>
+    <pre className="mono text-[0.625rem] leading-[1.05] text-scope/80 select-none" aria-hidden>
       {lines.join("\n")}
     </pre>
   );

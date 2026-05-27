@@ -155,7 +155,7 @@ export const Projects = () => (
                 ) : (
                   <h3 className={`display text-3xl ${accentClass[p.accent]}`}>{p.name}</h3>
                 )}
-                <p className="mono text-[10px] uppercase tracking-[0.25em] text-muted-foreground mt-2">
+                <p className="mono text-[0.625rem] uppercase tracking-[0.25em] text-muted-foreground mt-2">
                   {p.status}
                 </p>
               </div>
@@ -182,7 +182,7 @@ export const Projects = () => (
               {p.tags.map((t) => (
                 <span
                   key={t}
-                  className="mono text-[10px] uppercase tracking-[0.18em] rounded-full border border-border px-3 py-1 text-muted-foreground"
+                  className="mono text-[0.625rem] uppercase tracking-[0.18em] rounded-full border border-border px-3 py-1 text-muted-foreground"
                 >
                   {t}
                 </span>

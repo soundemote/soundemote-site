@@ -24,10 +24,23 @@ type Shooter = {
   hue: number;
 };
 
+type Spark = {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  size: number;
+  hue: number;
+  glyph: string;
+};
+
 export const StarField = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const starsRef = useRef<Star[]>([]);
   const shootersRef = useRef<Shooter[]>([]);
+  const sparksRef = useRef<Spark[]>([]);
   const rafRef = useRef<number>();
 
   useEffect(() => {
@@ -80,6 +93,28 @@ export const StarField = () => {
       });
     };
 
+    const explode = (x: number, y: number, hue: number) => {
+      const glyphs = ["*", "+", "✦", "✧", "·"];
+      const sparks = sparksRef.current;
+      const count = 24;
+      for (let i = 0; i < count; i++) {
+        const angle = (i / count) * Math.PI * 2 + Math.random() * 0.35;
+        const speed = 1.5 + Math.random() * 5.5;
+        const maxLife = 28 + Math.random() * 22;
+        sparks.push({
+          x,
+          y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life: maxLife,
+          maxLife,
+          size: 1 + Math.random() * 2.5,
+          hue: hue + (Math.random() * 50 - 25),
+          glyph: glyphs[Math.floor(Math.random() * glyphs.length)],
+        });
+      }
+    };
+
     const resize = () => {
       dpr = Math.min(window.devicePixelRatio || 1, 2);
       width = window.innerWidth;
@@ -128,6 +163,7 @@ export const StarField = () => {
       }
       const shooters = shootersRef.current;
       const trailGlyphs = ["*", "+", "·", ".", " "];
+      const scopeRect = document.getElementById("hero-oscilloscope")?.getBoundingClientRect();
       for (let i = shooters.length - 1; i >= 0; i--) {
         const sh = shooters[i];
         sh.x += sh.vx;
@@ -152,10 +188,44 @@ export const StarField = () => {
         ctx.fillText("✦", sh.x, sh.y);
 
         if (
+          scopeRect &&
+          sh.x >= scopeRect.left &&
+          sh.x <= scopeRect.right &&
+          sh.y >= scopeRect.top &&
+          sh.y <= scopeRect.bottom
+        ) {
+          explode(sh.x, sh.y, sh.hue);
+          shooters.splice(i, 1);
+          continue;
+        }
+
+        if (
           sh.x < -60 || sh.x > width + 60 ||
           sh.y < -60 || sh.y > height + 60
         ) {
           shooters.splice(i, 1);
+        }
+      }
+
+      const sparks = sparksRef.current;
+      for (let i = sparks.length - 1; i >= 0; i--) {
+        const sp = sparks[i];
+        const age = sp.life / sp.maxLife;
+        sp.x += sp.vx;
+        sp.y += sp.vy;
+        sp.vx *= 0.96;
+        sp.vy = sp.vy * 0.96 + 0.035;
+        sp.life -= 1;
+
+        ctx.fillStyle = `hsla(${sp.hue}, 95%, ${65 + age * 25}%, ${Math.max(0, age)})`;
+        if (sp.glyph === "·") {
+          ctx.fillRect(sp.x - sp.size / 2, sp.y - sp.size / 2, sp.size, sp.size);
+        } else {
+          ctx.fillText(sp.glyph, sp.x, sp.y);
+        }
+
+        if (sp.life <= 0) {
+          sparks.splice(i, 1);
         }
       }
 

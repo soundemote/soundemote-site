@@ -30,7 +30,7 @@ const HSPicker = ({
   const previewBg = `hsl(${color.h.toFixed(0)} ${(color.s * 100).toFixed(0)}% ${(color.l * 100).toFixed(0)}%)`;
   return (
     <div className="flex flex-col items-center gap-1.5">
-      <div className="mono text-[9px] uppercase tracking-[0.2em] text-muted-foreground/70 flex items-center gap-1.5">
+      <div className="mono text-[0.5625rem] uppercase tracking-[0.2em] text-muted-foreground/70 flex items-center gap-1.5">
         <span
           className="inline-block h-2 w-2 rounded-full border border-border/60"
           style={{ background: previewBg }}
@@ -74,11 +74,11 @@ export const Hero = () => {
   const [bgColor, setBgColor] = useState<HSL>({ h: 0, s: 0, l: 0 });
   const scopeRef = useRef<OscilloscopeRef>(null);
   return (
-  <section id="top" className="relative overflow-hidden pt-32 pb-24 md:pt-40 md:pb-32">
+  <section id="top" className="relative overflow-hidden pt-14 pb-20 md:pt-20 md:pb-28">
     <div className="absolute inset-0 scope-grid opacity-40" aria-hidden />
     <div className="absolute inset-0 bg-[var(--gradient-hero)]" aria-hidden />
     <div className="container relative max-w-3xl mx-auto text-center animate-fade-in">
-      <p className="mono tracking-[0.35em] text-scope mb-6 normal-case lowercase font-medium text-3xl font-sans">
+      <p className="mono mb-6 whitespace-nowrap text-base font-medium normal-case lowercase tracking-[0.16em] text-scope sm:text-2xl sm:tracking-[0.28em] md:text-3xl md:tracking-[0.35em] font-sans">
         ⋆⁺₊✧ soemdsp ✧₊⁺⋆
       </p>
       <p className="mt-8 mx-auto max-w-xl text-lg leading-relaxed text-muted-foreground" />
@@ -108,7 +108,7 @@ export const Hero = () => {
               key={k}
               type="button"
               onClick={() => setKind(k)}
-              className={`rounded-full border px-3 py-1.5 mono text-[10px] uppercase tracking-[0.2em] transition-colors ${
+              className={`rounded-full border px-3 py-1.5 mono text-[0.625rem] uppercase tracking-[0.2em] transition-colors ${
                 active
                   ? "border-scope/70 text-scope bg-scope/10 shadow-[0_0_18px_hsl(var(--scope)/0.35)]"
                   : "border-border/60 text-muted-foreground hover:text-scope hover:border-scope/40"
@@ -125,7 +125,7 @@ export const Hero = () => {
           <button
             type="button"
             onClick={() => scopeRef.current?.reset()}
-            className="flex flex-col items-center justify-center rounded-l-xl border border-r-0 border-red-500/30 bg-background/50 px-1.5 text-red-500/40 transition-colors hover:border-red-500 hover:text-red-400 mono text-[10px] uppercase tracking-[0.2em]"
+            className="flex flex-col items-center justify-center rounded-l-xl border border-r-0 border-red-500/30 bg-background/50 px-1.5 text-red-500/40 transition-colors hover:border-red-500 hover:text-red-400 mono text-[0.625rem] uppercase tracking-[0.2em]"
             title="Reset coefficients, integrator state, and audio engine"
             aria-label="Reset"
           >
@@ -135,12 +135,12 @@ export const Hero = () => {
             <span>e</span>
             <span>t</span>
           </button>
-          <div className="relative aspect-[5/4] w-[36rem] max-w-[calc(100vw-6rem)]">
+          <div id="hero-oscilloscope" className="relative aspect-[5/4] w-[36rem] max-w-[calc(100vw-6rem)]">
             <Oscilloscope ref={scopeRef} kind={kind} tracerColor={tracerColor} bgColor={bgColor} />
           </div>
           <div
             aria-hidden
-            className="invisible flex flex-col items-center justify-center rounded-l-xl border border-r-0 px-1.5 mono text-[10px] uppercase tracking-[0.2em]"
+            className="invisible flex flex-col items-center justify-center rounded-l-xl border border-r-0 px-1.5 mono text-[0.625rem] uppercase tracking-[0.2em]"
           >
             <span>r</span>
             <span>e</span>
@@ -149,7 +149,7 @@ export const Hero = () => {
             <span>t</span>
           </div>
         </div>
-        <div className="mt-2 flex justify-start mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/70">
+        <div className="mt-2 flex justify-start mono text-[0.625rem] uppercase tracking-[0.2em] text-muted-foreground/70">
           drag to pan · scroll to zoom
         </div>
         <div className="mt-3 flex justify-center gap-6">

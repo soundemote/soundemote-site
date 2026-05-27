@@ -5,7 +5,6 @@ import Projects from "@/components/soundemote/Projects";
 import Philosophy from "@/components/soundemote/Philosophy";
 import Audiences from "@/components/soundemote/Audiences";
 import Community from "@/components/soundemote/Community";
-import Contact from "@/components/soundemote/Contact";
 import Footer from "@/components/soundemote/Footer";
 
 const Index = () => (
@@ -17,7 +16,6 @@ const Index = () => (
     <Philosophy />
     <Audiences />
     <Community />
-    <Contact />
     <Footer />
   </main>
 );

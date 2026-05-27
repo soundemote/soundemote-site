@@ -1,6 +1,7 @@
 const socials = [
+  { name: "Discord", href: "https://discord.gg/hjpBC8kZ3s", handle: "https://discord.gg/hjpBC8kZ3s" },
   { name: "GitHub", href: "https://github.com/soundemote", handle: "@soundemote" },
-  { name: "Discord", href: "https://discord.gg/hjpBC8kZ3s", handle: "join the server" },
+  { name: "YouTube", href: "http://www.youtube.com/@soundemote0", handle: "@soundemote0" },
   { name: "X", href: "https://x.com/soundemote", handle: "@soundemote" },
   { name: "Bluesky", href: "https://bsky.app/profile/soundemote.bsky.social", handle: "@soundemote.bsky.social" },
 ];

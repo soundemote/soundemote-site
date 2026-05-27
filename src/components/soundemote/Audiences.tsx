@@ -1,7 +1,22 @@
 const groups = [
   {
     label: "for developers",
-    title: "Build with the same primitives we use.",
+    displayLabel: "/* for developers */",
+    labelClass: "text-muted-foreground",
+    title: (
+      <>
+        Build with{" "}
+        <a
+          href="https://github.com/soundemote/soemdsp"
+          target="_blank"
+          rel="noreferrer"
+          className="text-scope transition-colors hover:text-scope-glow"
+        >
+          soemdsp
+        </a>{" "}
+        primitives or link to your own.
+      </>
+    ),
     items: [
       "C++ DSP objects with SIMD-friendly internals",
       "CLAP plugins and JUCE-based scaffolding",
@@ -12,12 +27,14 @@ const groups = [
   },
   {
     label: "for musicians",
+    displayLabel: "〜 ♪ for musicians ♪ 〜",
+    labelClass: "text-accent",
     title: "Tools that show you what you hear.",
     items: [
-      "Aesthetic oscilloscopes and waveform visualizers",
-      "Expressive synth interfaces designed by ear",
-      "Recordable plugin windows for clips and screenshots",
-      "Experimental instruments built in the open",
+      "Aesthetic oscilloscopes, waveform visualizers, and visual fx",
+      "Expressive synths designed by eye and ear",
+      "Recordable plugin window for clips and screenshots",
+      "Share your experimental instruments with a link",
     ],
     accent: "accent",
   },
@@ -38,11 +55,9 @@ export const Audiences = () => (
             aria-hidden
           />
           <p
-            className={`mono text-xs uppercase tracking-[0.3em] mb-4 ${
-              g.accent === "scope" ? "text-scope" : "text-accent"
-            }`}
+            className={`mono text-xs uppercase tracking-[0.3em] mb-4 ${g.labelClass}`}
           >
-            {g.label}
+            {g.displayLabel}
           </p>
           <h3 className="display text-2xl md:text-3xl text-warm-white mb-6 leading-tight">
             {g.title}
