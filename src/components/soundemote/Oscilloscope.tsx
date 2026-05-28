@@ -1031,6 +1031,7 @@ class AttractorProcessor extends AudioWorkletProcessor {
     super();
     this.kind = 'lorenz';
     this.x = 0.01; this.y = 0; this.z = 0;
+    this.phase = 0; this.zh = 0;
     // Smoothed coefficient array used by the step. tParams is the target
     // (what the UI just set); params chases it via the per-sample smoother.
     this.params  = [16, 45.92, 4];
@@ -1097,6 +1098,7 @@ class AttractorProcessor extends AudioWorkletProcessor {
       if (d.type === 'reset') {
         if (d.init) { this.x = d.init.x; this.y = d.init.y; this.z = d.init.z; }
         else { this.x = 0.01; this.y = 0; this.z = 0; }
+        this.phase = 0; this.zh = 0;
         this.dcXL = 0; this.dcYL = 0; this.dcXR = 0; this.dcYR = 0;
         this.bIdx = 0;
         this.rotXStep = 0; this.rotYStep = 0;
@@ -1118,7 +1120,7 @@ class AttractorProcessor extends AudioWorkletProcessor {
           this.params = this.tParams.slice();
         }
       }
-      if (d.init !== undefined) { this.x = d.init.x; this.y = d.init.y; this.z = d.init.z; }
+      if (d.init !== undefined) { this.x = d.init.x; this.y = d.init.y; this.z = d.init.z; this.phase = 0; this.zh = 0; }
       if (d.zOffset !== undefined) this.zOffset = d.zOffset;
       if (d.audioScale !== undefined) this.audioScale = d.audioScale;
       if (d.dt !== undefined) this.tDt = d.dt;

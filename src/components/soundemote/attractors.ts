@@ -4,7 +4,7 @@
 
 export type AttractorKind = "off" | "lorenz" | "aizawa" | "halvorsen" | "thomas" | "chenlee" | "spiral";
 
-export type AttractorState = { x: number; y: number; z: number };
+export type AttractorState = { x: number; y: number; z: number; phase?: number; zh?: number };
 
 export type AttractorParam = {
   label: string;
@@ -77,22 +77,21 @@ export const attractorStepFns: Record<AttractorKind, (s: AttractorState, dt: num
   // to fixed morph/sharp/rotation phasors with three exposed controls:
   // density (number of spirals), zdepth (perspective fold) and z_amount
   // (z-history feedback into oscillator frequency / "darkness").
-  // `dt` is a per-sample phase increment in radians (def.dt = 2π); state.z
-  // carries the running phasor [0,1), and a closure-scoped `_spiralZH`
-  // carries the z_history feedback term.
-  spiral: (function () {
-    let zh = 0;
-    return function step(s, dt, p) {
+  // `dt` is a per-sample phase increment in radians (def.dt = 2π).
+  // Spiral keeps phase and z-history in side fields so x/y/z remain a real
+  // 3D signal for the shared visual/audio rotation path.
+  spiral: function step(s, dt, p) {
       const PI = Math.PI, TAU = 2 * PI, PIz2 = PI / 2, PIz4 = PI / 4;
       const dense = Math.max(Math.abs(p[0]), 1e-6);
       const log_dense = Math.log(dense);
       const zdepth = p[1];
       const z_amount = p[2];
       const div = 0.5;
+      const zh = typeof s.zh === "number" ? s.zh : 0;
       const z_darkness = Math.pow(z_amount * z_amount * 5 + 1, zh);
-      let phasor = s.z + (dt / TAU) * z_darkness;
+      let phasor = (typeof s.phase === "number" ? s.phase : 0) + (dt / TAU) * z_darkness;
       phasor -= Math.floor(phasor);
-      s.z = phasor;
+      s.phase = phasor;
       // trisaw(phasor, 0.5) → triangle in [0,1]
       const fphas_ends = phasor < 0.5 ? 2 * phasor : 2 - 2 * phasor;
       const lophas = fphas_ends; // bright_dist = 0
@@ -149,14 +148,9 @@ export const attractorStepFns: Record<AttractorKind, (s: AttractorState, dt: num
       wave_z += 0.36;
       // rotate(wave, 0, -π/2): out_x = in_y, out_y = in_z, out_z = -in_x
       const rx = wave_y, ry = wave_z, rz = -wave_x;
-      const formula = zdepth * 1.25 * (rz / 2 + 0.5);
-      const m = 1 + zdepth;
-      const L = (rx - formula * rx) * m;
-      const R = (ry - formula * ry) * m;
-      s.x = L; s.y = R;
-      zh = rz;
-    };
-  })(),
+      s.x = rx; s.y = ry; s.z = rz;
+      s.zh = rz;
+    },
 };
 
 export const ATTRACTORS: Record<AttractorKind, AttractorDef> = {
@@ -284,15 +278,16 @@ export const attractorWorkletSteps: Record<AttractorKind, string> = {
   spiral: `{
     const _PI = Math.PI, _TAU = 6.283185307179586, _PIz2 = _PI/2, _PIz4 = _PI/4;
     if (typeof this.zh !== 'number') this.zh = 0;
+    if (typeof this.phase !== 'number') this.phase = 0;
     const _dense = Math.max(Math.abs(this.params[0]), 1e-6);
     const _log_dense = Math.log(_dense);
     const _zdepth = this.params[1];
     const _zamt = this.params[2];
     const _div = 0.5;
     const _zdark = Math.pow(_zamt*_zamt*5 + 1, this.zh);
-    let _phasor = this.z + (dt/_TAU) * _zdark;
+    let _phasor = this.phase + (dt/_TAU) * _zdark;
     _phasor -= Math.floor(_phasor);
-    this.z = _phasor;
+    this.phase = _phasor;
     const _fphas = _phasor < 0.5 ? 2*_phasor : 2 - 2*_phasor;
     const _lophas = _fphas;
     const _lh = _lophas - 0.5;
@@ -338,10 +333,9 @@ export const attractorWorkletSteps: Record<AttractorKind, string> = {
     _wx *= _vc; _wy *= _vc; _wz *= _vc;
     _wy += 0.25; _wz += 0.36;
     const _rx = _wy, _ry = _wz, _rz = -_wx;
-    const _fm = _zdepth * 1.25 * (_rz/2 + 0.5);
-    const _m = 1 + _zdepth;
-    this.x = (_rx - _fm*_rx) * _m;
-    this.y = (_ry - _fm*_ry) * _m;
+    this.x = _rx;
+    this.y = _ry;
+    this.z = _rz;
     this.zh = _rz;
   }`,
 };
