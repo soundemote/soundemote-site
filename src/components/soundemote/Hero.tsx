@@ -86,7 +86,7 @@ export const Hero = () => {
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-scope opacity-75" />
           <span className="relative inline-flex rounded-full h-2 w-2 bg-scope" />
         </span>
-        everything is a work in progress
+        everything is a work in progress: alpha v0.1
       </p>
       <p className="mt-8 mx-auto max-w-xl text-lg leading-relaxed text-muted-foreground" />
       
