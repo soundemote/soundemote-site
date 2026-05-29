@@ -40,7 +40,7 @@ const projects: Project[] = [
   },
   {
     name: "⋆⁺₊✧ soemdsp ✧₊⁺⋆",
-    status: "C++ · MIT",
+    status: "alpha v0.1 · C++ · MIT",
     blurb:
       "SIMD-minded, easy-to-use low-level DSP objects for oscillators, filters, modulation, dynamics, random, timing, and plugin infrastructure.",
     href: "https://github.com/soundemote/soemdsp",
