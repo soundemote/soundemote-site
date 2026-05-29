@@ -84,9 +84,9 @@ function BlinkingTilde() {
 }
 
 export const Projects = () => (
-  <section id="projects" className="relative py-24 md:py-32 border-t border-border/40">
+  <section id="projects" className="relative pb-24 pt-14 md:pb-32 md:pt-20 border-t border-border/40">
     <div className="container max-w-2xl">
-      <div className="text-center mb-16">
+      <div className="text-center mb-10 md:mb-12">
         <p className="mono text-xs uppercase tracking-[0.3em] text-muted-foreground mb-3">/* projects */</p>
         <p className="mono text-xs text-muted-foreground">
           DSP / Audio / Visual

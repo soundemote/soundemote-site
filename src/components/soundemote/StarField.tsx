@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 // ASCII starfield inspired by Monster Bash (1993): tiny pixel/ascii stars
 // twinkling on a near-black night sky. Pure presentation, fixed behind content.
@@ -36,14 +37,27 @@ type Spark = {
   glyph: string;
 };
 
+type ScopeHitbox = {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+};
+
 export const StarField = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
   const starsRef = useRef<Star[]>([]);
   const shootersRef = useRef<Shooter[]>([]);
   const sparksRef = useRef<Spark[]>([]);
   const rafRef = useRef<number>();
 
   useEffect(() => {
+    setPortalHost(document.body);
+  }, []);
+
+  useEffect(() => {
+    if (!portalHost) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -52,6 +66,30 @@ export const StarField = () => {
     let width = 0;
     let height = 0;
     let dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let lastScrollAt = -Infinity;
+
+    const getScopeHitbox = (now: number): ScopeHitbox | null => {
+      if (now - lastScrollAt < 250) return null;
+
+      const scopeCanvas = document.querySelector<HTMLCanvasElement>("#hero-oscilloscope canvas");
+      const rect = scopeCanvas?.getBoundingClientRect();
+      if (
+        !rect ||
+        rect.right <= 0 ||
+        rect.left >= width ||
+        rect.bottom <= 0 ||
+        rect.top >= height
+      ) {
+        return null;
+      }
+
+      return {
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+      };
+    };
 
     const seed = () => {
       const area = width * height;
@@ -127,16 +165,19 @@ export const StarField = () => {
       seed();
     };
 
+    const handleScroll = () => {
+      lastScrollAt = performance.now();
+    };
+
     resize();
     window.addEventListener("resize", resize);
+    window.addEventListener("scroll", handleScroll, { passive: true });
 
     let start = performance.now();
     let nextShooterAt = 1.5;
     const tick = (now: number) => {
       const t = (now - start) / 1000;
-      // near-black wash with a faint vignette feel
-      ctx.fillStyle = "#000000";
-      ctx.fillRect(0, 0, width, height);
+      ctx.clearRect(0, 0, width, height);
 
       ctx.font = `12px "JetBrains Mono", ui-monospace, monospace`;
       ctx.textBaseline = "middle";
@@ -163,7 +204,7 @@ export const StarField = () => {
       }
       const shooters = shootersRef.current;
       const trailGlyphs = ["*", "+", "·", ".", " "];
-      const scopeRect = document.getElementById("hero-oscilloscope")?.getBoundingClientRect();
+      const scopeHitbox = getScopeHitbox(now);
       for (let i = shooters.length - 1; i >= 0; i--) {
         const sh = shooters[i];
         sh.x += sh.vx;
@@ -188,11 +229,11 @@ export const StarField = () => {
         ctx.fillText("✦", sh.x, sh.y);
 
         if (
-          scopeRect &&
-          sh.x >= scopeRect.left &&
-          sh.x <= scopeRect.right &&
-          sh.y >= scopeRect.top &&
-          sh.y <= scopeRect.bottom
+          scopeHitbox &&
+          sh.x >= scopeHitbox.left &&
+          sh.x <= scopeHitbox.right &&
+          sh.y >= scopeHitbox.top &&
+          sh.y <= scopeHitbox.bottom
         ) {
           explode(sh.x, sh.y, sh.hue);
           shooters.splice(i, 1);
@@ -235,17 +276,26 @@ export const StarField = () => {
 
     return () => {
       window.removeEventListener("resize", resize);
+      window.removeEventListener("scroll", handleScroll);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, []);
+  }, [portalHost]);
 
-  return (
+  const canvas = (
     <canvas
       ref={canvasRef}
       aria-hidden
-      className="fixed inset-0 -z-10 pointer-events-none"
+      className="pointer-events-none"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 0,
+        background: "transparent",
+      }}
     />
   );
+
+  return portalHost ? createPortal(canvas, portalHost) : null;
 };
 
 export default StarField;

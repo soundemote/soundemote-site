@@ -8,7 +8,7 @@ import Community from "@/components/soundemote/Community";
 import Footer from "@/components/soundemote/Footer";
 
 const Index = () => (
-  <main className="min-h-screen text-foreground scroll-smooth">
+  <main className="relative z-10 min-h-screen text-foreground scroll-smooth">
     <StarField />
     <Nav />
     <Hero />

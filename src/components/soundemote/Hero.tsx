@@ -29,10 +29,10 @@ const HSPicker = ({
   };
   const previewBg = `hsl(${color.h.toFixed(0)} ${(color.s * 100).toFixed(0)}% ${(color.l * 100).toFixed(0)}%)`;
   return (
-    <div className="flex flex-col items-center gap-1.5">
-      <div className="mono text-[0.5625rem] uppercase tracking-[0.2em] text-muted-foreground/70 flex items-center gap-1.5">
+    <div className="flex flex-col items-center gap-2">
+      <div className="mono text-[0.625rem] uppercase tracking-[0.2em] text-muted-foreground/70 flex items-center gap-1.5">
         <span
-          className="inline-block h-2 w-2 rounded-full border border-border/60"
+          className="inline-block h-2.5 w-2.5 rounded-full border border-border/60"
           style={{ background: previewBg }}
           aria-hidden
         />
@@ -42,7 +42,7 @@ const HSPicker = ({
         ref={boxRef}
         onPointerDown={onDown}
         onPointerMove={onMove}
-        className="relative h-16 w-16 cursor-crosshair rounded-sm border border-border/60 touch-none"
+        className="relative h-20 w-20 cursor-crosshair rounded-sm border border-border/60 touch-none sm:h-24 sm:w-24"
         style={{
           background:
             "linear-gradient(to bottom, transparent, hsl(0 0% 50%)), linear-gradient(to right, hsl(0 100% 50%), hsl(60 100% 50%), hsl(120 100% 50%), hsl(180 100% 50%), hsl(240 100% 50%), hsl(300 100% 50%), hsl(360 100% 50%))",
@@ -61,7 +61,7 @@ const HSPicker = ({
         step={0.01}
         value={color.l}
         onChange={(e) => onChange({ ...color, l: parseFloat(e.target.value) })}
-        className="h-1 w-16 cursor-pointer accent-scope appearance-none bg-border/40 rounded-full"
+        className="h-1.5 w-20 cursor-pointer accent-scope appearance-none bg-border/40 rounded-full sm:w-24"
         aria-label={`${label} lightness`}
       />
     </div>
@@ -152,23 +152,9 @@ export const Hero = () => {
         <div className="mt-2 flex justify-start mono text-[0.625rem] uppercase tracking-[0.2em] text-muted-foreground/70">
           drag to pan · scroll to zoom
         </div>
-        <div className="mt-3 flex justify-center gap-6">
+        <div className="mt-6 flex justify-center gap-8">
           <HSPicker label="bg" color={bgColor} onChange={setBgColor} />
           <HSPicker label="tracer" color={tracerColor} onChange={setTracerColor} />
-        </div>
-      </div>
-      <div className="mt-12 grid grid-cols-3 max-w-md mx-auto gap-6 mono text-xs text-muted-foreground">
-        <div>
-          <div className="text-scope text-2xl display">04</div>
-          open projects
-        </div>
-        <div>
-          <div className="text-scope text-2xl display">C++</div>
-          CLAP / DSP
-        </div>
-        <div>
-          <div className="text-scope text-2xl display">MIT</div>
-          open source
         </div>
       </div>
     </div>
