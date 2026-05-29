@@ -124,10 +124,10 @@ All colors MUST be HSL.
     filter: drop-shadow(0 0 6px hsl(var(--scope) / 0.7));
   }
   .mono {
-    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    font-family: 'JetBrains Mono', 'Noto Sans Symbols', 'Noto Sans Symbols 2', ui-monospace, SFMono-Regular, monospace;
   }
   .display {
-    font-family: 'Space Grotesk', system-ui, sans-serif;
+    font-family: 'Space Grotesk', 'Noto Sans Symbols', 'Noto Sans Symbols 2', system-ui, sans-serif;
     letter-spacing: 0;
   }
 }
