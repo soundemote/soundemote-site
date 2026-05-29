@@ -139,7 +139,7 @@ All colors MUST be HSL.
 
 @layer base {
   * {
-    @apply border-border;
+    border-color: hsl(var(--border));
   }
 
   html {
@@ -153,6 +153,7 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
   }
 }

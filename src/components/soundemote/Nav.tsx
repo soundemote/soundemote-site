@@ -1,4 +1,5 @@
 const links = [
+  { href: "/sandbox", label: "Sandbox" },
   { href: "/#projects", label: "Projects" },
   { href: "/#philosophy", label: "Philosophy" },
   { href: "/#developers", label: "Developers" },
