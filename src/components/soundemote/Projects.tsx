@@ -16,7 +16,7 @@ const projects: Project[] = [
     status: "in development",
     blurb:
       "Next-generation analog-emulation audio plugin prototyping environment. Musical, aggressive filters, warm saturation, graphs, oscilloscopes, visual fx, metaparameters, SIMD backend, easy for producers, great for devs, open source, MIT license, no strings attached.",
-    href: "https://github.com/soundemote/soemdsp",
+    href: "/sandbox",
     tags: ["instrument", "ecosystem", "soon"],
     accent: "accent",
   },
