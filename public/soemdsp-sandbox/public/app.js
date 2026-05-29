@@ -1,4 +1,4 @@
-﻿const state = {
+const state = {
   response: null,
   waveform: null,
   playheadFrame: 0,
@@ -7453,8 +7453,7 @@ function applyNodeGraphPatchToDom() {
     const bypassButton = element.querySelector(".node-bypass-button");
     if (bypassButton) {
       bypassButton.setAttribute("aria-pressed", bypassed ? "true" : "false");
-      bypassButton.textContent = "âŒ½";
-      bypassButton.textContent = "\u233D";
+      bypassButton.textContent = "\u233d";
       bypassButton.title = patchNode.id === "output"
         ? (bypassed
           ? "Mouse: click to turn live OUTPUT on."
@@ -9392,7 +9391,7 @@ function createNodeGraphModuleElement(type, node) {
     bypassButton.className = "node-bypass-button";
     bypassButton.type = "button";
     bypassButton.dataset.node = node;
-    bypassButton.textContent = "\u233D";
+    bypassButton.textContent = "\u233d";
     bypassButton.setAttribute("aria-label", "Toggle live OUTPUT from Output module");
     bypassButton.setAttribute("aria-pressed", "true");
     bypassButton.setAttribute("title", "Mouse: click to toggle live OUTPUT.");
@@ -9403,7 +9402,7 @@ function createNodeGraphModuleElement(type, node) {
     bypassButton.className = "node-bypass-button";
     bypassButton.type = "button";
     bypassButton.dataset.node = node;
-    bypassButton.textContent = "âŒ½";
+    bypassButton.textContent = "\u233d";
     bypassButton.setAttribute("aria-label", `Bypass ${nodeGraphNodeLabels[type]} module`);
     bypassButton.setAttribute("aria-pressed", "false");
     bypassButton.setAttribute("title", "Mouse: click to bypass this module. Bypassed modules are removed from the compiled engine.");
@@ -9415,7 +9414,7 @@ function createNodeGraphModuleElement(type, node) {
   actionButton.dataset.node = node;
   actionButton.setAttribute("aria-label", `${nodeGraphNodeLabels[type]} module actions`);
   actionButton.setAttribute("title", "Module actions");
-  actionButton.textContent = "âš™";
+  actionButton.textContent = "\u2699";
   actionRow.append(actionButton);
   header.append(actionRow);
 
@@ -11448,7 +11447,7 @@ function burstNodeGraphZap(point) {
     const [color, glow] = colors[index % colors.length];
     const particle = document.createElement("span");
     particle.className = "node-zap-particle";
-    particle.textContent = "âŒ";
+    particle.textContent = "\u2301";
     particle.style.left = `${point.x}px`;
     particle.style.top = `${point.y}px`;
     particle.style.setProperty("--zap-color", color);
@@ -12963,7 +12962,7 @@ function syncNodeGraphOutputBypassButton(outputActive = nodeGraphLiveOutputIsAct
   const bypassed = !outputActive;
   outputNode.classList.toggle("bypassed", bypassed);
   bypassButton.setAttribute("aria-pressed", bypassed ? "true" : "false");
-  bypassButton.textContent = "\u233D";
+  bypassButton.textContent = "\u233d";
   bypassButton.title = bypassed
     ? "Mouse: click to turn live OUTPUT on."
     : "Mouse: click to turn live OUTPUT off.";
