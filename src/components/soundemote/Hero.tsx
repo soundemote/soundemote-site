@@ -74,19 +74,15 @@ export const Hero = () => {
   const [bgColor, setBgColor] = useState<HSL>({ h: 0, s: 0, l: 0 });
   const scopeRef = useRef<OscilloscopeRef>(null);
   return (
-  <section id="top" className="relative overflow-hidden pt-14 pb-20 md:pt-20 md:pb-28">
+  <section id="top" className="relative overflow-hidden pt-4 pb-20 md:pt-6 md:pb-28">
     <div className="absolute inset-0 scope-grid opacity-40" aria-hidden />
     <div className="absolute inset-0 bg-[var(--gradient-hero)]" aria-hidden />
     <div className="container relative max-w-3xl mx-auto text-center animate-fade-in">
       <p className="mono mb-6 whitespace-nowrap text-base font-medium normal-case lowercase tracking-[0.16em] text-scope sm:text-2xl sm:tracking-[0.28em] md:text-3xl md:tracking-[0.35em] font-sans">
         ⋆⁺₊✧ soemdsp ✧₊⁺⋆
       </p>
-      <p className="mt-2 mx-auto inline-flex items-center gap-2 rounded-full border border-scope/30 bg-scope/10 px-4 py-1.5 mono text-[0.625rem] uppercase tracking-[0.2em] text-scope/80">
-        <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-scope opacity-75" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-scope" />
-        </span>
-        everything is a work in progress: alpha v0.1
+      <p className="mt-2 mx-auto inline-flex mono text-[0.625rem] uppercase tracking-[0.2em] text-muted-foreground/80">
+        /* SANDBOX ALPHA v0.1.1 */
       </p>
       <p className="mt-8 mx-auto max-w-xl text-lg leading-relaxed text-muted-foreground" />
       

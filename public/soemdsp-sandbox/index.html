@@ -31,7 +31,7 @@
       </div>
     </section>
 
-    <section class="panel node-wiring-panel" aria-label="Node wiring MVP">
+    <section id="nodeWiringPanel" class="panel node-wiring-panel" aria-label="Node wiring MVP">
       <div class="panel-heading">
         <div class="node-patch-header-fields">
           <input
@@ -68,11 +68,15 @@
             id="nodeModularViewButton"
             class="active"
             type="button"
-            aria-pressed="true">Modular View</button>
+            aria-pressed="true"><span>Modular</span><span>View</span></button>
+          <button
+            id="nodeModularOnlyViewButton"
+            type="button"
+            aria-pressed="false"><span>Modular</span><span>Only</span></button>
           <button
             id="nodeScriptViewButton"
             type="button"
-            aria-pressed="false">Script View</button>
+            aria-pressed="false"><span>Script</span><span>View</span></button>
           <span class="node-zoom-controls" role="group" aria-label="Node graph zoom">
             <span class="node-zoom-label">zoom</span>
             <span class="node-zoom-buttons">
@@ -81,14 +85,11 @@
             </span>
           </span>
         </div>
-        <div class="node-help-stack">
-          <div id="nodeSelectionCount" class="node-selection-count" role="status" aria-live="polite" hidden></div>
-          <div id="nodeInteractionHelp" class="node-interaction-help" role="status" aria-live="polite"></div>
-        </div>
         <div class="node-history-controls" role="group" aria-label="Node graph history">
           <button id="nodeUndoButton" type="button" disabled>Undo</button>
           <button id="nodeRedoButton" type="button" disabled>Redo</button>
           <button id="nodeGridToggleButton" type="button" aria-pressed="false">Show Grid</button>
+          <button id="nodeTooltipToggleButton" type="button" aria-pressed="true">Hide Tips</button>
           <label class="node-toolbar-hsl-control" aria-label="Modular background HSL">
             <span>bg</span>
             <input
@@ -99,14 +100,25 @@
           </label>
           <button id="nodeSliderLabelsToggleButton" type="button" aria-pressed="true">Hide Labels</button>
           <button id="nodeSliderValuesToggleButton" type="button" aria-pressed="true">Hide Values</button>
-          <span id="nodeScriptStatus" class="pill good">script synced</span>
+          <button id="nodeSliderHandlesToggleButton" type="button" aria-pressed="true">Hide Slider</button>
         </div>
+      </div>
+
+      <div class="node-help-stack">
+        <div id="nodeSelectionCount" class="node-selection-count" role="status" aria-live="polite" hidden></div>
+        <div id="nodeInteractionHelp" class="node-interaction-help" role="status" aria-live="polite"></div>
       </div>
 
       <div
         id="nodeGraphWorkspace"
         class="node-graph-workspace"
         aria-label="Drag wires between DSP node ports; right-click empty scene space to add modules">
+        <button
+          id="nodeModularOnlyBackButton"
+          class="node-modular-only-back-button"
+          type="button"
+          aria-label="Return to full modular view"
+          title="Return to full modular view">←</button>
         <div id="nodeGraphZoomSurface" class="node-graph-zoom-surface">
           <svg
             id="nodeWireSvg"
@@ -156,6 +168,25 @@
             id="saveNodeGraphScriptButton"
             type="button"
             title="Save patch script">Save Script</button>
+          <button
+            id="makePluginButton"
+            class="node-settings-disabled-action"
+            type="button"
+            disabled
+            aria-disabled="true"
+            title="Plugin export is in development"><span>make plugin</span><span>(in development)</span></button>
+          <a
+            class="node-settings-link-action node-settings-feature-action"
+            href="https://github.com/soundemote/soemdsp-sandbox/discussions/categories/feature-requests"
+            target="_blank"
+            rel="noreferrer"
+            title="Request a soemdsp sandbox feature"><span>Request ↗</span><span>🚧 Feature</span></a>
+          <a
+            class="node-settings-link-action node-settings-bug-action"
+            href="https://github.com/soundemote/soemdsp-sandbox/issues"
+            target="_blank"
+            rel="noreferrer"
+            title="Report a soemdsp sandbox bug"><span>Report ↗</span><span>🐞 Bug</span></a>
           <input
             id="nodePatchScriptFileInput"
             type="file"
@@ -281,7 +312,7 @@
             type="button"
             aria-label="Move module actions"
             title="Move module actions">&#x2725;</button>
-          <div class="scene-context-title">Add Module</div>
+          <div class="scene-context-title">circuits:</div>
           <button
             id="nodeSceneCloseMenu"
             class="panel-close-button"
@@ -317,21 +348,31 @@
         </button>
       </div>
 
-      <section class="audio-panel" aria-label="Primary audio">
+      <section class="audio-panel" aria-label="Rendered sample preview">
         <div>
-          <p>PRIMARY AUDIO</p>
-          <h2 id="audioTitle">runtime_dsp_object_bound_wav_resync_demo.wav</h2>
+          <h2 id="audioTitle"></h2>
         </div>
         <audio id="audioPlayer" controls preload="metadata"></audio>
       </section>
 
       <div class="node-graph-controls">
-        <div id="nodePalette" class="node-palette" aria-label="Node palette">
-          <button type="button" data-palette-node="osc">Osc</button>
-          <button type="button" data-palette-node="spiral">Spiral</button>
-          <button type="button" data-palette-node="noise">Noise</button>
-          <button type="button" data-palette-node="gain">Gain</button>
-          <button type="button" data-palette-node="bias">Bias</button>
+        <div id="nodePalette" class="node-palette node-live-toggle-palette" aria-label="Live audio toggles">
+          <button
+            id="nodeLiveInputButton"
+            class="node-live-toggle"
+            type="button"
+            aria-pressed="false">
+            <span>Input</span>
+            <span>(Off)</span>
+          </button>
+          <button
+            id="nodeLiveOutputButton"
+            class="node-live-toggle"
+            type="button"
+            aria-pressed="false">
+            <span>Output</span>
+            <span>(Off)</span>
+          </button>
         </div>
         <label class="node-render-duration-control">
           <button id="nodeRenderButton" type="button">Render Sample</button>
@@ -348,16 +389,6 @@
         </label>
         <button id="nodePlayButton" type="button" disabled>Play Render</button>
         <div class="node-live-controls" aria-label="Live Audio">
-          <button
-            id="nodeLiveInputButton"
-            class="node-live-toggle"
-            type="button"
-            aria-pressed="false">INPUT</button>
-          <button
-            id="nodeLiveOutputButton"
-            class="node-live-toggle"
-            type="button"
-            aria-pressed="false">OUTPUT</button>
           <span id="nodeLiveStatus" class="pill">stopped</span>
           <span id="nodeLiveEngineStatus" class="pill">engine idle</span>
           <span id="nodeLivePlanStatus" class="pill">plan idle</span>

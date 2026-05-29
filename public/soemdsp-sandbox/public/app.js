@@ -205,24 +205,26 @@ function labelStatusStripValue(element, label, value, ok) {
 function labelPrimaryAudio(path, ok) {
   const audio = document.getElementById("audioPlayer");
   const pathText = path || "unavailable";
+  const displayText = path || "Render Sample preview audio";
   const stateName = ok ? "ok" : "check";
   audio.dataset.audioLabel = "Primary Audio";
   audio.dataset.audioPath = pathText;
   audio.dataset.audioState = stateName;
-  audio.setAttribute("aria-label", `Primary Audio: ${pathText}`);
-  audio.title = `Primary Audio: ${pathText} / ${stateName}`;
+  audio.setAttribute("aria-label", `Sample preview: ${displayText}`);
+  audio.title = `Sample preview: ${displayText} / ${stateName}`;
 }
 
 function labelPrimaryAudioTitle(path, ok) {
   const title = document.getElementById("audioTitle");
   const pathText = path || "unavailable";
+  const displayText = path || "";
   const stateName = ok ? "ok" : "check";
-  title.textContent = pathText;
+  title.textContent = displayText;
   title.dataset.audioTitleLabel = "Primary Audio";
   title.dataset.audioTitlePath = pathText;
   title.dataset.audioTitleState = stateName;
-  title.setAttribute("aria-label", `Primary Audio title: ${pathText}`);
-  title.title = `Primary Audio title: ${pathText} / ${stateName}`;
+  title.setAttribute("aria-label", `Sample preview title: ${displayText}`);
+  title.title = `Sample preview title: ${displayText} / ${stateName}`;
 }
 
 function labelWaveformHeaderPill(element, label, value, ok) {
@@ -5907,6 +5909,7 @@ window.addEventListener("resize", () => {
 });
 
 const nodeGraphNodeLabels = Object.freeze({
+  audioInput: "Input",
   osc: "Osc",
   spiral: "Spiral",
   noise: "Noise",
@@ -5916,6 +5919,20 @@ const nodeGraphNodeLabels = Object.freeze({
 });
 
 const nodeGraphModuleDefinitions = Object.freeze({
+  audioInput: {
+    outputs: ["Left", "Right"],
+    parameters: [
+      {
+        defaultValue: "1",
+        key: "level",
+        label: "Amplitude",
+        max: "2",
+        mid: "1",
+        min: "0",
+        step: "0.01",
+      },
+    ],
+  },
   osc: {
     outputs: ["Out"],
     parameters: [
@@ -6282,7 +6299,7 @@ const nodeGraphDefaultPatch = Object.freeze({
     background: {
       h: 210,
       l: 5,
-      s: 15,
+      s: 0,
     },
     mode: "auto",
     scale: 1,
@@ -6302,6 +6319,7 @@ const nodeGraphDefaultPatch = Object.freeze({
 });
 
 const nodeGraphDefaultPresetUrl = "./public/presets/default.json";
+const nodeGraphDefaultPresetStorageKey = "soemdsp-sandbox.defaultPatch";
 
 const fallbackNodeMetadataKindTemplates = Object.freeze({
   decimal: { def: 0, label: "Decimal", linearSmoothing: true, max: 1, mid: 0.5, min: 0, step: 0.01, unit: "" },
@@ -6527,7 +6545,7 @@ function normalizeNodeGraphPatchVisual(visual = {}) {
     ? visual.background
     : {};
   const backgroundH = Number(sourceBackground.h ?? visual.backgroundH ?? 210);
-  const backgroundS = Number(sourceBackground.s ?? visual.backgroundS ?? 15);
+  const backgroundS = Number(sourceBackground.s ?? visual.backgroundS ?? 0);
   const backgroundL = Number(sourceBackground.l ?? visual.backgroundL ?? 5);
   const mode = String(visual.mode || "auto").trim();
   const scale = Number(visual.scale);
@@ -6538,7 +6556,7 @@ function normalizeNodeGraphPatchVisual(visual = {}) {
     background: {
       h: Number.isFinite(backgroundH) ? Math.max(0, Math.min(360, backgroundH)) : 210,
       l: Number.isFinite(backgroundL) ? Math.max(0, Math.min(100, backgroundL)) : 5,
-      s: Number.isFinite(backgroundS) ? Math.max(0, Math.min(100, backgroundS)) : 15,
+      s: Number.isFinite(backgroundS) ? Math.max(0, Math.min(100, backgroundS)) : 0,
     },
     mode: ["auto", "stereo-xy", "mono-lag-xy"].includes(mode) ? mode : "auto",
     scale: Number.isFinite(scale) ? Math.max(0.1, Math.min(4, scale)) : 1,
@@ -6652,12 +6670,16 @@ const nodeGraphMvp = {
   gridVisible: false,
   sliderLabelsVisible: true,
   sliderValuesVisible: true,
+  sliderHandlesVisible: true,
   live: {
     context: null,
     inputActive: false,
+    inputSource: null,
+    inputStream: null,
     lastEvidence: null,
     meterGain: null,
     node: null,
+    outputEnabled: false,
     outputGain: null,
     planEvidence: null,
     activeNodeIds: new Set(),
@@ -6679,6 +6701,7 @@ const nodeGraphMvp = {
   modulations: nodeGraphDefaultPatch.modulations.map((modulation) => ({ ...modulation })),
   nodeDragging: null,
   nodeTypeCounts: {
+    audioInput: 0,
     bias: 1,
     gain: 1,
     noise: 1,
@@ -6706,17 +6729,26 @@ const nodeGraphMvp = {
   sampleRate: 44100,
   seconds: 2,
   sliderDragging: null,
+  tooltipVisible: true,
   workspaceResizing: null,
   zoom: 1,
 };
 
 const nodeGraphZoomLimits = Object.freeze({
-  max: 1.8,
+  max: 2.8,
   min: 0.55,
   step: 0.08,
 });
 
+function nodeGraphBypassGlyph(bypassed) {
+  return "\u26a1\ufe0e";
+}
+
 async function loadNodeGraphDefaultPresetPatch() {
+  const storedPatch = loadNodeGraphLocalDefaultPresetPatch();
+  if (storedPatch) {
+    return storedPatch;
+  }
   try {
     const response = await fetch(nodeGraphDefaultPresetUrl, { cache: "no-store" });
     if (!response.ok) {
@@ -6726,6 +6758,42 @@ async function loadNodeGraphDefaultPresetPatch() {
   } catch {
     return cloneNodeGraphPatch(nodeGraphDefaultPatch);
   }
+}
+
+function nodeGraphLocalDefaultPresetAllowed() {
+  return ["localhost", "127.0.0.1", ""].includes(window.location.hostname);
+}
+
+function loadNodeGraphLocalDefaultPresetPatch() {
+  if (!nodeGraphLocalDefaultPresetAllowed()) {
+    return null;
+  }
+  try {
+    const text = window.localStorage.getItem(nodeGraphDefaultPresetStorageKey);
+    return text ? loadNodeGraphPatchFromScript(text) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveNodeGraphLocalDefaultPreset(text) {
+  if (!nodeGraphLocalDefaultPresetAllowed()) {
+    return false;
+  }
+  try {
+    window.localStorage.setItem(nodeGraphDefaultPresetStorageKey, text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function configureNodeGraphDefaultPresetButton() {
+  const button = document.getElementById("updateDefaultPresetButton");
+  if (!button || !nodeGraphLocalDefaultPresetAllowed()) {
+    return;
+  }
+  button.hidden = false;
 }
 
 function nodeGraphGridSize() {
@@ -7167,7 +7235,7 @@ function nodeGraphWorkspaceBackgroundCss(background = {}) {
   const h = Number(background.h);
   const s = Number(background.s);
   const l = Number(background.l);
-  return `hsl(${Number.isFinite(h) ? h : 210}deg ${Number.isFinite(s) ? s : 15}% ${Number.isFinite(l) ? l : 5}%)`;
+  return `hsl(${Number.isFinite(h) ? h : 210}deg ${Number.isFinite(s) ? s : 0}% ${Number.isFinite(l) ? l : 5}%)`;
 }
 
 function nodeGraphHslToHex(background = {}) {
@@ -7371,10 +7439,13 @@ function renderNodeGraphSliderTextToggles() {
   const workspace = document.getElementById("nodeGraphWorkspace");
   const labelsButton = document.getElementById("nodeSliderLabelsToggleButton");
   const valuesButton = document.getElementById("nodeSliderValuesToggleButton");
+  const handlesButton = document.getElementById("nodeSliderHandlesToggleButton");
   const labelsVisible = Boolean(nodeGraphMvp.sliderLabelsVisible);
   const valuesVisible = Boolean(nodeGraphMvp.sliderValuesVisible);
+  const handlesVisible = Boolean(nodeGraphMvp.sliderHandlesVisible);
   workspace?.classList.toggle("hide-slider-labels", !labelsVisible);
   workspace?.classList.toggle("hide-slider-values", !valuesVisible);
+  workspace?.classList.toggle("hide-slider-handles", !handlesVisible);
   if (labelsButton) {
     labelsButton.textContent = labelsVisible ? "Hide Labels" : "Show Labels";
     labelsButton.setAttribute("aria-pressed", labelsVisible ? "true" : "false");
@@ -7385,11 +7456,37 @@ function renderNodeGraphSliderTextToggles() {
     valuesButton.setAttribute("aria-pressed", valuesVisible ? "true" : "false");
     valuesButton.title = valuesVisible ? "Hide slider values and units" : "Show slider values and units";
   }
+  if (handlesButton) {
+    handlesButton.textContent = handlesVisible ? "Hide Slider" : "Show Slider";
+    handlesButton.setAttribute("aria-pressed", handlesVisible ? "true" : "false");
+    handlesButton.title = handlesVisible ? "Hide slider fill and handle" : "Show slider fill and handle";
+  }
+}
+
+function renderNodeGraphTooltipToggle() {
+  const helpStack = document.querySelector(".node-help-stack");
+  const help = document.getElementById("nodeInteractionHelp");
+  const button = document.getElementById("nodeTooltipToggleButton");
+  const visible = Boolean(nodeGraphMvp.tooltipVisible);
+  helpStack?.classList.toggle("tips-hidden", !visible);
+  if (!visible && help) {
+    help.textContent = "";
+  }
+  if (button) {
+    button.textContent = visible ? "Hide Tips" : "Show Tips";
+    button.setAttribute("aria-pressed", visible ? "true" : "false");
+    button.title = visible ? "Hide tooltip text" : "Show tooltip text";
+  }
 }
 
 function toggleNodeGraphGridVisibility() {
   nodeGraphMvp.gridVisible = !nodeGraphMvp.gridVisible;
   renderNodeGraphGridToggle();
+}
+
+function toggleNodeGraphTooltipVisibility() {
+  nodeGraphMvp.tooltipVisible = !nodeGraphMvp.tooltipVisible;
+  renderNodeGraphTooltipToggle();
 }
 
 function toggleNodeGraphSliderLabels() {
@@ -7399,6 +7496,11 @@ function toggleNodeGraphSliderLabels() {
 
 function toggleNodeGraphSliderValues() {
   nodeGraphMvp.sliderValuesVisible = !nodeGraphMvp.sliderValuesVisible;
+  renderNodeGraphSliderTextToggles();
+}
+
+function toggleNodeGraphSliderHandles() {
+  nodeGraphMvp.sliderHandlesVisible = !nodeGraphMvp.sliderHandlesVisible;
   renderNodeGraphSliderTextToggles();
 }
 
@@ -7447,13 +7549,13 @@ function applyNodeGraphPatchToDom() {
     element.dataset.gridX = String(patchNode.gx);
     element.dataset.gridY = String(patchNode.gy);
     const bypassed = patchNode.id === "output"
-      ? !nodeGraphLiveOutputIsActive()
+      ? !nodeGraphMvp.live.outputEnabled
       : nodeGraphNodeIsBypassed(patchNode.id);
     element.classList.toggle("bypassed", bypassed);
     const bypassButton = element.querySelector(".node-bypass-button");
     if (bypassButton) {
       bypassButton.setAttribute("aria-pressed", bypassed ? "true" : "false");
-      bypassButton.textContent = "\u233d";
+      bypassButton.textContent = nodeGraphBypassGlyph(bypassed);
       bypassButton.title = patchNode.id === "output"
         ? (bypassed
           ? "Mouse: click to turn live OUTPUT on."
@@ -8079,6 +8181,30 @@ function quantizeNodeSliderDragValue(slider, value) {
   return origin + Math.round((value - origin) / step) * step;
 }
 
+function syncNodeSliderPortalHandle(readout, slider, position, enabled) {
+  readout.classList.toggle("wraparound-slider", enabled);
+  if (!enabled) {
+    readout.style.removeProperty("--portal-left-width");
+    readout.style.removeProperty("--portal-right-width");
+    return;
+  }
+
+  const width = readout.getBoundingClientRect().width;
+  if (!Number.isFinite(width) || width <= 0) {
+    readout.style.setProperty("--portal-left-width", "0px");
+    readout.style.setProperty("--portal-right-width", "0px");
+    return;
+  }
+
+  const boundedPosition = Math.max(0, Math.min(100, position));
+  const center = (boundedPosition / 100) * width;
+  const handleHalfWidth = 8;
+  const leftOverflow = Math.max(0, handleHalfWidth - center);
+  const rightOverflow = Math.max(0, center + handleHalfWidth - width);
+  readout.style.setProperty("--portal-left-width", `${rightOverflow}px`);
+  readout.style.setProperty("--portal-right-width", `${leftOverflow}px`);
+}
+
 function syncNodeSliderReadout(slider) {
   const readout = slider.closest("label")?.querySelector(".node-slider-readout");
   if (!readout) {
@@ -8099,6 +8225,7 @@ function syncNodeSliderReadout(slider) {
   const usesChoices = nodeSliderShouldDisplayChoices(slider) && choices.length > 0;
   const dividesChoices = usesChoices && nodeSliderShouldDivideChoicesVisibly(slider);
   const usesNumericReadout = !choiceLabel;
+  const usesPortalWrap = nodeSliderShouldWraparound(slider) && !usesChoices;
   if (labelText) {
     labelText.textContent = readout.dataset.paramLabel || nodeSliderLabelText(slider);
   }
@@ -8120,11 +8247,13 @@ function syncNodeSliderReadout(slider) {
     readout.style.setProperty("--value-start", `${(choiceIndex / choices.length) * 100}%`);
     readout.style.setProperty("--value-end", `${((choiceIndex + 1) / choices.length) * 100}%`);
     readout.style.setProperty("--choice-divider-width", `${100 / choices.length}%`);
+    syncNodeSliderPortalHandle(readout, slider, position, false);
   } else {
     const boundedPosition = Math.max(0, Math.min(100, position));
-    readout.style.setProperty("--value-start", `calc(${boundedPosition}% - 4px)`);
-    readout.style.setProperty("--value-end", `calc(${boundedPosition}% + 4px)`);
+    readout.style.setProperty("--value-start", `calc(${boundedPosition}% - 8px)`);
+    readout.style.setProperty("--value-end", `calc(${boundedPosition}% + 8px)`);
     readout.style.setProperty("--choice-divider-width", "100%");
+    syncNodeSliderPortalHandle(readout, slider, boundedPosition, usesPortalWrap);
   }
   syncNodeSliderMetadataTooltip(slider);
 }
@@ -9010,16 +9139,26 @@ function endNodeSliderDrag(event) {
 }
 
 function populateNodeSliderReadoutShell(readout) {
+  const portalLeft = document.createElement("span");
+  portalLeft.className = "node-slider-readout-portal node-slider-readout-portal-left";
+  portalLeft.setAttribute("aria-hidden", "true");
+  const portalRight = document.createElement("span");
+  portalRight.className = "node-slider-readout-portal node-slider-readout-portal-right";
+  portalRight.setAttribute("aria-hidden", "true");
   const labelText = document.createElement("span");
   labelText.className = "node-slider-readout-label";
   const valueText = document.createElement("span");
   valueText.className = "node-slider-readout-value";
   const unitText = document.createElement("span");
   unitText.className = "node-slider-readout-unit";
-  readout.append(labelText, valueText, unitText);
+  readout.append(portalLeft, portalRight, labelText, valueText, unitText);
 }
 
 function commitNodeSliderReadoutEdit(input) {
+  if (input.dataset.editCanceled === "true" || input.dataset.editCommitted === "true") {
+    return;
+  }
+  input.dataset.editCommitted = "true";
   updateNodeSliderCurrentValue(document.getElementById(input.dataset.sliderTarget), input.value);
   const readout = document.createElement("button");
   readout.type = "button";
@@ -9034,6 +9173,10 @@ function commitNodeSliderReadoutEdit(input) {
 }
 
 function cancelNodeSliderReadoutEdit(input) {
+  if (input.dataset.editCommitted === "true" || input.dataset.editCanceled === "true") {
+    return;
+  }
+  input.dataset.editCanceled = "true";
   const slider = document.getElementById(input.dataset.sliderTarget);
   const readout = document.createElement("button");
   readout.type = "button";
@@ -9069,18 +9212,59 @@ function beginNodeSliderReadoutEdit(readout) {
       commitNodeSliderReadoutEdit(input);
     }
     if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
       cancelNodeSliderReadoutEdit(input);
     }
   });
-  input.addEventListener("blur", () => commitNodeSliderReadoutEdit(input));
+  input.addEventListener("blur", () => {
+    if (input.dataset.editCanceled !== "true") {
+      commitNodeSliderReadoutEdit(input);
+    }
+  });
   readout.replaceWith(input);
   input.focus();
   input.select();
 }
 
+function updateNodeSliderValueHover(readout, event) {
+  const slider = document.getElementById(readout.dataset.sliderTarget);
+  if (!slider) {
+    readout.classList.remove("value-hovering");
+    return;
+  }
+
+  const rect = readout.getBoundingClientRect();
+  const width = Math.max(1, rect.width);
+  const x = event.clientX - rect.left;
+  const choices = parseNodeMetadataChoices(slider.dataset.choices || "");
+  const usesChoiceSegment = (
+    nodeSliderShouldDisplayChoices(slider) &&
+    nodeSliderShouldDivideChoicesVisibly(slider) &&
+    choices.length > 0
+  );
+
+  let start = 0;
+  let end = 0;
+  if (usesChoiceSegment) {
+    const choiceIndex = Math.max(0, Math.min(choices.length - 1, Math.round(Number(slider.value))));
+    start = (choiceIndex / choices.length) * width;
+    end = ((choiceIndex + 1) / choices.length) * width;
+  } else {
+    const center = nodeSliderTravelFromValue(slider, Number(slider.value)) * width;
+    const markerHalfWidth = Math.max(8, width * 0.0234);
+    start = center - markerHalfWidth;
+    end = center + markerHalfWidth;
+  }
+
+  readout.classList.toggle("value-hovering", x >= start && x <= end);
+}
+
 function attachNodeSliderReadoutEvents(readout) {
   readout.addEventListener("dblclick", () => beginNodeSliderReadoutEdit(readout));
   readout.addEventListener("contextmenu", (event) => openNodeMetadataPopover(event, readout));
+  readout.addEventListener("pointermove", (event) => updateNodeSliderValueHover(readout, event));
+  readout.addEventListener("pointerleave", () => readout.classList.remove("value-hovering"));
   readout.addEventListener("pointerdown", beginNodeSliderDrag);
   readout.addEventListener("lostpointercapture", endNodeSliderDrag);
   readout.addEventListener("mousedown", beginNodeSliderDrag);
@@ -9135,6 +9319,7 @@ function ensureNodeGraphDragHandle(node) {
 function attachNodeGraphNodeEvents(node) {
   ensureNodeGraphDragHandle(node);
   node.querySelector(".node-drag-handle")?.addEventListener("pointerdown", beginNodeGraphNodeDrag);
+  node.querySelector(".node-header-title-row")?.addEventListener("pointerdown", beginNodeGraphNodeDrag);
   node.querySelector(".node-bypass-button")?.addEventListener("click", toggleNodeGraphModuleBypass);
   node.querySelector(".node-action-button")?.addEventListener("click", openNodeModuleActionMenu);
   node.addEventListener("pointermove", dragNodeGraphNode);
@@ -9362,6 +9547,7 @@ function createNodeGraphModuleElement(type, node) {
   header.className = "dsp-node-header";
   const titleRow = document.createElement("div");
   titleRow.className = "node-header-title-row";
+  titleRow.setAttribute("title", "Move module");
   const titleText = document.createElement("span");
   titleText.className = "node-header-title";
   titleText.textContent = node === type
@@ -9391,7 +9577,7 @@ function createNodeGraphModuleElement(type, node) {
     bypassButton.className = "node-bypass-button";
     bypassButton.type = "button";
     bypassButton.dataset.node = node;
-    bypassButton.textContent = "\u233d";
+    bypassButton.textContent = nodeGraphBypassGlyph(false);
     bypassButton.setAttribute("aria-label", "Toggle live OUTPUT from Output module");
     bypassButton.setAttribute("aria-pressed", "true");
     bypassButton.setAttribute("title", "Mouse: click to toggle live OUTPUT.");
@@ -9402,7 +9588,7 @@ function createNodeGraphModuleElement(type, node) {
     bypassButton.className = "node-bypass-button";
     bypassButton.type = "button";
     bypassButton.dataset.node = node;
-    bypassButton.textContent = "\u233d";
+    bypassButton.textContent = nodeGraphBypassGlyph(false);
     bypassButton.setAttribute("aria-label", `Bypass ${nodeGraphNodeLabels[type]} module`);
     bypassButton.setAttribute("aria-pressed", "false");
     bypassButton.setAttribute("title", "Mouse: click to bypass this module. Bypassed modules are removed from the compiled engine.");
@@ -10616,16 +10802,39 @@ function applyNodeGraphZoom() {
   drawNodeGraphWires();
 }
 
-function setNodeGraphZoom(nextZoom) {
+function setNodeGraphZoom(nextZoom, anchor = null) {
+  const workspace = document.getElementById("nodeGraphWorkspace");
+  const workspaceRect = workspace?.getBoundingClientRect();
+  const oldZoom = nodeGraphZoom();
+  const oldPan = nodeGraphMvp.pan || { x: 0, y: 0 };
+  const anchorPoint = workspaceRect
+    ? (anchor || {
+      x: workspaceRect.left + workspaceRect.width / 2,
+      y: workspaceRect.top + workspaceRect.height / 2,
+    })
+    : null;
+  const anchoredContentPoint = workspaceRect && anchorPoint
+    ? {
+      x: (anchorPoint.x - workspaceRect.left - (Number(oldPan.x) || 0)) / oldZoom,
+      y: (anchorPoint.y - workspaceRect.top - (Number(oldPan.y) || 0)) / oldZoom,
+    }
+    : null;
   const zoom = Math.max(
     nodeGraphZoomLimits.min,
     Math.min(nodeGraphZoomLimits.max, nextZoom),
   );
-  if (Math.abs(zoom - nodeGraphZoom()) < 0.001) {
+  if (Math.abs(zoom - oldZoom) < 0.001) {
     return;
   }
   nodeGraphMvp.zoom = zoom;
+  if (workspaceRect && anchorPoint && anchoredContentPoint) {
+    nodeGraphMvp.pan = {
+      x: anchorPoint.x - workspaceRect.left - anchoredContentPoint.x * zoom,
+      y: anchorPoint.y - workspaceRect.top - anchoredContentPoint.y * zoom,
+    };
+  }
   applyNodeGraphZoom();
+  applyNodeGraphPan();
 }
 
 function zoomNodeGraphBy(delta) {
@@ -11433,6 +11642,47 @@ function nodeGraphWireEndpointsShouldBurst(a, b) {
   );
 }
 
+function nodeGraphWireDropTargetFromPoint(clientX, clientY) {
+  const exactTarget = document
+    .elementFromPoint(clientX, clientY)
+    ?.closest?.(".node-port, .node-param-port.modulation-input");
+  if (exactTarget) {
+    return exactTarget;
+  }
+
+  let bestTarget = null;
+  let bestDistance = Infinity;
+  for (const target of document.querySelectorAll(".node-port, .node-param-port.modulation-input")) {
+    const rect = target.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      continue;
+    }
+
+    const hitPadding = Math.max(14, Math.min(26, Math.max(rect.width, rect.height) * 0.9));
+    const expandedLeft = rect.left - hitPadding;
+    const expandedRight = rect.right + hitPadding;
+    const expandedTop = rect.top - hitPadding;
+    const expandedBottom = rect.bottom + hitPadding;
+    if (
+      clientX < expandedLeft ||
+      clientX > expandedRight ||
+      clientY < expandedTop ||
+      clientY > expandedBottom
+    ) {
+      continue;
+    }
+
+    const centerX = rect.left + rect.width * 0.5;
+    const centerY = rect.top + rect.height * 0.5;
+    const distance = Math.hypot(clientX - centerX, clientY - centerY);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestTarget = target;
+    }
+  }
+  return bestTarget;
+}
+
 function burstNodeGraphZap(point) {
   const surface = nodeGraphZoomSurface();
   if (!surface || !point) {
@@ -11499,9 +11749,7 @@ function endNodeGraphWireDrag(event) {
   }
 
   const dragging = nodeGraphMvp.dragging;
-  const target = document
-    .elementFromPoint(event.clientX, event.clientY)
-    ?.closest?.(".node-port, .node-param-port.modulation-input");
+  const target = nodeGraphWireDropTargetFromPoint(event.clientX, event.clientY);
   const targetEndpoint = nodeGraphWireEndpointFromElement(target);
   document
     .querySelector(dragging.endpoint.io === "modulation"
@@ -11674,6 +11922,11 @@ function endNodeGraphWorkspaceResize(event) {
     markPending: false,
     status: "workspace resized",
   });
+}
+
+function handleNodeGraphWindowResize() {
+  applyNodeGraphWorkspaceView();
+  drawNodeGraphWires();
 }
 
 function beginNodeGraphWorkspacePan(event) {
@@ -11932,7 +12185,7 @@ function configureNodeSceneContextMenu(mode) {
   const canCopy = moduleMode && targetNode?.type !== "output";
   const canDelete = moduleMode && targetNode && targetNode.type !== "output";
   const widthGu = targetNode ? nodeGraphPatchNodeGridWidthUnits(targetNode) : 0;
-  title.textContent = moduleMode ? "MODULE ACTIONS" : "Add Module";
+  title.textContent = moduleMode ? "MODULE ACTIONS" : "circuits:";
   menu.setAttribute("aria-label", moduleMode ? "Module actions" : "Add module");
   addGroup.hidden = moduleMode;
   copyButton.hidden = !moduleMode;
@@ -12018,7 +12271,7 @@ function openNodeSceneContextMenu(event) {
 }
 
 function beginNodeGraphNodeDrag(event) {
-  const handle = event.currentTarget.closest(".node-drag-handle");
+  const handle = event.currentTarget.closest(".node-drag-handle, .node-header-title-row");
   if (!handle) {
     return;
   }
@@ -12334,15 +12587,19 @@ function setNodeGraphViewMode(mode) {
   }
   const settingsMode = mode === "settings";
   const scriptMode = mode === "script";
-  const modularMode = !settingsMode && !scriptMode;
+  const modularOnlyMode = mode === "modular-only";
+  const modularMode = modularOnlyMode || (!settingsMode && !scriptMode);
+  document.getElementById("nodeWiringPanel")?.classList.toggle("modular-only-view", modularOnlyMode);
   document.getElementById("nodeGraphWorkspace").hidden = !modularMode;
   document.getElementById("nodeScriptView").hidden = !scriptMode;
   document.getElementById("nodeSettingsView").hidden = !settingsMode;
   document.getElementById("nodeSettingsViewButton").classList.toggle("active", settingsMode);
-  document.getElementById("nodeModularViewButton").classList.toggle("active", modularMode);
+  document.getElementById("nodeModularViewButton").classList.toggle("active", modularMode && !modularOnlyMode);
+  document.getElementById("nodeModularOnlyViewButton").classList.toggle("active", modularOnlyMode);
   document.getElementById("nodeScriptViewButton").classList.toggle("active", scriptMode);
   document.getElementById("nodeSettingsViewButton").setAttribute("aria-pressed", String(settingsMode));
-  document.getElementById("nodeModularViewButton").setAttribute("aria-pressed", String(modularMode));
+  document.getElementById("nodeModularViewButton").setAttribute("aria-pressed", String(modularMode && !modularOnlyMode));
+  document.getElementById("nodeModularOnlyViewButton").setAttribute("aria-pressed", String(modularOnlyMode));
   document.getElementById("nodeScriptViewButton").setAttribute("aria-pressed", String(scriptMode));
   if (scriptMode) {
     syncNodeGraphScriptView();
@@ -12387,13 +12644,14 @@ async function updateDefaultNodeGraphPreset() {
   if (!nodeGraphScriptReadyForGraphAction("update default")) {
     return;
   }
+  const text = serializeNodeGraphPatch();
   try {
     const response = await fetch("/api/presets/default", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: serializeNodeGraphPatch(),
+      body: text,
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || result.ok === false) {
@@ -12402,6 +12660,11 @@ async function updateDefaultNodeGraphPreset() {
     nodeGraphMvp.defaultPatch = cloneNodeGraphPatch(nodeGraphMvp.patch);
     setNodeGraphScriptStatus("default preset updated", true);
   } catch (error) {
+    if (saveNodeGraphLocalDefaultPreset(text)) {
+      nodeGraphMvp.defaultPatch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+      setNodeGraphScriptStatus("local default preset updated", true);
+      return;
+    }
     setNodeGraphScriptStatus(`default update failed: ${error.message}`, false);
   }
 }
@@ -12518,6 +12781,10 @@ function nodeGraphEventTargetIsEditable(target) {
 }
 
 function handleNodeGraphKeydown(event) {
+  if (event.key === "Escape" && document.getElementById("nodeWiringPanel")?.classList.contains("modular-only-view")) {
+    setNodeGraphViewMode("modular");
+    return;
+  }
   if (event.key === "Escape" && !document.getElementById("nodeSceneContextMenu").hidden) {
     closeNodeSceneContextMenu();
     return;
@@ -12618,9 +12885,8 @@ function nodeInteractionMouseHint(element) {
     return alias ? `Alias: ${alias}\n${action}` : action;
   }
   if (element.classList.contains("node-wire-hit-path") || element.classList.contains("node-wire-path")) {
-    const mode = element.dataset.interactionMode || "same-pass";
     const action = "Mouse: click to select this wire. Delete removes selected wire.";
-    return alias ? `Alias: ${alias}\nMode: ${mode}\n${action}` : action;
+    return alias ? `Alias: ${alias}\n${action}` : action;
   }
   if (element.matches("input, textarea, select")) {
     return "Mouse: click to edit, drag to select text.";
@@ -12634,6 +12900,7 @@ function nodeInteractionMouseHint(element) {
   if (
     element.id === "nodeSettingsViewButton" ||
     element.id === "nodeModularViewButton" ||
+    element.id === "nodeModularOnlyViewButton" ||
     element.id === "nodeScriptViewButton"
   ) {
     return "Mouse: click to switch view.";
@@ -12669,6 +12936,9 @@ function nodeInteractionMouseHint(element) {
 }
 
 function setNodeInteractionHelp(text = "") {
+  if (!nodeGraphMvp.tooltipVisible) {
+    return;
+  }
   const help = document.getElementById("nodeInteractionHelp");
   if (help) {
     if (help.textContent === text) {
@@ -12953,16 +13223,16 @@ function nodeGraphLiveOutputIsActive(running = Boolean(nodeGraphMvp.live.node)) 
   return (running || starting) && statusText !== "error";
 }
 
-function syncNodeGraphOutputBypassButton(outputActive = nodeGraphLiveOutputIsActive()) {
+function syncNodeGraphOutputBypassButton(outputEnabled = Boolean(nodeGraphMvp.live.outputEnabled)) {
   const outputNode = nodeGraphNodeElement("output");
   const bypassButton = outputNode?.querySelector(".node-bypass-button");
   if (!bypassButton || !outputNode) {
     return;
   }
-  const bypassed = !outputActive;
+  const bypassed = !outputEnabled;
   outputNode.classList.toggle("bypassed", bypassed);
   bypassButton.setAttribute("aria-pressed", bypassed ? "true" : "false");
-  bypassButton.textContent = "\u233d";
+  bypassButton.textContent = nodeGraphBypassGlyph(bypassed);
   bypassButton.title = bypassed
     ? "Mouse: click to turn live OUTPUT on."
     : "Mouse: click to turn live OUTPUT off.";
@@ -12972,23 +13242,52 @@ function renderNodeGraphLiveControls(running = Boolean(nodeGraphMvp.live.node)) 
   const statusText = document.getElementById("nodeLiveStatus")?.textContent || "";
   const starting = statusText === "starting";
   const outputActive = nodeGraphLiveOutputIsActive(running);
+  const outputEnabled = Boolean(nodeGraphMvp.live.outputEnabled);
   const inputButton = document.getElementById("nodeLiveInputButton");
   const outputButton = document.getElementById("nodeLiveOutputButton");
+  const labelLiveToggle = (button, name, active) => {
+    if (!button) {
+      return;
+    }
+    const stateText = active ? "(Live)" : "(Off)";
+    button.replaceChildren();
+    for (const text of [name, stateText]) {
+      const line = document.createElement("span");
+      line.textContent = text;
+      button.append(line);
+    }
+  };
   if (inputButton) {
-    inputButton.classList.toggle("active", Boolean(nodeGraphMvp.live.inputActive));
-    inputButton.setAttribute("aria-pressed", nodeGraphMvp.live.inputActive ? "true" : "false");
+    const inputActive = Boolean(nodeGraphMvp.live.inputActive);
+    inputButton.classList.toggle("active", inputActive);
+    inputButton.setAttribute("aria-pressed", inputActive ? "true" : "false");
+    labelLiveToggle(inputButton, "Input", inputActive);
   }
   if (outputButton) {
     outputButton.disabled = starting;
-    outputButton.classList.toggle("active", outputActive);
-    outputButton.setAttribute("aria-pressed", outputActive ? "true" : "false");
+    outputButton.classList.toggle("active", outputEnabled);
+    outputButton.setAttribute("aria-pressed", outputEnabled ? "true" : "false");
+    labelLiveToggle(outputButton, "Output", outputEnabled);
+    outputButton.title = outputActive
+      ? "Live OUTPUT is running"
+      : outputEnabled
+        ? "Live OUTPUT requested; graph may be blocked"
+        : "Start live OUTPUT";
   }
-  syncNodeGraphOutputBypassButton(outputActive);
+  syncNodeGraphOutputBypassButton(outputEnabled);
 }
 
 function toggleNodeGraphLiveInput() {
   nodeGraphMvp.live.inputActive = !nodeGraphMvp.live.inputActive;
   renderNodeGraphLiveControls();
+  if (nodeGraphMvp.live.context && nodeGraphMvp.live.node) {
+    syncNodeGraphLiveInputSource().catch((error) => {
+      nodeGraphMvp.live.inputActive = false;
+      stopNodeGraphLiveInputSource();
+      renderNodeGraphLiveControls();
+      setNodeGraphLiveBlockedError("input", error, { schedule: false });
+    });
+  }
 }
 
 function toggleNodeGraphLiveOutput() {
@@ -12996,8 +13295,11 @@ function toggleNodeGraphLiveOutput() {
     return;
   }
   if (nodeGraphMvp.live.node || nodeGraphMvp.live.context) {
+    nodeGraphMvp.live.outputEnabled = false;
     stopNodeGraphLiveAudio();
   } else {
+    nodeGraphMvp.live.outputEnabled = true;
+    renderNodeGraphLiveControls();
     startNodeGraphLiveAudio();
   }
 }
@@ -13605,7 +13907,27 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
     const node = runtime.nodes.get(nodeId);
     let value = 0;
 
-    if (node?.type === "osc") {
+    if (node?.type === "audioInput") {
+      const input = runtime.externalInput || {};
+      const leftChannel = input.left || input.right || null;
+      const rightChannel = input.right || input.left || null;
+      const left = Number(leftChannel?.[frame]) || 0;
+      const right = Number(rightChannel?.[frame]) || left;
+      const level = readNodeGraphLiveEffectiveParam(
+        runtime,
+        node,
+        "level",
+        1,
+        frame,
+        frames,
+        frameValues,
+      );
+      value = {
+        Left: left * level,
+        Out: ((left + right) * 0.5) * level,
+        Right: right * level,
+      };
+    } else if (node?.type === "osc") {
       const phase = runtime.phases.get(nodeId) || 0;
       const phaseOffset = nodeGraphPhaseRadians(
         readNodeGraphLiveEffectiveParam(
@@ -13767,6 +14089,14 @@ function renderNodeGraphLiveScriptBlock(event) {
   const sampleRate = event.playbackTime !== undefined
     ? output.sampleRate
     : nodeGraphMvp.live.context?.sampleRate || nodeGraphMvp.sampleRate;
+  runtime.externalInput = {
+    left: event.inputBuffer?.numberOfChannels > 0
+      ? event.inputBuffer.getChannelData(0)
+      : null,
+    right: event.inputBuffer?.numberOfChannels > 1
+      ? event.inputBuffer.getChannelData(1)
+      : null,
+  };
   for (let frame = 0; frame < frames; frame += 1) {
     const frameOutput = evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames);
     if (nodeGraphOutputSampleClipped(frameOutput.left)) {
@@ -13785,6 +14115,7 @@ function renderNodeGraphLiveScriptBlock(event) {
       output.getChannelData(channel)[frame] = channel === 0 ? left : right;
     }
   }
+  runtime.externalInput = null;
   finishNodeGraphParameterSmoothing(runtime.smoothers);
   runtime.meterCounter += frames;
   if (runtime.meterCounter >= sampleRate / 10) {
@@ -13986,6 +14317,7 @@ function flushNodeGraphLivePlanSync() {
 
 async function stopNodeGraphLiveAudio() {
   clearNodeGraphLivePlanSync();
+  stopNodeGraphLiveInputSource();
   const liveNode = nodeGraphMvp.live.node;
   const liveContext = nodeGraphMvp.live.context;
   const scriptNode = nodeGraphMvp.live.scriptNode;
@@ -14034,7 +14366,7 @@ async function createNodeGraphLiveWorkletNode(context) {
     context,
     "node-live-audio-processor",
     {
-      numberOfInputs: 0,
+      numberOfInputs: 1,
       numberOfOutputs: 1,
       outputChannelCount: [2],
     },
@@ -14047,17 +14379,63 @@ async function createNodeGraphLiveWorkletNode(context) {
 }
 
 function createNodeGraphLiveScriptProcessorNode(context, plan) {
-  const scriptNode = context.createScriptProcessor(nodeGraphAudioBlockSize, 0, 2);
+  const scriptNode = context.createScriptProcessor(nodeGraphAudioBlockSize, 2, 2);
   scriptNode.onaudioprocess = renderNodeGraphLiveScriptBlock;
   nodeGraphMvp.live.runtime = createNodeGraphLiveRuntime(plan);
   nodeGraphMvp.live.scriptNode = scriptNode;
   return scriptNode;
 }
 
+function stopNodeGraphLiveInputSource() {
+  const source = nodeGraphMvp.live.inputSource;
+  const stream = nodeGraphMvp.live.inputStream;
+  nodeGraphMvp.live.inputSource = null;
+  nodeGraphMvp.live.inputStream = null;
+  try {
+    source?.disconnect();
+  } catch (_error) {
+    // Already disconnected input sources are harmless.
+  }
+  for (const track of stream?.getTracks?.() || []) {
+    track.stop();
+  }
+}
+
+async function startNodeGraphLiveInputSource() {
+  const context = nodeGraphMvp.live.context;
+  const liveNode = nodeGraphMvp.live.node;
+  if (!context || !liveNode || nodeGraphMvp.live.inputStream) {
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("Browser audio input unavailable");
+  }
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      autoGainControl: false,
+      echoCancellation: false,
+      noiseSuppression: false,
+    },
+  });
+  const source = context.createMediaStreamSource(stream);
+  source.connect(liveNode);
+  nodeGraphMvp.live.inputStream = stream;
+  nodeGraphMvp.live.inputSource = source;
+}
+
+async function syncNodeGraphLiveInputSource() {
+  if (nodeGraphMvp.live.inputActive) {
+    await startNodeGraphLiveInputSource();
+  } else {
+    stopNodeGraphLiveInputSource();
+  }
+}
+
 async function startNodeGraphLiveAudio() {
   try {
     if (!nodeGraphScriptReadyForGraphAction("live audio")) {
       markNodeGraphLiveScriptBlocked();
+      renderNodeGraphLiveControls(false);
       return;
     }
     setNodeGraphLiveStatus("starting", "warn");
@@ -14099,6 +14477,7 @@ async function startNodeGraphLiveAudio() {
     nodeGraphMvp.live.usesWorklet = usesWorklet;
     liveNode.connect(outputGain);
     outputGain.connect(context.destination);
+    await syncNodeGraphLiveInputSource();
     sendNodeGraphLivePlan();
     if (usesWorklet) {
       setNodeGraphLiveEngineStatus("engine worklet", "good");
@@ -14622,6 +15001,7 @@ async function playNodeGraphAudio() {
 
 async function initNodeGraphMvp() {
   installNodeGraphDebugApi();
+  configureNodeGraphDefaultPresetButton();
   const nodePanel = document.querySelector(".node-wiring-panel");
   nodePanel?.addEventListener("pointerover", handleNodeInteractionHelp);
   nodePanel?.addEventListener("pointermove", handleNodeInteractionHelp);
@@ -14673,6 +15053,7 @@ async function initNodeGraphMvp() {
   document.addEventListener("pointermove", dragNodeGraphWorkspacePan);
   document.addEventListener("pointerup", endNodeGraphWorkspacePan);
   document.addEventListener("pointercancel", endNodeGraphWorkspacePan);
+  window.addEventListener("resize", handleNodeGraphWindowResize);
   document.addEventListener("pointermove", dragNodeMetadataPopover);
   document.addEventListener("pointerup", endNodeMetadataPopoverDrag);
   document.addEventListener("pointercancel", endNodeMetadataPopoverDrag);
@@ -14696,8 +15077,10 @@ async function initNodeGraphMvp() {
   document.getElementById("nodeUndoButton").addEventListener("click", undoNodeGraphPatch);
   document.getElementById("nodeRedoButton").addEventListener("click", redoNodeGraphPatch);
   document.getElementById("nodeGridToggleButton").addEventListener("click", toggleNodeGraphGridVisibility);
+  document.getElementById("nodeTooltipToggleButton").addEventListener("click", toggleNodeGraphTooltipVisibility);
   document.getElementById("nodeSliderLabelsToggleButton").addEventListener("click", toggleNodeGraphSliderLabels);
   document.getElementById("nodeSliderValuesToggleButton").addEventListener("click", toggleNodeGraphSliderValues);
+  document.getElementById("nodeSliderHandlesToggleButton").addEventListener("click", toggleNodeGraphSliderHandles);
   document
     .getElementById("nodeZoomOutButton")
     .addEventListener("click", () => zoomNodeGraphBy(-nodeGraphZoomLimits.step));
@@ -14712,6 +15095,12 @@ async function initNodeGraphMvp() {
     });
   document
     .getElementById("nodeModularViewButton")
+    .addEventListener("click", () => setNodeGraphViewMode("modular"));
+  document
+    .getElementById("nodeModularOnlyViewButton")
+    .addEventListener("click", () => setNodeGraphViewMode("modular-only"));
+  document
+    .getElementById("nodeModularOnlyBackButton")
     .addEventListener("click", () => setNodeGraphViewMode("modular"));
   document
     .getElementById("nodeScriptViewButton")
@@ -14794,6 +15183,7 @@ async function initNodeGraphMvp() {
   markNodeGraphRenderPending();
   applyNodeGraphZoom();
   renderNodeGraphGridToggle();
+  renderNodeGraphTooltipToggle();
   renderNodeGraphSliderTextToggles();
   loadNodeMetadataKindTemplates();
 }
@@ -14801,4 +15191,3 @@ async function initNodeGraphMvp() {
 loadSignalPlotSettings();
 loadManifest();
 initNodeGraphMvp();
-

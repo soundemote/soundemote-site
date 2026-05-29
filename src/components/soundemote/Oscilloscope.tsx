@@ -176,6 +176,8 @@ export interface OscilloscopeRef {
   reset: () => void;
 }
 
+const DEFAULT_FREQ = 133;
+
 export const Oscilloscope = forwardRef<OscilloscopeRef, {
   kind?: AttractorKind;
   tracerColor?: HSL;
@@ -210,9 +212,8 @@ export const Oscilloscope = forwardRef<OscilloscopeRef, {
   const spinSpeedYRef = useRef(0.003);
   // Live coefficient values for the *current* attractor (parallel to its paramSchema).
   const paramsRef = useRef<number[]>([...ATTRACTORS[kind].params]);
-  // Steps per second of Lorenz integration. ~1440 matches the old
-  // 24 steps/frame @ 60fps. Range covers slow drift → audio-rate buzz.
-  const freqRef = useRef(1440);
+  // Steps per second of integration. Range covers slow drift to audio-rate buzz.
+  const freqRef = useRef(DEFAULT_FREQ);
   // Audio output
   const volumeRef = useRef(0.15);
   const audioRef = useRef<{
@@ -1387,7 +1388,7 @@ registerProcessor('attractor', AttractorProcessor);
     stateRef.current = { ...def.init };
     ptsQueueRef.current.length = 0;
     paramsRef.current = [...def.params];
-    if (def.defaultFreq !== undefined) freqRef.current = def.defaultFreq;
+    freqRef.current = def.defaultFreq ?? DEFAULT_FREQ;
     // (color refs synced in a separate effect)
     if (audioRef.current) {
       const { ctx, node } = audioRef.current;
@@ -1414,7 +1415,7 @@ registerProcessor('attractor', AttractorProcessor);
   const resetAll = () => {
     const def = ATTRACTORS[kindRef.current];
     paramsRef.current = [...def.params];
-    freqRef.current = def.defaultFreq ?? 1440;
+    freqRef.current = def.defaultFreq ?? DEFAULT_FREQ;
     stateRef.current = { ...def.init };
     ptsQueueRef.current.length = 0;
     if (audioRef.current) {
@@ -1494,7 +1495,7 @@ registerProcessor('attractor', AttractorProcessor);
             <DragNumber
               value={freqRef.current}
               onChange={(v) => { freqRef.current = v; setTick((n) => n + 1); }}
-              min={0.5}
+              min={0.05}
               max={48000}
               suffix="Hz"
               format={(v) =>

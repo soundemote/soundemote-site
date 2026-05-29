@@ -6,6 +6,7 @@ type Project = {
   status: string;
   blurb: string;
   href?: string;
+  githubHref?: string;
   tags: string[];
   accent: "scope" | "accent" | "warm";
 };
@@ -17,6 +18,7 @@ const projects: Project[] = [
     blurb:
       "Next-generation analog-emulation audio plugin prototyping environment. Musical, aggressive filters, warm saturation, graphs, oscilloscopes, visual fx, metaparameters, SIMD backend, easy for producers, great for devs, open source, MIT license, no strings attached.",
     href: "https://soundemote.io/sandbox",
+    githubHref: "https://github.com/soundemote/soemdsp-sandbox",
     tags: ["instrument", "ecosystem", "soon"],
     accent: "accent",
   },
@@ -33,7 +35,7 @@ const projects: Project[] = [
     name: "asciiscope",
     status: "plugin · experimental",
     blurb:
-      "Terminal-inspired audio-reactive oscilloscope visuals for live signals, social clips, and experimental plugin windows.\n\nBuilt on soemdsp: SIMD-minded, easy-to-use low-level DSP objects for oscillators, filters, modulation, dynamics, random, timing, and plugin infrastructure.",
+      "Terminal-inspired audio-reactive oscilloscope visuals for live signals, social clips, and experimental plugin windows.",
     href: "https://github.com/soundemote/asciiscope-clap",
     tags: ["clap", "juce", "visual"],
     accent: "warm",
@@ -159,9 +161,9 @@ export const Projects = () => (
                   {p.status}
                 </p>
               </div>
-              {p.href && (
+              {(p.githubHref || p.href) && (
                 <a
-                  href={p.href}
+                  href={p.githubHref || p.href}
                   target="_blank"
                   rel="noreferrer"
                   aria-label={`Open ${p.name} on GitHub`}

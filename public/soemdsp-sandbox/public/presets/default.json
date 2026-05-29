@@ -39,7 +39,7 @@
   "modulations": [],
   "nodes": [
     {
-      "gx": 20,
+      "gx": 1,
       "gy": 1,
       "id": "osc",
       "paramMeta": {
@@ -123,7 +123,7 @@
       "type": "osc"
     },
     {
-      "gx": 19,
+      "gx": 0,
       "gy": 11,
       "id": "noise",
       "paramMeta": {
@@ -150,7 +150,7 @@
       "type": "noise"
     },
     {
-      "gx": 30,
+      "gx": 11,
       "gy": 2,
       "id": "gain",
       "paramMeta": {
@@ -177,7 +177,7 @@
       "type": "gain"
     },
     {
-      "gx": 41,
+      "gx": 22,
       "gy": 9,
       "id": "output",
       "paramMeta": {
@@ -212,7 +212,7 @@
     "background": {
       "h": 210,
       "l": 5,
-      "s": 15
+      "s": 0
     },
     "mode": "auto",
     "scale": 1,

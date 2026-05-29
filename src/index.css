@@ -137,6 +137,61 @@ All colors MUST be HSL.
   to { filter: hue-rotate(360deg); }
 }
 
+@keyframes sandbox-bolt-a {
+  0% { opacity: 0; filter: brightness(1); transform: translate(0, -50%) scale(0.45) rotate(-18deg); }
+  10% { opacity: 1; filter: brightness(1.8) drop-shadow(0 0 6px hsl(52 100% 64% / 0.55)); transform: translate(-0.08rem, -0.6rem) scale(1) rotate(-22deg); }
+  100% { opacity: 0; filter: brightness(0.85); transform: translate(-1.45rem, -1.62rem) scale(0.2) rotate(-48deg); }
+}
+
+@keyframes sandbox-bolt-b {
+  0% { opacity: 0; filter: brightness(1); transform: translate(0, -50%) scale(0.35) rotate(8deg); }
+  14% { opacity: 0.72; filter: brightness(1.35); transform: translate(0.03rem, -0.54rem) scale(0.78) rotate(10deg); }
+  100% { opacity: 0; filter: brightness(0.8); transform: translate(0.24rem, -1.36rem) scale(0.16) rotate(28deg); }
+}
+
+@keyframes sandbox-bolt-c {
+  0% { opacity: 0; filter: brightness(1); transform: translate(0, -50%) scale(0.5) rotate(20deg); }
+  9% { opacity: 1; filter: brightness(2.15) drop-shadow(0 0 8px hsl(48 100% 58% / 0.7)); transform: translate(0.08rem, -0.62rem) scale(1.05) rotate(24deg); }
+  100% { opacity: 0; filter: brightness(0.8); transform: translate(1.5rem, -1.34rem) scale(0.18) rotate(58deg); }
+}
+
+@keyframes sandbox-bolt-d {
+  0% { opacity: 0; filter: brightness(1); transform: translate(0, -50%) scale(0.28) rotate(-4deg); }
+  18% { opacity: 0.55; filter: brightness(1.15); transform: translate(0.06rem, -0.46rem) scale(0.68) rotate(6deg); }
+  100% { opacity: 0; filter: brightness(0.75); transform: translate(0.84rem, -1.7rem) scale(0.12) rotate(18deg); }
+}
+
+@keyframes sandbox-bolt-e {
+  0% { opacity: 0; filter: brightness(1); transform: translate(0, -50%) scale(0.42) rotate(-28deg); }
+  12% { opacity: 0.84; filter: brightness(1.55); transform: translate(-0.05rem, -0.52rem) scale(0.9) rotate(-34deg); }
+  100% { opacity: 0; filter: brightness(0.78); transform: translate(-0.68rem, -1.18rem) scale(0.14) rotate(-62deg); }
+}
+
+.sandbox-burst .sandbox-bolt-a {
+  animation: sandbox-bolt-a 680ms linear 1;
+  will-change: opacity, transform;
+}
+
+.sandbox-burst .sandbox-bolt-b {
+  animation: sandbox-bolt-b 720ms linear 1 45ms;
+  will-change: opacity, transform;
+}
+
+.sandbox-burst .sandbox-bolt-c {
+  animation: sandbox-bolt-c 620ms linear 1 90ms;
+  will-change: opacity, transform;
+}
+
+.sandbox-burst .sandbox-bolt-d {
+  animation: sandbox-bolt-d 760ms linear 1 130ms;
+  will-change: opacity, transform;
+}
+
+.sandbox-burst .sandbox-bolt-e {
+  animation: sandbox-bolt-e 580ms linear 1 20ms;
+  will-change: opacity, transform;
+}
+
 @layer base {
   * {
     border-color: hsl(var(--border));
