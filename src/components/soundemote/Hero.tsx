@@ -81,6 +81,13 @@ export const Hero = () => {
       <p className="mono mb-6 whitespace-nowrap text-base font-medium normal-case lowercase tracking-[0.16em] text-scope sm:text-2xl sm:tracking-[0.28em] md:text-3xl md:tracking-[0.35em] font-sans">
         ⋆⁺₊✧ soemdsp ✧₊⁺⋆
       </p>
+      <p className="mt-2 mx-auto inline-flex items-center gap-2 rounded-full border border-scope/30 bg-scope/10 px-4 py-1.5 mono text-[0.625rem] uppercase tracking-[0.2em] text-scope/80">
+        <span className="relative flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-scope opacity-75" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-scope" />
+        </span>
+        everything is a work in progress
+      </p>
       <p className="mt-8 mx-auto max-w-xl text-lg leading-relaxed text-muted-foreground" />
       
       <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
