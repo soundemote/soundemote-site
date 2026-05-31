@@ -35,6 +35,10 @@ function nodeGraphZoom() {
   return Number.isFinite(nodeGraphMvp.zoom) ? nodeGraphMvp.zoom : 1;
 }
 
+function nodeGraphZoomLabel() {
+  return nodeGraphZoom().toFixed(2);
+}
+
 function nodeGraphZoomSurface() {
   return document.getElementById("nodeGraphZoomSurface");
 }
@@ -168,8 +172,10 @@ function applyNodeGraphZoom() {
     zoomOutButton.disabled = nodeGraphZoom() <= nodeGraphZoomLimits.min + 0.001;
   }
   if (zoomResetButton) {
-    const zoomLabel = nodeGraphZoom().toFixed(2);
-    zoomResetButton.textContent = zoomLabel;
+    const zoomLabel = nodeGraphZoomLabel();
+    if (zoomResetButton.dataset.editingZoom !== "true") {
+      zoomResetButton.textContent = zoomLabel;
+    }
     zoomResetButton.setAttribute("aria-label", `Current zoom ${zoomLabel}. Reset graph zoom to 1:1`);
     zoomResetButton.title = nodeGraphTooltipText("view.zoomReset", { zoom: zoomLabel });
   }
@@ -237,6 +243,84 @@ function zoomNodeGraphAt(delta, clientX, clientY) {
     ? nodeGraphZoomLimits.wheelRatio
     : 1 / nodeGraphZoomLimits.wheelRatio;
   setNodeGraphZoom(nodeGraphZoomByRatio(ratio), { x: clientX, y: clientY });
+}
+
+function normalizeNodeGraphZoomInput(value) {
+  const zoom = Number.parseFloat(String(value).trim());
+  if (!Number.isFinite(zoom)) {
+    return null;
+  }
+  return Math.max(nodeGraphZoomLimits.min, Math.min(nodeGraphZoomLimits.max, zoom));
+}
+
+function finishNodeGraphZoomInput(input, options = {}) {
+  const button = input.closest("#nodeZoomResetButton");
+  if (!button) {
+    return;
+  }
+  if (button.dataset.editingZoom !== "true") {
+    return;
+  }
+  const shouldApply = options.apply !== false;
+  const zoom = shouldApply ? normalizeNodeGraphZoomInput(input.value) : null;
+  button.dataset.editingZoom = "false";
+  if (shouldApply && zoom !== null) {
+    setNodeGraphZoom(zoom);
+  } else {
+    applyNodeGraphZoom();
+  }
+  button.focus({ preventScroll: true });
+}
+
+function beginNodeGraphZoomInput(event) {
+  const button = event.currentTarget;
+  if (!(button instanceof HTMLButtonElement) || button.dataset.editingZoom === "true") {
+    return;
+  }
+  if (nodeGraphMvp.zoomResetClickTimer) {
+    window.clearTimeout(nodeGraphMvp.zoomResetClickTimer);
+    nodeGraphMvp.zoomResetClickTimer = 0;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  button.dataset.editingZoom = "true";
+  const input = document.createElement("input");
+  input.className = "node-zoom-reset-input";
+  input.type = "text";
+  input.inputMode = "decimal";
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.value = nodeGraphZoomLabel();
+  input.setAttribute("aria-label", "Set modular zoom level");
+  input.addEventListener("click", (inputEvent) => inputEvent.stopPropagation());
+  input.addEventListener("dblclick", (inputEvent) => inputEvent.stopPropagation());
+  input.addEventListener("keydown", (inputEvent) => {
+    if (inputEvent.key === "Enter") {
+      inputEvent.preventDefault();
+      finishNodeGraphZoomInput(input, { apply: true });
+    } else if (inputEvent.key === "Escape") {
+      inputEvent.preventDefault();
+      finishNodeGraphZoomInput(input, { apply: false });
+    }
+  });
+  input.addEventListener("blur", () => finishNodeGraphZoomInput(input, { apply: true }));
+  button.replaceChildren(input);
+  input.focus({ preventScroll: true });
+  input.select();
+}
+
+function handleNodeGraphZoomResetClick(event) {
+  const button = event.currentTarget;
+  if (!(button instanceof HTMLButtonElement) || button.dataset.editingZoom === "true") {
+    return;
+  }
+  if (nodeGraphMvp.zoomResetClickTimer) {
+    window.clearTimeout(nodeGraphMvp.zoomResetClickTimer);
+  }
+  nodeGraphMvp.zoomResetClickTimer = window.setTimeout(() => {
+    nodeGraphMvp.zoomResetClickTimer = 0;
+    setNodeGraphZoom(1);
+  }, 180);
 }
 
 function handleNodeGraphWorkspaceWheel(event) {

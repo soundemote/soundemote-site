@@ -455,6 +455,27 @@ audio {
   letter-spacing: 0;
 }
 
+.node-zoom-reset-input {
+  width: 4.25ch;
+  min-width: 0;
+  max-width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  line-height: 1;
+  text-align: center;
+}
+
+.node-zoom-reset-input:focus {
+  outline: none;
+}
+
 .node-toolbar-hsl-control {
   gap: 4px;
   border: 0;

@@ -5596,6 +5596,7 @@ const nodeGraphMvp = {
   tooltips: {},
   workspaceResizing: null,
   zoom: 1,
+  zoomResetClickTimer: 0,
 };
 
 const nodeGraphWireHelpers = window.createNodeGraphWireHelpers({
@@ -7937,7 +7938,10 @@ async function initNodeGraphMvp() {
     .addEventListener("click", () => zoomNodeGraphBy(-nodeGraphZoomLimits.step));
   document
     .getElementById("nodeZoomResetButton")
-    .addEventListener("click", () => setNodeGraphZoom(1));
+    .addEventListener("click", handleNodeGraphZoomResetClick);
+  document
+    .getElementById("nodeZoomResetButton")
+    .addEventListener("dblclick", beginNodeGraphZoomInput);
   document
     .getElementById("nodeZoomInButton")
     .addEventListener("click", () => zoomNodeGraphBy(nodeGraphZoomLimits.step));
