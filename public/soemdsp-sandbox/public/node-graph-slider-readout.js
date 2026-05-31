@@ -180,10 +180,13 @@ function syncNodeSliderChoiceDebugSquares(readout, choices, enabled) {
   });
   const cellStrokes = cellRects.map((cell, index) => {
     const strokeInset = 0.5;
+    const trailingStrokeOutset = emptyPixelBorder > 0 ? 1 : 0;
     const strokeLeft = cell.left <= 0 ? strokeInset : cell.left;
     const strokeTop = cell.top <= 0 ? strokeInset : cell.top;
-    const strokeRight = cell.left + cell.width >= layerRect.width ? cell.left + cell.width - strokeInset : cell.left + cell.width;
-    const strokeBottom = cell.top + cell.height;
+    const strokeRight = cell.left + cell.width >= layerRect.width
+      ? cell.left + cell.width - strokeInset
+      : Math.min(layerRect.width, cell.left + cell.width + trailingStrokeOutset);
+    const strokeBottom = Math.min(layerRect.height, cell.top + cell.height + trailingStrokeOutset);
     const marker = document.createElementNS("http://www.w3.org/2000/svg", "rect");
     marker.setAttribute("class", "node-choice-debug-square node-choice-debug-cell node-choice-debug-cell-stroke");
     marker.setAttribute("data-choice-index", String(index));
