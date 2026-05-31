@@ -203,7 +203,8 @@
       "params": {
         "volume": 0.1
       },
-      "type": "output"
+      "type": "output",
+      "widthGu": 7
     },
     {
       "gx": 23,
@@ -222,6 +223,7 @@
         "textMode": "multiline",
         "verticalAlignPercent": 3
       },
+      "widthGu": 7,
       "ui": {
         "buttonsHidden": true,
         "titleHidden": true
