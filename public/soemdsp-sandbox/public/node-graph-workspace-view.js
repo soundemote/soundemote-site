@@ -1,7 +1,9 @@
 const nodeGraphZoomLimits = Object.freeze({
   max: 6,
   min: 0.25,
-  step: 0.08,
+  fineStep: 0.1,
+  quarterStep: 0.25,
+  step: 1,
   wheelRatio: 1.12,
 });
 
@@ -231,11 +233,34 @@ function nodeGraphZoomByRatio(ratio) {
     : nodeGraphZoom();
 }
 
+function nodeGraphZoomButtonStep(event) {
+  if (event?.ctrlKey || event?.metaKey) {
+    return nodeGraphZoomLimits.fineStep;
+  }
+  if (event?.shiftKey) {
+    return nodeGraphZoomLimits.quarterStep;
+  }
+  return nodeGraphZoomLimits.step;
+}
+
+function nodeGraphIntegerZoomTarget(direction) {
+  const zoom = nodeGraphZoom();
+  return direction > 0
+    ? Math.floor(zoom + 0.001) + 1
+    : Math.ceil(zoom - 0.001) - 1;
+}
+
 function zoomNodeGraphBy(delta) {
-  const ratio = delta > 0
-    ? nodeGraphZoomLimits.wheelRatio
-    : 1 / nodeGraphZoomLimits.wheelRatio;
-  setNodeGraphZoom(nodeGraphZoomByRatio(ratio));
+  const event = arguments[1] || window.event || null;
+  const direction = Math.sign(delta);
+  if (!direction) {
+    return;
+  }
+  const step = nodeGraphZoomButtonStep(event);
+  const target = Math.abs(step - nodeGraphZoomLimits.step) < 0.001
+    ? nodeGraphIntegerZoomTarget(direction)
+    : nodeGraphZoom() + direction * step;
+  setNodeGraphZoom(target);
 }
 
 function zoomNodeGraphAt(delta, clientX, clientY) {
