@@ -76,31 +76,24 @@ function nodeSliderChoiceSlideStyle(readout) {
 }
 
 function nodeSliderChoiceCellRects(width, height, choices, emptyPixelBorder = 0) {
-  const layoutWidth = Math.floor(width);
-  const layoutHeight = Math.round(height);
+  const layoutWidth = Number(width);
+  const layoutHeight = Number(height);
   const count = choices.length;
   if (!count || !Number.isFinite(layoutWidth) || !Number.isFinite(layoutHeight) || layoutWidth <= 0 || layoutHeight <= 0) {
     return [];
   }
 
   const boundedEmptyPixelBorder = Math.max(0, Math.min(8, Number(emptyPixelBorder) || 0));
-  const strokeWidth = 1;
-  const strokeInset = strokeWidth / 2;
-  const wallRectPadding = boundedEmptyPixelBorder + strokeInset;
-  const dividerRectPadding = boundedEmptyPixelBorder + strokeWidth + strokeInset;
-  const trailingRectPadding = wallRectPadding;
-  const verticalRectPadding = wallRectPadding;
-  const contentHeight = Math.max(0, layoutHeight - verticalRectPadding * 2);
+  const contentHeight = Math.max(0, layoutHeight - boundedEmptyPixelBorder * 2);
   return choices.map((_, index) => {
-    const segmentLeft = Math.round((index / count) * layoutWidth);
-    const segmentRight = Math.round(((index + 1) / count) * layoutWidth);
-    const leadingRectPadding = index === 0 ? wallRectPadding : dividerRectPadding;
-    const contentLeft = segmentLeft + leadingRectPadding;
-    const contentRight = segmentRight - trailingRectPadding;
+    const segmentLeft = index === 0 ? 0 : Math.round((index / count) * layoutWidth);
+    const segmentRight = index === count - 1 ? layoutWidth : Math.round(((index + 1) / count) * layoutWidth);
+    const contentLeft = segmentLeft + boundedEmptyPixelBorder;
+    const contentRight = segmentRight - boundedEmptyPixelBorder;
     return {
       height: contentHeight,
       left: contentLeft,
-      top: verticalRectPadding,
+      top: boundedEmptyPixelBorder,
       width: Math.max(0, contentRight - contentLeft),
     };
   });
