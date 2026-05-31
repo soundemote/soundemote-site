@@ -36,21 +36,20 @@ function nodeSliderChoiceDividerBackground(readout, choices) {
   return dividerLayers.join(", ") || "none";
 }
 
-function nodeSliderChoiceSquareRects(readout, choices) {
-  const readoutRect = readout.getBoundingClientRect();
-  const width = Math.floor(readoutRect.width);
-  const height = Math.round(readoutRect.height);
+function nodeSliderChoiceSquareRects(width, height, choices) {
+  const layoutWidth = Math.floor(width);
+  const layoutHeight = Math.round(height);
   const count = choices.length;
-  if (!count || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+  if (!count || !Number.isFinite(layoutWidth) || !Number.isFinite(layoutHeight) || layoutWidth <= 0 || layoutHeight <= 0) {
     return [];
   }
 
-  const padding = 1;
+  const padding = 2;
   const dividerWidth = 1;
-  const contentHeight = Math.max(0, height - padding * 2);
+  const contentHeight = Math.max(0, layoutHeight - padding * 2);
   const cells = choices.map((_, index) => {
-    const segmentLeft = Math.round((index / count) * width);
-    const segmentRight = Math.round(((index + 1) / count) * width);
+    const segmentLeft = Math.round((index / count) * layoutWidth);
+    const segmentRight = Math.round(((index + 1) / count) * layoutWidth);
     const contentLeft = segmentLeft + (index === 0 ? padding : dividerWidth + padding);
     const contentRight = segmentRight - padding;
     return {
@@ -68,25 +67,25 @@ function nodeSliderChoiceSquareRects(readout, choices) {
   });
 }
 
-function snapNodeSliderChoiceDebugSquares(layer) {
-  const dpr = window.devicePixelRatio || 1;
-  for (const marker of layer.querySelectorAll(".node-choice-debug-square")) {
-    const rect = marker.getBoundingClientRect();
-    const width = parseFloat(marker.style.getPropertyValue("--choice-debug-size")) || 0;
-    const viewportScale = width > 0 ? rect.width / width : 1;
-    if (!Number.isFinite(viewportScale) || viewportScale <= 0) {
-      continue;
-    }
-
-    const left = parseFloat(marker.style.getPropertyValue("--choice-debug-left")) || 0;
-    const top = parseFloat(marker.style.getPropertyValue("--choice-debug-top")) || 0;
-    const snappedLeft = Math.round(rect.left * dpr) / dpr;
-    const snappedTop = Math.round(rect.top * dpr) / dpr;
-    const nextLeft = left + (snappedLeft - rect.left) / viewportScale;
-    const nextTop = top + (snappedTop - rect.top) / viewportScale;
-    marker.style.setProperty("--choice-debug-left", `${nextLeft.toFixed(3)}px`);
-    marker.style.setProperty("--choice-debug-top", `${nextTop.toFixed(3)}px`);
+function nodeSliderChoiceDividerLines(width, height, choices) {
+  const layoutWidth = Math.floor(width);
+  const layoutHeight = Math.round(height);
+  const count = choices.length;
+  if (count <= 1 || !Number.isFinite(layoutWidth) || !Number.isFinite(layoutHeight) || layoutWidth <= 0 || layoutHeight <= 0) {
+    return [];
   }
+  return Array.from({ length: count - 1 }, (_, index) => ({
+    x: Math.round(((index + 1) / count) * layoutWidth),
+    height: layoutHeight,
+  }));
+}
+
+function nodeSliderSnapStrokeCoordinate(localPosition, viewportOrigin, strokeWidth = 1) {
+  const dpr = window.devicePixelRatio || 1;
+  const strokeCenter = viewportOrigin + localPosition;
+  const offset = strokeWidth % 2 === 0 ? 0 : 0.5;
+  const snappedStrokeCenter = (Math.round(strokeCenter * dpr - offset) + offset) / dpr;
+  return snappedStrokeCenter - viewportOrigin;
 }
 
 function syncNodeSliderChoiceDebugSquares(readout, choices, enabled) {
@@ -95,24 +94,40 @@ function syncNodeSliderChoiceDebugSquares(readout, choices, enabled) {
     layer?.remove();
     return;
   }
-  if (!layer) {
-    layer = document.createElement("span");
-    layer.className = "node-choice-debug-layer";
+  if (!layer || layer.tagName.toLowerCase() !== "svg") {
+    layer?.remove();
+    layer = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    layer.setAttribute("class", "node-choice-debug-layer");
     layer.setAttribute("aria-hidden", "true");
+    layer.setAttribute("focusable", "false");
     readout.append(layer);
   }
 
-  const squares = nodeSliderChoiceSquareRects(readout, choices).map((square, index) => {
-    const marker = document.createElement("span");
-    marker.className = "node-choice-debug-square";
-    marker.dataset.choiceIndex = String(index);
-    marker.style.setProperty("--choice-debug-left", `${square.left.toFixed(2)}px`);
-    marker.style.setProperty("--choice-debug-top", `${square.top.toFixed(2)}px`);
-    marker.style.setProperty("--choice-debug-size", `${square.size.toFixed(2)}px`);
+  const layerRect = layer.getBoundingClientRect();
+  layer.setAttribute("viewBox", `0 0 ${layerRect.width.toFixed(3)} ${layerRect.height.toFixed(3)}`);
+  layer.setAttribute("preserveAspectRatio", "none");
+  const dividers = nodeSliderChoiceDividerLines(layerRect.width, layerRect.height, choices).map((divider, index) => {
+    const marker = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    const x = nodeSliderSnapStrokeCoordinate(divider.x, layerRect.left);
+    marker.setAttribute("class", "node-choice-debug-divider");
+    marker.setAttribute("data-choice-divider-index", String(index));
+    marker.setAttribute("x1", x.toFixed(3));
+    marker.setAttribute("x2", x.toFixed(3));
+    marker.setAttribute("y1", "0");
+    marker.setAttribute("y2", divider.height.toFixed(3));
     return marker;
   });
-  layer.replaceChildren(...squares);
-  snapNodeSliderChoiceDebugSquares(layer);
+  const squares = nodeSliderChoiceSquareRects(layerRect.width, layerRect.height, choices).map((square, index) => {
+    const marker = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    marker.setAttribute("class", "node-choice-debug-square");
+    marker.setAttribute("data-choice-index", String(index));
+    marker.setAttribute("x", nodeSliderSnapStrokeCoordinate(square.left, layerRect.left).toFixed(3));
+    marker.setAttribute("y", nodeSliderSnapStrokeCoordinate(square.top, layerRect.top).toFixed(3));
+    marker.setAttribute("width", square.size.toFixed(3));
+    marker.setAttribute("height", square.size.toFixed(3));
+    return marker;
+  });
+  layer.replaceChildren(...dividers, ...squares);
 }
 
 function syncNodeSliderReadout(slider) {
@@ -155,7 +170,7 @@ function syncNodeSliderReadout(slider) {
   if (dividesChoices) {
     readout.style.removeProperty("--value-start");
     readout.style.removeProperty("--value-end");
-    readout.style.setProperty("--choice-divider-background", nodeSliderChoiceDividerBackground(readout, choices));
+    readout.style.setProperty("--choice-divider-background", "none");
     syncNodeSliderChoiceDebugSquares(readout, choices, true);
     syncNodeSliderPortalHandle(readout, slider, position, false);
   } else {
