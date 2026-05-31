@@ -13768,73 +13768,6 @@ async function handleUpdateDefaultNodeGraphPresetClick(event) {
   await updateDefaultNodeGraphPreset();
 }
 
-function nodeGraphPatchFileName() {
-  const info = normalizeNodeGraphPatchInfo(nodeGraphMvp.patch.info);
-  const baseName = info.name || "soemdsp-patch";
-  const tagName = info.tags && info.tags !== "tags"
-    ? `-${info.tags}`
-    : "";
-  const safeName = `${baseName}${tagName}`
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return `${safeName || "soemdsp-patch"}.json`;
-}
-
-function nodeGraphVisualOutputFileName(fingerprint = nodeGraphMvp.rendered?.patchFingerprint || nodeGraphPatchFingerprint()) {
-  const fingerprintSuffix = fingerprint ? `-${fingerprint}` : "";
-  return nodeGraphPatchFileName().replace(/\.json$/i, `${fingerprintSuffix}-visual.png`);
-}
-
-function saveNodeGraphScript() {
-  if (!nodeGraphScriptReadyForGraphAction("save")) {
-    return;
-  }
-  const blob = new Blob([`${serializeNodeGraphPatch()}\n`], {
-    type: "application/json",
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = nodeGraphPatchFileName();
-  document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
-  setNodeGraphScriptStatus("script saved", true);
-}
-
-function loadNodeGraphScript() {
-  if (!nodeGraphScriptReadyForGraphAction("load")) {
-    return;
-  }
-  document.getElementById("nodePatchScriptFileInput")?.click();
-}
-
-function handleNodeGraphScriptFileLoad(event) {
-  const [file] = event.currentTarget.files || [];
-  if (!file) {
-    return;
-  }
-  const reader = new FileReader();
-  reader.addEventListener("load", () => {
-    try {
-      commitNodeGraphPatch(loadNodeGraphPatchFromScript(String(reader.result || "")), {
-        status: "script loaded",
-      });
-    } catch (error) {
-      setNodeGraphScriptStatus(error.message, false);
-    } finally {
-      event.currentTarget.value = "";
-    }
-  });
-  reader.addEventListener("error", () => {
-    setNodeGraphScriptStatus("script file read failed", false);
-    event.currentTarget.value = "";
-  });
-  reader.readAsText(file);
-}
-
 function deleteSelectedNodeGraphItem() {
   if (!nodeGraphScriptReadyForGraphAction("delete")) {
     return;
@@ -15008,6 +14941,7 @@ function normalizeNodeUiDevSettings(settings = {}) {
       normalizedColors[property] = normalizeNodeUiDevColor(value);
     }
   }
+  const gridVisible = view.gridVisible ?? controls.gridVisible ?? controls.showGrid ?? nodeGraphMvp.gridVisible;
   return {
     format: {
       kind: "soemdsp-sandbox-user-ui-settings",
@@ -15027,7 +14961,7 @@ function normalizeNodeUiDevSettings(settings = {}) {
     ),
     nodeColors: normalizedColors,
     view: {
-      gridVisible: Boolean(view.gridVisible ?? nodeGraphMvp.gridVisible),
+      gridVisible: Boolean(gridVisible),
     },
   };
 }
@@ -18406,7 +18340,6 @@ async function initNodeGraphMvp() {
   document.getElementById("pasteNodeGraphScriptButton").addEventListener("click", pasteNodeGraphScriptFromClipboard);
   document.getElementById("updateDefaultPresetButton").addEventListener("click", handleUpdateDefaultNodeGraphPresetClick);
   document.getElementById("loadNodeGraphScriptButton").addEventListener("click", loadNodeGraphScript);
-  document.getElementById("saveNodeGraphScriptButton").addEventListener("click", saveNodeGraphScript);
   document.getElementById("copyNodeUiDevSettingsButton").addEventListener("click", copyNodeUiDevSettingsToClipboard);
   document.getElementById("loadNodeUiDevSettingsButton").addEventListener("click", loadNodeUiDevSettingsFile);
   document.getElementById("saveNodeUiDevSettingsButton").addEventListener("click", saveNodeUiDevSettingsFile);
