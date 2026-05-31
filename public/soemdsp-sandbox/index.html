@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>soemdsp-sandbox</title>
-  <link rel="stylesheet" href="./public/styles.css?v=module-width-defaults">
+  <link rel="stylesheet" href="./public/styles.css?v=param-output-node-visible">
 </head>
 <body class="debug-collapsed">
   <main class="shell">
@@ -179,7 +179,7 @@
               aria-pressed="false"
               data-tooltip-key="script.view"><span>View</span><span>Script</span></button>
             <button
-              id="nodeSettingsSaveScriptButton"
+              id="saveNodeGraphScriptButton"
               type="button"
               data-tooltip-key="script.save"><span>Save</span><span>Script</span></button>
           </div>
@@ -483,8 +483,8 @@
                 min="0"
                 max="100"
                 step="1"
-                value="0">
-              <output id="nodeUiDevMinimumGridBrightnessValue" for="nodeUiDevMinimumGridBrightness">0%</output>
+                value="5">
+              <output id="nodeUiDevMinimumGridBrightnessValue" for="nodeUiDevMinimumGridBrightness">5%</output>
             </div>
           </label>
           <label class="node-ui-dev-control">
@@ -496,8 +496,8 @@
                 min="40"
                 max="220"
                 step="1"
-                value="78">
-              <output id="nodeUiDevModuleLightSpreadValue" for="nodeUiDevModuleLightSpread">78%</output>
+                value="100">
+              <output id="nodeUiDevModuleLightSpreadValue" for="nodeUiDevModuleLightSpread">100%</output>
             </div>
           </label>
           <label class="node-ui-dev-control">
@@ -1546,14 +1546,9 @@
     </section>
   </main>
 
-  <script src="./public/format-utils.js?v=module-width-defaults"></script>
-  <script src="./public/audio-utils.js?v=module-width-defaults"></script>
-  <script src="./public/ui-label-utils.js?v=module-width-defaults"></script>
-  <script src="./public/signal-plot-settings.js?v=module-width-defaults"></script>
-  <script src="./public/node-graph-wires.js?v=module-width-defaults"></script>
-  <script src="./public/node-graph-file-actions.js?v=module-width-defaults"></script>
-  <script src="./public/node-graph-default-buttons.js?v=module-width-defaults"></script>
-  <script src="./public/presets/useruisettings.js?v=module-width-defaults"></script>
-  <script src="./public/app.js?v=module-width-defaults"></script>
+  <script src="./public/format-utils.js?v=text-box-resize-fit"></script>
+  <script src="./public/audio-utils.js?v=text-box-resize-fit"></script>
+  <script src="./public/node-graph-wires.js?v=text-box-resize-fit"></script>
+  <script src="./public/app.js?v=text-box-resize-fit"></script>
 </body>
 </html>
