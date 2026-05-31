@@ -68,6 +68,27 @@ function nodeSliderChoiceSquareRects(readout, choices) {
   });
 }
 
+function snapNodeSliderChoiceDebugSquares(layer) {
+  const dpr = window.devicePixelRatio || 1;
+  for (const marker of layer.querySelectorAll(".node-choice-debug-square")) {
+    const rect = marker.getBoundingClientRect();
+    const width = parseFloat(marker.style.getPropertyValue("--choice-debug-size")) || 0;
+    const viewportScale = width > 0 ? rect.width / width : 1;
+    if (!Number.isFinite(viewportScale) || viewportScale <= 0) {
+      continue;
+    }
+
+    const left = parseFloat(marker.style.getPropertyValue("--choice-debug-left")) || 0;
+    const top = parseFloat(marker.style.getPropertyValue("--choice-debug-top")) || 0;
+    const snappedLeft = Math.round(rect.left * dpr) / dpr;
+    const snappedTop = Math.round(rect.top * dpr) / dpr;
+    const nextLeft = left + (snappedLeft - rect.left) / viewportScale;
+    const nextTop = top + (snappedTop - rect.top) / viewportScale;
+    marker.style.setProperty("--choice-debug-left", `${nextLeft.toFixed(3)}px`);
+    marker.style.setProperty("--choice-debug-top", `${nextTop.toFixed(3)}px`);
+  }
+}
+
 function syncNodeSliderChoiceDebugSquares(readout, choices, enabled) {
   let layer = readout.querySelector(".node-choice-debug-layer");
   if (!enabled) {
@@ -91,6 +112,7 @@ function syncNodeSliderChoiceDebugSquares(readout, choices, enabled) {
     return marker;
   });
   layer.replaceChildren(...squares);
+  snapNodeSliderChoiceDebugSquares(layer);
 }
 
 function syncNodeSliderReadout(slider) {
