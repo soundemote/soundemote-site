@@ -103,16 +103,14 @@ function nodeSliderChoiceSquareRects(width, height, choices) {
   return nodeSliderChoiceCellRects(width, height, choices);
 }
 
-function nodeSliderChoiceDividerLines(width, height, choices) {
-  const layoutWidth = Math.floor(width);
-  const layoutHeight = Math.round(height);
-  const count = choices.length;
-  if (count <= 1 || !Number.isFinite(layoutWidth) || !Number.isFinite(layoutHeight) || layoutWidth <= 0 || layoutHeight <= 0) {
+function nodeSliderChoiceDividerLinesFromCells(cellRects) {
+  if (cellRects.length <= 1) {
     return [];
   }
-  return Array.from({ length: count - 1 }, (_, index) => ({
-    x: Math.round(((index + 1) / count) * layoutWidth),
-    height: layoutHeight,
+  return Array.from({ length: cellRects.length - 1 }, (_, index) => ({
+    height: cellRects[index].height,
+    top: cellRects[index].top,
+    x: cellRects[index].left + cellRects[index].width,
   }));
 }
 
@@ -153,18 +151,18 @@ function syncNodeSliderChoiceDebugSquares(readout, choices, enabled) {
   const slideStyle = nodeSliderChoiceSlideStyle(readout);
   layer.setAttribute("viewBox", `0 0 ${layerRect.width.toFixed(3)} ${layerRect.height.toFixed(3)}`);
   layer.setAttribute("preserveAspectRatio", "none");
-  const dividers = nodeSliderChoiceDividerLines(layerRect.width, layerRect.height, choices).map((divider, index) => {
+  const cellRects = nodeSliderChoiceCellRects(layerRect.width, layerRect.height, choices, emptyPixelBorder);
+  const dividers = nodeSliderChoiceDividerLinesFromCells(cellRects).map((divider, index) => {
     const marker = document.createElementNS("http://www.w3.org/2000/svg", "line");
     const x = nodeSliderSnapStrokeCoordinate(divider.x, layerRect.left);
     marker.setAttribute("class", "node-choice-debug-divider");
     marker.setAttribute("data-choice-divider-index", String(index));
     marker.setAttribute("x1", x.toFixed(3));
     marker.setAttribute("x2", x.toFixed(3));
-    marker.setAttribute("y1", "0");
-    marker.setAttribute("y2", divider.height.toFixed(3));
+    marker.setAttribute("y1", divider.top.toFixed(3));
+    marker.setAttribute("y2", (divider.top + divider.height).toFixed(3));
     return marker;
   });
-  const cellRects = nodeSliderChoiceCellRects(layerRect.width, layerRect.height, choices, emptyPixelBorder);
   const cells = cellRects.map((cell, index) => {
     const marker = document.createElementNS("http://www.w3.org/2000/svg", "rect");
     marker.setAttribute("class", "node-choice-debug-square node-choice-debug-cell node-choice-debug-cell-fill");
@@ -197,7 +195,7 @@ function syncNodeSliderChoiceDebugSquares(readout, choices, enabled) {
     marker.style.strokeOpacity = String(slideStyle.edgeBrightness);
     return marker;
   });
-  layer.replaceChildren(...dividers, ...cells, ...cellStrokes);
+  layer.replaceChildren(...cells, ...dividers, ...cellStrokes);
 }
 
 function syncNodeSliderReadout(slider) {
