@@ -182,13 +182,17 @@ function syncNodeSliderChoiceDebugSquares(readout, choices, enabled) {
   });
   const cellStrokes = cellRects.map((cell, index) => {
     const strokeInset = 0.5;
+    const strokeLeft = cell.left <= 0 ? strokeInset : cell.left;
+    const strokeTop = cell.top <= 0 ? strokeInset : cell.top;
+    const strokeRight = cell.left + cell.width >= layerRect.width ? cell.left + cell.width - strokeInset : cell.left + cell.width;
+    const strokeBottom = cell.top + cell.height >= layerRect.height ? cell.top + cell.height - strokeInset : cell.top + cell.height;
     const marker = document.createElementNS("http://www.w3.org/2000/svg", "rect");
     marker.setAttribute("class", "node-choice-debug-square node-choice-debug-cell node-choice-debug-cell-stroke");
     marker.setAttribute("data-choice-index", String(index));
-    marker.setAttribute("x", (cell.left + strokeInset).toFixed(3));
-    marker.setAttribute("y", (cell.top + strokeInset).toFixed(3));
-    marker.setAttribute("width", Math.max(0, cell.width - strokeInset * 2).toFixed(3));
-    marker.setAttribute("height", Math.max(0, cell.height - strokeInset * 2).toFixed(3));
+    marker.setAttribute("x", strokeLeft.toFixed(3));
+    marker.setAttribute("y", strokeTop.toFixed(3));
+    marker.setAttribute("width", Math.max(0, strokeRight - strokeLeft).toFixed(3));
+    marker.setAttribute("height", Math.max(0, strokeBottom - strokeTop).toFixed(3));
     marker.style.stroke = slideStyle.color;
     marker.style.strokeOpacity = String(slideStyle.edgeBrightness);
     return marker;
