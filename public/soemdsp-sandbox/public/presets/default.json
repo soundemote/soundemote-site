@@ -28,7 +28,9 @@
     "version": 1
   },
   "grid": {
-    "sizePx": 28
+    "heightPx": 28,
+    "sizePx": 28,
+    "widthPx": 28
   },
   "info": {
     "author": "",
@@ -39,7 +41,7 @@
   "modulations": [],
   "nodes": [
     {
-      "gx": 1,
+      "gx": 2,
       "gy": 1,
       "id": "osc",
       "paramMeta": {
@@ -93,65 +95,65 @@
           "min": 0,
           "nonlinearSlider": false,
           "showSign": false,
-          "step": 0.01,
+          "step": 0,
           "unit": "cycle",
           "wraparound": true
         },
         "level": {
           "choices": [],
-          "def": 0.35,
+          "def": 0.5,
           "displayChoices": false,
           "divideChoicesVisibly": false,
           "kind": "decimal",
           "linearSmoothing": true,
-          "max": 0.8,
-          "mid": 0.35,
+          "max": 1,
+          "mid": 0.5,
           "min": 0,
-          "nonlinearSlider": true,
+          "nonlinearSlider": false,
           "showSign": false,
-          "step": 0.01,
+          "step": 0,
           "unit": "",
           "wraparound": false
         }
       },
       "params": {
-        "waveform": 0,
-        "frequency": 440,
-        "phase": 0,
-        "level": 0.35
+        "waveform": 3,
+        "frequency": 220,
+        "phase": 0.5,
+        "level": 0.4
       },
       "type": "osc"
     },
     {
-      "gx": 0,
-      "gy": 11,
+      "gx": 1,
+      "gy": 13,
       "id": "noise",
       "paramMeta": {
         "level": {
           "choices": [],
-          "def": 0.12,
+          "def": 0.5,
           "displayChoices": false,
           "divideChoicesVisibly": false,
           "kind": "decimal",
           "linearSmoothing": true,
-          "max": 0.5,
-          "mid": 0.12,
+          "max": 1,
+          "mid": 1,
           "min": 0,
-          "nonlinearSlider": true,
+          "nonlinearSlider": false,
           "showSign": false,
-          "step": 0.01,
+          "step": 0,
           "unit": "",
           "wraparound": false
         }
       },
       "params": {
-        "level": 0.12
+        "level": 0.15
       },
       "type": "noise"
     },
     {
-      "gx": 11,
-      "gy": 2,
+      "gx": 13,
+      "gy": 3,
       "id": "gain",
       "paramMeta": {
         "amount": {
@@ -177,19 +179,19 @@
       "type": "gain"
     },
     {
-      "gx": 22,
-      "gy": 9,
+      "gx": 23,
+      "gy": 10,
       "id": "output",
       "paramMeta": {
         "volume": {
           "choices": [],
-          "def": 1,
+          "def": 0.5,
           "displayChoices": false,
           "divideChoicesVisibly": false,
           "kind": "decimal",
           "linearSmoothing": true,
-          "max": 2,
-          "mid": 1,
+          "max": 1,
+          "mid": 0.5,
           "min": 0,
           "nonlinearSlider": false,
           "showSign": false,
@@ -202,6 +204,56 @@
         "volume": 0.1
       },
       "type": "output"
+    },
+    {
+      "gx": 23,
+      "gy": 7,
+      "id": "textBox-1",
+      "paramMeta": {},
+      "params": {},
+      "type": "textBox",
+      "alias": "START",
+      "widthGu": 6,
+      "heightGu": 3,
+      "layout": {
+        "horizontalAlign": "center",
+        "kind": "textBox",
+        "text": "press 🗲 to start\n   ⬇",
+        "textSizePercent": 160,
+        "textMode": "multiline",
+        "verticalAlignPercent": 3
+      },
+      "ui": {
+        "buttonsHidden": true,
+        "titleHidden": true
+      }
+    },
+    {
+      "gx": 11,
+      "gy": 13,
+      "id": "audioInput",
+      "paramMeta": {
+        "level": {
+          "choices": [],
+          "def": 0.5,
+          "displayChoices": false,
+          "divideChoicesVisibly": false,
+          "kind": "decimal",
+          "linearSmoothing": true,
+          "max": 1,
+          "mid": 0.5,
+          "min": 0,
+          "nonlinearSlider": true,
+          "showSign": false,
+          "step": 0,
+          "unit": "",
+          "wraparound": false
+        }
+      },
+      "params": {
+        "level": 0.707792207792208
+      },
+      "type": "audioInput"
     }
   ],
   "view": {
@@ -210,8 +262,8 @@
   },
   "visual": {
     "background": {
-      "h": 210,
-      "l": 5,
+      "h": 0,
+      "l": 0,
       "s": 0
     },
     "mode": "auto",
@@ -219,15 +271,5 @@
     "style": "glow",
     "theme": "cyan-violet",
     "trail": 0.35
-  },
-  "windows": {
-    "metadata": {
-      "left": null,
-      "top": null
-    },
-    "moduleActions": {
-      "left": null,
-      "top": null
-    }
   }
 }
