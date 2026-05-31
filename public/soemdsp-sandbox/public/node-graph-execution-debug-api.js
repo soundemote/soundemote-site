@@ -1,3 +1,27 @@
+function nodeGraphExecutionParameterSnapshot(plan) {
+  const parametersByNode = {};
+  const nodesById = new Map((plan.nodes || []).map((node) => [node.id, node]));
+  for (const nodeId of plan.order || []) {
+    const patchNode = nodesById.get(nodeId);
+    const type = patchNode?.type || nodeGraphNodeType(nodeId);
+    const definition = nodeGraphModuleDefinitions[type];
+    const parameters = {};
+    for (const parameter of definition?.parameters || []) {
+      const metadata = nodeGraphReadPatchParameterMetadata(patchNode || nodeId, parameter.key);
+      const value = nodeGraphReadPatchParameterValue(patchNode || nodeId, parameter.key);
+      parameters[parameter.key] = {
+        display: nodeGraphPatchChoiceLabel(metadata, value) ??
+          formatNodeSliderCompactNumber(value),
+        value,
+      };
+    }
+    if (Object.keys(parameters).length) {
+      parametersByNode[nodeId] = parameters;
+    }
+  }
+  return parametersByNode;
+}
+
 function nodeGraphLastRenderDebug() {
   const rendered = nodeGraphMvp.rendered;
   if (!rendered) {
