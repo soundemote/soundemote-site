@@ -93,3 +93,47 @@ function toggleNodeGraphSliderHandles() {
   nodeGraphMvp.sliderHandlesVisible = !nodeGraphMvp.sliderHandlesVisible;
   renderNodeGraphSliderTextToggles();
 }
+
+function renderNodeVisibility() {
+  for (const node of document.querySelectorAll(".dsp-node")) {
+    node.classList.toggle("removed", !nodeGraphMvp.activeNodes.has(node.dataset.node));
+  }
+  drawNodeGraphWires();
+}
+
+function renderNodePalette() {
+  for (const button of document.querySelectorAll("[data-palette-node]")) {
+    button.classList.remove("active");
+    button.setAttribute("aria-pressed", "false");
+  }
+}
+
+function setNodeGraphViewMode(mode) {
+  if (mode !== "script") {
+    flushNodeGraphScriptCommit();
+  }
+  const settingsMode = mode === "settings";
+  const scriptMode = mode === "script";
+  const modularOnlyMode = mode === "modular-only";
+  const modularMode = modularOnlyMode || (!settingsMode && !scriptMode);
+  document.getElementById("nodeWiringPanel")?.classList.toggle("modular-only-view", modularOnlyMode);
+  document.getElementById("nodeGraphWorkspace").hidden = !modularMode;
+  document.getElementById("nodeScriptView").hidden = !scriptMode;
+  document.getElementById("nodeSettingsView").hidden = !settingsMode;
+  document.getElementById("nodeSettingsViewButton").classList.toggle("active", settingsMode);
+  document.getElementById("nodeModularViewButton").classList.toggle("active", modularMode && !modularOnlyMode);
+  document.getElementById("nodeModularOnlyViewButton").classList.toggle("active", modularOnlyMode);
+  document.getElementById("nodeSettingsScriptViewButton").classList.toggle("active", scriptMode);
+  document.getElementById("nodeSettingsViewButton").setAttribute("aria-pressed", String(settingsMode));
+  document.getElementById("nodeModularViewButton").setAttribute("aria-pressed", String(modularMode && !modularOnlyMode));
+  document.getElementById("nodeModularOnlyViewButton").setAttribute("aria-pressed", String(modularOnlyMode));
+  document.getElementById("nodeSettingsScriptViewButton").setAttribute("aria-pressed", String(scriptMode));
+  if (scriptMode) {
+    syncNodeGraphScriptView();
+  } else if (settingsMode) {
+    syncNodeGraphSettingsView();
+    scheduleNodeSettingsHeaderTextFit();
+  } else {
+    drawNodeGraphWires();
+  }
+}
