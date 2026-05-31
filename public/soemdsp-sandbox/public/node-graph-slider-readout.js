@@ -31,6 +31,47 @@ function nodeSliderChoiceDividerBackground(choices) {
   return dividerLayers.join(", ") || "none";
 }
 
+function nodeSliderChoiceSquareRects(readout, choices) {
+  const rect = readout.getBoundingClientRect();
+  const count = choices.length;
+  if (!count || !Number.isFinite(rect.width) || !Number.isFinite(rect.height) || rect.width <= 0 || rect.height <= 0) {
+    return [];
+  }
+
+  const segmentWidth = rect.width / count;
+  const size = Math.max(0, Math.min(segmentWidth, rect.height));
+  return choices.map((_, index) => ({
+    left: index * segmentWidth + (segmentWidth - size) / 2,
+    size,
+    top: (rect.height - size) / 2,
+  }));
+}
+
+function syncNodeSliderChoiceDebugSquares(readout, choices, enabled) {
+  let layer = readout.querySelector(".node-choice-debug-layer");
+  if (!enabled) {
+    layer?.remove();
+    return;
+  }
+  if (!layer) {
+    layer = document.createElement("span");
+    layer.className = "node-choice-debug-layer";
+    layer.setAttribute("aria-hidden", "true");
+    readout.append(layer);
+  }
+
+  const squares = nodeSliderChoiceSquareRects(readout, choices).map((square, index) => {
+    const marker = document.createElement("span");
+    marker.className = "node-choice-debug-square";
+    marker.dataset.choiceIndex = String(index);
+    marker.style.setProperty("--choice-debug-left", `${square.left.toFixed(2)}px`);
+    marker.style.setProperty("--choice-debug-top", `${square.top.toFixed(2)}px`);
+    marker.style.setProperty("--choice-debug-size", `${square.size.toFixed(2)}px`);
+    return marker;
+  });
+  layer.replaceChildren(...squares);
+}
+
 function syncNodeSliderReadout(slider) {
   const readout = slider.closest("label")?.querySelector(".node-slider-readout");
   if (!readout) {
@@ -72,6 +113,7 @@ function syncNodeSliderReadout(slider) {
     readout.style.removeProperty("--value-start");
     readout.style.removeProperty("--value-end");
     readout.style.setProperty("--choice-divider-background", nodeSliderChoiceDividerBackground(choices));
+    syncNodeSliderChoiceDebugSquares(readout, choices, true);
     syncNodeSliderPortalHandle(readout, slider, position, false);
   } else {
     const boundedPosition = Math.max(0, Math.min(100, position));
@@ -84,6 +126,7 @@ function syncNodeSliderReadout(slider) {
       `calc(${boundedPosition}% + ${nodeSliderHandleHalfWidthPx}px)`,
     );
     readout.style.setProperty("--choice-divider-background", "none");
+    syncNodeSliderChoiceDebugSquares(readout, choices, false);
     syncNodeSliderPortalHandle(readout, slider, boundedPosition, usesPortalWrap);
   }
   syncNodeSliderMetadataTooltip(slider);
