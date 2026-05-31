@@ -2736,22 +2736,7 @@ audio {
 }
 
 .node-slider-readout.choices-divided::before {
-  inset-block: 0;
-  left: calc(var(--value-start, 0%) + 1px);
-  right: calc(100% - var(--value-end, 0%) + 1px);
-  border: 0;
-  border-left: 1px solid rgba(159, 225, 241, 0.46);
-  border-right: 1px solid rgba(159, 225, 241, 0.46);
-  border-radius: 0;
-  background: transparent;
-}
-
-.node-slider-readout.choices-divided.choice-at-start::before {
-  border-left-color: transparent;
-}
-
-.node-slider-readout.choices-divided.choice-at-end::before {
-  border-right-color: transparent;
+  display: none;
 }
 
 .node-slider-readout-label {
