@@ -16,10 +16,10 @@ const projects: Project[] = [
     name: "(soemdsp-sandbox)~",
     status: "in development",
     blurb:
-      "Next-generation analog-emulation audio plugin prototyping environment. Musical, aggressive filters, warm saturation, graphs, oscilloscopes, visual fx, metaparameters, SIMD backend, easy for producers, great for devs, open source, MIT license, no strings attached.",
+      "Next-generation analog-emulation audiovisual prototyping environment. Musical, aggressive filters, warm saturation, graphs, oscilloscopes, gpu rendering visual fx, metaparameters, SIMD backend, easy for producers, great for devs, open source, MIT license, no strings attached.",
     href: "https://soundemote.io/sandbox",
     githubHref: "https://github.com/soundemote/soemdsp-sandbox",
-    tags: ["instrument", "ecosystem", "soon"],
+    tags: ["ecosystem", "audiovisual", "analog"],
     accent: "accent",
   },
   {
