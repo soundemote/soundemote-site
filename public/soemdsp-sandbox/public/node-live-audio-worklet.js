@@ -2,6 +2,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.inputConnections = new Map();
+    this.inputMeterPeak = 0;
+    this.inputMeterSamples = 0;
+    this.inputMeterSquareSum = 0;
     this.meterClipCount = 0;
     this.meterCounter = 0;
     this.meterPeak = 0;
@@ -38,6 +41,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
 
   clearPlan() {
     this.inputConnections = new Map();
+    this.inputMeterPeak = 0;
+    this.inputMeterSamples = 0;
+    this.inputMeterSquareSum = 0;
     this.meterClipCount = 0;
     this.meterCounter = 0;
     this.meterPeak = 0;
@@ -619,7 +625,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     return { ...stereo, x: rotated.x, y: rotated.y, z: rotated.z };
   }
 
-  evaluateFrame(frame, frames) {
+  evaluateFrame(frame, frames, inputs = []) {
     const frameValues = new Map();
     const mixInput = (nodeId, port = "In") => (
       this.inputConnections.get(this.inputKey(nodeId, port)) || []
@@ -634,7 +640,19 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     for (const nodeId of this.order) {
       const node = this.nodes.get(nodeId);
       let value = 0;
-      if (node?.type === "osc") {
+      if (node?.type === "audioInput") {
+        const input = inputs[0] || [];
+        const leftChannel = input[0] || input[1] || null;
+        const rightChannel = input[1] || input[0] || null;
+        const left = Number(leftChannel?.[frame]) || 0;
+        const right = Number(rightChannel?.[frame]) || left;
+        const level = this.readEffectiveParameter(node, "level", 0.35, frame, frames, frameValues);
+        value = {
+          Left: left * level,
+          Out: ((left + right) * 0.5) * level,
+          Right: right * level,
+        };
+      } else if (node?.type === "osc") {
         const phase = this.phases.get(nodeId) || 0;
         const phaseOffset = this.phaseRadians(
           this.readEffectiveParameter(node, "phase", 0, frame, frames, frameValues),
@@ -726,9 +744,10 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     };
   }
 
-  process(_inputs, outputs) {
+  process(inputs, outputs) {
     const output = outputs[0] || [];
     const frames = output[0]?.length || 128;
+    const input = inputs[0] || [];
     if (!this.nodes.size || !this.order.length) {
       for (const channel of output) {
         channel.fill(0);
@@ -737,7 +756,12 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
 
     for (let frame = 0; frame < frames; frame += 1) {
-      const frameOutput = this.evaluateFrame(frame, frames);
+      const inputLeft = Number(input[0]?.[frame]) || 0;
+      const inputRight = Number(input[1]?.[frame]) || inputLeft;
+      this.inputMeterPeak = Math.max(this.inputMeterPeak, Math.abs(inputLeft), Math.abs(inputRight));
+      this.inputMeterSquareSum += (inputLeft * inputLeft + inputRight * inputRight) * 0.5;
+      this.inputMeterSamples += 1;
+      const frameOutput = this.evaluateFrame(frame, frames, inputs);
       if (this.outputSampleClipped(frameOutput.left)) {
         this.meterClipCount += 1;
       }
@@ -758,12 +782,17 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     if (this.meterCounter >= sampleRate / 10) {
       this.port.postMessage({
         clipCount: this.meterClipCount,
+        inputPeak: this.inputMeterPeak,
+        inputRms: Math.sqrt(this.inputMeterSquareSum / Math.max(1, this.inputMeterSamples)),
         peak: this.meterPeak,
         sessionId: this.sessionId,
         rms: Math.sqrt(this.meterSquareSum / Math.max(1, this.meterSamples)),
         type: "meter",
       });
       this.meterCounter = 0;
+      this.inputMeterPeak = 0;
+      this.inputMeterSamples = 0;
+      this.inputMeterSquareSum = 0;
       this.meterClipCount = 0;
       this.meterPeak = 0;
       this.meterSamples = 0;
