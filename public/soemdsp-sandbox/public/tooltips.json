@@ -49,7 +49,7 @@
     "updateDefault": "Validate current patch script and save it as the default preset",
     "load": "Load patch script",
     "view": "Open the patch script editor",
-    "save": "Save patch script as a JSON file"
+    "save": "Save patch script"
   },
   "settings": {
     "uiDevOpen": "Mouse: click to open or close the floating UI development helper.",
