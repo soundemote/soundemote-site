@@ -364,17 +364,37 @@ audio {
 .node-zoom-buttons {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  position: relative;
   min-height: 0;
+  overflow: hidden;
+  border-top: 1px solid var(--line);
+  background:
+    linear-gradient(90deg, transparent 0 calc(25% - 0.5px), var(--line) calc(25% - 0.5px) calc(25% + 0.5px), transparent calc(25% + 0.5px) 100%),
+    linear-gradient(90deg, transparent 0 calc(50% - 0.5px), var(--line) calc(50% - 0.5px) calc(50% + 0.5px), transparent calc(50% + 0.5px) 100%),
+    linear-gradient(90deg, transparent 0 calc(75% - 0.5px), var(--line) calc(75% - 0.5px) calc(75% + 0.5px), transparent calc(75% + 0.5px) 100%);
 }
 
 .node-zoom-buttons button {
   min-height: 0;
-  border-width: 1px 0 0 0;
+  border: 0;
   border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .node-zoom-buttons button + button {
-  border-left-width: 1px;
+  border-left-width: 0;
+}
+
+.node-view-toolbar .node-zoom-buttons button:not(:disabled):hover {
+  border-color: transparent;
+  background-color: rgba(127, 199, 217, 0.1);
+  box-shadow: none;
+}
+
+.node-view-toolbar .node-zoom-buttons button:focus-visible {
+  outline: 1px solid rgba(127, 199, 217, 0.65);
+  outline-offset: -2px;
 }
 
 .node-view-tabs button,
