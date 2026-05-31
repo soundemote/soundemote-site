@@ -17,9 +17,9 @@ const tenets = [
 ];
 
 export const Philosophy = () => (
-  <section id="philosophy" className="relative border-t border-border/40 bg-secondary/20 py-24 md:py-32">
+  <section id="directive" className="relative border-t border-border/40 bg-secondary/20 py-24 md:py-32">
     <div className="container max-w-2xl text-center">
-      <p className="mono mb-4 text-xs uppercase tracking-[0.3em] text-muted-foreground">/* philosophy */</p>
+      <p className="mono mb-4 text-xs uppercase tracking-[0.3em] text-muted-foreground">/* directive */</p>
       <h2 className="display text-3xl leading-tight text-warm-white md:text-5xl">
         An ecosystem for modular audiovisuals.
       </h2>

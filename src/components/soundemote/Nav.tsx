@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 const links = [
   { href: "/sandbox", label: "app:(sandbox)", special: true },
   { href: "/#projects", label: "Projects" },
-  { href: "/#philosophy", label: "Directive" },
+  { href: "/#directive", label: "Directive" },
   { href: "/#developers", label: "Developers" },
   { href: "/#community", label: "Community" },
 ];

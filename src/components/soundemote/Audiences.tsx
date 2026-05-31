@@ -26,8 +26,8 @@ const groups = [
     accent: "scope",
   },
   {
-    label: "for musicians",
-    displayLabel: "〜 ♪ for musicians ♪ 〜",
+    label: "for artists",
+    displayLabel: "〜 ♪ for artists ♪ 〜",
     labelClass: "text-accent",
     title: "Tools that show you what you hear.",
     items: [
