@@ -5946,21 +5946,6 @@ function handleNodeGraphHeaderInfoInput(event) {
   });
 }
 
-function recordNodeGraphHistory() {
-  const snapshot = serializeNodeGraphPatch();
-  if (nodeGraphMvp.historySnapshots[nodeGraphMvp.historyIndex] === snapshot) {
-    renderNodeGraphHistoryControls();
-    return;
-  }
-  nodeGraphMvp.historySnapshots = nodeGraphMvp.historySnapshots.slice(0, nodeGraphMvp.historyIndex + 1);
-  nodeGraphMvp.historySnapshots.push(snapshot);
-  if (nodeGraphMvp.historySnapshots.length > nodeGraphMvp.historyLimit) {
-    nodeGraphMvp.historySnapshots.shift();
-  }
-  nodeGraphMvp.historyIndex = nodeGraphMvp.historySnapshots.length - 1;
-  renderNodeGraphHistoryControls();
-}
-
 function nodeGraphModuleShouldBeVisible(node) {
   const type = typeof node === "string" ? nodeGraphPatchNodeType(node) : node?.type;
   return type !== "audioInput" || Boolean(nodeGraphMvp.live.inputActive);
@@ -6173,34 +6158,6 @@ function clearNodeGraphLiveScriptBlock() {
 function clearNodeGraphScriptBlockedActions() {
   clearNodeGraphRenderScriptBlock();
   clearNodeGraphLiveScriptBlock();
-}
-
-function undoNodeGraphPatch() {
-  if (!nodeGraphScriptReadyForGraphAction("undo")) {
-    return;
-  }
-  if (nodeGraphMvp.historyIndex <= 0) {
-    return;
-  }
-  nodeGraphMvp.historyIndex -= 1;
-  commitNodeGraphPatch(loadNodeGraphPatchFromScript(nodeGraphMvp.historySnapshots[nodeGraphMvp.historyIndex]), {
-    record: false,
-    status: "undo",
-  });
-}
-
-function redoNodeGraphPatch() {
-  if (!nodeGraphScriptReadyForGraphAction("redo")) {
-    return;
-  }
-  if (nodeGraphMvp.historyIndex >= nodeGraphMvp.historySnapshots.length - 1) {
-    return;
-  }
-  nodeGraphMvp.historyIndex += 1;
-  commitNodeGraphPatch(loadNodeGraphPatchFromScript(nodeGraphMvp.historySnapshots[nodeGraphMvp.historyIndex]), {
-    record: false,
-    status: "redo",
-  });
 }
 
 function nodeGraphLabel(node, port) {
