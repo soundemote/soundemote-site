@@ -7451,28 +7451,6 @@ function nodeGraphValidate() {
   };
 }
 
-async function startNodeGraphMockInputDebug(options = {}) {
-  document.documentElement.dataset.soemdspMockInput = "starting";
-  document.documentElement.dataset.soemdspMockInputError = "";
-  try {
-    await startNodeGraphMockInput(options);
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    document.documentElement.dataset.soemdspMockInput = "running";
-    document.documentElement.dataset.soemdspMockInputMeter =
-      document.getElementById("nodeLiveInputMeter")?.textContent || "";
-  } catch (error) {
-    document.documentElement.dataset.soemdspMockInput = "error";
-    document.documentElement.dataset.soemdspMockInputError = error?.message || String(error);
-  }
-}
-
-function stopNodeGraphMockInputDebug() {
-  stopNodeGraphMockInput();
-  document.documentElement.dataset.soemdspMockInput = "stopped";
-  document.documentElement.dataset.soemdspMockInputMeter =
-    document.getElementById("nodeLiveInputMeter")?.textContent || "";
-}
-
 function nodeGraphPortSelector(node, port, io) {
   return `.node-port.${io}[data-node="${CSS.escape(node)}"][data-port="${CSS.escape(port)}"]`;
 }

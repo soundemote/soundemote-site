@@ -294,3 +294,25 @@ function installNodeGraphDebugApi() {
     },
   });
 }
+
+async function startNodeGraphMockInputDebug(options = {}) {
+  document.documentElement.dataset.soemdspMockInput = "starting";
+  document.documentElement.dataset.soemdspMockInputError = "";
+  try {
+    await startNodeGraphMockInput(options);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    document.documentElement.dataset.soemdspMockInput = "running";
+    document.documentElement.dataset.soemdspMockInputMeter =
+      document.getElementById("nodeLiveInputMeter")?.textContent || "";
+  } catch (error) {
+    document.documentElement.dataset.soemdspMockInput = "error";
+    document.documentElement.dataset.soemdspMockInputError = error?.message || String(error);
+  }
+}
+
+function stopNodeGraphMockInputDebug() {
+  stopNodeGraphMockInput();
+  document.documentElement.dataset.soemdspMockInput = "stopped";
+  document.documentElement.dataset.soemdspMockInputMeter =
+    document.getElementById("nodeLiveInputMeter")?.textContent || "";
+}
