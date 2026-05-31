@@ -56,6 +56,7 @@ const expectedInspectionMode = "mouse-and-ears";
 const phaseAudioFrequencyToleranceHz = 0.5;
 const phaseAudioAmplitudeTolerance = 0.001;
 const phaseAudioRmsTolerance = 0.001;
+const signalPlotSettingsKey = "soemdsp-sandbox.signalPlotSettings";
 const nodeSliderHandleHalfWidthPx = 8;
 const nodeGraphDefaultPatchPointSizeRatio = 0.36;
 const inspectionSources = Object.freeze({
@@ -92,8 +93,278 @@ function artifactRowLabel(link) {
   }`;
 }
 
+function loadSignalPlotSettings() {
+  try {
+    const settings = JSON.parse(
+      window.localStorage.getItem(signalPlotSettingsKey) || "{}",
+    );
+    if ([1, 2, 5, 10].includes(settings.signalLagMs)) {
+      state.signalLagMs = settings.signalLagMs;
+    }
+    if (typeof settings.signalPhaseFocusName === "string") {
+      state.signalPhaseFocusName = settings.signalPhaseFocusName;
+    }
+    if ([1, 2, 4].includes(settings.signalPlotScale)) {
+      state.signalPlotScale = settings.signalPlotScale;
+    }
+    if (["trace", "points"].includes(settings.signalPlotMode)) {
+      state.signalPlotMode = settings.signalPlotMode;
+    }
+    if (["full", "cursor"].includes(settings.signalPlotWindow)) {
+      state.signalPlotWindow = settings.signalPlotWindow;
+    }
+    if ([40, 80, 160].includes(settings.signalPlotWindowMs)) {
+      state.signalPlotWindowMs = settings.signalPlotWindowMs;
+    }
+  } catch (_error) {
+    window.localStorage.removeItem(signalPlotSettingsKey);
+  }
+}
+
+function saveSignalPlotSettings() {
+  window.localStorage.setItem(
+    signalPlotSettingsKey,
+    JSON.stringify({
+      signalLagMs: state.signalLagMs,
+      signalPhaseFocusName: state.signalPhaseFocusName,
+      signalPlotMode: state.signalPlotMode,
+      signalPlotScale: state.signalPlotScale,
+      signalPlotWindow: state.signalPlotWindow,
+      signalPlotWindowMs: state.signalPlotWindowMs,
+    }),
+  );
+}
+
+function resetSignalPlotSettings() {
+  state.signalLagMs = 1;
+  state.signalPhaseFocusIndex = null;
+  state.signalPhaseFocusName = "all";
+  state.signalPlotMode = "trace";
+  state.signalPlotScale = 1;
+  state.signalPlotWindow = "full";
+  state.signalPlotWindowMs = 80;
+  window.localStorage.removeItem(signalPlotSettingsKey);
+}
+
 function clampFrame(frame, waveform) {
   return Math.max(0, Math.min(waveform.frames, frame));
+}
+
+function setText(id, value) {
+  const element = document.getElementById(id);
+  element.textContent = value;
+  if (statusStripLabels[id]) {
+    const valueText = String(value);
+    const ok =
+      valueText !== "Loading" &&
+      valueText !== "Unavailable" &&
+      valueText !== "0";
+    labelStatusStripValue(element, statusStripLabels[id], valueText, ok);
+  }
+}
+
+function setSourceText(id, key, value, expected = "present", ok = true) {
+  const element = document.getElementById(id);
+  const valueText = String(value);
+  const expectedText = String(expected);
+  element.textContent = valueText;
+  element.dataset.sourceKey = key;
+  element.dataset.sourceValue = valueText;
+  element.dataset.sourceExpected = expectedText;
+  element.dataset.sourceState = ok ? "ok" : "check";
+  element.setAttribute("aria-label", `${key}: ${valueText}`);
+  element.title =
+    expected === "none" || expected === "present"
+      ? nodeGraphTooltipText("legacyEvidence.sourceValue", { key, value: valueText })
+      : nodeGraphTooltipText("legacyEvidence.sourceValueExpected", {
+        expected: expectedText,
+        key,
+        value: valueText,
+      });
+}
+
+function clearElement(id) {
+  document.getElementById(id).replaceChildren();
+}
+
+function setStatus(id, value, ok) {
+  const element = document.getElementById(id);
+  const isPill = element.classList.contains("pill");
+  element.textContent = value;
+  element.className = isPill ? `pill ${ok ? "good" : "warn"}` : ok ? "" : "warn";
+  if (statusStripLabels[id]) {
+    labelStatusStripValue(element, statusStripLabels[id], value, ok);
+  }
+}
+
+function clearNodeGraphConfirmDefaultButton(button = nodeGraphMvp.confirmDefaultButton) {
+  if (!button) {
+    return;
+  }
+  if (nodeGraphMvp.confirmDefaultButtonTimer) {
+    window.clearTimeout(nodeGraphMvp.confirmDefaultButtonTimer);
+    nodeGraphMvp.confirmDefaultButtonTimer = 0;
+  }
+  button.classList.remove("confirming-default");
+  button.removeAttribute("aria-pressed");
+  if (button.dataset.confirmDefaultHtml) {
+    button.innerHTML = button.dataset.confirmDefaultHtml;
+    delete button.dataset.confirmDefaultHtml;
+  }
+  if (button.dataset.confirmDefaultText) {
+    delete button.dataset.confirmDefaultText;
+  }
+  if (nodeGraphMvp.confirmDefaultButton === button) {
+    nodeGraphMvp.confirmDefaultButton = null;
+  }
+}
+
+function nodeGraphDefaultButtonLabel(button) {
+  const spanText = button
+    ? [...button.querySelectorAll(":scope > span")]
+      .map((span) => span.textContent.trim())
+      .filter(Boolean)
+      .join(" ")
+    : "";
+  return button?.dataset.defaultButtonLabel || spanText || button?.textContent.trim() || "Update Default";
+}
+
+function nodeGraphDefaultButtonHtml(button) {
+  return button?.dataset.defaultButtonHtml || button?.innerHTML || nodeGraphDefaultButtonLabel(button);
+}
+
+function confirmNodeGraphDefaultButtonClick(button, statusCallback) {
+  if (!button) {
+    return false;
+  }
+  button.dataset.defaultButtonLabel = nodeGraphDefaultButtonLabel(button);
+  button.dataset.defaultButtonHtml = nodeGraphDefaultButtonHtml(button);
+  if (nodeGraphMvp.confirmDefaultButton === button && button.classList.contains("confirming-default")) {
+    clearNodeGraphConfirmDefaultButton(button);
+    return true;
+  }
+  clearNodeGraphConfirmDefaultButton();
+  button.dataset.confirmDefaultText = nodeGraphDefaultButtonLabel(button);
+  button.dataset.confirmDefaultHtml = nodeGraphDefaultButtonHtml(button);
+  button.textContent = "Confirm Default";
+  button.classList.add("confirming-default");
+  button.setAttribute("aria-pressed", "true");
+  nodeGraphMvp.confirmDefaultButton = button;
+  nodeGraphMvp.confirmDefaultButtonTimer = window.setTimeout(() => {
+    clearNodeGraphConfirmDefaultButton(button);
+  }, 4500);
+  statusCallback?.();
+  return false;
+}
+
+function flashNodeGraphDefaultButtonSaved(button) {
+  if (!button) {
+    return;
+  }
+  const originalText = nodeGraphDefaultButtonLabel(button);
+  const originalHtml = nodeGraphDefaultButtonHtml(button);
+  button.classList.remove("saved-default");
+  void button.offsetWidth;
+  button.textContent = "Saved";
+  button.classList.add("saved-default");
+  window.setTimeout(() => {
+    button.classList.remove("saved-default");
+    button.innerHTML = originalHtml || originalText;
+  }, 1000);
+}
+
+function labelStatusStripValue(element, label, value, ok) {
+  const valueText = String(value);
+  const stateName = ok ? "ok" : "check";
+  element.dataset.statusLabel = label;
+  element.dataset.statusValue = valueText;
+  element.dataset.statusState = stateName;
+  element.setAttribute("role", "status");
+  element.setAttribute("aria-label", `${label}: ${valueText}`);
+  element.title = nodeGraphTooltipText("legacyEvidence.labeledState", {
+    label,
+    state: stateName,
+    value: valueText,
+  });
+}
+
+function labelPrimaryAudio(path, ok) {
+  const audio = document.getElementById("audioPlayer");
+  const pathText = path || "unavailable";
+  const displayText = path || "Render Sample preview audio";
+  const stateName = ok ? "ok" : "check";
+  audio.dataset.audioLabel = "Primary Audio";
+  audio.dataset.audioPath = pathText;
+  audio.dataset.audioState = stateName;
+  audio.setAttribute("aria-label", `Sample preview: ${displayText}`);
+  audio.title = nodeGraphTooltipText("legacyEvidence.samplePreview", {
+    state: stateName,
+    text: displayText,
+  });
+}
+
+function labelPrimaryAudioTitle(path, ok) {
+  const title = document.getElementById("audioTitle");
+  const pathText = path || "unavailable";
+  const displayText = path || "";
+  const stateName = ok ? "ok" : "check";
+  title.textContent = displayText;
+  title.dataset.audioTitleLabel = "Primary Audio";
+  title.dataset.audioTitlePath = pathText;
+  title.dataset.audioTitleState = stateName;
+  title.setAttribute("aria-label", `Sample preview title: ${displayText}`);
+  title.title = nodeGraphTooltipText("legacyEvidence.samplePreviewTitle", {
+    state: stateName,
+    text: displayText,
+  });
+}
+
+function labelWaveformHeaderPill(element, label, value, ok) {
+  const valueText = String(value);
+  const stateName = ok ? "ok" : "check";
+  element.textContent = valueText;
+  element.dataset.waveformHeaderLabel = label;
+  element.dataset.waveformHeaderValue = valueText;
+  element.dataset.waveformHeaderState = stateName;
+  element.setAttribute("aria-label", `${label}: ${valueText}`);
+  element.title = nodeGraphTooltipText("legacyEvidence.labeledState", {
+    label,
+    state: stateName,
+    value: valueText,
+  });
+}
+
+function labelWaveformControlButton(button, label, value, stateName) {
+  const valueText = String(value);
+  button.dataset.waveformControlLabel = label;
+  button.dataset.waveformControlValue = valueText;
+  button.dataset.waveformControlState = stateName;
+  button.setAttribute("aria-label", `${label}: ${valueText}`);
+  button.title = nodeGraphTooltipText("legacyEvidence.labeledState", {
+    label,
+    state: stateName,
+    value: valueText,
+  });
+}
+
+function labelInspectionCursorPill(element, label, value, stateName) {
+  element.setAttribute("aria-label", `${label}: ${value}`);
+  element.title = nodeGraphTooltipText("legacyEvidence.sourceValue", { key: label, value });
+  element.dataset.inspectionPill = label;
+  element.dataset.inspectionValue = value;
+  element.dataset.inspectionState = stateName;
+}
+
+function labelInspectionCursorSurface(cursor, value, stateName) {
+  cursor.dataset.inspectionCursorLabel = "inspection cursor";
+  cursor.dataset.inspectionCursorValue = value;
+  cursor.dataset.inspectionCursorState = stateName;
+  cursor.setAttribute("role", "group");
+  cursor.setAttribute("aria-label", `inspection cursor: ${value}`);
+  cursor.title = nodeGraphTooltipText("legacyEvidence.inspectionCursor", {
+    state: stateName,
+    value,
+  });
 }
 
 function setInspectionCursorSource(sourceName, mode) {
@@ -5903,9 +6174,9 @@ const nodeGraphDefaultPatch = Object.freeze({
 });
 
 const nodeGraphDefaultPresetUrl = "./public/presets/default.json";
-const nodeGraphDefaultPresetStorageKey = "soemdsp-sandbox.defaultPatch.live.v2";
+const nodeGraphDefaultPresetStorageKey = "soemdsp-sandbox.defaultPatch";
 const nodeUiDevDefaultSettingsUrl = "./public/presets/useruisettings.json";
-const nodeUiDevDefaultSettingsStorageKey = "soemdsp-sandbox.userUiSettings.startup.v5";
+const nodeUiDevDefaultSettingsStorageKey = "soemdsp-sandbox.userUiSettings";
 
 const nodeUiDevFontFamilyOptions = Object.freeze([
   {
@@ -5943,14 +6214,14 @@ const nodeUiDevFontFamilyOptions = Object.freeze([
 const nodeUiDevSettingControls = Object.freeze([
   { defaultValue: 100, id: "nodeUiDevSettingsHeaderTextSize", key: "settingsHeaderTextSize", max: 100, min: 0, type: "number" },
   { defaultValue: 50, id: "nodeUiDevButtonTextSize", key: "uiDevButtonTextSize", max: 100, min: 0, type: "number" },
-  { defaultValue: 76, exposeDefault: true, id: "nodeUiDevLiveToggleTextSize", key: "liveToggleTextSize", max: 100, min: 0, type: "number" },
-  { defaultValue: 62, exposeDefault: true, id: "nodeUiDevModularHeaderButtonBackground", key: "modularHeaderButtonBackground", max: 100, min: 0, type: "number" },
-  { defaultValue: 14, exposeDefault: true, id: "nodeUiDevTooltipTextSize", key: "tooltipTextSize", max: 28, min: 8, type: "number" },
-  { defaultValue: 0, exposeDefault: true, id: "nodeUiDevMinimumGridBrightness", key: "minimumGridBrightness", max: 100, min: 0, type: "number" },
-  { defaultValue: 78, exposeDefault: true, id: "nodeUiDevModuleLightSpread", key: "moduleLightSpread", max: 220, min: 40, type: "number" },
+  { defaultValue: 76, id: "nodeUiDevLiveToggleTextSize", key: "liveToggleTextSize", max: 100, min: 0, type: "number" },
+  { defaultValue: 62, id: "nodeUiDevModularHeaderButtonBackground", key: "modularHeaderButtonBackground", max: 100, min: 0, type: "number" },
+  { defaultValue: 14, id: "nodeUiDevTooltipTextSize", key: "tooltipTextSize", max: 28, min: 8, type: "number" },
+  { defaultValue: 5, id: "nodeUiDevMinimumGridBrightness", key: "minimumGridBrightness", max: 100, min: 0, type: "number" },
+  { defaultValue: 100, exposeDefault: true, id: "nodeUiDevModuleLightSpread", key: "moduleLightSpread", max: 220, min: 40, type: "number" },
   { defaultValue: 6, exposeDefault: true, id: "nodeUiDevModuleGridInset", key: "moduleGridInset", max: 20, min: 0, type: "number" },
   { defaultValue: 10, exposeDefault: true, id: "nodeUiDevModuleRoundness", key: "moduleRoundness", max: 100, min: 0, type: "number" },
-  { defaultValue: "#ffffff", exposeDefault: true, id: "nodeUiDevGridColor", key: "gridColor", type: "color" },
+  { defaultValue: "#ffffff", id: "nodeUiDevGridColor", key: "gridColor", type: "color" },
   {
     defaultValue: "#0d0d0d",
     exposeDefault: true,
@@ -5960,7 +6231,7 @@ const nodeUiDevSettingControls = Object.freeze([
   },
   { defaultValue: 62, id: "nodeUiDevSettingsHeaderTopRatio", key: "settingsHeaderTopRatio", max: 100, min: 0, type: "number" },
   { defaultValue: 2, id: "nodeUiDevSettingsHeaderPadding", key: "settingsHeaderPadding", max: 20, min: 0, type: "number" },
-  { defaultValue: 4, exposeDefault: true, id: "nodeUiDevSliderDotSize", key: "sliderDotSize", max: 28, min: 0, type: "number" },
+  { defaultValue: 4, id: "nodeUiDevSliderDotSize", key: "sliderDotSize", max: 28, min: 0, type: "number" },
   {
     defaultValue: "cascadia",
     exposeDefault: true,
@@ -5969,12 +6240,12 @@ const nodeUiDevSettingControls = Object.freeze([
     options: nodeUiDevFontFamilyOptions,
     type: "select",
   },
-  { defaultValue: 26, exposeDefault: true, id: "nodeUiDevModuleTitleHeight", key: "moduleTitleHeight", max: 44, min: 12, type: "number" },
-  { defaultValue: 62, exposeDefault: true, id: "nodeUiDevModuleTitleTextFill", key: "moduleTitleTextFill", max: 100, min: 0, type: "number" },
-  { defaultValue: 24, exposeDefault: true, id: "nodeUiDevModuleIoSectionHeight", key: "moduleIoSectionHeight", max: 44, min: 12, type: "number" },
-  { defaultValue: 16, exposeDefault: true, id: "nodeUiDevModuleNodeSize", key: "moduleNodeSize", max: 28, min: 8, type: "number" },
+  { defaultValue: 26, id: "nodeUiDevModuleTitleHeight", key: "moduleTitleHeight", max: 44, min: 12, type: "number" },
+  { defaultValue: 62, id: "nodeUiDevModuleTitleTextFill", key: "moduleTitleTextFill", max: 100, min: 0, type: "number" },
+  { defaultValue: 24, id: "nodeUiDevModuleIoSectionHeight", key: "moduleIoSectionHeight", max: 44, min: 12, type: "number" },
+  { defaultValue: 16, id: "nodeUiDevModuleNodeSize", key: "moduleNodeSize", max: 28, min: 8, type: "number" },
   { defaultValue: 50, exposeDefault: true, id: "nodeUiDevNodeGlowSize", key: "nodeGlowSize", max: 200, min: 0, type: "number" },
-  { defaultValue: 36, exposeDefault: true, id: "nodeUiDevWirePatchPointSize", key: "wirePatchPointSize", max: 200, min: 0, type: "number" },
+  { defaultValue: 36, id: "nodeUiDevWirePatchPointSize", key: "wirePatchPointSize", max: 200, min: 0, type: "number" },
   { defaultValue: 19, exposeDefault: true, id: "nodeUiDevWireThickness", key: "wireThickness", max: 100, min: 0, type: "number" },
   { defaultValue: 36, id: "nodeUiDevBypassIconSize", key: "bypassIconSize", max: 100, min: 0, type: "number" },
   { defaultValue: 40, id: "nodeUiDevBypassIconGlowSpread", key: "bypassIconGlowSpread", max: 200, min: 0, type: "number" },
@@ -9543,7 +9814,10 @@ const nodeGraphTextBoxHeightLimits = Object.freeze({
 });
 
 function nodeGraphDefaultModuleGridWidthUnits(type) {
-  return 7;
+  if (nodeGraphModuleDefinitions[type]?.layout === "textBox") {
+    return 8;
+  }
+  return nodeGraphModuleDefinitions[type]?.output ? 6 : 7;
 }
 
 function normalizeNodeGraphModuleWidthUnits(type, widthGu) {
@@ -13689,6 +13963,73 @@ async function handleUpdateDefaultNodeGraphPresetClick(event) {
   await updateDefaultNodeGraphPreset();
 }
 
+function nodeGraphPatchFileName() {
+  const info = normalizeNodeGraphPatchInfo(nodeGraphMvp.patch.info);
+  const baseName = info.name || "soemdsp-patch";
+  const tagName = info.tags && info.tags !== "tags"
+    ? `-${info.tags}`
+    : "";
+  const safeName = `${baseName}${tagName}`
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${safeName || "soemdsp-patch"}.json`;
+}
+
+function nodeGraphVisualOutputFileName(fingerprint = nodeGraphMvp.rendered?.patchFingerprint || nodeGraphPatchFingerprint()) {
+  const fingerprintSuffix = fingerprint ? `-${fingerprint}` : "";
+  return nodeGraphPatchFileName().replace(/\.json$/i, `${fingerprintSuffix}-visual.png`);
+}
+
+function saveNodeGraphScript() {
+  if (!nodeGraphScriptReadyForGraphAction("save")) {
+    return;
+  }
+  const blob = new Blob([`${serializeNodeGraphPatch()}\n`], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = nodeGraphPatchFileName();
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  setNodeGraphScriptStatus("script saved", true);
+}
+
+function loadNodeGraphScript() {
+  if (!nodeGraphScriptReadyForGraphAction("load")) {
+    return;
+  }
+  document.getElementById("nodePatchScriptFileInput")?.click();
+}
+
+function handleNodeGraphScriptFileLoad(event) {
+  const [file] = event.currentTarget.files || [];
+  if (!file) {
+    return;
+  }
+  const reader = new FileReader();
+  reader.addEventListener("load", () => {
+    try {
+      commitNodeGraphPatch(loadNodeGraphPatchFromScript(String(reader.result || "")), {
+        status: "script loaded",
+      });
+    } catch (error) {
+      setNodeGraphScriptStatus(error.message, false);
+    } finally {
+      event.currentTarget.value = "";
+    }
+  });
+  reader.addEventListener("error", () => {
+    setNodeGraphScriptStatus("script file read failed", false);
+    event.currentTarget.value = "";
+  });
+  reader.readAsText(file);
+}
+
 function deleteSelectedNodeGraphItem() {
   if (!nodeGraphScriptReadyForGraphAction("delete")) {
     return;
@@ -14862,7 +15203,6 @@ function normalizeNodeUiDevSettings(settings = {}) {
       normalizedColors[property] = normalizeNodeUiDevColor(value);
     }
   }
-  const gridVisible = view.gridVisible ?? controls.gridVisible ?? controls.showGrid ?? nodeGraphMvp.gridVisible;
   return {
     format: {
       kind: "soemdsp-sandbox-user-ui-settings",
@@ -14882,7 +15222,7 @@ function normalizeNodeUiDevSettings(settings = {}) {
     ),
     nodeColors: normalizedColors,
     view: {
-      gridVisible: Boolean(gridVisible),
+      gridVisible: Boolean(view.gridVisible ?? nodeGraphMvp.gridVisible),
     },
   };
 }
@@ -15003,25 +15343,6 @@ function loadNodeUiDevLocalDefaultSettings() {
   }
 }
 
-function loadNodeUiDevBundledDefaultSettings() {
-  let bundled = window.nodeUiDevBundledDefaultSettings;
-  if (!bundled) {
-    try {
-      bundled = JSON.parse(document.documentElement.dataset.nodeUiDevBundledDefaultSettings || "null");
-    } catch {
-      bundled = null;
-    }
-  }
-  if (!bundled) {
-    return null;
-  }
-  try {
-    return loadNodeUiDevSettingsFromScript(JSON.stringify(bundled));
-  } catch {
-    return null;
-  }
-}
-
 function saveNodeUiDevLocalDefaultSettings(text) {
   if (!nodeGraphLocalDefaultPresetAllowed()) {
     return false;
@@ -15038,25 +15359,17 @@ async function loadNodeUiDevDefaultSettings() {
   const storedSettings = loadNodeUiDevLocalDefaultSettings();
   if (storedSettings) {
     applyNodeUiDevSettings(storedSettings);
-    document.documentElement.dataset.nodeUiDevSettingsSource = "local";
     return;
   }
-  if (typeof fetch === "function") {
-    try {
-      const response = await fetch(nodeUiDevDefaultSettingsUrl, { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      applyNodeUiDevSettings(loadNodeUiDevSettingsFromScript(await response.text()));
-      document.documentElement.dataset.nodeUiDevSettingsSource = "fetch";
-      return;
-    } catch {
-      // Fall through to the bundled preset for browser surfaces without request APIs.
+  try {
+    const response = await fetch(nodeUiDevDefaultSettingsUrl, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
     }
+    applyNodeUiDevSettings(loadNodeUiDevSettingsFromScript(await response.text()));
+  } catch {
+    applyNodeUiDevSettings(readNodeUiDevSettingsFromControls());
   }
-  const bundledSettings = loadNodeUiDevBundledDefaultSettings();
-  document.documentElement.dataset.nodeUiDevSettingsSource = bundledSettings ? "bundled" : "controls";
-  applyNodeUiDevSettings(bundledSettings || readNodeUiDevSettingsFromControls());
 }
 
 async function copyNodeUiDevSettingsToClipboard() {
@@ -15113,8 +15426,17 @@ function handleNodeUiDevSettingsFileLoad(event) {
 async function updateDefaultNodeUiDevSettingsPreset() {
   const text = serializeNodeUiDevSettings();
   try {
-    await postNodeUiDevSettingsPreset(text);
-    saveNodeUiDevLocalDefaultSettings(text);
+    const response = await fetch("/api/presets/useruisettings", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: text,
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok === false) {
+      throw new Error(result.error || `HTTP ${response.status}`);
+    }
     setNodeUiDevSettingsStatus("default ui settings updated", true);
     return true;
   } catch (error) {
@@ -15127,50 +15449,6 @@ async function updateDefaultNodeUiDevSettingsPreset() {
   }
 }
 
-async function postNodeUiDevSettingsPreset(text) {
-  const response = await fetch("/api/presets/useruisettings", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: text,
-  });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok || result.ok === false) {
-    throw new Error(result.error || `HTTP ${response.status}`);
-  }
-  return result;
-}
-
-async function saveNodeUserUiSettingsDefaultPreset() {
-  const text = serializeNodeUiDevSettings();
-  const localSaved = saveNodeUiDevLocalDefaultSettings(text);
-  if (localSaved) {
-    setNodeUiDevSettingsStatus("ui settings saved", true);
-    postNodeUiDevSettingsPreset(text)
-      .then(() => {
-        saveNodeUiDevLocalDefaultSettings(text);
-        setNodeUiDevSettingsStatus("default ui settings updated", true);
-      })
-      .catch(() => {
-        setNodeUiDevSettingsStatus("ui settings saved", true);
-      });
-    return true;
-  }
-  try {
-    await postNodeUiDevSettingsPreset(text);
-    saveNodeUiDevLocalDefaultSettings(text);
-    setNodeUiDevSettingsStatus("default ui settings updated", true);
-    return true;
-  } catch (error) {
-    if (localSaved) {
-      return true;
-    }
-    setNodeUiDevSettingsStatus(`ui settings save failed: ${error.message}`, false);
-    return false;
-  }
-}
-
 async function handleUpdateDefaultNodeUiDevSettingsPresetClick(event) {
   if (!confirmNodeGraphDefaultButtonClick(event.currentTarget, () => {
     setNodeUiDevSettingsStatus("click Confirm Default to update default ui settings", true);
@@ -15179,14 +15457,6 @@ async function handleUpdateDefaultNodeUiDevSettingsPresetClick(event) {
   }
   flashNodeGraphDefaultButtonSaved(event.currentTarget);
   await updateDefaultNodeUiDevSettingsPreset();
-}
-
-async function handleSaveNodeUserUiSettingsDefaultClick(event) {
-  flashNodeGraphDefaultButtonSaved(event.currentTarget);
-  const saved = await saveNodeUserUiSettingsDefaultPreset();
-  if (!saved) {
-    event.currentTarget.textContent = "Save UI Settings";
-  }
 }
 
 function syncNodeUiDevNodeColorControls() {
@@ -15360,7 +15630,7 @@ function syncNodeUiDevSettingsHeaderControls() {
     0,
     Math.min(100, Number(minimumGridBrightnessInput.value) || 0),
   );
-  const moduleLightSpreadPercent = Math.max(40, Math.min(220, Number(moduleLightSpreadInput.value) || 78));
+  const moduleLightSpreadPercent = Math.max(40, Math.min(220, Number(moduleLightSpreadInput.value) || 100));
   const moduleGridInsetPx = Math.max(0, Math.min(20, Number(moduleGridInsetInput.value) || 0));
   const moduleRoundnessPercent = Math.max(0, Math.min(100, Number(moduleRoundnessInput.value) || 0));
   const gridColor = normalizeNodeUiDevColor(gridColorInput.value, "#ffffff");
@@ -18287,7 +18557,7 @@ async function initNodeGraphMvp() {
   document.getElementById("nodeUserUiSettingsButton").addEventListener("click", toggleNodeUserUiSettings);
   document
     .getElementById("nodeUserUiSettingsSaveDefault")
-    .addEventListener("click", handleSaveNodeUserUiSettingsDefaultClick);
+    .addEventListener("click", handleUpdateDefaultNodeUiDevSettingsPresetClick);
   document.getElementById("nodeUserUiSettingsClose").addEventListener("click", () => setNodeUserUiSettingsVisible(false));
   document
     .getElementById("nodeUserUiSettingsDragHandle")
@@ -18331,7 +18601,7 @@ async function initNodeGraphMvp() {
   document.getElementById("pasteNodeGraphScriptButton").addEventListener("click", pasteNodeGraphScriptFromClipboard);
   document.getElementById("updateDefaultPresetButton").addEventListener("click", handleUpdateDefaultNodeGraphPresetClick);
   document.getElementById("loadNodeGraphScriptButton").addEventListener("click", loadNodeGraphScript);
-  document.getElementById("nodeSettingsSaveScriptButton").addEventListener("click", saveNodeGraphScript);
+  document.getElementById("saveNodeGraphScriptButton").addEventListener("click", saveNodeGraphScript);
   document.getElementById("copyNodeUiDevSettingsButton").addEventListener("click", copyNodeUiDevSettingsToClipboard);
   document.getElementById("loadNodeUiDevSettingsButton").addEventListener("click", loadNodeUiDevSettingsFile);
   document.getElementById("saveNodeUiDevSettingsButton").addEventListener("click", saveNodeUiDevSettingsFile);
