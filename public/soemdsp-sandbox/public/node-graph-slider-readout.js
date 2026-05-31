@@ -22,6 +22,15 @@ function syncNodeSliderPortalHandle(readout, slider, position, enabled) {
   readout.style.setProperty("--portal-right-width", `${leftOverflow}px`);
 }
 
+function nodeSliderChoiceDividerBackground(choices) {
+  const dividerColor = "rgba(243, 241, 236, 0.2)";
+  const dividerLayers = Array.from({ length: Math.max(0, choices.length - 1) }, (_, index) => {
+    const position = ((index + 1) / choices.length) * 100;
+    return `linear-gradient(90deg, transparent 0 calc(${position}% - 0.5px), ${dividerColor} calc(${position}% - 0.5px) calc(${position}% + 0.5px), transparent calc(${position}% + 0.5px) 100%)`;
+  });
+  return dividerLayers.join(", ") || "none";
+}
+
 function syncNodeSliderReadout(slider) {
   const readout = slider.closest("label")?.querySelector(".node-slider-readout");
   if (!readout) {
@@ -60,15 +69,9 @@ function syncNodeSliderReadout(slider) {
   readout.classList.toggle("reserves-sign-column", usesNumericReadout || usesChoices);
   readout.removeAttribute("title");
   if (dividesChoices) {
-    const choiceIndex = Math.max(0, Math.min(choices.length - 1, Math.round(Number(slider.value))));
-    const dividerColor = "rgba(243, 241, 236, 0.2)";
-    const dividerLayers = Array.from({ length: Math.max(0, choices.length - 1) }, (_, index) => {
-      const position = ((index + 1) / choices.length) * 100;
-      return `linear-gradient(90deg, transparent 0 calc(${position}% - 0.5px), ${dividerColor} calc(${position}% - 0.5px) calc(${position}% + 0.5px), transparent calc(${position}% + 0.5px) 100%)`;
-    });
-    readout.style.setProperty("--value-start", `${(choiceIndex / choices.length) * 100}%`);
-    readout.style.setProperty("--value-end", `${((choiceIndex + 1) / choices.length) * 100}%`);
-    readout.style.setProperty("--choice-divider-background", dividerLayers.join(", ") || "none");
+    readout.style.removeProperty("--value-start");
+    readout.style.removeProperty("--value-end");
+    readout.style.setProperty("--choice-divider-background", nodeSliderChoiceDividerBackground(choices));
     syncNodeSliderPortalHandle(readout, slider, position, false);
   } else {
     const boundedPosition = Math.max(0, Math.min(100, position));
