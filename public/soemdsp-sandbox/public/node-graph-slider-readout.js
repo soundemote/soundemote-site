@@ -45,12 +45,11 @@ function nodeSliderChoiceCellRects(width, height, choices) {
   }
 
   const padding = 2;
-  const dividerWidth = 1;
   const contentHeight = Math.max(0, layoutHeight - padding * 2);
   return choices.map((_, index) => {
     const segmentLeft = Math.round((index / count) * layoutWidth);
     const segmentRight = Math.round(((index + 1) / count) * layoutWidth);
-    const contentLeft = segmentLeft + (index === 0 ? padding : dividerWidth + padding);
+    const contentLeft = segmentLeft + padding;
     const contentRight = segmentRight - padding;
     return {
       height: contentHeight,
