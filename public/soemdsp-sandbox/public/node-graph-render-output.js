@@ -84,11 +84,14 @@ function setNodeGraphAudioStats(peak = 0, rms = 0, details = {}) {
   const oversamplingRatio = Number(details.oversamplingRatio) || 1;
   const stateReadCount = Number(details.stateReadCount) || 0;
   const clipCount = Number(details.clipCount) || 0;
+  const protectionMuteCount = Number(details.protectionMuteCount) || 0;
   const durationSeconds = frames > 0 && sampleRate > 0 ? frames / sampleRate : 0;
   const clipText = clipCount ? ` / ${nodeGraphOutputClipCountText(clipCount)}` : "";
-  audioStats.textContent = `peak ${peak.toFixed(3)} / rms ${rms.toFixed(3)}${clipText}`;
-  audioStats.className = `pill ${clipCount ? "warn" : ""}`.trim();
+  const protectionText = protectionMuteCount ? ` / protected ${protectionMuteCount}` : "";
+  audioStats.textContent = `peak ${peak.toFixed(3)} / rms ${rms.toFixed(3)}${clipText}${protectionText}`;
+  audioStats.className = `pill ${clipCount || protectionMuteCount ? "warn" : ""}`.trim();
   audioStats.dataset.renderClips = String(clipCount);
+  audioStats.dataset.renderProtectionMutes = String(protectionMuteCount);
   audioStats.dataset.renderFrames = String(frames);
   audioStats.dataset.renderSampleRate = String(sampleRate);
   audioStats.dataset.renderEngineSampleRate = String(engineSampleRate);
@@ -97,8 +100,9 @@ function setNodeGraphAudioStats(peak = 0, rms = 0, details = {}) {
   audioStats.dataset.renderStateReads = String(stateReadCount);
   const stateReadText = stateReadCount ? ` / ${nodeGraphStateReadText(stateReadCount)}` : "";
   const clipTitle = clipCount ? ` / ${nodeGraphOutputClipCountText(clipCount)}` : "";
+  const protectionTitle = protectionMuteCount ? ` / ear protection muted ${protectionMuteCount} frames` : "";
   audioStats.title = frames > 0
-    ? `Rendered sample: ${frames} frames / ${durationSeconds.toFixed(3)}s / ${sampleRate} Hz output / ${nodeGraphFormatSampleRate(engineSampleRate)} engine / ${nodeGraphFormatOversamplingRatio(oversamplingRatio)}${stateReadText}${clipTitle}`
+    ? `Rendered sample: ${frames} frames / ${durationSeconds.toFixed(3)}s / ${sampleRate} Hz output / ${nodeGraphFormatSampleRate(engineSampleRate)} engine / ${nodeGraphFormatOversamplingRatio(oversamplingRatio)}${stateReadText}${clipTitle}${protectionTitle}`
     : "Rendered sample unavailable";
 }
 
@@ -162,7 +166,9 @@ function renderNodeGraphAudio() {
     patchFingerprint,
     sampleRate: engineSampleRate,
   });
+  const earProtector = createNodeGraphEarProtector(engineSampleRate);
   let clipCount = 0;
+  let protectionMuteCount = 0;
 
   for (let blockStart = 0; blockStart < engineFrames; blockStart += nodeGraphAudioBlockSize) {
     const blockFrames = Math.min(nodeGraphAudioBlockSize, engineFrames - blockStart);
@@ -188,8 +194,12 @@ function renderNodeGraphAudio() {
       if (nodeGraphOutputSampleClipped(frameOutput.right)) {
         clipCount += 1;
       }
-      const left = nodeGraphClampOutputSample(frameOutput.left);
-      const right = nodeGraphClampOutputSample(frameOutput.right);
+      const protectedFrame = earProtector.protect(frameOutput.left, frameOutput.right);
+      if (protectedFrame.muted) {
+        protectionMuteCount += 1;
+      }
+      const left = nodeGraphClampOutputSample(protectedFrame.left);
+      const right = nodeGraphClampOutputSample(protectedFrame.right);
       engineLeftSamples[frame] = left;
       engineRightSamples[frame] = right;
     }
@@ -241,6 +251,7 @@ function renderNodeGraphAudio() {
     sampleRate: outputSampleRate,
     samples,
     clipCount,
+    protectionMuteCount,
     sourceNodes: validation.sourceNodes,
     stateReadCount,
   };
@@ -253,6 +264,7 @@ function renderNodeGraphAudio() {
     clipCount,
     engineSampleRate,
     oversamplingRatio: audio.oversamplingRatio,
+    protectionMuteCount,
     stateReadCount,
   });
   renderNodeGraphExecutionPlanDebug();

@@ -361,8 +361,16 @@ function renderNodeGraphLiveScriptBlock(event) {
     if (nodeGraphOutputSampleClipped(frameOutput.right)) {
       runtime.meterClipCount += 1;
     }
-    const left = nodeGraphClampOutputSample(frameOutput.left);
-    const right = nodeGraphClampOutputSample(frameOutput.right);
+    const protectedFrame = runtime.earProtector?.protect(frameOutput.left, frameOutput.right) || {
+      left: frameOutput.left,
+      muted: false,
+      right: frameOutput.right,
+    };
+    if (protectedFrame.muted) {
+      runtime.meterProtectionMuteCount = (runtime.meterProtectionMuteCount || 0) + 1;
+    }
+    const left = nodeGraphClampOutputSample(protectedFrame.left);
+    const right = nodeGraphClampOutputSample(protectedFrame.right);
     const value = Math.max(Math.abs(left), Math.abs(right));
     runtime.meterPeak = Math.max(runtime.meterPeak, Math.abs(value));
     runtime.meterSquareSum += (left * left + right * right) * 0.5;
@@ -383,12 +391,14 @@ function renderNodeGraphLiveScriptBlock(event) {
       runtime.meterPeak,
       Math.sqrt(runtime.meterSquareSum / Math.max(1, runtime.meterSamples)),
       runtime.meterClipCount,
+      runtime.meterProtectionMuteCount || 0,
     );
     runtime.meterCounter = 0;
     nodeGraphMvp.live.inputMeterPeak = 0;
     nodeGraphMvp.live.inputMeterSamples = 0;
     nodeGraphMvp.live.inputMeterSquareSum = 0;
     runtime.meterClipCount = 0;
+    runtime.meterProtectionMuteCount = 0;
     runtime.meterPeak = 0;
     runtime.meterSamples = 0;
     runtime.meterSquareSum = 0;
@@ -409,6 +419,7 @@ function handleNodeGraphLiveWorkletMessage(event) {
       Number(message.peak) || 0,
       Number(message.rms) || 0,
       Number(message.clipCount) || 0,
+      Number(message.protectionMuteCount) || 0,
     );
   } else if (message.type === "planApplied") {
     if (
@@ -629,7 +640,7 @@ async function createNodeGraphLiveWorkletNode(context) {
   if (!context.audioWorklet || typeof AudioWorkletNode === "undefined") {
     throw new Error("AudioWorklet unavailable");
   }
-  await context.audioWorklet.addModule("./public/node-live-audio-worklet.js?v=edge-starting-saw-1780317600000");
+  await context.audioWorklet.addModule("./public/node-live-audio-worklet.js?v=ear-protection-1780345200000");
   const workletNode = new AudioWorkletNode(
     context,
     "node-live-audio-processor",
@@ -650,6 +661,7 @@ function createNodeGraphLiveScriptProcessorNode(context, plan) {
   const scriptNode = context.createScriptProcessor(nodeGraphAudioBlockSize, 2, 2);
   scriptNode.onaudioprocess = renderNodeGraphLiveScriptBlock;
   nodeGraphMvp.live.runtime = createNodeGraphLiveRuntime(plan);
+  nodeGraphMvp.live.runtime.earProtector = createNodeGraphEarProtector(context.sampleRate);
   nodeGraphMvp.live.scriptNode = scriptNode;
   return scriptNode;
 }

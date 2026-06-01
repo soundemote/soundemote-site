@@ -1,12 +1,14 @@
-function setNodeGraphLiveMeter(peak = 0, rms = 0, clipCount = 0) {
+function setNodeGraphLiveMeter(peak = 0, rms = 0, clipCount = 0, protectionMuteCount = 0) {
   const meter = document.getElementById("nodeLiveMeter");
   if (!meter) {
     return;
   }
   const clipText = clipCount ? ` / ${nodeGraphOutputClipCountText(clipCount)}` : "";
-  meter.textContent = `live peak ${peak.toFixed(3)} / rms ${rms.toFixed(3)}${clipText}`;
+  const protectionText = protectionMuteCount ? ` / protected ${protectionMuteCount}` : "";
+  meter.textContent = `live peak ${peak.toFixed(3)} / rms ${rms.toFixed(3)}${clipText}${protectionText}`;
   meter.dataset.liveClips = String(clipCount);
-  meter.className = `pill ${clipCount ? "warn" : peak > 0.001 ? "good" : ""}`.trim();
+  meter.dataset.liveProtectionMutes = String(protectionMuteCount);
+  meter.className = `pill ${clipCount || protectionMuteCount ? "warn" : peak > 0.001 ? "good" : ""}`.trim();
 }
 
 function setNodeGraphLiveInputMeter(peak = 0, rms = 0) {

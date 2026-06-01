@@ -8,6 +8,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.meterClipCount = 0;
     this.meterCounter = 0;
     this.meterPeak = 0;
+    this.meterProtectionMuteCount = 0;
     this.meterSamples = 0;
     this.meterSquareSum = 0;
     this.modulationConnections = new Map();
@@ -22,7 +23,37 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.smoothers = new Map();
     this.spiralStates = new Map();
     this.triangleStates = new Map();
+    this.earProtector = this.createEarProtector(sampleRate);
     this.port.onmessage = (event) => this.handleMessage(event.data || {});
+  }
+
+  createEarProtector(rate = sampleRate) {
+    const threshold = Math.pow(10, 6 / 20);
+    const clipLimit = 0.8;
+    const increment = 1 / Math.max(1, 0.0005 * rate);
+    const decrement = 1 / Math.max(1, 0.15 * rate);
+    const hpAlpha = Math.exp(-2 * Math.PI * 1000 / Math.max(1, rate));
+    let counter = 0;
+    let previousHighPass = 0;
+    let previousInput = 0;
+    return {
+      protect: (left = 0, right = left) => {
+        const mono = ((Number(left) || 0) + (Number(right) || 0)) * 0.5;
+        const highPass = hpAlpha * (previousHighPass + mono - previousInput);
+        previousInput = mono;
+        previousHighPass = highPass;
+        if (Math.abs(highPass) >= threshold) {
+          counter += increment;
+        }
+        const gain = counter >= 1 ? 0 : 1;
+        counter = Math.max(0, Math.min(2, counter)) - decrement;
+        return {
+          left: this.clampValue((Number(left) || 0) * gain, -clipLimit, clipLimit),
+          muted: gain <= 0,
+          right: this.clampValue((Number(right) || 0) * gain, -clipLimit, clipLimit),
+        };
+      },
+    };
   }
 
   handleMessage(message) {
@@ -47,6 +78,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.meterClipCount = 0;
     this.meterCounter = 0;
     this.meterPeak = 0;
+    this.meterProtectionMuteCount = 0;
     this.meterSamples = 0;
     this.meterSquareSum = 0;
     this.modulationConnections = new Map();
@@ -768,8 +800,12 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       if (this.outputSampleClipped(frameOutput.right)) {
         this.meterClipCount += 1;
       }
-      const left = this.clampValue(frameOutput.left, -0.95, 0.95);
-      const right = this.clampValue(frameOutput.right, -0.95, 0.95);
+      const protectedFrame = this.earProtector.protect(frameOutput.left, frameOutput.right);
+      if (protectedFrame.muted) {
+        this.meterProtectionMuteCount += 1;
+      }
+      const left = this.clampValue(protectedFrame.left, -0.95, 0.95);
+      const right = this.clampValue(protectedFrame.right, -0.95, 0.95);
       this.meterPeak = Math.max(this.meterPeak, Math.abs(left), Math.abs(right));
       this.meterSquareSum += (left * left + right * right) * 0.5;
       this.meterSamples += 1;
@@ -785,6 +821,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         inputPeak: this.inputMeterPeak,
         inputRms: Math.sqrt(this.inputMeterSquareSum / Math.max(1, this.inputMeterSamples)),
         peak: this.meterPeak,
+        protectionMuteCount: this.meterProtectionMuteCount,
         sessionId: this.sessionId,
         rms: Math.sqrt(this.meterSquareSum / Math.max(1, this.meterSamples)),
         type: "meter",
@@ -795,6 +832,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       this.inputMeterSquareSum = 0;
       this.meterClipCount = 0;
       this.meterPeak = 0;
+      this.meterProtectionMuteCount = 0;
       this.meterSamples = 0;
       this.meterSquareSum = 0;
     }
