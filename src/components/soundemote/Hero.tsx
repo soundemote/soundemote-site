@@ -41,7 +41,10 @@ export const Hero = () => {
           Join Discord
         </a>
       </div>
-      <div className="w-fit mx-auto mt-16 animate-fade-in [animation-delay:200ms]">
+      <p className="mt-10 mono text-xs lowercase tracking-[0.1em] text-muted-foreground/60 text-center">
+        /* alpha v0.2.0 chaos update */
+      </p>
+      <div className="w-fit mx-auto mt-6 animate-fade-in [animation-delay:200ms]">
         <a href="/sandbox" className="group block">
           <img
             src={patchImage}
