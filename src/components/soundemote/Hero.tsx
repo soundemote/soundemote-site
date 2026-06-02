@@ -1,4 +1,5 @@
 import patchImage from "@/assets/soemdsp-patch.png";
+import { SandboxNavLink } from "@/components/soundemote/Nav";
 
 export const Hero = () => {
   return (
@@ -9,19 +10,9 @@ export const Hero = () => {
       <p className="mono mb-6 whitespace-nowrap text-base font-medium normal-case lowercase tracking-[0.16em] text-scope sm:text-2xl sm:tracking-[0.28em] md:text-3xl md:tracking-[0.35em] font-sans">
         ⋆⁺₊✧ soemdsp ✧₊⁺⋆
       </p>
-      <a
-        href="/sandbox"
-        className="mt-5 mx-auto inline-flex items-center gap-3 rounded-2xl border border-scope/30 bg-gradient-to-r from-scope/10 via-accent/10 to-scope/10 px-6 py-4 transition-all hover:border-scope/60 hover:shadow-[0_0_40px_hsl(var(--scope)/0.25)] animate-fade-in [animation-delay:100ms]"
-      >
-        <span className="relative flex h-3 w-3">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-scope opacity-75" />
-          <span className="relative inline-flex h-3 w-3 rounded-full bg-scope" />
-        </span>
-        <span className="mono text-xs lowercase tracking-[0.1em] text-scope text-glow">
-          live sandbox
-        </span>
-        <span className="mono text-xs text-muted-foreground/60 hidden sm:inline">→</span>
-      </a>
+      <div className="mt-5 flex justify-center text-base animate-fade-in [animation-delay:100ms]">
+        <SandboxNavLink href="/sandbox" label="app:(sandbox)" />
+      </div>
       <p className="mt-8 mx-auto max-w-xl text-lg leading-relaxed text-muted-foreground" />
       
       <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
