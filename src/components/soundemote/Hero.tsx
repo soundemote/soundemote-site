@@ -8,7 +8,7 @@ export const Hero = () => {
     <div className="absolute inset-0 bg-[var(--gradient-hero)]" aria-hidden />
     <div className="container relative max-w-3xl mx-auto text-center animate-fade-in">
       
-      <p className="mt-10 mono text-xs lowercase tracking-[0.1em] text-muted-foreground/60 text-center inline-flex flex-wrap items-center justify-center w-full">
+      <p className="mt-2 mono text-xs lowercase tracking-[0.1em] text-muted-foreground/60 text-center inline-flex flex-wrap items-center justify-center w-full">
         <span>/* alpha v0.2.0</span>
         <SandboxNavLink href="/sandbox" label="app:(sandbox)" /><span>update */</span>
       </p>
