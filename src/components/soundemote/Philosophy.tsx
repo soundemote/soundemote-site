@@ -11,7 +11,7 @@ const tenets = [
   },
   {
     n: "03",
-    title: "CPU and WebGL",
+    title: "CPU and GPU",
     body: "Use CPU rendering for precision and WebGL for speed, glow, scale, and live visual performance.",
   },
 ];
