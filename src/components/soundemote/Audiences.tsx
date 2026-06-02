@@ -19,9 +19,8 @@ const groups = [
     ),
     items: [
       "C++ DSP objects with SIMD-friendly internals",
-      "CLAP plugins and JUCE-based scaffolding",
+      "Audio plugin export",
       "Parameters, metadata, wires, and routing",
-      "MIT license — use it however you want",
     ],
     accent: "scope",
   },
