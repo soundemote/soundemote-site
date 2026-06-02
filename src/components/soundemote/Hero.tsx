@@ -7,10 +7,6 @@ export const Hero = () => {
     <div className="absolute inset-0 scope-grid opacity-40" aria-hidden />
     <div className="absolute inset-0 bg-[var(--gradient-hero)]" aria-hidden />
     <div className="container relative max-w-3xl mx-auto text-center animate-fade-in">
-      <p className="mono mb-6 whitespace-nowrap text-base font-medium normal-case lowercase tracking-[0.16em] text-scope sm:text-2xl sm:tracking-[0.28em] md:text-3xl md:tracking-[0.35em] font-sans">
-        ⋆⁺₊✧ soemdsp ✧₊⁺⋆
-      </p>
-      <p className="mt-8 mx-auto max-w-xl text-lg leading-relaxed text-muted-foreground" />
       
       <p className="mt-10 mono text-xs lowercase tracking-[0.1em] text-muted-foreground/60 text-center inline-flex flex-wrap items-center justify-center w-full">
         <span>/* alpha v0.2.0</span>
@@ -26,6 +22,9 @@ export const Hero = () => {
           />
         </a>
       </div>
+      <p className="mono mt-6 whitespace-nowrap text-base font-medium normal-case lowercase tracking-[0.16em] text-scope sm:text-2xl sm:tracking-[0.28em] md:text-3xl md:tracking-[0.35em] font-sans">
+        ⋆⁺₊✧ soemdsp ✧₊⁺⋆
+      </p>
     </div>
   </section>
   );
