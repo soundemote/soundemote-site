@@ -81,9 +81,19 @@ export const Hero = () => {
       <p className="mono mb-6 whitespace-nowrap text-base font-medium normal-case lowercase tracking-[0.16em] text-scope sm:text-2xl sm:tracking-[0.28em] md:text-3xl md:tracking-[0.35em] font-sans">
         ⋆⁺₊✧ soemdsp ✧₊⁺⋆
       </p>
-      <p className="mt-2 mx-auto inline-flex mono text-[0.625rem] uppercase tracking-[0.2em] text-muted-foreground/80">
-        /* SANDBOX ALPHA v0.1.1 */
-      </p>
+      <a
+        href="/sandbox"
+        className="mt-5 mx-auto inline-flex items-center gap-3 rounded-2xl border border-scope/30 bg-gradient-to-r from-scope/10 via-accent/10 to-scope/10 px-6 py-4 transition-all hover:border-scope/60 hover:shadow-[0_0_40px_hsl(var(--scope)/0.25)] animate-fade-in [animation-delay:100ms]"
+      >
+        <span className="relative flex h-3 w-3">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-scope opacity-75" />
+          <span className="relative inline-flex h-3 w-3 rounded-full bg-scope" />
+        </span>
+        <span className="mono text-xs uppercase tracking-[0.25em] text-scope text-glow">
+          ALPHA v0.2.0 — CHAOS UPDATE — LIVE NOW
+        </span>
+        <span className="mono text-xs text-muted-foreground/60 hidden sm:inline">→</span>
+      </a>
       <p className="mt-8 mx-auto max-w-xl text-lg leading-relaxed text-muted-foreground" />
       
       <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
