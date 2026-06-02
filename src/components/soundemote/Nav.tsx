@@ -65,7 +65,7 @@ function SparkTilde({
   );
 }
 
-function SandboxNavLink({ href, label }: { href: string; label: string }) {
+export function SandboxNavLink({ href, label }: { href: string; label: string }) {
   const [hovered, setHovered] = useState(false);
   const [bursts, setBursts] = useState<Burst[]>([]);
   const nextBurstIdRef = useRef(0);
