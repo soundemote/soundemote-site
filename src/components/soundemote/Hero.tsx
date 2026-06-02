@@ -22,6 +22,9 @@ export const Hero = () => {
           />
         </a>
       </div>
+      <p className="mono mt-6 whitespace-nowrap text-base font-medium normal-case lowercase tracking-[0.16em] text-scope sm:text-2xl sm:tracking-[0.28em] md:text-3xl md:tracking-[0.35em] font-sans">
+        ⋆⁺₊✧ soemdsp ✧₊⁺⋆
+      </p>
     </div>
   </section>
   );
