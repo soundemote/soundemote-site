@@ -17,8 +17,8 @@ export const Hero = () => {
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-scope opacity-75" />
           <span className="relative inline-flex h-3 w-3 rounded-full bg-scope" />
         </span>
-        <span className="mono text-xs uppercase tracking-[0.25em] text-scope text-glow">
-          ALPHA v0.2.0 — CHAOS UPDATE — LIVE NOW
+        <span className="mono text-xs lowercase tracking-[0.1em] text-scope text-glow">
+          /* alpha v0.2.0 chaos update */
         </span>
         <span className="mono text-xs text-muted-foreground/60 hidden sm:inline">→</span>
       </a>
