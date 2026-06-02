@@ -47,6 +47,7 @@ export const Hero = () => {
       <div className="w-fit mx-auto mt-6 animate-fade-in [animation-delay:200ms]">
         <a href="/sandbox" className="group block">
           <img
+            id="hero-patch-image"
             src={patchImage}
             alt="soemdsp modular patch — oscillators, noise, gain and output nodes"
             className="w-[36rem] max-w-[calc(100vw-3rem)] rounded-xl border border-border/60 shadow-[0_0_40px_hsl(var(--scope)/0.15)] transition-all group-hover:border-scope/50 group-hover:shadow-[0_0_60px_hsl(var(--scope)/0.3)]"
