@@ -10,9 +10,6 @@ export const Hero = () => {
       <p className="mono mb-6 whitespace-nowrap text-base font-medium normal-case lowercase tracking-[0.16em] text-scope sm:text-2xl sm:tracking-[0.28em] md:text-3xl md:tracking-[0.35em] font-sans">
         ⋆⁺₊✧ soemdsp ✧₊⁺⋆
       </p>
-      <div className="mt-5 flex justify-center text-base animate-fade-in [animation-delay:100ms]">
-        <SandboxNavLink href="/sandbox" label="app:(sandbox)" />
-      </div>
       <p className="mt-8 mx-auto max-w-xl text-lg leading-relaxed text-muted-foreground" />
       
       <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
@@ -32,8 +29,10 @@ export const Hero = () => {
           Join Discord
         </a>
       </div>
-      <p className="mt-10 mono text-xs lowercase tracking-[0.1em] text-muted-foreground/60 text-center">
-        /* alpha v0.2.0 chaos update */
+      <p className="mt-10 mono text-xs lowercase tracking-[0.1em] text-muted-foreground/60 text-center inline-flex flex-wrap items-center justify-center gap-1 w-full">
+        <span>/* alpha v0.2.0</span>
+        <SandboxNavLink href="/sandbox" label="app:(sandbox)" />
+        <span>update */</span>
       </p>
       <div className="w-fit mx-auto mt-6 animate-fade-in [animation-delay:200ms]">
         <a href="/sandbox" className="group block">
