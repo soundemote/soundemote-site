@@ -15,7 +15,7 @@ const groups = [
     label: "for artists",
     displayLabel: "〜 ♪ for artists ♪ 〜",
     labelClass: "text-accent",
-    title: "Tools that show you what you hear.",
+    title: "See an algorithm in realtime or in slow motion.",
     items: [
       "Hardware acceleration for a vibrant animated interface",
       "Aesthetic oscilloscopes, waveform visualizers, and visual fx",
