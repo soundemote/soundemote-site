@@ -17,6 +17,7 @@ const groups = [
     labelClass: "text-accent",
     title: "Tools that show you what you hear.",
     items: [
+      "Hardware acceleration for a vibrant animated interface",
       "Aesthetic oscilloscopes, waveform visualizers, and visual fx",
       "Expressive synths designed by eye and ear",
       "Recordable plugin window for clips and screenshots",
