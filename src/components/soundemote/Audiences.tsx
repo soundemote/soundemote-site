@@ -3,20 +3,7 @@ const groups = [
     label: "for developers",
     displayLabel: "/* for developers */",
     labelClass: "text-muted-foreground",
-    title: (
-      <>
-        Build with{" "}
-        <a
-          href="https://github.com/soundemote/soemdsp"
-          target="_blank"
-          rel="noreferrer"
-          className="text-scope transition-colors hover:text-scope-glow"
-        >
-          soemdsp
-        </a>{" "}
-        primitives or link to your own.
-      </>
-    ),
+    title: "light weight c++ library inspired by c style programming",
     items: [
       "C++ DSP objects with SIMD-friendly internals",
       "Audio plugin export",
