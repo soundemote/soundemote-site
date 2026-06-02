@@ -31,8 +31,7 @@ export const Hero = () => {
       </div>
       <p className="mt-10 mono text-xs lowercase tracking-[0.1em] text-muted-foreground/60 text-center inline-flex flex-wrap items-center justify-center w-full">
         <span>/* alpha v0.2.0</span>
-        <SandboxNavLink href="/sandbox" label="app:(sandbox)" />
-        <span>update */</span>
+        <SandboxNavLink href="/sandbox" label="app:(sandbox)" /><span>update */</span>
       </p>
       <div className="w-fit mx-auto mt-6 animate-fade-in [animation-delay:200ms]">
         <a href="/sandbox" className="group block">
