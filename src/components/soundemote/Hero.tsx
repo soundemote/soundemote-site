@@ -12,23 +12,6 @@ export const Hero = () => {
       </p>
       <p className="mt-8 mx-auto max-w-xl text-lg leading-relaxed text-muted-foreground" />
       
-      <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-        <a
-          href="#projects"
-          className="group inline-flex items-center gap-2 rounded-full bg-scope px-6 py-3 mono text-xs uppercase tracking-[0.2em] text-primary-foreground transition-all hover:shadow-[0_0_30px_hsl(var(--scope)/0.6)]"
-        >
-          Explore Projects
-          <span className="transition-transform group-hover:translate-x-1">→</span>
-        </a>
-        <a
-          href="https://discord.gg/hjpBC8kZ3s"
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-2 rounded-full border border-border px-6 py-3 mono text-xs uppercase tracking-[0.2em] text-warm-white hover:border-scope/60 hover:text-scope transition-colors"
-        >
-          Join Discord
-        </a>
-      </div>
       <p className="mt-10 mono text-xs lowercase tracking-[0.1em] text-muted-foreground/60 text-center inline-flex flex-wrap items-center justify-center w-full">
         <span>/* alpha v0.2.0</span>
         <SandboxNavLink href="/sandbox" label="app:(sandbox)" /><span>update */</span>
