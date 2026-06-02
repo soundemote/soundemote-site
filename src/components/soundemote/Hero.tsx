@@ -29,7 +29,7 @@ export const Hero = () => {
           Join Discord
         </a>
       </div>
-      <p className="mt-10 mono text-xs lowercase tracking-[0.1em] text-muted-foreground/60 text-center inline-flex flex-wrap items-center justify-center gap-1 w-full">
+      <p className="mt-10 mono text-xs lowercase tracking-[0.1em] text-muted-foreground/60 text-center inline-flex flex-wrap items-center justify-center w-full">
         <span>/* alpha v0.2.0</span>
         <SandboxNavLink href="/sandbox" label="app:(sandbox)" />
         <span>update */</span>
