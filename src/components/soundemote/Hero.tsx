@@ -3,7 +3,7 @@ import { SandboxNavLink } from "@/components/soundemote/Nav";
 
 export const Hero = () => {
   return (
-  <section id="top" className="relative overflow-hidden pt-16 pb-20 md:pt-24 md:pb-28">
+  <section id="top" className="relative overflow-hidden pt-4 pb-20 md:pt-6 md:pb-28">
     <div className="absolute inset-0 scope-grid opacity-40" aria-hidden />
     <div className="absolute inset-0 bg-[var(--gradient-hero)]" aria-hidden />
     <div className="container relative max-w-3xl mx-auto text-center animate-fade-in">
