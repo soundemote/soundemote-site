@@ -71,8 +71,10 @@ export const StarField = () => {
     const getScopeHitbox = (now: number): ScopeHitbox | null => {
       if (now - lastScrollAt < 250) return null;
 
-      const scopeCanvas = document.querySelector<HTMLCanvasElement>("#hero-oscilloscope canvas");
-      const rect = scopeCanvas?.getBoundingClientRect();
+      const target =
+        document.querySelector<HTMLElement>("#hero-patch-image") ??
+        document.querySelector<HTMLCanvasElement>("#hero-oscilloscope canvas");
+      const rect = target?.getBoundingClientRect();
       if (
         !rect ||
         rect.right <= 0 ||

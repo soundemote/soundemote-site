@@ -65,7 +65,7 @@ function SparkTilde({
   );
 }
 
-function SandboxNavLink({ href, label }: { href: string; label: string }) {
+export function SandboxNavLink({ href, label }: { href: string; label: string }) {
   const [hovered, setHovered] = useState(false);
   const [bursts, setBursts] = useState<Burst[]>([]);
   const nextBurstIdRef = useRef(0);
@@ -178,14 +178,6 @@ export const Nav = () => (
           </li>
         ))}
       </ul>
-      <a
-        href="https://discord.gg/hjpBC8kZ3s"
-        target="_blank"
-        rel="noreferrer"
-        className="mono text-xs uppercase tracking-[0.18em] rounded-full border border-scope/40 px-4 py-2 text-scope hover:bg-scope/10 transition-colors"
-      >
-        Discord
-      </a>
     </nav>
   </header>
 );

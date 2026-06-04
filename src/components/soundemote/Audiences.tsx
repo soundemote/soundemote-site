@@ -3,25 +3,11 @@ const groups = [
     label: "for developers",
     displayLabel: "/* for developers */",
     labelClass: "text-muted-foreground",
-    title: (
-      <>
-        Build with{" "}
-        <a
-          href="https://github.com/soundemote/soemdsp"
-          target="_blank"
-          rel="noreferrer"
-          className="text-scope transition-colors hover:text-scope-glow"
-        >
-          soemdsp
-        </a>{" "}
-        primitives or link to your own.
-      </>
-    ),
+    title: "light weight c++ library inspired by c style programming",
     items: [
       "C++ DSP objects with SIMD-friendly internals",
-      "CLAP plugins and JUCE-based scaffolding",
+      "Audio plugin export",
       "Parameters, metadata, wires, and routing",
-      "MIT license — use it however you want",
     ],
     accent: "scope",
   },
@@ -29,8 +15,9 @@ const groups = [
     label: "for artists",
     displayLabel: "〜 ♪ for artists ♪ 〜",
     labelClass: "text-accent",
-    title: "Tools that show you what you hear.",
+    title: "See an algorithm in realtime or in slow motion.",
     items: [
+      "Hardware acceleration for a vibrant animated interface",
       "Aesthetic oscilloscopes, waveform visualizers, and visual fx",
       "Expressive synths designed by eye and ear",
       "Recordable plugin window for clips and screenshots",
