@@ -310,6 +310,41 @@ function nodeGraphEvaluateCodeblock(runtime, node, mixInput) {
   }
 }
 
+function nodeGraphEvaluateModuleGroup(runtime, node, mixInput, sampleRate, frame, frames) {
+  const group = node.moduleGroup?.kind === "moduleGroup"
+    ? node.moduleGroup
+    : normalizeNodeGraphModuleGroup(node.moduleGroup);
+  if (!group.sourcePatch) {
+    return {};
+  }
+  let groupRuntime = runtime.moduleGroupRuntimes?.get(node.id);
+  if (!groupRuntime) {
+    try {
+      groupRuntime = createNodeGraphLiveRuntime(nodeGraphBuildLivePlanForPatch(group.sourcePatch));
+      runtime.moduleGroupRuntimes?.set(node.id, groupRuntime);
+    } catch (error) {
+      nodeGraphMarkRuntimeBadNumber(runtime, node.id, `module group plan error ${error?.message || ""}`);
+      return {};
+    }
+  }
+  groupRuntime.externalGroupInputs = new Map(
+    group.inputs.map((input) => [input.nodeId, mixInput(node.id, input.name)]),
+  );
+  const groupFrame = evaluateNodeGraphPlanFrame(groupRuntime, sampleRate, frame, frames);
+  const output = {};
+  for (const endpoint of group.outputs) {
+    output[endpoint.name] = readNodeGraphRuntimePortOutput(
+      groupRuntime,
+      groupFrame.frameValues,
+      endpoint.nodeId,
+      endpoint.port || "Out",
+      frame,
+      frames,
+    );
+  }
+  return output;
+}
+
 function nodeGraphVisualControlIntensity(value, runtime, nodeId, source = "visual control") {
   const safeValue = nodeGraphSafeFilterNumber(value, runtime, nodeId, null, source);
   return clampNodeSliderValue(Math.abs(safeValue), 0, 1);
@@ -1442,7 +1477,11 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
     const node = runtime.nodes.get(nodeId);
     let value = 0;
 
-    if (node?.type === "audioInput") {
+    if (node?.type === "groupInput") {
+      value = {
+        Out: Number(runtime.externalGroupInputs?.get(nodeId)) || 0,
+      };
+    } else if (node?.type === "audioInput") {
       const input = runtime.externalInput || {};
       const leftChannel = input.left || input.right || null;
       const rightChannel = input.right || input.left || null;
@@ -1852,6 +1891,7 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
       const keyboardRate = Math.max(1, Number(sampleRate) || nodeGraphMvp.sampleRate || 44100);
       value = {
         "1 Sample Gate": Number(signal?.gatePulse) > 0 ? 1 : 0,
+        "0.1V/Oct": Math.max(0, Math.min(1, Number(signal?.tenthVoltPerOctave) || midi / 120)),
         Double: Math.max(0, Math.min(1, Number(signal?.midiNormalized) || midi / 127)),
         Frequency: frequency,
         Gate: Number(signal?.gate) > 0 ? 1 : 0,
@@ -1886,6 +1926,8 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         frames,
         frameValues,
       );
+    } else if (node?.type === "moduleGroup") {
+      value = nodeGraphEvaluateModuleGroup(runtime, node, mixInput, sampleRate, frame, frames);
     } else if (node?.type === "codeblock") {
       value = nodeGraphEvaluateCodeblock(runtime, node, mixInput);
     } else if (node?.type === "graph") {
@@ -2313,6 +2355,30 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
       };
     } else if (node?.type === "badvalMonitor") {
       value = nodeGraphBadValueMonitorSample(mixInput(nodeId), runtime, nodeId);
+    } else if (node?.type === "groupOutput") {
+      value = {
+        Out: mixInput(nodeId, "In"),
+      };
+    } else if (node?.type === "clapPlugin") {
+      const externalOutput = runtime.externalClapOutputs?.get(nodeId);
+      if (externalOutput) {
+        const absoluteFrame = Number.isFinite(runtime.absoluteFrame) ? runtime.absoluteFrame : frame;
+        value = {};
+        for (const [port, samples] of Object.entries(externalOutput)) {
+          value[port] = nodeGraphSafeFilterNumber(
+            Number(samples?.[absoluteFrame]) || 0,
+            runtime,
+            nodeId,
+            null,
+            `CLAP ${port} output`,
+          );
+        }
+      } else {
+        value = {
+          Left: 0,
+          Right: 0,
+        };
+      }
     } else if (node?.type === "output") {
       const mono = mixInput(nodeId, "Mono");
       const left = mixInput(nodeId, "Left");

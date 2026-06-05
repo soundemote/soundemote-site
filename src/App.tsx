@@ -9,6 +9,7 @@ import CircleTestPage from "./pages/CircleTestPage.tsx";
 import OscilloscopePage from "./pages/OscilloscopePage.tsx";
 import ScopeScratchPage from "./pages/ScopeScratchPage.tsx";
 import SandboxPage from "./pages/SandboxPage.tsx";
+import AVWResearch from "./pages/AVWResearch.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -26,6 +27,7 @@ const App = () => (
           <Route path="/oscilloscope" element={<OscilloscopePage />} />
           <Route path="/scope-scratch" element={<ScopeScratchPage />} />
           <Route path="/sandbox" element={<SandboxPage />} />
+          <Route path="/avw-research" element={<AVWResearch />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

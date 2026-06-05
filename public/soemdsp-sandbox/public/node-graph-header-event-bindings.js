@@ -21,18 +21,9 @@ function bindNodeGraphHeaderControlEvents() {
   document.getElementById("nodeGlobalScopeMenuButton").addEventListener("click", toggleNodeGlobalScopeMenu);
   document.getElementById("nodeGlobalScopeCloseMenu").addEventListener("click", closeNodeGlobalScopeMenu);
   document.getElementById("nodeGlobalScopeDragHandle").addEventListener("pointerdown", beginNodeGlobalScopeMenuDrag);
-  document.getElementById("nodeMasterScopeBackgroundOverride").addEventListener("click", () => {
-    setNodeGraphModuleScopeBackgroundOverride(!nodeGraphMvp.moduleScopeBackgroundOverride);
-  });
   document
     .getElementById("nodeMasterScopeBackgroundColor")
     .addEventListener("input", (event) => setNodeGraphModuleScopeBackgroundColor(event.currentTarget.value));
-  document
-    .getElementById("nodeMasterScopeBrightness")
-    .addEventListener("input", handleNodeGraphModuleScopeBrightnessInput);
-  document
-    .getElementById("nodeMasterScopeBrightness")
-    .addEventListener("change", handleNodeGraphModuleScopeBrightnessInput);
   document
     .getElementById("nodeMasterScopeBurn")
     .addEventListener("input", handleNodeGraphModuleScopeBurnInput);
@@ -45,12 +36,6 @@ function bindNodeGraphHeaderControlEvents() {
   document
     .getElementById("nodeMasterScopeFps")
     .addEventListener("change", handleNodeGraphModuleScopeFramesPerSecondInput);
-  document
-    .getElementById("nodeMasterScopeTraceColor")
-    .addEventListener("input", (event) => setNodeGraphModuleScopeTraceColor(event.currentTarget.value));
-  document
-    .getElementById("nodeMasterScopeTraceColor")
-    .addEventListener("change", (event) => setNodeGraphModuleScopeTraceColor(event.currentTarget.value));
   document
     .getElementById("nodeMasterScopeDotCore1Size")
     .addEventListener("input", (event) => setNodeGraphModuleScopeDotCore1Size(event.currentTarget.value));
@@ -160,12 +145,6 @@ function bindNodeGraphHeaderControlEvents() {
   document
     .getElementById("nodeModularOnlyViewButton")
     .addEventListener("click", () => setNodeGraphViewMode("modular-only"));
-  document
-    .getElementById("nodeUiViewButton")
-    .addEventListener("click", () => {
-      const uiVisible = nodeGraphUiViewIsActive();
-      setNodeGraphViewMode(uiVisible ? "modular" : "ui");
-    });
   document
     .getElementById("nodeSnapGridViewButton")
     .addEventListener("click", handleNodeGraphSnapGridButtonClick);

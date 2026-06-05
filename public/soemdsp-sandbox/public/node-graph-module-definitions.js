@@ -2,6 +2,9 @@ const nodeGraphNodeLabels = Object.freeze({
   audioInput: "Input",
   codeblock: "Codeblock",
   graph: "Graph",
+  groupInput: "Group Input",
+  groupOutput: "Group Output",
+  moduleGroup: "Module Group",
   osc: "Osc",
   clock: "Clock",
   clockDivider: "Clock Divider",
@@ -16,6 +19,7 @@ const nodeGraphNodeLabels = Object.freeze({
   noiseGenerator: "Noise Generator",
   randomWalk: "Random Walk",
   fractalBrownianNoise: "Fractal Brownian Noise",
+  clapPlugin: "CLAP Plugin",
   gain: "Gain",
   bias: "Bias",
   valueSlider: "Value Slider",
@@ -73,6 +77,20 @@ const nodeGraphModuleDefinitions = Object.freeze({
     inputs: ["In"],
     layout: "graph",
     outputs: ["Out"],
+    parameters: [],
+  },
+  groupInput: {
+    outputs: ["Out"],
+    parameters: [],
+  },
+  groupOutput: {
+    inputs: ["In"],
+    outputs: ["Out"],
+    parameters: [],
+  },
+  moduleGroup: {
+    inputs: [],
+    outputs: [],
     parameters: [],
   },
   osc: {
@@ -528,6 +546,13 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { defaultValue: "1", key: "level", label: "Level", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any" },
     ],
   },
+  clapPlugin: {
+    inputs: ["Left", "Right"],
+    layout: "clapPlugin",
+    outputs: ["Left", "Right"],
+    parameters: [],
+    scopeInputPort: "",
+  },
   gain: {
     inputs: ["In"],
     outputs: ["Out"],
@@ -838,7 +863,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
     parameters: [],
   },
   keyboardController: {
-    outputs: ["Gate", "1 Sample Gate", "Key", "Q", "MIDI", "Double", "Increment", "Frequency", "Pitch", "X", "Y"],
+    outputs: ["Gate", "1 Sample Gate", "Key", "Q", "MIDI", "Double", "0.1V/Oct", "Increment", "Frequency", "Pitch", "X", "Y"],
     parameters: [],
   },
   macroControls: {

@@ -102,7 +102,7 @@ function nodeGraphApplyParameterModulation(base, modulationSignal, metadata = {}
 
 function readNodeGraphRuntimePortOutput(runtime, frameValues, nodeId, port = "Out", frame = 0, frames = 1) {
   const node = runtime.nodes?.get(nodeId);
-  const parameter = nodeGraphParameterOutputPort(node?.type, port);
+  const parameter = nodeGraphParameterOutputPort(node, port);
   if (!parameter) {
     return readNodeGraphRuntimeOutput(runtime, frameValues, nodeId, port);
   }

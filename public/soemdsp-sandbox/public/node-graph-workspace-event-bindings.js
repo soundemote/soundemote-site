@@ -7,6 +7,9 @@ function bindNodeGraphWorkspaceInteractionEvents() {
     .addEventListener("contextmenu", openNodeSceneContextMenu);
   document
     .getElementById("nodeGraphWorkspace")
+    .addEventListener("pointerdown", beginNodeSliderDrag, true);
+  document
+    .getElementById("nodeGraphWorkspace")
     .addEventListener("pointerdown", completeNodeGraphModulePlacement, true);
   document
     .getElementById("nodeGraphWorkspace")

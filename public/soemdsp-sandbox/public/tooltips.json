@@ -16,7 +16,6 @@
   },
   "view": {
     "patchSettings": "Patch settings",
-    "uiViewDevelopment": "UI View is in development",
     "midiKeyboardDevelopment": "Show or hide the mouse-playable keyboard panel.",
     "switchView": "Mouse: click to switch view.",
     "zoomIn": "Zoom in. Click for the next integer zoom level; Shift-click adds 0.25; Ctrl/Cmd-click adds 0.10.",

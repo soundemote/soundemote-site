@@ -138,7 +138,185 @@ function markNodeGraphRenderPending(summary = "") {
   drawNodeRenderedAudio();
 }
 
-function renderNodeGraphAudio() {
+function nodeGraphPlanClapRenderNodes(plan) {
+  const reachableNodeIds = new Set(plan.reachableNodes || plan.order || []);
+  const nodeOrder = new Map((plan.order || []).map((nodeId, index) => [nodeId, index]));
+  return (plan.nodes || [])
+    .filter((node) =>
+      node?.type === "clapPlugin" &&
+      normalizeNodeGraphClapPluginBinding(node.clap).instanceId &&
+      (!reachableNodeIds.size || reachableNodeIds.has(node.id))
+    )
+    .sort((a, b) =>
+      (nodeOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+      (nodeOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+    );
+}
+
+function nodeGraphClapProcessChunkFrames() {
+  return 48000;
+}
+
+function nodeGraphReadRuntimeInputPort(runtime, frameValues, nodeId, port, frame, frames) {
+  const connections = runtime.inputConnections.get(nodeGraphInputKey(nodeId, port)) || [];
+  return connections.reduce(
+    (sum, connection) => sum + readNodeGraphRuntimePortOutput(
+      runtime,
+      frameValues,
+      connection.sourceNode,
+      connection.sourcePort,
+      frame,
+      frames,
+    ),
+    0,
+  );
+}
+
+function nodeGraphClapRenderParameterEntries(clapNode) {
+  return Object.entries(clapNode.paramMeta || {})
+    .map(([key, metadata]) => {
+      const parameterId = Number(metadata?.clapParamId);
+      const storedValue = Number(clapNode.params?.[key]);
+      const defaultValue = Number(metadata?.def);
+      return {
+        key,
+        paramId: Number.isFinite(parameterId) ? Math.round(parameterId) : undefined,
+        value: Number.isFinite(storedValue) ? storedValue : defaultValue,
+      };
+    })
+    .filter((entry) => Number.isFinite(entry.paramId) && Number.isFinite(entry.value));
+}
+
+function nodeGraphRenderClapParameterValues(runtime, clapNode, entries, frame, frames, frameValues) {
+  return entries.map((entry) => ({
+    ...entry,
+    value: readNodeGraphLiveEffectiveParam(
+      runtime,
+      clapNode,
+      entry.key,
+      entry.value,
+      frame,
+      frames,
+      frameValues,
+    ),
+  }));
+}
+
+async function nodeGraphSyncClapRenderParameters(binding, entries) {
+  const parameters = (entries || [])
+    .map((entry) => ({
+      paramId: entry.paramId,
+      value: entry.value,
+    }))
+    .filter((entry) => Number.isFinite(entry.paramId) && Number.isFinite(entry.value));
+  if (!parameters.length) {
+    return;
+  }
+  const payload = await postNodeGraphClapHostJson(
+    `/instances/${encodeURIComponent(binding.instanceId)}/params`,
+    { parameters },
+    5000,
+  );
+  if (payload?.ok !== true) {
+    throw new Error(`CLAP parameter sync failed for ${binding.instanceId}`);
+  }
+}
+
+async function nodeGraphRenderExternalClapOutputs(plan, engineSampleRate, engineFrames) {
+  const clapNodes = nodeGraphPlanClapRenderNodes(plan);
+  const outputs = new Map();
+  if (!clapNodes.length) {
+    return outputs;
+  }
+  if (nodeGraphClapHostState.status !== "connected" || typeof postNodeGraphClapHostJson !== "function") {
+    throw new Error("CLAP host is not connected");
+  }
+
+  for (const clapNode of clapNodes) {
+    const binding = normalizeNodeGraphClapPluginBinding(clapNode.clap);
+    const parameterEntries = nodeGraphClapRenderParameterEntries(clapNode);
+    const inputPorts = nodeGraphPatchNodeClapAudioInputPorts(clapNode);
+    const outputPorts = nodeGraphPatchNodeClapAudioOutputPorts(clapNode);
+    const inputAudio = inputPorts.map(() => new Array(engineFrames).fill(0));
+    const chunkFrames = nodeGraphClapProcessChunkFrames();
+    const parameterChunks = new Map();
+    const preRuntime = createNodeGraphLiveRuntime(plan);
+    preRuntime.externalClapOutputs = outputs;
+    for (let blockStart = 0; blockStart < engineFrames; blockStart += nodeGraphAudioBlockSize) {
+      const blockFrames = Math.min(nodeGraphAudioBlockSize, engineFrames - blockStart);
+      for (let blockFrame = 0; blockFrame < blockFrames; blockFrame += 1) {
+        const frame = blockStart + blockFrame;
+        preRuntime.absoluteFrame = frame;
+        const frameOutput = evaluateNodeGraphPlanFrame(
+          preRuntime,
+          engineSampleRate,
+          blockFrame,
+          blockFrames,
+        );
+        if (parameterEntries.length && frame % chunkFrames === 0) {
+          parameterChunks.set(
+            frame,
+            nodeGraphRenderClapParameterValues(
+              preRuntime,
+              clapNode,
+              parameterEntries,
+              blockFrame,
+              blockFrames,
+              frameOutput.frameValues,
+            ),
+          );
+        }
+        for (let portIndex = 0; portIndex < inputPorts.length; portIndex += 1) {
+          inputAudio[portIndex][frame] = nodeGraphReadRuntimeInputPort(
+            preRuntime,
+            frameOutput.frameValues,
+            clapNode.id,
+            inputPorts[portIndex],
+            blockFrame,
+            blockFrames,
+          );
+        }
+      }
+      finishNodeGraphParameterSmoothing(preRuntime.smoothers);
+    }
+
+    const outputAudio = outputPorts.map(() => new Float32Array(engineFrames));
+    for (let start = 0; start < engineFrames; start += chunkFrames) {
+      const frames = Math.min(chunkFrames, engineFrames - start);
+      await nodeGraphSyncClapRenderParameters(
+        binding,
+        parameterChunks.get(start) || parameterEntries,
+      );
+      const payload = await postNodeGraphClapHostJson(
+        `/instances/${encodeURIComponent(binding.instanceId)}/process`,
+        {
+          frames,
+          inputAudio: inputAudio.map((channel) => channel.slice(start, start + frames)),
+          returnAudio: true,
+          sampleRate: engineSampleRate,
+        },
+        20000,
+      );
+      if (payload?.ok !== true || payload.audioReturned !== true || !Array.isArray(payload.audio)) {
+        throw new Error(`CLAP process failed for ${nodeGraphPatchNodeTitle(clapNode)}`);
+      }
+      for (let portIndex = 0; portIndex < outputAudio.length; portIndex += 1) {
+        const source = Array.isArray(payload.audio[portIndex]) ? payload.audio[portIndex] : [];
+        for (let frame = 0; frame < frames; frame += 1) {
+          outputAudio[portIndex][start + frame] = nodeGraphClampOutputSample(Number(source[frame]) || 0);
+        }
+      }
+    }
+
+    outputs.set(
+      clapNode.id,
+      Object.fromEntries(outputPorts.map((port, index) => [port, outputAudio[index]])),
+    );
+  }
+  return outputs;
+}
+
+async function renderNodeGraphAudio() {
   if (nodeGraphEarProtectionIsTripped()) {
     nodeGraphTripEarProtection({ source: "render" });
     return;
@@ -178,7 +356,29 @@ function renderNodeGraphAudio() {
   const engineRightSamples = new Float32Array(engineFrames);
   const plan = nodeGraphBuildLivePlan();
   const stateReadCount = nodeGraphStateReadCount(plan);
+  let externalClapOutputs = new Map();
+  try {
+    renderStatus.textContent = "rendering";
+    renderStatus.className = "pill";
+    externalClapOutputs = await nodeGraphRenderExternalClapOutputs(plan, engineSampleRate, engineFrames);
+  } catch (error) {
+    nodeGraphMvp.rendered = null;
+    clearNodeGraphModuleScopeBuffers();
+    clearNodeGraphRenderedAudioElement();
+    labelPrimaryAudioTitle("Fix CLAP host before rendering", false);
+    renderStatus.textContent = "render blocked";
+    renderStatus.className = "pill warn";
+    setNodeGraphAudioStats();
+    const outputSummary = document.getElementById("nodeOutputSummary");
+    if (outputSummary) {
+      outputSummary.textContent = `CLAP render blocked: ${error?.message || error}`;
+    }
+    renderNodeGraphExecutionPlanDebug();
+    drawNodeRenderedAudio();
+    return;
+  }
   const runtime = createNodeGraphLiveRuntime(plan);
+  runtime.externalClapOutputs = externalClapOutputs;
   const scopeCapture = beginNodeGraphRenderedScopeCapture({
     frames: engineFrames,
     patch: nodeGraphMvp.patch,
@@ -193,6 +393,7 @@ function renderNodeGraphAudio() {
     const blockFrames = Math.min(nodeGraphAudioBlockSize, engineFrames - blockStart);
     for (let blockFrame = 0; blockFrame < blockFrames; blockFrame += 1) {
       const frame = blockStart + blockFrame;
+      runtime.absoluteFrame = frame;
       const frameOutput = evaluateNodeGraphPlanFrame(
         runtime,
         engineSampleRate,

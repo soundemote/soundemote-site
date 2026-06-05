@@ -27,7 +27,7 @@ function bindNodeGraphSceneMenuEvents() {
     .addEventListener("click", saveNodeGraphSelectionAsModuleGroup);
   document
     .getElementById("nodeSceneAddToUi")
-    .addEventListener("click", addNodeGraphModuleToUiFromContext);
+    ?.addEventListener("click", addNodeGraphModuleToUiFromContext);
   document
     .getElementById("nodeSceneWidthDecrease")
     .addEventListener("click", () => adjustNodeGraphModuleWidthFromContext(-1));

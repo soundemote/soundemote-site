@@ -19,6 +19,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.pitchModWheelSignal = { mod: 0, pitch: 0 };
     this.midiKeyboardGatePulseSamples = 0;
     this.midiKeyboardSignal = null;
+    this.moduleGroupRuntimes = new Map();
     this.modulationConnections = new Map();
     this.nodeOutputs = new Map();
     this.nodes = new Map();
@@ -198,6 +199,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.pitchModWheelSignal = { mod: 0, pitch: 0 };
     this.midiKeyboardGatePulseSamples = 0;
     this.midiKeyboardSignal = null;
+    this.moduleGroupRuntimes = new Map();
     this.modulationConnections = new Map();
     this.nodeOutputs = new Map();
     this.nodes = new Map();
@@ -255,6 +257,8 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.nodes = new Map(nodes.map((node) => [node.id, {
       id: node.id,
       codeblock: this.normalizeCodeblock(node.codeblock),
+      moduleGroup: node.moduleGroup || null,
+      moduleGroupPlan: node.moduleGroupPlan || null,
       paramMeta: node.paramMeta || {},
       params: node.params || {},
       scopeInputPort: node.scopeInputPort || "",
@@ -366,6 +370,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       }
       if (node?.type === "vactrolEnvelope" && !this.vactrolEnvelopeStates.has(id)) {
         this.vactrolEnvelopeStates.set(id, this.createVactrolEnvelopeState());
+      }
+      if (node?.type === "moduleGroup" && node.moduleGroupPlan && !this.moduleGroupRuntimes.has(id)) {
+        this.moduleGroupRuntimes.set(id, this.createNestedRuntime(node.moduleGroupPlan));
       }
       for (const [key, value] of Object.entries(node?.params || {})) {
         const smootherKey = this.parameterKey(id, key);
@@ -535,6 +542,11 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         this.vactrolEnvelopeStates.delete(id);
       }
     }
+    for (const id of [...this.moduleGroupRuntimes.keys()]) {
+      if (!ids.has(id)) {
+        this.moduleGroupRuntimes.delete(id);
+      }
+    }
     for (const key of [...this.smoothers.keys()]) {
       const [nodeId, parameter] = key.split(".");
       if (!ids.has(nodeId) || !(parameter in (this.nodes.get(nodeId)?.params || {}))) {
@@ -627,6 +639,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       midi,
       pitchValue: this.clampValue(Number(source.pitchValue) || midi, 0, 127),
       midiNormalized: this.clampValue(Number(source.midiNormalized) || midi / 127, 0, 1),
+      tenthVoltPerOctave: this.clampValue(Number(source.tenthVoltPerOctave) || midi / 120, 0, 1),
       increment: Math.max(0, Number(source.increment) || frequency / Math.max(1, this.engineSampleRate || sampleRate)),
       frequency,
     };
@@ -963,6 +976,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       smoother.current = smoother.wraparound
         ? this.wrapValue(smoother.target, smoother.min, smoother.max)
         : smoother.target;
+    }
+    for (const runtime of this.moduleGroupRuntimes?.values?.() || []) {
+      runtime.finishSmoothing();
     }
   }
 
@@ -1581,6 +1597,171 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       }
       return output;
     }
+  }
+
+  createNestedRuntime(plan) {
+    const runtime = Object.create(NodeLiveAudioProcessor.prototype);
+    runtime.inputConnections = new Map();
+    runtime.badNumberCount = 0;
+    runtime.lastBadValueReason = "";
+    runtime.lastBadValueNodeId = "";
+    runtime.lastBadValueSource = "";
+    runtime.inputMeterPeak = 0;
+    runtime.inputMeterSamples = 0;
+    runtime.inputMeterSquareSum = 0;
+    runtime.meterClipCount = 0;
+    runtime.meterCounter = 0;
+    runtime.meterPeak = 0;
+    runtime.meterProtectionMuteCount = 0;
+    runtime.meterSamples = 0;
+    runtime.meterSquareSum = 0;
+    runtime.macroControls = this.macroControls;
+    runtime.pitchModWheelSignal = this.pitchModWheelSignal;
+    runtime.midiKeyboardGatePulseSamples = 0;
+    runtime.midiKeyboardSignal = null;
+    runtime.moduleGroupRuntimes = new Map();
+    runtime.modulationConnections = new Map();
+    runtime.nodeOutputs = new Map();
+    runtime.nodes = new Map();
+    runtime.noiseSeedKeys = new Map();
+    runtime.noiseSeeds = new Map();
+    runtime.order = [];
+    runtime.engineSampleRate = this.engineSampleRate;
+    runtime.hostSampleRate = this.hostSampleRate;
+    runtime.oversamplingRatio = this.oversamplingRatio;
+    runtime.bandpassStates = new Map();
+    runtime.clockDividerStates = new Map();
+    runtime.clockStates = new Map();
+    runtime.codeblockFunctions = new Map();
+    runtime.cookbookFilterStates = new Map();
+    runtime.delayedTriggerStates = new Map();
+    runtime.expAdsrStates = new Map();
+    runtime.fractalBrownianNoiseStates = new Map();
+    runtime.flowerChildEnvelopeFollowerStates = new Map();
+    runtime.highpassStates = new Map();
+    runtime.ladderFilterStates = new Map();
+    runtime.linearEnvelopeStates = new Map();
+    runtime.lowpassStates = new Map();
+    runtime.noiseGeneratorStates = new Map();
+    runtime.noiseSampleHoldStates = new Map();
+    runtime.oscResetStates = new Map();
+    runtime.outputNode = plan?.outputNode || "output";
+    runtime.patchFingerprint = plan?.patchFingerprint || "";
+    runtime.phases = new Map();
+    runtime.pluckEnvelopeStates = new Map();
+    runtime.planSerial = 0;
+    runtime.randomClockStates = new Map();
+    runtime.sampleHoldStates = new Map();
+    runtime.randomWalkStates = new Map();
+    runtime.sessionId = this.sessionId;
+    runtime.scopeBuffers = new Map();
+    runtime.scopeCounter = 0;
+    runtime.scopeInputs = new Map();
+    runtime.slewLimiterStates = new Map();
+    runtime.smoothers = new Map();
+    runtime.spiralStates = new Map();
+    runtime.stepSequencerStates = new Map();
+    runtime.triggerCounterStates = new Map();
+    runtime.triggerDividerStates = new Map();
+    runtime.triangleStates = new Map();
+    runtime.vactrolEnvelopeStates = new Map();
+    runtime.resetVisualControls();
+    runtime.setNestedPlan(plan);
+    return runtime;
+  }
+
+  setNestedPlan(plan) {
+    const nodes = Array.isArray(plan?.nodes) ? plan.nodes : [];
+    const ids = new Set(nodes.map((node) => node.id));
+    this.nodes = new Map(nodes.map((node) => [node.id, {
+      id: node.id,
+      codeblock: this.normalizeCodeblock(node.codeblock),
+      moduleGroup: node.moduleGroup || null,
+      moduleGroupPlan: node.moduleGroupPlan || null,
+      paramMeta: node.paramMeta || {},
+      params: node.params || {},
+      scopeInputPort: node.scopeInputPort || "",
+      type: node.type,
+    }]));
+    this.order = Array.isArray(plan?.order) ? [...plan.order] : [...ids];
+    this.outputNode = plan?.outputNode || "output";
+    this.inputConnections = this.buildInputConnectionMap(plan?.connections, ids);
+    this.modulationConnections = this.buildModulationConnectionMap(plan?.modulations, ids);
+    for (const id of ids) {
+      const node = this.nodes.get(id);
+      this.nodeOutputs.set(id, 0);
+      if (node?.type === "osc") {
+        this.phases.set(id, 0);
+        this.oscResetStates.set(id, this.createOscResetState());
+        this.triangleStates.set(id, 0);
+      }
+      if (node?.type === "osc" || node?.type === "noise") {
+        this.noiseSeeds.set(id, this.stableSeed(id));
+      }
+      if (node?.type === "stereoNoise") {
+        this.noiseSeeds.set(`${id}:left`, this.stableSeed(`${id}:left`));
+        this.noiseSeeds.set(`${id}:right`, this.stableSeed(`${id}:right`));
+      }
+      if (node?.type === "spiral") this.spiralStates.set(id, this.createSpiralState());
+      if (node?.type === "highpass") this.highpassStates.set(id, this.createHighpassState());
+      if (node?.type === "lowpass") this.lowpassStates.set(id, this.createLowpassState());
+      if (node?.type === "bandpass") this.bandpassStates.set(id, this.createBandpassState());
+      if (node?.type === "cookbookFilter") this.cookbookFilterStates.set(id, this.createCookbookFilterState());
+      if (node?.type === "ladderFilter") this.ladderFilterStates.set(id, this.createLadderFilterState());
+      if (node?.type === "clock") this.clockStates.set(id, this.createClockState());
+      if (node?.type === "clockDivider") this.clockDividerStates.set(id, this.createTriggerDividerState());
+      if (node?.type === "delayedTrigger") this.delayedTriggerStates.set(id, this.createDelayedTriggerState());
+      if (node?.type === "randomClock") this.randomClockStates.set(id, this.createRandomClockState());
+      if (node?.type === "sampleHold") this.sampleHoldStates.set(id, this.createSampleHoldState());
+      if (node?.type === "slewLimiter") this.slewLimiterStates.set(id, this.createSlewLimiterState());
+      if (node?.type === "expAdsr") this.expAdsrStates.set(id, this.createExpAdsrState());
+      if (node?.type === "linearEnvelope") this.linearEnvelopeStates.set(id, this.createLinearEnvelopeState());
+      if (node?.type === "noiseGenerator") this.noiseGeneratorStates.set(id, this.createNoiseGeneratorState());
+      if (node?.type === "noise") this.noiseSampleHoldStates.set(id, this.createNoiseSampleHoldState());
+      if (node?.type === "randomWalk") this.randomWalkStates.set(id, this.createRandomWalkState());
+      if (node?.type === "fractalBrownianNoise") this.fractalBrownianNoiseStates.set(id, this.createFractalBrownianNoiseState());
+      if (node?.type === "flowerChildEnvelopeFollower") this.flowerChildEnvelopeFollowerStates.set(id, this.createFlowerChildEnvelopeFollowerState());
+      if (node?.type === "pluckEnvelope") this.pluckEnvelopeStates.set(id, this.createPluckEnvelopeState());
+      if (node?.type === "stepSequencer") this.stepSequencerStates.set(id, this.createStepSequencerState());
+      if (node?.type === "triggerCounter") this.triggerCounterStates.set(id, this.createTriggerCounterState());
+      if (node?.type === "triggerDivider") this.triggerDividerStates.set(id, this.createTriggerDividerState());
+      if (node?.type === "vactrolEnvelope") this.vactrolEnvelopeStates.set(id, this.createVactrolEnvelopeState());
+      if (node?.type === "moduleGroup" && node.moduleGroupPlan) {
+        this.moduleGroupRuntimes.set(id, this.createNestedRuntime(node.moduleGroupPlan));
+      }
+      for (const [key, value] of Object.entries(node?.params || {})) {
+        this.smoothers.set(this.parameterKey(id, key), this.createSmoother(value, node.paramMeta?.[key]));
+      }
+    }
+  }
+
+  evaluateModuleGroup(node, mixInput, frame, frames, rate, inputFrame) {
+    if (!node.moduleGroupPlan) {
+      return {};
+    }
+    let runtime = this.moduleGroupRuntimes.get(node.id);
+    if (!runtime) {
+      runtime = this.createNestedRuntime(node.moduleGroupPlan);
+      this.moduleGroupRuntimes.set(node.id, runtime);
+    }
+    runtime.engineSampleRate = rate;
+    runtime.hostSampleRate = this.hostSampleRate;
+    runtime.oversamplingRatio = this.oversamplingRatio;
+    runtime.macroControls = this.macroControls;
+    runtime.pitchModWheelSignal = this.pitchModWheelSignal;
+    runtime.externalGroupInputs = new Map(
+      (node.moduleGroup?.inputs || []).map((input) => [input.nodeId, mixInput(node.id, input.name)]),
+    );
+    const frameOutput = runtime.evaluateFrame(frame, frames, [], rate, inputFrame);
+    const output = {};
+    for (const endpoint of node.moduleGroup?.outputs || []) {
+      output[endpoint.name] = runtime.readRuntimePortOutput(
+        frameOutput.frameValues,
+        endpoint.nodeId,
+        endpoint.port || "Out",
+      );
+    }
+    return output;
   }
 
   visualControlIntensity(value, nodeId, source = "visual control") {
@@ -2876,7 +3057,11 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     for (const nodeId of this.order) {
       const node = this.nodes.get(nodeId);
       let value = 0;
-      if (node?.type === "audioInput") {
+      if (node?.type === "groupInput") {
+        value = {
+          Out: Number(this.externalGroupInputs?.get(nodeId)) || 0,
+        };
+      } else if (node?.type === "audioInput") {
         const input = inputs[0] || [];
         const leftChannel = input[0] || input[1] || null;
         const rightChannel = input[1] || input[0] || null;
@@ -3191,6 +3376,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         this.midiKeyboardGatePulseSamples = Math.max(0, this.midiKeyboardGatePulseSamples - 1);
         value = {
           "1 Sample Gate": gatePulse,
+          "0.1V/Oct": this.clampValue(Number(signal.tenthVoltPerOctave) || midi / 120, 0, 1),
           Double: this.clampValue(Number(signal.midiNormalized) || midi / 127, 0, 1),
           Frequency: outputFrequency,
           Gate: Number(signal.gate) > 0 ? 1 : 0,
@@ -3216,6 +3402,8 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       } else if (node?.type === "gain") {
         value = mixInput(nodeId) *
           this.readEffectiveParameter(node, "amount", 1, frame, frames, frameValues);
+      } else if (node?.type === "moduleGroup") {
+        value = this.evaluateModuleGroup(node, mixInput, frame, frames, safeRate, inputFrame);
       } else if (node?.type === "codeblock") {
         value = this.evaluateCodeblock(node, mixInput);
       } else if (node?.type === "graph") {
@@ -3566,6 +3754,15 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         };
       } else if (node?.type === "badvalMonitor") {
         value = this.monitorBadValueSample(mixInput(nodeId), nodeId);
+      } else if (node?.type === "groupOutput") {
+        value = {
+          Out: mixInput(nodeId, "In"),
+        };
+      } else if (node?.type === "clapPlugin") {
+        value = {
+          Left: 0,
+          Right: 0,
+        };
       } else if (node?.type === "output") {
         value = mixInput(nodeId, "Mono") + (mixInput(nodeId, "Left") + mixInput(nodeId, "Right")) * 0.5;
       }

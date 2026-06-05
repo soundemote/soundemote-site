@@ -70,7 +70,7 @@ function nodeGraphBuildDependencyMap(patch = nodeGraphMvp.patch) {
       continue;
     }
     const sourceOutputs = nodeGraphPatchNodeOutputPorts(source);
-    const destinationParameters = nodeGraphModuleDefinitions[destination.type]?.parameters || [];
+    const destinationParameters = nodeGraphPatchNodeParameterDefinitions(destination);
     if (!sourceOutputs.includes(modulation.sourcePort)) {
       issues.push(`modulation source port invalid: ${modulation.sourceNode}.${modulation.sourcePort}`);
       continue;
@@ -302,6 +302,10 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
   if (hasOutputNode) {
     markReachable(outputNode);
   }
+  const groupOutputNodes = graph.nodes.filter((node) => node.type === "groupOutput");
+  for (const node of groupOutputNodes) {
+    markReachable(node.id);
+  }
   for (const node of graph.nodes) {
     if (nodeGraphModuleDefinitions[node.type]?.visualSink) {
       markReachable(node.id);
@@ -318,11 +322,13 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
   const hasOutputSpeakerInput = nodeGraphOutputInputPorts.some(
     (port) => (graph.inputConnections.get(nodeGraphInputKey(outputNode, port)) || []).length > 0,
   );
-  nodeGraphValidateRuntimeRoute(issues, {
-    hasActiveVisualSink,
-    hasOutputNode,
-    hasOutputSpeakerInput,
-  });
+  if (!groupOutputNodes.length) {
+    nodeGraphValidateRuntimeRoute(issues, {
+      hasActiveVisualSink,
+      hasOutputNode,
+      hasOutputSpeakerInput,
+    });
+  }
 
   for (const nodeId of reachableNodes) {
     const type = graph.nodeMap.get(nodeId)?.type;
@@ -385,16 +391,20 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
       type !== "audioInput" &&
       type !== "bloomGlow" &&
       type !== "chromaColor" &&
+      type !== "clapPlugin" &&
       type !== "clock" &&
       type !== "clockDivider" &&
       type !== "codeblock" &&
       type !== "delayedTrigger" &&
       type !== "fractalBrownianNoise" &&
       type !== "flowerChildEnvelopeFollower" &&
+      type !== "groupInput" &&
+      type !== "groupOutput" &&
       type !== "keyboardController" &&
       type !== "linearEnvelope" &&
       type !== "midiNotePitch" &&
       type !== "midiOut" &&
+      type !== "moduleGroup" &&
       type !== "noiseGenerator" &&
       type !== "osc" &&
       type !== "pluckEnvelope" &&
