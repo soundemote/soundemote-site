@@ -416,6 +416,7 @@ function copyNodeGraphModule(sourceNode) {
       gy: gridPoint.gy,
       id,
       layout: sourceNode.layout,
+      led: sourceNode.led,
       graph: sourceNode.graph,
       codeblock: sourceNode.codeblock,
       ui: sourceNode.ui,
@@ -427,6 +428,9 @@ function copyNodeGraphModule(sourceNode) {
       : {}),
     ...(sourceNode.type === "image"
       ? { layout: normalizeNodeGraphImageLayout(sourceNode.layout) }
+      : {}),
+    ...(sourceNode.type === "led"
+      ? { led: normalizeNodeGraphLedLayout(sourceNode.led) }
       : {}),
     ...(sourceNode.type === "graph"
       ? { graph: normalizeNodeGraphGraph(sourceNode.graph) }
@@ -475,14 +479,16 @@ function addNodeGraphModuleToUiFromContext() {
     id = `${idBase}-${suffix}`;
     suffix += 1;
   }
+  const type = nodeGraphUiItemTypeForNode(sourceNode);
   uiItems.push({
-    h: 44,
+    h: type === "graphEditor" ? 260 : 44,
     id,
     label: nodeGraphPatchNodeTitle(sourceNode),
     sourceNodeId: sourceNode.id,
-    w: 132,
+    type,
+    w: type === "graphEditor" ? 460 : 132,
     x: 24 + ((nextIndex - 1) % 4) * 156,
-    y: 24 + Math.floor((nextIndex - 1) / 4) * 68,
+    y: 24 + Math.floor((nextIndex - 1) / 4) * (type === "graphEditor" ? 284 : 68),
   });
   patch.uiItems = uiItems;
   commitNodeGraphPatch(patch, { status: "module added to ui view" });
@@ -533,7 +539,7 @@ function adjustNodeGraphModuleWidthFromContext(delta) {
   configureNodeSceneContextMenu("module");
 }
 
-function adjustNodeGraphTextBoxHeightFromContext(delta) {
+function adjustNodeGraphModuleHeightFromContext(delta) {
   const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
   if (!sourceNode) {
     return;
@@ -561,7 +567,7 @@ function adjustNodeGraphTextBoxHeightFromContext(delta) {
   } else {
     targetNode.heightGu = nextHeightGu;
   }
-  commitNodeGraphPatch(patch, { status: "module height changed" });
+  commitNodeGraphPatch(patch, { status: targetNode.type === "graph" ? "graph height changed" : "module height changed" });
   configureNodeSceneContextMenu("module");
 }
 
@@ -730,6 +736,11 @@ function renderNodeGraphGraphNodeList(graph, selectedIndex = selectedNodeGraphGr
 function syncNodeGraphGraphControls(graph, selectedIndex = selectedNodeGraphGraphIndex(graph)) {
   const graphData = normalizeNodeGraphGraph(graph);
   const index = selectedNodeGraphGraphIndex(graphData, selectedIndex);
+  const nodeId = nodeGraphModuleActionTargetNodeId();
+  if (nodeGraphPatchNode(nodeId)?.type === "graph") {
+    setNodeGraphGraphSelectedNodeIndex(nodeId, graphData, index);
+    syncNodeGraphGraphElement(nodeGraphNodeElement(nodeId), { id: nodeId, graph: graphData });
+  }
   const node = graphData.nodes[index] || graphData.nodes.at(-1);
   populateNodeGraphGraphNodeIndexSelect(graphData, index);
   renderNodeGraphGraphNodeList(graphData, index);
@@ -738,6 +749,8 @@ function syncNodeGraphGraphControls(graph, selectedIndex = selectedNodeGraphGrap
   const yInput = document.getElementById("nodeSceneGraphNodeY");
   const contourInput = document.getElementById("nodeSceneGraphNodeContour");
   const shapeInput = document.getElementById("nodeSceneGraphNodeShape");
+  const previousButton = document.getElementById("nodeSceneGraphPreviousNode");
+  const nextButton = document.getElementById("nodeSceneGraphNextNode");
   const removeButton = document.getElementById("nodeSceneGraphRemoveNode");
   if (cursorInput) {
     cursorInput.value = graphData.cursorX.toFixed(3);
@@ -753,6 +766,12 @@ function syncNodeGraphGraphControls(graph, selectedIndex = selectedNodeGraphGrap
   }
   if (shapeInput) {
     shapeInput.value = normalizeNodeGraphGraphShape(node.shape);
+  }
+  if (previousButton) {
+    previousButton.disabled = index <= 0;
+  }
+  if (nextButton) {
+    nextButton.disabled = index >= graphData.nodes.length - 1;
   }
   if (removeButton) {
     removeButton.disabled = graphData.nodes.length <= 2;
@@ -822,6 +841,17 @@ function selectNodeGraphGraphNodeFromContext() {
   syncNodeGraphGraphControls(sourceNode.graph);
 }
 
+function selectNodeGraphGraphNodeOffsetFromContext(offset) {
+  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
+  if (!sourceNode || sourceNode.type !== "graph") {
+    return;
+  }
+  const graph = normalizeNodeGraphGraph(sourceNode.graph);
+  const selectedIndex = selectedNodeGraphGraphIndex(graph);
+  const nextIndex = nodeGraphGraphNodeIndexFromValue(graph, selectedIndex + Number(offset || 0));
+  syncNodeGraphGraphControls(graph, nextIndex);
+}
+
 function setNodeGraphGraphNodeListValueFromContext(event, { record = true } = {}) {
   const field = event.target?.dataset?.graphNodeField;
   const rowIndex = event.target?.dataset?.graphNodeRow;
@@ -864,17 +894,30 @@ function addNodeGraphGraphNodeFromContext() {
   if (!targetNode) {
     return;
   }
-  const graph = normalizeNodeGraphGraph(targetNode.graph);
-  const x = normalizeNodeGraphGraphNumber(graph.cursorX, 0.5);
-  graph.nodes.push({
-    c: 0,
-    shape: "rational",
-    x,
-    y: normalizeNodeGraphGraphNumber(nodeGraphGraphValueAt(graph, x), 0),
-  });
-  targetNode.graph = graph;
+  const addition = addNodeGraphGraphNodeData(targetNode.graph);
+  if (!addition.added) {
+    return;
+  }
+  targetNode.graph = addition.graph;
   commitNodeGraphGraphEdit(patch, targetNode, "graph node added", {
-    selectedX: x,
+    selectedIndex: addition.selectedIndex,
+  });
+}
+
+function duplicateNodeGraphGraphNodeFromContext() {
+  const { patch, targetNode } = nodeGraphGraphTargetFromContext();
+  if (!targetNode) {
+    return;
+  }
+  const graph = normalizeNodeGraphGraph(targetNode.graph);
+  const selectedIndex = selectedNodeGraphGraphIndex(graph);
+  const duplicate = duplicateNodeGraphGraphNodeData(graph, selectedIndex);
+  if (!duplicate.duplicated) {
+    return;
+  }
+  targetNode.graph = duplicate.graph;
+  commitNodeGraphGraphEdit(patch, targetNode, "graph node duplicated", {
+    selectedIndex: duplicate.selectedIndex,
   });
 }
 
@@ -890,6 +933,7 @@ function removeNodeGraphGraphNodeFromContext() {
   const selectedIndex = selectedNodeGraphGraphIndex(graph);
   graph.nodes.splice(selectedIndex, 1);
   targetNode.graph = graph;
+  setNodeGraphGraphSelectedNodeIndex(targetNode.id, graph, Math.max(0, selectedIndex - 1));
   commitNodeGraphGraphEdit(patch, targetNode, "graph node removed", {
     selectedIndex: Math.max(0, selectedIndex - 1),
   });
@@ -904,7 +948,97 @@ function resetNodeGraphGraphFromContext() {
   commitNodeGraphGraphEdit(patch, targetNode, "graph reset", { selectedIndex: 1 });
 }
 
+function setNodeGraphGraphPresetFromContext(preset) {
+  const { patch, targetNode } = nodeGraphGraphTargetFromContext();
+  if (!targetNode) {
+    return;
+  }
+  targetNode.graph = nodeGraphGraphPresetData(preset);
+  commitNodeGraphGraphEdit(patch, targetNode, `graph preset: ${preset}`, {
+    selectedIndex: Math.min(1, targetNode.graph.nodes.length - 1),
+  });
+}
+
+function setNodeGraphGraphOutputRangeFromContext(minValue, maxValue) {
+  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
+  if (!sourceNode || sourceNode.type !== "graph") {
+    return;
+  }
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
+  if (!targetNode || targetNode.type !== "graph") {
+    return;
+  }
+  targetNode.params = {
+    ...(targetNode.params || {}),
+    outputMax: normalizeNodeGraphPatchParameter("graph", "outputMax", maxValue),
+    outputMin: normalizeNodeGraphPatchParameter("graph", "outputMin", minValue),
+  };
+  commitNodeGraphPatch(patch, { status: "graph output range changed" });
+  syncNodeGraphPatchParameters();
+  configureNodeSceneContextMenu("module");
+}
+
+function transformNodeGraphGraphFromContext(transform) {
+  const { patch, targetNode } = nodeGraphGraphTargetFromContext();
+  if (!targetNode) {
+    return;
+  }
+  targetNode.graph = nodeGraphGraphTransformedData(targetNode.graph, transform);
+  commitNodeGraphGraphEdit(patch, targetNode, `graph transformed: ${transform}`, {
+    selectedIndex: Math.min(1, targetNode.graph.nodes.length - 1),
+  });
+}
+
+async function copyNodeGraphGraphFromContext() {
+  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
+  if (!sourceNode || sourceNode.type !== "graph") {
+    return;
+  }
+  const graph = normalizeNodeGraphGraph(sourceNode.graph);
+  const text = serializeNodeGraphGraphClipboard(graph);
+  nodeGraphMvp.graphClipboard = text;
+  try {
+    await copyTextToClipboard(text);
+  } catch (_error) {
+    // Local clipboard remains available when browser clipboard access is blocked.
+  }
+  configureNodeSceneContextMenu("module");
+}
+
+async function pasteNodeGraphGraphFromContext() {
+  const { patch, targetNode } = nodeGraphGraphTargetFromContext();
+  if (!targetNode) {
+    return;
+  }
+  let text = nodeGraphMvp.graphClipboard || "";
+  try {
+    text = await navigator.clipboard?.readText?.() || text;
+  } catch (_error) {
+    // Browser clipboard read may be unavailable; use the local graph clipboard.
+  }
+  const graph = parseNodeGraphGraphClipboard(text);
+  if (!graph) {
+    configureNodeSceneContextMenu("module");
+    return;
+  }
+  nodeGraphMvp.graphClipboard = serializeNodeGraphGraphClipboard(graph);
+  targetNode.graph = graph;
+  commitNodeGraphGraphEdit(patch, targetNode, "graph pasted", {
+    selectedIndex: Math.min(1, graph.nodes.length - 1),
+  });
+}
+
 function nodeGraphCodeblockBuildFunctionBody(codeblock) {
+  const context = [
+    "const state = __state;",
+    "const __ctx = __context || {};",
+    "const sampleRate = Number(__ctx.sampleRate) || 44100;",
+    "const frame = Number(__ctx.frame) || 0;",
+    "const frames = Number(__ctx.frames) || 1;",
+    "const time = Number(__ctx.time) || 0;",
+    "const dt = 1 / sampleRate;",
+  ].join("\n");
   const inputs = codeblock.inputs
     .map((port, index) => `const ${port} = __inputs[${index}] || 0;`)
     .join("\n");
@@ -916,7 +1050,7 @@ function nodeGraphCodeblockBuildFunctionBody(codeblock) {
     .filter((name) => name !== "eval")
     .map((name) => `const ${name} = undefined;`)
     .join("\n");
-  return `"use strict";\n${shadows}\n${inputs}\n${outputs}\n${codeblock.code}\n${writes}\nreturn __outputs;`;
+  return `"use strict";\n${shadows}\n${context}\n${inputs}\n${outputs}\n${codeblock.code}\n${writes}\nreturn __outputs;`;
 }
 
 function nodeGraphCodeblockCompileStatus(codeblock) {
@@ -925,6 +1059,8 @@ function nodeGraphCodeblockCompileStatus(codeblock) {
     Function(
       "__inputs",
       "__outputs",
+      "__state",
+      "__context",
       nodeGraphCodeblockBuildFunctionBody(normalized),
     );
     return { ok: true, message: "code ok" };
@@ -1184,6 +1320,31 @@ function refreshNodeGraphImageFromContext() {
   scheduleNodeGraphModuleScopeDraw();
 }
 
+function setNodeGraphLedColorFromContext({ record = true } = {}) {
+  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
+  if (!sourceNode || sourceNode.type !== "led") {
+    return;
+  }
+  const input = document.getElementById("nodeSceneLedColor");
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
+  if (!targetNode) {
+    return;
+  }
+  targetNode.led = normalizeNodeGraphLedLayout({
+    ...targetNode.led,
+    color: input?.value,
+  });
+  commitNodeGraphPatch(patch, {
+    record,
+    status: "led color changed",
+  });
+  scheduleNodeGraphModuleScopeDraw();
+  if (document.activeElement === input) {
+    input.focus();
+  }
+}
+
 function toggleNodeGraphModuleButtonsFromContext() {
   const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
   if (!sourceNode) {
@@ -1196,7 +1357,12 @@ function toggleNodeGraphModuleButtonsFromContext() {
     return;
   }
   const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui);
-  ui.buttonsHidden = !ui.buttonsHidden;
+  if (nodeGraphMvp.moduleButtonsVisible === false) {
+    ui.buttonsHidden = false;
+    setNodeGraphModuleButtonsVisibility(true, { help: false });
+  } else {
+    ui.buttonsHidden = !ui.buttonsHidden;
+  }
   if (ui.buttonsHidden || ui.titleHidden) {
     targetNode.ui = ui;
   } else {

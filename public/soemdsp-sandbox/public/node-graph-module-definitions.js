@@ -6,6 +6,9 @@ const nodeGraphNodeLabels = Object.freeze({
   groupOutput: "Group Output",
   moduleGroup: "Module Group",
   osc: "Osc",
+  fbPolyBlepOsc: "F/B PolyBLEP Osc",
+  additiveOsc: "Additive Osc",
+  gpuAdditiveOsc: "GPU Additive",
   clock: "Clock",
   clockDivider: "Clock Divider",
   delayedTrigger: "Delayed Trigger",
@@ -45,6 +48,7 @@ const nodeGraphNodeLabels = Object.freeze({
   rgbaHsla: "RGBA / HSLA",
   chromaColor: "Chroma Color",
   image: "Image",
+  led: "LED",
   visualOscilloscope: "Visual Oscilloscope",
   badvalMonitor: "BADVAL Monitor",
   textBox: "Text Box",
@@ -66,6 +70,17 @@ const nodeGraphModuleDefinitions = Object.freeze({
         min: "0",
         step: "0.01",
       },
+      {
+        defaultValue: "1",
+        key: "seed",
+        label: "Seed",
+        max: "99999",
+        maxDigits: 5,
+        mid: "1",
+        min: "0",
+        nonlinearSlider: false,
+        step: "1",
+      },
     ],
   },
   codeblock: {
@@ -77,7 +92,13 @@ const nodeGraphModuleDefinitions = Object.freeze({
     inputs: ["In"],
     layout: "graph",
     outputs: ["Out"],
-    parameters: [],
+    parameters: [
+      { choices: ["Input", "LFO"], defaultValue: "0", displayChoices: true, divideChoicesVisibly: true, key: "mode", label: "Mode", linearSmoothing: false, max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "1" },
+      { defaultValue: "1", key: "rate", kind: "frequency", label: "Rate", max: "40", maxDigits: 5, mid: "1", min: "0", step: "any", unit: "Hz" },
+      { defaultValue: "0", key: "phase", kind: "phase", label: "Phase", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "0.01", unit: "cycle", wraparound: true },
+      { defaultValue: "0", key: "outputMin", label: "Out Min", max: "1", mid: "0", min: "-1", nonlinearSlider: false, step: "any" },
+      { defaultValue: "1", key: "outputMax", label: "Out Max", max: "1", mid: "0", min: "-1", nonlinearSlider: false, step: "any" },
+    ],
   },
   groupInput: {
     outputs: ["Out"],
@@ -94,9 +115,12 @@ const nodeGraphModuleDefinitions = Object.freeze({
     parameters: [],
   },
   osc: {
-    inputs: ["Reset", "Increment"],
-    outputs: ["Out"],
-    scopeInputPort: "",
+    inputs: ["Reset", "0.1V/Oct", "Increment"],
+    outputAliases: {
+      Out: "Wave Out",
+      Noise: "Wave Out",
+    },
+    outputs: ["Saw", "Square", "Tri", "Sine", "Wave Out"],
     parameters: [
       {
         choices: ["Saw", "Square", "Triangle", "Sine", "Noise"],
@@ -145,6 +169,161 @@ const nodeGraphModuleDefinitions = Object.freeze({
         nonlinearSlider: false,
         step: "any",
       },
+    ],
+  },
+  fbPolyBlepOsc: {
+    inputs: ["Reset", "0.1V/Oct", "Increment"],
+    outputAliases: {
+      Out: "Wave Out",
+      Noise: "Wave Out",
+    },
+    outputs: ["Saw", "Square", "Tri", "Sine", "Wave Out"],
+    parameters: [
+      {
+        choices: ["Saw", "Square", "Triangle", "Sine", "Noise"],
+        defaultValue: "0",
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        key: "waveform",
+        kind: "waveform",
+        label: "Waveform",
+        linearSmoothing: false,
+        max: "4",
+        mid: "2",
+        min: "0",
+        step: "1",
+      },
+      {
+        defaultValue: "440",
+        key: "frequency",
+        kind: "frequency",
+        label: "Frequency",
+        max: "20000",
+        mid: "440",
+        min: "0",
+        step: "any",
+        unit: "Hz",
+      },
+      {
+        defaultValue: "0",
+        key: "phase",
+        kind: "phase",
+        label: "Phase",
+        max: "1",
+        mid: "0.5",
+        min: "0",
+        step: "0.01",
+        unit: "cycle",
+        wraparound: true,
+      },
+      {
+        defaultValue: "1",
+        key: "level",
+        label: "Amplitude",
+        max: "1",
+        mid: "0.5",
+        min: "0",
+        nonlinearSlider: false,
+        step: "any",
+      },
+    ],
+  },
+  additiveOsc: {
+    graphInputs: ["Damping Graph", "Phase Graph"],
+    inputs: ["Reset", "0.1V/Oct", "Increment"],
+    outputs: ["Out"],
+    parameters: [
+      {
+        choices: ["Sine", "Sawtooth", "Square", "Triangle", "SawSquare", "DoubleSaw", "TriSaw", "Organ"],
+        defaultValue: "1",
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        key: "waveform",
+        label: "Waveform",
+        linearSmoothing: false,
+        max: "7",
+        mid: "3",
+        min: "0",
+        step: "1",
+      },
+      {
+        defaultValue: "440",
+        key: "frequency",
+        kind: "frequency",
+        label: "Frequency",
+        max: "20000",
+        mid: "440",
+        min: "0",
+        step: "any",
+        unit: "Hz",
+      },
+      {
+        defaultValue: "0",
+        key: "phase",
+        kind: "phase",
+        label: "Phase",
+        max: "1",
+        mid: "0.5",
+        min: "0",
+        step: "0.01",
+        unit: "cycle",
+        wraparound: true,
+      },
+      { defaultValue: "0.5", key: "modA", label: "Mod A", max: "1", mid: "0.5", min: "0", step: "any" },
+      { defaultValue: "0", key: "harmonicPhaseAdd", kind: "phase", label: "Phase Add", max: "1", mid: "0.5", min: "0", step: "any", unit: "cycle" },
+      { defaultValue: "0", key: "harmonicPhaseMultiply", label: "Phase Multiply", max: "4", mid: "1", min: "0", step: "any" },
+      { constraint: "cpu", defaultValue: "32", key: "harmonics", label: "Harmonics", max: "1024", mid: "32", min: "1", step: "1" },
+      { defaultValue: "20000", key: "dampingFilterFrequency", kind: "frequency", label: "Filter Frequency", max: "20000", mid: "2000", min: "20", step: "any", unit: "Hz" },
+      { defaultValue: "0.35", key: "level", label: "Level", max: "1", mid: "0.35", min: "0", nonlinearSlider: false, step: "any" },
+    ],
+  },
+  gpuAdditiveOsc: {
+    graphInputs: ["Damping Graph", "Phase Graph"],
+    inputs: ["Reset", "0.1V/Oct", "Increment"],
+    outputs: ["Out"],
+    parameters: [
+      {
+        choices: ["Sine", "Sawtooth", "Square", "Triangle", "SawSquare", "DoubleSaw", "TriSaw", "Organ"],
+        defaultValue: "1",
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        key: "waveform",
+        label: "Waveform",
+        linearSmoothing: false,
+        max: "7",
+        mid: "3",
+        min: "0",
+        step: "1",
+      },
+      {
+        defaultValue: "440",
+        key: "frequency",
+        kind: "frequency",
+        label: "Frequency",
+        max: "20000",
+        mid: "440",
+        min: "0",
+        step: "any",
+        unit: "Hz",
+      },
+      {
+        defaultValue: "0",
+        key: "phase",
+        kind: "phase",
+        label: "Phase",
+        max: "1",
+        mid: "0.5",
+        min: "0",
+        step: "0.01",
+        unit: "cycle",
+        wraparound: true,
+      },
+      { defaultValue: "0.5", key: "modA", label: "Mod A", max: "1", mid: "0.5", min: "0", step: "any" },
+      { defaultValue: "0", key: "harmonicPhaseAdd", kind: "phase", label: "Phase Add", max: "1", mid: "0.5", min: "0", step: "any", unit: "cycle" },
+      { defaultValue: "0", key: "harmonicPhaseMultiply", label: "Phase Multiply", max: "4", mid: "1", min: "0", step: "any" },
+      { constraint: "gpu", defaultValue: "256", key: "harmonics", label: "Harmonics", max: "4096", mid: "256", min: "1", step: "1" },
+      { defaultValue: "20000", key: "dampingFilterFrequency", kind: "frequency", label: "Filter Frequency", max: "20000", mid: "2000", min: "20", step: "any", unit: "Hz" },
+      { defaultValue: "0.35", key: "level", label: "Level", max: "1", mid: "0.35", min: "0", nonlinearSlider: false, step: "any" },
     ],
   },
   spiral: {
@@ -412,7 +591,14 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   clock: {
-    outputs: ["Out"],
+    outputAliases: {
+      Out: "Digital Out",
+    },
+    outputLabels: {
+      "Analog Out": "\u223F",
+      "Digital Out": "\u25AE",
+    },
+    outputs: ["Digital Out", "Analog Out", "Pulse"],
     parameters: [
       {
         defaultValue: "2",
@@ -551,7 +737,6 @@ const nodeGraphModuleDefinitions = Object.freeze({
     layout: "clapPlugin",
     outputs: ["Left", "Right"],
     parameters: [],
-    scopeInputPort: "",
   },
   gain: {
     inputs: ["In"],
@@ -1156,12 +1341,21 @@ const nodeGraphModuleDefinitions = Object.freeze({
     outputs: ["Image"],
     parameters: [],
   },
+  led: {
+    inputs: ["In"],
+    layout: "led",
+    outputs: ["Out"],
+    parameters: [],
+    visualInputs: [
+      { key: "led", label: "In", port: "In" },
+    ],
+    visualSink: true,
+  },
   visualOscilloscope: {
     inputs: ["In"],
     layout: "visualScope",
     outputs: [],
     parameters: [],
-    scopeInputPort: "In",
     visualInputs: [
       { key: "visualOscilloscope", label: "In", port: "In" },
     ],
@@ -1234,9 +1428,21 @@ function nodeGraphModuleVisualInputs(type) {
   return Array.isArray(inputs) ? inputs.map((input) => ({ ...input })) : [];
 }
 
+function nodeGraphModuleGraphInputs(type) {
+  const inputs = nodeGraphModuleDefinitions[type]?.graphInputs;
+  return Array.isArray(inputs)
+    ? inputs.map((input) => String(input || "").trim()).filter(Boolean)
+    : [];
+}
+
 function nodeGraphCanonicalInputPort(type, port) {
   const value = String(port || "").trim();
   return nodeGraphModuleDefinitions[type]?.inputAliases?.[value] || value;
+}
+
+function nodeGraphCanonicalOutputPort(type, port) {
+  const value = String(port || "").trim();
+  return nodeGraphModuleDefinitions[type]?.outputAliases?.[value] || value;
 }
 
 function nodeGraphModuleVisualInputKey(type, port) {

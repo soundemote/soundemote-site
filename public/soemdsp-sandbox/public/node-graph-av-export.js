@@ -8,9 +8,12 @@ const nodeGraphVideoExportState = {
 function nodeGraphVideoExportSupported() {
   return Boolean(
     window.MediaRecorder &&
-    window.AudioContext &&
     document.createElement("canvas").captureStream,
   );
+}
+
+function nodeGraphVideoExportAudioContextConstructor() {
+  return window.AudioContext || window.webkitAudioContext || null;
 }
 
 function nodeGraphVideoExportMimeType() {
@@ -61,8 +64,8 @@ function setNodeGraphVideoExportReady(ready, title = "") {
   }
   button.disabled = !ready;
   button.title = title || (ready
-    ? "Export rendered visual output and rendered audio to WebM"
-    : "Render a sample before exporting video");
+    ? "Export visual output to WebM. If needed, the patch renders first."
+    : "This browser does not support canvas video export");
 }
 
 function setNodeGraphVideoExportDiagnostic(key, value) {
@@ -96,15 +99,26 @@ function nodeGraphRenderedExportFileName(extension, fingerprint = "") {
 function setNodeGraphRenderedExportButtonsReady(ready) {
   for (const id of [
     "nodeRenderWavButton",
-    "nodeRenderMp4Button",
     "nodeRenderOggButton",
     "nodeRenderFlacButton",
+  ]) {
+    const button = document.getElementById(id);
+    if (button) {
+      button.disabled = !ready || nodeGraphVideoExportState.exporting;
+    }
+  }
+  const videoReady = nodeGraphVideoExportSupported();
+  for (const id of [
+    "nodeRenderMp4Button",
     "nodeRenderMp4AltButton",
     "nodeRenderMp4VideoOnlyButton",
   ]) {
     const button = document.getElementById(id);
     if (button) {
-      button.disabled = !ready || nodeGraphVideoExportState.exporting;
+      button.disabled = !videoReady || nodeGraphVideoExportState.exporting;
+      button.title = videoReady
+        ? "Render first if needed, then export video"
+        : "This browser does not support canvas video export";
     }
   }
 }
@@ -128,7 +142,9 @@ function syncNodeGraphVideoExportControls() {
     setNodeGraphVideoExportReady(false, "This browser does not support MediaRecorder canvas video export");
     return;
   }
-  setNodeGraphVideoExportReady(ready && !nodeGraphVideoExportState.exporting);
+  setNodeGraphVideoExportReady(!nodeGraphVideoExportState.exporting, ready
+    ? "Export rendered visual output to WebM"
+    : "Render first, then export visual output to WebM");
 }
 
 function nodeGraphVideoExportFileName(fingerprint = "") {
@@ -136,6 +152,10 @@ function nodeGraphVideoExportFileName(fingerprint = "") {
 }
 
 function nodeGraphVideoExportAudioTrack(rendered, durationSeconds) {
+  const AudioContextCtor = nodeGraphVideoExportAudioContextConstructor();
+  if (!AudioContextCtor) {
+    return null;
+  }
   const sampleRate = Number(rendered.sampleRate) || 44100;
   const leftSamples = rendered.leftSamples || rendered.samples;
   const rightSamples = rendered.rightSamples || leftSamples;
@@ -143,7 +163,7 @@ function nodeGraphVideoExportAudioTrack(rendered, durationSeconds) {
     Math.ceil(durationSeconds * sampleRate),
     Math.max(leftSamples?.length || 0, rightSamples?.length || 0),
   ));
-  const context = new AudioContext({ sampleRate });
+  const context = new AudioContextCtor({ sampleRate });
   const destination = context.createMediaStreamDestination();
   const buffer = context.createBuffer(2, frames, sampleRate);
   const left = buffer.getChannelData(0);
@@ -246,7 +266,24 @@ async function exportNodeGraphVisualOutputWebm(options = {}) {
   if (nodeGraphVideoExportState.exporting) {
     return;
   }
-  const rendered = nodeGraphVideoExportRendered();
+  let rendered = nodeGraphVideoExportRendered();
+  if (!rendered) {
+    nodeGraphVideoExportState.exporting = true;
+    setNodeGraphVideoExportStatus("rendering first", "pill");
+    setNodeGraphVideoExportReady(false, "Rendering before export");
+    syncNodeGraphVideoExportControls();
+    try {
+      await renderNodeGraphAudio();
+    } catch (error) {
+      nodeGraphVideoExportState.exporting = false;
+      syncNodeGraphVideoExportControls();
+      setNodeGraphVideoExportStatus("render failed", "pill warn");
+      console.error("Video export render failed", error);
+      return;
+    }
+    nodeGraphVideoExportState.exporting = false;
+    rendered = nodeGraphVideoExportRendered();
+  }
   const canvas = createNodeGraphVisualOutputExportCanvas({ includePlaybackCursor: true });
   if (!rendered || !canvas) {
     syncNodeGraphVideoExportControls();
@@ -266,7 +303,7 @@ async function exportNodeGraphVisualOutputWebm(options = {}) {
   let recorder = null;
   let videoTrack = null;
   try {
-    const videoStream = canvas.captureStream(0);
+    const videoStream = canvas.captureStream(30);
     videoTrack = videoStream.getVideoTracks()[0] || null;
     audio = options.videoOnly ? null : nodeGraphVideoExportAudioTrack(rendered, durationSeconds);
     stream = new MediaStream([

@@ -11,6 +11,13 @@ function createNodeGraphPort(node, type, port, io) {
   return button;
 }
 
+function nodeGraphPortDisplayLabel(type, port, io) {
+  const labels = io === "output"
+    ? nodeGraphModuleDefinitions[type]?.outputLabels
+    : nodeGraphModuleDefinitions[type]?.inputLabels;
+  return labels?.[port] || port;
+}
+
 function createNodeGraphIoColumn(node, type, ports, io) {
   if (!ports?.length) {
     return null;
@@ -31,7 +38,7 @@ function createNodeGraphIoColumn(node, type, ports, io) {
     );
     const label = document.createElement("span");
     label.className = "node-io-label";
-    label.textContent = port;
+    label.textContent = nodeGraphPortDisplayLabel(type, port, io);
     if (io === "input") {
       row.append(createNodeGraphPort(node, type, port, io), label);
     } else {
@@ -70,6 +77,44 @@ function createNodeParameterOutputPort(node, type, parameter) {
   return button;
 }
 
+function createNodeGraphInputPort(node, type, graphInput) {
+  const button = document.createElement("button");
+  button.className = "node-param-port graph-input";
+  button.type = "button";
+  button.dataset.node = node;
+  button.dataset.graphInput = graphInput;
+  button.dataset.port = graphInput;
+  button.dataset.io = "graph";
+  button.dataset.alias = `${nodeGraphNodeDisplayName(node)}.${graphInput}`;
+  button.setAttribute("aria-label", `${nodeGraphNodeLabels[type]} ${graphInput} graph input`);
+  return button;
+}
+
+function createNodeGraphInputSection(node, type) {
+  const graphInputs = nodeGraphModuleGraphInputs(type);
+  if (!graphInputs.length) {
+    return null;
+  }
+  const section = document.createElement("div");
+  section.className = "dsp-node-graph-input-section";
+  for (const graphInput of graphInputs) {
+    const row = document.createElement("div");
+    row.className = "node-graph-input-row";
+    row.dataset.node = node;
+    row.dataset.graphInput = graphInput;
+    row.dataset.port = graphInput;
+    row.dataset.io = "graph";
+    row.dataset.alias = `${nodeGraphNodeDisplayName(node)}.${graphInput}`;
+    row.setAttribute("aria-label", `${nodeGraphNodeLabels[type]} ${graphInput} graph input interaction area`);
+    const label = document.createElement("span");
+    label.className = "node-graph-input-label";
+    label.textContent = graphInput;
+    row.append(createNodeGraphInputPort(node, type, graphInput), label);
+    section.append(row);
+  }
+  return section;
+}
+
 function createNodeGraphModuleScopeSection(node, type) {
   const section = document.createElement("div");
   section.className = "node-module-scope-window";
@@ -85,23 +130,21 @@ function createNodeGraphModuleScopeSection(node, type) {
   surface.className = "node-module-scope-window-surface";
   section.append(surface);
 
-  if (type === "clock") {
-    const ledShell = document.createElement("div");
-    ledShell.className = "node-clock-led-shell";
-    ledShell.setAttribute("aria-hidden", "true");
-
-    const led = document.createElement("div");
-    led.className = "node-clock-led";
-    led.dataset.ledState = "off";
-    ledShell.append(led);
-    section.append(ledShell);
-  }
-
   const analyzer = document.createElement("div");
   analyzer.className = "node-module-scope-analyzer";
   analyzer.hidden = true;
   section.append(analyzer);
   return section;
+}
+
+function createNodeGraphLedFace(node, type) {
+  const face = document.createElement("div");
+  face.className = "node-led-face";
+  face.dataset.node = node;
+  face.dataset.nodeType = type;
+  face.setAttribute("aria-label", `${nodeGraphNodeDisplayName(node)} LED`);
+  face.append(createNodeGraphPort(node, type, "In", "input"));
+  return face;
 }
 
 function createNodeGraphSliderWidgetBody(node, type) {
@@ -121,6 +164,10 @@ function createNodeGraphParameter(node, type, parameter) {
   const row = document.createElement("div");
   row.className = "node-parameter-row";
   row.dataset.param = parameter.key;
+  const constraint = normalizeNodeGraphResourceConstraint(parameter.constraint);
+  if (constraint) {
+    row.dataset.nodeConstraint = constraint;
+  }
   row.append(createNodeParameterModulationPort(node, type, parameter));
 
   const label = document.createElement("label");
@@ -165,4 +212,9 @@ function createNodeGraphParameter(node, type, parameter) {
   row.append(label);
   row.append(createNodeParameterOutputPort(node, type, parameter));
   return row;
+}
+
+function normalizeNodeGraphResourceConstraint(value) {
+  const constraint = String(value || "").trim().toLowerCase();
+  return ["cpu", "ram", "gpu"].includes(constraint) ? constraint : "";
 }

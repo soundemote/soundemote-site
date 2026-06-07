@@ -19,6 +19,7 @@ const whatItIs = [
 const compositionModel = [
   "Every beat can have a sound, an image, a motion, and a light.",
   "Audio, video, shaders, cameras, modulation, and export belong to the same composition.",
+  "Rooms, distances, surfaces, and reflections can become composable parts of the instrument.",
   "Visuals are not an add-on, preview track, plug-in hack, or separate performance layer.",
   "The system starts with sound and continues into energy, motion, and image.",
 ];
@@ -132,6 +133,25 @@ const AVWResearch = () => (
             visual language, not hidden implementation details.
           </p>
         </article>
+      </div>
+    </section>
+
+    <section className="px-6 pb-16">
+      <div className="container rounded-lg border border-border/60 bg-card/70 p-6 shadow-[var(--shadow-panel)] md:p-8">
+        <p className="mono text-xs uppercase tracking-[0.22em] text-scope">physics based space</p>
+        <h2 className="display mt-4 max-w-3xl text-3xl font-semibold leading-tight text-warm-white md:text-4xl">
+          Draw the room and hear the space
+        </h2>
+        <p className="mt-5 max-w-3xl text-base leading-7 text-muted-foreground">
+          Patches can become objects in space. A room simulator for reverb with hand-drawable rooms
+          could let you draw a room, place the listener, move sound sources, assign surfaces, and let
+          physics-based reverb turn the shape of the room into part of the instrument.
+        </p>
+        <p className="mt-5 max-w-3xl text-base leading-7 text-muted-foreground">
+          The goal is not a detached reverb menu. The goal is ray-space thinking inside the workstation:
+          distance, walls, reflection paths, absorption, motion, and visual layout all becoming audible
+          and visible while the patch plays.
+        </p>
       </div>
     </section>
 

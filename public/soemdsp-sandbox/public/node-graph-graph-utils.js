@@ -1,4 +1,4 @@
-const nodeGraphGraphShapes = Object.freeze(["linear", "rational", "exponential"]);
+const nodeGraphGraphShapes = Object.freeze(["linear", "smooth", "rational", "exponential", "hold"]);
 
 const nodeGraphDefaultGraphData = Object.freeze({
   cursorX: 0.5,
@@ -8,9 +8,207 @@ const nodeGraphDefaultGraphData = Object.freeze({
   ]),
 });
 
+const nodeGraphGraphPresets = Object.freeze({
+  envelope: Object.freeze({
+    cursorX: 0,
+    nodes: Object.freeze([
+      Object.freeze({ c: 0, shape: "linear", x: 0, y: 0 }),
+      Object.freeze({ c: 0.45, shape: "exponential", x: 0.12, y: 1 }),
+      Object.freeze({ c: -0.25, shape: "rational", x: 0.48, y: 0.48 }),
+      Object.freeze({ c: 0.25, shape: "exponential", x: 0.82, y: 0.48 }),
+      Object.freeze({ c: -0.35, shape: "exponential", x: 1, y: 0 }),
+    ]),
+  }),
+  ramp: Object.freeze({
+    cursorX: 0,
+    nodes: Object.freeze([
+      Object.freeze({ c: 0, shape: "linear", x: 0, y: 0 }),
+      Object.freeze({ c: 0, shape: "linear", x: 1, y: 1 }),
+    ]),
+  }),
+  sine: Object.freeze({
+    cursorX: 0,
+    nodes: Object.freeze([
+      Object.freeze({ c: 0, shape: "smooth", x: 0, y: 0.5 }),
+      Object.freeze({ c: 0, shape: "smooth", x: 0.25, y: 1 }),
+      Object.freeze({ c: 0, shape: "smooth", x: 0.5, y: 0.5 }),
+      Object.freeze({ c: 0, shape: "smooth", x: 0.75, y: 0 }),
+      Object.freeze({ c: 0, shape: "smooth", x: 1, y: 0.5 }),
+    ]),
+  }),
+  steps: Object.freeze({
+    cursorX: 0,
+    nodes: Object.freeze([
+      Object.freeze({ c: 0, shape: "linear", x: 0, y: 0.2 }),
+      Object.freeze({ c: 0, shape: "hold", x: 0.25, y: 0.72 }),
+      Object.freeze({ c: 0, shape: "hold", x: 0.5, y: 0.4 }),
+      Object.freeze({ c: 0, shape: "hold", x: 0.75, y: 0.88 }),
+      Object.freeze({ c: 0, shape: "hold", x: 1, y: 0.88 }),
+    ]),
+  }),
+  triangle: Object.freeze({
+    cursorX: 0,
+    nodes: Object.freeze([
+      Object.freeze({ c: 0, shape: "linear", x: 0, y: 0 }),
+      Object.freeze({ c: 0, shape: "linear", x: 0.5, y: 1 }),
+      Object.freeze({ c: 0, shape: "linear", x: 1, y: 0 }),
+    ]),
+  }),
+});
+
+function nodeGraphGraphPresetData(name) {
+  return normalizeNodeGraphGraph(nodeGraphGraphPresets[String(name || "").trim()] || nodeGraphDefaultGraphData);
+}
+
+function nodeGraphGraphTransformedData(graphValue, transform) {
+  const graph = normalizeNodeGraphGraph(graphValue);
+  const type = String(transform || "").trim();
+  if (type === "flipY") {
+    return normalizeNodeGraphGraph({
+      cursorX: graph.cursorX,
+      nodes: graph.nodes.map((node) => ({
+        ...node,
+        y: 1 - node.y,
+      })),
+    });
+  }
+  if (type === "reverseX") {
+    const nodes = graph.nodes.map((node, index) => {
+      const segmentSource = graph.nodes[index + 1] || node;
+      return {
+        c: -normalizeNodeGraphGraphNumber(segmentSource.c, 0, -0.999, 0.999),
+        shape: segmentSource.shape,
+        x: 1 - node.x,
+        y: node.y,
+      };
+    });
+    return normalizeNodeGraphGraph({
+      cursorX: 1 - graph.cursorX,
+      nodes,
+    });
+  }
+  return graph;
+}
+
+function addNodeGraphGraphNodeData(graphValue, pointValue = {}) {
+  const graph = normalizeNodeGraphGraph(graphValue);
+  if (graph.nodes.length >= 32) {
+    return { added: false, graph, selectedIndex: nodeGraphGraphNodeIndexFromValue(graph, graph.nodes.length - 1) };
+  }
+  const source = pointValue && typeof pointValue === "object" ? pointValue : {};
+  const x = normalizeNodeGraphGraphNumber(source.x, graph.cursorX);
+  const y = Number.isFinite(Number(source.y))
+    ? normalizeNodeGraphGraphNumber(source.y, 0)
+    : normalizeNodeGraphGraphNumber(nodeGraphGraphValueAt(graph, x), 0);
+  graph.cursorX = x;
+  graph.nodes.push({
+    c: 0,
+    shape: "rational",
+    x,
+    y,
+  });
+  const normalized = normalizeNodeGraphGraph(graph);
+  const selectedIndex = normalized.nodes.reduce((bestIndex, node, index) => (
+    Math.abs(node.x - x) < Math.abs(normalized.nodes[bestIndex].x - x)
+      ? index
+      : bestIndex
+  ), 0);
+  return {
+    added: true,
+    graph: normalized,
+    selectedIndex,
+    selectedX: x,
+  };
+}
+
+function duplicateNodeGraphGraphNodeData(graphValue, selectedIndex = 0) {
+  const graph = normalizeNodeGraphGraph(graphValue);
+  if (graph.nodes.length >= 32) {
+    return { graph, duplicated: false, selectedIndex: nodeGraphGraphNodeIndexFromValue(graph, selectedIndex) };
+  }
+  const index = nodeGraphGraphNodeIndexFromValue(graph, selectedIndex);
+  const sourceNode = graph.nodes[index] || graph.nodes.at(-1);
+  const previousX = graph.nodes[Math.max(0, index - 1)]?.x ?? 0;
+  const nextX = graph.nodes[Math.min(graph.nodes.length - 1, index + 1)]?.x ?? 1;
+  const baseX = normalizeNodeGraphGraphNumber(sourceNode.x, 0.5);
+  const offset = 0.025;
+  const duplicateX = index >= graph.nodes.length - 1
+    ? Math.max(previousX + 0.001, baseX - offset)
+    : Math.min(nextX - 0.001, baseX + offset);
+  const x = normalizeNodeGraphGraphNumber(duplicateX, baseX, 0.001, 0.999);
+  graph.nodes.push({
+    c: sourceNode.c,
+    shape: sourceNode.shape,
+    x,
+    y: sourceNode.y,
+  });
+  const normalized = normalizeNodeGraphGraph(graph);
+  const duplicateIndex = normalized.nodes.reduce((bestIndex, node, nodeIndex) => {
+    const best = normalized.nodes[bestIndex];
+    return Math.abs(node.x - x) < Math.abs(best.x - x) ? nodeIndex : bestIndex;
+  }, 0);
+  return {
+    duplicated: true,
+    graph: normalized,
+    selectedIndex: duplicateIndex,
+    selectedX: x,
+  };
+}
+
+function cycleNodeGraphGraphShapeData(graphValue, selectedIndex = 1) {
+  const graph = normalizeNodeGraphGraph(graphValue);
+  const index = nodeGraphGraphNodeIndexFromValue(
+    graph,
+    selectedIndex <= 0 && graph.nodes.length > 1 ? 1 : selectedIndex,
+  );
+  const node = graph.nodes[index];
+  if (!node) {
+    return { graph, selectedIndex: index };
+  }
+  graph.nodes[index] = normalizeNodeGraphGraphNode({
+    ...node,
+    shape: nodeGraphGraphNextShape(node.shape),
+  }, index);
+  return {
+    graph: normalizeNodeGraphGraph(graph),
+    selectedIndex: index,
+  };
+}
+
+function serializeNodeGraphGraphClipboard(graphValue) {
+  return JSON.stringify({
+    graph: normalizeNodeGraphGraph(graphValue),
+    type: "soemdsp.graph",
+    version: 1,
+  }, null, 2);
+}
+
+function parseNodeGraphGraphClipboard(text) {
+  try {
+    const payload = JSON.parse(String(text || ""));
+    if (payload?.type !== "soemdsp.graph") {
+      return null;
+    }
+    return normalizeNodeGraphGraph(payload.graph);
+  } catch (_error) {
+    return null;
+  }
+}
+
 function normalizeNodeGraphGraphShape(value) {
   const shape = String(value || "").trim();
   return nodeGraphGraphShapes.includes(shape) ? shape : "rational";
+}
+
+function nodeGraphGraphNextShape(value) {
+  const current = normalizeNodeGraphGraphShape(value);
+  const index = nodeGraphGraphShapes.indexOf(current);
+  return nodeGraphGraphShapes[(index + 1) % nodeGraphGraphShapes.length];
+}
+
+function nodeGraphGraphContourShape(value) {
+  const shape = normalizeNodeGraphGraphShape(value);
+  return shape === "rational" || shape === "exponential" ? shape : "rational";
 }
 
 function normalizeNodeGraphGraphNumber(value, fallback = 0, min = 0, max = 1) {
@@ -74,6 +272,11 @@ function nodeGraphGraphExponentialCurve(position, contour = 0) {
   return (1 - Math.exp(p * a)) / denominator;
 }
 
+function nodeGraphGraphSmoothCurve(position) {
+  const p = normalizeNodeGraphGraphNumber(position, 0, 0, 1);
+  return p * p * (3 - 2 * p);
+}
+
 function nodeGraphGraphSegmentValue(graph, x, index) {
   const left = graph.nodes[index];
   const right = graph.nodes[index + 1];
@@ -85,6 +288,10 @@ function nodeGraphGraphSegmentValue(graph, x, index) {
   const contour = normalizeNodeGraphGraphNumber(right.c, 0, -0.999, 0.999);
   const shaped = right.shape === "exponential"
     ? nodeGraphGraphExponentialCurve(p, contour)
+    : right.shape === "hold"
+      ? (p >= 1 ? 1 : 0)
+    : right.shape === "smooth"
+      ? nodeGraphGraphSmoothCurve(p)
     : right.shape === "linear"
       ? p
       : nodeGraphGraphRationalCurve(p, contour);
@@ -136,9 +343,23 @@ function createNodeGraphGraphSvgElement(name, attributes = {}) {
   return element;
 }
 
-function nodeGraphGraphSvgToGraphPoint(svg, clientX, clientY) {
+function nodeGraphGraphSvgPlotRect(svg) {
   const rect = svg?.getBoundingClientRect?.();
   if (!rect?.width || !rect?.height) {
+    return null;
+  }
+  const size = Math.max(1, Math.min(rect.width, rect.height));
+  return {
+    height: size,
+    left: rect.left + (rect.width - size) * 0.5,
+    top: rect.top + (rect.height - size) * 0.5,
+    width: size,
+  };
+}
+
+function nodeGraphGraphSvgToGraphPoint(svg, clientX, clientY) {
+  const rect = nodeGraphGraphSvgPlotRect(svg);
+  if (!rect) {
     return { x: 0, y: 0 };
   }
   const viewX = ((clientX - rect.left) / rect.width) * 100;
@@ -171,6 +392,24 @@ function nodeGraphGraphNodeIndexFromValue(graph, value) {
   return Math.max(0, Math.min(maxIndex, Number.isFinite(index) ? index : maxIndex));
 }
 
+function nodeGraphGraphSelectionState() {
+  if (!(nodeGraphMvp.graphSelectedNodeIndices instanceof Map)) {
+    nodeGraphMvp.graphSelectedNodeIndices = new Map();
+  }
+  return nodeGraphMvp.graphSelectedNodeIndices;
+}
+
+function nodeGraphGraphSelectedNodeIndex(nodeId, graph, fallback = 0) {
+  const state = nodeGraphGraphSelectionState();
+  return nodeGraphGraphNodeIndexFromValue(graph, state.has(nodeId) ? state.get(nodeId) : fallback);
+}
+
+function setNodeGraphGraphSelectedNodeIndex(nodeId, graph, index) {
+  const selectedIndex = nodeGraphGraphNodeIndexFromValue(graph, index);
+  nodeGraphGraphSelectionState().set(nodeId, selectedIndex);
+  return selectedIndex;
+}
+
 function nodeGraphGraphContourHandlePoint(graph, index) {
   const left = graph.nodes[index - 1];
   const right = graph.nodes[index];
@@ -182,17 +421,47 @@ function nodeGraphGraphContourHandlePoint(graph, index) {
   return nodeGraphGraphPointToSvg(x, y);
 }
 
-function renderNodeGraphGraphDisplay(element, graphValue) {
+function nodeGraphGraphSegmentMidpoint(graph, index) {
+  const left = graph.nodes[index - 1];
+  const right = graph.nodes[index];
+  if (!left || !right) {
+    return null;
+  }
+  return {
+    x: left.x + (right.x - left.x) * 0.5,
+    y: left.y + (right.y - left.y) * 0.5,
+  };
+}
+
+function nodeGraphGraphContourFromPoint(graph, index, point) {
+  const midpoint = nodeGraphGraphSegmentMidpoint(graph, index);
+  const left = graph.nodes[index - 1];
+  const right = graph.nodes[index];
+  if (!midpoint || !left || !right) {
+    return 0;
+  }
+  const direction = right.y >= left.y ? 1 : -1;
+  const range = Math.max(0.08, Math.abs(right.y - left.y));
+  return normalizeNodeGraphGraphNumber(((point.y - midpoint.y) / range) * direction * 1.8, 0, -0.999, 0.999);
+}
+
+function renderNodeGraphGraphDisplay(element, graphValue, selectedIndex = null) {
   if (!element) {
     return;
   }
   const graph = normalizeNodeGraphGraph(graphValue);
+  const nodeId = element.dataset.graphNode || "";
+  const activeIndex = selectedIndex === null
+    ? nodeGraphGraphSelectedNodeIndex(nodeId, graph, 0)
+    : nodeGraphGraphNodeIndexFromValue(graph, selectedIndex);
+  const cursorValue = nodeGraphGraphValueAt(graph, graph.cursorX);
   const cursor = nodeGraphGraphPointToSvg(graph.cursorX, 0);
+  const cursorPoint = nodeGraphGraphPointToSvg(graph.cursorX, cursorValue);
   element.replaceChildren();
   const svg = createNodeGraphGraphSvgElement("svg", {
     "aria-hidden": "true",
     class: "node-module-graph-svg",
-    preserveAspectRatio: "none",
+    preserveAspectRatio: "xMidYMid meet",
     viewBox: "0 0 100 100",
   });
   svg.append(createNodeGraphGraphSvgElement("rect", {
@@ -202,6 +471,23 @@ function renderNodeGraphGraphDisplay(element, graphValue) {
     x: "8",
     y: "8",
   }));
+  [0.25, 0.5, 0.75].forEach((gridValue) => {
+    const gridPoint = nodeGraphGraphPointToSvg(gridValue, gridValue);
+    svg.append(createNodeGraphGraphSvgElement("line", {
+      class: `node-module-graph-grid-line${gridValue === 0.5 ? " major" : ""}`,
+      x1: gridPoint.x.toFixed(3),
+      x2: gridPoint.x.toFixed(3),
+      y1: "8",
+      y2: "92",
+    }));
+    svg.append(createNodeGraphGraphSvgElement("line", {
+      class: `node-module-graph-grid-line${gridValue === 0.5 ? " major" : ""}`,
+      x1: "8",
+      x2: "92",
+      y1: gridPoint.y.toFixed(3),
+      y2: gridPoint.y.toFixed(3),
+    }));
+  });
   svg.append(createNodeGraphGraphSvgElement("line", {
     class: "node-module-graph-axis",
     x1: "8",
@@ -216,9 +502,31 @@ function renderNodeGraphGraphDisplay(element, graphValue) {
     y1: "8",
     y2: "92",
   }));
+  svg.append(createNodeGraphGraphSvgElement("line", {
+    class: "node-module-graph-cursor-hit",
+    "data-graph-cursor": "true",
+    x1: cursor.x.toFixed(3),
+    x2: cursor.x.toFixed(3),
+    y1: "8",
+    y2: "92",
+  }));
+  svg.append(createNodeGraphGraphSvgElement("line", {
+    class: "node-module-graph-cursor-value-guide",
+    x1: "8",
+    x2: "92",
+    y1: cursorPoint.y.toFixed(3),
+    y2: cursorPoint.y.toFixed(3),
+  }));
   svg.append(createNodeGraphGraphSvgElement("path", {
     class: "node-module-graph-curve",
     d: nodeGraphGraphCurvePath(graph),
+  }));
+  svg.append(createNodeGraphGraphSvgElement("circle", {
+    class: "node-module-graph-cursor-value",
+    cx: cursorPoint.x.toFixed(3),
+    cy: cursorPoint.y.toFixed(3),
+    "data-graph-cursor": "true",
+    r: "2.5",
   }));
   graph.nodes.forEach((node, index) => {
     if (index <= 0) {
@@ -229,27 +537,39 @@ function renderNodeGraphGraphDisplay(element, graphValue) {
       return;
     }
     svg.append(createNodeGraphGraphSvgElement("circle", {
-      class: "node-module-graph-contour-handle",
+      class: `node-module-graph-contour-handle${index === activeIndex ? " selected" : ""}`,
       cx: point.x.toFixed(3),
       cy: point.y.toFixed(3),
       "data-graph-contour-index": String(index),
+      "data-selected": index === activeIndex ? "true" : "false",
       r: "2.7",
     }));
+    const shapeBadge = createNodeGraphGraphSvgElement("text", {
+      class: `node-module-graph-shape-badge${index === activeIndex ? " selected" : ""}`,
+      "data-graph-shape-index": String(index),
+      "data-selected": index === activeIndex ? "true" : "false",
+      x: Math.min(90, point.x + 4).toFixed(3),
+      y: Math.max(12, point.y - 3).toFixed(3),
+    });
+    shapeBadge.textContent = normalizeNodeGraphGraphShape(node.shape).slice(0, 3);
+    svg.append(shapeBadge);
   });
   graph.nodes.forEach((node, index) => {
     const point = nodeGraphGraphPointToSvg(node.x, node.y);
     svg.append(createNodeGraphGraphSvgElement("circle", {
-      class: "node-module-graph-node-hit",
+      class: `node-module-graph-node-hit${index === activeIndex ? " selected" : ""}`,
       cx: point.x.toFixed(3),
       cy: point.y.toFixed(3),
       "data-graph-node-index": String(index),
+      "data-selected": index === activeIndex ? "true" : "false",
       r: "5.4",
     }));
     svg.append(createNodeGraphGraphSvgElement("circle", {
-      class: "node-module-graph-node",
+      class: `node-module-graph-node${index === activeIndex ? " selected" : ""}`,
       cx: point.x.toFixed(3),
       cy: point.y.toFixed(3),
       "data-graph-node-index": String(index),
+      "data-selected": index === activeIndex ? "true" : "false",
       r: "2.2",
     }));
   });
@@ -257,10 +577,32 @@ function renderNodeGraphGraphDisplay(element, graphValue) {
 }
 
 function syncNodeGraphGraphElement(moduleElement, patchNode) {
+  const graph = normalizeNodeGraphGraph(patchNode?.graph);
   renderNodeGraphGraphDisplay(
     moduleElement?.querySelector?.(".node-module-graph-display"),
-    patchNode?.graph,
+    graph,
+    nodeGraphGraphSelectedNodeIndex(patchNode?.id || "", graph, 0),
   );
+}
+
+function nodeGraphGraphNodeIdFromDisplay(display) {
+  return display?.closest?.(".dsp-node")?.dataset?.node || display?.dataset?.graphNode || "";
+}
+
+function syncNodeGraphGraphDisplaysForNode(nodeId, patchNode) {
+  const id = String(nodeId || patchNode?.id || "").trim();
+  if (!id) {
+    return;
+  }
+  const graph = normalizeNodeGraphGraph(patchNode?.graph);
+  const selectedIndex = nodeGraphGraphSelectedNodeIndex(id, graph, 0);
+  document
+    .querySelectorAll(".node-module-graph-display")
+    .forEach((display) => {
+      if (nodeGraphGraphNodeIdFromDisplay(display) === id) {
+        renderNodeGraphGraphDisplay(display, graph, selectedIndex);
+      }
+    });
 }
 
 function nodeGraphGraphDisplayFromEventTarget(target) {
@@ -271,20 +613,37 @@ function beginNodeGraphGraphNodeDrag(event) {
   if (event.button !== undefined && event.button !== 0) {
     return;
   }
-  const circle = event.target?.closest?.(".node-module-graph-node, .node-module-graph-node-hit");
-  if (!circle) {
+  const shapeBadge = event.target?.closest?.(".node-module-graph-shape-badge");
+  if (shapeBadge) {
+    cycleNodeGraphGraphShapeFromDisplayEvent(event, shapeBadge);
     return;
   }
-  const moduleElement = circle.closest(".dsp-node");
-  const nodeId = moduleElement?.dataset.node || "";
+  const contour = event.target?.closest?.(".node-module-graph-contour-handle");
+  if (contour) {
+    beginNodeGraphGraphContourDrag(event, contour);
+    return;
+  }
+  const cursor = event.target?.closest?.("[data-graph-cursor]");
+  if (cursor) {
+    beginNodeGraphGraphCursorDrag(event, cursor);
+    return;
+  }
+  const circle = event.target?.closest?.(".node-module-graph-node, .node-module-graph-node-hit");
+  if (!circle) {
+    addNodeGraphGraphNodeFromDisplayEvent(event);
+    return;
+  }
+  const display = nodeGraphGraphDisplayFromEventTarget(circle);
+  const nodeId = nodeGraphGraphNodeIdFromDisplay(display);
   const patchNode = nodeGraphPatchNode(nodeId);
   if (!patchNode || patchNode.type !== "graph") {
     return;
   }
-  const display = nodeGraphGraphDisplayFromEventTarget(circle);
   const svg = circle.closest(".node-module-graph-svg");
   const graph = normalizeNodeGraphGraph(patchNode.graph);
   const index = nodeGraphGraphNodeIndexFromValue(graph, circle.dataset.graphNodeIndex);
+  display?.focus?.({ preventScroll: true });
+  setNodeGraphGraphSelectedNodeIndex(nodeId, graph, index);
   nodeGraphMvp.graphNodeDragging = {
     display,
     graph,
@@ -298,12 +657,150 @@ function beginNodeGraphGraphNodeDrag(event) {
   event.stopPropagation();
 }
 
+function beginNodeGraphGraphCursorDrag(event, cursorElement) {
+  const display = nodeGraphGraphDisplayFromEventTarget(cursorElement);
+  const nodeId = nodeGraphGraphNodeIdFromDisplay(display);
+  const patchNode = nodeGraphPatchNode(nodeId);
+  if (!patchNode || patchNode.type !== "graph") {
+    return;
+  }
+  const svg = cursorElement.closest(".node-module-graph-svg");
+  const graph = normalizeNodeGraphGraph(patchNode.graph);
+  display?.focus?.({ preventScroll: true });
+  nodeGraphMvp.graphNodeDragging = {
+    display,
+    graph,
+    mode: "cursor",
+    nodeId,
+    svg,
+  };
+  display?.classList.add("dragging");
+  cursorElement.setPointerCapture?.(event.pointerId);
+  dragNodeGraphGraphNode(event);
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function beginNodeGraphGraphContourDrag(event, contour) {
+  const display = nodeGraphGraphDisplayFromEventTarget(contour);
+  const nodeId = nodeGraphGraphNodeIdFromDisplay(display);
+  const patchNode = nodeGraphPatchNode(nodeId);
+  if (!patchNode || patchNode.type !== "graph") {
+    return;
+  }
+  const svg = contour.closest(".node-module-graph-svg");
+  const graph = normalizeNodeGraphGraph(patchNode.graph);
+  const index = nodeGraphGraphNodeIndexFromValue(graph, contour.dataset.graphContourIndex);
+  display?.focus?.({ preventScroll: true });
+  setNodeGraphGraphSelectedNodeIndex(nodeId, graph, index);
+  nodeGraphMvp.graphNodeDragging = {
+    display,
+    graph,
+    index,
+    mode: "contour",
+    nodeId,
+    svg,
+  };
+  display?.classList.add("dragging");
+  contour.setPointerCapture?.(event.pointerId);
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function addNodeGraphGraphNodeFromDisplayEvent(event) {
+  const svg = event.target?.closest?.(".node-module-graph-svg");
+  if (!svg) {
+    return;
+  }
+  const display = nodeGraphGraphDisplayFromEventTarget(event.target);
+  const nodeId = nodeGraphGraphNodeIdFromDisplay(display);
+  const patchNode = nodeGraphPatchNode(nodeId);
+  if (!display || !patchNode || patchNode.type !== "graph") {
+    return;
+  }
+  display?.focus?.({ preventScroll: true });
+  const point = nodeGraphGraphSvgToGraphPoint(svg, event.clientX, event.clientY);
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const targetNode = patch.nodes.find((node) => node.id === nodeId);
+  if (!targetNode || targetNode.type !== "graph") {
+    return;
+  }
+  const addition = addNodeGraphGraphNodeData(targetNode.graph, point);
+  if (!addition.added) {
+    return;
+  }
+  targetNode.graph = addition.graph;
+  commitNodeGraphPatch(patch, { status: "graph node added" });
+  setNodeGraphGraphSelectedNodeIndex(nodeId, targetNode.graph, addition.selectedIndex);
+  syncNodeGraphGraphDisplaysForNode(nodeId, targetNode);
+  syncNodeGraphGraphControls(targetNode.graph, addition.selectedIndex);
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function cycleNodeGraphGraphShapeFromDisplayEvent(event, shapeBadge) {
+  const display = nodeGraphGraphDisplayFromEventTarget(shapeBadge);
+  const nodeId = nodeGraphGraphNodeIdFromDisplay(display);
+  const sourceNode = nodeGraphPatchNode(nodeId);
+  if (!display || !sourceNode || sourceNode.type !== "graph") {
+    return false;
+  }
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const targetNode = patch.nodes.find((node) => node.id === nodeId);
+  if (!targetNode || targetNode.type !== "graph") {
+    return false;
+  }
+  const graph = normalizeNodeGraphGraph(targetNode.graph);
+  const shape = cycleNodeGraphGraphShapeData(graph, shapeBadge.dataset.graphShapeIndex);
+  targetNode.graph = shape.graph;
+  display?.focus?.({ preventScroll: true });
+  setNodeGraphGraphSelectedNodeIndex(nodeId, targetNode.graph, shape.selectedIndex);
+  commitNodeGraphPatch(patch, { status: "graph curve shape changed" });
+  syncNodeGraphGraphDisplaysForNode(nodeId, targetNode);
+  syncNodeGraphGraphControls(targetNode.graph, shape.selectedIndex);
+  event?.preventDefault?.();
+  event?.stopPropagation?.();
+  return true;
+}
+
 function dragNodeGraphGraphNode(event) {
   const drag = nodeGraphMvp.graphNodeDragging;
   if (!drag?.svg || !drag?.display) {
     return;
   }
   const point = nodeGraphGraphSvgToGraphPoint(drag.svg, event.clientX, event.clientY);
+  if (drag.mode === "cursor") {
+    drag.graph = normalizeNodeGraphGraph({
+      ...drag.graph,
+      cursorX: point.x,
+    });
+    renderNodeGraphGraphDisplay(drag.display, drag.graph);
+    drag.svg = drag.display.querySelector(".node-module-graph-svg");
+    if (nodeGraphModuleActionTargetNodeId() === drag.nodeId) {
+      syncNodeGraphGraphControls(drag.graph);
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
+  if (drag.mode === "contour") {
+    const current = drag.graph.nodes[drag.index] || normalizeNodeGraphGraphNode({}, drag.index);
+    drag.graph.nodes[drag.index] = normalizeNodeGraphGraphNode({
+      ...current,
+      c: nodeGraphGraphContourFromPoint(drag.graph, drag.index, point),
+      shape: nodeGraphGraphContourShape(current.shape),
+    }, drag.index);
+    drag.graph = normalizeNodeGraphGraph(drag.graph);
+    setNodeGraphGraphSelectedNodeIndex(drag.nodeId, drag.graph, drag.index);
+    renderNodeGraphGraphDisplay(drag.display, drag.graph, drag.index);
+    drag.svg = drag.display.querySelector(".node-module-graph-svg");
+    if (nodeGraphModuleActionTargetNodeId() === drag.nodeId) {
+      syncNodeGraphGraphControls(drag.graph, drag.index);
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
   const constrained = nodeGraphGraphConstrainedNodePoint(drag.graph, drag.index, point);
   const current = drag.graph.nodes[drag.index] || normalizeNodeGraphGraphNode({}, drag.index);
   drag.graph.nodes[drag.index] = normalizeNodeGraphGraphNode({
@@ -313,7 +810,8 @@ function dragNodeGraphGraphNode(event) {
   }, drag.index);
   drag.graph = normalizeNodeGraphGraph(drag.graph);
   drag.index = nodeGraphGraphNodeIndexFromValue(drag.graph, drag.index);
-  renderNodeGraphGraphDisplay(drag.display, drag.graph);
+  setNodeGraphGraphSelectedNodeIndex(drag.nodeId, drag.graph, drag.index);
+  renderNodeGraphGraphDisplay(drag.display, drag.graph, drag.index);
   drag.svg = drag.display.querySelector(".node-module-graph-svg");
   if (nodeGraphModuleActionTargetNodeId() === drag.nodeId) {
     syncNodeGraphGraphControls(drag.graph, drag.index);
@@ -333,9 +831,192 @@ function endNodeGraphGraphNodeDrag(event) {
   const targetNode = patch.nodes.find((node) => node.id === drag.nodeId);
   if (targetNode?.type === "graph") {
     targetNode.graph = normalizeNodeGraphGraph(drag.graph);
-    commitNodeGraphPatch(patch, { status: "graph node moved" });
-    syncNodeGraphGraphControls(targetNode.graph, drag.index);
+    const status = drag.mode === "cursor"
+      ? "graph cursor moved"
+      : drag.mode === "contour"
+        ? "graph curve changed"
+        : "graph node moved";
+    commitNodeGraphPatch(patch, { status });
+    const selectedIndex = nodeGraphGraphSelectedNodeIndex(drag.nodeId, targetNode.graph, drag.index ?? 0);
+    setNodeGraphGraphSelectedNodeIndex(drag.nodeId, targetNode.graph, selectedIndex);
+    syncNodeGraphGraphDisplaysForNode(drag.nodeId, targetNode);
+    syncNodeGraphGraphControls(targetNode.graph, selectedIndex);
   }
   event.preventDefault();
   event.stopPropagation();
+}
+
+function removeSelectedNodeGraphGraphNodeFromDisplay(display) {
+  const nodeId = nodeGraphGraphNodeIdFromDisplay(display);
+  const sourceNode = nodeGraphPatchNode(nodeId);
+  if (!display || !sourceNode || sourceNode.type !== "graph") {
+    return false;
+  }
+  const graph = normalizeNodeGraphGraph(sourceNode.graph);
+  if (graph.nodes.length <= 2) {
+    return false;
+  }
+  const selectedIndex = nodeGraphGraphSelectedNodeIndex(nodeId, graph, graph.nodes.length - 1);
+  graph.nodes.splice(selectedIndex, 1);
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const targetNode = patch.nodes.find((node) => node.id === nodeId);
+  if (!targetNode || targetNode.type !== "graph") {
+    return false;
+  }
+  targetNode.graph = graph;
+  const nextIndex = setNodeGraphGraphSelectedNodeIndex(nodeId, graph, Math.max(0, selectedIndex - 1));
+  commitNodeGraphPatch(patch, { status: "graph node removed" });
+  syncNodeGraphGraphDisplaysForNode(nodeId, targetNode);
+  syncNodeGraphGraphControls(targetNode.graph, nextIndex);
+  return true;
+}
+
+function removeFocusedNodeGraphGraphNode() {
+  return removeSelectedNodeGraphGraphNodeFromDisplay(
+    document.activeElement?.closest?.(".node-module-graph-display"),
+  );
+}
+
+function addFocusedNodeGraphGraphNode() {
+  const display = document.activeElement?.closest?.(".node-module-graph-display");
+  const nodeId = nodeGraphGraphNodeIdFromDisplay(display);
+  const sourceNode = nodeGraphPatchNode(nodeId);
+  if (!display || !sourceNode || sourceNode.type !== "graph") {
+    return false;
+  }
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const targetNode = patch.nodes.find((node) => node.id === nodeId);
+  if (!targetNode || targetNode.type !== "graph") {
+    return false;
+  }
+  const addition = addNodeGraphGraphNodeData(targetNode.graph);
+  if (!addition.added) {
+    return false;
+  }
+  targetNode.graph = addition.graph;
+  commitNodeGraphPatch(patch, { status: "graph node added" });
+  setNodeGraphGraphSelectedNodeIndex(nodeId, targetNode.graph, addition.selectedIndex);
+  syncNodeGraphGraphDisplaysForNode(nodeId, targetNode);
+  if (nodeGraphModuleActionTargetNodeId() === nodeId) {
+    syncNodeGraphGraphControls(targetNode.graph, addition.selectedIndex);
+  }
+  display.focus?.({ preventScroll: true });
+  return true;
+}
+
+function duplicateFocusedNodeGraphGraphNode() {
+  const display = document.activeElement?.closest?.(".node-module-graph-display");
+  const nodeId = nodeGraphGraphNodeIdFromDisplay(display);
+  const sourceNode = nodeGraphPatchNode(nodeId);
+  if (!display || !sourceNode || sourceNode.type !== "graph") {
+    return false;
+  }
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const targetNode = patch.nodes.find((node) => node.id === nodeId);
+  if (!targetNode || targetNode.type !== "graph") {
+    return false;
+  }
+  const graph = normalizeNodeGraphGraph(targetNode.graph);
+  const selectedIndex = nodeGraphGraphSelectedNodeIndex(nodeId, graph, graph.nodes.length - 1);
+  const duplicate = duplicateNodeGraphGraphNodeData(graph, selectedIndex);
+  if (!duplicate.duplicated) {
+    return false;
+  }
+  targetNode.graph = duplicate.graph;
+  commitNodeGraphPatch(patch, { status: "graph node duplicated" });
+  setNodeGraphGraphSelectedNodeIndex(nodeId, targetNode.graph, duplicate.selectedIndex);
+  syncNodeGraphGraphDisplaysForNode(nodeId, targetNode);
+  if (nodeGraphModuleActionTargetNodeId() === nodeId) {
+    syncNodeGraphGraphControls(targetNode.graph, duplicate.selectedIndex);
+  }
+  display.focus?.({ preventScroll: true });
+  return true;
+}
+
+function cycleFocusedNodeGraphGraphShape() {
+  const display = document.activeElement?.closest?.(".node-module-graph-display");
+  const nodeId = nodeGraphGraphNodeIdFromDisplay(display);
+  const sourceNode = nodeGraphPatchNode(nodeId);
+  if (!display || !sourceNode || sourceNode.type !== "graph") {
+    return false;
+  }
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const targetNode = patch.nodes.find((node) => node.id === nodeId);
+  if (!targetNode || targetNode.type !== "graph") {
+    return false;
+  }
+  const graph = normalizeNodeGraphGraph(targetNode.graph);
+  const selectedIndex = nodeGraphGraphSelectedNodeIndex(nodeId, graph, graph.nodes.length - 1);
+  const shape = cycleNodeGraphGraphShapeData(graph, selectedIndex);
+  targetNode.graph = shape.graph;
+  commitNodeGraphPatch(patch, { status: "graph curve shape changed" });
+  setNodeGraphGraphSelectedNodeIndex(nodeId, targetNode.graph, shape.selectedIndex);
+  syncNodeGraphGraphDisplaysForNode(nodeId, targetNode);
+  if (nodeGraphModuleActionTargetNodeId() === nodeId) {
+    syncNodeGraphGraphControls(targetNode.graph, shape.selectedIndex);
+  }
+  display.focus?.({ preventScroll: true });
+  return true;
+}
+
+function selectFocusedNodeGraphGraphNodeOffset(offset) {
+  const display = document.activeElement?.closest?.(".node-module-graph-display");
+  const nodeId = nodeGraphGraphNodeIdFromDisplay(display);
+  const sourceNode = nodeGraphPatchNode(nodeId);
+  if (!display || !sourceNode || sourceNode.type !== "graph") {
+    return false;
+  }
+  const graph = normalizeNodeGraphGraph(sourceNode.graph);
+  const selectedIndex = nodeGraphGraphSelectedNodeIndex(nodeId, graph, graph.nodes.length - 1);
+  const nextIndex = nodeGraphGraphNodeIndexFromValue(graph, selectedIndex + Number(offset || 0));
+  setNodeGraphGraphSelectedNodeIndex(nodeId, graph, nextIndex);
+  syncNodeGraphGraphDisplaysForNode(nodeId, sourceNode);
+  if (nodeGraphModuleActionTargetNodeId() === nodeId) {
+    syncNodeGraphGraphControls(graph, nextIndex);
+  }
+  display.focus?.({ preventScroll: true });
+  return nextIndex !== selectedIndex;
+}
+
+function nudgeFocusedNodeGraphGraphNode(event) {
+  const display = document.activeElement?.closest?.(".node-module-graph-display");
+  const moves = {
+    ArrowDown: { x: 0, y: -1 },
+    ArrowLeft: { x: -1, y: 0 },
+    ArrowRight: { x: 1, y: 0 },
+    ArrowUp: { x: 0, y: 1 },
+  };
+  const move = moves[event?.key];
+  if (!display || !move || event.ctrlKey || event.metaKey) {
+    return false;
+  }
+  const nodeId = nodeGraphGraphNodeIdFromDisplay(display);
+  const sourceNode = nodeGraphPatchNode(nodeId);
+  if (!sourceNode || sourceNode.type !== "graph") {
+    return false;
+  }
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const targetNode = patch.nodes.find((node) => node.id === nodeId);
+  if (!targetNode || targetNode.type !== "graph") {
+    return false;
+  }
+  const graph = normalizeNodeGraphGraph(targetNode.graph);
+  const index = nodeGraphGraphSelectedNodeIndex(nodeId, graph, graph.nodes.length - 1);
+  const current = graph.nodes[index];
+  const step = event.altKey ? 0.001 : event.shiftKey ? 0.05 : 0.01;
+  graph.nodes[index] = normalizeNodeGraphGraphNode({
+    ...current,
+    ...nodeGraphGraphConstrainedNodePoint(graph, index, {
+      x: current.x + move.x * step,
+      y: current.y + move.y * step,
+    }),
+  }, index);
+  targetNode.graph = normalizeNodeGraphGraph(graph);
+  setNodeGraphGraphSelectedNodeIndex(nodeId, targetNode.graph, index);
+  commitNodeGraphPatch(patch, { status: "graph node nudged" });
+  syncNodeGraphGraphDisplaysForNode(nodeId, targetNode);
+  if (nodeGraphModuleActionTargetNodeId() === nodeId) {
+    syncNodeGraphGraphControls(targetNode.graph, index);
+  }
+  return true;
 }

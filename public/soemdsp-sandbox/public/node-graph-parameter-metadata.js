@@ -153,6 +153,11 @@ const nodeGraphCodeblockShadowedGlobals = Object.freeze([
 ]);
 const nodeGraphCodeblockReservedNames = Object.freeze(new Set([
   ...nodeGraphCodeblockShadowedGlobals,
+  "__context",
+  "__ctx",
+  "__inputs",
+  "__outputs",
+  "__state",
   "arguments",
   "await",
   "break",
@@ -170,6 +175,8 @@ const nodeGraphCodeblockReservedNames = Object.freeze(new Set([
   "extends",
   "false",
   "finally",
+  "frame",
+  "frames",
   "for",
   "if",
   "import",
@@ -179,10 +186,13 @@ const nodeGraphCodeblockReservedNames = Object.freeze(new Set([
   "new",
   "null",
   "return",
+  "sampleRate",
   "super",
   "switch",
+  "state",
   "this",
   "throw",
+  "time",
   "true",
   "try",
   "typeof",
@@ -191,6 +201,7 @@ const nodeGraphCodeblockReservedNames = Object.freeze(new Set([
   "while",
   "with",
   "yield",
+  "dt",
 ]));
 
 function nodeGraphCodeblockIdentifierIsValid(name) {

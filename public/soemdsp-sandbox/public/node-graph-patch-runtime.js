@@ -34,6 +34,8 @@ function nextNodeGraphTypeCounts(nodes = nodeGraphMvp.patch.nodes) {
     counts[node.type] = Math.max(counts[node.type] || 0, count);
   }
   return {
+    additiveOsc: counts.additiveOsc || 0,
+    gpuAdditiveOsc: counts.gpuAdditiveOsc || 0,
     audioInput: counts.audioInput || 0,
     badvalMonitor: counts.badvalMonitor || 0,
     bandpass: counts.bandpass || 0,
@@ -75,6 +77,10 @@ function nextNodeGraphTypeCounts(nodes = nodeGraphMvp.patch.nodes) {
 function syncNodeGraphRuntimeFromPatch() {
   nodeGraphMvp.activeNodes = new Set(nodeGraphMvp.patch.nodes.map((node) => node.id));
   nodeGraphMvp.connections = nodeGraphMvp.patch.connections.map((connection) => ({
+    ...connection,
+    tracePoints: normalizeNodeGraphTracePoints(connection.tracePoints),
+  }));
+  nodeGraphMvp.graphConnections = nodeGraphMvp.patch.graphConnections.map((connection) => ({
     ...connection,
     tracePoints: normalizeNodeGraphTracePoints(connection.tracePoints),
   }));

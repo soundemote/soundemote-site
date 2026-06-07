@@ -1,5 +1,5 @@
 const nodeGraphZoomLimits = Object.freeze({
-  max: 10,
+  max: 50,
   min: 0.1,
   fineStep: 0.1,
   quarterStep: 0.25,
@@ -49,8 +49,9 @@ function nodeGraphZoomSurface() {
 }
 
 function nodeGraphGraphRect() {
-  const workspace = document.getElementById("nodeGraphWorkspace");
-  const workspaceRect = workspace.getBoundingClientRect();
+  const surface = nodeGraphZoomSurface();
+  const graphElement = surface || document.getElementById("nodeGraphWorkspace");
+  const workspaceRect = graphElement.getBoundingClientRect();
   const zoom = nodeGraphZoom();
   return {
     height: workspaceRect.height / zoom,

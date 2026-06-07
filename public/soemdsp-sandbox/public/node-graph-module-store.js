@@ -1,13 +1,14 @@
 const nodeGraphModuleStoreTypes = Object.freeze([
   "osc",
+  "additiveOsc",
+  "gpuAdditiveOsc",
   "distortionOscillator",
   "dsfOscillator",
   "ellipsoid",
   "polyBlep",
+  "fbPolyBlepOsc",
   "sineWavetable",
   "jerobeamNyqistShannon",
-  "additiveEngine",
-  "harmonicBank",
   "drumMachine",
   "kickDrum",
   "snareDrum",
@@ -83,6 +84,7 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "rgbaHsla",
   "chromaColor",
   "image",
+  "led",
   "visualOscilloscope",
   "parabol",
   "vibratoGenerator",
@@ -244,6 +246,17 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Core tone generator. Turns frequency, phase, and waveform into a controllable voice.",
     notes: ["phase counter", "waveform selection", "frequency control"],
   },
+  additiveOsc: {
+    category: "Additive Engines",
+    description: "Harmonic additive tone source using SOEMDSP waveform partial recipes.",
+    notes: ["harmonic sum", "waveform selector", "band-limited partials"],
+  },
+  gpuAdditiveOsc: {
+    category: "Additive Engines",
+    description: "Buffered GPU additive engine proof module. Reuses the CPU additive path in live audio and prepares WebGPU chunk rendering with fallback.",
+    label: "GPU Additive",
+    notes: ["WebGPU proof", "buffered backend", "CPU fallback"],
+  },
   distortionOscillator: {
     category: "Oscillator",
     description: "Placeholder for a tone source with built-in distortion character and drive-shaped motion.",
@@ -268,6 +281,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "PolyBLEP",
     notes: ["placeholder", "anti-aliasing", "future oscillator"],
   },
+  fbPolyBlepOsc: {
+    category: "Oscillator",
+    description: "Realtime forward/backward PolyBLEP oscillator test module, split out from the current PolyBLEP oscillator path for edge-repair experiments.",
+    label: "F/B PolyBLEP",
+    notes: ["anti-aliasing", "known-edge repair", "realtime oscillator"],
+  },
   sineWavetable: {
     category: "Oscillator",
     description: "Placeholder for a sine wavetable oscillator with table-driven phase playback.",
@@ -279,18 +298,6 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Placeholder for a Jerobeam Nyqist/Shannon oscillator concept and audiovisual sampling study.",
     label: "JerobeamNyqistShannon",
     notes: ["placeholder", "sampling theorem", "future oscillator"],
-  },
-  additiveEngine: {
-    category: "Additive Engines",
-    description: "Placeholder for a harmonic additive synth engine built from controllable partials.",
-    label: "AdditiveEngine",
-    notes: ["placeholder", "partials", "harmonic synthesis"],
-  },
-  harmonicBank: {
-    category: "Additive Engines",
-    description: "Placeholder for a bank of sine partials with shared tuning and amplitude controls.",
-    label: "HarmonicBank",
-    notes: ["placeholder", "sine bank", "partials"],
   },
   drumMachine: {
     category: "Drum Machines",
@@ -711,6 +718,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     category: "Visual",
     description: "Patch-local image asset node. Route it into Screen Visuals Trace Image to texture phosphor trace dots.",
     notes: ["load image", "save image", "trace texture"],
+  },
+  led: {
+    category: "Visual",
+    description: "One-grid-unit signal light. Patch any gate or control signal into In and use it as a compact in-world indicator.",
+    label: "LED",
+    notes: ["1 GU tile", "input light", "visual indicator"],
   },
   visualOscilloscope: {
     category: "Visual",

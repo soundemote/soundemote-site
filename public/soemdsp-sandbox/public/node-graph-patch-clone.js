@@ -22,6 +22,40 @@ function normalizeNodeGraphPatchNodeAlias(alias) {
   return String(alias ?? "").trim().slice(0, 64);
 }
 
+function normalizeNodeGraphGraphConnections(graphConnections = []) {
+  if (!Array.isArray(graphConnections)) {
+    return [];
+  }
+  return graphConnections.map((connection) => ({
+    destinationGraphInput: String(connection.destinationGraphInput || "").trim(),
+    destinationNode: String(connection.destinationNode || "").trim(),
+    sourceNode: String(connection.sourceNode || "").trim(),
+    sourcePort: String(connection.sourcePort || "").trim(),
+    ...(nodeGraphWireTypePatchValue(connection.wireType)
+      ? { wireType: nodeGraphWireTypePatchValue(connection.wireType) }
+      : {}),
+    ...(normalizeNodeGraphTracePoints(connection.tracePoints).length
+      ? { tracePoints: normalizeNodeGraphTracePoints(connection.tracePoints) }
+      : {}),
+  })).filter((connection) =>
+    connection.sourceNode &&
+    connection.sourcePort &&
+    connection.destinationNode &&
+    connection.destinationGraphInput,
+  );
+}
+
+const nodeGraphLedDefaultColor = "#ff0000";
+const nodeGraphLedCenterColor = "#ffffff";
+
+function normalizeNodeGraphLedLayout(layout = {}) {
+  const source = layout && typeof layout === "object" ? layout : {};
+  return {
+    color: normalizeNodeGraphModuleScopeDotCoreColor(source.color ?? nodeGraphLedDefaultColor, nodeGraphLedDefaultColor),
+    kind: "led",
+  };
+}
+
 function normalizeNodeGraphClapAudioPorts(ports = []) {
   if (!Array.isArray(ports)) {
     return [];
@@ -51,6 +85,9 @@ function normalizeNodeGraphClapPluginBinding(clap = {}) {
   const name = String(source.name ?? "").trim().slice(0, 128);
   const vendor = String(source.vendor ?? "").trim().slice(0, 128);
   const instanceId = String(source.instanceId ?? "").trim().slice(0, 128);
+  const stateBase64 = String(source.stateBase64 ?? "").trim().slice(0, 6_000_000);
+  const stateByteCount = Number(source.stateByteCount);
+  const stateSavedAt = String(source.stateSavedAt ?? "").trim().slice(0, 64);
   const binding = {};
   if (catalogId) binding.catalogId = catalogId;
   if (clapId) binding.clapId = clapId;
@@ -58,6 +95,11 @@ function normalizeNodeGraphClapPluginBinding(clap = {}) {
   if (name) binding.name = name;
   if (vendor) binding.vendor = vendor;
   if (instanceId) binding.instanceId = instanceId;
+  if (stateBase64 && /^[A-Za-z0-9+/=]+$/.test(stateBase64)) binding.stateBase64 = stateBase64;
+  if (Number.isFinite(stateByteCount) && stateByteCount >= 0) {
+    binding.stateByteCount = Math.floor(stateByteCount);
+  }
+  if (stateSavedAt) binding.stateSavedAt = stateSavedAt;
   const audioInputs = normalizeNodeGraphClapAudioPorts(source.audioInputs);
   const audioOutputs = normalizeNodeGraphClapAudioPorts(source.audioOutputs);
   if (audioInputs.length) binding.audioInputs = audioInputs;
@@ -96,12 +138,14 @@ function cloneNodeGraphPatch(patch) {
     audio: normalizeNodeGraphPatchAudio(patch.audio),
     bypassedNodes: Array.isArray(patch.bypassedNodes) ? [...patch.bypassedNodes] : [],
     cameras: cameraState.cameras,
+    codeScreen: normalizeNodeGraphCodeScreen(patch.codeScreen),
     connections: (patch.connections || []).map((connection) => ({
       ...connection,
       tracePoints: normalizeNodeGraphTracePoints(connection.tracePoints),
     })),
     format: { ...(patch.format || nodeGraphPatchFormat) },
     grid: normalizeNodeGraphPatchGrid(patch.grid),
+    graphConnections: normalizeNodeGraphGraphConnections(patch.graphConnections),
     info: normalizeNodeGraphPatchInfo(patch.info),
     modulations: (patch.modulations || []).map((modulation) => ({
       ...modulation,
@@ -123,11 +167,17 @@ function cloneNodeGraphPatch(patch) {
         ...(nodeGraphModuleDefinitions[node.type]?.layout === "image"
           ? { layout: normalizeNodeGraphImageLayout(node.layout) }
           : {}),
+        ...(nodeGraphModuleDefinitions[node.type]?.layout === "led"
+          ? { led: normalizeNodeGraphLedLayout(node.led) }
+          : {}),
         ...(node.type === "graph"
           ? { graph: normalizeNodeGraphGraph(node.graph) }
           : {}),
         ...(node.type === "codeblock"
           ? { codeblock: normalizeNodeGraphCodeblock(node.codeblock) }
+          : {}),
+        ...(Object.hasOwn(node, "scopeShader")
+          ? { scopeShader: normalizeNodeGraphScopeShader(node.scopeShader) }
           : {}),
         ...(node.type === "moduleGroup"
           ? { moduleGroup: normalizeNodeGraphModuleGroup(node.moduleGroup) }

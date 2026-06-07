@@ -27,12 +27,17 @@ function createNodeGraphPatchNode(type, options = {}) {
     node.layout = normalizeNodeGraphTextBoxLayout(options.layout);
   } else if (nodeGraphModuleDefinitions[type]?.layout === "image") {
     node.layout = normalizeNodeGraphImageLayout(options.layout);
+  } else if (nodeGraphModuleDefinitions[type]?.layout === "led") {
+    node.led = normalizeNodeGraphLedLayout(options.led);
   }
   if (type === "graph") {
     node.graph = normalizeNodeGraphGraph(options.graph);
   }
   if (type === "codeblock") {
     node.codeblock = normalizeNodeGraphCodeblock(options.codeblock);
+  }
+  if (Object.hasOwn(options, "scopeShader")) {
+    node.scopeShader = normalizeNodeGraphScopeShader(options.scopeShader);
   }
   if (type === "moduleGroup") {
     node.moduleGroup = normalizeNodeGraphModuleGroup(options.moduleGroup);
@@ -56,7 +61,7 @@ const nodeGraphDefaultNodeConfigs = Object.freeze([
 ]);
 
 const nodeGraphDefaultConnections = Object.freeze([
-  { sourceNode: "osc", sourcePort: "Out", destinationNode: "gain", destinationPort: "In" },
+  { sourceNode: "osc", sourcePort: "Saw", destinationNode: "gain", destinationPort: "In" },
   { sourceNode: "gain", sourcePort: "Out", destinationNode: "output", destinationPort: "Left" },
   { sourceNode: "gain", sourcePort: "Out", destinationNode: "output", destinationPort: "Right" },
 ]);
@@ -113,6 +118,7 @@ const nodeGraphDefaultPatch = Object.freeze({
   view: { widthGu: 31, heightGu: 20 },
   nodes: nodeGraphDefaultNodeConfigs.map((node) => ({ ...node })),
   connections: nodeGraphDefaultConnections.map((connection) => ({ ...connection })),
+  graphConnections: [],
   modulations: [],
   monitors: [],
   uiItems: [],

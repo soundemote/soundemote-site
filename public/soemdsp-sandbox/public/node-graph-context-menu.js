@@ -340,18 +340,26 @@ function configureNodeSceneContextMenu(mode) {
   const graphControls = document.getElementById("nodeSceneGraphControls");
   const graphCursorX = document.getElementById("nodeSceneGraphCursorX");
   const graphNodeIndex = document.getElementById("nodeSceneGraphNodeIndex");
+  const graphPreviousNode = document.getElementById("nodeSceneGraphPreviousNode");
+  const graphNextNode = document.getElementById("nodeSceneGraphNextNode");
   const graphNodeX = document.getElementById("nodeSceneGraphNodeX");
   const graphNodeY = document.getElementById("nodeSceneGraphNodeY");
   const graphNodeContour = document.getElementById("nodeSceneGraphNodeContour");
   const graphNodeShape = document.getElementById("nodeSceneGraphNodeShape");
   const graphNodeList = document.getElementById("nodeSceneGraphNodeList");
   const graphRemoveNode = document.getElementById("nodeSceneGraphRemoveNode");
+  const graphHeightControls = document.getElementById("nodeSceneGraphHeightControls");
+  const graphHeightDecrease = document.getElementById("nodeSceneGraphHeightDecrease");
+  const graphHeightIncrease = document.getElementById("nodeSceneGraphHeightIncrease");
+  const graphHeightValue = document.getElementById("nodeSceneGraphHeightValue");
   const toggleButtonsButton = document.getElementById("nodeSceneToggleButtons");
   const toggleTitleButton = document.getElementById("nodeSceneToggleTitle");
   const imageControls = document.getElementById("nodeSceneImageControls");
   const imageLoad = document.getElementById("nodeSceneImageLoad");
   const imageSave = document.getElementById("nodeSceneImageSave");
   const imageRefresh = document.getElementById("nodeSceneImageRefresh");
+  const ledControls = document.getElementById("nodeSceneLedControls");
+  const ledColor = document.getElementById("nodeSceneLedColor");
   const textBoxControls = document.getElementById("nodeSceneTextBoxControls");
   const textBoxSingleLine = document.getElementById("nodeSceneTextBoxSingleLine");
   const textBoxMultiline = document.getElementById("nodeSceneTextBoxMultiline");
@@ -387,7 +395,7 @@ function configureNodeSceneContextMenu(mode) {
   const widthGu = targetNode ? nodeGraphPatchNodeGridWidthUnits(targetNode) : 0;
   const heightGu = targetNode ? nodeGraphPatchNodeGridHeightUnits(targetNode) : 0;
   const targetNodeUi = normalizeNodeGraphPatchNodeUi(targetNode?.ui);
-  const buttonsHidden = targetNodeUi.buttonsHidden;
+  const buttonsHidden = targetNodeUi.buttonsHidden || nodeGraphMvp.moduleButtonsVisible === false;
   const titleHidden = targetNodeUi.titleHidden;
   const textBoxLayout = normalizeNodeGraphTextBoxLayout(targetNode?.layout);
   const textBoxMode = textBoxLayout.textMode;
@@ -396,15 +404,16 @@ function configureNodeSceneContextMenu(mode) {
   copyButton.hidden = !moduleMode;
   addToGroupButton.hidden = !moduleMode;
   if (addToUiButton) {
-    addToUiButton.hidden = true;
+    addToUiButton.hidden = !(moduleMode && targetNode?.type === "graph");
   }
   deleteButton.hidden = !(moduleMode || wireMode);
   selectedModule.hidden = !(moduleMode || wireMode);
   wireTypeControl.hidden = !wireMode;
   aliasControl.hidden = !moduleMode;
   widthControls.hidden = !moduleMode;
-  const canResizeHeight = moduleMode && ["textBox", "valueSlider"].includes(targetNode?.type);
-  textBoxHeightControls.hidden = !canResizeHeight;
+  const canResizeHeight = moduleMode && ["graph", "textBox", "valueSlider"].includes(targetNode?.type);
+  textBoxHeightControls.hidden = !canResizeHeight || targetNode?.type === "graph";
+  graphHeightControls.hidden = !(moduleMode && targetNode?.type === "graph");
   textBoxTextSizeControls.hidden = !(moduleMode && targetNode?.type === "textBox");
   textBoxTextControls.hidden = !(moduleMode && targetNode?.type === "textBox");
   codeblockControls.hidden = !(moduleMode && targetNode?.type === "codeblock");
@@ -412,6 +421,7 @@ function configureNodeSceneContextMenu(mode) {
   toggleButtonsButton.hidden = !moduleMode;
   toggleTitleButton.hidden = !moduleMode;
   imageControls.hidden = !(moduleMode && targetNode?.type === "image");
+  ledControls.hidden = !(moduleMode && targetNode?.type === "led");
   textBoxControls.hidden = !(moduleMode && targetNode?.type === "textBox");
   textBoxHorizontalAlignControls.hidden = !(moduleMode && targetNode?.type === "textBox");
   textBoxVerticalAlignControls.hidden = !(moduleMode && targetNode?.type === "textBox");
@@ -438,9 +448,14 @@ function configureNodeSceneContextMenu(mode) {
       ? "Save the selected circuit as a reusable group preset."
       : "Select one or more modules to save a group.";
     if (addToUiButton) {
-      addToUiButton.disabled = true;
-      addToUiButton.querySelector("span").textContent = "";
-      addToUiButton.title = "";
+      const canAddToUi = targetNode?.type === "graph";
+      const uiItems = normalizeNodeGraphPatchUiItems(nodeGraphMvp.patch.uiItems);
+      const alreadyAddedToUi = canAddToUi && uiItems.some((item) => item.sourceNodeId === targetNode.id);
+      addToUiButton.disabled = !canAddToUi;
+      addToUiButton.querySelector("span").textContent = alreadyAddedToUi ? "Open UI Graph" : "Add Graph UI";
+      addToUiButton.title = alreadyAddedToUi
+        ? "Open this graph's UI editor."
+        : "Add this graph as a large editor in the UI view.";
     }
     deleteButton.disabled = !canDelete;
     deleteButton.title = canDelete
@@ -453,11 +468,16 @@ function configureNodeSceneContextMenu(mode) {
     widthDecrease.title = nodeGraphTooltipText("actions.widthDecrease");
     widthIncrease.disabled = !targetNode || widthGu >= nodeGraphModuleWidthLimits.maxGu;
     widthIncrease.title = nodeGraphTooltipText("actions.widthIncrease");
-    textBoxHeightValue.textContent = `${heightGu} gu high`;
+    textBoxHeightValue.textContent = targetNode?.type === "graph" ? `${heightGu} height gu` : `${heightGu} gu high`;
     textBoxHeightDecrease.disabled = !canResizeHeight || heightGu <= nodeGraphModuleHeightLimits.minGu;
     textBoxHeightDecrease.title = nodeGraphTooltipText("actions.textBoxHeightDecrease");
     textBoxHeightIncrease.disabled = !canResizeHeight || heightGu >= nodeGraphModuleHeightLimits.maxGu;
     textBoxHeightIncrease.title = nodeGraphTooltipText("actions.textBoxHeightIncrease");
+    graphHeightValue.textContent = `${heightGu} height gu`;
+    graphHeightDecrease.disabled = !targetNode || targetNode.type !== "graph" || heightGu <= nodeGraphModuleHeightLimits.minGu;
+    graphHeightDecrease.title = "Make this graph module one grid unit shorter.";
+    graphHeightIncrease.disabled = !targetNode || targetNode.type !== "graph" || heightGu >= nodeGraphModuleHeightLimits.maxGu;
+    graphHeightIncrease.title = "Make this graph module one grid unit taller.";
     textBoxTextSizeValue.textContent = `${textBoxLayout.textSizePercent}% text`;
     textBoxTextSizeDecrease.disabled =
       !targetNode ||
@@ -486,6 +506,15 @@ function configureNodeSceneContextMenu(mode) {
       imageSave.title = imageLayout.dataUrl ? "Save this image node's current image." : "Load an image before saving.";
       imageRefresh.title = "Refresh image preview and trace texture.";
     }
+    if (targetNode?.type === "led") {
+      const led = normalizeNodeGraphLedLayout(targetNode.led);
+      ledColor.disabled = false;
+      ledColor.value = led.color;
+      ledColor.title = "Set this LED's outer rim color. The center uses the bright white dot layer.";
+    } else {
+      ledColor.disabled = true;
+      ledColor.value = nodeGraphLedDefaultColor;
+    }
     textBoxSingleLine.setAttribute("aria-pressed", textBoxMode === "singleLine" ? "true" : "false");
     textBoxMultiline.setAttribute("aria-pressed", textBoxMode === "multiline" ? "true" : "false");
     textBoxSingleLine.title = nodeGraphTooltipText("actions.textBoxSingleLine");
@@ -510,12 +539,16 @@ function configureNodeSceneContextMenu(mode) {
       syncNodeGraphGraphControls(targetNode.graph);
       graphCursorX.disabled = false;
       graphNodeIndex.disabled = false;
+      graphPreviousNode.disabled = false;
+      graphNextNode.disabled = false;
       graphNodeX.disabled = false;
       graphNodeY.disabled = false;
       graphNodeContour.disabled = false;
       graphNodeShape.disabled = false;
       graphCursorX.title = "Move the vertical graph cursor.";
       graphNodeIndex.title = "Choose the graph node to edit.";
+      graphPreviousNode.title = "Select the previous graph node.";
+      graphNextNode.title = "Select the next graph node.";
       graphNodeX.title = "Set the selected node's x position.";
       graphNodeY.title = "Set the selected node's y value.";
       graphNodeContour.title = "Bend the selected node's outgoing segment.";
@@ -530,6 +563,8 @@ function configureNodeSceneContextMenu(mode) {
       graphNodeShape.value = "rational";
       graphCursorX.disabled = true;
       graphNodeIndex.disabled = true;
+      graphPreviousNode.disabled = true;
+      graphNextNode.disabled = true;
       graphNodeX.disabled = true;
       graphNodeY.disabled = true;
       graphNodeContour.disabled = true;
@@ -605,6 +640,8 @@ function configureNodeSceneContextMenu(mode) {
     imageLoad.disabled = true;
     imageSave.disabled = true;
     imageRefresh.disabled = true;
+    ledColor.disabled = true;
+    ledColor.value = nodeGraphLedDefaultColor;
   } else {
     selectedModule.querySelector("span").textContent = "selected";
     selectedModule.querySelector("strong").textContent = "none";
@@ -658,6 +695,8 @@ function configureNodeSceneContextMenu(mode) {
     imageLoad.disabled = true;
     imageSave.disabled = true;
     imageRefresh.disabled = true;
+    ledColor.disabled = true;
+    ledColor.value = nodeGraphLedDefaultColor;
   }
 }
 
@@ -684,7 +723,7 @@ function openNodeModuleActionMenu(event) {
 }
 
 function openNodeScopeContextMenu(event) {
-  const contextScope = event.target.closest?.(".node-module-scope-window");
+  const contextScope = event.target.closest?.(".node-module-scope-window, .node-led-face");
   const nodeId = contextScope?.dataset?.node || "";
   if (!nodeId || !nodeGraphPatchNode(nodeId)) {
     return false;
@@ -697,6 +736,9 @@ function openNodeScopeContextMenu(event) {
   nodeGraphMvp.sceneContextTargetNode = null;
   nodeGraphMvp.sceneContextTargetWire = null;
   nodeGraphMvp.scopeContextTargetNode = nodeId;
+  if (typeof openNodeGraphScopeShaderScript === "function" && openNodeGraphScopeShaderScript(nodeId)) {
+    return true;
+  }
   renderNodeGraphSceneScopeControls(nodeId);
   positionNodeGlobalScopeMenuAtSavedOr(
     document.getElementById("nodeGlobalScopeMenu"),

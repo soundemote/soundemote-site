@@ -25,6 +25,7 @@ function bindNodeGraphRenderLiveControlEvents() {
     .addEventListener("click", () => exportNodeGraphRenderedMp4({ videoOnly: true }));
   document.getElementById("nodeExportVisualVideoButton").addEventListener("click", exportNodeGraphVisualOutputWebm);
   document.getElementById("nodeSaveVisualOutputButton").addEventListener("click", saveNodeGraphVisualOutputPng);
+  document.getElementById("nodeCopyVisualOutputButton").addEventListener("click", copyNodeGraphVisualOutputPngToClipboard);
   document.getElementById("nodeLiveInputButton").addEventListener("click", toggleNodeGraphLiveInput);
   document
     .getElementById("nodeStartMockInputDebugButton")

@@ -139,12 +139,17 @@ function validateNodeGraphPatch(patch) {
       normalizedNode.layout = normalizeNodeGraphTextBoxLayout(node.layout);
     } else if (nodeGraphModuleDefinitions[type].layout === "image") {
       normalizedNode.layout = normalizeNodeGraphImageLayout(node.layout);
+    } else if (nodeGraphModuleDefinitions[type].layout === "led") {
+      normalizedNode.led = normalizeNodeGraphLedLayout(node.led);
     }
     if (type === "graph") {
       normalizedNode.graph = normalizeNodeGraphGraph(node.graph);
     }
     if (type === "codeblock") {
       normalizedNode.codeblock = normalizeNodeGraphCodeblock(node.codeblock);
+    }
+    if (Object.hasOwn(node, "scopeShader")) {
+      normalizedNode.scopeShader = normalizeNodeGraphScopeShader(node.scopeShader);
     }
     if (type === "moduleGroup") {
       normalizedNode.moduleGroup = normalizeNodeGraphModuleGroup(node.moduleGroup);
@@ -188,7 +193,7 @@ function validateNodeGraphPatch(patch) {
   const connectionKeys = new Set();
   const connections = Array.isArray(patch.connections) ? patch.connections.map((connection) => {
     const sourceNode = String(connection.sourceNode || "").trim();
-    const sourcePort = String(connection.sourcePort || "").trim();
+    let sourcePort = String(connection.sourcePort || "").trim();
     const destinationNode = String(connection.destinationNode || "").trim();
     let destinationPort = String(connection.destinationPort || "").trim();
     const sourceType = nodes.find((node) => node.id === sourceNode)?.type;
@@ -196,6 +201,7 @@ function validateNodeGraphPatch(patch) {
     if (!sourceType || !destinationType) {
       throw new Error("connection references missing node");
     }
+    sourcePort = nodeGraphCanonicalOutputPort(sourceType, sourcePort);
     if (!nodeGraphPatchNodeOutputPorts(nodes.find((node) => node.id === sourceNode)).includes(sourcePort)) {
       throw new Error(`connection source port invalid: ${sourceNode}.${sourcePort}`);
     }
@@ -228,7 +234,7 @@ function validateNodeGraphPatch(patch) {
   const modulationKeys = new Set();
   const modulations = Array.isArray(patch.modulations) ? patch.modulations.map((modulation) => {
     const sourceNode = String(modulation.sourceNode || "").trim();
-    const sourcePort = String(modulation.sourcePort || "").trim();
+    let sourcePort = String(modulation.sourcePort || "").trim();
     const destinationNode = String(modulation.destinationNode || "").trim();
     const destinationParam = String(modulation.destinationParam || "").trim();
     if (!sourceNode || !sourcePort || !destinationNode || !destinationParam) {
@@ -239,6 +245,7 @@ function validateNodeGraphPatch(patch) {
     if (!sourceType || !destinationType) {
       throw new Error("modulation references missing node");
     }
+    sourcePort = nodeGraphCanonicalOutputPort(sourceType, sourcePort);
     if (!nodeGraphPatchNodeOutputPorts(nodes.find((node) => node.id === sourceNode)).includes(sourcePort)) {
       throw new Error(`modulation source port invalid: ${sourceNode}.${sourcePort}`);
     }
@@ -265,6 +272,48 @@ function validateNodeGraphPatch(patch) {
     };
   }) : [];
 
+  const graphConnectionKeys = new Set();
+  const graphConnections = Array.isArray(patch.graphConnections) ? patch.graphConnections.map((connection) => {
+    const sourceNode = String(connection.sourceNode || "").trim();
+    let sourcePort = String(connection.sourcePort || "").trim();
+    const destinationNode = String(connection.destinationNode || "").trim();
+    const destinationGraphInput = String(connection.destinationGraphInput || "").trim();
+    if (!sourceNode || !sourcePort || !destinationNode || !destinationGraphInput) {
+      throw new Error("graph connection entries require sourceNode, sourcePort, destinationNode, destinationGraphInput");
+    }
+    const sourcePatchNode = nodes.find((node) => node.id === sourceNode);
+    const destinationPatchNode = nodes.find((node) => node.id === destinationNode);
+    const sourceType = sourcePatchNode?.type;
+    const destinationType = destinationPatchNode?.type;
+    if (!sourceType || !destinationType) {
+      throw new Error("graph connection references missing node");
+    }
+    sourcePort = nodeGraphCanonicalOutputPort(sourceType, sourcePort);
+    if (sourceType !== "graph" || sourcePort !== "Out") {
+      throw new Error(`graph connection source must be Graph.Out: ${sourceNode}.${sourcePort}`);
+    }
+    if (!nodeGraphModuleGraphInputs(destinationType).includes(destinationGraphInput)) {
+      throw new Error(`graph connection destination invalid: ${destinationNode}.${destinationGraphInput}`);
+    }
+    const key = `${sourceNode}.${sourcePort}->${destinationNode}.${destinationGraphInput}`;
+    if (graphConnectionKeys.has(key)) {
+      throw new Error(`duplicate graph connection ${key}`);
+    }
+    graphConnectionKeys.add(key);
+    return {
+      destinationGraphInput,
+      destinationNode,
+      sourceNode,
+      sourcePort,
+      ...(nodeGraphWireTypePatchValue(connection.wireType)
+        ? { wireType: nodeGraphWireTypePatchValue(connection.wireType) }
+        : {}),
+      ...(normalizeNodeGraphTracePoints(connection.tracePoints).length
+        ? { tracePoints: normalizeNodeGraphTracePoints(connection.tracePoints) }
+        : {}),
+    };
+  }) : [];
+
   const view = normalizeNodeGraphPatchView(patch.view);
   if (view.widthGu && view.widthGu < nodeGraphWorkspaceViewLimits.minWidthGu) {
     throw new Error(`view.widthGu must be 0 or at least ${nodeGraphWorkspaceViewLimits.minWidthGu}`);
@@ -278,8 +327,10 @@ function validateNodeGraphPatch(patch) {
     audio: normalizeNodeGraphPatchAudio(patch.audio),
     bypassedNodes,
     cameras: cameraState.cameras,
+    codeScreen: normalizeNodeGraphCodeScreen(patch.codeScreen),
     connections,
     format: { ...nodeGraphPatchFormat },
+    graphConnections,
     grid,
     info: normalizeNodeGraphPatchInfo(patch.info),
     modulations,
@@ -346,7 +397,7 @@ function applyNodeGraphPatchToDom() {
     const outputPorts = nodeGraphPatchNodeOutputPorts(patchNode).filter(
       (port) => !(nodeGraphModuleDefinitions[patchNode.type]?.parameters || []).some((parameter) => parameter.key === port),
     );
-    const portSignature = `${nodeGraphPatchNodeInputPorts(patchNode).join(",")}=>${outputPorts.join(",")}`;
+    const portSignature = `${nodeGraphPatchNodeInputPorts(patchNode).join(",")}=>${outputPorts.join(",")}=>${nodeGraphModuleGraphInputs(patchNode.type).join(",")}`;
     if (
       element &&
       (
@@ -423,6 +474,9 @@ function applyNodeGraphPatchToDom() {
   }
   syncNodeGraphHeaderTimingWidgets();
   updateNodeGraphGridHeatmap();
+  if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
+    scheduleNodeGraphModuleScopeDraw();
+  }
 }
 
 function commitNodeGraphPatch(patch, options = {}) {
@@ -437,6 +491,9 @@ function commitNodeGraphPatch(patch, options = {}) {
   syncNodeGraphFilterCurveDisplays();
   renderNodeGraphVisualSettings();
   syncNodeGraphSettingsView();
+  if (typeof renderNodeGraphCodeScreen === "function" && !document.getElementById("nodeCodeScreenView")?.hidden) {
+    renderNodeGraphCodeScreen();
+  }
   const scriptStatus = nodeGraphPatchScriptStatus(
     options.status || "script synced",
     options.ok ?? true,
@@ -456,6 +513,7 @@ function commitNodeGraphPatch(patch, options = {}) {
 function clearNodeGraphWires() {
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
   patch.connections = [];
+  patch.graphConnections = [];
   patch.modulations = [];
   setNodeGraphSelection(null);
   markNodeGraphRenderPending();
@@ -509,6 +567,11 @@ function deleteSelectedNodeGraphItem() {
       (modulation) =>
         !removableNodeIds.has(modulation.sourceNode) &&
         !removableNodeIds.has(modulation.destinationNode),
+    );
+    patch.graphConnections = patch.graphConnections.filter(
+      (connection) =>
+        !removableNodeIds.has(connection.sourceNode) &&
+        !removableNodeIds.has(connection.destinationNode),
     );
     setNodeGraphSelection(null);
     commitNodeGraphPatch(patch, {

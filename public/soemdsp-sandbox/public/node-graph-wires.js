@@ -13,6 +13,14 @@
           port: element.dataset.port,
         };
       }
+      if (element.classList?.contains("graph-input")) {
+        return {
+          graphInput: element.dataset.graphInput,
+          io: "graph",
+          node: element.dataset.node,
+          port: element.dataset.port || element.dataset.graphInput,
+        };
+      }
       if (element.classList?.contains("modulation-input")) {
         return {
           io: "modulation",
@@ -191,6 +199,9 @@
       if (endpoint.io === "modulation") {
         return surface.querySelector(deps.modulationPortSelector(endpoint.node, endpoint.param || endpoint.port));
       }
+      if (endpoint.io === "graph") {
+        return surface.querySelector(deps.graphInputPortSelector(endpoint.node, endpoint.graphInput || endpoint.port));
+      }
       if (endpoint.io === "input" || endpoint.io === "output") {
         return surface.querySelector(deps.portSelector(endpoint.node, endpoint.port, endpoint.io));
       }
@@ -230,13 +241,17 @@
       if (!element.classList.contains("connected-port") || patchPointSize <= 0) {
         return box;
       }
-      const centerX = endpoint.io === "output" ? rect.right : rect.left;
-      const centerY = rect.top + rect.height * 0.5;
+      const center = typeof nodeGraphElementPatchPointClientCenter === "function"
+        ? nodeGraphElementPatchPointClientCenter(element, endpoint.io)
+        : {
+          x: endpoint.io === "output" ? rect.right : rect.left,
+          y: rect.top + rect.height * 0.5,
+        };
       const radius = patchPointSize * 0.5;
-      const left = Math.min(box.left, centerX - radius);
-      const right = Math.max(box.right, centerX + radius);
-      const top = Math.min(box.top, centerY - radius);
-      const bottom = Math.max(box.bottom, centerY + radius);
+      const left = Math.min(box.left, center.x - radius);
+      const right = Math.max(box.right, center.x + radius);
+      const top = Math.min(box.top, center.y - radius);
+      const bottom = Math.max(box.bottom, center.y + radius);
       return {
         bottom,
         height: bottom - top,
@@ -258,7 +273,7 @@
     function patchPointTargetFromPoint(clientX, clientY) {
       let best = null;
       let bestDistance = Infinity;
-      for (const target of document.querySelectorAll(".node-port, .node-io-row, .node-param-port.modulation-input")) {
+      for (const target of document.querySelectorAll(".node-port, .node-io-row, .node-param-port.modulation-input, .node-param-port.graph-input")) {
         const endpoint = endpointFromElement(target);
         const rect = endpointHitboxClientRect(endpoint, target);
         const visualElement = visualEndpointElement(target);
@@ -273,9 +288,13 @@
         ) {
           continue;
         }
-        const centerX = endpoint.io === "output" ? elementRect.right : elementRect.left;
-        const centerY = elementRect.top + elementRect.height * 0.5;
-        const distance = Math.hypot(clientX - centerX, clientY - centerY);
+        const center = typeof nodeGraphElementPatchPointClientCenter === "function"
+          ? nodeGraphElementPatchPointClientCenter(visualElement, endpoint.io)
+          : {
+            x: endpoint.io === "output" ? elementRect.right : elementRect.left,
+            y: elementRect.top + elementRect.height * 0.5,
+          };
+        const distance = Math.hypot(clientX - center.x, clientY - center.y);
         if (distance < bestDistance) {
           best = target;
           bestDistance = distance;
@@ -303,6 +322,12 @@
       }
       if (a.io === "modulation" && b.io === "output") {
         return deps.connectModulation(b.node, b.port, a.node, a.param, reversedOptions());
+      }
+      if (a.io === "output" && b.io === "graph") {
+        return deps.connectGraphInput(a.node, a.port, b.node, b.graphInput || b.port, options);
+      }
+      if (a.io === "graph" && b.io === "output") {
+        return deps.connectGraphInput(b.node, b.port, a.node, a.graphInput || a.port, reversedOptions());
       }
       return false;
     }
@@ -348,6 +373,24 @@
             modulation.destinationParam === a.param,
         );
       }
+      if (a.io === "output" && b.io === "graph") {
+        return (patch.graphConnections || []).some(
+          (connection) =>
+            connection.sourceNode === a.node &&
+            connection.sourcePort === a.port &&
+            connection.destinationNode === b.node &&
+            connection.destinationGraphInput === (b.graphInput || b.port),
+        );
+      }
+      if (a.io === "graph" && b.io === "output") {
+        return (patch.graphConnections || []).some(
+          (connection) =>
+            connection.sourceNode === b.node &&
+            connection.sourcePort === b.port &&
+            connection.destinationNode === a.node &&
+            connection.destinationGraphInput === (a.graphInput || a.port),
+        );
+      }
       return false;
     }
 
@@ -356,7 +399,9 @@
         a &&
         b &&
         ((a.io === "modulation" && b.io === "input") ||
-          (a.io === "input" && b.io === "modulation")),
+          (a.io === "input" && b.io === "modulation") ||
+          (a.io === "graph" && b.io !== "output") ||
+          (b.io === "graph" && a.io !== "output")),
       );
     }
 
@@ -373,6 +418,8 @@
         b &&
         (((a.io === "output" && b.io === "output") ||
           (a.io === "input" && b.io === "input")) ||
+          ((a.io === "output" && b.io === "graph") && nodeGraphPatchNodeType(a.node) !== "graph") ||
+          ((b.io === "output" && a.io === "graph") && nodeGraphPatchNodeType(b.node) !== "graph") ||
           endpointsAreParameterAudioMismatch(a, b) ||
           endpointsAreDuplicate(a, b)),
       );
@@ -388,6 +435,9 @@
       }
       if (endpoint.io === "modulation") {
         return deps.modulationPortCenter(endpoint.node, endpoint.param || endpoint.port);
+      }
+      if (endpoint.io === "graph") {
+        return deps.graphInputPortCenter(endpoint.node, endpoint.graphInput || endpoint.port);
       }
       if (endpoint.io === "input" || endpoint.io === "output") {
         return deps.portCenter(endpoint.node, endpoint.port, endpoint.io);
@@ -605,7 +655,7 @@
       if (
         event.button !== 0 ||
         state.dragging ||
-        target?.closest?.(".node-port, .node-io-row, .node-param-port.modulation-input, .node-slider-readout, input, textarea, select")
+        target?.closest?.(".node-port, .node-io-row, .node-param-port.modulation-input, .node-param-port.graph-input, .node-slider-readout, input, textarea, select")
       ) {
         return;
       }
@@ -677,7 +727,7 @@
         setHoveredPatchPoint(null);
         return;
       }
-      const directTarget = target.closest?.(".node-port, .node-io-row, .node-param-port.modulation-input");
+      const directTarget = target.closest?.(".node-port, .node-io-row, .node-param-port.modulation-input, .node-param-port.graph-input");
       if (directTarget) {
         setHoveredPatchPoint(directTarget);
         return;

@@ -14,14 +14,20 @@ function renderNodeVisualOutputMeta(entries = {}) {
 }
 
 function setNodeVisualOutputExportReady(ready, title = "") {
-  const button = document.getElementById("nodeSaveVisualOutputButton");
-  if (!button) {
-    return;
+  const saveButton = document.getElementById("nodeSaveVisualOutputButton");
+  const copyButton = document.getElementById("nodeCopyVisualOutputButton");
+  if (saveButton) {
+    saveButton.disabled = !ready;
+    saveButton.title = title || nodeGraphTooltipText(
+      ready ? "legacyEvidence.visualOutputSave" : "legacyEvidence.visualOutputRenderFirst",
+    );
   }
-  button.disabled = !ready;
-  button.title = title || nodeGraphTooltipText(
-    ready ? "legacyEvidence.visualOutputSave" : "legacyEvidence.visualOutputRenderFirst",
-  );
+  if (copyButton) {
+    copyButton.disabled = !ready;
+    copyButton.title = title || nodeGraphTooltipText(
+      ready ? "legacyEvidence.visualOutputCopy" : "legacyEvidence.visualOutputCopyRenderFirst",
+    );
+  }
 }
 
 function nodeGraphVisualOutputSourceCanvas() {
@@ -72,6 +78,13 @@ function createNodeGraphVisualOutputExportCanvas(options = {}) {
     updateUi: false,
   });
   return exportCanvas;
+}
+
+function createNodeGraphVisualOutputPngBlob(options = {}) {
+  const exportCanvas = createNodeGraphVisualOutputExportCanvas(options);
+  return new Promise((resolve) => {
+    exportCanvas.toBlob((blob) => resolve(blob), "image/png");
+  });
 }
 
 function drawNodeRenderedVisualOutput(options = {}) {
@@ -271,33 +284,69 @@ function drawNodeRenderedVisualOutput(options = {}) {
   }
 }
 
-function saveNodeGraphVisualOutputPng() {
+async function saveNodeGraphVisualOutputPng() {
   const canvas = document.getElementById("nodeVisualOutputCanvas");
   const status = document.getElementById("nodeVisualOutputStatus");
   if (!canvas || canvas.dataset.visualExportReady !== "true") {
     setNodeVisualOutputExportReady(false);
     return;
   }
-  const exportCanvas = createNodeGraphVisualOutputExportCanvas({ includePlaybackCursor: false });
-  exportCanvas.toBlob((blob) => {
-    if (!blob) {
-      if (status) {
-        status.textContent = "save failed";
-        status.className = "pill warn";
-      }
-      return;
-    }
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = nodeGraphVisualOutputFileName(nodeGraphMvp.rendered?.patchFingerprint);
-    document.body.append(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  const blob = await createNodeGraphVisualOutputPngBlob({ includePlaybackCursor: false });
+  if (!blob) {
     if (status) {
-      status.textContent = "clean png saved";
+      status.textContent = "save failed";
+      status.className = "pill warn";
+    }
+    return;
+  }
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = nodeGraphVisualOutputFileName(nodeGraphMvp.rendered?.patchFingerprint);
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  if (status) {
+    status.textContent = "clean png saved";
+    status.className = "pill good";
+  }
+}
+
+async function copyNodeGraphVisualOutputPngToClipboard() {
+  const canvas = document.getElementById("nodeVisualOutputCanvas");
+  const status = document.getElementById("nodeVisualOutputStatus");
+  if (!canvas || canvas.dataset.visualExportReady !== "true") {
+    setNodeVisualOutputExportReady(false);
+    return;
+  }
+  if (!navigator.clipboard?.write || typeof ClipboardItem !== "function") {
+    if (status) {
+      status.textContent = "image clipboard unavailable";
+      status.className = "pill warn";
+    }
+    return;
+  }
+  const blob = await createNodeGraphVisualOutputPngBlob({ includePlaybackCursor: false });
+  if (!blob) {
+    if (status) {
+      status.textContent = "copy failed";
+      status.className = "pill warn";
+    }
+    return;
+  }
+  try {
+    await navigator.clipboard.write([
+      new ClipboardItem({ "image/png": blob }),
+    ]);
+    if (status) {
+      status.textContent = "png copied";
       status.className = "pill good";
     }
-  }, "image/png");
+  } catch (_error) {
+    if (status) {
+      status.textContent = "clipboard blocked";
+      status.className = "pill warn";
+    }
+  }
 }

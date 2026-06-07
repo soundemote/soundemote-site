@@ -30,6 +30,13 @@ function createNodeGraphOscResetState() {
   };
 }
 
+function createNodeGraphGraphLfoState() {
+  return {
+    lastReset: 0,
+    resetFrame: 0,
+  };
+}
+
 function createNodeGraphSlewLimiterState() {
   return {
     initialized: false,
@@ -39,6 +46,7 @@ function createNodeGraphSlewLimiterState() {
 
 function createNodeGraphClockState() {
   return {
+    hasStarted: false,
     phase: 0,
   };
 }
@@ -254,6 +262,8 @@ function nodeGraphCompileCodeblockFunction(runtime, node) {
   const fn = Function(
     "__inputs",
     "__outputs",
+    "__state",
+    "__context",
     nodeGraphCodeblockBuildFunctionBody(codeblock),
   );
   const compiled = {
@@ -262,12 +272,13 @@ function nodeGraphCompileCodeblockFunction(runtime, node) {
     inputs: new Array(codeblock.inputs.length).fill(0),
     key,
     output: nodeGraphCreateCodeblockOutputObject(codeblock),
+    state: Object.create(null),
   };
   runtime.codeblockFunctions?.set(node.id, compiled);
   return compiled;
 }
 
-function nodeGraphEvaluateCodeblock(runtime, node, mixInput) {
+function nodeGraphEvaluateCodeblock(runtime, node, mixInput, sampleRate = nodeGraphMvp?.sampleRate || 44100, frame = 0, frames = 1) {
   let compiled = null;
   try {
     compiled = nodeGraphCompileCodeblockFunction(runtime, node);
@@ -275,7 +286,7 @@ function nodeGraphEvaluateCodeblock(runtime, node, mixInput) {
     nodeGraphMarkRuntimeBadNumber(runtime, node.id, `codeblock compile error ${error?.message || ""}`);
     return {};
   }
-  const { codeblock, fn, inputs, output } = compiled;
+  const { codeblock, fn, inputs, output, state } = compiled;
   try {
     for (let index = 0; index < codeblock.inputs.length; index += 1) {
       const port = codeblock.inputs[index];
@@ -290,7 +301,12 @@ function nodeGraphEvaluateCodeblock(runtime, node, mixInput) {
     for (const port of codeblock.outputs) {
       output[port] = 0;
     }
-    fn(inputs, output);
+    fn(inputs, output, state, {
+      frame,
+      frames,
+      sampleRate,
+      time: (Number(frame) || 0) / (Number(sampleRate) || 44100),
+    });
     for (const port of codeblock.outputs) {
       output[port] = nodeGraphSafeFilterNumber(
         output[port],
@@ -647,6 +663,18 @@ function nodeGraphSlewLimiterSample(state, input, upTime, downTime, sampleRate, 
   return state.out;
 }
 
+function nodeGraphClockAnalogWhipSample(phase, level) {
+  const p = clampNodeSliderValue(Number(phase) || 0, 0, 1);
+  const attack = 1 - Math.pow(1 - Math.min(1, p / 0.035), 4);
+  const release = Math.pow(Math.max(0, 1 - p), 1.85);
+  const snapEnvelope = attack * release;
+  const sweepTurns = (3.15 * (1 - Math.exp(-4.2 * p)) / (1 - Math.exp(-4.2))) + (0.18 * Math.sin(Math.PI * p));
+  const liquidBend = 0.075 * Math.sin(Math.PI * 2 * p) * Math.pow(Math.max(0, 1 - p), 1.2);
+  const body = Math.sin((sweepTurns + liquidBend) * Math.PI * 2);
+  const sheen = Math.sin((sweepTurns * 2.02 + 0.17) * Math.PI * 2) * 0.16 * Math.pow(Math.max(0, 1 - p), 2.8);
+  return (body + sheen) * snapEnvelope * level;
+}
+
 function nodeGraphClockSample(state, rate, duty, level, sampleRate, runtime = null, nodeId = "") {
   const safeRate = Math.max(0, nodeGraphSafeFilterNumber(rate, runtime, nodeId, null, "clock rate"));
   const safeDuty = clampNodeSliderValue(
@@ -656,9 +684,18 @@ function nodeGraphClockSample(state, rate, duty, level, sampleRate, runtime = nu
   );
   const safeLevel = nodeGraphSafeFilterNumber(level, runtime, nodeId, null, "clock level");
   const phase = wrapNodeSliderValue(Number(state.phase) || 0, 0, 1);
-  const sample = phase < safeDuty ? safeLevel : 0;
-  state.phase = wrapNodeSliderValue(phase + safeRate / Math.max(1, sampleRate), 0, 1);
-  return sample;
+  const digital = phase < safeDuty ? safeLevel : 0;
+  const analog = nodeGraphClockAnalogWhipSample(phase, safeLevel);
+  const nextPhase = wrapNodeSliderValue(phase + safeRate / Math.max(1, sampleRate), 0, 1);
+  const pulse = safeRate > 0 && (!state.hasStarted || nextPhase < phase) ? safeLevel : 0;
+  state.hasStarted = true;
+  state.phase = nextPhase;
+  return {
+    "Analog Out": analog,
+    "Digital Out": digital,
+    Out: digital,
+    Pulse: pulse,
+  };
 }
 
 function nodeGraphRandomClockNextUnit(state, nodeId, seed) {
@@ -1473,6 +1510,40 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
     0,
   );
 
+  const graphSampleX = (node, nodeId) => {
+    const mode = Math.round(readNodeGraphLiveEffectiveParam(runtime, node, "mode", 0, frame, frames, frameValues));
+    if (mode <= 0) {
+      return mixInput(nodeId);
+    }
+    const safeRate = Math.max(1, Number(sampleRate) || nodeGraphMvp.sampleRate || 44100);
+    const absoluteFrame = Number.isFinite(runtime.absoluteFrame) ? runtime.absoluteFrame : frame;
+    const rate = Math.max(0, readNodeGraphLiveEffectiveParam(runtime, node, "rate", 1, frame, frames, frameValues));
+    const phase = readNodeGraphLiveEffectiveParam(runtime, node, "phase", 0, frame, frames, frameValues);
+    const state = runtime.graphLfoStates.get(nodeId) || createNodeGraphGraphLfoState();
+    runtime.graphLfoStates.set(nodeId, state);
+    const resetValue = 0;
+    if (state.lastReset <= 0 && resetValue > 0) {
+      state.resetFrame = absoluteFrame;
+    }
+    state.lastReset = resetValue;
+    const resetFrame = Number.isFinite(state.resetFrame) ? state.resetFrame : 0;
+    return wrapNodeSliderValue(((absoluteFrame - resetFrame) / safeRate) * rate + phase, 0, 1);
+  };
+  const graphOutputValue = (node, nodeId) => {
+    const normalizedValue = nodeGraphGraphValueAt(node.graph, graphSampleX(node, nodeId));
+    const outputMin = readNodeGraphLiveEffectiveParam(runtime, node, "outputMin", 0, frame, frames, frameValues);
+    const outputMax = readNodeGraphLiveEffectiveParam(runtime, node, "outputMax", 1, frame, frames, frameValues);
+    return outputMin + normalizedValue * (outputMax - outputMin);
+  };
+  const graphInputValue = (nodeId, graphInput, x, fallback) => {
+    const connection = (runtime.graphInputConnections?.get(nodeGraphGraphInputKey(nodeId, graphInput)) || [])[0];
+    const source = connection ? runtime.nodes.get(connection.sourceNode) : null;
+    if (!source || source.type !== "graph") {
+      return fallback;
+    }
+    return nodeGraphGraphValueAt(source.graph, clampNodeSliderValue(Number(x) || 0, 0, 1));
+  };
+
   for (const nodeId of runtime.order || []) {
     const node = runtime.nodes.get(nodeId);
     let value = 0;
@@ -1501,7 +1572,7 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         Out: ((left + right) * 0.5) * level,
         Right: right * level,
       };
-    } else if (node?.type === "osc") {
+    } else if (node?.type === "osc" || node?.type === "fbPolyBlepOsc") {
       const resetState = runtime.oscResetStates.get(nodeId) || createNodeGraphOscResetState();
       runtime.oscResetStates.set(nodeId, resetState);
       const resetValue = nodeGraphSafeFilterNumber(
@@ -1553,14 +1624,16 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         null,
         "osc increment input",
       );
-      const phaseIncrement = (frequency / sampleRate) + incrementInput;
-      value = nodeGraphOscillatorWaveformSample(
+      const pitchInput = clampNodeSliderValue(nodeGraphSafeFilterNumber(
+        mixInput(nodeId, "0.1V/Oct"),
         runtime,
         nodeId,
-        phase + phaseOffset,
-        phaseIncrement,
-        waveform,
-      ) * readNodeGraphLiveEffectiveParam(
+        null,
+        "osc 0.1v/oct input",
+      ), -1, 1);
+      const pitchedFrequency = Math.max(0, frequency * (2 ** (pitchInput / 0.1)));
+      const phaseIncrement = (pitchedFrequency / sampleRate) + incrementInput;
+      const level = readNodeGraphLiveEffectiveParam(
         runtime,
         node,
         "level",
@@ -1569,6 +1642,95 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         frames,
         frameValues,
       );
+      const sampleOscillator = node?.type === "fbPolyBlepOsc"
+        ? nodeGraphForwardBackwardPolyBlepWaveformSample
+        : nodeGraphOscillatorWaveformSample;
+      const selected = sampleOscillator(
+        runtime,
+        nodeId,
+        phase + phaseOffset,
+        phaseIncrement,
+        waveform,
+      ) * level;
+      value = {
+        Out: selected,
+        Saw: sampleOscillator(runtime, `${nodeId}:saw`, phase + phaseOffset, phaseIncrement, 0) * level,
+        Square: sampleOscillator(runtime, `${nodeId}:square`, phase + phaseOffset, phaseIncrement, 1) * level,
+        Tri: sampleOscillator(runtime, `${nodeId}:tri`, phase + phaseOffset, phaseIncrement, 2) * level,
+        Sine: sampleOscillator(runtime, `${nodeId}:sine`, phase + phaseOffset, phaseIncrement, 3) * level,
+        "Wave Out": selected,
+        Noise: selected,
+      };
+      runtime.phases.set(
+        nodeId,
+        wrapNodeSliderValue(phase + Math.PI * 2 * phaseIncrement, 0, Math.PI * 2),
+      );
+    } else if (node?.type === "additiveOsc" || node?.type === "gpuAdditiveOsc") {
+      const resetState = runtime.oscResetStates.get(nodeId) || createNodeGraphOscResetState();
+      runtime.oscResetStates.set(nodeId, resetState);
+      const resetValue = nodeGraphSafeFilterNumber(
+        mixInput(nodeId, "Reset"),
+        runtime,
+        nodeId,
+        resetState,
+        "additive osc reset",
+      );
+      const resetEdge = resetState.lastReset <= 0 && resetValue > 0;
+      resetState.lastReset = resetValue;
+      const phase = resetEdge ? 0 : runtime.phases.get(nodeId) || 0;
+      const phaseOffset = nodeGraphPhaseRadians(readNodeGraphLiveEffectiveParam(
+        runtime,
+        node,
+        "phase",
+        0,
+        frame,
+        frames,
+        frameValues,
+      ));
+      const frequency = readNodeGraphLiveEffectiveParam(
+        runtime,
+        node,
+        "frequency",
+        220,
+        frame,
+        frames,
+        frameValues,
+      );
+      const pitchInput = clampNodeSliderValue(nodeGraphSafeFilterNumber(
+        mixInput(nodeId, "0.1V/Oct"),
+        runtime,
+        nodeId,
+        null,
+        "additive osc 0.1v/oct input",
+      ), -1, 1);
+      const pitchedFrequency = Math.max(0, frequency * (2 ** (pitchInput / 0.1)));
+      const incrementInput = nodeGraphSafeFilterNumber(
+        mixInput(nodeId, "Increment"),
+        runtime,
+        nodeId,
+        null,
+        "additive osc increment input",
+      );
+      const phaseIncrement = (pitchedFrequency / sampleRate) + incrementInput;
+      const additiveSample = nodeGraphAdditiveOscillatorSample(
+        runtime,
+        nodeId,
+        phase + phaseOffset,
+        {
+          frequency: pitchedFrequency,
+          dampingFilterFrequency: readNodeGraphLiveEffectiveParam(runtime, node, "dampingFilterFrequency", 20000, frame, frames, frameValues),
+          dampingGraphValueAt: (x) => graphInputValue(nodeId, "Damping Graph", x, 1),
+          harmonics: readNodeGraphLiveEffectiveParam(runtime, node, "harmonics", 32, frame, frames, frameValues),
+          harmonicPhaseAdd: readNodeGraphLiveEffectiveParam(runtime, node, "harmonicPhaseAdd", 0, frame, frames, frameValues),
+          harmonicPhaseMultiply: readNodeGraphLiveEffectiveParam(runtime, node, "harmonicPhaseMultiply", 0, frame, frames, frameValues),
+          level: readNodeGraphLiveEffectiveParam(runtime, node, "level", 0.35, frame, frames, frameValues),
+          modA: readNodeGraphLiveEffectiveParam(runtime, node, "modA", 0.5, frame, frames, frameValues),
+          phaseGraphValueAt: (x) => graphInputValue(nodeId, "Phase Graph", x, 0),
+          waveform: readNodeGraphLiveEffectiveParam(runtime, node, "waveform", 1, frame, frames, frameValues),
+        },
+        sampleRate,
+      );
+      value = { Out: additiveSample };
       runtime.phases.set(
         nodeId,
         wrapNodeSliderValue(phase + Math.PI * 2 * phaseIncrement, 0, Math.PI * 2),
@@ -1618,8 +1780,17 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         frames,
         frameValues,
       );
-      const left = nextNodeGraphNoiseSample(runtime, `${nodeId}:left`) * level;
-      const right = nextNodeGraphNoiseSample(runtime, `${nodeId}:right`) * level;
+      const seed = readNodeGraphLiveEffectiveParam(
+        runtime,
+        node,
+        "seed",
+        1,
+        frame,
+        frames,
+        frameValues,
+      );
+      const left = nextNodeGraphSeededNoiseSample(runtime, nodeId, seed, "left") * level;
+      const right = nextNodeGraphSeededNoiseSample(runtime, nodeId, seed, "right") * level;
       value = {
         Left: left,
         Out: (left + right) * 0.5,
@@ -1889,13 +2060,14 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
       const midi = Math.max(0, Math.min(127, Number(signal?.midi) || 60));
       const frequency = Math.max(0, Number(signal?.frequency) || 440 * (2 ** ((midi - 69) / 12)));
       const keyboardRate = Math.max(1, Number(sampleRate) || nodeGraphMvp.sampleRate || 44100);
+      const increment = Math.max(0, Number(signal?.increment) || frequency / keyboardRate);
       value = {
         "1 Sample Gate": Number(signal?.gatePulse) > 0 ? 1 : 0,
         "0.1V/Oct": Math.max(0, Math.min(1, Number(signal?.tenthVoltPerOctave) || midi / 120)),
         Double: Math.max(0, Math.min(1, Number(signal?.midiNormalized) || midi / 127)),
         Frequency: frequency,
         Gate: Number(signal?.gate) > 0 ? 1 : 0,
-        Increment: frequency / keyboardRate,
+        Increment: increment,
         Key: Math.max(0, Number(signal?.keyIndex) || 0),
         MIDI: midi,
         Pitch: Math.max(0, Math.min(127, Number(signal?.pitchValue) || midi)),
@@ -1926,12 +2098,16 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         frames,
         frameValues,
       );
+    } else if (node?.type === "led") {
+      value = {
+        Out: nodeGraphSafeFilterNumber(mixInput(nodeId, "In"), runtime, nodeId, null, "led input"),
+      };
     } else if (node?.type === "moduleGroup") {
       value = nodeGraphEvaluateModuleGroup(runtime, node, mixInput, sampleRate, frame, frames);
     } else if (node?.type === "codeblock") {
-      value = nodeGraphEvaluateCodeblock(runtime, node, mixInput);
+      value = nodeGraphEvaluateCodeblock(runtime, node, mixInput, sampleRate, frame, frames);
     } else if (node?.type === "graph") {
-      value = nodeGraphGraphValueAt(node.graph, mixInput(nodeId));
+      value = graphOutputValue(node, nodeId);
     } else if (node?.type === "bias") {
       value = mixInput(nodeId) + readNodeGraphLiveEffectiveParam(
         runtime,
@@ -2388,13 +2564,6 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
 
     frameValues.set(nodeId, value);
     runtime.nodeOutputs?.set(nodeId, value);
-    if (runtime.scopeInputs) {
-      if (node?.scopeInputPort) {
-        runtime.scopeInputs.set(nodeId, mixInput(nodeId, node.scopeInputPort));
-      } else {
-        runtime.scopeInputs.delete(nodeId);
-      }
-    }
   }
 
   const outputNode = runtime.nodes.get(runtime.outputNode || "output");

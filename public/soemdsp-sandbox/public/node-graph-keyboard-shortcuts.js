@@ -134,6 +134,40 @@ function handleNodeGraphKeydown(event) {
     }
     return;
   }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
+    if (duplicateFocusedNodeGraphGraphNode()) {
+      event.preventDefault();
+    }
+    return;
+  }
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "a") {
+    if (addFocusedNodeGraphGraphNode()) {
+      event.preventDefault();
+    }
+    return;
+  }
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "s") {
+    if (cycleFocusedNodeGraphGraphShape()) {
+      event.preventDefault();
+    }
+    return;
+  }
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === "[") {
+    if (selectFocusedNodeGraphGraphNodeOffset(-1)) {
+      event.preventDefault();
+    }
+    return;
+  }
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === "]") {
+    if (selectFocusedNodeGraphGraphNodeOffset(1)) {
+      event.preventDefault();
+    }
+    return;
+  }
+  if (nudgeFocusedNodeGraphGraphNode(event)) {
+    event.preventDefault();
+    return;
+  }
   if (event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
     const shiftArrowSizeActions = {
       ArrowDown: ["height", 1],
@@ -168,5 +202,12 @@ function handleNodeGraphKeydown(event) {
     return;
   }
 
-  deleteSelectedNodeGraphItem();
+  if (removeFocusedNodeGraphGraphNode()) {
+    event.preventDefault();
+    return;
+  }
+  if (nodeGraphSelectionCanDelete()) {
+    event.preventDefault();
+    deleteSelectedNodeGraphItem();
+  }
 }

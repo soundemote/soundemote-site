@@ -1,16 +1,193 @@
 const nodeGraphClapHostDefaultPort = 47991;
 const nodeGraphClapHostName = "Soundemote WebUI CLAP Host";
+const nodeGraphClapEditorRequestTimeoutMs = 12000;
+const nodeGraphClapHostStorageKey = "nodeGraphClapHostBaseUrl";
 
 const nodeGraphClapHostState = {
   status: "disconnected",
   baseUrl: `http://127.0.0.1:${nodeGraphClapHostDefaultPort}`,
+  capabilities: {},
+  hostConfig: {},
   version: "",
   plugins: [],
+  instances: new Map(),
   pluginCount: null,
   parameterPayloads: new Map(),
   parameterWriteTimers: new Map(),
   lastError: "",
 };
+
+function defaultNodeGraphClapHostBaseUrl() {
+  return `http://127.0.0.1:${nodeGraphClapHostDefaultPort}`;
+}
+
+function normalizeNodeGraphClapHostBaseUrl(value = "") {
+  const raw = String(value || "").trim() || defaultNodeGraphClapHostBaseUrl();
+  const source = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `http://${raw}`;
+  const url = new URL(source);
+  if (url.protocol !== "http:") {
+    throw new Error("host URL must use http");
+  }
+  if (!url.hostname) {
+    throw new Error("host URL needs a hostname");
+  }
+  return url.origin;
+}
+
+function loadNodeGraphClapHostBaseUrl() {
+  try {
+    return normalizeNodeGraphClapHostBaseUrl(
+      window.localStorage?.getItem(nodeGraphClapHostStorageKey) || nodeGraphClapHostState.baseUrl,
+    );
+  } catch {
+    return defaultNodeGraphClapHostBaseUrl();
+  }
+}
+
+function saveNodeGraphClapHostBaseUrl(value) {
+  try {
+    window.localStorage?.setItem(nodeGraphClapHostStorageKey, value);
+  } catch {
+    // Host URL persistence is a convenience, not a rendering requirement.
+  }
+}
+
+function nodeGraphClapHostLaunchCommand(baseUrl = nodeGraphClapHostState.baseUrl) {
+  const url = new URL(normalizeNodeGraphClapHostBaseUrl(baseUrl));
+  const port = url.port || String(nodeGraphClapHostDefaultPort);
+  return `tools\\webui-clap-host\\start_webui_clap_host.cmd -BindHost ${url.hostname} -Port ${port}`;
+}
+
+function syncNodeGraphClapHostUrlInput() {
+  const input = document.getElementById("nodeClapHostUrl");
+  if (input) {
+    input.value = nodeGraphClapHostState.baseUrl;
+  }
+}
+
+function applyNodeGraphClapHostBaseUrlFromInput(options = {}) {
+  const input = document.getElementById("nodeClapHostUrl");
+  const next = normalizeNodeGraphClapHostBaseUrl(input?.value || nodeGraphClapHostState.baseUrl);
+  const changed = next !== nodeGraphClapHostState.baseUrl;
+  nodeGraphClapHostState.baseUrl = next;
+  saveNodeGraphClapHostBaseUrl(next);
+  syncNodeGraphClapHostUrlInput();
+  if (changed && options.disconnect !== false) {
+    nodeGraphClapHostState.version = "";
+    nodeGraphClapHostState.capabilities = {};
+    nodeGraphClapHostState.hostConfig = {};
+    nodeGraphClapHostState.plugins = [];
+    nodeGraphClapHostState.pluginCount = null;
+    nodeGraphClapHostState.parameterPayloads.clear();
+    clearNodeGraphClapHostInstanceSummaries();
+    setNodeGraphClapHostStatus("disconnected", `host set to ${next}`);
+  }
+  return next;
+}
+
+const nodeGraphClapHostCapabilityKeys = [
+  "audioProcessing",
+  "instanceProbing",
+  "metadataInspection",
+  "offlineRenderSessions",
+  "persistentInstances",
+  "processBatch",
+  "pluginEditorInfo",
+  "pluginEditorOpening",
+  "pluginLatencyInfo",
+  "pluginStatePersistence",
+  "pluginTailInfo",
+  "pluginLoading",
+  "pluginScanning",
+];
+
+function normalizeNodeGraphClapHostCapabilities(capabilities = {}) {
+  const normalized = Object.fromEntries(
+    nodeGraphClapHostCapabilityKeys.map((key) => [key, capabilities?.[key] === true]),
+  );
+  const maxProcessFrames = Number(capabilities?.maxProcessFrames);
+  if (Number.isFinite(maxProcessFrames) && maxProcessFrames > 0) {
+    normalized.maxProcessFrames = Math.floor(maxProcessFrames);
+  }
+  const maxProcessBatchItems = Number(capabilities?.maxProcessBatchItems);
+  if (Number.isFinite(maxProcessBatchItems) && maxProcessBatchItems > 0) {
+    normalized.maxProcessBatchItems = Math.floor(maxProcessBatchItems);
+  }
+  return normalized;
+}
+
+function normalizeNodeGraphClapHostConfig(config = {}) {
+  const port = Number(config?.port);
+  const scanDirs = Array.isArray(config?.scanDirs)
+    ? config.scanDirs.map((path) => String(path || "")).filter(Boolean).slice(0, 64)
+    : [];
+  const explicitPlugins = Array.isArray(config?.explicitPlugins)
+    ? config.explicitPlugins.map((path) => String(path || "")).filter(Boolean).slice(0, 64)
+    : [];
+  return {
+    bindHost: String(config?.bindHost || "").trim(),
+    defaultPort: Number.isFinite(Number(config?.defaultPort)) ? Math.floor(Number(config.defaultPort)) : nodeGraphClapHostDefaultPort,
+    explicitPlugins,
+    inspectMetadata: config?.inspectMetadata === true,
+    port: Number.isFinite(port) && port > 0 ? Math.floor(port) : 0,
+    pythonExecutable: String(config?.pythonExecutable || "").trim(),
+    scanDirs,
+    scriptPath: String(config?.scriptPath || "").trim(),
+    testInstantiate: config?.testInstantiate === true,
+    workingDirectory: String(config?.workingDirectory || "").trim(),
+  };
+}
+
+function nodeGraphClapHostConfigSummary() {
+  const config = normalizeNodeGraphClapHostConfig(nodeGraphClapHostState.hostConfig);
+  const scanText = `${config.scanDirs.length} scan ${config.scanDirs.length === 1 ? "dir" : "dirs"}`;
+  const explicitText = config.explicitPlugins.length
+    ? `; ${config.explicitPlugins.length} explicit ${config.explicitPlugins.length === 1 ? "plugin" : "plugins"}`
+    : "";
+  const inspectText = config.inspectMetadata ? "; metadata on" : "; metadata off";
+  const probeText = config.testInstantiate ? "; instantiate probe on" : "";
+  return `${scanText}${explicitText}${inspectText}${probeText}`;
+}
+
+function updateNodeGraphClapHostCapabilities(capabilities = {}) {
+  const next = normalizeNodeGraphClapHostCapabilities(nodeGraphClapHostState.capabilities);
+  for (const key of nodeGraphClapHostCapabilityKeys) {
+    if (Object.hasOwn(capabilities || {}, key)) {
+      next[key] = capabilities[key] === true;
+    }
+  }
+  const maxProcessFrames = Number(capabilities?.maxProcessFrames);
+  if (Number.isFinite(maxProcessFrames) && maxProcessFrames > 0) {
+    next.maxProcessFrames = Math.floor(maxProcessFrames);
+  }
+  const maxProcessBatchItems = Number(capabilities?.maxProcessBatchItems);
+  if (Number.isFinite(maxProcessBatchItems) && maxProcessBatchItems > 0) {
+    next.maxProcessBatchItems = Math.floor(maxProcessBatchItems);
+  }
+  nodeGraphClapHostState.capabilities = next;
+}
+
+function nodeGraphClapHostCanProcessAudio() {
+  return nodeGraphClapHostState.capabilities.audioProcessing === true;
+}
+
+function nodeGraphClapHostCanUseRenderSessions() {
+  return nodeGraphClapHostState.capabilities.offlineRenderSessions === true;
+}
+
+function nodeGraphClapHostMaxProcessFrames() {
+  const frames = Number(nodeGraphClapHostState.capabilities.maxProcessFrames);
+  return Number.isFinite(frames) && frames > 0 ? Math.floor(frames) : 48000;
+}
+
+function nodeGraphClapHostCanProcessBatch() {
+  return nodeGraphClapHostState.capabilities.processBatch === true;
+}
+
+function nodeGraphClapHostMaxProcessBatchItems() {
+  const count = Number(nodeGraphClapHostState.capabilities.maxProcessBatchItems);
+  return Number.isFinite(count) && count > 0 ? Math.floor(count) : 64;
+}
 
 function setNodeGraphClapHostStatus(status, detail = "") {
   nodeGraphClapHostState.status = status;
@@ -18,6 +195,7 @@ function setNodeGraphClapHostStatus(status, detail = "") {
   const detailElement = document.getElementById("nodeClapHostDetail");
   const connectButton = document.getElementById("nodeClapHostConnectButton");
   const pluginsButton = document.getElementById("nodeClapHostPluginsButton");
+  const diagnosticsButton = document.getElementById("nodeClapHostDiagnosticsButton");
   if (!statusElement || !detailElement || !connectButton) return;
 
   statusElement.classList.toggle("warn", status !== "connected");
@@ -26,19 +204,25 @@ function setNodeGraphClapHostStatus(status, detail = "") {
   if (pluginsButton) {
     pluginsButton.disabled = status !== "connected";
   }
+  if (diagnosticsButton) {
+    diagnosticsButton.disabled = status === "connecting";
+  }
 
   if (status === "connected") {
     const versionText = nodeGraphClapHostState.version
       ? ` ${nodeGraphClapHostState.version}`
       : "";
+    const capabilityText = nodeGraphClapHostCanProcessAudio()
+      ? "Render Sample CLAP processing available"
+      : "Render Sample CLAP processing unavailable";
     statusElement.textContent = `CLAP Host: Connected${versionText}`;
-    detailElement.textContent = detail || "local companion answered health check";
+    detailElement.textContent = detail || `local companion answered health check; ${capabilityText}; ${nodeGraphClapHostConfigSummary()}`;
     syncNodeGraphClapPluginElements();
     return;
   }
   if (status === "connecting") {
     statusElement.textContent = "CLAP Host: Connecting";
-    detailElement.textContent = "checking localhost";
+    detailElement.textContent = `checking ${nodeGraphClapHostState.baseUrl}`;
     syncNodeGraphClapPluginElements();
     return;
   }
@@ -75,6 +259,42 @@ function nodeGraphClapPluginCatalogText(plugins) {
     return `${pluginList.length} CLAP plugin entries discovered; ${descriptorCount} descriptors inspected; create an instance to enable bounded Render Sample processing`;
   }
   return nodeGraphClapPluginCountText(pluginList.length);
+}
+
+function nodeGraphClapHostDiagnosticsText(payload = {}) {
+  const summary = payload?.summary || {};
+  const scanPathCount = Math.max(0, Math.floor(Number(summary.scanPathCount) || 0));
+  const existingScanPathCount = Math.max(0, Math.floor(Number(summary.existingScanPathCount) || 0));
+  const pluginCount = Math.max(0, Math.floor(Number(summary.pluginCount) || 0));
+  const loadableCount = Math.max(0, Math.floor(Number(summary.loadableCount) || 0));
+  const metadataErrorCount = Math.max(0, Math.floor(Number(summary.metadataErrorCount) || 0));
+  const instantiationErrorCount = Math.max(0, Math.floor(Number(summary.instantiationErrorCount) || 0));
+  const missingExplicitPluginCount = Math.max(0, Math.floor(Number(summary.missingExplicitPluginCount) || 0));
+  const issueCount = metadataErrorCount + instantiationErrorCount + missingExplicitPluginCount;
+  const issueText = issueCount
+    ? `; ${issueCount} setup ${issueCount === 1 ? "issue" : "issues"}`
+    : "; no setup issues";
+  return `diagnostics ${payload?.status || "ready"}: ${pluginCount} entries, ${loadableCount} loadable, ${existingScanPathCount}/${scanPathCount} scan dirs present${issueText}`;
+}
+
+async function copyNodeGraphClapHostLaunchCommand() {
+  const detailElement = document.getElementById("nodeClapHostDetail");
+  try {
+    const baseUrl = applyNodeGraphClapHostBaseUrlFromInput({ disconnect: false });
+    const command = nodeGraphClapHostLaunchCommand(baseUrl);
+    await copyTextToClipboard(command);
+    if (detailElement) {
+      detailElement.textContent = "host prototype command copied";
+    }
+  } catch (error) {
+    if (detailElement) {
+      try {
+        detailElement.textContent = `copy unavailable; run ${nodeGraphClapHostLaunchCommand()}`;
+      } catch {
+        detailElement.textContent = `copy failed: ${error?.message || error}`;
+      }
+    }
+  }
 }
 
 async function fetchNodeGraphClapHostJson(path, timeoutMs = 1400, options = {}) {
@@ -125,6 +345,185 @@ function nodeGraphClapPluginBindingFromCatalog(plugin = {}) {
 
 function nodeGraphClapParameterPayload(instanceId = "") {
   return nodeGraphClapHostState.parameterPayloads.get(String(instanceId || "")) || null;
+}
+
+function normalizeNodeGraphClapSafetyState(safety = {}) {
+  const rawPeak = Number(safety.rawPeak);
+  const peakLimit = Number(safety.peakLimit);
+  return {
+    latched: Boolean(safety.latched),
+    peakLimit: Number.isFinite(peakLimit) ? peakLimit : 0,
+    rawPeak: Number.isFinite(rawPeak) ? rawPeak : 0,
+    reason: String(safety.reason || ""),
+  };
+}
+
+function nodeGraphClapInstanceSummary(instanceId = "") {
+  return nodeGraphClapHostState.instances.get(String(instanceId || "")) || null;
+}
+
+function nodeGraphClapInstanceIsStale(instanceId = "") {
+  return Boolean(
+    instanceId &&
+    nodeGraphClapHostState.status === "connected" &&
+    !nodeGraphClapInstanceSummary(instanceId)
+  );
+}
+
+function nodeGraphClapInstanceSafety(instanceId = "") {
+  return normalizeNodeGraphClapSafetyState(nodeGraphClapInstanceSummary(instanceId)?.safety);
+}
+
+function nodeGraphClapInstanceEditor(instanceId = "") {
+  const editor = nodeGraphClapInstanceSummary(instanceId)?.editor || {};
+  return {
+    api: String(editor.api || ""),
+    canOpen: editor.canOpen === true,
+    height: Number.isFinite(Number(editor.height)) ? Math.max(0, Math.round(Number(editor.height))) : 0,
+    open: editor.open === true,
+    preferredApi: String(editor.preferredApi || ""),
+    preferredFloating: editor.preferredFloating === true,
+    reason: String(editor.reason || ""),
+    supported: editor.supported === true,
+    supportedApis: Array.isArray(editor.supportedApis) ? editor.supportedApis : [],
+    width: Number.isFinite(Number(editor.width)) ? Math.max(0, Math.round(Number(editor.width))) : 0,
+  };
+}
+
+function nodeGraphClapInstanceLatency(instanceId = "") {
+  const latency = nodeGraphClapInstanceSummary(instanceId)?.latency || {};
+  const samples = Number(latency.samples);
+  return {
+    error: String(latency.error || ""),
+    samples: Number.isFinite(samples) && samples > 0 ? Math.round(samples) : 0,
+    supported: latency.supported === true,
+  };
+}
+
+function nodeGraphClapLatencyStatusText(instanceId = "") {
+  if (!instanceId) {
+    return "Latency: no host instance.";
+  }
+  const latency = nodeGraphClapInstanceLatency(instanceId);
+  if (!latency.supported) {
+    return "Latency: plugin does not expose clap.latency.";
+  }
+  if (latency.error) {
+    return `Latency: read error; ${latency.error}.`;
+  }
+  return `Latency: ${latency.samples} samples reported.`;
+}
+
+function nodeGraphClapInstanceTail(instanceId = "") {
+  const tail = nodeGraphClapInstanceSummary(instanceId)?.tail || {};
+  const samples = Number(tail.samples);
+  return {
+    error: String(tail.error || ""),
+    infinite: tail.infinite === true,
+    samples: Number.isFinite(samples) && samples > 0 ? Math.round(samples) : 0,
+    supported: tail.supported === true,
+  };
+}
+
+function nodeGraphClapTailStatusText(instanceId = "") {
+  if (!instanceId) {
+    return "Tail: no host instance.";
+  }
+  const tail = nodeGraphClapInstanceTail(instanceId);
+  if (!tail.supported) {
+    return "Tail: plugin does not expose clap.tail.";
+  }
+  if (tail.error) {
+    return `Tail: read error; ${tail.error}.`;
+  }
+  return tail.infinite
+    ? "Tail: infinite tail reported."
+    : `Tail: ${tail.samples} samples reported.`;
+}
+
+function nodeGraphClapInstanceState(instanceId = "") {
+  const state = nodeGraphClapInstanceSummary(instanceId)?.state || {};
+  const maxStateBytes = Number(state.maxStateBytes);
+  return {
+    maxStateBytes: Number.isFinite(maxStateBytes) && maxStateBytes > 0 ? Math.floor(maxStateBytes) : 0,
+    supported: state.supported === true,
+  };
+}
+
+function formatNodeGraphClapByteCount(value) {
+  const count = Number(value);
+  if (!Number.isFinite(count) || count <= 0) {
+    return "0 bytes";
+  }
+  if (count >= 1024 * 1024) {
+    return `${(count / (1024 * 1024)).toFixed(2).replace(/0+$/, "").replace(/\.$/, "")} MB`;
+  }
+  if (count >= 1024) {
+    return `${(count / 1024).toFixed(1).replace(/0+$/, "").replace(/\.$/, "")} KB`;
+  }
+  return `${Math.round(count)} bytes`;
+}
+
+function nodeGraphClapStateStatusText(instanceId = "", binding = {}) {
+  const savedText = binding.stateBase64
+    ? ` Patch has saved state (${formatNodeGraphClapByteCount(binding.stateByteCount)}).`
+    : " Patch has no saved state.";
+  if (!instanceId) {
+    return `State: no host instance.${savedText}`;
+  }
+  const state = nodeGraphClapInstanceState(instanceId);
+  if (!state.supported) {
+    return `State: plugin does not expose clap.state.${savedText}`;
+  }
+  return `State: supported.${savedText}`;
+}
+
+function nodeGraphClapEditorStatusText(instanceId = "") {
+  const editor = nodeGraphClapInstanceEditor(instanceId);
+  if (!instanceId) {
+    return "Editor: no host instance.";
+  }
+  if (!editor.supported) {
+    return `Editor: unavailable${editor.reason ? `; ${editor.reason}` : ""}.`;
+  }
+  const preferred = editor.preferredApi
+    ? ` Preferred: ${editor.preferredApi}${editor.preferredFloating ? " floating" : " embedded"}.`
+    : "";
+  const apiCount = editor.supportedApis.length;
+  const supportText = apiCount ? ` ${apiCount} GUI API ${apiCount === 1 ? "mode" : "modes"} reported.` : "";
+  const openText = editor.open ? ` Open: ${editor.api || "host"} ${editor.width}x${editor.height}.` : "";
+  return editor.canOpen
+    ? `Editor: can open.${openText}${preferred}${supportText}`
+    : `Editor: detected, opening unavailable in this prototype.${preferred}${supportText}`;
+}
+
+function nodeGraphClapCommitInstanceSummary(instance = {}) {
+  if (!instance?.instanceId) {
+    return;
+  }
+  const instanceId = String(instance.instanceId);
+  nodeGraphClapHostState.instances.set(instanceId, {
+    ...(nodeGraphClapHostState.instances.get(instanceId) || {}),
+    ...instance,
+  });
+}
+
+function nodeGraphClapDeleteInstanceSummary(instanceId = "") {
+  nodeGraphClapHostState.instances.delete(String(instanceId || ""));
+}
+
+function clearNodeGraphClapHostInstanceSummaries() {
+  nodeGraphClapHostState.instances.clear();
+}
+
+function formatNodeGraphClapSafetyNumber(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "0";
+  }
+  return Math.abs(number) >= 1000 || (Math.abs(number) > 0 && Math.abs(number) < 0.001)
+    ? number.toExponential(3)
+    : number.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
 }
 
 function nodeGraphClapParameterKey(parameter = {}) {
@@ -408,6 +807,10 @@ function createNodeGraphClapPluginBody(nodeId) {
   detail.className = "node-clap-plugin-detail";
   detail.dataset.clapPluginDetail = nodeId;
 
+  const safety = document.createElement("div");
+  safety.className = "node-clap-plugin-safety";
+  safety.dataset.clapPluginSafety = nodeId;
+
   const actions = document.createElement("div");
   actions.className = "node-clap-plugin-actions";
   const createButton = document.createElement("button");
@@ -428,13 +831,52 @@ function createNodeGraphClapPluginBody(nodeId) {
   refreshButton.textContent = "Refresh Params";
   refreshButton.dataset.clapPluginRefreshParams = nodeId;
   refreshButton.addEventListener("click", () => refreshNodeGraphClapPluginParameters(nodeId));
-  actions.append(createButton, deleteButton, refreshButton);
+  const resetSafetyButton = document.createElement("button");
+  resetSafetyButton.type = "button";
+  resetSafetyButton.className = "node-secondary-button";
+  resetSafetyButton.textContent = "Reset Safety";
+  resetSafetyButton.dataset.clapPluginResetSafety = nodeId;
+  resetSafetyButton.addEventListener("click", () => resetNodeGraphClapPluginSafety(nodeId));
+  const editorButton = document.createElement("button");
+  editorButton.type = "button";
+  editorButton.className = "node-secondary-button";
+  editorButton.textContent = "Open Editor";
+  editorButton.dataset.clapPluginOpenEditor = nodeId;
+  editorButton.addEventListener("click", () => openNodeGraphClapPluginEditor(nodeId));
+  const closeEditorButton = document.createElement("button");
+  closeEditorButton.type = "button";
+  closeEditorButton.className = "node-secondary-button";
+  closeEditorButton.textContent = "Close Editor";
+  closeEditorButton.dataset.clapPluginCloseEditor = nodeId;
+  closeEditorButton.addEventListener("click", () => closeNodeGraphClapPluginEditor(nodeId));
+  const saveStateButton = document.createElement("button");
+  saveStateButton.type = "button";
+  saveStateButton.className = "node-secondary-button";
+  saveStateButton.textContent = "Save State";
+  saveStateButton.dataset.clapPluginSaveState = nodeId;
+  saveStateButton.addEventListener("click", () => saveNodeGraphClapPluginState(nodeId));
+  const restoreStateButton = document.createElement("button");
+  restoreStateButton.type = "button";
+  restoreStateButton.className = "node-secondary-button";
+  restoreStateButton.textContent = "Restore State";
+  restoreStateButton.dataset.clapPluginRestoreState = nodeId;
+  restoreStateButton.addEventListener("click", () => restoreNodeGraphClapPluginState(nodeId));
+  actions.append(
+    createButton,
+    deleteButton,
+    refreshButton,
+    resetSafetyButton,
+    editorButton,
+    closeEditorButton,
+    saveStateButton,
+    restoreStateButton,
+  );
 
   const params = document.createElement("div");
   params.className = "node-clap-plugin-param-list";
   params.dataset.clapPluginParamList = nodeId;
 
-  body.append(select, detail, actions, params);
+  body.append(select, detail, safety, actions, params);
   syncNodeGraphClapPluginBody(body, nodeGraphPatchNode(nodeId));
   return body;
 }
@@ -456,6 +898,12 @@ function syncNodeGraphClapPluginBody(body, patchNode) {
   const createButton = body.querySelector("[data-clap-plugin-create]");
   const deleteButton = body.querySelector("[data-clap-plugin-delete]");
   const refreshButton = body.querySelector("[data-clap-plugin-refresh-params]");
+  const resetSafetyButton = body.querySelector("[data-clap-plugin-reset-safety]");
+  const editorButton = body.querySelector("[data-clap-plugin-open-editor]");
+  const closeEditorButton = body.querySelector("[data-clap-plugin-close-editor]");
+  const saveStateButton = body.querySelector("[data-clap-plugin-save-state]");
+  const restoreStateButton = body.querySelector("[data-clap-plugin-restore-state]");
+  const safety = body.querySelector("[data-clap-plugin-safety]");
   const paramList = body.querySelector("[data-clap-plugin-param-list]");
   if (select) {
     const selectedValue = binding.catalogId;
@@ -476,6 +924,7 @@ function syncNodeGraphClapPluginBody(body, patchNode) {
     select.disabled = nodeGraphClapHostState.status !== "connected" || nodeGraphClapHostState.plugins.length === 0;
   }
   const selectedPlugin = nodeGraphClapSelectedCatalogPlugin(patchNode);
+  const staleInstance = nodeGraphClapInstanceIsStale(binding.instanceId);
   if (detail) {
     if (!binding.catalogId) {
       detail.textContent = "No plugin selected. Select a host catalog entry, then create an instance.";
@@ -484,18 +933,74 @@ function syncNodeGraphClapPluginBody(body, patchNode) {
     } else {
       const source = selectedPlugin || binding;
       const identity = [source.vendor, source.name].filter(Boolean).join(" - ") || source.clapId || source.path || "Selected CLAP plugin";
-      const instanceText = binding.instanceId ? ` Instance: ${binding.instanceId}.` : " No host instance.";
-      detail.textContent = `${identity}.${instanceText} Render Sample uses the host instance when connected.`;
+      const instanceText = staleInstance
+        ? ` Instance ${binding.instanceId} is not present in the connected host.`
+        : binding.instanceId ? ` Instance: ${binding.instanceId}.` : " No host instance.";
+      const editorText = staleInstance ? "" : ` ${nodeGraphClapEditorStatusText(binding.instanceId)}`;
+      const latencyText = staleInstance ? "" : ` ${nodeGraphClapLatencyStatusText(binding.instanceId)}`;
+      const tailText = staleInstance ? "" : ` ${nodeGraphClapTailStatusText(binding.instanceId)}`;
+      const stateText = staleInstance ? "" : ` ${nodeGraphClapStateStatusText(binding.instanceId, binding)}`;
+      detail.textContent = `${identity}.${instanceText} Render Sample uses the host instance when connected.${editorText}${latencyText}${tailText}${stateText}`;
+    }
+  }
+  if (safety) {
+    safety.classList.remove("warn", "good");
+    if (!binding.instanceId) {
+      safety.textContent = "Safety: no host instance.";
+    } else if (staleInstance) {
+      safety.classList.add("warn");
+      safety.textContent = "Safety: host instance is stale. Forget it, then create a new instance.";
+    } else {
+      const state = nodeGraphClapInstanceSafety(binding.instanceId);
+      safety.classList.add(state.latched ? "warn" : "good");
+      if (state.latched) {
+        safety.textContent = `Safety muted: ${state.reason || "latched"}; raw peak ${formatNodeGraphClapSafetyNumber(state.rawPeak)} / limit ${formatNodeGraphClapSafetyNumber(state.peakLimit)}.`;
+      } else {
+        safety.textContent = `Safety clear. Raw peak ${formatNodeGraphClapSafetyNumber(state.rawPeak)} / limit ${formatNodeGraphClapSafetyNumber(state.peakLimit)}.`;
+      }
     }
   }
   if (createButton) {
     createButton.disabled = nodeGraphClapHostState.status !== "connected" || !binding.path || !binding.clapId || Boolean(binding.instanceId);
   }
   if (deleteButton) {
+    deleteButton.textContent = staleInstance ? "Forget Instance" : "Delete Instance";
     deleteButton.disabled = nodeGraphClapHostState.status !== "connected" || !binding.instanceId;
   }
   if (refreshButton) {
-    refreshButton.disabled = nodeGraphClapHostState.status !== "connected" || !binding.instanceId;
+    refreshButton.disabled = nodeGraphClapHostState.status !== "connected" || !binding.instanceId || staleInstance;
+  }
+  if (resetSafetyButton) {
+    resetSafetyButton.disabled = nodeGraphClapHostState.status !== "connected" || !binding.instanceId || staleInstance;
+  }
+  if (editorButton) {
+    const editor = nodeGraphClapInstanceEditor(binding.instanceId);
+    editorButton.disabled = nodeGraphClapHostState.status !== "connected" ||
+      !binding.instanceId ||
+      staleInstance ||
+      !editor.canOpen;
+  }
+  if (closeEditorButton) {
+    const editor = nodeGraphClapInstanceEditor(binding.instanceId);
+    closeEditorButton.disabled = nodeGraphClapHostState.status !== "connected" ||
+      !binding.instanceId ||
+      staleInstance ||
+      editor.open !== true;
+  }
+  if (saveStateButton) {
+    const state = nodeGraphClapInstanceState(binding.instanceId);
+    saveStateButton.disabled = nodeGraphClapHostState.status !== "connected" ||
+      !binding.instanceId ||
+      staleInstance ||
+      !state.supported;
+  }
+  if (restoreStateButton) {
+    const state = nodeGraphClapInstanceState(binding.instanceId);
+    restoreStateButton.disabled = nodeGraphClapHostState.status !== "connected" ||
+      !binding.instanceId ||
+      staleInstance ||
+      !state.supported ||
+      !binding.stateBase64;
   }
   if (paramList) {
     paramList.replaceChildren();
@@ -507,7 +1012,12 @@ function syncNodeGraphClapPluginBody(body, patchNode) {
     } else {
       const payload = nodeGraphClapParameterPayload(binding.instanceId);
       const parameters = Array.isArray(payload?.parameters) ? payload.parameters : [];
-      if (!payload) {
+      if (staleInstance) {
+        const empty = document.createElement("div");
+        empty.className = "node-clap-plugin-param-empty";
+        empty.textContent = "Host instance is stale. Forget it, then create a new instance.";
+        paramList.append(empty);
+      } else if (!payload) {
         const empty = document.createElement("div");
         empty.className = "node-clap-plugin-param-empty";
         empty.textContent = "Parameters not loaded.";
@@ -629,13 +1139,19 @@ async function createNodeGraphClapPluginInstance(nodeId) {
     if (payload?.ok !== true || !payload.instance?.instanceId) {
       throw new Error("instance creation failed");
     }
+    nodeGraphClapCommitInstanceSummary(payload.instance);
     nodeGraphCommitClapPluginBinding(nodeId, {
       ...binding,
       audioInputs: payload.instance.audioInputs,
       audioOutputs: payload.instance.audioOutputs,
       instanceId: payload.instance.instanceId,
     });
-    await refreshNodeGraphClapPluginParameters(nodeId);
+    const restoredState = binding.stateBase64
+      ? await restoreNodeGraphClapPluginState(nodeId, { silent: true })
+      : false;
+    if (!restoredState) {
+      await refreshNodeGraphClapPluginParameters(nodeId);
+    }
   } catch (error) {
     const detailElement = document.getElementById("nodeClapHostDetail");
     if (detailElement) {
@@ -643,6 +1159,177 @@ async function createNodeGraphClapPluginInstance(nodeId) {
     }
     syncNodeGraphClapPluginElements();
   }
+}
+
+async function resetNodeGraphClapPluginSafety(nodeId) {
+  const patchNode = nodeGraphPatchNode(nodeId);
+  const binding = normalizeNodeGraphClapPluginBinding(patchNode?.clap);
+  if (!patchNode || !binding.instanceId || nodeGraphClapHostState.status !== "connected") {
+    return;
+  }
+  try {
+    const payload = await postNodeGraphClapHostJson(
+      `/instances/${encodeURIComponent(binding.instanceId)}/safety/reset`,
+      {},
+      2500,
+    );
+    if (payload?.ok !== true) {
+      throw new Error("safety reset failed");
+    }
+    nodeGraphClapCommitInstanceSummary({
+      ...(nodeGraphClapInstanceSummary(binding.instanceId) || {}),
+      instanceId: binding.instanceId,
+      safety: payload.safety,
+    });
+    markNodeGraphRenderPending("CLAP safety reset; render sample to process again.");
+  } catch (error) {
+    const detailElement = document.getElementById("nodeClapHostDetail");
+    if (detailElement) {
+      detailElement.textContent = `connected; safety reset error: ${error?.message || error}`;
+    }
+  }
+  syncNodeGraphClapPluginElements();
+}
+
+async function openNodeGraphClapPluginEditor(nodeId) {
+  const patchNode = nodeGraphPatchNode(nodeId);
+  const binding = normalizeNodeGraphClapPluginBinding(patchNode?.clap);
+  if (!patchNode || !binding.instanceId || nodeGraphClapHostState.status !== "connected") {
+    return;
+  }
+  const detailElement = document.getElementById("nodeClapHostDetail");
+  try {
+    const payload = await postNodeGraphClapHostJson(
+      `/instances/${encodeURIComponent(binding.instanceId)}/editor/open`,
+      {},
+      nodeGraphClapEditorRequestTimeoutMs,
+    );
+    nodeGraphClapCommitInstanceSummary({
+      ...(nodeGraphClapInstanceSummary(binding.instanceId) || {}),
+      instanceId: binding.instanceId,
+      editor: payload.editor,
+    });
+    if (detailElement) {
+      detailElement.textContent = payload?.ok === true
+        ? "connected; plugin editor opened"
+        : `connected; editor unavailable: ${payload?.error || payload?.editor?.reason || "not implemented"}`;
+    }
+  } catch (error) {
+    if (detailElement) {
+      detailElement.textContent = `connected; editor error: ${error?.message || error}`;
+    }
+  }
+  syncNodeGraphClapPluginElements();
+}
+
+async function closeNodeGraphClapPluginEditor(nodeId) {
+  const patchNode = nodeGraphPatchNode(nodeId);
+  const binding = normalizeNodeGraphClapPluginBinding(patchNode?.clap);
+  if (!patchNode || !binding.instanceId || nodeGraphClapHostState.status !== "connected") {
+    return;
+  }
+  const detailElement = document.getElementById("nodeClapHostDetail");
+  try {
+    const payload = await postNodeGraphClapHostJson(
+      `/instances/${encodeURIComponent(binding.instanceId)}/editor/close`,
+      {},
+      nodeGraphClapEditorRequestTimeoutMs,
+    );
+    nodeGraphClapCommitInstanceSummary({
+      ...(nodeGraphClapInstanceSummary(binding.instanceId) || {}),
+      instanceId: binding.instanceId,
+      editor: payload.editor,
+    });
+    if (detailElement) {
+      detailElement.textContent = payload?.ok === true
+        ? "connected; plugin editor closed"
+        : `connected; editor close unavailable: ${payload?.error || payload?.editor?.reason || "not available"}`;
+    }
+  } catch (error) {
+    if (detailElement) {
+      detailElement.textContent = `connected; editor close error: ${error?.message || error}`;
+    }
+  }
+  syncNodeGraphClapPluginElements();
+}
+
+async function saveNodeGraphClapPluginState(nodeId) {
+  const patchNode = nodeGraphPatchNode(nodeId);
+  const binding = normalizeNodeGraphClapPluginBinding(patchNode?.clap);
+  if (!patchNode || !binding.instanceId || nodeGraphClapHostState.status !== "connected") {
+    return;
+  }
+  const detailElement = document.getElementById("nodeClapHostDetail");
+  try {
+    const payload = await fetchNodeGraphClapHostJson(
+      `/instances/${encodeURIComponent(binding.instanceId)}/state`,
+      4000,
+    );
+    if (payload?.ok !== true) {
+      throw new Error(payload?.error || "state save failed");
+    }
+    nodeGraphClapCommitInstanceSummary({
+      ...(nodeGraphClapInstanceSummary(binding.instanceId) || {}),
+      instanceId: binding.instanceId,
+      state: payload.state,
+    });
+    if (payload.supported !== true) {
+      if (detailElement) {
+        detailElement.textContent = "connected; plugin does not expose clap.state";
+      }
+      syncNodeGraphClapPluginElements();
+      return;
+    }
+    nodeGraphCommitClapPluginBinding(nodeId, {
+      ...binding,
+      stateBase64: payload.stateBase64,
+      stateByteCount: payload.byteCount,
+      stateSavedAt: new Date().toISOString(),
+    });
+    if (detailElement) {
+      detailElement.textContent = `connected; saved CLAP state (${formatNodeGraphClapByteCount(payload.byteCount)})`;
+    }
+  } catch (error) {
+    if (detailElement) {
+      detailElement.textContent = `connected; state save error: ${error?.message || error}`;
+    }
+  }
+  syncNodeGraphClapPluginElements();
+}
+
+async function restoreNodeGraphClapPluginState(nodeId, options = {}) {
+  const patchNode = nodeGraphPatchNode(nodeId);
+  const binding = normalizeNodeGraphClapPluginBinding(patchNode?.clap);
+  if (!patchNode || !binding.instanceId || !binding.stateBase64 || nodeGraphClapHostState.status !== "connected") {
+    return false;
+  }
+  const detailElement = document.getElementById("nodeClapHostDetail");
+  try {
+    const payload = await postNodeGraphClapHostJson(
+      `/instances/${encodeURIComponent(binding.instanceId)}/state`,
+      { stateBase64: binding.stateBase64 },
+      4000,
+    );
+    if (payload?.ok !== true) {
+      throw new Error(payload?.error || "state restore failed");
+    }
+    nodeGraphClapCommitInstanceSummary({
+      ...(nodeGraphClapInstanceSummary(binding.instanceId) || {}),
+      instanceId: binding.instanceId,
+      state: payload.state,
+    });
+    if (!options.silent && detailElement) {
+      detailElement.textContent = `connected; restored CLAP state (${formatNodeGraphClapByteCount(payload.byteCount)})`;
+    }
+    await refreshNodeGraphClapPluginParameters(nodeId);
+    return true;
+  } catch (error) {
+    if (!options.silent && detailElement) {
+      detailElement.textContent = `connected; state restore error: ${error?.message || error}`;
+    }
+  }
+  syncNodeGraphClapPluginElements();
+  return false;
 }
 
 async function deleteNodeGraphClapPluginInstance(nodeId) {
@@ -657,11 +1344,43 @@ async function deleteNodeGraphClapPluginInstance(nodeId) {
     // The browser patch should still forget stale host instance ids after host restarts.
   }
   const { instanceId, ...nextBinding } = binding;
+  nodeGraphClapDeleteInstanceSummary(instanceId);
   nodeGraphClapHostState.parameterPayloads.delete(instanceId);
   nodeGraphCommitClapPluginBinding(nodeId, nextBinding);
 }
 
+async function refreshNodeGraphClapHostInstances() {
+  if (nodeGraphClapHostState.status !== "connected") {
+    return;
+  }
+  try {
+    const payload = await fetchNodeGraphClapHostJson("/instances", 3000);
+    if (payload?.ok !== true || !Array.isArray(payload.instances)) {
+      throw new Error("unexpected instance list response");
+    }
+    clearNodeGraphClapHostInstanceSummaries();
+    for (const instance of payload.instances) {
+      nodeGraphClapCommitInstanceSummary(instance);
+    }
+    syncNodeGraphClapPluginElements();
+  } catch (error) {
+    clearNodeGraphClapHostInstanceSummaries();
+    const detailElement = document.getElementById("nodeClapHostDetail");
+    if (detailElement) {
+      detailElement.textContent = `connected; instance list error: ${error?.message || error}`;
+    }
+    syncNodeGraphClapPluginElements();
+  }
+}
+
 async function connectNodeGraphClapHost() {
+  try {
+    applyNodeGraphClapHostBaseUrlFromInput({ disconnect: false });
+  } catch (error) {
+    nodeGraphClapHostState.lastError = String(error?.message || error);
+    setNodeGraphClapHostStatus("error", nodeGraphClapHostState.lastError);
+    return;
+  }
   setNodeGraphClapHostStatus("connecting");
   try {
     const payload = await fetchNodeGraphClapHostJson("/health");
@@ -669,12 +1388,19 @@ async function connectNodeGraphClapHost() {
       throw new Error("unexpected host response");
     }
     nodeGraphClapHostState.version = String(payload.version || "");
+    updateNodeGraphClapHostCapabilities(payload.capabilities);
+    nodeGraphClapHostState.hostConfig = normalizeNodeGraphClapHostConfig(payload.hostConfig);
     nodeGraphClapHostState.lastError = "";
     setNodeGraphClapHostStatus("connected");
+    await refreshNodeGraphClapHostInstances();
     refreshNodeGraphClapHostPlugins();
   } catch (error) {
     nodeGraphClapHostState.version = "";
+    nodeGraphClapHostState.capabilities = {};
+    nodeGraphClapHostState.hostConfig = {};
     nodeGraphClapHostState.plugins = [];
+    clearNodeGraphClapHostInstanceSummaries();
+    nodeGraphClapHostState.parameterPayloads.clear();
     nodeGraphClapHostState.pluginCount = null;
     nodeGraphClapHostState.lastError =
       error?.name === "AbortError" ? "connection timed out" : String(error?.message || error);
@@ -699,6 +1425,7 @@ async function refreshNodeGraphClapHostPlugins() {
       throw new Error("unexpected plugin catalog response");
     }
     nodeGraphClapHostState.plugins = payload.plugins;
+    updateNodeGraphClapHostCapabilities(payload.capabilities);
     nodeGraphClapHostState.pluginCount = Number(payload.count || payload.plugins.length || 0);
     if (detailElement) {
       detailElement.textContent = nodeGraphClapPluginCatalogText(payload.plugins);
@@ -721,14 +1448,66 @@ async function refreshNodeGraphClapHostPlugins() {
   }
 }
 
+async function runNodeGraphClapHostDiagnostics() {
+  const detailElement = document.getElementById("nodeClapHostDetail");
+  try {
+    applyNodeGraphClapHostBaseUrlFromInput({ disconnect: false });
+    if (detailElement) {
+      detailElement.textContent = "running host diagnostics";
+    }
+    const payload = await fetchNodeGraphClapHostJson("/diagnostics", 15000);
+    if (payload?.ok !== true) {
+      throw new Error(payload?.error || "diagnostics failed");
+    }
+    const catalog = payload.catalog || {};
+    nodeGraphClapHostState.version = String(payload.version || "");
+    nodeGraphClapHostState.hostConfig = normalizeNodeGraphClapHostConfig(payload.hostConfig);
+    updateNodeGraphClapHostCapabilities(catalog.capabilities || payload.capabilities);
+    if (Array.isArray(catalog.plugins)) {
+      nodeGraphClapHostState.plugins = catalog.plugins;
+      nodeGraphClapHostState.pluginCount = catalog.count ?? catalog.plugins.length;
+    }
+    setNodeGraphClapHostStatus("connected", nodeGraphClapHostDiagnosticsText(payload));
+    refreshNodeGraphClapHostInstances();
+  } catch (error) {
+    nodeGraphClapHostState.lastError = String(error?.message || error);
+    nodeGraphClapHostState.hostConfig = {};
+    setNodeGraphClapHostStatus("error", `diagnostics failed: ${nodeGraphClapHostState.lastError}`);
+  }
+}
+
 function bindNodeGraphClapHostControls() {
   const connectButton = document.getElementById("nodeClapHostConnectButton");
   const pluginsButton = document.getElementById("nodeClapHostPluginsButton");
+  const diagnosticsButton = document.getElementById("nodeClapHostDiagnosticsButton");
+  const commandButton = document.getElementById("nodeClapHostCommandButton");
+  const hostUrlInput = document.getElementById("nodeClapHostUrl");
+  nodeGraphClapHostState.baseUrl = loadNodeGraphClapHostBaseUrl();
+  syncNodeGraphClapHostUrlInput();
   connectButton?.addEventListener("click", () => {
     connectNodeGraphClapHost();
   });
   pluginsButton?.addEventListener("click", () => {
     refreshNodeGraphClapHostPlugins();
+  });
+  diagnosticsButton?.addEventListener("click", () => {
+    runNodeGraphClapHostDiagnostics();
+  });
+  commandButton?.addEventListener("click", () => {
+    copyNodeGraphClapHostLaunchCommand();
+  });
+  hostUrlInput?.addEventListener("change", () => {
+    try {
+      applyNodeGraphClapHostBaseUrlFromInput();
+    } catch (error) {
+      nodeGraphClapHostState.lastError = String(error?.message || error);
+      setNodeGraphClapHostStatus("error", nodeGraphClapHostState.lastError);
+    }
+  });
+  hostUrlInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      connectNodeGraphClapHost();
+    }
   });
   setNodeGraphClapHostStatus("disconnected");
 }
