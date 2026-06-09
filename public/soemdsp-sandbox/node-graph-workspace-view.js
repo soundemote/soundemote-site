@@ -8,8 +8,50 @@ function applyNodeGraphPan() {
   workspace.style.setProperty("--node-graph-pan-y", `${pan.y}px`);
   workspace.dataset.panX = String(Math.round(pan.x));
   workspace.dataset.panY = String(Math.round(pan.y));
+  syncNodeGraphOriginMarker();
+  syncNodeGraphWorldPositionReadout();
   updateNodeGraphGridHeatmap();
   drawNodeGraphWires();
+  if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
+    scheduleNodeGraphModuleScopeDraw();
+  }
+}
+
+function syncNodeGraphOriginMarker() {
+  const marker = document.getElementById("nodeGraphOriginMarker");
+  if (!marker) {
+    return;
+  }
+  marker.classList.toggle("node-graph-origin-marker", true);
+  if (typeof nodeGraphApplyTooltip === "function") {
+    nodeGraphApplyTooltip(marker, "workspace.origin");
+  } else {
+    marker.title = "World origin: X 0, Y 0";
+  }
+}
+
+function nodeGraphWorldPositionLabel(value) {
+  const rounded = Math.round(value);
+  return Object.is(rounded, -0) ? "0" : String(rounded);
+}
+
+function syncNodeGraphWorldPositionReadout() {
+  const readout = document.getElementById("nodeWorldPositionReadout");
+  if (!readout) {
+    return;
+  }
+  const pan = nodeGraphMvp.pan || { x: 0, y: 0 };
+  const zoom = Math.max(0.0001, nodeGraphZoom());
+  const worldX = -((Number(pan.x) || 0) / zoom) / nodeGraphGridWidth();
+  const worldY = -((Number(pan.y) || 0) / zoom) / nodeGraphGridHeight();
+  readout.replaceChildren(
+    Object.assign(document.createElement("span"), { textContent: `X ${nodeGraphWorldPositionLabel(worldX)}` }),
+    Object.assign(document.createElement("span"), { textContent: `Y ${nodeGraphWorldPositionLabel(worldY)}` }),
+  );
+  readout.setAttribute(
+    "aria-label",
+    `World position X ${nodeGraphWorldPositionLabel(worldX)}, Y ${nodeGraphWorldPositionLabel(worldY)}`,
+  );
 }
 
 function setNodeGraphPan(x, y) {
@@ -290,8 +332,9 @@ function snapNodeGraphWorkspaceEdgesToGrid(zoom = nodeGraphZoom()) {
   drawNodeGraphWires();
 }
 
-function snapNodeGraphPanValueToGrid(value, gridSize, zoom = nodeGraphZoom()) {
-  const step = gridSize * zoom;
+function snapNodeGraphPanValueToGrid(value, gridSize, zoom = nodeGraphZoom(), options = {}) {
+  const units = options.halfGrid ? 2 : 1;
+  const step = (gridSize * zoom) / units;
   return Number.isFinite(step) && step > 0
     ? Math.round((Number(value) || 0) / step) * step
     : Number(value) || 0;
@@ -437,13 +480,16 @@ function dragNodeGraphWorkspaceResize(event) {
   if (!drag || drag.pointerId !== event.pointerId) {
     return;
   }
+  const zoom = nodeGraphZoom();
+  const renderedGridWidth = nodeGraphGridWidth() * zoom;
+  const renderedGridHeight = nodeGraphGridHeight() * zoom;
   const widthGu = Math.max(
     nodeGraphWorkspaceViewLimits.minWidthGu,
-    drag.startWidthGu + Math.round((event.clientX - drag.startClientX) / nodeGraphGridWidth()) * 2,
+    drag.startWidthGu + Math.round((event.clientX - drag.startClientX) / renderedGridWidth) * 2,
   );
   const heightGu = Math.max(
     nodeGraphWorkspaceViewLimits.minHeightGu,
-    drag.startHeightGu + Math.round((event.clientY - drag.startClientY) / nodeGraphGridHeight()),
+    drag.startHeightGu + Math.round((event.clientY - drag.startClientY) / renderedGridHeight),
   );
   if (widthGu === drag.widthGu && heightGu === drag.heightGu) {
     return;
@@ -517,10 +563,10 @@ function dragNodeGraphWorkspacePan(event) {
   const nextY = drag.startPanY + event.clientY - drag.startClientY;
   setNodeGraphPan(
     nodeGraphMvp.snapGridWhilePanning
-      ? snapNodeGraphPanValueToGrid(nextX, nodeGraphGridWidth())
+      ? snapNodeGraphPanValueToGrid(nextX, nodeGraphGridWidth(), nodeGraphZoom(), { halfGrid: true })
       : nextX,
     nodeGraphMvp.snapGridWhilePanning
-      ? snapNodeGraphPanValueToGrid(nextY, nodeGraphGridHeight())
+      ? snapNodeGraphPanValueToGrid(nextY, nodeGraphGridHeight(), nodeGraphZoom(), { halfGrid: true })
       : nextY,
   );
   event.preventDefault();

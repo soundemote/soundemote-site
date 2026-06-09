@@ -6,22 +6,22 @@ function normalizeNodeGraphPatchParameter(type, key, value, metadata = null) {
   const parameter = nodeGraphModuleDefinitions[type]?.parameters?.find(
     (candidate) => candidate.key === key,
   );
-  if (!parameter) {
+  if (!parameter && type !== "clapPlugin") {
     return null;
   }
   const number = Number(value);
-  const fallback = Number(metadata?.def ?? parameter.defaultValue);
+  const fallback = Number(metadata?.def ?? parameter?.defaultValue);
   const candidate = Number.isFinite(number)
     ? number
     : Number.isFinite(fallback)
       ? fallback
       : 0;
-  const min = Number(metadata?.min ?? parameter.min);
-  const max = Number(metadata?.max ?? parameter.max);
+  const min = Number(metadata?.min ?? parameter?.min);
+  const max = Number(metadata?.max ?? parameter?.max);
   if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
     return candidate;
   }
-  return metadata?.wraparound || parameter.wraparound
+  return metadata?.wraparound || parameter?.wraparound
     ? wrapNodeSliderValue(candidate, min, max)
     : clampNodeSliderValue(candidate, min, max);
 }
@@ -40,6 +40,7 @@ function validateNodeGraphPatch(patch) {
     }
   }
 
+  const cameraState = normalizeNodeGraphPatchCameras(patch.cameras, patch.activeCameraId);
   const grid = normalizeNodeGraphPatchGrid(patch.grid);
   if (!Number.isFinite(grid.widthPx) || grid.widthPx <= 0) {
     throw new Error("grid.widthPx must be a positive number");
@@ -48,8 +49,8 @@ function validateNodeGraphPatch(patch) {
     throw new Error("grid.heightPx must be a positive number");
   }
 
-  if (!Array.isArray(patch.nodes) || patch.nodes.length === 0) {
-    throw new Error("nodes must be a non-empty array");
+  if (!Array.isArray(patch.nodes)) {
+    throw new Error("nodes must be an array");
   }
 
   const ids = new Set();
@@ -68,8 +69,8 @@ function validateNodeGraphPatch(patch) {
     if (type === "output" && id !== "output") {
       throw new Error("output module id must be output");
     }
-    const gx = Math.round(Number(node.gx));
-    const gy = Math.round(Number(node.gy));
+    const gx = roundNodeGraphGridCoordinate(Number(node.gx));
+    const gy = roundNodeGraphGridCoordinate(Number(node.gy));
     if (!Number.isFinite(gx) || !Number.isFinite(gy)) {
       throw new Error(`node ${id} grid position invalid`);
     }
@@ -102,6 +103,24 @@ function validateNodeGraphPatch(patch) {
         metadata,
       );
     }
+    if (type === "clapPlugin") {
+      for (const [key, sourceMetadata] of Object.entries(node.paramMeta || {})) {
+        if (Object.hasOwn(paramMeta, key)) {
+          continue;
+        }
+        const metadata = normalizeNodeGraphPatchParameterMetadata(type, key, sourceMetadata);
+        if (!metadata) {
+          continue;
+        }
+        paramMeta[key] = metadata;
+        params[key] = normalizeNodeGraphPatchParameter(
+          type,
+          key,
+          Object.hasOwn(node.params || {}, key) ? node.params[key] : metadata.def,
+          metadata,
+        );
+      }
+    }
     ids.add(id);
     const normalizedNode = {
       gx,
@@ -120,12 +139,31 @@ function validateNodeGraphPatch(patch) {
       normalizedNode.layout = normalizeNodeGraphTextBoxLayout(node.layout);
     } else if (nodeGraphModuleDefinitions[type].layout === "image") {
       normalizedNode.layout = normalizeNodeGraphImageLayout(node.layout);
+    } else if (nodeGraphModuleDefinitions[type].layout === "led") {
+      normalizedNode.led = normalizeNodeGraphLedLayout(node.led);
     }
-    if (type === "graph") {
-      normalizedNode.graph = normalizeNodeGraphGraph(node.graph);
+    if (nodeGraphModuleIsGraphType(type)) {
+      normalizedNode.graph = nodeGraphGraphEndpointYLockEnabledForNode(normalizedNode)
+        ? nodeGraphGraphWithLockedEndpointY(node.graph)
+        : normalizeNodeGraphGraph(node.graph);
     }
     if (type === "codeblock") {
       normalizedNode.codeblock = normalizeNodeGraphCodeblock(node.codeblock);
+    }
+    if (type === "canvas") {
+      normalizedNode.canvasScript = normalizeNodeGraphCanvasScript(node.canvasScript);
+    }
+    if (type === "screenSpaceShader") {
+      normalizedNode.screenSpaceShader = normalizeNodeGraphScreenSpaceShader(node.screenSpaceShader);
+    }
+    if (Object.hasOwn(node, "scopeShader")) {
+      normalizedNode.scopeShader = normalizeNodeGraphScopeShader(node.scopeShader);
+    }
+    if (type === "moduleGroup") {
+      normalizedNode.moduleGroup = normalizeNodeGraphModuleGroup(node.moduleGroup);
+    }
+    if (type === "clapPlugin") {
+      normalizedNode.clap = normalizeNodeGraphClapPluginBinding(node.clap);
     }
     const ui = nodeGraphModuleDefinitions[type].layout === "textBox" && !Object.hasOwn(node, "ui")
       ? { buttonsHidden: true }
@@ -135,9 +173,38 @@ function validateNodeGraphPatch(patch) {
     }
     return normalizedNode;
   });
-
-  if (!ids.has("output")) {
-    throw new Error("output node missing");
+  if (!nodes.some((node) => node.id === "home")) {
+    let homeId = "home";
+    let suffix = 2;
+    while (ids.has(homeId)) {
+      homeId = `home-${suffix}`;
+      suffix += 1;
+    }
+    const homeNode = createNodeGraphPatchNode("moduleHome", {
+      gx: 1,
+      gy: 10,
+      id: homeId,
+      widthGu: 5,
+    });
+    ids.add(homeId);
+    nodes.splice(0, 0, homeNode);
+  }
+  if (!nodes.some((node) => node.type === "moduleShop")) {
+    let shopId = "shop";
+    let suffix = 2;
+    while (ids.has(shopId)) {
+      shopId = `shop-${suffix}`;
+      suffix += 1;
+    }
+    const bottommost = nodes.reduce((max, node) => Math.max(max, node.gy), 0);
+    const shopNode = createNodeGraphPatchNode("moduleShop", {
+      gx: 1,
+      gy: Math.max(0, bottommost + 3),
+      id: shopId,
+      widthGu: 5,
+    });
+    ids.add(shopId);
+    nodes.unshift(shopNode);
   }
 
   const uiItems = normalizeNodeGraphPatchUiItems(patch.uiItems, { nodeIds: ids });
@@ -167,7 +234,7 @@ function validateNodeGraphPatch(patch) {
   const connectionKeys = new Set();
   const connections = Array.isArray(patch.connections) ? patch.connections.map((connection) => {
     const sourceNode = String(connection.sourceNode || "").trim();
-    const sourcePort = String(connection.sourcePort || "").trim();
+    let sourcePort = String(connection.sourcePort || "").trim();
     const destinationNode = String(connection.destinationNode || "").trim();
     let destinationPort = String(connection.destinationPort || "").trim();
     const sourceType = nodes.find((node) => node.id === sourceNode)?.type;
@@ -175,6 +242,7 @@ function validateNodeGraphPatch(patch) {
     if (!sourceType || !destinationType) {
       throw new Error("connection references missing node");
     }
+    sourcePort = nodeGraphCanonicalOutputPort(sourceType, sourcePort);
     if (!nodeGraphPatchNodeOutputPorts(nodes.find((node) => node.id === sourceNode)).includes(sourcePort)) {
       throw new Error(`connection source port invalid: ${sourceNode}.${sourcePort}`);
     }
@@ -207,7 +275,7 @@ function validateNodeGraphPatch(patch) {
   const modulationKeys = new Set();
   const modulations = Array.isArray(patch.modulations) ? patch.modulations.map((modulation) => {
     const sourceNode = String(modulation.sourceNode || "").trim();
-    const sourcePort = String(modulation.sourcePort || "").trim();
+    let sourcePort = String(modulation.sourcePort || "").trim();
     const destinationNode = String(modulation.destinationNode || "").trim();
     const destinationParam = String(modulation.destinationParam || "").trim();
     if (!sourceNode || !sourcePort || !destinationNode || !destinationParam) {
@@ -218,10 +286,12 @@ function validateNodeGraphPatch(patch) {
     if (!sourceType || !destinationType) {
       throw new Error("modulation references missing node");
     }
+    sourcePort = nodeGraphCanonicalOutputPort(sourceType, sourcePort);
     if (!nodeGraphPatchNodeOutputPorts(nodes.find((node) => node.id === sourceNode)).includes(sourcePort)) {
       throw new Error(`modulation source port invalid: ${sourceNode}.${sourcePort}`);
     }
-    if (!(nodeGraphModuleDefinitions[destinationType].parameters || []).some((parameter) => parameter.key === destinationParam)) {
+    const destinationPatchNode = nodes.find((node) => node.id === destinationNode);
+    if (!nodeGraphPatchNodeParameterDefinitions(destinationPatchNode).some((parameter) => parameter.key === destinationParam)) {
       throw new Error(`modulation destination parameter invalid: ${destinationNode}.${destinationParam}`);
     }
     const key = `${sourceNode}.${sourcePort}->${destinationNode}.${destinationParam}`;
@@ -243,6 +313,48 @@ function validateNodeGraphPatch(patch) {
     };
   }) : [];
 
+  const graphConnectionKeys = new Set();
+  const graphConnections = Array.isArray(patch.graphConnections) ? patch.graphConnections.map((connection) => {
+    const sourceNode = String(connection.sourceNode || "").trim();
+    let sourcePort = String(connection.sourcePort || "").trim();
+    const destinationNode = String(connection.destinationNode || "").trim();
+    const destinationGraphInput = String(connection.destinationGraphInput || "").trim();
+    if (!sourceNode || !sourcePort || !destinationNode || !destinationGraphInput) {
+      throw new Error("graph connection entries require sourceNode, sourcePort, destinationNode, destinationGraphInput");
+    }
+    const sourcePatchNode = nodes.find((node) => node.id === sourceNode);
+    const destinationPatchNode = nodes.find((node) => node.id === destinationNode);
+    const sourceType = sourcePatchNode?.type;
+    const destinationType = destinationPatchNode?.type;
+    if (!sourceType || !destinationType) {
+      throw new Error("graph connection references missing node");
+    }
+    sourcePort = nodeGraphCanonicalOutputPort(sourceType, sourcePort);
+    if (!nodeGraphModuleIsGraphType(sourceType) || sourcePort !== "Out") {
+      throw new Error(`graph connection source must be Graph.Out or Graph 2.Out: ${sourceNode}.${sourcePort}`);
+    }
+    if (!nodeGraphModuleGraphInputs(destinationType).includes(destinationGraphInput)) {
+      throw new Error(`graph connection destination invalid: ${destinationNode}.${destinationGraphInput}`);
+    }
+    const key = `${sourceNode}.${sourcePort}->${destinationNode}.${destinationGraphInput}`;
+    if (graphConnectionKeys.has(key)) {
+      throw new Error(`duplicate graph connection ${key}`);
+    }
+    graphConnectionKeys.add(key);
+    return {
+      destinationGraphInput,
+      destinationNode,
+      sourceNode,
+      sourcePort,
+      ...(nodeGraphWireTypePatchValue(connection.wireType)
+        ? { wireType: nodeGraphWireTypePatchValue(connection.wireType) }
+        : {}),
+      ...(normalizeNodeGraphTracePoints(connection.tracePoints).length
+        ? { tracePoints: normalizeNodeGraphTracePoints(connection.tracePoints) }
+        : {}),
+    };
+  }) : [];
+
   const view = normalizeNodeGraphPatchView(patch.view);
   if (view.widthGu && view.widthGu < nodeGraphWorkspaceViewLimits.minWidthGu) {
     throw new Error(`view.widthGu must be 0 or at least ${nodeGraphWorkspaceViewLimits.minWidthGu}`);
@@ -252,10 +364,14 @@ function validateNodeGraphPatch(patch) {
   }
 
   return {
+    activeCameraId: cameraState.activeCameraId,
     audio: normalizeNodeGraphPatchAudio(patch.audio),
     bypassedNodes,
+    cameras: cameraState.cameras,
+    codeScreen: normalizeNodeGraphCodeScreen(patch.codeScreen),
     connections,
     format: { ...nodeGraphPatchFormat },
+    graphConnections,
     grid,
     info: normalizeNodeGraphPatchInfo(patch.info),
     modulations,
@@ -292,8 +408,7 @@ function nodeGraphPatchNodeIsVisible(nodeId) {
   const node = nodeGraphPatchNode(nodeId);
   return Boolean(
     node &&
-    nodeGraphModuleShouldBeVisible(node) &&
-    (!nodeGraphUiViewIsActive() || nodeGraphNodeIsInUiView(nodeId)),
+    nodeGraphModuleShouldBeVisible(node),
   );
 }
 
@@ -309,7 +424,7 @@ function applyNodeGraphPatchToDom() {
   workspace?.classList.toggle("empty-patch", visiblePatchNodeCount === 0);
   const emptyButton = document.getElementById("nodeGraphEmptyModuleButton");
   if (emptyButton) {
-    emptyButton.hidden = visiblePatchNodeCount !== 0;
+    emptyButton.hidden = true;
   }
 
   for (const element of [...container.querySelectorAll(".dsp-node")]) {
@@ -323,7 +438,7 @@ function applyNodeGraphPatchToDom() {
     const outputPorts = nodeGraphPatchNodeOutputPorts(patchNode).filter(
       (port) => !(nodeGraphModuleDefinitions[patchNode.type]?.parameters || []).some((parameter) => parameter.key === port),
     );
-    const portSignature = `${nodeGraphPatchNodeInputPorts(patchNode).join(",")}=>${outputPorts.join(",")}`;
+    const portSignature = `${nodeGraphPatchNodeInputPorts(patchNode).join(",")}=>${outputPorts.join(",")}=>${nodeGraphModuleGraphInputs(patchNode.type).join(",")}`;
     if (
       element &&
       (
@@ -387,11 +502,31 @@ function applyNodeGraphPatchToDom() {
       syncNodeGraphTextBoxElement(element, patchNode);
     } else if (nodeGraphModuleDefinitions[patchNode.type]?.layout === "graph") {
       syncNodeGraphGraphElement(element, patchNode);
+    } else if (
+      nodeGraphModuleDefinitions[patchNode.type]?.layout === "clapPlugin" &&
+      typeof syncNodeGraphClapPluginElement === "function"
+    ) {
+      syncNodeGraphClapPluginElement(element, patchNode);
     }
   }
   syncNodeGraphInputModuleLiveState();
+  if (typeof bindNodeGraphMacroControlModuleEvents === "function") {
+    bindNodeGraphMacroControlModuleEvents();
+  }
+  if (typeof renderNodeGraphKeyboardControllerModules === "function") {
+    renderNodeGraphKeyboardControllerModules();
+  }
+  if (typeof renderNodeGraphCameraView === "function") {
+    renderNodeGraphCameraView();
+  }
   syncNodeGraphHeaderTimingWidgets();
   updateNodeGraphGridHeatmap();
+  if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
+    scheduleNodeGraphModuleScopeDraw();
+  }
+  if (typeof scheduleNodeGraphWireRedrawAfterLayout === "function") {
+    scheduleNodeGraphWireRedrawAfterLayout();
+  }
 }
 
 function commitNodeGraphPatch(patch, options = {}) {
@@ -406,7 +541,9 @@ function commitNodeGraphPatch(patch, options = {}) {
   syncNodeGraphFilterCurveDisplays();
   renderNodeGraphVisualSettings();
   syncNodeGraphSettingsView();
-  renderNodeGraphUiView();
+  if (typeof renderNodeGraphCodeScreen === "function" && !document.getElementById("nodeCodeScreenView")?.hidden) {
+    renderNodeGraphCodeScreen();
+  }
   const scriptStatus = nodeGraphPatchScriptStatus(
     options.status || "script synced",
     options.ok ?? true,
@@ -420,12 +557,16 @@ function commitNodeGraphPatch(patch, options = {}) {
   if (options.markPending !== false) {
     markNodeGraphRenderPending();
   }
+  if (typeof scheduleNodeGraphWireRedrawAfterLayout === "function") {
+    scheduleNodeGraphWireRedrawAfterLayout();
+  }
   scheduleNodeGraphLivePlanSync();
 }
 
 function clearNodeGraphWires() {
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
   patch.connections = [];
+  patch.graphConnections = [];
   patch.modulations = [];
   setNodeGraphSelection(null);
   markNodeGraphRenderPending();
@@ -479,6 +620,11 @@ function deleteSelectedNodeGraphItem() {
       (modulation) =>
         !removableNodeIds.has(modulation.sourceNode) &&
         !removableNodeIds.has(modulation.destinationNode),
+    );
+    patch.graphConnections = patch.graphConnections.filter(
+      (connection) =>
+        !removableNodeIds.has(connection.sourceNode) &&
+        !removableNodeIds.has(connection.destinationNode),
     );
     setNodeGraphSelection(null);
     commitNodeGraphPatch(patch, {

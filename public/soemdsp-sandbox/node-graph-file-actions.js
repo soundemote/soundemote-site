@@ -69,6 +69,14 @@ function handleNodePatchScriptInput(event) {
   scheduleNodeGraphScriptCommit(event.currentTarget.value);
 }
 
+function saveNodeGraphScriptEditor() {
+  const script = document.getElementById("nodePatchScript");
+  clearNodeGraphScriptCommitTimer();
+  if (commitNodeGraphScript(script?.value || serializeNodeGraphPatch())) {
+    setNodeGraphScriptStatus("script saved", true);
+  }
+}
+
 async function copyNodeGraphScriptToClipboard() {
   const script = document.getElementById("nodePatchScript");
   const text = script?.value || serializeNodeGraphPatch();

@@ -9,13 +9,17 @@ function nodeGraphBuildLivePlan() {
   const activeNodeIds = nodeGraphActiveNodeIds(compiled);
   const activeSignalConnections = nodeGraphActiveSignalConnections(compiled)
     .map((connection) => ({ ...connection }));
+  const activeGraphConnections = nodeGraphActiveGraphConnections(compiled)
+    .map((connection) => ({ ...connection }));
   const activeModulations = nodeGraphActiveModulations(compiled)
     .map((modulation) => ({ ...modulation }));
 
   return {
     connections: activeSignalConnections,
     feedbackConnections: compiled.feedbackConnections.map((connection) => ({ ...connection })),
+    feedbackGraphConnections: (compiled.feedbackGraphConnections || []).map((connection) => ({ ...connection })),
     feedbackModulations: compiled.feedbackModulations.map((modulation) => ({ ...modulation })),
+    graphConnections: activeGraphConnections,
     modulations: activeModulations,
     nodes: nodeGraphBuildLiveParameterNodes(activeNodeIds),
     order: [...compiled.order],
@@ -25,8 +29,35 @@ function nodeGraphBuildLivePlan() {
     sourceNodes: [...compiled.sourceNodes],
     visualSinks: (compiled.visualSinks || []).map((sink) => ({
       ...sink,
+      bufferedInputs: [...(sink.bufferedInputs || [])],
       inputs: (sink.inputs || []).map((input) => ({ ...input })),
     })),
+  };
+}
+
+function nodeGraphBuildLivePlanForPatch(patch) {
+  const normalizedPatch = validateNodeGraphPatch(patch);
+  const compiled = compileNodeGraphExecutionPlan(normalizedPatch);
+  if (!compiled.valid) {
+    const error = new Error(compiled.issues.join(", "));
+    error.issues = [...compiled.issues];
+    throw error;
+  }
+  const activeNodeIds = nodeGraphActiveNodeIds(compiled);
+  return {
+    connections: nodeGraphActiveSignalConnections(compiled).map((connection) => ({ ...connection })),
+    feedbackConnections: compiled.feedbackConnections.map((connection) => ({ ...connection })),
+    feedbackGraphConnections: (compiled.feedbackGraphConnections || []).map((connection) => ({ ...connection })),
+    feedbackModulations: compiled.feedbackModulations.map((modulation) => ({ ...modulation })),
+    graphConnections: nodeGraphActiveGraphConnections(compiled).map((connection) => ({ ...connection })),
+    modulations: nodeGraphActiveModulations(compiled).map((modulation) => ({ ...modulation })),
+    nodes: nodeGraphBuildLiveParameterNodesForPatch(normalizedPatch, activeNodeIds),
+    order: [...compiled.order],
+    outputNode: compiled.outputNode,
+    patchFingerprint: nodeGraphPatchFingerprint(normalizedPatch),
+    speakerOutputActive: Boolean(compiled.speakerOutputActive),
+    sourceNodes: [...compiled.sourceNodes],
+    visualSinks: [],
   };
 }
 
@@ -45,61 +76,179 @@ function nodeGraphBuildLiveParameterNodes(activeNodeIds = null) {
           : nodeGraphParameterFallback(node.type, parameter.key);
         paramMeta[parameter.key] = nodeGraphReadPatchParameterMetadata(node, parameter.key);
       }
+      if (node.type === "clapPlugin") {
+        for (const [key, metadata] of Object.entries(node.paramMeta || {})) {
+          if (Object.hasOwn(paramMeta, key)) {
+            continue;
+          }
+          const normalizedMetadata = normalizeNodeGraphPatchParameterMetadata(node.type, key, metadata);
+          if (!normalizedMetadata) {
+            continue;
+          }
+          paramMeta[key] = normalizedMetadata;
+          params[key] = normalizeNodeGraphPatchParameter(
+            node.type,
+            key,
+            Object.hasOwn(node.params || {}, key) ? node.params[key] : normalizedMetadata.def,
+            normalizedMetadata,
+          );
+        }
+      }
       const runtimeNode = {
         id: node.id,
         paramMeta,
         params,
-        scopeInputPort: Object.hasOwn(definition, "scopeInputPort")
-          ? definition.scopeInputPort
-          : (definition.inputs || [])[0] || "",
         type: node.type,
       };
       if (node.type === "codeblock") {
         runtimeNode.codeblock = normalizeNodeGraphCodeblock(node.codeblock);
       }
+      if (node.type === "moduleGroup") {
+        runtimeNode.moduleGroup = normalizeNodeGraphModuleGroup(node.moduleGroup);
+        if (runtimeNode.moduleGroup.sourcePatch) {
+          runtimeNode.moduleGroupPlan = nodeGraphBuildLivePlanForPatch(runtimeNode.moduleGroup.sourcePatch);
+        }
+      }
+      if (node.type === "clapPlugin") {
+        runtimeNode.clap = normalizeNodeGraphClapPluginBinding(node.clap);
+      }
+      if (node.type === "samplePlayer" || node.type === "sampleLooper") {
+        runtimeNode.sample = { id: normalizeNodeGraphSampleId(node.sample?.id) };
+      }
       return runtimeNode;
     });
 }
 
+function nodeGraphBuildLiveParameterNodesForPatch(patch, activeNodeIds = null) {
+  const activeIds = activeNodeIds instanceof Set ? activeNodeIds : null;
+  return (patch.nodes || [])
+    .filter((node) => !activeIds || activeIds.has(node.id))
+    .map((node) => {
+      const definition = nodeGraphModuleDefinitions[node.type];
+      const params = {};
+      const paramMeta = {};
+      for (const parameter of definition.parameters || []) {
+        const value = Number(node.params?.[parameter.key]);
+        params[parameter.key] = Number.isFinite(value)
+          ? value
+          : nodeGraphParameterFallback(node.type, parameter.key);
+        paramMeta[parameter.key] = normalizeNodeGraphPatchParameterMetadata(
+          node.type,
+          parameter.key,
+          node.paramMeta?.[parameter.key],
+        ) || nodeGraphParameterDefinitionMetadata(parameter);
+      }
+      if (node.type === "clapPlugin") {
+        for (const [key, metadata] of Object.entries(node.paramMeta || {})) {
+          if (Object.hasOwn(paramMeta, key)) {
+            continue;
+          }
+          const normalizedMetadata = normalizeNodeGraphPatchParameterMetadata(node.type, key, metadata);
+          if (!normalizedMetadata) {
+            continue;
+          }
+          paramMeta[key] = normalizedMetadata;
+          params[key] = normalizeNodeGraphPatchParameter(
+            node.type,
+            key,
+            Object.hasOwn(node.params || {}, key) ? node.params[key] : normalizedMetadata.def,
+            normalizedMetadata,
+          );
+        }
+      }
+      const runtimeNode = {
+        id: node.id,
+        paramMeta,
+        params,
+        type: node.type,
+      };
+      if (node.type === "codeblock") {
+        runtimeNode.codeblock = normalizeNodeGraphCodeblock(node.codeblock);
+      }
+      if (node.type === "moduleGroup") {
+        runtimeNode.moduleGroup = normalizeNodeGraphModuleGroup(node.moduleGroup);
+        if (runtimeNode.moduleGroup.sourcePatch) {
+          runtimeNode.moduleGroupPlan = nodeGraphBuildLivePlanForPatch(runtimeNode.moduleGroup.sourcePatch);
+        }
+      }
+      if (node.type === "clapPlugin") {
+        runtimeNode.clap = normalizeNodeGraphClapPluginBinding(node.clap);
+      }
+      if (node.type === "samplePlayer" || node.type === "sampleLooper") {
+        runtimeNode.sample = { id: normalizeNodeGraphSampleId(node.sample?.id) };
+      }
+      return runtimeNode;
+    });
+}
+
+function nodeGraphConnectionMapFromList(items = [], keyForItem) {
+  const map = new Map();
+  for (const item of items || []) {
+    const key = keyForItem(item);
+    const list = map.get(key) || [];
+    list.push(item);
+    map.set(key, list);
+  }
+  return map;
+}
+
+function nodeGraphLiveInputConnectionMap(plan) {
+  return nodeGraphConnectionMapFromList(
+    plan?.connections || [],
+    (connection) => nodeGraphInputKey(connection.destinationNode, connection.destinationPort),
+  );
+}
+
+function nodeGraphLiveGraphInputConnectionMap(plan) {
+  return nodeGraphConnectionMapFromList(
+    plan?.graphConnections || [],
+    (connection) => nodeGraphGraphInputKey(connection.destinationNode, connection.destinationGraphInput),
+  );
+}
+
+function nodeGraphLiveModulationConnectionMap(plan) {
+  return nodeGraphConnectionMapFromList(
+    plan?.modulations || [],
+    (modulation) => nodeGraphParameterKey(modulation.destinationNode, modulation.destinationParam),
+  );
+}
+
 function createNodeGraphLiveRuntime(plan) {
   const nodes = new Map((plan.nodes || []).map((node) => [node.id, node]));
-  const inputConnections = new Map();
-  for (const connection of plan.connections || []) {
-    const key = `${connection.destinationNode}.${connection.destinationPort}`;
-    const connections = inputConnections.get(key) || [];
-    connections.push(connection);
-    inputConnections.set(key, connections);
-  }
-  const modulationConnections = new Map();
-  for (const modulation of plan.modulations || []) {
-    const key = nodeGraphParameterKey(modulation.destinationNode, modulation.destinationParam);
-    const modulations = modulationConnections.get(key) || [];
-    modulations.push(modulation);
-    modulationConnections.set(key, modulations);
-  }
+  const inputConnections = nodeGraphLiveInputConnectionMap(plan);
+  const graphInputConnections = nodeGraphLiveGraphInputConnectionMap(plan);
+  const modulationConnections = nodeGraphLiveModulationConnectionMap(plan);
   const phases = new Map();
   const noiseSeedKeys = new Map();
   const noiseSeeds = new Map();
   const oscResetStates = new Map();
+  const graphLfoStates = new Map();
   const bandpassStates = new Map();
   const clockStates = new Map();
   const codeblockFunctions = new Map();
   const cookbookFilterStates = new Map();
   const clockDividerStates = new Map();
   const delayedTriggerStates = new Map();
+  const delayEffectStates = new Map();
   const expAdsrStates = new Map();
   const fractalBrownianNoiseStates = new Map();
   const flowerChildEnvelopeFollowerStates = new Map();
   const highpassStates = new Map();
   const ladderFilterStates = new Map();
   const linearEnvelopeStates = new Map();
+  const lorenzAttractorStates = new Map();
   const lowpassStates = new Map();
+  const moduleGroupRuntimes = new Map();
   const noiseGeneratorStates = new Map();
   const noiseSampleHoldStates = new Map();
+  const oscillatorLastPhaseIncrements = new Map();
+  const oscillatorStoppedSamples = new Map();
   const pluckEnvelopeStates = new Map();
   const randomClockStates = new Map();
   const randomWalkStates = new Map();
   const sampleHoldStates = new Map();
+  const samplePlaybackStates = new Map();
+  const samples = new Map((plan.samples || []).map((sample) => [sample.id, sample]));
   const slewLimiterStates = new Map();
   const stepSequencerStates = new Map();
   const spiralStates = new Map();
@@ -110,12 +259,12 @@ function createNodeGraphLiveRuntime(plan) {
   const vactrolEnvelopeStates = new Map();
   const visualControlState = createNodeGraphVisualControlState();
   for (const node of plan.nodes || []) {
-    if (node.type === "osc") {
+    if (node.type === "osc" || node.type === "fbPolyBlepOsc") {
       phases.set(node.id, 0);
       oscResetStates.set(node.id, createNodeGraphOscResetState());
       triangleStates.set(node.id, 0);
     }
-    if (node.type === "osc" || node.type === "noise") {
+    if (node.type === "osc" || node.type === "fbPolyBlepOsc" || node.type === "noise") {
       noiseSeeds.set(node.id, nodeGraphStableSeed(node.id));
     }
     if (node.type === "stereoNoise") {
@@ -124,6 +273,9 @@ function createNodeGraphLiveRuntime(plan) {
     }
     if (node.type === "spiral") {
       spiralStates.set(node.id, createJerobeamSpiralState());
+    }
+    if (node.type === "lorenzAttractor") {
+      lorenzAttractorStates.set(node.id, createNodeGraphLorenzAttractorState());
     }
     if (node.type === "highpass") {
       highpassStates.set(node.id, createNodeGraphHighpassState());
@@ -143,17 +295,26 @@ function createNodeGraphLiveRuntime(plan) {
     if (node.type === "clock") {
       clockStates.set(node.id, createNodeGraphClockState());
     }
+    if (nodeGraphModuleIsGraphType(node.type)) {
+      graphLfoStates.set(node.id, createNodeGraphGraphLfoState());
+    }
     if (node.type === "clockDivider") {
       clockDividerStates.set(node.id, createNodeGraphTriggerDividerState());
     }
     if (node.type === "delayedTrigger") {
       delayedTriggerStates.set(node.id, createNodeGraphDelayedTriggerState());
     }
+    if (node.type === "delayEffect") {
+      delayEffectStates.set(node.id, createNodeGraphDelayEffectState());
+    }
     if (node.type === "randomClock") {
       randomClockStates.set(node.id, createNodeGraphRandomClockState());
     }
     if (node.type === "sampleHold") {
       sampleHoldStates.set(node.id, createNodeGraphSampleHoldState());
+    }
+    if (node.type === "samplePlayer" || node.type === "sampleLooper") {
+      samplePlaybackStates.set(node.id, createNodeGraphSamplePlaybackState());
     }
     if (node.type === "slewLimiter") {
       slewLimiterStates.set(node.id, createNodeGraphSlewLimiterState());
@@ -194,6 +355,13 @@ function createNodeGraphLiveRuntime(plan) {
     if (node.type === "vactrolEnvelope") {
       vactrolEnvelopeStates.set(node.id, createNodeGraphVactrolEnvelopeState());
     }
+    if (node.type === "moduleGroup" && node.moduleGroup?.sourcePatch) {
+      try {
+        moduleGroupRuntimes.set(node.id, createNodeGraphLiveRuntime(nodeGraphBuildLivePlanForPatch(node.moduleGroup.sourcePatch)));
+      } catch (_error) {
+        moduleGroupRuntimes.delete(node.id);
+      }
+    }
     for (const [key, value] of Object.entries(node.params || {})) {
       smoothers.set(
         nodeGraphParameterKey(node.id, key),
@@ -201,7 +369,7 @@ function createNodeGraphLiveRuntime(plan) {
       );
     }
   }
-  return {
+  const runtime = {
     inputConnections,
     badNumberCount: 0,
     bandpassStates,
@@ -210,11 +378,15 @@ function createNodeGraphLiveRuntime(plan) {
     codeblockFunctions,
     cookbookFilterStates,
     delayedTriggerStates,
+    delayEffectStates,
     expAdsrStates,
     fractalBrownianNoiseStates,
     flowerChildEnvelopeFollowerStates,
+    graphInputConnections,
+    graphLfoStates,
     ladderFilterStates,
     linearEnvelopeStates,
+    lorenzAttractorStates,
     meterCounter: 0,
     meterClipCount: 0,
     meterPeak: 0,
@@ -222,6 +394,7 @@ function createNodeGraphLiveRuntime(plan) {
     meterSquareSum: 0,
     modulationConnections,
     macroControls: Array.isArray(nodeGraphMvp?.macroControls) ? [...nodeGraphMvp.macroControls] : new Array(10).fill(0),
+    moduleGroupRuntimes,
     pitchModWheelSignal: {
       mod: Math.max(0, Math.min(1, Number(nodeGraphMvp?.modWheelSignal) || 0)),
       pitch: Math.max(-1, Math.min(1, Number(nodeGraphMvp?.pitchWheelSignal) || 0)),
@@ -230,6 +403,8 @@ function createNodeGraphLiveRuntime(plan) {
     nodeOutputs: new Map((plan.nodes || []).map((node) => [node.id, 0])),
     nodes,
     oscResetStates,
+    oscillatorLastPhaseIncrements,
+    oscillatorStoppedSamples,
     noiseSeedKeys,
     noiseSeeds,
     noiseGeneratorStates,
@@ -243,8 +418,9 @@ function createNodeGraphLiveRuntime(plan) {
     phases,
     randomWalkStates,
     sampleHoldStates,
+    samplePlaybackStates,
+    samples,
     slewLimiterStates,
-    scopeInputs: new Map(),
     smoothers,
     spiralStates,
     stepSequencerStates,
@@ -252,35 +428,38 @@ function createNodeGraphLiveRuntime(plan) {
     triggerDividerStates,
     triangleStates,
     vactrolEnvelopeStates,
+    visualSinks: (plan.visualSinks || []).map((sink) => ({
+      ...sink,
+      bufferedInputs: [...(sink.bufferedInputs || [])],
+      inputs: (sink.inputs || []).map((input) => ({ ...input })),
+    })),
     visualControls: visualControlState.controls,
     visualControlStates: visualControlState.states,
   };
+  if (typeof syncNodeGraphVisualInputBuffers === "function") {
+    syncNodeGraphVisualInputBuffers(runtime);
+  }
+  return runtime;
 }
 
 function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   runtime.nodes = new Map((plan.nodes || []).map((node) => [node.id, node]));
-  runtime.inputConnections = new Map();
-  for (const connection of plan.connections || []) {
-    const key = `${connection.destinationNode}.${connection.destinationPort}`;
-    const connections = runtime.inputConnections.get(key) || [];
-    connections.push(connection);
-    runtime.inputConnections.set(key, connections);
-  }
-  runtime.modulationConnections = new Map();
-  for (const modulation of plan.modulations || []) {
-    const key = nodeGraphParameterKey(modulation.destinationNode, modulation.destinationParam);
-    const modulations = runtime.modulationConnections.get(key) || [];
-    modulations.push(modulation);
-    runtime.modulationConnections.set(key, modulations);
-  }
+  runtime.inputConnections = nodeGraphLiveInputConnectionMap(plan);
+  runtime.graphInputConnections = nodeGraphLiveGraphInputConnectionMap(plan);
+  runtime.modulationConnections = nodeGraphLiveModulationConnectionMap(plan);
   runtime.order = [...(plan.order || [])];
   runtime.outputNode = plan.outputNode || "output";
+  runtime.visualSinks = (plan.visualSinks || []).map((sink) => ({
+    ...sink,
+    bufferedInputs: [...(sink.bufferedInputs || [])],
+    inputs: (sink.inputs || []).map((input) => ({ ...input })),
+  }));
+  if (typeof syncNodeGraphVisualInputBuffers === "function") {
+    syncNodeGraphVisualInputBuffers(runtime);
+  }
   const nodeIds = new Set(runtime.nodes.keys());
   if (!runtime.nodeOutputs) {
     runtime.nodeOutputs = new Map();
-  }
-  if (!runtime.scopeInputs) {
-    runtime.scopeInputs = new Map();
   }
   if (!runtime.noiseSeedKeys) {
     runtime.noiseSeedKeys = new Map();
@@ -291,6 +470,15 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   if (!runtime.oscResetStates) {
     runtime.oscResetStates = new Map();
   }
+  if (!runtime.graphLfoStates) {
+    runtime.graphLfoStates = new Map();
+  }
+  if (!runtime.oscillatorLastPhaseIncrements) {
+    runtime.oscillatorLastPhaseIncrements = new Map();
+  }
+  if (!runtime.oscillatorStoppedSamples) {
+    runtime.oscillatorStoppedSamples = new Map();
+  }
   if (!runtime.spiralStates) {
     runtime.spiralStates = new Map();
   }
@@ -300,11 +488,17 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   if (!runtime.lowpassStates) {
     runtime.lowpassStates = new Map();
   }
+  if (!runtime.moduleGroupRuntimes) {
+    runtime.moduleGroupRuntimes = new Map();
+  }
   if (!runtime.ladderFilterStates) {
     runtime.ladderFilterStates = new Map();
   }
   if (!runtime.linearEnvelopeStates) {
     runtime.linearEnvelopeStates = new Map();
+  }
+  if (!runtime.lorenzAttractorStates) {
+    runtime.lorenzAttractorStates = new Map();
   }
   if (!runtime.bandpassStates) {
     runtime.bandpassStates = new Map();
@@ -323,6 +517,9 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   }
   if (!runtime.delayedTriggerStates) {
     runtime.delayedTriggerStates = new Map();
+  }
+  if (!runtime.delayEffectStates) {
+    runtime.delayEffectStates = new Map();
   }
   if (!runtime.sampleHoldStates) {
     runtime.sampleHoldStates = new Map();
@@ -374,16 +571,16 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     if (!runtime.nodeOutputs.has(node.id)) {
       runtime.nodeOutputs.set(node.id, 0);
     }
-    if (node.type === "osc" && !runtime.phases.has(node.id)) {
+    if ((node.type === "osc" || node.type === "fbPolyBlepOsc") && !runtime.phases.has(node.id)) {
       runtime.phases.set(node.id, 0);
     }
-    if (node.type === "osc" && !runtime.oscResetStates.has(node.id)) {
+    if ((node.type === "osc" || node.type === "fbPolyBlepOsc") && !runtime.oscResetStates.has(node.id)) {
       runtime.oscResetStates.set(node.id, createNodeGraphOscResetState());
     }
-    if (node.type === "osc" && !runtime.triangleStates.has(node.id)) {
+    if ((node.type === "osc" || node.type === "fbPolyBlepOsc") && !runtime.triangleStates.has(node.id)) {
       runtime.triangleStates.set(node.id, 0);
     }
-    if ((node.type === "osc" || node.type === "noise") && !runtime.noiseSeeds.has(node.id)) {
+    if ((node.type === "osc" || node.type === "fbPolyBlepOsc" || node.type === "noise") && !runtime.noiseSeeds.has(node.id)) {
       runtime.noiseSeeds.set(node.id, nodeGraphStableSeed(node.id));
     }
     if (node.type === "stereoNoise") {
@@ -396,6 +593,9 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     }
     if (node.type === "spiral" && !runtime.spiralStates.has(node.id)) {
       runtime.spiralStates.set(node.id, createJerobeamSpiralState());
+    }
+    if (node.type === "lorenzAttractor" && !runtime.lorenzAttractorStates.has(node.id)) {
+      runtime.lorenzAttractorStates.set(node.id, createNodeGraphLorenzAttractorState());
     }
     if (node.type === "highpass" && !runtime.highpassStates.has(node.id)) {
       runtime.highpassStates.set(node.id, createNodeGraphHighpassState());
@@ -415,11 +615,17 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     if (node.type === "clock" && !runtime.clockStates.has(node.id)) {
       runtime.clockStates.set(node.id, createNodeGraphClockState());
     }
+    if (nodeGraphModuleIsGraphType(node.type) && !runtime.graphLfoStates.has(node.id)) {
+      runtime.graphLfoStates.set(node.id, createNodeGraphGraphLfoState());
+    }
     if (node.type === "clockDivider" && !runtime.clockDividerStates.has(node.id)) {
       runtime.clockDividerStates.set(node.id, createNodeGraphTriggerDividerState());
     }
     if (node.type === "delayedTrigger" && !runtime.delayedTriggerStates.has(node.id)) {
       runtime.delayedTriggerStates.set(node.id, createNodeGraphDelayedTriggerState());
+    }
+    if (node.type === "delayEffect" && !runtime.delayEffectStates.has(node.id)) {
+      runtime.delayEffectStates.set(node.id, createNodeGraphDelayEffectState());
     }
     if (node.type === "randomClock" && !runtime.randomClockStates.has(node.id)) {
       runtime.randomClockStates.set(node.id, createNodeGraphRandomClockState());
@@ -469,6 +675,13 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     if (node.type === "vactrolEnvelope" && !runtime.vactrolEnvelopeStates.has(node.id)) {
       runtime.vactrolEnvelopeStates.set(node.id, createNodeGraphVactrolEnvelopeState());
     }
+    if (node.type === "moduleGroup" && node.moduleGroup?.sourcePatch && !runtime.moduleGroupRuntimes.has(node.id)) {
+      try {
+        runtime.moduleGroupRuntimes.set(node.id, createNodeGraphLiveRuntime(nodeGraphBuildLivePlanForPatch(node.moduleGroup.sourcePatch)));
+      } catch (_error) {
+        runtime.moduleGroupRuntimes.delete(node.id);
+      }
+    }
     for (const [key, value] of Object.entries(node.params || {})) {
       const smootherKey = nodeGraphParameterKey(node.id, key);
       const metadata = node.paramMeta?.[key];
@@ -492,9 +705,26 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
       runtime.oscResetStates.delete(id);
     }
   }
+  for (const id of [...runtime.graphLfoStates.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.graphLfoStates.delete(id);
+    }
+  }
   for (const id of [...runtime.triangleStates.keys()]) {
     if (!nodeIds.has(id)) {
       runtime.triangleStates.delete(id);
+    }
+  }
+  for (const id of [...runtime.oscillatorLastPhaseIncrements.keys()]) {
+    const nodeId = String(id).split(":")[0];
+    if (!nodeIds.has(nodeId)) {
+      runtime.oscillatorLastPhaseIncrements.delete(id);
+    }
+  }
+  for (const id of [...runtime.oscillatorStoppedSamples.keys()]) {
+    const nodeId = String(id).split(":")[0];
+    if (!nodeIds.has(nodeId)) {
+      runtime.oscillatorStoppedSamples.delete(id);
     }
   }
   for (const id of [...runtime.noiseSeeds.keys()]) {
@@ -514,14 +744,14 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
       runtime.nodeOutputs.delete(id);
     }
   }
-  for (const id of [...runtime.scopeInputs.keys()]) {
-    if (!nodeIds.has(id)) {
-      runtime.scopeInputs.delete(id);
-    }
-  }
   for (const id of [...runtime.spiralStates.keys()]) {
     if (!nodeIds.has(id)) {
       runtime.spiralStates.delete(id);
+    }
+  }
+  for (const id of [...runtime.lorenzAttractorStates.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.lorenzAttractorStates.delete(id);
     }
   }
   for (const id of [...runtime.highpassStates.keys()]) {
@@ -532,6 +762,11 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   for (const id of [...runtime.lowpassStates.keys()]) {
     if (!nodeIds.has(id)) {
       runtime.lowpassStates.delete(id);
+    }
+  }
+  for (const id of [...runtime.moduleGroupRuntimes.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.moduleGroupRuntimes.delete(id);
     }
   }
   for (const id of [...runtime.linearEnvelopeStates.keys()]) {
@@ -572,6 +807,11 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   for (const id of [...runtime.delayedTriggerStates.keys()]) {
     if (!nodeIds.has(id)) {
       runtime.delayedTriggerStates.delete(id);
+    }
+  }
+  for (const id of [...runtime.delayEffectStates.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.delayEffectStates.delete(id);
     }
   }
   for (const id of [...runtime.sampleHoldStates.keys()]) {

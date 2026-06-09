@@ -27,7 +27,16 @@ function renderNodeGraphVisibilityMenuButton() {
     nodeGraphMvp.sliderAmountVisible ? 0 : 1,
     nodeGraphMvp.sliderPositionVisible ? 0 : 1,
   ].reduce((total, value) => total + value, 0);
-  button.textContent = hiddenCount ? `Visibility (${hiddenCount} hidden)` : "Visibility";
+  button.replaceChildren();
+  const label = document.createElement("span");
+  label.textContent = "Visibility";
+  button.append(label);
+  if (hiddenCount) {
+    const hidden = document.createElement("span");
+    hidden.className = "node-toolbar-subline";
+    hidden.textContent = `(${hiddenCount} hidden)`;
+    button.append(hidden);
+  }
   button.setAttribute("aria-pressed", String(Boolean(menu && !menu.hidden)));
   button.removeAttribute("title");
 }
@@ -106,19 +115,34 @@ function renderNodeGraphModuleVisibilityToggles() {
   renderNodeGraphVisibilityMenuButton();
 }
 
-function normalizeNodeGraphModuleScopeBrightness(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? clampNodeSliderValue(number, 0, 16) : 1;
-}
-
 function normalizeNodeGraphModuleScopeBurn(value) {
   const number = Number(value);
   return Number.isFinite(number) ? clampNodeSliderValue(number, 0, 1) : 0.5;
 }
 
+function normalizeNodeGraphModuleScopeDecay(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? clampNodeSliderValue(number, 0, 1) : 0.78;
+}
+
 function normalizeNodeGraphModuleScopeLineThickness(value) {
   const number = Number(value);
-  return Number.isFinite(number) ? clampNodeSliderValue(number, 0.25, 4) : 1;
+  return Number.isFinite(number) ? clampNodeSliderValue(number, 0.25, 10) : 1;
+}
+
+function normalizeNodeGraphModuleScopeDiscontinuitySkipSamples(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? clampNodeSliderValue(Math.round(number), 0, 2) : 1;
+}
+
+function normalizeNodeGraphModuleScopeOverdrawPoints(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? clampNodeSliderValue(Math.round(number), 1, 2048) : 1;
+}
+
+function normalizeNodeGraphModuleScopeOverdrawFade(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? clampNodeSliderValue(number, 0, 1) : 0.5;
 }
 
 function normalizeNodeGraphModuleScopeFramesPerSecond(value) {
@@ -131,24 +155,19 @@ function normalizeNodeGraphModuleScopeBackgroundColor(value) {
   return /^#[0-9a-f]{6}$/i.test(text) ? text.toLowerCase() : "#000000";
 }
 
-function normalizeNodeGraphModuleScopeTraceColor(value) {
-  const text = String(value || "").trim();
-  return /^#[0-9a-f]{6}$/i.test(text) ? text.toLowerCase() : "#3de0ff";
-}
-
-function normalizeNodeGraphModuleScopeDotCoreColor(value, fallback = "#fff6e1") {
+function normalizeNodeGraphModuleScopeDotCoreColor(value, fallback = "#ffffff") {
   const text = String(value || "").trim();
   return /^#[0-9a-f]{6}$/i.test(text) ? text.toLowerCase() : fallback;
 }
 
-function normalizeNodeGraphModuleScopeDotCoreSize(value, fallback = 0.18) {
+function normalizeNodeGraphModuleScopeDotCoreSize(value, fallback = 0.5) {
   const number = Number(value);
-  return Number.isFinite(number) ? clampNodeSliderValue(number, 0.01, 5) : fallback;
+  return Number.isFinite(number) ? clampNodeSliderValue(number, 0.01, 10) : fallback;
 }
 
 function normalizeNodeGraphModuleScopeDotCoreBrightness(value, fallback = 1) {
   const number = Number(value);
-  return Number.isFinite(number) ? clampNodeSliderValue(number, 0, 4) : fallback;
+  return Number.isFinite(number) ? clampNodeSliderValue(number, 0, 40) : fallback;
 }
 
 function renderNodeGraphModuleScopeDotPreview(
@@ -158,6 +177,7 @@ function renderNodeGraphModuleScopeDotPreview(
   core2Size,
   core2Brightness,
   core2Color,
+  lineThickness = nodeGraphMvp?.moduleScopeLineThickness,
   canvasId = "nodeMasterScopeDotPreview",
 ) {
   const canvas = document.getElementById(canvasId);
@@ -176,15 +196,16 @@ function renderNodeGraphModuleScopeDotPreview(
     return;
   }
   const pixels = typeof nodeGraphModuleScopeGeneratedDotTextureData === "function"
-    ? nodeGraphModuleScopeGeneratedDotTextureData(
-      core1Size,
+    ? nodeGraphModuleScopeGeneratedDotTextureData({
       core1Brightness,
-      size,
       core1Color,
-      core2Size,
+      core1Size,
       core2Brightness,
       core2Color,
-    )
+      core2Size,
+      lineThickness,
+      size,
+    })
     : new Uint8ClampedArray(size * size * 4);
   const imageData = new ImageData(
     pixels instanceof Uint8ClampedArray ? pixels : new Uint8ClampedArray(pixels),
@@ -196,23 +217,25 @@ function renderNodeGraphModuleScopeDotPreview(
 }
 
 function renderNodeGraphModuleScopeBrightnessControl() {
-  const brightness = normalizeNodeGraphModuleScopeBrightness(nodeGraphMvp.moduleScopeBrightness ?? 1);
-  const burn = normalizeNodeGraphModuleScopeBurn(nodeGraphMvp.moduleScopeBurn ?? 1);
+  const burn = normalizeNodeGraphModuleScopeBurn(nodeGraphMvp.moduleScopeBurn ?? 0);
+  const decay = normalizeNodeGraphModuleScopeDecay(nodeGraphMvp.moduleScopeDecay ?? 0.78);
   const backgroundColor = normalizeNodeGraphModuleScopeBackgroundColor(nodeGraphMvp.moduleScopeBackgroundColor);
-  const backgroundOverride = Boolean(nodeGraphMvp.moduleScopeBackgroundOverride);
-  const dotCore1Size = normalizeNodeGraphModuleScopeDotCoreSize(nodeGraphMvp.moduleScopeDotCore1Size ?? 0.18, 0.18);
-  const dotCore1Brightness = normalizeNodeGraphModuleScopeDotCoreBrightness(nodeGraphMvp.moduleScopeDotCore1Brightness ?? 1, 1);
-  const dotCore1Color = normalizeNodeGraphModuleScopeDotCoreColor(nodeGraphMvp.moduleScopeDotCore1Color ?? "#fff6e1", "#fff6e1");
-  const dotCore2Size = normalizeNodeGraphModuleScopeDotCoreSize(nodeGraphMvp.moduleScopeDotCore2Size ?? 0.74, 0.74);
+  const dotCore1Size = normalizeNodeGraphModuleScopeDotCoreSize(nodeGraphMvp.moduleScopeDotCore1Size ?? 3.18, 3.18);
+  const dotCore1Brightness = normalizeNodeGraphModuleScopeDotCoreBrightness(nodeGraphMvp.moduleScopeDotCore1Brightness ?? 4.5, 4.5);
+  const dotCore1Color = normalizeNodeGraphModuleScopeDotCoreColor(nodeGraphMvp.moduleScopeDotCore1Color ?? "#ffffff", "#ffffff");
+  const dotCore2Size = normalizeNodeGraphModuleScopeDotCoreSize(nodeGraphMvp.moduleScopeDotCore2Size ?? 4, 4);
   const dotCore2Brightness = normalizeNodeGraphModuleScopeDotCoreBrightness(nodeGraphMvp.moduleScopeDotCore2Brightness ?? 0.45, 0.45);
-  const dotCore2Color = normalizeNodeGraphModuleScopeDotCoreColor(nodeGraphMvp.moduleScopeDotCore2Color ?? "#ffd28b", "#ffd28b");
+  const dotCore2Color = normalizeNodeGraphModuleScopeDotCoreColor(nodeGraphMvp.moduleScopeDotCore2Color ?? "#17002f", "#17002f");
   const framesPerSecond = normalizeNodeGraphModuleScopeFramesPerSecond(nodeGraphMvp.moduleScopeFramesPerSecond ?? 60);
   const lineThickness = normalizeNodeGraphModuleScopeLineThickness(nodeGraphMvp.moduleScopeLineThickness ?? 1);
-  const traceColor = normalizeNodeGraphModuleScopeTraceColor(nodeGraphMvp.moduleScopeTraceColor ?? "#3de0ff");
-  nodeGraphMvp.moduleScopeBrightness = brightness;
+  const discontinuitySkipSamples = normalizeNodeGraphModuleScopeDiscontinuitySkipSamples(
+    nodeGraphMvp.moduleScopeDiscontinuitySkipSamples ?? 1,
+  );
+  const overdrawPoints = normalizeNodeGraphModuleScopeOverdrawPoints(nodeGraphMvp.moduleScopeOverdrawPoints ?? 1);
+  const overdrawFade = normalizeNodeGraphModuleScopeOverdrawFade(nodeGraphMvp.moduleScopeOverdrawFade ?? 0.5);
   nodeGraphMvp.moduleScopeBurn = burn;
+  nodeGraphMvp.moduleScopeDecay = decay;
   nodeGraphMvp.moduleScopeBackgroundColor = backgroundColor;
-  nodeGraphMvp.moduleScopeBackgroundOverride = backgroundOverride;
   nodeGraphMvp.moduleScopeDotCore1Size = dotCore1Size;
   nodeGraphMvp.moduleScopeDotCore1Brightness = dotCore1Brightness;
   nodeGraphMvp.moduleScopeDotCore1Color = dotCore1Color;
@@ -221,10 +244,11 @@ function renderNodeGraphModuleScopeBrightnessControl() {
   nodeGraphMvp.moduleScopeDotCore2Color = dotCore2Color;
   nodeGraphMvp.moduleScopeFramesPerSecond = framesPerSecond;
   nodeGraphMvp.moduleScopeLineThickness = lineThickness;
-  nodeGraphMvp.moduleScopeTraceColor = traceColor;
-  const input = document.getElementById("nodeMasterScopeBrightness");
+  nodeGraphMvp.moduleScopeDiscontinuitySkipSamples = discontinuitySkipSamples;
+  nodeGraphMvp.moduleScopeOverdrawPoints = overdrawPoints;
+  nodeGraphMvp.moduleScopeOverdrawFade = overdrawFade;
   const burnInput = document.getElementById("nodeMasterScopeBurn");
-  const backgroundButton = document.getElementById("nodeMasterScopeBackgroundOverride");
+  const decayInput = document.getElementById("nodeMasterScopeDecay");
   const backgroundInput = document.getElementById("nodeMasterScopeBackgroundColor");
   const dotCore1SizeInput = document.getElementById("nodeMasterScopeDotCore1Size");
   const dotCore1BrightnessInput = document.getElementById("nodeMasterScopeDotCore1Brightness");
@@ -234,19 +258,17 @@ function renderNodeGraphModuleScopeBrightnessControl() {
   const dotCore2ColorInput = document.getElementById("nodeMasterScopeDotCore2Color");
   const fpsInput = document.getElementById("nodeMasterScopeFps");
   const lineInput = document.getElementById("nodeMasterScopeLineThickness");
-  const traceColorInput = document.getElementById("nodeMasterScopeTraceColor");
-  if (input && document.activeElement !== input) {
-    input.value = brightness.toFixed(2);
-  }
+  const skipSamplesInput = document.getElementById("nodeMasterScopeDiscontinuitySkipSamples");
+  const overdrawInput = document.getElementById("nodeMasterScopeOverdrawPoints");
+  const overdrawFadeInput = document.getElementById("nodeMasterScopeOverdrawFade");
   if (burnInput && document.activeElement !== burnInput) {
     burnInput.value = burn.toFixed(2);
   }
+  if (decayInput && document.activeElement !== decayInput) {
+    decayInput.value = decay.toFixed(2);
+  }
   if (backgroundInput && document.activeElement !== backgroundInput) {
     backgroundInput.value = backgroundColor;
-  }
-  if (backgroundButton) {
-    backgroundButton.textContent = backgroundOverride ? "override on" : "override off";
-    backgroundButton.setAttribute("aria-pressed", String(backgroundOverride));
   }
   if (dotCore1SizeInput && document.activeElement !== dotCore1SizeInput) {
     dotCore1SizeInput.value = dotCore1Size.toFixed(2);
@@ -273,6 +295,7 @@ function renderNodeGraphModuleScopeBrightnessControl() {
     0.01,
     0,
     dotCore2Color,
+    lineThickness,
     "nodeMasterScopeDotCore1Preview",
   );
   renderNodeGraphModuleScopeDotPreview(
@@ -282,6 +305,7 @@ function renderNodeGraphModuleScopeBrightnessControl() {
     dotCore2Size,
     dotCore2Brightness,
     dotCore2Color,
+    lineThickness,
     "nodeMasterScopeDotCore2Preview",
   );
   renderNodeGraphModuleScopeDotPreview(
@@ -291,6 +315,7 @@ function renderNodeGraphModuleScopeBrightnessControl() {
     dotCore2Size,
     dotCore2Brightness,
     dotCore2Color,
+    lineThickness,
   );
   if (fpsInput && document.activeElement !== fpsInput) {
     fpsInput.value = String(framesPerSecond);
@@ -298,15 +323,52 @@ function renderNodeGraphModuleScopeBrightnessControl() {
   if (lineInput && document.activeElement !== lineInput) {
     lineInput.value = lineThickness.toFixed(2);
   }
-  if (traceColorInput && document.activeElement !== traceColorInput) {
-    traceColorInput.value = traceColor;
+  if (skipSamplesInput && document.activeElement !== skipSamplesInput) {
+    skipSamplesInput.value = String(discontinuitySkipSamples);
+  }
+  if (overdrawInput && document.activeElement !== overdrawInput) {
+    overdrawInput.value = String(overdrawPoints);
+  }
+  if (overdrawFadeInput && document.activeElement !== overdrawFadeInput) {
+    overdrawFadeInput.value = overdrawFade.toFixed(2);
   }
   const globalScopeMenu = document.getElementById("nodeGlobalScopeMenu");
   document.getElementById("nodeGlobalScopeMenuButton")
     ?.setAttribute("aria-pressed", String(Boolean(globalScopeMenu && !globalScopeMenu.hidden)));
   document.getElementById("nodeGraphWorkspace")
-    ?.style.setProperty("--node-scope-background", backgroundOverride ? backgroundColor : "#000000");
+    ?.style.setProperty("--node-scope-background", backgroundColor);
   syncNodeUserUiSettingsViewControls();
+}
+
+function setNodeGraphModuleButtonsVisibility(visible, options = {}) {
+  nodeGraphMvp.moduleButtonsVisible = Boolean(visible);
+  if (nodeGraphMvp.moduleButtonsVisible && options.clearNodeOverrides !== false) {
+    const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+    let changed = false;
+    for (const node of patch.nodes) {
+      const ui = normalizeNodeGraphPatchNodeUi(node.ui);
+      if (!ui.buttonsHidden) {
+        continue;
+      }
+      ui.buttonsHidden = false;
+      if (ui.titleHidden) {
+        node.ui = ui;
+      } else {
+        delete node.ui;
+      }
+      changed = true;
+    }
+    if (changed) {
+      commitNodeGraphPatch(patch, {
+        markPending: false,
+        status: "module buttons shown",
+      });
+    }
+  }
+  renderNodeGraphModuleVisibilityToggles();
+  if (options.help !== false) {
+    setNodeInteractionHelp(nodeGraphMvp.moduleButtonsVisible ? "Module buttons shown." : "Module buttons hidden.");
+  }
 }
 
 function setNodeGraphModuleScopeBurn(value) {
@@ -321,24 +383,21 @@ function handleNodeGraphModuleScopeBurnInput(event) {
   setNodeGraphModuleScopeBurn(event.currentTarget.value);
 }
 
-function setNodeGraphModuleScopeBrightness(value) {
-  nodeGraphMvp.moduleScopeBrightness = normalizeNodeGraphModuleScopeBrightness(value);
+function setNodeGraphModuleScopeDecay(value) {
+  nodeGraphMvp.moduleScopeDecay = normalizeNodeGraphModuleScopeDecay(value);
   renderNodeGraphModuleScopeBrightnessControl();
   if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
     scheduleNodeGraphModuleScopeDraw();
   }
 }
 
-function handleNodeGraphModuleScopeBrightnessInput(event) {
-  setNodeGraphModuleScopeBrightness(event.currentTarget.value);
+function handleNodeGraphModuleScopeDecayInput(event) {
+  setNodeGraphModuleScopeDecay(event.currentTarget.value);
 }
 
 function setNodeGraphModuleScopeFramesPerSecond(value) {
   nodeGraphMvp.moduleScopeFramesPerSecond = normalizeNodeGraphModuleScopeFramesPerSecond(value);
   renderNodeGraphModuleScopeBrightnessControl();
-  if (typeof resetNodeGraphModuleScopeFrameClocks === "function") {
-    resetNodeGraphModuleScopeFrameClocks();
-  }
   if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
     scheduleNodeGraphModuleScopeDraw();
   }
@@ -356,14 +415,6 @@ function setNodeGraphModuleScopeBackgroundColor(value) {
   }
 }
 
-function setNodeGraphModuleScopeTraceColor(value) {
-  nodeGraphMvp.moduleScopeTraceColor = normalizeNodeGraphModuleScopeTraceColor(value);
-  renderNodeGraphModuleScopeBrightnessControl();
-  if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
-    scheduleNodeGraphModuleScopeDraw();
-  }
-}
-
 function refreshNodeGraphModuleScopeGeneratedDot() {
   renderNodeGraphModuleScopeBrightnessControl();
   if (typeof invalidateNodeGraphModuleScopeTraceImageTexture === "function") {
@@ -375,22 +426,22 @@ function refreshNodeGraphModuleScopeGeneratedDot() {
 }
 
 function setNodeGraphModuleScopeDotCore1Size(value) {
-  nodeGraphMvp.moduleScopeDotCore1Size = normalizeNodeGraphModuleScopeDotCoreSize(value, 0.18);
+  nodeGraphMvp.moduleScopeDotCore1Size = normalizeNodeGraphModuleScopeDotCoreSize(value, 3.18);
   refreshNodeGraphModuleScopeGeneratedDot();
 }
 
 function setNodeGraphModuleScopeDotCore1Brightness(value) {
-  nodeGraphMvp.moduleScopeDotCore1Brightness = normalizeNodeGraphModuleScopeDotCoreBrightness(value, 1);
+  nodeGraphMvp.moduleScopeDotCore1Brightness = normalizeNodeGraphModuleScopeDotCoreBrightness(value, 4.5);
   refreshNodeGraphModuleScopeGeneratedDot();
 }
 
 function setNodeGraphModuleScopeDotCore1Color(value) {
-  nodeGraphMvp.moduleScopeDotCore1Color = normalizeNodeGraphModuleScopeDotCoreColor(value, "#fff6e1");
+  nodeGraphMvp.moduleScopeDotCore1Color = normalizeNodeGraphModuleScopeDotCoreColor(value, "#ffffff");
   refreshNodeGraphModuleScopeGeneratedDot();
 }
 
 function setNodeGraphModuleScopeDotCore2Size(value) {
-  nodeGraphMvp.moduleScopeDotCore2Size = normalizeNodeGraphModuleScopeDotCoreSize(value, 0.74);
+  nodeGraphMvp.moduleScopeDotCore2Size = normalizeNodeGraphModuleScopeDotCoreSize(value, 4);
   refreshNodeGraphModuleScopeGeneratedDot();
 }
 
@@ -400,28 +451,49 @@ function setNodeGraphModuleScopeDotCore2Brightness(value) {
 }
 
 function setNodeGraphModuleScopeDotCore2Color(value) {
-  nodeGraphMvp.moduleScopeDotCore2Color = normalizeNodeGraphModuleScopeDotCoreColor(value, "#ffd28b");
+  nodeGraphMvp.moduleScopeDotCore2Color = normalizeNodeGraphModuleScopeDotCoreColor(value, "#17002f");
   refreshNodeGraphModuleScopeGeneratedDot();
-}
-
-function setNodeGraphModuleScopeBackgroundOverride(enabled) {
-  nodeGraphMvp.moduleScopeBackgroundOverride = Boolean(enabled);
-  renderNodeGraphModuleScopeBrightnessControl();
-  if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
-    scheduleNodeGraphModuleScopeDraw();
-  }
 }
 
 function setNodeGraphModuleScopeLineThickness(value) {
   nodeGraphMvp.moduleScopeLineThickness = normalizeNodeGraphModuleScopeLineThickness(value);
+  refreshNodeGraphModuleScopeGeneratedDot();
+}
+
+function handleNodeGraphModuleScopeLineThicknessInput(event) {
+  setNodeGraphModuleScopeLineThickness(event.currentTarget.value);
+}
+
+function setNodeGraphModuleScopeDiscontinuitySkipSamples(value) {
+  nodeGraphMvp.moduleScopeDiscontinuitySkipSamples = normalizeNodeGraphModuleScopeDiscontinuitySkipSamples(value);
   renderNodeGraphModuleScopeBrightnessControl();
   if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
     scheduleNodeGraphModuleScopeDraw();
   }
 }
 
-function handleNodeGraphModuleScopeLineThicknessInput(event) {
-  setNodeGraphModuleScopeLineThickness(event.currentTarget.value);
+function handleNodeGraphModuleScopeDiscontinuitySkipSamplesInput(event) {
+  setNodeGraphModuleScopeDiscontinuitySkipSamples(event.currentTarget.value);
+}
+
+function setNodeGraphModuleScopeOverdrawPoints(value) {
+  nodeGraphMvp.moduleScopeOverdrawPoints = normalizeNodeGraphModuleScopeOverdrawPoints(value);
+  renderNodeGraphModuleScopeBrightnessControl();
+  if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
+    scheduleNodeGraphModuleScopeDraw();
+  }
+}
+
+function setNodeGraphModuleScopeOverdrawFade(value) {
+  nodeGraphMvp.moduleScopeOverdrawFade = normalizeNodeGraphModuleScopeOverdrawFade(value);
+  renderNodeGraphModuleScopeBrightnessControl();
+  if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
+    scheduleNodeGraphModuleScopeDraw();
+  }
+}
+
+function handleNodeGraphModuleScopeOverdrawPointsInput(event) {
+  setNodeGraphModuleScopeOverdrawPoints(event.currentTarget.value);
 }
 
 const nodeGraphSliderLayouts = Object.freeze([
@@ -471,6 +543,16 @@ function cycleNodeGraphSliderLayout() {
   setNodeInteractionHelp(`Slider layout: ${nodeGraphSliderLayoutLabel(nodeGraphMvp.sliderLayout)}.`);
 }
 
+function nodeGraphDialogDragTargetIsInteractive(event) {
+  const target = event?.target;
+  if (!target || target === event.currentTarget) {
+    return false;
+  }
+  return Boolean(target.closest?.(
+    "button, a, input, textarea, select, option, label, [contenteditable='true']",
+  ));
+}
+
 function renderNodeGraphTooltipToggle() {
   const helpStack = document.querySelector(".node-help-stack");
   const help = document.getElementById("nodeInteractionHelp");
@@ -492,8 +574,92 @@ function setNodeGraphVisibilityMenuOpen(open) {
   const menu = document.getElementById("nodeVisibilityMenu");
   if (menu) {
     menu.hidden = !open;
+    if (open) {
+      positionNodeGraphVisibilityMenuNearButton(menu);
+    }
   }
   renderNodeGraphVisibilityMenuButton();
+}
+
+function positionNodeGraphVisibilityMenuNearButton(menu = document.getElementById("nodeVisibilityMenu")) {
+  const button = document.getElementById("nodeVisibilityMenuButton");
+  if (!menu || !button) {
+    return;
+  }
+  const rect = button.getBoundingClientRect();
+  menu.hidden = false;
+  const menuRect = menu.getBoundingClientRect();
+  positionNodeGraphVisibilityMenu(menu, rect.right - menuRect.width, rect.bottom + 8);
+}
+
+function positionNodeGraphVisibilityMenu(menu, x, y) {
+  if (!menu) {
+    return;
+  }
+  const margin = 8;
+  menu.hidden = false;
+  menu.style.position = "fixed";
+  const rect = menu.getBoundingClientRect();
+  const left = Math.max(margin, Math.min(window.innerWidth - rect.width - margin, x));
+  const top = Math.max(margin, Math.min(window.innerHeight - rect.height - margin, y));
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  menu.style.right = "auto";
+}
+
+function beginNodeGraphVisibilityMenuDrag(event) {
+  if (event.button > 0 || nodeGraphDialogDragTargetIsInteractive(event)) {
+    return;
+  }
+  const menu = document.getElementById("nodeVisibilityMenu");
+  if (!menu || menu.hidden) {
+    return;
+  }
+  const rect = menu.getBoundingClientRect();
+  nodeGraphMvp.visibilityMenuDragging = {
+    handle: event.currentTarget,
+    offsetX: event.clientX - rect.left,
+    offsetY: event.clientY - rect.top,
+    pointerId: event.pointerId ?? null,
+  };
+  event.currentTarget.classList.add("dragging");
+  positionNodeGraphVisibilityMenu(menu, rect.left, rect.top);
+  if (event.pointerId !== undefined) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function dragNodeGraphVisibilityMenu(event) {
+  const drag = nodeGraphMvp.visibilityMenuDragging;
+  if (
+    !drag ||
+    (drag.pointerId !== null && event.pointerId !== undefined && drag.pointerId !== event.pointerId)
+  ) {
+    return;
+  }
+  positionNodeGraphVisibilityMenu(
+    document.getElementById("nodeVisibilityMenu"),
+    event.clientX - drag.offsetX,
+    event.clientY - drag.offsetY,
+  );
+  event.preventDefault();
+}
+
+function endNodeGraphVisibilityMenuDrag(event) {
+  const drag = nodeGraphMvp.visibilityMenuDragging;
+  if (
+    !drag ||
+    (drag.pointerId !== null && event.pointerId !== undefined && drag.pointerId !== event.pointerId)
+  ) {
+    return;
+  }
+  drag.handle.classList.remove("dragging");
+  if (event.pointerId !== undefined && drag.handle.hasPointerCapture?.(event.pointerId)) {
+    drag.handle.releasePointerCapture(event.pointerId);
+  }
+  nodeGraphMvp.visibilityMenuDragging = null;
 }
 
 function toggleNodeGraphVisibilityMenu() {
@@ -511,18 +677,21 @@ function renderNodeGraphVideoViewToggle() {
   const button = document.getElementById("nodeVideoViewButton");
   const panel = document.getElementById("nodeVideoViewPanel");
   const workspace = document.getElementById("nodeGraphWorkspace");
+  const wiringPanel = document.getElementById("nodeWiringPanel");
   const workspaceAvailable = Boolean(workspace && !workspace.hidden);
   const visible = Boolean(nodeGraphMvp.videoViewVisible) && workspaceAvailable;
+  wiringPanel?.classList.toggle("camera-view-visible", visible);
   if (panel) {
     panel.hidden = !visible;
   }
   if (button) {
-    button.innerHTML = visible
-      ? "<span>Hide</span><span>Video View</span>"
-      : "<span>Show</span><span>Video View</span>";
-    button.setAttribute("aria-label", visible ? "Hide Video View" : "Show Video View");
+    button.innerHTML = "<span>Camera</span>";
+    button.setAttribute("aria-label", "Camera");
     button.setAttribute("aria-pressed", visible ? "true" : "false");
     button.removeAttribute("title");
+  }
+  if (typeof renderNodeGraphCameraView === "function") {
+    renderNodeGraphCameraView();
   }
 }
 
@@ -538,23 +707,7 @@ function ensureNodeGraphMacroControls() {
 }
 
 function renderNodeGraphMacroControls() {
-  const button = document.getElementById("nodeMacroControlsToggleButton");
-  const panel = document.getElementById("nodeMacroControlsPanel");
-  const workspace = document.getElementById("nodeGraphWorkspace");
-  const workspaceAvailable = Boolean(workspace && !workspace.hidden);
-  const visible = Boolean(nodeGraphMvp.macroControlsVisible) && workspaceAvailable;
   ensureNodeGraphMacroControls();
-  if (panel) {
-    panel.hidden = !visible;
-  }
-  if (button) {
-    button.innerHTML = visible
-      ? "<span>Hide</span><span>Macro Controls</span>"
-      : "<span>Show</span><span>Macro Controls</span>";
-    button.setAttribute("aria-label", visible ? "Hide Macro Controls" : "Show Macro Controls");
-    button.setAttribute("aria-pressed", visible ? "true" : "false");
-    button.removeAttribute("title");
-  }
   document.querySelectorAll("[data-macro-index]").forEach((knob) => {
     const index = Math.max(0, Math.min(9, Math.round(Number(knob.dataset.macroIndex) || 0)));
     const value = normalizeNodeGraphMacroValue(nodeGraphMvp.macroControls[index]);
@@ -567,11 +720,10 @@ function renderNodeGraphMacroControls() {
       readout.textContent = value.toFixed(2);
     }
   });
-  const status = document.getElementById("nodeMacroControlsStatus");
-  if (status) {
+  document.querySelectorAll("[data-macro-controls-status]").forEach((status) => {
     const activeCount = nodeGraphMvp.macroControls.filter((value) => value > 0).length;
     status.textContent = activeCount ? `${activeCount} active` : "10 macros ready";
-  }
+  });
 }
 
 function setNodeGraphMacroControl(index, value) {
@@ -616,7 +768,7 @@ function endNodeGraphMacroControlDrag(event) {
   }
 }
 
-function bindNodeGraphMacroControlsPanelEvents() {
+function bindNodeGraphMacroControlModuleEvents() {
   document.querySelectorAll("[data-macro-index]").forEach((knob) => {
     if (knob.dataset.macroControlBound === "true") {
       return;
@@ -643,9 +795,114 @@ const nodeGraphMidiKeyboardSampleRate = 44100;
 const nodeGraphMidiKeyboardMinOctave = -4;
 const nodeGraphMidiKeyboardMaxOctave = 4;
 const nodeGraphMidiKeyboardNoteNames = Object.freeze(["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]);
+const nodeGraphMidiKeyboardMemoryStorageKey = "soemdsp-sandbox-midi-keyboard-memory-v1";
 
 function nodeGraphMidiKeyboardClamp01(value) {
   return clampNodeSliderValue(Number(value) || 0, 0, 1);
+}
+
+function nodeGraphMidiKeyboardTenthVoltPerOctave(midi) {
+  return nodeGraphMidiKeyboardClamp01((Number(midi) || 0) / 120);
+}
+
+function normalizeNodeGraphMidiKeyboardMemorySignal(signal, options = {}) {
+  if (!signal || typeof signal !== "object") {
+    return null;
+  }
+  const midi = Math.max(0, Math.min(127, Math.round(Number(signal.midi) || 60)));
+  const rawMidi = Math.max(0, Math.min(127, Math.round(Number(signal.rawMidi) || midi)));
+  const octave = nodeGraphMidiKeyboardOctaveOffset(signal.octave);
+  const keyIndex = Math.max(0, Math.min(nodeGraphMidiKeyboardNoteCount - 1, Number(signal.keyIndex) || 0));
+  const keyQuantized = nodeGraphMidiKeyboardClamp01(signal.keyQuantized ?? (keyIndex / Math.max(1, nodeGraphMidiKeyboardNoteCount - 1)));
+  const frequency = Math.max(0, Number(signal.frequency) || 440 * 2 ** ((midi - 69) / 12));
+  const gate = options.preserveGate ? (Number(signal.gate) > 0 ? 1 : 0) : 0;
+  return {
+    source: signal.source || "remembered",
+    gate,
+    gatePulse: options.preserveGatePulse ? (Number(signal.gatePulse) > 0 ? 1 : 0) : 0,
+    x: nodeGraphMidiKeyboardClamp01(signal.x ?? keyQuantized),
+    y: nodeGraphMidiKeyboardClamp01(signal.y ?? 0),
+    keyIndex,
+    keyQuantized,
+    rawMidi,
+    octave,
+    midi,
+    pitch: signal.pitch || nodeGraphMidiKeyboardPitchLabel(midi),
+    pitchValue: Math.max(0, Math.min(127, Number(signal.pitchValue) || midi)),
+    midiNormalized: nodeGraphMidiKeyboardClamp01(signal.midiNormalized ?? (midi / 127)),
+    tenthVoltPerOctave: nodeGraphMidiKeyboardClamp01(signal.tenthVoltPerOctave ?? (midi / 120)),
+    increment: Math.max(0, Number(signal.increment) || frequency / nodeGraphMidiKeyboardSampleRate),
+    frequency,
+  };
+}
+
+function nodeGraphMidiKeyboardMemoryPayload() {
+  return {
+    inputId: nodeGraphMvp.midiKeyboardInputId || "",
+    mode: nodeGraphMidiKeyboardMode(),
+    modWheel: nodeGraphPerformanceModWheelValue(),
+    octave: nodeGraphMidiKeyboardOctaveOffset(),
+    pitchWheel: nodeGraphPerformancePitchWheelValue(),
+    signal: normalizeNodeGraphMidiKeyboardMemorySignal(nodeGraphMvp.midiKeyboardSignal),
+  };
+}
+
+function saveNodeGraphMidiKeyboardMemory() {
+  try {
+    window.localStorage.setItem(
+      nodeGraphMidiKeyboardMemoryStorageKey,
+      JSON.stringify(nodeGraphMidiKeyboardMemoryPayload()),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function loadNodeGraphMidiKeyboardMemory() {
+  try {
+    const text = window.localStorage.getItem(nodeGraphMidiKeyboardMemoryStorageKey);
+    if (!text) {
+      return null;
+    }
+    const payload = JSON.parse(text);
+    if (!payload || typeof payload !== "object") {
+      return null;
+    }
+    return {
+      inputId: String(payload.inputId || ""),
+      mode: nodeGraphMidiKeyboardMode(payload.mode),
+      modWheel: nodeGraphPerformanceModWheelValue(payload.modWheel),
+      octave: nodeGraphMidiKeyboardOctaveOffset(payload.octave),
+      pitchWheel: nodeGraphPerformancePitchWheelValue(payload.pitchWheel),
+      signal: normalizeNodeGraphMidiKeyboardMemorySignal(payload.signal),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function applyNodeGraphMidiKeyboardMemory() {
+  nodeGraphMvp.midiKeyboardMemoryLoaded = true;
+  const memory = loadNodeGraphMidiKeyboardMemory();
+  if (!memory) {
+    return false;
+  }
+  nodeGraphMvp.midiKeyboardInputId = memory.inputId;
+  nodeGraphMvp.midiKeyboardMode = memory.mode;
+  nodeGraphMvp.modWheelSignal = memory.modWheel;
+  nodeGraphMvp.midiKeyboardOctave = memory.octave;
+  nodeGraphMvp.pitchWheelSignal = memory.pitchWheel;
+  nodeGraphMvp.midiKeyboardSignal = memory.signal;
+  nodeGraphMvp.midiKeyboardPreviousGate = 0;
+  return true;
+}
+
+function ensureNodeGraphMidiKeyboardMemoryLoaded() {
+  if (nodeGraphMvp.midiKeyboardMemoryLoaded) {
+    return;
+  }
+  applyNodeGraphMidiKeyboardMemory();
 }
 
 function nodeGraphPerformancePitchWheelValue(value = nodeGraphMvp.pitchWheelSignal) {
@@ -663,28 +920,26 @@ function renderNodeGraphPerformanceWheels() {
   nodeGraphMvp.modWheelSignal = modWheel;
   const controls = [
     {
-      id: "nodePitchWheelControl",
+      kind: "pitchWheel",
       position: (pitchWheel + 1) * 0.5,
       value: pitchWheel,
       valueKey: "pitchWheel",
     },
     {
-      id: "nodeModWheelControl",
+      kind: "modWheel",
       position: modWheel,
       value: modWheel,
       valueKey: "modWheel",
     },
   ];
   for (const control of controls) {
-    const element = document.getElementById(control.id);
-    if (element) {
+    document.querySelectorAll(`[data-performance-wheel="${control.kind}"]`).forEach((element) => {
       element.style.setProperty("--wheel-value", String(control.position));
       element.setAttribute("aria-valuenow", control.value.toFixed(3));
-    }
-    const valueElement = document.querySelector(`[data-performance-wheel-value="${control.valueKey}"]`);
-    if (valueElement) {
+    });
+    document.querySelectorAll(`[data-performance-wheel-value="${control.valueKey}"]`).forEach((valueElement) => {
       valueElement.textContent = control.value.toFixed(3);
-    }
+    });
   }
 }
 
@@ -697,6 +952,7 @@ function setNodeGraphPerformanceWheel(kind, value, status = "") {
   if (status) {
     nodeGraphMvp.midiKeyboardStatus = status;
   }
+  saveNodeGraphMidiKeyboardMemory();
   renderNodeGraphPerformanceWheels();
   renderNodeGraphMidiKeyboardInputControls();
   if (typeof sendNodeGraphLivePitchModWheelSignal === "function") {
@@ -761,6 +1017,19 @@ function nodeGraphMidiKeyboardOctaveLabel(value = nodeGraphMidiKeyboardOctaveOff
   return `${octave >= 0 ? "+" : ""}${octave}`;
 }
 
+const nodeGraphMidiKeyboardModes = Object.freeze(["press", "hold"]);
+
+function nodeGraphMidiKeyboardMode(value = nodeGraphMvp.midiKeyboardMode) {
+  return nodeGraphMidiKeyboardModes.includes(value) ? value : "press";
+}
+
+function nodeGraphMidiKeyboardModeLabel(value = nodeGraphMidiKeyboardMode()) {
+  return {
+    press: "Press",
+    hold: "Hold",
+  }[nodeGraphMidiKeyboardMode(value)] || "Press";
+}
+
 function nodeGraphMidiKeyboardRawMidiFromSignal(signal) {
   if (Number.isFinite(Number(signal?.rawMidi))) {
     return Math.round(Number(signal.rawMidi));
@@ -771,7 +1040,7 @@ function nodeGraphMidiKeyboardRawMidiFromSignal(signal) {
 
 function renderNodeGraphMidiKeyboardKeyLabels() {
   const octave = nodeGraphMidiKeyboardOctaveOffset();
-  document.querySelectorAll("#nodeMidiKeyboardPanel [data-midi]").forEach((key) => {
+  document.querySelectorAll(".node-midi-keyboard-module [data-midi]").forEach((key) => {
     const rawMidi = Math.round(Number(key.dataset.midi) || 0);
     key.textContent = nodeGraphMidiKeyboardPitchLabel(nodeGraphMidiKeyboardShiftMidi(rawMidi, octave));
     key.setAttribute("aria-label", `${key.textContent} / MIDI ${nodeGraphMidiKeyboardShiftMidi(rawMidi, octave)}`);
@@ -800,6 +1069,7 @@ function nodeGraphMidiKeyboardSignalFromRaw(rawMidi, options = {}) {
     midi,
     pitchValue: midi,
     midiNormalized: midi / 127,
+    tenthVoltPerOctave: nodeGraphMidiKeyboardTenthVoltPerOctave(midi),
     increment: frequency / nodeGraphMidiKeyboardSampleRate,
     frequency,
     pitch: nodeGraphMidiKeyboardPitchLabel(midi),
@@ -866,6 +1136,33 @@ function clearNodeGraphMidiKeyboardPointerHold(status = "") {
   renderNodeGraphMidiKeyboardSignal(null);
 }
 
+function nodeGraphMidiKeyboardFixedText(text, width) {
+  return String(text ?? "").padStart(Math.max(0, Number(width) || 0), " ");
+}
+
+function nodeGraphMidiKeyboardFixedInteger(value, width, fallback = "-") {
+  const number = Number(value);
+  const text = Number.isFinite(number) ? String(Math.round(number)) : fallback;
+  return nodeGraphMidiKeyboardFixedText(text, width);
+}
+
+function nodeGraphMidiKeyboardFixedDecimal(value, options = {}) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return nodeGraphMidiKeyboardFixedText(options.fallback ?? "-", options.width ?? 1);
+  }
+  const text = typeof limit_decimals === "function"
+    ? limit_decimals(
+      String(number),
+      options.maxDigits ?? 4,
+      options.decimalPlaces ?? 3,
+      options.decimalPlaces ?? 3,
+      false,
+    )
+    : number.toFixed(options.decimalPlaces ?? 3);
+  return nodeGraphMidiKeyboardFixedText(text, options.width ?? text.length);
+}
+
 function toggleNodeGraphMidiKeyboardPointerHold(event, surface) {
   const signal = nodeGraphMidiKeyboardSignalFromPointer(event, surface);
   const held = nodeGraphMidiKeyboardHeldPointerSignal();
@@ -890,9 +1187,9 @@ function clearNodeGraphMidiKeyboardPulseDisplay(serial) {
       return;
     }
     nodeGraphMvp.midiKeyboardSignal.gatePulse = 0;
-    const field = document.querySelector('#nodeMidiKeyboardSignalBar [data-keyboard-signal="gatePulse"]');
+    const field = document.querySelector('.node-midi-keyboard-module [data-keyboard-signal="gatePulse"]');
     if (field) {
-      field.textContent = "0";
+      field.textContent = nodeGraphMidiKeyboardFixedInteger(0, 1, "0");
     }
     sendNodeGraphMidiKeyboardSignalToLive(nodeGraphMvp.midiKeyboardSignal);
   }, 60);
@@ -900,7 +1197,10 @@ function clearNodeGraphMidiKeyboardPulseDisplay(serial) {
 
 function renderNodeGraphMidiKeyboardSignal(signal = null) {
   const previousGate = Number(nodeGraphMvp.midiKeyboardPreviousGate) > 0 ? 1 : 0;
-  const nextSignal = signal ? { ...signal } : null;
+  const rememberedSignal = normalizeNodeGraphMidiKeyboardMemorySignal(nodeGraphMvp.midiKeyboardSignal);
+  const nextSignal = signal
+    ? normalizeNodeGraphMidiKeyboardMemorySignal(signal, { preserveGate: true, preserveGatePulse: true })
+    : rememberedSignal;
   if (nextSignal) {
     const gate = Number(nextSignal.gate) > 0 ? 1 : 0;
     nextSignal.gate = gate;
@@ -913,34 +1213,46 @@ function renderNodeGraphMidiKeyboardSignal(signal = null) {
     nodeGraphMvp.midiKeyboardPreviousGate = 0;
   }
   nodeGraphMvp.midiKeyboardSignal = nextSignal ? { ...nextSignal } : null;
+  saveNodeGraphMidiKeyboardMemory();
   const values = {
-    gate: nextSignal ? nextSignal.gate.toFixed(0) : "0",
-    gatePulse: nextSignal ? nextSignal.gatePulse.toFixed(0) : "0",
-    key: nextSignal ? String(nextSignal.keyIndex) : "-",
-    quantized: nextSignal ? nextSignal.keyQuantized.toFixed(3) : "-",
-    midi: nextSignal ? String(nextSignal.midi) : "-",
+    gate: nodeGraphMidiKeyboardFixedInteger(nextSignal?.gate ?? 0, 1, "0"),
+    gatePulse: nodeGraphMidiKeyboardFixedInteger(nextSignal?.gatePulse ?? 0, 1, "0"),
+    key: nextSignal ? nodeGraphMidiKeyboardFixedInteger(nextSignal.keyIndex, 2) : nodeGraphMidiKeyboardFixedText("-", 2),
+    quantized: nextSignal
+      ? nodeGraphMidiKeyboardFixedDecimal(nextSignal.keyQuantized, { decimalPlaces: 3, maxDigits: 4, width: 5 })
+      : nodeGraphMidiKeyboardFixedText("-", 5),
+    midi: nextSignal ? nodeGraphMidiKeyboardFixedInteger(nextSignal.midi, 3) : nodeGraphMidiKeyboardFixedText("-", 3),
     octave: nodeGraphMidiKeyboardOctaveLabel(),
-    double: nextSignal ? nextSignal.midiNormalized.toFixed(6) : "-",
-    increment: nextSignal ? nextSignal.increment.toFixed(8) : "-",
-    frequency: nextSignal ? nextSignal.frequency.toFixed(2) : "-",
-    pitch: nextSignal ? nextSignal.pitch : "-",
-    x: nextSignal ? nextSignal.x.toFixed(3) : "0.000",
-    y: nextSignal ? nextSignal.y.toFixed(3) : "0.000",
+    double: nextSignal
+      ? nodeGraphMidiKeyboardFixedDecimal(nextSignal.midiNormalized, { decimalPlaces: 6, maxDigits: 7, width: 8 })
+      : nodeGraphMidiKeyboardFixedText("-", 8),
+    tenthVoltPerOctave: nextSignal
+      ? nodeGraphMidiKeyboardFixedDecimal(nextSignal.tenthVoltPerOctave, { decimalPlaces: 6, maxDigits: 7, width: 8 })
+      : nodeGraphMidiKeyboardFixedText("-", 8),
+    increment: nextSignal
+      ? nodeGraphMidiKeyboardFixedDecimal(nextSignal.increment, { decimalPlaces: 7, maxDigits: 8, width: 9 })
+      : nodeGraphMidiKeyboardFixedText("-", 9),
+    frequency: nextSignal
+      ? nodeGraphMidiKeyboardFixedDecimal(nextSignal.frequency, { decimalPlaces: 2, maxDigits: 7, width: 8 })
+      : nodeGraphMidiKeyboardFixedText("-", 8),
+    pitch: nextSignal ? nodeGraphMidiKeyboardFixedText(nextSignal.pitch, 3) : nodeGraphMidiKeyboardFixedText("-", 3),
+    x: nextSignal
+      ? nodeGraphMidiKeyboardFixedDecimal(nextSignal.x, { decimalPlaces: 3, maxDigits: 4, width: 5 })
+      : nodeGraphMidiKeyboardFixedDecimal(0, { decimalPlaces: 3, maxDigits: 4, width: 5 }),
+    y: nextSignal
+      ? nodeGraphMidiKeyboardFixedDecimal(nextSignal.y, { decimalPlaces: 3, maxDigits: 4, width: 5 })
+      : nodeGraphMidiKeyboardFixedDecimal(0, { decimalPlaces: 3, maxDigits: 4, width: 5 }),
   };
-  document.querySelectorAll("#nodeMidiKeyboardSignalBar [data-keyboard-signal]").forEach((field) => {
+  document.querySelectorAll(".node-midi-keyboard-module [data-keyboard-signal]").forEach((field) => {
     const key = field.dataset.keyboardSignal;
     field.textContent = values[key] ?? "-";
   });
-  const status = document.getElementById("nodeMidiKeyboardStatus");
-  if (status) {
-    status.textContent = nextSignal ? `${nextSignal.pitch} / midi ${nextSignal.midi}` : "";
-  }
-  document.querySelectorAll("#nodeMidiKeyboardPanel [data-midi]").forEach((key) => {
+  document.querySelectorAll(".node-midi-keyboard-module [data-midi]").forEach((key) => {
     const activeMidi = nextSignal ? nodeGraphMidiKeyboardRawMidiFromSignal(nextSignal) : NaN;
     const active = Boolean(
       nextSignal &&
       Number(key.dataset.midi) === activeMidi &&
-      (nextSignal.gate > 0 || nextSignal.source === "pointer"),
+      nextSignal.gate > 0,
     );
     key.classList.toggle("active", active);
   });
@@ -953,18 +1265,35 @@ function renderNodeGraphMidiKeyboardSignal(signal = null) {
 function renderNodeGraphMidiKeyboardOctaveControl() {
   nodeGraphMvp.midiKeyboardOctave = nodeGraphMidiKeyboardOctaveOffset();
   renderNodeGraphMidiKeyboardKeyLabels();
-  const value = document.getElementById("nodeMidiKeyboardOctaveValue");
-  const down = document.getElementById("nodeMidiKeyboardOctaveDown");
-  const up = document.getElementById("nodeMidiKeyboardOctaveUp");
-  if (value) {
+  document.querySelectorAll("[data-midi-keyboard-octave-value]").forEach((value) => {
     value.textContent = nodeGraphMidiKeyboardOctaveLabel(nodeGraphMvp.midiKeyboardOctave);
-  }
-  if (down) {
+  });
+  document.querySelectorAll("[data-midi-keyboard-octave-down]").forEach((down) => {
     down.disabled = nodeGraphMvp.midiKeyboardOctave <= nodeGraphMidiKeyboardMinOctave;
-  }
-  if (up) {
+  });
+  document.querySelectorAll("[data-midi-keyboard-octave-up]").forEach((up) => {
     up.disabled = nodeGraphMvp.midiKeyboardOctave >= nodeGraphMidiKeyboardMaxOctave;
+  });
+}
+
+function renderNodeGraphMidiKeyboardModeControl() {
+  nodeGraphMvp.midiKeyboardMode = nodeGraphMidiKeyboardMode();
+  document.querySelectorAll("[data-midi-keyboard-mode-select]").forEach((select) => {
+    select.value = nodeGraphMvp.midiKeyboardMode;
+  });
+}
+
+function handleNodeGraphMidiKeyboardModeChange(event) {
+  const mode = nodeGraphMidiKeyboardMode(event.currentTarget.value);
+  nodeGraphMvp.midiKeyboardMode = mode;
+  nodeGraphMvp.midiKeyboardStatus = `${nodeGraphMidiKeyboardModeLabel(mode)} mode`;
+  if (mode !== "hold") {
+    nodeGraphMvp.midiKeyboardPointerHeldSignal = null;
   }
+  renderNodeGraphMidiKeyboardModeControl();
+  renderNodeGraphMidiKeyboardSignal(mode === "hold" ? nodeGraphMidiKeyboardHeldPointerSignal() : null);
+  saveNodeGraphMidiKeyboardMemory();
+  renderNodeGraphMidiKeyboardInputControls();
 }
 
 function retuneNodeGraphMidiKeyboardSignal(signal) {
@@ -988,20 +1317,23 @@ function changeNodeGraphMidiKeyboardOctave(delta) {
   nodeGraphMvp.midiKeyboardStatus = `octave ${nodeGraphMidiKeyboardOctaveLabel(nodeGraphMvp.midiKeyboardOctave)}`;
   renderNodeGraphMidiKeyboardOctaveControl();
   renderNodeGraphMidiKeyboardSignal(retuneNodeGraphMidiKeyboardSignal(nodeGraphMvp.midiKeyboardSignal));
+  saveNodeGraphMidiKeyboardMemory();
   renderNodeGraphMidiKeyboardInputControls();
 }
 
 function updateNodeGraphMidiKeyboardSignal(event) {
-  const surface = document.querySelector("#nodeMidiKeyboardPanel .node-midi-keyboard-surface");
+  const surface = event.currentTarget?.closest?.(".node-midi-keyboard-module")?.querySelector(".node-midi-keyboard-surface") ||
+    document.querySelector(".node-midi-keyboard-module .node-midi-keyboard-surface");
   if (!surface) {
     return;
   }
-  if (event.type === "pointerdown" && event.shiftKey) {
+  const mode = nodeGraphMidiKeyboardMode();
+  if (event.type === "pointerdown" && (event.shiftKey || mode === "hold")) {
     toggleNodeGraphMidiKeyboardPointerHold(event, surface);
     return;
   }
   const held = nodeGraphMidiKeyboardHeldPointerSignal();
-  if (event.type === "pointerup" && event.shiftKey && !held) {
+  if (event.type === "pointerup" && (event.shiftKey || mode === "hold") && !held) {
     renderNodeGraphMidiKeyboardSignal(null);
     return;
   }
@@ -1017,14 +1349,11 @@ function handleNodeGraphMidiKeyboardPointerLeave() {
 }
 
 function renderNodeGraphMidiKeyboardInputControls() {
-  const button = document.getElementById("nodeMidiKeyboardMidiButton");
-  const select = document.getElementById("nodeMidiKeyboardMidiInput");
-  const status = document.getElementById("nodeMidiKeyboardStatus");
   const inputs = Array.isArray(nodeGraphMvp.midiKeyboardInputs) ? nodeGraphMvp.midiKeyboardInputs : [];
-  if (button) {
+  document.querySelectorAll("[data-midi-keyboard-midi-button]").forEach((button) => {
     button.textContent = nodeGraphMvp.midiKeyboardAccess ? "Refresh MIDI" : "Enable MIDI";
-  }
-  if (select) {
+  });
+  document.querySelectorAll("[data-midi-keyboard-midi-input]").forEach((select) => {
     const selected = nodeGraphMvp.midiKeyboardInputId || "";
     select.replaceChildren(new Option(inputs.length ? "all midi inputs" : "no midi input", ""));
     for (const input of inputs) {
@@ -1032,12 +1361,8 @@ function renderNodeGraphMidiKeyboardInputControls() {
     }
     select.disabled = !inputs.length;
     select.value = inputs.some((input) => input.id === selected) ? selected : "";
-  }
-  if (status) {
-    status.textContent = nodeGraphMvp.midiKeyboardStatus || (nodeGraphMvp.midiKeyboardSignal
-      ? `${nodeGraphMvp.midiKeyboardSignal.pitch} / midi ${nodeGraphMvp.midiKeyboardSignal.midi}`
-      : "");
-  }
+  });
+  renderNodeGraphMidiKeyboardModeControl();
 }
 
 function updateNodeGraphMidiKeyboardStatus(text) {
@@ -1083,6 +1408,7 @@ async function enableNodeGraphMidiKeyboardInput() {
 
 function handleNodeGraphMidiKeyboardInputChange(event) {
   nodeGraphMvp.midiKeyboardInputId = event.currentTarget.value || "";
+  saveNodeGraphMidiKeyboardMemory();
   renderNodeGraphMidiKeyboardInputControls();
 }
 
@@ -1132,16 +1458,17 @@ function handleNodeGraphMidiKeyboardMessage(event) {
   renderNodeGraphMidiKeyboardSignal(nodeGraphMidiKeyboardSignalFromMidi(midi, 0, 0));
 }
 
-function bindNodeGraphMidiKeyboardPanelEvents() {
-  const surface = document.querySelector("#nodeMidiKeyboardPanel .node-midi-keyboard-surface");
-  if (!surface || surface.dataset.keyboardSignalBound === "true") {
-    return;
-  }
-  surface.dataset.keyboardSignalBound = "true";
-  surface.addEventListener("pointermove", updateNodeGraphMidiKeyboardSignal);
-  surface.addEventListener("pointerdown", updateNodeGraphMidiKeyboardSignal);
-  surface.addEventListener("pointerup", updateNodeGraphMidiKeyboardSignal);
-  surface.addEventListener("pointerleave", handleNodeGraphMidiKeyboardPointerLeave);
+function bindNodeGraphKeyboardControllerModuleEvents() {
+  document.querySelectorAll(".node-midi-keyboard-module .node-midi-keyboard-surface").forEach((surface) => {
+    if (surface.dataset.keyboardSignalBound === "true") {
+      return;
+    }
+    surface.dataset.keyboardSignalBound = "true";
+    surface.addEventListener("pointermove", updateNodeGraphMidiKeyboardSignal);
+    surface.addEventListener("pointerdown", updateNodeGraphMidiKeyboardSignal);
+    surface.addEventListener("pointerup", updateNodeGraphMidiKeyboardSignal);
+    surface.addEventListener("pointerleave", handleNodeGraphMidiKeyboardPointerLeave);
+  });
   document.querySelectorAll("[data-performance-wheel]").forEach((wheel) => {
     if (wheel.dataset.performanceWheelBound === "true") {
       return;
@@ -1152,60 +1479,56 @@ function bindNodeGraphMidiKeyboardPanelEvents() {
     wheel.addEventListener("pointerup", endNodeGraphPerformanceWheelDrag);
     wheel.addEventListener("pointercancel", endNodeGraphPerformanceWheelDrag);
   });
-  document
-    .getElementById("nodeMidiKeyboardMidiButton")
-    ?.addEventListener("click", enableNodeGraphMidiKeyboardInput);
-  document
-    .getElementById("nodeMidiKeyboardMidiInput")
-    ?.addEventListener("change", handleNodeGraphMidiKeyboardInputChange);
-  document
-    .getElementById("nodeMidiKeyboardOctaveDown")
-    ?.addEventListener("click", () => changeNodeGraphMidiKeyboardOctave(-1));
-  document
-    .getElementById("nodeMidiKeyboardOctaveUp")
-    ?.addEventListener("click", () => changeNodeGraphMidiKeyboardOctave(1));
+  document.querySelectorAll("[data-midi-keyboard-midi-button]").forEach((button) => {
+    if (button.dataset.midiKeyboardButtonBound === "true") {
+      return;
+    }
+    button.dataset.midiKeyboardButtonBound = "true";
+    button.addEventListener("click", enableNodeGraphMidiKeyboardInput);
+  });
+  document.querySelectorAll("[data-midi-keyboard-midi-input]").forEach((select) => {
+    if (select.dataset.midiKeyboardInputBound === "true") {
+      return;
+    }
+    select.dataset.midiKeyboardInputBound = "true";
+    select.addEventListener("change", handleNodeGraphMidiKeyboardInputChange);
+  });
+  document.querySelectorAll("[data-midi-keyboard-mode-select]").forEach((select) => {
+    if (select.dataset.midiKeyboardModeBound === "true") {
+      return;
+    }
+    select.dataset.midiKeyboardModeBound = "true";
+    select.addEventListener("change", handleNodeGraphMidiKeyboardModeChange);
+  });
+  document.querySelectorAll("[data-midi-keyboard-octave-down]").forEach((button) => {
+    if (button.dataset.midiKeyboardOctaveBound === "true") {
+      return;
+    }
+    button.dataset.midiKeyboardOctaveBound = "true";
+    button.addEventListener("click", () => changeNodeGraphMidiKeyboardOctave(-1));
+  });
+  document.querySelectorAll("[data-midi-keyboard-octave-up]").forEach((button) => {
+    if (button.dataset.midiKeyboardOctaveBound === "true") {
+      return;
+    }
+    button.dataset.midiKeyboardOctaveBound = "true";
+    button.addEventListener("click", () => changeNodeGraphMidiKeyboardOctave(1));
+  });
   renderNodeGraphMidiKeyboardSignal(null);
   renderNodeGraphMidiKeyboardOctaveControl();
   renderNodeGraphPerformanceWheels();
   renderNodeGraphMidiKeyboardInputControls();
 }
 
-function renderNodeGraphMidiKeyboardToggle() {
-  const button = document.getElementById("nodeMidiKeyboardToggleButton");
-  const panel = document.getElementById("nodeMidiKeyboardPanel");
-  const workspace = document.getElementById("nodeGraphWorkspace");
-  const workspaceAvailable = Boolean(workspace && !workspace.hidden);
-  const visible = Boolean(nodeGraphMvp.midiKeyboardVisible) && workspaceAvailable;
-  if (panel) {
-    panel.hidden = !visible;
-  }
-  if (button) {
-    button.innerHTML = visible
-      ? "<span>Hide</span><span>Keyboard</span>"
-      : "<span>Show</span><span>Keyboard</span>";
-    button.setAttribute("aria-label", visible ? "Hide Keyboard" : "Show Keyboard");
-    button.setAttribute("aria-pressed", visible ? "true" : "false");
-    button.removeAttribute("aria-disabled");
-    button.removeAttribute("title");
-  }
-}
-
-function toggleNodeGraphMidiKeyboard() {
-  nodeGraphMvp.midiKeyboardVisible = !nodeGraphMvp.midiKeyboardVisible;
-  renderNodeGraphMidiKeyboardToggle();
-  setNodeInteractionHelp(nodeGraphMvp.midiKeyboardVisible ? "Keyboard shown." : "Keyboard hidden.");
+function renderNodeGraphKeyboardControllerModules() {
+  ensureNodeGraphMidiKeyboardMemoryLoaded();
+  bindNodeGraphKeyboardControllerModuleEvents();
 }
 
 function toggleNodeGraphVideoView() {
   nodeGraphMvp.videoViewVisible = !nodeGraphMvp.videoViewVisible;
   renderNodeGraphVideoViewToggle();
-  setNodeInteractionHelp(nodeGraphMvp.videoViewVisible ? "Video view shown." : "Video view hidden.");
-}
-
-function toggleNodeGraphMacroControls() {
-  nodeGraphMvp.macroControlsVisible = !nodeGraphMvp.macroControlsVisible;
-  renderNodeGraphMacroControls();
-  setNodeInteractionHelp(nodeGraphMvp.macroControlsVisible ? "Macro controls shown." : "Macro controls hidden.");
+  setNodeInteractionHelp(nodeGraphMvp.videoViewVisible ? "Camera view shown." : "Camera view hidden.");
 }
 
 function toggleNodeGraphGridVisibility() {
@@ -1214,9 +1537,7 @@ function toggleNodeGraphGridVisibility() {
 }
 
 function toggleNodeGraphModuleButtonsVisibility() {
-  nodeGraphMvp.moduleButtonsVisible = nodeGraphMvp.moduleButtonsVisible === false;
-  renderNodeGraphModuleVisibilityToggles();
-  setNodeInteractionHelp(nodeGraphMvp.moduleButtonsVisible ? "Module buttons shown." : "Module buttons hidden.");
+  setNodeGraphModuleButtonsVisibility(nodeGraphMvp.moduleButtonsVisible === false);
 }
 
 function toggleNodeGraphOscilloscopeVisibility() {
@@ -1338,19 +1659,18 @@ function setNodeGraphViewMode(mode) {
   const departmentMode = shopMode && Boolean(nodeGraphMvp.moduleStoreDepartment);
   const shopLandingMode = shopMode && !departmentMode;
   const scriptMode = mode === "script";
+  const codeMode = mode === "code";
   const uiMode = mode === "ui";
   const mappingMode = mode === "mapping";
   const modularOnlyMode = mode === "modular-only";
-  const modularMode = modularOnlyMode || (!settingsMode && !shopMode && !scriptMode && !uiMode && !mappingMode);
-  const workspaceMode = modularMode || uiMode;
+  const modularMode = modularOnlyMode || (!settingsMode && !shopMode && !scriptMode && !codeMode && !uiMode && !mappingMode);
+  const workspaceMode = modularMode;
   if (!shopLandingMode) {
     closeNodeGraphModuleCollectionsMenu();
   }
   const wiringPanel = document.getElementById("nodeWiringPanel");
-  wiringPanel?.classList.toggle("modular-only-view", modularOnlyMode || uiMode);
-  wiringPanel?.classList.toggle("ui-view-shell", uiMode);
+  wiringPanel?.classList.toggle("modular-only-view", modularOnlyMode);
   document.getElementById("nodeGraphWorkspace").hidden = !workspaceMode;
-  setNodeGraphUiViewActive(uiMode);
   document.getElementById("nodeModularOnlyBackButton").textContent = uiMode ? "×" : "←";
   document
     .getElementById("nodeModularOnlyBackButton")
@@ -1358,27 +1678,35 @@ function setNodeGraphViewMode(mode) {
   document.getElementById("nodeModuleShopView").hidden = !shopLandingMode;
   document.getElementById("nodeModuleDepartmentView").hidden = !departmentMode;
   document.getElementById("nodeScriptView").hidden = !scriptMode;
+  document.getElementById("nodeCodeScreenView").hidden = !codeMode;
+  document.getElementById("nodeUiView").hidden = !uiMode;
   document.getElementById("nodeMappingView").hidden = !mappingMode;
   document.getElementById("nodeSettingsView").hidden = !settingsMode;
-  renderNodeGraphMidiKeyboardToggle();
+  renderNodeGraphKeyboardControllerModules();
   renderNodeGraphMacroControls();
   renderNodeGraphVideoViewToggle();
   document.getElementById("nodeSettingsViewButton").classList.toggle("active", settingsMode);
   document.getElementById("nodeModularViewButton").classList.toggle("active", modularMode && !modularOnlyMode);
-  document.getElementById("nodeModuleShopButton").classList.toggle("active", shopMode);
+  document.getElementById("nodeModuleShopButton")?.classList.toggle("active", shopMode);
   document.getElementById("nodeModularOnlyViewButton").classList.toggle("active", modularOnlyMode);
-  document.getElementById("nodeUiViewButton").classList.toggle("active", uiMode);
-  document.getElementById("nodeMappingViewButton").classList.toggle("active", mappingMode);
+  document.getElementById("nodeMappingViewButton")?.classList.toggle("active", mappingMode);
+  document.getElementById("nodeCodeScreenViewButton").classList.toggle("active", codeMode);
+  document.getElementById("nodeUiViewButton")?.classList.toggle("active", uiMode);
   document.getElementById("nodeSettingsScriptViewButton").classList.toggle("active", scriptMode);
   document.getElementById("nodeSettingsViewButton").setAttribute("aria-pressed", String(settingsMode));
   document.getElementById("nodeModularViewButton").setAttribute("aria-pressed", String(modularMode && !modularOnlyMode));
-  document.getElementById("nodeModuleShopButton").setAttribute("aria-pressed", String(shopMode));
+  document.getElementById("nodeModuleShopButton")?.setAttribute("aria-pressed", String(shopMode));
   document.getElementById("nodeModularOnlyViewButton").setAttribute("aria-pressed", String(modularOnlyMode));
-  document.getElementById("nodeUiViewButton").setAttribute("aria-pressed", String(uiMode));
-  document.getElementById("nodeMappingViewButton").setAttribute("aria-pressed", String(mappingMode));
+  document.getElementById("nodeMappingViewButton")?.setAttribute("aria-pressed", String(mappingMode));
+  document.getElementById("nodeCodeScreenViewButton").setAttribute("aria-pressed", String(codeMode));
+  document.getElementById("nodeUiViewButton")?.setAttribute("aria-pressed", String(uiMode));
   document.getElementById("nodeSettingsScriptViewButton").setAttribute("aria-pressed", String(scriptMode));
   if (scriptMode) {
     syncNodeGraphScriptView();
+  } else if (codeMode) {
+    renderNodeGraphCodeScreen();
+  } else if (uiMode) {
+    renderNodeGraphUiView();
   } else if (settingsMode) {
     syncNodeGraphSettingsView();
     scheduleNodeSettingsHeaderTextFit();
@@ -1386,10 +1714,10 @@ function setNodeGraphViewMode(mode) {
     renderNodeGraphModuleStoreCatalog();
   } else if (mappingMode) {
     renderNodeGraphMappingView();
-  } else if (uiMode) {
-    renderNodeGraphUiView();
-    drawNodeGraphWires();
   } else {
     drawNodeGraphWires();
+  }
+  if (typeof renderNodeGraphCameraView === "function") {
+    renderNodeGraphCameraView();
   }
 }

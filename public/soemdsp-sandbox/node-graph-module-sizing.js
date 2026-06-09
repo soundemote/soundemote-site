@@ -22,7 +22,32 @@ const nodeGraphTextBoxHeightLimits = Object.freeze({
   minGu: 1,
 });
 
+function nodeGraphPatchNodeLayout(node) {
+  const patchNode = typeof node === "string" ? nodeGraphPatchNode(node) : node;
+  const fallback = nodeGraphModuleDefinitions[patchNode?.type]?.layout;
+  if (patchNode?.type === "canvas" && typeof normalizeNodeGraphCanvasScript === "function") {
+    const layout = normalizeNodeGraphCanvasScript(patchNode.canvasScript).layout;
+    return layout === "oscilloscope" ? "visualScope" : fallback;
+  }
+  return fallback;
+}
+
+function nodeGraphPatchNodeCanvasScriptGridUnits(node) {
+  const patchNode = typeof node === "string" ? nodeGraphPatchNode(node) : node;
+  if (patchNode?.type !== "canvas" || typeof normalizeNodeGraphCanvasScript !== "function") {
+    return null;
+  }
+  const script = normalizeNodeGraphCanvasScript(patchNode.canvasScript);
+  return {
+    heightGu: Number.isFinite(Number(script.gridHeightGu)) ? Number(script.gridHeightGu) : null,
+    widthGu: Number.isFinite(Number(script.gridWidthGu)) ? Number(script.gridWidthGu) : null,
+  };
+}
+
 function nodeGraphDefaultModuleGridWidthUnits(type) {
+  if (nodeGraphModuleDefinitions[type]?.layout === "led") {
+    return 1;
+  }
   if (nodeGraphModuleDefinitions[type]?.layout === "sliderWidget") {
     return 6;
   }
@@ -30,7 +55,7 @@ function nodeGraphDefaultModuleGridWidthUnits(type) {
     return 7;
   }
   if (nodeGraphModuleDefinitions[type]?.layout === "graph") {
-    return 8;
+    return 14;
   }
   if (nodeGraphModuleDefinitions[type]?.layout === "filterCurve") {
     return 8;
@@ -40,9 +65,12 @@ function nodeGraphDefaultModuleGridWidthUnits(type) {
 
 function normalizeNodeGraphModuleWidthUnits(type, widthGu) {
   const fallback = nodeGraphDefaultModuleGridWidthUnits(type);
+  const limits = nodeGraphModuleDefinitions[type]?.layout === "led"
+    ? { ...nodeGraphModuleWidthLimits, minGu: 1 }
+    : nodeGraphModuleWidthLimits;
   const value = Math.round(Number(widthGu));
   return Number.isFinite(value)
-    ? Math.max(nodeGraphModuleWidthLimits.minGu, Math.min(nodeGraphModuleWidthLimits.maxGu, value))
+    ? Math.max(limits.minGu, Math.min(limits.maxGu, value))
     : fallback;
 }
 
@@ -51,6 +79,10 @@ function nodeGraphModuleGridWidthUnits(type) {
 }
 
 function nodeGraphPatchNodeGridWidthUnits(node) {
+  const scriptGrid = nodeGraphPatchNodeCanvasScriptGridUnits(node);
+  if (scriptGrid?.widthGu) {
+    return normalizeNodeGraphModuleWidthUnits(node?.type, scriptGrid.widthGu);
+  }
   return normalizeNodeGraphModuleWidthUnits(node?.type, node?.widthGu);
 }
 
@@ -115,6 +147,9 @@ function nodeGraphModuleHeaderHeightUnits(ui = {}) {
 }
 
 function nodeGraphModuleRequiredHeightUnitsForUi(type, ui = {}) {
+  if (nodeGraphModuleDefinitions[type]?.layout === "led") {
+    return 1;
+  }
   if (nodeGraphModuleDefinitions[type]?.layout === "textBox") {
     return nodeGraphModuleHeaderHeightUnits(ui) + nodeGraphModuleLayout.textBoxBodyMinGu;
   }
@@ -124,6 +159,15 @@ function nodeGraphModuleRequiredHeightUnitsForUi(type, ui = {}) {
       nodeGraphModuleLayout.moduleScopeHeightGu +
       nodeGraphModuleIoSectionHeightGu(type) +
       nodeGraphModuleLayout.fitCushionGu
+    );
+  }
+  if (nodeGraphModuleDefinitions[type]?.layout === "canvas") {
+    return (
+      nodeGraphModuleHeaderHeightUnits(ui) +
+      nodeGraphModuleLayout.moduleScopeHeightGu * 1.5 +
+      nodeGraphModuleIoSectionHeightGu(type) +
+      nodeGraphModuleLayout.fitCushionGu +
+      nodeGraphModuleLayout.moduleGridInsetGu * 2
     );
   }
   if (nodeGraphModuleDefinitions[type]?.layout === "visualScope") {
@@ -137,8 +181,9 @@ function nodeGraphModuleRequiredHeightUnitsForUi(type, ui = {}) {
   if (nodeGraphModuleDefinitions[type]?.layout === "graph") {
     return (
       nodeGraphModuleHeaderHeightUnits(ui) +
-      nodeGraphModuleLayout.moduleScopeHeightGu * 1.5 +
+      nodeGraphModuleLayout.moduleScopeHeightGu * 4 +
       nodeGraphModuleIoSectionHeightGu(type) +
+      nodeGraphModuleSliderBodyHeightGu(type) +
       nodeGraphModuleLayout.fitCushionGu +
       nodeGraphModuleLayout.moduleGridInsetGu * 2
     );
@@ -151,6 +196,15 @@ function nodeGraphModuleRequiredHeightUnitsForUi(type, ui = {}) {
       nodeGraphModuleLayout.fitCushionGu +
       nodeGraphModuleLayout.moduleGridInsetGu * 2
     );
+  }
+  if (nodeGraphModuleDefinitions[type]?.layout === "keyboardController") {
+    return nodeGraphModuleHeaderHeightUnits(ui) + 12 + nodeGraphModuleIoSectionHeightGu(type);
+  }
+  if (nodeGraphModuleDefinitions[type]?.layout === "macroControls") {
+    return nodeGraphModuleHeaderHeightUnits(ui) + 5 + nodeGraphModuleIoSectionHeightGu(type);
+  }
+  if (nodeGraphModuleDefinitions[type]?.layout === "pitchModWheel") {
+    return nodeGraphModuleHeaderHeightUnits(ui) + 5 + nodeGraphModuleIoSectionHeightGu(type);
   }
   if (nodeGraphModuleDefinitions[type]?.layout === "filterCurve") {
     return (
@@ -177,10 +231,16 @@ function nodeGraphModuleGridHeightUnits(type) {
 }
 
 function nodeGraphModuleGridHeightUnitsForUi(type, ui = {}) {
+  if (nodeGraphModuleDefinitions[type]?.layout === "led") {
+    return 1;
+  }
   if (nodeGraphModuleDefinitions[type]?.layout === "textBox") {
     return Math.ceil(nodeGraphModuleRequiredHeightUnitsForUi(type, ui));
   }
   if (nodeGraphModuleDefinitions[type]?.layout === "image") {
+    return Math.ceil(nodeGraphModuleRequiredHeightUnitsForUi(type, ui));
+  }
+  if (nodeGraphModuleDefinitions[type]?.layout === "canvas") {
     return Math.ceil(nodeGraphModuleRequiredHeightUnitsForUi(type, ui));
   }
   if (nodeGraphModuleDefinitions[type]?.layout === "visualScope") {
@@ -202,8 +262,16 @@ function nodeGraphModuleGridHeightUnitsForUi(type, ui = {}) {
 }
 
 function nodeGraphPatchNodeGridHeightUnits(node) {
-  if (Object.hasOwn(node || {}, "heightGu")) {
-    return normalizeNodeGraphModuleHeightUnits(node.type, node.heightGu, node.ui);
+  const scriptGrid = nodeGraphPatchNodeCanvasScriptGridUnits(node);
+  if (scriptGrid?.heightGu) {
+    return normalizeNodeGraphModuleHeightUnits(node?.type, scriptGrid.heightGu);
   }
-  return nodeGraphModuleGridHeightUnitsForUi(node?.type, node?.ui);
+  const effectiveUi = normalizeNodeGraphPatchNodeUi({
+    ...node?.ui,
+    buttonsHidden: node?.ui?.buttonsHidden || nodeGraphMvp.moduleButtonsVisible === false,
+  });
+  if (Object.hasOwn(node || {}, "heightGu")) {
+    return normalizeNodeGraphModuleHeightUnits(node.type, node.heightGu, effectiveUi);
+  }
+  return nodeGraphModuleGridHeightUnitsForUi(node?.type, effectiveUi);
 }

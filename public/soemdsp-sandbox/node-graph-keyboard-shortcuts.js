@@ -32,6 +32,38 @@ function nudgeSelectedNodeGraphModulesOnGrid(axis, direction) {
   return true;
 }
 
+function nodeGraphCanvasScriptSourceWithGridUnits(source, widthGu, heightGu) {
+  const nextWidthGu = normalizeNodeGraphModuleWidthUnits("canvas", widthGu);
+  const nextHeightGu = normalizeNodeGraphModuleHeightUnits("canvas", heightGu);
+  const gridLine = `canvas.grid(${nextWidthGu}, ${nextHeightGu});`;
+  const baseSource = String(source || nodeGraphCanvasScriptDefaultSource || "").trim();
+  const gridPattern = /(^|\n)\s*canvas\.grid\s*\(\s*[-+]?\d+(?:\.\d+)?\s*,\s*[-+]?\d+(?:\.\d+)?\s*\)\s*;?/i;
+  if (gridPattern.test(baseSource)) {
+    return baseSource.replace(gridPattern, (match, prefix) => `${prefix}${gridLine}`);
+  }
+  return `${gridLine}\n${baseSource}`;
+}
+
+function resizeNodeGraphCanvasModuleOnGrid(patchNode, axis, delta) {
+  const canvasScript = normalizeNodeGraphCanvasScript(patchNode.canvasScript);
+  const currentWidthGu = nodeGraphPatchNodeGridWidthUnits(patchNode);
+  const currentHeightGu = nodeGraphPatchNodeGridHeightUnits(patchNode);
+  const nextWidthGu = axis === "width"
+    ? normalizeNodeGraphModuleWidthUnits("canvas", currentWidthGu + delta)
+    : currentWidthGu;
+  const nextHeightGu = axis === "height"
+    ? normalizeNodeGraphModuleHeightUnits("canvas", currentHeightGu + delta, patchNode.ui)
+    : currentHeightGu;
+  if (nextWidthGu === currentWidthGu && nextHeightGu === currentHeightGu) {
+    return false;
+  }
+  const source = nodeGraphCanvasScriptSourceWithGridUnits(canvasScript.source, nextWidthGu, nextHeightGu);
+  patchNode.canvasScript = normalizeNodeGraphCanvasScript({ ...canvasScript, source });
+  delete patchNode.widthGu;
+  delete patchNode.heightGu;
+  return true;
+}
+
 function resizeSelectedNodeGraphModulesOnGrid(axis, delta) {
   const selectedNodeIds = new Set([...nodeGraphSelectedNodeIds()].filter((id) =>
     nodeGraphMvp.activeNodes.has(id),
@@ -44,6 +76,13 @@ function resizeSelectedNodeGraphModulesOnGrid(axis, delta) {
   let changedCount = 0;
   for (const patchNode of patch.nodes) {
     if (!selectedNodeIds.has(patchNode.id)) {
+      continue;
+    }
+
+    if (patchNode.type === "canvas") {
+      if (resizeNodeGraphCanvasModuleOnGrid(patchNode, axis, delta)) {
+        changedCount += 1;
+      }
       continue;
     }
 
@@ -134,6 +173,40 @@ function handleNodeGraphKeydown(event) {
     }
     return;
   }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
+    if (duplicateFocusedNodeGraphGraphNode()) {
+      event.preventDefault();
+    }
+    return;
+  }
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "a") {
+    if (addFocusedNodeGraphGraphNode()) {
+      event.preventDefault();
+    }
+    return;
+  }
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "s") {
+    if (cycleFocusedNodeGraphGraphShape()) {
+      event.preventDefault();
+    }
+    return;
+  }
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === "[") {
+    if (selectFocusedNodeGraphGraphNodeOffset(-1)) {
+      event.preventDefault();
+    }
+    return;
+  }
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === "]") {
+    if (selectFocusedNodeGraphGraphNodeOffset(1)) {
+      event.preventDefault();
+    }
+    return;
+  }
+  if (nudgeFocusedNodeGraphGraphNode(event)) {
+    event.preventDefault();
+    return;
+  }
   if (event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
     const shiftArrowSizeActions = {
       ArrowDown: ["height", 1],
@@ -168,5 +241,12 @@ function handleNodeGraphKeydown(event) {
     return;
   }
 
-  deleteSelectedNodeGraphItem();
+  if (removeFocusedNodeGraphGraphNode()) {
+    event.preventDefault();
+    return;
+  }
+  if (nodeGraphSelectionCanDelete()) {
+    event.preventDefault();
+    deleteSelectedNodeGraphItem();
+  }
 }

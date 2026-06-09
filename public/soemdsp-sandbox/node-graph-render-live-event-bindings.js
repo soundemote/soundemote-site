@@ -9,22 +9,23 @@ function bindNodeGraphRenderLiveControlEvents() {
   document.getElementById("nodeBadValueMonitorButton").addEventListener("click", toggleNodeGraphBadValueMonitor);
   document.getElementById("nodeTripEarProtectionButton")
     .addEventListener("click", () => nodeGraphTripEarProtection({ source: "manual", protectionMuteCount: 1 }));
-  document.getElementById("nodeRenderWavButton").addEventListener("click", saveNodeGraphRenderedWav);
+  document.getElementById("nodeRenderWavButton")?.addEventListener("click", saveNodeGraphRenderedWav);
   document
     .getElementById("nodeVisualOutputTargetWidthValue")
     .addEventListener("input", syncNodeGraphVisualOutputResolutionControls);
   document
     .getElementById("nodeVisualOutputTargetWidthValue")
     .addEventListener("change", syncNodeGraphVideoExportControls);
-  document.getElementById("nodeRenderMp4Button").addEventListener("click", () => exportNodeGraphRenderedMp4());
-  document.getElementById("nodeRenderOggButton").addEventListener("click", exportNodeGraphRenderedOgg);
-  document.getElementById("nodeRenderFlacButton").addEventListener("click", exportNodeGraphRenderedFlac);
-  document.getElementById("nodeRenderMp4AltButton").addEventListener("click", () => exportNodeGraphRenderedMp4());
+  document.getElementById("nodeRenderMp4Button")?.addEventListener("click", () => exportNodeGraphRenderedMp4());
+  document.getElementById("nodeRenderOggButton")?.addEventListener("click", exportNodeGraphRenderedOgg);
+  document.getElementById("nodeRenderFlacButton")?.addEventListener("click", exportNodeGraphRenderedFlac);
+  document.getElementById("nodeRenderMp4AltButton")?.addEventListener("click", () => exportNodeGraphRenderedMp4());
   document
     .getElementById("nodeRenderMp4VideoOnlyButton")
-    .addEventListener("click", () => exportNodeGraphRenderedMp4({ videoOnly: true }));
-  document.getElementById("nodeExportVisualVideoButton").addEventListener("click", exportNodeGraphVisualOutputWebm);
-  document.getElementById("nodeSaveVisualOutputButton").addEventListener("click", saveNodeGraphVisualOutputPng);
+    ?.addEventListener("click", () => exportNodeGraphRenderedMp4({ videoOnly: true }));
+  document.getElementById("nodeExportVisualVideoButton")?.addEventListener("click", exportNodeGraphVisualOutputWebm);
+  document.getElementById("nodeSaveVisualOutputButton")?.addEventListener("click", saveNodeGraphVisualOutputPng);
+  document.getElementById("nodeCopyVisualOutputButton")?.addEventListener("click", copyNodeGraphVisualOutputPngToClipboard);
   document.getElementById("nodeLiveInputButton").addEventListener("click", toggleNodeGraphLiveInput);
   document
     .getElementById("nodeStartMockInputDebugButton")

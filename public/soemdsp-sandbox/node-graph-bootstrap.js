@@ -7,20 +7,24 @@ async function initNodeGraphMvp() {
   const earProtectionRecovery = typeof nodeGraphConsumeEarProtectionPatchRecovery === "function"
     ? nodeGraphConsumeEarProtectionPatchRecovery()
     : null;
-  commitNodeGraphPatch(cloneNodeGraphPatch(earProtectionRecovery?.patch || nodeGraphMvp.defaultPatch), {
+  const recoveryPatchUsable = typeof nodeGraphDefaultPresetPatchIsUsable === "function"
+    ? nodeGraphDefaultPresetPatchIsUsable(earProtectionRecovery?.patch)
+    : Boolean(earProtectionRecovery?.patch);
+  commitNodeGraphPatch(cloneNodeGraphPatch(recoveryPatchUsable ? earProtectionRecovery.patch : nodeGraphMvp.defaultPatch), {
     markPending: false,
     record: false,
-    status: earProtectionRecovery ? "ear protection patch restored" : "script synced",
+    status: recoveryPatchUsable ? "ear protection patch restored" : "script synced",
   });
   resetNodeGraphStartupView();
   recordNodeGraphHistory();
   markNodeGraphRenderPending();
   applyNodeGraphZoom();
   renderNodeGraphGridToggle();
-  bindNodeGraphMacroControlsPanelEvents();
-  bindNodeGraphMidiKeyboardPanelEvents();
+  bindNodeGraphMacroControlModuleEvents();
+  bindNodeGraphKeyboardControllerModuleEvents();
+  bindNodeGraphMetadataPopoverEvents();
   renderNodeGraphMacroControls();
-  renderNodeGraphMidiKeyboardToggle();
+  renderNodeGraphKeyboardControllerModules();
   renderNodeGraphModuleVisibilityToggles();
   renderNodeGraphPatchTimingControls();
   renderNodeGraphVisibilityMenuButton();
@@ -29,8 +33,36 @@ async function initNodeGraphMvp() {
   renderNodeGraphTooltipToggle();
   renderNodeGraphSliderVisibilityToggles();
   renderNodeGraphSliderLayout();
+  ensureNodeGraphStartupModulesVisible();
   loadNodeMetadataKindTemplates();
   refreshNodeGraphLiveInputDevices();
   refreshNodeGraphLiveMicrophonePermissionState();
   navigator.mediaDevices?.addEventListener?.("devicechange", refreshNodeGraphLiveInputDevices);
+}
+
+function clearNodeGraphStartupPatchRecoveryStorage() {
+  try {
+    window.localStorage?.removeItem?.(nodeGraphDefaultPresetStorageKey);
+  } catch {}
+  try {
+    const stores = typeof nodeGraphEarProtectionRecoveryStores === "function"
+      ? nodeGraphEarProtectionRecoveryStores()
+      : [];
+    for (const store of stores) {
+      store.removeItem(nodeGraphEarProtectionPatchRecoveryStorageKey);
+    }
+  } catch {}
+}
+
+function ensureNodeGraphStartupModulesVisible() {
+  const container = document.getElementById("nodeGraphNodes");
+  if (!container || container.querySelector(".dsp-node")) {
+    return;
+  }
+  clearNodeGraphStartupPatchRecoveryStorage();
+  commitNodeGraphPatch(cloneNodeGraphPatch(nodeGraphDefaultPatch), {
+    markPending: false,
+    record: false,
+    status: "startup default restored",
+  });
 }

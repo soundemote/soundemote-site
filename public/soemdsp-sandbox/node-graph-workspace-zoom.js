@@ -28,6 +28,9 @@ function applyNodeGraphZoom() {
     zoomInButton.disabled = nodeGraphZoom() >= nodeGraphZoomLimits.max - 0.001;
   }
   drawNodeGraphWires();
+  if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
+    scheduleNodeGraphModuleScopeDraw();
+  }
 }
 
 function setNodeGraphZoom(nextZoom, anchor = null) {
@@ -47,10 +50,7 @@ function setNodeGraphZoom(nextZoom, anchor = null) {
       y: (anchorPoint.y - workspaceRect.top - (Number(oldPan.y) || 0)) / oldZoom,
     }
     : null;
-  const zoom = Math.max(
-    nodeGraphZoomLimits.min,
-    Math.min(nodeGraphZoomLimits.max, Number(nextZoom) || 1),
-  );
+  const zoom = clampNodeGraphZoom(nextZoom);
   if (Math.abs(zoom - oldZoom) < 0.001) {
     return;
   }
@@ -69,28 +69,43 @@ function setNodeGraphZoom(nextZoom, anchor = null) {
   applyNodeGraphPan();
 }
 
-function nodeGraphZoomByRatio(ratio) {
-  const value = Number(ratio);
-  return Number.isFinite(value) && value > 0
-    ? nodeGraphZoom() * value
-    : nodeGraphZoom();
+function clampNodeGraphZoom(value) {
+  const zoom = Number(value);
+  const fallback = 1;
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : fallback;
+  const minLog = Math.log(nodeGraphZoomLimits.min);
+  const maxLog = Math.log(nodeGraphZoomLimits.max);
+  return Math.exp(Math.max(minLog, Math.min(maxLog, Math.log(safeZoom))));
 }
 
-function nodeGraphZoomButtonStep(event) {
+function nodeGraphZoomRatioBySteps(steps, baseRatio = nodeGraphZoomLimits.wheelRatio) {
+  const stepCount = Number(steps) || 0;
+  const ratio = Number(baseRatio);
+  if (!Number.isFinite(ratio) || ratio <= 0 || ratio === 1 || !stepCount) {
+    return 1;
+  }
+  return Math.exp(Math.log(ratio) * stepCount);
+}
+
+function nodeGraphZoomButtonRatio(event) {
   if (event?.ctrlKey || event?.metaKey) {
-    return nodeGraphZoomLimits.fineStep;
+    return nodeGraphZoomLimits.fineRatio;
   }
   if (event?.shiftKey) {
-    return nodeGraphZoomLimits.quarterStep;
+    return nodeGraphZoomLimits.quarterRatio;
   }
-  return nodeGraphZoomLimits.step;
+  return nodeGraphZoomLimits.buttonRatio;
 }
 
-function nodeGraphIntegerZoomTarget(direction) {
-  const zoom = nodeGraphZoom();
-  return direction > 0
-    ? Math.floor(zoom + 0.001) + 1
-    : Math.ceil(zoom - 0.001) - 1;
+function nodeGraphWheelZoomSteps(event) {
+  const deltaModeScale = event?.deltaMode === 1
+    ? 16
+    : event?.deltaMode === 2 ? 800 : 1;
+  return -(Number(event?.deltaY) || 0) * deltaModeScale / 100;
+}
+
+function nodeGraphZoomBySteps(steps, anchor = null, baseRatio = nodeGraphZoomLimits.wheelRatio) {
+  setNodeGraphZoom(nodeGraphZoom() * nodeGraphZoomRatioBySteps(steps, baseRatio), anchor);
 }
 
 function zoomNodeGraphBy(delta) {
@@ -99,18 +114,15 @@ function zoomNodeGraphBy(delta) {
   if (!direction) {
     return;
   }
-  const step = nodeGraphZoomButtonStep(event);
-  const target = Math.abs(step - nodeGraphZoomLimits.step) < 0.001
-    ? nodeGraphIntegerZoomTarget(direction)
-    : nodeGraphZoom() + direction * step;
-  setNodeGraphZoom(target);
+  nodeGraphZoomBySteps(direction, null, nodeGraphZoomButtonRatio(event));
 }
 
 function zoomNodeGraphAt(delta, clientX, clientY) {
-  const ratio = delta > 0
-    ? nodeGraphZoomLimits.wheelRatio
-    : 1 / nodeGraphZoomLimits.wheelRatio;
-  setNodeGraphZoom(nodeGraphZoomByRatio(ratio), { x: clientX, y: clientY });
+  const steps = Number(delta) || 0;
+  if (!steps) {
+    return;
+  }
+  nodeGraphZoomBySteps(steps, { x: clientX, y: clientY });
 }
 
 function resetNodeGraphZoomToOne() {
@@ -129,7 +141,7 @@ function normalizeNodeGraphZoomInput(value) {
   if (!Number.isFinite(zoom)) {
     return null;
   }
-  return Math.max(nodeGraphZoomLimits.min, Math.min(nodeGraphZoomLimits.max, zoom));
+  return clampNodeGraphZoom(zoom);
 }
 
 function finishNodeGraphZoomInput(input, options = {}) {
@@ -209,7 +221,7 @@ function handleNodeGraphWorkspaceWheel(event) {
   event.preventDefault();
   event.stopPropagation();
   zoomNodeGraphAt(
-    -Math.sign(event.deltaY),
+    nodeGraphWheelZoomSteps(event),
     event.clientX,
     event.clientY,
   );
