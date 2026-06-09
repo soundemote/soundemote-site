@@ -1,9 +1,40 @@
 {
+  "activeCameraId": "camera-1",
   "audio": {
-    "targetSampleRate": 88200
+    "targetSampleRate": 44100
   },
   "bypassedNodes": [],
-  "connections": [],
+  "cameras": [
+    {
+      "color": "#ff3333",
+      "enabled": true,
+      "height": 488,
+      "id": "camera-1",
+      "midiTrigger": null,
+      "name": "Camera 1",
+      "resolutionHeight": 1080,
+      "resolutionWidth": 1920,
+      "width": 868,
+      "x": 0,
+      "y": 0
+    }
+  ],
+  "connections": [
+    {
+      "destinationNode": "output",
+      "destinationPort": "Mono",
+      "sourceNode": "clock-1",
+      "sourcePort": "Analog Out",
+      "tracePoints": []
+    },
+    {
+      "destinationNode": "visualOscilloscope-1",
+      "destinationPort": "In",
+      "sourceNode": "clock-1",
+      "sourcePort": "Analog Out",
+      "tracePoints": []
+    }
+  ],
   "format": {
     "kind": "soemdsp-sandbox-node-patch",
     "version": 1
@@ -21,7 +52,270 @@
   },
   "modulations": [],
   "monitors": [],
-  "nodes": [],
+  "nodes": [
+    {
+      "gx": -21,
+      "gy": 11,
+      "id": "shop",
+      "paramMeta": {},
+      "params": {},
+      "type": "moduleShop",
+      "widthGu": 5
+    },
+    {
+      "gx": -21,
+      "gy": 1,
+      "id": "canvas-origin",
+      "paramMeta": {},
+      "params": {},
+      "type": "canvas",
+      "alias": "Origin",
+      "canvasScript": {
+        "aspectRatio": 1,
+        "background": "#00000000",
+        "bufferedInputs": [
+          "a_buffer"
+        ],
+        "bufferSampleLimit": 262144,
+        "enabled": true,
+        "faceBackground": "checkerboard",
+        "faceFit": "contain",
+        "faceScreen": "#000000",
+        "gridHeightGu": 5,
+        "gridWidthGu": 5,
+        "inputs": [
+          "a_buffer",
+          "a not buffer"
+        ],
+        "kind": "canvasScript",
+        "language": "canvas-js",
+        "layout": "oscilloscope",
+        "layers": [
+          {
+            "id": "a_buffer",
+            "input": "a_buffer",
+            "opacity": 1,
+            "rotation": 0,
+            "scale": 1,
+            "visible": true,
+            "x": 0.5,
+            "y": 0.5
+          }
+        ],
+        "output": "canvas",
+        "ratioHeight": 1,
+        "ratioWidth": 1,
+        "source": "canvas.ratio(1, 1);\ncanvas.background = #00000000;\ncanvas.layout = oscilloscope;\ncanvas.grid(5, 5);\ncanvas.face.background = checkerboard;\ncanvas.face.screen = #000000;\nbufferInput(\"a_buffer\");\ninput(\"a not buffer\");\n\nlayer(\"a_buffer\").input   = a_buffer;\nlayer(\"a_buffer\").x       = 0.5;\nlayer(\"a_buffer\").y       = 0.5;\nlayer(\"a_buffer\").scale   = 1.0;\nlayer(\"a_buffer\").opacity = 1.0;\n\noutput = canvas;"
+      }
+    },
+    {
+      "gx": -21,
+      "gy": 6,
+      "id": "home",
+      "paramMeta": {},
+      "params": {},
+      "type": "moduleHome",
+      "widthGu": 5
+    },
+    {
+      "gx": 22,
+      "gy": 11,
+      "id": "output",
+      "paramMeta": {
+        "volume": {
+          "choices": [],
+          "def": 0.1,
+          "displayChoices": false,
+          "divideChoicesVisibly": false,
+          "kind": "decimal",
+          "linearSmoothing": true,
+          "max": 1,
+          "maxDigits": 3,
+          "mid": 0.1,
+          "min": 0,
+          "nonlinearSlider": false,
+          "showSign": false,
+          "step": 0,
+          "unit": "",
+          "wraparound": false
+        }
+      },
+      "params": {
+        "volume": 0.1
+      },
+      "type": "output",
+      "alias": "Vibration",
+      "widthGu": 9
+    },
+    {
+      "gx": 22,
+      "gy": 3,
+      "id": "visualOscilloscope-1",
+      "paramMeta": {},
+      "params": {},
+      "type": "visualOscilloscope",
+      "alias": "Oscilloscope",
+      "widthGu": 9,
+      "heightGu": 8,
+      "scopeShader": {
+        "cycles": 1.7639,
+        "enabled": true,
+        "kind": "scopeShader",
+        "language": "scope-js",
+        "length": 1,
+        "mode": "one_value",
+        "padding": 0.04,
+        "source": "video.input     = ~;\nscope.mode      = one_value;\nscope.sync      = inherit;\nscope.cycles    = 1.7639;\nscope.zoom      = 1.0;\nscope.length    = 1.0;\nscope.padding   = 0.04;\nscope.syncSpeed = 1.0;\ndot1.color      = dot1.global.color;\ndot1.size       = 1.0 * dot1.global.size;\ndot1.blur       = 0.00;\ndot1.brightness = 4.50;\ndot2.color      = dot2.global.color;\ndot2.size       = 1.0 * dot2.global.size;\ndot2.blur       = 0.00;\ndot2.brightness = 0.45;\nblend.mode      = laser;",
+        "sync": "inherit",
+        "syncSpeed": 1,
+        "videoInput": "~",
+        "zoom": 1
+      }
+    },
+    {
+      "gx": 15,
+      "gy": 7,
+      "id": "clock-1",
+      "paramMeta": {
+        "rate": {
+          "choices": [],
+          "def": 2,
+          "displayChoices": false,
+          "divideChoicesVisibly": false,
+          "kind": "frequency",
+          "linearSmoothing": true,
+          "max": 40,
+          "maxDigits": 5,
+          "mid": 2,
+          "min": 0,
+          "nonlinearSlider": true,
+          "showSign": false,
+          "step": 0,
+          "unit": "Hz",
+          "wraparound": false
+        },
+        "duty": {
+          "choices": [],
+          "def": 0.5,
+          "displayChoices": false,
+          "divideChoicesVisibly": false,
+          "kind": "decimal",
+          "linearSmoothing": true,
+          "max": 1,
+          "maxDigits": 3,
+          "mid": 0.5,
+          "min": 0,
+          "nonlinearSlider": false,
+          "showSign": false,
+          "step": 0,
+          "unit": "",
+          "wraparound": false
+        },
+        "level": {
+          "choices": [],
+          "def": 1,
+          "displayChoices": false,
+          "divideChoicesVisibly": false,
+          "kind": "decimal",
+          "linearSmoothing": true,
+          "max": 1,
+          "maxDigits": 3,
+          "mid": 0.5,
+          "min": 0,
+          "nonlinearSlider": false,
+          "showSign": false,
+          "step": 0,
+          "unit": "",
+          "wraparound": false
+        }
+      },
+      "params": {
+        "rate": 2,
+        "duty": 0.5,
+        "level": 1
+      },
+      "type": "clock",
+      "alias": "Clock",
+      "scopeShader": {
+        "cycles": 1.7639,
+        "enabled": true,
+        "kind": "scopeShader",
+        "language": "scope-js",
+        "length": 1,
+        "mode": "1d_full",
+        "padding": 0.04,
+        "source": "video.input     = output0;\nscope.mode      = 1d_full;\nscope.sync      = inherit;\ndot1.color      = dot1.global.color;\ndot1.size       = 10.7 * dot1.global.size;\ndot1.blur       = 0.03;\ndot1.brightness = 1.05;\ndot2.color      = dot2.global.color;\ndot2.size       = 5.6 * dot2.global.size;\ndot2.blur       = 1.52;\ndot2.brightness = 1.21;\n// Scope modes: 1d_full, 1d_scan\n// Sync options: inherit, on, off\n// Blend options: laser, led, light, paint, solid\n// Change the word after = to switch modes.\nblend.mode      = laser;",
+        "sync": "inherit",
+        "syncSpeed": 1,
+        "videoInput": "output0",
+        "zoom": 1
+      }
+    },
+    {
+      "gx": 15,
+      "gy": -2,
+      "id": "clock-2",
+      "paramMeta": {
+        "rate": {
+          "choices": [],
+          "def": 2,
+          "displayChoices": false,
+          "divideChoicesVisibly": false,
+          "kind": "frequency",
+          "linearSmoothing": true,
+          "max": 40,
+          "maxDigits": 5,
+          "mid": 2,
+          "min": 0,
+          "nonlinearSlider": true,
+          "showSign": false,
+          "step": 0,
+          "unit": "Hz",
+          "wraparound": false
+        },
+        "duty": {
+          "choices": [],
+          "def": 0.5,
+          "displayChoices": false,
+          "divideChoicesVisibly": false,
+          "kind": "decimal",
+          "linearSmoothing": true,
+          "max": 1,
+          "maxDigits": 3,
+          "mid": 0.5,
+          "min": 0,
+          "nonlinearSlider": false,
+          "showSign": false,
+          "step": 0,
+          "unit": "",
+          "wraparound": false
+        },
+        "level": {
+          "choices": [],
+          "def": 1,
+          "displayChoices": false,
+          "divideChoicesVisibly": false,
+          "kind": "decimal",
+          "linearSmoothing": true,
+          "max": 1,
+          "maxDigits": 3,
+          "mid": 0.5,
+          "min": 0,
+          "nonlinearSlider": false,
+          "showSign": false,
+          "step": 0,
+          "unit": "",
+          "wraparound": false
+        }
+      },
+      "params": {
+        "rate": 2,
+        "duty": 0.5,
+        "level": 1
+      },
+      "type": "clock"
+    }
+  ],
   "timing": {
     "tempoBpm": 120,
     "timeSignatureDenominator": 4,
@@ -30,7 +324,7 @@
   "uiItems": [],
   "view": {
     "heightGu": 20,
-    "widthGu": 31
+    "widthGu": 35
   },
   "visual": {
     "background": {
@@ -43,15 +337,5 @@
     "style": "glow",
     "theme": "cyan-violet",
     "trail": 0.35
-  },
-  "windows": {
-    "metadata": {
-      "left": null,
-      "top": null
-    },
-    "moduleActions": {
-      "left": null,
-      "top": null
-    }
   }
 }

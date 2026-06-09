@@ -1,9 +1,9 @@
 const nodeGraphZoomLimits = Object.freeze({
-  max: 10,
+  max: 50,
   min: 0.1,
-  fineStep: 0.1,
-  quarterStep: 0.25,
-  step: 1,
+  buttonRatio: 1.12,
+  fineRatio: 1.05,
+  quarterRatio: 1.08,
   wheelRatio: 1.12,
 });
 
@@ -49,8 +49,9 @@ function nodeGraphZoomSurface() {
 }
 
 function nodeGraphGraphRect() {
-  const workspace = document.getElementById("nodeGraphWorkspace");
-  const workspaceRect = workspace.getBoundingClientRect();
+  const surface = nodeGraphZoomSurface();
+  const graphElement = surface || document.getElementById("nodeGraphWorkspace");
+  const workspaceRect = graphElement.getBoundingClientRect();
   const zoom = nodeGraphZoom();
   return {
     height: workspaceRect.height / zoom,
@@ -72,7 +73,8 @@ function positionNodeGraphNode(node, point, options = {}) {
   const graphRect = nodeGraphGraphRect();
   const maxX = Math.max(0, graphRect.width - node.offsetWidth - 10);
   const maxY = Math.max(0, graphRect.height - node.offsetHeight - 10);
-  const positionedPoint = options.snap === false ? point : snapNodeGraphPointToGrid(point);
+  const snapOptions = { halfGrid: options.halfGrid === true };
+  const positionedPoint = options.snap === false ? point : snapNodeGraphPointToGrid(point, snapOptions);
   const x = options.clamp === false
     ? positionedPoint.x
     : Math.max(0, Math.min(maxX, positionedPoint.x));

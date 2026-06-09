@@ -36,6 +36,9 @@ function applyNodeMetadataKindTemplates(templates) {
     select.replaceChildren();
     populateNodeMetadataKindChoices();
   }
+  if (typeof syncNodeMetadataScriptReference === "function") {
+    syncNodeMetadataScriptReference();
+  }
   if (nodeGraphMvp.metadataEditorTarget) {
     const slider = document.getElementById(nodeGraphMvp.metadataEditorTarget);
     if (slider) {

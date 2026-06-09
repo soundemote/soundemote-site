@@ -4,18 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>soemdsp-sandbox</title>
-  <link rel="stylesheet" href="./public/styles.css?v=external-graph-inputs-1780816800000">
+  <link rel="stylesheet" href="./public/styles.css?v=ear-protection-selectable-text-1">
 </head>
 <body class="debug-collapsed node-boot-loading">
-  <div class="node-boot-loading-screen" role="status" aria-live="polite" aria-label="Loading interface">
-    <div class="node-boot-terminal" aria-hidden="true">
-      <span class="node-boot-line node-boot-line-app">
-        <span class="node-boot-prompt">app:</span><span class="node-boot-command">sandbox~</span>
-      </span>
-      <span class="node-boot-line node-boot-line-loading">
-        loading interface <span class="node-boot-dot">.</span> <span class="node-boot-dot">.</span> <span class="node-boot-dot">.</span>
-      </span>
-    </div>
+  <div class="node-boot-loading-screen" role="status" aria-live="polite" aria-label="loading">
+    loading
   </div>
   <div
     id="nodeEarProtectionFault"
@@ -36,10 +29,14 @@
         If you come up with an ear or speaker protection algorithm better than this one, let us know at
         soundemote@gmail.com
       </span>
-      <span class="node-ear-protection-fault-reset">Refresh the page, your patch will be saved.</span>
+      <button
+        id="nodeEarProtectionFaultClose"
+        class="node-ear-protection-fault-close"
+        type="button"
+        onclick="this.closest('#nodeEarProtectionFault').hidden = true; document.body.classList.remove('node-ear-protection-tripped');">Close</button>
     </div>
   </div>
-  <script src="./public/boot-loading.js?v=terminal-boot-ready-marker-1780813800000"></script>
+  <script src="./public/boot-loading.js?v=minimal-loading-screen-1"></script>
   <main class="shell">
     <section class="status-strip" aria-label="Sandbox status">
       <div>
@@ -64,27 +61,6 @@
       </div>
     </section>
 
-    <section class="node-clap-host-strip" aria-label="CLAP host connection">
-      <div>
-        <span id="nodeClapHostStatus" class="warn">CLAP Host: Disconnected</span>
-        <small id="nodeClapHostDetail">run the local companion, then connect</small>
-      </div>
-      <label class="node-clap-host-url-control">
-        <span>Host</span>
-        <input
-          id="nodeClapHostUrl"
-          type="text"
-          autocomplete="off"
-          spellcheck="false"
-          value="http://127.0.0.1:47991"
-          aria-label="CLAP host URL">
-      </label>
-      <button id="nodeClapHostConnectButton" type="button">Connect Local Host</button>
-      <button id="nodeClapHostPluginsButton" type="button" disabled>Refresh Plugins</button>
-      <button id="nodeClapHostDiagnosticsButton" type="button">Diagnostics</button>
-      <button id="nodeClapHostCommandButton" type="button">Copy Host Command</button>
-    </section>
-
     <section id="nodeWiringPanel" class="panel node-wiring-panel" aria-label="Node wiring MVP">
       <div class="node-view-toolbar" aria-label="Modular view mode">
         <div class="node-view-tabs" role="group" aria-label="Node graph view">
@@ -94,46 +70,25 @@
             aria-label="Patch settings"
             aria-pressed="false">&#9881;</button>
           <button
-            id="nodeModularViewButton"
-            class="active"
+            id="nodeUserUiSettingsButton"
             type="button"
-            aria-pressed="true"><span>Modular</span><span>View</span></button>
-          <button
-            id="nodeCodeScreenViewButton"
-            type="button"
-            aria-pressed="false"><span>Code</span><span>Screen</span></button>
-          <button
-            id="nodeUiViewButton"
-            type="button"
-            aria-pressed="false"><span>UI</span><span>View</span></button>
-          <button
-            id="nodeVideoViewButton"
-            type="button"
-            aria-label="Show Camera View"
-            aria-pressed="false"><span>Show</span><span>Camera View</span></button>
-          <button
-            id="nodeMappingViewButton"
-            type="button"
-            aria-pressed="false"><span>Mapping</span></button>
-          <button
-            id="nodeModuleShopButton"
-            class="node-module-shop-button"
-            type="button"
-            aria-pressed="false"><span>Module</span><span>Browser</span></button>
-          <button
-            id="nodeModularOnlyViewButton"
-            type="button"
-            aria-pressed="false"><span>Modular</span><span>Only</span></button>
-          <button
-            id="nodeMidiKeyboardToggleButton"
-            type="button"
-            aria-label="Show Keyboard"
-            aria-pressed="false"><span>Show</span><span>Keyboard</span></button>
-          <button
-            id="nodeMacroControlsToggleButton"
-            type="button"
-            aria-label="Show Macro Controls"
-            aria-pressed="false"><span>Show</span><span>Macro Controls</span></button>
+            aria-pressed="false"><span>UI</span><span>Settings</span></button>
+          <span class="node-modular-view-button-group" role="group" aria-label="Modular view mode">
+            <button
+              id="nodeModularViewButton"
+              class="active"
+              type="button"
+              aria-pressed="true"><span>Modular</span><span>View</span></button>
+            <button
+              id="nodeModularOnlyViewButton"
+              type="button"
+              aria-pressed="false"><span>Modular</span><span>Only</span></button>
+          </span>
+          <button id="nodeGlobalScopeMenuButton" type="button" aria-pressed="false"><span>Oscilloscope</span><span>Settings</span></button>
+          <span id="nodeWorldPositionReadout" class="node-world-position-readout" aria-label="World position" aria-live="polite">
+            <span>X 0</span>
+            <span>Y 0</span>
+          </span>
           <span class="node-zoom-controls" role="group" aria-label="Node graph zoom">
             <span class="node-zoom-label">zoom</span>
             <span class="node-zoom-buttons">
@@ -147,18 +102,26 @@
         <div class="node-history-controls" role="group" aria-label="Node graph history">
           <button id="nodeUndoButton" type="button" disabled>Undo</button>
           <button id="nodeRedoButton" type="button" disabled>Redo</button>
-          <button
-            id="nodeUserUiSettingsButton"
-            type="button"
-            aria-pressed="false"><span>UI</span><span>Settings</span></button>
+          <button id="nodeShaderScriptButton" type="button" aria-label="Post Processing" aria-pressed="false"><span>Post</span><span>Processing</span></button>
           <span id="nodePatchTimingControls" class="node-patch-timing-controls" aria-label="Patch timing"></span>
+          <a
+            id="nodeDonateFiveButton"
+            class="node-donate-five-button"
+            href="https://soundemote.io/donate?amount=10"
+            target="_blank"
+            rel="noopener"
+            data-support-amount="10"
+            aria-label="Donate ten dollars to support Soundemote Sandbox"><span>Donate$10</span></a>
+          <a
+            id="nodeDownloadFiftyButton"
+            class="node-download-fifty-button"
+            href="https://soundemote.io/donate?amount=50"
+            target="_blank"
+            rel="noopener"
+            data-support-amount="50"
+            hidden
+            aria-label="Download for fifty dollars. Donation refund available."><span>Download$50</span><span class="node-toolbar-subline">(donation refund available)</span></a>
           <button id="nodeVisibilityMenuButton" type="button" aria-pressed="false" aria-haspopup="menu">Visibility</button>
-          <button id="nodeGlobalScopeMenuButton" type="button" aria-pressed="false">Oscilloscope Settings</button>
-          <button
-            id="nodeCopyViewportImageButton"
-            type="button"
-            data-tooltip-key="workspace.copyViewportImage">Copy Viewport Image</button>
-          <button id="nodeShaderScriptButton" type="button" aria-pressed="false">Shader</button>
         </div>
         <div
           id="nodeVisibilityMenu"
@@ -187,28 +150,49 @@
       <div class="node-help-stack">
         <div id="nodeInteractionHelp" class="node-interaction-help" role="status" aria-live="polite"></div>
         <div class="node-constraint-color-guide" aria-label="Resource constraint color guide">
-          <label class="node-constraint-chip" data-constraint="cpu" data-tooltip-key="constraints.cpu">
-            <input id="nodeConstraintCpuToggle" type="checkbox" data-constraint-toggle="cpu">
-            <strong>CPU</strong>
-            <span>constrained</span>
-          </label>
-          <label class="node-constraint-chip" data-constraint="ram" data-tooltip-key="constraints.ram">
-            <input id="nodeConstraintRamToggle" type="checkbox" data-constraint-toggle="ram">
-            <strong>RAM</strong>
-            <span>constrained</span>
-          </label>
-          <label class="node-constraint-chip" data-constraint="gpu" data-tooltip-key="constraints.gpu">
-            <input id="nodeConstraintGpuToggle" type="checkbox" data-constraint-toggle="gpu">
-            <strong>GPU</strong>
-            <span>constrained</span>
-          </label>
+          <span class="node-constraint-stack" data-constraint-stack="cpu">
+            <label class="node-constraint-chip" data-constraint="cpu" data-tooltip-key="constraints.cpu">
+              <input id="nodeConstraintCpuToggle" type="checkbox" data-constraint-toggle="cpu">
+              <strong>CPU</strong>
+              <span>constrained</span>
+            </label>
+            <span id="nodeScopeCpuMetrics" class="node-constraint-metrics node-scope-cpu-metrics" aria-live="polite">
+              <span>main fps <strong data-scope-cpu-metric="fps">--.-</strong></span>
+              <span>lag <strong data-scope-cpu-metric="lag">--.-</strong>ms</span>
+              <span class="node-scope-resource-debug" data-scope-cpu-debug="summary">cpu debug --</span>
+            </span>
+          </span>
+          <span class="node-constraint-stack" data-constraint-stack="ram">
+            <label class="node-constraint-chip" data-constraint="ram" data-tooltip-key="constraints.ram">
+              <input id="nodeConstraintRamToggle" type="checkbox" data-constraint-toggle="ram">
+              <strong>RAM</strong>
+              <span>constrained</span>
+            </label>
+            <span id="nodeScopeRamMetrics" class="node-constraint-metrics node-scope-ram-metrics" aria-live="polite">
+              <span>heap <strong data-scope-ram-metric="used">----</strong>mb</span>
+              <span>limit <strong data-scope-ram-metric="limit">----</strong>mb</span>
+              <span class="node-scope-resource-debug" data-scope-ram-debug="summary">ram debug --</span>
+            </span>
+          </span>
+          <span class="node-constraint-stack" data-constraint-stack="gpu">
+            <label class="node-constraint-chip" data-constraint="gpu" data-tooltip-key="constraints.gpu">
+              <input id="nodeConstraintGpuToggle" type="checkbox" data-constraint-toggle="gpu">
+              <strong>GPU</strong>
+              <span>constrained</span>
+            </label>
+            <span id="nodeScopeGpuMetrics" class="node-constraint-metrics node-scope-gpu-metrics" aria-live="polite">
+              <span>scope fps <strong data-scope-gpu-metric="fps">--</strong></span>
+              <span>points <strong data-scope-gpu-metric="points">--</strong></span>
+              <span class="node-scope-resource-debug node-scope-gpu-debug" data-scope-gpu-debug="summary">debug --</span>
+            </span>
+          </span>
         </div>
       </div>
 
       <div
         id="nodeGraphWorkspace"
         class="node-graph-workspace"
-        aria-label="Drag wires between DSP node ports; right-click empty scene space to add modules">
+        aria-label="Drag wires between DSP node ports">
         <button
           id="nodeModularOnlyBackButton"
           class="node-modular-only-back-button"
@@ -216,6 +200,22 @@
           aria-label="Return to full modular view"
           data-tooltip-key="workspace.backToFull">&larr;</button>
         <div id="nodeGridHeatmap" class="node-grid-heatmap" aria-hidden="true"></div>
+        <div id="nodeGraphZoomSurface" class="node-graph-zoom-surface">
+          <div
+            id="nodeGraphOriginMarker"
+            class="node-graph-origin-marker"
+            aria-hidden="true"
+            data-tooltip-key="workspace.origin"
+            title="World origin: X 0, Y 0"></div>
+          <svg
+            id="nodeWireSvg"
+            class="node-wire-svg"
+            aria-hidden="true"
+            focusable="false"></svg>
+          <div id="nodeGraphNodes" class="node-graph-nodes"></div>
+          <div id="nodeCameraOverlayLayer" class="node-camera-overlay-layer" aria-hidden="true"></div>
+          <div id="nodeSelectionMarquee" class="node-selection-marquee" hidden></div>
+        </div>
         <canvas
           id="nodeModuleScopeCanvas"
           class="node-module-scope-canvas"
@@ -228,16 +228,6 @@
           id="nodeModularShaderCanvas"
           class="node-modular-shader-canvas"
           aria-hidden="true"></canvas>
-        <div id="nodeGraphZoomSurface" class="node-graph-zoom-surface">
-          <svg
-            id="nodeWireSvg"
-            class="node-wire-svg"
-            aria-hidden="true"
-            focusable="false"></svg>
-          <div id="nodeGraphNodes" class="node-graph-nodes"></div>
-          <div id="nodeCameraOverlayLayer" class="node-camera-overlay-layer" aria-hidden="true"></div>
-          <div id="nodeSelectionMarquee" class="node-selection-marquee" hidden></div>
-        </div>
         <button
           id="nodeGraphEmptyModuleButton"
           class="node-graph-empty-module-button"
@@ -249,12 +239,110 @@
           type="button"
           aria-label="Resize modular workspace"
           data-tooltip-key="workspace.resizeTitle"></button>
+      </div>
+
+      <div
+        id="nodeViewportExportControls"
+        class="node-viewport-export-controls"
+        aria-label="Modular viewport export controls">
         <button
           id="nodeCopyViewportImageOverlayButton"
           class="node-copy-viewport-image-button"
           type="button"
-          aria-label="Copy modular viewport image"
+          aria-label="Export modular viewport PNG"
           data-tooltip-key="workspace.copyViewportImage">PNG</button>
+        <button
+          id="nodeExportViewportWavButton"
+          class="node-copy-viewport-image-button node-copy-viewport-wav-button"
+          type="button"
+          aria-label="Export rendered audio WAV"
+          data-tooltip-key="workspace.copyViewportImage">WAV</button>
+        <button
+          id="nodeExportViewportOggButton"
+          class="node-copy-viewport-image-button node-copy-viewport-ogg-button"
+          type="button"
+          aria-label="Export rendered audio OGG"
+          data-tooltip-key="workspace.copyViewportImage">OGG</button>
+        <button
+          id="nodeExportViewportFlacButton"
+          class="node-copy-viewport-image-button node-copy-viewport-flac-button"
+          type="button"
+          aria-label="Export rendered audio FLAC"
+          data-tooltip-key="workspace.copyViewportImage">FLAC</button>
+        <button
+          id="nodeExportViewportGifButton"
+          class="node-copy-viewport-image-button node-copy-viewport-gif-button"
+          type="button"
+          aria-label="Export modular viewport GIF"
+          data-tooltip-key="workspace.copyViewportImage">GIF</button>
+        <button
+          id="nodeExportViewportMp4Button"
+          class="node-copy-viewport-image-button node-copy-viewport-mp4-button"
+          type="button"
+          aria-label="Export modular viewport MP4"
+          data-tooltip-key="workspace.copyViewportImage">MP4</button>
+        <button
+          id="nodeExportViewportYoutubeButton"
+          class="node-copy-viewport-image-button node-copy-viewport-youtube-button"
+          type="button"
+          aria-label="Capture modular viewport video for YouTube upload"
+          data-tooltip-key="workspace.copyViewportImage">YouTube</button>
+        <input
+          id="nodeViewportExportSecondsInput"
+          class="node-copy-viewport-seconds-input"
+          type="number"
+          min="0.25"
+          max="60"
+          step="0.25"
+          value="2"
+          aria-label="Viewport MP4 export seconds"
+          title="Viewport MP4 export seconds">
+        <span
+          class="node-copy-viewport-unit-label"
+          aria-hidden="true">s</span>
+        <input
+          id="nodeViewportExportWidthInput"
+          class="node-copy-viewport-width-input"
+          type="number"
+          min="64"
+          max="8192"
+          step="1"
+          value="1280"
+          aria-label="Viewport export target width"
+          title="Viewport export target width">
+        <div class="node-viewport-path-row">
+          <button
+            id="nodeViewportOpenFolderButton"
+            class="node-copy-viewport-image-button node-viewport-path-open-button"
+            type="button"
+            data-path="C:\Users\argit\Downloads"
+            aria-label="Open last export folder">Open Folder</button>
+          <input
+            id="nodeViewportLastFolderBox"
+            class="node-viewport-path-box"
+            type="text"
+            readonly
+            value="C:\Users\argit\Downloads"
+            aria-label="Last export folder full path"
+            title="Last export folder full path">
+        </div>
+        <div class="node-viewport-path-row">
+          <button
+            id="nodeViewportOpenFileButton"
+            class="node-copy-viewport-image-button node-viewport-path-open-button"
+            type="button"
+            disabled
+            aria-disabled="true"
+            aria-label="Open last exported file">Open File</button>
+          <input
+            id="nodeViewportLastFilePathBox"
+            class="node-viewport-path-box"
+            type="text"
+            readonly
+            value="file path: none"
+            aria-label="Last exported file full path"
+            title="Last exported file full path">
+        </div>
       </div>
 
       <section
@@ -298,154 +386,47 @@
         </div>
       </section>
 
-      <section
-        id="nodeMacroControlsPanel"
-        class="node-macro-controls-panel"
-        aria-label="Macro controls"
-        hidden>
-        <div class="node-macro-controls-heading">
-          <div>
-            <span>Performance Surface</span>
-            <strong>Macro Controls</strong>
-          </div>
-          <span id="nodeMacroControlsStatus" class="pill">10 macros ready</span>
-        </div>
-        <div class="node-macro-controls-row" aria-label="Macro knob row">
-          <button class="node-macro-knob" type="button" data-macro-index="0" aria-label="Macro 1" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0" role="slider"><span>M1</span><i></i><strong data-macro-value="0">0.00</strong></button>
-          <button class="node-macro-knob" type="button" data-macro-index="1" aria-label="Macro 2" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0" role="slider"><span>M2</span><i></i><strong data-macro-value="1">0.00</strong></button>
-          <button class="node-macro-knob" type="button" data-macro-index="2" aria-label="Macro 3" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0" role="slider"><span>M3</span><i></i><strong data-macro-value="2">0.00</strong></button>
-          <button class="node-macro-knob" type="button" data-macro-index="3" aria-label="Macro 4" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0" role="slider"><span>M4</span><i></i><strong data-macro-value="3">0.00</strong></button>
-          <button class="node-macro-knob" type="button" data-macro-index="4" aria-label="Macro 5" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0" role="slider"><span>M5</span><i></i><strong data-macro-value="4">0.00</strong></button>
-          <button class="node-macro-knob" type="button" data-macro-index="5" aria-label="Macro 6" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0" role="slider"><span>M6</span><i></i><strong data-macro-value="5">0.00</strong></button>
-          <button class="node-macro-knob" type="button" data-macro-index="6" aria-label="Macro 7" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0" role="slider"><span>M7</span><i></i><strong data-macro-value="6">0.00</strong></button>
-          <button class="node-macro-knob" type="button" data-macro-index="7" aria-label="Macro 8" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0" role="slider"><span>M8</span><i></i><strong data-macro-value="7">0.00</strong></button>
-          <button class="node-macro-knob" type="button" data-macro-index="8" aria-label="Macro 9" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0" role="slider"><span>M9</span><i></i><strong data-macro-value="8">0.00</strong></button>
-          <button class="node-macro-knob" type="button" data-macro-index="9" aria-label="Macro 10" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0" role="slider"><span>M10</span><i></i><strong data-macro-value="9">0.00</strong></button>
-        </div>
-      </section>
-
       <div
-        id="nodeKeyboardPerformanceDock"
-        class="node-keyboard-performance-dock"
+        id="nodeCanvasScriptDialog"
+        class="node-canvas-script-dialog"
+        role="dialog"
+        aria-modal="false"
+        aria-labelledby="nodeCanvasScriptTitle"
         hidden>
-        <section
-          id="nodePerformanceWheelsPanel"
-          class="node-performance-wheels-panel"
-          aria-label="Pitch and modulation wheels">
-          <div class="node-performance-wheels-heading">
-            <span>Performance</span>
-            <strong>Pitch / Mod Wheels</strong>
-          </div>
-          <div class="node-midi-keyboard-wheel-bank">
-            <div
-              id="nodePitchWheelControl"
-              class="node-midi-keyboard-wheel pitch"
-              data-performance-wheel="pitchWheel"
-              role="slider"
-              aria-label="Pitch wheel"
-              aria-valuemin="-1"
-              aria-valuemax="1"
-              aria-valuenow="0"
-              tabindex="0">
-              <span>Pitch</span>
-              <i></i>
-              <strong data-performance-wheel-value="pitchWheel">0.000</strong>
+        <div class="node-canvas-script-panel">
+          <div class="node-canvas-script-heading">
+            <div>
+              <span>Canvas Module</span>
+              <strong id="nodeCanvasScriptTitle">Canvas Script</strong>
             </div>
-            <div
-              id="nodeModWheelControl"
-              class="node-midi-keyboard-wheel mod"
-              data-performance-wheel="modWheel"
-              role="slider"
-              aria-label="Mod wheel"
-              aria-valuemin="0"
-              aria-valuemax="1"
-              aria-valuenow="0"
-              tabindex="0">
-              <span>Mod</span>
-              <i></i>
-              <strong data-performance-wheel-value="modWheel">0.000</strong>
+            <button
+              id="nodeCanvasScriptClose"
+              class="panel-close-button"
+              type="button"
+              aria-label="Close canvas script dialog">
+              <span aria-hidden="true">&times;</span>
+            </button>
+          </div>
+          <div class="node-canvas-script-body">
+            <div id="nodeCanvasScriptPreview" class="node-canvas-script-preview" aria-label="Canvas script preview">
+              <div class="node-canvas-script-preview-layers" data-node-canvas-script-layers="true"></div>
+              <strong>1:1 canvas (1 layer)</strong>
             </div>
+            <textarea
+              id="nodeCanvasScriptSource"
+              spellcheck="false"
+              aria-label="Canvas script source"></textarea>
           </div>
-        </section>
-
-        <section
-          id="nodeMidiKeyboardPanel"
-          class="node-midi-keyboard-panel"
-          aria-label="Mouse playable MIDI keyboard"
-          hidden>
-        <div class="node-midi-keyboard-heading">
-          <div class="node-midi-keyboard-title">
-            <span>Instrument</span>
-            <strong>MIDI Keyboard</strong>
-          </div>
-          <div class="node-midi-keyboard-midi-controls">
-            <label class="node-midi-keyboard-mode-control">
-              <span>Mode</span>
-              <select id="nodeMidiKeyboardModeSelect" aria-label="Keyboard mode">
-                <option value="press">Press</option>
-                <option value="hold">Hold</option>
-              </select>
-            </label>
-            <span class="node-midi-keyboard-octave-control" aria-label="Keyboard octave transpose">
-              <button id="nodeMidiKeyboardOctaveDown" type="button" aria-label="Transpose keyboard down one octave">-</button>
-              <strong id="nodeMidiKeyboardOctaveValue">+0</strong>
-              <button id="nodeMidiKeyboardOctaveUp" type="button" aria-label="Transpose keyboard up one octave">+</button>
-            </span>
-            <button id="nodeMidiKeyboardMidiButton" type="button">Enable MIDI</button>
-            <select id="nodeMidiKeyboardMidiInput" aria-label="MIDI keyboard input" disabled>
-              <option value="">no midi input</option>
-            </select>
+          <div class="node-canvas-script-actions">
+            <button id="nodeCanvasScriptSave" type="button">Save</button>
+            <button id="nodeCanvasScriptCopy" type="button">Copy</button>
+            <button id="nodeCanvasScriptPaste" type="button">Paste</button>
+            <button id="nodeCanvasScriptToDesktop" type="button">To Desktop</button>
+            <button id="nodeCanvasScriptStarter" type="button">Canvas Starter</button>
+            <button id="nodeCanvasScriptSaveDefault" type="button">Save As Default</button>
+            <span id="nodeCanvasScriptStatus" class="pill">ready</span>
           </div>
         </div>
-        <div class="node-midi-keyboard-performance">
-          <div class="node-midi-keyboard-surface" aria-label="Two octave keyboard preview">
-            <div class="node-midi-keyboard-white-row" aria-hidden="true">
-              <span data-midi="48">C3</span>
-              <span data-midi="50">D3</span>
-              <span data-midi="52">E3</span>
-              <span data-midi="53">F3</span>
-              <span data-midi="55">G3</span>
-              <span data-midi="57">A3</span>
-              <span data-midi="59">B3</span>
-              <span data-midi="60">C4</span>
-              <span data-midi="62">D4</span>
-              <span data-midi="64">E4</span>
-              <span data-midi="65">F4</span>
-              <span data-midi="67">G4</span>
-              <span data-midi="69">A4</span>
-              <span data-midi="71">B4</span>
-              <span data-midi="72">C5</span>
-            </div>
-            <div class="node-midi-keyboard-black-row" aria-hidden="true">
-              <span data-midi="49" style="--key-left: 4.6%">C#3</span>
-              <span data-midi="51" style="--key-left: 11.2%">D#3</span>
-              <span data-midi="54" style="--key-left: 24.6%">F#3</span>
-              <span data-midi="56" style="--key-left: 31.2%">G#3</span>
-              <span data-midi="58" style="--key-left: 37.9%">A#3</span>
-              <span data-midi="61" style="--key-left: 51.2%">C#4</span>
-              <span data-midi="63" style="--key-left: 57.9%">D#4</span>
-              <span data-midi="66" style="--key-left: 71.2%">F#4</span>
-              <span data-midi="68" style="--key-left: 77.9%">G#4</span>
-              <span data-midi="70" style="--key-left: 84.6%">A#4</span>
-            </div>
-          </div>
-        </div>
-        <div id="nodeMidiKeyboardSignalBar" class="node-midi-keyboard-signal-bar" aria-live="polite">
-          <span>gate <strong data-keyboard-signal="gate">0</strong></span>
-          <span>1s gate <strong data-keyboard-signal="gatePulse">0</strong></span>
-          <span>key <strong data-keyboard-signal="key">-</strong> / 24</span>
-          <span>q <strong data-keyboard-signal="quantized">-</strong></span>
-          <span>oct <strong data-keyboard-signal="octave">+0</strong></span>
-          <span>midi <strong data-keyboard-signal="midi">-</strong></span>
-          <span>double <strong data-keyboard-signal="double">-</strong></span>
-          <span>.1v/oct <strong data-keyboard-signal="tenthVoltPerOctave">-</strong></span>
-          <span>inc <strong data-keyboard-signal="increment">-</strong></span>
-          <span>freq <strong data-keyboard-signal="frequency">-</strong></span>
-          <span>pitch <strong data-keyboard-signal="pitch">-</strong></span>
-          <span>x <strong data-keyboard-signal="x">0.000</strong></span>
-          <span>y <strong data-keyboard-signal="y">0.000</strong></span>
-        </div>
-      </section>
       </div>
 
       <div
@@ -465,6 +446,15 @@
               <button id="nodeShaderScriptTextSizeDecrease" type="button" aria-label="Decrease shader editor text size">-</button>
               <button id="nodeShaderScriptTextSizeIncrease" type="button" aria-label="Increase shader editor text size">+</button>
               <button id="nodeShaderScriptSyntaxColorsButton" type="button" aria-expanded="false">Colors</button>
+              <span class="node-shader-script-quick-actions" aria-label="Shader script quick actions">
+                <span class="node-shader-script-live-toggle-group" role="group" aria-label="Post processing live shader state">
+                  <button id="nodeShaderScriptApply" type="button" aria-pressed="false">Apply</button>
+                  <button id="nodeShaderScriptEnable" type="button" aria-pressed="false">Disable</button>
+                </span>
+                <button id="nodeShaderScriptCopy" type="button">Copy</button>
+                <button id="nodeShaderScriptPaste" type="button">Paste</button>
+                <button id="nodeShaderScriptToDesktop" type="button">To Desktop</button>
+              </span>
             </div>
             <button
               id="nodeShaderScriptClose"
@@ -530,19 +520,8 @@
             </label>
           </div>
           <div class="node-shader-script-actions">
-            <button id="nodeShaderScriptApply" type="button">Apply</button>
-            <button id="nodeShaderScriptCopy" type="button">Copy</button>
-            <button id="nodeShaderScriptPaste" type="button">Paste</button>
-            <button id="nodeShaderScriptToDesktop" type="button">To Desktop</button>
-            <button id="nodeShaderScriptDefault" type="button">Ghost Phosphor</button>
-            <button id="nodeShaderScriptSaveDefault" type="button" hidden>Save As Default</button>
-            <button id="nodeShaderScriptGreenPreset" type="button">Green Tube</button>
-            <button id="nodeShaderScriptAmberPreset" type="button">Amber Tube</button>
-            <button id="nodeShaderScriptCoolWhitePreset" type="button">Cool White</button>
-            <button id="nodeShaderScriptRgbPixelPreset" type="button">RGB Pixels</button>
-            <button id="nodeShaderScriptRedPreset" type="button">Darkroom Red</button>
-            <button id="nodeShaderScriptEnable" type="button" aria-pressed="false">Disabled</button>
             <span id="nodeShaderScriptStatus" class="pill">ready</span>
+            <button id="nodeShaderScriptCopyStatus" type="button">Copy Error</button>
           </div>
         </div>
       </div>
@@ -569,8 +548,7 @@
               type="search"
               placeholder="Search departments..."
               autocomplete="off"
-              spellcheck="false"
-              disabled>
+              spellcheck="false">
           </label>
           <section id="nodeModuleDepartmentList" class="node-module-shop-section scene-context-store-department-list" aria-label="Module departments"></section>
         </div>
@@ -644,25 +622,19 @@
           </div>
           <small>Raw patch JSON for load, save, defaults, and recovery.</small>
         </div>
-        <div class="node-script-actions" aria-label="Patch script clipboard actions">
+        <div class="node-script-actions" aria-label="Patch script editor actions">
           <button
             id="copyNodeGraphScriptButton"
             type="button"
-            data-tooltip-key="script.copy">Copy Script</button>
+            data-tooltip-key="script.copy">Copy</button>
           <button
             id="downloadNodeGraphScriptButton"
-            class="node-script-icon-button"
             type="button"
-            aria-label="Download patch script"
-            data-tooltip-key="script.download"><span aria-hidden="true">&#x1f4be;</span></button>
+            data-tooltip-key="script.download">To Desktop</button>
           <button
             id="pasteNodeGraphScriptButton"
             type="button"
-            data-tooltip-key="script.paste">Paste Script</button>
-          <button
-            id="updateDefaultPresetButton"
-            type="button"
-            data-tooltip-key="script.updateDefault">Update Default</button>
+            data-tooltip-key="script.paste">Paste</button>
         </div>
         <div class="node-script-grid-settings" aria-label="Grid unit pixel settings">
           <label>Grid Unit W PX
@@ -770,22 +742,32 @@
             <button
               id="loadNodeGraphScriptButton"
               type="button"
-              data-tooltip-key="script.load"><span>Load</span><span>Patch Script</span></button>
+              data-tooltip-key="script.load"><span>Load</span><span>Patch</span></button>
             <button
               id="nodeSettingsScriptViewButton"
               type="button"
               aria-pressed="false"
-              data-tooltip-key="script.view"><span>Patch</span><span>Script</span></button>
+              data-tooltip-key="script.view"><span>View</span><span>Script</span></button>
             <button
               id="nodeSettingsSaveScriptButton"
               type="button"
-              data-tooltip-key="script.save"><span>Save</span><span>Patch Script</span></button>
+              data-tooltip-key="script.save"><span>Save</span><span>Patch</span></button>
+            <button
+              id="updateDefaultPresetButton"
+              type="button"
+              data-tooltip-key="script.updateDefault"><span>Update</span><span>Default</span></button>
           </div>
-          <button
-            id="nodeUiDevButton"
-            type="button"
-            aria-pressed="false"
-            data-tooltip-key="settings.uiDevOpen"><span>UIDEV</span></button>
+          <div class="node-settings-view-action-group" role="group" aria-label="Developer views">
+            <button
+              id="nodeCodeScreenViewButton"
+              type="button"
+              aria-pressed="false"><span>Code</span><span>Screen</span></button>
+            <button
+              id="nodeUiDevButton"
+              type="button"
+              aria-pressed="false"
+              data-tooltip-key="settings.uiDevOpen"><span>UIDEV</span></button>
+          </div>
           <div class="node-settings-dev-action-group" role="group" aria-label="In-development build actions">
             <button
               id="makePluginButton"
@@ -1659,6 +1641,15 @@
           <span>selected</span>
           <strong>none</strong>
         </div>
+        <div id="nodeSceneHomeModules" class="scene-context-home-modules" hidden>
+          <button id="nodeSceneOpenModuleBrowser" class="scene-context-module-browser-button" type="button">
+            Module Browser
+          </button>
+          <div
+            id="nodeSceneHomeModuleList"
+            class="scene-context-home-module-list"
+            aria-label="Modules in Home"></div>
+        </div>
         <button id="nodeSceneAddToGroup" type="button" role="menuitem" hidden>
           <span>Add to group</span>
         </button>
@@ -1852,6 +1843,12 @@
             <button id="nodeSceneImageRefresh" type="button">refresh</button>
           </div>
         </div>
+        <div id="nodeSceneCanvasControls" class="scene-context-text-box-controls" hidden>
+          <span>canvas</span>
+          <div>
+            <button id="nodeSceneCanvasScript" type="button">Canvas Script</button>
+          </div>
+        </div>
         <input
           id="nodeSceneImageFileInput"
           type="file"
@@ -1922,24 +1919,11 @@
         <section class="node-scope-settings-section node-scope-global-settings" aria-label="Global oscilloscope settings">
         <div class="node-scope-settings-section-title">Global Settings</div>
         <div class="scene-context-text-box-controls">
-          <span>screen settings</span>
-          <div class="six scene-context-scope-fields">
-            <label>
-              <span>screen burn</span>
-              <input id="nodeMasterScopeBurn" type="number" min="0" max="1" step="0.01" data-global-scope-input="burn" data-global-scope-number-drag="true" value="0">
-            </label>
-            <label>
-              <span>fps</span>
-              <input id="nodeMasterScopeFps" type="number" min="1" max="240" step="1" data-global-scope-input="framesPerSecond" data-global-scope-number-drag="true" value="60">
-            </label>
-          </div>
-        </div>
-        <div class="scene-context-text-box-controls">
           <span>trace image</span>
           <div class="three scene-context-scope-fields">
             <label>
               <span>line thickness</span>
-              <input id="nodeMasterScopeLineThickness" type="number" min="0.25" max="10" step="0.01" data-global-scope-input="lineThickness" data-global-scope-number-drag="true" value="2">
+              <input id="nodeMasterScopeLineThickness" type="number" min="0.25" max="10" step="0.01" data-global-scope-input="lineThickness" data-global-scope-number-drag="true" value="1">
             </label>
             <label>
               <span>overdraw points</span>
@@ -2120,13 +2104,12 @@
         <div id="nodePalette" class="node-palette node-live-toggle-palette" aria-label="Live audio toggles">
           <button
             id="nodeLiveInputButton"
-            class="node-live-toggle node-under-construction-control"
+            class="node-live-toggle"
             type="button"
             aria-pressed="false"
-            aria-disabled="true"
-            disabled>
+            aria-disabled="false">
             <span>Input</span>
-            <span>Under Construction</span>
+            <span>(Off)</span>
           </button>
           <button
             id="nodeLiveOutputButton"
@@ -2150,6 +2133,26 @@
             inputmode="decimal"
             aria-label="Render sample length in seconds">
         </label>
+        <section class="node-clap-host-strip node-clap-host-under-construction" aria-label="CLAP host connection">
+          <div>
+            <span id="nodeClapHostStatus" class="warn">CLAP Host: Under Construction</span>
+            <small id="nodeClapHostDetail">local companion UI is being built here under the render controls</small>
+          </div>
+          <label class="node-clap-host-url-control">
+            <span>Host</span>
+            <input
+              id="nodeClapHostUrl"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              value="http://127.0.0.1:47991"
+              aria-label="CLAP host URL">
+          </label>
+          <button id="nodeClapHostConnectButton" class="node-under-construction-control" type="button" disabled aria-disabled="true">Connect Local Host</button>
+          <button id="nodeClapHostPluginsButton" class="node-under-construction-control" type="button" disabled aria-disabled="true">Refresh Plugins</button>
+          <button id="nodeClapHostDiagnosticsButton" class="node-under-construction-control" type="button" disabled aria-disabled="true">Diagnostics</button>
+          <button id="nodeClapHostCommandButton" class="node-under-construction-control" type="button" disabled aria-disabled="true">Copy Host Command</button>
+        </section>
         <div class="node-live-controls" aria-label="Live Audio">
           <span id="nodeLiveInputStatus" class="pill">input off</span>
           <span id="nodeLiveMicStatus" class="pill">mic off</span>
@@ -2239,6 +2242,47 @@
           </label>
           <button id="metadataSetDefaultButton" type="button">Set Defaults from Kind</button>
         </div>
+        <section class="metadata-script-panel" aria-label="Parameter metadata script">
+          <div class="metadata-script-heading">
+            <span>Metaparameter Script</span>
+            <strong id="metadataScriptTarget">Current parameter</strong>
+          </div>
+          <div
+            id="metadataScriptReference"
+            class="metadata-script-reference"
+            aria-label="Supported metadata script keys"></div>
+          <div class="metadata-script-editor">
+            <pre
+              id="metadataScriptHighlight"
+              class="metadata-script-highlight"
+              aria-hidden="true"></pre>
+            <textarea
+              id="metadataScriptSource"
+              spellcheck="false"
+              rows="13"
+              aria-label="Parameter metadata script"></textarea>
+          </div>
+          <div class="metadata-script-actions">
+            <button id="metadataScriptApply" type="button">Save</button>
+            <button id="metadataScriptRefresh" type="button">Sync</button>
+            <button id="metadataScriptKindTemplate" type="button">Kind Template</button>
+            <button id="metadataScriptNormalize" type="button">Normalize</button>
+            <button id="metadataScriptCopy" type="button">Copy</button>
+            <button id="metadataScriptPaste" type="button">Paste</button>
+            <button id="metadataScriptToDesktop" type="button">To Desktop</button>
+          </div>
+          <output id="metadataScriptStatus" class="pill" aria-live="polite">script ready</output>
+          <ul
+            id="metadataScriptPreview"
+            class="metadata-script-preview"
+            aria-label="Metadata script parsed preview"
+            hidden></ul>
+          <dl
+            id="metadataScriptEffective"
+            class="metadata-script-effective"
+            aria-label="Effective metadata after script"
+            hidden></dl>
+        </section>
       </div>
 
       <div class="node-graph-output">
@@ -2286,17 +2330,6 @@
               id="nodeVisualOutputResolutionValue"
               class="pill node-visual-output-resolution"
               aria-label="Visual export output resolution">1024 x 427</span>
-            <span class="node-render-export-buttons" aria-label="Rendered export actions">
-              <button id="nodeRenderWavButton" type="button" disabled>Render wav</button>
-              <button id="nodeRenderMp4Button" type="button" disabled>Render mp4</button>
-              <button id="nodeRenderOggButton" type="button" disabled>Render ogg</button>
-              <button id="nodeRenderFlacButton" type="button" disabled>Render flac</button>
-              <button id="nodeRenderMp4AltButton" type="button" disabled>Render mp4</button>
-              <button id="nodeRenderMp4VideoOnlyButton" type="button" disabled>Render mp4 (video only)</button>
-            </span>
-            <button id="nodeExportVisualVideoButton" type="button" disabled>Export WebM</button>
-            <button id="nodeSaveVisualOutputButton" type="button" disabled>Save PNG</button>
-            <button id="nodeCopyVisualOutputButton" type="button" disabled>Copy Image</button>
           </div>
           <canvas
             id="nodeVisualOutputCanvas"
@@ -2729,114 +2762,118 @@
   <script src="./public/manifest-view.js?v=manifest-view-refactor-1780360800000"></script>
   <script src="./public/manifest-loader.js?v=manifest-loader-refactor-1780389600000"></script>
   <script src="./public/node-graph-wires.js?v=external-graph-inputs-1780816800000"></script>
-  <script src="./public/node-graph-file-actions.js?v=slider-unit-color-1780307400000"></script>
+  <script src="./public/node-graph-file-actions.js?v=patch-script-editor-actions-1"></script>
   <script src="./public/node-graph-default-buttons.js?v=slider-unit-color-1780307400000"></script>
-  <script src="./public/node-graph-cookbook-filter.js?v=filter-curves-and-octave-cv-1780720800000"></script>
-  <script src="./public/node-graph-module-definitions.js?v=external-graph-inputs-1780816800000"></script>
-  <script src="./public/node-graph-module-store.js?v=led-module-1"></script>
-  <script src="./public/node-graph-module-sizing.js?v=graph-module-screen-1780812000000"></script>
+  <script src="./public/node-graph-cookbook-filter.js?v=filter-curve-zero-cutoffs-1780822200000"></script>
+  <script src="./public/node-graph-color-standards.js?v=color-standards-1"></script>
+  <script src="./public/node-graph-module-definitions.js?v=oscilloscope-mono-label-1"></script>
+  <script src="./public/node-graph-module-store.js?v=speaker-protection-1"></script>
+  <script src="./public/node-graph-module-sizing.js?v=canvas-script-layout-1"></script>
   <script src="./public/node-graph-metadata-kinds.js?v=slider-unit-color-1780307400000"></script>
-  <script src="./public/node-graph-parameter-metadata.js?v=codeblock-state-context-1"></script>
+  <script src="./public/node-graph-parameter-metadata.js?v=canvas-script-ports-2"></script>
   <script src="./public/node-graph-metadata-defaults.js?v=slider-unit-color-1780307400000"></script>
-  <script src="./public/node-graph-text-box-utils.js?v=slider-unit-color-1780307400000"></script>
-  <script src="./public/node-graph-image-utils.js?v=image-trace-texture-1780644000000"></script>
-  <script src="./public/node-graph-graph-utils.js?v=graph-square-viewport-1"></script>
+  <script src="./public/node-graph-text-box-utils.js?v=text-box-size-1000-1"></script>
+  <script src="./public/node-graph-image-utils.js?v=canvas-hex-colors-1"></script>
+  <script src="./public/node-graph-graph-utils.js?v=graph2-through-curves-1"></script>
+  <script src="./public/node-graph-samples.js?v=sample-playback-1"></script>
   <script src="./public/node-graph-text-box-rendering.js?v=slider-unit-color-1780307400000"></script>
-  <script src="./public/node-graph-patch-normalizers.js?v=scope-script-controls-1"></script>
-  <script src="./public/node-graph-ui-view.js?v=graph-ui-editor-4"></script>
+  <script src="./public/node-graph-patch-normalizers.js?v=canvas-hex-colors-1"></script>
+  <script src="./public/node-graph-ui-view.js?v=graph-endpoint-lock-1"></script>
   <script src="./public/node-graph-audio-derivation.js?v=sample-rate-oversampling-1780468200000"></script>
-  <script src="./public/node-graph-grid-utils.js?v=slider-unit-color-1780307400000"></script>
-  <script src="./public/node-graph-patch-runtime.js?v=additive-osc-source-1"></script>
+  <script src="./public/node-graph-grid-utils.js?v=half-grid-window-drag-1"></script>
+  <script src="./public/node-graph-patch-runtime.js?v=ellipsoid-xy-1"></script>
   <script src="./public/node-graph-code-screen-model.js?v=code-screen-1"></script>
   <script src="./public/node-graph-patch-serialization.js?v=timing-header-1"></script>
   <script src="./public/node-graph-settings-fields.js?v=slider-unit-color-1780307400000"></script>
   <script src="./public/node-graph-settings-view.js?v=sample-rate-oversampling-1780468200000"></script>
   <script src="./public/node-graph-settings-text-fit.js?v=slider-unit-color-1780307400000"></script>
-  <script src="./public/node-graph-default-preset.js?v=camera-output-wires-1780801800000"></script>
+  <script src="./public/node-graph-default-preset.js?v=default-visible-nodes-1"></script>
   <script src="./public/node-graph-script-status.js?v=slider-unit-color-1780307400000"></script>
-  <script src="./public/node-graph-view-controls.js?v=scope-overdraw-fade-1"></script>
-  <script src="./public/node-graph-workspace-geometry.js?v=wire-svg-rect-1"></script>
-  <script src="./public/node-graph-workspace-zoom.js?v=slider-zoom-geometry-1780615800000"></script>
-  <script src="./public/node-graph-workspace-view.js?v=workspace-resize-zoom-snap-1"></script>
+  <script src="./public/node-graph-view-controls.js?v=module-browser-context-menu-1"></script>
+  <script src="./public/node-graph-workspace-geometry.js?v=module-whole-grid-pan-half-grid-1"></script>
+  <script src="./public/node-graph-workspace-zoom.js?v=log-zoom-feel-1"></script>
+  <script src="./public/node-graph-workspace-view.js?v=module-origin-independent-1"></script>
   <script src="./public/node-graph-camera-view.js?v=utility-camera-feed-1780810000000"></script>
-  <script src="./public/node-graph-clap-host.js?v=clap-diagnostics-1"></script>
+  <script src="./public/node-graph-clap-host.js?v=clap-under-construction-2"></script>
   <script src="./public/node-graph-marquee-selection.js?v=slider-unit-color-1780307400000"></script>
-  <script src="./public/node-graph-node-dragging.js?v=led-body-drag-1"></script>
-  <script src="./public/node-graph-context-menu.js?v=graph-ui-editor-1"></script>
-  <script src="./public/node-graph-module-actions.js?v=graph-ui-editor-1"></script>
-  <script src="./public/node-graph-code-screen.js?v=code-screen-1"></script>
-  <script src="./public/node-graph-module-scopes.js?v=external-graph-inputs-1780816800000"></script>
-  <script src="./public/node-graph-shader-script.js?v=scope-preview-sync-1"></script>
-  <script src="./public/node-graph-module-factories.js?v=external-graph-inputs-1780816800000"></script>
-  <script src="./public/node-graph-module-header-rendering.js?v=hidden-title-bypass-1"></script>
-  <script src="./public/node-graph-module-rendering.js?v=external-graph-inputs-1780816800000"></script>
+  <script src="./public/node-graph-node-dragging.js?v=module-whole-grid-pan-half-grid-1"></script>
+  <script src="./public/node-graph-context-menu.js?v=home-context-menu-1"></script>
+  <script src="./public/node-graph-module-actions.js?v=module-origin-independent-1"></script>
+  <script src="./public/node-graph-code-screen.js?v=canvas-ratio-language-2"></script>
+  <script src="./public/node-graph-module-scopes.js?v=scope-debug-freeze-3"></script>
+  <script src="./public/node-graph-shader-script.js?v=shader-brightness-contrast-only-1"></script>
+  <script src="./public/node-graph-canvas-script.js?v=canvas-hex-colors-1"></script>
+  <script src="./public/node-graph-module-factories.js?v=oscilloscope-mono-label-1"></script>
+  <script src="./public/node-graph-module-header-rendering.js?v=scope-controls-lower-row-1"></script>
+  <script src="./public/node-graph-module-rendering.js?v=speaker-protection-1"></script>
   <script src="./public/node-graph-history.js?v=slider-unit-color-1780307400000"></script>
   <script src="./public/node-graph-visual-utils.js?v=text-light-registry-1780800000000"></script>
-  <script src="./public/node-graph-patch-clone.js?v=external-graph-inputs-1780816800000"></script>
+  <script src="./public/node-graph-patch-clone.js?v=module-title-cleanup-1"></script>
   <script src="./public/node-graph-slider-metadata.js?v=slider-math-input-1780438200000"></script>
   <script src="./public/node-graph-slider-values.js?v=slider-zoom-geometry-1780615800000"></script>
-  <script src="./public/node-graph-slider-dragging.js?v=slider-drag-ownership-1780804800000"></script>
+  <script src="./public/node-graph-slider-dragging.js?v=graph-endpoint-lock-1"></script>
   <script src="./public/node-graph-node-accessors.js?v=slider-unit-color-1780307400000"></script>
-  <script src="./public/node-graph-selection.js?v=external-graph-inputs-1780816800000"></script>
+  <script src="./public/node-graph-selection.js?v=module-origin-independent-1"></script>
   <script src="./public/node-graph-port-geometry.js?v=external-graph-inputs-1780816800000"></script>
   <script src="./public/node-graph-slider-readout.js?v=choice-square-bottom-plus-2"></script>
-  <script src="./public/node-graph-slider-readout-controls.js?v=slider-zoom-geometry-1780615800000"></script>
+  <script src="./public/node-graph-slider-readout-controls.js?v=graph2-smoothing-3"></script>
   <script src="./public/node-graph-ghost-sliders.js?v=slider-lane-inset-1780328200000"></script>
-  <script src="./public/node-graph-metadata-editor.js?v=metadata-popover-bind-1"></script>
+  <script src="./public/node-graph-metadata-editor.js?v=metadata-key-reference-1"></script>
   <script src="./public/node-graph-render-settings.js?v=slider-unit-color-1780307400000"></script>
-  <script src="./public/node-graph-ear-protection.js?v=ear-protection-latch-1780347600000"></script>
+  <script src="./public/node-graph-ear-protection.js?v=ear-protection-close-1"></script>
   <script src="./public/node-graph-rendered-audio.js?v=slider-unit-color-1780307400000"></script>
   <script src="./public/node-graph-rendered-visual-output.js?v=copy-visual-output-1"></script>
-  <script src="./public/node-graph-viewport-image.js?v=copy-viewport-image-4"></script>
-  <script src="./public/node-graph-av-export.js?v=video-export-auto-render-1"></script>
+  <script src="./public/node-graph-viewport-image.js?v=viewport-png-download-1"></script>
+  <script src="./public/node-graph-av-export.js?v=viewport-last-file-1"></script>
   <script src="./public/node-graph-rendered-output-canvases.js?v=slider-unit-color-1780307400000"></script>
   <script src="./public/node-graph-execution-wires.js?v=external-graph-inputs-1780816800000"></script>
-  <script src="./public/node-graph-execution-plan.js?v=external-graph-inputs-1780816800000"></script>
+  <script src="./public/node-graph-execution-plan.js?v=live-audio-source-fix-1"></script>
   <script src="./public/node-graph-execution-summary.js?v=slider-unit-color-1780307400000"></script>
-  <script src="./public/node-graph-wire-actions.js?v=external-graph-inputs-1780816800000"></script>
+  <script src="./public/node-graph-wire-actions.js?v=graph2-smoothing-3"></script>
   <script src="./public/node-graph-trace-router.js?v=no-self-burst-1780321400000"></script>
-  <script src="./public/node-graph-wire-rendering.js?v=external-graph-inputs-1780816800000"></script>
-  <script src="./public/node-graph-render-output.js?v=clap-render-bounded-tail-1"></script>
+  <script src="./public/node-graph-wire-rendering.js?v=port-endpoint-wire-render-1"></script>
+  <script src="./public/node-graph-render-output.js?v=output-one-trip-1"></script>
   <script src="./public/node-graph-debug-copy.js?v=slider-unit-color-1780307400000"></script>
   <script src="./public/node-graph-execution-debug-api.js?v=slider-unit-color-1780307400000"></script>
   <script src="./public/node-graph-execution-debug-view.js?v=slider-unit-color-1780307400000"></script>
-  <script src="./public/node-graph-tooltips.js?v=scope-shader-authoring-1"></script>
-  <script src="./public/node-graph-interaction-help.js?v=midi-keyboard-toggle-1"></script>
-  <script src="./public/presets/useruisettings.js?v=scope-overdraw-fade-1"></script>
+  <script src="./public/node-graph-tooltips.js?v=speed-under-construction-1"></script>
+  <script src="./public/node-graph-interaction-help.js?v=performance-modules-1"></script>
+  <script src="./public/presets/useruisettings.js?v=scope-line-thickness-default-1"></script>
   <script src="./public/node-graph-ui-settings-definitions.js?v=text-light-registry-1780800000000"></script>
   <script src="./public/node-graph-ui-settings-utils.js?v=slider-unit-color-1780307400000"></script>
   <script src="./public/node-graph-user-ui-settings-controls.js?v=master-scope-fps-1780618200000"></script>
   <script src="./public/node-graph-ui-settings-panels.js?v=slider-unit-color-1780307400000"></script>
-  <script src="./public/node-graph-ui-settings-persistence.js?v=scope-overdraw-fade-1"></script>
+  <script src="./public/node-graph-ui-settings-persistence.js?v=scope-line-thickness-default-1"></script>
   <script src="./public/node-graph-ui-settings-sync.js?v=text-light-registry-1780800000000"></script>
-  <script src="./public/node-graph-keyboard-shortcuts.js?v=editable-graph-select-key-1"></script>
+  <script src="./public/node-graph-keyboard-shortcuts.js?v=origin-canvas-grid-resize-1"></script>
   <script src="./public/node-graph-live-status-text.js?v=sample-rate-oversampling-1780468200000"></script>
   <script src="./public/node-graph-live-status-controls.js?v=slider-unit-color-1780307400000"></script>
   <script src="./public/node-graph-live-meter-controls.js?v=gpu-additive-status-recipe-1"></script>
   <script src="./public/node-graph-live-input-status.js?v=slider-unit-color-1780307400000"></script>
   <script src="./public/node-graph-live-evidence.js?v=sample-rate-oversampling-1780468200000"></script>
-  <script src="./public/node-graph-live-control-rendering.js?v=slider-unit-color-1780307400000"></script>
-  <script src="./public/node-graph-default-patch.js?v=external-graph-inputs-1780816800000"></script>
-  <script src="./public/node-graph-state.js?v=external-graph-inputs-1780816800000"></script>
-  <script src="./public/node-graph-patch-core.js?v=external-graph-inputs-1780816800000"></script>
-  <script src="./public/node-graph-live-plan-runtime.js?v=external-graph-inputs-1780816800000"></script>
+  <script src="./public/node-graph-live-control-rendering.js?v=input-ready-status-1"></script>
+  <script src="./public/node-graph-default-patch.js?v=canvas-script-layout-1"></script>
+  <script src="./public/node-graph-state.js?v=performance-modules-1"></script>
+  <script src="./public/node-graph-patch-core.js?v=module-origin-independent-1"></script>
+  <script src="./public/node-graph-live-plan-runtime.js?v=buffered-inputs-1"></script>
   <script src="./public/node-graph-live-parameter-runtime.js?v=clap-tail-source-silence-1"></script>
-  <script src="./public/node-graph-oscillator-runtime.js?v=additive-phase-curve-separate-1"></script>
+  <script src="./public/node-graph-oscillator-runtime.js?v=ellipsoid-audio-1"></script>
   <script src="./public/node-graph-gpu-additive-backend.js?v=external-graph-inputs-1780816800000"></script>
   <script src="./public/node-graph-jerobeam-spiral.js?v=node-graph-jerobeam-spiral-refactor-1780371000000"></script>
-  <script src="./public/node-graph-live-frame-evaluator.js?v=external-graph-inputs-1780816800000"></script>
-  <script src="./public/node-graph-live-runtime.js?v=external-graph-inputs-1780816800000"></script>
+  <script src="./public/node-graph-lorenz-attractor.js?v=lorenz-attractor-1"></script>
+  <script src="./public/node-graph-live-frame-evaluator.js?v=oscilloscope-buffered-inputs-1"></script>
+  <script src="./public/node-graph-live-runtime.js?v=oscilloscope-buffered-inputs-1"></script>
   <script src="./public/node-graph-wire-controller-bootstrap.js?v=external-graph-inputs-1780816800000"></script>
-  <script src="./public/node-graph-workspace-event-bindings.js?v=constraint-overlay-toggles-1"></script>
+  <script src="./public/node-graph-workspace-event-bindings.js?v=canvas-origin-1"></script>
   <script src="./public/node-graph-render-live-event-bindings.js?v=copy-visual-output-1"></script>
-  <script src="./public/node-graph-header-event-bindings.js?v=graph-ui-editor-1"></script>
+  <script src="./public/node-graph-header-event-bindings.js?v=viewport-png-download-1"></script>
   <script src="./public/node-graph-help-event-bindings.js?v=node-graph-help-event-bindings-refactor-1780369200000"></script>
-  <script src="./public/node-graph-scene-menu-event-bindings.js?v=graph-ui-editor-1"></script>
+  <script src="./public/node-graph-scene-menu-event-bindings.js?v=module-browser-context-menu-1"></script>
   <script src="./public/node-graph-uidev-event-bindings.js?v=text-light-registry-1780800000000"></script>
   <script src="./public/node-graph-settings-event-bindings.js?v=metadata-popover-bind-1"></script>
   <script src="./public/node-graph-slider-event-bindings.js?v=node-graph-slider-event-bindings-refactor-1780369200000"></script>
   <script src="./public/node-graph-event-bindings.js?v=graph-ui-editor-2"></script>
-  <script src="./public/node-graph-bootstrap.js?v=metadata-popover-bind-1"></script>
+  <script src="./public/node-graph-bootstrap.js?v=startup-modules-visible-1"></script>
   <script src="./public/app-event-bindings.js?v=app-event-bindings-refactor-1780361400000"></script>
   <script src="./public/app.js?v=interface-ready-startup-task-timeout-1"></script>
 </body>

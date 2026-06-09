@@ -27,25 +27,75 @@ function createNodeGraphPatchNode(type, options = {}) {
     node.layout = normalizeNodeGraphTextBoxLayout(options.layout);
   } else if (nodeGraphModuleDefinitions[type]?.layout === "image") {
     node.layout = normalizeNodeGraphImageLayout(options.layout);
+  } else if (nodeGraphModuleDefinitions[type]?.layout === "led") {
+    node.led = normalizeNodeGraphLedLayout(options.led);
   }
-  if (type === "graph") {
+  if (nodeGraphModuleIsGraphType(type)) {
     node.graph = normalizeNodeGraphGraph(options.graph);
   }
   if (type === "codeblock") {
     node.codeblock = normalizeNodeGraphCodeblock(options.codeblock);
   }
+  if (type === "canvas") {
+    node.canvasScript = normalizeNodeGraphCanvasScript(options.canvasScript);
+  }
+  if (type === "screenSpaceShader") {
+    node.screenSpaceShader = normalizeNodeGraphScreenSpaceShader(options.screenSpaceShader);
+  }
+  if (Object.hasOwn(options, "scopeShader")) {
+    node.scopeShader = normalizeNodeGraphScopeShader(options.scopeShader);
+  }
+  if (type === "moduleGroup") {
+    node.moduleGroup = normalizeNodeGraphModuleGroup(options.moduleGroup);
+  }
+  if (type === "clapPlugin") {
+    node.clap = normalizeNodeGraphClapPluginBinding(options.clap);
+  }
   return node;
 }
 
-const nodeGraphDefaultNodeConfigs = Object.freeze([]);
+const nodeGraphDefaultNodeConfigs = Object.freeze([
+  createNodeGraphPatchNode("canvas", { alias: "Origin", id: "canvas-origin", gx: 1, gy: 1 }),
+  createNodeGraphPatchNode("moduleHome", { id: "home", gx: 1, gy: 10, widthGu: 5 }),
+  createNodeGraphPatchNode("moduleShop", { id: "shop", gx: 1, gy: 15, widthGu: 5 }),
+  createNodeGraphPatchNode("osc", { id: "osc", gx: 11, gy: 1 }),
+  {
+    ...createNodeGraphPatchNode("gain", { id: "gain", gx: 19, gy: 2 }),
+    params: { ...nodeGraphDefaultParamsForType("gain"), amount: 1 },
+  },
+  {
+    ...createNodeGraphPatchNode("output", { id: "output", gx: 28, gy: 9, widthGu: 7 }),
+    params: { ...nodeGraphDefaultParamsForType("output"), volume: 0.1 },
+  },
+]);
 
-const nodeGraphDefaultConnections = Object.freeze([]);
+const nodeGraphDefaultConnections = Object.freeze([
+  { sourceNode: "osc", sourcePort: "Saw", destinationNode: "gain", destinationPort: "In" },
+  { sourceNode: "gain", sourcePort: "Out", destinationNode: "output", destinationPort: "Left" },
+  { sourceNode: "gain", sourcePort: "Out", destinationNode: "output", destinationPort: "Right" },
+]);
 
 const nodeGraphDefaultPatch = Object.freeze({
+  activeCameraId: "camera-1",
   audio: {
-    targetSampleRate: 88200,
+    targetSampleRate: 44100,
   },
   bypassedNodes: [],
+  cameras: [
+    {
+      color: "#ff3333",
+      enabled: true,
+      height: 489,
+      id: "camera-1",
+      midiTrigger: null,
+      name: "Camera 1",
+      resolutionHeight: 1080,
+      resolutionWidth: 1920,
+      width: 868,
+      x: 0,
+      y: 0,
+    },
+  ],
   info: {
     author: "",
     description: "",
@@ -77,6 +127,7 @@ const nodeGraphDefaultPatch = Object.freeze({
   view: { widthGu: 31, heightGu: 20 },
   nodes: nodeGraphDefaultNodeConfigs.map((node) => ({ ...node })),
   connections: nodeGraphDefaultConnections.map((connection) => ({ ...connection })),
+  graphConnections: [],
   modulations: [],
   monitors: [],
   uiItems: [],

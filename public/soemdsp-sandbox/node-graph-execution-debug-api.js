@@ -67,6 +67,8 @@ function nodeGraphSoemdspObjectConcept(type) {
       return "caller-owned oscillator DSP object";
     case "spiral":
       return "caller-owned JerobeamSpiral DSP object";
+    case "lorenzAttractor":
+      return "caller-owned LorenzAttractor DSP object";
     case "noise":
       return "caller-owned noise DSP object";
     case "gain":

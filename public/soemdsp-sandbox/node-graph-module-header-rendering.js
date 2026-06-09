@@ -2,6 +2,11 @@ function nodeGraphPatchTimingValue(key) {
   return normalizeNodeGraphPatchTiming(nodeGraphMvp?.patch?.timing)[key];
 }
 
+const nodeGraphTapTempoState = {
+  lastTapMs: 0,
+  intervals: [],
+};
+
 function syncNodeGraphHeaderTimingWidgets() {
   const timing = normalizeNodeGraphPatchTiming(nodeGraphMvp?.patch?.timing);
   for (const input of document.querySelectorAll(".node-header-timing-input")) {
@@ -55,19 +60,33 @@ function bindNodeGraphHeaderTimingWidgets(root = document) {
     });
     input.addEventListener("pointerdown", (event) => event.stopPropagation());
   }
+  for (const field of root.querySelectorAll(".node-header-timing-field[data-header-number-drag='true']")) {
+    if (field.dataset.headerNumberDragBound === "true") {
+      continue;
+    }
+    field.dataset.headerNumberDragBound = "true";
+    field.addEventListener("dblclick", beginNodeGraphScopeNumberEdit, true);
+    field.addEventListener("pointerdown", beginNodeGraphScopeNumberDrag, true);
+  }
 }
 
 function createNodeGraphHeaderTimingInput(key, label, options = {}) {
   const field = document.createElement("label");
   field.className = "node-header-timing-field";
+  if (options.row) {
+    field.dataset.timingRow = options.row;
+  }
+  field.dataset.headerNumberDrag = "true";
   field.setAttribute("aria-label", label);
 
   const caption = document.createElement("span");
+  caption.className = "node-header-timing-caption";
   caption.textContent = label;
   field.append(caption);
 
   const input = document.createElement("input");
   input.className = "node-header-timing-input";
+  input.dataset.globalScopeNumberDrag = "true";
   input.dataset.timingField = key;
   input.inputMode = "numeric";
   input.min = String(options.min ?? 1);
@@ -80,14 +99,174 @@ function createNodeGraphHeaderTimingInput(key, label, options = {}) {
   return field;
 }
 
+function createNodeGraphTapTempoButton() {
+  const button = document.createElement("button");
+  button.className = "node-header-tap-tempo-button";
+  button.type = "button";
+  button.textContent = "Tap";
+  button.title = "Tap tempo";
+  button.setAttribute("aria-label", "Tap tempo for patch BPM");
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    handleNodeGraphTapTempo();
+  });
+  button.addEventListener("pointerdown", (event) => {
+    event.stopPropagation();
+  });
+  button.addEventListener("keydown", (event) => {
+    event.stopPropagation();
+  });
+  return button;
+}
+
+function createNodeGraphHeaderSpeedPlaceholder() {
+  const field = document.createElement("label");
+  field.className = "node-header-timing-field node-header-speed-placeholder node-under-construction-control";
+  field.setAttribute("aria-label", "Speed control under construction");
+  field.dataset.timingRow = "lower";
+  field.dataset.tooltipKey = "timing.speedUnderConstruction";
+
+  const caption = document.createElement("span");
+  caption.textContent = "Speed";
+  field.append(caption);
+
+  const inputWrap = document.createElement("span");
+  inputWrap.className = "node-header-speed-placeholder-value";
+
+  const input = document.createElement("input");
+  input.className = "node-header-timing-input";
+  input.inputMode = "decimal";
+  input.max = "16";
+  input.min = "0";
+  input.readOnly = true;
+  input.step = "0.1";
+  input.type = "number";
+  input.value = "1.0";
+  input.setAttribute("aria-label", "Speed placeholder, under construction");
+  input.dataset.tooltipKey = "timing.speedUnderConstruction";
+  input.addEventListener("keydown", (event) => event.stopPropagation());
+  input.addEventListener("pointerdown", (event) => event.stopPropagation());
+
+  inputWrap.append(input);
+  field.append(inputWrap);
+  return field;
+}
+
+function createNodeGraphHeaderScopeInput(id, label, value, options = {}) {
+  const field = document.createElement("label");
+  field.className = "node-header-timing-field node-header-scope-field";
+  if (options.row) {
+    field.dataset.timingRow = options.row;
+  }
+  field.dataset.headerNumberDrag = "true";
+  field.setAttribute("aria-label", options.ariaLabel || label);
+
+  const caption = document.createElement("span");
+  caption.className = "node-header-timing-caption";
+  caption.textContent = label;
+  field.append(caption);
+
+  const input = document.createElement("input");
+  input.id = id;
+  input.className = "node-header-timing-input";
+  input.dataset.globalScopeInput = options.scopeInput || "";
+  input.dataset.globalScopeNumberDrag = "true";
+  input.inputMode = options.inputMode || "decimal";
+  input.min = String(options.min ?? 0);
+  input.max = String(options.max ?? 1);
+  input.step = String(options.step ?? 0.01);
+  input.type = "number";
+  input.value = String(value);
+  input.addEventListener("keydown", (event) => event.stopPropagation());
+  input.addEventListener("pointerdown", (event) => event.stopPropagation());
+  field.append(input);
+
+  return field;
+}
+
+function resetNodeGraphTapTempo(nowMs = 0) {
+  nodeGraphTapTempoState.lastTapMs = nowMs;
+  nodeGraphTapTempoState.intervals = [];
+}
+
+function handleNodeGraphTapTempo() {
+  const nowMs = performance.now();
+  if (!nodeGraphTapTempoState.lastTapMs || nowMs - nodeGraphTapTempoState.lastTapMs > 2500) {
+    resetNodeGraphTapTempo(nowMs);
+    return;
+  }
+
+  const intervalMs = nowMs - nodeGraphTapTempoState.lastTapMs;
+  nodeGraphTapTempoState.lastTapMs = nowMs;
+  nodeGraphTapTempoState.intervals.push(intervalMs);
+  if (nodeGraphTapTempoState.intervals.length > 4) {
+    nodeGraphTapTempoState.intervals.shift();
+  }
+  const averageIntervalMs = nodeGraphTapTempoState.intervals.reduce((total, value) => total + value, 0)
+    / nodeGraphTapTempoState.intervals.length;
+  const tempoBpm = Math.max(1, Math.min(320, Math.round(60000 / averageIntervalMs)));
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  patch.timing = normalizeNodeGraphPatchTiming({
+    ...patch.timing,
+    tempoBpm,
+  });
+  commitNodeGraphPatch(patch, {
+    markPending: false,
+    status: "tap tempo synced",
+  });
+}
+
 function createNodeGraphHeaderTimingWidgets() {
   const group = document.createElement("div");
   group.className = "node-header-timing-widgets";
   group.setAttribute("aria-label", "Patch timing");
   group.append(
+    createNodeGraphTapTempoButton(),
     createNodeGraphHeaderTimingInput("tempoBpm", "BPM", { max: 320 }),
     createNodeGraphHeaderTimingInput("timeSignatureNumerator", "Beats"),
     createNodeGraphHeaderTimingInput("timeSignatureDenominator", "Unit"),
+    createNodeGraphHeaderScopeInput(
+      "nodeMasterScopeBurn",
+      "Burn",
+      normalizeNodeGraphModuleScopeBurn(nodeGraphMvp.moduleScopeBurn ?? 0.85).toFixed(2),
+      {
+        ariaLabel: "Oscilloscope screen burn",
+        max: 1,
+        min: 0,
+        row: "lower",
+        scopeInput: "burn",
+        step: 0.01,
+      },
+    ),
+    createNodeGraphHeaderScopeInput(
+      "nodeMasterScopeDecay",
+      "Decay",
+      normalizeNodeGraphModuleScopeDecay(nodeGraphMvp.moduleScopeDecay ?? 0.78).toFixed(2),
+      {
+        ariaLabel: "Oscilloscope initial phosphor decay",
+        max: 1,
+        min: 0,
+        row: "lower",
+        scopeInput: "decay",
+        step: 0.01,
+      },
+    ),
+    createNodeGraphHeaderScopeInput(
+      "nodeMasterScopeFps",
+      "FPS",
+      normalizeNodeGraphModuleScopeFramesPerSecond(nodeGraphMvp.moduleScopeFramesPerSecond ?? 60),
+      {
+        ariaLabel: "Oscilloscope frames per second",
+        inputMode: "numeric",
+        max: 240,
+        min: 1,
+        row: "lower",
+        scopeInput: "framesPerSecond",
+        step: 1,
+      },
+    ),
+    createNodeGraphHeaderSpeedPlaceholder(),
   );
   return group;
 }
@@ -109,7 +288,7 @@ function createNodeGraphModuleHeader(type, node, definition) {
   header.className = "dsp-node-header";
   const titleRow = document.createElement("div");
   titleRow.className = "node-header-title-row";
-  nodeGraphApplyTooltip(titleRow, "module.move", {}, { title: false });
+  nodeGraphApplyTooltip(titleRow, "module.titleMove", {}, { title: false });
   const titleText = document.createElement("span");
   titleText.className = "node-header-title";
   titleText.textContent = nodeGraphPatchNodeTitle({ id: node, type });

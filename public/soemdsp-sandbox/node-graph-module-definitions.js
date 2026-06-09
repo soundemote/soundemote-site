@@ -2,7 +2,17 @@ const nodeGraphNodeLabels = Object.freeze({
   audioInput: "Input",
   codeblock: "Codeblock",
   graph: "Graph",
+  graph2: "Graph 2",
+  groupInput: "Group Input",
+  groupOutput: "Group Output",
+  moduleGroup: "Module Group",
+  moduleHome: "Home",
+  moduleShop: "Shop",
   osc: "Osc",
+  fbPolyBlepOsc: "F/B PolyBLEP Osc",
+  additiveOsc: "Additive Osc",
+  gpuAdditiveOsc: "GPU Additive",
+  ellipsoid: "Ellipsoid",
   clock: "Clock",
   clockDivider: "Clock Divider",
   delayedTrigger: "Delayed Trigger",
@@ -11,11 +21,13 @@ const nodeGraphNodeLabels = Object.freeze({
   triggerDivider: "Trigger Divider",
   stepSequencer: "Step Sequencer",
   spiral: "Spiral",
+  lorenzAttractor: "Lorenz Attractor",
   noise: "Noise",
   stereoNoise: "Stereo Noise",
   noiseGenerator: "Noise Generator",
   randomWalk: "Random Walk",
   fractalBrownianNoise: "Fractal Brownian Noise",
+  clapPlugin: "CLAP Plugin",
   gain: "Gain",
   bias: "Bias",
   valueSlider: "Value Slider",
@@ -24,11 +36,14 @@ const nodeGraphNodeLabels = Object.freeze({
   bandpass: "Bandpass",
   cookbookFilter: "Multi Stage Filter",
   ladderFilter: "Ladder Filter",
+  delayEffect: "Delay",
   slewLimiter: "Up/Down Slew",
   sampleHold: "Sample & Hold",
   midiOut: "Midi Out",
   midiNotePitch: "Midi Note Pitch",
   keyboardController: "MIDI Keyboard",
+  samplePlayer: "Sample Player",
+  sampleLooper: "Sample Looper",
   macroControls: "Macro Controls",
   pitchModWheel: "Pitch / Mod Wheel",
   expAdsr: "Exp ADSR",
@@ -37,11 +52,15 @@ const nodeGraphNodeLabels = Object.freeze({
   pluckEnvelope: "Pluck Envelope",
   vactrolEnvelope: "Vactrol Envelope",
   sandboxVisuals: "Screen Visuals",
+  screenSpaceShader: "Screen Space Shader",
   bloomGlow: "Bloom & Glow",
   rgbaHsla: "RGBA / HSLA",
   chromaColor: "Chroma Color",
   image: "Image",
-  visualOscilloscope: "Visual Oscilloscope",
+  canvas: "Canvas",
+  led: "LED",
+  visualOscilloscope: "Oscilloscope",
+  speakerProtection: "Speaker Protection",
   badvalMonitor: "BADVAL Monitor",
   textBox: "Text Box",
   output: "Output",
@@ -62,6 +81,17 @@ const nodeGraphModuleDefinitions = Object.freeze({
         min: "0",
         step: "0.01",
       },
+      {
+        defaultValue: "1",
+        key: "seed",
+        label: "Seed",
+        max: "99999",
+        maxDigits: 5,
+        mid: "1",
+        min: "0",
+        nonlinearSlider: false,
+        step: "1",
+      },
     ],
   },
   codeblock: {
@@ -73,12 +103,62 @@ const nodeGraphModuleDefinitions = Object.freeze({
     inputs: ["In"],
     layout: "graph",
     outputs: ["Out"],
+    parameters: [
+      { choices: ["Input", "LFO"], defaultValue: "0", displayChoices: true, divideChoicesVisibly: true, key: "mode", label: "Mode", linearSmoothing: false, max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "1" },
+      { choices: ["Off", "On"], defaultValue: "0", displayChoices: true, divideChoicesVisibly: true, key: "lockEndpointY", label: "Lock Ends", linearSmoothing: false, max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "1" },
+      { defaultValue: "1", key: "rate", kind: "frequency", label: "Rate", max: "40", maxDigits: 5, mid: "1", min: "0", step: "any", unit: "Hz" },
+      { defaultValue: "0", key: "phase", kind: "phase", label: "Phase", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "0.01", unit: "cycle", wraparound: true },
+      { defaultValue: "0", key: "outputMin", label: "Out Min", max: "1", mid: "0", min: "-1", nonlinearSlider: false, step: "any" },
+      { defaultValue: "1", key: "outputMax", label: "Out Max", max: "1", mid: "0", min: "-1", nonlinearSlider: false, step: "any" },
+    ],
+  },
+  graph2: {
+    inputs: ["In"],
+    layout: "graph",
+    outputs: ["Out"],
+    parameters: [
+      { choices: ["Input", "LFO"], defaultValue: "0", displayChoices: true, divideChoicesVisibly: true, key: "mode", label: "Mode", linearSmoothing: false, max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "1" },
+      { choices: ["Linear", "Smooth", "Meander", "Quadratic Through", "Cubic Through"], defaultValue: "1", displayChoices: true, divideChoicesVisibly: true, key: "smoothingMode", label: "Smoothing", linearSmoothing: false, max: "4", mid: "2", min: "0", nonlinearSlider: false, step: "1" },
+      { choices: ["Off", "On"], defaultValue: "0", displayChoices: true, divideChoicesVisibly: true, key: "lockEndpointY", label: "Lock Ends", linearSmoothing: false, max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "1" },
+      { defaultValue: "1", key: "rate", kind: "frequency", label: "Rate", max: "40", maxDigits: 5, mid: "1", min: "0", step: "any", unit: "Hz" },
+      { defaultValue: "0", key: "phase", kind: "phase", label: "Phase", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "0.01", unit: "cycle", wraparound: true },
+      { defaultValue: "0", key: "outputMin", label: "Out Min", max: "1", mid: "0", min: "-1", nonlinearSlider: false, step: "any" },
+      { defaultValue: "1", key: "outputMax", label: "Out Max", max: "1", mid: "0", min: "-1", nonlinearSlider: false, step: "any" },
+    ],
+  },
+  groupInput: {
+    outputs: ["Out"],
+    parameters: [],
+  },
+  groupOutput: {
+    inputs: ["In"],
+    outputs: ["Out"],
+    parameters: [],
+  },
+  moduleGroup: {
+    inputs: [],
+    outputs: [],
+    parameters: [],
+  },
+  moduleShop: {
+    layout: "moduleShop",
+    inputs: [],
+    outputs: [],
+    parameters: [],
+  },
+  moduleHome: {
+    layout: "moduleHome",
+    inputs: [],
+    outputs: [],
     parameters: [],
   },
   osc: {
-    inputs: ["Reset", "Increment"],
-    outputs: ["Out"],
-    scopeInputPort: "",
+    inputs: ["Reset", "0.1V/Oct", "Increment"],
+    outputAliases: {
+      Out: "Wave Out",
+      Noise: "Wave Out",
+    },
+    outputs: ["Saw", "Square", "Tri", "Sine", "Wave Out"],
     parameters: [
       {
         choices: ["Saw", "Square", "Triangle", "Sine", "Noise"],
@@ -129,6 +209,179 @@ const nodeGraphModuleDefinitions = Object.freeze({
       },
     ],
   },
+  fbPolyBlepOsc: {
+    inputs: ["Reset", "0.1V/Oct", "Increment"],
+    outputAliases: {
+      Out: "Wave Out",
+      Noise: "Wave Out",
+    },
+    outputs: ["Saw", "Square", "Tri", "Sine", "Wave Out"],
+    parameters: [
+      {
+        choices: ["Saw", "Square", "Triangle", "Sine", "Noise"],
+        defaultValue: "0",
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        key: "waveform",
+        kind: "waveform",
+        label: "Waveform",
+        linearSmoothing: false,
+        max: "4",
+        mid: "2",
+        min: "0",
+        step: "1",
+      },
+      {
+        defaultValue: "440",
+        key: "frequency",
+        kind: "frequency",
+        label: "Frequency",
+        max: "20000",
+        mid: "440",
+        min: "0",
+        step: "any",
+        unit: "Hz",
+      },
+      {
+        defaultValue: "0",
+        key: "phase",
+        kind: "phase",
+        label: "Phase",
+        max: "1",
+        mid: "0.5",
+        min: "0",
+        step: "0.01",
+        unit: "cycle",
+        wraparound: true,
+      },
+      {
+        defaultValue: "1",
+        key: "level",
+        label: "Amplitude",
+        max: "1",
+        mid: "0.5",
+        min: "0",
+        nonlinearSlider: false,
+        step: "any",
+      },
+    ],
+  },
+  additiveOsc: {
+    graphInputs: ["Damping Graph", "Phase Graph"],
+    inputs: ["Reset", "0.1V/Oct", "Increment"],
+    outputs: ["Out"],
+    parameters: [
+      {
+        choices: ["Sine", "Sawtooth", "Square", "Triangle", "SawSquare", "DoubleSaw", "TriSaw", "Organ"],
+        defaultValue: "1",
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        key: "waveform",
+        label: "Waveform",
+        linearSmoothing: false,
+        max: "7",
+        mid: "3",
+        min: "0",
+        step: "1",
+      },
+      {
+        defaultValue: "440",
+        key: "frequency",
+        kind: "frequency",
+        label: "Frequency",
+        max: "20000",
+        mid: "440",
+        min: "0",
+        step: "any",
+        unit: "Hz",
+      },
+      {
+        defaultValue: "0",
+        key: "phase",
+        kind: "phase",
+        label: "Phase",
+        max: "1",
+        mid: "0.5",
+        min: "0",
+        step: "0.01",
+        unit: "cycle",
+        wraparound: true,
+      },
+      { defaultValue: "0.5", key: "modA", label: "Mod A", max: "1", mid: "0.5", min: "0", step: "any" },
+      { defaultValue: "0", key: "harmonicPhaseAdd", kind: "phase", label: "Phase Add", max: "1", mid: "0.5", min: "0", step: "any", unit: "cycle" },
+      { defaultValue: "0", key: "harmonicPhaseMultiply", label: "Phase Multiply", max: "4", mid: "1", min: "0", step: "any" },
+      { constraint: "cpu", defaultValue: "32", key: "harmonics", label: "Harmonics", max: "1024", mid: "32", min: "1", step: "1" },
+      { defaultValue: "20000", key: "dampingFilterFrequency", kind: "frequency", label: "Filter Frequency", max: "20000", mid: "2000", min: "20", step: "any", unit: "Hz" },
+      { defaultValue: "0.35", key: "level", label: "Level", max: "1", mid: "0.35", min: "0", nonlinearSlider: false, step: "any" },
+    ],
+  },
+  gpuAdditiveOsc: {
+    graphInputs: ["Damping Graph", "Phase Graph"],
+    inputs: ["Reset", "0.1V/Oct", "Increment"],
+    outputs: ["Out"],
+    parameters: [
+      {
+        choices: ["Sine", "Sawtooth", "Square", "Triangle", "SawSquare", "DoubleSaw", "TriSaw", "Organ"],
+        defaultValue: "1",
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        key: "waveform",
+        label: "Waveform",
+        linearSmoothing: false,
+        max: "7",
+        mid: "3",
+        min: "0",
+        step: "1",
+      },
+      {
+        defaultValue: "440",
+        key: "frequency",
+        kind: "frequency",
+        label: "Frequency",
+        max: "20000",
+        mid: "440",
+        min: "0",
+        step: "any",
+        unit: "Hz",
+      },
+      {
+        defaultValue: "0",
+        key: "phase",
+        kind: "phase",
+        label: "Phase",
+        max: "1",
+        mid: "0.5",
+        min: "0",
+        step: "0.01",
+        unit: "cycle",
+        wraparound: true,
+      },
+      { defaultValue: "0.5", key: "modA", label: "Mod A", max: "1", mid: "0.5", min: "0", step: "any" },
+      { defaultValue: "0", key: "harmonicPhaseAdd", kind: "phase", label: "Phase Add", max: "1", mid: "0.5", min: "0", step: "any", unit: "cycle" },
+      { defaultValue: "0", key: "harmonicPhaseMultiply", label: "Phase Multiply", max: "4", mid: "1", min: "0", step: "any" },
+      { constraint: "gpu", defaultValue: "256", key: "harmonics", label: "Harmonics", max: "4096", mid: "256", min: "1", step: "1" },
+      { defaultValue: "20000", key: "dampingFilterFrequency", kind: "frequency", label: "Filter Frequency", max: "20000", mid: "2000", min: "20", step: "any", unit: "Hz" },
+      { defaultValue: "0.35", key: "level", label: "Level", max: "1", mid: "0.35", min: "0", nonlinearSlider: false, step: "any" },
+    ],
+  },
+  ellipsoid: {
+    inputs: ["Reset", "0.1V/Oct", "Increment"],
+    outputAliases: {
+      Out: "Wave Out",
+    },
+    outputs: ["X", "Y", "Wave Out"],
+    parameters: [
+      { defaultValue: "220", key: "frequency", kind: "frequency", label: "Frequency", max: "20000", mid: "220", min: "0", step: "any", unit: "Hz" },
+      { defaultValue: "0", key: "phase", kind: "phase", label: "Phase", max: "1", mid: "0.5", min: "0", step: "0.01", unit: "cycle", wraparound: true },
+      { defaultValue: "0", key: "offsetX", label: "Offset X", max: "1", mid: "0", min: "-1", step: "0.01" },
+      { defaultValue: "0", key: "offsetY", label: "Offset Y", max: "1", mid: "0", min: "-1", step: "0.01" },
+      { defaultValue: "0", key: "shapeX", label: "Shape X", max: "1", mid: "0", min: "-1", step: "0.01" },
+      { defaultValue: "0", key: "shapeY", label: "Shape Y", max: "1", mid: "0", min: "-1", step: "0.01" },
+      { defaultValue: "1", key: "scaleX", label: "Scale X", max: "10", mid: "1", min: "0", step: "0.01" },
+      { defaultValue: "1", key: "scaleY", label: "Scale Y", max: "10", mid: "1", min: "0", step: "0.01" },
+      { defaultValue: "1", key: "level", label: "Level", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "0.01" },
+    ],
+  },
   spiral: {
     outputs: ["X", "Y", "Z"],
     parameters: [
@@ -148,6 +401,20 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { key: "rotYSpeed", label: "Rot Y Speed", defaultValue: "0", min: "-10", mid: "0", max: "10", step: "0.01", unit: "Hz" },
       { key: "zDepth", label: "Z Depth", defaultValue: "0", min: "0", mid: "0", max: "1", step: "0.01" },
       { key: "zAmount", label: "Z Amount", defaultValue: "0", min: "0", mid: "0", max: "1", step: "0.01" },
+      { key: "level", label: "Level", defaultValue: "1", min: "0", mid: "0.5", max: "1", step: "0.01" },
+    ],
+  },
+  lorenzAttractor: {
+    inputs: ["Reset"],
+    outputs: ["X", "Y", "Z"],
+    parameters: [
+      { key: "speed", label: "Speed", defaultValue: "1", min: "0", mid: "1", max: "8", step: "0.01" },
+      { key: "sigma", label: "Sigma", defaultValue: "10", min: "0", mid: "10", max: "30", step: "0.01" },
+      { key: "rho", label: "Rho", defaultValue: "28", min: "0", mid: "28", max: "60", step: "0.01" },
+      { key: "beta", label: "Beta", defaultValue: "2.6667", min: "0", mid: "2.6667", max: "10", step: "0.0001" },
+      { key: "scale", label: "Scale", defaultValue: "1", min: "0", mid: "1", max: "4", step: "0.01" },
+      { key: "rotate", label: "Rotate", defaultValue: "0", min: "0", mid: "0.5", max: "1", step: "0.01", kind: "phase", unit: "cycle", wraparound: true },
+      { key: "zDepth", label: "Z Depth", defaultValue: "0.4", min: "0", mid: "0.4", max: "1", step: "0.01" },
       { key: "level", label: "Level", defaultValue: "1", min: "0", mid: "0.5", max: "1", step: "0.01" },
     ],
   },
@@ -188,7 +455,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   stereoNoise: {
-    outputs: ["Left", "Right", "Out"],
+    outputs: ["X", "Y", "Out"],
     parameters: [
       {
         defaultValue: "1",
@@ -394,7 +661,15 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   clock: {
-    outputs: ["Out"],
+    inputs: ["Reset"],
+    outputAliases: {
+      Out: "Digital Out",
+    },
+    outputLabels: {
+      "Analog Out": "\u223F",
+      "Digital Out": "\u25AE",
+    },
+    outputs: ["Digital Out", "Analog Out", "Pulse"],
     parameters: [
       {
         defaultValue: "2",
@@ -407,6 +682,19 @@ const nodeGraphModuleDefinitions = Object.freeze({
         min: "0",
         step: "any",
         unit: "Hz",
+      },
+      {
+        defaultValue: "0",
+        key: "phase",
+        kind: "phase",
+        label: "Phase",
+        max: "1",
+        mid: "0.5",
+        min: "0",
+        nonlinearSlider: false,
+        step: "any",
+        unit: "cycle",
+        wraparound: true,
       },
       {
         defaultValue: "0.5",
@@ -527,6 +815,12 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { defaultValue: "0.01", key: "pulseTime", kind: "time", label: "Pulse", max: "1", maxDigits: 5, mid: "0.01", min: "0", step: "any", unit: "s" },
       { defaultValue: "1", key: "level", label: "Level", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any" },
     ],
+  },
+  clapPlugin: {
+    inputs: ["Left", "Right"],
+    layout: "clapPlugin",
+    outputs: ["Left", "Right"],
+    parameters: [],
   },
   gain: {
     inputs: ["In"],
@@ -764,6 +1058,20 @@ const nodeGraphModuleDefinitions = Object.freeze({
       },
     ],
   },
+  delayEffect: {
+    inputs: ["In"],
+    outputs: ["Out", "Wet"],
+    parameters: [
+      { defaultValue: "0.18", key: "time", kind: "time", label: "Time", max: "4", maxDigits: 5, mid: "0.18", min: "0.001", step: "any", unit: "s" },
+      { defaultValue: "0.25", key: "feedback", label: "Feedback", max: "0.95", mid: "0.25", min: "0", nonlinearSlider: false, step: "any" },
+      { defaultValue: "0.35", key: "mix", label: "Mix", max: "1", mid: "0.35", min: "0", nonlinearSlider: false, step: "any" },
+      { defaultValue: "1", key: "level", label: "Level", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any" },
+      { defaultValue: "0.02", key: "modAmount", label: "Mod", max: "0.5", maxDigits: 5, mid: "0.02", min: "0", nonlinearSlider: false, step: "any" },
+      { defaultValue: "0.1", key: "modRate", kind: "frequency", label: "Mod Rate", max: "90", maxDigits: 5, mid: "0.1", min: "0", step: "any", unit: "Hz" },
+      { defaultValue: "0", key: "modVariation", label: "Variation", max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "any" },
+      { choices: ["Delay", "Diffuse"], defaultValue: "0", displayChoices: true, divideChoicesVisibly: true, key: "mode", label: "Mode", linearSmoothing: false, max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "1" },
+    ],
+  },
   slewLimiter: {
     inputs: ["In"],
     outputs: ["Out"],
@@ -838,14 +1146,49 @@ const nodeGraphModuleDefinitions = Object.freeze({
     parameters: [],
   },
   keyboardController: {
-    outputs: ["Gate", "1 Sample Gate", "Key", "Q", "MIDI", "Double", "Increment", "Frequency", "Pitch", "X", "Y"],
+    inputs: ["MIDI Note", "Gate", "Velocity", "Octave", "Reset", "Hold", "X", "Y"],
+    layout: "keyboardController",
+    outputs: ["Gate", "1 Sample Gate", "Key", "Q", "MIDI", "Double", "0.1V/Oct", "Increment", "Frequency", "Pitch", "X", "Y"],
     parameters: [],
   },
+  samplePlayer: {
+    inputs: ["Trigger", "Reset", "Pitch", "Start", "End"],
+    outputs: ["Out"],
+    parameters: [
+      { defaultValue: "0", key: "sample", label: "Sample", linearSmoothing: false, max: "4096", mid: "0", min: "0", step: "1" },
+      { defaultValue: "1", key: "level", label: "Level", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any" },
+      { defaultValue: "0", key: "pitch", label: "Pitch", max: "4", mid: "0", min: "-4", step: "any" },
+      { defaultValue: "0", key: "start", label: "Start", max: "1", mid: "0", min: "0", step: "any" },
+      { defaultValue: "1", key: "end", label: "End", max: "1", mid: "1", min: "0", step: "any" },
+      { defaultValue: "0.002", key: "attack", kind: "time", label: "Attack", max: "1", maxDigits: 5, mid: "0.002", min: "0", step: "any", unit: "s" },
+      { defaultValue: "0.01", key: "release", kind: "time", label: "Release", max: "1", maxDigits: 5, mid: "0.01", min: "0", step: "any", unit: "s" },
+      { choices: ["Off", "On"], defaultValue: "1", displayChoices: true, divideChoicesVisibly: true, key: "oneShot", label: "One Shot", linearSmoothing: false, max: "1", mid: "1", min: "0", nonlinearSlider: false, step: "1" },
+    ],
+  },
+  sampleLooper: {
+    inputs: ["Gate", "Reset", "Pitch", "Start", "End", "Loop Start", "Loop End"],
+    outputs: ["Out", "Phase"],
+    parameters: [
+      { defaultValue: "0", key: "sample", label: "Sample", linearSmoothing: false, max: "4096", mid: "0", min: "0", step: "1" },
+      { defaultValue: "1", key: "level", label: "Level", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any" },
+      { defaultValue: "0", key: "pitch", label: "Pitch", max: "4", mid: "0", min: "-4", step: "any" },
+      { defaultValue: "0", key: "start", label: "Start", max: "1", mid: "0", min: "0", step: "any" },
+      { defaultValue: "1", key: "end", label: "End", max: "1", mid: "1", min: "0", step: "any" },
+      { defaultValue: "0", key: "loopStart", label: "Loop Start", max: "1", mid: "0", min: "0", step: "any" },
+      { defaultValue: "1", key: "loopEnd", label: "Loop End", max: "1", mid: "1", min: "0", step: "any" },
+      { defaultValue: "0.005", key: "crossfade", kind: "time", label: "Crossfade", max: "0.25", maxDigits: 5, mid: "0.005", min: "0", step: "any", unit: "s" },
+      { choices: ["Forward", "One Shot"], defaultValue: "0", displayChoices: true, divideChoicesVisibly: true, key: "mode", label: "Mode", linearSmoothing: false, max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "1" },
+    ],
+  },
   macroControls: {
+    inputs: ["M1 In", "M2 In", "M3 In", "M4 In", "M5 In", "M6 In", "M7 In", "M8 In", "M9 In", "M10 In", "Reset"],
+    layout: "macroControls",
     outputs: ["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10"],
     parameters: [],
   },
   pitchModWheel: {
+    inputs: ["Pitch", "Mod", "Reset"],
+    layout: "pitchModWheel",
     outputs: ["Pitch Wheel", "Mod Wheel"],
     parameters: [],
   },
@@ -1075,6 +1418,13 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
     visualSink: true,
   },
+  screenSpaceShader: {
+    inputs: ["Shake", "X", "Y", "Dim", "Red", "Green", "Blue", "Scope Off", "Pause", "Trace Image"],
+    layout: "screenSpaceShader",
+    outputs: [],
+    parameters: [],
+    visualSink: true,
+  },
   bloomGlow: {
     outputs: [],
     parameters: [
@@ -1128,17 +1478,46 @@ const nodeGraphModuleDefinitions = Object.freeze({
   },
   image: {
     layout: "image",
-    outputs: ["Image"],
+    outputAliases: {
+      Image: "RGBA",
+    },
+    outputs: ["RGBA"],
     parameters: [],
   },
-  visualOscilloscope: {
-    inputs: ["In"],
-    layout: "visualScope",
-    outputs: [],
+  canvas: {
+    bufferedInputs: ["a_buffer"],
+    inputs: ["a_buffer", "a not buffer"],
+    layout: "canvas",
+    outputs: ["RGBA"],
     parameters: [],
-    scopeInputPort: "In",
     visualInputs: [
-      { key: "visualOscilloscope", label: "In", port: "In" },
+      { key: "canvasABuffer", label: "a_buffer", port: "a_buffer" },
+      { key: "canvasANotBuffer", label: "a not buffer", port: "a not buffer" },
+    ],
+    visualSink: true,
+  },
+  led: {
+    inputs: ["In"],
+    layout: "led",
+    outputs: ["Out"],
+    parameters: [],
+    visualInputs: [
+      { key: "led", label: "In", port: "In" },
+    ],
+    visualSink: true,
+  },
+  visualOscilloscope: {
+    bufferedInputs: ["In", "X", "Y"],
+    inputAliases: { Mono: "In" },
+    inputLabels: { In: "Mono" },
+    inputs: ["In", "X", "Y"],
+    layout: "visualScope",
+    outputs: ["RGBA"],
+    parameters: [],
+    visualInputs: [
+      { key: "visualOscilloscope", label: "Mono", port: "In" },
+      { key: "visualOscilloscopeX", label: "X", port: "X" },
+      { key: "visualOscilloscopeY", label: "Y", port: "Y" },
     ],
     visualSink: true,
   },
@@ -1146,6 +1525,12 @@ const nodeGraphModuleDefinitions = Object.freeze({
     inputs: ["In"],
     outputs: ["Out"],
     monitorSink: true,
+    parameters: [],
+  },
+  speakerProtection: {
+    inputs: ["In"],
+    layout: "speakerProtection",
+    outputs: ["Out"],
     parameters: [],
   },
   textBox: {
@@ -1209,9 +1594,56 @@ function nodeGraphModuleVisualInputs(type) {
   return Array.isArray(inputs) ? inputs.map((input) => ({ ...input })) : [];
 }
 
+function nodeGraphPatchNodeVisualInputs(node) {
+  const patchNode = typeof node === "string" ? nodeGraphPatchNode(node) : node;
+  if (patchNode?.type === "canvas") {
+    return nodeGraphPatchNodeInputPorts(patchNode).map((port) => ({
+      key: `canvas:${port}`,
+      label: port,
+      port,
+    }));
+  }
+  if (patchNode?.type === "screenSpaceShader") {
+    return normalizeNodeGraphScreenSpaceShader(patchNode.screenSpaceShader).visualInputs;
+  }
+  return nodeGraphModuleVisualInputs(patchNode?.type);
+}
+
+function nodeGraphModuleBufferedInputs(type) {
+  const inputs = nodeGraphModuleDefinitions[type]?.bufferedInputs;
+  const ports = nodeGraphModuleDefinitions[type]?.inputs || [];
+  return normalizeNodeGraphBufferedInputList(Array.isArray(inputs) ? inputs : [], ports);
+}
+
+function nodeGraphPatchNodeBufferedInputs(node) {
+  const metadataInputs = nodeGraphModuleBufferedInputs(node?.type);
+  const scriptInputs = node?.type === "canvas"
+    ? normalizeNodeGraphCanvasScript(node.canvasScript).bufferedInputs
+    : node?.type === "screenSpaceShader"
+      ? normalizeNodeGraphScreenSpaceShader(node.screenSpaceShader).bufferedInputs
+    : [];
+  return normalizeNodeGraphBufferedInputList([...metadataInputs, ...scriptInputs], nodeGraphPatchNodeInputPorts(node));
+}
+
+function nodeGraphModuleGraphInputs(type) {
+  const inputs = nodeGraphModuleDefinitions[type]?.graphInputs;
+  return Array.isArray(inputs)
+    ? inputs.map((input) => String(input || "").trim()).filter(Boolean)
+    : [];
+}
+
+function nodeGraphModuleIsGraphType(type) {
+  return nodeGraphModuleDefinitions[type]?.layout === "graph";
+}
+
 function nodeGraphCanonicalInputPort(type, port) {
   const value = String(port || "").trim();
   return nodeGraphModuleDefinitions[type]?.inputAliases?.[value] || value;
+}
+
+function nodeGraphCanonicalOutputPort(type, port) {
+  const value = String(port || "").trim();
+  return nodeGraphModuleDefinitions[type]?.outputAliases?.[value] || value;
 }
 
 function nodeGraphModuleVisualInputKey(type, port) {

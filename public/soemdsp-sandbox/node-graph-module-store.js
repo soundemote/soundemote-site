@@ -1,13 +1,14 @@
 const nodeGraphModuleStoreTypes = Object.freeze([
   "osc",
+  "additiveOsc",
+  "gpuAdditiveOsc",
   "distortionOscillator",
   "dsfOscillator",
   "ellipsoid",
   "polyBlep",
+  "fbPolyBlepOsc",
   "sineWavetable",
   "jerobeamNyqistShannon",
-  "additiveEngine",
-  "harmonicBank",
   "drumMachine",
   "kickDrum",
   "snareDrum",
@@ -33,10 +34,13 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "noiseGenerator",
   "randomWalk",
   "fractalBrownianNoise",
+  "clapPlugin",
   "codeblock",
   "graph",
+  "graph2",
   "gain",
   "bias",
+  "output",
   "macroKnob",
   "bipolarKnob",
   "valueSlider",
@@ -45,9 +49,20 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "midiNotePitch",
   "midiController",
   "keyboardController",
+  "moduleShop",
   "macroControls",
   "pitchModWheel",
   "xyPad",
+  "portalInLeft",
+  "portalInRight",
+  "portalInMono",
+  "portalOutLeft",
+  "portalOutRight",
+  "portalOutMono",
+  "portalGenericInput",
+  "portalGenericOutput",
+  "groupInput",
+  "groupOutput",
   "samplePlayer",
   "sampleLooper",
   "highpass",
@@ -67,20 +82,24 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "pluckEnvelope",
   "vactrolEnvelope",
   "sandboxVisuals",
+  "screenSpaceShader",
   "bloomGlow",
   "rgbaHsla",
   "chromaColor",
   "image",
+  "canvas",
+  "led",
   "visualOscilloscope",
   "parabol",
   "vibratoGenerator",
   "wowAndFlutter",
+  "speakerProtection",
   "badvalMonitor",
   "textBox",
 ]);
 
 const nodeGraphModuleGroupStorageKey = "soemdsp-sandbox.moduleGroups.v1";
-const nodeGraphModuleCatalogVisibilityStorageKey = "soemdsp-sandbox.moduleCatalogVisibility.v1";
+const nodeGraphModuleCatalogVisibilityStorageKey = "soemdsp-sandbox.moduleCatalogVisibility.v2";
 
 const nodeGraphModuleStoreDepartments = Object.freeze([
   "Oscillator",
@@ -93,6 +112,7 @@ const nodeGraphModuleStoreDepartments = Object.freeze([
   "Chord Sequencer",
   "Arpeggiator",
   "Time",
+  "Audio",
   "Dynamics",
   "Debug",
   "Envelope Systems",
@@ -100,6 +120,7 @@ const nodeGraphModuleStoreDepartments = Object.freeze([
   "Knobs",
   "Sliders",
   "Controllers",
+  "Portals",
   "Samples",
   "Random",
   "Chaos",
@@ -157,6 +178,11 @@ const nodeGraphModuleStoreDepartmentAds = Object.freeze({
     title: "Time",
     pitch: "Instructions, timing surfaces, labels, and the slow machinery that makes a patch readable in motion.",
   },
+  Audio: {
+    symbol: "OUT",
+    title: "Audio",
+    pitch: "Audio sinks and listening endpoints for turning patch signal into rendered or live sound.",
+  },
   Dynamics: {
     symbol: "⚡",
     title: "Dynamics",
@@ -192,6 +218,11 @@ const nodeGraphModuleStoreDepartmentAds = Object.freeze({
     title: "Controllers",
     pitch: "Input devices and control bridges for keyboards, MIDI, gamepads, and external gestures.",
   },
+  Portals: {
+    symbol: "IO",
+    title: "Portals",
+    pitch: "Patch boundary portals for moving left, right, and mono signal lanes between rooms, templates, and larger circuits.",
+  },
   Samples: {
     symbol: "▣",
     title: "Samples",
@@ -220,6 +251,17 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Core tone generator. Turns frequency, phase, and waveform into a controllable voice.",
     notes: ["phase counter", "waveform selection", "frequency control"],
   },
+  additiveOsc: {
+    category: "Additive Engines",
+    description: "Harmonic additive tone source using SOEMDSP waveform partial recipes.",
+    notes: ["harmonic sum", "waveform selector", "band-limited partials"],
+  },
+  gpuAdditiveOsc: {
+    category: "Additive Engines",
+    description: "Buffered GPU additive engine proof module. Reuses the CPU additive path in live audio and prepares WebGPU chunk rendering with fallback.",
+    label: "GPU Additive",
+    notes: ["WebGPU proof", "buffered backend", "CPU fallback"],
+  },
   distortionOscillator: {
     category: "Oscillator",
     description: "Placeholder for a tone source with built-in distortion character and drive-shaped motion.",
@@ -234,15 +276,21 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   ellipsoid: {
     category: "Oscillator",
-    description: "Placeholder for an ellipsoid motion oscillator for rounded spatial signal paths.",
+    description: "SOEMDSP ellipsoid motion oscillator. Emits paired X/Y curved waveform outputs from two phase-offset ellipsoid DSP paths.",
     label: "Ellipsoid",
-    notes: ["placeholder", "geometric motion", "future oscillator"],
+    notes: ["geometric motion", "x/y output", "soemdsp oscillator"],
   },
   polyBlep: {
     category: "Oscillator",
     description: "Placeholder for an anti-aliased PolyBLEP oscillator for clean digital waveform edges.",
     label: "PolyBLEP",
     notes: ["placeholder", "anti-aliasing", "future oscillator"],
+  },
+  fbPolyBlepOsc: {
+    category: "Oscillator",
+    description: "Realtime forward/backward PolyBLEP oscillator test module, split out from the current PolyBLEP oscillator path for edge-repair experiments.",
+    label: "F/B PolyBLEP",
+    notes: ["anti-aliasing", "known-edge repair", "realtime oscillator"],
   },
   sineWavetable: {
     category: "Oscillator",
@@ -255,18 +303,6 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Placeholder for a Jerobeam Nyqist/Shannon oscillator concept and audiovisual sampling study.",
     label: "JerobeamNyqistShannon",
     notes: ["placeholder", "sampling theorem", "future oscillator"],
-  },
-  additiveEngine: {
-    category: "Additive Engines",
-    description: "Placeholder for a harmonic additive synth engine built from controllable partials.",
-    label: "AdditiveEngine",
-    notes: ["placeholder", "partials", "harmonic synthesis"],
-  },
-  harmonicBank: {
-    category: "Additive Engines",
-    description: "Placeholder for a bank of sine partials with shared tuning and amplitude controls.",
-    label: "HarmonicBank",
-    notes: ["placeholder", "sine bank", "partials"],
   },
   drumMachine: {
     category: "Drum Machines",
@@ -289,7 +325,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   clock: {
     category: "Clock",
     description: "Timer pulse source. Emits a steady gate for triggering samplers, sequencers, and motion events.",
-    notes: ["rate control", "duty cycle", "trigger source"],
+    notes: ["rate and phase control", "duty cycle", "reset input"],
   },
   clockDivider: {
     category: "Clock",
@@ -347,8 +383,8 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   lorenzAttractor: {
     category: "Chaos",
     description: "Classic butterfly attractor motion for turbulent curls and folding trajectories.",
-    label: "LorenzAttractor",
-    notes: ["butterfly attractor", "3D chaos", "planned attractor"],
+    label: "Lorenz Attractor",
+    notes: ["butterfly attractor", "3D chaos", "X/Y/Z motion"],
   },
   rosslerAttractor: {
     category: "Chaos",
@@ -387,8 +423,8 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   stereoNoise: {
     category: "Random",
-    description: "Two independent broadband noise streams with Left, Right, and summed mono outputs for wide textures.",
-    notes: ["stereo source", "independent channels", "amplitude"],
+    description: "Two independent broadband noise streams as X/Y vector outputs plus a summed mono output for clouds and textures.",
+    notes: ["x/y source", "independent channels", "amplitude"],
   },
   noiseGenerator: {
     category: "Random",
@@ -405,6 +441,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Three-axis layered fBm motion source with octave, persistence, scale, and seed controls for rough organic drift.",
     notes: ["out x/y/z", "seeded value noise", "slow terrain motion"],
   },
+  clapPlugin: {
+    category: "Audio",
+    description: "Browser-side shell for a local CLAP host plugin. Stores plugin identity and can use a host instance during bounded Render Sample.",
+    label: "CLAP Plugin",
+    notes: ["local host", "native plugin", "offline render"],
+  },
   codeblock: {
     category: "Controllers",
     description: "Patch-local JavaScript signal processor with editable input and output ports.",
@@ -415,6 +457,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Patch-local soemdsp-style graph object with curve nodes and a vertical cursor position.",
     notes: ["curve display", "cursor line", "graph nodes"],
   },
+  graph2: {
+    category: "Visual",
+    description: "Single-algorithm graph testbed for comparing linear, smooth, and meandering point interpolation.",
+    label: "Graph 2",
+    notes: ["global smoothing", "curve laboratory", "graph nodes"],
+  },
   gain: {
     category: "Dynamics",
     description: "Signal booster and throttle. Use it to push, tame, or route engine power.",
@@ -424,6 +472,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     category: "Dynamics",
     description: "Offsets a signal away from center. Useful for steering modulation and shifting control lanes.",
     notes: ["addition", "offset", "control lane shift"],
+  },
+  output: {
+    category: "Audio",
+    description: "Stereo audio sink. Route Left and Right signals here to hear the patch.",
+    label: "Output",
+    notes: ["audio sink", "left right inputs", "render target"],
   },
   macroKnob: {
     category: "Knobs",
@@ -471,6 +525,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "MIDI Keyboard",
     notes: ["keyboard input", "midi pitch", "gesture signals"],
   },
+  moduleShop: {
+    category: "Controllers",
+    description: "Patch-local button that opens the module browser.",
+    label: "Shop",
+    notes: ["module browser", "patch control", "shop"],
+  },
   macroControls: {
     category: "Controllers",
     description: "Reads the ten macro knobs under the modular view and emits M1 through M10 as live 0..1 control signals.",
@@ -489,17 +549,77 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "XYPad",
     notes: ["placeholder", "two-axis control", "performance gesture"],
   },
+  portalInLeft: {
+    category: "Portals",
+    description: "Placeholder portal for bringing a left-channel signal into a patch region.",
+    label: "In Left",
+    notes: ["placeholder", "left input", "patch boundary"],
+  },
+  portalInRight: {
+    category: "Portals",
+    description: "Placeholder portal for bringing a right-channel signal into a patch region.",
+    label: "In Right",
+    notes: ["placeholder", "right input", "patch boundary"],
+  },
+  portalInMono: {
+    category: "Portals",
+    description: "Placeholder portal for bringing a mono signal into a patch region.",
+    label: "In Mono",
+    notes: ["placeholder", "mono input", "patch boundary"],
+  },
+  portalOutLeft: {
+    category: "Portals",
+    description: "Placeholder portal for sending a left-channel signal out of a patch region.",
+    label: "Out Left",
+    notes: ["placeholder", "left output", "patch boundary"],
+  },
+  portalOutRight: {
+    category: "Portals",
+    description: "Placeholder portal for sending a right-channel signal out of a patch region.",
+    label: "Out Right",
+    notes: ["placeholder", "right output", "patch boundary"],
+  },
+  portalOutMono: {
+    category: "Portals",
+    description: "Placeholder portal for sending a mono signal out of a patch region.",
+    label: "Out Mono",
+    notes: ["placeholder", "mono output", "patch boundary"],
+  },
+  portalGenericInput: {
+    category: "Portals",
+    description: "Placeholder portal for bringing a generic signal into a patch region.",
+    label: "Generic Input",
+    notes: ["placeholder", "generic input", "patch boundary"],
+  },
+  portalGenericOutput: {
+    category: "Portals",
+    description: "Placeholder portal for sending a generic signal out of a patch region.",
+    label: "Generic Output",
+    notes: ["placeholder", "generic output", "patch boundary"],
+  },
+  groupInput: {
+    category: "Portals",
+    description: "Defines an exposed input on a saved module group.",
+    label: "Group Input",
+    notes: ["group interface", "public input", "patch boundary"],
+  },
+  groupOutput: {
+    category: "Portals",
+    description: "Defines an exposed output on a saved module group.",
+    label: "Group Output",
+    notes: ["group interface", "public output", "patch boundary"],
+  },
   samplePlayer: {
     category: "Samples",
-    description: "Placeholder for loading and triggering one-shot samples from the patch.",
-    label: "SamplePlayer",
-    notes: ["placeholder", "one-shot", "audio clip"],
+    description: "Patch-local one-shot sample playback. Trigger starts from Start and plays to End with simple click ramps.",
+    label: "Sample Player",
+    notes: ["sample playback", "one shot", "audio source"],
   },
   sampleLooper: {
     category: "Samples",
-    description: "Placeholder for loop playback with timing controls and modulation-friendly parameters.",
-    label: "SampleLooper",
-    notes: ["placeholder", "loop playback", "timed sample"],
+    description: "Patch-local gated sample loop playback with loop bounds, pitch control, and seam crossfade.",
+    label: "Sample Looper",
+    notes: ["sample playback", "loop", "audio source"],
   },
   highpass: {
     category: "Filter",
@@ -535,9 +655,9 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   delayEffect: {
     category: "Effects",
-    description: "Placeholder for tempo-aware echo, slapback, and feedback delay effects.",
-    label: "DelayEffect",
-    notes: ["placeholder", "echo", "feedback"],
+    description: "SOEMDSP-style modulated fractional delay with feedback, wet/dry mix, and diffuse mode.",
+    label: "Delay",
+    notes: ["modulated delay", "fractional echo", "diffuse mode"],
   },
   reverbEffect: {
     category: "Effects",
@@ -596,6 +716,11 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Sink module for routing patch signals into the screen view. Drive shake, dim, color, scope pause/shutoff, or patch X/Y for direct visual motion.",
     notes: ["visual sink", "shake input", "scope pause"],
   },
+  screenSpaceShader: {
+    category: "Visual",
+    description: "Scripted screen-space visual sink. Declare custom inputs and map them into screen shake, dim, color, scope pause, and offset controls.",
+    notes: ["scripted visual sink", "custom inputs", "screen shader controls"],
+  },
   bloomGlow: {
     category: "Visual",
     description: "Visual sink for routing patch signals into screen dimming, brightness, bloom, and glow response.",
@@ -615,6 +740,17 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     category: "Visual",
     description: "Patch-local image asset node. Route it into Screen Visuals Trace Image to texture phosphor trace dots.",
     notes: ["load image", "save image", "trace texture"],
+  },
+  canvas: {
+    category: "Visual",
+    description: "Layered RGBA compositor for images, scopes, shader passes, transforms, and future game-engine surfaces.",
+    notes: ["layer compositor", "RGBA output", "shader script"],
+  },
+  led: {
+    category: "Visual",
+    description: "One-grid-unit signal light. Patch any gate or control signal into In and use it as a compact in-world indicator.",
+    label: "LED",
+    notes: ["1 GU tile", "input light", "visual indicator"],
   },
   visualOscilloscope: {
     category: "Visual",
@@ -644,6 +780,11 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Circuit sentinel. Watches for invalid values before they spread through the machine.",
     notes: ["NaN guard", "infinity guard", "debug safety"],
   },
+  speakerProtection: {
+    category: "Debug",
+    description: "Hard safety fuse. Trips ear and speaker protection immediately if a wired sample exceeds absolute 1.0.",
+    notes: ["speaker safety", "ear protection", "hard limit"],
+  },
   textBox: {
     category: "Visual",
     description: "In-world label plate for prompts, lore, instructions, and electric annotations.",
@@ -652,13 +793,39 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
 });
 
 function defaultNodeGraphModuleCatalogVisibility() {
-  return Object.fromEntries(nodeGraphModuleStoreTypes.map((type) => [type, true]));
+  return Object.fromEntries(
+    nodeGraphModuleStoreTypes.map((type) => [
+      type,
+      {
+        home: false,
+        shop: true,
+      },
+    ]),
+  );
 }
 
 function normalizeNodeGraphModuleCatalogVisibility(value = {}) {
   const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   return Object.fromEntries(
-    nodeGraphModuleStoreTypes.map((type) => [type, source[type] !== false]),
+    nodeGraphModuleStoreTypes.map((type) => {
+      const entry = source[type];
+      if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+        return [
+          type,
+          {
+            home: entry.home === true,
+            shop: entry.shop !== false,
+          },
+        ];
+      }
+      return [
+        type,
+        {
+          home: false,
+          shop: entry !== false,
+        },
+      ];
+    }),
   );
 }
 
@@ -666,8 +833,9 @@ function nodeGraphModuleCatalogVisibility() {
   return normalizeNodeGraphModuleCatalogVisibility(nodeGraphMvp.moduleCatalogVisibility);
 }
 
-function nodeGraphModuleIsStoreVisible(type) {
-  return nodeGraphModuleCatalogVisibility()[type] !== false;
+function nodeGraphModuleIsStoreVisible(type, shelf = "shop") {
+  const visibility = nodeGraphModuleCatalogVisibility()[type];
+  return Boolean(visibility?.[shelf === "home" ? "home" : "shop"]);
 }
 
 function applyNodeGraphModuleCatalogVisibility(value = {}) {
@@ -710,19 +878,28 @@ function nodeGraphModuleStoreEntries() {
     .map((type) => ({
       ...(nodeGraphModuleStoreCatalog[type] || {}),
       type,
+      demoPatch: nodeGraphModuleStoreDemoPatchAvailable(type),
+      demoListen: nodeGraphModuleStoreDemoListenAvailable(type),
+      homeVisible: nodeGraphModuleIsStoreVisible(type, "home"),
       implemented: Object.hasOwn(nodeGraphModuleDefinitions, type),
       label: nodeGraphModuleStoreCatalog[type]?.label || nodeGraphNodeLabels[type] || type,
-      visible: nodeGraphModuleIsStoreVisible(type),
+      shopVisible: nodeGraphModuleIsStoreVisible(type, "shop"),
+      visible: nodeGraphModuleIsStoreVisible(type, "shop"),
     }));
 }
 
-function setNodeGraphModuleCatalogVisibility(type, visible) {
+function setNodeGraphModuleCatalogVisibility(type, visible, shelf = "shop") {
   if (!nodeGraphModuleStoreTypes.includes(type)) {
     return;
   }
+  const key = shelf === "home" ? "home" : "shop";
+  const current = nodeGraphModuleCatalogVisibility();
   nodeGraphMvp.moduleCatalogVisibility = {
-    ...nodeGraphModuleCatalogVisibility(),
-    [type]: Boolean(visible),
+    ...current,
+    [type]: {
+      ...(current[type] || { home: false, shop: true }),
+      [key]: Boolean(visible),
+    },
   };
   saveNodeGraphModuleCatalogVisibilityLocal();
   renderNodeGraphModuleStoreCatalog();
@@ -730,6 +907,50 @@ function setNodeGraphModuleCatalogVisibility(type, visible) {
 
 function setNodeGraphModuleStoreDepartment(department = "") {
   nodeGraphMvp.moduleStoreDepartment = nodeGraphModuleStoreDepartments.includes(department) ? department : "";
+  renderNodeGraphModuleStoreCatalog();
+}
+
+function nodeGraphNormalizeModuleDepartmentSearch(value = "") {
+  return String(value || "").trim().toLowerCase();
+}
+
+function nodeGraphModuleDepartmentMatchesSearch(department, entries, query) {
+  const needle = nodeGraphNormalizeModuleDepartmentSearch(query);
+  if (!needle) {
+    return true;
+  }
+  const ad = nodeGraphModuleStoreDepartmentAds[department] || {};
+  const haystack = [
+    department,
+    ad.title,
+    ad.pitch,
+    ...entries.flatMap((entry) => [
+      entry.label,
+      entry.type,
+      entry.category,
+      entry.description,
+      ...(entry.notes || []),
+    ]),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(needle);
+}
+
+function handleNodeGraphModuleDepartmentSearchInput(event) {
+  nodeGraphMvp.moduleStoreDepartmentSearch = String(event?.currentTarget?.value || "");
+  renderNodeGraphModuleStoreCatalog();
+}
+
+function handleNodeGraphModuleDepartmentSearchKeydown(event) {
+  if (event?.key !== "Escape") {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  nodeGraphMvp.moduleStoreDepartmentSearch = "";
+  event.currentTarget.value = "";
   renderNodeGraphModuleStoreCatalog();
 }
 
@@ -774,6 +995,129 @@ function createNodeGraphModuleStorePreview(entry) {
   return preview;
 }
 
+function nodeGraphModuleStoreDemoPatchAvailable(type) {
+  return Boolean(
+    Object.hasOwn(nodeGraphModuleDefinitions, type) &&
+    !["audioInput", "groupInput", "groupOutput", "moduleGroup", "output"].includes(type)
+  );
+}
+
+function nodeGraphModuleStoreDemoListenAvailable(type) {
+  if (!nodeGraphModuleStoreDemoPatchAvailable(type)) {
+    return false;
+  }
+  return nodeGraphPatchNodeOutputPorts(createNodeGraphPatchNode(type, { id: "demo" })).length > 0;
+}
+
+function nodeGraphModuleStoreDemoPatch(type) {
+  if (!nodeGraphModuleStoreDemoPatchAvailable(type)) {
+    return null;
+  }
+  const definition = nodeGraphModuleDefinitions[type];
+  const outputPorts = nodeGraphPatchNodeOutputPorts(createNodeGraphPatchNode(type, { id: "demo" }));
+  const sourcePort = outputPorts.find((port) => port !== "Gate") || outputPorts[0] || "";
+  const nodes = [
+    createNodeGraphPatchNode(type, { gx: 3, gy: 5, id: "demo" }),
+    createNodeGraphPatchNode("output", { gx: 16, gy: 5, id: "output" }),
+  ];
+  const connections = [];
+  if (sourcePort) {
+    connections.push({
+      destinationNode: "output",
+      destinationPort: "Left",
+      sourceNode: "demo",
+      sourcePort,
+    });
+    connections.push({
+      destinationNode: "output",
+      destinationPort: "Right",
+      sourceNode: "demo",
+      sourcePort,
+    });
+  }
+  return validateNodeGraphPatch({
+    audio: { targetSampleRate: 44100 },
+    bypassedNodes: [],
+    connections,
+    format: { ...nodeGraphPatchFormat },
+    grid: { ...nodeGraphGrid },
+    info: {
+      author: "Soundemote",
+      description: `Demo patch for ${nodeGraphNodeLabels[type] || type}.`,
+      name: `${nodeGraphNodeLabels[type] || type} demo`,
+      tags: `${definition?.category || "module"}, demo`,
+    },
+    modulations: [],
+    monitors: [],
+    nodes,
+    timing: {
+      tempoBpm: 120,
+      timeSignatureDenominator: 4,
+      timeSignatureNumerator: 4,
+    },
+    uiItems: [],
+    view: { widthGu: 22, heightGu: 13 },
+    visual: normalizeNodeGraphPatchVisual(nodeGraphMvp.patch?.visual),
+    windows: normalizeNodeGraphPatchWindows({}),
+  });
+}
+
+function playNodeGraphRenderedAudioElement() {
+  const audio = document.getElementById("audioPlayer");
+  if (!audio?.src) {
+    return;
+  }
+  audio.currentTime = 0;
+  audio.play?.().catch?.((_error) => {});
+}
+
+function withNodeGraphModuleStoreDemoPatch(entry, callback) {
+  const userPatch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const demoPatch = nodeGraphModuleStoreDemoPatch(entry.type);
+  if (!demoPatch) {
+    setNodeGraphScriptStatus(`${entry.label} demo unavailable`, false);
+    return;
+  }
+  commitNodeGraphPatch(demoPatch, {
+    record: false,
+    status: `${entry.label} demo loaded`,
+  });
+  callback({ demoPatch, userPatch });
+}
+
+function listenToNodeGraphModuleStoreDemo(entry) {
+  withNodeGraphModuleStoreDemoPatch(entry, ({ userPatch }) => {
+    renderNodeGraphAudio();
+    const rendered = nodeGraphMvp.rendered ? { ...nodeGraphMvp.rendered } : null;
+    const statusText = rendered ? `${entry.label} demo rendered` : `${entry.label} demo render blocked`;
+    commitNodeGraphPatch(userPatch, {
+      record: false,
+      status: "returned to your patch",
+    });
+    if (rendered) {
+      nodeGraphMvp.rendered = rendered;
+      syncNodeGraphRenderedAudioElement();
+      playNodeGraphRenderedAudioElement();
+      setNodeGraphScriptStatus(statusText, true);
+    } else {
+      markNodeGraphRenderPending(statusText);
+      setNodeGraphScriptStatus(statusText, false);
+    }
+  });
+}
+
+function watchNodeGraphModuleStoreDemo(entry) {
+  withNodeGraphModuleStoreDemoPatch(entry, () => {
+    setNodeGraphViewMode("ui");
+  });
+}
+
+function editNodeGraphModuleStoreDemo(entry) {
+  withNodeGraphModuleStoreDemoPatch(entry, () => {
+    setNodeGraphViewMode("modular-only");
+  });
+}
+
 function appendNodeGraphModuleStoreNotes(target, entry) {
   for (const note of entry.notes || []) {
     const item = document.createElement("span");
@@ -787,6 +1131,8 @@ function createNodeGraphModuleStoreButton(entry) {
   const card = document.createElement("div");
   card.className = "scene-context-store-card";
   card.dataset.moduleEnabled = String(entry.visible);
+  card.dataset.homeEnabled = String(entry.homeVisible);
+  card.dataset.shopEnabled = String(entry.shopVisible);
   card.title = `${entry.label}: ${entry.description || "Module reference entry."}`;
 
   const meta = document.createElement("span");
@@ -800,11 +1146,38 @@ function createNodeGraphModuleStoreButton(entry) {
   description.textContent = entry.description || "Module reference entry.";
   const actions = document.createElement("span");
   actions.className = "scene-context-store-card-actions";
+  if (entry.visible && entry.demoPatch) {
+    if (entry.demoListen) {
+      const listen = document.createElement("button");
+      listen.type = "button";
+      listen.textContent = "Listen";
+      listen.addEventListener("click", (event) => {
+        event.stopPropagation();
+        listenToNodeGraphModuleStoreDemo(entry);
+      });
+      actions.append(listen);
+    }
+    const watch = document.createElement("button");
+    watch.type = "button";
+    watch.textContent = "Watch";
+    watch.addEventListener("click", (event) => {
+      event.stopPropagation();
+      watchNodeGraphModuleStoreDemo(entry);
+    });
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.textContent = "Edit";
+    edit.addEventListener("click", (event) => {
+      event.stopPropagation();
+      editNodeGraphModuleStoreDemo(entry);
+    });
+    actions.append(watch, edit);
+  }
   if (entry.visible && entry.implemented) {
     const add = document.createElement("button");
     add.type = "button";
     add.dataset.contextModule = entry.type;
-    add.textContent = "Add module";
+    add.textContent = "Add Module";
     add.addEventListener("click", (event) => {
       event.stopPropagation();
       addNodeGraphModuleFromShop(add);
@@ -820,11 +1193,12 @@ function createNodeGraphModuleStoreButton(entry) {
   const toggle = document.createElement("button");
   toggle.type = "button";
   toggle.dataset.storeToggleModule = entry.type;
-  toggle.dataset.visible = String(!entry.visible);
-  toggle.textContent = entry.visible ? "Disable" : "Enable";
+  toggle.dataset.storeToggleShelf = "shop";
+  toggle.dataset.visible = String(!entry.shopVisible);
+  toggle.textContent = entry.shopVisible ? "Remove From Shop" : "Show In Shop";
   toggle.addEventListener("click", (event) => {
     event.stopPropagation();
-    setNodeGraphModuleCatalogVisibility(entry.type, !entry.visible);
+    setNodeGraphModuleCatalogVisibility(entry.type, !entry.shopVisible, "shop");
   });
   actions.append(toggle);
 
@@ -910,18 +1284,20 @@ function createNodeGraphModuleGroupButton(name, group) {
   card.dataset.moduleGroup = name;
   const meta = document.createElement("span");
   meta.className = "scene-context-store-card-meta";
-  meta.textContent = "circuit preset";
+  meta.textContent = group?.kind === "moduleGroup" ? "module group" : "circuit preset";
   const label = document.createElement("strong");
   label.textContent = name;
   const description = document.createElement("span");
   description.className = "scene-context-store-card-description";
-  description.textContent = `${group?.nodes?.length || 0} modules saved from the modular view.`;
+  description.textContent = group?.kind === "moduleGroup"
+    ? `${group?.sourcePatch?.nodes?.length || group?.nodes?.length || 0} modules wrapped as one module.`
+    : `${group?.nodes?.length || 0} modules saved from the modular view.`;
   const actions = document.createElement("span");
   actions.className = "scene-context-store-card-actions";
   const add = document.createElement("button");
   add.type = "button";
   add.dataset.contextGroup = name;
-  add.textContent = "Add group";
+  add.textContent = group?.kind === "moduleGroup" ? "Add Module" : "Add group";
   add.addEventListener("click", (event) => {
     event.stopPropagation();
     addNodeGraphModuleGroupFromBrowser(name);
@@ -951,9 +1327,16 @@ function closeNodeGraphModuleCollectionsMenu() {
   if (menu) {
     menu.hidden = true;
   }
+  if (nodeGraphMvp.moduleCollectionsDragging?.handle) {
+    nodeGraphMvp.moduleCollectionsDragging.handle.classList.remove("dragging");
+  }
+  nodeGraphMvp.moduleCollectionsDragging = null;
 }
 
 function openNodeGraphModuleCollectionsMenu(event) {
+  if (event.target?.matches?.("#nodeModuleDepartmentSearch")) {
+    return false;
+  }
   const target = event.target.closest?.("#nodeModuleDepartmentSearchShell");
   if (!target || document.getElementById("nodeModuleShopView")?.hidden) {
     return false;
@@ -984,6 +1367,61 @@ function handleNodeGraphModuleCollectionsPointerDown(event) {
   closeNodeGraphModuleCollectionsMenu();
 }
 
+function beginNodeGraphModuleCollectionsMenuDrag(event) {
+  if (event.button > 0 || nodeGraphDialogDragTargetIsInteractive(event)) {
+    return;
+  }
+  const menu = document.getElementById("nodeModuleCollectionsMenu");
+  if (!menu || menu.hidden) {
+    return;
+  }
+  const rect = menu.getBoundingClientRect();
+  nodeGraphMvp.moduleCollectionsDragging = {
+    handle: event.currentTarget,
+    offsetX: event.clientX - rect.left,
+    offsetY: event.clientY - rect.top,
+    pointerId: event.pointerId ?? null,
+  };
+  event.currentTarget.classList.add("dragging");
+  if (event.pointerId !== undefined) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function dragNodeGraphModuleCollectionsMenu(event) {
+  const drag = nodeGraphMvp.moduleCollectionsDragging;
+  if (
+    !drag ||
+    (drag.pointerId !== null && event.pointerId !== undefined && drag.pointerId !== event.pointerId)
+  ) {
+    return;
+  }
+  positionNodeSceneContextMenu(
+    document.getElementById("nodeModuleCollectionsMenu"),
+    event.clientX - drag.offsetX,
+    event.clientY - drag.offsetY,
+    false,
+  );
+  event.preventDefault();
+}
+
+function endNodeGraphModuleCollectionsMenuDrag(event) {
+  const drag = nodeGraphMvp.moduleCollectionsDragging;
+  if (
+    !drag ||
+    (drag.pointerId !== null && event.pointerId !== undefined && drag.pointerId !== event.pointerId)
+  ) {
+    return;
+  }
+  drag.handle.classList.remove("dragging");
+  if (event.pointerId !== undefined && drag.handle.hasPointerCapture?.(event.pointerId)) {
+    drag.handle.releasePointerCapture(event.pointerId);
+  }
+  nodeGraphMvp.moduleCollectionsDragging = null;
+}
+
 function renderNodeGraphModuleStoreCatalog() {
   const available = document.getElementById("nodeModuleShopAvailable");
   const shopView = document.getElementById("nodeModuleShopView");
@@ -1000,6 +1438,11 @@ function renderNodeGraphModuleStoreCatalog() {
   departmentList.innerHTML = "";
 
   const entries = nodeGraphModuleStoreEntries();
+  const departmentSearch = nodeGraphMvp.moduleStoreDepartmentSearch || "";
+  const departmentSearchField = document.getElementById("nodeModuleDepartmentSearch");
+  if (departmentSearchField && departmentSearchField.value !== departmentSearch) {
+    departmentSearchField.value = departmentSearch;
+  }
   const activeDepartment = nodeGraphModuleStoreDepartments.includes(nodeGraphMvp.moduleStoreDepartment)
     ? nodeGraphMvp.moduleStoreDepartment
     : "";
@@ -1012,9 +1455,15 @@ function renderNodeGraphModuleStoreCatalog() {
 
   for (const department of nodeGraphModuleStoreDepartments) {
     const departmentEntries = entries.filter((item) => item.category === department);
-    if (departmentEntries.length) {
+    if (departmentEntries.length && nodeGraphModuleDepartmentMatchesSearch(department, departmentEntries, departmentSearch)) {
       departmentList.append(createNodeGraphModuleDepartmentButton(department, departmentEntries));
     }
+  }
+  if (!departmentList.children.length) {
+    const empty = document.createElement("div");
+    empty.className = "scene-context-store-empty";
+    empty.textContent = "No module departments match this search.";
+    departmentList.append(empty);
   }
 
   shopView.hidden = Boolean(activeDepartment);

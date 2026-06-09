@@ -1,3 +1,14 @@
+const nodeLiveAdditiveHardMaxHarmonics = 1024;
+
+const nodeLiveRaptEllipticQuarterbandSos = Object.freeze([
+  Object.freeze([1.3515101236634053e-04, 1.8481719657676747e-04, 1.3515101236634053e-04, 1, -1.5863119326809123, 0.6428204816292211]),
+  Object.freeze([1, -0.3714014551732318, 0.9999999999999998, 1, -1.5620959364626055, 0.7161571320953768]),
+  Object.freeze([1, -1.0298229723362611, 1, 1, -1.5310702081483014, 0.8130950789236201]),
+  Object.freeze([1, -1.2676395426322578, 1.0000000000000002, 1, -1.50809401930334, 0.8931580864862605]),
+  Object.freeze([1, -1.3628788519102755, 1.0000000000000002, 1, -1.4983265140498274, 0.9475287279522546]),
+  Object.freeze([1, -1.3980241837651683, 1, 1, -1.5032624176850438, 0.9843747059042128]),
+]);
+
 class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -19,6 +30,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.pitchModWheelSignal = { mod: 0, pitch: 0 };
     this.midiKeyboardGatePulseSamples = 0;
     this.midiKeyboardSignal = null;
+    this.moduleGroupRuntimes = new Map();
     this.modulationConnections = new Map();
     this.nodeOutputs = new Map();
     this.nodes = new Map();
@@ -28,22 +40,34 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.engineSampleRate = sampleRate;
     this.hostSampleRate = sampleRate;
     this.oversamplingRatio = 1;
+    this.raptEllipticDecimatorLeft = this.createRaptEllipticDecimatorState();
+    this.raptEllipticDecimatorRight = this.createRaptEllipticDecimatorState();
+    this.raptEllipticDecimatorRatio = 1;
     this.bandpassStates = new Map();
     this.clockDividerStates = new Map();
     this.clockStates = new Map();
     this.codeblockFunctions = new Map();
     this.cookbookFilterStates = new Map();
     this.delayedTriggerStates = new Map();
+    this.delayEffectStates = new Map();
     this.expAdsrStates = new Map();
     this.fractalBrownianNoiseStates = new Map();
+    this.graphInputConnections = new Map();
+    this.gpuAdditiveQueues = new Map();
+    this.gpuAdditiveStatusCounter = 0;
+    this.gpuAdditiveUnderruns = 0;
     this.flowerChildEnvelopeFollowerStates = new Map();
     this.highpassStates = new Map();
     this.ladderFilterStates = new Map();
     this.linearEnvelopeStates = new Map();
+    this.lorenzAttractorStates = new Map();
     this.lowpassStates = new Map();
     this.noiseGeneratorStates = new Map();
     this.noiseSampleHoldStates = new Map();
     this.oscResetStates = new Map();
+    this.graphLfoStates = new Map();
+    this.oscillatorLastPhaseIncrements = new Map();
+    this.oscillatorStoppedSamples = new Map();
     this.outputNode = "output";
     this.patchFingerprint = "";
     this.phases = new Map();
@@ -55,7 +79,6 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.sessionId = 0;
     this.scopeBuffers = new Map();
     this.scopeCounter = 0;
-    this.scopeInputs = new Map();
     this.slewLimiterStates = new Map();
     this.smoothers = new Map();
     this.spiralStates = new Map();
@@ -64,6 +87,8 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.triggerDividerStates = new Map();
     this.triangleStates = new Map();
     this.vactrolEnvelopeStates = new Map();
+    this.visualInputBuffers = new Map();
+    this.visualSinks = [];
     this.resetVisualControls();
     this.earProtector = this.createEarProtector(sampleRate);
     this.port.onmessage = (event) => this.handleMessage(event.data || {});
@@ -98,6 +123,30 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         };
       },
     };
+  }
+
+  createRaptEllipticDecimatorState() {
+    return nodeLiveRaptEllipticQuarterbandSos.map(() => [0, 0]);
+  }
+
+  resetRaptEllipticDecimator() {
+    this.raptEllipticDecimatorLeft = this.createRaptEllipticDecimatorState();
+    this.raptEllipticDecimatorRight = this.createRaptEllipticDecimatorState();
+    this.raptEllipticDecimatorRatio = this.oversamplingRatio;
+  }
+
+  processRaptEllipticDecimatorSample(input, states) {
+    let y = Number(input) || 0;
+    for (let section = 0; section < nodeLiveRaptEllipticQuarterbandSos.length; section += 1) {
+      const [b0, b1, b2, , a1, a2] = nodeLiveRaptEllipticQuarterbandSos[section];
+      const z1 = states[section][0];
+      const z2 = states[section][1];
+      const sectionOut = b0 * y + z1;
+      states[section][0] = b1 * y - a1 * sectionOut + z2;
+      states[section][1] = b2 * y - a2 * sectionOut;
+      y = sectionOut;
+    }
+    return y;
   }
 
   createVisualControlState() {
@@ -166,6 +215,10 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       this.setParams(message.nodes, message);
       return;
     }
+    if (message.type === "gpuAdditiveChunk") {
+      this.pushGpuAdditiveChunk(message);
+      return;
+    }
     if (message.type === "setMidiKeyboardSignal") {
       this.setMidiKeyboardSignal(message.signal);
       return;
@@ -181,6 +234,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
 
   clearPlan() {
     this.inputConnections = new Map();
+    this.graphInputConnections = new Map();
     this.badNumberCount = 0;
     this.lastBadValueReason = "";
     this.lastBadValueNodeId = "";
@@ -198,6 +252,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.pitchModWheelSignal = { mod: 0, pitch: 0 };
     this.midiKeyboardGatePulseSamples = 0;
     this.midiKeyboardSignal = null;
+    this.moduleGroupRuntimes = new Map();
     this.modulationConnections = new Map();
     this.nodeOutputs = new Map();
     this.nodes = new Map();
@@ -212,16 +267,22 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.codeblockFunctions = new Map();
     this.cookbookFilterStates = new Map();
     this.delayedTriggerStates = new Map();
+    this.delayEffectStates = new Map();
     this.expAdsrStates = new Map();
     this.fractalBrownianNoiseStates = new Map();
+    this.gpuAdditiveQueues = new Map();
+    this.gpuAdditiveStatusCounter = 0;
+    this.gpuAdditiveUnderruns = 0;
     this.flowerChildEnvelopeFollowerStates = new Map();
     this.highpassStates = new Map();
     this.ladderFilterStates = new Map();
     this.linearEnvelopeStates = new Map();
+    this.lorenzAttractorStates = new Map();
     this.lowpassStates = new Map();
     this.noiseGeneratorStates = new Map();
     this.noiseSampleHoldStates = new Map();
     this.oscResetStates = new Map();
+    this.graphLfoStates = new Map();
     this.pluckEnvelopeStates = new Map();
     this.randomClockStates = new Map();
     this.randomWalkStates = new Map();
@@ -229,7 +290,6 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.slewLimiterStates = new Map();
     this.scopeBuffers = new Map();
     this.scopeCounter = 0;
-    this.scopeInputs = new Map();
     this.smoothers = new Map();
     this.spiralStates = new Map();
     this.stepSequencerStates = new Map();
@@ -237,7 +297,115 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.triggerDividerStates = new Map();
     this.triangleStates = new Map();
     this.vactrolEnvelopeStates = new Map();
+    this.visualSinks = [];
     this.resetVisualControls();
+  }
+
+  pushGpuAdditiveChunk(message = {}) {
+    if (message.sessionId !== this.sessionId || message.planSerial !== this.planSerial) {
+      return;
+    }
+    const nodeId = String(message.nodeId || "");
+    const samples = message.samples instanceof Float32Array
+      ? message.samples
+      : new Float32Array(message.samples || []);
+    if (!nodeId || samples.length <= 0) {
+      return;
+    }
+    const queue = this.gpuAdditiveQueues.get(nodeId) || {
+      backend: "",
+      chunks: [],
+      droppedChunks: 0,
+      expectedSequence: 0,
+      heldGain: 1,
+      heldSamples: 0,
+      lastSample: 0,
+      readIndex: 0,
+      resetCount: 0,
+      version: "",
+    };
+    queue.backend = String(message.backend || queue.backend || "");
+    const version = String(message.version || "");
+    if (queue.version !== version) {
+      queue.chunks = [];
+      queue.droppedChunks = 0;
+      queue.expectedSequence = 0;
+      queue.readIndex = 0;
+      queue.resetCount += 1;
+      queue.version = version;
+    }
+    const sequence = Number(message.sequence);
+    if (Number.isFinite(sequence)) {
+      if (sequence < queue.expectedSequence) {
+        return;
+      }
+      if (sequence > queue.expectedSequence) {
+        queue.droppedChunks += sequence - queue.expectedSequence;
+        queue.chunks = [];
+        queue.readIndex = 0;
+      }
+      queue.expectedSequence = sequence + 1;
+    }
+    queue.chunks.push(samples);
+    while (queue.chunks.length > 12) {
+      queue.chunks.shift();
+      queue.droppedChunks += 1;
+      queue.readIndex = 0;
+    }
+    this.gpuAdditiveQueues.set(nodeId, queue);
+  }
+
+  readGpuAdditiveQueuedSample(nodeId) {
+    const queue = this.gpuAdditiveQueues.get(nodeId);
+    if (!queue?.chunks?.length) {
+      this.gpuAdditiveUnderruns += 1;
+      if (queue && Number.isFinite(queue.lastSample) && queue.heldSamples < 2048) {
+        queue.heldSamples += 1;
+        if (queue.heldSamples > 128) {
+          queue.heldGain = Math.max(0, (Number(queue.heldGain) || 1) * 0.9975);
+        } else {
+          queue.heldGain = 1;
+        }
+        return queue.lastSample * queue.heldGain;
+      }
+      return null;
+    }
+    const chunk = queue.chunks[0];
+    const sample = Number(chunk[queue.readIndex]) || 0;
+    queue.heldGain = 1;
+    queue.lastSample = sample;
+    queue.heldSamples = 0;
+    queue.readIndex += 1;
+    if (queue.readIndex >= chunk.length) {
+      queue.chunks.shift();
+      queue.readIndex = 0;
+    }
+    return sample;
+  }
+
+  postGpuAdditiveStatus() {
+    const queues = [];
+    for (const [nodeId, queue] of this.gpuAdditiveQueues) {
+      queues.push({
+        nodeId,
+        backend: queue.backend,
+        chunks: queue.chunks.length,
+        droppedChunks: queue.droppedChunks,
+        expectedSequence: queue.expectedSequence,
+        heldGain: queue.heldGain,
+        heldSamples: queue.heldSamples,
+        resetCount: queue.resetCount,
+        samples: queue.chunks.reduce((sum, chunk) => sum + chunk.length, 0) - queue.readIndex,
+        version: queue.version,
+      });
+    }
+    this.port.postMessage({
+      queues,
+      sessionId: this.sessionId,
+      type: "gpuAdditiveStatus",
+      underruns: this.gpuAdditiveUnderruns,
+    });
+    this.gpuAdditiveUnderruns = 0;
   }
 
   setPlan(plan, message = {}) {
@@ -245,26 +413,38 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.patchFingerprint = patchFingerprint;
     this.planSerial = message.planSerial || 0;
     this.sessionId = message.sessionId || 0;
+    this.gpuAdditiveQueues = new Map();
+    this.gpuAdditiveUnderruns = 0;
     this.hostSampleRate = Math.max(1, Number(message.sampleRate) || sampleRate || 44100);
     const requestedRatio = Number(message.oversamplingRatio) ||
       ((Number(message.engineSampleRate) || this.hostSampleRate) / this.hostSampleRate);
     this.oversamplingRatio = Math.max(1, Math.min(4, Math.round(requestedRatio) || 1));
     this.engineSampleRate = this.hostSampleRate * this.oversamplingRatio;
+    if (this.raptEllipticDecimatorRatio !== this.oversamplingRatio) {
+      this.resetRaptEllipticDecimator();
+    }
     const nodes = Array.isArray(plan?.nodes) ? plan.nodes : [];
     const ids = new Set(nodes.map((node) => node.id));
     this.nodes = new Map(nodes.map((node) => [node.id, {
       id: node.id,
       codeblock: this.normalizeCodeblock(node.codeblock),
+      moduleGroup: node.moduleGroup || null,
+      moduleGroupPlan: node.moduleGroupPlan || null,
       paramMeta: node.paramMeta || {},
       params: node.params || {},
-      scopeInputPort: node.scopeInputPort || "",
       type: node.type,
     }]));
     this.order = Array.isArray(plan?.order) ? [...plan.order] : [...ids];
     this.outputNode = plan?.outputNode || "output";
+    this.visualSinks = (Array.isArray(plan?.visualSinks) ? plan.visualSinks : []).map((sink) => ({
+      ...sink,
+      bufferedInputs: Array.isArray(sink?.bufferedInputs) ? [...sink.bufferedInputs] : [],
+      inputs: (Array.isArray(sink?.inputs) ? sink.inputs : []).map((input) => ({ ...input })),
+    }));
+    this.syncVisualInputBuffers();
     this.inputConnections = this.buildInputConnectionMap(plan?.connections, ids);
+    this.graphInputConnections = this.buildGraphInputConnectionMap(plan?.graphConnections, ids);
     this.modulationConnections = this.buildModulationConnectionMap(plan?.modulations, ids);
-    this.scopeInputs = new Map();
     this.resetVisualControls();
 
     for (const id of ids) {
@@ -272,16 +452,16 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         this.nodeOutputs.set(id, 0);
       }
       const node = this.nodes.get(id);
-      if (node?.type === "osc" && !this.phases.has(id)) {
+      if ((node?.type === "osc" || node?.type === "fbPolyBlepOsc") && !this.phases.has(id)) {
         this.phases.set(id, 0);
       }
-      if (node?.type === "osc" && !this.oscResetStates.has(id)) {
+      if ((node?.type === "osc" || node?.type === "fbPolyBlepOsc") && !this.oscResetStates.has(id)) {
         this.oscResetStates.set(id, this.createOscResetState());
       }
-      if (node?.type === "osc" && !this.triangleStates.has(id)) {
+      if ((node?.type === "osc" || node?.type === "fbPolyBlepOsc") && !this.triangleStates.has(id)) {
         this.triangleStates.set(id, 0);
       }
-      if ((node?.type === "osc" || node?.type === "noise") && !this.noiseSeeds.has(id)) {
+      if ((node?.type === "osc" || node?.type === "fbPolyBlepOsc" || node?.type === "noise") && !this.noiseSeeds.has(id)) {
         this.noiseSeeds.set(id, this.stableSeed(id));
       }
       if (node?.type === "stereoNoise") {
@@ -294,6 +474,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       }
       if (node?.type === "spiral" && !this.spiralStates.has(id)) {
         this.spiralStates.set(id, this.createSpiralState());
+      }
+      if (node?.type === "lorenzAttractor" && !this.lorenzAttractorStates.has(id)) {
+        this.lorenzAttractorStates.set(id, this.createLorenzAttractorState());
       }
       if (node?.type === "highpass" && !this.highpassStates.has(id)) {
         this.highpassStates.set(id, this.createHighpassState());
@@ -313,11 +496,17 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       if (node?.type === "clock" && !this.clockStates.has(id)) {
         this.clockStates.set(id, this.createClockState());
       }
+      if ((node?.type === "graph" || node?.type === "graph2") && !this.graphLfoStates.has(id)) {
+        this.graphLfoStates.set(id, this.createGraphLfoState());
+      }
       if (node?.type === "clockDivider" && !this.clockDividerStates.has(id)) {
         this.clockDividerStates.set(id, this.createTriggerDividerState());
       }
       if (node?.type === "delayedTrigger" && !this.delayedTriggerStates.has(id)) {
         this.delayedTriggerStates.set(id, this.createDelayedTriggerState());
+      }
+      if (node?.type === "delayEffect" && !this.delayEffectStates.has(id)) {
+        this.delayEffectStates.set(id, this.createDelayEffectState());
       }
       if (node?.type === "randomClock" && !this.randomClockStates.has(id)) {
         this.randomClockStates.set(id, this.createRandomClockState());
@@ -367,6 +556,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       if (node?.type === "vactrolEnvelope" && !this.vactrolEnvelopeStates.has(id)) {
         this.vactrolEnvelopeStates.set(id, this.createVactrolEnvelopeState());
       }
+      if (node?.type === "moduleGroup" && node.moduleGroupPlan && !this.moduleGroupRuntimes.has(id)) {
+        this.moduleGroupRuntimes.set(id, this.createNestedRuntime(node.moduleGroupPlan));
+      }
       for (const [key, value] of Object.entries(node?.params || {})) {
         const smootherKey = this.parameterKey(id, key);
         const metadata = node.paramMeta?.[key];
@@ -388,9 +580,26 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         this.oscResetStates.delete(id);
       }
     }
+    for (const id of [...this.graphLfoStates.keys()]) {
+      if (!ids.has(id)) {
+        this.graphLfoStates.delete(id);
+      }
+    }
     for (const id of [...this.triangleStates.keys()]) {
       if (!ids.has(id)) {
         this.triangleStates.delete(id);
+      }
+    }
+    for (const id of [...this.oscillatorLastPhaseIncrements.keys()]) {
+      const nodeId = String(id).split(":")[0];
+      if (!ids.has(nodeId)) {
+        this.oscillatorLastPhaseIncrements.delete(id);
+      }
+    }
+    for (const id of [...this.oscillatorStoppedSamples.keys()]) {
+      const nodeId = String(id).split(":")[0];
+      if (!ids.has(nodeId)) {
+        this.oscillatorStoppedSamples.delete(id);
       }
     }
     for (const id of [...this.noiseSeeds.keys()]) {
@@ -413,6 +622,11 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     for (const id of [...this.spiralStates.keys()]) {
       if (!ids.has(id)) {
         this.spiralStates.delete(id);
+      }
+    }
+    for (const id of [...this.lorenzAttractorStates.keys()]) {
+      if (!ids.has(id)) {
+        this.lorenzAttractorStates.delete(id);
       }
     }
     for (const id of [...this.highpassStates.keys()]) {
@@ -463,6 +677,11 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     for (const id of [...this.delayedTriggerStates.keys()]) {
       if (!ids.has(id)) {
         this.delayedTriggerStates.delete(id);
+      }
+    }
+    for (const id of [...this.delayEffectStates.keys()]) {
+      if (!ids.has(id)) {
+        this.delayEffectStates.delete(id);
       }
     }
     for (const id of [...this.sampleHoldStates.keys()]) {
@@ -535,6 +754,11 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         this.vactrolEnvelopeStates.delete(id);
       }
     }
+    for (const id of [...this.moduleGroupRuntimes.keys()]) {
+      if (!ids.has(id)) {
+        this.moduleGroupRuntimes.delete(id);
+      }
+    }
     for (const key of [...this.smoothers.keys()]) {
       const [nodeId, parameter] = key.split(".");
       if (!ids.has(nodeId) || !(parameter in (this.nodes.get(nodeId)?.params || {}))) {
@@ -578,6 +802,8 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.patchFingerprint = patchFingerprint || this.patchFingerprint;
     this.planSerial = message.planSerial || 0;
     this.sessionId = message.sessionId || 0;
+    this.gpuAdditiveQueues = new Map();
+    this.gpuAdditiveUnderruns = 0;
     let parameterCount = 0;
     for (const node of Array.isArray(nodes) ? nodes : []) {
       const current = this.nodes.get(node.id);
@@ -627,6 +853,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       midi,
       pitchValue: this.clampValue(Number(source.pitchValue) || midi, 0, 127),
       midiNormalized: this.clampValue(Number(source.midiNormalized) || midi / 127, 0, 1),
+      tenthVoltPerOctave: this.clampValue(Number(source.tenthVoltPerOctave) || midi / 120, 0, 1),
       increment: Math.max(0, Number(source.increment) || frequency / Math.max(1, this.engineSampleRate || sampleRate)),
       frequency,
     };
@@ -647,36 +874,50 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     };
   }
 
-  buildInputConnectionMap(connections, ids) {
+  buildConnectionMap(items, ids, keyForItem) {
     const map = new Map();
-    for (const connection of Array.isArray(connections) ? connections : []) {
-      if (!ids.has(connection.sourceNode) || !ids.has(connection.destinationNode)) {
+    for (const item of Array.isArray(items) ? items : []) {
+      if (!ids.has(item.sourceNode) || !ids.has(item.destinationNode)) {
         continue;
       }
-      const key = this.inputKey(connection.destinationNode, connection.destinationPort);
+      const key = keyForItem(item);
       const list = map.get(key) || [];
-      list.push({ ...connection });
+      list.push({ ...item });
       map.set(key, list);
     }
     return map;
   }
 
+  buildInputConnectionMap(connections, ids) {
+    return this.buildConnectionMap(
+      connections,
+      ids,
+      (connection) => this.inputKey(connection.destinationNode, connection.destinationPort),
+    );
+  }
+
   buildModulationConnectionMap(modulations, ids) {
-    const map = new Map();
-    for (const modulation of Array.isArray(modulations) ? modulations : []) {
-      if (!ids.has(modulation.sourceNode) || !ids.has(modulation.destinationNode)) {
-        continue;
-      }
-      const key = this.parameterKey(modulation.destinationNode, modulation.destinationParam);
-      const list = map.get(key) || [];
-      list.push({ ...modulation });
-      map.set(key, list);
-    }
-    return map;
+    return this.buildConnectionMap(
+      modulations,
+      ids,
+      (modulation) => this.parameterKey(modulation.destinationNode, modulation.destinationParam),
+    );
+  }
+
+  buildGraphInputConnectionMap(graphConnections, ids) {
+    return this.buildConnectionMap(
+      graphConnections,
+      ids,
+      (connection) => this.graphInputKey(connection.destinationNode, connection.destinationGraphInput),
+    );
   }
 
   inputKey(node, port) {
     return `${node}.${port}`;
+  }
+
+  graphInputKey(node, graphInput) {
+    return `${node}.${graphInput}`;
   }
 
   parameterKey(node, parameter) {
@@ -722,7 +963,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
 
   normalizeGraphShape(value) {
     const shape = String(value || "").trim();
-    return shape === "linear" || shape === "exponential" || shape === "rational"
+    return shape === "linear" || shape === "smooth" || shape === "exponential" || shape === "rational" || shape === "hold"
       ? shape
       : "rational";
   }
@@ -758,6 +999,31 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     return { nodes };
   }
 
+  graphEndpointYLockEnabledForNode(node) {
+    return (node?.type === "graph" || node?.type === "graph2") && Number(node?.params?.lockEndpointY) >= 0.5;
+  }
+
+  graphWithLockedEndpointY(graphValue) {
+    const graph = this.normalizeGraph(graphValue);
+    if (graph.nodes.length < 2) {
+      return graph;
+    }
+    const lastIndex = graph.nodes.length - 1;
+    const anchorY = this.normalizeGraphNumber(graph.nodes[0]?.y, 0);
+    const nodes = graph.nodes.map((node, index) => (
+      index === 0 || index === lastIndex
+        ? this.normalizeGraphNode({ ...node, y: anchorY }, index)
+        : node
+    ));
+    return this.normalizeGraph({ ...graph, nodes });
+  }
+
+  graphForNode(node) {
+    return this.graphEndpointYLockEnabledForNode(node)
+      ? this.graphWithLockedEndpointY(node?.graph)
+      : this.normalizeGraph(node?.graph);
+  }
+
   graphRationalCurve(position, contour = 0) {
     const p = this.normalizeGraphNumber(position, 0, 0, 1);
     const c = this.normalizeGraphNumber(contour, 0, -0.999, 0.999);
@@ -780,7 +1046,138 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     return Math.abs(denominator) < 0.000001 ? p : (1 - Math.exp(p * a)) / denominator;
   }
 
-  graphSegmentValue(graph, x, index) {
+  graphSmoothCurve(position) {
+    const p = this.normalizeGraphNumber(position, 0, 0, 1);
+    return p * p * (3 - 2 * p);
+  }
+
+  normalizeGraph2SmoothingMode(value) {
+    if (Number.isFinite(Number(value))) {
+      return ["linear", "smooth", "meander", "quadratic", "cubic"][Math.max(0, Math.min(4, Math.round(Number(value))))];
+    }
+    const mode = String(value || "").trim().toLowerCase();
+    return ["linear", "smooth", "meander", "quadratic", "cubic"].includes(mode) ? mode : "smooth";
+  }
+
+  graphMeanderCurve(position, index = 0) {
+    const p = this.graphSmoothCurve(position);
+    const wobblePhase = (index * 0.371) % 1;
+    const wobble = Math.sin(Math.PI * p) * Math.sin((p * 1.5 + wobblePhase) * Math.PI * 2) * 0.075;
+    return this.normalizeGraphNumber(p + wobble, p, 0, 1);
+  }
+
+  graphModeCurve(position, mode, index = 0) {
+    const normalizedMode = this.normalizeGraph2SmoothingMode(mode);
+    if (normalizedMode === "linear") {
+      return this.normalizeGraphNumber(position, 0, 0, 1);
+    }
+    if (normalizedMode === "meander") {
+      return this.graphMeanderCurve(position, index);
+    }
+    return this.graphSmoothCurve(position);
+  }
+
+  graphBezierPointAt(nodes, position = 0) {
+    const t = this.normalizeGraphNumber(position, 0, 0, 1);
+    let points = nodes.map((node) => ({
+      x: this.normalizeGraphNumber(node.x, 0),
+      y: this.normalizeGraphNumber(node.y, 0),
+    }));
+    if (!points.length) {
+      return { x: 0, y: 0 };
+    }
+    while (points.length > 1) {
+      points = points.slice(0, -1).map((point, index) => {
+        const next = points[index + 1];
+        return {
+          x: point.x + (next.x - point.x) * t,
+          y: point.y + (next.y - point.y) * t,
+        };
+      });
+    }
+    return points[0];
+  }
+
+  graphBezierValueAt(graph, xValue) {
+    const x = this.normalizeGraphNumber(xValue, 0, -Infinity, Infinity);
+    if (graph.nodes.length < 2) {
+      return graph.nodes[0]?.y ?? 0;
+    }
+    if (x <= graph.nodes[0].x) {
+      return graph.nodes[0].y;
+    }
+    const last = graph.nodes[graph.nodes.length - 1];
+    if (x >= last.x) {
+      return last.y;
+    }
+    let low = 0;
+    let high = 1;
+    let point = this.graphBezierPointAt(graph.nodes, x);
+    for (let iteration = 0; iteration < 28; iteration += 1) {
+      const t = (low + high) * 0.5;
+      point = this.graphBezierPointAt(graph.nodes, t);
+      if (point.x < x) {
+        low = t;
+      } else {
+        high = t;
+      }
+    }
+    return point.y;
+  }
+
+  graphInterpolationWindowStart(nodes, x, degree) {
+    const targetCount = Math.max(2, Math.min(nodes.length, degree + 1));
+    let segmentIndex = 0;
+    for (let index = 0; index < nodes.length - 1; index += 1) {
+      if (x <= nodes[index + 1].x) {
+        segmentIndex = index;
+        break;
+      }
+      segmentIndex = index;
+    }
+    const start = segmentIndex - Math.max(0, Math.floor((targetCount - 2) * 0.5));
+    return Math.max(0, Math.min(nodes.length - targetCount, start));
+  }
+
+  graphLagrangeValueAt(graph, xValue, degree = 3) {
+    const x = this.normalizeGraphNumber(xValue, 0, -Infinity, Infinity);
+    const nodes = graph.nodes;
+    if (nodes.length < 2) {
+      return nodes[0]?.y ?? 0;
+    }
+    for (const node of nodes) {
+      if (Math.abs(x - node.x) < 0.000001) {
+        return node.y;
+      }
+    }
+    const targetCount = Math.max(2, Math.min(nodes.length, degree + 1));
+    const start = this.graphInterpolationWindowStart(nodes, x, degree);
+    const windowNodes = nodes.slice(start, start + targetCount);
+    let value = 0;
+    for (let index = 0; index < windowNodes.length; index += 1) {
+      const point = windowNodes[index];
+      let basis = 1;
+      for (let otherIndex = 0; otherIndex < windowNodes.length; otherIndex += 1) {
+        if (otherIndex === index) {
+          continue;
+        }
+        const other = windowNodes[otherIndex];
+        const denominator = point.x - other.x;
+        if (Math.abs(denominator) < 0.000001) {
+          continue;
+        }
+        basis *= (x - other.x) / denominator;
+      }
+      value += point.y * basis;
+    }
+    return value;
+  }
+
+  graphSmoothingModeForNode(node) {
+    return node?.type === "graph2" ? this.normalizeGraph2SmoothingMode(node?.params?.smoothingMode) : "legacy";
+  }
+
+  graphSegmentValue(graph, x, index, smoothingMode = "legacy") {
     const left = graph.nodes[index];
     const right = graph.nodes[index + 1];
     const dx = right.x - left.x;
@@ -788,27 +1185,48 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       return 0.5 * (left.y + right.y);
     }
     const p = this.normalizeGraphNumber((x - left.x) / dx, 0, 0, 1);
+    if (smoothingMode !== "legacy") {
+      const shaped = this.graphModeCurve(p, smoothingMode, index);
+      return left.y + (right.y - left.y) * shaped;
+    }
     const contour = this.normalizeGraphNumber(right.c, 0, -0.999, 0.999);
     const shaped = right.shape === "exponential"
       ? this.graphExponentialCurve(p, contour)
+      : right.shape === "hold"
+        ? (p >= 1 ? 1 : 0)
+      : right.shape === "smooth"
+        ? this.graphSmoothCurve(p)
       : right.shape === "linear"
         ? p
         : this.graphRationalCurve(p, contour);
     return left.y + (right.y - left.y) * shaped;
   }
 
-  graphValueAt(graphValue, xValue) {
+  graphValueAt(graphValue, xValue, smoothingMode = "legacy") {
     const graph = this.normalizeGraph(graphValue);
     const x = this.normalizeGraphNumber(xValue, 0, -Infinity, Infinity);
     if (!graph.nodes.length) {
       return 0;
     }
+    const normalizedMode = this.normalizeGraph2SmoothingMode(smoothingMode);
+    if (normalizedMode === "meander") {
+      return this.safeFilterNumber(this.graphBezierValueAt(graph, x), null);
+    }
     if (x < graph.nodes[0].x) {
       return graph.nodes[0].y;
     }
+    if (x > graph.nodes[graph.nodes.length - 1].x) {
+      return graph.nodes[graph.nodes.length - 1].y;
+    }
+    if (normalizedMode === "quadratic") {
+      return this.safeFilterNumber(this.graphLagrangeValueAt(graph, x, 2), null);
+    }
+    if (normalizedMode === "cubic") {
+      return this.safeFilterNumber(this.graphLagrangeValueAt(graph, x, 3), null);
+    }
     for (let index = 0; index < graph.nodes.length - 1; index += 1) {
       if (x <= graph.nodes[index + 1].x) {
-        return this.safeFilterNumber(this.graphSegmentValue(graph, x, index), null);
+        return this.safeFilterNumber(this.graphSegmentValue(graph, x, index, smoothingMode), null);
       }
     }
     return graph.nodes[graph.nodes.length - 1].y;
@@ -816,6 +1234,25 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
 
   outputSampleClipped(value) {
     return this.badValueReason(value) || value < -0.95 || value > 0.95;
+  }
+
+  outputSampleTripsEarProtection(value) {
+    const number = Number(value);
+    return !Number.isFinite(number) || Math.abs(number) > 1;
+  }
+
+  speakerProtectionSample(value, nodeId) {
+    const number = Number(value);
+    const unsafe = !Number.isFinite(number) || Math.abs(number) > 1;
+    if (unsafe) {
+      this.meterProtectionMuteCount += 1;
+      this.speakerProtectionPeak = Math.max(
+        Number(this.speakerProtectionPeak) || 0,
+        Number.isFinite(number) ? Math.abs(number) : Infinity,
+      );
+      this.speakerProtectionNodeId = String(nodeId || "");
+    }
+    return unsafe ? 0 : number;
   }
 
   badValueReason(value) {
@@ -869,13 +1306,122 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       if (!this.nodeOutputs.has(nodeId)) {
         continue;
       }
-      const node = this.nodes.get(nodeId);
-      const scopeValue = node?.scopeInputPort && this.scopeInputs.has(nodeId)
-        ? this.scopeInputs.get(nodeId)
-        : this.nodeOutputs.get(nodeId);
+      this.captureModuleScopeOutput(nodeId, this.nodeOutputs.get(nodeId));
+    }
+    for (const sink of this.visualSinks || []) {
+      const nodeId = String(sink?.nodeId || "");
+      if (!nodeId) {
+        continue;
+      }
+      let value = 0;
+      for (const input of sink.inputs || []) {
+        if (!input?.connected) {
+          continue;
+        }
+        const inputValue = (input.connections || []).reduce(
+          (connectionSum, connection) => connectionSum + this.readRuntimePortOutput(
+            null,
+            connection.sourceNode,
+            connection.sourcePort,
+            0,
+            1,
+          ),
+          0,
+        );
+        value += inputValue;
+        const inputPort = String(input.port || "").trim();
+        if (input?.buffered && inputPort) {
+          this.writeVisualInputBufferSample(nodeId, inputPort, inputValue, sink.bufferSampleLimit);
+        }
+        if (inputPort) {
+          const portId = `${nodeId}:${inputPort}`;
+          const portSamples = this.scopeBuffers.get(portId) || [];
+          portSamples.push(this.scopeScalarValue(inputValue));
+          this.scopeBuffers.set(portId, portSamples);
+        }
+      }
       const samples = this.scopeBuffers.get(nodeId) || [];
-      samples.push(this.scopeScalarValue(scopeValue));
+      samples.push(this.scopeScalarValue(value));
       this.scopeBuffers.set(nodeId, samples);
+    }
+  }
+
+  createVisualInputBuffer(capacity = 262144) {
+    const safeCapacity = Math.max(1, Math.min(1048576, Math.round(Number(capacity) || 262144)));
+    return {
+      absoluteFrame: 0,
+      buffer: new Float32Array(safeCapacity),
+      capacity: safeCapacity,
+      length: 0,
+      writeIndex: 0,
+    };
+  }
+
+  syncVisualInputBuffers() {
+    const expected = new Map();
+    for (const sink of this.visualSinks || []) {
+      const nodeId = String(sink?.nodeId || "");
+      if (!nodeId) {
+        continue;
+      }
+      for (const input of sink.inputs || []) {
+        if (!input?.buffered) {
+          continue;
+        }
+        const port = String(input.port || "").trim();
+        if (!port) {
+          continue;
+        }
+        const key = `${nodeId}:${port}`;
+        expected.set(key, Math.max(1, Math.min(1048576, Math.round(Number(sink.bufferSampleLimit) || 262144))));
+      }
+    }
+    for (const [key, capacity] of expected) {
+      const current = this.visualInputBuffers.get(key);
+      if (!current || current.capacity !== capacity) {
+        this.visualInputBuffers.set(key, this.createVisualInputBuffer(capacity));
+      }
+    }
+    for (const key of [...this.visualInputBuffers.keys()]) {
+      if (!expected.has(key)) {
+        this.visualInputBuffers.delete(key);
+      }
+    }
+  }
+
+  writeVisualInputBufferSample(nodeId, port, value, capacity = 262144) {
+    const key = `${nodeId}:${port}`;
+    let buffer = this.visualInputBuffers.get(key);
+    const safeCapacity = Math.max(1, Math.min(1048576, Math.round(Number(capacity) || 262144)));
+    if (!buffer || buffer.capacity !== safeCapacity) {
+      buffer = this.createVisualInputBuffer(safeCapacity);
+      this.visualInputBuffers.set(key, buffer);
+    }
+    buffer.buffer[buffer.writeIndex] = this.scopeScalarValue(value);
+    buffer.writeIndex = (buffer.writeIndex + 1) % buffer.capacity;
+    buffer.length = Math.min(buffer.capacity, buffer.length + 1);
+    buffer.absoluteFrame += 1;
+  }
+
+  captureModuleScopeOutput(nodeId, output) {
+    const id = String(nodeId || "");
+    if (!id) {
+      return;
+    }
+    const samples = this.scopeBuffers.get(id) || [];
+    samples.push(this.scopeScalarValue(output));
+    this.scopeBuffers.set(id, samples);
+    if (!output || typeof output !== "object") {
+      return;
+    }
+    for (const [port, value] of Object.entries(output)) {
+      if (!port || !Number.isFinite(Number(value))) {
+        continue;
+      }
+      const portId = `${id}:${port}`;
+      const portSamples = this.scopeBuffers.get(portId) || [];
+      portSamples.push(this.scopeScalarValue(value));
+      this.scopeBuffers.set(portId, portSamples);
     }
   }
 
@@ -963,6 +1509,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       smoother.current = smoother.wraparound
         ? this.wrapValue(smoother.target, smoother.min, smoother.max)
         : smoother.target;
+    }
+    for (const runtime of this.moduleGroupRuntimes?.values?.() || []) {
+      runtime.finishSmoothing();
     }
   }
 
@@ -1091,6 +1640,13 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     return (seed / 0xffffffff) * 2 - 1;
   }
 
+  currentNoiseSample(nodeId) {
+    if (!this.noiseSeeds.has(nodeId)) {
+      return this.nextNoiseSample(nodeId);
+    }
+    return ((this.noiseSeeds.get(nodeId) || 0) / 0xffffffff) * 2 - 1;
+  }
+
   noiseSeedKey(nodeId, seedValue, channel = "") {
     const seed = Math.max(0, Math.min(99999, Math.floor(Number(seedValue) || 0)));
     return `${nodeId}${channel ? `:${channel}` : ""}:seed:${seed}`;
@@ -1152,25 +1708,279 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   }
 
   oscillatorSample(nodeId, phase, phaseIncrement, waveform) {
+    const phaseDelta = Number(phaseIncrement) || 0;
+    const phaseStopped = Math.abs(phaseDelta) <= 1e-12;
+    if (phaseStopped && this.oscillatorStoppedSamples.has(nodeId)) {
+      return this.oscillatorStoppedSamples.get(nodeId) || 0;
+    }
+    const renderPhaseIncrement = phaseStopped
+      ? Number(this.oscillatorLastPhaseIncrements.get(nodeId)) || 0
+      : phaseDelta;
     const phaseCycle = this.wrapValue(phase / (Math.PI * 2), 0, 1);
+    let sample = 0;
     switch (Math.round(Number(waveform) || 0)) {
       case 1:
-        return this.polyBlepSquare(phaseCycle, phaseIncrement);
+        sample = this.polyBlepSquare(phaseCycle, renderPhaseIncrement);
+        break;
       case 2:
         {
           const triangle = this.triangleStates.get(nodeId) || 0;
-          const nextTriangle = (triangle + this.polyBlepSquare(phaseCycle, phaseIncrement) * phaseIncrement * 4) * 0.995;
+          if (phaseStopped) {
+            sample = triangle;
+            break;
+          }
+          const nextTriangle = (triangle + this.polyBlepSquare(phaseCycle, renderPhaseIncrement) * phaseDelta * 4) * 0.995;
           this.triangleStates.set(nodeId, this.clampValue(nextTriangle, -1, 1));
-          return this.clampValue(nextTriangle, -1, 1);
+          sample = this.clampValue(nextTriangle, -1, 1);
+          break;
         }
       case 3:
-        return Math.sin(phase);
+        sample = Math.sin(phase);
+        break;
       case 4:
-        return this.nextNoiseSample(nodeId);
+        sample = phaseStopped ? this.currentNoiseSample(nodeId) : this.nextNoiseSample(nodeId);
+        break;
       case 0:
       default:
-        return 1 - phaseCycle * 2 + this.polyBlep(phaseCycle, phaseIncrement);
+        sample = 1 - phaseCycle * 2 + this.polyBlep(phaseCycle, renderPhaseIncrement);
+        break;
     }
+    if (phaseStopped) {
+      this.oscillatorStoppedSamples.set(nodeId, sample);
+    } else {
+      this.oscillatorStoppedSamples.delete(nodeId);
+      this.oscillatorLastPhaseIncrements.set(nodeId, phaseDelta);
+    }
+    return sample;
+  }
+
+  forwardBackwardPolyBlepOscillatorSample(nodeId, phase, phaseIncrement, waveform) {
+    return this.oscillatorSample(nodeId, phase, phaseIncrement, waveform);
+  }
+
+  ellipsoidSample(phase, offset = 0, shape = 0, scale = 1) {
+    const phaseRadians = Number(phase) || 0;
+    const sinPhase = Math.sin(phaseRadians);
+    const cosPhase = Math.cos(phaseRadians);
+    const shapeRadians = (Number(shape) || 0) * Math.PI;
+    const shapeSin = Math.sin(shapeRadians);
+    const shapeCos = Math.cos(shapeRadians);
+    const safeOffset = this.clampValue(Number(offset) || 0, -1, 1);
+    const safeScale = Math.max(0, Number(scale) || 0);
+    const x = safeOffset + cosPhase;
+    const y = safeScale * sinPhase;
+    const denominator = Math.sqrt((x * x) + (y * y));
+    if (denominator <= 1e-12) {
+      return 0;
+    }
+    return this.clampValue(((x * shapeCos) + (y * shapeSin)) / denominator, -1, 1);
+  }
+
+  ellipsoidVectorSample(phase, params = {}) {
+    const level = this.clampValue(Number(params.level) || 0, 0, 1);
+    const x = this.ellipsoidSample(phase, params.offsetX, params.shapeX, params.scaleX) * level;
+    const y = this.ellipsoidSample(phase - Math.PI * 0.5, params.offsetY, params.shapeY, params.scaleY) * level;
+    return {
+      Out: x,
+      X: x,
+      Y: y,
+      "Wave Out": x,
+    };
+  }
+
+  additiveWaveformHarmonic(waveform, harmonic, modA = 0.5) {
+    const n = Math.max(1, Math.floor(Number(harmonic) || 1));
+    const h = n;
+    const mod = this.clampValue(Number(modA) || 0, 0, 1);
+    switch (Math.round(Number(waveform) || 0)) {
+      case 0:
+        return { amplitude: n === Math.max(1, Math.floor(99 * mod + 1)) ? 1 : 0, phase: 0 };
+      case 2:
+        return { amplitude: n % 2 === 1 ? 1 / h : 0, phase: mod * 0.5 };
+      case 3:
+        return { amplitude: n % 2 === 1 ? 1 / (h * h) : 0, phase: n % 4 === 1 ? 0 : 0.5 };
+      case 4:
+        return { amplitude: n % 2 === 1 ? 1 / h : (1 / h) * (1 - mod), phase: 0 };
+      case 5:
+        return { amplitude: Math.cos(h * mod * 0.5) / h, phase: 0 };
+      case 6:
+        {
+          const peak = this.clampValue(mod, 0.001, 0.999);
+          return { amplitude: (Math.sin(0.5 * h * peak) / (peak * (1 - peak) * h * h)) * 0.2, phase: 0 };
+        }
+      case 7:
+        {
+          const octaves = Math.max(2, Math.floor(2 + mod * 11));
+          let target = 1;
+          while (target < n) {
+            target *= octaves;
+          }
+          return { amplitude: target === n ? 1 / h : 0, phase: 0 };
+        }
+      case 1:
+      default:
+        return { amplitude: 1 / h, phase: n % 2 === 1 ? 0.5 : 0 };
+    }
+  }
+
+  additiveDampingCurveValue(value = 0) {
+    return this.clampValue(Number(value) || 0, 0, 1);
+  }
+
+  additiveDampingAlgorithmValue(value = 0) {
+    return Math.max(0, Math.min(5, Math.round(Number(value) || 0)));
+  }
+
+  additiveFilterFrequencyValue(value = 20000, rate = this.engineSampleRate || sampleRate || 44100) {
+    const nyquist = Math.max(1, (Number(rate) || this.engineSampleRate || sampleRate || 44100) * 0.5);
+    return this.clampValue(Number(value) || 20000, 1, nyquist);
+  }
+
+  rationalCurveValue(value = 0, skew = 0) {
+    const t = this.clampValue(Number(value) || 0, 0, 1);
+    if (t <= 0) {
+      return 0;
+    }
+    if (t >= 1) {
+      return 1;
+    }
+    const safeSkew = this.clampValue(Number(skew) || 0, -0.999999, 0.999999);
+    return this.clampValue(
+      ((1 + safeSkew) * t) / (1 - safeSkew + 2 * safeSkew * t),
+      0,
+      1,
+    );
+  }
+
+  additiveHarmonicDamping(harmonic, frequency, rate, curveValue = 0, algorithm = 0, filterFrequency = 20000) {
+    const safeRate = Math.max(1, Number(rate) || this.engineSampleRate || sampleRate || 44100);
+    const safeFrequency = Math.max(0, Number(frequency) || 0);
+    const safeFilterFrequency = this.additiveFilterFrequencyValue(filterFrequency, safeRate);
+    if (safeFilterFrequency <= 0 || safeFrequency <= 0) {
+      return 1;
+    }
+    const ratio = this.clampValue((Math.max(1, Number(harmonic) || 1) * safeFrequency) / safeFilterFrequency, 0, 1);
+    return this.additiveDampingAmplitude({
+      algorithm,
+      curveValue,
+      harmonic,
+      maxHarmonics: Math.max(1, Math.floor(safeFilterFrequency / Math.max(1, safeFrequency))),
+      ratio,
+    });
+  }
+
+  additiveDampingAmplitude({
+    algorithm = 0,
+    curveValue = 0,
+    harmonic = 1,
+    maxHarmonics = 1,
+    ratio = 0,
+  } = {}) {
+    const curve = this.additiveDampingCurveValue(curveValue);
+    const mode = this.additiveDampingAlgorithmValue(algorithm);
+    const t = this.clampValue(Number(ratio) || 0, 0, 1);
+    if (t <= 0) {
+      return 1;
+    }
+    if (t >= 1) {
+      return 0;
+    }
+    if (mode === 1) {
+      return this.clampValue((1 - t) ** (1 + curve * 7), 0, 1);
+    }
+    if (mode === 2) {
+      const amount = 0.5 + curve * 12;
+      const end = Math.exp(-amount);
+      return this.clampValue((Math.exp(-t * amount) - end) / Math.max(0.0001, 1 - end), 0, 1);
+    }
+    if (mode === 3) {
+      const cutoff = this.clampValue(0.95 - curve * 0.82, 0.08, 0.95);
+      const order = 1 + Math.round(curve * 5);
+      const raw = 1 / Math.sqrt(1 + (t / cutoff) ** (2 * order));
+      const end = 1 / Math.sqrt(1 + (1 / cutoff) ** (2 * order));
+      return this.clampValue((raw - end) / Math.max(0.0001, 1 - end), 0, 1);
+    }
+    if (mode === 4) {
+      const knee = this.clampValue(0.78 - curve * 0.68, 0.04, 0.78);
+      if (t <= knee) {
+        return 1;
+      }
+      const local = (t - knee) / Math.max(0.0001, 1 - knee);
+      return this.clampValue((1 - local) ** (1 + curve * 7), 0, 1);
+    }
+    if (mode === 5) {
+      const tilt = curve * 4;
+      if (tilt <= 0) {
+        return 1 - t;
+      }
+      const h = Math.max(1, Number(harmonic) || 1);
+      const maxH = Math.max(h, Number(maxHarmonics) || h);
+      const raw = 1 / (h ** tilt);
+      const end = 1 / (maxH ** tilt);
+      return this.clampValue((raw - end) / Math.max(0.0001, 1 - end), 0, 1);
+    }
+    return this.clampValue(1 - this.rationalCurveValue(t, curve), 0, 1);
+  }
+
+  additiveHarmonicCurveAmount({
+    algorithm = 0,
+    curveValue = 0,
+    harmonic = 1,
+    maxHarmonics = 1,
+    ratio = 0,
+  } = {}) {
+    return this.clampValue(1 - this.additiveDampingAmplitude({
+      algorithm,
+      curveValue,
+      harmonic,
+      maxHarmonics,
+      ratio,
+    }), 0, 1);
+  }
+
+  additiveOscillatorSample(phase, params = {}, rate = this.engineSampleRate || sampleRate) {
+    const safeRate = Math.max(1, Number(rate) || this.engineSampleRate || sampleRate || 44100);
+    const frequency = Math.max(0, Number(params.frequency) || 0);
+    const maxHarmonics = Math.max(
+      1,
+      Math.min(nodeLiveAdditiveHardMaxHarmonics, Math.round(Number(params.harmonics) || 32)),
+    );
+    const waveform = Math.round(Number(params.waveform) || 0);
+    const modA = this.clampValue(Number(params.modA) || 0, 0, 1);
+    const harmonicPhaseAdd = this.clampValue(Number(params.harmonicPhaseAdd) || 0, 0, 1);
+    const harmonicPhaseMultiply = this.clampValue(Number(params.harmonicPhaseMultiply) || 0, 0, 4);
+    const level = this.clampValue(Number(params.level) || 0, 0, 1);
+    const dampingFilterFrequency = this.additiveFilterFrequencyValue(params.dampingFilterFrequency, safeRate);
+    const dampingGraphValueAt = typeof params.dampingGraphValueAt === "function"
+      ? params.dampingGraphValueAt
+      : () => 1;
+    const phaseGraphValueAt = typeof params.phaseGraphValueAt === "function"
+      ? params.phaseGraphValueAt
+      : () => 0;
+    const harmonicLimit = Math.max(1, Math.min(maxHarmonics, Math.floor(Math.min(20000, safeRate * 0.45) / Math.max(1, frequency))));
+    let total = 0;
+    let norm = 0;
+    for (let harmonic = 1; harmonic <= harmonicLimit; harmonic += 1) {
+      const partial = this.additiveWaveformHarmonic(waveform, harmonic, modA);
+      const dampingX = this.clampValue((frequency * harmonic) / dampingFilterFrequency, 0, 1);
+      const amplitude = (Number(partial.amplitude) || 0) *
+        this.clampValue(Number(dampingGraphValueAt(dampingX)) || 0, 0, 1);
+      if (amplitude === 0) {
+        continue;
+      }
+      const harmonicRatio = harmonicLimit > 1
+        ? (harmonic - 1) / (harmonicLimit - 1)
+        : 0;
+      const phaseCurve = this.clampValue(Number(phaseGraphValueAt(harmonicRatio)) || 0, 0, 1);
+      const phaseMultiplier = 1 + phaseCurve * harmonicPhaseMultiply;
+      const phaseOffset = (Number(partial.phase) || 0) + phaseCurve * harmonicPhaseAdd;
+      total += Math.sin((phase * harmonic * phaseMultiplier) + phaseOffset * Math.PI * 2) * amplitude;
+      norm += Math.abs(amplitude);
+    }
+    if (norm <= 0) {
+      return 0;
+    }
+    return this.clampValue((total / Math.max(1, norm * 0.72)) * level, -1, 1);
   }
 
   createHighpassState() {
@@ -1223,6 +2033,13 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     };
   }
 
+  createGraphLfoState() {
+    return {
+      lastReset: 0,
+      resetFrame: 0,
+    };
+  }
+
   createSlewLimiterState() {
     return {
       initialized: false,
@@ -1232,6 +2049,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
 
   createClockState() {
     return {
+      hasStarted: false,
       phase: 0,
     };
   }
@@ -1255,6 +2073,17 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       remainingSamples: 0,
       running: false,
       waitSamples: 0,
+    };
+  }
+
+  createDelayEffectState() {
+    return {
+      buffer: new Float32Array(1),
+      bufferSize: 1,
+      lfoPhase: 0,
+      lfoVariationState: 0,
+      position: 0,
+      wet: 0,
     };
   }
 
@@ -1397,6 +2226,11 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     const value = String(name || "").trim();
     return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value) &&
       !new Set([
+        "__context",
+        "__ctx",
+        "__inputs",
+        "__outputs",
+        "__state",
         "arguments",
         "await",
         "break",
@@ -1417,6 +2251,8 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         "false",
         "fetch",
         "finally",
+        "frame",
+        "frames",
         "for",
         "Function",
         "globalThis",
@@ -1428,11 +2264,14 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         "new",
         "null",
         "return",
+        "sampleRate",
         "self",
         "super",
         "switch",
+        "state",
         "this",
         "throw",
+        "time",
         "true",
         "try",
         "typeof",
@@ -1442,6 +2281,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         "window",
         "with",
         "yield",
+        "dt",
       ]).has(value);
   }
 
@@ -1491,6 +2331,15 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     const shadows = ["window", "document", "fetch", "Function", "globalThis", "self"]
       .map((name) => `const ${name} = undefined;`)
       .join("\n");
+    const context = [
+      "const state = __state;",
+      "const __ctx = __context || {};",
+      "const sampleRate = Number(__ctx.sampleRate) || 44100;",
+      "const frame = Number(__ctx.frame) || 0;",
+      "const frames = Number(__ctx.frames) || 1;",
+      "const time = Number(__ctx.time) || 0;",
+      "const dt = 1 / sampleRate;",
+    ].join("\n");
     const inputs = codeblock.inputs
       .map((port, index) => `const ${port} = __inputs[${index}] || 0;`)
       .join("\n");
@@ -1498,7 +2347,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     const writes = codeblock.outputs
       .map((port) => `__outputs[${JSON.stringify(port)}] = ${port};`)
       .join("\n");
-    return `"use strict";\n${shadows}\n${inputs}\n${outputs}\n${codeblock.code}\n${writes}\nreturn __outputs;`;
+    return `"use strict";\n${shadows}\n${context}\n${inputs}\n${outputs}\n${codeblock.code}\n${writes}\nreturn __outputs;`;
   }
 
   codeblockCacheKey(codeblock) {
@@ -1540,6 +2389,8 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     const fn = Function(
       "__inputs",
       "__outputs",
+      "__state",
+      "__context",
       this.codeblockFunctionBody(codeblock),
     );
     const compiled = {
@@ -1548,12 +2399,13 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       inputs: new Array(codeblock.inputs.length).fill(0),
       key,
       output: this.createCodeblockOutputObject(codeblock),
+      state: Object.create(null),
     };
     this.codeblockFunctions.set(node.id, compiled);
     return compiled;
   }
 
-  evaluateCodeblock(node, mixInput) {
+  evaluateCodeblock(node, mixInput, frame = 0, frames = 1, sampleRate = this.engineSampleRate || 44100, inputFrame = frame) {
     let compiled = null;
     try {
       compiled = this.compileCodeblockFunction(node);
@@ -1561,7 +2413,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       this.markCodeblockError(node.id, "compile error", `codeblock ${error?.message || ""}`);
       return {};
     }
-    const { codeblock, fn, inputs, output } = compiled;
+    const { codeblock, fn, inputs, output, state } = compiled;
     try {
       for (let index = 0; index < codeblock.inputs.length; index += 1) {
         inputs[index] = this.safeFilterNumber(mixInput(node.id, codeblock.inputs[index]), null);
@@ -1569,7 +2421,12 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       for (const port of codeblock.outputs) {
         output[port] = 0;
       }
-      fn(inputs, output);
+      fn(inputs, output, state, {
+        frame,
+        frames,
+        sampleRate,
+        time: (Number(inputFrame) || 0) / (Number(sampleRate) || 44100),
+      });
       for (const port of codeblock.outputs) {
         output[port] = this.safeCodeblockNumber(output[port], node.id, port);
       }
@@ -1581,6 +2438,177 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       }
       return output;
     }
+  }
+
+  createNestedRuntime(plan) {
+    const runtime = Object.create(NodeLiveAudioProcessor.prototype);
+    runtime.inputConnections = new Map();
+    runtime.badNumberCount = 0;
+    runtime.lastBadValueReason = "";
+    runtime.lastBadValueNodeId = "";
+    runtime.lastBadValueSource = "";
+    runtime.inputMeterPeak = 0;
+    runtime.inputMeterSamples = 0;
+    runtime.inputMeterSquareSum = 0;
+    runtime.meterClipCount = 0;
+    runtime.meterCounter = 0;
+    runtime.meterPeak = 0;
+    runtime.meterProtectionMuteCount = 0;
+    runtime.meterSamples = 0;
+    runtime.meterSquareSum = 0;
+    runtime.macroControls = this.macroControls;
+    runtime.pitchModWheelSignal = this.pitchModWheelSignal;
+    runtime.midiKeyboardGatePulseSamples = 0;
+    runtime.midiKeyboardSignal = null;
+    runtime.moduleGroupRuntimes = new Map();
+    runtime.modulationConnections = new Map();
+    runtime.nodeOutputs = new Map();
+    runtime.nodes = new Map();
+    runtime.noiseSeedKeys = new Map();
+    runtime.noiseSeeds = new Map();
+    runtime.order = [];
+    runtime.engineSampleRate = this.engineSampleRate;
+    runtime.hostSampleRate = this.hostSampleRate;
+    runtime.oversamplingRatio = this.oversamplingRatio;
+    runtime.bandpassStates = new Map();
+    runtime.clockDividerStates = new Map();
+    runtime.clockStates = new Map();
+    runtime.codeblockFunctions = new Map();
+    runtime.cookbookFilterStates = new Map();
+    runtime.delayedTriggerStates = new Map();
+    runtime.delayEffectStates = new Map();
+    runtime.expAdsrStates = new Map();
+    runtime.fractalBrownianNoiseStates = new Map();
+    runtime.flowerChildEnvelopeFollowerStates = new Map();
+    runtime.graphInputConnections = new Map();
+    runtime.highpassStates = new Map();
+    runtime.ladderFilterStates = new Map();
+    runtime.linearEnvelopeStates = new Map();
+    runtime.lowpassStates = new Map();
+    runtime.noiseGeneratorStates = new Map();
+    runtime.noiseSampleHoldStates = new Map();
+    runtime.oscResetStates = new Map();
+    runtime.graphLfoStates = new Map();
+    runtime.outputNode = plan?.outputNode || "output";
+    runtime.patchFingerprint = plan?.patchFingerprint || "";
+    runtime.phases = new Map();
+    runtime.pluckEnvelopeStates = new Map();
+    runtime.planSerial = 0;
+    runtime.randomClockStates = new Map();
+    runtime.sampleHoldStates = new Map();
+    runtime.randomWalkStates = new Map();
+    runtime.sessionId = this.sessionId;
+    runtime.scopeBuffers = new Map();
+    runtime.scopeCounter = 0;
+    runtime.slewLimiterStates = new Map();
+    runtime.smoothers = new Map();
+    runtime.spiralStates = new Map();
+    runtime.lorenzAttractorStates = new Map();
+    runtime.stepSequencerStates = new Map();
+    runtime.triggerCounterStates = new Map();
+    runtime.triggerDividerStates = new Map();
+    runtime.triangleStates = new Map();
+    runtime.vactrolEnvelopeStates = new Map();
+    runtime.resetVisualControls();
+    runtime.setNestedPlan(plan);
+    return runtime;
+  }
+
+  setNestedPlan(plan) {
+    const nodes = Array.isArray(plan?.nodes) ? plan.nodes : [];
+    const ids = new Set(nodes.map((node) => node.id));
+    this.nodes = new Map(nodes.map((node) => [node.id, {
+      id: node.id,
+      codeblock: this.normalizeCodeblock(node.codeblock),
+      moduleGroup: node.moduleGroup || null,
+      moduleGroupPlan: node.moduleGroupPlan || null,
+      paramMeta: node.paramMeta || {},
+      params: node.params || {},
+      type: node.type,
+    }]));
+    this.order = Array.isArray(plan?.order) ? [...plan.order] : [...ids];
+    this.outputNode = plan?.outputNode || "output";
+    this.inputConnections = this.buildInputConnectionMap(plan?.connections, ids);
+    this.graphInputConnections = this.buildGraphInputConnectionMap(plan?.graphConnections, ids);
+    this.modulationConnections = this.buildModulationConnectionMap(plan?.modulations, ids);
+    for (const id of ids) {
+      const node = this.nodes.get(id);
+      this.nodeOutputs.set(id, 0);
+      if (node?.type === "osc" || node?.type === "fbPolyBlepOsc") {
+        this.phases.set(id, 0);
+        this.oscResetStates.set(id, this.createOscResetState());
+        this.triangleStates.set(id, 0);
+      }
+      if (node?.type === "osc" || node?.type === "fbPolyBlepOsc" || node?.type === "noise") {
+        this.noiseSeeds.set(id, this.stableSeed(id));
+      }
+      if (node?.type === "stereoNoise") {
+        this.noiseSeeds.set(`${id}:left`, this.stableSeed(`${id}:left`));
+        this.noiseSeeds.set(`${id}:right`, this.stableSeed(`${id}:right`));
+      }
+      if (node?.type === "spiral") this.spiralStates.set(id, this.createSpiralState());
+      if (node?.type === "lorenzAttractor") this.lorenzAttractorStates.set(id, this.createLorenzAttractorState());
+      if (node?.type === "highpass") this.highpassStates.set(id, this.createHighpassState());
+      if (node?.type === "lowpass") this.lowpassStates.set(id, this.createLowpassState());
+      if (node?.type === "bandpass") this.bandpassStates.set(id, this.createBandpassState());
+      if (node?.type === "cookbookFilter") this.cookbookFilterStates.set(id, this.createCookbookFilterState());
+      if (node?.type === "ladderFilter") this.ladderFilterStates.set(id, this.createLadderFilterState());
+      if (node?.type === "clock") this.clockStates.set(id, this.createClockState());
+      if (node?.type === "graph" || node?.type === "graph2") this.graphLfoStates.set(id, this.createGraphLfoState());
+      if (node?.type === "clockDivider") this.clockDividerStates.set(id, this.createTriggerDividerState());
+      if (node?.type === "delayedTrigger") this.delayedTriggerStates.set(id, this.createDelayedTriggerState());
+      if (node?.type === "delayEffect") this.delayEffectStates.set(id, this.createDelayEffectState());
+      if (node?.type === "randomClock") this.randomClockStates.set(id, this.createRandomClockState());
+      if (node?.type === "sampleHold") this.sampleHoldStates.set(id, this.createSampleHoldState());
+      if (node?.type === "slewLimiter") this.slewLimiterStates.set(id, this.createSlewLimiterState());
+      if (node?.type === "expAdsr") this.expAdsrStates.set(id, this.createExpAdsrState());
+      if (node?.type === "linearEnvelope") this.linearEnvelopeStates.set(id, this.createLinearEnvelopeState());
+      if (node?.type === "noiseGenerator") this.noiseGeneratorStates.set(id, this.createNoiseGeneratorState());
+      if (node?.type === "noise") this.noiseSampleHoldStates.set(id, this.createNoiseSampleHoldState());
+      if (node?.type === "randomWalk") this.randomWalkStates.set(id, this.createRandomWalkState());
+      if (node?.type === "fractalBrownianNoise") this.fractalBrownianNoiseStates.set(id, this.createFractalBrownianNoiseState());
+      if (node?.type === "flowerChildEnvelopeFollower") this.flowerChildEnvelopeFollowerStates.set(id, this.createFlowerChildEnvelopeFollowerState());
+      if (node?.type === "pluckEnvelope") this.pluckEnvelopeStates.set(id, this.createPluckEnvelopeState());
+      if (node?.type === "stepSequencer") this.stepSequencerStates.set(id, this.createStepSequencerState());
+      if (node?.type === "triggerCounter") this.triggerCounterStates.set(id, this.createTriggerCounterState());
+      if (node?.type === "triggerDivider") this.triggerDividerStates.set(id, this.createTriggerDividerState());
+      if (node?.type === "vactrolEnvelope") this.vactrolEnvelopeStates.set(id, this.createVactrolEnvelopeState());
+      if (node?.type === "moduleGroup" && node.moduleGroupPlan) {
+        this.moduleGroupRuntimes.set(id, this.createNestedRuntime(node.moduleGroupPlan));
+      }
+      for (const [key, value] of Object.entries(node?.params || {})) {
+        this.smoothers.set(this.parameterKey(id, key), this.createSmoother(value, node.paramMeta?.[key]));
+      }
+    }
+  }
+
+  evaluateModuleGroup(node, mixInput, frame, frames, rate, inputFrame) {
+    if (!node.moduleGroupPlan) {
+      return {};
+    }
+    let runtime = this.moduleGroupRuntimes.get(node.id);
+    if (!runtime) {
+      runtime = this.createNestedRuntime(node.moduleGroupPlan);
+      this.moduleGroupRuntimes.set(node.id, runtime);
+    }
+    runtime.engineSampleRate = rate;
+    runtime.hostSampleRate = this.hostSampleRate;
+    runtime.oversamplingRatio = this.oversamplingRatio;
+    runtime.macroControls = this.macroControls;
+    runtime.pitchModWheelSignal = this.pitchModWheelSignal;
+    runtime.externalGroupInputs = new Map(
+      (node.moduleGroup?.inputs || []).map((input) => [input.nodeId, mixInput(node.id, input.name)]),
+    );
+    const frameOutput = runtime.evaluateFrame(frame, frames, [], rate, inputFrame);
+    const output = {};
+    for (const endpoint of node.moduleGroup?.outputs || []) {
+      output[endpoint.name] = runtime.readRuntimePortOutput(
+        frameOutput.frameValues,
+        endpoint.nodeId,
+        endpoint.port || "Out",
+      );
+    }
+    return output;
   }
 
   visualControlIntensity(value, nodeId, source = "visual control") {
@@ -1656,6 +2684,30 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.visualControlStates.set(key, cleaned);
     this.visualControls[key] = cleaned;
     return cleaned;
+  }
+
+  screenSpaceShaderSample(node, readInput, rate = sampleRate, nodeId = "") {
+    const script = node?.screenSpaceShader || {};
+    const value = {};
+    for (const input of script.visualInputs || []) {
+      if (input.mode === "raw") {
+        continue;
+      }
+      const signed = input.mode === "signed";
+      const raw = readInput(input.port);
+      const target = signed
+        ? this.visualControlSigned(raw, nodeId, `screen space shader ${input.port}`)
+        : this.visualControlIntensity(raw, nodeId, `screen space shader ${input.port}`);
+      value[input.key] = this.smoothVisualControl(
+        input.key,
+        target,
+        rate,
+        signed ? 0.045 : 0.025,
+        signed ? -1 : 0,
+        1,
+      );
+    }
+    return value;
   }
 
   postVisualControls() {
@@ -1945,14 +2997,39 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     return state.out;
   }
 
-  clockSample(state, rate, duty, level, rateHz = sampleRate) {
+  clockAnalogWhipSample(phase, level) {
+    const p = this.clampValue(Number(phase) || 0, 0, 1);
+    const attack = 1 - Math.pow(1 - Math.min(1, p / 0.035), 4);
+    const release = Math.pow(Math.max(0, 1 - p), 1.85);
+    const snapEnvelope = attack * release;
+    const sweepTurns = (3.15 * (1 - Math.exp(-4.2 * p)) / (1 - Math.exp(-4.2))) + (0.18 * Math.sin(Math.PI * p));
+    const liquidBend = 0.075 * Math.sin(Math.PI * 2 * p) * Math.pow(Math.max(0, 1 - p), 1.2);
+    const body = Math.sin((sweepTurns + liquidBend) * Math.PI * 2);
+    const sheen = Math.sin((sweepTurns * 2.02 + 0.17) * Math.PI * 2) * 0.16 * Math.pow(Math.max(0, 1 - p), 2.8);
+    return (body + sheen) * snapEnvelope * level;
+  }
+
+  clockSample(state, reset, phaseOffset, rate, duty, level, rateHz = sampleRate) {
+    const safeReset = this.safeFilterNumber(reset, null);
+    const safePhaseOffset = this.wrapValue(this.safeFilterNumber(phaseOffset, null), 0, 1);
     const safeRate = Math.max(0, this.safeFilterNumber(rate, null));
     const safeDuty = this.clampValue(this.safeFilterNumber(duty, null), 0, 1);
     const safeLevel = this.safeFilterNumber(level, null);
-    const phase = this.wrapValue(Number(state.phase) || 0, 0, 1);
-    const output = phase < safeDuty ? safeLevel : 0;
-    state.phase = this.wrapValue(phase + safeRate / Math.max(1, rateHz), 0, 1);
-    return output;
+    const resetActive = safeReset > 0;
+    const rawPhase = resetActive ? 0 : this.wrapValue(Number(state.phase) || 0, 0, 1);
+    const phase = this.wrapValue(rawPhase + safePhaseOffset, 0, 1);
+    const digital = phase < safeDuty ? safeLevel : 0;
+    const analog = this.clockAnalogWhipSample(phase, safeLevel);
+    const nextRawPhase = this.wrapValue(rawPhase + safeRate / Math.max(1, rateHz), 0, 1);
+    const pulse = safeRate > 0 && !resetActive && (!state.hasStarted || nextRawPhase < rawPhase) ? safeLevel : 0;
+    state.hasStarted = !resetActive;
+    state.phase = resetActive ? 0 : nextRawPhase;
+    return {
+      "Analog Out": analog,
+      "Digital Out": digital,
+      Out: digital,
+      Pulse: pulse,
+    };
   }
 
   randomClockNextUnit(state, nodeId, seed) {
@@ -2046,6 +3123,67 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     const output = state.remainingSamples > 0 ? level : 0;
     state.remainingSamples = Math.max(0, state.remainingSamples - 1);
     return this.safeFilterNumber(output, null);
+  }
+
+  delayParabolSample(phase) {
+    const wrapped = phase - Math.floor(phase);
+    return wrapped < 0.5 ? wrapped * 4 - 1 : 3 - wrapped * 4;
+  }
+
+  delayInterpolateLinear(buffer, where) {
+    const length = buffer.length;
+    if (!length) {
+      return 0;
+    }
+    const before = Math.floor(where) % length;
+    const after = (before + 1) % length;
+    const mix = where - Math.floor(where);
+    return buffer[before] * (1 - mix) + buffer[after] * mix;
+  }
+
+  delayEffectSample(state, input, params, rateHz = sampleRate, nodeId = "") {
+    const safeRate = Math.max(1, Number(rateHz) || 44100);
+    const maxDelaySeconds = 4.25;
+    const requiredSize = Math.max(2, Math.ceil(safeRate * maxDelaySeconds) + 2);
+    if (!state.buffer || state.bufferSize !== requiredSize) {
+      state.buffer = new Float32Array(requiredSize);
+      state.bufferSize = requiredSize;
+      state.position = 0;
+      state.lfoPhase = 0;
+      state.lfoVariationState = 0;
+      state.wet = 0;
+    }
+    const dry = this.safeFilterNumber(input, null);
+    const time = this.clampValue(this.safeFilterNumber(params.time, null), 0.001, maxDelaySeconds);
+    const feedback = this.clampValue(this.safeFilterNumber(params.feedback, null), 0, 0.95);
+    const mix = this.clampValue(this.safeFilterNumber(params.mix, null), 0, 1);
+    const level = this.clampValue(this.safeFilterNumber(params.level, null), 0, 2);
+    const modAmount = this.clampValue(this.safeFilterNumber(params.modAmount, null), 0, 0.5);
+    const modRate = this.clampValue(this.safeFilterNumber(params.modRate, null), 0, 90);
+    const modVariation = this.clampValue(this.safeFilterNumber(params.modVariation, null), 0, 1);
+    const mode = Math.round(this.safeFilterNumber(params.mode, null)) >= 1 ? 1 : 0;
+
+    const variationTarget = this.hashBipolar(
+      Math.floor(state.lfoPhase * 997) + state.position,
+      this.stableSeed(`${nodeId}:delayVariation`),
+    );
+    state.lfoVariationState += (variationTarget - state.lfoVariationState) * Math.min(1, modRate / safeRate);
+    const variedRate = Math.max(0, modRate * (1 + state.lfoVariationState * modVariation));
+    state.lfoPhase = (state.lfoPhase + variedRate / safeRate) % 1;
+    const lfo = (this.delayParabolSample(state.lfoPhase) + 1) * 0.5;
+
+    const delaySamples = this.clampValue(time * safeRate, 1, state.bufferSize - 2);
+    const bufferOffset = delaySamples - delaySamples * lfo * modAmount + 1;
+    state.position = (state.position + 1) % state.bufferSize;
+    const readPosition = (state.position + state.bufferSize - bufferOffset) % state.bufferSize;
+    const wet = this.delayInterpolateLinear(state.buffer, readPosition);
+    const write = mode ? ((0 - dry) - wet * feedback) : (dry + wet * feedback);
+    state.buffer[state.position] = this.clampValue(write, -8, 8);
+    state.wet = mode ? (dry * feedback - wet * (1 - feedback * feedback)) : wet;
+    return {
+      Out: (dry * (1 - mix) + state.wet * mix) * level,
+      Wet: state.wet * level,
+    };
   }
 
   sampleHoldSample(state, input, trigger, threshold) {
@@ -2710,6 +3848,67 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     };
   }
 
+  createLorenzAttractorState() {
+    return {
+      resetWasHigh: false,
+      x: 0.1,
+      y: 0,
+      z: 0,
+    };
+  }
+
+  resetLorenzAttractorState(state) {
+    state.x = 0.1;
+    state.y = 0;
+    state.z = 0;
+  }
+
+  lorenzAttractorSample(options = {}) {
+    const state = options.state || this.createLorenzAttractorState();
+    const resetHigh = Number(options.reset) > 0.5;
+    if (resetHigh && !state.resetWasHigh) {
+      this.resetLorenzAttractorState(state);
+    }
+    state.resetWasHigh = resetHigh;
+    const sampleRateValue = Math.max(1, Number(options.sampleRate) || sampleRate || 44100);
+    const speed = Math.max(0, Number(options.speed) || 0);
+    const sigma = Math.max(0, Number(options.sigma) || 10);
+    const rho = Number.isFinite(Number(options.rho)) ? Number(options.rho) : 28;
+    const beta = Math.max(0, Number(options.beta) || 8 / 3);
+    const dt = Math.min(0.004, (0.75 * speed) / sampleRateValue);
+    const steps = Math.max(1, Math.min(8, Math.ceil(dt / 0.0007)));
+    const stepDt = steps > 0 ? dt / steps : 0;
+    for (let index = 0; index < steps; index += 1) {
+      const dx = sigma * (state.y - state.x);
+      const dy = state.x * (rho - state.z) - state.y;
+      const dz = state.x * state.y - beta * state.z;
+      state.x += dx * stepDt;
+      state.y += dy * stepDt;
+      state.z += dz * stepDt;
+      if (!Number.isFinite(state.x) || !Number.isFinite(state.y) || !Number.isFinite(state.z)) {
+        this.resetLorenzAttractorState(state);
+        break;
+      }
+    }
+    const rotate = (Number(options.rotate) || 0) * Math.PI * 2;
+    const cosRotate = Math.cos(rotate);
+    const sinRotate = Math.sin(rotate);
+    const normalizedX = state.x / 24;
+    const normalizedY = state.y / 32;
+    const normalizedZ = (state.z - 25) / 30;
+    const depth = this.clampValue(Number(options.zDepth) || 0, 0, 1);
+    const depthScale = 1 + normalizedZ * depth * 0.35;
+    const scale = Math.max(0, Number(options.scale) || 1) * depthScale;
+    const x = (normalizedX * cosRotate - normalizedY * sinRotate) * scale;
+    const y = (normalizedX * sinRotate + normalizedY * cosRotate) * scale;
+    const z = normalizedZ * scale;
+    return {
+      x: this.clampValue(x, -1, 1),
+      y: this.clampValue(y, -1, 1),
+      z: this.clampValue(z, -1, 1),
+    };
+  }
+
   spiralWrap01(value) {
     return value - Math.floor(value);
   }
@@ -2865,6 +4064,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       frame,
       frames,
     ), 0);
+    const hasInput = (nodeId, port) => this.inputConnections.has(this.inputKey(nodeId, port));
     const incomingClockRate = (nodeId) => {
       const connection = (this.inputConnections.get(this.inputKey(nodeId, "Clock")) || [])[0];
       const sourceNode = this.nodes.get(connection?.sourceNode);
@@ -2872,11 +4072,47 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         ? Math.max(0, Number(sourceNode.params?.rate) || 0)
         : 0;
     };
+    const graphSampleX = (node, nodeId) => {
+      const mode = Math.round(this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues));
+      if (mode <= 0) {
+        return mixInput(nodeId);
+      }
+      const rateValue = Math.max(0, this.readEffectiveParameter(node, "rate", 1, frame, frames, frameValues));
+      const phaseValue = this.readEffectiveParameter(node, "phase", 0, frame, frames, frameValues);
+      const state = this.graphLfoStates.get(nodeId) || this.createGraphLfoState();
+      this.graphLfoStates.set(nodeId, state);
+      const resetValue = 0;
+      const currentFrame = Number(inputFrame) || 0;
+      if (state.lastReset <= 0 && resetValue > 0) {
+        state.resetFrame = currentFrame;
+      }
+      state.lastReset = resetValue;
+      const resetFrame = Number.isFinite(state.resetFrame) ? state.resetFrame : 0;
+      return this.wrapValue(((currentFrame - resetFrame) / safeRate) * rateValue + phaseValue, 0, 1);
+    };
+    const graphOutputValue = (node, nodeId) => {
+      const normalizedValue = this.graphValueAt(this.graphForNode(node), graphSampleX(node, nodeId), this.graphSmoothingModeForNode(node));
+      const outputMin = this.readEffectiveParameter(node, "outputMin", 0, frame, frames, frameValues);
+      const outputMax = this.readEffectiveParameter(node, "outputMax", 1, frame, frames, frameValues);
+      return outputMin + normalizedValue * (outputMax - outputMin);
+    };
+    const graphInputValue = (nodeId, graphInput, x, fallback) => {
+      const connection = (this.graphInputConnections.get(this.graphInputKey(nodeId, graphInput)) || [])[0];
+      const source = connection ? this.nodes.get(connection.sourceNode) : null;
+      if (!source || (source.type !== "graph" && source.type !== "graph2")) {
+        return fallback;
+      }
+      return this.graphValueAt(this.graphForNode(source), this.clampValue(Number(x) || 0, 0, 1), this.graphSmoothingModeForNode(source));
+    };
 
     for (const nodeId of this.order) {
       const node = this.nodes.get(nodeId);
       let value = 0;
-      if (node?.type === "audioInput") {
+      if (node?.type === "groupInput") {
+        value = {
+          Out: Number(this.externalGroupInputs?.get(nodeId)) || 0,
+        };
+      } else if (node?.type === "audioInput") {
         const input = inputs[0] || [];
         const leftChannel = input[0] || input[1] || null;
         const rightChannel = input[1] || input[0] || null;
@@ -2888,7 +4124,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
           Out: ((left + right) * 0.5) * level,
           Right: right * level,
         };
-      } else if (node?.type === "osc") {
+      } else if (node?.type === "osc" || node?.type === "fbPolyBlepOsc") {
         const resetState = this.oscResetStates.get(nodeId) || this.createOscResetState();
         this.oscResetStates.set(nodeId, resetState);
         const resetValue = this.safeFilterNumber(mixInput(nodeId, "Reset"), resetState);
@@ -2918,9 +4154,123 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
           frameValues,
         );
         const incrementInput = this.safeFilterNumber(mixInput(nodeId, "Increment"), null);
-        const phaseIncrement = (frequency / safeRate) + incrementInput;
-        value = this.oscillatorSample(nodeId, phase + phaseOffset, phaseIncrement, waveform) *
-          this.readEffectiveParameter(node, "level", 1, frame, frames, frameValues);
+        const pitchInput = this.clampValue(
+          this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null),
+          -1,
+          1,
+        );
+        const pitchedFrequency = Math.max(0, frequency * (2 ** (pitchInput / 0.1)));
+        const phaseIncrement = (pitchedFrequency / safeRate) + incrementInput;
+        const level = this.readEffectiveParameter(node, "level", 1, frame, frames, frameValues);
+        const sampleOscillator = (sampleNodeId, sampleWaveform) => (
+          node?.type === "fbPolyBlepOsc"
+            ? this.forwardBackwardPolyBlepOscillatorSample(sampleNodeId, phase + phaseOffset, phaseIncrement, sampleWaveform)
+            : this.oscillatorSample(sampleNodeId, phase + phaseOffset, phaseIncrement, sampleWaveform)
+        );
+        const selected = sampleOscillator(nodeId, waveform) * level;
+        value = {
+          Out: selected,
+          Saw: sampleOscillator(`${nodeId}:saw`, 0) * level,
+          Square: sampleOscillator(`${nodeId}:square`, 1) * level,
+          Tri: sampleOscillator(`${nodeId}:tri`, 2) * level,
+          Sine: sampleOscillator(`${nodeId}:sine`, 3) * level,
+          "Wave Out": selected,
+          Noise: selected,
+        };
+        this.phases.set(
+          nodeId,
+          this.wrapValue(phase + Math.PI * 2 * phaseIncrement, 0, Math.PI * 2),
+        );
+      } else if (node?.type === "additiveOsc" || node?.type === "gpuAdditiveOsc") {
+        const resetState = this.oscResetStates.get(nodeId) || this.createOscResetState();
+        this.oscResetStates.set(nodeId, resetState);
+        const resetValue = this.safeFilterNumber(mixInput(nodeId, "Reset"), resetState);
+        const resetEdge = resetState.lastReset <= 0 && resetValue > 0;
+        resetState.lastReset = resetValue;
+        const phase = resetEdge ? 0 : this.phases.get(nodeId) || 0;
+        const phaseOffset = this.phaseRadians(
+          this.readEffectiveParameter(node, "phase", 0, frame, frames, frameValues),
+        );
+        const frequency = this.readEffectiveParameter(
+          node,
+          "frequency",
+          220,
+          frame,
+          frames,
+          frameValues,
+        );
+        const pitchInput = this.clampValue(
+          this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null),
+          -1,
+          1,
+        );
+        const pitchedFrequency = Math.max(0, frequency * (2 ** (pitchInput / 0.1)));
+        const incrementInput = this.safeFilterNumber(mixInput(nodeId, "Increment"), null);
+        const phaseIncrement = (pitchedFrequency / safeRate) + incrementInput;
+        const hasGraphInput = (
+          (this.graphInputConnections.get(this.graphInputKey(nodeId, "Damping Graph")) || []).length > 0 ||
+          (this.graphInputConnections.get(this.graphInputKey(nodeId, "Phase Graph")) || []).length > 0
+        );
+        const queuedAdditiveSample = node?.type === "gpuAdditiveOsc" && !hasGraphInput
+          ? this.readGpuAdditiveQueuedSample(nodeId)
+          : null;
+        const additiveSample = queuedAdditiveSample !== null
+          ? queuedAdditiveSample
+          : this.additiveOscillatorSample(
+            phase + phaseOffset,
+            {
+              frequency: pitchedFrequency,
+              dampingFilterFrequency: this.readEffectiveParameter(node, "dampingFilterFrequency", 20000, frame, frames, frameValues),
+              dampingGraphValueAt: (x) => graphInputValue(nodeId, "Damping Graph", x, 1),
+              harmonics: this.readEffectiveParameter(node, "harmonics", 32, frame, frames, frameValues),
+              harmonicPhaseAdd: this.readEffectiveParameter(node, "harmonicPhaseAdd", 0, frame, frames, frameValues),
+              harmonicPhaseMultiply: this.readEffectiveParameter(node, "harmonicPhaseMultiply", 0, frame, frames, frameValues),
+              level: this.readEffectiveParameter(node, "level", 0.35, frame, frames, frameValues),
+              modA: this.readEffectiveParameter(node, "modA", 0.5, frame, frames, frameValues),
+              phaseGraphValueAt: (x) => graphInputValue(nodeId, "Phase Graph", x, 0),
+              waveform: this.readEffectiveParameter(node, "waveform", 1, frame, frames, frameValues),
+            },
+            safeRate,
+          );
+        value = { Out: additiveSample };
+        this.phases.set(
+          nodeId,
+          this.wrapValue(phase + Math.PI * 2 * phaseIncrement, 0, Math.PI * 2),
+        );
+      } else if (node?.type === "ellipsoid") {
+        const resetState = this.oscResetStates.get(nodeId) || this.createOscResetState();
+        this.oscResetStates.set(nodeId, resetState);
+        const resetValue = this.safeFilterNumber(mixInput(nodeId, "Reset"), resetState);
+        const resetEdge = resetState.lastReset <= 0 && resetValue > 0;
+        resetState.lastReset = resetValue;
+        const phase = resetEdge ? 0 : this.phases.get(nodeId) || 0;
+        const read = (key, fallback) => this.readEffectiveParameter(
+          node,
+          key,
+          fallback,
+          frame,
+          frames,
+          frameValues,
+        );
+        const phaseOffset = this.phaseRadians(read("phase", 0));
+        const frequency = read("frequency", 220);
+        const pitchInput = this.clampValue(
+          this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null),
+          -1,
+          1,
+        );
+        const pitchedFrequency = Math.max(0, frequency * (2 ** (pitchInput / 0.1)));
+        const incrementInput = this.safeFilterNumber(mixInput(nodeId, "Increment"), null);
+        const phaseIncrement = (pitchedFrequency / safeRate) + incrementInput;
+        value = this.ellipsoidVectorSample(phase + phaseOffset, {
+          level: read("level", 1),
+          offsetX: read("offsetX", 0),
+          offsetY: read("offsetY", 0),
+          scaleX: read("scaleX", 1),
+          scaleY: read("scaleY", 1),
+          shapeX: read("shapeX", 0),
+          shapeY: read("shapeY", 0),
+        });
         this.phases.set(
           nodeId,
           this.wrapValue(phase + Math.PI * 2 * phaseIncrement, 0, Math.PI * 2),
@@ -2938,12 +4288,13 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
           this.readEffectiveParameter(node, "level", 1, frame, frames, frameValues);
       } else if (node?.type === "stereoNoise") {
         const level = this.readEffectiveParameter(node, "level", 1, frame, frames, frameValues);
-        const left = this.nextNoiseSample(`${nodeId}:left`) * level;
-        const right = this.nextNoiseSample(`${nodeId}:right`) * level;
+        const seed = this.readEffectiveParameter(node, "seed", 1, frame, frames, frameValues);
+        const left = this.nextSeededNoiseSample(nodeId, seed, "left") * level;
+        const right = this.nextSeededNoiseSample(nodeId, seed, "right") * level;
         value = {
-          Left: left,
           Out: (left + right) * 0.5,
-          Right: right,
+          X: left,
+          Y: right,
         };
       } else if (node?.type === "noiseGenerator") {
         const state = this.noiseGeneratorStates.get(nodeId) || this.createNoiseGeneratorState();
@@ -2998,6 +4349,8 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         this.clockStates.set(nodeId, state);
         value = this.clockSample(
           state,
+          mixInput(nodeId, "Reset"),
+          this.readEffectiveParameter(node, "phase", 0, frame, frames, frameValues),
           this.readEffectiveParameter(node, "rate", 2, frame, frames, frameValues),
           this.readEffectiveParameter(node, "duty", 0.5, frame, frames, frameValues),
           this.readEffectiveParameter(node, "level", 1, frame, frames, frameValues),
@@ -3153,6 +4506,35 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
           Y: spiral.y * level,
           Z: spiral.z * level,
         };
+      } else if (node?.type === "lorenzAttractor") {
+        const state = this.lorenzAttractorStates.get(nodeId) || this.createLorenzAttractorState();
+        this.lorenzAttractorStates.set(nodeId, state);
+        const read = (key, fallback) => this.readEffectiveParameter(
+          node,
+          key,
+          fallback,
+          frame,
+          frames,
+          frameValues,
+        );
+        const lorenz = this.lorenzAttractorSample({
+          beta: read("beta", 8 / 3),
+          reset: mixInput(nodeId, "Reset"),
+          rho: read("rho", 28),
+          rotate: read("rotate", 0),
+          sampleRate: safeRate,
+          scale: read("scale", 1),
+          sigma: read("sigma", 10),
+          speed: read("speed", 1),
+          state,
+          zDepth: read("zDepth", 0.4),
+        });
+        const level = read("level", 1);
+        value = {
+          X: lorenz.x * level,
+          Y: lorenz.y * level,
+          Z: lorenz.z * level,
+        };
       } else if (node?.type === "midiOut") {
         const hasMidiInput = this.inputConnections.has(this.inputKey(nodeId, "MIDI Number"));
         const midiNumber = this.clampValue(Math.round(this.readEffectiveParameter(
@@ -3183,43 +4565,93 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         };
       } else if (node?.type === "keyboardController") {
         const signal = this.midiKeyboardSignal || {};
-        const midi = this.clampValue(Math.round(Number(signal.midi) || 60), 0, 127);
-        const key = this.clampValue(Number(signal.keyIndex) || 12, 0, 24);
+        const resetActive = hasInput(nodeId, "Reset") && Number(mixInput(nodeId, "Reset")) > 0;
+        const manualRawMidi = Number.isFinite(Number(signal.rawMidi))
+          ? Number(signal.rawMidi)
+          : Number(signal.midi) || 60;
+        const manualOctave = Number(signal.octave) || 0;
+        const octave = hasInput(nodeId, "Octave")
+          ? this.clampValue(Math.round(Number(mixInput(nodeId, "Octave")) || 0), -6, 6)
+          : manualOctave;
+        const rawMidi = resetActive
+          ? 60
+          : (hasInput(nodeId, "MIDI Note") ? Number(mixInput(nodeId, "MIDI Note")) || 0 : manualRawMidi);
+        const midi = this.clampValue(Math.round(rawMidi + octave * 12), 0, 127);
+        const automatedPitch = resetActive || hasInput(nodeId, "MIDI Note") || hasInput(nodeId, "Octave");
+        const key = automatedPitch
+          ? this.clampValue(Math.round(rawMidi) - 48, 0, 24)
+          : this.clampValue(Number(signal.keyIndex) || 12, 0, 24);
         const frequency = 440 * (2 ** ((midi - 69) / 12));
-        const outputFrequency = Math.max(0, Number(signal.frequency) || frequency);
+        const outputFrequency = Math.max(0, frequency);
+        const increment = Math.max(0, outputFrequency / safeRate);
+        const q = automatedPitch
+          ? key / 24
+          : this.clampValue(Number(signal.keyQuantized) || key / 24, 0, 1);
+        const x = resetActive ? 0.5 : (hasInput(nodeId, "X")
+          ? this.clampValue(Number(mixInput(nodeId, "X")) || 0, 0, 1)
+          : this.clampValue(Number(signal.x) || q, 0, 1));
+        const y = resetActive ? 0 : (hasInput(nodeId, "Y")
+          ? this.clampValue(Number(mixInput(nodeId, "Y")) || 0, 0, 1)
+          : this.clampValue(Number(signal.y) || 0, 0, 1));
+        const gate = resetActive ? 0 : (hasInput(nodeId, "Gate")
+          ? (Number(mixInput(nodeId, "Gate")) > 0 ? 1 : 0)
+          : (Number(signal.gate) > 0 ? 1 : 0));
+        const hold = hasInput(nodeId, "Hold") && Number(mixInput(nodeId, "Hold")) > 0 ? 1 : 0;
+        const velocity = hasInput(nodeId, "Velocity")
+          ? this.clampValue(Number(mixInput(nodeId, "Velocity")) || 0, 0, 1)
+          : y;
         const gatePulse = this.midiKeyboardGatePulseSamples > 0 ? 1 : 0;
         this.midiKeyboardGatePulseSamples = Math.max(0, this.midiKeyboardGatePulseSamples - 1);
         value = {
-          "1 Sample Gate": gatePulse,
-          Double: this.clampValue(Number(signal.midiNormalized) || midi / 127, 0, 1),
+          "1 Sample Gate": hasInput(nodeId, "Gate") ? gate : gatePulse,
+          "0.1V/Oct": this.clampValue(midi / 120, 0, 1),
+          Double: this.clampValue(midi / 127, 0, 1),
           Frequency: outputFrequency,
-          Gate: Number(signal.gate) > 0 ? 1 : 0,
-          Increment: outputFrequency / safeRate,
+          Gate: Math.max(gate, hold),
+          Increment: increment,
           Key: key,
           MIDI: midi,
-          Pitch: this.clampValue(Number(signal.pitchValue) || midi, 0, 127),
-          Q: this.clampValue(Number(signal.keyQuantized) || key / 24, 0, 1),
-          X: this.clampValue(Number(signal.x) || 0, 0, 1),
-          Y: this.clampValue(Number(signal.y) || 0, 0, 1),
+          Pitch: midi,
+          Q: q,
+          X: x,
+          Y: velocity,
         };
       } else if (node?.type === "macroControls") {
+        const resetActive = hasInput(nodeId, "Reset") && Number(mixInput(nodeId, "Reset")) > 0;
         value = {};
         for (let index = 0; index < 10; index += 1) {
-          value[`M${index + 1}`] = this.clampValue(Number(this.macroControls?.[index]) || 0, 0, 1);
+          const port = `M${index + 1} In`;
+          value[`M${index + 1}`] = resetActive
+            ? 0
+            : this.clampValue(hasInput(nodeId, port)
+              ? Number(mixInput(nodeId, port)) || 0
+              : Number(this.macroControls?.[index]) || 0, 0, 1);
         }
       } else if (node?.type === "pitchModWheel") {
-        const pitchWheel = Number(this.pitchModWheelSignal?.pitch);
+        const resetActive = hasInput(nodeId, "Reset") && Number(mixInput(nodeId, "Reset")) > 0;
+        const pitchWheel = resetActive ? 0 : (hasInput(nodeId, "Pitch")
+          ? Number(mixInput(nodeId, "Pitch")) || 0
+          : Number(this.pitchModWheelSignal?.pitch));
+        const modWheel = resetActive ? 0 : (hasInput(nodeId, "Mod")
+          ? Number(mixInput(nodeId, "Mod")) || 0
+          : Number(this.pitchModWheelSignal?.mod) || 0);
         value = {
-          "Mod Wheel": this.clampValue(Number(this.pitchModWheelSignal?.mod) || 0, 0, 1),
+          "Mod Wheel": this.clampValue(modWheel, 0, 1),
           "Pitch Wheel": this.clampValue(Number.isFinite(pitchWheel) ? pitchWheel : 0, -1, 1),
         };
       } else if (node?.type === "gain") {
         value = mixInput(nodeId) *
           this.readEffectiveParameter(node, "amount", 1, frame, frames, frameValues);
+      } else if (node?.type === "led") {
+        value = {
+          Out: this.safeFilterNumber(mixInput(nodeId, "In"), null),
+        };
+      } else if (node?.type === "moduleGroup") {
+        value = this.evaluateModuleGroup(node, mixInput, frame, frames, safeRate, inputFrame);
       } else if (node?.type === "codeblock") {
-        value = this.evaluateCodeblock(node, mixInput);
-      } else if (node?.type === "graph") {
-        value = this.graphValueAt(node.graph, mixInput(nodeId));
+        value = this.evaluateCodeblock(node, mixInput, frame, frames, safeRate, inputFrame);
+      } else if (node?.type === "graph" || node?.type === "graph2") {
+        value = graphOutputValue(node, nodeId);
       } else if (node?.type === "bias") {
         value = mixInput(nodeId) +
           this.readEffectiveParameter(node, "offset", 0, frame, frames, frameValues);
@@ -3280,6 +4712,26 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
             stages: this.readEffectiveParameter(node, "stages", 4, frame, frames, frameValues),
           },
           safeRate,
+        );
+      } else if (node?.type === "delayEffect") {
+        const state = this.delayEffectStates.get(nodeId) || this.createDelayEffectState();
+        this.delayEffectStates.set(nodeId, state);
+        const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
+        value = this.delayEffectSample(
+          state,
+          mixInput(nodeId),
+          {
+            feedback: read("feedback", 0.25),
+            level: read("level", 1),
+            mix: read("mix", 0.35),
+            mode: read("mode", 0),
+            modAmount: read("modAmount", 0.02),
+            modRate: read("modRate", 0.1),
+            modVariation: read("modVariation", 0),
+            time: read("time", 0.18),
+          },
+          safeRate,
+          nodeId,
         );
       } else if (node?.type === "slewLimiter") {
         const state = this.slewLimiterStates.get(nodeId) || this.createSlewLimiterState();
@@ -3460,6 +4912,13 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
           X: x,
           Y: y,
         };
+      } else if (node?.type === "screenSpaceShader") {
+        value = this.screenSpaceShaderSample(
+          node,
+          (port) => mixInput(nodeId, port),
+          safeRate,
+          nodeId,
+        );
       } else if (node?.type === "bloomGlow") {
         const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
         const screenDim = this.smoothVisualControl(
@@ -3566,16 +5025,22 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         };
       } else if (node?.type === "badvalMonitor") {
         value = this.monitorBadValueSample(mixInput(nodeId), nodeId);
+      } else if (node?.type === "speakerProtection") {
+        value = this.speakerProtectionSample(mixInput(nodeId), nodeId);
+      } else if (node?.type === "groupOutput") {
+        value = {
+          Out: mixInput(nodeId, "In"),
+        };
+      } else if (node?.type === "clapPlugin") {
+        value = {
+          Left: 0,
+          Right: 0,
+        };
       } else if (node?.type === "output") {
         value = mixInput(nodeId, "Mono") + (mixInput(nodeId, "Left") + mixInput(nodeId, "Right")) * 0.5;
       }
       frameValues.set(nodeId, value);
       this.nodeOutputs.set(nodeId, value);
-      if (node?.scopeInputPort) {
-        this.scopeInputs.set(nodeId, mixInput(nodeId, node.scopeInputPort));
-      } else {
-        this.scopeInputs.delete(nodeId);
-      }
     }
 
     const outputNode = this.nodes.get(this.outputNode || "output");
@@ -3612,11 +5077,25 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       this.inputMeterSamples += 1;
       let leftSum = 0;
       let rightSum = 0;
+      let decimatedLeft = 0;
+      let decimatedRight = 0;
+      const useRaptEllipticDecimator = oversamplingRatio === 4;
       for (let subframe = 0; subframe < oversamplingRatio; subframe += 1) {
         const engineFrame = frame * oversamplingRatio + subframe;
         const subframeOutput = this.evaluateFrame(engineFrame, engineFrames, inputs, engineSampleRate, frame);
-        leftSum += subframeOutput.left;
-        rightSum += subframeOutput.right;
+        if (useRaptEllipticDecimator) {
+          decimatedLeft = this.processRaptEllipticDecimatorSample(
+            subframeOutput.left,
+            this.raptEllipticDecimatorLeft,
+          );
+          decimatedRight = this.processRaptEllipticDecimatorSample(
+            subframeOutput.right,
+            this.raptEllipticDecimatorRight,
+          );
+        } else {
+          leftSum += subframeOutput.left;
+          rightSum += subframeOutput.right;
+        }
         this.captureModuleScopeFrame();
         this.scopeCounter += 1;
         if (this.scopeCounter >= Math.max(1, Math.floor(engineSampleRate / 30))) {
@@ -3630,14 +5109,30 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         }
       }
       const frameOutput = {
-        left: leftSum / oversamplingRatio,
-        right: rightSum / oversamplingRatio,
+        left: useRaptEllipticDecimator ? decimatedLeft : leftSum / oversamplingRatio,
+        right: useRaptEllipticDecimator ? decimatedRight : rightSum / oversamplingRatio,
       };
       if (this.outputSampleClipped(frameOutput.left)) {
         this.meterClipCount += 1;
       }
       if (this.outputSampleClipped(frameOutput.right)) {
         this.meterClipCount += 1;
+      }
+      if (
+        this.outputSampleTripsEarProtection(frameOutput.left) ||
+        this.outputSampleTripsEarProtection(frameOutput.right)
+      ) {
+        this.meterProtectionMuteCount += 1;
+        this.speakerProtectionPeak = Math.max(
+          Number(this.speakerProtectionPeak) || 0,
+          Number.isFinite(Number(frameOutput.left)) ? Math.abs(Number(frameOutput.left)) : Infinity,
+          Number.isFinite(Number(frameOutput.right)) ? Math.abs(Number(frameOutput.right)) : Infinity,
+        );
+        this.speakerProtectionNodeId = "output";
+        for (let channelIndex = 0; channelIndex < output.length; channelIndex += 1) {
+          output[channelIndex][frame] = 0;
+        }
+        continue;
       }
       const protectedFrame = this.earProtector.protect(frameOutput.left, frameOutput.right);
       if (protectedFrame.muted) {
@@ -3648,6 +5143,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       this.meterPeak = Math.max(this.meterPeak, Math.abs(left), Math.abs(right));
       this.meterSquareSum += (left * left + right * right) * 0.5;
       this.meterSamples += 1;
+      this.gpuAdditiveStatusCounter += 1;
       for (let channelIndex = 0; channelIndex < output.length; channelIndex += 1) {
         output[channelIndex][frame] = channelIndex === 0 ? left : right;
       }
@@ -3664,6 +5160,8 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         inputPeak: this.inputMeterPeak,
         inputRms: Math.sqrt(this.inputMeterSquareSum / Math.max(1, this.inputMeterSamples)),
         peak: this.meterPeak,
+        protectionNodeId: this.speakerProtectionNodeId || "",
+        protectionPeak: Number(this.speakerProtectionPeak) || 0,
         protectionMuteCount: this.meterProtectionMuteCount,
         sessionId: this.sessionId,
         rms: Math.sqrt(this.meterSquareSum / Math.max(1, this.meterSamples)),
@@ -3680,8 +5178,14 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       this.lastBadValueSource = "";
       this.meterPeak = 0;
       this.meterProtectionMuteCount = 0;
+      this.speakerProtectionNodeId = "";
+      this.speakerProtectionPeak = 0;
       this.meterSamples = 0;
       this.meterSquareSum = 0;
+    }
+    if (this.gpuAdditiveStatusCounter >= sampleRate / 20) {
+      this.gpuAdditiveStatusCounter = 0;
+      this.postGpuAdditiveStatus();
     }
     return true;
   }

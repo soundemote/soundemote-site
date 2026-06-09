@@ -2,6 +2,10 @@ function nodeGraphInputKey(node, port) {
   return `${node}.${port}`;
 }
 
+function nodeGraphGraphInputKey(node, graphInput) {
+  return `${node}.${graphInput}`;
+}
+
 function nodeGraphFindInputConnections(node, port) {
   return nodeGraphMvp.connections.filter(
     (connection) =>
@@ -18,6 +22,7 @@ function nodeGraphBuildDependencyMap(patch = nodeGraphMvp.patch) {
   const bypassedNodes = nodeGraphRuntimeBypassedNodeIds(patch);
   const dependencies = new Map(nodeList.map((node) => [node.id, new Set()]));
   const inputConnections = new Map();
+  const graphInputConnections = new Map();
   const modulationConnections = new Map();
 
   function addDependency(map, destinationNode, sourceNode) {
@@ -41,9 +46,10 @@ function nodeGraphBuildDependencyMap(patch = nodeGraphMvp.patch) {
       continue;
     }
     const sourceOutputs = nodeGraphPatchNodeOutputPorts(source);
+    const sourcePort = nodeGraphCanonicalOutputPort(source.type, connection.sourcePort);
     const destinationPort = nodeGraphCanonicalInputPort(destination.type, connection.destinationPort);
     const destinationInputs = nodeGraphPatchNodeInputPorts(destination);
-    if (!sourceOutputs.includes(connection.sourcePort)) {
+    if (!sourceOutputs.includes(sourcePort)) {
       issues.push(`connection source port invalid: ${connection.sourceNode}.${connection.sourcePort}`);
       continue;
     }
@@ -54,7 +60,7 @@ function nodeGraphBuildDependencyMap(patch = nodeGraphMvp.patch) {
     if (bypassedNodes.has(connection.sourceNode) || bypassedNodes.has(connection.destinationNode)) {
       continue;
     }
-    const canonicalConnection = { ...connection, destinationPort };
+    const canonicalConnection = { ...connection, sourcePort, destinationPort };
     const key = nodeGraphInputKey(connection.destinationNode, destinationPort);
     const connections = inputConnections.get(key) || [];
     connections.push(canonicalConnection);
@@ -70,8 +76,9 @@ function nodeGraphBuildDependencyMap(patch = nodeGraphMvp.patch) {
       continue;
     }
     const sourceOutputs = nodeGraphPatchNodeOutputPorts(source);
-    const destinationParameters = nodeGraphModuleDefinitions[destination.type]?.parameters || [];
-    if (!sourceOutputs.includes(modulation.sourcePort)) {
+    const sourcePort = nodeGraphCanonicalOutputPort(source.type, modulation.sourcePort);
+    const destinationParameters = nodeGraphPatchNodeParameterDefinitions(destination);
+    if (!sourceOutputs.includes(sourcePort)) {
       issues.push(`modulation source port invalid: ${modulation.sourceNode}.${modulation.sourcePort}`);
       continue;
     }
@@ -84,25 +91,69 @@ function nodeGraphBuildDependencyMap(patch = nodeGraphMvp.patch) {
     }
     const key = nodeGraphParameterKey(modulation.destinationNode, modulation.destinationParam);
     const modulations = modulationConnections.get(key) || [];
-    modulations.push({ ...modulation });
+    modulations.push({ ...modulation, sourcePort });
     modulationConnections.set(key, modulations);
     addDependency(dependencies, modulation.destinationNode, modulation.sourceNode);
+  }
+
+  for (const graphConnection of patch.graphConnections || []) {
+    const source = nodeMap.get(graphConnection.sourceNode);
+    const destination = nodeMap.get(graphConnection.destinationNode);
+    if (!source || !destination) {
+      issues.push("graph connection references missing node");
+      continue;
+    }
+    const sourcePort = nodeGraphCanonicalOutputPort(source.type, graphConnection.sourcePort);
+    if (!nodeGraphModuleIsGraphType(source.type) || sourcePort !== "Out") {
+      issues.push(`graph connection source invalid: ${graphConnection.sourceNode}.${graphConnection.sourcePort}`);
+      continue;
+    }
+    if (!nodeGraphModuleGraphInputs(destination.type).includes(graphConnection.destinationGraphInput)) {
+      issues.push(`graph connection destination invalid: ${graphConnection.destinationNode}.${graphConnection.destinationGraphInput}`);
+      continue;
+    }
+    if (bypassedNodes.has(graphConnection.sourceNode) || bypassedNodes.has(graphConnection.destinationNode)) {
+      continue;
+    }
+    const key = nodeGraphGraphInputKey(graphConnection.destinationNode, graphConnection.destinationGraphInput);
+    const connections = graphInputConnections.get(key) || [];
+    connections.push({ ...graphConnection, sourcePort });
+    graphInputConnections.set(key, connections);
+    addDependency(dependencies, graphConnection.destinationNode, graphConnection.sourceNode);
   }
 
   return {
     bypassedNodes: [...bypassedNodes],
     connections: (patch.connections || []).map((connection) => {
+      const source = nodeMap.get(connection.sourceNode);
       const destination = nodeMap.get(connection.destinationNode);
+      const sourcePort = source
+        ? nodeGraphCanonicalOutputPort(source.type, connection.sourcePort)
+        : connection.sourcePort;
       const destinationPort = destination
         ? nodeGraphCanonicalInputPort(destination.type, connection.destinationPort)
         : connection.destinationPort;
-      return { ...connection, destinationPort };
+      return { ...connection, sourcePort, destinationPort };
     }),
     dependencies,
+    graphConnections: (patch.graphConnections || []).map((connection) => {
+      const source = nodeMap.get(connection.sourceNode);
+      const sourcePort = source
+        ? nodeGraphCanonicalOutputPort(source.type, connection.sourcePort)
+        : connection.sourcePort;
+      return { ...connection, sourcePort };
+    }),
+    graphInputConnections,
     inputConnections,
     issues,
     modulationConnections,
-    modulations: (patch.modulations || []).map((modulation) => ({ ...modulation })),
+    modulations: (patch.modulations || []).map((modulation) => {
+      const source = nodeMap.get(modulation.sourceNode);
+      const sourcePort = source
+        ? nodeGraphCanonicalOutputPort(source.type, modulation.sourcePort)
+        : modulation.sourcePort;
+      return { ...modulation, sourcePort };
+    }),
     nodeMap,
     nodes: nodeList,
   };
@@ -187,7 +238,7 @@ function nodeGraphSchedulingEdge(sourceNode, destinationNode, kind, index, paylo
     index,
     isBackward: sourceOrder >= destinationOrder,
     kind,
-    kindOrder: kind === "signal" ? 0 : 1,
+    kindOrder: kind === "signal" ? 0 : kind === "modulation" ? 1 : 2,
     payload: { ...payload },
     sourceNode,
     sourceOrder,
@@ -198,6 +249,7 @@ function nodeGraphSchedulingEdge(sourceNode, destinationNode, kind, index, paylo
 function nodeGraphBuildSchedulingDependencies(planGraph, reachableNodes) {
   const orderDependencies = new Map(planGraph.nodes.map((node) => [node.id, new Set()]));
   const feedbackConnections = [];
+  const feedbackGraphConnections = [];
   const feedbackModulations = [];
   const nodeOrder = nodeGraphNodeOrderIndexes(planGraph.nodes);
   const schedulingEdges = [];
@@ -210,6 +262,11 @@ function nodeGraphBuildSchedulingDependencies(planGraph, reachableNodes) {
     [...planGraph.modulationConnections.values()]
       .flat()
       .map(nodeGraphModulationWireIdentity),
+  );
+  const validGraphWires = new Set(
+    [...planGraph.graphInputConnections.values()]
+      .flat()
+      .map(nodeGraphGraphWireIdentity),
   );
 
   for (const [index, connection] of planGraph.connections.entries()) {
@@ -248,19 +305,39 @@ function nodeGraphBuildSchedulingDependencies(planGraph, reachableNodes) {
     ));
   }
 
+  for (const [index, graphConnection] of planGraph.graphConnections.entries()) {
+    if (
+      !validGraphWires.has(nodeGraphGraphWireIdentity(graphConnection)) ||
+      !reachableNodes.has(graphConnection.sourceNode) ||
+      !reachableNodes.has(graphConnection.destinationNode)
+    ) {
+      continue;
+    }
+    schedulingEdges.push(nodeGraphSchedulingEdge(
+      graphConnection.sourceNode,
+      graphConnection.destinationNode,
+      "graph",
+      index,
+      graphConnection,
+      nodeOrder,
+    ));
+  }
+
   for (const edge of schedulingEdges.sort(nodeGraphCompareSchedulingEdges)) {
     if (nodeGraphDependencyPathExists(orderDependencies, edge.sourceNode, edge.destinationNode)) {
       if (edge.kind === "signal") {
         feedbackConnections.push(edge.payload);
-      } else {
+      } else if (edge.kind === "modulation") {
         feedbackModulations.push(edge.payload);
+      } else {
+        feedbackGraphConnections.push(edge.payload);
       }
     } else {
       orderDependencies.get(edge.destinationNode)?.add(edge.sourceNode);
     }
   }
 
-  return { feedbackConnections, feedbackModulations, orderDependencies };
+  return { feedbackConnections, feedbackGraphConnections, feedbackModulations, orderDependencies };
 }
 
 function nodeGraphActiveVisualSinkExists(visualSinks = []) {
@@ -286,7 +363,7 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
   const issues = [...graph.issues];
   const outputNode = "output";
   const reachableNodes = new Set();
-  const passthroughTypes = new Set(["badvalMonitor", "bandpass", "bias", "cookbookFilter", "gain", "highpass", "ladderFilter", "lowpass", "sampleHold", "slewLimiter"]);
+  const passthroughTypes = new Set(["badvalMonitor", "bandpass", "bias", "cookbookFilter", "gain", "highpass", "ladderFilter", "lowpass", "sampleHold", "slewLimiter", "speakerProtection"]);
 
   function markReachable(nodeId) {
     if (reachableNodes.has(nodeId) || !graph.nodeMap.has(nodeId)) {
@@ -301,6 +378,10 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
   const hasOutputNode = graph.nodeMap.has(outputNode);
   if (hasOutputNode) {
     markReachable(outputNode);
+  }
+  const groupOutputNodes = graph.nodes.filter((node) => node.type === "groupOutput");
+  for (const node of groupOutputNodes) {
+    markReachable(node.id);
   }
   for (const node of graph.nodes) {
     if (nodeGraphModuleDefinitions[node.type]?.visualSink) {
@@ -318,11 +399,13 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
   const hasOutputSpeakerInput = nodeGraphOutputInputPorts.some(
     (port) => (graph.inputConnections.get(nodeGraphInputKey(outputNode, port)) || []).length > 0,
   );
-  nodeGraphValidateRuntimeRoute(issues, {
-    hasActiveVisualSink,
-    hasOutputNode,
-    hasOutputSpeakerInput,
-  });
+  if (!groupOutputNodes.length) {
+    nodeGraphValidateRuntimeRoute(issues, {
+      hasActiveVisualSink,
+      hasOutputNode,
+      hasOutputSpeakerInput,
+    });
+  }
 
   for (const nodeId of reachableNodes) {
     const type = graph.nodeMap.get(nodeId)?.type;
@@ -384,23 +467,36 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
     } else if (
       type !== "audioInput" &&
       type !== "bloomGlow" &&
+      type !== "canvas" &&
       type !== "chromaColor" &&
+      type !== "clapPlugin" &&
       type !== "clock" &&
       type !== "clockDivider" &&
       type !== "codeblock" &&
       type !== "delayedTrigger" &&
+      type !== "fbPolyBlepOsc" &&
       type !== "fractalBrownianNoise" &&
       type !== "flowerChildEnvelopeFollower" &&
+      type !== "groupInput" &&
+      type !== "groupOutput" &&
       type !== "keyboardController" &&
+      type !== "led" &&
       type !== "linearEnvelope" &&
+      type !== "lorenzAttractor" &&
+      type !== "macroControls" &&
       type !== "midiNotePitch" &&
       type !== "midiOut" &&
+      type !== "moduleGroup" &&
       type !== "noiseGenerator" &&
+      type !== "pitchModWheel" &&
+      type !== "additiveOsc" &&
+      type !== "gpuAdditiveOsc" &&
       type !== "osc" &&
       type !== "pluckEnvelope" &&
       type !== "randomWalk" &&
       type !== "rgbaHsla" &&
       type !== "sandboxVisuals" &&
+      type !== "screenSpaceShader" &&
       type !== "stepSequencer" &&
       type !== "triggerCounter" &&
       type !== "triggerDivider" &&
@@ -422,10 +518,16 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
     const type = graph.nodeMap.get(nodeId)?.type;
     return type === "audioInput" ||
       type === "clock" ||
+      type === "fbPolyBlepOsc" ||
       type === "fractalBrownianNoise" ||
       type === "keyboardController" ||
+      type === "lorenzAttractor" ||
+      type === "macroControls" ||
       type === "midiOut" ||
       type === "noiseGenerator" ||
+      type === "pitchModWheel" ||
+      type === "additiveOsc" ||
+      type === "gpuAdditiveOsc" ||
       type === "osc" ||
       type === "randomWalk" ||
       type === "spiral" ||
@@ -443,7 +545,10 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
     dependencies: graph.dependencies,
     bypassedNodes: graph.bypassedNodes,
     feedbackConnections: scheduling.feedbackConnections,
+    feedbackGraphConnections: scheduling.feedbackGraphConnections,
     feedbackModulations: scheduling.feedbackModulations,
+    graphConnections: graph.graphConnections,
+    graphInputConnections: graph.graphInputConnections,
     inactiveNodes,
     inputConnections: graph.inputConnections,
     issues: uniqueIssues,
@@ -468,15 +573,24 @@ function nodeGraphCompiledVisualSinks(graph, reachableNodes) {
       reachableNodes.has(node.id) &&
       nodeGraphModuleDefinitions[node.type]?.visualSink
     )
-    .map((node) => ({
-      hasParameters: (nodeGraphModuleDefinitions[node.type]?.parameters || []).length > 0,
-      inputs: nodeGraphModuleVisualInputs(node.type).map((input) => ({
-        ...input,
-        connected: (graph.inputConnections.get(nodeGraphInputKey(node.id, input.port)) || []).length > 0,
-      })),
-      nodeId: node.id,
-      type: node.type,
-    }));
+    .map((node) => {
+      const bufferedInputs = nodeGraphPatchNodeBufferedInputs(node);
+      const bufferedSet = new Set(bufferedInputs);
+      return {
+        bufferSampleLimit: nodeGraphBufferedInputSampleLimit,
+        bufferedInputs,
+        hasParameters: (nodeGraphModuleDefinitions[node.type]?.parameters || []).length > 0,
+        inputs: nodeGraphPatchNodeVisualInputs(node).map((input) => ({
+          ...input,
+          buffered: bufferedSet.has(input.port),
+          connected: (graph.inputConnections.get(nodeGraphInputKey(node.id, input.port)) || []).length > 0,
+          connections: (graph.inputConnections.get(nodeGraphInputKey(node.id, input.port)) || [])
+            .map((connection) => ({ ...connection })),
+        })),
+        nodeId: node.id,
+        type: node.type,
+      };
+    });
 }
 
 function nodeGraphNodeSignalOutputRequired(graph, nodeId) {

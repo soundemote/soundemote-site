@@ -8,15 +8,21 @@
     "editText": "Mouse: click to edit, drag to select text.",
     "interact": "Mouse: interact for details."
   },
+  "constraints": {
+    "cpu": "Show CPU-constrained controls. These can make the processor work harder; for example, Additive Osc Harmonics.",
+    "ram": "Show RAM-constrained controls. These can increase memory pressure, buffers, or stored data.",
+    "gpu": "Show GPU-constrained controls. These can make visual rendering or shader work heavier."
+  },
   "workspace": {
-    "pan": "Mouse: middle-drag to move the modular view freely. Ctrl+middle-drag or Alt+middle-drag slowly zooms, including over modules and controls. Right-click empty space opens the add module dialog. Ctrl+Shift+G aligns the view to the grid.",
+    "pan": "Mouse: middle-drag to move the modular view freely. Ctrl+middle-drag or Alt+middle-drag slowly zooms, including over modules and controls. Ctrl+Shift+G aligns the view to the grid.",
     "resize": "Mouse: drag to resize workspace by grid units.",
     "resizeTitle": "Resize modular workspace",
-    "backToFull": "Return to full modular view"
+    "origin": "World origin: X 0, Y 0",
+    "backToFull": "Return to full modular view",
+    "copyViewportImage": "Save the visible modular viewport or rendered media to Downloads"
   },
   "view": {
     "patchSettings": "Patch settings",
-    "uiViewDevelopment": "UI View is in development",
     "midiKeyboardDevelopment": "Show or hide the mouse-playable keyboard panel.",
     "switchView": "Mouse: click to switch view.",
     "zoomIn": "Zoom in. Click for the next integer zoom level; Shift-click adds 0.25; Ctrl/Cmd-click adds 0.10.",
@@ -41,13 +47,17 @@
     "redoUnavailable": "Redo unavailable",
     "help": "Mouse: click to step patch history."
   },
+  "timing": {
+    "speedUnderConstruction": "Speed control is under construction. It is shown here as a future global timing multiplier, but it is not active yet."
+  },
   "script": {
-      "copy": "Copy patch script to clipboard",
-      "download": "Download patch script as a JSON file",
-      "paste": "Paste patch script from clipboard",
+    "apply": "Validate and apply the current patch script",
+    "copy": "Copy patch script to clipboard",
+    "download": "Save patch script as a JSON file on the desktop",
+    "paste": "Paste patch script from clipboard",
     "updateDefault": "Validate current patch script and save it as the default preset",
     "load": "Load patch script",
-    "view": "Open the patch script editor",
+    "view": "Open the Patch Script utility",
     "save": "Save patch script as a JSON file"
   },
   "settings": {
@@ -68,6 +78,7 @@
   "module": {
     "drag": "Mouse: drag to move modules. Click to select. Ctrl/Shift+click adds or removes from selection; Ctrl/Shift+drag adds to selection while moving.",
     "move": "Mouse: drag to move modules. Click to select; Ctrl/Shift+click adds or removes from selection.",
+    "titleMove": "Mouse: drag to move modules. Click to select; Ctrl/Shift+click adds or removes from selection. When module buttons are hidden, Alt+click the title to toggle bypass.",
     "actions": "Mouse: click to open module actions.",
     "actionsTitle": "Module actions",
     "textBoxEdit": "Display-only text. Edit content from this module's actions menu. Text clips to the box height and scales down to fit width. Mouse wheel zooms the modular view.",
@@ -81,7 +92,7 @@
     "executionInactive": "Compiled order: inactive\nThis module is not reachable from Output or a visual sink.",
     "executionTitleInactive": "Not in compiled execution order",
     "executionListItem": "Compiled order {order}: {nodeName}\nSelection only happens from move handles or marquee.",
-    "scopeWindow": "Oscilloscope: drag up/down to zoom in or out by changing cycles. Drag left/right to pan the waveform. Right-click for oscilloscope controls."
+    "scopeWindow": "Oscilloscope: drag up/down to zoom in or out by changing cycles. Drag left/right to pan the waveform. Right-click to edit this module's scope shader."
   },
   "wire": {
     "selected": "Mouse: click to select this wire. Delete removes selected wire.",
@@ -101,7 +112,6 @@
     "liveInputConnected": "Live INPUT is connected to the browser audio engine.",
     "liveInputVisible": "Live INPUT module is visible. Start OUTPUT to request microphone access.",
     "liveInputShow": "Show live INPUT module",
-    "liveInputUnderConstruction": "Live INPUT is under construction.",
     "render": "Mouse: click to render sample.",
     "play": "Mouse: click to play rendered sample.",
     "playRendered": "Play rendered sample",
@@ -196,6 +206,8 @@
     "phaseListUnavailable": "Phase list unavailable: manifest required",
     "manifestReloading": "Manifest reload in progress",
     "manifestReload": "Reload manifest and artifacts",
+    "visualOutputCopy": "Copy visual output PNG to clipboard",
+    "visualOutputCopyRenderFirst": "Render Sample before copying visual output",
     "visualOutputSave": "Save visual output as PNG",
     "visualOutputRenderFirst": "Render Sample before saving visual output",
     "visualOutputWaiting": "Node graph visual output waiting for Render Sample"
