@@ -1,6 +1,7 @@
 import Nav from "@/components/soundemote/Nav";
 import StarField from "@/components/soundemote/StarField";
 import Footer from "@/components/soundemote/Footer";
+import patchImage from "@/assets/soemdsp-patch.png";
 
 const notThis = [
   "Not a DAW with video bolted on.",
@@ -29,6 +30,7 @@ const immediatePlan = [
   "Create a preset browser as the primary creative doorway.",
   "Keep the module browser available as a deeper backend feature for builders and advanced users.",
   "Let presets become the friendly surface: complete instruments, complete effects, complete visual systems, and curated starting points.",
+  "UI designer and plugin export.",
 ];
 
 const audiences = [
@@ -55,7 +57,7 @@ const audiences = [
   {
     title: "For Sample Library Creators",
     body:
-      "The engine can support advanced infrastructure for one-button multilayer sample library creation: generate variations, capture layers, organize exports, and turn beautiful DSP systems into reusable creative packs.",
+      "The engine can support advanced infrastructure for one-button multilayer sample library creation: generate round robins, velocity layers, organize exports with metadata, and turn beautiful DSP systems into reusable creative sample packs.",
   },
   {
     title: "For Plugin Developers",
@@ -78,18 +80,40 @@ const AVWResearch = () => (
       <div className="container relative max-w-4xl">
         <p className="mono text-xs uppercase tracking-[0.22em] text-scope">audio visual workstation</p>
         <h1 className="display mt-5 max-w-3xl text-4xl font-semibold leading-tight text-warm-white md:text-6xl">
-          Soundemote Sandbox is Pretty Modular
+          Soundemote Sandbox is Pretty
         </h1>
         <p className="display mt-5 max-w-4xl text-2xl font-semibold leading-tight text-scope md:text-5xl">
           A beautiful audio visual workstation where sound, oscilloscopes, shaders, and motion are part of
           the instrument.
         </p>
+        <div className="mt-8 flex flex-wrap gap-3">
+          <a className="mono rounded-full border border-border/70 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-warm-white transition hover:border-scope/70" href="/">
+            Back To Soundemote
+          </a>
+          <a className="mono rounded-full border border-border/70 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-warm-white transition hover:border-scope/70" href="https://akeru3eureka.io/">
+            Back To Akeru3eureka
+          </a>
+          <a className="mono rounded-full border border-scope/50 bg-scope px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-background transition hover:bg-scope/85" href="/sandbox">
+            Open Sandbox
+          </a>
+          <a className="mono rounded-full border border-border/70 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-warm-white transition hover:border-scope/70" href="https://github.com/soundemote/soemdsp-sandbox">
+            View GitHub
+          </a>
+          <a className="mono rounded-full border border-border/70 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-warm-white transition hover:border-scope/70" href="https://discord.gg/hjpBC8kZ3s">
+            Join Discord
+          </a>
+        </div>
+        <figure className="mt-10 overflow-hidden rounded-lg border border-border/60 bg-card/60 shadow-[var(--shadow-panel)]">
+          <img className="w-full" src={patchImage} alt="Soundemote Sandbox patch with oscillators, noise, gain, output, and visual node controls" />
+          <figcaption className="mono border-t border-border/60 px-4 py-3 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+            A patch is both an instrument and a visual explanation.
+          </figcaption>
+        </figure>
         <p className="mt-6 max-w-3xl text-lg leading-8 text-muted-foreground">
-          Soundemote is building an Audio Visual Workstation where sound and image are equal creative
-          partners. Music sequencing, visual sequencing, shader instruments, camera motion, modulation,
-          and export belong inside one low-friction creative workflow, with analog-emulated audio
-          modules and accurate phosphor oscilloscope simulation designed to look beautiful while staying
-          easy to use.
+          Soundemote Sandbox is an audiovisual workstation for building instruments, effects, visualizers,
+          and educational learning devices. Sound and image are equal creative partners: music sequencing,
+          visual sequencing, shader instruments, camera motion, modulation, and export belong inside one
+          low-friction creative workflow.
         </p>
         <p className="mt-5 max-w-3xl text-base leading-7 text-muted-foreground">
           The idea starts with the appeal of a pretty oscilloscope and expands it into the whole
@@ -97,7 +121,7 @@ const AVWResearch = () => (
           enough for real work and beautiful enough to become part of the artwork.
         </p>
         <p className="mt-5 max-w-3xl text-base leading-7 text-muted-foreground">
-          Sound and image are generated by beautiful algorithms, most of which can be explored inside
+          Sound and image are generated by inspectable algorithms, most of which can be explored inside
           the on-screen manual. The manual is not just documentation; it is part lab notebook, part
           instrument guide, and part map of the mathematics behind the work.
         </p>
@@ -109,6 +133,10 @@ const AVWResearch = () => (
         <p className="mt-5 max-w-3xl text-base leading-7 text-muted-foreground">
           Imagine routing a module back into itself and it just works, then seeing the effect of chaotic
           feedback.
+        </p>
+        <p className="mt-5 max-w-3xl text-base leading-7 text-muted-foreground">
+          Patch an oscillator into a filter, watch the waveform bend, drive a shader from the same signal,
+          and export the audiovisual moment without leaving the workspace.
         </p>
       </div>
     </section>
@@ -211,13 +239,13 @@ const AVWResearch = () => (
 
     <section className="px-6 pb-20">
       <div className="container rounded-lg border border-scope/30 bg-scope/10 p-6 shadow-[var(--shadow-panel)] md:p-8">
-        <p className="mono text-xs uppercase tracking-[0.22em] text-scope">immediate plan</p>
+        <p className="mono text-xs uppercase tracking-[0.22em] text-scope">MVP LIVE (enter here)</p>
         <h2 className="display mt-4 text-3xl font-semibold text-warm-white">
           Presets first, modules behind the curtain
         </h2>
         <p className="mt-4 max-w-3xl text-base leading-7 text-muted-foreground">
           The front of soemdsp sandbox should feel like browsing playable creative systems, not sorting
-          through engineering parts. Synthesizers, effects, and visualizers become the main experience.
+          through engineering parts. Synthesizers, effects, visualizers, and educational learning devices become the main experience.
         </p>
         <ul className="mt-6 grid gap-4 text-sm leading-7 text-muted-foreground md:grid-cols-2">
           {immediatePlan.map((item) => (
