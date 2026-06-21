@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Component, ReactNode, useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase, supabaseConfigError } from "@/lib/supabase";
 
@@ -11,7 +11,43 @@ type SharedProject = {
   project_data: unknown;
 };
 
-const SharePage = () => {
+class ShareErrorBoundary extends Component<
+  { children: ReactNode },
+  { error: Error | null }
+> {
+  state = { error: null as Error | null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <main className="min-h-screen bg-background text-foreground">
+          <div className="container mx-auto max-w-2xl px-4 py-12">
+            <Link
+              to="/"
+              className="mono text-xs text-muted-foreground hover:text-foreground"
+            >
+              ← soundemote
+            </Link>
+            <h1 className="display mt-4 text-2xl">Shared Project</h1>
+            <div className="mt-6 rounded-md border border-destructive/40 bg-destructive/10 p-4">
+              <p className="font-medium text-destructive">Something went wrong</p>
+              <p className="mt-1 text-sm text-destructive break-words">
+                {this.state.error.message}
+              </p>
+            </div>
+          </div>
+        </main>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+const SharePageInner = () => {
   const { slug } = useParams<{ slug: string }>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -108,5 +144,11 @@ const SharePage = () => {
     </main>
   );
 };
+
+const SharePage = () => (
+  <ShareErrorBoundary>
+    <SharePageInner />
+  </ShareErrorBoundary>
+);
 
 export default SharePage;
