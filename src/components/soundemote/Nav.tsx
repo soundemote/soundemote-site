@@ -166,22 +166,27 @@ export const Nav = () => (
         <span className="text-scope text-glow">✧</span>
         <span className="display text-warm-white">soundemote</span>
       </a>
-      <ul className="hidden xl:flex items-center gap-8 mono text-xs uppercase tracking-[0.18em] text-muted-foreground">
-        {links.map((l) => (
-          <li key={l.href} className={l.special ? "mr-2" : undefined}>
-            {l.special ? (
-              <SandboxNavLink href={l.href} label={l.label} />
-            ) : (
-              <a href={l.href} className="transition-colors hover:text-scope focus-visible:text-scope outline-none">
-                {l.label}
-              </a>
-            )}
-          </li>
-        ))}
-        <li>
+      <div className="flex items-center gap-4">
+        <div className="xl:hidden">
           <ShareProjectDialog />
-        </li>
-      </ul>
+        </div>
+        <ul className="hidden xl:flex items-center gap-8 mono text-xs uppercase tracking-[0.18em] text-muted-foreground">
+          {links.map((l) => (
+            <li key={l.href} className={l.special ? "mr-2" : undefined}>
+              {l.special ? (
+                <SandboxNavLink href={l.href} label={l.label} />
+              ) : (
+                <a href={l.href} className="transition-colors hover:text-scope focus-visible:text-scope outline-none">
+                  {l.label}
+                </a>
+              )}
+            </li>
+          ))}
+          <li>
+            <ShareProjectDialog />
+          </li>
+        </ul>
+      </div>
     </nav>
   </header>
 );
