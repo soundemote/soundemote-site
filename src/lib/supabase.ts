@@ -1,16 +1,21 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+// Publishable (anon) credentials are safe to ship in client code. We fall back to
+// these constants because the deployed build does not have access to the local
+// .env file, so import.meta.env.* is undefined in production.
+const FALLBACK_SUPABASE_URL = "https://nzsiesevactiltflhwvp.supabase.co";
+const FALLBACK_SUPABASE_ANON_KEY =
+  "sb_publishable_3geBI9EkVzDeiVpu84WWYQ_wNizaofh";
+
+const supabaseUrl =
+  (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? FALLBACK_SUPABASE_URL;
+const supabaseAnonKey =
+  (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ??
+  FALLBACK_SUPABASE_ANON_KEY;
 
 export const supabaseConfigError =
   !supabaseUrl || !supabaseAnonKey
-    ? "Missing Supabase environment variables. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY."
+    ? "Missing Supabase configuration (URL or anon key)."
     : null;
 
-// Use placeholders when config is missing so importing this module never throws
-// (a throw at import time would crash the whole app and render a blank page).
-export const supabase = createClient(
-  supabaseUrl ?? "https://placeholder.supabase.co",
-  supabaseAnonKey ?? "placeholder-anon-key"
-);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
