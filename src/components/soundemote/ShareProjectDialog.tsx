@@ -51,24 +51,27 @@ export function ShareProjectDialog() {
       return;
     }
     setSaving(true);
-    const slug = makeSlug(title);
-    const project_data = {
+    const safeTitle = title.trim() || "Untitled Project";
+    const safeBankName = bankName.trim() || "Default";
+    const safeVisibility = visibility || "unlisted";
+    const safeProjectData = {
       source: "soundemote-lovable",
       path: "/sandbox",
-      url: typeof window !== "undefined" ? window.location.href : null,
-      title: title.trim(),
-      bank_name: bankName.trim(),
+      url: typeof window !== "undefined" ? window.location.href : "",
+      title: safeTitle,
+      bank_name: safeBankName,
       created_client_timestamp: new Date().toISOString(),
     };
+    const slug = makeSlug(safeTitle);
     try {
       const { data, error: insertError } = await supabase
         .from("shared_projects")
         .insert({
           slug,
-          title: title.trim() || "Untitled scope",
-          bank_name: bankName.trim() || null,
-          visibility,
-          project_data,
+          title: safeTitle,
+          bank_name: safeBankName,
+          visibility: safeVisibility,
+          project_data: safeProjectData,
         })
         .select("slug")
         .single();
