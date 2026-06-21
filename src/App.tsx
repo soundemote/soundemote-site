@@ -11,6 +11,7 @@ import ScopeScratchPage from "./pages/ScopeScratchPage.tsx";
 import SandboxPage from "./pages/SandboxPage.tsx";
 import AVWResearch from "./pages/AVWResearch.tsx";
 import SupabaseTest from "./pages/SupabaseTest.tsx";
+import SharePage from "./pages/SharePage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
           <Route path="/sandbox" element={<SandboxPage />} />
           <Route path="/avw-research" element={<AVWResearch />} />
           <Route path="/supabase-test" element={<SupabaseTest />} />
+          <Route path="/share/:slug" element={<SharePage />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
