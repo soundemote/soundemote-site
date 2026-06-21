@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import ShareProjectDialog from "./ShareProjectDialog";
 
 const links = [
   { href: "/sandbox", label: "app:(sandbox)", special: true },
@@ -177,6 +178,9 @@ export const Nav = () => (
             )}
           </li>
         ))}
+        <li>
+          <ShareProjectDialog />
+        </li>
       </ul>
     </nav>
   </header>
