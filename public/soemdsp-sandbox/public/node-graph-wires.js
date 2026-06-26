@@ -472,6 +472,19 @@
     const { helpers, state } = deps;
     let hoveredPatchPoint = null;
 
+    function eventIsPrimaryWireStart(event) {
+      if (!event || event.isPrimary === false) {
+        return false;
+      }
+      if (event.button === 1 || event.button === 2) {
+        return false;
+      }
+      if (event.buttons !== undefined && event.buttons !== 0 && !(event.buttons & 1)) {
+        return false;
+      }
+      return event.button === undefined || event.button <= 0;
+    }
+
     function setHoveredPatchPoint(target) {
       if (hoveredPatchPoint === target) {
         return;
@@ -606,7 +619,7 @@
     }
 
     function beginWireDragFromElement(event, port) {
-      if (event.button !== 0) {
+      if (!eventIsPrimaryWireStart(event)) {
         return;
       }
       if (state.manualTrace) {
@@ -644,7 +657,8 @@
     }
 
     function beginWireDrag(event) {
-      beginWireDragFromElement(event, event.currentTarget);
+      const coordinateTarget = helpers.patchPointTargetFromPoint(event.clientX, event.clientY);
+      beginWireDragFromElement(event, coordinateTarget || event.currentTarget);
     }
 
     function beginPatchPointWireDrag(event) {
@@ -654,7 +668,7 @@
       }
       const target = event.target instanceof Element ? event.target : null;
       if (
-        event.button !== 0 ||
+        !eventIsPrimaryWireStart(event) ||
         state.dragging ||
         target?.closest?.(".node-port, .node-io-row, .node-param-port.modulation-input, .node-param-port.graph-input, .node-slider-readout, input, textarea, select")
       ) {
