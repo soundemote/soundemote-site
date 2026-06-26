@@ -9,8 +9,8 @@ export const Hero = () => {
     <div className="container relative max-w-3xl mx-auto text-center animate-fade-in">
       
       <p className="mono text-xs lowercase tracking-[0.1em] text-muted-foreground/60 text-center inline-flex flex-wrap items-center justify-center w-full px-0 mt-[128px] mb-[128px]">
-        <span>/* alpha v0.8.0</span>
-        <SandboxNavLink href="/sandbox" label="app:(sandbox)" /><span>update */</span>
+        <span>/* beta v0.1.0</span>
+        <SandboxNavLink href="/sandbox" label="app:(sandbox)" /><span>*/</span>
       </p>
       <div className="w-fit mx-auto mt-6 animate-fade-in [animation-delay:200ms]">
         <a href="/sandbox" className="group block">

@@ -14,7 +14,7 @@ type Project = {
 const projects: Project[] = [
   {
     name: "(soemdsp-sandbox)~",
-    status: "alpha v0.8.0 · chaos update",
+    status: "beta v0.1.0",
     blurb:
       "Next-generation analog-emulation audiovisual prototyping environment. Musical, aggressive filters, warm saturation, graphs, oscilloscopes, gpu rendering visual fx, metaparameters, SIMD backend, easy for producers, great for devs, open source, MIT license, no strings attached.",
     href: "https://soundemote.io/sandbox",
