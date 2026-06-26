@@ -34,6 +34,53 @@ function setNodeGraphLiveOutputMuted(muted) {
   }
 }
 
+let nodeGraphLiveNativeModuleCatalogPromise = null;
+let nodeGraphLiveNativeModuleBytes = {};
+
+async function fetchNodeGraphLiveNativeModuleCatalog() {
+  if (!nodeGraphLiveNativeModuleCatalogPromise) {
+    nodeGraphLiveNativeModuleCatalogPromise = fetch("/api/native-modules", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : { modules: [] })
+      .catch(() => ({ modules: [] }));
+  }
+  return nodeGraphLiveNativeModuleCatalogPromise;
+}
+
+async function fetchNodeGraphLiveNativeModuleBytes(entry) {
+  const wasmUrl = String(entry?.wasmUrl || "");
+  if (!wasmUrl) {
+    return null;
+  }
+  if (!nodeGraphLiveNativeModuleBytes[wasmUrl]) {
+    nodeGraphLiveNativeModuleBytes[wasmUrl] = fetch(wasmUrl, { cache: "no-store" })
+      .then((response) => response.ok ? response.arrayBuffer() : null)
+      .catch(() => null);
+  }
+  return nodeGraphLiveNativeModuleBytes[wasmUrl];
+}
+
+async function sendNodeGraphLiveNativeModules(liveNode) {
+  if (!liveNode?.port) {
+    return;
+  }
+  const catalog = await fetchNodeGraphLiveNativeModuleCatalog();
+  const nativeModules = Array.isArray(catalog?.modules) ? catalog.modules : [];
+  for (const entry of nativeModules) {
+    if (entry?.targetType !== "ellipsoid" || !entry?.wasmAvailable) {
+      continue;
+    }
+    const bytes = await fetchNodeGraphLiveNativeModuleBytes(entry);
+    if (!(bytes instanceof ArrayBuffer)) {
+      continue;
+    }
+    const transferableBytes = bytes.slice(0);
+    liveNode.port.postMessage(
+      { type: "setNativeModuleWasm", name: entry.name || "ellipsoid", bytes: transferableBytes },
+      [transferableBytes],
+    );
+  }
+}
+
 async function refreshNodeGraphLiveMicrophonePermissionState() {
   if (!navigator.permissions?.query) {
     nodeGraphMvp.live.inputPermissionStatus = "unsupported";
@@ -452,6 +499,9 @@ function renderNodeGraphLiveScriptBlock(event) {
       runtime.meterClipCount,
       runtime.meterProtectionMuteCount || 0,
       runtime.badNumberCount || 0,
+      0,
+      0,
+      0,
     );
     runtime.meterCounter = 0;
     nodeGraphMvp.live.inputMeterPeak = 0;
@@ -839,6 +889,25 @@ function nodeGraphStartGpuAdditiveProducer(plan, audio) {
   producer.timer = setInterval(produce, 8);
 }
 
+function queueNodeGraphLivePatchCommand(command, nodeId = "") {
+  const direction = command === "nextPatch" ? 1 : command === "previousPatch" ? -1 : 0;
+  if (!direction) {
+    return;
+  }
+  const key = `${command}:${nodeId || ""}`;
+  if (!nodeGraphMvp.live.patchCommandQueue) {
+    nodeGraphMvp.live.patchCommandQueue = new Set();
+  }
+  if (nodeGraphMvp.live.patchCommandQueue.has(key)) {
+    return;
+  }
+  nodeGraphMvp.live.patchCommandQueue.add(key);
+  window.setTimeout(async () => {
+    nodeGraphMvp.live.patchCommandQueue?.delete(key);
+    await loadAdjacentNodeGraphSavedPatch(direction);
+  }, 0);
+}
+
 function handleNodeGraphLiveWorkletMessage(event) {
   const message = event.data || {};
   if (message.type === "meter") {
@@ -855,7 +924,20 @@ function handleNodeGraphLiveWorkletMessage(event) {
       Number(message.clipCount) || 0,
       Number(message.protectionMuteCount) || 0,
       Number(message.badNumberCount) || 0,
+      Number(message.overrunCount) || 0,
+      Number(message.maxBlockProcessMs) || 0,
+      Number(message.maxBlockBudgetRatio) || 0,
     );
+    if (typeof syncNodeGraphAudioPlayerRuntimeStatus === "function") {
+      syncNodeGraphAudioPlayerRuntimeStatus({
+        nodeId: message.audioPlayerNodeId || "",
+        nodeIds: message.audioPlayerNodeIds || [],
+        peak: Number(message.audioPlayerPeak) || 0,
+        phase: Number(message.audioPlayerPhase) || 0,
+        reason: message.audioPlayerReason || "",
+        samples: Number(message.audioPlayerSamples) || 0,
+      });
+    }
     if (Number(message.badNumberCount) > 0) {
       nodeGraphRecordBadValueEvent({
         count: Number(message.badNumberCount) || 1,
@@ -874,6 +956,19 @@ function handleNodeGraphLiveWorkletMessage(event) {
         protectionMuteCount: Number(message.protectionMuteCount) || 0,
       });
     }
+  } else if (message.type === "nativeModuleStatus") {
+    setNodeGraphLiveEvidence("native-module", message);
+    if (message.status && message.status !== "ready") {
+      setNodeGraphLivePlanStatus(
+        `${message.name || "native module"} ${message.status}`,
+        "warn",
+      );
+    }
+  } else if (message.type === "patchCommand") {
+    if (message.sessionId !== nodeGraphMvp.live.sessionId || !nodeGraphMvp.live.node) {
+      return;
+    }
+    queueNodeGraphLivePatchCommand(message.command, message.nodeId || "");
   } else if (message.type === "planApplied") {
     if (
       message.sessionId !== nodeGraphMvp.live.sessionId ||
@@ -1031,13 +1126,16 @@ function assertNodeGraphLivePlanSupportsClap(plan = {}) {
   throw error;
 }
 
-function sendNodeGraphLivePlan() {
+async function sendNodeGraphLivePlan() {
   if (!nodeGraphMvp.live.node && !nodeGraphMvp.live.context) {
     return;
   }
 
   try {
     const plan = nodeGraphBuildLivePlan();
+    if (typeof nodeGraphEnsureLiveSamplesForPlan === "function") {
+      await nodeGraphEnsureLiveSamplesForPlan(plan, nodeGraphMvp.patch);
+    }
     assertNodeGraphLivePlanSupportsClap(plan);
     const audio = nodeGraphAudioDerivation(nodeGraphMvp.patch);
     nodeGraphMvp.live.activeNodeIds = new Set(plan.order);
@@ -1099,10 +1197,25 @@ function sendNodeGraphLiveParameterUpdate() {
   try {
     const nodes = nodeGraphBuildLiveParameterNodes(nodeGraphMvp.live.activeNodeIds);
     const patchFingerprint = nodeGraphPatchFingerprint();
+    const now = performance.now();
+    const previous = Number(nodeGraphMvp.live.lastParameterUpdateTime) || 0;
+    const measuredSeconds = previous > 0 ? (now - previous) / 1000 : nodeGraphMvp.live.autoSmoothingSeconds;
+    nodeGraphMvp.live.lastParameterUpdateTime = now;
+    if (!nodeGraphMvp.live.autoSmoothingManual) {
+      nodeGraphMvp.live.autoSmoothingSeconds = clampNodeGraphAutoSmoothingSeconds(
+        (Number(nodeGraphMvp.live.autoSmoothingSeconds) || nodeGraphAutoSmoothingDefaultSeconds) * 0.82 +
+        clampNodeGraphAutoSmoothingSeconds(measuredSeconds) * 0.18,
+      );
+    } else {
+      nodeGraphMvp.live.autoSmoothingSeconds = clampNodeGraphAutoSmoothingSeconds(nodeGraphMvp.live.autoSmoothingSeconds);
+    }
+    const autoSmoothingSeconds = nodeGraphMvp.live.autoSmoothingSeconds;
+    syncNodeGraphGlobalSmoothingControl();
     updateNodeGraphLiveModuleScopeFingerprint(patchFingerprint);
     nodeGraphMvp.live.planSerial += 1;
     if (nodeGraphMvp.live.usesWorklet) {
       setNodeGraphLiveEvidence("params-sent", {
+        autoSmoothingSeconds,
         nodeCount: nodes.length,
         parameterCount: nodeGraphLiveParameterCount(nodes),
         patchFingerprint,
@@ -1111,6 +1224,7 @@ function sendNodeGraphLiveParameterUpdate() {
       setNodeGraphLivePlanStatus(nodeGraphLiveParametersSentStatusText(nodes), "warn");
       nodeGraphMvp.live.node?.port?.postMessage({
         nodes,
+        autoSmoothingSeconds,
         patchFingerprint,
         planSerial: nodeGraphMvp.live.planSerial,
         sessionId: nodeGraphMvp.live.sessionId,
@@ -1120,8 +1234,10 @@ function sendNodeGraphLiveParameterUpdate() {
       const audio = nodeGraphAudioDerivation(nodeGraphMvp.patch);
       nodeGraphStartGpuAdditiveProducer(plan, audio);
     } else if (nodeGraphMvp.live.runtime) {
+      nodeGraphMvp.live.runtime.autoSmoothingSeconds = autoSmoothingSeconds;
       updateNodeGraphLiveRuntimeParameters(nodeGraphMvp.live.runtime, nodes);
       setNodeGraphLiveEvidence("params-applied", {
+        autoSmoothingSeconds,
         nodeCount: nodes.length,
         parameterCount: nodeGraphLiveParameterCount(nodes),
         patchFingerprint,
@@ -1197,6 +1313,162 @@ function sendNodeGraphLivePitchModWheelSignal(signal = nodeGraphPitchModWheelPay
   }
 }
 
+function nodeGraphGlobalSmoothingSamples() {
+  return nodeGraphSmoothingSamplesFromSeconds(
+    nodeGraphMvp?.live?.autoSmoothingSeconds ?? nodeGraphAutoSmoothingDefaultSeconds,
+  );
+}
+
+function nodeGraphGlobalSmoothingSeconds() {
+  return clampNodeGraphAutoSmoothingSeconds(
+    nodeGraphMvp?.live?.autoSmoothingSeconds ?? nodeGraphAutoSmoothingDefaultSeconds,
+  );
+}
+
+function formatNodeGraphGlobalSmoothingSeconds(seconds) {
+  const value = clampNodeGraphAutoSmoothingSeconds(seconds);
+  if (typeof limit_decimals === "function") {
+    return limit_decimals(String(value), 5, 3, 4, false);
+  }
+  return value.toFixed(4).replace(/0$/, "");
+}
+
+function syncNodeGraphGlobalSmoothingControl(options = {}) {
+  const input = document.getElementById("nodeSceneGlobalSmoothingSeconds");
+  if (!input) {
+    return;
+  }
+  if (!options.force && document.activeElement === input) {
+    return;
+  }
+  input.value = formatNodeGraphGlobalSmoothingSeconds(nodeGraphGlobalSmoothingSeconds());
+}
+
+function setNodeGraphGlobalSmoothingSamples(samples, options = {}) {
+  setNodeGraphGlobalSmoothingSeconds(nodeGraphSmoothingSecondsFromSamples(samples), options);
+}
+
+function setNodeGraphGlobalSmoothingSeconds(seconds, options = {}) {
+  const normalized = clampNodeGraphAutoSmoothingSeconds(seconds);
+  nodeGraphMvp.live.autoSmoothingSeconds = normalized;
+  nodeGraphMvp.live.autoSmoothingManual = options.manual !== false;
+  syncNodeGraphGlobalSmoothingControl({ force: true });
+  scheduleNodeGraphLiveParameterSync();
+  if (typeof saveNodeGraphWorkspaceViewToUserSettings === "function") {
+    saveNodeGraphWorkspaceViewToUserSettings({ status: false });
+  }
+}
+
+function nodeGraphGlobalSmoothingDragStep(event) {
+  const multiplier = typeof nodeGraphNumericDragMultiplier === "function"
+    ? nodeGraphNumericDragMultiplier(event)
+    : 1;
+  return 0.01 * multiplier;
+}
+
+function handleNodeGraphGlobalSmoothingSecondsChange() {
+  const input = document.getElementById("nodeSceneGlobalSmoothingSeconds");
+  if (!input) {
+    return;
+  }
+  setNodeGraphGlobalSmoothingSeconds(input.value);
+  input.readOnly = true;
+}
+
+function handleNodeGraphGlobalSmoothingSecondsKeydown(event) {
+  if (event.key !== "Enter") {
+    return;
+  }
+  event.preventDefault();
+  handleNodeGraphGlobalSmoothingSecondsChange();
+  event.currentTarget?.blur?.();
+}
+
+function beginNodeGraphGlobalSmoothingSecondsEdit(event) {
+  const input = document.getElementById("nodeSceneGlobalSmoothingSeconds");
+  if (!input) {
+    return;
+  }
+  input.readOnly = false;
+  input.focus();
+  input.select();
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function beginNodeGraphGlobalSmoothingSecondsDrag(event) {
+  const input = document.getElementById("nodeSceneGlobalSmoothingSeconds");
+  if (!input || event.button > 0 || event.detail > 1) {
+    return;
+  }
+  if (typeof nodeGraphNumericModifierReserved === "function" && nodeGraphNumericModifierReserved(event)) {
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
+  const resetToDefaultOnClick = (event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey;
+  nodeGraphMvp.globalSmoothingSecondsDragging = {
+    input,
+    moved: false,
+    pointerId: event.pointerId ?? null,
+    resetToDefaultOnClick,
+    startValue: nodeGraphGlobalSmoothingSeconds(),
+    startX: event.clientX,
+    startY: event.clientY,
+    step: nodeGraphGlobalSmoothingDragStep(event),
+  };
+  input.readOnly = true;
+  input.classList.add("value-dragging");
+  input.closest(".scene-context-global-smoothing-control")?.classList.add("value-dragging");
+  if (event.pointerId !== undefined) {
+    input.setPointerCapture?.(event.pointerId);
+  }
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function dragNodeGraphGlobalSmoothingSeconds(event) {
+  const drag = nodeGraphMvp.globalSmoothingSecondsDragging;
+  if (
+    !drag ||
+    (drag.pointerId !== null && event.pointerId !== undefined && drag.pointerId !== event.pointerId)
+  ) {
+    return;
+  }
+  const horizontalDelta = event.clientX - drag.startX;
+  const verticalDelta = drag.startY - event.clientY;
+  if (Math.abs(horizontalDelta) > 1 || Math.abs(verticalDelta) > 1) {
+    drag.moved = true;
+  }
+  if (drag.resetToDefaultOnClick && !drag.moved) {
+    event.preventDefault();
+    return;
+  }
+  setNodeGraphGlobalSmoothingSeconds(drag.startValue + (horizontalDelta + verticalDelta) * drag.step);
+  event.preventDefault();
+}
+
+function endNodeGraphGlobalSmoothingSecondsDrag(event) {
+  const drag = nodeGraphMvp.globalSmoothingSecondsDragging;
+  if (
+    !drag ||
+    (drag.pointerId !== null && event.pointerId !== undefined && drag.pointerId !== event.pointerId)
+  ) {
+    return;
+  }
+  if (drag.resetToDefaultOnClick && !drag.moved) {
+    setNodeGraphGlobalSmoothingSeconds(nodeGraphDefaultSmoothingBlockSeconds());
+  }
+  drag.input.classList.remove("value-dragging");
+  drag.input.closest(".scene-context-global-smoothing-control")?.classList.remove("value-dragging");
+  drag.input.readOnly = true;
+  if (event.pointerId !== undefined && drag.input.hasPointerCapture?.(event.pointerId)) {
+    drag.input.releasePointerCapture(event.pointerId);
+  }
+  nodeGraphMvp.globalSmoothingSecondsDragging = null;
+  event.preventDefault();
+}
+
 function scheduleNodeGraphLiveSync(mode = "plan") {
   if (!nodeGraphMvp.live.node || nodeGraphMvp.live.syncFrame || nodeGraphMvp.live.syncTimer) {
     if (mode === "plan") {
@@ -1252,8 +1524,10 @@ async function stopNodeGraphLiveAudio() {
   nodeGraphMvp.live.outputGain = null;
   nodeGraphMvp.live.activeNodeIds = new Set();
   nodeGraphMvp.live.lastEvidence = null;
+  nodeGraphMvp.live.lastParameterUpdateTime = 0;
   nodeGraphMvp.live.planEvidence = null;
   nodeGraphMvp.live.planSerial = 0;
+  nodeGraphMvp.live.autoSmoothingSeconds = clampNodeGraphAutoSmoothingSeconds(nodeGraphMvp.live.autoSmoothingSeconds);
   nodeGraphMvp.live.runtime = null;
   nodeGraphMvp.live.scriptNode = null;
   nodeGraphMvp.live.sessionId += 1;
@@ -1261,7 +1535,10 @@ async function stopNodeGraphLiveAudio() {
   nodeGraphMvp.live.usesWorklet = false;
   nodeGraphStopGpuAdditiveProducer();
   if (typeof clearNodeGraphModuleScopeBuffers === "function") {
-    clearNodeGraphModuleScopeBuffers();
+    clearNodeGraphModuleScopeBuffers({
+      preserveBuffers: true,
+      preserveDisplay: true,
+    });
   }
   nodeGraphClearVisualControls();
 
@@ -1294,7 +1571,7 @@ async function createNodeGraphLiveWorkletNode(context) {
     throw new Error("AudioWorklet unavailable");
   }
   await nodeGraphLiveAwaitStartup(
-    context.audioWorklet.addModule("./public/node-live-audio-worklet.js?v=oscilloscope-buffered-inputs-1"),
+    context.audioWorklet.addModule("./public/node-live-audio-worklet.js?v=game-trigger-pulses-0128"),
     "AudioWorklet startup timed out",
   );
   const workletNode = new AudioWorkletNode(
@@ -1310,6 +1587,7 @@ async function createNodeGraphLiveWorkletNode(context) {
   workletNode.onprocessorerror = () => {
     setNodeGraphLiveProcessorError("AudioWorklet processor crashed");
   };
+  sendNodeGraphLiveNativeModules(workletNode);
   return workletNode;
 }
 

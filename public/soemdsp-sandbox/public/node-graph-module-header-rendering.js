@@ -43,22 +43,45 @@ function updateNodeGraphPatchTimingFromHeader(input) {
   });
 }
 
+function commitNodeGraphHeaderNumberInput(input) {
+  if (!input) {
+    return;
+  }
+  if (input.dataset.timingField) {
+    updateNodeGraphPatchTimingFromHeader(input);
+  } else if (input.dataset.globalScopeInput) {
+    setNodeGraphScopeNumberInputValue(input, input.value);
+  }
+  input.readOnly = true;
+}
+
 function bindNodeGraphHeaderTimingWidgets(root = document) {
   for (const input of root.querySelectorAll(".node-header-timing-input")) {
     if (input.dataset.timingBound === "true") {
       continue;
     }
     input.dataset.timingBound = "true";
-    input.addEventListener("change", () => updateNodeGraphPatchTimingFromHeader(input));
-    input.addEventListener("blur", () => updateNodeGraphPatchTimingFromHeader(input));
+    if (input.dataset.globalScopeNumberDrag === "true") {
+      input.readOnly = true;
+    }
+    input.addEventListener("change", () => commitNodeGraphHeaderNumberInput(input));
+    input.addEventListener("blur", () => commitNodeGraphHeaderNumberInput(input));
+    if (input.dataset.timingField) {
+      input.addEventListener("dblclick", beginNodeGraphScopeNumberEdit);
+    }
     input.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
-        updateNodeGraphPatchTimingFromHeader(input);
+        commitNodeGraphHeaderNumberInput(input);
         input.blur();
       }
       event.stopPropagation();
     });
-    input.addEventListener("pointerdown", (event) => event.stopPropagation());
+    input.addEventListener("pointerdown", (event) => {
+      if (input.dataset.timingField && input.readOnly) {
+        event.preventDefault();
+      }
+      event.stopPropagation();
+    });
   }
   for (const field of root.querySelectorAll(".node-header-timing-field[data-header-number-drag='true']")) {
     if (field.dataset.headerNumberDragBound === "true") {
@@ -73,10 +96,10 @@ function bindNodeGraphHeaderTimingWidgets(root = document) {
 function createNodeGraphHeaderTimingInput(key, label, options = {}) {
   const field = document.createElement("label");
   field.className = "node-header-timing-field";
+  field.dataset.headerNumberDrag = "true";
   if (options.row) {
     field.dataset.timingRow = options.row;
   }
-  field.dataset.headerNumberDrag = "true";
   field.setAttribute("aria-label", label);
 
   const caption = document.createElement("span");
@@ -86,13 +109,14 @@ function createNodeGraphHeaderTimingInput(key, label, options = {}) {
 
   const input = document.createElement("input");
   input.className = "node-header-timing-input";
-  input.dataset.globalScopeNumberDrag = "true";
   input.dataset.timingField = key;
+  input.dataset.globalScopeNumberDrag = "true";
   input.inputMode = "numeric";
   input.min = String(options.min ?? 1);
   input.max = String(options.max ?? 32);
   input.step = String(options.step ?? 1);
   input.type = "number";
+  input.readOnly = true;
   input.value = String(nodeGraphPatchTimingValue(key));
   field.append(input);
 
@@ -122,17 +146,14 @@ function createNodeGraphTapTempoButton() {
 
 function createNodeGraphHeaderSpeedPlaceholder() {
   const field = document.createElement("label");
-  field.className = "node-header-timing-field node-header-speed-placeholder node-under-construction-control";
+  field.className = "node-header-timing-field node-header-scope-field node-header-speed-placeholder node-under-construction-control";
   field.setAttribute("aria-label", "Speed control under construction");
-  field.dataset.timingRow = "lower";
   field.dataset.tooltipKey = "timing.speedUnderConstruction";
 
   const caption = document.createElement("span");
+  caption.className = "node-header-timing-caption";
   caption.textContent = "Speed";
   field.append(caption);
-
-  const inputWrap = document.createElement("span");
-  inputWrap.className = "node-header-speed-placeholder-value";
 
   const input = document.createElement("input");
   input.className = "node-header-timing-input";
@@ -148,18 +169,24 @@ function createNodeGraphHeaderSpeedPlaceholder() {
   input.addEventListener("keydown", (event) => event.stopPropagation());
   input.addEventListener("pointerdown", (event) => event.stopPropagation());
 
-  inputWrap.append(input);
-  field.append(inputWrap);
+  field.append(input);
   return field;
 }
 
 function createNodeGraphHeaderScopeInput(id, label, value, options = {}) {
   const field = document.createElement("label");
   field.className = "node-header-timing-field node-header-scope-field";
+  if (options.underConstruction) {
+    field.classList.add("node-under-construction-control");
+    field.dataset.tooltipKey = options.tooltipKey || "timing.underConstruction";
+    field.title = options.title || `${label} is under construction.`;
+  }
   if (options.row) {
     field.dataset.timingRow = options.row;
   }
-  field.dataset.headerNumberDrag = "true";
+  if (!options.underConstruction) {
+    field.dataset.headerNumberDrag = "true";
+  }
   field.setAttribute("aria-label", options.ariaLabel || label);
 
   const caption = document.createElement("span");
@@ -170,14 +197,22 @@ function createNodeGraphHeaderScopeInput(id, label, value, options = {}) {
   const input = document.createElement("input");
   input.id = id;
   input.className = "node-header-timing-input";
-  input.dataset.globalScopeInput = options.scopeInput || "";
-  input.dataset.globalScopeNumberDrag = "true";
+  if (!options.underConstruction) {
+    input.dataset.globalScopeInput = options.scopeInput || "";
+    input.dataset.globalScopeNumberDrag = "true";
+  }
   input.inputMode = options.inputMode || "decimal";
   input.min = String(options.min ?? 0);
   input.max = String(options.max ?? 1);
   input.step = String(options.step ?? 0.01);
+  input.readOnly = true;
   input.type = "number";
   input.value = String(value);
+  if (options.underConstruction) {
+    input.tabIndex = -1;
+    input.setAttribute("aria-label", `${label} placeholder, under construction`);
+    input.dataset.tooltipKey = options.tooltipKey || "timing.underConstruction";
+  }
   input.addEventListener("keydown", (event) => event.stopPropagation());
   input.addEventListener("pointerdown", (event) => event.stopPropagation());
   field.append(input);
@@ -221,47 +256,21 @@ function createNodeGraphHeaderTimingWidgets() {
   const group = document.createElement("div");
   group.className = "node-header-timing-widgets";
   group.setAttribute("aria-label", "Patch timing");
+
   group.append(
     createNodeGraphTapTempoButton(),
     createNodeGraphHeaderTimingInput("tempoBpm", "BPM", { max: 320 }),
     createNodeGraphHeaderTimingInput("timeSignatureNumerator", "Beats"),
     createNodeGraphHeaderTimingInput("timeSignatureDenominator", "Unit"),
     createNodeGraphHeaderScopeInput(
-      "nodeMasterScopeBurn",
-      "Burn",
-      normalizeNodeGraphModuleScopeBurn(nodeGraphMvp.moduleScopeBurn ?? 0.85).toFixed(2),
-      {
-        ariaLabel: "Oscilloscope screen burn",
-        max: 1,
-        min: 0,
-        row: "lower",
-        scopeInput: "burn",
-        step: 0.01,
-      },
-    ),
-    createNodeGraphHeaderScopeInput(
-      "nodeMasterScopeDecay",
-      "Decay",
-      normalizeNodeGraphModuleScopeDecay(nodeGraphMvp.moduleScopeDecay ?? 0.78).toFixed(2),
-      {
-        ariaLabel: "Oscilloscope initial phosphor decay",
-        max: 1,
-        min: 0,
-        row: "lower",
-        scopeInput: "decay",
-        step: 0.01,
-      },
-    ),
-    createNodeGraphHeaderScopeInput(
       "nodeMasterScopeFps",
       "FPS",
       normalizeNodeGraphModuleScopeFramesPerSecond(nodeGraphMvp.moduleScopeFramesPerSecond ?? 60),
       {
-        ariaLabel: "Oscilloscope frames per second",
+        ariaLabel: "Display frames per second",
         inputMode: "numeric",
         max: 240,
-        min: 1,
-        row: "lower",
+        min: 0,
         scopeInput: "framesPerSecond",
         step: 1,
       },
@@ -271,9 +280,34 @@ function createNodeGraphHeaderTimingWidgets() {
   return group;
 }
 
+function createNodeGraphCommandCenterTimingWidgets() {
+  const group = document.createElement("div");
+  group.className = "node-header-timing-widgets node-command-center-timing-widgets";
+  group.setAttribute("aria-label", "Command Center patch timing");
+  group.append(
+    createNodeGraphHeaderTimingInput("tempoBpm", "BPM", { max: 320 }),
+    createNodeGraphHeaderTimingInput("timeSignatureNumerator", "Beats"),
+    createNodeGraphHeaderTimingInput("timeSignatureDenominator", "Unit"),
+  );
+  return group;
+}
+
+function renderNodeGraphCommandCenterTimingControls() {
+  const host = document.getElementById("nodeSceneTimingControls");
+  if (!host) {
+    return;
+  }
+  if (!host.querySelector(".node-command-center-timing-widgets")) {
+    host.replaceChildren(createNodeGraphCommandCenterTimingWidgets());
+  }
+  bindNodeGraphHeaderTimingWidgets(host);
+}
+
 function renderNodeGraphPatchTimingControls() {
+  renderNodeGraphCommandCenterTimingControls();
   const host = document.getElementById("nodePatchTimingControls");
   if (!host) {
+    syncNodeGraphHeaderTimingWidgets();
     return;
   }
   if (!host.querySelector(".node-header-timing-widgets")) {
@@ -304,6 +338,32 @@ function createNodeGraphModuleHeader(type, node, definition) {
   nodeGraphApplyTooltip(handle, "module.move", {}, { title: false });
   handle.innerHTML = "&#x2725;";
   actionRow.append(handle);
+  const displayButton = document.createElement("button");
+  displayButton.className = "node-display-settings-button";
+  displayButton.type = "button";
+  displayButton.dataset.node = node;
+  displayButton.setAttribute("aria-label", `${nodeGraphNodeLabels[type]} display settings`);
+  displayButton.setAttribute("aria-pressed", "true");
+  nodeGraphApplyTooltip(displayButton, "module.displaySettings", {}, { title: false });
+  displayButton.textContent = "\u{1F4FA}";
+  actionRow.append(displayButton);
+  const metaparameterButton = document.createElement("button");
+  metaparameterButton.className = "node-metaparameter-button";
+  metaparameterButton.type = "button";
+  metaparameterButton.dataset.node = node;
+  metaparameterButton.setAttribute("aria-label", `${nodeGraphNodeLabels[type]} metaparameters`);
+  metaparameterButton.setAttribute("aria-pressed", "true");
+  nodeGraphApplyTooltip(metaparameterButton, "module.metaparameters", {}, { title: false });
+  metaparameterButton.textContent = "\u{1F39B}\uFE0F";
+  actionRow.append(metaparameterButton);
+  const actionButton = document.createElement("button");
+  actionButton.className = "node-action-button";
+  actionButton.type = "button";
+  actionButton.dataset.node = node;
+  actionButton.setAttribute("aria-label", `${nodeGraphNodeLabels[type]} module settings`);
+  nodeGraphApplyTooltip(actionButton, "module.actionsTitle", {}, { title: false });
+  actionButton.textContent = "\u2699\uFE0F";
+  actionRow.append(actionButton);
   const orderBadge = document.createElement("span");
   orderBadge.className = "node-execution-order-badge";
   orderBadge.dataset.executionState = "inactive";
@@ -333,14 +393,6 @@ function createNodeGraphModuleHeader(type, node, definition) {
     nodeGraphApplyTooltip(bypassButton, "module.bypass", {}, { title: false });
     actionRow.append(bypassButton);
   }
-  const actionButton = document.createElement("button");
-  actionButton.className = "node-action-button";
-  actionButton.type = "button";
-  actionButton.dataset.node = node;
-  actionButton.setAttribute("aria-label", `${nodeGraphNodeLabels[type]} module actions`);
-  nodeGraphApplyTooltip(actionButton, "module.actionsTitle", {}, { title: false });
-  actionButton.textContent = "\u2699";
-  actionRow.append(actionButton);
   header.append(actionRow);
 
   return header;

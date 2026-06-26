@@ -1,23 +1,27 @@
-function nodeGraphSelfTraceModuleRect(nodeId) {
+function nodeGraphTraceModuleRect(nodeId) {
   const surface = nodeGraphZoomSurface();
   const node = nodeGraphNodeElement(nodeId);
   if (!surface || !node) {
     return null;
   }
-  const surfaceRect = surface.getBoundingClientRect();
   const nodeRect = node.getBoundingClientRect();
-  const zoom = nodeGraphZoom();
   const titleRowRect = node.querySelector(".node-header-title-row")?.getBoundingClientRect();
+  const topLeft = nodeGraphClientToZoomSurfacePoint(nodeRect.left, nodeRect.top, surface);
+  const bottomRight = nodeGraphClientToZoomSurfacePoint(nodeRect.right, nodeRect.bottom, surface);
   const titleBottom = titleRowRect
-    ? (titleRowRect.bottom - surfaceRect.top) / zoom
-    : (nodeRect.top - surfaceRect.top) / zoom;
+    ? nodeGraphClientToZoomSurfacePoint(titleRowRect.left, titleRowRect.bottom, surface).y
+    : topLeft.y;
   return {
-    bottom: (nodeRect.bottom - surfaceRect.top) / zoom,
-    left: (nodeRect.left - surfaceRect.left) / zoom,
-    right: (nodeRect.right - surfaceRect.left) / zoom,
+    bottom: bottomRight.y,
+    left: topLeft.x,
+    right: bottomRight.x,
     titleBottom,
-    top: (nodeRect.top - surfaceRect.top) / zoom,
+    top: topLeft.y,
   };
+}
+
+function nodeGraphSelfTraceModuleRect(nodeId) {
+  return nodeGraphTraceModuleRect(nodeId);
 }
 
 function nodeGraphSelfTracePoints(wire, from, to) {
@@ -46,15 +50,41 @@ function nodeGraphSelfTracePoints(wire, from, to) {
   ];
 }
 
+function nodeGraphBackwardTracePoints(wire, from, to) {
+  const sourceNode = wire?.sourceNode;
+  const destinationNode = wire?.destinationNode;
+  if (!sourceNode || !destinationNode || sourceNode === destinationNode || to.x >= from.x) {
+    return [];
+  }
+  const sourceRect = nodeGraphTraceModuleRect(sourceNode);
+  const destinationRect = nodeGraphTraceModuleRect(destinationNode);
+  if (!sourceRect || !destinationRect) {
+    return [];
+  }
+  const distance = Math.max(nodeGraphGridWidth(), nodeGraphGridHeight()) * 0.75;
+  const aboveY = Math.max(0.5, Math.min(sourceRect.top, destinationRect.top) - distance);
+  const sourceSideX = Math.max(from.x + distance, sourceRect.right + distance);
+  const destinationSideX = Math.min(to.x - distance, destinationRect.left - distance);
+  return [
+    { x: sourceSideX, y: from.y },
+    { x: sourceSideX, y: aboveY },
+    { x: destinationSideX, y: aboveY },
+    { x: destinationSideX, y: to.y },
+  ];
+}
+
 function nodeGraphManualTracePathOptions(wire, from, to) {
   const wireType = normalizeNodeGraphWireType(wire?.wireType);
   if (wireType !== nodeGraphWireTypes.trace) {
     return { wireType };
   }
   const manualTracePoints = normalizeNodeGraphTracePoints(wire?.tracePoints);
+  const selfTracePoints = manualTracePoints.length ? [] : nodeGraphSelfTracePoints(wire, from, to);
   const tracePoints = manualTracePoints.length
     ? manualTracePoints
-    : nodeGraphSelfTracePoints(wire, from, to);
+    : selfTracePoints.length
+      ? selfTracePoints
+      : nodeGraphBackwardTracePoints(wire, from, to);
   return {
     pathData: nodeGraphTracePathFromPoints(from, tracePoints, to),
     tracePoints,
@@ -77,15 +107,14 @@ function nodeGraphWireEndpointsAreRenderable(wire) {
     nodeGraphMvp.activeNodes.has(wire.destinationNode) &&
     nodeGraphPatchNodeIsVisible(wire.sourceNode) &&
     nodeGraphPatchNodeIsVisible(wire.destinationNode) &&
-    portElementIsRenderable(surface.querySelector(nodeGraphPortSelector(wire.sourceNode, wire.sourcePort, "output"))),
+    portElementIsRenderable(nodeGraphPortElementForWireEndpoint(wire.sourceNode, wire.sourcePort, "output")),
   );
 }
 
 function nodeGraphSignalWireDestinationIsRenderable(wire) {
-  const surface = nodeGraphZoomSurface();
   return Boolean(
     nodeGraphWireEndpointsAreRenderable(wire) &&
-    surface?.querySelector(nodeGraphPortSelector(wire.destinationNode, wire.destinationPort, "input")),
+    nodeGraphPortElementForWireEndpoint(wire.destinationNode, wire.destinationPort, "input"),
   );
 }
 

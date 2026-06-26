@@ -13,8 +13,18 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "kickDrum",
   "snareDrum",
   "clock",
+  "transport",
   "clockDivider",
   "delayedTrigger",
+  "buttonEvents",
+  "wireBreak",
+  "wireConnect",
+  "wireDisconnect",
+  "windowReopen",
+  "shootingStarTail",
+  "shootingStarExplosion",
+  "nextPatch",
+  "previousPatch",
   "randomClock",
   "triggerCounter",
   "triggerDivider",
@@ -40,6 +50,8 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "graph2",
   "gain",
   "bias",
+  "softClipper",
+  "rotate3dTo2d",
   "output",
   "macroKnob",
   "bipolarKnob",
@@ -49,7 +61,6 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "midiNotePitch",
   "midiController",
   "keyboardController",
-  "moduleShop",
   "macroControls",
   "pitchModWheel",
   "xyPad",
@@ -63,6 +74,7 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "portalGenericOutput",
   "groupInput",
   "groupOutput",
+  "audioPlayer",
   "samplePlayer",
   "sampleLooper",
   "highpass",
@@ -90,6 +102,12 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "canvas",
   "led",
   "visualOscilloscope",
+  "traceDisplay",
+  "dotOscilloscope",
+  "valueOscilloscope",
+  "lineBurnOscilloscope",
+  "scope2d",
+  "scope2dTrace",
   "parabol",
   "vibratoGenerator",
   "wowAndFlutter",
@@ -98,34 +116,70 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "textBox",
 ]);
 
+let nodeGraphNativeModuleEntries = Object.freeze([]);
+let nodeGraphNativeModuleEntriesByTarget = Object.freeze({});
+let nodeGraphNativeModuleCatalogLoadStarted = false;
+
+const nodeGraphModuleStoreUnderConstructionTypes = Object.freeze(new Set([
+  "groupInput",
+  "groupOutput",
+  "shootingStarTail",
+  "shootingStarExplosion",
+]));
+
 const nodeGraphModuleGroupStorageKey = "soemdsp-sandbox.moduleGroups.v1";
 const nodeGraphModuleCatalogVisibilityStorageKey = "soemdsp-sandbox.moduleCatalogVisibility.v2";
 
 const nodeGraphModuleStoreDepartments = Object.freeze([
   "Oscillator",
-  "Additive Engines",
-  "Drum Machines",
-  "Filter",
-  "Effects",
-  "Clock",
-  "Melody Sequencer",
-  "Chord Sequencer",
-  "Arpeggiator",
-  "Time",
-  "Audio",
-  "Dynamics",
-  "Debug",
-  "Envelope Systems",
-  "Modulators",
-  "Knobs",
-  "Sliders",
-  "Controllers",
-  "Portals",
-  "Samples",
-  "Random",
   "Chaos",
+  "OMS",
+  "Noise",
+  "Filter",
+  "Envelope",
+  "Modulators",
+  "Delay",
+  "Drum",
+  "Dynamics",
+  "Sequence",
+  "Audio",
   "Visual",
+  "Oscilloscope",
+  "Controllers",
+  "Game Triggers",
+  "Portals",
+  "Loops",
+  "Samples",
+  "Debug",
 ]);
+
+const nodeGraphModuleStoreVisualGroups = Object.freeze([
+  {
+    label: "Generate",
+    departments: Object.freeze(["Oscillator", "Chaos", "OMS", "Noise", "Additive", "Drum", "Sequence"]),
+  },
+  {
+    label: "Process",
+    departments: Object.freeze(["Filter", "Envelope", "Modulators", "Delay", "Dynamics"]),
+  },
+  {
+    label: "Interact",
+    departments: Object.freeze(["Controllers", "Game Triggers", "Portals", "Oscilloscope", "Visual", "Debug"]),
+  },
+  {
+    label: "Memory",
+    departments: Object.freeze(["Audio", "Loops", "Samples"]),
+  },
+]);
+
+const nodeGraphModuleStoreVisualGroupByDepartment = Object.freeze(
+  nodeGraphModuleStoreVisualGroups.reduce((groups, group) => {
+    for (const department of group.departments) {
+      groups[department] = group.label;
+    }
+    return groups;
+  }, {}),
+);
 
 const nodeGraphModuleStoreDepartmentAds = Object.freeze({
   Oscillator: {
@@ -133,14 +187,9 @@ const nodeGraphModuleStoreDepartmentAds = Object.freeze({
     title: "Oscillator",
     pitch: "Start with a voice. Tone generators, phase motion, and the raw signal that everything else learns to orbit.",
   },
-  "Additive Engines": {
-    symbol: "+",
-    title: "Additive Engines",
-    pitch: "Harmonic engines, partial banks, and tone builders for sculpting sound from summed sine energy.",
-  },
-  "Drum Machines": {
+  "Drum": {
     symbol: "▥",
-    title: "Drum Machines",
+    title: "Drum",
     pitch: "Rhythm machines, drum voices, pattern engines, and percussion control surfaces.",
   },
   Filter: {
@@ -148,19 +197,14 @@ const nodeGraphModuleStoreDepartmentAds = Object.freeze({
     title: "Filter",
     pitch: "Shape the airframe. Carve mass, reveal brightness, and teach a signal where it is allowed to fly.",
   },
-  Effects: {
+  Delay: {
     symbol: "FX",
-    title: "Effects",
+    title: "Delay",
     pitch: "Delay, reverb, distortion, and performance processors for shaping finished sound.",
   },
-  Clock: {
-    symbol: "◷",
-    title: "Clock",
-    pitch: "Pulse generators, dividers, counters, delays, and timing utilities for musical logic.",
-  },
-  "Melody Sequencer": {
+  Sequence: {
     symbol: "♪",
-    title: "Melody Sequencer",
+    title: "Sequence",
     pitch: "Pitch lanes and melodic pattern tools for generating lines, hooks, and motion.",
   },
   "Chord Sequencer": {
@@ -173,15 +217,10 @@ const nodeGraphModuleStoreDepartmentAds = Object.freeze({
     title: "Arpeggiator",
     pitch: "Pattern engines for broken chords, rhythmic note motion, and performance arps.",
   },
-  Time: {
-    symbol: "◷",
-    title: "Time",
-    pitch: "Instructions, timing surfaces, labels, and the slow machinery that makes a patch readable in motion.",
-  },
   Audio: {
     symbol: "OUT",
-    title: "Audio",
-    pitch: "Audio sinks and listening endpoints for turning patch signal into rendered or live sound.",
+    title: "Audio Player",
+    pitch: "Music playback, audio sinks, and listening endpoints for turning patch signal into rendered or live sound.",
   },
   Dynamics: {
     symbol: "⚡",
@@ -193,25 +232,15 @@ const nodeGraphModuleStoreDepartmentAds = Object.freeze({
     title: "Debug",
     pitch: "Inspection tools, sentinels, and safety monitors for catching bad values while a patch is under test.",
   },
-  "Envelope Systems": {
+  Envelope: {
     symbol: "⌒",
-    title: "Envelop",
+    title: "Envelope",
     pitch: "Attack, decay, sustain, release, and gate-shaped motion. Make sound and visuals breathe on command.",
   },
   Modulators: {
     symbol: "⇄",
     title: "Modulator",
     pitch: "Motion sources for pitch, amplitude, time, and texture. Small control engines that make patches move.",
-  },
-  Knobs: {
-    symbol: "◎",
-    title: "Knobs",
-    pitch: "Manual control surfaces for performance, defaults, and expressive patch steering.",
-  },
-  Sliders: {
-    symbol: "▤",
-    title: "Sliders",
-    pitch: "Continuous control lanes for drawing, trimming, and riding values in real time.",
   },
   Controllers: {
     symbol: "⌘",
@@ -226,9 +255,14 @@ const nodeGraphModuleStoreDepartmentAds = Object.freeze({
   Samples: {
     symbol: "▣",
     title: "Samples",
-    pitch: "Audio clips, one-shots, loops, and sample playback tools.",
+    pitch: "Audio-file shelf. Empty by default until sandbox has a real file-library flow.",
   },
-  Random: {
+  Loops: {
+    symbol: "∞",
+    title: "Loops",
+    pitch: "Loop-file shelf. Empty by default until sandbox has a real audio-loop library flow.",
+  },
+  Noise: {
     symbol: "✦",
     title: "Noise",
     pitch: "Noise, dust, instability, sparks, and all the useful mess a clean machine secretly needs.",
@@ -238,10 +272,20 @@ const nodeGraphModuleStoreDepartmentAds = Object.freeze({
     title: "Chaos",
     pitch: "All the various attractors and strange motion systems. The wild shelf where math starts looking back.",
   },
+  OMS: {
+    symbol: "OMS",
+    title: "OMS",
+    pitch: "Orbit and motion systems. Spiral Generator lives here while this style gets its own lane.",
+  },
   Visual: {
     symbol: "V",
     title: "Visual",
-    pitch: "Patch signals into sandbox behavior. Screen shake is the first control port for sound-to-visual routing.",
+    pitch: "Visual sinks, RGBA sources, canvas layers, and formula tiles for turning patch motion into screen output.",
+  },
+  Oscilloscope: {
+    symbol: "OSC",
+    title: "Oscilloscope",
+    pitch: "Dedicated display testbeds for trace, dot, line burn, 2D scope, and canvas-style visual inspection.",
   },
 });
 
@@ -252,12 +296,14 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["phase counter", "waveform selection", "frequency control"],
   },
   additiveOsc: {
-    category: "Additive Engines",
+    category: "Additive",
+    developerOnly: true,
     description: "Harmonic additive tone source using SOEMDSP waveform partial recipes.",
     notes: ["harmonic sum", "waveform selector", "band-limited partials"],
   },
   gpuAdditiveOsc: {
-    category: "Additive Engines",
+    category: "Additive",
+    developerOnly: true,
     description: "Buffered GPU additive engine proof module. Reuses the CPU additive path in live audio and prepares WebGPU chunk rendering with fallback.",
     label: "GPU Additive",
     notes: ["WebGPU proof", "buffered backend", "CPU fallback"],
@@ -282,9 +328,9 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   polyBlep: {
     category: "Oscillator",
-    description: "Placeholder for an anti-aliased PolyBLEP oscillator for clean digital waveform edges.",
+    description: "Anti-aliased PolyBLEP oscillator for clean saw, ramp, square, triangle, sine, and noise waveform outputs.",
     label: "PolyBLEP",
-    notes: ["placeholder", "anti-aliasing", "future oscillator"],
+    notes: ["anti-aliasing", "polyblep", "realtime oscillator"],
   },
   fbPolyBlepOsc: {
     category: "Oscillator",
@@ -305,79 +351,86 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["placeholder", "sampling theorem", "future oscillator"],
   },
   drumMachine: {
-    category: "Drum Machines",
+    category: "Drum",
     description: "Placeholder for a compact pattern-driven drum machine module.",
     label: "DrumMachine",
     notes: ["placeholder", "patterns", "percussion"],
   },
   kickDrum: {
-    category: "Drum Machines",
+    category: "Drum",
     description: "Placeholder for a synthesized kick voice with pitch drop, body, and click controls.",
     label: "KickDrum",
     notes: ["placeholder", "drum voice", "low punch"],
   },
   snareDrum: {
-    category: "Drum Machines",
+    category: "Drum",
     description: "Placeholder for a synthesized snare voice with noise, tone, and snap controls.",
     label: "SnareDrum",
     notes: ["placeholder", "drum voice", "noise snap"],
   },
   clock: {
-    category: "Clock",
+    category: "Sequence",
     description: "Timer pulse source. Emits a steady gate for triggering samplers, sequencers, and motion events.",
     notes: ["rate and phase control", "duty cycle", "reset input"],
   },
+  transport: {
+    category: "Sequence",
+    description: "Project-synced beat clock source. Emits in-phase square waves derived from patch BPM.",
+    label: "Transport",
+    notes: ["project BPM", "beat divisions", "engine-start phase"],
+  },
   clockDivider: {
-    category: "Clock",
+    category: "Sequence",
     description: "Clock-aware divider. Count incoming clock edges and emit a slower gate for rhythmic subdivision.",
     notes: ["clock input", "division control", "reset input"],
   },
   delayedTrigger: {
-    category: "Clock",
+    category: "Sequence",
     description: "One-shot timer. Catch a trigger, wait a precise delay, then emit a pulse for downstream events.",
     notes: ["delayed pulse", "reset input", "one-shot timing"],
   },
   randomClock: {
-    category: "Clock",
+    category: "Sequence",
     description: "Seeded random interval clock. Emits a short trigger and a duty-controlled gate between minimum and maximum seconds.",
     notes: ["random timing", "trigger and gate outputs", "reset input"],
   },
   triggerCounter: {
-    category: "Clock",
+    category: "Sequence",
     description: "Pulse counter. Count incoming triggers, emit a wrap pulse, and expose the count as modulation.",
     notes: ["count pulses", "wrap output", "reset input"],
   },
   triggerDivider: {
-    category: "Clock",
+    category: "Sequence",
     description: "Divides incoming trigger pulses into slower clocks for envelopes, sequencers, and rhythmic patches.",
     notes: ["trigger division", "reset input", "pulse width"],
   },
   stepSequencer: {
-    category: "Melody Sequencer",
+    category: "Sequence",
     description: "Eight-step trigger sequencer. Advance it with Clock and route stepped control values anywhere.",
     notes: ["trigger input", "reset input", "stepped modulation"],
   },
   melodySequencer: {
-    category: "Melody Sequencer",
+    category: "Sequence",
     description: "Placeholder for a pitch-aware sequencer for hooks, lines, and scale-constrained motion.",
     label: "MelodySequencer",
     notes: ["placeholder", "pitch lane", "scale control"],
   },
   chordSequencer: {
-    category: "Chord Sequencer",
+    category: "Sequence",
     description: "Placeholder for arranging chord progressions and voicing changes inside the graph.",
     label: "ChordSequencer",
     notes: ["placeholder", "progressions", "voicing"],
   },
   arpeggiator: {
-    category: "Arpeggiator",
+    category: "Sequence",
     description: "Placeholder for rhythmic note-pattern generation from held chords or chord sources.",
     label: "Arpeggiator",
     notes: ["placeholder", "note pattern", "arp engine"],
   },
   spiral: {
-    category: "Chaos",
+    category: "OMS",
     description: "Jerobeam spiral engine. Emits X/Y/Z motion-signal for alien curves and audiovisual flight paths.",
+    label: "Spiral Generator",
     notes: ["attractor motion", "rotation", "density and morph controls"],
   },
   lorenzAttractor: {
@@ -417,32 +470,33 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["braided chaos", "dense orbit", "planned attractor"],
   },
   noise: {
-    category: "Random",
+    category: "Noise",
     description: "Unstable broadband energy source for static, wind, percussion dust, and danger texture.",
     notes: ["random source", "amplitude", "texture generator"],
   },
   stereoNoise: {
-    category: "Random",
+    category: "Noise",
     description: "Two independent broadband noise streams as X/Y vector outputs plus a summed mono output for clouds and textures.",
     notes: ["x/y source", "independent channels", "amplitude"],
   },
   noiseGenerator: {
-    category: "Random",
+    category: "Noise",
     description: "Selectable random source for comparing uniform, gaussian, brown, pink, and crackle flavors side by side.",
     notes: ["distribution choices", "seed control", "noise lab"],
   },
   randomWalk: {
-    category: "Random",
+    category: "Noise",
     description: "Flexible soemdsp-style random walk with white, filtered, random-step, and fixed-step motion modes.",
     notes: ["bounded walk", "jitter curve", "one-pole smoothing"],
   },
   fractalBrownianNoise: {
-    category: "Random",
+    category: "Noise",
     description: "Three-axis layered fBm motion source with octave, persistence, scale, and seed controls for rough organic drift.",
     notes: ["out x/y/z", "seeded value noise", "slow terrain motion"],
   },
   clapPlugin: {
     category: "Audio",
+    developerOnly: true,
     description: "Browser-side shell for a local CLAP host plugin. Stores plugin identity and can use a host instance during bounded Render Sample.",
     label: "CLAP Plugin",
     notes: ["local host", "native plugin", "offline render"],
@@ -473,6 +527,18 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Offsets a signal away from center. Useful for steering modulation and shifting control lanes.",
     notes: ["addition", "offset", "control lane shift"],
   },
+  softClipper: {
+    category: "Dynamics",
+    description: "SOEMDSP tanh soft clipper with center bias and clipping width controls.",
+    label: "Soft Clipper",
+    notes: ["soft clipping", "tanh", "dynamics"],
+  },
+  rotate3dTo2d: {
+    category: "Dynamics",
+    description: "Rotates an X/Y/Z signal point in 3D and projects the result back to X/Y.",
+    label: "Rotation 3D to 2D",
+    notes: ["3D rotation", "2D projection", "signal transform"],
+  },
   output: {
     category: "Audio",
     description: "Stereo audio sink. Route Left and Right signals here to hear the patch.",
@@ -480,25 +546,25 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["audio sink", "left right inputs", "render target"],
   },
   macroKnob: {
-    category: "Knobs",
-    description: "Placeholder for a named macro knob that can steer several patch parameters at once.",
-    label: "MacroKnob",
-    notes: ["placeholder", "manual control", "multi-target"],
+    category: "Controllers",
+    description: "Compact 4x4 external knob module. Drag it by hand and patch its value output into another module's parameter modulation input.",
+    label: "Macro Knob",
+    notes: ["4x4 knob", "manual control", "parameter link"],
   },
   bipolarKnob: {
-    category: "Knobs",
-    description: "Placeholder for a center-zero knob for offsets, modulation depth, and expressive push/pull controls.",
-    label: "BipolarKnob",
-    notes: ["placeholder", "center zero", "performance control"],
+    category: "Controllers",
+    description: "Compact 4x4 center-zero knob module for offsets, modulation depth, and expressive push/pull control links.",
+    label: "Bipolar Knob",
+    notes: ["4x4 knob", "center zero", "performance control"],
   },
   valueSlider: {
-    category: "Sliders",
+    category: "Controllers",
     description: "Resizable bias-output slider for manual control in the modular view and UI view.",
     label: "Value Slider",
     notes: ["bias output", "resizable widget", "manual control"],
   },
   rangeSlider: {
-    category: "Sliders",
+    category: "Controllers",
     description: "Placeholder for paired minimum/maximum slider control for constraining modulation ranges.",
     label: "RangeSlider",
     notes: ["placeholder", "min max", "range control"],
@@ -519,17 +585,65 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "MIDIController",
     notes: ["placeholder", "MIDI input", "external control"],
   },
+  buttonEvents: {
+    category: "Controllers",
+    description: "External page button event source. Emits short pulses for explicit click, hover, down, up, enter, and leave events sent into sandbox.",
+    label: "Button Events",
+    notes: ["external UI", "button triggers", "music page bridge"],
+  },
+  wireBreak: {
+    category: "Game Triggers",
+    description: "Universe-physics wire break event source. Emits a one-sample pulse and an animation-length gate when a wire breaks.",
+    label: "Wire Break",
+    notes: ["game trigger", "wire break", "physics violation"],
+  },
+  wireConnect: {
+    category: "Game Triggers",
+    description: "Wire connect event source. Emits a one-sample pulse when a new wire connection happens.",
+    label: "Wire Connect",
+    notes: ["game trigger", "wire connect", "patch editing"],
+  },
+  wireDisconnect: {
+    category: "Game Triggers",
+    description: "Wire disconnect event source. Emits a one-sample pulse when a normal wire disconnect happens.",
+    label: "Wire Disconnect",
+    notes: ["game trigger", "wire disconnect", "patch editing"],
+  },
+  windowReopen: {
+    category: "Game Triggers",
+    description: "Window attention event source. Emits a pulse, animation gate, and glow-shaped sine when an already-open window is requested again.",
+    label: "Window Reopen",
+    notes: ["game trigger", "window attention", "green glow"],
+  },
+  shootingStarTail: {
+    category: "Game Triggers",
+    description: "Placeholder trigger for a shooting star tail event.",
+    label: "Shooting Star Tail",
+    notes: ["placeholder", "game trigger", "shooting star"],
+  },
+  shootingStarExplosion: {
+    category: "Game Triggers",
+    description: "Placeholder trigger for a shooting star explosion event.",
+    label: "Shooting Star Explosion",
+    notes: ["placeholder", "game trigger", "shooting star"],
+  },
+  nextPatch: {
+    category: "Controllers",
+    description: "Patch command receiver. A trigger edge loads the next saved patch through the main UI patch explorer path.",
+    label: "Next Patch",
+    notes: ["patch navigation", "trigger input", "music player"],
+  },
+  previousPatch: {
+    category: "Controllers",
+    description: "Patch command receiver. A trigger edge loads the previous saved patch through the main UI patch explorer path.",
+    label: "Previous Patch",
+    notes: ["patch navigation", "trigger input", "music player"],
+  },
   keyboardController: {
     category: "Controllers",
     description: "Mouse-playable keyboard source. Emits sustained gate, one-sample gate, key index, quantized key, MIDI pitch, normalized double, phase increment, frequency, numeric pitch, and X/Y gesture values.",
     label: "MIDI Keyboard",
     notes: ["keyboard input", "midi pitch", "gesture signals"],
-  },
-  moduleShop: {
-    category: "Controllers",
-    description: "Patch-local button that opens the module browser.",
-    label: "Shop",
-    notes: ["module browser", "patch control", "shop"],
   },
   macroControls: {
     category: "Controllers",
@@ -610,13 +724,19 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["group interface", "public output", "patch boundary"],
   },
   samplePlayer: {
-    category: "Samples",
+    category: "Audio",
     description: "Patch-local one-shot sample playback. Trigger starts from Start and plays to End with simple click ramps.",
     label: "Sample Player",
     notes: ["sample playback", "one shot", "audio source"],
   },
+  audioPlayer: {
+    category: "Audio",
+    description: "Patch-local music file player with stereo outputs and a phasor-driven scrub input for sample-accurate playback head control.",
+    label: "Music Player",
+    notes: ["music playback", "scrubbable", "phasor", "audio source"],
+  },
   sampleLooper: {
-    category: "Samples",
+    category: "Audio",
     description: "Patch-local gated sample loop playback with loop bounds, pitch control, and seam crossfade.",
     label: "Sample Looper",
     notes: ["sample playback", "loop", "audio source"],
@@ -654,60 +774,60 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["up time", "down time", "asymmetric glide"],
   },
   delayEffect: {
-    category: "Effects",
+    category: "Delay",
     description: "SOEMDSP-style modulated fractional delay with feedback, wet/dry mix, and diffuse mode.",
     label: "Delay",
     notes: ["modulated delay", "fractional echo", "diffuse mode"],
   },
   reverbEffect: {
-    category: "Effects",
+    category: "Delay",
     description: "Placeholder for space, room, tail, and ambience processing.",
     label: "ReverbEffect",
     notes: ["placeholder", "space", "decay"],
   },
   distortionEffect: {
-    category: "Effects",
+    category: "Delay",
     description: "Placeholder for drive, clipping, saturation, and tone-shaping distortion effects.",
     label: "DistortionEffect",
     notes: ["placeholder", "drive", "saturation"],
   },
   sampleHold: {
-    category: "Random",
+    category: "Noise",
     description: "Captures an input value when a trigger rises and holds it until the next trigger.",
     notes: ["triggered capture", "held output", "stepped motion"],
   },
   digitalCurveEnvelope: {
-    category: "Envelope Systems",
+    category: "Envelope",
     description: "Programmable curve envelope for drawing sharper motion and custom response shapes.",
     label: "DigitalCurveEnvelope",
     notes: ["curve table", "custom shape", "planned envelope"],
   },
   expAdsr: {
-    category: "Envelope Systems",
+    category: "Envelope",
     description: "Soundemote-style exponential ADSR. Gate it with a clock or pulse and shape the rise and fall curves.",
     label: "ExponentialEnvelope",
     notes: ["gate input", "target-ratio curves", "loopable envelope"],
   },
   flowerChildEnvelopeFollower: {
-    category: "Envelope Systems",
+    category: "Envelope",
     description: "FlowerChild-style rectified envelope follower with attack, hold, and decay slew behavior.",
     label: "FlowerChild Envelope Follower",
     notes: ["audio input", "attack hold decay", "signed follower port"],
   },
   linearEnvelope: {
-    category: "Envelope Systems",
+    category: "Envelope",
     description: "Straight-line envelope for predictable ramps, fades, gates, and simple motion.",
     label: "LinearEnvelope",
     notes: ["gate input", "linear DADSR", "loopable ramp"],
   },
   pluckEnvelope: {
-    category: "Envelope Systems",
+    category: "Envelope",
     description: "Fast feedback pluck contour for struck, picked, pinged, and percussive behaviors.",
     label: "PluckEnvelope",
     notes: ["trigger input", "decay energy", "auto release"],
   },
   vactrolEnvelope: {
-    category: "Envelope Systems",
+    category: "Envelope",
     description: "Optical-style control shaper. Feed it light and get the slow, curved response of a vactrol detector.",
     notes: ["light input", "attack/release lag", "dark current"],
   },
@@ -742,7 +862,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["load image", "save image", "trace texture"],
   },
   canvas: {
-    category: "Visual",
+    category: "Oscilloscope",
     description: "Layered RGBA compositor for images, scopes, shader passes, transforms, and future game-engine surfaces.",
     notes: ["layer compositor", "RGBA output", "shader script"],
   },
@@ -754,8 +874,43 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   visualOscilloscope: {
     category: "Visual",
-    description: "Square in-world oscilloscope tile. Patch any signal into In and use it as a dedicated visual display.",
-    notes: ["square scope", "signal display", "visual sink"],
+    description: "Square in-world display tile. Patch any signal into In and use it as a dedicated visual display.",
+    notes: ["square display", "signal display", "visual sink"],
+  },
+  traceDisplay: {
+    category: "Oscilloscope",
+    description: "Focused 1D waveform display testbed. Patch any signal into In and inspect the current trace without the full prettyscope renderer.",
+    notes: ["1D waveform", "display testbed", "input trace"],
+  },
+  dotOscilloscope: {
+    category: "Oscilloscope",
+    description: "Placeholder for a clock-like oscilloscope that draws one efficient brightness dot from the current buffered value.",
+    label: "0D Burn",
+    notes: ["clock display", "single dot", "latest value"],
+  },
+  valueOscilloscope: {
+    category: "Oscilloscope",
+    description: "Single-value oscilloscope that draws the latest input as one horizontal line across the display.",
+    label: "0D Value",
+    notes: ["value display", "horizontal line", "latest value"],
+  },
+  lineBurnOscilloscope: {
+    category: "Oscilloscope",
+    description: "First-pass line-burn oscilloscope style with a heavier trace pass, ready for dedicated burn tuning.",
+    label: "1D Burn",
+    notes: ["burn display", "line trace", "testbed"],
+  },
+  scope2d: {
+    category: "Oscilloscope",
+    description: "First-pass 2D scope display for inspecting the latest X/Y signal point.",
+    label: "2D Burn",
+    notes: ["xy display", "2D scope", "latest point"],
+  },
+  scope2dTrace: {
+    category: "Oscilloscope",
+    description: "Sample-history X/Y oscilloscope for inspecting deterministic 2D traces without pixel burn decay.",
+    label: "2D Trace",
+    notes: ["xy trace", "sample history", "2D oscilloscope"],
   },
   parabol: {
     category: "Modulators",
@@ -797,8 +952,8 @@ function defaultNodeGraphModuleCatalogVisibility() {
     nodeGraphModuleStoreTypes.map((type) => [
       type,
       {
+        developer: true,
         home: false,
-        shop: true,
       },
     ]),
   );
@@ -813,16 +968,16 @@ function normalizeNodeGraphModuleCatalogVisibility(value = {}) {
         return [
           type,
           {
+            developer: entry.developer !== false && entry.shop !== false,
             home: entry.home === true,
-            shop: entry.shop !== false,
           },
         ];
       }
       return [
         type,
         {
+          developer: entry !== false,
           home: false,
-          shop: entry !== false,
         },
       ];
     }),
@@ -835,7 +990,13 @@ function nodeGraphModuleCatalogVisibility() {
 
 function nodeGraphModuleIsStoreVisible(type, shelf = "shop") {
   const visibility = nodeGraphModuleCatalogVisibility()[type];
-  return Boolean(visibility?.[shelf === "home" ? "home" : "shop"]);
+  if (shelf === "developer") {
+    return visibility?.developer !== false;
+  }
+  if (shelf === "home") {
+    return visibility?.home === true;
+  }
+  return true;
 }
 
 function applyNodeGraphModuleCatalogVisibility(value = {}) {
@@ -873,31 +1034,101 @@ function saveNodeGraphModuleCatalogVisibilityLocal(value = nodeGraphModuleCatalo
   }
 }
 
+function normalizeNodeGraphNativeModuleEntry(entry = {}) {
+  const name = String(entry.name || "").trim();
+  const targetType = String(entry.targetType || entry.target || name || "").trim();
+  if (!name || !targetType) {
+    return null;
+  }
+  return Object.freeze({
+    kind: String(entry.kind || ""),
+    label: String(entry.label || name),
+    name,
+    source: String(entry.source || ""),
+    sourceUrl: String(entry.sourceUrl || ""),
+    targetType,
+    wasm: String(entry.wasm || ""),
+    wasmAvailable: Boolean(entry.wasmAvailable),
+    wasmUrl: String(entry.wasmUrl || ""),
+  });
+}
+
+function applyNodeGraphNativeModuleCatalog(entries = []) {
+  const normalized = (Array.isArray(entries) ? entries : [])
+    .map((entry) => normalizeNodeGraphNativeModuleEntry(entry))
+    .filter(Boolean);
+  const byTarget = {};
+  for (const entry of normalized) {
+    if (!byTarget[entry.targetType]) {
+      byTarget[entry.targetType] = [];
+    }
+    byTarget[entry.targetType].push(entry);
+  }
+  nodeGraphNativeModuleEntries = Object.freeze(normalized);
+  nodeGraphNativeModuleEntriesByTarget = Object.freeze(byTarget);
+  renderNodeGraphModuleStoreCatalog();
+}
+
+async function loadNodeGraphNativeModuleCatalog() {
+  if (nodeGraphNativeModuleCatalogLoadStarted || typeof fetch !== "function") {
+    return nodeGraphNativeModuleEntries;
+  }
+  nodeGraphNativeModuleCatalogLoadStarted = true;
+  try {
+    const response = await fetch("/api/native-modules", { cache: "no-store" });
+    if (!response.ok) {
+      return nodeGraphNativeModuleEntries;
+    }
+    const payload = await response.json();
+    applyNodeGraphNativeModuleCatalog(payload?.modules || []);
+  } catch (_error) {
+    // Native modules are optional; the JS module catalog remains usable without them.
+  }
+  return nodeGraphNativeModuleEntries;
+}
+
+function nodeGraphNativeModulesForType(type) {
+  return nodeGraphNativeModuleEntriesByTarget[String(type || "")] || [];
+}
+
 function nodeGraphModuleStoreEntries() {
   return nodeGraphModuleStoreTypes
-    .map((type) => ({
-      ...(nodeGraphModuleStoreCatalog[type] || {}),
-      type,
-      demoPatch: nodeGraphModuleStoreDemoPatchAvailable(type),
-      demoListen: nodeGraphModuleStoreDemoListenAvailable(type),
-      homeVisible: nodeGraphModuleIsStoreVisible(type, "home"),
-      implemented: Object.hasOwn(nodeGraphModuleDefinitions, type),
-      label: nodeGraphModuleStoreCatalog[type]?.label || nodeGraphNodeLabels[type] || type,
-      shopVisible: nodeGraphModuleIsStoreVisible(type, "shop"),
-      visible: nodeGraphModuleIsStoreVisible(type, "shop"),
-    }));
+    .map((type) => {
+      const nativeModules = nodeGraphNativeModulesForType(type);
+      const implemented =
+        Object.hasOwn(nodeGraphModuleDefinitions, type) &&
+        !nodeGraphModuleStoreUnderConstructionTypes.has(type);
+      const developerVisible = nodeGraphModuleIsStoreVisible(type, "developer");
+      const developerOnly = nodeGraphModuleStoreCatalog[type]?.developerOnly === true;
+      const publicVisible = !developerOnly;
+      return {
+        ...(nodeGraphModuleStoreCatalog[type] || {}),
+        type,
+        demoPatch: nodeGraphModuleStoreDemoPatchAvailable(type),
+        demoListen: nodeGraphModuleStoreDemoListenAvailable(type),
+        developerOnly,
+        developerVisible,
+        homeVisible: nodeGraphModuleIsStoreVisible(type, "home") && implemented,
+        implemented,
+        label: nodeGraphModuleStoreCatalog[type]?.label || nodeGraphNodeLabels[type] || type,
+        nativeAvailable: nativeModules.some((entry) => entry.wasmAvailable),
+        nativeModules,
+        shopVisible: publicVisible,
+        visible: publicVisible,
+      };
+    });
 }
 
 function setNodeGraphModuleCatalogVisibility(type, visible, shelf = "shop") {
   if (!nodeGraphModuleStoreTypes.includes(type)) {
     return;
   }
-  const key = shelf === "home" ? "home" : "shop";
+  const key = shelf === "home" ? "home" : "developer";
   const current = nodeGraphModuleCatalogVisibility();
   nodeGraphMvp.moduleCatalogVisibility = {
     ...current,
     [type]: {
-      ...(current[type] || { home: false, shop: true }),
+      ...(current[type] || { developer: true, home: false }),
       [key]: Boolean(visible),
     },
   };
@@ -905,29 +1136,63 @@ function setNodeGraphModuleCatalogVisibility(type, visible, shelf = "shop") {
   renderNodeGraphModuleStoreCatalog();
 }
 
+function normalizeNodeGraphModuleStoreDepartment(department = "") {
+  const value = String(department || "");
+  if (value === "Sequencer") {
+    return "Sequence";
+  }
+  return value;
+}
+
 function setNodeGraphModuleStoreDepartment(department = "") {
-  nodeGraphMvp.moduleStoreDepartment = nodeGraphModuleStoreDepartments.includes(department) ? department : "";
+  nodeGraphMvp.moduleStoreDepartment = normalizeNodeGraphModuleStoreDepartment(department);
   renderNodeGraphModuleStoreCatalog();
+  if (typeof saveNodeGraphModuleStoreStateToUserSettings === "function") {
+    saveNodeGraphModuleStoreStateToUserSettings();
+  }
+}
+
+function saveNodeGraphModuleStoreStateToUserSettings() {
+  if (
+    typeof serializeNodeUiDevSettings === "function" &&
+    typeof saveNodeUiDevLocalDefaultSettings === "function"
+  ) {
+    saveNodeUiDevLocalDefaultSettings(serializeNodeUiDevSettings());
+  }
 }
 
 function nodeGraphNormalizeModuleDepartmentSearch(value = "") {
   return String(value || "").trim().toLowerCase();
 }
 
-function nodeGraphModuleDepartmentMatchesSearch(department, entries, query) {
+function nodeGraphModuleStoreEntryMatchesSearch(entry, query) {
   const needle = nodeGraphNormalizeModuleDepartmentSearch(query);
   if (!needle) {
     return true;
   }
-  const ad = nodeGraphModuleStoreDepartmentAds[department] || {};
+  const haystack = [
+    entry.label,
+    entry.type,
+    entry.category,
+    entry.description,
+    ...(entry.notes || []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(needle);
+}
+
+function nodeGraphModuleStoreDepartmentMatchesSearch(department, entries, query) {
+  const needle = nodeGraphNormalizeModuleDepartmentSearch(query);
+  if (!needle) {
+    return true;
+  }
   const haystack = [
     department,
-    ad.title,
-    ad.pitch,
-    ...entries.flatMap((entry) => [
+    ...(entries || []).flatMap((entry) => [
       entry.label,
       entry.type,
-      entry.category,
       entry.description,
       ...(entry.notes || []),
     ]),
@@ -936,6 +1201,108 @@ function nodeGraphModuleDepartmentMatchesSearch(department, entries, query) {
     .join(" ")
     .toLowerCase();
   return haystack.includes(needle);
+}
+
+function nodeGraphModuleStoreSearchResultOrder(a, b) {
+  const implementedDelta = Number(Boolean(b?.implemented)) - Number(Boolean(a?.implemented));
+  if (implementedDelta) {
+    return implementedDelta;
+  }
+  return String(a?.label || "").localeCompare(String(b?.label || ""));
+}
+
+function nodeGraphModuleStorePublicEntriesByDepartment(entries = []) {
+  const groups = new Map();
+  for (const department of nodeGraphModuleStoreDepartments) {
+    groups.set(department, []);
+  }
+  entries
+    .filter((entry) => entry.visible)
+    .forEach((entry) => {
+      const department = entry.category || "Other";
+      if (!groups.has(department)) {
+        groups.set(department, []);
+      }
+      groups.get(department).push(entry);
+    });
+  return [...groups.entries()]
+    .map(([department, departmentEntries]) => [
+      department,
+      departmentEntries.sort((a, b) => a.label.localeCompare(b.label)),
+    ])
+    .sort(([a], [b]) => {
+      const aIndex = nodeGraphModuleStoreDepartments.indexOf(a);
+      const bIndex = nodeGraphModuleStoreDepartments.indexOf(b);
+      const normalizedA = aIndex === -1 ? Number.POSITIVE_INFINITY : aIndex;
+      const normalizedB = bIndex === -1 ? Number.POSITIVE_INFINITY : bIndex;
+      return normalizedA - normalizedB || a.localeCompare(b);
+    });
+}
+
+const nodeGraphModuleShopWindowDefaultSize = Object.freeze({
+  width: 180,
+  height: 620,
+  minWidth: 96,
+  maxWidth: 980,
+  minHeight: 120,
+  maxHeight: 760,
+});
+
+function normalizeNodeGraphModuleShopWindowSize(size = {}) {
+  if (typeof normalizeNodeGraphFloatingWindowSize === "function") {
+    return normalizeNodeGraphFloatingWindowSize(size, nodeGraphModuleShopWindowDefaultSize);
+  }
+  const source = size && typeof size === "object" ? size : {};
+  return {
+    width: Math.max(
+      nodeGraphModuleShopWindowDefaultSize.minWidth,
+      Math.min(
+        nodeGraphModuleShopWindowDefaultSize.maxWidth,
+        Math.round(Number(source.width) || nodeGraphModuleShopWindowDefaultSize.width),
+      ),
+    ),
+    height: Math.max(
+      nodeGraphModuleShopWindowDefaultSize.minHeight,
+      Math.min(
+        nodeGraphModuleShopWindowDefaultSize.maxHeight,
+        Math.round(Number(source.height) || nodeGraphModuleShopWindowDefaultSize.height),
+      ),
+    ),
+  };
+}
+
+function applyNodeGraphModuleShopWindowSize(size = {}) {
+  const panel = document.getElementById("nodeModuleShopView");
+  const normalized = normalizeNodeGraphModuleShopWindowSize(size);
+  if (panel) {
+    if (typeof applyNodeGraphFloatingWindowSizeVars === "function") {
+      applyNodeGraphFloatingWindowSizeVars(panel, "node-module-shop", nodeGraphModuleShopWindowDefaultSize, normalized);
+    } else {
+      panel.style.setProperty("--node-module-shop-width", `${normalized.width}px`);
+      panel.style.setProperty("--node-module-shop-height", `${normalized.height}px`);
+    }
+  }
+  return normalized;
+}
+
+function nodeGraphModuleShopWindowSizeFromElement(panel = document.getElementById("nodeModuleShopView")) {
+  const rect = panel?.getBoundingClientRect?.();
+  return normalizeNodeGraphModuleShopWindowSize({
+    width: rect?.width,
+    height: rect?.height,
+  });
+}
+
+function saveNodeGraphModuleShopWindowSizeToUserSettings() {
+  const panel = document.getElementById("nodeModuleShopView");
+  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+    rememberNodeGraphWorkspaceWindowState(
+      "moduleBrowser",
+      panel,
+      { open: !panel?.hidden, size: nodeGraphModuleShopWindowSizeFromElement(panel) },
+      { status: false },
+    );
+  }
 }
 
 function handleNodeGraphModuleDepartmentSearchInput(event) {
@@ -952,47 +1319,6 @@ function handleNodeGraphModuleDepartmentSearchKeydown(event) {
   nodeGraphMvp.moduleStoreDepartmentSearch = "";
   event.currentTarget.value = "";
   renderNodeGraphModuleStoreCatalog();
-}
-
-function createNodeGraphModuleStorePreview(entry) {
-  const preview = document.createElement("span");
-  preview.className = "scene-context-store-preview";
-  preview.setAttribute("role", "img");
-  preview.setAttribute("aria-label", `${entry.label} module preview`);
-  preview.dataset.moduleCategory = entry.category || "module";
-
-  const shell = document.createElement("span");
-  shell.className = "scene-context-store-preview-shell";
-  const header = document.createElement("span");
-  header.className = "scene-context-store-preview-header";
-  header.textContent = entry.label;
-  const body = document.createElement("span");
-  body.className = "scene-context-store-preview-body";
-
-  const inputPorts = Math.max(1, (nodeGraphModuleDefinitions[entry.type]?.inputs || []).length);
-  const outputPorts = Math.max(1, (nodeGraphModuleDefinitions[entry.type]?.outputs || []).length);
-  const leftRail = document.createElement("span");
-  leftRail.className = "scene-context-store-preview-ports";
-  leftRail.dataset.side = "in";
-  for (let index = 0; index < inputPorts; index += 1) {
-    leftRail.append(document.createElement("span"));
-  }
-
-  const center = document.createElement("span");
-  center.className = "scene-context-store-preview-core";
-  center.textContent = entry.category === "Chaos" ? "CH" : entry.label.slice(0, 2).toUpperCase();
-
-  const rightRail = document.createElement("span");
-  rightRail.className = "scene-context-store-preview-ports";
-  rightRail.dataset.side = "out";
-  for (let index = 0; index < outputPorts; index += 1) {
-    rightRail.append(document.createElement("span"));
-  }
-
-  body.append(leftRail, center, rightRail);
-  shell.append(header, body);
-  preview.append(shell);
-  return preview;
 }
 
 function nodeGraphModuleStoreDemoPatchAvailable(type) {
@@ -1118,93 +1444,52 @@ function editNodeGraphModuleStoreDemo(entry) {
   });
 }
 
-function appendNodeGraphModuleStoreNotes(target, entry) {
-  for (const note of entry.notes || []) {
-    const item = document.createElement("span");
-    item.className = "scene-context-store-manual-note";
-    item.textContent = note;
-    target.append(item);
-  }
-}
-
 function createNodeGraphModuleStoreButton(entry) {
-  const card = document.createElement("div");
+  const card = document.createElement(entry.visible && entry.implemented ? "button" : "div");
+  const spawnLabel = `Drag into scene to spawn ${entry.label} module`;
   card.className = "scene-context-store-card";
   card.dataset.moduleEnabled = String(entry.visible);
   card.dataset.homeEnabled = String(entry.homeVisible);
-  card.dataset.shopEnabled = String(entry.shopVisible);
-  card.title = `${entry.label}: ${entry.description || "Module reference entry."}`;
+  card.dataset.developerEnabled = String(entry.developerVisible);
+  card.dataset.moduleImplemented = String(entry.implemented);
+  card.title = entry.visible && entry.implemented
+    ? `${spawnLabel}. ${entry.description || "Module reference entry."}`
+    : `${entry.label}: ${entry.description || "Module reference entry."}`;
+  card.setAttribute("aria-label", entry.visible && entry.implemented
+    ? spawnLabel
+    : `${entry.label} module unavailable`);
+  if (entry.visible && entry.implemented) {
+    card.dataset.contextModule = entry.type;
+    card.type = "button";
+    card.role = "button";
+    card.tabIndex = 0;
+  } else {
+    card.classList.add("under-construction");
+    card.setAttribute("aria-disabled", "true");
+  }
 
-  const meta = document.createElement("span");
-  meta.className = "scene-context-store-card-meta";
-  meta.textContent = entry.category || "module";
   const label = document.createElement("strong");
   label.textContent = entry.label;
-  const preview = createNodeGraphModuleStorePreview(entry);
-  const description = document.createElement("span");
-  description.className = "scene-context-store-card-description";
-  description.textContent = entry.description || "Module reference entry.";
-  const actions = document.createElement("span");
-  actions.className = "scene-context-store-card-actions";
-  if (entry.visible && entry.demoPatch) {
-    if (entry.demoListen) {
-      const listen = document.createElement("button");
-      listen.type = "button";
-      listen.textContent = "Listen";
-      listen.addEventListener("click", (event) => {
-        event.stopPropagation();
-        listenToNodeGraphModuleStoreDemo(entry);
-      });
-      actions.append(listen);
-    }
-    const watch = document.createElement("button");
-    watch.type = "button";
-    watch.textContent = "Watch";
-    watch.addEventListener("click", (event) => {
-      event.stopPropagation();
-      watchNodeGraphModuleStoreDemo(entry);
-    });
-    const edit = document.createElement("button");
-    edit.type = "button";
-    edit.textContent = "Edit";
-    edit.addEventListener("click", (event) => {
-      event.stopPropagation();
-      editNodeGraphModuleStoreDemo(entry);
-    });
-    actions.append(watch, edit);
+  const nativeStatus = entry.nativeAvailable ? document.createElement("small") : null;
+  if (nativeStatus) {
+    nativeStatus.textContent = "Native C++";
+    nativeStatus.className = "node-module-store-native-status";
   }
-  if (entry.visible && entry.implemented) {
-    const add = document.createElement("button");
-    add.type = "button";
-    add.dataset.contextModule = entry.type;
-    add.textContent = "Add Module";
-    add.addEventListener("click", (event) => {
-      event.stopPropagation();
-      addNodeGraphModuleFromShop(add);
-    });
-    actions.append(add);
-  } else if (entry.visible) {
-    const planned = document.createElement("button");
-    planned.type = "button";
-    planned.disabled = true;
-    planned.textContent = "Planned";
-    actions.append(planned);
-  }
-  const toggle = document.createElement("button");
-  toggle.type = "button";
-  toggle.dataset.storeToggleModule = entry.type;
-  toggle.dataset.storeToggleShelf = "shop";
-  toggle.dataset.visible = String(!entry.shopVisible);
-  toggle.textContent = entry.shopVisible ? "Remove From Shop" : "Show In Shop";
-  toggle.addEventListener("click", (event) => {
-    event.stopPropagation();
-    setNodeGraphModuleCatalogVisibility(entry.type, !entry.shopVisible, "shop");
-  });
-  actions.append(toggle);
 
-  card.append(meta, label, preview, description);
-  appendNodeGraphModuleStoreNotes(card, entry);
-  card.append(actions);
+  if (entry.implemented) {
+    card.append(label);
+    if (nativeStatus) {
+      card.append(nativeStatus);
+    }
+  } else {
+    const status = document.createElement("small");
+    status.textContent = "Under construction";
+    card.append(label);
+    if (nativeStatus) {
+      card.append(nativeStatus);
+    }
+    card.append(status);
+  }
   return card;
 }
 
@@ -1212,7 +1497,7 @@ function createNodeGraphModuleDepartmentButton(department, entries) {
   const ad = nodeGraphModuleStoreDepartmentAds[department] || {};
   const titleText = ad.title || department;
   const button = document.createElement("button");
-  button.className = "scene-context-store-department-card";
+  button.className = "scene-context-store-department-card node-module-category-row";
   button.type = "button";
   button.dataset.storeDepartment = department;
   button.title = `${titleText}: module department`;
@@ -1222,33 +1507,37 @@ function createNodeGraphModuleDepartmentButton(department, entries) {
     setNodeGraphModuleStoreDepartment(department);
   });
 
-  const symbol = document.createElement("span");
-  symbol.className = "scene-context-store-department-symbol";
-  symbol.setAttribute("aria-hidden", "true");
-  symbol.textContent = ad.symbol || "◇";
-
   const title = document.createElement("strong");
   title.className = "scene-context-store-department-title";
   title.textContent = titleText;
 
-  const preview = document.createElement("span");
-  preview.className = "scene-context-store-department-preview";
-  preview.textContent = entries
-    .slice(0, 4)
-    .map((entry) => entry.label)
-    .join(" / ");
+  const count = document.createElement("span");
+  count.className = "scene-context-store-department-count";
+  const workingCount = entries.filter((entry) => entry.visible && entry.implemented).length;
+  count.textContent = String(workingCount);
 
-  button.append(symbol, title, preview);
+  button.append(title, count);
   return button;
 }
 
-function createNodeGraphModuleStoreDepartmentHeading(department) {
-  const heading = document.createElement("div");
-  heading.className = "scene-context-store-department-heading";
-  const label = document.createElement("strong");
-  label.textContent = department;
-  heading.append(label);
-  return heading;
+function createNodeGraphModuleStoreVisualGroupHeader(groupLabel) {
+  const header = document.createElement("div");
+  header.className = "scene-context-store-visual-group";
+  header.textContent = groupLabel;
+  return header;
+}
+
+function renderNodeGraphModuleStoreDepartmentGroup(target, groupLabel, departmentEntries, departmentSearch) {
+  const matchingDepartments = departmentEntries.filter(([department, entries]) =>
+    nodeGraphModuleStoreDepartmentMatchesSearch(department, entries, departmentSearch)
+  );
+  if (!matchingDepartments.length) {
+    return;
+  }
+  target.append(createNodeGraphModuleStoreVisualGroupHeader(groupLabel));
+  for (const [department, entries] of matchingDepartments) {
+    target.append(createNodeGraphModuleDepartmentButton(department, entries));
+  }
 }
 
 function loadNodeGraphModuleGroupsLocal() {
@@ -1282,28 +1571,10 @@ function createNodeGraphModuleGroupButton(name, group) {
   const card = document.createElement("div");
   card.className = "scene-context-store-card";
   card.dataset.moduleGroup = name;
-  const meta = document.createElement("span");
-  meta.className = "scene-context-store-card-meta";
-  meta.textContent = group?.kind === "moduleGroup" ? "module group" : "circuit preset";
+  card.dataset.contextGroup = name;
   const label = document.createElement("strong");
   label.textContent = name;
-  const description = document.createElement("span");
-  description.className = "scene-context-store-card-description";
-  description.textContent = group?.kind === "moduleGroup"
-    ? `${group?.sourcePatch?.nodes?.length || group?.nodes?.length || 0} modules wrapped as one module.`
-    : `${group?.nodes?.length || 0} modules saved from the modular view.`;
-  const actions = document.createElement("span");
-  actions.className = "scene-context-store-card-actions";
-  const add = document.createElement("button");
-  add.type = "button";
-  add.dataset.contextGroup = name;
-  add.textContent = group?.kind === "moduleGroup" ? "Add Module" : "Add group";
-  add.addEventListener("click", (event) => {
-    event.stopPropagation();
-    addNodeGraphModuleGroupFromBrowser(name);
-  });
-  actions.append(add);
-  card.append(meta, label, description, actions);
+  card.append(label);
   return card;
 }
 
@@ -1322,191 +1593,242 @@ function renderNodeGraphModuleGroupCatalog() {
   shell.hidden = names.length === 0;
 }
 
-function closeNodeGraphModuleCollectionsMenu() {
-  const menu = document.getElementById("nodeModuleCollectionsMenu");
-  if (menu) {
-    menu.hidden = true;
-  }
-  if (nodeGraphMvp.moduleCollectionsDragging?.handle) {
-    nodeGraphMvp.moduleCollectionsDragging.handle.classList.remove("dragging");
-  }
-  nodeGraphMvp.moduleCollectionsDragging = null;
-}
-
-function openNodeGraphModuleCollectionsMenu(event) {
-  if (event.target?.matches?.("#nodeModuleDepartmentSearch")) {
-    return false;
-  }
-  const target = event.target.closest?.("#nodeModuleDepartmentSearchShell");
-  if (!target || document.getElementById("nodeModuleShopView")?.hidden) {
-    return false;
-  }
-
-  event.preventDefault();
-  event.stopPropagation();
-  closeNodeSceneContextMenu();
-  closeNodeScopeContextMenu();
-  positionNodeSceneContextMenu(
-    document.getElementById("nodeModuleCollectionsMenu"),
-    event.clientX,
-    event.clientY,
-    false,
-  );
-  return true;
-}
-
-function handleNodeGraphModuleCollectionsPointerDown(event) {
-  const menu = document.getElementById("nodeModuleCollectionsMenu");
-  if (
-    !menu ||
-    menu.hidden ||
-    event.target.closest?.("#nodeModuleCollectionsMenu, #nodeModuleDepartmentSearchShell")
-  ) {
-    return;
-  }
-  closeNodeGraphModuleCollectionsMenu();
-}
-
-function beginNodeGraphModuleCollectionsMenuDrag(event) {
-  if (event.button > 0 || nodeGraphDialogDragTargetIsInteractive(event)) {
-    return;
-  }
-  const menu = document.getElementById("nodeModuleCollectionsMenu");
-  if (!menu || menu.hidden) {
-    return;
-  }
-  const rect = menu.getBoundingClientRect();
-  nodeGraphMvp.moduleCollectionsDragging = {
-    handle: event.currentTarget,
-    offsetX: event.clientX - rect.left,
-    offsetY: event.clientY - rect.top,
-    pointerId: event.pointerId ?? null,
-  };
-  event.currentTarget.classList.add("dragging");
-  if (event.pointerId !== undefined) {
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }
-  event.preventDefault();
-  event.stopPropagation();
-}
-
-function dragNodeGraphModuleCollectionsMenu(event) {
-  const drag = nodeGraphMvp.moduleCollectionsDragging;
-  if (
-    !drag ||
-    (drag.pointerId !== null && event.pointerId !== undefined && drag.pointerId !== event.pointerId)
-  ) {
-    return;
-  }
-  positionNodeSceneContextMenu(
-    document.getElementById("nodeModuleCollectionsMenu"),
-    event.clientX - drag.offsetX,
-    event.clientY - drag.offsetY,
-    false,
-  );
-  event.preventDefault();
-}
-
-function endNodeGraphModuleCollectionsMenuDrag(event) {
-  const drag = nodeGraphMvp.moduleCollectionsDragging;
-  if (
-    !drag ||
-    (drag.pointerId !== null && event.pointerId !== undefined && drag.pointerId !== event.pointerId)
-  ) {
-    return;
-  }
-  drag.handle.classList.remove("dragging");
-  if (event.pointerId !== undefined && drag.handle.hasPointerCapture?.(event.pointerId)) {
-    drag.handle.releasePointerCapture(event.pointerId);
-  }
-  nodeGraphMvp.moduleCollectionsDragging = null;
-}
-
 function renderNodeGraphModuleStoreCatalog() {
-  const available = document.getElementById("nodeModuleShopAvailable");
+  const available = document.getElementById("nodeModuleDepartmentList");
+  const homeShell = document.getElementById("nodeModuleHomeShelfShell");
+  const homeShelf = document.getElementById("nodeModuleHomeShelf");
   const shopView = document.getElementById("nodeModuleShopView");
-  const departmentList = document.getElementById("nodeModuleDepartmentList");
-  const departmentView = document.getElementById("nodeModuleDepartmentView");
+  const backButton = document.getElementById("nodeModuleDepartmentBack");
   const departmentTitle = document.getElementById("nodeModuleDepartmentTitle");
-  const departmentSummary = document.getElementById("nodeModuleDepartmentSummary");
-  const departmentBack = document.getElementById("nodeModuleDepartmentBack");
-  if (!available || !shopView || !departmentList || !departmentView) {
+  if (!available || !homeShell || !homeShelf || !shopView) {
     return;
   }
 
   available.innerHTML = "";
-  departmentList.innerHTML = "";
-
+  homeShelf.innerHTML = "";
   const entries = nodeGraphModuleStoreEntries();
+  const selectedDepartment = normalizeNodeGraphModuleStoreDepartment(nodeGraphMvp.moduleStoreDepartment || "");
+  if (nodeGraphMvp.moduleStoreDepartment !== selectedDepartment) {
+    nodeGraphMvp.moduleStoreDepartment = selectedDepartment;
+  }
   const departmentSearch = nodeGraphMvp.moduleStoreDepartmentSearch || "";
+  const searchingAllModules = !selectedDepartment &&
+    Boolean(nodeGraphNormalizeModuleDepartmentSearch(departmentSearch));
   const departmentSearchField = document.getElementById("nodeModuleDepartmentSearch");
   if (departmentSearchField && departmentSearchField.value !== departmentSearch) {
     departmentSearchField.value = departmentSearch;
   }
-  const activeDepartment = nodeGraphModuleStoreDepartments.includes(nodeGraphMvp.moduleStoreDepartment)
-    ? nodeGraphMvp.moduleStoreDepartment
-    : "";
-  if (departmentBack) {
-    departmentBack.onclick = (event) => {
-      event.stopPropagation();
-      setNodeGraphModuleStoreDepartment("");
-    };
-  }
 
-  for (const department of nodeGraphModuleStoreDepartments) {
-    const departmentEntries = entries.filter((item) => item.category === department);
-    if (departmentEntries.length && nodeGraphModuleDepartmentMatchesSearch(department, departmentEntries, departmentSearch)) {
-      departmentList.append(createNodeGraphModuleDepartmentButton(department, departmentEntries));
+  const publicDepartmentEntries = nodeGraphModuleStorePublicEntriesByDepartment(entries);
+  const publicDepartmentNames = new Set(publicDepartmentEntries.map(([department]) => department));
+  if (selectedDepartment && !publicDepartmentNames.has(selectedDepartment)) {
+    nodeGraphMvp.moduleStoreDepartment = "";
+    renderNodeGraphModuleStoreCatalog();
+    if (typeof saveNodeGraphModuleStoreStateToUserSettings === "function") {
+      saveNodeGraphModuleStoreStateToUserSettings();
     }
-  }
-  if (!departmentList.children.length) {
-    const empty = document.createElement("div");
-    empty.className = "scene-context-store-empty";
-    empty.textContent = "No module departments match this search.";
-    departmentList.append(empty);
-  }
-
-  shopView.hidden = Boolean(activeDepartment);
-  departmentView.hidden = !activeDepartment;
-  if (departmentTitle) {
-    departmentTitle.textContent = activeDepartment || "Departments";
-  }
-  if (departmentSummary) {
-    departmentSummary.textContent = activeDepartment
-      ? nodeGraphModuleStoreDepartmentAds[activeDepartment]?.pitch || ""
-      : "";
-  }
-
-  if (!activeDepartment) {
-    renderNodeGraphModuleGroupCatalog();
     return;
   }
+  const matchingEntries = entries.filter((item) => nodeGraphModuleStoreEntryMatchesSearch(item, departmentSearch));
+  const publicEntries = matchingEntries.filter((entry) =>
+    entry.visible &&
+    (!selectedDepartment || entry.category === selectedDepartment)
+  );
+  const visibleModuleEntries = selectedDepartment || departmentSearch
+    ? [...publicEntries].sort(nodeGraphModuleStoreSearchResultOrder)
+    : publicEntries;
+  const homeEntries = entries.filter((entry) => entry.implemented && entry.homeVisible);
 
-  for (const department of nodeGraphModuleStoreDepartments) {
-    if (department !== activeDepartment) {
-      continue;
-    }
-    const departmentEntries = entries.filter((item) => item.category === department);
-    if (!departmentEntries.length) {
-      continue;
-    }
-    available.append(createNodeGraphModuleStoreDepartmentHeading(department));
-    for (const entry of departmentEntries) {
+  shopView.classList.toggle("department-selected", Boolean(selectedDepartment));
+  if (backButton) {
+    backButton.hidden = !selectedDepartment;
+  }
+  if (departmentTitle) {
+    departmentTitle.hidden = !selectedDepartment;
+    departmentTitle.textContent = selectedDepartment || "";
+  }
+  available.classList.add("scene-context-store-department-list");
+  available.classList.toggle("node-module-store-list", Boolean(selectedDepartment || searchingAllModules));
+
+  for (const entry of homeEntries) {
+    homeShelf.append(createNodeGraphModuleStoreButton(entry));
+  }
+  homeShell.hidden = homeEntries.length === 0;
+
+  if (selectedDepartment || searchingAllModules) {
+    for (const entry of visibleModuleEntries) {
       available.append(createNodeGraphModuleStoreButton(entry));
     }
+  } else {
+    const entriesByDepartment = new Map(publicDepartmentEntries);
+    const handledDepartments = new Set();
+    for (const group of nodeGraphModuleStoreVisualGroups) {
+      const groupDepartmentEntries = group.departments
+        .filter((department) => entriesByDepartment.has(department))
+        .map((department) => {
+          handledDepartments.add(department);
+          return [department, entriesByDepartment.get(department)];
+        });
+      renderNodeGraphModuleStoreDepartmentGroup(
+        available,
+        group.label,
+        groupDepartmentEntries,
+        departmentSearch,
+      );
+    }
+    const otherDepartmentEntries = publicDepartmentEntries.filter(([department]) => !handledDepartments.has(department));
+    if (otherDepartmentEntries.length) {
+      renderNodeGraphModuleStoreDepartmentGroup(available, "Other", otherDepartmentEntries, departmentSearch);
+    }
+  }
+  if (!available.children.length) {
+    const empty = document.createElement("div");
+    empty.className = "scene-context-store-empty";
+    empty.textContent = departmentSearch
+      ? "No modules match this search."
+      : selectedDepartment
+        ? "No modules are available in this category."
+        : "No categories are available.";
+    available.append(empty);
   }
   renderNodeGraphModuleGroupCatalog();
 }
 
-function openNodeGraphModuleShop(point = null) {
+function positionNodeGraphModuleShopView(x, y) {
+  const panel = document.getElementById("nodeModuleShopView");
+  if (!panel) {
+    return;
+  }
+  panel.style.position = "fixed";
+  panel.style.margin = "0";
+  const { left, top } = nodeGraphFloatingWindowPosition(panel, x, y);
+  if (typeof setNodeGraphFloatingWindowViewportPosition === "function") {
+    setNodeGraphFloatingWindowViewportPosition(panel, left, top);
+  } else {
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
+    panel.style.right = "auto";
+  }
+  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+    rememberNodeGraphWorkspaceWindowState(
+      "moduleBrowser",
+      panel,
+      { open: !panel.hidden, position: { left, top } },
+      { persist: false },
+    );
+  }
+}
+
+function positionNodeGraphModuleShopViewNearPoint(point = null) {
+  const panel = document.getElementById("nodeModuleShopView");
+  if (!panel) {
+    return;
+  }
+  const x = Number(point?.x);
+  const y = Number(point?.y);
+  panel.hidden = false;
+  const rect = panel.getBoundingClientRect();
+  positionNodeGraphModuleShopView(
+    Number.isFinite(x) ? x : Math.max(12, (window.innerWidth - rect.width) * 0.5),
+    Number.isFinite(y) ? y : 72,
+  );
+}
+
+function beginNodeGraphModuleShopViewDrag(event) {
+  const panel = document.getElementById("nodeModuleShopView");
+  if (!panel || panel.hidden) {
+    return;
+  }
+  beginNodeGraphFloatingWindowDrag(event, panel, "moduleShopDragging");
+}
+
+function dragNodeGraphModuleShopView(event) {
+  dragNodeGraphFloatingWindow(
+    event,
+    "moduleShopDragging",
+    document.getElementById("nodeModuleShopView"),
+    (next) => {
+      if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+        rememberNodeGraphWorkspaceWindowState(
+          "moduleBrowser",
+          document.getElementById("nodeModuleShopView"),
+          { open: true, position: next },
+          { persist: false },
+        );
+      }
+    },
+  );
+}
+
+function endNodeGraphModuleShopViewDrag(event) {
+  endNodeGraphFloatingWindowDrag(event, "moduleShopDragging", () => {
+    if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+      rememberNodeGraphWorkspaceWindowState(
+        "moduleBrowser",
+        document.getElementById("nodeModuleShopView"),
+        { open: true },
+        { status: false },
+      );
+    }
+  });
+}
+
+function beginNodeGraphModuleShopViewResize(event) {
+  const panel = document.getElementById("nodeModuleShopView");
+  beginNodeGraphFloatingWindowResize(event, panel, "moduleShopResizing");
+}
+
+function dragNodeGraphModuleShopViewResize(event) {
+  dragNodeGraphFloatingWindowResize(event, "moduleShopResizing", applyNodeGraphModuleShopWindowSize);
+}
+
+function endNodeGraphModuleShopViewResize(event) {
+  endNodeGraphFloatingWindowResize(event, "moduleShopResizing", saveNodeGraphModuleShopWindowSizeToUserSettings);
+}
+
+function openNodeGraphModuleShop(point = null, windowPoint = null) {
+  const panel = document.getElementById("nodeModuleShopView");
+  if (panel && !panel.hidden) {
+    pulseNodeGraphFloatingWindowAttention(panel);
+    return;
+  }
   nodeGraphMvp.sceneContextPoint = point;
   nodeGraphMvp.sceneContextTargetNode = null;
   nodeGraphMvp.sceneContextTargetWire = null;
-  nodeGraphMvp.moduleStoreDepartment = "";
-  closeNodeSceneContextMenu();
   setNodeGraphViewMode("shop");
+  renderNodeGraphModuleStoreCatalog();
+  if (typeof applyNodeGraphModuleShopWindowSize === "function") {
+    applyNodeGraphModuleShopWindowSize(nodeGraphMvp.workspaceWindowStates?.moduleBrowser?.size);
+  }
+  if (
+    typeof positionNodeGraphWorkspaceWindowFromState !== "function" ||
+    !positionNodeGraphWorkspaceWindowFromState("moduleBrowser", panel)
+  ) {
+    positionNodeGraphModuleShopViewNearPoint(windowPoint || point);
+  }
+  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+    rememberNodeGraphWorkspaceWindowState("moduleBrowser", panel, { open: true }, { status: false });
+  }
+}
+
+function closeNodeGraphModuleShop() {
+  nodeGraphMvp.sceneContextPoint = null;
+  const panel = document.getElementById("nodeModuleShopView");
+  if (panel) {
+    panel.hidden = true;
+  }
+  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+    rememberNodeGraphWorkspaceWindowState("moduleBrowser", panel, { open: false }, { status: false });
+  }
+  setNodeGraphViewMode("modular");
 }
 
 function loadNodeGraphModuleStoreStateLocal() {
   renderNodeGraphModuleStoreCatalog();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", loadNodeGraphNativeModuleCatalog, { once: true });
+} else {
+  loadNodeGraphNativeModuleCatalog();
 }

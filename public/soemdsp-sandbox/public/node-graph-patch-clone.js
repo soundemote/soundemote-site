@@ -10,12 +10,81 @@ function cloneNodeGraphParamMeta(paramMeta = {}) {
   );
 }
 
+function normalizeNodeGraphParamMetaForNode(type, paramMeta = {}) {
+  const metadata = cloneNodeGraphParamMeta(paramMeta);
+  if (type === "output" && metadata.volume) {
+    metadata.volume = {
+      ...metadata.volume,
+      def: 0.1,
+      kind: "decimal",
+      max: 1,
+      mid: 0.1,
+      min: 0,
+      showSign: false,
+      unboundedMax: false,
+      unboundedMin: false,
+    };
+  }
+  return metadata;
+}
+
+function normalizeNodeGraphPatchPortMeta(portMeta = {}) {
+  const source = portMeta && typeof portMeta === "object" ? portMeta : {};
+  const normalizeGroup = (group = {}) => Object.fromEntries(
+    Object.entries(group || {})
+      .map(([port, metadata]) => [
+        String(port || "").trim(),
+        { alias: normalizeNodeGraphPatchMetadataAlias(metadata?.alias) },
+      ])
+      .filter(([port, metadata]) => port && metadata.alias),
+  );
+  const input = normalizeGroup(source.input);
+  const output = normalizeGroup(source.output);
+  return {
+    ...(Object.keys(input).length ? { input } : {}),
+    ...(Object.keys(output).length ? { output } : {}),
+  };
+}
+
 function normalizeNodeGraphPatchNodeUi(ui = {}) {
   const source = ui && typeof ui === "object" ? ui : {};
   return {
     buttonsHidden: Boolean(source.buttonsHidden),
+    displayHeightOffsetGu: normalizeNodeGraphModuleDisplayHeightOffsetUnits(source.displayHeightOffsetGu),
+    ioHidden: Boolean(source.ioHidden),
+    interfaceControlsHidden: Boolean(source.interfaceControlsHidden),
+    movementLocked: Boolean(source.movementLocked),
+    oscilloscopeHidden: Boolean(source.oscilloscopeHidden),
+    slidersHidden: Boolean(source.slidersHidden),
     titleHidden: Boolean(source.titleHidden),
   };
+}
+
+function nodeGraphEffectivePatchNodeUi(ui = {}) {
+  const normalizedUi = normalizeNodeGraphPatchNodeUi(ui);
+  return {
+    ...normalizedUi,
+    buttonsHidden: !nodeGraphPatchNodeSectionVisible(
+      normalizedUi.buttonsHidden,
+      typeof nodeGraphMvp !== "undefined" ? nodeGraphMvp.moduleButtonsVisible : true,
+    ),
+    oscilloscopeHidden: !nodeGraphPatchNodeSectionVisible(
+      normalizedUi.oscilloscopeHidden,
+      typeof nodeGraphMvp !== "undefined" ? nodeGraphMvp.moduleOscilloscopesVisible : true,
+    ),
+    interfaceControlsHidden: !nodeGraphPatchNodeSectionVisible(
+      normalizedUi.interfaceControlsHidden,
+      typeof nodeGraphMvp !== "undefined" ? nodeGraphMvp.moduleInterfaceControlsVisible : true,
+    ),
+    slidersHidden: !nodeGraphPatchNodeSectionVisible(
+      normalizedUi.slidersHidden,
+      typeof nodeGraphMvp !== "undefined" ? nodeGraphMvp.moduleSlidersVisible : true,
+    ),
+  };
+}
+
+function nodeGraphPatchNodeSectionVisible(localHidden, globalVisible) {
+  return !Boolean(localHidden) && globalVisible !== false;
 }
 
 function normalizeNodeGraphPatchNodeAlias(alias) {
@@ -135,6 +204,26 @@ function nodeGraphPatchNodeTitle(node) {
   return normalizeNodeGraphPatchNodeAlias(patchNode.alias) || nodeGraphDefaultNodeTitle(patchNode.type, patchNode.id);
 }
 
+function cloneNodeGraphTypedDisplaySettings(node) {
+  const displayType = nodeGraphModuleDefinitions?.[node?.type]?.displayType || "";
+  if (displayType === "dot") {
+    return { zeroDBurnSettings: normalizeNodeGraphZeroDBurnSettings(node.zeroDBurnSettings) };
+  }
+  if (displayType === "lineBurn") {
+    return { traceDisplaySettings: normalizeNodeGraphLineBurnSettings(node.traceDisplaySettings) };
+  }
+  if (displayType === "value") {
+    return { traceDisplaySettings: normalizeNodeGraphValueOscilloscopeSettings(node.traceDisplaySettings) };
+  }
+  if (displayType === "scope2d") {
+    return { traceDisplaySettings: normalizeNodeGraphScope2dSettings(node.traceDisplaySettings) };
+  }
+  if (displayType === "trace" && Object.hasOwn(node, "traceDisplaySettings")) {
+    return { traceDisplaySettings: normalizeNodeGraphTraceDisplaySettings(node.traceDisplaySettings) };
+  }
+  return {};
+}
+
 function cloneNodeGraphPatch(patch) {
   const cameraState = normalizeNodeGraphPatchCameras(patch.cameras, patch.activeCameraId);
   return {
@@ -190,6 +279,7 @@ function cloneNodeGraphPatch(patch) {
         ...(node.type === "screenSpaceShader"
           ? { screenSpaceShader: normalizeNodeGraphScreenSpaceShader(node.screenSpaceShader) }
           : {}),
+        ...cloneNodeGraphTypedDisplaySettings(node),
         ...(Object.hasOwn(node, "scopeShader")
           ? { scopeShader: normalizeNodeGraphScopeShader(node.scopeShader) }
           : {}),
@@ -199,14 +289,20 @@ function cloneNodeGraphPatch(patch) {
         ...(node.type === "clapPlugin"
           ? { clap: normalizeNodeGraphClapPluginBinding(node.clap) }
           : {}),
-        ...((node.type === "samplePlayer" || node.type === "sampleLooper") && normalizeNodeGraphSampleId(node.sample?.id)
+        ...((node.type === "samplePlayer" || node.type === "sampleLooper" || node.type === "audioPlayer") && normalizeNodeGraphSampleId(node.sample?.id)
           ? { sample: { id: normalizeNodeGraphSampleId(node.sample?.id) } }
           : {}),
-        paramMeta: cloneNodeGraphParamMeta(node.paramMeta),
+        paramMeta: normalizeNodeGraphParamMetaForNode(node.type, node.paramMeta),
+        ...(Object.keys(normalizeNodeGraphPatchPortMeta(node.portMeta)).length
+          ? { portMeta: normalizeNodeGraphPatchPortMeta(node.portMeta) }
+          : {}),
         params: { ...(node.params || {}) },
-        ...(ui.buttonsHidden || ui.titleHidden ? { ui } : {}),
+        ...(ui.buttonsHidden || ui.ioHidden || ui.interfaceControlsHidden || ui.movementLocked || ui.titleHidden || ui.oscilloscopeHidden || ui.slidersHidden || ui.displayHeightOffsetGu ? { ui } : {}),
       };
     }),
+    requiredAssets: typeof nodeGraphRequiredAssetsForPatch === "function"
+      ? nodeGraphRequiredAssetsForPatch(patch)
+      : [],
     samples: typeof normalizeNodeGraphPatchSamples === "function"
       ? normalizeNodeGraphPatchSamples(patch.samples)
       : [],

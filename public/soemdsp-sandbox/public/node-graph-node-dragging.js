@@ -1,16 +1,70 @@
+function nodeGraphNodeIoSectionEmptyTarget(event, handle) {
+  if (!handle?.classList?.contains("dsp-node-io-section")) {
+    return false;
+  }
+  return !event.target.closest?.(
+    ".node-io-row, .node-port, .node-param-port, button, input, textarea, select, option, label, [contenteditable='true']",
+  );
+}
+
+function nodeGraphNodeIoBypassClickCandidate(event, handle) {
+  return event.altKey && nodeGraphNodeIoSectionEmptyTarget(event, handle);
+}
+
+function nodeGraphPatchNodeMovementLocked(nodeId) {
+  const patchNode = nodeGraphMvp.patch?.nodes?.find((candidate) => candidate.id === nodeId);
+  return Boolean(normalizeNodeGraphPatchNodeUi(patchNode?.ui).movementLocked);
+}
+
+function toggleNodeGraphNodeMovementLock(event) {
+  const node = event.currentTarget?.closest?.(".dsp-node");
+  const nodeId = node?.dataset?.node;
+  if (!nodeId) {
+    return;
+  }
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const patchNode = patch.nodes.find((candidate) => candidate.id === nodeId);
+  if (!patchNode) {
+    return;
+  }
+  const ui = normalizeNodeGraphPatchNodeUi(patchNode.ui);
+  ui.movementLocked = !ui.movementLocked;
+  patchNode.ui = ui;
+  commitNodeGraphPatch(patch, {
+    status: ui.movementLocked ? "module movement locked" : "module movement unlocked",
+  });
+  event.preventDefault();
+  event.stopPropagation();
+}
+
 function beginNodeGraphNodeDrag(event) {
   if (event.button !== undefined && event.button !== 0) {
     return;
   }
+  if (
+    event.target.closest?.(
+      ".node-port, .node-param-port, button:not(.node-drag-handle), input, textarea, select, option, [contenteditable='true']",
+    )
+  ) {
+    return;
+  }
   const handle = event.currentTarget.closest(
-    ".node-drag-handle, .node-header-title-row, .node-led-face",
+    ".node-drag-handle, .node-execution-order-badge, .node-header-title-row, .node-led-face, .node-knob-widget-body, .dsp-node-io-section, .node-parameter-row",
   );
   if (!handle) {
+    return;
+  }
+  if (handle.classList.contains("dsp-node-io-section") && !nodeGraphNodeIoSectionEmptyTarget(event, handle)) {
     return;
   }
 
   const node = handle.closest(".dsp-node");
   if (!node) {
+    return;
+  }
+  if (nodeGraphPatchNodeMovementLocked(node.dataset.node)) {
+    event.preventDefault();
+    event.stopPropagation();
     return;
   }
 
@@ -43,6 +97,7 @@ function beginNodeGraphNodeDrag(event) {
   nodeGraphMvp.nodeDragging = {
     draggedNodes,
     handle,
+    ioBypassClickCandidate: nodeGraphNodeIoBypassClickCandidate(event, handle),
     moved: false,
     node,
     startPoint: point,
@@ -96,6 +151,7 @@ function endNodeGraphNodeDrag(event) {
     additiveDragSelection,
     draggedNodes,
     handle,
+    ioBypassClickCandidate,
     moved,
     node,
     pendingSelectionIds,
@@ -113,6 +169,9 @@ function endNodeGraphNodeDrag(event) {
   }
   nodeGraphMvp.nodeDragging = null;
   if (!moved) {
+    if (ioBypassClickCandidate && toggleNodeGraphModuleBypassFromNode(node, event)) {
+      return;
+    }
     if (
       handle.classList.contains("node-header-title-row") &&
       nodeGraphModuleTitleBypassModifierActive(event) &&

@@ -12,13 +12,7 @@ function nodeInteractionHelpText(target) {
 }
 
 function nodeGraphSelectionHelpText() {
-  const selectedNodeIds = nodeGraphSelectedNodeIds();
-  if (!selectedNodeIds.size) {
-    return "";
-  }
-  return selectedNodeIds.size === 1
-    ? "1 module selected"
-    : `${selectedNodeIds.size} modules selected`;
+  return "";
 }
 
 function composeNodeInteractionHelpText(text = "") {
@@ -27,6 +21,24 @@ function composeNodeInteractionHelpText(text = "") {
     return text;
   }
   return text ? `${text}\n${selectionText}` : selectionText;
+}
+
+function normalizeNodeInteractionButtonLabel(value = "") {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function nodeInteractionButtonLabel(button) {
+  if (!button) {
+    return "";
+  }
+  return normalizeNodeInteractionButtonLabel(
+    button.getAttribute("aria-label") ||
+      button.getAttribute("title") ||
+      button.textContent ||
+      "",
+  );
 }
 
 function nodeInteractionMouseHint(element) {
@@ -49,6 +61,12 @@ function nodeInteractionMouseHint(element) {
   }
   if (element.classList.contains("node-action-button")) {
     return nodeGraphTooltipText("module.actions");
+  }
+  if (element.classList.contains("node-display-settings-button")) {
+    return nodeGraphTooltipText("module.displaySettings");
+  }
+  if (element.classList.contains("node-metaparameter-button")) {
+    return nodeGraphTooltipText("module.metaparameters");
   }
   if (element.classList.contains("node-bypass-button")) {
     return nodeGraphTooltipText("module.bypass");
@@ -115,7 +133,7 @@ function nodeInteractionMouseHint(element) {
   if (element.id === "nodeSettingsViewButton") {
     return nodeGraphTooltipText("view.patchSettings");
   }
-  if (element.id === "nodeModularViewButton" || element.id === "nodeModularOnlyViewButton") {
+  if (element.id === "nodeModularOnlyViewButton") {
     return nodeGraphTooltipText("view.switchView");
   }
   if (element.id === "nodeUndoButton" || element.id === "nodeRedoButton") {
@@ -152,7 +170,7 @@ function nodeInteractionMouseHint(element) {
     return nodeGraphTooltipText("actions.deleteSelection");
   }
   if (element.matches("button")) {
-    return nodeGraphTooltipText("common.activate");
+    return nodeInteractionButtonLabel(element) || nodeGraphTooltipText("common.activate");
   }
   return nodeGraphTooltipText("common.interact");
 }

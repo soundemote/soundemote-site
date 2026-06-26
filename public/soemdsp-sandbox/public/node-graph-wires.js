@@ -569,6 +569,7 @@
           animateDestroyedWire(from, to);
           deps.burstZap(from);
           deps.burstZap(to);
+          deps.triggerWireBreak?.("manual-trace");
         } else {
           deps.drawWires();
         }
@@ -707,6 +708,7 @@
           animateDestroyedWire(from, to);
           deps.burstZap(from);
           deps.burstZap(to);
+          deps.triggerWireBreak?.("wire-drag");
           if (helpers.endpointsAreParameterAudioMismatch(dragging.endpoint, targetEndpoint)) {
             deps.setHelp("Audio inputs take signal wires. Drop parameter wires on parameter modulation inputs.");
           }

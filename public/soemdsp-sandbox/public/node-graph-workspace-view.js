@@ -4,17 +4,34 @@ function applyNodeGraphPan() {
     return;
   }
   const pan = nodeGraphMvp.pan || { x: 0, y: 0 };
-  workspace.style.setProperty("--node-graph-pan-x", `${pan.x}px`);
-  workspace.style.setProperty("--node-graph-pan-y", `${pan.y}px`);
-  workspace.dataset.panX = String(Math.round(pan.x));
-  workspace.dataset.panY = String(Math.round(pan.y));
+  const originOffset = nodeGraphRenderedOriginOffset(pan, workspace);
+  workspace.style.setProperty("--node-graph-pan-x", `${originOffset.x}px`);
+  workspace.style.setProperty("--node-graph-pan-y", `${originOffset.y}px`);
+  workspace.dataset.panX = String(pan.x);
+  workspace.dataset.panY = String(pan.y);
   syncNodeGraphOriginMarker();
   syncNodeGraphWorldPositionReadout();
+  syncNodeGraphModularViewSizeReadout();
   updateNodeGraphGridHeatmap();
   drawNodeGraphWires();
   if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
     scheduleNodeGraphModuleScopeDraw();
   }
+  syncNodeGraphWorkspaceResizeHandlePosition();
+}
+
+function syncNodeGraphWorkspaceResizeHandlePosition() {
+  const workspace = document.getElementById("nodeGraphWorkspace");
+  const handle = document.getElementById("nodeGraphResizeHandle");
+  if (!workspace || !handle) {
+    return;
+  }
+  if (handle.parentElement !== workspace) {
+    workspace.appendChild(handle);
+  }
+  handle.style.removeProperty("--node-graph-resize-handle-left");
+  handle.style.removeProperty("--node-graph-resize-handle-top");
+  handle.style.visibility = "";
 }
 
 function syncNodeGraphOriginMarker() {
@@ -50,16 +67,62 @@ function syncNodeGraphWorldPositionReadout() {
   );
   readout.setAttribute(
     "aria-label",
-    `World position X ${nodeGraphWorldPositionLabel(worldX)}, Y ${nodeGraphWorldPositionLabel(worldY)}`,
+    `World position X ${nodeGraphWorldPositionLabel(worldX)}, Y ${nodeGraphWorldPositionLabel(worldY)}. Click to recenter view at X 0, Y 0.`,
+  );
+  if (typeof nodeGraphApplyTooltip === "function") {
+    nodeGraphApplyTooltip(readout, "workspace.recenterOrigin");
+  }
+}
+
+function syncNodeGraphModularViewSizeReadout(size = null) {
+  const readout = document.getElementById("nodeModularViewSizeReadout");
+  if (!readout) {
+    return;
+  }
+  const workspace = document.getElementById("nodeGraphWorkspace");
+  const view = size && typeof size === "object"
+    ? size
+    : normalizeNodeGraphPatchView(nodeGraphMvp.patch?.view);
+  const widthSource = Number.isFinite(Number(view.widthGu))
+    ? view.widthGu
+    : workspace?.dataset?.widthGu;
+  const heightSource = Number.isFinite(Number(view.heightGu))
+    ? view.heightGu
+    : workspace?.dataset?.heightGu;
+  const widthGu = Math.max(0, Math.round(Number(widthSource) || 0));
+  const heightGu = Math.max(0, Math.round(Number(heightSource) || 0));
+  readout.replaceChildren(
+    Object.assign(document.createElement("span"), { textContent: `W ${widthGu}` }),
+    Object.assign(document.createElement("span"), { textContent: `H ${heightGu}` }),
+  );
+  readout.setAttribute(
+    "aria-label",
+    `Modular view size width ${widthGu} grid units, height ${heightGu} grid units.`,
   );
 }
 
-function setNodeGraphPan(x, y) {
+function recenterNodeGraphViewAtWorldOrigin(event) {
+  setNodeGraphPan(0, 0);
+  setNodeInteractionHelp("View centered at X 0, Y 0.");
+  event?.preventDefault?.();
+}
+
+function handleNodeGraphWorldPositionReadoutKeydown(event) {
+  if (event.key !== "Enter" && event.key !== " ") {
+    return;
+  }
+  recenterNodeGraphViewAtWorldOrigin(event);
+}
+
+function setNodeGraphPan(x, y, options = {}) {
   nodeGraphMvp.pan = {
     x: Number.isFinite(Number(x)) ? Number(x) : 0,
     y: Number.isFinite(Number(y)) ? Number(y) : 0,
   };
   applyNodeGraphPan();
+  if (options.persist !== false && typeof saveNodeGraphWorkspaceViewToUserSettings === "function") {
+    saveNodeGraphWorkspaceViewToUserSettings({ status: false });
+  }
 }
 
 function nodeGraphVisualControlValue(value, fallback = 0) {
@@ -320,14 +383,7 @@ function snapNodeGraphWorkspaceEdgesToGrid(zoom = nodeGraphZoom()) {
   withNodeGraphWorkspaceContentAnchored(workspace, () => {
     const widthCss = nodeGraphWorkspaceWidthCss(snappedContentWidth);
     const heightCss = nodeGraphWorkspaceHeightCss(snappedContentHeight);
-    if (document.getElementById("nodeWiringPanel")?.classList.contains("modular-only-view")) {
-      workspace.style.setProperty("--node-modular-only-view-width", widthCss);
-      workspace.style.setProperty("--node-modular-only-view-height", heightCss);
-    } else {
-      workspace.style.width = widthCss;
-      workspace.style.height = heightCss;
-      workspace.style.removeProperty("aspect-ratio");
-    }
+    applyNodeGraphWorkspaceSizeCss(workspace, widthCss, heightCss);
   });
   drawNodeGraphWires();
 }
@@ -356,6 +412,7 @@ function alignNodeGraphViewToGridWithOptions(options = {}) {
   const rect = workspace?.getBoundingClientRect();
   const oldZoom = nodeGraphZoom();
   const oldPan = nodeGraphMvp.pan || { x: 0, y: 0 };
+  const oldOrigin = workspace ? nodeGraphRenderedOriginOffset(oldPan, workspace) : oldPan;
   const zoomStep = 1 / Math.max(1, nodeGraphGridSize());
   const nextZoom = Math.max(
     nodeGraphZoomLimits.min,
@@ -369,11 +426,14 @@ function alignNodeGraphViewToGridWithOptions(options = {}) {
     : null;
   const anchoredContentPoint = rect && anchor
     ? {
-      x: (anchor.x - rect.left - (Number(oldPan.x) || 0)) / oldZoom,
-      y: (anchor.y - rect.top - (Number(oldPan.y) || 0)) / oldZoom,
+      x: (anchor.x - rect.left - (Number(oldOrigin.x) || 0)) / oldZoom,
+      y: (anchor.y - rect.top - (Number(oldOrigin.y) || 0)) / oldZoom,
     }
     : null;
   nodeGraphMvp.zoom = nextZoom;
+  if (typeof syncNodeGraphPatchViewZoom === "function") {
+    syncNodeGraphPatchViewZoom(nextZoom);
+  }
   applyNodeGraphZoom();
   if (options.snapWorkspaceEdges) {
     snapNodeGraphWorkspaceEdgesToGrid(nextZoom);
@@ -385,10 +445,11 @@ function alignNodeGraphViewToGridWithOptions(options = {}) {
       y: nextRect.top + nextRect.height / 2,
     }
     : anchor;
+  const nextCenter = workspace ? nodeGraphWorkspaceCenterOffset(workspace) : { x: 0, y: 0 };
   const unsnappedPan = nextRect && nextAnchor && anchoredContentPoint
     ? {
-      x: nextAnchor.x - nextRect.left - anchoredContentPoint.x * nextZoom,
-      y: nextAnchor.y - nextRect.top - anchoredContentPoint.y * nextZoom,
+      x: nextAnchor.x - nextRect.left - nextCenter.x - anchoredContentPoint.x * nextZoom,
+      y: nextAnchor.y - nextRect.top - nextCenter.y - anchoredContentPoint.y * nextZoom,
     }
     : oldPan;
   const snapPan = (value, gridSize) => snapNodeGraphPanValueToGrid(value, gridSize, nextZoom);
@@ -397,6 +458,9 @@ function alignNodeGraphViewToGridWithOptions(options = {}) {
     y: snapPan(unsnappedPan.y, nodeGraphGridHeight()),
   };
   applyNodeGraphPan();
+  if (typeof saveNodeGraphWorkspaceViewToUserSettings === "function") {
+    saveNodeGraphWorkspaceViewToUserSettings({ status: false });
+  }
   setNodeInteractionHelp(options.snapWorkspaceEdges
     ? "View snapped to complete grid cells."
     : "View aligned to grid. Hotkey: Ctrl+Shift+G.");
@@ -439,16 +503,32 @@ function nodeGraphWorkspaceCurrentGridSize() {
   };
 }
 
+const nodeGraphWorkspaceResizeSteps = Object.freeze({
+  widthGu: 2,
+  heightGu: 1,
+});
+
+function nodeGraphWorkspaceResizeDeltaGu(pixelDelta, gridSize, stepGu = 1) {
+  const safeStep = Math.max(1, Math.round(Number(stepGu) || 1));
+  return Math.round((Number(pixelDelta) || 0) / Math.max(1, gridSize)) * safeStep;
+}
+
 function setNodeGraphWorkspacePreviewSize(widthGu, heightGu) {
   const workspace = document.getElementById("nodeGraphWorkspace");
+  const visibleSize = clampNodeGraphWorkspaceGridSizeToViewport({ widthGu, heightGu }, workspace);
   withNodeGraphWorkspaceContentAnchored(workspace, () => {
-    workspace.style.width = nodeGraphWorkspaceWidthCss(widthGu * nodeGraphGridWidth());
-    workspace.style.height = nodeGraphWorkspaceHeightCss(heightGu * nodeGraphGridHeight());
-    workspace.style.removeProperty("aspect-ratio");
+    applyNodeGraphWorkspaceSizeCss(
+      workspace,
+      nodeGraphWorkspaceWidthCss(visibleSize.widthGu * nodeGraphGridWidth()),
+      nodeGraphWorkspaceHeightCss(visibleSize.heightGu * nodeGraphGridHeight()),
+    );
   });
-  workspace.dataset.widthGu = String(widthGu);
-  workspace.dataset.heightGu = String(heightGu);
+  workspace.dataset.widthGu = String(visibleSize.widthGu);
+  workspace.dataset.heightGu = String(visibleSize.heightGu);
+  syncNodeGraphModularViewSizeReadout(visibleSize);
   drawNodeGraphWires();
+  syncNodeGraphWorkspaceResizeHandlePosition();
+  return visibleSize;
 }
 
 function beginNodeGraphWorkspaceResize(event) {
@@ -480,17 +560,28 @@ function dragNodeGraphWorkspaceResize(event) {
   if (!drag || drag.pointerId !== event.pointerId) {
     return;
   }
-  const zoom = nodeGraphZoom();
-  const renderedGridWidth = nodeGraphGridWidth() * zoom;
-  const renderedGridHeight = nodeGraphGridHeight() * zoom;
-  const widthGu = Math.max(
+  const resizeGridWidth = nodeGraphGridWidth();
+  const resizeGridHeight = nodeGraphGridHeight();
+  const requestedWidthGu = Math.max(
     nodeGraphWorkspaceViewLimits.minWidthGu,
-    drag.startWidthGu + Math.round((event.clientX - drag.startClientX) / renderedGridWidth) * 2,
+    drag.startWidthGu + nodeGraphWorkspaceResizeDeltaGu(
+      event.clientX - drag.startClientX,
+      resizeGridWidth,
+      nodeGraphWorkspaceResizeSteps.widthGu,
+    ),
   );
-  const heightGu = Math.max(
+  const requestedHeightGu = Math.max(
     nodeGraphWorkspaceViewLimits.minHeightGu,
-    drag.startHeightGu + Math.round((event.clientY - drag.startClientY) / renderedGridHeight),
+    drag.startHeightGu + nodeGraphWorkspaceResizeDeltaGu(
+      event.clientY - drag.startClientY,
+      resizeGridHeight,
+      nodeGraphWorkspaceResizeSteps.heightGu,
+    ),
   );
+  const { widthGu, heightGu } = clampNodeGraphWorkspaceGridSizeToViewport({
+    heightGu: requestedHeightGu,
+    widthGu: requestedWidthGu,
+  });
   if (widthGu === drag.widthGu && heightGu === drag.heightGu) {
     return;
   }
@@ -516,8 +607,9 @@ function endNodeGraphWorkspaceResize(event) {
   }
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
   patch.view = {
-    heightGu: drag.heightGu,
-    widthGu: drag.widthGu,
+    ...normalizeNodeGraphPatchView(patch.view),
+    heightGu: Math.max(nodeGraphWorkspaceViewLimits.minHeightGu, drag.heightGu),
+    widthGu: Math.max(nodeGraphWorkspaceViewLimits.minWidthGu, drag.widthGu),
   };
   commitNodeGraphPatch(patch, {
     markPending: false,
@@ -527,6 +619,7 @@ function endNodeGraphWorkspaceResize(event) {
 
 function handleNodeGraphWindowResize() {
   applyNodeGraphWorkspaceView();
+  syncNodeGraphWorkspaceResizeHandlePosition();
   if (typeof syncNodeGraphSliderReadouts === "function") {
     syncNodeGraphSliderReadouts();
   }
@@ -534,7 +627,7 @@ function handleNodeGraphWindowResize() {
 }
 
 function beginNodeGraphWorkspacePan(event) {
-  if (event.button !== 1 || event.ctrlKey || event.altKey) {
+  if (!nodeGraphWorkspacePanPointerAllowed(event)) {
     return;
   }
 
@@ -551,6 +644,51 @@ function beginNodeGraphWorkspacePan(event) {
   workspace.setPointerCapture(event.pointerId);
   event.preventDefault();
   event.stopPropagation();
+}
+
+function nodeGraphWorkspacePanPointerAllowed(event) {
+  if (event.ctrlKey || event.altKey) {
+    return false;
+  }
+  if (event.pointerType === "touch") {
+    return event.isPrimary !== false && nodeGraphWorkspaceTouchPanTargetAllowed(event.target);
+  }
+  return event.button === 1;
+}
+
+function nodeGraphWorkspaceTouchPanTargetAllowed(target) {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+  if (!target.closest("#nodeGraphWorkspace")) {
+    return false;
+  }
+  if (target.closest(nodeGraphWorkspaceTouchPanBlockSelector())) {
+    return false;
+  }
+  return true;
+}
+
+function nodeGraphWorkspaceTouchPanBlockSelector() {
+  return [
+    ".dsp-node",
+    ".node-camera-frame",
+    ".node-graph-empty-module-button",
+    ".node-graph-resize-handle",
+    ".node-module-shop-card",
+    ".node-port",
+    ".node-param-port",
+    ".node-ui-item",
+    "a",
+    "button",
+    "input",
+    "label",
+    "output",
+    "select",
+    "textarea",
+    "[contenteditable='true']",
+    "[role='button']",
+  ].join(",");
 }
 
 function dragNodeGraphWorkspacePan(event) {
@@ -591,14 +729,94 @@ function endNodeGraphWorkspacePan(event) {
 }
 
 function preventNodeGraphMiddleMouseAuxClick(event) {
-  if (event.button === 1 && event.target.closest("#nodeGraphWorkspace")) {
+  if (event.button === 1 && !nodeGraphScrollableInnerTarget(event.target)) {
     event.preventDefault();
     event.stopPropagation();
   }
 }
 
+const nodeGraphFloatingWindowSelector = [
+  "#nodeSceneContextMenu",
+  "#nodeModuleActionsWindow",
+  "#nodeModuleShopView",
+  "#nodeSavedPatchesWindow",
+  "#nodeVisibilityMenu",
+  "#nodeParameterMetadataPopover",
+  "#nodeUiDevHelper",
+  "#nodeUserUiSettingsPanel",
+  "#nodeGlobalScopeMenu",
+].join(",");
+
+function nodeGraphFloatingWindowFromTarget(target) {
+  const element = target instanceof Element ? target : target?.parentElement;
+  return element?.closest?.(nodeGraphFloatingWindowSelector) || null;
+}
+
+function nodeGraphScrollableInnerTarget(target) {
+  const element = target instanceof Element ? target : target?.parentElement;
+  if (!element) {
+    return null;
+  }
+  for (let current = element; current && current !== document.body; current = current.parentElement) {
+    if (current.id === "nodeGraphWorkspace") {
+      return null;
+    }
+    const style = window.getComputedStyle(current);
+    const overflow = `${style.overflow} ${style.overflowX} ${style.overflowY}`;
+    const scrollableStyle = /\b(auto|scroll|overlay)\b/.test(overflow);
+    const hasScrollRoom =
+      current.scrollHeight > current.clientHeight + 1 ||
+      current.scrollWidth > current.clientWidth + 1;
+    if (scrollableStyle && hasScrollRoom) {
+      return current;
+    }
+  }
+  return null;
+}
+
+function nodeGraphScrollTargetCanConsumeWheel(scrollTarget, event) {
+  if (!scrollTarget) {
+    return false;
+  }
+  const deltaY = Number(event.deltaY) || 0;
+  const deltaX = Number(event.deltaX) || 0;
+  const canScrollUp = scrollTarget.scrollTop > 0;
+  const canScrollDown =
+    scrollTarget.scrollTop + scrollTarget.clientHeight < scrollTarget.scrollHeight - 1;
+  const canScrollLeft = scrollTarget.scrollLeft > 0;
+  const canScrollRight =
+    scrollTarget.scrollLeft + scrollTarget.clientWidth < scrollTarget.scrollWidth - 1;
+  const canConsumeY =
+    (deltaY < 0 && canScrollUp) ||
+    (deltaY > 0 && canScrollDown);
+  const canConsumeX =
+    (deltaX < 0 && canScrollLeft) ||
+    (deltaX > 0 && canScrollRight);
+  return canConsumeY || canConsumeX;
+}
+
 function preventNodeGraphMiddleMouseDefault(event) {
-  if (event.button === 1 && event.target.closest("#nodeGraphWorkspace")) {
+  if (event.button === 1 && !nodeGraphScrollableInnerTarget(event.target)) {
     event.preventDefault();
+    event.stopPropagation();
+  }
+}
+
+function preventNodeGraphOuterWheelScroll(event) {
+  const floatingWindow = nodeGraphFloatingWindowFromTarget(event.target);
+  if (floatingWindow) {
+    const scrollTarget = nodeGraphScrollableInnerTarget(event.target);
+    if (!nodeGraphScrollTargetCanConsumeWheel(scrollTarget, event)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    return;
+  }
+  if (event.target?.closest?.("#nodeGraphWorkspace")) {
+    return;
+  }
+  if (!nodeGraphScrollableInnerTarget(event.target)) {
+    event.preventDefault();
+    event.stopPropagation();
   }
 }

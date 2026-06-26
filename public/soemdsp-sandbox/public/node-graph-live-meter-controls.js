@@ -1,4 +1,13 @@
-function setNodeGraphLiveMeter(peak = 0, rms = 0, clipCount = 0, protectionMuteCount = 0, badNumberCount = 0) {
+function setNodeGraphLiveMeter(
+  peak = 0,
+  rms = 0,
+  clipCount = 0,
+  protectionMuteCount = 0,
+  badNumberCount = 0,
+  overrunCount = 0,
+  maxBlockProcessMs = 0,
+  maxBlockBudgetRatio = 0,
+) {
   const meter = document.getElementById("nodeLiveMeter");
   if (!meter) {
     return;
@@ -6,11 +15,15 @@ function setNodeGraphLiveMeter(peak = 0, rms = 0, clipCount = 0, protectionMuteC
   const clipText = clipCount ? ` / ${nodeGraphOutputClipCountText(clipCount)}` : "";
   const protectionText = protectionMuteCount ? ` / protected ${protectionMuteCount}` : "";
   const badNumberText = badNumberCount ? ` / bad ${badNumberCount}` : "";
-  meter.textContent = `live peak ${peak.toFixed(3)} / rms ${rms.toFixed(3)}${clipText}${protectionText}${badNumberText}`;
+  const overrunText = overrunCount
+    ? ` / over ${overrunCount} / ${maxBlockProcessMs.toFixed(2)}ms / ${(maxBlockBudgetRatio * 100).toFixed(0)}%`
+    : "";
+  meter.textContent = `live peak ${peak.toFixed(3)} / rms ${rms.toFixed(3)}${clipText}${protectionText}${badNumberText}${overrunText}`;
   meter.dataset.liveClips = String(clipCount);
   meter.dataset.liveProtectionMutes = String(protectionMuteCount);
   meter.dataset.liveBadNumbers = String(badNumberCount);
-  meter.className = `pill ${clipCount || protectionMuteCount || badNumberCount ? "warn" : peak > 0.001 ? "good" : ""}`.trim();
+  meter.dataset.liveOverruns = String(overrunCount);
+  meter.className = `pill ${clipCount || protectionMuteCount || badNumberCount || overrunCount ? "warn" : peak > 0.001 ? "good" : ""}`.trim();
 }
 
 function setNodeGraphLiveInputMeter(peak = 0, rms = 0) {

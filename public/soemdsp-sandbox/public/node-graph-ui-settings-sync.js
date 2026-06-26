@@ -22,6 +22,7 @@ function syncNodeUiDevNodeColorControls() {
 function syncNodeUiDevSettingsHeaderControls() {
   const settingsView = document.getElementById("nodeSettingsView");
   const mouseLightEnabledInput = document.getElementById("nodeUiDevMouseLightEnabled");
+  const showOriginMarkerInput = document.getElementById("nodeUiDevShowOriginMarker");
   const modularShaderEnabledInput = document.getElementById("nodeUiDevModularShaderEnabled");
   const scopeBloomEnabledInput = document.getElementById("nodeUiDevScopeBloomEnabled");
   const textSizeInput = document.getElementById("nodeUiDevSettingsHeaderTextSize");
@@ -52,6 +53,8 @@ function syncNodeUiDevSettingsHeaderControls() {
   const topRatioValue = document.getElementById("nodeUiDevSettingsHeaderTopRatioValue");
   const paddingInput = document.getElementById("nodeUiDevSettingsHeaderPadding");
   const paddingValue = document.getElementById("nodeUiDevSettingsHeaderPaddingValue");
+  const floatingWindowHeaderHeightInput = document.getElementById("nodeUiDevFloatingWindowHeaderHeight");
+  const floatingWindowHeaderHeightValue = document.getElementById("nodeUiDevFloatingWindowHeaderHeightValue");
   const dotSizeInput = document.getElementById("nodeUiDevSliderDotSize");
   const dotSizeValue = document.getElementById("nodeUiDevSliderDotSizeValue");
   const dotPreview = document.getElementById("nodeUiDevSliderDotPreview");
@@ -115,6 +118,7 @@ function syncNodeUiDevSettingsHeaderControls() {
   if (
     !settingsView ||
     !mouseLightEnabledInput ||
+    !showOriginMarkerInput ||
     !modularShaderEnabledInput ||
     !scopeBloomEnabledInput ||
     !textSizeInput ||
@@ -145,6 +149,8 @@ function syncNodeUiDevSettingsHeaderControls() {
     !topRatioValue ||
     !paddingInput ||
     !paddingValue ||
+    !floatingWindowHeaderHeightInput ||
+    !floatingWindowHeaderHeightValue ||
     !dotSizeInput ||
     !dotSizeValue ||
     !dotPreview ||
@@ -210,6 +216,7 @@ function syncNodeUiDevSettingsHeaderControls() {
   }
 
   const mouseLightEnabled = Boolean(mouseLightEnabledInput.checked);
+  const showOriginMarker = Boolean(showOriginMarkerInput.checked);
   const modularShaderEnabled = Boolean(modularShaderEnabledInput.checked);
   const scopeBloomEnabled = Boolean(scopeBloomEnabledInput.checked);
   const textPercent = Math.max(0, Math.min(100, Number(textSizeInput.value) || 0));
@@ -232,6 +239,10 @@ function syncNodeUiDevSettingsHeaderControls() {
   const workspaceBackgroundColor = normalizeNodeUiDevColor(workspaceBackgroundColorInput.value, "#0d0d0d");
   const topPercent = Math.max(0, Math.min(100, Number(topRatioInput.value) || 0));
   const paddingPx = Math.max(0, Math.min(20, Number(paddingInput.value) || 0));
+  const floatingWindowHeaderHeightPx = Math.max(
+    20,
+    Math.min(48, Number(floatingWindowHeaderHeightInput.value) || 30),
+  );
   const dotSizePx = Math.max(0, Math.min(28, Number(dotSizeInput.value) || 0));
   const moduleTitleFont = normalizeNodeUiDevControlValue(
     nodeUiDevSettingControls.find((definition) => definition.key === "moduleTitleFont"),
@@ -280,11 +291,18 @@ function syncNodeUiDevSettingsHeaderControls() {
     .getElementById("nodeWiringPanel")
     ?.style.setProperty("--node-tooltip-text-size", `${tooltipTextSizePx}px`);
   document
+    .documentElement
+    .style
+    .setProperty("--node-floating-window-header-height", `${floatingWindowHeaderHeightPx}px`);
+  document
     .getElementById("nodeWiringPanel")
     ?.style.setProperty("--node-min-grid-brightness-alpha", String(minimumGridBrightnessPercent / 100));
   document
     .getElementById("nodeGraphWorkspace")
     ?.style.setProperty("--node-mouse-light-amount", mouseLightEnabled ? "0.79" : "0");
+  document
+    .getElementById("nodeGraphWorkspace")
+    ?.classList.toggle("origin-marker-visible", showOriginMarker);
   if (typeof setNodeGraphShaderScriptEnabled === "function") {
     setNodeGraphShaderScriptEnabled(modularShaderEnabled, { persist: false });
   }
@@ -430,6 +448,7 @@ function syncNodeUiDevSettingsHeaderControls() {
   workspaceBackgroundColorValue.textContent = workspaceBackgroundColor;
   topRatioValue.textContent = `${topPercent}%`;
   paddingValue.textContent = `${paddingPx}px`;
+  floatingWindowHeaderHeightValue.textContent = `${floatingWindowHeaderHeightPx}px`;
   dotSizeValue.textContent = `${dotSizePx}px`;
   moduleTitleFontValue.textContent = nodeUiDevSelectLabel(
     nodeUiDevSettingControls.find((definition) => definition.key === "moduleTitleFont"),

@@ -102,7 +102,8 @@ function showPaletteNode(node) {
 }
 
 function addNodeGraphModuleFromContext(event) {
-  beginNodeGraphModulePlacement(event.currentTarget.dataset.contextModule, nodeGraphMvp.sceneContextPoint);
+  const type = event.currentTarget.dataset.contextModule;
+  beginNodeGraphModulePlacement(type, nodeGraphMvp.sceneContextPoint);
   closeNodeSceneContextMenu();
 }
 
@@ -111,10 +112,54 @@ function addNodeGraphModuleFromShop(button) {
   if (!type) {
     return;
   }
-  const point = nodeGraphMvp.sceneContextPoint;
-  setNodeGraphViewMode("modular");
-  beginNodeGraphModulePlacement(type, point);
+  const workspace = document.getElementById("nodeGraphWorkspace");
+  const rect = workspace?.getBoundingClientRect?.();
+  const point = rect
+    ? nodeGraphClientPoint({
+      clientX: rect.left + rect.width * 0.5,
+      clientY: rect.top + rect.height * 0.5,
+    })
+    : nodeGraphMvp.sceneContextPoint;
+  const nodeId = showNodeGraphModule(type, point, { status: "module added" });
+  if (nodeId) {
+    setNodeGraphNodeSelection([nodeId]);
+  }
   nodeGraphMvp.sceneContextPoint = null;
+}
+
+function nodeGraphClientPointInsideWorkspace(event) {
+  const workspace = document.getElementById("nodeGraphWorkspace");
+  if (!workspace || workspace.hidden) {
+    return false;
+  }
+  const rect = workspace.getBoundingClientRect();
+  return (
+    event.clientX >= rect.left &&
+    event.clientX <= rect.right &&
+    event.clientY >= rect.top &&
+    event.clientY <= rect.bottom
+  );
+}
+
+function cancelNodeGraphModulePlacement(status = "module placement cancelled") {
+  const placement = nodeGraphMvp.modulePlacement;
+  if (!placement?.nodeId) {
+    nodeGraphMvp.modulePlacement = null;
+    return false;
+  }
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  patch.nodes = patch.nodes.filter((node) => node.id !== placement.nodeId);
+  patch.connections = patch.connections.filter((connection) =>
+    connection.sourceNode !== placement.nodeId && connection.destinationNode !== placement.nodeId
+  );
+  patch.modulations = patch.modulations.filter((modulation) =>
+    modulation.sourceNode !== placement.nodeId && modulation.destinationNode !== placement.nodeId
+  );
+  patch.bypassedNodes = (patch.bypassedNodes || []).filter((nodeId) => nodeId !== placement.nodeId);
+  nodeGraphMvp.modulePlacement = null;
+  commitNodeGraphPatch(patch, { status });
+  clearNodeGraphSelection();
+  return true;
 }
 
 function nodeGraphModulePlacementPixelFromCursor(cursorPoint, element) {
@@ -137,7 +182,7 @@ function positionNodeGraphPendingModuleAtCursor(cursorPoint) {
     return false;
   }
   const point = nodeGraphModulePlacementPixelFromCursor(cursorPoint, element);
-  positionNodeGraphNode(element, point, { clamp: true, snap: false });
+  positionNodeGraphNode(element, point, { clamp: false, snap: false });
   placement.cursorPoint = cursorPoint;
   placement.point = point;
   drawNodeGraphWires();
@@ -150,11 +195,11 @@ function beginNodeGraphModulePlacement(type, point = null) {
     return "";
   }
   if (nodeGraphMvp.modulePlacement?.nodeId) {
-    finishNodeGraphModulePlacementAtCurrentPosition("module placed");
+    cancelNodeGraphModulePlacement();
   }
 
   const cursorPoint = point || nodeGraphGridToPixel(defaultNodeGraphModuleGridPoint(type));
-  const id = showNodeGraphModule(type, cursorPoint, { status: "module added: click to place" });
+  const id = showNodeGraphModule(type, cursorPoint, { status: "module ghost: release in modular view" });
   if (!id) {
     return "";
   }
@@ -164,12 +209,35 @@ function beginNodeGraphModulePlacement(type, point = null) {
     cursorPoint,
     nodeId: id,
     point: cursorPoint,
+    pointerId: null,
     type,
   };
   element?.classList.add("placing", "dragging");
   setNodeGraphNodeSelection([id]);
   positionNodeGraphPendingModuleAtCursor(cursorPoint);
   return id;
+}
+
+function beginNodeGraphModuleStorePointerPlacement(event) {
+  if (event.button !== undefined && event.button !== 0) {
+    return false;
+  }
+  const addButton = event.target.closest("[data-context-module]");
+  if (!addButton) {
+    return false;
+  }
+  const type = addButton.dataset.contextModule;
+  const nodeId = beginNodeGraphModulePlacement(type, nodeGraphClientPoint(event));
+  if (!nodeId) {
+    return false;
+  }
+  nodeGraphMvp.modulePlacement.pointerId = event.pointerId ?? null;
+  nodeGraphMvp.modulePlacement.sourceElement = addButton;
+  addButton.classList.add("placing-module");
+  addButton.setPointerCapture?.(event.pointerId);
+  event.preventDefault();
+  event.stopPropagation();
+  return true;
 }
 
 function finishNodeGraphModulePlacementAtCurrentPosition(status = "module placed") {
@@ -200,7 +268,15 @@ function finishNodeGraphModulePlacementAtCurrentPosition(status = "module placed
 }
 
 function dragNodeGraphModulePlacement(event) {
-  if (!nodeGraphMvp.modulePlacement) {
+  const placement = nodeGraphMvp.modulePlacement;
+  if (!placement) {
+    return;
+  }
+  if (
+    placement.pointerId !== null &&
+    event.pointerId !== undefined &&
+    placement.pointerId !== event.pointerId
+  ) {
     return;
   }
   positionNodeGraphPendingModuleAtCursor(nodeGraphClientPoint(event));
@@ -213,10 +289,6 @@ function completeNodeGraphModulePlacement(event) {
   if (event.button !== undefined && event.button !== 0) {
     return false;
   }
-  const target = event.target;
-  if (!(target instanceof Element) || !target.closest("#nodeGraphWorkspace")) {
-    return false;
-  }
   positionNodeGraphPendingModuleAtCursor(nodeGraphClientPoint(event));
   finishNodeGraphModulePlacementAtCurrentPosition();
   event.preventDefault();
@@ -224,20 +296,58 @@ function completeNodeGraphModulePlacement(event) {
   return true;
 }
 
+function releaseNodeGraphModuleStorePointerPlacement(event) {
+  const placement = nodeGraphMvp.modulePlacement;
+  if (!placement) {
+    return false;
+  }
+  if (
+    placement.pointerId !== null &&
+    event.pointerId !== undefined &&
+    placement.pointerId !== event.pointerId
+  ) {
+    return false;
+  }
+  positionNodeGraphPendingModuleAtCursor(nodeGraphClientPoint(event));
+  placement.sourceElement?.classList.remove("placing-module");
+  if (event.pointerId !== undefined && placement.sourceElement?.hasPointerCapture?.(event.pointerId)) {
+    placement.sourceElement.releasePointerCapture(event.pointerId);
+  }
+  const placed = nodeGraphClientPointInsideWorkspace(event)
+    ? finishNodeGraphModulePlacementAtCurrentPosition()
+    : cancelNodeGraphModulePlacement();
+  event.preventDefault();
+  event.stopPropagation();
+  return placed;
+}
+
+function cancelNodeGraphModuleStorePointerPlacement(event) {
+  const placement = nodeGraphMvp.modulePlacement;
+  if (!placement) {
+    return false;
+  }
+  if (
+    placement.pointerId !== null &&
+    event?.pointerId !== undefined &&
+    placement.pointerId !== event.pointerId
+  ) {
+    return false;
+  }
+  placement.sourceElement?.classList.remove("placing-module");
+  if (event?.pointerId !== undefined && placement.sourceElement?.hasPointerCapture?.(event.pointerId)) {
+    placement.sourceElement.releasePointerCapture(event.pointerId);
+  }
+  cancelNodeGraphModulePlacement();
+  event?.preventDefault?.();
+  event?.stopPropagation?.();
+  return true;
+}
+
 function handleNodeGraphModuleStoreClick(event) {
-  const backButton = event.target.closest("[data-store-back]");
-  if (backButton) {
-    setNodeGraphModuleStoreDepartment("");
-    return;
-  }
-  const departmentButton = event.target.closest("[data-store-department]");
-  if (departmentButton) {
-    setNodeGraphModuleStoreDepartment(departmentButton.dataset.storeDepartment);
-    return;
-  }
   const addButton = event.target.closest("[data-context-module]");
   if (addButton) {
-    addNodeGraphModuleFromShop(addButton);
+    event.preventDefault();
+    event.stopPropagation();
     return;
   }
   const groupButton = event.target.closest("[data-context-group]");
@@ -250,14 +360,31 @@ function handleNodeGraphModuleStoreClick(event) {
     setNodeGraphModuleCatalogVisibility(
       toggleButton.dataset.storeToggleModule,
       toggleButton.dataset.visible === "true",
+      toggleButton.dataset.storeToggleShelf,
     );
   }
+}
+
+function handleNodeGraphModuleStoreKeydown(event) {
+  if (event.key !== "Enter" && event.key !== " ") {
+    return;
+  }
+  const addButton = event.target.closest("[data-context-module]");
+  if (!addButton) {
+    return;
+  }
+  event.preventDefault();
+  addNodeGraphModuleFromShop(addButton);
 }
 
 function nodeGraphModuleGroupSelection() {
   const targetNodeId = nodeGraphModuleActionTargetNodeId();
   const selectedIds = [...nodeGraphSelectedNodeIds()].filter((id) => nodeGraphPatchNode(id));
   return selectedIds.length ? selectedIds : targetNodeId ? [targetNodeId] : [];
+}
+
+function nodeGraphModuleActionTargetNodeIds() {
+  return [...new Set(nodeGraphModuleGroupSelection())].filter((id) => nodeGraphPatchNode(id));
 }
 
 function saveNodeGraphSelectionAsModuleGroup() {
@@ -336,7 +463,6 @@ function addNodeGraphModuleGroupFromBrowser(name) {
     patch.nodes.push(createNodeGraphPatchNode("moduleGroup", {
       gx: anchor.gx,
       gy: anchor.gy,
-      heightGu: moduleGroup.defaultSize.heightGu,
       id: `moduleGroup-${counts.moduleGroup}`,
       moduleGroup,
       widthGu: moduleGroup.defaultSize.widthGu,
@@ -360,7 +486,6 @@ function addNodeGraphModuleGroupFromBrowser(name) {
     const id = `${sourceNode.type}-${counts[sourceNode.type]}`;
     idMap[sourceNode.id] = id;
     const sizingOptions = {
-      ...(Object.hasOwn(sourceNode, "heightGu") ? { heightGu: sourceNode.heightGu } : {}),
       ...(Object.hasOwn(sourceNode, "widthGu") ? { widthGu: sourceNode.widthGu } : {}),
     };
     patch.nodes.push({
@@ -421,7 +546,6 @@ function copyNodeGraphModule(sourceNode) {
       codeblock: sourceNode.codeblock,
       ui: sourceNode.ui,
       ...(Object.hasOwn(sourceNode, "widthGu") ? { widthGu: sourceNode.widthGu } : {}),
-      ...(Object.hasOwn(sourceNode, "heightGu") ? { heightGu: sourceNode.heightGu } : {}),
     }),
     ...(sourceNode.type === "textBox"
       ? { layout: normalizeNodeGraphTextBoxLayout(sourceNode.layout) }
@@ -497,9 +621,13 @@ function addNodeGraphModuleToUiFromContext() {
 }
 
 function deleteNodeGraphSelectionFromContext() {
+  if (!nodeGraphMvp.selected && nodeGraphModuleActionTargetNodeId()) {
+    setNodeGraphSelection({ type: "node", id: nodeGraphModuleActionTargetNodeId() });
+  }
   deleteSelectedNodeGraphItem();
-  const menu = document.getElementById("nodeSceneContextMenu");
-  if (!menu || menu.hidden) {
+  const commandMenu = document.getElementById("nodeSceneContextMenu");
+  const actionWindow = document.getElementById("nodeModuleActionsWindow");
+  if ((!commandMenu || commandMenu.hidden) && (!actionWindow || actionWindow.hidden)) {
     return;
   }
   if (nodeGraphMvp.selected?.type === "wire") {
@@ -507,67 +635,64 @@ function deleteNodeGraphSelectionFromContext() {
   } else if (nodeGraphSelectedNodeIds().size) {
     configureNodeSceneContextMenu("module");
   } else {
-    configureNodeSceneContextMenu(menu.dataset.mode === "wire" ? "wire" : "module");
+    configureNodeSceneContextMenu(commandMenu?.dataset?.mode === "wire" ? "wire" : "module");
   }
 }
 
 function adjustNodeGraphModuleWidthFromContext(delta) {
-  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode) {
+  const targetNodeIds = nodeGraphModuleActionTargetNodeIds();
+  if (!targetNodeIds.length) {
     return;
   }
 
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
-  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
-  if (!targetNode) {
-    return;
+  let changedCount = 0;
+  for (const targetNode of patch.nodes) {
+    if (!targetNodeIds.includes(targetNode.id)) {
+      continue;
+    }
+    const currentWidthGu = nodeGraphPatchNodeGridWidthUnits(targetNode);
+    const nextWidthGu = normalizeNodeGraphModuleWidthUnits(targetNode.type, currentWidthGu + delta);
+    if (nextWidthGu === currentWidthGu) {
+      continue;
+    }
+    const defaultWidthGu = nodeGraphDefaultModuleGridWidthUnits(targetNode.type);
+    if (nextWidthGu === defaultWidthGu) {
+      delete targetNode.widthGu;
+    } else {
+      targetNode.widthGu = nextWidthGu;
+    }
+    changedCount += 1;
   }
-  const currentWidthGu = nodeGraphPatchNodeGridWidthUnits(targetNode);
-  const nextWidthGu = normalizeNodeGraphModuleWidthUnits(targetNode.type, currentWidthGu + delta);
-  if (nextWidthGu === currentWidthGu) {
-    configureNodeSceneContextMenu("module");
-    return;
+  if (changedCount) {
+    commitNodeGraphPatch(patch, { status: changedCount > 1 ? "module widths changed" : "module width changed" });
   }
-
-  const defaultWidthGu = nodeGraphDefaultModuleGridWidthUnits(targetNode.type);
-  if (nextWidthGu === defaultWidthGu) {
-    delete targetNode.widthGu;
-  } else {
-    targetNode.widthGu = nextWidthGu;
-  }
-  commitNodeGraphPatch(patch, { status: "module width changed" });
   configureNodeSceneContextMenu("module");
 }
 
-function adjustNodeGraphModuleHeightFromContext(delta) {
+function adjustNodeGraphModuleDisplayHeightFromContext(delta) {
   const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode) {
+  if (!sourceNode || !nodeGraphPatchNodeHasHideableOscilloscope(sourceNode)) {
     return;
   }
 
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
   const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
-  if (!targetNode) {
+  if (!targetNode || !nodeGraphPatchNodeHasHideableOscilloscope(targetNode)) {
     return;
   }
-  const currentHeightGu = nodeGraphPatchNodeGridHeightUnits(targetNode);
-  const nextHeightGu = normalizeNodeGraphModuleHeightUnits(
+  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui);
+  const nextOffsetGu = normalizeNodeGraphModuleDisplayHeightOffsetUnits(
     targetNode.type,
-    currentHeightGu + delta,
-    targetNode.ui,
+    ui.displayHeightOffsetGu + delta * nodeGraphModuleDisplayHeightLimits.stepGu,
   );
-  if (nextHeightGu === currentHeightGu) {
+  if (nextOffsetGu === ui.displayHeightOffsetGu) {
     configureNodeSceneContextMenu("module");
     return;
   }
-
-  const defaultHeightGu = nodeGraphModuleGridHeightUnitsForUi(targetNode.type, targetNode.ui);
-  if (nextHeightGu === defaultHeightGu) {
-    delete targetNode.heightGu;
-  } else {
-    targetNode.heightGu = nextHeightGu;
-  }
-  commitNodeGraphPatch(patch, { status: nodeGraphModuleIsGraphType(targetNode.type) ? "graph height changed" : "module height changed" });
+  ui.displayHeightOffsetGu = nextOffsetGu;
+  applyNodeGraphPatchNodeUi(targetNode, ui);
+  commitNodeGraphPatch(patch, { status: "module display height changed" });
   configureNodeSceneContextMenu("module");
 }
 
@@ -604,6 +729,8 @@ function setNodeGraphModuleAliasFromContext({ record = true } = {}) {
     return;
   }
   const input = document.getElementById("nodeSceneAliasInput");
+  const selectionStart = input?.selectionStart ?? null;
+  const selectionEnd = input?.selectionEnd ?? selectionStart;
   const alias = normalizeNodeGraphPatchNodeAlias(input?.value);
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
   const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
@@ -621,7 +748,9 @@ function setNodeGraphModuleAliasFromContext({ record = true } = {}) {
   });
   if (document.activeElement === input) {
     input.focus();
-    input.setSelectionRange?.(input.value.length, input.value.length);
+    if (selectionStart !== null) {
+      input.setSelectionRange?.(selectionStart, selectionEnd);
+    }
   }
 }
 
@@ -1269,13 +1398,7 @@ function loadNodeGraphImageFromContext() {
   if (!sourceNode || sourceNode.type !== "image") {
     return;
   }
-  const input = document.getElementById("nodeSceneImageFileInput");
-  if (!input) {
-    return;
-  }
-  input.dataset.targetNode = sourceNode.id;
-  input.value = "";
-  input.click();
+  setNodeInteractionHelp("Native image file picker is disabled.");
 }
 
 function handleNodeGraphImageFileInputChange(event) {
@@ -1385,19 +1508,39 @@ function toggleNodeGraphModuleButtonsFromContext() {
     return;
   }
   const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui);
-  if (nodeGraphMvp.moduleButtonsVisible === false) {
-    ui.buttonsHidden = false;
-    setNodeGraphModuleButtonsVisibility(true, { clearNodeOverrides: false, help: false });
-  } else {
-    ui.buttonsHidden = !ui.buttonsHidden;
-  }
-  if (ui.buttonsHidden || ui.titleHidden) {
-    targetNode.ui = ui;
-  } else {
-    delete targetNode.ui;
-  }
+  ui.buttonsHidden = !ui.buttonsHidden;
+  applyNodeGraphPatchNodeUi(targetNode, ui);
   commitNodeGraphPatch(patch, {
     status: ui.buttonsHidden ? "module buttons hidden" : "module buttons shown",
+  });
+  configureNodeSceneContextMenu("module");
+}
+
+function toggleNodeGraphModuleEnabledFromContext() {
+  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
+  if (!sourceNode) {
+    return;
+  }
+  if (sourceNode.id === "output") {
+    toggleNodeGraphLiveOutput();
+    configureNodeSceneContextMenu("module");
+    return;
+  }
+
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
+  if (!targetNode) {
+    return;
+  }
+  const bypassed = new Set(patch.bypassedNodes || []);
+  if (bypassed.has(targetNode.id)) {
+    bypassed.delete(targetNode.id);
+  } else {
+    bypassed.add(targetNode.id);
+  }
+  patch.bypassedNodes = [...bypassed];
+  commitNodeGraphPatch(patch, {
+    status: bypassed.has(targetNode.id) ? "module disabled" : "module enabled",
   });
   configureNodeSceneContextMenu("module");
 }
@@ -1415,13 +1558,106 @@ function toggleNodeGraphModuleTitleFromContext() {
   }
   const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui);
   ui.titleHidden = !ui.titleHidden;
-  if (ui.buttonsHidden || ui.titleHidden) {
-    targetNode.ui = ui;
+  applyNodeGraphPatchNodeUi(targetNode, ui);
+  commitNodeGraphPatch(patch, {
+    status: ui.titleHidden ? "module title hidden" : "module title shown",
+  });
+  configureNodeSceneContextMenu("module");
+}
+
+function toggleNodeGraphModuleOscilloscopeFromContext() {
+  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
+  if (!sourceNode || !nodeGraphPatchNodeHasHideableOscilloscope(sourceNode)) {
+    return;
+  }
+
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
+  if (!targetNode || !nodeGraphPatchNodeHasHideableOscilloscope(targetNode)) {
+    return;
+  }
+  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui);
+  ui.oscilloscopeHidden = !ui.oscilloscopeHidden;
+  applyNodeGraphPatchNodeUi(targetNode, ui);
+  commitNodeGraphPatch(patch, {
+    status: ui.oscilloscopeHidden ? "module display hidden" : "module display shown",
+  });
+  configureNodeSceneContextMenu("module");
+}
+
+function applyNodeGraphPatchNodeUi(targetNode, ui) {
+  const normalizedUi = normalizeNodeGraphPatchNodeUi(ui);
+  if (
+    normalizedUi.buttonsHidden ||
+    normalizedUi.ioHidden ||
+    normalizedUi.interfaceControlsHidden ||
+    normalizedUi.titleHidden ||
+    normalizedUi.oscilloscopeHidden ||
+    normalizedUi.slidersHidden ||
+    normalizedUi.displayHeightOffsetGu
+  ) {
+    targetNode.ui = normalizedUi;
   } else {
     delete targetNode.ui;
   }
+}
+
+function toggleNodeGraphModuleInterfaceControlsFromContext() {
+  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
+  if (!sourceNode || !nodeGraphModuleTypeHasInterfaceControls(sourceNode.type)) {
+    return;
+  }
+
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
+  if (!targetNode || !nodeGraphModuleTypeHasInterfaceControls(targetNode.type)) {
+    return;
+  }
+  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui);
+  ui.interfaceControlsHidden = !ui.interfaceControlsHidden;
+  applyNodeGraphPatchNodeUi(targetNode, ui);
   commitNodeGraphPatch(patch, {
-    status: ui.titleHidden ? "module title hidden" : "module title shown",
+    status: ui.interfaceControlsHidden ? "module control surface hidden" : "module control surface shown",
+  });
+  configureNodeSceneContextMenu("module");
+}
+
+function toggleNodeGraphModuleIoFromContext() {
+  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
+  if (!sourceNode) {
+    return;
+  }
+
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
+  if (!targetNode) {
+    return;
+  }
+  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui);
+  ui.ioHidden = !ui.ioHidden;
+  applyNodeGraphPatchNodeUi(targetNode, ui);
+  commitNodeGraphPatch(patch, {
+    status: ui.ioHidden ? "module in/out hidden" : "module in/out shown",
+  });
+  configureNodeSceneContextMenu("module");
+}
+
+function toggleNodeGraphModuleSlidersFromContext() {
+  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
+  if (!sourceNode || !nodeGraphModuleTypeHasHideableSliders(sourceNode.type)) {
+    return;
+  }
+
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
+  if (!targetNode || !nodeGraphModuleTypeHasHideableSliders(targetNode.type)) {
+    return;
+  }
+  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui);
+  ui.slidersHidden = !ui.slidersHidden;
+  applyNodeGraphPatchNodeUi(targetNode, ui);
+  commitNodeGraphPatch(patch, {
+    status: ui.slidersHidden ? "module sliders hidden" : "module sliders shown",
   });
   configureNodeSceneContextMenu("module");
 }
@@ -1437,6 +1673,27 @@ function copySelectedNodeGraphModule() {
   }
   copyNodeGraphModule(sourceNode);
   return true;
+}
+
+function nodeGraphNativeModuleCodeEntryForNode(node) {
+  if (!node || typeof nodeGraphNativeModulesForType !== "function") {
+    return null;
+  }
+  return nodeGraphNativeModulesForType(node.type).find((entry) => entry?.sourceUrl) || null;
+}
+
+function openNodeGraphNativeModuleCodeFromContext() {
+  const targetNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
+  const entry = nodeGraphNativeModuleCodeEntryForNode(targetNode);
+  if (!entry?.sourceUrl) {
+    return;
+  }
+  const opened = window.open(entry.sourceUrl, "_blank", "noopener");
+  if (!opened) {
+    window.location.href = entry.sourceUrl;
+    return;
+  }
+  setNodeInteractionHelp(`Opened ${entry.source || entry.sourceUrl}.`);
 }
 
 function deleteNodeGraphModuleFromContext() {

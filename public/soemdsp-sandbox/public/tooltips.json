@@ -14,12 +14,12 @@
     "gpu": "Show GPU-constrained controls. These can make visual rendering or shader work heavier."
   },
   "workspace": {
-    "pan": "Mouse: middle-drag to move the modular view freely. Ctrl+middle-drag or Alt+middle-drag slowly zooms, including over modules and controls. Ctrl+Shift+G aligns the view to the grid.",
+    "pan": "Mouse: middle-drag to move the modular view freely. Touch: drag empty workspace to move the view. Ctrl+middle-drag or Alt+middle-drag slowly zooms, including over modules and controls. Ctrl+Shift+G aligns the view to the grid.",
     "resize": "Mouse: drag to resize workspace by grid units.",
     "resizeTitle": "Resize modular workspace",
     "origin": "World origin: X 0, Y 0",
-    "backToFull": "Return to full modular view",
-    "copyViewportImage": "Save the visible modular viewport or rendered media to Downloads"
+    "recenterOrigin": "Recenter modular view at X 0, Y 0.",
+    "backToFull": "Return to full modular view"
   },
   "view": {
     "patchSettings": "Patch settings",
@@ -53,12 +53,12 @@
   "script": {
     "apply": "Validate and apply the current patch script",
     "copy": "Copy patch script to clipboard",
-    "download": "Save patch script as a JSON file on the desktop",
+    "download": "Save this patch into the local sandbox saved-patches folder",
     "paste": "Paste patch script from clipboard",
-    "updateDefault": "Validate current patch script and save it as the default preset",
+    "updateDefault": "Validate current patch script and save it as the init patch",
     "load": "Load patch script",
     "view": "Open the Patch Script utility",
-    "save": "Save patch script as a JSON file"
+    "save": "Save this patch into the local sandbox saved-patches folder"
   },
   "settings": {
     "uiDevOpen": "Mouse: click to open or close the floating UI development helper.",
@@ -78,21 +78,71 @@
   "module": {
     "drag": "Mouse: drag to move modules. Click to select. Ctrl/Shift+click adds or removes from selection; Ctrl/Shift+drag adds to selection while moving.",
     "move": "Mouse: drag to move modules. Click to select; Ctrl/Shift+click adds or removes from selection.",
-    "titleMove": "Mouse: drag to move modules. Click to select; Ctrl/Shift+click adds or removes from selection. When module buttons are hidden, Alt+click the title to toggle bypass.",
-    "actions": "Mouse: click to open module actions.",
-    "actionsTitle": "Module actions",
+    "titleMove": "Mouse: drag to move modules. Click to select; Ctrl/Shift+click adds or removes from selection. Alt+click an empty I/O section to toggle bypass. When module buttons are hidden, Alt+click the title also toggles bypass.",
+    "actions": "Mouse: click to open module settings.",
+    "actionsTitle": "Module settings",
+    "displaySettings": "Click to open this module's display settings. Alt+click shows or hides the display.",
+    "metaparameters": "Click to open this module's metaparameters. Alt+click shows or hides this module's sliders.",
     "textBoxEdit": "Display-only text. Edit content from this module's actions menu. Text clips to the box height and scales down to fit width. Mouse wheel zooms the modular view.",
     "bypass": "Mouse: click to bypass this module. Bypassed modules are removed from the compiled engine.",
     "include": "Mouse: click to include this module in the compiled engine.",
-    "outputOn": "Mouse: click to turn live OUTPUT on.",
-    "outputOff": "Mouse: click to turn live OUTPUT off.",
-    "outputToggle": "Mouse: click to toggle live OUTPUT.",
+    "outputOn": "Mouse: click or press Space to turn live OUTPUT on.",
+    "outputOff": "Mouse: click or press Space to turn live OUTPUT off.",
+    "outputToggle": "Mouse: click or press Space to toggle live OUTPUT.",
     "executionActive": "Compiled order: {order}\nThis module runs at this step in the current execution plan.",
     "executionBypassed": "Compiled order: bypassed\nThis module is ignored by the compiled engine.",
     "executionInactive": "Compiled order: inactive\nThis module is not reachable from Output or a visual sink.",
     "executionTitleInactive": "Not in compiled execution order",
     "executionListItem": "Compiled order {order}: {nodeName}\nSelection only happens from move handles or marquee.",
-    "scopeWindow": "Oscilloscope: drag up/down to zoom in or out by changing cycles. Drag left/right to pan the waveform. Right-click to edit this module's scope shader."
+    "scopeWindow": "Display: drag up/down to zoom in or out by changing cycles. Drag left/right to pan the waveform. Right-click to edit this module's display shader."
+  },
+  "displaySettings": {
+    "globalLineThickness": "Global display line thickness for scope traces.",
+    "globalSkipSamples": "Skip tiny discontinuities in global scope traces. Higher values hide more abrupt sample jumps.",
+    "dot1Toggle": "Turn global display dot layer 1 on or off.",
+    "dot1Size": "Global display dot 1 size in pixels.",
+    "dot1Brightness": "Global display dot 1 brightness multiplier.",
+    "dot1Color": "Global display dot 1 color.",
+    "dot1Preview": "Preview image for global display dot layer 1.",
+    "dot2Toggle": "Turn global display dot layer 2 on or off.",
+    "dot2Size": "Global display dot 2 size in pixels.",
+    "dot2Brightness": "Global display dot 2 brightness multiplier.",
+    "dot2Color": "Global display dot 2 color.",
+    "dot2Preview": "Preview image for global display dot layer 2.",
+    "combinedPreview": "Combined preview of global display dot layers.",
+    "background": "Background color for display windows.",
+    "localCycles": "Number of waveform cycles shown in the selected module display.",
+    "localSync": "Sync the selected module display to the incoming waveform period.",
+    "localFrequencyReset": "Reset oscillator display tracing on frequency cycles.",
+    "localScroll": "Scroll the selected output display instead of period-locking it.",
+    "blinkShape": "Shape used by this module's blink-light display."
+  },
+  "traceDisplaySettings": {
+    "save": "Save these Trace Display drawing settings to this module.",
+    "restore": "Restore the last saved Trace Display drawing settings.",
+    "defaults": "Reset the Trace Display drawing settings to factory defaults.",
+    "closeSave": "Save changes and close Trace Display settings.",
+    "closeDiscard": "Discard changes and close Trace Display settings.",
+    "cycles": "Legacy Trace Display cycle setting.",
+    "zoomSeconds": "Trace Display zoom window in seconds.",
+    "burn": "Display trail amount. 0 clears the trail; 1 keeps the longest trail.",
+    "decay": "Display trail fade speed. 0 fades slowly; 1 fades quickly.",
+    "skipSamples": "Samples skipped after a vertical discontinuity. Use 0, 1, or 2.",
+    "padding": "Trace Display vertical padding per side. 0 uses the full display height.",
+    "bipolarBrightness": "0D Burn brightness mode. Off: only 0..1 lights up. On: -1 and +1 are equally bright.",
+    "dot1Size": "Dot 1 size as a 0..1 fraction of the display square.",
+    "lineThickness": "Blur of the 1D Trace Dot 1 beam.",
+    "brightness": "Dot 1 or 1D Trace brightness. Values above 1 are allowed.",
+    "color": "Dot 1 or 1D Trace color.",
+    "dot2Size": "Dot 2 size as a 0..1 fraction of the display square.",
+    "dot2LineThickness": "Blur of the 1D Trace Dot 2 beam.",
+    "dot2Brightness": "Dot 2 brightness. Values above 1 are allowed.",
+    "dot2Color": "Dot 2 color.",
+    "capEnabled": "Show or hide the 0D Value line end caps.",
+    "lineLength": "0D Value line length. 1 reaches the display edge; lower values pull both ends inward.",
+    "capSize": "0D Value cap thickness as a 0..1 fraction of the display square.",
+    "capLength": "0D Value cap length as a 0..1 fraction of the display height.",
+    "sourceSync": "Align Trace Display start to the detected source cycle. Zoom (s) still controls length."
   },
   "wire": {
     "selected": "Mouse: click to select this wire. Delete removes selected wire.",
@@ -102,8 +152,8 @@
     "modulationInput": "Plain drag between this modulation input and an output to create a wire. To change an existing modulation, select and delete the wire, then create a new one."
   },
   "slider": {
-    "numeric": "Mouse: drag adjusts, Alt+click jumps, Ctrl+click resets to default, Ctrl/Shift drag fine tunes, double-click types, right-click edits metadata.",
-    "choices": "Mouse: click a segment to choose, Ctrl+click resets to default, Alt+click jumps, double-click types, right-click edits metadata."
+    "numeric": "Mouse: drag adjusts, Alt+drag sticks to the mouse, Ctrl+click resets to default, Ctrl/Shift drag fine tunes, double-click types, right-click edits metadata.",
+    "choices": "Mouse: click a segment to choose, Alt+drag sticks to the mouse, Ctrl+click resets to default, double-click types, right-click edits metadata."
   },
   "audio": {
     "inputDevice": "Browser audio input device",
@@ -119,12 +169,12 @@
     "playBlockedScript": "Play blocked: fix script before render",
     "playBlockedIssues": "Play blocked: {issues}",
     "renderBlocked": "Render blocked: {issues}",
-    "liveOutputRunningWithInput": "Live OUTPUT is running with microphone INPUT connected.",
-    "liveOutputRunning": "Live OUTPUT is running.",
-    "liveOutputPermissionPending": "Live OUTPUT requested; browser microphone permission may be pending.",
-    "liveOutputRequested": "Live OUTPUT requested; graph may be blocked.",
-    "liveOutputWithInput": "Start live OUTPUT and request browser microphone permission.",
-    "liveOutputStart": "Start live OUTPUT."
+    "liveOutputRunningWithInput": "Live OUTPUT is running with microphone INPUT connected. Press Space to stop.",
+    "liveOutputRunning": "Live OUTPUT is running. Press Space to stop.",
+    "liveOutputPermissionPending": "Live OUTPUT requested; browser microphone permission may be pending. Press Space to stop.",
+    "liveOutputRequested": "Live OUTPUT requested; graph may be blocked. Press Space to stop.",
+    "liveOutputWithInput": "Start live OUTPUT and request browser microphone permission. Press Space to toggle.",
+    "liveOutputStart": "Start live OUTPUT. Press Space to toggle."
   },
   "actions": {
     "addModule": "Mouse: click to add or show module.",
@@ -206,10 +256,6 @@
     "phaseListUnavailable": "Phase list unavailable: manifest required",
     "manifestReloading": "Manifest reload in progress",
     "manifestReload": "Reload manifest and artifacts",
-    "visualOutputCopy": "Copy visual output PNG to clipboard",
-    "visualOutputCopyRenderFirst": "Render Sample before copying visual output",
-    "visualOutputSave": "Save visual output as PNG",
-    "visualOutputRenderFirst": "Render Sample before saving visual output",
     "visualOutputWaiting": "Node graph visual output waiting for Render Sample"
   }
 }

@@ -29,6 +29,12 @@ function syncNodeGraphPatchMetadataFromSlider(slider, options = {}) {
   renderNodeGraphExecutionPlanDebug();
   syncNodeGraphFilterCurveDisplays();
   scheduleNodeGraphLiveParameterSync();
+  if (typeof setNodeGraphPatchDirtyState === "function") {
+    setNodeGraphPatchDirtyState("edited");
+  } else if (typeof saveNodeGraphWorkingPatchToUserSettings === "function") {
+    nodeGraphMvp.patchDirtyState = "edited";
+    saveNodeGraphWorkingPatchToUserSettings();
+  }
   if (options.record) {
     recordNodeGraphHistory();
   } else {
@@ -71,6 +77,17 @@ function syncNodeGraphPatchParameterFromSlider(slider, options = {}) {
   ) {
     patchNode.graph = nodeGraphGraphWithLockedEndpointY(patchNode.graph);
   }
+  if (options.deferAutosave) {
+    nodeGraphMvp.patchDirtyState = "edited";
+    if (typeof syncNodeGraphCurrentSavedPatchHeader === "function") {
+      syncNodeGraphCurrentSavedPatchHeader();
+    }
+  } else if (typeof setNodeGraphPatchDirtyState === "function") {
+    setNodeGraphPatchDirtyState("edited");
+  } else if (typeof saveNodeGraphWorkingPatchToUserSettings === "function") {
+    nodeGraphMvp.patchDirtyState = "edited";
+    saveNodeGraphWorkingPatchToUserSettings();
+  }
   if (options.deferUi) {
     return;
   }
@@ -101,7 +118,17 @@ function updateNodeSliderCurrentValue(slider, rawValue) {
     return;
   }
 
-  slider.value = String(normalizeNodeSliderValue(slider, value));
+  const unboundedMin = slider.dataset.unboundedMin === "true";
+  const unboundedMax = slider.dataset.unboundedMax === "true";
+  const min = Number(slider.min);
+  const max = Number(slider.max);
+  if ((unboundedMin && Number.isFinite(min) && value < min) || (unboundedMax && Number.isFinite(max) && value > max)) {
+    slider.dataset.unboundedValue = String(value);
+    slider.value = String(normalizeNodeSliderValue(slider, value));
+  } else {
+    delete slider.dataset.unboundedValue;
+    slider.value = String(normalizeNodeSliderValue(slider, value));
+  }
   syncNodeSliderReadout(slider);
   syncNodeGraphPatchParameterFromSlider(slider, {
     record: true,
@@ -114,16 +141,82 @@ function updateNodeSliderCurrentValue(slider, rawValue) {
   scheduleNodeGraphLiveParameterSync();
 }
 
-function setNodeSliderValue(slider, value) {
+let nodeSliderDragAutosaveTimer = 0;
+
+function scheduleNodeGraphModuleScopeDrawIfNeeded() {
+  if (
+    typeof scheduleNodeGraphModuleScopeDraw === "function" &&
+    (typeof nodeGraphModuleScopeHasDrawableSlots !== "function" || nodeGraphModuleScopeHasDrawableSlots()) &&
+    (typeof nodeGraphModuleScopeTracesOff !== "function" || !nodeGraphModuleScopeTracesOff())
+  ) {
+    scheduleNodeGraphModuleScopeDraw();
+  }
+}
+
+function clearNodeSliderDragAutosaveTimer() {
+  if (nodeSliderDragAutosaveTimer) {
+    window.clearTimeout(nodeSliderDragAutosaveTimer);
+    nodeSliderDragAutosaveTimer = 0;
+  }
+}
+
+function scheduleNodeSliderDragAutosave() {
+  if (nodeSliderDragAutosaveTimer) {
+    return;
+  }
+  nodeSliderDragAutosaveTimer = window.setTimeout(() => {
+    nodeSliderDragAutosaveTimer = 0;
+    if (nodeGraphMvp.sliderDragging && typeof saveNodeGraphWorkingPatchToUserSettings === "function") {
+      saveNodeGraphWorkingPatchToUserSettings();
+      scheduleNodeSliderDragAutosave();
+    }
+  }, 400);
+}
+
+function commitNodeSliderDragValue(slider, status = "parameter changed") {
+  clearNodeSliderDragAutosaveTimer();
+  syncNodeGraphPatchParameterFromSlider(slider, {
+    record: true,
+    status,
+  });
+  markNodeGraphRenderPending();
+  scheduleNodeGraphLiveParameterSync();
+  scheduleNodeGraphModuleScopeDrawIfNeeded();
+}
+
+function setNodeSliderValue(slider, value, options = {}) {
+  const isDrag = options.interaction === "drag";
+  const number = Number(value);
+  const min = Number(slider.min);
+  const max = Number(slider.max);
+  const unboundedMin = slider.dataset.unboundedMin === "true";
+  const unboundedMax = slider.dataset.unboundedMax === "true";
+  if (
+    Number.isFinite(number) &&
+    ((unboundedMin && Number.isFinite(min) && number < min) ||
+      (unboundedMax && Number.isFinite(max) && number > max))
+  ) {
+    slider.dataset.unboundedValue = String(number);
+  } else {
+    delete slider.dataset.unboundedValue;
+  }
   slider.value = String(
     normalizeNodeSliderValue(slider, value),
   );
   syncNodeSliderReadout(slider);
-  syncNodeGraphPatchParameterFromSlider(slider, { deferUi: true });
-  syncNodeGraphFilterCurveDisplays();
-  syncNodeGraphGhostSliders();
-  markNodeGraphRenderPending();
+  syncNodeGraphPatchParameterFromSlider(slider, {
+    deferAutosave: isDrag,
+    deferUi: true,
+  });
+  if (isDrag) {
+    scheduleNodeSliderDragAutosave();
+  } else {
+    syncNodeGraphFilterCurveDisplays();
+    syncNodeGraphGhostSliders();
+    markNodeGraphRenderPending();
+  }
   scheduleNodeGraphLiveParameterSync();
+  scheduleNodeGraphModuleScopeDrawIfNeeded();
 }
 
 function nodeSliderSegmentValueFromPointer(slider, surface, clientX) {
@@ -139,12 +232,12 @@ function nodeSliderSegmentValueFromPointer(slider, surface, clientX) {
   return Number(slider.min) + index;
 }
 
-function setNodeChoiceSliderFromPointer(slider, surface, clientX) {
+function setNodeChoiceSliderFromPointer(slider, surface, clientX, options = {}) {
   const value = nodeSliderSegmentValueFromPointer(slider, surface, clientX);
   if (!Number.isFinite(value)) {
     return false;
   }
-  setNodeSliderValue(slider, value);
+  setNodeSliderValue(slider, value, options);
   return true;
 }
 
@@ -156,27 +249,28 @@ function updateNodeSliderDotCursor(event) {
   document.body.style.setProperty("--node-slider-cursor-y", `${event.clientY}px`);
 }
 
+function syncNodeSliderHiddenMouseClass() {
+  document.body.classList.toggle(
+    "node-hide-mouse-while-dragging",
+    Boolean(nodeGraphMvp.sliderDragging) && nodeGraphMvp.hideMouseWhileDragging !== false,
+  );
+}
+
 function clearNodeSliderDotCursor() {
+  document.body.classList.remove("node-hide-mouse-while-dragging");
   document.body.classList.remove("node-slider-dragging");
   document.body.style.removeProperty("--node-slider-cursor-x");
   document.body.style.removeProperty("--node-slider-cursor-y");
 }
 
 function nodeSliderValueFromPointer(slider, surface, clientX) {
-  return nodeSliderValueFromTravel(slider, nodeSliderTravelFromPointer(slider, surface, clientX));
+  return nodeSliderValueFromPointerTravel(slider, nodeSliderTravelFromPointer(slider, surface, clientX));
 }
 
 function nodeSliderFineTuneScale(event) {
-  if (event.ctrlKey && event.shiftKey) {
-    return 0.001;
-  }
-  if (event.shiftKey) {
-    return 0.01;
-  }
-  if (event.ctrlKey) {
-    return 0.1;
-  }
-  return 1;
+  return typeof nodeGraphNumericDragMultiplier === "function"
+    ? nodeGraphNumericDragMultiplier(event)
+    : 1;
 }
 
 function nodeSliderKeyboardStep(slider, event) {
@@ -245,8 +339,34 @@ function reanchorNodeSliderDragAtPointer(drag, event) {
   drag.startY = event.clientY;
 }
 
+function nodeSliderValueAtPointer(slider, surface, event) {
+  if (!slider || !surface || !event) {
+    return NaN;
+  }
+  return nodeSliderShouldDisplayChoices(slider) && nodeSliderShouldDivideChoicesVisibly(slider)
+    ? nodeSliderSegmentValueFromPointer(slider, surface, event.clientX)
+    : nodeSliderValueFromPointer(slider, surface, event.clientX);
+}
+
+function setNodeSliderValueAtPointer(slider, surface, event, options = {}) {
+  const value = nodeSliderValueAtPointer(slider, surface, event);
+  if (!Number.isFinite(value)) {
+    return false;
+  }
+  setNodeSliderValue(slider, quantizeNodeSliderDragValue(slider, value), options);
+  return true;
+}
+
 function beginNodeSliderDrag(event) {
   if (nodeGraphMvp.sliderDragging || event.button > 0 || event.detail > 1) {
+    return;
+  }
+  if (typeof nodeGraphNumericModifierReserved === "function" && nodeGraphNumericModifierReserved(event)) {
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
+  if (typeof nodeGraphSettingsTextControlFromTarget === "function" && nodeGraphSettingsTextControlFromTarget(event.target)) {
     return;
   }
 
@@ -263,16 +383,15 @@ function beginNodeSliderDrag(event) {
 
   const lane = nodeSliderVisualLane(surface, slider);
   const resetToDefaultOnClick = (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
-  const pointerMode = event.altKey ? "absolute" : "relative";
+  const jumpToPointerOnClick = event.altKey;
+  const pointerMode = "relative";
   let startTravel = nodeSliderTravelFromValue(slider, Number(slider.value));
-  if (pointerMode === "absolute") {
-    setNodeSliderValue(
-      slider,
-      quantizeNodeSliderDragValue(slider, nodeSliderValueFromPointer(slider, surface, event.clientX)),
-    );
-    startTravel = nodeSliderTravelFromValue(slider, Number(slider.value));
+  if (jumpToPointerOnClick) {
+    if (setNodeSliderValueAtPointer(slider, surface, event, { interaction: "drag" })) {
+      startTravel = nodeSliderTravelFromValue(slider, Number(slider.value));
+    }
   } else if (!resetToDefaultOnClick && nodeSliderShouldDisplayChoices(slider) && nodeSliderShouldDivideChoicesVisibly(slider)) {
-    setNodeChoiceSliderFromPointer(slider, surface, event.clientX);
+    setNodeChoiceSliderFromPointer(slider, surface, event.clientX, { interaction: "drag" });
     startTravel = nodeSliderTravelFromValue(slider, Number(slider.value));
   }
   nodeGraphMvp.sliderDragging = {
@@ -291,6 +410,7 @@ function beginNodeSliderDrag(event) {
   };
   surface.classList.add("value-dragging");
   document.body.classList.add("node-slider-dragging");
+  syncNodeSliderHiddenMouseClass();
   nodeGraphWireInteractions?.clearHover?.();
   updateNodeSliderDotCursor(event);
   if (event.pointerId !== undefined) {
@@ -309,33 +429,32 @@ function dragNodeSlider(event) {
     return;
   }
 
-  if (drag.pointerMode === "absolute") {
-    setNodeSliderValue(
-      drag.slider,
-      quantizeNodeSliderDragValue(
-        drag.slider,
-        nodeSliderValueFromPointer(drag.slider, drag.surface, event.clientX),
-      ),
-    );
-  } else {
-    const horizontalDelta = event.clientX - drag.startX;
-    const verticalDelta = drag.startY - event.clientY;
-    if (Math.abs(horizontalDelta) > 1 || Math.abs(verticalDelta) > 1) {
-      drag.moved = true;
-    }
-    const visualTravelWidth = Math.max(1, drag.width * (Number(drag.visualScale) || 1));
-    const travelDelta = ((horizontalDelta + verticalDelta) / visualTravelWidth) * drag.fineScale;
-    const nextTravel = drag.startTravel + travelDelta;
-    setNodeSliderValue(
-      drag.slider,
-      quantizeNodeSliderDragValue(
-        drag.slider,
-        nodeSliderValueFromTravel(drag.slider, nextTravel),
-      ),
-    );
-    if (!nodeSliderShouldWraparound(drag.slider) && (nextTravel <= 0 || nextTravel >= 1)) {
+  const horizontalDelta = event.clientX - drag.startX;
+  const verticalDelta = drag.startY - event.clientY;
+  if (Math.abs(horizontalDelta) > 1 || Math.abs(verticalDelta) > 1) {
+    drag.moved = true;
+  }
+  if (event.altKey && (typeof nodeGraphNumericModifierReserved !== "function" || !nodeGraphNumericModifierReserved(event))) {
+    if (setNodeSliderValueAtPointer(drag.slider, drag.surface, event, { interaction: "drag" })) {
       reanchorNodeSliderDragAtPointer(drag, event);
     }
+    updateNodeSliderDotCursor(event);
+    event.preventDefault();
+    return;
+  }
+  const visualTravelWidth = Math.max(1, drag.width * (Number(drag.visualScale) || 1));
+  const travelDelta = ((horizontalDelta + verticalDelta) / visualTravelWidth) * drag.fineScale;
+  const nextTravel = drag.startTravel + travelDelta;
+  setNodeSliderValue(
+    drag.slider,
+    quantizeNodeSliderDragValue(
+      drag.slider,
+      nodeSliderValueFromRelativeTravel(drag.slider, nextTravel),
+    ),
+    { interaction: "drag" },
+  );
+  if (nextTravel <= 0 || nextTravel >= 1) {
+    reanchorNodeSliderDragAtPointer(drag, event);
   }
   updateNodeSliderDotCursor(event);
   event.preventDefault();
@@ -356,11 +475,11 @@ function endNodeSliderDrag(event) {
     drag.surface.releasePointerCapture(event.pointerId);
   }
   if (drag.resetToDefaultOnClick && !drag.moved) {
-    setNodeSliderValue(drag.slider, Number(drag.slider.dataset.default));
+    setNodeSliderValue(drag.slider, Number(drag.slider.dataset.default), { interaction: "drag" });
   }
-  syncNodeGraphPatchParameterFromSlider(drag.slider, {
-    record: true,
-    status: drag.resetToDefaultOnClick && !drag.moved ? "parameter reset to default" : "parameter changed",
-  });
+  commitNodeSliderDragValue(
+    drag.slider,
+    drag.resetToDefaultOnClick && !drag.moved ? "parameter reset to default" : "parameter changed",
+  );
   nodeGraphMvp.sliderDragging = null;
 }

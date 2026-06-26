@@ -219,18 +219,72 @@ function nodeSliderShouldUseNonlinearSlider(slider) {
   return slider.dataset.nonlinearSlider === "true";
 }
 
+function normalizeNodeSliderCurve(value, nonlinearSlider = false) {
+  const curve = String(value || "").trim().toLowerCase();
+  if (curve === "edges" || curve === "edge" || curve === "s") {
+    return "edges";
+  }
+  if (curve === "skew" || curve === "nonlinear" || curve === "exponential") {
+    return "skew";
+  }
+  return nonlinearSlider ? "skew" : "linear";
+}
+
+function nodeSliderCurve(slider) {
+  return normalizeNodeSliderCurve(slider.dataset.sliderCurve, nodeSliderShouldUseNonlinearSlider(slider));
+}
+
+function nodeSliderCurveAmount(slider) {
+  return normalizeNodeSliderCurveAmount(slider.dataset.curveAmount);
+}
+
 function formatNodeSliderCompactNumber(value) {
   const number = Number(value);
   return Number.isFinite(number) ? Number(number.toFixed(6)).toString() : "";
 }
 
+function sanitizeNodeGraphNumericText(value) {
+  const source = String(value ?? "").trim().replace(/,/g, "");
+  let output = "";
+  let hasDot = false;
+  let hasExponent = false;
+  let exponentHasDigit = false;
+  for (const character of source) {
+    if (character >= "0" && character <= "9") {
+      output += character;
+      if (hasExponent) {
+        exponentHasDigit = true;
+      }
+      continue;
+    }
+    if ((character === "+" || character === "-") && (output === "" || /[eE]$/.test(output))) {
+      output += character;
+      continue;
+    }
+    if (character === "." && !hasDot && !hasExponent) {
+      output += character;
+      hasDot = true;
+      continue;
+    }
+    if ((character === "e" || character === "E") && !hasExponent && /[0-9]/.test(output)) {
+      output += "e";
+      hasExponent = true;
+      continue;
+    }
+  }
+  if (hasExponent && !exponentHasDigit) {
+    output = output.replace(/[eE][+-]?$/, "");
+  }
+  return /^[-+]?\.?$/.test(output) ? "" : output;
+}
+
 function parseNodeMetadataNumber(value, fallback) {
-  const number = Number(String(value).trim());
+  const number = Number(sanitizeNodeGraphNumericText(value));
   return Number.isFinite(number) ? number : fallback;
 }
 
 function formatNodeMetadataStep(value) {
-  return value > 0 ? formatNodeSliderCompactNumber(value) : "any";
+  return Number.isFinite(Number(value)) ? formatNodeSliderCompactNumber(Math.max(0, Number(value))) : "0";
 }
 
 function parseNodeMetadataChoices(value) {
@@ -303,13 +357,16 @@ function nodeSliderMetadata(slider) {
       ? Number(slider.dataset.step)
       : 0;
   return {
+    alias: slider.dataset.alias ?? "",
     choices: parseNodeMetadataChoices(slider.dataset.choices || ""),
+    curveAmount: nodeSliderCurveAmount(slider),
     cur,
     def,
     displayChoices: nodeSliderShouldDisplayChoices(slider),
     divideChoicesVisibly: nodeSliderShouldDivideChoicesVisibly(slider),
     linearSmoothing: nodeSliderShouldUseLinearSmoothing(slider),
     nonlinearSlider: nodeSliderShouldUseNonlinearSlider(slider),
+    sliderCurve: nodeSliderCurve(slider),
     showSign: nodeSliderShouldShowSign(slider),
     wraparound: nodeSliderShouldWraparound(slider),
     unit: slider.dataset.unit ?? "",
@@ -325,21 +382,23 @@ function nodeSliderMetadata(slider) {
 function formatNodeSliderMetadataTooltip(slider) {
   const metadata = nodeSliderMetadata(slider);
   const numberOptions = { kind: metadata.kind, maxDigits: metadata.maxDigits };
-  const stepText = metadata.step > 0 ? formatNodeSliderNumber(metadata.step, numberOptions) : "any";
+  const stepText = formatNodeMetadataStep(metadata.step);
   const rows = [
     `current ${formatNodeSliderNumber(metadata.cur, numberOptions)}`,
     `default ${formatNodeSliderNumber(metadata.def, numberOptions)}`,
     `min ${formatNodeSliderNumber(metadata.min, numberOptions)}`,
     `max ${formatNodeSliderNumber(metadata.max, numberOptions)}`,
     `step ${stepText}`,
+    `alias ${metadata.alias || "none"}`,
     `kind ${metadata.kind}`,
     `max digits ${metadata.maxDigits}`,
     `unit ${metadata.unit}`,
     `choices ${metadata.choices.length ? formatNodeMetadataChoices(metadata.choices) : "none"}`,
+    `curve ${metadata.sliderCurve}`,
+    `sensitivity ${formatNodeSliderCompactNumber(metadata.curveAmount)}`,
     `display choices ${metadata.displayChoices}`,
     `divide choices visibly ${metadata.divideChoicesVisibly}`,
     `linear smoothing ${metadata.linearSmoothing}`,
-    `nonlinear slider ${metadata.nonlinearSlider}`,
     `show sign ${metadata.showSign}`,
     `wraparound ${metadata.wraparound}`,
   ];

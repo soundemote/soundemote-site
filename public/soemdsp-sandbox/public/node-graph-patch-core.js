@@ -18,6 +18,17 @@ function normalizeNodeGraphPatchParameter(type, key, value, metadata = null) {
       : 0;
   const min = Number(metadata?.min ?? parameter?.min);
   const max = Number(metadata?.max ?? parameter?.max);
+  const unboundedMin = Boolean(metadata?.unboundedMin ?? parameter?.unboundedMin);
+  const unboundedMax = Boolean(metadata?.unboundedMax ?? parameter?.unboundedMax);
+  if (unboundedMin && unboundedMax) {
+    return candidate;
+  }
+  if (unboundedMin && Number.isFinite(max)) {
+    return Math.min(candidate, max);
+  }
+  if (unboundedMax && Number.isFinite(min)) {
+    return Math.max(candidate, min);
+  }
   if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
     return candidate;
   }
@@ -53,8 +64,15 @@ function validateNodeGraphPatch(patch) {
     throw new Error("nodes must be an array");
   }
 
+  const retiredNodeTypes = new Set(["formulaVisual", "moduleHome", "moduleShop"]);
+  const retiredNodeIds = new Set(
+    patch.nodes
+      .filter((node) => retiredNodeTypes.has(String(node.type || "").trim()))
+      .map((node) => String(node.id || "").trim())
+      .filter(Boolean),
+  );
   const ids = new Set();
-  const nodes = patch.nodes.map((node) => {
+  const nodes = patch.nodes.filter((node) => !retiredNodeTypes.has(String(node.type || "").trim())).map((node) => {
     const id = String(node.id || "").trim();
     const type = String(node.type || "").trim();
     if (!id) {
@@ -78,11 +96,6 @@ function validateNodeGraphPatch(patch) {
     const widthGu = normalizeNodeGraphModuleWidthUnits(type, node.widthGu);
     if (hasCustomWidth && !Number.isFinite(Number(node.widthGu))) {
       throw new Error(`node ${id} widthGu invalid`);
-    }
-    const hasCustomHeight = Object.hasOwn(node, "heightGu");
-    const heightGu = normalizeNodeGraphModuleHeightUnits(type, node.heightGu, node.ui);
-    if (hasCustomHeight && !Number.isFinite(Number(node.heightGu))) {
-      throw new Error(`node ${id} heightGu invalid`);
     }
     const params = {};
     const paramMeta = {};
@@ -129,11 +142,13 @@ function validateNodeGraphPatch(patch) {
       paramMeta,
       params,
       type,
+      ...(Object.keys(normalizeNodeGraphPatchPortMeta(node.portMeta)).length
+        ? { portMeta: normalizeNodeGraphPatchPortMeta(node.portMeta) }
+        : {}),
       ...(normalizeNodeGraphPatchNodeAlias(node.alias)
         ? { alias: normalizeNodeGraphPatchNodeAlias(node.alias) }
         : {}),
       ...(hasCustomWidth ? { widthGu } : {}),
-      ...(hasCustomHeight ? { heightGu } : {}),
     };
     if (nodeGraphModuleDefinitions[type].layout === "textBox") {
       normalizedNode.layout = normalizeNodeGraphTextBoxLayout(node.layout);
@@ -156,6 +171,7 @@ function validateNodeGraphPatch(patch) {
     if (type === "screenSpaceShader") {
       normalizedNode.screenSpaceShader = normalizeNodeGraphScreenSpaceShader(node.screenSpaceShader);
     }
+    Object.assign(normalizedNode, cloneNodeGraphTypedDisplaySettings(node));
     if (Object.hasOwn(node, "scopeShader")) {
       normalizedNode.scopeShader = normalizeNodeGraphScopeShader(node.scopeShader);
     }
@@ -165,48 +181,20 @@ function validateNodeGraphPatch(patch) {
     if (type === "clapPlugin") {
       normalizedNode.clap = normalizeNodeGraphClapPluginBinding(node.clap);
     }
+    if (
+      (type === "samplePlayer" || type === "sampleLooper" || type === "audioPlayer") &&
+      normalizeNodeGraphSampleId(node.sample?.id)
+    ) {
+      normalizedNode.sample = { id: normalizeNodeGraphSampleId(node.sample?.id) };
+    }
     const ui = nodeGraphModuleDefinitions[type].layout === "textBox" && !Object.hasOwn(node, "ui")
       ? { buttonsHidden: true }
       : normalizeNodeGraphPatchNodeUi(node.ui);
-    if (ui.buttonsHidden || ui.titleHidden) {
+    if (ui.buttonsHidden || ui.ioHidden || ui.interfaceControlsHidden || ui.movementLocked || ui.titleHidden || ui.oscilloscopeHidden || ui.slidersHidden || ui.displayHeightOffsetGu) {
       normalizedNode.ui = ui;
     }
     return normalizedNode;
   });
-  if (!nodes.some((node) => node.id === "home")) {
-    let homeId = "home";
-    let suffix = 2;
-    while (ids.has(homeId)) {
-      homeId = `home-${suffix}`;
-      suffix += 1;
-    }
-    const homeNode = createNodeGraphPatchNode("moduleHome", {
-      gx: 1,
-      gy: 10,
-      id: homeId,
-      widthGu: 5,
-    });
-    ids.add(homeId);
-    nodes.splice(0, 0, homeNode);
-  }
-  if (!nodes.some((node) => node.type === "moduleShop")) {
-    let shopId = "shop";
-    let suffix = 2;
-    while (ids.has(shopId)) {
-      shopId = `shop-${suffix}`;
-      suffix += 1;
-    }
-    const bottommost = nodes.reduce((max, node) => Math.max(max, node.gy), 0);
-    const shopNode = createNodeGraphPatchNode("moduleShop", {
-      gx: 1,
-      gy: Math.max(0, bottommost + 3),
-      id: shopId,
-      widthGu: 5,
-    });
-    ids.add(shopId);
-    nodes.unshift(shopNode);
-  }
-
   const uiItems = normalizeNodeGraphPatchUiItems(patch.uiItems, { nodeIds: ids });
 
   const bypassedNodes = [];
@@ -232,7 +220,7 @@ function validateNodeGraphPatch(patch) {
   }
 
   const connectionKeys = new Set();
-  const connections = Array.isArray(patch.connections) ? patch.connections.map((connection) => {
+  const connections = (Array.isArray(patch.connections) ? patch.connections : []).flatMap((connection) => {
     const sourceNode = String(connection.sourceNode || "").trim();
     let sourcePort = String(connection.sourcePort || "").trim();
     const destinationNode = String(connection.destinationNode || "").trim();
@@ -240,6 +228,9 @@ function validateNodeGraphPatch(patch) {
     const sourceType = nodes.find((node) => node.id === sourceNode)?.type;
     const destinationType = nodes.find((node) => node.id === destinationNode)?.type;
     if (!sourceType || !destinationType) {
+      if (retiredNodeIds.has(sourceNode) || retiredNodeIds.has(destinationNode)) {
+        return [];
+      }
       throw new Error("connection references missing node");
     }
     sourcePort = nodeGraphCanonicalOutputPort(sourceType, sourcePort);
@@ -247,7 +238,7 @@ function validateNodeGraphPatch(patch) {
       throw new Error(`connection source port invalid: ${sourceNode}.${sourcePort}`);
     }
     if (destinationType === "output" && destinationPort === "In") {
-      destinationPort = "Left";
+      destinationPort = "Mono";
     }
     destinationPort = nodeGraphCanonicalInputPort(destinationType, destinationPort);
     if (!nodeGraphPatchNodeInputPorts(nodes.find((node) => node.id === destinationNode)).includes(destinationPort)) {
@@ -255,10 +246,10 @@ function validateNodeGraphPatch(patch) {
     }
     const key = `${sourceNode}.${sourcePort}->${destinationNode}.${destinationPort}`;
     if (connectionKeys.has(key)) {
-      throw new Error(`duplicate connection ${key}`);
+      return [];
     }
     connectionKeys.add(key);
-    return {
+    return [{
       destinationNode,
       destinationPort,
       sourceNode,
@@ -269,49 +260,53 @@ function validateNodeGraphPatch(patch) {
       ...(normalizeNodeGraphTracePoints(connection.tracePoints).length
         ? { tracePoints: normalizeNodeGraphTracePoints(connection.tracePoints) }
         : {}),
-    };
-  }) : [];
+    }];
+  });
 
   const modulationKeys = new Set();
-  const modulations = Array.isArray(patch.modulations) ? patch.modulations.map((modulation) => {
-    const sourceNode = String(modulation.sourceNode || "").trim();
-    let sourcePort = String(modulation.sourcePort || "").trim();
-    const destinationNode = String(modulation.destinationNode || "").trim();
-    const destinationParam = String(modulation.destinationParam || "").trim();
-    if (!sourceNode || !sourcePort || !destinationNode || !destinationParam) {
-      throw new Error("modulation entries require sourceNode, sourcePort, destinationNode, destinationParam");
-    }
-    const sourceType = nodes.find((node) => node.id === sourceNode)?.type;
-    const destinationType = nodes.find((node) => node.id === destinationNode)?.type;
-    if (!sourceType || !destinationType) {
-      throw new Error("modulation references missing node");
-    }
-    sourcePort = nodeGraphCanonicalOutputPort(sourceType, sourcePort);
-    if (!nodeGraphPatchNodeOutputPorts(nodes.find((node) => node.id === sourceNode)).includes(sourcePort)) {
-      throw new Error(`modulation source port invalid: ${sourceNode}.${sourcePort}`);
-    }
-    const destinationPatchNode = nodes.find((node) => node.id === destinationNode);
-    if (!nodeGraphPatchNodeParameterDefinitions(destinationPatchNode).some((parameter) => parameter.key === destinationParam)) {
-      throw new Error(`modulation destination parameter invalid: ${destinationNode}.${destinationParam}`);
-    }
-    const key = `${sourceNode}.${sourcePort}->${destinationNode}.${destinationParam}`;
-    if (modulationKeys.has(key)) {
-      throw new Error(`duplicate modulation ${key}`);
-    }
-    modulationKeys.add(key);
-    return {
-      destinationNode,
-      destinationParam,
-      sourceNode,
-      sourcePort,
-      ...(nodeGraphWireTypePatchValue(modulation.wireType)
-        ? { wireType: nodeGraphWireTypePatchValue(modulation.wireType) }
-        : {}),
-      ...(normalizeNodeGraphTracePoints(modulation.tracePoints).length
-        ? { tracePoints: normalizeNodeGraphTracePoints(modulation.tracePoints) }
-        : {}),
-    };
-  }) : [];
+  const modulations = (Array.isArray(patch.modulations) ? patch.modulations : [])
+    .flatMap((modulation) => {
+      const sourceNode = String(modulation.sourceNode || "").trim();
+      let sourcePort = String(modulation.sourcePort || "").trim();
+      const destinationNode = String(modulation.destinationNode || "").trim();
+      const destinationParam = String(modulation.destinationParam || "").trim();
+      if (!sourceNode || !sourcePort || !destinationNode || !destinationParam) {
+        throw new Error("modulation entries require sourceNode, sourcePort, destinationNode, destinationParam");
+      }
+      const sourceType = nodes.find((node) => node.id === sourceNode)?.type;
+      const destinationType = nodes.find((node) => node.id === destinationNode)?.type;
+      if (!sourceType || !destinationType) {
+        if (retiredNodeIds.has(sourceNode) || retiredNodeIds.has(destinationNode)) {
+          return [];
+        }
+        throw new Error("modulation references missing node");
+      }
+      sourcePort = nodeGraphCanonicalOutputPort(sourceType, sourcePort);
+      if (!nodeGraphPatchNodeOutputPorts(nodes.find((node) => node.id === sourceNode)).includes(sourcePort)) {
+        throw new Error(`modulation source port invalid: ${sourceNode}.${sourcePort}`);
+      }
+      const destinationPatchNode = nodes.find((node) => node.id === destinationNode);
+      if (!nodeGraphPatchNodeParameterDefinitions(destinationPatchNode).some((parameter) => parameter.key === destinationParam)) {
+        throw new Error(`modulation destination parameter invalid: ${destinationNode}.${destinationParam}`);
+      }
+      const key = `${sourceNode}.${sourcePort}->${destinationNode}.${destinationParam}`;
+      if (modulationKeys.has(key)) {
+        return [];
+      }
+      modulationKeys.add(key);
+      return [{
+        destinationNode,
+        destinationParam,
+        sourceNode,
+        sourcePort,
+        ...(nodeGraphWireTypePatchValue(modulation.wireType)
+          ? { wireType: nodeGraphWireTypePatchValue(modulation.wireType) }
+          : {}),
+        ...(normalizeNodeGraphTracePoints(modulation.tracePoints).length
+          ? { tracePoints: normalizeNodeGraphTracePoints(modulation.tracePoints) }
+          : {}),
+      }];
+    });
 
   const graphConnectionKeys = new Set();
   const graphConnections = Array.isArray(patch.graphConnections) ? patch.graphConnections.map((connection) => {
@@ -380,6 +375,18 @@ function validateNodeGraphPatch(patch) {
       nodes,
     }),
     nodes,
+    requiredAssets: typeof nodeGraphRequiredAssetsForPatch === "function"
+      ? nodeGraphRequiredAssetsForPatch({
+        ...patch,
+        nodes,
+        samples: typeof normalizeNodeGraphPatchSamples === "function"
+          ? normalizeNodeGraphPatchSamples(patch.samples)
+          : [],
+      })
+      : [],
+    samples: typeof normalizeNodeGraphPatchSamples === "function"
+      ? normalizeNodeGraphPatchSamples(patch.samples)
+      : [],
     timing: normalizeNodeGraphPatchTiming(patch.timing),
     uiItems,
     view,
@@ -439,11 +446,14 @@ function applyNodeGraphPatchToDom() {
       (port) => !(nodeGraphModuleDefinitions[patchNode.type]?.parameters || []).some((parameter) => parameter.key === port),
     );
     const portSignature = `${nodeGraphPatchNodeInputPorts(patchNode).join(",")}=>${outputPorts.join(",")}=>${nodeGraphModuleGraphInputs(patchNode.type).join(",")}`;
+    const patchNodeUi = nodeGraphEffectivePatchNodeUi(patchNode.ui);
+    const structuralUiSignature = patchNodeUi.oscilloscopeHidden ? "scope-hidden" : "scope-visible";
     if (
       element &&
       (
         element.dataset.nodeType !== patchNode.type ||
-        element.dataset.portSignature !== portSignature
+        element.dataset.portSignature !== portSignature ||
+        element.dataset.structuralUiSignature !== structuralUiSignature
       )
     ) {
       element.remove();
@@ -455,18 +465,44 @@ function applyNodeGraphPatchToDom() {
     }
     element.style.setProperty("--node-grid-width-units", String(nodeGraphPatchNodeGridWidthUnits(patchNode)));
     element.style.setProperty("--node-grid-height-units", String(nodeGraphPatchNodeGridHeightUnits(patchNode)));
+    element.style.setProperty("--node-module-display-height-units", String(nodeGraphPatchNodeDisplayHeightUnits(patchNode)));
+    element.style.setProperty("--node-module-interface-controls-height-units", String(nodeGraphPatchNodeInterfaceControlsHeightUnits(patchNode)));
     const point = nodeGraphGridToPixel(patchNode);
     positionNodeGraphNode(element, point, { clamp: false, snap: false });
     element.hidden = !nodeGraphModuleShouldBeVisible(patchNode);
     element.dataset.gridX = String(patchNode.gx);
     element.dataset.gridY = String(patchNode.gy);
+    element.dataset.structuralUiSignature = structuralUiSignature;
     const titleText = element.querySelector(".node-header-title");
     if (titleText) {
       titleText.textContent = nodeGraphPatchNodeTitle(patchNode);
     }
-    const patchNodeUi = normalizeNodeGraphPatchNodeUi(patchNode.ui);
     element.classList.toggle("buttons-hidden", patchNodeUi.buttonsHidden);
+    element.classList.toggle("io-hidden", patchNodeUi.ioHidden);
+    element.classList.toggle("interface-controls-hidden", patchNodeUi.interfaceControlsHidden);
+    element.classList.toggle("movement-locked", patchNodeUi.movementLocked);
+    element.classList.toggle("oscilloscope-hidden", patchNodeUi.oscilloscopeHidden);
+    element.classList.toggle("sliders-hidden", patchNodeUi.slidersHidden);
     element.classList.toggle("title-hidden", patchNodeUi.titleHidden);
+    const dragHandle = element.querySelector(".node-drag-handle");
+    if (dragHandle) {
+      dragHandle.textContent = patchNodeUi.movementLocked ? "\uD83D\uDD12" : "\u2725";
+      dragHandle.setAttribute(
+        "aria-label",
+        patchNodeUi.movementLocked
+          ? `Unlock ${nodeGraphNodeDisplayName(patchNode.id)} module movement`
+          : `Move ${nodeGraphNodeDisplayName(patchNode.id)} module`,
+      );
+      dragHandle.classList.toggle("node-drag-handle-locked", patchNodeUi.movementLocked);
+    }
+    const displayButton = element.querySelector(".node-display-settings-button");
+    if (displayButton) {
+      displayButton.setAttribute("aria-pressed", patchNodeUi.oscilloscopeHidden ? "false" : "true");
+    }
+    const metaparameterButton = element.querySelector(".node-metaparameter-button");
+    if (metaparameterButton) {
+      metaparameterButton.setAttribute("aria-pressed", patchNodeUi.slidersHidden ? "false" : "true");
+    }
     const bypassed = nodeGraphNodeDisplaysBypassed(patchNode.id);
     element.classList.toggle("bypassed", bypassed);
     const bypassButton = element.querySelector(".node-bypass-button");
@@ -492,11 +528,16 @@ function applyNodeGraphPatchToDom() {
         patchNode.paramMeta?.[parameter.key] ||
         nodeGraphParameterDefinitionMetadata(parameter),
       );
-      input.value = String(
-        patchNode.params?.[parameter.key] ??
-        nodeGraphParameterFallback(patchNode.type, parameter.key),
-      );
+      const value = patchNode.params?.[parameter.key] ??
+        nodeGraphParameterFallback(patchNode.type, parameter.key);
+      if (typeof applyNodeGraphInputUnboundedValue === "function") {
+        applyNodeGraphInputUnboundedValue(input, value);
+      }
+      input.value = String(value);
       syncNodeSliderReadout(input);
+    }
+    if (typeof syncNodeGraphModulePortLabels === "function") {
+      syncNodeGraphModulePortLabels(element, patchNode);
     }
     if (nodeGraphModuleDefinitions[patchNode.type]?.layout === "textBox") {
       syncNodeGraphTextBoxElement(element, patchNode);
@@ -531,8 +572,14 @@ function applyNodeGraphPatchToDom() {
 
 function commitNodeGraphPatch(patch, options = {}) {
   nodeGraphMvp.patch = cloneNodeGraphPatch(validateNodeGraphPatch(patch));
+  if (typeof preserveNodeGraphEditorZoomOnPatch === "function") {
+    preserveNodeGraphEditorZoomOnPatch(nodeGraphMvp.patch);
+  }
   syncNodeGraphRuntimeFromPatch();
   applyNodeGraphPatchToDom();
+  if (typeof applyNodeGraphZoom === "function") {
+    applyNodeGraphZoom();
+  }
   syncNodeGraphMonitorIndicators();
   pruneNodeGraphSelectionAfterPatch();
   renderNodePalette();
@@ -541,6 +588,9 @@ function commitNodeGraphPatch(patch, options = {}) {
   syncNodeGraphFilterCurveDisplays();
   renderNodeGraphVisualSettings();
   syncNodeGraphSettingsView();
+  if (typeof renderNodeGraphMissingSampleAssetsDialog === "function") {
+    renderNodeGraphMissingSampleAssetsDialog(nodeGraphMvp.patch);
+  }
   if (typeof renderNodeGraphCodeScreen === "function" && !document.getElementById("nodeCodeScreenView")?.hidden) {
     renderNodeGraphCodeScreen();
   }
@@ -559,6 +609,16 @@ function commitNodeGraphPatch(patch, options = {}) {
   }
   if (typeof scheduleNodeGraphWireRedrawAfterLayout === "function") {
     scheduleNodeGraphWireRedrawAfterLayout();
+  }
+  if (options.patchDirtyState) {
+    nodeGraphMvp.patchDirtyState = options.patchDirtyState;
+  } else if (options.autosaveWorkingPatch !== false) {
+    nodeGraphMvp.patchDirtyState = "edited";
+  }
+  if (options.autosaveWorkingPatch !== false && typeof saveNodeGraphWorkingPatchToUserSettings === "function") {
+    saveNodeGraphWorkingPatchToUserSettings();
+  } else if (typeof syncNodeGraphCurrentSavedPatchHeader === "function") {
+    syncNodeGraphCurrentSavedPatchHeader();
   }
   scheduleNodeGraphLivePlanSync();
 }

@@ -29,5 +29,6 @@ const nodeGraphWireInteractions = window.createNodeGraphWireInteractionControlle
   setHelp: setNodeInteractionHelp,
   state: nodeGraphMvp,
   svg: () => document.getElementById("nodeWireSvg"),
+  triggerWireBreak: triggerNodeGraphWireBreakEvent,
   workspace: () => document.getElementById("nodeGraphWorkspace"),
 });

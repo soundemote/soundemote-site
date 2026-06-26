@@ -4,7 +4,7 @@ const nodeGraphDefaultPresetStorageKey = "soemdsp-sandbox.defaultPatch.live.v2";
 async function loadNodeGraphDefaultPresetPatch() {
   const storedPatch = loadNodeGraphLocalDefaultPresetPatch();
   if (nodeGraphDefaultPresetPatchIsUsable(storedPatch)) {
-    return storedPatch;
+    return normalizeNodeGraphDefaultPresetScopeShaders(storedPatch);
   }
   try {
     const response = await fetch(nodeGraphDefaultPresetUrl, { cache: "no-store" });
@@ -13,11 +13,29 @@ async function loadNodeGraphDefaultPresetPatch() {
     }
     const fetchedPatch = loadNodeGraphPatchFromScript(await response.text());
     return nodeGraphDefaultPresetPatchIsUsable(fetchedPatch)
-      ? fetchedPatch
+      ? normalizeNodeGraphDefaultPresetScopeShaders(fetchedPatch)
       : cloneNodeGraphPatch(nodeGraphDefaultPatch);
   } catch {
     return cloneNodeGraphPatch(nodeGraphDefaultPatch);
   }
+}
+
+function normalizeNodeGraphDefaultPresetScopeShaders(patch) {
+  const normalized = cloneNodeGraphPatch(patch);
+  for (const node of normalized.nodes || []) {
+    if (!node || !Object.hasOwn(node, "scopeShader")) {
+      continue;
+    }
+    const defaultSource = typeof nodeGraphScopeShaderDefaultSourceForType === "function"
+      ? nodeGraphScopeShaderDefaultSourceForType(node.type)
+      : nodeGraphScopeShaderDefaultSource;
+    node.scopeShader = normalizeNodeGraphScopeShader({
+      enabled: true,
+      language: "scope-js",
+      source: defaultSource,
+    });
+  }
+  return normalized;
 }
 
 function nodeGraphDefaultPresetPatchIsUsable(patch) {

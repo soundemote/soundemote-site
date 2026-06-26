@@ -91,9 +91,12 @@ function nodeGraphOscillatorWaveformSample(runtime, nodeId, phase, phaseIncremen
   let sample = 0;
   switch (Math.round(Number(waveform) || 0)) {
     case 1:
-      sample = nodeGraphPolyBlepSquare(phaseCycle, renderPhaseIncrement);
+      sample = -1 + phaseCycle * 2 - nodeGraphPolyBlep(phaseCycle, renderPhaseIncrement);
       break;
     case 2:
+      sample = nodeGraphPolyBlepSquare(phaseCycle, renderPhaseIncrement);
+      break;
+    case 3:
       {
         const triangle = runtime.triangleStates?.get(nodeId) || 0;
         if (phaseStopped) {
@@ -105,10 +108,10 @@ function nodeGraphOscillatorWaveformSample(runtime, nodeId, phase, phaseIncremen
         sample = clampNodeSliderValue(nextTriangle, -1, 1);
         break;
       }
-    case 3:
+    case 4:
       sample = Math.sin(phase);
       break;
-    case 4:
+    case 5:
       sample = phaseStopped ? currentNodeGraphNoiseSample(runtime, nodeId) : nextNodeGraphNoiseSample(runtime, nodeId);
       break;
     case 0:
@@ -153,9 +156,11 @@ function nodeGraphEllipsoidVectorSample(phase, params = {}) {
   const y = nodeGraphEllipsoidSample(phase - Math.PI * 0.5, params.offsetY, params.shapeY, params.scaleY) * level;
   return {
     Out: x,
+    Mono: x,
+    Wave: x,
+    "Wave Out": x,
     X: x,
     Y: y,
-    "Wave Out": x,
   };
 }
 

@@ -6,7 +6,7 @@ function createNodeGraphPort(node, type, port, io) {
   button.dataset.port = port;
   button.dataset.io = io;
   button.dataset.alias = nodeGraphLabel(node, port);
-  const portLabel = nodeGraphPortDisplayLabel(type, port, io);
+  const portLabel = nodeGraphPatchNodePortDisplayLabel(node, type, port, io);
   const label = `${nodeGraphNodeLabels[type]} ${io} port ${portLabel}`;
   button.setAttribute("aria-label", label);
   return button;
@@ -17,6 +17,12 @@ function nodeGraphPortDisplayLabel(type, port, io) {
     ? nodeGraphModuleDefinitions[type]?.outputLabels
     : nodeGraphModuleDefinitions[type]?.inputLabels;
   return labels?.[port] || port;
+}
+
+function nodeGraphPatchNodePortDisplayLabel(node, type, port, io) {
+  const patchNode = typeof node === "string" ? nodeGraphPatchNode(node) : node;
+  const alias = normalizeNodeGraphPatchMetadataAlias(patchNode?.portMeta?.[io]?.[port]?.alias);
+  return alias || nodeGraphPortDisplayLabel(type, port, io);
 }
 
 function createNodeGraphIoColumn(node, type, ports, io) {
@@ -33,13 +39,14 @@ function createNodeGraphIoColumn(node, type, ports, io) {
     row.dataset.port = port;
     row.dataset.io = io;
     row.dataset.alias = nodeGraphLabel(node, port);
-    const portLabel = nodeGraphPortDisplayLabel(type, port, io);
+    const portLabel = nodeGraphPatchNodePortDisplayLabel(node, type, port, io);
     row.setAttribute(
       "aria-label",
       `${nodeGraphNodeLabels[type]} ${io} port ${portLabel} interaction area`,
     );
     const label = document.createElement("span");
     label.className = "node-io-label";
+    label.dataset.portLabel = port;
     label.textContent = portLabel;
     if (io === "input") {
       row.append(createNodeGraphPort(node, type, port, io), label);
@@ -49,6 +56,39 @@ function createNodeGraphIoColumn(node, type, ports, io) {
     column.append(row);
   }
   return column;
+}
+
+function createNodeGraphIoProxyPort(node, io) {
+  const port = document.createElement("span");
+  port.className = `node-port ${io} node-io-proxy-port`;
+  port.dataset.node = node;
+  port.dataset.io = io;
+  port.dataset.ioProxy = io;
+  port.setAttribute("aria-hidden", "true");
+  return port;
+}
+
+function createNodeGraphIoProxySection(node, inputPorts = [], outputPorts = []) {
+  if (!inputPorts.length && !outputPorts.length) {
+    return null;
+  }
+  const proxy = document.createElement("div");
+  proxy.className = "node-io-proxy";
+  proxy.dataset.node = node;
+  if (inputPorts.length) {
+    proxy.append(createNodeGraphIoProxyPort(node, "input"));
+  } else {
+    proxy.append(document.createElement("span"));
+  }
+  const spacer = document.createElement("span");
+  spacer.className = "node-io-proxy-spacer";
+  proxy.append(spacer);
+  if (outputPorts.length) {
+    proxy.append(createNodeGraphIoProxyPort(node, "output"));
+  } else {
+    proxy.append(document.createElement("span"));
+  }
+  return proxy;
 }
 
 function createNodeParameterModulationPort(node, type, parameter) {
@@ -77,6 +117,32 @@ function createNodeParameterOutputPort(node, type, parameter) {
   const label = `${nodeGraphNodeLabels[type]} ${parameter.label} slider output`;
   button.setAttribute("aria-label", label);
   return button;
+}
+
+function syncNodeGraphModulePortLabels(element, patchNode) {
+  if (!element || !patchNode) {
+    return;
+  }
+  for (const row of element.querySelectorAll(".node-io-row")) {
+    const io = row.dataset.io;
+    const port = row.dataset.port;
+    if (io !== "input" && io !== "output") {
+      continue;
+    }
+    const portLabel = nodeGraphPatchNodePortDisplayLabel(patchNode, patchNode.type, port, io);
+    const label = row.querySelector(".node-io-label");
+    if (label) {
+      label.textContent = portLabel;
+    }
+    row.setAttribute(
+      "aria-label",
+      `${nodeGraphNodeLabels[patchNode.type]} ${io} port ${portLabel} interaction area`,
+    );
+    const button = row.querySelector(".node-port");
+    if (button) {
+      button.setAttribute("aria-label", `${nodeGraphNodeLabels[patchNode.type]} ${io} port ${portLabel}`);
+    }
+  }
 }
 
 function createNodeGraphInputPort(node, type, graphInput) {
@@ -162,35 +228,107 @@ function createNodeGraphSliderWidgetBody(node, type) {
   return body;
 }
 
-function createNodeGraphModuleShopBody(node) {
+function createNodeGraphPatchCommandBody(node) {
   const body = document.createElement("div");
-  body.className = "node-module-shop-body";
-  const title = document.createElement("div");
-  title.className = "node-module-shop-title";
-  title.textContent = "Public Modules: Shown";
-  const button = document.createElement("button");
-  button.className = "node-module-shop-open-button";
-  button.type = "button";
-  button.dataset.node = node;
-  button.setAttribute("aria-label", "Open module browser");
-  button.textContent = "Open Shop";
-  body.append(title, button);
+  body.className = "node-patch-command-body";
+  body.dataset.node = node;
+  const patchNode = nodeGraphPatchNodeById(node);
+  const previous = patchNode?.type === "previousPatch";
+  const label = document.createElement("strong");
+  label.textContent = previous ? "PREVIOUS PATCH" : "NEXT PATCH";
+  const status = document.createElement("span");
+  status.textContent = "trigger input";
+  body.append(label, status);
   return body;
 }
 
-function createNodeGraphModuleHomeBody(node) {
+function nodeGraphKnobWidgetValueAngle(value, parameter) {
+  const min = Number(parameter?.min);
+  const max = Number(parameter?.max);
+  const range = max - min;
+  const normalized = Number.isFinite(range) && range > 0
+    ? clampNodeSliderValue((Number(value) - min) / range, 0, 1)
+    : 0;
+  return -132 + normalized * 264;
+}
+
+function applyNodeGraphInputUnboundedValue(input, value) {
+  const number = Number(value);
+  const min = Number(input?.min);
+  const max = Number(input?.max);
+  const unboundedMin = input?.dataset?.unboundedMin === "true";
+  const unboundedMax = input?.dataset?.unboundedMax === "true";
+  if (
+    Number.isFinite(number) &&
+    ((unboundedMin && Number.isFinite(min) && number < min) ||
+      (unboundedMax && Number.isFinite(max) && number > max))
+  ) {
+    input.dataset.unboundedValue = String(number);
+  } else if (input) {
+    delete input.dataset.unboundedValue;
+  }
+}
+
+function createNodeGraphKnobWidgetBody(node, type) {
+  const definition = nodeGraphModuleDefinitions[type];
+  const parameter = definition?.parameters?.[0];
+  const patchNode = nodeGraphPatchNode(node);
+  const value = patchNode?.params?.[parameter?.key] ?? parameter?.defaultValue ?? "0";
   const body = document.createElement("div");
-  body.className = "node-module-home-body";
-  const title = document.createElement("div");
-  title.className = "node-module-home-title";
-  title.textContent = "Offline Modules: Hidden";
-  const button = document.createElement("button");
-  button.className = "node-module-home-open-button";
-  button.type = "button";
-  button.dataset.node = node;
-  button.setAttribute("aria-label", "Open user module collection");
-  button.textContent = "Open Home";
-  body.append(title, button);
+  body.className = "node-knob-widget-body";
+  body.dataset.node = node;
+
+  const control = document.createElement("button");
+  control.className = "node-knob-widget-control";
+  control.type = "button";
+  control.dataset.knobWidgetControl = "true";
+  control.dataset.param = parameter?.key || "value";
+  control.setAttribute("role", "slider");
+  control.setAttribute("aria-label", `${nodeGraphNodeLabels[type]} ${parameter?.label || "Value"}`);
+  control.setAttribute("aria-valuemin", parameter?.min ?? "0");
+  control.setAttribute("aria-valuemax", parameter?.max ?? "1");
+  control.setAttribute("aria-valuenow", String(value));
+  control.style.setProperty("--knob-widget-angle", `${nodeGraphKnobWidgetValueAngle(value, parameter)}deg`);
+
+  const knobSlot = document.createElement("span");
+  knobSlot.className = "node-knob-widget-slot";
+  const face = document.createElement("span");
+  face.className = "node-knob-widget-face";
+  const readout = document.createElement("span");
+  readout.className = "node-knob-widget-value";
+  readout.dataset.knobWidgetValue = "true";
+  readout.textContent = formatNodeSliderNumber(value);
+  knobSlot.append(face);
+  control.append(knobSlot);
+
+  const input = document.createElement("input");
+  input.className = "node-knob-widget-input";
+  input.type = "range";
+  input.dataset.param = parameter?.key || "value";
+  input.dataset.step = parameter?.step ?? "any";
+  input.dataset.mid = parameter?.mid ?? "0";
+  input.dataset.default = parameter?.defaultValue ?? "0";
+  input.dataset.kind = parameter?.kind ?? "";
+  input.dataset.unit = parameter?.unit ?? "";
+  input.dataset.linearSmoothing = parameter?.linearSmoothing === false ? "false" : "true";
+  input.dataset.sliderCurve = normalizeNodeSliderCurve(parameter?.sliderCurve, parameter?.nonlinearSlider);
+  input.dataset.curveAmount = String(normalizeNodeSliderCurveAmount(parameter?.curveAmount));
+  input.dataset.nonlinearSlider = parameter?.nonlinearSlider ? "true" : "false";
+  input.dataset.unboundedMax = parameter?.unboundedMax ? "true" : "false";
+  input.dataset.unboundedMin = parameter?.unboundedMin ? "true" : "false";
+  input.min = parameter?.min ?? "0";
+  input.max = parameter?.max ?? "1";
+  input.step = parameter?.step === "any" ? "any" : (parameter?.step ?? "0.01");
+  input.value = String(value);
+  applyNodeGraphInputUnboundedValue(input, value);
+
+  const outputKey = parameter?.key || "value";
+  const output = createNodeGraphPort(node, type, outputKey, "output");
+  output.classList.add("node-knob-widget-output");
+  output.dataset.param = outputKey;
+  output.dataset.alias = `${nodeGraphNodeDisplayName(node)} knob value`;
+
+  body.append(control, readout, input, output);
   return body;
 }
 
@@ -499,6 +637,7 @@ function createNodeGraphParameter(node, type, parameter) {
   const label = document.createElement("label");
   label.className = "node-parameter-control";
   label.dataset.paramLabel = parameter.label;
+  label.dataset.defaultParamLabel = parameter.defaultLabel || parameter.label;
   label.setAttribute("aria-label", parameter.label);
   const input = document.createElement("input");
   const legacyIds = {
@@ -530,9 +669,14 @@ function createNodeGraphParameter(node, type, parameter) {
   input.dataset.displayChoices = parameter.displayChoices ? "true" : "false";
   input.dataset.divideChoicesVisibly = parameter.divideChoicesVisibly ? "true" : "false";
   input.dataset.linearSmoothing = parameter.linearSmoothing === false ? "false" : "true";
+  input.dataset.sliderCurve = normalizeNodeSliderCurve(metadata?.sliderCurve, metadata?.nonlinearSlider);
+  input.dataset.curveAmount = String(normalizeNodeSliderCurveAmount(metadata?.curveAmount));
   input.dataset.nonlinearSlider = metadata?.nonlinearSlider ? "true" : "false";
   input.dataset.showSign = parameter.showSign ? "true" : "false";
+  input.dataset.unboundedMax = metadata?.unboundedMax ? "true" : "false";
+  input.dataset.unboundedMin = metadata?.unboundedMin ? "true" : "false";
   input.dataset.wraparound = parameter.wraparound ? "true" : "false";
+  applyNodeGraphInputUnboundedValue(input, input.value);
   input.setAttribute("aria-label", `${nodeGraphNodeLabels[type]} ${parameter.label}`);
   label.append(input);
   row.append(label);

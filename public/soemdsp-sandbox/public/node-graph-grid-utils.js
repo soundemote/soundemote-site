@@ -11,23 +11,7 @@ function nodeGraphGridHeight() {
 }
 
 function withNodeGraphWorkspaceContentAnchored(workspace, update) {
-  const before = workspace.getBoundingClientRect();
   update();
-  const after = workspace.getBoundingClientRect();
-  const deltaX = before.left - after.left;
-  const deltaY = before.top - after.top;
-  if (
-    !Number.isFinite(deltaX) ||
-    !Number.isFinite(deltaY) ||
-    (Math.abs(deltaX) < 0.001 && Math.abs(deltaY) < 0.001)
-  ) {
-    return;
-  }
-  const pan = nodeGraphMvp.pan || { x: 0, y: 0 };
-  nodeGraphMvp.pan = {
-    x: (Number(pan.x) || 0) + deltaX,
-    y: (Number(pan.y) || 0) + deltaY,
-  };
   applyNodeGraphPan();
 }
 
@@ -49,6 +33,54 @@ function nodeGraphWorkspaceWidthCss(widthPx) {
 
 function nodeGraphWorkspaceHeightCss(heightPx) {
   return `${Math.round(heightPx + nodeGraphWorkspaceChromeSize("y"))}px`;
+}
+
+function nodeGraphWorkspaceViewportInsetPx(workspace = document.getElementById("nodeGraphWorkspace")) {
+  if (!workspace?.closest?.(".node-wiring-panel.modular-only-view")) {
+    return 0;
+  }
+  const panel = workspace.closest(".node-wiring-panel");
+  const value = Number.parseFloat(getComputedStyle(panel).getPropertyValue("--node-modular-only-inset"));
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+function nodeGraphWorkspaceMaxViewportGridSize(workspace = document.getElementById("nodeGraphWorkspace")) {
+  const inset = nodeGraphWorkspaceViewportInsetPx(workspace);
+  const limits = typeof nodeGraphWorkspaceViewLimits === "object"
+    ? nodeGraphWorkspaceViewLimits
+    : { minWidthGu: 1, minHeightGu: 1 };
+  const maxWidthPx = Math.max(0, window.innerWidth - inset * 2 - nodeGraphWorkspaceChromeSize("x"));
+  const maxHeightPx = Math.max(0, window.innerHeight - inset * 2 - nodeGraphWorkspaceChromeSize("y"));
+  return {
+    heightGu: Math.max(limits.minHeightGu, Math.floor(maxHeightPx / Math.max(1, nodeGraphGridHeight()))),
+    widthGu: Math.max(limits.minWidthGu, Math.floor(maxWidthPx / Math.max(1, nodeGraphGridWidth()))),
+  };
+}
+
+function clampNodeGraphWorkspaceGridSizeToViewport(size = {}, workspace = document.getElementById("nodeGraphWorkspace")) {
+  const maxSize = nodeGraphWorkspaceMaxViewportGridSize(workspace);
+  const limits = typeof nodeGraphWorkspaceViewLimits === "object"
+    ? nodeGraphWorkspaceViewLimits
+    : { minWidthGu: 1, minHeightGu: 1 };
+  return {
+    heightGu: Math.max(limits.minHeightGu, Math.min(maxSize.heightGu, Math.round(Number(size.heightGu) || 0))),
+    widthGu: Math.max(limits.minWidthGu, Math.min(maxSize.widthGu, Math.round(Number(size.widthGu) || 0))),
+  };
+}
+
+function applyNodeGraphWorkspaceSizeCss(workspace, widthCss = null, heightCss = null) {
+  const setSize = (property, customProperty, value) => {
+    if (value) {
+      workspace.style[property] = value;
+      workspace.style.setProperty(customProperty, value);
+      return;
+    }
+    workspace.style.removeProperty(property);
+    workspace.style.removeProperty(customProperty);
+  };
+  setSize("width", "--node-modular-only-view-width", widthCss);
+  setSize("height", "--node-modular-only-view-height", heightCss);
+  workspace.style.removeProperty("aspect-ratio");
 }
 
 function defaultNodeGraphModuleGridInsetPx() {

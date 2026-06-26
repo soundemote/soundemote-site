@@ -1,14 +1,149 @@
 function positionNodeMetadataPopover(popover, x, y, remember = false) {
-  const margin = 12;
+  if (!popover) {
+    return;
+  }
   popover.hidden = false;
-  const rect = popover.getBoundingClientRect();
-  const left = Math.max(margin, Math.min(window.innerWidth - rect.width - margin, x));
-  const top = Math.max(margin, Math.min(window.innerHeight - rect.height - margin, y));
-  popover.style.left = `${left}px`;
-  popover.style.top = `${top}px`;
+  const rect = popover?.getBoundingClientRect?.();
+  const { left, top } = nodeGraphFloatingWindowPosition(popover, x, y, {
+    visibleHeight: 48,
+    visibleWidth: Math.max(80, (rect?.width || 360) * 0.5),
+  });
+  if (typeof setNodeGraphFloatingWindowViewportPosition === "function") {
+    setNodeGraphFloatingWindowViewportPosition(popover, left, top);
+  } else {
+    popover.style.left = `${left}px`;
+    popover.style.top = `${top}px`;
+  }
   if (remember) {
     nodeGraphMvp.metadataPopoverPosition = { left, top };
     syncNodeGraphPatchWindowPosition("metadata", { left, top });
+  }
+  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+    rememberNodeGraphWorkspaceWindowState(
+      "metaparameters",
+      popover,
+      { open: true, position: { left, top } },
+      { persist: false },
+    );
+  }
+}
+
+const nodeMetadataPopoverDefaultSize = Object.freeze({
+  width: 185,
+  height: 620,
+  minWidth: 24,
+  maxWidth: 900,
+  minHeight: 120,
+  maxHeight: 820,
+});
+
+function normalizeNodeMetadataPopoverSize(size = {}) {
+  if (typeof normalizeNodeGraphFloatingWindowSize === "function") {
+    return normalizeNodeGraphFloatingWindowSize(size, nodeMetadataPopoverDefaultSize);
+  }
+  const source = size && typeof size === "object" ? size : {};
+  return {
+    width: Math.max(
+      nodeMetadataPopoverDefaultSize.minWidth,
+      Math.min(
+        nodeMetadataPopoverDefaultSize.maxWidth,
+        Math.round(Number(source.width) || nodeMetadataPopoverDefaultSize.width),
+      ),
+    ),
+    height: Math.max(
+      nodeMetadataPopoverDefaultSize.minHeight,
+      Math.min(
+        nodeMetadataPopoverDefaultSize.maxHeight,
+        Math.round(Number(source.height) || nodeMetadataPopoverDefaultSize.height),
+      ),
+    ),
+  };
+}
+
+function applyNodeMetadataPopoverSize(size = {}) {
+  const popover = document.getElementById("nodeParameterMetadataPopover");
+  const normalized = normalizeNodeMetadataPopoverSize(size);
+  if (popover) {
+    if (typeof applyNodeGraphFloatingWindowSizeVars === "function") {
+      applyNodeGraphFloatingWindowSizeVars(popover, "metadata-popover", nodeMetadataPopoverDefaultSize, normalized);
+    } else {
+      popover.style.setProperty("--metadata-popover-width", `${normalized.width}px`);
+      popover.style.setProperty("--metadata-popover-height", `${normalized.height}px`);
+    }
+  }
+  return normalized;
+}
+
+function nodeMetadataPopoverSizeFromElement(popover = document.getElementById("nodeParameterMetadataPopover")) {
+  const rect = popover?.getBoundingClientRect?.();
+  return normalizeNodeMetadataPopoverSize({
+    width: rect?.width,
+    height: rect?.height,
+  });
+}
+
+function nodeMetadataPopoverVisibleRect() {
+  const popover = document.getElementById("nodeParameterMetadataPopover");
+  if (!popover || popover.hidden) {
+    return null;
+  }
+  const rect = popover.getBoundingClientRect();
+  return {
+    height: rect.height,
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+  };
+}
+
+function hideNodeMetadataPopoverForInspectorReplacement() {
+  const popover = document.getElementById("nodeParameterMetadataPopover");
+  if (popover) {
+    popover.hidden = true;
+  }
+  setNodeMetadataClosePromptVisible(false);
+  setNodeMetadataScriptDirty(false, "");
+  if (nodeGraphMvp.metadataDragging?.handle) {
+    nodeGraphMvp.metadataDragging.handle.classList.remove("dragging");
+  }
+  nodeGraphMvp.metadataDragging = null;
+  nodeGraphMvp.metadataEditorTarget = null;
+}
+
+function prepareNodeMetadataPopoverForInspectorReplacement() {
+  const rect = nodeMetadataPopoverVisibleRect();
+  if (!rect) {
+    return null;
+  }
+  if (nodeGraphMvp.metadataScriptDirty && !confirmNodeMetadataScriptDiscard()) {
+    return false;
+  }
+  hideNodeMetadataPopoverForInspectorReplacement();
+  return rect;
+}
+
+function nodeMetadataReplacementX(sourceRect, targetPopover, fallbackX) {
+  const left = Number(sourceRect?.left);
+  const width = Number(sourceRect?.width);
+  if (!Number.isFinite(left)) {
+    return fallbackX;
+  }
+  const targetRect = targetPopover?.getBoundingClientRect?.();
+  return left + (Number.isFinite(width) ? width * 0.5 : 0) - (targetRect?.width || 0) * 0.5;
+}
+
+function saveNodeMetadataPopoverWindowState(options = {}) {
+  const popover = document.getElementById("nodeParameterMetadataPopover");
+  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+    rememberNodeGraphWorkspaceWindowState(
+      "metaparameters",
+      popover,
+      {
+        open: !popover?.hidden,
+        size: nodeMetadataPopoverSizeFromElement(popover),
+      },
+      { status: false, ...options },
+    );
   }
 }
 
@@ -21,8 +156,32 @@ function syncNodeGraphPatchWindowPosition(key, position) {
   }
 }
 
+function nodeMetadataPopoverEmptyDragTarget(event) {
+  const target = event?.target;
+  if (!(target instanceof Element)) {
+    return false;
+  }
+  if (target.closest?.(
+    "button, a, input, textarea, select, option, label, " +
+    ".metadata-script-reference, .metadata-script-preview, .metadata-script-effective, " +
+    "[contenteditable='true']",
+  )) {
+    return false;
+  }
+  return Boolean(target.closest?.(
+    ".metadata-script-panel, .metadata-script-heading, .metadata-script-actions, " +
+    ".metadata-popover-grid, .node-parameter-metadata-popover",
+  ));
+}
+
 function beginNodeMetadataPopoverDrag(event) {
-  if (event.button > 0 || nodeGraphDialogDragTargetIsInteractive(event)) {
+  if (event.currentTarget?.id === "metadataPopoverCornerDrag") {
+    beginNodeMetadataPopoverResize(event);
+    return;
+  }
+  const headingTarget = event.currentTarget?.classList?.contains("metadata-popover-heading") ||
+    event.currentTarget?.id === "metadataPopoverDragHandle";
+  if (!headingTarget && !nodeMetadataPopoverEmptyDragTarget(event)) {
     return;
   }
 
@@ -31,53 +190,61 @@ function beginNodeMetadataPopoverDrag(event) {
     return;
   }
 
-  const rect = popover.getBoundingClientRect();
-  nodeGraphMvp.metadataDragging = {
-    handle: event.currentTarget,
-    offsetX: event.clientX - rect.left,
-    offsetY: event.clientY - rect.top,
-    pointerId: event.pointerId ?? null,
-  };
-  event.currentTarget.classList.add("dragging");
-  if (event.pointerId !== undefined) {
-    event.currentTarget.setPointerCapture(event.pointerId);
+  const heading = document.querySelector("#nodeParameterMetadataPopover .metadata-popover-heading");
+  const drag = beginNodeGraphFloatingWindowDrag(event, popover, "metadataDragging");
+  if (drag) {
+    drag.heading = heading;
+    heading?.classList.add("dragging");
   }
-  event.preventDefault();
-  event.stopPropagation();
+}
+
+function beginNodeMetadataPopoverResize(event) {
+  const popover = document.getElementById("nodeParameterMetadataPopover");
+  beginNodeGraphFloatingWindowResize(event, popover, "metadataResizing");
+}
+
+function dragNodeMetadataPopoverResize(event) {
+  dragNodeGraphFloatingWindowResize(event, "metadataResizing", applyNodeMetadataPopoverSize);
+}
+
+function endNodeMetadataPopoverResize(event) {
+  endNodeGraphFloatingWindowResize(event, "metadataResizing", saveNodeMetadataPopoverWindowState);
 }
 
 function dragNodeMetadataPopover(event) {
-  const drag = nodeGraphMvp.metadataDragging;
-  if (
-    !drag ||
-    (drag.pointerId !== null && event.pointerId !== undefined && drag.pointerId !== event.pointerId)
-  ) {
-    return;
-  }
-
-  positionNodeMetadataPopover(
+  dragNodeGraphFloatingWindow(
+    event,
+    "metadataDragging",
     document.getElementById("nodeParameterMetadataPopover"),
-    event.clientX - drag.offsetX,
-    event.clientY - drag.offsetY,
-    true,
+    (next) => {
+      if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+        rememberNodeGraphWorkspaceWindowState(
+          "metaparameters",
+          document.getElementById("nodeParameterMetadataPopover"),
+          { open: true, position: next },
+          { persist: false },
+        );
+      }
+    },
   );
-  event.preventDefault();
 }
 
 function endNodeMetadataPopoverDrag(event) {
   const drag = nodeGraphMvp.metadataDragging;
-  if (
-    !drag ||
-    (drag.pointerId !== null && event.pointerId !== undefined && drag.pointerId !== event.pointerId)
-  ) {
-    return;
-  }
-
-  drag.handle.classList.remove("dragging");
-  if (event.pointerId !== undefined && drag.handle.hasPointerCapture?.(event.pointerId)) {
-    drag.handle.releasePointerCapture(event.pointerId);
-  }
-  nodeGraphMvp.metadataDragging = null;
+  endNodeGraphFloatingWindowDrag(event, "metadataDragging", () => {
+    drag?.heading?.classList.remove("dragging");
+    if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+      const position = Number.isFinite(Number(drag?.currentLeft)) && Number.isFinite(Number(drag?.currentTop))
+        ? { left: drag.currentLeft, top: drag.currentTop }
+        : undefined;
+      rememberNodeGraphWorkspaceWindowState(
+        "metaparameters",
+        null,
+        { open: true, size: nodeMetadataPopoverSizeFromElement(), ...(position ? { position } : {}) },
+        { capturePosition: false, status: false },
+      );
+    }
+  });
 }
 
 function metadataScriptStatus(message, error = false, detail = "") {
@@ -96,14 +263,13 @@ function metadataScriptSourceText() {
 }
 
 const nodeMetadataScriptHighlightTokenPattern =
-  /param\.[A-Za-z0-9_.]+|\[[^\]]*\]|-?(?:\d+\.\d+|\d+|\.\d+)(?:e[+-]?\d+)?|\b(?:true|false|any)\b|=|[A-Za-z_][\w-]*/gi;
-
-const nodeMetadataScriptAliases = Object.freeze({
-  default: "def",
-});
+  window.nodeCodeSettingsEditor?.assignmentTokenPattern ||
+  /param\.[A-Za-z0-9_.]+|\[[^\]]*\]|-?(?:\d+\.\d+|\d+|\.\d+)(?:e[+-]?\d+)?|\b(?:true|false)\b|=|[A-Za-z_][\w-]*/gi;
 
 const nodeMetadataScriptSupportedKeys = new Set([
+  "alias",
   "choices",
+  "curveAmount",
   "def",
   "displayChoices",
   "divideChoicesVisibly",
@@ -114,46 +280,143 @@ const nodeMetadataScriptSupportedKeys = new Set([
   "mid",
   "min",
   "nonlinearSlider",
+  "sliderCurve",
   "showSign",
   "step",
   "unit",
   "wraparound",
 ]);
 
-function nodeMetadataScriptReferenceHtml() {
-  const keys = Array.from(nodeMetadataScriptSupportedKeys).sort();
-  const aliases = Object.entries(nodeMetadataScriptAliases);
-  const kindTemplates = typeof nodeMetadataKindTemplates !== "undefined"
+const nodeMetadataScriptBooleanKeys = new Set([
+  "displayChoices",
+  "divideChoicesVisibly",
+  "linearSmoothing",
+  "nonlinearSlider",
+  "showSign",
+  "wraparound",
+]);
+
+const nodeMetadataScriptTokenUnitOptions = Object.freeze([
+  "",
+  "Hz",
+  "%",
+  "x",
+  "ms",
+  "s",
+  "dB",
+  "V",
+  "oct",
+  "cycle",
+]);
+
+function nodeMetadataScriptKindOptions() {
+  const templates = typeof nodeMetadataKindTemplates !== "undefined"
     ? nodeMetadataKindTemplates
     : typeof fallbackNodeMetadataKindTemplates !== "undefined"
       ? fallbackNodeMetadataKindTemplates
       : {};
-  const kinds = Object.entries(kindTemplates)
-    .sort(([left], [right]) => left.localeCompare(right));
-  const keyHtml = keys
-    .map((key) => `<code class="metadata-script-reference-key" data-key="${escapeNodeMetadataScriptHtml(key)}" role="button" tabindex="0" aria-label="Insert metadata key ${escapeNodeMetadataScriptHtml(key)}" title="Insert param.name.${escapeNodeMetadataScriptHtml(key)}">${escapeNodeMetadataScriptHtml(key)}</code>`)
-    .join("");
-  const kindHtml = kinds
-    .map(([kind, template]) => `<code class="metadata-script-reference-kind" data-kind="${escapeNodeMetadataScriptHtml(kind)}" role="button" tabindex="0" aria-label="Insert metadata kind ${escapeNodeMetadataScriptHtml(kind)}" title="Insert kind ${escapeNodeMetadataScriptHtml(kind)}">${escapeNodeMetadataScriptHtml(template.label || kind)}</code>`)
-    .join("");
-  const aliasHtml = aliases.length
-    ? aliases
-      .map(([alias, key]) => `<code class="metadata-script-reference-key" data-key="${escapeNodeMetadataScriptHtml(alias)}" role="button" tabindex="0" aria-label="Insert metadata alias ${escapeNodeMetadataScriptHtml(alias)}" title="Insert ${escapeNodeMetadataScriptHtml(alias)}, alias for ${escapeNodeMetadataScriptHtml(key)}">${escapeNodeMetadataScriptHtml(alias)} -> ${escapeNodeMetadataScriptHtml(key)}</code>`)
-      .join("")
-    : "";
-  return `
-    <span>keys</span>
-    ${keyHtml}
-    ${kindHtml ? `<span>kinds</span>${kindHtml}` : ""}
-    ${aliasHtml ? `<span>aliases</span>${aliasHtml}` : ""}`;
+  return Object.entries(templates)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([value, template]) => ({
+      label: template.label || value,
+      value,
+    }));
 }
 
-function syncNodeMetadataScriptReference() {
+function nodeMetadataScriptTokenOptionsForKey(key = "") {
+  if (key === "kind") {
+    return {
+      label: "kind",
+      options: nodeMetadataScriptKindOptions(),
+    };
+  }
+  if (nodeMetadataScriptBooleanKeys.has(key)) {
+    return {
+      label: key,
+      options: [
+        { label: "true", value: "true" },
+        { label: "false", value: "false" },
+      ],
+    };
+  }
+  if (key === "step") {
+    return {
+      label: "step",
+      options: [
+        { label: "0", value: "0" },
+        { label: "0.001", value: "0.001" },
+        { label: "0.01", value: "0.01" },
+        { label: "0.1", value: "0.1" },
+        { label: "1", value: "1" },
+      ],
+    };
+  }
+  if (key === "unit") {
+    return {
+      label: "unit",
+      options: nodeMetadataScriptTokenUnitOptions.map((value) => ({
+        label: value || "none",
+        value: value ? JSON.stringify(value) : "\"\"",
+      })),
+    };
+  }
+  return null;
+}
+
+function nodeMetadataScriptLineAssignmentInfo(line = "") {
+  return window.nodeCodeSettingsEditor.assignmentInfo(line, {
+    keyFromPath: nodeMetadataScriptKeyFromPath,
+  });
+}
+
+function nodeMetadataScriptTokenIsMenuEligible(key, start, end, assignment) {
+  const config = nodeMetadataScriptTokenOptionsForKey(key);
+  return Boolean(
+    config?.options?.length &&
+    assignment &&
+    start >= assignment.valueStart &&
+    end <= assignment.valueEnd,
+  );
+}
+
+function nodeMetadataScriptReferenceOptionHtml(option, context) {
+  return window.nodeCodeSettingsEditor.referenceOptionHtml(option, context, {
+    optionClass: "metadata-script-reference-kind",
+  });
+}
+
+function nodeMetadataScriptReferenceContextHtml(context = null) {
+  return window.nodeCodeSettingsEditor.referenceContextHtml(context, {
+    optionClass: "metadata-script-reference-kind",
+  });
+}
+
+function nodeMetadataScriptReferenceHtml(context = nodeGraphMvp.metadataScriptSuggestionContext) {
+  const keys = Array.from(nodeMetadataScriptSupportedKeys).sort();
+  return window.nodeCodeSettingsEditor.referenceHtml({
+    context,
+    defaultLabel: "keys",
+    defaultSuggestions: keys.map((key) => ({
+      label: key,
+      title: `Insert param.name.${key}`,
+      value: key,
+    })),
+    keyClass: "metadata-script-reference-key",
+    optionClass: "metadata-script-reference-kind",
+  });
+}
+
+function syncNodeMetadataScriptReference(context = nodeGraphMvp.metadataScriptSuggestionContext) {
   const reference = document.getElementById("metadataScriptReference");
   if (!reference) {
     return;
   }
-  reference.innerHTML = nodeMetadataScriptReferenceHtml();
+  reference.innerHTML = nodeMetadataScriptReferenceHtml(context);
+}
+
+function setNodeMetadataScriptSuggestionContext(context = null) {
+  nodeGraphMvp.metadataScriptSuggestionContext = context;
+  syncNodeMetadataScriptReference(context);
 }
 
 function nodeMetadataScriptPlaceholderValue(key) {
@@ -184,7 +447,7 @@ function insertNodeMetadataScriptKind(kind) {
 }
 
 function handleNodeMetadataScriptReferenceClick(event) {
-  const target = event.target?.closest?.("[data-key], [data-kind]");
+  const target = event.target?.closest?.("[data-key], [data-token-option]");
   if (!target) {
     return;
   }
@@ -195,7 +458,7 @@ function handleNodeMetadataScriptReferenceKeydown(event) {
   if (event.key !== "Enter" && event.key !== " ") {
     return;
   }
-  const target = event.target?.closest?.("[data-key], [data-kind]");
+  const target = event.target?.closest?.("[data-key], [data-token-option]");
   if (!target) {
     return;
   }
@@ -204,49 +467,41 @@ function handleNodeMetadataScriptReferenceKeydown(event) {
 }
 
 function insertNodeMetadataScriptReferenceTarget(target) {
-  if (target.dataset.key) {
+  if (target.dataset.tokenOption !== undefined) {
+    replaceNodeMetadataScriptToken(target.dataset.tokenOption);
+  } else if (target.dataset.key) {
     insertNodeMetadataScriptKey(target.dataset.key);
-  } else if (target.dataset.kind) {
-    insertNodeMetadataScriptKind(target.dataset.kind);
   }
 }
 
 function escapeNodeMetadataScriptHtml(value = "") {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return window.nodeCodeSettingsEditor.escapeHtml(value);
 }
 
 function colorizeNodeMetadataScriptLine(line = "") {
-  const commentIndex = line.indexOf("//");
-  const code = commentIndex >= 0 ? line.slice(0, commentIndex) : line;
-  const comment = commentIndex >= 0 ? line.slice(commentIndex) : "";
-  let html = "";
-  let lastIndex = 0;
-  for (const match of code.matchAll(nodeMetadataScriptHighlightTokenPattern)) {
-    const token = match[0];
-    html += escapeNodeMetadataScriptHtml(code.slice(lastIndex, match.index));
-    const lowerToken = token.toLowerCase();
-    const className = token.startsWith("param.")
-      ? "metadata-token-property"
-      : token === "="
-        ? "metadata-token-assignment"
-        : token.startsWith("[") && token.endsWith("]")
-          ? "metadata-token-list"
-          : ["true", "false", "any"].includes(lowerToken)
-            ? "metadata-token-keyword"
-            : Number.isFinite(Number(token))
-              ? "metadata-token-number"
-              : "metadata-token-value";
-    html += `<span class="${className}">${escapeNodeMetadataScriptHtml(token)}</span>`;
-    lastIndex = match.index + token.length;
+  return window.nodeCodeSettingsEditor.colorizeLine(line, {
+    assignmentInfo: nodeMetadataScriptLineAssignmentInfo,
+    isPropertyToken: (token) => String(token || "").startsWith("param."),
+    tokenIsMenuEligible: nodeMetadataScriptTokenIsMenuEligible,
+    tokenPattern: nodeMetadataScriptHighlightTokenPattern,
+  });
+}
+
+function resizeNodeMetadataScriptEditorToContent() {
+  const source = document.getElementById("metadataScriptSource");
+  const editor = document.querySelector(".metadata-script-editor");
+  const highlight = document.getElementById("metadataScriptHighlight");
+  if (!source || !editor) {
+    return;
   }
-  html += escapeNodeMetadataScriptHtml(code.slice(lastIndex));
-  if (comment) {
-    html += `<span class="metadata-token-comment">${escapeNodeMetadataScriptHtml(comment)}</span>`;
+  source.style.height = "auto";
+  const nextHeight = Math.max(286, source.scrollHeight);
+  source.style.height = `${nextHeight}px`;
+  editor.style.minHeight = `${nextHeight}px`;
+  editor.style.height = `${nextHeight}px`;
+  if (highlight) {
+    highlight.style.minHeight = `${nextHeight}px`;
   }
-  return html;
 }
 
 function updateNodeMetadataScriptHighlight() {
@@ -256,16 +511,95 @@ function updateNodeMetadataScriptHighlight() {
     return;
   }
   const text = source.value || "";
-  const ignoredLines = new Set(analyzeNodeMetadataScriptSource(text).ignored);
-  highlight.innerHTML = text.split("\n").map((line, index) => {
-    const lineNumber = index + 1;
-    const lineClass = ignoredLines.has(lineNumber)
-      ? "metadata-script-line metadata-script-line-ignored"
-      : "metadata-script-line";
-    return `<span class="${lineClass}">${colorizeNodeMetadataScriptLine(line) || " "}</span>`;
-  }).join("\n") || "&nbsp;";
+  highlight.innerHTML = window.nodeCodeSettingsEditor.highlightHtml(text, {
+    colorizeLine: colorizeNodeMetadataScriptLine,
+    ignoredLines: new Set(analyzeNodeMetadataScriptSource(text).ignored),
+    ignoredLineClass: "metadata-script-line metadata-script-line-ignored",
+    lineClass: "metadata-script-line",
+  });
   highlight.scrollTop = source.scrollTop;
   highlight.scrollLeft = source.scrollLeft;
+  resizeNodeMetadataScriptEditorToContent();
+}
+
+function clearNodeMetadataScriptTokenSelection() {
+  nodeGraphMvp.metadataScriptActiveToken = null;
+}
+
+function clearNodeMetadataScriptSuggestionContext() {
+  clearNodeMetadataScriptTokenSelection();
+  setNodeMetadataScriptSuggestionContext(null);
+}
+
+function findNodeMetadataScriptTokenAt(index) {
+  const source = document.getElementById("metadataScriptSource");
+  const text = source?.value || "";
+  return window.nodeCodeSettingsEditor.findTokenAt(text, index, {
+    assignmentInfo: nodeMetadataScriptLineAssignmentInfo,
+    optionsForKey: nodeMetadataScriptTokenOptionsForKey,
+  });
+}
+
+function showNodeMetadataScriptTokenSuggestions(token) {
+  if (!token?.config?.options?.length) {
+    clearNodeMetadataScriptSuggestionContext();
+    return;
+  }
+  nodeGraphMvp.metadataScriptActiveToken = token;
+  setNodeMetadataScriptSuggestionContext(token);
+}
+
+function replaceNodeMetadataScriptToken(nextToken) {
+  const source = document.getElementById("metadataScriptSource");
+  const token = nodeGraphMvp.metadataScriptActiveToken;
+  if (!source || !token) {
+    return;
+  }
+  const replacement = String(nextToken);
+  source.setRangeText(replacement, token.start, token.end, "end");
+  nodeGraphMvp.metadataScriptActiveToken = {
+    ...token,
+    end: token.start + replacement.length,
+    token: replacement,
+  };
+  updateNodeMetadataScriptHighlight();
+  syncNodeMetadataScriptDiagnostics();
+  setNodeMetadataScriptSuggestionContext(nodeGraphMvp.metadataScriptActiveToken);
+}
+
+function handleNodeMetadataScriptSourcePointer(event) {
+  if (event.defaultPrevented) {
+    return;
+  }
+  window.setTimeout(() => {
+    const source = document.getElementById("metadataScriptSource");
+    const token = findNodeMetadataScriptTokenAt(source?.selectionStart ?? 0);
+    if (token) {
+      showNodeMetadataScriptTokenSuggestions(token);
+    } else {
+      clearNodeMetadataScriptSuggestionContext();
+    }
+  }, 0);
+}
+
+function handleNodeMetadataScriptSourceKeyup(event) {
+  const source = event.currentTarget;
+  if (!source || source.id !== "metadataScriptSource") {
+    return;
+  }
+  if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+    const token = findNodeMetadataScriptTokenAt(source.selectionStart ?? 0);
+    if (token) {
+      showNodeMetadataScriptTokenSuggestions(token);
+    } else {
+      clearNodeMetadataScriptSuggestionContext();
+    }
+  }
+}
+
+function handleNodeMetadataScriptSourceInput() {
+  clearNodeMetadataScriptSuggestionContext();
+  syncNodeMetadataScriptDiagnostics();
 }
 
 function setMetadataScriptSourceText(text) {
@@ -276,6 +610,7 @@ function setMetadataScriptSourceText(text) {
   source.value = String(text || "");
   updateNodeMetadataScriptHighlight();
   updateNodeMetadataScriptPreview(source.value);
+  clearNodeMetadataScriptSuggestionContext();
 }
 
 function setNodeMetadataScriptDirty(dirty, message = "", error = false, detail = "") {
@@ -287,6 +622,9 @@ function setNodeMetadataScriptDirty(dirty, message = "", error = false, detail =
   const saveButton = document.getElementById("metadataScriptApply");
   if (saveButton) {
     saveButton.classList.toggle("armed", Boolean(dirty));
+  }
+  if (!dirty) {
+    setNodeMetadataClosePromptVisible(false);
   }
   if (message) {
     metadataScriptStatus(message, error, detail);
@@ -300,6 +638,13 @@ function confirmNodeMetadataScriptDiscard() {
     window.confirm("Discard unsaved metadata script changes?");
 }
 
+function setNodeMetadataClosePromptVisible(visible) {
+  const prompt = document.getElementById("metadataClosePrompt");
+  if (prompt) {
+    prompt.hidden = !visible;
+  }
+}
+
 function nodeMetadataScriptParamKey(slider) {
   return String(slider?.dataset?.param || "parameter")
     .trim()
@@ -307,11 +652,11 @@ function nodeMetadataScriptParamKey(slider) {
 }
 
 function nodeMetadataScriptValue(value, key = "") {
+  if (key === "alias") {
+    return JSON.stringify(normalizeNodeGraphPatchMetadataAlias(value));
+  }
   if (Array.isArray(value)) {
     return `[${value.map((entry) => String(entry || "").trim()).filter(Boolean).join(", ")}]`;
-  }
-  if (key === "step" && (!Number.isFinite(Number(value)) || Number(value) <= 0)) {
-    return "any";
   }
   if (typeof value === "boolean") {
     return value ? "true" : "false";
@@ -330,11 +675,14 @@ function formatNodeMetadataScript(slider, metadata = nodeSliderMetadata(slider))
   const label = nodeSliderLabelText(slider);
   const rows = [
     `// ${title} : ${label}`,
+    `param.${key}.alias = ${nodeMetadataScriptValue(metadata.alias, "alias")};`,
     `param.${key}.kind = ${nodeMetadataScriptValue(metadata.kind, "kind")};`,
+    `param.${key}.sliderCurve = ${nodeMetadataScriptValue(metadata.sliderCurve, "sliderCurve")};`,
+    `param.${key}.curveAmount = ${nodeMetadataScriptValue(metadata.curveAmount, "curveAmount")};`,
     `param.${key}.min = ${nodeMetadataScriptValue(metadata.min, "min")};`,
     `param.${key}.mid = ${nodeMetadataScriptValue(metadata.mid, "mid")};`,
     `param.${key}.max = ${nodeMetadataScriptValue(metadata.max, "max")};`,
-    `param.${key}.default = ${nodeMetadataScriptValue(metadata.def, "default")};`,
+    `param.${key}.def = ${nodeMetadataScriptValue(metadata.def, "def")};`,
     `param.${key}.step = ${nodeMetadataScriptValue(metadata.step, "step")};`,
     `param.${key}.unit = ${nodeMetadataScriptValue(metadata.unit, "unit")};`,
     `param.${key}.maxDigits = ${nodeMetadataScriptValue(metadata.maxDigits, "maxDigits")};`,
@@ -354,6 +702,7 @@ function nodeMetadataScriptTemplateForKind(slider, kind) {
   const template = nodeMetadataKindTemplates[normalizedKind] || nodeMetadataKindTemplates.decimal;
   const templateMetadata = {
     choices: template.choices || [],
+    curveAmount: normalizeNodeSliderCurveAmount(template.curveAmount),
     def: Number.isFinite(Number(template.def)) ? Number(template.def) : 0,
     displayChoices: Boolean(template.displayChoices),
     divideChoicesVisibly: Boolean(template.divideChoicesVisibly),
@@ -364,6 +713,7 @@ function nodeMetadataScriptTemplateForKind(slider, kind) {
     mid: Number.isFinite(Number(template.mid)) ? Number(template.mid) : 0,
     min: Number.isFinite(Number(template.min)) ? Number(template.min) : 0,
     nonlinearSlider: Boolean(template.nonlinearSlider),
+    sliderCurve: normalizeNodeSliderCurve(template.sliderCurve, template.nonlinearSlider),
     showSign: Boolean(template.showPlusMinus),
     step: Number.isFinite(Number(template.step)) ? Number(template.step) : 0,
     unit: template.unit || "",
@@ -415,8 +765,10 @@ function parseNodeMetadataScriptChoices(value) {
 }
 
 function nodeMetadataScriptKeyFromPath(path = "") {
-  const pathKey = String(path || "").split(".").pop();
-  return nodeMetadataScriptAliases[pathKey] || pathKey;
+  if (String(path || "").trim().endsWith(".alias")) {
+    return "alias";
+  }
+  return String(path || "").split(".").pop();
 }
 
 function parseNodeMetadataScriptAssignments(source) {
@@ -428,7 +780,7 @@ function parseNodeMetadataScriptAssignments(source) {
     if (!line) {
       continue;
     }
-    const match = line.match(/^([\w.]+)\s*=\s*(.+?)\s*;?$/);
+    const match = line.match(/^(.+?)\s*=\s*(.+?)\s*;?$/);
     if (!match) {
       ignored.push(index + 1);
       continue;
@@ -611,6 +963,11 @@ function nodeMetadataScriptEffectiveRows(metadata) {
 function updateNodeMetadataScriptEffective(source = metadataScriptSourceText()) {
   const effective = document.getElementById("metadataScriptEffective");
   const slider = document.getElementById(nodeGraphMvp.metadataEditorTarget);
+  if (effective?.classList.contains("metadata-script-extra-info")) {
+    effective.hidden = true;
+    effective.innerHTML = "";
+    return;
+  }
   if (!effective || !slider) {
     if (effective) {
       effective.hidden = true;
@@ -635,9 +992,12 @@ function updateNodeMetadataScriptPreview(source = metadataScriptSourceText()) {
     return;
   }
   updateNodeMetadataScriptEffective(source);
+  if (preview.classList.contains("metadata-script-extra-info")) {
+    preview.hidden = true;
+    preview.innerHTML = "";
+    return;
+  }
   const diagnostics = analyzeNodeMetadataScriptSource(source);
-  const maxVisibleItems = 8;
-  const expanded = preview.dataset.metadataScriptPreviewExpanded === "true";
   const slider = document.getElementById(nodeGraphMvp.metadataEditorTarget);
   const currentMetadata = slider ? nodeSliderMetadata(slider) : null;
   const draftMetadata = slider ? {
@@ -671,18 +1031,7 @@ function updateNodeMetadataScriptPreview(source = metadataScriptSourceText()) {
     preview.innerHTML = "";
     return;
   }
-  const hiddenCount = expanded ? 0 : Math.max(0, items.length - maxVisibleItems);
-  const visibleItems = expanded ? [...items] : items.slice(0, maxVisibleItems);
-  if (hiddenCount || (expanded && items.length > maxVisibleItems)) {
-    visibleItems.push(`
-      <li class="more" data-preview-toggle="true" role="button" tabindex="0" title="${expanded ? "Collapse metadata script preview" : "Show all metadata script preview rows"}">
-        <span>${expanded ? "less" : "preview"}</span>
-        <em>...</em>
-        <strong>${expanded ? "collapse" : "more"}</strong>
-        <code>${expanded ? "show compact" : `${hiddenCount} more`}</code>
-      </li>`);
-  }
-  preview.innerHTML = visibleItems.join("");
+  preview.innerHTML = items.join("");
 }
 
 function focusNodeMetadataScriptLine(lineNumber) {
@@ -703,11 +1052,6 @@ function focusNodeMetadataScriptLine(lineNumber) {
 
 function handleNodeMetadataScriptPreviewClick(event) {
   const row = event.target?.closest?.("[data-line]");
-  const toggle = event.target?.closest?.("[data-preview-toggle]");
-  if (toggle) {
-    toggleNodeMetadataScriptPreviewExpanded();
-    return;
-  }
   if (!row) {
     return;
   }
@@ -715,31 +1059,12 @@ function handleNodeMetadataScriptPreviewClick(event) {
 }
 
 function handleNodeMetadataScriptPreviewKeydown(event) {
-  if (event.key !== "Enter" && event.key !== " ") {
-    return;
-  }
-  const toggle = event.target?.closest?.("[data-preview-toggle]");
-  if (!toggle) {
-    return;
-  }
-  event.preventDefault();
-  toggleNodeMetadataScriptPreviewExpanded();
-}
-
-function toggleNodeMetadataScriptPreviewExpanded() {
-  const preview = document.getElementById("metadataScriptPreview");
-  if (!preview) {
-    return;
-  }
-  preview.dataset.metadataScriptPreviewExpanded =
-    preview.dataset.metadataScriptPreviewExpanded === "true" ? "false" : "true";
-  updateNodeMetadataScriptPreview();
-}
-
-function resetNodeMetadataScriptPreviewExpanded() {
-  const preview = document.getElementById("metadataScriptPreview");
-  if (preview) {
-    preview.dataset.metadataScriptPreviewExpanded = "false";
+  if (event.key === "Enter" || event.key === " ") {
+    const row = event.target?.closest?.("[data-line]");
+    if (row) {
+      event.preventDefault();
+      focusNodeMetadataScriptLine(row.dataset.line);
+    }
   }
 }
 
@@ -782,7 +1107,7 @@ function runNodeMetadataScriptParserSelfTest() {
   fakeSlider.dataset.param = "waveform";
   const parsed = parseNodeMetadataScriptAssignments(`
 // parser fixture
-param.frequency.default = 440;
+param.frequency.def = 440;
 param.frequency.choices = [Saw, Square, Sine];
 param.frequency.displayChoices = true;
 this line is intentionally invalid
@@ -797,7 +1122,7 @@ this line is intentionally invalid
     parsed.assignments[2]?.key === "displayChoices",
     parsed.ignored.length === 1,
     parsed.ignored[0] === 6,
-    analyzeNodeMetadataScriptSource("param.frequency.default = 440;").supportedCount === 1,
+    analyzeNodeMetadataScriptSource("param.frequency.def = 440;").supportedCount === 1,
     analyzeNodeMetadataScriptSource("param.frequency.unknown = 1;").unsupported.length === 1,
     nodeMetadataScriptDiagnosticMessage("param.frequency.unknown = 1;").error === true,
     nodeMetadataScriptPreviewDetails({ key: "def", rawValue: "440" }, samePreviewDraft).state === "same",
@@ -805,11 +1130,11 @@ this line is intentionally invalid
     nodeMetadataScriptPreviewDetails({ key: "def", rawValue: "441" }, { def: 440, kind: "decimal" }).after === "441",
     nodeMetadataScriptPreviewDetails({ key: "def", rawValue: "441" }, { def: 440, kind: "decimal" }).before === "440",
     nodeMetadataScriptUnsupportedPreviewDetails({ path: "param.frequency.unknown" }).after === "unsupported: param.frequency.unknown",
-    nodeMetadataScriptDiagnosticMessage("param.frequency.default = 441;").message.includes("changes"),
+    nodeMetadataScriptDiagnosticMessage("param.frequency.def = 441;").message.includes("changes"),
     nodeMetadataScriptDiagnosticMessage("param.frequency.unknown = 1;").message.includes("ignored lines"),
     nodeMetadataScriptEffectiveRows({ kind: "decimal", min: 0, mid: 0.5, max: 1, def: 0.25, step: 0, unit: "", maxDigits: 2, choices: [], displayChoices: false, divideChoicesVisibly: false, linearSmoothing: true, nonlinearSlider: false, showSign: false, wraparound: false })
-      .some(([key, value]) => key === "step" && value === "any"),
-    nodeMetadataScriptTemplateForKind(fakeSlider, "waveform").includes("param.waveform.choices = [Saw, Square, Triangle, Sine, Noise];"),
+      .some(([key, value]) => key === "step" && value === "0"),
+    nodeMetadataScriptTemplateForKind(fakeSlider, "waveform").includes("param.waveform.choices = [Saw, Ramp, Square, Triangle, Sine, Noise];"),
     nodeMetadataScriptTemplateForKind(fakeSlider, "waveform").includes("param.waveform.displayChoices = true;"),
     nodeMetadataScriptAssignmentInsertion("param.a.min = 0;", "param.a.max = 1;", 16) === "\nparam.a.max = 1;",
     nodeMetadataScriptAssignmentInsertion("param.a.min = 0;\n", "param.a.max = 1;", 17) === "param.a.max = 1;",
@@ -841,6 +1166,9 @@ function scheduleNodeMetadataScriptParserSelfTestStatus() {
 
 function parseNodeMetadataScriptValue(rawValue, key, current) {
   const value = String(rawValue || "").trim().replace(/;$/, "").trim();
+  if (key === "alias") {
+    return normalizeNodeGraphPatchMetadataAlias(value.replace(/^["']|["']$/g, ""));
+  }
   if (key === "choices") {
     return parseNodeMetadataScriptChoices(value);
   }
@@ -850,11 +1178,14 @@ function parseNodeMetadataScriptValue(rawValue, key, current) {
   if (key === "kind") {
     return normalizeNodeMetadataKind(value);
   }
+  if (key === "sliderCurve") {
+    return normalizeNodeSliderCurve(value.replace(/^["']|["']$/g, ""), current.nonlinearSlider);
+  }
   if (key === "unit") {
     return value.replace(/^["']|["']$/g, "");
   }
-  if (key === "step" && value.toLowerCase() === "any") {
-    return 0;
+  if (key === "curveAmount") {
+    return normalizeNodeSliderCurveAmount(value, current.curveAmount);
   }
   if (key === "maxDigits") {
     return normalizeNodeGraphMetadataMaxDigits(value, current.kind);
@@ -867,7 +1198,13 @@ function parseNodeMetadataScript(source, slider) {
   const next = { ...current, choices: [...(current.choices || [])] };
   const parsed = parseNodeMetadataScriptAssignments(source);
   const ignored = [...parsed.ignored];
+  const portAliases = [];
   for (const assignment of parsed.assignments) {
+    const portAlias = nodeMetadataScriptPortAliasAssignment(assignment);
+    if (portAlias) {
+      portAliases.push(portAlias);
+      continue;
+    }
     if (!nodeMetadataScriptSupportedKeys.has(assignment.key)) {
       ignored.push(assignment.line);
       continue;
@@ -885,10 +1222,55 @@ function parseNodeMetadataScript(source, slider) {
       slider.dataset.param,
       next,
     ) || next,
+    portAliases,
   };
 }
 
+function nodeMetadataScriptPortAliasAssignment(assignment) {
+  const match = String(assignment?.path || "").trim().match(/^(input|output)(?:\.([A-Za-z_$][\w$]*)|\[(["'])(.*?)\3\])\.alias$/);
+  if (!match) {
+    return null;
+  }
+  return {
+    alias: normalizeNodeGraphPatchMetadataAlias(String(assignment.rawValue || "").trim().replace(/^["']|["']$/g, "")),
+    io: match[1],
+    port: String(match[2] || match[4] || "").trim(),
+  };
+}
+
+function applyNodeMetadataScriptPortAliases(slider, portAliases = []) {
+  if (!portAliases.length) {
+    return;
+  }
+  const patchNode = nodeGraphPatchNode(slider.closest(".dsp-node")?.dataset.node);
+  if (!patchNode) {
+    return;
+  }
+  const knownPorts = {
+    input: new Set(nodeGraphPatchNodeInputPorts(patchNode)),
+    output: new Set(nodeGraphPatchNodeOutputPorts(patchNode)),
+  };
+  const nextPortMeta = normalizeNodeGraphPatchPortMeta(patchNode.portMeta);
+  for (const assignment of portAliases) {
+    if (!knownPorts[assignment.io]?.has(assignment.port)) {
+      continue;
+    }
+    nextPortMeta[assignment.io] = {
+      ...(nextPortMeta[assignment.io] || {}),
+      [assignment.port]: { alias: assignment.alias },
+    };
+    if (!assignment.alias) {
+      delete nextPortMeta[assignment.io][assignment.port];
+    }
+    if (!Object.keys(nextPortMeta[assignment.io]).length) {
+      delete nextPortMeta[assignment.io];
+    }
+  }
+  patchNode.portMeta = normalizeNodeGraphPatchPortMeta(nextPortMeta);
+}
+
 function writeNodeMetadataEditorValues(metadata) {
+  document.getElementById("metadataAliasValue").value = metadata.alias || "";
   document.getElementById("metadataMinValue").value = formatNodeSliderCompactNumber(metadata.min);
   document.getElementById("metadataMidValue").value = formatNodeSliderCompactNumber(metadata.mid);
   document.getElementById("metadataMaxValue").value = formatNodeSliderCompactNumber(metadata.max);
@@ -905,6 +1287,8 @@ function writeNodeMetadataEditorValues(metadata) {
   document.getElementById("metadataDivideChoicesValue").checked = metadata.divideChoicesVisibly;
   document.getElementById("metadataLinearSmoothingValue").checked = metadata.linearSmoothing;
   document.getElementById("metadataNonlinearSliderValue").checked = metadata.nonlinearSlider;
+  document.getElementById("metadataSliderCurveValue").value = normalizeNodeSliderCurve(metadata.sliderCurve, metadata.nonlinearSlider);
+  document.getElementById("metadataCurveSensitivityValue").value = formatNodeSliderCompactNumber(metadata.curveAmount);
   document.getElementById("metadataShowSignValue").checked = metadata.showSign;
   document.getElementById("metadataWraparoundValue").checked = metadata.wraparound;
   syncNodeMetadataMidVisibility();
@@ -913,12 +1297,16 @@ function writeNodeMetadataEditorValues(metadata) {
 function fillNodeMetadataPopover(slider) {
   populateNodeMetadataKindChoices();
   const metadata = nodeSliderMetadata(slider);
-  document.getElementById("metadataPopoverTitle").textContent = nodeSliderDebugPath(slider);
-  document.getElementById("metadataScriptTarget").textContent = nodeSliderLabelText(slider);
-  resetNodeMetadataScriptPreviewExpanded();
+  const sliderLabel = nodeSliderLabelText(slider);
+  document.getElementById("metadataPopoverTitle").textContent = "PARAMETER";
+  document.getElementById("metadataPopoverSubtitle").textContent = "Settings";
+  document.getElementById("metadataScriptTarget").textContent = sliderLabel;
+  document.getElementById("metadataAliasValue").placeholder = sliderLabel;
   writeNodeMetadataEditorValues(metadata);
   setMetadataScriptSourceText(formatNodeMetadataScript(slider, metadata));
   setNodeMetadataScriptDirty(false, "script ready", false);
+  setNodeMetadataAdvancedScriptVisible(false);
+  setNodeMetadataFieldsDirty(false);
   document.getElementById("metadataSetDefaultButton").classList.remove("armed");
 }
 
@@ -933,22 +1321,124 @@ function openNodeMetadataPopover(event, readout) {
   if (nodeGraphMvp.metadataEditorTarget !== slider.id && !confirmNodeMetadataScriptDiscard()) {
     return;
   }
-
-  nodeGraphMvp.metadataEditorTarget = slider.id;
-  fillNodeMetadataPopover(slider);
-  const savedPosition = nodeGraphMvp.metadataPopoverPosition;
-  positionNodeMetadataPopover(
-    document.getElementById("nodeParameterMetadataPopover"),
-    savedPosition?.left ?? event.clientX,
-    savedPosition?.top ?? event.clientY,
-  );
-}
-
-function closeNodeMetadataPopover() {
-  if (!confirmNodeMetadataScriptDiscard()) {
+  const displayRect = typeof prepareNodeGraphTraceDisplaySettingsForInspectorReplacement === "function"
+    ? prepareNodeGraphTraceDisplaySettingsForInspectorReplacement()
+    : null;
+  if (displayRect === false) {
     return;
   }
+  const moduleActionsRect = typeof prepareNodeModuleActionsWindowForInspectorReplacement === "function"
+    ? prepareNodeModuleActionsWindowForInspectorReplacement()
+    : null;
+
+  nodeGraphMvp.metadataEditorTarget = slider.id;
+  nodeGraphMvp.sharedInspectorActive = "metaparameters";
+  fillNodeMetadataPopover(slider);
+  const sharedInspectorState = typeof normalizeNodeGraphSharedInspectorWindowState === "function"
+    ? normalizeNodeGraphSharedInspectorWindowState(nodeGraphMvp.sharedInspectorWindowState, nodeGraphMvp.workspaceWindowStates)
+    : (nodeGraphMvp.sharedInspectorWindowState || {});
+  const savedPosition = sharedInspectorState.position || nodeGraphMvp.metadataPopoverPosition;
+  const hasSavedPosition =
+    Number.isFinite(Number(savedPosition?.left)) &&
+    Number.isFinite(Number(savedPosition?.top));
+  applyNodeMetadataPopoverSize(sharedInspectorState.size);
   const popover = document.getElementById("nodeParameterMetadataPopover");
+  positionNodeMetadataPopover(
+    popover,
+    hasSavedPosition
+      ? savedPosition.left
+      : nodeMetadataReplacementX(displayRect || moduleActionsRect, popover, event.clientX),
+    hasSavedPosition
+      ? savedPosition.top
+      : (displayRect?.top ?? moduleActionsRect?.top ?? event.clientY),
+  );
+  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+    rememberNodeGraphWorkspaceWindowState("metaparameters", popover, { open: true }, { status: false });
+  }
+}
+
+function syncOpenNodeMetadataPopoverToModule(nodeId) {
+  const popover = document.getElementById("nodeParameterMetadataPopover");
+  if (!popover || popover.hidden || nodeGraphMvp.sharedInspectorActive !== "metaparameters") {
+    return false;
+  }
+  const readout = typeof nodeGraphContextTargetSliderReadout === "function"
+    ? nodeGraphContextTargetSliderReadout(nodeId)
+    : null;
+  const slider = readout?.dataset?.sliderTarget
+    ? document.getElementById(readout.dataset.sliderTarget)
+    : null;
+  if (!slider) {
+    return false;
+  }
+  if (nodeGraphMvp.metadataEditorTarget === slider.id) {
+    return true;
+  }
+  if (nodeGraphMvp.metadataEditorTarget && !confirmNodeMetadataScriptDiscard()) {
+    return false;
+  }
+  nodeGraphMvp.metadataEditorTarget = slider.id;
+  fillNodeMetadataPopover(slider);
+  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+    rememberNodeGraphWorkspaceWindowState("metaparameters", popover, { open: true }, { status: false });
+  }
+  return true;
+}
+
+function openBlankNodeMetadataPopover(event = {}) {
+  event.preventDefault?.();
+  event.stopPropagation?.();
+  bindNodeGraphMetadataPopoverEvents();
+  if (nodeGraphMvp.metadataEditorTarget && !confirmNodeMetadataScriptDiscard()) {
+    return;
+  }
+  const displayRect = typeof prepareNodeGraphTraceDisplaySettingsForInspectorReplacement === "function"
+    ? prepareNodeGraphTraceDisplaySettingsForInspectorReplacement()
+    : null;
+  if (displayRect === false) {
+    return;
+  }
+  const moduleActionsRect = typeof prepareNodeModuleActionsWindowForInspectorReplacement === "function"
+    ? prepareNodeModuleActionsWindowForInspectorReplacement()
+    : null;
+  nodeGraphMvp.metadataEditorTarget = null;
+  nodeGraphMvp.sharedInspectorActive = "metaparameters";
+  document.getElementById("metadataPopoverTitle").textContent = "PARAMETER";
+  document.getElementById("metadataPopoverSubtitle").textContent = "Settings";
+  document.getElementById("metadataScriptTarget").textContent = "No parameter selected";
+  setMetadataScriptSourceText("");
+  updateNodeMetadataScriptPreview("");
+  updateNodeMetadataScriptEffective("");
+  setNodeMetadataScriptDirty(false, "no parameter selected", false, "Right-click a slider readout or choose a module with parameters.");
+  const sharedInspectorState = typeof normalizeNodeGraphSharedInspectorWindowState === "function"
+    ? normalizeNodeGraphSharedInspectorWindowState(nodeGraphMvp.sharedInspectorWindowState, nodeGraphMvp.workspaceWindowStates)
+    : (nodeGraphMvp.sharedInspectorWindowState || {});
+  const savedPosition = sharedInspectorState.position || nodeGraphMvp.metadataPopoverPosition;
+  const hasSavedPosition =
+    Number.isFinite(Number(savedPosition?.left)) &&
+    Number.isFinite(Number(savedPosition?.top));
+  applyNodeMetadataPopoverSize(sharedInspectorState.size);
+  const popover = document.getElementById("nodeParameterMetadataPopover");
+  positionNodeMetadataPopover(
+    popover,
+    hasSavedPosition
+      ? savedPosition.left
+      : nodeMetadataReplacementX(displayRect || moduleActionsRect, popover, event.clientX ?? window.innerWidth * 0.5),
+    hasSavedPosition
+      ? savedPosition.top
+      : (displayRect?.top ?? moduleActionsRect?.top ?? event.clientY ?? window.innerHeight * 0.25),
+  );
+  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+    rememberNodeGraphWorkspaceWindowState("metaparameters", popover, { open: true }, { status: false });
+  }
+}
+
+function finishCloseNodeMetadataPopover() {
+  const popover = document.getElementById("nodeParameterMetadataPopover");
+  if (!popover) {
+    return;
+  }
+  setNodeMetadataClosePromptVisible(false);
   popover.hidden = true;
   setNodeMetadataScriptDirty(false, "");
   if (nodeGraphMvp.metadataDragging?.handle) {
@@ -956,13 +1446,119 @@ function closeNodeMetadataPopover() {
   }
   nodeGraphMvp.metadataDragging = null;
   nodeGraphMvp.metadataEditorTarget = null;
+  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+    rememberNodeGraphWorkspaceWindowState("metaparameters", popover, { open: false }, { status: false });
+  }
+}
+
+function closeNodeMetadataPopover() {
+  if (nodeGraphMvp.metadataScriptDirty && nodeMetadataScriptPanelVisible()) {
+    setNodeMetadataClosePromptVisible(true);
+    metadataScriptStatus("save changes before closing?", false);
+    return;
+  }
+  finishCloseNodeMetadataPopover();
+}
+
+function saveAndCloseNodeMetadataPopover() {
+  if (applyNodeMetadataScriptEditor() && !nodeGraphMvp.metadataScriptDirty) {
+    finishCloseNodeMetadataPopover();
+  }
+}
+
+function discardAndCloseNodeMetadataPopover() {
+  finishCloseNodeMetadataPopover();
+}
+
+function nodeMetadataScriptPanelVisible() {
+  const panel = document.querySelector(".metadata-script-panel");
+  return Boolean(panel) && window.getComputedStyle(panel).display !== "none";
+}
+
+function setNodeMetadataAdvancedScriptVisible(visible) {
+  const popover = document.getElementById("nodeParameterMetadataPopover");
+  const toggle = document.getElementById("metadataAdvancedToggle");
+  if (popover) {
+    popover.classList.toggle("metadata-script-open", Boolean(visible));
+  }
+  if (toggle) {
+    toggle.setAttribute("aria-expanded", visible ? "true" : "false");
+    toggle.textContent = visible ? "Hide Script" : "Script (advanced)";
+  }
+}
+
+function setNodeMetadataFieldsDirty(dirty) {
+  const saveButton = document.getElementById("metadataSaveFieldsButton");
+  if (saveButton) {
+    saveButton.classList.toggle("dirty", Boolean(dirty));
+  }
+}
+
+function toggleNodeMetadataAdvancedScript() {
+  const popover = document.getElementById("nodeParameterMetadataPopover");
+  setNodeMetadataAdvancedScriptVisible(!popover?.classList.contains("metadata-script-open"));
+}
+
+function metadataStepperQuantum(input) {
+  if (input?.id === "metadataMaxDigitsValue") {
+    return 1;
+  }
+  return 0.1;
+}
+
+function formatMetadataStepperValue(value, quantum) {
+  if (!Number.isFinite(value)) {
+    return "0";
+  }
+  if (Number.isInteger(quantum)) {
+    return String(Math.round(value));
+  }
+  const decimals = Math.min(8, Math.max(0, String(quantum).split(".")[1]?.length || 0));
+  return value.toFixed(decimals).replace(/\.?0+$/g, "");
+}
+
+function stepNodeMetadataField(event) {
+  if (typeof nodeGraphSettingsTextGestureShouldIgnoreClick === "function" && nodeGraphSettingsTextGestureShouldIgnoreClick(event)) {
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
+  const button = event.target.closest("[data-metadata-step-target]");
+  if (!button) {
+    return;
+  }
+  const input = document.getElementById(button.dataset.metadataStepTarget || "");
+  if (!input) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  const direction = Number(button.dataset.metadataStepDirection) < 0 ? -1 : 1;
+  const quantum = metadataStepperQuantum(input);
+  const current = Number(input.value);
+  let next = (Number.isFinite(current) ? current : 0) + direction * quantum;
+  if (input.id === "metadataMaxDigitsValue") {
+    next = Math.max(0, Math.min(12, Math.round(next)));
+  }
+  input.value = formatMetadataStepperValue(next, quantum);
+  syncNodeMetadataMidVisibility();
+  setNodeMetadataFieldsDirty(true);
+  applyNodeMetadataEditor({ keepDirty: true });
+  syncNodeMetadataScriptFromFields({ force: true });
 }
 
 function bindNodeGraphMetadataPopoverEvents() {
   const popover = document.getElementById("nodeParameterMetadataPopover");
   if (popover && popover.dataset.metadataPopoverBound !== "true") {
     popover.dataset.metadataPopoverBound = "true";
+    if (typeof bindNodeGraphSettingsTextInputProtection === "function") {
+      bindNodeGraphSettingsTextInputProtection(popover);
+    }
     popover.addEventListener("input", handleNodeMetadataEditorInput);
+    popover.addEventListener("change", handleNodeMetadataEditorInput);
+    popover.addEventListener("click", stepNodeMetadataField);
+  } else if (popover && typeof bindNodeGraphSettingsTextInputProtection === "function") {
+    bindNodeGraphSettingsTextInputProtection(popover);
   }
   const scriptSource = document.getElementById("metadataScriptSource");
   syncNodeMetadataScriptReference();
@@ -974,7 +1570,11 @@ function bindNodeGraphMetadataPopoverEvents() {
   }
   if (scriptSource && scriptSource.dataset.metadataScriptSourceBound !== "true") {
     scriptSource.dataset.metadataScriptSourceBound = "true";
+    scriptSource.addEventListener("input", handleNodeMetadataScriptSourceInput);
     scriptSource.addEventListener("keydown", handleNodeMetadataScriptKeydown);
+    scriptSource.addEventListener("keyup", handleNodeMetadataScriptSourceKeyup);
+    scriptSource.addEventListener("pointerdown", (event) => event.stopPropagation());
+    scriptSource.addEventListener("pointerup", handleNodeMetadataScriptSourcePointer);
     scriptSource.addEventListener("scroll", updateNodeMetadataScriptHighlight);
   }
   const scriptPreview = document.getElementById("metadataScriptPreview");
@@ -988,20 +1588,57 @@ function bindNodeGraphMetadataPopoverEvents() {
     closeButton.dataset.metadataCloseBound = "true";
     closeButton.addEventListener("click", closeNodeMetadataPopover);
   }
+  const closeSave = document.getElementById("metadataCloseSave");
+  if (closeSave && closeSave.dataset.metadataCloseSaveBound !== "true") {
+    closeSave.dataset.metadataCloseSaveBound = "true";
+    closeSave.addEventListener("click", saveAndCloseNodeMetadataPopover);
+  }
+  const closeDiscard = document.getElementById("metadataCloseDiscard");
+  if (closeDiscard && closeDiscard.dataset.metadataCloseDiscardBound !== "true") {
+    closeDiscard.dataset.metadataCloseDiscardBound = "true";
+    closeDiscard.addEventListener("click", discardAndCloseNodeMetadataPopover);
+  }
   const dragHandle = document.getElementById("metadataPopoverDragHandle");
   if (dragHandle && dragHandle.dataset.metadataDragBound !== "true") {
     dragHandle.dataset.metadataDragBound = "true";
     dragHandle.addEventListener("pointerdown", beginNodeMetadataPopoverDrag);
+  }
+  const cornerDrag = document.getElementById("metadataPopoverCornerDrag");
+  if (cornerDrag && cornerDrag.dataset.metadataCornerDragBound !== "true") {
+    cornerDrag.dataset.metadataCornerDragBound = "true";
+    cornerDrag.addEventListener("pointerdown", beginNodeMetadataPopoverResize);
   }
   const dragHeading = document.querySelector("#nodeParameterMetadataPopover .metadata-popover-heading");
   if (dragHeading && dragHeading.dataset.metadataDragHeadingBound !== "true") {
     dragHeading.dataset.metadataDragHeadingBound = "true";
     dragHeading.addEventListener("pointerdown", beginNodeMetadataPopoverDrag);
   }
+  if (popover && popover.dataset.metadataEmptyDragBound !== "true") {
+    popover.dataset.metadataEmptyDragBound = "true";
+    popover.addEventListener("pointerdown", beginNodeMetadataPopoverDrag);
+    document.addEventListener("pointermove", dragNodeMetadataPopoverResize);
+    document.addEventListener("pointerup", endNodeMetadataPopoverResize);
+    document.addEventListener("pointercancel", endNodeMetadataPopoverResize);
+  }
   const defaultButton = document.getElementById("metadataSetDefaultButton");
   if (defaultButton && defaultButton.dataset.metadataDefaultBound !== "true") {
     defaultButton.dataset.metadataDefaultBound = "true";
     defaultButton.addEventListener("click", setNodeMetadataDefaultsFromKind);
+  }
+  const saveFields = document.getElementById("metadataSaveFieldsButton");
+  if (saveFields && saveFields.dataset.metadataSaveFieldsBound !== "true") {
+    saveFields.dataset.metadataSaveFieldsBound = "true";
+    saveFields.addEventListener("click", applyNodeMetadataEditor);
+  }
+  const restoreFields = document.getElementById("metadataRestoreFieldsButton");
+  if (restoreFields && restoreFields.dataset.metadataRestoreFieldsBound !== "true") {
+    restoreFields.dataset.metadataRestoreFieldsBound = "true";
+    restoreFields.addEventListener("click", restoreNodeMetadataEditorFields);
+  }
+  const advancedToggle = document.getElementById("metadataAdvancedToggle");
+  if (advancedToggle && advancedToggle.dataset.metadataAdvancedBound !== "true") {
+    advancedToggle.dataset.metadataAdvancedBound = "true";
+    advancedToggle.addEventListener("click", toggleNodeMetadataAdvancedScript);
   }
   const kindInput = document.getElementById("metadataKindValue");
   if (kindInput && kindInput.dataset.metadataKindBound !== "true") {
@@ -1016,7 +1653,9 @@ function bindNodeGraphMetadataPopoverEvents() {
   const scriptRefresh = document.getElementById("metadataScriptRefresh");
   if (scriptRefresh && scriptRefresh.dataset.metadataScriptRefreshBound !== "true") {
     scriptRefresh.dataset.metadataScriptRefreshBound = "true";
-    scriptRefresh.addEventListener("click", () => syncNodeMetadataScriptFromFields());
+    scriptRefresh.textContent = "Restore";
+    scriptRefresh.title = "Restore script text from the selected parameter's current metadata.";
+    scriptRefresh.addEventListener("click", () => syncNodeMetadataScriptFromFields({ force: true }));
   }
   const scriptKindTemplate = document.getElementById("metadataScriptKindTemplate");
   if (scriptKindTemplate && scriptKindTemplate.dataset.metadataScriptKindTemplateBound !== "true") {
@@ -1158,38 +1797,55 @@ function bindNodeMetadataScriptBeforeUnload() {
 
 function readNodeMetadataEditorValues(slider) {
   const current = nodeSliderMetadata(slider);
-  let min = parseNodeMetadataNumber(document.getElementById("metadataMinValue").value, current.min);
-  let max = parseNodeMetadataNumber(document.getElementById("metadataMaxValue").value, current.max);
+  const sanitizeMetadataNumberInput = (id) => {
+    const input = document.getElementById(id);
+    if (!input) {
+      return "";
+    }
+    const sanitized = typeof sanitizeNodeGraphNumericText === "function"
+      ? sanitizeNodeGraphNumericText(input.value)
+      : String(input.value ?? "").trim();
+    if (sanitized && sanitized !== input.value) {
+      input.value = sanitized;
+    }
+    return sanitized;
+  };
+  let min = parseNodeMetadataNumber(sanitizeMetadataNumberInput("metadataMinValue"), current.min);
+  let max = parseNodeMetadataNumber(sanitizeMetadataNumberInput("metadataMaxValue"), current.max);
   if (min > max) {
     [min, max] = [max, min];
   }
-  const stepInput = document.getElementById("metadataStepValue").value.trim();
+  const stepInput = sanitizeMetadataNumberInput("metadataStepValue");
   const kind = normalizeNodeMetadataKind(document.getElementById("metadataKindValue").value);
   return {
-    def: parseNodeMetadataNumber(document.getElementById("metadataDefaultValue").value, current.def),
+    alias: normalizeNodeGraphPatchMetadataAlias(document.getElementById("metadataAliasValue").value),
+    curveAmount: normalizeNodeSliderCurveAmount(
+      sanitizeMetadataNumberInput("metadataCurveSensitivityValue"),
+      current.curveAmount,
+    ),
+    def: parseNodeMetadataNumber(sanitizeMetadataNumberInput("metadataDefaultValue"), current.def),
     kind,
     max,
     maxDigits: normalizeNodeGraphMetadataMaxDigits(
-      document.getElementById("metadataMaxDigitsValue").value,
+      sanitizeMetadataNumberInput("metadataMaxDigitsValue"),
       kind,
     ),
-    mid: parseNodeMetadataNumber(document.getElementById("metadataMidValue").value, current.mid),
+    mid: parseNodeMetadataNumber(sanitizeMetadataNumberInput("metadataMidValue"), current.mid),
     min,
     choices: parseNodeMetadataChoices(document.getElementById("metadataChoicesValue").value),
     displayChoices: document.getElementById("metadataDisplayChoicesValue").checked,
     divideChoicesVisibly: document.getElementById("metadataDivideChoicesValue").checked,
     linearSmoothing: document.getElementById("metadataLinearSmoothingValue").checked,
-    nonlinearSlider: document.getElementById("metadataNonlinearSliderValue").checked,
-    step: stepInput.toLowerCase() === "any"
-      ? 0
-      : Math.max(0, parseNodeMetadataNumber(stepInput, current.step)),
+    nonlinearSlider: document.getElementById("metadataSliderCurveValue").value !== "linear",
+    sliderCurve: normalizeNodeSliderCurve(document.getElementById("metadataSliderCurveValue").value),
+    step: Math.max(0, parseNodeMetadataNumber(stepInput, current.step)),
     showSign: document.getElementById("metadataShowSignValue").checked,
     wraparound: document.getElementById("metadataWraparoundValue").checked,
     unit: document.getElementById("metadataUnitValue").value.trim(),
   };
 }
 
-function applyNodeMetadataEditor() {
+function applyNodeMetadataEditor(options = {}) {
   const slider = document.getElementById(nodeGraphMvp.metadataEditorTarget);
   if (!slider) {
     return;
@@ -1200,6 +1856,22 @@ function applyNodeMetadataEditor() {
     status: "metadata synced",
   });
   markNodeGraphRenderPending();
+  if (!options.keepDirty) {
+    setNodeMetadataFieldsDirty(false);
+  }
+}
+
+function restoreNodeMetadataEditorFields() {
+  const slider = document.getElementById(nodeGraphMvp.metadataEditorTarget);
+  if (!slider) {
+    return;
+  }
+  const metadata = nodeSliderMetadata(slider);
+  writeNodeMetadataEditorValues(metadata);
+  setMetadataScriptSourceText(formatNodeMetadataScript(slider, metadata));
+  setNodeMetadataScriptDirty(false, "restored", false);
+  setNodeMetadataFieldsDirty(false);
+  document.getElementById("metadataSetDefaultButton").classList.remove("armed");
 }
 
 function applyNodeMetadataScriptEditor() {
@@ -1210,10 +1882,12 @@ function applyNodeMetadataScriptEditor() {
   }
   const parsed = parseNodeMetadataScript(metadataScriptSourceText(), slider);
   setNodeSliderMetadata(slider, parsed.metadata);
+  applyNodeMetadataScriptPortAliases(slider, parsed.portAliases);
   writeNodeMetadataEditorValues(nodeSliderMetadata(slider));
   syncNodeGraphPatchMetadataFromSlider(slider, {
     status: "metadata script synced",
   });
+  applyNodeGraphPatchToDom();
   markNodeGraphRenderPending();
   const ignoredText = parsed.ignored.length
     ? `; ignored lines ${parsed.ignored.join(", ")}`
@@ -1306,16 +1980,21 @@ function setNodeMetadataDefaultsFromKind() {
   document.getElementById("metadataDivideChoicesValue").checked = Boolean(template.divideChoicesVisibly);
   document.getElementById("metadataLinearSmoothingValue").checked = template.linearSmoothing !== false;
   document.getElementById("metadataNonlinearSliderValue").checked = Boolean(template.nonlinearSlider);
+  document.getElementById("metadataSliderCurveValue").value = normalizeNodeSliderCurve(template.sliderCurve, template.nonlinearSlider);
+  document.getElementById("metadataCurveSensitivityValue").value =
+    formatNodeSliderCompactNumber(normalizeNodeSliderCurveAmount(template.curveAmount));
   document.getElementById("metadataShowSignValue").checked = Boolean(template.showPlusMinus);
   document.getElementById("metadataWraparoundValue").checked = Boolean(template.wraparound);
   syncNodeMetadataMidVisibility();
   applyNodeMetadataEditor();
   syncNodeMetadataScriptFromFields({ force: true });
+  setNodeMetadataFieldsDirty(false);
   document.getElementById("metadataSetDefaultButton").classList.remove("armed");
 }
 
 function handleNodeMetadataKindChange() {
-  applyNodeMetadataEditor();
+  setNodeMetadataFieldsDirty(true);
+  applyNodeMetadataEditor({ keepDirty: true });
   document.getElementById("metadataSetDefaultButton").classList.add("armed");
 }
 
@@ -1329,10 +2008,7 @@ function handleNodeMetadataEditorInput(event) {
     return;
   }
   syncNodeMetadataMidVisibility();
-  applyNodeMetadataEditor();
+  setNodeMetadataFieldsDirty(true);
+  applyNodeMetadataEditor({ keepDirty: true });
   syncNodeMetadataScriptFromFields({ force: true });
 }
-
-bindNodeGraphMetadataPopoverEvents();
-bindNodeMetadataScriptBeforeUnload();
-scheduleNodeMetadataScriptParserSelfTestStatus();

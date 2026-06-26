@@ -1,8 +1,13 @@
 function normalizeNodeGraphPatchInfo(info = {}) {
+  const bank = Math.round(Number(info.bank));
+  const program = Math.round(Number(info.program));
   return {
     author: nodeGraphOneLineText(info.author),
+    bank: Number.isFinite(bank) ? Math.max(0, Math.min(127, bank)) : 0,
+    bankName: nodeGraphOneLineText(info.bankName),
     description: String(info.description ?? "").trim(),
     name: nodeGraphOneLineText(info.name),
+    program: Number.isFinite(program) ? Math.max(0, Math.min(127, program)) : 0,
     tags: nodeGraphOneLineText(info.tags),
   };
 }
@@ -52,22 +57,25 @@ function normalizeNodeGraphPatchGrid(grid = {}) {
 const nodeGraphScopeShaderDefaultSource = `video.input     = ~;
 scope.mode      = 1d_full;
 scope.sync      = inherit;
-scope.cycles    = 1.7639;
+scope.cycles    = 2.0;
 scope.zoom      = 1.0;
 scope.length    = 1.0;
 scope.padding   = 0.04;
 scope.syncSpeed = 1.0;
 dot1.color      = dot1.global.color;
 dot1.size       = 1.0 * dot1.global.size;
-dot1.blur       = 0.00;
-dot1.brightness = 4.50;
+dot1.blur       = 1.0 * dot1.global.blur;
+dot1.brightness = 1.0 * dot1.global.brightness;
 dot2.color      = dot2.global.color;
 dot2.size       = 1.0 * dot2.global.size;
-dot2.blur       = 0.00;
-dot2.brightness = 0.45;
+dot2.blur       = 1.0 * dot2.global.blur;
+dot2.brightness = 1.0 * dot2.global.brightness;
 blend.mode      = laser;`;
 
 const nodeGraphScopeShaderVisualOscilloscopeDefaultSource = nodeGraphScopeShaderDefaultSource
+  .replace("scope.mode      = 1d_full;", "scope.mode      = x_y;");
+
+const nodeGraphScopeShaderAudioPlayerDefaultSource = nodeGraphScopeShaderDefaultSource
   .replace("scope.mode      = 1d_full;", "scope.mode      = x_y;");
 
 const nodeGraphCanvasScriptDefaultSource = `canvas.ratio(1, 1);
@@ -107,6 +115,7 @@ screen.pause = Pause;
 screen.traceImage = Trace Image;`;
 
 const nodeGraphScopeShaderModes = Object.freeze(["1d_full", "1d_scan", "x_y", "one_value"]);
+const nodeGraphScopeShaderBlendModes = Object.freeze(["laser", "led", "light", "paint", "solid", "heatmap"]);
 const nodeGraphScopeShaderSyncModes = Object.freeze(["inherit", "on", "off"]);
 const nodeGraphBufferedInputSampleLimit = 262144;
 
@@ -117,6 +126,8 @@ function nodeGraphScopeShaderDefaultSourceForType(type) {
       moduleType === "ellipsoid" ||
       moduleType === "lorenzAttractor"
     ? nodeGraphScopeShaderVisualOscilloscopeDefaultSource
+    : moduleType === "audioPlayer"
+      ? nodeGraphScopeShaderAudioPlayerDefaultSource
     : nodeGraphScopeShaderDefaultSource;
 }
 
@@ -142,8 +153,24 @@ function normalizeNodeGraphScopeShaderMode(value = "1d_full") {
 }
 
 function parseNodeGraphScopeShaderMode(source = "") {
-  const match = String(source || "").match(/(?:^|\n)\s*scope\.mode\s*=\s*(1d_full|1d_scan|x_y|one_value)\s*;/i);
-  return normalizeNodeGraphScopeShaderMode(match?.[1] || "1d_full");
+  let mode = "1d_full";
+  for (const match of String(source || "").matchAll(/(?:^|\n)\s*scope\.mode\s*=\s*["']?(1d_full|1d_scan|x_y|one_value)["']?\s*;?/gi)) {
+    mode = match[1];
+  }
+  return normalizeNodeGraphScopeShaderMode(mode);
+}
+
+function normalizeNodeGraphScopeShaderBlendMode(value = "laser") {
+  const text = String(value || "laser").trim().toLowerCase();
+  return nodeGraphScopeShaderBlendModes.includes(text) ? text : "laser";
+}
+
+function parseNodeGraphScopeShaderBlendMode(source = "") {
+  let mode = "laser";
+  for (const match of String(source || "").matchAll(/(?:^|\n)\s*blend\.mode\s*=\s*["']?(laser|led|light|paint|solid|heatmap)["']?\s*;?/gi)) {
+    mode = match[1];
+  }
+  return normalizeNodeGraphScopeShaderBlendMode(mode);
 }
 
 function normalizeNodeGraphScopeShaderSync(value = "inherit") {
@@ -185,14 +212,16 @@ function normalizeNodeGraphScopeShader(scopeShader = {}) {
   const normalizedSource = String(source || "").trim().slice(0, 100000);
   const normalizedVideoInput = parseNodeGraphScopeShaderVideoInput(normalizedSource);
   const normalizedMode = parseNodeGraphScopeShaderMode(normalizedSource);
+  const normalizedBlendMode = parseNodeGraphScopeShaderBlendMode(normalizedSource);
   const normalizedSync = parseNodeGraphScopeShaderSync(normalizedSource);
-  const normalizedCycles = parseNodeGraphScopeShaderNumber(normalizedSource, "cycles", 1.7639, 1, 128);
+  const normalizedCycles = parseNodeGraphScopeShaderNumber(normalizedSource, "cycles", 2, 1, 128);
   const normalizedZoom = parseNodeGraphScopeShaderNumber(normalizedSource, "zoom", 1, 0.01, 50);
   const normalizedLength = parseNodeGraphScopeShaderNumber(normalizedSource, "length", 1, 0, 1);
   const normalizedPadding = parseNodeGraphScopeShaderNumber(normalizedSource, "padding", 0.04, 0, 0.45);
   const normalizedSyncSpeed = parseNodeGraphScopeShaderNumber(normalizedSource, "syncSpeed", 1, 0, 50);
   return {
     cycles: normalizedCycles,
+    blendMode: normalizedBlendMode,
     enabled: scopeShader?.enabled !== false,
     kind: "scopeShader",
     language,
@@ -709,8 +738,8 @@ function normalizeNodeGraphWindowPosition(position = {}) {
   const left = source.left === null || source.left === undefined ? NaN : Number(source.left);
   const top = source.top === null || source.top === undefined ? NaN : Number(source.top);
   return {
-    left: Number.isFinite(left) ? Math.max(0, left) : null,
-    top: Number.isFinite(top) ? Math.max(0, top) : null,
+    left: Number.isFinite(left) ? left : null,
+    top: Number.isFinite(top) ? top : null,
   };
 }
 
@@ -722,9 +751,20 @@ function normalizeNodeGraphPatchWindows(windows = {}) {
 }
 
 const nodeGraphWorkspaceViewLimits = Object.freeze({
-  minHeightGu: 4,
+  minHeightGu: 1,
   minWidthGu: 4,
 });
+
+function normalizeNodeGraphPatchViewZoom(value) {
+  const zoom = Number(value);
+  const limits = typeof nodeGraphZoomLimits === "object"
+    ? nodeGraphZoomLimits
+    : { min: 0.1, max: 50 };
+  if (!Number.isFinite(zoom) || zoom <= 0) {
+    return 1;
+  }
+  return Math.max(limits.min, Math.min(limits.max, zoom));
+}
 
 function normalizeNodeGraphPatchView(view = {}) {
   const widthGu = Math.round(Number(view?.widthGu));
@@ -736,8 +776,16 @@ function normalizeNodeGraphPatchView(view = {}) {
     widthGu: Number.isFinite(widthGu)
       ? Math.max(0, widthGu)
       : 0,
+    zoom: normalizeNodeGraphPatchViewZoom(view?.zoom),
   };
 }
+
+const nodeGraphPatchUiItemSizeLimits = Object.freeze({
+  minWidth: 64,
+  maxWidth: 720,
+  minHeight: 28,
+  maxHeight: 420,
+});
 
 function normalizeNodeGraphPatchUiItems(uiItems = [], options = {}) {
   if (!Array.isArray(uiItems)) {
@@ -766,12 +814,16 @@ function normalizeNodeGraphPatchUiItems(uiItems = [], options = {}) {
       const label = nodeGraphOneLineText(source.label).slice(0, 64) || sourceNodeId || id;
       const type = ["graphEditor", "moduleControl"].includes(source.type) ? source.type : "moduleControl";
       return {
-        h: Number.isFinite(h) ? Math.max(28, Math.min(420, h)) : type === "graphEditor" ? 260 : 44,
+        h: Number.isFinite(h)
+          ? Math.max(nodeGraphPatchUiItemSizeLimits.minHeight, Math.min(nodeGraphPatchUiItemSizeLimits.maxHeight, h))
+          : type === "graphEditor" ? 260 : 44,
         id,
         label,
         sourceNodeId,
         type,
-        w: Number.isFinite(w) ? Math.max(64, Math.min(720, w)) : type === "graphEditor" ? 460 : 132,
+        w: Number.isFinite(w)
+          ? Math.max(nodeGraphPatchUiItemSizeLimits.minWidth, Math.min(nodeGraphPatchUiItemSizeLimits.maxWidth, w))
+          : type === "graphEditor" ? 460 : 132,
         x: Number.isFinite(x) ? Math.max(0, Math.min(2000, x)) : 24,
         y: Number.isFinite(y) ? Math.max(0, Math.min(2000, y)) : 24,
       };

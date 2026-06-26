@@ -1,15 +1,25 @@
 function renderNodeGraphHistoryControls() {
-  const undo = document.getElementById("nodeUndoButton");
-  const redo = document.getElementById("nodeRedoButton");
-  if (!undo || !redo) {
+  const undoButtons = [
+    document.getElementById("nodeUndoButton"),
+    document.getElementById("nodeSceneUndoButton"),
+  ].filter(Boolean);
+  const redoButtons = [
+    document.getElementById("nodeRedoButton"),
+    document.getElementById("nodeSceneRedoButton"),
+  ].filter(Boolean);
+  if (!undoButtons.length || !redoButtons.length) {
     return;
   }
   const canUndo = nodeGraphMvp.historyIndex > 0;
   const canRedo = nodeGraphMvp.historyIndex < nodeGraphMvp.historySnapshots.length - 1;
-  undo.disabled = !canUndo;
-  redo.disabled = !canRedo;
-  undo.removeAttribute("title");
-  redo.removeAttribute("title");
+  undoButtons.forEach((button) => {
+    button.disabled = !canUndo;
+    button.removeAttribute("title");
+  });
+  redoButtons.forEach((button) => {
+    button.disabled = !canRedo;
+    button.removeAttribute("title");
+  });
 }
 
 function renderNodeGraphVisibilityMenuButton() {
@@ -21,6 +31,7 @@ function renderNodeGraphVisibilityMenuButton() {
   const hiddenCount = [
     nodeGraphMvp.gridVisible ? 0 : 1,
     nodeGraphMvp.moduleButtonsVisible === false ? 1 : 0,
+    nodeGraphMvp.moduleInterfaceControlsVisible === false ? 1 : 0,
     nodeGraphMvp.moduleOscilloscopesVisible === false ? 1 : 0,
     nodeGraphMvp.moduleSlidersVisible === false ? 1 : 0,
     nodeGraphMvp.tooltipVisible ? 0 : 1,
@@ -77,26 +88,49 @@ function renderNodeGraphSliderVisibilityToggles() {
   syncNodeUserUiSettingsViewControls();
 }
 
+function syncNodeGraphVisibleModuleGridHeights() {
+  for (const element of document.querySelectorAll(".dsp-node[data-node]")) {
+    const patchNode = nodeGraphPatchNode(element.dataset.node);
+    if (!patchNode) {
+      continue;
+    }
+    const heightGu = nodeGraphPatchNodeGridHeightUnits(patchNode);
+    element.dataset.gridHeightGu = String(heightGu);
+    element.style.setProperty("--node-grid-height-units", String(heightGu));
+    element.style.setProperty("--node-module-display-height-units", String(nodeGraphPatchNodeDisplayHeightUnits(patchNode)));
+    element.style.setProperty("--node-module-interface-controls-height-units", String(nodeGraphPatchNodeInterfaceControlsHeightUnits(patchNode)));
+  }
+}
+
 function renderNodeGraphModuleVisibilityToggles() {
   const workspace = document.getElementById("nodeGraphWorkspace");
   const buttonsButton = document.getElementById("nodeModuleButtonsToggleButton");
   const scopesButton = document.getElementById("nodeOscilloscopeToggleButton");
+  const interfaceControlsButton = document.getElementById("nodeModuleInterfaceControlsToggleButton");
   const slidersButton = document.getElementById("nodeModuleSlidersToggleButton");
   const buttonsVisible = nodeGraphMvp.moduleButtonsVisible !== false;
   const scopesVisible = nodeGraphMvp.moduleOscilloscopesVisible !== false;
+  const interfaceControlsVisible = nodeGraphMvp.moduleInterfaceControlsVisible !== false;
   const slidersVisible = nodeGraphMvp.moduleSlidersVisible !== false;
   workspace?.classList.toggle("module-buttons-hidden", !buttonsVisible);
   workspace?.classList.toggle("module-oscilloscopes-hidden", !scopesVisible);
+  workspace?.classList.toggle("module-interface-controls-hidden", !interfaceControlsVisible);
   workspace?.classList.toggle("module-sliders-hidden", !slidersVisible);
+  syncNodeGraphVisibleModuleGridHeights();
   if (buttonsButton) {
     buttonsButton.textContent = buttonsVisible ? "Hide Module Buttons" : "Show Module Buttons";
     buttonsButton.setAttribute("aria-pressed", buttonsVisible ? "true" : "false");
     buttonsButton.removeAttribute("title");
   }
   if (scopesButton) {
-    scopesButton.textContent = scopesVisible ? "Hide Oscilloscopes" : "Show Oscilloscopes";
+    scopesButton.textContent = scopesVisible ? "Hide Displays" : "Show Displays";
     scopesButton.setAttribute("aria-pressed", scopesVisible ? "true" : "false");
     scopesButton.removeAttribute("title");
+  }
+  if (interfaceControlsButton) {
+    interfaceControlsButton.textContent = interfaceControlsVisible ? "Hide Control Surfaces" : "Show Control Surfaces";
+    interfaceControlsButton.setAttribute("aria-pressed", interfaceControlsVisible ? "true" : "false");
+    interfaceControlsButton.removeAttribute("title");
   }
   if (slidersButton) {
     slidersButton.textContent = slidersVisible ? "Hide Sliders" : "Show Sliders";
@@ -115,16 +149,6 @@ function renderNodeGraphModuleVisibilityToggles() {
   renderNodeGraphVisibilityMenuButton();
 }
 
-function normalizeNodeGraphModuleScopeBurn(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? clampNodeSliderValue(number, 0, 1) : 0.5;
-}
-
-function normalizeNodeGraphModuleScopeDecay(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? clampNodeSliderValue(number, 0, 1) : 0.78;
-}
-
 function normalizeNodeGraphModuleScopeLineThickness(value) {
   const number = Number(value);
   return Number.isFinite(number) ? clampNodeSliderValue(number, 0.25, 10) : 1;
@@ -135,19 +159,14 @@ function normalizeNodeGraphModuleScopeDiscontinuitySkipSamples(value) {
   return Number.isFinite(number) ? clampNodeSliderValue(Math.round(number), 0, 2) : 1;
 }
 
-function normalizeNodeGraphModuleScopeOverdrawPoints(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? clampNodeSliderValue(Math.round(number), 1, 2048) : 1;
-}
-
-function normalizeNodeGraphModuleScopeOverdrawFade(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? clampNodeSliderValue(number, 0, 1) : 0.5;
-}
-
 function normalizeNodeGraphModuleScopeFramesPerSecond(value) {
   const number = Number(value);
-  return Number.isFinite(number) ? clampNodeSliderValue(Math.round(number), 1, 240) : 60;
+  return Number.isFinite(number) ? clampNodeSliderValue(Math.round(number), 0, 240) : 60;
+}
+
+function normalizeNodeGraphModuleScopePointBudget(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? clampNodeSliderValue(Math.round(number), 1, 65536) : 4096;
 }
 
 function normalizeNodeGraphModuleScopeBackgroundColor(value) {
@@ -158,6 +177,10 @@ function normalizeNodeGraphModuleScopeBackgroundColor(value) {
 function normalizeNodeGraphModuleScopeDotCoreColor(value, fallback = "#ffffff") {
   const text = String(value || "").trim();
   return /^#[0-9a-f]{6}$/i.test(text) ? text.toLowerCase() : fallback;
+}
+
+function normalizeNodeGraphModuleScopeDotCoreEnabled(value) {
+  return value !== false;
 }
 
 function normalizeNodeGraphModuleScopeDotCoreSize(value, fallback = 0.5) {
@@ -217,58 +240,54 @@ function renderNodeGraphModuleScopeDotPreview(
 }
 
 function renderNodeGraphModuleScopeBrightnessControl() {
-  const burn = normalizeNodeGraphModuleScopeBurn(nodeGraphMvp.moduleScopeBurn ?? 0);
-  const decay = normalizeNodeGraphModuleScopeDecay(nodeGraphMvp.moduleScopeDecay ?? 0.78);
   const backgroundColor = normalizeNodeGraphModuleScopeBackgroundColor(nodeGraphMvp.moduleScopeBackgroundColor);
-  const dotCore1Size = normalizeNodeGraphModuleScopeDotCoreSize(nodeGraphMvp.moduleScopeDotCore1Size ?? 3.18, 3.18);
-  const dotCore1Brightness = normalizeNodeGraphModuleScopeDotCoreBrightness(nodeGraphMvp.moduleScopeDotCore1Brightness ?? 4.5, 4.5);
+  const dotCore1Enabled = normalizeNodeGraphModuleScopeDotCoreEnabled(nodeGraphMvp.moduleScopeDotCore1Enabled);
+  const dotCore1Size = normalizeNodeGraphModuleScopeDotCoreSize(nodeGraphMvp.moduleScopeDotCore1Size ?? 2, 2);
+  const dotCore1Brightness = normalizeNodeGraphModuleScopeDotCoreBrightness(nodeGraphMvp.moduleScopeDotCore1Brightness ?? 0.23, 0.23);
   const dotCore1Color = normalizeNodeGraphModuleScopeDotCoreColor(nodeGraphMvp.moduleScopeDotCore1Color ?? "#ffffff", "#ffffff");
+  const dotCore2Enabled = normalizeNodeGraphModuleScopeDotCoreEnabled(nodeGraphMvp.moduleScopeDotCore2Enabled);
   const dotCore2Size = normalizeNodeGraphModuleScopeDotCoreSize(nodeGraphMvp.moduleScopeDotCore2Size ?? 4, 4);
   const dotCore2Brightness = normalizeNodeGraphModuleScopeDotCoreBrightness(nodeGraphMvp.moduleScopeDotCore2Brightness ?? 0.45, 0.45);
   const dotCore2Color = normalizeNodeGraphModuleScopeDotCoreColor(nodeGraphMvp.moduleScopeDotCore2Color ?? "#17002f", "#17002f");
   const framesPerSecond = normalizeNodeGraphModuleScopeFramesPerSecond(nodeGraphMvp.moduleScopeFramesPerSecond ?? 60);
+  const pointBudget = normalizeNodeGraphModuleScopePointBudget(nodeGraphMvp.moduleScopePointBudget ?? 4096);
   const lineThickness = normalizeNodeGraphModuleScopeLineThickness(nodeGraphMvp.moduleScopeLineThickness ?? 1);
   const discontinuitySkipSamples = normalizeNodeGraphModuleScopeDiscontinuitySkipSamples(
     nodeGraphMvp.moduleScopeDiscontinuitySkipSamples ?? 1,
   );
-  const overdrawPoints = normalizeNodeGraphModuleScopeOverdrawPoints(nodeGraphMvp.moduleScopeOverdrawPoints ?? 1);
-  const overdrawFade = normalizeNodeGraphModuleScopeOverdrawFade(nodeGraphMvp.moduleScopeOverdrawFade ?? 0.5);
-  nodeGraphMvp.moduleScopeBurn = burn;
-  nodeGraphMvp.moduleScopeDecay = decay;
   nodeGraphMvp.moduleScopeBackgroundColor = backgroundColor;
+  nodeGraphMvp.moduleScopeDotCore1Enabled = dotCore1Enabled;
   nodeGraphMvp.moduleScopeDotCore1Size = dotCore1Size;
   nodeGraphMvp.moduleScopeDotCore1Brightness = dotCore1Brightness;
   nodeGraphMvp.moduleScopeDotCore1Color = dotCore1Color;
+  nodeGraphMvp.moduleScopeDotCore2Enabled = dotCore2Enabled;
   nodeGraphMvp.moduleScopeDotCore2Size = dotCore2Size;
   nodeGraphMvp.moduleScopeDotCore2Brightness = dotCore2Brightness;
   nodeGraphMvp.moduleScopeDotCore2Color = dotCore2Color;
   nodeGraphMvp.moduleScopeFramesPerSecond = framesPerSecond;
+  nodeGraphMvp.moduleScopePointBudget = pointBudget;
   nodeGraphMvp.moduleScopeLineThickness = lineThickness;
   nodeGraphMvp.moduleScopeDiscontinuitySkipSamples = discontinuitySkipSamples;
-  nodeGraphMvp.moduleScopeOverdrawPoints = overdrawPoints;
-  nodeGraphMvp.moduleScopeOverdrawFade = overdrawFade;
-  const burnInput = document.getElementById("nodeMasterScopeBurn");
-  const decayInput = document.getElementById("nodeMasterScopeDecay");
   const backgroundInput = document.getElementById("nodeMasterScopeBackgroundColor");
+  const dotCore1EnabledInput = document.getElementById("nodeMasterScopeDotCore1Enabled");
   const dotCore1SizeInput = document.getElementById("nodeMasterScopeDotCore1Size");
   const dotCore1BrightnessInput = document.getElementById("nodeMasterScopeDotCore1Brightness");
   const dotCore1ColorInput = document.getElementById("nodeMasterScopeDotCore1Color");
+  const dotCore2EnabledInput = document.getElementById("nodeMasterScopeDotCore2Enabled");
   const dotCore2SizeInput = document.getElementById("nodeMasterScopeDotCore2Size");
   const dotCore2BrightnessInput = document.getElementById("nodeMasterScopeDotCore2Brightness");
   const dotCore2ColorInput = document.getElementById("nodeMasterScopeDotCore2Color");
   const fpsInput = document.getElementById("nodeMasterScopeFps");
+  const pointBudgetInput = document.getElementById("nodeMasterScopePointBudget");
   const lineInput = document.getElementById("nodeMasterScopeLineThickness");
   const skipSamplesInput = document.getElementById("nodeMasterScopeDiscontinuitySkipSamples");
-  const overdrawInput = document.getElementById("nodeMasterScopeOverdrawPoints");
-  const overdrawFadeInput = document.getElementById("nodeMasterScopeOverdrawFade");
-  if (burnInput && document.activeElement !== burnInput) {
-    burnInput.value = burn.toFixed(2);
-  }
-  if (decayInput && document.activeElement !== decayInput) {
-    decayInput.value = decay.toFixed(2);
-  }
   if (backgroundInput && document.activeElement !== backgroundInput) {
     backgroundInput.value = backgroundColor;
+  }
+  if (dotCore1EnabledInput) {
+    dotCore1EnabledInput.setAttribute("aria-pressed", String(dotCore1Enabled));
+    dotCore1EnabledInput.closest(".node-master-scope-dot-core-row")
+      ?.classList.toggle("dot-core-disabled", !dotCore1Enabled);
   }
   if (dotCore1SizeInput && document.activeElement !== dotCore1SizeInput) {
     dotCore1SizeInput.value = dotCore1Size.toFixed(2);
@@ -278,6 +297,11 @@ function renderNodeGraphModuleScopeBrightnessControl() {
   }
   if (dotCore1ColorInput && document.activeElement !== dotCore1ColorInput) {
     dotCore1ColorInput.value = dotCore1Color;
+  }
+  if (dotCore2EnabledInput) {
+    dotCore2EnabledInput.setAttribute("aria-pressed", String(dotCore2Enabled));
+    dotCore2EnabledInput.closest(".node-master-scope-dot-core-row")
+      ?.classList.toggle("dot-core-disabled", !dotCore2Enabled);
   }
   if (dotCore2SizeInput && document.activeElement !== dotCore2SizeInput) {
     dotCore2SizeInput.value = dotCore2Size.toFixed(2);
@@ -290,7 +314,7 @@ function renderNodeGraphModuleScopeBrightnessControl() {
   }
   renderNodeGraphModuleScopeDotPreview(
     dotCore1Size,
-    dotCore1Brightness,
+    dotCore1Enabled ? dotCore1Brightness : 0,
     dotCore1Color,
     0.01,
     0,
@@ -303,34 +327,31 @@ function renderNodeGraphModuleScopeBrightnessControl() {
     0,
     dotCore1Color,
     dotCore2Size,
-    dotCore2Brightness,
+    dotCore2Enabled ? dotCore2Brightness : 0,
     dotCore2Color,
     lineThickness,
     "nodeMasterScopeDotCore2Preview",
   );
   renderNodeGraphModuleScopeDotPreview(
     dotCore1Size,
-    dotCore1Brightness,
+    dotCore1Enabled ? dotCore1Brightness : 0,
     dotCore1Color,
     dotCore2Size,
-    dotCore2Brightness,
+    dotCore2Enabled ? dotCore2Brightness : 0,
     dotCore2Color,
     lineThickness,
   );
   if (fpsInput && document.activeElement !== fpsInput) {
     fpsInput.value = String(framesPerSecond);
   }
+  if (pointBudgetInput && document.activeElement !== pointBudgetInput) {
+    pointBudgetInput.value = String(pointBudget);
+  }
   if (lineInput && document.activeElement !== lineInput) {
     lineInput.value = lineThickness.toFixed(2);
   }
   if (skipSamplesInput && document.activeElement !== skipSamplesInput) {
     skipSamplesInput.value = String(discontinuitySkipSamples);
-  }
-  if (overdrawInput && document.activeElement !== overdrawInput) {
-    overdrawInput.value = String(overdrawPoints);
-  }
-  if (overdrawFadeInput && document.activeElement !== overdrawFadeInput) {
-    overdrawFadeInput.value = overdrawFade.toFixed(2);
   }
   const globalScopeMenu = document.getElementById("nodeGlobalScopeMenu");
   document.getElementById("nodeGlobalScopeMenuButton")
@@ -371,32 +392,16 @@ function setNodeGraphModuleButtonsVisibility(visible, options = {}) {
   }
 }
 
-function setNodeGraphModuleScopeBurn(value) {
-  nodeGraphMvp.moduleScopeBurn = normalizeNodeGraphModuleScopeBurn(value);
-  renderNodeGraphModuleScopeBrightnessControl();
-  if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
-    scheduleNodeGraphModuleScopeDraw();
-  }
-}
-
-function handleNodeGraphModuleScopeBurnInput(event) {
-  setNodeGraphModuleScopeBurn(event.currentTarget.value);
-}
-
-function setNodeGraphModuleScopeDecay(value) {
-  nodeGraphMvp.moduleScopeDecay = normalizeNodeGraphModuleScopeDecay(value);
-  renderNodeGraphModuleScopeBrightnessControl();
-  if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
-    scheduleNodeGraphModuleScopeDraw();
-  }
-}
-
-function handleNodeGraphModuleScopeDecayInput(event) {
-  setNodeGraphModuleScopeDecay(event.currentTarget.value);
-}
-
 function setNodeGraphModuleScopeFramesPerSecond(value) {
   nodeGraphMvp.moduleScopeFramesPerSecond = normalizeNodeGraphModuleScopeFramesPerSecond(value);
+  renderNodeGraphModuleScopeBrightnessControl();
+  if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
+    scheduleNodeGraphModuleScopeDraw();
+  }
+}
+
+function setNodeGraphModuleScopePointBudget(value) {
+  nodeGraphMvp.moduleScopePointBudget = normalizeNodeGraphModuleScopePointBudget(value);
   renderNodeGraphModuleScopeBrightnessControl();
   if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
     scheduleNodeGraphModuleScopeDraw();
@@ -425,13 +430,33 @@ function refreshNodeGraphModuleScopeGeneratedDot() {
   }
 }
 
+function setNodeGraphModuleScopeDotCoreEnabled(dotName, enabled) {
+  if (dotName === "dot2") {
+    nodeGraphMvp.moduleScopeDotCore2Enabled = normalizeNodeGraphModuleScopeDotCoreEnabled(enabled);
+  } else {
+    nodeGraphMvp.moduleScopeDotCore1Enabled = normalizeNodeGraphModuleScopeDotCoreEnabled(enabled);
+  }
+  refreshNodeGraphModuleScopeGeneratedDot();
+}
+
+function toggleNodeGraphModuleScopeDotCore(dotName) {
+  const current = dotName === "dot2"
+    ? normalizeNodeGraphModuleScopeDotCoreEnabled(nodeGraphMvp.moduleScopeDotCore2Enabled)
+    : normalizeNodeGraphModuleScopeDotCoreEnabled(nodeGraphMvp.moduleScopeDotCore1Enabled);
+  setNodeGraphModuleScopeDotCoreEnabled(dotName, !current);
+}
+
+function handleNodeGraphModuleScopeDotCoreToggle(event) {
+  toggleNodeGraphModuleScopeDotCore(event.currentTarget.dataset.globalScopeDotToggle);
+}
+
 function setNodeGraphModuleScopeDotCore1Size(value) {
-  nodeGraphMvp.moduleScopeDotCore1Size = normalizeNodeGraphModuleScopeDotCoreSize(value, 3.18);
+  nodeGraphMvp.moduleScopeDotCore1Size = normalizeNodeGraphModuleScopeDotCoreSize(value, 2);
   refreshNodeGraphModuleScopeGeneratedDot();
 }
 
 function setNodeGraphModuleScopeDotCore1Brightness(value) {
-  nodeGraphMvp.moduleScopeDotCore1Brightness = normalizeNodeGraphModuleScopeDotCoreBrightness(value, 4.5);
+  nodeGraphMvp.moduleScopeDotCore1Brightness = normalizeNodeGraphModuleScopeDotCoreBrightness(value, 0.23);
   refreshNodeGraphModuleScopeGeneratedDot();
 }
 
@@ -474,26 +499,6 @@ function setNodeGraphModuleScopeDiscontinuitySkipSamples(value) {
 
 function handleNodeGraphModuleScopeDiscontinuitySkipSamplesInput(event) {
   setNodeGraphModuleScopeDiscontinuitySkipSamples(event.currentTarget.value);
-}
-
-function setNodeGraphModuleScopeOverdrawPoints(value) {
-  nodeGraphMvp.moduleScopeOverdrawPoints = normalizeNodeGraphModuleScopeOverdrawPoints(value);
-  renderNodeGraphModuleScopeBrightnessControl();
-  if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
-    scheduleNodeGraphModuleScopeDraw();
-  }
-}
-
-function setNodeGraphModuleScopeOverdrawFade(value) {
-  nodeGraphMvp.moduleScopeOverdrawFade = normalizeNodeGraphModuleScopeOverdrawFade(value);
-  renderNodeGraphModuleScopeBrightnessControl();
-  if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
-    scheduleNodeGraphModuleScopeDraw();
-  }
-}
-
-function handleNodeGraphModuleScopeOverdrawPointsInput(event) {
-  setNodeGraphModuleScopeOverdrawPoints(event.currentTarget.value);
 }
 
 const nodeGraphSliderLayouts = Object.freeze([
@@ -548,9 +553,75 @@ function nodeGraphDialogDragTargetIsInteractive(event) {
   if (!target || target === event.currentTarget) {
     return false;
   }
+  if (target.closest?.(".node-drag-handle, .scene-context-drag-handle")) {
+    return false;
+  }
   return Boolean(target.closest?.(
-    "button, a, input, textarea, select, option, label, [contenteditable='true']",
+    "button, a, input, textarea, select, option, label, [role='button'], [data-context-module], [contenteditable='true']",
   ));
+}
+
+function nodeGraphFloatingWindowViewportOffset() {
+  const innerWidth = Number(window.innerWidth) || 0;
+  const clientWidth = Number(document.documentElement?.clientWidth) || innerWidth;
+  return {
+    left: Math.max(0, Math.round(innerWidth - clientWidth)),
+    top: 0,
+  };
+}
+
+function nodeGraphFloatingWindowCssPositionFromViewport(left, top) {
+  const offset = nodeGraphFloatingWindowViewportOffset();
+  return {
+    left: Math.round((Number(left) || 0) - offset.left),
+    top: Math.round((Number(top) || 0) - offset.top),
+  };
+}
+
+function nodeGraphFloatingWindowViewportPositionFromCss(left, top) {
+  const offset = nodeGraphFloatingWindowViewportOffset();
+  return {
+    left: Math.round((Number(left) || 0) + offset.left),
+    top: Math.round((Number(top) || 0) + offset.top),
+  };
+}
+
+function setNodeGraphFloatingWindowViewportPosition(element, left, top) {
+  if (!element) {
+    return { left: 0, top: 0 };
+  }
+  const css = nodeGraphFloatingWindowCssPositionFromViewport(left, top);
+  element.style.left = `${css.left}px`;
+  element.style.top = `${css.top}px`;
+  element.style.right = "auto";
+  return {
+    left: Math.round(Number(left) || 0),
+    top: Math.round(Number(top) || 0),
+  };
+}
+
+function nodeGraphFloatingWindowPosition(element, x, y, options = {}) {
+  if (!element) {
+    return { left: 0, top: 0 };
+  }
+  const wasHidden = element.hidden;
+  element.hidden = false;
+  const rect = element.getBoundingClientRect();
+  const width = Math.max(1, Number(options.width) || rect.width || 1);
+  const height = Math.max(1, Number(options.height) || rect.height || 1);
+  const halfWidth = width * 0.5;
+  const visibleWidth = Math.max(1, Math.min(width, Number(options.visibleWidth) || halfWidth));
+  const visibleHeight = Math.max(1, Math.min(height, Number(options.visibleHeight) || 48));
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || width;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || height;
+  const minLeft = visibleWidth - width;
+  const maxLeft = viewportWidth - visibleWidth;
+  const minTop = visibleHeight - height;
+  const maxTop = viewportHeight - visibleHeight;
+  const left = Math.round(Math.max(minLeft, Math.min(maxLeft, Number(x) || 0)));
+  const top = Math.round(Math.max(minTop, Math.min(maxTop, Number(y) || 0)));
+  element.hidden = wasHidden;
+  return { left, top };
 }
 
 function renderNodeGraphTooltipToggle() {
@@ -573,17 +644,40 @@ function renderNodeGraphTooltipToggle() {
 function setNodeGraphVisibilityMenuOpen(open) {
   const menu = document.getElementById("nodeVisibilityMenu");
   if (menu) {
+    if (open && !menu.hidden) {
+      pulseNodeGraphFloatingWindowAttention(menu);
+      renderNodeGraphVisibilityMenuButton();
+      return;
+    }
     menu.hidden = !open;
     if (open) {
-      positionNodeGraphVisibilityMenuNearButton(menu);
+      applyNodeGraphVisibilityMenuSize(nodeGraphMvp.workspaceWindowStates?.visibilityMenu?.size);
+      if (
+        typeof positionNodeGraphWorkspaceWindowFromState !== "function" ||
+        !positionNodeGraphWorkspaceWindowFromState("visibilityMenu", menu)
+      ) {
+        positionNodeGraphVisibilityMenuNearButton(menu);
+      }
     }
+  }
+  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+    rememberNodeGraphWorkspaceWindowState("visibilityMenu", menu, { open: Boolean(open) }, { status: false });
   }
   renderNodeGraphVisibilityMenuButton();
 }
 
 function positionNodeGraphVisibilityMenuNearButton(menu = document.getElementById("nodeVisibilityMenu")) {
   const button = document.getElementById("nodeVisibilityMenuButton");
-  if (!menu || !button) {
+  if (!menu) {
+    return;
+  }
+  if (!button) {
+    const menuRect = menu.getBoundingClientRect();
+    positionNodeGraphVisibilityMenu(
+      menu,
+      (window.innerWidth - menuRect.width) * 0.5,
+      (window.innerHeight - menuRect.height) * 0.25,
+    );
     return;
   }
   const rect = button.getBoundingClientRect();
@@ -596,70 +690,135 @@ function positionNodeGraphVisibilityMenu(menu, x, y) {
   if (!menu) {
     return;
   }
-  const margin = 8;
-  menu.hidden = false;
   menu.style.position = "fixed";
   const rect = menu.getBoundingClientRect();
-  const left = Math.max(margin, Math.min(window.innerWidth - rect.width - margin, x));
-  const top = Math.max(margin, Math.min(window.innerHeight - rect.height - margin, y));
-  menu.style.left = `${left}px`;
-  menu.style.top = `${top}px`;
-  menu.style.right = "auto";
+  const { left, top } = nodeGraphFloatingWindowPosition(menu, x, y, {
+    visibleWidth: rect.width,
+    visibleHeight: rect.height,
+  });
+  setNodeGraphFloatingWindowViewportPosition(menu, left, top);
+}
+
+function nodeGraphVisibilityMenuMinimumSize(menu = document.getElementById("nodeVisibilityMenu")) {
+  const sharedWindowMinWidth = typeof nodeModuleActionsWindowDefaultSize !== "undefined" &&
+    Number.isFinite(Number(nodeModuleActionsWindowDefaultSize?.minWidth))
+    ? Number(nodeModuleActionsWindowDefaultSize.minWidth)
+    : 24;
+  const rootStyle = window.getComputedStyle(document.documentElement);
+  const sharedHeaderHeight = Number.parseFloat(
+    rootStyle.getPropertyValue("--node-floating-window-header-height"),
+  ) || 30;
+  const sharedButtonHeight = Number.parseFloat(
+    rootStyle.getPropertyValue("--node-floating-window-button-height"),
+  ) || 30;
+  const buttonCount = menu?.querySelectorAll?.(".node-visibility-menu-list button").length || 7;
+  return {
+    width: Math.ceil(sharedWindowMinWidth),
+    height: Math.ceil(sharedHeaderHeight + (buttonCount * sharedButtonHeight)),
+  };
+}
+
+function nodeGraphVisibilityMenuSizeFromElement(menu = document.getElementById("nodeVisibilityMenu")) {
+  if (!menu) {
+    return null;
+  }
+  const rect = menu.getBoundingClientRect();
+  return {
+    width: Math.round(rect.width),
+  };
+}
+
+function applyNodeGraphVisibilityMenuSize(size = {}) {
+  const menu = document.getElementById("nodeVisibilityMenu");
+  if (!menu) {
+    return null;
+  }
+  const rect = menu.getBoundingClientRect();
+  const minimum = nodeGraphVisibilityMenuMinimumSize(menu);
+  const normalized = normalizeNodeGraphFloatingWindowSize(
+    {
+      width: Number(size.width) || rect.width,
+    },
+    {
+      minWidth: minimum.width,
+      maxWidth: 420,
+      minHeight: minimum.height,
+      maxHeight: 520,
+      width: 185,
+    },
+  );
+  menu.style.width = `${normalized.width}px`;
+  menu.style.minHeight = `${minimum.height}px`;
+  menu.style.removeProperty("height");
+  return normalized;
+}
+
+function beginNodeGraphVisibilityMenuResize(event) {
+  const menu = document.getElementById("nodeVisibilityMenu");
+  const drag = beginNodeGraphFloatingWindowResize(
+    event,
+    menu,
+    "visibilityMenuResizing",
+  );
+  if (drag && menu) {
+    const current = nodeGraphFloatingWindowElementPosition(menu);
+    drag.startLeft = current.left;
+    drag.startTop = current.top;
+  }
+}
+
+function dragNodeGraphVisibilityMenuResize(event) {
+  const handled = dragNodeGraphFloatingWindowResize(
+    event,
+    "visibilityMenuResizing",
+    applyNodeGraphVisibilityMenuSize,
+    { height: false },
+  );
+  if (handled) {
+    const drag = nodeGraphMvp.visibilityMenuResizing;
+    const menu = document.getElementById("nodeVisibilityMenu");
+    if (drag && menu) {
+      setNodeGraphFloatingWindowViewportPosition(menu, drag.startLeft, drag.startTop);
+    }
+  }
+}
+
+function endNodeGraphVisibilityMenuResize(event) {
+  endNodeGraphFloatingWindowResize(event, "visibilityMenuResizing", () => {
+    if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+      rememberNodeGraphWorkspaceWindowState(
+        "visibilityMenu",
+        document.getElementById("nodeVisibilityMenu"),
+        { size: nodeGraphVisibilityMenuSizeFromElement() },
+        { status: false },
+      );
+    }
+  });
 }
 
 function beginNodeGraphVisibilityMenuDrag(event) {
-  if (event.button > 0 || nodeGraphDialogDragTargetIsInteractive(event)) {
-    return;
-  }
   const menu = document.getElementById("nodeVisibilityMenu");
   if (!menu || menu.hidden) {
     return;
   }
-  const rect = menu.getBoundingClientRect();
-  nodeGraphMvp.visibilityMenuDragging = {
-    handle: event.currentTarget,
-    offsetX: event.clientX - rect.left,
-    offsetY: event.clientY - rect.top,
-    pointerId: event.pointerId ?? null,
-  };
-  event.currentTarget.classList.add("dragging");
-  positionNodeGraphVisibilityMenu(menu, rect.left, rect.top);
-  if (event.pointerId !== undefined) {
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }
-  event.preventDefault();
-  event.stopPropagation();
+  beginNodeGraphFloatingWindowDrag(event, menu, "visibilityMenuDragging");
 }
 
 function dragNodeGraphVisibilityMenu(event) {
-  const drag = nodeGraphMvp.visibilityMenuDragging;
-  if (
-    !drag ||
-    (drag.pointerId !== null && event.pointerId !== undefined && drag.pointerId !== event.pointerId)
-  ) {
-    return;
-  }
-  positionNodeGraphVisibilityMenu(
-    document.getElementById("nodeVisibilityMenu"),
-    event.clientX - drag.offsetX,
-    event.clientY - drag.offsetY,
-  );
-  event.preventDefault();
+  const menu = document.getElementById("nodeVisibilityMenu");
+  dragNodeGraphFloatingWindow(event, "visibilityMenuDragging", menu, (next) => {
+    if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+      rememberNodeGraphWorkspaceWindowState("visibilityMenu", menu, { open: true, position: next }, { persist: false });
+    }
+  });
 }
 
 function endNodeGraphVisibilityMenuDrag(event) {
-  const drag = nodeGraphMvp.visibilityMenuDragging;
-  if (
-    !drag ||
-    (drag.pointerId !== null && event.pointerId !== undefined && drag.pointerId !== event.pointerId)
-  ) {
-    return;
-  }
-  drag.handle.classList.remove("dragging");
-  if (event.pointerId !== undefined && drag.handle.hasPointerCapture?.(event.pointerId)) {
-    drag.handle.releasePointerCapture(event.pointerId);
-  }
-  nodeGraphMvp.visibilityMenuDragging = null;
+  endNodeGraphFloatingWindowDrag(event, "visibilityMenuDragging", () => {
+    if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+      rememberNodeGraphWorkspaceWindowState("visibilityMenu", document.getElementById("nodeVisibilityMenu"), {}, { status: false });
+    }
+  });
 }
 
 function toggleNodeGraphVisibilityMenu() {
@@ -1543,6 +1702,9 @@ function toggleNodeGraphModuleButtonsVisibility() {
 function toggleNodeGraphOscilloscopeVisibility() {
   nodeGraphMvp.moduleOscilloscopesVisible = nodeGraphMvp.moduleOscilloscopesVisible === false;
   renderNodeGraphModuleVisibilityToggles();
+  if (typeof scheduleNodeGraphLivePlanSync === "function") {
+    scheduleNodeGraphLivePlanSync();
+  }
   if (nodeGraphMvp.moduleOscilloscopesVisible) {
     scheduleNodeGraphModuleScopeDraw();
   } else {
@@ -1550,13 +1712,19 @@ function toggleNodeGraphOscilloscopeVisibility() {
       closeNodeScopeContextMenu();
     }
   }
-  setNodeInteractionHelp(nodeGraphMvp.moduleOscilloscopesVisible ? "Oscilloscopes shown." : "Oscilloscopes hidden.");
+  setNodeInteractionHelp(nodeGraphMvp.moduleOscilloscopesVisible ? "Displays shown." : "Displays hidden.");
 }
 
 function toggleNodeGraphModuleSlidersVisibility() {
   nodeGraphMvp.moduleSlidersVisible = nodeGraphMvp.moduleSlidersVisible === false;
   renderNodeGraphModuleVisibilityToggles();
   setNodeInteractionHelp(nodeGraphMvp.moduleSlidersVisible ? "Module sliders shown." : "Module sliders hidden.");
+}
+
+function toggleNodeGraphModuleInterfaceControlsVisibility() {
+  nodeGraphMvp.moduleInterfaceControlsVisible = nodeGraphMvp.moduleInterfaceControlsVisible === false;
+  renderNodeGraphModuleVisibilityToggles();
+  setNodeInteractionHelp(nodeGraphMvp.moduleInterfaceControlsVisible ? "Module control surfaces shown." : "Module control surfaces hidden.");
 }
 
 function toggleNodeGraphTooltipVisibility() {
@@ -1656,18 +1824,13 @@ function setNodeGraphViewMode(mode) {
   }
   const settingsMode = mode === "settings";
   const shopMode = mode === "shop";
-  const departmentMode = shopMode && Boolean(nodeGraphMvp.moduleStoreDepartment);
-  const shopLandingMode = shopMode && !departmentMode;
   const scriptMode = mode === "script";
   const codeMode = mode === "code";
   const uiMode = mode === "ui";
   const mappingMode = mode === "mapping";
   const modularOnlyMode = mode === "modular-only";
-  const modularMode = modularOnlyMode || (!settingsMode && !shopMode && !scriptMode && !codeMode && !uiMode && !mappingMode);
+  const modularMode = modularOnlyMode || shopMode || (!settingsMode && !scriptMode && !codeMode && !uiMode && !mappingMode);
   const workspaceMode = modularMode;
-  if (!shopLandingMode) {
-    closeNodeGraphModuleCollectionsMenu();
-  }
   const wiringPanel = document.getElementById("nodeWiringPanel");
   wiringPanel?.classList.toggle("modular-only-view", modularOnlyMode);
   document.getElementById("nodeGraphWorkspace").hidden = !workspaceMode;
@@ -1675,8 +1838,12 @@ function setNodeGraphViewMode(mode) {
   document
     .getElementById("nodeModularOnlyBackButton")
     .setAttribute("aria-label", uiMode ? "Close UI view" : "Return to full modular view");
-  document.getElementById("nodeModuleShopView").hidden = !shopLandingMode;
-  document.getElementById("nodeModuleDepartmentView").hidden = !departmentMode;
+  const moduleShopView = document.getElementById("nodeModuleShopView");
+  if (shopMode) {
+    moduleShopView.hidden = false;
+  } else if (!modularMode) {
+    moduleShopView.hidden = true;
+  }
   document.getElementById("nodeScriptView").hidden = !scriptMode;
   document.getElementById("nodeCodeScreenView").hidden = !codeMode;
   document.getElementById("nodeUiView").hidden = !uiMode;
@@ -1686,7 +1853,6 @@ function setNodeGraphViewMode(mode) {
   renderNodeGraphMacroControls();
   renderNodeGraphVideoViewToggle();
   document.getElementById("nodeSettingsViewButton").classList.toggle("active", settingsMode);
-  document.getElementById("nodeModularViewButton").classList.toggle("active", modularMode && !modularOnlyMode);
   document.getElementById("nodeModuleShopButton")?.classList.toggle("active", shopMode);
   document.getElementById("nodeModularOnlyViewButton").classList.toggle("active", modularOnlyMode);
   document.getElementById("nodeMappingViewButton")?.classList.toggle("active", mappingMode);
@@ -1694,7 +1860,6 @@ function setNodeGraphViewMode(mode) {
   document.getElementById("nodeUiViewButton")?.classList.toggle("active", uiMode);
   document.getElementById("nodeSettingsScriptViewButton").classList.toggle("active", scriptMode);
   document.getElementById("nodeSettingsViewButton").setAttribute("aria-pressed", String(settingsMode));
-  document.getElementById("nodeModularViewButton").setAttribute("aria-pressed", String(modularMode && !modularOnlyMode));
   document.getElementById("nodeModuleShopButton")?.setAttribute("aria-pressed", String(shopMode));
   document.getElementById("nodeModularOnlyViewButton").setAttribute("aria-pressed", String(modularOnlyMode));
   document.getElementById("nodeMappingViewButton")?.setAttribute("aria-pressed", String(mappingMode));

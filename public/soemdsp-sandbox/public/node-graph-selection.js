@@ -1,5 +1,9 @@
 function setNodeGraphSelection(selection) {
   nodeGraphMvp.selected = selection;
+  const selectedNode = nodeGraphSingleSelectedNodeId(selection);
+  if (selectedNode && nodeGraphPatchNode(selectedNode)) {
+    nodeGraphMvp.lastModuleActionTargetNode = selectedNode;
+  }
   renderNodeGraphSelection();
 }
 
@@ -46,6 +50,23 @@ function nodeGraphSelectedNodeIds(selection = nodeGraphMvp.selected) {
   return new Set();
 }
 
+function syncNodeGraphSelectionCountReadout(selection = nodeGraphMvp.selected) {
+  const readout = document.getElementById("nodeSelectionCountReadout");
+  if (!readout) {
+    return;
+  }
+  const count = nodeGraphSelectedNodeIds(selection).size;
+  const value = readout.querySelector("[data-selection-count-value]");
+  if (value) {
+    value.textContent = String(count);
+  }
+  readout.dataset.selectedModuleCount = String(count);
+  readout.setAttribute(
+    "aria-label",
+    `${count} selected module${count === 1 ? "" : "s"}`,
+  );
+}
+
 function nodeGraphSingleSelectedNodeId(selection = nodeGraphMvp.selected) {
   const selectedNodeIds = [...nodeGraphSelectedNodeIds(selection)];
   return selectedNodeIds.length === 1 ? selectedNodeIds[0] : null;
@@ -60,12 +81,19 @@ function nodeGraphModuleActionTargetNodeId() {
   if (selectedNode && nodeGraphPatchNode(selectedNode)) {
     return selectedNode;
   }
+  const lastNode = nodeGraphMvp.lastModuleActionTargetNode;
+  if (lastNode && nodeGraphPatchNode(lastNode)) {
+    return lastNode;
+  }
   return null;
 }
 
 function syncNodeGraphModuleActionTargetFromSelection() {
-  const menu = document.getElementById("nodeSceneContextMenu");
-  if (!menu || menu.hidden || menu.dataset.mode === "add") {
+  const commandMenu = document.getElementById("nodeSceneContextMenu");
+  const actionWindow = document.getElementById("nodeModuleActionsWindow");
+  const commandMenuOpen = commandMenu && !commandMenu.hidden && commandMenu.dataset.mode !== "add";
+  const actionWindowOpen = actionWindow && !actionWindow.hidden;
+  if (!commandMenuOpen && !actionWindowOpen) {
     return;
   }
   const selectedWire = nodeGraphWireFromSelection();
@@ -81,15 +109,38 @@ function syncNodeGraphModuleActionTargetFromSelection() {
   const selectedNode = nodeGraphSingleSelectedNodeId();
   if (selectedNode && nodeGraphPatchNode(selectedNode)) {
     nodeGraphMvp.sceneContextTargetNode = selectedNode;
+    nodeGraphMvp.lastModuleActionTargetNode = selectedNode;
     nodeGraphMvp.sceneContextTargetWire = null;
     configureNodeSceneContextMenu("module");
   } else {
     const selectedNodeIds = nodeGraphSelectedNodeIds();
+    nodeGraphMvp.sceneContextTargetNode = null;
+    nodeGraphMvp.sceneContextTargetWire = null;
     if (selectedNodeIds.size > 1) {
-      nodeGraphMvp.sceneContextTargetNode = null;
-      nodeGraphMvp.sceneContextTargetWire = null;
+      configureNodeSceneContextMenu("module");
+    } else if (actionWindowOpen) {
       configureNodeSceneContextMenu("module");
     }
+  }
+}
+
+function syncNodeGraphSharedInspectorTargetFromSelection() {
+  const selectedNode = nodeGraphSingleSelectedNodeId();
+  if (!selectedNode || !nodeGraphPatchNode(selectedNode)) {
+    return;
+  }
+  if (
+    nodeGraphMvp.sharedInspectorActive === "traceDisplaySettings" &&
+    typeof syncOpenNodeGraphTraceDisplaySettingsToNode === "function"
+  ) {
+    syncOpenNodeGraphTraceDisplaySettingsToNode(selectedNode);
+    return;
+  }
+  if (
+    nodeGraphMvp.sharedInspectorActive === "metaparameters" &&
+    typeof syncOpenNodeMetadataPopoverToModule === "function"
+  ) {
+    syncOpenNodeMetadataPopoverToModule(selectedNode);
   }
 }
 
@@ -271,6 +322,7 @@ function pruneNodeGraphSelectionAfterPatch() {
 
 function renderNodeGraphSelection() {
   const selectedNodeIds = nodeGraphSelectedNodeIds();
+  syncNodeGraphSelectionCountReadout();
   for (const node of document.querySelectorAll(".dsp-node")) {
     node.classList.toggle("selected", selectedNodeIds.has(node.dataset.node));
   }
@@ -303,6 +355,7 @@ function renderNodeGraphSelection() {
   button.title = nodeGraphDeleteTitle();
 
   syncNodeGraphModuleActionTargetFromSelection();
+  syncNodeGraphSharedInspectorTargetFromSelection();
   setNodeInteractionHelp(nodeInteractionHelpText(document.activeElement));
 }
 

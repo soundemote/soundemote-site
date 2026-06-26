@@ -1,3 +1,13 @@
+const NODE_GRAPH_KNOB_WIDGET_DRAG_DISTANCE_PX = 174;
+const NODE_GRAPH_KNOB_WIDGET_MAX_SIZE_PX = 58;
+const nodeGraphKnobWidgetResizeObserver = typeof ResizeObserver === "function"
+  ? new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      syncNodeGraphKnobWidgetSize(entry.target);
+    }
+  })
+  : null;
+
 function ensureNodeGraphDragHandle(node) {
   const actions = node.querySelector(".node-header-actions");
   if (!actions || actions.querySelector(".node-drag-handle")) {
@@ -27,13 +37,166 @@ function handleNodeGraphIoRowWirePointerDown(event) {
   nodeGraphWireInteractions.beginWireDrag(event);
 }
 
+function nodeGraphKnobWidgetInputForControl(control) {
+  const node = control?.closest?.(".dsp-node");
+  const key = control?.dataset?.param || "value";
+  return node?.querySelector?.(`.node-knob-widget-input[data-param="${CSS.escape(key)}"]`) || null;
+}
+
+function syncNodeGraphKnobWidgetSize(control) {
+  if (!control) {
+    return;
+  }
+  const size = Math.max(
+    8,
+    Math.min(
+      NODE_GRAPH_KNOB_WIDGET_MAX_SIZE_PX,
+      control.clientWidth || NODE_GRAPH_KNOB_WIDGET_MAX_SIZE_PX,
+      control.clientHeight || NODE_GRAPH_KNOB_WIDGET_MAX_SIZE_PX,
+    ),
+  );
+  control.style.setProperty("--knob-widget-slot-size", `${size}px`);
+}
+
+function observeNodeGraphKnobWidgetSize(control) {
+  syncNodeGraphKnobWidgetSize(control);
+  nodeGraphKnobWidgetResizeObserver?.observe(control);
+  requestAnimationFrame(() => syncNodeGraphKnobWidgetSize(control));
+}
+
+function nodeGraphKnobWidgetDragSpeed(event) {
+  return NODE_GRAPH_KNOB_WIDGET_DRAG_DISTANCE_PX *
+    (event.shiftKey ? 3 : 1) *
+    (event.ctrlKey || event.metaKey ? 10 : 1);
+}
+
+function syncNodeGraphKnobWidgetControl(control) {
+  const input = nodeGraphKnobWidgetInputForControl(control);
+  const node = control?.closest?.(".dsp-node");
+  const parameter = nodeGraphPatchNodeParameterDefinitions(nodeGraphPatchNode(node?.dataset?.node))
+    .find((candidate) => candidate.key === (control?.dataset?.param || "value"));
+  if (!input || !parameter) {
+    return;
+  }
+  const value = normalizeNodeSliderValue(input, Number(input.value));
+  const min = Number(input.min);
+  const max = Number(input.max);
+  const range = max - min;
+  const normalized = Number.isFinite(range) && range > 0
+    ? clampNodeSliderValue((value - min) / range, 0, 1)
+    : 0;
+  control.style.setProperty("--knob-widget-value", String(normalized));
+  control.style.setProperty("--knob-widget-angle", `${-132 + normalized * 264}deg`);
+  control.setAttribute("aria-valuenow", String(value));
+  const readout = control.closest(".node-knob-widget-body")?.querySelector("[data-knob-widget-value]");
+  if (readout) {
+    readout.textContent = formatNodeSliderNumber(value, {
+      kind: input.dataset.kind,
+      maxDigits: input.dataset.maxDigits,
+      reserveSignSpace: true,
+      showSign: nodeSliderShouldShowSign(input),
+    });
+  }
+}
+
+function setNodeGraphKnobWidgetValue(control, value, options = {}) {
+  const input = nodeGraphKnobWidgetInputForControl(control);
+  if (!input) {
+    return;
+  }
+  input.value = String(normalizeNodeSliderValue(input, value));
+  syncNodeGraphKnobWidgetControl(control);
+  syncNodeGraphPatchParameterFromSlider(input, {
+    deferUi: !options.record,
+    record: options.record,
+    status: options.status || "knob changed",
+  });
+  syncNodeGraphGhostSliders();
+  markNodeGraphRenderPending();
+  scheduleNodeGraphLiveParameterSync();
+  if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
+    scheduleNodeGraphModuleScopeDraw();
+  }
+}
+
+function beginNodeGraphKnobWidgetDrag(event) {
+  if (!event.target?.closest?.(".node-knob-widget-face")) {
+    return;
+  }
+  const control = event.currentTarget;
+  const input = nodeGraphKnobWidgetInputForControl(control);
+  if (!input) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  control.setPointerCapture?.(event.pointerId);
+  control.dataset.knobDragStartX = String(event.clientX);
+  control.dataset.knobDragStartY = String(event.clientY);
+  control.dataset.knobDragStartValue = String(Number(input.value) || 0);
+  control.classList.add("value-dragging");
+}
+
+function dragNodeGraphKnobWidget(event) {
+  const control = event.currentTarget;
+  if (!control.classList.contains("value-dragging")) {
+    return;
+  }
+  const input = nodeGraphKnobWidgetInputForControl(control);
+  if (!input) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  const min = Number(input.min);
+  const max = Number(input.max);
+  const range = Number.isFinite(max - min) && max > min ? max - min : 1;
+  const startX = Number(control.dataset.knobDragStartX) || event.clientX;
+  const startY = Number(control.dataset.knobDragStartY) || event.clientY;
+  const startValue = Number(control.dataset.knobDragStartValue) || 0;
+  const speed = nodeGraphKnobWidgetDragSpeed(event);
+  const delta = ((startY - event.clientY) + (event.clientX - startX)) / speed;
+  setNodeGraphKnobWidgetValue(control, startValue + delta * range);
+}
+
+function endNodeGraphKnobWidgetDrag(event) {
+  const control = event.currentTarget;
+  if (!control.classList.contains("value-dragging")) {
+    return;
+  }
+  control.classList.remove("value-dragging");
+  control.releasePointerCapture?.(event.pointerId);
+  delete control.dataset.knobDragStartX;
+  delete control.dataset.knobDragStartY;
+  delete control.dataset.knobDragStartValue;
+  const input = nodeGraphKnobWidgetInputForControl(control);
+  if (input) {
+    syncNodeGraphPatchParameterFromSlider(input, {
+      record: true,
+      status: "knob changed",
+    });
+    scheduleNodeGraphLiveParameterSync();
+  }
+}
+
 function attachNodeGraphNodeEvents(node) {
   ensureNodeGraphDragHandle(node);
   node.querySelector(".node-drag-handle")?.addEventListener("pointerdown", beginNodeGraphNodeDrag);
+  node.querySelector(".node-drag-handle")?.addEventListener("dblclick", toggleNodeGraphNodeMovementLock);
+  node.querySelector(".node-execution-order-badge")?.addEventListener("pointerdown", beginNodeGraphNodeDrag);
   node.querySelector(".node-header-title-row")?.addEventListener("pointerdown", beginNodeGraphNodeDrag);
+  node.querySelector(".node-header-title-row")?.addEventListener("contextmenu", openNodeModuleActionMenu);
   node.querySelector(".node-led-face")?.addEventListener("pointerdown", beginNodeGraphNodeDrag);
+  node.querySelector(".node-knob-widget-body")?.addEventListener("pointerdown", beginNodeGraphNodeDrag);
+  node.querySelectorAll(".dsp-node-io-section")
+    .forEach((section) => section.addEventListener("pointerdown", beginNodeGraphNodeDrag));
+  node.querySelectorAll(".node-parameter-row")
+    .forEach((row) => row.addEventListener("pointerdown", beginNodeGraphNodeDrag));
   node.querySelector(".node-bypass-button")?.addEventListener("click", toggleNodeGraphModuleBypass);
+  node.querySelector(".node-display-settings-button")?.addEventListener("click", openNodeModuleDisplaySettings);
+  node.querySelector(".node-display-settings-button")?.addEventListener("contextmenu", openNodeModuleDisplaySettings);
   node.querySelector(".node-action-button")?.addEventListener("click", openNodeModuleActionMenu);
+  node.querySelector(".node-metaparameter-button")?.addEventListener("click", openNodeModuleMetaparameters);
   node.addEventListener("lostpointercapture", endNodeGraphNodeDrag);
   for (const port of node.querySelectorAll(".node-port")) {
     port.addEventListener("pointerdown", toggleNodeGraphMonitorFromPortEvent, true);
@@ -64,6 +227,15 @@ function attachNodeGraphNodeEvents(node) {
       scheduleNodeGraphLiveParameterSync();
     });
   }
+  for (const control of node.querySelectorAll("[data-knob-widget-control]")) {
+    observeNodeGraphKnobWidgetSize(control);
+    syncNodeGraphKnobWidgetControl(control);
+    control.addEventListener("pointerdown", beginNodeGraphKnobWidgetDrag);
+    control.addEventListener("pointermove", dragNodeGraphKnobWidget);
+    control.addEventListener("pointerup", endNodeGraphKnobWidgetDrag);
+    control.addEventListener("pointercancel", endNodeGraphKnobWidgetDrag);
+    control.addEventListener("lostpointercapture", endNodeGraphKnobWidgetDrag);
+  }
   node.querySelector(".node-module-shop-open-button")?.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -72,7 +244,16 @@ function attachNodeGraphNodeEvents(node) {
   node.querySelector(".node-module-home-open-button")?.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    openNodeGraphModuleShop(null);
+    nodeGraphMvp.sceneContextPoint = null;
+    nodeGraphMvp.sceneContextTargetNode = null;
+    nodeGraphMvp.sceneContextTargetWire = null;
+    configureNodeSceneContextMenu("home");
+    const rect = event.currentTarget.getBoundingClientRect();
+    positionNodeSceneContextMenuHeaderAtPoint(
+      document.getElementById("nodeSceneContextMenu"),
+      rect.left + rect.width * 0.5,
+      rect.top + rect.height * 0.5,
+    );
   });
   node.querySelector("[data-screen-space-shader-apply]")?.addEventListener("click", applyNodeGraphScreenSpaceShaderScript);
   const screenSpaceShaderSource = node.querySelector("[data-screen-space-shader-source]");
@@ -85,6 +266,110 @@ function attachNodeGraphNodeEvents(node) {
   screenSpaceShaderSource?.addEventListener("input", (event) => {
     refreshNodeGraphScreenSpaceShaderBodyStatus(event.currentTarget.closest(".node-screen-space-shader-body"));
   });
+}
+
+function openNodeModuleDisplaySettings(event) {
+  if (event?.altKey) {
+    toggleNodeModuleDisplayVisibility(event);
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  const nodeId = event.currentTarget?.dataset?.node;
+  if (nodeId && typeof openNodeGraphTraceDisplaySettings === "function" && openNodeGraphTraceDisplaySettings(nodeId, event)) {
+    return;
+  }
+  if (typeof setNodeInteractionHelp === "function") {
+    setNodeInteractionHelp(
+      typeof nodeGraphTooltipText === "function"
+        ? nodeGraphTooltipText("module.displaySettings")
+        : "Click to open this module's display settings. Alt+click shows or hides the display.",
+    );
+  }
+}
+
+function toggleNodeModuleDisplayVisibility(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  const nodeId = event.currentTarget?.dataset?.node;
+  const sourceNode = nodeGraphPatchNode(nodeId);
+  if (!sourceNode || !nodeGraphPatchNodeHasHideableOscilloscope(sourceNode)) {
+    if (typeof setNodeInteractionHelp === "function") {
+      setNodeInteractionHelp("This module does not have a hideable display.");
+    }
+    return;
+  }
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
+  if (!targetNode || !nodeGraphPatchNodeHasHideableOscilloscope(targetNode)) {
+    return;
+  }
+  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui);
+  ui.oscilloscopeHidden = !ui.oscilloscopeHidden;
+  applyNodeGraphPatchNodeUi(targetNode, ui);
+  commitNodeGraphPatch(patch, {
+    status: ui.oscilloscopeHidden ? "module display hidden" : "module display shown",
+  });
+  if (typeof configureNodeSceneContextMenu === "function") {
+    configureNodeSceneContextMenu("module");
+  }
+}
+
+function firstNodeModuleSliderReadout(nodeElement) {
+  const readout = nodeElement?.querySelector?.(".node-slider-readout");
+  if (readout) {
+    return readout;
+  }
+  const slider = nodeElement?.querySelector?.('input[type="range"]');
+  if (slider && typeof createNodeSliderReadout === "function") {
+    createNodeSliderReadout(slider);
+  }
+  return nodeElement?.querySelector?.(".node-slider-readout") || null;
+}
+
+function toggleNodeModuleSlidersVisibility(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  const nodeId = event.currentTarget?.dataset?.node;
+  const sourceNode = nodeGraphPatchNode(nodeId);
+  if (!sourceNode || !nodeGraphModuleTypeHasHideableSliders(sourceNode.type)) {
+    if (typeof setNodeInteractionHelp === "function") {
+      setNodeInteractionHelp("This module does not have hideable sliders.");
+    }
+    return;
+  }
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
+  if (!targetNode || !nodeGraphModuleTypeHasHideableSliders(targetNode.type)) {
+    return;
+  }
+  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui);
+  ui.slidersHidden = !ui.slidersHidden;
+  applyNodeGraphPatchNodeUi(targetNode, ui);
+  commitNodeGraphPatch(patch, {
+    status: ui.slidersHidden ? "module sliders hidden" : "module sliders shown",
+  });
+  if (typeof configureNodeSceneContextMenu === "function") {
+    configureNodeSceneContextMenu("module");
+  }
+}
+
+function openNodeModuleMetaparameters(event) {
+  if (event?.altKey) {
+    toggleNodeModuleSlidersVisibility(event);
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  const nodeElement = event.currentTarget?.closest?.(".dsp-node");
+  const readout = firstNodeModuleSliderReadout(nodeElement);
+  if (readout && typeof openNodeMetadataPopover === "function") {
+    openNodeMetadataPopover(event, readout);
+    return;
+  }
+  if (typeof openBlankNodeMetadataPopover === "function") {
+    openBlankNodeMetadataPopover(event);
+  }
 }
 
 function applyNodeGraphScreenSpaceShaderScript(event) {
@@ -163,10 +448,16 @@ function toggleNodeGraphModuleBypassFromNode(node, event) {
   return true;
 }
 
-function nodeGraphModuleLayoutClassNames(definition, layout) {
+function nodeGraphModuleLayoutClassNames(type, definition, layout) {
   const classes = ["dsp-node"];
   if (definition.output) {
     classes.push("output-node");
+  }
+  if (["samplePlayer", "sampleLooper", "audioPlayer"].includes(type)) {
+    classes.push("sample-module-layout");
+  }
+  if (type === "audioPlayer") {
+    classes.push("audio-player-layout");
   }
   const layoutClasses = {
     clapPlugin: "clap-plugin-layout",
@@ -174,15 +465,16 @@ function nodeGraphModuleLayoutClassNames(definition, layout) {
     graph: "graph-node-layout",
     image: "image-node-layout",
     keyboardController: "keyboard-controller-layout",
+    knobWidget: "knob-widget-layout",
     led: "led-layout",
     macroControls: "macro-controls-layout",
-    moduleHome: "module-home-layout",
-    moduleShop: "module-shop-layout",
+    patchCommand: "patch-command-layout",
     pitchModWheel: "pitch-mod-wheel-layout",
     screenSpaceShader: "screen-space-shader-layout",
     sliderWidget: "slider-widget-layout",
     speakerProtection: "speaker-protection-layout",
     textBox: "text-box-layout",
+    traceDisplay: "trace-display-layout",
     visualScope: "visual-scope-layout",
   };
   if (definition.layout === "canvas") {
@@ -194,6 +486,14 @@ function nodeGraphModuleLayoutClassNames(definition, layout) {
   return classes.join(" ");
 }
 
+function appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts) {
+  const proxy = createNodeGraphIoProxySection(node, inputPorts, outputPorts);
+  if (proxy) {
+    ioSection.append(proxy);
+  }
+  article.append(ioSection);
+}
+
 function createNodeGraphModuleElement(type, node) {
   const definition = nodeGraphModuleDefinitions[type];
   const patchNode = nodeGraphPatchNode(node) || { id: node, type };
@@ -203,13 +503,29 @@ function createNodeGraphModuleElement(type, node) {
     (port) => !parameterDefinitions.some((parameter) => parameter.key === port),
   );
   const layout = nodeGraphPatchNodeLayout(patchNode);
+  const widthGu = nodeGraphPatchNodeGridWidthUnits(patchNode);
+  const heightGu = nodeGraphPatchNodeGridHeightUnits(patchNode);
   const article = document.createElement("article");
-  article.className = nodeGraphModuleLayoutClassNames(definition, layout);
+  article.className = nodeGraphModuleLayoutClassNames(type, definition, layout);
   article.dataset.node = node;
   article.dataset.nodeType = type;
   article.dataset.portSignature = `${inputPorts.join(",")}=>${outputPorts.join(",")}`;
-  article.style.setProperty("--node-grid-width-units", String(nodeGraphPatchNodeGridWidthUnits(patchNode)));
-  article.style.setProperty("--node-grid-height-units", String(nodeGraphPatchNodeGridHeightUnits(patchNode)));
+  article.dataset.gridWidthGu = String(widthGu);
+  article.dataset.gridHeightGu = String(heightGu);
+  article.style.setProperty("--node-grid-width-units", String(widthGu));
+  article.style.setProperty("--node-grid-height-units", String(heightGu));
+  article.style.setProperty("--node-module-display-height-units", String(nodeGraphPatchNodeDisplayCssHeightUnits(patchNode)));
+  article.style.setProperty("--node-module-interface-controls-height-units", String(nodeGraphPatchNodeInterfaceControlsHeightUnits(patchNode)));
+  if (layout === "knobWidget" && widthGu <= 1 && heightGu <= 1) {
+    article.classList.add("knob-widget-compact");
+  }
+  const patchNodeUi = nodeGraphEffectivePatchNodeUi(patchNode.ui);
+  article.classList.toggle("buttons-hidden", patchNodeUi.buttonsHidden);
+  article.classList.toggle("io-hidden", patchNodeUi.ioHidden);
+  article.classList.toggle("interface-controls-hidden", patchNodeUi.interfaceControlsHidden);
+  article.classList.toggle("oscilloscope-hidden", patchNodeUi.oscilloscopeHidden);
+  article.classList.toggle("sliders-hidden", patchNodeUi.slidersHidden);
+  article.classList.toggle("title-hidden", patchNodeUi.titleHidden);
 
   if (layout === "led") {
     const ledFace = createNodeGraphLedFace(node, type);
@@ -223,8 +539,18 @@ function createNodeGraphModuleElement(type, node) {
   } else {
     article.append(createNodeGraphModuleHeader(type, node, definition));
   }
+  const displayButton = article.querySelector(".node-display-settings-button");
+  if (displayButton) {
+    displayButton.setAttribute("aria-pressed", patchNodeUi.oscilloscopeHidden ? "false" : "true");
+  }
+  const metaparameterButton = article.querySelector(".node-metaparameter-button");
+  if (metaparameterButton) {
+    metaparameterButton.setAttribute("aria-pressed", patchNodeUi.slidersHidden ? "false" : "true");
+  }
   if (layout === "led") {
     // Compact LED body is the whole module face.
+  } else if (layout === "knobWidget") {
+    article.append(createNodeGraphKnobWidgetBody(node, type));
   } else if (layout === "textBox") {
     article.append(createNodeGraphTextBoxBody(node));
   } else if (layout === "image") {
@@ -234,7 +560,7 @@ function createNodeGraphModuleElement(type, node) {
     ioSection.append(document.createElement("div"));
     const outputColumn = createNodeGraphIoColumn(node, type, outputPorts, "output");
     ioSection.append(outputColumn || document.createElement("div"));
-    article.append(ioSection);
+    appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
   } else if (layout === "screenSpaceShader") {
     article.append(createNodeGraphScreenSpaceShaderBody(node));
     const ioSection = document.createElement("div");
@@ -242,7 +568,7 @@ function createNodeGraphModuleElement(type, node) {
     const inputColumn = createNodeGraphIoColumn(node, type, inputPorts, "input");
     ioSection.append(inputColumn || document.createElement("div"));
     ioSection.append(document.createElement("div"));
-    article.append(ioSection);
+    appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
   } else if (definition.layout === "canvas") {
     const canvasBody = createNodeGraphCanvasBody(node);
     if (layout === "visualScope") {
@@ -255,7 +581,7 @@ function createNodeGraphModuleElement(type, node) {
     const outputColumn = createNodeGraphIoColumn(node, type, outputPorts, "output");
     ioSection.append(inputColumn || document.createElement("div"));
     ioSection.append(outputColumn || document.createElement("div"));
-    article.append(ioSection);
+    appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
   } else if (layout === "visualScope") {
     const scopeSection = createNodeGraphModuleScopeSection(node, type);
     scopeSection.classList.add("node-module-square-scope-window");
@@ -268,7 +594,19 @@ function createNodeGraphModuleElement(type, node) {
     const outputColumn = createNodeGraphIoColumn(node, type, outputPorts, "output");
     ioSection.append(inputColumn || document.createElement("div"));
     ioSection.append(outputColumn || document.createElement("div"));
-    article.append(ioSection);
+    appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
+  } else if (layout === "traceDisplay") {
+    const scopeSection = createNodeGraphModuleScopeSection(node, type);
+    scopeSection.classList.add("node-module-trace-display-window");
+    article.append(scopeSection);
+    registerNodeGraphModuleScopeSlot(article, { nodeId: node, type, scopeElement: scopeSection });
+
+    const ioSection = document.createElement("div");
+    ioSection.className = "dsp-node-io-section";
+    const inputColumn = createNodeGraphIoColumn(node, type, inputPorts, "input");
+    ioSection.append(inputColumn || document.createElement("div"));
+    ioSection.append(document.createElement("div"));
+    appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
   } else if (definition.layout === "graph") {
     const graphSection = document.createElement("div");
     graphSection.className = "node-module-graph-display";
@@ -286,7 +624,7 @@ function createNodeGraphModuleElement(type, node) {
     const outputColumn = createNodeGraphIoColumn(node, type, outputPorts, "output");
     ioSection.append(inputColumn || document.createElement("div"));
     ioSection.append(outputColumn || document.createElement("div"));
-    article.append(ioSection);
+    appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
   } else if (definition.layout === "sliderWidget") {
     article.append(createNodeGraphSliderWidgetBody(node, type));
 
@@ -295,7 +633,7 @@ function createNodeGraphModuleElement(type, node) {
     ioSection.append(document.createElement("div"));
     const outputColumn = createNodeGraphIoColumn(node, type, outputPorts, "output");
     ioSection.append(outputColumn || document.createElement("div"));
-    article.append(ioSection);
+    appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
   } else if (definition.layout === "keyboardController" || definition.layout === "macroControls" || definition.layout === "pitchModWheel") {
     if (definition.layout === "keyboardController") {
       article.append(createNodeGraphKeyboardControllerBody(node));
@@ -310,11 +648,15 @@ function createNodeGraphModuleElement(type, node) {
     const outputColumn = createNodeGraphIoColumn(node, type, outputPorts, "output");
     ioSection.append(inputColumn || document.createElement("div"));
     ioSection.append(outputColumn || document.createElement("div"));
-    article.append(ioSection);
-  } else if (definition.layout === "moduleShop") {
-    article.append(createNodeGraphModuleShopBody(node));
-  } else if (definition.layout === "moduleHome") {
-    article.append(createNodeGraphModuleHomeBody(node));
+    appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
+  } else if (definition.layout === "patchCommand") {
+    article.append(createNodeGraphPatchCommandBody(node));
+    const ioSection = document.createElement("div");
+    ioSection.className = "dsp-node-io-section";
+    const inputColumn = createNodeGraphIoColumn(node, type, inputPorts, "input");
+    ioSection.append(inputColumn || document.createElement("div"));
+    ioSection.append(document.createElement("div"));
+    appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
   } else if (layout === "speakerProtection") {
     article.append(createNodeGraphSpeakerProtectionBody(node));
     const ioSection = document.createElement("div");
@@ -323,7 +665,7 @@ function createNodeGraphModuleElement(type, node) {
     const outputColumn = createNodeGraphIoColumn(node, type, outputPorts, "output");
     ioSection.append(inputColumn || document.createElement("div"));
     ioSection.append(outputColumn || document.createElement("div"));
-    article.append(ioSection);
+    appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
   } else if (definition.layout === "clapPlugin") {
     if (typeof createNodeGraphClapPluginBody === "function") {
       article.append(createNodeGraphClapPluginBody(node));
@@ -335,9 +677,11 @@ function createNodeGraphModuleElement(type, node) {
     const outputColumn = createNodeGraphIoColumn(node, type, outputPorts, "output");
     ioSection.append(inputColumn || document.createElement("div"));
     ioSection.append(outputColumn || document.createElement("div"));
-    article.append(ioSection);
+    appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
   } else if (definition.layout === "filterCurve") {
-    article.append(createNodeGraphFilterCurveDisplay(node, type));
+    if (!patchNodeUi.oscilloscopeHidden) {
+      article.append(createNodeGraphFilterCurveDisplay(node, type));
+    }
 
     const ioSection = document.createElement("div");
     ioSection.className = "dsp-node-io-section";
@@ -345,14 +689,19 @@ function createNodeGraphModuleElement(type, node) {
     const outputColumn = createNodeGraphIoColumn(node, type, outputPorts, "output");
     ioSection.append(inputColumn || document.createElement("div"));
     ioSection.append(outputColumn || document.createElement("div"));
-    article.append(ioSection);
+    appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
   } else {
-    const scopeSection = createNodeGraphModuleScopeSection(node, type);
-    article.append(scopeSection);
-    if ((type === "samplePlayer" || type === "sampleLooper") && typeof createNodeGraphSampleModuleBody === "function") {
+    let scopeSection = null;
+    if (!patchNodeUi.oscilloscopeHidden) {
+      scopeSection = createNodeGraphModuleScopeSection(node, type);
+      article.append(scopeSection);
+    }
+    if ((type === "samplePlayer" || type === "sampleLooper" || type === "audioPlayer") && typeof createNodeGraphSampleModuleBody === "function") {
       article.append(createNodeGraphSampleModuleBody(node));
     }
-    registerNodeGraphModuleScopeSlot(article, { nodeId: node, type, scopeElement: scopeSection });
+    if (scopeSection) {
+      registerNodeGraphModuleScopeSlot(article, { nodeId: node, type, scopeElement: scopeSection });
+    }
 
     const ioSection = document.createElement("div");
     ioSection.className = "dsp-node-io-section";
@@ -368,7 +717,7 @@ function createNodeGraphModuleElement(type, node) {
     } else {
       ioSection.append(document.createElement("div"));
     }
-    article.append(ioSection);
+    appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
   }
 
   if (type === "audioInput") {
@@ -379,7 +728,7 @@ function createNodeGraphModuleElement(type, node) {
     article.append(stateBadge);
   }
 
-  if (definition.parameters?.length && definition.layout !== "sliderWidget" && definition.layout !== "led") {
+  if (definition.parameters?.length && definition.layout !== "sliderWidget" && layout !== "knobWidget" && definition.layout !== "led") {
     const body = document.createElement("div");
     body.className = "dsp-node-body";
     const graphInputSection = createNodeGraphInputSection(node, type);

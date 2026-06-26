@@ -3,17 +3,35 @@ async function initNodeGraphMvp() {
   configureNodeGraphDefaultPresetButton();
   await loadNodeGraphTooltips();
   await bindNodeGraphMvpEvents();
+  if (typeof loadNodeGraphResourceManifest === "function") {
+    await loadNodeGraphResourceManifest();
+  }
   nodeGraphMvp.defaultPatch = await loadNodeGraphDefaultPresetPatch();
-  const earProtectionRecovery = typeof nodeGraphConsumeEarProtectionPatchRecovery === "function"
-    ? nodeGraphConsumeEarProtectionPatchRecovery()
-    : null;
-  const recoveryPatchUsable = typeof nodeGraphDefaultPresetPatchIsUsable === "function"
-    ? nodeGraphDefaultPresetPatchIsUsable(earProtectionRecovery?.patch)
-    : Boolean(earProtectionRecovery?.patch);
-  commitNodeGraphPatch(cloneNodeGraphPatch(recoveryPatchUsable ? earProtectionRecovery.patch : nodeGraphMvp.defaultPatch), {
+  let startupPatch = nodeGraphMvp.workingPatch || nodeGraphMvp.defaultPatch;
+  let startupPatchDirtyState = nodeGraphMvp.workingPatch && ["saved", "edited", "untouched"].includes(nodeGraphMvp.patchDirtyState)
+    ? nodeGraphMvp.patchDirtyState
+    : "untouched";
+  try {
+    const sharePayload = typeof nodeGraphSharePayloadFromUrl === "function"
+      ? nodeGraphSharePayloadFromUrl()
+      : null;
+    if (sharePayload?.project_data) {
+      startupPatch = nodeGraphPatchFromShareProjectData(sharePayload.project_data);
+      startupPatchDirtyState = "untouched";
+    }
+  } catch (error) {
+    window.setTimeout(() => {
+      if (typeof setNodeGraphScriptStatus === "function") {
+        setNodeGraphScriptStatus(`share link failed: ${error?.message || error}`, false);
+      }
+    }, 0);
+  }
+  commitNodeGraphPatch(cloneNodeGraphPatch(startupPatch), {
+    autosaveWorkingPatch: false,
     markPending: false,
+    patchDirtyState: startupPatchDirtyState,
     record: false,
-    status: recoveryPatchUsable ? "ear protection patch restored" : "script synced",
+    status: "script synced",
   });
   resetNodeGraphStartupView();
   recordNodeGraphHistory();
@@ -28,12 +46,17 @@ async function initNodeGraphMvp() {
   renderNodeGraphModuleVisibilityToggles();
   renderNodeGraphPatchTimingControls();
   renderNodeGraphVisibilityMenuButton();
+  bindNodeMetadataScriptBeforeUnload();
+  scheduleNodeMetadataScriptParserSelfTestStatus();
   renderNodeGraphModuleScopeBrightnessControl();
   renderNodeGraphSnapGridButton();
   renderNodeGraphTooltipToggle();
   renderNodeGraphSliderVisibilityToggles();
   renderNodeGraphSliderLayout();
   ensureNodeGraphStartupModulesVisible();
+  if (typeof applyNodeGraphWorkspaceWindowStates === "function") {
+    applyNodeGraphWorkspaceWindowStates();
+  }
   loadNodeMetadataKindTemplates();
   refreshNodeGraphLiveInputDevices();
   refreshNodeGraphLiveMicrophonePermissionState();
@@ -43,14 +66,6 @@ async function initNodeGraphMvp() {
 function clearNodeGraphStartupPatchRecoveryStorage() {
   try {
     window.localStorage?.removeItem?.(nodeGraphDefaultPresetStorageKey);
-  } catch {}
-  try {
-    const stores = typeof nodeGraphEarProtectionRecoveryStores === "function"
-      ? nodeGraphEarProtectionRecoveryStores()
-      : [];
-    for (const store of stores) {
-      store.removeItem(nodeGraphEarProtectionPatchRecoveryStorageKey);
-    }
   } catch {}
 }
 

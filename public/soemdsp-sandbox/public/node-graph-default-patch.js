@@ -14,9 +14,6 @@ function createNodeGraphPatchNode(type, options = {}) {
   if (alias) {
     node.alias = alias;
   }
-  if (Object.hasOwn(options, "heightGu")) {
-    node.heightGu = normalizeNodeGraphModuleHeightUnits(type, options.heightGu, options.ui);
-  }
   const ui = nodeGraphModuleDefinitions[type]?.layout === "textBox" && !Object.hasOwn(options, "ui")
     ? { buttonsHidden: true }
     : normalizeNodeGraphPatchNodeUi(options.ui);
@@ -55,24 +52,19 @@ function createNodeGraphPatchNode(type, options = {}) {
 }
 
 const nodeGraphDefaultNodeConfigs = Object.freeze([
-  createNodeGraphPatchNode("canvas", { alias: "Origin", id: "canvas-origin", gx: 1, gy: 1 }),
-  createNodeGraphPatchNode("moduleHome", { id: "home", gx: 1, gy: 10, widthGu: 5 }),
-  createNodeGraphPatchNode("moduleShop", { id: "shop", gx: 1, gy: 15, widthGu: 5 }),
-  createNodeGraphPatchNode("osc", { id: "osc", gx: 11, gy: 1 }),
   {
-    ...createNodeGraphPatchNode("gain", { id: "gain", gx: 19, gy: 2 }),
-    params: { ...nodeGraphDefaultParamsForType("gain"), amount: 1 },
+    ...createNodeGraphPatchNode("audioPlayer", { id: "audioPlayer-1", gx: 1, gy: 1, widthGu: 8 }),
+    params: { ...nodeGraphDefaultParamsForType("audioPlayer"), speed: 1, transport: 4 },
   },
   {
-    ...createNodeGraphPatchNode("output", { id: "output", gx: 28, gy: 9, widthGu: 7 }),
-    params: { ...nodeGraphDefaultParamsForType("output"), volume: 0.1 },
+    ...createNodeGraphPatchNode("output", { id: "output", gx: 12, gy: 5 }),
+    params: { ...nodeGraphDefaultParamsForType("output"), volume: 0.8 },
   },
 ]);
 
 const nodeGraphDefaultConnections = Object.freeze([
-  { sourceNode: "osc", sourcePort: "Saw", destinationNode: "gain", destinationPort: "In" },
-  { sourceNode: "gain", sourcePort: "Out", destinationNode: "output", destinationPort: "Left" },
-  { sourceNode: "gain", sourcePort: "Out", destinationNode: "output", destinationPort: "Right" },
+  { sourceNode: "audioPlayer-1", sourcePort: "Left", destinationNode: "output", destinationPort: "Left" },
+  { sourceNode: "audioPlayer-1", sourcePort: "Right", destinationNode: "output", destinationPort: "Right" },
 ]);
 
 const nodeGraphDefaultPatch = Object.freeze({
@@ -99,8 +91,8 @@ const nodeGraphDefaultPatch = Object.freeze({
   info: {
     author: "",
     description: "",
-    name: "Patch name",
-    tags: "tags",
+    name: "Init",
+    tags: "",
   },
   visual: {
     background: {
@@ -124,11 +116,13 @@ const nodeGraphDefaultPatch = Object.freeze({
     moduleActions: { left: null, top: null },
   },
   grid: { ...nodeGraphGrid },
-  view: { widthGu: 31, heightGu: 20 },
+  view: { widthGu: 20, heightGu: 20, zoom: 1 },
   nodes: nodeGraphDefaultNodeConfigs.map((node) => ({ ...node })),
   connections: nodeGraphDefaultConnections.map((connection) => ({ ...connection })),
   graphConnections: [],
   modulations: [],
   monitors: [],
+  requiredAssets: [],
+  samples: [],
   uiItems: [],
 });

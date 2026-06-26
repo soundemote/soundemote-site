@@ -7,12 +7,35 @@ function bindNodeGraphSceneElementEvent(id, eventName, handler, options = undefi
 }
 
 function bindNodeGraphSceneMenuEvents() {
+  if (typeof bindNodeGraphSettingsTextInputProtection === "function") {
+    bindNodeGraphSettingsTextInputProtection(document.getElementById("nodeGlobalScopeMenu"));
+  }
+  ensureNodeGraphModuleActionsWindowBody();
   bindNodeGraphSceneElementEvent("nodeModuleShopView", "click", handleNodeGraphModuleStoreClick);
-  bindNodeGraphSceneElementEvent("nodeModuleDepartmentView", "click", handleNodeGraphModuleStoreClick);
+  bindNodeGraphSceneElementEvent("nodeModuleShopView", "keydown", handleNodeGraphModuleStoreKeydown);
+  bindNodeGraphSceneElementEvent("nodeModuleShopClose", "click", closeNodeGraphModuleShop);
+  bindNodeGraphSceneElementEvent("nodeModuleShopView", "pointerdown", beginNodeGraphModuleStorePointerPlacement);
+  bindNodeGraphSceneElementEvent("nodeModuleShopView", "pointerdown", beginNodeGraphModuleShopViewDrag);
+  bindNodeGraphSceneElementEvent("nodeModuleShopHeading", "pointerdown", beginNodeGraphModuleShopViewDrag);
+  bindNodeGraphSceneElementEvent("nodeModuleShopResizeHandle", "pointerdown", beginNodeGraphModuleShopViewResize);
+  bindNodeGraphSceneElementEvent("nodeModuleDepartmentSearch", "input", handleNodeGraphModuleDepartmentSearchInput);
+  bindNodeGraphSceneElementEvent("nodeModuleDepartmentSearch", "keydown", handleNodeGraphModuleDepartmentSearchKeydown);
+  bindNodeGraphSceneElementEvent("nodeModuleDepartmentBack", "click", () => setNodeGraphModuleStoreDepartment(""));
+  document.addEventListener("pointermove", dragNodeGraphModuleShopView);
+  document.addEventListener("pointerup", endNodeGraphModuleShopViewDrag);
+  document.addEventListener("pointercancel", endNodeGraphModuleShopViewDrag);
+  document.addEventListener("pointerup", releaseNodeGraphModuleStorePointerPlacement);
+  document.addEventListener("pointercancel", cancelNodeGraphModuleStorePointerPlacement);
+  document.addEventListener("pointermove", dragNodeGraphModuleShopViewResize);
+  document.addEventListener("pointerup", endNodeGraphModuleShopViewResize);
+  document.addEventListener("pointercancel", endNodeGraphModuleShopViewResize);
   bindNodeGraphSceneElementEvent("nodeGraphWorkspace", "pointerdown", beginNodeGraphGraphNodeDrag, true);
   document.addEventListener("pointermove", dragNodeGraphGraphNode);
   document.addEventListener("pointerup", endNodeGraphGraphNodeDrag);
   document.addEventListener("pointercancel", endNodeGraphGraphNodeDrag);
+  document.addEventListener("pointermove", dragNodeModuleActionsWindowResize);
+  document.addEventListener("pointerup", endNodeModuleActionsWindowResize);
+  document.addEventListener("pointercancel", endNodeModuleActionsWindowResize);
   bindNodeGraphSceneElementEvent("nodeSceneDeleteModule", "click", deleteNodeGraphSelectionFromContext);
   document
     .querySelectorAll("#nodeSceneWireTypeControl [data-wire-type]")
@@ -20,12 +43,45 @@ function bindNodeGraphSceneMenuEvents() {
       button.addEventListener("click", () => setSelectedNodeGraphWireType(button.dataset.wireType));
     });
   bindNodeGraphSceneElementEvent("nodeSceneCopyModule", "click", copyNodeGraphModuleFromContext);
-  bindNodeGraphSceneElementEvent("nodeSceneOpenModuleBrowser", "click", () =>
-    openNodeGraphModuleShop(nodeGraphMvp.sceneContextPoint));
+  bindNodeGraphSceneElementEvent("nodeSceneOpenModuleBrowser", "click", () => {
+    openNodeGraphModuleShop(nodeGraphMvp.sceneContextPoint);
+  });
+  bindNodeGraphSceneElementEvent("nodeSceneOpenModuleActions", "click", openNodeGraphModuleActionsFromContextWindow);
+  bindNodeGraphSceneElementEvent("nodeModuleActionsClose", "click", closeNodeModuleActionsWindow);
+  bindNodeGraphSceneElementEvent("nodeModuleActionsWindowHeading", "pointerdown", beginNodeModuleActionsWindowDrag);
+  bindNodeGraphSceneElementEvent("nodeModuleActionsDragHandle", "pointerdown", beginNodeModuleActionsWindowDrag);
+  bindNodeGraphSceneElementEvent("nodeModuleActionsResizeHandle", "pointerdown", beginNodeModuleActionsWindowResize);
+  bindNodeGraphSceneElementEvent("nodeSceneUndoButton", "click", undoNodeGraphPatch);
+  bindNodeGraphSceneElementEvent("nodeSceneRedoButton", "click", redoNodeGraphPatch);
+  bindNodeGraphSceneElementEvent("nodeSceneOpenSavedPatches", "click", () => {
+    setNodeGraphSavedPatchesWindowVisible(true);
+  });
+  bindNodeGraphSceneElementEvent("nodeSceneOpenUiSettings", "click", () => {
+    setNodeUserUiSettingsVisible(true);
+  });
+  bindNodeGraphSceneElementEvent("nodeSceneOpenPostProcessing", "click", () => {
+    openNodeGraphGlobalShaderScript();
+  });
+  bindNodeGraphSceneElementEvent("nodeSceneOpenVisibility", "click", () => {
+    setNodeGraphVisibilityMenuOpen(true);
+  });
+  bindNodeGraphSceneElementEvent("nodeSceneGlobalSmoothingSeconds", "change", handleNodeGraphGlobalSmoothingSecondsChange);
+  bindNodeGraphSceneElementEvent("nodeSceneGlobalSmoothingSeconds", "keydown", handleNodeGraphGlobalSmoothingSecondsKeydown);
+  bindNodeGraphSceneElementEvent("nodeSceneGlobalSmoothingSeconds", "blur", handleNodeGraphGlobalSmoothingSecondsChange);
+  bindNodeGraphSceneElementEvent("nodeSceneGlobalSmoothingSeconds", "dblclick", beginNodeGraphGlobalSmoothingSecondsEdit);
+  bindNodeGraphSceneElementEvent("nodeSceneGlobalSmoothingSeconds", "pointerdown", beginNodeGraphGlobalSmoothingSecondsDrag);
+  document.addEventListener("pointermove", dragNodeGraphGlobalSmoothingSeconds);
+  document.addEventListener("pointerup", endNodeGraphGlobalSmoothingSecondsDrag);
+  document.addEventListener("pointercancel", endNodeGraphGlobalSmoothingSecondsDrag);
+  if (typeof syncNodeGraphGlobalSmoothingControl === "function") {
+    syncNodeGraphGlobalSmoothingControl({ force: true });
+  }
   bindNodeGraphSceneElementEvent("nodeSceneAddToGroup", "click", saveNodeGraphSelectionAsModuleGroup);
   bindNodeGraphSceneElementEvent("nodeSceneAddToUi", "click", addNodeGraphModuleToUiFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneWidthDecrease", "click", () => adjustNodeGraphModuleWidthFromContext(-1));
   bindNodeGraphSceneElementEvent("nodeSceneWidthIncrease", "click", () => adjustNodeGraphModuleWidthFromContext(1));
+  bindNodeGraphSceneElementEvent("nodeSceneDisplayHeightDecrease", "click", () => adjustNodeGraphModuleDisplayHeightFromContext(-1));
+  bindNodeGraphSceneElementEvent("nodeSceneDisplayHeightIncrease", "click", () => adjustNodeGraphModuleDisplayHeightFromContext(1));
   document
     .querySelectorAll("#nodeGlobalScopeMenu [data-scope-control]")
     .forEach((button) => {
@@ -46,11 +102,12 @@ function bindNodeGraphSceneMenuEvents() {
   document.addEventListener("pointermove", dragNodeScopeContextMenu);
   document.addEventListener("pointerup", endNodeScopeContextMenuDrag);
   document.addEventListener("pointercancel", endNodeScopeContextMenuDrag);
+  document.addEventListener("pointermove", dragNodeModuleActionsWindow);
+  document.addEventListener("pointerup", endNodeModuleActionsWindowDrag);
+  document.addEventListener("pointercancel", endNodeModuleActionsWindowDrag);
   document.addEventListener("pointermove", dragNodeGlobalScopeMenu);
   document.addEventListener("pointerup", endNodeGlobalScopeMenuDrag);
   document.addEventListener("pointercancel", endNodeGlobalScopeMenuDrag);
-  bindNodeGraphSceneElementEvent("nodeSceneTextBoxHeightDecrease", "click", () => adjustNodeGraphModuleHeightFromContext(-1));
-  bindNodeGraphSceneElementEvent("nodeSceneTextBoxHeightIncrease", "click", () => adjustNodeGraphModuleHeightFromContext(1));
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxTextSizeDecrease", "click", () =>
     adjustNodeGraphTextBoxTextSizeFromContext(-nodeGraphTextBoxTextSizeLimits.stepPercent));
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxTextSizeIncrease", "click", () =>
@@ -58,11 +115,15 @@ function bindNodeGraphSceneMenuEvents() {
   bindNodeGraphSceneElementEvent("nodeSceneAliasInput", "input", () => setNodeGraphModuleAliasFromContext({ record: false }));
   bindNodeGraphSceneElementEvent("nodeSceneAliasInput", "change", () => setNodeGraphModuleAliasFromContext({ record: true }));
   bindNodeGraphSceneElementEvent("nodeSceneToggleButtons", "click", toggleNodeGraphModuleButtonsFromContext);
+  bindNodeGraphSceneElementEvent("nodeSceneToggleModuleEnabled", "click", toggleNodeGraphModuleEnabledFromContext);
+  bindNodeGraphSceneElementEvent("nodeSceneOpenNativeCode", "click", openNodeGraphNativeModuleCodeFromContext);
+  bindNodeGraphSceneElementEvent("nodeSceneToggleOscilloscope", "click", toggleNodeGraphModuleOscilloscopeFromContext);
+  bindNodeGraphSceneElementEvent("nodeSceneToggleInterfaceControls", "click", toggleNodeGraphModuleInterfaceControlsFromContext);
+  bindNodeGraphSceneElementEvent("nodeSceneToggleSliders", "click", toggleNodeGraphModuleSlidersFromContext);
+  bindNodeGraphSceneElementEvent("nodeSceneToggleIo", "click", toggleNodeGraphModuleIoFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneToggleTitle", "click", toggleNodeGraphModuleTitleFromContext);
-  bindNodeGraphSceneElementEvent("nodeSceneImageLoad", "click", loadNodeGraphImageFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneImageSave", "click", saveNodeGraphImageFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneImageRefresh", "click", refreshNodeGraphImageFromContext);
-  bindNodeGraphSceneElementEvent("nodeSceneImageFileInput", "change", handleNodeGraphImageFileInputChange);
   bindNodeGraphSceneElementEvent("nodeSceneCanvasScript", "click", openNodeGraphCanvasScriptFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneLedColor", "input", () => setNodeGraphLedColorFromContext({ record: false }));
   bindNodeGraphSceneElementEvent("nodeSceneLedColor", "change", () => setNodeGraphLedColorFromContext({ record: true }));
@@ -87,8 +148,6 @@ function bindNodeGraphSceneMenuEvents() {
   bindNodeGraphSceneElementEvent("nodeSceneGraphNodeList", "click", handleNodeGraphGraphNodeListClick);
   bindNodeGraphSceneElementEvent("nodeSceneGraphNodeList", "input", handleNodeGraphGraphNodeListInput);
   bindNodeGraphSceneElementEvent("nodeSceneGraphNodeList", "change", handleNodeGraphGraphNodeListChange);
-  bindNodeGraphSceneElementEvent("nodeSceneGraphHeightDecrease", "click", () => adjustNodeGraphModuleHeightFromContext(-1));
-  bindNodeGraphSceneElementEvent("nodeSceneGraphHeightIncrease", "click", () => adjustNodeGraphModuleHeightFromContext(1));
   bindNodeGraphSceneElementEvent("nodeSceneGraphPreviousNode", "click", () => selectNodeGraphGraphNodeOffsetFromContext(-1));
   bindNodeGraphSceneElementEvent("nodeSceneGraphNextNode", "click", () => selectNodeGraphGraphNodeOffsetFromContext(1));
   bindNodeGraphSceneElementEvent("nodeSceneGraphAddNode", "click", addNodeGraphGraphNodeFromContext);
@@ -120,8 +179,13 @@ function bindNodeGraphSceneMenuEvents() {
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxAlignRight", "click", () => setNodeGraphTextBoxHorizontalAlignFromContext("right"));
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxVerticalAlign", "input", () => setNodeGraphTextBoxVerticalAlignFromContext({ record: false }));
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxVerticalAlign", "change", () => setNodeGraphTextBoxVerticalAlignFromContext({ record: true }));
-  bindNodeGraphSceneElementEvent("nodeSceneCloseMenu", "click", closeNodeSceneContextMenu);
+  bindNodeGraphSceneElementEvent("nodeSceneCloseMenu", "click", () =>
+    closeNodeSceneContextMenu({ explicit: true }));
   bindNodeGraphSceneElementEvent("nodeSceneDragHandle", "pointerdown", beginNodeSceneContextMenuDrag);
+  bindNodeGraphSceneElementEvent("nodeSceneContextResizeHandle", "pointerdown", beginNodeSceneContextWindowResize);
+  document.addEventListener("pointermove", dragNodeSceneContextWindowResize);
+  document.addEventListener("pointerup", endNodeSceneContextWindowResize);
+  document.addEventListener("pointercancel", endNodeSceneContextWindowResize);
   document
     .querySelector("#nodeSceneContextMenu .scene-context-heading")
     ?.addEventListener("pointerdown", beginNodeSceneContextMenuDrag);

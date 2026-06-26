@@ -38,6 +38,7 @@ function setNodeGraphZoom(nextZoom, anchor = null) {
   const workspaceRect = workspace?.getBoundingClientRect();
   const oldZoom = nodeGraphZoom();
   const oldPan = nodeGraphMvp.pan || { x: 0, y: 0 };
+  const oldOrigin = workspace ? nodeGraphRenderedOriginOffset(oldPan, workspace) : oldPan;
   const anchorPoint = workspaceRect
     ? (anchor || {
       x: workspaceRect.left + workspaceRect.width / 2,
@@ -46,8 +47,8 @@ function setNodeGraphZoom(nextZoom, anchor = null) {
     : null;
   const anchoredContentPoint = workspaceRect && anchorPoint
     ? {
-      x: (anchorPoint.x - workspaceRect.left - (Number(oldPan.x) || 0)) / oldZoom,
-      y: (anchorPoint.y - workspaceRect.top - (Number(oldPan.y) || 0)) / oldZoom,
+      x: (anchorPoint.x - workspaceRect.left - (Number(oldOrigin.x) || 0)) / oldZoom,
+      y: (anchorPoint.y - workspaceRect.top - (Number(oldOrigin.y) || 0)) / oldZoom,
     }
     : null;
   const zoom = clampNodeGraphZoom(nextZoom);
@@ -55,10 +56,12 @@ function setNodeGraphZoom(nextZoom, anchor = null) {
     return;
   }
   nodeGraphMvp.zoom = zoom;
+  syncNodeGraphPatchViewZoom(zoom);
+  const nextCenter = workspace ? nodeGraphWorkspaceCenterOffset(workspace) : { x: 0, y: 0 };
   const nextPan = workspaceRect && anchorPoint && anchoredContentPoint
     ? {
-      x: anchorPoint.x - workspaceRect.left - anchoredContentPoint.x * zoom,
-      y: anchorPoint.y - workspaceRect.top - anchoredContentPoint.y * zoom,
+      x: anchorPoint.x - workspaceRect.left - nextCenter.x - anchoredContentPoint.x * zoom,
+      y: anchorPoint.y - workspaceRect.top - nextCenter.y - anchoredContentPoint.y * zoom,
     }
     : oldPan;
   nodeGraphMvp.pan = {
@@ -67,6 +70,9 @@ function setNodeGraphZoom(nextZoom, anchor = null) {
   };
   applyNodeGraphZoom();
   applyNodeGraphPan();
+  if (typeof saveNodeGraphWorkspaceViewToUserSettings === "function") {
+    saveNodeGraphWorkspaceViewToUserSettings({ status: false });
+  }
 }
 
 function clampNodeGraphZoom(value) {
@@ -76,6 +82,22 @@ function clampNodeGraphZoom(value) {
   const minLog = Math.log(nodeGraphZoomLimits.min);
   const maxLog = Math.log(nodeGraphZoomLimits.max);
   return Math.exp(Math.max(minLog, Math.min(maxLog, Math.log(safeZoom))));
+}
+
+function syncNodeGraphPatchViewZoom(zoom = nodeGraphZoom()) {
+  if (!nodeGraphMvp.patch) {
+    return;
+  }
+  const view = normalizeNodeGraphPatchView(nodeGraphMvp.patch.view);
+  nodeGraphMvp.patch.view = { ...view, zoom: clampNodeGraphZoom(zoom) };
+}
+
+function preserveNodeGraphEditorZoomOnPatch(patch = nodeGraphMvp.patch) {
+  if (!patch) {
+    return;
+  }
+  const view = normalizeNodeGraphPatchView(patch.view);
+  patch.view = { ...view, zoom: clampNodeGraphZoom(nodeGraphMvp.zoom) };
 }
 
 function nodeGraphZoomRatioBySteps(steps, baseRatio = nodeGraphZoomLimits.wheelRatio) {
@@ -128,12 +150,16 @@ function zoomNodeGraphAt(delta, clientX, clientY) {
 function resetNodeGraphZoomToOne() {
   const oldPan = nodeGraphMvp.pan || { x: 0, y: 0 };
   nodeGraphMvp.zoom = 1;
+  syncNodeGraphPatchViewZoom(1);
   nodeGraphMvp.pan = {
     x: snapNodeGraphPanValueToGrid(oldPan.x, nodeGraphGridWidth(), 1),
     y: snapNodeGraphPanValueToGrid(oldPan.y, nodeGraphGridHeight(), 1),
   };
   applyNodeGraphZoom();
   applyNodeGraphPan();
+  if (typeof saveNodeGraphWorkspaceViewToUserSettings === "function") {
+    saveNodeGraphWorkspaceViewToUserSettings({ status: false });
+  }
 }
 
 function normalizeNodeGraphZoomInput(value) {

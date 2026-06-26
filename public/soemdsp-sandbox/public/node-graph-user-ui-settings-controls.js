@@ -163,6 +163,20 @@ function createNodeUserUiSettingsViewControl() {
   });
 }
 
+function createNodeUserUiSettingsHideMouseWhileDraggingControl() {
+  return createNodeUserUiSettingsViewCheckbox({
+    key: "hideMouseWhileDragging",
+    label: "Hide mouse while dragging",
+    getValue: () => nodeGraphMvp.hideMouseWhileDragging !== false,
+    setValue: (visible) => {
+      nodeGraphMvp.hideMouseWhileDragging = visible;
+      if (typeof syncNodeSliderHiddenMouseClass === "function") {
+        syncNodeSliderHiddenMouseClass();
+      }
+    },
+  });
+}
+
 function createNodeUserUiSettingsSliderAmountControl() {
   return createNodeUserUiSettingsViewCheckbox({
     key: "sliderAmountVisible",
@@ -202,10 +216,25 @@ function createNodeUserUiSettingsModuleButtonsControl() {
 function createNodeUserUiSettingsModuleOscilloscopeControl() {
   return createNodeUserUiSettingsViewCheckbox({
     key: "moduleOscilloscopesVisible",
-    label: "Show oscilloscopes",
+    label: "Show displays",
     getValue: () => nodeGraphMvp.moduleOscilloscopesVisible !== false,
     setValue: (visible) => {
       nodeGraphMvp.moduleOscilloscopesVisible = visible;
+      renderNodeGraphModuleVisibilityToggles();
+      if (typeof scheduleNodeGraphLivePlanSync === "function") {
+        scheduleNodeGraphLivePlanSync();
+      }
+    },
+  });
+}
+
+function createNodeUserUiSettingsModuleInterfaceControlsControl() {
+  return createNodeUserUiSettingsViewCheckbox({
+    key: "moduleInterfaceControlsVisible",
+    label: "Show control surfaces",
+    getValue: () => nodeGraphMvp.moduleInterfaceControlsVisible !== false,
+    setValue: (visible) => {
+      nodeGraphMvp.moduleInterfaceControlsVisible = visible;
       renderNodeGraphModuleVisibilityToggles();
     },
   });
@@ -215,7 +244,7 @@ function createNodeUserUiSettingsModuleScopeBrightnessControl() {
   const row = document.createElement("label");
   row.className = "node-user-ui-setting-control number";
   const title = document.createElement("span");
-  title.textContent = "Master oscilloscope brightness";
+  title.textContent = "Master display brightness";
   const input = document.createElement("input");
   input.type = "range";
   input.min = "0";
@@ -255,7 +284,7 @@ function createNodeUserUiSettingsModuleScopeLineThicknessControl() {
   const row = document.createElement("label");
   row.className = "node-user-ui-setting-control number";
   const title = document.createElement("span");
-  title.textContent = "Master oscilloscope line thickness";
+  title.textContent = "Master display line thickness";
   const input = document.createElement("input");
   input.type = "range";
   input.min = "0.25";
@@ -295,17 +324,17 @@ function createNodeUserUiSettingsModuleScopeFramesPerSecondControl() {
   const row = document.createElement("label");
   row.className = "node-user-ui-setting-control number";
   const title = document.createElement("span");
-  title.textContent = "Master oscilloscope FPS";
+  title.textContent = "Master display FPS";
   const input = document.createElement("input");
   input.type = "range";
-  input.min = "1";
+  input.min = "0";
   input.max = "240";
   input.step = "1";
   input.dataset.nodeUiViewSetting = "moduleScopeFramesPerSecond";
   input.value = String(normalizeNodeGraphModuleScopeFramesPerSecond(nodeGraphMvp.moduleScopeFramesPerSecond ?? 60));
   const output = document.createElement("input");
   output.type = "number";
-  output.min = "1";
+  output.min = "0";
   output.max = "240";
   output.step = "1";
   output.dataset.nodeUiViewSettingValue = "moduleScopeFramesPerSecond";
@@ -362,16 +391,16 @@ function createNodeUserUiSettingsSection(title, controls) {
   if (!visibleControls.length) {
     return null;
   }
-  const details = document.createElement("details");
-  details.className = "node-ui-dev-section node-user-ui-settings-section";
-  details.open = true;
-  const summary = document.createElement("summary");
-  summary.textContent = title;
+  const section = document.createElement("section");
+  section.className = "node-ui-dev-section node-user-ui-settings-section";
+  const heading = document.createElement("div");
+  heading.className = "node-user-ui-settings-section-heading";
+  heading.textContent = title;
   const body = document.createElement("div");
   body.className = "node-ui-dev-section-body";
   body.append(...visibleControls);
-  details.append(summary, body);
-  return details;
+  section.append(heading, body);
+  return section;
 }
 
 function renderNodeUserUiSettingsControls() {
@@ -385,6 +414,7 @@ function renderNodeUserUiSettingsControls() {
   for (const section of nodeUiDevSettingSections) {
     const controls = [];
     if (section.title === "workspace") {
+      controls.push(createNodeUserUiSettingsHideMouseWhileDraggingControl());
       controls.push(createNodeUserUiSettingsViewControl());
       controls.push(createNodeUserUiSettingsSliderAmountControl());
       controls.push(createNodeUserUiSettingsSliderPositionControl());
@@ -392,6 +422,7 @@ function renderNodeUserUiSettingsControls() {
     if (section.title === "modules and nodes") {
       controls.push(createNodeUserUiSettingsModuleButtonsControl());
       controls.push(createNodeUserUiSettingsModuleOscilloscopeControl());
+      controls.push(createNodeUserUiSettingsModuleInterfaceControlsControl());
       controls.push(createNodeUserUiSettingsModuleScopeBrightnessControl());
       controls.push(createNodeUserUiSettingsModuleScopeLineThicknessControl());
       controls.push(createNodeUserUiSettingsModuleScopeFramesPerSecondControl());
@@ -438,6 +469,12 @@ function syncNodeUserUiSettingsViewControls() {
     }
     input.checked = Boolean(nodeGraphMvp.sliderPositionVisible);
   }
+  for (const input of document.querySelectorAll("[data-node-ui-view-setting='hideMouseWhileDragging']")) {
+    if (document.activeElement === input) {
+      continue;
+    }
+    input.checked = nodeGraphMvp.hideMouseWhileDragging !== false;
+  }
   for (const input of document.querySelectorAll("[data-node-ui-view-setting='moduleButtonsVisible']")) {
     if (document.activeElement === input) {
       continue;
@@ -449,6 +486,12 @@ function syncNodeUserUiSettingsViewControls() {
       continue;
     }
     input.checked = nodeGraphMvp.moduleOscilloscopesVisible !== false;
+  }
+  for (const input of document.querySelectorAll("[data-node-ui-view-setting='moduleInterfaceControlsVisible']")) {
+    if (document.activeElement === input) {
+      continue;
+    }
+    input.checked = nodeGraphMvp.moduleInterfaceControlsVisible !== false;
   }
   for (const input of document.querySelectorAll("[data-node-ui-view-setting='moduleSlidersVisible']")) {
     if (document.activeElement === input) {
