@@ -3,10 +3,7 @@ import ShareProjectDialog from "./ShareProjectDialog";
 
 const links = [
   { href: "/sandbox", label: "app:(sandbox)", special: true },
-  { href: "/#projects", label: "Projects" },
   { href: "/avw-research", label: "Directive" },
-  { href: "/#developers", label: "Developers" },
-  { href: "/#community", label: "Community" },
 ];
 
 type Burst = {
