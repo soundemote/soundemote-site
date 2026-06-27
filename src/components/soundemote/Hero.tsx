@@ -3,9 +3,7 @@ import patchImage from "@/assets/soemdsp-patch.png";
 
 export const Hero = () => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
-  const previewFrameClass = sandboxLoaded
-    ? "relative aspect-[16/9] overflow-hidden bg-transparent"
-    : "relative aspect-[16/9] overflow-hidden rounded-xl border border-border/60 bg-background shadow-[0_0_40px_hsl(var(--scope)/0.15)] transition-all hover:border-scope/50 hover:shadow-[0_0_60px_hsl(var(--scope)/0.3)]";
+  const previewFrameClass = "relative aspect-[16/9] overflow-hidden bg-background";
 
   return (
     <section id="top" className="relative overflow-hidden py-6 md:py-8">
