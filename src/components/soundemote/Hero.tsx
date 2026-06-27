@@ -3,6 +3,9 @@ import patchImage from "@/assets/soemdsp-patch.png";
 
 export const Hero = () => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
+  const previewFrameClass = sandboxLoaded
+    ? "relative aspect-[16/9] overflow-hidden bg-transparent"
+    : "relative aspect-[16/9] overflow-hidden rounded-xl border border-border/60 bg-background shadow-[0_0_40px_hsl(var(--scope)/0.15)] transition-all hover:border-scope/50 hover:shadow-[0_0_60px_hsl(var(--scope)/0.3)]";
 
   return (
     <section id="top" className="relative overflow-hidden py-6 md:py-8">
@@ -10,12 +13,12 @@ export const Hero = () => {
       <div className="absolute inset-0 bg-[var(--gradient-hero)]" aria-hidden />
       <div className="relative mx-auto flex min-h-[56vh] max-w-6xl flex-col items-center justify-center animate-fade-in px-4 text-center md:min-h-[62vh]">
         <div className="mx-auto w-full max-w-[min(95vw,56rem)] animate-fade-in [animation-delay:200ms]">
-          <div className="relative aspect-[16/9] overflow-hidden rounded-xl border border-border/60 bg-background shadow-[0_0_40px_hsl(var(--scope)/0.15)] transition-all hover:border-scope/50 hover:shadow-[0_0_60px_hsl(var(--scope)/0.3)]">
+          <div className={previewFrameClass}>
             {sandboxLoaded ? (
               <iframe
                 title="soemdsp sandbox"
                 src="/soemdsp-sandbox/index.html?sandboxView=modular-only"
-                className="h-full w-full border-0"
+                className="h-full w-full border-0 bg-transparent"
                 allow="autoplay; microphone"
               />
             ) : (
