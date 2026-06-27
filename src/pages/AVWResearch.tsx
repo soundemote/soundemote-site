@@ -90,9 +90,6 @@ const AVWResearch = () => (
           <a className="mono rounded-full border border-border/70 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-warm-white transition hover:border-scope/70" href="/">
             Back To Soundemote
           </a>
-          <a className="mono rounded-full border border-border/70 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-warm-white transition hover:border-scope/70" href="https://akeru3eureka.io/">
-            Back To Akeru3eureka
-          </a>
           <a className="mono rounded-full border border-scope/50 bg-scope px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-background transition hover:bg-scope/85" href="/sandbox">
             Open Sandbox
           </a>
