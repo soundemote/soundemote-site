@@ -5,11 +5,11 @@ export const Hero = () => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
 
   return (
-    <section id="top" className="relative overflow-hidden py-12 md:py-14">
+    <section id="top" className="relative overflow-hidden py-6 md:py-8">
       <div className="absolute inset-0 scope-grid opacity-40" aria-hidden />
       <div className="absolute inset-0 bg-[var(--gradient-hero)]" aria-hidden />
-      <div className="relative mx-auto flex min-h-[70vh] max-w-6xl flex-col items-center justify-center animate-fade-in px-4 text-center md:min-h-[75vh]">
-        <div className="mx-auto mt-2 w-full max-w-[min(95vw,56rem)] animate-fade-in [animation-delay:200ms]">
+      <div className="relative mx-auto flex min-h-[56vh] max-w-6xl flex-col items-center justify-center animate-fade-in px-4 text-center md:min-h-[62vh]">
+        <div className="mx-auto w-full max-w-[min(95vw,56rem)] animate-fade-in [animation-delay:200ms]">
           <div className="relative aspect-[16/9] overflow-hidden rounded-xl border border-border/60 bg-background shadow-[0_0_40px_hsl(var(--scope)/0.15)] transition-all hover:border-scope/50 hover:shadow-[0_0_60px_hsl(var(--scope)/0.3)]">
             {sandboxLoaded ? (
               <iframe
@@ -41,9 +41,6 @@ export const Hero = () => {
           </div>
         </div>
 
-        <p className="mono mt-4 mb-2 whitespace-nowrap px-0 font-sans text-base font-medium lowercase normal-case tracking-[0.16em] text-scope sm:text-2xl sm:tracking-[0.28em] md:text-3xl md:tracking-[0.35em]">
-          soemdsp
-        </p>
       </div>
     </section>
   );

@@ -166,6 +166,45 @@ export const Nav = () => (
         <span className="text-muted-foreground/80">*/</span>
       </div>
       <div className="z-10 flex items-center gap-4">
+        <a
+          href="https://www.youtube.com/@soundemote0"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex h-6 w-6 items-center justify-center rounded-sm hover:opacity-80"
+          aria-label="YouTube"
+        >
+          <img
+            src="/social/youtube.svg"
+            alt="YouTube"
+            className="h-4 w-4"
+          />
+        </a>
+        <a
+          href="https://bsky.app/profile/soundemote.bsky.social"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex h-6 w-6 items-center justify-center rounded-sm hover:opacity-80"
+          aria-label="Bluesky"
+        >
+          <img
+            src="/social/bluesky.svg"
+            alt="Bluesky"
+            className="h-4 w-4"
+          />
+        </a>
+        <a
+          href="https://discord.gg/hjpBC8kZ3s"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex h-6 w-6 items-center justify-center rounded-sm hover:opacity-80"
+          aria-label="Discord"
+        >
+          <img
+            src="/social/discord.svg"
+            alt="Discord"
+            className="h-4 w-4"
+          />
+        </a>
         <ShareProjectDialog />
       </div>
     </nav>
