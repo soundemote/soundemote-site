@@ -116,10 +116,10 @@ export function SandboxNavLink({ href, label }: { href: string; label: string })
         triggerBurst();
       }}
       onBlur={() => setHovered(false)}
-      className="sandbox-link group relative inline-flex items-center whitespace-nowrap rounded-full px-2 py-1.5 mono normal-case text-[0.82rem] tracking-normal text-slate-300 outline-none transition-colors hover:text-slate-100 focus-visible:text-slate-100"
+      className="sandbox-link group relative inline-flex min-w-max shrink-0 items-center whitespace-nowrap rounded-full px-2 py-1.5 mono normal-case text-[0.82rem] tracking-normal text-slate-300 outline-none transition-colors hover:text-slate-100 focus-visible:text-slate-100"
     >
       <SparkTilde hovered={hovered} reserveWhenIdle />
-      <span className="whitespace-nowrap">{label}</span>
+      <span className="min-w-max shrink-0 whitespace-nowrap">{label}</span>
       <SparkTilde hovered={hovered} />
       {bursts.map((burst) => (
         <span key={burst.id} aria-hidden className="sandbox-burst pointer-events-none absolute inset-0">
