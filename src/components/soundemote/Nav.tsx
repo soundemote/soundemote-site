@@ -158,16 +158,12 @@ export function SandboxNavLink({ href, label }: { href: string; label: string })
 
 export const Nav = () => (
   <header className="relative z-50 w-full border-b border-border/40 bg-background/70 backdrop-blur-xl">
-    <nav className="container flex h-16 items-center justify-between" aria-label="Primary">
-      <a href="/" className="group flex items-center gap-2 mono text-sm tracking-wider">
+    <nav className="container relative flex h-16 items-center justify-between" aria-label="Primary">
+      <a href="/" className="group z-10 flex items-center gap-2 mono text-sm tracking-wider">
         <span className="text-scope text-glow">✧</span>
         <span className="display text-warm-white">soundemote</span>
       </a>
-      <div className="flex items-center gap-4">
-        <div className="xl:hidden">
-          <ShareProjectDialog />
-        </div>
-        <ul className="hidden xl:flex items-center gap-8 mono text-xs uppercase tracking-[0.18em] text-muted-foreground">
+      <ul className="absolute left-1/2 hidden -translate-x-1/2 items-center justify-center gap-8 mono text-xs uppercase tracking-[0.18em] text-muted-foreground xl:flex">
           {links.map((l) => (
             <li key={l.href} className={l.special ? "mr-2" : undefined}>
               {l.special ? (
@@ -179,10 +175,9 @@ export const Nav = () => (
               )}
             </li>
           ))}
-          <li>
-            <ShareProjectDialog />
-          </li>
         </ul>
+      <div className="z-10 flex items-center gap-4">
+        <ShareProjectDialog />
       </div>
     </nav>
   </header>
