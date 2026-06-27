@@ -1,3 +1,47 @@
+let nodeGraphHostedProjectData = null;
+
+function applyNodeGraphHostedProjectData(projectData) {
+  if (
+    !projectData ||
+    typeof nodeGraphPatchFromShareProjectData !== "function" ||
+    typeof commitNodeGraphPatch !== "function" ||
+    typeof cloneNodeGraphPatch !== "function"
+  ) {
+    return false;
+  }
+  try {
+    const hostedPatch = nodeGraphPatchFromShareProjectData(projectData);
+    commitNodeGraphPatch(cloneNodeGraphPatch(hostedPatch), {
+      autosaveWorkingPatch: false,
+      markPending: false,
+      patchDirtyState: "untouched",
+      record: false,
+      status: "hosted patch loaded",
+    });
+    recordNodeGraphHistory();
+    markNodeGraphRenderPending();
+    return true;
+  } catch (error) {
+    if (typeof setNodeGraphScriptStatus === "function") {
+      setNodeGraphScriptStatus(`hosted patch failed: ${error?.message || error}`, false);
+    }
+    return false;
+  }
+}
+
+window.addEventListener("message", (event) => {
+  if (event.origin !== window.location.origin) {
+    return;
+  }
+  if (event.data?.type !== "soundemote:sandbox-project-data") {
+    return;
+  }
+  nodeGraphHostedProjectData = event.data.projectData || null;
+  if (typeof nodeGraphMvp !== "undefined" && nodeGraphMvp?.patch) {
+    applyNodeGraphHostedProjectData(nodeGraphHostedProjectData);
+  }
+});
+
 async function initNodeGraphMvp() {
   installNodeGraphDebugApi();
   configureNodeGraphDefaultPresetButton();
@@ -11,6 +55,7 @@ async function initNodeGraphMvp() {
   let startupPatchDirtyState = nodeGraphMvp.workingPatch && ["saved", "edited", "untouched"].includes(nodeGraphMvp.patchDirtyState)
     ? nodeGraphMvp.patchDirtyState
     : "untouched";
+  let loadedSharePatch = false;
   try {
     const sharePayload = typeof nodeGraphSharePayloadFromUrl === "function"
       ? nodeGraphSharePayloadFromUrl()
@@ -18,6 +63,7 @@ async function initNodeGraphMvp() {
     if (sharePayload?.project_data) {
       startupPatch = nodeGraphPatchFromShareProjectData(sharePayload.project_data);
       startupPatchDirtyState = "untouched";
+      loadedSharePatch = true;
     }
   } catch (error) {
     window.setTimeout(() => {
@@ -25,6 +71,20 @@ async function initNodeGraphMvp() {
         setNodeGraphScriptStatus(`share link failed: ${error?.message || error}`, false);
       }
     }, 0);
+  }
+  if (!loadedSharePatch && typeof nodeGraphSandboxPatchRouteInfoFromUrl === "function") {
+    const routeInfo = nodeGraphSandboxPatchRouteInfoFromUrl();
+    if (routeInfo) {
+      startupPatch = nodeGraphPatchWithSandboxRouteInfo(startupPatch, routeInfo);
+      startupPatchDirtyState = "untouched";
+    }
+  }
+  if (!loadedSharePatch && nodeGraphHostedProjectData) {
+    try {
+      startupPatch = nodeGraphPatchFromShareProjectData(nodeGraphHostedProjectData);
+      startupPatchDirtyState = "untouched";
+      loadedSharePatch = true;
+    } catch {}
   }
   commitNodeGraphPatch(cloneNodeGraphPatch(startupPatch), {
     autosaveWorkingPatch: false,

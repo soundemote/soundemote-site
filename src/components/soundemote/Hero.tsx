@@ -1,32 +1,51 @@
+import { useState } from "react";
 import patchImage from "@/assets/soemdsp-patch.png";
-import { SandboxNavLink } from "@/components/soundemote/Nav";
 
 export const Hero = () => {
+  const [sandboxLoaded, setSandboxLoaded] = useState(false);
+
   return (
-  <section id="top" className="relative overflow-hidden pt-4 pb-20 md:pt-6 md:pb-28">
-    <div className="absolute inset-0 scope-grid opacity-40" aria-hidden />
-    <div className="absolute inset-0 bg-[var(--gradient-hero)]" aria-hidden />
-    <div className="container relative max-w-3xl mx-auto text-center animate-fade-in">
-      
-      <p className="mono text-xs lowercase tracking-[0.1em] text-muted-foreground/60 text-center inline-flex flex-wrap items-center justify-center w-full px-0 mt-[128px] mb-[128px]">
-        <span>/*</span>
-        <SandboxNavLink href="/sandbox" label="app:(sandbox)" /><span>beta v0.1.0 */</span>
-      </p>
-      <div className="w-fit mx-auto mt-6 animate-fade-in [animation-delay:200ms]">
-        <a href="/sandbox" className="group block">
-          <img
-            id="hero-patch-image"
-            src={patchImage}
-            alt="soemdsp modular patch — oscillators, noise, gain and output nodes"
-            className="w-[36rem] max-w-[calc(100vw-3rem)] rounded-xl border border-border/60 shadow-[0_0_40px_hsl(var(--scope)/0.15)] transition-all group-hover:border-scope/50 group-hover:shadow-[0_0_60px_hsl(var(--scope)/0.3)]"
-          />
-        </a>
+    <section id="top" className="relative overflow-hidden py-12 md:py-14">
+      <div className="absolute inset-0 scope-grid opacity-40" aria-hidden />
+      <div className="absolute inset-0 bg-[var(--gradient-hero)]" aria-hidden />
+      <div className="relative mx-auto flex min-h-[70vh] max-w-6xl flex-col items-center justify-center animate-fade-in px-4 text-center md:min-h-[75vh]">
+        <div className="mx-auto mt-2 w-full max-w-[min(95vw,56rem)] animate-fade-in [animation-delay:200ms]">
+          <div className="relative aspect-[16/9] overflow-hidden rounded-xl border border-border/60 bg-background shadow-[0_0_40px_hsl(var(--scope)/0.15)] transition-all hover:border-scope/50 hover:shadow-[0_0_60px_hsl(var(--scope)/0.3)]">
+            {sandboxLoaded ? (
+              <iframe
+                title="soemdsp sandbox"
+                src="/soemdsp-sandbox/index.html?sandboxView=modular-only"
+                className="h-full w-full border-0"
+                allow="autoplay; microphone"
+              />
+            ) : (
+              <button
+                type="button"
+                className="group block h-full w-full border-0 bg-transparent p-0 text-left"
+                aria-label="Load soemdsp sandbox in this preview"
+                onClick={() => setSandboxLoaded(true)}
+              >
+                <img
+                  id="hero-patch-image"
+                  src={patchImage}
+                  alt="soemdsp modular patch - oscillators, noise, gain and output nodes"
+                  className="h-full w-full object-cover"
+                />
+                <span className="absolute inset-0 grid place-items-center bg-background/18 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                  <span className="mono rounded-full border border-scope/70 bg-background/85 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-scope shadow-[0_0_28px_hsl(var(--scope)/0.22)]">
+                    load sandbox
+                  </span>
+                </span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        <p className="mono mt-4 mb-2 whitespace-nowrap px-0 font-sans text-base font-medium lowercase normal-case tracking-[0.16em] text-scope sm:text-2xl sm:tracking-[0.28em] md:text-3xl md:tracking-[0.35em]">
+          soemdsp
+        </p>
       </div>
-      <p className="mono mt-6 whitespace-nowrap text-base font-medium normal-case lowercase tracking-[0.16em] text-scope sm:text-2xl sm:tracking-[0.28em] md:text-3xl md:tracking-[0.35em] font-sans px-0 pb-[24px] my-[180px] pl-0 pt-[180px]">
-        ⋆⁺₊✧ soemdsp ✧₊⁺⋆
-      </p>
-    </div>
-  </section>
+    </section>
   );
 };
 

@@ -12,6 +12,7 @@ import SandboxPage from "./pages/SandboxPage.tsx";
 import AVWResearch from "./pages/AVWResearch.tsx";
 import SupabaseTest from "./pages/SupabaseTest.tsx";
 import SharePage from "./pages/SharePage.tsx";
+import PatchShortlinkPage from "./pages/PatchShortlinkPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -29,9 +30,13 @@ const App = () => (
           <Route path="/oscilloscope" element={<OscilloscopePage />} />
           <Route path="/scope-scratch" element={<ScopeScratchPage />} />
           <Route path="/sandbox" element={<SandboxPage />} />
+          <Route path="/sandbox/:patch" element={<SandboxPage />} />
+          <Route path="/sandbox/:user/:bank/:patch" element={<SandboxPage />} />
           <Route path="/avw-research" element={<AVWResearch />} />
           <Route path="/supabase-test" element={<SupabaseTest />} />
           <Route path="/share/:slug" element={<SharePage />} />
+          <Route path="/:user/:bank/:patch" element={<SandboxPage />} />
+          <Route path="/:shortlink" element={<PatchShortlinkPage />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
