@@ -25,6 +25,7 @@ function nodeGraphBuildLivePlan() {
     order: [...compiled.order],
     outputNode: compiled.outputNode,
     patchFingerprint: nodeGraphPatchFingerprint(),
+    scopeCaptureNodeIds: [...(compiled.scopeCaptureNodeIds || [])],
     speakerOutputActive: Boolean(compiled.speakerOutputActive),
     sourceNodes: [...compiled.sourceNodes],
     visualSinks: (compiled.visualSinks || []).map((sink) => ({
@@ -59,6 +60,7 @@ function nodeGraphBuildLivePlanForPatch(patch) {
     order: [...compiled.order],
     outputNode: compiled.outputNode,
     patchFingerprint: nodeGraphPatchFingerprint(normalizedPatch),
+    scopeCaptureNodeIds: [...(compiled.scopeCaptureNodeIds || [])],
     speakerOutputActive: Boolean(compiled.speakerOutputActive),
     sourceNodes: [...compiled.sourceNodes],
     timing: normalizeNodeGraphPatchTiming(compiled.timing),
@@ -415,6 +417,7 @@ function createNodeGraphLiveRuntime(plan) {
     wireConnectEvent: { pulseSamples: 0 },
     wireDisconnectEvent: { pulseSamples: 0 },
     windowReopenEvent: { pulseSamples: 0, gateSamples: 0, totalSamples: 0 },
+    shootingStarExplosionEvent: { pulseSamples: 0 },
     moduleGroupRuntimes,
     pitchModWheelSignal: {
       mod: Math.max(0, Math.min(1, Number(nodeGraphMvp?.modWheelSignal) || 0)),
@@ -442,6 +445,7 @@ function createNodeGraphLiveRuntime(plan) {
     sampleHoldStates,
     samplePlaybackStates,
     samples,
+    scopeCaptureNodeIds: [...(plan.scopeCaptureNodeIds || [])],
     slewLimiterStates,
     smoothers,
     spiralStates,
@@ -473,6 +477,7 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   runtime.modulationConnections = nodeGraphLiveModulationConnectionMap(plan);
   runtime.order = [...(plan.order || [])];
   runtime.outputNode = plan.outputNode || "output";
+  runtime.scopeCaptureNodeIds = [...(plan.scopeCaptureNodeIds || [])];
   runtime.timing = normalizeNodeGraphPatchTiming(plan.timing);
   runtime.visualSinks = (plan.visualSinks || []).map((sink) => ({
     ...sink,

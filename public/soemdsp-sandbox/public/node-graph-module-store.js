@@ -124,7 +124,6 @@ const nodeGraphModuleStoreUnderConstructionTypes = Object.freeze(new Set([
   "groupInput",
   "groupOutput",
   "shootingStarTail",
-  "shootingStarExplosion",
 ]));
 
 const nodeGraphModuleGroupStorageKey = "soemdsp-sandbox.moduleGroups.v1";
@@ -340,9 +339,9 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   sineWavetable: {
     category: "Oscillator",
-    description: "Placeholder for a sine wavetable oscillator with table-driven phase playback.",
-    label: "Sinewavetable",
-    notes: ["placeholder", "wavetable", "future oscillator"],
+    description: "Table-driven sine/cosine oscillator with pitch, frequency, amplitude, and Nyquist-edge fade.",
+    label: "SinCos",
+    notes: ["implemented", "wavetable", "sin/cos"],
   },
   jerobeamNyqistShannon: {
     category: "Oscillator",
@@ -623,9 +622,9 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   shootingStarExplosion: {
     category: "Game Triggers",
-    description: "Placeholder trigger for a shooting star explosion event.",
+    description: "Website shooting-star collision event source. Emits a one-sample pulse when a star hits the sandbox frame.",
     label: "Shooting Star Explosion",
-    notes: ["placeholder", "game trigger", "shooting star"],
+    notes: ["game trigger", "shooting star", "website bridge"],
   },
   nextPatch: {
     category: "Controllers",

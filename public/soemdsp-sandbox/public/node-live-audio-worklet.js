@@ -10,7 +10,59 @@ const nodeLiveRaptEllipticQuarterbandSos = Object.freeze([
 ]);
 
 function nodeLiveIsPolyBlepOscillatorType(type) {
-  return type === "osc" || type === "polyBlep" || type === "fbPolyBlepOsc";
+  return type === "osc" || type === "polyBlep" || type === "fbPolyBlepOsc" || type === "sineWavetable";
+}
+
+const nodeLiveSineWavetableSize = 2048;
+const nodeLiveSineWavetable = new Float32Array(nodeLiveSineWavetableSize + 1);
+for (let index = 0; index <= nodeLiveSineWavetableSize; index += 1) {
+  nodeLiveSineWavetable[index] = Math.sin((index / nodeLiveSineWavetableSize) * Math.PI * 2);
+}
+
+function nodeLiveClamp01(value) {
+  return Math.max(0, Math.min(1, Number(value) || 0));
+}
+
+function nodeLiveSmoothStep01(value) {
+  const t = nodeLiveClamp01(value);
+  return t * t * (3 - 2 * t);
+}
+
+function nodeLiveNyquistFadeAmplitude(frequency, sampleRate) {
+  const safeRate = Math.max(1, Number(sampleRate) || 44100);
+  const nyquist = safeRate * 0.5;
+  const safeFrequency = Math.max(0, Number(frequency) || 0);
+  const fadeStart = Math.min(20000, nyquist * 0.9);
+  if (safeFrequency <= fadeStart) {
+    return 1;
+  }
+  if (safeFrequency >= nyquist) {
+    return 0;
+  }
+  const fadeProgress = (safeFrequency - fadeStart) / Math.max(1, nyquist - fadeStart);
+  return 1 - nodeLiveSmoothStep01(fadeProgress);
+}
+
+function nodeLiveWrap01(value) {
+  return ((Number(value) || 0) % 1 + 1) % 1;
+}
+
+function nodeLiveSineWavetableLookup(phaseRadians) {
+  const cycle = nodeLiveWrap01((Number(phaseRadians) || 0) / (Math.PI * 2));
+  const position = cycle * nodeLiveSineWavetableSize;
+  const index = Math.floor(position);
+  const fraction = position - index;
+  const a = nodeLiveSineWavetable[index] || 0;
+  const b = nodeLiveSineWavetable[index + 1] || nodeLiveSineWavetable[0] || 0;
+  return a + (b - a) * fraction;
+}
+
+function nodeLiveSineCosWavetableSample(phaseRadians, frequency, amplitude, sampleRate) {
+  const level = Math.max(0, Number(amplitude) || 0) * nodeLiveNyquistFadeAmplitude(frequency, sampleRate);
+  return {
+    cos: nodeLiveSineWavetableLookup((Number(phaseRadians) || 0) + Math.PI * 0.5) * level,
+    sin: nodeLiveSineWavetableLookup(phaseRadians) * level,
+  };
 }
 
 class NodeLiveAudioProcessor extends AudioWorkletProcessor {
@@ -45,6 +97,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.wireConnectEvent = { pulseSamples: 0 };
     this.wireDisconnectEvent = { pulseSamples: 0 };
     this.windowReopenEvent = { pulseSamples: 0, gateSamples: 0, totalSamples: 0 };
+    this.shootingStarExplosionEvent = { pulseSamples: 0 };
     this.pitchModWheelSignal = { mod: 0, pitch: 0 };
     this.midiKeyboardGatePulseSamples = 0;
     this.midiKeyboardSignal = null;
@@ -102,6 +155,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.randomWalkStates = new Map();
     this.sessionId = 0;
     this.scopeBuffers = new Map();
+    this.scopeCaptureNodeIds = [];
     this.scopeCounter = 0;
     this.scopeSampleStride = 1;
     this.slewLimiterStates = new Map();
@@ -279,6 +333,10 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
     if (message.type === "windowReopenEvent") {
       this.setWindowReopenEvent();
+      return;
+    }
+    if (message.type === "shootingStarExplosionEvent") {
+      this.setShootingStarExplosionEvent();
       return;
     }
   }
@@ -536,6 +594,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     ]).filter(([id]) => id));
     this.order = Array.isArray(plan?.order) ? [...plan.order] : [...ids];
     this.outputNode = plan?.outputNode || "output";
+    this.scopeCaptureNodeIds = Array.isArray(plan?.scopeCaptureNodeIds)
+      ? plan.scopeCaptureNodeIds.map((nodeId) => String(nodeId || "")).filter(Boolean)
+      : [];
     this.visualSinks = (Array.isArray(plan?.visualSinks) ? plan.visualSinks : []).map((sink) => ({
       ...sink,
       bufferedInputs: Array.isArray(sink?.bufferedInputs) ? [...sink.bufferedInputs] : [],
@@ -1086,6 +1147,24 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     return { Pulse: pulseSamples > 0 ? 1 : 0 };
   }
 
+  setShootingStarExplosionEvent() {
+    const event = this.shootingStarExplosionEvent && typeof this.shootingStarExplosionEvent === "object"
+      ? this.shootingStarExplosionEvent
+      : { pulseSamples: 0 };
+    event.pulseSamples = Math.max(0, Number(event.pulseSamples) || 0) + 1;
+    this.shootingStarExplosionEvent = event;
+  }
+
+  shootingStarExplosionEventSample() {
+    const event = this.shootingStarExplosionEvent && typeof this.shootingStarExplosionEvent === "object"
+      ? this.shootingStarExplosionEvent
+      : { pulseSamples: 0 };
+    const pulseSamples = Math.max(0, Number(event.pulseSamples) || 0);
+    event.pulseSamples = Math.max(0, pulseSamples - 1);
+    this.shootingStarExplosionEvent = event;
+    return { Pulse: pulseSamples > 0 ? 1 : 0 };
+  }
+
   windowReopenGateSamples() {
     return Math.max(1, Math.round(Math.max(1, this.engineSampleRate || sampleRate) * 1));
   }
@@ -1549,7 +1628,10 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.scopeSampleStride = Math.max(1, Math.floor((Number(this.engineSampleRate) || sampleRate || 44100) / 12000));
     const captureDebugScope = (this.scopeCounter % this.scopeSampleStride) === 0;
     if (captureDebugScope) {
-      for (const nodeId of this.order) {
+      const captureNodeIds = Array.isArray(this.scopeCaptureNodeIds)
+        ? this.scopeCaptureNodeIds
+        : this.order;
+      for (const nodeId of captureNodeIds) {
         if (!this.nodeOutputs.has(nodeId)) {
           continue;
         }
@@ -1559,6 +1641,12 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     for (const sink of this.visualSinks || []) {
       const nodeId = String(sink?.nodeId || "");
       if (!nodeId) {
+        continue;
+      }
+      if (
+        Array.isArray(this.scopeCaptureNodeIds) &&
+        !this.scopeCaptureNodeIds.includes(nodeId)
+      ) {
         continue;
       }
       let value = 0;
@@ -2967,6 +3055,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     runtime.wireConnectEvent = this.wireConnectEvent;
     runtime.wireDisconnectEvent = this.wireDisconnectEvent;
     runtime.windowReopenEvent = this.windowReopenEvent;
+    runtime.shootingStarExplosionEvent = this.shootingStarExplosionEvent;
     runtime.midiKeyboardGatePulseSamples = 0;
     runtime.midiKeyboardSignal = null;
     runtime.moduleGroupRuntimes = new Map();
@@ -3118,6 +3207,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     runtime.wireConnectEvent = this.wireConnectEvent;
     runtime.wireDisconnectEvent = this.wireDisconnectEvent;
     runtime.windowReopenEvent = this.windowReopenEvent;
+    runtime.shootingStarExplosionEvent = this.shootingStarExplosionEvent;
     runtime.externalGroupInputs = new Map(
       (node.moduleGroup?.inputs || []).map((input) => [input.nodeId, mixInput(node.id, input.name)]),
     );
@@ -4861,6 +4951,41 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
           readParam,
           safeRate,
         );
+      } else if (node?.type === "sineWavetable") {
+        const phase = this.phases.get(nodeId) || 0;
+        const phaseOffset = this.phaseRadians(
+          this.readEffectiveParameter(node, "phase", 0, frame, frames, frameValues),
+        );
+        const baseFrequency = this.readEffectiveParameter(
+          node,
+          "freq",
+          440,
+          frame,
+          frames,
+          frameValues,
+        );
+        const freqInput = this.safeFilterNumber(mixInput(nodeId, "Freq"), null);
+        const ampInput = this.safeFilterNumber(mixInput(nodeId, "Amplitude"), null);
+        const pitchInput = this.clampValue(
+          this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null),
+          -1,
+          1,
+        );
+        const pitchedFrequency = Math.max(0, (baseFrequency + freqInput) * (2 ** (pitchInput / 0.1)));
+        const amplitude = Math.max(0, this.readEffectiveParameter(
+          node,
+          "amp",
+          1,
+          frame,
+          frames,
+          frameValues,
+        ) + ampInput);
+        const phaseIncrement = pitchedFrequency / safeRate;
+        value = nodeLiveSineCosWavetableSample(phase + phaseOffset, pitchedFrequency, amplitude, safeRate);
+        this.phases.set(
+          nodeId,
+          this.wrapValue(phase + Math.PI * 2 * phaseIncrement, 0, Math.PI * 2),
+        );
       } else if (nodeLiveIsPolyBlepOscillatorType(node?.type)) {
         const resetState = this.oscResetStates.get(nodeId) || this.createOscResetState();
         this.oscResetStates.set(nodeId, resetState);
@@ -5381,6 +5506,8 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         value = this.wireDisconnectEventSample();
       } else if (node?.type === "windowReopen") {
         value = this.windowReopenEventSample();
+      } else if (node?.type === "shootingStarExplosion") {
+        value = this.shootingStarExplosionEventSample();
       } else if (node?.type === "nextPatch" || node?.type === "previousPatch") {
         const state = this.patchCommandStates.get(nodeId) || this.createPatchCommandState();
         this.patchCommandStates.set(nodeId, state);

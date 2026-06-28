@@ -3,7 +3,7 @@ import patchImage from "@/assets/soemdsp-patch.png";
 
 export const Hero = () => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
-  const previewFrameClass = "relative aspect-[16/9] overflow-hidden bg-background";
+  const previewFrameClass = "soundemote-sandbox-preview-frame relative aspect-[16/9] overflow-hidden bg-background";
 
   return (
     <section id="top" className="relative overflow-hidden py-6 md:py-8">
@@ -14,6 +14,7 @@ export const Hero = () => {
           <div className={previewFrameClass}>
             {sandboxLoaded ? (
               <iframe
+                id="hero-sandbox-iframe"
                 title="soemdsp sandbox"
                 src="/soemdsp-sandbox/index.html?sandboxView=modular-only"
                 className="h-full w-full border-0 bg-transparent"

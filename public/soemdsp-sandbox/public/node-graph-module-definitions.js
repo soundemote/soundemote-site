@@ -11,6 +11,7 @@ const nodeGraphNodeLabels = Object.freeze({
   osc: "Osc",
   polyBlep: "PolyBLEP",
   fbPolyBlepOsc: "F/B PolyBLEP Osc",
+  sineWavetable: "SinCos",
   additiveOsc: "Additive Osc",
   gpuAdditiveOsc: "GPU Additive",
   ellipsoid: "Ellipsoid",
@@ -346,6 +347,59 @@ const nodeGraphModuleDefinitions = Object.freeze({
         defaultValue: "1",
         key: "level",
         label: "Amplitude",
+        max: "1",
+        mid: "0.5",
+        min: "0",
+        nonlinearSlider: false,
+        step: "any",
+      },
+    ],
+  },
+  sineWavetable: {
+    displayType: "trace",
+    inputs: ["0.1V/Oct", "Freq", "Amplitude"],
+    inputAliases: {
+      "0.1V": "0.1V/Oct",
+      "0.1v": "0.1V/Oct",
+      amplitude: "Amplitude",
+      freq: "Freq",
+    },
+    inputLabels: {
+      "0.1V/Oct": "0.1V",
+    },
+    outputAliases: {
+      Cos: "cos",
+      Sin: "sin",
+    },
+    outputs: ["sin", "cos"],
+    parameters: [
+      {
+        defaultValue: "0",
+        key: "phase",
+        kind: "phase",
+        label: "Phase",
+        max: "1",
+        mid: "0.5",
+        min: "0",
+        step: "0.01",
+        unit: "cycle",
+        wraparound: true,
+      },
+      {
+        defaultValue: "440",
+        key: "freq",
+        kind: "frequency",
+        label: "Freq",
+        max: "22050",
+        mid: "440",
+        min: "0",
+        step: "any",
+        unit: "Hz",
+      },
+      {
+        defaultValue: "1",
+        key: "amp",
+        label: "Amp",
         max: "1",
         mid: "0.5",
         min: "0",
@@ -1447,7 +1501,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { defaultValue: "1", key: "speed", label: "Speed", linearSmoothing: false, max: "8", maxDigits: 4, mid: "1", min: "0", step: "any", unit: "x" },
       { defaultValue: "0", key: "start", label: "Start", linearSmoothing: false, max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any" },
       { defaultValue: "1", key: "end", label: "End", linearSmoothing: false, max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any" },
-      { choices: ["Off (reset)", "Stop", "Pause", "Play", "Loop"], defaultValue: "4", displayChoices: true, divideChoicesVisibly: true, key: "transport", label: "Play Mode", linearSmoothing: false, max: "4", mid: "2", min: "0", nonlinearSlider: false, step: "1" },
+      { choices: ["Off (reset)", "Stop", "Pause", "Play", "Loop"], defaultValue: "3", displayChoices: true, divideChoicesVisibly: true, key: "transport", label: "Play Mode", linearSmoothing: false, max: "4", mid: "2", min: "0", nonlinearSlider: false, step: "1" },
     ],
   },
   macroControls: {
@@ -1624,6 +1678,8 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   sandboxVisuals: {
+    bufferedInputs: ["Shake", "X", "Y", "Dim", "Red", "Green", "Blue", "Scope Off", "Pause"],
+    displayType: "trace",
     inputs: ["Shake", "X", "Y", "Dim", "Red", "Green", "Blue", "Scope Off", "Pause", "Trace Image"],
     inputAliases: {
       "Screen Shake": "Shake",
@@ -1696,6 +1752,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
     visualSink: true,
   },
   bloomGlow: {
+    displayType: "dot",
     outputs: [],
     parameters: [
       { defaultValue: "0", key: "screenDim", label: "Dim", max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "any" },
@@ -1706,6 +1763,8 @@ const nodeGraphModuleDefinitions = Object.freeze({
     visualSink: true,
   },
   rgbaHsla: {
+    bufferedInputs: ["Red", "Green", "Blue", "Hue", "Saturation", "Lightness", "HSL Mix", "Alpha"],
+    displayType: "trace",
     inputs: ["Red", "Green", "Blue", "Hue", "Saturation", "Lightness", "HSL Mix", "Alpha"],
     inputAliases: {
       R: "Red",
@@ -1732,6 +1791,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
     visualSink: true,
   },
   chromaColor: {
+    displayType: "dot",
     outputs: [],
     parameters: [
       { defaultValue: "0.58", key: "chromaHue", label: "Hue", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any", wraparound: true },
@@ -1989,7 +2049,7 @@ function nodeGraphModuleIsGraphType(type) {
 }
 
 function nodeGraphModuleIsRealtimeOscillatorType(type) {
-  return type === "osc" || type === "polyBlep" || type === "fbPolyBlepOsc";
+  return type === "osc" || type === "polyBlep" || type === "fbPolyBlepOsc" || type === "sineWavetable";
 }
 
 function nodeGraphCanonicalInputPort(type, port) {

@@ -55,6 +55,16 @@ function nodeGraphWireConnectEventSample(runtime) {
   return { Pulse: pulseSamples > 0 ? 1 : 0 };
 }
 
+function nodeGraphShootingStarExplosionEventSample(runtime) {
+  const event = runtime?.shootingStarExplosionEvent;
+  if (!event || typeof event !== "object") {
+    return { Pulse: 0 };
+  }
+  const pulseSamples = Math.max(0, Number(event.pulseSamples) || 0);
+  event.pulseSamples = Math.max(0, pulseSamples - 1);
+  return { Pulse: pulseSamples > 0 ? 1 : 0 };
+}
+
 function nodeGraphWindowReopenEventSample(runtime) {
   const event = runtime?.windowReopenEvent;
   if (!event || typeof event !== "object") {
@@ -460,6 +470,7 @@ function nodeGraphEvaluateModuleGroup(runtime, node, mixInput, sampleRate, frame
   groupRuntime.wireConnectEvent = runtime.wireConnectEvent;
   groupRuntime.wireDisconnectEvent = runtime.wireDisconnectEvent;
   groupRuntime.windowReopenEvent = runtime.windowReopenEvent;
+  groupRuntime.shootingStarExplosionEvent = runtime.shootingStarExplosionEvent;
   groupRuntime.externalGroupInputs = new Map(
     group.inputs.map((input) => [input.nodeId, mixInput(node.id, input.name)]),
   );
@@ -1992,6 +2003,65 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         readParam,
         sampleRate,
       );
+    } else if (node?.type === "sineWavetable") {
+      const phase = runtime.phases.get(nodeId) || 0;
+      const phaseOffset = nodeGraphPhaseRadians(
+        readNodeGraphLiveEffectiveParam(
+          runtime,
+          node,
+          "phase",
+          0,
+          frame,
+          frames,
+          frameValues,
+        ),
+      );
+      const baseFrequency = readNodeGraphLiveEffectiveParam(
+        runtime,
+        node,
+        "freq",
+        440,
+        frame,
+        frames,
+        frameValues,
+      );
+      const freqInput = nodeGraphSafeFilterNumber(
+        mixInput(nodeId, "Freq"),
+        runtime,
+        nodeId,
+        null,
+        "sin/cos freq input",
+      );
+      const ampInput = nodeGraphSafeFilterNumber(
+        mixInput(nodeId, "Amplitude"),
+        runtime,
+        nodeId,
+        null,
+        "sin/cos amplitude input",
+      );
+      const pitchInput = clampNodeSliderValue(nodeGraphSafeFilterNumber(
+        mixInput(nodeId, "0.1V/Oct"),
+        runtime,
+        nodeId,
+        null,
+        "sin/cos 0.1v input",
+      ), -1, 1);
+      const pitchedFrequency = Math.max(0, (baseFrequency + freqInput) * (2 ** (pitchInput / 0.1)));
+      const amplitude = Math.max(0, readNodeGraphLiveEffectiveParam(
+        runtime,
+        node,
+        "amp",
+        1,
+        frame,
+        frames,
+        frameValues,
+      ) + ampInput);
+      const phaseIncrement = pitchedFrequency / sampleRate;
+      value = nodeGraphSineCosWavetableSample(phase + phaseOffset, pitchedFrequency, amplitude, sampleRate);
+      runtime.phases.set(
+        nodeId,
+        wrapNodeSliderValue(phase + Math.PI * 2 * phaseIncrement, 0, Math.PI * 2),
+      );
     } else if (nodeGraphIsPolyBlepOscillatorType(node?.type)) {
       const resetState = runtime.oscResetStates.get(nodeId) || createNodeGraphOscResetState();
       runtime.oscResetStates.set(nodeId, resetState);
@@ -2641,6 +2711,8 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
       value = nodeGraphWireDisconnectEventSample(runtime);
     } else if (node?.type === "windowReopen") {
       value = nodeGraphWindowReopenEventSample(runtime);
+    } else if (node?.type === "shootingStarExplosion") {
+      value = nodeGraphShootingStarExplosionEventSample(runtime);
     } else if (node?.type === "nextPatch" || node?.type === "previousPatch") {
       const state = runtime.patchCommandStates.get(nodeId) || createNodeGraphPatchCommandState();
       runtime.patchCommandStates.set(nodeId, state);

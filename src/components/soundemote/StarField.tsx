@@ -72,9 +72,14 @@ export const StarField = () => {
       if (now - lastScrollAt < 250) return null;
 
       const target =
+        document.querySelector<HTMLElement>("#hero-sandbox-iframe") ??
+        document.querySelector<HTMLElement>(".soundemote-sandbox-preview-frame") ??
         document.querySelector<HTMLElement>("#hero-patch-image") ??
         document.querySelector<HTMLCanvasElement>("#hero-oscilloscope canvas");
-      const rect = target?.getBoundingClientRect();
+      if (!target) {
+        return null;
+      }
+      const rect = target.getBoundingClientRect();
       if (
         !rect ||
         rect.right <= 0 ||
@@ -91,6 +96,29 @@ export const StarField = () => {
         top: rect.top,
         bottom: rect.bottom,
       };
+    };
+
+    const postSandboxCollisionEvent = (hitbox: ScopeHitbox, x: number, y: number, hue: number) => {
+      const iframe = document.querySelector<HTMLIFrameElement>("#hero-sandbox-iframe");
+      const targetWindow = iframe?.contentWindow;
+      if (!targetWindow) return;
+      const width = Math.max(1, hitbox.right - hitbox.left);
+      const height = Math.max(1, hitbox.bottom - hitbox.top);
+      targetWindow.postMessage(
+        {
+          type: "soundemote:sandbox-event",
+          event: "shootingStarExplosion",
+          payload: {
+            source: "hero-shooting-star",
+            x,
+            y,
+            normalizedX: Math.max(0, Math.min(1, (x - hitbox.left) / width)),
+            normalizedY: Math.max(0, Math.min(1, (y - hitbox.top) / height)),
+            hue,
+          },
+        },
+        window.location.origin,
+      );
     };
 
     const seed = () => {
@@ -238,6 +266,7 @@ export const StarField = () => {
           sh.y <= scopeHitbox.bottom
         ) {
           explode(sh.x, sh.y, sh.hue);
+          postSandboxCollisionEvent(scopeHitbox, sh.x, sh.y, sh.hue);
           shooters.splice(i, 1);
           continue;
         }

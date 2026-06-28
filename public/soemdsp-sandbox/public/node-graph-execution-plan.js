@@ -346,10 +346,24 @@ function nodeGraphActiveVisualSinkExists(visualSinks = []) {
   );
 }
 
-function nodeGraphVisualSinkDisplayVisible(node, options = {}) {
+function nodeGraphVisualSinkActiveInPlan(node, options = {}) {
   if (!nodeGraphModuleDefinitions[node?.type]?.visualSink) {
     return false;
   }
+  const bypassedNodes = options.bypassedNodes instanceof Set
+    ? options.bypassedNodes
+    : new Set(options.bypassedNodes || []);
+  if (node?.id && bypassedNodes.has(node.id)) {
+    return false;
+  }
+  return true;
+}
+
+function nodeGraphVisualSinkDisplayVisible(node, options = {}) {
+  return nodeGraphVisualSinkActiveInPlan(node, options);
+}
+
+function nodeGraphPatchNodeDisplayVisibleInPlan(node, options = {}) {
   const bypassedNodes = options.bypassedNodes instanceof Set
     ? options.bypassedNodes
     : new Set(options.bypassedNodes || []);
@@ -410,7 +424,7 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
     markReachable(node.id);
   }
   for (const node of graph.nodes) {
-    if (nodeGraphVisualSinkDisplayVisible(node, { bypassedNodes })) {
+    if (nodeGraphVisualSinkActiveInPlan(node, { bypassedNodes })) {
       markReachable(node.id);
     }
     if (
@@ -421,6 +435,7 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
     }
   }
   const visualSinks = nodeGraphCompiledVisualSinks(graph, reachableNodes);
+  const scopeCaptureNodeIds = nodeGraphCompiledScopeCaptureNodeIds(graph, reachableNodes);
   const hasActiveVisualSink = nodeGraphActiveVisualSinkExists(visualSinks);
   const hasOutputSpeakerInput = nodeGraphOutputInputPorts.some(
     (port) => (graph.inputConnections.get(nodeGraphInputKey(outputNode, port)) || []).length > 0,
@@ -507,6 +522,7 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
       type !== "wireConnect" &&
       type !== "wireDisconnect" &&
       type !== "windowReopen" &&
+      type !== "shootingStarExplosion" &&
       !nodeGraphModuleIsRealtimeOscillatorType(type) &&
       type !== "fractalBrownianNoise" &&
       type !== "flowerChildEnvelopeFollower" &&
@@ -559,6 +575,7 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
       type === "wireConnect" ||
       type === "wireDisconnect" ||
       type === "windowReopen" ||
+      type === "shootingStarExplosion" ||
       nodeGraphModuleIsRealtimeOscillatorType(type) ||
       type === "fractalBrownianNoise" ||
       type === "keyboardController" ||
@@ -604,6 +621,7 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
     outputNode,
     reachableNodes: [...reachableNodes],
     speakerOutputActive: hasOutputNode && hasOutputSpeakerInput,
+    scopeCaptureNodeIds,
     sourceNodes,
     timing: normalizeNodeGraphPatchTiming(patch.timing),
     valid: uniqueIssues.length === 0,
@@ -617,7 +635,7 @@ function nodeGraphCompiledVisualSinks(graph, reachableNodes) {
     .filter((node) =>
       reachableNodes.has(node.id) &&
       !bypassedNodes.has(node.id) &&
-      nodeGraphVisualSinkDisplayVisible(node, { bypassedNodes })
+      nodeGraphVisualSinkActiveInPlan(node, { bypassedNodes })
     )
     .map((node) => {
       const bufferedInputs = nodeGraphPatchNodeBufferedInputs(node);
@@ -637,6 +655,18 @@ function nodeGraphCompiledVisualSinks(graph, reachableNodes) {
         type: node.type,
       };
     });
+}
+
+function nodeGraphCompiledScopeCaptureNodeIds(graph, reachableNodes) {
+  const bypassedNodes = new Set(graph.bypassedNodes || []);
+  return graph.nodes
+    .filter((node) =>
+      reachableNodes.has(node.id) &&
+      !bypassedNodes.has(node.id) &&
+      nodeGraphModuleDefinitions[node?.type]?.displayType &&
+      nodeGraphPatchNodeDisplayVisibleInPlan(node, { bypassedNodes })
+    )
+    .map((node) => node.id);
 }
 
 const nodeGraphVisualSinkHistorySeconds = 10;
