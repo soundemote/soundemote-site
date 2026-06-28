@@ -77,10 +77,7 @@ export const ScopeLab = () => {
     <section id="scope" className="relative overflow-hidden py-20 md:py-28">
       <div className="absolute inset-0 scope-grid opacity-40" aria-hidden />
       <div className="container relative max-w-3xl mx-auto text-center">
-        <p className="mono text-[0.625rem] uppercase tracking-[0.3em] text-scope/70">
-          ✧ one more thing ✧
-        </p>
-        <h2 className="mono mt-3 text-lg uppercase tracking-[0.25em] text-scope text-glow">
+        <h2 className="mono text-lg uppercase tracking-[0.25em] text-scope text-glow">
           strange attractor scope
         </h2>
         <div className="max-w-xl mx-auto mt-8 flex flex-wrap items-center justify-center gap-2">
