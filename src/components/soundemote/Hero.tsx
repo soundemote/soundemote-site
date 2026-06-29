@@ -33,7 +33,7 @@ export const Hero = () => {
                   alt="soemdsp modular patch - oscillators, noise, gain and output nodes"
                   className="h-full w-full object-cover"
                 />
-                <span className="absolute inset-0 grid place-items-center bg-background/18 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                <span className="pointer-events-none absolute inset-0 grid place-items-center bg-background/18 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
                   <span className="mono rounded-full border border-scope/70 bg-background/85 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-scope shadow-[0_0_28px_hsl(var(--scope)/0.22)]">
                     load sandbox
                   </span>
