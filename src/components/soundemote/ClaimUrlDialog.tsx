@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { z } from "zod";
+import { Link } from "react-router-dom";
 import {
   Dialog,
   DialogContent,
@@ -13,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase, supabaseConfigError } from "@/lib/supabase";
+import { useAuth } from "@/hooks/useAuth";
 
 const claimSchema = z.object({
   contact_email: z
@@ -29,17 +31,25 @@ type ClaimUrlDialogProps = {
 };
 
 export function ClaimUrlDialog({ slug, requestPatch }: ClaimUrlDialogProps) {
+  const { session, profile, loading: authLoading } = useAuth();
   const [open, setOpen] = useState(false);
-  const [email, setEmail] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
 
+  const user = session?.user ?? null;
+  const email = user?.email ?? "";
+  const handle = profile?.handle ?? (user?.user_metadata?.handle as string | undefined) ?? null;
+
   const handleSubmit = async () => {
     setError(null);
     if (supabaseConfigError) {
       setError(supabaseConfigError);
+      return;
+    }
+    if (!user) {
+      setError("You must be signed in to claim a URL.");
       return;
     }
     const parsed = claimSchema.safeParse({ contact_email: email, note });
@@ -117,18 +127,21 @@ export function ClaimUrlDialog({ slug, requestPatch }: ClaimUrlDialogProps) {
             Submitted for review. If approved, <span className="mono">soundemote.io/{slug}</span>{" "}
             will serve your patch.
           </p>
+        ) : !authLoading && !user ? (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Sign in to claim this URL with your account.
+            </p>
+            <Button asChild className="w-full">
+              <Link to="/auth">Sign in</Link>
+            </Button>
+          </div>
         ) : (
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="claim-email">Contact email</Label>
-              <Input
-                id="claim-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-              />
-            </div>
+            <p className="mono text-xs text-muted-foreground">
+              Claiming as {handle ? `@${handle}` : email}
+              {handle && email ? ` (${email})` : ""}
+            </p>
             <div className="space-y-2">
               <Label htmlFor="claim-note">Note (optional)</Label>
               <Textarea
