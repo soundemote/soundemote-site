@@ -12,7 +12,7 @@ import SandboxPage from "./pages/SandboxPage.tsx";
 import AVWResearch from "./pages/AVWResearch.tsx";
 import SupabaseTest from "./pages/SupabaseTest.tsx";
 import SharePage from "./pages/SharePage.tsx";
-import HandleRouter from "./pages/HandleRouter.tsx";
+import PatchShortlinkPage from "./pages/PatchShortlinkPage.tsx";
 import UserPage from "./pages/UserPage.tsx";
 import AuthPage from "./pages/AuthPage.tsx";
 import AdminLogin from "./pages/AdminLogin.tsx";
@@ -39,14 +39,14 @@ const App = () => (
           <Route path="/avw-research" element={<AVWResearch />} />
           <Route path="/supabase-test" element={<SupabaseTest />} />
           <Route path="/share/:slug" element={<SharePage />} />
+          <Route path="/wiki/:slug" element={<PatchShortlinkPage />} />
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/claims" element={<AdminClaims />} />
-          {/* @user space reserved for future profile/bank/patch pages */}
+          {/* @user space: profile/bank/patch pages */}
           <Route path="/:handle/:bank/:patch" element={<UserPage />} />
           <Route path="/:handle/:bank" element={<UserPage />} />
-          {/* Single bare segment: @user page or bare claimed-patch lookup */}
-          <Route path="/:handle" element={<HandleRouter />} />
+          <Route path="/:handle" element={<UserPage />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
