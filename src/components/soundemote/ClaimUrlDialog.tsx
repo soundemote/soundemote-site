@@ -79,7 +79,6 @@ export function ClaimUrlDialog({ slug, requestPatch }: ClaimUrlDialogProps) {
       const { error: insertError } = await supabase.from("patch_claims").insert({
         requested_slug: slug,
         contact_email: parsed.data.contact_email,
-        claimant_id: user.id,
         note: parsed.data.note || null,
         project_data: projectData,
         status: "pending",
