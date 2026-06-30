@@ -23,6 +23,15 @@ const projects: Project[] = [
         accent: "accent",
     },
     {
+        name: "(soemdsp-wiki)~",
+        status: "alpha 0.1.0",
+        blurb:
+            "Community-driven patch and DSP knowledge wiki. Open pages, submit edits, and build a living reference for sounds, modules, and techniques.",
+        href: "/wiki",
+        tags: ["wiki", "community", "reference"],
+        accent: "accent",
+    },
+    {
         name: "prettyscope",
         status: "library · in revival",
         blurb:
