@@ -12,7 +12,8 @@ import SandboxPage from "./pages/SandboxPage.tsx";
 import AVWResearch from "./pages/AVWResearch.tsx";
 import SupabaseTest from "./pages/SupabaseTest.tsx";
 import SharePage from "./pages/SharePage.tsx";
-import PatchShortlinkPage from "./pages/PatchShortlinkPage.tsx";
+import HandleRouter from "./pages/HandleRouter.tsx";
+import UserPage from "./pages/UserPage.tsx";
 import AdminLogin from "./pages/AdminLogin.tsx";
 import AdminClaims from "./pages/AdminClaims.tsx";
 import NotFound from "./pages/NotFound.tsx";
@@ -39,8 +40,11 @@ const App = () => (
           <Route path="/share/:slug" element={<SharePage />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/claims" element={<AdminClaims />} />
-          <Route path="/:user/:bank/:patch" element={<SandboxPage />} />
-          <Route path="/:shortlink" element={<PatchShortlinkPage />} />
+          {/* @user space reserved for future profile/bank/patch pages */}
+          <Route path="/:handle/:bank/:patch" element={<UserPage />} />
+          <Route path="/:handle/:bank" element={<UserPage />} />
+          {/* Single bare segment: @user page or bare claimed-patch lookup */}
+          <Route path="/:handle" element={<HandleRouter />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
