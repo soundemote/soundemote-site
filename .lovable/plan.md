@@ -1,50 +1,51 @@
-# Claim-a-URL with Admin Review
+# URL scheme: @users + bare claimed patches
 
-Turn every `soundemote.io/:slug` into claimable space. Unclaimed slugs open a generic patch with a "claim this url" affordance; anonymous visitors submit their current sandbox patch + contact; you (admin) review and approve; approved claims become frozen snapshots served at that URL.
+Lock in the final routing scheme. Drop the `~` patch prefix and the `!` bank prefix entirely. Users live under `@`, claimed patches stay bare.
 
-## Decisions locked in
-- **Claim = anonymous** + contact field (no signup to claim)
-- **Admin = your email**, auto-granted the admin role on login
-- **Bound patch = the visitor's current sandbox patch** (serialized from the iframe at submit time)
-- **Approved = frozen snapshot** (owner must re-submit to change)
+## Final URL contract
 
-## How a URL resolves (reuses existing routing)
 ```text
-/sinewave
-  -> PatchShortlinkPage / SandboxPage lookup in shared_projects (slug = sinewave)
-       claimed?  -> load that frozen snapshot, normal chrome
-       unclaimed -> load generic default patch + "unclaimed · claim this url" banner
+/sinewave                     -> claimed patch (bare slug)
+/@argitoth                    -> user page          (reserved, stub for now)
+/@argitoth/bank               -> bank page          (reserved, stub for now)
+/@argitoth/bank/patch         -> patch in a bank    (reserved, stub for now)
+/sandbox, /share/:slug, ...   -> real app routes always win
 ```
-Approval writes the snapshot into `shared_projects` keyed by the slug, so the existing resolver serves it with zero new read path.
 
-## User-facing pieces
-1. **Unclaimed-space UX** (`SandboxPage`): when no patch matches the slug, still render the sandbox with the default patch, plus a distinct banner/badge — e.g. `⌁ sinewave · unclaimed — claim this url` with a subtly different accent so it reads as a vacant lot. Button opens the claim form.
-2. **Claim form** (dialog): contact field (email, validated) + optional note. On submit it asks the iframe for the current serialized patch (postMessage round-trip), then inserts a row into `patch_claims` with status `pending`. Shows a "submitted for review" confirmation.
-3. **Admin login** (`/admin/login`): email/password (+ Google) via the existing Supabase auth. Only you matter here.
-4. **Admin review queue** (`/admin/claims`, guarded by admin role): list pending claims, preview each patch in the sandbox, Approve / Reject. Approve promotes the snapshot into `shared_projects` at the requested slug and marks the claim `approved`. Reject marks `rejected` with an optional reason.
+Decisions confirmed:
+- Reserved words = real routes only. Any path with a real `<Route>` wins; everything else bare falls through to patch lookup.
+- Unknown bare slug `/sinewave` (no claimed patch) -> open sandbox with the claim banner (`/sandbox?claim=sinewave`), current behavior.
+- `@user` and bank pages: reserve the URL structure now, build the actual pages later.
 
-## Data model (SQL you run on your Supabase project)
-- `patch_claims`: `id`, `requested_slug`, `contact_email`, `note`, `project_data jsonb`, `status` (pending/approved/rejected), `created_at`, `reviewed_at`, `review_note`.
-  - RLS: `anon` may INSERT (status forced to pending); `admin` may SELECT/UPDATE; no public SELECT.
-- `app_role` enum + `user_roles` + `has_role()` security-definer fn (standard pattern).
-- Trigger on `auth.users`: when email = your address and is verified, grant `admin`.
-- `shared_projects`: approval inserts/updates a row (slug, project_data snapshot, owner/bank/patch route columns). Already has the route columns.
-- Fix the missing `GRANT SELECT ON public.patch_shortlinks TO anon` (or retire that table in favor of `shared_projects` — recommend retiring it for now to keep one source of truth).
+## Routing changes (`src/App.tsx`)
 
-## Required iframe change (sandbox)
-The current `ShareProjectDialog` only stores metadata, NOT the real patch. To capture the visitor's actual current patch, the sandbox iframe needs to answer a `postMessage` request with its serialized patch (`nodeGraphSharePayload`). Add a small handler in `node-graph-bootstrap.js`:
-- on receiving `soundemote:request-current-patch`, reply with `soundemote:current-patch` carrying `project_data`.
-The parent claim form posts the request and waits for the reply before inserting. This is the one genuinely new integration; everything else is wiring.
+Replace the current ambiguous `/:user/:bank/:patch` + `/:shortlink` pair with `@`-aware routes. Because React Router can't bind a param inside a prefixed segment, use a single `:handle` param and validate the `@` prefix inside the page component.
 
-## Build order
-1. SQL: `patch_claims`, roles + `has_role`, admin-email grant trigger, grants. (You apply on your Supabase dashboard — external project, not Lovable-managed.)
-2. Sandbox iframe: add the `request-current-patch` / `current-patch` message handler.
-3. Auth: `/admin/login` page + auth state listener + admin guard hook.
-4. Admin queue: `/admin/claims` page (list, preview, approve→promote, reject).
-5. Public: unclaimed-space banner in `SandboxPage` + claim dialog (contact + submit).
-6. Validation (zod) on the claim form; cleanup/retire `patch_shortlinks` path.
+```text
+/:handle/:bank/:patch   -> UserPatchPage   (requires @handle, else NotFound)
+/:handle/:bank          -> UserBankPage    (requires @handle, else NotFound)
+/:handle                -> HandleRouter     (decides: @user page vs bare claimed patch)
+```
 
-## Notes / open risks
-- **Auth lives on your existing external Supabase project**, so the schema + trigger are SQL you run there (I'll provide the files, like `supabase/sandbox_patch_routes.sql`). If you'd rather I manage migrations directly, we'd switch to Lovable Cloud — separate decision.
-- **Squatting / spam**: anonymous inserts can be spammed. v1 mitigations: zod validation, slug normalization, a reserved-words block, and admin review as the gate (nothing goes live without you). Rate limiting is v2.
-- **Slug collisions**: if a slug is already claimed, the form should say "already taken" instead of accepting a duplicate claim.
+`HandleRouter` logic for `/:handle`:
+- If `handle` starts with `@` -> render the user-page stub (reserve structure).
+- Otherwise (bare slug) -> run the existing claimed-patch lookup (current `PatchShortlinkPage` behavior): found -> serve patch; not found -> redirect to `/sandbox?claim=<slug>`.
+
+All real routes stay above the catch-all and keep winning automatically.
+
+## Page work
+
+- Keep `PatchShortlinkPage` as the bare-slug resolver (claimed patch -> sandbox patch route, else claim banner). Remove any `~`-specific handling.
+- Add a minimal `@user` stub page (and reuse it for `/@user/bank` and `/@user/bank/patch`) that just shows the handle/bank/patch and a "coming soon" note, so the URL space is reserved without real profile logic.
+- Strip `~`/`!` references from prior planning (none are live in code yet beyond the existing bare-slug flow, so this is mostly confirming current files match the new scheme).
+
+## Technical notes
+
+- The existing DB contract (`shared_projects` with `owner_name`/`bank_slug`/`patch_slug`, plus `patch_shortlinks`) already matches `/owner/bank/patch` + bare shortlink, so no schema change is required now.
+- The patch loader in `SandboxPage` already accepts `/:user/:bank/:patch`; the only change is that the public-facing user route gains the `@` prefix and the internal sandbox iframe params stay the same.
+- No `~` or `!` characters anywhere in routes.
+
+## Out of scope (later)
+
+- Real user profile pages, bank listing pages, auth-tied `@handle` ownership.
+- Removing a slug from the claimable pool when soundemote.io itself needs it (manual/admin step later).
