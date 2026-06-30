@@ -6,9 +6,9 @@ Lock in the final routing scheme. Drop the `~` patch prefix and the `!` bank pre
 
 ```text
 /sinewave                     -> claimed patch (bare slug)
-/@argitoth                    -> user page          (reserved, stub for now)
-/@argitoth/bank               -> bank page          (reserved, stub for now)
-/@argitoth/bank/patch         -> patch in a bank    (reserved, stub for now)
+/@elanhickler                    -> user page          (reserved, stub for now)
+/@elanhickler/bank               -> bank page          (reserved, stub for now)
+/@elanhickler/bank/patch         -> patch in a bank    (reserved, stub for now)
 /sandbox, /share/:slug, ...   -> real app routes always win
 ```
 
