@@ -17,6 +17,7 @@ import WikiArticlePage from "./pages/WikiArticlePage.tsx";
 import UserPage from "./pages/UserPage.tsx";
 import AuthPage from "./pages/AuthPage.tsx";
 import AdminLogin from "./pages/AdminLogin.tsx";
+import AdminDashboard from "./pages/AdminDashboard.tsx";
 import AdminClaims from "./pages/AdminClaims.tsx";
 import AdminWikiEdits from "./pages/AdminWikiEdits.tsx";
 import AdminUsers from "./pages/AdminUsers.tsx";
