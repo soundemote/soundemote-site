@@ -12,7 +12,6 @@ import SandboxPage from "./pages/SandboxPage.tsx";
 import AVWResearch from "./pages/AVWResearch.tsx";
 import SupabaseTest from "./pages/SupabaseTest.tsx";
 import SharePage from "./pages/SharePage.tsx";
-import PatchShortlinkPage from "./pages/PatchShortlinkPage.tsx";
 import WikiPage from "./pages/WikiPage.tsx";
 import WikiArticlePage from "./pages/WikiArticlePage.tsx";
 import UserPage from "./pages/UserPage.tsx";
