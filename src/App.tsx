@@ -46,6 +46,7 @@ const App = () => (
           <Route path="/wiki" element={<WikiPage />} />
           <Route path="/wiki/:slug" element={<WikiArticlePage />} />
           <Route path="/auth" element={<AuthPage />} />
+          <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/claims" element={<AdminClaims />} />
           <Route path="/admin/wiki" element={<AdminWikiEdits />} />
