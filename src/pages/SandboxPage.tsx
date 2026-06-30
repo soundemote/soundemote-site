@@ -67,6 +67,7 @@ const SandboxPage = () => {
   const [projectData, setProjectData] = useState<unknown>(null);
   const [projectError, setProjectError] = useState<string | null>(null);
   const hasPatchRoute = Boolean(params.patch);
+  const claimSlug = new URLSearchParams(location.search).get("claim");
   const targetLabel = hasPatchRoute
     ? `${params.user || "soundemote"} / ${params.bank || "main"} / ${params.patch}`
     : "soemdsp sandbox";
