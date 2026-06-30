@@ -33,6 +33,25 @@ window.addEventListener("message", (event) => {
   if (event.origin !== window.location.origin) {
     return;
   }
+  if (event.data?.type === "soundemote:request-current-patch") {
+    let projectData = null;
+    try {
+      if (typeof nodeGraphShareProjectData === "function") {
+        projectData = nodeGraphShareProjectData();
+      }
+    } catch (error) {
+      projectData = null;
+    }
+    event.source?.postMessage(
+      {
+        type: "soundemote:current-patch",
+        requestId: event.data.requestId || null,
+        projectData,
+      },
+      event.origin,
+    );
+    return;
+  }
   if (event.data?.type !== "soundemote:sandbox-project-data") {
     return;
   }
