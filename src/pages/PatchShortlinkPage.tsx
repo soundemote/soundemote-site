@@ -94,7 +94,19 @@ const PatchShortlinkPage = () => {
           &lt; soundemote
         </Link>
         <h1 className="display mt-4 text-2xl">Sandbox Shortcut</h1>
-        <p className="mt-6 text-muted-foreground">Looking up patch...</p>
+        <p className="mt-6 text-muted-foreground">
+          {loading
+            ? "Looking up patch..."
+            : `No sandbox shortcut exists for "${shortlink || ""}" yet.`}
+        </p>
+        {!loading && !target && (
+          <Link
+            to="/sandbox"
+            className="mono mt-6 inline-block text-xs text-foreground underline underline-offset-4 hover:text-muted-foreground"
+          >
+            open sandbox
+          </Link>
+        )}
       </div>
     </main>
   );
