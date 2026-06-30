@@ -4,7 +4,8 @@ import { supabase, supabaseConfigError } from "@/lib/supabase";
 
 type WikiEntry = {
   slug: string;
-  target_patch: string | null;
+  title: string | null;
+  updated_at: string | null;
 };
 
 const WikiPage = () => {
@@ -19,9 +20,9 @@ const WikiPage = () => {
     }
     (async () => {
       const { data } = await supabase
-        .from("patch_shortlinks")
-        .select("slug, target_patch")
-        .order("slug", { ascending: true });
+        .from("wiki_pages")
+        .select("slug, title, updated_at")
+        .order("updated_at", { ascending: false });
       if (cancelled) return;
       setEntries((data as WikiEntry[]) ?? []);
       setLoading(false);
@@ -47,7 +48,7 @@ const WikiPage = () => {
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : entries.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No named patches yet. Claim one by opening an unclaimed URL.
+              No pages yet. Open <span className="mono">/wiki/&lt;name&gt;</span> and create one.
             </p>
           ) : (
             <ul className="space-y-2">
@@ -57,11 +58,9 @@ const WikiPage = () => {
                     to={`/wiki/${entry.slug}`}
                     className="mono text-sm text-foreground underline underline-offset-4 hover:text-muted-foreground"
                   >
-                    {entry.slug}
+                    {entry.title || entry.slug}
                   </Link>
-                  {entry.target_patch ? (
-                    <span className="ml-2 text-xs text-muted-foreground">{entry.target_patch}</span>
-                  ) : null}
+                  <span className="ml-2 text-xs text-muted-foreground">/{entry.slug}</span>
                 </li>
               ))}
             </ul>
