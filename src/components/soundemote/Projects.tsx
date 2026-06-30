@@ -141,17 +141,17 @@ export const Projects = () => (
                                             <span className="inline-block w-[0.6em] h-[1em] align-[-0.15em] bg-scope ml-1 animate-pulse" />
                                         </h3>
                                     )
-                                ) : p.name === "(soemdsp-sandbox)~" ? (
+                                ) : p.name === "(soemdsp-sandbox)~" || p.name === "(soemdsp-wiki)~" ? (
                                     p.href ? (
-                                        <a href={p.href} target="_blank" rel="noreferrer" className="inline-block hover:opacity-80 transition-opacity">
+                                        <a href={p.href} target={p.href.startsWith("http") ? "_blank" : undefined} rel={p.href.startsWith("http") ? "noreferrer" : undefined} className="inline-block hover:opacity-80 transition-opacity">
                                             <h3 className={`display text-3xl ${accentClass[p.accent]}`}>
-                                                (soemdsp-sandbox)
+                                                {p.name.replace("~", "")}
                                                 <BlinkingTilde />
                                             </h3>
                                         </a>
                                     ) : (
                                         <h3 className={`display text-3xl ${accentClass[p.accent]}`}>
-                                            (soemdsp-sandbox)
+                                            {p.name.replace("~", "")}
                                             <BlinkingTilde />
                                         </h3>
                                     )
