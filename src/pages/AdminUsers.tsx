@@ -97,9 +97,14 @@ const AdminUsers = () => {
     <main className="min-h-screen bg-background text-foreground">
       <div className="container mx-auto max-w-3xl px-4 py-12">
         <div className="flex items-center justify-between">
-          <Link to="/" className="mono text-xs text-muted-foreground hover:text-foreground">
-            &lt; soundemote
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link to="/" className="mono text-xs text-muted-foreground hover:text-foreground">
+              &lt; soundemote
+            </Link>
+            <Link to="/admin" className="mono text-xs text-muted-foreground hover:text-foreground">
+              /admin
+            </Link>
+          </div>
           <div className="flex gap-2">
             <Link to="/admin/claims" className="mono text-xs text-muted-foreground hover:text-foreground self-center">
               claims
