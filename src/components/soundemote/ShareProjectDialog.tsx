@@ -199,7 +199,7 @@ export function ShareProjectDialog({
           setError(shortlinkError.message);
           return;
         }
-        setShortLink(`${CANONICAL_BASE_URL}/${shortlinkSlug}`);
+        setShortLink(`${CANONICAL_BASE_URL}/wiki/${shortlinkSlug}`);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unexpected error publishing patch.");
@@ -289,7 +289,7 @@ export function ShareProjectDialog({
 
           <div className="mono rounded border border-border/70 bg-muted/20 p-2 text-xs text-muted-foreground">
             {CANONICAL_BASE_URL}/{ownerSlug}/{bankSlug}/{patchSlug}
-            {shortlinkSlug ? <><br />{CANONICAL_BASE_URL}/{shortlinkSlug}</> : null}
+            {shortlinkSlug ? <><br />{CANONICAL_BASE_URL}/wiki/{shortlinkSlug}</> : null}
           </div>
 
           {error && <p className="text-sm text-destructive break-words">{error}</p>}

@@ -58,7 +58,7 @@ async function loadPatchShortlink(slug = ""): Promise<ShortlinkTarget | null> {
 }
 
 const PatchShortlinkPage = () => {
-  const { handle: shortlink } = useParams<{ handle: string }>();
+  const { slug: shortlink } = useParams<{ slug: string }>();
   const [loading, setLoading] = useState(true);
   const [target, setTarget] = useState<ShortlinkTarget | null>(null);
 
