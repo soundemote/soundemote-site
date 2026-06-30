@@ -31,9 +31,27 @@ const AuthPage = () => {
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!loading && session && profile) {
-      navigate(`/@${profile.handle}`, { replace: true });
-    }
+    if (loading || !session) return;
+
+    const go = async () => {
+      // We have a session. Ensure a profile row exists, then redirect.
+      if (profile) {
+        navigate(`/@${profile.handle}`, { replace: true });
+        return;
+      }
+      const user = session.user;
+      const metaHandle = (user.user_metadata?.handle as string | undefined)?.toLowerCase();
+      if (metaHandle && /^[a-z0-9_]{3,30}$/.test(metaHandle)) {
+        await supabase
+          .from("profiles")
+          .upsert({ id: user.id, handle: metaHandle }, { onConflict: "id" });
+        navigate(`/@${metaHandle}`, { replace: true });
+        return;
+      }
+      // No handle in metadata — send them home; they're signed in.
+      navigate("/", { replace: true });
+    };
+    void go();
   }, [loading, session, profile, navigate]);
 
   const oauth = async (provider: "google" | "discord") => {
