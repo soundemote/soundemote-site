@@ -3,7 +3,10 @@ import patchImage from "@/assets/soemdsp-patch.png";
 
 export const Hero = () => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
-  const previewFrameClass = "soundemote-sandbox-preview-frame relative flex w-full justify-center overflow-hidden bg-background min-h-[clamp(420px,75vh,44rem)]";
+  const sandboxViewportHeight = "max(760px, calc(100svh - 7rem))";
+  const previewFrameClass = sandboxLoaded
+    ? "soundemote-sandbox-preview-frame relative flex w-full justify-center overflow-hidden bg-background"
+    : "soundemote-sandbox-preview-frame relative flex w-full justify-center overflow-hidden bg-background";
 
   return (
     <section id="top" className="relative overflow-hidden py-6 md:py-8">
@@ -11,13 +14,17 @@ export const Hero = () => {
       <div className="absolute inset-0 bg-[var(--gradient-hero)]" aria-hidden />
       <div className="relative mx-auto flex min-h-[56vh] max-w-6xl flex-col items-center justify-center animate-fade-in px-4 text-center md:min-h-[62vh]">
         <div className="mx-auto w-full max-w-[min(95vw,56rem)] animate-fade-in [animation-delay:200ms]">
-          <div className={previewFrameClass}>
+          <div
+            className={previewFrameClass}
+            style={sandboxLoaded ? { height: sandboxViewportHeight, minHeight: sandboxViewportHeight } : undefined}
+          >
             {sandboxLoaded ? (
               <iframe
                 id="hero-sandbox-iframe"
                 title="soemdsp sandbox"
                 src="/soemdsp-sandbox/index.html?sandboxView=modular-only"
-                className="h-[clamp(420px,75vh,44rem)] w-full border-0 bg-transparent"
+                className="w-full border-0 bg-transparent"
+                style={{ height: sandboxViewportHeight, minHeight: sandboxViewportHeight }}
                 allow="autoplay; microphone"
               />
             ) : (
