@@ -58,7 +58,7 @@ async function loadPatchShortlink(slug = ""): Promise<ShortlinkTarget | null> {
 }
 
 const PatchShortlinkPage = () => {
-  const { shortlink } = useParams<{ shortlink: string }>();
+  const { handle: shortlink } = useParams<{ handle: string }>();
   const [loading, setLoading] = useState(true);
   const [target, setTarget] = useState<ShortlinkTarget | null>(null);
 
@@ -79,7 +79,12 @@ const PatchShortlinkPage = () => {
   }, [shortlink]);
 
   if (target) {
-    return <Navigate to={`/${target.user}/${target.bank}/${target.patch}`} replace />;
+    return (
+      <Navigate
+        to={`/sandbox/${target.user}/${target.bank}/${target.patch}`}
+        replace
+      />
+    );
   }
 
   if (!loading && shortlink) {
