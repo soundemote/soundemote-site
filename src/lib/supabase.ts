@@ -9,4 +9,9 @@ const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | unde
 export const supabaseConfigError =
   !supabaseUrl || !supabaseAnonKey ? "Missing Supabase configuration (URL or anon key)." : null;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+  },
+});
