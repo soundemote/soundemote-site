@@ -92,8 +92,16 @@ const PatchShortlinkPage = () => {
         <p className="mt-6 text-muted-foreground">
           {loading
             ? "Looking up patch..."
-            : `No sandbox shortcut exists for "${shortlink || ""}".`}
+            : `No sandbox shortcut exists for "${shortlink || ""}" yet.`}
         </p>
+        {!loading && !target && (
+          <Link
+            to="/sandbox"
+            className="mono mt-6 inline-flex rounded border border-cyan-300/35 bg-cyan-950/25 px-4 py-2 text-xs text-cyan-100 hover:bg-cyan-950/45"
+          >
+            open sandbox
+          </Link>
+        )}
       </div>
     </main>
   );

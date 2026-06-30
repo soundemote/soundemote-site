@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { supabase, supabaseConfigError } from "@/lib/supabase";
+import ShareProjectDialog from "@/components/soundemote/ShareProjectDialog";
 
 type SandboxRouteParams = {
   user?: string;
@@ -65,6 +66,7 @@ const SandboxPage = () => {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [projectData, setProjectData] = useState<unknown>(null);
   const [projectError, setProjectError] = useState<string | null>(null);
+  const [projectLoaded, setProjectLoaded] = useState(false);
   const hasPatchRoute = Boolean(params.patch);
   const targetLabel = hasPatchRoute
     ? `${params.user || "soundemote"} / ${params.bank || "main"} / ${params.patch}`
@@ -75,17 +77,25 @@ const SandboxPage = () => {
     let cancelled = false;
     setProjectData(null);
     setProjectError(null);
+    setProjectLoaded(false);
     if (!hasPatchRoute || new URLSearchParams(location.search).has("share")) {
+      setProjectLoaded(true);
       return () => {
         cancelled = true;
       };
     }
     loadSandboxRouteProject(params)
       .then((data) => {
-        if (!cancelled) setProjectData(data);
+        if (!cancelled) {
+          setProjectData(data);
+          setProjectLoaded(true);
+        }
       })
       .catch((error) => {
-        if (!cancelled) setProjectError(error?.message || String(error));
+        if (!cancelled) {
+          setProjectError(error?.message || String(error));
+          setProjectLoaded(true);
+        }
       });
     return () => {
       cancelled = true;
@@ -118,9 +128,21 @@ const SandboxPage = () => {
           &lt; full sandbox
         </Link>
       )}
+      <div className="fixed right-3 top-3 z-50">
+        <ShareProjectDialog
+          iframeRef={iframeRef}
+          triggerClassName="mono rounded border border-cyan-300/35 bg-black/75 px-3 py-2 text-xs text-cyan-100 shadow-[0_0_18px_rgba(103,232,249,0.22)] backdrop-blur hover:bg-cyan-950/80"
+          triggerLabel="Publish"
+        />
+      </div>
       {projectError && (
-        <div className="mono fixed right-3 top-3 z-50 max-w-sm rounded border border-red-300/35 bg-black/75 px-3 py-2 text-xs text-red-100">
+        <div className="mono fixed right-3 top-14 z-50 max-w-sm rounded border border-red-300/35 bg-black/75 px-3 py-2 text-xs text-red-100">
           Patch lookup failed: {projectError}
+        </div>
+      )}
+      {hasPatchRoute && projectLoaded && !projectError && !projectData && (
+        <div className="mono fixed right-3 top-14 z-50 max-w-sm rounded border border-cyan-300/35 bg-black/75 px-3 py-2 text-xs text-cyan-100">
+          Patch not found: {targetLabel}
         </div>
       )}
       <section className="h-screen w-full overflow-hidden">
