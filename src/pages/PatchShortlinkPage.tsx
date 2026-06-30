@@ -82,6 +82,11 @@ const PatchShortlinkPage = () => {
     return <Navigate to={`/${target.user}/${target.bank}/${target.patch}`} replace />;
   }
 
+  if (!loading && shortlink) {
+    // Unclaimed space: open the sandbox with a claim affordance.
+    return <Navigate to={`/sandbox?claim=${encodeURIComponent(shortlink)}`} replace />;
+  }
+
   return (
     <main className="min-h-screen bg-background text-foreground">
       <div className="container mx-auto max-w-2xl px-4 py-12">
@@ -89,11 +94,7 @@ const PatchShortlinkPage = () => {
           &lt; soundemote
         </Link>
         <h1 className="display mt-4 text-2xl">Sandbox Shortcut</h1>
-        <p className="mt-6 text-muted-foreground">
-          {loading
-            ? "Looking up patch..."
-            : `No sandbox shortcut exists for "${shortlink || ""}".`}
-        </p>
+        <p className="mt-6 text-muted-foreground">Looking up patch...</p>
       </div>
     </main>
   );
