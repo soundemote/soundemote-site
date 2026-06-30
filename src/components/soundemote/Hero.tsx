@@ -17,7 +17,7 @@ export const Hero = () => {
                 id="hero-sandbox-iframe"
                 title="soemdsp sandbox"
                 src="/soemdsp-sandbox/index.html?sandboxView=modular-only"
-                className="h-full w-full border-0 bg-transparent"
+                className="h-[clamp(420px,75vh,44rem)] w-full border-0 bg-transparent"
                 allow="autoplay; microphone"
               />
             ) : (
