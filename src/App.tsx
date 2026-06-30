@@ -19,6 +19,7 @@ import AuthPage from "./pages/AuthPage.tsx";
 import AdminLogin from "./pages/AdminLogin.tsx";
 import AdminClaims from "./pages/AdminClaims.tsx";
 import AdminWikiEdits from "./pages/AdminWikiEdits.tsx";
+import AdminUsers from "./pages/AdminUsers.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -47,6 +48,7 @@ const App = () => (
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/claims" element={<AdminClaims />} />
           <Route path="/admin/wiki" element={<AdminWikiEdits />} />
+          <Route path="/admin/users" element={<AdminUsers />} />
           {/* @user space: profile/bank/patch pages */}
           <Route path="/:handle/:bank/:patch" element={<UserPage />} />
           <Route path="/:handle/:bank" element={<UserPage />} />
