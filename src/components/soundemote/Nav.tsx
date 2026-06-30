@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import ShareProjectDialog from "./ShareProjectDialog";
+import { useAuth } from "@/hooks/useAuth";
 
 type Burst = {
   id: number;
