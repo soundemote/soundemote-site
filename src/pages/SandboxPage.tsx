@@ -68,6 +68,7 @@ const SandboxPage = () => {
   const [projectError, setProjectError] = useState<string | null>(null);
   const hasPatchRoute = Boolean(params.patch);
   const claimSlug = new URLSearchParams(location.search).get("claim");
+  const wikiSlug = new URLSearchParams(location.search).get("wiki");
   const targetLabel = hasPatchRoute
     ? `${params.user || "soundemote"} / ${params.bank || "main"} / ${params.patch}`
     : "soemdsp sandbox";
@@ -77,6 +78,19 @@ const SandboxPage = () => {
     let cancelled = false;
     setProjectData(null);
     setProjectError(null);
+    if (wikiSlug && !supabaseConfigError) {
+      supabase
+        .from("wiki_pages")
+        .select("project_data")
+        .eq("slug", wikiSlug)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (!cancelled) setProjectData((data as SharedProjectRow | null)?.project_data ?? null);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
     if (!hasPatchRoute || new URLSearchParams(location.search).has("share")) {
       return () => {
         cancelled = true;
@@ -92,7 +106,7 @@ const SandboxPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [hasPatchRoute, location.search, params.user, params.bank, params.patch]);
+  }, [hasPatchRoute, location.search, params.user, params.bank, params.patch, wikiSlug]);
 
   const postProjectData = () => {
     if (!projectData || !iframeRef.current?.contentWindow) {
