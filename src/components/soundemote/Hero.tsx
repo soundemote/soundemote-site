@@ -3,7 +3,7 @@ import patchImage from "@/assets/soemdsp-patch.png";
 
 export const Hero = () => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
-  const previewFrameClass = "soundemote-sandbox-preview-frame relative overflow-hidden bg-background";
+  const previewFrameClass = "soundemote-sandbox-preview-frame relative flex justify-center overflow-hidden bg-background";
 
   return (
     <section id="top" className="relative overflow-hidden py-6 md:py-8">
