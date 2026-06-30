@@ -109,6 +109,33 @@ const SandboxPage = () => {
 
   useEffect(postProjectData, [projectData, iframeSrc]);
 
+  const requestCurrentPatch = (): Promise<unknown> =>
+    new Promise((resolve) => {
+      const target = iframeRef.current?.contentWindow;
+      if (!target) {
+        resolve(null);
+        return;
+      }
+      const requestId = Math.random().toString(36).slice(2);
+      const timer = window.setTimeout(() => {
+        window.removeEventListener("message", onMessage);
+        resolve(null);
+      }, 4000);
+      const onMessage = (event: MessageEvent) => {
+        if (event.origin !== window.location.origin) return;
+        if (event.data?.type !== "soundemote:current-patch") return;
+        if (event.data.requestId && event.data.requestId !== requestId) return;
+        window.clearTimeout(timer);
+        window.removeEventListener("message", onMessage);
+        resolve(event.data.projectData || null);
+      };
+      window.addEventListener("message", onMessage);
+      target.postMessage(
+        { type: "soundemote:request-current-patch", requestId },
+        window.location.origin,
+      );
+    });
+
   return (
     <main className="min-h-screen bg-background text-foreground">
       {hasPatchRoute && (
@@ -119,6 +146,12 @@ const SandboxPage = () => {
         >
           &lt; full sandbox
         </Link>
+      )}
+      {claimSlug && (
+        <div className="mono fixed left-1/2 top-3 z-50 flex -translate-x-1/2 items-center gap-3 rounded-full border border-amber-300/40 bg-black/80 px-4 py-2 text-xs text-amber-200 shadow-[0_0_18px_rgba(251,191,36,0.22)] backdrop-blur">
+          <span>⌁ {claimSlug} · unclaimed</span>
+          <ClaimUrlDialog slug={claimSlug} requestPatch={requestCurrentPatch} />
+        </div>
       )}
       {projectError && (
         <div className="mono fixed right-3 top-3 z-50 max-w-sm rounded border border-red-300/35 bg-black/75 px-3 py-2 text-xs text-red-100">
