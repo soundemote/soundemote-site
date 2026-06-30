@@ -190,27 +190,70 @@ const UserPage = () => {
   // Profile view
   return (
     <Shell>
-      <h1 className="display mt-4 text-2xl">
-        {profile.display_name || `@${profile.handle}`}
-      </h1>
-      <p className="mono text-sm text-muted-foreground">@{profile.handle}</p>
-      {profile.bio && <p className="mt-4 text-sm text-muted-foreground">{profile.bio}</p>}
-      <h2 className="mono mt-8 text-xs uppercase tracking-wider text-muted-foreground">Banks</h2>
-      <ul className="mt-3 space-y-2">
-        {banks.length === 0 && (
-          <li className="mono text-sm text-muted-foreground">No banks yet.</li>
-        )}
-        {banks.map((b) => (
-          <li key={b.id}>
-            <Link
-              to={`/@${profile.handle}/${b.slug}`}
-              className="mono text-sm text-foreground underline underline-offset-4 hover:text-muted-foreground"
-            >
-              {b.name || b.slug}
-            </Link>
-          </li>
-        ))}
-      </ul>
+      <div className="mt-8 flex flex-col gap-8 sm:flex-row sm:items-end">
+        <div className="relative aspect-square w-full max-w-[260px] shrink-0 overflow-hidden rounded-2xl border border-border/60 bg-gradient-to-br from-muted/40 to-background shadow-[0_20px_60px_-20px_hsl(var(--primary)/0.4)]">
+          {profile.avatar_url ? (
+            <img
+              src={profile.avatar_url}
+              alt={`${profile.display_name || profile.handle} profile picture`}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center">
+              <span className="display text-6xl text-muted-foreground/50">
+                {(profile.display_name || profile.handle).charAt(0).toUpperCase()}
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <h1 className="display text-4xl leading-tight">
+            {profile.display_name || `@${profile.handle}`}
+          </h1>
+          <p className="mono mt-2 text-sm text-muted-foreground">@{profile.handle}</p>
+          {profile.bio && (
+            <p className="mt-4 max-w-prose text-sm leading-relaxed text-muted-foreground">
+              {profile.bio}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-12 grid gap-8 md:grid-cols-3">
+        <section className="md:col-span-1">
+          <h2 className="mono text-xs uppercase tracking-wider text-muted-foreground">Banks</h2>
+          <ul className="mt-3 space-y-2">
+            {banks.length === 0 && (
+              <li className="mono text-sm text-muted-foreground">No banks yet.</li>
+            )}
+            {banks.map((b) => (
+              <li key={b.id}>
+                <Link
+                  to={`/@${profile.handle}/${b.slug}`}
+                  className="mono text-sm text-foreground underline underline-offset-4 hover:text-muted-foreground"
+                >
+                  {b.name || b.slug}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+        <section className="md:col-span-2">
+          <h2 className="mono text-xs uppercase tracking-wider text-muted-foreground">Music &amp; Video</h2>
+          <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <div
+                key={i}
+                className="flex aspect-square items-center justify-center rounded-lg border border-dashed border-border/50 bg-muted/20"
+              >
+                <span className="mono text-[0.65rem] uppercase tracking-wider text-muted-foreground/50">
+                  coming soon
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
     </Shell>
   );
 };
