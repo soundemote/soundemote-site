@@ -1,17 +1,50 @@
 -- ============================================================
 -- Wikipedia-style wiki pages with trusted auto-publish + review
 -- Run this on your Supabase project (SQL editor).
--- Depends on: public.has_role / public.app_role / public.user_roles
---   (from supabase/claim_review.sql) and public.profiles.
+-- Self-contained: creates its own role table + helper functions so it
+-- does NOT depend on supabase/claim_review.sql being run first.
 -- ============================================================
 
--- 0. Add a 'trusted' role to the enum -----------------------------------------
+-- 0. Roles infrastructure (safe if claim_review.sql already ran) ---------------
+-- Create the enum if missing. (If it already exists, this is a no-op and the
+-- 'trusted' value is added in a SEPARATE statement below — a new enum value
+-- cannot be used in the same transaction it is added.)
 do $$ begin
-  alter type public.app_role add value if not exists 'trusted';
-exception when undefined_object then
-  -- enum doesn't exist yet: create it
   create type public.app_role as enum ('admin','moderator','trusted','user');
-end $$;
+exception when duplicate_object then null; end $$;
+
+-- Add 'trusted' if the enum predates this file. Committed before it is used.
+alter type public.app_role add value if not exists 'trusted';
+
+create table if not exists public.user_roles (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade not null,
+  role public.app_role not null,
+  unique (user_id, role)
+);
+
+grant select on public.user_roles to authenticated;
+grant all on public.user_roles to service_role;
+
+alter table public.user_roles enable row level security;
+
+drop policy if exists "users read own roles" on public.user_roles;
+create policy "users read own roles"
+  on public.user_roles for select
+  to authenticated
+  using (user_id = auth.uid());
+
+-- Text-based role helpers. Comparing role::text avoids needing enum literals,
+-- so these work even right after 'trusted' was added to the enum.
+create or replace function public.is_admin(_uid uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.user_roles where user_id = _uid and role::text = 'admin')
+$$;
+
+create or replace function public.is_trusted(_uid uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.user_roles where user_id = _uid and role::text in ('trusted','admin'))
+$$;
 
 -- 1. Canonical published pages ------------------------------------------------
 create table if not exists public.wiki_pages (
@@ -41,14 +74,14 @@ drop policy if exists "trusted write wiki pages" on public.wiki_pages;
 create policy "trusted write wiki pages"
   on public.wiki_pages for insert
   to authenticated
-  with check (public.has_role(auth.uid(),'trusted') or public.has_role(auth.uid(),'admin'));
+  with check (public.is_trusted(auth.uid()));
 
 drop policy if exists "trusted update wiki pages" on public.wiki_pages;
 create policy "trusted update wiki pages"
   on public.wiki_pages for update
   to authenticated
-  using (public.has_role(auth.uid(),'trusted') or public.has_role(auth.uid(),'admin'))
-  with check (public.has_role(auth.uid(),'trusted') or public.has_role(auth.uid(),'admin'));
+  using (public.is_trusted(auth.uid()))
+  with check (public.is_trusted(auth.uid()));
 
 -- 2. Proposed edits queue -----------------------------------------------------
 create table if not exists public.wiki_edits (
@@ -86,15 +119,15 @@ drop policy if exists "read own or admin edits" on public.wiki_edits;
 create policy "read own or admin edits"
   on public.wiki_edits for select
   to authenticated
-  using (editor_id = auth.uid() or public.has_role(auth.uid(),'admin'));
+  using (editor_id = auth.uid() or public.is_admin(auth.uid()));
 
 -- Admins moderate the queue.
 drop policy if exists "admins update edits" on public.wiki_edits;
 create policy "admins update edits"
   on public.wiki_edits for update
   to authenticated
-  using (public.has_role(auth.uid(),'admin'))
-  with check (public.has_role(auth.uid(),'admin'));
+  using (public.is_admin(auth.uid()))
+  with check (public.is_admin(auth.uid()));
 
 -- Done. Grant trust to a user with:
 --   insert into public.user_roles(user_id, role)
