@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { supabase, supabaseConfigError } from "@/lib/supabase";
+import { ClaimUrlDialog } from "@/components/soundemote/ClaimUrlDialog";
 
 type SandboxRouteParams = {
   user?: string;
