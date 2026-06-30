@@ -19,6 +19,25 @@ create table if not exists public.profiles (
   updated_at timestamptz not null default now()
 );
 
+-- Backfill columns if the table pre-existed without them.
+alter table public.profiles add column if not exists handle text;
+alter table public.profiles add column if not exists display_name text;
+alter table public.profiles add column if not exists bio text;
+alter table public.profiles add column if not exists avatar_url text;
+alter table public.profiles add column if not exists created_at timestamptz not null default now();
+alter table public.profiles add column if not exists updated_at timestamptz not null default now();
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'profiles_handle_key'
+  ) and not exists (
+    select 1 from public.profiles where handle is null
+  ) then
+    alter table public.profiles add constraint profiles_handle_key unique (handle);
+  end if;
+end $$;
+
 create index if not exists profiles_handle_idx on public.profiles (lower(handle));
 
 grant select on public.profiles to anon;
