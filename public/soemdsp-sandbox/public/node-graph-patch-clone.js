@@ -51,6 +51,7 @@ function normalizeNodeGraphPatchNodeUi(ui = {}) {
   return {
     buttonsHidden: Boolean(source.buttonsHidden),
     displayHeightOffsetGu: normalizeNodeGraphModuleDisplayHeightOffsetUnits(source.displayHeightOffsetGu),
+    displayModeKey: String(source.displayModeKey || "").trim(),
     ioHidden: Boolean(source.ioHidden),
     interfaceControlsHidden: Boolean(source.interfaceControlsHidden),
     movementLocked: Boolean(source.movementLocked),
@@ -58,6 +59,17 @@ function normalizeNodeGraphPatchNodeUi(ui = {}) {
     slidersHidden: Boolean(source.slidersHidden),
     titleHidden: Boolean(source.titleHidden),
   };
+}
+
+function normalizeNodeGraphPatchNodeDisplayModeKey(type, value = "") {
+  const key = String(value || "").trim();
+  if (!key) {
+    return "";
+  }
+  const modes = typeof nodeGraphModuleDisplayModesForType === "function"
+    ? nodeGraphModuleDisplayModesForType(type)
+    : [];
+  return modes.some((mode) => mode.key === key) ? key : "";
 }
 
 function nodeGraphEffectivePatchNodeUi(ui = {}) {
@@ -205,7 +217,9 @@ function nodeGraphPatchNodeTitle(node) {
 }
 
 function cloneNodeGraphTypedDisplaySettings(node) {
-  const displayType = nodeGraphModuleDefinitions?.[node?.type]?.displayType || "";
+  const displayType = typeof nodeGraphModuleDisplaySettingsSchemaForNode === "function"
+    ? nodeGraphModuleDisplaySettingsSchemaForNode(node)
+    : nodeGraphModuleDefinitions?.[node?.type]?.displayType || "";
   if (displayType === "dot") {
     return { zeroDBurnSettings: normalizeNodeGraphZeroDBurnSettings(node.zeroDBurnSettings) };
   }
@@ -217,6 +231,9 @@ function cloneNodeGraphTypedDisplaySettings(node) {
   }
   if (displayType === "scope2d") {
     return { traceDisplaySettings: normalizeNodeGraphScope2dSettings(node.traceDisplaySettings) };
+  }
+  if (displayType === "scope2dTrace") {
+    return { traceDisplaySettings: normalizeNodeGraphScope2dTraceSettings(node.traceDisplaySettings) };
   }
   if (displayType === "trace" && Object.hasOwn(node, "traceDisplaySettings")) {
     return { traceDisplaySettings: normalizeNodeGraphTraceDisplaySettings(node.traceDisplaySettings) };
@@ -249,6 +266,7 @@ function cloneNodeGraphPatch(patch) {
       const ui = nodeGraphModuleDefinitions[node.type]?.layout === "textBox" && !Object.hasOwn(node, "ui")
         ? { buttonsHidden: true }
         : normalizeNodeGraphPatchNodeUi(node.ui);
+      ui.displayModeKey = normalizeNodeGraphPatchNodeDisplayModeKey(node.type, ui.displayModeKey);
       return {
         ...node,
         ...(normalizeNodeGraphPatchNodeAlias(node.alias)
@@ -297,7 +315,7 @@ function cloneNodeGraphPatch(patch) {
           ? { portMeta: normalizeNodeGraphPatchPortMeta(node.portMeta) }
           : {}),
         params: { ...(node.params || {}) },
-        ...(ui.buttonsHidden || ui.ioHidden || ui.interfaceControlsHidden || ui.movementLocked || ui.titleHidden || ui.oscilloscopeHidden || ui.slidersHidden || ui.displayHeightOffsetGu ? { ui } : {}),
+        ...(ui.buttonsHidden || ui.displayModeKey || ui.ioHidden || ui.interfaceControlsHidden || ui.movementLocked || ui.titleHidden || ui.oscilloscopeHidden || ui.slidersHidden || ui.displayHeightOffsetGu ? { ui } : {}),
       };
     }),
     requiredAssets: typeof nodeGraphRequiredAssetsForPatch === "function"

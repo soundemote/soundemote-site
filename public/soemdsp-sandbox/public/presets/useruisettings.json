@@ -6,7 +6,7 @@
   "controls": {
     "mouseLightEnabled": true,
     "showOriginMarker": false,
-    "modularShaderEnabled": false,
+    "modularShaderEnabled": true,
     "scopeBloomEnabled": false,
     "settingsHeaderTextSize": 100,
     "uiDevButtonTextSize": 50,
@@ -139,25 +139,25 @@
     "moduleScopeDotCore2Brightness": 1.23,
     "moduleScopeDotCore2Color": "#5c0000",
     "moduleScopeFramesPerSecond": 60,
-    "moduleScopePointBudget": 16384,
+    "moduleScopePointBudget": 4096,
     "moduleScopeLineThickness": 1,
     "moduleScopeDiscontinuitySkipSamples": 1,
     "traceSettings": {
       "brightness": 0.92,
       "color": "#75ebff",
       "dot1Enabled": true,
-      "dot1Size": 0.08,
-      "dot2Brightness": 0.18,
+      "dot1Size": 0.0175,
+      "dot2Brightness": 0.93,
       "dot2Color": "#184fff",
-      "dot2Enabled": true,
-      "dot2Size": 0.24,
-      "dot2LineThickness": 0.48,
+      "dot2Enabled": false,
+      "dot2Size": 0.1,
+      "dot2LineThickness": 0,
       "cycles": 2,
       "lineThickness": 0.2,
       "padding": 0,
       "skipSamples": 1,
-      "sourceSync": true,
-      "zoomSeconds": 0.05
+      "sourceSync": false,
+      "zoomSeconds": 2
     },
     "sliderLayout": "text-inside",
     "sliderAmountVisible": false,
@@ -626,19 +626,19 @@
       }
     },
     "sceneContextWindowSize": {
-      "width": 136
+      "width": 140
     },
     "moduleActionWindowSize": {
       "width": 185,
-      "height": 617
+      "height": 620
     },
     "workspaceWindowStatesVersion": 1,
     "workspaceWindowStates": {
       "commandCenter": {
         "open": false,
         "position": {
-          "left": 570,
-          "top": 262
+          "left": 1562,
+          "top": 242
         }
       },
       "moduleActions": {
@@ -653,51 +653,370 @@
       "patchExplorer": {
         "open": false,
         "position": {
-          "left": 90,
-          "top": 375
+          "left": 98,
+          "top": 69
+        },
+        "size": {
+          "width": 171,
+          "height": 351
         }
       },
       "moduleBrowser": {
-        "open": false,
+        "open": true,
         "position": {
-          "left": 81,
-          "top": 162
+          "left": 211,
+          "top": 58
+        },
+        "size": {
+          "width": 164,
+          "height": 720
         }
       },
       "visibilityMenu": {
         "open": false,
         "position": {
-          "left": 186,
-          "top": 131
+          "left": 1553,
+          "top": 116
+        },
+        "size": {
+          "width": 136
         }
       },
       "uiSettings": {
-        "open": false
+        "open": false,
+        "position": {
+          "left": 477,
+          "top": 96
+        }
       },
       "uiDev": {
         "open": false
       },
       "traceDisplaySettings": {
         "open": false,
-        "targetNode": "scope2dTrace-1"
+        "locked": true,
+        "targetNode": "noiseGenerator-1"
       }
     },
-    "sharedInspectorActive": "",
-    "sharedInspectorWindowState": {},
+    "sharedInspectorActive": "moduleActions",
+    "sharedInspectorWindowState": {
+      "position": {
+        "left": 1391,
+        "top": 203
+      },
+      "size": {
+        "width": 185,
+        "height": 620
+      }
+    },
     "workspaceView": {
       "pan": {
-        "x": 0,
-        "y": 0
+        "x": 45.35714285714289,
+        "y": 145.97321428571422
       },
-      "zoom": 0.5956522631507978
+      "zoom": 1.0606137022653643
     },
-    "moduleStoreDepartment": "",
+    "moduleStoreDepartment": "Audio",
     "savedPatchBankIndex": 0,
-    "savedPatchBankName": "basic",
+    "savedPatchBankName": "chaos",
     "savedPatchGridColumns": 3,
     "savedPatchExplorerView": "banks",
-    "workingPatch": null,
-    "currentSavedPatchFilename": "",
-    "patchDirtyState": "untouched"
+    "workingPatch": {
+      "activeCameraId": "camera-1",
+      "audio": {
+        "targetSampleRate": 44100
+      },
+      "bypassedNodes": [],
+      "cameras": [
+        {
+          "color": "#ff3333",
+          "enabled": true,
+          "height": 488,
+          "id": "camera-1",
+          "midiTrigger": null,
+          "name": "Camera 1",
+          "resolutionHeight": 1080,
+          "resolutionWidth": 1920,
+          "width": 868,
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "codeScreen": {
+        "helpers": [],
+        "patchTools": [],
+        "samples": [],
+        "script": "",
+        "scriptLanguage": "javascript",
+        "slots": [],
+        "ui": []
+      },
+      "connections": [],
+      "format": {
+        "kind": "soemdsp-sandbox-node-patch",
+        "version": 1
+      },
+      "grid": {
+        "heightPx": 28,
+        "sizePx": 28,
+        "widthPx": 28
+      },
+      "graphConnections": [],
+      "info": {
+        "author": "",
+        "bank": 0,
+        "bankName": "basic",
+        "description": "",
+        "name": "ellipsoid",
+        "program": 0,
+        "tags": "circle"
+      },
+      "modulations": [],
+      "monitors": [],
+      "nodes": [
+        {
+          "gx": 2,
+          "gy": -11,
+          "id": "output",
+          "paramMeta": {
+            "volume": {
+              "alias": "",
+              "choices": [],
+              "curveAmount": 0.5,
+              "def": 0.1,
+              "displayChoices": false,
+              "divideChoicesVisibly": false,
+              "kind": "decimal",
+              "linearSmoothing": true,
+              "max": 1,
+              "maxDigits": 3,
+              "mid": 0.1,
+              "min": 0,
+              "nonlinearSlider": false,
+              "sliderCurve": "linear",
+              "showSign": false,
+              "step": 0,
+              "unboundedMax": false,
+              "unboundedMin": false,
+              "unit": "",
+              "wraparound": false
+            }
+          },
+          "params": {
+            "volume": 0.411323377374953
+          },
+          "type": "output",
+          "traceDisplaySettings": {
+            "brightness": 0.92,
+            "color": "#75ebff",
+            "dot1Enabled": true,
+            "dot1Size": 0.08,
+            "dot2Brightness": 0.18,
+            "dot2Color": "#184fff",
+            "dot2Enabled": true,
+            "dot2Size": 0.24,
+            "dot2LineThickness": 0.48,
+            "cycles": 2,
+            "lineThickness": 0.2,
+            "padding": 0,
+            "skipSamples": 1,
+            "sourceSync": true,
+            "zoomSeconds": 0.05
+          }
+        },
+        {
+          "gx": -12,
+          "gy": -15,
+          "id": "audioPlayer-1",
+          "paramMeta": {
+            "level": {
+              "alias": "",
+              "choices": [],
+              "curveAmount": 0,
+              "def": 1,
+              "displayChoices": false,
+              "divideChoicesVisibly": false,
+              "kind": "decimal",
+              "linearSmoothing": true,
+              "max": 1,
+              "maxDigits": 3,
+              "mid": 0.5,
+              "min": 0,
+              "nonlinearSlider": false,
+              "sliderCurve": "linear",
+              "showSign": false,
+              "step": 0,
+              "unboundedMax": false,
+              "unboundedMin": false,
+              "unit": "",
+              "wraparound": false
+            },
+            "speed": {
+              "alias": "",
+              "choices": [],
+              "curveAmount": 0,
+              "def": 1,
+              "displayChoices": false,
+              "divideChoicesVisibly": false,
+              "kind": "decimal",
+              "linearSmoothing": false,
+              "max": 8,
+              "maxDigits": 4,
+              "mid": 1,
+              "min": 0,
+              "nonlinearSlider": true,
+              "sliderCurve": "skew",
+              "showSign": false,
+              "step": 0,
+              "unboundedMax": false,
+              "unboundedMin": false,
+              "unit": "x",
+              "wraparound": false
+            },
+            "start": {
+              "alias": "",
+              "choices": [],
+              "curveAmount": 0,
+              "def": 0,
+              "displayChoices": false,
+              "divideChoicesVisibly": false,
+              "kind": "decimal",
+              "linearSmoothing": false,
+              "max": 1,
+              "maxDigits": 3,
+              "mid": 0.5,
+              "min": 0,
+              "nonlinearSlider": false,
+              "sliderCurve": "linear",
+              "showSign": false,
+              "step": 0,
+              "unboundedMax": false,
+              "unboundedMin": false,
+              "unit": "",
+              "wraparound": false
+            },
+            "end": {
+              "alias": "",
+              "choices": [],
+              "curveAmount": 0,
+              "def": 1,
+              "displayChoices": false,
+              "divideChoicesVisibly": false,
+              "kind": "decimal",
+              "linearSmoothing": false,
+              "max": 1,
+              "maxDigits": 3,
+              "mid": 0.5,
+              "min": 0,
+              "nonlinearSlider": false,
+              "sliderCurve": "linear",
+              "showSign": false,
+              "step": 0,
+              "unboundedMax": false,
+              "unboundedMin": false,
+              "unit": "",
+              "wraparound": false
+            },
+            "transport": {
+              "alias": "",
+              "choices": [
+                "Off (reset)",
+                "Stop",
+                "Pause",
+                "Loop",
+                "Play"
+              ],
+              "curveAmount": 0,
+              "def": 4,
+              "displayChoices": true,
+              "divideChoicesVisibly": true,
+              "kind": "decimal",
+              "linearSmoothing": false,
+              "max": 4,
+              "maxDigits": 3,
+              "mid": 2,
+              "min": 0,
+              "nonlinearSlider": false,
+              "sliderCurve": "linear",
+              "showSign": false,
+              "step": 1,
+              "unboundedMax": false,
+              "unboundedMin": false,
+              "unit": "",
+              "wraparound": false
+            }
+          },
+          "params": {
+            "level": 1,
+            "speed": 1,
+            "start": 0,
+            "end": 1,
+            "transport": 4
+          },
+          "type": "audioPlayer"
+        }
+      ],
+      "requiredAssets": [],
+      "samples": [
+        {
+          "acceptedTypes": [
+            "audio/*"
+          ],
+          "id": "chaosarp-lorenz-startup",
+          "kind": "audio",
+          "file": {
+            "extension": "mp3",
+            "mime": "audio/mpeg",
+            "name": "Elan Hickler - ChaosArp Lorenz.mp3",
+            "size": 10447933,
+            "sourcePath": "./public/resources/audio/Elan Hickler - ChaosArp Lorenz.mp3"
+          },
+          "metadata": {
+            "artist": "Elan Hickler",
+            "title": "ChaosArp Lorenz",
+            "startupMusic": true
+          },
+          "name": "Elan Hickler - ChaosArp Lorenz",
+          "resourceId": "chaosarp-lorenz-startup",
+          "sourceName": "Elan Hickler - ChaosArp Lorenz.mp3",
+          "sourcePath": "./public/resources/audio/Elan Hickler - ChaosArp Lorenz.mp3"
+        }
+      ],
+      "timing": {
+        "tempoBpm": 120,
+        "timeSignatureDenominator": 4,
+        "timeSignatureNumerator": 4
+      },
+      "uiItems": [],
+      "view": {
+        "heightGu": 23,
+        "widthGu": 26,
+        "zoom": 1.0606137022653643
+      },
+      "visual": {
+        "background": {
+          "h": 210,
+          "l": 5,
+          "s": 0
+        },
+        "mode": "auto",
+        "scale": 1,
+        "style": "glow",
+        "theme": "cyan-violet",
+        "trail": 0.35
+      },
+      "windows": {
+        "metadata": {
+          "left": null,
+          "top": null
+        },
+        "moduleActions": {
+          "left": null,
+          "top": null
+        }
+      }
+    },
+    "currentSavedPatchFilename": "bank000-program000-lorenz-demonstration-chaos--lorenz--attractor--strange.json",
+    "patchDirtyState": "edited"
   }
 }

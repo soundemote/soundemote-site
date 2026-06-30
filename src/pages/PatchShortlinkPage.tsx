@@ -82,6 +82,11 @@ const PatchShortlinkPage = () => {
     return <Navigate to={`/${target.user}/${target.bank}/${target.patch}`} replace />;
   }
 
+  if (!loading && shortlink) {
+    // Unclaimed space: open the sandbox with a claim affordance.
+    return <Navigate to={`/sandbox?claim=${encodeURIComponent(shortlink)}`} replace />;
+  }
+
   return (
     <main className="min-h-screen bg-background text-foreground">
       <div className="container mx-auto max-w-2xl px-4 py-12">
@@ -97,7 +102,7 @@ const PatchShortlinkPage = () => {
         {!loading && !target && (
           <Link
             to="/sandbox"
-            className="mono mt-6 inline-flex rounded border border-cyan-300/35 bg-cyan-950/25 px-4 py-2 text-xs text-cyan-100 hover:bg-cyan-950/45"
+            className="mono mt-6 inline-block text-xs text-foreground underline underline-offset-4 hover:text-muted-foreground"
           >
             open sandbox
           </Link>

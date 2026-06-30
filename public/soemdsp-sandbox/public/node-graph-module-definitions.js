@@ -50,6 +50,8 @@ const nodeGraphNodeLabels = Object.freeze({
   cookbookFilter: "Multi Stage Filter",
   ladderFilter: "Ladder Filter",
   delayEffect: "Delay",
+  reverbEffect: "Sabrina Reverb",
+  pll: "PLL",
   slewLimiter: "Up/Down Slew",
   sampleHold: "Sample & Hold",
   midiOut: "Midi Out",
@@ -516,6 +518,17 @@ const nodeGraphModuleDefinitions = Object.freeze({
   },
   ellipsoid: {
     displayType: "scope2d",
+    displaySignals: [
+      { key: "Mono", kind: "scalar" },
+      { key: "X", kind: "scalar" },
+      { key: "Y", kind: "scalar" },
+      { key: "X/Y", kind: "xy" },
+    ],
+    displayModes: [
+      { key: "xyBurn", label: "X/Y Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
+      { key: "xyTrace", label: "X/Y Trace", renderer: "scope2dTrace", settingsSchema: "scope2dTrace", source: { x: "X", y: "Y" } },
+    ],
+    defaultDisplayMode: "xyBurn",
     inputs: ["Reset", "0.1V/Oct", "Increment"],
     inputLabels: {
       "0.1V/Oct": "0.1V",
@@ -541,6 +554,17 @@ const nodeGraphModuleDefinitions = Object.freeze({
   },
   spiral: {
     displayType: "scope2d",
+    displaySignals: [
+      { key: "X", kind: "scalar" },
+      { key: "Y", kind: "scalar" },
+      { key: "Z", kind: "scalar" },
+      { key: "X/Y", kind: "xy" },
+    ],
+    displayModes: [
+      { key: "xyBurn", label: "X/Y Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
+      { key: "xyTrace", label: "X/Y Trace", renderer: "scope2dTrace", settingsSchema: "scope2dTrace", source: { x: "X", y: "Y" } },
+    ],
+    defaultDisplayMode: "xyBurn",
     outputs: ["X", "Y", "Z"],
     parameters: [
       { key: "frequency", label: "Frequency", defaultValue: "440", min: "40", mid: "440", max: "2000", step: "any", unit: "Hz" },
@@ -560,6 +584,17 @@ const nodeGraphModuleDefinitions = Object.freeze({
   },
   lorenzAttractor: {
     displayType: "scope2d",
+    displaySignals: [
+      { key: "X", kind: "scalar" },
+      { key: "Y", kind: "scalar" },
+      { key: "Z", kind: "scalar" },
+      { key: "X/Y", kind: "xy" },
+    ],
+    displayModes: [
+      { key: "xyBurn", label: "X/Y Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
+      { key: "xyTrace", label: "X/Y Trace", renderer: "scope2dTrace", settingsSchema: "scope2dTrace", source: { x: "X", y: "Y" } },
+    ],
+    defaultDisplayMode: "xyBurn",
     inputs: ["Reset"],
     outputs: ["X", "Y", "Z"],
     parameters: [
@@ -574,6 +609,15 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   noise: {
+    displaySignals: [
+      { key: "Raw", kind: "scalar" },
+      { key: "Out", kind: "scalar" },
+    ],
+    displayModes: [
+      { key: "rawTrace", label: "Raw Trace", renderer: "trace", settingsSchema: "trace", source: { value: "Raw" } },
+      { key: "postLevelTrace", label: "Post-Level Trace", renderer: "trace", settingsSchema: "trace", source: { value: "Out" } },
+    ],
+    defaultDisplayMode: "rawTrace",
     outputs: ["Out"],
     parameters: [
       {
@@ -610,6 +654,18 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   stereoNoise: {
+    displaySignals: [
+      { key: "X", kind: "scalar" },
+      { key: "Y", kind: "scalar" },
+      { key: "Out", kind: "scalar" },
+      { key: "X/Y", kind: "xy" },
+    ],
+    displayModes: [
+      { key: "xyBurn", label: "X/Y Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
+      { key: "xyTrace", label: "X/Y Trace", renderer: "scope2dTrace", settingsSchema: "scope2dTrace", source: { x: "X", y: "Y" } },
+      { key: "monoTrace", label: "Mono Trace", renderer: "trace", settingsSchema: "trace", source: { value: "Out" } },
+    ],
+    defaultDisplayMode: "xyBurn",
     outputs: ["X", "Y", "Out"],
     parameters: [
       {
@@ -749,6 +805,20 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   fractalBrownianNoise: {
+    displaySignals: [
+      { key: "Out X", kind: "scalar" },
+      { key: "Out Y", kind: "scalar" },
+      { key: "Out Z", kind: "scalar" },
+      { key: "X/Y", kind: "xy" },
+    ],
+    displayModes: [
+      { key: "xyBurn", label: "X/Y Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "Out X", y: "Out Y" } },
+      { key: "xyTrace", label: "X/Y Trace", renderer: "scope2dTrace", settingsSchema: "scope2dTrace", source: { x: "Out X", y: "Out Y" } },
+      { key: "xTrace", label: "X Trace", renderer: "trace", settingsSchema: "trace", source: { value: "Out X" } },
+      { key: "yTrace", label: "Y Trace", renderer: "trace", settingsSchema: "trace", source: { value: "Out Y" } },
+      { key: "zTrace", label: "Z Trace", renderer: "trace", settingsSchema: "trace", source: { value: "Out Z" } },
+    ],
+    defaultDisplayMode: "xyBurn",
     outputs: ["Out X", "Out Y", "Out Z"],
     parameters: [
       {
@@ -1380,6 +1450,44 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { choices: ["Delay", "Diffuse"], defaultValue: "0", displayChoices: true, divideChoicesVisibly: true, key: "mode", label: "Mode", linearSmoothing: false, max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "1" },
     ],
   },
+  reverbEffect: {
+    displayType: "trace",
+    inputs: ["In", "Left", "Right"],
+    outputs: ["Mono Dry", "Left Dry", "Right Dry", "Mono Mix", "Left Mix", "Right Mix"],
+    parameters: [
+      { defaultValue: "0.43", key: "mix", label: "Mix", max: "1", mid: "0.43", min: "0", nonlinearSlider: false, step: "any" },
+      { defaultValue: "0.35", key: "diffusionSize", label: "Diff Size", max: "1", mid: "0.35", min: "0", nonlinearSlider: false, step: "any" },
+      { defaultValue: "0.70", key: "diffusionAmount", label: "Diff Amt", max: "0.98", mid: "0.70", min: "0", nonlinearSlider: false, step: "any" },
+      { defaultValue: "0.02", key: "delaySize", label: "Delay Size", max: "1", mid: "0.02", min: "0", nonlinearSlider: false, step: "any" },
+      { defaultValue: "0.70", key: "recycle", label: "Recycle", max: "0.98", mid: "0.70", min: "0", nonlinearSlider: false, step: "any" },
+      { defaultValue: "0.07", key: "lfoAmplitude", label: "LFO Amp", max: "1", mid: "0.07", min: "0", nonlinearSlider: false, step: "any" },
+      { defaultValue: "0.83", key: "lfoBaseSpeed", label: "LFO Speed", max: "1", mid: "0.83", min: "0", nonlinearSlider: false, step: "any" },
+      { defaultValue: "0.001", key: "lfoVariation", label: "LFO Var", max: "1", mid: "0.001", min: "0", nonlinearSlider: false, step: "any" },
+    ],
+  },
+  pll: {
+    displaySignals: [
+      { key: "VCO Out", kind: "scalar" },
+      { key: "PC Out", kind: "scalar" },
+      { key: "LPF Out", kind: "scalar" },
+      { key: "VCO/PC", kind: "xy" },
+    ],
+    displayModes: [
+      { key: "vcoTrace", label: "VCO Trace", renderer: "trace", settingsSchema: "trace", source: { value: "VCO Out" } },
+      { key: "pcTrace", label: "PC Trace", renderer: "trace", settingsSchema: "trace", source: { value: "PC Out" } },
+      { key: "lpfTrace", label: "LPF Trace", renderer: "trace", settingsSchema: "trace", source: { value: "LPF Out" } },
+      { key: "vcoPcBurn", label: "VCO/PC Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "VCO Out", y: "PC Out" } },
+    ],
+    defaultDisplayMode: "vcoTrace",
+    inputs: ["Signal In", "VCO CV In"],
+    outputs: ["VCO Out", "PC Out", "LFP Out", "Locked"],
+    parameters: [
+      { choices: ["Low", "Mid", "High"], defaultValue: "1", displayChoices: true, divideChoicesVisibly: true, key: "range", label: "Range", linearSmoothing: false, max: "2", mid: "1", min: "0", nonlinearSlider: false, step: "1" },
+      { defaultValue: "5", key: "offset", label: "Offset", max: "10", mid: "5", min: "0", nonlinearSlider: false, step: "0.01" },
+      { choices: ["XOR", "RS Flip", "PFD"], defaultValue: "1", displayChoices: true, divideChoicesVisibly: true, key: "type", label: "PC Type", linearSmoothing: false, max: "2", mid: "1", min: "0", nonlinearSlider: false, step: "1" },
+      { defaultValue: "10", key: "frequ", kind: "frequency", label: "LPF Cutoff", max: "200", mid: "10", min: "0.1", step: "any", unit: "Hz" },
+    ],
+  },
   slewLimiter: {
     inputs: ["In"],
     outputs: ["Out"],
@@ -1501,7 +1609,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { defaultValue: "1", key: "speed", label: "Speed", linearSmoothing: false, max: "8", maxDigits: 4, mid: "1", min: "0", step: "any", unit: "x" },
       { defaultValue: "0", key: "start", label: "Start", linearSmoothing: false, max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any" },
       { defaultValue: "1", key: "end", label: "End", linearSmoothing: false, max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any" },
-      { choices: ["Off (reset)", "Stop", "Pause", "Play", "Loop"], defaultValue: "3", displayChoices: true, divideChoicesVisibly: true, key: "transport", label: "Play Mode", linearSmoothing: false, max: "4", mid: "2", min: "0", nonlinearSlider: false, step: "1" },
+      { choices: ["Off (reset)", "Stop", "Pause", "Loop", "Play"], defaultValue: "4", displayChoices: true, divideChoicesVisibly: true, key: "transport", label: "Play Mode", linearSmoothing: false, max: "4", mid: "2", min: "0", nonlinearSlider: false, step: "1" },
     ],
   },
   macroControls: {
@@ -2050,6 +2158,80 @@ function nodeGraphModuleIsGraphType(type) {
 
 function nodeGraphModuleIsRealtimeOscillatorType(type) {
   return type === "osc" || type === "polyBlep" || type === "fbPolyBlepOsc" || type === "sineWavetable";
+}
+
+function nodeGraphModuleProducesOutputWithoutSignalInput(type) {
+  const definition = nodeGraphModuleDefinitions[type];
+  if (!definition) {
+    return false;
+  }
+  // Visual-only sinks don't need signal input to produce output.
+  if (definition.visualSink) {
+    return true;
+  }
+  // A module with no input ports is a signal source by nature.
+  if (!Array.isArray(definition.inputs) || definition.inputs.length === 0) {
+    return true;
+  }
+  // Specific module types that have input ports but can produce output
+  // without signal input (e.g. parameter-driven or script-driven output).
+  const inputCapableSources = new Set([
+    "audioInput",
+    "audioPlayer",
+    "bloomGlow",
+    "canvas",
+    "chromaColor",
+    "clapPlugin",
+    "clock",
+    "clockDivider",
+    "codeblock",
+    "delayedTrigger",
+    "transport",
+    "wireBreak",
+    "wireConnect",
+    "wireDisconnect",
+    "windowReopen",
+    "shootingStarExplosion",
+    "fbPolyBlepOsc",
+    "fractalBrownianNoise",
+    "flowerChildEnvelopeFollower",
+    "groupInput",
+    "groupOutput",
+    "keyboardController",
+    "led",
+    "linearEnvelope",
+    "lorenzAttractor",
+    "ellipsoid",
+    "macroKnob",
+    "macroControls",
+    "midiNotePitch",
+    "midiOut",
+    "moduleGroup",
+    "noiseGenerator",
+    "osc",
+    "pitchModWheel",
+    "bipolarKnob",
+    "additiveOsc",
+    "gpuAdditiveOsc",
+    "pluckEnvelope",
+    "polyBlep",
+    "randomWalk",
+    "rgbaHsla",
+    "sandboxVisuals",
+    "screenSpaceShader",
+    "sineWavetable",
+    "stepSequencer",
+    "triggerCounter",
+    "triggerDivider",
+    "vactrolEnvelope",
+    "visualOscilloscope",
+    "spiral",
+    "stereoNoise",
+    "noise",
+    "output",
+    "reverbEffect",
+  ]);
+  return inputCapableSources.has(type);
 }
 
 function nodeGraphCanonicalInputPort(type, port) {

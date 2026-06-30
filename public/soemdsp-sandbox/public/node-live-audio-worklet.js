@@ -125,6 +125,11 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.ellipsoidOutputFrames = new Map();
     this.nativeEllipsoid = null;
     this.nativeEllipsoidReady = false;
+    this.nativeSabrinaReverb = null;
+    this.nativeSabrinaReverbReady = false;
+    this.nativePll = null;
+    this.nativePllReady = false;
+    this.pllStates = new Map();
     this.fractalBrownianNoiseStates = new Map();
     this.graphInputConnections = new Map();
     this.gpuAdditiveQueues = new Map();
@@ -149,6 +154,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.pluckEnvelopeStates = new Map();
     this.planSerial = 0;
     this.randomClockStates = new Map();
+    this.reverbEffectStates = new Map();
     this.sampleHoldStates = new Map();
     this.samplePlaybackStates = new Map();
     this.samples = new Map();
@@ -282,13 +288,28 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.visualControlStates = visualState.states;
   }
 
+  destroySabrinaReverbState(state) {
+    if (!state?.nativeHandle || !this.nativeSabrinaReverb?.soemdsp_sabrina_reverb_destroy) {
+      return;
+    }
+    this.nativeSabrinaReverb.soemdsp_sabrina_reverb_destroy(state.nativeHandle);
+    state.nativeHandle = 0;
+  }
+
   handleMessage(message) {
     if (message.type === "stop") {
+      if (message.sessionId !== this.sessionId || message.planSerial !== this.planSerial) {
+        return;
+      }
       this.clearPlan();
       return;
     }
     if (message.type === "setPlan") {
       this.setPlan(message.plan, message);
+      return;
+    }
+    if (message.type === "setConnections") {
+      this.setConnections(message.plan || message, message);
       return;
     }
     if (message.type === "setNativeModuleWasm") {
@@ -342,24 +363,68 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   }
 
   async setNativeModuleWasm(message) {
-    if (message.name !== "ellipsoid" || !(message.bytes instanceof ArrayBuffer)) {
+    if (!(message.bytes instanceof ArrayBuffer)) {
       return;
     }
+    const name = String(message.name || "");
+    const targetType = String(message.targetType || "");
     try {
       const result = await WebAssembly.instantiate(message.bytes, {});
-      this.nativeEllipsoid = result?.instance?.exports || null;
-      this.nativeEllipsoidReady = Boolean(this.nativeEllipsoid?.soemdsp_ellipsoid_vector_sample);
+      const exports = result?.instance?.exports || null;
+      if (name === "ellipsoid" || targetType === "ellipsoid") {
+        this.nativeEllipsoid = exports;
+        this.nativeEllipsoidReady = Boolean(this.nativeEllipsoid?.soemdsp_ellipsoid_vector_sample);
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "ellipsoid",
+          status: this.nativeEllipsoidReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "pll" || targetType === "pll") {
+        for (const state of this.pllStates.values()) {
+          this.destroyPllState(state);
+        }
+        this.nativePll = exports;
+        this.nativePllReady = Boolean(
+          this.nativePll?.soemdsp_pll_create &&
+          this.nativePll?.soemdsp_pll_process &&
+          this.nativePll?.soemdsp_pll_vco_out,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "pll",
+          status: this.nativePllReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "sabrina_reverb" || targetType === "reverbEffect") {
+        for (const state of this.reverbEffectStates.values()) {
+          this.destroySabrinaReverbState(state);
+        }
+        this.nativeSabrinaReverb = exports;
+        this.nativeSabrinaReverbReady = Boolean(
+          this.nativeSabrinaReverb?.soemdsp_sabrina_reverb_create &&
+          this.nativeSabrinaReverb?.soemdsp_sabrina_reverb_process &&
+          this.nativeSabrinaReverb?.soemdsp_sabrina_reverb_left &&
+          this.nativeSabrinaReverb?.soemdsp_sabrina_reverb_right,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "sabrina_reverb",
+          status: this.nativeSabrinaReverbReady ? "ready" : "missing exports",
+        });
+        return;
+      }
       this.port.postMessage({
         type: "nativeModuleStatus",
-        name: "ellipsoid",
-        status: this.nativeEllipsoidReady ? "ready" : "missing exports",
+        name,
+        status: "unsupported native module",
       });
     } catch (error) {
-      this.nativeEllipsoid = null;
-      this.nativeEllipsoidReady = false;
       this.port.postMessage({
         type: "nativeModuleStatus",
-        name: "ellipsoid",
+        name,
         status: "error",
         message: String(error?.message || error || "native module load failed"),
       });
@@ -425,6 +490,14 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.graphLfoStates = new Map();
     this.pluckEnvelopeStates = new Map();
     this.randomClockStates = new Map();
+    for (const state of this.reverbEffectStates.values()) {
+      this.destroySabrinaReverbState(state);
+    }
+    this.reverbEffectStates = new Map();
+    for (const state of this.pllStates.values()) {
+      this.destroyPllState(state);
+    }
+    this.pllStates = new Map();
     this.randomWalkStates = new Map();
     this.sampleHoldStates = new Map();
     this.samplePlaybackStates = new Map();
@@ -603,7 +676,8 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       inputs: (Array.isArray(sink?.inputs) ? sink.inputs : []).map((input) => ({ ...input })),
     }));
     this.syncVisualInputBuffers();
-    this.inputConnections = this.buildInputConnectionMap(plan?.connections, ids);
+    const newInputConnections = this.buildInputConnectionMap(plan?.connections, ids);
+    this.inputConnections = newInputConnections;
     this.graphInputConnections = this.buildGraphInputConnectionMap(plan?.graphConnections, ids);
     this.modulationConnections = this.buildModulationConnectionMap(plan?.modulations, ids);
     this.resetVisualControls();
@@ -668,6 +742,12 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       }
       if (node?.type === "delayEffect" && !this.delayEffectStates.has(id)) {
         this.delayEffectStates.set(id, this.createDelayEffectState());
+      }
+      if (node?.type === "reverbEffect" && !this.reverbEffectStates.has(id)) {
+        this.reverbEffectStates.set(id, this.createSabrinaReverbState());
+      }
+      if (node?.type === "pll" && !this.pllStates.has(id)) {
+        this.pllStates.set(id, this.createPllState());
       }
       if (node?.type === "randomClock" && !this.randomClockStates.has(id)) {
         this.randomClockStates.set(id, this.createRandomClockState());
@@ -851,6 +931,18 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         this.delayEffectStates.delete(id);
       }
     }
+    for (const id of [...this.reverbEffectStates.keys()]) {
+      if (!ids.has(id)) {
+        this.destroySabrinaReverbState(this.reverbEffectStates.get(id));
+        this.reverbEffectStates.delete(id);
+      }
+    }
+    for (const id of [...this.pllStates.keys()]) {
+      if (!ids.has(id)) {
+        this.destroyPllState(this.pllStates.get(id));
+        this.pllStates.delete(id);
+      }
+    }
     for (const id of [...this.sampleHoldStates.keys()]) {
       if (!ids.has(id)) {
         this.sampleHoldStates.delete(id);
@@ -972,6 +1064,26 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       visualSinkCount: Array.isArray(plan?.visualSinks) ? plan.visualSinks.length : 0,
       visualSinks: Array.isArray(plan?.visualSinks) ? plan.visualSinks : [],
     });
+  }
+
+  setConnections(plan, message = {}) {
+    this.patchFingerprint = message.patchFingerprint || plan?.patchFingerprint || this.patchFingerprint || "";
+    this.planSerial = message.planSerial || this.planSerial || 0;
+    this.sessionId = message.sessionId || this.sessionId || 0;
+    this.outputNode = plan?.outputNode || this.outputNode || "output";
+    this.scopeCaptureNodeIds = Array.isArray(plan?.scopeCaptureNodeIds)
+      ? plan.scopeCaptureNodeIds.map((nodeId) => String(nodeId || "")).filter(Boolean)
+      : this.scopeCaptureNodeIds;
+    this.visualSinks = (Array.isArray(plan?.visualSinks) ? plan.visualSinks : this.visualSinks).map((sink) => ({
+      ...sink,
+      bufferedInputs: Array.isArray(sink?.bufferedInputs) ? [...sink.bufferedInputs] : [],
+      inputs: (Array.isArray(sink?.inputs) ? sink.inputs : []).map((input) => ({ ...input })),
+    }));
+    this.syncVisualInputBuffers();
+    const ids = new Set([...this.nodes.keys()]);
+    this.inputConnections = this.buildInputConnectionMap(plan?.connections, ids);
+    this.graphInputConnections = this.buildGraphInputConnectionMap(plan?.graphConnections, ids);
+    this.modulationConnections = this.buildModulationConnectionMap(plan?.modulations, ids);
   }
 
   setParams(nodes, message = {}) {
@@ -3062,6 +3174,12 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     runtime.modulationConnections = new Map();
     runtime.nodeOutputs = new Map();
     runtime.nodes = new Map();
+    runtime.nativeEllipsoid = this.nativeEllipsoid;
+    runtime.nativeEllipsoidReady = this.nativeEllipsoidReady;
+    runtime.nativeSabrinaReverb = this.nativeSabrinaReverb;
+    runtime.nativeSabrinaReverbReady = this.nativeSabrinaReverbReady;
+    runtime.nativePll = this.nativePll;
+    runtime.nativePllReady = this.nativePllReady;
     runtime.noiseSeedKeys = new Map();
     runtime.noiseSeeds = new Map();
     runtime.order = [];
@@ -3094,6 +3212,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     runtime.pluckEnvelopeStates = new Map();
     runtime.planSerial = 0;
     runtime.randomClockStates = new Map();
+    runtime.reverbEffectStates = new Map();
     runtime.sampleHoldStates = new Map();
     runtime.samplePlaybackStates = new Map();
     runtime.samples = this.samples;
@@ -3160,6 +3279,8 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       if (node?.type === "clockDivider") this.clockDividerStates.set(id, this.createTriggerDividerState());
       if (node?.type === "delayedTrigger") this.delayedTriggerStates.set(id, this.createDelayedTriggerState());
       if (node?.type === "delayEffect") this.delayEffectStates.set(id, this.createDelayEffectState());
+      if (node?.type === "reverbEffect") this.reverbEffectStates.set(id, this.createSabrinaReverbState());
+      if (node?.type === "pll") this.pllStates.set(id, this.createPllState());
       if (node?.type === "randomClock") this.randomClockStates.set(id, this.createRandomClockState());
       if (node?.type === "sampleHold") this.sampleHoldStates.set(id, this.createSampleHoldState());
       if (node?.type === "samplePlayer" || node?.type === "sampleLooper" || node?.type === "audioPlayer") {
@@ -3413,8 +3534,8 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     const transportReset = transportMode <= 0;
     const transportStopped = transportMode === 1;
     const transportPaused = transportMode === 2;
-    const transportPlayOnce = transportMode === 3;
-    const transportLooping = transportMode >= 4;
+    const transportLooping = transportMode === 3;
+    const transportPlayOnce = transportMode >= 4;
     if (state.transportMode !== transportMode) {
       state.completed = false;
       state.transportMode = transportMode;
@@ -4002,6 +4123,182 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       Out: (dry * (1 - mix) + state.wet * mix) * level,
       Wet: state.wet * level,
     };
+  }
+
+  createSabrinaReverbState() {
+    return {
+      nativeHandle: 0,
+      nativeParamKey: "",
+      nativeSampleRate: 0,
+      idleCounter: 0,
+      isIdle: false,
+    };
+  }
+
+  createPllState() {
+    return { nativeHandle: 0, nativeParamKey: "", nativeSampleRate: 0 };
+  }
+
+  destroyPllState(state) {
+    if (!state?.nativeHandle || !this.nativePll?.soemdsp_pll_destroy) return;
+    this.nativePll.soemdsp_pll_destroy(state.nativeHandle);
+    state.nativeHandle = 0;
+  }
+
+  pllSample(state, signalIn, cvIn, cvConnected, params, rateHz = sampleRate) {
+    const native = this.nativePll;
+    if (!this.nativePllReady || !native?.soemdsp_pll_create || !native?.soemdsp_pll_process) {
+      return { "VCO Out": 0, "PC Out": 0, "LPF Out": 0, Locked: 0 };
+    }
+    try {
+      const safeRate = Math.max(1, Number(rateHz) || sampleRate || 44100);
+      if (!state.nativeHandle || state.nativeSampleRate !== safeRate) {
+        if (state.nativeHandle && native.soemdsp_pll_destroy) {
+          native.soemdsp_pll_destroy(state.nativeHandle);
+        }
+        state.nativeHandle = native.soemdsp_pll_create(safeRate) || 0;
+        state.nativeSampleRate = safeRate;
+        state.nativeParamKey = "";
+      }
+      if (!state.nativeHandle) {
+        return { "VCO Out": 0, "PC Out": 0, "LPF Out": 0, Locked: 0 };
+      }
+      const range  = Math.max(0, Math.min(2, Math.round(this.safeFilterNumber(params.range,  null) ?? 1)));
+      const offset = this.clampValue(this.safeFilterNumber(params.offset, null) ?? 5, 0, 10);
+      const type   = Math.max(0, Math.min(2, Math.round(this.safeFilterNumber(params.type,   null) ?? 1)));
+      const frequ  = Math.max(0.1, this.safeFilterNumber(params.frequ, null) ?? 10);
+      const paramKey = `${range}:${Math.round(offset * 1000)}:${type}:${Math.round(frequ * 1000)}`;
+      if (paramKey !== state.nativeParamKey && native.soemdsp_pll_set_params) {
+        state.nativeParamKey = paramKey;
+        native.soemdsp_pll_set_params(state.nativeHandle, safeRate, range, offset, type, frequ);
+      }
+      const safeSig = this.safeFilterNumber(signalIn, null) ?? 0;
+      const safeCv  = this.clampValue(this.safeFilterNumber(cvIn, null) ?? 0, 0, 1);
+      native.soemdsp_pll_process(state.nativeHandle, safeSig, safeCv, cvConnected);
+      return {
+        "VCO Out": this.safeFilterNumber(native.soemdsp_pll_vco_out?.(state.nativeHandle), null) ?? 0,
+        "PC Out":  this.safeFilterNumber(native.soemdsp_pll_pc_out?.(state.nativeHandle),  null) ?? 0,
+        "LPF Out": this.safeFilterNumber(native.soemdsp_pll_lpf_out?.(state.nativeHandle), null) ?? 0,
+        Locked:    this.safeFilterNumber(native.soemdsp_pll_locked?.(state.nativeHandle),   null) ?? 0,
+      };
+    } catch {
+      this.nativePllReady = false;
+      this.destroyPllState(state);
+      return { "VCO Out": 0, "PC Out": 0, "LPF Out": 0, Locked: 0 };
+    }
+  }
+
+  nativeSabrinaReverbSample(state, leftInput, rightInput, params, rateHz = sampleRate, frame = 0) {
+    const native = this.nativeSabrinaReverb;
+    if (
+      !this.nativeSabrinaReverbReady ||
+      !native?.soemdsp_sabrina_reverb_create ||
+      !native?.soemdsp_sabrina_reverb_process
+    ) {
+      return null;
+    }
+    try {
+      const safeRate = Math.max(1, Number(rateHz) || sampleRate || 44100);
+      if (!state.nativeHandle || state.nativeSampleRate !== safeRate) {
+        if (state.nativeHandle && native.soemdsp_sabrina_reverb_destroy) {
+          native.soemdsp_sabrina_reverb_destroy(state.nativeHandle);
+        }
+        state.nativeHandle = native.soemdsp_sabrina_reverb_create(safeRate) || 0;
+        state.nativeSampleRate = safeRate;
+        state.nativeParamKey = "";
+        state.idleCounter = 0;
+        state.isIdle = false;
+      }
+      if (!state.nativeHandle) {
+        return null;
+      }
+      const safeParams = {
+        delaySize: this.clampValue(this.safeFilterNumber(params.delaySize, null), 0, 1),
+        diffusionAmount: this.clampValue(this.safeFilterNumber(params.diffusionAmount, null), 0, 0.98),
+        diffusionSize: this.clampValue(this.safeFilterNumber(params.diffusionSize, null), 0, 1),
+        lfoAmplitude: this.clampValue(this.safeFilterNumber(params.lfoAmplitude, null), 0, 1),
+        lfoBaseSpeed: this.clampValue(this.safeFilterNumber(params.lfoBaseSpeed, null), 0, 1),
+        lfoVariation: this.clampValue(this.safeFilterNumber(params.lfoVariation, null), 0, 1),
+        mix: this.clampValue(this.safeFilterNumber(params.mix, null), 0, 1),
+        recycle: this.clampValue(this.safeFilterNumber(params.recycle, null), 0, 0.98),
+      };
+      const paramKey = [
+        safeParams.mix,
+        safeParams.diffusionSize,
+        safeParams.diffusionAmount,
+        safeParams.delaySize,
+        safeParams.recycle,
+        safeParams.lfoAmplitude,
+        safeParams.lfoBaseSpeed,
+        safeParams.lfoVariation,
+      ].map((value) => Math.round(value * 1000000)).join(":");
+      if (paramKey !== state.nativeParamKey && native.soemdsp_sabrina_reverb_set_params) {
+        state.nativeParamKey = paramKey;
+        native.soemdsp_sabrina_reverb_set_params(
+          state.nativeHandle,
+          safeParams.mix,
+          safeParams.diffusionSize,
+          safeParams.diffusionAmount,
+          safeParams.delaySize,
+          safeParams.recycle,
+          safeParams.lfoAmplitude,
+          safeParams.lfoBaseSpeed,
+          safeParams.lfoVariation,
+        );
+      }
+      const dryLeft = this.safeFilterNumber(leftInput, null);
+      const dryRight = this.safeFilterNumber(rightInput, null);
+      const dryMono = (dryLeft + dryRight) * 0.5;
+      const inputActive = Math.abs(dryLeft) >= 0.000001 || Math.abs(dryRight) >= 0.000001;
+      if (inputActive) {
+        state.isIdle = false;
+        state.idleCounter = 0;
+      }
+      // Bypass mode: reverb is idle, pass dry signal straight through all outputs
+      if (state.isIdle) {
+        return { "Left Dry": dryLeft, "Mono Dry": dryMono, "Right Dry": dryRight, "Left Mix": dryLeft, "Mono Mix": dryMono, "Right Mix": dryRight };
+      }
+      native.soemdsp_sabrina_reverb_process(state.nativeHandle, dryLeft, dryRight);
+      const mixLeft = this.safeFilterNumber(native.soemdsp_sabrina_reverb_left?.(state.nativeHandle), null);
+      const mixRight = this.safeFilterNumber(native.soemdsp_sabrina_reverb_right?.(state.nativeHandle), null);
+      const outputPeak = Math.max(Math.abs(mixLeft), Math.abs(mixRight));
+      if (outputPeak < 0.000001) {
+        state.idleCounter += 1;
+        if (state.idleCounter >= safeRate) {
+          state.isIdle = true;
+        }
+      } else {
+        state.idleCounter = 0;
+      }
+      return { "Left Dry": dryLeft, "Mono Dry": dryMono, "Right Dry": dryRight, "Left Mix": mixLeft, "Mono Mix": (mixLeft + mixRight) * 0.5, "Right Mix": mixRight };
+    } catch (error) {
+      this.nativeSabrinaReverbReady = false;
+      if (state.nativeHandle && native.soemdsp_sabrina_reverb_destroy) {
+        native.soemdsp_sabrina_reverb_destroy(state.nativeHandle);
+      }
+      state.nativeHandle = 0;
+      state.nativeParamKey = "";
+      state.idleCounter = 0;
+      state.isIdle = false;
+      this.port.postMessage({
+        type: "nativeModuleStatus",
+        name: "sabrina_reverb",
+        status: "disabled",
+        message: String(error?.message || error || "native Sabrina failed"),
+      });
+      return null;
+    }
+  }
+
+  sabrinaReverbSample(state, leftInput, rightInput, params, rateHz = sampleRate, frame = 0) {
+    const dryLeft = this.safeFilterNumber(leftInput, null);
+    const dryRight = this.safeFilterNumber(rightInput, null);
+    const dryMono = (dryLeft + dryRight) * 0.5;
+    const nativeOutput = this.nativeSabrinaReverbSample(state, leftInput, rightInput, params, rateHz, frame);
+    if (nativeOutput) {
+      return nativeOutput;
+    }
+    return { "Left Dry": dryLeft, "Mono Dry": dryMono, "Right Dry": dryRight, "Left Mix": dryLeft, "Mono Mix": dryMono, "Right Mix": dryRight };
   }
 
   sampleHoldSample(state, input, trigger, threshold) {
@@ -5142,14 +5439,18 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       } else if (node?.type === "noise") {
         const state = this.noiseSampleHoldStates.get(nodeId) || this.createNoiseSampleHoldState();
         this.noiseSampleHoldStates.set(nodeId, state);
-        value = this.noiseSampleHoldSample(
+        const raw = this.noiseSampleHoldSample(
           state,
           nodeId,
           this.readEffectiveParameter(node, "seed", 1, frame, frames, frameValues),
           this.readEffectiveParameter(node, "speed", 1, frame, frames, frameValues),
           safeRate,
-        ) *
-          this.readEffectiveParameter(node, "level", 1, frame, frames, frameValues);
+        );
+        const level = this.readEffectiveParameter(node, "level", 1, frame, frames, frameValues);
+        value = {
+          Out: raw * level,
+          Raw: raw,
+        };
       } else if (node?.type === "stereoNoise") {
         const level = this.readEffectiveParameter(node, "level", 1, frame, frames, frameValues);
         const seed = this.readEffectiveParameter(node, "seed", 1, frame, frames, frameValues);
@@ -5667,6 +5968,48 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
           },
           safeRate,
           nodeId,
+        );
+      } else if (node?.type === "reverbEffect") {
+        const state = this.reverbEffectStates.get(nodeId) || this.createSabrinaReverbState();
+        this.reverbEffectStates.set(nodeId, state);
+        const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
+        const monoInput = mixInput(nodeId, "In");
+        const leftInput = mixInput(nodeId, "Left") + monoInput;
+        const rightInput = mixInput(nodeId, "Right") + monoInput;
+        value = this.sabrinaReverbSample(
+          state,
+          leftInput,
+          rightInput,
+          {
+            delaySize: read("delaySize", 0.02),
+            diffusionAmount: read("diffusionAmount", 0.70),
+            diffusionSize: read("diffusionSize", 0.35),
+            lfoAmplitude: read("lfoAmplitude", 0.07),
+            lfoBaseSpeed: read("lfoBaseSpeed", 0.83),
+            lfoVariation: read("lfoVariation", 0.001),
+            mix: read("mix", 0.43),
+            recycle: read("recycle", 0.70),
+          },
+          safeRate,
+          frame,
+        );
+      } else if (node?.type === "pll") {
+        const state = this.pllStates.get(nodeId) || this.createPllState();
+        this.pllStates.set(nodeId, state);
+        const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
+        const cvConnected = this.inputConnections?.has?.(this.inputKey(nodeId, "VCO CV In")) ? 1 : 0;
+        value = this.pllSample(
+          state,
+          mixInput(nodeId, "Signal In"),
+          mixInput(nodeId, "VCO CV In"),
+          cvConnected,
+          {
+            range: read("range", 1),
+            offset: read("offset", 5),
+            type: read("type", 1),
+            frequ: read("frequ", 10),
+          },
+          safeRate,
         );
       } else if (node?.type === "slewLimiter") {
         const state = this.slewLimiterStates.get(nodeId) || this.createSlewLimiterState();

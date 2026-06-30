@@ -69,7 +69,7 @@ const nodeGraphModuleScopeState = {
 };
 const nodeGraphModuleScopeSettingsStorageKey = "soemdsp-sandbox.moduleScopeSettings.v1";
 const nodeGraphModuleScopeMaxBackingStoreSize = 4096;
-const nodeGraphTraceDisplayMaxZoomSeconds = 10;
+const nodeGraphTraceDisplayMaxZoomSeconds = 2;
 const nodeGraphModuleScopeDefaultSettings = Object.freeze({
   blinkLightShape: "circle",
   brightness: 1,
@@ -1098,6 +1098,12 @@ function nodeGraphVisibleModuleScopeSlots() {
   return nodeGraphModuleScopeSlots().filter(nodeGraphModuleScopeSlotIsDrawable);
 }
 
+function nodeGraphVisibleModuleScopeNodeIds() {
+  return new Set(nodeGraphVisibleModuleScopeSlots()
+    .map((slot) => String(slot?.nodeId || ""))
+    .filter(Boolean));
+}
+
 function nodeGraphModuleScopeHasDrawableSlots() {
   return nodeGraphVisibleModuleScopeSlots().length > 0;
 }
@@ -1161,13 +1167,13 @@ function nodeGraphModuleScopeCaptureMonitors(patch = nodeGraphMvp?.patch) {
 
 function nodeGraphModuleScopeHasModelDisplay() {
   return nodeGraphVisibleModuleScopeSlots().some((slot) => {
-    const displayType = nodeGraphModuleDisplayTypeForSlot(slot);
+    const renderer = nodeGraphModuleDisplayRendererForSlot(slot);
     const outputs = nodeGraphPatchNodeOutputPorts(nodeGraphModuleScopeNodeForSlot(slot));
     return slot.type === "clock" ||
       nodeGraphModuleScopeIsOscillatorType(slot.type) ||
       (["traceDisplay", "dotOscilloscope", "valueOscilloscope", "lineBurnOscilloscope"].includes(slot.type) &&
         nodeGraphModuleScopeConnectionsTo(slot.nodeId, "In").length > 0) ||
-      (["scope2d", "scope2dTrace"].includes(displayType) && (
+      (["scope2d", "scope2dTrace"].includes(renderer) && (
         (outputs.includes("X") && outputs.includes("Y")) ||
         (
           nodeGraphModuleScopeConnectionsTo(slot.nodeId, "X").length > 0 &&
@@ -2342,13 +2348,27 @@ function nodeGraphModuleScopeCapturedBufferForSlot(slot) {
   if (!nodeId) {
     return null;
   }
-  if (["scope2d", "scope2dTrace"].includes(nodeGraphModuleDisplayTypeForSlot(slot))) {
-    return nodeGraphModuleScopeCapturedScope2dBuffer(slot);
+  const renderer = nodeGraphModuleDisplayRendererForSlot(slot);
+  if (["scope2d", "scope2dTrace"].includes(renderer)) {
+    const source = nodeGraphModuleScopeSlotUsesWiredInputs(slot)
+      ? null
+      : nodeGraphModuleDisplaySourceForSlot(slot);
+    return nodeGraphModuleScopeCapturedScope2dBuffer(slot, source
+      ? { xPort: source.x, yPort: source.y }
+      : {});
   }
   if (["traceDisplay", "dotOscilloscope", "valueOscilloscope", "lineBurnOscilloscope"].includes(slot?.type)) {
     return nodeGraphModuleScopeState.buffers.get(`${nodeId}:In`) ||
       nodeGraphModuleScopeConnectedSourceBuffer(nodeId, "In") ||
       null;
+  }
+  const source = nodeGraphModuleDisplaySourceForSlot(slot);
+  const sourcePort = String(source?.value || "").trim();
+  if (sourcePort) {
+    const sourceBuffer = nodeGraphModuleScopeState.buffers.get(`${nodeId}:${sourcePort}`);
+    if (sourceBuffer?.length) {
+      return sourceBuffer;
+    }
   }
   const selectedPort = nodeGraphModuleScopeShaderOutputPortForSlot(slot);
   if (selectedPort) {
@@ -2705,8 +2725,8 @@ function nodeGraphTraceDisplaySettingsForNode(node) {
   if (!node) {
     return normalizeNodeGraphTraceDisplaySettings();
   }
-  const displayType = nodeGraphModuleDisplayTypeForType(node.type);
-  return displayType === "value"
+  const settingsSchema = nodeGraphModuleDisplaySettingsSchemaForNode(node);
+  return settingsSchema === "value"
     ? normalizeNodeGraphValueOscilloscopeSettings(node.traceDisplaySettings)
     : normalizeNodeGraphTraceDisplaySettings(node.traceDisplaySettings);
 }
@@ -2745,25 +2765,253 @@ function nodeGraphTraceDisplaySettingsEditingTraceDefaults() {
     return true;
   }
   const node = nodeGraphPatchNode(nodeGraphMvp?.traceDisplaySettingsTargetNode);
-  return nodeGraphModuleDisplayTypeForType(node?.type) === "trace";
+  return nodeGraphModuleDisplaySettingsSchemaForNode(node) === "trace";
 }
 
-function nodeGraphModuleDisplayTypeForType(type) {
+const nodeGraphDisplayModeRenderers = Object.freeze(["trace", "clock", "dot", "value", "lineBurn", "scope2d", "scope2dTrace"]);
+const nodeGraphDisplayModeSignalKinds = Object.freeze(["scalar", "xy", "buffer"]);
+
+function nodeGraphDisplayModeSettingsSchemaForRenderer(renderer) {
+  return nodeGraphDisplayModeRenderers.includes(renderer) ? renderer : "trace";
+}
+
+function normalizeNodeGraphDisplaySignal(signal, index = 0) {
+  const raw = typeof signal === "string" ? { key: signal } : (signal && typeof signal === "object" ? signal : {});
+  const key = String(raw.key || raw.name || raw.port || `signal${index + 1}`).trim();
+  if (!key) {
+    return null;
+  }
+  const kind = nodeGraphDisplayModeSignalKinds.includes(raw.kind) ? raw.kind : "scalar";
+  return {
+    key,
+    kind,
+    label: String(raw.label || key).trim() || key,
+  };
+}
+
+function nodeGraphModuleOutputPortsForType(type) {
+  const outputs = nodeGraphModuleDefinitions?.[type]?.outputs;
+  return Array.isArray(outputs)
+    ? outputs.map((output) => String(output || "").trim()).filter(Boolean)
+    : [];
+}
+
+function nodeGraphModuleDefaultScalarDisplayPort(type) {
+  const outputs = nodeGraphModuleOutputPortsForType(type);
+  return outputs.find((port) => port === "Out") ||
+    outputs.find((port) => port === "Mono") ||
+    outputs.find((port) => port === "Wave") ||
+    outputs[0] ||
+    "";
+}
+
+function nodeGraphModuleDefaultXyDisplaySource(type) {
+  const outputs = nodeGraphModuleOutputPortsForType(type);
+  const x = outputs.find((port) => port === "X") ||
+    outputs.find((port) => port === "Out X") ||
+    outputs.find((port) => port === "Left") ||
+    "";
+  const y = outputs.find((port) => port === "Y") ||
+    outputs.find((port) => port === "Out Y") ||
+    outputs.find((port) => port === "Right") ||
+    "";
+  return x && y ? { x, y } : null;
+}
+
+function nodeGraphModuleDisplaySignalsForType(type) {
+  const declared = nodeGraphModuleDefinitions?.[type]?.displaySignals;
+  const signals = Array.isArray(declared)
+    ? declared.map(normalizeNodeGraphDisplaySignal).filter(Boolean)
+    : nodeGraphModuleOutputPortsForType(type).map((port, index) => normalizeNodeGraphDisplaySignal({ key: port, label: port, kind: "scalar" }, index)).filter(Boolean);
+  const xy = nodeGraphModuleDefaultXyDisplaySource(type);
+  if (xy && !signals.some((signal) => signal.key === "X/Y")) {
+    signals.push({ key: "X/Y", kind: "xy", label: "X/Y" });
+  }
+  return signals;
+}
+
+function normalizeNodeGraphDisplayMode(mode, type = "", index = 0) {
+  const raw = mode && typeof mode === "object" ? mode : {};
+  const renderer = nodeGraphDisplayModeRenderers.includes(raw.renderer)
+    ? raw.renderer
+    : nodeGraphModuleDeclaredDisplayTypeForType(type);
+  if (renderer === "legacy") {
+    return null;
+  }
+  const key = String(raw.key || raw.name || `${renderer}${index + 1}`).trim();
+  if (!key) {
+    return null;
+  }
+  const source = raw.source && typeof raw.source === "object"
+    ? { ...raw.source }
+    : nodeGraphModuleImplicitDisplayModeSource(type, renderer);
+  return {
+    key,
+    label: String(raw.label || key).trim() || key,
+    renderer,
+    settingsSchema: nodeGraphDisplayModeSettingsSchemaForRenderer(raw.settingsSchema || renderer),
+    source,
+  };
+}
+
+function nodeGraphModuleImplicitDisplayModeSource(type, renderer) {
+  if (["scope2d", "scope2dTrace"].includes(renderer)) {
+    return nodeGraphModuleDefaultXyDisplaySource(type) || { value: nodeGraphModuleDefaultScalarDisplayPort(type) };
+  }
+  return { value: nodeGraphModuleDefaultScalarDisplayPort(type) };
+}
+
+function nodeGraphModuleImplicitDisplayModeForType(type) {
+  const renderer = nodeGraphModuleDeclaredDisplayTypeForType(type);
+  if (renderer === "legacy") {
+    return null;
+  }
+  return normalizeNodeGraphDisplayMode({
+    key: renderer,
+    label: nodeGraphDisplayModeSettingsSchemaForRenderer(renderer),
+    renderer,
+    settingsSchema: nodeGraphDisplayModeSettingsSchemaForRenderer(renderer),
+    source: nodeGraphModuleImplicitDisplayModeSource(type, renderer),
+  }, type, 0);
+}
+
+function nodeGraphModuleDisplayModesForType(type) {
+  const declared = nodeGraphModuleDefinitions?.[type]?.displayModes;
+  const modes = Array.isArray(declared)
+    ? declared.map((mode, index) => normalizeNodeGraphDisplayMode(mode, type, index)).filter(Boolean)
+    : [];
+  if (modes.length) {
+    return modes;
+  }
+  const implicit = nodeGraphModuleImplicitDisplayModeForType(type);
+  return implicit ? [implicit] : [];
+}
+
+function nodeGraphModuleDefaultDisplayModeKeyForType(type) {
+  const declared = String(nodeGraphModuleDefinitions?.[type]?.defaultDisplayMode || "").trim();
+  const modes = nodeGraphModuleDisplayModesForType(type);
+  return modes.some((mode) => mode.key === declared)
+    ? declared
+    : (modes[0]?.key || "");
+}
+
+function nodeGraphModuleSelectedDisplayMode(node) {
+  const modes = nodeGraphModuleDisplayModesForType(node?.type);
+  const selected = String(node?.ui?.displayModeKey || nodeGraphModuleDefaultDisplayModeKeyForType(node?.type) || "").trim();
+  return modes.find((mode) => mode.key === selected) || modes[0] || null;
+}
+
+function nodeGraphModuleDisplayRendererForNode(node) {
+  return nodeGraphModuleSelectedDisplayMode(node)?.renderer || nodeGraphModuleDisplayTypeForType(node?.type);
+}
+
+function nodeGraphModuleDisplaySettingsSchemaForNode(node) {
+  return nodeGraphModuleSelectedDisplayMode(node)?.settingsSchema || nodeGraphDisplayModeSettingsSchemaForRenderer(nodeGraphModuleDisplayRendererForNode(node));
+}
+
+function nodeGraphModuleDisplayRendererForSlot(slot) {
+  const node = nodeGraphModuleScopeNodeForSlot(slot);
+  return node
+    ? nodeGraphModuleDisplayRendererForNode(node)
+    : nodeGraphModuleDisplayTypeForType(slot?.type);
+}
+
+function nodeGraphModuleDisplaySettingsSchemaForSlot(slot) {
+  const node = nodeGraphModuleScopeNodeForSlot(slot);
+  return node
+    ? nodeGraphModuleDisplaySettingsSchemaForNode(node)
+    : nodeGraphDisplayModeSettingsSchemaForRenderer(nodeGraphModuleDisplayRendererForSlot(slot));
+}
+
+function nodeGraphModuleDeclaredDisplayTypeForType(type) {
   const declared = nodeGraphModuleDefinitions?.[type]?.displayType;
-  if (["trace", "clock", "dot", "value", "lineBurn", "scope2d", "scope2dTrace"].includes(declared)) {
+  if (nodeGraphDisplayModeRenderers.includes(declared)) {
     return declared;
   }
-  if (nodeGraphModuleScopeIsOscillatorType(type)) {
-    return "trace";
-  }
-  if (type === "traceDisplay" || type === "audioPlayer") {
+  if (nodeGraphModuleDefinitions?.[type]) {
     return "trace";
   }
   return "legacy";
 }
 
+function nodeGraphModuleDisplayTypeForType(type) {
+  return nodeGraphModuleDisplayModesForType(type)[0]?.renderer || nodeGraphModuleDeclaredDisplayTypeForType(type);
+}
+
 function nodeGraphModuleDisplayTypeForSlot(slot) {
-  return nodeGraphModuleDisplayTypeForType(slot?.type);
+  return nodeGraphModuleDisplayRendererForSlot(slot);
+}
+
+function nodeGraphModuleScopeSlotUsesWiredInputs(slot) {
+  return ["traceDisplay", "dotOscilloscope", "valueOscilloscope", "lineBurnOscilloscope", "scope2d", "scope2dTrace", "visualOscilloscope"].includes(slot?.type);
+}
+
+function nodeGraphModuleDisplaySourceForSlot(slot) {
+  return nodeGraphModuleSelectedDisplayMode(nodeGraphModuleScopeNodeForSlot(slot))?.source || null;
+}
+
+function nodeGraphWirelessVideoCatalogNode(node) {
+  if (!node?.id || !nodeGraphModuleDefinitions?.[node.type]) {
+    return null;
+  }
+  const modes = nodeGraphModuleDisplayModesForType(node.type);
+  const signals = nodeGraphModuleDisplaySignalsForType(node.type);
+  if (!modes.length && !signals.length) {
+    return null;
+  }
+  const selectedMode = nodeGraphModuleSelectedDisplayMode(node);
+  return {
+    id: String(node.id),
+    modes: modes.map((mode) => ({
+      key: mode.key,
+      kind: mode.kind,
+      label: mode.label,
+      renderer: mode.renderer,
+      schema: mode.settingsSchema,
+      settingsSchema: mode.settingsSchema,
+      source: mode.source && typeof mode.source === "object" ? { ...mode.source } : {},
+    })),
+    selectedModeKey: selectedMode?.key || "",
+    signals: signals.map((signal) => ({
+      key: signal.key,
+      kind: signal.kind,
+      label: signal.label,
+      port: signal.port,
+    })),
+    title: typeof nodeGraphPatchNodeTitle === "function"
+      ? nodeGraphPatchNodeTitle(node)
+      : nodeGraphNodeLabels?.[node.type] || String(node.type || ""),
+    type: String(node.type || ""),
+  };
+}
+
+function nodeGraphWirelessVideoCatalog(options = {}) {
+  const includeHidden = Boolean(options.includeHidden);
+  const nodes = Array.isArray(nodeGraphMvp?.patch?.nodes) ? nodeGraphMvp.patch.nodes : [];
+  return nodes
+    .filter((node) => includeHidden || !normalizeNodeGraphPatchNodeUi(node.ui).oscilloscopeHidden)
+    .map((node) => nodeGraphWirelessVideoCatalogNode(node))
+    .filter(Boolean);
+}
+
+function nodeGraphCanvasVideoApi() {
+  return Object.freeze({
+    list(options = {}) {
+      return nodeGraphWirelessVideoCatalog(options).map((entry) => ({
+        ...entry,
+        modes: entry.modes.map((mode) => ({
+          ...mode,
+          source: mode.source && typeof mode.source === "object" ? { ...mode.source } : {},
+        })),
+        signals: entry.signals.map((signal) => ({ ...signal })),
+      }));
+    },
+  });
+}
+
+if (typeof window !== "undefined") {
+  window.nodeGraphCanvasVideoApi = nodeGraphCanvasVideoApi;
+  window.nodeGraphWirelessVideoCatalog = nodeGraphWirelessVideoCatalog;
 }
 
 function nodeGraphModuleDisplayTypeHasLocalSettings(displayType) {
@@ -2771,7 +3019,7 @@ function nodeGraphModuleDisplayTypeHasLocalSettings(displayType) {
 }
 
 function nodeGraphNodeHasLocalDisplaySettings(node) {
-  return Boolean(node && nodeGraphModuleDisplayTypeHasLocalSettings(nodeGraphModuleDisplayTypeForType(node.type)));
+  return Boolean(node && nodeGraphModuleDisplayTypeHasLocalSettings(nodeGraphModuleDisplaySettingsSchemaForNode(node)));
 }
 
 function nodeGraphNodeCanOpenDisplaySettings(node) {
@@ -2782,7 +3030,7 @@ function nodeGraphNodeCanOpenDisplaySettings(node) {
 }
 
 function nodeGraphTraceDisplaySettingsForSlot(slot) {
-  if (nodeGraphModuleDisplayTypeForSlot(slot) === "trace") {
+  if (nodeGraphModuleDisplaySettingsSchemaForSlot(slot) === "trace") {
     return nodeGraphGlobalTraceSettings();
   }
   return nodeGraphTraceDisplaySettingsForNode(nodeGraphModuleScopeNodeForSlot(slot));
@@ -3095,30 +3343,40 @@ function nodeGraphModuleScopeOfflineConnectionSum(context, connections, localTim
 
 function nodeGraphModuleScopeDisplayBuffer(slot, capturedBuffer = null) {
   let buffer = null;
+  const renderer = nodeGraphModuleDisplayRendererForSlot(slot);
   if (slot?.type === "noise" && capturedBuffer) {
     buffer = capturedBuffer;
   } else if (slot?.type === "stereoNoise") {
     buffer = nodeGraphModuleScopeCapturedStereoNoiseXyBuffer(slot, capturedBuffer) || capturedBuffer;
-  } else if (nodeGraphModuleDisplayTypeForSlot(slot) === "scope2dTrace") {
+  } else if (renderer === "scope2dTrace") {
     const settings = nodeGraphScope2dTraceSettingsForNode(nodeGraphModuleScopeNodeForSlot(slot));
+    const source = nodeGraphModuleScopeSlotUsesWiredInputs(slot)
+      ? null
+      : nodeGraphModuleDisplaySourceForSlot(slot);
     buffer = nodeGraphModuleScopeCapturedScope2dBuffer(slot, {
       historySeconds: settings.historySeconds,
+      ...(source ? { xPort: source.x, yPort: source.y } : {}),
     }) || capturedBuffer;
-  } else if (nodeGraphModuleDisplayTypeForSlot(slot) === "scope2d") {
-    buffer = nodeGraphModuleScopeCapturedScope2dBuffer(slot) || capturedBuffer;
+  } else if (renderer === "scope2d") {
+    const source = nodeGraphModuleScopeSlotUsesWiredInputs(slot)
+      ? null
+      : nodeGraphModuleDisplaySourceForSlot(slot);
+    buffer = nodeGraphModuleScopeCapturedScope2dBuffer(slot, source
+      ? { xPort: source.x, yPort: source.y }
+      : {}) || capturedBuffer;
   } else if (slot?.type === "valueOscilloscope") {
     buffer = capturedBuffer;
   } else if (slot?.type === "clock") {
     buffer = nodeGraphModuleScopeDotOscilloscopeLightBuffer(capturedBuffer) ||
       nodeGraphModuleScopeOfflineClockBlinkBuffer(slot, capturedBuffer);
-  } else if (nodeGraphModuleDisplayTypeForSlot(slot) === "dot") {
+  } else if (renderer === "dot") {
     buffer = nodeGraphModuleScopeDotOscilloscopeLightBuffer(capturedBuffer);
   } else if (slot?.type === "lineBurnOscilloscope") {
     buffer = prepareNodeGraphTraceDisplayBuffer(
       capturedBuffer,
       nodeGraphLineBurnSettingsForNode(nodeGraphModuleScopeNodeForSlot(slot)),
     );
-  } else if (nodeGraphModuleDisplayTypeForSlot(slot) === "trace") {
+  } else if (renderer === "trace") {
     buffer = prepareNodeGraphTraceDisplayBuffer(
       capturedBuffer,
       nodeGraphTraceDisplaySettingsForSlot(slot),
@@ -3362,6 +3620,13 @@ function nodeGraphTraceDisplaySettingsElement() {
       <div id="nodeTraceDisplaySettingsTarget" class="node-trace-display-settings-target">No module</div>
       <div class="metadata-field-actions" aria-label="Trace Display drawing actions">
         <button id="nodeTraceDisplaySettingsDefaults" type="button">Defaults</button>
+      </div>
+      <div class="metadata-section-title node-trace-display-mode-title">Mode</div>
+      <div class="metadata-field-section node-trace-display-mode-section">
+        <label>
+          <span>Mode</span>
+          <select id="nodeTraceDisplayModeSelect" data-trace-display-mode-select></select>
+        </label>
       </div>
       <div class="metadata-section-title node-trace-display-trace-title">Trace</div>
       <div class="metadata-field-section node-trace-display-trace-section">
@@ -3622,17 +3887,49 @@ function nodeGraphTraceDisplaySettingsTargetLabel(node) {
     : (nodeGraphNodeLabels?.[node.type] || "Module");
 }
 
+function setNodeGraphTraceDisplayModeSelectorVisible(popover, visible) {
+  if (!popover) {
+    return;
+  }
+  for (const element of popover.querySelectorAll(".node-trace-display-mode-title, .node-trace-display-mode-section")) {
+    element.hidden = !visible;
+  }
+}
+
+function syncNodeGraphTraceDisplayModeSelector(node = null) {
+  const popover = document.getElementById("nodeTraceDisplaySettingsPopover");
+  const select = document.getElementById("nodeTraceDisplayModeSelect");
+  if (!popover || !select || !node?.type || nodeGraphTraceDisplaySettingsEditingGlobal()) {
+    setNodeGraphTraceDisplayModeSelectorVisible(popover, false);
+    return;
+  }
+  const modes = nodeGraphModuleDisplayModesForType(node.type);
+  if (modes.length <= 1) {
+    setNodeGraphTraceDisplayModeSelectorVisible(popover, false);
+    return;
+  }
+  const selectedMode = nodeGraphModuleSelectedDisplayMode(node);
+  const selectedKey = selectedMode?.key || nodeGraphModuleDefaultDisplayModeKeyForType(node.type);
+  select.innerHTML = modes
+    .map((mode) => `<option value="${String(mode.key).replace(/"/g, "&quot;")}">${String(mode.label || mode.key)}</option>`)
+    .join("");
+  select.value = selectedKey;
+  select.dataset.displayModeTargetNode = String(node.id || "");
+  setNodeGraphTraceDisplayModeSelectorVisible(popover, true);
+}
+
 function setNodeGraphTraceDisplaySettingsFormType(node = null) {
   const popover = document.getElementById("nodeTraceDisplaySettingsPopover");
   if (!popover) {
     return;
   }
-  const displayType = node
-    ? nodeGraphModuleDisplayTypeForType(node.type)
+  const settingsSchema = node
+    ? nodeGraphModuleDisplaySettingsSchemaForNode(node)
     : "";
-  const formType = displayType || "trace";
+  const formType = settingsSchema || "trace";
   popover.dataset.displaySettingsType = formType;
   popover.dataset.displaySettingsTargetNode = node?.id ? String(node.id) : "";
+  syncNodeGraphTraceDisplayModeSelector(node);
   const activeFields = nodeGraphTraceDisplayActiveControlSet("fields", formType);
   const activeColors = nodeGraphTraceDisplayActiveControlSet("colors", formType);
   const activeToggles = nodeGraphTraceDisplayActiveControlSet("toggles", formType);
@@ -3782,20 +4079,20 @@ function nodeGraphTraceDisplayCurrentSettingsForFormType(formType = nodeGraphTra
   if (!nodeGraphNodeCanOpenDisplaySettings(node)) {
     return nodeGraphDisplaySettingsDefaultsForFormType(formType);
   }
-  const displayType = nodeGraphModuleDisplayTypeForType(node.type);
-  if (displayType === "dot") {
+  const settingsSchema = nodeGraphModuleDisplaySettingsSchemaForNode(node);
+  if (settingsSchema === "dot") {
     return normalizeNodeGraphZeroDBurnSettings(node.zeroDBurnSettings);
   }
-  if (displayType === "lineBurn") {
+  if (settingsSchema === "lineBurn") {
     return normalizeNodeGraphLineBurnSettings(node.traceDisplaySettings);
   }
-  if (displayType === "value") {
+  if (settingsSchema === "value") {
     return normalizeNodeGraphValueOscilloscopeSettings(node.traceDisplaySettings);
   }
-  if (displayType === "scope2d") {
+  if (settingsSchema === "scope2d") {
     return normalizeNodeGraphScope2dSettings(node.traceDisplaySettings);
   }
-  if (displayType === "scope2dTrace") {
+  if (settingsSchema === "scope2dTrace") {
     return normalizeNodeGraphScope2dTraceSettings(node.traceDisplaySettings);
   }
   return nodeGraphGlobalTraceSettings();
@@ -4248,6 +4545,74 @@ function assignNodeGraphTypedDisplaySettingsEverywhere(node, displayType, settin
   return normalized;
 }
 
+function assignNodeGraphDisplayModeKeyToNode(node, modeKey) {
+  if (!node) {
+    return null;
+  }
+  const modes = nodeGraphModuleDisplayModesForType(node.type);
+  const safeKey = String(modeKey || "").trim();
+  const selectedMode = modes.find((mode) => mode.key === safeKey) || modes[0] || null;
+  if (!selectedMode) {
+    return null;
+  }
+  node.ui = {
+    ...normalizeNodeGraphPatchNodeUi(node.ui),
+    displayModeKey: selectedMode.key,
+  };
+  return selectedMode;
+}
+
+function assignNodeGraphDisplayModeKeyEverywhere(node, modeKey) {
+  if (!node?.id) {
+    return null;
+  }
+  const selectedMode = assignNodeGraphDisplayModeKeyToNode(node, modeKey);
+  if (!selectedMode) {
+    return null;
+  }
+  const patchNode = nodeGraphMvp.patch?.nodes?.find((candidate) => candidate.id === node.id);
+  if (patchNode && patchNode !== node) {
+    assignNodeGraphDisplayModeKeyToNode(patchNode, selectedMode.key);
+  }
+  const workingNode = nodeGraphMvp.workingPatch?.nodes?.find((candidate) => candidate.id === node.id);
+  if (workingNode && workingNode !== node && workingNode !== patchNode) {
+    assignNodeGraphDisplayModeKeyToNode(workingNode, selectedMode.key);
+  }
+  return selectedMode;
+}
+
+function changeNodeGraphTraceDisplayMode(event) {
+  const select = event?.target?.closest?.("[data-trace-display-mode-select]");
+  if (!select) {
+    return false;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  const node = nodeGraphPatchNode(nodeGraphTraceDisplaySettingsTargetNodeId());
+  if (!nodeGraphNodeCanOpenDisplaySettings(node)) {
+    return true;
+  }
+  const selectedMode = assignNodeGraphDisplayModeKeyEverywhere(node, select.value);
+  if (!selectedMode) {
+    return true;
+  }
+  nodeGraphMvp.patchDirtyState = "edited";
+  setNodeGraphTraceDisplaySettingsFormType(node);
+  writeNodeGraphTraceDisplaySettingsForm(nodeGraphTraceDisplayCurrentSettingsForFormType(selectedMode.settingsSchema));
+  persistNodeGraphTraceDisplaySettingsSoon("immediate");
+  if (typeof renderNodeGraphExecutionPlanDebug === "function") {
+    renderNodeGraphExecutionPlanDebug();
+  }
+  if (typeof syncNodeGraphCurrentSavedPatchHeader === "function") {
+    syncNodeGraphCurrentSavedPatchHeader();
+  }
+  if (typeof recordNodeGraphHistory === "function") {
+    recordNodeGraphHistory();
+  }
+  scheduleNodeGraphModuleScopeDraw();
+  return true;
+}
+
 let nodeGraphTraceDisplaySettingsPersistTimer = 0;
 
 function persistNodeGraphTraceDisplaySettingsSoon(persistMode = "debounce") {
@@ -4288,8 +4653,8 @@ function applyNodeGraphTraceDisplaySettingsForm(options = {}) {
     if (!nodeGraphNodeCanOpenDisplaySettings(node)) {
       return null;
     }
-    const displayType = nodeGraphModuleDisplayTypeForType(node.type);
-    assignNodeGraphTypedDisplaySettingsEverywhere(node, displayType, settings);
+    const settingsSchema = nodeGraphModuleDisplaySettingsSchemaForNode(node);
+    assignNodeGraphTypedDisplaySettingsEverywhere(node, settingsSchema, settings);
   }
   nodeGraphMvp.patchDirtyState = "edited";
   persistNodeGraphTraceDisplaySettingsSoon(options.persist || "debounce");
@@ -4328,6 +4693,9 @@ function updateNodeGraphTraceDisplaySettingsLive() {
 }
 
 function commitNodeGraphTraceDisplaySettingsChange(event) {
+  if (changeNodeGraphTraceDisplayMode(event)) {
+    return;
+  }
   if (nodeGraphTraceDisplayFieldFromTarget(event?.target)) {
     return;
   }
@@ -4438,21 +4806,9 @@ function restoreNodeGraphTraceDisplaySettingsWindowFromState(state = {}) {
     return;
   }
   nodeGraphMvp.traceDisplaySettingsTargetNode = node.id;
-  const displayType = nodeGraphModuleDisplayTypeForType(node.type);
-  const settings = displayType === "dot"
-    ? normalizeNodeGraphZeroDBurnSettings(node.zeroDBurnSettings)
-    : displayType === "lineBurn"
-      ? normalizeNodeGraphLineBurnSettings(node.traceDisplaySettings)
-      : displayType === "value"
-        ? normalizeNodeGraphValueOscilloscopeSettings(node.traceDisplaySettings)
-        : displayType === "scope2d"
-          ? normalizeNodeGraphScope2dSettings(node.traceDisplaySettings)
-          : displayType === "scope2dTrace"
-            ? normalizeNodeGraphScope2dTraceSettings(node.traceDisplaySettings)
-          : nodeGraphGlobalTraceSettings();
   setNodeGraphTraceDisplaySettingsHeader("DISPLAY", "Settings", nodeGraphTraceDisplaySettingsTargetLabel(node));
   setNodeGraphTraceDisplaySettingsFormType(node);
-  writeNodeGraphTraceDisplaySettingsForm(settings);
+  writeNodeGraphTraceDisplaySettingsForm(nodeGraphTraceDisplayCurrentSettingsForFormType());
 }
 
 function syncOpenNodeGraphTraceDisplaySettingsToNode(nodeId) {
@@ -4654,18 +5010,6 @@ function openNodeGraphTraceDisplaySettings(nodeId, event = {}) {
   const popover = nodeGraphTraceDisplaySettingsElement();
   bindNodeGraphTraceDisplaySettingsEvents(popover);
   nodeGraphMvp.traceDisplaySettingsTargetNode = node.id;
-  const displayType = nodeGraphModuleDisplayTypeForType(node.type);
-  const settings = displayType === "dot"
-    ? normalizeNodeGraphZeroDBurnSettings(node.zeroDBurnSettings)
-    : displayType === "lineBurn"
-      ? normalizeNodeGraphLineBurnSettings(node.traceDisplaySettings)
-      : displayType === "value"
-        ? normalizeNodeGraphValueOscilloscopeSettings(node.traceDisplaySettings)
-        : displayType === "scope2d"
-          ? normalizeNodeGraphScope2dSettings(node.traceDisplaySettings)
-          : displayType === "scope2dTrace"
-            ? normalizeNodeGraphScope2dTraceSettings(node.traceDisplaySettings)
-          : nodeGraphGlobalTraceSettings();
   nodeGraphMvp.sharedInspectorActive = "traceDisplaySettings";
   setNodeGraphTraceDisplaySettingsHeader(
     "DISPLAY",
@@ -4673,7 +5017,7 @@ function openNodeGraphTraceDisplaySettings(nodeId, event = {}) {
     nodeGraphTraceDisplaySettingsTargetLabel(node),
   );
   setNodeGraphTraceDisplaySettingsFormType(node);
-  writeNodeGraphTraceDisplaySettingsForm(settings);
+  writeNodeGraphTraceDisplaySettingsForm(nodeGraphTraceDisplayCurrentSettingsForFormType());
   const sharedInspectorState = typeof normalizeNodeGraphSharedInspectorWindowState === "function"
     ? normalizeNodeGraphSharedInspectorWindowState(nodeGraphMvp.sharedInspectorWindowState, nodeGraphMvp.workspaceWindowStates)
     : (nodeGraphMvp.sharedInspectorWindowState || {});
@@ -4746,13 +5090,15 @@ function nodeGraphScopeContiguousSampleCount(buffer) {
 }
 
 function nodeGraphModuleScopeCapturedScope2dBuffer(slot, options = {}) {
-  if (!["scope2d", "scope2dTrace"].includes(nodeGraphModuleDisplayTypeForSlot(slot))) {
+  if (!["scope2d", "scope2dTrace"].includes(nodeGraphModuleDisplayRendererForSlot(slot))) {
     return null;
   }
-  const xBuffer = nodeGraphModuleScopeState.buffers.get(`${slot.nodeId}:X`) ||
-    nodeGraphModuleScopeConnectedSourceBuffer(slot.nodeId, "X");
-  const yBuffer = nodeGraphModuleScopeState.buffers.get(`${slot.nodeId}:Y`) ||
-    nodeGraphModuleScopeConnectedSourceBuffer(slot.nodeId, "Y");
+  const xPort = String(options.xPort || "X").trim() || "X";
+  const yPort = String(options.yPort || "Y").trim() || "Y";
+  const xBuffer = nodeGraphModuleScopeState.buffers.get(`${slot.nodeId}:${xPort}`) ||
+    nodeGraphModuleScopeConnectedSourceBuffer(slot.nodeId, xPort);
+  const yBuffer = nodeGraphModuleScopeState.buffers.get(`${slot.nodeId}:${yPort}`) ||
+    nodeGraphModuleScopeConnectedSourceBuffer(slot.nodeId, yPort);
   const length = Math.min(xBuffer?.length || 0, yBuffer?.length || 0);
   if (length <= 0) {
     return null;
@@ -4995,7 +5341,10 @@ function captureNodeGraphLiveModuleScopeFrame(runtime, sampleRate) {
   }
   const interval = Math.max(1, Math.floor((Number(sampleRate) || nodeGraphMvp.sampleRate || 44100) / 30));
   runtime.scopeBuffers ||= new Map();
-  for (const nodeId of runtime.order || runtime.nodeOutputs.keys()) {
+  const visibleScopeNodeIds = Array.isArray(runtime.scopeCaptureNodeIds) && runtime.scopeCaptureNodeIds.length
+    ? new Set(runtime.scopeCaptureNodeIds.map((nodeId) => String(nodeId || "")).filter(Boolean))
+    : nodeGraphVisibleModuleScopeNodeIds();
+  for (const nodeId of visibleScopeNodeIds) {
     if (!runtime.nodeOutputs.has(nodeId)) {
       continue;
     }
@@ -5004,6 +5353,9 @@ function captureNodeGraphLiveModuleScopeFrame(runtime, sampleRate) {
   for (const sink of runtime.visualSinks || []) {
     const nodeId = String(sink?.nodeId || "");
     if (!nodeId) {
+      continue;
+    }
+    if (!visibleScopeNodeIds.has(nodeId)) {
       continue;
     }
     let value = 0;
@@ -5709,7 +6061,7 @@ function nodeGraphTraceDisplayBufferView(buffer, slot) {
 
 function nodeGraphModuleScopeBufferView(buffer, slot) {
   const settings = nodeGraphModuleScopeEffectiveSettingForSlot(slot);
-  if (nodeGraphModuleDisplayTypeForSlot(slot) === "trace") {
+  if (nodeGraphModuleDisplayRendererForSlot(slot) === "trace") {
     return nodeGraphTraceDisplayBufferView(buffer, slot);
   }
   if (buffer?.nodeGraphScopeUseFullWindow) {
@@ -6368,7 +6720,7 @@ function nodeGraphModuleScopeDiscontinuitySkipSamplesForSlot(slot, buffer) {
   if (buffer?.nodeGraphScopeDisableDiscontinuitySkip === true) {
     return 0;
   }
-  if (nodeGraphModuleDisplayTypeForSlot(slot) === "trace") {
+  if (nodeGraphModuleDisplayRendererForSlot(slot) === "trace") {
     return normalizeNodeGraphTraceDisplaySkipSamples(
       buffer?.nodeGraphScopeDiscontinuitySkipSamples ?? nodeGraphTraceDisplaySettingsForSlot(slot).skipSamples,
     );
@@ -6391,7 +6743,7 @@ function nodeGraphModuleScopeDiscontinuitySkipSamplesForPoints(points) {
 }
 
 function nodeGraphModuleScopeTraceEdgePaddingRatio(slot, rect) {
-  if (nodeGraphModuleDisplayTypeForSlot(slot) !== "trace") {
+  if (nodeGraphModuleDisplayRendererForSlot(slot) !== "trace") {
     return 0.08;
   }
   const settings = nodeGraphTraceDisplaySettingsForSlot(slot);
@@ -6417,7 +6769,7 @@ function nodeGraphModuleScopeTraceEdgePaddingRatio(slot, rect) {
 }
 
 function nodeGraphModuleScopeTraceHalfHeightRatio(slot, buffer, rect = null) {
-  if (nodeGraphModuleDisplayTypeForSlot(slot) !== "trace") {
+  if (nodeGraphModuleDisplayRendererForSlot(slot) !== "trace") {
     return 0.42;
   }
   return clampNodeSliderValue(0.5 - nodeGraphModuleScopeTraceEdgePaddingRatio(slot, rect), 0.24, 0.5);
@@ -6449,7 +6801,7 @@ function nodeGraphModuleScopeBufferSegmentPoints(
   if (drawSpan <= 0.001) {
     return points;
   }
-  const traceDisplayMode = nodeGraphModuleDisplayTypeForSlot(slot) === "trace";
+  const traceDisplayMode = nodeGraphModuleDisplayRendererForSlot(slot) === "trace";
   const timing = traceDisplayMode ? options.traceTiming : null;
   const bufferViewStartMs = timing ? nodeGraphModuleScopeNowMs() : 0;
   const view = nodeGraphModuleScopeBufferView(buffer, slot);
@@ -7299,7 +7651,7 @@ function drawNodeGraphModuleScopeBufferWebGl(renderer, rect, buffer, pixelRatio,
     fixedDotSizePx || (traceThicknessPx * dotSizeScale),
   );
   const safeDotThicknessPx = Math.min(512, dotThicknessPx * pixelRatio);
-  if (nodeGraphModuleDisplayTypeForSlot(slot) === "trace" && !buffer?.nodeGraphScopeXy && !buffer?.nodeGraphScopeSpectrum) {
+  if (nodeGraphModuleDisplayRendererForSlot(slot) === "trace" && !buffer?.nodeGraphScopeXy && !buffer?.nodeGraphScopeSpectrum) {
     const traceGeometry = buildNodeGraphTraceDisplayVertices(buffer, rect, canvas, pixelRatio, slot, options);
     if (!traceGeometry) {
       return;
@@ -8002,7 +8354,7 @@ function nodeGraphModuleScopeScreenItems(workspace, canvas, pixelRatio) {
       );
       const entry = {
         bufferLength: buffer?.length || 0,
-        displayType: nodeGraphModuleDisplayTypeForSlot(slot),
+        displayType: nodeGraphModuleDisplayRendererForSlot(slot),
         nodeId: slot.nodeId,
         rectHeight: 0,
         rectWidth: 0,
@@ -8074,7 +8426,7 @@ function nodeGraphModuleScopeTraceDisplayFrameUnchanged(visibleItems) {
   let traceCount = 0;
   for (const item of visibleItems) {
     const slot = item?.slot;
-    if (nodeGraphModuleDisplayTypeForSlot(slot) !== "trace") {
+    if (nodeGraphModuleDisplayRendererForSlot(slot) !== "trace") {
       return false;
     }
     traceCount += 1;
@@ -9737,28 +10089,28 @@ function drawNodeGraphScope2dItem(renderer, item, pixelRatio) {
 }
 
 function drawNodeGraphModuleScopeTypedItem(renderer, item, pixelRatio) {
-  const displayType = nodeGraphModuleDisplayTypeForSlot(item?.slot);
-  if (displayType === "trace") {
+  const displayRenderer = nodeGraphModuleDisplayRendererForSlot(item?.slot);
+  if (displayRenderer === "trace") {
     drawNodeGraphTraceDisplayItem(renderer, item, pixelRatio);
     return true;
   }
-  if (displayType === "dot") {
+  if (displayRenderer === "dot") {
     drawNodeGraphDotOscilloscopeItem(renderer, item, pixelRatio);
     return true;
   }
-  if (displayType === "value") {
+  if (displayRenderer === "value") {
     drawNodeGraphValueOscilloscopeItem(renderer, item, pixelRatio);
     return true;
   }
-  if (displayType === "lineBurn") {
+  if (displayRenderer === "lineBurn") {
     drawNodeGraphLineBurnOscilloscopeItem(renderer, item, pixelRatio);
     return true;
   }
-  if (displayType === "scope2dTrace") {
+  if (displayRenderer === "scope2dTrace") {
     drawNodeGraphScope2dTraceItem(renderer, item, pixelRatio);
     return true;
   }
-  if (displayType === "scope2d") {
+  if (displayRenderer === "scope2d") {
     drawNodeGraphScope2dItem(renderer, item, pixelRatio);
     return true;
   }
@@ -9867,7 +10219,7 @@ function drawNodeGraphModuleScopes() {
       const slot = item?.slot;
       markNodeGraphModuleScopeDebugError(error);
       console.error("node graph typed module scope draw failed", {
-        displayType: nodeGraphModuleDisplayTypeForSlot(slot),
+        displayType: nodeGraphModuleDisplayRendererForSlot(slot),
         error,
         nodeId: slot?.nodeId,
         type: slot?.type,

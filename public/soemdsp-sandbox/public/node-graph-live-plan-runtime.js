@@ -258,6 +258,8 @@ function createNodeGraphLiveRuntime(plan) {
   const pluckEnvelopeStates = new Map();
   const randomClockStates = new Map();
   const randomWalkStates = new Map();
+  const reverbEffectStates = new Map();
+  const pllStates = new Map();
   const sampleHoldStates = new Map();
   const samplePlaybackStates = new Map();
   const samples = new Map((plan.samples || []).map((sample) => [sample.id, sample]));
@@ -318,6 +320,12 @@ function createNodeGraphLiveRuntime(plan) {
     }
     if (node.type === "delayEffect") {
       delayEffectStates.set(node.id, createNodeGraphDelayEffectState());
+    }
+    if (node.type === "reverbEffect") {
+      reverbEffectStates.set(node.id, createNodeGraphSabrinaReverbState());
+    }
+    if (node.type === "pll") {
+      pllStates.set(node.id, createNodeGraphPllState());
     }
     if (node.type === "randomClock") {
       randomClockStates.set(node.id, createNodeGraphRandomClockState());
@@ -437,6 +445,8 @@ function createNodeGraphLiveRuntime(plan) {
     randomClockStates,
     highpassStates,
     lowpassStates,
+    reverbEffectStates,
+    pllStates,
     order: [...(plan.order || [])],
     outputNode: plan.outputNode || "output",
     patchCommandStates,
@@ -551,6 +561,12 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   if (!runtime.delayEffectStates) {
     runtime.delayEffectStates = new Map();
   }
+  if (!runtime.reverbEffectStates) {
+    runtime.reverbEffectStates = new Map();
+  }
+  if (!runtime.pllStates) {
+    runtime.pllStates = new Map();
+  }
   if (!runtime.sampleHoldStates) {
     runtime.sampleHoldStates = new Map();
   }
@@ -662,6 +678,12 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     }
     if (node.type === "delayEffect" && !runtime.delayEffectStates.has(node.id)) {
       runtime.delayEffectStates.set(node.id, createNodeGraphDelayEffectState());
+    }
+    if (node.type === "reverbEffect" && !runtime.reverbEffectStates.has(node.id)) {
+      runtime.reverbEffectStates.set(node.id, createNodeGraphSabrinaReverbState());
+    }
+    if (node.type === "pll" && !runtime.pllStates.has(node.id)) {
+      runtime.pllStates.set(node.id, createNodeGraphPllState());
     }
     if (node.type === "randomClock" && !runtime.randomClockStates.has(node.id)) {
       runtime.randomClockStates.set(node.id, createNodeGraphRandomClockState());
@@ -856,6 +878,16 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
       runtime.delayEffectStates.delete(id);
     }
   }
+  for (const id of [...runtime.reverbEffectStates.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.reverbEffectStates.delete(id);
+    }
+  }
+  for (const id of [...(runtime.pllStates?.keys() || [])]) {
+    if (!nodeIds.has(id)) {
+      runtime.pllStates.delete(id);
+    }
+  }
   for (const id of [...runtime.sampleHoldStates.keys()]) {
     if (!nodeIds.has(id)) {
       runtime.sampleHoldStates.delete(id);
@@ -941,6 +973,22 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     if (!nodeIds.has(nodeId) || !runtime.nodes.get(nodeId)?.params || !(parameter in runtime.nodes.get(nodeId).params)) {
       runtime.smoothers.delete(key);
     }
+  }
+}
+
+function updateNodeGraphLiveRuntimeConnections(runtime, plan) {
+  runtime.inputConnections = nodeGraphLiveInputConnectionMap(plan);
+  runtime.graphInputConnections = nodeGraphLiveGraphInputConnectionMap(plan);
+  runtime.modulationConnections = nodeGraphLiveModulationConnectionMap(plan);
+  runtime.outputNode = plan.outputNode || runtime.outputNode || "output";
+  runtime.scopeCaptureNodeIds = [...(plan.scopeCaptureNodeIds || [])];
+  runtime.visualSinks = (plan.visualSinks || []).map((sink) => ({
+    ...sink,
+    bufferedInputs: [...(sink.bufferedInputs || [])],
+    inputs: (sink.inputs || []).map((input) => ({ ...input })),
+  }));
+  if (typeof syncNodeGraphVisualInputBuffers === "function") {
+    syncNodeGraphVisualInputBuffers(runtime);
   }
 }
 
