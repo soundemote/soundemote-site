@@ -1140,7 +1140,7 @@ function positionNodeGraphSavedPatchesWindowNearButton() {
   }
   const anchor =
     document.getElementById("nodeSceneOpenSavedPatches") ||
-    document.getElementById("nodeCurrentSavedPatchButton");
+    document.getElementById("nodePatchSaveButton");
   const rect = anchor?.getBoundingClientRect?.() || {
     left: nodeGraphMvp.sceneContextPoint?.x ?? window.innerWidth * 0.5,
     bottom: nodeGraphMvp.sceneContextPoint?.y ?? window.innerHeight * 0.25,

@@ -959,7 +959,7 @@ function sanitizeNodeUiDevWorkingPatchForStartup(patch) {
   if (Array.isArray(patch.nodes)) {
     patch = {
       ...patch,
-      nodes: patch.nodes.filter((node) => !(node?.type === "moduleHome" || node?.type === "moduleShop")),
+      nodes: patch.nodes.filter((node) => !(typeof nodeGraphRetiredNodeTypes !== "undefined" && nodeGraphRetiredNodeTypes.has(node?.type))),
     };
   }
   if (

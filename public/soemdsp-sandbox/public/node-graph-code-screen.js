@@ -353,6 +353,15 @@ const nodeGraphCodeScreenHelperRegistry = Object.freeze([
   {
     category: "canvas shader",
     namespace: "canvas",
+    name: "video.list",
+    signature: "canvas.video.list()",
+    description: "List available wireless video display modes and signals without reading values or creating routes.",
+    snippet: "debug.inspect(\"video catalog\", canvas.video.list())",
+    availability: "script runner",
+  },
+  {
+    category: "canvas shader",
+    namespace: "canvas",
     name: "module",
     signature: "canvas.module(id, source)",
     description: "Create a plan-only canvas module object with RGBA output and parsed Canvas Script metadata.",
@@ -4890,6 +4899,13 @@ function nodeGraphCodeScreenWorkspaceCanvasApi() {
     ratioWidth: script.ratioWidth,
     source: script.source,
   });
+  const video = Object.freeze({
+    list(options = {}) {
+      return typeof nodeGraphCanvasVideoApi === "function"
+        ? nodeGraphCanvasVideoApi().list(options)
+        : [];
+    },
+  });
   return {
     layers(source = "") {
       return this.parse(source).layers.map((layer, index) => ({
@@ -4942,6 +4958,7 @@ function nodeGraphCodeScreenWorkspaceCanvasApi() {
     starter() {
       return nodeGraphCanvasScriptDefaultSource;
     },
+    video,
   };
 }
 

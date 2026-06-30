@@ -37,6 +37,8 @@ function normalizeNodeGraphPatchParameter(type, key, value, metadata = null) {
     : clampNodeSliderValue(candidate, min, max);
 }
 
+const nodeGraphRetiredNodeTypes = new Set(["formulaVisual", "moduleHome", "moduleShop"]);
+
 function validateNodeGraphPatch(patch) {
   if (!patch || typeof patch !== "object") {
     throw new Error("patch must be an object");
@@ -64,7 +66,7 @@ function validateNodeGraphPatch(patch) {
     throw new Error("nodes must be an array");
   }
 
-  const retiredNodeTypes = new Set(["formulaVisual", "moduleHome", "moduleShop"]);
+  const retiredNodeTypes = nodeGraphRetiredNodeTypes;
   const retiredNodeIds = new Set(
     patch.nodes
       .filter((node) => retiredNodeTypes.has(String(node.type || "").trim()))
@@ -92,10 +94,16 @@ function validateNodeGraphPatch(patch) {
     if (!Number.isFinite(gx) || !Number.isFinite(gy)) {
       throw new Error(`node ${id} grid position invalid`);
     }
-    const hasCustomWidth = Object.hasOwn(node, "widthGu");
-    const widthGu = normalizeNodeGraphModuleWidthUnits(type, node.widthGu);
+    const sizingCapabilities = nodeGraphModuleSizingCapabilities(type);
+    const hasCustomWidth = sizingCapabilities.width && Object.hasOwn(node, "widthGu");
+    const widthGu = hasCustomWidth ? normalizeNodeGraphModuleWidthUnits(type, node.widthGu) : null;
     if (hasCustomWidth && !Number.isFinite(Number(node.widthGu))) {
       throw new Error(`node ${id} widthGu invalid`);
+    }
+    const hasCustomModuleHeight = sizingCapabilities.moduleHeight === "textBox" && Object.hasOwn(node, "heightGu");
+    const heightGu = hasCustomModuleHeight ? normalizeNodeGraphTextBoxHeightUnits(node.heightGu) : null;
+    if (hasCustomModuleHeight && !Number.isFinite(Number(node.heightGu))) {
+      throw new Error(`node ${id} Text Box heightGu invalid`);
     }
     const params = {};
     const paramMeta = {};
@@ -149,6 +157,7 @@ function validateNodeGraphPatch(patch) {
         ? { alias: normalizeNodeGraphPatchNodeAlias(node.alias) }
         : {}),
       ...(hasCustomWidth ? { widthGu } : {}),
+      ...(hasCustomModuleHeight ? { heightGu } : {}),
     };
     if (nodeGraphModuleDefinitions[type].layout === "textBox") {
       normalizedNode.layout = normalizeNodeGraphTextBoxLayout(node.layout);
@@ -190,7 +199,8 @@ function validateNodeGraphPatch(patch) {
     const ui = nodeGraphModuleDefinitions[type].layout === "textBox" && !Object.hasOwn(node, "ui")
       ? { buttonsHidden: true }
       : normalizeNodeGraphPatchNodeUi(node.ui);
-    if (ui.buttonsHidden || ui.ioHidden || ui.interfaceControlsHidden || ui.movementLocked || ui.titleHidden || ui.oscilloscopeHidden || ui.slidersHidden || ui.displayHeightOffsetGu) {
+    ui.displayModeKey = normalizeNodeGraphPatchNodeDisplayModeKey(type, ui.displayModeKey);
+    if (ui.buttonsHidden || ui.displayModeKey || ui.ioHidden || ui.interfaceControlsHidden || ui.movementLocked || ui.titleHidden || ui.oscilloscopeHidden || ui.slidersHidden || ui.displayHeightOffsetGu) {
       normalizedNode.ui = ui;
     }
     return normalizedNode;
@@ -309,7 +319,7 @@ function validateNodeGraphPatch(patch) {
     });
 
   const graphConnectionKeys = new Set();
-  const graphConnections = Array.isArray(patch.graphConnections) ? patch.graphConnections.map((connection) => {
+  const graphConnections = Array.isArray(patch.graphConnections) ? patch.graphConnections.flatMap((connection) => {
     const sourceNode = String(connection.sourceNode || "").trim();
     let sourcePort = String(connection.sourcePort || "").trim();
     const destinationNode = String(connection.destinationNode || "").trim();
@@ -333,10 +343,10 @@ function validateNodeGraphPatch(patch) {
     }
     const key = `${sourceNode}.${sourcePort}->${destinationNode}.${destinationGraphInput}`;
     if (graphConnectionKeys.has(key)) {
-      throw new Error(`duplicate graph connection ${key}`);
+      return [];
     }
     graphConnectionKeys.add(key);
-    return {
+    return [{
       destinationGraphInput,
       destinationNode,
       sourceNode,
@@ -347,7 +357,7 @@ function validateNodeGraphPatch(patch) {
       ...(normalizeNodeGraphTracePoints(connection.tracePoints).length
         ? { tracePoints: normalizeNodeGraphTracePoints(connection.tracePoints) }
         : {}),
-    };
+    }];
   }) : [];
 
   const view = normalizeNodeGraphPatchView(patch.view);
@@ -571,38 +581,19 @@ function applyNodeGraphPatchToDom() {
 }
 
 function commitNodeGraphPatch(patch, options = {}) {
+  const isWireEdit = Boolean(options.wireEdit);
   nodeGraphMvp.patch = cloneNodeGraphPatch(validateNodeGraphPatch(patch));
   if (typeof preserveNodeGraphEditorZoomOnPatch === "function") {
     preserveNodeGraphEditorZoomOnPatch(nodeGraphMvp.patch);
   }
   syncNodeGraphRuntimeFromPatch();
-  applyNodeGraphPatchToDom();
-  if (typeof applyNodeGraphZoom === "function") {
-    applyNodeGraphZoom();
-  }
-  syncNodeGraphMonitorIndicators();
-  pruneNodeGraphSelectionAfterPatch();
-  renderNodePalette();
-  renderNodeGraphConnectionList();
-  syncNodeGraphGhostSliders();
-  syncNodeGraphFilterCurveDisplays();
-  renderNodeGraphVisualSettings();
-  syncNodeGraphSettingsView();
-  if (typeof renderNodeGraphMissingSampleAssetsDialog === "function") {
-    renderNodeGraphMissingSampleAssetsDialog(nodeGraphMvp.patch);
-  }
-  if (typeof renderNodeGraphCodeScreen === "function" && !document.getElementById("nodeCodeScreenView")?.hidden) {
-    renderNodeGraphCodeScreen();
-  }
-  const scriptStatus = nodeGraphPatchScriptStatus(
-    options.status || "script synced",
-    options.ok ?? true,
-  );
-  syncNodeGraphScriptView(scriptStatus.message, scriptStatus.ok);
-  if (options.record !== false) {
-    recordNodeGraphHistory();
-  } else {
-    renderNodeGraphHistoryControls();
+  if (!isWireEdit) {
+    applyNodeGraphPatchToDom();
+    if (typeof applyNodeGraphZoom === "function") {
+      applyNodeGraphZoom();
+    }
+    syncNodeGraphMonitorIndicators();
+    pruneNodeGraphSelectionAfterPatch();
   }
   if (options.markPending !== false) {
     markNodeGraphRenderPending();
@@ -615,12 +606,45 @@ function commitNodeGraphPatch(patch, options = {}) {
   } else if (options.autosaveWorkingPatch !== false) {
     nodeGraphMvp.patchDirtyState = "edited";
   }
-  if (options.autosaveWorkingPatch !== false && typeof saveNodeGraphWorkingPatchToUserSettings === "function") {
-    saveNodeGraphWorkingPatchToUserSettings();
-  } else if (typeof syncNodeGraphCurrentSavedPatchHeader === "function") {
-    syncNodeGraphCurrentSavedPatchHeader();
-  }
   scheduleNodeGraphLivePlanSync();
+
+  const runDeferredUiPanels = () => {
+    renderNodePalette();
+    renderNodeGraphConnectionList();
+    syncNodeGraphGhostSliders();
+    syncNodeGraphFilterCurveDisplays();
+    renderNodeGraphVisualSettings();
+    syncNodeGraphSettingsView();
+    if (typeof renderNodeGraphMissingSampleAssetsDialog === "function") {
+      renderNodeGraphMissingSampleAssetsDialog(nodeGraphMvp.patch);
+    }
+    if (typeof renderNodeGraphCodeScreen === "function" && !document.getElementById("nodeCodeScreenView")?.hidden) {
+      renderNodeGraphCodeScreen();
+    }
+    const scriptStatus = nodeGraphPatchScriptStatus(
+      options.status || "script synced",
+      options.ok ?? true,
+    );
+    syncNodeGraphScriptView(scriptStatus.message, scriptStatus.ok);
+    if (options.record !== false) {
+      recordNodeGraphHistory();
+    } else {
+      renderNodeGraphHistoryControls();
+    }
+    if (options.autosaveWorkingPatch !== false && typeof saveNodeGraphWorkingPatchToUserSettings === "function") {
+      saveNodeGraphWorkingPatchToUserSettings();
+    } else if (typeof syncNodeGraphCurrentSavedPatchHeader === "function") {
+      syncNodeGraphCurrentSavedPatchHeader();
+    }
+  };
+
+  if (isWireEdit) {
+    window.requestAnimationFrame(() => {
+      window.setTimeout(runDeferredUiPanels, 0);
+    });
+  } else {
+    runDeferredUiPanels();
+  }
 }
 
 function clearNodeGraphWires() {

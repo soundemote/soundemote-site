@@ -185,6 +185,18 @@ function createNodeGraphDelayEffectState() {
   };
 }
 
+function createNodeGraphSabrinaReverbState() {
+  return {
+    nativeHandle: 0,
+    nativeParamKey: "",
+    nativeSampleRate: 0,
+  };
+}
+
+function createNodeGraphPllState() {
+  return { nativeHandle: 0, nativeParamKey: "", nativeSampleRate: 0 };
+}
+
 function createNodeGraphSampleHoldState() {
   return {
     held: 0,
@@ -1080,6 +1092,120 @@ function nodeGraphDelayEffectSample(state, input, params, sampleRate, runtime = 
     Out: (dry * (1 - mix) + state.wet * mix) * level,
     Wet: state.wet * level,
   };
+}
+
+function nodeGraphSabrinaReverbSample(state, leftInput, rightInput, params, sampleRate, runtime = null, nodeId = "") {
+  const dryLeft = nodeGraphSafeFilterNumber(leftInput, runtime, nodeId, null, "Sabrina left input");
+  const dryRight = nodeGraphSafeFilterNumber(rightInput, runtime, nodeId, null, "Sabrina right input");
+  const dryMono = (dryLeft + dryRight) * 0.5;
+  const dry = { "Left Dry": dryLeft, "Mono Dry": dryMono, "Right Dry": dryRight, "Left Mix": dryLeft, "Mono Mix": dryMono, "Right Mix": dryRight };
+  const native = runtime?.nativeSabrinaReverbReady ? runtime?.nativeSabrinaReverb : null;
+  if (!native?.soemdsp_sabrina_reverb_create || !native?.soemdsp_sabrina_reverb_process) {
+    return dry;
+  }
+  try {
+    const safeRate = Math.max(1, Math.round(Number(sampleRate) || 44100));
+    if (!state.nativeHandle || state.nativeSampleRate !== safeRate) {
+      if (state.nativeHandle && native.soemdsp_sabrina_reverb_destroy) {
+        native.soemdsp_sabrina_reverb_destroy(state.nativeHandle);
+      }
+      state.nativeHandle = native.soemdsp_sabrina_reverb_create(safeRate) || 0;
+      state.nativeSampleRate = safeRate;
+      state.nativeParamKey = "";
+    }
+    if (!state.nativeHandle) {
+      return dry;
+    }
+    const safeParams = {
+      delaySize: Math.max(0, Math.min(1, nodeGraphSafeFilterNumber(params.delaySize, runtime, nodeId, null, "Sabrina delay size"))),
+      diffusionAmount: Math.max(0, Math.min(0.98, nodeGraphSafeFilterNumber(params.diffusionAmount, runtime, nodeId, null, "Sabrina diffusion amount"))),
+      diffusionSize: Math.max(0, Math.min(1, nodeGraphSafeFilterNumber(params.diffusionSize, runtime, nodeId, null, "Sabrina diffusion size"))),
+      lfoAmplitude: Math.max(0, Math.min(1, nodeGraphSafeFilterNumber(params.lfoAmplitude, runtime, nodeId, null, "Sabrina lfo amplitude"))),
+      lfoBaseSpeed: Math.max(0, Math.min(1, nodeGraphSafeFilterNumber(params.lfoBaseSpeed, runtime, nodeId, null, "Sabrina lfo speed"))),
+      lfoVariation: Math.max(0, Math.min(1, nodeGraphSafeFilterNumber(params.lfoVariation, runtime, nodeId, null, "Sabrina lfo variation"))),
+      mix: Math.max(0, Math.min(1, nodeGraphSafeFilterNumber(params.mix, runtime, nodeId, null, "Sabrina mix"))),
+      recycle: Math.max(0, Math.min(0.98, nodeGraphSafeFilterNumber(params.recycle, runtime, nodeId, null, "Sabrina recycle"))),
+    };
+    const paramKey = [
+      safeParams.mix,
+      safeParams.diffusionSize,
+      safeParams.diffusionAmount,
+      safeParams.delaySize,
+      safeParams.recycle,
+      safeParams.lfoAmplitude,
+      safeParams.lfoBaseSpeed,
+      safeParams.lfoVariation,
+    ].map((value) => Math.round(value * 1000000)).join(":");
+    if (paramKey !== state.nativeParamKey && native.soemdsp_sabrina_reverb_set_params) {
+      state.nativeParamKey = paramKey;
+      native.soemdsp_sabrina_reverb_set_params(
+        state.nativeHandle,
+        safeParams.mix,
+        safeParams.diffusionSize,
+        safeParams.diffusionAmount,
+        safeParams.delaySize,
+        safeParams.recycle,
+        safeParams.lfoAmplitude,
+        safeParams.lfoBaseSpeed,
+        safeParams.lfoVariation,
+      );
+    }
+    native.soemdsp_sabrina_reverb_process(state.nativeHandle, dryLeft, dryRight);
+    const mixLeft = nodeGraphSafeFilterNumber(native.soemdsp_sabrina_reverb_left?.(state.nativeHandle), runtime, nodeId, null, "Sabrina mix left");
+    const mixRight = nodeGraphSafeFilterNumber(native.soemdsp_sabrina_reverb_right?.(state.nativeHandle), runtime, nodeId, null, "Sabrina mix right");
+    return { "Left Dry": dryLeft, "Mono Dry": dryMono, "Right Dry": dryRight, "Left Mix": mixLeft, "Mono Mix": (mixLeft + mixRight) * 0.5, "Right Mix": mixRight };
+  } catch (error) {
+    if (runtime) {
+      runtime.nativeSabrinaReverbReady = false;
+    }
+    if (state.nativeHandle && native.soemdsp_sabrina_reverb_destroy) {
+      native.soemdsp_sabrina_reverb_destroy(state.nativeHandle);
+    }
+    state.nativeHandle = 0;
+    state.nativeParamKey = "";
+    return dry;
+  }
+}
+
+function nodeGraphPllSample(state, signalIn, cvIn, cvConnected, params, sampleRate, runtime = null, nodeId = "") {
+  const silent = { "VCO Out": 0, "PC Out": 0, "LPF Out": 0, Locked: 0 };
+  const native = runtime?.nativePllReady ? runtime?.nativePll : null;
+  if (!native?.soemdsp_pll_create || !native?.soemdsp_pll_process) return silent;
+  try {
+    const safeRate = Math.max(1, Math.round(Number(sampleRate) || 44100));
+    if (!state.nativeHandle || state.nativeSampleRate !== safeRate) {
+      if (state.nativeHandle && native.soemdsp_pll_destroy) {
+        native.soemdsp_pll_destroy(state.nativeHandle);
+      }
+      state.nativeHandle = native.soemdsp_pll_create(safeRate) || 0;
+      state.nativeSampleRate = safeRate;
+      state.nativeParamKey = "";
+    }
+    if (!state.nativeHandle) return silent;
+    const range  = Math.max(0, Math.min(2, Math.round(Number(params.range)  || 1)));
+    const offset = Math.max(0, Math.min(10, Number(params.offset) || 5));
+    const type   = Math.max(0, Math.min(2, Math.round(Number(params.type)   || 1)));
+    const frequ  = Math.max(0.1, Number(params.frequ) || 10);
+    const paramKey = `${range}:${Math.round(offset * 1000)}:${type}:${Math.round(frequ * 1000)}`;
+    if (paramKey !== state.nativeParamKey && native.soemdsp_pll_set_params) {
+      state.nativeParamKey = paramKey;
+      native.soemdsp_pll_set_params(state.nativeHandle, safeRate, range, offset, type, frequ);
+    }
+    const safeSig = nodeGraphSafeFilterNumber(signalIn, runtime, nodeId, null, "PLL signal in");
+    const safeCv  = Math.max(0, Math.min(1, nodeGraphSafeFilterNumber(cvIn, runtime, nodeId, null, "PLL cv in")));
+    native.soemdsp_pll_process(state.nativeHandle, safeSig, safeCv, cvConnected);
+    return {
+      "VCO Out": nodeGraphSafeFilterNumber(native.soemdsp_pll_vco_out?.(state.nativeHandle), runtime, nodeId, null, "PLL vco out"),
+      "PC Out":  nodeGraphSafeFilterNumber(native.soemdsp_pll_pc_out?.(state.nativeHandle),  runtime, nodeId, null, "PLL pc out"),
+      "LPF Out": nodeGraphSafeFilterNumber(native.soemdsp_pll_lpf_out?.(state.nativeHandle), runtime, nodeId, null, "PLL lpf out"),
+      Locked:    nodeGraphSafeFilterNumber(native.soemdsp_pll_locked?.(state.nativeHandle),   runtime, nodeId, null, "PLL locked"),
+    };
+  } catch {
+    if (runtime) runtime.nativePllReady = false;
+    if (state.nativeHandle && native.soemdsp_pll_destroy) native.soemdsp_pll_destroy(state.nativeHandle);
+    state.nativeHandle = 0;
+    return silent;
+  }
 }
 
 function nodeGraphSampleHoldSample(state, input, trigger, threshold, runtime = null, nodeId = "") {
@@ -2282,7 +2408,7 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
     } else if (node?.type === "noise") {
       const state = runtime.noiseSampleHoldStates.get(nodeId) || createNodeGraphNoiseSampleHoldState();
       runtime.noiseSampleHoldStates.set(nodeId, state);
-      value = nodeGraphNoiseSampleHoldSample(
+      const raw = nodeGraphNoiseSampleHoldSample(
         runtime,
         state,
         nodeId,
@@ -2305,7 +2431,8 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
           frameValues,
         ),
         sampleRate,
-      ) * readNodeGraphLiveEffectiveParam(
+      );
+      const level = readNodeGraphLiveEffectiveParam(
         runtime,
         node,
         "level",
@@ -2314,6 +2441,10 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         frames,
         frameValues,
       );
+      value = {
+        Out: raw * level,
+        Raw: raw,
+      };
     } else if (node?.type === "stereoNoise") {
       const level = readNodeGraphLiveEffectiveParam(
         runtime,
@@ -2924,6 +3055,50 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
           modRate: read("modRate", 0.1),
           modVariation: read("modVariation", 0),
           time: read("time", 0.18),
+        },
+        sampleRate,
+        runtime,
+        nodeId,
+      );
+    } else if (node?.type === "reverbEffect") {
+      const state = runtime.reverbEffectStates.get(nodeId) || createNodeGraphSabrinaReverbState();
+      runtime.reverbEffectStates.set(nodeId, state);
+      const read = (key, fallback) => readNodeGraphLiveEffectiveParam(runtime, node, key, fallback, frame, frames, frameValues);
+      const leftInput = mixInput(nodeId, "Left");
+      const rightInput = hasInput(nodeId, "Right") ? mixInput(nodeId, "Right") : leftInput;
+      value = nodeGraphSabrinaReverbSample(
+        state,
+        leftInput,
+        rightInput,
+        {
+          delaySize: read("delaySize", 0.02),
+          diffusionAmount: read("diffusionAmount", 0.70),
+          diffusionSize: read("diffusionSize", 0.35),
+          lfoAmplitude: read("lfoAmplitude", 0.07),
+          lfoBaseSpeed: read("lfoBaseSpeed", 0.83),
+          lfoVariation: read("lfoVariation", 0.001),
+          mix: read("mix", 0.43),
+          recycle: read("recycle", 0.70),
+        },
+        sampleRate,
+        runtime,
+        nodeId,
+      );
+    } else if (node?.type === "pll") {
+      const state = runtime.pllStates?.get(nodeId) || createNodeGraphPllState();
+      if (runtime.pllStates) runtime.pllStates.set(nodeId, state);
+      const read = (key, fallback) => readNodeGraphLiveEffectiveParam(runtime, node, key, fallback, frame, frames, frameValues);
+      const cvConnected = hasInput(nodeId, "VCO CV In") ? 1 : 0;
+      value = nodeGraphPllSample(
+        state,
+        mixInput(nodeId, "Signal In"),
+        mixInput(nodeId, "VCO CV In"),
+        cvConnected,
+        {
+          range:  read("range",  1),
+          offset: read("offset", 5),
+          type:   read("type",   1),
+          frequ:  read("frequ",  10),
         },
         sampleRate,
         runtime,
