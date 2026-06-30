@@ -13,6 +13,7 @@ import AVWResearch from "./pages/AVWResearch.tsx";
 import SupabaseTest from "./pages/SupabaseTest.tsx";
 import SharePage from "./pages/SharePage.tsx";
 import PatchShortlinkPage from "./pages/PatchShortlinkPage.tsx";
+import WikiPage from "./pages/WikiPage.tsx";
 import UserPage from "./pages/UserPage.tsx";
 import AuthPage from "./pages/AuthPage.tsx";
 import AdminLogin from "./pages/AdminLogin.tsx";
@@ -39,6 +40,7 @@ const App = () => (
           <Route path="/avw-research" element={<AVWResearch />} />
           <Route path="/supabase-test" element={<SupabaseTest />} />
           <Route path="/share/:slug" element={<SharePage />} />
+          <Route path="/wiki" element={<WikiPage />} />
           <Route path="/wiki/:slug" element={<PatchShortlinkPage />} />
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/admin/login" element={<AdminLogin />} />
