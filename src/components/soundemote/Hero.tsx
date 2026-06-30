@@ -3,7 +3,7 @@ import patchImage from "@/assets/soemdsp-patch.png";
 
 export const Hero = () => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
-  const sandboxViewportHeight = "max(760px, calc(100svh - 7rem))";
+  const sandboxViewportHeight = "max(640px, calc(100svh - 10rem))";
   const previewFrameClass = sandboxLoaded
     ? "soundemote-sandbox-preview-frame relative flex w-full justify-center overflow-hidden bg-background"
     : "soundemote-sandbox-preview-frame relative flex w-full justify-center overflow-hidden bg-background";
