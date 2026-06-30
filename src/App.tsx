@@ -14,10 +14,12 @@ import SupabaseTest from "./pages/SupabaseTest.tsx";
 import SharePage from "./pages/SharePage.tsx";
 import PatchShortlinkPage from "./pages/PatchShortlinkPage.tsx";
 import WikiPage from "./pages/WikiPage.tsx";
+import WikiArticlePage from "./pages/WikiArticlePage.tsx";
 import UserPage from "./pages/UserPage.tsx";
 import AuthPage from "./pages/AuthPage.tsx";
 import AdminLogin from "./pages/AdminLogin.tsx";
 import AdminClaims from "./pages/AdminClaims.tsx";
+import AdminWikiEdits from "./pages/AdminWikiEdits.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -41,10 +43,11 @@ const App = () => (
           <Route path="/supabase-test" element={<SupabaseTest />} />
           <Route path="/share/:slug" element={<SharePage />} />
           <Route path="/wiki" element={<WikiPage />} />
-          <Route path="/wiki/:slug" element={<PatchShortlinkPage />} />
+          <Route path="/wiki/:slug" element={<WikiArticlePage />} />
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/claims" element={<AdminClaims />} />
+          <Route path="/admin/wiki" element={<AdminWikiEdits />} />
           {/* @user space: profile/bank/patch pages */}
           <Route path="/:handle/:bank/:patch" element={<UserPage />} />
           <Route path="/:handle/:bank" element={<UserPage />} />
