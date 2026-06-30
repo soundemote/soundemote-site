@@ -44,7 +44,7 @@ const AuthPage = () => {
       if (metaHandle && /^[a-z0-9_]{3,30}$/.test(metaHandle)) {
         await supabase
           .from("profiles")
-          .upsert({ id: user.id, handle: metaHandle }, { onConflict: "id" });
+          .upsert({ id: user.id, handle: metaHandle, name: metaHandle }, { onConflict: "id" });
         navigate(`/@${metaHandle}`, { replace: true });
         return;
       }
@@ -117,7 +117,7 @@ const AuthPage = () => {
       if (data.session && data.user) {
         await supabase
           .from("profiles")
-          .upsert({ id: data.user.id, handle: handleParsed.data }, { onConflict: "id" });
+          .upsert({ id: data.user.id, handle: handleParsed.data, name: handleParsed.data }, { onConflict: "id" });
       } else {
         setNotice("Check your email to confirm your account, then sign in.");
       }
