@@ -14,6 +14,7 @@ import SupabaseTest from "./pages/SupabaseTest.tsx";
 import SharePage from "./pages/SharePage.tsx";
 import HandleRouter from "./pages/HandleRouter.tsx";
 import UserPage from "./pages/UserPage.tsx";
+import AuthPage from "./pages/AuthPage.tsx";
 import AdminLogin from "./pages/AdminLogin.tsx";
 import AdminClaims from "./pages/AdminClaims.tsx";
 import NotFound from "./pages/NotFound.tsx";
@@ -38,6 +39,7 @@ const App = () => (
           <Route path="/avw-research" element={<AVWResearch />} />
           <Route path="/supabase-test" element={<SupabaseTest />} />
           <Route path="/share/:slug" element={<SharePage />} />
+          <Route path="/auth" element={<AuthPage />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/claims" element={<AdminClaims />} />
           {/* @user space reserved for future profile/bank/patch pages */}
