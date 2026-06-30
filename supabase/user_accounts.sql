@@ -156,13 +156,18 @@ declare
   v_handle text;
 begin
   v_handle := lower(coalesce(new.raw_user_meta_data->>'handle', ''));
-  if v_handle ~ '^[a-z0-9_]{3,30}$'
-     and not exists (select 1 from public.reserved_handles where handle = v_handle)
-     and not exists (select 1 from public.profiles where lower(handle) = v_handle) then
-    insert into public.profiles (id, handle, display_name)
-    values (new.id, v_handle, new.raw_user_meta_data->>'display_name')
-    on conflict (id) do nothing;
-  end if;
+  begin
+    if v_handle ~ '^[a-z0-9_]{3,30}$'
+       and not exists (select 1 from public.reserved_handles where handle = v_handle)
+       and not exists (select 1 from public.profiles where lower(handle) = v_handle) then
+      insert into public.profiles (id, handle, display_name)
+      values (new.id, v_handle, new.raw_user_meta_data->>'display_name')
+      on conflict (id) do nothing;
+    end if;
+  exception when others then
+    -- never block signup on profile creation
+    null;
+  end;
   return new;
 end;
 $$;
