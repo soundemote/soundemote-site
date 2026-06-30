@@ -780,9 +780,9 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   reverbEffect: {
     category: "Delay",
-    description: "Placeholder for space, room, tail, and ambience processing.",
-    label: "ReverbEffect",
-    notes: ["placeholder", "space", "decay"],
+    description: "Raw Sabrina reverb port: serial diffusion stages with cross-feedback delay, modulation, recycle, and wet/dry mix.",
+    label: "Sabrina Reverb",
+    notes: ["Sabrina", "serial diffusion", "cross feedback"],
   },
   distortionEffect: {
     category: "Delay",
