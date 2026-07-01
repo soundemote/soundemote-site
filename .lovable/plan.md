@@ -1,52 +1,37 @@
-# Sandbox-driven shooting star timing (PR-based sandbox change)
+# Pull latest soemdsp-sandbox (commit 231aaf6) into the embedded copy
 
-Goal: let the soemdsp-sandbox app control shooting-star timing on the website, over the existing iframe postMessage channel, with the sandbox change landed upstream via pull request.
+Source: `github.com/soundemote/soemdsp-sandbox` @ `master` head `231aaf6` (today, "Fix boot overlay flashing the modular shell during the fade transition" — the boot-view fix we relayed to Codex has landed upstream). Repo is public; fetched via codeload tarball.
 
-## Channel already bidirectional
-- Website → sandbox: `soundemote:sandbox-event` (collisions)
-- Sandbox → website: `soundemote:current-patch` (patch data)
+## Layout mapping (verified)
+The embed is the repo's `public/` folder, with two files hoisted to the embed root:
 
-Add one new message sandbox → website: `soundemote:hero-event`. No new libraries.
-
-## Two repos, two landing paths
-- **Emitter → `soemdsp-sandbox` repo, via PR (Codex).** This is the permanent home. Landing it upstream means it survives every sync into this project. I provide the exact diff; Codex opens/merges the PR. (Relay model — I can't push to that repo myself.)
-- **Listener → this website repo.** My edits here auto-sync to the connected GitHub repo (or review as a branch/PR if you use branch switching).
-
-Interim option: I can also patch the local `public/soemdsp-sandbox/` copy so it works before the PR merges, but that copy is overwritten on the next sync, so treat it as a preview only.
-
-## Message contract
 ```text
-{
-  type: "soundemote:hero-event",
-  event: "spawnShootingStar",      // extensible: "burst", "setRate"
-  payload: { hue?, speed?, count?, intervalSeconds? }
-}
+repo/public/index.html                  -> public/soemdsp-sandbox/index.html
+repo/public/native-modules-catalog.json -> public/soemdsp-sandbox/native-modules-catalog.json
+repo/public/*  (everything else)        -> public/soemdsp-sandbox/public/*
+repo/native_modules/*                   -> public/soemdsp-sandbox/native_modules/*
 ```
 
-## Website side — src/components/soundemote/StarField.tsx (I implement)
-- Parameterize spawnShooter() to accept overrides (hue, speed, count).
-- Add a window message listener:
-  - Guard: event.origin === window.location.origin and source is the hero iframe.
-  - Validate type === "soundemote:hero-event" and event is allow-listed.
-  - spawnShootingStar → spawnShooter(overrides); setRate → mutate a cadence ref.
-- Existing auto-spawn stays as default; sandbox events layer on / override.
+## What's already merged upstream (no action)
+- postMessage bridge in `node-graph-external-ui-events.js` (`soundemote:sandbox-event`, `:current-patch`, `:hero-event`) — present upstream.
+- Boot-overlay / modular-only fade fix in `boot-loading.js` + `styles.css` — this is the head commit.
 
-## Sandbox side — PR diff for Codex (soemdsp-sandbox repo)
-Add an emitter, ideally driven by a patch node output (clock/trigger), calling:
-```js
-window.parent?.postMessage(
-  { type: "soundemote:hero-event", event: "spawnShootingStar", payload: {...} },
-  window.location.origin
-);
-```
-Cleanest end state: a dedicated trigger node whose pulse posts this message, so shooting-star timing comes straight from the DSP patch. File in that repo mirrors public/soemdsp-sandbox/public/node-graph-external-ui-events.js.
+## Website-specific customizations NOT upstream — preserve these
+Upstream ships a different startup demo (ChaosArp Lorenz). Our site intentionally uses the reverb default patch + "Silently Dreaming" startup audio, so after the overwrite I restore:
+1. `public/soemdsp-sandbox/public/presets/default.json` (our reverb default patch)
+2. `public/soemdsp-sandbox/public/resources/manifest.json` (the "Silently Dreaming" audio entry)
+3. `public/soemdsp-sandbox/public/resources/audio/Elan Hickler - Silently Dreaming.mp3`
 
-## Deliverables
-1. Website listener + parameterized spawn (this repo).
-2. Exact PR-ready diff for the emitter, for Codex to land in the soemdsp-sandbox repo.
-3. Optional interim local patch so you can preview before the PR merges.
+## Steps
+1. Back up the 3 customization files above to a temp location.
+2. Overwrite `public/soemdsp-sandbox/{index.html,native-modules-catalog.json,public/,native_modules/}` from the tarball per the mapping (clean replace of the sandbox tree only).
+3. Restore the 3 customization files.
+4. Sanity-check: confirm the bridge + boot fix are present, and that `default.json`/manifest still point to Silently Dreaming.
+5. Validate in preview: load `/`, `/reverb`, `/shootingstar`, `/tweet` — modular-only boots clean (no header/backend flash), default reverb patch + startup audio load, patch-nav and shooting-star bridge still fire.
+
+## Website code (`src/`)
+No changes expected — the postMessage contract (`SandboxPage.tsx`, `StarField.tsx`) is unchanged. Only re-verify if a message-type name changed upstream (none observed).
 
 ## Notes
-- Hero iframe is same-origin, so origin guards are valid both ways.
-- Allow-list prevents arbitrary frames from driving the starfield.
-- No emitter yet = stars keep current auto-timing; nothing breaks.
+- Excluded from the embed (repo-only, not served): `backups/`, `docs/`, `scripts/`, `tools/`, `saved-patches/`, `server.py`, `progress.md`, `LICENSE`, `README.md`, `.gitignore`.
+- The ChaosArp Lorenz mp3 from upstream will land in `resources/audio/` but is unused; harmless. Can prune if you want it gone.
