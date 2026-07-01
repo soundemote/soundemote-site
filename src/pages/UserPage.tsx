@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
+import { useUserFiles, type UserFile } from "@/hooks/useUserFiles";
 import { supabase, supabaseConfigError } from "@/lib/supabase";
 
 type UserPageParams = {
@@ -33,6 +35,8 @@ const Shell = ({ children }: { children: React.ReactNode }) => (
 const UserPage = () => {
   const { handle = "", bank, patch } = useParams<UserPageParams>();
   const username = handle.startsWith("@") ? handle.slice(1).toLowerCase() : "";
+  const { session } = useAuth();
+  const { userFilesUrl, listMyFiles, listPublicFiles } = useUserFiles();
 
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -40,6 +44,7 @@ const UserPage = () => {
   const [bankRow, setBankRow] = useState<Bank | null>(null);
   const [patches, setPatches] = useState<Patch[]>([]);
   const [patchRow, setPatchRow] = useState<Patch | null>(null);
+  const [files, setFiles] = useState<UserFile[]>([]);
 
   useEffect(() => {
     if (!username || supabaseConfigError) {
@@ -93,6 +98,17 @@ const UserPage = () => {
               .maybeSingle();
             if (!cancelled) setPatchRow((p as Patch) ?? null);
           }
+        }
+
+        // Files: owners see all, visitors see public only
+        const viewerIsOwner = session?.user?.id === profileRow.id;
+        try {
+          const fileList = viewerIsOwner
+            ? await listMyFiles()
+            : await listPublicFiles(profileRow.id);
+          if (!cancelled) setFiles(fileList);
+        } catch {
+          if (!cancelled) setFiles([]);
         }
       }
       if (!cancelled) setLoading(false);
