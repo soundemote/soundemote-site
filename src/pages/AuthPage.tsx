@@ -170,6 +170,37 @@ const AuthPage = () => {
         <Link to="/" className="mono text-xs text-muted-foreground hover:text-foreground">
           &lt; soundemote
         </Link>
+        {needsHandle ? (
+          <>
+            <h1 className="display mt-4 text-2xl">Choose your handle</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              You're signed in. Pick a @handle to finish setting up your account.
+            </p>
+            <div className="mt-8 space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="claim-handle">Handle</Label>
+                <div className="flex items-center gap-1">
+                  <span className="mono text-sm text-muted-foreground">@</span>
+                  <Input
+                    id="claim-handle"
+                    value={handle}
+                    onChange={(e) => setHandle(e.target.value)}
+                    placeholder="yourname"
+                    autoComplete="off"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") claimHandle();
+                    }}
+                  />
+                </div>
+              </div>
+              {error && <p className="text-sm text-destructive break-words">{error}</p>}
+              <Button className="w-full" onClick={claimHandle} disabled={busy}>
+                {busy ? "Working…" : "Claim handle"}
+              </Button>
+            </div>
+          </>
+        ) : (
+        <>
         <h1 className="display mt-4 text-2xl">
           {mode === "signup" ? "Create account" : "Sign in"}
         </h1>
