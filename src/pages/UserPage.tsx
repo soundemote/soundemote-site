@@ -35,6 +35,8 @@ const Shell = ({ children }: { children: React.ReactNode }) => (
 const UserPage = () => {
   const { handle = "", bank, patch } = useParams<UserPageParams>();
   const username = handle.startsWith("@") ? handle.slice(1).toLowerCase() : "";
+  const { session } = useAuth();
+  const { userFilesUrl, listPublicFiles } = useUserFiles();
 
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -42,6 +44,7 @@ const UserPage = () => {
   const [bankRow, setBankRow] = useState<Bank | null>(null);
   const [patches, setPatches] = useState<Patch[]>([]);
   const [patchRow, setPatchRow] = useState<Patch | null>(null);
+  const [files, setFiles] = useState<UserFile[]>([]);
 
   useEffect(() => {
     if (!username || supabaseConfigError) {
