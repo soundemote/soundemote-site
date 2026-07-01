@@ -270,6 +270,33 @@ const UserPage = () => {
           </div>
         </section>
       </div>
+
+      <section className="mt-12">
+        <div className="flex items-center justify-between">
+          <h2 className="mono text-xs uppercase tracking-wider text-muted-foreground">Files</h2>
+          <Link
+            to={userFilesUrl(profile.handle)}
+            className="mono text-xs text-muted-foreground hover:text-foreground"
+          >
+            view all
+          </Link>
+        </div>
+        <ul className="mt-3 space-y-2">
+          {files.length === 0 && (
+            <li className="mono text-sm text-muted-foreground">No files yet.</li>
+          )}
+          {files.map((f) => (
+            <li key={f.id}>
+              <Link
+                to={userFilesUrl(profile.handle)}
+                className="mono text-sm text-foreground underline underline-offset-4 hover:text-muted-foreground"
+              >
+                {f.name || f.slug}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
     </Shell>
   );
 };
