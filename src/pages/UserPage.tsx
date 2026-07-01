@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserFiles, type UserFile } from "@/hooks/useUserFiles";
 import { supabase, supabaseConfigError } from "@/lib/supabase";
+import { toast } from "@/hooks/use-toast";
 
 type UserPageParams = {
   handle?: string;
@@ -45,6 +46,46 @@ const UserPage = () => {
   const [patches, setPatches] = useState<Patch[]>([]);
   const [patchRow, setPatchRow] = useState<Patch | null>(null);
   const [files, setFiles] = useState<UserFile[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const viewerIsOwner = Boolean(
+    session?.user?.id && profile?.id && session.user.id === profile.id,
+  );
+
+  const handleAvatarUpload = async (file: File) => {
+    if (!session?.user?.id || !profile) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Pick an image file", variant: "destructive" });
+      return;
+    }
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+      const path = `${session.user.id}/avatar-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from("avatars")
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from("avatars").getPublicUrl(path);
+      const url = pub.publicUrl;
+      const { error: updErr } = await supabase
+        .from("profiles")
+        .update({ avatar_url: url, updated_at: new Date().toISOString() })
+        .eq("id", session.user.id);
+      if (updErr) throw updErr;
+      setProfile({ ...profile, avatar_url: url });
+      toast({ title: "Profile picture updated" });
+    } catch (error) {
+      toast({
+        title: "Upload failed",
+        description: String((error as Error)?.message || error),
+        variant: "destructive",
+      });
+    } finally {
+      setUploading(false);
+    }
+  };
 
   useEffect(() => {
     if (!username || supabaseConfigError) {
@@ -207,7 +248,7 @@ const UserPage = () => {
   return (
     <Shell>
       <div className="mt-8 flex flex-col gap-8 sm:flex-row sm:items-end">
-        <div className="relative aspect-square w-full max-w-[260px] shrink-0 overflow-hidden rounded-2xl border border-border/60 bg-gradient-to-br from-muted/40 to-background shadow-[0_20px_60px_-20px_hsl(var(--primary)/0.4)]">
+        <div className="group relative aspect-square w-full max-w-[260px] shrink-0 overflow-hidden rounded-2xl border border-border/60 bg-gradient-to-br from-muted/40 to-background shadow-[0_20px_60px_-20px_hsl(var(--primary)/0.4)]">
           {profile.avatar_url ? (
             <img
               src={profile.avatar_url}
@@ -220,6 +261,29 @@ const UserPage = () => {
                 {(profile.display_name || profile.handle).charAt(0).toUpperCase()}
               </span>
             </div>
+          )}
+          {viewerIsOwner && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleAvatarUpload(f);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="mono absolute inset-x-0 bottom-0 bg-black/70 py-2 text-center text-xs text-cyan-100 opacity-0 backdrop-blur transition-opacity hover:bg-black/85 group-hover:opacity-100 disabled:opacity-60"
+              >
+                {uploading ? "uploading…" : profile.avatar_url ? "change photo" : "add photo"}
+              </button>
+            </>
           )}
         </div>
         <div className="min-w-0 flex-1">
