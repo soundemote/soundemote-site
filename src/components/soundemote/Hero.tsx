@@ -1,9 +1,37 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import patchImage from "@/assets/soemdsp-patch.png";
+import { WIKIREVIEW_BANK } from "@/data/patchBank";
 
 export const Hero = () => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
+  const [patchIndex, setPatchIndex] = useState(0);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const sandboxViewportHeight = "max(640px, calc(100svh - 10rem))";
+  const currentPatch = WIKIREVIEW_BANK[patchIndex];
+
+  const postPatch = useCallback(async () => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    try {
+      const res = await fetch(currentPatch.url);
+      const projectData = await res.json();
+      win.postMessage(
+        { type: "soundemote:sandbox-project-data", projectData },
+        window.location.origin,
+      );
+    } catch {
+      /* ignore fetch/post errors */
+    }
+  }, [currentPatch.url]);
+
+  // Re-send whenever the selected patch changes (after initial load).
+  useEffect(() => {
+    if (sandboxLoaded) postPatch();
+  }, [sandboxLoaded, postPatch]);
+
+  const step = (dir: number) =>
+    setPatchIndex((i) => (i + dir + WIKIREVIEW_BANK.length) % WIKIREVIEW_BANK.length);
+
   const previewFrameClass = sandboxLoaded
     ? "soundemote-sandbox-preview-frame relative flex w-full justify-center overflow-hidden bg-background"
     : "soundemote-sandbox-preview-frame relative flex w-full justify-center overflow-hidden bg-background";
@@ -20,12 +48,14 @@ export const Hero = () => {
           >
             {sandboxLoaded ? (
               <iframe
+                ref={iframeRef}
                 id="hero-sandbox-iframe"
                 title="soemdsp sandbox"
                 src="/soemdsp-sandbox/index.html?sandboxView=modular-only"
                 className="w-full border-0 bg-transparent"
                 style={{ height: sandboxViewportHeight, minHeight: sandboxViewportHeight }}
                 allow="autoplay; microphone"
+                onLoad={postPatch}
               />
             ) : (
               <button
@@ -50,6 +80,29 @@ export const Hero = () => {
           </div>
         </div>
 
+        {sandboxLoaded && (
+          <div className="mt-4 flex items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => step(-1)}
+              aria-label="Previous patch"
+              className="mono rounded-full border border-scope/70 bg-background/85 px-4 py-2 text-sm text-scope transition-colors hover:bg-scope/10"
+            >
+              ‹ prev
+            </button>
+            <span className="mono min-w-[10rem] text-xs uppercase tracking-[0.18em] text-scope">
+              wikireview / {currentPatch.label}
+            </span>
+            <button
+              type="button"
+              onClick={() => step(1)}
+              aria-label="Next patch"
+              className="mono rounded-full border border-scope/70 bg-background/85 px-4 py-2 text-sm text-scope transition-colors hover:bg-scope/10"
+            >
+              next ›
+            </button>
+          </div>
+        )}
       </div>
     </section>
   );
