@@ -99,6 +99,17 @@ const UserPage = () => {
             if (!cancelled) setPatchRow((p as Patch) ?? null);
           }
         }
+
+        // Files: owners see all, visitors see public only
+        const viewerIsOwner = session?.user?.id === profileRow.id;
+        try {
+          const fileList = viewerIsOwner
+            ? await listMyFiles()
+            : await listPublicFiles(profileRow.id);
+          if (!cancelled) setFiles(fileList);
+        } catch {
+          if (!cancelled) setFiles([]);
+        }
       }
       if (!cancelled) setLoading(false);
     })();
