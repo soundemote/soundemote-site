@@ -21,7 +21,19 @@ export const Hero = () => {
     lastPostedRef.current = patchIndex;
     try {
       const res = await fetch(currentPatch.url);
-      const projectData = await res.json();
+      const patchData = await res.json();
+      // The sandbox expects a "sandbox_patch" share envelope, not a raw patch.
+      // If the file is already an envelope, forward it as-is; otherwise wrap it.
+      const projectData =
+        patchData?.kind === "sandbox_patch"
+          ? patchData
+          : {
+              kind: "sandbox_patch",
+              version: 1,
+              title: currentPatch.label,
+              bank_name: "soundemote",
+              patch_data: patchData,
+            };
       win.postMessage(
         { type: "soundemote:sandbox-project-data", projectData },
         window.location.origin,
