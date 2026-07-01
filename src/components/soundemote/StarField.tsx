@@ -98,7 +98,7 @@ export const StarField = () => {
       };
     };
 
-    const postSandboxCollisionEvent = (hitbox: ScopeHitbox, x: number, y: number, hue: number, power: number) => {
+    const postSandboxCollisionEvent = (hitbox: ScopeHitbox, x: number, y: number, hue: number, speed: number) => {
       const iframe = document.querySelector<HTMLIFrameElement>("#hero-sandbox-iframe");
       const targetWindow = iframe?.contentWindow;
       if (!targetWindow) return;
@@ -115,7 +115,7 @@ export const StarField = () => {
             normalizedX: Math.max(0, Math.min(1, (x - hitbox.left) / width)),
             normalizedY: Math.max(0, Math.min(1, (y - hitbox.top) / height)),
             hue,
-            power,
+            speed,
           },
         },
         window.location.origin,
@@ -268,8 +268,7 @@ export const StarField = () => {
         ) {
           explode(sh.x, sh.y, sh.hue);
           const shooterSpeed = Math.hypot(sh.vx, sh.vy);
-          const explosionPower = Math.max(0, Math.min(1, (shooterSpeed - 6) / 4));
-          postSandboxCollisionEvent(scopeHitbox, sh.x, sh.y, sh.hue, explosionPower);
+          postSandboxCollisionEvent(scopeHitbox, sh.x, sh.y, sh.hue, shooterSpeed);
           shooters.splice(i, 1);
           continue;
         }
