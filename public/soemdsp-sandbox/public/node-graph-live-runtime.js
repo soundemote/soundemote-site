@@ -37,11 +37,24 @@ function setNodeGraphLiveOutputMuted(muted) {
 let nodeGraphLiveNativeModuleCatalogPromise = null;
 let nodeGraphLiveNativeModuleBytes = {};
 
+// On static hosts with no server behind the page (e.g. the sandbox embedded
+// as a static export), "/api/native-modules" doesn't exist. Fall back to a
+// pre-generated catalog shipped alongside index.html — same shape server.py
+// returns, so nothing downstream needs to know which path was used.
+async function fetchNodeGraphLiveNativeModuleCatalogFallback() {
+  try {
+    const response = await fetch("native-modules-catalog.json", { cache: "no-store" });
+    return response.ok ? response.json() : { modules: [] };
+  } catch (_error) {
+    return { modules: [] };
+  }
+}
+
 async function fetchNodeGraphLiveNativeModuleCatalog() {
   if (!nodeGraphLiveNativeModuleCatalogPromise) {
     nodeGraphLiveNativeModuleCatalogPromise = fetch("/api/native-modules", { cache: "no-store" })
-      .then((response) => response.ok ? response.json() : { modules: [] })
-      .catch(() => ({ modules: [] }));
+      .then((response) => response.ok ? response.json() : fetchNodeGraphLiveNativeModuleCatalogFallback())
+      .catch(() => fetchNodeGraphLiveNativeModuleCatalogFallback());
   }
   return nodeGraphLiveNativeModuleCatalogPromise;
 }

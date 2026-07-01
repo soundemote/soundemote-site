@@ -1807,7 +1807,14 @@ function openNodeGraphModuleShop(point = null, windowPoint = null) {
   nodeGraphMvp.sceneContextPoint = point;
   nodeGraphMvp.sceneContextTargetNode = null;
   nodeGraphMvp.sceneContextTargetWire = null;
-  setNodeGraphViewMode("shop");
+  // The module browser is a floating window, independent of the main view
+  // mode (modular / modular-only / settings / etc.) — opening or closing it
+  // must never change which main view is active.
+  if (panel) {
+    panel.hidden = false;
+  }
+  document.getElementById("nodeModuleShopButton")?.classList.toggle("active", true);
+  document.getElementById("nodeModuleShopButton")?.setAttribute("aria-pressed", "true");
   renderNodeGraphModuleStoreCatalog();
   if (typeof applyNodeGraphModuleShopWindowSize === "function") {
     applyNodeGraphModuleShopWindowSize(nodeGraphMvp.workspaceWindowStates?.moduleBrowser?.size);
@@ -1829,10 +1836,11 @@ function closeNodeGraphModuleShop() {
   if (panel) {
     panel.hidden = true;
   }
+  document.getElementById("nodeModuleShopButton")?.classList.toggle("active", false);
+  document.getElementById("nodeModuleShopButton")?.setAttribute("aria-pressed", "false");
   if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
     rememberNodeGraphWorkspaceWindowState("moduleBrowser", panel, { open: false }, { status: false });
   }
-  setNodeGraphViewMode("modular");
 }
 
 function loadNodeGraphModuleStoreStateLocal() {

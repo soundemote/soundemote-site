@@ -1,0 +1,115 @@
+{
+  "ok": true,
+  "modules": [
+    {
+      "name": "ellipsoid",
+      "label": "Ellipsoid",
+      "targetType": "ellipsoid",
+      "kind": "oscillator",
+      "source": "native_modules/ellipsoid/ellipsoid.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/ellipsoid/ellipsoid.cpp",
+      "wasm": "native_modules/ellipsoid/ellipsoid.wasm",
+      "wasmUrl": "native_modules/ellipsoid/ellipsoid.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "fractal_brownian_noise",
+      "label": "Fractal Brownian Noise",
+      "targetType": "fractalBrownianNoise",
+      "kind": "noise",
+      "source": "native_modules/fractal_brownian_noise/fractal_brownian_noise.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/fractal_brownian_noise/fractal_brownian_noise.cpp",
+      "wasm": "native_modules/fractal_brownian_noise/fractal_brownian_noise.wasm",
+      "wasmUrl": "native_modules/fractal_brownian_noise/fractal_brownian_noise.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "helmholtz",
+      "label": "Helmholtz Pitch",
+      "targetType": "helmholtzPitch",
+      "kind": "analysis",
+      "source": "native_modules/helmholtz/helmholtz.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/helmholtz/helmholtz.cpp",
+      "wasm": "native_modules/helmholtz/helmholtz.wasm",
+      "wasmUrl": "native_modules/helmholtz/helmholtz.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "ladder_filter",
+      "label": "Ladder Filter",
+      "targetType": "ladderFilter",
+      "kind": "filter",
+      "source": "native_modules/ladder_filter/ladder_filter.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/ladder_filter/ladder_filter.cpp",
+      "wasm": "native_modules/ladder_filter/ladder_filter.wasm",
+      "wasmUrl": "native_modules/ladder_filter/ladder_filter.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "noise_generator",
+      "label": "Noise Generator",
+      "targetType": "noiseGenerator",
+      "kind": "noise",
+      "source": "native_modules/noise_generator/noise_generator.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/noise_generator/noise_generator.cpp",
+      "wasm": "native_modules/noise_generator/noise_generator.wasm",
+      "wasmUrl": "native_modules/noise_generator/noise_generator.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "passive_filter",
+      "label": "Passive Filter",
+      "targetType": "passiveFilter",
+      "kind": "filter",
+      "source": "native_modules/passive_filter/passive_filter.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/passive_filter/passive_filter.cpp",
+      "wasm": "native_modules/passive_filter/passive_filter.wasm",
+      "wasmUrl": "native_modules/passive_filter/passive_filter.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "pll",
+      "label": "PLL",
+      "targetType": "pll",
+      "kind": "effect",
+      "source": "native_modules/pll/pll.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/pll/pll.cpp",
+      "wasm": "native_modules/pll/pll.wasm",
+      "wasmUrl": "native_modules/pll/pll.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "sabrina_reverb",
+      "label": "Sabrina Reverb",
+      "targetType": "reverbEffect",
+      "kind": "effect",
+      "source": "native_modules/sabrina_reverb/sabrina_reverb.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/sabrina_reverb/sabrina_reverb.cpp",
+      "wasm": "native_modules/sabrina_reverb/sabrina_reverb.wasm",
+      "wasmUrl": "native_modules/sabrina_reverb/sabrina_reverb.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "soft_clipper",
+      "label": "Soft Clipper",
+      "targetType": "softClipper",
+      "kind": "dynamics",
+      "source": "native_modules/soft_clipper/soft_clipper.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/soft_clipper/soft_clipper.cpp",
+      "wasm": "native_modules/soft_clipper/soft_clipper.wasm",
+      "wasmUrl": "native_modules/soft_clipper/soft_clipper.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "tb303_filter",
+      "label": "TB-303 Filter",
+      "targetType": "tb303Filter",
+      "kind": "filter",
+      "source": "native_modules/tb303_filter/tb303_filter.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/tb303_filter/tb303_filter.cpp",
+      "wasm": "native_modules/tb303_filter/tb303_filter.wasm",
+      "wasmUrl": "native_modules/tb303_filter/tb303_filter.wasm",
+      "wasmAvailable": true
+    }
+  ]
+}

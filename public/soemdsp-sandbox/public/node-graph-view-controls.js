@@ -1833,13 +1833,12 @@ function setNodeGraphViewMode(mode) {
     flushNodeGraphScriptCommit();
   }
   const settingsMode = mode === "settings";
-  const shopMode = mode === "shop";
   const scriptMode = mode === "script";
   const codeMode = mode === "code";
   const uiMode = mode === "ui";
   const mappingMode = mode === "mapping";
   const modularOnlyMode = mode === "modular-only";
-  const modularMode = modularOnlyMode || shopMode || (!settingsMode && !scriptMode && !codeMode && !uiMode && !mappingMode);
+  const modularMode = modularOnlyMode || (!settingsMode && !scriptMode && !codeMode && !uiMode && !mappingMode);
   const workspaceMode = modularMode;
   const wiringPanel = document.getElementById("nodeWiringPanel");
   wiringPanel?.classList.toggle("modular-only-view", modularOnlyMode);
@@ -1848,12 +1847,6 @@ function setNodeGraphViewMode(mode) {
   document
     .getElementById("nodeModularOnlyBackButton")
     .setAttribute("aria-label", uiMode ? "Close UI view" : "Return to full modular view");
-  const moduleShopView = document.getElementById("nodeModuleShopView");
-  if (shopMode) {
-    moduleShopView.hidden = false;
-  } else if (!modularMode) {
-    moduleShopView.hidden = true;
-  }
   document.getElementById("nodeScriptView").hidden = !scriptMode;
   document.getElementById("nodeCodeScreenView").hidden = !codeMode;
   document.getElementById("nodeUiView").hidden = !uiMode;
@@ -1863,14 +1856,12 @@ function setNodeGraphViewMode(mode) {
   renderNodeGraphMacroControls();
   renderNodeGraphVideoViewToggle();
   document.getElementById("nodeSettingsViewButton").classList.toggle("active", settingsMode);
-  document.getElementById("nodeModuleShopButton")?.classList.toggle("active", shopMode);
   document.getElementById("nodeModularOnlyViewButton").classList.toggle("active", modularOnlyMode);
   document.getElementById("nodeMappingViewButton")?.classList.toggle("active", mappingMode);
   document.getElementById("nodeCodeScreenViewButton").classList.toggle("active", codeMode);
   document.getElementById("nodeUiViewButton")?.classList.toggle("active", uiMode);
   document.getElementById("nodeSettingsScriptViewButton").classList.toggle("active", scriptMode);
   document.getElementById("nodeSettingsViewButton").setAttribute("aria-pressed", String(settingsMode));
-  document.getElementById("nodeModuleShopButton")?.setAttribute("aria-pressed", String(shopMode));
   document.getElementById("nodeModularOnlyViewButton").setAttribute("aria-pressed", String(modularOnlyMode));
   document.getElementById("nodeMappingViewButton")?.setAttribute("aria-pressed", String(mappingMode));
   document.getElementById("nodeCodeScreenViewButton").setAttribute("aria-pressed", String(codeMode));
@@ -1885,8 +1876,6 @@ function setNodeGraphViewMode(mode) {
   } else if (settingsMode) {
     syncNodeGraphSettingsView();
     scheduleNodeSettingsHeaderTextFit();
-  } else if (shopMode) {
-    renderNodeGraphModuleStoreCatalog();
   } else if (mappingMode) {
     renderNodeGraphMappingView();
   } else {
