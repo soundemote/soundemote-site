@@ -1,46 +1,28 @@
-# Plan: User Files + Privacy Layer
+## Per-user init patch, with wikireview as the shared fallback
 
-You already have the file explorer UI. This plan only adds the privacy layer, link spots, and a hook so the explorer can plug into it later.
+### Concept
+The sandbox itself has no production-usable per-user default (its localStorage default only works on localhost). We store each user's init patch in Lovable Cloud and inject it into the sandbox iframe via the existing `soundemote:sandbox-project-data` postMessage channel already wired in `SandboxPage.tsx`. No changes to the sandbox internals needed.
 
-## What we'll build
+Resolution order when a user opens the plain `/sandbox`:
+1. If the signed-in user has a saved init patch → load it.
+2. Else → load **wikireview**'s init patch (the shared default).
+3. Else → sandbox falls back to its own bundled `default.json`.
 
-1. **Database schema** — `public.user_files` metadata table
-   - `id`, `owner_id` (FK to auth.users), `slug`, `name`, `description`
-   - `is_public` boolean, `storage_path` text, `size` int, `mime_type` text
-   - `created_at`, `updated_at` timestamps
-   - Grants for `anon`, `authenticated`, `service_role`
-   - RLS policies:
-     - Public read: `anon` + `authenticated` can see rows where `is_public = true`
-     - Owner read/write: authenticated users can see and manage their own files
-     - Admin manage: users with `admin` role can manage all files
+### Database (new migration)
+Create `public.user_init_patches`:
+- `owner_id uuid pk references auth.users on delete cascade`
+- `project_data jsonb not null`
+- `updated_at timestamptz default now()`
+- Grants + RLS: public `select` (so anyone can read wikireview's fallback), owner-only `insert/update/delete`, `service_role all`.
 
-2. **Storage bucket** (if the explorer uses Supabase Storage)
-   - `user-files` bucket
-   - RLS: owner can upload/update/delete; public read for public files; admin full access
+### Frontend
+1. **`SandboxPage.tsx`**: when route is plain `/sandbox` (no patch/share/wiki params), fetch the init patch:
+   - resolve current session's `owner_id`; query `user_init_patches` for it.
+   - if none, look up wikireview's profile id → query its init patch.
+   - inject the resulting `project_data` via the existing `postProjectData` path.
+2. **Save control**: add a small "set as my init patch" button (signed-in only) in the sandbox toolbar overlay. It calls the existing `requestCurrentPatch()` to grab the live patch, then upserts into `user_init_patches`.
 
-3. **Hook update** — extend `src/hooks/useUserFiles.ts`
-   - `myFiles` — list all files for the signed-in user
-   - `publicFiles(handle)` — list public files for any user
-   - `isOwner(file)` helper
-   - Keep the existing `myFilesUrl` / `userFilesUrl` helpers
-
-4. **UI link spots** (dummy space only, no explorer)
-   - Nav: keep the `files` link for signed-in users
-   - User profile page (`UserPage.tsx`): add a "Files" section under Banks that lists public files for the viewed user as simple text links (placeholder styling until the explorer replaces it)
-
-## Out of scope
-
-- The actual file explorer UI / upload UI / folder tree
-- File preview, download, drag-and-drop
-- Those will be handled by the agent working on the explorer
-
-## Files to create/edit
-
-- `supabase/user_files.sql` — new migration
-- `src/hooks/useUserFiles.ts` — extend
-- `src/pages/UserPage.tsx` — add Files section
-- `src/components/soundemote/Nav.tsx` — already has link spot
-
-## Next step
-
-Approve this plan and I'll implement the schema, hook, and dummy link spots.
+### Notes / technical
+- `requestCurrentPatch()` returns the `nodeGraphShareProjectData` shape (`{kind:"sandbox_patch", patch_data, ...}`), which is exactly what the inject path expects — so save and load are symmetric.
+- wikireview's id is resolved by handle lookup in `profiles`, not hardcoded.
+- Migration SQL will be provided to run in the Cloud SQL editor.
