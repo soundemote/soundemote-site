@@ -119,9 +119,7 @@ function positionNodeUserUiSettingsPanel(panel, x, y) {
     return;
   }
   const { left, top } = nodeGraphFloatingWindowPosition(panel, x, y);
-  panel.style.left = `${left}px`;
-  panel.style.top = `${top}px`;
-  panel.style.right = "auto";
+  setNodeGraphFloatingWindowViewportPosition(panel, left, top);
   if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
     rememberNodeGraphWorkspaceWindowState(
       "uiSettings",
@@ -215,9 +213,7 @@ function positionNodeUiDevHelper(helper, x, y) {
     return;
   }
   const { left, top } = nodeGraphFloatingWindowPosition(helper, x, y);
-  helper.style.left = `${left}px`;
-  helper.style.top = `${top}px`;
-  helper.style.right = "auto";
+  setNodeGraphFloatingWindowViewportPosition(helper, left, top);
   if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
     rememberNodeGraphWorkspaceWindowState(
       "uiDev",

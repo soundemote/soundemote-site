@@ -425,10 +425,6 @@
       );
     }
 
-    function dropTargetFromPoint(clientX, clientY) {
-      return patchPointTargetFromPoint(clientX, clientY);
-    }
-
     function endpointPoint(endpoint, fallbackElement = null) {
       if (!endpoint) {
         return null;
@@ -452,12 +448,9 @@
     return {
       connectEndpoints,
       createGradient,
-      dropTargetFromPoint,
       drawPath,
-      dragVisualElement: visualEndpointElement,
       endpointFromElement,
       endpointPoint,
-      endpointsAreParameterAudioMismatch,
       endpointsMatch,
       endpointsShouldBurst,
       patchPointTargetFromPoint,
@@ -472,19 +465,6 @@
     const { helpers, state } = deps;
     let hoveredPatchPoint = null;
 
-    function eventIsPrimaryWireStart(event) {
-      if (!event || event.isPrimary === false) {
-        return false;
-      }
-      if (event.button === 1 || event.button === 2) {
-        return false;
-      }
-      if (event.buttons !== undefined && event.buttons !== 0 && !(event.buttons & 1)) {
-        return false;
-      }
-      return event.button === undefined || event.button <= 0;
-    }
-
     function setHoveredPatchPoint(target) {
       if (hoveredPatchPoint === target) {
         return;
@@ -496,114 +476,6 @@
 
     function clearHover() {
       setHoveredPatchPoint(null);
-    }
-
-    function clearDragClass(dragging) {
-      dragging?.visualElement?.classList?.remove("dragging");
-    }
-
-    function cancelManualTrace() {
-      if (!state.manualTrace) {
-        return false;
-      }
-      clearDragClass(state.manualTrace);
-      state.manualTrace = null;
-      deps.drawWires();
-      deps.setHelp("");
-      return true;
-    }
-
-    function beginManualTrace(event, port) {
-      const endpoint = helpers.endpointFromElement(port);
-      if (!endpoint || !helpers.pointInEndpointHitbox(endpoint, event.clientX, event.clientY, port)) {
-        return false;
-      }
-      const visualPort = helpers.dragVisualElement(port);
-      state.manualTrace = {
-        endpoint,
-        from: helpers.endpointPoint(endpoint, port),
-        points: [],
-        to: deps.clientPoint(event),
-        visualElement: visualPort,
-      };
-      visualPort?.classList.add("dragging");
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation?.();
-      deps.setHelp("Trace mode: click empty space to place trace points, click a compatible patch point to finish. Escape, right click, middle click, or plain click outside cancels.");
-      deps.drawWires();
-      return true;
-    }
-
-    function handleManualTracePointerDown(event) {
-      const trace = state.manualTrace;
-      if (!trace) {
-        return false;
-      }
-      const eventTarget = event.target instanceof Element ? event.target : null;
-      if (event.button !== 0) {
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation?.();
-        cancelManualTrace();
-        return true;
-      }
-
-      const target = helpers.dropTargetFromPoint(event.clientX, event.clientY);
-      const targetEndpoint = helpers.endpointFromElement(target);
-      if (targetEndpoint) {
-        const tracePoints = normalizeNodeGraphTracePoints(trace.points);
-        const endpointPoint = helpers.endpointPoint(targetEndpoint, target) || deps.clientPoint(event);
-        nodeGraphTraceAppendFinalApproachPoint(trace.from, tracePoints, endpointPoint);
-        const cleanedTracePoints = nodeGraphTraceCleanFinalDestinationPoints(
-          trace.from,
-          tracePoints,
-          endpointPoint,
-        );
-        const connected = helpers.connectEndpoints(trace.endpoint, targetEndpoint, {
-          replaceDuplicate: true,
-          tracePoints: cleanedTracePoints,
-          wireType: nodeGraphWireTypes.trace,
-        });
-        clearDragClass(trace);
-        state.manualTrace = null;
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation?.();
-        if (connected) {
-          deps.setHelp("Trace connected.");
-          deps.drawWires();
-          return true;
-        }
-        if (helpers.endpointsShouldBurst(trace.endpoint, targetEndpoint)) {
-          const from = trace.from;
-          const to = helpers.endpointPoint(targetEndpoint, target) || deps.clientPoint(event);
-          deps.drawWires();
-          animateDestroyedWire(from, to);
-          deps.burstZap(from);
-          deps.burstZap(to);
-          deps.triggerWireBreak?.("manual-trace");
-        } else {
-          deps.drawWires();
-        }
-        return true;
-      }
-
-      if (eventTarget?.closest?.(".dsp-node, .node-slider-readout, input, textarea, select")) {
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation?.();
-        cancelManualTrace();
-        return true;
-      }
-
-      nodeGraphTraceAppendSingleMovePoint(trace.from, trace.points, deps.clientPoint(event));
-      trace.to = nodeGraphTraceLastPoint(trace.from, trace.points) || deps.clientPoint(event);
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation?.();
-      deps.drawWires();
-      return true;
     }
 
     function animateDestroyedWire(from, to) {
@@ -618,118 +490,238 @@
       svg.append(path);
     }
 
-    function beginWireDragFromElement(event, port) {
-      if (!eventIsPrimaryWireStart(event)) {
+    function endpointKey(endpoint) {
+      return `${endpoint.node}:${endpoint.port ?? endpoint.param ?? endpoint.graphInput}:${endpoint.io}`;
+    }
+
+    function portDirectionFromIo(io) {
+      return io === "output" ? "output" : "input";
+    }
+
+    function isCompatibleTarget(mode, endpoint) {
+      if (mode.direction === "output") {
+        return endpoint.io === "input" || endpoint.io === "modulation" || endpoint.io === "graph";
+      }
+      return endpoint.io === "output";
+    }
+
+    function isSameDirection(mode, endpoint) {
+      return portDirectionFromIo(endpoint.io) === mode.direction;
+    }
+
+    function clearPortConnectionMode() {
+      const mode = state.portConnectionMode;
+      if (!mode) {
         return;
       }
-      if (state.manualTrace) {
-        handleManualTracePointerDown(event);
-        return;
+      for (const { element } of mode.selected.values()) {
+        if (!element) { continue; }
+        element.classList.remove("port-connection-selected");
+        element.querySelector?.(".node-port")?.classList.remove("port-connection-selected");
       }
-      if (event.ctrlKey || event.metaKey) {
-        beginManualTrace(event, port);
-        return;
+      state.portConnectionMode = null;
+    }
+
+    function cancelPortConnectionMode() {
+      if (!state.portConnectionMode) {
+        return false;
       }
-      if (event.altKey) {
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
-      const endpoint = helpers.endpointFromElement(port);
-      if (!endpoint) {
-        return;
-      }
-      const visualPort = helpers.dragVisualElement(port);
-      if (!helpers.pointInEndpointHitbox(endpoint, event.clientX, event.clientY, port)) {
-        return;
-      }
-      state.dragging = {
-        endpoint,
-        from: helpers.endpointPoint(endpoint, port),
-        to: deps.clientPoint(event),
-        visualElement: visualPort,
-      };
-      visualPort?.classList.add("dragging");
-      port.setPointerCapture?.(event.pointerId);
-      event.preventDefault();
-      event.stopPropagation();
+      clearPortConnectionMode();
       deps.drawWires();
+      return true;
     }
 
-    function beginWireDrag(event) {
-      const coordinateTarget = helpers.patchPointTargetFromPoint(event.clientX, event.clientY);
-      beginWireDragFromElement(event, coordinateTarget || event.currentTarget);
-    }
-
-    function beginPatchPointWireDrag(event) {
-      if (state.manualTrace) {
-        handleManualTracePointerDown(event);
+    function commitPortConnectionMode(targetEndpoint, targetElement) {
+      const mode = state.portConnectionMode;
+      if (!mode) {
         return;
       }
-      const target = event.target instanceof Element ? event.target : null;
-      if (
-        !eventIsPrimaryWireStart(event) ||
-        state.dragging ||
-        target?.closest?.(".node-port, .node-io-row, .node-param-port.modulation-input, .node-param-port.graph-input, .node-slider-readout, input, textarea, select")
-      ) {
-        return;
-      }
-      const patchPoint = helpers.patchPointTargetFromPoint(event.clientX, event.clientY);
-      if (!patchPoint) {
-        return;
-      }
-      if (event.altKey) {
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
-      beginWireDragFromElement(event, patchPoint);
-    }
-
-    function dragWire(event) {
-      if (state.manualTrace) {
-        state.manualTrace.to = deps.clientPoint(event);
-        deps.drawWires();
-        return;
-      }
-      if (!state.dragging) {
-        return;
-      }
-
-      state.dragging.to = deps.clientPoint(event);
-      deps.drawWires();
-    }
-
-    function endWireDrag(event) {
-      if (!state.dragging) {
-        return;
-      }
-      const dragging = state.dragging;
-      const target = helpers.dropTargetFromPoint(event.clientX, event.clientY);
-      const targetEndpoint = helpers.endpointFromElement(target);
-      clearDragClass(dragging);
-      state.dragging = null;
-
-      const connected = helpers.connectEndpoints(dragging.endpoint, targetEndpoint);
-
-      if (!connected) {
-        if (helpers.endpointsShouldBurst(dragging.endpoint, targetEndpoint)) {
-          const from = dragging.from;
-          const to =
-            helpers.endpointPoint(targetEndpoint, target) ||
-            deps.clientPoint(event);
-          deps.drawWires();
+      for (const { endpoint, from } of mode.selected.values()) {
+        const connected = helpers.connectEndpoints(endpoint, targetEndpoint);
+        if (!connected && helpers.endpointsShouldBurst(endpoint, targetEndpoint)) {
+          const to = helpers.endpointPoint(targetEndpoint, targetElement);
           animateDestroyedWire(from, to);
           deps.burstZap(from);
           deps.burstZap(to);
-          deps.triggerWireBreak?.("wire-drag");
-          if (helpers.endpointsAreParameterAudioMismatch(dragging.endpoint, targetEndpoint)) {
-            deps.setHelp("Audio inputs take signal wires. Drop parameter wires on parameter modulation inputs.");
-          }
-          return;
+          deps.triggerWireBreak?.("port-click");
         }
+      }
+      clearPortConnectionMode();
+      deps.drawWires();
+    }
+
+    function handlePortClickFromElement(portElement, clientX, clientY) {
+      const hitboxElement = portElement.closest?.(".node-io-row") || portElement;
+      const endpoint = helpers.endpointFromElement(hitboxElement);
+      if (!endpoint) {
+        return false;
+      }
+      if (!helpers.pointInEndpointHitbox(endpoint, clientX, clientY, hitboxElement)) {
+        return false;
+      }
+      const visualElement = hitboxElement.classList.contains("node-io-row")
+        ? (hitboxElement.querySelector(".node-port") || hitboxElement)
+        : hitboxElement;
+      const mode = state.portConnectionMode;
+      if (!mode) {
+        const from = helpers.endpointPoint(endpoint, hitboxElement);
+        if (!from) {
+          return false;
+        }
+        state.portConnectionMode = {
+          direction: portDirectionFromIo(endpoint.io),
+          selected: new Map([[endpointKey(endpoint), { endpoint, element: hitboxElement, from }]]),
+          cursorPoint: deps.clientPoint({ clientX, clientY }),
+        };
+        hitboxElement.classList.add("port-connection-selected");
+        visualElement.classList.add("port-connection-selected");
+        deps.drawWires();
+        return true;
+      }
+      if (isCompatibleTarget(mode, endpoint)) {
+        commitPortConnectionMode(endpoint, hitboxElement);
+        return true;
+      }
+      if (isSameDirection(mode, endpoint)) {
+        const key = endpointKey(endpoint);
+        if (mode.selected.has(key)) {
+          mode.selected.delete(key);
+          hitboxElement.classList.remove("port-connection-selected");
+          visualElement.classList.remove("port-connection-selected");
+          if (mode.selected.size === 0) {
+            cancelPortConnectionMode();
+          } else {
+            deps.drawWires();
+          }
+        } else {
+          const from = helpers.endpointPoint(endpoint, hitboxElement);
+          if (from) {
+            mode.selected.set(key, { endpoint, element: hitboxElement, from });
+            hitboxElement.classList.add("port-connection-selected");
+            visualElement.classList.add("port-connection-selected");
+            deps.drawWires();
+          }
+        }
+        return true;
+      }
+      return false;
+    }
+
+    function handlePortClick(event) {
+      if (event.button !== undefined && event.button !== 0) {
+        return;
+      }
+      const port = event.currentTarget instanceof Element ? event.currentTarget : null;
+      if (!port) {
+        return;
+      }
+      if (handlePortClickFromElement(port, event.clientX, event.clientY)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }
+
+    function handleWorkspaceClick(event) {
+      if (!state.portConnectionMode) {
+        return;
+      }
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest?.(".node-port, .node-io-row, .node-param-port.modulation-input, .node-param-port.graph-input")) {
+        return;
+      }
+      cancelPortConnectionMode();
+    }
+
+    function updateConnectionModeCursor(event) {
+      let redraw = false;
+      if (state.portConnectionMode) {
+        state.portConnectionMode.cursorPoint = deps.clientPoint(event);
+        redraw = true;
+      }
+      if (state.wireDragging) {
+        state.wireDragging.cursorPoint = deps.clientPoint(event);
+        redraw = true;
+      }
+      if (redraw) {
         deps.drawWires();
       }
+    }
+
+    function handlePortPointerDown(event) {
+      if (event.button !== 0) {
+        return;
+      }
+      const port = event.currentTarget instanceof Element ? event.currentTarget : null;
+      if (!port) {
+        return;
+      }
+      const hitboxElement = port.closest?.(".node-io-row") || port;
+      const endpoint = helpers.endpointFromElement(hitboxElement);
+      if (!endpoint) {
+        return;
+      }
+      const from = helpers.endpointPoint(endpoint, hitboxElement);
+      if (!from) {
+        return;
+      }
+      state.wireDragging = {
+        endpoint,
+        element: hitboxElement,
+        from,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        cursorPoint: deps.clientPoint(event),
+        active: false,
+        pointerId: event.pointerId ?? null,
+      };
+      event.stopPropagation();
+    }
+
+    function handleWireDragMove(event) {
+      const drag = state.wireDragging;
+      if (!drag) {
+        return;
+      }
+      if (drag.pointerId !== null && event.pointerId !== undefined && drag.pointerId !== event.pointerId) {
+        return;
+      }
+      const dx = event.clientX - drag.startClientX;
+      const dy = event.clientY - drag.startClientY;
+      if (!drag.active && Math.hypot(dx, dy) < 4) {
+        return;
+      }
+      drag.active = true;
+      drag.cursorPoint = deps.clientPoint(event);
+      deps.drawWires();
+    }
+
+    function handleWireDragEnd(event) {
+      const drag = state.wireDragging;
+      if (!drag) {
+        return;
+      }
+      if (drag.pointerId !== null && event.pointerId !== undefined && drag.pointerId !== event.pointerId) {
+        return;
+      }
+      state.wireDragging = null;
+      if (!drag.active) {
+        deps.drawWires();
+        return;
+      }
+      const target = helpers.patchPointTargetFromPoint(event.clientX, event.clientY);
+      const targetHitbox = target?.closest?.(".node-io-row") || target;
+      const targetEndpoint = targetHitbox ? helpers.endpointFromElement(targetHitbox) : null;
+      if (targetEndpoint) {
+        const connected = helpers.connectEndpoints(drag.endpoint, targetEndpoint);
+        if (!connected && helpers.endpointsShouldBurst(drag.endpoint, targetEndpoint)) {
+          const to = helpers.endpointPoint(targetEndpoint, targetHitbox);
+          animateDestroyedWire(drag.from, to);
+          deps.burstZap(drag.from);
+          deps.burstZap(to);
+          deps.triggerWireBreak?.("wire-drag");
+        }
+      }
+      deps.drawWires();
     }
 
     function handlePatchPointHover(event) {
@@ -754,13 +746,15 @@
     }
 
     return {
-      beginPatchPointWireDrag,
-      beginWireDrag,
-      cancelManualTrace,
+      cancelPortConnectionMode,
       clearHover,
-      dragWire,
-      endWireDrag,
       handlePatchPointHover,
+      handlePortClick,
+      handlePortPointerDown,
+      handleWireDragEnd,
+      handleWireDragMove,
+      handleWorkspaceClick,
+      updateConnectionModeCursor,
     };
   }
 

@@ -234,7 +234,7 @@ function createNodeGraphLiveRuntime(plan) {
   const noiseSeeds = new Map();
   const oscResetStates = new Map();
   const graphLfoStates = new Map();
-  const bandpassStates = new Map();
+  const passiveFilterStates = new Map();
   const clockStates = new Map();
   const codeblockFunctions = new Map();
   const cookbookFilterStates = new Map();
@@ -244,14 +244,12 @@ function createNodeGraphLiveRuntime(plan) {
   const expAdsrStates = new Map();
   const fractalBrownianNoiseStates = new Map();
   const flowerChildEnvelopeFollowerStates = new Map();
-  const highpassStates = new Map();
   const ladderFilterStates = new Map();
+  const tb303FilterStates = new Map();
   const linearEnvelopeStates = new Map();
   const lorenzAttractorStates = new Map();
-  const lowpassStates = new Map();
   const moduleGroupRuntimes = new Map();
   const noiseGeneratorStates = new Map();
-  const noiseSampleHoldStates = new Map();
   const oscillatorLastPhaseIncrements = new Map();
   const oscillatorStoppedSamples = new Map();
   const patchCommandStates = new Map();
@@ -260,6 +258,7 @@ function createNodeGraphLiveRuntime(plan) {
   const randomWalkStates = new Map();
   const reverbEffectStates = new Map();
   const pllStates = new Map();
+  const helmholtzStates = new Map();
   const sampleHoldStates = new Map();
   const samplePlaybackStates = new Map();
   const samples = new Map((plan.samples || []).map((sample) => [sample.id, sample]));
@@ -278,12 +277,8 @@ function createNodeGraphLiveRuntime(plan) {
       oscResetStates.set(node.id, createNodeGraphOscResetState());
       triangleStates.set(node.id, 0);
     }
-    if (nodeGraphModuleIsRealtimeOscillatorType(node.type) || node.type === "noise") {
+    if (nodeGraphModuleIsRealtimeOscillatorType(node.type)) {
       noiseSeeds.set(node.id, nodeGraphStableSeed(node.id));
-    }
-    if (node.type === "stereoNoise") {
-      noiseSeeds.set(`${node.id}:left`, nodeGraphStableSeed(`${node.id}:left`));
-      noiseSeeds.set(`${node.id}:right`, nodeGraphStableSeed(`${node.id}:right`));
     }
     if (node.type === "spiral") {
       spiralStates.set(node.id, createJerobeamSpiralState());
@@ -291,20 +286,17 @@ function createNodeGraphLiveRuntime(plan) {
     if (node.type === "lorenzAttractor") {
       lorenzAttractorStates.set(node.id, createNodeGraphLorenzAttractorState());
     }
-    if (node.type === "highpass") {
-      highpassStates.set(node.id, createNodeGraphHighpassState());
-    }
-    if (node.type === "lowpass") {
-      lowpassStates.set(node.id, createNodeGraphLowpassState());
-    }
-    if (node.type === "bandpass") {
-      bandpassStates.set(node.id, createNodeGraphBandpassState());
+    if (node.type === "passiveFilter") {
+      passiveFilterStates.set(node.id, createNodeGraphPassiveFilterState());
     }
     if (node.type === "cookbookFilter") {
       cookbookFilterStates.set(node.id, createNodeGraphCookbookFilterState());
     }
     if (node.type === "ladderFilter") {
       ladderFilterStates.set(node.id, createNodeGraphLadderFilterState());
+    }
+    if (node.type === "tb303Filter") {
+      tb303FilterStates.set(node.id, createNodeGraphTb303FilterState());
     }
     if (node.type === "clock") {
       clockStates.set(node.id, createNodeGraphClockState());
@@ -326,6 +318,9 @@ function createNodeGraphLiveRuntime(plan) {
     }
     if (node.type === "pll") {
       pllStates.set(node.id, createNodeGraphPllState());
+    }
+    if (node.type === "helmholtzPitch") {
+      helmholtzStates.set(node.id, createNodeGraphHelmholtzState());
     }
     if (node.type === "randomClock") {
       randomClockStates.set(node.id, createNodeGraphRandomClockState());
@@ -350,9 +345,6 @@ function createNodeGraphLiveRuntime(plan) {
     }
     if (node.type === "noiseGenerator") {
       noiseGeneratorStates.set(node.id, createNodeGraphNoiseGeneratorState());
-    }
-    if (node.type === "noise") {
-      noiseSampleHoldStates.set(node.id, createNodeGraphNoiseSampleHoldState());
     }
     if (node.type === "randomWalk") {
       randomWalkStates.set(node.id, createNodeGraphRandomWalkState());
@@ -398,7 +390,7 @@ function createNodeGraphLiveRuntime(plan) {
     ),
     inputConnections,
     badNumberCount: 0,
-    bandpassStates,
+    passiveFilterStates,
     clockDividerStates,
     clockStates,
     codeblockFunctions,
@@ -411,6 +403,7 @@ function createNodeGraphLiveRuntime(plan) {
     graphInputConnections,
     graphLfoStates,
     ladderFilterStates,
+    tb303FilterStates,
     linearEnvelopeStates,
     lorenzAttractorStates,
     meterCounter: 0,
@@ -440,13 +433,11 @@ function createNodeGraphLiveRuntime(plan) {
     noiseSeedKeys,
     noiseSeeds,
     noiseGeneratorStates,
-    noiseSampleHoldStates,
     pluckEnvelopeStates,
     randomClockStates,
-    highpassStates,
-    lowpassStates,
     reverbEffectStates,
     pllStates,
+    helmholtzStates,
     order: [...(plan.order || [])],
     outputNode: plan.outputNode || "output",
     patchCommandStates,
@@ -522,11 +513,8 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   if (!runtime.spiralStates) {
     runtime.spiralStates = new Map();
   }
-  if (!runtime.highpassStates) {
-    runtime.highpassStates = new Map();
-  }
-  if (!runtime.lowpassStates) {
-    runtime.lowpassStates = new Map();
+  if (!runtime.passiveFilterStates) {
+    runtime.passiveFilterStates = new Map();
   }
   if (!runtime.moduleGroupRuntimes) {
     runtime.moduleGroupRuntimes = new Map();
@@ -534,14 +522,14 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   if (!runtime.ladderFilterStates) {
     runtime.ladderFilterStates = new Map();
   }
+  if (!runtime.tb303FilterStates) {
+    runtime.tb303FilterStates = new Map();
+  }
   if (!runtime.linearEnvelopeStates) {
     runtime.linearEnvelopeStates = new Map();
   }
   if (!runtime.lorenzAttractorStates) {
     runtime.lorenzAttractorStates = new Map();
-  }
-  if (!runtime.bandpassStates) {
-    runtime.bandpassStates = new Map();
   }
   if (!runtime.clockStates) {
     runtime.clockStates = new Map();
@@ -567,6 +555,9 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   if (!runtime.pllStates) {
     runtime.pllStates = new Map();
   }
+  if (!runtime.helmholtzStates) {
+    runtime.helmholtzStates = new Map();
+  }
   if (!runtime.sampleHoldStates) {
     runtime.sampleHoldStates = new Map();
   }
@@ -581,9 +572,6 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   }
   if (!runtime.noiseGeneratorStates) {
     runtime.noiseGeneratorStates = new Map();
-  }
-  if (!runtime.noiseSampleHoldStates) {
-    runtime.noiseSampleHoldStates = new Map();
   }
   if (!runtime.randomWalkStates) {
     runtime.randomWalkStates = new Map();
@@ -632,16 +620,8 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     if (nodeGraphModuleIsRealtimeOscillatorType(node.type) && !runtime.triangleStates.has(node.id)) {
       runtime.triangleStates.set(node.id, 0);
     }
-    if ((nodeGraphModuleIsRealtimeOscillatorType(node.type) || node.type === "noise") && !runtime.noiseSeeds.has(node.id)) {
+    if (nodeGraphModuleIsRealtimeOscillatorType(node.type) && !runtime.noiseSeeds.has(node.id)) {
       runtime.noiseSeeds.set(node.id, nodeGraphStableSeed(node.id));
-    }
-    if (node.type === "stereoNoise") {
-      if (!runtime.noiseSeeds.has(`${node.id}:left`)) {
-        runtime.noiseSeeds.set(`${node.id}:left`, nodeGraphStableSeed(`${node.id}:left`));
-      }
-      if (!runtime.noiseSeeds.has(`${node.id}:right`)) {
-        runtime.noiseSeeds.set(`${node.id}:right`, nodeGraphStableSeed(`${node.id}:right`));
-      }
     }
     if (node.type === "spiral" && !runtime.spiralStates.has(node.id)) {
       runtime.spiralStates.set(node.id, createJerobeamSpiralState());
@@ -649,14 +629,8 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     if (node.type === "lorenzAttractor" && !runtime.lorenzAttractorStates.has(node.id)) {
       runtime.lorenzAttractorStates.set(node.id, createNodeGraphLorenzAttractorState());
     }
-    if (node.type === "highpass" && !runtime.highpassStates.has(node.id)) {
-      runtime.highpassStates.set(node.id, createNodeGraphHighpassState());
-    }
-    if (node.type === "lowpass" && !runtime.lowpassStates.has(node.id)) {
-      runtime.lowpassStates.set(node.id, createNodeGraphLowpassState());
-    }
-    if (node.type === "bandpass" && !runtime.bandpassStates.has(node.id)) {
-      runtime.bandpassStates.set(node.id, createNodeGraphBandpassState());
+    if (node.type === "passiveFilter" && !runtime.passiveFilterStates.has(node.id)) {
+      runtime.passiveFilterStates.set(node.id, createNodeGraphPassiveFilterState());
     }
     if (node.type === "cookbookFilter" && !runtime.cookbookFilterStates.has(node.id)) {
       runtime.cookbookFilterStates.set(node.id, createNodeGraphCookbookFilterState());
@@ -685,6 +659,9 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     if (node.type === "pll" && !runtime.pllStates.has(node.id)) {
       runtime.pllStates.set(node.id, createNodeGraphPllState());
     }
+    if (node.type === "helmholtzPitch" && !runtime.helmholtzStates.has(node.id)) {
+      runtime.helmholtzStates.set(node.id, createNodeGraphHelmholtzState());
+    }
     if (node.type === "randomClock" && !runtime.randomClockStates.has(node.id)) {
       runtime.randomClockStates.set(node.id, createNodeGraphRandomClockState());
     }
@@ -708,9 +685,6 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     }
     if (node.type === "noiseGenerator" && !runtime.noiseGeneratorStates.has(node.id)) {
       runtime.noiseGeneratorStates.set(node.id, createNodeGraphNoiseGeneratorState());
-    }
-    if (node.type === "noise" && !runtime.noiseSampleHoldStates.has(node.id)) {
-      runtime.noiseSampleHoldStates.set(node.id, createNodeGraphNoiseSampleHoldState());
     }
     if (node.type === "randomWalk" && !runtime.randomWalkStates.has(node.id)) {
       runtime.randomWalkStates.set(node.id, createNodeGraphRandomWalkState());
@@ -818,14 +792,9 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
       runtime.lorenzAttractorStates.delete(id);
     }
   }
-  for (const id of [...runtime.highpassStates.keys()]) {
+  for (const id of [...runtime.passiveFilterStates.keys()]) {
     if (!nodeIds.has(id)) {
-      runtime.highpassStates.delete(id);
-    }
-  }
-  for (const id of [...runtime.lowpassStates.keys()]) {
-    if (!nodeIds.has(id)) {
-      runtime.lowpassStates.delete(id);
+      runtime.passiveFilterStates.delete(id);
     }
   }
   for (const id of [...runtime.moduleGroupRuntimes.keys()]) {
@@ -836,11 +805,6 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   for (const id of [...runtime.linearEnvelopeStates.keys()]) {
     if (!nodeIds.has(id)) {
       runtime.linearEnvelopeStates.delete(id);
-    }
-  }
-  for (const id of [...runtime.bandpassStates.keys()]) {
-    if (!nodeIds.has(id)) {
-      runtime.bandpassStates.delete(id);
     }
   }
   for (const id of [...runtime.clockStates.keys()]) {
@@ -861,6 +825,11 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   for (const id of [...runtime.ladderFilterStates.keys()]) {
     if (!nodeIds.has(id)) {
       runtime.ladderFilterStates.delete(id);
+    }
+  }
+  for (const id of [...runtime.tb303FilterStates.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.tb303FilterStates.delete(id);
     }
   }
   for (const id of [...runtime.clockDividerStates.keys()]) {
@@ -886,6 +855,11 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   for (const id of [...(runtime.pllStates?.keys() || [])]) {
     if (!nodeIds.has(id)) {
       runtime.pllStates.delete(id);
+    }
+  }
+  for (const id of [...(runtime.helmholtzStates?.keys() || [])]) {
+    if (!nodeIds.has(id)) {
+      runtime.helmholtzStates.delete(id);
     }
   }
   for (const id of [...runtime.sampleHoldStates.keys()]) {
@@ -916,11 +890,6 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   for (const id of [...runtime.noiseGeneratorStates.keys()]) {
     if (!nodeIds.has(id)) {
       runtime.noiseGeneratorStates.delete(id);
-    }
-  }
-  for (const id of [...runtime.noiseSampleHoldStates.keys()]) {
-    if (!nodeIds.has(id)) {
-      runtime.noiseSampleHoldStates.delete(id);
     }
   }
   for (const id of [...runtime.randomWalkStates.keys()]) {

@@ -75,8 +75,8 @@ async function populateNodeBootSysinfo() {
         }
         if (info) {
           const desc = info.description || info.device || gpuName;
-          const gpuParts = [desc || gpuName].filter(Boolean);
-          if (vramMB) gpuParts.push(`${vramMB >= 1024 ? `${Math.round(vramMB / 1024)} GB` : `${vramMB} MB`} VRAM`);
+          const vramStr = vramMB ? `${vramMB >= 1024 ? `${Math.round(vramMB / 1024)} GB` : `${vramMB} MB`} VRAM` : null;
+          const gpuParts = [vramStr, desc || gpuName].filter(Boolean);
           gpuStr = gpuParts.length ? `GPU: ${gpuParts.join(", ")}` : null;
         }
       }
@@ -84,8 +84,8 @@ async function populateNodeBootSysinfo() {
   } catch (_) {}
 
   if (!gpuStr) {
-    const gpuParts = [gpuName].filter(Boolean);
-    if (vramMB) gpuParts.push(`${vramMB >= 1024 ? `${Math.round(vramMB / 1024)} GB` : `${vramMB} MB`} VRAM`);
+    const vramStr = vramMB ? `${vramMB >= 1024 ? `${Math.round(vramMB / 1024)} GB` : `${vramMB} MB`} VRAM` : null;
+    const gpuParts = [vramStr, gpuName].filter(Boolean);
     gpuStr = gpuParts.length ? `GPU: ${gpuParts.join(", ")}` : null;
   }
 
@@ -122,15 +122,13 @@ async function populateNodeBootSysinfo() {
 populateNodeBootSysinfo();
 
 function setNodeBootLoadingProgress(value, label = "") {
-  const progress = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
-  const bar = document.querySelector(".node-boot-loading-bar");
   const fill = document.getElementById("nodeBootLoadingBarFill");
+  const bar = document.querySelector(".node-boot-loading-bar");
   const labelElement = document.getElementById("nodeBootLoadingLabel");
-  if (bar) {
-    bar.setAttribute("aria-valuenow", String(progress));
-  }
-  if (fill) {
-    fill.style.width = `${progress}%`;
+  if (value != null) {
+    const progress = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+    if (bar) bar.setAttribute("aria-valuenow", String(progress));
+    if (fill) fill.style.width = `${progress}%`;
   }
   if (label && labelElement) {
     labelElement.textContent = label;

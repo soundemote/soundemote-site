@@ -1,14 +1,6 @@
 const nodeGraphModuleStoreTypes = Object.freeze([
-  "osc",
-  "additiveOsc",
-  "gpuAdditiveOsc",
-  "distortionOscillator",
-  "dsfOscillator",
-  "ellipsoid",
   "polyBlep",
-  "fbPolyBlepOsc",
   "sineWavetable",
-  "jerobeamNyqistShannon",
   "drumMachine",
   "kickDrum",
   "snareDrum",
@@ -33,14 +25,20 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "chordSequencer",
   "arpeggiator",
   "spiral",
+  "blubb",
+  "boing",
+  "keplerBoukamp",
+  "mushroom",
+  "nyquistShannon",
+  "radar",
+  "torus",
+  "wirdoSpiral",
   "lorenzAttractor",
   "rosslerAttractor",
   "chuaAttractor",
   "aizawaAttractor",
   "thomasAttractor",
   "halvorsenAttractor",
-  "noise",
-  "stereoNoise",
   "noiseGenerator",
   "randomWalk",
   "fractalBrownianNoise",
@@ -53,6 +51,7 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "softClipper",
   "rotate3dTo2d",
   "output",
+  "audioInput",
   "macroKnob",
   "bipolarKnob",
   "valueSlider",
@@ -77,14 +76,15 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "audioPlayer",
   "samplePlayer",
   "sampleLooper",
-  "highpass",
-  "lowpass",
-  "bandpass",
+  "passiveFilter",
   "cookbookFilter",
   "ladderFilter",
+  "tb303Filter",
   "slewLimiter",
   "delayEffect",
   "reverbEffect",
+  "pll",
+  "helmholtzPitch",
   "distortionEffect",
   "sampleHold",
   "digitalCurveEnvelope",
@@ -105,6 +105,7 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "traceDisplay",
   "dotOscilloscope",
   "valueOscilloscope",
+  "numberReadout",
   "lineBurnOscilloscope",
   "scope2d",
   "scope2dTrace",
@@ -121,6 +122,8 @@ let nodeGraphNativeModuleEntriesByTarget = Object.freeze({});
 let nodeGraphNativeModuleCatalogLoadStarted = false;
 
 const nodeGraphModuleStoreUnderConstructionTypes = Object.freeze(new Set([
+  "graph",
+  "graph2",
   "groupInput",
   "groupOutput",
   "shootingStarTail",
@@ -132,7 +135,7 @@ const nodeGraphModuleCatalogVisibilityStorageKey = "soemdsp-sandbox.moduleCatalo
 const nodeGraphModuleStoreDepartments = Object.freeze([
   "Oscillator",
   "Chaos",
-  "OMS",
+  "Jerobeam",
   "Noise",
   "Filter",
   "Envelope",
@@ -155,19 +158,19 @@ const nodeGraphModuleStoreDepartments = Object.freeze([
 const nodeGraphModuleStoreVisualGroups = Object.freeze([
   {
     label: "Generate",
-    departments: Object.freeze(["Oscillator", "Chaos", "OMS", "Noise", "Additive", "Drum", "Sequence"]),
+    departments: Object.freeze(["Oscillator", "Chaos", "Jerobeam", "Noise", "Drum", "Envelope"]),
   },
   {
     label: "Process",
-    departments: Object.freeze(["Filter", "Envelope", "Modulators", "Delay", "Dynamics"]),
+    departments: Object.freeze(["Filter", "Modulators", "Dynamics"]),
+  },
+  {
+    label: "Memory",
+    departments: Object.freeze(["Audio", "Delay", "Loops", "Samples", "Sequence"]),
   },
   {
     label: "Interact",
     departments: Object.freeze(["Controllers", "Game Triggers", "Portals", "Oscilloscope", "Visual", "Debug"]),
-  },
-  {
-    label: "Memory",
-    departments: Object.freeze(["Audio", "Loops", "Samples"]),
   },
 ]);
 
@@ -271,10 +274,10 @@ const nodeGraphModuleStoreDepartmentAds = Object.freeze({
     title: "Chaos",
     pitch: "All the various attractors and strange motion systems. The wild shelf where math starts looking back.",
   },
-  OMS: {
-    symbol: "OMS",
-    title: "OMS",
-    pitch: "Orbit and motion systems. Spiral Generator lives here while this style gets its own lane.",
+  Jerobeam: {
+    symbol: "JRB",
+    title: "Jerobeam",
+    pitch: "Jerobeam spiral and orbit motion systems. Spiral Generator lives here.",
   },
   Visual: {
     symbol: "V",
@@ -289,65 +292,17 @@ const nodeGraphModuleStoreDepartmentAds = Object.freeze({
 });
 
 const nodeGraphModuleStoreCatalog = Object.freeze({
-  osc: {
-    category: "Oscillator",
-    description: "Core tone generator. Turns frequency, phase, and waveform into a controllable voice.",
-    notes: ["phase counter", "waveform selection", "frequency control"],
-  },
-  additiveOsc: {
-    category: "Additive",
-    developerOnly: true,
-    description: "Harmonic additive tone source using SOEMDSP waveform partial recipes.",
-    notes: ["harmonic sum", "waveform selector", "band-limited partials"],
-  },
-  gpuAdditiveOsc: {
-    category: "Additive",
-    developerOnly: true,
-    description: "Buffered GPU additive engine proof module. Reuses the CPU additive path in live audio and prepares WebGPU chunk rendering with fallback.",
-    label: "GPU Additive",
-    notes: ["WebGPU proof", "buffered backend", "CPU fallback"],
-  },
-  distortionOscillator: {
-    category: "Oscillator",
-    description: "Placeholder for a tone source with built-in distortion character and drive-shaped motion.",
-    label: "DistortionOscillator",
-    notes: ["placeholder", "driven tone", "future oscillator"],
-  },
-  dsfOscillator: {
-    category: "Oscillator",
-    description: "Placeholder for a discrete summation formula oscillator with rich harmonic control.",
-    label: "DSFOscillator",
-    notes: ["placeholder", "harmonic series", "future oscillator"],
-  },
-  ellipsoid: {
-    category: "Oscillator",
-    description: "SOEMDSP ellipsoid motion oscillator. Emits paired X/Y curved waveform outputs from two phase-offset ellipsoid DSP paths.",
-    label: "Ellipsoid",
-    notes: ["geometric motion", "x/y output", "soemdsp oscillator"],
-  },
   polyBlep: {
     category: "Oscillator",
     description: "Anti-aliased PolyBLEP oscillator for clean saw, ramp, square, triangle, sine, and noise waveform outputs.",
     label: "PolyBLEP",
     notes: ["anti-aliasing", "polyblep", "realtime oscillator"],
   },
-  fbPolyBlepOsc: {
-    category: "Oscillator",
-    description: "Realtime forward/backward PolyBLEP oscillator test module, split out from the current PolyBLEP oscillator path for edge-repair experiments.",
-    label: "F/B PolyBLEP",
-    notes: ["anti-aliasing", "known-edge repair", "realtime oscillator"],
-  },
   sineWavetable: {
     category: "Oscillator",
     description: "Table-driven sine/cosine oscillator with pitch, frequency, amplitude, and Nyquist-edge fade.",
     label: "SinCos",
     notes: ["implemented", "wavetable", "sin/cos"],
-  },
-  jerobeamNyqistShannon: {
-    category: "Oscillator",
-    description: "Placeholder for a Jerobeam Nyqist/Shannon oscillator concept and audiovisual sampling study.",
-    label: "JerobeamNyqistShannon",
-    notes: ["placeholder", "sampling theorem", "future oscillator"],
   },
   drumMachine: {
     category: "Drum",
@@ -427,10 +382,58 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["placeholder", "note pattern", "arp engine"],
   },
   spiral: {
-    category: "OMS",
+    category: "Jerobeam",
     description: "Jerobeam spiral engine. Emits X/Y/Z motion-signal for alien curves and audiovisual flight paths.",
-    label: "Spiral Generator",
+    label: "Jerobeam Spiral",
     notes: ["attractor motion", "rotation", "density and morph controls"],
+  },
+  blubb: {
+    category: "Jerobeam",
+    description: "Placeholder for the Jerobeam Blubb motion engine.",
+    label: "Jerobeam Blubb",
+    notes: ["placeholder", "jerobeam"],
+  },
+  boing: {
+    category: "Jerobeam",
+    description: "Placeholder for the Jerobeam Boing motion engine.",
+    label: "Jerobeam Boing",
+    notes: ["placeholder", "jerobeam"],
+  },
+  keplerBoukamp: {
+    category: "Jerobeam",
+    description: "Placeholder for the Jerobeam Kepler-Boukamp motion engine.",
+    label: "Jerobeam KeplerBoukamp",
+    notes: ["placeholder", "jerobeam"],
+  },
+  mushroom: {
+    category: "Jerobeam",
+    description: "Placeholder for the Jerobeam Mushroom motion engine.",
+    label: "Jerobeam Mushroom",
+    notes: ["placeholder", "jerobeam"],
+  },
+  nyquistShannon: {
+    category: "Jerobeam",
+    description: "Placeholder for the Jerobeam Nyquist-Shannon motion engine.",
+    label: "Jerobeam NyquistShannon",
+    notes: ["placeholder", "jerobeam"],
+  },
+  radar: {
+    category: "Jerobeam",
+    description: "Placeholder for the Jerobeam Radar motion engine.",
+    label: "Jerobeam Radar",
+    notes: ["placeholder", "jerobeam"],
+  },
+  torus: {
+    category: "Jerobeam",
+    description: "Placeholder for the Jerobeam Torus motion engine.",
+    label: "Jerobeam Torus",
+    notes: ["placeholder", "jerobeam"],
+  },
+  wirdoSpiral: {
+    category: "Jerobeam",
+    description: "Placeholder for the Jerobeam WirdoSpiral motion engine.",
+    label: "Jerobeam WirdoSpiral",
+    notes: ["placeholder", "jerobeam"],
   },
   lorenzAttractor: {
     category: "Chaos",
@@ -468,23 +471,13 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "HalvorsenAttractor",
     notes: ["braided chaos", "dense orbit", "planned attractor"],
   },
-  noise: {
-    category: "Noise",
-    description: "Unstable broadband energy source for static, wind, percussion dust, and danger texture.",
-    notes: ["random source", "amplitude", "texture generator"],
-  },
-  stereoNoise: {
-    category: "Noise",
-    description: "Two independent broadband noise streams as X/Y vector outputs plus a summed mono output for clouds and textures.",
-    notes: ["x/y source", "independent channels", "amplitude"],
-  },
   noiseGenerator: {
     category: "Noise",
-    description: "Selectable random source for comparing uniform, gaussian, brown, pink, and crackle flavors side by side.",
-    notes: ["distribution choices", "seed control", "noise lab"],
+    description: "Stereo noise source with independent left/right channels and selectable uniform, gaussian, brown, pink, and crackle flavors.",
+    notes: ["stereo output", "distribution choices", "seed control"],
   },
   randomWalk: {
-    category: "Noise",
+    category: "Modulators",
     description: "Flexible soemdsp-style random walk with white, filtered, random-step, and fixed-step motion modes.",
     notes: ["bounded walk", "jitter curve", "one-pole smoothing"],
   },
@@ -528,7 +521,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   softClipper: {
     category: "Dynamics",
-    description: "SOEMDSP tanh soft clipper with center bias and clipping width controls.",
+    description: "Native soft clipper with center bias and clipping width controls.",
     label: "Soft Clipper",
     notes: ["soft clipping", "tanh", "dynamics"],
   },
@@ -539,10 +532,16 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["3D rotation", "2D projection", "signal transform"],
   },
   output: {
-    category: "Audio",
+    category: "Portals",
     description: "Stereo audio sink. Route Left and Right signals here to hear the patch.",
     label: "Output",
     notes: ["audio sink", "left right inputs", "render target"],
+  },
+  audioInput: {
+    category: "Portals",
+    description: "Stereo audio source. Emits Left and Right signals from the live microphone/audio input device.",
+    label: "Input",
+    notes: ["audio source", "left right outputs", "live input"],
   },
   macroKnob: {
     category: "Controllers",
@@ -740,20 +739,10 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "Sample Looper",
     notes: ["sample playback", "loop", "audio source"],
   },
-  highpass: {
+  passiveFilter: {
     category: "Filter",
-    description: "Cuts low-frequency mass so bright signal can escape the hull.",
-    notes: ["cutoff frequency", "stateful filter", "bright motion"],
-  },
-  lowpass: {
-    category: "Filter",
-    description: "Cuts high-frequency sparks and leaves heavier warm signal behind.",
-    notes: ["cutoff frequency", "smoothing", "warm motion"],
-  },
-  bandpass: {
-    category: "Filter",
-    description: "Focuses a signal between low and high cut points using the one-pole filter pair.",
-    notes: ["low cut", "high cut", "focused band"],
+    description: "1-pole RC filter with LP, HP, and BP modes. Low Cut is the HP edge; High Cut is the LP edge. BP chains HP then LP.",
+    notes: ["lowpass", "highpass", "bandpass", "1-pole"],
   },
   cookbookFilter: {
     category: "Filter",
@@ -767,8 +756,14 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "Ladder Filter",
     notes: ["RSMET ladder", "gain compensated", "resonant stages"],
   },
+  tb303Filter: {
+    category: "Filter",
+    description: "TB-303 style ladder filter with feedback highpass, resonance skewing, and 15 output modes (LP/HP/BP at 6/12/18/24 dB per octave). Based on Robin Schmidt's TeeBeeFilter.",
+    label: "TB-303 Filter",
+    notes: ["feedback highpass", "resonance skewed", "15 modes"],
+  },
   slewLimiter: {
-    category: "Modulators",
+    category: "Filter",
     description: "Limits rising and falling motion independently, turning abrupt changes into shaped ramps.",
     notes: ["up time", "down time", "asymmetric glide"],
   },
@@ -784,6 +779,18 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "Sabrina Reverb",
     notes: ["Sabrina", "serial diffusion", "cross feedback"],
   },
+  pll: {
+    category: "Sequence",
+    description: "Phase-locked loop based on the Doepfer A-196. VCO tracks an incoming signal via a phase comparator (XOR, RS flip-flop, or PFD) and one-pole loop filter. Outputs VCO, PC, LPF CV, and lock gate.",
+    label: "PLL",
+    notes: ["phase locked loop", "A-196", "vco", "frequency tracking"],
+  },
+  helmholtzPitch: {
+    category: "Sequence",
+    description: "Monophonic pitch detector using the McLeod Pitch Method (normalized square difference function with parabolic interpolation). Outputs detected frequency and a fidelity score; rejects noisy/non-periodic frames.",
+    label: "Pitch Detector",
+    notes: ["pitch tracking", "pitch detector", "mcleod", "autocorrelation", "frequency follower"],
+  },
   distortionEffect: {
     category: "Delay",
     description: "Placeholder for drive, clipping, saturation, and tone-shaping distortion effects.",
@@ -791,7 +798,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["placeholder", "drive", "saturation"],
   },
   sampleHold: {
-    category: "Noise",
+    category: "Modulators",
     description: "Captures an input value when a trigger rises and holds it until the next trigger.",
     notes: ["triggered capture", "held output", "stepped motion"],
   },
@@ -892,6 +899,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Single-value oscilloscope that draws the latest input as one horizontal line across the display.",
     label: "0D Value",
     notes: ["value display", "horizontal line", "latest value"],
+  },
+  numberReadout: {
+    category: "Oscilloscope",
+    description: "Digital readout that draws the latest input value as formatted text. Redraws only when the displayed value changes.",
+    label: "Number Readout",
+    notes: ["numeric display", "digital readout", "text display", "latest value"],
   },
   lineBurnOscilloscope: {
     category: "Oscilloscope",

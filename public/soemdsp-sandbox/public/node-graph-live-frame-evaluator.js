@@ -108,11 +108,27 @@ function createNodeGraphLowpassState() {
   };
 }
 
-function createNodeGraphBandpassState() {
+function createNodeGraphPassiveFilterState() {
   return {
     highpass: createNodeGraphHighpassState(),
     lowpass: createNodeGraphLowpassState(),
   };
+}
+
+function nodeGraphPassiveFilterSample(state, input, mode, lowFrequency, highFrequency, sampleRate, runtime, nodeId) {
+  const safeMode = Math.round(Number(mode)) || 0;
+  if (safeMode === 1) {
+    const lowCut  = Math.max(0, Number(lowFrequency)  || 0);
+    const highCut = Math.max(0, Number(highFrequency) || 0);
+    const low  = Math.min(lowCut, highCut);
+    const high = Math.max(lowCut, highCut);
+    const hp = nodeGraphOnePoleHighpassSample(state.highpass, input, low, sampleRate, runtime, nodeId);
+    return nodeGraphOnePoleLowpassSample(state.lowpass, hp, high, sampleRate, runtime, nodeId);
+  }
+  if (safeMode === 2) {
+    return nodeGraphOnePoleHighpassSample(state.highpass, input, lowFrequency, sampleRate, runtime, nodeId);
+  }
+  return nodeGraphOnePoleLowpassSample(state.lowpass, input, highFrequency, sampleRate, runtime, nodeId);
 }
 
 function createNodeGraphLadderFilterState() {
@@ -197,10 +213,16 @@ function createNodeGraphPllState() {
   return { nativeHandle: 0, nativeParamKey: "", nativeSampleRate: 0 };
 }
 
+function createNodeGraphHelmholtzState() {
+  return { nativeHandle: 0, nativeParamKey: "", nativeSampleRate: 0 };
+}
+
 function createNodeGraphSampleHoldState() {
   return {
+    clockPhase: 0,
     held: 0,
     lastTrigger: 0,
+    noise: createNodeGraphNoiseGeneratorChannelState(),
   };
 }
 
@@ -290,23 +312,12 @@ function createNodeGraphFlowerChildEnvelopeFollowerState() {
   };
 }
 
-function createNodeGraphNoiseGeneratorState() {
-  return {
-    brown: 0,
-    gaussianSpare: null,
-    pink: [0, 0, 0, 0, 0, 0, 0],
-    seed: 0,
-    seedKey: "",
-  };
+function createNodeGraphNoiseGeneratorChannelState() {
+  return { brown: 0, gaussianSpare: null, pink: [0, 0, 0, 0, 0, 0, 0], seed: 0, seedKey: "" };
 }
 
-function createNodeGraphNoiseSampleHoldState() {
-  return {
-    held: 0,
-    initialized: false,
-    phase: 0,
-    seedKey: "",
-  };
+function createNodeGraphNoiseGeneratorState() {
+  return { left: createNodeGraphNoiseGeneratorChannelState(), right: createNodeGraphNoiseGeneratorChannelState() };
 }
 
 function createNodeGraphRandomWalkState() {
@@ -722,14 +733,6 @@ function nodeGraphOnePoleLowpassSample(state, input, frequency, sampleRate, runt
   return state.outputBuffer;
 }
 
-function nodeGraphOnePoleBandpassSample(state, input, lowFrequency, highFrequency, sampleRate, runtime = null, nodeId = "") {
-  const lowCut = Math.max(0, nodeGraphSafeFilterNumber(lowFrequency, runtime, nodeId, state.highpass, "bandpass low frequency"));
-  const highCut = Math.max(0, nodeGraphSafeFilterNumber(highFrequency, runtime, nodeId, state.lowpass, "bandpass high frequency"));
-  const low = Math.min(lowCut, highCut);
-  const high = Math.max(lowCut, highCut);
-  const highpassed = nodeGraphOnePoleHighpassSample(state.highpass, input, low, sampleRate, runtime, nodeId);
-  return nodeGraphOnePoleLowpassSample(state.lowpass, highpassed, high, sampleRate, runtime, nodeId);
-}
 
 function nodeGraphLadderFilterStageCount(stages) {
   const value = Math.round(Number(stages));
@@ -827,6 +830,64 @@ function nodeGraphLadderFilterSample(state, input, params, sampleRate, runtime =
   }
   const output = coeff.c[0] * y[0] + coeff.c[1] * y[1] + coeff.c[2] * y[2] + coeff.c[3] * y[3] + coeff.c[4] * y[4];
   return nodeGraphSafeFilterNumber(output, runtime, nodeId, state, "ladder filter output");
+}
+
+function createNodeGraphTb303FilterState() {
+  return { y: [0, 0, 0, 0], hpX: 0, hpY: 0 };
+}
+
+function nodeGraphTb303FilterSample(state, input, params, sampleRate, runtime = null, nodeId = "") {
+  const rate = Math.max(1, Number(sampleRate) || nodeGraphMvp.sampleRate || 44100);
+  const safeCutoff = Math.max(200, Math.min(20000, Math.min(rate * 0.49, Number(params.cutoff) || 1000)));
+  const resonanceRaw = Math.max(0, Math.min(1, (Number(params.resonance) || 0) * 0.01));
+  const drive = Number(params.drive) || 0;
+  const driveFactor = Math.pow(10, Math.max(-24, Math.min(24, drive)) / 20);
+  const safeMode = Math.max(0, Math.min(14, Math.round(Number(params.mode) || 4)));
+
+  // resonance skewing
+  const r = (1 - Math.exp(-3 * resonanceRaw)) / (1 - Math.exp(-3));
+
+  // coefficients
+  const wc = Math.max(1e-9, Math.min(Math.PI * 0.98, 2 * Math.PI * safeCutoff / rate));
+  const sinWc = Math.sin(wc), cosWc = Math.cos(wc);
+  const tanWc = Math.tan(0.25 * (wc - Math.PI));
+  const denomA = sinWc - cosWc * tanWc;
+  const a1FullRes = Math.abs(denomA) < 1e-15 ? -1 : tanWc / denomA;
+  const a1NoRes = -Math.exp(-wc);
+  const a1 = r * a1FullRes + (1 - r) * a1NoRes;
+  const b0 = 1 + a1;
+  const gsqD = Math.max(1e-12, 1 + a1 * a1 + 2 * a1 * cosWc);
+  const gsq = b0 * b0 / gsqD;
+  const k = r / Math.max(1e-24, gsq * gsq);
+
+  // feedback highpass (1-pole, 150 Hz)
+  if (!state.hpP || state.lastRate !== rate) {
+    state.hpP = Math.exp(-2 * Math.PI * 150 / rate);
+    state.hpB0 = (1 + state.hpP) * 0.5;
+    state.lastRate = rate;
+  }
+  const fbIn = k * (state.y[3] || 0);
+  const fbHp = state.hpB0 * (fbIn - state.hpX) + state.hpP * state.hpY;
+  state.hpX = fbIn;
+  state.hpY = nodeGraphSafeFilterNumber(fbHp, runtime, nodeId, state, "tb303 hp");
+
+  const safeIn = nodeGraphSafeFilterNumber(input, runtime, nodeId, state, "tb303 in");
+  const y = state.y;
+  const y0 = nodeGraphSafeFilterNumber(0.125 * driveFactor * safeIn - fbHp, runtime, nodeId, state, "tb303 y0");
+  y[0] = nodeGraphSafeFilterNumber(y0 + a1 * (y0 - y[0]), runtime, nodeId, state, "tb303 y1");
+  y[1] = nodeGraphSafeFilterNumber(y[0] + a1 * (y[0] - y[1]), runtime, nodeId, state, "tb303 y2");
+  y[2] = nodeGraphSafeFilterNumber(y[1] + a1 * (y[1] - y[2]), runtime, nodeId, state, "tb303 y3");
+  y[3] = nodeGraphSafeFilterNumber(y[2] + a1 * (y[2] - y[3]), runtime, nodeId, state, "tb303 y4");
+
+  // mode mix coefficients
+  const modes = [
+    [1,0,0,0,0],[0,1,0,0,0],[0,0,1,0,0],[0,0,0,1,0],[0,0,0,0,1],
+    [1,-1,0,0,0],[1,-2,1,0,0],[1,-3,3,-1,0],[1,-4,6,-4,1],
+    [0,0,1,-2,1],[0,0,0,1,-1],[0,1,-3,3,-1],[0,0,1,-1,0],[0,1,-2,1,0],[0,1,-1,0,0],
+  ];
+  const c = modes[safeMode] || modes[4];
+  const out = 8 * (c[0]*y0 + c[1]*y[0] + c[2]*y[1] + c[3]*y[2] + c[4]*y[3]);
+  return nodeGraphSafeFilterNumber(out, runtime, nodeId, state, "tb303 out");
 }
 
 function nodeGraphSlewLimiterSample(state, input, upTime, downTime, sampleRate, runtime = null, nodeId = "") {
@@ -1208,11 +1269,80 @@ function nodeGraphPllSample(state, signalIn, cvIn, cvConnected, params, sampleRa
   }
 }
 
-function nodeGraphSampleHoldSample(state, input, trigger, threshold, runtime = null, nodeId = "") {
-  const safeInput = nodeGraphSafeFilterNumber(input, runtime, nodeId, null, "sample hold input");
+function nodeGraphHelmholtzPitchView(frequencyHz) {
+  if (!(frequencyHz > 0)) return -1;
+  const minHz = 80;
+  const octaves = 4;
+  const clampedHz = Math.max(minHz, Math.min(minHz * Math.pow(2, octaves), frequencyHz));
+  const norm = Math.log2(clampedHz / minHz) / octaves;
+  return norm * 2 - 1;
+}
+
+function nodeGraphHelmholtzSample(state, input, params, inputConnected, sampleRate, runtime = null, nodeId = "") {
+  const silent = { Frequency: 0, Fidelity: 0, "Pitch View": -1 };
+  if (!inputConnected) {
+    if (state.nativeHandle && runtime?.nativeHelmholtz?.soemdsp_helmholtz_destroy) {
+      runtime.nativeHelmholtz.soemdsp_helmholtz_destroy(state.nativeHandle);
+    }
+    state.nativeHandle = 0;
+    state.nativeSampleRate = 0;
+    state.nativeParamKey = "";
+    return silent;
+  }
+  const native = runtime?.nativeHelmholtzReady ? runtime?.nativeHelmholtz : null;
+  if (!native?.soemdsp_helmholtz_create || !native?.soemdsp_helmholtz_process) return silent;
+  try {
+    const safeRate = Math.max(1, Math.round(Number(sampleRate) || 44100));
+    if (!state.nativeHandle || state.nativeSampleRate !== safeRate) {
+      if (state.nativeHandle && native.soemdsp_helmholtz_destroy) {
+        native.soemdsp_helmholtz_destroy(state.nativeHandle);
+      }
+      state.nativeHandle = native.soemdsp_helmholtz_create(safeRate) || 0;
+      state.nativeSampleRate = safeRate;
+      state.nativeParamKey = "";
+    }
+    if (!state.nativeHandle) return silent;
+    const windowSize = Math.max(128, Math.min(1024, Math.round(Number(params.windowSize) || 512)));
+    const threshold = Math.max(0.5, Math.min(0.999, Number(params.threshold) || 0.93));
+    const paramKey = `${windowSize}:${Math.round(threshold * 1000)}`;
+    if (paramKey !== state.nativeParamKey && native.soemdsp_helmholtz_set_params) {
+      state.nativeParamKey = paramKey;
+      native.soemdsp_helmholtz_set_params(state.nativeHandle, safeRate, windowSize, threshold);
+    }
+    const safeIn = nodeGraphSafeFilterNumber(input, runtime, nodeId, null, "pitch detector input");
+    native.soemdsp_helmholtz_process(state.nativeHandle, safeIn);
+    const frequency = nodeGraphSafeFilterNumber(native.soemdsp_helmholtz_frequency?.(state.nativeHandle), runtime, nodeId, null, "pitch detector frequency");
+    return {
+      Frequency: frequency,
+      Fidelity: nodeGraphSafeFilterNumber(native.soemdsp_helmholtz_fidelity?.(state.nativeHandle), runtime, nodeId, null, "pitch detector fidelity"),
+      "Pitch View": nodeGraphHelmholtzPitchView(frequency),
+    };
+  } catch {
+    if (runtime) runtime.nativeHelmholtzReady = false;
+    if (state.nativeHandle && native.soemdsp_helmholtz_destroy) native.soemdsp_helmholtz_destroy(state.nativeHandle);
+    state.nativeHandle = 0;
+    return silent;
+  }
+}
+
+function nodeGraphSampleHoldSample(state, input, trigger, threshold, sampleFrequency, sampleRate, hasInConnected, runtime = null, nodeId = "") {
+  nodeGraphResetSeededState(state.noise, nodeId, 0, "sampleHoldNoise");
+  const safeInput = hasInConnected
+    ? nodeGraphSafeFilterNumber(input, runtime, nodeId, null, "sample hold input")
+    : nodeGraphNextSeededBipolar(state.noise);
   const safeTrigger = nodeGraphSafeFilterNumber(trigger, runtime, nodeId, null, "sample hold trigger");
   const safeThreshold = nodeGraphSafeFilterNumber(threshold, runtime, nodeId, null, "sample hold threshold");
-  if (state.lastTrigger <= safeThreshold && safeTrigger > safeThreshold) {
+  const safeFreq = Math.max(0, Number(sampleFrequency) || 0);
+  const safeRate = Math.max(1, Number(sampleRate) || 44100);
+  let internalFire = false;
+  if (safeFreq > 0) {
+    state.clockPhase += safeFreq / safeRate;
+    if (state.clockPhase >= 1) {
+      state.clockPhase -= Math.floor(state.clockPhase);
+      internalFire = true;
+    }
+  }
+  if ((state.lastTrigger <= safeThreshold && safeTrigger > safeThreshold) || internalFire) {
     state.held = safeInput;
   }
   state.lastTrigger = safeTrigger;
@@ -1487,34 +1617,45 @@ function nodeGraphNextSeededGaussian(state) {
   return magnitude * Math.cos(angle);
 }
 
-function nodeGraphNoiseGeneratorSample(state, params, runtime = null, nodeId = "") {
-  nodeGraphResetSeededState(state, nodeId, params.seed, "noiseGenerator");
-  const mode = Math.max(0, Math.min(4, Math.round(nodeGraphSafeFilterNumber(params.mode, runtime, nodeId, null, "noise generator mode"))));
-  const mean = nodeGraphSafeFilterNumber(params.mean, runtime, nodeId, null, "noise generator mean");
-  const deviation = Math.max(0, nodeGraphSafeFilterNumber(params.deviation, runtime, nodeId, null, "noise generator deviation"));
-  const level = nodeGraphSafeFilterNumber(params.level, runtime, nodeId, null, "noise generator level");
+function nodeGraphNoiseGeneratorChannelSample(state, mode, mean, deviation) {
   const white = nodeGraphNextSeededBipolar(state);
-  let output = white;
   if (mode === 1) {
-    output = mean + nodeGraphNextSeededGaussian(state) * deviation;
-  } else if (mode === 2) {
+    return mean + nodeGraphNextSeededGaussian(state) * deviation;
+  }
+  if (mode === 2) {
     state.brown = clampNodeSliderValue(state.brown + white * Math.max(0.001, deviation) * 0.05, -1, 1);
-    output = mean + state.brown;
-  } else if (mode === 3) {
+    return mean + state.brown;
+  }
+  if (mode === 3) {
     state.pink[0] = 0.99886 * state.pink[0] + white * 0.0555179;
     state.pink[1] = 0.99332 * state.pink[1] + white * 0.0750759;
     state.pink[2] = 0.969 * state.pink[2] + white * 0.153852;
     state.pink[3] = 0.8665 * state.pink[3] + white * 0.3104856;
     state.pink[4] = 0.55 * state.pink[4] + white * 0.5329522;
     state.pink[5] = -0.7616 * state.pink[5] - white * 0.016898;
-    output = mean + (state.pink[0] + state.pink[1] + state.pink[2] + state.pink[3] + state.pink[4] + state.pink[5] + state.pink[6] + white * 0.5362) * 0.11;
+    const out = mean + (state.pink[0] + state.pink[1] + state.pink[2] + state.pink[3] + state.pink[4] + state.pink[5] + state.pink[6] + white * 0.5362) * 0.11;
     state.pink[6] = white * 0.115926;
-  } else if (mode === 4) {
-    output = Math.abs(white) > 0.94 ? mean + Math.sign(white) * deviation : mean;
-  } else {
-    output = mean + white * deviation;
+    return out;
   }
-  return nodeGraphSafeFilterNumber(clampNodeSliderValue(output, -1, 1) * level, runtime, nodeId, null, "noise generator output");
+  if (mode === 4) {
+    return Math.abs(white) > 0.94 ? mean + Math.sign(white) * deviation : mean;
+  }
+  return mean + white * deviation;
+}
+
+function nodeGraphNoiseGeneratorSample(state, params, runtime = null, nodeId = "") {
+  nodeGraphResetSeededState(state.left, `${nodeId}:left`, params.seed, "noiseGenerator");
+  nodeGraphResetSeededState(state.right, `${nodeId}:right`, params.seed, "noiseGenerator");
+  const mode = Math.max(0, Math.min(4, Math.round(nodeGraphSafeFilterNumber(params.mode, runtime, nodeId, null, "noise generator mode"))));
+  const mean = nodeGraphSafeFilterNumber(params.mean, runtime, nodeId, null, "noise generator mean");
+  const deviation = Math.max(0, nodeGraphSafeFilterNumber(params.deviation, runtime, nodeId, null, "noise generator deviation"));
+  const level = nodeGraphSafeFilterNumber(params.level, runtime, nodeId, null, "noise generator level");
+  const left = clampNodeSliderValue(nodeGraphNoiseGeneratorChannelSample(state.left, mode, mean, deviation), -1, 1) * level;
+  const right = clampNodeSliderValue(nodeGraphNoiseGeneratorChannelSample(state.right, mode, mean, deviation), -1, 1) * level;
+  return {
+    "Left Out": nodeGraphSafeFilterNumber(left, runtime, nodeId, null, "noise generator left out"),
+    "Right Out": nodeGraphSafeFilterNumber(right, runtime, nodeId, null, "noise generator right out"),
+  };
 }
 
 function nodeGraphRationalCurve(value, skew) {
@@ -2405,72 +2546,6 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         nodeId,
         wrapNodeSliderValue(phase + Math.PI * 2 * phaseIncrement, 0, Math.PI * 2),
       );
-    } else if (node?.type === "noise") {
-      const state = runtime.noiseSampleHoldStates.get(nodeId) || createNodeGraphNoiseSampleHoldState();
-      runtime.noiseSampleHoldStates.set(nodeId, state);
-      const raw = nodeGraphNoiseSampleHoldSample(
-        runtime,
-        state,
-        nodeId,
-        readNodeGraphLiveEffectiveParam(
-          runtime,
-          node,
-          "seed",
-          1,
-          frame,
-          frames,
-          frameValues,
-        ),
-        readNodeGraphLiveEffectiveParam(
-          runtime,
-          node,
-          "speed",
-          1,
-          frame,
-          frames,
-          frameValues,
-        ),
-        sampleRate,
-      );
-      const level = readNodeGraphLiveEffectiveParam(
-        runtime,
-        node,
-        "level",
-        1,
-        frame,
-        frames,
-        frameValues,
-      );
-      value = {
-        Out: raw * level,
-        Raw: raw,
-      };
-    } else if (node?.type === "stereoNoise") {
-      const level = readNodeGraphLiveEffectiveParam(
-        runtime,
-        node,
-        "level",
-        1,
-        frame,
-        frames,
-        frameValues,
-      );
-      const seed = readNodeGraphLiveEffectiveParam(
-        runtime,
-        node,
-        "seed",
-        1,
-        frame,
-        frames,
-        frameValues,
-      );
-      const left = nextNodeGraphSeededNoiseSample(runtime, nodeId, seed, "left") * level;
-      const right = nextNodeGraphSeededNoiseSample(runtime, nodeId, seed, "right") * level;
-      value = {
-        Out: (left + right) * 0.5,
-        X: left,
-        Y: right,
-      };
     } else if (node?.type === "noiseGenerator") {
       const state = runtime.noiseGeneratorStates.get(nodeId) || createNodeGraphNoiseGeneratorState();
       runtime.noiseGeneratorStates.set(nodeId, state);
@@ -2958,52 +3033,15 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         frameValues,
       );
       value = { Out: knobValue, value: knobValue };
-    } else if (node?.type === "highpass") {
-      const state = runtime.highpassStates.get(nodeId) || createNodeGraphHighpassState();
-      runtime.highpassStates.set(nodeId, state);
-      value = nodeGraphOnePoleHighpassSample(
+    } else if (node?.type === "passiveFilter") {
+      const state = runtime.passiveFilterStates.get(nodeId) || createNodeGraphPassiveFilterState();
+      runtime.passiveFilterStates.set(nodeId, state);
+      value = nodeGraphPassiveFilterSample(
         state,
         mixInput(nodeId),
-        readNodeGraphLiveEffectiveParam(
-          runtime,
-          node,
-          "frequency",
-          1000,
-          frame,
-          frames,
-          frameValues,
-        ),
-        sampleRate,
-        runtime,
-        nodeId,
-      );
-    } else if (node?.type === "lowpass") {
-      const state = runtime.lowpassStates.get(nodeId) || createNodeGraphLowpassState();
-      runtime.lowpassStates.set(nodeId, state);
-      value = nodeGraphOnePoleLowpassSample(
-        state,
-        mixInput(nodeId),
-        readNodeGraphLiveEffectiveParam(
-          runtime,
-          node,
-          "frequency",
-          1000,
-          frame,
-          frames,
-          frameValues,
-        ),
-        sampleRate,
-        runtime,
-        nodeId,
-      );
-    } else if (node?.type === "bandpass") {
-      const state = runtime.bandpassStates.get(nodeId) || createNodeGraphBandpassState();
-      runtime.bandpassStates.set(nodeId, state);
-      value = nodeGraphOnePoleBandpassSample(
-        state,
-        mixInput(nodeId),
+        readNodeGraphLiveEffectiveParam(runtime, node, "mode", 0, frame, frames, frameValues),
         readNodeGraphLiveEffectiveParam(runtime, node, "lowFrequency", 200, frame, frames, frameValues),
-        readNodeGraphLiveEffectiveParam(runtime, node, "highFrequency", 2000, frame, frames, frameValues),
+        readNodeGraphLiveEffectiveParam(runtime, node, "highFrequency", 1000, frame, frames, frameValues),
         sampleRate,
         runtime,
         nodeId,
@@ -3034,6 +3072,23 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
           mode: readNodeGraphLiveEffectiveParam(runtime, node, "mode", 1, frame, frames, frameValues),
           resonance: readNodeGraphLiveEffectiveParam(runtime, node, "resonance", 0.2, frame, frames, frameValues),
           stages: readNodeGraphLiveEffectiveParam(runtime, node, "stages", 4, frame, frames, frameValues),
+        },
+        sampleRate,
+        runtime,
+        nodeId,
+      );
+    } else if (node?.type === "tb303Filter") {
+      const state = runtime.tb303FilterStates.get(nodeId) || createNodeGraphTb303FilterState();
+      runtime.tb303FilterStates.set(nodeId, state);
+      const read = (key, fallback) => readNodeGraphLiveEffectiveParam(runtime, node, key, fallback, frame, frames, frameValues);
+      value = nodeGraphTb303FilterSample(
+        state,
+        mixInput(nodeId),
+        {
+          cutoff: read("cutoff", 1000),
+          drive: read("drive", 0),
+          mode: read("mode", 4),
+          resonance: read("resonance", 0),
         },
         sampleRate,
         runtime,
@@ -3104,6 +3159,22 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         runtime,
         nodeId,
       );
+    } else if (node?.type === "helmholtzPitch") {
+      const state = runtime.helmholtzStates?.get(nodeId) || createNodeGraphHelmholtzState();
+      if (runtime.helmholtzStates) runtime.helmholtzStates.set(nodeId, state);
+      const read = (key, fallback) => readNodeGraphLiveEffectiveParam(runtime, node, key, fallback, frame, frames, frameValues);
+      value = nodeGraphHelmholtzSample(
+        state,
+        mixInput(nodeId, "In"),
+        {
+          windowSize: read("windowSize", 512),
+          threshold: read("threshold", 0.93),
+        },
+        hasInput(nodeId, "In"),
+        sampleRate,
+        runtime,
+        nodeId,
+      );
     } else if (node?.type === "slewLimiter") {
       const state = runtime.slewLimiterStates.get(nodeId) || createNodeGraphSlewLimiterState();
       runtime.slewLimiterStates.set(nodeId, state);
@@ -3124,6 +3195,9 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         mixInput(nodeId, "In"),
         mixInput(nodeId, "Trigger"),
         readNodeGraphLiveEffectiveParam(runtime, node, "threshold", 0, frame, frames, frameValues),
+        readNodeGraphLiveEffectiveParam(runtime, node, "sampleFrequency", 0, frame, frames, frameValues),
+        sampleRate,
+        hasInput(nodeId, "In"),
         runtime,
         nodeId,
       );

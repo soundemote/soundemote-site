@@ -23,6 +23,10 @@ function ensureNodeGraphDragHandle(node) {
   actions.prepend(handle);
 }
 
+function stopPropagation(event) {
+  event.stopPropagation();
+}
+
 function handleNodeGraphIoRowMonitorPointerDown(event) {
   if (event.target.closest(".node-port")) {
     return;
@@ -30,11 +34,11 @@ function handleNodeGraphIoRowMonitorPointerDown(event) {
   toggleNodeGraphMonitorFromPortEvent(event);
 }
 
-function handleNodeGraphIoRowWirePointerDown(event) {
+function handleNodeGraphIoRowWireClick(event) {
   if (event.target.closest(".node-port")) {
     return;
   }
-  nodeGraphWireInteractions.beginWireDrag(event);
+  nodeGraphWireInteractions.handlePortClick(event);
 }
 
 function nodeGraphKnobWidgetInputForControl(control) {
@@ -200,19 +204,23 @@ function attachNodeGraphNodeEvents(node) {
   node.querySelector(".node-metaparameter-button")?.addEventListener("click", openNodeModuleMetaparameters);
   node.addEventListener("lostpointercapture", endNodeGraphNodeDrag);
   for (const port of node.querySelectorAll(".node-port")) {
+    port.addEventListener("pointerdown", nodeGraphWireInteractions.handlePortPointerDown);
     port.addEventListener("pointerdown", toggleNodeGraphMonitorFromPortEvent, true);
-    port.addEventListener("pointerdown", nodeGraphWireInteractions.beginWireDrag);
+    port.addEventListener("click", nodeGraphWireInteractions.handlePortClick);
   }
   for (const port of node.querySelectorAll(".node-param-port.modulation-input")) {
+    port.addEventListener("pointerdown", nodeGraphWireInteractions.handlePortPointerDown);
     port.addEventListener("pointerdown", toggleNodeGraphMonitorFromPortEvent, true);
-    port.addEventListener("pointerdown", nodeGraphWireInteractions.beginWireDrag);
+    port.addEventListener("click", nodeGraphWireInteractions.handlePortClick);
   }
   for (const port of node.querySelectorAll(".node-param-port.graph-input")) {
-    port.addEventListener("pointerdown", nodeGraphWireInteractions.beginWireDrag);
+    port.addEventListener("pointerdown", nodeGraphWireInteractions.handlePortPointerDown);
+    port.addEventListener("click", nodeGraphWireInteractions.handlePortClick);
   }
   for (const row of node.querySelectorAll(".node-io-row")) {
+    row.addEventListener("pointerdown", nodeGraphWireInteractions.handlePortPointerDown);
     row.addEventListener("pointerdown", handleNodeGraphIoRowMonitorPointerDown, true);
-    row.addEventListener("pointerdown", handleNodeGraphIoRowWirePointerDown);
+    row.addEventListener("click", handleNodeGraphIoRowWireClick);
   }
   for (const slider of node.querySelectorAll('input[type="range"]')) {
     createNodeSliderReadout(slider);

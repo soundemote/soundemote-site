@@ -64,14 +64,15 @@ async function markNodeSandboxInterfaceReady() {
   }));
 }
 
-async function nodeSandboxStartupTask(label, task, timeoutMs = 4000) {
+async function nodeSandboxStartupTask(label, task, timeoutMs = 8000) {
   let settled = false;
-  setNodeSandboxStartupProgress(label === "manifest" ? 18 : 34, `loading ${label}`);
   const timeout = new Promise((resolve) => {
     window.setTimeout(() => {
       if (!settled) {
-        console.warn(`Sandbox startup step timed out: ${label}`);
-        setNodeSandboxStartupProgress(label === "manifest" ? 54 : 72, `${label} timed out`);
+        console.warn(`Startup step timed out: ${label}`);
+        window.dispatchEvent(new CustomEvent("nodeSandboxStartupProgress", {
+          detail: { label: `${label} is taking longer than expected…` },
+        }));
       }
       resolve();
     }, timeoutMs);
@@ -79,21 +80,15 @@ async function nodeSandboxStartupTask(label, task, timeoutMs = 4000) {
   await Promise.race([
     Promise.resolve()
       .then(task)
-      .catch((error) => {
-        console.error(`Sandbox startup step failed: ${label}`, error);
-      })
-      .finally(() => {
-        settled = true;
-        setNodeSandboxStartupProgress(label === "manifest" ? 56 : 78, `${label} ready`);
-      }),
+      .catch((error) => console.error(`Startup step failed: ${label}`, error))
+      .finally(() => { settled = true; }),
     timeout,
   ]);
 }
 
 async function initSandboxApp() {
-  setNodeSandboxStartupProgress(8, "loading");
+  setNodeSandboxStartupProgress(4, "starting up");
   loadSignalPlotSettings();
-  setNodeSandboxStartupProgress(12, "loading settings");
   await Promise.all([
     nodeSandboxStartupTask("manifest", loadManifest),
     nodeSandboxStartupTask("node graph", initNodeGraphMvp),

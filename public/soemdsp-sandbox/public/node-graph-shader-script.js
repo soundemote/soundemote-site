@@ -1104,9 +1104,7 @@ function positionNodeGraphShaderScriptDialog(left, top) {
     return;
   }
   const { left: nextLeft, top: nextTop } = nodeGraphFloatingWindowPosition(dialog, left, top);
-  dialog.style.left = `${nextLeft}px`;
-  dialog.style.top = `${nextTop}px`;
-  dialog.style.right = "auto";
+  setNodeGraphFloatingWindowViewportPosition(dialog, nextLeft, nextTop);
   dialog.style.bottom = "auto";
 }
 
