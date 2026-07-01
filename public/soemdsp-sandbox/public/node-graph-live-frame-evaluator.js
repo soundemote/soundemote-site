@@ -1734,7 +1734,7 @@ function nodeGraphFractalBrownianNoiseAxisState(state, axis) {
   return state.axes[key];
 }
 
-function nodeGraphFractalBrownianNoiseSample(state, params, sampleRate, runtime = null, nodeId = "", axis = "x") {
+function nodeGraphFractalBrownianNoiseSample(state, params, sampleRate, runtime = null, nodeId = "", axis = "x", options = {}) {
   const axisState = nodeGraphFractalBrownianNoiseAxisState(state, axis);
   const rate = Math.max(1, Number(sampleRate) || nodeGraphMvp.sampleRate || 44100);
   const seed = Math.max(0, Math.round(nodeGraphSafeFilterNumber(params.seed, runtime, nodeId, null, "fbm seed")));
@@ -1761,14 +1761,21 @@ function nodeGraphFractalBrownianNoiseSample(state, params, sampleRate, runtime 
   }
   axisState.time += frequency / rate;
   const normalized = maxValue > 0 ? total / maxValue : 0;
-  return nodeGraphSafeFilterNumber(normalized * level, runtime, nodeId, null, "fbm output");
+  return nodeGraphSafeFilterNumber(options.raw ? normalized : normalized * level, runtime, nodeId, null, "fbm output");
 }
 
 function nodeGraphFractalBrownianNoiseVector(state, params, sampleRate, runtime = null, nodeId = "") {
+  const rawX = nodeGraphFractalBrownianNoiseSample(state, params, sampleRate, runtime, nodeId, "x", { raw: true });
+  const rawY = nodeGraphFractalBrownianNoiseSample(state, params, sampleRate, runtime, nodeId, "y", { raw: true });
+  const rawZ = nodeGraphFractalBrownianNoiseSample(state, params, sampleRate, runtime, nodeId, "z", { raw: true });
+  const level = nodeGraphSafeFilterNumber(params.level, runtime, nodeId, null, "fbm level");
   return {
-    "Out X": nodeGraphFractalBrownianNoiseSample(state, params, sampleRate, runtime, nodeId, "x"),
-    "Out Y": nodeGraphFractalBrownianNoiseSample(state, params, sampleRate, runtime, nodeId, "y"),
-    "Out Z": nodeGraphFractalBrownianNoiseSample(state, params, sampleRate, runtime, nodeId, "z"),
+    "Out X": nodeGraphSafeFilterNumber(rawX * level, runtime, nodeId, null, "fbm output"),
+    "Out Y": nodeGraphSafeFilterNumber(rawY * level, runtime, nodeId, null, "fbm output"),
+    "Out Z": nodeGraphSafeFilterNumber(rawZ * level, runtime, nodeId, null, "fbm output"),
+    "Out X Raw": rawX,
+    "Out Y Raw": rawY,
+    "Out Z Raw": rawZ,
   };
 }
 
@@ -2822,6 +2829,80 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         Y: lorenz.y * level,
         Z: lorenz.z * level,
       };
+    } else if (node?.type === "logisticMap") {
+      const state = runtime.logisticMapStates.get(nodeId) || createNodeGraphLogisticMapState();
+      runtime.logisticMapStates.set(nodeId, state);
+      const read = (key, fallback) => readNodeGraphLiveEffectiveParam(runtime, node, key, fallback, frame, frames, frameValues);
+      value = {
+        Out: nodeGraphLogisticMapSample({
+          level: read("level", 1),
+          r: read("r", 3.9),
+          rate: read("rate", 8),
+          reset: mixInput(nodeId, "Reset"),
+          sampleRate,
+          seed: read("seed", 0.5),
+          state,
+        }),
+      };
+    } else if (node?.type === "henonMap") {
+      const state = runtime.henonMapStates.get(nodeId) || createNodeGraphHenonMapState();
+      runtime.henonMapStates.set(nodeId, state);
+      const read = (key, fallback) => readNodeGraphLiveEffectiveParam(runtime, node, key, fallback, frame, frames, frameValues);
+      const henon = nodeGraphHenonMapSample({
+        a: read("a", 1.4),
+        b: read("b", 0.3),
+        rate: read("rate", 8),
+        reset: mixInput(nodeId, "Reset"),
+        sampleRate,
+        seedX: read("seedX", 0.1),
+        seedY: read("seedY", 0.1),
+        state,
+      });
+      const henonLevel = read("level", 1);
+      value = {
+        X: henon.x * henonLevel,
+        Y: henon.y * henonLevel,
+      };
+    } else if (node?.type === "chuaAttractor") {
+      const state = runtime.chuaAttractorStates.get(nodeId) || createNodeGraphChuaAttractorState();
+      runtime.chuaAttractorStates.set(nodeId, state);
+      const read = (key, fallback) => readNodeGraphLiveEffectiveParam(runtime, node, key, fallback, frame, frames, frameValues);
+      const chua = nodeGraphChuaAttractorSample({
+        alpha: read("alpha", 15.6),
+        beta: read("beta", 28),
+        m0: read("m0", -1.143),
+        m1: read("m1", -0.714),
+        reset: mixInput(nodeId, "Reset"),
+        sampleRate,
+        speed: read("speed", 1),
+        state,
+      });
+      const chuaLevel = read("level", 1);
+      value = {
+        X: chua.x * chuaLevel,
+        Y: chua.y * chuaLevel,
+        Z: chua.z * chuaLevel,
+      };
+    } else if (node?.type === "chordMemory") {
+      const state = runtime.chordMemoryStates.get(nodeId) || createNodeGraphChordMemoryState();
+      runtime.chordMemoryStates.set(nodeId, state);
+      value = nodeGraphChordMemorySample(state, {
+        advance: mixInput(nodeId, "Advance"),
+        clear: mixInput(nodeId, "Clear"),
+        latch: mixInput(nodeId, "Latch"),
+        pitch: mixInput(nodeId, "Pitch"),
+      });
+    } else if (node?.type === "turingMachine") {
+      const state = runtime.turingMachineStates.get(nodeId) || createNodeGraphTuringMachineState();
+      runtime.turingMachineStates.set(nodeId, state);
+      const read = (key, fallback) => readNodeGraphLiveEffectiveParam(runtime, node, key, fallback, frame, frames, frameValues);
+      value = nodeGraphTuringMachineSample(state, {
+        clock: mixInput(nodeId, "Clock"),
+        length: read("length", 8),
+        level: read("level", 1),
+        probability: read("probability", 0.25),
+        reset: mixInput(nodeId, "Reset"),
+      });
     } else if (node?.type === "midiOut") {
       const midiInputKey = `${nodeId}.MIDI Number`;
       const hasMidiInput = runtime.inputConnections.has(midiInputKey);

@@ -2,6 +2,17 @@
   "ok": true,
   "modules": [
     {
+      "name": "chua_attractor",
+      "label": "Chua Attractor",
+      "targetType": "chuaAttractor",
+      "kind": "chaos",
+      "source": "native_modules/chua_attractor/chua_attractor.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/chua_attractor/chua_attractor.cpp",
+      "wasm": "native_modules/chua_attractor/chua_attractor.wasm",
+      "wasmUrl": "native_modules/chua_attractor/chua_attractor.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "ellipsoid",
       "label": "Ellipsoid",
       "targetType": "ellipsoid",
@@ -35,6 +46,17 @@
       "wasmAvailable": true
     },
     {
+      "name": "henon_map",
+      "label": "Henon Map",
+      "targetType": "henonMap",
+      "kind": "chaos",
+      "source": "native_modules/henon_map/henon_map.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/henon_map/henon_map.cpp",
+      "wasm": "native_modules/henon_map/henon_map.wasm",
+      "wasmUrl": "native_modules/henon_map/henon_map.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "ladder_filter",
       "label": "Ladder Filter",
       "targetType": "ladderFilter",
@@ -43,6 +65,17 @@
       "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/ladder_filter/ladder_filter.cpp",
       "wasm": "native_modules/ladder_filter/ladder_filter.wasm",
       "wasmUrl": "native_modules/ladder_filter/ladder_filter.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "logistic_map",
+      "label": "Logistic Map",
+      "targetType": "logisticMap",
+      "kind": "chaos",
+      "source": "native_modules/logistic_map/logistic_map.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/logistic_map/logistic_map.cpp",
+      "wasm": "native_modules/logistic_map/logistic_map.wasm",
+      "wasmUrl": "native_modules/logistic_map/logistic_map.wasm",
       "wasmAvailable": true
     },
     {
@@ -68,6 +101,17 @@
       "wasmAvailable": true
     },
     {
+      "name": "pitch_quantizer",
+      "label": "Pitch Quantizer",
+      "targetType": "pitchQuantizer",
+      "kind": "pitch",
+      "source": "native_modules/pitch_quantizer/pitch_quantizer.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/pitch_quantizer/pitch_quantizer.cpp",
+      "wasm": "native_modules/pitch_quantizer/pitch_quantizer.wasm",
+      "wasmUrl": "native_modules/pitch_quantizer/pitch_quantizer.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "pll",
       "label": "PLL",
       "targetType": "pll",
@@ -76,6 +120,17 @@
       "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/pll/pll.cpp",
       "wasm": "native_modules/pll/pll.wasm",
       "wasmUrl": "native_modules/pll/pll.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "polyblep",
+      "label": "PolyBLEP",
+      "targetType": "polyBlep",
+      "kind": "oscillator",
+      "source": "native_modules/polyblep/polyblep.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/polyblep/polyblep.cpp",
+      "wasm": "native_modules/polyblep/polyblep.wasm",
+      "wasmUrl": "native_modules/polyblep/polyblep.wasm",
       "wasmAvailable": true
     },
     {
