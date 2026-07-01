@@ -39,6 +39,7 @@ const App = () => (
           <Route path="/oscilloscope" element={<OscilloscopePage />} />
           <Route path="/scope-scratch" element={<ScopeScratchPage />} />
           <Route path="/sandbox" element={<SandboxPage />} />
+          <Route path="/reverb" element={<SandboxPage staticPatchUrl="/patches/reverb.json" />} />
           <Route path="/sandbox/:patch" element={<SandboxPage />} />
           <Route path="/sandbox/:user/:bank/:patch" element={<SandboxPage />} />
           <Route path="/avw-research" element={<AVWResearch />} />
