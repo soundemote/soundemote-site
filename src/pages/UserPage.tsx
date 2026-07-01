@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
+import { useUserFiles, type UserFile } from "@/hooks/useUserFiles";
 import { supabase, supabaseConfigError } from "@/lib/supabase";
 
 type UserPageParams = {
