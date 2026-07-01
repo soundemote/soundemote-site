@@ -167,7 +167,7 @@ export const Nav = () => {
         <span className="text-muted-foreground/80">/*</span>
         <SandboxNavLink href="/sandbox" label="app:(sandbox)" />
         <span className="text-[#ffc957] tracking-normal">{'\u26A1\uFE0E\u26A1\uFE0E\u26A1\uFE0E\u26A1\uFE0E\u26A1\uFE0E'}</span>
-        <span className="text-muted-foreground/80">beta v0.1.0</span>
+        <span className="text-muted-foreground/80">beta v0.2.0</span>
         <span className="text-muted-foreground/80">*/</span>
       </div>
       <div className="z-10 flex items-center gap-4">
