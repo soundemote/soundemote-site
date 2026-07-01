@@ -29,6 +29,7 @@ const AuthPage = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [needsHandle, setNeedsHandle] = useState(false);
 
   useEffect(() => {
     if (loading || !session) return;
@@ -45,14 +46,51 @@ const AuthPage = () => {
         await supabase
           .from("profiles")
           .upsert({ id: user.id, handle: metaHandle, name: metaHandle }, { onConflict: "id" });
-        navigate(`/@${metaHandle}`, { replace: true });
+        window.location.assign(`/@${metaHandle}`);
         return;
       }
-      // No handle in metadata — send them home; they're signed in.
-      navigate("/", { replace: true });
+      // OAuth (Discord/Google) users arrive with no handle — ask them to pick one.
+      setNeedsHandle(true);
     };
     void go();
   }, [loading, session, profile, navigate]);
+
+  const claimHandle = async () => {
+    setError(null);
+    if (!session?.user) return;
+    const handleParsed = handleSchema.safeParse(handle);
+    if (!handleParsed.success) return setError(handleParsed.error.errors[0].message);
+
+    setBusy(true);
+    try {
+      const { data: reserved } = await supabase
+        .from("reserved_handles")
+        .select("handle")
+        .eq("handle", handleParsed.data)
+        .maybeSingle();
+      if (reserved) return setError("That handle is reserved.");
+
+      const { data: taken } = await supabase
+        .from("profiles")
+        .select("id")
+        .ilike("handle", handleParsed.data)
+        .maybeSingle();
+      if (taken && (taken as { id: string }).id !== session.user.id) {
+        return setError("That handle is already taken.");
+      }
+
+      const { error: upsertError } = await supabase
+        .from("profiles")
+        .upsert(
+          { id: session.user.id, handle: handleParsed.data, name: handleParsed.data },
+          { onConflict: "id" },
+        );
+      if (upsertError) return setError(upsertError.message);
+      window.location.assign(`/@${handleParsed.data}`);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const oauth = async (provider: "google" | "discord") => {
     setError(null);
