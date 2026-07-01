@@ -1,13 +1,20 @@
 const nodeGraphDefaultPresetUrl = "./public/presets/default.json";
 const nodeGraphDefaultPresetStorageKey = "soemdsp-sandbox.defaultPatch.live.v3";
 
+async function nodeGraphDefaultPresetUrlToLoad() {
+  const override = typeof nodeGraphResolveEmbedOverride === "function"
+    ? await nodeGraphResolveEmbedOverride("defaultPresetUrl", "defaultPreset")
+    : null;
+  return override || nodeGraphDefaultPresetUrl;
+}
+
 async function loadNodeGraphDefaultPresetPatch() {
   const storedPatch = loadNodeGraphLocalDefaultPresetPatch();
   if (nodeGraphDefaultPresetPatchIsUsable(storedPatch)) {
     return normalizeNodeGraphDefaultPresetScopeShaders(storedPatch);
   }
   try {
-    const response = await fetch(nodeGraphDefaultPresetUrl, { cache: "no-store" });
+    const response = await fetch(await nodeGraphDefaultPresetUrlToLoad(), { cache: "no-store" });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }

@@ -166,10 +166,17 @@ function normalizeNodeGraphResourceManifest(manifest = {}) {
   };
 }
 
+async function nodeGraphResourcesManifestUrlToLoad() {
+  const override = typeof nodeGraphResolveEmbedOverride === "function"
+    ? await nodeGraphResolveEmbedOverride("resourcesManifestUrl", "resourcesManifest")
+    : null;
+  return override || nodeGraphResourcesManifestUrl;
+}
+
 async function loadNodeGraphResourceManifest() {
   const fallback = normalizeNodeGraphResourceManifest();
   try {
-    const response = await fetch(nodeGraphResourcesManifestUrl, { cache: "no-store" });
+    const response = await fetch(await nodeGraphResourcesManifestUrlToLoad(), { cache: "no-store" });
     if (!response.ok) {
       throw new Error(`resource manifest load failed (${response.status})`);
     }
