@@ -6,12 +6,19 @@ export const Hero = () => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
   const [patchIndex, setPatchIndex] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  // Index 0 (silently dreaming) is already the sandbox's built-in default patch.
+  // Seed lastPostedRef to 0 so it is never re-posted on first load (which would
+  // re-load the graph and flash). Only genuine index changes post.
+  const lastPostedRef = useRef<number>(0);
   const sandboxViewportHeight = "max(640px, calc(100svh - 10rem))";
   const currentPatch = SOUNDEMOTE_BANK[patchIndex];
 
   const postPatch = useCallback(async () => {
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
+    // Nothing to do if this patch is already loaded in the sandbox.
+    if (lastPostedRef.current === patchIndex) return;
+    lastPostedRef.current = patchIndex;
     try {
       const res = await fetch(currentPatch.url);
       const projectData = await res.json();
@@ -22,7 +29,7 @@ export const Hero = () => {
     } catch {
       /* ignore fetch/post errors */
     }
-  }, [currentPatch.url]);
+  }, [currentPatch.url, patchIndex]);
 
   // Re-send whenever the selected patch changes (after initial load).
   useEffect(() => {
