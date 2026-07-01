@@ -93,6 +93,7 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "linearEnvelope",
   "pluckEnvelope",
   "vactrolEnvelope",
+  "vactrolEnvelopeC4",
   "sandboxVisuals",
   "screenSpaceShader",
   "bloomGlow",
@@ -834,8 +835,13 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   vactrolEnvelope: {
     category: "Envelope",
-    description: "Optical-style control shaper. Feed it light and get the slow, curved response of a vactrol detector.",
+    description: "Optical-style control shaper modeled on the PerkinElmer VTL5C3, the classic fast Buchla/Serge-style LPG vactrol. Feed it light and get its 2.5ms attack, 35ms release response.",
     notes: ["light input", "attack/release lag", "dark current"],
+  },
+  vactrolEnvelopeC4: {
+    category: "Envelope",
+    description: "Optical-style control shaper modeled on the PerkinElmer VTL5C4, the well-known slow vactrol with a ~1.5s release -- roughly 40x longer than the VTL5C3.",
+    notes: ["light input", "slow release", "dark current"],
   },
   sandboxVisuals: {
     category: "Visual",
@@ -1081,20 +1087,36 @@ function applyNodeGraphNativeModuleCatalog(entries = []) {
   renderNodeGraphModuleStoreCatalog();
 }
 
+async function fetchNodeGraphNativeModuleCatalogFallback() {
+  try {
+    const response = await fetch("native-modules-catalog.json", { cache: "no-store" });
+    return response.ok ? response.json() : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
 async function loadNodeGraphNativeModuleCatalog() {
   if (nodeGraphNativeModuleCatalogLoadStarted || typeof fetch !== "function") {
     return nodeGraphNativeModuleEntries;
   }
   nodeGraphNativeModuleCatalogLoadStarted = true;
   try {
+    let payload = null;
     const response = await fetch("/api/native-modules", { cache: "no-store" });
-    if (!response.ok) {
-      return nodeGraphNativeModuleEntries;
+    if (response.ok) {
+      payload = await response.json();
+    } else {
+      payload = await fetchNodeGraphNativeModuleCatalogFallback();
     }
-    const payload = await response.json();
     applyNodeGraphNativeModuleCatalog(payload?.modules || []);
   } catch (_error) {
-    // Native modules are optional; the JS module catalog remains usable without them.
+    // No server behind the page (e.g. static export) -- fall back to the
+    // pre-generated catalog shipped alongside index.html.
+    const fallback = await fetchNodeGraphNativeModuleCatalogFallback();
+    if (fallback?.modules) {
+      applyNodeGraphNativeModuleCatalog(fallback.modules);
+    }
   }
   return nodeGraphNativeModuleEntries;
 }
