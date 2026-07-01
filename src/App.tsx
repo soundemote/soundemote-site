@@ -15,6 +15,7 @@ import SharePage from "./pages/SharePage.tsx";
 import WikiPage from "./pages/WikiPage.tsx";
 import WikiArticlePage from "./pages/WikiArticlePage.tsx";
 import UserPage from "./pages/UserPage.tsx";
+import FilesPage from "./pages/FilesPage.tsx";
 import AuthPage from "./pages/AuthPage.tsx";
 import AdminLogin from "./pages/AdminLogin.tsx";
 import AdminDashboard from "./pages/AdminDashboard.tsx";
@@ -52,6 +53,8 @@ const App = () => (
           <Route path="/admin/wiki" element={<AdminWikiEdits />} />
           <Route path="/admin/users" element={<AdminUsers />} />
           {/* @user space: profile/bank/patch pages */}
+          <Route path="/files" element={<FilesPage />} />
+          <Route path="/:handle/files" element={<FilesPage />} />
           <Route path="/:handle/:bank/:patch" element={<UserPage />} />
           <Route path="/:handle/:bank" element={<UserPage />} />
           <Route path="/:handle" element={<UserPage />} />
