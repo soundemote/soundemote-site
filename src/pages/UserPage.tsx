@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserFiles, type UserFile } from "@/hooks/useUserFiles";
 import { supabase, supabaseConfigError } from "@/lib/supabase";
 import { toast } from "@/hooks/use-toast";
+import AvatarCropDialog from "@/components/soundemote/AvatarCropDialog";
 
 type UserPageParams = {
   handle?: string;
@@ -47,25 +48,21 @@ const UserPage = () => {
   const [patchRow, setPatchRow] = useState<Patch | null>(null);
   const [files, setFiles] = useState<UserFile[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const viewerIsOwner = Boolean(
     session?.user?.id && profile?.id && session.user.id === profile.id,
   );
 
-  const handleAvatarUpload = async (file: File) => {
+  const handleAvatarUpload = async (blob: Blob) => {
     if (!session?.user?.id || !profile) return;
-    if (!file.type.startsWith("image/")) {
-      toast({ title: "Pick an image file", variant: "destructive" });
-      return;
-    }
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop()?.toLowerCase() || "png";
-      const path = `${session.user.id}/avatar-${Date.now()}.${ext}`;
+      const path = `${session.user.id}/avatar-${Date.now()}.jpg`;
       const { error: upErr } = await supabase.storage
         .from("avatars")
-        .upload(path, file, { upsert: true, contentType: file.type });
+        .upload(path, blob, { upsert: true, contentType: "image/jpeg" });
       if (upErr) throw upErr;
       const { data: pub } = supabase.storage.from("avatars").getPublicUrl(path);
       const url = pub.publicUrl;
@@ -75,6 +72,8 @@ const UserPage = () => {
         .eq("id", session.user.id);
       if (updErr) throw updErr;
       setProfile({ ...profile, avatar_url: url });
+      if (cropSrc) URL.revokeObjectURL(cropSrc);
+      setCropSrc(null);
       toast({ title: "Profile picture updated" });
     } catch (error) {
       toast({
@@ -85,6 +84,14 @@ const UserPage = () => {
     } finally {
       setUploading(false);
     }
+  };
+
+  const pickFile = (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Pick an image file", variant: "destructive" });
+      return;
+    }
+    setCropSrc(URL.createObjectURL(file));
   };
 
   useEffect(() => {
@@ -271,7 +278,7 @@ const UserPage = () => {
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
-                  if (f) handleAvatarUpload(f);
+                  if (f) pickFile(f);
                   e.target.value = "";
                 }}
               />
@@ -298,6 +305,16 @@ const UserPage = () => {
           )}
         </div>
       </div>
+
+      <AvatarCropDialog
+        src={cropSrc}
+        busy={uploading}
+        onCancel={() => {
+          if (cropSrc) URL.revokeObjectURL(cropSrc);
+          setCropSrc(null);
+        }}
+        onCropped={handleAvatarUpload}
+      />
 
       <div className="mt-12 grid gap-8 md:grid-cols-3">
         <section className="md:col-span-1">
