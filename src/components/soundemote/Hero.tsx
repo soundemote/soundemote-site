@@ -6,8 +6,7 @@ export const Hero = () => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
   const [patchIndex, setPatchIndex] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
-  const sandboxViewportHeight = "max(640px, calc(100svh - 10rem))";
-  const currentPatch = WIKIREVIEW_BANK[patchIndex];
+  const currentPatch = SOUNDEMOTE_BANK[patchIndex];
 
   const postPatch = useCallback(async () => {
     const win = iframeRef.current?.contentWindow;
@@ -30,7 +29,7 @@ export const Hero = () => {
   }, [sandboxLoaded, postPatch]);
 
   const step = (dir: number) =>
-    setPatchIndex((i) => (i + dir + WIKIREVIEW_BANK.length) % WIKIREVIEW_BANK.length);
+    setPatchIndex((i) => (i + dir + SOUNDEMOTE_BANK.length) % SOUNDEMOTE_BANK.length);
 
   const previewFrameClass = sandboxLoaded
     ? "soundemote-sandbox-preview-frame relative flex w-full justify-center overflow-hidden bg-background"
@@ -91,7 +90,7 @@ export const Hero = () => {
               ‹ prev
             </button>
             <span className="mono min-w-[10rem] text-xs uppercase tracking-[0.18em] text-scope">
-              wikireview / {currentPatch.label}
+              soundemote / {currentPatch.label}
             </span>
             <button
               type="button"
