@@ -556,6 +556,9 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
       type === "fractalBrownianNoise" ||
       type === "keyboardController" ||
       type === "lorenzAttractor" ||
+      type === "logisticMap" ||
+      type === "henonMap" ||
+      type === "chuaAttractor" ||
       type === "ellipsoid" ||
       type === "macroKnob" ||
       type === "macroControls" ||

@@ -247,6 +247,11 @@ function createNodeGraphLiveRuntime(plan) {
   const ladderFilterStates = new Map();
   const tb303FilterStates = new Map();
   const linearEnvelopeStates = new Map();
+  const logisticMapStates = new Map();
+  const henonMapStates = new Map();
+  const chuaAttractorStates = new Map();
+  const chordMemoryStates = new Map();
+  const turingMachineStates = new Map();
   const lorenzAttractorStates = new Map();
   const moduleGroupRuntimes = new Map();
   const noiseGeneratorStates = new Map();
@@ -285,6 +290,21 @@ function createNodeGraphLiveRuntime(plan) {
     }
     if (node.type === "lorenzAttractor") {
       lorenzAttractorStates.set(node.id, createNodeGraphLorenzAttractorState());
+    }
+    if (node.type === "logisticMap") {
+      logisticMapStates.set(node.id, createNodeGraphLogisticMapState());
+    }
+    if (node.type === "henonMap") {
+      henonMapStates.set(node.id, createNodeGraphHenonMapState());
+    }
+    if (node.type === "chuaAttractor") {
+      chuaAttractorStates.set(node.id, createNodeGraphChuaAttractorState());
+    }
+    if (node.type === "chordMemory") {
+      chordMemoryStates.set(node.id, createNodeGraphChordMemoryState());
+    }
+    if (node.type === "turingMachine") {
+      turingMachineStates.set(node.id, createNodeGraphTuringMachineState());
     }
     if (node.type === "passiveFilter") {
       passiveFilterStates.set(node.id, createNodeGraphPassiveFilterState());
@@ -405,6 +425,11 @@ function createNodeGraphLiveRuntime(plan) {
     ladderFilterStates,
     tb303FilterStates,
     linearEnvelopeStates,
+    logisticMapStates,
+    henonMapStates,
+    chuaAttractorStates,
+    chordMemoryStates,
+    turingMachineStates,
     lorenzAttractorStates,
     meterCounter: 0,
     meterClipCount: 0,
@@ -531,6 +556,21 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   if (!runtime.lorenzAttractorStates) {
     runtime.lorenzAttractorStates = new Map();
   }
+  if (!runtime.logisticMapStates) {
+    runtime.logisticMapStates = new Map();
+  }
+  if (!runtime.henonMapStates) {
+    runtime.henonMapStates = new Map();
+  }
+  if (!runtime.chuaAttractorStates) {
+    runtime.chuaAttractorStates = new Map();
+  }
+  if (!runtime.chordMemoryStates) {
+    runtime.chordMemoryStates = new Map();
+  }
+  if (!runtime.turingMachineStates) {
+    runtime.turingMachineStates = new Map();
+  }
   if (!runtime.clockStates) {
     runtime.clockStates = new Map();
   }
@@ -628,6 +668,21 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     }
     if (node.type === "lorenzAttractor" && !runtime.lorenzAttractorStates.has(node.id)) {
       runtime.lorenzAttractorStates.set(node.id, createNodeGraphLorenzAttractorState());
+    }
+    if (node.type === "logisticMap" && !runtime.logisticMapStates.has(node.id)) {
+      runtime.logisticMapStates.set(node.id, createNodeGraphLogisticMapState());
+    }
+    if (node.type === "henonMap" && !runtime.henonMapStates.has(node.id)) {
+      runtime.henonMapStates.set(node.id, createNodeGraphHenonMapState());
+    }
+    if (node.type === "chuaAttractor" && !runtime.chuaAttractorStates.has(node.id)) {
+      runtime.chuaAttractorStates.set(node.id, createNodeGraphChuaAttractorState());
+    }
+    if (node.type === "chordMemory" && !runtime.chordMemoryStates.has(node.id)) {
+      runtime.chordMemoryStates.set(node.id, createNodeGraphChordMemoryState());
+    }
+    if (node.type === "turingMachine" && !runtime.turingMachineStates.has(node.id)) {
+      runtime.turingMachineStates.set(node.id, createNodeGraphTuringMachineState());
     }
     if (node.type === "passiveFilter" && !runtime.passiveFilterStates.has(node.id)) {
       runtime.passiveFilterStates.set(node.id, createNodeGraphPassiveFilterState());
@@ -790,6 +845,31 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   for (const id of [...runtime.lorenzAttractorStates.keys()]) {
     if (!nodeIds.has(id)) {
       runtime.lorenzAttractorStates.delete(id);
+    }
+  }
+  for (const id of [...runtime.logisticMapStates.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.logisticMapStates.delete(id);
+    }
+  }
+  for (const id of [...runtime.henonMapStates.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.henonMapStates.delete(id);
+    }
+  }
+  for (const id of [...runtime.chuaAttractorStates.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.chuaAttractorStates.delete(id);
+    }
+  }
+  for (const id of [...runtime.chordMemoryStates.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.chordMemoryStates.delete(id);
+    }
+  }
+  for (const id of [...runtime.turingMachineStates.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.turingMachineStates.delete(id);
     }
   }
   for (const id of [...runtime.passiveFilterStates.keys()]) {

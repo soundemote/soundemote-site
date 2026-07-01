@@ -34,11 +34,9 @@ async function populateNodeBootSysinfo() {
   const el = document.getElementById("nodeBootSysinfo");
   if (!el) return;
 
-  // CPU
-  const cores = navigator.hardwareConcurrency;
-  const cpuParts = [];
-  if (cores) cpuParts.push(`${cores} cores`);
-  const cpuStr = cpuParts.length ? `CPU: ${cpuParts.join(", ")}` : null;
+  // CPU core count is hidden for now -- feels too close to a fingerprinting
+  // detail for users to be comfortable seeing on a loading screen.
+  const cpuStr = null;
 
   // RAM
   const ramGB = navigator.deviceMemory;
