@@ -6,6 +6,7 @@ export const Hero = () => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
   const [patchIndex, setPatchIndex] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const sandboxViewportHeight = "max(640px, calc(100svh - 10rem))";
   const currentPatch = SOUNDEMOTE_BANK[patchIndex];
 
   const postPatch = useCallback(async () => {
