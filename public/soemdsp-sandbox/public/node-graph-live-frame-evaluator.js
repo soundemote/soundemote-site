@@ -3281,19 +3281,20 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         runtime,
         nodeId,
       );
-    } else if (node?.type === "vactrolEnvelope") {
+    } else if (node?.type === "vactrolEnvelope" || node?.type === "vactrolEnvelopeC4") {
       const state = runtime.vactrolEnvelopeStates.get(nodeId) || createNodeGraphVactrolEnvelopeState();
       runtime.vactrolEnvelopeStates.set(nodeId, state);
       const read = (key, fallback) => readNodeGraphLiveEffectiveParam(runtime, node, key, fallback, frame, frames, frameValues);
+      const isC4 = node?.type === "vactrolEnvelopeC4";
       value = nodeGraphVactrolEnvelopeSample(
         state,
         mixInput(nodeId, "Light"),
         {
-          attack: read("attack", 0.01),
+          attack: read("attack", isC4 ? 0.006 : 0.0025),
           curve: read("curve", 1),
           darkCurrent: read("darkCurrent", 0),
           lightOffset: read("lightOffset", 0),
-          release: read("release", 0.45),
+          release: read("release", isC4 ? 1.5 : 0.035),
           sensitivity: read("sensitivity", 1),
         },
         sampleRate,
@@ -3548,7 +3549,11 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
       const mono = mixInput(nodeId, "Mono");
       const left = mixInput(nodeId, "Left");
       const right = mixInput(nodeId, "Right");
-      value = mono + (left + right) * 0.5;
+      value = {
+        Left: mono + left,
+        Out: mono + (left + right) * 0.5,
+        Right: mono + right,
+      };
     }
 
     frameValues.set(nodeId, value);
