@@ -13,10 +13,18 @@ const releases: Release[] = [
     date: "2026-07-01",
     tag: "alpha",
     changes: [
-      "User accounts with Google, Discord, and email/password sign-in.",
-      "Profiles with handles, avatars, and per-user file links.",
-      "Per-user init patches with fallback to the wikireview default.",
+      "User accounts with Google, Discord, and email/password sign-in, with persistent sessions.",
+      "Profiles with reserved handles, avatar upload + 512×512 crop editor, and a profile picture square.",
+      "Per-user file links with per-file privacy controls.",
+      "Per-user init patches saved to your account, falling back to the wikireview default for new users.",
       "Claim & review workflow for community wiki articles.",
+      "Admin dashboard with a Users page and role-based moderation.",
+      "Wiki page system with an index and patch shortlinks routed to wiki sublinks.",
+      "Static patch routes: /reverb, /shootingstar, and /tweet, with polyblep_reverb as the default patch.",
+      "Lorenz shooting-star field driven by the sandbox, with asteroid collisions and explosion-power sound triggers.",
+      "Embedded sandbox synced to latest: module browser fixes, native-module WASM support, and Code button fix on static hosting.",
+      "Curated patch banks (Wikireview / soundemote) and bird_sounds patch.",
+      "\"Silently Dreaming\" by Elan Hickler as the startup audio.",
     ],
   },
   {
@@ -26,6 +34,7 @@ const releases: Release[] = [
     changes: [
       "Initial community wiki with open pages and edits.",
       "Patch and DSP knowledge reference structure.",
+      "Lorenz attractor oscilloscope with zoom, rotate, and trace controls.",
     ],
   },
 ];
