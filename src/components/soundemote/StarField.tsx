@@ -142,12 +142,19 @@ export const StarField = () => {
       starsRef.current = stars;
     };
 
-    const spawnShooter = () => {
+    type SpawnOverrides = {
+      hue?: number;
+      speed?: number;
+      count?: number;
+    };
+
+    const spawnShooter = (overrides: SpawnOverrides = {}) => {
       // launch from upper-left-ish, travel down-right (or mirror)
       const fromLeft = Math.random() < 0.5;
       const y0 = Math.random() * height * 0.6;
       const x0 = fromLeft ? -40 : width + 40;
-      const speed = 6 + Math.random() * 4;
+      const speed =
+        typeof overrides.speed === "number" ? overrides.speed : 6 + Math.random() * 4;
       const angle = (Math.random() * 0.3 + 0.15) * Math.PI; // ~27-81deg
       const vx = (fromLeft ? 1 : -1) * Math.cos(angle) * speed;
       const vy = Math.sin(angle) * speed;
@@ -158,7 +165,12 @@ export const StarField = () => {
         vy,
         life: 1,
         trail: [],
-        hue: Math.random() < 0.3 ? 40 : 180,
+        hue:
+          typeof overrides.hue === "number"
+            ? overrides.hue
+            : Math.random() < 0.3
+              ? 40
+              : 180,
       });
     };
 
@@ -204,6 +216,39 @@ export const StarField = () => {
     window.addEventListener("resize", resize);
     window.addEventListener("scroll", handleScroll, { passive: true });
 
+    // Sandbox-driven shooting-star timing: the iframe can post
+    // `soundemote:hero-event` messages to trigger stars or change cadence.
+    // Cadence override (seconds); null = default random auto-cadence.
+    let rateOverride: number | null = null;
+    const handleHeroEvent = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const iframe = document.querySelector<HTMLIFrameElement>("#hero-sandbox-iframe");
+      if (iframe && event.source && event.source !== iframe.contentWindow) return;
+      const data = event.data;
+      if (!data || data.type !== "soundemote:hero-event") return;
+      const payload = (data.payload ?? {}) as SpawnOverrides & { intervalSeconds?: number };
+      switch (data.event) {
+        case "spawnShootingStar": {
+          const count = Math.max(1, Math.min(20, Math.floor(payload.count ?? 1)));
+          for (let i = 0; i < count; i++) {
+            spawnShooter({ hue: payload.hue, speed: payload.speed });
+          }
+          break;
+        }
+        case "setRate": {
+          const interval = payload.intervalSeconds;
+          rateOverride =
+            typeof interval === "number" && interval > 0
+              ? Math.max(0.1, Math.min(30, interval))
+              : null;
+          break;
+        }
+        default:
+          break;
+      }
+    };
+    window.addEventListener("message", handleHeroEvent);
+
     let start = performance.now();
     let nextShooterAt = 1.5;
     const tick = (now: number) => {
@@ -231,7 +276,8 @@ export const StarField = () => {
       // shooting stars
       if (t >= nextShooterAt) {
         spawnShooter();
-        nextShooterAt = t + 2 + Math.random() * 4;
+        nextShooterAt =
+          rateOverride != null ? t + rateOverride : t + 2 + Math.random() * 4;
       }
       const shooters = shootersRef.current;
       const trailGlyphs = ["*", "+", "·", ".", " "];
@@ -310,6 +356,7 @@ export const StarField = () => {
     return () => {
       window.removeEventListener("resize", resize);
       window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("message", handleHeroEvent);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, [portalHost]);
