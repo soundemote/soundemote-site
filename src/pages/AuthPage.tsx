@@ -281,6 +281,8 @@ const AuthPage = () => {
         >
           {mode === "signup" ? "Already have an account? Sign in" : "Need an account? Sign up"}
         </button>
+        </>
+        )}
       </div>
     </main>
   );
