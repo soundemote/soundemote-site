@@ -29,6 +29,7 @@ const AuthPage = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [needsHandle, setNeedsHandle] = useState(false);
 
   useEffect(() => {
     if (loading || !session) return;
@@ -45,14 +46,51 @@ const AuthPage = () => {
         await supabase
           .from("profiles")
           .upsert({ id: user.id, handle: metaHandle, name: metaHandle }, { onConflict: "id" });
-        navigate(`/@${metaHandle}`, { replace: true });
+        window.location.assign(`/@${metaHandle}`);
         return;
       }
-      // No handle in metadata — send them home; they're signed in.
-      navigate("/", { replace: true });
+      // OAuth (Discord/Google) users arrive with no handle — ask them to pick one.
+      setNeedsHandle(true);
     };
     void go();
   }, [loading, session, profile, navigate]);
+
+  const claimHandle = async () => {
+    setError(null);
+    if (!session?.user) return;
+    const handleParsed = handleSchema.safeParse(handle);
+    if (!handleParsed.success) return setError(handleParsed.error.errors[0].message);
+
+    setBusy(true);
+    try {
+      const { data: reserved } = await supabase
+        .from("reserved_handles")
+        .select("handle")
+        .eq("handle", handleParsed.data)
+        .maybeSingle();
+      if (reserved) return setError("That handle is reserved.");
+
+      const { data: taken } = await supabase
+        .from("profiles")
+        .select("id")
+        .ilike("handle", handleParsed.data)
+        .maybeSingle();
+      if (taken && (taken as { id: string }).id !== session.user.id) {
+        return setError("That handle is already taken.");
+      }
+
+      const { error: upsertError } = await supabase
+        .from("profiles")
+        .upsert(
+          { id: session.user.id, handle: handleParsed.data, name: handleParsed.data },
+          { onConflict: "id" },
+        );
+      if (upsertError) return setError(upsertError.message);
+      window.location.assign(`/@${handleParsed.data}`);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const oauth = async (provider: "google" | "discord") => {
     setError(null);
@@ -132,6 +170,37 @@ const AuthPage = () => {
         <Link to="/" className="mono text-xs text-muted-foreground hover:text-foreground">
           &lt; soundemote
         </Link>
+        {needsHandle ? (
+          <>
+            <h1 className="display mt-4 text-2xl">Choose your handle</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              You're signed in. Pick a @handle to finish setting up your account.
+            </p>
+            <div className="mt-8 space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="claim-handle">Handle</Label>
+                <div className="flex items-center gap-1">
+                  <span className="mono text-sm text-muted-foreground">@</span>
+                  <Input
+                    id="claim-handle"
+                    value={handle}
+                    onChange={(e) => setHandle(e.target.value)}
+                    placeholder="yourname"
+                    autoComplete="off"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") claimHandle();
+                    }}
+                  />
+                </div>
+              </div>
+              {error && <p className="text-sm text-destructive break-words">{error}</p>}
+              <Button className="w-full" onClick={claimHandle} disabled={busy}>
+                {busy ? "Working…" : "Claim handle"}
+              </Button>
+            </div>
+          </>
+        ) : (
+        <>
         <h1 className="display mt-4 text-2xl">
           {mode === "signup" ? "Create account" : "Sign in"}
         </h1>
@@ -212,6 +281,8 @@ const AuthPage = () => {
         >
           {mode === "signup" ? "Already have an account? Sign in" : "Need an account? Sign up"}
         </button>
+        </>
+        )}
       </div>
     </main>
   );
