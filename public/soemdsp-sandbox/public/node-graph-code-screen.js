@@ -4813,7 +4813,7 @@ function nodeGraphCodeScreenWorkspaceLeadRecipe({ audio, circuit, tags, visual }
     const amplitude = Number(value.amplitude ?? 0.35);
     circuit.create(name);
     const osc = circuit.osc("lead-osc", { frequency, note, waveform });
-    const toneStage = circuit.module("lowpass", "lead-tone", { cutoff, tone });
+    const toneStage = circuit.module("passiveFilter", "lead-tone", { highFrequency: cutoff });
     const amp = circuit.gain("lead-amp", amplitude);
     const out = circuit.output("lead-out");
     circuit.connect(osc.out("Out"), toneStage.in("In"));

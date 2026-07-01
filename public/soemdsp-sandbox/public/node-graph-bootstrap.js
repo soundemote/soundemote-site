@@ -1,12 +1,17 @@
 async function initNodeGraphMvp() {
+  setNodeSandboxStartupProgress(10, "loading tooltips");
   installNodeGraphDebugApi();
   configureNodeGraphDefaultPresetButton();
   await loadNodeGraphTooltips();
+  setNodeSandboxStartupProgress(25, "binding events");
   await bindNodeGraphMvpEvents();
+  setNodeSandboxStartupProgress(42, "loading resources");
   if (typeof loadNodeGraphResourceManifest === "function") {
     await loadNodeGraphResourceManifest();
   }
+  setNodeSandboxStartupProgress(58, "loading patch");
   nodeGraphMvp.defaultPatch = await loadNodeGraphDefaultPresetPatch();
+  setNodeSandboxStartupProgress(72, "building interface");
   let startupPatch = nodeGraphMvp.workingPatch || nodeGraphMvp.defaultPatch;
   let startupPatchDirtyState = nodeGraphMvp.workingPatch && ["saved", "edited", "untouched"].includes(nodeGraphMvp.patchDirtyState)
     ? nodeGraphMvp.patchDirtyState

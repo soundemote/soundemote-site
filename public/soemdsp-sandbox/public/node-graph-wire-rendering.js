@@ -360,26 +360,31 @@ function drawNodeGraphWires() {
 
   syncNodeGraphMonitorIndicators();
 
-  if (nodeGraphMvp.dragging) {
-    nodeGraphDrawTemporaryWire(svg, {
-      className: "node-wire-path temp",
-      endpoint: nodeGraphMvp.dragging.endpoint,
-      from: nodeGraphMvp.dragging.from,
-      gradientId: "node-wire-gradient-temp",
-      to: nodeGraphMvp.dragging.to,
-    });
+  if (nodeGraphMvp.portConnectionMode) {
+    const mode = nodeGraphMvp.portConnectionMode;
+    if (mode.cursorPoint) {
+      let ghostIndex = 0;
+      for (const { endpoint, from } of mode.selected.values()) {
+        nodeGraphDrawTemporaryWire(svg, {
+          className: "node-wire-path temp",
+          endpoint,
+          from,
+          gradientId: `node-wire-gradient-ghost-${ghostIndex}`,
+          to: mode.cursorPoint,
+        });
+        ghostIndex += 1;
+      }
+    }
   }
 
-  if (nodeGraphMvp.manualTrace) {
-    const trace = nodeGraphMvp.manualTrace;
-    const previewPoint = nodeGraphTraceSingleMovePoint(trace.from, trace.points, trace.to);
+  if (nodeGraphMvp.wireDragging?.active) {
+    const { endpoint, from, cursorPoint } = nodeGraphMvp.wireDragging;
     nodeGraphDrawTemporaryWire(svg, {
-      className: "node-wire-path trace-wire temp",
-      endpoint: trace.endpoint,
-      from: trace.from,
-      gradientId: "node-wire-gradient-manual-trace",
-      to: previewPoint,
-      tracePoints: trace.points,
+      className: "node-wire-path temp",
+      endpoint,
+      from,
+      gradientId: "node-wire-gradient-drag",
+      to: cursorPoint,
     });
   }
 

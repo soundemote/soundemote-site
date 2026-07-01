@@ -1727,47 +1727,6 @@ function nodeGraphModuleScopeStableSeed(text) {
   return seed || 0x12345678;
 }
 
-function nodeGraphModuleScopeAdvanceNoiseSeed(seed, steps) {
-  let delta = Math.max(0, Math.floor(Number(steps) || 0)) >>> 0;
-  let accumulatedMultiplier = 1;
-  let accumulatedIncrement = 0;
-  let currentMultiplier = 1664525;
-  let currentIncrement = 1013904223;
-  while (delta > 0) {
-    if (delta & 1) {
-      accumulatedMultiplier = Math.imul(accumulatedMultiplier, currentMultiplier) >>> 0;
-      accumulatedIncrement = (Math.imul(accumulatedIncrement, currentMultiplier) + currentIncrement) >>> 0;
-    }
-    currentIncrement = (Math.imul(currentMultiplier + 1, currentIncrement)) >>> 0;
-    currentMultiplier = Math.imul(currentMultiplier, currentMultiplier) >>> 0;
-    delta >>>= 1;
-  }
-  return (Math.imul(accumulatedMultiplier, seed >>> 0) + accumulatedIncrement) >>> 0;
-}
-
-function nodeGraphModuleScopeNoiseSeedToSample(seed) {
-  return ((seed >>> 0) / 0xffffffff) * 2 - 1;
-}
-
-function nodeGraphModuleScopeNoiseSeedKey(nodeId, seedValue, channel = "") {
-  const seed = Math.max(0, Math.min(99999, Math.floor(Number(seedValue) || 0)));
-  return `${nodeId}${channel ? `:${channel}` : ""}:seed:${seed}`;
-}
-
-function nodeGraphModuleScopeNoiseHoldSample(nodeId, seedValue, speed, sampleIndex, sampleRate) {
-  const safeSampleRate = Math.max(1, Number(sampleRate) || nodeGraphMvp.sampleRate || 44100);
-  const safeSpeed = clampNodeSliderValue(Number(speed) || 0, 0, 1);
-  const clockRate = safeSpeed * safeSampleRate * 0.5;
-  const holdIndex = clockRate > 0
-    ? Math.floor(Math.max(0, Number(sampleIndex) || 0) / Math.max(1, safeSampleRate / clockRate))
-    : 0;
-  const seed = nodeGraphModuleScopeAdvanceNoiseSeed(
-    nodeGraphModuleScopeStableSeed(nodeGraphModuleScopeNoiseSeedKey(nodeId, seedValue)),
-    holdIndex + 1,
-  );
-  return nodeGraphModuleScopeNoiseSeedToSample(seed);
-}
-
 function nodeGraphModuleScopeLinearToDb(value) {
   const amplitude = Math.abs(Number(value) || 0);
   return amplitude > 0.000001 ? 20 * Math.log10(amplitude) : -Infinity;
@@ -1971,13 +1930,6 @@ function nodeGraphModuleScopeOfflineSignalSample(context, nodeId, localTime, sam
       Number(nodeGraphModuleScopeState.sampleRate) || nodeGraphMvp.sampleRate || 44100,
     );
   }
-  if (node.type === "noise") {
-    const level = clampNodeSliderValue(nodeGraphModuleScopeNodeParam(node, "level", 0.5), 0, 1);
-    const seedValue = nodeGraphModuleScopeNodeParam(node, "seed", 1);
-    const speed = nodeGraphModuleScopeNodeParam(node, "speed", 1);
-    const sampleRate = Number(nodeGraphModuleScopeState.sampleRate) || nodeGraphMvp.sampleRate || 44100;
-    return nodeGraphModuleScopeNoiseHoldSample(node.id, seedValue, speed, sampleIndex, sampleRate) * level;
-  }
   if (node.type === "clock") {
     const rate = Math.max(0, nodeGraphModuleScopeNodeParam(node, "rate", 0));
     const duty = clampNodeSliderValue(nodeGraphModuleScopeNodeParam(node, "duty", 0.5), 0, 1);
@@ -2148,79 +2100,6 @@ function nodeGraphModuleScopeOscillatorPhasor(slot, frequency, cycles, modelTime
   return phasor;
 }
 
-function nodeGraphModuleScopeOfflineNoiseBuffer(slot) {
-  if (slot?.type !== "noise") {
-    return null;
-  }
-  const node = nodeGraphModuleScopeNodeForSlot(slot);
-  if (!node) {
-    return null;
-  }
-  const level = clampNodeSliderValue(nodeGraphModuleScopeNodeParam(node, "level", 0.5), 0, 1);
-  const seedValue = nodeGraphModuleScopeNodeParam(node, "seed", 1);
-  const speed = nodeGraphModuleScopeNodeParam(node, "speed", 1);
-  const sampleRate = Math.max(1, Number(nodeGraphModuleScopeState.sampleRate) || nodeGraphMvp.sampleRate || 44100);
-  const frames = 2048;
-  const currentSample = Math.max(0, Math.floor(nodeGraphModuleScopeModelFrameTime(slot) * sampleRate));
-  const startSample = Math.max(0, currentSample - frames);
-  const buffer = new Float32Array(frames);
-  for (let index = 0; index < frames; index += 1) {
-    buffer[index] = clampNodeSliderValue(
-      nodeGraphModuleScopeNoiseHoldSample(slot.nodeId, seedValue, speed, startSample + index, sampleRate) * level,
-      -1,
-      1,
-    );
-  }
-  buffer.nodeGraphScopeDrawProgress = 1;
-  buffer.nodeGraphScopeMinPointSpacingPx = 0.5;
-  buffer.nodeGraphScopeVisualPointLimit = 16384;
-  buffer.nodeGraphScopeUseFullWindow = true;
-  return buffer;
-}
-
-function nodeGraphModuleScopeOfflineStereoNoiseXyBuffer(slot) {
-  if (slot?.type !== "stereoNoise") {
-    return null;
-  }
-  const node = nodeGraphModuleScopeNodeForSlot(slot);
-  if (!node) {
-    return null;
-  }
-  const level = clampNodeSliderValue(nodeGraphModuleScopeNodeParam(node, "level", 0.5), 0, 1);
-  const seedValue = nodeGraphModuleScopeNodeParam(node, "seed", 1);
-  const sampleRate = Math.max(1, Number(nodeGraphModuleScopeState.sampleRate) || nodeGraphMvp.sampleRate || 44100);
-  const startSample = Math.max(0, Math.floor(nodeGraphModuleScopeModelFrameTime(slot) * sampleRate));
-  const frames = nodeGraphModuleScopeXyTraceFrameCount(16384);
-  const stride = 8;
-  const historySamples = frames * stride;
-  const historyStartSample = Math.max(0, startSample - historySamples);
-  const x = new Float32Array(frames);
-  const y = new Float32Array(frames);
-  let leftSeed = nodeGraphModuleScopeAdvanceNoiseSeed(
-    nodeGraphModuleScopeStableSeed(nodeGraphModuleScopeNoiseSeedKey(slot.nodeId, seedValue, "left")),
-    historyStartSample,
-  );
-  let rightSeed = nodeGraphModuleScopeAdvanceNoiseSeed(
-    nodeGraphModuleScopeStableSeed(nodeGraphModuleScopeNoiseSeedKey(slot.nodeId, seedValue, "right")),
-    historyStartSample,
-  );
-  for (let index = 0; index < frames; index += 1) {
-    leftSeed = nodeGraphModuleScopeAdvanceNoiseSeed(leftSeed, stride);
-    rightSeed = nodeGraphModuleScopeAdvanceNoiseSeed(rightSeed, stride);
-    x[index] = clampNodeSliderValue(nodeGraphModuleScopeNoiseSeedToSample(leftSeed) * level, -1, 1);
-    y[index] = clampNodeSliderValue(nodeGraphModuleScopeNoiseSeedToSample(rightSeed) * level, -1, 1);
-  }
-  return {
-    length: frames,
-    nodeGraphScopeDrawProgress: 1,
-    nodeGraphScopeUseFullWindow: true,
-    nodeGraphScopeVisualPointLimit: frames,
-    nodeGraphScopeXy: true,
-    x,
-    y,
-  };
-}
-
 function nodeGraphModuleScopeCapturedCurrentLightTarget(capturedBuffer) {
   if (!capturedBuffer?.length) {
     return null;
@@ -2357,7 +2236,7 @@ function nodeGraphModuleScopeCapturedBufferForSlot(slot) {
       ? { xPort: source.x, yPort: source.y }
       : {});
   }
-  if (["traceDisplay", "dotOscilloscope", "valueOscilloscope", "lineBurnOscilloscope"].includes(slot?.type)) {
+  if (["traceDisplay", "dotOscilloscope", "valueOscilloscope", "numberReadout", "lineBurnOscilloscope"].includes(slot?.type)) {
     return nodeGraphModuleScopeState.buffers.get(`${nodeId}:In`) ||
       nodeGraphModuleScopeConnectedSourceBuffer(nodeId, "In") ||
       null;
@@ -2393,13 +2272,14 @@ const nodeGraphTraceDisplaySettingsDefaults = Object.freeze({
   cycles: 2,
   lineThickness: 0.2,
   padding: 0,
-  skipSamples: 1,
+  skipDiscontinuities: true,
   sourceSync: true,
   zoomSeconds: 0.05,
 });
 
 const nodeGraphLineBurnSettingsDefaults = Object.freeze({
   burn: 0.82,
+  cycles: 2,
   decay: 0.12,
   dot1Brightness: 0.92,
   dot1Color: "#75ebff",
@@ -2432,13 +2312,31 @@ const nodeGraphZeroDBurnSettingsDefaults = Object.freeze({
 });
 
 const nodeGraphValueOscilloscopeSettingsDefaults = Object.freeze({
-  ...nodeGraphTraceDisplaySettingsDefaults,
+  brightness: 0.92,
   burn: 0,
   capEnabled: true,
   capLength: 0.16,
   capSize: 0.08,
+  color: "#75ebff",
   decay: 0,
+  dot1Enabled: true,
+  dot1Size: 0.08,
+  dot2Brightness: 0.18,
+  dot2Color: "#184fff",
+  dot2Enabled: true,
+  dot2LineThickness: 0.48,
+  dot2Size: 0.24,
   lineLength: 0.88,
+  lineThickness: 0.2,
+});
+
+// numberReadout owns a fully independent schema: only decimals, color, and
+// brightness. It deliberately does not carry any Trace/Dot/Caps/Burn/Zoom/
+// Sync/2D field so those renderers' settings can never leak into it.
+const nodeGraphNumberReadoutSettingsDefaults = Object.freeze({
+  brightness: 0.92,
+  color: "#75ebff",
+  decimals: 2,
 });
 
 const nodeGraphScope2dSettingsDefaults = Object.freeze({
@@ -2495,10 +2393,6 @@ function normalizeNodeGraphTraceDisplayNumber(value, fallback, min, max, integer
   return integer ? Math.round(normalized) : normalized;
 }
 
-function normalizeNodeGraphTraceDisplaySkipSamples(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? clampNodeSliderValue(Math.round(number), 0, 2) : 1;
-}
 
 function normalizeNodeGraphTraceDisplayZoomSeconds(value, fallback) {
   const number = Number(value);
@@ -2516,6 +2410,7 @@ function normalizeNodeGraphLineBurnSettings(settings = {}) {
   const zoomSeconds = source.zoomSeconds ?? source.windowSeconds ?? legacyWindowMs;
   return {
     burn: normalizeNodeGraphTraceDisplayNumber(source.burn, defaults.burn, 0, 1),
+    cycles: normalizeNodeGraphTraceDisplayNumber(source.cycles, defaults.cycles, 1, 64, true),
     decay: normalizeNodeGraphTraceDisplayNumber(source.decay, defaults.decay, 0, 1),
     dot1Brightness: normalizeNodeGraphTraceDisplayNumber(
       source.dot1Brightness ?? source.brightness,
@@ -2540,7 +2435,7 @@ function normalizeNodeGraphZeroDBurnSettings(settings = {}) {
       source.dot1Brightness ?? source.brightness,
       defaults.dot1Brightness,
       0,
-      1,
+      2,
     ),
     dot1Color: normalizeNodeGraphTraceDisplayColor(source.dot1Color ?? source.color, defaults.dot1Color),
     dot1Enabled: source.dot1Enabled !== false,
@@ -2551,7 +2446,7 @@ function normalizeNodeGraphZeroDBurnSettings(settings = {}) {
       0,
       1,
     ),
-    dot2Brightness: normalizeNodeGraphTraceDisplayNumber(source.dot2Brightness, defaults.dot2Brightness, 0, 1),
+    dot2Brightness: normalizeNodeGraphTraceDisplayNumber(source.dot2Brightness, defaults.dot2Brightness, 0, 2),
     dot2Color: normalizeNodeGraphTraceDisplayColor(source.dot2Color, defaults.dot2Color),
     dot2Enabled: source.dot2Enabled !== false,
     dot2Size: normalizeNodeGraphTraceDisplayNumber(source.dot2Size, defaults.dot2Size, 0, 1),
@@ -2607,7 +2502,7 @@ function normalizeNodeGraphTraceDisplaySettings(settings = {}) {
     cycles: normalizeNodeGraphTraceDisplayNumber(source.cycles, defaults.cycles, -Infinity, Infinity),
     lineThickness: normalizeNodeGraphTraceDisplayNumber(source.lineThickness, defaults.lineThickness, 0, 1),
     padding: normalizeNodeGraphTraceDisplayNumber(source.padding, defaults.padding, -Infinity, Infinity),
-    skipSamples: normalizeNodeGraphTraceDisplaySkipSamples(source.skipSamples ?? defaults.skipSamples),
+    skipDiscontinuities: source.skipDiscontinuities !== false,
     sourceSync: source.sourceSync !== false,
     zoomSeconds: normalizeNodeGraphTraceDisplayZoomSeconds(zoomSeconds, defaults.zoomSeconds),
   };
@@ -2615,31 +2510,54 @@ function normalizeNodeGraphTraceDisplaySettings(settings = {}) {
 
 function normalizeNodeGraphValueOscilloscopeSettings(settings = {}) {
   const source = settings && typeof settings === "object" ? settings : {};
-  const normalized = normalizeNodeGraphTraceDisplaySettings({
-    ...nodeGraphValueOscilloscopeSettingsDefaults,
-    ...source,
-  });
+  const defaults = nodeGraphValueOscilloscopeSettingsDefaults;
   return {
-    ...normalized,
+    brightness: normalizeNodeGraphTraceDisplayNumber(
+      source.brightness ?? source.dot1Brightness,
+      defaults.brightness,
+      0,
+      Infinity,
+    ),
+    burn: normalizeNodeGraphTraceDisplayNumber(source.burn, defaults.burn, 0, 1),
     capEnabled: source.capEnabled !== false,
-    capLength: normalizeNodeGraphTraceDisplayNumber(
-      source.capLength,
-      nodeGraphValueOscilloscopeSettingsDefaults.capLength,
+    capLength: normalizeNodeGraphTraceDisplayNumber(source.capLength, defaults.capLength, 0, 1),
+    capSize: normalizeNodeGraphTraceDisplayNumber(source.capSize, defaults.capSize, 0, 1),
+    color: normalizeNodeGraphTraceDisplayColor(source.color ?? source.dot1Color, defaults.color),
+    decay: normalizeNodeGraphTraceDisplayNumber(source.decay, defaults.decay, 0, 1),
+    dot1Enabled: source.dot1Enabled !== false,
+    dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
+    dot2Brightness: normalizeNodeGraphTraceDisplayNumber(
+      source.dot2Brightness,
+      defaults.dot2Brightness,
+      0,
+      Infinity,
+    ),
+    dot2Color: normalizeNodeGraphTraceDisplayColor(source.dot2Color, defaults.dot2Color),
+    dot2Enabled: source.dot2Enabled !== false,
+    dot2LineThickness: normalizeNodeGraphTraceDisplayNumber(
+      source.dot2LineThickness,
+      defaults.dot2LineThickness,
       0,
       1,
     ),
-    capSize: normalizeNodeGraphTraceDisplayNumber(
-      source.capSize,
-      nodeGraphValueOscilloscopeSettingsDefaults.capSize,
+    dot2Size: normalizeNodeGraphTraceDisplayNumber(source.dot2Size, defaults.dot2Size, 0, 1),
+    lineLength: normalizeNodeGraphTraceDisplayNumber(source.lineLength, defaults.lineLength, 0, 1),
+    lineThickness: normalizeNodeGraphTraceDisplayNumber(source.lineThickness, defaults.lineThickness, 0, 1),
+  };
+}
+
+function normalizeNodeGraphNumberReadoutSettings(settings = {}) {
+  const source = settings && typeof settings === "object" ? settings : {};
+  const defaults = nodeGraphNumberReadoutSettingsDefaults;
+  return {
+    brightness: normalizeNodeGraphTraceDisplayNumber(
+      source.brightness ?? source.dot1Brightness,
+      defaults.brightness,
       0,
-      1,
+      2,
     ),
-    lineLength: normalizeNodeGraphTraceDisplayNumber(
-      source.lineLength,
-      nodeGraphValueOscilloscopeSettingsDefaults.lineLength,
-      0,
-      1,
-    ),
+    color: normalizeNodeGraphTraceDisplayColor(source.color ?? source.dot1Color, defaults.color),
+    decimals: normalizeNodeGraphTraceDisplayNumber(source.decimals, defaults.decimals, 0, 8, true),
   };
 }
 
@@ -2738,6 +2656,13 @@ function nodeGraphLineBurnSettingsForNode(node) {
   return normalizeNodeGraphLineBurnSettings(node.traceDisplaySettings);
 }
 
+function nodeGraphNumberReadoutSettingsForNode(node) {
+  if (!node) {
+    return normalizeNodeGraphNumberReadoutSettings();
+  }
+  return normalizeNodeGraphNumberReadoutSettings(node.traceDisplaySettings);
+}
+
 function nodeGraphScope2dSettingsForNode(node) {
   if (!node) {
     return normalizeNodeGraphScope2dSettings();
@@ -2768,7 +2693,7 @@ function nodeGraphTraceDisplaySettingsEditingTraceDefaults() {
   return nodeGraphModuleDisplaySettingsSchemaForNode(node) === "trace";
 }
 
-const nodeGraphDisplayModeRenderers = Object.freeze(["trace", "clock", "dot", "value", "lineBurn", "scope2d", "scope2dTrace"]);
+const nodeGraphDisplayModeRenderers = Object.freeze(["trace", "clock", "dot", "value", "lineBurn", "scope2d", "scope2dTrace", "numberReadout"]);
 const nodeGraphDisplayModeSignalKinds = Object.freeze(["scalar", "xy", "buffer"]);
 
 function nodeGraphDisplayModeSettingsSchemaForRenderer(renderer) {
@@ -2943,7 +2868,7 @@ function nodeGraphModuleDisplayTypeForSlot(slot) {
 }
 
 function nodeGraphModuleScopeSlotUsesWiredInputs(slot) {
-  return ["traceDisplay", "dotOscilloscope", "valueOscilloscope", "lineBurnOscilloscope", "scope2d", "scope2dTrace", "visualOscilloscope"].includes(slot?.type);
+  return ["traceDisplay", "dotOscilloscope", "valueOscilloscope", "lineBurnOscilloscope", "scope2d", "scope2dTrace", "visualOscilloscope", "numberReadout"].includes(slot?.type);
 }
 
 function nodeGraphModuleDisplaySourceForSlot(slot) {
@@ -3046,7 +2971,7 @@ function prepareNodeGraphTraceDisplayBuffer(buffer, settings = nodeGraphTraceDis
   buffer.nodeGraphScopeDrawStartProgress = 0;
   buffer.nodeGraphScopeDrawWrap = false;
   buffer.nodeGraphScopeHoldPoint = false;
-  buffer.nodeGraphScopeDiscontinuitySkipSamples = traceSettings.skipSamples;
+  buffer.nodeGraphScopeSkipDiscontinuities = traceSettings.skipDiscontinuities;
   buffer.nodeGraphScopeTracePadding = 0;
   buffer.nodeGraphScopeMinPointSpacingPx = 0.5;
   buffer.nodeGraphScopeVisualPointLimit = nodeGraphTraceDisplayRenderPointBudget();
@@ -3344,11 +3269,7 @@ function nodeGraphModuleScopeOfflineConnectionSum(context, connections, localTim
 function nodeGraphModuleScopeDisplayBuffer(slot, capturedBuffer = null) {
   let buffer = null;
   const renderer = nodeGraphModuleDisplayRendererForSlot(slot);
-  if (slot?.type === "noise" && capturedBuffer) {
-    buffer = capturedBuffer;
-  } else if (slot?.type === "stereoNoise") {
-    buffer = nodeGraphModuleScopeCapturedStereoNoiseXyBuffer(slot, capturedBuffer) || capturedBuffer;
-  } else if (renderer === "scope2dTrace") {
+  if (renderer === "scope2dTrace") {
     const settings = nodeGraphScope2dTraceSettingsForNode(nodeGraphModuleScopeNodeForSlot(slot));
     const source = nodeGraphModuleScopeSlotUsesWiredInputs(slot)
       ? null
@@ -3365,6 +3286,10 @@ function nodeGraphModuleScopeDisplayBuffer(slot, capturedBuffer = null) {
       ? { xPort: source.x, yPort: source.y }
       : {}) || capturedBuffer;
   } else if (slot?.type === "valueOscilloscope") {
+    buffer = capturedBuffer;
+  } else if (slot?.type === "numberReadout") {
+    // Number Readout must only ever show real captured input — never an
+    // offline model guess. No fallback chain here on purpose.
     buffer = capturedBuffer;
   } else if (slot?.type === "clock") {
     buffer = nodeGraphModuleScopeDotOscilloscopeLightBuffer(capturedBuffer) ||
@@ -3405,7 +3330,9 @@ const nodeGraphTraceDisplaySettingFields = Object.freeze([
   ["burn", "Burn"],
   ["decay", "Decay"],
   ["padding", "Amp"],
-  ["skipSamples", "Skip"],
+  ["cycles", "Cycles"],
+  ["decimals", "Decimals"],
+
   ["dot1Size", "Dot 1 size"],
   ["lineThickness", "Dot 1 blur"],
   ["dot1Brightness", "Dot 1 light"],
@@ -3428,7 +3355,6 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
   trace: Object.freeze({
     fields: Object.freeze([
       "zoomSeconds",
-      "skipSamples",
       "dot1Size",
       "lineThickness",
       "dot1Brightness",
@@ -3437,7 +3363,7 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
       "dot2Brightness",
     ]),
     colors: Object.freeze(["dot1Color", "dot2Color"]),
-    toggles: Object.freeze(["sourceSync", "dot1Enabled", "dot2Enabled"]),
+    toggles: Object.freeze(["sourceSync", "skipDiscontinuities", "dot1Enabled", "dot2Enabled"]),
     choices: Object.freeze([]),
   }),
   dot: Object.freeze({
@@ -3457,7 +3383,7 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
     fields: Object.freeze([
       "burn",
       "decay",
-      "zoomSeconds",
+      "cycles",
       "dot1Size",
       "lineThickness",
       "dot1Brightness",
@@ -3514,6 +3440,12 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
     toggles: Object.freeze(["dot1Enabled", "dot2Enabled"]),
     choices: Object.freeze([]),
   }),
+  numberReadout: Object.freeze({
+    fields: Object.freeze(["decimals", "dot1Brightness"]),
+    colors: Object.freeze(["dot1Color"]),
+    toggles: Object.freeze([]),
+    choices: Object.freeze([]),
+  }),
 });
 
 function nodeGraphTraceDisplayActiveControlsForType(type = nodeGraphTraceDisplaySettingsFormType()) {
@@ -3544,9 +3476,9 @@ const nodeGraphTraceDisplaySectionControls = Object.freeze({
     choices: Object.freeze([]),
   }),
   trace: Object.freeze({
-    fields: Object.freeze(["burn", "decay", "zoomSeconds", "historySeconds", "scale", "padding", "skipSamples"]),
+    fields: Object.freeze(["burn", "decay", "zoomSeconds", "historySeconds", "scale", "padding", "decimals"]),
     colors: Object.freeze([]),
-    toggles: Object.freeze(["sourceSync"]),
+    toggles: Object.freeze(["sourceSync", "skipDiscontinuities"]),
     choices: Object.freeze([]),
   }),
   value: Object.freeze({
@@ -3674,6 +3606,22 @@ function nodeGraphTraceDisplaySettingsElement() {
             <button type="button" data-trace-display-step-target="zoomSeconds" data-trace-display-step-direction="1">+</button>
           </span>
         </label>
+        <label class="node-trace-display-trace-thickness-row">
+          <span>Cycles</span>
+          <span class="metadata-stepper-control">
+            <button type="button" data-trace-display-step-target="cycles" data-trace-display-step-direction="-1">-</button>
+            <input id="nodeTraceDisplayCycles" type="text" inputmode="decimal" data-trace-display-field="cycles">
+            <button type="button" data-trace-display-step-target="cycles" data-trace-display-step-direction="1">+</button>
+          </span>
+        </label>
+        <label class="node-trace-display-trace-thickness-row">
+          <span>Decimals</span>
+          <span class="metadata-stepper-control">
+            <button type="button" data-trace-display-step-target="decimals" data-trace-display-step-direction="-1">-</button>
+            <input id="nodeTraceDisplayDecimals" type="text" inputmode="decimal" data-trace-display-field="decimals">
+            <button type="button" data-trace-display-step-target="decimals" data-trace-display-step-direction="1">+</button>
+          </span>
+        </label>
         <label class="node-trace-display-dot2-thickness-row">
           <span>Amp</span>
           <span class="metadata-stepper-control">
@@ -3682,9 +3630,9 @@ function nodeGraphTraceDisplaySettingsElement() {
             <button type="button" data-trace-display-step-target="padding" data-trace-display-step-direction="1">+</button>
           </span>
         </label>
-        <label>
-          <span>Skip</span>
-          <input id="nodeTraceDisplaySkipSamples" type="text" inputmode="numeric" data-trace-display-field="skipSamples">
+        <label class="metadata-checkbox-label">
+          <input id="nodeTraceDisplaySkipDiscontinuities" type="checkbox" data-trace-display-toggle="skipDiscontinuities">
+          Skip discontinuities
         </label>
       </div>
       <div class="metadata-section-title node-trace-display-value-title">Line</div>
@@ -3712,11 +3660,11 @@ function nodeGraphTraceDisplaySettingsElement() {
           Bipolar
         </label>
         <label>
-          <span>Size</span>
+          <span>Brightness</span>
           <span class="metadata-stepper-control">
-            <button type="button" data-trace-display-step-target="dot1Size" data-trace-display-step-direction="-1">-</button>
-            <input id="nodeTraceDisplayDot1Size" type="text" inputmode="decimal" data-trace-display-field="dot1Size">
-            <button type="button" data-trace-display-step-target="dot1Size" data-trace-display-step-direction="1">+</button>
+            <button type="button" data-trace-display-step-target="dot1Brightness" data-trace-display-step-direction="-1">-</button>
+            <input id="nodeTraceDisplayBrightness" type="text" inputmode="decimal" data-trace-display-field="dot1Brightness">
+            <button type="button" data-trace-display-step-target="dot1Brightness" data-trace-display-step-direction="1">+</button>
           </span>
         </label>
         <label class="node-trace-display-trace-line-thickness-row">
@@ -3728,14 +3676,17 @@ function nodeGraphTraceDisplaySettingsElement() {
           </span>
         </label>
         <label>
-          <span class="metadata-icon-label" title="Light">&#128161;</span>
+          <span>Size</span>
           <span class="metadata-stepper-control">
-            <button type="button" data-trace-display-step-target="dot1Brightness" data-trace-display-step-direction="-1">-</button>
-            <input id="nodeTraceDisplayBrightness" type="text" inputmode="decimal" data-trace-display-field="dot1Brightness">
-            <button type="button" data-trace-display-step-target="dot1Brightness" data-trace-display-step-direction="1">+</button>
+            <button type="button" data-trace-display-step-target="dot1Size" data-trace-display-step-direction="-1">-</button>
+            <input id="nodeTraceDisplayDot1Size" type="text" inputmode="decimal" data-trace-display-field="dot1Size">
+            <button type="button" data-trace-display-step-target="dot1Size" data-trace-display-step-direction="1">+</button>
           </span>
         </label>
-        <label><input id="nodeTraceDisplayColor" type="color" data-trace-display-color="dot1Color" aria-label="Dot 1 color"></label>
+        <label>
+          <span>Color</span>
+          <input id="nodeTraceDisplayColor" type="color" data-trace-display-color="dot1Color" aria-label="Dot 1 color">
+        </label>
       </div>
       <div class="metadata-section-title node-trace-display-dot2-title">
         <span>Dot 2</span>
@@ -3747,11 +3698,11 @@ function nodeGraphTraceDisplaySettingsElement() {
       </div>
       <div class="metadata-field-section node-trace-display-dot2-section">
         <label>
-          <span>Size</span>
+          <span>Brightness</span>
           <span class="metadata-stepper-control">
-            <button type="button" data-trace-display-step-target="dot2Size" data-trace-display-step-direction="-1">-</button>
-            <input id="nodeTraceDisplayDot2Size" type="text" inputmode="decimal" data-trace-display-field="dot2Size">
-            <button type="button" data-trace-display-step-target="dot2Size" data-trace-display-step-direction="1">+</button>
+            <button type="button" data-trace-display-step-target="dot2Brightness" data-trace-display-step-direction="-1">-</button>
+            <input id="nodeTraceDisplayDot2Brightness" type="text" inputmode="decimal" data-trace-display-field="dot2Brightness">
+            <button type="button" data-trace-display-step-target="dot2Brightness" data-trace-display-step-direction="1">+</button>
           </span>
         </label>
         <label class="node-trace-display-dot2-line-thickness-row">
@@ -3763,14 +3714,17 @@ function nodeGraphTraceDisplaySettingsElement() {
           </span>
         </label>
         <label>
-          <span class="metadata-icon-label" title="Light">&#128161;</span>
+          <span>Size</span>
           <span class="metadata-stepper-control">
-            <button type="button" data-trace-display-step-target="dot2Brightness" data-trace-display-step-direction="-1">-</button>
-            <input id="nodeTraceDisplayDot2Brightness" type="text" inputmode="decimal" data-trace-display-field="dot2Brightness">
-            <button type="button" data-trace-display-step-target="dot2Brightness" data-trace-display-step-direction="1">+</button>
+            <button type="button" data-trace-display-step-target="dot2Size" data-trace-display-step-direction="-1">-</button>
+            <input id="nodeTraceDisplayDot2Size" type="text" inputmode="decimal" data-trace-display-field="dot2Size">
+            <button type="button" data-trace-display-step-target="dot2Size" data-trace-display-step-direction="1">+</button>
           </span>
         </label>
-        <label><input id="nodeTraceDisplayDot2Color" type="color" data-trace-display-color="dot2Color" aria-label="Dot 2 color"></label>
+        <label>
+          <span>Color</span>
+          <input id="nodeTraceDisplayDot2Color" type="color" data-trace-display-color="dot2Color" aria-label="Dot 2 color">
+        </label>
       </div>
       <div class="metadata-section-title node-trace-display-caps-title">Caps</div>
       <div class="metadata-field-section node-trace-display-caps-section">
@@ -3822,7 +3776,7 @@ function applyNodeGraphTraceDisplaySettingsTooltips(popover) {
     burn: "traceDisplaySettings.burn",
     decay: "traceDisplaySettings.decay",
     zoomSeconds: "traceDisplaySettings.zoomSeconds",
-    skipSamples: "traceDisplaySettings.skipSamples",
+    skipDiscontinuities: "traceDisplaySettings.skipDiscontinuities",
     padding: "traceDisplaySettings.padding",
     lineThickness: "traceDisplaySettings.lineThickness",
     lineLength: "traceDisplaySettings.lineLength",
@@ -3970,7 +3924,9 @@ function setNodeGraphTraceDisplaySettingsFormType(node = null) {
           ? "2D"
           : formType === "scope2dTrace"
             ? "Trace"
-            : "Trace";
+            : formType === "numberReadout"
+              ? "Readout"
+              : "Trace";
   }
   setNodeGraphTraceDisplaySectionVisible(popover, "value", nodeGraphTraceDisplaySectionHasActiveControls("value", formType));
   setNodeGraphTraceDisplaySectionVisible(popover, "dot1", nodeGraphTraceDisplaySectionHasActiveControls("dot1", formType));
@@ -4006,6 +3962,9 @@ function nodeGraphDisplaySettingsDefaultsForFormType(type = nodeGraphTraceDispla
   if (type === "scope2dTrace") {
     return normalizeNodeGraphScope2dTraceSettings(nodeGraphScope2dTraceSettingsDefaults);
   }
+  if (type === "numberReadout") {
+    return normalizeNodeGraphNumberReadoutSettings(nodeGraphNumberReadoutSettingsDefaults);
+  }
   return normalizeNodeGraphTraceDisplaySettings(nodeGraphTraceDisplaySettingsDefaults);
 }
 
@@ -4028,6 +3987,9 @@ function normalizeNodeGraphDisplaySettingsForFormType(settings, type = nodeGraph
   }
   if (type === "scope2dTrace") {
     return normalizeNodeGraphScope2dTraceSettings(settings);
+  }
+  if (type === "numberReadout") {
+    return normalizeNodeGraphNumberReadoutSettings(settings);
   }
   return normalizeNodeGraphTraceDisplaySettings(settings);
 }
@@ -4094,6 +4056,9 @@ function nodeGraphTraceDisplayCurrentSettingsForFormType(formType = nodeGraphTra
   }
   if (settingsSchema === "scope2dTrace") {
     return normalizeNodeGraphScope2dTraceSettings(node.traceDisplaySettings);
+  }
+  if (settingsSchema === "numberReadout") {
+    return normalizeNodeGraphNumberReadoutSettings(node.traceDisplaySettings);
   }
   return nodeGraphGlobalTraceSettings();
 }
@@ -4197,7 +4162,7 @@ function nodeGraphTraceDisplayStepperQuantum(input) {
   if (!input) {
     return 0.1;
   }
-  if (input.dataset.traceDisplayField === "skipSamples") {
+  if (["cycles", "decimals"].includes(input.dataset?.traceDisplayField)) {
     return 1;
   }
   return 0.1;
@@ -4215,24 +4180,30 @@ function nodeGraphTraceDisplaySensitiveControlField(key) {
 
 const nodeGraphTraceDisplaySensitiveControlExponent = 3;
 
-function nodeGraphTraceDisplaySizeToControlValue(value) {
+function nodeGraphTraceDisplaySensitiveControlMax(key) {
+  return ["dot1Brightness", "dot2Brightness"].includes(key) ? 2 : 1;
+}
+
+function nodeGraphTraceDisplaySizeToControlValue(value, max = 1) {
   return Math.pow(
-    clampNodeSliderValue(Number(value) || 0, 0, 1),
+    clampNodeSliderValue(Number(value) || 0, 0, max) / max,
     1 / nodeGraphTraceDisplaySensitiveControlExponent,
   );
 }
 
-function nodeGraphTraceDisplayControlToSizeValue(value) {
+function nodeGraphTraceDisplayControlToSizeValue(value, max = 1) {
   const control = clampNodeSliderValue(Number(value) || 0, 0, 1);
-  return Math.pow(control, nodeGraphTraceDisplaySensitiveControlExponent);
+  return Math.pow(control, nodeGraphTraceDisplaySensitiveControlExponent) * max;
 }
 
 function adjustNodeGraphTraceDisplaySettingByControlDelta(key, startValue, delta) {
   if (!nodeGraphTraceDisplaySensitiveControlField(key)) {
     return startValue + delta;
   }
+  const max = nodeGraphTraceDisplaySensitiveControlMax(key);
   return nodeGraphTraceDisplayControlToSizeValue(
-    nodeGraphTraceDisplaySizeToControlValue(startValue) + delta,
+    nodeGraphTraceDisplaySizeToControlValue(startValue, max) + delta,
+    max,
   );
 }
 
@@ -4246,33 +4217,63 @@ function setNodeGraphTraceDisplayZoomEditActive(active) {
   nodeGraphMvp.traceDisplayZoomEditActive = Boolean(active);
 }
 
+function nodeGraphTraceDisplayClampUnit(value) {
+  return clampNodeSliderValue(Number(value) || 0, 0, 1);
+}
+
+function nodeGraphTraceDisplayClampNonNegative(value) {
+  return Math.max(0, Number(value) || 0);
+}
+
+function nodeGraphTraceDisplayClampBrightness(value) {
+  return clampNodeSliderValue(Number(value) || 0, 0, 2);
+}
+
+// Clamp rules shared by every display-settings form type, keyed by field name.
+// Each entry owns exactly one field's rule — adding/changing a rule for one
+// display type cannot silently change behavior for another.
+const nodeGraphTraceDisplaySharedValueClamps = Object.freeze({
+  burn: nodeGraphTraceDisplayClampUnit,
+  capLength: nodeGraphTraceDisplayClampUnit,
+  capSize: nodeGraphTraceDisplayClampUnit,
+  cycles: (value) => Math.max(1, Math.min(64, Math.round(Number(value) || 0))),
+  decay: nodeGraphTraceDisplayClampUnit,
+  decimals: (value) => Math.max(0, Math.min(8, Math.round(Number(value) || 0))),
+  dot1Brightness: nodeGraphTraceDisplayClampBrightness,
+  dot1Size: nodeGraphTraceDisplayClampUnit,
+  dot2Brightness: nodeGraphTraceDisplayClampBrightness,
+  dot2LineThickness: nodeGraphTraceDisplayClampNonNegative,
+  dot2Size: nodeGraphTraceDisplayClampUnit,
+  historySeconds: nodeGraphTraceDisplayClampNonNegative,
+  lineLength: nodeGraphTraceDisplayClampUnit,
+  lineThickness: nodeGraphTraceDisplayClampNonNegative,
+  scale: nodeGraphTraceDisplayClampNonNegative,
+  zoomSeconds: nodeGraphTraceDisplayClampNonNegative,
+});
+
+// Per-formType overrides, only for the (formType, field) pairs that diverge
+// from the shared table above. Isolated per formType so a new override can't
+// leak into unrelated display types.
+const nodeGraphTraceDisplayFormTypeValueClampOverrides = Object.freeze({
+  dot: Object.freeze({
+    lineThickness: nodeGraphTraceDisplayClampUnit,
+    dot2LineThickness: nodeGraphTraceDisplayClampUnit,
+  }),
+  scope2d: Object.freeze({
+    lineThickness: nodeGraphTraceDisplayClampUnit,
+    dot2LineThickness: nodeGraphTraceDisplayClampUnit,
+  }),
+  scope2dTrace: Object.freeze({
+    lineThickness: nodeGraphTraceDisplayClampUnit,
+    dot2LineThickness: nodeGraphTraceDisplayClampUnit,
+  }),
+});
+
 function normalizeNodeGraphTraceDisplaySettingValueForKey(key, value) {
-  if (key === "skipSamples") {
-    return normalizeNodeGraphTraceDisplaySkipSamples(value);
-  }
   const formType = nodeGraphTraceDisplaySettingsFormType();
-  if (["burn", "decay", "dot1Size", "dot2Size", "lineLength", "capSize", "capLength"].includes(key)) {
-    return clampNodeSliderValue(Number(value) || 0, 0, 1);
-  }
-  if (formType === "dot" && ["dot1Brightness", "dot2Brightness", "lineThickness", "dot2LineThickness"].includes(key)) {
-    return clampNodeSliderValue(Number(value) || 0, 0, 1);
-  }
-  if (formType === "scope2d" && ["lineThickness", "dot2LineThickness"].includes(key)) {
-    return clampNodeSliderValue(Number(value) || 0, 0, 1);
-  }
-  if (formType === "scope2dTrace" && ["lineThickness", "dot2LineThickness"].includes(key)) {
-    return clampNodeSliderValue(Number(value) || 0, 0, 1);
-  }
-  if (["dot1Brightness", "dot2Brightness", "lineThickness", "dot2LineThickness"].includes(key)) {
-    return Math.max(0, Number(value) || 0);
-  }
-  if (key === "zoomSeconds" || key === "historySeconds") {
-    return Math.max(0, Number(value) || 0);
-  }
-  if (key === "scale") {
-    return Math.max(0, Number(value) || 0);
-  }
-  return value;
+  const clamp = nodeGraphTraceDisplayFormTypeValueClampOverrides[formType]?.[key] ||
+    nodeGraphTraceDisplaySharedValueClamps[key];
+  return clamp ? clamp(value) : value;
 }
 
 function nodeGraphTraceDisplayFieldFromTarget(target) {
@@ -4367,10 +4368,6 @@ function beginNodeGraphTraceDisplayFieldDrag(event) {
   const key = input.dataset.traceDisplayField;
   if (typeof nodeGraphNumericModifierReserved === "function" && nodeGraphNumericModifierReserved(event)) {
     event.preventDefault();
-    event.stopPropagation();
-    return;
-  }
-  if (key === "skipSamples") {
     event.stopPropagation();
     return;
   }
@@ -5118,18 +5115,23 @@ function nodeGraphModuleScopeCapturedScope2dBuffer(slot, options = {}) {
     nodeGraphScopeAvailableSampleCount(yBuffer),
     length,
   );
+  const xTotal = Math.max(0, Math.floor(Number(xBuffer.nodeGraphScopeTotalSampleCount) || 0));
+  const yTotal = Math.max(0, Math.floor(Number(yBuffer.nodeGraphScopeTotalSampleCount) || 0));
+  const absoluteFrame = Math.min(xTotal, yTotal);
+  const canvas = nodeGraphScope2dBurnCanvasForSlot(slot);
+  const lastDrawnFrame = Number(canvas?._nodeGraphScope2dLastDrawnFrame);
+  const newSinceLastDraw = Number.isFinite(lastDrawnFrame) && absoluteFrame > lastDrawnFrame
+    ? absoluteFrame - lastDrawnFrame
+    : 0;
   const historySeconds = Number(options.historySeconds);
+  const minWindowFrames = nodeGraphScope2dSourceFrameCount(sampleRate, fps, validLength);
   const frames = Number.isFinite(historySeconds)
     ? Math.min(
       validLength,
       Math.max(1, Math.ceil(Math.max(0, historySeconds) * sampleRate)),
     )
-    : nodeGraphScope2dSourceFrameCount(sampleRate, fps, validLength);
+    : Math.min(validLength, Math.max(minWindowFrames, newSinceLastDraw));
   const start = Math.max(0, length - frames);
-  const absoluteFrame = Math.min(
-    Number(xBuffer.nodeGraphScopeAbsoluteFrame) || 0,
-    Number(yBuffer.nodeGraphScopeAbsoluteFrame) || 0,
-  );
   const startFrame = Math.max(0, absoluteFrame - frames);
   const x = new Float32Array(frames);
   const y = new Float32Array(frames);
@@ -5144,36 +5146,6 @@ function nodeGraphModuleScopeCapturedScope2dBuffer(slot, options = {}) {
     nodeGraphScopeDrawProgress: 1,
     nodeGraphScopeStartFrame: startFrame,
     nodeGraphScopeUseFullWindow: true,
-    nodeGraphScopeXy: true,
-    x,
-    y,
-  };
-}
-
-function nodeGraphModuleScopeCapturedStereoNoiseXyBuffer(slot, capturedBuffer = null) {
-  if (slot?.type !== "stereoNoise") {
-    return null;
-  }
-  const xBuffer = nodeGraphModuleScopeState.buffers.get(`${slot.nodeId}:X`);
-  const yBuffer = nodeGraphModuleScopeState.buffers.get(`${slot.nodeId}:Y`);
-  const length = Math.min(xBuffer?.length || 0, yBuffer?.length || 0);
-  if (length <= 1) {
-    return null;
-  }
-  const frames = nodeGraphModuleScopeXyTraceFrameCount(length);
-  const start = Math.max(0, length - frames);
-  const x = new Float32Array(frames);
-  const y = new Float32Array(frames);
-  for (let index = 0; index < frames; index += 1) {
-    x[index] = Number(xBuffer[start + index]) || 0;
-    y[index] = Number(yBuffer[start + index]) || 0;
-  }
-  return {
-    length: frames,
-    nodeGraphScopeCapturedOutput: true,
-    nodeGraphScopeDrawProgress: 1,
-    nodeGraphScopeUseFullWindow: true,
-    nodeGraphScopeVisualPointLimit: frames,
     nodeGraphScopeXy: true,
     x,
     y,
@@ -5222,6 +5194,12 @@ function resizeNodeGraphLiveModuleScopeBuffer(buffer, frameCapacity) {
     copyCount,
     Math.max(0, Math.floor(Number(buffer.nodeGraphScopeRetainedSampleCount) || 0)),
   );
+  next.nodeGraphScopeTotalSampleCount = Math.max(0, Math.floor(Number(buffer.nodeGraphScopeTotalSampleCount) || 0));
+  next.nodeGraphScopeBurnSweepStart = buffer.nodeGraphScopeBurnSweepStart;
+  next.nodeGraphScopeBurnSweepLength = buffer.nodeGraphScopeBurnSweepLength;
+  next.nodeGraphScopeBurnCrossings = buffer.nodeGraphScopeBurnCrossings;
+  next.nodeGraphScopeBurnLastSample = buffer.nodeGraphScopeBurnLastSample;
+  next.nodeGraphScopeBurnArmed = buffer.nodeGraphScopeBurnArmed;
   if (Number.isFinite(Number(buffer.nodeGraphScopeSampleRate)) && Number(buffer.nodeGraphScopeSampleRate) > 0) {
     next.nodeGraphScopeSampleRate = Number(buffer.nodeGraphScopeSampleRate);
   }
@@ -5261,6 +5239,10 @@ function pushNodeGraphLiveModuleScopeSamples(nodeId, values, metadata = null) {
     buffer[buffer.length - count + index] = samples[start + index] || 0;
   }
   buffer.nodeGraphScopeRecentSampleCount = count;
+  buffer.nodeGraphScopeTotalSampleCount = Math.max(
+    0,
+    Math.floor(Number(buffer.nodeGraphScopeTotalSampleCount) || 0),
+  ) + count;
   buffer.nodeGraphScopeRetainedSampleCount = Math.min(
     buffer.length,
     Math.max(0, Math.floor(Number(buffer.nodeGraphScopeRetainedSampleCount) || 0)) + count,
@@ -6153,15 +6135,22 @@ function nodeGraphTraceDisplaySampleInfo(buffer, position, samplesPerPoint = 1) 
   const taps = Math.max(3, Math.min(33, Math.ceil((last - first) * 2)));
   let total = 0;
   let weightTotal = 0;
+  let spanMin = Infinity;
+  let spanMax = -Infinity;
   for (let tap = 0; tap < taps; tap += 1) {
     const t = taps <= 1 ? 0.5 : tap / (taps - 1);
     const samplePosition = first + (last - first) * t;
     const weight = 1 - Math.abs(t - 0.5) * 0.75;
-    total += nodeGraphModuleScopeInterpolatedSample(buffer, samplePosition) * weight;
+    const tapValue = nodeGraphModuleScopeInterpolatedSample(buffer, samplePosition);
+    total += tapValue * weight;
     weightTotal += weight;
+    if (tapValue < spanMin) spanMin = tapValue;
+    if (tapValue > spanMax) spanMax = tapValue;
   }
+  const spanDiscontinuity = center.discontinuity || (spanMax - spanMin) > nodeGraphModuleScopeDiscontinuityThreshold;
   return {
     ...center,
+    discontinuity: spanDiscontinuity,
     value: weightTotal > 0 ? total / weightTotal : center.value,
   };
 }
@@ -6401,7 +6390,7 @@ function nodeGraphTraceDisplayDrawSignature(slot, item, buffer, settings) {
     Math.round((Number(item?.visibleProgressRange?.[1]) || 0) * 10000),
     settings.zoomSeconds,
     settings.padding,
-    settings.skipSamples,
+    settings.skipDiscontinuities ? 1 : 0,
     settings.lineThickness,
     settings.brightness,
     settings.color,
@@ -6716,14 +6705,16 @@ function nodeGraphModuleScopeProgressRangeIntersection(range, clipRange) {
   return clippedEnd - clippedStart > 0.001 ? [clippedStart, clippedEnd] : null;
 }
 
+const nodeGraphModuleScopeDiscontinuityFixedSkipCount = 2;
+
 function nodeGraphModuleScopeDiscontinuitySkipSamplesForSlot(slot, buffer) {
   if (buffer?.nodeGraphScopeDisableDiscontinuitySkip === true) {
     return 0;
   }
   if (nodeGraphModuleDisplayRendererForSlot(slot) === "trace") {
-    return normalizeNodeGraphTraceDisplaySkipSamples(
-      buffer?.nodeGraphScopeDiscontinuitySkipSamples ?? nodeGraphTraceDisplaySettingsForSlot(slot).skipSamples,
-    );
+    const enabled = buffer?.nodeGraphScopeSkipDiscontinuities
+      ?? nodeGraphTraceDisplaySettingsForSlot(slot).skipDiscontinuities;
+    return enabled ? nodeGraphModuleScopeDiscontinuityFixedSkipCount : 0;
   }
   return typeof normalizeNodeGraphModuleScopeDiscontinuitySkipSamples === "function"
     ? normalizeNodeGraphModuleScopeDiscontinuitySkipSamples(nodeGraphMvp?.moduleScopeDiscontinuitySkipSamples ?? 1)
@@ -6735,7 +6726,7 @@ function nodeGraphModuleScopeDiscontinuitySkipSamplesForPoints(points) {
     return 0;
   }
   if (Number.isFinite(Number(points?.nodeGraphScopeDiscontinuitySkipSamples))) {
-    return normalizeNodeGraphTraceDisplaySkipSamples(points.nodeGraphScopeDiscontinuitySkipSamples);
+    return Math.min(nodeGraphModuleScopeDiscontinuityFixedSkipCount, Math.max(0, Math.round(Number(points.nodeGraphScopeDiscontinuitySkipSamples))));
   }
   return typeof normalizeNodeGraphModuleScopeDiscontinuitySkipSamples === "function"
     ? normalizeNodeGraphModuleScopeDiscontinuitySkipSamples(nodeGraphMvp?.moduleScopeDiscontinuitySkipSamples ?? 1)
@@ -7157,44 +7148,33 @@ function buildNodeGraphTraceDisplayVertices(buffer, rect, canvas, pixelRatio, sl
   const pointCount = nodeGraphTraceDisplayVisualPointCount(metricRect, buffer);
   const scratch = nodeGraphTraceDisplayScratchForSlot(slot, Math.max(0, pointCount - 1) * 36);
   const vertices = scratch.vertices;
-  const skipSamples = nodeGraphModuleScopeDiscontinuitySkipSamplesForSlot(slot, buffer);
   const pointGenerationStartMs = timing ? nodeGraphModuleScopeNowMs() : 0;
   let previousX = 0;
   let previousY = 0;
-  let previousRaw = 0;
   let hasPrevious = false;
-  let skipThroughSegment = -1;
   let vertexOffset = 0;
   let segmentCount = 0;
   const samplesPerPoint = (visibleSamples * drawSpan) / Math.max(1, pointCount);
-  for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
-    const progress = start + ((pointIndex + 0.5) / pointCount) * drawSpan;
-    const samplePosition = view.start + progress * visibleSamples;
-    const x = rect.left + progress * rect.width;
-    const sampleInfo = nodeGraphTraceDisplaySampleInfo(buffer, samplePosition, samplesPerPoint);
-    const rawValue = Number.isFinite(Number(sampleInfo.value)) ? Number(sampleInfo.value) : 0;
-    const value = clampNodeSliderValue((rawValue * view.gain) + view.offset, -1, 1);
-    const y = midY - value * halfHeight;
-    if (hasPrevious) {
+  const progressFn = (index, count) => start + ((index + 0.5) / count) * drawSpan;
+  const traceSamples = buildNodeGraphTraceDisplaySamples(buffer, slot, pointCount, progressFn, samplesPerPoint);
+  for (let pointIndex = 0; pointIndex < (traceSamples?.length ?? 0); pointIndex += 1) {
+    const s = traceSamples[pointIndex];
+    const x = rect.left + s.progress * rect.width;
+    const y = midY - s.value * halfHeight;
+    if (hasPrevious && !s.breakBefore) {
       const segmentIndex = pointIndex - 1;
-      if (skipSamples > 0 && sampleInfo.discontinuity) {
-        skipThroughSegment = Math.max(skipThroughSegment, segmentIndex + skipSamples - 1);
-      }
-      if (segmentIndex > skipThroughSegment) {
-        const x1 = previousX * pixelRatio;
-        const y1 = previousY * pixelRatio;
-        const x2 = x * pixelRatio;
-        const y2 = y * pixelRatio;
-        if (Math.hypot(x2 - x1, y2 - y1) >= 0.001) {
-          const age = segmentIndex / Math.max(1, pointCount - 1);
-          vertexOffset = appendNodeGraphTraceDisplayBeamSegment(vertices, vertexOffset, x1, y1, x2, y2, age);
-          segmentCount += 1;
-        }
+      const x1 = previousX * pixelRatio;
+      const y1 = previousY * pixelRatio;
+      const x2 = x * pixelRatio;
+      const y2 = y * pixelRatio;
+      if (Math.hypot(x2 - x1, y2 - y1) >= 0.001) {
+        const age = segmentIndex / Math.max(1, pointCount - 1);
+        vertexOffset = appendNodeGraphTraceDisplayBeamSegment(vertices, vertexOffset, x1, y1, x2, y2, age);
+        segmentCount += 1;
       }
     }
     previousX = x;
     previousY = y;
-    previousRaw = rawValue;
     hasPrevious = true;
   }
   if (timing) {
@@ -8748,6 +8728,122 @@ function drawNodeGraphValueOscilloscopeItem(renderer, item, pixelRatio) {
   }
 }
 
+// Number Readout owns a dedicated canvas/state, separate from the burn
+// renderers' shared retained canvas. It draws the latest formatted value as
+// text and redraws only when the formatted string (or its style) changes —
+// deliberately not per-sample — so it stays cheap regardless of sample rate.
+// A future sample-bin/decay burn extension can layer on top of this same
+// canvas without needing to touch the 1D/2D burn compositor.
+function nodeGraphNumberReadoutCanvasForSlot(slot) {
+  const screenElement = slot?.scopeElement;
+  if (!screenElement) {
+    return null;
+  }
+  let canvas = screenElement.querySelector(":scope > .node-number-readout-canvas");
+  if (!canvas) {
+    canvas = document.createElement("canvas");
+    canvas.className = "node-number-readout-canvas";
+    canvas.setAttribute("aria-hidden", "true");
+    screenElement.appendChild(canvas);
+  }
+  return canvas;
+}
+
+function syncNodeGraphNumberReadoutCanvas(canvas, screenElement, pixelRatio) {
+  if (!canvas || !screenElement) {
+    return false;
+  }
+  const rect = screenElement.getBoundingClientRect();
+  const width = Math.max(1, Math.round(rect.width * pixelRatio));
+  const height = Math.max(1, Math.round(rect.height * pixelRatio));
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  return true;
+}
+
+function nodeGraphNumberReadoutFormatValue(sample, decimals) {
+  const value = Number(sample);
+  if (!Number.isFinite(value)) {
+    return "--";
+  }
+  const fixed = value.toFixed(clampNodeSliderValue(Math.round(Number(decimals) || 0), 0, 8));
+  // Reserve a sign column so the text width (and its centered position)
+  // stays constant as the value crosses zero — otherwise the "-" appearing
+  // and disappearing shifts the whole readout horizontally every time.
+  return fixed.startsWith("-") ? fixed : ` ${fixed}`;
+}
+
+function nodeGraphNumberReadoutUnitForSlot(slot) {
+  const connection = nodeGraphModuleScopeConnectionsTo(slot?.nodeId, "In")
+    .find((candidate) => candidate?.sourceNode && candidate?.sourcePort);
+  if (!connection) {
+    return "";
+  }
+  const sourceNode = nodeGraphPatchNode(connection.sourceNode);
+  return sourceNode?.type === "helmholtzPitch" && connection.sourcePort === "Frequency"
+    ? "Hz"
+    : "";
+}
+
+function drawNodeGraphNumberReadoutItem(renderer, item, pixelRatio) {
+  const rect = item?.scopeRect;
+  const slot = item?.slot;
+  if (!rect || !slot) {
+    return;
+  }
+  renderNodeGraphModuleScopeAnalyzer(slot, item.buffer);
+  const screenElement = item?.screenElement || slot?.scopeElement;
+  const canvas = nodeGraphNumberReadoutCanvasForSlot(slot);
+  if (!canvas || !syncNodeGraphNumberReadoutCanvas(canvas, screenElement, pixelRatio)) {
+    return;
+  }
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return;
+  }
+  const node = nodeGraphModuleScopeNodeForSlot(slot);
+  const settings = nodeGraphNumberReadoutSettingsForNode(node);
+  const hasSample = item?.buffer?.length > 0 && !item.buffer?.nodeGraphScopeXy;
+  const unit = nodeGraphNumberReadoutUnitForSlot(slot);
+  const valueText = hasSample
+    ? nodeGraphNumberReadoutFormatValue(nodeGraphOscilloscopeLatestSample(item.buffer, 0), settings.decimals)
+    : "--";
+  const text = unit ? `${valueText} ${unit}` : valueText;
+  if (
+    canvas._nodeGraphNumberReadoutText === text &&
+    canvas._nodeGraphNumberReadoutColor === settings.color &&
+    canvas._nodeGraphNumberReadoutBrightness === settings.brightness &&
+    canvas._nodeGraphNumberReadoutWidth === canvas.width &&
+    canvas._nodeGraphNumberReadoutHeight === canvas.height
+  ) {
+    return;
+  }
+  canvas._nodeGraphNumberReadoutText = text;
+  canvas._nodeGraphNumberReadoutColor = settings.color;
+  canvas._nodeGraphNumberReadoutBrightness = settings.brightness;
+  canvas._nodeGraphNumberReadoutWidth = canvas.width;
+  canvas._nodeGraphNumberReadoutHeight = canvas.height;
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  const screenRect = item?.screenRect || rect;
+  const left = (Number(rect.left) - Number(screenRect.left)) * pixelRatio;
+  const top = (Number(rect.top) - Number(screenRect.top)) * pixelRatio;
+  const width = Math.max(1, Number(rect.width) || 1) * pixelRatio;
+  const height = Math.max(1, Number(rect.height) || 1) * pixelRatio;
+  const charCount = Math.max(1, text.length);
+  const fontSize = Math.max(1, Math.min(height * 0.72, (width / charCount) * 1.7));
+  const rgb = nodeGraphScopeRgbFloatsToCanvasRgb(nodeGraphScopeHexColorToRgb(settings.color));
+  const alpha = clampNodeSliderValue(settings.brightness, 0, 2) / 2;
+  context.save();
+  context.font = `${fontSize}px "Consolas", "Courier New", monospace`;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${Math.max(0.15, alpha).toFixed(4)})`;
+  context.fillText(text, left + width * 0.5, top + height * 0.5, width);
+  context.restore();
+}
+
 function nodeGraphOneDimensionalBurnSampleToY(sample, rect) {
   return rect.top + rect.height * 0.5 - clampNodeSliderValue(sample, -1, 1) * rect.height * 0.44;
 }
@@ -8769,6 +8865,9 @@ function nodeGraphOneDimensionalBurnFadeTrail(context, canvas, settings) {
   }
   const burn = clampNodeSliderValue(Number(settings?.burn) || 0, 0, 1);
   const decay = clampNodeSliderValue(Number(settings?.decay) || 0, 0, 1);
+  if (decay <= 0) {
+    return;
+  }
   const fadeAlpha = clampNodeSliderValue(0.012 + decay * 0.3 - burn * 0.006, 0.002, 0.34);
   context.save();
   context.globalCompositeOperation = "destination-out";
@@ -8793,6 +8892,13 @@ function nodeGraphOneDimensionalBurnBufferFrameInfo(buffer, count) {
     return { startFrame, endFrame };
   }
   const safeCount = Math.max(0, Math.floor(Number(count) || 0));
+  const totalSamples = Number(buffer?.nodeGraphScopeTotalSampleCount);
+  if (Number.isFinite(totalSamples) && totalSamples > 0) {
+    return {
+      startFrame: Math.max(0, totalSamples - safeCount),
+      endFrame: totalSamples,
+    };
+  }
   const fallbackEndFrame = Number(buffer?.nodeGraphScopeVersion);
   const end = Number.isFinite(fallbackEndFrame)
     ? fallbackEndFrame
@@ -8824,10 +8930,23 @@ function nodeGraphOneDimensionalBurnDrawStartIndex(canvas, buffer, count) {
   return Math.min(Math.max(0, Math.floor(Number(count) || 0) - 1), frameOffset);
 }
 
-function nodeGraphOneDimensionalBurnFrameProgress(frame, settings, sampleRate) {
-  const zoomSeconds = Math.max(0.0001, Math.abs(Number(settings?.zoomSeconds) || nodeGraphLineBurnSettingsDefaults.zoomSeconds));
-  const framesPerSweep = Math.max(1, zoomSeconds * Math.max(1, Number(sampleRate) || 1));
-  return wrapNodeSliderValue((Number(frame) || 0) / framesPerSweep, 0, 1);
+const nodeGraphOneDimensionalBurnTriggerHigh = 0.02;
+const nodeGraphOneDimensionalBurnTriggerLow = -0.02;
+const nodeGraphOneDimensionalBurnMinSweepHz = 20000;
+
+function nodeGraphOneDimensionalBurnInitTriggerState(buffer, sampleRate) {
+  if (!Number.isFinite(buffer.nodeGraphScopeBurnSweepLength) || buffer.nodeGraphScopeBurnSweepLength <= 0) {
+    buffer.nodeGraphScopeBurnSweepLength = Math.max(1, Math.round(sampleRate * nodeGraphLineBurnSettingsDefaults.zoomSeconds));
+  }
+  if (!Number.isFinite(buffer.nodeGraphScopeBurnCrossings)) {
+    buffer.nodeGraphScopeBurnCrossings = 0;
+  }
+  if (!Number.isFinite(buffer.nodeGraphScopeBurnLastSample)) {
+    buffer.nodeGraphScopeBurnLastSample = 0;
+  }
+  if (!Number.isFinite(buffer.nodeGraphScopeBurnArmed)) {
+    buffer.nodeGraphScopeBurnArmed = 1;
+  }
 }
 
 function nodeGraphOneDimensionalBurnFramePoints(canvas, buffer, rect, settings) {
@@ -8845,20 +8964,50 @@ function nodeGraphOneDimensionalBurnFramePoints(canvas, buffer, rect, settings) 
   }
   const points = [];
   const frameInfo = nodeGraphOneDimensionalBurnBufferFrameInfo(buffer, count);
-  const sampleRate = Math.max(1, Number(nodeGraphModuleScopeState.sampleRate) || Number(nodeGraphMvp?.sampleRate) || 44100);
+  const sampleRate = nodeGraphScopeSampleRate(buffer);
+  const targetCycles = Math.max(1, Math.round(
+    Number(settings?.cycles) || nodeGraphLineBurnSettingsDefaults.cycles,
+  ));
+  nodeGraphOneDimensionalBurnInitTriggerState(buffer, sampleRate);
+  if (!Number.isFinite(buffer.nodeGraphScopeBurnSweepStart)) {
+    buffer.nodeGraphScopeBurnSweepStart = frameInfo.startFrame;
+  }
+  const minSweepLength = Math.max(1, Math.round(sampleRate / nodeGraphOneDimensionalBurnMinSweepHz));
   let previousProgress = null;
+  let prevSample = buffer.nodeGraphScopeBurnLastSample;
   for (let index = drawStartIndex; index < count; index += 1) {
     const frame = frameInfo.startFrame + index;
-    const progress = nodeGraphOneDimensionalBurnFrameProgress(frame, settings, sampleRate);
+    const sample = buffer[start + index];
+    if (buffer.nodeGraphScopeBurnArmed && sample > nodeGraphOneDimensionalBurnTriggerHigh) {
+      buffer.nodeGraphScopeBurnArmed = 0;
+      buffer.nodeGraphScopeBurnCrossings += 1;
+      if (buffer.nodeGraphScopeBurnCrossings >= targetCycles) {
+        const sweepLength = frame - buffer.nodeGraphScopeBurnSweepStart;
+        if (sweepLength >= minSweepLength) {
+          buffer.nodeGraphScopeBurnSweepLength = sweepLength;
+        }
+        buffer.nodeGraphScopeBurnSweepStart = frame;
+        buffer.nodeGraphScopeBurnCrossings = 0;
+      }
+    } else if (!buffer.nodeGraphScopeBurnArmed && sample < nodeGraphOneDimensionalBurnTriggerLow) {
+      buffer.nodeGraphScopeBurnArmed = 1;
+    }
+    prevSample = sample;
+    const progress = wrapNodeSliderValue(
+      (frame - buffer.nodeGraphScopeBurnSweepStart) / Math.max(1, buffer.nodeGraphScopeBurnSweepLength),
+      0,
+      1,
+    );
     if (previousProgress !== null && progress < previousProgress) {
       breakNodeGraphScope2dPath(points);
     }
     points.push({
       x: rect.left + rect.width * progress,
-      y: nodeGraphOneDimensionalBurnSampleToY(buffer[start + index], rect),
+      y: nodeGraphOneDimensionalBurnSampleToY(sample, rect),
     });
     previousProgress = progress;
   }
+  buffer.nodeGraphScopeBurnLastSample = prevSample;
   return points;
 }
 
@@ -9357,12 +9506,11 @@ function copyNodeGraphScope2dBurnSurface(renderer, sourceSurface, targetSurface,
 function nodeGraphScope2dBurnDecayValues(settings) {
   const burn = clampNodeSliderValue(Number(settings?.burn) || 0, 0, 1);
   const decay = clampNodeSliderValue(Number(settings?.decay) || 0, 0, 1);
-  const tail = 1 - decay;
   return {
-    decayFast: 0.62 + tail * 0.24,
-    decaySlow: 0.9 + tail * 0.09,
+    decayFast: decay > 0 ? 1 - decay * 0.38 : 1,
+    decaySlow: decay > 0 ? 1 - decay * 0.1 : 1,
     exposure: 1.35 + burn * 3.5,
-    floor: 0.0007 + decay * 0.0028,
+    floor: decay > 0 ? decay * 0.0035 : 0,
   };
 }
 
@@ -9819,15 +9967,48 @@ function drawNodeGraphScope2dTraceItem(renderer, item, pixelRatio) {
   drawNodeGraphScope2dTraceLayer(context, points, dotSpace, settings, "dot1");
 }
 
+function buildNodeGraphTraceDisplaySamples(buffer, slot, pointCount, progressFn, samplesPerPoint) {
+  const view = nodeGraphTraceDisplayBufferView(buffer, slot);
+  if (!view || view.end <= view.start) {
+    return null;
+  }
+  const visibleSamples = Math.max(1, view.end - view.start);
+  const spPt = Number.isFinite(Number(samplesPerPoint))
+    ? samplesPerPoint
+    : visibleSamples / Math.max(1, pointCount - 1);
+  const skipSamples = nodeGraphModuleScopeDiscontinuitySkipSamplesForSlot(slot, buffer);
+  const samples = [];
+  let previousRaw = null;
+  let skipThroughIndex = -1;
+  for (let index = 0; index < pointCount; index += 1) {
+    const progress = progressFn(index, pointCount);
+    const samplePosition = view.start + progress * Math.max(0, visibleSamples - 1);
+    const sampleInfo = nodeGraphTraceDisplaySampleInfo(buffer, samplePosition, spPt);
+    const raw = Number.isFinite(Number(sampleInfo.value)) ? Number(sampleInfo.value) : 0;
+    const value = clampNodeSliderValue((raw * view.gain) + view.offset, -1, 1);
+    if (skipSamples > 0 && previousRaw !== null) {
+      if (sampleInfo.discontinuity) {
+        skipThroughIndex = Math.max(skipThroughIndex, index + skipSamples);
+      }
+      if (Math.abs(raw - previousRaw) > nodeGraphModuleScopeDiscontinuityThreshold) {
+        skipThroughIndex = Math.max(skipThroughIndex, index + skipSamples - 1);
+      }
+    }
+    samples.push({ progress, samplePosition, raw, value, breakBefore: index <= skipThroughIndex });
+    previousRaw = raw;
+  }
+  return samples;
+}
+
 function buildNodeGraphTraceDisplayCanvasPoints(buffer, canvas, slot) {
   if (!buffer?.length || !canvas?.width || !canvas?.height) {
     return [];
   }
   const view = nodeGraphTraceDisplayBufferView(buffer, slot);
+  const halfHeight = canvas.height * nodeGraphModuleScopeTraceHalfHeightRatio(slot, buffer, { height: canvas.height });
   if (!view || view.end <= view.start) {
     const sample = nodeGraphModuleScopeInterpolatedSample(buffer, Math.max(0, buffer.length - 1));
     const value = clampNodeSliderValue((sample * (Number(view?.gain) || 1)) + (Number(view?.offset) || 0), -1, 1);
-    const halfHeight = canvas.height * 0.42;
     return [{
       x: 0,
       y: (canvas.height * 0.5) - value * halfHeight,
@@ -9840,17 +10021,21 @@ function buildNodeGraphTraceDisplayCanvasPoints(buffer, canvas, slot) {
   const width = Math.max(1, canvas.width);
   const pointCount = Math.max(2, Math.min(width, Math.ceil(visibleSamples)));
   const midY = canvas.height * 0.5;
-  const halfHeight = canvas.height * 0.42;
+  const samplesPerPoint = visibleSamples / Math.max(1, pointCount - 1);
+  const progressFn = (index, count) => count <= 1 ? 0 : index / (count - 1);
+  const samples = buildNodeGraphTraceDisplaySamples(buffer, slot, pointCount, progressFn, samplesPerPoint);
+  if (!samples) {
+    return [];
+  }
   const points = [];
-  for (let index = 0; index < pointCount; index += 1) {
-    const progress = pointCount <= 1 ? 0 : index / (pointCount - 1);
-    const samplePosition = view.start + progress * Math.max(0, visibleSamples - 1);
-    const raw = nodeGraphModuleScopeInterpolatedSample(buffer, samplePosition);
-    const value = clampNodeSliderValue((raw * view.gain) + view.offset, -1, 1);
-    points.push({
-      x: progress * width,
-      y: midY - value * halfHeight,
-    });
+  for (const s of samples) {
+    if (s.breakBefore) {
+      if (points.length > 0 && points[points.length - 1] !== null) {
+        points.push(null);
+      }
+    } else {
+      points.push({ x: s.progress * width, y: midY - s.value * halfHeight });
+    }
   }
   return points;
 }
@@ -10112,6 +10297,10 @@ function drawNodeGraphModuleScopeTypedItem(renderer, item, pixelRatio) {
   }
   if (displayRenderer === "scope2d") {
     drawNodeGraphScope2dItem(renderer, item, pixelRatio);
+    return true;
+  }
+  if (displayRenderer === "numberReadout") {
+    drawNodeGraphNumberReadoutItem(renderer, item, pixelRatio);
     return true;
   }
   return false;

@@ -600,6 +600,7 @@ function setNodeGraphFloatingWindowViewportPosition(element, left, top) {
   };
 }
 
+
 function nodeGraphFloatingWindowPosition(element, x, y, options = {}) {
   if (!element) {
     return { left: 0, top: 0 };
@@ -611,13 +612,14 @@ function nodeGraphFloatingWindowPosition(element, x, y, options = {}) {
   const height = Math.max(1, Number(options.height) || rect.height || 1);
   const halfWidth = width * 0.5;
   const visibleWidth = Math.max(1, Math.min(width, Number(options.visibleWidth) || halfWidth));
-  const visibleHeight = Math.max(1, Math.min(height, Number(options.visibleHeight) || 48));
   const viewportWidth = window.innerWidth || document.documentElement.clientWidth || width;
   const viewportHeight = window.innerHeight || document.documentElement.clientHeight || height;
+  // Horizontal: 50% may go off either edge
   const minLeft = visibleWidth - width;
   const maxLeft = viewportWidth - visibleWidth;
-  const minTop = visibleHeight - height;
-  const maxTop = viewportHeight - visibleHeight;
+  // Vertical: title bar (top) must stay fully on screen; bottom 50% may go off
+  const minTop = 0;
+  const maxTop = viewportHeight - height * 0.5;
   const left = Math.round(Math.max(minLeft, Math.min(maxLeft, Number(x) || 0)));
   const top = Math.round(Math.max(minTop, Math.min(maxTop, Number(y) || 0)));
   element.hidden = wasHidden;

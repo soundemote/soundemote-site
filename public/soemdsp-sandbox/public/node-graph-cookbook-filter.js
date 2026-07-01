@@ -306,14 +306,15 @@ function nodeGraphLadderFilterMagnitudeAt(params, frequency, sampleRate) {
 }
 
 function nodeGraphFilterCurveResponseAt(node, frequency, sampleRate) {
-  if (node.type === "highpass") {
-    return nodeGraphOnePoleHighpassMagnitudeAt(node.params?.frequency, frequency, sampleRate);
-  }
-  if (node.type === "lowpass") {
-    return nodeGraphOnePoleLowpassMagnitudeAt(node.params?.frequency, frequency, sampleRate);
-  }
-  if (node.type === "bandpass") {
-    return nodeGraphBandpassMagnitudeAt(node.params?.lowFrequency, node.params?.highFrequency, frequency, sampleRate);
+  if (node.type === "passiveFilter") {
+    const mode = Math.round(Number(node.params?.mode) || 0);
+    if (mode === 1) {
+      return nodeGraphBandpassMagnitudeAt(node.params?.lowFrequency, node.params?.highFrequency, frequency, sampleRate);
+    }
+    if (mode === 2) {
+      return nodeGraphOnePoleHighpassMagnitudeAt(node.params?.lowFrequency, frequency, sampleRate);
+    }
+    return nodeGraphOnePoleLowpassMagnitudeAt(node.params?.highFrequency, frequency, sampleRate);
   }
   if (node.type === "ladderFilter") {
     return nodeGraphLadderFilterMagnitudeAt({
@@ -333,7 +334,11 @@ function nodeGraphFilterCurveResponseAt(node, frequency, sampleRate) {
 }
 
 function nodeGraphFilterCurveCutoffFrequencies(node) {
-  if (node.type === "bandpass") {
+  if (node.type === "passiveFilter") {
+    const mode = Math.round(Number(node.params?.mode) || 0);
+    if (mode === 2) {
+      return [Number(node.params?.lowFrequency) || 0].filter((v) => Number.isFinite(v) && v >= 0);
+    }
     return [node.params?.lowFrequency, node.params?.highFrequency]
       .map((value) => Number(value) || 0)
       .filter((value) => Number.isFinite(value) && value >= 0);
@@ -342,14 +347,9 @@ function nodeGraphFilterCurveCutoffFrequencies(node) {
 }
 
 function nodeGraphFilterCurveLabel(node) {
-  if (node.type === "highpass") {
-    return "One Pole HP";
-  }
-  if (node.type === "lowpass") {
-    return "One Pole LP";
-  }
-  if (node.type === "bandpass") {
-    return "One Pole BP";
+  if (node.type === "passiveFilter") {
+    const mode = Math.round(Number(node.params?.mode) || 0);
+    return mode === 1 ? "1-Pole BP" : mode === 2 ? "1-Pole HP" : "1-Pole LP";
   }
   if (node.type === "ladderFilter") {
     return nodeGraphLadderFilterModes[Math.round(Number(node.params?.mode) || 0)] || "Ladder";
