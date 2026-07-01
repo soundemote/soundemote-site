@@ -117,7 +117,7 @@ const UserPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [username, bank, patch]);
+  }, [username, bank, patch, session, listMyFiles, listPublicFiles]);
 
   if (!handle.startsWith("@")) {
     return <Navigate to="/" replace />;
