@@ -1,28 +1,52 @@
-## Per-user init patch, with wikireview as the shared fallback
+# Sandbox-driven shooting star timing (PR-based sandbox change)
 
-### Concept
-The sandbox itself has no production-usable per-user default (its localStorage default only works on localhost). We store each user's init patch in Lovable Cloud and inject it into the sandbox iframe via the existing `soundemote:sandbox-project-data` postMessage channel already wired in `SandboxPage.tsx`. No changes to the sandbox internals needed.
+Goal: let the soemdsp-sandbox app control shooting-star timing on the website, over the existing iframe postMessage channel, with the sandbox change landed upstream via pull request.
 
-Resolution order when a user opens the plain `/sandbox`:
-1. If the signed-in user has a saved init patch → load it.
-2. Else → load **wikireview**'s init patch (the shared default).
-3. Else → sandbox falls back to its own bundled `default.json`.
+## Channel already bidirectional
+- Website → sandbox: `soundemote:sandbox-event` (collisions)
+- Sandbox → website: `soundemote:current-patch` (patch data)
 
-### Database (new migration)
-Create `public.user_init_patches`:
-- `owner_id uuid pk references auth.users on delete cascade`
-- `project_data jsonb not null`
-- `updated_at timestamptz default now()`
-- Grants + RLS: public `select` (so anyone can read wikireview's fallback), owner-only `insert/update/delete`, `service_role all`.
+Add one new message sandbox → website: `soundemote:hero-event`. No new libraries.
 
-### Frontend
-1. **`SandboxPage.tsx`**: when route is plain `/sandbox` (no patch/share/wiki params), fetch the init patch:
-   - resolve current session's `owner_id`; query `user_init_patches` for it.
-   - if none, look up wikireview's profile id → query its init patch.
-   - inject the resulting `project_data` via the existing `postProjectData` path.
-2. **Save control**: add a small "set as my init patch" button (signed-in only) in the sandbox toolbar overlay. It calls the existing `requestCurrentPatch()` to grab the live patch, then upserts into `user_init_patches`.
+## Two repos, two landing paths
+- **Emitter → `soemdsp-sandbox` repo, via PR (Codex).** This is the permanent home. Landing it upstream means it survives every sync into this project. I provide the exact diff; Codex opens/merges the PR. (Relay model — I can't push to that repo myself.)
+- **Listener → this website repo.** My edits here auto-sync to the connected GitHub repo (or review as a branch/PR if you use branch switching).
 
-### Notes / technical
-- `requestCurrentPatch()` returns the `nodeGraphShareProjectData` shape (`{kind:"sandbox_patch", patch_data, ...}`), which is exactly what the inject path expects — so save and load are symmetric.
-- wikireview's id is resolved by handle lookup in `profiles`, not hardcoded.
-- Migration SQL will be provided to run in the Cloud SQL editor.
+Interim option: I can also patch the local `public/soemdsp-sandbox/` copy so it works before the PR merges, but that copy is overwritten on the next sync, so treat it as a preview only.
+
+## Message contract
+```text
+{
+  type: "soundemote:hero-event",
+  event: "spawnShootingStar",      // extensible: "burst", "setRate"
+  payload: { hue?, speed?, count?, intervalSeconds? }
+}
+```
+
+## Website side — src/components/soundemote/StarField.tsx (I implement)
+- Parameterize spawnShooter() to accept overrides (hue, speed, count).
+- Add a window message listener:
+  - Guard: event.origin === window.location.origin and source is the hero iframe.
+  - Validate type === "soundemote:hero-event" and event is allow-listed.
+  - spawnShootingStar → spawnShooter(overrides); setRate → mutate a cadence ref.
+- Existing auto-spawn stays as default; sandbox events layer on / override.
+
+## Sandbox side — PR diff for Codex (soemdsp-sandbox repo)
+Add an emitter, ideally driven by a patch node output (clock/trigger), calling:
+```js
+window.parent?.postMessage(
+  { type: "soundemote:hero-event", event: "spawnShootingStar", payload: {...} },
+  window.location.origin
+);
+```
+Cleanest end state: a dedicated trigger node whose pulse posts this message, so shooting-star timing comes straight from the DSP patch. File in that repo mirrors public/soemdsp-sandbox/public/node-graph-external-ui-events.js.
+
+## Deliverables
+1. Website listener + parameterized spawn (this repo).
+2. Exact PR-ready diff for the emitter, for Codex to land in the soemdsp-sandbox repo.
+3. Optional interim local patch so you can preview before the PR merges.
+
+## Notes
+- Hero iframe is same-origin, so origin guards are valid both ways.
+- Allow-list prevents arbitrary frames from driving the starfield.
+- No emitter yet = stars keep current auto-timing; nothing breaks.
