@@ -291,10 +291,6 @@ window.soemdspSandboxTriggerWindowReopenEvent = triggerNodeGraphWindowReopenEven
 window.soemdspSandboxTriggerGameEvent = triggerNodeGraphGameEvent;
 window.soemdspSandboxTriggerShootingStarExplosionEvent = triggerNodeGraphShootingStarExplosionEvent;
 
-// --- Sandbox -> website hero events (drives shooting-star timing) ---
-// The embedding website (soundemote.io) listens for `soundemote:hero-event`
-// messages and spawns shooting stars / adjusts cadence. Call these from a DSP
-// trigger/clock node output so star timing comes straight from the patch.
 const soemdspHeroEventNames = Object.freeze(new Set(["spawnShootingStar", "setRate"]));
 
 function soemdspSandboxEmitHeroEvent(event, payload = {}) {

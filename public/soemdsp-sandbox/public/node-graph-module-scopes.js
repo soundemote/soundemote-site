@@ -115,6 +115,7 @@ const nodeGraphModuleScopeUnipolarTypes = new Set([
   "triggerCounter",
   "triggerDivider",
   "vactrolEnvelope",
+  "vactrolEnvelopeC4",
 ]);
 
 function normalizeNodeGraphModuleScopeSetting(value = {}) {
@@ -10068,6 +10069,27 @@ function drawNodeGraphTraceDisplayCanvasLayer(context, points, settings, pass, c
   context.restore();
 }
 
+// The Output module shows its Left/Right channels as two separate colored
+// traces (left red, right blue) instead of the usual single dot1/dot2 glow
+// pass -- those two "dots" are a per-trace inner/outer glow layer, not a
+// stereo pair, so this is a distinct drawing path rather than a reuse of
+// dot1/dot2 coloring.
+const nodeGraphOutputTraceLeftColor = "#ff4d4d";
+const nodeGraphOutputTraceRightColor = "#4d8dff";
+
+function nodeGraphOutputStereoTraceBuffers(nodeId) {
+  const id = String(nodeId || "");
+  if (!id) {
+    return null;
+  }
+  const left = nodeGraphModuleScopeState.buffers.get(`${id}:Left`);
+  const right = nodeGraphModuleScopeState.buffers.get(`${id}:Right`);
+  if (!left?.length || !right?.length) {
+    return null;
+  }
+  return { left, right };
+}
+
 function drawNodeGraphTraceDisplayCanvasItem(item, pixelRatio) {
   const slot = item?.slot;
   const buffer = item?.buffer;
@@ -10084,6 +10106,21 @@ function drawNodeGraphTraceDisplayCanvasItem(item, pixelRatio) {
     return false;
   }
   const settings = nodeGraphTraceDisplaySettingsForSlot(slot);
+  const stereoBuffers = slot?.type === "output" ? nodeGraphOutputStereoTraceBuffers(slot.nodeId) : null;
+  if (stereoBuffers) {
+    const leftBuffer = prepareNodeGraphTraceDisplayBuffer(stereoBuffers.left, settings);
+    const rightBuffer = prepareNodeGraphTraceDisplayBuffer(stereoBuffers.right, settings);
+    const leftPoints = buildNodeGraphTraceDisplayCanvasPoints(leftBuffer, canvas, slot);
+    const rightPoints = buildNodeGraphTraceDisplayCanvasPoints(rightBuffer, canvas, slot);
+    const leftSettings = { ...settings, color: nodeGraphOutputTraceLeftColor };
+    const rightSettings = { ...settings, color: nodeGraphOutputTraceRightColor };
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    drawNodeGraphTraceDisplayCanvasLayer(context, rightPoints, rightSettings, "dot1", canvas);
+    drawNodeGraphTraceDisplayCanvasLayer(context, leftPoints, leftSettings, "dot1", canvas);
+    recordNodeGraphModuleScopeRenderMetrics(leftPoints.length + rightPoints.length, leftPoints.length + rightPoints.length);
+    rememberNodeGraphTraceDisplaySignature(slot, item, buffer, settings);
+    return true;
+  }
   const points = buildNodeGraphTraceDisplayCanvasPoints(buffer, canvas, slot);
   context.clearRect(0, 0, canvas.width, canvas.height);
   drawNodeGraphTraceDisplayCanvasLayer(context, points, settings, "dot2", canvas);
