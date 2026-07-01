@@ -1,51 +1,46 @@
-# URL scheme: @users + bare claimed patches
+# Plan: User Files + Privacy Layer
 
-Lock in the final routing scheme. Drop the `~` patch prefix and the `!` bank prefix entirely. Users live under `@`, claimed patches stay bare.
+You already have the file explorer UI. This plan only adds the privacy layer, link spots, and a hook so the explorer can plug into it later.
 
-## Final URL contract
+## What we'll build
 
-```text
-/sinewave                     -> claimed patch (bare slug)
-/@elanhickler                    -> user page          (reserved, stub for now)
-/@elanhickler/bank               -> bank page          (reserved, stub for now)
-/@elanhickler/bank/patch         -> patch in a bank    (reserved, stub for now)
-/sandbox, /share/:slug, ...   -> real app routes always win
-```
+1. **Database schema** — `public.user_files` metadata table
+   - `id`, `owner_id` (FK to auth.users), `slug`, `name`, `description`
+   - `is_public` boolean, `storage_path` text, `size` int, `mime_type` text
+   - `created_at`, `updated_at` timestamps
+   - Grants for `anon`, `authenticated`, `service_role`
+   - RLS policies:
+     - Public read: `anon` + `authenticated` can see rows where `is_public = true`
+     - Owner read/write: authenticated users can see and manage their own files
+     - Admin manage: users with `admin` role can manage all files
 
-Decisions confirmed:
-- Reserved words = real routes only. Any path with a real `<Route>` wins; everything else bare falls through to patch lookup.
-- Unknown bare slug `/sinewave` (no claimed patch) -> open sandbox with the claim banner (`/sandbox?claim=sinewave`), current behavior.
-- `@user` and bank pages: reserve the URL structure now, build the actual pages later.
+2. **Storage bucket** (if the explorer uses Supabase Storage)
+   - `user-files` bucket
+   - RLS: owner can upload/update/delete; public read for public files; admin full access
 
-## Routing changes (`src/App.tsx`)
+3. **Hook update** — extend `src/hooks/useUserFiles.ts`
+   - `myFiles` — list all files for the signed-in user
+   - `publicFiles(handle)` — list public files for any user
+   - `isOwner(file)` helper
+   - Keep the existing `myFilesUrl` / `userFilesUrl` helpers
 
-Replace the current ambiguous `/:user/:bank/:patch` + `/:shortlink` pair with `@`-aware routes. Because React Router can't bind a param inside a prefixed segment, use a single `:handle` param and validate the `@` prefix inside the page component.
+4. **UI link spots** (dummy space only, no explorer)
+   - Nav: keep the `files` link for signed-in users
+   - User profile page (`UserPage.tsx`): add a "Files" section under Banks that lists public files for the viewed user as simple text links (placeholder styling until the explorer replaces it)
 
-```text
-/:handle/:bank/:patch   -> UserPatchPage   (requires @handle, else NotFound)
-/:handle/:bank          -> UserBankPage    (requires @handle, else NotFound)
-/:handle                -> HandleRouter     (decides: @user page vs bare claimed patch)
-```
+## Out of scope
 
-`HandleRouter` logic for `/:handle`:
-- If `handle` starts with `@` -> render the user-page stub (reserve structure).
-- Otherwise (bare slug) -> run the existing claimed-patch lookup (current `PatchShortlinkPage` behavior): found -> serve patch; not found -> redirect to `/sandbox?claim=<slug>`.
+- The actual file explorer UI / upload UI / folder tree
+- File preview, download, drag-and-drop
+- Those will be handled by the agent working on the explorer
 
-All real routes stay above the catch-all and keep winning automatically.
+## Files to create/edit
 
-## Page work
+- `supabase/user_files.sql` — new migration
+- `src/hooks/useUserFiles.ts` — extend
+- `src/pages/UserPage.tsx` — add Files section
+- `src/components/soundemote/Nav.tsx` — already has link spot
 
-- Keep `PatchShortlinkPage` as the bare-slug resolver (claimed patch -> sandbox patch route, else claim banner). Remove any `~`-specific handling.
-- Add a minimal `@user` stub page (and reuse it for `/@user/bank` and `/@user/bank/patch`) that just shows the handle/bank/patch and a "coming soon" note, so the URL space is reserved without real profile logic.
-- Strip `~`/`!` references from prior planning (none are live in code yet beyond the existing bare-slug flow, so this is mostly confirming current files match the new scheme).
+## Next step
 
-## Technical notes
-
-- The existing DB contract (`shared_projects` with `owner_name`/`bank_slug`/`patch_slug`, plus `patch_shortlinks`) already matches `/owner/bank/patch` + bare shortlink, so no schema change is required now.
-- The patch loader in `SandboxPage` already accepts `/:user/:bank/:patch`; the only change is that the public-facing user route gains the `@` prefix and the internal sandbox iframe params stay the same.
-- No `~` or `!` characters anywhere in routes.
-
-## Out of scope (later)
-
-- Real user profile pages, bank listing pages, auth-tied `@handle` ownership.
-- Removing a slug from the claimable pool when soundemote.io itself needs it (manual/admin step later).
+Approve this plan and I'll implement the schema, hook, and dummy link spots.
