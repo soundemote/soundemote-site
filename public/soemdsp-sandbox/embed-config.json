@@ -1,0 +1,4 @@
+{
+  "defaultPresetUrl": "./embed/presets/default.json",
+  "resourcesManifestUrl": "./embed/resources/manifest.json"
+}
