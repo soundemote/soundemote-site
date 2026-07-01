@@ -4,6 +4,8 @@ import AsciiWave from "./AsciiWave";
 type Project = {
     name: string;
     status: string;
+    version?: string;
+    changelogHref?: string;
     blurb: string;
     href?: string;
     githubHref?: string;
@@ -24,7 +26,9 @@ const projects: Project[] = [
     },
     {
         name: "(soemdsp-wiki)~",
-        status: "alpha 0.1.0",
+        status: "alpha ",
+        version: "0.2.0",
+        changelogHref: "/changelog",
         blurb:
             "Community-driven patch and DSP knowledge wiki. Open pages, submit edits, and build a living reference for sounds, modules, and techniques.",
         href: "/wiki",
@@ -168,6 +172,18 @@ export const Projects = () => (
                                 )}
                                 <p className="mono text-[0.625rem] uppercase tracking-[0.25em] text-muted-foreground mt-2">
                                     {p.status}
+                                    {p.version && (
+                                        p.changelogHref ? (
+                                            <a
+                                                href={p.changelogHref}
+                                                className="text-scope underline decoration-dotted underline-offset-2 hover:text-scope/80 transition-colors"
+                                            >
+                                                {p.version}
+                                            </a>
+                                        ) : (
+                                            p.version
+                                        )
+                                    )}
                                 </p>
                             </div>
                             {(p.githubHref || p.href) && (

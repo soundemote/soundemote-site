@@ -14,6 +14,7 @@ import SupabaseTest from "./pages/SupabaseTest.tsx";
 import SharePage from "./pages/SharePage.tsx";
 import WikiPage from "./pages/WikiPage.tsx";
 import WikiArticlePage from "./pages/WikiArticlePage.tsx";
+import ChangelogPage from "./pages/ChangelogPage.tsx";
 import UserPage from "./pages/UserPage.tsx";
 import FilesPage from "./pages/FilesPage.tsx";
 import AuthPage from "./pages/AuthPage.tsx";
@@ -49,6 +50,7 @@ const App = () => (
           <Route path="/share/:slug" element={<SharePage />} />
           <Route path="/wiki" element={<WikiPage />} />
           <Route path="/wiki/:slug" element={<WikiArticlePage />} />
+          <Route path="/changelog" element={<ChangelogPage />} />
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/login" element={<AdminLogin />} />
