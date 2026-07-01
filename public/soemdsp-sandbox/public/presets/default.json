@@ -237,7 +237,7 @@
       },
       "type": "audioPlayer",
       "sample": {
-        "id": "chaosarp-lorenz-startup"
+        "id": "silently-dreaming-startup"
       }
     }
   ],
@@ -249,27 +249,27 @@
       "file": {
         "extension": "mp3",
         "mime": "audio/mpeg",
-        "name": "Elan Hickler - ChaosArp Lorenz.mp3",
-        "size": 10447933,
-        "sourcePath": "./public/resources/audio/Elan Hickler - ChaosArp Lorenz.mp3"
+        "name": "Elan Hickler - Silently Dreaming.mp3",
+        "size": 9975640,
+        "sourcePath": "./public/resources/audio/Elan Hickler - Silently Dreaming.mp3"
       },
-      "id": "chaosarp-lorenz-startup",
+      "id": "silently-dreaming-startup",
       "kind": "audio",
       "metadata": {
         "artist": "Elan Hickler",
-        "title": "ChaosArp Lorenz",
+        "title": "Silently Dreaming",
         "startupMusic": true
       },
-      "name": "Elan Hickler - ChaosArp Lorenz",
+      "name": "Elan Hickler - Silently Dreaming",
       "nodeIds": [
         "audioPlayer-1"
       ],
       "requiredBy": [
         "Music Player 1"
       ],
-      "resourceId": "chaosarp-lorenz-startup",
-      "sourceName": "Elan Hickler - ChaosArp Lorenz.mp3",
-      "sourcePath": "./public/resources/audio/Elan Hickler - ChaosArp Lorenz.mp3"
+      "resourceId": "silently-dreaming-startup",
+      "sourceName": "Elan Hickler - Silently Dreaming.mp3",
+      "sourcePath": "./public/resources/audio/Elan Hickler - Silently Dreaming.mp3"
     }
   ],
   "samples": [
@@ -280,21 +280,21 @@
       "file": {
         "extension": "mp3",
         "mime": "audio/mpeg",
-        "name": "Elan Hickler - ChaosArp Lorenz.mp3",
-        "size": 10447933,
-        "sourcePath": "./public/resources/audio/Elan Hickler - ChaosArp Lorenz.mp3"
+        "name": "Elan Hickler - Silently Dreaming.mp3",
+        "size": 9975640,
+        "sourcePath": "./public/resources/audio/Elan Hickler - Silently Dreaming.mp3"
       },
-      "id": "chaosarp-lorenz-startup",
+      "id": "silently-dreaming-startup",
       "kind": "audio",
       "metadata": {
         "artist": "Elan Hickler",
-        "title": "ChaosArp Lorenz",
+        "title": "Silently Dreaming",
         "startupMusic": true
       },
-      "name": "Elan Hickler - ChaosArp Lorenz",
-      "resourceId": "chaosarp-lorenz-startup",
-      "sourceName": "Elan Hickler - ChaosArp Lorenz.mp3",
-      "sourcePath": "./public/resources/audio/Elan Hickler - ChaosArp Lorenz.mp3"
+      "name": "Elan Hickler - Silently Dreaming",
+      "resourceId": "silently-dreaming-startup",
+      "sourceName": "Elan Hickler - Silently Dreaming.mp3",
+      "sourcePath": "./public/resources/audio/Elan Hickler - Silently Dreaming.mp3"
     }
   ],
   "timing": {
