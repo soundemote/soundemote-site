@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import patchImage from "@/assets/soemdsp-patch.png";
-import { WIKIREVIEW_BANK } from "@/data/patchBank";
+import { SOUNDEMOTE_BANK } from "@/data/patchBank";
 
 export const Hero = () => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
