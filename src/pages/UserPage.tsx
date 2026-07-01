@@ -36,7 +36,7 @@ const UserPage = () => {
   const { handle = "", bank, patch } = useParams<UserPageParams>();
   const username = handle.startsWith("@") ? handle.slice(1).toLowerCase() : "";
   const { session } = useAuth();
-  const { userFilesUrl, listPublicFiles } = useUserFiles();
+  const { userFilesUrl, listMyFiles, listPublicFiles } = useUserFiles();
 
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
