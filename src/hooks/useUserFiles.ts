@@ -38,7 +38,7 @@ export type UserFilesLink = {
 export function useUserFiles(): UserFilesLink {
   const { session, profile } = useAuth();
 
-  const listMyFiles = async (): Promise<UserFile[]> => {
+  const listMyFiles = useCallback(async (): Promise<UserFile[]> => {
     if (!session?.user?.id) return [];
     const { data, error } = await supabase
       .from("user_files")
@@ -47,18 +47,21 @@ export function useUserFiles(): UserFilesLink {
       .order("created_at", { ascending: true });
     if (error) throw error;
     return (data as UserFile[]) ?? [];
-  };
+  }, [session?.user?.id]);
 
-  const listPublicFiles = async (ownerId: string): Promise<UserFile[]> => {
-    const { data, error } = await supabase
-      .from("user_files")
-      .select("*")
-      .eq("owner_id", ownerId)
-      .eq("is_public", true)
-      .order("created_at", { ascending: true });
-    if (error) throw error;
-    return (data as UserFile[]) ?? [];
-  };
+  const listPublicFiles = useCallback(
+    async (ownerId: string): Promise<UserFile[]> => {
+      const { data, error } = await supabase
+        .from("user_files")
+        .select("*")
+        .eq("owner_id", ownerId)
+        .eq("is_public", true)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return (data as UserFile[]) ?? [];
+    },
+    []
+  );
 
   const isOwner = (file: UserFile): boolean => {
     return Boolean(session?.user?.id && file.owner_id === session.user.id);
