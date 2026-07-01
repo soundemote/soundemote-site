@@ -70,7 +70,7 @@ export const Hero = () => {
                 ref={iframeRef}
                 id="hero-sandbox-iframe"
                 title="soemdsp sandbox"
-                src="/soemdsp-sandbox/index.html?sandboxView=modular-only"
+                src="/soemdsp-sandbox/index.html?sandboxView=modular-only&v=20260737"
                 className="w-full border-0 bg-transparent"
                 style={{ height: sandboxViewportHeight, minHeight: sandboxViewportHeight }}
                 allow="autoplay; microphone"
