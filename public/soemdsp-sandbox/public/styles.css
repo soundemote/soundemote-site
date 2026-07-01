@@ -10661,8 +10661,13 @@ audio {
   display: block;
   width: 100%;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: clip;
+  /* Keep the box at the row's width so row height / layout is unaffected,
+     but let the text spill past the box instead of being clipped. The label
+     is pointer-events:none, so overflowing into the empty center column never
+     steals clicks from the port hit-box. Overflow direction follows
+     text-align: input rows (left) spill rightward, output rows (right) spill
+     leftward — always away from their own port. */
+  overflow: visible;
   white-space: nowrap;
   pointer-events: none;
 }
