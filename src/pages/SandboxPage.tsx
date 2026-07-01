@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { supabase, supabaseConfigError } from "@/lib/supabase";
 import { ClaimUrlDialog } from "@/components/soundemote/ClaimUrlDialog";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "@/hooks/use-toast";
 
 type SandboxRouteParams = {
   user?: string;
@@ -60,15 +62,51 @@ async function loadSandboxRouteProject(params: SandboxRouteParams) {
   return (legacy.data as SharedProjectRow | null)?.project_data || null;
 }
 
+const WIKIREVIEW_HANDLE = "wikireview";
+
+async function profileIdForHandle(handle: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("handle", handle)
+    .maybeSingle();
+  return (data as { id: string } | null)?.id ?? null;
+}
+
+async function initPatchForOwner(ownerId: string): Promise<unknown> {
+  const { data } = await supabase
+    .from("user_init_patches")
+    .select("project_data")
+    .eq("owner_id", ownerId)
+    .maybeSingle();
+  return (data as SharedProjectRow | null)?.project_data ?? null;
+}
+
+// Resolve init patch: the signed-in user's own, else wikireview's shared fallback.
+async function loadInitPatch(userId: string | undefined): Promise<unknown> {
+  if (supabaseConfigError) return null;
+  if (userId) {
+    const own = await initPatchForOwner(userId);
+    if (own) return own;
+  }
+  const wikiId = await profileIdForHandle(WIKIREVIEW_HANDLE);
+  if (wikiId) return initPatchForOwner(wikiId);
+  return null;
+}
+
 const SandboxPage = () => {
   const location = useLocation();
   const params = useParams<SandboxRouteParams>();
+  const { session } = useAuth();
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [projectData, setProjectData] = useState<unknown>(null);
   const [projectError, setProjectError] = useState<string | null>(null);
+  const [savingInit, setSavingInit] = useState(false);
   const hasPatchRoute = Boolean(params.patch);
   const claimSlug = new URLSearchParams(location.search).get("claim");
   const wikiSlug = new URLSearchParams(location.search).get("wiki");
+  const hasShare = new URLSearchParams(location.search).has("share");
+  const isPlainSandbox = !hasPatchRoute && !wikiSlug && !hasShare;
   const targetLabel = hasPatchRoute
     ? `${params.user || "soundemote"} / ${params.bank || "main"} / ${params.patch}`
     : "soemdsp sandbox";
@@ -92,6 +130,12 @@ const SandboxPage = () => {
       };
     }
     if (!hasPatchRoute || new URLSearchParams(location.search).has("share")) {
+      // Plain sandbox: load the user's init patch (or wikireview fallback).
+      if (isPlainSandbox) {
+        loadInitPatch(session?.user?.id).then((data) => {
+          if (!cancelled) setProjectData(data);
+        });
+      }
       return () => {
         cancelled = true;
       };
@@ -106,7 +150,7 @@ const SandboxPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [hasPatchRoute, location.search, params.user, params.bank, params.patch, wikiSlug]);
+  }, [hasPatchRoute, location.search, params.user, params.bank, params.patch, wikiSlug, isPlainSandbox, session?.user?.id]);
 
   const postProjectData = () => {
     if (!projectData || !iframeRef.current?.contentWindow) {
@@ -150,6 +194,30 @@ const SandboxPage = () => {
       );
     });
 
+  const saveInitPatch = async () => {
+    if (!session?.user?.id) return;
+    setSavingInit(true);
+    try {
+      const current = await requestCurrentPatch();
+      if (!current) {
+        toast({ title: "Could not read the current patch", variant: "destructive" });
+        return;
+      }
+      const { error } = await supabase
+        .from("user_init_patches")
+        .upsert(
+          { owner_id: session.user.id, project_data: current, updated_at: new Date().toISOString() },
+          { onConflict: "owner_id" },
+        );
+      if (error) throw error;
+      toast({ title: "Saved as your init patch" });
+    } catch (error) {
+      toast({ title: "Save failed", description: String((error as Error)?.message || error), variant: "destructive" });
+    } finally {
+      setSavingInit(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-background text-foreground">
       {hasPatchRoute && (
@@ -160,6 +228,17 @@ const SandboxPage = () => {
         >
           &lt; full sandbox
         </Link>
+      )}
+      {isPlainSandbox && session?.user?.id && (
+        <button
+          type="button"
+          onClick={saveInitPatch}
+          disabled={savingInit}
+          className="mono fixed right-3 top-3 z-50 rounded border border-cyan-300/35 bg-black/75 px-3 py-2 text-xs text-cyan-100 shadow-[0_0_18px_rgba(103,232,249,0.22)] backdrop-blur hover:bg-cyan-950/80 disabled:opacity-50"
+          aria-label="Save current patch as my init patch"
+        >
+          {savingInit ? "saving…" : "set as my init patch"}
+        </button>
       )}
       {claimSlug && (
         <div className="mono fixed left-1/2 top-3 z-50 flex -translate-x-1/2 items-center gap-3 rounded-full border border-amber-300/40 bg-black/80 px-4 py-2 text-xs text-amber-200 shadow-[0_0_18px_rgba(251,191,36,0.22)] backdrop-blur">
