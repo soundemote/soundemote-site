@@ -37,6 +37,7 @@ const nodeGraphNodeLabels = Object.freeze({
   chuaAttractor: "Chua Attractor",
   chordMemory: "Chord Memory",
   turingMachine: "Turing Machine",
+  pitchQuantizer: "Pitch Quantizer",
   noiseGenerator: "Noise Generator",
   randomWalk: "Random Walk",
   fractalBrownianNoise: "Fractal Brownian Noise",
@@ -711,6 +712,26 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { key: "length", label: "Length", defaultValue: "8", min: "1", mid: "8", max: "16", nonlinearSlider: false, step: "1" },
       { key: "probability", label: "Probability", defaultValue: "0.25", min: "0", mid: "0.25", max: "1", step: "any" },
       { key: "level", label: "Level", defaultValue: "1", min: "0", mid: "0.5", max: "1", step: "0.01" },
+    ],
+  },
+  pitchQuantizer: {
+    inputs: ["Pitch", "Scale"],
+    outputs: ["Pitch"],
+    parameters: [
+      {
+        choices: ["Chromatic", "Major", "Minor", "Major Pentatonic", "Minor Pentatonic", "Whole Tone"],
+        defaultValue: "1",
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        key: "scale",
+        label: "Scale",
+        linearSmoothing: false,
+        max: "5",
+        mid: "2.5",
+        min: "0",
+        nonlinearSlider: false,
+        step: "1",
+      },
     ],
   },
   noiseGenerator: {
@@ -1538,7 +1559,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { defaultValue: "0.07", key: "lfoAmplitude", label: "LFO Amp", max: "1", mid: "0.07", min: "0", nonlinearSlider: false, step: "any", tooltip: "Amount of delay modulation." },
       { defaultValue: "0.83", key: "lfoBaseSpeed", label: "LFO Speed", max: "1", mid: "0.83", min: "0", nonlinearSlider: false, step: "any", tooltip: "Base speed of delay modulation." },
       { defaultValue: "0.001", key: "lfoVariation", label: "LFO Var", max: "1", mid: "0.001", min: "0", nonlinearSlider: false, step: "any", tooltip: "Randomized variation in delay modulation." },
-      { control: "number", defaultValue: "0", key: "seed", label: "Seed", linearSmoothing: false, max: "99999", maxDigits: 5, mid: "1", min: "0", nonlinearSlider: false, step: "1", tooltip: "Randomizes the delay line pattern. Same seed always reproduces the same reverb character." },
+      { control: "number", defaultValue: "0", key: "seed", label: "Seed", linearSmoothing: false, max: "99999", maxDigits: 0, mid: "1", min: "0", nonlinearSlider: false, step: "1", tooltip: "Randomizes the delay line pattern. Same seed always reproduces the same reverb character." },
     ],
   },
   pll: {

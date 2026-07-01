@@ -392,6 +392,7 @@ function nodeGraphParameterDefinitionMetadata(parameter) {
   const midInsideRange = safeMid > safeMin && safeMid < safeMax;
   return {
     choices: normalizeNodeGraphMetadataChoices(parameter.choices || []),
+    control: String(parameter.control || "").trim() === "number" ? "number" : "",
     curveAmount: normalizeNodeSliderCurveAmount(parameter.curveAmount),
     def: clampNodeSliderValue(Number.isFinite(def) ? def : safeMin, safeMin, safeMax),
     displayChoices: Boolean(parameter.displayChoices),

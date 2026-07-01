@@ -22,17 +22,20 @@ function commitNodeSliderReadoutEdit(input) {
     return;
   }
   input.dataset.editCommitted = "true";
-  updateNodeSliderCurrentValue(document.getElementById(input.dataset.sliderTarget), input.value);
+  const slider = document.getElementById(input.dataset.sliderTarget);
+  updateNodeSliderCurrentValue(slider, input.value);
   const readout = document.createElement("button");
   readout.type = "button";
   readout.className = "node-slider-readout";
   readout.dataset.sliderTarget = input.dataset.sliderTarget;
   readout.dataset.paramLabel = input.dataset.paramLabel || "";
+  readout.dataset.control = slider?.dataset?.control || "";
+  readout.classList.toggle("number-only", slider?.dataset?.control === "number");
   readout.setAttribute("aria-label", input.getAttribute("aria-label"));
   populateNodeSliderReadoutShell(readout);
   input.replaceWith(readout);
   attachNodeSliderReadoutEvents(readout);
-  syncNodeSliderReadout(document.getElementById(readout.dataset.sliderTarget));
+  syncNodeSliderReadout(slider);
 }
 
 function cancelNodeSliderReadoutEdit(input) {
@@ -46,6 +49,8 @@ function cancelNodeSliderReadoutEdit(input) {
   readout.className = "node-slider-readout";
   readout.dataset.sliderTarget = input.dataset.sliderTarget;
   readout.dataset.paramLabel = input.dataset.paramLabel || "";
+  readout.dataset.control = slider?.dataset?.control || "";
+  readout.classList.toggle("number-only", slider?.dataset?.control === "number");
   readout.setAttribute("aria-label", input.getAttribute("aria-label"));
   populateNodeSliderReadoutShell(readout);
   input.replaceWith(readout);
@@ -97,7 +102,7 @@ function beginNodeSliderReadoutEdit(readout) {
 
 function updateNodeSliderValueHover(readout, event) {
   const slider = document.getElementById(readout.dataset.sliderTarget);
-  if (!slider) {
+  if (!slider || slider.dataset.control === "number") {
     readout.classList.remove("value-hovering");
     return;
   }
@@ -132,11 +137,26 @@ function updateNodeSliderValueHover(readout, event) {
   readout.classList.toggle("value-hovering", x >= start && x <= end);
 }
 
+function nodeSliderReadoutIsNumberOnly(readout) {
+  const slider = document.getElementById(readout?.dataset?.sliderTarget);
+  return slider?.dataset?.control === "number";
+}
+
+function stopNodeSliderReadoutPointer(event) {
+  event.preventDefault();
+  event.stopPropagation();
+}
+
 function attachNodeSliderReadoutEvents(readout) {
   readout.addEventListener("dblclick", () => beginNodeSliderReadoutEdit(readout));
   readout.addEventListener("contextmenu", (event) => openNodeMetadataPopover(event, readout));
   readout.addEventListener("pointermove", (event) => updateNodeSliderValueHover(readout, event));
   readout.addEventListener("pointerleave", () => readout.classList.remove("value-hovering"));
+  if (nodeSliderReadoutIsNumberOnly(readout)) {
+    readout.addEventListener("pointerdown", stopNodeSliderReadoutPointer);
+    readout.addEventListener("mousedown", stopNodeSliderReadoutPointer);
+    return;
+  }
   readout.addEventListener("pointerdown", beginNodeSliderDrag);
   readout.addEventListener("lostpointercapture", endNodeSliderDrag);
   readout.addEventListener("mousedown", beginNodeSliderDrag);
@@ -168,6 +188,8 @@ function createNodeSliderReadout(slider) {
   readout.className = "node-slider-readout";
   readout.dataset.sliderTarget = slider.id;
   readout.dataset.paramLabel = label.dataset.paramLabel || nodeSliderLabelText(slider);
+  readout.dataset.control = slider.dataset.control || "";
+  readout.classList.toggle("number-only", slider.dataset.control === "number");
   readout.setAttribute("aria-label", `${slider.id} current value`);
   populateNodeSliderReadoutShell(readout);
   attachNodeSliderReadoutEvents(readout);
