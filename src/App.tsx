@@ -15,6 +15,7 @@ import SharePage from "./pages/SharePage.tsx";
 import WikiPage from "./pages/WikiPage.tsx";
 import WikiArticlePage from "./pages/WikiArticlePage.tsx";
 import UserPage from "./pages/UserPage.tsx";
+import FilesPage from "./pages/FilesPage.tsx";
 import AuthPage from "./pages/AuthPage.tsx";
 import AdminLogin from "./pages/AdminLogin.tsx";
 import AdminDashboard from "./pages/AdminDashboard.tsx";
