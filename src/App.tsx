@@ -41,6 +41,7 @@ const App = () => (
           <Route path="/sandbox" element={<SandboxPage />} />
           <Route path="/reverb" element={<SandboxPage staticPatchUrl="/patches/reverb.json" />} />
           <Route path="/shootingstar" element={<SandboxPage staticPatchUrl="/patches/shootingstar.json" />} />
+          <Route path="/tweet" element={<SandboxPage staticPatchUrl="/patches/tweet.json" />} />
           <Route path="/sandbox/:patch" element={<SandboxPage />} />
           <Route path="/sandbox/:user/:bank/:patch" element={<SandboxPage />} />
           <Route path="/avw-research" element={<AVWResearch />} />
