@@ -94,7 +94,11 @@ async function loadInitPatch(userId: string | undefined): Promise<unknown> {
   return null;
 }
 
-const SandboxPage = () => {
+type SandboxPageProps = {
+  staticPatchUrl?: string;
+};
+
+const SandboxPage = ({ staticPatchUrl }: SandboxPageProps = {}) => {
   const location = useLocation();
   const params = useParams<SandboxRouteParams>();
   const { session } = useAuth();
@@ -116,6 +120,19 @@ const SandboxPage = () => {
     let cancelled = false;
     setProjectData(null);
     setProjectError(null);
+    if (staticPatchUrl) {
+      fetch(staticPatchUrl)
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled) setProjectData(data);
+        })
+        .catch((error) => {
+          if (!cancelled) setProjectError(error?.message || String(error));
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
     if (wikiSlug && !supabaseConfigError) {
       supabase
         .from("wiki_pages")
@@ -150,7 +167,7 @@ const SandboxPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [hasPatchRoute, location.search, params.user, params.bank, params.patch, wikiSlug, isPlainSandbox, session?.user?.id]);
+  }, [hasPatchRoute, location.search, params.user, params.bank, params.patch, wikiSlug, isPlainSandbox, session?.user?.id, staticPatchUrl]);
 
   const postProjectData = () => {
     if (!projectData || !iframeRef.current?.contentWindow) {
