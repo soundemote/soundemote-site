@@ -56,6 +56,20 @@
       "sourceNode": "reverbEffect-1",
       "sourcePort": "Right Mix",
       "tracePoints": []
+    },
+    {
+      "destinationNode": "output",
+      "destinationPort": "Mono",
+      "sourceNode": "shootingStarExplosion-1",
+      "sourcePort": "Pulse",
+      "tracePoints": []
+    },
+    {
+      "destinationNode": "reverbEffect-1",
+      "destinationPort": "In",
+      "sourceNode": "shootingStarExplosion-1",
+      "sourcePort": "Pulse",
+      "tracePoints": []
     }
   ],
   "format": {
@@ -511,6 +525,66 @@
       },
       "type": "reverbEffect",
       "alias": "Sabrina"
+    },
+    {
+      "gx": -8,
+      "gy": -12,
+      "id": "shootingStarExplosion-1",
+      "paramMeta": {
+        "lowRange": {
+          "alias": "",
+          "choices": [],
+          "curveAmount": 0,
+          "def": 0,
+          "displayChoices": false,
+          "divideChoicesVisibly": false,
+          "kind": "decimal",
+          "linearSmoothing": true,
+          "max": 1,
+          "maxDigits": 3,
+          "mid": 0.5,
+          "min": 0,
+          "nonlinearSlider": false,
+          "showSign": false,
+          "sliderCurve": "linear",
+          "smoothingSeconds": 0,
+          "step": 0,
+          "tooltip": "Minimum explosion pulse amplitude (0-1 speed sends this).",
+          "unboundedMax": false,
+          "unboundedMin": false,
+          "unit": "",
+          "wraparound": false
+        },
+        "highRange": {
+          "alias": "",
+          "choices": [],
+          "curveAmount": 0,
+          "def": 1,
+          "displayChoices": false,
+          "divideChoicesVisibly": false,
+          "kind": "decimal",
+          "linearSmoothing": true,
+          "max": 1,
+          "maxDigits": 3,
+          "mid": 0.5,
+          "min": 0,
+          "nonlinearSlider": false,
+          "showSign": false,
+          "sliderCurve": "linear",
+          "smoothingSeconds": 0,
+          "step": 0,
+          "tooltip": "Maximum explosion pulse amplitude (1 speed, or no speed data, sends this).",
+          "unboundedMax": false,
+          "unboundedMin": false,
+          "unit": "",
+          "wraparound": false
+        }
+      },
+      "params": {
+        "lowRange": 1,
+        "highRange": 1
+      },
+      "type": "shootingStarExplosion"
     }
   ],
   "requiredAssets": [
