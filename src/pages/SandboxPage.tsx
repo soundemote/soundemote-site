@@ -111,7 +111,9 @@ const SandboxPage = ({ staticPatchUrl }: SandboxPageProps = {}) => {
   const wikiSlug = new URLSearchParams(location.search).get("wiki");
   const hasShare = new URLSearchParams(location.search).has("share");
   const isEmbed = new URLSearchParams(location.search).get("embed") === "1";
-  const wantsAutoframe = new URLSearchParams(location.search).get("autoframe") === "1";
+  // Autoframe is on by default across the site; opt out with ?autoframe=0.
+  const autoframeParam = new URLSearchParams(location.search).get("autoframe");
+  const wantsAutoframe = autoframeParam !== "0" && autoframeParam !== "false";
   const isPlainSandbox = !hasPatchRoute && !wikiSlug && !hasShare;
   const targetLabel = hasPatchRoute
     ? `${params.user || "soundemote"} / ${params.bank || "main"} / ${params.patch}`
