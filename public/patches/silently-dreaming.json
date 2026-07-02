@@ -62,36 +62,7 @@
   "kind": "soemdsp-sandbox-node-patch",
   "version": 1
  },
- "graphConnections": [
-  {
-   "destinationNode": "reverbEffect-1",
-   "destinationPort": "Left",
-   "sourceNode": "audioPlayer-1",
-   "sourcePort": "Left",
-   "tracePoints": []
-  },
-  {
-   "destinationNode": "reverbEffect-1",
-   "destinationPort": "Right",
-   "sourceNode": "audioPlayer-1",
-   "sourcePort": "Right",
-   "tracePoints": []
-  },
-  {
-   "destinationNode": "output",
-   "destinationPort": "Left",
-   "sourceNode": "reverbEffect-1",
-   "sourcePort": "Left Mix",
-   "tracePoints": []
-  },
-  {
-   "destinationNode": "output",
-   "destinationPort": "Right",
-   "sourceNode": "reverbEffect-1",
-   "sourcePort": "Right Mix",
-   "tracePoints": []
-  }
- ],
+ "graphConnections": [],
  "grid": {
   "heightPx": 28,
   "sizePx": 28,
