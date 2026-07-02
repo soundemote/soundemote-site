@@ -10,6 +10,11 @@ export const Hero = () => {
   // Seed lastPostedRef to 0 so it is never re-posted on first load (which would
   // re-load the graph and flash). Only genuine index changes post.
   const lastPostedRef = useRef<number>(0);
+  // Serialized body of the patch currently loaded in the sandbox, to detect
+  // "loaded but no visible diff" cases (e.g. two banks pointing at the same graph).
+  const lastBodyRef = useRef<string | null>(null);
+  const noDiffTimer = useRef<number | null>(null);
+  const [noDiff, setNoDiff] = useState(false);
   const sandboxViewportHeight = "max(640px, calc(100svh - 10rem))";
   const currentPatch = SOUNDEMOTE_BANK[patchIndex];
 
@@ -22,6 +27,15 @@ export const Hero = () => {
     try {
       const res = await fetch(currentPatch.url);
       const patchData = await res.json();
+      // Detect no-op loads: same graph body as what's already showing.
+      const body = JSON.stringify(patchData?.patch_data ?? patchData);
+      const identical = lastBodyRef.current !== null && lastBodyRef.current === body;
+      lastBodyRef.current = body;
+      setNoDiff(identical);
+      if (noDiffTimer.current) window.clearTimeout(noDiffTimer.current);
+      if (identical) {
+        noDiffTimer.current = window.setTimeout(() => setNoDiff(false), 1800);
+      }
       // The sandbox expects a "sandbox_patch" share envelope, not a raw patch.
       // If the file is already an envelope, forward it as-is; otherwise wrap it.
       const projectData =
