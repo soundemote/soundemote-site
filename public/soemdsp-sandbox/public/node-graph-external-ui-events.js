@@ -429,12 +429,17 @@ window.addEventListener("message", (event) => {
             ? cloneNodeGraphPatch(loadedPatch)
             : loadedPatch;
         commitNodeGraphPatch(clonedPatch, { status: "shared patch loaded" });
+        nodeGraphExternalAutoFrameAfterLoad();
       }
     } catch (error) {
       if (typeof setNodeGraphScriptStatus === "function") {
         setNodeGraphScriptStatus(`shared patch load failed: ${error?.message || error}`, false);
       }
     }
+  } else if (message.type === "soundemote:autoframe") {
+    nodeGraphExternalScheduleAutoFrame(
+      message.padding != null ? { padding: message.padding, force: true } : { force: true },
+    );
   } else if (message.type === "soundemote:request-current-patch") {
     let projectData = null;
     try {
