@@ -113,6 +113,35 @@ const EmbedPage = () => {
           </div>
 
           <div>
+            <label className="mono flex cursor-pointer items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={modular}
+                disabled={hideUi}
+                onChange={(e) => setModular(e.target.checked)}
+                className="h-4 w-4 accent-cyan-400 disabled:opacity-40"
+              />
+              <span className="uppercase tracking-[0.18em] text-muted-foreground">
+                modular view — open straight into the modules
+              </span>
+            </label>
+          </div>
+
+          <div>
+            <label className="mono flex cursor-pointer items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={hideUi}
+                onChange={(e) => setHideUi(e.target.checked)}
+                className="h-4 w-4 accent-cyan-400"
+              />
+              <span className="uppercase tracking-[0.18em] text-muted-foreground">
+                hide ui — full-screen modular, no back / resize / border
+              </span>
+            </label>
+          </div>
+
+          <div>
             <div className="mb-2 flex items-center justify-between">
               <p className="mono text-xs uppercase tracking-[0.18em] text-muted-foreground">
                 embed snippet
