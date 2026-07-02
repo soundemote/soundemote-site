@@ -459,3 +459,12 @@ window.addEventListener("message", (event) => {
     );
   }
 });
+
+// Autoframe the initial patch on load when embedded with ?autoframe=1.
+if (nodeGraphExternalAutoFrameRequested()) {
+  if (document.readyState === "complete") {
+    nodeGraphExternalScheduleAutoFrame();
+  } else {
+    window.addEventListener("load", () => nodeGraphExternalScheduleAutoFrame(), { once: true });
+  }
+}
