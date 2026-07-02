@@ -16,6 +16,24 @@ function nodeGraphExternalAutoFrameRequested() {
   }
 }
 
+// When embedded with ?hideui=1, drop all chrome: force modular-only view and
+// hide the back button, resize handle, and workspace border for a clean,
+// full-screen "no nonsense" frame. Handled via a root class + CSS.
+function nodeGraphExternalHideUiRequested() {
+  try {
+    const raw = String(new URLSearchParams(window.location.search).get("hideui") || "")
+      .trim()
+      .toLowerCase();
+    return raw === "1" || raw === "true" || raw === "yes";
+  } catch (error) {
+    return false;
+  }
+}
+
+if (nodeGraphExternalHideUiRequested()) {
+  document.documentElement.classList.add("soemdsp-hide-ui");
+}
+
 function nodeGraphExternalScheduleAutoFrame(options = {}) {
   if (typeof window.nodeGraphAutoFrame !== "function") {
     return;

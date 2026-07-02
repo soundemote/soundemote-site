@@ -20,13 +20,18 @@ const EmbedPage = () => {
   const [patch, setPatch] = useState<string>(PATCHES[1].path);
   const [height, setHeight] = useState<number>(600);
   const [autoframe, setAutoframe] = useState<boolean>(true);
+  const [modular, setModular] = useState<boolean>(false);
+  const [hideUi, setHideUi] = useState<boolean>(false);
 
   const embedUrl = useMemo(() => {
     const q = new URLSearchParams();
     q.set("embed", "1");
     if (autoframe) q.set("autoframe", "1");
+    // hideui implies modular-only view, so no need to also set modular.
+    if (hideUi) q.set("hideui", "1");
+    else if (modular) q.set("modular", "1");
     return `${SITE_ORIGIN}${patch}?${q.toString()}`;
-  }, [patch, autoframe]);
+  }, [patch, autoframe, modular, hideUi]);
 
   const snippet = useMemo(
     () =>
@@ -108,6 +113,35 @@ const EmbedPage = () => {
           </div>
 
           <div>
+            <label className="mono flex cursor-pointer items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={modular}
+                disabled={hideUi}
+                onChange={(e) => setModular(e.target.checked)}
+                className="h-4 w-4 accent-cyan-400 disabled:opacity-40"
+              />
+              <span className="uppercase tracking-[0.18em] text-muted-foreground">
+                modular view — open straight into the modules
+              </span>
+            </label>
+          </div>
+
+          <div>
+            <label className="mono flex cursor-pointer items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={hideUi}
+                onChange={(e) => setHideUi(e.target.checked)}
+                className="h-4 w-4 accent-cyan-400"
+              />
+              <span className="uppercase tracking-[0.18em] text-muted-foreground">
+                hide ui — full-screen modular, no back / resize / border
+              </span>
+            </label>
+          </div>
+
+          <div>
             <div className="mb-2 flex items-center justify-between">
               <p className="mono text-xs uppercase tracking-[0.18em] text-muted-foreground">
                 embed snippet
@@ -149,7 +183,9 @@ const EmbedPage = () => {
             </p>
             <iframe
               key={embedUrl + height}
-              src={`${patch}?embed=1${autoframe ? "&autoframe=1" : ""}`}
+              src={`${patch}?embed=1${autoframe ? "&autoframe=1" : ""}${
+                hideUi ? "&hideui=1" : modular ? "&modular=1" : ""
+              }`}
               width="100%"
               height={height}
               style={{ border: 0, borderRadius: 12, overflow: "hidden" }}
