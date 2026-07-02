@@ -250,7 +250,7 @@ const SandboxPage = ({ staticPatchUrl }: SandboxPageProps = {}) => {
 
   return (
     <main className="min-h-screen bg-background text-foreground">
-      {hasPatchRoute && (
+      {hasPatchRoute && !isEmbed && (
         <Link
           to="/sandbox"
           className="mono fixed left-3 top-3 z-50 rounded border border-cyan-300/35 bg-black/75 px-3 py-2 text-xs text-cyan-100 shadow-[0_0_18px_rgba(103,232,249,0.22)] backdrop-blur hover:bg-cyan-950/80"
@@ -259,7 +259,7 @@ const SandboxPage = ({ staticPatchUrl }: SandboxPageProps = {}) => {
           &lt; full sandbox
         </Link>
       )}
-      {isPlainSandbox && session?.user?.id && (
+      {isPlainSandbox && !isEmbed && session?.user?.id && (
         <button
           type="button"
           onClick={saveInitPatch}
