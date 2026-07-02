@@ -110,6 +110,7 @@ const SandboxPage = ({ staticPatchUrl }: SandboxPageProps = {}) => {
   const claimSlug = new URLSearchParams(location.search).get("claim");
   const wikiSlug = new URLSearchParams(location.search).get("wiki");
   const hasShare = new URLSearchParams(location.search).has("share");
+  const isEmbed = new URLSearchParams(location.search).get("embed") === "1";
   const isPlainSandbox = !hasPatchRoute && !wikiSlug && !hasShare;
   const targetLabel = hasPatchRoute
     ? `${params.user || "soundemote"} / ${params.bank || "main"} / ${params.patch}`
