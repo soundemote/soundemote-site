@@ -19,11 +19,14 @@ const PATCHES: PatchOption[] = [
 const EmbedPage = () => {
   const [patch, setPatch] = useState<string>(PATCHES[1].path);
   const [height, setHeight] = useState<number>(600);
+  const [autoframe, setAutoframe] = useState<boolean>(true);
 
   const embedUrl = useMemo(() => {
-    const sep = patch.includes("?") ? "&" : "?";
-    return `${SITE_ORIGIN}${patch}${sep}embed=1`;
-  }, [patch]);
+    const q = new URLSearchParams();
+    q.set("embed", "1");
+    if (autoframe) q.set("autoframe", "1");
+    return `${SITE_ORIGIN}${patch}?${q.toString()}`;
+  }, [patch, autoframe]);
 
   const snippet = useMemo(
     () =>
