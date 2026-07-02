@@ -149,7 +149,7 @@ const EmbedPage = () => {
             </p>
             <iframe
               key={embedUrl + height}
-              src={patch + (patch.includes("?") ? "&" : "?") + "embed=1"}
+              src={`${patch}?embed=1${autoframe ? "&autoframe=1" : ""}`}
               width="100%"
               height={height}
               style={{ border: 0, borderRadius: 12, overflow: "hidden" }}
