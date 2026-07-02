@@ -124,7 +124,19 @@ const SandboxPage = ({ staticPatchUrl }: SandboxPageProps = {}) => {
       fetch(staticPatchUrl)
         .then((res) => res.json())
         .then((data) => {
-          if (!cancelled) setProjectData(data);
+          if (cancelled) return;
+          // The sandbox expects a "sandbox_patch" envelope, not a raw graph patch.
+          const projectData =
+            data?.kind === "sandbox_patch"
+              ? data
+              : {
+                  kind: "sandbox_patch",
+                  version: 1,
+                  title: staticPatchUrl,
+                  bank_name: "soundemote",
+                  patch_data: data,
+                };
+          setProjectData(projectData);
         })
         .catch((error) => {
           if (!cancelled) setProjectError(error?.message || String(error));
