@@ -15,7 +15,7 @@ type SharedProjectRow = {
   project_data: unknown;
 };
 
-function sandboxIframeSrc(search: string, params: SandboxRouteParams) {
+function sandboxIframeSrc(search: string, params: SandboxRouteParams, wantsAutoframe: boolean) {
   const iframeParams = new URLSearchParams(search);
   const hasPatchRoute = Boolean(params.patch);
 
@@ -24,6 +24,13 @@ function sandboxIframeSrc(search: string, params: SandboxRouteParams) {
     iframeParams.set("sandboxUser", params.user || "soundemote");
     iframeParams.set("sandboxBank", params.bank || "main");
     iframeParams.set("sandboxPatch", params.patch || "");
+  }
+
+  // Autoframe is on by default; propagate it into the iframe so the sandbox
+  // frames patches it loads internally (init/default patch, manual loads),
+  // not just ones we push via postMessage.
+  if (wantsAutoframe) {
+    iframeParams.set("autoframe", "1");
   }
 
   const query = iframeParams.toString();
