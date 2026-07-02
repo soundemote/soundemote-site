@@ -193,6 +193,19 @@ const SandboxPage = ({ staticPatchUrl }: SandboxPageProps = {}) => {
   }, [hasPatchRoute, location.search, params.user, params.bank, params.patch, wikiSlug, isPlainSandbox, session?.user?.id, staticPatchUrl]);
 
   const postProjectData = () => {
+    // Fire autoframe on load regardless of whether we push project data — the
+    // sandbox may load its own init/default patch internally, and we still want
+    // it framed. Retry a few times to beat the internal async patch commit.
+    if (wantsAutoframe && iframeRef.current?.contentWindow) {
+      for (const delay of [350, 900, 1600]) {
+        window.setTimeout(() => {
+          iframeRef.current?.contentWindow?.postMessage(
+            { type: "soundemote:autoframe" },
+            window.location.origin,
+          );
+        }, delay);
+      }
+    }
     if (!projectData || !iframeRef.current?.contentWindow) {
       return;
     }
@@ -203,16 +216,6 @@ const SandboxPage = ({ staticPatchUrl }: SandboxPageProps = {}) => {
       },
       window.location.origin,
     );
-    // After the patch commits, zoom-to-fit deterministically (avoids the
-    // on-load race where a re-commit resets the view).
-    if (wantsAutoframe) {
-      window.setTimeout(() => {
-        iframeRef.current?.contentWindow?.postMessage(
-          { type: "soundemote:autoframe" },
-          window.location.origin,
-        );
-      }, 300);
-    }
   };
 
   useEffect(postProjectData, [projectData, iframeSrc]);
