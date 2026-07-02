@@ -183,7 +183,9 @@ const EmbedPage = () => {
             </p>
             <iframe
               key={embedUrl + height}
-              src={`${patch}?embed=1${autoframe ? "&autoframe=1" : ""}`}
+              src={`${patch}?embed=1${autoframe ? "&autoframe=1" : ""}${
+                hideUi ? "&hideui=1" : modular ? "&modular=1" : ""
+              }`}
               width="100%"
               height={height}
               style={{ border: 0, borderRadius: 12, overflow: "hidden" }}
