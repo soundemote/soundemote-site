@@ -20,13 +20,18 @@ const EmbedPage = () => {
   const [patch, setPatch] = useState<string>(PATCHES[1].path);
   const [height, setHeight] = useState<number>(600);
   const [autoframe, setAutoframe] = useState<boolean>(true);
+  const [modular, setModular] = useState<boolean>(false);
+  const [hideUi, setHideUi] = useState<boolean>(false);
 
   const embedUrl = useMemo(() => {
     const q = new URLSearchParams();
     q.set("embed", "1");
     if (autoframe) q.set("autoframe", "1");
+    // hideui implies modular-only view, so no need to also set modular.
+    if (hideUi) q.set("hideui", "1");
+    else if (modular) q.set("modular", "1");
     return `${SITE_ORIGIN}${patch}?${q.toString()}`;
-  }, [patch, autoframe]);
+  }, [patch, autoframe, modular, hideUi]);
 
   const snippet = useMemo(
     () =>
