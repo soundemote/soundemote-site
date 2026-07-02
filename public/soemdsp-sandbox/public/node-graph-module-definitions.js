@@ -1919,7 +1919,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
   // alternative with a ~40x longer release.
   vactrolEnvelope: {
     inputs: ["Light"],
-    outputs: ["Out"],
+    outputs: ["Env"],
     parameters: [
       {
         defaultValue: "0.0025", key: "attack", kind: "time", label: "Attack", max: "2", maxDigits: 5, mid: "0.0025", min: "0", step: "any", unit: "s",
@@ -1955,7 +1955,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
   },
   vactrolEnvelopeC4: {
     inputs: ["Light"],
-    outputs: ["Out"],
+    outputs: ["Env"],
     parameters: [
       {
         defaultValue: "0.006", key: "attack", kind: "time", label: "Attack", max: "2", maxDigits: 5, mid: "0.006", min: "0", step: "any", unit: "s",
