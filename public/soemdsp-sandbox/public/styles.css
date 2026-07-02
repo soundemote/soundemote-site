@@ -10614,12 +10614,16 @@ audio {
 
 .node-io-row {
   /* The port hit-box is a fixed-size overlay (see .node-io-row .node-port
-     below), not a grid track — the label is plain text that gets the row's
-     full width, with just enough padding to clear the port visually. This
-     keeps the hit-box stable without the label's available width depending
-     on how the port element happens to render. */
+     below), not a grid track. The label is a flex item so its overflow
+     direction is anchored reliably: text-align on a block box only shifts
+     content within *available* slack space, and does nothing once nowrap
+     content is wider than the box (verified — it just overflows toward the
+     block's start edge regardless of text-align). justify-content on a flex
+     container instead pins the label's end edge, so overflow always grows
+     away from the port, never past it.  */
   position: relative;
-  display: block;
+  display: flex;
+  align-items: center;
   min-width: 0;
   max-width: 100%;
   width: 100%;
@@ -10633,14 +10637,14 @@ audio {
 
 .node-io-row.input {
   justify-self: start;
+  justify-content: flex-start;
   padding-left: calc(var(--node-signal-port-width) + var(--node-io-label-gap));
-  text-align: left;
 }
 
 .node-io-row.output {
   justify-self: end;
+  justify-content: flex-end;
   padding-right: calc(var(--node-signal-port-width) + var(--node-io-label-gap));
-  text-align: right;
 }
 
 .node-io-row .node-port {
@@ -10659,8 +10663,8 @@ audio {
 
 .node-io-label {
   display: block;
-  width: 100%;
-  min-width: 0;
+  flex: 0 0 auto;
+  max-width: none;
   overflow: visible;
   white-space: nowrap;
   pointer-events: none;
