@@ -15,7 +15,7 @@ type SharedProjectRow = {
   project_data: unknown;
 };
 
-function sandboxIframeSrc(search: string, params: SandboxRouteParams) {
+function sandboxIframeSrc(search: string, params: SandboxRouteParams, wantsAutoframe: boolean) {
   const iframeParams = new URLSearchParams(search);
   const hasPatchRoute = Boolean(params.patch);
 
@@ -24,6 +24,13 @@ function sandboxIframeSrc(search: string, params: SandboxRouteParams) {
     iframeParams.set("sandboxUser", params.user || "soundemote");
     iframeParams.set("sandboxBank", params.bank || "main");
     iframeParams.set("sandboxPatch", params.patch || "");
+  }
+
+  // Autoframe is on by default; propagate it into the iframe so the sandbox
+  // frames patches it loads internally (init/default patch, manual loads),
+  // not just ones we push via postMessage.
+  if (wantsAutoframe) {
+    iframeParams.set("autoframe", "1");
   }
 
   const query = iframeParams.toString();
@@ -118,7 +125,7 @@ const SandboxPage = ({ staticPatchUrl }: SandboxPageProps = {}) => {
   const targetLabel = hasPatchRoute
     ? `${params.user || "soundemote"} / ${params.bank || "main"} / ${params.patch}`
     : "soemdsp sandbox";
-  const iframeSrc = sandboxIframeSrc(location.search, params);
+  const iframeSrc = sandboxIframeSrc(location.search, params, wantsAutoframe);
 
   useEffect(() => {
     let cancelled = false;
@@ -186,6 +193,19 @@ const SandboxPage = ({ staticPatchUrl }: SandboxPageProps = {}) => {
   }, [hasPatchRoute, location.search, params.user, params.bank, params.patch, wikiSlug, isPlainSandbox, session?.user?.id, staticPatchUrl]);
 
   const postProjectData = () => {
+    // Fire autoframe on load regardless of whether we push project data — the
+    // sandbox may load its own init/default patch internally, and we still want
+    // it framed. Retry a few times to beat the internal async patch commit.
+    if (wantsAutoframe && iframeRef.current?.contentWindow) {
+      for (const delay of [350, 900, 1600]) {
+        window.setTimeout(() => {
+          iframeRef.current?.contentWindow?.postMessage(
+            { type: "soundemote:autoframe" },
+            window.location.origin,
+          );
+        }, delay);
+      }
+    }
     if (!projectData || !iframeRef.current?.contentWindow) {
       return;
     }
@@ -196,16 +216,6 @@ const SandboxPage = ({ staticPatchUrl }: SandboxPageProps = {}) => {
       },
       window.location.origin,
     );
-    // After the patch commits, zoom-to-fit deterministically (avoids the
-    // on-load race where a re-commit resets the view).
-    if (wantsAutoframe) {
-      window.setTimeout(() => {
-        iframeRef.current?.contentWindow?.postMessage(
-          { type: "soundemote:autoframe" },
-          window.location.origin,
-        );
-      }, 300);
-    }
   };
 
   useEffect(postProjectData, [projectData, iframeSrc]);
