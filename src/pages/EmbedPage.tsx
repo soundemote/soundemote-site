@@ -10,7 +10,7 @@ type PatchOption = {
 };
 
 const PATCHES: PatchOption[] = [
-  { label: "silently dreaming", path: "/sandbox" },
+  { label: "silently dreaming", path: "/silentlydreaming" },
   { label: "reverb", path: "/reverb" },
   { label: "shooting star", path: "/shootingstar" },
   { label: "tweet", path: "/tweet" },
