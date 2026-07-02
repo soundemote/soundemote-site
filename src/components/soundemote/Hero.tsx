@@ -110,7 +110,7 @@ export const Hero = () => {
               ‹ prev
             </button>
             <span className="mono min-w-[10rem] text-xs uppercase tracking-[0.18em] text-scope">
-              soundemote / {currentPatch.label}
+              {currentPatch.label}
             </span>
             <button
               type="button"
