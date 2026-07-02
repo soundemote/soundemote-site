@@ -9,6 +9,7 @@ import CircleTestPage from "./pages/CircleTestPage.tsx";
 import OscilloscopePage from "./pages/OscilloscopePage.tsx";
 import ScopeScratchPage from "./pages/ScopeScratchPage.tsx";
 import SandboxPage from "./pages/SandboxPage.tsx";
+import EmbedPage from "./pages/EmbedPage.tsx";
 import AVWResearch from "./pages/AVWResearch.tsx";
 import SupabaseTest from "./pages/SupabaseTest.tsx";
 import SharePage from "./pages/SharePage.tsx";
@@ -40,6 +41,7 @@ const App = () => (
           <Route path="/oscilloscope" element={<OscilloscopePage />} />
           <Route path="/scope-scratch" element={<ScopeScratchPage />} />
           <Route path="/sandbox" element={<SandboxPage />} />
+          <Route path="/embed" element={<EmbedPage />} />
           <Route path="/reverb" element={<SandboxPage staticPatchUrl="/patches/reverb.json" />} />
           <Route path="/shootingstar" element={<SandboxPage staticPatchUrl="/patches/shootingstar.json" />} />
           <Route path="/tweet" element={<SandboxPage staticPatchUrl="/patches/tweet.json" />} />
