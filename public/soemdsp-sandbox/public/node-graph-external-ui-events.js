@@ -7,6 +7,33 @@ const nodeGraphExternalSandboxEventNames = Object.freeze(new Set([
   "shootingStarExplosion",
 ]));
 
+// When embedded with ?autoframe=1, zoom-to-fit the whole patch after it loads.
+function nodeGraphExternalAutoFrameRequested() {
+  try {
+    return new URLSearchParams(window.location.search).get("autoframe") === "1";
+  } catch (error) {
+    return false;
+  }
+}
+
+function nodeGraphExternalScheduleAutoFrame(options = {}) {
+  if (typeof window.nodeGraphAutoFrame !== "function") {
+    return;
+  }
+  // Two rAFs so node DOM has laid out (offsetWidth/height) before measuring.
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      window.nodeGraphAutoFrame(options);
+    });
+  });
+}
+
+function nodeGraphExternalAutoFrameAfterLoad(options = {}) {
+  if (nodeGraphExternalAutoFrameRequested() || options.force) {
+    nodeGraphExternalScheduleAutoFrame(options);
+  }
+}
+
 function normalizeNodeGraphExternalButtonEventName(name) {
   const key = String(name || "").trim().toLowerCase();
   if (key === "mousedown" || key === "pointerdown") return "down";
