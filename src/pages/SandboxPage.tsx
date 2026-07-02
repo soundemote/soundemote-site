@@ -111,6 +111,7 @@ const SandboxPage = ({ staticPatchUrl }: SandboxPageProps = {}) => {
   const wikiSlug = new URLSearchParams(location.search).get("wiki");
   const hasShare = new URLSearchParams(location.search).has("share");
   const isEmbed = new URLSearchParams(location.search).get("embed") === "1";
+  const wantsAutoframe = new URLSearchParams(location.search).get("autoframe") === "1";
   const isPlainSandbox = !hasPatchRoute && !wikiSlug && !hasShare;
   const targetLabel = hasPatchRoute
     ? `${params.user || "soundemote"} / ${params.bank || "main"} / ${params.patch}`
@@ -193,6 +194,16 @@ const SandboxPage = ({ staticPatchUrl }: SandboxPageProps = {}) => {
       },
       window.location.origin,
     );
+    // After the patch commits, zoom-to-fit deterministically (avoids the
+    // on-load race where a re-commit resets the view).
+    if (wantsAutoframe) {
+      window.setTimeout(() => {
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: "soundemote:autoframe" },
+          window.location.origin,
+        );
+      }, 300);
+    }
   };
 
   useEffect(postProjectData, [projectData, iframeSrc]);

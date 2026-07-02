@@ -19,11 +19,14 @@ const PATCHES: PatchOption[] = [
 const EmbedPage = () => {
   const [patch, setPatch] = useState<string>(PATCHES[1].path);
   const [height, setHeight] = useState<number>(600);
+  const [autoframe, setAutoframe] = useState<boolean>(true);
 
   const embedUrl = useMemo(() => {
-    const sep = patch.includes("?") ? "&" : "?";
-    return `${SITE_ORIGIN}${patch}${sep}embed=1`;
-  }, [patch]);
+    const q = new URLSearchParams();
+    q.set("embed", "1");
+    if (autoframe) q.set("autoframe", "1");
+    return `${SITE_ORIGIN}${patch}?${q.toString()}`;
+  }, [patch, autoframe]);
 
   const snippet = useMemo(
     () =>
@@ -91,6 +94,20 @@ const EmbedPage = () => {
           </div>
 
           <div>
+            <label className="mono flex cursor-pointer items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={autoframe}
+                onChange={(e) => setAutoframe(e.target.checked)}
+                className="h-4 w-4 accent-cyan-400"
+              />
+              <span className="uppercase tracking-[0.18em] text-muted-foreground">
+                autoframe — zoom to fit the whole patch
+              </span>
+            </label>
+          </div>
+
+          <div>
             <div className="mb-2 flex items-center justify-between">
               <p className="mono text-xs uppercase tracking-[0.18em] text-muted-foreground">
                 embed snippet
@@ -132,7 +149,7 @@ const EmbedPage = () => {
             </p>
             <iframe
               key={embedUrl + height}
-              src={patch + (patch.includes("?") ? "&" : "?") + "embed=1"}
+              src={`${patch}?embed=1${autoframe ? "&autoframe=1" : ""}`}
               width="100%"
               height={height}
               style={{ border: 0, borderRadius: 12, overflow: "hidden" }}
