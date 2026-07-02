@@ -123,8 +123,13 @@ export const Hero = () => {
             >
               ‹ prev
             </button>
-            <span className="mono min-w-[10rem] text-xs uppercase tracking-[0.18em] text-scope">
+            <span className="mono flex min-w-[10rem] flex-col items-center text-xs uppercase tracking-[0.18em] text-scope">
               {currentPatch.label}
+              {noDiff && (
+                <span className="mt-0.5 text-[0.6rem] normal-case tracking-normal text-scope/60">
+                  loaded · identical to previous
+                </span>
+              )}
             </span>
             <button
               type="button"
