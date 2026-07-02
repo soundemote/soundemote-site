@@ -10676,6 +10676,19 @@ audio {
   right: 0;
 }
 
+/* Digital signal (12-bit bitmask) ports: solid white wire and port taps
+   (see nodeGraphPortWireColor). Colors only -- no shape, dash, or animation
+   change; dashing stays reserved for the .node-wire-path.temp drag state. */
+.node-io-row[data-digital-signal="output"] {
+  --node-output-fill: #ffffff;
+  --node-output-stroke: #ffffff;
+}
+
+.node-io-row[data-digital-signal="input"] {
+  --node-input-fill: #ffffff;
+  --node-input-stroke: #ffffff;
+}
+
 .node-io-label {
   display: block;
   flex: 0 0 auto;

@@ -2409,6 +2409,14 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
+  // Mirrors soemdsp::filter::SmootherBase::needsSmoothing() -- once a
+  // parameter has settled within epsilon of its target (no live modulation
+  // moving it), skip the one-pole recompute entirely rather than running it
+  // every sample forever for a value that isn't changing.
+  smootherNeedsWork(smoother) {
+    return Math.abs((smoother.outputBuffer ?? 0) - (smoother.targetSignal ?? 0)) > 1e-7;
+  }
+
   updateSmoother(smoother, targetValue, metadata = {}) {
     const value = Number(targetValue);
     smoother.target = Number.isFinite(value) ? value : smoother.target;
@@ -2437,6 +2445,12 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
     if (smoother.lastFrame === frame) {
       return smoother.lastValue;
+    }
+    if (!this.smootherNeedsWork(smoother)) {
+      smoother.current = smoother.target;
+      smoother.lastFrame = frame;
+      smoother.lastValue = smoother.target;
+      return smoother.target;
     }
     const smoothingSeconds = this.clampAutoSmoothingSeconds(
       smoother.smoothingSeconds ?? this.autoSmoothingSeconds,
@@ -3318,7 +3332,16 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   }
 
   createFractalBrownianNoiseState() {
-    return { axes: {}, nativeHandle: 0 };
+    return { axes: {}, nativeHandle: 0, resetWasHigh: false };
+  }
+
+  resetFractalBrownianNoiseState(state) {
+    for (const axisState of Object.values(state.axes || {})) {
+      axisState.time = 0;
+    }
+    if (state.nativeHandle && this.nativeFbm?.soemdsp_fbm_reset) {
+      this.nativeFbm.soemdsp_fbm_reset(state.nativeHandle);
+    }
   }
 
   safeFilterNumber(value, state) {
@@ -5304,8 +5327,13 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     return this.safeFilterNumber(options.raw ? normalized : normalized * level, null);
   }
 
-  fractalBrownianNoiseVector(state, params, rate = sampleRate, nodeId = "") {
+  fractalBrownianNoiseVector(state, params, rate = sampleRate, nodeId = "", reset = 0) {
     const safeRate = Math.max(1, Number(rate) || sampleRate || 44100);
+    const resetHigh = Number(reset) > 0.5;
+    if (resetHigh && !state.resetWasHigh) {
+      this.resetFractalBrownianNoiseState(state);
+    }
+    state.resetWasHigh = resetHigh;
     if (this.nativeFbmReady) {
       if (!state.nativeHandle) {
         state.nativeHandle = this.nativeFbm.soemdsp_fbm_create();
@@ -6656,6 +6684,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
           },
           safeRate,
           nodeId,
+          mixInput(nodeId, "Reset"),
         );
       } else if (node?.type === "clock") {
         const state = this.clockStates.get(nodeId) || this.createClockState();
@@ -6933,9 +6962,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         this.pitchQuantizerStates.set(nodeId, state);
         const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
         value = {
-          Pitch: this.pitchQuantizerSample(state, {
+          "0.1V/Oct": this.pitchQuantizerSample(state, {
             hasScaleInput: hasInput(nodeId, "Scale"),
-            pitch: mixInput(nodeId, "Pitch"),
+            pitch: mixInput(nodeId, "0.1V/Oct"),
             scaleChoice: read("scale", 1),
             scaleInput: mixInput(nodeId, "Scale"),
           }),

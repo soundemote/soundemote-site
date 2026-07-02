@@ -82,6 +82,11 @@ extern "C" void soemdsp_fbm_destroy(int handle) {
   gPool[handle - 1].active = false;
 }
 
+extern "C" void soemdsp_fbm_reset(int handle) {
+  if (handle < 1 || handle > kMaxInstances) return;
+  gPool[handle - 1].time = 0.0;
+}
+
 extern "C" void soemdsp_fbm_sample(
   int handle,
   int seedInt,

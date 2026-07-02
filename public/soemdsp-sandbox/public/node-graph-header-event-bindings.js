@@ -21,6 +21,7 @@ function bindNodeGraphHeaderControlEvents() {
   document.addEventListener("pointercancel", endNodeGraphVisibilityMenuDrag);
   document.addEventListener("pointercancel", endNodeGraphVisibilityMenuResize);
   document.getElementById("nodeVisibilityMenuButton").addEventListener("click", toggleNodeGraphVisibilityMenu);
+  document.getElementById("nodeSavedPatchesWindowButton")?.addEventListener("click", toggleNodeGraphSavedPatchesWindow);
   document.getElementById("nodeGridToggleButton").addEventListener("click", toggleNodeGraphGridVisibility);
   document.getElementById("nodeVideoViewButton")?.addEventListener("click", toggleNodeGraphVideoView);
   document.getElementById("nodeMappingViewButton")?.addEventListener("click", () => setNodeGraphViewMode("mapping"));

@@ -39,6 +39,17 @@ function createNodeGraphIoColumn(node, type, ports, io) {
     row.dataset.port = port;
     row.dataset.io = io;
     row.dataset.alias = nodeGraphLabel(node, port);
+    if (
+      port === "0.1V/Oct" ||
+      (type === "turingMachine" && port === "Scale" && io === "output") ||
+      (type === "pitchQuantizer" && port === "Scale" && io === "input")
+    ) {
+      // 0.1V/Oct pitch CV and the 12-bit pitch-class bitmask are this
+      // sandbox's "digital signal" types -- give their wire and port taps
+      // solid white (colors only, no shape/animation change) so they read
+      // as visually distinct from free-form analog CV wires.
+      row.dataset.digitalSignal = io;
+    }
     const portLabel = nodeGraphPatchNodePortDisplayLabel(node, type, port, io);
     row.setAttribute(
       "aria-label",
