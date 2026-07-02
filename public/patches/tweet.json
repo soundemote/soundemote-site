@@ -75,7 +75,7 @@
       "destinationNode": "lorenzAttractor-1",
       "destinationParam": "speed",
       "sourceNode": "vactrolEnvelope-1",
-      "sourcePort": "Out",
+      "sourcePort": "Env",
       "tracePoints": []
     }
   ],
