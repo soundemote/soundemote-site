@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import patchImage from "@/assets/soemdsp-patch.png";
 import { SOUNDEMOTE_BANK } from "@/data/patchBank";
 
-const HERO_BUILD = 7;
+const HERO_BUILD = 8;
 
 export const Hero = () => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
@@ -20,8 +20,11 @@ export const Hero = () => {
   const postRetryTimers = useRef<number[]>([]);
   const [noDiff, setNoDiff] = useState(false);
   const sandboxViewportHeight = "560px";
+  // autoframe=1: the sandbox zoom+pans to fit the whole patch after every
+  // project-data commit (nodeGraphExternalAutoFrameAfterLoad), so the embed
+  // frames itself correctly no matter which patch loads.
   const sandboxEmbedSrc =
-    "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autostart=1&v=20260703-borderless";
+    "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autostart=1&autoframe=1&v=20260703-autoframe";
   const currentPatch = SOUNDEMOTE_BANK[patchIndex];
 
   const postPatch = useCallback(async () => {
@@ -61,12 +64,9 @@ export const Hero = () => {
           { type: "soundemote:sandbox-project-data", projectData },
           window.location.origin,
         );
-        // Fix the framing to a known-good position instead of relying on the
-        // sandbox's own default view (which lands off-center / unfocused).
-        iframeRef.current?.contentWindow?.postMessage(
-          { type: "soundemote:set-view", x: 9, y: -5, zoom: 0.9 },
-          window.location.origin,
-        );
+        // No set-view here: the embed URL carries autoframe=1, so the sandbox
+        // auto-frames (zoom-to-fit) after each project-data commit. A fixed
+        // x/y/zoom would fight that and land off-center for other patches.
       };
       sendProjectData();
       postRetryTimers.current = [250, 700, 1400, 2600, 4200].map((delay) =>
@@ -153,12 +153,4 @@ export const Hero = () => {
             </span>
           </div>
         )}
-        <span className="mt-2 block text-center text-[10px] tracking-widest text-scope/20 select-none">
-          HERO_BUILD {HERO_BUILD}
-        </span>
-      </div>
-    </section>
-  );
-};
-
-export default Hero;
+        <span className="mt-2 block text-center text-[10px] tracking-widest text

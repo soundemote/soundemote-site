@@ -920,9 +920,24 @@ audio {
 }
 
 .soemdsp-hide-ui .node-graph-workspace {
-  border-color: transparent !important;
+  margin: 0 !important;
+  border: 0 !important;
   border-radius: 0 !important;
   box-shadow: none !important;
+}
+
+html.soemdsp-hide-ui {
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
+html.soemdsp-hide-ui .node-boot-sysinfo {
+  /* Embeds (hero iframe) hide the boot sysinfo line for a clean frame. */
+  display: none;
+}
+
+html.soemdsp-hide-ui .status-strip {
+  display: none;
 }
 
 .node-wiring-panel.modular-only-view > :not(.node-graph-workspace):not(.node-view-toolbar):not(.node-scene-context-menu):not(.node-parameter-metadata-popover):not(.node-ui-dev-helper):not(.node-user-ui-settings-panel):not(.node-saved-patches-window):not(.node-module-shop-view) {
