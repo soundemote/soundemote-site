@@ -57,6 +57,12 @@ export const Hero = () => {
           { type: "soundemote:sandbox-project-data", projectData },
           window.location.origin,
         );
+        // Fix the framing to a known-good position instead of relying on the
+        // sandbox's own default view (which lands off-center / unfocused).
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: "soundemote:set-view", x: 9, y: -5 },
+          window.location.origin,
+        );
       };
       sendProjectData();
       postRetryTimers.current = [250, 700, 1400, 2600, 4200].map((delay) =>
