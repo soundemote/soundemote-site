@@ -14,10 +14,9 @@ type Project = {
 };
 
 type LocalRepository = {
+    emoji: string;
     name: string;
     href: string;
-    role: string;
-    note: string;
 };
 
 const projects: Project[] = [
@@ -73,52 +72,44 @@ const projects: Project[] = [
 
 const localRepositories: LocalRepository[] = [
     {
+        emoji: "🎛️",
         name: "soemdsp-sandbox",
         href: "https://github.com/soundemote/soemdsp-sandbox",
-        role: "main instrument",
-        note: "the live audiovisual patching environment",
     },
     {
+        emoji: "🧬",
         name: "soemdsp",
         href: "https://github.com/soundemote/soemdsp",
-        role: "dsp library",
-        note: "C++ primitives and native module ground truth",
     },
     {
+        emoji: "📺",
         name: "prettyscope",
         href: "https://github.com/soundemote/prettyscope",
-        role: "visual reference",
-        note: "the original pretty oscilloscope lineage",
     },
     {
+        emoji: "⌨️",
         name: "asciiscope-clap",
         href: "https://github.com/soundemote/asciiscope-clap",
-        role: "plugin experiment",
-        note: "terminal-styled audio-reactive plugin work",
     },
     {
+        emoji: "⚔️",
         name: "soemdsp-sandbox-aliasing-wars",
         href: "https://github.com/elanhickler/soemdsp-sandbox-aliasing-wars",
-        role: "anti-aliasing front",
-        note: "PolyBLEP, Surge, DSF, and edge-clean oscillator research",
     },
     {
+        emoji: "💡",
         name: "soemdsp-sandbox-phosphor",
         href: "https://github.com/elanhickler/soemdsp-sandbox-phosphor",
-        role: "phosphor field guide",
-        note: "CRT persistence references, scope glow notes, and renderer direction",
     },
     {
+        emoji: "🌺",
         name: "soemdsp-sandbox-analog-filters",
         href: "https://github.com/elanhickler/soemdsp-sandbox-analog-filters",
-        role: "filter bench",
-        note: "analog filter models and circuit-flavored experiments",
     },
     {
+        emoji: "🥁",
         name: "soemdsp-sandbox-rhythmandpitchgenerator",
         href: "https://github.com/elanhickler/soemdsp-sandbox-rhythmandpitchgenerator",
-        role: "pitch/rhythm bench",
-        note: "timing, pitch, and pattern module exploration",
     },
 ];
 
@@ -280,38 +271,30 @@ export const Projects = () => (
             <div className="mt-12 overflow-hidden rounded-2xl border border-scope/30 bg-background/60">
                 <div className="border-b border-scope/20 px-5 py-4 text-center">
                     <p className="mono text-[0.65rem] uppercase tracking-[0.24em] text-scope">
-                        dedicated to the local repositories
+                        local repository constellation
                     </p>
                     <p className="mt-2 text-sm leading-relaxed text-warm-white/70">
-                        A little constellation of work folders, forks, experiments, and reference shelves
-                        that keep Soundemote moving.
+                        tiny doors into the machines. full links, no mystery meat.
                     </p>
                 </div>
-                <div className="grid divide-y divide-border/50 md:grid-cols-2 md:divide-x md:divide-y-0">
+                <div className="divide-y divide-border/50">
                     {localRepositories.map((repo) => (
                         <a
                             key={repo.name}
                             href={repo.href}
                             target="_blank"
                             rel="noreferrer"
-                            className="group block p-5 transition-colors hover:bg-scope/5"
+                            className="group flex min-w-0 items-center gap-3 px-4 py-3 transition-colors hover:bg-scope/5"
                         >
-                            <div className="flex items-start justify-between gap-4">
-                                <div className="min-w-0">
-                                    <h3 className="mono truncate text-sm text-scope group-hover:text-warm-white">
-                                        {repo.name}
-                                    </h3>
-                                    <p className="mono mt-1 text-[0.6rem] uppercase tracking-[0.18em] text-muted-foreground">
-                                        {repo.role}
-                                    </p>
-                                </div>
-                                <span className="mono shrink-0 text-xs text-muted-foreground group-hover:text-scope">
-                                    git
-                                </span>
-                            </div>
-                            <p className="mt-3 text-sm leading-relaxed text-warm-white/70">
-                                {repo.note}
-                            </p>
+                            <span className="text-lg leading-none" aria-hidden>
+                                {repo.emoji}
+                            </span>
+                            <span className="mono min-w-0 flex-1 overflow-x-auto whitespace-nowrap text-sm text-warm-white/80 group-hover:text-scope">
+                                {repo.href}
+                            </span>
+                            <span className="mono hidden shrink-0 text-[0.6rem] uppercase tracking-[0.18em] text-muted-foreground group-hover:text-scope sm:inline">
+                                {repo.name}
+                            </span>
                         </a>
                     ))}
                 </div>
