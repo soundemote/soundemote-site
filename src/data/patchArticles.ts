@@ -141,6 +141,90 @@ editor](/sandbox), or start with [Shooting Star](/shootingstar) and work
 outward from there.`,
   },
   {
+    slug: "aliasingwars",
+    title: "Aliasing Wars",
+    tagline: "A grand, ongoing war against digital's ugliest sound.",
+    status: "live",
+    patchUrl: "/patches/surgeoscillator.json",
+    category: "Manifesto / Fork Spotlight",
+    badges: [
+      { label: "status", value: "live front", tone: "scope" },
+      { label: "enemy", value: "aliasing", tone: "muted" },
+      { label: "origin", value: "aliasing-wars fork", tone: "accent" },
+    ],
+    facts: [
+      { label: "Enemy", value: "Aliasing — folded, ultrasonic-turned-audible garbage" },
+      { label: "Weapon I", value: "PolyBLEP (band-limits the edge itself)" },
+      { label: "Weapon II", value: "Surge Oscillator (sub-sample sync timing)" },
+      { label: "Weapon III", value: "DSF Oscillator (closed-form, can't alias)" },
+      { label: "War room", value: "github.com/elanhickler/soemdsp-sandbox-aliasing-wars" },
+    ],
+    body: `## Declare it with us
+
+There is a war. It has been fought since the first digital square wave hit
+the first cheap DAC and came out sounding like a dial-up modem having a bad
+day. The enemy is **aliasing**: the ugly, harsh, buzzing garbage that
+appears whenever a naive digital waveform's hard edges fold ultrasonic
+energy back down into frequencies you can actually hear. It is not a bug.
+It is math working exactly as designed, and math does not care that it
+sounds terrible.
+
+We are not okay with this. **soemdsp-sandbox-aliasing-wars** — [the fork
+where this fight actually happens on
+GitHub](https://github.com/elanhickler/soemdsp-sandbox-aliasing-wars) — is
+this toolkit's dedicated front line. Three weapons have shipped from it so
+far. Here's the arsenal.
+
+## Weapon I: PolyBLEP — the scalpel
+
+You can't outrun a discontinuity, so [PolyBLEP](/polyblep) doesn't try. The
+instant a square or saw wave's edge would slam from -1 to 1 (or back), a
+small polynomial correction gets stitched in right at that exact sample —
+band-limiting the discontinuity itself instead of the whole waveform. Cheap,
+surgical, and it's the reason a plain digital square wave doesn't have to
+sound like a dial tone anymore. This is the standard-issue sidearm of
+basically every modern software synth, this one included.
+
+## Weapon II: Surge Oscillator — the precision strike
+
+Hard sync is where the war gets interesting. Force one oscillator's phase
+back to zero every time a master oscillator crosses zero, and you get an
+aggressive, screaming sweep — and *also* a fresh discontinuity every single
+reset, often not even aligned to a sample boundary. [Surge
+Oscillator](/surgeoscillator) fights on two fronts at once: it reuses the
+same PolyBLEP correction at the sync-reset point, and it estimates the
+*true, sub-sample instant* the zero-crossing happened instead of snapping
+to the nearest sample — the same sub-sample-interpolated-sync trick real
+analog-modeling synths use. Aggressive hard-sync sweeps, minus the alias
+tax.
+
+## Weapon III: DSF Oscillator — the nuclear option
+
+Why fight discontinuities at all when you can generate a whole harmonic
+series from math that never has one? [DSF (Discrete Summation
+Formula)](/dsf) synthesis collapses an entire additive stack — fifty sine
+oscillators, one per harmonic — into one closed-form algebraic expression.
+No discontinuity ever enters the picture, so there's nothing to alias in
+the first place. It's not deployed to the main build yet, but it's
+war-tested in the fork and next in the queue.
+
+\`\`\`text
+the enemy:  a hard digital edge, sampled too honestly
+the tactics: correct the edge (PolyBLEP), time the reset precisely
+             (Surge Oscillator), or never create the edge at all (DSF)
+\`\`\`
+
+## Enlist
+
+This isn't a closed front. If you've got a technique that band-limits
+something this toolkit doesn't handle cleanly yet, [the aliasing-wars
+repo](https://github.com/elanhickler/soemdsp-sandbox-aliasing-wars) is
+where that fight gets picked up next. Go [hear the current arsenal in
+action](/surgeoscillator), or read the [DSF](/dsf) and [PolyBLEP](/polyblep)
+field notes. The war against ugly digital sound doesn't end — it just gets
+better-armed.`,
+  },
+  {
     slug: "shootingstar",
     title: "Shooting Star",
     tagline: "🌠Trigger a chaos generator with a shooting star explosion.💥",

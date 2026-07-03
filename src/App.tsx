@@ -47,6 +47,7 @@ const App = () => (
           <Route path="/silentlydreaming" element={<SandboxPage staticPatchUrl="/patches/silently-dreaming.json" autostart />} />
           {/* Wiki-style patch articles: GitHub README meets Wikipedia */}
           <Route path="/analogbox" element={<PatchArticlePage slug="analogbox" />} />
+          <Route path="/aliasingwars" element={<PatchArticlePage slug="aliasingwars" />} />
           <Route path="/shootingstar" element={<PatchArticlePage slug="shootingstar" />} />
           <Route path="/sinewave" element={<PatchArticlePage slug="sinewave" />} />
           <Route path="/dsf" element={<PatchArticlePage slug="dsf" />} />
