@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import patchImage from "@/assets/soemdsp-patch.png";
 import { SOUNDEMOTE_BANK } from "@/data/patchBank";
 
-const HERO_BUILD = 3;
+const HERO_BUILD = 4;
 
 export const Hero = () => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
@@ -19,7 +19,7 @@ export const Hero = () => {
   const noDiffTimer = useRef<number | null>(null);
   const postRetryTimers = useRef<number[]>([]);
   const [noDiff, setNoDiff] = useState(false);
-  const sandboxViewportHeight = "min(564px, 65vh)";
+  const sandboxViewportHeight = "min(620px, 70vh)";
   const sandboxEmbedSrc =
     "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autostart=1&v=20260703-borderless";
   const currentPatch = SOUNDEMOTE_BANK[patchIndex];
@@ -92,7 +92,7 @@ export const Hero = () => {
 
 
   const previewFrameClass = sandboxLoaded
-    ? "soundemote-sandbox-preview-frame relative flex w-full max-w-[900px] mx-auto justify-center overflow-hidden border border-white/[0.07] bg-transparent"
+    ? "soundemote-sandbox-preview-frame relative flex w-full max-w-[98vw] mx-auto justify-center overflow-hidden bg-transparent"
     : "soundemote-sandbox-preview-frame relative flex w-full justify-center overflow-hidden bg-background";
 
   return (
@@ -114,8 +114,8 @@ export const Hero = () => {
                 id="hero-sandbox-iframe"
                 title="soemdsp sandbox"
                 src={sandboxEmbedSrc}
-                className="w-full border-0 bg-transparent"
-                style={{ height: sandboxViewportHeight, minHeight: sandboxViewportHeight, width: "100%" }}
+                className="w-full max-w-full border-0 bg-transparent"
+                style={{ height: sandboxViewportHeight, minHeight: sandboxViewportHeight, maxWidth: "100%" }}
                 allow="autoplay; microphone"
                 onLoad={postPatch}
               />
