@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import patchImage from "@/assets/soemdsp-patch.png";
 import { SOUNDEMOTE_BANK } from "@/data/patchBank";
 
-const HERO_BUILD = 5;
+const HERO_BUILD = 6;
 
 export const Hero = () => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
@@ -19,7 +19,7 @@ export const Hero = () => {
   const noDiffTimer = useRef<number | null>(null);
   const postRetryTimers = useRef<number[]>([]);
   const [noDiff, setNoDiff] = useState(false);
-  const sandboxViewportHeight = "min(564px, 70vh)";
+  const sandboxViewportHeight = "auto";
   const sandboxEmbedSrc =
     "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autostart=1&v=20260703-borderless";
   const currentPatch = SOUNDEMOTE_BANK[patchIndex];
@@ -92,7 +92,7 @@ export const Hero = () => {
 
 
   const previewFrameClass = sandboxLoaded
-    ? "soundemote-sandbox-preview-frame relative flex w-full max-w-[872px] mx-auto justify-center overflow-hidden bg-transparent"
+    ? "soundemote-sandbox-preview-frame relative flex w-full justify-center overflow-hidden bg-transparent"
     : "soundemote-sandbox-preview-frame relative flex w-full justify-center overflow-hidden bg-background";
 
   return (
@@ -100,13 +100,9 @@ export const Hero = () => {
       <div className="absolute inset-0 scope-grid opacity-40" aria-hidden />
       <div className="absolute inset-0 bg-[var(--gradient-hero)]" aria-hidden />
       <div className="relative mx-auto flex min-h-[56vh] max-w-6xl flex-col items-center justify-center animate-fade-in px-4 text-center md:min-h-[62vh]">
-        <div className={sandboxLoaded
-          ? "mx-auto w-full animate-fade-in [animation-delay:200ms]"
-          : "mx-auto w-full max-w-[min(95vw,56rem)] animate-fade-in [animation-delay:200ms]"
-        }>
+        <div className="mx-auto w-full max-w-[min(95vw,56rem)] animate-fade-in [animation-delay:200ms]">
           <div
             className={previewFrameClass}
-            style={sandboxLoaded ? { height: sandboxViewportHeight, minHeight: sandboxViewportHeight } : undefined}
           >
             {sandboxLoaded ? (
               <iframe
@@ -115,7 +111,7 @@ export const Hero = () => {
                 title="soemdsp sandbox"
                 src={sandboxEmbedSrc}
                 className="w-full max-w-full border-0 bg-transparent"
-                style={{ height: sandboxViewportHeight, minHeight: sandboxViewportHeight, maxWidth: "100%" }}
+                style={{ height: sandboxViewportHeight, minHeight: "400px", aspectRatio: "872 / 564" }}
                 allow="autoplay; microphone"
                 onLoad={postPatch}
               />
