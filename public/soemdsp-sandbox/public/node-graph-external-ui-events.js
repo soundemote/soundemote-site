@@ -86,6 +86,30 @@ function nodeGraphExternalAutoFrameAfterLoad(options = {}) {
   }
 }
 
+// Pan the workspace so the view sits at a specific graph position, expressed in
+// grid units (x/y). Used by embedders that want a fixed framing instead of the
+// automatic zoom-to-fit. Runs after two rAFs so node DOM has laid out.
+function nodeGraphExternalScheduleSetView(gridX, gridY, zoom) {
+  const gx = Number(gridX);
+  const gy = Number(gridY);
+  if (!Number.isFinite(gx) || !Number.isFinite(gy)) {
+    return;
+  }
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      if (zoom != null && Number.isFinite(Number(zoom)) && typeof setNodeGraphZoom === "function") {
+        setNodeGraphZoom(Number(zoom));
+      }
+      const gridW = typeof nodeGraphGridWidth === "function" ? nodeGraphGridWidth() : 28;
+      const gridH = typeof nodeGraphGridHeight === "function" ? nodeGraphGridHeight() : 28;
+      const z = typeof nodeGraphZoom === "function" ? nodeGraphZoom() : 1;
+      if (typeof setNodeGraphPan === "function") {
+        setNodeGraphPan(-gx * gridW * z, -gy * gridH * z, { persist: false });
+      }
+    });
+  });
+}
+
 function normalizeNodeGraphExternalButtonEventName(name) {
   const key = String(name || "").trim().toLowerCase();
   if (key === "mousedown" || key === "pointerdown") return "down";
@@ -512,6 +536,8 @@ window.addEventListener("message", (event) => {
     nodeGraphExternalScheduleAutoFrame(
       message.padding != null ? { padding: message.padding, force: true } : { force: true },
     );
+  } else if (message.type === "soundemote:set-view") {
+    nodeGraphExternalScheduleSetView(message.x, message.y, message.zoom);
   } else if (message.type === "soundemote:request-current-patch") {
     let projectData = null;
     try {
