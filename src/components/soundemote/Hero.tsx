@@ -17,7 +17,7 @@ export const Hero = () => {
   const noDiffTimer = useRef<number | null>(null);
   const postRetryTimers = useRef<number[]>([]);
   const [noDiff, setNoDiff] = useState(false);
-  const sandboxViewportHeight = "min(560px, 65vh)";
+  const sandboxViewportHeight = "min(564px, 65vh)";
   const sandboxEmbedSrc =
     "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autostart=1&v=20260703-borderless";
   const currentPatch = SOUNDEMOTE_BANK[patchIndex];
