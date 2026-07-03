@@ -1,6 +1,9 @@
 // Wiki-style article pages for individual patches/modules, at
 // soundemote.io/<slug>. GitHub-README meets Wikipedia: an infobox of quick
 // facts, a live (or placeholder) patch preview, and a long-form markdown body.
+import type { GalleryItem } from "@/components/soundemote/MediaGallery";
+export type { GalleryItem };
+
 export type PatchArticleFact = {
   label: string;
   value: string;
@@ -22,6 +25,7 @@ export type PatchArticle = {
   badges: PatchArticleBadge[];
   facts: PatchArticleFact[];
   body: string;
+  gallery?: GalleryItem[];
 };
 
 export const PATCH_ARTICLES: PatchArticle[] = [
@@ -30,6 +34,7 @@ export const PATCH_ARTICLES: PatchArticle[] = [
     title: "Analogbox",
     tagline: "Analog feel, digital precision, phosphor glow — one instrument.",
     status: "live",
+    patchUrl: "/patches/analogbox.json",
     category: "Manifesto",
     badges: [
       { label: "status", value: "live", tone: "scope" },
@@ -41,6 +46,10 @@ export const PATCH_ARTICLES: PatchArticle[] = [
       { label: "Digital", value: "PolyBLEP, sub-sample sync, wavetables" },
       { label: "Phosphor", value: "CRT-decay trace rendering for the scope displays" },
       { label: "Formerly known as", value: "the sandbox" },
+      { label: "Soundtrack", value: "“Retrofusion” — Hydrus & Elan Hickler" },
+    ],
+    gallery: [
+      { type: "video", youtubeId: "PpcdN-DXYdc", title: "Analogbox in motion" },
     ],
     body: `## Why "Analogbox"
 

@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Nav from "@/components/soundemote/Nav";
 import Footer from "@/components/soundemote/Footer";
+import MediaGallery from "@/components/soundemote/MediaGallery";
 import { findPatchArticle, type PatchArticleBadge } from "@/data/patchArticles";
 
 const badgeToneClass: Record<NonNullable<PatchArticleBadge["tone"]>, string> = {
@@ -127,6 +128,16 @@ const PatchArticlePage = ({ slug: slugProp }: PatchArticlePageProps = {}) => {
                 </div>
               )}
             </section>
+
+            {/* Gallery: click a thumbnail to watch the video or view the image */}
+            {article.gallery && article.gallery.length > 0 && (
+              <section className="mb-10">
+                <h2 className="mono mb-3 text-[0.65rem] uppercase tracking-[0.18em] text-muted-foreground">
+                  gallery
+                </h2>
+                <MediaGallery items={article.gallery} />
+              </section>
+            )}
 
             {/* Markdown body, GitHub-README styled */}
             <div className="prose prose-invert prose-sm md:prose-base max-w-none prose-headings:display prose-headings:font-normal prose-a:text-scope prose-code:before:content-none prose-code:after:content-none prose-pre:border prose-pre:border-border/60 prose-pre:bg-black/50 prose-blockquote:border-scope/50 prose-blockquote:not-italic prose-hr:border-border/60">

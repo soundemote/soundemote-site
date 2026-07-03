@@ -57,6 +57,35 @@
     "startup",
     "music"
    ]
+  },
+  {
+   "acceptedTypes": [
+    "audio/*"
+   ],
+   "file": {
+    "extension": "mp3",
+    "mime": "audio/mpeg",
+    "name": "Hydrus - Elan Hickler - Retrofusion.mp3",
+    "size": 5629282,
+    "sourcePath": "./public/resources/audio/Hydrus - Elan Hickler - Retrofusion.mp3"
+   },
+   "id": "retrofusion-startup",
+   "kind": "audio",
+   "metadata": {
+    "artist": "Hydrus, Elan Hickler",
+    "title": "Retrofusion",
+    "startupMusic": true
+   },
+   "name": "Hydrus - Elan Hickler - Retrofusion",
+   "path": "audio/Hydrus - Elan Hickler - Retrofusion.mp3",
+   "resourceId": "retrofusion-startup",
+   "sourceName": "Hydrus - Elan Hickler - Retrofusion.mp3",
+   "sourcePath": "./public/resources/audio/Hydrus - Elan Hickler - Retrofusion.mp3",
+   "tags": [
+    "startup",
+    "music",
+    "retrofusion"
+   ]
   }
  ]
 }
