@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import patchImage from "@/assets/soemdsp-patch.png";
 import { SOUNDEMOTE_BANK } from "@/data/patchBank";
 
+const HERO_BUILD = 1;
+
 export const Hero = () => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
   const [patchIndex] = useState(0);
@@ -152,6 +154,9 @@ export const Hero = () => {
             </span>
           </div>
         )}
+        <span className="mt-2 block text-center text-[10px] tracking-widest text-scope/20 select-none">
+          HERO_BUILD {HERO_BUILD}
+        </span>
       </div>
     </section>
   );
