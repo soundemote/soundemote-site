@@ -19,7 +19,7 @@ export const Hero = () => {
   const [noDiff, setNoDiff] = useState(false);
   const sandboxViewportHeight = "min(560px, 65vh)";
   const sandboxEmbedSrc =
-    "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autoframe=1&autostart=1&v=20260703-borderless";
+    "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autostart=1&v=20260703-borderless";
   const currentPatch = SOUNDEMOTE_BANK[patchIndex];
 
   const postPatch = useCallback(async () => {
@@ -113,7 +113,7 @@ export const Hero = () => {
                 title="soemdsp sandbox"
                 src={sandboxEmbedSrc}
                 className="w-full border-0 bg-transparent"
-                style={{ height: sandboxViewportHeight, minHeight: sandboxViewportHeight, maxWidth: "900px", width: "100%" }}
+                style={{ height: sandboxViewportHeight, minHeight: sandboxViewportHeight, width: "100%" }}
                 allow="autoplay; microphone"
                 onLoad={postPatch}
               />
