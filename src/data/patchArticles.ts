@@ -28,7 +28,7 @@ export const PATCH_ARTICLES: PatchArticle[] = [
   {
     slug: "shootingstar",
     title: "Shooting Star",
-    tagline: "Click a star, kick a chaos attractor.",
+    tagline: "🌠Trigger a chaos generator with a shooting star explosion.💥",
     status: "live",
     patchUrl: "/patches/shootingstar.json",
     category: "Chaos / Interactive",
