@@ -153,4 +153,12 @@ export const Hero = () => {
             </span>
           </div>
         )}
-        <span className="mt-2 block text-center text-[10px] tracking-widest text
+        <span className="mt-2 block text-center text-[10px] tracking-widest text-scope/20 select-none">
+          HERO_BUILD {HERO_BUILD}
+        </span>
+      </div>
+    </section>
+  );
+};
+
+export default Hero;
