@@ -536,6 +536,8 @@ window.addEventListener("message", (event) => {
     nodeGraphExternalScheduleAutoFrame(
       message.padding != null ? { padding: message.padding, force: true } : { force: true },
     );
+  } else if (message.type === "soundemote:set-view") {
+    nodeGraphExternalScheduleSetView(message.x, message.y, message.zoom);
   } else if (message.type === "soundemote:request-current-patch") {
     let projectData = null;
     try {
