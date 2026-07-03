@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import patchImage from "@/assets/soemdsp-patch.png";
 import { SOUNDEMOTE_BANK } from "@/data/patchBank";
 
-const HERO_BUILD = 4;
+const HERO_BUILD = 5;
 
 export const Hero = () => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
@@ -19,7 +19,7 @@ export const Hero = () => {
   const noDiffTimer = useRef<number | null>(null);
   const postRetryTimers = useRef<number[]>([]);
   const [noDiff, setNoDiff] = useState(false);
-  const sandboxViewportHeight = "min(620px, 70vh)";
+  const sandboxViewportHeight = "min(564px, 70vh)";
   const sandboxEmbedSrc =
     "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autostart=1&v=20260703-borderless";
   const currentPatch = SOUNDEMOTE_BANK[patchIndex];
@@ -92,7 +92,7 @@ export const Hero = () => {
 
 
   const previewFrameClass = sandboxLoaded
-    ? "soundemote-sandbox-preview-frame relative flex w-full max-w-[98vw] mx-auto justify-center overflow-hidden bg-transparent"
+    ? "soundemote-sandbox-preview-frame relative flex w-full max-w-[872px] mx-auto justify-center overflow-hidden bg-transparent"
     : "soundemote-sandbox-preview-frame relative flex w-full justify-center overflow-hidden bg-background";
 
   return (
