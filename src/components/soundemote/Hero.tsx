@@ -7,7 +7,7 @@ export const Hero = () => {
   const [patchIndex, setPatchIndex] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   // -1 means "nothing posted yet" so the first onLoad always pushes the
-  // starting patch (silently dreaming) -- the sandbox's own built-in default
+  // starting patch (shooting star) -- the sandbox's own built-in default
   // patch is a different, unrelated placeholder graph, so it must not be
   // assumed to already match index 0.
   const lastPostedRef = useRef<number>(-1);

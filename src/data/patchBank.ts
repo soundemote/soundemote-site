@@ -6,7 +6,7 @@ export type BankPatch = {
 };
 
 export const SOUNDEMOTE_BANK: BankPatch[] = [
+  { slug: "shootingstar", label: "shootingstar", url: "/patches/shootingstar.json" },
   { slug: "silently-dreaming", label: "silently dreaming", url: "/patches/silently-dreaming.json" },
   { slug: "reverb", label: "reverb", url: "/patches/reverb.json" },
-  { slug: "shootingstar", label: "shootingstar", url: "/patches/shootingstar.json" },
 ];
