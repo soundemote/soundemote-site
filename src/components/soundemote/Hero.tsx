@@ -4,7 +4,7 @@ import { SOUNDEMOTE_BANK } from "@/data/patchBank";
 
 export const Hero = () => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
-  const [patchIndex, setPatchIndex] = useState(0);
+  const [patchIndex] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   // -1 means "nothing posted yet" so the first onLoad always pushes the
   // starting patch (shooting star) -- the sandbox's own built-in default
