@@ -1,7 +1,8 @@
 function renderNodeBootSysinfo(parts) {
   const el = document.getElementById("nodeBootSysinfo");
   if (!el) return;
-  el.textContent = parts.filter(Boolean).join("  |  ");
+  el.style.display = "none";
+  el.textContent = "";
 }
 
 function probeWebGLVRAM(gl) {
