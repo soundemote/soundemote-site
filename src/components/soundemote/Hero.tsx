@@ -116,14 +116,6 @@ export const Hero = () => {
 
         {sandboxLoaded && (
           <div className="mt-4 flex items-center justify-center gap-3">
-            <button
-              type="button"
-              onClick={() => step(-1)}
-              aria-label="Previous patch"
-              className="mono rounded-full border border-scope/70 bg-background/85 px-4 py-2 text-sm text-scope transition-colors hover:bg-scope/10"
-            >
-              ‹ prev
-            </button>
             <span className="mono flex min-w-[10rem] flex-col items-center text-xs uppercase tracking-[0.18em] text-scope">
               {currentPatch.label}
               {noDiff && (
@@ -132,14 +124,6 @@ export const Hero = () => {
                 </span>
               )}
             </span>
-            <button
-              type="button"
-              onClick={() => step(1)}
-              aria-label="Next patch"
-              className="mono rounded-full border border-scope/70 bg-background/85 px-4 py-2 text-sm text-scope transition-colors hover:bg-scope/10"
-            >
-              next ›
-            </button>
           </div>
         )}
       </div>
