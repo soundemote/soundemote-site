@@ -56,6 +56,8 @@ const App = () => (
           <Route path="/phosphillator" element={<PatchArticlePage slug="phosphillator" />} />
           <Route path="/rhythmandpitchgenerator" element={<PatchArticlePage slug="rhythmandpitchgenerator" />} />
           <Route path="/flowerchildfilter" element={<PatchArticlePage slug="flowerchildfilter" />} />
+          <Route path="/robinschmidt" element={<PatchArticlePage slug="robinschmidt" />} />
+          <Route path="/rsmet" element={<PatchArticlePage slug="robinschmidt" />} />
           <Route path="/sandbox/:patch" element={<SandboxPage />} />
           <Route path="/sandbox/:user/:bank/:patch" element={<SandboxPage />} />
           <Route path="/avw-research" element={<AVWResearch />} />

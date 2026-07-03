@@ -722,6 +722,94 @@ Once \`flowerChildFilter\` is ported, expect a resonant lowpass (family
 resemblance to the Moog ladder) with drive/saturation and self-oscillation
 built into the same signal path — not toggled on as separate features.`,
   },
+  {
+    slug: "robinschmidt",
+    title: "Robin Schmidt / RS-MET",
+    tagline: "Pitch dithering, RAPT math, and the road toward a Synthwave Orchestra.",
+    status: "placeholder",
+    category: "Algorithm tribute",
+    badges: [
+      { label: "status", value: "research spotlight", tone: "scope" },
+      { label: "algorithm", value: "Pitch Dithering", tone: "accent" },
+      { label: "library", value: "RS-MET / RAPT", tone: "muted" },
+    ],
+    facts: [
+      { label: "Original repository", value: "github.com/RobinSchmidt/RS-MET" },
+      { label: "Featured note", value: "Notes/Scratch/PitchDithering.md" },
+      { label: "Featured code", value: "RobsJuceModules/rapt/Generators/PitchDitherOscs.h" },
+      { label: "soemdsp mirror", value: "libs/RSMET" },
+      { label: "Soundemote supersaw", value: "Supersaw.hpp" },
+      { label: "Long-term dream", value: "Synthwave Orchestra" },
+    ],
+    gallery: [
+      {
+        type: "image",
+        src: "/articles/robinschmidt/synthwave-orchestra-interface.png",
+        alt: "Synthwave Orchestra interface concept",
+      },
+    ],
+    body: `## Pitch Dithering comes first
+
+[Robin Schmidt's Pitch Dithering note](https://github.com/RobinSchmidt/RS-MET/blob/work/Notes/Scratch/PitchDithering.md) is one of those rare algorithm sketches that feels like a door opening. The problem is brutally familiar: a naive digital sawtooth aliases, and the usual cures are mipmaps, BLEPs, oversampling, or some blend of all three. Pitch dithering asks a different question:
+
+> what if the oscillator's cycle length is allowed to hop between nearby integer lengths, while the average pitch stays exactly right?
+
+Instead of trying to represent a fractional-length cycle directly, the oscillator chooses integer cycle lengths around the desired fractional period. The probability-weighted average lands on the requested pitch, while the pitch error becomes controlled noise instead of a stable alias tone. The basic version alternates between the floor and ceiling cycle lengths. Robin's refined version uses three neighboring lengths and a distribution chosen so the mean error is zero and the variance stays controlled.
+
+\`\`\`text
+desiredCycle = sampleRate / frequency
+mid          = nearest integer cycle length
+short        = mid - 1
+long         = mid + 1
+
+choose short, mid, or long per cycle
+so average cycle length stays on pitch
+and the pitch error turns into shaped noise
+\`\`\`
+
+The important code artifact is [PitchDitherOscs.h](https://github.com/RobinSchmidt/RS-MET/blob/work/Libraries/RobsJuceModules/rapt/Generators/PitchDitherOscs.h), especially the \`rsPitchDitherOsc<T>\` class and its cycle-distribution routine. The implementation exposes phasor, saw, pulse, and sine sample methods, plus a seedable random path. The trick is small, but it is musically enormous: it trades a static digital artifact for something closer to analog imperfection.
+
+## Why Soundemote cares
+
+Soundemote is chasing a very specific beast: a **Synthwave Orchestra**. Not just a supersaw preset, not just a stack of detuned oscillators, but a playable section of electronic instruments where many voices breathe, drift, phase, and smear into one large emotional object.
+
+Pitch dithering is perfect for that direction because a supersaw already wants controlled imperfection. In the pitch-dithering note, Robin even calls out supersaw as a natural place for the idea: the added noise can thicken the spectrum and act like random pitch movement while also fighting aliasing. That is exactly the kind of double-duty algorithm Soundemote needs.
+
+## RS-MET inside soemdsp
+
+The local soemdsp tree already carries a slice of RS-MET at:
+
+\`\`\`text
+C:\\Users\\argit\\Documents\\_PROGRAMMING\\soemdsp\\libs\\RSMET
+\`\`\`
+
+That folder is not decorative. It is a practical math and DSP shelf. In the older Soundemote supersaw work, \`Supersaw.hpp\` pulls in RAPT helpers such as \`RatioGenerator\` and the RSMET smoothing code. The supersaw master builds detune tables through ratio families like prime powers, prime-power differences, and linear-to-exponential spacing. That is Robin Schmidt style engineering: small mathematical tools that become musical structure.
+
+The old supersaw code has named detune personalities like:
+
+\`\`\`text
+Classic
+Realistic
+Emotional
+Chordal
+Linear
+Exponential
+\`\`\`
+
+Each one is a different answer to the same orchestral question: how should a cloud of oscillators spread around a pitch so it feels wide, alive, and intentional?
+
+## The orchestra interface
+
+The Synthwave Orchestra interface image on this page is the emotional target. It points toward an instrument where oscillator swarms, pitch drift, detune ratios, envelopes, and visual feedback are all part of one playable surface.
+
+Pitch dithering belongs at the top of that stack because it solves a low-level oscillator problem while adding a high-level musical texture. That is the kind of algorithm Soundemote should build around: technically sharp, visually explainable, and emotionally useful.
+
+## Credit
+
+Robin Schmidt deserves direct credit here. RS-MET and RAPT are a deep body of DSP work, and Soundemote's use of these ideas should stay explicit. The original repository is [RobinSchmidt/RS-MET](https://github.com/RobinSchmidt/RS-MET). The pitch-dithering algorithm lives in the \`work\` branch notes and generator code linked above.
+
+This page is both a thank-you and a marker: bring Pitch Dithering into Soundemote, use the code with clear attribution, and let it become part of the Synthwave Orchestra.`,
+  },
 ];
 
 export function findPatchArticle(slug: string): PatchArticle | undefined {

@@ -44,6 +44,8 @@ const PAGES = [
   { slug: "phosphillator", title: "Phosphillator", tagline: "An oscillator with a CRT's memory." },
   { slug: "rhythmandpitchgenerator", title: "Rhythm & Pitch Generator", tagline: "One source, two dimensions of music." },
   { slug: "flowerchildfilter", title: "Flower Child Filter", tagline: "The analog-modeled sibling of an existing module." },
+  { slug: "robinschmidt", title: "Robin Schmidt / RS-MET", tagline: "Pitch dithering, RAPT math, and the road toward a Synthwave Orchestra." },
+  { slug: "rsmet", title: "Robin Schmidt / RS-MET", tagline: "Pitch dithering, RAPT math, and the road toward a Synthwave Orchestra." },
 ];
 
 function escapeHtml(value) {

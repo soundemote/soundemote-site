@@ -123,6 +123,12 @@ const repositoryLinks: RepositoryLink[] = [
         name: "soemdsp-simd",
         href: "https://github.com/elanhickler/soemdsp-simd",
     },
+    {
+        emoji: "🎻",
+        name: "RobinSchmidt/RS-MET",
+        href: "https://github.com/RobinSchmidt/RS-MET",
+        pulse: true,
+    },
 ];
 
 export const Projects = () => (
