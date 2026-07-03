@@ -2,10 +2,22 @@ import { useEffect, useRef } from "react";
 import { Link, useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import type { ComponentPropsWithoutRef } from "react";
 import Nav from "@/components/soundemote/Nav";
 import Footer from "@/components/soundemote/Footer";
 import MediaGallery from "@/components/soundemote/MediaGallery";
+import TableOfContents, { extractChapters, slugifyHeading } from "@/components/soundemote/TableOfContents";
 import { findPatchArticle, type PatchArticleBadge } from "@/data/patchArticles";
+
+function MarkdownHeading({ level, children, ...rest }: { level: 2 | 3 } & ComponentPropsWithoutRef<"h2">) {
+  const text = String(children);
+  const Tag = level === 2 ? "h2" : "h3";
+  return (
+    <Tag id={slugifyHeading(text)} {...rest}>
+      {children}
+    </Tag>
+  );
+}
 
 const badgeToneClass: Record<NonNullable<PatchArticleBadge["tone"]>, string> = {
   scope: "border-scope/50 bg-scope/10 text-scope",
@@ -23,6 +35,8 @@ const PatchArticlePage = ({ slug: slugProp }: PatchArticlePageProps = {}) => {
   const slug = slugProp ?? slugParam;
   const article = findPatchArticle(slug);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const chapters = article ? extractChapters(article.body) : [];
+  const tocTheme = slug === "aliasingwars" ? "war" : "default";
 
   const postPatch = () => {
     if (!article?.patchUrl) return;
@@ -139,9 +153,23 @@ const PatchArticlePage = ({ slug: slugProp }: PatchArticlePageProps = {}) => {
               </section>
             )}
 
+            {/* Table of contents ("chapters") */}
+            <TableOfContents chapters={chapters} theme={tocTheme} />
+
             {/* Markdown body, GitHub-README styled */}
-            <div className="prose prose-invert prose-sm md:prose-base max-w-none prose-headings:display prose-headings:font-normal prose-a:text-scope prose-code:before:content-none prose-code:after:content-none prose-pre:border prose-pre:border-border/60 prose-pre:bg-black/50 prose-blockquote:border-scope/50 prose-blockquote:not-italic prose-hr:border-border/60">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{article.body}</ReactMarkdown>
+            <div className="prose prose-invert prose-sm md:prose-base max-w-none prose-headings:display prose-headings:font-normal prose-a:text-scope prose-code:before:content-none prose-code:after:content-none prose-pre:border prose-pre:border-border/60 prose-pre:bg-black/50 prose-blockquote:border-scope/50 prose-blockquote:not-italic prose-hr:border-border/60 prose-h2:scroll-mt-24">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  h2: ({ children, ...rest }) => (
+                    <MarkdownHeading level={2} {...rest}>
+                      {children}
+                    </MarkdownHeading>
+                  ),
+                }}
+              >
+                {article.body}
+              </ReactMarkdown>
             </div>
 
             {article.status === "live" && (
