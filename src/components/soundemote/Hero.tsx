@@ -4,7 +4,7 @@ import { SOUNDEMOTE_BANK } from "@/data/patchBank";
 
 export const Hero = () => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
-  const [patchIndex, setPatchIndex] = useState(0);
+  const [patchIndex] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   // -1 means "nothing posted yet" so the first onLoad always pushes the
   // starting patch (shooting star) -- the sandbox's own built-in default
@@ -63,8 +63,6 @@ export const Hero = () => {
     if (sandboxLoaded) postPatch();
   }, [sandboxLoaded, postPatch]);
 
-  const step = (dir: number) =>
-    setPatchIndex((i) => (i + dir + SOUNDEMOTE_BANK.length) % SOUNDEMOTE_BANK.length);
 
   const previewFrameClass = sandboxLoaded
     ? "soundemote-sandbox-preview-frame relative flex w-full justify-center overflow-hidden bg-background"
@@ -116,14 +114,6 @@ export const Hero = () => {
 
         {sandboxLoaded && (
           <div className="mt-4 flex items-center justify-center gap-3">
-            <button
-              type="button"
-              onClick={() => step(-1)}
-              aria-label="Previous patch"
-              className="mono rounded-full border border-scope/70 bg-background/85 px-4 py-2 text-sm text-scope transition-colors hover:bg-scope/10"
-            >
-              ‹ prev
-            </button>
             <span className="mono flex min-w-[10rem] flex-col items-center text-xs uppercase tracking-[0.18em] text-scope">
               {currentPatch.label}
               {noDiff && (
@@ -132,14 +122,6 @@ export const Hero = () => {
                 </span>
               )}
             </span>
-            <button
-              type="button"
-              onClick={() => step(1)}
-              aria-label="Next patch"
-              className="mono rounded-full border border-scope/70 bg-background/85 px-4 py-2 text-sm text-scope transition-colors hover:bg-scope/10"
-            >
-              next ›
-            </button>
           </div>
         )}
       </div>
