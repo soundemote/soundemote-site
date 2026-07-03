@@ -18,6 +18,8 @@ export const Hero = () => {
   const postRetryTimers = useRef<number[]>([]);
   const [noDiff, setNoDiff] = useState(false);
   const sandboxViewportHeight = "max(640px, calc(100svh - 10rem))";
+  const sandboxEmbedSrc =
+    "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autoframe=1&autostart=1&v=20260703-borderless";
   const currentPatch = SOUNDEMOTE_BANK[patchIndex];
 
   const postPatch = useCallback(async () => {
@@ -60,7 +62,7 @@ export const Hero = () => {
         // Fix the framing to a known-good position instead of relying on the
         // sandbox's own default view (which lands off-center / unfocused).
         iframeRef.current?.contentWindow?.postMessage(
-          { type: "soundemote:set-view", x: 9, y: -5 },
+          { type: "soundemote:set-view", x: 9, y: -5, zoom: 0.9 },
           window.location.origin,
         );
       };
@@ -88,7 +90,7 @@ export const Hero = () => {
 
 
   const previewFrameClass = sandboxLoaded
-    ? "soundemote-sandbox-preview-frame relative flex w-full justify-center overflow-hidden bg-background"
+    ? "soundemote-sandbox-preview-frame relative flex w-screen justify-center overflow-hidden bg-transparent"
     : "soundemote-sandbox-preview-frame relative flex w-full justify-center overflow-hidden bg-background";
 
   return (
@@ -96,7 +98,10 @@ export const Hero = () => {
       <div className="absolute inset-0 scope-grid opacity-40" aria-hidden />
       <div className="absolute inset-0 bg-[var(--gradient-hero)]" aria-hidden />
       <div className="relative mx-auto flex min-h-[56vh] max-w-6xl flex-col items-center justify-center animate-fade-in px-4 text-center md:min-h-[62vh]">
-        <div className="mx-auto w-full max-w-[min(95vw,56rem)] animate-fade-in [animation-delay:200ms]">
+        <div className={sandboxLoaded
+          ? "mx-[calc(50%-50vw)] w-screen animate-fade-in [animation-delay:200ms]"
+          : "mx-auto w-full max-w-[min(95vw,56rem)] animate-fade-in [animation-delay:200ms]"
+        }>
           <div
             className={previewFrameClass}
             style={sandboxLoaded ? { height: sandboxViewportHeight, minHeight: sandboxViewportHeight } : undefined}
@@ -106,7 +111,7 @@ export const Hero = () => {
                 ref={iframeRef}
                 id="hero-sandbox-iframe"
                 title="soemdsp sandbox"
-                src="/soemdsp-sandbox/index.html?sandboxView=modular-only&autostart=1&v=20260737"
+                src={sandboxEmbedSrc}
                 className="w-full border-0 bg-transparent"
                 style={{ height: sandboxViewportHeight, minHeight: sandboxViewportHeight }}
                 allow="autoplay; microphone"

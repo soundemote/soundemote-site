@@ -242,6 +242,9 @@ better-armed.`,
       { label: "Audio source", value: "Lorenz attractor (Y, Z → stereo)" },
       { label: "Default patch", value: "Homepage default" },
     ],
+    gallery: [
+      { type: "video", youtubeId: "Xn_GgdM_BWU", title: "Shooting Star patch video" },
+    ],
     body: `## What's actually happening
 
 This is the patch running on soundemote.io's homepage right now. Click a star in

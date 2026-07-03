@@ -37,6 +37,8 @@ const PatchArticlePage = ({ slug: slugProp }: PatchArticlePageProps = {}) => {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const chapters = article ? extractChapters(article.body) : [];
   const tocTheme = slug === "aliasingwars" ? "war" : "default";
+  const sandboxPreviewSrc =
+    "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autoframe=1&autostart=1&v=20260703-borderless";
 
   const postPatch = () => {
     if (!article?.patchUrl) return;
@@ -55,7 +57,13 @@ const PatchArticlePage = ({ slug: slugProp }: PatchArticlePageProps = {}) => {
                 bank_name: "soundemote",
                 patch_data: patchData,
               };
+        const framePatch = () => {
+          win.postMessage({ type: "soundemote:autoframe", padding: 0.18 }, window.location.origin);
+        };
         win.postMessage({ type: "soundemote:sandbox-project-data", projectData }, window.location.origin);
+        window.setTimeout(framePatch, 160);
+        window.setTimeout(framePatch, 520);
+        window.setTimeout(framePatch, 1200);
       })
       .catch(() => {
         /* ignore fetch/post errors */
@@ -120,12 +128,12 @@ const PatchArticlePage = ({ slug: slugProp }: PatchArticlePageProps = {}) => {
           {/* Main column */}
           <div className="min-w-0">
             {/* Patch preview */}
-            <section className="mb-10 overflow-hidden rounded-lg border border-border/60 bg-black/40">
+            <section className="mb-10 overflow-hidden bg-black/40">
               {article.status === "live" ? (
                 <iframe
                   ref={iframeRef}
                   title={`${article.title} patch preview`}
-                  src="/soemdsp-sandbox/index.html?sandboxView=modular-only&autostart=1"
+                  src={sandboxPreviewSrc}
                   className="h-[440px] w-full border-0 bg-transparent md:h-[520px]"
                   allow="autoplay; microphone"
                   onLoad={postPatch}
