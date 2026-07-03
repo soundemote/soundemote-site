@@ -9,6 +9,7 @@ import CircleTestPage from "./pages/CircleTestPage.tsx";
 import OscilloscopePage from "./pages/OscilloscopePage.tsx";
 import ScopeScratchPage from "./pages/ScopeScratchPage.tsx";
 import SandboxPage from "./pages/SandboxPage.tsx";
+import PatchArticlePage from "./pages/PatchArticlePage.tsx";
 import EmbedPage from "./pages/EmbedPage.tsx";
 import AVWResearch from "./pages/AVWResearch.tsx";
 import SupabaseTest from "./pages/SupabaseTest.tsx";
@@ -43,8 +44,16 @@ const App = () => (
           <Route path="/sandbox" element={<SandboxPage />} />
           <Route path="/embed" element={<EmbedPage />} />
           <Route path="/reverb" element={<SandboxPage staticPatchUrl="/patches/silently-dreaming.json" autostart />} />
-          <Route path="/shootingstar" element={<SandboxPage staticPatchUrl="/patches/shootingstar.json" />} />
           <Route path="/silentlydreaming" element={<SandboxPage staticPatchUrl="/patches/silently-dreaming.json" autostart />} />
+          {/* Wiki-style patch articles: GitHub README meets Wikipedia */}
+          <Route path="/shootingstar" element={<PatchArticlePage slug="shootingstar" />} />
+          <Route path="/sinewave" element={<PatchArticlePage slug="sinewave" />} />
+          <Route path="/dsf" element={<PatchArticlePage slug="dsf" />} />
+          <Route path="/polyblep" element={<PatchArticlePage slug="polyblep" />} />
+          <Route path="/surgeoscillator" element={<PatchArticlePage slug="surgeoscillator" />} />
+          <Route path="/phosphillator" element={<PatchArticlePage slug="phosphillator" />} />
+          <Route path="/rhythmandpitchgenerator" element={<PatchArticlePage slug="rhythmandpitchgenerator" />} />
+          <Route path="/flowerchildfilter" element={<PatchArticlePage slug="flowerchildfilter" />} />
           <Route path="/sandbox/:patch" element={<SandboxPage />} />
           <Route path="/sandbox/:user/:bank/:patch" element={<SandboxPage />} />
           <Route path="/avw-research" element={<AVWResearch />} />
