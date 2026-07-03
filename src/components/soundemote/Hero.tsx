@@ -17,7 +17,7 @@ export const Hero = () => {
   const noDiffTimer = useRef<number | null>(null);
   const postRetryTimers = useRef<number[]>([]);
   const [noDiff, setNoDiff] = useState(false);
-  const sandboxViewportHeight = "max(640px, calc(100svh - 10rem))";
+  const sandboxViewportHeight = "min(560px, 65vh)";
   const sandboxEmbedSrc =
     "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autoframe=1&autostart=1&v=20260703-borderless";
   const currentPatch = SOUNDEMOTE_BANK[patchIndex];
@@ -90,7 +90,7 @@ export const Hero = () => {
 
 
   const previewFrameClass = sandboxLoaded
-    ? "soundemote-sandbox-preview-frame relative flex w-screen justify-center overflow-hidden bg-transparent"
+    ? "soundemote-sandbox-preview-frame relative flex w-full max-w-[900px] mx-auto justify-center overflow-hidden bg-transparent"
     : "soundemote-sandbox-preview-frame relative flex w-full justify-center overflow-hidden bg-background";
 
   return (
@@ -99,7 +99,7 @@ export const Hero = () => {
       <div className="absolute inset-0 bg-[var(--gradient-hero)]" aria-hidden />
       <div className="relative mx-auto flex min-h-[56vh] max-w-6xl flex-col items-center justify-center animate-fade-in px-4 text-center md:min-h-[62vh]">
         <div className={sandboxLoaded
-          ? "mx-[calc(50%-50vw)] w-screen animate-fade-in [animation-delay:200ms]"
+          ? "mx-auto w-full animate-fade-in [animation-delay:200ms]"
           : "mx-auto w-full max-w-[min(95vw,56rem)] animate-fade-in [animation-delay:200ms]"
         }>
           <div
@@ -113,7 +113,7 @@ export const Hero = () => {
                 title="soemdsp sandbox"
                 src={sandboxEmbedSrc}
                 className="w-full border-0 bg-transparent"
-                style={{ height: sandboxViewportHeight, minHeight: sandboxViewportHeight }}
+                style={{ height: sandboxViewportHeight, minHeight: sandboxViewportHeight, maxWidth: "900px", width: "100%" }}
                 allow="autoplay; microphone"
                 onLoad={postPatch}
               />

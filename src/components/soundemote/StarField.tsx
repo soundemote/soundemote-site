@@ -91,10 +91,10 @@ export const StarField = () => {
       }
 
       return {
-        left: rect.left,
-        right: rect.right,
-        top: rect.top,
-        bottom: rect.bottom,
+        left: rect.left + 20,
+        right: rect.right - 20,
+        top: rect.top + 20,
+        bottom: rect.bottom - 20,
       };
     };
 
