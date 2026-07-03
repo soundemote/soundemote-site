@@ -42,9 +42,9 @@ const App = () => (
           <Route path="/scope-scratch" element={<ScopeScratchPage />} />
           <Route path="/sandbox" element={<SandboxPage />} />
           <Route path="/embed" element={<EmbedPage />} />
-          <Route path="/reverb" element={<SandboxPage staticPatchUrl="/patches/reverb.json" />} />
+          <Route path="/reverb" element={<SandboxPage staticPatchUrl="/patches/silently-dreaming.json" autostart />} />
           <Route path="/shootingstar" element={<SandboxPage staticPatchUrl="/patches/shootingstar.json" />} />
-          <Route path="/silentlydreaming" element={<SandboxPage staticPatchUrl="/patches/silently-dreaming.json" />} />
+          <Route path="/silentlydreaming" element={<SandboxPage staticPatchUrl="/patches/silently-dreaming.json" autostart />} />
           <Route path="/sandbox/:patch" element={<SandboxPage />} />
           <Route path="/sandbox/:user/:bank/:patch" element={<SandboxPage />} />
           <Route path="/avw-research" element={<AVWResearch />} />

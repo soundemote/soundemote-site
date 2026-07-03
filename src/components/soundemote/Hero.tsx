@@ -6,10 +6,11 @@ export const Hero = () => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
   const [patchIndex, setPatchIndex] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
-  // Index 0 (silently dreaming) is already the sandbox's built-in default patch.
-  // Seed lastPostedRef to 0 so it is never re-posted on first load (which would
-  // re-load the graph and flash). Only genuine index changes post.
-  const lastPostedRef = useRef<number>(0);
+  // -1 means "nothing posted yet" so the first onLoad always pushes the
+  // starting patch (silently dreaming) -- the sandbox's own built-in default
+  // patch is a different, unrelated placeholder graph, so it must not be
+  // assumed to already match index 0.
+  const lastPostedRef = useRef<number>(-1);
   // Serialized body of the patch currently loaded in the sandbox, to detect
   // "loaded but no visible diff" cases (e.g. two banks pointing at the same graph).
   const lastBodyRef = useRef<string | null>(null);
@@ -84,7 +85,7 @@ export const Hero = () => {
                 ref={iframeRef}
                 id="hero-sandbox-iframe"
                 title="soemdsp sandbox"
-                src="/soemdsp-sandbox/index.html?sandboxView=modular-only&v=20260737"
+                src="/soemdsp-sandbox/index.html?sandboxView=modular-only&autostart=1&v=20260737"
                 className="w-full border-0 bg-transparent"
                 style={{ height: sandboxViewportHeight, minHeight: sandboxViewportHeight }}
                 allow="autoplay; microphone"

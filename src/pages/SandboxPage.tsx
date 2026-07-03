@@ -15,7 +15,12 @@ type SharedProjectRow = {
   project_data: unknown;
 };
 
-function sandboxIframeSrc(search: string, params: SandboxRouteParams, wantsAutoframe: boolean) {
+function sandboxIframeSrc(
+  search: string,
+  params: SandboxRouteParams,
+  wantsAutoframe: boolean,
+  wantsAutostart: boolean,
+) {
   const iframeParams = new URLSearchParams(search);
   const hasPatchRoute = Boolean(params.patch);
 
@@ -31,6 +36,13 @@ function sandboxIframeSrc(search: string, params: SandboxRouteParams, wantsAutof
   // not just ones we push via postMessage.
   if (wantsAutoframe) {
     iframeParams.set("autoframe", "1");
+  }
+
+  // Autostart turns Live Audio output on as soon as the sandbox is ready,
+  // skipping the manual power-button press -- opt-in per route via the
+  // `autostart` SandboxPage prop.
+  if (wantsAutostart) {
+    iframeParams.set("autostart", "1");
   }
 
   const query = iframeParams.toString();
@@ -103,9 +115,10 @@ async function loadInitPatch(userId: string | undefined): Promise<unknown> {
 
 type SandboxPageProps = {
   staticPatchUrl?: string;
+  autostart?: boolean;
 };
 
-const SandboxPage = ({ staticPatchUrl }: SandboxPageProps = {}) => {
+const SandboxPage = ({ staticPatchUrl, autostart = false }: SandboxPageProps = {}) => {
   const location = useLocation();
   const params = useParams<SandboxRouteParams>();
   const { session } = useAuth();
@@ -125,7 +138,7 @@ const SandboxPage = ({ staticPatchUrl }: SandboxPageProps = {}) => {
   const targetLabel = hasPatchRoute
     ? `${params.user || "soundemote"} / ${params.bank || "main"} / ${params.patch}`
     : "soemdsp sandbox";
-  const iframeSrc = sandboxIframeSrc(location.search, params, wantsAutoframe);
+  const iframeSrc = sandboxIframeSrc(location.search, params, wantsAutoframe, autostart);
 
   useEffect(() => {
     let cancelled = false;
