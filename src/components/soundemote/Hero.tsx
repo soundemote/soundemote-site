@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import patchImage from "@/assets/soemdsp-patch.png";
 import { SOUNDEMOTE_BANK } from "@/data/patchBank";
 
-const HERO_BUILD = 2;
+const HERO_BUILD = 3;
 
 export const Hero = () => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
@@ -92,7 +92,7 @@ export const Hero = () => {
 
 
   const previewFrameClass = sandboxLoaded
-    ? "soundemote-sandbox-preview-frame relative flex w-full max-w-[900px] mx-auto justify-center overflow-hidden rounded-xl border border-white/[0.07] bg-transparent"
+    ? "soundemote-sandbox-preview-frame relative flex w-full max-w-[900px] mx-auto justify-center overflow-hidden border border-white/[0.07] bg-transparent"
     : "soundemote-sandbox-preview-frame relative flex w-full justify-center overflow-hidden bg-background";
 
   return (
