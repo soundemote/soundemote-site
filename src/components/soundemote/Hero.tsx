@@ -15,6 +15,7 @@ export const Hero = () => {
   // "loaded but no visible diff" cases (e.g. two banks pointing at the same graph).
   const lastBodyRef = useRef<string | null>(null);
   const noDiffTimer = useRef<number | null>(null);
+  const postRetryTimers = useRef<number[]>([]);
   const [noDiff, setNoDiff] = useState(false);
   const sandboxViewportHeight = "max(640px, calc(100svh - 10rem))";
   const currentPatch = SOUNDEMOTE_BANK[patchIndex];
@@ -49,19 +50,35 @@ export const Hero = () => {
               bank_name: "soundemote",
               patch_data: patchData,
             };
-      win.postMessage(
-        { type: "soundemote:sandbox-project-data", projectData },
-        window.location.origin,
+      postRetryTimers.current.forEach((timer) => window.clearTimeout(timer));
+      postRetryTimers.current = [];
+      const sendProjectData = () => {
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: "soundemote:sandbox-project-data", projectData },
+          window.location.origin,
+        );
+      };
+      sendProjectData();
+      postRetryTimers.current = [250, 700, 1400, 2600, 4200].map((delay) =>
+        window.setTimeout(sendProjectData, delay),
       );
     } catch {
       /* ignore fetch/post errors */
     }
-  }, [currentPatch.url, patchIndex]);
+  }, [currentPatch.label, currentPatch.url, patchIndex]);
 
   // Re-send whenever the selected patch changes (after initial load).
   useEffect(() => {
     if (sandboxLoaded) postPatch();
   }, [sandboxLoaded, postPatch]);
+
+  useEffect(
+    () => () => {
+      postRetryTimers.current.forEach((timer) => window.clearTimeout(timer));
+      if (noDiffTimer.current) window.clearTimeout(noDiffTimer.current);
+    },
+    [],
+  );
 
 
   const previewFrameClass = sandboxLoaded
