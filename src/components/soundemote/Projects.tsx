@@ -168,7 +168,7 @@ export const Projects = () => (
                                 <span className="mono block text-[0.68rem] uppercase tracking-[0.13em] text-muted-foreground transition-colors group-hover:text-scope">
                                     {repo.name}
                                 </span>
-                                <span className="mono block overflow-x-auto whitespace-nowrap text-xs text-warm-white/80 transition-colors group-hover:text-warm-white">
+                                <span className="mono block break-all text-[0.62rem] leading-snug text-warm-white/80 transition-colors group-hover:text-warm-white">
                                     {repo.href}
                                 </span>
                             </span>
