@@ -63,8 +63,6 @@ export const Hero = () => {
     if (sandboxLoaded) postPatch();
   }, [sandboxLoaded, postPatch]);
 
-  const step = (dir: number) =>
-    setPatchIndex((i) => (i + dir + SOUNDEMOTE_BANK.length) % SOUNDEMOTE_BANK.length);
 
   const previewFrameClass = sandboxLoaded
     ? "soundemote-sandbox-preview-frame relative flex w-full justify-center overflow-hidden bg-background"
