@@ -26,6 +26,112 @@ export type PatchArticle = {
 
 export const PATCH_ARTICLES: PatchArticle[] = [
   {
+    slug: "analogbox",
+    title: "Analogbox",
+    tagline: "Analog feel, digital precision, phosphor glow — one instrument.",
+    status: "live",
+    category: "Manifesto",
+    badges: [
+      { label: "status", value: "live", tone: "scope" },
+      { label: "category", value: "philosophy", tone: "accent" },
+      { label: "formerly", value: "sandbox", tone: "muted" },
+    ],
+    facts: [
+      { label: "Analog", value: "Circuit-accurate modeling (vactrols, ladder filters, chaos)" },
+      { label: "Digital", value: "PolyBLEP, sub-sample sync, wavetables" },
+      { label: "Phosphor", value: "CRT-decay trace rendering for the scope displays" },
+      { label: "Formerly known as", value: "the sandbox" },
+    ],
+    body: `## Why "Analogbox"
+
+This used to just be called the sandbox — a fair name for a place to
+experiment, but not a name that says anything about what it's actually
+*for*. Every module and every trace on screen in here is chasing one goal:
+take the physical, imprecise, gorgeous mess of real analog and optical
+hardware and get it into a digital instrument without sanding off the parts
+that made it beautiful in the first place. **Analogbox** is a better name
+for that goal.
+
+There are three ideas doing the work, and none of them are optional — pull
+any one out and the other two stop making sense.
+
+## Analog: model the circuit, not the curve
+
+It's tempting to fake "analog" with a lookup curve or a coat of noise. This
+toolkit doesn't do that. The [vactrolEnvelope](/shootingstar) module models
+an actual vactrol — an LED and a photoresistor sealed in one light-tight
+can, the same opto-isolator trick vintage synth designers reached for
+because a photoresistor doesn't snap open and shut like a digital gate. It
+glows up and fades down on its own asymmetric curve, and it never quite
+reaches full darkness — there's a \`darkCurrent\` parameter for the tiny
+leakage a real photoresistor never fully loses. The upcoming
+[flowerChildFilter](/flowerchildfilter) does the same thing for resonant
+filters: modeled closely enough off circuits like the Moog ladder that
+self-oscillation and saturation *fall out of the model*, instead of being
+faked as a separate "drive" stage bolted on after the fact.
+
+Even the audio-rate chaos in [Shooting Star](/shootingstar) — a Lorenz
+attractor humming away underneath the whole homepage — is this same
+philosophy applied to a different kind of "analog": real physical systems
+are continuous, sensitive to tiny perturbations, and never perfectly
+repeat. A chaos attractor is the digital-native version of that same
+unrepeatable, alive quality.
+
+## Digital: precision where precision matters
+
+None of that analog warmth is worth anything if the digital math underneath
+it is sloppy. A naive digital oscillator aliases. A naive hard sync
+oscillator aliases *worse*. So [PolyBLEP](/polyblep) exists — a tiny
+polynomial correction applied exactly where a waveform's discontinuity
+would otherwise fold ultrasonic energy back down into the audible range as
+harsh digital noise — and [Surge Oscillator](/surgeoscillator) pushes the
+same idea further, adding sub-sample-interpolated sync timing so a hard-sync
+reset doesn't even snap to the nearest sample boundary, just the *true*
+instant the crossing happened.
+
+\`\`\`text
+analog gives the instrument its character
+digital gives the character somewhere clean to live
+\`\`\`
+
+Digital precision isn't the opposite of analog warmth here — it's the
+foundation that lets the analog modeling actually be heard instead of
+buried under aliasing artifacts.
+
+## Phosphor: the glow underneath everything you see
+
+The third leg is visual, and it's easy to miss because it's been running
+under every module's scope display this whole time. Every trace in this
+toolkit renders with decay behavior borrowed from real CRT oscilloscope
+phosphor — the coating that glows when an electron beam hits it, then fades
+on its own characteristic curve, brightest right where the beam just
+passed, dimmer where it passed a moment ago, gone where it passed a while
+ago. Classic scope phosphors like **P31** (fast green, general-purpose) or
+longer-persistence formulations chosen for slow or one-shot signals all
+have their own decay time constants, and that decay is exactly what gives
+an analog scope trace its glowing, faintly smeared, unmistakably *alive*
+look next to a flat, static, purely digital line plot.
+
+The in-progress [Phosphillator](/phosphillator) module is this same idea
+pushed from "a rendering style" into "a patchable behavior" — what does an
+oscillator or envelope look like if its own output glows and decays the way
+a phosphor screen does, instead of switching cleanly on and off?
+
+## One instrument, not three features
+
+Analog, digital, and phosphor aren't three separate feature checkboxes —
+they're the same design instinct pointed at three different problems:
+*model the real physical behavior closely enough that the interesting,
+beautiful parts emerge on their own*, whether that behavior is a vactrol's
+glow, a waveform's edge, or a screen's afterimage. That's what this
+instrument is chasing, and it's a better name for it than "sandbox" ever
+was.
+
+Go play with it. It's the same app it always was — [open the full
+editor](/sandbox), or start with [Shooting Star](/shootingstar) and work
+outward from there.`,
+  },
+  {
     slug: "shootingstar",
     title: "Shooting Star",
     tagline: "🌠Trigger a chaos generator with a shooting star explosion.💥",

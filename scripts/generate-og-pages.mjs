@@ -34,6 +34,7 @@ const defaultImage =
 // script (no TS loader in the postbuild step), so the title/tagline pairs
 // are duplicated here rather than imported directly.
 const PAGES = [
+  { slug: "analogbox", title: "Analogbox", tagline: "Analog feel, digital precision, phosphor glow — one instrument." },
   { slug: "shootingstar", title: "Shooting Star", tagline: "🌠Trigger a chaos generator with a shooting star explosion.💥" },
   { slug: "sinewave", title: "Sine Wave", tagline: "The simplest patch in the sandbox." },
   { slug: "dsf", title: "DSF Oscillator", tagline: "A closed-form trick for a whole harmonic series." },

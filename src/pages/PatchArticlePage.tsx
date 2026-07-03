@@ -106,7 +106,7 @@ const PatchArticlePage = ({ slug: slugProp }: PatchArticlePageProps = {}) => {
           <div className="min-w-0">
             {/* Patch preview */}
             <section className="mb-10 overflow-hidden rounded-lg border border-border/60 bg-black/40">
-              {article.status === "live" && article.patchUrl ? (
+              {article.status === "live" ? (
                 <iframe
                   ref={iframeRef}
                   title={`${article.title} patch preview`}
@@ -133,22 +133,24 @@ const PatchArticlePage = ({ slug: slugProp }: PatchArticlePageProps = {}) => {
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{article.body}</ReactMarkdown>
             </div>
 
-            {article.status === "live" && article.patchUrl && (
+            {article.status === "live" && (
               <div className="mt-8 flex flex-wrap gap-4 border-t border-border/60 pt-6">
                 <Link
-                  to={`/sandbox?wiki=${encodeURIComponent(article.slug)}`}
+                  to="/sandbox"
                   className="mono text-xs text-scope underline underline-offset-4 hover:text-foreground"
                 >
                   open in full sandbox →
                 </Link>
-                <a
-                  href={article.patchUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mono text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
-                >
-                  view raw patch JSON
-                </a>
+                {article.patchUrl && (
+                  <a
+                    href={article.patchUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mono text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
+                  >
+                    view raw patch JSON
+                  </a>
+                )}
               </div>
             )}
           </div>
