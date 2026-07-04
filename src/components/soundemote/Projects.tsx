@@ -141,17 +141,15 @@ export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => {
                             return (
                                 <div
                                     key={`${repo.name}-${index}`}
-                                    className={`group relative flex min-w-0 items-start gap-3 overflow-hidden px-3 py-2.5 transition-colors hover:bg-scope/5 ${
+                                    className={`relative flex min-w-0 items-start gap-3 overflow-hidden px-3 py-2.5 ${
                                         isSelected ? "bg-scope/10" : ""
                                     }`}
                                 >
                                     <span
-                                        className={`absolute inset-y-0 left-0 w-px transition-colors group-hover:bg-scope/70 ${
-                                            isSelected ? "bg-scope/70" : "bg-scope/0"
-                                        }`}
+                                        className={`absolute inset-y-0 left-0 w-px ${isSelected ? "bg-scope/70" : "bg-scope/0"}`}
                                     />
                                     <span
-                                        className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded border border-border/70 bg-background/70 text-base leading-none transition-all group-hover:border-scope/60 group-hover:shadow-[0_0_18px_hsl(var(--scope)/0.18)] ${
+                                        className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded border border-border/70 bg-background/70 text-base leading-none ${
                                             repo.pulse ? "animate-pulse" : ""
                                         }`}
                                         aria-hidden
@@ -163,7 +161,7 @@ export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => {
                                             <button
                                                 type="button"
                                                 onClick={() => handleSelect(article.slug)}
-                                                className={`mono block text-left text-[0.68rem] uppercase tracking-[0.13em] transition-colors hover:text-scope ${
+                                                className={`mono block text-left text-[0.68rem] uppercase tracking-[0.13em] ${
                                                     isSelected ? "text-scope" : "text-muted-foreground"
                                                 }`}
                                             >
@@ -182,7 +180,7 @@ export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => {
                                                 href={repo.href}
                                                 target="_blank"
                                                 rel="noreferrer"
-                                                className="inline-flex items-center gap-1 text-scope/80 underline-offset-2 transition-colors hover:text-scope hover:underline"
+                                                className="inline-flex items-center gap-1 text-scope/80"
                                             >
                                                 github ↗
                                             </a>
