@@ -11,7 +11,6 @@ const FeaturedArticleSection = ({ article }: { article: FeaturedArticle }) => (
         <span className="mono inline-flex items-center gap-2 rounded-full border border-scope/50 bg-scope/10 px-4 py-1.5 text-[0.65rem] uppercase tracking-[0.2em] text-scope">
           featured fork
         </span>
-        <h2 className="display text-3xl text-warm-white md:text-5xl">{article.title}</h2>
         <p className="mono max-w-xl text-sm text-muted-foreground">
           {article.tagline} Pick another repo below to switch what's shown here — straight from{" "}
           <a
@@ -24,6 +23,16 @@ const FeaturedArticleSection = ({ article }: { article: FeaturedArticle }) => (
           </a>
           .
         </p>
+      </div>
+
+      <div className="mb-4 flex justify-center">
+        <button
+          type="button"
+          onClick={() => document.getElementById("projects")?.scrollIntoView({ block: "start" })}
+          className="mono inline-flex items-center gap-2 rounded-full border border-scope/50 px-4 py-1.5 text-[0.65rem] uppercase tracking-[0.14em] text-scope transition-colors hover:bg-scope/10"
+        >
+          ↓ back to repo list
+        </button>
       </div>
 
       <div

@@ -61,6 +61,14 @@ const FeaturedArticlePage = ({ slug }: { slug: string }) => {
         </header>
 
         <div className="mt-10 max-w-3xl">
+          <div className="mb-6">
+            <Link
+              to="/#projects"
+              className="mono inline-flex items-center gap-2 rounded-full border border-scope/50 px-4 py-1.5 text-[0.65rem] uppercase tracking-[0.14em] text-scope transition-colors hover:bg-scope/10"
+            >
+              ↓ back to repo list
+            </Link>
+          </div>
           <TableOfContents chapters={chapters} theme="default" />
           <WikiMarkdown markdown={article.markdown} />
         </div>
