@@ -1,9 +1,15 @@
+// Matches GitHub's own heading-anchor algorithm: strip non-word/space/hyphen
+// characters (this deletes emoji) WITHOUT trimming or collapsing whitespace
+// first. Headings written as "🎚️ Filters on the list" leave a leading space
+// behind once the emoji is gone, which GitHub turns into a leading "-" --
+// e.g. "#-filters-on-the-list". The fork READMEs' own internal TOC links are
+// authored against that exact convention, so replicating it here (rather
+// than trimming it away) is what makes those links actually resolve.
 export function slugifyHeading(text: string): string {
   return text
     .toLowerCase()
     .replace(/[^\w\s-]/g, "")
-    .trim()
-    .replace(/\s+/g, "-");
+    .replace(/\s/g, "-");
 }
 
 /** Pulls every `## Heading` line out of a markdown body, in order. */
