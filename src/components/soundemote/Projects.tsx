@@ -19,11 +19,6 @@ const repositoryLinks: RepositoryLink[] = [
         href: "https://github.com/soundemote/prettyscope-clap",
     },
     {
-        emoji: "🤖",
-        name: "aiassistant",
-        href: "https://github.com/elanhickler/aiassistant",
-    },
-    {
         emoji: "⚔️",
         name: "aliasing-wars",
         href: "https://github.com/elanhickler/soemdsp-sandbox-aliasing-wars",
