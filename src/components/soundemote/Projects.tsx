@@ -46,7 +46,7 @@ const repositoryLinks: RepositoryLink[] = [
     {
         emoji: "🌀",
         name: "jerobeam-modules",
-        href: "https://github.com/elanhickler/soemdsp-sandbox-white-wire",
+        href: "https://github.com/elanhickler/jerobeam-modules",
     },
     {
         emoji: "💡",

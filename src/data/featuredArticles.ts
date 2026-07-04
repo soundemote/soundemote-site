@@ -13,6 +13,7 @@ import {
   VACTROLS_MARKDOWN,
   VACTROLS_REPO,
 } from "./forkReadmes";
+import { JEROBEAM_MODULES_MARKDOWN, JEROBEAM_MODULES_REPO, JEROBEAM_MODULES_BRANCH } from "./jerobeamModules";
 
 export type FeaturedArticle = {
   slug: string;
@@ -111,6 +112,18 @@ export const featuredArticles: FeaturedArticle[] = [
     tagline: "Two components that have never touched, whispering to each other in light.",
     sourceUrl: `https://github.com/${VACTROLS_REPO}`,
     markdown: rewriteRelativeLinks(VACTROLS_MARKDOWN, VACTROLS_REPO),
+  },
+  {
+    slug: "jerobeam-modules",
+    // The elanhickler/jerobeam-modules repo is the intended new home but is
+    // currently empty; the actual work lives on the jerobeam-modules branch
+    // of soemdsp-sandbox-phosphor, which is where this content is fetched from.
+    repoHref: "https://github.com/elanhickler/jerobeam-modules",
+    emoji: "🌀",
+    title: "Jerobeam Modules — porting a scope artist's patches to native code",
+    tagline: "Giving Jerobeam Fenderson's oscilloscope-music patches a real native implementation.",
+    sourceUrl: `https://github.com/${JEROBEAM_MODULES_REPO}/tree/${JEROBEAM_MODULES_BRANCH}`,
+    markdown: rewriteRelativeLinks(JEROBEAM_MODULES_MARKDOWN, JEROBEAM_MODULES_REPO, JEROBEAM_MODULES_BRANCH),
   },
 ];
 
