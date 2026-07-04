@@ -110,7 +110,7 @@ export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => {
             <div className="container max-w-5xl">
                 <div className="mb-7 text-center md:mb-9">
                     <p className="mono mb-3 text-xs uppercase tracking-[0.3em] text-muted-foreground">/* projects */</p>
-                    <p className="mono text-xs text-muted-foreground">DSP / Audio / Visual</p>
+                    <p className="mono text-xs text-muted-foreground">audiovisual dsp</p>
                 </div>
 
                 <div className="overflow-hidden rounded-xl border border-scope/30 bg-background/60 shadow-[0_0_38px_hsl(var(--scope)/0.08)]">
@@ -121,9 +121,6 @@ export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => {
                                 local repository constellation
                             </p>
                             <div className="flex items-center gap-3">
-                                <p className="mono hidden text-[0.6rem] uppercase tracking-[0.18em] text-muted-foreground md:block">
-                                    click a name to feature its article above · github icon always opens the repo
-                                </p>
                                 <button
                                     type="button"
                                     onClick={scrollToFeaturedArticle}
