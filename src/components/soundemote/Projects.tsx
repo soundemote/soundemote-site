@@ -51,7 +51,7 @@ const repositoryLinks: RepositoryLink[] = [
     {
         emoji: "💡",
         name: "light-physics",
-        href: "https://github.com/elanhickler/soemdsp-sandbox-phosphor",
+        href: "https://github.com/elanhickler/soemdsp-sandbox-vactrols",
     },
     {
         emoji: "🌕",
