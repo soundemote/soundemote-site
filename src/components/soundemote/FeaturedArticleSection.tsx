@@ -7,6 +7,16 @@ const FeaturedArticleSection = ({ article }: { article: FeaturedArticle }) => (
     className="relative scroll-mt-16 border-y border-scope/30 bg-gradient-to-b from-scope/10 via-black/60 to-background py-16 md:py-24"
   >
     <div className="container mx-auto max-w-4xl px-4">
+      <div className="mb-4 flex justify-center">
+        <button
+          type="button"
+          onClick={() => document.getElementById("projects")?.scrollIntoView({ block: "start" })}
+          className="mono inline-flex items-center gap-2 rounded-full border border-scope/50 px-4 py-1.5 text-[0.65rem] uppercase tracking-[0.14em] text-scope transition-colors hover:bg-scope/10"
+        >
+          ↓ back to repo list
+        </button>
+      </div>
+
       <div className="mb-10 flex flex-col items-center gap-3 text-center">
         <span className="mono inline-flex items-center gap-2 rounded-full border border-scope/50 bg-scope/10 px-4 py-1.5 text-[0.65rem] uppercase tracking-[0.2em] text-scope">
           featured fork
@@ -23,16 +33,6 @@ const FeaturedArticleSection = ({ article }: { article: FeaturedArticle }) => (
           </a>
           .
         </p>
-      </div>
-
-      <div className="mb-4 flex justify-center">
-        <button
-          type="button"
-          onClick={() => document.getElementById("projects")?.scrollIntoView({ block: "start" })}
-          className="mono inline-flex items-center gap-2 rounded-full border border-scope/50 px-4 py-1.5 text-[0.65rem] uppercase tracking-[0.14em] text-scope transition-colors hover:bg-scope/10"
-        >
-          ↓ back to repo list
-        </button>
       </div>
 
       <div
