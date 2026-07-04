@@ -10,16 +10,6 @@ type RepositoryLink = {
 
 const repositoryLinks: RepositoryLink[] = [
     {
-        emoji: "⌨️",
-        name: "asciiscope",
-        href: "https://github.com/soundemote/asciiscope-clap",
-    },
-    {
-        emoji: "📡",
-        name: "prettyscope",
-        href: "https://github.com/soundemote/prettyscope-clap",
-    },
-    {
         emoji: "⚔️",
         name: "aliasing-wars",
         href: "https://github.com/elanhickler/soemdsp-sandbox-aliasing-wars",
@@ -30,14 +20,19 @@ const repositoryLinks: RepositoryLink[] = [
         href: "https://github.com/elanhickler/soemdsp-sandbox-analog-filters",
     },
     {
+        emoji: "⌨️",
+        name: "asciiscope",
+        href: "https://github.com/soundemote/asciiscope-clap",
+    },
+    {
+        emoji: "🔥",
+        name: "combustion",
+        href: "https://github.com/elanhickler/combustion",
+    },
+    {
         emoji: "⚡",
         name: "efficient-patch-system",
         href: "https://github.com/elanhickler/soemdsp-sandbox-digital-efficient-patch-system",
-    },
-    {
-        emoji: "🔲",
-        name: "white-wire",
-        href: "https://github.com/elanhickler/soemdsp-sandbox-digital-signals-audio",
     },
     {
         emoji: "🌀",
@@ -56,9 +51,25 @@ const repositoryLinks: RepositoryLink[] = [
         pulse: true,
     },
     {
+        emoji: "📡",
+        name: "prettyscope",
+        href: "https://github.com/soundemote/prettyscope-clap",
+    },
+    {
         emoji: "🥁",
         name: "rhythmandpitchgenerator",
         href: "https://github.com/elanhickler/soemdsp-sandbox-rhythmandpitchgenerator",
+    },
+    {
+        emoji: "🚀",
+        name: "soemdsp-simd",
+        href: "https://github.com/elanhickler/soemdsp-simd",
+    },
+    {
+        emoji: "🌆",
+        name: "synthwave-orchestra",
+        href: "https://github.com/elanhickler/supersaw",
+        pulse: true,
     },
     {
         emoji: "🦋",
@@ -71,20 +82,9 @@ const repositoryLinks: RepositoryLink[] = [
         href: "https://github.com/elanhickler/soemdsp-sandbox-analog-filters",
     },
     {
-        emoji: "🚀",
-        name: "soemdsp-simd",
-        href: "https://github.com/elanhickler/soemdsp-simd",
-    },
-    {
-        emoji: "🔥",
-        name: "combustion",
-        href: "https://github.com/elanhickler/combustion",
-    },
-    {
-        emoji: "🌆",
-        name: "synthwave-orchestra",
-        href: "https://github.com/elanhickler/supersaw",
-        pulse: true,
+        emoji: "🔲",
+        name: "white-wire",
+        href: "https://github.com/elanhickler/soemdsp-sandbox-digital-signals-audio",
     },
 ];
 
