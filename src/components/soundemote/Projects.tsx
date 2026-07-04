@@ -1,3 +1,5 @@
+import { featuredArticles } from "@/data/featuredArticles";
+
 type RepositoryLink = {
     emoji: string;
     name: string;
@@ -37,11 +39,6 @@ const repositoryLinks: RepositoryLink[] = [
         emoji: "📡",
         name: "prettyscope-clap",
         href: "https://github.com/soundemote/prettyscope-clap",
-    },
-    {
-        emoji: "🕸️",
-        name: "soundemote-site",
-        href: "https://github.com/soundemote/soundemote-site",
     },
     {
         emoji: "📜",
@@ -150,7 +147,12 @@ const repositoryLinks: RepositoryLink[] = [
     },
 ];
 
-export const Projects = () => (
+type ProjectsProps = {
+    selectedSlug: string;
+    onSelectArticle: (slug: string) => void;
+};
+
+export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => (
     <section id="projects" className="relative border-t border-border/40 pb-14 pt-14 md:pb-20 md:pt-20">
         <div className="container max-w-5xl">
             <div className="mb-7 text-center md:mb-9">
@@ -166,61 +168,93 @@ export const Projects = () => (
                             local repository constellation
                         </p>
                         <p className="mono hidden text-[0.6rem] uppercase tracking-[0.18em] text-muted-foreground md:block">
-                            full links, tiny doors, no mystery meat
+                            featured repos swap the article above · rest link out
                         </p>
                     </div>
                 </div>
 
                 <div className="grid grid-cols-1 divide-y divide-border/50 md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-3">
-                    {repositoryLinks.map((repo, index) => (
-                        <div
-                            key={`${repo.name}-${index}`}
-                            className="group relative flex min-w-0 items-start gap-3 overflow-hidden px-3 py-2.5 transition-colors hover:bg-scope/5"
-                        >
-                            <span className="absolute inset-y-0 left-0 w-px bg-scope/0 transition-colors group-hover:bg-scope/70" />
-                            <span
-                                className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded border border-border/70 bg-background/70 text-base leading-none transition-all group-hover:border-scope/60 group-hover:shadow-[0_0_18px_hsl(var(--scope)/0.18)] ${
-                                    repo.pulse ? "animate-pulse" : ""
+                    {repositoryLinks.map((repo, index) => {
+                        const article = featuredArticles.find((a) => a.repoHref === repo.href);
+                        const isSelected = article && article.slug === selectedSlug;
+                        return (
+                            <div
+                                key={`${repo.name}-${index}`}
+                                className={`group relative flex min-w-0 items-start gap-3 overflow-hidden px-3 py-2.5 transition-colors hover:bg-scope/5 ${
+                                    isSelected ? "bg-scope/10" : ""
                                 }`}
-                                aria-hidden
                             >
-                                {repo.emoji}
-                            </span>
-                            <span className="min-w-0 flex-1">
-                                <a
-                                    href={repo.href}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="mono block text-[0.68rem] uppercase tracking-[0.13em] text-muted-foreground transition-colors hover:text-scope"
+                                <span
+                                    className={`absolute inset-y-0 left-0 w-px transition-colors group-hover:bg-scope/70 ${
+                                        isSelected ? "bg-scope/70" : "bg-scope/0"
+                                    }`}
+                                />
+                                <span
+                                    className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded border border-border/70 bg-background/70 text-base leading-none transition-all group-hover:border-scope/60 group-hover:shadow-[0_0_18px_hsl(var(--scope)/0.18)] ${
+                                        repo.pulse ? "animate-pulse" : ""
+                                    }`}
+                                    aria-hidden
                                 >
-                                    {repo.name}
-                                </a>
-                                <a
-                                    href={repo.href}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="mono block break-all text-[0.62rem] leading-snug text-warm-white/80 transition-colors hover:text-warm-white"
-                                >
-                                    {repo.href}
-                                </a>
-                                {repo.related && (
-                                    <span className="mt-1.5 grid gap-0.5">
-                                        {repo.related.map((link) => (
-                                            <a
-                                                key={link.href}
-                                                href={link.href}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="mono block break-all text-[0.58rem] leading-snug text-scope/80 transition-colors hover:text-scope"
-                                            >
-                                                ↳ {link.label}: {link.href}
-                                            </a>
-                                        ))}
-                                    </span>
-                                )}
-                            </span>
-                        </div>
-                    ))}
+                                    {repo.emoji}
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                    {article ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => onSelectArticle(article.slug)}
+                                            className={`mono block text-left text-[0.68rem] uppercase tracking-[0.13em] transition-colors hover:text-scope ${
+                                                isSelected ? "text-scope" : "text-muted-foreground"
+                                            }`}
+                                        >
+                                            {repo.name}
+                                        </button>
+                                    ) : (
+                                        <a
+                                            href={repo.href}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="mono block text-[0.68rem] uppercase tracking-[0.13em] text-muted-foreground transition-colors hover:text-scope"
+                                        >
+                                            {repo.name}
+                                        </a>
+                                    )}
+                                    {article ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => onSelectArticle(article.slug)}
+                                            className="mono block break-all text-left text-[0.62rem] leading-snug text-warm-white/80 transition-colors hover:text-warm-white"
+                                        >
+                                            {isSelected ? "★ showing above" : "show article above ↑"}
+                                        </button>
+                                    ) : (
+                                        <a
+                                            href={repo.href}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="mono block break-all text-[0.62rem] leading-snug text-warm-white/80 transition-colors hover:text-warm-white"
+                                        >
+                                            {repo.href}
+                                        </a>
+                                    )}
+                                    {repo.related && (
+                                        <span className="mt-1.5 grid gap-0.5">
+                                            {repo.related.map((link) => (
+                                                <a
+                                                    key={link.href}
+                                                    href={link.href}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="mono block break-all text-[0.58rem] leading-snug text-scope/80 transition-colors hover:text-scope"
+                                                >
+                                                    ↳ {link.label}: {link.href}
+                                                </a>
+                                            ))}
+                                        </span>
+                                    )}
+                                </span>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
         </div>

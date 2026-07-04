@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -10,6 +10,7 @@ import OscilloscopePage from "./pages/OscilloscopePage.tsx";
 import ScopeScratchPage from "./pages/ScopeScratchPage.tsx";
 import SandboxPage from "./pages/SandboxPage.tsx";
 import PatchArticlePage from "./pages/PatchArticlePage.tsx";
+import FeaturedArticlePage from "./pages/FeaturedArticlePage.tsx";
 import EmbedPage from "./pages/EmbedPage.tsx";
 import AVWResearch from "./pages/AVWResearch.tsx";
 import SupabaseTest from "./pages/SupabaseTest.tsx";
@@ -58,6 +59,30 @@ const App = () => (
           <Route path="/flowerchildfilter" element={<PatchArticlePage slug="flowerchildfilter" />} />
           <Route path="/robinschmidt" element={<PatchArticlePage slug="robinschmidt" />} />
           <Route path="/rsmet" element={<PatchArticlePage slug="robinschmidt" />} />
+
+          {/* soemdsp-sandbox-<x> fork READMEs, featured on the homepage switcher and each
+              given their own corresponding soundemote.io/<article-name> route. Dash and
+              no-dash spellings resolve to the same place except where a no-dash slug was
+              already taken by an existing curated article above (aliasingwars,
+              rhythmandpitchgenerator) -- those keep their original content untouched. */}
+          <Route path="/soemdsp-sandbox" element={<Navigate to="/analogbox" replace />} />
+          <Route path="/phosphor" element={<FeaturedArticlePage slug="phosphor" />} />
+          <Route path="/aliasing-wars" element={<FeaturedArticlePage slug="aliasing-wars" />} />
+          <Route path="/analog-filters" element={<FeaturedArticlePage slug="analog-filters" />} />
+          <Route path="/analogfilters" element={<Navigate to="/analog-filters" replace />} />
+          <Route
+            path="/digital-efficient-patch-system"
+            element={<FeaturedArticlePage slug="digital-efficient-patch-system" />}
+          />
+          <Route path="/digitalefficientpatchsystem" element={<Navigate to="/digital-efficient-patch-system" replace />} />
+          <Route path="/digital-signals-audio" element={<FeaturedArticlePage slug="digital-signals-audio" />} />
+          <Route path="/digitalsignalsaudio" element={<Navigate to="/digital-signals-audio" replace />} />
+          <Route
+            path="/rhythm-and-pitch-generator"
+            element={<FeaturedArticlePage slug="rhythmandpitchgenerator" />}
+          />
+          <Route path="/vactrols" element={<FeaturedArticlePage slug="vactrols" />} />
+
           <Route path="/sandbox/:patch" element={<SandboxPage />} />
           <Route path="/sandbox/:user/:bank/:patch" element={<SandboxPage />} />
           <Route path="/avw-research" element={<AVWResearch />} />
