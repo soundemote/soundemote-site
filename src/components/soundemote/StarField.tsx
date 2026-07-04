@@ -45,7 +45,15 @@ type ScopeHitbox = {
 };
 
 export const StarField = () => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Two layers: the ambient twinkling starfield stays BEHIND page content
+  // (bgCanvas, z-0) like a night sky backdrop. Shooting stars + their
+  // explosion sparks render on a separate layer IN FRONT of content
+  // (fgCanvas, z-15) so they can visibly fly across and collide with the
+  // hero image/attractor scope instead of either being hidden behind
+  // opaque elements or having the whole ambient field incorrectly float
+  // on top of everything.
+  const bgCanvasRef = useRef<HTMLCanvasElement>(null);
+  const fgCanvasRef = useRef<HTMLCanvasElement>(null);
   const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
   const starsRef = useRef<Star[]>([]);
   const shootersRef = useRef<Shooter[]>([]);
@@ -58,10 +66,12 @@ export const StarField = () => {
 
   useEffect(() => {
     if (!portalHost) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    const bgCanvas = bgCanvasRef.current;
+    const fgCanvas = fgCanvasRef.current;
+    if (!bgCanvas || !fgCanvas) return;
+    const bgCtx = bgCanvas.getContext("2d");
+    const fgCtx = fgCanvas.getContext("2d");
+    if (!bgCtx || !fgCtx) return;
 
     let width = 0;
     let height = 0;
@@ -218,11 +228,16 @@ export const StarField = () => {
       dpr = Math.min(window.devicePixelRatio || 1, 2);
       width = window.innerWidth;
       height = window.innerHeight;
-      canvas.width = Math.floor(width * dpr);
-      canvas.height = Math.floor(height * dpr);
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      for (const [c, context] of [
+        [bgCanvas, bgCtx],
+        [fgCanvas, fgCtx],
+      ] as const) {
+        c.width = Math.floor(width * dpr);
+        c.height = Math.floor(height * dpr);
+        c.style.width = `${width}px`;
+        c.style.height = `${height}px`;
+        context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
       seed();
     };
 
@@ -271,11 +286,15 @@ export const StarField = () => {
     let nextShooterAt = 1.5;
     const tick = (now: number) => {
       const t = (now - start) / 1000;
-      ctx.clearRect(0, 0, width, height);
+      bgCtx.clearRect(0, 0, width, height);
+      fgCtx.clearRect(0, 0, width, height);
 
-      ctx.font = `12px "JetBrains Mono", ui-monospace, monospace`;
-      ctx.textBaseline = "middle";
-      ctx.textAlign = "center";
+      bgCtx.font = `12px "JetBrains Mono", ui-monospace, monospace`;
+      bgCtx.textBaseline = "middle";
+      bgCtx.textAlign = "center";
+      fgCtx.font = `12px "JetBrains Mono", ui-monospace, monospace`;
+      fgCtx.textBaseline = "middle";
+      fgCtx.textAlign = "center";
 
       const stars = starsRef.current;
       for (let i = 0; i < stars.length; i++) {
@@ -284,11 +303,11 @@ export const StarField = () => {
         const alpha = Math.min(1, s.baseAlpha * (0.35 + tw * 0.9));
         // pixel-art glow: draw a soft dot beneath bright glyphs
         if (tw > 0.75 && s.glyph !== "." && s.glyph !== "·" && s.glyph !== "˙") {
-          ctx.fillStyle = `hsla(${s.hue}, 80%, 70%, ${alpha * 0.25})`;
-          ctx.fillRect(s.x - 2, s.y - 2, 4, 4);
+          bgCtx.fillStyle = `hsla(${s.hue}, 80%, 70%, ${alpha * 0.25})`;
+          bgCtx.fillRect(s.x - 2, s.y - 2, 4, 4);
         }
-        ctx.fillStyle = `hsla(${s.hue}, 70%, ${60 + tw * 20}%, ${alpha})`;
-        ctx.fillText(s.glyph, s.x, s.y);
+        bgCtx.fillStyle = `hsla(${s.hue}, 70%, ${60 + tw * 20}%, ${alpha})`;
+        bgCtx.fillText(s.glyph, s.x, s.y);
       }
 
       // shooting stars
@@ -316,13 +335,13 @@ export const StarField = () => {
         for (let j = sh.trail.length - 1; j >= 0; j--) {
           const p = sh.trail[j];
           const a = (1 - j / sh.trail.length) * 0.8;
-          ctx.fillStyle = `hsla(${sh.hue}, 80%, ${65 + (1 - j / sh.trail.length) * 25}%, ${a})`;
-          ctx.fillText(p.glyph, p.x, p.y);
+          fgCtx.fillStyle = `hsla(${sh.hue}, 80%, ${65 + (1 - j / sh.trail.length) * 25}%, ${a})`;
+          fgCtx.fillText(p.glyph, p.x, p.y);
         }
         // head
-        ctx.fillStyle = `hsla(${sh.hue}, 90%, 90%, 1)`;
-        ctx.fillRect(sh.x - 1.5, sh.y - 1.5, 3, 3);
-        ctx.fillText("✦", sh.x, sh.y);
+        fgCtx.fillStyle = `hsla(${sh.hue}, 90%, 90%, 1)`;
+        fgCtx.fillRect(sh.x - 1.5, sh.y - 1.5, 3, 3);
+        fgCtx.fillText("✦", sh.x, sh.y);
 
         if (
           heroHitbox &&
@@ -368,11 +387,11 @@ export const StarField = () => {
         sp.vy = sp.vy * 0.96 + 0.035;
         sp.life -= 1;
 
-        ctx.fillStyle = `hsla(${sp.hue}, 95%, ${65 + age * 25}%, ${Math.max(0, age)})`;
+        fgCtx.fillStyle = `hsla(${sp.hue}, 95%, ${65 + age * 25}%, ${Math.max(0, age)})`;
         if (sp.glyph === "·") {
-          ctx.fillRect(sp.x - sp.size / 2, sp.y - sp.size / 2, sp.size, sp.size);
+          fgCtx.fillRect(sp.x - sp.size / 2, sp.y - sp.size / 2, sp.size, sp.size);
         } else {
-          ctx.fillText(sp.glyph, sp.x, sp.y);
+          fgCtx.fillText(sp.glyph, sp.x, sp.y);
         }
 
         if (sp.life <= 0) {
@@ -392,25 +411,32 @@ export const StarField = () => {
     };
   }, [portalHost]);
 
-  const canvas = (
-    <canvas
-      ref={canvasRef}
-      aria-hidden
-      className="pointer-events-none"
-      style={{
-        // <main> renders at z-10 (Index.tsx), so a z-0 canvas sat BEHIND the
-        // opaque hero image -- shooting stars (and their explosion sparks)
-        // were disappearing under the picture instead of visibly hitting it.
-        // z-15 puts stars in front of all page content, still below Nav's z-50.
-        position: "fixed",
-        inset: 0,
-        zIndex: 15,
-        background: "transparent",
-      }}
-    />
+  const canvases = (
+    <>
+      {/* Ambient twinkling starfield: stays BEHIND page content (z-0),
+          like a night sky backdrop -- must not float on top of the hero
+          image or any other section. */}
+      <canvas
+        ref={bgCanvasRef}
+        aria-hidden
+        className="pointer-events-none"
+        style={{ position: "fixed", inset: 0, zIndex: 0, background: "transparent" }}
+      />
+      {/* Shooting stars + explosion sparks: <main> renders at z-10
+          (Index.tsx), so this layer sits at z-15 -- in front of all page
+          content but still below Nav's z-50 -- so a star visibly flies
+          across and collides with the hero image/attractor scope instead
+          of disappearing behind them. */}
+      <canvas
+        ref={fgCanvasRef}
+        aria-hidden
+        className="pointer-events-none"
+        style={{ position: "fixed", inset: 0, zIndex: 15, background: "transparent" }}
+      />
+    </>
   );
 
-  return portalHost ? createPortal(canvas, portalHost) : null;
+  return portalHost ? createPortal(canvases, portalHost) : null;
 };
 
 export default StarField;
