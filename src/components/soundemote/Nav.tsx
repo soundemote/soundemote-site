@@ -165,7 +165,7 @@ export const Nav = () => {
       </a>
       <div className="absolute left-1/2 hidden -translate-x-1/2 items-center justify-center gap-0 whitespace-nowrap mono text-xs normal-case tracking-[0.06em] text-muted-foreground xl:flex">
         <span className="text-muted-foreground/80">/*</span>
-        <SandboxNavLink href="/sandbox" label="app:(analogbox)" />
+        <SandboxNavLink href="/sandbox" label="app:(analog box)" />
         <span className="text-[#ffc957] tracking-normal">{'\u26A1\uFE0E\u26A1\uFE0E\u26A1\uFE0E\u26A1\uFE0E\u26A1\uFE0E'}</span>
         <span className="text-muted-foreground/80">beta v0.2.0</span>
         <span className="text-muted-foreground/80">*/</span>

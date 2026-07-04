@@ -37,6 +37,9 @@ const PatchArticlePage = ({ slug: slugProp }: PatchArticlePageProps = {}) => {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const chapters = article ? extractChapters(article.body) : [];
   const tocTheme = slug === "aliasingwars" ? "war" : "default";
+  // Analog Box is the app itself, not just an article about it -- give it
+  // room to breathe instead of squeezing it into the standard wiki column.
+  const isWide = slug === "analogbox";
   const sandboxPreviewSrc =
     "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autoframe=1&autostart=1&v=20260703-borderless";
 
@@ -94,7 +97,7 @@ const PatchArticlePage = ({ slug: slugProp }: PatchArticlePageProps = {}) => {
     <main className="relative z-10 min-h-screen text-foreground">
       <Nav />
 
-      <article className="container mx-auto max-w-6xl px-4 py-12 md:py-16">
+      <article className={`container mx-auto px-4 py-12 md:py-16 ${isWide ? "max-w-[1920px]" : "max-w-6xl"}`}>
         {/* Breadcrumb */}
         <nav className="mono flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
           <Link to="/" className="hover:text-scope transition-colors">
@@ -124,7 +127,7 @@ const PatchArticlePage = ({ slug: slugProp }: PatchArticlePageProps = {}) => {
         </header>
 
         {/* Body grid: article + infobox */}
-        <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-[1fr_320px]">
+        <div className={`mt-10 grid grid-cols-1 gap-10 ${isWide ? "lg:grid-cols-[1fr_280px]" : "lg:grid-cols-[1fr_320px]"}`}>
           {/* Main column */}
           <div className="min-w-0">
             {/* Patch preview */}
@@ -134,7 +137,7 @@ const PatchArticlePage = ({ slug: slugProp }: PatchArticlePageProps = {}) => {
                   ref={iframeRef}
                   title={`${article.title} patch preview`}
                   src={sandboxPreviewSrc}
-                  className="h-[440px] w-full border-0 bg-transparent md:h-[520px]"
+                  className={`w-full border-0 bg-transparent ${isWide ? "h-[560px] md:h-[720px]" : "h-[440px] md:h-[520px]"}`}
                   allow="autoplay; microphone"
                   onLoad={postPatch}
                 />
