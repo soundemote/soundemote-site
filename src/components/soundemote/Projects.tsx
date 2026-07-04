@@ -74,6 +74,11 @@ const repositoryLinks: RepositoryLink[] = [
         name: "soemdsp-simd",
         href: "https://github.com/elanhickler/soemdsp-simd",
     },
+    {
+        emoji: "🔥",
+        name: "combustion",
+        href: "https://github.com/elanhickler/combustion",
+    },
 ];
 
 type ProjectsProps = {
@@ -111,7 +116,7 @@ export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => {
                             </p>
                             <div className="flex items-center gap-3">
                                 <p className="mono hidden text-[0.6rem] uppercase tracking-[0.18em] text-muted-foreground md:block">
-                                    click a repo to feature its article above
+                                    click a name to feature its article above · github icon always opens the repo
                                 </p>
                                 <button
                                     type="button"
@@ -130,11 +135,13 @@ export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => {
                         {repositoryLinks.map((repo, index) => {
                             const article = featuredArticles.find((a) => a.repoHref === repo.href);
                             const isSelected = article && article.slug === selectedSlug;
-                            const cardClassName = `group relative flex min-w-0 w-full items-start gap-3 overflow-hidden px-3 py-2.5 text-left transition-colors hover:bg-scope/5 ${
-                                isSelected ? "bg-scope/10" : ""
-                            }`;
-                            const cardContent = (
-                                <>
+                            return (
+                                <div
+                                    key={`${repo.name}-${index}`}
+                                    className={`group relative flex min-w-0 items-start gap-3 overflow-hidden px-3 py-2.5 transition-colors hover:bg-scope/5 ${
+                                        isSelected ? "bg-scope/10" : ""
+                                    }`}
+                                >
                                     <span
                                         className={`absolute inset-y-0 left-0 w-px transition-colors group-hover:bg-scope/70 ${
                                             isSelected ? "bg-scope/70" : "bg-scope/0"
@@ -149,34 +156,38 @@ export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => {
                                         {repo.emoji}
                                     </span>
                                     <span className="min-w-0 flex-1">
-                                        <span
-                                            className={`mono block text-[0.68rem] uppercase tracking-[0.13em] transition-colors group-hover:text-scope ${
-                                                isSelected ? "text-scope" : "text-muted-foreground"
-                                            }`}
-                                        >
-                                            {repo.name}
-                                        </span>
-                                        <span className="mono block break-all text-[0.62rem] leading-snug text-warm-white/80">
-                                            {article ? (isSelected ? "★ featured above" : "feature above ↑") : repo.href}
+                                        {article ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSelect(article.slug)}
+                                                className={`mono block text-left text-[0.68rem] uppercase tracking-[0.13em] transition-colors hover:text-scope ${
+                                                    isSelected ? "text-scope" : "text-muted-foreground"
+                                                }`}
+                                            >
+                                                {repo.name}
+                                            </button>
+                                        ) : (
+                                            <span className="mono block text-[0.68rem] uppercase tracking-[0.13em] text-muted-foreground">
+                                                {repo.name}
+                                            </span>
+                                        )}
+                                        <span className="mono flex items-center gap-1.5 text-[0.62rem] leading-snug">
+                                            {article && (
+                                                <span className="text-warm-white/80">
+                                                    {isSelected ? "★ featured above" : "feature above ↑"}
+                                                </span>
+                                            )}
+                                            <a
+                                                href={repo.href}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="inline-flex items-center gap-1 text-scope/80 underline-offset-2 transition-colors hover:text-scope hover:underline"
+                                            >
+                                                github ↗
+                                            </a>
                                         </span>
                                     </span>
-                                </>
-                            );
-
-                            return article ? (
-                                <button key={`${repo.name}-${index}`} type="button" onClick={() => handleSelect(article.slug)} className={cardClassName}>
-                                    {cardContent}
-                                </button>
-                            ) : (
-                                <a
-                                    key={`${repo.name}-${index}`}
-                                    href={repo.href}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className={cardClassName}
-                                >
-                                    {cardContent}
-                                </a>
+                                </div>
                             );
                         })}
                     </div>

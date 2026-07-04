@@ -14,6 +14,7 @@ import {
   VACTROLS_REPO,
 } from "./forkReadmes";
 import { JEROBEAM_MODULES_MARKDOWN, JEROBEAM_MODULES_REPO, JEROBEAM_MODULES_BRANCH } from "./jerobeamModules";
+import { COMBUSTION_MARKDOWN, COMBUSTION_REPO } from "./combustionArticle";
 
 export type FeaturedArticle = {
   slug: string;
@@ -124,6 +125,15 @@ export const featuredArticles: FeaturedArticle[] = [
     tagline: "Giving Jerobeam Fenderson's oscilloscope-music patches a real native implementation.",
     sourceUrl: `https://github.com/${JEROBEAM_MODULES_REPO}/tree/${JEROBEAM_MODULES_BRANCH}`,
     markdown: rewriteRelativeLinks(JEROBEAM_MODULES_MARKDOWN, JEROBEAM_MODULES_REPO, JEROBEAM_MODULES_BRANCH),
+  },
+  {
+    slug: "combustion",
+    repoHref: "https://github.com/elanhickler/combustion",
+    emoji: "🔥",
+    title: "POWER — combustion, rotors, and fire",
+    tagline: "Chasing the sound of engines through a spiral generator, emulation not simulation.",
+    sourceUrl: `https://github.com/${COMBUSTION_REPO}`,
+    markdown: rewriteRelativeLinks(COMBUSTION_MARKDOWN, COMBUSTION_REPO, "main"),
   },
 ];
 
