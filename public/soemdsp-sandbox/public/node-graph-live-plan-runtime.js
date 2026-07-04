@@ -244,6 +244,13 @@ function createNodeGraphLiveRuntime(plan) {
   const expAdsrStates = new Map();
   const fractalBrownianNoiseStates = new Map();
   const flowerChildEnvelopeFollowerStates = new Map();
+  const flowerChildFilterStates = new Map();
+  const rsmetFilterStates = new Map();
+  const yellowjacketFilterStates = new Map();
+  const superloveFilterStates = new Map();
+  const chaoticPhaseLockingFilterStates = new Map();
+  const resonatorFilterStates = new Map();
+  const humanFilterStates = new Map();
   const ladderFilterStates = new Map();
   const tb303FilterStates = new Map();
   const linearEnvelopeStates = new Map();
@@ -254,6 +261,8 @@ function createNodeGraphLiveRuntime(plan) {
   const turingMachineStates = new Map();
   const pitchQuantizerStates = new Map();
   const surgeOscillatorStates = new Map();
+  const dsfOscillatorStates = new Map();
+  const robinSupersawStates = new Map();
   const lorenzAttractorStates = new Map();
   const moduleGroupRuntimes = new Map();
   const noiseGeneratorStates = new Map();
@@ -314,6 +323,12 @@ function createNodeGraphLiveRuntime(plan) {
     if (node.type === "surgeOscillator") {
       surgeOscillatorStates.set(node.id, createNodeGraphSurgeOscillatorState());
     }
+    if (node.type === "dsfOscillator") {
+      dsfOscillatorStates.set(node.id, createNodeGraphDsfOscillatorState());
+    }
+    if (node.type === "robinSupersaw") {
+      robinSupersawStates.set(node.id, createNodeGraphRobinSupersawState());
+    }
     if (node.type === "passiveFilter") {
       passiveFilterStates.set(node.id, createNodeGraphPassiveFilterState());
     }
@@ -322,6 +337,27 @@ function createNodeGraphLiveRuntime(plan) {
     }
     if (node.type === "ladderFilter") {
       ladderFilterStates.set(node.id, createNodeGraphLadderFilterState());
+    }
+    if (node.type === "flowerChildFilter") {
+      flowerChildFilterStates.set(node.id, createNodeGraphFlowerChildFilterState());
+    }
+    if (node.type === "rsmetFilter") {
+      rsmetFilterStates.set(node.id, createNodeGraphRsmetFilterState());
+    }
+    if (node.type === "yellowjacketFilter") {
+      yellowjacketFilterStates.set(node.id, createNodeGraphYellowjacketFilterState());
+    }
+    if (node.type === "superloveFilter") {
+      superloveFilterStates.set(node.id, createNodeGraphSuperloveFilterState());
+    }
+    if (node.type === "chaoticPhaseLockingFilter") {
+      chaoticPhaseLockingFilterStates.set(node.id, createNodeGraphChaoticPhaseLockingFilterState());
+    }
+    if (node.type === "resonatorFilter") {
+      resonatorFilterStates.set(node.id, createNodeGraphResonatorFilterState());
+    }
+    if (node.type === "humanFilter") {
+      humanFilterStates.set(node.id, createNodeGraphHumanFilterState());
     }
     if (node.type === "tb303Filter") {
       tb303FilterStates.set(node.id, createNodeGraphTb303FilterState());
@@ -428,6 +464,13 @@ function createNodeGraphLiveRuntime(plan) {
     expAdsrStates,
     fractalBrownianNoiseStates,
     flowerChildEnvelopeFollowerStates,
+    flowerChildFilterStates,
+    rsmetFilterStates,
+    yellowjacketFilterStates,
+    superloveFilterStates,
+    chaoticPhaseLockingFilterStates,
+    resonatorFilterStates,
+    humanFilterStates,
     graphInputConnections,
     graphLfoStates,
     ladderFilterStates,
@@ -440,6 +483,8 @@ function createNodeGraphLiveRuntime(plan) {
     turingMachineStates,
     pitchQuantizerStates,
     surgeOscillatorStates,
+    dsfOscillatorStates,
+    robinSupersawStates,
     lorenzAttractorStates,
     meterCounter: 0,
     meterClipCount: 0,
@@ -557,6 +602,27 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   if (!runtime.ladderFilterStates) {
     runtime.ladderFilterStates = new Map();
   }
+  if (!runtime.flowerChildFilterStates) {
+    runtime.flowerChildFilterStates = new Map();
+  }
+  if (!runtime.rsmetFilterStates) {
+    runtime.rsmetFilterStates = new Map();
+  }
+  if (!runtime.yellowjacketFilterStates) {
+    runtime.yellowjacketFilterStates = new Map();
+  }
+  if (!runtime.superloveFilterStates) {
+    runtime.superloveFilterStates = new Map();
+  }
+  if (!runtime.chaoticPhaseLockingFilterStates) {
+    runtime.chaoticPhaseLockingFilterStates = new Map();
+  }
+  if (!runtime.resonatorFilterStates) {
+    runtime.resonatorFilterStates = new Map();
+  }
+  if (!runtime.humanFilterStates) {
+    runtime.humanFilterStates = new Map();
+  }
   if (!runtime.tb303FilterStates) {
     runtime.tb303FilterStates = new Map();
   }
@@ -586,6 +652,12 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   }
   if (!runtime.surgeOscillatorStates) {
     runtime.surgeOscillatorStates = new Map();
+  }
+  if (!runtime.dsfOscillatorStates) {
+    runtime.dsfOscillatorStates = new Map();
+  }
+  if (!runtime.robinSupersawStates) {
+    runtime.robinSupersawStates = new Map();
   }
   if (!runtime.clockStates) {
     runtime.clockStates = new Map();
@@ -706,6 +778,12 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     if (node.type === "surgeOscillator" && !runtime.surgeOscillatorStates.has(node.id)) {
       runtime.surgeOscillatorStates.set(node.id, createNodeGraphSurgeOscillatorState());
     }
+    if (node.type === "dsfOscillator" && !runtime.dsfOscillatorStates.has(node.id)) {
+      runtime.dsfOscillatorStates.set(node.id, createNodeGraphDsfOscillatorState());
+    }
+    if (node.type === "robinSupersaw" && !runtime.robinSupersawStates.has(node.id)) {
+      runtime.robinSupersawStates.set(node.id, createNodeGraphRobinSupersawState());
+    }
     if (node.type === "passiveFilter" && !runtime.passiveFilterStates.has(node.id)) {
       runtime.passiveFilterStates.set(node.id, createNodeGraphPassiveFilterState());
     }
@@ -714,6 +792,27 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     }
     if (node.type === "ladderFilter" && !runtime.ladderFilterStates.has(node.id)) {
       runtime.ladderFilterStates.set(node.id, createNodeGraphLadderFilterState());
+    }
+    if (node.type === "flowerChildFilter" && !runtime.flowerChildFilterStates.has(node.id)) {
+      runtime.flowerChildFilterStates.set(node.id, createNodeGraphFlowerChildFilterState());
+    }
+    if (node.type === "rsmetFilter" && !runtime.rsmetFilterStates.has(node.id)) {
+      runtime.rsmetFilterStates.set(node.id, createNodeGraphRsmetFilterState());
+    }
+    if (node.type === "yellowjacketFilter" && !runtime.yellowjacketFilterStates.has(node.id)) {
+      runtime.yellowjacketFilterStates.set(node.id, createNodeGraphYellowjacketFilterState());
+    }
+    if (node.type === "superloveFilter" && !runtime.superloveFilterStates.has(node.id)) {
+      runtime.superloveFilterStates.set(node.id, createNodeGraphSuperloveFilterState());
+    }
+    if (node.type === "chaoticPhaseLockingFilter" && !runtime.chaoticPhaseLockingFilterStates.has(node.id)) {
+      runtime.chaoticPhaseLockingFilterStates.set(node.id, createNodeGraphChaoticPhaseLockingFilterState());
+    }
+    if (node.type === "resonatorFilter" && !runtime.resonatorFilterStates.has(node.id)) {
+      runtime.resonatorFilterStates.set(node.id, createNodeGraphResonatorFilterState());
+    }
+    if (node.type === "humanFilter" && !runtime.humanFilterStates.has(node.id)) {
+      runtime.humanFilterStates.set(node.id, createNodeGraphHumanFilterState());
     }
     if (node.type === "clock" && !runtime.clockStates.has(node.id)) {
       runtime.clockStates.set(node.id, createNodeGraphClockState());
@@ -904,6 +1003,16 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
       runtime.surgeOscillatorStates.delete(id);
     }
   }
+  for (const id of [...runtime.dsfOscillatorStates.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.dsfOscillatorStates.delete(id);
+    }
+  }
+  for (const id of [...runtime.robinSupersawStates.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.robinSupersawStates.delete(id);
+    }
+  }
   for (const id of [...runtime.passiveFilterStates.keys()]) {
     if (!nodeIds.has(id)) {
       runtime.passiveFilterStates.delete(id);
@@ -937,6 +1046,41 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   for (const id of [...runtime.ladderFilterStates.keys()]) {
     if (!nodeIds.has(id)) {
       runtime.ladderFilterStates.delete(id);
+    }
+  }
+  for (const id of [...runtime.flowerChildFilterStates.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.flowerChildFilterStates.delete(id);
+    }
+  }
+  for (const id of [...runtime.rsmetFilterStates.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.rsmetFilterStates.delete(id);
+    }
+  }
+  for (const id of [...runtime.yellowjacketFilterStates.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.yellowjacketFilterStates.delete(id);
+    }
+  }
+  for (const id of [...runtime.superloveFilterStates.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.superloveFilterStates.delete(id);
+    }
+  }
+  for (const id of [...runtime.chaoticPhaseLockingFilterStates.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.chaoticPhaseLockingFilterStates.delete(id);
+    }
+  }
+  for (const id of [...runtime.resonatorFilterStates.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.resonatorFilterStates.delete(id);
+    }
+  }
+  for (const id of [...runtime.humanFilterStates.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.humanFilterStates.delete(id);
     }
   }
   for (const id of [...runtime.tb303FilterStates.keys()]) {
