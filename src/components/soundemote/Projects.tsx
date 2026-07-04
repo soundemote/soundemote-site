@@ -79,6 +79,12 @@ const repositoryLinks: RepositoryLink[] = [
         name: "combustion",
         href: "https://github.com/elanhickler/combustion",
     },
+    {
+        emoji: "🌆",
+        name: "synthwave-orchestra",
+        href: "https://github.com/elanhickler/supersaw",
+        pulse: true,
+    },
 ];
 
 type ProjectsProps = {

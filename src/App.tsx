@@ -82,6 +82,8 @@ const App = () => (
           <Route path="/jerobeam-modules" element={<FeaturedArticlePage slug="jerobeam-modules" />} />
           <Route path="/jerobeammodules" element={<Navigate to="/jerobeam-modules" replace />} />
           <Route path="/combustion" element={<FeaturedArticlePage slug="combustion" />} />
+          <Route path="/synthwave-orchestra" element={<FeaturedArticlePage slug="synthwave-orchestra" />} />
+          <Route path="/synthwaveorchestra" element={<Navigate to="/synthwave-orchestra" replace />} />
 
           <Route path="/sandbox/:patch" element={<SandboxPage />} />
           <Route path="/sandbox/:user/:bank/:patch" element={<SandboxPage />} />

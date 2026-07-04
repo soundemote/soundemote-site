@@ -15,6 +15,7 @@ import {
 } from "./forkReadmes";
 import { JEROBEAM_MODULES_MARKDOWN, JEROBEAM_MODULES_REPO, JEROBEAM_MODULES_BRANCH } from "./jerobeamModules";
 import { COMBUSTION_MARKDOWN, COMBUSTION_REPO } from "./combustionArticle";
+import { SUPERSAW_MARKDOWN, SUPERSAW_REPO, SUPERSAW_BRANCH } from "./supersawArticle";
 
 export type FeaturedArticle = {
   slug: string;
@@ -134,6 +135,15 @@ export const featuredArticles: FeaturedArticle[] = [
     tagline: "Chasing the sound of engines through a spiral generator, emulation not simulation.",
     sourceUrl: `https://github.com/${COMBUSTION_REPO}`,
     markdown: rewriteRelativeLinks(COMBUSTION_MARKDOWN, COMBUSTION_REPO, "main"),
+  },
+  {
+    slug: "synthwave-orchestra",
+    repoHref: "https://github.com/elanhickler/supersaw",
+    emoji: "🌆",
+    title: "Synthwave Orchestra",
+    tagline: "Pitch-dithered supersaws meeting a full orchestra, from RS-MET's aliasing research.",
+    sourceUrl: `https://github.com/${SUPERSAW_REPO}`,
+    markdown: rewriteRelativeLinks(SUPERSAW_MARKDOWN, SUPERSAW_REPO, SUPERSAW_BRANCH),
   },
 ];
 
