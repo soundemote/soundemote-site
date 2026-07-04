@@ -179,9 +179,7 @@ export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => {
                                         )}
                                         <span className="mono flex items-center gap-1.5 text-[0.62rem] leading-snug">
                                             {article && (
-                                                <span className="text-warm-white/80">
-                                                    {isSelected ? "★ featured above" : "feature above ↑"}
-                                                </span>
+                                                <span className="text-warm-white/80">{isSelected ? "★" : "↑"}</span>
                                             )}
                                             <a
                                                 href={repo.href}
