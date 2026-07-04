@@ -5,45 +5,18 @@ type RepositoryLink = {
     name: string;
     href: string;
     pulse?: boolean;
-    related?: { label: string; href: string }[];
 };
 
 const repositoryLinks: RepositoryLink[] = [
     {
-        emoji: "🎛️",
-        name: "soemdsp-sandbox",
-        href: "https://github.com/soundemote/soemdsp-sandbox",
-        pulse: true,
-    },
-    {
-        emoji: "🧬",
-        name: "soemdsp",
-        href: "https://github.com/soundemote/soemdsp",
-    },
-    {
-        emoji: "📺",
-        name: "prettyscope",
-        href: "https://github.com/soundemote/prettyscope",
-    },
-    {
         emoji: "⌨️",
         name: "asciiscope",
-        href: "https://github.com/soundemote/asciiscope",
-    },
-    {
-        emoji: "🔌",
-        name: "asciiscope-clap",
         href: "https://github.com/soundemote/asciiscope-clap",
     },
     {
         emoji: "📡",
-        name: "prettyscope-clap",
+        name: "prettyscope",
         href: "https://github.com/soundemote/prettyscope-clap",
-    },
-    {
-        emoji: "📜",
-        name: "CODEGUIDE",
-        href: "https://github.com/soundemote/CODEGUIDE",
     },
     {
         emoji: "🤖",
@@ -116,30 +89,6 @@ const repositoryLinks: RepositoryLink[] = [
         name: "soemdsp-simd",
         href: "https://github.com/elanhickler/soemdsp-simd",
     },
-    {
-        emoji: "🎻",
-        name: "RobinSchmidt/RS-MET",
-        href: "https://github.com/RobinSchmidt/RS-MET",
-        pulse: true,
-        related: [
-            {
-                label: "soundemote.io/robinschmidt",
-                href: "https://soundemote.io/robinschmidt",
-            },
-            {
-                label: "PitchDithering.md",
-                href: "https://github.com/RobinSchmidt/RS-MET/blob/work/Notes/Scratch/PitchDithering.md",
-            },
-            {
-                label: "PitchDitherOscs.h",
-                href: "https://github.com/RobinSchmidt/RS-MET/blob/work/Libraries/RobsJuceModules/rapt/Generators/PitchDitherOscs.h",
-            },
-            {
-                label: "PitchDitherOscs.cpp",
-                href: "https://github.com/RobinSchmidt/RS-MET/blob/work/Libraries/RobsJuceModules/rapt/Generators/PitchDitherOscs.cpp",
-            },
-        ],
-    },
 ];
 
 type ProjectsProps = {
@@ -163,7 +112,7 @@ export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => (
                             local repository constellation
                         </p>
                         <p className="mono hidden text-[0.6rem] uppercase tracking-[0.18em] text-muted-foreground md:block">
-                            featured repos swap the article above · rest link out
+                            click a name to feature it above · link always goes to github
                         </p>
                     </div>
                 </div>
@@ -213,39 +162,14 @@ export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => (
                                             {repo.name}
                                         </a>
                                     )}
-                                    {article ? (
-                                        <button
-                                            type="button"
-                                            onClick={() => onSelectArticle(article.slug)}
-                                            className="mono block break-all text-left text-[0.62rem] leading-snug text-warm-white/80 transition-colors hover:text-warm-white"
-                                        >
-                                            {isSelected ? "★ showing above" : "show article above ↑"}
-                                        </button>
-                                    ) : (
-                                        <a
-                                            href={repo.href}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="mono block break-all text-[0.62rem] leading-snug text-warm-white/80 transition-colors hover:text-warm-white"
-                                        >
-                                            {repo.href}
-                                        </a>
-                                    )}
-                                    {repo.related && (
-                                        <span className="mt-1.5 grid gap-0.5">
-                                            {repo.related.map((link) => (
-                                                <a
-                                                    key={link.href}
-                                                    href={link.href}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    className="mono block break-all text-[0.58rem] leading-snug text-scope/80 transition-colors hover:text-scope"
-                                                >
-                                                    ↳ {link.label}: {link.href}
-                                                </a>
-                                            ))}
-                                        </span>
-                                    )}
+                                    <a
+                                        href={repo.href}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="mono block break-all text-[0.62rem] leading-snug text-warm-white/80 transition-colors hover:text-warm-white"
+                                    >
+                                        {repo.href}
+                                    </a>
                                 </span>
                             </div>
                         );
