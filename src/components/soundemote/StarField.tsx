@@ -68,20 +68,11 @@ export const StarField = () => {
     let dpr = Math.min(window.devicePixelRatio || 1, 2);
     let lastScrollAt = -Infinity;
 
-    const getScopeHitbox = (now: number): ScopeHitbox | null => {
-      if (now - lastScrollAt < 250) return null;
-
-      const target =
-        document.querySelector<HTMLElement>("#hero-sandbox-iframe") ??
-        document.querySelector<HTMLElement>(".soundemote-sandbox-preview-frame") ??
-        document.querySelector<HTMLElement>("#hero-patch-image") ??
-        document.querySelector<HTMLCanvasElement>("#hero-oscilloscope canvas");
-      if (!target) {
-        return null;
-      }
-      const rect = target.getBoundingClientRect();
+    const rectToHitbox = (rect: DOMRect): ScopeHitbox | null => {
       if (
         !rect ||
+        rect.width <= 0 ||
+        rect.height <= 0 ||
         rect.right <= 0 ||
         rect.left >= width ||
         rect.bottom <= 0 ||
@@ -89,13 +80,37 @@ export const StarField = () => {
       ) {
         return null;
       }
-
       return {
         left: rect.left + 20,
         right: rect.right - 20,
         top: rect.top + 20,
         bottom: rect.bottom - 20,
       };
+    };
+
+    // #hero-patch-image is the actual rendered picture (scaled to its natural
+    // size); .soundemote-sandbox-preview-frame is just its full-width flex
+    // wrapper before the sandbox loads, so it must NOT be checked first --
+    // doing so made the hitbox ~230px wider than the visible image on each
+    // side (stars looked like they were exploding well off the picture).
+    const getHeroHitbox = (now: number): ScopeHitbox | null => {
+      if (now - lastScrollAt < 250) return null;
+
+      const target =
+        document.querySelector<HTMLElement>("#hero-sandbox-iframe") ??
+        document.querySelector<HTMLElement>("#hero-patch-image") ??
+        document.querySelector<HTMLElement>(".soundemote-sandbox-preview-frame") ??
+        document.querySelector<HTMLCanvasElement>("#hero-oscilloscope canvas");
+      if (!target) return null;
+      return rectToHitbox(target.getBoundingClientRect());
+    };
+
+    // The "strange attractor scope" panel further down the page (ScopeLab.tsx).
+    const getAttractorHitbox = (now: number): ScopeHitbox | null => {
+      if (now - lastScrollAt < 250) return null;
+      const target = document.querySelector<HTMLElement>("#scope-oscilloscope");
+      if (!target) return null;
+      return rectToHitbox(target.getBoundingClientRect());
     };
 
     const postSandboxCollisionEvent = (hitbox: ScopeHitbox, x: number, y: number, hue: number, speed: number) => {
@@ -281,7 +296,8 @@ export const StarField = () => {
       }
       const shooters = shootersRef.current;
       const trailGlyphs = ["*", "+", "·", ".", " "];
-      const scopeHitbox = getScopeHitbox(now);
+      const heroHitbox = getHeroHitbox(now);
+      const attractorHitbox = getAttractorHitbox(now);
       for (let i = shooters.length - 1; i >= 0; i--) {
         const sh = shooters[i];
         sh.x += sh.vx;
@@ -306,15 +322,27 @@ export const StarField = () => {
         ctx.fillText("✦", sh.x, sh.y);
 
         if (
-          scopeHitbox &&
-          sh.x >= scopeHitbox.left &&
-          sh.x <= scopeHitbox.right &&
-          sh.y >= scopeHitbox.top &&
-          sh.y <= scopeHitbox.bottom
+          heroHitbox &&
+          sh.x >= heroHitbox.left &&
+          sh.x <= heroHitbox.right &&
+          sh.y >= heroHitbox.top &&
+          sh.y <= heroHitbox.bottom
         ) {
           explode(sh.x, sh.y, sh.hue);
           const shooterSpeed = Math.hypot(sh.vx, sh.vy);
-          postSandboxCollisionEvent(scopeHitbox, sh.x, sh.y, sh.hue, shooterSpeed);
+          postSandboxCollisionEvent(heroHitbox, sh.x, sh.y, sh.hue, shooterSpeed);
+          shooters.splice(i, 1);
+          continue;
+        }
+
+        if (
+          attractorHitbox &&
+          sh.x >= attractorHitbox.left &&
+          sh.x <= attractorHitbox.right &&
+          sh.y >= attractorHitbox.top &&
+          sh.y <= attractorHitbox.bottom
+        ) {
+          explode(sh.x, sh.y, sh.hue);
           shooters.splice(i, 1);
           continue;
         }
