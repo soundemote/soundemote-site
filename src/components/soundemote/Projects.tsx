@@ -184,7 +184,7 @@ export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 divide-y divide-border/50 md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-3">
+                    <div className="grid grid-cols-1 divide-y divide-border/50 md:grid-cols-2 md:grid-flow-col md:grid-rows-[repeat(8,minmax(0,1fr))] md:divide-x md:divide-y-0 xl:grid-cols-3 xl:grid-rows-[repeat(5,minmax(0,1fr))]">
                         {repositoryLinks.map((repo, index) => {
                             const article = featuredArticles.find((a) => a.repoHref === repo.href);
                             const isSelected = Boolean(article && article.slug === selectedSlug);
