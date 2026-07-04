@@ -35,12 +35,12 @@ const repositoryLinks: RepositoryLink[] = [
     },
     {
         emoji: "⚡",
-        name: "digital-efficient-patch-system",
+        name: "efficient-patch-system",
         href: "https://github.com/elanhickler/soemdsp-sandbox-digital-efficient-patch-system",
     },
     {
         emoji: "🔲",
-        name: "digital-signals-audio",
+        name: "white-wire",
         href: "https://github.com/elanhickler/soemdsp-sandbox-digital-signals-audio",
     },
     {
@@ -52,11 +52,6 @@ const repositoryLinks: RepositoryLink[] = [
         emoji: "💡",
         name: "light-physics",
         href: "https://github.com/elanhickler/soemdsp-sandbox-phosphor",
-    },
-    {
-        emoji: "🧪",
-        name: "phosphillator",
-        href: "https://github.com/soundemote/soemdsp-sandbox",
     },
     {
         emoji: "🌕",
@@ -80,11 +75,6 @@ const repositoryLinks: RepositoryLink[] = [
         href: "https://github.com/elanhickler/soemdsp-sandbox-analog-filters",
     },
     {
-        emoji: "⬜",
-        name: "white-wire",
-        href: "https://github.com/elanhickler/soemdsp-sandbox-white-wire",
-    },
-    {
         emoji: "🚀",
         name: "soemdsp-simd",
         href: "https://github.com/elanhickler/soemdsp-simd",
@@ -96,88 +86,109 @@ type ProjectsProps = {
     onSelectArticle: (slug: string) => void;
 };
 
-export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => (
-    <section id="projects" className="relative border-t border-border/40 pb-14 pt-14 md:pb-20 md:pt-20">
-        <div className="container max-w-5xl">
-            <div className="mb-7 text-center md:mb-9">
-                <p className="mono mb-3 text-xs uppercase tracking-[0.3em] text-muted-foreground">/* projects */</p>
-                <p className="mono text-xs text-muted-foreground">DSP / Audio / Visual</p>
-            </div>
+// The page's <main> already has Tailwind's scroll-smooth class, so a plain
+// scrollIntoView (behavior: "auto") still animates smoothly via CSS --
+// explicitly passing behavior: "smooth" here was silently not scrolling.
+const scrollToFeaturedArticle = () => {
+    document.getElementById("featured-article")?.scrollIntoView({ block: "start" });
+};
 
-            <div className="overflow-hidden rounded-xl border border-scope/30 bg-background/60 shadow-[0_0_38px_hsl(var(--scope)/0.08)]">
-                <div className="relative border-b border-scope/20 px-4 py-3">
-                    <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-scope/60 to-transparent" />
-                    <div className="flex items-center justify-between gap-4">
-                        <p className="mono text-[0.65rem] uppercase tracking-[0.24em] text-scope">
-                            local repository constellation
-                        </p>
-                        <p className="mono hidden text-[0.6rem] uppercase tracking-[0.18em] text-muted-foreground md:block">
-                            click a name to feature it above · link always goes to github
-                        </p>
-                    </div>
+export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => {
+    const handleSelect = (slug: string) => {
+        onSelectArticle(slug);
+        scrollToFeaturedArticle();
+    };
+
+    return (
+        <section id="projects" className="relative border-t border-border/40 pb-14 pt-14 md:pb-20 md:pt-20">
+            <div className="container max-w-5xl">
+                <div className="mb-7 text-center md:mb-9">
+                    <p className="mono mb-3 text-xs uppercase tracking-[0.3em] text-muted-foreground">/* projects */</p>
+                    <p className="mono text-xs text-muted-foreground">DSP / Audio / Visual</p>
                 </div>
 
-                <div className="grid grid-cols-1 divide-y divide-border/50 md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-3">
-                    {repositoryLinks.map((repo, index) => {
-                        const article = featuredArticles.find((a) => a.repoHref === repo.href);
-                        const isSelected = article && article.slug === selectedSlug;
-                        return (
-                            <div
-                                key={`${repo.name}-${index}`}
-                                className={`group relative flex min-w-0 items-start gap-3 overflow-hidden px-3 py-2.5 transition-colors hover:bg-scope/5 ${
-                                    isSelected ? "bg-scope/10" : ""
-                                }`}
-                            >
-                                <span
-                                    className={`absolute inset-y-0 left-0 w-px transition-colors group-hover:bg-scope/70 ${
-                                        isSelected ? "bg-scope/70" : "bg-scope/0"
-                                    }`}
-                                />
-                                <span
-                                    className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded border border-border/70 bg-background/70 text-base leading-none transition-all group-hover:border-scope/60 group-hover:shadow-[0_0_18px_hsl(var(--scope)/0.18)] ${
-                                        repo.pulse ? "animate-pulse" : ""
-                                    }`}
-                                    aria-hidden
+                <div className="overflow-hidden rounded-xl border border-scope/30 bg-background/60 shadow-[0_0_38px_hsl(var(--scope)/0.08)]">
+                    <div className="relative border-b border-scope/20 px-4 py-3">
+                        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-scope/60 to-transparent" />
+                        <div className="flex items-center justify-between gap-4">
+                            <p className="mono text-[0.65rem] uppercase tracking-[0.24em] text-scope">
+                                local repository constellation
+                            </p>
+                            <div className="flex items-center gap-3">
+                                <p className="mono hidden text-[0.6rem] uppercase tracking-[0.18em] text-muted-foreground md:block">
+                                    click a repo to feature its article above
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={scrollToFeaturedArticle}
+                                    title="Jump to the top of the featured article"
+                                    aria-label="Jump to the top of the featured article"
+                                    className="mono flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-scope/50 text-scope transition-colors hover:bg-scope/10"
                                 >
-                                    {repo.emoji}
-                                </span>
-                                <span className="min-w-0 flex-1">
-                                    {article ? (
-                                        <button
-                                            type="button"
-                                            onClick={() => onSelectArticle(article.slug)}
-                                            className={`mono block text-left text-[0.68rem] uppercase tracking-[0.13em] transition-colors hover:text-scope ${
+                                    ↑
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 divide-y divide-border/50 md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-3">
+                        {repositoryLinks.map((repo, index) => {
+                            const article = featuredArticles.find((a) => a.repoHref === repo.href);
+                            const isSelected = article && article.slug === selectedSlug;
+                            const cardClassName = `group relative flex min-w-0 w-full items-start gap-3 overflow-hidden px-3 py-2.5 text-left transition-colors hover:bg-scope/5 ${
+                                isSelected ? "bg-scope/10" : ""
+                            }`;
+                            const cardContent = (
+                                <>
+                                    <span
+                                        className={`absolute inset-y-0 left-0 w-px transition-colors group-hover:bg-scope/70 ${
+                                            isSelected ? "bg-scope/70" : "bg-scope/0"
+                                        }`}
+                                    />
+                                    <span
+                                        className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded border border-border/70 bg-background/70 text-base leading-none transition-all group-hover:border-scope/60 group-hover:shadow-[0_0_18px_hsl(var(--scope)/0.18)] ${
+                                            repo.pulse ? "animate-pulse" : ""
+                                        }`}
+                                        aria-hidden
+                                    >
+                                        {repo.emoji}
+                                    </span>
+                                    <span className="min-w-0 flex-1">
+                                        <span
+                                            className={`mono block text-[0.68rem] uppercase tracking-[0.13em] transition-colors group-hover:text-scope ${
                                                 isSelected ? "text-scope" : "text-muted-foreground"
                                             }`}
                                         >
                                             {repo.name}
-                                        </button>
-                                    ) : (
-                                        <a
-                                            href={repo.href}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="mono block text-[0.68rem] uppercase tracking-[0.13em] text-muted-foreground transition-colors hover:text-scope"
-                                        >
-                                            {repo.name}
-                                        </a>
-                                    )}
-                                    <a
-                                        href={repo.href}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="mono block break-all text-[0.62rem] leading-snug text-warm-white/80 transition-colors hover:text-warm-white"
-                                    >
-                                        {repo.href}
-                                    </a>
-                                </span>
-                            </div>
-                        );
-                    })}
+                                        </span>
+                                        <span className="mono block break-all text-[0.62rem] leading-snug text-warm-white/80">
+                                            {article ? (isSelected ? "★ featured above" : "feature above ↑") : repo.href}
+                                        </span>
+                                    </span>
+                                </>
+                            );
+
+                            return article ? (
+                                <button key={`${repo.name}-${index}`} type="button" onClick={() => handleSelect(article.slug)} className={cardClassName}>
+                                    {cardContent}
+                                </button>
+                            ) : (
+                                <a
+                                    key={`${repo.name}-${index}`}
+                                    href={repo.href}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={cardClassName}
+                                >
+                                    {cardContent}
+                                </a>
+                            );
+                        })}
+                    </div>
                 </div>
             </div>
-        </div>
-    </section>
-);
+        </section>
+    );
+};
 
 export default Projects;

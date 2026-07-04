@@ -70,13 +70,10 @@ const App = () => (
           <Route path="/aliasing-wars" element={<FeaturedArticlePage slug="aliasing-wars" />} />
           <Route path="/analog-filters" element={<FeaturedArticlePage slug="analog-filters" />} />
           <Route path="/analogfilters" element={<Navigate to="/analog-filters" replace />} />
-          <Route
-            path="/digital-efficient-patch-system"
-            element={<FeaturedArticlePage slug="digital-efficient-patch-system" />}
-          />
-          <Route path="/digitalefficientpatchsystem" element={<Navigate to="/digital-efficient-patch-system" replace />} />
-          <Route path="/digital-signals-audio" element={<FeaturedArticlePage slug="digital-signals-audio" />} />
-          <Route path="/digitalsignalsaudio" element={<Navigate to="/digital-signals-audio" replace />} />
+          <Route path="/efficient-patch-system" element={<FeaturedArticlePage slug="efficient-patch-system" />} />
+          <Route path="/efficientpatchsystem" element={<Navigate to="/efficient-patch-system" replace />} />
+          <Route path="/white-wire" element={<FeaturedArticlePage slug="white-wire" />} />
+          <Route path="/whitewire" element={<Navigate to="/white-wire" replace />} />
           <Route
             path="/rhythm-and-pitch-generator"
             element={<FeaturedArticlePage slug="rhythmandpitchgenerator" />}

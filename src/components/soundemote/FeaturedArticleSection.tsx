@@ -2,7 +2,10 @@ import WikiMarkdown from "./WikiMarkdown";
 import type { FeaturedArticle } from "@/data/featuredArticles";
 
 const FeaturedArticleSection = ({ article }: { article: FeaturedArticle }) => (
-  <section className="relative border-y border-scope/30 bg-gradient-to-b from-scope/10 via-black/60 to-background py-16 md:py-24">
+  <section
+    id="featured-article"
+    className="relative scroll-mt-16 border-y border-scope/30 bg-gradient-to-b from-scope/10 via-black/60 to-background py-16 md:py-24"
+  >
     <div className="container mx-auto max-w-4xl px-4">
       <div className="mb-10 flex flex-col items-center gap-3 text-center">
         <span className="mono inline-flex items-center gap-2 rounded-full border border-scope/50 bg-scope/10 px-4 py-1.5 text-[0.65rem] uppercase tracking-[0.2em] text-scope">
