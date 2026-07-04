@@ -80,11 +80,14 @@ export const StarField = () => {
       ) {
         return null;
       }
+      // No inset: collide right at the element's edge/stroke, not 20px
+      // deep into it -- otherwise the star visibly flies inside the
+      // picture before it explodes instead of hitting its boundary.
       return {
-        left: rect.left + 20,
-        right: rect.right - 20,
-        top: rect.top + 20,
-        bottom: rect.bottom - 20,
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
       };
     };
 
