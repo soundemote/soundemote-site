@@ -395,9 +395,13 @@ export const StarField = () => {
       aria-hidden
       className="pointer-events-none"
       style={{
+        // <main> renders at z-10 (Index.tsx), so a z-0 canvas sat BEHIND the
+        // opaque hero image -- shooting stars (and their explosion sparks)
+        // were disappearing under the picture instead of visibly hitting it.
+        // z-15 puts stars in front of all page content, still below Nav's z-50.
         position: "fixed",
         inset: 0,
-        zIndex: 0,
+        zIndex: 15,
         background: "transparent",
       }}
     />
