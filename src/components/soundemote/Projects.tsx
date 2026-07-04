@@ -1,4 +1,5 @@
-import { featuredArticles } from "@/data/featuredArticles";
+import { featuredArticles, type FeaturedArticle } from "@/data/featuredArticles";
+import { ElectricBurst, useElectricBurst } from "./ElectricBurst";
 
 type RepositoryLink = {
     emoji: string;
@@ -99,6 +100,55 @@ const scrollToFeaturedArticle = () => {
     document.getElementById("featured-article")?.scrollIntoView({ block: "start" });
 };
 
+type RepositoryCardProps = {
+    repo: RepositoryLink;
+    article?: FeaturedArticle;
+    isSelected: boolean;
+    onActivate: () => void;
+};
+
+// The whole card -- emoji, name, and github label -- is one button: a
+// subtle hover highlight, an electric burst on mousedown, and the actual
+// navigation (feature the article, or open github) fires on mouseup.
+const RepositoryCard = ({ repo, article, isSelected, onActivate }: RepositoryCardProps) => {
+    const { bursts, triggerBurst } = useElectricBurst();
+
+    return (
+        <button
+            type="button"
+            onMouseDown={triggerBurst}
+            onMouseUp={onActivate}
+            className={`group relative flex w-full min-w-0 items-start gap-3 overflow-hidden px-3 py-2.5 text-left transition-colors hover:bg-scope/5 ${
+                isSelected ? "bg-scope/10" : ""
+            }`}
+        >
+            <span className={`absolute inset-y-0 left-0 w-px ${isSelected ? "bg-scope/70" : "bg-scope/0"}`} />
+            <span
+                className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded border border-border/70 bg-background/70 text-base leading-none ${
+                    repo.pulse ? "animate-pulse" : ""
+                }`}
+                aria-hidden
+            >
+                {repo.emoji}
+            </span>
+            <span className="min-w-0 flex-1">
+                <span
+                    className={`mono block text-[0.68rem] uppercase tracking-[0.13em] ${
+                        isSelected ? "text-scope" : "text-muted-foreground"
+                    }`}
+                >
+                    {repo.name}
+                </span>
+                <span className="mono flex items-center gap-1.5 text-[0.62rem] leading-snug text-scope/80">
+                    {article && <span className="text-warm-white/80">{isSelected ? "★" : "↑"}</span>}
+                    <span>github ↗</span>
+                </span>
+            </span>
+            <ElectricBurst bursts={bursts} />
+        </button>
+    );
+};
+
 export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => {
     const handleSelect = (slug: string) => {
         onSelectArticle(slug);
@@ -137,56 +187,17 @@ export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => {
                     <div className="grid grid-cols-1 divide-y divide-border/50 md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-3">
                         {repositoryLinks.map((repo, index) => {
                             const article = featuredArticles.find((a) => a.repoHref === repo.href);
-                            const isSelected = article && article.slug === selectedSlug;
+                            const isSelected = Boolean(article && article.slug === selectedSlug);
                             return (
-                                <div
+                                <RepositoryCard
                                     key={`${repo.name}-${index}`}
-                                    className={`relative flex min-w-0 items-start gap-3 overflow-hidden px-3 py-2.5 ${
-                                        isSelected ? "bg-scope/10" : ""
-                                    }`}
-                                >
-                                    <span
-                                        className={`absolute inset-y-0 left-0 w-px ${isSelected ? "bg-scope/70" : "bg-scope/0"}`}
-                                    />
-                                    <span
-                                        className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded border border-border/70 bg-background/70 text-base leading-none ${
-                                            repo.pulse ? "animate-pulse" : ""
-                                        }`}
-                                        aria-hidden
-                                    >
-                                        {repo.emoji}
-                                    </span>
-                                    <span className="min-w-0 flex-1">
-                                        {article ? (
-                                            <button
-                                                type="button"
-                                                onClick={() => handleSelect(article.slug)}
-                                                className={`mono block text-left text-[0.68rem] uppercase tracking-[0.13em] ${
-                                                    isSelected ? "text-scope" : "text-muted-foreground"
-                                                }`}
-                                            >
-                                                {repo.name}
-                                            </button>
-                                        ) : (
-                                            <span className="mono block text-[0.68rem] uppercase tracking-[0.13em] text-muted-foreground">
-                                                {repo.name}
-                                            </span>
-                                        )}
-                                        <span className="mono flex items-center gap-1.5 text-[0.62rem] leading-snug">
-                                            {article && (
-                                                <span className="text-warm-white/80">{isSelected ? "★" : "↑"}</span>
-                                            )}
-                                            <a
-                                                href={repo.href}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="inline-flex items-center gap-1 text-scope/80"
-                                            >
-                                                github ↗
-                                            </a>
-                                        </span>
-                                    </span>
-                                </div>
+                                    repo={repo}
+                                    article={article}
+                                    isSelected={isSelected}
+                                    onActivate={() =>
+                                        article ? handleSelect(article.slug) : window.open(repo.href, "_blank", "noopener,noreferrer")
+                                    }
+                                />
                             );
                         })}
                     </div>
