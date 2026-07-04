@@ -13,7 +13,7 @@ import {
   VACTROLS_MARKDOWN,
   VACTROLS_REPO,
 } from "./forkReadmes";
-import { JEROBEAM_MODULES_MARKDOWN, JEROBEAM_MODULES_REPO, JEROBEAM_MODULES_BRANCH } from "./jerobeamModules";
+import { JEROBEAM_MODULES_MARKDOWN } from "./jerobeamModules";
 import { COMBUSTION_MARKDOWN, COMBUSTION_REPO } from "./combustionArticle";
 import { SUPERSAW_MARKDOWN, SUPERSAW_REPO, SUPERSAW_BRANCH } from "./supersawArticle";
 
@@ -36,7 +36,8 @@ const rewriteRelativeLinks = (markdown: string, repo: string, branch = "master")
   const blobBase = `https://github.com/${repo}/blob/${branch}/`;
   const treeBase = `https://github.com/${repo}/tree/${branch}/`;
 
-  const isRelative = (target: string) => !/^https?:\/\//i.test(target) && !target.startsWith("#");
+  const isRelative = (target: string) =>
+    !/^https?:\/\//i.test(target) && !target.startsWith("#") && !target.startsWith("/");
   const isImage = (target: string) => /\.(png|jpe?g|gif|svg|webp)(\?.*)?$/i.test(target);
   const isFileLike = (target: string) => /\.[a-z0-9]+(\?.*)?$/i.test(target) || /(^|\/)LICENSE$/i.test(target);
 
@@ -117,15 +118,16 @@ export const featuredArticles: FeaturedArticle[] = [
   },
   {
     slug: "jerobeam-modules",
-    // The elanhickler/jerobeam-modules repo is the intended new home but is
-    // currently empty; the actual work lives on the jerobeam-modules branch
-    // of soemdsp-sandbox-phosphor, which is where this content is fetched from.
+    // The original source (the jerobeam-modules branch of soemdsp-sandbox-phosphor)
+    // has been deleted -- this article, its images, and its dedication doc are now
+    // preserved locally (see jerobeamModules.ts and public/media/jerobeam-modules/)
+    // rather than depending on a repo that no longer exists.
     repoHref: "https://github.com/elanhickler/jerobeam-modules",
     emoji: "🌀",
     title: "Jerobeam Modules — porting a scope artist's patches to native code",
     tagline: "Giving Jerobeam Fenderson's oscilloscope-music patches a real native implementation.",
-    sourceUrl: `https://github.com/${JEROBEAM_MODULES_REPO}/tree/${JEROBEAM_MODULES_BRANCH}`,
-    markdown: rewriteRelativeLinks(JEROBEAM_MODULES_MARKDOWN, JEROBEAM_MODULES_REPO, JEROBEAM_MODULES_BRANCH),
+    sourceUrl: "https://github.com/elanhickler/jerobeam-modules",
+    markdown: JEROBEAM_MODULES_MARKDOWN,
   },
   {
     slug: "combustion",
