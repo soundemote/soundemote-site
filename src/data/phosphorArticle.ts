@@ -1,9 +1,7 @@
 // Full README from https://github.com/elanhickler/soemdsp-sandbox-phosphor,
 // fetched verbatim (raw.githubusercontent.com, master branch). Featured
-// front-and-center on the homepage per explicit request. Relative image
-// paths (media/...) are rewritten to the repo's raw GitHub URLs since the
-// media files themselves aren't vendored into this site.
-const RAW_MEDIA_BASE = "https://raw.githubusercontent.com/elanhickler/soemdsp-sandbox-phosphor/master/";
+// front-and-center on the homepage per explicit request. Media is vendored
+// locally (see below) so this article doesn't depend on that repo existing.
 
 const RAW_MARKDOWN = String.raw`# 🟢 Phosphor — an oscilloscope glow field guide
 
@@ -325,10 +323,11 @@ document for visual grounding. The PrettyScope screenshot is soundemote's
 own software (same org as this repo) and is not third-party. The remaining
 images/GIFs originate from the linked imgur reference galleries above; they're included here for research/documentation purposes specific to this fork, with full attribution and links back to the source galleries.`;
 
-// Rewrite relative media/ paths (both markdown ![]() and raw <img src="">)
-// to the fork's raw GitHub URLs, since the media files aren't vendored here.
+// Media is vendored locally under public/media/phosphor/ so this article
+// doesn't depend on the source repo continuing to exist.
+const LOCAL_MEDIA_BASE = "/media/phosphor/";
 export const PHOSPHOR_ARTICLE_MARKDOWN = RAW_MARKDOWN
-  .replace(/(<img src=")media\//g, `$1${RAW_MEDIA_BASE}media/`)
-  .replace(/(\]\()media\//g, `$1${RAW_MEDIA_BASE}media/`);
+  .replace(/(<img src=")media\//g, `$1${LOCAL_MEDIA_BASE}`)
+  .replace(/(\]\()media\//g, `$1${LOCAL_MEDIA_BASE}`);
 
 export const PHOSPHOR_ARTICLE_SOURCE_URL = "https://github.com/elanhickler/soemdsp-sandbox-phosphor";
