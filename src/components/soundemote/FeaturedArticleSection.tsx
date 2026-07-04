@@ -18,9 +18,6 @@ const FeaturedArticleSection = ({ article }: { article: FeaturedArticle }) => (
       </div>
 
       <div className="mb-10 flex flex-col items-center gap-3 text-center">
-        <span className="mono inline-flex items-center gap-2 rounded-full border border-scope/50 bg-scope/10 px-4 py-1.5 text-[0.65rem] uppercase tracking-[0.2em] text-scope">
-          featured fork
-        </span>
         <p className="mono max-w-xl text-sm text-muted-foreground">
           {article.tagline} Pick another repo below to switch what's shown here — straight from{" "}
           <a
