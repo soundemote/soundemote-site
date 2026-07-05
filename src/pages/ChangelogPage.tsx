@@ -9,6 +9,14 @@ type Release = {
 
 const releases: Release[] = [
   {
+    version: "0.2.1",
+    date: "2026-07-05",
+    tag: "alpha",
+    changes: [
+      "Gradient Curve Widget at /gradient-curve: the start of the video engine — a dot drawn from a curve, the same \"equation over time\" idea as the audio oscillators applied to color and falloff.",
+    ],
+  },
+  {
     version: "0.2.0",
     date: "2026-07-01",
     tag: "alpha",
