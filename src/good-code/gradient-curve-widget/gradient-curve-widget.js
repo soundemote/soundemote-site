@@ -30,12 +30,20 @@ const css = `
     border: 1px solid var(--gcw-border);
     border-radius: min(2cqh, 8px);
     display: grid;
-    gap: min(0.9cqh, 7px);
-    grid-template-rows: minmax(160px, 1.65fr) auto auto auto auto auto auto;
+    gap: min(0.65cqh, 6px);
+    grid-template-areas:
+      "preview"
+      "index"
+      "falloff"
+      "active"
+      "saved"
+      "actions"
+      "css";
+    grid-template-rows: minmax(320px, 1fr) auto auto auto auto auto auto;
     height: 100%;
     min-height: 0;
     overflow: hidden;
-    padding: min(1.4cqh, 10px);
+    padding: min(0.9cqh, 7px);
   }
 
   .gcw-preview,
@@ -50,7 +58,8 @@ const css = `
     background: var(--gcw-preview-edge-color, rgba(18, 20, 15, 0.42));
     box-shadow: inset 0 0 32px rgba(18, 20, 15, 0.3);
     cursor: crosshair;
-    min-height: min(34cqh, 260px);
+    grid-area: preview;
+    min-height: 0;
     position: relative;
   }
 
@@ -66,10 +75,10 @@ const css = `
     aspect-ratio: 1;
     border-radius: 999px;
     inset: 50% auto auto 50%;
-    max-height: 88%;
-    max-width: 88%;
+    max-height: 96%;
+    max-width: 96%;
     transform: translate(-50%, -50%);
-    width: min(58cqw, 58cqh);
+    width: min(72cqw, 84cqh);
   }
 
   .gcw-preview[data-preview-mode="dot"],
@@ -98,10 +107,19 @@ const css = `
     border: 1px solid var(--gcw-border);
     border-radius: min(1.4cqh, 7px);
     display: grid;
-    gap: min(0.45cqh, 4px);
+    gap: min(0.35cqh, 3px);
     min-height: 0;
     overflow: hidden;
-    padding: min(0.7cqh, 6px);
+    padding: min(0.45cqh, 4px);
+  }
+
+  .gcw-zone[data-drop-zone="active"] {
+    grid-area: active;
+  }
+
+  .gcw-zone[data-drop-zone="saved"] {
+    grid-area: saved;
+    max-height: min(11cqh, 82px);
   }
 
   .gcw-zone[data-drag-over="true"] {
@@ -116,7 +134,7 @@ const css = `
 
   .gcw-zone-title {
     color: var(--gcw-muted);
-    font-size: min(1.55cqh, 11px);
+    font-size: min(1.35cqh, 10px);
     font-weight: 700;
     letter-spacing: 0;
   }
@@ -126,7 +144,7 @@ const css = `
     align-content: start;
     display: flex;
     flex-wrap: wrap;
-    gap: min(0.7cqh, 5px);
+    gap: min(0.45cqh, 4px);
     min-height: 0;
     overflow: auto;
   }
@@ -141,13 +159,33 @@ const css = `
     border: 1px solid var(--gcw-border);
     border-radius: 999px;
     display: inline-grid;
-    gap: min(0.45cqw, 5px);
+    gap: min(0.35cqw, 4px);
     grid-template-columns: minmax(18px, 2.9cqh) minmax(0, 1fr);
-    height: min(4.2cqh, 32px);
+    height: min(3.8cqh, 28px);
     max-width: 100%;
-    min-height: 26px;
-    padding: min(0.45cqh, 4px) min(0.55cqw, 6px);
+    min-height: 24px;
+    padding: min(0.32cqh, 3px) min(0.45cqw, 5px);
     width: clamp(180px, 24cqw, 260px);
+  }
+
+  .gcw-color-card[data-zone="saved"] {
+    border-radius: min(0.9cqh, 6px);
+    display: block;
+    height: min(4.6cqh, 34px);
+    min-height: 24px;
+    padding: 2px;
+    width: min(4.6cqh, 34px);
+  }
+
+  .gcw-color-card[data-zone="saved"] .gcw-swatch-button {
+    border-radius: min(0.65cqh, 5px);
+    height: 100%;
+    min-height: 0;
+    width: 100%;
+  }
+
+  .gcw-color-card[data-zone="saved"] .gcw-color-meta {
+    display: none;
   }
 
   .gcw-color-card[draggable="true"] {
@@ -169,12 +207,12 @@ const css = `
     border-radius: 999px;
     cursor: pointer;
     display: block;
-    height: min(2.9cqh, 22px);
-    min-height: 18px;
+    height: min(2.7cqh, 20px);
+    min-height: 16px;
     overflow: hidden;
     padding: 0;
     position: relative;
-    width: min(2.9cqh, 22px);
+    width: min(2.7cqh, 20px);
   }
 
   .gcw-swatch-button input[type="color"] {
@@ -188,7 +226,7 @@ const css = `
 
   .gcw-color-meta {
     color: var(--gcw-muted);
-    font-size: min(1.75cqh, 12px);
+    font-size: min(1.5cqh, 11px);
     font-variant-numeric: tabular-nums;
     line-height: 1;
     max-width: min(24cqw, 180px);
@@ -237,8 +275,9 @@ const css = `
   .gcw-actions {
     align-items: center;
     display: flex;
-    gap: min(0.7cqw, 7px);
+    gap: min(0.45cqw, 5px);
     flex-wrap: wrap;
+    grid-area: actions;
   }
 
   .gcw-toggle {
@@ -248,10 +287,10 @@ const css = `
     border-radius: min(1cqh, 6px);
     color: var(--gcw-muted);
     display: inline-flex;
-    font-size: min(1.8cqh, 11px);
-    gap: min(0.6cqw, 6px);
-    min-height: min(3.4cqh, 26px);
-    padding: 0 min(0.75cqw, 7px);
+    font-size: min(1.45cqh, 10px);
+    gap: min(0.45cqw, 5px);
+    min-height: min(2.8cqh, 21px);
+    padding: 0 min(0.55cqw, 6px);
   }
 
   .gcw-index-control {
@@ -261,10 +300,10 @@ const css = `
     border-radius: min(1cqh, 6px);
     color: var(--gcw-muted);
     display: inline-flex;
-    font-size: min(1.8cqh, 11px);
-    gap: min(0.6cqw, 6px);
-    min-height: min(3.4cqh, 26px);
-    padding: 0 min(0.75cqw, 7px);
+    font-size: min(1.45cqh, 10px);
+    gap: min(0.45cqw, 5px);
+    min-height: min(2.8cqh, 21px);
+    padding: 0 min(0.55cqw, 6px);
   }
 
   .gcw-index-control span {
@@ -281,7 +320,7 @@ const css = `
     font: inherit;
     font-variant-numeric: tabular-nums;
     font-weight: 800;
-    height: min(2.7cqh, 22px);
+    height: min(2.25cqh, 18px);
     padding: 0 10px;
     text-align: center;
     width: 8ch;
@@ -304,16 +343,16 @@ const css = `
     border-radius: min(1cqh, 6px);
     color: var(--gcw-muted);
     display: inline-flex;
-    font-size: min(1.8cqh, 11px);
-    gap: min(0.6cqw, 6px);
-    min-height: min(3.4cqh, 26px);
-    padding: 0 min(0.75cqw, 7px);
+    font-size: min(1.45cqh, 10px);
+    gap: min(0.45cqw, 5px);
+    min-height: min(2.8cqh, 21px);
+    padding: 0 min(0.55cqw, 6px);
   }
 
   .gcw-new-color input {
     background: transparent;
     border: 0;
-    height: min(2.8cqh, 22px);
+    height: min(2.25cqh, 18px);
     padding: 0;
     width: min(5cqw, 36px);
   }
@@ -325,9 +364,9 @@ const css = `
     color: var(--gcw-ink);
     flex: 0 1 auto;
     font: inherit;
-    font-size: min(1.8cqh, 11px);
-    min-height: min(3.4cqh, 26px);
-    padding: 0 min(0.8cqw, 8px);
+    font-size: min(1.45cqh, 10px);
+    min-height: min(2.8cqh, 21px);
+    padding: 0 min(0.6cqw, 6px);
   }
 
   .gcw-actions button:disabled {
@@ -346,9 +385,9 @@ const css = `
     border-radius: 999px;
     color: var(--gcw-muted);
     display: inline-flex;
-    font-size: min(1.8cqh, 11px);
+    font-size: min(1.45cqh, 10px);
     gap: 2px;
-    min-height: min(3.4cqh, 26px);
+    min-height: min(2.8cqh, 21px);
     padding: 2px;
   }
 
@@ -364,9 +403,9 @@ const css = `
     border-radius: 999px;
     color: var(--gcw-muted);
     display: inline-flex;
-    font-size: min(1.8cqh, 11px);
+    font-size: min(1.45cqh, 10px);
     gap: 2px;
-    min-height: min(3.4cqh, 26px);
+    min-height: min(2.8cqh, 21px);
     padding: 2px;
   }
 
@@ -382,9 +421,9 @@ const css = `
     border-radius: 999px;
     color: var(--gcw-muted);
     display: inline-flex;
-    font-size: min(1.8cqh, 11px);
+    font-size: min(1.45cqh, 10px);
     gap: 2px;
-    min-height: min(3.4cqh, 26px);
+    min-height: min(2.8cqh, 21px);
     padding: 2px;
   }
 
@@ -401,8 +440,8 @@ const css = `
     border-radius: 999px;
     color: var(--gcw-muted);
     font: inherit;
-    min-height: min(2.7cqh, 22px);
-    padding: 0 min(0.75cqw, 8px);
+    min-height: min(2.25cqh, 18px);
+    padding: 0 min(0.55cqw, 6px);
   }
 
   .gcw-hue-option[data-active="true"],
@@ -416,34 +455,37 @@ const css = `
 
   .gcw-css {
     background: rgba(18, 20, 15, 0.26);
-    min-height: min(3.2cqh, 24px);
-    padding: min(0.9cqh, 6px);
+    grid-area: css;
+    min-height: min(2.7cqh, 20px);
+    padding: min(0.55cqh, 4px);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .gcw-index-strip {
     display: flex;
-    min-height: min(8cqh, 62px);
+    grid-area: index;
+    min-height: min(5.6cqh, 42px);
     overflow: hidden;
     position: relative;
   }
 
   .gcw-falloff {
-    background: rgba(18, 20, 15, 0.28);
-    border: 1px solid var(--gcw-border);
-    border-radius: min(1.4cqh, 7px);
+    background: rgba(18, 20, 15, 0.38);
+    border: 1px solid rgba(241, 184, 75, 0.26);
+    border-radius: min(1.8cqh, 9px);
     display: grid;
-    gap: min(0.55cqh, 5px);
-    min-height: min(9.6cqh, 72px);
-    padding: min(0.7cqh, 6px);
+    gap: min(0.45cqh, 4px);
+    grid-area: falloff;
+    min-height: min(8cqh, 60px);
+    padding: min(0.65cqh, 5px);
   }
 
   .gcw-falloff-head {
     align-items: center;
     color: var(--gcw-muted);
     display: flex;
-    font-size: min(1.65cqh, 11px);
+    font-size: min(1.35cqh, 10px);
     font-weight: 800;
     justify-content: space-between;
     min-height: 0;
@@ -460,7 +502,7 @@ const css = `
       var(--gcw-falloff-gradient);
     border: 1px solid var(--gcw-border);
     border-radius: 999px;
-    min-height: min(3.8cqh, 28px);
+    min-height: min(2.9cqh, 22px);
     position: relative;
   }
 
@@ -468,13 +510,13 @@ const css = `
     background: var(--gcw-accent);
     border: 1px solid rgba(18, 20, 15, 0.78);
     box-shadow: 0 0 0 1px rgba(243, 240, 230, 0.22), 0 4px 12px rgba(0, 0, 0, 0.24);
-    height: min(3.1cqh, 23px);
+    height: min(2.55cqh, 20px);
     left: var(--falloff-position);
     padding: 0;
     position: absolute;
     top: 50%;
     transform: translate(-50%, -50%);
-    width: min(3.1cqh, 23px);
+    width: min(2.55cqh, 20px);
   }
 
   .gcw-falloff-handle[data-falloff-handle="leftEdge"] {
@@ -506,32 +548,6 @@ const css = `
     white-space: nowrap;
   }
 
-  .gcw-index-strip::after {
-    background-image: repeating-linear-gradient(
-      90deg,
-      transparent 0,
-      transparent calc(var(--index-cell-width) - 1px),
-      var(--index-grid-color) calc(var(--index-cell-width) - 1px),
-      var(--index-grid-color) var(--index-cell-width)
-    );
-    content: "";
-    inset: 0;
-    pointer-events: none;
-    position: absolute;
-  }
-
-  .gcw-index-strip[data-grid-mode="off"]::after {
-    display: none;
-  }
-
-  .gcw-index-strip[data-grid-mode="black"] {
-    --index-grid-color: rgba(0, 0, 0, 0.88);
-  }
-
-  .gcw-index-strip[data-grid-mode="white"] {
-    --index-grid-color: rgba(255, 255, 255, 0.88);
-  }
-
   .gcw-index-swatch {
     background: var(--index-color);
     border: 0;
@@ -545,39 +561,7 @@ const css = `
     z-index: 1;
   }
 
-  .gcw-grid-segments {
-    align-items: center;
-    background: rgba(243, 240, 230, 0.045);
-    border: 1px solid var(--gcw-border);
-    border-radius: 999px;
-    color: var(--gcw-muted);
-    display: inline-flex;
-    font-size: min(1.8cqh, 11px);
-    gap: 2px;
-    min-height: min(3.4cqh, 26px);
-    padding: 2px;
-  }
-
-  .gcw-grid-segments span {
-    padding: 0 min(0.55cqw, 6px);
-  }
-
-  .gcw-grid-option {
-    background: transparent;
-    border: 0;
-    border-radius: 999px;
-    color: var(--gcw-muted);
-    font: inherit;
-    min-height: min(2.7cqh, 22px);
-    padding: 0 min(0.75cqw, 8px);
-  }
-
-  .gcw-grid-option[data-active="true"] {
-    background: var(--gcw-accent);
-    color: #18140a;
-    font-weight: 800;
-  }
-`;
+`; 
 
 function ensureStyles() {
   if (document.getElementById(STYLE_ID)) return;
@@ -1288,11 +1272,12 @@ export function mountGradientCurveWidget(host, options = {}) {
     lightnessMode: ["linear", "smooth", "gaussian", "filmic", "bokeh"].includes(options.lightnessMode) ? options.lightnessMode : "bokeh",
     previewMode: ["dot", "diagonal", "horizontal", "vertical", "square", "rectangle"].includes(options.previewMode) ? options.previewMode : "dot",
     radialCenter: ["start", "end"].includes(options.radialCenter) ? options.radialCenter : "end",
-    gridMode: ["off", "black", "white"].includes(options.gridMode) ? options.gridMode : "off",
+    gridMode: "off",
     falloff: normalizeFalloff(options.falloff),
     sampleCount: Number.isFinite(Number(options.sampleCount)) ? clamp(Number(options.sampleCount), 2, 256) : 32,
     sampledIndex: -1,
     activeStopId: "",
+    colorEditStopId: "",
     stops: initialStops.map((stop, index) => normalizeStop(stop, index, initialStops.length)),
     savedStops: (Array.isArray(options.savedStops) ? options.savedStops : [
       { id: "brown", color: "#8A4B22" },
@@ -1306,6 +1291,7 @@ export function mountGradientCurveWidget(host, options = {}) {
     <div class="gcw-mount">
       <div class="gcw-root">
         <div class="gcw-preview"></div>
+        <div class="gcw-index-strip" aria-label="Generated color indexes"></div>
         <section class="gcw-falloff" aria-label="Radial falloff">
           <div class="gcw-falloff-head">
             <span>Radial Falloff</span>
@@ -1324,7 +1310,6 @@ export function mountGradientCurveWidget(host, options = {}) {
             <span data-falloff-value="rightEdge"></span>
           </div>
         </section>
-        <div class="gcw-index-strip" aria-label="Generated color indexes"></div>
         <section class="gcw-zone" data-drop-zone="active">
           <div class="gcw-zone-title">Gradient Colors</div>
           <div class="gcw-palette" aria-label="Selected gradient colors"></div>
@@ -1343,12 +1328,6 @@ export function mountGradientCurveWidget(host, options = {}) {
           <label class="gcw-toggle"><input class="gcw-auto-black" type="checkbox" /> Auto Black</label>
           <label class="gcw-toggle"><input class="gcw-auto-white" type="checkbox" /> Auto White</label>
           <label class="gcw-index-control"><span>Indexes</span><input class="gcw-index-count" type="number" min="2" max="256" step="1" /></label>
-          <div class="gcw-grid-segments" role="group" aria-label="Index grid lines">
-            <span>Grid</span>
-            <button class="gcw-grid-option" type="button" data-grid-mode="off">Off</button>
-            <button class="gcw-grid-option" type="button" data-grid-mode="black">Black</button>
-            <button class="gcw-grid-option" type="button" data-grid-mode="white">White</button>
-          </div>
           <div class="gcw-hue-segments" role="group" aria-label="Hue mode">
             <span>Hue</span>
             <button class="gcw-hue-option" type="button" data-hue-mode="strict">Strict</button>
@@ -1407,7 +1386,6 @@ export function mountGradientCurveWidget(host, options = {}) {
   const lightnessModeButtons = [...host.querySelectorAll(".gcw-lightness-option")];
   const previewModeButtons = [...host.querySelectorAll(".gcw-preview-option")];
   const radialCenterButtons = [...host.querySelectorAll(".gcw-radial-center-option")];
-  const gridModeButtons = [...host.querySelectorAll(".gcw-grid-option")];
   const newColorInput = host.querySelector(".gcw-new-color-input");
   const removeButton = host.querySelector(".gcw-remove");
   const deleteButton = host.querySelector(".gcw-delete");
@@ -1431,7 +1409,7 @@ export function mountGradientCurveWidget(host, options = {}) {
     lightnessMode: state.lightnessMode,
     previewMode: state.previewMode,
     radialCenter: state.radialCenter,
-    gridMode: state.gridMode,
+    gridMode: "off",
     falloff: { ...state.falloff },
     sampleCount: state.sampleCount,
     css: gradientCss(state.angle, gradientStops(state.stops, state.autoBlack, state.autoWhite), state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode),
@@ -1701,9 +1679,9 @@ export function mountGradientCurveWidget(host, options = {}) {
     if (state.autoBright) applyAutoBright();
   }
 
-  function commit({ enforce = true } = {}) {
+  function commit({ enforce = true, renderCards = true } = {}) {
     if (enforce) enforceAutoRules();
-    render();
+    render({ renderCards });
     emit();
   }
 
@@ -1772,6 +1750,7 @@ export function mountGradientCurveWidget(host, options = {}) {
       swatch.setAttribute("aria-label", `Change ${stopColor(stop)}`);
       swatch.addEventListener("pointerdown", (event) => {
         state.activeStopId = stop.id;
+        state.colorEditStopId = stop.id;
         syncActiveControls();
         card.draggable = false;
         event.stopPropagation();
@@ -1782,6 +1761,7 @@ export function mountGradientCurveWidget(host, options = {}) {
       });
       swatch.addEventListener("pointercancel", () => {
         card.draggable = true;
+        state.colorEditStopId = "";
       });
       swatch.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -1793,6 +1773,7 @@ export function mountGradientCurveWidget(host, options = {}) {
       picker.draggable = false;
       picker.addEventListener("pointerdown", (event) => {
         state.activeStopId = stop.id;
+        state.colorEditStopId = stop.id;
         syncActiveControls();
         card.draggable = false;
         event.stopPropagation();
@@ -1803,6 +1784,7 @@ export function mountGradientCurveWidget(host, options = {}) {
       });
       picker.addEventListener("pointercancel", () => {
         card.draggable = true;
+        state.colorEditStopId = "";
       });
       picker.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -1810,6 +1792,14 @@ export function mountGradientCurveWidget(host, options = {}) {
       picker.addEventListener("input", () => {
         Object.assign(stop, polishStop({ ...stop, ...hexToHsl(picker.value) }));
         applyExactAnchorPolicy(stop);
+        commit({ renderCards: false });
+      });
+      picker.addEventListener("change", () => {
+        state.colorEditStopId = "";
+        commit();
+      });
+      picker.addEventListener("blur", () => {
+        state.colorEditStopId = "";
         commit();
       });
 
@@ -1858,7 +1848,7 @@ export function mountGradientCurveWidget(host, options = {}) {
     });
   }
 
-  function render() {
+  function render({ renderCards = true } = {}) {
     const activeGradientStops = gradientStops(state.stops, state.autoBlack, state.autoWhite);
     const samples = sampleStops(activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode);
     const css = gradientCss(state.angle, activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode);
@@ -1892,17 +1882,13 @@ export function mountGradientCurveWidget(host, options = {}) {
       button.dataset.active = String(button.dataset.radialCenter === state.radialCenter);
       button.setAttribute("aria-pressed", String(button.dataset.radialCenter === state.radialCenter));
     });
-    gridModeButtons.forEach((button) => {
-      button.dataset.active = String(button.dataset.gridMode === state.gridMode);
-      button.setAttribute("aria-pressed", String(button.dataset.gridMode === state.gridMode));
-    });
     const activeSelected = state.stops.some((stop) => stop.id === state.activeStopId);
     const savedSelected = state.savedStops.some((stop) => stop.id === state.activeStopId);
     removeButton.disabled = state.stops.length <= 2 || !activeSelected;
     deleteButton.disabled = (!activeSelected && !savedSelected) || (activeSelected && !canDeleteActiveStop(state.activeStopId));
     cssOutput.textContent = css;
     host.querySelector('[data-drop-zone="saved"]').dataset.empty = String(state.savedStops.length === 0);
-    renderPalette();
+    if (renderCards && !state.colorEditStopId) renderPalette();
     renderIndexStrip(samples);
     renderFalloff(samples);
   }
@@ -2142,13 +2128,6 @@ export function mountGradientCurveWidget(host, options = {}) {
       emit();
     });
   });
-  gridModeButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      state.gridMode = ["off", "black", "white"].includes(button.dataset.gridMode) ? button.dataset.gridMode : "off";
-      render();
-      emit();
-    });
-  });
   host.querySelector(".gcw-add").addEventListener("click", () => {
     const next = addGradientColorFromHsl(hexToHsl(newColorInput.value));
     newColorInput.value = hslToHex(wrapHue(next.h + 36), next.s, next.l);
@@ -2205,7 +2184,7 @@ export function mountGradientCurveWidget(host, options = {}) {
       if (["linear", "smooth", "gaussian", "filmic", "bokeh"].includes(next.lightnessMode)) state.lightnessMode = next.lightnessMode;
       if (["dot", "diagonal", "horizontal", "vertical", "square", "rectangle"].includes(next.previewMode)) state.previewMode = next.previewMode;
       if (["start", "end"].includes(next.radialCenter)) state.radialCenter = next.radialCenter;
-      if (["off", "black", "white"].includes(next.gridMode)) state.gridMode = next.gridMode;
+      state.gridMode = "off";
       if (next.falloff && typeof next.falloff === "object") state.falloff = normalizeFalloff(next.falloff);
       if (Number.isFinite(Number(next.sampleCount))) state.sampleCount = clamp(Number(next.sampleCount), 2, 256);
       if (Array.isArray(next.stops) && next.stops.length >= 2) {
