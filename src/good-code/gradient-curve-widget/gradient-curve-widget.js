@@ -171,16 +171,19 @@ const css = `
     display: block;
     height: min(2.9cqh, 22px);
     min-height: 18px;
+    overflow: hidden;
     padding: 0;
+    position: relative;
     width: min(2.9cqh, 22px);
   }
 
-  .gcw-color-card input[type="color"] {
-    height: 1px;
+  .gcw-swatch-button input[type="color"] {
+    cursor: pointer;
+    height: 150%;
+    inset: -25%;
     opacity: 0;
-    pointer-events: none;
     position: absolute;
-    width: 1px;
+    width: 150%;
   }
 
   .gcw-color-meta {
@@ -1767,10 +1770,20 @@ export function mountGradientCurveWidget(host, options = {}) {
       swatch.type = "button";
       swatch.title = "Change color";
       swatch.setAttribute("aria-label", `Change ${stopColor(stop)}`);
-      swatch.addEventListener("click", (event) => {
+      swatch.addEventListener("pointerdown", (event) => {
         state.activeStopId = stop.id;
         syncActiveControls();
-        picker.click();
+        card.draggable = false;
+        event.stopPropagation();
+      });
+      swatch.addEventListener("pointerup", (event) => {
+        card.draggable = true;
+        event.stopPropagation();
+      });
+      swatch.addEventListener("pointercancel", () => {
+        card.draggable = true;
+      });
+      swatch.addEventListener("click", (event) => {
         event.stopPropagation();
       });
 
@@ -1778,6 +1791,22 @@ export function mountGradientCurveWidget(host, options = {}) {
       picker.type = "color";
       picker.value = stopColor(stop);
       picker.draggable = false;
+      picker.addEventListener("pointerdown", (event) => {
+        state.activeStopId = stop.id;
+        syncActiveControls();
+        card.draggable = false;
+        event.stopPropagation();
+      });
+      picker.addEventListener("pointerup", (event) => {
+        card.draggable = true;
+        event.stopPropagation();
+      });
+      picker.addEventListener("pointercancel", () => {
+        card.draggable = true;
+      });
+      picker.addEventListener("click", (event) => {
+        event.stopPropagation();
+      });
       picker.addEventListener("input", () => {
         Object.assign(stop, polishStop({ ...stop, ...hexToHsl(picker.value) }));
         applyExactAnchorPolicy(stop);
@@ -1789,7 +1818,8 @@ export function mountGradientCurveWidget(host, options = {}) {
       const hex = stopColor(stop);
       meta.textContent = `${hex} \u00B7 ${nearestCssColorName(hex)}`;
 
-      card.append(swatch, picker, meta);
+      swatch.append(picker);
+      card.append(swatch, meta);
       return card;
   }
 
