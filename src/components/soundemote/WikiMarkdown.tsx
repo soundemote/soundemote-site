@@ -19,7 +19,7 @@ function MarkdownHeading({ level, children, ...rest }: { level: 2 | 3 } & Compon
 // this component so they all read as one consistent GitHub-README-flavored
 // design language.
 export const WIKI_PROSE_CLASSNAME =
-  "prose prose-invert prose-sm md:prose-base max-w-none prose-headings:display prose-headings:font-normal prose-a:text-scope prose-code:before:content-none prose-code:after:content-none prose-pre:border prose-pre:border-border/60 prose-pre:bg-black/50 prose-blockquote:border-scope/50 prose-blockquote:not-italic prose-hr:border-border/60 prose-h2:scroll-mt-24 prose-img:rounded-md prose-table:text-sm [&_p_img]:my-0 [&_p_img]:inline-block [&_p_img]:align-middle [&_p_a]:inline-block";
+  "prose prose-invert prose-sm md:prose-base max-w-none prose-headings:display prose-headings:font-normal prose-h2:mt-8 prose-h2:mb-3 prose-h3:mt-6 prose-h3:mb-2 prose-p:leading-relaxed prose-p:my-3 prose-li:my-1 prose-a:text-scope prose-code:before:content-none prose-code:after:content-none prose-pre:border prose-pre:border-border/60 prose-pre:bg-black/50 prose-blockquote:border-scope/50 prose-blockquote:not-italic prose-hr:border-border/60 prose-h2:scroll-mt-24 prose-h3:scroll-mt-24 prose-img:rounded-md prose-table:text-sm prose-table:block prose-table:overflow-x-auto [&_p_img]:my-0 [&_p_img]:inline-block [&_p_img]:align-middle [&_p_a]:inline-block";
 
 const WikiMarkdown = ({ markdown, className }: { markdown: string; className?: string }) => (
   <div className={className ?? WIKI_PROSE_CLASSNAME}>
