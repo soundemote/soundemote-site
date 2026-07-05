@@ -8,6 +8,7 @@ import LearningLab from "./pages/LearningLab.tsx";
 import CircleTestPage from "./pages/CircleTestPage.tsx";
 import OscilloscopePage from "./pages/OscilloscopePage.tsx";
 import ScopeScratchPage from "./pages/ScopeScratchPage.tsx";
+import GradientCurvePage from "./pages/GradientCurvePage.tsx";
 import SandboxPage from "./pages/SandboxPage.tsx";
 import PatchArticlePage from "./pages/PatchArticlePage.tsx";
 import FeaturedArticlePage from "./pages/FeaturedArticlePage.tsx";
@@ -42,6 +43,7 @@ const App = () => (
           <Route path="/circle-test" element={<CircleTestPage />} />
           <Route path="/oscilloscope" element={<OscilloscopePage />} />
           <Route path="/scope-scratch" element={<ScopeScratchPage />} />
+          <Route path="/gradient-curve" element={<GradientCurvePage />} />
           <Route path="/sandbox" element={<SandboxPage />} />
           <Route path="/embed" element={<EmbedPage />} />
           <Route path="/reverb" element={<SandboxPage staticPatchUrl="/patches/silently-dreaming.json" autostart />} />

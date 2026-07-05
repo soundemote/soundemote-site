@@ -1,0 +1,2203 @@
+import { nearestCssColorName } from "./css-named-colors.js";
+
+const STYLE_ID = "sound-gradient-curve-widget-styles";
+
+const css = `
+  .gcw-mount {
+    --gcw-bg: rgba(243, 240, 230, 0.035);
+    --gcw-border: rgba(243, 240, 230, 0.16);
+    --gcw-ink: rgba(243, 240, 230, 0.9);
+    --gcw-muted: rgba(243, 240, 230, 0.62);
+    --gcw-accent: #f1b84b;
+    color: var(--gcw-ink);
+    container-type: size;
+    display: grid;
+    font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+    height: 100%;
+    min-height: 0;
+    min-width: 0;
+    user-select: none;
+    width: 100%;
+  }
+
+  .gcw-mount,
+  .gcw-mount * {
+    box-sizing: border-box;
+  }
+
+  .gcw-root {
+    background: linear-gradient(180deg, rgba(243, 240, 230, 0.045), rgba(18, 20, 15, 0.28));
+    border: 1px solid var(--gcw-border);
+    border-radius: min(2cqh, 8px);
+    display: grid;
+    gap: min(0.9cqh, 7px);
+    grid-template-rows: minmax(160px, 1.65fr) auto auto auto auto auto auto;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    padding: min(1.4cqh, 10px);
+  }
+
+  .gcw-preview,
+  .gcw-css {
+    border: 1px solid var(--gcw-border);
+    border-radius: min(1.4cqh, 7px);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .gcw-preview {
+    background: var(--gcw-preview-edge-color, rgba(18, 20, 15, 0.42));
+    box-shadow: inset 0 0 32px rgba(18, 20, 15, 0.3);
+    cursor: crosshair;
+    min-height: min(34cqh, 260px);
+    position: relative;
+  }
+
+  .gcw-preview::before {
+    background: var(--gcw-preview-gradient);
+    border-radius: inherit;
+    content: "";
+    inset: 0;
+    position: absolute;
+  }
+
+  .gcw-preview[data-preview-mode="dot"]::before {
+    aspect-ratio: 1;
+    border-radius: 999px;
+    inset: 50% auto auto 50%;
+    max-height: 88%;
+    max-width: 88%;
+    transform: translate(-50%, -50%);
+    width: min(58cqw, 58cqh);
+  }
+
+  .gcw-preview[data-preview-mode="dot"],
+  .gcw-preview[data-preview-mode="square"],
+  .gcw-preview[data-preview-mode="rectangle"] {
+    box-shadow: none;
+  }
+
+  .gcw-preview[data-preview-mode="square"]::before {
+    aspect-ratio: 1;
+    border-radius: 0;
+    inset: 50% auto auto 50%;
+    max-height: 90%;
+    max-width: 90%;
+    transform: translate(-50%, -50%);
+    width: min(52cqw, 52cqh);
+  }
+
+  .gcw-preview[data-preview-mode="rectangle"]::before {
+    border-radius: 0;
+    inset: 14% 8%;
+  }
+
+  .gcw-zone {
+    background: rgba(18, 20, 15, 0.18);
+    border: 1px solid var(--gcw-border);
+    border-radius: min(1.4cqh, 7px);
+    display: grid;
+    gap: min(0.45cqh, 4px);
+    min-height: 0;
+    overflow: hidden;
+    padding: min(0.7cqh, 6px);
+  }
+
+  .gcw-zone[data-drag-over="true"] {
+    border-color: var(--gcw-accent);
+    box-shadow: inset 0 0 0 1px var(--gcw-accent), 0 0 18px rgba(241, 184, 75, 0.12);
+  }
+
+  .gcw-zone[data-empty="true"] {
+    grid-template-rows: auto;
+    min-height: auto;
+  }
+
+  .gcw-zone-title {
+    color: var(--gcw-muted);
+    font-size: min(1.55cqh, 11px);
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+
+  .gcw-palette,
+  .gcw-saved {
+    align-content: start;
+    display: flex;
+    flex-wrap: wrap;
+    gap: min(0.7cqh, 5px);
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .gcw-zone[data-empty="true"] .gcw-saved {
+    display: none;
+  }
+
+  .gcw-color-card {
+    align-items: center;
+    background: rgba(243, 240, 230, 0.045);
+    border: 1px solid var(--gcw-border);
+    border-radius: 999px;
+    display: inline-grid;
+    gap: min(0.45cqw, 5px);
+    grid-template-columns: minmax(18px, 2.9cqh) minmax(0, 1fr);
+    height: min(4.2cqh, 32px);
+    max-width: 100%;
+    min-height: 26px;
+    padding: min(0.45cqh, 4px) min(0.55cqw, 6px);
+    width: clamp(180px, 24cqw, 260px);
+  }
+
+  .gcw-color-card[draggable="true"] {
+    cursor: grab;
+  }
+
+  .gcw-color-card[data-dragging="true"] {
+    opacity: 0.46;
+  }
+
+  .gcw-color-card[data-active="true"] {
+    border-color: var(--gcw-accent);
+    box-shadow: inset 0 0 0 1px var(--gcw-accent), 0 0 18px rgba(241, 184, 75, 0.12);
+  }
+
+  .gcw-swatch-button {
+    background: var(--card-color);
+    border: 1px solid rgba(18, 20, 15, 0.82);
+    border-radius: 999px;
+    cursor: pointer;
+    display: block;
+    height: min(2.9cqh, 22px);
+    min-height: 18px;
+    padding: 0;
+    width: min(2.9cqh, 22px);
+  }
+
+  .gcw-color-card input[type="color"] {
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+    position: absolute;
+    width: 1px;
+  }
+
+  .gcw-color-meta {
+    color: var(--gcw-muted);
+    font-size: min(1.75cqh, 12px);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    max-width: min(24cqw, 180px);
+    overflow: hidden;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .gcw-row {
+    align-items: center;
+    display: grid;
+    gap: min(1cqw, 8px);
+    grid-template-columns: minmax(58px, 0.34fr) minmax(0, 1fr) minmax(58px, 0.34fr);
+  }
+
+  .gcw-note {
+    color: var(--gcw-muted);
+    font-size: min(1.8cqh, 12px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .gcw-row span,
+  .gcw-row output,
+  .gcw-css {
+    color: var(--gcw-muted);
+    font-size: min(2cqh, 13px);
+  }
+
+  .gcw-row output {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  .gcw-row input {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .gcw-row input[type="range"] {
+    accent-color: var(--gcw-accent);
+  }
+
+  .gcw-actions {
+    align-items: center;
+    display: flex;
+    gap: min(0.7cqw, 7px);
+    flex-wrap: wrap;
+  }
+
+  .gcw-toggle {
+    align-items: center;
+    background: rgba(243, 240, 230, 0.045);
+    border: 1px solid var(--gcw-border);
+    border-radius: min(1cqh, 6px);
+    color: var(--gcw-muted);
+    display: inline-flex;
+    font-size: min(1.8cqh, 11px);
+    gap: min(0.6cqw, 6px);
+    min-height: min(3.4cqh, 26px);
+    padding: 0 min(0.75cqw, 7px);
+  }
+
+  .gcw-index-control {
+    align-items: center;
+    background: rgba(243, 240, 230, 0.045);
+    border: 1px solid var(--gcw-border);
+    border-radius: min(1cqh, 6px);
+    color: var(--gcw-muted);
+    display: inline-flex;
+    font-size: min(1.8cqh, 11px);
+    gap: min(0.6cqw, 6px);
+    min-height: min(3.4cqh, 26px);
+    padding: 0 min(0.75cqw, 7px);
+  }
+
+  .gcw-index-control span {
+    color: var(--gcw-ink);
+    font-weight: 800;
+  }
+
+  .gcw-index-control input {
+    background: rgba(18, 20, 15, 0.42);
+    border: 1px solid var(--gcw-border);
+    border-radius: 999px;
+    color: var(--gcw-ink);
+    cursor: ew-resize;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    font-weight: 800;
+    height: min(2.7cqh, 22px);
+    padding: 0 10px;
+    text-align: center;
+    width: 8ch;
+  }
+
+  .gcw-index-control input::-webkit-outer-spin-button,
+  .gcw-index-control input::-webkit-inner-spin-button {
+    appearance: none;
+    margin: 0;
+  }
+
+  .gcw-index-control input[type="number"] {
+    appearance: textfield;
+  }
+
+  .gcw-new-color {
+    align-items: center;
+    background: rgba(243, 240, 230, 0.045);
+    border: 1px solid var(--gcw-border);
+    border-radius: min(1cqh, 6px);
+    color: var(--gcw-muted);
+    display: inline-flex;
+    font-size: min(1.8cqh, 11px);
+    gap: min(0.6cqw, 6px);
+    min-height: min(3.4cqh, 26px);
+    padding: 0 min(0.75cqw, 7px);
+  }
+
+  .gcw-new-color input {
+    background: transparent;
+    border: 0;
+    height: min(2.8cqh, 22px);
+    padding: 0;
+    width: min(5cqw, 36px);
+  }
+
+  .gcw-actions button {
+    background: rgba(243, 240, 230, 0.06);
+    border: 1px solid var(--gcw-border);
+    border-radius: min(1cqh, 6px);
+    color: var(--gcw-ink);
+    flex: 0 1 auto;
+    font: inherit;
+    font-size: min(1.8cqh, 11px);
+    min-height: min(3.4cqh, 26px);
+    padding: 0 min(0.8cqw, 8px);
+  }
+
+  .gcw-actions button:disabled {
+    color: rgba(243, 240, 230, 0.32);
+  }
+
+  .gcw-delete:not(:disabled) {
+    border-color: rgba(255, 95, 95, 0.46);
+    color: #ffb7b7;
+  }
+
+  .gcw-hue-segments {
+    align-items: center;
+    background: rgba(243, 240, 230, 0.045);
+    border: 1px solid var(--gcw-border);
+    border-radius: 999px;
+    color: var(--gcw-muted);
+    display: inline-flex;
+    font-size: min(1.8cqh, 11px);
+    gap: 2px;
+    min-height: min(3.4cqh, 26px);
+    padding: 2px;
+  }
+
+  .gcw-hue-segments span {
+    padding: 0 min(0.55cqw, 6px);
+  }
+
+  .gcw-preview-segments,
+  .gcw-lightness-segments {
+    align-items: center;
+    background: rgba(243, 240, 230, 0.045);
+    border: 1px solid var(--gcw-border);
+    border-radius: 999px;
+    color: var(--gcw-muted);
+    display: inline-flex;
+    font-size: min(1.8cqh, 11px);
+    gap: 2px;
+    min-height: min(3.4cqh, 26px);
+    padding: 2px;
+  }
+
+  .gcw-preview-segments span,
+  .gcw-lightness-segments span {
+    padding: 0 min(0.55cqw, 6px);
+  }
+
+  .gcw-radial-center-segments {
+    align-items: center;
+    background: rgba(243, 240, 230, 0.045);
+    border: 1px solid var(--gcw-border);
+    border-radius: 999px;
+    color: var(--gcw-muted);
+    display: inline-flex;
+    font-size: min(1.8cqh, 11px);
+    gap: 2px;
+    min-height: min(3.4cqh, 26px);
+    padding: 2px;
+  }
+
+  .gcw-radial-center-segments span {
+    padding: 0 min(0.55cqw, 6px);
+  }
+
+  .gcw-hue-option,
+  .gcw-preview-option,
+  .gcw-lightness-option,
+  .gcw-radial-center-option {
+    background: transparent;
+    border: 0;
+    border-radius: 999px;
+    color: var(--gcw-muted);
+    font: inherit;
+    min-height: min(2.7cqh, 22px);
+    padding: 0 min(0.75cqw, 8px);
+  }
+
+  .gcw-hue-option[data-active="true"],
+  .gcw-preview-option[data-active="true"],
+  .gcw-lightness-option[data-active="true"],
+  .gcw-radial-center-option[data-active="true"] {
+    background: var(--gcw-accent);
+    color: #18140a;
+    font-weight: 800;
+  }
+
+  .gcw-css {
+    background: rgba(18, 20, 15, 0.26);
+    min-height: min(3.2cqh, 24px);
+    padding: min(0.9cqh, 6px);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .gcw-index-strip {
+    display: flex;
+    min-height: min(8cqh, 62px);
+    overflow: hidden;
+    position: relative;
+  }
+
+  .gcw-falloff {
+    background: rgba(18, 20, 15, 0.28);
+    border: 1px solid var(--gcw-border);
+    border-radius: min(1.4cqh, 7px);
+    display: grid;
+    gap: min(0.55cqh, 5px);
+    min-height: min(9.6cqh, 72px);
+    padding: min(0.7cqh, 6px);
+  }
+
+  .gcw-falloff-head {
+    align-items: center;
+    color: var(--gcw-muted);
+    display: flex;
+    font-size: min(1.65cqh, 11px);
+    font-weight: 800;
+    justify-content: space-between;
+    min-height: 0;
+  }
+
+  .gcw-falloff-head span:last-child {
+    color: rgba(243, 240, 230, 0.46);
+    font-weight: 600;
+  }
+
+  .gcw-falloff-strip {
+    background:
+      linear-gradient(90deg, rgba(255, 255, 255, 0.08), transparent 48%, rgba(255, 255, 255, 0.05)),
+      var(--gcw-falloff-gradient);
+    border: 1px solid var(--gcw-border);
+    border-radius: 999px;
+    min-height: min(3.8cqh, 28px);
+    position: relative;
+  }
+
+  .gcw-falloff-handle {
+    background: var(--gcw-accent);
+    border: 1px solid rgba(18, 20, 15, 0.78);
+    box-shadow: 0 0 0 1px rgba(243, 240, 230, 0.22), 0 4px 12px rgba(0, 0, 0, 0.24);
+    height: min(3.1cqh, 23px);
+    left: var(--falloff-position);
+    padding: 0;
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: min(3.1cqh, 23px);
+  }
+
+  .gcw-falloff-handle[data-falloff-handle="leftEdge"] {
+    border-radius: 46% 58% 58% 46% / 50%;
+  }
+
+  .gcw-falloff-handle[data-falloff-handle="leftMid"],
+  .gcw-falloff-handle[data-falloff-handle="rightMid"] {
+    border-radius: 999px;
+  }
+
+  .gcw-falloff-handle[data-falloff-handle="rightEdge"] {
+    border-radius: 58% 46% 46% 58% / 50%;
+  }
+
+  .gcw-falloff-values {
+    color: rgba(243, 240, 230, 0.54);
+    display: grid;
+    font-size: min(1.55cqh, 10px);
+    font-variant-numeric: tabular-nums;
+    gap: min(0.6cqw, 8px);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    line-height: 1;
+  }
+
+  .gcw-falloff-values span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .gcw-index-strip::after {
+    background-image: repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent calc(var(--index-cell-width) - 1px),
+      var(--index-grid-color) calc(var(--index-cell-width) - 1px),
+      var(--index-grid-color) var(--index-cell-width)
+    );
+    content: "";
+    inset: 0;
+    pointer-events: none;
+    position: absolute;
+  }
+
+  .gcw-index-strip[data-grid-mode="off"]::after {
+    display: none;
+  }
+
+  .gcw-index-strip[data-grid-mode="black"] {
+    --index-grid-color: rgba(0, 0, 0, 0.88);
+  }
+
+  .gcw-index-strip[data-grid-mode="white"] {
+    --index-grid-color: rgba(255, 255, 255, 0.88);
+  }
+
+  .gcw-index-swatch {
+    background: var(--index-color);
+    border: 0;
+    flex: 1 1 0;
+    min-width: 3px;
+    padding: 0;
+  }
+
+  .gcw-index-swatch[data-sampled="true"] {
+    box-shadow: inset 0 0 0 1px var(--gcw-accent);
+    z-index: 1;
+  }
+
+  .gcw-grid-segments {
+    align-items: center;
+    background: rgba(243, 240, 230, 0.045);
+    border: 1px solid var(--gcw-border);
+    border-radius: 999px;
+    color: var(--gcw-muted);
+    display: inline-flex;
+    font-size: min(1.8cqh, 11px);
+    gap: 2px;
+    min-height: min(3.4cqh, 26px);
+    padding: 2px;
+  }
+
+  .gcw-grid-segments span {
+    padding: 0 min(0.55cqw, 6px);
+  }
+
+  .gcw-grid-option {
+    background: transparent;
+    border: 0;
+    border-radius: 999px;
+    color: var(--gcw-muted);
+    font: inherit;
+    min-height: min(2.7cqh, 22px);
+    padding: 0 min(0.75cqw, 8px);
+  }
+
+  .gcw-grid-option[data-active="true"] {
+    background: var(--gcw-accent);
+    color: #18140a;
+    font-weight: 800;
+  }
+`;
+
+function ensureStyles() {
+  if (document.getElementById(STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = STYLE_ID;
+  style.textContent = css;
+  document.head.appendChild(style);
+}
+
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+const wrapHue = (hue) => ((hue % 360) + 360) % 360;
+
+function hslToHex(h, s, l) {
+  const hue = wrapHue(h) / 360;
+  const sat = clamp(s, 0, 100) / 100;
+  const light = clamp(l, 0, 100) / 100;
+  const channel = (offset) => {
+    const k = (offset + hue * 12) % 12;
+    const a = sat * Math.min(light, 1 - light);
+    return light - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+  };
+  return `#${[channel(0), channel(8), channel(4)].map((value) => Math.round(value * 255).toString(16).padStart(2, "0")).join("").toUpperCase()}`;
+}
+
+function hexToRgb(hex) {
+  const clean = hex.replace("#", "");
+  return [0, 2, 4].map((offset) => parseInt(clean.slice(offset, offset + 2), 16) / 255);
+}
+
+function hexToRgbBytes(hex) {
+  const clean = hex.replace("#", "");
+  return [0, 2, 4].map((offset) => parseInt(clean.slice(offset, offset + 2), 16));
+}
+
+function hexToHsl(hex) {
+  const [r, g, b] = hexToRgb(hex);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const light = (max + min) / 2;
+  const delta = max - min;
+  if (delta === 0) return { h: 0, s: 0, l: light * 100 };
+  const sat = delta / (1 - Math.abs(2 * light - 1));
+  let hue = 0;
+  if (max === r) hue = 60 * (((g - b) / delta) % 6);
+  if (max === g) hue = 60 * ((b - r) / delta + 2);
+  if (max === b) hue = 60 * ((r - g) / delta + 4);
+  return { h: wrapHue(hue), s: sat * 100, l: light * 100 };
+}
+
+function normalizeStop(stop, index, count) {
+  const fallbackColor = ["#7AA4FF", "#35FF90", "#F1B84B", "#FF5AD7"][index % 4];
+  const color = /^#[0-9a-f]{6}$/i.test(stop?.color || "") ? stop.color.toUpperCase() : fallbackColor;
+  const hsl = stop?.hsl || hexToHsl(color);
+  return polishStop({
+    id: stop?.id || `stop-${Date.now()}-${index}`,
+    h: wrapHue(Number.isFinite(Number(stop?.h)) ? Number(stop.h) : hsl.h),
+    s: clamp(Number.isFinite(Number(stop?.s)) ? Number(stop.s) : hsl.s, 0, 100),
+    l: clamp(Number.isFinite(Number(stop?.l)) ? Number(stop.l) : hsl.l, 0, 100),
+  });
+}
+
+function polishStop(stop) {
+  if (stop.s <= 8) {
+    return {
+      ...stop,
+      s: 0,
+      l: clamp(stop.l, 0, 100),
+    };
+  }
+
+  return {
+    ...stop,
+    s: clamp(stop.s, 58, 96),
+    l: clamp(stop.l, 26, 76),
+  };
+}
+
+function polishSample(sample) {
+  if (sample.s <= 8) {
+    return {
+      ...sample,
+      s: 0,
+      l: clamp(sample.l, 0, 100),
+    };
+  }
+
+  return {
+    ...sample,
+    s: clamp(sample.s, 0, 96),
+    l: clamp(sample.l, 0, 100),
+  };
+}
+
+function stopColor(stop) {
+  return hslToHex(stop.h, stop.s, stop.l);
+}
+
+function isExactBlack(stop) {
+  return stopColor(stop) === "#000000";
+}
+
+function isExactWhite(stop) {
+  return stopColor(stop) === "#FFFFFF";
+}
+
+function isBlackAnchor(stop) {
+  return stop.s <= 8 && stop.l <= 6;
+}
+
+function isWhiteAnchor(stop) {
+  return stop.s <= 8 && stop.l >= 94;
+}
+
+function hueRoute(stops) {
+  if (stops.length <= 1) {
+    return [...stops];
+  }
+
+  const byHue = [...stops].sort((a, b) => a.h - b.h);
+  let largestGap = -1;
+  let startIndex = 0;
+  for (let index = 0; index < byHue.length; index += 1) {
+    const current = byHue[index];
+    const next = byHue[(index + 1) % byHue.length];
+    const gap = index === byHue.length - 1 ? next.h + 360 - current.h : next.h - current.h;
+    if (gap > largestGap) {
+      largestGap = gap;
+      startIndex = (index + 1) % byHue.length;
+    }
+  }
+
+  return [...byHue.slice(startIndex), ...byHue.slice(0, startIndex)];
+}
+
+function arrangedStops(stops, invert = false, autoOrder = true) {
+  if (stops.length <= 1) {
+    return stops.map((stop) => ({ ...stop, position: 0 }));
+  }
+
+  const ordered = autoOrder
+    ? [
+      ...stops.filter((stop) => stop.l <= 32).sort((a, b) => a.l - b.l),
+      ...stops.filter((stop) => stop.l > 32 && stop.l < 78).sort((a, b) => a.l - b.l || a.h - b.h),
+      ...stops.filter((stop) => stop.l >= 78).sort((a, b) => a.l - b.l),
+    ]
+    : [...stops];
+  if (invert) ordered.reverse();
+
+  return ordered.map((stop, index) => ({
+    ...stop,
+    position: (index / Math.max(1, ordered.length - 1)) * 100,
+  }));
+}
+
+function unwrapHues(stops, invert = false, autoOrder = true, hueMode = "strict") {
+  const baseStops = arrangedStops(stops, invert, autoOrder);
+  const ordered = hueMode === "smooth-natural"
+    ? smoothNaturalBridgeStops(baseStops)
+    : hueMode === "velvet"
+      ? velvetBridgeStops(baseStops)
+    : hueMode === "silk"
+      ? silkBridgeStops(baseStops)
+    : hueMode === "chroma"
+      ? chromaBridgeStops(baseStops)
+      : baseStops;
+  const result = [];
+  for (const stop of ordered) {
+    if (!result.length) {
+      result.push({ ...stop, uh: stop.h });
+      continue;
+    }
+    let hue = stop.h;
+    const previous = result[result.length - 1].uh;
+    if (hueMode === "wide" || hueMode === "chroma") {
+      while (hue < previous) hue += 360;
+    } else {
+      while (hue - previous > 180) hue -= 360;
+      while (hue - previous < -180) hue += 360;
+    }
+    result.push({ ...stop, uh: hue });
+  }
+  return result;
+}
+
+function warmDarkHue(hue) {
+  const h = wrapHue(hue);
+  if (h <= 20 || h >= 340) return 22;
+  if (h >= 20 && h <= 70) return clamp(h, 26, 48);
+  return h;
+}
+
+function tintedLightHue(hue) {
+  const h = wrapHue(hue);
+  if (h <= 18 || h >= 340) return 350;
+  return h;
+}
+
+function chromaBridgeStops(points) {
+  if (points.length < 2) return points;
+  const bridged = [];
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const a = points[index];
+    const b = points[index + 1];
+    bridged.push(a);
+    const span = b.position - a.position;
+    const aColor = !(isBlackAnchor(a) || isWhiteAnchor(a)) && a.s > 20;
+    const bColor = !(isBlackAnchor(b) || isWhiteAnchor(b)) && b.s > 20;
+
+    if (aColor && isBlackAnchor(b)) {
+      bridged.push({
+        ...a,
+        id: `${a.id}-to-black-chroma`,
+        h: warmDarkHue(a.h),
+        s: clamp(Math.max(62, a.s * 0.78), 52, 88),
+        l: 22,
+        position: a.position + span * 0.66,
+      });
+    } else if (isBlackAnchor(a) && bColor) {
+      bridged.push({
+        ...b,
+        id: `black-to-${b.id}-chroma`,
+        h: warmDarkHue(b.h),
+        s: clamp(Math.max(62, b.s * 0.78), 52, 88),
+        l: 22,
+        position: a.position + span * 0.34,
+      });
+    } else if (aColor && isWhiteAnchor(b)) {
+      bridged.push({
+        ...a,
+        id: `${a.id}-to-white-chroma`,
+        h: tintedLightHue(a.h),
+        s: clamp(Math.max(42, a.s * 0.72), 32, 86),
+        l: 84,
+        position: a.position + span * 0.62,
+      });
+    } else if (isWhiteAnchor(a) && bColor) {
+      bridged.push({
+        ...b,
+        id: `white-to-${b.id}-chroma`,
+        h: tintedLightHue(b.h),
+        s: clamp(Math.max(42, b.s * 0.72), 32, 86),
+        l: 84,
+        position: a.position + span * 0.38,
+      });
+    }
+  }
+  bridged.push(points[points.length - 1]);
+  return bridged;
+}
+
+function smoothNaturalBridgeStops(points) {
+  if (points.length < 2) return points;
+  const bridged = [];
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const a = points[index];
+    const b = points[index + 1];
+    bridged.push(a);
+    const span = b.position - a.position;
+    const aColor = !(isBlackAnchor(a) || isWhiteAnchor(a)) && a.s > 20;
+    const bColor = !(isBlackAnchor(b) || isWhiteAnchor(b)) && b.s > 20;
+
+    if (aColor && isBlackAnchor(b)) {
+      bridged.push({
+        ...a,
+        id: `${a.id}-to-black-soft-natural`,
+        h: a.h,
+        s: clamp(a.s * Math.sqrt(Math.max(0.08, a.l / 100)) * 0.48, 10, 58),
+        l: clamp(a.l * 0.28, 8, 24),
+        position: a.position + span * 0.68,
+      });
+    } else if (isBlackAnchor(a) && bColor) {
+      bridged.push({
+        ...b,
+        id: `black-to-${b.id}-soft-natural`,
+        h: b.h,
+        s: clamp(b.s * Math.sqrt(Math.max(0.08, b.l / 100)) * 0.48, 10, 58),
+        l: clamp(b.l * 0.28, 8, 24),
+        position: a.position + span * 0.32,
+      });
+    } else if (aColor && isWhiteAnchor(b)) {
+      bridged.push({
+        ...a,
+        id: `${a.id}-to-white-soft-natural`,
+        h: a.h,
+        s: clamp(a.s * 0.42, 8, 44),
+        l: clamp(100 - ((100 - a.l) * 0.24), 82, 96),
+        position: a.position + span * 0.62,
+      });
+    } else if (isWhiteAnchor(a) && bColor) {
+      bridged.push({
+        ...b,
+        id: `white-to-${b.id}-soft-natural`,
+        h: b.h,
+        s: clamp(b.s * 0.42, 8, 44),
+        l: clamp(100 - ((100 - b.l) * 0.24), 82, 96),
+        position: a.position + span * 0.38,
+      });
+    }
+  }
+  bridged.push(points[points.length - 1]);
+  return bridged;
+}
+
+function velvetBridgeStops(points) {
+  if (points.length < 2) return points;
+  const bridged = [];
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const a = points[index];
+    const b = points[index + 1];
+    bridged.push(a);
+    const span = b.position - a.position;
+    const aColor = !(isBlackAnchor(a) || isWhiteAnchor(a)) && a.s > 20;
+    const bColor = !(isBlackAnchor(b) || isWhiteAnchor(b)) && b.s > 20;
+
+    if (aColor && isBlackAnchor(b)) {
+      bridged.push({
+        ...a,
+        id: `${a.id}-to-black-velvet`,
+        h: a.h,
+        s: clamp(a.s * 0.34, 8, 42),
+        l: clamp(a.l * 0.18, 6, 18),
+        position: a.position + span * 0.74,
+      });
+    } else if (isBlackAnchor(a) && bColor) {
+      bridged.push({
+        ...b,
+        id: `black-to-${b.id}-velvet`,
+        h: b.h,
+        s: clamp(b.s * 0.34, 8, 42),
+        l: clamp(b.l * 0.18, 6, 18),
+        position: a.position + span * 0.26,
+      });
+    } else if (aColor && isWhiteAnchor(b)) {
+      bridged.push({
+        ...a,
+        id: `${a.id}-to-white-velvet`,
+        h: a.h,
+        s: clamp(a.s * 0.26, 4, 34),
+        l: clamp(100 - ((100 - a.l) * 0.16), 88, 98),
+        position: a.position + span * 0.68,
+      });
+    } else if (isWhiteAnchor(a) && bColor) {
+      bridged.push({
+        ...b,
+        id: `white-to-${b.id}-velvet`,
+        h: b.h,
+        s: clamp(b.s * 0.26, 4, 34),
+        l: clamp(100 - ((100 - b.l) * 0.16), 88, 98),
+        position: a.position + span * 0.32,
+      });
+    }
+  }
+  bridged.push(points[points.length - 1]);
+  return bridged;
+}
+
+function silkBridgeStops(points) {
+  if (points.length < 2) return points;
+  const bridged = [];
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const a = points[index];
+    const b = points[index + 1];
+    bridged.push(a);
+    const span = b.position - a.position;
+    const aColor = !(isBlackAnchor(a) || isWhiteAnchor(a)) && a.s > 20;
+    const bColor = !(isBlackAnchor(b) || isWhiteAnchor(b)) && b.s > 20;
+    if (aColor && isBlackAnchor(b)) {
+      bridged.push({ ...a, id: `${a.id}-to-black-silk`, s: clamp(a.s * 0.22, 6, 36), l: clamp(a.l * 0.12, 4, 14), position: a.position + span * 0.78 });
+    } else if (isBlackAnchor(a) && bColor) {
+      bridged.push({ ...b, id: `black-to-${b.id}-silk`, s: clamp(b.s * 0.22, 6, 36), l: clamp(b.l * 0.12, 4, 14), position: a.position + span * 0.22 });
+    } else if (aColor && isWhiteAnchor(b)) {
+      bridged.push({ ...a, id: `${a.id}-to-white-silk`, s: clamp(a.s * 0.18, 2, 28), l: clamp(100 - ((100 - a.l) * 0.1), 92, 99), position: a.position + span * 0.72 });
+    } else if (isWhiteAnchor(a) && bColor) {
+      bridged.push({ ...b, id: `white-to-${b.id}-silk`, s: clamp(b.s * 0.18, 2, 28), l: clamp(100 - ((100 - b.l) * 0.1), 92, 99), position: a.position + span * 0.28 });
+    }
+  }
+  bridged.push(points[points.length - 1]);
+  return bridged;
+}
+
+function catmull(p0, p1, p2, p3, t) {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return 0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
+}
+
+function smoothValue(points, x, key) {
+  if (x <= points[0].position) return points[0][key];
+  if (x >= points[points.length - 1].position) return points[points.length - 1][key];
+  const index = points.findIndex((point, itemIndex) => itemIndex < points.length - 1 && x >= point.position && x <= points[itemIndex + 1].position);
+  const i = Math.max(0, index);
+  const a = points[Math.max(0, i - 1)];
+  const b = points[i];
+  const c = points[i + 1];
+  const d = points[Math.min(points.length - 1, i + 2)];
+  const span = Math.max(0.0001, c.position - b.position);
+  const t = clamp((x - b.position) / span, 0, 1);
+  return catmull(a[key], b[key], c[key], d[key], t);
+}
+
+function smoothStep(value) {
+  const t = clamp(value, 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+function smootherStep(value) {
+  const t = clamp(value, 0, 1);
+  return t * t * t * (t * (t * 6 - 15) + 10);
+}
+
+function lightnessCurveValue(value, mode = "bokeh") {
+  const t = clamp(value, 0, 1);
+  if (mode === "linear") return t;
+  if (mode === "smooth") return smoothStep(t);
+  if (mode === "gaussian") {
+    const logistic = (x) => 1 / (1 + Math.exp(-8 * (x - 0.5)));
+    const low = logistic(0);
+    const high = logistic(1);
+    return (logistic(t) - low) / (high - low);
+  }
+  if (mode === "filmic") {
+    const film = (x) => (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14);
+    return clamp(film(t) / film(1), 0, 1);
+  }
+  if (mode === "bokeh") {
+    return Math.pow(t, 2.2);
+  }
+  return t;
+}
+
+function applyLightnessCurve(samples, mode = "bokeh") {
+  if (mode === "linear" || samples.length < 2) return samples;
+  const first = samples[0];
+  const last = samples[samples.length - 1];
+  const span = last.l - first.l;
+  if (Math.abs(span) < 0.001) return samples;
+  return samples.map((sample) => {
+    const t = clamp(sample.position / 100, 0, 1);
+    const l = clamp(first.l + span * lightnessCurveValue(t, mode), 0, 100);
+    return {
+      ...sample,
+      l,
+      color: hslToHex(sample.h, sample.s, l),
+    };
+  });
+}
+
+function easedValue(points, x, key) {
+  if (x <= points[0].position) return points[0][key];
+  if (x >= points[points.length - 1].position) return points[points.length - 1][key];
+  const index = points.findIndex((point, itemIndex) => itemIndex < points.length - 1 && x >= point.position && x <= points[itemIndex + 1].position);
+  const i = Math.max(0, index);
+  const a = points[i];
+  const b = points[i + 1];
+  const span = Math.max(0.0001, b.position - a.position);
+  const t = smootherStep((x - a.position) / span);
+  return a[key] + (b[key] - a[key]) * t;
+}
+
+function velvetValue(points, x, key) {
+  if (x <= points[0].position) return points[0][key];
+  if (x >= points[points.length - 1].position) return points[points.length - 1][key];
+  const index = points.findIndex((point, itemIndex) => itemIndex < points.length - 1 && x >= point.position && x <= points[itemIndex + 1].position);
+  const i = Math.max(0, index);
+  const a = points[i];
+  const b = points[i + 1];
+  const span = Math.max(0.0001, b.position - a.position);
+  const rawT = clamp((x - a.position) / span, 0, 1);
+  const t = (1 - Math.cos(rawT * Math.PI)) / 2;
+  return a[key] + (b[key] - a[key]) * t;
+}
+
+function monotoneValue(points, x, key) {
+  if (x <= points[0].position) return points[0][key];
+  if (x >= points[points.length - 1].position) return points[points.length - 1][key];
+  const index = points.findIndex((point, itemIndex) => itemIndex < points.length - 1 && x >= point.position && x <= points[itemIndex + 1].position);
+  const i = Math.max(0, index);
+  const p0 = points[Math.max(0, i - 1)];
+  const p1 = points[i];
+  const p2 = points[i + 1];
+  const p3 = points[Math.min(points.length - 1, i + 2)];
+  const span = Math.max(0.0001, p2.position - p1.position);
+  const d0 = (p2[key] - p0[key]) / Math.max(0.0001, p2.position - p0.position);
+  const d1 = (p3[key] - p1[key]) / Math.max(0.0001, p3.position - p1.position);
+  const slope = (p2[key] - p1[key]) / span;
+  const m0 = Math.sign(d0) === Math.sign(slope) ? d0 : 0;
+  const m1 = Math.sign(d1) === Math.sign(slope) ? d1 : 0;
+  const t = clamp((x - p1.position) / span, 0, 1);
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return ((2 * t3 - 3 * t2 + 1) * p1[key])
+    + ((t3 - 2 * t2 + t) * span * m0)
+    + ((-2 * t3 + 3 * t2) * p2[key])
+    + ((t3 - t2) * span * m1);
+}
+
+function softenNeutralEdges(sample, points) {
+  const next = { ...sample };
+  const first = points[0];
+  const last = points[points.length - 1];
+
+  if (first && isBlackAnchor(first) && sample.position > first.position) {
+    const firstColor = points.find((point) => !isBlackAnchor(point));
+    const rampEnd = Math.min(24, Math.max(8, ((firstColor?.position ?? 24) - first.position) * 0.35));
+    const ramp = smoothStep((sample.position - first.position) / rampEnd);
+    next.s *= ramp;
+    next.l *= ramp;
+  }
+
+  if (last && isWhiteAnchor(last) && sample.position < last.position) {
+    const lastColor = [...points].reverse().find((point) => !isWhiteAnchor(point));
+    const rampStart = Math.max(76, Math.min(92, last.position - ((last.position - (lastColor?.position ?? 76)) * 0.35)));
+    next.s *= smoothStep((last.position - sample.position) / Math.max(8, last.position - rampStart));
+  }
+
+  return next;
+}
+
+function sampleStops(stops, sampleCount, invert = false, autoOrder = true, hueMode = "strict", lightnessMode = "bokeh") {
+  const points = unwrapHues(stops, invert, autoOrder, hueMode);
+  const count = clamp(Math.round(sampleCount), 2, 256);
+  const valueAt = hueMode === "silk" ? monotoneValue : hueMode === "velvet" ? velvetValue : hueMode === "smooth-natural" ? easedValue : smoothValue;
+  const samples = Array.from({ length: count }, (_, index) => {
+    const position = count === 1 ? 0 : (index / (count - 1)) * 100;
+    const h = valueAt(points, position, "uh");
+    const rawSample = hueMode === "velvet" || hueMode === "silk" ? {
+      h: wrapHue(h),
+      position,
+      s: clamp(valueAt(points, position, "s"), 0, 100),
+      l: clamp(valueAt(points, position, "l"), 0, 100),
+    } : polishSample({
+      h: wrapHue(h),
+      position,
+      s: clamp(valueAt(points, position, "s"), 0, 100),
+      l: clamp(valueAt(points, position, "l"), 0, 100),
+    });
+    const raw = softenNeutralEdges(rawSample, points);
+    const first = points[0];
+    const last = points[points.length - 1];
+    if (index === 0 && first && isBlackAnchor(first)) {
+      return { h: 0, s: 0, l: 0, position, color: "#000000" };
+    }
+    if (index === count - 1 && last && isWhiteAnchor(last)) {
+      return { h: 0, s: 0, l: 100, position, color: "#FFFFFF" };
+    }
+    return {
+      ...raw,
+      color: hslToHex(raw.h, raw.s, raw.l),
+    };
+  });
+  const first = samples[0];
+  const last = samples[samples.length - 1];
+  const shouldReverse = invert
+    ? first && last && first.l < last.l
+    : first && last && first.l > last.l;
+  const orderedSamples = shouldReverse
+    ? samples.map((sample, index) => ({ ...samples[samples.length - 1 - index], position: sample.position }))
+    : samples;
+  return applyLightnessCurve(orderedSamples, lightnessMode);
+}
+
+function gradientCss(angle, stops, sampleCount, invert = false, autoOrder = true, hueMode = "strict", lightnessMode = "bokeh") {
+  const samples = sampleStops(stops, sampleCount, invert, autoOrder, hueMode, lightnessMode);
+  const parts = samples.map((sample) => `${sample.color} ${sample.position.toFixed(1)}%`);
+  if (samples[0] && isBlackAnchor(samples[0])) {
+    parts.splice(1, 0, "#000000 1.2%");
+  }
+  if (samples[samples.length - 1] && isWhiteAnchor(samples[samples.length - 1])) {
+    parts.splice(parts.length - 1, 0, "#FFFFFF 98.8%");
+  }
+  return `linear-gradient(${Math.round(angle)}deg, ${parts.join(", ")})`;
+}
+
+function downloadDataUrl(dataUrl, filename) {
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function exportGradientPng(stops, options = {}) {
+  const width = clamp(Math.round(Number(options.width) || 1024), 2, 4096);
+  const height = clamp(Math.round(Number(options.height) || 1), 1, 4096);
+  const samples = sampleStops(stops, width, options.invert, options.autoOrder, options.hueMode, options.lightnessMode);
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", { alpha: false });
+  const image = context.createImageData(width, height);
+  for (let x = 0; x < width; x += 1) {
+    const [r, g, b] = hexToRgbBytes(samples[x]?.color || "#000000");
+    for (let y = 0; y < height; y += 1) {
+      const offset = (y * width + x) * 4;
+      image.data[offset] = r;
+      image.data[offset + 1] = g;
+      image.data[offset + 2] = b;
+      image.data[offset + 3] = 255;
+    }
+  }
+  context.putImageData(image, 0, 0);
+  return canvas.toDataURL("image/png");
+}
+
+function normalizeFalloff(falloff = {}) {
+  const oldCore = Number(falloff.core);
+  const oldBloom = Number(falloff.bloom);
+  const oldEdge = Number(falloff.edge);
+  const fallbackLeftEdge = Number.isFinite(oldCore) ? oldCore : 18;
+  const fallbackRightMid = Number.isFinite(oldBloom) ? oldBloom : 68;
+  const fallbackRightEdge = Number.isFinite(oldEdge) ? oldEdge : 100;
+  const fallbackLeftMid = fallbackLeftEdge + (fallbackRightMid - fallbackLeftEdge) * 0.45;
+  const leftEdgeValue = Number(falloff.leftEdge);
+  const leftEdge = clamp(Number.isFinite(leftEdgeValue) ? leftEdgeValue : fallbackLeftEdge, 0, 96);
+  const leftMidValue = Number(falloff.leftMid);
+  const leftMid = clamp(Number.isFinite(leftMidValue) ? leftMidValue : fallbackLeftMid, leftEdge + 1, 97);
+  const rightMidValue = Number(falloff.rightMid);
+  const rightMid = clamp(Number.isFinite(rightMidValue) ? rightMidValue : fallbackRightMid, leftMid + 1, 98);
+  const rightEdgeValue = Number(falloff.rightEdge);
+  const rightEdge = clamp(Number.isFinite(rightEdgeValue) ? rightEdgeValue : fallbackRightEdge, rightMid + 1, 100);
+  return { leftEdge, leftMid, rightMid, rightEdge };
+}
+
+function falloffPosition(position, falloff = {}) {
+  const { leftEdge, leftMid, rightMid, rightEdge } = normalizeFalloff(falloff);
+  const t = clamp(position, 0, 100) / 100;
+  if (t <= 0.18) return (t / 0.18) * leftEdge;
+  if (t <= 0.42) return leftEdge + ((t - 0.18) / 0.24) * (leftMid - leftEdge);
+  if (t <= 0.76) return leftMid + ((t - 0.42) / 0.34) * (rightMid - leftMid);
+  return rightMid + ((t - 0.76) / 0.24) * (rightEdge - rightMid);
+}
+
+function outwardPreviewSamples(samples, falloff = {}, radialCenter = "start") {
+  const source = radialCenter === "end" ? [...samples].reverse() : samples;
+  const shaped = source.map((sample, index) => {
+    const position = source.length <= 1 ? 0 : (index / (source.length - 1)) * 100;
+    return { ...sample, position: falloffPosition(position, falloff) };
+  });
+  const last = shaped[shaped.length - 1];
+  if (last && last.position < 100) {
+    shaped.push({ ...last, position: 100 });
+  }
+  return shaped;
+}
+
+function previewGradientCss(mode, stops, sampleCount, invert = false, autoOrder = true, hueMode = "strict", angle = 135, falloff = {}, radialCenter = "start", lightnessMode = "bokeh") {
+  const samples = sampleStops(stops, sampleCount, invert, autoOrder, hueMode, lightnessMode);
+  const outwardModes = new Set(["dot", "square", "rectangle"]);
+  const previewSamples = outwardModes.has(mode)
+    ? outwardPreviewSamples(samples, falloff, radialCenter)
+    : samples;
+  const parts = previewSamples.map((sample) => `${sample.color} ${sample.position.toFixed(1)}%`);
+  if (outwardModes.has(mode)) {
+    return `radial-gradient(circle closest-side, ${parts.join(", ")})`;
+  }
+  const previewAngles = {
+    diagonal: 135,
+    horizontal: 90,
+    vertical: 180,
+  };
+  return `linear-gradient(${Math.round(previewAngles[mode] ?? angle)}deg, ${parts.join(", ")})`;
+}
+
+function gradientStops(stops, autoBlack = false, autoWhite = false) {
+  return [
+    ...(autoBlack ? [{ id: "__auto-black", h: 0, s: 0, l: 0 }] : []),
+    ...stops,
+    ...(autoWhite ? [{ id: "__auto-white", h: 0, s: 0, l: 100 }] : []),
+  ];
+}
+
+function huePath(stops, invert = false, autoOrder = true, hueMode = "strict") {
+  const ordered = unwrapHues(stops, invert, autoOrder, hueMode);
+  const segments = [];
+  for (let i = 0; i < ordered.length - 1; i += 1) {
+    const a = ordered[Math.max(0, i - 1)];
+    const b = ordered[i];
+    const c = ordered[i + 1];
+    const d = ordered[Math.min(ordered.length - 1, i + 2)];
+    const x1 = b.position;
+    const y1 = 100 - (wrapHue(b.uh) / 360) * 100;
+    const x2 = c.position;
+    const y2 = 100 - (wrapHue(c.uh) / 360) * 100;
+    const cp1x = x1 + (x2 - a.position) / 6;
+    const cp1y = y1 + ((100 - (wrapHue(c.uh) / 360) * 100) - (100 - (wrapHue(a.uh) / 360) * 100)) / 6;
+    const cp2x = x2 - (d.position - x1) / 6;
+    const cp2y = y2 - ((100 - (wrapHue(d.uh) / 360) * 100) - y1) / 6;
+    segments.push(`${i === 0 ? `M ${x1.toFixed(2)} ${y1.toFixed(2)}` : ""} C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)} ${cp2x.toFixed(2)} ${cp2y.toFixed(2)} ${x2.toFixed(2)} ${y2.toFixed(2)}`);
+  }
+  return segments.join(" ");
+}
+
+export function mountGradientCurveWidget(host, options = {}) {
+  ensureStyles();
+  const initialStops = Array.isArray(options.stops) && options.stops.length >= 2 ? options.stops : [
+    { id: "black", color: "#000000" },
+    { id: "red", color: "#FF1F2D" },
+  ];
+  const state = {
+    angle: Number.isFinite(Number(options.angle)) ? Number(options.angle) : 90,
+    invert: options.invert === true,
+    autoOrder: options.autoOrder === true,
+    autoBright: options.autoBright === true,
+    autoBlack: options.autoBlack === true || options.autoBlackWhite === true,
+    autoWhite: options.autoWhite === true || options.autoBlackWhite === true,
+    hueMode: ["strict", "wide", "chroma", "smooth-natural", "velvet", "silk"].includes(options.hueMode) ? options.hueMode : "strict",
+    lightnessMode: ["linear", "smooth", "gaussian", "filmic", "bokeh"].includes(options.lightnessMode) ? options.lightnessMode : "bokeh",
+    previewMode: ["dot", "diagonal", "horizontal", "vertical", "square", "rectangle"].includes(options.previewMode) ? options.previewMode : "dot",
+    radialCenter: ["start", "end"].includes(options.radialCenter) ? options.radialCenter : "end",
+    gridMode: ["off", "black", "white"].includes(options.gridMode) ? options.gridMode : "off",
+    falloff: normalizeFalloff(options.falloff),
+    sampleCount: Number.isFinite(Number(options.sampleCount)) ? clamp(Number(options.sampleCount), 2, 256) : 32,
+    sampledIndex: -1,
+    activeStopId: "",
+    stops: initialStops.map((stop, index) => normalizeStop(stop, index, initialStops.length)),
+    savedStops: (Array.isArray(options.savedStops) ? options.savedStops : [
+      { id: "brown", color: "#8A4B22" },
+      { id: "white", color: "#FFFFFF" },
+    ]).map((stop, index) => normalizeStop(stop, index, 2)),
+    drag: null,
+  };
+  state.activeStopId = state.stops[0].id;
+
+  host.innerHTML = `
+    <div class="gcw-mount">
+      <div class="gcw-root">
+        <div class="gcw-preview"></div>
+        <section class="gcw-falloff" aria-label="Radial falloff">
+          <div class="gcw-falloff-head">
+            <span>Radial Falloff</span>
+            <span>left edge / left mid / right mid / right edge</span>
+          </div>
+          <div class="gcw-falloff-strip">
+            <button class="gcw-falloff-handle" type="button" data-falloff-handle="leftEdge" data-short-label="left edge" aria-label="Falloff left edge"></button>
+            <button class="gcw-falloff-handle" type="button" data-falloff-handle="leftMid" data-short-label="left mid" aria-label="Falloff left middle"></button>
+            <button class="gcw-falloff-handle" type="button" data-falloff-handle="rightMid" data-short-label="right mid" aria-label="Falloff right middle"></button>
+            <button class="gcw-falloff-handle" type="button" data-falloff-handle="rightEdge" data-short-label="right edge" aria-label="Falloff right edge"></button>
+          </div>
+          <div class="gcw-falloff-values">
+            <span data-falloff-value="leftEdge"></span>
+            <span data-falloff-value="leftMid"></span>
+            <span data-falloff-value="rightMid"></span>
+            <span data-falloff-value="rightEdge"></span>
+          </div>
+        </section>
+        <div class="gcw-index-strip" aria-label="Generated color indexes"></div>
+        <section class="gcw-zone" data-drop-zone="active">
+          <div class="gcw-zone-title">Gradient Colors</div>
+          <div class="gcw-palette" aria-label="Selected gradient colors"></div>
+        </section>
+        <section class="gcw-zone" data-drop-zone="saved">
+          <div class="gcw-zone-title">Saved Colors</div>
+          <div class="gcw-saved" aria-label="Saved gradient colors"></div>
+        </section>
+        <div class="gcw-actions">
+          <label class="gcw-new-color">New <input class="gcw-new-color-input" type="color" value="#8A4B22" /></label>
+          <button class="gcw-add" type="button">Add Color</button>
+          <button class="gcw-delete" type="button">Delete Color</button>
+          <button class="gcw-remove" type="button">Save Selected</button>
+          <label class="gcw-toggle"><input class="gcw-auto-order" type="checkbox" /> Auto Order</label>
+          <label class="gcw-toggle"><input class="gcw-auto-bright" type="checkbox" /> Auto Bright</label>
+          <label class="gcw-toggle"><input class="gcw-auto-black" type="checkbox" /> Auto Black</label>
+          <label class="gcw-toggle"><input class="gcw-auto-white" type="checkbox" /> Auto White</label>
+          <label class="gcw-index-control"><span>Indexes</span><input class="gcw-index-count" type="number" min="2" max="256" step="1" /></label>
+          <div class="gcw-grid-segments" role="group" aria-label="Index grid lines">
+            <span>Grid</span>
+            <button class="gcw-grid-option" type="button" data-grid-mode="off">Off</button>
+            <button class="gcw-grid-option" type="button" data-grid-mode="black">Black</button>
+            <button class="gcw-grid-option" type="button" data-grid-mode="white">White</button>
+          </div>
+          <div class="gcw-hue-segments" role="group" aria-label="Hue mode">
+            <span>Hue</span>
+            <button class="gcw-hue-option" type="button" data-hue-mode="strict">Strict</button>
+            <button class="gcw-hue-option" type="button" data-hue-mode="wide">Wide</button>
+            <button class="gcw-hue-option" type="button" data-hue-mode="chroma">Chroma</button>
+            <button class="gcw-hue-option" type="button" data-hue-mode="smooth-natural">Smooth Natural</button>
+            <button class="gcw-hue-option" type="button" data-hue-mode="velvet">Velvet</button>
+            <button class="gcw-hue-option" type="button" data-hue-mode="silk">Silk</button>
+          </div>
+          <div class="gcw-lightness-segments" role="group" aria-label="Lightness curve">
+            <span>Lightness</span>
+            <button class="gcw-lightness-option" type="button" data-lightness-mode="linear">Linear</button>
+            <button class="gcw-lightness-option" type="button" data-lightness-mode="smooth">Smooth</button>
+            <button class="gcw-lightness-option" type="button" data-lightness-mode="gaussian">Gaussian</button>
+            <button class="gcw-lightness-option" type="button" data-lightness-mode="filmic">Filmic</button>
+            <button class="gcw-lightness-option" type="button" data-lightness-mode="bokeh">Bokeh</button>
+          </div>
+          <div class="gcw-preview-segments" role="group" aria-label="Gradient preview mode">
+            <span>Show</span>
+            <button class="gcw-preview-option" type="button" data-preview-mode="dot">Dot</button>
+            <button class="gcw-preview-option" type="button" data-preview-mode="diagonal">Diagonal</button>
+            <button class="gcw-preview-option" type="button" data-preview-mode="horizontal">Horizontal</button>
+            <button class="gcw-preview-option" type="button" data-preview-mode="vertical">Vertical</button>
+            <button class="gcw-preview-option" type="button" data-preview-mode="square">Square</button>
+            <button class="gcw-preview-option" type="button" data-preview-mode="rectangle">Rectangle</button>
+          </div>
+          <div class="gcw-radial-center-segments" role="group" aria-label="Radial center color">
+            <span>Radial Center</span>
+            <button class="gcw-radial-center-option" type="button" data-radial-center="start">Start</button>
+            <button class="gcw-radial-center-option" type="button" data-radial-center="end">End</button>
+          </div>
+          <label class="gcw-toggle"><input class="gcw-invert" type="checkbox" /> Invert</label>
+          <button class="gcw-copy" type="button">Copy CSS</button>
+          <button class="gcw-export-png" type="button">Copy PNG</button>
+        </div>
+        <div class="gcw-css"></div>
+      </div>
+    </div>
+  `;
+
+  const mount = host.querySelector(".gcw-mount");
+  const preview = host.querySelector(".gcw-preview");
+  const falloffStrip = host.querySelector(".gcw-falloff-strip");
+  const falloffHandles = [...host.querySelectorAll(".gcw-falloff-handle")];
+  const falloffValues = [...host.querySelectorAll("[data-falloff-value]")];
+  const palette = host.querySelector(".gcw-palette");
+  const savedPalette = host.querySelector(".gcw-saved");
+  const invertInput = host.querySelector(".gcw-invert");
+  const autoOrderInput = host.querySelector(".gcw-auto-order");
+  const autoBrightInput = host.querySelector(".gcw-auto-bright");
+  const autoBlackInput = host.querySelector(".gcw-auto-black");
+  const autoWhiteInput = host.querySelector(".gcw-auto-white");
+  const indexCountInput = host.querySelector(".gcw-index-count");
+  const indexStrip = host.querySelector(".gcw-index-strip");
+  const hueModeButtons = [...host.querySelectorAll(".gcw-hue-option")];
+  const lightnessModeButtons = [...host.querySelectorAll(".gcw-lightness-option")];
+  const previewModeButtons = [...host.querySelectorAll(".gcw-preview-option")];
+  const radialCenterButtons = [...host.querySelectorAll(".gcw-radial-center-option")];
+  const gridModeButtons = [...host.querySelectorAll(".gcw-grid-option")];
+  const newColorInput = host.querySelector(".gcw-new-color-input");
+  const removeButton = host.querySelector(".gcw-remove");
+  const deleteButton = host.querySelector(".gcw-delete");
+  const cssOutput = host.querySelector(".gcw-css");
+  const exportPngButton = host.querySelector(".gcw-export-png");
+  setupDropZone(host.querySelector('[data-drop-zone="active"]'), "active", palette);
+  setupDropZone(host.querySelector('[data-drop-zone="saved"]'), "saved", savedPalette);
+
+  const activeStop = () => state.stops.find((stop) => stop.id === state.activeStopId) || state.stops[0];
+  const gradientInvert = () => state.invert;
+  const packet = () => ({
+    widget: "gradient-curve-widget",
+    angle: state.angle,
+    invert: state.invert,
+    autoOrder: state.autoOrder,
+    autoBright: state.autoBright,
+    autoBlack: state.autoBlack,
+    autoWhite: state.autoWhite,
+    autoBlackWhite: state.autoBlack && state.autoWhite,
+    hueMode: state.hueMode,
+    lightnessMode: state.lightnessMode,
+    previewMode: state.previewMode,
+    radialCenter: state.radialCenter,
+    gridMode: state.gridMode,
+    falloff: { ...state.falloff },
+    sampleCount: state.sampleCount,
+    css: gradientCss(state.angle, gradientStops(state.stops, state.autoBlack, state.autoWhite), state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode),
+    stops: arrangedStops(gradientStops(state.stops, state.autoBlack, state.autoWhite), gradientInvert(), state.autoOrder).map((stop) => ({ ...stop, color: stopColor(stop) })),
+    savedStops: state.savedStops.map((stop) => ({ ...stop, color: stopColor(stop) })),
+    samples: sampleStops(gradientStops(state.stops, state.autoBlack, state.autoWhite), state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode),
+  });
+  const emit = () => {
+    const detail = packet();
+    options.onChange?.(detail);
+    host.dispatchEvent(new CustomEvent("gradient-curve-widget-change", { detail, bubbles: true }));
+  };
+
+  function syncActiveControls() {
+    const isActive = state.stops.some((stop) => stop.id === state.activeStopId);
+    const isSaved = state.savedStops.some((stop) => stop.id === state.activeStopId);
+    removeButton.disabled = state.stops.length <= 2 || !isActive;
+    deleteButton.disabled = (!isActive && !isSaved) || (isActive && !canDeleteActiveStop(state.activeStopId));
+    host.querySelectorAll(".gcw-color-card").forEach((element) => {
+      element.dataset.active = String(element.dataset.stopId === state.activeStopId);
+    });
+  }
+
+  function canDeleteActiveStop(stopId) {
+    const remainingStops = state.stops.filter((stop) => stop.id !== stopId);
+    return gradientStops(remainingStops, state.autoBlack, state.autoWhite).length >= 2;
+  }
+
+  function deleteSelectedStop() {
+    const activeIndex = state.stops.findIndex((stop) => stop.id === state.activeStopId);
+    if (activeIndex >= 0) {
+      if (!canDeleteActiveStop(state.activeStopId)) return;
+      state.stops.splice(activeIndex, 1);
+      state.activeStopId = state.stops[0]?.id || state.savedStops[0]?.id || "";
+      commit();
+      return;
+    }
+
+    const savedIndex = state.savedStops.findIndex((stop) => stop.id === state.activeStopId);
+    if (savedIndex >= 0) {
+      state.savedStops.splice(savedIndex, 1);
+      state.activeStopId = state.stops[0]?.id || state.savedStops[0]?.id || "";
+      commit();
+    }
+  }
+
+  function moveStop(stopId, delta) {
+    const index = state.stops.findIndex((stop) => stop.id === stopId);
+    const nextIndex = clamp(index + delta, 0, state.stops.length - 1);
+    if (index < 0 || index === nextIndex) return;
+    const [stop] = state.stops.splice(index, 1);
+    state.stops.splice(nextIndex, 0, stop);
+    state.activeStopId = stop.id;
+    commit();
+  }
+
+  function stopList(zone) {
+    return zone === "saved" ? state.savedStops : state.stops;
+  }
+
+  function moveBetweenZones(stopId, fromZone, toZone, toIndex = stopList(toZone).length) {
+    const fromList = stopList(fromZone);
+    const toList = stopList(toZone);
+    const fromIndex = fromList.findIndex((stop) => stop.id === stopId);
+    if (fromIndex < 0) return;
+    const targetStop = fromList[fromIndex];
+    if (toZone === "active" && applyExactAnchorPolicy(targetStop)) {
+      commit();
+      return;
+    }
+    if (fromZone === "active" && toZone === "saved") {
+      const remainingStops = fromList.filter((stop) => stop.id !== stopId);
+      if (gradientStops(remainingStops, state.autoBlack, state.autoWhite).length < 2) return;
+    }
+
+    const [stop] = fromList.splice(fromIndex, 1);
+    const adjustedIndex = fromList === toList && fromIndex < toIndex ? toIndex - 1 : toIndex;
+    toList.splice(clamp(adjustedIndex, 0, toList.length), 0, stop);
+    state.activeStopId = stop.id;
+    commit();
+  }
+
+  function saveManualAnchors({ black = false, white = false } = {}) {
+    const keep = [];
+    const anchors = [];
+    for (const stop of state.stops) {
+      if ((black && isExactBlack(stop)) || (white && isExactWhite(stop))) {
+        anchors.push(stop);
+      } else {
+        keep.push(stop);
+      }
+    }
+    const outputCount = gradientStops(keep, state.autoBlack, state.autoWhite).length;
+    if (!anchors.length || outputCount < 2) return;
+    state.stops = keep;
+    for (const anchor of anchors) {
+      if (!state.savedStops.some((stop) => stop.id === anchor.id || stopColor(stop) === stopColor(anchor))) {
+        state.savedStops.push(anchor);
+      }
+    }
+    if (!state.stops.some((stop) => stop.id === state.activeStopId)) {
+      state.activeStopId = state.stops[0]?.id || "";
+    }
+  }
+
+  function promoteManualAnchors() {
+    const hasBlack = state.stops.some((stop) => isExactBlack(stop));
+    const hasWhite = state.stops.some((stop) => isExactWhite(stop));
+    if (hasBlack) {
+      state.autoBlack = true;
+      saveManualAnchors({ black: true });
+    }
+    if (hasWhite) {
+      state.autoWhite = true;
+      saveManualAnchors({ white: true });
+    }
+  }
+
+  function applyExactAnchorPolicy(stop) {
+    if (!stop) return false;
+    if (isExactBlack(stop)) {
+      state.autoBlack = true;
+      if (!state.savedStops.some((saved) => isExactBlack(saved))) state.savedStops.push(stop);
+      state.stops = state.stops.filter((candidate) => candidate.id !== stop.id);
+      state.activeStopId = state.stops[0]?.id || state.savedStops[0]?.id || "";
+      return true;
+    }
+    if (isExactWhite(stop)) {
+      state.autoWhite = true;
+      if (!state.savedStops.some((saved) => isExactWhite(saved))) state.savedStops.push(stop);
+      state.stops = state.stops.filter((candidate) => candidate.id !== stop.id);
+      state.activeStopId = state.stops[0]?.id || state.savedStops[0]?.id || "";
+      return true;
+    }
+    return false;
+  }
+
+  function enforceExactAnchorPolicy() {
+    let changed = false;
+    for (const stop of [...state.stops]) {
+      changed = applyExactAnchorPolicy(stop) || changed;
+    }
+    return changed;
+  }
+
+  function addGradientColorFromHsl(hsl) {
+    const activeIndex = state.stops.findIndex((stop) => stop.id === state.activeStopId);
+    const insertIndex = activeIndex >= 0 ? activeIndex : state.stops.length;
+    const next = normalizeStop({ id: "", ...hsl }, insertIndex, state.stops.length + 1);
+    if (isExactBlack(next)) {
+      state.autoBlack = true;
+      const existing = state.savedStops.find((stop) => isExactBlack(stop));
+      if (!existing) state.savedStops.push(next);
+      state.activeStopId = state.stops[0]?.id || existing?.id || next.id;
+    } else if (isExactWhite(next)) {
+      state.autoWhite = true;
+      const existing = state.savedStops.find((stop) => isExactWhite(stop));
+      if (!existing) state.savedStops.push(next);
+      state.activeStopId = state.stops[0]?.id || existing?.id || next.id;
+    } else {
+      state.stops.splice(insertIndex, 0, next);
+      state.activeStopId = next.id;
+    }
+    return next;
+  }
+
+  function samplePositionFromPreview(event) {
+    const rect = preview.getBoundingClientRect();
+    const x = clamp((event.clientX - rect.left) / Math.max(1, rect.width), 0, 1);
+    const y = clamp((event.clientY - rect.top) / Math.max(1, rect.height), 0, 1);
+    if (state.previewMode === "dot") {
+      const dx = (x - 0.5) * 2;
+      const dy = (y - 0.5) * 2;
+      const distance = clamp(Math.sqrt(dx * dx + dy * dy), 0, 1) * 100;
+      return state.radialCenter === "end" ? 100 - distance : distance;
+    }
+    if (state.previewMode === "square") {
+      const distance = Math.max(Math.abs((x - 0.5) * 2), Math.abs((y - 0.5) * 2));
+      const position = clamp(distance, 0, 1) * 100;
+      return state.radialCenter === "end" ? 100 - position : position;
+    }
+    if (state.previewMode === "rectangle") {
+      const dx = (x - 0.5) * 2;
+      const dy = (y - 0.5) * 2;
+      const distance = clamp(Math.sqrt(dx * dx + dy * dy), 0, 1) * 100;
+      return state.radialCenter === "end" ? 100 - distance : distance;
+    }
+    if (state.previewMode === "horizontal") return x * 100;
+    if (state.previewMode === "vertical") return y * 100;
+    return clamp(((x + y) / 2) * 100, 0, 100);
+  }
+
+  function colorAtPreviewPosition(position) {
+    const activeGradientStops = gradientStops(state.stops, state.autoBlack, state.autoWhite);
+    const samples = sampleStops(activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode);
+    const nearest = samples.reduce((current, sample, index) => {
+      const previousDistance = Math.abs(current.sample.position - position);
+      const nextDistance = Math.abs(sample.position - position);
+      return nextDistance < previousDistance ? { sample, index } : current;
+    }, { sample: samples[0], index: 0 });
+    state.sampledIndex = nearest.index;
+    return nearest.sample;
+  }
+
+  function renderIndexStrip(samples) {
+    indexStrip.replaceChildren();
+    indexStrip.dataset.gridMode = state.gridMode;
+    indexStrip.style.setProperty("--index-cell-width", `${100 / Math.max(1, samples.length)}%`);
+    samples.forEach((sample, index) => {
+      const button = document.createElement("button");
+      button.className = "gcw-index-swatch";
+      button.type = "button";
+      button.style.setProperty("--index-color", sample.color);
+      button.dataset.sampled = String(index === state.sampledIndex);
+      button.title = `Index ${index}: ${sample.color}`;
+      button.setAttribute("aria-label", `Sample index ${index} ${sample.color}`);
+      button.addEventListener("click", () => {
+        state.sampledIndex = index;
+        const next = addGradientColorFromHsl(sample);
+        newColorInput.value = hslToHex(wrapHue(next.h + 36), next.s, next.l);
+        commit();
+      });
+      indexStrip.appendChild(button);
+    });
+  }
+
+  function renderFalloff(samples) {
+    const shapedSamples = outwardPreviewSamples(samples, state.falloff, "start");
+    const falloffLabels = { leftEdge: "LE", leftMid: "LM", rightMid: "RM", rightEdge: "RE" };
+    falloffStrip.style.setProperty("--gcw-falloff-gradient", `linear-gradient(90deg, ${shapedSamples.map((sample) => `${sample.color} ${sample.position.toFixed(1)}%`).join(", ")})`);
+    falloffHandles.forEach((handle) => {
+      const id = handle.dataset.falloffHandle;
+      handle.style.setProperty("--falloff-position", `${state.falloff[id]}%`);
+      handle.title = `${falloffLabels[id]} ${Math.round(state.falloff[id])}%`;
+    });
+    falloffValues.forEach((value) => {
+      const id = value.dataset.falloffValue;
+      value.textContent = `${falloffLabels[id]} ${Math.round(state.falloff[id])}%`;
+    });
+  }
+
+  function applyAutoOrder() {
+    promoteManualAnchors();
+    const ordered = arrangedStops(state.stops, false, true).map(({ position, ...stop }) => stop);
+    state.stops = state.invert ? ordered.reverse() : ordered;
+    state.activeStopId = state.stops[0]?.id || state.savedStops[0]?.id || "";
+  }
+
+  function applyAutoBright() {
+    promoteManualAnchors();
+    const ordered = arrangedStops(state.stops, false, false);
+    const count = Math.max(1, ordered.length - 1);
+    state.stops = ordered.map((stop, index) => {
+      const t = count === 0 ? 0.5 : index / count;
+      const low = state.autoBlack ? 8 : 18;
+      const high = state.autoWhite ? 92 : 82;
+      const l = low + (high - low) * smootherStep(t);
+      const edgeFade = Math.sin(Math.PI * clamp(t, 0, 1));
+      const s = stop.s <= 8 ? 0 : clamp(30 + edgeFade * 66, 6, 96);
+      return { ...stop, s, l: clamp(l, 0, 100) };
+    });
+    state.activeStopId = state.stops[0]?.id || state.savedStops[0]?.id || "";
+  }
+
+  function enforceAutoRules() {
+    if (state.autoOrder) applyAutoOrder();
+    if (state.autoBright) applyAutoBright();
+  }
+
+  function commit({ enforce = true } = {}) {
+    if (enforce) enforceAutoRules();
+    render();
+    emit();
+  }
+
+  function swapInZone(sourceId, targetId, zone) {
+    const list = stopList(zone);
+    const sourceIndex = list.findIndex((stop) => stop.id === sourceId);
+    const targetIndex = list.findIndex((stop) => stop.id === targetId);
+    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return;
+    [list[sourceIndex], list[targetIndex]] = [list[targetIndex], list[sourceIndex]];
+    state.activeStopId = sourceId;
+    commit();
+  }
+
+  function cardDropIndex(container, event) {
+    const cards = [...container.querySelectorAll(".gcw-color-card")].filter((card) => card.dataset.dragging !== "true");
+    const target = cards.find((card) => event.clientY < card.getBoundingClientRect().top + card.getBoundingClientRect().height / 2);
+    return target ? cards.indexOf(target) : cards.length;
+  }
+
+  function renderCard(stop, index, zone) {
+      const card = document.createElement("div");
+      card.className = "gcw-color-card";
+      card.draggable = true;
+      card.dataset.zone = zone;
+      card.dataset.stopId = stop.id;
+      card.dataset.active = String(stop.id === state.activeStopId);
+      card.style.setProperty("--card-color", stopColor(stop));
+      card.addEventListener("dragstart", (event) => {
+        state.drag = { id: stop.id, zone };
+        card.dataset.dragging = "true";
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", stop.id);
+      });
+      card.addEventListener("dragend", () => {
+        state.drag = null;
+        host.querySelectorAll("[data-dragging='true']").forEach((node) => delete node.dataset.dragging);
+        host.querySelectorAll("[data-drag-over='true']").forEach((node) => delete node.dataset.dragOver);
+      });
+      card.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+      });
+      card.addEventListener("drop", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!state.drag) return;
+        if (state.drag.zone === zone) {
+          swapInZone(state.drag.id, stop.id, zone);
+          return;
+        }
+        const container = zone === "saved" ? savedPalette : palette;
+        moveBetweenZones(state.drag.id, state.drag.zone, zone, cardDropIndex(container, event));
+      });
+
+      card.addEventListener("click", (event) => {
+        if (event.target.closest("button, input")) return;
+        state.activeStopId = stop.id;
+        syncActiveControls();
+        emit();
+      });
+
+      const swatch = document.createElement("button");
+      swatch.className = "gcw-swatch-button";
+      swatch.type = "button";
+      swatch.title = "Change color";
+      swatch.setAttribute("aria-label", `Change ${stopColor(stop)}`);
+      swatch.addEventListener("click", (event) => {
+        state.activeStopId = stop.id;
+        syncActiveControls();
+        picker.click();
+        event.stopPropagation();
+      });
+
+      const picker = document.createElement("input");
+      picker.type = "color";
+      picker.value = stopColor(stop);
+      picker.draggable = false;
+      picker.addEventListener("input", () => {
+        Object.assign(stop, polishStop({ ...stop, ...hexToHsl(picker.value) }));
+        applyExactAnchorPolicy(stop);
+        commit();
+      });
+
+      const meta = document.createElement("div");
+      meta.className = "gcw-color-meta";
+      const hex = stopColor(stop);
+      meta.textContent = `${hex} \u00B7 ${nearestCssColorName(hex)}`;
+
+      card.append(swatch, picker, meta);
+      return card;
+  }
+
+  function setupDropZone(zoneElement, zone, container) {
+    zoneElement.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      zoneElement.dataset.dragOver = "true";
+      event.dataTransfer.dropEffect = "move";
+    });
+    zoneElement.addEventListener("dragleave", (event) => {
+      if (!zoneElement.contains(event.relatedTarget)) delete zoneElement.dataset.dragOver;
+    });
+    zoneElement.addEventListener("drop", (event) => {
+      event.preventDefault();
+      delete zoneElement.dataset.dragOver;
+      if (!state.drag) return;
+      const targetCard = event.target.closest?.(".gcw-color-card");
+      if (targetCard?.dataset.zone === zone && targetCard.dataset.stopId && targetCard.dataset.stopId !== state.drag.id) {
+        if (targetCard.dataset.zone === state.drag.zone) {
+          swapInZone(state.drag.id, targetCard.dataset.stopId, zone);
+          return;
+        }
+      }
+      moveBetweenZones(state.drag.id, state.drag.zone, zone, cardDropIndex(container, event));
+    });
+  }
+
+  function renderPalette() {
+    palette.replaceChildren();
+    state.stops.forEach((stop, index) => {
+      palette.appendChild(renderCard(stop, index, "active"));
+    });
+    savedPalette.replaceChildren();
+    state.savedStops.forEach((stop, index) => {
+      savedPalette.appendChild(renderCard(stop, index, "saved"));
+    });
+  }
+
+  function render() {
+    const activeGradientStops = gradientStops(state.stops, state.autoBlack, state.autoWhite);
+    const samples = sampleStops(activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode);
+    const css = gradientCss(state.angle, activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode);
+    const previewCss = previewGradientCss(state.previewMode, activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.angle, state.falloff, state.radialCenter, state.lightnessMode);
+    mount.style.setProperty("--gcw-gradient", css);
+    mount.style.setProperty("--gcw-preview-gradient", previewCss);
+    const outwardPreview = ["dot", "square", "rectangle"].includes(state.previewMode);
+    const radialEdgeColor = state.radialCenter === "end" ? samples[0]?.color : samples[samples.length - 1]?.color;
+    mount.style.setProperty("--gcw-preview-edge-color", (outwardPreview ? radialEdgeColor : samples[samples.length - 1]?.color) || "rgba(18, 20, 15, 0.42)");
+    mount.style.setProperty("--gcw-flat-gradient", `linear-gradient(90deg, ${samples.map((sample) => `${sample.color} ${sample.position.toFixed(1)}%`).join(", ")})`);
+    host.querySelector(".gcw-preview").dataset.previewMode = state.previewMode;
+    invertInput.checked = state.invert;
+    autoOrderInput.checked = state.autoOrder;
+    autoBrightInput.checked = state.autoBright;
+    autoBlackInput.checked = state.autoBlack;
+    autoWhiteInput.checked = state.autoWhite;
+    indexCountInput.value = String(state.sampleCount);
+    hueModeButtons.forEach((button) => {
+      button.dataset.active = String(button.dataset.hueMode === state.hueMode);
+      button.setAttribute("aria-pressed", String(button.dataset.hueMode === state.hueMode));
+    });
+    lightnessModeButtons.forEach((button) => {
+      button.dataset.active = String(button.dataset.lightnessMode === state.lightnessMode);
+      button.setAttribute("aria-pressed", String(button.dataset.lightnessMode === state.lightnessMode));
+    });
+    previewModeButtons.forEach((button) => {
+      button.dataset.active = String(button.dataset.previewMode === state.previewMode);
+      button.setAttribute("aria-pressed", String(button.dataset.previewMode === state.previewMode));
+    });
+    radialCenterButtons.forEach((button) => {
+      button.dataset.active = String(button.dataset.radialCenter === state.radialCenter);
+      button.setAttribute("aria-pressed", String(button.dataset.radialCenter === state.radialCenter));
+    });
+    gridModeButtons.forEach((button) => {
+      button.dataset.active = String(button.dataset.gridMode === state.gridMode);
+      button.setAttribute("aria-pressed", String(button.dataset.gridMode === state.gridMode));
+    });
+    const activeSelected = state.stops.some((stop) => stop.id === state.activeStopId);
+    const savedSelected = state.savedStops.some((stop) => stop.id === state.activeStopId);
+    removeButton.disabled = state.stops.length <= 2 || !activeSelected;
+    deleteButton.disabled = (!activeSelected && !savedSelected) || (activeSelected && !canDeleteActiveStop(state.activeStopId));
+    cssOutput.textContent = css;
+    host.querySelector('[data-drop-zone="saved"]').dataset.empty = String(state.savedStops.length === 0);
+    renderPalette();
+    renderIndexStrip(samples);
+    renderFalloff(samples);
+  }
+
+  invertInput.addEventListener("change", () => {
+    state.invert = invertInput.checked;
+    commit();
+  });
+  autoOrderInput.addEventListener("change", () => {
+    state.autoOrder = autoOrderInput.checked;
+    commit();
+  });
+  autoBrightInput.addEventListener("change", () => {
+    state.autoBright = autoBrightInput.checked;
+    commit();
+  });
+  autoBlackInput.addEventListener("change", () => {
+    state.autoBlack = autoBlackInput.checked;
+    if (state.autoBlack) saveManualAnchors({ black: true });
+    commit();
+  });
+  autoWhiteInput.addEventListener("change", () => {
+    state.autoWhite = autoWhiteInput.checked;
+    if (state.autoWhite) saveManualAnchors({ white: true });
+    commit();
+  });
+  let indexDrag = null;
+  indexCountInput.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    indexDrag = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startValue: state.sampleCount,
+    };
+    indexCountInput.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+  indexCountInput.addEventListener("pointermove", (event) => {
+    if (!indexDrag || event.pointerId !== indexDrag.pointerId) return;
+    const dx = event.clientX - indexDrag.startX;
+    const dy = indexDrag.startY - event.clientY;
+    const pixelsPerIndex = event.shiftKey ? 24 : 4;
+    const delta = Math.round((dx + dy) / pixelsPerIndex);
+    const next = clamp(indexDrag.startValue + delta, 2, 256);
+    if (next === state.sampleCount) return;
+    state.sampleCount = next;
+    state.sampledIndex = -1;
+    render();
+    emit();
+  });
+  indexCountInput.addEventListener("pointerup", (event) => {
+    if (!indexDrag || event.pointerId !== indexDrag.pointerId) return;
+    indexCountInput.releasePointerCapture(event.pointerId);
+    indexDrag = null;
+  });
+  indexCountInput.addEventListener("pointercancel", () => {
+    indexDrag = null;
+  });
+  indexCountInput.addEventListener("change", () => {
+    state.sampleCount = clamp(Math.round(Number(indexCountInput.value) || state.sampleCount), 2, 256);
+    state.sampledIndex = -1;
+    render();
+    emit();
+  });
+  function setFalloffValue(id, value, options = {}) {
+    const next = { ...state.falloff };
+    if (id === "leftEdge") {
+      if (Number.isFinite(options.neighborOffset)) {
+        next.leftEdge = clamp(value, 0, next.rightMid - options.neighborOffset - 1);
+        next.leftMid = next.leftEdge + options.neighborOffset;
+      } else {
+        next.leftEdge = clamp(value, 0, next.leftMid - 1);
+      }
+    } else if (id === "leftMid") {
+      next.leftMid = clamp(value, next.leftEdge + 1, next.rightMid - 1);
+    } else if (id === "rightMid") {
+      next.rightMid = clamp(value, next.leftMid + 1, next.rightEdge - 1);
+    } else if (id === "rightEdge") {
+      if (Number.isFinite(options.neighborOffset)) {
+        next.rightEdge = clamp(value, next.leftMid + options.neighborOffset + 1, 100);
+        next.rightMid = next.rightEdge - options.neighborOffset;
+      } else {
+        next.rightEdge = clamp(value, next.rightMid + 1, 100);
+      }
+    }
+    state.falloff = normalizeFalloff(next);
+  }
+
+  let falloffDrag = null;
+  let falloffAnimation = null;
+  function cancelFalloffAnimation() {
+    if (!falloffAnimation) return;
+    cancelAnimationFrame(falloffAnimation.frame);
+    falloffAnimation = null;
+  }
+
+  function animateFalloffValue(id, targetValue) {
+    cancelFalloffAnimation();
+    const startValue = state.falloff[id];
+    const neighborOffset = id === "leftEdge"
+      ? state.falloff.leftMid - state.falloff.leftEdge
+      : id === "rightEdge"
+        ? state.falloff.rightEdge - state.falloff.rightMid
+        : null;
+    const startedAt = performance.now();
+    const duration = 180;
+    falloffAnimation = { frame: 0 };
+    const tick = (now) => {
+      const t = clamp((now - startedAt) / duration, 0, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setFalloffValue(id, startValue + ((targetValue - startValue) * eased), { neighborOffset });
+      render();
+      emit();
+      if (t < 1) {
+        falloffAnimation.frame = requestAnimationFrame(tick);
+      } else {
+        falloffAnimation = null;
+      }
+    };
+    falloffAnimation.frame = requestAnimationFrame(tick);
+  }
+
+  function falloffNeighborOffset(id) {
+    return id === "leftEdge"
+      ? state.falloff.leftMid - state.falloff.leftEdge
+      : id === "rightEdge"
+        ? state.falloff.rightEdge - state.falloff.rightMid
+        : null;
+  }
+
+  function startFalloffDrag(event, id, captureElement) {
+    const rect = falloffStrip.getBoundingClientRect();
+    falloffDrag = {
+      id,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startValue: state.falloff[id],
+      neighborOffset: falloffNeighborOffset(id),
+      captureElement,
+      rectLeft: rect.left,
+      rectWidth: Math.max(1, rect.width),
+    };
+    captureElement.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+
+  function updateFalloffDrag(event) {
+    if (!falloffDrag || event.pointerId !== falloffDrag.pointerId) return;
+    if (falloffAnimation) {
+      // A click-to-target animation is still mid-flight. Re-anchor the drag
+      // to wherever the animation has actually gotten to (and to the
+      // pointer's current position) instead of letting the next line jump
+      // straight to the raw absolute pointer position -- that jump from
+      // "mid-tween position" to "click target" was the visible snap.
+      falloffDrag.startValue = state.falloff[falloffDrag.id];
+      falloffDrag.startX = event.clientX;
+    }
+    cancelFalloffAnimation();
+    const pointerValue = clamp(((event.clientX - falloffDrag.rectLeft) / falloffDrag.rectWidth) * 100, 0, 100);
+    const startPointerValue = clamp(((falloffDrag.startX - falloffDrag.rectLeft) / falloffDrag.rectWidth) * 100, 0, 100);
+    const delta = pointerValue - startPointerValue;
+    const nextValue = event.shiftKey
+      ? falloffDrag.startValue + (delta * 0.1)
+      : falloffDrag.startValue + delta;
+    setFalloffValue(falloffDrag.id, nextValue, { neighborOffset: falloffDrag.neighborOffset });
+    render();
+    emit();
+  }
+
+  function stopFalloffDrag(event) {
+    if (!falloffDrag || event.pointerId !== falloffDrag.pointerId) return;
+    falloffDrag.captureElement.releasePointerCapture(event.pointerId);
+    falloffDrag = null;
+  }
+
+  falloffHandles.forEach((handle) => {
+    handle.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      cancelFalloffAnimation();
+      const id = handle.dataset.falloffHandle;
+      startFalloffDrag(event, id, handle);
+    });
+    handle.addEventListener("pointermove", (event) => {
+      updateFalloffDrag(event);
+    });
+    handle.addEventListener("pointerup", (event) => {
+      stopFalloffDrag(event);
+    });
+    handle.addEventListener("pointercancel", () => {
+      falloffDrag = null;
+    });
+  });
+  falloffStrip.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || event.target.closest(".gcw-falloff-handle")) return;
+    const rect = falloffStrip.getBoundingClientRect();
+    const value = clamp(((event.clientX - rect.left) / Math.max(1, rect.width)) * 100, 0, 100);
+    const id = value < 25 ? "leftEdge" : value < 50 ? "leftMid" : value < 75 ? "rightMid" : "rightEdge";
+    startFalloffDrag(event, id, falloffStrip);
+    animateFalloffValue(id, value);
+  });
+  falloffStrip.addEventListener("pointermove", (event) => {
+    if (event.target.closest?.(".gcw-falloff-handle")) return;
+    updateFalloffDrag(event);
+  });
+  falloffStrip.addEventListener("pointerup", (event) => {
+    stopFalloffDrag(event);
+  });
+  falloffStrip.addEventListener("pointercancel", () => {
+    falloffDrag = null;
+  });
+  hueModeButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      state.hueMode = ["strict", "wide", "chroma", "smooth-natural", "velvet", "silk"].includes(button.dataset.hueMode) ? button.dataset.hueMode : "strict";
+      render();
+      emit();
+    });
+  });
+  lightnessModeButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      state.lightnessMode = ["linear", "smooth", "gaussian", "filmic", "bokeh"].includes(button.dataset.lightnessMode) ? button.dataset.lightnessMode : "bokeh";
+      render();
+      emit();
+    });
+  });
+  previewModeButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      state.previewMode = ["dot", "diagonal", "horizontal", "vertical", "square", "rectangle"].includes(button.dataset.previewMode) ? button.dataset.previewMode : "dot";
+      render();
+      emit();
+    });
+  });
+  radialCenterButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      state.radialCenter = ["start", "end"].includes(button.dataset.radialCenter) ? button.dataset.radialCenter : "start";
+      render();
+      emit();
+    });
+  });
+  gridModeButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      state.gridMode = ["off", "black", "white"].includes(button.dataset.gridMode) ? button.dataset.gridMode : "off";
+      render();
+      emit();
+    });
+  });
+  host.querySelector(".gcw-add").addEventListener("click", () => {
+    const next = addGradientColorFromHsl(hexToHsl(newColorInput.value));
+    newColorInput.value = hslToHex(wrapHue(next.h + 36), next.s, next.l);
+    commit();
+  });
+  preview.addEventListener("click", (event) => {
+    const sample = colorAtPreviewPosition(samplePositionFromPreview(event));
+    const next = addGradientColorFromHsl(sample);
+    newColorInput.value = hslToHex(wrapHue(next.h + 36), next.s, next.l);
+    commit();
+  });
+  removeButton.addEventListener("click", () => {
+    moveBetweenZones(state.activeStopId, "active", "saved");
+  });
+  deleteButton.addEventListener("click", () => {
+    deleteSelectedStop();
+  });
+  host.querySelector(".gcw-copy").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(packet().css);
+    } catch {
+      // Clipboard can be unavailable on some local/browser contexts; the CSS remains selectable below.
+    }
+    cssOutput.textContent = "Copied " + packet().css;
+  });
+  exportPngButton.addEventListener("click", () => {
+    const activeGradientStops = gradientStops(state.stops, state.autoBlack, state.autoWhite);
+    const dataUrl = exportGradientPng(activeGradientStops, {
+      width: 1024,
+      height: 1,
+      invert: gradientInvert(),
+      autoOrder: state.autoOrder,
+      hueMode: state.hueMode,
+      lightnessMode: state.lightnessMode,
+    });
+    downloadDataUrl(dataUrl, "gradient-texture-1024x1.png");
+  });
+  enforceExactAnchorPolicy();
+  commit();
+
+  return {
+    setGradient(next = {}) {
+      if (Number.isFinite(Number(next.angle))) state.angle = clamp(Number(next.angle), 0, 360);
+      if (typeof next.invert === "boolean") state.invert = next.invert;
+      if (typeof next.autoOrder === "boolean") state.autoOrder = next.autoOrder;
+      if (typeof next.autoBright === "boolean") state.autoBright = next.autoBright;
+      if (typeof next.autoBlack === "boolean") state.autoBlack = next.autoBlack;
+      if (typeof next.autoWhite === "boolean") state.autoWhite = next.autoWhite;
+      if (typeof next.autoBlackWhite === "boolean") {
+        state.autoBlack = next.autoBlackWhite;
+        state.autoWhite = next.autoBlackWhite;
+      }
+      if (["wide", "strict", "chroma", "smooth-natural", "velvet", "silk"].includes(next.hueMode)) state.hueMode = next.hueMode;
+      if (["linear", "smooth", "gaussian", "filmic", "bokeh"].includes(next.lightnessMode)) state.lightnessMode = next.lightnessMode;
+      if (["dot", "diagonal", "horizontal", "vertical", "square", "rectangle"].includes(next.previewMode)) state.previewMode = next.previewMode;
+      if (["start", "end"].includes(next.radialCenter)) state.radialCenter = next.radialCenter;
+      if (["off", "black", "white"].includes(next.gridMode)) state.gridMode = next.gridMode;
+      if (next.falloff && typeof next.falloff === "object") state.falloff = normalizeFalloff(next.falloff);
+      if (Number.isFinite(Number(next.sampleCount))) state.sampleCount = clamp(Number(next.sampleCount), 2, 256);
+      if (Array.isArray(next.stops) && next.stops.length >= 2) {
+        state.stops = next.stops.map((stop, index) => normalizeStop(stop, index, next.stops.length));
+        state.activeStopId = state.stops[0].id;
+      }
+      if (Array.isArray(next.savedStops)) {
+        state.savedStops = next.savedStops.map((stop, index) => normalizeStop(stop, index, next.savedStops.length));
+      }
+      enforceExactAnchorPolicy();
+      commit();
+    },
+    getGradient() {
+      return packet();
+    },
+    destroy() {
+      host.innerHTML = "";
+    },
+  };
+}
+
+
+
+
+
