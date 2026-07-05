@@ -1,11 +1,14 @@
+import { useState } from "react";
 import Nav from "@/components/soundemote/Nav";
 import StarField from "@/components/soundemote/StarField";
 import GradientCurveWidget from "@/good-code/gradient-curve-widget/GradientCurveWidget";
 
 const GradientCurvePage = () => {
+  const [showStars, setShowStars] = useState(true);
+
   return (
     <main className="min-h-screen text-foreground">
-      <StarField />
+      <StarField showStars={showStars} />
       <Nav />
       <section className="relative px-4 pb-8 pt-24 md:px-6">
         <div className="mx-auto flex w-full max-w-[1800px] flex-col gap-4">
@@ -19,6 +22,13 @@ const GradientCurvePage = () => {
                 applied to color and falloff instead of pitch and amplitude.
               </p>
             </div>
+            <button
+              type="button"
+              onClick={() => setShowStars((prev) => !prev)}
+              className="mono inline-flex w-fit items-center gap-2 rounded-full border border-scope/50 px-4 py-1.5 text-[0.65rem] uppercase tracking-[0.14em] text-scope transition-colors hover:bg-scope/10"
+            >
+              {showStars ? "hide stars" : "show stars"}
+            </button>
           </div>
           <div className="relative h-[min(78vh,calc((100vw-2rem)*0.72))] min-h-[36rem] w-full overflow-hidden rounded-xl border border-border bg-[var(--gradient-panel)]">
             <GradientCurveWidget />

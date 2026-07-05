@@ -44,7 +44,14 @@ type ScopeHitbox = {
   bottom: number;
 };
 
-export const StarField = () => {
+type StarFieldProps = {
+  /** Hide the ambient background starfield (e.g. when it shows through a
+   * translucent panel and clashes with what's on top of it). Shooting
+   * stars still run in the background; only the visual layers are hidden. */
+  showStars?: boolean;
+};
+
+export const StarField = ({ showStars = true }: StarFieldProps) => {
   // Two layers: the ambient twinkling starfield stays BEHIND page content
   // (bgCanvas, z-0) like a night sky backdrop. Shooting stars + their
   // explosion sparks render on a separate layer IN FRONT of content
@@ -420,7 +427,13 @@ export const StarField = () => {
         ref={bgCanvasRef}
         aria-hidden
         className="pointer-events-none"
-        style={{ position: "fixed", inset: 0, zIndex: 0, background: "transparent" }}
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 0,
+          background: "transparent",
+          display: showStars ? undefined : "none",
+        }}
       />
       {/* Shooting stars + explosion sparks: <main> renders at z-10
           (Index.tsx), so this layer sits at z-15 -- in front of all page
@@ -431,7 +444,13 @@ export const StarField = () => {
         ref={fgCanvasRef}
         aria-hidden
         className="pointer-events-none"
-        style={{ position: "fixed", inset: 0, zIndex: 15, background: "transparent" }}
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 15,
+          background: "transparent",
+          display: showStars ? undefined : "none",
+        }}
       />
     </>
   );
