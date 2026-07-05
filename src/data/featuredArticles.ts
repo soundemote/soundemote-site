@@ -16,6 +16,7 @@ import {
 import { JEROBEAM_MODULES_MARKDOWN } from "./jerobeamModules";
 import { COMBUSTION_MARKDOWN, COMBUSTION_REPO } from "./combustionArticle";
 import { SUPERSAW_MARKDOWN, SUPERSAW_REPO, SUPERSAW_BRANCH } from "./supersawArticle";
+import { SIMD_ARTICLE_MARKDOWN, SIMD_ARTICLE_SOURCE_URL } from "./simdArticle";
 
 export type FeaturedArticle = {
   slug: string;
@@ -137,6 +138,15 @@ export const featuredArticles: FeaturedArticle[] = [
     tagline: "Chasing the sound of engines through a spiral generator, emulation not simulation.",
     sourceUrl: `https://github.com/${COMBUSTION_REPO}`,
     markdown: rewriteRelativeLinks(COMBUSTION_MARKDOWN, COMBUSTION_REPO, "main"),
+  },
+  {
+    slug: "simd",
+    repoHref: "https://github.com/soundemote/soemdsp-simd",
+    emoji: "🚀",
+    title: "soemdsp-simd — block processing, SIMD, and the honest speed ladder",
+    tagline: "Measured WASM SIMD work for the audio engine, with the gradient tool as the visual front door.",
+    sourceUrl: SIMD_ARTICLE_SOURCE_URL,
+    markdown: rewriteRelativeLinks(SIMD_ARTICLE_MARKDOWN, "soundemote/soemdsp-simd", "main"),
   },
   {
     slug: "synthwave-orchestra",

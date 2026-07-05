@@ -44,6 +44,8 @@ const App = () => (
           <Route path="/oscilloscope" element={<OscilloscopePage />} />
           <Route path="/scope-scratch" element={<ScopeScratchPage />} />
           <Route path="/gradient-curve" element={<GradientCurvePage />} />
+          <Route path="/simd" element={<FeaturedArticlePage slug="simd" />} />
+          <Route path="/soemdsp-simd" element={<Navigate to="/simd" replace />} />
           <Route path="/sandbox" element={<SandboxPage />} />
           <Route path="/embed" element={<EmbedPage />} />
           <Route path="/reverb" element={<SandboxPage staticPatchUrl="/patches/silently-dreaming.json" autostart />} />

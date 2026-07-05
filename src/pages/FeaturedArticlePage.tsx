@@ -5,6 +5,7 @@ import Footer from "@/components/soundemote/Footer";
 import WikiMarkdown from "@/components/soundemote/WikiMarkdown";
 import TableOfContents, { extractChapters } from "@/components/soundemote/TableOfContents";
 import { findFeaturedArticle } from "@/data/featuredArticles";
+import GradientCurveSpotlight from "@/components/soundemote/GradientCurveSpotlight";
 
 const FeaturedArticlePage = ({ slug }: { slug: string }) => {
   const article = findFeaturedArticle(slug);
@@ -61,6 +62,12 @@ const FeaturedArticlePage = ({ slug }: { slug: string }) => {
         </header>
 
         <div className="mt-10 max-w-3xl">
+          {article.slug === "simd" && (
+            <div className="mb-10 max-w-none">
+              <GradientCurveSpotlight />
+            </div>
+          )}
+
           <div className="mb-6">
             <Link
               to="/#projects"

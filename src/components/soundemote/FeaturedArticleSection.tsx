@@ -1,5 +1,6 @@
 import WikiMarkdown from "./WikiMarkdown";
 import type { FeaturedArticle } from "@/data/featuredArticles";
+import GradientCurveSpotlight from "./GradientCurveSpotlight";
 
 const FeaturedArticleSection = ({ article }: { article: FeaturedArticle }) => (
   <section
@@ -36,6 +37,11 @@ const FeaturedArticleSection = ({ article }: { article: FeaturedArticle }) => (
         key={article.slug}
         className="rounded-lg border border-border/60 bg-card/40 p-6 shadow-[0_0_60px_-15px_hsl(var(--scope)/0.5)] md:p-10"
       >
+        {article.slug === "simd" && (
+          <div className="mb-8">
+            <GradientCurveSpotlight compact />
+          </div>
+        )}
         <WikiMarkdown markdown={article.markdown} />
       </div>
 
