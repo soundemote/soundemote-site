@@ -63,7 +63,7 @@ const repositoryLinks: RepositoryLink[] = [
     {
         emoji: "🚀",
         name: "soemdsp-simd",
-        href: "https://github.com/elanhickler/soemdsp-simd",
+        href: "https://github.com/soundemote/soemdsp-simd",
     },
     {
         emoji: "🌆",
