@@ -2088,24 +2088,17 @@ export function mountGradientCurveWidget(host, options = {}) {
   });
   function setFalloffValue(id, value, options = {}) {
     const next = { ...state.falloff };
+    // Every individual handle -- including the two edge handles -- moves
+    // on its own. Only the explicit "middleBand" strip-drag (grabbing the
+    // area between leftMid and rightMid) moves a pair together.
     if (id === "leftEdge") {
-      if (Number.isFinite(options.neighborOffset)) {
-        next.leftEdge = clamp(value, 0, next.rightMid - options.neighborOffset - 1);
-        next.leftMid = next.leftEdge + options.neighborOffset;
-      } else {
-        next.leftEdge = clamp(value, 0, next.leftMid - 1);
-      }
+      next.leftEdge = clamp(value, 0, next.leftMid - 1);
     } else if (id === "leftMid") {
       next.leftMid = clamp(value, next.leftEdge + 1, next.rightMid - 1);
     } else if (id === "rightMid") {
       next.rightMid = clamp(value, next.leftMid + 1, next.rightEdge - 1);
     } else if (id === "rightEdge") {
-      if (Number.isFinite(options.neighborOffset)) {
-        next.rightEdge = clamp(value, next.leftMid + options.neighborOffset + 1, 100);
-        next.rightMid = next.rightEdge - options.neighborOffset;
-      } else {
-        next.rightEdge = clamp(value, next.rightMid + 1, 100);
-      }
+      next.rightEdge = clamp(value, next.rightMid + 1, 100);
     } else if (id === "middleBand") {
       const startLeftMid = Number.isFinite(options.startLeftMid) ? options.startLeftMid : next.leftMid;
       const startRightMid = Number.isFinite(options.startRightMid) ? options.startRightMid : next.rightMid;
@@ -2132,18 +2125,13 @@ export function mountGradientCurveWidget(host, options = {}) {
     if (id === "middleBand") return;
     cancelFalloffAnimation();
     const startValue = state.falloff[id];
-    const neighborOffset = id === "leftEdge"
-      ? state.falloff.leftMid - state.falloff.leftEdge
-      : id === "rightEdge"
-        ? state.falloff.rightEdge - state.falloff.rightMid
-        : null;
     const startedAt = performance.now();
     const duration = 180;
     falloffAnimation = { frame: 0 };
     const tick = (now) => {
       const t = clamp((now - startedAt) / duration, 0, 1);
       const eased = 1 - Math.pow(1 - t, 3);
-      setFalloffValue(id, startValue + ((targetValue - startValue) * eased), { neighborOffset });
+      setFalloffValue(id, startValue + ((targetValue - startValue) * eased));
       render();
       emit();
       if (t < 1) {
@@ -2155,14 +2143,6 @@ export function mountGradientCurveWidget(host, options = {}) {
     falloffAnimation.frame = requestAnimationFrame(tick);
   }
 
-  function falloffNeighborOffset(id) {
-    return id === "leftEdge"
-      ? state.falloff.leftMid - state.falloff.leftEdge
-      : id === "rightEdge"
-        ? state.falloff.rightEdge - state.falloff.rightMid
-        : null;
-  }
-
   function startFalloffDrag(event, id, captureElement) {
     const rect = falloffStrip.getBoundingClientRect();
     falloffDrag = {
@@ -2172,7 +2152,6 @@ export function mountGradientCurveWidget(host, options = {}) {
       startValue: state.falloff[id],
       startLeftMid: state.falloff.leftMid,
       startRightMid: state.falloff.rightMid,
-      neighborOffset: falloffNeighborOffset(id),
       captureElement,
       rectLeft: rect.left,
       rectWidth: Math.max(1, rect.width),
@@ -2205,7 +2184,7 @@ export function mountGradientCurveWidget(host, options = {}) {
         startRightMid: falloffDrag.startRightMid,
       });
     } else {
-      setFalloffValue(falloffDrag.id, nextValue, { neighborOffset: falloffDrag.neighborOffset });
+      setFalloffValue(falloffDrag.id, nextValue);
     }
     render();
     emit();
