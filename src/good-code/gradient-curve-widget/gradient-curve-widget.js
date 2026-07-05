@@ -1686,7 +1686,12 @@ export function mountGradientCurveWidget(host, options = {}) {
   }
 
   function renderFalloff(samples) {
-    const shapedSamples = outwardPreviewSamples(samples, state.falloff, "start");
+    // Must match the real dot's radialCenter, not be hardcoded to "start" --
+    // otherwise this strip shows colors in the opposite radial order from
+    // the actual preview (whose default is "end"), making the handles feel
+    // backwards: the one that looks like it's near a bright/dark region on
+    // the strip is actually shaping the opposite region on the real dot.
+    const shapedSamples = outwardPreviewSamples(samples, state.falloff, state.radialCenter);
     const falloffLabels = { leftEdge: "LE", leftMid: "LM", rightMid: "RM", rightEdge: "RE" };
     falloffStrip.style.setProperty("--gcw-falloff-gradient", `linear-gradient(90deg, ${shapedSamples.map((sample) => `${sample.color} ${sample.position.toFixed(1)}%`).join(", ")})`);
     falloffHandles.forEach((handle) => {
