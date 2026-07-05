@@ -15,6 +15,11 @@ const defaults = {
   previewMode: "dot",
   radialCenter: "end",
   falloff: { leftEdge: 18, leftMid: 42, rightMid: 68, rightEdge: 100 },
+  previewZoom: 1,
+  previewPanX: 0,
+  previewPanY: 0,
+  addInsertIndex: 2,
+  addColor: "#8A4B22",
   sampleCount: 40,
   stops: [
     { id: "black", color: "#000000" },
@@ -61,6 +66,11 @@ const GradientCurveWidget = () => {
             radialCenter: packet.radialCenter,
             gridMode: packet.gridMode,
             falloff: packet.falloff,
+            previewZoom: packet.previewZoom,
+            previewPanX: packet.previewPan.x,
+            previewPanY: packet.previewPan.y,
+            addInsertIndex: packet.addInsertIndex,
+            addColor: packet.addColor,
             sampleCount: packet.sampleCount,
             stops: packet.stops
               .filter((stop: any) => !stop.id.startsWith("__auto-"))

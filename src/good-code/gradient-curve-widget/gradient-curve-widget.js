@@ -26,9 +26,6 @@ const css = `
   }
 
   .gcw-root {
-    background: linear-gradient(180deg, rgba(243, 240, 230, 0.045), rgba(18, 20, 15, 0.28));
-    border: 1px solid var(--gcw-border);
-    border-radius: min(2cqh, 8px);
     display: grid;
     gap: min(0.65cqh, 6px);
     grid-template-areas:
@@ -37,17 +34,15 @@ const css = `
       "falloff"
       "active"
       "saved"
-      "actions"
-      "css";
-    grid-template-rows: minmax(320px, 1fr) auto auto auto auto auto auto;
+      "actions";
+    grid-template-rows: minmax(320px, 1fr) auto auto auto auto auto;
     height: 100%;
     min-height: 0;
     overflow: hidden;
-    padding: min(0.9cqh, 7px);
+    padding: 0;
   }
 
-  .gcw-preview,
-  .gcw-css {
+  .gcw-preview {
     border: 1px solid var(--gcw-border);
     border-radius: min(1.4cqh, 7px);
     min-height: 0;
@@ -69,6 +64,8 @@ const css = `
     content: "";
     inset: 0;
     position: absolute;
+    transform: translate(var(--gcw-preview-pan-x, 0px), var(--gcw-preview-pan-y, 0px)) scale(var(--gcw-preview-zoom, 1));
+    transform-origin: center;
   }
 
   .gcw-preview[data-preview-mode="dot"]::before {
@@ -77,7 +74,8 @@ const css = `
     inset: 50% auto auto 50%;
     max-height: 96%;
     max-width: 96%;
-    transform: translate(-50%, -50%);
+    transform: translate(calc(-50% + var(--gcw-preview-pan-x, 0px)), calc(-50% + var(--gcw-preview-pan-y, 0px))) scale(var(--gcw-preview-zoom, 1));
+    transform-origin: center;
     width: min(72cqw, 84cqh);
   }
 
@@ -93,24 +91,24 @@ const css = `
     inset: 50% auto auto 50%;
     max-height: 90%;
     max-width: 90%;
-    transform: translate(-50%, -50%);
+    transform: translate(calc(-50% + var(--gcw-preview-pan-x, 0px)), calc(-50% + var(--gcw-preview-pan-y, 0px))) scale(var(--gcw-preview-zoom, 1));
+    transform-origin: center;
     width: min(52cqw, 52cqh);
   }
 
   .gcw-preview[data-preview-mode="rectangle"]::before {
     border-radius: 0;
     inset: 14% 8%;
+    transform: translate(var(--gcw-preview-pan-x, 0px), var(--gcw-preview-pan-y, 0px)) scale(var(--gcw-preview-zoom, 1));
+    transform-origin: center;
   }
 
   .gcw-zone {
-    background: rgba(18, 20, 15, 0.18);
-    border: 1px solid var(--gcw-border);
-    border-radius: min(1.4cqh, 7px);
     display: grid;
     gap: min(0.35cqh, 3px);
     min-height: 0;
     overflow: hidden;
-    padding: min(0.45cqh, 4px);
+    padding: 0;
   }
 
   .gcw-zone[data-drop-zone="active"] {
@@ -123,8 +121,7 @@ const css = `
   }
 
   .gcw-zone[data-drag-over="true"] {
-    border-color: var(--gcw-accent);
-    box-shadow: inset 0 0 0 1px var(--gcw-accent), 0 0 18px rgba(241, 184, 75, 0.12);
+    filter: drop-shadow(0 0 14px rgba(241, 184, 75, 0.26));
   }
 
   .gcw-zone[data-empty="true"] {
@@ -144,7 +141,7 @@ const css = `
     align-content: start;
     display: flex;
     flex-wrap: wrap;
-    gap: min(0.45cqh, 4px);
+    gap: min(0.55cqh, 5px);
     min-height: 0;
     overflow: auto;
   }
@@ -154,29 +151,20 @@ const css = `
   }
 
   .gcw-color-card {
-    align-items: center;
-    background: rgba(243, 240, 230, 0.045);
-    border: 1px solid var(--gcw-border);
-    border-radius: 999px;
-    display: inline-grid;
-    gap: min(0.35cqw, 4px);
-    grid-template-columns: minmax(18px, 2.9cqh) minmax(0, 1fr);
-    height: min(3.8cqh, 28px);
-    max-width: 100%;
+    display: block;
+    height: min(4.9cqh, 36px);
+    max-width: none;
     min-height: 24px;
-    padding: min(0.32cqh, 3px) min(0.45cqw, 5px);
-    width: clamp(180px, 24cqw, 260px);
+    padding: 0;
+    width: min(4.9cqh, 36px);
   }
 
   .gcw-color-card[data-zone="saved"] {
-    border-radius: min(0.9cqh, 6px);
-    display: block;
-    height: min(4.6cqh, 34px);
-    min-height: 24px;
-    padding: 2px;
-    width: min(4.6cqh, 34px);
+    height: min(4.9cqh, 36px);
+    width: min(4.9cqh, 36px);
   }
 
+  .gcw-color-card .gcw-swatch-button,
   .gcw-color-card[data-zone="saved"] .gcw-swatch-button {
     border-radius: min(0.65cqh, 5px);
     height: 100%;
@@ -184,6 +172,7 @@ const css = `
     width: 100%;
   }
 
+  .gcw-color-card .gcw-color-meta,
   .gcw-color-card[data-zone="saved"] .gcw-color-meta {
     display: none;
   }
@@ -197,22 +186,68 @@ const css = `
   }
 
   .gcw-color-card[data-active="true"] {
+    filter: drop-shadow(0 0 12px rgba(241, 184, 75, 0.26));
+  }
+
+  .gcw-color-card[data-active="true"] .gcw-swatch-button {
     border-color: var(--gcw-accent);
-    box-shadow: inset 0 0 0 1px var(--gcw-accent), 0 0 18px rgba(241, 184, 75, 0.12);
+    box-shadow: inset 0 0 0 1px var(--gcw-accent);
+  }
+
+  .gcw-add-card {
+    display: block;
+    height: min(4.9cqh, 36px);
+    max-width: none;
+    min-height: 24px;
+    padding: 0;
+    position: relative;
+    width: min(4.9cqh, 36px);
+  }
+
+  .gcw-add-card[data-dragging="true"] {
+    opacity: 0.46;
+  }
+
+  .gcw-add-card button {
+    align-items: center;
+    background: rgba(241, 184, 75, 0.16);
+    border: 1px dashed rgba(241, 184, 75, 0.72);
+    border-radius: min(0.65cqh, 5px);
+    color: var(--gcw-accent);
+    cursor: grab;
+    display: flex;
+    font: inherit;
+    font-size: min(2.4cqh, 18px);
+    font-weight: 800;
+    height: 100%;
+    justify-content: center;
+    line-height: 1;
+    min-height: 0;
+    padding: 0;
+    width: 100%;
+  }
+
+  .gcw-add-card input[type="color"] {
+    height: 1px;
+    left: 0;
+    opacity: 0;
+    pointer-events: none;
+    position: absolute;
+    top: 0;
+    width: 1px;
   }
 
   .gcw-swatch-button {
     background: var(--card-color);
     border: 1px solid rgba(18, 20, 15, 0.82);
-    border-radius: 999px;
     cursor: pointer;
     display: block;
-    height: min(2.7cqh, 20px);
-    min-height: 16px;
+    height: 100%;
+    min-height: 0;
     overflow: hidden;
     padding: 0;
     position: relative;
-    width: min(2.7cqh, 20px);
+    width: 100%;
   }
 
   .gcw-swatch-button input[type="color"] {
@@ -252,8 +287,7 @@ const css = `
   }
 
   .gcw-row span,
-  .gcw-row output,
-  .gcw-css {
+  .gcw-row output {
     color: var(--gcw-muted);
     font-size: min(2cqh, 13px);
   }
@@ -336,27 +370,6 @@ const css = `
     appearance: textfield;
   }
 
-  .gcw-new-color {
-    align-items: center;
-    background: rgba(243, 240, 230, 0.045);
-    border: 1px solid var(--gcw-border);
-    border-radius: min(1cqh, 6px);
-    color: var(--gcw-muted);
-    display: inline-flex;
-    font-size: min(1.45cqh, 10px);
-    gap: min(0.45cqw, 5px);
-    min-height: min(2.8cqh, 21px);
-    padding: 0 min(0.55cqw, 6px);
-  }
-
-  .gcw-new-color input {
-    background: transparent;
-    border: 0;
-    height: min(2.25cqh, 18px);
-    padding: 0;
-    width: min(5cqw, 36px);
-  }
-
   .gcw-actions button {
     background: rgba(243, 240, 230, 0.06);
     border: 1px solid var(--gcw-border);
@@ -386,12 +399,15 @@ const css = `
     color: var(--gcw-muted);
     display: inline-flex;
     font-size: min(1.45cqh, 10px);
-    gap: 2px;
     min-height: min(2.8cqh, 21px);
-    padding: 2px;
+    overflow: hidden;
+    padding: 0;
   }
 
   .gcw-hue-segments span {
+    align-items: center;
+    align-self: stretch;
+    display: inline-flex;
     padding: 0 min(0.55cqw, 6px);
   }
 
@@ -404,13 +420,16 @@ const css = `
     color: var(--gcw-muted);
     display: inline-flex;
     font-size: min(1.45cqh, 10px);
-    gap: 2px;
     min-height: min(2.8cqh, 21px);
-    padding: 2px;
+    overflow: hidden;
+    padding: 0;
   }
 
   .gcw-preview-segments span,
   .gcw-lightness-segments span {
+    align-items: center;
+    align-self: stretch;
+    display: inline-flex;
     padding: 0 min(0.55cqw, 6px);
   }
 
@@ -422,12 +441,15 @@ const css = `
     color: var(--gcw-muted);
     display: inline-flex;
     font-size: min(1.45cqh, 10px);
-    gap: 2px;
     min-height: min(2.8cqh, 21px);
-    padding: 2px;
+    overflow: hidden;
+    padding: 0;
   }
 
   .gcw-radial-center-segments span {
+    align-items: center;
+    align-self: stretch;
+    display: inline-flex;
     padding: 0 min(0.55cqw, 6px);
   }
 
@@ -437,10 +459,11 @@ const css = `
   .gcw-radial-center-option {
     background: transparent;
     border: 0;
-    border-radius: 999px;
+    border-radius: 0;
     color: var(--gcw-muted);
     font: inherit;
-    min-height: min(2.25cqh, 18px);
+    align-self: stretch;
+    min-height: min(2.8cqh, 21px);
     padding: 0 min(0.55cqw, 6px);
   }
 
@@ -451,15 +474,6 @@ const css = `
     background: var(--gcw-accent);
     color: #18140a;
     font-weight: 800;
-  }
-
-  .gcw-css {
-    background: rgba(18, 20, 15, 0.26);
-    grid-area: css;
-    min-height: min(2.7cqh, 20px);
-    padding: min(0.55cqh, 4px);
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .gcw-index-strip {
@@ -1274,6 +1288,9 @@ export function mountGradientCurveWidget(host, options = {}) {
     radialCenter: ["start", "end"].includes(options.radialCenter) ? options.radialCenter : "end",
     gridMode: "off",
     falloff: normalizeFalloff(options.falloff),
+    previewZoom: Number.isFinite(Number(options.previewZoom)) ? clamp(Number(options.previewZoom), 1, 1000000) : 1,
+    previewPanX: Number.isFinite(Number(options.previewPanX)) ? Number(options.previewPanX) : 0,
+    previewPanY: Number.isFinite(Number(options.previewPanY)) ? Number(options.previewPanY) : 0,
     sampleCount: Number.isFinite(Number(options.sampleCount)) ? clamp(Number(options.sampleCount), 2, 256) : 32,
     sampledIndex: -1,
     activeStopId: "",
@@ -1283,6 +1300,9 @@ export function mountGradientCurveWidget(host, options = {}) {
       { id: "brown", color: "#8A4B22" },
       { id: "white", color: "#FFFFFF" },
     ]).map((stop, index) => normalizeStop(stop, index, 2)),
+    addInsertIndex: Number.isFinite(Number(options.addInsertIndex)) ? Math.round(Number(options.addInsertIndex)) : initialStops.length,
+    addColor: typeof options.addColor === "string" ? options.addColor : "#8A4B22",
+    pendingAddStopId: "",
     drag: null,
   };
   state.activeStopId = state.stops[0].id;
@@ -1319,8 +1339,6 @@ export function mountGradientCurveWidget(host, options = {}) {
           <div class="gcw-saved" aria-label="Saved gradient colors"></div>
         </section>
         <div class="gcw-actions">
-          <label class="gcw-new-color">New <input class="gcw-new-color-input" type="color" value="#8A4B22" /></label>
-          <button class="gcw-add" type="button">Add Color</button>
           <button class="gcw-delete" type="button">Delete Color</button>
           <button class="gcw-remove" type="button">Save Selected</button>
           <label class="gcw-toggle"><input class="gcw-auto-order" type="checkbox" /> Auto Order</label>
@@ -1347,7 +1365,7 @@ export function mountGradientCurveWidget(host, options = {}) {
           </div>
           <div class="gcw-preview-segments" role="group" aria-label="Gradient preview mode">
             <span>Show</span>
-            <button class="gcw-preview-option" type="button" data-preview-mode="dot">Dot</button>
+            <button class="gcw-preview-option" type="button" data-preview-mode="dot">Superdot</button>
             <button class="gcw-preview-option" type="button" data-preview-mode="diagonal">Diagonal</button>
             <button class="gcw-preview-option" type="button" data-preview-mode="horizontal">Horizontal</button>
             <button class="gcw-preview-option" type="button" data-preview-mode="vertical">Vertical</button>
@@ -1363,7 +1381,6 @@ export function mountGradientCurveWidget(host, options = {}) {
           <button class="gcw-copy" type="button">Copy CSS</button>
           <button class="gcw-export-png" type="button">Copy PNG</button>
         </div>
-        <div class="gcw-css"></div>
       </div>
     </div>
   `;
@@ -1386,10 +1403,9 @@ export function mountGradientCurveWidget(host, options = {}) {
   const lightnessModeButtons = [...host.querySelectorAll(".gcw-lightness-option")];
   const previewModeButtons = [...host.querySelectorAll(".gcw-preview-option")];
   const radialCenterButtons = [...host.querySelectorAll(".gcw-radial-center-option")];
-  const newColorInput = host.querySelector(".gcw-new-color-input");
   const removeButton = host.querySelector(".gcw-remove");
   const deleteButton = host.querySelector(".gcw-delete");
-  const cssOutput = host.querySelector(".gcw-css");
+  const copyButton = host.querySelector(".gcw-copy");
   const exportPngButton = host.querySelector(".gcw-export-png");
   setupDropZone(host.querySelector('[data-drop-zone="active"]'), "active", palette);
   setupDropZone(host.querySelector('[data-drop-zone="saved"]'), "saved", savedPalette);
@@ -1411,6 +1427,10 @@ export function mountGradientCurveWidget(host, options = {}) {
     radialCenter: state.radialCenter,
     gridMode: "off",
     falloff: { ...state.falloff },
+    previewZoom: state.previewZoom,
+    previewPan: { x: state.previewPanX, y: state.previewPanY },
+    addInsertIndex: state.addInsertIndex,
+    addColor: state.addColor,
     sampleCount: state.sampleCount,
     css: gradientCss(state.angle, gradientStops(state.stops, state.autoBlack, state.autoWhite), state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode),
     stops: arrangedStops(gradientStops(state.stops, state.autoBlack, state.autoWhite), gradientInvert(), state.autoOrder).map((stop) => ({ ...stop, color: stopColor(stop) })),
@@ -1443,7 +1463,8 @@ export function mountGradientCurveWidget(host, options = {}) {
     if (activeIndex >= 0) {
       if (!canDeleteActiveStop(state.activeStopId)) return;
       state.stops.splice(activeIndex, 1);
-      state.activeStopId = state.stops[0]?.id || state.savedStops[0]?.id || "";
+      const nextActiveIndex = clamp(activeIndex, 0, state.stops.length - 1);
+      state.activeStopId = state.stops[nextActiveIndex]?.id || state.savedStops[0]?.id || "";
       commit();
       return;
     }
@@ -1451,7 +1472,8 @@ export function mountGradientCurveWidget(host, options = {}) {
     const savedIndex = state.savedStops.findIndex((stop) => stop.id === state.activeStopId);
     if (savedIndex >= 0) {
       state.savedStops.splice(savedIndex, 1);
-      state.activeStopId = state.stops[0]?.id || state.savedStops[0]?.id || "";
+      const nextSavedIndex = clamp(savedIndex, 0, state.savedStops.length - 1);
+      state.activeStopId = state.savedStops[nextSavedIndex]?.id || state.stops[0]?.id || "";
       commit();
     }
   }
@@ -1557,7 +1579,7 @@ export function mountGradientCurveWidget(host, options = {}) {
 
   function addGradientColorFromHsl(hsl) {
     const activeIndex = state.stops.findIndex((stop) => stop.id === state.activeStopId);
-    const insertIndex = activeIndex >= 0 ? activeIndex : state.stops.length;
+    const insertIndex = activeIndex >= 0 ? activeIndex : clamp(state.addInsertIndex, 0, state.stops.length);
     const next = normalizeStop({ id: "", ...hsl }, insertIndex, state.stops.length + 1);
     if (isExactBlack(next)) {
       state.autoBlack = true;
@@ -1572,14 +1594,42 @@ export function mountGradientCurveWidget(host, options = {}) {
     } else {
       state.stops.splice(insertIndex, 0, next);
       state.activeStopId = next.id;
+      state.addInsertIndex = clamp(insertIndex + 1, 0, state.stops.length);
     }
     return next;
   }
 
+  function addColorAtInsertPoint(hex) {
+    const insertIndex = clamp(state.addInsertIndex, 0, state.stops.length);
+    const next = normalizeStop({ id: "", ...hexToHsl(hex) }, insertIndex, state.stops.length + 1);
+    if (applyExactAnchorPolicy(next)) return state.stops.find((stop) => stop.id === state.activeStopId) || next;
+    state.stops.splice(insertIndex, 0, next);
+    state.pendingAddStopId = next.id;
+    state.activeStopId = next.id;
+    state.addInsertIndex = clamp(insertIndex + 1, 0, state.stops.length);
+    return next;
+  }
+
+  function updatePendingAddColor(hex) {
+    state.addColor = hex;
+    const pending = state.stops.find((stop) => stop.id === state.pendingAddStopId);
+    if (pending) {
+      Object.assign(pending, polishStop({ ...pending, ...hexToHsl(hex) }));
+      applyExactAnchorPolicy(pending);
+      return;
+    }
+    addColorAtInsertPoint(hex);
+  }
+
   function samplePositionFromPreview(event) {
     const rect = preview.getBoundingClientRect();
-    const x = clamp((event.clientX - rect.left) / Math.max(1, rect.width), 0, 1);
-    const y = clamp((event.clientY - rect.top) / Math.max(1, rect.height), 0, 1);
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const zoom = Math.max(0.000001, state.previewZoom);
+    const unzoomedX = centerX + ((event.clientX - centerX - state.previewPanX) / zoom);
+    const unzoomedY = centerY + ((event.clientY - centerY - state.previewPanY) / zoom);
+    const x = clamp((unzoomedX - rect.left) / Math.max(1, rect.width), 0, 1);
+    const y = clamp((unzoomedY - rect.top) / Math.max(1, rect.height), 0, 1);
     if (state.previewMode === "dot") {
       const dx = (x - 0.5) * 2;
       const dy = (y - 0.5) * 2;
@@ -1628,8 +1678,7 @@ export function mountGradientCurveWidget(host, options = {}) {
       button.setAttribute("aria-label", `Sample index ${index} ${sample.color}`);
       button.addEventListener("click", () => {
         state.sampledIndex = index;
-        const next = addGradientColorFromHsl(sample);
-        newColorInput.value = hslToHex(wrapHue(next.h + 36), next.s, next.l);
+        addGradientColorFromHsl(sample);
         commit();
       });
       indexStrip.appendChild(button);
@@ -1697,8 +1746,73 @@ export function mountGradientCurveWidget(host, options = {}) {
 
   function cardDropIndex(container, event) {
     const cards = [...container.querySelectorAll(".gcw-color-card")].filter((card) => card.dataset.dragging !== "true");
-    const target = cards.find((card) => event.clientY < card.getBoundingClientRect().top + card.getBoundingClientRect().height / 2);
-    return target ? cards.indexOf(target) : cards.length;
+    for (let index = 0; index < cards.length; index += 1) {
+      const rect = cards[index].getBoundingClientRect();
+      const inRow = event.clientY >= rect.top - 3 && event.clientY <= rect.bottom + 3;
+      if (inRow && event.clientX < rect.left + rect.width / 2) return index;
+      if (event.clientY < rect.top + rect.height / 2) return index;
+    }
+    return cards.length;
+  }
+
+  function placeAddCard(index) {
+    state.addInsertIndex = clamp(index, 0, state.stops.length);
+    state.pendingAddStopId = "";
+    render();
+    emit();
+  }
+
+  function renderAddCard() {
+      const card = document.createElement("div");
+      card.className = "gcw-add-card";
+      card.draggable = true;
+      card.dataset.addColor = "true";
+      card.style.setProperty("--card-color", state.addColor);
+      card.addEventListener("dragstart", (event) => {
+        state.drag = { type: "add", zone: "active" };
+        card.dataset.dragging = "true";
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", "add-color");
+      });
+      card.addEventListener("dragend", () => {
+        state.drag = null;
+        host.querySelectorAll("[data-dragging='true']").forEach((node) => delete node.dataset.dragging);
+        host.querySelectorAll("[data-drag-over='true']").forEach((node) => delete node.dataset.dragOver);
+      });
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "+";
+      button.title = "Add color here";
+      button.setAttribute("aria-label", "Add color here");
+
+      const picker = document.createElement("input");
+      picker.type = "color";
+      picker.value = state.addColor;
+      button.addEventListener("click", (event) => {
+        state.pendingAddStopId = "";
+        event.stopPropagation();
+        picker.click();
+      });
+      picker.addEventListener("click", (event) => {
+        event.stopPropagation();
+      });
+      picker.addEventListener("input", () => {
+        updatePendingAddColor(picker.value);
+        commit({ renderCards: false });
+      });
+      picker.addEventListener("change", () => {
+        state.pendingAddStopId = "";
+        state.addColor = picker.value;
+        commit();
+      });
+      picker.addEventListener("blur", () => {
+        state.pendingAddStopId = "";
+      });
+
+      button.append(picker);
+      card.append(button);
+      return card;
   }
 
   function renderCard(stop, index, zone) {
@@ -1728,6 +1842,10 @@ export function mountGradientCurveWidget(host, options = {}) {
         event.preventDefault();
         event.stopPropagation();
         if (!state.drag) return;
+        if (state.drag.type === "add") {
+          placeAddCard(cardDropIndex(palette, event));
+          return;
+        }
         if (state.drag.zone === zone) {
           swapInZone(state.drag.id, stop.id, zone);
           return;
@@ -1827,6 +1945,10 @@ export function mountGradientCurveWidget(host, options = {}) {
       delete zoneElement.dataset.dragOver;
       if (!state.drag) return;
       const targetCard = event.target.closest?.(".gcw-color-card");
+      if (state.drag.type === "add") {
+        if (zone === "active") placeAddCard(cardDropIndex(container, event));
+        return;
+      }
       if (targetCard?.dataset.zone === zone && targetCard.dataset.stopId && targetCard.dataset.stopId !== state.drag.id) {
         if (targetCard.dataset.zone === state.drag.zone) {
           swapInZone(state.drag.id, targetCard.dataset.stopId, zone);
@@ -1839,9 +1961,12 @@ export function mountGradientCurveWidget(host, options = {}) {
 
   function renderPalette() {
     palette.replaceChildren();
+    const addIndex = clamp(state.addInsertIndex, 0, state.stops.length);
     state.stops.forEach((stop, index) => {
+      if (index === addIndex) palette.appendChild(renderAddCard());
       palette.appendChild(renderCard(stop, index, "active"));
     });
+    if (addIndex === state.stops.length) palette.appendChild(renderAddCard());
     savedPalette.replaceChildren();
     state.savedStops.forEach((stop, index) => {
       savedPalette.appendChild(renderCard(stop, index, "saved"));
@@ -1855,6 +1980,9 @@ export function mountGradientCurveWidget(host, options = {}) {
     const previewCss = previewGradientCss(state.previewMode, activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.angle, state.falloff, state.radialCenter, state.lightnessMode);
     mount.style.setProperty("--gcw-gradient", css);
     mount.style.setProperty("--gcw-preview-gradient", previewCss);
+    mount.style.setProperty("--gcw-preview-zoom", String(state.previewZoom));
+    mount.style.setProperty("--gcw-preview-pan-x", `${state.previewPanX}px`);
+    mount.style.setProperty("--gcw-preview-pan-y", `${state.previewPanY}px`);
     const outwardPreview = ["dot", "square", "rectangle"].includes(state.previewMode);
     const radialEdgeColor = state.radialCenter === "end" ? samples[0]?.color : samples[samples.length - 1]?.color;
     mount.style.setProperty("--gcw-preview-edge-color", (outwardPreview ? radialEdgeColor : samples[samples.length - 1]?.color) || "rgba(18, 20, 15, 0.42)");
@@ -1886,7 +2014,6 @@ export function mountGradientCurveWidget(host, options = {}) {
     const savedSelected = state.savedStops.some((stop) => stop.id === state.activeStopId);
     removeButton.disabled = state.stops.length <= 2 || !activeSelected;
     deleteButton.disabled = (!activeSelected && !savedSelected) || (activeSelected && !canDeleteActiveStop(state.activeStopId));
-    cssOutput.textContent = css;
     host.querySelector('[data-drop-zone="saved"]').dataset.empty = String(state.savedStops.length === 0);
     if (renderCards && !state.colorEditStopId) renderPalette();
     renderIndexStrip(samples);
@@ -1974,12 +2101,22 @@ export function mountGradientCurveWidget(host, options = {}) {
       } else {
         next.rightEdge = clamp(value, next.rightMid + 1, 100);
       }
+    } else if (id === "middleBand") {
+      const startLeftMid = Number.isFinite(options.startLeftMid) ? options.startLeftMid : next.leftMid;
+      const startRightMid = Number.isFinite(options.startRightMid) ? options.startRightMid : next.rightMid;
+      const delta = value;
+      const minDelta = next.leftEdge + 1 - startLeftMid;
+      const maxDelta = next.rightEdge - 1 - startRightMid;
+      const clampedDelta = clamp(delta, minDelta, maxDelta);
+      next.leftMid = startLeftMid + clampedDelta;
+      next.rightMid = startRightMid + clampedDelta;
     }
     state.falloff = normalizeFalloff(next);
   }
 
   let falloffDrag = null;
   let falloffAnimation = null;
+  let previewPanDrag = null;
   function cancelFalloffAnimation() {
     if (!falloffAnimation) return;
     cancelAnimationFrame(falloffAnimation.frame);
@@ -1987,6 +2124,7 @@ export function mountGradientCurveWidget(host, options = {}) {
   }
 
   function animateFalloffValue(id, targetValue) {
+    if (id === "middleBand") return;
     cancelFalloffAnimation();
     const startValue = state.falloff[id];
     const neighborOffset = id === "leftEdge"
@@ -2027,6 +2165,8 @@ export function mountGradientCurveWidget(host, options = {}) {
       pointerId: event.pointerId,
       startX: event.clientX,
       startValue: state.falloff[id],
+      startLeftMid: state.falloff.leftMid,
+      startRightMid: state.falloff.rightMid,
       neighborOffset: falloffNeighborOffset(id),
       captureElement,
       rectLeft: rect.left,
@@ -2054,7 +2194,14 @@ export function mountGradientCurveWidget(host, options = {}) {
     const nextValue = event.shiftKey
       ? falloffDrag.startValue + (delta * 0.1)
       : falloffDrag.startValue + delta;
-    setFalloffValue(falloffDrag.id, nextValue, { neighborOffset: falloffDrag.neighborOffset });
+    if (falloffDrag.id === "middleBand") {
+      setFalloffValue("middleBand", event.shiftKey ? delta * 0.1 : delta, {
+        startLeftMid: falloffDrag.startLeftMid,
+        startRightMid: falloffDrag.startRightMid,
+      });
+    } else {
+      setFalloffValue(falloffDrag.id, nextValue, { neighborOffset: falloffDrag.neighborOffset });
+    }
     render();
     emit();
   }
@@ -2086,7 +2233,9 @@ export function mountGradientCurveWidget(host, options = {}) {
     if (event.button !== 0 || event.target.closest(".gcw-falloff-handle")) return;
     const rect = falloffStrip.getBoundingClientRect();
     const value = clamp(((event.clientX - rect.left) / Math.max(1, rect.width)) * 100, 0, 100);
-    const id = value < 25 ? "leftEdge" : value < 50 ? "leftMid" : value < 75 ? "rightMid" : "rightEdge";
+    const id = value > state.falloff.leftMid && value < state.falloff.rightMid
+      ? "middleBand"
+      : value < 25 ? "leftEdge" : value < 50 ? "leftMid" : value < 75 ? "rightMid" : "rightEdge";
     startFalloffDrag(event, id, falloffStrip);
     animateFalloffValue(id, value);
   });
@@ -2128,30 +2277,76 @@ export function mountGradientCurveWidget(host, options = {}) {
       emit();
     });
   });
-  host.querySelector(".gcw-add").addEventListener("click", () => {
-    const next = addGradientColorFromHsl(hexToHsl(newColorInput.value));
-    newColorInput.value = hslToHex(wrapHue(next.h + 36), next.s, next.l);
-    commit();
-  });
   preview.addEventListener("click", (event) => {
     const sample = colorAtPreviewPosition(samplePositionFromPreview(event));
-    const next = addGradientColorFromHsl(sample);
-    newColorInput.value = hslToHex(wrapHue(next.h + 36), next.s, next.l);
+    addGradientColorFromHsl(sample);
     commit();
   });
+  preview.addEventListener("pointerdown", (event) => {
+    if (event.button !== 1) return;
+    previewPanDrag = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startPanX: state.previewPanX,
+      startPanY: state.previewPanY,
+    };
+    preview.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+  preview.addEventListener("pointermove", (event) => {
+    if (!previewPanDrag || event.pointerId !== previewPanDrag.pointerId) return;
+    state.previewPanX = previewPanDrag.startPanX + event.clientX - previewPanDrag.startX;
+    state.previewPanY = previewPanDrag.startPanY + event.clientY - previewPanDrag.startY;
+    render();
+    emit();
+    event.preventDefault();
+  });
+  preview.addEventListener("pointerup", (event) => {
+    if (!previewPanDrag || event.pointerId !== previewPanDrag.pointerId) return;
+    preview.releasePointerCapture(event.pointerId);
+    previewPanDrag = null;
+    event.preventDefault();
+  });
+  preview.addEventListener("pointercancel", () => {
+    previewPanDrag = null;
+  });
+  preview.addEventListener("auxclick", (event) => {
+    if (event.button === 1) event.preventDefault();
+  });
+  preview.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    const rect = preview.getBoundingClientRect();
+    const px = event.clientX - (rect.left + rect.width / 2);
+    const py = event.clientY - (rect.top + rect.height / 2);
+    const oldZoom = state.previewZoom;
+    const wheelUnits = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
+    const sensitivity = event.shiftKey ? 0.00032 : 0.00135;
+    const factor = Math.exp(-wheelUnits * sensitivity);
+    const nextZoom = clamp(oldZoom * factor, 1, 1000000);
+    const ratio = nextZoom / oldZoom;
+    state.previewPanX = nextZoom === 1 ? 0 : px - ratio * (px - state.previewPanX);
+    state.previewPanY = nextZoom === 1 ? 0 : py - ratio * (py - state.previewPanY);
+    state.previewZoom = nextZoom;
+    render();
+    emit();
+  }, { passive: false });
   removeButton.addEventListener("click", () => {
     moveBetweenZones(state.activeStopId, "active", "saved");
   });
   deleteButton.addEventListener("click", () => {
     deleteSelectedStop();
   });
-  host.querySelector(".gcw-copy").addEventListener("click", async () => {
+  copyButton.addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(packet().css);
     } catch {
-      // Clipboard can be unavailable on some local/browser contexts; the CSS remains selectable below.
+      // Clipboard can be unavailable on some local/browser contexts.
     }
-    cssOutput.textContent = "Copied " + packet().css;
+    copyButton.textContent = "Copied";
+    window.setTimeout(() => {
+      copyButton.textContent = "Copy CSS";
+    }, 900);
   });
   exportPngButton.addEventListener("click", () => {
     const activeGradientStops = gradientStops(state.stops, state.autoBlack, state.autoWhite);
@@ -2186,6 +2381,15 @@ export function mountGradientCurveWidget(host, options = {}) {
       if (["start", "end"].includes(next.radialCenter)) state.radialCenter = next.radialCenter;
       state.gridMode = "off";
       if (next.falloff && typeof next.falloff === "object") state.falloff = normalizeFalloff(next.falloff);
+      if (Number.isFinite(Number(next.previewZoom))) state.previewZoom = clamp(Number(next.previewZoom), 1, 1000000);
+      if (Number.isFinite(Number(next.previewPanX))) state.previewPanX = Number(next.previewPanX);
+      if (Number.isFinite(Number(next.previewPanY))) state.previewPanY = Number(next.previewPanY);
+      if (Number.isFinite(Number(next.addInsertIndex))) state.addInsertIndex = clamp(Math.round(Number(next.addInsertIndex)), 0, state.stops.length);
+      if (typeof next.addColor === "string") state.addColor = next.addColor;
+      if (next.previewPan && typeof next.previewPan === "object") {
+        if (Number.isFinite(Number(next.previewPan.x))) state.previewPanX = Number(next.previewPan.x);
+        if (Number.isFinite(Number(next.previewPan.y))) state.previewPanY = Number(next.previewPan.y);
+      }
       if (Number.isFinite(Number(next.sampleCount))) state.sampleCount = clamp(Number(next.sampleCount), 2, 256);
       if (Array.isArray(next.stops) && next.stops.length >= 2) {
         state.stops = next.stops.map((stop, index) => normalizeStop(stop, index, next.stops.length));
