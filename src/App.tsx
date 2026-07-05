@@ -46,6 +46,8 @@ const App = () => (
           <Route path="/embed" element={<EmbedPage />} />
           <Route path="/reverb" element={<SandboxPage staticPatchUrl="/patches/silently-dreaming.json" autostart />} />
           <Route path="/silentlydreaming" element={<SandboxPage staticPatchUrl="/patches/silently-dreaming.json" autostart />} />
+          {/* Embed-safe playable sandbox for shooting star (/shootingstar is the wiki article) */}
+          <Route path="/shootingstar-live" element={<SandboxPage staticPatchUrl="/patches/shootingstar.json" autostart />} />
           {/* Wiki-style patch articles: GitHub README meets Wikipedia */}
           <Route path="/analogbox" element={<PatchArticlePage slug="analogbox" />} />
           <Route path="/aliasingwars" element={<PatchArticlePage slug="aliasingwars" />} />
