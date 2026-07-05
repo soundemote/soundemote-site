@@ -45,13 +45,15 @@ type ScopeHitbox = {
 };
 
 type StarFieldProps = {
-  /** Hide the ambient background starfield (e.g. when it shows through a
-   * translucent panel and clashes with what's on top of it). Shooting
-   * stars still run in the background; only the visual layers are hidden. */
-  showStars?: boolean;
+  /** When true (default), ambient background stars simply don't render
+   * inside the Gradient Curve Widget's own rect (".gcw-mount") -- they
+   * never fully disappear from the rest of the page, and shooting stars
+   * are never affected by this at all; they always fly freely everywhere,
+   * including straight through/over the widget. */
+  avoidDotArea?: boolean;
 };
 
-export const StarField = ({ showStars = true }: StarFieldProps) => {
+export const StarField = ({ avoidDotArea = true }: StarFieldProps) => {
   // Two layers: the ambient twinkling starfield stays BEHIND page content
   // (bgCanvas, z-0) like a night sky backdrop. Shooting stars + their
   // explosion sparks render on a separate layer IN FRONT of content
@@ -66,6 +68,8 @@ export const StarField = ({ showStars = true }: StarFieldProps) => {
   const shootersRef = useRef<Shooter[]>([]);
   const sparksRef = useRef<Spark[]>([]);
   const rafRef = useRef<number>();
+  const avoidDotAreaRef = useRef(avoidDotArea);
+  avoidDotAreaRef.current = avoidDotArea;
 
   useEffect(() => {
     setPortalHost(document.body);
@@ -129,6 +133,18 @@ export const StarField = ({ showStars = true }: StarFieldProps) => {
     const getAttractorHitbox = (now: number): ScopeHitbox | null => {
       if (now - lastScrollAt < 250) return null;
       const target = document.querySelector<HTMLElement>("#scope-oscilloscope");
+      if (!target) return null;
+      return rectToHitbox(target.getBoundingClientRect());
+    };
+
+    // The Gradient Curve Widget's own mount root, wherever it appears
+    // (homepage spotlight or the standalone /gradient-curve page). Used to
+    // keep ambient stars from rendering over the dot -- not a hitbox for
+    // collision, just an exclusion zone for drawing.
+    const getDotAreaRect = (now: number): ScopeHitbox | null => {
+      if (!avoidDotAreaRef.current) return null;
+      if (now - lastScrollAt < 250) return null;
+      const target = document.querySelector<HTMLElement>(".gcw-mount");
       if (!target) return null;
       return rectToHitbox(target.getBoundingClientRect());
     };
@@ -304,8 +320,18 @@ export const StarField = ({ showStars = true }: StarFieldProps) => {
       fgCtx.textAlign = "center";
 
       const stars = starsRef.current;
+      const dotAreaRect = getDotAreaRect(now);
       for (let i = 0; i < stars.length; i++) {
         const s = stars[i];
+        if (
+          dotAreaRect &&
+          s.x >= dotAreaRect.left &&
+          s.x <= dotAreaRect.right &&
+          s.y >= dotAreaRect.top &&
+          s.y <= dotAreaRect.bottom
+        ) {
+          continue;
+        }
         const tw = (Math.sin(t * s.speed + s.phase) + 1) / 2; // 0..1
         const alpha = Math.min(1, s.baseAlpha * (0.35 + tw * 0.9));
         // pixel-art glow: draw a soft dot beneath bright glyphs
@@ -422,35 +448,25 @@ export const StarField = ({ showStars = true }: StarFieldProps) => {
     <>
       {/* Ambient twinkling starfield: stays BEHIND page content (z-0),
           like a night sky backdrop -- must not float on top of the hero
-          image or any other section. */}
+          image or any other section. Always rendered; individual stars
+          simply aren't drawn inside the dot widget's rect (see
+          getDotAreaRect above) when avoidDotArea is on. */}
       <canvas
         ref={bgCanvasRef}
         aria-hidden
         className="pointer-events-none"
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 0,
-          background: "transparent",
-          display: showStars ? undefined : "none",
-        }}
+        style={{ position: "fixed", inset: 0, zIndex: 0, background: "transparent" }}
       />
-      {/* Shooting stars + explosion sparks: <main> renders at z-10
-          (Index.tsx), so this layer sits at z-15 -- in front of all page
-          content but still below Nav's z-50 -- so a star visibly flies
-          across and collides with the hero image/attractor scope instead
-          of disappearing behind them. */}
+      {/* Shooting stars + explosion sparks: always rendered, never masked
+          or hidden. z-25 -- above GradientCurveSpotlight's z-20 panel (and
+          all other page content), still below Nav's z-50 -- so a star can
+          fly straight through/over the gradient widget instead of being
+          covered by it. */}
       <canvas
         ref={fgCanvasRef}
         aria-hidden
         className="pointer-events-none"
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 15,
-          background: "transparent",
-          display: showStars ? undefined : "none",
-        }}
+        style={{ position: "fixed", inset: 0, zIndex: 25, background: "transparent" }}
       />
     </>
   );
