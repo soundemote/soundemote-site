@@ -34,7 +34,7 @@ const WikiPage = () => {
 
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <div className="container mx-auto max-w-2xl px-4 py-12">
+      <div className="container mx-auto max-w-3xl px-4 py-12">
         <Link to="/" className="mono text-xs text-muted-foreground hover:text-foreground">
           &lt; soundemote
         </Link>
@@ -51,16 +51,16 @@ const WikiPage = () => {
               No pages yet. Open <span className="mono">/wiki/&lt;name&gt;</span> and create one.
             </p>
           ) : (
-            <ul className="space-y-2">
+            <ul className="divide-y divide-border/40 rounded-lg border border-border/60 bg-card/40">
               {entries.map((entry) => (
                 <li key={entry.slug}>
                   <Link
                     to={`/wiki/${entry.slug}`}
-                    className="mono text-sm text-foreground underline underline-offset-4 hover:text-muted-foreground"
+                    className="flex items-baseline justify-between gap-3 px-4 py-3 transition-colors hover:bg-muted/30"
                   >
-                    {entry.title || entry.slug}
+                    <span className="mono text-sm text-foreground">{entry.title || entry.slug}</span>
+                    <span className="mono shrink-0 text-xs text-muted-foreground">/{entry.slug}</span>
                   </Link>
-                  <span className="ml-2 text-xs text-muted-foreground">/{entry.slug}</span>
                 </li>
               ))}
             </ul>

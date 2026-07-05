@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import WikiMarkdown from "@/components/soundemote/WikiMarkdown";
+import TableOfContents, { extractChapters } from "@/components/soundemote/TableOfContents";
 
 type WikiPageRow = {
   slug: string;
@@ -167,11 +169,19 @@ const WikiArticlePage = () => {
 
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <div className="container mx-auto max-w-4xl px-4 py-10">
+      <div className="container mx-auto max-w-5xl px-4 py-10">
         <div className="flex items-center justify-between gap-3">
-          <Link to="/wiki" className="mono text-xs text-muted-foreground hover:text-foreground">
-            &lt; wiki
-          </Link>
+          <nav className="mono flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
+            <Link to="/" className="transition-colors hover:text-scope">
+              soundemote
+            </Link>
+            <span>/</span>
+            <Link to="/wiki" className="transition-colors hover:text-scope">
+              wiki
+            </Link>
+            <span>/</span>
+            <span className="text-scope">{slug}</span>
+          </nav>
           {!editing && !roleLoading && (
             session ? (
               <Button size="sm" className="mono normal-case" onClick={startEditing}>
@@ -188,8 +198,17 @@ const WikiArticlePage = () => {
           )}
         </div>
 
-        <h1 className="display mt-4 text-3xl">{page?.title || slug}</h1>
-        <p className="mono mt-1 text-xs text-muted-foreground">/wiki/{slug}</p>
+        <header className="mt-6 border-b border-border/60 pb-6">
+          <h1 className="display text-3xl md:text-4xl">{page?.title || slug}</h1>
+          <p className="mono mt-2 text-xs text-muted-foreground">
+            /wiki/{slug}
+            {page?.updated_at && (
+              <span className="ml-3">
+                updated {new Date(page.updated_at).toLocaleDateString()}
+              </span>
+            )}
+          </p>
+        </header>
 
         {done && <p className="mt-4 text-sm text-emerald-400">{done}</p>}
         {error && <p className="mt-4 text-sm text-destructive break-words">{error}</p>}
@@ -209,7 +228,7 @@ const WikiArticlePage = () => {
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 rows={10}
-                placeholder="Describe this patch…"
+                placeholder="Describe this patch… Use Markdown. Start sections with `## Heading` to build the contents table."
               />
             </div>
             <label className="flex items-center gap-2 text-sm">
@@ -235,9 +254,20 @@ const WikiArticlePage = () => {
             </div>
           </div>
         ) : page ? (
-          <article className="mt-6 whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
-            {page.body || <span className="text-muted-foreground">No description yet.</span>}
-          </article>
+          page.body ? (
+            <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[240px_1fr]">
+              {/* Contents / navigation table — sticky on desktop, on top on phones */}
+              <aside className="order-first lg:sticky lg:top-8 lg:self-start">
+                <TableOfContents chapters={extractChapters(page.body)} />
+              </aside>
+              {/* Article body */}
+              <div className="min-w-0">
+                <WikiMarkdown markdown={page.body} />
+              </div>
+            </div>
+          ) : (
+            <p className="mt-8 text-sm text-muted-foreground">No description yet.</p>
+          )
         ) : (
           <p className="mt-8 text-sm text-muted-foreground">
             This page doesn't exist yet.
