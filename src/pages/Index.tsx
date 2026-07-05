@@ -8,8 +8,14 @@ import ScopeLab from "@/components/soundemote/ScopeLab";
 import Footer from "@/components/soundemote/Footer";
 import { featuredArticles, findFeaturedArticle } from "@/data/featuredArticles";
 
+// Superdot (the Gradient Curve Widget, embedded in the "simd" article) is
+// the default thing visitors see in the featured spotlight on load.
+const DEFAULT_FEATURED_SLUG = "simd";
+
 const Index = () => {
-  const [selectedSlug, setSelectedSlug] = useState(featuredArticles[0].slug);
+  const [selectedSlug, setSelectedSlug] = useState(
+    findFeaturedArticle(DEFAULT_FEATURED_SLUG) ? DEFAULT_FEATURED_SLUG : featuredArticles[0].slug,
+  );
   const selectedArticle = findFeaturedArticle(selectedSlug) ?? featuredArticles[0];
 
   return (
