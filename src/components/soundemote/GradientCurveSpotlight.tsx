@@ -11,6 +11,7 @@ const GradientCurveSpotlight = ({ compact = false }: { compact?: boolean }) => (
       <div>
         <p className="mono text-[0.65rem] uppercase tracking-[0.24em] text-scope">gradient engine prototype</p>
         <h2 className="display mt-1 text-2xl text-warm-white">The curve, rendered live</h2>
+        <span className="mono text-[0.6rem] uppercase tracking-[0.2em] text-scope/60 mt-2">BUILD 9</span>
       </div>
       <Link
         to="/gradient-curve"
