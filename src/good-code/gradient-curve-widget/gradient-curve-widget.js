@@ -2096,6 +2096,15 @@ export function mountGradientCurveWidget(host, options = {}) {
       next.rightMid = clamp(value, next.leftMid + 1, next.rightEdge - 1);
     } else if (id === "rightEdge") {
       next.rightEdge = clamp(value, next.rightMid + 1, 100);
+    } else if (id === "leftEdgeBand") {
+      const startLeftEdge = Number.isFinite(options.startLeftEdge) ? options.startLeftEdge : next.leftEdge;
+      const startLeftMid = Number.isFinite(options.startLeftMid) ? options.startLeftMid : next.leftMid;
+      const delta = value;
+      const minDelta = 0 + 1 - startLeftEdge;
+      const maxDelta = next.rightMid - 1 - startLeftMid;
+      const clampedDelta = clamp(delta, minDelta, maxDelta);
+      next.leftEdge = startLeftEdge + clampedDelta;
+      next.leftMid = startLeftMid + clampedDelta;
     } else if (id === "middleBand") {
       const startLeftMid = Number.isFinite(options.startLeftMid) ? options.startLeftMid : next.leftMid;
       const startRightMid = Number.isFinite(options.startRightMid) ? options.startRightMid : next.rightMid;
@@ -2105,6 +2114,15 @@ export function mountGradientCurveWidget(host, options = {}) {
       const clampedDelta = clamp(delta, minDelta, maxDelta);
       next.leftMid = startLeftMid + clampedDelta;
       next.rightMid = startRightMid + clampedDelta;
+    } else if (id === "rightEdgeBand") {
+      const startRightMid = Number.isFinite(options.startRightMid) ? options.startRightMid : next.rightMid;
+      const startRightEdge = Number.isFinite(options.startRightEdge) ? options.startRightEdge : next.rightEdge;
+      const delta = value;
+      const minDelta = next.leftMid + 1 - startRightMid;
+      const maxDelta = 100 - 1 - startRightEdge;
+      const clampedDelta = clamp(delta, minDelta, maxDelta);
+      next.rightMid = startRightMid + clampedDelta;
+      next.rightEdge = startRightEdge + clampedDelta;
     }
     state.falloff = normalizeFalloff(next);
   }
@@ -2128,13 +2146,16 @@ export function mountGradientCurveWidget(host, options = {}) {
 
   function startFalloffDrag(event, id, captureElement) {
     const rect = falloffStrip.getBoundingClientRect();
+    const isBand = id.endsWith("Band");
     falloffDrag = {
       id,
       pointerId: event.pointerId,
       startX: event.clientX,
-      startValue: id === "middleBand" ? 0 : state.falloff[id],
+      startValue: isBand ? 0 : state.falloff[id],
+      startLeftEdge: state.falloff.leftEdge,
       startLeftMid: state.falloff.leftMid,
       startRightMid: state.falloff.rightMid,
+      startRightEdge: state.falloff.rightEdge,
       captureElement,
       rectLeft: rect.left,
       rectWidth: Math.max(1, rect.width),
@@ -2151,10 +2172,21 @@ export function mountGradientCurveWidget(host, options = {}) {
     const nextValue = event.shiftKey
       ? falloffDrag.startValue + (delta * 0.1)
       : falloffDrag.startValue + delta;
-    if (falloffDrag.id === "middleBand") {
-      setFalloffValue("middleBand", event.shiftKey ? delta * 0.1 : delta, {
+    const finalDelta = event.shiftKey ? delta * 0.1 : delta;
+    if (falloffDrag.id === "leftEdgeBand") {
+      setFalloffValue("leftEdgeBand", finalDelta, {
+        startLeftEdge: falloffDrag.startLeftEdge,
+        startLeftMid: falloffDrag.startLeftMid,
+      });
+    } else if (falloffDrag.id === "middleBand") {
+      setFalloffValue("middleBand", finalDelta, {
         startLeftMid: falloffDrag.startLeftMid,
         startRightMid: falloffDrag.startRightMid,
+      });
+    } else if (falloffDrag.id === "rightEdgeBand") {
+      setFalloffValue("rightEdgeBand", finalDelta, {
+        startRightMid: falloffDrag.startRightMid,
+        startRightEdge: falloffDrag.startRightEdge,
       });
     } else {
       setFalloffValue(falloffDrag.id, nextValue);
@@ -2182,8 +2214,16 @@ export function mountGradientCurveWidget(host, options = {}) {
     if (target) return;
     const rect = falloffStrip.getBoundingClientRect();
     const value = clamp(((event.clientX - rect.left) / Math.max(1, rect.width)) * 100, 0, 100);
-    const isBetweenMids = value > state.falloff.leftMid && value < state.falloff.rightMid;
-    const id = isBetweenMids ? "middleBand" : closestFalloffHandle(value);
+    let id;
+    if (value > state.falloff.leftEdge && value < state.falloff.leftMid) {
+      id = "leftEdgeBand";
+    } else if (value > state.falloff.leftMid && value < state.falloff.rightMid) {
+      id = "middleBand";
+    } else if (value > state.falloff.rightMid && value < state.falloff.rightEdge) {
+      id = "rightEdgeBand";
+    } else {
+      id = closestFalloffHandle(value);
+    }
     startFalloffDrag(event, id, falloffStrip);
   });
   document.addEventListener("pointermove", (event) => {
