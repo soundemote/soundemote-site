@@ -2160,7 +2160,7 @@ export function mountGradientCurveWidget(host, options = {}) {
       id,
       pointerId: event.pointerId,
       startX: event.clientX,
-      startValue: state.falloff[id],
+      startValue: id === "middleBand" ? 0 : state.falloff[id],
       startLeftMid: state.falloff.leftMid,
       startRightMid: state.falloff.rightMid,
       captureElement,
