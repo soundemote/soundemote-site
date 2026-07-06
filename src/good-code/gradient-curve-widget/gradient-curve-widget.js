@@ -2088,9 +2088,6 @@ export function mountGradientCurveWidget(host, options = {}) {
   });
   function setFalloffValue(id, value, options = {}) {
     const next = { ...state.falloff };
-    // Every individual handle -- including the two edge handles -- moves
-    // on its own. Only the explicit "middleBand" strip-drag (grabbing the
-    // area between leftMid and rightMid) moves a pair together.
     if (id === "leftEdge") {
       next.leftEdge = clamp(value, 0, next.leftMid - 1);
     } else if (id === "leftMid") {
@@ -2110,6 +2107,20 @@ export function mountGradientCurveWidget(host, options = {}) {
       next.rightMid = startRightMid + clampedDelta;
     }
     state.falloff = normalizeFalloff(next);
+  }
+
+  function closestFalloffHandle(value) {
+    const handles = ["leftEdge", "leftMid", "rightMid", "rightEdge"];
+    let closest = handles[0];
+    let minDistance = Math.abs(value - state.falloff[closest]);
+    for (const handle of handles.slice(1)) {
+      const distance = Math.abs(value - state.falloff[handle]);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closest = handle;
+      }
+    }
+    return closest;
   }
 
   let falloffDrag = null;
@@ -2203,34 +2214,27 @@ export function mountGradientCurveWidget(host, options = {}) {
       const id = handle.dataset.falloffHandle;
       startFalloffDrag(event, id, handle);
     });
-    handle.addEventListener("pointermove", (event) => {
-      updateFalloffDrag(event);
-    });
-    handle.addEventListener("pointerup", (event) => {
-      stopFalloffDrag(event);
-    });
-    handle.addEventListener("pointercancel", () => {
-      falloffDrag = null;
-    });
   });
   falloffStrip.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0 || event.target.closest(".gcw-falloff-handle")) return;
+    if (event.button !== 0) return;
+    const target = event.target.closest(".gcw-falloff-handle");
+    if (target) return;
     const rect = falloffStrip.getBoundingClientRect();
     const value = clamp(((event.clientX - rect.left) / Math.max(1, rect.width)) * 100, 0, 100);
-    const id = value > state.falloff.leftMid && value < state.falloff.rightMid
-      ? "middleBand"
-      : value < 25 ? "leftEdge" : value < 50 ? "leftMid" : value < 75 ? "rightMid" : "rightEdge";
+    const isBetweenMids = value > state.falloff.leftMid && value < state.falloff.rightMid;
+    const id = isBetweenMids ? "middleBand" : closestFalloffHandle(value);
     startFalloffDrag(event, id, falloffStrip);
-    animateFalloffValue(id, value);
+    if (!isBetweenMids) {
+      animateFalloffValue(id, value);
+    }
   });
-  falloffStrip.addEventListener("pointermove", (event) => {
-    if (event.target.closest?.(".gcw-falloff-handle")) return;
+  document.addEventListener("pointermove", (event) => {
     updateFalloffDrag(event);
   });
-  falloffStrip.addEventListener("pointerup", (event) => {
+  document.addEventListener("pointerup", (event) => {
     stopFalloffDrag(event);
   });
-  falloffStrip.addEventListener("pointercancel", () => {
+  document.addEventListener("pointercancel", () => {
     falloffDrag = null;
   });
   hueModeButtons.forEach((button) => {
@@ -2393,8 +2397,3 @@ export function mountGradientCurveWidget(host, options = {}) {
     },
   };
 }
-
-
-
-
-
