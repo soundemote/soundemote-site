@@ -2124,35 +2124,7 @@ export function mountGradientCurveWidget(host, options = {}) {
   }
 
   let falloffDrag = null;
-  let falloffAnimation = null;
   let previewPanDrag = null;
-  function cancelFalloffAnimation() {
-    if (!falloffAnimation) return;
-    cancelAnimationFrame(falloffAnimation.frame);
-    falloffAnimation = null;
-  }
-
-  function animateFalloffValue(id, targetValue) {
-    if (id === "middleBand") return;
-    cancelFalloffAnimation();
-    const startValue = state.falloff[id];
-    const startedAt = performance.now();
-    const duration = 180;
-    falloffAnimation = { frame: 0 };
-    const tick = (now) => {
-      const t = clamp((now - startedAt) / duration, 0, 1);
-      const eased = 1 - Math.pow(1 - t, 3);
-      setFalloffValue(id, startValue + ((targetValue - startValue) * eased));
-      render();
-      emit();
-      if (t < 1) {
-        falloffAnimation.frame = requestAnimationFrame(tick);
-      } else {
-        falloffAnimation = null;
-      }
-    };
-    falloffAnimation.frame = requestAnimationFrame(tick);
-  }
 
   function startFalloffDrag(event, id, captureElement) {
     const rect = falloffStrip.getBoundingClientRect();
@@ -2173,16 +2145,6 @@ export function mountGradientCurveWidget(host, options = {}) {
 
   function updateFalloffDrag(event) {
     if (!falloffDrag || event.pointerId !== falloffDrag.pointerId) return;
-    if (falloffAnimation) {
-      // A click-to-target animation is still mid-flight. Re-anchor the drag
-      // to wherever the animation has actually gotten to (and to the
-      // pointer's current position) instead of letting the next line jump
-      // straight to the raw absolute pointer position -- that jump from
-      // "mid-tween position" to "click target" was the visible snap.
-      falloffDrag.startValue = state.falloff[falloffDrag.id];
-      falloffDrag.startX = event.clientX;
-    }
-    cancelFalloffAnimation();
     const pointerValue = clamp(((event.clientX - falloffDrag.rectLeft) / falloffDrag.rectWidth) * 100, 0, 100);
     const startPointerValue = clamp(((falloffDrag.startX - falloffDrag.rectLeft) / falloffDrag.rectWidth) * 100, 0, 100);
     const delta = pointerValue - startPointerValue;
@@ -2210,7 +2172,6 @@ export function mountGradientCurveWidget(host, options = {}) {
   falloffHandles.forEach((handle) => {
     handle.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
-      cancelFalloffAnimation();
       const id = handle.dataset.falloffHandle;
       startFalloffDrag(event, id, handle);
     });
@@ -2224,9 +2185,6 @@ export function mountGradientCurveWidget(host, options = {}) {
     const isBetweenMids = value > state.falloff.leftMid && value < state.falloff.rightMid;
     const id = isBetweenMids ? "middleBand" : closestFalloffHandle(value);
     startFalloffDrag(event, id, falloffStrip);
-    if (!isBetweenMids) {
-      animateFalloffValue(id, value);
-    }
   });
   document.addEventListener("pointermove", (event) => {
     updateFalloffDrag(event);
