@@ -22,7 +22,7 @@ const FeaturedSandboxSection = ({ route, title, tagline }: FeaturedSandboxSectio
       <div className="overflow-hidden rounded-lg border border-border/60 bg-card/40 shadow-[0_0_60px_-15px_hsl(var(--scope)/0.5)]">
         <iframe
           title={title}
-          src={`${route}?embed=1&autoframe=1`}
+          src={`/#${route}?embed=1&autoframe=1`}
           className="h-[70vh] min-h-[520px] w-full border-0"
           allow="autoplay; microphone"
           allowFullScreen
