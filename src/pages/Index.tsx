@@ -63,7 +63,7 @@ const Index = ({ featuredSlug }: { featuredSlug?: string }) => {
       <StarField />
       <Nav />
       <Hero />
-      <FeaturedArticleSection id="featured-article" article={selectedArticle} />
+      <FeaturedArticleSection article={selectedArticle} />
       <Projects selectedSlug={selectedSlug} onSelectArticle={handleSelectArticle} />
       <ScopeLab />
       <Footer />
