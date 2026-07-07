@@ -66,6 +66,12 @@ const repositoryLinks: RepositoryLink[] = [
         href: "https://github.com/soundemote/soemdsp-simd",
     },
     {
+        emoji: "🕰️",
+        name: "last-clock",
+        href: "https://github.com/soundemote/soemdsp-last-clock",
+        pulse: true,
+    },
+    {
         emoji: "🌆",
         name: "synthwave-orchestra",
         href: "https://github.com/elanhickler/supersaw",

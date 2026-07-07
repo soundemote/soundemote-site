@@ -1210,14 +1210,20 @@ function falloffPosition(position, falloff = {}) {
 }
 
 function outwardPreviewSamples(samples, falloff = {}, radialCenter = "start") {
-  const source = radialCenter === "end" ? [...samples].reverse() : samples;
+  // The falloff curve runs from the OUTER EDGE (curve start) inward to the
+  // CENTER (curve end). radialCenter chooses which gradient color sits at the
+  // center; the other color lands on the outer edge.
+  const source = radialCenter === "start" ? [...samples].reverse() : samples;
   const shaped = source.map((sample, index) => {
     const position = source.length <= 1 ? 0 : (index / (source.length - 1)) * 100;
-    return { ...sample, position: falloffPosition(position, falloff) };
+    // CSS radial position: 0% = center, 100% = edge. Curve start -> edge.
+    return { ...sample, position: 100 - falloffPosition(position, falloff) };
   });
-  const last = shaped[shaped.length - 1];
-  if (last && last.position < 100) {
-    shaped.push({ ...last, position: 100 });
+  // Reorder ascending (center 0% -> edge 100%) for a valid CSS gradient.
+  shaped.reverse();
+  const first = shaped[0];
+  if (first && first.position > 0) {
+    shaped.unshift({ ...first, position: 0 });
   }
   return shaped;
 }
@@ -1686,12 +1692,15 @@ export function mountGradientCurveWidget(host, options = {}) {
   }
 
   function renderFalloff(samples) {
-    // Must match the real dot's radialCenter, not be hardcoded to "start" --
-    // otherwise this strip shows colors in the opposite radial order from
-    // the actual preview (whose default is "end"), making the handles feel
-    // backwards: the one that looks like it's near a bright/dark region on
-    // the strip is actually shaping the opposite region on the real dot.
-    const shapedSamples = outwardPreviewSamples(samples, state.falloff, state.radialCenter);
+    // The strip reads left -> right as OUTER EDGE -> CENTER, matching the dot:
+    // the leftmost handle (leftEdge) shapes the outer edge, the rightmost
+    // (rightEdge) shapes the center. Colors are drawn in curve order so the
+    // start color sits on the left/edge, exactly where it renders on the dot.
+    const source = state.radialCenter === "start" ? [...samples].reverse() : samples;
+    const shapedSamples = source.map((sample, index) => {
+      const position = source.length <= 1 ? 0 : (index / (source.length - 1)) * 100;
+      return { color: sample.color, position: falloffPosition(position, state.falloff) };
+    });
     const falloffLabels = { leftEdge: "LE", leftMid: "LM", rightMid: "RM", rightEdge: "RE" };
     falloffStrip.style.setProperty("--gcw-falloff-gradient", `linear-gradient(90deg, ${shapedSamples.map((sample) => `${sample.color} ${sample.position.toFixed(1)}%`).join(", ")})`);
     falloffHandles.forEach((handle) => {
@@ -2088,9 +2097,6 @@ export function mountGradientCurveWidget(host, options = {}) {
   });
   function setFalloffValue(id, value, options = {}) {
     const next = { ...state.falloff };
-    // Every individual handle -- including the two edge handles -- moves
-    // on its own. Only the explicit "middleBand" strip-drag (grabbing the
-    // area between leftMid and rightMid) moves a pair together.
     if (id === "leftEdge") {
       next.leftEdge = clamp(value, 0, next.leftMid - 1);
     } else if (id === "leftMid") {
@@ -2099,6 +2105,15 @@ export function mountGradientCurveWidget(host, options = {}) {
       next.rightMid = clamp(value, next.leftMid + 1, next.rightEdge - 1);
     } else if (id === "rightEdge") {
       next.rightEdge = clamp(value, next.rightMid + 1, 100);
+    } else if (id === "leftEdgeBand") {
+      const startLeftEdge = Number.isFinite(options.startLeftEdge) ? options.startLeftEdge : next.leftEdge;
+      const startLeftMid = Number.isFinite(options.startLeftMid) ? options.startLeftMid : next.leftMid;
+      const delta = value;
+      const minDelta = 0 + 1 - startLeftEdge;
+      const maxDelta = next.rightMid - 1 - startLeftMid;
+      const clampedDelta = clamp(delta, minDelta, maxDelta);
+      next.leftEdge = startLeftEdge + clampedDelta;
+      next.leftMid = startLeftMid + clampedDelta;
     } else if (id === "middleBand") {
       const startLeftMid = Number.isFinite(options.startLeftMid) ? options.startLeftMid : next.leftMid;
       const startRightMid = Number.isFinite(options.startRightMid) ? options.startRightMid : next.rightMid;
@@ -2108,50 +2123,48 @@ export function mountGradientCurveWidget(host, options = {}) {
       const clampedDelta = clamp(delta, minDelta, maxDelta);
       next.leftMid = startLeftMid + clampedDelta;
       next.rightMid = startRightMid + clampedDelta;
+    } else if (id === "rightEdgeBand") {
+      const startRightMid = Number.isFinite(options.startRightMid) ? options.startRightMid : next.rightMid;
+      const startRightEdge = Number.isFinite(options.startRightEdge) ? options.startRightEdge : next.rightEdge;
+      const delta = value;
+      const minDelta = next.leftMid + 1 - startRightMid;
+      const maxDelta = 100 - 1 - startRightEdge;
+      const clampedDelta = clamp(delta, minDelta, maxDelta);
+      next.rightMid = startRightMid + clampedDelta;
+      next.rightEdge = startRightEdge + clampedDelta;
     }
     state.falloff = normalizeFalloff(next);
   }
 
-  let falloffDrag = null;
-  let falloffAnimation = null;
-  let previewPanDrag = null;
-  function cancelFalloffAnimation() {
-    if (!falloffAnimation) return;
-    cancelAnimationFrame(falloffAnimation.frame);
-    falloffAnimation = null;
+  function closestFalloffHandle(value) {
+    const handles = ["leftEdge", "leftMid", "rightMid", "rightEdge"];
+    let closest = handles[0];
+    let minDistance = Math.abs(value - state.falloff[closest]);
+    for (const handle of handles.slice(1)) {
+      const distance = Math.abs(value - state.falloff[handle]);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closest = handle;
+      }
+    }
+    return closest;
   }
 
-  function animateFalloffValue(id, targetValue) {
-    if (id === "middleBand") return;
-    cancelFalloffAnimation();
-    const startValue = state.falloff[id];
-    const startedAt = performance.now();
-    const duration = 180;
-    falloffAnimation = { frame: 0 };
-    const tick = (now) => {
-      const t = clamp((now - startedAt) / duration, 0, 1);
-      const eased = 1 - Math.pow(1 - t, 3);
-      setFalloffValue(id, startValue + ((targetValue - startValue) * eased));
-      render();
-      emit();
-      if (t < 1) {
-        falloffAnimation.frame = requestAnimationFrame(tick);
-      } else {
-        falloffAnimation = null;
-      }
-    };
-    falloffAnimation.frame = requestAnimationFrame(tick);
-  }
+  let falloffDrag = null;
+  let previewPanDrag = null;
 
   function startFalloffDrag(event, id, captureElement) {
     const rect = falloffStrip.getBoundingClientRect();
+    const isBand = id.endsWith("Band");
     falloffDrag = {
       id,
       pointerId: event.pointerId,
       startX: event.clientX,
-      startValue: state.falloff[id],
+      startValue: isBand ? 0 : state.falloff[id],
+      startLeftEdge: state.falloff.leftEdge,
       startLeftMid: state.falloff.leftMid,
       startRightMid: state.falloff.rightMid,
+      startRightEdge: state.falloff.rightEdge,
       captureElement,
       rectLeft: rect.left,
       rectWidth: Math.max(1, rect.width),
@@ -2162,26 +2175,27 @@ export function mountGradientCurveWidget(host, options = {}) {
 
   function updateFalloffDrag(event) {
     if (!falloffDrag || event.pointerId !== falloffDrag.pointerId) return;
-    if (falloffAnimation) {
-      // A click-to-target animation is still mid-flight. Re-anchor the drag
-      // to wherever the animation has actually gotten to (and to the
-      // pointer's current position) instead of letting the next line jump
-      // straight to the raw absolute pointer position -- that jump from
-      // "mid-tween position" to "click target" was the visible snap.
-      falloffDrag.startValue = state.falloff[falloffDrag.id];
-      falloffDrag.startX = event.clientX;
-    }
-    cancelFalloffAnimation();
     const pointerValue = clamp(((event.clientX - falloffDrag.rectLeft) / falloffDrag.rectWidth) * 100, 0, 100);
     const startPointerValue = clamp(((falloffDrag.startX - falloffDrag.rectLeft) / falloffDrag.rectWidth) * 100, 0, 100);
     const delta = pointerValue - startPointerValue;
     const nextValue = event.shiftKey
       ? falloffDrag.startValue + (delta * 0.1)
       : falloffDrag.startValue + delta;
-    if (falloffDrag.id === "middleBand") {
-      setFalloffValue("middleBand", event.shiftKey ? delta * 0.1 : delta, {
+    const finalDelta = event.shiftKey ? delta * 0.1 : delta;
+    if (falloffDrag.id === "leftEdgeBand") {
+      setFalloffValue("leftEdgeBand", finalDelta, {
+        startLeftEdge: falloffDrag.startLeftEdge,
+        startLeftMid: falloffDrag.startLeftMid,
+      });
+    } else if (falloffDrag.id === "middleBand") {
+      setFalloffValue("middleBand", finalDelta, {
         startLeftMid: falloffDrag.startLeftMid,
         startRightMid: falloffDrag.startRightMid,
+      });
+    } else if (falloffDrag.id === "rightEdgeBand") {
+      setFalloffValue("rightEdgeBand", finalDelta, {
+        startRightMid: falloffDrag.startRightMid,
+        startRightEdge: falloffDrag.startRightEdge,
       });
     } else {
       setFalloffValue(falloffDrag.id, nextValue);
@@ -2199,38 +2213,35 @@ export function mountGradientCurveWidget(host, options = {}) {
   falloffHandles.forEach((handle) => {
     handle.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
-      cancelFalloffAnimation();
       const id = handle.dataset.falloffHandle;
       startFalloffDrag(event, id, handle);
     });
-    handle.addEventListener("pointermove", (event) => {
-      updateFalloffDrag(event);
-    });
-    handle.addEventListener("pointerup", (event) => {
-      stopFalloffDrag(event);
-    });
-    handle.addEventListener("pointercancel", () => {
-      falloffDrag = null;
-    });
   });
   falloffStrip.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0 || event.target.closest(".gcw-falloff-handle")) return;
+    if (event.button !== 0) return;
+    const target = event.target.closest(".gcw-falloff-handle");
+    if (target) return;
     const rect = falloffStrip.getBoundingClientRect();
     const value = clamp(((event.clientX - rect.left) / Math.max(1, rect.width)) * 100, 0, 100);
-    const id = value > state.falloff.leftMid && value < state.falloff.rightMid
-      ? "middleBand"
-      : value < 25 ? "leftEdge" : value < 50 ? "leftMid" : value < 75 ? "rightMid" : "rightEdge";
+    let id;
+    if (value > state.falloff.leftEdge && value < state.falloff.leftMid) {
+      id = "leftEdgeBand";
+    } else if (value > state.falloff.leftMid && value < state.falloff.rightMid) {
+      id = "middleBand";
+    } else if (value > state.falloff.rightMid && value < state.falloff.rightEdge) {
+      id = "rightEdgeBand";
+    } else {
+      id = closestFalloffHandle(value);
+    }
     startFalloffDrag(event, id, falloffStrip);
-    animateFalloffValue(id, value);
   });
-  falloffStrip.addEventListener("pointermove", (event) => {
-    if (event.target.closest?.(".gcw-falloff-handle")) return;
+  document.addEventListener("pointermove", (event) => {
     updateFalloffDrag(event);
   });
-  falloffStrip.addEventListener("pointerup", (event) => {
+  document.addEventListener("pointerup", (event) => {
     stopFalloffDrag(event);
   });
-  falloffStrip.addEventListener("pointercancel", () => {
+  document.addEventListener("pointercancel", () => {
     falloffDrag = null;
   });
   hueModeButtons.forEach((button) => {
@@ -2393,8 +2404,3 @@ export function mountGradientCurveWidget(host, options = {}) {
     },
   };
 }
-
-
-
-
-

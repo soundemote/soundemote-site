@@ -17,6 +17,7 @@ import { JEROBEAM_MODULES_MARKDOWN } from "./jerobeamModules";
 import { COMBUSTION_MARKDOWN, COMBUSTION_REPO } from "./combustionArticle";
 import { SUPERSAW_MARKDOWN, SUPERSAW_REPO, SUPERSAW_BRANCH } from "./supersawArticle";
 import { SIMD_ARTICLE_MARKDOWN, SIMD_ARTICLE_SOURCE_URL } from "./simdArticle";
+import { LAST_CLOCK_ARTICLE_MARKDOWN, LAST_CLOCK_ARTICLE_SOURCE_URL } from "./lastClockArticle";
 
 export type FeaturedArticle = {
   slug: string;
@@ -147,6 +148,15 @@ export const featuredArticles: FeaturedArticle[] = [
     tagline: "Measured WASM SIMD work for the audio engine, with the gradient tool as the visual front door.",
     sourceUrl: SIMD_ARTICLE_SOURCE_URL,
     markdown: rewriteRelativeLinks(SIMD_ARTICLE_MARKDOWN, "soundemote/soemdsp-simd", "main"),
+  },
+  {
+    slug: "last-clock",
+    repoHref: "https://github.com/soundemote/soemdsp-last-clock",
+    emoji: "🕰️",
+    title: "The Last Clock for Humanity — a chaotic temporal oscillator engine",
+    tagline: "One self-oscillating loop that derives a sinewave, distortion, noise floor, and two-way spacetime keeping.",
+    sourceUrl: LAST_CLOCK_ARTICLE_SOURCE_URL,
+    markdown: LAST_CLOCK_ARTICLE_MARKDOWN,
   },
   {
     slug: "synthwave-orchestra",
