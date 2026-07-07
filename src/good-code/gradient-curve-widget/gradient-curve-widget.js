@@ -400,7 +400,8 @@ const css = `
   }
 
   .gcw-arch-params .gcw-index-control input {
-    width: 5ch;
+    padding: 0 4px;
+    width: 5.5ch;
   }
 
   .gcw-actions button {
