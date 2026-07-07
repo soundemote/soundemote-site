@@ -46,6 +46,9 @@ const App = () => (
           <Route path="/gradient-curve" element={<GradientCurvePage />} />
           <Route path="/simd" element={<FeaturedArticlePage slug="simd" />} />
           <Route path="/soemdsp-simd" element={<Navigate to="/simd" replace />} />
+          <Route path="/last-clock" element={<FeaturedArticlePage slug="last-clock" />} />
+          <Route path="/lastclock" element={<Navigate to="/last-clock" replace />} />
+          <Route path="/soemdsp-last-clock" element={<Navigate to="/last-clock" replace />} />
           <Route path="/sandbox" element={<SandboxPage />} />
           <Route path="/embed" element={<EmbedPage />} />
           <Route path="/reverb" element={<SandboxPage staticPatchUrl="/patches/silently-dreaming.json" autostart />} />
