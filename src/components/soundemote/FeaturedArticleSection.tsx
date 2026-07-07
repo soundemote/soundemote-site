@@ -19,16 +19,7 @@ const FeaturedArticleSection = ({ article }: { article: FeaturedArticle }) => (
 
       <div className="mb-10 flex flex-col items-center gap-3 text-center">
         <p className="mono max-w-xl text-sm text-muted-foreground">
-          {article.tagline} Pick another repo below to switch what's shown here — straight from{" "}
-          <a
-            href={article.sourceUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-scope underline underline-offset-4 hover:text-foreground"
-          >
-            {article.sourceUrl.replace("https://github.com/", "")}
-          </a>
-          .
+          {article.tagline} Pick another repo below to switch what's shown here.
         </p>
       </div>
 
@@ -37,17 +28,6 @@ const FeaturedArticleSection = ({ article }: { article: FeaturedArticle }) => (
         className="rounded-lg border border-border/60 bg-card/40 p-6 shadow-[0_0_60px_-15px_hsl(var(--scope)/0.5)] md:p-10"
       >
         <WikiMarkdown markdown={article.markdown} />
-      </div>
-
-      <div className="mt-8 flex justify-center">
-        <a
-          href={article.sourceUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mono inline-flex items-center gap-2 rounded-full border border-scope/50 px-5 py-2 text-xs uppercase tracking-[0.14em] text-scope transition-colors hover:bg-scope/10"
-        >
-          view the repo →
-        </a>
       </div>
     </div>
   </section>
