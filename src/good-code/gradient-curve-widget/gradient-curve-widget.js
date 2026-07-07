@@ -1393,6 +1393,7 @@ export function mountGradientCurveWidget(host, options = {}) {
   const archFreqInput = host.querySelector(".gcw-arch-freq");
   const archDitherInput = host.querySelector(".gcw-arch-dither");
   const archTableInput = host.querySelector(".gcw-arch-table");
+  const archFpsInput = host.querySelector(".gcw-arch-fps");
   const indexStrip = host.querySelector(".gcw-index-strip");
   const hueModeButtons = [...host.querySelectorAll(".gcw-hue-option")];
   const lightnessModeButtons = [...host.querySelectorAll(".gcw-lightness-option")];
@@ -1418,6 +1419,37 @@ export function mountGradientCurveWidget(host, options = {}) {
     ensureArchimedesTable(archConfig(), () => render());
     render();
     emit();
+    restartArchimedesAnimation();
+  };
+
+  // ---- Live Archimedes animation ------------------------------------------
+  // The dither PRNG is deterministic per seed, so a static capture never
+  // changes. To actually see the oscillator's noise floor shiver, we re-run the
+  // JS capture with a fresh seed on every animation frame (throttled to the
+  // requested FPS) and repaint. FPS 0 freezes the curve. Only runs while the
+  // Archimedes lightness mode is selected — no point animating an unused table.
+  let archAnimHandle = 0;
+  let archAnimSeed = 1337 >>> 0;
+  let archAnimLast = 0;
+  const stopArchimedesAnimation = () => {
+    if (archAnimHandle) cancelAnimationFrame(archAnimHandle);
+    archAnimHandle = 0;
+  };
+  const restartArchimedesAnimation = () => {
+    stopArchimedesAnimation();
+    if (state.archFps <= 0 || state.lightnessMode !== "archimedes") return;
+    const interval = 1000 / state.archFps;
+    archAnimLast = 0;
+    const tick = (now) => {
+      archAnimHandle = requestAnimationFrame(tick);
+      if (now - archAnimLast < interval) return;
+      archAnimLast = now;
+      // Advance the seed with a cheap LCG so each frame gets new dither noise.
+      archAnimSeed = (Math.imul(archAnimSeed, 1664525) + 1013904223) >>> 0;
+      captureArchimedesJs(archimedesTable, { ...archimedesConfig, seed: archAnimSeed });
+      render();
+    };
+    archAnimHandle = requestAnimationFrame(tick);
   };
   const packet = () => ({
     widget: "gradient-curve-widget",
