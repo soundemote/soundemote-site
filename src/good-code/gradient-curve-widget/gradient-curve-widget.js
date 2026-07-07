@@ -1464,14 +1464,6 @@ function previewGradientCss(mode, stops, sampleCount, invert = false, autoOrder 
   return `linear-gradient(${Math.round(previewAngles[mode] ?? angle)}deg, ${parts.join(", ")})`;
 }
 
-function gradientStops(stops, autoBlack = false, autoWhite = false) {
-  return [
-    ...(autoBlack ? [{ id: "__auto-black", h: 0, s: 0, l: 0 }] : []),
-    ...stops,
-    ...(autoWhite ? [{ id: "__auto-white", h: 0, s: 0, l: 100 }] : []),
-  ];
-}
-
 function huePath(stops, invert = false, autoOrder = true, hueMode = "strict") {
   const ordered = unwrapHues(stops, invert, autoOrder, hueMode);
   const segments = [];
