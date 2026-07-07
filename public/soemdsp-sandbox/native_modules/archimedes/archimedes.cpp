@@ -15,6 +15,8 @@
 // total_steps / zero_crossings over thousands of cycles reconstructs pi to high
 // precision straight out of the engine's own clock.
 //
+
+#include <cstdint>
 // Named for Archimedes, who first pinned down pi by averaging polygons -- this
 // does the same trick with dithered clock steps instead of polygon edges.
 //
