@@ -266,6 +266,17 @@
       "wasmAvailable": true
     },
     {
+      "name": "blit",
+      "label": "BLIT Oscillator",
+      "targetType": "blit",
+      "kind": "oscillator",
+      "source": "native_modules/blit/blit.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/blit/blit.cpp",
+      "wasm": "native_modules/blit/blit.wasm",
+      "wasmUrl": "native_modules/blit/blit.wasm",
+      "wasmAvailable": false
+    },
+    {
       "name": "resonator_filter",
       "label": "Resonator Filter",
       "targetType": "resonatorFilter",
