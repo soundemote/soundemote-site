@@ -2355,6 +2355,7 @@ export function mountGradientCurveWidget(host, options = {}) {
       if (archChanged) ensureArchimedesTable(archConfig());
       if (["wide", "strict", "chroma", "smooth-natural", "velvet", "silk"].includes(next.hueMode)) state.hueMode = next.hueMode;
       if (["linear", "smooth", "gaussian", "filmic", "bokeh", "archimedes"].includes(next.lightnessMode)) state.lightnessMode = next.lightnessMode;
+      if (Number.isFinite(Number(next.archFps))) state.archFps = clamp(Math.round(Number(next.archFps)), 0, 60);
       if (["dot", "diagonal", "horizontal", "vertical", "square", "rectangle"].includes(next.previewMode)) state.previewMode = next.previewMode;
       if (["start", "end"].includes(next.radialCenter)) state.radialCenter = next.radialCenter;
       state.gridMode = "off";
@@ -2377,11 +2378,13 @@ export function mountGradientCurveWidget(host, options = {}) {
         state.savedStops = next.savedStops.map((stop, index) => normalizeStop(stop, index, next.savedStops.length));
       }
       commit();
+      restartArchimedesAnimation();
     },
     getGradient() {
       return packet();
     },
     destroy() {
+      stopArchimedesAnimation();
       host.innerHTML = "";
     },
   };
