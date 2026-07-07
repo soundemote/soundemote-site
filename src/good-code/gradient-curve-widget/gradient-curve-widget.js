@@ -251,13 +251,16 @@ const css = `
     width: 100%;
   }
 
+  /* Keep the native colour input out of the pointer path so the whole swatch
+     stays a reliable drag surface. It is opened programmatically on click. */
   .gcw-swatch-button input[type="color"] {
-    cursor: pointer;
-    height: 150%;
-    inset: -25%;
+    height: 1px;
+    left: 0;
     opacity: 0;
+    pointer-events: none;
     position: absolute;
-    width: 150%;
+    top: 0;
+    width: 1px;
   }
 
   .gcw-color-meta {
@@ -662,6 +665,18 @@ function ensureStyles() {
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 const wrapHue = (hue) => ((hue % 360) + 360) % 360;
 
+// Every stop needs a globally unique id. Semantic ids like "black"/"red" used
+// to be reused across the gradient list and the saved list, which made
+// drag-and-drop and selection collide (dragging the saved black hit the
+// gradient black). Always mint a fresh id and keep the caller's hint only as a
+// readable prefix.
+let stopIdCounter = 0;
+function uniqueStopId(hint) {
+  stopIdCounter += 1;
+  const prefix = typeof hint === "string" && hint ? hint.replace(/[^a-z0-9]+/gi, "-") : "stop";
+  return `${prefix}-${stopIdCounter}`;
+}
+
 function hslToHex(h, s, l) {
   const hue = wrapHue(h) / 360;
   const sat = clamp(s, 0, 100) / 100;
@@ -704,7 +719,7 @@ function normalizeStop(stop, index, count) {
   const color = /^#[0-9a-f]{6}$/i.test(stop?.color || "") ? stop.color.toUpperCase() : fallbackColor;
   const hsl = stop?.hsl || hexToHsl(color);
   return polishStop({
-    id: stop?.id || `stop-${Date.now()}-${index}`,
+    id: uniqueStopId(stop?.id),
     h: wrapHue(Number.isFinite(Number(stop?.h)) ? Number(stop.h) : hsl.h),
     s: clamp(Number.isFinite(Number(stop?.s)) ? Number(stop.s) : hsl.s, 0, 100),
     l: clamp(Number.isFinite(Number(stop?.l)) ? Number(stop.l) : hsl.l, 0, 100),
@@ -745,14 +760,6 @@ function polishSample(sample) {
 
 function stopColor(stop) {
   return hslToHex(stop.h, stop.s, stop.l);
-}
-
-function isExactBlack(stop) {
-  return stopColor(stop) === "#000000";
-}
-
-function isExactWhite(stop) {
-  return stopColor(stop) === "#FFFFFF";
 }
 
 function isBlackAnchor(stop) {
@@ -1460,14 +1467,6 @@ function previewGradientCss(mode, stops, sampleCount, invert = false, autoOrder 
   return `linear-gradient(${Math.round(previewAngles[mode] ?? angle)}deg, ${parts.join(", ")})`;
 }
 
-function gradientStops(stops, autoBlack = false, autoWhite = false) {
-  return [
-    ...(autoBlack ? [{ id: "__auto-black", h: 0, s: 0, l: 0 }] : []),
-    ...stops,
-    ...(autoWhite ? [{ id: "__auto-white", h: 0, s: 0, l: 100 }] : []),
-  ];
-}
-
 function huePath(stops, invert = false, autoOrder = true, hueMode = "strict") {
   const ordered = unwrapHues(stops, invert, autoOrder, hueMode);
   const segments = [];
@@ -1500,9 +1499,6 @@ export function mountGradientCurveWidget(host, options = {}) {
     invert: options.invert === true,
     autoOrder: options.autoOrder === true,
     autoBright: options.autoBright === true,
-    // Auto black/white were removed in favor of permanent saved swatches.
-    autoBlack: false,
-    autoWhite: false,
     archDtShift: Number.isFinite(Number(options.archDtShift)) ? clamp(Math.round(Number(options.archDtShift)), 8, 18) : ARCHIMEDES_DEFAULTS.dtShift,
     archFreqHz: Number.isFinite(Number(options.archFreqHz)) ? clamp(Math.round(Number(options.archFreqHz)), 1, 64) : ARCHIMEDES_DEFAULTS.freqHz,
     archDitherBits: Number.isFinite(Number(options.archDitherBits)) ? clamp(Math.round(Number(options.archDitherBits)), 0, 31) : ARCHIMEDES_DEFAULTS.ditherBits,
@@ -1687,10 +1683,10 @@ export function mountGradientCurveWidget(host, options = {}) {
     addInsertIndex: state.addInsertIndex,
     addColor: state.addColor,
     sampleCount: state.sampleCount,
-    css: gradientCss(state.angle, gradientStops(state.stops, state.autoBlack, state.autoWhite), state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode),
-    stops: arrangedStops(gradientStops(state.stops, state.autoBlack, state.autoWhite), gradientInvert(), state.autoOrder).map((stop) => ({ ...stop, color: stopColor(stop) })),
+    css: gradientCss(state.angle, state.stops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode),
+    stops: arrangedStops(state.stops, gradientInvert(), state.autoOrder).map((stop) => ({ ...stop, color: stopColor(stop) })),
     savedStops: state.savedStops.map((stop) => ({ ...stop, color: stopColor(stop) })),
-    samples: sampleStops(gradientStops(state.stops, state.autoBlack, state.autoWhite), state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode),
+    samples: sampleStops(state.stops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode),
   });
   const emit = () => {
     const detail = packet();
@@ -1710,7 +1706,7 @@ export function mountGradientCurveWidget(host, options = {}) {
 
   function canDeleteActiveStop(stopId) {
     const remainingStops = state.stops.filter((stop) => stop.id !== stopId);
-    return gradientStops(remainingStops, state.autoBlack, state.autoWhite).length >= 2;
+    return remainingStops.length >= 2;
   }
 
   function deleteSelectedStop() {
@@ -1752,14 +1748,9 @@ export function mountGradientCurveWidget(host, options = {}) {
     const toList = stopList(toZone);
     const fromIndex = fromList.findIndex((stop) => stop.id === stopId);
     if (fromIndex < 0) return;
-    const targetStop = fromList[fromIndex];
-    if (toZone === "active" && applyExactAnchorPolicy(targetStop)) {
-      commit();
-      return;
-    }
     if (fromZone === "active" && toZone === "saved") {
       const remainingStops = fromList.filter((stop) => stop.id !== stopId);
-      if (gradientStops(remainingStops, state.autoBlack, state.autoWhite).length < 2) return;
+      if (remainingStops.length < 2) return;
     }
 
     const [stop] = fromList.splice(fromIndex, 1);
@@ -1767,46 +1758,6 @@ export function mountGradientCurveWidget(host, options = {}) {
     toList.splice(clamp(adjustedIndex, 0, toList.length), 0, stop);
     state.activeStopId = stop.id;
     commit();
-  }
-
-  function saveManualAnchors({ black = false, white = false } = {}) {
-    const keep = [];
-    const anchors = [];
-    for (const stop of state.stops) {
-      if ((black && isExactBlack(stop)) || (white && isExactWhite(stop))) {
-        anchors.push(stop);
-      } else {
-        keep.push(stop);
-      }
-    }
-    const outputCount = gradientStops(keep, state.autoBlack, state.autoWhite).length;
-    if (!anchors.length || outputCount < 2) return;
-    state.stops = keep;
-    for (const anchor of anchors) {
-      if (!state.savedStops.some((stop) => stop.id === anchor.id || stopColor(stop) === stopColor(anchor))) {
-        state.savedStops.push(anchor);
-      }
-    }
-    if (!state.stops.some((stop) => stop.id === state.activeStopId)) {
-      state.activeStopId = state.stops[0]?.id || "";
-    }
-  }
-
-  function promoteManualAnchors() {
-    // Auto black/white removed: exact black/white are ordinary stops now.
-  }
-
-  function applyExactAnchorPolicy(stop) {
-    // Auto black/white removed: no longer yank exact black/white out of the ramp.
-    return false;
-  }
-
-  function enforceExactAnchorPolicy() {
-    let changed = false;
-    for (const stop of [...state.stops]) {
-      changed = applyExactAnchorPolicy(stop) || changed;
-    }
-    return changed;
   }
 
   function addGradientColorFromHsl(hsl) {
@@ -1822,7 +1773,6 @@ export function mountGradientCurveWidget(host, options = {}) {
   function addColorAtInsertPoint(hex) {
     const insertIndex = clamp(state.addInsertIndex, 0, state.stops.length);
     const next = normalizeStop({ id: "", ...hexToHsl(hex) }, insertIndex, state.stops.length + 1);
-    if (applyExactAnchorPolicy(next)) return state.stops.find((stop) => stop.id === state.activeStopId) || next;
     state.stops.splice(insertIndex, 0, next);
     state.pendingAddStopId = next.id;
     state.activeStopId = next.id;
@@ -1835,7 +1785,6 @@ export function mountGradientCurveWidget(host, options = {}) {
     const pending = state.stops.find((stop) => stop.id === state.pendingAddStopId);
     if (pending) {
       Object.assign(pending, polishStop({ ...pending, ...hexToHsl(hex) }));
-      applyExactAnchorPolicy(pending);
       return;
     }
     addColorAtInsertPoint(hex);
@@ -1873,7 +1822,7 @@ export function mountGradientCurveWidget(host, options = {}) {
   }
 
   function colorAtPreviewPosition(position) {
-    const activeGradientStops = gradientStops(state.stops, state.autoBlack, state.autoWhite);
+    const activeGradientStops = state.stops;
     const samples = sampleStops(activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode);
     const nearest = samples.reduce((current, sample, index) => {
       const previousDistance = Math.abs(current.sample.position - position);
@@ -1929,20 +1878,18 @@ export function mountGradientCurveWidget(host, options = {}) {
   }
 
   function applyAutoOrder() {
-    promoteManualAnchors();
     const ordered = arrangedStops(state.stops, false, true).map(({ position, ...stop }) => stop);
     state.stops = state.invert ? ordered.reverse() : ordered;
     state.activeStopId = state.stops[0]?.id || state.savedStops[0]?.id || "";
   }
 
   function applyAutoBright() {
-    promoteManualAnchors();
     const ordered = arrangedStops(state.stops, false, false);
     const count = Math.max(1, ordered.length - 1);
     state.stops = ordered.map((stop, index) => {
       const t = count === 0 ? 0.5 : index / count;
-      const low = state.autoBlack ? 8 : 18;
-      const high = state.autoWhite ? 92 : 82;
+      const low = 18;
+      const high = 82;
       const l = low + (high - low) * smootherStep(t);
       const edgeFade = Math.sin(Math.PI * clamp(t, 0, 1));
       const s = stop.s <= 8 ? 0 : clamp(30 + edgeFade * 66, 6, 96);
@@ -2094,50 +2041,23 @@ export function mountGradientCurveWidget(host, options = {}) {
       swatch.type = "button";
       swatch.title = "Change color";
       swatch.setAttribute("aria-label", `Change ${stopColor(stop)}`);
-      swatch.addEventListener("pointerdown", (event) => {
-        state.activeStopId = stop.id;
-        state.colorEditStopId = stop.id;
-        syncActiveControls();
-        card.draggable = false;
-        event.stopPropagation();
-      });
-      swatch.addEventListener("pointerup", (event) => {
-        card.draggable = true;
-        event.stopPropagation();
-      });
-      swatch.addEventListener("pointercancel", () => {
-        card.draggable = true;
-        state.colorEditStopId = "";
-      });
-      swatch.addEventListener("click", (event) => {
-        event.stopPropagation();
-      });
 
       const picker = document.createElement("input");
       picker.type = "color";
       picker.value = stopColor(stop);
-      picker.draggable = false;
-      picker.addEventListener("pointerdown", (event) => {
+      picker.tabIndex = -1;
+      // A click that is not a drag selects the stop and opens the colour
+      // picker; a drag reorders the card (the browser suppresses the click
+      // when a drag occurs, so the two never conflict).
+      swatch.addEventListener("click", (event) => {
+        event.stopPropagation();
         state.activeStopId = stop.id;
         state.colorEditStopId = stop.id;
         syncActiveControls();
-        card.draggable = false;
-        event.stopPropagation();
-      });
-      picker.addEventListener("pointerup", (event) => {
-        card.draggable = true;
-        event.stopPropagation();
-      });
-      picker.addEventListener("pointercancel", () => {
-        card.draggable = true;
-        state.colorEditStopId = "";
-      });
-      picker.addEventListener("click", (event) => {
-        event.stopPropagation();
+        picker.click();
       });
       picker.addEventListener("input", () => {
         Object.assign(stop, polishStop({ ...stop, ...hexToHsl(picker.value) }));
-        applyExactAnchorPolicy(stop);
         commit({ renderCards: false });
       });
       picker.addEventListener("change", () => {
@@ -2202,7 +2122,7 @@ export function mountGradientCurveWidget(host, options = {}) {
   }
 
   function render({ renderCards = true } = {}) {
-    const activeGradientStops = gradientStops(state.stops, state.autoBlack, state.autoWhite);
+    const activeGradientStops = state.stops;
     const samples = sampleStops(activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode);
     const css = gradientCss(state.angle, activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode);
     const previewCss = previewGradientCss(state.previewMode, activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.angle, state.falloff, state.radialCenter, state.lightnessMode);
@@ -2607,7 +2527,7 @@ export function mountGradientCurveWidget(host, options = {}) {
     }, 900);
   });
   exportPngButton.addEventListener("click", () => {
-    const activeGradientStops = gradientStops(state.stops, state.autoBlack, state.autoWhite);
+    const activeGradientStops = state.stops;
     const dataUrl = exportGradientPng(activeGradientStops, {
       width: 1024,
       height: 1,
@@ -2618,7 +2538,6 @@ export function mountGradientCurveWidget(host, options = {}) {
     });
     downloadDataUrl(dataUrl, "gradient-texture-1024x1.png");
   });
-  enforceExactAnchorPolicy();
   commit();
   // Kick off the Archimedes capture (JS port now, real .wasm refines it async).
   ensureArchimedesTable(archConfig(), () => render());
@@ -2658,7 +2577,6 @@ export function mountGradientCurveWidget(host, options = {}) {
       if (Array.isArray(next.savedStops)) {
         state.savedStops = next.savedStops.map((stop, index) => normalizeStop(stop, index, next.savedStops.length));
       }
-      enforceExactAnchorPolicy();
       commit();
     },
     getGradient() {
