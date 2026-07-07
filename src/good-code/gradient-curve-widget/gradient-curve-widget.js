@@ -35,10 +35,11 @@ const css = `
       "active"
       "saved"
       "actions";
-    grid-template-rows: minmax(320px, 1fr) auto auto auto auto auto;
+    grid-template-rows: minmax(160px, 1fr) auto auto auto auto auto;
     height: 100%;
     min-height: 0;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
     padding: 0;
   }
 
@@ -113,6 +114,7 @@ const css = `
 
   .gcw-zone[data-drop-zone="active"] {
     grid-area: active;
+    min-height: min(6cqh, 44px);
   }
 
   .gcw-zone[data-drop-zone="saved"] {
@@ -368,6 +370,36 @@ const css = `
 
   .gcw-index-control input[type="number"] {
     appearance: textfield;
+  }
+
+  .gcw-arch-params {
+    align-items: center;
+    background: rgba(243, 240, 230, 0.045);
+    border: 1px solid var(--gcw-border);
+    border-radius: 999px;
+    color: var(--gcw-muted);
+    display: inline-flex;
+    flex-wrap: wrap;
+    font-size: min(1.45cqh, 10px);
+    gap: min(0.45cqw, 5px);
+    min-height: min(2.8cqh, 21px);
+    padding: 0 min(0.55cqw, 6px);
+  }
+
+  .gcw-arch-params > span {
+    color: var(--gcw-ink);
+    font-weight: 800;
+  }
+
+  .gcw-arch-params .gcw-index-control {
+    background: transparent;
+    border: none;
+    min-height: 0;
+    padding: 0;
+  }
+
+  .gcw-arch-params .gcw-index-control input {
+    width: 5ch;
   }
 
   .gcw-actions button {
@@ -1000,17 +1032,21 @@ function smootherStep(value) {
 // the real compiled .wasm is then loaded asynchronously and overwrites the
 // same table in place for full authenticity.
 // ---------------------------------------------------------------------------
-const ARCHIMEDES_TABLE_SIZE = 256;
-const archimedesTable = new Float64Array(ARCHIMEDES_TABLE_SIZE);
+// Live capture configuration. These are the oscillator parameters exposed to the
+// UI: the fixed-point time resolution (dtShift), the pitch (freqHz), the amount
+// of xorshift dither jitter (ditherBits), and the captured wavetable resolution.
+const ARCHIMEDES_DEFAULTS = Object.freeze({ dtShift: 14, freqHz: 8, ditherBits: 7, tableSize: 256 });
+const archimedesConfig = { ...ARCHIMEDES_DEFAULTS };
+let archimedesTable = new Float64Array(ARCHIMEDES_DEFAULTS.tableSize);
 
 // Faithful JS port of archimedes.cpp: xorshift dither + symplectic Euler in
 // 16.16 fixed point. Captures a rising quarter-cycle of the sine state.
-function captureArchimedesJs(target) {
+function captureArchimedesJs(target, cfg = archimedesConfig) {
   const n = target.length;
-  const dtShift = 14; // rate = 1 << 14 = 16384
+  const dtShift = cfg.dtShift; // rate = 1 << dtShift
   const rate = 1 << dtShift;
-  const freqHz = 8;
-  const ditherBits = 7;
+  const freqHz = cfg.freqHz;
+  const ditherBits = cfg.ditherBits;
   const twoPi = 6.283185307179586;
   const phaseInc = Math.trunc(((twoPi * freqHz) / rate) * 65536.0) | 0;
   const quarterSteps = Math.max(n, Math.floor(rate / freqHz / 4));
@@ -1050,14 +1086,14 @@ function captureArchimedesJs(target) {
 }
 
 // Capture the same quarter-cycle from the real compiled module.
-function captureArchimedesFromWasm(exports, target) {
+function captureArchimedesFromWasm(exports, target, cfg = archimedesConfig) {
   const n = target.length;
   const e = exports;
   const h = e.soemdsp_archimedes_create();
   if (!h) return false;
-  const dtShift = 14;
-  const freqHz = 8;
-  const ditherBits = 7;
+  const dtShift = cfg.dtShift;
+  const freqHz = cfg.freqHz;
+  const ditherBits = cfg.ditherBits;
   e.soemdsp_archimedes_set_profile(h, dtShift);
   e.soemdsp_archimedes_set_frequency(h, freqHz);
   e.soemdsp_archimedes_reset(h);
@@ -1085,9 +1121,20 @@ function captureArchimedesFromWasm(exports, target) {
 }
 
 let archimedesWasmRequested = false;
-function ensureArchimedesTable(onReady) {
+let archimedesWasmExports = null;
+// (Re)capture the wavetable for the current config. Called on mount and every
+// time a parameter control changes, so the dot re-derives its falloff live.
+function ensureArchimedesTable(cfg = {}, onReady) {
+  Object.assign(archimedesConfig, cfg);
+  const n = Math.max(2, Math.round(archimedesConfig.tableSize));
+  archimedesConfig.tableSize = n;
+  if (archimedesTable.length !== n) archimedesTable = new Float64Array(n);
+  if (archimedesWasmExports) {
+    captureArchimedesFromWasm(archimedesWasmExports, archimedesTable, archimedesConfig);
+    return;
+  }
   // Synchronous JS-port capture is always available first.
-  captureArchimedesJs(archimedesTable);
+  captureArchimedesJs(archimedesTable, archimedesConfig);
   if (archimedesWasmRequested || typeof fetch !== "function" || typeof WebAssembly === "undefined") return;
   archimedesWasmRequested = true;
   const url = "/soemdsp-sandbox/native_modules/archimedes/archimedes.wasm";
@@ -1096,7 +1143,8 @@ function ensureArchimedesTable(onReady) {
     : fetch(url).then((r) => r.arrayBuffer()).then((b) => WebAssembly.instantiate(b, {}));
   load
     .then(({ instance }) => {
-      if (captureArchimedesFromWasm(instance.exports, archimedesTable) && typeof onReady === "function") onReady();
+      archimedesWasmExports = instance.exports;
+      if (captureArchimedesFromWasm(archimedesWasmExports, archimedesTable, archimedesConfig) && typeof onReady === "function") onReady();
     })
     .catch(() => { /* JS-port table already in place */ });
 }
@@ -1410,8 +1458,13 @@ export function mountGradientCurveWidget(host, options = {}) {
     invert: options.invert === true,
     autoOrder: options.autoOrder === true,
     autoBright: options.autoBright === true,
-    autoBlack: options.autoBlack === true || options.autoBlackWhite === true,
-    autoWhite: options.autoWhite === true || options.autoBlackWhite === true,
+    // Auto black/white were removed in favor of permanent saved swatches.
+    autoBlack: false,
+    autoWhite: false,
+    archDtShift: Number.isFinite(Number(options.archDtShift)) ? clamp(Math.round(Number(options.archDtShift)), 8, 18) : ARCHIMEDES_DEFAULTS.dtShift,
+    archFreqHz: Number.isFinite(Number(options.archFreqHz)) ? clamp(Math.round(Number(options.archFreqHz)), 1, 64) : ARCHIMEDES_DEFAULTS.freqHz,
+    archDitherBits: Number.isFinite(Number(options.archDitherBits)) ? clamp(Math.round(Number(options.archDitherBits)), 0, 31) : ARCHIMEDES_DEFAULTS.ditherBits,
+    archTableSize: Number.isFinite(Number(options.archTableSize)) ? clamp(Math.round(Number(options.archTableSize)), 16, 512) : ARCHIMEDES_DEFAULTS.tableSize,
     hueMode: ["strict", "wide", "chroma", "smooth-natural", "velvet", "silk"].includes(options.hueMode) ? options.hueMode : "strict",
     lightnessMode: ["linear", "smooth", "gaussian", "filmic", "bokeh", "archimedes"].includes(options.lightnessMode) ? options.lightnessMode : "bokeh",
     previewMode: ["dot", "diagonal", "horizontal", "vertical", "square", "rectangle"].includes(options.previewMode) ? options.previewMode : "dot",
@@ -1427,9 +1480,15 @@ export function mountGradientCurveWidget(host, options = {}) {
     colorEditStopId: "",
     stops: initialStops.map((stop, index) => normalizeStop(stop, index, initialStops.length)),
     savedStops: (Array.isArray(options.savedStops) ? options.savedStops : [
-      { id: "brown", color: "#8A4B22" },
+      { id: "black", color: "#000000" },
       { id: "white", color: "#FFFFFF" },
-    ]).map((stop, index) => normalizeStop(stop, index, 2)),
+      { id: "red", color: "#FF0000" },
+      { id: "green", color: "#00FF00" },
+      { id: "blue", color: "#0000FF" },
+      { id: "cyan", color: "#00FFFF" },
+      { id: "magenta", color: "#FF00FF" },
+      { id: "yellow", color: "#FFFF00" },
+    ]).map((stop, index, arr) => normalizeStop(stop, index, arr.length)),
     addInsertIndex: Number.isFinite(Number(options.addInsertIndex)) ? Math.round(Number(options.addInsertIndex)) : initialStops.length,
     addColor: typeof options.addColor === "string" ? options.addColor : "#8A4B22",
     pendingAddStopId: "",
@@ -1473,8 +1532,6 @@ export function mountGradientCurveWidget(host, options = {}) {
           <button class="gcw-remove" type="button">Save Selected</button>
           <label class="gcw-toggle"><input class="gcw-auto-order" type="checkbox" /> Auto Order</label>
           <label class="gcw-toggle"><input class="gcw-auto-bright" type="checkbox" /> Auto Bright</label>
-          <label class="gcw-toggle"><input class="gcw-auto-black" type="checkbox" /> Auto Black</label>
-          <label class="gcw-toggle"><input class="gcw-auto-white" type="checkbox" /> Auto White</label>
           <label class="gcw-index-control"><span>Indexes</span><input class="gcw-index-count" type="number" min="2" max="256" step="1" /></label>
           <div class="gcw-hue-segments" role="group" aria-label="Hue mode">
             <span>Hue</span>
@@ -1508,6 +1565,13 @@ export function mountGradientCurveWidget(host, options = {}) {
             <button class="gcw-radial-center-option" type="button" data-radial-center="start">Start</button>
             <button class="gcw-radial-center-option" type="button" data-radial-center="end">End</button>
           </div>
+          <div class="gcw-arch-params" role="group" aria-label="Archimedes oscillator parameters">
+            <span>Archimedes</span>
+            <label class="gcw-index-control"><span>Rate</span><input class="gcw-arch-dtshift" type="number" min="8" max="18" step="1" title="dtShift — fixed-point time resolution (rate = 2^dtShift)" /></label>
+            <label class="gcw-index-control"><span>Freq</span><input class="gcw-arch-freq" type="number" min="1" max="64" step="1" title="Oscillator frequency in Hz" /></label>
+            <label class="gcw-index-control"><span>Dither</span><input class="gcw-arch-dither" type="number" min="0" max="31" step="1" title="Xorshift dither jitter mask (bits)" /></label>
+            <label class="gcw-index-control"><span>Table</span><input class="gcw-arch-table" type="number" min="16" max="512" step="16" title="Captured wavetable resolution" /></label>
+          </div>
           <label class="gcw-toggle"><input class="gcw-invert" type="checkbox" /> Invert</label>
           <button class="gcw-copy" type="button">Copy CSS</button>
           <button class="gcw-export-png" type="button">Copy PNG</button>
@@ -1526,9 +1590,11 @@ export function mountGradientCurveWidget(host, options = {}) {
   const invertInput = host.querySelector(".gcw-invert");
   const autoOrderInput = host.querySelector(".gcw-auto-order");
   const autoBrightInput = host.querySelector(".gcw-auto-bright");
-  const autoBlackInput = host.querySelector(".gcw-auto-black");
-  const autoWhiteInput = host.querySelector(".gcw-auto-white");
   const indexCountInput = host.querySelector(".gcw-index-count");
+  const archDtShiftInput = host.querySelector(".gcw-arch-dtshift");
+  const archFreqInput = host.querySelector(".gcw-arch-freq");
+  const archDitherInput = host.querySelector(".gcw-arch-dither");
+  const archTableInput = host.querySelector(".gcw-arch-table");
   const indexStrip = host.querySelector(".gcw-index-strip");
   const hueModeButtons = [...host.querySelectorAll(".gcw-hue-option")];
   const lightnessModeButtons = [...host.querySelectorAll(".gcw-lightness-option")];
@@ -1543,15 +1609,28 @@ export function mountGradientCurveWidget(host, options = {}) {
 
   const activeStop = () => state.stops.find((stop) => stop.id === state.activeStopId) || state.stops[0];
   const gradientInvert = () => state.invert;
+  const archConfig = () => ({
+    dtShift: state.archDtShift,
+    freqHz: state.archFreqHz,
+    ditherBits: state.archDitherBits,
+    tableSize: state.archTableSize,
+  });
+  // Re-capture the Archimedes wavetable for the current params, then repaint.
+  const recaptureArchimedes = () => {
+    ensureArchimedesTable(archConfig(), () => render());
+    render();
+    emit();
+  };
   const packet = () => ({
     widget: "gradient-curve-widget",
     angle: state.angle,
     invert: state.invert,
     autoOrder: state.autoOrder,
     autoBright: state.autoBright,
-    autoBlack: state.autoBlack,
-    autoWhite: state.autoWhite,
-    autoBlackWhite: state.autoBlack && state.autoWhite,
+    archDtShift: state.archDtShift,
+    archFreqHz: state.archFreqHz,
+    archDitherBits: state.archDitherBits,
+    archTableSize: state.archTableSize,
     hueMode: state.hueMode,
     lightnessMode: state.lightnessMode,
     previewMode: state.previewMode,
@@ -1669,34 +1748,11 @@ export function mountGradientCurveWidget(host, options = {}) {
   }
 
   function promoteManualAnchors() {
-    const hasBlack = state.stops.some((stop) => isExactBlack(stop));
-    const hasWhite = state.stops.some((stop) => isExactWhite(stop));
-    if (hasBlack) {
-      state.autoBlack = true;
-      saveManualAnchors({ black: true });
-    }
-    if (hasWhite) {
-      state.autoWhite = true;
-      saveManualAnchors({ white: true });
-    }
+    // Auto black/white removed: exact black/white are ordinary stops now.
   }
 
   function applyExactAnchorPolicy(stop) {
-    if (!stop) return false;
-    if (isExactBlack(stop)) {
-      state.autoBlack = true;
-      if (!state.savedStops.some((saved) => isExactBlack(saved))) state.savedStops.push(stop);
-      state.stops = state.stops.filter((candidate) => candidate.id !== stop.id);
-      state.activeStopId = state.stops[0]?.id || state.savedStops[0]?.id || "";
-      return true;
-    }
-    if (isExactWhite(stop)) {
-      state.autoWhite = true;
-      if (!state.savedStops.some((saved) => isExactWhite(saved))) state.savedStops.push(stop);
-      state.stops = state.stops.filter((candidate) => candidate.id !== stop.id);
-      state.activeStopId = state.stops[0]?.id || state.savedStops[0]?.id || "";
-      return true;
-    }
+    // Auto black/white removed: no longer yank exact black/white out of the ramp.
     return false;
   }
 
@@ -1712,21 +1768,9 @@ export function mountGradientCurveWidget(host, options = {}) {
     const activeIndex = state.stops.findIndex((stop) => stop.id === state.activeStopId);
     const insertIndex = activeIndex >= 0 ? activeIndex : clamp(state.addInsertIndex, 0, state.stops.length);
     const next = normalizeStop({ id: "", ...hsl }, insertIndex, state.stops.length + 1);
-    if (isExactBlack(next)) {
-      state.autoBlack = true;
-      const existing = state.savedStops.find((stop) => isExactBlack(stop));
-      if (!existing) state.savedStops.push(next);
-      state.activeStopId = state.stops[0]?.id || existing?.id || next.id;
-    } else if (isExactWhite(next)) {
-      state.autoWhite = true;
-      const existing = state.savedStops.find((stop) => isExactWhite(stop));
-      if (!existing) state.savedStops.push(next);
-      state.activeStopId = state.stops[0]?.id || existing?.id || next.id;
-    } else {
-      state.stops.splice(insertIndex, 0, next);
-      state.activeStopId = next.id;
-      state.addInsertIndex = clamp(insertIndex + 1, 0, state.stops.length);
-    }
+    state.stops.splice(insertIndex, 0, next);
+    state.activeStopId = next.id;
+    state.addInsertIndex = clamp(insertIndex + 1, 0, state.stops.length);
     return next;
   }
 
@@ -2130,9 +2174,11 @@ export function mountGradientCurveWidget(host, options = {}) {
     invertInput.checked = state.invert;
     autoOrderInput.checked = state.autoOrder;
     autoBrightInput.checked = state.autoBright;
-    autoBlackInput.checked = state.autoBlack;
-    autoWhiteInput.checked = state.autoWhite;
     indexCountInput.value = String(state.sampleCount);
+    archDtShiftInput.value = String(state.archDtShift);
+    archFreqInput.value = String(state.archFreqHz);
+    archDitherInput.value = String(state.archDitherBits);
+    archTableInput.value = String(state.archTableSize);
     hueModeButtons.forEach((button) => {
       button.dataset.active = String(button.dataset.hueMode === state.hueMode);
       button.setAttribute("aria-pressed", String(button.dataset.hueMode === state.hueMode));
@@ -2171,15 +2217,21 @@ export function mountGradientCurveWidget(host, options = {}) {
     state.autoBright = autoBrightInput.checked;
     commit();
   });
-  autoBlackInput.addEventListener("change", () => {
-    state.autoBlack = autoBlackInput.checked;
-    if (state.autoBlack) saveManualAnchors({ black: true });
-    commit();
+  archDtShiftInput.addEventListener("change", () => {
+    state.archDtShift = clamp(Math.round(Number(archDtShiftInput.value) || state.archDtShift), 8, 18);
+    recaptureArchimedes();
   });
-  autoWhiteInput.addEventListener("change", () => {
-    state.autoWhite = autoWhiteInput.checked;
-    if (state.autoWhite) saveManualAnchors({ white: true });
-    commit();
+  archFreqInput.addEventListener("change", () => {
+    state.archFreqHz = clamp(Math.round(Number(archFreqInput.value) || state.archFreqHz), 1, 64);
+    recaptureArchimedes();
+  });
+  archDitherInput.addEventListener("change", () => {
+    state.archDitherBits = clamp(Math.round(Number(archDitherInput.value)), 0, 31);
+    recaptureArchimedes();
+  });
+  archTableInput.addEventListener("change", () => {
+    state.archTableSize = clamp(Math.round(Number(archTableInput.value) || state.archTableSize), 16, 512);
+    recaptureArchimedes();
   });
   let indexDrag = null;
   indexCountInput.addEventListener("pointerdown", (event) => {
@@ -2483,7 +2535,7 @@ export function mountGradientCurveWidget(host, options = {}) {
   enforceExactAnchorPolicy();
   commit();
   // Kick off the Archimedes capture (JS port now, real .wasm refines it async).
-  ensureArchimedesTable(() => render());
+  ensureArchimedesTable(archConfig(), () => render());
 
   return {
     setGradient(next = {}) {
@@ -2491,12 +2543,12 @@ export function mountGradientCurveWidget(host, options = {}) {
       if (typeof next.invert === "boolean") state.invert = next.invert;
       if (typeof next.autoOrder === "boolean") state.autoOrder = next.autoOrder;
       if (typeof next.autoBright === "boolean") state.autoBright = next.autoBright;
-      if (typeof next.autoBlack === "boolean") state.autoBlack = next.autoBlack;
-      if (typeof next.autoWhite === "boolean") state.autoWhite = next.autoWhite;
-      if (typeof next.autoBlackWhite === "boolean") {
-        state.autoBlack = next.autoBlackWhite;
-        state.autoWhite = next.autoBlackWhite;
-      }
+      let archChanged = false;
+      if (Number.isFinite(Number(next.archDtShift))) { state.archDtShift = clamp(Math.round(Number(next.archDtShift)), 8, 18); archChanged = true; }
+      if (Number.isFinite(Number(next.archFreqHz))) { state.archFreqHz = clamp(Math.round(Number(next.archFreqHz)), 1, 64); archChanged = true; }
+      if (Number.isFinite(Number(next.archDitherBits))) { state.archDitherBits = clamp(Math.round(Number(next.archDitherBits)), 0, 31); archChanged = true; }
+      if (Number.isFinite(Number(next.archTableSize))) { state.archTableSize = clamp(Math.round(Number(next.archTableSize)), 16, 512); archChanged = true; }
+      if (archChanged) ensureArchimedesTable(archConfig());
       if (["wide", "strict", "chroma", "smooth-natural", "velvet", "silk"].includes(next.hueMode)) state.hueMode = next.hueMode;
       if (["linear", "smooth", "gaussian", "filmic", "bokeh", "archimedes"].includes(next.lightnessMode)) state.lightnessMode = next.lightnessMode;
       if (["dot", "diagonal", "horizontal", "vertical", "square", "rectangle"].includes(next.previewMode)) state.previewMode = next.previewMode;
