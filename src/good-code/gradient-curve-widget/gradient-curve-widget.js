@@ -2030,6 +2030,11 @@ export function mountGradientCurveWidget(host, options = {}) {
     get: () => state.archTableSize, set: (v) => { state.archTableSize = v; },
     onChange: recaptureArchimedes,
   });
+  makeDraggableNumber(archFpsInput, {
+    min: 0, max: 60,
+    get: () => state.archFps, set: (v) => { state.archFps = v; },
+    onChange: () => { restartArchimedesAnimation(); render(); emit(); },
+  });
   makeDraggableNumber(indexCountInput, {
     min: 2, max: 256,
     get: () => state.sampleCount,
