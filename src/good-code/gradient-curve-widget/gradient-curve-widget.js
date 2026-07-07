@@ -115,12 +115,12 @@ const css = `
 
   .gcw-zone[data-drop-zone="active"] {
     grid-area: active;
-    min-height: 44px;
+    min-height: 48px;
   }
 
   .gcw-zone[data-drop-zone="saved"] {
     grid-area: saved;
-    max-height: 82px;
+    max-height: 120px;
   }
 
   .gcw-zone[data-drag-over="true"] {
