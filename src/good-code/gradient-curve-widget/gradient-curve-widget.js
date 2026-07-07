@@ -2378,7 +2378,7 @@ export function mountGradientCurveWidget(host, options = {}) {
   });
   lightnessModeButtons.forEach((button) => {
     button.addEventListener("click", () => {
-      state.lightnessMode = ["linear", "smooth", "gaussian", "filmic", "bokeh"].includes(button.dataset.lightnessMode) ? button.dataset.lightnessMode : "bokeh";
+      state.lightnessMode = ["linear", "smooth", "gaussian", "filmic", "bokeh", "archimedes"].includes(button.dataset.lightnessMode) ? button.dataset.lightnessMode : "bokeh";
       render();
       emit();
     });
