@@ -9,7 +9,6 @@ const GradientCurveSpotlight = ({ compact = false }: { compact?: boolean }) => (
   >
     <div className="mb-3 flex flex-col gap-1 px-1 md:flex-row md:items-end md:justify-between">
       <div>
-        <p className="mono text-[0.65rem] uppercase tracking-[0.24em] text-scope">gradient engine prototype</p>
         <span className="mono text-[0.6rem] uppercase tracking-[0.2em] text-scope/60 mt-2">gradient engine prototype build 9</span>
       </div>
       <Link
