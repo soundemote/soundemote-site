@@ -762,14 +762,6 @@ function stopColor(stop) {
   return hslToHex(stop.h, stop.s, stop.l);
 }
 
-function isBlackAnchor(stop) {
-  return stop.s <= 8 && stop.l <= 6;
-}
-
-function isWhiteAnchor(stop) {
-  return stop.s <= 8 && stop.l >= 94;
-}
-
 function hueRoute(stops) {
   if (stops.length <= 1) {
     return [...stops];
