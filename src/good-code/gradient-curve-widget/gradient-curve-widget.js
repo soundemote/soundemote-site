@@ -762,14 +762,6 @@ function stopColor(stop) {
   return hslToHex(stop.h, stop.s, stop.l);
 }
 
-function isBlackAnchor(stop) {
-  return stop.s <= 8 && stop.l <= 6;
-}
-
-function isWhiteAnchor(stop) {
-  return stop.s <= 8 && stop.l >= 94;
-}
-
 function hueRoute(stops) {
   if (stops.length <= 1) {
     return [...stops];
@@ -812,16 +804,10 @@ function arrangedStops(stops, invert = false, autoOrder = true) {
 }
 
 function unwrapHues(stops, invert = false, autoOrder = true, hueMode = "strict") {
-  const baseStops = arrangedStops(stops, invert, autoOrder);
-  const ordered = hueMode === "smooth-natural"
-    ? smoothNaturalBridgeStops(baseStops)
-    : hueMode === "velvet"
-      ? velvetBridgeStops(baseStops)
-    : hueMode === "silk"
-      ? silkBridgeStops(baseStops)
-    : hueMode === "chroma"
-      ? chromaBridgeStops(baseStops)
-      : baseStops;
+  // Every stop is treated identically — no black/white anchors, no injected
+  // bridge stops. Hue modes differ only in how hues are unwrapped and, later,
+  // which interpolation curve smooths between stops.
+  const ordered = arrangedStops(stops, invert, autoOrder);
   const result = [];
   for (const stop of ordered) {
     if (!result.length) {
@@ -840,203 +826,6 @@ function unwrapHues(stops, invert = false, autoOrder = true, hueMode = "strict")
   }
   return result;
 }
-
-function warmDarkHue(hue) {
-  const h = wrapHue(hue);
-  if (h <= 20 || h >= 340) return 22;
-  if (h >= 20 && h <= 70) return clamp(h, 26, 48);
-  return h;
-}
-
-function tintedLightHue(hue) {
-  const h = wrapHue(hue);
-  if (h <= 18 || h >= 340) return 350;
-  return h;
-}
-
-function chromaBridgeStops(points) {
-  if (points.length < 2) return points;
-  const bridged = [];
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const a = points[index];
-    const b = points[index + 1];
-    bridged.push(a);
-    const span = b.position - a.position;
-    const aColor = !(isBlackAnchor(a) || isWhiteAnchor(a)) && a.s > 20;
-    const bColor = !(isBlackAnchor(b) || isWhiteAnchor(b)) && b.s > 20;
-
-    if (aColor && isBlackAnchor(b)) {
-      bridged.push({
-        ...a,
-        id: `${a.id}-to-black-chroma`,
-        h: warmDarkHue(a.h),
-        s: clamp(Math.max(62, a.s * 0.78), 52, 88),
-        l: 22,
-        position: a.position + span * 0.66,
-      });
-    } else if (isBlackAnchor(a) && bColor) {
-      bridged.push({
-        ...b,
-        id: `black-to-${b.id}-chroma`,
-        h: warmDarkHue(b.h),
-        s: clamp(Math.max(62, b.s * 0.78), 52, 88),
-        l: 22,
-        position: a.position + span * 0.34,
-      });
-    } else if (aColor && isWhiteAnchor(b)) {
-      bridged.push({
-        ...a,
-        id: `${a.id}-to-white-chroma`,
-        h: tintedLightHue(a.h),
-        s: clamp(Math.max(42, a.s * 0.72), 32, 86),
-        l: 84,
-        position: a.position + span * 0.62,
-      });
-    } else if (isWhiteAnchor(a) && bColor) {
-      bridged.push({
-        ...b,
-        id: `white-to-${b.id}-chroma`,
-        h: tintedLightHue(b.h),
-        s: clamp(Math.max(42, b.s * 0.72), 32, 86),
-        l: 84,
-        position: a.position + span * 0.38,
-      });
-    }
-  }
-  bridged.push(points[points.length - 1]);
-  return bridged;
-}
-
-function smoothNaturalBridgeStops(points) {
-  if (points.length < 2) return points;
-  const bridged = [];
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const a = points[index];
-    const b = points[index + 1];
-    bridged.push(a);
-    const span = b.position - a.position;
-    const aColor = !(isBlackAnchor(a) || isWhiteAnchor(a)) && a.s > 20;
-    const bColor = !(isBlackAnchor(b) || isWhiteAnchor(b)) && b.s > 20;
-
-    if (aColor && isBlackAnchor(b)) {
-      bridged.push({
-        ...a,
-        id: `${a.id}-to-black-soft-natural`,
-        h: a.h,
-        s: clamp(a.s * Math.sqrt(Math.max(0.08, a.l / 100)) * 0.48, 10, 58),
-        l: clamp(a.l * 0.28, 8, 24),
-        position: a.position + span * 0.68,
-      });
-    } else if (isBlackAnchor(a) && bColor) {
-      bridged.push({
-        ...b,
-        id: `black-to-${b.id}-soft-natural`,
-        h: b.h,
-        s: clamp(b.s * Math.sqrt(Math.max(0.08, b.l / 100)) * 0.48, 10, 58),
-        l: clamp(b.l * 0.28, 8, 24),
-        position: a.position + span * 0.32,
-      });
-    } else if (aColor && isWhiteAnchor(b)) {
-      bridged.push({
-        ...a,
-        id: `${a.id}-to-white-soft-natural`,
-        h: a.h,
-        s: clamp(a.s * 0.42, 8, 44),
-        l: clamp(100 - ((100 - a.l) * 0.24), 82, 96),
-        position: a.position + span * 0.62,
-      });
-    } else if (isWhiteAnchor(a) && bColor) {
-      bridged.push({
-        ...b,
-        id: `white-to-${b.id}-soft-natural`,
-        h: b.h,
-        s: clamp(b.s * 0.42, 8, 44),
-        l: clamp(100 - ((100 - b.l) * 0.24), 82, 96),
-        position: a.position + span * 0.38,
-      });
-    }
-  }
-  bridged.push(points[points.length - 1]);
-  return bridged;
-}
-
-function velvetBridgeStops(points) {
-  if (points.length < 2) return points;
-  const bridged = [];
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const a = points[index];
-    const b = points[index + 1];
-    bridged.push(a);
-    const span = b.position - a.position;
-    const aColor = !(isBlackAnchor(a) || isWhiteAnchor(a)) && a.s > 20;
-    const bColor = !(isBlackAnchor(b) || isWhiteAnchor(b)) && b.s > 20;
-
-    if (aColor && isBlackAnchor(b)) {
-      bridged.push({
-        ...a,
-        id: `${a.id}-to-black-velvet`,
-        h: a.h,
-        s: clamp(a.s * 0.34, 8, 42),
-        l: clamp(a.l * 0.18, 6, 18),
-        position: a.position + span * 0.74,
-      });
-    } else if (isBlackAnchor(a) && bColor) {
-      bridged.push({
-        ...b,
-        id: `black-to-${b.id}-velvet`,
-        h: b.h,
-        s: clamp(b.s * 0.34, 8, 42),
-        l: clamp(b.l * 0.18, 6, 18),
-        position: a.position + span * 0.26,
-      });
-    } else if (aColor && isWhiteAnchor(b)) {
-      bridged.push({
-        ...a,
-        id: `${a.id}-to-white-velvet`,
-        h: a.h,
-        s: clamp(a.s * 0.26, 4, 34),
-        l: clamp(100 - ((100 - a.l) * 0.16), 88, 98),
-        position: a.position + span * 0.68,
-      });
-    } else if (isWhiteAnchor(a) && bColor) {
-      bridged.push({
-        ...b,
-        id: `white-to-${b.id}-velvet`,
-        h: b.h,
-        s: clamp(b.s * 0.26, 4, 34),
-        l: clamp(100 - ((100 - b.l) * 0.16), 88, 98),
-        position: a.position + span * 0.32,
-      });
-    }
-  }
-  bridged.push(points[points.length - 1]);
-  return bridged;
-}
-
-function silkBridgeStops(points) {
-  if (points.length < 2) return points;
-  const bridged = [];
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const a = points[index];
-    const b = points[index + 1];
-    bridged.push(a);
-    const span = b.position - a.position;
-    const aColor = !(isBlackAnchor(a) || isWhiteAnchor(a)) && a.s > 20;
-    const bColor = !(isBlackAnchor(b) || isWhiteAnchor(b)) && b.s > 20;
-    if (aColor && isBlackAnchor(b)) {
-      bridged.push({ ...a, id: `${a.id}-to-black-silk`, s: clamp(a.s * 0.22, 6, 36), l: clamp(a.l * 0.12, 4, 14), position: a.position + span * 0.78 });
-    } else if (isBlackAnchor(a) && bColor) {
-      bridged.push({ ...b, id: `black-to-${b.id}-silk`, s: clamp(b.s * 0.22, 6, 36), l: clamp(b.l * 0.12, 4, 14), position: a.position + span * 0.22 });
-    } else if (aColor && isWhiteAnchor(b)) {
-      bridged.push({ ...a, id: `${a.id}-to-white-silk`, s: clamp(a.s * 0.18, 2, 28), l: clamp(100 - ((100 - a.l) * 0.1), 92, 99), position: a.position + span * 0.72 });
-    } else if (isWhiteAnchor(a) && bColor) {
-      bridged.push({ ...b, id: `white-to-${b.id}-silk`, s: clamp(b.s * 0.18, 2, 28), l: clamp(100 - ((100 - b.l) * 0.1), 92, 99), position: a.position + span * 0.28 });
-    }
-  }
-  bridged.push(points[points.length - 1]);
-  return bridged;
-}
-
 function catmull(p0, p1, p2, p3, t) {
   const t2 = t * t;
   const t3 = t2 * t;
@@ -1103,7 +892,10 @@ function captureArchimedesJs(target, cfg = archimedesConfig) {
 
   let x = 0 | 0;
   let y = 65536 | 0; // 1.0
-  let rng = 1337 >>> 0;
+  // The dither PRNG seed. Fixed by default (1337) so static captures are
+  // reproducible; the live animation feeds a fresh seed each frame so the
+  // xorshift dither actually shivers instead of repeating the same pattern.
+  let rng = (cfg.seed >>> 0) || 1337;
   const raw = new Float64Array(n);
   let peak = 1e-9;
   let sampleIndex = 0;
@@ -1293,28 +1085,6 @@ function monotoneValue(points, x, key) {
     + ((t3 - t2) * span * m1);
 }
 
-function softenNeutralEdges(sample, points) {
-  const next = { ...sample };
-  const first = points[0];
-  const last = points[points.length - 1];
-
-  if (first && isBlackAnchor(first) && sample.position > first.position) {
-    const firstColor = points.find((point) => !isBlackAnchor(point));
-    const rampEnd = Math.min(24, Math.max(8, ((firstColor?.position ?? 24) - first.position) * 0.35));
-    const ramp = smoothStep((sample.position - first.position) / rampEnd);
-    next.s *= ramp;
-    next.l *= ramp;
-  }
-
-  if (last && isWhiteAnchor(last) && sample.position < last.position) {
-    const lastColor = [...points].reverse().find((point) => !isWhiteAnchor(point));
-    const rampStart = Math.max(76, Math.min(92, last.position - ((last.position - (lastColor?.position ?? 76)) * 0.35)));
-    next.s *= smoothStep((last.position - sample.position) / Math.max(8, last.position - rampStart));
-  }
-
-  return next;
-}
-
 function sampleStops(stops, sampleCount, invert = false, autoOrder = true, hueMode = "strict", lightnessMode = "bokeh") {
   const points = unwrapHues(stops, invert, autoOrder, hueMode);
   const count = clamp(Math.round(sampleCount), 2, 256);
@@ -1322,7 +1092,7 @@ function sampleStops(stops, sampleCount, invert = false, autoOrder = true, hueMo
   const samples = Array.from({ length: count }, (_, index) => {
     const position = count === 1 ? 0 : (index / (count - 1)) * 100;
     const h = valueAt(points, position, "uh");
-    const rawSample = hueMode === "velvet" || hueMode === "silk" ? {
+    const raw = hueMode === "velvet" || hueMode === "silk" ? {
       h: wrapHue(h),
       position,
       s: clamp(valueAt(points, position, "s"), 0, 100),
@@ -1333,15 +1103,6 @@ function sampleStops(stops, sampleCount, invert = false, autoOrder = true, hueMo
       s: clamp(valueAt(points, position, "s"), 0, 100),
       l: clamp(valueAt(points, position, "l"), 0, 100),
     });
-    const raw = softenNeutralEdges(rawSample, points);
-    const first = points[0];
-    const last = points[points.length - 1];
-    if (index === 0 && first && isBlackAnchor(first)) {
-      return { h: 0, s: 0, l: 0, position, color: "#000000" };
-    }
-    if (index === count - 1 && last && isWhiteAnchor(last)) {
-      return { h: 0, s: 0, l: 100, position, color: "#FFFFFF" };
-    }
     return {
       ...raw,
       color: hslToHex(raw.h, raw.s, raw.l),
@@ -1361,12 +1122,6 @@ function sampleStops(stops, sampleCount, invert = false, autoOrder = true, hueMo
 function gradientCss(angle, stops, sampleCount, invert = false, autoOrder = true, hueMode = "strict", lightnessMode = "bokeh") {
   const samples = sampleStops(stops, sampleCount, invert, autoOrder, hueMode, lightnessMode);
   const parts = samples.map((sample) => `${sample.color} ${sample.position.toFixed(1)}%`);
-  if (samples[0] && isBlackAnchor(samples[0])) {
-    parts.splice(1, 0, "#000000 1.2%");
-  }
-  if (samples[samples.length - 1] && isWhiteAnchor(samples[samples.length - 1])) {
-    parts.splice(parts.length - 1, 0, "#FFFFFF 98.8%");
-  }
   return `linear-gradient(${Math.round(angle)}deg, ${parts.join(", ")})`;
 }
 
@@ -1503,6 +1258,7 @@ export function mountGradientCurveWidget(host, options = {}) {
     archFreqHz: Number.isFinite(Number(options.archFreqHz)) ? clamp(Math.round(Number(options.archFreqHz)), 1, 64) : ARCHIMEDES_DEFAULTS.freqHz,
     archDitherBits: Number.isFinite(Number(options.archDitherBits)) ? clamp(Math.round(Number(options.archDitherBits)), 0, 31) : ARCHIMEDES_DEFAULTS.ditherBits,
     archTableSize: Number.isFinite(Number(options.archTableSize)) ? clamp(Math.round(Number(options.archTableSize)), 16, 512) : ARCHIMEDES_DEFAULTS.tableSize,
+    archFps: Number.isFinite(Number(options.archFps)) ? clamp(Math.round(Number(options.archFps)), 0, 60) : 12,
     hueMode: ["strict", "wide", "chroma", "smooth-natural", "velvet", "silk"].includes(options.hueMode) ? options.hueMode : "strict",
     lightnessMode: ["linear", "smooth", "gaussian", "filmic", "bokeh", "archimedes"].includes(options.lightnessMode) ? options.lightnessMode : "bokeh",
     previewMode: ["dot", "diagonal", "horizontal", "vertical", "square", "rectangle"].includes(options.previewMode) ? options.previewMode : "dot",
@@ -1612,6 +1368,7 @@ export function mountGradientCurveWidget(host, options = {}) {
             <label class="gcw-index-control"><span>Freq</span><input class="gcw-arch-freq" type="number" min="1" max="64" step="1" title="Oscillator frequency in Hz" /></label>
             <label class="gcw-index-control"><span>Dither</span><input class="gcw-arch-dither" type="number" min="0" max="31" step="1" title="Xorshift dither jitter mask (bits)" /></label>
             <label class="gcw-index-control"><span>Table</span><input class="gcw-arch-table" type="number" min="16" max="512" step="16" title="Captured wavetable resolution" /></label>
+            <label class="gcw-index-control"><span>FPS</span><input class="gcw-arch-fps" type="number" min="0" max="60" step="1" title="Live re-capture frame rate — 0 freezes the curve, higher values make the dither shimmer live" /></label>
           </div>
           <label class="gcw-toggle"><input class="gcw-invert" type="checkbox" /> Invert</label>
           <button class="gcw-copy" type="button">Copy CSS</button>
@@ -1636,6 +1393,7 @@ export function mountGradientCurveWidget(host, options = {}) {
   const archFreqInput = host.querySelector(".gcw-arch-freq");
   const archDitherInput = host.querySelector(".gcw-arch-dither");
   const archTableInput = host.querySelector(".gcw-arch-table");
+  const archFpsInput = host.querySelector(".gcw-arch-fps");
   const indexStrip = host.querySelector(".gcw-index-strip");
   const hueModeButtons = [...host.querySelectorAll(".gcw-hue-option")];
   const lightnessModeButtons = [...host.querySelectorAll(".gcw-lightness-option")];
@@ -1661,6 +1419,37 @@ export function mountGradientCurveWidget(host, options = {}) {
     ensureArchimedesTable(archConfig(), () => render());
     render();
     emit();
+    restartArchimedesAnimation();
+  };
+
+  // ---- Live Archimedes animation ------------------------------------------
+  // The dither PRNG is deterministic per seed, so a static capture never
+  // changes. To actually see the oscillator's noise floor shiver, we re-run the
+  // JS capture with a fresh seed on every animation frame (throttled to the
+  // requested FPS) and repaint. FPS 0 freezes the curve. Only runs while the
+  // Archimedes lightness mode is selected — no point animating an unused table.
+  let archAnimHandle = 0;
+  let archAnimSeed = 1337 >>> 0;
+  let archAnimLast = 0;
+  const stopArchimedesAnimation = () => {
+    if (archAnimHandle) cancelAnimationFrame(archAnimHandle);
+    archAnimHandle = 0;
+  };
+  const restartArchimedesAnimation = () => {
+    stopArchimedesAnimation();
+    if (state.archFps <= 0 || state.lightnessMode !== "archimedes") return;
+    const interval = 1000 / state.archFps;
+    archAnimLast = 0;
+    const tick = (now) => {
+      archAnimHandle = requestAnimationFrame(tick);
+      if (now - archAnimLast < interval) return;
+      archAnimLast = now;
+      // Advance the seed with a cheap LCG so each frame gets new dither noise.
+      archAnimSeed = (Math.imul(archAnimSeed, 1664525) + 1013904223) >>> 0;
+      captureArchimedesJs(archimedesTable, { ...archimedesConfig, seed: archAnimSeed });
+      render();
+    };
+    archAnimHandle = requestAnimationFrame(tick);
   };
   const packet = () => ({
     widget: "gradient-curve-widget",
@@ -1672,6 +1461,7 @@ export function mountGradientCurveWidget(host, options = {}) {
     archFreqHz: state.archFreqHz,
     archDitherBits: state.archDitherBits,
     archTableSize: state.archTableSize,
+    archFps: state.archFps,
     hueMode: state.hueMode,
     lightnessMode: state.lightnessMode,
     previewMode: state.previewMode,
@@ -2144,6 +1934,7 @@ export function mountGradientCurveWidget(host, options = {}) {
     archFreqInput.value = String(state.archFreqHz);
     archDitherInput.value = String(state.archDitherBits);
     archTableInput.value = String(state.archTableSize);
+    archFpsInput.value = String(state.archFps);
     hueModeButtons.forEach((button) => {
       button.dataset.active = String(button.dataset.hueMode === state.hueMode);
       button.setAttribute("aria-pressed", String(button.dataset.hueMode === state.hueMode));
@@ -2238,6 +2029,11 @@ export function mountGradientCurveWidget(host, options = {}) {
     min: 16, max: 512, step: 16,
     get: () => state.archTableSize, set: (v) => { state.archTableSize = v; },
     onChange: recaptureArchimedes,
+  });
+  makeDraggableNumber(archFpsInput, {
+    min: 0, max: 60,
+    get: () => state.archFps, set: (v) => { state.archFps = v; },
+    onChange: () => { restartArchimedesAnimation(); render(); emit(); },
   });
   makeDraggableNumber(indexCountInput, {
     min: 2, max: 256,
@@ -2439,6 +2235,7 @@ export function mountGradientCurveWidget(host, options = {}) {
       state.lightnessMode = ["linear", "smooth", "gaussian", "filmic", "bokeh", "archimedes"].includes(button.dataset.lightnessMode) ? button.dataset.lightnessMode : "bokeh";
       render();
       emit();
+      restartArchimedesAnimation();
     });
   });
   previewModeButtons.forEach((button) => {
@@ -2541,6 +2338,8 @@ export function mountGradientCurveWidget(host, options = {}) {
   commit();
   // Kick off the Archimedes capture (JS port now, real .wasm refines it async).
   ensureArchimedesTable(archConfig(), () => render());
+  // Start the live shimmer if the Archimedes lightness mode is already active.
+  restartArchimedesAnimation();
 
   return {
     setGradient(next = {}) {
@@ -2556,6 +2355,7 @@ export function mountGradientCurveWidget(host, options = {}) {
       if (archChanged) ensureArchimedesTable(archConfig());
       if (["wide", "strict", "chroma", "smooth-natural", "velvet", "silk"].includes(next.hueMode)) state.hueMode = next.hueMode;
       if (["linear", "smooth", "gaussian", "filmic", "bokeh", "archimedes"].includes(next.lightnessMode)) state.lightnessMode = next.lightnessMode;
+      if (Number.isFinite(Number(next.archFps))) state.archFps = clamp(Math.round(Number(next.archFps)), 0, 60);
       if (["dot", "diagonal", "horizontal", "vertical", "square", "rectangle"].includes(next.previewMode)) state.previewMode = next.previewMode;
       if (["start", "end"].includes(next.radialCenter)) state.radialCenter = next.radialCenter;
       state.gridMode = "off";
@@ -2578,11 +2378,13 @@ export function mountGradientCurveWidget(host, options = {}) {
         state.savedStops = next.savedStops.map((stop, index) => normalizeStop(stop, index, next.savedStops.length));
       }
       commit();
+      restartArchimedesAnimation();
     },
     getGradient() {
       return packet();
     },
     destroy() {
+      stopArchimedesAnimation();
       host.innerHTML = "";
     },
   };

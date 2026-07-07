@@ -14,6 +14,7 @@ const defaults = {
   archFreqHz: 8,
   archDitherBits: 7,
   archTableSize: 256,
+  archFps: 12,
   previewMode: "dot",
   radialCenter: "end",
   falloff: { leftEdge: 18, leftMid: 42, rightMid: 68, rightEdge: 100 },
@@ -56,7 +57,7 @@ const GradientCurveWidget = () => {
     const host = hostRef.current;
     if (!host) return;
 
-    mountGradientCurveWidget(host, {
+    const controller = mountGradientCurveWidget(host, {
       ...loadSettings(),
       onChange(packet: any) {
         localStorage.setItem(
@@ -72,6 +73,7 @@ const GradientCurveWidget = () => {
             archFreqHz: packet.archFreqHz,
             archDitherBits: packet.archDitherBits,
             archTableSize: packet.archTableSize,
+            archFps: packet.archFps,
             previewMode: packet.previewMode,
             radialCenter: packet.radialCenter,
             gridMode: packet.gridMode,
@@ -92,6 +94,7 @@ const GradientCurveWidget = () => {
     });
 
     return () => {
+      controller?.destroy?.();
       host.replaceChildren();
     };
   }, []);
