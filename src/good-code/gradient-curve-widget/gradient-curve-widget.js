@@ -2338,6 +2338,8 @@ export function mountGradientCurveWidget(host, options = {}) {
   commit();
   // Kick off the Archimedes capture (JS port now, real .wasm refines it async).
   ensureArchimedesTable(archConfig(), () => render());
+  // Start the live shimmer if the Archimedes lightness mode is already active.
+  restartArchimedesAnimation();
 
   return {
     setGradient(next = {}) {
