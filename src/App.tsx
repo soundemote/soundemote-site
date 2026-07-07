@@ -52,41 +52,25 @@ const App = () => (
         <Route path="/soemdsp-last-clock" element={<Navigate to="/last-clock" replace />} />
         <Route path="/sandbox" element={<SandboxPage />} />
         <Route path="/embed" element={<EmbedPage />} />
-        <Route
-          path="/reverb"
-          element={
-            <Index
-              sandboxFeature={{
-                route: "/reverb-live",
-                title: "🌊 reverb",
-                tagline: "A live, playable reverb patch — press play and dive in.",
-              }}
-            />
-          }
-        />
-        <Route path="/reverb-live" element={<SandboxPage staticPatchUrl="/patches/reverb.json" autostart />} />
-        <Route
-          path="/silentlydreaming"
-          element={<SandboxPage staticPatchUrl="/patches/silently-dreaming.json" autostart />}
-        />
-        <Route
-          path="/shootingstar-live"
-          element={<SandboxPage staticPatchUrl="/patches/shootingstar.json" autostart />}
-        />
 
-        {/* Wiki-style patch articles */}
-        <Route path="/analogbox" element={<PatchArticlePage slug="analogbox" />} />
-        <Route path="/aliasingwars" element={<PatchArticlePage slug="aliasingwars" />} />
-        <Route path="/shootingstar" element={<PatchArticlePage slug="shootingstar" />} />
-        <Route path="/sinewave" element={<PatchArticlePage slug="sinewave" />} />
-        <Route path="/dsf" element={<PatchArticlePage slug="dsf" />} />
-        <Route path="/polyblep" element={<PatchArticlePage slug="polyblep" />} />
-        <Route path="/surgeoscillator" element={<PatchArticlePage slug="surgeoscillator" />} />
-        <Route path="/phosphillator" element={<PatchArticlePage slug="phosphillator" />} />
-        <Route path="/rhythmandpitchgenerator" element={<PatchArticlePage slug="rhythmandpitchgenerator" />} />
-        <Route path="/flowerchildfilter" element={<PatchArticlePage slug="flowerchildfilter" />} />
-        <Route path="/robinschmidt" element={<PatchArticlePage slug="robinschmidt" />} />
-        <Route path="/rsmet" element={<PatchArticlePage slug="robinschmidt" />} />
+        {/* Patch routes: front page, hero sandbox loads the named patch. */}
+        <Route path="/reverb" element={<Index patchSlug="reverb" />} />
+        <Route path="/silentlydreaming" element={<Index patchSlug="silently-dreaming" />} />
+        <Route path="/shootingstar" element={<Index patchSlug="shootingstar" />} />
+
+        {/* Legacy patch-article slugs -> front page (wiki pages kept as
+            unreachable code in PatchArticlePage for now). */}
+        <Route path="/analogbox" element={<Index />} />
+        <Route path="/aliasingwars" element={<Index />} />
+        <Route path="/sinewave" element={<Index />} />
+        <Route path="/dsf" element={<Index />} />
+        <Route path="/polyblep" element={<Index />} />
+        <Route path="/surgeoscillator" element={<Index />} />
+        <Route path="/phosphillator" element={<Index />} />
+        <Route path="/rhythmandpitchgenerator" element={<Index featuredSlug="rhythmandpitchgenerator" />} />
+        <Route path="/flowerchildfilter" element={<Index />} />
+        <Route path="/robinschmidt" element={<Index />} />
+        <Route path="/rsmet" element={<Index />} />
 
         {/* Featured articles */}
         <Route path="/soemdsp-sandbox" element={<Navigate to="/analogbox" replace />} />
