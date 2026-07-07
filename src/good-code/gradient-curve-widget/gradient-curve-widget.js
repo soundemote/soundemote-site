@@ -1745,11 +1745,6 @@ export function mountGradientCurveWidget(host, options = {}) {
     const toList = stopList(toZone);
     const fromIndex = fromList.findIndex((stop) => stop.id === stopId);
     if (fromIndex < 0) return;
-    const targetStop = fromList[fromIndex];
-    if (toZone === "active" && applyExactAnchorPolicy(targetStop)) {
-      commit();
-      return;
-    }
     if (fromZone === "active" && toZone === "saved") {
       const remainingStops = fromList.filter((stop) => stop.id !== stopId);
       if (remainingStops.length < 2) return;
@@ -1760,46 +1755,6 @@ export function mountGradientCurveWidget(host, options = {}) {
     toList.splice(clamp(adjustedIndex, 0, toList.length), 0, stop);
     state.activeStopId = stop.id;
     commit();
-  }
-
-  function saveManualAnchors({ black = false, white = false } = {}) {
-    const keep = [];
-    const anchors = [];
-    for (const stop of state.stops) {
-      if ((black && isExactBlack(stop)) || (white && isExactWhite(stop))) {
-        anchors.push(stop);
-      } else {
-        keep.push(stop);
-      }
-    }
-    const outputCount = keep.length;
-    if (!anchors.length || outputCount < 2) return;
-    state.stops = keep;
-    for (const anchor of anchors) {
-      if (!state.savedStops.some((stop) => stop.id === anchor.id || stopColor(stop) === stopColor(anchor))) {
-        state.savedStops.push(anchor);
-      }
-    }
-    if (!state.stops.some((stop) => stop.id === state.activeStopId)) {
-      state.activeStopId = state.stops[0]?.id || "";
-    }
-  }
-
-  function promoteManualAnchors() {
-    // Auto black/white removed: exact black/white are ordinary stops now.
-  }
-
-  function applyExactAnchorPolicy(stop) {
-    // Auto black/white removed: no longer yank exact black/white out of the ramp.
-    return false;
-  }
-
-  function enforceExactAnchorPolicy() {
-    let changed = false;
-    for (const stop of [...state.stops]) {
-      changed = applyExactAnchorPolicy(stop) || changed;
-    }
-    return changed;
   }
 
   function addGradientColorFromHsl(hsl) {
@@ -1815,7 +1770,6 @@ export function mountGradientCurveWidget(host, options = {}) {
   function addColorAtInsertPoint(hex) {
     const insertIndex = clamp(state.addInsertIndex, 0, state.stops.length);
     const next = normalizeStop({ id: "", ...hexToHsl(hex) }, insertIndex, state.stops.length + 1);
-    if (applyExactAnchorPolicy(next)) return state.stops.find((stop) => stop.id === state.activeStopId) || next;
     state.stops.splice(insertIndex, 0, next);
     state.pendingAddStopId = next.id;
     state.activeStopId = next.id;
@@ -1828,7 +1782,6 @@ export function mountGradientCurveWidget(host, options = {}) {
     const pending = state.stops.find((stop) => stop.id === state.pendingAddStopId);
     if (pending) {
       Object.assign(pending, polishStop({ ...pending, ...hexToHsl(hex) }));
-      applyExactAnchorPolicy(pending);
       return;
     }
     addColorAtInsertPoint(hex);
