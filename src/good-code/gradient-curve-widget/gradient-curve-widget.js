@@ -1210,14 +1210,20 @@ function falloffPosition(position, falloff = {}) {
 }
 
 function outwardPreviewSamples(samples, falloff = {}, radialCenter = "start") {
-  const source = radialCenter === "end" ? [...samples].reverse() : samples;
+  // The falloff curve runs from the OUTER EDGE (curve start) inward to the
+  // CENTER (curve end). radialCenter chooses which gradient color sits at the
+  // center; the other color lands on the outer edge.
+  const source = radialCenter === "start" ? [...samples].reverse() : samples;
   const shaped = source.map((sample, index) => {
     const position = source.length <= 1 ? 0 : (index / (source.length - 1)) * 100;
-    return { ...sample, position: falloffPosition(position, falloff) };
+    // CSS radial position: 0% = center, 100% = edge. Curve start -> edge.
+    return { ...sample, position: 100 - falloffPosition(position, falloff) };
   });
-  const last = shaped[shaped.length - 1];
-  if (last && last.position < 100) {
-    shaped.push({ ...last, position: 100 });
+  // Reorder ascending (center 0% -> edge 100%) for a valid CSS gradient.
+  shaped.reverse();
+  const first = shaped[0];
+  if (first && first.position > 0) {
+    shaped.unshift({ ...first, position: 0 });
   }
   return shaped;
 }
