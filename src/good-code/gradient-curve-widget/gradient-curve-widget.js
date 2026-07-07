@@ -759,14 +759,6 @@ function stopColor(stop) {
   return hslToHex(stop.h, stop.s, stop.l);
 }
 
-function isExactBlack(stop) {
-  return stopColor(stop) === "#000000";
-}
-
-function isExactWhite(stop) {
-  return stopColor(stop) === "#FFFFFF";
-}
-
 function isBlackAnchor(stop) {
   return stop.s <= 8 && stop.l <= 6;
 }
