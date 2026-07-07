@@ -16,7 +16,9 @@
 // precision straight out of the engine's own clock.
 //
 
-#include <cstdint>
+typedef int int32_t;
+typedef unsigned int uint32_t;
+typedef long long int64_t;
 // Named for Archimedes, who first pinned down pi by averaging polygons -- this
 // does the same trick with dithered clock steps instead of polygon edges.
 //
