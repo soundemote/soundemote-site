@@ -14,6 +14,7 @@ const defaults = {
   archFreqHz: 8,
   archDitherBits: 7,
   archTableSize: 256,
+  archFps: 12,
   previewMode: "dot",
   radialCenter: "end",
   falloff: { leftEdge: 18, leftMid: 42, rightMid: 68, rightEdge: 100 },
