@@ -986,6 +986,121 @@ function smootherStep(value) {
   return t * t * t * (t * (t * 6 - 15) + 10);
 }
 
+// ---------------------------------------------------------------------------
+// Archimedes curve capture
+//
+// "Generate a curve over time, capture it, apply it." We run our Archimedes
+// oscillator (the same dithered fixed-point symplectic engine as
+// native_modules/archimedes/archimedes.cpp) forward in time and capture a
+// quarter cycle of its sine output into a normalized [0,1] wavetable. The
+// engine's xorshift dither leaves a faint shimmer on the curve, which is
+// exactly the character we want baked into the Superdot's falloff.
+//
+// A synchronous JS port fills the table immediately so rendering never blocks;
+// the real compiled .wasm is then loaded asynchronously and overwrites the
+// same table in place for full authenticity.
+// ---------------------------------------------------------------------------
+const ARCHIMEDES_TABLE_SIZE = 256;
+const archimedesTable = new Float64Array(ARCHIMEDES_TABLE_SIZE);
+
+// Faithful JS port of archimedes.cpp: xorshift dither + symplectic Euler in
+// 16.16 fixed point. Captures a rising quarter-cycle of the sine state.
+function captureArchimedesJs(target) {
+  const n = target.length;
+  const dtShift = 14; // rate = 1 << 14 = 16384
+  const rate = 1 << dtShift;
+  const freqHz = 8;
+  const ditherBits = 7;
+  const twoPi = 6.283185307179586;
+  const phaseInc = Math.trunc(((twoPi * freqHz) / rate) * 65536.0) | 0;
+  const quarterSteps = Math.max(n, Math.floor(rate / freqHz / 4));
+  const stride = quarterSteps / (n - 1);
+
+  let x = 0 | 0;
+  let y = 65536 | 0; // 1.0
+  let rng = 1337 >>> 0;
+  const raw = new Float64Array(n);
+  let peak = 1e-9;
+  let sampleIndex = 0;
+  let nextAt = 0;
+
+  for (let step = 0; sampleIndex < n; step++) {
+    if (step >= nextAt) {
+      const v = -x / 65536.0; // engine produces -sin; negate for a rising 0->1 curve
+      raw[sampleIndex] = v;
+      if (v > peak) peak = v;
+      sampleIndex++;
+      nextAt = Math.round(sampleIndex * stride);
+    }
+    // xorshift PRNG
+    rng ^= rng << 13; rng >>>= 0;
+    rng ^= rng >>> 17;
+    rng ^= rng << 5; rng >>>= 0;
+    const dither = ((rng & ditherBits) - (ditherBits >> 1)) | 0;
+    // symplectic Euler step
+    x = (x - ((Math.trunc((y * phaseInc) / 65536) | 0) + dither)) | 0;
+    y = (y + (Math.trunc((x * phaseInc) / 65536) | 0)) | 0;
+  }
+
+  for (let i = 0; i < n; i++) {
+    target[i] = clamp(raw[i] / peak, 0, 1);
+  }
+  target[0] = 0;
+  target[n - 1] = 1;
+}
+
+// Capture the same quarter-cycle from the real compiled module.
+function captureArchimedesFromWasm(exports, target) {
+  const n = target.length;
+  const e = exports;
+  const h = e.soemdsp_archimedes_create();
+  if (!h) return false;
+  const dtShift = 14;
+  const freqHz = 8;
+  const ditherBits = 7;
+  e.soemdsp_archimedes_set_profile(h, dtShift);
+  e.soemdsp_archimedes_set_frequency(h, freqHz);
+  e.soemdsp_archimedes_reset(h);
+  const quarterSteps = Math.max(n, Math.floor((1 << dtShift) / freqHz / 4));
+  const stride = quarterSteps / (n - 1);
+  const raw = new Float64Array(n);
+  let peak = 1e-9;
+  let sampleIndex = 0;
+  let nextAt = 0;
+  for (let step = 0; sampleIndex < n; step++) {
+    if (step >= nextAt) {
+      const v = -e.soemdsp_archimedes_sine(h); // negate: rising 0->1 quarter cycle
+      raw[sampleIndex] = v;
+      if (v > peak) peak = v;
+      sampleIndex++;
+      nextAt = Math.round(sampleIndex * stride);
+    }
+    e.soemdsp_archimedes_step(h, ditherBits);
+  }
+  if (e.soemdsp_archimedes_destroy) e.soemdsp_archimedes_destroy(h);
+  for (let i = 0; i < n; i++) target[i] = clamp(raw[i] / peak, 0, 1);
+  target[0] = 0;
+  target[n - 1] = 1;
+  return true;
+}
+
+let archimedesWasmRequested = false;
+function ensureArchimedesTable(onReady) {
+  // Synchronous JS-port capture is always available first.
+  captureArchimedesJs(archimedesTable);
+  if (archimedesWasmRequested || typeof fetch !== "function" || typeof WebAssembly === "undefined") return;
+  archimedesWasmRequested = true;
+  const url = "/soemdsp-sandbox/native_modules/archimedes/archimedes.wasm";
+  const load = WebAssembly.instantiateStreaming
+    ? WebAssembly.instantiateStreaming(fetch(url), {})
+    : fetch(url).then((r) => r.arrayBuffer()).then((b) => WebAssembly.instantiate(b, {}));
+  load
+    .then(({ instance }) => {
+      if (captureArchimedesFromWasm(instance.exports, archimedesTable) && typeof onReady === "function") onReady();
+    })
+    .catch(() => { /* JS-port table already in place */ });
+}
+
 function lightnessCurveValue(value, mode = "bokeh") {
   const t = clamp(value, 0, 1);
   if (mode === "linear") return t;
@@ -1002,6 +1117,15 @@ function lightnessCurveValue(value, mode = "bokeh") {
   }
   if (mode === "bokeh") {
     return Math.pow(t, 2.2);
+  }
+  if (mode === "archimedes") {
+    const n = archimedesTable.length;
+    const pos = t * (n - 1);
+    const i = Math.floor(pos);
+    const f = pos - i;
+    const a = archimedesTable[i];
+    const b = archimedesTable[Math.min(n - 1, i + 1)];
+    return clamp(a + (b - a) * f, 0, 1);
   }
   return t;
 }
@@ -1289,7 +1413,7 @@ export function mountGradientCurveWidget(host, options = {}) {
     autoBlack: options.autoBlack === true || options.autoBlackWhite === true,
     autoWhite: options.autoWhite === true || options.autoBlackWhite === true,
     hueMode: ["strict", "wide", "chroma", "smooth-natural", "velvet", "silk"].includes(options.hueMode) ? options.hueMode : "strict",
-    lightnessMode: ["linear", "smooth", "gaussian", "filmic", "bokeh"].includes(options.lightnessMode) ? options.lightnessMode : "bokeh",
+    lightnessMode: ["linear", "smooth", "gaussian", "filmic", "bokeh", "archimedes"].includes(options.lightnessMode) ? options.lightnessMode : "bokeh",
     previewMode: ["dot", "diagonal", "horizontal", "vertical", "square", "rectangle"].includes(options.previewMode) ? options.previewMode : "dot",
     radialCenter: ["start", "end"].includes(options.radialCenter) ? options.radialCenter : "end",
     gridMode: "off",
@@ -1368,6 +1492,7 @@ export function mountGradientCurveWidget(host, options = {}) {
             <button class="gcw-lightness-option" type="button" data-lightness-mode="gaussian">Gaussian</button>
             <button class="gcw-lightness-option" type="button" data-lightness-mode="filmic">Filmic</button>
             <button class="gcw-lightness-option" type="button" data-lightness-mode="bokeh">Bokeh</button>
+            <button class="gcw-lightness-option" type="button" data-lightness-mode="archimedes">Archimedes</button>
           </div>
           <div class="gcw-preview-segments" role="group" aria-label="Gradient preview mode">
             <span>Show</span>
@@ -2253,7 +2378,7 @@ export function mountGradientCurveWidget(host, options = {}) {
   });
   lightnessModeButtons.forEach((button) => {
     button.addEventListener("click", () => {
-      state.lightnessMode = ["linear", "smooth", "gaussian", "filmic", "bokeh"].includes(button.dataset.lightnessMode) ? button.dataset.lightnessMode : "bokeh";
+      state.lightnessMode = ["linear", "smooth", "gaussian", "filmic", "bokeh", "archimedes"].includes(button.dataset.lightnessMode) ? button.dataset.lightnessMode : "bokeh";
       render();
       emit();
     });
@@ -2357,6 +2482,8 @@ export function mountGradientCurveWidget(host, options = {}) {
   });
   enforceExactAnchorPolicy();
   commit();
+  // Kick off the Archimedes capture (JS port now, real .wasm refines it async).
+  ensureArchimedesTable(() => render());
 
   return {
     setGradient(next = {}) {
@@ -2371,7 +2498,7 @@ export function mountGradientCurveWidget(host, options = {}) {
         state.autoWhite = next.autoBlackWhite;
       }
       if (["wide", "strict", "chroma", "smooth-natural", "velvet", "silk"].includes(next.hueMode)) state.hueMode = next.hueMode;
-      if (["linear", "smooth", "gaussian", "filmic", "bokeh"].includes(next.lightnessMode)) state.lightnessMode = next.lightnessMode;
+      if (["linear", "smooth", "gaussian", "filmic", "bokeh", "archimedes"].includes(next.lightnessMode)) state.lightnessMode = next.lightnessMode;
       if (["dot", "diagonal", "horizontal", "vertical", "square", "rectangle"].includes(next.previewMode)) state.previewMode = next.previewMode;
       if (["start", "end"].includes(next.radialCenter)) state.radialCenter = next.radialCenter;
       state.gridMode = "off";
