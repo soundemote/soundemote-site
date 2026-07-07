@@ -1609,15 +1609,28 @@ export function mountGradientCurveWidget(host, options = {}) {
 
   const activeStop = () => state.stops.find((stop) => stop.id === state.activeStopId) || state.stops[0];
   const gradientInvert = () => state.invert;
+  const archConfig = () => ({
+    dtShift: state.archDtShift,
+    freqHz: state.archFreqHz,
+    ditherBits: state.archDitherBits,
+    tableSize: state.archTableSize,
+  });
+  // Re-capture the Archimedes wavetable for the current params, then repaint.
+  const recaptureArchimedes = () => {
+    ensureArchimedesTable(archConfig(), () => render());
+    render();
+    emit();
+  };
   const packet = () => ({
     widget: "gradient-curve-widget",
     angle: state.angle,
     invert: state.invert,
     autoOrder: state.autoOrder,
     autoBright: state.autoBright,
-    autoBlack: state.autoBlack,
-    autoWhite: state.autoWhite,
-    autoBlackWhite: state.autoBlack && state.autoWhite,
+    archDtShift: state.archDtShift,
+    archFreqHz: state.archFreqHz,
+    archDitherBits: state.archDitherBits,
+    archTableSize: state.archTableSize,
     hueMode: state.hueMode,
     lightnessMode: state.lightnessMode,
     previewMode: state.previewMode,
