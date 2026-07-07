@@ -2482,6 +2482,8 @@ export function mountGradientCurveWidget(host, options = {}) {
   });
   enforceExactAnchorPolicy();
   commit();
+  // Kick off the Archimedes capture (JS port now, real .wasm refines it async).
+  ensureArchimedesTable(() => render());
 
   return {
     setGradient(next = {}) {
