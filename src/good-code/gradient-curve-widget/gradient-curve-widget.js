@@ -1413,7 +1413,7 @@ export function mountGradientCurveWidget(host, options = {}) {
     autoBlack: options.autoBlack === true || options.autoBlackWhite === true,
     autoWhite: options.autoWhite === true || options.autoBlackWhite === true,
     hueMode: ["strict", "wide", "chroma", "smooth-natural", "velvet", "silk"].includes(options.hueMode) ? options.hueMode : "strict",
-    lightnessMode: ["linear", "smooth", "gaussian", "filmic", "bokeh"].includes(options.lightnessMode) ? options.lightnessMode : "bokeh",
+    lightnessMode: ["linear", "smooth", "gaussian", "filmic", "bokeh", "archimedes"].includes(options.lightnessMode) ? options.lightnessMode : "bokeh",
     previewMode: ["dot", "diagonal", "horizontal", "vertical", "square", "rectangle"].includes(options.previewMode) ? options.previewMode : "dot",
     radialCenter: ["start", "end"].includes(options.radialCenter) ? options.radialCenter : "end",
     gridMode: "off",
