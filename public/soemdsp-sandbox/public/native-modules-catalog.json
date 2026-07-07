@@ -274,7 +274,7 @@
       "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/blit/blit.cpp",
       "wasm": "native_modules/blit/blit.wasm",
       "wasmUrl": "native_modules/blit/blit.wasm",
-      "wasmAvailable": false
+      "wasmAvailable": true
     },
     {
       "name": "resonator_filter",
