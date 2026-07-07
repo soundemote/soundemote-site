@@ -166,6 +166,7 @@ const RepositoryCard = ({ repo, article, isSelected, onActivate }: RepositoryCar
 };
 
 export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => {
+    const navigate = useNavigate();
     const handleSelect = (slug: string) => {
         onSelectArticle(slug);
         scrollToFeaturedArticle();
@@ -211,7 +212,11 @@ export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => {
                                     article={article}
                                     isSelected={isSelected}
                                     onActivate={() =>
-                                        article ? handleSelect(article.slug) : window.open(repo.href, "_blank", "noopener,noreferrer")
+                                        article
+                                            ? handleSelect(article.slug)
+                                            : repo.route
+                                              ? navigate(repo.route)
+                                              : window.open(repo.href, "_blank", "noopener,noreferrer")
                                     }
                                 />
                             );
