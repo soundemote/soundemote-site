@@ -922,6 +922,23 @@ function captureArchimedesJs(target, cfg = archimedesConfig) {
   for (let i = 0; i < n; i++) {
     target[i] = clamp(raw[i] / peak, 0, 1);
   }
+  // Stochastic-resonance noise floor. The dither injected into the integrator
+  // self-corrects and only perturbs the normalized curve by ~0.1%, which is
+  // invisible. To actually *see* the oscillator shiver (and to give the live
+  // animation something to animate), we surface that noise floor as a visible
+  // per-sample jitter whose amplitude tracks the Dither control (0 = frozen,
+  // clean curve). We keep advancing the same xorshift stream so the shimmer
+  // stays deterministic per seed and re-rolls fresh each animation frame.
+  const noiseAmp = Math.min(0.25, ditherBits * 0.01);
+  if (noiseAmp > 0) {
+    for (let i = 1; i < n - 1; i++) {
+      rng ^= rng << 13; rng >>>= 0;
+      rng ^= rng >>> 17;
+      rng ^= rng << 5; rng >>>= 0;
+      const jitter = ((rng >>> 8) / 0xffffff - 0.5) * noiseAmp;
+      target[i] = clamp(target[i] + jitter, 0, 1);
+    }
+  }
   target[0] = 0;
   target[n - 1] = 1;
 }
