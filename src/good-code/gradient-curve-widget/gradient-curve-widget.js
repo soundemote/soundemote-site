@@ -1496,9 +1496,6 @@ export function mountGradientCurveWidget(host, options = {}) {
     invert: options.invert === true,
     autoOrder: options.autoOrder === true,
     autoBright: options.autoBright === true,
-    // Auto black/white were removed in favor of permanent saved swatches.
-    autoBlack: false,
-    autoWhite: false,
     archDtShift: Number.isFinite(Number(options.archDtShift)) ? clamp(Math.round(Number(options.archDtShift)), 8, 18) : ARCHIMEDES_DEFAULTS.dtShift,
     archFreqHz: Number.isFinite(Number(options.archFreqHz)) ? clamp(Math.round(Number(options.archFreqHz)), 1, 64) : ARCHIMEDES_DEFAULTS.freqHz,
     archDitherBits: Number.isFinite(Number(options.archDitherBits)) ? clamp(Math.round(Number(options.archDitherBits)), 0, 31) : ARCHIMEDES_DEFAULTS.ditherBits,
