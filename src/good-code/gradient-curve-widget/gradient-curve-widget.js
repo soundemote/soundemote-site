@@ -120,6 +120,8 @@ const css = `
 
   .gcw-zone[data-drop-zone="saved"] {
     grid-area: saved;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 62px;
     max-height: 120px;
   }
 
@@ -400,7 +402,8 @@ const css = `
   }
 
   .gcw-arch-params .gcw-index-control input {
-    width: 5ch;
+    padding: 0 4px;
+    width: 5.5ch;
   }
 
   .gcw-actions button {
