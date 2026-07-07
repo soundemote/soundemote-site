@@ -2235,6 +2235,7 @@ export function mountGradientCurveWidget(host, options = {}) {
       state.lightnessMode = ["linear", "smooth", "gaussian", "filmic", "bokeh", "archimedes"].includes(button.dataset.lightnessMode) ? button.dataset.lightnessMode : "bokeh";
       render();
       emit();
+      restartArchimedesAnimation();
     });
   });
   previewModeButtons.forEach((button) => {
