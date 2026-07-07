@@ -372,6 +372,36 @@ const css = `
     appearance: textfield;
   }
 
+  .gcw-arch-params {
+    align-items: center;
+    background: rgba(243, 240, 230, 0.045);
+    border: 1px solid var(--gcw-border);
+    border-radius: 999px;
+    color: var(--gcw-muted);
+    display: inline-flex;
+    flex-wrap: wrap;
+    font-size: min(1.45cqh, 10px);
+    gap: min(0.45cqw, 5px);
+    min-height: min(2.8cqh, 21px);
+    padding: 0 min(0.55cqw, 6px);
+  }
+
+  .gcw-arch-params > span {
+    color: var(--gcw-ink);
+    font-weight: 800;
+  }
+
+  .gcw-arch-params .gcw-index-control {
+    background: transparent;
+    border: none;
+    min-height: 0;
+    padding: 0;
+  }
+
+  .gcw-arch-params .gcw-index-control input {
+    width: 5ch;
+  }
+
   .gcw-actions button {
     background: rgba(243, 240, 230, 0.06);
     border: 1px solid var(--gcw-border);
