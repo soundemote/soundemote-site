@@ -37,8 +37,8 @@ const css = `
       "saved"
       "actions";
     grid-template-rows: min(46vh, 420px) auto auto auto auto auto auto;
+    height: auto;
     min-height: 100%;
-    min-height: 0;
     padding: 0;
   }
 
