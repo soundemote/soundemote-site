@@ -76,7 +76,7 @@ const css = `
     max-width: 96%;
     transform: translate(calc(-50% + var(--gcw-preview-pan-x, 0px)), calc(-50% + var(--gcw-preview-pan-y, 0px))) scale(var(--gcw-preview-zoom, 1));
     transform-origin: center;
-    width: min(72cqw, 84cqh);
+    width: min(72cqw, 460px);
   }
 
   .gcw-preview[data-preview-mode="dot"],
@@ -93,7 +93,7 @@ const css = `
     max-width: 90%;
     transform: translate(calc(-50% + var(--gcw-preview-pan-x, 0px)), calc(-50% + var(--gcw-preview-pan-y, 0px))) scale(var(--gcw-preview-zoom, 1));
     transform-origin: center;
-    width: min(52cqw, 52cqh);
+    width: min(52cqw, 380px);
   }
 
   .gcw-preview[data-preview-mode="rectangle"]::before {
