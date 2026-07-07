@@ -1461,6 +1461,7 @@ export function mountGradientCurveWidget(host, options = {}) {
     archFreqHz: state.archFreqHz,
     archDitherBits: state.archDitherBits,
     archTableSize: state.archTableSize,
+    archFps: state.archFps,
     hueMode: state.hueMode,
     lightnessMode: state.lightnessMode,
     previewMode: state.previewMode,
