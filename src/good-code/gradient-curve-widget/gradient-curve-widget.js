@@ -662,6 +662,18 @@ function ensureStyles() {
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 const wrapHue = (hue) => ((hue % 360) + 360) % 360;
 
+// Every stop needs a globally unique id. Semantic ids like "black"/"red" used
+// to be reused across the gradient list and the saved list, which made
+// drag-and-drop and selection collide (dragging the saved black hit the
+// gradient black). Always mint a fresh id and keep the caller's hint only as a
+// readable prefix.
+let stopIdCounter = 0;
+function uniqueStopId(hint) {
+  stopIdCounter += 1;
+  const prefix = typeof hint === "string" && hint ? hint.replace(/[^a-z0-9]+/gi, "-") : "stop";
+  return `${prefix}-${stopIdCounter}`;
+}
+
 function hslToHex(h, s, l) {
   const hue = wrapHue(h) / 360;
   const sat = clamp(s, 0, 100) / 100;
@@ -704,7 +716,7 @@ function normalizeStop(stop, index, count) {
   const color = /^#[0-9a-f]{6}$/i.test(stop?.color || "") ? stop.color.toUpperCase() : fallbackColor;
   const hsl = stop?.hsl || hexToHsl(color);
   return polishStop({
-    id: stop?.id || `stop-${Date.now()}-${index}`,
+    id: uniqueStopId(stop?.id),
     h: wrapHue(Number.isFinite(Number(stop?.h)) ? Number(stop.h) : hsl.h),
     s: clamp(Number.isFinite(Number(stop?.s)) ? Number(stop.s) : hsl.s, 0, 100),
     l: clamp(Number.isFinite(Number(stop?.l)) ? Number(stop.l) : hsl.l, 0, 100),
