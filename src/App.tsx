@@ -52,9 +52,15 @@ const App = () => (
           <Route path="/sandbox" element={<SandboxPage />} />
           <Route path="/embed" element={<EmbedPage />} />
           <Route path="/reverb" element={<SandboxPage staticPatchUrl="/patches/silently-dreaming.json" autostart />} />
-          <Route path="/silentlydreaming" element={<SandboxPage staticPatchUrl="/patches/silently-dreaming.json" autostart />} />
+          <Route
+            path="/silentlydreaming"
+            element={<SandboxPage staticPatchUrl="/patches/silently-dreaming.json" autostart />}
+          />
           {/* Embed-safe playable sandbox for shooting star (/shootingstar is the wiki article) */}
-          <Route path="/shootingstar-live" element={<SandboxPage staticPatchUrl="/patches/shootingstar.json" autostart />} />
+          <Route
+            path="/shootingstar-live"
+            element={<SandboxPage staticPatchUrl="/patches/shootingstar.json" autostart />}
+          />
           {/* Wiki-style patch articles: GitHub README meets Wikipedia */}
           <Route path="/analogbox" element={<PatchArticlePage slug="analogbox" />} />
           <Route path="/aliasingwars" element={<PatchArticlePage slug="aliasingwars" />} />
@@ -83,10 +89,7 @@ const App = () => (
           <Route path="/efficientpatchsystem" element={<Navigate to="/efficient-patch-system" replace />} />
           <Route path="/white-wire" element={<FeaturedArticlePage slug="white-wire" />} />
           <Route path="/whitewire" element={<Navigate to="/white-wire" replace />} />
-          <Route
-            path="/rhythm-and-pitch-generator"
-            element={<FeaturedArticlePage slug="rhythmandpitchgenerator" />}
-          />
+          <Route path="/rhythm-and-pitch-generator" element={<FeaturedArticlePage slug="rhythmandpitchgenerator" />} />
           <Route path="/vactrols" element={<FeaturedArticlePage slug="vactrols" />} />
           <Route path="/jerobeam-modules" element={<FeaturedArticlePage slug="jerobeam-modules" />} />
           <Route path="/jerobeammodules" element={<Navigate to="/jerobeam-modules" replace />} />
