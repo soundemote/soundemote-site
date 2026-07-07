@@ -608,6 +608,48 @@ const css = `
     z-index: 1;
   }
 
+  /* Preset gradient buttons -- one-click starting palettes. */
+  .gcw-presets {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    grid-area: presets;
+  }
+
+  .gcw-presets > span {
+    color: var(--gcw-muted);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  .gcw-preset {
+    align-items: center;
+    border: 1px solid var(--gcw-border);
+    border-radius: 6px;
+    color: var(--gcw-ink);
+    cursor: pointer;
+    display: inline-flex;
+    font: inherit;
+    font-size: 10px;
+    gap: 6px;
+    min-height: 24px;
+    padding: 0 8px;
+  }
+
+  .gcw-preset:hover {
+    border-color: var(--gcw-accent);
+  }
+
+  .gcw-preset-swatch {
+    border-radius: 999px;
+    box-shadow: inset 0 0 0 1px rgba(18, 20, 15, 0.6);
+    height: 14px;
+    width: 14px;
+  }
+
 `; 
 
 function ensureStyles() {
