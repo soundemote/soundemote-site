@@ -2263,60 +2263,101 @@ export function mountGradientCurveWidget(host, options = {}) {
     state.autoBright = autoBrightInput.checked;
     commit();
   });
-  archDtShiftInput.addEventListener("change", () => {
-    state.archDtShift = clamp(Math.round(Number(archDtShiftInput.value) || state.archDtShift), 8, 18);
-    recaptureArchimedes();
-  });
-  archFreqInput.addEventListener("change", () => {
-    state.archFreqHz = clamp(Math.round(Number(archFreqInput.value) || state.archFreqHz), 1, 64);
-    recaptureArchimedes();
-  });
-  archDitherInput.addEventListener("change", () => {
-    state.archDitherBits = clamp(Math.round(Number(archDitherInput.value)), 0, 31);
-    recaptureArchimedes();
-  });
-  archTableInput.addEventListener("change", () => {
-    state.archTableSize = clamp(Math.round(Number(archTableInput.value) || state.archTableSize), 16, 512);
-    recaptureArchimedes();
-  });
-  let indexDrag = null;
-  indexCountInput.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0) return;
-    indexDrag = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      startValue: state.sampleCount,
+  // Generic "scrub to adjust" behaviour for numeric inputs: drag left/right
+  // (or up/down) to change the value, or type a value and blur to set it
+  // exactly. Hold Shift while dragging for a slower/finer adjustment. This
+  // replaces the per-input drag handlers that were duplicated per parameter.
+  function makeDraggableNumber(input, { min, max, step = 1, get, set, onChange }) {
+    let drag = null;
+    const apply = (rawValue) => {
+      const snapped = clamp(Math.round(rawValue / step) * step, min, max);
+      if (snapped === get()) return;
+      set(snapped);
+      onChange();
     };
-    indexCountInput.setPointerCapture(event.pointerId);
-    event.preventDefault();
+    input.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, startValue: get() };
+      input.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    });
+    input.addEventListener("pointermove", (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      const travel = (event.clientX - drag.startX) + (drag.startY - event.clientY);
+      const pixelsPerStep = event.shiftKey ? 24 : 4;
+      apply(drag.startValue + Math.round(travel / pixelsPerStep) * step);
+    });
+    const end = (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      if (input.hasPointerCapture?.(event.pointerId)) input.releasePointerCapture(event.pointerId);
+      drag = null;
+    };
+    input.addEventListener("pointerup", end);
+    input.addEventListener("pointercancel", () => { drag = null; });
+    input.addEventListener("change", () => {
+      const parsed = Number(input.value);
+      apply(Number.isFinite(parsed) ? parsed : get());
+    });
+  }
+
+  makeDraggableNumber(archDtShiftInput, {
+    min: 8, max: 18,
+    get: () => state.archDtShift, set: (v) => { state.archDtShift = v; },
+    onChange: recaptureArchimedes,
   });
-  indexCountInput.addEventListener("pointermove", (event) => {
-    if (!indexDrag || event.pointerId !== indexDrag.pointerId) return;
-    const dx = event.clientX - indexDrag.startX;
-    const dy = indexDrag.startY - event.clientY;
-    const pixelsPerIndex = event.shiftKey ? 24 : 4;
-    const delta = Math.round((dx + dy) / pixelsPerIndex);
-    const next = clamp(indexDrag.startValue + delta, 2, 256);
-    if (next === state.sampleCount) return;
-    state.sampleCount = next;
-    state.sampledIndex = -1;
-    render();
-    emit();
+  makeDraggableNumber(archFreqInput, {
+    min: 1, max: 64,
+    get: () => state.archFreqHz, set: (v) => { state.archFreqHz = v; },
+    onChange: recaptureArchimedes,
   });
-  indexCountInput.addEventListener("pointerup", (event) => {
-    if (!indexDrag || event.pointerId !== indexDrag.pointerId) return;
-    indexCountInput.releasePointerCapture(event.pointerId);
-    indexDrag = null;
+  makeDraggableNumber(archDitherInput, {
+    min: 0, max: 31,
+    get: () => state.archDitherBits, set: (v) => { state.archDitherBits = v; },
+    onChange: recaptureArchimedes,
   });
-  indexCountInput.addEventListener("pointercancel", () => {
-    indexDrag = null;
+  makeDraggableNumber(archTableInput, {
+    min: 16, max: 512, step: 16,
+    get: () => state.archTableSize, set: (v) => { state.archTableSize = v; },
+    onChange: recaptureArchimedes,
   });
-  indexCountInput.addEventListener("change", () => {
-    state.sampleCount = clamp(Math.round(Number(indexCountInput.value) || state.sampleCount), 2, 256);
-    state.sampledIndex = -1;
-    render();
-    emit();
+  makeDraggableNumber(indexCountInput, {
+    min: 2, max: 256,
+    get: () => state.sampleCount,
+    set: (v) => { state.sampleCount = v; state.sampledIndex = -1; },
+    onChange: () => { render(); emit(); },
+  });
+
+  // One-click starting palettes. Each applies its colors as the active ramp.
+  const GRADIENT_PRESETS = [
+    { label: "Ember", colors: ["#000000", "#7A1500", "#FF6B1A", "#FFE08A"] },
+    { label: "Ocean", colors: ["#001B2E", "#0F5E7A", "#2EC4B6", "#CFF9F3"] },
+    { label: "Neon", colors: ["#12002E", "#7A00FF", "#FF00A8", "#00E5FF"] },
+    { label: "Sunset", colors: ["#2B0A3D", "#B5179E", "#F72585", "#FFB703"] },
+    { label: "Forest", colors: ["#04130B", "#1B5E20", "#66BB6A", "#E8F5E9"] },
+    { label: "Mono", colors: ["#000000", "#555555", "#AAAAAA", "#FFFFFF"] },
+  ];
+  const presetsRow = host.querySelector(".gcw-presets");
+  GRADIENT_PRESETS.forEach((preset) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "gcw-preset";
+    button.title = `Apply ${preset.label} preset`;
+    const swatch = document.createElement("span");
+    swatch.className = "gcw-preset-swatch";
+    swatch.style.background = `linear-gradient(90deg, ${preset.colors.join(", ")})`;
+    const label = document.createElement("span");
+    label.textContent = preset.label;
+    button.append(swatch, label);
+    button.addEventListener("click", () => {
+      const key = preset.label.toLowerCase();
+      state.stops = preset.colors.map((color, index) =>
+        normalizeStop({ id: `${key}-${index}`, color }, index, preset.colors.length));
+      state.activeStopId = state.stops[0].id;
+      state.addInsertIndex = state.stops.length;
+      state.pendingAddStopId = "";
+      commit();
+    });
+    presetsRow.append(button);
   });
   function setFalloffValue(id, value, options = {}) {
     const next = { ...state.falloff };
