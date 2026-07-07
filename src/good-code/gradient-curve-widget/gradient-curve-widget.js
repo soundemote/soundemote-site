@@ -1026,7 +1026,7 @@ function captureArchimedesJs(target) {
 
   for (let step = 0; sampleIndex < n; step++) {
     if (step >= nextAt) {
-      const v = x / 65536.0;
+      const v = -x / 65536.0; // engine produces -sin; negate for a rising 0->1 curve
       raw[sampleIndex] = v;
       if (v > peak) peak = v;
       sampleIndex++;
@@ -1069,7 +1069,7 @@ function captureArchimedesFromWasm(exports, target) {
   let nextAt = 0;
   for (let step = 0; sampleIndex < n; step++) {
     if (step >= nextAt) {
-      const v = e.soemdsp_archimedes_sine(h);
+      const v = -e.soemdsp_archimedes_sine(h); // negate: rising 0->1 quarter cycle
       raw[sampleIndex] = v;
       if (v > peak) peak = v;
       sampleIndex++;
