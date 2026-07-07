@@ -1258,6 +1258,7 @@ export function mountGradientCurveWidget(host, options = {}) {
     archFreqHz: Number.isFinite(Number(options.archFreqHz)) ? clamp(Math.round(Number(options.archFreqHz)), 1, 64) : ARCHIMEDES_DEFAULTS.freqHz,
     archDitherBits: Number.isFinite(Number(options.archDitherBits)) ? clamp(Math.round(Number(options.archDitherBits)), 0, 31) : ARCHIMEDES_DEFAULTS.ditherBits,
     archTableSize: Number.isFinite(Number(options.archTableSize)) ? clamp(Math.round(Number(options.archTableSize)), 16, 512) : ARCHIMEDES_DEFAULTS.tableSize,
+    archFps: Number.isFinite(Number(options.archFps)) ? clamp(Math.round(Number(options.archFps)), 0, 60) : 12,
     hueMode: ["strict", "wide", "chroma", "smooth-natural", "velvet", "silk"].includes(options.hueMode) ? options.hueMode : "strict",
     lightnessMode: ["linear", "smooth", "gaussian", "filmic", "bokeh", "archimedes"].includes(options.lightnessMode) ? options.lightnessMode : "bokeh",
     previewMode: ["dot", "diagonal", "horizontal", "vertical", "square", "rectangle"].includes(options.previewMode) ? options.previewMode : "dot",
