@@ -1929,13 +1929,12 @@ export function mountGradientCurveWidget(host, options = {}) {
   }
 
   function applyAutoBright() {
-    promoteManualAnchors();
     const ordered = arrangedStops(state.stops, false, false);
     const count = Math.max(1, ordered.length - 1);
     state.stops = ordered.map((stop, index) => {
       const t = count === 0 ? 0.5 : index / count;
-      const low = state.autoBlack ? 8 : 18;
-      const high = state.autoWhite ? 92 : 82;
+      const low = 18;
+      const high = 82;
       const l = low + (high - low) * smootherStep(t);
       const edgeFade = Math.sin(Math.PI * clamp(t, 0, 1));
       const s = stop.s <= 8 ? 0 : clamp(30 + edgeFade * 66, 6, 96);
