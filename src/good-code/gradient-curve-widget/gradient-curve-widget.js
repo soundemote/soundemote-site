@@ -986,6 +986,121 @@ function smootherStep(value) {
   return t * t * t * (t * (t * 6 - 15) + 10);
 }
 
+// ---------------------------------------------------------------------------
+// Archimedes curve capture
+//
+// "Generate a curve over time, capture it, apply it." We run our Archimedes
+// oscillator (the same dithered fixed-point symplectic engine as
+// native_modules/archimedes/archimedes.cpp) forward in time and capture a
+// quarter cycle of its sine output into a normalized [0,1] wavetable. The
+// engine's xorshift dither leaves a faint shimmer on the curve, which is
+// exactly the character we want baked into the Superdot's falloff.
+//
+// A synchronous JS port fills the table immediately so rendering never blocks;
+// the real compiled .wasm is then loaded asynchronously and overwrites the
+// same table in place for full authenticity.
+// ---------------------------------------------------------------------------
+const ARCHIMEDES_TABLE_SIZE = 256;
+const archimedesTable = new Float64Array(ARCHIMEDES_TABLE_SIZE);
+
+// Faithful JS port of archimedes.cpp: xorshift dither + symplectic Euler in
+// 16.16 fixed point. Captures a rising quarter-cycle of the sine state.
+function captureArchimedesJs(target) {
+  const n = target.length;
+  const dtShift = 14; // rate = 1 << 14 = 16384
+  const rate = 1 << dtShift;
+  const freqHz = 8;
+  const ditherBits = 7;
+  const twoPi = 6.283185307179586;
+  const phaseInc = Math.trunc(((twoPi * freqHz) / rate) * 65536.0) | 0;
+  const quarterSteps = Math.max(n, Math.floor(rate / freqHz / 4));
+  const stride = quarterSteps / (n - 1);
+
+  let x = 0 | 0;
+  let y = 65536 | 0; // 1.0
+  let rng = 1337 >>> 0;
+  const raw = new Float64Array(n);
+  let peak = 1e-9;
+  let sampleIndex = 0;
+  let nextAt = 0;
+
+  for (let step = 0; sampleIndex < n; step++) {
+    if (step >= nextAt) {
+      const v = x / 65536.0;
+      raw[sampleIndex] = v;
+      if (v > peak) peak = v;
+      sampleIndex++;
+      nextAt = Math.round(sampleIndex * stride);
+    }
+    // xorshift PRNG
+    rng ^= rng << 13; rng >>>= 0;
+    rng ^= rng >>> 17;
+    rng ^= rng << 5; rng >>>= 0;
+    const dither = ((rng & ditherBits) - (ditherBits >> 1)) | 0;
+    // symplectic Euler step
+    x = (x - ((Math.trunc((y * phaseInc) / 65536) | 0) + dither)) | 0;
+    y = (y + (Math.trunc((x * phaseInc) / 65536) | 0)) | 0;
+  }
+
+  for (let i = 0; i < n; i++) {
+    target[i] = clamp(raw[i] / peak, 0, 1);
+  }
+  target[0] = 0;
+  target[n - 1] = 1;
+}
+
+// Capture the same quarter-cycle from the real compiled module.
+function captureArchimedesFromWasm(exports, target) {
+  const n = target.length;
+  const e = exports;
+  const h = e.soemdsp_archimedes_create();
+  if (!h) return false;
+  const dtShift = 14;
+  const freqHz = 8;
+  const ditherBits = 7;
+  e.soemdsp_archimedes_set_profile(h, dtShift);
+  e.soemdsp_archimedes_set_frequency(h, freqHz);
+  e.soemdsp_archimedes_reset(h);
+  const quarterSteps = Math.max(n, Math.floor((1 << dtShift) / freqHz / 4));
+  const stride = quarterSteps / (n - 1);
+  const raw = new Float64Array(n);
+  let peak = 1e-9;
+  let sampleIndex = 0;
+  let nextAt = 0;
+  for (let step = 0; sampleIndex < n; step++) {
+    if (step >= nextAt) {
+      const v = e.soemdsp_archimedes_sine(h);
+      raw[sampleIndex] = v;
+      if (v > peak) peak = v;
+      sampleIndex++;
+      nextAt = Math.round(sampleIndex * stride);
+    }
+    e.soemdsp_archimedes_step(h, ditherBits);
+  }
+  if (e.soemdsp_archimedes_destroy) e.soemdsp_archimedes_destroy(h);
+  for (let i = 0; i < n; i++) target[i] = clamp(raw[i] / peak, 0, 1);
+  target[0] = 0;
+  target[n - 1] = 1;
+  return true;
+}
+
+let archimedesWasmRequested = false;
+function ensureArchimedesTable(onReady) {
+  // Synchronous JS-port capture is always available first.
+  captureArchimedesJs(archimedesTable);
+  if (archimedesWasmRequested || typeof fetch !== "function" || typeof WebAssembly === "undefined") return;
+  archimedesWasmRequested = true;
+  const url = "/soemdsp-sandbox/native_modules/archimedes/archimedes.wasm";
+  const load = WebAssembly.instantiateStreaming
+    ? WebAssembly.instantiateStreaming(fetch(url), {})
+    : fetch(url).then((r) => r.arrayBuffer()).then((b) => WebAssembly.instantiate(b, {}));
+  load
+    .then(({ instance }) => {
+      if (captureArchimedesFromWasm(instance.exports, archimedesTable) && typeof onReady === "function") onReady();
+    })
+    .catch(() => { /* JS-port table already in place */ });
+}
+
 function lightnessCurveValue(value, mode = "bokeh") {
   const t = clamp(value, 0, 1);
   if (mode === "linear") return t;
@@ -1002,6 +1117,15 @@ function lightnessCurveValue(value, mode = "bokeh") {
   }
   if (mode === "bokeh") {
     return Math.pow(t, 2.2);
+  }
+  if (mode === "archimedes") {
+    const n = archimedesTable.length;
+    const pos = t * (n - 1);
+    const i = Math.floor(pos);
+    const f = pos - i;
+    const a = archimedesTable[i];
+    const b = archimedesTable[Math.min(n - 1, i + 1)];
+    return clamp(a + (b - a) * f, 0, 1);
   }
   return t;
 }
