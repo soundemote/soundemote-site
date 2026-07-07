@@ -1000,17 +1000,21 @@ function smootherStep(value) {
 // the real compiled .wasm is then loaded asynchronously and overwrites the
 // same table in place for full authenticity.
 // ---------------------------------------------------------------------------
-const ARCHIMEDES_TABLE_SIZE = 256;
-const archimedesTable = new Float64Array(ARCHIMEDES_TABLE_SIZE);
+// Live capture configuration. These are the oscillator parameters exposed to the
+// UI: the fixed-point time resolution (dtShift), the pitch (freqHz), the amount
+// of xorshift dither jitter (ditherBits), and the captured wavetable resolution.
+const ARCHIMEDES_DEFAULTS = Object.freeze({ dtShift: 14, freqHz: 8, ditherBits: 7, tableSize: 256 });
+const archimedesConfig = { ...ARCHIMEDES_DEFAULTS };
+let archimedesTable = new Float64Array(ARCHIMEDES_DEFAULTS.tableSize);
 
 // Faithful JS port of archimedes.cpp: xorshift dither + symplectic Euler in
 // 16.16 fixed point. Captures a rising quarter-cycle of the sine state.
-function captureArchimedesJs(target) {
+function captureArchimedesJs(target, cfg = archimedesConfig) {
   const n = target.length;
-  const dtShift = 14; // rate = 1 << 14 = 16384
+  const dtShift = cfg.dtShift; // rate = 1 << dtShift
   const rate = 1 << dtShift;
-  const freqHz = 8;
-  const ditherBits = 7;
+  const freqHz = cfg.freqHz;
+  const ditherBits = cfg.ditherBits;
   const twoPi = 6.283185307179586;
   const phaseInc = Math.trunc(((twoPi * freqHz) / rate) * 65536.0) | 0;
   const quarterSteps = Math.max(n, Math.floor(rate / freqHz / 4));
@@ -1050,14 +1054,14 @@ function captureArchimedesJs(target) {
 }
 
 // Capture the same quarter-cycle from the real compiled module.
-function captureArchimedesFromWasm(exports, target) {
+function captureArchimedesFromWasm(exports, target, cfg = archimedesConfig) {
   const n = target.length;
   const e = exports;
   const h = e.soemdsp_archimedes_create();
   if (!h) return false;
-  const dtShift = 14;
-  const freqHz = 8;
-  const ditherBits = 7;
+  const dtShift = cfg.dtShift;
+  const freqHz = cfg.freqHz;
+  const ditherBits = cfg.ditherBits;
   e.soemdsp_archimedes_set_profile(h, dtShift);
   e.soemdsp_archimedes_set_frequency(h, freqHz);
   e.soemdsp_archimedes_reset(h);
@@ -1085,9 +1089,20 @@ function captureArchimedesFromWasm(exports, target) {
 }
 
 let archimedesWasmRequested = false;
-function ensureArchimedesTable(onReady) {
+let archimedesWasmExports = null;
+// (Re)capture the wavetable for the current config. Called on mount and every
+// time a parameter control changes, so the dot re-derives its falloff live.
+function ensureArchimedesTable(cfg = {}, onReady) {
+  Object.assign(archimedesConfig, cfg);
+  const n = Math.max(2, Math.round(archimedesConfig.tableSize));
+  archimedesConfig.tableSize = n;
+  if (archimedesTable.length !== n) archimedesTable = new Float64Array(n);
+  if (archimedesWasmExports) {
+    captureArchimedesFromWasm(archimedesWasmExports, archimedesTable, archimedesConfig);
+    return;
+  }
   // Synchronous JS-port capture is always available first.
-  captureArchimedesJs(archimedesTable);
+  captureArchimedesJs(archimedesTable, archimedesConfig);
   if (archimedesWasmRequested || typeof fetch !== "function" || typeof WebAssembly === "undefined") return;
   archimedesWasmRequested = true;
   const url = "/soemdsp-sandbox/native_modules/archimedes/archimedes.wasm";
@@ -1096,7 +1111,8 @@ function ensureArchimedesTable(onReady) {
     : fetch(url).then((r) => r.arrayBuffer()).then((b) => WebAssembly.instantiate(b, {}));
   load
     .then(({ instance }) => {
-      if (captureArchimedesFromWasm(instance.exports, archimedesTable) && typeof onReady === "function") onReady();
+      archimedesWasmExports = instance.exports;
+      if (captureArchimedesFromWasm(archimedesWasmExports, archimedesTable, archimedesConfig) && typeof onReady === "function") onReady();
     })
     .catch(() => { /* JS-port table already in place */ });
 }
