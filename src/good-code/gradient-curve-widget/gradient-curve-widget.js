@@ -2041,46 +2041,20 @@ export function mountGradientCurveWidget(host, options = {}) {
       swatch.type = "button";
       swatch.title = "Change color";
       swatch.setAttribute("aria-label", `Change ${stopColor(stop)}`);
-      swatch.addEventListener("pointerdown", (event) => {
-        state.activeStopId = stop.id;
-        state.colorEditStopId = stop.id;
-        syncActiveControls();
-        card.draggable = false;
-        event.stopPropagation();
-      });
-      swatch.addEventListener("pointerup", (event) => {
-        card.draggable = true;
-        event.stopPropagation();
-      });
-      swatch.addEventListener("pointercancel", () => {
-        card.draggable = true;
-        state.colorEditStopId = "";
-      });
-      swatch.addEventListener("click", (event) => {
-        event.stopPropagation();
-      });
 
       const picker = document.createElement("input");
       picker.type = "color";
       picker.value = stopColor(stop);
-      picker.draggable = false;
-      picker.addEventListener("pointerdown", (event) => {
+      picker.tabIndex = -1;
+      // A click that is not a drag selects the stop and opens the colour
+      // picker; a drag reorders the card (the browser suppresses the click
+      // when a drag occurs, so the two never conflict).
+      swatch.addEventListener("click", (event) => {
+        event.stopPropagation();
         state.activeStopId = stop.id;
         state.colorEditStopId = stop.id;
         syncActiveControls();
-        card.draggable = false;
-        event.stopPropagation();
-      });
-      picker.addEventListener("pointerup", (event) => {
-        card.draggable = true;
-        event.stopPropagation();
-      });
-      picker.addEventListener("pointercancel", () => {
-        card.draggable = true;
-        state.colorEditStopId = "";
-      });
-      picker.addEventListener("click", (event) => {
-        event.stopPropagation();
+        picker.click();
       });
       picker.addEventListener("input", () => {
         Object.assign(stop, polishStop({ ...stop, ...hexToHsl(picker.value) }));
