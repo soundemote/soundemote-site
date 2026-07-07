@@ -1934,6 +1934,7 @@ export function mountGradientCurveWidget(host, options = {}) {
     archFreqInput.value = String(state.archFreqHz);
     archDitherInput.value = String(state.archDitherBits);
     archTableInput.value = String(state.archTableSize);
+    archFpsInput.value = String(state.archFps);
     hueModeButtons.forEach((button) => {
       button.dataset.active = String(button.dataset.hueMode === state.hueMode);
       button.setAttribute("aria-pressed", String(button.dataset.hueMode === state.hueMode));
