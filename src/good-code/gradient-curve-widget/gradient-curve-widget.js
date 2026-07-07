@@ -2496,7 +2496,7 @@ export function mountGradientCurveWidget(host, options = {}) {
         state.autoWhite = next.autoBlackWhite;
       }
       if (["wide", "strict", "chroma", "smooth-natural", "velvet", "silk"].includes(next.hueMode)) state.hueMode = next.hueMode;
-      if (["linear", "smooth", "gaussian", "filmic", "bokeh"].includes(next.lightnessMode)) state.lightnessMode = next.lightnessMode;
+      if (["linear", "smooth", "gaussian", "filmic", "bokeh", "archimedes"].includes(next.lightnessMode)) state.lightnessMode = next.lightnessMode;
       if (["dot", "diagonal", "horizontal", "vertical", "square", "rectangle"].includes(next.previewMode)) state.previewMode = next.previewMode;
       if (["start", "end"].includes(next.radialCenter)) state.radialCenter = next.radialCenter;
       state.gridMode = "off";
