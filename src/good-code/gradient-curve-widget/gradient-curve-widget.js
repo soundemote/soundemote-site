@@ -114,6 +114,7 @@ const css = `
 
   .gcw-zone[data-drop-zone="active"] {
     grid-area: active;
+    min-height: min(6cqh, 44px);
   }
 
   .gcw-zone[data-drop-zone="saved"] {
