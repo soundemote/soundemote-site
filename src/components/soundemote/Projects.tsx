@@ -1,4 +1,5 @@
 import { featuredArticles, type FeaturedArticle } from "@/data/featuredArticles";
+import { useNavigate } from "react-router-dom";
 import { ElectricBurst, useElectricBurst } from "./ElectricBurst";
 
 type RepositoryLink = {
@@ -6,6 +7,8 @@ type RepositoryLink = {
     name: string;
     href: string;
     pulse?: boolean;
+    /** Internal SPA route to navigate to instead of opening href in a new tab. */
+    route?: string;
 };
 
 const repositoryLinks: RepositoryLink[] = [
@@ -54,6 +57,13 @@ const repositoryLinks: RepositoryLink[] = [
         emoji: "📡",
         name: "prettyscope",
         href: "https://github.com/soundemote/prettyscope-clap",
+    },
+    {
+        emoji: "🌊",
+        name: "reverb",
+        href: "/reverb",
+        route: "/reverb",
+        pulse: true,
     },
     {
         emoji: "🥁",
@@ -156,6 +166,7 @@ const RepositoryCard = ({ repo, article, isSelected, onActivate }: RepositoryCar
 };
 
 export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => {
+    const navigate = useNavigate();
     const handleSelect = (slug: string) => {
         onSelectArticle(slug);
         scrollToFeaturedArticle();
@@ -201,7 +212,11 @@ export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => {
                                     article={article}
                                     isSelected={isSelected}
                                     onActivate={() =>
-                                        article ? handleSelect(article.slug) : window.open(repo.href, "_blank", "noopener,noreferrer")
+                                        article
+                                            ? handleSelect(article.slug)
+                                            : repo.route
+                                              ? navigate(repo.route)
+                                              : window.open(repo.href, "_blank", "noopener,noreferrer")
                                     }
                                 />
                             );
