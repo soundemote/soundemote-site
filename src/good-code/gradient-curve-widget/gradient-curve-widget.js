@@ -2535,7 +2535,7 @@ export function mountGradientCurveWidget(host, options = {}) {
   enforceExactAnchorPolicy();
   commit();
   // Kick off the Archimedes capture (JS port now, real .wasm refines it async).
-  ensureArchimedesTable(() => render());
+  ensureArchimedesTable(archConfig(), () => render());
 
   return {
     setGradient(next = {}) {
@@ -2543,12 +2543,12 @@ export function mountGradientCurveWidget(host, options = {}) {
       if (typeof next.invert === "boolean") state.invert = next.invert;
       if (typeof next.autoOrder === "boolean") state.autoOrder = next.autoOrder;
       if (typeof next.autoBright === "boolean") state.autoBright = next.autoBright;
-      if (typeof next.autoBlack === "boolean") state.autoBlack = next.autoBlack;
-      if (typeof next.autoWhite === "boolean") state.autoWhite = next.autoWhite;
-      if (typeof next.autoBlackWhite === "boolean") {
-        state.autoBlack = next.autoBlackWhite;
-        state.autoWhite = next.autoBlackWhite;
-      }
+      let archChanged = false;
+      if (Number.isFinite(Number(next.archDtShift))) { state.archDtShift = clamp(Math.round(Number(next.archDtShift)), 8, 18); archChanged = true; }
+      if (Number.isFinite(Number(next.archFreqHz))) { state.archFreqHz = clamp(Math.round(Number(next.archFreqHz)), 1, 64); archChanged = true; }
+      if (Number.isFinite(Number(next.archDitherBits))) { state.archDitherBits = clamp(Math.round(Number(next.archDitherBits)), 0, 31); archChanged = true; }
+      if (Number.isFinite(Number(next.archTableSize))) { state.archTableSize = clamp(Math.round(Number(next.archTableSize)), 16, 512); archChanged = true; }
+      if (archChanged) ensureArchimedesTable(archConfig());
       if (["wide", "strict", "chroma", "smooth-natural", "velvet", "silk"].includes(next.hueMode)) state.hueMode = next.hueMode;
       if (["linear", "smooth", "gaussian", "filmic", "bokeh", "archimedes"].includes(next.lightnessMode)) state.lightnessMode = next.lightnessMode;
       if (["dot", "diagonal", "horizontal", "vertical", "square", "rectangle"].includes(next.previewMode)) state.previewMode = next.previewMode;
