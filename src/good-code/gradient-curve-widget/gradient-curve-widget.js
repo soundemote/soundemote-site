@@ -1875,7 +1875,6 @@ export function mountGradientCurveWidget(host, options = {}) {
   }
 
   function applyAutoOrder() {
-    promoteManualAnchors();
     const ordered = arrangedStops(state.stops, false, true).map(({ position, ...stop }) => stop);
     state.stops = state.invert ? ordered.reverse() : ordered;
     state.activeStopId = state.stops[0]?.id || state.savedStops[0]?.id || "";
@@ -2082,7 +2081,6 @@ export function mountGradientCurveWidget(host, options = {}) {
       });
       picker.addEventListener("input", () => {
         Object.assign(stop, polishStop({ ...stop, ...hexToHsl(picker.value) }));
-        applyExactAnchorPolicy(stop);
         commit({ renderCards: false });
       });
       picker.addEventListener("change", () => {
@@ -2563,7 +2561,6 @@ export function mountGradientCurveWidget(host, options = {}) {
     });
     downloadDataUrl(dataUrl, "gradient-texture-1024x1.png");
   });
-  enforceExactAnchorPolicy();
   commit();
   // Kick off the Archimedes capture (JS port now, real .wasm refines it async).
   ensureArchimedesTable(archConfig(), () => render());
@@ -2603,7 +2600,6 @@ export function mountGradientCurveWidget(host, options = {}) {
       if (Array.isArray(next.savedStops)) {
         state.savedStops = next.savedStops.map((stop, index) => normalizeStop(stop, index, next.savedStops.length));
       }
-      enforceExactAnchorPolicy();
       commit();
     },
     getGradient() {
