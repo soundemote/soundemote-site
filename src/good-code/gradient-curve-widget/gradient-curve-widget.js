@@ -1543,6 +1543,9 @@ export function mountGradientCurveWidget(host, options = {}) {
     <div class="gcw-mount">
       <div class="gcw-root">
         <div class="gcw-preview"></div>
+        <div class="gcw-presets" role="group" aria-label="Gradient presets">
+          <span>Presets</span>
+        </div>
         <div class="gcw-index-strip" aria-label="Generated color indexes"></div>
         <section class="gcw-falloff" aria-label="Radial falloff">
           <div class="gcw-falloff-head">
