@@ -29,6 +29,7 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
   const sandboxEmbedSrc =
     "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autostart=1&autoframe=1&v=20260703-autoframe";
   const currentPatch = SOUNDEMOTE_BANK[patchIndex];
+  console.log("HERO_DEBUG",{patchSlug,bankIndex,patchIndex});
 
   const postPatch = useCallback(async () => {
     const win = iframeRef.current?.contentWindow;
