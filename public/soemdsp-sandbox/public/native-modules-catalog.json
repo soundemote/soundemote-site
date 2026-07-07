@@ -277,6 +277,17 @@
       "wasmAvailable": true
     },
     {
+      "name": "archimedes",
+      "label": "Archimedes Oscillator",
+      "targetType": "archimedes",
+      "kind": "oscillator",
+      "source": "native_modules/archimedes/archimedes.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/archimedes/archimedes.cpp",
+      "wasm": "native_modules/archimedes/archimedes.wasm",
+      "wasmUrl": "native_modules/archimedes/archimedes.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "resonator_filter",
       "label": "Resonator Filter",
       "targetType": "resonatorFilter",
