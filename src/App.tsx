@@ -46,10 +46,10 @@ const App = () => (
         <Route path="/oscilloscope" element={<OscilloscopePage />} />
         <Route path="/scope-scratch" element={<ScopeScratchPage />} />
         <Route path="/gradient-curve" element={<GradientCurvePage />} />
-        <Route path="/simd" element={<FeaturedArticlePage slug="simd" />} />
+        <Route path="/simd" element={<Index featuredSlug="simd" />} />
         <Route path="/soemdsp-simd" element={<Navigate to="/simd" replace />} />
-        <Route path="/last-clock" element={<FeaturedArticlePage slug="last-clock" />} />
-        <Route path="/lastclock" element={<Navigate to="/last-clock" replace />} />
+        <Route path="/last-clock" element={<Index featuredSlug="last-clock" />} />
+        <Route path="/lastclock" element={<Index featuredSlug="last-clock" />} />
         <Route path="/soemdsp-last-clock" element={<Navigate to="/last-clock" replace />} />
         <Route path="/sandbox" element={<SandboxPage />} />
         <Route path="/embed" element={<EmbedPage />} />
@@ -79,20 +79,20 @@ const App = () => (
 
         {/* Featured articles */}
         <Route path="/soemdsp-sandbox" element={<Navigate to="/analogbox" replace />} />
-        <Route path="/phosphor" element={<FeaturedArticlePage slug="phosphor" />} />
-        <Route path="/aliasing-wars" element={<FeaturedArticlePage slug="aliasing-wars" />} />
-        <Route path="/analog-filters" element={<FeaturedArticlePage slug="analog-filters" />} />
+        <Route path="/phosphor" element={<Index featuredSlug="phosphor" />} />
+        <Route path="/aliasing-wars" element={<Index featuredSlug="aliasing-wars" />} />
+        <Route path="/analog-filters" element={<Index featuredSlug="analog-filters" />} />
         <Route path="/analogfilters" element={<Navigate to="/analog-filters" replace />} />
-        <Route path="/efficient-patch-system" element={<FeaturedArticlePage slug="efficient-patch-system" />} />
+        <Route path="/efficient-patch-system" element={<Index featuredSlug="efficient-patch-system" />} />
         <Route path="/efficientpatchsystem" element={<Navigate to="/efficient-patch-system" replace />} />
-        <Route path="/white-wire" element={<FeaturedArticlePage slug="white-wire" />} />
+        <Route path="/white-wire" element={<Index featuredSlug="white-wire" />} />
         <Route path="/whitewire" element={<Navigate to="/white-wire" replace />} />
-        <Route path="/rhythm-and-pitch-generator" element={<FeaturedArticlePage slug="rhythmandpitchgenerator" />} />
-        <Route path="/vactrols" element={<FeaturedArticlePage slug="vactrols" />} />
-        <Route path="/jerobeam-modules" element={<FeaturedArticlePage slug="jerobeam-modules" />} />
+        <Route path="/rhythm-and-pitch-generator" element={<Index featuredSlug="rhythmandpitchgenerator" />} />
+        <Route path="/vactrols" element={<Index featuredSlug="vactrols" />} />
+        <Route path="/jerobeam-modules" element={<Index featuredSlug="jerobeam-modules" />} />
         <Route path="/jerobeammodules" element={<Navigate to="/jerobeam-modules" replace />} />
-        <Route path="/combustion" element={<FeaturedArticlePage slug="combustion" />} />
-        <Route path="/synthwave-orchestra" element={<FeaturedArticlePage slug="synthwave-orchestra" />} />
+        <Route path="/combustion" element={<Index featuredSlug="combustion" />} />
+        <Route path="/synthwave-orchestra" element={<Index featuredSlug="synthwave-orchestra" />} />
         <Route path="/synthwaveorchestra" element={<Navigate to="/synthwave-orchestra" replace />} />
 
         <Route path="/sandbox/:patch" element={<SandboxPage />} />
