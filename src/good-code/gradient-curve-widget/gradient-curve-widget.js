@@ -1082,28 +1082,6 @@ function monotoneValue(points, x, key) {
     + ((t3 - t2) * span * m1);
 }
 
-function softenNeutralEdges(sample, points) {
-  const next = { ...sample };
-  const first = points[0];
-  const last = points[points.length - 1];
-
-  if (first && isBlackAnchor(first) && sample.position > first.position) {
-    const firstColor = points.find((point) => !isBlackAnchor(point));
-    const rampEnd = Math.min(24, Math.max(8, ((firstColor?.position ?? 24) - first.position) * 0.35));
-    const ramp = smoothStep((sample.position - first.position) / rampEnd);
-    next.s *= ramp;
-    next.l *= ramp;
-  }
-
-  if (last && isWhiteAnchor(last) && sample.position < last.position) {
-    const lastColor = [...points].reverse().find((point) => !isWhiteAnchor(point));
-    const rampStart = Math.max(76, Math.min(92, last.position - ((last.position - (lastColor?.position ?? 76)) * 0.35)));
-    next.s *= smoothStep((last.position - sample.position) / Math.max(8, last.position - rampStart));
-  }
-
-  return next;
-}
-
 function sampleStops(stops, sampleCount, invert = false, autoOrder = true, hueMode = "strict", lightnessMode = "bokeh") {
   const points = unwrapHues(stops, invert, autoOrder, hueMode);
   const count = clamp(Math.round(sampleCount), 2, 256);
@@ -1111,7 +1089,7 @@ function sampleStops(stops, sampleCount, invert = false, autoOrder = true, hueMo
   const samples = Array.from({ length: count }, (_, index) => {
     const position = count === 1 ? 0 : (index / (count - 1)) * 100;
     const h = valueAt(points, position, "uh");
-    const rawSample = hueMode === "velvet" || hueMode === "silk" ? {
+    const raw = hueMode === "velvet" || hueMode === "silk" ? {
       h: wrapHue(h),
       position,
       s: clamp(valueAt(points, position, "s"), 0, 100),
@@ -1122,15 +1100,6 @@ function sampleStops(stops, sampleCount, invert = false, autoOrder = true, hueMo
       s: clamp(valueAt(points, position, "s"), 0, 100),
       l: clamp(valueAt(points, position, "l"), 0, 100),
     });
-    const raw = softenNeutralEdges(rawSample, points);
-    const first = points[0];
-    const last = points[points.length - 1];
-    if (index === 0 && first && isBlackAnchor(first)) {
-      return { h: 0, s: 0, l: 0, position, color: "#000000" };
-    }
-    if (index === count - 1 && last && isWhiteAnchor(last)) {
-      return { h: 0, s: 0, l: 100, position, color: "#FFFFFF" };
-    }
     return {
       ...raw,
       color: hslToHex(raw.h, raw.s, raw.l),
@@ -1150,12 +1119,6 @@ function sampleStops(stops, sampleCount, invert = false, autoOrder = true, hueMo
 function gradientCss(angle, stops, sampleCount, invert = false, autoOrder = true, hueMode = "strict", lightnessMode = "bokeh") {
   const samples = sampleStops(stops, sampleCount, invert, autoOrder, hueMode, lightnessMode);
   const parts = samples.map((sample) => `${sample.color} ${sample.position.toFixed(1)}%`);
-  if (samples[0] && isBlackAnchor(samples[0])) {
-    parts.splice(1, 0, "#000000 1.2%");
-  }
-  if (samples[samples.length - 1] && isWhiteAnchor(samples[samples.length - 1])) {
-    parts.splice(parts.length - 1, 0, "#FFFFFF 98.8%");
-  }
   return `linear-gradient(${Math.round(angle)}deg, ${parts.join(", ")})`;
 }
 
