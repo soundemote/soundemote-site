@@ -30,12 +30,13 @@ const css = `
     gap: 6px;
     grid-template-areas:
       "preview"
+      "presets"
       "index"
       "falloff"
       "active"
       "saved"
       "actions";
-    grid-template-rows: minmax(160px, 1fr) auto auto auto auto auto;
+    grid-template-rows: minmax(140px, 1fr) auto auto auto auto auto auto;
     height: 100%;
     min-height: 0;
     overflow-x: hidden;
