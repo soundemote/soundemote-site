@@ -1691,10 +1691,10 @@ export function mountGradientCurveWidget(host, options = {}) {
     addInsertIndex: state.addInsertIndex,
     addColor: state.addColor,
     sampleCount: state.sampleCount,
-    css: gradientCss(state.angle, gradientStops(state.stops, state.autoBlack, state.autoWhite), state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode),
-    stops: arrangedStops(gradientStops(state.stops, state.autoBlack, state.autoWhite), gradientInvert(), state.autoOrder).map((stop) => ({ ...stop, color: stopColor(stop) })),
+    css: gradientCss(state.angle, state.stops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode),
+    stops: arrangedStops(state.stops, gradientInvert(), state.autoOrder).map((stop) => ({ ...stop, color: stopColor(stop) })),
     savedStops: state.savedStops.map((stop) => ({ ...stop, color: stopColor(stop) })),
-    samples: sampleStops(gradientStops(state.stops, state.autoBlack, state.autoWhite), state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode),
+    samples: sampleStops(state.stops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode),
   });
   const emit = () => {
     const detail = packet();
@@ -1714,7 +1714,7 @@ export function mountGradientCurveWidget(host, options = {}) {
 
   function canDeleteActiveStop(stopId) {
     const remainingStops = state.stops.filter((stop) => stop.id !== stopId);
-    return gradientStops(remainingStops, state.autoBlack, state.autoWhite).length >= 2;
+    return remainingStops.length >= 2;
   }
 
   function deleteSelectedStop() {
@@ -1763,7 +1763,7 @@ export function mountGradientCurveWidget(host, options = {}) {
     }
     if (fromZone === "active" && toZone === "saved") {
       const remainingStops = fromList.filter((stop) => stop.id !== stopId);
-      if (gradientStops(remainingStops, state.autoBlack, state.autoWhite).length < 2) return;
+      if (remainingStops.length < 2) return;
     }
 
     const [stop] = fromList.splice(fromIndex, 1);
@@ -1783,7 +1783,7 @@ export function mountGradientCurveWidget(host, options = {}) {
         keep.push(stop);
       }
     }
-    const outputCount = gradientStops(keep, state.autoBlack, state.autoWhite).length;
+    const outputCount = keep.length;
     if (!anchors.length || outputCount < 2) return;
     state.stops = keep;
     for (const anchor of anchors) {
@@ -1877,7 +1877,7 @@ export function mountGradientCurveWidget(host, options = {}) {
   }
 
   function colorAtPreviewPosition(position) {
-    const activeGradientStops = gradientStops(state.stops, state.autoBlack, state.autoWhite);
+    const activeGradientStops = state.stops;
     const samples = sampleStops(activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode);
     const nearest = samples.reduce((current, sample, index) => {
       const previousDistance = Math.abs(current.sample.position - position);
@@ -2206,7 +2206,7 @@ export function mountGradientCurveWidget(host, options = {}) {
   }
 
   function render({ renderCards = true } = {}) {
-    const activeGradientStops = gradientStops(state.stops, state.autoBlack, state.autoWhite);
+    const activeGradientStops = state.stops;
     const samples = sampleStops(activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode);
     const css = gradientCss(state.angle, activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode);
     const previewCss = previewGradientCss(state.previewMode, activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.angle, state.falloff, state.radialCenter, state.lightnessMode);
@@ -2611,7 +2611,7 @@ export function mountGradientCurveWidget(host, options = {}) {
     }, 900);
   });
   exportPngButton.addEventListener("click", () => {
-    const activeGradientStops = gradientStops(state.stops, state.autoBlack, state.autoWhite);
+    const activeGradientStops = state.stops;
     const dataUrl = exportGradientPng(activeGradientStops, {
       width: 1024,
       height: 1,
