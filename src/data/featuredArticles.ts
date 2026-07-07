@@ -18,6 +18,7 @@ import { COMBUSTION_MARKDOWN, COMBUSTION_REPO } from "./combustionArticle";
 import { SUPERSAW_MARKDOWN, SUPERSAW_REPO, SUPERSAW_BRANCH } from "./supersawArticle";
 import { SIMD_ARTICLE_MARKDOWN, SIMD_ARTICLE_SOURCE_URL } from "./simdArticle";
 import { LAST_CLOCK_ARTICLE_MARKDOWN, LAST_CLOCK_ARTICLE_SOURCE_URL } from "./lastClockArticle";
+import { ARCHIMEDES_ARTICLE_MARKDOWN, ARCHIMEDES_ARTICLE_SOURCE_URL } from "./archimedesArticle";
 
 export type FeaturedArticle = {
   slug: string;
@@ -72,6 +73,15 @@ export const featuredArticles: FeaturedArticle[] = [
     tagline: "Two different ways to make an oscillator that never aliases.",
     sourceUrl: ALIASING_WARS_REPO ? `https://github.com/${ALIASING_WARS_REPO}` : "",
     markdown: rewriteRelativeLinks(ALIASING_WARS_MARKDOWN, ALIASING_WARS_REPO),
+  },
+  {
+    slug: "archimedes",
+    repoHref: "https://github.com/soundemote/soemdsp-sandbox-archimedes",
+    emoji: "🥧",
+    title: "Computing π for Free — the Archimedes Oscillator",
+    tagline: "A 2-cycle integer engine that makes sine/cosine and hands you π as a free byproduct.",
+    sourceUrl: ARCHIMEDES_ARTICLE_SOURCE_URL,
+    markdown: ARCHIMEDES_ARTICLE_MARKDOWN,
   },
   {
     slug: "analog-filters",
