@@ -22,6 +22,7 @@ export const siteConfig = {
     "lastclock": "last-clock",
     "phosphor": "phosphor",
     "aliasing-wars": "aliasing-wars",
+    "archimedes": "archimedes",
     "analog-filters": "analog-filters",
     "efficient-patch-system": "efficient-patch-system",
     "white-wire": "white-wire",
