@@ -27,15 +27,16 @@ const css = `
 
   .gcw-root {
     display: grid;
-    gap: min(0.65cqh, 6px);
+    gap: 6px;
     grid-template-areas:
       "preview"
+      "presets"
       "index"
       "falloff"
       "active"
       "saved"
       "actions";
-    grid-template-rows: minmax(160px, 1fr) auto auto auto auto auto;
+    grid-template-rows: minmax(140px, 1fr) auto auto auto auto auto auto;
     height: 100%;
     min-height: 0;
     overflow-x: hidden;
@@ -45,7 +46,7 @@ const css = `
 
   .gcw-preview {
     border: 1px solid var(--gcw-border);
-    border-radius: min(1.4cqh, 7px);
+    border-radius: 7px;
     min-height: 0;
     overflow: hidden;
   }
@@ -106,7 +107,7 @@ const css = `
 
   .gcw-zone {
     display: grid;
-    gap: min(0.35cqh, 3px);
+    gap: 3px;
     min-height: 0;
     overflow: hidden;
     padding: 0;
@@ -114,12 +115,12 @@ const css = `
 
   .gcw-zone[data-drop-zone="active"] {
     grid-area: active;
-    min-height: min(6cqh, 44px);
+    min-height: 48px;
   }
 
   .gcw-zone[data-drop-zone="saved"] {
     grid-area: saved;
-    max-height: min(11cqh, 82px);
+    max-height: 120px;
   }
 
   .gcw-zone[data-drag-over="true"] {
@@ -133,7 +134,7 @@ const css = `
 
   .gcw-zone-title {
     color: var(--gcw-muted);
-    font-size: min(1.35cqh, 10px);
+    font-size: 10px;
     font-weight: 700;
     letter-spacing: 0;
   }
@@ -143,7 +144,7 @@ const css = `
     align-content: start;
     display: flex;
     flex-wrap: wrap;
-    gap: min(0.55cqh, 5px);
+    gap: 5px;
     min-height: 0;
     overflow: auto;
   }
@@ -154,21 +155,21 @@ const css = `
 
   .gcw-color-card {
     display: block;
-    height: min(4.9cqh, 36px);
+    height: 36px;
     max-width: none;
     min-height: 24px;
     padding: 0;
-    width: min(4.9cqh, 36px);
+    width: 36px;
   }
 
   .gcw-color-card[data-zone="saved"] {
-    height: min(4.9cqh, 36px);
-    width: min(4.9cqh, 36px);
+    height: 36px;
+    width: 36px;
   }
 
   .gcw-color-card .gcw-swatch-button,
   .gcw-color-card[data-zone="saved"] .gcw-swatch-button {
-    border-radius: min(0.65cqh, 5px);
+    border-radius: 5px;
     height: 100%;
     min-height: 0;
     width: 100%;
@@ -198,12 +199,12 @@ const css = `
 
   .gcw-add-card {
     display: block;
-    height: min(4.9cqh, 36px);
+    height: 36px;
     max-width: none;
     min-height: 24px;
     padding: 0;
     position: relative;
-    width: min(4.9cqh, 36px);
+    width: 36px;
   }
 
   .gcw-add-card[data-dragging="true"] {
@@ -214,12 +215,12 @@ const css = `
     align-items: center;
     background: rgba(241, 184, 75, 0.16);
     border: 1px dashed rgba(241, 184, 75, 0.72);
-    border-radius: min(0.65cqh, 5px);
+    border-radius: 5px;
     color: var(--gcw-accent);
     cursor: grab;
     display: flex;
     font: inherit;
-    font-size: min(2.4cqh, 18px);
+    font-size: 18px;
     font-weight: 800;
     height: 100%;
     justify-content: center;
@@ -263,10 +264,10 @@ const css = `
 
   .gcw-color-meta {
     color: var(--gcw-muted);
-    font-size: min(1.5cqh, 11px);
+    font-size: 11px;
     font-variant-numeric: tabular-nums;
     line-height: 1;
-    max-width: min(24cqw, 180px);
+    max-width: 180px;
     overflow: hidden;
     text-align: left;
     text-overflow: ellipsis;
@@ -276,13 +277,13 @@ const css = `
   .gcw-row {
     align-items: center;
     display: grid;
-    gap: min(1cqw, 8px);
+    gap: 8px;
     grid-template-columns: minmax(58px, 0.34fr) minmax(0, 1fr) minmax(58px, 0.34fr);
   }
 
   .gcw-note {
     color: var(--gcw-muted);
-    font-size: min(1.8cqh, 12px);
+    font-size: 12px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -291,7 +292,7 @@ const css = `
   .gcw-row span,
   .gcw-row output {
     color: var(--gcw-muted);
-    font-size: min(2cqh, 13px);
+    font-size: 13px;
   }
 
   .gcw-row output {
@@ -311,7 +312,7 @@ const css = `
   .gcw-actions {
     align-items: center;
     display: flex;
-    gap: min(0.45cqw, 5px);
+    gap: 5px;
     flex-wrap: wrap;
     grid-area: actions;
   }
@@ -320,26 +321,26 @@ const css = `
     align-items: center;
     background: rgba(243, 240, 230, 0.045);
     border: 1px solid var(--gcw-border);
-    border-radius: min(1cqh, 6px);
+    border-radius: 6px;
     color: var(--gcw-muted);
     display: inline-flex;
-    font-size: min(1.45cqh, 10px);
-    gap: min(0.45cqw, 5px);
-    min-height: min(2.8cqh, 21px);
-    padding: 0 min(0.55cqw, 6px);
+    font-size: 10px;
+    gap: 5px;
+    min-height: 21px;
+    padding: 0 6px;
   }
 
   .gcw-index-control {
     align-items: center;
     background: rgba(243, 240, 230, 0.045);
     border: 1px solid var(--gcw-border);
-    border-radius: min(1cqh, 6px);
+    border-radius: 6px;
     color: var(--gcw-muted);
     display: inline-flex;
-    font-size: min(1.45cqh, 10px);
-    gap: min(0.45cqw, 5px);
-    min-height: min(2.8cqh, 21px);
-    padding: 0 min(0.55cqw, 6px);
+    font-size: 10px;
+    gap: 5px;
+    min-height: 21px;
+    padding: 0 6px;
   }
 
   .gcw-index-control span {
@@ -356,7 +357,7 @@ const css = `
     font: inherit;
     font-variant-numeric: tabular-nums;
     font-weight: 800;
-    height: min(2.25cqh, 18px);
+    height: 18px;
     padding: 0 10px;
     text-align: center;
     width: 8ch;
@@ -380,10 +381,10 @@ const css = `
     color: var(--gcw-muted);
     display: inline-flex;
     flex-wrap: wrap;
-    font-size: min(1.45cqh, 10px);
-    gap: min(0.45cqw, 5px);
-    min-height: min(2.8cqh, 21px);
-    padding: 0 min(0.55cqw, 6px);
+    font-size: 10px;
+    gap: 5px;
+    min-height: 21px;
+    padding: 0 6px;
   }
 
   .gcw-arch-params > span {
@@ -405,13 +406,13 @@ const css = `
   .gcw-actions button {
     background: rgba(243, 240, 230, 0.06);
     border: 1px solid var(--gcw-border);
-    border-radius: min(1cqh, 6px);
+    border-radius: 6px;
     color: var(--gcw-ink);
     flex: 0 1 auto;
     font: inherit;
-    font-size: min(1.45cqh, 10px);
-    min-height: min(2.8cqh, 21px);
-    padding: 0 min(0.6cqw, 6px);
+    font-size: 10px;
+    min-height: 21px;
+    padding: 0 6px;
   }
 
   .gcw-actions button:disabled {
@@ -430,8 +431,8 @@ const css = `
     border-radius: 999px;
     color: var(--gcw-muted);
     display: inline-flex;
-    font-size: min(1.45cqh, 10px);
-    min-height: min(2.8cqh, 21px);
+    font-size: 10px;
+    min-height: 21px;
     overflow: hidden;
     padding: 0;
   }
@@ -440,7 +441,7 @@ const css = `
     align-items: center;
     align-self: stretch;
     display: inline-flex;
-    padding: 0 min(0.55cqw, 6px);
+    padding: 0 6px;
   }
 
   .gcw-preview-segments,
@@ -451,8 +452,8 @@ const css = `
     border-radius: 999px;
     color: var(--gcw-muted);
     display: inline-flex;
-    font-size: min(1.45cqh, 10px);
-    min-height: min(2.8cqh, 21px);
+    font-size: 10px;
+    min-height: 21px;
     overflow: hidden;
     padding: 0;
   }
@@ -462,7 +463,7 @@ const css = `
     align-items: center;
     align-self: stretch;
     display: inline-flex;
-    padding: 0 min(0.55cqw, 6px);
+    padding: 0 6px;
   }
 
   .gcw-radial-center-segments {
@@ -472,8 +473,8 @@ const css = `
     border-radius: 999px;
     color: var(--gcw-muted);
     display: inline-flex;
-    font-size: min(1.45cqh, 10px);
-    min-height: min(2.8cqh, 21px);
+    font-size: 10px;
+    min-height: 21px;
     overflow: hidden;
     padding: 0;
   }
@@ -482,7 +483,7 @@ const css = `
     align-items: center;
     align-self: stretch;
     display: inline-flex;
-    padding: 0 min(0.55cqw, 6px);
+    padding: 0 6px;
   }
 
   .gcw-hue-option,
@@ -495,8 +496,8 @@ const css = `
     color: var(--gcw-muted);
     font: inherit;
     align-self: stretch;
-    min-height: min(2.8cqh, 21px);
-    padding: 0 min(0.55cqw, 6px);
+    min-height: 21px;
+    padding: 0 6px;
   }
 
   .gcw-hue-option[data-active="true"],
@@ -511,7 +512,7 @@ const css = `
   .gcw-index-strip {
     display: flex;
     grid-area: index;
-    min-height: min(5.6cqh, 42px);
+    min-height: 42px;
     overflow: hidden;
     position: relative;
   }
@@ -519,19 +520,19 @@ const css = `
   .gcw-falloff {
     background: rgba(18, 20, 15, 0.38);
     border: 1px solid rgba(241, 184, 75, 0.26);
-    border-radius: min(1.8cqh, 9px);
+    border-radius: 9px;
     display: grid;
-    gap: min(0.45cqh, 4px);
+    gap: 4px;
     grid-area: falloff;
-    min-height: min(8cqh, 60px);
-    padding: min(0.65cqh, 5px);
+    min-height: 60px;
+    padding: 5px;
   }
 
   .gcw-falloff-head {
     align-items: center;
     color: var(--gcw-muted);
     display: flex;
-    font-size: min(1.35cqh, 10px);
+    font-size: 10px;
     font-weight: 800;
     justify-content: space-between;
     min-height: 0;
@@ -548,7 +549,7 @@ const css = `
       var(--gcw-falloff-gradient);
     border: 1px solid var(--gcw-border);
     border-radius: 999px;
-    min-height: min(2.9cqh, 22px);
+    min-height: 22px;
     position: relative;
   }
 
@@ -556,13 +557,13 @@ const css = `
     background: var(--gcw-accent);
     border: 1px solid rgba(18, 20, 15, 0.78);
     box-shadow: 0 0 0 1px rgba(243, 240, 230, 0.22), 0 4px 12px rgba(0, 0, 0, 0.24);
-    height: min(2.55cqh, 20px);
+    height: 20px;
     left: var(--falloff-position);
     padding: 0;
     position: absolute;
     top: 50%;
     transform: translate(-50%, -50%);
-    width: min(2.55cqh, 20px);
+    width: 20px;
   }
 
   .gcw-falloff-handle[data-falloff-handle="leftEdge"] {
@@ -581,9 +582,9 @@ const css = `
   .gcw-falloff-values {
     color: rgba(243, 240, 230, 0.54);
     display: grid;
-    font-size: min(1.55cqh, 10px);
+    font-size: 10px;
     font-variant-numeric: tabular-nums;
-    gap: min(0.6cqw, 8px);
+    gap: 8px;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     line-height: 1;
   }
@@ -605,6 +606,48 @@ const css = `
   .gcw-index-swatch[data-sampled="true"] {
     box-shadow: inset 0 0 0 1px var(--gcw-accent);
     z-index: 1;
+  }
+
+  /* Preset gradient buttons -- one-click starting palettes. */
+  .gcw-presets {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    grid-area: presets;
+  }
+
+  .gcw-presets > span {
+    color: var(--gcw-muted);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  .gcw-preset {
+    align-items: center;
+    border: 1px solid var(--gcw-border);
+    border-radius: 6px;
+    color: var(--gcw-ink);
+    cursor: pointer;
+    display: inline-flex;
+    font: inherit;
+    font-size: 10px;
+    gap: 6px;
+    min-height: 24px;
+    padding: 0 8px;
+  }
+
+  .gcw-preset:hover {
+    border-color: var(--gcw-accent);
+  }
+
+  .gcw-preset-swatch {
+    border-radius: 999px;
+    box-shadow: inset 0 0 0 1px rgba(18, 20, 15, 0.6);
+    height: 14px;
+    width: 14px;
   }
 
 `; 
@@ -1500,6 +1543,9 @@ export function mountGradientCurveWidget(host, options = {}) {
     <div class="gcw-mount">
       <div class="gcw-root">
         <div class="gcw-preview"></div>
+        <div class="gcw-presets" role="group" aria-label="Gradient presets">
+          <span>Presets</span>
+        </div>
         <div class="gcw-index-strip" aria-label="Generated color indexes"></div>
         <section class="gcw-falloff" aria-label="Radial falloff">
           <div class="gcw-falloff-head">
@@ -2217,60 +2263,101 @@ export function mountGradientCurveWidget(host, options = {}) {
     state.autoBright = autoBrightInput.checked;
     commit();
   });
-  archDtShiftInput.addEventListener("change", () => {
-    state.archDtShift = clamp(Math.round(Number(archDtShiftInput.value) || state.archDtShift), 8, 18);
-    recaptureArchimedes();
-  });
-  archFreqInput.addEventListener("change", () => {
-    state.archFreqHz = clamp(Math.round(Number(archFreqInput.value) || state.archFreqHz), 1, 64);
-    recaptureArchimedes();
-  });
-  archDitherInput.addEventListener("change", () => {
-    state.archDitherBits = clamp(Math.round(Number(archDitherInput.value)), 0, 31);
-    recaptureArchimedes();
-  });
-  archTableInput.addEventListener("change", () => {
-    state.archTableSize = clamp(Math.round(Number(archTableInput.value) || state.archTableSize), 16, 512);
-    recaptureArchimedes();
-  });
-  let indexDrag = null;
-  indexCountInput.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0) return;
-    indexDrag = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      startValue: state.sampleCount,
+  // Generic "scrub to adjust" behaviour for numeric inputs: drag left/right
+  // (or up/down) to change the value, or type a value and blur to set it
+  // exactly. Hold Shift while dragging for a slower/finer adjustment. This
+  // replaces the per-input drag handlers that were duplicated per parameter.
+  function makeDraggableNumber(input, { min, max, step = 1, get, set, onChange }) {
+    let drag = null;
+    const apply = (rawValue) => {
+      const snapped = clamp(Math.round(rawValue / step) * step, min, max);
+      if (snapped === get()) return;
+      set(snapped);
+      onChange();
     };
-    indexCountInput.setPointerCapture(event.pointerId);
-    event.preventDefault();
+    input.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, startValue: get() };
+      input.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    });
+    input.addEventListener("pointermove", (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      const travel = (event.clientX - drag.startX) + (drag.startY - event.clientY);
+      const pixelsPerStep = event.shiftKey ? 24 : 4;
+      apply(drag.startValue + Math.round(travel / pixelsPerStep) * step);
+    });
+    const end = (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      if (input.hasPointerCapture?.(event.pointerId)) input.releasePointerCapture(event.pointerId);
+      drag = null;
+    };
+    input.addEventListener("pointerup", end);
+    input.addEventListener("pointercancel", () => { drag = null; });
+    input.addEventListener("change", () => {
+      const parsed = Number(input.value);
+      apply(Number.isFinite(parsed) ? parsed : get());
+    });
+  }
+
+  makeDraggableNumber(archDtShiftInput, {
+    min: 8, max: 18,
+    get: () => state.archDtShift, set: (v) => { state.archDtShift = v; },
+    onChange: recaptureArchimedes,
   });
-  indexCountInput.addEventListener("pointermove", (event) => {
-    if (!indexDrag || event.pointerId !== indexDrag.pointerId) return;
-    const dx = event.clientX - indexDrag.startX;
-    const dy = indexDrag.startY - event.clientY;
-    const pixelsPerIndex = event.shiftKey ? 24 : 4;
-    const delta = Math.round((dx + dy) / pixelsPerIndex);
-    const next = clamp(indexDrag.startValue + delta, 2, 256);
-    if (next === state.sampleCount) return;
-    state.sampleCount = next;
-    state.sampledIndex = -1;
-    render();
-    emit();
+  makeDraggableNumber(archFreqInput, {
+    min: 1, max: 64,
+    get: () => state.archFreqHz, set: (v) => { state.archFreqHz = v; },
+    onChange: recaptureArchimedes,
   });
-  indexCountInput.addEventListener("pointerup", (event) => {
-    if (!indexDrag || event.pointerId !== indexDrag.pointerId) return;
-    indexCountInput.releasePointerCapture(event.pointerId);
-    indexDrag = null;
+  makeDraggableNumber(archDitherInput, {
+    min: 0, max: 31,
+    get: () => state.archDitherBits, set: (v) => { state.archDitherBits = v; },
+    onChange: recaptureArchimedes,
   });
-  indexCountInput.addEventListener("pointercancel", () => {
-    indexDrag = null;
+  makeDraggableNumber(archTableInput, {
+    min: 16, max: 512, step: 16,
+    get: () => state.archTableSize, set: (v) => { state.archTableSize = v; },
+    onChange: recaptureArchimedes,
   });
-  indexCountInput.addEventListener("change", () => {
-    state.sampleCount = clamp(Math.round(Number(indexCountInput.value) || state.sampleCount), 2, 256);
-    state.sampledIndex = -1;
-    render();
-    emit();
+  makeDraggableNumber(indexCountInput, {
+    min: 2, max: 256,
+    get: () => state.sampleCount,
+    set: (v) => { state.sampleCount = v; state.sampledIndex = -1; },
+    onChange: () => { render(); emit(); },
+  });
+
+  // One-click starting palettes. Each applies its colors as the active ramp.
+  const GRADIENT_PRESETS = [
+    { label: "Ember", colors: ["#000000", "#7A1500", "#FF6B1A", "#FFE08A"] },
+    { label: "Ocean", colors: ["#001B2E", "#0F5E7A", "#2EC4B6", "#CFF9F3"] },
+    { label: "Neon", colors: ["#12002E", "#7A00FF", "#FF00A8", "#00E5FF"] },
+    { label: "Sunset", colors: ["#2B0A3D", "#B5179E", "#F72585", "#FFB703"] },
+    { label: "Forest", colors: ["#04130B", "#1B5E20", "#66BB6A", "#E8F5E9"] },
+    { label: "Mono", colors: ["#000000", "#555555", "#AAAAAA", "#FFFFFF"] },
+  ];
+  const presetsRow = host.querySelector(".gcw-presets");
+  GRADIENT_PRESETS.forEach((preset) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "gcw-preset";
+    button.title = `Apply ${preset.label} preset`;
+    const swatch = document.createElement("span");
+    swatch.className = "gcw-preset-swatch";
+    swatch.style.background = `linear-gradient(90deg, ${preset.colors.join(", ")})`;
+    const label = document.createElement("span");
+    label.textContent = preset.label;
+    button.append(swatch, label);
+    button.addEventListener("click", () => {
+      const key = preset.label.toLowerCase();
+      state.stops = preset.colors.map((color, index) =>
+        normalizeStop({ id: `${key}-${index}`, color }, index, preset.colors.length));
+      state.activeStopId = state.stops[0].id;
+      state.addInsertIndex = state.stops.length;
+      state.pendingAddStopId = "";
+      commit();
+    });
+    presetsRow.append(button);
   });
   function setFalloffValue(id, value, options = {}) {
     const next = { ...state.falloff };
