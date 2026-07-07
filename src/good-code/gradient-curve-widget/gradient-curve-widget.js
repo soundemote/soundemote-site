@@ -1748,34 +1748,11 @@ export function mountGradientCurveWidget(host, options = {}) {
   }
 
   function promoteManualAnchors() {
-    const hasBlack = state.stops.some((stop) => isExactBlack(stop));
-    const hasWhite = state.stops.some((stop) => isExactWhite(stop));
-    if (hasBlack) {
-      state.autoBlack = true;
-      saveManualAnchors({ black: true });
-    }
-    if (hasWhite) {
-      state.autoWhite = true;
-      saveManualAnchors({ white: true });
-    }
+    // Auto black/white removed: exact black/white are ordinary stops now.
   }
 
   function applyExactAnchorPolicy(stop) {
-    if (!stop) return false;
-    if (isExactBlack(stop)) {
-      state.autoBlack = true;
-      if (!state.savedStops.some((saved) => isExactBlack(saved))) state.savedStops.push(stop);
-      state.stops = state.stops.filter((candidate) => candidate.id !== stop.id);
-      state.activeStopId = state.stops[0]?.id || state.savedStops[0]?.id || "";
-      return true;
-    }
-    if (isExactWhite(stop)) {
-      state.autoWhite = true;
-      if (!state.savedStops.some((saved) => isExactWhite(saved))) state.savedStops.push(stop);
-      state.stops = state.stops.filter((candidate) => candidate.id !== stop.id);
-      state.activeStopId = state.stops[0]?.id || state.savedStops[0]?.id || "";
-      return true;
-    }
+    // Auto black/white removed: no longer yank exact black/white out of the ramp.
     return false;
   }
 
