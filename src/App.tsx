@@ -74,7 +74,7 @@ const App = () => (
 
         {/* Featured articles */}
         <Route path="/soemdsp-sandbox" element={<Navigate to="/analogbox" replace />} />
-        <Route path="/phosphor" element={<Index featuredSlug="phosphor" gradientHero />} />
+        <Route path="/phosphor" element={<Index featuredSlug="phosphor" />} />
         <Route path="/aliasing-wars" element={<Index featuredSlug="aliasing-wars" />} />
         <Route path="/analog-filters" element={<Index featuredSlug="analog-filters" />} />
         <Route path="/analogfilters" element={<Navigate to="/analog-filters" replace />} />
