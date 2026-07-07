@@ -1768,21 +1768,9 @@ export function mountGradientCurveWidget(host, options = {}) {
     const activeIndex = state.stops.findIndex((stop) => stop.id === state.activeStopId);
     const insertIndex = activeIndex >= 0 ? activeIndex : clamp(state.addInsertIndex, 0, state.stops.length);
     const next = normalizeStop({ id: "", ...hsl }, insertIndex, state.stops.length + 1);
-    if (isExactBlack(next)) {
-      state.autoBlack = true;
-      const existing = state.savedStops.find((stop) => isExactBlack(stop));
-      if (!existing) state.savedStops.push(next);
-      state.activeStopId = state.stops[0]?.id || existing?.id || next.id;
-    } else if (isExactWhite(next)) {
-      state.autoWhite = true;
-      const existing = state.savedStops.find((stop) => isExactWhite(stop));
-      if (!existing) state.savedStops.push(next);
-      state.activeStopId = state.stops[0]?.id || existing?.id || next.id;
-    } else {
-      state.stops.splice(insertIndex, 0, next);
-      state.activeStopId = next.id;
-      state.addInsertIndex = clamp(insertIndex + 1, 0, state.stops.length);
-    }
+    state.stops.splice(insertIndex, 0, next);
+    state.activeStopId = next.id;
+    state.addInsertIndex = clamp(insertIndex + 1, 0, state.stops.length);
     return next;
   }
 
