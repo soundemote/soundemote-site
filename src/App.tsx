@@ -52,7 +52,19 @@ const App = () => (
         <Route path="/soemdsp-last-clock" element={<Navigate to="/last-clock" replace />} />
         <Route path="/sandbox" element={<SandboxPage />} />
         <Route path="/embed" element={<EmbedPage />} />
-        <Route path="/reverb" element={<SandboxPage staticPatchUrl="/patches/reverb.json" autostart />} />
+        <Route
+          path="/reverb"
+          element={
+            <Index
+              sandboxFeature={{
+                route: "/reverb-live",
+                title: "🌊 reverb",
+                tagline: "A live, playable reverb patch — press play and dive in.",
+              }}
+            />
+          }
+        />
+        <Route path="/reverb-live" element={<SandboxPage staticPatchUrl="/patches/reverb.json" autostart />} />
         <Route
           path="/silentlydreaming"
           element={<SandboxPage staticPatchUrl="/patches/silently-dreaming.json" autostart />}

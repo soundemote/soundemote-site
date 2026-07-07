@@ -3,6 +3,7 @@ import Nav from "@/components/soundemote/Nav";
 import Hero from "@/components/soundemote/Hero";
 import StarField from "@/components/soundemote/StarField";
 import FeaturedArticleSection from "@/components/soundemote/FeaturedArticleSection";
+import FeaturedSandboxSection from "@/components/soundemote/FeaturedSandboxSection";
 import Projects from "@/components/soundemote/Projects";
 import ScopeLab from "@/components/soundemote/ScopeLab";
 import Footer from "@/components/soundemote/Footer";
@@ -11,7 +12,15 @@ import { featuredArticles, findFeaturedArticle } from "@/data/featuredArticles";
 
 const DEFAULT_FEATURED_SLUG = "simd";
 
-const Index = ({ featuredSlug }: { featuredSlug?: string }) => {
+type SandboxFeature = { route: string; title: string; tagline: string };
+
+const Index = ({
+  featuredSlug,
+  sandboxFeature,
+}: {
+  featuredSlug?: string;
+  sandboxFeature?: SandboxFeature;
+}) => {
   const navigate = useNavigate();
   const [selectedSlug, setSelectedSlug] = useState(
     featuredSlug && findFeaturedArticle(featuredSlug) ? featuredSlug : DEFAULT_FEATURED_SLUG,
@@ -20,13 +29,19 @@ const Index = ({ featuredSlug }: { featuredSlug?: string }) => {
   // When arriving on an article route (e.g. /simd, /lastclock), feature that
   // article on the front page and scroll down to it.
   useEffect(() => {
+    if (sandboxFeature) {
+      requestAnimationFrame(() => {
+        document.getElementById("featured-article")?.scrollIntoView({ block: "start" });
+      });
+      return;
+    }
     if (featuredSlug && findFeaturedArticle(featuredSlug)) {
       setSelectedSlug(featuredSlug);
       requestAnimationFrame(() => {
         document.getElementById("featured-article")?.scrollIntoView({ block: "start" });
       });
     }
-  }, [featuredSlug]);
+  }, [featuredSlug, sandboxFeature]);
 
   // Handle hash links like #last-clock
   useEffect(() => {
@@ -63,7 +78,15 @@ const Index = ({ featuredSlug }: { featuredSlug?: string }) => {
       <StarField />
       <Nav />
       <Hero />
-      <FeaturedArticleSection article={selectedArticle} />
+      {sandboxFeature ? (
+        <FeaturedSandboxSection
+          route={sandboxFeature.route}
+          title={sandboxFeature.title}
+          tagline={sandboxFeature.tagline}
+        />
+      ) : (
+        <FeaturedArticleSection article={selectedArticle} />
+      )}
       <Projects selectedSlug={selectedSlug} onSelectArticle={handleSelectArticle} />
       <ScopeLab />
       <Footer />
