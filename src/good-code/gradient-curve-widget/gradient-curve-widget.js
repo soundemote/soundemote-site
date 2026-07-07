@@ -1492,6 +1492,7 @@ export function mountGradientCurveWidget(host, options = {}) {
             <button class="gcw-lightness-option" type="button" data-lightness-mode="gaussian">Gaussian</button>
             <button class="gcw-lightness-option" type="button" data-lightness-mode="filmic">Filmic</button>
             <button class="gcw-lightness-option" type="button" data-lightness-mode="bokeh">Bokeh</button>
+            <button class="gcw-lightness-option" type="button" data-lightness-mode="archimedes">Archimedes</button>
           </div>
           <div class="gcw-preview-segments" role="group" aria-label="Gradient preview mode">
             <span>Show</span>
