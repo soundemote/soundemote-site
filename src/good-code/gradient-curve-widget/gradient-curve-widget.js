@@ -107,7 +107,7 @@ const css = `
     display: grid;
     gap: 3px;
     min-height: 0;
-    overflow: hidden;
+    overflow: visible;
     padding: 0;
   }
 
@@ -118,9 +118,7 @@ const css = `
 
   .gcw-zone[data-drop-zone="saved"] {
     grid-area: saved;
-    grid-template-rows: auto minmax(0, 1fr);
     min-height: 62px;
-    max-height: 120px;
   }
 
   .gcw-zone[data-drag-over="true"] {
@@ -146,7 +144,7 @@ const css = `
     flex-wrap: wrap;
     gap: 5px;
     min-height: 0;
-    overflow: auto;
+    overflow: visible;
   }
 
   .gcw-zone[data-empty="true"] .gcw-saved {
