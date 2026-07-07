@@ -892,7 +892,10 @@ function captureArchimedesJs(target, cfg = archimedesConfig) {
 
   let x = 0 | 0;
   let y = 65536 | 0; // 1.0
-  let rng = 1337 >>> 0;
+  // The dither PRNG seed. Fixed by default (1337) so static captures are
+  // reproducible; the live animation feeds a fresh seed each frame so the
+  // xorshift dither actually shivers instead of repeating the same pattern.
+  let rng = (cfg.seed >>> 0) || 1337;
   const raw = new Float64Array(n);
   let peak = 1e-9;
   let sampleIndex = 0;
