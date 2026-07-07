@@ -10,7 +10,7 @@ const css = `
     --gcw-muted: rgba(243, 240, 230, 0.62);
     --gcw-accent: #f1b84b;
     color: var(--gcw-ink);
-    container-type: size;
+    container-type: inline-size;
     display: grid;
     font-family: Inter, ui-sans-serif, system-ui, sans-serif;
     height: 100%;
@@ -36,11 +36,9 @@ const css = `
       "active"
       "saved"
       "actions";
-    grid-template-rows: minmax(140px, 1fr) auto auto auto auto auto auto;
-    height: 100%;
+    grid-template-rows: min(46vh, 420px) auto auto auto auto auto auto;
+    min-height: 100%;
     min-height: 0;
-    overflow-x: hidden;
-    overflow-y: auto;
     padding: 0;
   }
 
