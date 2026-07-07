@@ -35,10 +35,11 @@ const css = `
       "active"
       "saved"
       "actions";
-    grid-template-rows: minmax(320px, 1fr) auto auto auto auto auto;
+    grid-template-rows: minmax(160px, 1fr) auto auto auto auto auto;
     height: 100%;
     min-height: 0;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
     padding: 0;
   }
 
