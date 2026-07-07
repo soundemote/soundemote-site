@@ -19,8 +19,8 @@ const GradientCurveSpotlight = ({ compact = false }: { compact?: boolean }) => (
       </Link>
     </div>
     <div
-      className={`relative overflow-hidden rounded-lg border border-border/70 bg-[var(--gradient-panel)] ${
-        compact ? "h-[min(54vh,28rem)] min-h-[22rem]" : "h-[min(58vh,34rem)] min-h-[26rem]"
+      className={`relative rounded-lg border border-border/70 bg-[var(--gradient-panel)] ${
+        compact ? "min-h-[28rem]" : "min-h-[34rem]"
       }`}
     >
       <GradientCurveWidget />
