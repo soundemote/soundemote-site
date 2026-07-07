@@ -12,7 +12,6 @@ import ScopeScratchPage from "./pages/ScopeScratchPage.tsx";
 import GradientCurvePage from "./pages/GradientCurvePage.tsx";
 import SandboxPage from "./pages/SandboxPage.tsx";
 import PatchArticlePage from "./pages/PatchArticlePage.tsx";
-import FeaturedArticlePage from "./pages/FeaturedArticlePage.tsx";
 import EmbedPage from "./pages/EmbedPage.tsx";
 import AVWResearch from "./pages/AVWResearch.tsx";
 import SupabaseTest from "./pages/SupabaseTest.tsx";
