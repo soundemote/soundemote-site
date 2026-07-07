@@ -1,4 +1,5 @@
 import { featuredArticles, type FeaturedArticle } from "@/data/featuredArticles";
+import { useNavigate } from "react-router-dom";
 import { ElectricBurst, useElectricBurst } from "./ElectricBurst";
 
 type RepositoryLink = {
@@ -6,6 +7,8 @@ type RepositoryLink = {
     name: string;
     href: string;
     pulse?: boolean;
+    /** Internal SPA route to navigate to instead of opening href in a new tab. */
+    route?: string;
 };
 
 const repositoryLinks: RepositoryLink[] = [
@@ -54,6 +57,13 @@ const repositoryLinks: RepositoryLink[] = [
         emoji: "📡",
         name: "prettyscope",
         href: "https://github.com/soundemote/prettyscope-clap",
+    },
+    {
+        emoji: "🌊",
+        name: "reverb",
+        href: "/reverb",
+        route: "/reverb",
+        pulse: true,
     },
     {
         emoji: "🥁",
