@@ -1502,8 +1502,6 @@ export function mountGradientCurveWidget(host, options = {}) {
           <button class="gcw-remove" type="button">Save Selected</button>
           <label class="gcw-toggle"><input class="gcw-auto-order" type="checkbox" /> Auto Order</label>
           <label class="gcw-toggle"><input class="gcw-auto-bright" type="checkbox" /> Auto Bright</label>
-          <label class="gcw-toggle"><input class="gcw-auto-black" type="checkbox" /> Auto Black</label>
-          <label class="gcw-toggle"><input class="gcw-auto-white" type="checkbox" /> Auto White</label>
           <label class="gcw-index-control"><span>Indexes</span><input class="gcw-index-count" type="number" min="2" max="256" step="1" /></label>
           <div class="gcw-hue-segments" role="group" aria-label="Hue mode">
             <span>Hue</span>
@@ -1536,6 +1534,13 @@ export function mountGradientCurveWidget(host, options = {}) {
             <span>Radial Center</span>
             <button class="gcw-radial-center-option" type="button" data-radial-center="start">Start</button>
             <button class="gcw-radial-center-option" type="button" data-radial-center="end">End</button>
+          </div>
+          <div class="gcw-arch-params" role="group" aria-label="Archimedes oscillator parameters">
+            <span>Archimedes</span>
+            <label class="gcw-index-control"><span>Rate</span><input class="gcw-arch-dtshift" type="number" min="8" max="18" step="1" title="dtShift — fixed-point time resolution (rate = 2^dtShift)" /></label>
+            <label class="gcw-index-control"><span>Freq</span><input class="gcw-arch-freq" type="number" min="1" max="64" step="1" title="Oscillator frequency in Hz" /></label>
+            <label class="gcw-index-control"><span>Dither</span><input class="gcw-arch-dither" type="number" min="0" max="31" step="1" title="Xorshift dither jitter mask (bits)" /></label>
+            <label class="gcw-index-control"><span>Table</span><input class="gcw-arch-table" type="number" min="16" max="512" step="16" title="Captured wavetable resolution" /></label>
           </div>
           <label class="gcw-toggle"><input class="gcw-invert" type="checkbox" /> Invert</label>
           <button class="gcw-copy" type="button">Copy CSS</button>
