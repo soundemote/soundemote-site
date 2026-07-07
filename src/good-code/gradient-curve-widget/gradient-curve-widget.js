@@ -251,13 +251,16 @@ const css = `
     width: 100%;
   }
 
+  /* Keep the native colour input out of the pointer path so the whole swatch
+     stays a reliable drag surface. It is opened programmatically on click. */
   .gcw-swatch-button input[type="color"] {
-    cursor: pointer;
-    height: 150%;
-    inset: -25%;
+    height: 1px;
+    left: 0;
     opacity: 0;
+    pointer-events: none;
     position: absolute;
-    width: 150%;
+    top: 0;
+    width: 1px;
   }
 
   .gcw-color-meta {
