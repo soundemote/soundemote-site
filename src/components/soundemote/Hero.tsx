@@ -4,9 +4,12 @@ import { SOUNDEMOTE_BANK } from "@/data/patchBank";
 
 const HERO_BUILD = 8;
 
-export const Hero = () => {
+export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
-  const [patchIndex] = useState(0);
+  // The route (e.g. /reverb, /shootingstar) selects which patch the single hero
+  // sandbox loads. Unknown/absent slugs fall back to the first bank patch.
+  const bankIndex = SOUNDEMOTE_BANK.findIndex((p) => p.slug === patchSlug);
+  const patchIndex = bankIndex >= 0 ? bankIndex : 0;
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   // -1 means "nothing posted yet" so the first onLoad always pushes the
   // starting patch (shooting star) -- the sandbox's own built-in default
