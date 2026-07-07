@@ -2174,9 +2174,11 @@ export function mountGradientCurveWidget(host, options = {}) {
     invertInput.checked = state.invert;
     autoOrderInput.checked = state.autoOrder;
     autoBrightInput.checked = state.autoBright;
-    autoBlackInput.checked = state.autoBlack;
-    autoWhiteInput.checked = state.autoWhite;
     indexCountInput.value = String(state.sampleCount);
+    archDtShiftInput.value = String(state.archDtShift);
+    archFreqInput.value = String(state.archFreqHz);
+    archDitherInput.value = String(state.archDitherBits);
+    archTableInput.value = String(state.archTableSize);
     hueModeButtons.forEach((button) => {
       button.dataset.active = String(button.dataset.hueMode === state.hueMode);
       button.setAttribute("aria-pressed", String(button.dataset.hueMode === state.hueMode));
@@ -2215,15 +2217,21 @@ export function mountGradientCurveWidget(host, options = {}) {
     state.autoBright = autoBrightInput.checked;
     commit();
   });
-  autoBlackInput.addEventListener("change", () => {
-    state.autoBlack = autoBlackInput.checked;
-    if (state.autoBlack) saveManualAnchors({ black: true });
-    commit();
+  archDtShiftInput.addEventListener("change", () => {
+    state.archDtShift = clamp(Math.round(Number(archDtShiftInput.value) || state.archDtShift), 8, 18);
+    recaptureArchimedes();
   });
-  autoWhiteInput.addEventListener("change", () => {
-    state.autoWhite = autoWhiteInput.checked;
-    if (state.autoWhite) saveManualAnchors({ white: true });
-    commit();
+  archFreqInput.addEventListener("change", () => {
+    state.archFreqHz = clamp(Math.round(Number(archFreqInput.value) || state.archFreqHz), 1, 64);
+    recaptureArchimedes();
+  });
+  archDitherInput.addEventListener("change", () => {
+    state.archDitherBits = clamp(Math.round(Number(archDitherInput.value)), 0, 31);
+    recaptureArchimedes();
+  });
+  archTableInput.addEventListener("change", () => {
+    state.archTableSize = clamp(Math.round(Number(archTableInput.value) || state.archTableSize), 16, 512);
+    recaptureArchimedes();
   });
   let indexDrag = null;
   indexCountInput.addEventListener("pointerdown", (event) => {
