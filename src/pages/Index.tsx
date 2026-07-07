@@ -9,8 +9,9 @@ import Projects from "@/components/soundemote/Projects";
 import ScopeLab from "@/components/soundemote/ScopeLab";
 import Footer from "@/components/soundemote/Footer";
 import { featuredArticles, findFeaturedArticle } from "@/data/featuredArticles";
+import { siteConfig } from "@/config/site";
 
-const DEFAULT_FEATURED_SLUG = "simd";
+const DEFAULT_FEATURED_SLUG = siteConfig.homeFeaturedSlug;
 
 type IndexProps = {
   /** Article to feature in the front-page article section (e.g. /simd). */

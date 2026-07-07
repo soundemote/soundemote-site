@@ -28,6 +28,7 @@ import AdminClaims from "./pages/AdminClaims.tsx";
 import AdminWikiEdits from "./pages/AdminWikiEdits.tsx";
 import AdminUsers from "./pages/AdminUsers.tsx";
 import NotFound from "./pages/NotFound.tsx";
+import { siteConfig } from "./config/site.ts";
 
 const queryClient = new QueryClient();
 
@@ -45,50 +46,23 @@ const App = () => (
         <Route path="/oscilloscope" element={<OscilloscopePage />} />
         <Route path="/scope-scratch" element={<ScopeScratchPage />} />
         <Route path="/gradient-curve" element={<GradientCurvePage />} />
-        <Route path="/simd" element={<Index featuredSlug="simd" />} />
-        <Route path="/soemdsp-simd" element={<Navigate to="/simd" replace />} />
-        <Route path="/last-clock" element={<Index featuredSlug="last-clock" />} />
-        <Route path="/lastclock" element={<Index featuredSlug="last-clock" />} />
-        <Route path="/soemdsp-last-clock" element={<Navigate to="/last-clock" replace />} />
         <Route path="/sandbox" element={<SandboxPage />} />
         <Route path="/embed" element={<EmbedPage />} />
 
-        {/* Patch routes: front page, hero sandbox loads the named patch. */}
-        <Route path="/reverb" element={<Index patchSlug="reverb" />} />
-        <Route path="/silentlydreaming" element={<Index patchSlug="silently-dreaming" />} />
-        <Route path="/shootingstar" element={<Index patchSlug="shootingstar" />} />
-
-        {/* Legacy patch-article slugs -> front page (wiki pages kept as
-            unreachable code in PatchArticlePage for now). */}
-        <Route path="/analogbox" element={<Index />} />
-        <Route path="/aliasingwars" element={<Index />} />
-        <Route path="/sinewave" element={<Index />} />
-        <Route path="/dsf" element={<Index />} />
-        <Route path="/polyblep" element={<Index />} />
-        <Route path="/surgeoscillator" element={<Index />} />
-        <Route path="/phosphillator" element={<Index />} />
-        <Route path="/rhythmandpitchgenerator" element={<Index featuredSlug="rhythmandpitchgenerator" />} />
-        <Route path="/flowerchildfilter" element={<Index />} />
-        <Route path="/robinschmidt" element={<Index />} />
-        <Route path="/rsmet" element={<Index />} />
-
-        {/* Featured articles */}
-        <Route path="/soemdsp-sandbox" element={<Navigate to="/analogbox" replace />} />
-        <Route path="/phosphor" element={<Index featuredSlug="phosphor" />} />
-        <Route path="/aliasing-wars" element={<Index featuredSlug="aliasing-wars" />} />
-        <Route path="/analog-filters" element={<Index featuredSlug="analog-filters" />} />
-        <Route path="/analogfilters" element={<Navigate to="/analog-filters" replace />} />
-        <Route path="/efficient-patch-system" element={<Index featuredSlug="efficient-patch-system" />} />
-        <Route path="/efficientpatchsystem" element={<Navigate to="/efficient-patch-system" replace />} />
-        <Route path="/white-wire" element={<Index featuredSlug="white-wire" />} />
-        <Route path="/whitewire" element={<Navigate to="/white-wire" replace />} />
-        <Route path="/rhythm-and-pitch-generator" element={<Index featuredSlug="rhythmandpitchgenerator" />} />
-        <Route path="/vactrols" element={<Index featuredSlug="vactrols" />} />
-        <Route path="/jerobeam-modules" element={<Index featuredSlug="jerobeam-modules" />} />
-        <Route path="/jerobeammodules" element={<Navigate to="/jerobeam-modules" replace />} />
-        <Route path="/combustion" element={<Index featuredSlug="combustion" />} />
-        <Route path="/synthwave-orchestra" element={<Index featuredSlug="synthwave-orchestra" />} />
-        <Route path="/synthwaveorchestra" element={<Navigate to="/synthwave-orchestra" replace />} />
+        {/* Article, patch, front-page and redirect routes are all defined in
+            src/config/site.ts — edit that file to add or change them. */}
+        {Object.entries(siteConfig.articleRoutes).map(([path, slug]) => (
+          <Route key={path} path={`/${path}`} element={<Index featuredSlug={slug} />} />
+        ))}
+        {Object.entries(siteConfig.patchRoutes).map(([path, slug]) => (
+          <Route key={path} path={`/${path}`} element={<Index patchSlug={slug} />} />
+        ))}
+        {siteConfig.frontPageRoutes.map((path) => (
+          <Route key={path} path={`/${path}`} element={<Index />} />
+        ))}
+        {Object.entries(siteConfig.redirects).map(([path, target]) => (
+          <Route key={path} path={`/${path}`} element={<Navigate to={target} replace />} />
+        ))}
 
         <Route path="/sandbox/:patch" element={<SandboxPage />} />
         <Route path="/sandbox/:user/:bank/:patch" element={<SandboxPage />} />

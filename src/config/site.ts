@@ -1,0 +1,76 @@
+// -----------------------------------------------------------------------------
+// SITE SETTINGS — edit this file to change basic website behavior.
+//
+// This is the one place to tweak "template" level things: which article the
+// home page shows, which URLs map to which article / patch, and which old URLs
+// redirect where. App.tsx builds all of its routes from the tables below, so
+// adding a page usually means adding one line here instead of editing routing
+// JSX.
+// -----------------------------------------------------------------------------
+
+export const siteConfig = {
+  /** Article featured on the home page ("/"). Must match a slug in featuredArticles.ts. */
+  homeFeaturedSlug: "simd",
+
+  /**
+   * URL -> featured article. Visiting the path shows the front page with that
+   * article featured and scrolled into view. Key = path (no leading slash).
+   */
+  articleRoutes: {
+    "simd": "simd",
+    "last-clock": "last-clock",
+    "lastclock": "last-clock",
+    "phosphor": "phosphor",
+    "aliasing-wars": "aliasing-wars",
+    "analog-filters": "analog-filters",
+    "efficient-patch-system": "efficient-patch-system",
+    "white-wire": "white-wire",
+    "rhythm-and-pitch-generator": "rhythmandpitchgenerator",
+    "rhythmandpitchgenerator": "rhythmandpitchgenerator",
+    "vactrols": "vactrols",
+    "jerobeam-modules": "jerobeam-modules",
+    "combustion": "combustion",
+    "synthwave-orchestra": "synthwave-orchestra",
+  } as Record<string, string>,
+
+  /**
+   * URL -> hero patch. Visiting the path loads that patch in the hero sandbox.
+   * Key = path (no leading slash), value = patch slug in patchBank.ts.
+   */
+  patchRoutes: {
+    "reverb": "reverb",
+    "silentlydreaming": "silently-dreaming",
+    "shootingstar": "shootingstar",
+  } as Record<string, string>,
+
+  /**
+   * Legacy article slugs that now just land on the plain front page. Wiki
+   * pages for these are kept as unreachable code for now.
+   */
+  frontPageRoutes: [
+    "analogbox",
+    "aliasingwars",
+    "sinewave",
+    "dsf",
+    "polyblep",
+    "surgeoscillator",
+    "phosphillator",
+    "flowerchildfilter",
+    "robinschmidt",
+    "rsmet",
+  ],
+
+  /** Old URL -> new URL redirects (301-style, replace history). */
+  redirects: {
+    "soemdsp-simd": "/simd",
+    "soemdsp-last-clock": "/last-clock",
+    "soemdsp-sandbox": "/analogbox",
+    "analogfilters": "/analog-filters",
+    "efficientpatchsystem": "/efficient-patch-system",
+    "whitewire": "/white-wire",
+    "jerobeammodules": "/jerobeam-modules",
+    "synthwaveorchestra": "/synthwave-orchestra",
+  } as Record<string, string>,
+};
+
+export type SiteConfig = typeof siteConfig;
