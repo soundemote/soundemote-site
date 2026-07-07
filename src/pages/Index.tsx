@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Nav from "@/components/soundemote/Nav";
 import Hero from "@/components/soundemote/Hero";
 import StarField from "@/components/soundemote/StarField";
@@ -8,14 +8,32 @@ import ScopeLab from "@/components/soundemote/ScopeLab";
 import Footer from "@/components/soundemote/Footer";
 import { featuredArticles, findFeaturedArticle } from "@/data/featuredArticles";
 
-// Superdot (the Gradient Curve Widget, embedded in the "simd" article) is
-// the default thing visitors see in the featured spotlight on load.
 const DEFAULT_FEATURED_SLUG = "simd";
 
 const Index = () => {
-  const [selectedSlug, setSelectedSlug] = useState(
-    findFeaturedArticle(DEFAULT_FEATURED_SLUG) ? DEFAULT_FEATURED_SLUG : featuredArticles[0].slug,
-  );
+  const [selectedSlug, setSelectedSlug] = useState(DEFAULT_FEATURED_SLUG);
+
+  // Handle hash links like #last-clock
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.substring(1); // remove #
+      if (hash) {
+        const article = findFeaturedArticle(hash) || featuredArticles.find((a) => a.slug === hash);
+        if (article) {
+          setSelectedSlug(hash);
+          // Optional: smooth scroll to the featured section
+          document.getElementById("featured-article")?.scrollIntoView({ behavior: "smooth" });
+        }
+      }
+    };
+
+    // Initial load
+    handleHashChange();
+
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
+
   const selectedArticle = findFeaturedArticle(selectedSlug) ?? featuredArticles[0];
 
   return (
@@ -23,7 +41,7 @@ const Index = () => {
       <StarField />
       <Nav />
       <Hero />
-      <FeaturedArticleSection article={selectedArticle} />
+      <FeaturedArticleSection id="featured-article" article={selectedArticle} />
       <Projects selectedSlug={selectedSlug} onSelectArticle={setSelectedSlug} />
       <ScopeLab />
       <Footer />
