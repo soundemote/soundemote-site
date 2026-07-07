@@ -23,6 +23,12 @@ const repositoryLinks: RepositoryLink[] = [
         href: "https://github.com/elanhickler/soemdsp-sandbox-analog-filters",
     },
     {
+        emoji: "🥧",
+        name: "archimedes",
+        href: "https://github.com/soundemote/soemdsp-sandbox-archimedes",
+        pulse: true,
+    },
+    {
         emoji: "⌨️",
         name: "asciiscope",
         href: "https://github.com/soundemote/asciiscope-clap",
