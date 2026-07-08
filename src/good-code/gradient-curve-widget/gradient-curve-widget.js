@@ -2107,6 +2107,18 @@ export function mountGradientCurveWidget(host, options = {}) {
     { label: "Sunset", colors: ["#2B0A3D", "#B5179E", "#F72585", "#FFB703"] },
     { label: "Forest", colors: ["#04130B", "#1B5E20", "#66BB6A", "#E8F5E9"] },
     { label: "Mono", colors: ["#000000", "#555555", "#AAAAAA", "#FFFFFF"] },
+    { label: "Plasma", colors: ["#0D0887", "#7E03A8", "#CC4778", "#F89540", "#F0F921"] },
+    { label: "Viridis", colors: ["#440154", "#3B528B", "#21918C", "#5EC962", "#FDE725"] },
+    { label: "Magma", colors: ["#000004", "#3B0F70", "#8C2981", "#DE4968", "#FEC287"] },
+    { label: "Inferno", colors: ["#000004", "#57106E", "#BC3754", "#F98C0A", "#FCFFA4"] },
+    { label: "Aurora", colors: ["#011627", "#00B4A6", "#41EAD4", "#B2F7EF", "#F7FFF7"] },
+    { label: "Ultraviolet", colors: ["#03001C", "#301E67", "#5B8FB9", "#B6EADA", "#FFFFFF"] },
+    { label: "Lava", colors: ["#03071E", "#6A040F", "#DC2F02", "#F48C06", "#FFBA08"] },
+    { label: "Ice", colors: ["#03045E", "#0077B6", "#00B4D8", "#90E0EF", "#CAF0F8"] },
+    { label: "Candy", colors: ["#1A0B2E", "#7B2CBF", "#E0AAFF", "#FF99C8", "#FFF1E6"] },
+    { label: "Spectrum", colors: ["#FF0000", "#FFAA00", "#AAFF00", "#00FFAA", "#00AAFF", "#AA00FF"] },
+    { label: "Copper", colors: ["#0B0400", "#5C2E00", "#B87333", "#E6A857", "#FFE9C7"] },
+    { label: "Vaporwave", colors: ["#0F0326", "#7303C0", "#EC38BC", "#FDEFF9", "#03A9F4"] },
   ];
   const presetsRow = host.querySelector(".gcw-presets");
   GRADIENT_PRESETS.forEach((preset) => {
