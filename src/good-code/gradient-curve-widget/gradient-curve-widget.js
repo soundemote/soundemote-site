@@ -1354,12 +1354,12 @@ function outwardPreviewSamples(samples, falloff = {}, radialCenter = "start", po
 
 function previewGradientCss(mode, stops, sampleCount, invert = false, autoOrder = true, hueMode = "strict", angle = 135, falloff = {}, radialCenter = "start", lightnessMode = "bokeh", archTarget = "color") {
   // When the Archimedes noise targets Position, the color ramp must NOT carry
-  // the jittered wavetable (that would re-introduce the lightness wobble we're
-  // trying to move into space). Fall back to a smooth curve for color and let
-  // the spatial dither do the work in outwardPreviewSamples.
+  // the jittered wavetable — the dither is applied as a rigid whole-shape
+  // TRANSLATION (see --gcw-dither-x/y), not as internal warping. So the color
+  // ramp stays smooth and no per-radius jitter is baked into the stops.
   const positionMode = lightnessMode === "archimedes" && archTarget === "position";
   const colorMode = positionMode ? "bokeh" : lightnessMode;
-  const positionDither = positionMode ? ARCH_POSITION_DITHER_PCT : 0;
+  const positionDither = 0;
   const samples = sampleStops(stops, sampleCount, invert, autoOrder, hueMode, colorMode);
   const outwardModes = new Set(["dot", "square", "rectangle"]);
   const previewSamples = outwardModes.has(mode)
