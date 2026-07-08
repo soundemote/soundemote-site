@@ -2,6 +2,17 @@
   "ok": true,
   "modules": [
     {
+      "name": "additive_osc",
+      "label": "Additive Osc",
+      "targetType": "additiveOsc",
+      "kind": "oscillator",
+      "source": "native_modules/additive_osc/additive_osc.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/additive_osc/additive_osc.cpp",
+      "wasm": "native_modules/additive_osc/additive_osc.wasm",
+      "wasmUrl": "native_modules/additive_osc/additive_osc.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "archimedes",
       "label": "Archimedes Oscillator",
       "targetType": "archimedes",
@@ -10,6 +21,17 @@
       "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/archimedes/archimedes.cpp",
       "wasm": "native_modules/archimedes/archimedes.wasm",
       "wasmUrl": "native_modules/archimedes/archimedes.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "basic_oscillator",
+      "label": "Basic Oscillator",
+      "targetType": "osc",
+      "kind": "oscillator",
+      "source": "native_modules/basic_oscillator/basic_oscillator.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/basic_oscillator/basic_oscillator.cpp",
+      "wasm": "native_modules/basic_oscillator/basic_oscillator.wasm",
+      "wasmUrl": "native_modules/basic_oscillator/basic_oscillator.wasm",
       "wasmAvailable": true
     },
     {
@@ -43,6 +65,17 @@
       "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/chua_attractor/chua_attractor.cpp",
       "wasm": "native_modules/chua_attractor/chua_attractor.wasm",
       "wasmUrl": "native_modules/chua_attractor/chua_attractor.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "delay_effect",
+      "label": "Delay Effect",
+      "targetType": "delayEffect",
+      "kind": "effect",
+      "source": "native_modules/delay_effect/delay_effect.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/delay_effect/delay_effect.cpp",
+      "wasm": "native_modules/delay_effect/delay_effect.wasm",
+      "wasmUrl": "native_modules/delay_effect/delay_effect.wasm",
       "wasmAvailable": true
     },
     {

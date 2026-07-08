@@ -113,6 +113,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.nodes = new Map();
     this.noiseSeedKeys = new Map();
     this.noiseSeeds = new Map();
+    this.basicOscillatorNativeHandles = new Map();
     this.order = [];
     this.engineSampleRate = sampleRate;
     this.hostSampleRate = sampleRate;
@@ -1129,6 +1130,51 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         });
         return;
       }
+      if (name === "additive_osc" || targetType === "additiveOsc") {
+        this.nativeAdditiveOsc = exports;
+        this.nativeAdditiveOscReady = Boolean(this.nativeAdditiveOsc?.soemdsp_additive_osc_sample);
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "additive_osc",
+          status: this.nativeAdditiveOscReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "delay_effect" || targetType === "delayEffect") {
+        for (const state of this.delayEffectStates.values()) {
+          this.destroyDelayEffectNativeState(state);
+        }
+        this.nativeDelayEffect = exports;
+        this.nativeDelayEffectReady = Boolean(
+          this.nativeDelayEffect?.soemdsp_delay_effect_create &&
+          this.nativeDelayEffect?.soemdsp_delay_effect_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "delay_effect",
+          status: this.nativeDelayEffectReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "basic_oscillator" || targetType === "osc" || targetType === "fbPolyBlepOsc") {
+        for (const handle of this.basicOscillatorNativeHandles.values()) {
+          if (this.nativeBasicOscillator?.soemdsp_basic_oscillator_destroy) {
+            this.nativeBasicOscillator.soemdsp_basic_oscillator_destroy(handle);
+          }
+        }
+        this.basicOscillatorNativeHandles.clear();
+        this.nativeBasicOscillator = exports;
+        this.nativeBasicOscillatorReady = Boolean(
+          this.nativeBasicOscillator?.soemdsp_basic_oscillator_create &&
+          this.nativeBasicOscillator?.soemdsp_basic_oscillator_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "basic_oscillator",
+          status: this.nativeBasicOscillatorReady ? "ready" : "missing exports",
+        });
+        return;
+      }
       if (name === "shooting_star_explosion" || targetType === "shootingStarExplosion") {
         this.nativeShootingStarExplosion = exports;
         this.nativeShootingStarExplosionReady = Boolean(
@@ -1730,6 +1776,16 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         this.noiseSeeds.delete(id);
       }
     }
+    for (const id of [...this.basicOscillatorNativeHandles.keys()]) {
+      const nodeId = String(id).split(":")[0];
+      if (!ids.has(nodeId)) {
+        const handle = this.basicOscillatorNativeHandles.get(id);
+        if (handle && this.nativeBasicOscillator?.soemdsp_basic_oscillator_destroy) {
+          this.nativeBasicOscillator.soemdsp_basic_oscillator_destroy(handle);
+        }
+        this.basicOscillatorNativeHandles.delete(id);
+      }
+    }
     for (const id of [...this.noiseSeedKeys.keys()]) {
       const nodeId = String(id).split(":")[0];
       if (!ids.has(nodeId)) {
@@ -1964,6 +2020,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
     for (const id of [...this.delayEffectStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyDelayEffectNativeState(this.delayEffectStates.get(id));
         this.delayEffectStates.delete(id);
       }
     }
@@ -3442,6 +3499,41 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   }
 
   oscillatorSample(nodeId, phase, phaseIncrement, waveform) {
+    if (
+      this.nativeBasicOscillatorReady &&
+      this.nativeBasicOscillator?.soemdsp_basic_oscillator_create &&
+      this.nativeBasicOscillator?.soemdsp_basic_oscillator_sample
+    ) {
+      try {
+        let handle = this.basicOscillatorNativeHandles.get(nodeId);
+        if (!handle) {
+          handle = this.nativeBasicOscillator.soemdsp_basic_oscillator_create();
+          if (handle) {
+            this.basicOscillatorNativeHandles.set(nodeId, handle);
+          }
+        }
+        if (handle) {
+          return this.nativeBasicOscillator.soemdsp_basic_oscillator_sample(
+            handle,
+            Number(phase) || 0,
+            Number(phaseIncrement) || 0,
+            Math.round(Number(waveform) || 0),
+          );
+        }
+      } catch (error) {
+        this.nativeBasicOscillatorReady = false;
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "basic_oscillator",
+          status: "disabled",
+          message: String(error?.message || error || "native Basic Oscillator failed"),
+        });
+      }
+    }
+    return this.oscillatorSampleJs(nodeId, phase, phaseIncrement, waveform);
+  }
+
+  oscillatorSampleJs(nodeId, phase, phaseIncrement, waveform) {
     const phaseDelta = Number(phaseIncrement) || 0;
     const phaseStopped = Math.abs(phaseDelta) <= 1e-12;
     if (phaseStopped && this.oscillatorStoppedSamples.has(nodeId)) {
@@ -3776,6 +3868,39 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   }
 
   additiveOscillatorSample(phase, params = {}, rate = this.engineSampleRate || sampleRate) {
+    if (
+      !params.hasGraphInput &&
+      this.nativeAdditiveOscReady &&
+      this.nativeAdditiveOsc?.soemdsp_additive_osc_sample
+    ) {
+      try {
+        const safeRateValue = Math.max(1, Number(rate) || this.engineSampleRate || sampleRate || 44100);
+        return this.nativeAdditiveOsc.soemdsp_additive_osc_sample(
+          Number(phase) || 0,
+          Math.max(0, Number(params.frequency) || 0),
+          Math.max(1, Math.min(1024, Math.round(Number(params.harmonics) || 32))),
+          Math.round(Number(params.waveform) || 0),
+          this.clampValue(Number(params.modA) || 0, 0, 1),
+          this.clampValue(Number(params.harmonicPhaseAdd) || 0, 0, 1),
+          this.clampValue(Number(params.harmonicPhaseMultiply) || 0, 0, 4),
+          this.clampValue(Number(params.level) || 0, 0, 1),
+          Number(params.dampingFilterFrequency) || 20000,
+          safeRateValue,
+        );
+      } catch (error) {
+        this.nativeAdditiveOscReady = false;
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "additive_osc",
+          status: "disabled",
+          message: String(error?.message || error || "native Additive Osc failed"),
+        });
+      }
+    }
+    return this.additiveOscillatorSampleJs(phase, params, rate);
+  }
+
+  additiveOscillatorSampleJs(phase, params = {}, rate = this.engineSampleRate || sampleRate) {
     const safeRate = Math.max(1, Number(rate) || this.engineSampleRate || sampleRate || 44100);
     const frequency = Math.max(0, Number(params.frequency) || 0);
     const maxHarmonics = Math.max(
@@ -3958,6 +4083,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       lfoVariationState: 0,
       position: 0,
       wet: 0,
+      nativeHandle: 0,
+      nativeSeed: 0,
+      nativeSeedKey: "",
     };
   }
 
@@ -6492,6 +6620,56 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   }
 
   delayEffectSample(state, input, params, rateHz = sampleRate, nodeId = "") {
+    if (
+      this.nativeDelayEffectReady &&
+      this.nativeDelayEffect?.soemdsp_delay_effect_create &&
+      this.nativeDelayEffect?.soemdsp_delay_effect_sample
+    ) {
+      try {
+        if (!state.nativeHandle) {
+          state.nativeHandle = this.nativeDelayEffect.soemdsp_delay_effect_create();
+        }
+        if (state.nativeHandle) {
+          const seedKey = `${nodeId}:delayVariation`;
+          if (state.nativeSeedKey !== seedKey) {
+            state.nativeSeedKey = seedKey;
+            state.nativeSeed = this.stableSeed(seedKey);
+          }
+          const safeRateValue = Math.max(1, Number(rateHz) || 44100);
+          const modeValue = Math.round(this.safeFilterNumber(params.mode, null)) >= 1 ? 1 : 0;
+          this.nativeDelayEffect.soemdsp_delay_effect_sample(
+            state.nativeHandle,
+            Number(input) || 0,
+            this.clampValue(Number(params.time) || 0, 0.001, 4.25),
+            this.clampValue(Number(params.feedback) || 0, 0, 0.95),
+            this.clampValue(Number(params.mix) || 0, 0, 1),
+            this.clampValue(Number(params.level) || 0, 0, 2),
+            this.clampValue(Number(params.modAmount) || 0, 0, 0.5),
+            this.clampValue(Number(params.modRate) || 0, 0, 90),
+            this.clampValue(Number(params.modVariation) || 0, 0, 1),
+            modeValue,
+            state.nativeSeed >>> 0,
+            safeRateValue,
+          );
+          return {
+            Out: this.nativeDelayEffect.soemdsp_delay_effect_out(state.nativeHandle),
+            Wet: this.nativeDelayEffect.soemdsp_delay_effect_wet(state.nativeHandle),
+          };
+        }
+      } catch (error) {
+        this.nativeDelayEffectReady = false;
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "delay_effect",
+          status: "disabled",
+          message: String(error?.message || error || "native Delay Effect failed"),
+        });
+      }
+    }
+    return this.delayEffectSampleJs(state, input, params, rateHz, nodeId);
+  }
+
+  delayEffectSampleJs(state, input, params, rateHz = sampleRate, nodeId = "") {
     const safeRate = Math.max(1, Number(rateHz) || 44100);
     const maxDelaySeconds = 4.25;
     const requiredSize = Math.max(2, Math.ceil(safeRate * maxDelaySeconds) + 2);
@@ -10082,6 +10260,13 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
+  destroyDelayEffectNativeState(state) {
+    if (state?.nativeHandle && this.nativeDelayEffect?.soemdsp_delay_effect_destroy) {
+      this.nativeDelayEffect.soemdsp_delay_effect_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+
   destroyPluckEnvelopeNativeState(state) {
     if (state?.nativeHandle && this.nativePluckEnvelope?.soemdsp_pluck_envelope_destroy) {
       this.nativePluckEnvelope.soemdsp_pluck_envelope_destroy(state.nativeHandle);
@@ -10887,6 +11072,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
               frequency: pitchedFrequency,
               dampingFilterFrequency: this.readEffectiveParameter(node, "dampingFilterFrequency", 20000, frame, frames, frameValues),
               dampingGraphValueAt: (x) => graphInputValue(nodeId, "Damping Graph", x, 1),
+              hasGraphInput,
               harmonics: this.readEffectiveParameter(node, "harmonics", 32, frame, frames, frameValues),
               harmonicPhaseAdd: this.readEffectiveParameter(node, "harmonicPhaseAdd", 0, frame, frames, frameValues),
               harmonicPhaseMultiply: this.readEffectiveParameter(node, "harmonicPhaseMultiply", 0, frame, frames, frameValues),
