@@ -1183,7 +1183,10 @@ function normalizeFalloff(falloff = {}) {
   const fallbackRightEdge = Number.isFinite(oldEdge) ? oldEdge : 100;
   const fallbackLeftMid = fallbackLeftEdge + (fallbackRightMid - fallbackLeftEdge) * 0.45;
   const leftEdgeValue = Number(falloff.leftEdge);
-  const leftEdge = clamp(Number.isFinite(leftEdgeValue) ? leftEdgeValue : fallbackLeftEdge, 0, 96);
+  // Keep a small minimum width for the outer band. At exactly 0 the entire
+  // outer color region collapses to zero radius and renders as a hard ring
+  // where the dot meets the field; a few percent keeps that transition soft.
+  const leftEdge = clamp(Number.isFinite(leftEdgeValue) ? leftEdgeValue : fallbackLeftEdge, 4, 96);
   const leftMidValue = Number(falloff.leftMid);
   const leftMid = clamp(Number.isFinite(leftMidValue) ? leftMidValue : fallbackLeftMid, leftEdge + 1, 97);
   const rightMidValue = Number(falloff.rightMid);
@@ -1595,8 +1598,10 @@ export function mountGradientCurveWidget(host, options = {}) {
     }
 
     const [stop] = fromList.splice(fromIndex, 1);
-    const adjustedIndex = fromList === toList && fromIndex < toIndex ? toIndex - 1 : toIndex;
-    toList.splice(clamp(adjustedIndex, 0, toList.length), 0, stop);
+    // cardDropIndex is measured on the list with the dragged card already
+    // filtered out, so the target index is already in the post-removal frame
+    // for same-zone reorders -- no extra offset needed.
+    toList.splice(clamp(toIndex, 0, toList.length), 0, stop);
     state.activeStopId = stop.id;
     commit();
   }
@@ -1764,9 +1769,13 @@ export function mountGradientCurveWidget(host, options = {}) {
     const cards = [...container.querySelectorAll(".gcw-color-card")].filter((card) => card.dataset.dragging !== "true");
     for (let index = 0; index < cards.length; index += 1) {
       const rect = cards[index].getBoundingClientRect();
-      const inRow = event.clientY >= rect.top - 3 && event.clientY <= rect.bottom + 3;
+      // Cursor sits in a row entirely above this card -> insert before it.
+      if (event.clientY < rect.top - 3) return index;
+      // Cursor is within this card's row -> compare against its horizontal
+      // midpoint. (A pure Y check here would wrongly send every drop to the
+      // first card, which is why dropping into empty space failed before.)
+      const inRow = event.clientY <= rect.bottom + 3;
       if (inRow && event.clientX < rect.left + rect.width / 2) return index;
-      if (event.clientY < rect.top + rect.height / 2) return index;
     }
     return cards.length;
   }
@@ -2101,6 +2110,18 @@ export function mountGradientCurveWidget(host, options = {}) {
     { label: "Sunset", colors: ["#2B0A3D", "#B5179E", "#F72585", "#FFB703"] },
     { label: "Forest", colors: ["#04130B", "#1B5E20", "#66BB6A", "#E8F5E9"] },
     { label: "Mono", colors: ["#000000", "#555555", "#AAAAAA", "#FFFFFF"] },
+    { label: "Plasma", colors: ["#0D0887", "#7E03A8", "#CC4778", "#F89540", "#F0F921"] },
+    { label: "Viridis", colors: ["#440154", "#3B528B", "#21918C", "#5EC962", "#FDE725"] },
+    { label: "Magma", colors: ["#000004", "#3B0F70", "#8C2981", "#DE4968", "#FEC287"] },
+    { label: "Inferno", colors: ["#000004", "#57106E", "#BC3754", "#F98C0A", "#FCFFA4"] },
+    { label: "Aurora", colors: ["#011627", "#00B4A6", "#41EAD4", "#B2F7EF", "#F7FFF7"] },
+    { label: "Ultraviolet", colors: ["#03001C", "#301E67", "#5B8FB9", "#B6EADA", "#FFFFFF"] },
+    { label: "Lava", colors: ["#03071E", "#6A040F", "#DC2F02", "#F48C06", "#FFBA08"] },
+    { label: "Ice", colors: ["#03045E", "#0077B6", "#00B4D8", "#90E0EF", "#CAF0F8"] },
+    { label: "Candy", colors: ["#1A0B2E", "#7B2CBF", "#E0AAFF", "#FF99C8", "#FFF1E6"] },
+    { label: "Spectrum", colors: ["#FF0000", "#FFAA00", "#AAFF00", "#00FFAA", "#00AAFF", "#AA00FF"] },
+    { label: "Copper", colors: ["#0B0400", "#5C2E00", "#B87333", "#E6A857", "#FFE9C7"] },
+    { label: "Vaporwave", colors: ["#0F0326", "#7303C0", "#EC38BC", "#FDEFF9", "#03A9F4"] },
   ];
   const presetsRow = host.querySelector(".gcw-presets");
   GRADIENT_PRESETS.forEach((preset) => {
@@ -2128,7 +2149,7 @@ export function mountGradientCurveWidget(host, options = {}) {
   function setFalloffValue(id, value, options = {}) {
     const next = { ...state.falloff };
     if (id === "leftEdge") {
-      next.leftEdge = clamp(value, 0, next.leftMid - 1);
+      next.leftEdge = clamp(value, 4, next.leftMid - 1);
     } else if (id === "leftMid") {
       next.leftMid = clamp(value, next.leftEdge + 1, next.rightMid - 1);
     } else if (id === "rightMid") {
@@ -2139,7 +2160,7 @@ export function mountGradientCurveWidget(host, options = {}) {
       const startLeftEdge = Number.isFinite(options.startLeftEdge) ? options.startLeftEdge : next.leftEdge;
       const startLeftMid = Number.isFinite(options.startLeftMid) ? options.startLeftMid : next.leftMid;
       const delta = value;
-      const minDelta = 0 + 1 - startLeftEdge;
+      const minDelta = 4 - startLeftEdge;
       const maxDelta = next.rightMid - 1 - startLeftMid;
       const clampedDelta = clamp(delta, minDelta, maxDelta);
       next.leftEdge = startLeftEdge + clampedDelta;
