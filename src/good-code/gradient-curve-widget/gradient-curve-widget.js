@@ -56,6 +56,9 @@ const css = `
     grid-area: preview;
     min-height: 0;
     position: relative;
+    /* Isolate the animated dot's paint so per-frame gradient repaints don't
+       invalidate siblings, and keep the work on its own compositor layer. */
+    contain: layout paint style;
   }
 
   .gcw-preview::before {
@@ -66,6 +69,10 @@ const css = `
     position: absolute;
     transform: translate(var(--gcw-preview-pan-x, 0px), var(--gcw-preview-pan-y, 0px)) scale(var(--gcw-preview-zoom, 1));
     transform-origin: center;
+    /* Promote to a GPU-composited layer; the dot animation mutates the
+       gradient every frame, so hint the compositor to keep it on the GPU. */
+    will-change: transform, background;
+    backface-visibility: hidden;
   }
 
   .gcw-preview[data-preview-mode="dot"]::before {
