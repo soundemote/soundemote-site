@@ -1370,6 +1370,7 @@ export function mountGradientCurveWidget(host, options = {}) {
     archFps: Number.isFinite(Number(options.archFps)) ? clamp(Math.round(Number(options.archFps)), 0, 60) : 12,
     hueMode: ["strict", "wide", "chroma", "smooth-natural", "velvet", "silk"].includes(options.hueMode) ? options.hueMode : "strict",
     lightnessMode: ["linear", "smooth", "gaussian", "filmic", "bokeh", "archimedes"].includes(options.lightnessMode) ? options.lightnessMode : "bokeh",
+    archTarget: ["color", "position"].includes(options.archTarget) ? options.archTarget : "color",
     previewMode: ["dot", "diagonal", "horizontal", "vertical", "square", "rectangle"].includes(options.previewMode) ? options.previewMode : "dot",
     radialCenter: ["start", "end"].includes(options.radialCenter) ? options.radialCenter : "end",
     gridMode: "off",
