@@ -250,7 +250,7 @@ export const Oscilloscope = forwardRef<OscilloscopeRef, {
     if (!gl) return;
 
     let raf = 0;
-    let dpr = window.devicePixelRatio || 1;
+    let dpr = Math.min(window.devicePixelRatio || 1, 2);
 
     /* ---------- Shader helpers ---------- */
     const compile = (type: number, src: string) => {
@@ -433,7 +433,7 @@ export const Oscilloscope = forwardRef<OscilloscopeRef, {
     let fboB: FBO | null = null;
 
     const resize = () => {
-      dpr = window.devicePixelRatio || 1;
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
       const rect = canvas.getBoundingClientRect();
       const W = Math.max(1, Math.floor(rect.width * dpr));
       const H = Math.max(1, Math.floor(rect.height * dpr));
