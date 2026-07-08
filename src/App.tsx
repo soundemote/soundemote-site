@@ -39,7 +39,7 @@ const App = () => (
       <Toaster />
       <Sonner />
 
-      {/* HashRouter is now in main.tsx */}
+      {/* BrowserRouter is in main.tsx */}
       <Routes>
         <Route path="/" element={<Index />} />
         <Route path="/learning-lab" element={<LearningLab />} />
