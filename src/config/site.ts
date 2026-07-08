@@ -1,11 +1,18 @@
+export type WebringLink = {
+  href: string;
+  emoji: string;
+  title: string;
+  host: string;
+};
+
 // -----------------------------------------------------------------------------
 // SITE SETTINGS — edit this file to change basic website behavior.
 //
 // This is the one place to tweak "template" level things: which article the
-// home page shows, which URLs map to which article / patch, and which old URLs
-// redirect where. App.tsx builds all of its routes from the tables below, so
-// adding a page usually means adding one line here instead of editing routing
-// JSX.
+// home page shows, which URLs map to which article / patch, which old URLs
+// redirect where, and the webring links on /webring. App.tsx builds all of its
+// routes from the tables below, so adding a page usually means adding one line
+// here instead of editing routing JSX.
 // -----------------------------------------------------------------------------
 
 export const siteConfig = {
