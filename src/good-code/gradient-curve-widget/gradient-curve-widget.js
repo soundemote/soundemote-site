@@ -1645,6 +1645,18 @@ export function mountGradientCurveWidget(host, options = {}) {
 
   const mount = host.querySelector(".gcw-mount");
   const preview = host.querySelector(".gcw-preview");
+  const previewCanvas = host.querySelector(".gcw-preview-gl");
+  // GPU dot surface. If WebGL is unavailable we leave data-gl unset and the
+  // CSS ::before radial-gradient remains the fallback for the dot.
+  const dotGL = createDotGL(previewCanvas);
+  if (dotGL) preview.dataset.gl = "on";
+  let dotResizeObserver = null;
+  if (dotGL && typeof ResizeObserver !== "undefined") {
+    dotResizeObserver = new ResizeObserver(() => {
+      if (state.previewMode === "dot") dotGL.draw();
+    });
+    dotResizeObserver.observe(previewCanvas);
+  }
   const falloffStrip = host.querySelector(".gcw-falloff-strip");
   const falloffHandles = [...host.querySelectorAll(".gcw-falloff-handle")];
   const falloffValues = [...host.querySelectorAll("[data-falloff-value]")];
