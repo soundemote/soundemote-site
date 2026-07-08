@@ -2245,6 +2245,25 @@ export function mountGradientCurveWidget(host, options = {}) {
     mount.style.setProperty("--gcw-preview-edge-color", (outwardPreview ? radialEdgeColor : samples[samples.length - 1]?.color) || "rgba(18, 20, 15, 0.42)");
     mount.style.setProperty("--gcw-flat-gradient", `linear-gradient(90deg, ${samples.map((sample) => `${sample.color} ${sample.position.toFixed(1)}%`).join(", ")})`);
     host.querySelector(".gcw-preview").dataset.previewMode = state.previewMode;
+    // --- GPU dot + rigid whole-shape position dither ---------------------
+    const positionMode = state.lightnessMode === "archimedes" && state.archTarget === "position";
+    if (positionMode) {
+      // Translate the ENTIRE dot/shape by a tiny dithered offset (not internal
+      // warping). Magnitude scales with the preview so it reads as a subtle
+      // spatial shiver at any size.
+      const base = Math.min(preview.clientWidth || 0, preview.clientHeight || 0);
+      const mag = base * 0.015;
+      const off = archimedesDitherOffset();
+      mount.style.setProperty("--gcw-dither-x", `${(off.x * mag).toFixed(2)}px`);
+      mount.style.setProperty("--gcw-dither-y", `${(off.y * mag).toFixed(2)}px`);
+    } else {
+      mount.style.setProperty("--gcw-dither-x", "0px");
+      mount.style.setProperty("--gcw-dither-y", "0px");
+    }
+    if (dotGL && state.previewMode === "dot") {
+      dotGL.setColors(dotRadialColors(state));
+      dotGL.draw();
+    }
     invertInput.checked = state.invert;
     autoOrderInput.checked = state.autoOrder;
     autoBrightInput.checked = state.autoBright;
