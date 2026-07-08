@@ -28,10 +28,14 @@ const WebringPage = () => (
               <span className="display block text-lg font-semibold text-warm-white group-hover:text-scope">
                 {link.title}
               </span>
-              <span className="mono text-xs text-muted-foreground">
+              <span className="mono block text-xs text-muted-foreground">
                 {link.host}
               </span>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                {link.description}
+              </p>
             </div>
+
           </a>
         ))}
       </div>
