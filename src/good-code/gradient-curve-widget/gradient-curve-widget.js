@@ -86,6 +86,34 @@ const css = `
     width: min(72cqw, 460px);
   }
 
+  /* WebGL dot surface: fully GPU-rendered gradient. Sized/positioned exactly
+     like the dot ::before so pan/zoom behave identically. The dither vars add
+     a tiny rigid translation so the WHOLE dot shifts in space (no internal
+     warping). border-radius clips the square canvas to a circle. */
+  .gcw-preview-gl {
+    display: none;
+  }
+  .gcw-preview[data-preview-mode="dot"][data-gl="on"] .gcw-preview-gl {
+    display: block;
+    position: absolute;
+    aspect-ratio: 1;
+    border-radius: 999px;
+    inset: 50% auto auto 50%;
+    max-height: 96%;
+    max-width: 96%;
+    width: min(72cqw, 460px);
+    transform: translate(
+        calc(-50% + var(--gcw-preview-pan-x, 0px) + var(--gcw-dither-x, 0px)),
+        calc(-50% + var(--gcw-preview-pan-y, 0px) + var(--gcw-dither-y, 0px))
+      ) scale(var(--gcw-preview-zoom, 1));
+    transform-origin: center;
+    will-change: transform;
+    backface-visibility: hidden;
+  }
+  .gcw-preview[data-preview-mode="dot"][data-gl="on"]::before {
+    display: none;
+  }
+
   .gcw-preview[data-preview-mode="dot"],
   .gcw-preview[data-preview-mode="square"],
   .gcw-preview[data-preview-mode="rectangle"] {
@@ -98,7 +126,7 @@ const css = `
     inset: 50% auto auto 50%;
     max-height: 90%;
     max-width: 90%;
-    transform: translate(calc(-50% + var(--gcw-preview-pan-x, 0px)), calc(-50% + var(--gcw-preview-pan-y, 0px))) scale(var(--gcw-preview-zoom, 1));
+    transform: translate(calc(-50% + var(--gcw-preview-pan-x, 0px) + var(--gcw-dither-x, 0px)), calc(-50% + var(--gcw-preview-pan-y, 0px) + var(--gcw-dither-y, 0px))) scale(var(--gcw-preview-zoom, 1));
     transform-origin: center;
     width: min(52cqw, 380px);
   }
@@ -106,7 +134,7 @@ const css = `
   .gcw-preview[data-preview-mode="rectangle"]::before {
     border-radius: 0;
     inset: 14% 8%;
-    transform: translate(var(--gcw-preview-pan-x, 0px), var(--gcw-preview-pan-y, 0px)) scale(var(--gcw-preview-zoom, 1));
+    transform: translate(calc(var(--gcw-preview-pan-x, 0px) + var(--gcw-dither-x, 0px)), calc(var(--gcw-preview-pan-y, 0px) + var(--gcw-dither-y, 0px))) scale(var(--gcw-preview-zoom, 1));
     transform-origin: center;
   }
 
