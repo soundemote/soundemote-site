@@ -2149,7 +2149,7 @@ export function mountGradientCurveWidget(host, options = {}) {
   function setFalloffValue(id, value, options = {}) {
     const next = { ...state.falloff };
     if (id === "leftEdge") {
-      next.leftEdge = clamp(value, 0, next.leftMid - 1);
+      next.leftEdge = clamp(value, 4, next.leftMid - 1);
     } else if (id === "leftMid") {
       next.leftMid = clamp(value, next.leftEdge + 1, next.rightMid - 1);
     } else if (id === "rightMid") {
@@ -2160,7 +2160,7 @@ export function mountGradientCurveWidget(host, options = {}) {
       const startLeftEdge = Number.isFinite(options.startLeftEdge) ? options.startLeftEdge : next.leftEdge;
       const startLeftMid = Number.isFinite(options.startLeftMid) ? options.startLeftMid : next.leftMid;
       const delta = value;
-      const minDelta = 0 + 1 - startLeftEdge;
+      const minDelta = 4 - startLeftEdge;
       const maxDelta = next.rightMid - 1 - startLeftMid;
       const clampedDelta = clamp(delta, minDelta, maxDelta);
       next.leftEdge = startLeftEdge + clampedDelta;
