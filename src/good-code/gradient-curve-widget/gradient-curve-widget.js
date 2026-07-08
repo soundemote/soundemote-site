@@ -2105,6 +2105,10 @@ export function mountGradientCurveWidget(host, options = {}) {
       button.dataset.active = String(button.dataset.radialCenter === state.radialCenter);
       button.setAttribute("aria-pressed", String(button.dataset.radialCenter === state.radialCenter));
     });
+    archTargetButtons.forEach((button) => {
+      button.dataset.active = String(button.dataset.archTarget === state.archTarget);
+      button.setAttribute("aria-pressed", String(button.dataset.archTarget === state.archTarget));
+    });
     const activeSelected = state.stops.some((stop) => stop.id === state.activeStopId);
     const savedSelected = state.savedStops.some((stop) => stop.id === state.activeStopId);
     removeButton.disabled = state.stops.length <= 2 || !activeSelected;
