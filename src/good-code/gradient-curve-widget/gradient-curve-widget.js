@@ -495,12 +495,21 @@ const css = `
   .gcw-arch-target-option {
     background: transparent;
     border: 0;
-    border-radius: 999px;
+    border-radius: 0;
     color: var(--gcw-muted);
     font: inherit;
     align-self: stretch;
     min-height: 21px;
     padding: 0 6px;
+  }
+
+  .gcw-arch-target-option {
+    border-radius: 999px;
+  }
+
+  .gcw-arch-params .gcw-arch-target-label {
+    color: var(--gcw-ink);
+    font-weight: 800;
   }
 
   .gcw-hue-option[data-active="true"],
