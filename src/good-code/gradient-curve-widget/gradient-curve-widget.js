@@ -2427,6 +2427,13 @@ export function mountGradientCurveWidget(host, options = {}) {
       emit();
     });
   });
+  archTargetButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      state.archTarget = ["color", "position"].includes(button.dataset.archTarget) ? button.dataset.archTarget : "color";
+      render();
+      emit();
+    });
+  });
   preview.addEventListener("click", (event) => {
     const sample = colorAtPreviewPosition(samplePositionFromPreview(event));
     addGradientColorFromHsl(sample);
