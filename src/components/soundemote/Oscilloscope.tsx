@@ -554,7 +554,20 @@ export const Oscilloscope = forwardRef<OscilloscopeRef, {
     window.addEventListener("pointerup", onUp);
     canvas.addEventListener("wheel", onWheel, { passive: false });
 
+    // Frame-rate cap: render at most ~60fps even on 120/144Hz displays.
+    // The sim is delta-time based, so capping only reduces redundant GPU work.
+    const TARGET_FPS = 60;
+    const FRAME_MS = 1000 / TARGET_FPS;
+    let lastFrameT = performance.now();
     const draw = () => {
+      const tNow = performance.now();
+      // If the next vsync would still be within budget, skip GPU work this
+      // tick. 2ms slack avoids dropping to 30fps from tiny timing jitter.
+      if (tNow - lastFrameT < FRAME_MS - 2) {
+        raf = requestAnimationFrame(draw);
+        return;
+      }
+      lastFrameT = tNow;
       const now = performance.now();
       let dtSeconds = (now - lastT) / 1000;
       lastT = now;
