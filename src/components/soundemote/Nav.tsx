@@ -159,19 +159,15 @@ export const Nav = () => {
   return (
   <header className="relative z-50 w-full border-b border-border/40 bg-background/70 backdrop-blur-xl">
     <nav className="container relative flex h-16 items-center justify-between" aria-label="Primary">
-      <a href="/" className="group z-10 flex items-center gap-2 mono text-sm tracking-wider">
-        <span className="text-scope text-glow">✧</span>
-        <span className="display text-warm-white">soundemote</span>
-      </a>
-      <div className="absolute left-1/2 hidden -translate-x-1/2 items-center justify-center gap-0 whitespace-nowrap mono text-xs normal-case tracking-[0.06em] text-muted-foreground xl:flex">
-        <span className="text-muted-foreground/80">/*</span>
-        <SandboxNavLink href="/sandbox" label="app:(analog box)" />
-        <SandboxNavLink href="/webring" label="webring" />
-        <span className="text-[#ffc957] tracking-normal">{'\u26A1\uFE0E\u26A1\uFE0E\u26A1\uFE0E\u26A1\uFE0E\u26A1\uFE0E'}</span>
-        <span className="text-muted-foreground/80">beta v0.2.0</span>
-        <span className="text-muted-foreground/80">*/</span>
+      <div className="z-10 flex items-center gap-4">
+        <a href="/" className="group flex items-center gap-2 mono text-sm tracking-wider">
+          <span className="text-scope text-glow">✧</span>
+          <span className="display text-warm-white">soundemote</span>
+        </a>
+        <SandboxNavLink href="/sandbox" label="app:(analogbox)" />
       </div>
       <div className="z-10 flex items-center gap-4">
+
         <a
           href="https://www.youtube.com/@soundemote0"
           target="_blank"
