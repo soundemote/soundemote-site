@@ -90,7 +90,7 @@ export const siteConfig = {
       host: "laserpilot.github.io",
       description: "A toolkit for building and deploying interactive installations.",
     },
-    /*https://www.shadertoy.com/view/MldcW2*/
+    /*https://www.shadertoy.com/view/MldcW2 clouds*/
     {
       href: "https://github.com/veryCoolTimo/texture-auto-upscaler",
       emoji: "🖼️",
