@@ -1928,6 +1928,13 @@ export function mountGradientCurveWidget(host, options = {}) {
         syncActiveControls();
         picker.click();
       });
+      // The picker lives inside the swatch button, so its programmatic click
+      // bubbles back up to the button. Without this guard the button handler
+      // fires again and re-opens the picker in an infinite loop, so the native
+      // colour dialog never actually appears.
+      picker.addEventListener("click", (event) => {
+        event.stopPropagation();
+      });
       picker.addEventListener("input", () => {
         Object.assign(stop, polishStop({ ...stop, ...hexToHsl(picker.value) }));
         commit({ renderCards: false });
