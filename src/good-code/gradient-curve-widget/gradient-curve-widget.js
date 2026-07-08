@@ -1804,6 +1804,28 @@ export function mountGradientCurveWidget(host, options = {}) {
         host.querySelectorAll("[data-dragging='true']").forEach((node) => delete node.dataset.dragging);
         host.querySelectorAll("[data-drag-over='true']").forEach((node) => delete node.dataset.dragOver);
       });
+      // The add (+) card sits inside the active zone, so a color dropped onto it
+      // must be accepted as a real reorder target -- otherwise the leftmost
+      // swatch can never be dragged "past" the + button to become the end color.
+      card.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+      });
+      card.addEventListener("drop", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!state.drag || state.drag.type === "add") return;
+        const addIndex = clamp(state.addInsertIndex, 0, state.stops.length);
+        if (state.drag.zone === "active") {
+          const fromIndex = state.stops.findIndex((stop) => stop.id === state.drag.id);
+          // moveBetweenZones works in the post-removal frame, so shift the
+          // target left by one when the dragged card was before the + card.
+          const target = fromIndex >= 0 && fromIndex < addIndex ? addIndex - 1 : addIndex;
+          moveBetweenZones(state.drag.id, "active", "active", target);
+        } else {
+          moveBetweenZones(state.drag.id, state.drag.zone, "active", addIndex);
+        }
+      });
 
       const button = document.createElement("button");
       button.type = "button";
