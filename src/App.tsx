@@ -14,6 +14,7 @@ import SandboxPage from "./pages/SandboxPage.tsx";
 import PatchArticlePage from "./pages/PatchArticlePage.tsx";
 import EmbedPage from "./pages/EmbedPage.tsx";
 import AVWResearch from "./pages/AVWResearch.tsx";
+import WebringPage from "./pages/WebringPage.tsx";
 import SupabaseTest from "./pages/SupabaseTest.tsx";
 import SharePage from "./pages/SharePage.tsx";
 import WikiPage from "./pages/WikiPage.tsx";
@@ -67,6 +68,7 @@ const App = () => (
         <Route path="/sandbox/:patch" element={<SandboxPage />} />
         <Route path="/sandbox/:user/:bank/:patch" element={<SandboxPage />} />
         <Route path="/avw-research" element={<AVWResearch />} />
+        <Route path="/webring" element={<WebringPage />} />
         <Route path="/supabase-test" element={<SupabaseTest />} />
         <Route path="/share/:slug" element={<SharePage />} />
         <Route path="/wiki" element={<WikiPage />} />
