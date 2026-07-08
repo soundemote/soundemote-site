@@ -1281,7 +1281,7 @@ function colorAtCurvePosition(samples, position) {
   return `#${mix(a[0], b[0])}${mix(a[1], b[1])}${mix(a[2], b[2])}`;
 }
 
-function outwardPreviewSamples(samples, falloff = {}, radialCenter = "start") {
+function outwardPreviewSamples(samples, falloff = {}, radialCenter = "start", positionDither = 0) {
   // The falloff curve runs from the OUTER EDGE (curve start) inward to the
   // CENTER (curve end). radialCenter chooses which gradient color sits at the
   // center; the other color lands on the outer edge.
@@ -1296,17 +1296,28 @@ function outwardPreviewSamples(samples, falloff = {}, radialCenter = "start") {
   for (let i = 0; i <= steps; i += 1) {
     const radius = (i / steps) * 100; // 0 = center, 100 = edge
     // CSS radial position: curve start -> edge, so invert 100 - radius.
-    const curvePos = inverseFalloffPosition(100 - radius, falloff);
+    // In Position mode, dither the *lookup radius* with the Archimedes jitter so
+    // the color bands wobble in space (the stop positions stay evenly spaced —
+    // only which color lands at each radius shifts, which is the spatial dither).
+    const jitter = positionDither ? archimedesNoiseAt(radius / 100) * positionDither : 0;
+    const curvePos = inverseFalloffPosition(clamp(100 - radius + jitter, 0, 100), falloff);
     shaped.push({ color: colorAtCurvePosition(source, curvePos), position: radius });
   }
   return shaped;
 }
 
-function previewGradientCss(mode, stops, sampleCount, invert = false, autoOrder = true, hueMode = "strict", angle = 135, falloff = {}, radialCenter = "start", lightnessMode = "bokeh") {
-  const samples = sampleStops(stops, sampleCount, invert, autoOrder, hueMode, lightnessMode);
+function previewGradientCss(mode, stops, sampleCount, invert = false, autoOrder = true, hueMode = "strict", angle = 135, falloff = {}, radialCenter = "start", lightnessMode = "bokeh", archTarget = "color") {
+  // When the Archimedes noise targets Position, the color ramp must NOT carry
+  // the jittered wavetable (that would re-introduce the lightness wobble we're
+  // trying to move into space). Fall back to a smooth curve for color and let
+  // the spatial dither do the work in outwardPreviewSamples.
+  const positionMode = lightnessMode === "archimedes" && archTarget === "position";
+  const colorMode = positionMode ? "bokeh" : lightnessMode;
+  const positionDither = positionMode ? ARCH_POSITION_DITHER_PCT : 0;
+  const samples = sampleStops(stops, sampleCount, invert, autoOrder, hueMode, colorMode);
   const outwardModes = new Set(["dot", "square", "rectangle"]);
   const previewSamples = outwardModes.has(mode)
-    ? outwardPreviewSamples(samples, falloff, radialCenter)
+    ? outwardPreviewSamples(samples, falloff, radialCenter, positionDither)
     : samples;
   const parts = previewSamples.map((sample) => `${sample.color} ${sample.position.toFixed(2)}%`);
   if (outwardModes.has(mode)) {
