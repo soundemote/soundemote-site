@@ -1398,6 +1398,112 @@ function huePath(stops, invert = false, autoOrder = true, hueMode = "strict") {
   return segments.join(" ");
 }
 
+// Colors along the dot's radius (index 0 = center, last = outer edge). Uses the
+// same falloff/radialCenter shaping as the CSS path but never bakes in dither —
+// the Archimedes "position" dither is applied as a rigid whole-dot translation.
+function dotRadialColors(state) {
+  const positionMode = state.lightnessMode === "archimedes" && state.archTarget === "position";
+  const colorMode = positionMode ? "bokeh" : state.lightnessMode;
+  const samples = sampleStops(state.stops, state.sampleCount, state.invert, state.autoOrder, state.hueMode, colorMode);
+  const shaped = outwardPreviewSamples(samples, state.falloff, state.radialCenter, 0);
+  return shaped.map((s) => s.color);
+}
+
+// Per-frame rigid displacement for the whole dot, derived from the live
+// Archimedes jitter. Two decorrelated taps drive x and y; the wavetable is
+// reseeded each animation frame, so these values shiver frame to frame.
+// Returns normalized components in roughly [-1, 1].
+function archimedesDitherOffset() {
+  return { x: archimedesNoiseAt(0.3), y: archimedesNoiseAt(0.72) };
+}
+
+// Minimal WebGL renderer: draws a 1D gradient sampled by radius across a
+// full-quad, clipped to a circle by the canvas CSS border-radius. This is the
+// GPU surface the dot can later be freely moved/redrawn on.
+function createDotGL(canvas) {
+  const gl = canvas.getContext("webgl", { alpha: true, premultipliedAlpha: false, antialias: true });
+  if (!gl) return null;
+  const compile = (type, src) => {
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+      console.error("gcw dot shader", gl.getShaderInfoLog(sh));
+      return null;
+    }
+    return sh;
+  };
+  const vs = compile(gl.VERTEX_SHADER, "attribute vec2 p; varying vec2 uv; void main(){ uv = p * 0.5 + 0.5; gl_Position = vec4(p, 0.0, 1.0); }");
+  const fs = compile(
+    gl.FRAGMENT_SHADER,
+    "precision mediump float; varying vec2 uv; uniform sampler2D grad;" +
+      "void main(){ float r = length(uv - 0.5) / 0.5; gl_FragColor = texture2D(grad, vec2(clamp(r, 0.0, 1.0), 0.5)); }"
+  );
+  if (!vs || !fs) return null;
+  const prog = gl.createProgram();
+  gl.attachShader(prog, vs);
+  gl.attachShader(prog, fs);
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    console.error("gcw dot link", gl.getProgramInfoLog(prog));
+    return null;
+  }
+  const quad = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  const aPos = gl.getAttribLocation(prog, "p");
+  const uGrad = gl.getUniformLocation(prog, "grad");
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+  const setColors = (colors) => {
+    const n = Math.max(2, colors.length);
+    const data = new Uint8Array(n * 4);
+    for (let i = 0; i < colors.length; i += 1) {
+      const [r, g, b] = hexToRgbBytes(colors[i] || "#000000");
+      data[i * 4] = r;
+      data[i * 4 + 1] = g;
+      data[i * 4 + 2] = b;
+      data[i * 4 + 3] = 255;
+    }
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, n, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+  };
+  const resize = () => {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.max(1, Math.round(canvas.clientWidth * dpr));
+    const h = Math.max(1, Math.round(canvas.clientHeight * dpr));
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+  };
+  const draw = () => {
+    resize();
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.useProgram(prog);
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.uniform1i(uGrad, 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  };
+  const destroy = () => {
+    gl.deleteBuffer(quad);
+    gl.deleteTexture(tex);
+    gl.deleteProgram(prog);
+  };
+  return { setColors, draw, resize, destroy };
+}
+
 export function mountGradientCurveWidget(host, options = {}) {
   ensureStyles();
   const initialStops = Array.isArray(options.stops) && options.stops.length >= 2 ? options.stops : [
