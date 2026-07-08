@@ -1028,10 +1028,12 @@ function ensureArchimedesTable(cfg = {}, onReady) {
   if (archimedesTable.length !== n) archimedesTable = new Float64Array(n);
   if (archimedesWasmExports) {
     captureArchimedesFromWasm(archimedesWasmExports, archimedesTable, archimedesConfig);
+    computeArchimedesNoise();
     return;
   }
   // Synchronous JS-port capture is always available first.
   captureArchimedesJs(archimedesTable, archimedesConfig);
+  computeArchimedesNoise();
   if (archimedesWasmRequested || typeof fetch !== "function" || typeof WebAssembly === "undefined") return;
   archimedesWasmRequested = true;
   const url = "/soemdsp-sandbox/native_modules/archimedes/archimedes.wasm";
@@ -1041,7 +1043,10 @@ function ensureArchimedesTable(cfg = {}, onReady) {
   load
     .then(({ instance }) => {
       archimedesWasmExports = instance.exports;
-      if (captureArchimedesFromWasm(archimedesWasmExports, archimedesTable, archimedesConfig) && typeof onReady === "function") onReady();
+      if (captureArchimedesFromWasm(archimedesWasmExports, archimedesTable, archimedesConfig)) {
+        computeArchimedesNoise();
+        if (typeof onReady === "function") onReady();
+      }
     })
     .catch(() => { /* JS-port table already in place */ });
 }
