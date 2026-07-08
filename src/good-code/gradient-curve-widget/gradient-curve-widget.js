@@ -1183,7 +1183,10 @@ function normalizeFalloff(falloff = {}) {
   const fallbackRightEdge = Number.isFinite(oldEdge) ? oldEdge : 100;
   const fallbackLeftMid = fallbackLeftEdge + (fallbackRightMid - fallbackLeftEdge) * 0.45;
   const leftEdgeValue = Number(falloff.leftEdge);
-  const leftEdge = clamp(Number.isFinite(leftEdgeValue) ? leftEdgeValue : fallbackLeftEdge, 0, 96);
+  // Keep a small minimum width for the outer band. At exactly 0 the entire
+  // outer color region collapses to zero radius and renders as a hard ring
+  // where the dot meets the field; a few percent keeps that transition soft.
+  const leftEdge = clamp(Number.isFinite(leftEdgeValue) ? leftEdgeValue : fallbackLeftEdge, 4, 96);
   const leftMidValue = Number(falloff.leftMid);
   const leftMid = clamp(Number.isFinite(leftMidValue) ? leftMidValue : fallbackLeftMid, leftEdge + 1, 97);
   const rightMidValue = Number(falloff.rightMid);
