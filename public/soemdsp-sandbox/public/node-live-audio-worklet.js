@@ -186,6 +186,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.ladderFilterStates = new Map();
     this.tb303FilterStates = new Map();
     this.linearEnvelopeStates = new Map();
+    this.sineWavetableStates = new Map();
     this.lorenzAttractorStates = new Map();
     this.logisticMapStates = new Map();
     this.henonMapStates = new Map();
@@ -984,6 +985,150 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         });
         return;
       }
+      if (name === "linear_envelope" || targetType === "linearEnvelope") {
+        for (const state of this.linearEnvelopeStates.values()) {
+          this.destroyLinearEnvelopeNativeState(state);
+        }
+        this.nativeLinearEnvelope = exports;
+        this.nativeLinearEnvelopeReady = Boolean(
+          this.nativeLinearEnvelope?.soemdsp_linear_envelope_create &&
+          this.nativeLinearEnvelope?.soemdsp_linear_envelope_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "linear_envelope",
+          status: this.nativeLinearEnvelopeReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "pluck_envelope" || targetType === "pluckEnvelope") {
+        for (const state of this.pluckEnvelopeStates.values()) {
+          this.destroyPluckEnvelopeNativeState(state);
+        }
+        this.nativePluckEnvelope = exports;
+        this.nativePluckEnvelopeReady = Boolean(
+          this.nativePluckEnvelope?.soemdsp_pluck_envelope_create &&
+          this.nativePluckEnvelope?.soemdsp_pluck_envelope_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "pluck_envelope",
+          status: this.nativePluckEnvelopeReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "exp_adsr" || targetType === "expAdsr") {
+        for (const state of this.expAdsrStates.values()) {
+          this.destroyExpAdsrNativeState(state);
+        }
+        this.nativeExpAdsr = exports;
+        this.nativeExpAdsrReady = Boolean(
+          this.nativeExpAdsr?.soemdsp_exp_adsr_create &&
+          this.nativeExpAdsr?.soemdsp_exp_adsr_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "exp_adsr",
+          status: this.nativeExpAdsrReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "random_walk" || targetType === "randomWalk") {
+        for (const state of this.randomWalkStates.values()) {
+          this.destroyRandomWalkNativeState(state);
+        }
+        this.nativeRandomWalk = exports;
+        this.nativeRandomWalkReady = Boolean(
+          this.nativeRandomWalk?.soemdsp_random_walk_create &&
+          this.nativeRandomWalk?.soemdsp_random_walk_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "random_walk",
+          status: this.nativeRandomWalkReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "lorenz_attractor" || targetType === "lorenzAttractor") {
+        for (const state of this.lorenzAttractorStates.values()) {
+          this.destroyLorenzAttractorNativeState(state);
+        }
+        this.nativeLorenzAttractor = exports;
+        this.nativeLorenzAttractorReady = Boolean(
+          this.nativeLorenzAttractor?.soemdsp_lorenz_attractor_create &&
+          this.nativeLorenzAttractor?.soemdsp_lorenz_attractor_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "lorenz_attractor",
+          status: this.nativeLorenzAttractorReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "sine_wavetable" || targetType === "sineWavetable") {
+        for (const state of this.sineWavetableStates.values()) {
+          this.destroySineWavetableNativeState(state);
+        }
+        this.nativeSineWavetable = exports;
+        this.nativeSineWavetableReady = Boolean(
+          this.nativeSineWavetable?.soemdsp_sine_wavetable_create &&
+          this.nativeSineWavetable?.soemdsp_sine_wavetable_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "sine_wavetable",
+          status: this.nativeSineWavetableReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "log_spiral" || targetType === "logSpiral") {
+        for (const state of this.logSpiralStates.values()) {
+          this.destroyLogSpiralNativeState(state);
+        }
+        this.nativeLogSpiral = exports;
+        this.nativeLogSpiralReady = Boolean(
+          this.nativeLogSpiral?.soemdsp_log_spiral_create &&
+          this.nativeLogSpiral?.soemdsp_log_spiral_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "log_spiral",
+          status: this.nativeLogSpiralReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "fractal_spiral" || targetType === "fractalSpiral") {
+        for (const state of this.fractalSpiralStates.values()) {
+          this.destroyFractalSpiralNativeState(state);
+        }
+        this.nativeFractalSpiral = exports;
+        this.nativeFractalSpiralReady = Boolean(
+          this.nativeFractalSpiral?.soemdsp_fractal_spiral_create &&
+          this.nativeFractalSpiral?.soemdsp_fractal_spiral_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "fractal_spiral",
+          status: this.nativeFractalSpiralReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "jerobeam_spiral" || targetType === "spiral") {
+        for (const state of this.spiralStates.values()) {
+          this.destroyJerobeamSpiralNativeState(state);
+        }
+        this.nativeJerobeamSpiral = exports;
+        this.nativeJerobeamSpiralReady = Boolean(
+          this.nativeJerobeamSpiral?.soemdsp_jerobeam_spiral_create &&
+          this.nativeJerobeamSpiral?.soemdsp_jerobeam_spiral_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "jerobeam_spiral",
+          status: this.nativeJerobeamSpiralReady ? "ready" : "missing exports",
+        });
+        return;
+      }
       if (name === "shooting_star_explosion" || targetType === "shootingStarExplosion") {
         this.nativeShootingStarExplosion = exports;
         this.nativeShootingStarExplosionReady = Boolean(
@@ -1119,6 +1264,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
     this.tb303FilterStates = new Map();
     this.linearEnvelopeStates = new Map();
+    this.sineWavetableStates = new Map();
     this.lorenzAttractorStates = new Map();
     this.logisticMapStates = new Map();
     this.henonMapStates = new Map();
@@ -1597,21 +1743,25 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
     for (const id of [...this.fractalSpiralStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyFractalSpiralNativeState(this.fractalSpiralStates.get(id));
         this.fractalSpiralStates.delete(id);
       }
     }
     for (const id of [...this.logSpiralStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyLogSpiralNativeState(this.logSpiralStates.get(id));
         this.logSpiralStates.delete(id);
       }
     }
     for (const id of [...this.spiralStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyJerobeamSpiralNativeState(this.spiralStates.get(id));
         this.spiralStates.delete(id);
       }
     }
     for (const id of [...this.lorenzAttractorStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyLorenzAttractorNativeState(this.lorenzAttractorStates.get(id));
         this.lorenzAttractorStates.delete(id);
       }
     }
@@ -1723,7 +1873,14 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
     for (const id of [...this.linearEnvelopeStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyLinearEnvelopeNativeState(this.linearEnvelopeStates.get(id));
         this.linearEnvelopeStates.delete(id);
+      }
+    }
+    for (const id of [...this.sineWavetableStates.keys()]) {
+      if (!ids.has(id)) {
+        this.destroySineWavetableNativeState(this.sineWavetableStates.get(id));
+        this.sineWavetableStates.delete(id);
       }
     }
     for (const id of [...this.clockStates.keys()]) {
@@ -1850,6 +2007,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
     for (const id of [...this.expAdsrStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyExpAdsrNativeState(this.expAdsrStates.get(id));
         this.expAdsrStates.delete(id);
       }
     }
@@ -1861,6 +2019,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
     for (const id of [...this.randomWalkStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyRandomWalkNativeState(this.randomWalkStates.get(id));
         this.randomWalkStates.delete(id);
       }
     }
@@ -1882,6 +2041,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
     for (const id of [...this.pluckEnvelopeStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyPluckEnvelopeNativeState(this.pluckEnvelopeStates.get(id));
         this.pluckEnvelopeStates.delete(id);
       }
     }
@@ -3854,6 +4014,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       out: 0,
       secondsPassed: 0,
       state: "off",
+      nativeHandle: 0,
     };
   }
 
@@ -3864,6 +4025,13 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       releaseDecrement: 0,
       secondsPassed: 0,
       state: "off",
+      nativeHandle: 0,
+    };
+  }
+
+  createSineWavetableState() {
+    return {
+      nativeHandle: 0,
     };
   }
 
@@ -3878,6 +4046,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       releaseIncrement: 0,
       secondsPassed: 0,
       state: "off",
+      nativeHandle: 0,
     };
   }
 
@@ -4032,6 +4201,8 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       out: 0,
       seed: 0,
       seedKey: "",
+      nativeHandle: 0,
+      nativeSeedKey: "",
     };
   }
 
@@ -4349,6 +4520,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     runtime.resonatorFilterStates = new Map();
     runtime.humanFilterStates = new Map();
     runtime.linearEnvelopeStates = new Map();
+    runtime.sineWavetableStates = new Map();
     runtime.noiseGeneratorStates = new Map();
     runtime.oscResetStates = new Map();
     runtime.graphLfoStates = new Map();
@@ -6785,6 +6957,52 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   }
 
   pluckEnvelopeSample(state, trigger, release, params, rate = sampleRate) {
+    if (
+      this.nativePluckEnvelopeReady &&
+      this.nativePluckEnvelope?.soemdsp_pluck_envelope_create &&
+      this.nativePluckEnvelope?.soemdsp_pluck_envelope_sample
+    ) {
+      try {
+        if (!state.nativeHandle) {
+          state.nativeHandle = this.nativePluckEnvelope.soemdsp_pluck_envelope_create();
+        }
+        if (state.nativeHandle) {
+          const safeRate = Number(rate) > 1 ? Number(rate) : sampleRate;
+          const out = this.nativePluckEnvelope.soemdsp_pluck_envelope_sample(
+            state.nativeHandle,
+            Number(trigger) || 0,
+            Number(release) || 0,
+            Math.max(0, Number(params.delayTime) || 0),
+            Math.max(0, Number(params.attackFeedback) || 0),
+            this.clampValue(Number(params.decay) || 0, 0.1, 1),
+            this.clampValue(Number(params.decayModStart) || 0, 0.001, 1.8),
+            this.clampValue(Number(params.decayModEnd) || 0, 0.01, 3),
+            this.clampValue(Number(params.endingDecay) || 0, 0, 1.4),
+            this.clampValue(Number(params.decayModCurve) || 0, -1, 1),
+            this.clampValue(Number(params.decayModFrequency) || 0, 0, 100),
+            Math.max(0, Number(params.autoReleaseTime) || 0),
+            this.clampValue(Number(params.releaseFeedback) || 0, 0, 1),
+            this.clampValue(Number(params.velocity) || 0, 0, 1),
+            this.clampValue(Number(params.velocitySensitivity) || 0, 0, 1),
+            this.clampValue(Number(params.level) || 0, 0, 1),
+            safeRate,
+          );
+          return this.safeFilterNumber(out, null);
+        }
+      } catch (error) {
+        this.nativePluckEnvelopeReady = false;
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "pluck_envelope",
+          status: "disabled",
+          message: String(error?.message || error || "native Pluck Envelope failed"),
+        });
+      }
+    }
+    return this.pluckEnvelopeSampleJs(state, trigger, release, params, rate);
+  }
+
+  pluckEnvelopeSampleJs(state, trigger, release, params, rate = sampleRate) {
     const safeRate = Math.max(1, Number(rate) || sampleRate || 44100);
     const period = 1 / safeRate;
     const safeTrigger = this.safeFilterNumber(trigger, null);
@@ -6974,6 +7192,47 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   }
 
   randomWalkSample(state, params, rate = sampleRate, nodeId = "") {
+    if (
+      this.nativeRandomWalkReady &&
+      this.nativeRandomWalk?.soemdsp_random_walk_create &&
+      this.nativeRandomWalk?.soemdsp_random_walk_sample
+    ) {
+      try {
+        if (!state.nativeHandle) {
+          state.nativeHandle = this.nativeRandomWalk.soemdsp_random_walk_create();
+        }
+        if (state.nativeHandle) {
+          const key = this.seededKey(nodeId, params.seed, "randomWalk");
+          if (state.nativeSeedKey !== key) {
+            state.nativeSeedKey = key;
+            this.nativeRandomWalk.soemdsp_random_walk_reset_seed(state.nativeHandle, this.stableSeed(key));
+          }
+          const safeRate = Number(rate) > 1 ? Number(rate) : sampleRate;
+          const method = Math.max(0, Math.min(3, Math.round(Number(params.method) || 0)));
+          const out = this.nativeRandomWalk.soemdsp_random_walk_sample(
+            state.nativeHandle,
+            method,
+            Math.max(0, Number(params.frequency) || 0),
+            Math.max(0, Number(params.jitter) || 0),
+            Number(params.level) || 0,
+            safeRate,
+          );
+          return this.safeFilterNumber(out, null);
+        }
+      } catch (error) {
+        this.nativeRandomWalkReady = false;
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "random_walk",
+          status: "disabled",
+          message: String(error?.message || error || "native Random Walk failed"),
+        });
+      }
+    }
+    return this.randomWalkSampleJs(state, params, rate, nodeId);
+  }
+
+  randomWalkSampleJs(state, params, rate = sampleRate, nodeId = "") {
     this.resetSeededState(state, nodeId, params.seed, "randomWalk");
     const safeRate = Math.max(1, Number(rate) || sampleRate || 44100);
     const method = Math.max(0, Math.min(3, Math.round(this.safeFilterNumber(params.method, null))));
@@ -7131,6 +7390,47 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   }
 
   expAdsrSample(state, gate, params, rate = sampleRate) {
+    if (
+      this.nativeExpAdsrReady &&
+      this.nativeExpAdsr?.soemdsp_exp_adsr_create &&
+      this.nativeExpAdsr?.soemdsp_exp_adsr_sample
+    ) {
+      try {
+        if (!state.nativeHandle) {
+          state.nativeHandle = this.nativeExpAdsr.soemdsp_exp_adsr_create();
+        }
+        if (state.nativeHandle) {
+          const safeRate = Number(rate) > 1 ? Number(rate) : sampleRate;
+          const out = this.nativeExpAdsr.soemdsp_exp_adsr_sample(
+            state.nativeHandle,
+            Number(gate) || 0,
+            Math.max(0, Number(params.delay) || 0),
+            Math.max(0, Number(params.attack) || 0),
+            Math.max(0.000000001, Number(params.attackShape) || 0),
+            Math.max(0, Number(params.decay) || 0),
+            this.clampValue(Number(params.sustain) || 0, 0, 1),
+            Math.max(0, Number(params.release) || 0),
+            Math.max(0.000000001, Number(params.releaseShape) || 0),
+            Number(params.loop) || 0,
+            Number(params.level) || 0,
+            safeRate,
+          );
+          return this.safeFilterNumber(out, null);
+        }
+      } catch (error) {
+        this.nativeExpAdsrReady = false;
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "exp_adsr",
+          status: "disabled",
+          message: String(error?.message || error || "native Exp ADSR failed"),
+        });
+      }
+    }
+    return this.expAdsrSampleJs(state, gate, params, rate);
+  }
+
+  expAdsrSampleJs(state, gate, params, rate = sampleRate) {
     const safeGate = this.safeFilterNumber(gate, null);
     const delay = Math.max(0, this.safeFilterNumber(params.delay, null));
     const attack = Math.max(0, this.safeFilterNumber(params.attack, null));
@@ -7224,6 +7524,45 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   }
 
   linearEnvelopeSample(state, gate, params, rate = sampleRate) {
+    if (
+      this.nativeLinearEnvelopeReady &&
+      this.nativeLinearEnvelope?.soemdsp_linear_envelope_create &&
+      this.nativeLinearEnvelope?.soemdsp_linear_envelope_sample
+    ) {
+      try {
+        if (!state.nativeHandle) {
+          state.nativeHandle = this.nativeLinearEnvelope.soemdsp_linear_envelope_create();
+        }
+        if (state.nativeHandle) {
+          const safeRate = Number(rate) > 1 ? Number(rate) : sampleRate;
+          const out = this.nativeLinearEnvelope.soemdsp_linear_envelope_sample(
+            state.nativeHandle,
+            Number(gate) || 0,
+            Math.max(0, Number(params.delay) || 0),
+            Math.max(0, Number(params.attack) || 0),
+            Math.max(0, Number(params.decay) || 0),
+            this.clampValue(Number(params.sustain) || 0, 0, 1),
+            Math.max(0, Number(params.release) || 0),
+            Number(params.loop) || 0,
+            Number(params.level) || 0,
+            safeRate,
+          );
+          return this.safeFilterNumber(out, null);
+        }
+      } catch (error) {
+        this.nativeLinearEnvelopeReady = false;
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "linear_envelope",
+          status: "disabled",
+          message: String(error?.message || error || "native Linear Envelope failed"),
+        });
+      }
+    }
+    return this.linearEnvelopeSampleJs(state, gate, params, rate);
+  }
+
+  linearEnvelopeSampleJs(state, gate, params, rate = sampleRate) {
     const safeGate = this.safeFilterNumber(gate, null);
     const delay = Math.max(0, this.safeFilterNumber(params.delay, null));
     const attack = Math.max(0, this.safeFilterNumber(params.attack, null));
@@ -7415,6 +7754,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       rotX: 0,
       rotY: 0,
       zHistory: 0,
+      nativeHandle: 0,
     };
   }
 
@@ -7422,6 +7762,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     return {
       phase: 0,
       spinPhase: 0,
+      nativeHandle: 0,
     };
   }
 
@@ -7433,6 +7774,49 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   // public/node-graph-fractal-spiral.js for the full derivation. Mirrors
   // that file exactly.
   fractalSpiralSample(state, options = {}) {
+    if (
+      this.nativeFractalSpiralReady &&
+      this.nativeFractalSpiral?.soemdsp_fractal_spiral_create &&
+      this.nativeFractalSpiral?.soemdsp_fractal_spiral_sample
+    ) {
+      try {
+        if (!state.nativeHandle) {
+          state.nativeHandle = this.nativeFractalSpiral.soemdsp_fractal_spiral_create();
+        }
+        if (state.nativeHandle) {
+          const sampleRateValue = Math.max(1, Number(options.sampleRate) || sampleRate || 44100);
+          this.nativeFractalSpiral.soemdsp_fractal_spiral_sample(
+            state.nativeHandle,
+            Number(options.frequency) || 0,
+            Number(options.spin) || 0,
+            Math.max(0, Number(options.size) || 0),
+            Number(options.growth) || 0,
+            Math.max(0.001, Math.min(0.98, Number(options.gain))),
+            Math.max(1.0001, Number(options.lacunarity) || 1),
+            Math.max(1, Math.min(16, Math.round(Number(options.octaves) || 1))),
+            Number(options.twist) || 0,
+            sampleRateValue,
+          );
+          return {
+            x: this.nativeFractalSpiral.soemdsp_fractal_spiral_x(state.nativeHandle),
+            y: this.nativeFractalSpiral.soemdsp_fractal_spiral_y(state.nativeHandle),
+            z: this.nativeFractalSpiral.soemdsp_fractal_spiral_z(state.nativeHandle),
+          };
+        }
+      } catch (error) {
+        this.nativeFractalSpiralReady = false;
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "fractal_spiral",
+          status: "disabled",
+          message: String(error?.message || error || "native Fractal Spiral failed"),
+        });
+      }
+    }
+    return this.fractalSpiralSampleJs(state, options);
+  }
+
+  fractalSpiralSampleJs(state, options = {}) {
     const sampleRateValue = Math.max(1, Number(options.sampleRate) || sampleRate || 44100);
     const frequency = Number(options.frequency) || 0;
     const spin = Number(options.spin) || 0;
@@ -7485,6 +7869,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     return {
       phase: 0,
       spinPhase: 0,
+      nativeHandle: 0,
     };
   }
 
@@ -7496,6 +7881,46 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   // public/node-graph-log-spiral.js for the full derivation. Mirrors that
   // file exactly.
   logSpiralSample(state, options = {}) {
+    if (
+      this.nativeLogSpiralReady &&
+      this.nativeLogSpiral?.soemdsp_log_spiral_create &&
+      this.nativeLogSpiral?.soemdsp_log_spiral_sample
+    ) {
+      try {
+        if (!state.nativeHandle) {
+          state.nativeHandle = this.nativeLogSpiral.soemdsp_log_spiral_create();
+        }
+        if (state.nativeHandle) {
+          const sampleRateValue = Math.max(1, Number(options.sampleRate) || sampleRate || 44100);
+          this.nativeLogSpiral.soemdsp_log_spiral_sample(
+            state.nativeHandle,
+            Number(options.frequency) || 0,
+            Number(options.spin) || 0,
+            Math.max(0, Number(options.size) || 0),
+            Number(options.growth) || 0,
+            Math.max(0.1, Number(options.turns) || 1),
+            sampleRateValue,
+          );
+          return {
+            x: this.nativeLogSpiral.soemdsp_log_spiral_x(state.nativeHandle),
+            y: this.nativeLogSpiral.soemdsp_log_spiral_y(state.nativeHandle),
+            z: this.nativeLogSpiral.soemdsp_log_spiral_z(state.nativeHandle),
+          };
+        }
+      } catch (error) {
+        this.nativeLogSpiralReady = false;
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "log_spiral",
+          status: "disabled",
+          message: String(error?.message || error || "native Logarithmic Spiral failed"),
+        });
+      }
+    }
+    return this.logSpiralSampleJs(state, options);
+  }
+
+  logSpiralSampleJs(state, options = {}) {
     const sampleRateValue = Math.max(1, Number(options.sampleRate) || sampleRate || 44100);
     const frequency = Number(options.frequency) || 0;
     const spin = Number(options.spin) || 0;
@@ -7531,6 +7956,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       x: 0.1,
       y: 0,
       z: 0,
+      nativeHandle: 0,
     };
   }
 
@@ -7541,6 +7967,50 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   }
 
   lorenzAttractorSample(options = {}) {
+    const state = options.state || this.createLorenzAttractorState();
+    if (
+      this.nativeLorenzAttractorReady &&
+      this.nativeLorenzAttractor?.soemdsp_lorenz_attractor_create &&
+      this.nativeLorenzAttractor?.soemdsp_lorenz_attractor_sample
+    ) {
+      try {
+        if (!state.nativeHandle) {
+          state.nativeHandle = this.nativeLorenzAttractor.soemdsp_lorenz_attractor_create();
+        }
+        if (state.nativeHandle) {
+          const sampleRateValue = Math.max(1, Number(options.sampleRate) || sampleRate || 44100);
+          this.nativeLorenzAttractor.soemdsp_lorenz_attractor_sample(
+            state.nativeHandle,
+            Number(options.reset) || 0,
+            Math.max(0, Number(options.speed) || 0),
+            Math.max(0, Number(options.sigma) || 10),
+            Number.isFinite(Number(options.rho)) ? Number(options.rho) : 28,
+            Math.max(0, Number(options.beta) || 8 / 3),
+            Number(options.rotate) || 0,
+            Math.max(0, Number(options.scale) || 1),
+            this.clampValue(Number(options.zDepth) || 0, 0, 1),
+            sampleRateValue,
+          );
+          return {
+            x: this.nativeLorenzAttractor.soemdsp_lorenz_attractor_x(state.nativeHandle),
+            y: this.nativeLorenzAttractor.soemdsp_lorenz_attractor_y(state.nativeHandle),
+            z: this.nativeLorenzAttractor.soemdsp_lorenz_attractor_z(state.nativeHandle),
+          };
+        }
+      } catch (error) {
+        this.nativeLorenzAttractorReady = false;
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "lorenz_attractor",
+          status: "disabled",
+          message: String(error?.message || error || "native Lorenz Attractor failed"),
+        });
+      }
+    }
+    return this.lorenzAttractorSampleJs(options);
+  }
+
+  lorenzAttractorSampleJs(options = {}) {
     const state = options.state || this.createLorenzAttractorState();
     const resetHigh = Number(options.reset) > 0.5;
     if (resetHigh && !state.resetWasHigh) {
@@ -9577,6 +10047,69 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
+  destroyLinearEnvelopeNativeState(state) {
+    if (state?.nativeHandle && this.nativeLinearEnvelope?.soemdsp_linear_envelope_destroy) {
+      this.nativeLinearEnvelope.soemdsp_linear_envelope_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+
+  destroySineWavetableNativeState(state) {
+    if (state?.nativeHandle && this.nativeSineWavetable?.soemdsp_sine_wavetable_destroy) {
+      this.nativeSineWavetable.soemdsp_sine_wavetable_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+
+  destroyLogSpiralNativeState(state) {
+    if (state?.nativeHandle && this.nativeLogSpiral?.soemdsp_log_spiral_destroy) {
+      this.nativeLogSpiral.soemdsp_log_spiral_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+
+  destroyFractalSpiralNativeState(state) {
+    if (state?.nativeHandle && this.nativeFractalSpiral?.soemdsp_fractal_spiral_destroy) {
+      this.nativeFractalSpiral.soemdsp_fractal_spiral_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+
+  destroyJerobeamSpiralNativeState(state) {
+    if (state?.nativeHandle && this.nativeJerobeamSpiral?.soemdsp_jerobeam_spiral_destroy) {
+      this.nativeJerobeamSpiral.soemdsp_jerobeam_spiral_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+
+  destroyPluckEnvelopeNativeState(state) {
+    if (state?.nativeHandle && this.nativePluckEnvelope?.soemdsp_pluck_envelope_destroy) {
+      this.nativePluckEnvelope.soemdsp_pluck_envelope_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+
+  destroyExpAdsrNativeState(state) {
+    if (state?.nativeHandle && this.nativeExpAdsr?.soemdsp_exp_adsr_destroy) {
+      this.nativeExpAdsr.soemdsp_exp_adsr_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+
+  destroyRandomWalkNativeState(state) {
+    if (state?.nativeHandle && this.nativeRandomWalk?.soemdsp_random_walk_destroy) {
+      this.nativeRandomWalk.soemdsp_random_walk_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+
+  destroyLorenzAttractorNativeState(state) {
+    if (state?.nativeHandle && this.nativeLorenzAttractor?.soemdsp_lorenz_attractor_destroy) {
+      this.nativeLorenzAttractor.soemdsp_lorenz_attractor_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+
   // pureSawEng(t, n), transcribed and simplified directly from "Extended
   // DSF Oscillators.cxx": sin(PI*t*(2N+1)) / sin(PI*t) - 1. Guarded at the
   // removable singularity t=0 via its L'Hopital limit (2N+1).
@@ -9975,6 +10508,60 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   }
 
   jerobeamSpiralSample(options) {
+    const state = options.state;
+    if (
+      this.nativeJerobeamSpiralReady &&
+      this.nativeJerobeamSpiral?.soemdsp_jerobeam_spiral_create &&
+      this.nativeJerobeamSpiral?.soemdsp_jerobeam_spiral_sample
+    ) {
+      try {
+        if (!state.nativeHandle) {
+          state.nativeHandle = this.nativeJerobeamSpiral.soemdsp_jerobeam_spiral_create();
+        }
+        if (state.nativeHandle) {
+          const sampleRateValue = Math.max(1, Number(options.sampleRate) || sampleRate || 44100);
+          this.nativeJerobeamSpiral.soemdsp_jerobeam_spiral_sample(
+            state.nativeHandle,
+            Number(options.frequency) || 0,
+            Number(options.density) || 0,
+            Number(options.size) || 0,
+            Number(options.sharp) || 0,
+            Number(options.sharpCurve) || 0,
+            Number(options.sharpCurveMult) || 0,
+            Number(options.morph) || 0,
+            Number(options.morphSpeed) || 0,
+            Number(options.position) || 0,
+            Number(options.positionSpeed) || 0,
+            Number(options.rotX) || 0,
+            Number(options.rotXSpeed) || 0,
+            Number(options.rotY) || 0,
+            Number(options.rotYSpeed) || 0,
+            Number(options.zAmount) || 0,
+            Number(options.zDepth) || 0,
+            sampleRateValue,
+          );
+          return {
+            x: this.nativeJerobeamSpiral.soemdsp_jerobeam_spiral_x(state.nativeHandle),
+            y: this.nativeJerobeamSpiral.soemdsp_jerobeam_spiral_y(state.nativeHandle),
+            z: this.nativeJerobeamSpiral.soemdsp_jerobeam_spiral_z(state.nativeHandle),
+            left: this.nativeJerobeamSpiral.soemdsp_jerobeam_spiral_left(state.nativeHandle),
+            right: this.nativeJerobeamSpiral.soemdsp_jerobeam_spiral_right(state.nativeHandle),
+          };
+        }
+      } catch (error) {
+        this.nativeJerobeamSpiralReady = false;
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "jerobeam_spiral",
+          status: "disabled",
+          message: String(error?.message || error || "native Jerobeam Spiral failed"),
+        });
+      }
+    }
+    return this.jerobeamSpiralSampleJs(options);
+  }
+
+  jerobeamSpiralSampleJs(options) {
     const tau = Math.PI * 2;
     const piOver2 = Math.PI / 2;
     const state = options.state;
@@ -10103,7 +10690,6 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
           safeRate,
         );
       } else if (node?.type === "sineWavetable") {
-        const phase = this.phases.get(nodeId) || 0;
         const phaseOffset = this.phaseRadians(
           this.readEffectiveParameter(node, "phase", 0, frame, frames, frameValues),
         );
@@ -10131,12 +10717,51 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
           frames,
           frameValues,
         ) + ampInput);
-        const phaseIncrement = pitchedFrequency / safeRate;
-        value = nodeLiveSineCosWavetableSample(phase + phaseOffset, pitchedFrequency, amplitude, safeRate);
-        this.phases.set(
-          nodeId,
-          this.wrapValue(phase + Math.PI * 2 * phaseIncrement, 0, Math.PI * 2),
-        );
+        if (
+          this.nativeSineWavetableReady &&
+          this.nativeSineWavetable?.soemdsp_sine_wavetable_create &&
+          this.nativeSineWavetable?.soemdsp_sine_wavetable_sample
+        ) {
+          try {
+            const nativeState = this.sineWavetableStates.get(nodeId) || this.createSineWavetableState();
+            this.sineWavetableStates.set(nodeId, nativeState);
+            if (!nativeState.nativeHandle) {
+              nativeState.nativeHandle = this.nativeSineWavetable.soemdsp_sine_wavetable_create();
+            }
+            if (nativeState.nativeHandle) {
+              this.nativeSineWavetable.soemdsp_sine_wavetable_sample(
+                nativeState.nativeHandle,
+                phaseOffset,
+                pitchedFrequency,
+                amplitude,
+                safeRate,
+              );
+              value = {
+                sin: this.nativeSineWavetable.soemdsp_sine_wavetable_sin(nativeState.nativeHandle),
+                cos: this.nativeSineWavetable.soemdsp_sine_wavetable_cos(nativeState.nativeHandle),
+              };
+            } else {
+              throw new Error("native SinCos handle pool exhausted");
+            }
+          } catch (error) {
+            this.nativeSineWavetableReady = false;
+            this.port.postMessage({
+              type: "nativeModuleStatus",
+              name: "sine_wavetable",
+              status: "disabled",
+              message: String(error?.message || error || "native SinCos failed"),
+            });
+          }
+        }
+        if (!this.nativeSineWavetableReady) {
+          const phase = this.phases.get(nodeId) || 0;
+          const phaseIncrement = pitchedFrequency / safeRate;
+          value = nodeLiveSineCosWavetableSample(phase + phaseOffset, pitchedFrequency, amplitude, safeRate);
+          this.phases.set(
+            nodeId,
+            this.wrapValue(phase + Math.PI * 2 * phaseIncrement, 0, Math.PI * 2),
+          );
+        }
       } else if (nodeLiveIsPolyBlepOscillatorType(node?.type)) {
         const resetState = this.oscResetStates.get(nodeId) || this.createOscResetState();
         this.oscResetStates.set(nodeId, resetState);

@@ -68,6 +68,17 @@
       "wasmAvailable": true
     },
     {
+      "name": "exp_adsr",
+      "label": "Exp ADSR",
+      "targetType": "expAdsr",
+      "kind": "envelope",
+      "source": "native_modules/exp_adsr/exp_adsr.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/exp_adsr/exp_adsr.cpp",
+      "wasm": "native_modules/exp_adsr/exp_adsr.wasm",
+      "wasmUrl": "native_modules/exp_adsr/exp_adsr.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "flower_child_filter",
       "label": "Flower Child Filter",
       "targetType": "flowerChildFilter",
@@ -87,6 +98,17 @@
       "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/fractal_brownian_noise/fractal_brownian_noise.cpp",
       "wasm": "native_modules/fractal_brownian_noise/fractal_brownian_noise.wasm",
       "wasmUrl": "native_modules/fractal_brownian_noise/fractal_brownian_noise.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "fractal_spiral",
+      "label": "Fractal Spiral",
+      "targetType": "fractalSpiral",
+      "kind": "jerobeam",
+      "source": "native_modules/fractal_spiral/fractal_spiral.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/fractal_spiral/fractal_spiral.cpp",
+      "wasm": "native_modules/fractal_spiral/fractal_spiral.wasm",
+      "wasmUrl": "native_modules/fractal_spiral/fractal_spiral.wasm",
       "wasmAvailable": true
     },
     {
@@ -189,6 +211,17 @@
       "wasmAvailable": true
     },
     {
+      "name": "jerobeam_spiral",
+      "label": "Jerobeam Spiral",
+      "targetType": "spiral",
+      "kind": "jerobeam",
+      "source": "native_modules/jerobeam_spiral/jerobeam_spiral.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/jerobeam_spiral/jerobeam_spiral.cpp",
+      "wasm": "native_modules/jerobeam_spiral/jerobeam_spiral.wasm",
+      "wasmUrl": "native_modules/jerobeam_spiral/jerobeam_spiral.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "jerobeam_torus",
       "label": "Jerobeam Torus",
       "targetType": "torus",
@@ -222,6 +255,28 @@
       "wasmAvailable": true
     },
     {
+      "name": "linear_envelope",
+      "label": "Linear Envelope",
+      "targetType": "linearEnvelope",
+      "kind": "envelope",
+      "source": "native_modules/linear_envelope/linear_envelope.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/linear_envelope/linear_envelope.cpp",
+      "wasm": "native_modules/linear_envelope/linear_envelope.wasm",
+      "wasmUrl": "native_modules/linear_envelope/linear_envelope.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "log_spiral",
+      "label": "Logarithmic Spiral",
+      "targetType": "logSpiral",
+      "kind": "jerobeam",
+      "source": "native_modules/log_spiral/log_spiral.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/log_spiral/log_spiral.cpp",
+      "wasm": "native_modules/log_spiral/log_spiral.wasm",
+      "wasmUrl": "native_modules/log_spiral/log_spiral.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "logistic_map",
       "label": "Logistic Map",
       "targetType": "logisticMap",
@@ -230,6 +285,17 @@
       "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/logistic_map/logistic_map.cpp",
       "wasm": "native_modules/logistic_map/logistic_map.wasm",
       "wasmUrl": "native_modules/logistic_map/logistic_map.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "lorenz_attractor",
+      "label": "Lorenz Attractor",
+      "targetType": "lorenzAttractor",
+      "kind": "chaos",
+      "source": "native_modules/lorenz_attractor/lorenz_attractor.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/lorenz_attractor/lorenz_attractor.cpp",
+      "wasm": "native_modules/lorenz_attractor/lorenz_attractor.wasm",
+      "wasmUrl": "native_modules/lorenz_attractor/lorenz_attractor.wasm",
       "wasmAvailable": true
     },
     {
@@ -277,6 +343,17 @@
       "wasmAvailable": true
     },
     {
+      "name": "pluck_envelope",
+      "label": "Pluck Envelope",
+      "targetType": "pluckEnvelope",
+      "kind": "envelope",
+      "source": "native_modules/pluck_envelope/pluck_envelope.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/pluck_envelope/pluck_envelope.cpp",
+      "wasm": "native_modules/pluck_envelope/pluck_envelope.wasm",
+      "wasmUrl": "native_modules/pluck_envelope/pluck_envelope.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "polyblep",
       "label": "PolyBLEP",
       "targetType": "polyBlep",
@@ -285,6 +362,17 @@
       "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/polyblep/polyblep.cpp",
       "wasm": "native_modules/polyblep/polyblep.wasm",
       "wasmUrl": "native_modules/polyblep/polyblep.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "random_walk",
+      "label": "Random Walk",
+      "targetType": "randomWalk",
+      "kind": "noise",
+      "source": "native_modules/random_walk/random_walk.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/random_walk/random_walk.cpp",
+      "wasm": "native_modules/random_walk/random_walk.wasm",
+      "wasmUrl": "native_modules/random_walk/random_walk.wasm",
       "wasmAvailable": true
     },
     {
@@ -340,6 +428,17 @@
       "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/shooting_star_explosion/shooting_star_explosion.cpp",
       "wasm": "native_modules/shooting_star_explosion/shooting_star_explosion.wasm",
       "wasmUrl": "native_modules/shooting_star_explosion/shooting_star_explosion.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "sine_wavetable",
+      "label": "SinCos",
+      "targetType": "sineWavetable",
+      "kind": "oscillator",
+      "source": "native_modules/sine_wavetable/sine_wavetable.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/sine_wavetable/sine_wavetable.cpp",
+      "wasm": "native_modules/sine_wavetable/sine_wavetable.wasm",
+      "wasmUrl": "native_modules/sine_wavetable/sine_wavetable.wasm",
       "wasmAvailable": true
     },
     {

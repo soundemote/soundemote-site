@@ -320,9 +320,9 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   sineWavetable: {
     category: "Oscillator",
-    description: "Table-driven sine/cosine oscillator with pitch, frequency, amplitude, and Nyquist-edge fade.",
+    description: "Table-driven sine/cosine oscillator with pitch, frequency, amplitude, and Nyquist-edge fade. Native C++/WASM.",
     label: "SinCos",
-    notes: ["implemented", "wavetable", "sin/cos"],
+    notes: ["implemented", "wavetable", "sin/cos", "native"],
   },
   drumMachine: {
     category: "Drum",
@@ -439,21 +439,21 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   spiral: {
     category: "Jerobeam",
-    description: "Jerobeam spiral engine. Emits X/Y/Z motion-signal for alien curves and audiovisual flight paths.",
+    description: "Jerobeam spiral engine. Emits X/Y/Z motion-signal for alien curves and audiovisual flight paths. Native C++/WASM.",
     label: "Jerobeam Spiral",
-    notes: ["attractor motion", "rotation", "density and morph controls"],
+    notes: ["attractor motion", "rotation", "density and morph controls", "native"],
   },
   fractalSpiral: {
     category: "Jerobeam",
-    description: "Self-affine Weierstrass-style fractal spiral: N rotating copies of itself, each spun faster and scaled down, summed into one curve with a real, tunable Hausdorff dimension.",
+    description: "Self-affine Weierstrass-style fractal spiral: N rotating copies of itself, each spun faster and scaled down, summed into one curve with a real, tunable Hausdorff dimension. Native C++/WASM.",
     label: "Fractal Spiral",
-    notes: ["fractal", "self-similar", "logarithmic spiral", "Weierstrass function"],
+    notes: ["fractal", "self-similar", "logarithmic spiral", "Weierstrass function", "native"],
   },
   logSpiral: {
     category: "Jerobeam",
-    description: "Pure logarithmic (equiangular) spiral: the one curve that looks identical after any rotation+rescaling. Sweeps a constant per-turn growth ratio, no fractal texture layer.",
+    description: "Pure logarithmic (equiangular) spiral: the one curve that looks identical after any rotation+rescaling. Sweeps a constant per-turn growth ratio, no fractal texture layer. Native C++/WASM.",
     label: "Logarithmic Spiral",
-    notes: ["logarithmic spiral", "equiangular spiral", "self-similar"],
+    notes: ["logarithmic spiral", "equiangular spiral", "self-similar", "native"],
   },
   blubb: {
     category: "Jerobeam",
@@ -505,9 +505,9 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   lorenzAttractor: {
     category: "Chaos",
-    description: "Classic butterfly attractor motion for turbulent curls and folding trajectories.",
+    description: "Classic butterfly attractor motion for turbulent curls and folding trajectories. Native C++/WASM.",
     label: "Lorenz Attractor",
-    notes: ["butterfly attractor", "3D chaos", "X/Y/Z motion"],
+    notes: ["butterfly attractor", "3D chaos", "X/Y/Z motion", "native"],
   },
   logisticMap: {
     category: "Chaos",
@@ -558,8 +558,8 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   randomWalk: {
     category: "Modulators",
-    description: "Flexible soemdsp-style random walk with white, filtered, random-step, and fixed-step motion modes.",
-    notes: ["bounded walk", "jitter curve", "one-pole smoothing"],
+    description: "Flexible soemdsp-style random walk with white, filtered, random-step, and fixed-step motion modes. Native C++/WASM.",
+    notes: ["bounded walk", "jitter curve", "one-pole smoothing", "native"],
   },
   fractalBrownianNoise: {
     category: "Noise",
@@ -932,9 +932,9 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   expAdsr: {
     category: "Envelope",
-    description: "Soundemote-style exponential ADSR. Gate it with a clock or pulse and shape the rise and fall curves.",
+    description: "Soundemote-style exponential ADSR. Gate it with a clock or pulse and shape the rise and fall curves. Native C++/WASM.",
     label: "ExponentialEnvelope",
-    notes: ["gate input", "target-ratio curves", "loopable envelope"],
+    notes: ["gate input", "target-ratio curves", "loopable envelope", "native"],
   },
   flowerChildEnvelopeFollower: {
     category: "Envelope",
@@ -944,25 +944,25 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   linearEnvelope: {
     category: "Envelope",
-    description: "Straight-line envelope for predictable ramps, fades, gates, and simple motion.",
+    description: "Straight-line envelope for predictable ramps, fades, gates, and simple motion. Native C++/WASM.",
     label: "LinearEnvelope",
-    notes: ["gate input", "linear DADSR", "loopable ramp"],
+    notes: ["gate input", "linear DADSR", "loopable ramp", "native"],
   },
   pluckEnvelope: {
     category: "Envelope",
-    description: "Fast feedback pluck contour for struck, picked, pinged, and percussive behaviors.",
+    description: "Fast feedback pluck contour for struck, picked, pinged, and percussive behaviors. Native C++/WASM.",
     label: "PluckEnvelope",
-    notes: ["trigger input", "decay energy", "auto release"],
+    notes: ["trigger input", "decay energy", "auto release", "native"],
   },
   vactrolEnvelope: {
     category: "Envelope",
-    description: "Optical-style control shaper modeled on the PerkinElmer VTL5C3, the classic fast Buchla/Serge-style LPG vactrol. Feed it light and get its 2.5ms attack, 35ms release response.",
-    notes: ["light input", "attack/release lag", "dark current"],
+    description: "Optical-style control shaper modeled on the PerkinElmer VTL5C3, the classic fast Buchla/Serge-style LPG vactrol. Feed it light and get its 2.5ms attack, 35ms release response. Native C++/WASM.",
+    notes: ["light input", "attack/release lag", "dark current", "native"],
   },
   vactrolEnvelopeC4: {
     category: "Envelope",
-    description: "Optical-style control shaper modeled on the PerkinElmer VTL5C4, the well-known slow vactrol with a ~1.5s release -- roughly 40x longer than the VTL5C3.",
-    notes: ["light input", "slow release", "dark current"],
+    description: "Optical-style control shaper modeled on the PerkinElmer VTL5C4, the well-known slow vactrol with a ~1.5s release -- roughly 40x longer than the VTL5C3. Shares its native module with VTL5C3. Native C++/WASM.",
+    notes: ["light input", "slow release", "dark current", "native"],
   },
   sandboxVisuals: {
     category: "Visual",
