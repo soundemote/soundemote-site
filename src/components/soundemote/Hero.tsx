@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import patchImage from "@/assets/soemdsp-patch.png";
 import { SOUNDEMOTE_BANK } from "@/data/patchBank";
+import { SandboxNavLink } from "@/components/soundemote/Nav";
 
-const HERO_BUILD = 8;
+
+
 
 export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
