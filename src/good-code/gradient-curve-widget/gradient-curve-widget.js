@@ -2276,6 +2276,7 @@ export function mountGradientCurveWidget(host, options = {}) {
       mount.style.setProperty("--gcw-dither-y", "0px");
     }
     if (dotGL && state.previewMode === "dot") {
+      sizeDotSquare();
       dotGL.setColors(dotRadialColors(state));
       dotGL.draw();
     }
