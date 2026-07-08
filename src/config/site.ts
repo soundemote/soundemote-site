@@ -98,4 +98,7 @@ export const siteConfig = {
 
 };
 
+export const { webringLinks } = siteConfig;
+
 export type SiteConfig = typeof siteConfig;
+
