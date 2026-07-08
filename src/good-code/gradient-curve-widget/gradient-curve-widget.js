@@ -876,6 +876,45 @@ function smootherStep(value) {
 const ARCHIMEDES_DEFAULTS = Object.freeze({ dtShift: 14, freqHz: 8, ditherBits: 7, tableSize: 256 });
 const archimedesConfig = { ...ARCHIMEDES_DEFAULTS };
 let archimedesTable = new Float64Array(ARCHIMEDES_DEFAULTS.tableSize);
+// Signed, normalized ([-1,1]) high-frequency component of the captured wavetable
+// — i.e. the pure dither jitter with the smooth rising trend removed. This is
+// what the "Position" target uses to dither the dot's bands *in space* instead
+// of shifting their lightness, so the noise stays visible without touching color
+// (and without introducing lightness linearities).
+let archimedesNoise = new Float64Array(ARCHIMEDES_DEFAULTS.tableSize);
+
+// Extract the jitter by subtracting the endpoint-to-endpoint linear ramp from
+// the wavetable, then normalize the deviations to [-1, 1].
+function computeArchimedesNoise() {
+  const n = archimedesTable.length;
+  if (archimedesNoise.length !== n) archimedesNoise = new Float64Array(n);
+  if (n < 2) { archimedesNoise.fill(0); return; }
+  const a0 = archimedesTable[0];
+  const a1 = archimedesTable[n - 1];
+  let maxAbs = 1e-9;
+  for (let i = 0; i < n; i++) {
+    const ramp = a0 + (a1 - a0) * (i / (n - 1));
+    const d = archimedesTable[i] - ramp;
+    archimedesNoise[i] = d;
+    if (Math.abs(d) > maxAbs) maxAbs = Math.abs(d);
+  }
+  for (let i = 0; i < n; i++) archimedesNoise[i] /= maxAbs;
+}
+
+// Interpolated signed jitter at normalized position t (0..1).
+function archimedesNoiseAt(t) {
+  const n = archimedesNoise.length;
+  if (n < 2) return 0;
+  const pos = clamp(t, 0, 1) * (n - 1);
+  const i = Math.floor(pos);
+  const f = pos - i;
+  const a = archimedesNoise[i];
+  const b = archimedesNoise[Math.min(n - 1, i + 1)];
+  return a + (b - a) * f;
+}
+
+// How far (in radial %) the fully-jittered band can be displaced in Position mode.
+const ARCH_POSITION_DITHER_PCT = 10;
 
 // Faithful JS port of archimedes.cpp: xorshift dither + symplectic Euler in
 // 16.16 fixed point. Captures a rising quarter-cycle of the sine state.
