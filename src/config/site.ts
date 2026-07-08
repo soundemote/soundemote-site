@@ -24,20 +24,20 @@ export const siteConfig = {
    * article featured and scrolled into view. Key = path (no leading slash).
    */
   articleRoutes: {
-    "simd": "simd",
+    simd: "simd",
     "last-clock": "last-clock",
-    "lastclock": "last-clock",
-    "phosphor": "phosphor",
+    lastclock: "last-clock",
+    phosphor: "phosphor",
     "aliasing-wars": "aliasing-wars",
-    "archimedes": "archimedes",
+    archimedes: "archimedes",
     "analog-filters": "analog-filters",
     "efficient-patch-system": "efficient-patch-system",
     "white-wire": "white-wire",
     "rhythm-and-pitch-generator": "rhythmandpitchgenerator",
-    "rhythmandpitchgenerator": "rhythmandpitchgenerator",
-    "vactrols": "vactrols",
+    rhythmandpitchgenerator: "rhythmandpitchgenerator",
+    vactrols: "vactrols",
     "jerobeam-modules": "jerobeam-modules",
-    "combustion": "combustion",
+    combustion: "combustion",
     "synthwave-orchestra": "synthwave-orchestra",
   } as Record<string, string>,
 
@@ -46,9 +46,9 @@ export const siteConfig = {
    * Key = path (no leading slash), value = patch slug in patchBank.ts.
    */
   patchRoutes: {
-    "reverb": "reverb",
-    "silentlydreaming": "silently-dreaming",
-    "shootingstar": "shootingstar",
+    reverb: "reverb",
+    silentlydreaming: "silently-dreaming",
+    shootingstar: "shootingstar",
   } as Record<string, string>,
 
   /**
@@ -73,11 +73,11 @@ export const siteConfig = {
     "soemdsp-simd": "/simd",
     "soemdsp-last-clock": "/last-clock",
     "soemdsp-sandbox": "/analogbox",
-    "analogfilters": "/analog-filters",
-    "efficientpatchsystem": "/efficient-patch-system",
-    "whitewire": "/white-wire",
-    "jerobeammodules": "/jerobeam-modules",
-    "synthwaveorchestra": "/synthwave-orchestra",
+    analogfilters: "/analog-filters",
+    efficientpatchsystem: "/efficient-patch-system",
+    whitewire: "/white-wire",
+    jerobeammodules: "/jerobeam-modules",
+    synthwaveorchestra: "/synthwave-orchestra",
   } as Record<string, string>,
 
   /** Links shown on /webring. Add or remove rows here. */
@@ -89,16 +89,20 @@ export const siteConfig = {
       host: "laserpilot.github.io",
     },
     {
+      href: "https://github.com/veryCoolTimo/texture-auto-upscaler",
+      emoji: "🖼️",
+      title: "TEXUP",
+      host: "github.com/veryCoolTimo",
+    },
+    {
       href: "https://opendaw.org/",
       emoji: "🎛️",
       title: "OpenDAW",
       host: "opendaw.org",
     },
   ] as WebringLink[],
-
 };
 
 export const { webringLinks } = siteConfig;
 
 export type SiteConfig = typeof siteConfig;
-
