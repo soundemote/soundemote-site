@@ -1479,6 +1479,9 @@ export function mountGradientCurveWidget(host, options = {}) {
             <label class="gcw-index-control"><span>Dither</span><input class="gcw-arch-dither" type="number" min="0" max="31" step="1" title="Xorshift dither jitter mask (bits)" /></label>
             <label class="gcw-index-control"><span>Table</span><input class="gcw-arch-table" type="number" min="16" max="512" step="16" title="Captured wavetable resolution" /></label>
             <label class="gcw-index-control"><span>FPS</span><input class="gcw-arch-fps" type="number" min="0" max="60" step="1" title="Live re-capture frame rate — 0 freezes the curve, higher values make the dither shimmer live" /></label>
+            <span class="gcw-arch-target-label" title="What the Archimedes dither affects — Color shapes the lightness curve, Position dithers the dot's bands in space to avoid lightness linearities">Noise</span>
+            <button class="gcw-arch-target-option" type="button" data-arch-target="color">Color</button>
+            <button class="gcw-arch-target-option" type="button" data-arch-target="position">Position</button>
           </div>
           <label class="gcw-toggle"><input class="gcw-invert" type="checkbox" /> Invert</label>
           <button class="gcw-copy" type="button">Copy CSS</button>
