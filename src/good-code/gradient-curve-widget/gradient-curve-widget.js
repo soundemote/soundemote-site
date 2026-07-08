@@ -1421,7 +1421,7 @@ export function mountGradientCurveWidget(host, options = {}) {
   host.innerHTML = `
     <div class="gcw-mount">
       <div class="gcw-root">
-        <div class="gcw-preview"></div>
+        <div class="gcw-preview"><canvas class="gcw-preview-gl" aria-hidden="true"></canvas></div>
         <div class="gcw-presets" role="group" aria-label="Gradient presets">
           <span>Presets</span>
         </div>
