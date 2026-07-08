@@ -3,7 +3,9 @@ export type WebringLink = {
   emoji: string;
   title: string;
   host: string;
+  description: string;
 };
+
 
 // -----------------------------------------------------------------------------
 // SITE SETTINGS — edit this file to change basic website behavior.
@@ -87,20 +89,24 @@ export const siteConfig = {
       emoji: "🌐",
       title: "Interactive Installation Multitool",
       host: "laserpilot.github.io",
+      description: "A toolkit for building and deploying interactive installations.",
     },
     {
       href: "https://github.com/veryCoolTimo/texture-auto-upscaler",
       emoji: "🖼️",
       title: "TEXUP",
       host: "github.com/veryCoolTimo",
+      description: "An AI-powered texture upscaler for image workflows.",
     },
     {
       href: "https://opendaw.org/",
       emoji: "🎛️",
       title: "OpenDAW",
       host: "opendaw.org",
+      description: "An open-source digital audio workstation project.",
     },
   ] as WebringLink[],
+
 };
 
 export const { webringLinks } = siteConfig;
