@@ -6,7 +6,6 @@ export type WebringLink = {
   description: string;
 };
 
-
 // -----------------------------------------------------------------------------
 // SITE SETTINGS — edit this file to change basic website behavior.
 //
@@ -91,6 +90,7 @@ export const siteConfig = {
       host: "laserpilot.github.io",
       description: "A toolkit for building and deploying interactive installations.",
     },
+    /*https://www.shadertoy.com/view/MldcW2*/
     {
       href: "https://github.com/veryCoolTimo/texture-auto-upscaler",
       emoji: "🖼️",
@@ -106,7 +106,6 @@ export const siteConfig = {
       description: "An open-source digital audio workstation project.",
     },
   ] as WebringLink[],
-
 };
 
 export const { webringLinks } = siteConfig;
