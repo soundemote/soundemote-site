@@ -1764,9 +1764,13 @@ export function mountGradientCurveWidget(host, options = {}) {
     const cards = [...container.querySelectorAll(".gcw-color-card")].filter((card) => card.dataset.dragging !== "true");
     for (let index = 0; index < cards.length; index += 1) {
       const rect = cards[index].getBoundingClientRect();
-      const inRow = event.clientY >= rect.top - 3 && event.clientY <= rect.bottom + 3;
+      // Cursor sits in a row entirely above this card -> insert before it.
+      if (event.clientY < rect.top - 3) return index;
+      // Cursor is within this card's row -> compare against its horizontal
+      // midpoint. (A pure Y check here would wrongly send every drop to the
+      // first card, which is why dropping into empty space failed before.)
+      const inRow = event.clientY <= rect.bottom + 3;
       if (inRow && event.clientX < rect.left + rect.width / 2) return index;
-      if (event.clientY < rect.top + rect.height / 2) return index;
     }
     return cards.length;
   }
