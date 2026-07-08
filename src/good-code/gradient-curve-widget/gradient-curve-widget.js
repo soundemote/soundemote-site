@@ -1650,12 +1650,27 @@ export function mountGradientCurveWidget(host, options = {}) {
   // CSS ::before radial-gradient remains the fallback for the dot.
   const dotGL = createDotGL(previewCanvas);
   if (dotGL) preview.dataset.gl = "on";
+  // Keep the GL dot a true SQUARE (=> perfect circle after border-radius).
+  // CSS alone can't: width comes from 72cqw while height is clamped by the
+  // preview's short side, which yielded an ellipse. Size both axes to the
+  // smaller fitting dimension so the dot is always round.
+  const sizeDotSquare = () => {
+    if (!dotGL) return;
+    const s = Math.min(preview.clientWidth * 0.72, preview.clientHeight * 0.96, 460);
+    if (s > 0) {
+      previewCanvas.style.width = `${s}px`;
+      previewCanvas.style.height = `${s}px`;
+    }
+  };
   let dotResizeObserver = null;
   if (dotGL && typeof ResizeObserver !== "undefined") {
     dotResizeObserver = new ResizeObserver(() => {
-      if (state.previewMode === "dot") dotGL.draw();
+      if (state.previewMode === "dot") {
+        sizeDotSquare();
+        dotGL.draw();
+      }
     });
-    dotResizeObserver.observe(previewCanvas);
+    dotResizeObserver.observe(preview);
   }
   const falloffStrip = host.querySelector(".gcw-falloff-strip");
   const falloffHandles = [...host.querySelectorAll(".gcw-falloff-handle")];
@@ -2261,6 +2276,7 @@ export function mountGradientCurveWidget(host, options = {}) {
       mount.style.setProperty("--gcw-dither-y", "0px");
     }
     if (dotGL && state.previewMode === "dot") {
+      sizeDotSquare();
       dotGL.setColors(dotRadialColors(state));
       dotGL.draw();
     }
