@@ -1731,8 +1731,12 @@ export function mountGradientCurveWidget(host, options = {}) {
 
   function applyAutoBright() {
     const ordered = arrangedStops(state.stops, false, false);
+    // Pure black / pure white swatches are anchors -- auto-bright must leave
+    // them exactly as authored instead of pulling them into the mid-band.
+    const isAnchor = (stop) => stop.s <= 8 && (stop.l <= 6 || stop.l >= 94);
     const count = Math.max(1, ordered.length - 1);
     state.stops = ordered.map((stop, index) => {
+      if (isAnchor(stop)) return { ...stop };
       const t = count === 0 ? 0.5 : index / count;
       const low = 18;
       const high = 82;
