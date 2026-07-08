@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import patchImage from "@/assets/soemdsp-patch.png";
 import { SOUNDEMOTE_BANK } from "@/data/patchBank";
+import { SandboxNavLink } from "@/components/soundemote/Nav";
 
-const HERO_BUILD = 8;
+
+
 
 export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
@@ -151,9 +153,13 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
             </span>
           </div>
         )}
-        <span className="mt-2 block text-center text-[10px] tracking-widest text-scope/20 select-none">
-          HERO_BUILD {HERO_BUILD}
-        </span>
+        <div className="mt-2 flex items-center justify-center gap-1 mono text-xs normal-case tracking-[0.06em] text-muted-foreground/80">
+          <span>/*</span>
+          <SandboxNavLink href="/sandbox" label="analogbox" />
+          <span>v0.2.0</span>
+          <span>*/</span>
+        </div>
+
       </div>
     </section>
   );
