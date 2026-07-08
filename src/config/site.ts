@@ -105,7 +105,14 @@ export const siteConfig = {
       host: "opendaw.org",
       description: "An open-source digital audio workstation project.",
     },
-  ] as WebringLink[],
+    {
+      href: "https://cosmicxr.brdystudios.com/",
+      emoji: "🌌",
+      title: "Cosmic XR",
+      host: "cosmicxr.brdystudios.com",
+      description: "Touch and explore the universe in mixed reality from your own room, built for Meta Quest.",
+    },
+
 };
 
 export const { webringLinks } = siteConfig;
