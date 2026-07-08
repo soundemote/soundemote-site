@@ -2069,7 +2069,7 @@ export function mountGradientCurveWidget(host, options = {}) {
     const activeGradientStops = state.stops;
     const samples = sampleStops(activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode);
     const css = gradientCss(state.angle, activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode);
-    const previewCss = previewGradientCss(state.previewMode, activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.angle, state.falloff, state.radialCenter, state.lightnessMode);
+    const previewCss = previewGradientCss(state.previewMode, activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.angle, state.falloff, state.radialCenter, state.lightnessMode, state.archTarget);
     mount.style.setProperty("--gcw-gradient", css);
     mount.style.setProperty("--gcw-preview-gradient", previewCss);
     mount.style.setProperty("--gcw-preview-zoom", String(state.previewZoom));
