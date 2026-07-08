@@ -491,7 +491,8 @@ const css = `
   .gcw-hue-option,
   .gcw-preview-option,
   .gcw-lightness-option,
-  .gcw-radial-center-option {
+  .gcw-radial-center-option,
+  .gcw-arch-target-option {
     background: transparent;
     border: 0;
     border-radius: 0;
@@ -502,10 +503,20 @@ const css = `
     padding: 0 6px;
   }
 
+  .gcw-arch-target-option {
+    border-radius: 999px;
+  }
+
+  .gcw-arch-params .gcw-arch-target-label {
+    color: var(--gcw-ink);
+    font-weight: 800;
+  }
+
   .gcw-hue-option[data-active="true"],
   .gcw-preview-option[data-active="true"],
   .gcw-lightness-option[data-active="true"],
-  .gcw-radial-center-option[data-active="true"] {
+  .gcw-radial-center-option[data-active="true"],
+  .gcw-arch-target-option[data-active="true"] {
     background: var(--gcw-accent);
     color: #18140a;
     font-weight: 800;
@@ -876,6 +887,45 @@ function smootherStep(value) {
 const ARCHIMEDES_DEFAULTS = Object.freeze({ dtShift: 14, freqHz: 8, ditherBits: 7, tableSize: 256 });
 const archimedesConfig = { ...ARCHIMEDES_DEFAULTS };
 let archimedesTable = new Float64Array(ARCHIMEDES_DEFAULTS.tableSize);
+// Signed, normalized ([-1,1]) high-frequency component of the captured wavetable
+// — i.e. the pure dither jitter with the smooth rising trend removed. This is
+// what the "Position" target uses to dither the dot's bands *in space* instead
+// of shifting their lightness, so the noise stays visible without touching color
+// (and without introducing lightness linearities).
+let archimedesNoise = new Float64Array(ARCHIMEDES_DEFAULTS.tableSize);
+
+// Extract the jitter by subtracting the endpoint-to-endpoint linear ramp from
+// the wavetable, then normalize the deviations to [-1, 1].
+function computeArchimedesNoise() {
+  const n = archimedesTable.length;
+  if (archimedesNoise.length !== n) archimedesNoise = new Float64Array(n);
+  if (n < 2) { archimedesNoise.fill(0); return; }
+  const a0 = archimedesTable[0];
+  const a1 = archimedesTable[n - 1];
+  let maxAbs = 1e-9;
+  for (let i = 0; i < n; i++) {
+    const ramp = a0 + (a1 - a0) * (i / (n - 1));
+    const d = archimedesTable[i] - ramp;
+    archimedesNoise[i] = d;
+    if (Math.abs(d) > maxAbs) maxAbs = Math.abs(d);
+  }
+  for (let i = 0; i < n; i++) archimedesNoise[i] /= maxAbs;
+}
+
+// Interpolated signed jitter at normalized position t (0..1).
+function archimedesNoiseAt(t) {
+  const n = archimedesNoise.length;
+  if (n < 2) return 0;
+  const pos = clamp(t, 0, 1) * (n - 1);
+  const i = Math.floor(pos);
+  const f = pos - i;
+  const a = archimedesNoise[i];
+  const b = archimedesNoise[Math.min(n - 1, i + 1)];
+  return a + (b - a) * f;
+}
+
+// How far (in radial %) the fully-jittered band can be displaced in Position mode.
+const ARCH_POSITION_DITHER_PCT = 10;
 
 // Faithful JS port of archimedes.cpp: xorshift dither + symplectic Euler in
 // 16.16 fixed point. Captures a rising quarter-cycle of the sine state.
@@ -989,10 +1039,12 @@ function ensureArchimedesTable(cfg = {}, onReady) {
   if (archimedesTable.length !== n) archimedesTable = new Float64Array(n);
   if (archimedesWasmExports) {
     captureArchimedesFromWasm(archimedesWasmExports, archimedesTable, archimedesConfig);
+    computeArchimedesNoise();
     return;
   }
   // Synchronous JS-port capture is always available first.
   captureArchimedesJs(archimedesTable, archimedesConfig);
+  computeArchimedesNoise();
   if (archimedesWasmRequested || typeof fetch !== "function" || typeof WebAssembly === "undefined") return;
   archimedesWasmRequested = true;
   const url = "/soemdsp-sandbox/native_modules/archimedes/archimedes.wasm";
@@ -1002,7 +1054,10 @@ function ensureArchimedesTable(cfg = {}, onReady) {
   load
     .then(({ instance }) => {
       archimedesWasmExports = instance.exports;
-      if (captureArchimedesFromWasm(archimedesWasmExports, archimedesTable, archimedesConfig) && typeof onReady === "function") onReady();
+      if (captureArchimedesFromWasm(archimedesWasmExports, archimedesTable, archimedesConfig)) {
+        computeArchimedesNoise();
+        if (typeof onReady === "function") onReady();
+      }
     })
     .catch(() => { /* JS-port table already in place */ });
 }
@@ -1237,7 +1292,7 @@ function colorAtCurvePosition(samples, position) {
   return `#${mix(a[0], b[0])}${mix(a[1], b[1])}${mix(a[2], b[2])}`;
 }
 
-function outwardPreviewSamples(samples, falloff = {}, radialCenter = "start") {
+function outwardPreviewSamples(samples, falloff = {}, radialCenter = "start", positionDither = 0) {
   // The falloff curve runs from the OUTER EDGE (curve start) inward to the
   // CENTER (curve end). radialCenter chooses which gradient color sits at the
   // center; the other color lands on the outer edge.
@@ -1252,17 +1307,28 @@ function outwardPreviewSamples(samples, falloff = {}, radialCenter = "start") {
   for (let i = 0; i <= steps; i += 1) {
     const radius = (i / steps) * 100; // 0 = center, 100 = edge
     // CSS radial position: curve start -> edge, so invert 100 - radius.
-    const curvePos = inverseFalloffPosition(100 - radius, falloff);
+    // In Position mode, dither the *lookup radius* with the Archimedes jitter so
+    // the color bands wobble in space (the stop positions stay evenly spaced —
+    // only which color lands at each radius shifts, which is the spatial dither).
+    const jitter = positionDither ? archimedesNoiseAt(radius / 100) * positionDither : 0;
+    const curvePos = inverseFalloffPosition(clamp(100 - radius + jitter, 0, 100), falloff);
     shaped.push({ color: colorAtCurvePosition(source, curvePos), position: radius });
   }
   return shaped;
 }
 
-function previewGradientCss(mode, stops, sampleCount, invert = false, autoOrder = true, hueMode = "strict", angle = 135, falloff = {}, radialCenter = "start", lightnessMode = "bokeh") {
-  const samples = sampleStops(stops, sampleCount, invert, autoOrder, hueMode, lightnessMode);
+function previewGradientCss(mode, stops, sampleCount, invert = false, autoOrder = true, hueMode = "strict", angle = 135, falloff = {}, radialCenter = "start", lightnessMode = "bokeh", archTarget = "color") {
+  // When the Archimedes noise targets Position, the color ramp must NOT carry
+  // the jittered wavetable (that would re-introduce the lightness wobble we're
+  // trying to move into space). Fall back to a smooth curve for color and let
+  // the spatial dither do the work in outwardPreviewSamples.
+  const positionMode = lightnessMode === "archimedes" && archTarget === "position";
+  const colorMode = positionMode ? "bokeh" : lightnessMode;
+  const positionDither = positionMode ? ARCH_POSITION_DITHER_PCT : 0;
+  const samples = sampleStops(stops, sampleCount, invert, autoOrder, hueMode, colorMode);
   const outwardModes = new Set(["dot", "square", "rectangle"]);
   const previewSamples = outwardModes.has(mode)
-    ? outwardPreviewSamples(samples, falloff, radialCenter)
+    ? outwardPreviewSamples(samples, falloff, radialCenter, positionDither)
     : samples;
   const parts = previewSamples.map((sample) => `${sample.color} ${sample.position.toFixed(2)}%`);
   if (outwardModes.has(mode)) {
@@ -1315,6 +1381,7 @@ export function mountGradientCurveWidget(host, options = {}) {
     archFps: Number.isFinite(Number(options.archFps)) ? clamp(Math.round(Number(options.archFps)), 0, 60) : 12,
     hueMode: ["strict", "wide", "chroma", "smooth-natural", "velvet", "silk"].includes(options.hueMode) ? options.hueMode : "strict",
     lightnessMode: ["linear", "smooth", "gaussian", "filmic", "bokeh", "archimedes"].includes(options.lightnessMode) ? options.lightnessMode : "bokeh",
+    archTarget: ["color", "position"].includes(options.archTarget) ? options.archTarget : "color",
     previewMode: ["dot", "diagonal", "horizontal", "vertical", "square", "rectangle"].includes(options.previewMode) ? options.previewMode : "dot",
     radialCenter: ["start", "end"].includes(options.radialCenter) ? options.radialCenter : "end",
     gridMode: "off",
@@ -1423,6 +1490,9 @@ export function mountGradientCurveWidget(host, options = {}) {
             <label class="gcw-index-control"><span>Dither</span><input class="gcw-arch-dither" type="number" min="0" max="31" step="1" title="Xorshift dither jitter mask (bits)" /></label>
             <label class="gcw-index-control"><span>Table</span><input class="gcw-arch-table" type="number" min="16" max="512" step="16" title="Captured wavetable resolution" /></label>
             <label class="gcw-index-control"><span>FPS</span><input class="gcw-arch-fps" type="number" min="0" max="60" step="1" title="Live re-capture frame rate — 0 freezes the curve, higher values make the dither shimmer live" /></label>
+            <span class="gcw-arch-target-label" title="What the Archimedes dither affects — Color shapes the lightness curve, Position dithers the dot's bands in space to avoid lightness linearities">Noise</span>
+            <button class="gcw-arch-target-option" type="button" data-arch-target="color">Color</button>
+            <button class="gcw-arch-target-option" type="button" data-arch-target="position">Position</button>
           </div>
           <label class="gcw-toggle"><input class="gcw-invert" type="checkbox" /> Invert</label>
           <button class="gcw-copy" type="button">Copy CSS</button>
@@ -1453,6 +1523,7 @@ export function mountGradientCurveWidget(host, options = {}) {
   const lightnessModeButtons = [...host.querySelectorAll(".gcw-lightness-option")];
   const previewModeButtons = [...host.querySelectorAll(".gcw-preview-option")];
   const radialCenterButtons = [...host.querySelectorAll(".gcw-radial-center-option")];
+  const archTargetButtons = [...host.querySelectorAll(".gcw-arch-target-option")];
   const removeButton = host.querySelector(".gcw-remove");
   const deleteButton = host.querySelector(".gcw-delete");
   const copyButton = host.querySelector(".gcw-copy");
@@ -1501,6 +1572,7 @@ export function mountGradientCurveWidget(host, options = {}) {
       // Advance the seed with a cheap LCG so each frame gets new dither noise.
       archAnimSeed = (Math.imul(archAnimSeed, 1664525) + 1013904223) >>> 0;
       captureArchimedesJs(archimedesTable, { ...archimedesConfig, seed: archAnimSeed });
+      computeArchimedesNoise();
       render();
     };
     archAnimHandle = requestAnimationFrame(tick);
@@ -1518,6 +1590,7 @@ export function mountGradientCurveWidget(host, options = {}) {
     archFps: state.archFps,
     hueMode: state.hueMode,
     lightnessMode: state.lightnessMode,
+    archTarget: state.archTarget,
     previewMode: state.previewMode,
     radialCenter: state.radialCenter,
     gridMode: "off",
@@ -2008,7 +2081,7 @@ export function mountGradientCurveWidget(host, options = {}) {
     const activeGradientStops = state.stops;
     const samples = sampleStops(activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode);
     const css = gradientCss(state.angle, activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.lightnessMode);
-    const previewCss = previewGradientCss(state.previewMode, activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.angle, state.falloff, state.radialCenter, state.lightnessMode);
+    const previewCss = previewGradientCss(state.previewMode, activeGradientStops, state.sampleCount, gradientInvert(), state.autoOrder, state.hueMode, state.angle, state.falloff, state.radialCenter, state.lightnessMode, state.archTarget);
     mount.style.setProperty("--gcw-gradient", css);
     mount.style.setProperty("--gcw-preview-gradient", previewCss);
     mount.style.setProperty("--gcw-preview-zoom", String(state.previewZoom));
@@ -2043,6 +2116,10 @@ export function mountGradientCurveWidget(host, options = {}) {
     radialCenterButtons.forEach((button) => {
       button.dataset.active = String(button.dataset.radialCenter === state.radialCenter);
       button.setAttribute("aria-pressed", String(button.dataset.radialCenter === state.radialCenter));
+    });
+    archTargetButtons.forEach((button) => {
+      button.dataset.active = String(button.dataset.archTarget === state.archTarget);
+      button.setAttribute("aria-pressed", String(button.dataset.archTarget === state.archTarget));
     });
     const activeSelected = state.stops.some((stop) => stop.id === state.activeStopId);
     const savedSelected = state.savedStops.some((stop) => stop.id === state.activeStopId);
@@ -2361,6 +2438,13 @@ export function mountGradientCurveWidget(host, options = {}) {
       emit();
     });
   });
+  archTargetButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      state.archTarget = ["color", "position"].includes(button.dataset.archTarget) ? button.dataset.archTarget : "color";
+      render();
+      emit();
+    });
+  });
   preview.addEventListener("click", (event) => {
     const sample = colorAtPreviewPosition(samplePositionFromPreview(event));
     addGradientColorFromHsl(sample);
@@ -2464,6 +2548,7 @@ export function mountGradientCurveWidget(host, options = {}) {
       if (archChanged) ensureArchimedesTable(archConfig());
       if (["wide", "strict", "chroma", "smooth-natural", "velvet", "silk"].includes(next.hueMode)) state.hueMode = next.hueMode;
       if (["linear", "smooth", "gaussian", "filmic", "bokeh", "archimedes"].includes(next.lightnessMode)) state.lightnessMode = next.lightnessMode;
+      if (["color", "position"].includes(next.archTarget)) state.archTarget = next.archTarget;
       if (Number.isFinite(Number(next.archFps))) state.archFps = clamp(Math.round(Number(next.archFps)), 0, 60);
       if (["dot", "diagonal", "horizontal", "vertical", "square", "rectangle"].includes(next.previewMode)) state.previewMode = next.previewMode;
       if (["start", "end"].includes(next.radialCenter)) state.radialCenter = next.radialCenter;
