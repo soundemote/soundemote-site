@@ -2751,6 +2751,8 @@ export function mountGradientCurveWidget(host, options = {}) {
     },
     destroy() {
       stopArchimedesAnimation();
+      if (dotResizeObserver) dotResizeObserver.disconnect();
+      if (dotGL) dotGL.destroy();
       host.innerHTML = "";
     },
   };
