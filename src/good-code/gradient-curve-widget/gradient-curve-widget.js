@@ -1595,8 +1595,10 @@ export function mountGradientCurveWidget(host, options = {}) {
     }
 
     const [stop] = fromList.splice(fromIndex, 1);
-    const adjustedIndex = fromList === toList && fromIndex < toIndex ? toIndex - 1 : toIndex;
-    toList.splice(clamp(adjustedIndex, 0, toList.length), 0, stop);
+    // cardDropIndex is measured on the list with the dragged card already
+    // filtered out, so the target index is already in the post-removal frame
+    // for same-zone reorders -- no extra offset needed.
+    toList.splice(clamp(toIndex, 0, toList.length), 0, stop);
     state.activeStopId = stop.id;
     commit();
   }
