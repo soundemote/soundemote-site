@@ -14,7 +14,18 @@ const WebringPage = () => (
       <p className="mt-5 text-base leading-7 text-muted-foreground">
         A handful of nearby projects and instruments on the same frequency.
       </p>
+      <p className="mt-4 text-sm text-muted-foreground">
+        Want to join?{" "}
+        <a
+          href="mailto:soundemote@gmail.com"
+          className="text-scope hover:underline"
+        >
+          Email soundemote@gmail.com
+        </a>
+        .
+      </p>
       <div className="mt-10 grid gap-4">
+
         {webringLinks.map((link) => (
           <a
             key={link.href}
