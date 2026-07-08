@@ -1202,21 +1202,55 @@ function falloffPosition(position, falloff = {}) {
   return rightMid + ((t - 0.76) / 0.24) * (rightEdge - rightMid);
 }
 
+// Inverse of falloffPosition: given a shaped output position (0..100), return
+// the curve input position (0..100) that maps to it. The forward map is
+// piecewise-linear and monotonic, so each segment inverts directly. This lets
+// the preview sample at evenly-spaced OUTPUT radii instead of evenly-spaced
+// INPUT positions — the key to keeping the dot smooth when the falloff handles
+// are dragged close together (tight handles no longer collapse the color
+// transition onto a couple of duplicate CSS stops / hard edges).
+function inverseFalloffPosition(shaped, falloff = {}) {
+  const { leftEdge, leftMid, rightMid, rightEdge } = normalizeFalloff(falloff);
+  const out = clamp(shaped, 0, 100);
+  if (out <= leftEdge) return (leftEdge <= 0 ? 0 : out / leftEdge) * 18;
+  if (out <= leftMid) return 18 + ((out - leftEdge) / Math.max(0.0001, leftMid - leftEdge)) * 24;
+  if (out <= rightMid) return 42 + ((out - leftMid) / Math.max(0.0001, rightMid - leftMid)) * 34;
+  if (out <= rightEdge) return 76 + ((out - rightMid) / Math.max(0.0001, rightEdge - rightMid)) * 24;
+  return 100;
+}
+
+// Linear color lookup along an evenly-spaced (0..100) sample array, blended in
+// RGB so intermediate radii stay continuous even between sparse index samples.
+function colorAtCurvePosition(samples, position) {
+  if (!samples.length) return "#000000";
+  if (samples.length === 1) return samples[0].color;
+  const p = clamp(position, 0, 100) / 100;
+  const span = p * (samples.length - 1);
+  const i = Math.floor(span);
+  const f = span - i;
+  const a = hexToRgbBytes(samples[i].color);
+  const b = hexToRgbBytes(samples[Math.min(samples.length - 1, i + 1)].color);
+  const mix = (x, y) => Math.round(x + (y - x) * f).toString(16).padStart(2, "0");
+  return `#${mix(a[0], b[0])}${mix(a[1], b[1])}${mix(a[2], b[2])}`;
+}
+
 function outwardPreviewSamples(samples, falloff = {}, radialCenter = "start") {
   // The falloff curve runs from the OUTER EDGE (curve start) inward to the
   // CENTER (curve end). radialCenter chooses which gradient color sits at the
   // center; the other color lands on the outer edge.
   const source = radialCenter === "start" ? [...samples].reverse() : samples;
-  const shaped = source.map((sample, index) => {
-    const position = source.length <= 1 ? 0 : (index / (source.length - 1)) * 100;
-    // CSS radial position: 0% = center, 100% = edge. Curve start -> edge.
-    return { ...sample, position: 100 - falloffPosition(position, falloff) };
-  });
-  // Reorder ascending (center 0% -> edge 100%) for a valid CSS gradient.
-  shaped.reverse();
-  const first = shaped[0];
-  if (first && first.position > 0) {
-    shaped.unshift({ ...first, position: 0 });
+  // Sample at evenly-spaced radial output positions (0% = center, 100% = edge)
+  // and invert the falloff to find which curve color belongs at each radius.
+  // Even output spacing guarantees well-separated CSS stops, so a tight cluster
+  // of falloff handles renders as a clean tight transition rather than a hard
+  // edge made of collapsed/duplicate stops.
+  const steps = 128;
+  const shaped = [];
+  for (let i = 0; i <= steps; i += 1) {
+    const radius = (i / steps) * 100; // 0 = center, 100 = edge
+    // CSS radial position: curve start -> edge, so invert 100 - radius.
+    const curvePos = inverseFalloffPosition(100 - radius, falloff);
+    shaped.push({ color: colorAtCurvePosition(source, curvePos), position: radius });
   }
   return shaped;
 }
