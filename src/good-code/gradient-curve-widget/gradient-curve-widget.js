@@ -1579,6 +1579,7 @@ export function mountGradientCurveWidget(host, options = {}) {
     archFps: state.archFps,
     hueMode: state.hueMode,
     lightnessMode: state.lightnessMode,
+    archTarget: state.archTarget,
     previewMode: state.previewMode,
     radialCenter: state.radialCenter,
     gridMode: "off",
