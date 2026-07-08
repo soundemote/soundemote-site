@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import Nav from "@/components/soundemote/Nav";
-import { webringLinks } from "@/data/webringLinks";
+import { webringLinks } from "@/config/site";
+
 
 const WebringPage = () => (
   <main className="min-h-screen bg-background text-foreground">

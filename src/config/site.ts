@@ -72,6 +72,23 @@ export const siteConfig = {
     "jerobeammodules": "/jerobeam-modules",
     "synthwaveorchestra": "/synthwave-orchestra",
   } as Record<string, string>,
+
+  /** Links shown on /webring. Add or remove rows here. */
+  webringLinks: [
+    {
+      href: "https://laserpilot.github.io/interactive-installation-multitool/",
+      emoji: "🌐",
+      title: "Interactive Installation Multitool",
+      host: "laserpilot.github.io",
+    },
+    {
+      href: "https://opendaw.org/",
+      emoji: "🎛️",
+      title: "OpenDAW",
+      host: "opendaw.org",
+    },
+  ] as WebringLink[],
+
 };
 
 export type SiteConfig = typeof siteConfig;
