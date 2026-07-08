@@ -112,8 +112,9 @@ export const siteConfig = {
       host: "cosmicxr.brdystudios.com",
       description: "Touch and explore the universe in mixed reality from your own room, built for Meta Quest.",
     },
-
+  ] as WebringLink[],
 };
+
 
 export const { webringLinks } = siteConfig;
 
