@@ -1261,7 +1261,7 @@ function previewGradientCss(mode, stops, sampleCount, invert = false, autoOrder 
   const previewSamples = outwardModes.has(mode)
     ? outwardPreviewSamples(samples, falloff, radialCenter)
     : samples;
-  const parts = previewSamples.map((sample) => `${sample.color} ${sample.position.toFixed(1)}%`);
+  const parts = previewSamples.map((sample) => `${sample.color} ${sample.position.toFixed(2)}%`);
   if (outwardModes.has(mode)) {
     return `radial-gradient(circle closest-side, ${parts.join(", ")})`;
   }
