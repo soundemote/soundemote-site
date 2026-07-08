@@ -2142,6 +2142,10 @@ export function mountGradientCurveWidget(host, options = {}) {
       state.activeStopId = state.stops[0].id;
       state.addInsertIndex = state.stops.length;
       state.pendingAddStopId = "";
+      // Presets are authored dark -> bright (index 0 dark, last bright). Anchor
+      // the bright end at the dot center so presets render dark edge / bright
+      // center by default (both the dot and the falloff strip follow suit).
+      state.radialCenter = "end";
       commit();
     });
     presetsRow.append(button);
