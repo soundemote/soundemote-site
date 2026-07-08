@@ -241,7 +241,7 @@ const css = `
   .gcw-swatch-button {
     background: var(--card-color);
     border: 1px solid rgba(18, 20, 15, 0.82);
-    cursor: pointer;
+    cursor: grab;
     display: block;
     height: 100%;
     min-height: 0;
