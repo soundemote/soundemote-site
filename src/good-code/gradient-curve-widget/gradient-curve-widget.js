@@ -1512,6 +1512,7 @@ export function mountGradientCurveWidget(host, options = {}) {
   const lightnessModeButtons = [...host.querySelectorAll(".gcw-lightness-option")];
   const previewModeButtons = [...host.querySelectorAll(".gcw-preview-option")];
   const radialCenterButtons = [...host.querySelectorAll(".gcw-radial-center-option")];
+  const archTargetButtons = [...host.querySelectorAll(".gcw-arch-target-option")];
   const removeButton = host.querySelector(".gcw-remove");
   const deleteButton = host.querySelector(".gcw-delete");
   const copyButton = host.querySelector(".gcw-copy");
