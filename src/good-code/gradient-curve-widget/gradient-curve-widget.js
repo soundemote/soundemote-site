@@ -491,10 +491,11 @@ const css = `
   .gcw-hue-option,
   .gcw-preview-option,
   .gcw-lightness-option,
-  .gcw-radial-center-option {
+  .gcw-radial-center-option,
+  .gcw-arch-target-option {
     background: transparent;
     border: 0;
-    border-radius: 0;
+    border-radius: 999px;
     color: var(--gcw-muted);
     font: inherit;
     align-self: stretch;
@@ -505,7 +506,8 @@ const css = `
   .gcw-hue-option[data-active="true"],
   .gcw-preview-option[data-active="true"],
   .gcw-lightness-option[data-active="true"],
-  .gcw-radial-center-option[data-active="true"] {
+  .gcw-radial-center-option[data-active="true"],
+  .gcw-arch-target-option[data-active="true"] {
     background: var(--gcw-accent);
     color: #18140a;
     font-weight: 800;
