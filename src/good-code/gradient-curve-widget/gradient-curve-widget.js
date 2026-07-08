@@ -1545,6 +1545,7 @@ export function mountGradientCurveWidget(host, options = {}) {
       // Advance the seed with a cheap LCG so each frame gets new dither noise.
       archAnimSeed = (Math.imul(archAnimSeed, 1664525) + 1013904223) >>> 0;
       captureArchimedesJs(archimedesTable, { ...archimedesConfig, seed: archAnimSeed });
+      computeArchimedesNoise();
       render();
     };
     archAnimHandle = requestAnimationFrame(tick);
