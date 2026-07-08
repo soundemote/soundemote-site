@@ -158,17 +158,15 @@ export const Nav = () => {
   const { myFilesUrl } = useUserFiles();
   return (
   <header className="relative z-50 w-full border-b border-border/40 bg-background/70 backdrop-blur-xl">
-    <nav className="container grid h-16 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center" aria-label="Primary">
+    <nav className="container relative flex h-16 items-center justify-between" aria-label="Primary">
       <div className="z-10 flex items-center gap-4">
         <a href="/" className="group flex items-center gap-2 mono text-sm tracking-wider">
           <span className="text-scope text-glow">✧</span>
           <span className="display text-warm-white">soundemote</span>
         </a>
       </div>
-      <div className="z-10 flex items-center justify-center">
-        <SandboxNavLink href="/sandbox" label="analogbox" />
-      </div>
-      <div className="z-10 flex items-center justify-end gap-2 md:gap-4">
+      <div className="z-10 flex items-center gap-4">
+
 
 
         <a
