@@ -1500,6 +1500,10 @@ function createDotGL(canvas) {
     gl.deleteBuffer(quad);
     gl.deleteTexture(tex);
     gl.deleteProgram(prog);
+    // Explicitly drop the GL context so it isn't held until GC. Browsers cap
+    // live contexts (~16); releasing on unmount prevents accumulation across
+    // route changes / HMR.
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
   };
   return { setColors, draw, resize, destroy };
 }
