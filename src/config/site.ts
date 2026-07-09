@@ -123,6 +123,12 @@ export const siteConfig = {
       title: "Cosmic XR",
       host: "cosmicxr.brdystudios.com",
       description: "Touch and explore the universe in mixed reality from your own room, built for Meta Quest.",
+    {
+      href: "https://github.com/udaysai12/EachCast",
+      emoji: "🎙️",
+      title: "EachCast",
+      host: "github.com/udaysai12",
+      description: "A podcasting project by Uday Sai.",
     },
   ] as WebringLink[],
 };
