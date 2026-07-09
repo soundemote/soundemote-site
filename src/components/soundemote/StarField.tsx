@@ -308,9 +308,17 @@ export const StarField = ({ avoidDotArea = true }: StarFieldProps) => {
     let start = performance.now();
     let nextShooterAt = 1.5;
     let lastTickAt = start;
+    // Track scroll delta so shooting stars + sparks stay pinned to a page
+    // location instead of the viewport: each frame we shift them by however
+    // much the page scrolled, so they scroll out of view instead of following
+    // the view. (Ambient twinkle stars intentionally stay fixed to the sky.)
+    let lastScrollY = window.scrollY;
     const tick = (now: number) => {
       const t = (now - start) / 1000;
       lastTickAt = now;
+      const scrollY = window.scrollY;
+      const dScroll = scrollY - lastScrollY;
+      lastScrollY = scrollY;
       bgCtx.clearRect(0, 0, width, height);
       fgCtx.clearRect(0, 0, width, height);
 
@@ -357,6 +365,10 @@ export const StarField = ({ avoidDotArea = true }: StarFieldProps) => {
       const attractorHitbox = getAttractorHitbox(now);
       for (let i = shooters.length - 1; i >= 0; i--) {
         const sh = shooters[i];
+        // Pin to page: undo this frame's scroll so the star keeps its
+        // document position and scrolls off screen.
+        sh.y -= dScroll;
+        for (let j = 0; j < sh.trail.length; j++) sh.trail[j].y -= dScroll;
         sh.x += sh.vx;
         sh.y += sh.vy;
         sh.trail.unshift({
@@ -416,6 +428,7 @@ export const StarField = ({ avoidDotArea = true }: StarFieldProps) => {
       for (let i = sparks.length - 1; i >= 0; i--) {
         const sp = sparks[i];
         const age = sp.life / sp.maxLife;
+        sp.y -= dScroll;
         sp.x += sp.vx;
         sp.y += sp.vy;
         sp.vx *= 0.96;
@@ -450,6 +463,7 @@ export const StarField = ({ avoidDotArea = true }: StarFieldProps) => {
         const now = performance.now();
         start += now - lastTickAt;
         lastTickAt = now;
+        lastScrollY = window.scrollY;
         rafRef.current = requestAnimationFrame(tick);
       }
     };
