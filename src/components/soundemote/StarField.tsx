@@ -307,8 +307,10 @@ export const StarField = ({ avoidDotArea = true }: StarFieldProps) => {
 
     let start = performance.now();
     let nextShooterAt = 1.5;
+    let lastTickAt = start;
     const tick = (now: number) => {
       const t = (now - start) / 1000;
+      lastTickAt = now;
       bgCtx.clearRect(0, 0, width, height);
       fgCtx.clearRect(0, 0, width, height);
 
