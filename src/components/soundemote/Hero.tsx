@@ -137,6 +137,8 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
                   src={patchImage}
                   alt="soemdsp modular patch - oscillators, noise, gain and output nodes"
                   className="h-auto w-auto"
+                  decoding="async"
+                  fetchPriority="high"
                 />
               </button>
             )}

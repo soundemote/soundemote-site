@@ -101,7 +101,7 @@ const AVWResearch = () => (
           </a>
         </div>
         <figure className="mt-10 overflow-hidden rounded-lg border border-border/60 bg-card/60 shadow-[var(--shadow-panel)]">
-          <img className="w-full" src={patchImage} alt="Soundemote Sandbox patch with oscillators, noise, gain, output, and visual node controls" />
+          <img className="w-full" src={patchImage} alt="Soundemote Sandbox patch with oscillators, noise, gain, output, and visual node controls" loading="lazy" decoding="async" />
           <figcaption className="mono border-t border-border/60 px-4 py-3 text-xs uppercase tracking-[0.16em] text-muted-foreground">
             A patch is both an instrument and a visual explanation.
           </figcaption>

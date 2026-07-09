@@ -81,7 +81,7 @@ export function MediaGallery({ items, className }: { items: GalleryItem[]; class
             </div>
           )}
           {openItem?.type === "image" && (
-            <img src={openItem.src} alt={openItem.alt} className="max-h-[80vh] w-full rounded object-contain" />
+            <img src={openItem.src} alt={openItem.alt} className="max-h-[80vh] w-full rounded object-contain" decoding="async" />
           )}
         </DialogContent>
       </Dialog>
