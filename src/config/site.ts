@@ -81,7 +81,12 @@ export const siteConfig = {
     synthwaveorchestra: "/synthwave-orchestra",
   } as Record<string, string>,
 
+  /** Version text shown next to the analogbox link in the hero. */
+  analogBoxVersion: "v0.2.0",
+
   /** Links shown on /webring. Add or remove rows here. */
+
+
   webringLinks: [
     {
       href: "https://spacious.fm/",
