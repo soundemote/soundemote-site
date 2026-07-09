@@ -20,11 +20,6 @@ const HoldButton = ({
   children: React.ReactNode;
   ariaLabel?: string;
 }) => {
-
-// Ambient position dot for a knob/rotation value. Defined at module scope so
-// it keeps a stable component identity across Oscilloscope re-renders --
-// otherwise every render (incl. the 100ms label timer) minted a new component
-// type, remounting the dot and leaking a fresh rAF loop + DOM node each frame.
   const rafRef = useRef(0);
   const startRef = useRef(0);
   const stop = () => {
