@@ -50,6 +50,13 @@ const App = () => (
         <Route path="/sandbox" element={<SandboxPage />} />
         <Route path="/embed" element={<EmbedPage />} />
 
+        {/* Embed-safe playable sandboxes: bare SandboxPage loading a static
+            patch with audio armed. These back the snippets on /embed and must
+            stay distinct from the article/patch routes in site.ts. */}
+        <Route path="/reverb-live" element={<SandboxPage staticPatchUrl="/patches/reverb.json" autostart />} />
+        <Route path="/silentlydreaming-live" element={<SandboxPage staticPatchUrl="/patches/silently-dreaming.json" autostart />} />
+        <Route path="/shootingstar-live" element={<SandboxPage staticPatchUrl="/patches/shootingstar.json" autostart />} />
+
         {/* Article, patch, front-page and redirect routes are all defined in
             src/config/site.ts — edit that file to add or change them. */}
         {Object.entries(siteConfig.articleRoutes).map(([path, slug]) => (
