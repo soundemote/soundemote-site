@@ -8,12 +8,6 @@ const WebringPage = () => (
     <Nav />
     <section className="container mx-auto max-w-2xl px-6 py-20">
       <p className="mono text-xs uppercase tracking-[0.22em] text-scope">webring</p>
-      <h1 className="display mt-5 text-4xl font-semibold leading-tight text-warm-white">
-        Friends of the station
-      </h1>
-      <p className="mt-5 text-base leading-7 text-muted-foreground">
-        A handful of nearby projects and instruments on the same frequency.
-      </p>
       <p className="mt-4 text-sm text-muted-foreground">
         Want to join?{" "}
         <a
