@@ -44,6 +44,7 @@ export function useElectricBurst() {
     ]);
     const timer = window.setTimeout(() => {
       setBursts((active) => active.filter((burst) => burst.id !== id));
+      burstTimersRef.current = burstTimersRef.current.filter((t) => t !== timer);
     }, 1100);
     burstTimersRef.current.push(timer);
   };
