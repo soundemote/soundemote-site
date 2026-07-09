@@ -463,6 +463,7 @@ export const StarField = ({ avoidDotArea = true }: StarFieldProps) => {
         const now = performance.now();
         start += now - lastTickAt;
         lastTickAt = now;
+        lastScrollY = window.scrollY;
         rafRef.current = requestAnimationFrame(tick);
       }
     };
