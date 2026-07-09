@@ -307,8 +307,10 @@ export const StarField = ({ avoidDotArea = true }: StarFieldProps) => {
 
     let start = performance.now();
     let nextShooterAt = 1.5;
+    let lastTickAt = start;
     const tick = (now: number) => {
       const t = (now - start) / 1000;
+      lastTickAt = now;
       bgCtx.clearRect(0, 0, width, height);
       fgCtx.clearRect(0, 0, width, height);
 
@@ -436,10 +438,28 @@ export const StarField = ({ avoidDotArea = true }: StarFieldProps) => {
     };
     rafRef.current = requestAnimationFrame(tick);
 
+    // Pause the animation loop while the tab is hidden so it stops burning
+    // CPU/GPU in the background; resume without a huge time jump on return.
+    const handleVisibility = () => {
+      if (document.hidden) {
+        if (rafRef.current) {
+          cancelAnimationFrame(rafRef.current);
+          rafRef.current = undefined;
+        }
+      } else if (rafRef.current === undefined) {
+        const now = performance.now();
+        start += now - lastTickAt;
+        lastTickAt = now;
+        rafRef.current = requestAnimationFrame(tick);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
     return () => {
       window.removeEventListener("resize", resize);
       window.removeEventListener("scroll", handleScroll);
       window.removeEventListener("message", handleHeroEvent);
+      document.removeEventListener("visibilitychange", handleVisibility);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, [portalHost]);
