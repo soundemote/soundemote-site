@@ -84,6 +84,13 @@ export const siteConfig = {
   /** Links shown on /webring. Add or remove rows here. */
   webringLinks: [
     {
+      href: "https://spacious.fm/",
+      emoji: "🎵",
+      title: "Spacious.fm",
+      host: "spacious.fm",
+      description: "Soundtracks for focus, flow, and rest — conscious, meditative music from master artists.",
+    },
+    {
       href: "https://laserpilot.github.io/interactive-installation-multitool/",
       emoji: "🌐",
       title: "Interactive Installation Multitool",
