@@ -158,9 +158,10 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
         <div className="mt-2 flex items-center justify-center gap-1 mono text-xs normal-case tracking-[0.06em] text-muted-foreground/80">
           <span>/*</span>
           <SandboxNavLink href="/sandbox" label="analogbox" />
-          <span>v0.2.0</span>
+          <span>{siteConfig.analogBoxVersion}</span>
           <span>*/</span>
         </div>
+
 
       </div>
     </section>
