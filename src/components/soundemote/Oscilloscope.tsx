@@ -18,6 +18,36 @@ const HoldButton = ({
   onTick: (accel: number) => void;
   className?: string;
   children: React.ReactNode;
+
+// Ambient position dot for a knob/rotation value. Defined at module scope so
+// it keeps a stable component identity across Oscilloscope re-renders --
+// otherwise every render (incl. the 100ms label timer) minted a new component
+// type, remounting the dot and leaking a fresh rAF loop + DOM node each frame.
+const GhostKnob: React.FC<{ getValue: () => number; min: number; max: number }> = ({ getValue, min, max }) => {
+  const dotRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let raf = 0;
+    const range = max - min;
+    const tick = () => {
+      const el = dotRef.current;
+      if (el) {
+        let v = getValue() - min;
+        v = ((v % range) + range) % range;
+        el.style.left = `${(v / range) * 100}%`;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [getValue, min, max]);
+  return (
+    <div
+      ref={dotRef}
+      className="pointer-events-none absolute top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-scope/60 ring-1 ring-scope/80 shadow-[0_0_6px_hsl(var(--scope)/0.6)]"
+      style={{ left: "0%" }}
+    />
+  );
+};
   ariaLabel?: string;
 }) => {
   const rafRef = useRef(0);
