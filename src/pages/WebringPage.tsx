@@ -6,9 +6,9 @@ import { webringLinks } from "@/config/site";
 const WebringPage = () => (
   <main className="min-h-screen bg-background text-foreground">
     <Nav />
-    <section className="container mx-auto max-w-2xl px-6 py-20">
+    <section className="container mx-auto max-w-2xl px-6 py-12">
       <p className="mono text-xs uppercase tracking-[0.22em] text-scope">webring</p>
-      <p className="mt-4 text-sm text-muted-foreground">
+      <p className="mt-3 text-sm text-muted-foreground">
         Want to join?{" "}
         <a
           href="mailto:soundemote@gmail.com"
@@ -18,7 +18,7 @@ const WebringPage = () => (
         </a>
         .
       </p>
-      <div className="mt-10 grid gap-4">
+      <div className="mt-7 grid gap-3">
 
         {webringLinks.map((link) => (
           <a
