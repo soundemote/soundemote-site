@@ -1488,32 +1488,6 @@ registerProcessor('attractor', AttractorProcessor);
   const sliderClass =
     "h-1 w-24 cursor-pointer accent-scope bg-border/40 rounded-full appearance-none";
 
-  const GhostKnob: React.FC<{ getValue: () => number; min: number; max: number }> = ({ getValue, min, max }) => {
-    const dotRef = useRef<HTMLDivElement>(null);
-    useEffect(() => {
-      let raf = 0;
-      const range = max - min;
-      const tick = () => {
-        const el = dotRef.current;
-        if (el) {
-          let v = getValue() - min;
-          v = ((v % range) + range) % range;
-          el.style.left = `${(v / range) * 100}%`;
-        }
-        raf = requestAnimationFrame(tick);
-      };
-      raf = requestAnimationFrame(tick);
-      return () => cancelAnimationFrame(raf);
-    }, [getValue, min, max]);
-    return (
-      <div
-        ref={dotRef}
-        className="pointer-events-none absolute top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-scope/60 ring-1 ring-scope/80 shadow-[0_0_6px_hsl(var(--scope)/0.6)]"
-        style={{ left: "0%" }}
-      />
-    );
-  };
-
   return (
     <div className="relative h-full w-full overflow-hidden rounded-xl border border-border bg-[var(--gradient-panel)] scope-grid">
       {/* Top bar */}
