@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import patchImage from "@/assets/soemdsp-patch.png";
+import { siteConfig } from "@/config/site";
 import { SOUNDEMOTE_BANK } from "@/data/patchBank";
 import { SandboxNavLink } from "@/components/soundemote/Nav";
+
 
 
 
