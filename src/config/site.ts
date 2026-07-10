@@ -26,20 +26,19 @@ export const siteConfig = {
    */
   articleRoutes: {
     simd: "simd",
-    "last-clock": "last-clock",
-    lastclock: "last-clock",
+    lastclock: "lastclock",
     phosphor: "phosphor",
-    "aliasing-wars": "aliasing-wars",
+    aliasingwars: "aliasingwars",
     archimedes: "archimedes",
-    "analog-filters": "analog-filters",
-    "efficient-patch-system": "efficient-patch-system",
-    "white-wire": "white-wire",
-    "rhythm-and-pitch-generator": "rhythmandpitchgenerator",
+    analogfilters: "analogfilters",
+    efficientpatchsystem: "efficientpatchsystem",
+    whitewire: "whitewire",
     rhythmandpitchgenerator: "rhythmandpitchgenerator",
     vactrols: "vactrols",
-    "jerobeam-modules": "jerobeam-modules",
+    jerobeammodules: "jerobeammodules",
     combustion: "combustion",
-    "synthwave-orchestra": "synthwave-orchestra",
+    synthwaveorchestra: "synthwaveorchestra",
+    creatures: "creatures",
   } as Record<string, string>,
 
   /**
@@ -72,13 +71,16 @@ export const siteConfig = {
   /** Old URL -> new URL redirects (301-style, replace history). */
   redirects: {
     "soemdsp-simd": "/simd",
-    "soemdsp-last-clock": "/last-clock",
+    "soemdsp-last-clock": "/lastclock",
+    "last-clock": "/lastclock",
     "soemdsp-sandbox": "/analogbox",
-    analogfilters: "/analog-filters",
-    efficientpatchsystem: "/efficient-patch-system",
-    whitewire: "/white-wire",
-    jerobeammodules: "/jerobeam-modules",
-    synthwaveorchestra: "/synthwave-orchestra",
+    "analog-filters": "/analogfilters",
+    "efficient-patch-system": "/efficientpatchsystem",
+    "white-wire": "/whitewire",
+    "jerobeam-modules": "/jerobeammodules",
+    "synthwave-orchestra": "/synthwaveorchestra",
+    "aliasing-wars": "/aliasingwars",
+    "rhythm-and-pitch-generator": "/rhythmandpitchgenerator",
   } as Record<string, string>,
 
   /** Version text shown next to the analogbox link in the hero. */

@@ -19,6 +19,7 @@ import { SUPERSAW_MARKDOWN, SUPERSAW_REPO, SUPERSAW_BRANCH } from "./supersawArt
 import { SIMD_ARTICLE_MARKDOWN, SIMD_ARTICLE_SOURCE_URL } from "./simdArticle";
 import { LAST_CLOCK_ARTICLE_MARKDOWN, LAST_CLOCK_ARTICLE_SOURCE_URL } from "./lastClockArticle";
 import { ARCHIMEDES_ARTICLE_MARKDOWN, ARCHIMEDES_ARTICLE_SOURCE_URL } from "./archimedesArticle";
+import { CREATURES_ARTICLE_MARKDOWN, CREATURES_ARTICLE_SOURCE_URL, CREATURES_REPO } from "./creaturesArticle";
 
 export type FeaturedArticle = {
   slug: string;
@@ -66,7 +67,7 @@ export const featuredArticles: FeaturedArticle[] = [
     markdown: PHOSPHOR_ARTICLE_MARKDOWN,
   },
   {
-    slug: "aliasing-wars",
+    slug: "aliasingwars",
     repoHref: "https://github.com/elanhickler/soemdsp-sandbox-aliasing-wars",
     emoji: "⚔️",
     title: "Aliasing Wars — the Surge Oscillator & the DSF technique",
@@ -84,7 +85,7 @@ export const featuredArticles: FeaturedArticle[] = [
     markdown: ARCHIMEDES_ARTICLE_MARKDOWN,
   },
   {
-    slug: "analog-filters",
+    slug: "analogfilters",
     repoHref: "https://github.com/elanhickler/soemdsp-sandbox-analog-filters",
     emoji: "🌺",
     title: "Analog Filters — chasing circuits that were never digital",
@@ -93,7 +94,7 @@ export const featuredArticles: FeaturedArticle[] = [
     markdown: rewriteRelativeLinks(ANALOG_FILTERS_MARKDOWN, ANALOG_FILTERS_REPO),
   },
   {
-    slug: "efficient-patch-system",
+    slug: "efficientpatchsystem",
     repoHref: "https://github.com/elanhickler/soemdsp-sandbox-digital-efficient-patch-system",
     emoji: "⚡",
     title: "Efficient Patch System",
@@ -102,7 +103,7 @@ export const featuredArticles: FeaturedArticle[] = [
     markdown: rewriteRelativeLinks(DIGITAL_EFFICIENT_PATCH_SYSTEM_MARKDOWN, DIGITAL_EFFICIENT_PATCH_SYSTEM_REPO),
   },
   {
-    slug: "white-wire",
+    slug: "whitewire",
     repoHref: "https://github.com/elanhickler/soemdsp-sandbox-digital-signals-audio",
     emoji: "🔲",
     title: "White Wire — beauty = binary × chaos",
@@ -129,7 +130,7 @@ export const featuredArticles: FeaturedArticle[] = [
     markdown: rewriteRelativeLinks(VACTROLS_MARKDOWN, VACTROLS_REPO),
   },
   {
-    slug: "jerobeam-modules",
+    slug: "jerobeammodules",
     // The original source (the jerobeam-modules branch of soemdsp-sandbox-phosphor)
     // has been deleted -- this article, its images, and its dedication doc are now
     // preserved locally (see jerobeamModules.ts and public/media/jerobeam-modules/)
@@ -160,7 +161,7 @@ export const featuredArticles: FeaturedArticle[] = [
     markdown: rewriteRelativeLinks(SIMD_ARTICLE_MARKDOWN, "soundemote/soemdsp-simd", "main"),
   },
   {
-    slug: "last-clock",
+    slug: "lastclock",
     repoHref: "https://github.com/soundemote/soemdsp-last-clock",
     emoji: "🕰️",
     title: "The Last Clock for Humanity — a chaotic temporal oscillator engine",
@@ -169,13 +170,22 @@ export const featuredArticles: FeaturedArticle[] = [
     markdown: LAST_CLOCK_ARTICLE_MARKDOWN,
   },
   {
-    slug: "synthwave-orchestra",
+    slug: "synthwaveorchestra",
     repoHref: "https://github.com/elanhickler/supersaw",
     emoji: "🌆",
     title: "Synthwave Orchestra",
     tagline: "Pitch-dithered supersaws meeting a full orchestra, from RS-MET's aliasing research.",
     sourceUrl: `https://github.com/${SUPERSAW_REPO}`,
     markdown: rewriteRelativeLinks(SUPERSAW_MARKDOWN, SUPERSAW_REPO, SUPERSAW_BRANCH),
+  },
+  {
+    slug: "creatures",
+    repoHref: "https://github.com/elanhickler/soemdsp-sandbox-creatures",
+    emoji: "🐾",
+    title: "Creature — a virtual pet that eats audio signal",
+    tagline: "A patchable native module that tracks Hunger and Health and settles into one of eight moods.",
+    sourceUrl: CREATURES_ARTICLE_SOURCE_URL,
+    markdown: rewriteRelativeLinks(CREATURES_ARTICLE_MARKDOWN, CREATURES_REPO),
   },
 ];
 
