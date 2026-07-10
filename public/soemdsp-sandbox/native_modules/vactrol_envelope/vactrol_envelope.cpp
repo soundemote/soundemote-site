@@ -3,12 +3,21 @@
 // soemdsp-native-target: vactrolEnvelope
 // soemdsp-native-kind: envelope
 
-// Shared DSP for both vactrol modules (VTL5C3 "vactrolEnvelope" and VTL5C4
-// "vactrolEnvelopeC4" on the JS side). The two parts differ only in their
-// default attack/release/resistance figures, which live in the JS module
-// definitions -- this binary just runs whatever attack/release/curve/
-// sensitivity/lightOffset/darkCurrent values a given node instance passes in,
-// exactly like passive_filter's single WASM serving LP/BP/HP via a mode param.
+// Shared DSP for both vactrol modules (the VTL5C Series selector
+// "vactrolEnvelopeSeries" and "vactrolEnvelopeCustom" on the JS side). The
+// parts differ only in their default attack/release/resistance figures,
+// which live in the JS module definitions -- this binary just runs whatever
+// attack/release/curve/sensitivity/lightOffset/darkCurrent values a given
+// node instance passes in, exactly like passive_filter's single WASM serving
+// LP/BP/HP via a mode param.
+//
+// "VTL5C1" through "VTL5C10" are PerkinElmer/Excelitas part numbers used here
+// only as descriptive labels (nominative fair use) so the attack/release/
+// resistance defaults mean something to someone who knows those datasheets.
+// No PerkinElmer code, schematics, or datasheet text is reproduced -- this is
+// an independent envelope-follower model built from publicly published
+// timing/resistance figures, and this project is not affiliated with or
+// endorsed by PerkinElmer or Excelitas.
 
 namespace {
 

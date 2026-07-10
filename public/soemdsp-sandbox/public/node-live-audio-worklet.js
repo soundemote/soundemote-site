@@ -1,5 +1,29 @@
 const nodeLiveAdditiveHardMaxHarmonics = 1024;
 
+// Duplicated from node-graph-module-definitions.js -- the AudioWorkletGlobalScope
+// doesn't share globals with the main thread, so the vactrolEnvelopeSeries "Part"
+// spec table has to be redeclared here for the realtime DSP path. Keep in sync.
+//
+// Easter egg: VTL5C5 below is NOT a real PerkinElmer part -- see the matching
+// comment in node-graph-module-definitions.js for the full (fictional) story.
+const nodeGraphVactrolSeriesSpecs = Object.freeze([
+  { attack: 0.0025, darkKohm: 50000, label: "VTL5C1", litKohm: 0.2, release: 0.035 },
+  { attack: 0.0035, darkKohm: 1000, label: "VTL5C2", litKohm: 0.2, release: 0.5 },
+  { attack: 0.0025, darkKohm: 10000, label: "VTL5C3", litKohm: 0.0015, release: 0.035 },
+  { attack: 0.006, darkKohm: 400, label: "VTL5C4", litKohm: 0.075, release: 1.5 },
+  { attack: 0.005, darkKohm: 6000, label: "VTL5C5", litKohm: 0.4, release: 0.2 },
+  { attack: 0.0035, darkKohm: 100000, label: "VTL5C6", litKohm: 2, release: 0.05 },
+  { attack: 0.006, darkKohm: 1000, label: "VTL5C7", litKohm: 1.1, release: 1.0 },
+  { attack: 0.004, darkKohm: 10000, label: "VTL5C8", litKohm: 1, release: 0.06 },
+  { attack: 0.004, darkKohm: 50000, label: "VTL5C9", litKohm: 0.63, release: 0.05 },
+  { attack: 0.001, darkKohm: 400, label: "VTL5C10", litKohm: 0.4, release: 1.5 },
+]);
+
+function nodeGraphVactrolSeriesSpec(partIndex) {
+  const index = Math.round(Number(partIndex));
+  return nodeGraphVactrolSeriesSpecs[index] || nodeGraphVactrolSeriesSpecs[0];
+}
+
 const nodeSmoothingModes = Object.freeze(["global", "blockSize", "internal", "internalGlobal", "off"]);
 
 function nodeSmoothingModeNormalize(value) {
@@ -133,12 +157,16 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.raptEllipticDecimatorRight = this.createRaptEllipticDecimatorState();
     this.raptEllipticDecimatorRatio = 1;
     this.passiveFilterStates = new Map();
+    this.papoulisFilterStates = new Map();
+    this.phosphillatorPlaybackStates = new Map();
+    this.phosphillatorDecodedPathCache = new Map();
     this.clockDividerStates = new Map();
     this.clockStates = new Map();
     this.codeblockFunctions = new Map();
     this.cookbookFilterStates = new Map();
     this.delayedTriggerStates = new Map();
     this.delayEffectStates = new Map();
+    this.pingPongDelayStates = new Map();
     this.expAdsrStates = new Map();
     this.ellipsoidOutputFrames = new Map();
     this.nativeEllipsoid = null;
@@ -170,6 +198,8 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.nativeResonatorFilterReady = false;
     this.nativeHumanFilter = null;
     this.nativeHumanFilterReady = false;
+    this.nativePulseExplosion = null;
+    this.nativePulseExplosionReady = false;
     this.nativeTb303Filter = null;
     this.nativeTb303FilterReady = false;
     this.nativePassiveFilter = null;
@@ -202,6 +232,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.chaoticPhaseLockingFilterStates = new Map();
     this.resonatorFilterStates = new Map();
     this.humanFilterStates = new Map();
+    this.pulseExplosionStates = new Map();
     this.ladderFilterStates = new Map();
     this.tb303FilterStates = new Map();
     this.linearEnvelopeStates = new Map();
@@ -219,11 +250,14 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.nyquistShannonStates = new Map();
     this.radarStates = new Map();
     this.chordMemoryStates = new Map();
+    this.chordSequencerStates = new Map();
+    this.lutCellStates = new Map();
     this.turingMachineStates = new Map();
     this.pitchQuantizerStates = new Map();
     this.surgeOscillatorStates = new Map();
     this.dsfOscillatorStates = new Map();
     this.robinSupersawStates = new Map();
+    this.hypersawStates = new Map();
     this.noiseGeneratorStates = new Map();
     this.oscResetStates = new Map();
     this.graphLfoStates = new Map();
@@ -257,6 +291,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.triggerDividerStates = new Map();
     this.triangleStates = new Map();
     this.vactrolEnvelopeStates = new Map();
+    this.impulseButtonStates = new Map();
     this.visualInputBuffers = new Map();
     this.visualSinks = [];
     this.resetVisualControls();
@@ -444,6 +479,19 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       this.setShootingStarExplosionEvent(message.speed);
       return;
     }
+    if (message.type === "impulseButtonTrigger") {
+      this.setImpulseButtonTrigger(message.nodeId, message.amplitude);
+      return;
+    }
+  }
+
+  setImpulseButtonTrigger(nodeId, amplitude) {
+    if (!nodeId) return;
+    const state = this.impulseButtonStates.get(nodeId) || this.createImpulseButtonState();
+    state.pulseSamples = Math.max(0, Number(state.pulseSamples) || 0) + 1;
+    const normalized = Number(amplitude);
+    state.amplitude = Number.isFinite(normalized) ? Math.max(0, Math.min(1, normalized)) : 1;
+    this.impulseButtonStates.set(nodeId, state);
   }
 
   async setNativeModuleWasm(message) {
@@ -569,7 +617,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       }
       if (name === "ladder_filter" || targetType === "ladderFilter") {
         for (const state of this.ladderFilterStates.values()) {
-          this.destroyLadderFilterNativeState(state);
+          this.destroyStereoFilterNativeState(state, (s) => this.destroyLadderFilterNativeState(s));
         }
         this.nativeLadderFilter = exports;
         this.nativeLadderFilterReady = Boolean(
@@ -585,7 +633,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       }
       if (name === "flower_child_filter" || targetType === "flowerChildFilter") {
         for (const state of this.flowerChildFilterStates.values()) {
-          this.destroyFlowerChildFilterNativeState(state);
+          this.destroyStereoFilterNativeState(state, (s) => this.destroyFlowerChildFilterNativeState(s));
         }
         this.nativeFlowerChildFilter = exports;
         this.nativeFlowerChildFilterReady = Boolean(
@@ -601,7 +649,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       }
       if (name === "rsmet_filter" || targetType === "rsmetFilter") {
         for (const state of this.rsmetFilterStates.values()) {
-          this.destroyRsmetFilterNativeState(state);
+          this.destroyStereoFilterNativeState(state, (s) => this.destroyRsmetFilterNativeState(s));
         }
         this.nativeRsmetFilter = exports;
         this.nativeRsmetFilterReady = Boolean(
@@ -617,7 +665,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       }
       if (name === "yellowjacket_filter" || targetType === "yellowjacketFilter") {
         for (const state of this.yellowjacketFilterStates.values()) {
-          this.destroyYellowjacketFilterNativeState(state);
+          this.destroyStereoFilterNativeState(state, (s) => this.destroyYellowjacketFilterNativeState(s));
         }
         this.nativeYellowjacketFilter = exports;
         this.nativeYellowjacketFilterReady = Boolean(
@@ -633,7 +681,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       }
       if (name === "superlove_filter" || targetType === "superloveFilter") {
         for (const state of this.superloveFilterStates.values()) {
-          this.destroySuperloveFilterNativeState(state);
+          this.destroyStereoFilterNativeState(state, (s) => this.destroySuperloveFilterNativeState(s));
         }
         this.nativeSuperloveFilter = exports;
         this.nativeSuperloveFilterReady = Boolean(
@@ -649,7 +697,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       }
       if (name === "chaotic_phase_locking_filter" || targetType === "chaoticPhaseLockingFilter") {
         for (const state of this.chaoticPhaseLockingFilterStates.values()) {
-          this.destroyChaoticPhaseLockingFilterNativeState(state);
+          this.destroyStereoFilterNativeState(state, (s) => this.destroyChaoticPhaseLockingFilterNativeState(s));
         }
         this.nativeChaoticPhaseLockingFilter = exports;
         this.nativeChaoticPhaseLockingFilterReady = Boolean(
@@ -665,7 +713,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       }
       if (name === "resonator_filter" || targetType === "resonatorFilter") {
         for (const state of this.resonatorFilterStates.values()) {
-          this.destroyResonatorFilterNativeState(state);
+          this.destroyStereoFilterNativeState(state, (s) => this.destroyResonatorFilterNativeState(s));
         }
         this.nativeResonatorFilter = exports;
         this.nativeResonatorFilterReady = Boolean(
@@ -681,7 +729,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       }
       if (name === "human_filter" || targetType === "humanFilter") {
         for (const state of this.humanFilterStates.values()) {
-          this.destroyHumanFilterNativeState(state);
+          this.destroyStereoFilterNativeState(state, (s) => this.destroyHumanFilterNativeState(s));
         }
         this.nativeHumanFilter = exports;
         this.nativeHumanFilterReady = Boolean(
@@ -695,9 +743,25 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         });
         return;
       }
+      if (name === "pulse_explosion" || targetType === "pulseExplosion") {
+        for (const state of this.pulseExplosionStates.values()) {
+          this.destroyPulseExplosionNativeState(state);
+        }
+        this.nativePulseExplosion = exports;
+        this.nativePulseExplosionReady = Boolean(
+          this.nativePulseExplosion?.soemdsp_pulse_explosion_create &&
+          this.nativePulseExplosion?.soemdsp_pulse_explosion_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "pulse_explosion",
+          status: this.nativePulseExplosionReady ? "ready" : "missing exports",
+        });
+        return;
+      }
       if (name === "tb303_filter" || targetType === "tb303Filter") {
         for (const state of this.tb303FilterStates.values()) {
-          this.destroyTb303FilterNativeState(state);
+          this.destroyStereoFilterNativeState(state, (s) => this.destroyTb303FilterNativeState(s));
         }
         this.nativeTb303Filter = exports;
         this.nativeTb303FilterReady = Boolean(
@@ -713,7 +777,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       }
       if (name === "passive_filter" || targetType === "passiveFilter") {
         for (const state of this.passiveFilterStates.values()) {
-          this.destroyPassiveFilterNativeState(state);
+          this.destroyStereoFilterNativeState(state, (s) => this.destroyPassiveFilterNativeState(s));
         }
         this.nativePassiveFilter = exports;
         this.nativePassiveFilterReady = Boolean(
@@ -727,7 +791,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         });
         return;
       }
-      if (name === "vactrol_envelope" || targetType === "vactrolEnvelope" || targetType === "vactrolEnvelopeC4") {
+      if (name === "vactrol_envelope" || targetType === "vactrolEnvelopeSeries" || targetType === "vactrolEnvelopeCustom") {
         for (const state of this.vactrolEnvelopeStates.values()) {
           this.destroyVactrolEnvelopeNativeState(state);
         }
@@ -956,6 +1020,51 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         });
         return;
       }
+      if (name === "chord_sequencer" || targetType === "chordSequencer") {
+        for (const state of this.chordSequencerStates.values()) {
+          this.destroyChordSequencerNativeState(state);
+        }
+        this.nativeChordSequencer = exports;
+        this.nativeChordSequencerReady = Boolean(
+          this.nativeChordSequencer?.soemdsp_chord_sequencer_create &&
+          this.nativeChordSequencer?.soemdsp_chord_sequencer_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "chord_sequencer",
+          status: this.nativeChordSequencerReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "lut_cell" || targetType === "lutCell") {
+        for (const state of this.lutCellStates.values()) {
+          this.destroyLutCellNativeState(state);
+        }
+        this.nativeLutCell = exports;
+        this.nativeLutCellReady = Boolean(
+          this.nativeLutCell?.soemdsp_lut_cell_create &&
+          this.nativeLutCell?.soemdsp_lut_cell_sample &&
+          this.nativeLutCell?.soemdsp_lut_cell_q,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "lut_cell",
+          status: this.nativeLutCellReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "metallic_ratio" || targetType === "metallicRatio") {
+        this.nativeMetallicRatio = exports;
+        this.nativeMetallicRatioReady = Boolean(
+          this.nativeMetallicRatio?.soemdsp_metallic_ratio_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "metallic_ratio",
+          status: this.nativeMetallicRatioReady ? "ready" : "missing exports",
+        });
+        return;
+      }
       if (name === "surge_oscillator" || targetType === "surgeOscillator") {
         for (const state of this.surgeOscillatorStates.values()) {
           this.destroySurgeOscillatorNativeState(state);
@@ -1001,6 +1110,22 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
           type: "nativeModuleStatus",
           name: "robin_supersaw",
           status: this.nativeRobinSupersawReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "hypersaw" || targetType === "hypersaw") {
+        for (const state of this.hypersawStates.values()) {
+          this.destroyHypersawNativeState(state);
+        }
+        this.nativeHypersaw = exports;
+        this.nativeHypersawReady = Boolean(
+          this.nativeHypersaw?.soemdsp_hypersaw_create &&
+          this.nativeHypersaw?.soemdsp_hypersaw_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "hypersaw",
+          status: this.nativeHypersawReady ? "ready" : "missing exports",
         });
         return;
       }
@@ -1307,15 +1432,19 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.hostSampleRate = sampleRate;
     this.oversamplingRatio = 1;
     for (const state of this.passiveFilterStates.values()) {
-      this.destroyPassiveFilterNativeState(state);
+      this.destroyStereoFilterNativeState(state, (s) => this.destroyPassiveFilterNativeState(s));
     }
     this.passiveFilterStates = new Map();
+    this.papoulisFilterStates = new Map();
+    this.phosphillatorPlaybackStates = new Map();
+    this.phosphillatorDecodedPathCache = new Map();
     this.clockDividerStates = new Map();
     this.clockStates = new Map();
     this.codeblockFunctions = new Map();
     this.cookbookFilterStates = new Map();
     this.delayedTriggerStates = new Map();
     this.delayEffectStates = new Map();
+    this.pingPongDelayStates = new Map();
     this.expAdsrStates = new Map();
     for (const state of this.fractalBrownianNoiseStates.values()) {
       this.destroyFbmNativeState(state);
@@ -1326,39 +1455,43 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.gpuAdditiveUnderruns = 0;
     this.flowerChildEnvelopeFollowerStates = new Map();
     for (const state of this.ladderFilterStates.values()) {
-      this.destroyLadderFilterNativeState(state);
+      this.destroyStereoFilterNativeState(state, (s) => this.destroyLadderFilterNativeState(s));
     }
     this.ladderFilterStates = new Map();
     for (const state of this.flowerChildFilterStates.values()) {
-      this.destroyFlowerChildFilterNativeState(state);
+      this.destroyStereoFilterNativeState(state, (s) => this.destroyFlowerChildFilterNativeState(s));
     }
     this.flowerChildFilterStates = new Map();
     for (const state of this.rsmetFilterStates.values()) {
-      this.destroyRsmetFilterNativeState(state);
+      this.destroyStereoFilterNativeState(state, (s) => this.destroyRsmetFilterNativeState(s));
     }
     this.rsmetFilterStates = new Map();
     for (const state of this.yellowjacketFilterStates.values()) {
-      this.destroyYellowjacketFilterNativeState(state);
+      this.destroyStereoFilterNativeState(state, (s) => this.destroyYellowjacketFilterNativeState(s));
     }
     this.yellowjacketFilterStates = new Map();
     for (const state of this.superloveFilterStates.values()) {
-      this.destroySuperloveFilterNativeState(state);
+      this.destroyStereoFilterNativeState(state, (s) => this.destroySuperloveFilterNativeState(s));
     }
     this.superloveFilterStates = new Map();
     for (const state of this.chaoticPhaseLockingFilterStates.values()) {
-      this.destroyChaoticPhaseLockingFilterNativeState(state);
+      this.destroyStereoFilterNativeState(state, (s) => this.destroyChaoticPhaseLockingFilterNativeState(s));
     }
     this.chaoticPhaseLockingFilterStates = new Map();
     for (const state of this.resonatorFilterStates.values()) {
-      this.destroyResonatorFilterNativeState(state);
+      this.destroyStereoFilterNativeState(state, (s) => this.destroyResonatorFilterNativeState(s));
     }
     this.resonatorFilterStates = new Map();
     for (const state of this.humanFilterStates.values()) {
-      this.destroyHumanFilterNativeState(state);
+      this.destroyStereoFilterNativeState(state, (s) => this.destroyHumanFilterNativeState(s));
     }
     this.humanFilterStates = new Map();
+    for (const state of this.pulseExplosionStates.values()) {
+      this.destroyPulseExplosionNativeState(state);
+    }
+    this.pulseExplosionStates = new Map();
     for (const state of this.tb303FilterStates.values()) {
-      this.destroyTb303FilterNativeState(state);
+      this.destroyStereoFilterNativeState(state, (s) => this.destroyTb303FilterNativeState(s));
     }
     this.tb303FilterStates = new Map();
     this.linearEnvelopeStates = new Map();
@@ -1376,11 +1509,14 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.nyquistShannonStates = new Map();
     this.radarStates = new Map();
     this.chordMemoryStates = new Map();
+    this.chordSequencerStates = new Map();
+    this.lutCellStates = new Map();
     this.turingMachineStates = new Map();
     this.pitchQuantizerStates = new Map();
     this.surgeOscillatorStates = new Map();
     this.dsfOscillatorStates = new Map();
     this.robinSupersawStates = new Map();
+    this.hypersawStates = new Map();
     this.noiseGeneratorStates = new Map();
     this.oscResetStates = new Map();
     this.graphLfoStates = new Map();
@@ -1414,6 +1550,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.triggerDividerStates = new Map();
     this.triangleStates = new Map();
     this.vactrolEnvelopeStates = new Map();
+    this.impulseButtonStates = new Map();
     this.polyBlepStates = new Map();
     this.visualSinks = [];
     this.resetVisualControls();
@@ -1656,6 +1793,12 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       if (node?.type === "pitchQuantizer" && !this.pitchQuantizerStates.has(id)) {
         this.pitchQuantizerStates.set(id, this.createPitchQuantizerState());
       }
+      if (node?.type === "chordSequencer" && !this.chordSequencerStates.has(id)) {
+        this.chordSequencerStates.set(id, this.createChordSequencerState());
+      }
+      if (node?.type === "lutCell" && !this.lutCellStates.has(id)) {
+        this.lutCellStates.set(id, this.createLutCellState());
+      }
       if (node?.type === "surgeOscillator" && !this.surgeOscillatorStates.has(id)) {
         this.surgeOscillatorStates.set(id, this.createSurgeOscillatorState());
       }
@@ -1665,38 +1808,50 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       if (node?.type === "robinSupersaw" && !this.robinSupersawStates.has(id)) {
         this.robinSupersawStates.set(id, this.createRobinSupersawState());
       }
+      if (node?.type === "hypersaw" && !this.hypersawStates.has(id)) {
+        this.hypersawStates.set(id, this.createHypersawState());
+      }
       if (node?.type === "passiveFilter" && !this.passiveFilterStates.has(id)) {
-        this.passiveFilterStates.set(id, this.createPassiveFilterState());
+        this.passiveFilterStates.set(id, this.createStereoFilterState(() => this.createPassiveFilterState()));
+      }
+      if (node?.type === "papoulisFilter" && !this.papoulisFilterStates.has(id)) {
+        this.papoulisFilterStates.set(id, this.createPapoulisFilterState());
+      }
+      if (node?.type === "phosphillator" && !this.phosphillatorPlaybackStates.has(id)) {
+        this.phosphillatorPlaybackStates.set(id, this.createPhosphillatorPlaybackState());
       }
       if (node?.type === "cookbookFilter" && !this.cookbookFilterStates.has(id)) {
-        this.cookbookFilterStates.set(id, this.createCookbookFilterState());
+        this.cookbookFilterStates.set(id, this.createStereoFilterState(() => this.createCookbookFilterState()));
       }
       if (node?.type === "ladderFilter" && !this.ladderFilterStates.has(id)) {
-        this.ladderFilterStates.set(id, this.createLadderFilterState());
+        this.ladderFilterStates.set(id, this.createStereoFilterState(() => this.createLadderFilterState()));
       }
       if (node?.type === "flowerChildFilter" && !this.flowerChildFilterStates.has(id)) {
-        this.flowerChildFilterStates.set(id, this.createFlowerChildFilterState());
+        this.flowerChildFilterStates.set(id, this.createStereoFilterState(() => this.createFlowerChildFilterState()));
       }
       if (node?.type === "rsmetFilter" && !this.rsmetFilterStates.has(id)) {
-        this.rsmetFilterStates.set(id, this.createRsmetFilterState());
+        this.rsmetFilterStates.set(id, this.createStereoFilterState(() => this.createRsmetFilterState()));
       }
       if (node?.type === "yellowjacketFilter" && !this.yellowjacketFilterStates.has(id)) {
-        this.yellowjacketFilterStates.set(id, this.createYellowjacketFilterState());
+        this.yellowjacketFilterStates.set(id, this.createStereoFilterState(() => this.createYellowjacketFilterState()));
       }
       if (node?.type === "superloveFilter" && !this.superloveFilterStates.has(id)) {
-        this.superloveFilterStates.set(id, this.createSuperloveFilterState());
+        this.superloveFilterStates.set(id, this.createStereoFilterState(() => this.createSuperloveFilterState()));
       }
       if (node?.type === "chaoticPhaseLockingFilter" && !this.chaoticPhaseLockingFilterStates.has(id)) {
-        this.chaoticPhaseLockingFilterStates.set(id, this.createChaoticPhaseLockingFilterState());
+        this.chaoticPhaseLockingFilterStates.set(id, this.createStereoFilterState(() => this.createChaoticPhaseLockingFilterState()));
       }
       if (node?.type === "resonatorFilter" && !this.resonatorFilterStates.has(id)) {
-        this.resonatorFilterStates.set(id, this.createResonatorFilterState());
+        this.resonatorFilterStates.set(id, this.createStereoFilterState(() => this.createResonatorFilterState()));
       }
       if (node?.type === "humanFilter" && !this.humanFilterStates.has(id)) {
-        this.humanFilterStates.set(id, this.createHumanFilterState());
+        this.humanFilterStates.set(id, this.createStereoFilterState(() => this.createHumanFilterState()));
+      }
+      if (node?.type === "pulseExplosion" && !this.pulseExplosionStates.has(id)) {
+        this.pulseExplosionStates.set(id, this.createPulseExplosionState());
       }
       if (node?.type === "tb303Filter" && !this.tb303FilterStates.has(id)) {
-        this.tb303FilterStates.set(id, this.createTb303FilterState());
+        this.tb303FilterStates.set(id, this.createStereoFilterState(() => this.createTb303FilterState()));
       }
       if (node?.type === "clock" && !this.clockStates.has(id)) {
         this.clockStates.set(id, this.createClockState());
@@ -1711,7 +1866,10 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         this.delayedTriggerStates.set(id, this.createDelayedTriggerState());
       }
       if (node?.type === "delayEffect" && !this.delayEffectStates.has(id)) {
-        this.delayEffectStates.set(id, this.createDelayEffectState());
+        this.delayEffectStates.set(id, this.createStereoDelayEffectState());
+      }
+      if (node?.type === "pingPongDelay" && !this.pingPongDelayStates.has(id)) {
+        this.pingPongDelayStates.set(id, this.createPingPongDelayState());
       }
       if (node?.type === "reverbEffect" && !this.reverbEffectStates.has(id)) {
         this.reverbEffectStates.set(id, this.createSabrinaReverbState());
@@ -1726,7 +1884,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         this.randomClockStates.set(id, this.createRandomClockState());
       }
       if (node?.type === "sampleHold" && !this.sampleHoldStates.has(id)) {
-        this.sampleHoldStates.set(id, this.createSampleHoldState());
+        this.sampleHoldStates.set(id, this.createStereoSampleHoldState());
       }
       if ((node?.type === "samplePlayer" || node?.type === "sampleLooper" || node?.type === "audioPlayer") && !this.samplePlaybackStates.has(id)) {
         this.samplePlaybackStates.set(id, this.createSamplePlaybackState());
@@ -1735,7 +1893,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         this.patchCommandStates.set(id, this.createPatchCommandState());
       }
       if (node?.type === "slewLimiter" && !this.slewLimiterStates.has(id)) {
-        this.slewLimiterStates.set(id, this.createSlewLimiterState());
+        this.slewLimiterStates.set(id, this.createStereoSlewLimiterState());
       }
       if (node?.type === "expAdsr" && !this.expAdsrStates.has(id)) {
         this.expAdsrStates.set(id, this.createExpAdsrState());
@@ -1770,8 +1928,11 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       if (node?.type === "triggerDivider" && !this.triggerDividerStates.has(id)) {
         this.triggerDividerStates.set(id, this.createTriggerDividerState());
       }
-      if ((node?.type === "vactrolEnvelope" || node?.type === "vactrolEnvelopeC4") && !this.vactrolEnvelopeStates.has(id)) {
+      if ((node?.type === "vactrolEnvelopeSeries" || node?.type === "vactrolEnvelopeCustom") && !this.vactrolEnvelopeStates.has(id)) {
         this.vactrolEnvelopeStates.set(id, this.createVactrolEnvelopeState());
+      }
+      if (node?.type === "impulseButton" && !this.impulseButtonStates.has(id)) {
+        this.impulseButtonStates.set(id, this.createImpulseButtonState());
       }
       if (node?.type === "polyBlep" && !this.polyBlepStates.has(id)) {
         this.polyBlepStates.set(id, this.createPolyBlepState());
@@ -1961,6 +2122,18 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         this.pitchQuantizerStates.delete(id);
       }
     }
+    for (const id of [...this.chordSequencerStates.keys()]) {
+      if (!ids.has(id)) {
+        this.destroyChordSequencerNativeState(this.chordSequencerStates.get(id));
+        this.chordSequencerStates.delete(id);
+      }
+    }
+    for (const id of [...this.lutCellStates.keys()]) {
+      if (!ids.has(id)) {
+        this.destroyLutCellNativeState(this.lutCellStates.get(id));
+        this.lutCellStates.delete(id);
+      }
+    }
     for (const id of [...this.surgeOscillatorStates.keys()]) {
       if (!ids.has(id)) {
         this.destroySurgeOscillatorNativeState(this.surgeOscillatorStates.get(id));
@@ -1979,10 +2152,27 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         this.robinSupersawStates.delete(id);
       }
     }
+    for (const id of [...this.hypersawStates.keys()]) {
+      if (!ids.has(id)) {
+        this.destroyHypersawNativeState(this.hypersawStates.get(id));
+        this.hypersawStates.delete(id);
+      }
+    }
     for (const id of [...this.passiveFilterStates.keys()]) {
       if (!ids.has(id)) {
-        this.destroyPassiveFilterNativeState(this.passiveFilterStates.get(id));
+        this.destroyStereoFilterNativeState(this.passiveFilterStates.get(id), (s) => this.destroyPassiveFilterNativeState(s));
         this.passiveFilterStates.delete(id);
+      }
+    }
+    for (const id of [...this.papoulisFilterStates.keys()]) {
+      if (!ids.has(id)) {
+        this.papoulisFilterStates.delete(id);
+      }
+    }
+    for (const id of [...this.phosphillatorPlaybackStates.keys()]) {
+      if (!ids.has(id)) {
+        this.phosphillatorPlaybackStates.delete(id);
+        this.phosphillatorDecodedPathCache.delete(id);
       }
     }
     for (const id of [...this.linearEnvelopeStates.keys()]) {
@@ -2014,55 +2204,61 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
     for (const id of [...this.ladderFilterStates.keys()]) {
       if (!ids.has(id)) {
-        this.destroyLadderFilterNativeState(this.ladderFilterStates.get(id));
+        this.destroyStereoFilterNativeState(this.ladderFilterStates.get(id), (s) => this.destroyLadderFilterNativeState(s));
         this.ladderFilterStates.delete(id);
       }
     }
     for (const id of [...this.flowerChildFilterStates.keys()]) {
       if (!ids.has(id)) {
-        this.destroyFlowerChildFilterNativeState(this.flowerChildFilterStates.get(id));
+        this.destroyStereoFilterNativeState(this.flowerChildFilterStates.get(id), (s) => this.destroyFlowerChildFilterNativeState(s));
         this.flowerChildFilterStates.delete(id);
       }
     }
     for (const id of [...this.rsmetFilterStates.keys()]) {
       if (!ids.has(id)) {
-        this.destroyRsmetFilterNativeState(this.rsmetFilterStates.get(id));
+        this.destroyStereoFilterNativeState(this.rsmetFilterStates.get(id), (s) => this.destroyRsmetFilterNativeState(s));
         this.rsmetFilterStates.delete(id);
       }
     }
     for (const id of [...this.yellowjacketFilterStates.keys()]) {
       if (!ids.has(id)) {
-        this.destroyYellowjacketFilterNativeState(this.yellowjacketFilterStates.get(id));
+        this.destroyStereoFilterNativeState(this.yellowjacketFilterStates.get(id), (s) => this.destroyYellowjacketFilterNativeState(s));
         this.yellowjacketFilterStates.delete(id);
       }
     }
     for (const id of [...this.superloveFilterStates.keys()]) {
       if (!ids.has(id)) {
-        this.destroySuperloveFilterNativeState(this.superloveFilterStates.get(id));
+        this.destroyStereoFilterNativeState(this.superloveFilterStates.get(id), (s) => this.destroySuperloveFilterNativeState(s));
         this.superloveFilterStates.delete(id);
       }
     }
     for (const id of [...this.chaoticPhaseLockingFilterStates.keys()]) {
       if (!ids.has(id)) {
-        this.destroyChaoticPhaseLockingFilterNativeState(this.chaoticPhaseLockingFilterStates.get(id));
+        this.destroyStereoFilterNativeState(this.chaoticPhaseLockingFilterStates.get(id), (s) => this.destroyChaoticPhaseLockingFilterNativeState(s));
         this.chaoticPhaseLockingFilterStates.delete(id);
       }
     }
     for (const id of [...this.resonatorFilterStates.keys()]) {
       if (!ids.has(id)) {
-        this.destroyResonatorFilterNativeState(this.resonatorFilterStates.get(id));
+        this.destroyStereoFilterNativeState(this.resonatorFilterStates.get(id), (s) => this.destroyResonatorFilterNativeState(s));
         this.resonatorFilterStates.delete(id);
       }
     }
     for (const id of [...this.humanFilterStates.keys()]) {
       if (!ids.has(id)) {
-        this.destroyHumanFilterNativeState(this.humanFilterStates.get(id));
+        this.destroyStereoFilterNativeState(this.humanFilterStates.get(id), (s) => this.destroyHumanFilterNativeState(s));
         this.humanFilterStates.delete(id);
+      }
+    }
+    for (const id of [...this.pulseExplosionStates.keys()]) {
+      if (!ids.has(id)) {
+        this.destroyPulseExplosionNativeState(this.pulseExplosionStates.get(id));
+        this.pulseExplosionStates.delete(id);
       }
     }
     for (const id of [...this.tb303FilterStates.keys()]) {
       if (!ids.has(id)) {
-        this.destroyTb303FilterNativeState(this.tb303FilterStates.get(id));
+        this.destroyStereoFilterNativeState(this.tb303FilterStates.get(id), (s) => this.destroyTb303FilterNativeState(s));
         this.tb303FilterStates.delete(id);
       }
     }
@@ -2080,6 +2276,11 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       if (!ids.has(id)) {
         this.destroyDelayEffectNativeState(this.delayEffectStates.get(id));
         this.delayEffectStates.delete(id);
+      }
+    }
+    for (const id of [...this.pingPongDelayStates.keys()]) {
+      if (!ids.has(id)) {
+        this.pingPongDelayStates.delete(id);
       }
     }
     for (const id of [...this.reverbEffectStates.keys()]) {
@@ -2179,6 +2380,11 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       if (!ids.has(id)) {
         this.destroyVactrolEnvelopeNativeState(this.vactrolEnvelopeStates.get(id));
         this.vactrolEnvelopeStates.delete(id);
+      }
+    }
+    for (const id of [...this.impulseButtonStates.keys()]) {
+      if (!ids.has(id)) {
+        this.impulseButtonStates.delete(id);
       }
     }
     for (const id of [...this.polyBlepStates.keys()]) {
@@ -2443,6 +2649,26 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     const normalizedSpeed = Number(speed);
     event.speed = Number.isFinite(normalizedSpeed) ? normalizedSpeed : null;
     this.shootingStarExplosionEvent = event;
+  }
+
+  metallicRatioSample(index) {
+    const n = Number(index) || 0;
+    const fallback = () => 0.5 * (n + Math.sqrt(n * n + 4));
+    if (!this.nativeMetallicRatioReady || !this.nativeMetallicRatio?.soemdsp_metallic_ratio_sample) {
+      return fallback();
+    }
+    try {
+      return this.safeFilterNumber(this.nativeMetallicRatio.soemdsp_metallic_ratio_sample(n), null);
+    } catch (error) {
+      this.nativeMetallicRatioReady = false;
+      this.port.postMessage({
+        type: "nativeModuleStatus",
+        name: "metallic_ratio",
+        status: "disabled",
+        message: String(error?.message || error || "native Metallic Ratio failed"),
+      });
+      return fallback();
+    }
   }
 
   nativeShootingStarExplosionPower(speed, lowRange = 0, highRange = 1) {
@@ -3192,10 +3418,27 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       }]);
       state.postedFrame = absoluteFrame;
     }
-    if (!values.length) {
+    // Data-plane relay: any dataOutputs port (Hypersaw's Phases/
+    // Amplitudes/Pans today, more later) piggybacks on this same
+    // periodic "scope" message instead of the per-sample signal graph --
+    // see public/node-graph-data-bus.js for the receiving/read side.
+    const dataPorts = [];
+    for (const [nodeId, state] of this.hypersawStates) {
+      if (Array.isArray(state?.lastVoicePhases) && state.lastVoicePhases.length) {
+        dataPorts.push([nodeId, "Phases", state.lastVoicePhases]);
+      }
+      if (Array.isArray(state?.lastVoiceAmplitudes) && state.lastVoiceAmplitudes.length) {
+        dataPorts.push([nodeId, "Amplitudes", state.lastVoiceAmplitudes]);
+      }
+      if (Array.isArray(state?.lastVoicePans) && state.lastVoicePans.length) {
+        dataPorts.push([nodeId, "Pans", state.lastVoicePans]);
+      }
+    }
+    if (!values.length && !dataPorts.length) {
       return;
     }
     this.port.postMessage({
+      ...(dataPorts.length ? { dataPorts } : {}),
       patchFingerprint: this.patchFingerprint,
       sampleRate: engineSampleRate,
       sessionId: this.sessionId,
@@ -3739,85 +3982,80 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
-  // JS fallback mirroring native_modules/blit/blit.cpp: a closed-form
-  // Band-Limited Impulse Train (Stilson/Smith style) instead of PolyBLEP
-  // correction polynomials. Each waveform tap (Saw/Ramp/Square/Tri/Sine) keeps
-  // its own leaky integrator, keyed by the sub-id the caller passes in --
-  // mirrors how polyBlep's JS fallback separates its always-on taps.
-  blitImpulse(phaseCycle, harmonics) {
-    const denomArg = Math.PI * phaseCycle;
-    const s = Math.sin(denomArg);
-    const num = Math.sin(denomArg * harmonics);
-    if (s < 1e-9 && s > -1e-9) {
-      return 1.0;
+  // JS fallback mirroring native_modules/blit/blit.cpp (v5): the actual
+  // Stilson & Smith closed-form BLIT algorithm, following the structure of
+  // the Synthesis ToolKit's (STK) BlitSaw/BlitSquare classes -- an integer
+  // odd harmonic count (no exp()/pow() rolloff parameter), DC removed by
+  // subtracting the impulse's known average (1/period), and a fixed fast
+  // leak (0.995, per STK) rather than a near-true-integrator gain. Square
+  // is two saws a half-cycle apart, subtracted (per the original paper).
+  // Triangle leaky-integrates that square through a gentle frequency-
+  // tracking one-pole. Each tap (Saw/Ramp/Square/Tri/Sine) keeps its own
+  // filter state, keyed by the sub-id the caller passes in.
+  blitSawUpdate(state, periodSamples) {
+    const p = periodSamples;
+    const maxHarmonics = Math.floor(0.5 * p);
+    const m = 2 * maxHarmonics + 1;
+    const a = m / p;
+    const c2 = 1.0 / p;
+
+    const denom = Math.sin(state.phase);
+    let tmp;
+    if (denom > -1e-9 && denom < 1e-9) {
+      tmp = a;
+    } else {
+      tmp = Math.sin(m * state.phase) / (p * denom);
     }
-    return num / (harmonics * s);
+    tmp += state.state - c2;
+    state.state = tmp * state.leak;
+
+    state.phase += Math.PI / p;
+    state.phase = this.wrapValue(state.phase, 0, Math.PI);
+
+    return tmp;
   }
 
-  blitHarmonics(dt) {
-    const freqRatio = this.clampValue(Math.abs(Number(dt) || 0), 1e-6, 0.5);
-    let m = Math.floor(1 / (2 * freqRatio));
-    if (m < 1) m = 1;
-    return 2 * m + 1;
-  }
-
-  blitBipolar(phaseCycle, harmonics) {
-    return this.blitImpulse(phaseCycle, harmonics) - this.blitImpulse(this.wrapValue(phaseCycle + 0.5, 0, 1), harmonics);
-  }
-
-  blitJsIntegratorState(key) {
+  blitJsState(key) {
     let state = this.blitJsIntegrators.get(key);
     if (!state) {
-      state = { saw: 0, sq: 0, tri: 0 };
+      state = {
+        sawA: { phase: 0, state: 0, leak: 0.995 },
+        sawB: { phase: Math.PI * 0.5, state: 0, leak: 0.995 },
+        triState: 0,
+      };
       this.blitJsIntegrators.set(key, state);
     }
     return state;
   }
 
-  blitRenderSaw(key, phaseCycle, dt, harmonics) {
-    const state = this.blitJsIntegratorState(key);
-    const leak = 0.999;
-    let integ = state.saw * leak + (this.blitImpulse(phaseCycle, harmonics) - 1.0) * dt;
-    integ = this.clampValue(integ, -1.5, 1.5);
-    state.saw = integ;
-    return this.clampValue(integ * 2.0, -1.0, 1.0);
-  }
-
-  blitRenderSquare(key, phaseCycle, dt, harmonics) {
-    const state = this.blitJsIntegratorState(key);
-    const leak = 0.999;
-    let integ = state.sq * leak + this.blitBipolar(phaseCycle, harmonics) * dt * 2.0;
-    integ = this.clampValue(integ, -1.5, 1.5);
-    state.sq = integ;
-    return this.clampValue(integ * 2.0, -1.0, 1.0);
-  }
-
-  blitRenderTriangle(key, phaseCycle, dt, harmonics) {
-    const square = this.blitRenderSquare(key, phaseCycle, dt, harmonics);
-    const state = this.blitJsIntegratorState(key);
-    const leak = 0.9995;
-    let integ = (state.tri + square * dt * 4.0) * leak;
-    integ = this.clampValue(integ, -1.0, 1.0);
-    state.tri = integ;
-    return integ;
-  }
-
   blitOscillatorSample(key, phase, phaseIncrement, waveform) {
+    const BLIT_SAW_GAIN = 1.6;
+    const BLIT_TRI_GAIN = 2.0;
+
+    // phaseIncrement is cycles-per-sample directly (matches every other
+    // oscillator's convention here, e.g. polyBlepOscillatorSample) -- not
+    // radians-per-sample, so no /(2*pi) conversion belongs here.
+    const state = this.blitJsState(key);
     const dt = this.clampValue(Math.abs(Number(phaseIncrement) || 0), 1e-6, 0.5);
-    const harmonics = this.blitHarmonics(dt);
-    const phaseCycle = this.wrapValue(phase / (Math.PI * 2), 0, 1);
+    const periodSamples = 1.0 / dt;
+    const sawARaw = this.blitSawUpdate(state.sawA, periodSamples) * BLIT_SAW_GAIN;
+    const sawBRaw = this.blitSawUpdate(state.sawB, periodSamples) * BLIT_SAW_GAIN;
+
     switch (Math.round(Number(waveform) || 0)) {
       case 1:
-        return -this.blitRenderSaw(key, phaseCycle, dt, harmonics);
+        return -this.clampValue(sawARaw, -1.0, 1.0);
       case 2:
-        return this.blitRenderSquare(key, phaseCycle, dt, harmonics);
-      case 3:
-        return this.blitRenderTriangle(key, phaseCycle, dt, harmonics);
+        return this.clampValue(sawARaw - sawBRaw, -1.0, 1.0);
+      case 3: {
+        const sqOut = this.clampValue(sawARaw - sawBRaw, -1.0, 1.0);
+        state.triState += dt * BLIT_TRI_GAIN * (sqOut - state.triState);
+        return this.clampValue(state.triState, -1.0, 1.0);
+      }
       case 4:
         return Math.sin(phase);
       case 0:
       default:
-        return this.blitRenderSaw(key, phaseCycle, dt, harmonics);
+        return this.clampValue(sawARaw, -1.0, 1.0);
     }
   }
 
@@ -3827,8 +4065,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   // fidelity of the fallback is "same math", not "bit-identical output".
   archimedesSample(options = {}) {
     const state = options.state || this.createArchimedesState();
-    const profile = this.clampValue(Math.round(Number(options.profile) || 0), 0, 3);
-    const dtShift = [10, 12, 16, 6][profile] ?? 12;
+    const dtShift = this.clampValue(Math.round(Number(options.profile) || 12), 4, 24);
     const freqHz = Math.max(0, Math.round(Number(options.frequency) || 0));
     const ditherBits = Math.max(0, Math.round(Number(options.dither) || 0));
     if (
@@ -3878,8 +4115,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       this.resetArchimedesState(state);
     }
     state.resetWasHigh = resetHigh;
-    const profile = this.clampValue(Math.round(Number(options.profile) || 0), 0, 3);
-    const dtShift = [10, 12, 16, 6][profile] ?? 12;
+    const dtShift = this.clampValue(Math.round(Number(options.profile) || 12), 4, 24);
     const dtFloat = 1 / (2 ** dtShift);
     const freqHz = Math.max(0, Number(options.frequency) || 0);
     const phaseInc = freqHz <= 0 ? 0 : Math.PI * 2 * freqHz * dtFloat;
@@ -4254,6 +4490,25 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     return { y: [0, 0, 0, 0, 0], nativeHandle: 0 };
   }
 
+  // Bundles three independent per-channel filter states (mono/left/right) under
+  // one map entry, so a stereo signal gets three genuinely independent native
+  // handles/filter histories instead of one shared (and thus mono-summed)
+  // instance. `createFn` is one of this class's existing createXState methods.
+  createStereoFilterState(createFn) {
+    return { left: createFn(), mono: createFn(), right: createFn() };
+  }
+
+  // Companion to createStereoFilterState: destroys all three channels'
+  // native handles (if any) via the module's existing destroyXNativeState
+  // method, tolerating a pre-bundle single-state shape defensively.
+  destroyStereoFilterNativeState(bundle, destroyFn) {
+    for (const channelState of [bundle?.mono, bundle?.left, bundle?.right]) {
+      if (channelState) {
+        destroyFn(channelState);
+      }
+    }
+  }
+
   createFlowerChildFilterState() {
     return {
       phase: 0, phaseOffset: 0, stage1: 0, stage2: 0, selfMod: 0,
@@ -4294,6 +4549,13 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     };
   }
 
+  createPulseExplosionState() {
+    return {
+      wasHigh: false, exploding: false, elapsed: 0,
+      pulses: [], nextPulseIndex: 0, nativeHandle: 0,
+    };
+  }
+
   resetCookbookFilterState(state) {
     for (const key of ["x1", "x2", "y1", "y2"]) {
       if (Array.isArray(state?.[key])) {
@@ -4319,6 +4581,14 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     return {
       initialized: false,
       out: 0,
+    };
+  }
+
+  createStereoSlewLimiterState() {
+    return {
+      left: this.createSlewLimiterState(),
+      mono: this.createSlewLimiterState(),
+      right: this.createSlewLimiterState(),
     };
   }
 
@@ -4371,12 +4641,39 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     };
   }
 
+  createStereoDelayEffectState() {
+    return {
+      left: this.createDelayEffectState(),
+      mono: this.createDelayEffectState(),
+      right: this.createDelayEffectState(),
+    };
+  }
+
+  createPingPongDelayState() {
+    return {
+      bufferL: new Float32Array(1),
+      bufferR: new Float32Array(1),
+      bufferSize: 1,
+      position: 0,
+      wetL: 0,
+      wetR: 0,
+    };
+  }
+
   createSampleHoldState() {
     return {
       clockPhase: 0,
       held: 0,
       lastTrigger: 0,
       noise: this.createNoiseGeneratorChannelState(),
+    };
+  }
+
+  createStereoSampleHoldState() {
+    return {
+      left: this.createSampleHoldState(),
+      mono: this.createSampleHoldState(),
+      right: this.createSampleHoldState(),
     };
   }
 
@@ -4465,6 +4762,13 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       nativeHandle: 0,
       out: 0,
       raw: 0,
+    };
+  }
+
+  createImpulseButtonState() {
+    return {
+      amplitude: 1,
+      pulseSamples: 0,
     };
   }
 
@@ -4590,6 +4894,13 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
+  destroyPulseExplosionNativeState(state) {
+    if (state.nativeHandle && this.nativePulseExplosion?.soemdsp_pulse_explosion_destroy) {
+      this.nativePulseExplosion.soemdsp_pulse_explosion_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+
   destroyTb303FilterNativeState(state) {
     if (state.nativeHandle && this.nativeTb303Filter?.soemdsp_tb303_filter_destroy) {
       this.nativeTb303Filter.soemdsp_tb303_filter_destroy(state.nativeHandle);
@@ -4633,6 +4944,140 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       ),
       state,
     );
+  }
+
+  // Papoulis (Optimum-L) order-3 lowpass. Normalized (cutoff = 1 rad/s) prototype:
+  //   D(s) = (s + 0.6203) * (s^2 + 0.6904s + 0.9308)
+  // Each factor is unity-DC-gain individually, frequency-scaled to cutoff, and
+  // bilinear-transformed to digital per stage (1-pole cascaded with a biquad).
+  createPapoulisFilterState() {
+    return {
+      poleX1: 0,
+      poleY1: 0,
+      biquadX1: 0,
+      biquadX2: 0,
+      biquadY1: 0,
+      biquadY2: 0,
+      coeffs: null,
+      cutoffHz: NaN,
+      sampleRate: NaN,
+    };
+  }
+
+  papoulisFilterDesign(cutoffHz, rate) {
+    const wc = 2 * Math.PI * Math.max(0, cutoffHz);
+    const k = 2 * rate;
+    const p = 0.6203 * wc;
+    const poleA0 = k + p;
+    const a1s = 0.6904 * wc;
+    const a0s = 0.9308 * wc * wc;
+    const biquadA0 = k * k + a1s * k + a0s;
+    return {
+      pole: { b0: p / poleA0, b1: p / poleA0, a1: (p - k) / poleA0 },
+      biquad: {
+        b0: a0s / biquadA0,
+        b1: (2 * a0s) / biquadA0,
+        b2: a0s / biquadA0,
+        a1: (2 * a0s - 2 * k * k) / biquadA0,
+        a2: (k * k - a1s * k + a0s) / biquadA0,
+      },
+    };
+  }
+
+  papoulisFilterSample(state, input, cutoffHz, rate) {
+    const safeCutoff = Math.max(0.01, Math.min(rate * 0.49, Number(cutoffHz) || 0));
+    if (state.cutoffHz !== safeCutoff || state.sampleRate !== rate) {
+      state.coeffs = this.papoulisFilterDesign(safeCutoff, rate);
+      state.cutoffHz = safeCutoff;
+      state.sampleRate = rate;
+    }
+    const x = Number(input) || 0;
+    const { pole, biquad } = state.coeffs;
+    const poleOut = pole.b0 * x + pole.b1 * state.poleX1 - pole.a1 * state.poleY1;
+    state.poleX1 = x;
+    state.poleY1 = poleOut;
+    const biquadOut = biquad.b0 * poleOut + biquad.b1 * state.biquadX1 + biquad.b2 * state.biquadX2
+      - biquad.a1 * state.biquadY1 - biquad.a2 * state.biquadY2;
+    state.biquadX2 = state.biquadX1;
+    state.biquadX1 = poleOut;
+    state.biquadY2 = state.biquadY1;
+    state.biquadY1 = biquadOut;
+    return biquadOut;
+  }
+
+  // Phosphillator playback: decodes the drawn closed loop (packed as
+  // Phosphor Draw Sample doubles — see node-graph-phosphor-draw-sample.js
+  // for the format) and walks it via a 0..1 phase accumulator using the
+  // same 0.1V/Oct convention as osc. Duplicated here rather than shared
+  // with the main-thread files because the worklet runs in an isolated
+  // global scope with no access to them.
+  unpackPhosphorDrawSampleXY(sample) {
+    if (!this.phosphorDrawSampleView) {
+      const buffer = new ArrayBuffer(8);
+      this.phosphorDrawSampleView = {
+        f64: new Float64Array(buffer),
+        f32: new Float32Array(buffer),
+      };
+    }
+    const view = this.phosphorDrawSampleView;
+    view.f64[0] = sample;
+    return { x: view.f32[0], y: view.f32[1] };
+  }
+
+  createPhosphillatorPlaybackState() {
+    return { lastReset: false, phase: 0 };
+  }
+
+  phosphillatorDecodedPath(nodeId, node) {
+    const points = node?.drawnPath?.points;
+    if (!Array.isArray(points) || points.length < 2) {
+      this.phosphillatorDecodedPathCache.delete(nodeId);
+      return null;
+    }
+    const cached = this.phosphillatorDecodedPathCache.get(nodeId);
+    if (cached && cached.pointsRef === points) {
+      return cached;
+    }
+    const decodedX = new Float32Array(points.length);
+    const decodedY = new Float32Array(points.length);
+    for (let i = 0; i < points.length; i += 1) {
+      const unpacked = this.unpackPhosphorDrawSampleXY(points[i]);
+      decodedX[i] = unpacked.x;
+      decodedY[i] = unpacked.y;
+    }
+    const decoded = { count: points.length, decodedX, decodedY, pointsRef: points };
+    this.phosphillatorDecodedPathCache.set(nodeId, decoded);
+    return decoded;
+  }
+
+  phosphillatorLoopSample(decoded, phase) {
+    const n = decoded.count;
+    const index = (((phase % 1) + 1) % 1) * n;
+    const i0 = Math.floor(index) % n;
+    const i1 = (i0 + 1) % n;
+    const t = index - Math.floor(index);
+    return {
+      x: decoded.decodedX[i0] + (decoded.decodedX[i1] - decoded.decodedX[i0]) * t,
+      y: decoded.decodedY[i0] + (decoded.decodedY[i1] - decoded.decodedY[i0]) * t,
+    };
+  }
+
+  phosphillatorPlaybackSample(state, node, nodeId, cvInput, frequency, phaseOffset, reset, rate) {
+    const resetActive = Number(reset) > 0.5;
+    if (resetActive && !state.lastReset) {
+      state.phase = 0;
+    }
+    state.lastReset = resetActive;
+    const pitchedFrequency = Math.max(0, Number(frequency) * (2 ** ((Number(cvInput) || 0) / 0.1)));
+    const safeRate = Math.max(1, Number(rate) || 1);
+    state.phase = (((state.phase + pitchedFrequency / safeRate) % 1) + 1) % 1;
+    const decoded = this.phosphillatorDecodedPath(nodeId, node);
+    if (!decoded) {
+      return { X: 0, Y: 0 };
+    }
+    const effectivePhase = (((state.phase + (Number(phaseOffset) || 0)) % 1) + 1) % 1;
+    const point = this.phosphillatorLoopSample(decoded, effectivePhase);
+    return { X: point.x, Y: point.y };
   }
 
   createRandomWalkState() {
@@ -4954,12 +5399,15 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     runtime.hostSampleRate = this.hostSampleRate;
     runtime.oversamplingRatio = this.oversamplingRatio;
     runtime.passiveFilterStates = new Map();
+    runtime.papoulisFilterStates = new Map();
+    runtime.phosphillatorPlaybackStates = new Map();
     runtime.clockDividerStates = new Map();
     runtime.clockStates = new Map();
     runtime.codeblockFunctions = new Map();
     runtime.cookbookFilterStates = new Map();
     runtime.delayedTriggerStates = new Map();
     runtime.delayEffectStates = new Map();
+    runtime.pingPongDelayStates = new Map();
     runtime.expAdsrStates = new Map();
     runtime.fractalBrownianNoiseStates = new Map();
     runtime.flowerChildEnvelopeFollowerStates = new Map();
@@ -4972,6 +5420,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     runtime.chaoticPhaseLockingFilterStates = new Map();
     runtime.resonatorFilterStates = new Map();
     runtime.humanFilterStates = new Map();
+    runtime.pulseExplosionStates = new Map();
     runtime.linearEnvelopeStates = new Map();
     runtime.sineWavetableStates = new Map();
     runtime.noiseGeneratorStates = new Map();
@@ -5010,14 +5459,18 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     runtime.chordMemoryStates = new Map();
     runtime.turingMachineStates = new Map();
     runtime.pitchQuantizerStates = new Map();
+    runtime.chordSequencerStates = new Map();
+    runtime.lutCellStates = new Map();
     runtime.surgeOscillatorStates = new Map();
     runtime.dsfOscillatorStates = new Map();
     runtime.robinSupersawStates = new Map();
+    runtime.hypersawStates = new Map();
     runtime.stepSequencerStates = new Map();
     runtime.triggerCounterStates = new Map();
     runtime.triggerDividerStates = new Map();
     runtime.triangleStates = new Map();
     runtime.vactrolEnvelopeStates = new Map();
+    runtime.impulseButtonStates = new Map();
     runtime.polyBlepStates = new Map();
     runtime.resetVisualControls();
     runtime.setNestedPlan(plan);
@@ -5071,35 +5524,42 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       if (node?.type === "chordMemory") this.chordMemoryStates.set(id, this.createChordMemoryState());
       if (node?.type === "turingMachine") this.turingMachineStates.set(id, this.createTuringMachineState());
       if (node?.type === "pitchQuantizer") this.pitchQuantizerStates.set(id, this.createPitchQuantizerState());
+      if (node?.type === "chordSequencer") this.chordSequencerStates.set(id, this.createChordSequencerState());
+      if (node?.type === "lutCell") this.lutCellStates.set(id, this.createLutCellState());
       if (node?.type === "surgeOscillator") this.surgeOscillatorStates.set(id, this.createSurgeOscillatorState());
       if (node?.type === "dsfOscillator") this.dsfOscillatorStates.set(id, this.createDsfOscillatorState());
       if (node?.type === "robinSupersaw") this.robinSupersawStates.set(id, this.createRobinSupersawState());
-      if (node?.type === "passiveFilter") this.passiveFilterStates.set(id, this.createPassiveFilterState());
-      if (node?.type === "cookbookFilter") this.cookbookFilterStates.set(id, this.createCookbookFilterState());
-      if (node?.type === "ladderFilter") this.ladderFilterStates.set(id, this.createLadderFilterState());
-      if (node?.type === "flowerChildFilter") this.flowerChildFilterStates.set(id, this.createFlowerChildFilterState());
-      if (node?.type === "rsmetFilter") this.rsmetFilterStates.set(id, this.createRsmetFilterState());
-      if (node?.type === "yellowjacketFilter") this.yellowjacketFilterStates.set(id, this.createYellowjacketFilterState());
-      if (node?.type === "superloveFilter") this.superloveFilterStates.set(id, this.createSuperloveFilterState());
-      if (node?.type === "chaoticPhaseLockingFilter") this.chaoticPhaseLockingFilterStates.set(id, this.createChaoticPhaseLockingFilterState());
-      if (node?.type === "resonatorFilter") this.resonatorFilterStates.set(id, this.createResonatorFilterState());
-      if (node?.type === "humanFilter") this.humanFilterStates.set(id, this.createHumanFilterState());
-      if (node?.type === "tb303Filter") this.tb303FilterStates.set(id, this.createTb303FilterState());
+      if (node?.type === "hypersaw") this.hypersawStates.set(id, this.createHypersawState());
+      if (node?.type === "papoulisFilter") this.papoulisFilterStates.set(id, this.createPapoulisFilterState());
+      if (node?.type === "phosphillator") this.phosphillatorPlaybackStates.set(id, this.createPhosphillatorPlaybackState());
+      if (node?.type === "pulseExplosion") this.pulseExplosionStates.set(id, this.createPulseExplosionState());
+      if (node?.type === "passiveFilter") this.passiveFilterStates.set(id, this.createStereoFilterState(() => this.createPassiveFilterState()));
+      if (node?.type === "cookbookFilter") this.cookbookFilterStates.set(id, this.createStereoFilterState(() => this.createCookbookFilterState()));
+      if (node?.type === "ladderFilter") this.ladderFilterStates.set(id, this.createStereoFilterState(() => this.createLadderFilterState()));
+      if (node?.type === "flowerChildFilter") this.flowerChildFilterStates.set(id, this.createStereoFilterState(() => this.createFlowerChildFilterState()));
+      if (node?.type === "rsmetFilter") this.rsmetFilterStates.set(id, this.createStereoFilterState(() => this.createRsmetFilterState()));
+      if (node?.type === "yellowjacketFilter") this.yellowjacketFilterStates.set(id, this.createStereoFilterState(() => this.createYellowjacketFilterState()));
+      if (node?.type === "superloveFilter") this.superloveFilterStates.set(id, this.createStereoFilterState(() => this.createSuperloveFilterState()));
+      if (node?.type === "chaoticPhaseLockingFilter") this.chaoticPhaseLockingFilterStates.set(id, this.createStereoFilterState(() => this.createChaoticPhaseLockingFilterState()));
+      if (node?.type === "resonatorFilter") this.resonatorFilterStates.set(id, this.createStereoFilterState(() => this.createResonatorFilterState()));
+      if (node?.type === "humanFilter") this.humanFilterStates.set(id, this.createStereoFilterState(() => this.createHumanFilterState()));
+      if (node?.type === "tb303Filter") this.tb303FilterStates.set(id, this.createStereoFilterState(() => this.createTb303FilterState()));
       if (node?.type === "clock") this.clockStates.set(id, this.createClockState());
       if (node?.type === "graph" || node?.type === "graph2") this.graphLfoStates.set(id, this.createGraphLfoState());
       if (node?.type === "clockDivider") this.clockDividerStates.set(id, this.createTriggerDividerState());
       if (node?.type === "delayedTrigger") this.delayedTriggerStates.set(id, this.createDelayedTriggerState());
-      if (node?.type === "delayEffect") this.delayEffectStates.set(id, this.createDelayEffectState());
+      if (node?.type === "delayEffect") this.delayEffectStates.set(id, this.createStereoDelayEffectState());
+      if (node?.type === "pingPongDelay") this.pingPongDelayStates.set(id, this.createPingPongDelayState());
       if (node?.type === "reverbEffect") this.reverbEffectStates.set(id, this.createSabrinaReverbState());
       if (node?.type === "pll") this.pllStates.set(id, this.createPllState());
       if (node?.type === "helmholtzPitch") this.helmholtzStates.set(id, this.createHelmholtzState());
       if (node?.type === "randomClock") this.randomClockStates.set(id, this.createRandomClockState());
-      if (node?.type === "sampleHold") this.sampleHoldStates.set(id, this.createSampleHoldState());
+      if (node?.type === "sampleHold") this.sampleHoldStates.set(id, this.createStereoSampleHoldState());
       if (node?.type === "samplePlayer" || node?.type === "sampleLooper" || node?.type === "audioPlayer") {
         this.samplePlaybackStates.set(id, this.createSamplePlaybackState());
       }
       if (node?.type === "nextPatch" || node?.type === "previousPatch") this.patchCommandStates.set(id, this.createPatchCommandState());
-      if (node?.type === "slewLimiter") this.slewLimiterStates.set(id, this.createSlewLimiterState());
+      if (node?.type === "slewLimiter") this.slewLimiterStates.set(id, this.createStereoSlewLimiterState());
       if (node?.type === "expAdsr") this.expAdsrStates.set(id, this.createExpAdsrState());
       if (node?.type === "linearEnvelope") this.linearEnvelopeStates.set(id, this.createLinearEnvelopeState());
       if (node?.type === "noiseGenerator") this.noiseGeneratorStates.set(id, this.createNoiseGeneratorState());
@@ -5110,7 +5570,8 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       if (node?.type === "stepSequencer") this.stepSequencerStates.set(id, this.createStepSequencerState());
       if (node?.type === "triggerCounter") this.triggerCounterStates.set(id, this.createTriggerCounterState());
       if (node?.type === "triggerDivider") this.triggerDividerStates.set(id, this.createTriggerDividerState());
-      if (node?.type === "vactrolEnvelope" || node?.type === "vactrolEnvelopeC4") this.vactrolEnvelopeStates.set(id, this.createVactrolEnvelopeState());
+      if (node?.type === "vactrolEnvelopeSeries" || node?.type === "vactrolEnvelopeCustom") this.vactrolEnvelopeStates.set(id, this.createVactrolEnvelopeState());
+      if (node?.type === "impulseButton") this.impulseButtonStates.set(id, this.createImpulseButtonState());
       if (node?.type === "polyBlep") this.polyBlepStates.set(id, this.createPolyBlepState());
       if (node?.type === "blit") this.blitStates.set(id, this.createBlitState());
       if (node?.type === "archimedes") this.archimedesStates.set(id, this.createArchimedesState());
@@ -6710,6 +7171,165 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     return this.humanFilterSampleJs(state, input, params, rate);
   }
 
+  // --- Pulse Explosion ---
+
+  pulseExplosionRationalCurve(p, skew) {
+    let denom = 1 - skew + 2 * skew * p;
+    if (denom > -1e-12 && denom < 1e-12) denom = denom >= 0 ? 1e-12 : -1e-12;
+    return ((1 + skew) * p) / denom;
+  }
+
+  pulseExplosionRaisedCosineEase(x, x1, x2) {
+    const span = x2 - x1;
+    if (span > -1e-12 && span < 1e-12) return 0.5;
+    let p = (x - x1) / span;
+    p = Math.max(0, Math.min(1, p));
+    return 1 - (0.5 + 0.5 * Math.sin((p - 0.5) * Math.PI));
+  }
+
+  pulseExplosionDensity(t, startTime, centerTime, endTime, skew) {
+    if (t <= startTime || t >= endTime) return 0;
+    const ease = t < centerTime
+      ? this.pulseExplosionRaisedCosineEase(t, centerTime, startTime)
+      : this.pulseExplosionRaisedCosineEase(t, centerTime, endTime);
+    return Math.max(0, Math.min(1, this.pulseExplosionRationalCurve(ease, skew)));
+  }
+
+  // Deterministic 32-bit mulberry32 PRNG so a non-zero seed reproduces the
+  // same pulse schedule every time (seed 0 keeps the free-running behavior).
+  pulseExplosionMulberry32(seed) {
+    let a = seed >>> 0;
+    return function pulseExplosionNext() {
+      a |= 0;
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  pulseExplosionSeedHash(seed) {
+    const buffer = new ArrayBuffer(8);
+    new Float64Array(buffer)[0] = Number(seed) || 0;
+    const words = new Uint32Array(buffer);
+    let x = (words[0] ^ words[1]) >>> 0;
+    x ^= x >>> 16;
+    x = Math.imul(x, 0x7feb352d) >>> 0;
+    x ^= x >>> 15;
+    x = Math.imul(x, 0x846ca68b) >>> 0;
+    x ^= x >>> 16;
+    return (x >>> 0) || 0x9e3779b9;
+  }
+
+  pulseExplosionRandomFn(seed) {
+    const seedNumber = Number(seed) || 0;
+    if (seedNumber === 0) {
+      return Math.random;
+    }
+    return this.pulseExplosionMulberry32(this.pulseExplosionSeedHash(seedNumber));
+  }
+
+  pulseExplosionSampleJs(state, trigger, params, rate) {
+    const safeRate = Math.max(1, Number(rate) || sampleRate || 44100);
+    const safeStart = Math.max(0, this.safeFilterNumber(params.startTime, state));
+    let safeEnd = this.safeFilterNumber(params.endTime, state);
+    if (safeEnd <= safeStart) safeEnd = safeStart + 0.001;
+    let safeCenter = this.clampValue(this.safeFilterNumber(params.centerTime, state), safeStart, safeEnd);
+    if (safeCenter <= safeStart) safeCenter = safeStart + 1e-6;
+    if (safeCenter >= safeEnd) safeCenter = safeEnd - 1e-6;
+    const skew = -0.99 + 1.98 * this.clampValue(this.safeFilterNumber(params.timeSpread, state), 0, 1);
+    const safeCount = Math.max(1, Math.min(128, Math.round(Number(params.numberOfPulses) || 1)));
+    const lo = Math.min(Number(params.lowAmplitude) || 0, Number(params.highAmplitude) || 0);
+    const hi = Math.max(Number(params.lowAmplitude) || 0, Number(params.highAmplitude) || 0);
+
+    const high = this.safeFilterNumber(trigger, state) > 0.5;
+    if (high && !state.wasHigh) {
+      state.nextPulseIndex = 0;
+      state.elapsed = 0;
+      state.exploding = true;
+
+      const random = this.pulseExplosionRandomFn(params.seed);
+      const pulses = [];
+      for (let i = 0; i < safeCount; i++) {
+        let chosenTime = safeCenter;
+        for (let attempt = 0; attempt < 200; attempt++) {
+          const candidate = safeStart + (safeEnd - safeStart) * random();
+          const roll = random();
+          const density = this.pulseExplosionDensity(candidate, safeStart, safeCenter, safeEnd, skew);
+          if (roll < density) {
+            chosenTime = candidate;
+            break;
+          }
+        }
+        pulses.push({ time: chosenTime, amplitude: lo + (hi - lo) * random() });
+      }
+      pulses.sort((a, b) => a.time - b.time);
+      state.pulses = pulses;
+    }
+    state.wasHigh = high;
+
+    let output = 0;
+    if (state.exploding) {
+      if (state.nextPulseIndex < state.pulses.length && state.elapsed >= state.pulses[state.nextPulseIndex].time) {
+        output = state.pulses[state.nextPulseIndex].amplitude;
+        state.nextPulseIndex++;
+      }
+      state.elapsed += 1 / safeRate;
+      if (state.nextPulseIndex >= state.pulses.length && state.elapsed > safeEnd) {
+        state.exploding = false;
+      }
+    }
+
+    const curve = this.pulseExplosionDensity(state.elapsed, safeStart, safeCenter, safeEnd, skew);
+    return {
+      Out: this.safeFilterNumber(output, state),
+      Curve: this.safeFilterNumber(curve, state),
+    };
+  }
+
+  pulseExplosionSample(state, trigger, params, rate = sampleRate) {
+    if (this.nativePulseExplosionReady) {
+      try {
+        if (!state.nativeHandle) {
+          state.nativeHandle = this.nativePulseExplosion.soemdsp_pulse_explosion_create();
+        }
+        if (state.nativeHandle) {
+          const output = this.safeFilterNumber(
+            this.nativePulseExplosion.soemdsp_pulse_explosion_sample(
+              state.nativeHandle,
+              this.safeFilterNumber(trigger, state),
+              Math.max(0, this.safeFilterNumber(params.startTime, state)),
+              this.safeFilterNumber(params.centerTime, state),
+              this.safeFilterNumber(params.endTime, state),
+              this.clampValue(this.safeFilterNumber(params.timeSpread, state), 0, 1),
+              Math.max(1, Math.min(128, Math.round(Number(params.numberOfPulses) || 1))),
+              this.safeFilterNumber(params.lowAmplitude, state),
+              this.safeFilterNumber(params.highAmplitude, state),
+              Number(params.seed) || 0,
+              Math.max(1, Number(rate) || sampleRate || 44100),
+            ),
+            state,
+          );
+          const curve = this.safeFilterNumber(
+            this.nativePulseExplosion.soemdsp_pulse_explosion_curve?.(state.nativeHandle) || 0,
+            state,
+          );
+          return { Out: output, Curve: curve };
+        }
+      } catch (error) {
+        this.nativePulseExplosionReady = false;
+        state.nativeHandle = 0;
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "pulse_explosion",
+          status: "disabled",
+          message: String(error?.message || error || "native Pulse Explosion failed"),
+        });
+      }
+    }
+    return this.pulseExplosionSampleJs(state, trigger, params, rate);
+  }
+
   tb303FilterSample(state, input, params, rate = sampleRate) {
     if (!this.nativeTb303FilterReady) {
       throw new Error("native TB-303 Filter not ready");
@@ -7038,6 +7658,87 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     return {
       Out: (dry * (1 - mix) + state.wet * mix) * level,
       Wet: state.wet * level,
+    };
+  }
+
+  pingPongTimingModeMultiplier(mode) {
+    const rounded = Math.round(Number(mode) || 0);
+    if (rounded === 1) {
+      return 1.5; // Dotted
+    }
+    if (rounded === 2) {
+      return 2 / 3; // Triplet: three fit in the space of two normal notes
+    }
+    return 1; // Normal
+  }
+
+  // X/Y as a fraction of a whole note. Both are free metaparameters -- never
+  // clamped or rejected here, only floored for this one computation:
+  // - Negative numerator or denominator behaves like 0.
+  // - A numerator of 0 (or negative) always means "no time", for any
+  //   denominator including 0 -- this also sidesteps 0/0 producing NaN.
+  // - A non-zero numerator over a 0 (or negative) denominator falls back to
+  //   a denominator of 1, i.e. "X/0" reads as "X whole notes", rather than
+  //   dividing by zero.
+  pingPongDelayFraction(numerator, denominator) {
+    const effectiveNumerator = Math.max(0, Number(numerator) || 0);
+    if (effectiveNumerator === 0) {
+      return 0;
+    }
+    const effectiveDenominator = Math.max(0, Number(denominator) || 0);
+    return effectiveNumerator / Math.max(1, effectiveDenominator);
+  }
+
+  pingPongDelaySeconds(params) {
+    const secondsPerWholeNote = 240 / Math.max(1, Number(this.timing?.tempoBpm) || 120);
+    const fraction = this.pingPongDelayFraction(params.timeNumerator, params.timeDenominator);
+    const syncedSeconds = secondsPerWholeNote * fraction * this.pingPongTimingModeMultiplier(params.timingMode);
+    const offsetSeconds = (Number(params.offsetMs) || 0) / 1000;
+    return syncedSeconds + offsetSeconds;
+  }
+
+  pingPongDelaySample(state, input, params, rateHz = sampleRate) {
+    const safeRate = Math.max(1, Number(rateHz) || 44100);
+    const maxDelaySeconds = 8;
+    const requiredSize = Math.max(2, Math.ceil(safeRate * maxDelaySeconds) + 2);
+    if (!state.bufferL || state.bufferSize !== requiredSize) {
+      state.bufferL = new Float32Array(requiredSize);
+      state.bufferR = new Float32Array(requiredSize);
+      state.bufferSize = requiredSize;
+      state.position = 0;
+      state.wetL = 0;
+      state.wetR = 0;
+    }
+    const dry = this.safeFilterNumber(input, null);
+    const feedback = this.clampValue(this.safeFilterNumber(params.feedback, null), 0, 0.95);
+    const mix = this.clampValue(this.safeFilterNumber(params.mix, null), 0, 1);
+    const level = this.clampValue(this.safeFilterNumber(params.level, null), 0, 2);
+
+    // The computed time is what gets bounded to fit the (necessarily finite)
+    // delay buffer -- timeNumerator/timeDenominator/offsetMs themselves are
+    // read as-is above, in pingPongDelaySeconds, with no clamp.
+    const rawSeconds = this.pingPongDelaySeconds(params);
+    const safeSeconds = Number.isFinite(rawSeconds) ? Math.max(0, rawSeconds) : 0;
+    const delaySamples = this.clampValue(safeSeconds * safeRate, 1, state.bufferSize - 2);
+
+    state.position = (state.position + 1) % state.bufferSize;
+    const readPosition = (state.position + state.bufferSize - delaySamples) % state.bufferSize;
+    const readL = this.delayInterpolateLinear(state.bufferL, readPosition);
+    const readR = this.delayInterpolateLinear(state.bufferR, readPosition);
+
+    // Classic ping-pong topology: the input only ever enters the left line;
+    // the right line is driven purely by the left line's own feedback, so a
+    // single input bounces left -> right -> left -> right as it decays.
+    const writeL = dry + readR * feedback;
+    const writeR = readL * feedback;
+    state.bufferL[state.position] = this.clampValue(writeL, -8, 8);
+    state.bufferR[state.position] = this.clampValue(writeR, -8, 8);
+    state.wetL = readL;
+    state.wetR = readR;
+
+    return {
+      Left: (dry * (1 - mix) + state.wetL * mix) * level,
+      Right: (dry * (1 - mix) + state.wetR * mix) * level,
     };
   }
 
@@ -10514,6 +11215,208 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     return this.pitchQuantizerSampleJs(state, options);
   }
 
+  createChordSequencerState() {
+    return { clockWasHigh: false, resetWasHigh: false, stepIndex: 0, nativeHandle: 0 };
+  }
+
+  destroyChordSequencerNativeState(state) {
+    if (state?.nativeHandle && this.nativeChordSequencer?.soemdsp_chord_sequencer_destroy) {
+      this.nativeChordSequencer.soemdsp_chord_sequencer_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+
+  chordSequencerRotateLeft12(mask, amount) {
+    const n = ((amount % 12) + 12) % 12;
+    if (n === 0) return mask & 0xFFF;
+    return ((mask << n) | (mask >> (12 - n))) & 0xFFF;
+  }
+
+  chordSequencerSampleJs(state, options = {}) {
+    const progressions = [
+      [[0, 0], [7, 0], [9, 1], [5, 0]],
+      [[0, 0], [5, 0], [7, 0], [0, 0]],
+      [[2, 1], [7, 0], [0, 0], [0, 0]],
+      [[9, 1], [5, 0], [0, 0], [7, 0]],
+      [[0, 0], [9, 1], [5, 0], [7, 0]],
+      [[0, 0], [9, 1], [2, 1], [7, 0]],
+    ];
+    const majorTriadMask = 0x91;
+    const minorTriadMask = 0x89;
+    const clockHigh = Number(options.clock) > 0;
+    const resetHigh = Number(options.reset) > 0;
+    const progressionIndex = Math.max(0, Math.min(progressions.length - 1, Math.round(Number(options.progression) || 0)));
+    const level = Number(options.level) || 0;
+
+    if (resetHigh && !state.resetWasHigh) {
+      state.stepIndex = 0;
+    }
+    state.resetWasHigh = resetHigh;
+
+    if (clockHigh && !state.clockWasHigh) {
+      state.stepIndex = (state.stepIndex + 1) % progressions[progressionIndex].length;
+    }
+    state.clockWasHigh = clockHigh;
+
+    const [root, quality] = progressions[progressionIndex][state.stepIndex];
+    const baseMask = quality === 0 ? majorTriadMask : minorTriadMask;
+
+    return {
+      Scale: this.chordSequencerRotateLeft12(baseMask, root),
+      Root: (60 + root) / 120,
+      Gate: (clockHigh ? 1 : 0) * level,
+    };
+  }
+
+  chordSequencerSample(state, options = {}) {
+    if (
+      this.nativeChordSequencerReady &&
+      this.nativeChordSequencer?.soemdsp_chord_sequencer_create &&
+      this.nativeChordSequencer?.soemdsp_chord_sequencer_sample &&
+      this.nativeChordSequencer?.soemdsp_chord_sequencer_scale &&
+      this.nativeChordSequencer?.soemdsp_chord_sequencer_root
+    ) {
+      try {
+        if (!state.nativeHandle) {
+          state.nativeHandle = this.nativeChordSequencer.soemdsp_chord_sequencer_create();
+        }
+        if (state.nativeHandle) {
+          const clockHigh = Number(options.clock) > 0 ? 1 : 0;
+          const resetHigh = Number(options.reset) > 0 ? 1 : 0;
+          const progression = Math.max(0, Math.min(5, Math.round(Number(options.progression) || 0)));
+          const level = Number(options.level) || 0;
+          this.nativeChordSequencer.soemdsp_chord_sequencer_sample(
+            state.nativeHandle,
+            clockHigh,
+            resetHigh,
+            progression,
+          );
+          const scale = this.nativeChordSequencer.soemdsp_chord_sequencer_scale(state.nativeHandle, progression);
+          const root = this.nativeChordSequencer.soemdsp_chord_sequencer_root(state.nativeHandle, progression);
+          return {
+            Scale: scale,
+            Root: root,
+            Gate: clockHigh * level,
+          };
+        }
+      } catch (error) {
+        this.nativeChordSequencerReady = false;
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "chord_sequencer",
+          status: "disabled",
+          message: String(error?.message || error || "native Chord Sequencer failed"),
+        });
+      }
+    }
+    return this.chordSequencerSampleJs(state, options);
+  }
+
+  createLutCellState() {
+    return { clockWasHigh: false, registeredOut: 0, nativeHandle: 0, selfClockPhase: 0, selfClockValue: 0 };
+  }
+
+  destroyLutCellNativeState(state) {
+    if (state?.nativeHandle && this.nativeLutCell?.soemdsp_lut_cell_destroy) {
+      this.nativeLutCell.soemdsp_lut_cell_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+
+  // Unwired inputs default to 0, a constant -- silent no matter the truth
+  // table. So an unwired Clock free-runs at a fixed audible rate instead
+  // (220 Hz), and an unwired A tracks that same effective clock, so a
+  // freshly dropped cell audibly demonstrates itself. This lives entirely
+  // in this JS orchestration layer -- the native module itself stays a
+  // faithful, purely reactive LUT+FF with no self-driving of its own.
+  advanceLutCellSelfClock(state) {
+    const rate = Math.max(1, Number(this.engineSampleRate) || 44100);
+    const increment = (2 * 220) / rate;
+    state.selfClockPhase = (state.selfClockPhase || 0) + increment;
+    if (state.selfClockPhase >= 1) {
+      state.selfClockPhase -= Math.floor(state.selfClockPhase);
+      state.selfClockValue = state.selfClockValue ? 0 : 1;
+    }
+    return state.selfClockValue || 0;
+  }
+
+  lutCellSampleJs(state, options = {}) {
+    const b = Number(options.b) > 0 ? 1 : 0;
+    const c = Number(options.c) > 0 ? 1 : 0;
+    const d = Number(options.d) > 0 ? 1 : 0;
+    const a = Number(options.a) > 0 ? 1 : 0;
+    const clockHigh = Number(options.clock) > 0;
+    const table = Math.max(0, Math.min(0xFFFF, Math.round(Number(options.truthTable) || 0)));
+
+    const index = a | (b << 1) | (c << 2) | (d << 3);
+    const combinational = (table >> index) & 1;
+
+    if (clockHigh && !state.clockWasHigh) {
+      state.registeredOut = combinational;
+    }
+    state.clockWasHigh = clockHigh;
+
+    return {
+      Out: combinational,
+      Q: state.registeredOut,
+    };
+  }
+
+  lutCellSample(state, options = {}) {
+    const effectiveClockHigh = options.hasClockInput
+      ? Number(options.clock) > 0
+      : this.advanceLutCellSelfClock(state) > 0;
+    const effectiveA = options.hasAInput
+      ? Number(options.a) || 0
+      : (effectiveClockHigh ? 1 : 0);
+    const effectiveOptions = {
+      ...options,
+      a: effectiveA,
+      clock: effectiveClockHigh ? 1 : 0,
+    };
+    if (
+      this.nativeLutCellReady &&
+      this.nativeLutCell?.soemdsp_lut_cell_create &&
+      this.nativeLutCell?.soemdsp_lut_cell_sample &&
+      this.nativeLutCell?.soemdsp_lut_cell_q
+    ) {
+      try {
+        if (!state.nativeHandle) {
+          state.nativeHandle = this.nativeLutCell.soemdsp_lut_cell_create();
+        }
+        if (state.nativeHandle) {
+          const b = Number(effectiveOptions.b) || 0;
+          const c = Number(effectiveOptions.c) || 0;
+          const d = Number(effectiveOptions.d) || 0;
+          const table = Math.max(0, Math.min(0xFFFF, Math.round(Number(effectiveOptions.truthTable) || 0)));
+          const combinational = this.nativeLutCell.soemdsp_lut_cell_sample(
+            state.nativeHandle,
+            effectiveOptions.a,
+            b,
+            c,
+            d,
+            effectiveOptions.clock,
+            table,
+          );
+          const q = this.nativeLutCell.soemdsp_lut_cell_q(state.nativeHandle);
+          return {
+            Out: combinational,
+            Q: q,
+          };
+        }
+      } catch (error) {
+        this.nativeLutCellReady = false;
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "lut_cell",
+          status: "disabled",
+          message: String(error?.message || error || "native LUT Cell failed"),
+        });
+      }
+    }
+    return this.lutCellSampleJs(state, effectiveOptions);
+  }
+
   createSurgeOscillatorState() {
     return {
       phase: 0,
@@ -10695,9 +11598,11 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   }
 
   destroyDelayEffectNativeState(state) {
-    if (state?.nativeHandle && this.nativeDelayEffect?.soemdsp_delay_effect_destroy) {
-      this.nativeDelayEffect.soemdsp_delay_effect_destroy(state.nativeHandle);
-      state.nativeHandle = 0;
+    for (const channelState of [state?.mono, state?.left, state?.right]) {
+      if (channelState?.nativeHandle && this.nativeDelayEffect?.soemdsp_delay_effect_destroy) {
+        this.nativeDelayEffect.soemdsp_delay_effect_destroy(channelState.nativeHandle);
+        channelState.nativeHandle = 0;
+      }
     }
   }
 
@@ -11028,6 +11933,204 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       }
     }
     return this.robinSupersawSampleJs(state, options);
+  }
+
+  // Hypersaw -- see native_modules/hypersaw/hypersaw.cpp for the full
+  // derivation (a proof-of-concept port of soundemote's own
+  // HypersawUnit/HypersawMaster, docs/reference/Hypersaw.hpp). Fully
+  // self-contained JS fallback for the same isolated-worklet-scope reason
+  // as RobinSupersaw above -- never calls the shared
+  // public/node-graph-hypersaw.js globals, which this worklet's isolated
+  // scope never loads.
+
+  hypersawPolyBlep(t, dt) {
+    if (dt <= 0) return 0;
+    if (t < dt) {
+      const x = t / dt;
+      return x + x - x * x - 1;
+    }
+    if (t > 1 - dt) {
+      const x = (t - 1) / dt;
+      return x * x + x + x + 1;
+    }
+    return 0;
+  }
+
+  hypersawWrap01(x) {
+    const w = x - Math.floor(x);
+    return w < 0 ? 0 : (w >= 1 ? 0 : w);
+  }
+
+  createHypersawVoice() {
+    return { phase: 0, randomOffset: Math.random() - 0.5, driftLp: 0 };
+  }
+
+  createHypersawState() {
+    const voices = [];
+    for (let i = 0; i < 32; i++) {
+      voices.push(this.createHypersawVoice());
+    }
+    return { voices, nativeHandle: 0 };
+  }
+
+  destroyHypersawNativeState(state) {
+    if (state?.nativeHandle && this.nativeHypersaw?.soemdsp_hypersaw_destroy) {
+      this.nativeHypersaw.soemdsp_hypersaw_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+
+  // Advances each voice's phase accumulator + drift/dispersion exactly
+  // once per sample() call and returns the per-voice sawtooth samples
+  // plus the post-dispersion renderPhase array (used to drive the
+  // phosphor-burn display). Factored out of hypersawSampleJs so the
+  // native-audio path below can call it too (advancing this JS shadow
+  // state purely for the display, in parallel with native's own opaque
+  // internal state) without duplicating -- and thereby double-stepping --
+  // the phase math.
+  hypersawAdvanceVoices(state, options = {}) {
+    const sampleRate = Number(options.sampleRate) > 1 ? Number(options.sampleRate) : 48000;
+    const safeFrequency = Number(options.frequencyHz) > 0 ? Number(options.frequencyHz) : 0;
+    const phaseOffset = this.hypersawWrap01(Number(options.phaseOffset) || 0);
+    const numVoices = this.clampValue(Math.round(Number(options.numVoices) || 1), 1, 32);
+    const spreadAmt = this.clampValue(Number(options.spread) || 0, 0, 1);
+    const randomAmt = this.clampValue(Number(options.randomAmount) || 0, 0, 1);
+    const driftAmt = this.clampValue(Number(options.driftAmount) || 0, 0, 1);
+
+    // Drift is a genuine reflecting random walk, NOT a lowpass filter over
+    // fresh-every-sample white noise (that was tried first and is a bug --
+    // filtering a brand-new random value each sample suppresses its
+    // variance to near-nothing at any audio-rate-appropriate coefficient).
+    // stepScale is normalized by 1/sqrt(sampleRate) so the walk's
+    // diffusive growth reaches a given wander range in the same wall-
+    // clock time regardless of sample rate; reflecting at +/-0.5 keeps it
+    // bounded while still continuously wandering.
+    const driftStepScale = 0.2 / Math.sqrt(sampleRate);
+    const phaseIncrement = safeFrequency / sampleRate;
+
+    const sawSamples = new Array(numVoices);
+    const voicePhases = new Array(numVoices);
+    const voicePans = new Array(numVoices);
+
+    for (let i = 0; i < numVoices; i++) {
+      const voice = state.voices[i];
+      const basePosition = i / numVoices;
+      voice.driftLp += (Math.random() * 2 - 1) * driftStepScale;
+      if (voice.driftLp > 0.5) voice.driftLp = 1 - voice.driftLp;
+      if (voice.driftLp < -0.5) voice.driftLp = -1 - voice.driftLp;
+
+      const dispersion = basePosition * spreadAmt + voice.randomOffset * randomAmt + voice.driftLp * driftAmt;
+      const renderPhase = this.hypersawWrap01(voice.phase + phaseOffset + dispersion);
+      sawSamples[i] = 2 * renderPhase - 1 - this.hypersawPolyBlep(renderPhase, phaseIncrement > 0 ? phaseIncrement : 1);
+      // Display position is dispersion only -- voice.phase runs at the
+      // fundamental frequency (the pitch itself), not something a "voice
+      // position" display should show.
+      voicePhases[i] = this.hypersawWrap01(dispersion);
+      voice.phase = this.hypersawWrap01(voice.phase + phaseIncrement);
+
+      const isCenter = i === 0 || (i === 1 && numVoices % 2 === 0);
+      voicePans[i] = isCenter ? 0 : (i % 2 === 0 ? -1 : 1);
+    }
+
+    state.lastVoicePhases = voicePhases;
+    state.lastVoiceAmplitudes = sawSamples;
+    state.lastVoicePans = voicePans;
+    return { sawSamples, numVoices, voicePans };
+  }
+
+  hypersawSampleJs(state, options = {}) {
+    const level = Number(options.level) || 0;
+    const { sawSamples, numVoices } = this.hypersawAdvanceVoices(state, options);
+
+    let leftSum = 0, rightSum = 0;
+    let leftCount = 0, rightCount = 0;
+
+    for (let i = 0; i < numVoices; i++) {
+      const sawSample = sawSamples[i];
+      const isCenter = i === 0 || (i === 1 && numVoices % 2 === 0);
+      if (isCenter) {
+        leftSum += sawSample;
+        rightSum += sawSample;
+        leftCount++;
+        rightCount++;
+      } else if (i % 2 === 0) {
+        leftSum += sawSample;
+        leftCount++;
+      } else {
+        rightSum += sawSample;
+        rightCount++;
+      }
+    }
+
+    let left = leftCount > 0 ? leftSum / leftCount : 0;
+    let right = rightCount > 0 ? rightSum / rightCount : 0;
+    if (!Number.isFinite(left)) left = 0;
+    if (!Number.isFinite(right)) right = 0;
+
+    return {
+      Left: this.clampValue(left, -1.5, 1.5) * level,
+      Right: this.clampValue(right, -1.5, 1.5) * level,
+      Phases: state.lastVoicePhases,
+      Amplitudes: state.lastVoiceAmplitudes,
+      Pans: state.lastVoicePans,
+    };
+  }
+
+  hypersawSample(state, options = {}) {
+    if (
+      this.nativeHypersawReady &&
+      this.nativeHypersaw?.soemdsp_hypersaw_create &&
+      this.nativeHypersaw?.soemdsp_hypersaw_sample
+    ) {
+      try {
+        if (!state.nativeHandle) {
+          state.nativeHandle = this.nativeHypersaw.soemdsp_hypersaw_create();
+        }
+        if (state.nativeHandle) {
+          const sampleRate = Number(options.sampleRate) > 1 ? Number(options.sampleRate) : 48000;
+          const frequencyHz = Number(options.frequencyHz) || 0;
+          const phaseOffset = Number(options.phaseOffset) || 0;
+          const numVoices = Math.round(Number(options.numVoices) || 1);
+          const spread = Number(options.spread) || 0;
+          const randomAmount = Number(options.randomAmount) || 0;
+          const driftAmount = Number(options.driftAmount) || 0;
+          const level = Number(options.level) || 0;
+          this.nativeHypersaw.soemdsp_hypersaw_sample(
+            state.nativeHandle,
+            frequencyHz,
+            sampleRate,
+            phaseOffset,
+            numVoices,
+            spread,
+            randomAmount,
+            driftAmount,
+            level,
+          );
+          // Native owns the real audio-critical voice state opaquely (no
+          // access from JS). Advance this JS-side shadow bank purely so
+          // the phosphor-burn display has phase data to draw -- visually
+          // representative of the dispersion in effect, though not
+          // sample-exact with native's own internal RNG stream.
+          this.hypersawAdvanceVoices(state, options);
+          return {
+            Left: Number(this.nativeHypersaw.soemdsp_hypersaw_left(state.nativeHandle)) || 0,
+            Right: Number(this.nativeHypersaw.soemdsp_hypersaw_right(state.nativeHandle)) || 0,
+            Phases: state.lastVoicePhases,
+            Amplitudes: state.lastVoiceAmplitudes,
+            Pans: state.lastVoicePans,
+          };
+        }
+      } catch (error) {
+        this.nativeHypersawReady = false;
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "hypersaw",
+          status: "disabled",
+          message: String(error?.message || error || "native Hypersaw failed"),
+        });
+      }
+    }
+    return this.hypersawSampleJs(state, options);
   }
 
   spiralWrap01(value) {
@@ -11892,7 +12995,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         const archimedes = this.archimedesSample({
           dither: read("dither", 3),
           frequency: pitchedFrequency,
-          profile: read("profile", 1),
+          profile: read("profile", 12),
           reset: mixInput(nodeId, "Reset"),
           state,
         });
@@ -12203,6 +13306,30 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
             scaleInput: mixInput(nodeId, "Scale"),
           }),
         };
+      } else if (node?.type === "chordSequencer") {
+        const state = this.chordSequencerStates.get(nodeId) || this.createChordSequencerState();
+        this.chordSequencerStates.set(nodeId, state);
+        const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
+        value = this.chordSequencerSample(state, {
+          clock: mixInput(nodeId, "Clock"),
+          level: read("level", 1),
+          progression: read("progression", 0),
+          reset: mixInput(nodeId, "Reset"),
+        });
+      } else if (node?.type === "lutCell") {
+        const state = this.lutCellStates.get(nodeId) || this.createLutCellState();
+        this.lutCellStates.set(nodeId, state);
+        const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
+        value = this.lutCellSample(state, {
+          a: mixInput(nodeId, "A"),
+          b: mixInput(nodeId, "B"),
+          c: mixInput(nodeId, "C"),
+          d: mixInput(nodeId, "D"),
+          clock: mixInput(nodeId, "Clock"),
+          truthTable: read("truthTable", 27030),
+          hasAInput: this.inputConnections.has(this.inputKey(nodeId, "A")),
+          hasClockInput: this.inputConnections.has(this.inputKey(nodeId, "Clock")),
+        });
       } else if (node?.type === "surgeOscillator") {
         const state = this.surgeOscillatorStates.get(nodeId) || this.createSurgeOscillatorState();
         this.surgeOscillatorStates.set(nodeId, state);
@@ -12257,6 +13384,39 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
           voices: read("voices", 7),
           level: read("level", 1),
         });
+      } else if (node?.type === "hypersaw") {
+        const state = this.hypersawStates.get(nodeId) || this.createHypersawState();
+        this.hypersawStates.set(nodeId, state);
+        const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
+        // baseFrequency is the pitch heard at the global pitch reference
+        // note (see node-graph-patch-normalizers.js), same convention as
+        // robinSupersaw above -- set it equal to the master "Pitch
+        // Reference Frequency" setting and a MIDI keyboard is
+        // automatically in tune.
+        const baseFrequency = Math.max(0, read("frequency", 100));
+        const referenceMidiNote = Number.isFinite(this.pitchReferenceMidiNote) ? this.pitchReferenceMidiNote : 48;
+        const referenceVoltage = referenceMidiNote / 120;
+        const hasPitchInput = this.inputConnections.has(this.inputKey(nodeId, "0.1V/Oct"));
+        const pitchInput = hasPitchInput
+          ? this.clampValue(this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null), -1, 1)
+          : referenceVoltage;
+        const pitchedFrequency = Math.max(0, baseFrequency * (2 ** ((pitchInput - referenceVoltage) / 0.1)));
+        value = this.hypersawSample(state, {
+          frequencyHz: pitchedFrequency,
+          sampleRate: this.engineSampleRate || sampleRate,
+          phaseOffset: read("phase", 0),
+          numVoices: read("voices", 8),
+          spread: read("spread", 1),
+          randomAmount: read("random", 0.15),
+          driftAmount: read("drift", 0.1),
+          level: read("level", 0.35),
+        });
+      } else if (node?.type === "metallicRatio") {
+        value = {
+          Ratio: this.metallicRatioSample(
+            this.readEffectiveParameter(node, "index", 1, frame, frames, frameValues),
+          ),
+        };
       } else if (node?.type === "midiOut") {
         const hasMidiInput = this.inputConnections.has(this.inputKey(nodeId, "MIDI Number"));
         const midiNumber = this.clampValue(Math.round(this.readEffectiveParameter(
@@ -12394,8 +13554,13 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
           "Pitch Wheel": this.clampValue(Number.isFinite(pitchWheel) ? pitchWheel : 0, -1, 1),
         };
       } else if (node?.type === "gain") {
-        value = mixInput(nodeId) *
-          this.readEffectiveParameter(node, "amount", 1, frame, frames, frameValues);
+        const gainAmount = this.readEffectiveParameter(node, "amount", 1, frame, frames, frameValues);
+        const gainMono = mixInput(nodeId);
+        value = {
+          Out: gainMono * gainAmount,
+          Left: (mixInput(nodeId, "Left") + gainMono) * gainAmount,
+          Right: (mixInput(nodeId, "Right") + gainMono) * gainAmount,
+        };
       } else if (node?.type === "led") {
         value = {
           Out: this.safeFilterNumber(mixInput(nodeId, "In"), null),
@@ -12407,14 +13572,22 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       } else if (node?.type === "graph" || node?.type === "graph2") {
         value = graphOutputValue(node, nodeId);
       } else if (node?.type === "bias") {
-        value = mixInput(nodeId) +
-          this.readEffectiveParameter(node, "offset", 0, frame, frames, frameValues);
+        const biasOffset = this.readEffectiveParameter(node, "offset", 0, frame, frames, frameValues);
+        const biasMono = mixInput(nodeId);
+        value = {
+          Out: biasMono + biasOffset,
+          Left: mixInput(nodeId, "Left") + biasMono + biasOffset,
+          Right: mixInput(nodeId, "Right") + biasMono + biasOffset,
+        };
       } else if (node?.type === "softClipper") {
-        value = this.nativeSoftClipperSample(
-          mixInput(nodeId),
-          this.readEffectiveParameter(node, "center", 0, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "width", 2, frame, frames, frameValues),
-        );
+        const softClipperCenter = this.readEffectiveParameter(node, "center", 0, frame, frames, frameValues);
+        const softClipperWidth = this.readEffectiveParameter(node, "width", 2, frame, frames, frameValues);
+        const softClipperMono = mixInput(nodeId);
+        value = {
+          Out: this.nativeSoftClipperSample(softClipperMono, softClipperCenter, softClipperWidth),
+          Left: this.nativeSoftClipperSample(mixInput(nodeId, "Left") + softClipperMono, softClipperCenter, softClipperWidth),
+          Right: this.nativeSoftClipperSample(mixInput(nodeId, "Right") + softClipperMono, softClipperCenter, softClipperWidth),
+        };
       } else if (node?.type === "rotate3dTo2d") {
         const angleX = this.readEffectiveParameter(node, "rotateX", 0, frame, frames, frameValues) * Math.PI * 2;
         const angleY = this.readEffectiveParameter(node, "rotateY", 0, frame, frames, frameValues) * Math.PI * 2;
@@ -12446,173 +13619,246 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         const knobValue = this.readEffectiveParameter(node, "value", 0, frame, frames, frameValues);
         value = { Out: knobValue, value: knobValue };
       } else if (node?.type === "passiveFilter") {
-        const state = this.passiveFilterStates.get(nodeId) || this.createPassiveFilterState();
+        const state = this.passiveFilterStates.get(nodeId) || this.createStereoFilterState(() => this.createPassiveFilterState());
         this.passiveFilterStates.set(nodeId, state);
-        value = this.passiveFilterSample(
+        const passiveMode = this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues);
+        const passiveLowFrequency = this.readEffectiveParameter(node, "lowFrequency", 200, frame, frames, frameValues);
+        const passiveHighFrequency = this.readEffectiveParameter(node, "highFrequency", 1000, frame, frames, frameValues);
+        const passiveMono = mixInput(nodeId);
+        value = {
+          Out: this.passiveFilterSample(state.mono, passiveMono, passiveMode, passiveLowFrequency, passiveHighFrequency, safeRate),
+          Left: this.passiveFilterSample(state.left, mixInput(nodeId, "Left") + passiveMono, passiveMode, passiveLowFrequency, passiveHighFrequency, safeRate),
+          Right: this.passiveFilterSample(state.right, mixInput(nodeId, "Right") + passiveMono, passiveMode, passiveLowFrequency, passiveHighFrequency, safeRate),
+        };
+      } else if (node?.type === "papoulisFilter") {
+        const state = this.papoulisFilterStates.get(nodeId) || this.createPapoulisFilterState();
+        this.papoulisFilterStates.set(nodeId, state);
+        value = this.papoulisFilterSample(
           state,
           mixInput(nodeId),
-          this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "lowFrequency", 200, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "highFrequency", 1000, frame, frames, frameValues),
+          this.readEffectiveParameter(node, "cutoff", 1000, frame, frames, frameValues),
+          safeRate,
+        );
+      } else if (node?.type === "phosphillator") {
+        const state = this.phosphillatorPlaybackStates.get(nodeId) || this.createPhosphillatorPlaybackState();
+        this.phosphillatorPlaybackStates.set(nodeId, state);
+        value = this.phosphillatorPlaybackSample(
+          state,
+          node,
+          nodeId,
+          mixInput(nodeId, "0.1V/Oct"),
+          this.readEffectiveParameter(node, "frequency", 2, frame, frames, frameValues),
+          this.readEffectiveParameter(node, "phase", 0, frame, frames, frameValues),
+          mixInput(nodeId, "Reset"),
           safeRate,
         );
       } else if (node?.type === "cookbookFilter") {
-        const state = this.cookbookFilterStates.get(nodeId) || this.createCookbookFilterState();
+        const state = this.cookbookFilterStates.get(nodeId) || this.createStereoFilterState(() => this.createCookbookFilterState());
         this.cookbookFilterStates.set(nodeId, state);
-        value = this.cookbookFilterSample(
-          state,
-          mixInput(nodeId),
-          this.readEffectiveParameter(node, "mode", 1, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "frequency", 1000, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "q", 1, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "gain", 0, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "stages", 2, frame, frames, frameValues),
-          safeRate,
-        );
+        const cookbookMode = this.readEffectiveParameter(node, "mode", 1, frame, frames, frameValues);
+        const cookbookFrequency = this.readEffectiveParameter(node, "frequency", 1000, frame, frames, frameValues);
+        const cookbookQ = this.readEffectiveParameter(node, "q", 1, frame, frames, frameValues);
+        const cookbookGain = this.readEffectiveParameter(node, "gain", 0, frame, frames, frameValues);
+        const cookbookStages = this.readEffectiveParameter(node, "stages", 2, frame, frames, frameValues);
+        const cookbookMono = mixInput(nodeId);
+        value = {
+          Out: this.cookbookFilterSample(state.mono, cookbookMono, cookbookMode, cookbookFrequency, cookbookQ, cookbookGain, cookbookStages, safeRate),
+          Left: this.cookbookFilterSample(state.left, mixInput(nodeId, "Left") + cookbookMono, cookbookMode, cookbookFrequency, cookbookQ, cookbookGain, cookbookStages, safeRate),
+          Right: this.cookbookFilterSample(state.right, mixInput(nodeId, "Right") + cookbookMono, cookbookMode, cookbookFrequency, cookbookQ, cookbookGain, cookbookStages, safeRate),
+        };
       } else if (node?.type === "ladderFilter") {
-        const state = this.ladderFilterStates.get(nodeId) || this.createLadderFilterState();
+        const state = this.ladderFilterStates.get(nodeId) || this.createStereoFilterState(() => this.createLadderFilterState());
         this.ladderFilterStates.set(nodeId, state);
-        value = this.ladderFilterSample(
-          state,
-          mixInput(nodeId),
-          {
-            frequency: this.readEffectiveParameter(node, "frequency", 1000, frame, frames, frameValues),
-            mode: this.readEffectiveParameter(node, "mode", 1, frame, frames, frameValues),
-            resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
-            stages: this.readEffectiveParameter(node, "stages", 4, frame, frames, frameValues),
-          },
-          safeRate,
-        );
+        const ladderParams = {
+          frequency: this.readEffectiveParameter(node, "frequency", 1000, frame, frames, frameValues),
+          mode: this.readEffectiveParameter(node, "mode", 1, frame, frames, frameValues),
+          resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
+          stages: this.readEffectiveParameter(node, "stages", 4, frame, frames, frameValues),
+        };
+        const ladderMono = mixInput(nodeId);
+        value = {
+          Out: this.ladderFilterSample(state.mono, ladderMono, ladderParams, safeRate),
+          Left: this.ladderFilterSample(state.left, mixInput(nodeId, "Left") + ladderMono, ladderParams, safeRate),
+          Right: this.ladderFilterSample(state.right, mixInput(nodeId, "Right") + ladderMono, ladderParams, safeRate),
+        };
       } else if (node?.type === "flowerChildFilter") {
-        const state = this.flowerChildFilterStates.get(nodeId) || this.createFlowerChildFilterState();
+        const state = this.flowerChildFilterStates.get(nodeId) || this.createStereoFilterState(() => this.createFlowerChildFilterState());
         this.flowerChildFilterStates.set(nodeId, state);
-        value = this.flowerChildFilterSample(
-          state,
-          mixInput(nodeId),
-          {
-            chaos: this.readEffectiveParameter(node, "chaos", 0, frame, frames, frameValues),
-            frequency: this.readEffectiveParameter(node, "frequency", 0.5, frame, frames, frameValues),
-            mode: this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues),
-            resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
-          },
-          safeRate,
-        );
+        const flowerChildParams = {
+          chaos: this.readEffectiveParameter(node, "chaos", 0, frame, frames, frameValues),
+          frequency: this.readEffectiveParameter(node, "frequency", 0.5, frame, frames, frameValues),
+          mode: this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues),
+          resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
+        };
+        const flowerChildMono = mixInput(nodeId);
+        value = {
+          Out: this.flowerChildFilterSample(state.mono, flowerChildMono, flowerChildParams, safeRate),
+          Left: this.flowerChildFilterSample(state.left, mixInput(nodeId, "Left") + flowerChildMono, flowerChildParams, safeRate),
+          Right: this.flowerChildFilterSample(state.right, mixInput(nodeId, "Right") + flowerChildMono, flowerChildParams, safeRate),
+        };
       } else if (node?.type === "rsmetFilter") {
-        const state = this.rsmetFilterStates.get(nodeId) || this.createRsmetFilterState();
+        const state = this.rsmetFilterStates.get(nodeId) || this.createStereoFilterState(() => this.createRsmetFilterState());
         this.rsmetFilterStates.set(nodeId, state);
-        value = this.rsmetFilterSample(
-          state,
-          mixInput(nodeId),
-          {
-            chaos: this.readEffectiveParameter(node, "chaos", 0, frame, frames, frameValues),
-            frequency: this.readEffectiveParameter(node, "frequency", 0.5, frame, frames, frameValues),
-            mode: this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues),
-            resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
-          },
-          safeRate,
-        );
+        const rsmetParams = {
+          chaos: this.readEffectiveParameter(node, "chaos", 0, frame, frames, frameValues),
+          frequency: this.readEffectiveParameter(node, "frequency", 0.5, frame, frames, frameValues),
+          mode: this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues),
+          resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
+        };
+        const rsmetMono = mixInput(nodeId);
+        value = {
+          Out: this.rsmetFilterSample(state.mono, rsmetMono, rsmetParams, safeRate),
+          Left: this.rsmetFilterSample(state.left, mixInput(nodeId, "Left") + rsmetMono, rsmetParams, safeRate),
+          Right: this.rsmetFilterSample(state.right, mixInput(nodeId, "Right") + rsmetMono, rsmetParams, safeRate),
+        };
       } else if (node?.type === "yellowjacketFilter") {
-        const state = this.yellowjacketFilterStates.get(nodeId) || this.createYellowjacketFilterState();
+        const state = this.yellowjacketFilterStates.get(nodeId) || this.createStereoFilterState(() => this.createYellowjacketFilterState());
         this.yellowjacketFilterStates.set(nodeId, state);
-        value = this.yellowjacketFilterSample(
-          state,
-          mixInput(nodeId),
-          {
-            chaos: this.readEffectiveParameter(node, "chaos", 0, frame, frames, frameValues),
-            frequency: this.readEffectiveParameter(node, "frequency", 0.5, frame, frames, frameValues),
-            resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
-          },
-          safeRate,
-        );
+        const yellowjacketParams = {
+          chaos: this.readEffectiveParameter(node, "chaos", 0, frame, frames, frameValues),
+          frequency: this.readEffectiveParameter(node, "frequency", 0.5, frame, frames, frameValues),
+          resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
+        };
+        const yellowjacketMono = mixInput(nodeId);
+        value = {
+          Out: this.yellowjacketFilterSample(state.mono, yellowjacketMono, yellowjacketParams, safeRate),
+          Left: this.yellowjacketFilterSample(state.left, mixInput(nodeId, "Left") + yellowjacketMono, yellowjacketParams, safeRate),
+          Right: this.yellowjacketFilterSample(state.right, mixInput(nodeId, "Right") + yellowjacketMono, yellowjacketParams, safeRate),
+        };
       } else if (node?.type === "superloveFilter") {
-        const state = this.superloveFilterStates.get(nodeId) || this.createSuperloveFilterState();
+        const state = this.superloveFilterStates.get(nodeId) || this.createStereoFilterState(() => this.createSuperloveFilterState());
         this.superloveFilterStates.set(nodeId, state);
-        value = this.superloveFilterSample(
-          state,
-          mixInput(nodeId),
-          {
-            chaos: this.readEffectiveParameter(node, "chaos", 0.5, frame, frames, frameValues),
-            frequency: this.readEffectiveParameter(node, "frequency", 0.5, frame, frames, frameValues),
-            mode: this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues),
-            resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
-          },
-          safeRate,
-        );
+        const superloveParams = {
+          chaos: this.readEffectiveParameter(node, "chaos", 0.5, frame, frames, frameValues),
+          frequency: this.readEffectiveParameter(node, "frequency", 0.5, frame, frames, frameValues),
+          mode: this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues),
+          resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
+        };
+        const superloveMono = mixInput(nodeId);
+        value = {
+          Out: this.superloveFilterSample(state.mono, superloveMono, superloveParams, safeRate),
+          Left: this.superloveFilterSample(state.left, mixInput(nodeId, "Left") + superloveMono, superloveParams, safeRate),
+          Right: this.superloveFilterSample(state.right, mixInput(nodeId, "Right") + superloveMono, superloveParams, safeRate),
+        };
       } else if (node?.type === "chaoticPhaseLockingFilter") {
-        const state = this.chaoticPhaseLockingFilterStates.get(nodeId) || this.createChaoticPhaseLockingFilterState();
+        const state = this.chaoticPhaseLockingFilterStates.get(nodeId) || this.createStereoFilterState(() => this.createChaoticPhaseLockingFilterState());
         this.chaoticPhaseLockingFilterStates.set(nodeId, state);
-        value = this.chaoticPhaseLockingFilterSample(
-          state,
-          mixInput(nodeId),
-          {
-            chaos: this.readEffectiveParameter(node, "chaos", 1, frame, frames, frameValues),
-            frequency: this.readEffectiveParameter(node, "frequency", 0.5, frame, frames, frameValues),
-            resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
-          },
-          safeRate,
-        );
+        const chaoticPhaseLockingParams = {
+          chaos: this.readEffectiveParameter(node, "chaos", 1, frame, frames, frameValues),
+          frequency: this.readEffectiveParameter(node, "frequency", 0.5, frame, frames, frameValues),
+          resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
+        };
+        const chaoticPhaseLockingMono = mixInput(nodeId);
+        value = {
+          Out: this.chaoticPhaseLockingFilterSample(state.mono, chaoticPhaseLockingMono, chaoticPhaseLockingParams, safeRate),
+          Left: this.chaoticPhaseLockingFilterSample(state.left, mixInput(nodeId, "Left") + chaoticPhaseLockingMono, chaoticPhaseLockingParams, safeRate),
+          Right: this.chaoticPhaseLockingFilterSample(state.right, mixInput(nodeId, "Right") + chaoticPhaseLockingMono, chaoticPhaseLockingParams, safeRate),
+        };
       } else if (node?.type === "resonatorFilter") {
-        const state = this.resonatorFilterStates.get(nodeId) || this.createResonatorFilterState();
+        const state = this.resonatorFilterStates.get(nodeId) || this.createStereoFilterState(() => this.createResonatorFilterState());
         this.resonatorFilterStates.set(nodeId, state);
-        value = this.resonatorFilterSample(
-          state,
-          mixInput(nodeId),
-          {
-            chaos: this.readEffectiveParameter(node, "chaos", 0, frame, frames, frameValues),
-            frequency: this.readEffectiveParameter(node, "frequency", 0.5, frame, frames, frameValues),
-            mode: this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues),
-            resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
-          },
-          safeRate,
-        );
+        const resonatorParams = {
+          chaos: this.readEffectiveParameter(node, "chaos", 0, frame, frames, frameValues),
+          frequency: this.readEffectiveParameter(node, "frequency", 0.5, frame, frames, frameValues),
+          mode: this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues),
+          resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
+        };
+        const resonatorMono = mixInput(nodeId);
+        value = {
+          Out: this.resonatorFilterSample(state.mono, resonatorMono, resonatorParams, safeRate),
+          Left: this.resonatorFilterSample(state.left, mixInput(nodeId, "Left") + resonatorMono, resonatorParams, safeRate),
+          Right: this.resonatorFilterSample(state.right, mixInput(nodeId, "Right") + resonatorMono, resonatorParams, safeRate),
+        };
       } else if (node?.type === "humanFilter") {
-        const state = this.humanFilterStates.get(nodeId) || this.createHumanFilterState();
+        const state = this.humanFilterStates.get(nodeId) || this.createStereoFilterState(() => this.createHumanFilterState());
         this.humanFilterStates.set(nodeId, state);
-        value = this.humanFilterSample(
+        const humanFilterParams = {
+          chaos: this.readEffectiveParameter(node, "chaos", 0, frame, frames, frameValues),
+          frequency: this.readEffectiveParameter(node, "frequency", 0.5, frame, frames, frameValues),
+          mode: this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues),
+          resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
+        };
+        const humanFilterMono = mixInput(nodeId);
+        value = {
+          Out: this.humanFilterSample(state.mono, humanFilterMono, humanFilterParams, safeRate),
+          Left: this.humanFilterSample(state.left, mixInput(nodeId, "Left") + humanFilterMono, humanFilterParams, safeRate),
+          Right: this.humanFilterSample(state.right, mixInput(nodeId, "Right") + humanFilterMono, humanFilterParams, safeRate),
+        };
+      } else if (node?.type === "pulseExplosion") {
+        const state = this.pulseExplosionStates.get(nodeId) || this.createPulseExplosionState();
+        this.pulseExplosionStates.set(nodeId, state);
+        value = this.pulseExplosionSample(
           state,
-          mixInput(nodeId),
+          mixInput(nodeId, "Trigger"),
           {
-            chaos: this.readEffectiveParameter(node, "chaos", 0, frame, frames, frameValues),
-            frequency: this.readEffectiveParameter(node, "frequency", 0.5, frame, frames, frameValues),
-            mode: this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues),
-            resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
+            startTime: this.readEffectiveParameter(node, "startTime", 0, frame, frames, frameValues),
+            centerTime: this.readEffectiveParameter(node, "centerTime", 0.5, frame, frames, frameValues),
+            endTime: this.readEffectiveParameter(node, "endTime", 1, frame, frames, frameValues),
+            timeSpread: this.readEffectiveParameter(node, "timeSpread", 0.3, frame, frames, frameValues),
+            numberOfPulses: this.readEffectiveParameter(node, "numberOfPulses", 20, frame, frames, frameValues),
+            lowAmplitude: this.readEffectiveParameter(node, "lowAmplitude", 0.3, frame, frames, frameValues),
+            highAmplitude: this.readEffectiveParameter(node, "highAmplitude", 1, frame, frames, frameValues),
+            seed: this.readEffectiveParameter(node, "seed", 0, frame, frames, frameValues),
           },
           safeRate,
         );
       } else if (node?.type === "tb303Filter") {
-        const state = this.tb303FilterStates.get(nodeId) || this.createTb303FilterState();
+        const state = this.tb303FilterStates.get(nodeId) || this.createStereoFilterState(() => this.createTb303FilterState());
         this.tb303FilterStates.set(nodeId, state);
         const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
-        value = this.tb303FilterSample(
-          state,
-          mixInput(nodeId),
-          {
-            cutoff: read("cutoff", 1000),
-            drive: read("drive", 0),
-            mode: read("mode", 4),
-            resonance: read("resonance", 0),
-          },
-          safeRate,
-        );
+        const tb303Params = {
+          cutoff: read("cutoff", 1000),
+          drive: read("drive", 0),
+          mode: read("mode", 4),
+          resonance: read("resonance", 0),
+        };
+        const tb303Mono = mixInput(nodeId);
+        value = {
+          Out: this.tb303FilterSample(state.mono, tb303Mono, tb303Params, safeRate),
+          Left: this.tb303FilterSample(state.left, mixInput(nodeId, "Left") + tb303Mono, tb303Params, safeRate),
+          Right: this.tb303FilterSample(state.right, mixInput(nodeId, "Right") + tb303Mono, tb303Params, safeRate),
+        };
       } else if (node?.type === "delayEffect") {
-        const state = this.delayEffectStates.get(nodeId) || this.createDelayEffectState();
+        const state = this.delayEffectStates.get(nodeId) || this.createStereoDelayEffectState();
         this.delayEffectStates.set(nodeId, state);
         const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
-        value = this.delayEffectSample(
+        const delayParams = {
+          feedback: read("feedback", 0.25),
+          level: read("level", 1),
+          mix: read("mix", 0.35),
+          mode: read("mode", 0),
+          modAmount: read("modAmount", 0.02),
+          modRate: read("modRate", 0.1),
+          modVariation: read("modVariation", 0),
+          time: read("time", 0.18),
+        };
+        const delayMono = mixInput(nodeId);
+        const monoResult = this.delayEffectSample(state.mono, delayMono, delayParams, safeRate, `${nodeId}:mono`);
+        const leftResult = this.delayEffectSample(state.left, mixInput(nodeId, "Left") + delayMono, delayParams, safeRate, `${nodeId}:left`);
+        const rightResult = this.delayEffectSample(state.right, mixInput(nodeId, "Right") + delayMono, delayParams, safeRate, `${nodeId}:right`);
+        value = {
+          Out: monoResult.Out,
+          Left: leftResult.Out,
+          Right: rightResult.Out,
+          Wet: monoResult.Wet,
+        };
+      } else if (node?.type === "pingPongDelay") {
+        const state = this.pingPongDelayStates.get(nodeId) || this.createPingPongDelayState();
+        this.pingPongDelayStates.set(nodeId, state);
+        const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
+        value = this.pingPongDelaySample(
           state,
-          mixInput(nodeId),
+          mixInput(nodeId) + mixInput(nodeId, "Left") + mixInput(nodeId, "Right"),
           {
-            feedback: read("feedback", 0.25),
+            feedback: read("feedback", 0.35),
             level: read("level", 1),
             mix: read("mix", 0.35),
-            mode: read("mode", 0),
-            modAmount: read("modAmount", 0.02),
-            modRate: read("modRate", 0.1),
-            modVariation: read("modVariation", 0),
-            time: read("time", 0.18),
+            offsetMs: read("offsetMs", 0),
+            timeDenominator: read("timeDenominator", 4),
+            timeNumerator: read("timeNumerator", 1),
+            timingMode: read("timingMode", 0),
           },
           safeRate,
-          nodeId,
         );
       } else if (node?.type === "reverbEffect") {
         const state = this.reverbEffectStates.get(nodeId) || this.createSabrinaReverbState();
@@ -12672,28 +13918,29 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
           safeRate,
         );
       } else if (node?.type === "slewLimiter") {
-        const state = this.slewLimiterStates.get(nodeId) || this.createSlewLimiterState();
+        const state = this.slewLimiterStates.get(nodeId) || this.createStereoSlewLimiterState();
         this.slewLimiterStates.set(nodeId, state);
-        value = this.slewLimiterSample(
-          state,
-          mixInput(nodeId),
-          this.readEffectiveParameter(node, "upTime", 0.05, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "downTime", 0.20, frame, frames, frameValues),
-          safeRate,
-        );
+        const slewUpTime = this.readEffectiveParameter(node, "upTime", 0.05, frame, frames, frameValues);
+        const slewDownTime = this.readEffectiveParameter(node, "downTime", 0.20, frame, frames, frameValues);
+        const slewMono = mixInput(nodeId);
+        value = {
+          Out: this.slewLimiterSample(state.mono, slewMono, slewUpTime, slewDownTime, safeRate),
+          Left: this.slewLimiterSample(state.left, mixInput(nodeId, "Left") + slewMono, slewUpTime, slewDownTime, safeRate),
+          Right: this.slewLimiterSample(state.right, mixInput(nodeId, "Right") + slewMono, slewUpTime, slewDownTime, safeRate),
+        };
       } else if (node?.type === "sampleHold") {
-        const state = this.sampleHoldStates.get(nodeId) || this.createSampleHoldState();
+        const state = this.sampleHoldStates.get(nodeId) || this.createStereoSampleHoldState();
         this.sampleHoldStates.set(nodeId, state);
-        value = this.sampleHoldSample(
-          state,
-          mixInput(nodeId, "In"),
-          mixInput(nodeId, "Trigger"),
-          this.readEffectiveParameter(node, "threshold", 0, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "sampleFrequency", 0, frame, frames, frameValues),
-          safeRate,
-          hasInput(nodeId, "In"),
-          nodeId,
-        );
+        const sampleHoldTrigger = mixInput(nodeId, "Trigger");
+        const sampleHoldThreshold = this.readEffectiveParameter(node, "threshold", 0, frame, frames, frameValues);
+        const sampleHoldFrequency = this.readEffectiveParameter(node, "sampleFrequency", 0, frame, frames, frameValues);
+        const sampleHoldMonoHasIn = hasInput(nodeId, "In");
+        const sampleHoldMono = mixInput(nodeId, "In");
+        value = {
+          Out: this.sampleHoldSample(state.mono, sampleHoldMono, sampleHoldTrigger, sampleHoldThreshold, sampleHoldFrequency, safeRate, sampleHoldMonoHasIn, `${nodeId}:mono`),
+          Left: this.sampleHoldSample(state.left, mixInput(nodeId, "Left") + sampleHoldMono, sampleHoldTrigger, sampleHoldThreshold, sampleHoldFrequency, safeRate, sampleHoldMonoHasIn || hasInput(nodeId, "Left"), `${nodeId}:left`),
+          Right: this.sampleHoldSample(state.right, mixInput(nodeId, "Right") + sampleHoldMono, sampleHoldTrigger, sampleHoldThreshold, sampleHoldFrequency, safeRate, sampleHoldMonoHasIn || hasInput(nodeId, "Right"), `${nodeId}:right`),
+        };
       } else if (node?.type === "expAdsr") {
         const state = this.expAdsrStates.get(nodeId) || this.createExpAdsrState();
         this.expAdsrStates.set(nodeId, state);
@@ -12757,24 +14004,32 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
           },
           safeRate,
         );
-      } else if (node?.type === "vactrolEnvelope" || node?.type === "vactrolEnvelopeC4") {
+      } else if (node?.type === "vactrolEnvelopeSeries" || node?.type === "vactrolEnvelopeCustom") {
         const state = this.vactrolEnvelopeStates.get(nodeId) || this.createVactrolEnvelopeState();
         this.vactrolEnvelopeStates.set(nodeId, state);
         const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
-        const isC4 = node?.type === "vactrolEnvelopeC4";
+        const isSeries = node?.type === "vactrolEnvelopeSeries";
+        const seriesSpec = isSeries ? nodeGraphVactrolSeriesSpec(read("part", 2)) : null;
         value = this.vactrolEnvelopeSample(
           state,
           mixInput(nodeId, "Light"),
           {
-            attack: read("attack", isC4 ? 0.006 : 0.0025),
+            attack: isSeries ? seriesSpec.attack : read("attack", 0.01),
             curve: read("curve", 1),
             darkCurrent: read("darkCurrent", 0),
             lightOffset: read("lightOffset", 0),
-            release: read("release", isC4 ? 1.5 : 0.035),
+            release: isSeries ? seriesSpec.release : read("release", 0.1),
             sensitivity: read("sensitivity", 1),
           },
           safeRate,
         );
+      } else if (node?.type === "impulseButton") {
+        const state = this.impulseButtonStates.get(nodeId) || this.createImpulseButtonState();
+        this.impulseButtonStates.set(nodeId, state);
+        const pulseSamples = Math.max(0, Number(state.pulseSamples) || 0);
+        const amplitude = Math.max(0, Math.min(1, Number(state.amplitude ?? 1)));
+        state.pulseSamples = Math.max(0, pulseSamples - 1);
+        value = { Pulse: pulseSamples > 0 ? amplitude : 0 };
       } else if (node?.type === "flowerChildEnvelopeFollower") {
         const state = this.flowerChildEnvelopeFollowerStates.get(nodeId) ||
           this.createFlowerChildEnvelopeFollowerState();
@@ -12969,7 +14224,12 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       } else if (node?.type === "badvalMonitor") {
         value = this.monitorBadValueSample(mixInput(nodeId), nodeId);
       } else if (node?.type === "speakerProtection") {
-        value = this.speakerProtectionSample(mixInput(nodeId), nodeId);
+        const speakerProtectionMono = mixInput(nodeId);
+        value = {
+          Out: this.speakerProtectionSample(speakerProtectionMono, nodeId),
+          Left: this.speakerProtectionSample(mixInput(nodeId, "Left") + speakerProtectionMono, nodeId),
+          Right: this.speakerProtectionSample(mixInput(nodeId, "Right") + speakerProtectionMono, nodeId),
+        };
       } else if (node?.type === "groupOutput") {
         value = {
           Out: mixInput(nodeId, "In"),

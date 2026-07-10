@@ -101,6 +101,41 @@ function showPaletteNode(node) {
   showNodeGraphModule(node);
 }
 
+// Double-clicking empty canvas is a fast path to a Text Box: spawn one at the
+// click point, then open its module actions window with the text field
+// focused -- the same edit surface a manual double-click on an existing text
+// box already opens (see .node-text-box-input's dblclick -> openNodeModuleActionMenu).
+function handleNodeGraphWorkspaceDoubleClickToAddTextBox(event) {
+  if (!nodeGraphEventTargetIsEmptyWorkspaceArea(event)) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  const point = nodeGraphClientPoint(event);
+  const nodeId = showNodeGraphModule("textBox", point, { status: "text box added" });
+  if (!nodeId) {
+    return;
+  }
+  setNodeGraphNodeSelection([nodeId]);
+  ensureNodeGraphModuleActionsWindowBody();
+  nodeGraphMvp.sceneContextPoint = null;
+  nodeGraphMvp.sceneContextTargetNode = nodeId;
+  nodeGraphMvp.lastModuleActionTargetNode = nodeId;
+  nodeGraphMvp.sceneContextTargetWire = null;
+  configureNodeSceneContextMenu("module");
+  showNodeModuleActionsWindow({
+    bottom: event.clientY,
+    left: event.clientX,
+    right: event.clientX,
+    top: event.clientY,
+  });
+  const textInput = document.getElementById("nodeSceneTextBoxTextInput");
+  if (textInput) {
+    textInput.focus();
+    textInput.select();
+  }
+}
+
 function addNodeGraphModuleFromContext(event) {
   const type = event.currentTarget.dataset.contextModule;
   beginNodeGraphModulePlacement(type, nodeGraphMvp.sceneContextPoint);
@@ -547,7 +582,7 @@ function copyNodeGraphModule(sourceNode) {
       ui: sourceNode.ui,
       ...(Object.hasOwn(sourceNode, "widthGu") ? { widthGu: sourceNode.widthGu } : {}),
     }),
-    ...(sourceNode.type === "textBox"
+    ...(nodeGraphNodeTypeHasTextBoxLayout(sourceNode.type)
       ? { layout: normalizeNodeGraphTextBoxLayout(sourceNode.layout) }
       : {}),
     ...(sourceNode.type === "image"
@@ -698,7 +733,7 @@ function adjustNodeGraphModuleDisplayHeightFromContext(delta) {
 
 function adjustNodeGraphTextBoxTextSizeFromContext(delta) {
   const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode || sourceNode.type !== "textBox") {
+  if (!sourceNode || !nodeGraphNodeTypeHasTextBoxLayout(sourceNode.type)) {
     return;
   }
 
@@ -748,6 +783,29 @@ function adjustNodeGraphTextBoxHeightFromContext(delta) {
   }
   commitNodeGraphPatch(patch, { status: "text box height changed" });
   configureNodeSceneContextMenu("module");
+}
+
+// Commits an inline edit made directly in a module's header title field
+// (see createNodeGraphModuleHeader) to node.alias -- same normalize/commit
+// as the context-menu alias field (setNodeGraphModuleAliasFromContext),
+// just addressed by node id instead of reading the currently-targeted
+// context-menu node, since the header input can be edited without the
+// context menu open at all.
+function commitNodeGraphModuleTitleFromHeaderInput(nodeId, value) {
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const targetNode = patch.nodes.find((node) => node.id === nodeId);
+  if (!targetNode) {
+    return;
+  }
+  const alias = normalizeNodeGraphPatchNodeAlias(value);
+  if (alias) {
+    targetNode.alias = alias;
+  } else {
+    delete targetNode.alias;
+  }
+  commitNodeGraphPatch(patch, {
+    status: alias ? "module title changed" : "module title cleared",
+  });
 }
 
 function setNodeGraphModuleAliasFromContext({ record = true } = {}) {
@@ -1329,9 +1387,109 @@ function setNodeGraphCodeblockSourceFromContext({ record = true } = {}) {
   }
 }
 
+function nodeGraphScriptBoxPortsFromInput(id, fallbackPrefix) {
+  return normalizeNodeGraphCodeblockPortList(
+    document.getElementById(id)?.value,
+    fallbackPrefix,
+  );
+}
+
+function pruneNodeGraphConnectionsForScriptBoxPortChange(patch, nodeId, inputs, outputs) {
+  pruneNodeGraphConnectionsForCodeblockPortChange(patch, nodeId, inputs, outputs);
+}
+
+function applyNodeGraphScriptBoxPortsFromContext() {
+  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
+  if (!sourceNode || sourceNode.type !== "scriptBox") {
+    return;
+  }
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
+  if (!targetNode) {
+    return;
+  }
+  const current = normalizeNodeGraphScriptBox(targetNode.scriptBox);
+  const next = normalizeNodeGraphScriptBox({
+    ...current,
+    inputs: nodeGraphScriptBoxPortsFromInput("nodeSceneScriptBoxInputs", "In"),
+    outputs: nodeGraphScriptBoxPortsFromInput("nodeSceneScriptBoxOutputs", "Out"),
+  });
+  targetNode.scriptBox = next;
+  pruneNodeGraphConnectionsForScriptBoxPortChange(patch, targetNode.id, next.inputs, next.outputs);
+  commitNodeGraphPatch(patch, { status: "script box ports changed" });
+  configureNodeSceneContextMenu("module");
+}
+
+function setNodeGraphScriptBoxSourceFromContext({ record = true } = {}) {
+  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
+  if (!sourceNode || sourceNode.type !== "scriptBox") {
+    return;
+  }
+  const sourceInput = document.getElementById("nodeSceneScriptBoxSource");
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
+  if (!targetNode) {
+    return;
+  }
+  const scriptBox = normalizeNodeGraphScriptBox(targetNode.scriptBox);
+  targetNode.scriptBox = normalizeNodeGraphScriptBox({
+    ...scriptBox,
+    code: sourceInput?.value ?? nodeGraphScriptBoxDefaultCode,
+  });
+  const status = nodeGraphScriptBoxCompileStatus(targetNode.scriptBox);
+  const statusOutput = document.getElementById("nodeSceneScriptBoxStatus");
+  if (statusOutput) {
+    statusOutput.textContent = status.ok ? "code ok" : `compile error: ${status.message}`;
+  }
+  commitNodeGraphPatch(patch, {
+    record,
+    status: status.ok ? "script box code changed" : "script box compile error",
+  });
+  if (document.activeElement === sourceInput) {
+    sourceInput.focus();
+  }
+}
+
+function setNodeGraphTextBoxPortScriptFromContext(port, { record = true } = {}) {
+  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
+  if (!sourceNode || sourceNode.type !== "animatedTextBox") {
+    return;
+  }
+  const elementId = port === "Title" ? "nodeSceneTextBoxTitleScript" : "nodeSceneTextBoxTextScript";
+  const sourceInput = document.getElementById(elementId);
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
+  if (!targetNode) {
+    return;
+  }
+  const nextScripts = { ...(targetNode.portScripts || {}) };
+  const source = sourceInput?.value ?? "";
+  if (source.trim()) {
+    nextScripts[port] = source;
+  } else {
+    delete nextScripts[port];
+  }
+  targetNode.portScripts = nextScripts;
+  const statusOutput = document.getElementById(
+    port === "Title" ? "nodeSceneTextBoxTitleScriptStatus" : "nodeSceneTextBoxTextScriptStatus",
+  );
+  if (statusOutput) {
+    if (!source.trim()) {
+      statusOutput.textContent = "";
+    } else {
+      const compiled = compileNodeGraphPortScript(source);
+      statusOutput.textContent = compiled ? "code ok" : "compile error";
+    }
+  }
+  commitNodeGraphPatch(patch, { record, status: `text box ${port.toLowerCase()} script changed` });
+  if (document.activeElement === sourceInput) {
+    sourceInput.focus();
+  }
+}
+
 function setNodeGraphTextBoxModeFromContext(textMode) {
   const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode || sourceNode.type !== "textBox") {
+  if (!sourceNode || !nodeGraphNodeTypeHasTextBoxLayout(sourceNode.type)) {
     return;
   }
 
@@ -1350,7 +1508,7 @@ function setNodeGraphTextBoxModeFromContext(textMode) {
 
 function setNodeGraphTextBoxTextFromContext({ record = true } = {}) {
   const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode || sourceNode.type !== "textBox") {
+  if (!sourceNode || !nodeGraphNodeTypeHasTextBoxLayout(sourceNode.type)) {
     return;
   }
   const input = document.getElementById("nodeSceneTextBoxTextInput");
@@ -1375,7 +1533,7 @@ function setNodeGraphTextBoxTextFromContext({ record = true } = {}) {
 
 function setNodeGraphTextBoxHorizontalAlignFromContext(value) {
   const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode || sourceNode.type !== "textBox") {
+  if (!sourceNode || !nodeGraphNodeTypeHasTextBoxLayout(sourceNode.type)) {
     return;
   }
 
@@ -1395,7 +1553,7 @@ function setNodeGraphTextBoxHorizontalAlignFromContext(value) {
 
 function setNodeGraphTextBoxVerticalAlignFromContext({ record = true } = {}) {
   const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode || sourceNode.type !== "textBox") {
+  if (!sourceNode || !nodeGraphNodeTypeHasTextBoxLayout(sourceNode.type)) {
     return;
   }
   const input = document.getElementById("nodeSceneTextBoxVerticalAlign");
@@ -1709,23 +1867,44 @@ function nodeGraphNativeModuleCodeEntryForNode(node) {
   return nodeGraphCodeEntryForType(node.type) || null;
 }
 
-function openNodeGraphNativeModuleCodeFromContext() {
-  const targetNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  const entry = nodeGraphNativeModuleCodeEntryForNode(targetNode);
-  if (!entry?.sourceUrl) {
-    return;
+function nodeGraphNativeModuleLibEntryForNode(node) {
+  if (!node || typeof nodeGraphLibEntryForType !== "function") {
+    return null;
   }
+  return nodeGraphLibEntryForType(node.type) || null;
+}
+
+function nodeGraphOpenUrlInNewTab(url) {
   // window.open's return value can't be trusted here: with "noopener" set,
   // many browsers return null even on success (there's no opener reference
   // to hand back), so checking it to decide whether to fall back caused a
   // second tab to open on every click. The anchor-click approach alone is
   // reliable and still gets the noopener/noreferrer protection.
   const a = document.createElement("a");
-  a.href = entry.sourceUrl;
+  a.href = url;
   a.target = "_blank";
   a.rel = "noopener noreferrer";
   a.click();
+}
+
+function openNodeGraphNativeModuleCodeFromContext() {
+  const targetNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
+  const entry = nodeGraphNativeModuleCodeEntryForNode(targetNode);
+  if (!entry?.sourceUrl) {
+    return;
+  }
+  nodeGraphOpenUrlInNewTab(entry.sourceUrl);
   setNodeInteractionHelp(`Opened ${entry.source || entry.sourceUrl}.`);
+}
+
+function openNodeGraphNativeModuleLibFromContext() {
+  const targetNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
+  const entry = nodeGraphNativeModuleLibEntryForNode(targetNode);
+  if (!entry?.libUrl) {
+    return;
+  }
+  nodeGraphOpenUrlInNewTab(entry.libUrl);
+  setNodeInteractionHelp(`Opened ${entry.libUrl}.`);
 }
 
 function deleteNodeGraphModuleFromContext() {

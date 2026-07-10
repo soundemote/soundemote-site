@@ -79,7 +79,7 @@ async function fetchNodeGraphLiveNativeModuleBytes(entry) {
 // otherwise miss the priority boost below.
 const nodeGraphLiveNativeModuleTypeAliases = Object.freeze({
   osc: ["fbPolyBlepOsc"],
-  vactrolEnvelope: ["vactrolEnvelopeC4"],
+  vactrolEnvelopeSeries: ["vactrolEnvelopeCustom"],
 });
 
 function nodeGraphLiveActivePatchNativeTargetTypes(plan) {
@@ -1023,6 +1023,11 @@ function handleNodeGraphLiveWorkletMessage(event) {
         reason: message.lastBadValueReason || "bad",
         source: message.lastBadValueSource || "worklet meter",
       });
+      if (message.lastBadValueNodeId && typeof nodeGraphTrackNodeSilenceWindow === "function") {
+        nodeGraphTrackNodeSilenceWindow(message.lastBadValueNodeId, true, message.lastBadValueReason || "bad");
+      }
+    } else if (typeof nodeGraphClearAllTrackedModuleSilence === "function") {
+      nodeGraphClearAllTrackedModuleSilence();
     }
     if (Number(message.protectionMuteCount) > 0) {
       nodeGraphTripEarProtection({
@@ -1039,6 +1044,9 @@ function handleNodeGraphLiveWorkletMessage(event) {
         `${message.name || "native module"} ${message.status}`,
         "warn",
       );
+      if (typeof nodeGraphRecordNativeModuleFault === "function") {
+        nodeGraphRecordNativeModuleFault(message);
+      }
     }
   } else if (message.type === "patchCommand") {
     if (message.sessionId !== nodeGraphMvp.live.sessionId || !nodeGraphMvp.live.node) {
@@ -1064,6 +1072,11 @@ function handleNodeGraphLiveWorkletMessage(event) {
       patchFingerprint: message.patchFingerprint || nodeGraphPatchFingerprint(),
       sampleRate: message.sampleRate || nodeGraphMvp.live.context?.sampleRate || nodeGraphMvp.sampleRate,
     });
+    if (Array.isArray(message.dataPorts) && message.dataPorts.length) {
+      for (const [nodeId, port, value] of message.dataPorts) {
+        writeNodeGraphDataOutput(String(nodeId), port, value);
+      }
+    }
   } else if (message.type === "visualControls") {
     if (message.sessionId !== nodeGraphMvp.live.sessionId || !nodeGraphMvp.live.node) {
       return;
@@ -1742,7 +1755,7 @@ async function createNodeGraphLiveWorkletNode(context, plan = null) {
     throw new Error("AudioWorklet unavailable");
   }
   await nodeGraphLiveAwaitStartup(
-    context.audioWorklet.addModule("./public/node-live-audio-worklet.js?v=merge-simd-20260708"),
+    context.audioWorklet.addModule("./public/node-live-audio-worklet.js?v=metallic-ratio-20260711"),
     "AudioWorklet startup timed out",
   );
   const workletNode = new AudioWorkletNode(

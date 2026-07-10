@@ -469,6 +469,7 @@ function nodeGraphModuleLayoutClassNames(type, definition, layout) {
     classes.push("audio-player-layout");
   }
   const layoutClasses = {
+    buttonWidget: "button-widget-layout",
     clapPlugin: "clap-plugin-layout",
     filterCurve: "filter-curve-layout",
     graph: "graph-node-layout",
@@ -478,6 +479,8 @@ function nodeGraphModuleLayoutClassNames(type, definition, layout) {
     led: "led-layout",
     macroControls: "macro-controls-layout",
     patchCommand: "patch-command-layout",
+    phosphillatorDraw: "phosphillator-draw-layout",
+    phosphorWaveform: "phosphor-waveform-layout",
     pitchModWheel: "pitch-mod-wheel-layout",
     screenSpaceShader: "screen-space-shader-layout",
     sliderWidget: "slider-widget-layout",
@@ -643,6 +646,15 @@ function createNodeGraphModuleElement(type, node) {
     const outputColumn = createNodeGraphIoColumn(node, type, outputPorts, "output");
     ioSection.append(outputColumn || document.createElement("div"));
     appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
+  } else if (definition.layout === "buttonWidget") {
+    article.append(createNodeGraphButtonWidgetBody(node, type));
+
+    const ioSection = document.createElement("div");
+    ioSection.className = "dsp-node-io-section node-button-widget-io-section";
+    ioSection.append(document.createElement("div"));
+    const outputColumn = createNodeGraphIoColumn(node, type, outputPorts, "output");
+    ioSection.append(outputColumn || document.createElement("div"));
+    appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
   } else if (definition.layout === "keyboardController" || definition.layout === "macroControls" || definition.layout === "pitchModWheel") {
     if (definition.layout === "keyboardController") {
       article.append(createNodeGraphKeyboardControllerBody(node));
@@ -699,6 +711,43 @@ function createNodeGraphModuleElement(type, node) {
     ioSection.append(inputColumn || document.createElement("div"));
     ioSection.append(outputColumn || document.createElement("div"));
     appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
+  } else if (definition.layout === "phosphillatorDraw") {
+    article.append(createNodeGraphPhosphillatorDrawDisplay(node, type));
+
+    const ioSection = document.createElement("div");
+    ioSection.className = "dsp-node-io-section";
+    const inputColumn = createNodeGraphIoColumn(node, type, inputPorts, "input");
+    const outputColumn = createNodeGraphIoColumn(node, type, outputPorts, "output");
+    ioSection.append(inputColumn || document.createElement("div"));
+    ioSection.append(outputColumn || document.createElement("div"));
+    appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
+  } else if (definition.layout === "phosphorWaveform") {
+    if (!patchNodeUi.oscilloscopeHidden) {
+      article.append(createNodeGraphPhosphorWaveformDisplay(node, type));
+    }
+    if (typeof createNodeGraphSampleModuleBody === "function") {
+      article.append(createNodeGraphSampleModuleBody(node));
+    }
+
+    const ioSection = document.createElement("div");
+    ioSection.className = "dsp-node-io-section";
+    const inputColumn = createNodeGraphIoColumn(node, type, inputPorts, "input");
+    const outputColumn = createNodeGraphIoColumn(node, type, outputPorts, "output");
+    ioSection.append(inputColumn || document.createElement("div"));
+    ioSection.append(outputColumn || document.createElement("div"));
+    appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
+  } else if (definition.layout === "pulseCurve") {
+    if (!patchNodeUi.oscilloscopeHidden) {
+      article.append(createNodeGraphPulseCurveDisplay(node, type));
+    }
+
+    const ioSection = document.createElement("div");
+    ioSection.className = "dsp-node-io-section";
+    const inputColumn = createNodeGraphIoColumn(node, type, inputPorts, "input");
+    const outputColumn = createNodeGraphIoColumn(node, type, outputPorts, "output");
+    ioSection.append(inputColumn || document.createElement("div"));
+    ioSection.append(outputColumn || document.createElement("div"));
+    appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
   } else {
     let scopeSection = null;
     if (!patchNodeUi.oscilloscopeHidden) {
@@ -737,7 +786,7 @@ function createNodeGraphModuleElement(type, node) {
     article.append(stateBadge);
   }
 
-  if (definition.parameters?.length && definition.layout !== "sliderWidget" && layout !== "knobWidget" && definition.layout !== "led") {
+  if (definition.parameters?.length && definition.layout !== "sliderWidget" && layout !== "knobWidget" && definition.layout !== "led" && definition.layout !== "buttonWidget") {
     const body = document.createElement("div");
     body.className = "dsp-node-body";
     const graphInputSection = createNodeGraphInputSection(node, type);

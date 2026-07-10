@@ -1564,20 +1564,7 @@ function scheduleNodeGraphShaderScriptDraw() {
   if (nodeGraphShaderScriptState.animationFrame || !nodeGraphShaderScriptState.enabled) {
     return;
   }
-  // Don't burn GPU/CPU rendering the WebGL scope while the tab is hidden.
-  // A visibilitychange listener (below) resumes the loop when it returns.
-  if (typeof document !== "undefined" && document.hidden) {
-    return;
-  }
   nodeGraphShaderScriptState.animationFrame = window.requestAnimationFrame(drawNodeGraphShaderScriptFrame);
-}
-
-if (typeof document !== "undefined") {
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) {
-      scheduleNodeGraphShaderScriptDraw();
-    }
-  });
 }
 
 function setNodeGraphShaderScriptEnabled(enabled, options = {}) {

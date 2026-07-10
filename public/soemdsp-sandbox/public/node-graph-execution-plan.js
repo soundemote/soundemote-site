@@ -403,7 +403,7 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
   const outputNode = "output";
   const reachableNodes = new Set();
   const bypassedNodes = new Set(graph.bypassedNodes || []);
-  const passthroughTypes = new Set(["badvalMonitor", "bias", "chaoticPhaseLockingFilter", "cookbookFilter", "flowerChildFilter", "gain", "humanFilter", "ladderFilter", "passiveFilter", "pll", "resonatorFilter", "reverbEffect", "rsmetFilter", "sampleHold", "slewLimiter", "softClipper", "speakerProtection", "superloveFilter", "yellowjacketFilter"]);
+  const passthroughTypes = new Set(["badvalMonitor", "bias", "chaoticPhaseLockingFilter", "cookbookFilter", "flowerChildFilter", "gain", "humanFilter", "ladderFilter", "papoulisFilter", "passiveFilter", "pll", "resonatorFilter", "reverbEffect", "rsmetFilter", "sampleHold", "slewLimiter", "softClipper", "speakerProtection", "superloveFilter", "yellowjacketFilter"]);
 
   function markReachable(nodeId) {
     if (reachableNodes.has(nodeId) || !graph.nodeMap.has(nodeId)) {
@@ -474,7 +474,7 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
       if (!triggerCount && nodeGraphNodeSignalOutputRequired(graph, nodeId)) {
         issues.push(`missing ${nodeGraphNodeDisplayName(nodeId)} trigger`);
       }
-    } else if (type === "vactrolEnvelope" || type === "vactrolEnvelopeC4") {
+    } else if (type === "vactrolEnvelopeSeries" || type === "vactrolEnvelopeCustom") {
       const lightCount = (graph.inputConnections.get(nodeGraphInputKey(nodeId, "Light")) || []).length;
       if (!lightCount && nodeGraphNodeSignalOutputRequired(graph, nodeId)) {
         issues.push(`missing ${nodeGraphNodeDisplayName(nodeId)} light`);
@@ -494,6 +494,11 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
       if (!triggerCount && nodeGraphNodeSignalOutputRequired(graph, nodeId)) {
         issues.push(`missing ${nodeGraphNodeDisplayName(nodeId)} trigger`);
       }
+    } else if (type === "pulseExplosion") {
+      const triggerCount = (graph.inputConnections.get(nodeGraphInputKey(nodeId, "Trigger")) || []).length;
+      if (!triggerCount && nodeGraphNodeSignalOutputRequired(graph, nodeId)) {
+        issues.push(`missing ${nodeGraphNodeDisplayName(nodeId)} trigger`);
+      }
     } else if (type === "stepSequencer") {
       const triggerCount = (graph.inputConnections.get(nodeGraphInputKey(nodeId, "Trigger")) || []).length;
       if (!triggerCount && nodeGraphNodeSignalOutputRequired(graph, nodeId)) {
@@ -505,6 +510,11 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
         issues.push(`missing ${nodeGraphNodeDisplayName(nodeId)} trigger`);
       }
     } else if (type === "clockDivider") {
+      const clockCount = (graph.inputConnections.get(nodeGraphInputKey(nodeId, "Clock")) || []).length;
+      if (!clockCount && nodeGraphNodeSignalOutputRequired(graph, nodeId)) {
+        issues.push(`missing ${nodeGraphNodeDisplayName(nodeId)} clock`);
+      }
+    } else if (type === "turingMachine") {
       const clockCount = (graph.inputConnections.get(nodeGraphInputKey(nodeId, "Clock")) || []).length;
       if (!clockCount && nodeGraphNodeSignalOutputRequired(graph, nodeId)) {
         issues.push(`missing ${nodeGraphNodeDisplayName(nodeId)} clock`);
@@ -563,6 +573,7 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
       type === "dsfOscillator" ||
       type === "ellipsoid" ||
       type === "macroKnob" ||
+      type === "impulseButton" ||
       type === "macroControls" ||
       type === "midiOut" ||
       type === "noiseGenerator" ||

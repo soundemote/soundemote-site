@@ -1,5 +1,9 @@
 function bindNodeGraphHeaderControlEvents() {
   bindNodeGraphEarProtectionFaultUi();
+  bindNodeGraphModuleDiagnosticsFaultUi();
+  document
+    .getElementById("nodeCheckAllModulesButton")
+    ?.addEventListener("click", runNodeGraphModuleSelfTest);
   bindNodeGraphShaderScriptEvents();
   bindNodeGraphCanvasScriptEvents();
   bindNodeGraphCodeScreenEvents();

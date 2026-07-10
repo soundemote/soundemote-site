@@ -150,6 +150,14 @@ function createNodeGraphLadderFilterState() {
   };
 }
 
+// Bundles three independent per-channel filter states (mono/left/right) so a
+// stereo signal gets genuinely independent filter histories per channel
+// instead of one shared (mono-summed) instance. createFn is one of this
+// file's existing createNodeGraphXState functions.
+function createNodeGraphStereoFilterState(createFn) {
+  return { left: createFn(), mono: createFn(), right: createFn() };
+}
+
 function createNodeGraphOscResetState() {
   return {
     lastReset: 0,
@@ -171,6 +179,14 @@ function createNodeGraphSlewLimiterState() {
   return {
     initialized: false,
     out: 0,
+  };
+}
+
+function createNodeGraphStereoSlewLimiterState() {
+  return {
+    left: createNodeGraphSlewLimiterState(),
+    mono: createNodeGraphSlewLimiterState(),
+    right: createNodeGraphSlewLimiterState(),
   };
 }
 
@@ -214,6 +230,25 @@ function createNodeGraphDelayEffectState() {
   };
 }
 
+function createNodeGraphStereoDelayEffectState() {
+  return {
+    left: createNodeGraphDelayEffectState(),
+    mono: createNodeGraphDelayEffectState(),
+    right: createNodeGraphDelayEffectState(),
+  };
+}
+
+function createNodeGraphPingPongDelayState() {
+  return {
+    bufferL: new Float32Array(1),
+    bufferR: new Float32Array(1),
+    bufferSize: 1,
+    position: 0,
+    wetL: 0,
+    wetR: 0,
+  };
+}
+
 function createNodeGraphSabrinaReverbState() {
   return {
     nativeHandle: 0,
@@ -236,6 +271,14 @@ function createNodeGraphSampleHoldState() {
     held: 0,
     lastTrigger: 0,
     noise: createNodeGraphNoiseGeneratorChannelState(),
+  };
+}
+
+function createNodeGraphStereoSampleHoldState() {
+  return {
+    left: createNodeGraphSampleHoldState(),
+    mono: createNodeGraphSampleHoldState(),
+    right: createNodeGraphSampleHoldState(),
   };
 }
 
@@ -314,6 +357,13 @@ function createNodeGraphVactrolEnvelopeState() {
   return {
     out: 0,
     raw: 0,
+  };
+}
+
+function createNodeGraphImpulseButtonState() {
+  return {
+    amplitude: 1,
+    pulseSamples: 0,
   };
 }
 
@@ -1656,6 +1706,164 @@ function nodeGraphHumanFilterSample(state, input, params, sampleRate, runtime = 
   return nodeGraphSafeFilterNumber(out, runtime, nodeId, state, "human output");
 }
 
+// --- Pulse Explosion ---
+// See native_modules/pulse_explosion/pulse_explosion.cpp's header comment
+// for the full derivation of the density shape and rejection sampling.
+
+const kNodeGraphPulseExplosionMaxPulses = 128;
+const kNodeGraphPulseExplosionMaxRejectionAttempts = 200;
+
+function createNodeGraphPulseExplosionState() {
+  return {
+    wasHigh: false,
+    exploding: false,
+    elapsed: 0,
+    pulses: [],
+    nextPulseIndex: 0,
+    safeEnd: 1,
+  };
+}
+
+function nodeGraphPulseExplosionRationalCurve(p, skew) {
+  let denom = 1 - skew + 2 * skew * p;
+  if (denom > -1e-12 && denom < 1e-12) denom = denom >= 0 ? 1e-12 : -1e-12;
+  return ((1 + skew) * p) / denom;
+}
+
+function nodeGraphPulseExplosionRaisedCosineEase(x, x1, x2) {
+  const span = x2 - x1;
+  if (span > -1e-12 && span < 1e-12) return 0.5;
+  let p = (x - x1) / span;
+  p = Math.max(0, Math.min(1, p));
+  return 1 - (0.5 + 0.5 * Math.sin((p - 0.5) * Math.PI));
+}
+
+function nodeGraphPulseExplosionDensity(t, startTime, centerTime, endTime, skew) {
+  if (t <= startTime || t >= endTime) return 0;
+  const ease = t < centerTime
+    ? nodeGraphPulseExplosionRaisedCosineEase(t, centerTime, startTime)
+    : nodeGraphPulseExplosionRaisedCosineEase(t, centerTime, endTime);
+  return Math.max(0, Math.min(1, nodeGraphPulseExplosionRationalCurve(ease, skew)));
+}
+
+// Deterministic 32-bit mulberry32 PRNG, mirrors the xorshift32 used in the
+// native module closely enough for display purposes: same seed always
+// produces the same [0,1) sequence.
+function nodeGraphPulseExplosionMulberry32(seed) {
+  let a = seed >>> 0;
+  return function pulseExplosionNext() {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Folds an arbitrary numeric seed into a 32-bit mix (murmur3-style
+// finalizer over the seed's raw f64 bits), matching the native module's
+// seedHash so the same seed value looks "the same" conceptually across
+// both implementations (the two RNGs still differ, only the seed-vs-seed
+// determinism guarantee is what's shared).
+function nodeGraphPulseExplosionSeedHash(seed) {
+  const buffer = new ArrayBuffer(8);
+  new Float64Array(buffer)[0] = Number(seed) || 0;
+  const words = new Uint32Array(buffer);
+  let x = (words[0] ^ words[1]) >>> 0;
+  x ^= x >>> 16;
+  x = Math.imul(x, 0x7feb352d) >>> 0;
+  x ^= x >>> 15;
+  x = Math.imul(x, 0x846ca68b) >>> 0;
+  x ^= x >>> 16;
+  return (x >>> 0) || 0x9e3779b9;
+}
+
+function nodeGraphPulseExplosionRandomFn(seed) {
+  const seedNumber = Number(seed) || 0;
+  if (seedNumber === 0) {
+    return Math.random;
+  }
+  return nodeGraphPulseExplosionMulberry32(nodeGraphPulseExplosionSeedHash(seedNumber));
+}
+
+// Pure schedule computation shared by playback (nodeGraphPulseExplosionSample
+// below) and the node's curve/pulse-position display, so the display always
+// shows exactly what a trigger with the same seed will actually play.
+function nodeGraphPulseExplosionComputeSchedule(params, random = Math.random) {
+  const safeStart = Math.max(0, Number(params.startTime) || 0);
+  let safeEnd = Number(params.endTime) || 0;
+  if (safeEnd <= safeStart) safeEnd = safeStart + 0.001;
+  let safeCenter = Math.max(safeStart, Math.min(safeEnd, Number(params.centerTime) || 0));
+  if (safeCenter <= safeStart) safeCenter = safeStart + 1e-6;
+  if (safeCenter >= safeEnd) safeCenter = safeEnd - 1e-6;
+  // 0..1 spread -> -0.99..0.99 skew (0 concentrates tightly at centerTime,
+  // 1 spreads widely -- measured empirically, see the .cpp header comment).
+  const skew = -0.99 + 1.98 * Math.max(0, Math.min(1, Number(params.timeSpread) || 0));
+  const safeCount = Math.max(1, Math.min(kNodeGraphPulseExplosionMaxPulses, Math.round(Number(params.numberOfPulses) || 1)));
+  const lo = Math.min(Number(params.lowAmplitude) || 0, Number(params.highAmplitude) || 0);
+  const hi = Math.max(Number(params.lowAmplitude) || 0, Number(params.highAmplitude) || 0);
+
+  const pulses = [];
+  for (let i = 0; i < safeCount; i++) {
+    let chosenTime = safeCenter;
+    for (let attempt = 0; attempt < kNodeGraphPulseExplosionMaxRejectionAttempts; attempt++) {
+      const candidate = safeStart + (safeEnd - safeStart) * random();
+      const roll = random();
+      const density = nodeGraphPulseExplosionDensity(candidate, safeStart, safeCenter, safeEnd, skew);
+      if (roll < density) {
+        chosenTime = candidate;
+        break;
+      }
+    }
+    pulses.push({ time: chosenTime, amplitude: lo + (hi - lo) * random() });
+  }
+  pulses.sort((a, b) => a.time - b.time);
+  return { pulses, safeStart, safeCenter, safeEnd, skew };
+}
+
+function nodeGraphPulseExplosionSample(state, trigger, params, sampleRate, runtime = null, nodeId = "") {
+  const rate = Math.max(1, Number(sampleRate) || nodeGraphMvp.sampleRate || 44100);
+
+  const high = (Number(trigger) || 0) > 0.5;
+  if (high && !state.wasHigh) {
+    state.nextPulseIndex = 0;
+    state.elapsed = 0;
+    state.exploding = true;
+    const schedule = nodeGraphPulseExplosionComputeSchedule(params, nodeGraphPulseExplosionRandomFn(params.seed));
+    state.pulses = schedule.pulses;
+    state.safeStart = schedule.safeStart;
+    state.safeCenter = schedule.safeCenter;
+    state.safeEnd = schedule.safeEnd;
+    state.skew = schedule.skew;
+  }
+  state.wasHigh = high;
+  const safeStart = Number.isFinite(state.safeStart) ? state.safeStart : 0;
+  const safeCenter = Number.isFinite(state.safeCenter) ? state.safeCenter : 0.5;
+  const safeEnd = Number.isFinite(state.safeEnd) ? state.safeEnd : Number(params.endTime) || 1;
+  const skew = Number.isFinite(state.skew) ? state.skew : 0;
+
+  let output = 0;
+  if (state.exploding) {
+    if (state.nextPulseIndex < state.pulses.length && state.elapsed >= state.pulses[state.nextPulseIndex].time) {
+      output = state.pulses[state.nextPulseIndex].amplitude;
+      state.nextPulseIndex++;
+    }
+    state.elapsed += 1 / rate;
+    if (state.nextPulseIndex >= state.pulses.length && state.elapsed > safeEnd) {
+      state.exploding = false;
+    }
+  }
+
+  // Curve output: the density shape shown on the node's display, sampled at
+  // the current position in the burst -- lets it be patched elsewhere.
+  const curve = nodeGraphPulseExplosionDensity(state.elapsed, safeStart, safeCenter, safeEnd, skew);
+
+  return {
+    Out: nodeGraphSafeFilterNumber(output, runtime, nodeId, state, "pulse explosion output"),
+    Curve: nodeGraphSafeFilterNumber(curve, runtime, nodeId, state, "pulse explosion curve"),
+  };
+}
+
 function createNodeGraphTb303FilterState() {
   return { y: [0, 0, 0, 0], hpX: 0, hpY: 0 };
 }
@@ -1976,6 +2184,88 @@ function nodeGraphDelayEffectSample(state, input, params, sampleRate, runtime = 
   return {
     Out: (dry * (1 - mix) + state.wet * mix) * level,
     Wet: state.wet * level,
+  };
+}
+
+function nodeGraphPingPongDelayTimingModeMultiplier(mode) {
+  const rounded = Math.round(Number(mode) || 0);
+  if (rounded === 1) {
+    return 1.5; // Dotted
+  }
+  if (rounded === 2) {
+    return 2 / 3; // Triplet: three fit in the space of two normal notes
+  }
+  return 1; // Normal
+}
+
+// X/Y as a fraction of a whole note. Both are free metaparameters -- never
+// clamped or rejected here, only floored for this one computation:
+// - Negative numerator or denominator behaves like 0.
+// - A numerator of 0 (or negative) always means "no time", for any
+//   denominator including 0 -- this also sidesteps 0/0 producing NaN.
+// - A non-zero numerator over a 0 (or negative) denominator falls back to
+//   a denominator of 1, i.e. "X/0" reads as "X whole notes", rather than
+//   dividing by zero.
+function nodeGraphPingPongDelayFraction(numerator, denominator) {
+  const effectiveNumerator = Math.max(0, Number(numerator) || 0);
+  if (effectiveNumerator === 0) {
+    return 0;
+  }
+  const effectiveDenominator = Math.max(0, Number(denominator) || 0);
+  return effectiveNumerator / Math.max(1, effectiveDenominator);
+}
+
+function nodeGraphPingPongDelaySeconds(params, runtime) {
+  const timing = normalizeNodeGraphPatchTiming(runtime?.timing);
+  const secondsPerWholeNote = 240 / Math.max(1, Number(timing.tempoBpm) || 120);
+  const fraction = nodeGraphPingPongDelayFraction(params.timeNumerator, params.timeDenominator);
+  const syncedSeconds = secondsPerWholeNote * fraction * nodeGraphPingPongDelayTimingModeMultiplier(params.timingMode);
+  const offsetSeconds = (Number(params.offsetMs) || 0) / 1000;
+  return syncedSeconds + offsetSeconds;
+}
+
+function nodeGraphPingPongDelaySample(state, input, params, sampleRate, runtime = null, nodeId = "") {
+  const safeRate = Math.max(1, Number(sampleRate) || 44100);
+  const maxDelaySeconds = 8;
+  const requiredSize = Math.max(2, Math.ceil(safeRate * maxDelaySeconds) + 2);
+  if (!state.bufferL || state.bufferSize !== requiredSize) {
+    state.bufferL = new Float32Array(requiredSize);
+    state.bufferR = new Float32Array(requiredSize);
+    state.bufferSize = requiredSize;
+    state.position = 0;
+    state.wetL = 0;
+    state.wetR = 0;
+  }
+  const dry = nodeGraphSafeFilterNumber(input, runtime, nodeId, null, "ping pong delay input");
+  const feedback = Math.max(0, Math.min(0.95, nodeGraphSafeFilterNumber(params.feedback, runtime, nodeId, null, "ping pong delay feedback")));
+  const mix = Math.max(0, Math.min(1, nodeGraphSafeFilterNumber(params.mix, runtime, nodeId, null, "ping pong delay mix")));
+  const level = Math.max(0, Math.min(2, nodeGraphSafeFilterNumber(params.level, runtime, nodeId, null, "ping pong delay level")));
+
+  // The computed time is what gets bounded to fit the (necessarily finite)
+  // delay buffer -- timeNumerator/timeDenominator/offsetMs themselves are
+  // read as-is above, in nodeGraphPingPongDelaySeconds, with no clamp.
+  const rawSeconds = nodeGraphPingPongDelaySeconds(params, runtime);
+  const safeSeconds = Number.isFinite(rawSeconds) ? Math.max(0, rawSeconds) : 0;
+  const delaySamples = Math.min(state.bufferSize - 2, Math.max(1, safeSeconds * safeRate));
+
+  state.position = (state.position + 1) % state.bufferSize;
+  const readPosition = (state.position + state.bufferSize - delaySamples) % state.bufferSize;
+  const readL = nodeGraphDelayInterpolateLinear(state.bufferL, readPosition);
+  const readR = nodeGraphDelayInterpolateLinear(state.bufferR, readPosition);
+
+  // Classic ping-pong topology: the input only ever enters the left line;
+  // the right line is driven purely by the left line's own feedback, so a
+  // single input bounces left -> right -> left -> right as it decays.
+  const writeL = dry + readR * feedback;
+  const writeR = readL * feedback;
+  state.bufferL[state.position] = Math.max(-8, Math.min(8, writeL));
+  state.bufferR[state.position] = Math.max(-8, Math.min(8, writeR));
+  state.wetL = readL;
+  state.wetR = readR;
+
+  return {
+    Left: (dry * (1 - mix) + state.wetL * mix) * level,
+    Right: (dry * (1 - mix) + state.wetR * mix) * level,
   };
 }
 
@@ -3159,14 +3449,17 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         null,
         "sin/cos amplitude input",
       );
-      const pitchInput = clampNodeSliderValue(nodeGraphSafeFilterNumber(
-        mixInput(nodeId, "0.1V/Oct"),
-        runtime,
-        nodeId,
-        null,
-        "sin/cos 0.1v input",
-      ), -1, 1);
-      const pitchedFrequency = Math.max(0, (baseFrequency + freqInput) * (2 ** (pitchInput / 0.1)));
+      const referenceVoltage = normalizeNodeGraphPatchAudio(nodeGraphMvp.patch.audio).pitchReferenceMidiNote / 120;
+      const pitchInput = hasInput(nodeId, "0.1V/Oct")
+        ? clampNodeSliderValue(nodeGraphSafeFilterNumber(
+          mixInput(nodeId, "0.1V/Oct"),
+          runtime,
+          nodeId,
+          null,
+          "sin/cos 0.1v input",
+        ), -1, 1)
+        : referenceVoltage;
+      const pitchedFrequency = Math.max(0, (baseFrequency + freqInput) * (2 ** ((pitchInput - referenceVoltage) / 0.1)));
       const amplitude = Math.max(0, readNodeGraphLiveEffectiveParam(
         runtime,
         node,
@@ -3234,14 +3527,17 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         null,
         "osc increment input",
       );
-      const pitchInput = clampNodeSliderValue(nodeGraphSafeFilterNumber(
-        mixInput(nodeId, "0.1V/Oct"),
-        runtime,
-        nodeId,
-        null,
-        "osc 0.1v/oct input",
-      ), -1, 1);
-      const pitchedFrequency = Math.max(0, frequency * (2 ** (pitchInput / 0.1)));
+      const referenceVoltage = normalizeNodeGraphPatchAudio(nodeGraphMvp.patch.audio).pitchReferenceMidiNote / 120;
+      const pitchInput = hasInput(nodeId, "0.1V/Oct")
+        ? clampNodeSliderValue(nodeGraphSafeFilterNumber(
+          mixInput(nodeId, "0.1V/Oct"),
+          runtime,
+          nodeId,
+          null,
+          "osc 0.1v/oct input",
+        ), -1, 1)
+        : referenceVoltage;
+      const pitchedFrequency = Math.max(0, frequency * (2 ** ((pitchInput - referenceVoltage) / 0.1)));
       const phaseIncrement = (pitchedFrequency / sampleRate) + incrementInput;
       const level = readNodeGraphLiveEffectiveParam(
         runtime,
@@ -3307,14 +3603,17 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         frames,
         frameValues,
       );
-      const pitchInput = clampNodeSliderValue(nodeGraphSafeFilterNumber(
-        mixInput(nodeId, "0.1V/Oct"),
-        runtime,
-        nodeId,
-        null,
-        "additive osc 0.1v/oct input",
-      ), -1, 1);
-      const pitchedFrequency = Math.max(0, frequency * (2 ** (pitchInput / 0.1)));
+      const referenceVoltage = normalizeNodeGraphPatchAudio(nodeGraphMvp.patch.audio).pitchReferenceMidiNote / 120;
+      const pitchInput = hasInput(nodeId, "0.1V/Oct")
+        ? clampNodeSliderValue(nodeGraphSafeFilterNumber(
+          mixInput(nodeId, "0.1V/Oct"),
+          runtime,
+          nodeId,
+          null,
+          "additive osc 0.1v/oct input",
+        ), -1, 1)
+        : referenceVoltage;
+      const pitchedFrequency = Math.max(0, frequency * (2 ** ((pitchInput - referenceVoltage) / 0.1)));
       const incrementInput = nodeGraphSafeFilterNumber(
         mixInput(nodeId, "Increment"),
         runtime,
@@ -4097,6 +4396,75 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         voices: read("voices", 7),
         level: read("level", 1),
       });
+    } else if (node?.type === "hypersaw") {
+      const state = runtime.hypersawStates.get(nodeId) || createNodeGraphHypersawState();
+      runtime.hypersawStates.set(nodeId, state);
+      const read = (key, fallback) => readNodeGraphLiveEffectiveParam(runtime, node, key, fallback, frame, frames, frameValues);
+      // baseFrequency is the pitch heard at the global pitch reference note
+      // (see node-graph-patch-normalizers.js), same convention as
+      // robinSupersaw above -- set it equal to the master "Pitch Reference
+      // Frequency" setting and a MIDI keyboard is automatically in tune.
+      const baseFrequency = Math.max(0, read("frequency", 100));
+      const pitchReferenceAudio = normalizeNodeGraphPatchAudio(nodeGraphMvp.patch.audio);
+      const referenceVoltage = pitchReferenceAudio.pitchReferenceMidiNote / 120;
+      const pitchInput = hasInput(nodeId, "0.1V/Oct")
+        ? clampNodeSliderValue(nodeGraphSafeFilterNumber(
+          mixInput(nodeId, "0.1V/Oct"),
+          runtime,
+          nodeId,
+          null,
+          "Hypersaw 0.1v input",
+        ), -1, 1)
+        : referenceVoltage;
+      const pitchedFrequency = Math.max(0, baseFrequency * (2 ** ((pitchInput - referenceVoltage) / 0.1)));
+      const hypersawResult = nodeGraphHypersawSample(state, {
+        frequencyHz: pitchedFrequency,
+        sampleRate,
+        phaseOffset: read("phase", 0),
+        numVoices: read("voices", 8),
+        spread: read("spread", 1),
+        randomAmount: read("random", 0.15),
+        driftAmount: read("drift", 0.1),
+        level: read("level", 0.35),
+      });
+      value = {
+        Left: hypersawResult.Left,
+        Right: hypersawResult.Right,
+      };
+      if (typeof writeNodeGraphDataOutput === "function") {
+        writeNodeGraphDataOutput(String(nodeId), "Phases", hypersawResult.voicePhases);
+        writeNodeGraphDataOutput(String(nodeId), "Amplitudes", hypersawResult.voiceAmplitudes);
+        writeNodeGraphDataOutput(String(nodeId), "Pans", hypersawResult.voicePans);
+      }
+    } else if (node?.type === "chordSequencer") {
+      const state = runtime.chordSequencerStates.get(nodeId) || createNodeGraphChordSequencerState();
+      runtime.chordSequencerStates.set(nodeId, state);
+      const read = (key, fallback) => readNodeGraphLiveEffectiveParam(runtime, node, key, fallback, frame, frames, frameValues);
+      value = nodeGraphChordSequencerSample(state, {
+        clock: mixInput(nodeId, "Clock"),
+        level: read("level", 1),
+        progression: read("progression", 0),
+        reset: mixInput(nodeId, "Reset"),
+      });
+    } else if (node?.type === "lutCell") {
+      const state = runtime.lutCellStates.get(nodeId) || createNodeGraphLutCellState();
+      runtime.lutCellStates.set(nodeId, state);
+      const read = (key, fallback) => readNodeGraphLiveEffectiveParam(runtime, node, key, fallback, frame, frames, frameValues);
+      value = nodeGraphLutCellSample(state, {
+        a: mixInput(nodeId, "A"),
+        hasAInput: hasInput(nodeId, "A"),
+        b: mixInput(nodeId, "B"),
+        c: mixInput(nodeId, "C"),
+        d: mixInput(nodeId, "D"),
+        clock: mixInput(nodeId, "Clock"),
+        hasClockInput: hasInput(nodeId, "Clock"),
+        truthTable: read("truthTable", 27030),
+        sampleRate,
+      });
+    } else if (node?.type === "metallicRatio") {
+      value = nodeGraphMetallicRatioSample(
+        readNodeGraphLiveEffectiveParam(runtime, node, "index", 1, frame, frames, frameValues),
+      );
     } else if (node?.type === "midiOut") {
       const midiInputKey = `${nodeId}.MIDI Number`;
       const hasMidiInput = runtime.inputConnections.has(midiInputKey);
@@ -4238,15 +4606,13 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         "Pitch Wheel": pitch,
       };
     } else if (node?.type === "gain") {
-      value = mixInput(nodeId) * readNodeGraphLiveEffectiveParam(
-        runtime,
-        node,
-        "amount",
-        1,
-        frame,
-        frames,
-        frameValues,
-      );
+      const gainAmount = readNodeGraphLiveEffectiveParam(runtime, node, "amount", 1, frame, frames, frameValues);
+      const gainMono = mixInput(nodeId);
+      value = {
+        Out: gainMono * gainAmount,
+        Left: (mixInput(nodeId, "Left") + gainMono) * gainAmount,
+        Right: (mixInput(nodeId, "Right") + gainMono) * gainAmount,
+      };
     } else if (node?.type === "led") {
       value = {
         Out: nodeGraphSafeFilterNumber(mixInput(nodeId, "In"), runtime, nodeId, null, "led input"),
@@ -4258,21 +4624,22 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
     } else if (nodeGraphModuleIsGraphType(node?.type)) {
       value = graphOutputValue(node, nodeId);
     } else if (node?.type === "bias") {
-      value = mixInput(nodeId) + readNodeGraphLiveEffectiveParam(
-        runtime,
-        node,
-        "offset",
-        0,
-        frame,
-        frames,
-        frameValues,
-      );
+      const biasOffset = readNodeGraphLiveEffectiveParam(runtime, node, "offset", 0, frame, frames, frameValues);
+      const biasMono = mixInput(nodeId);
+      value = {
+        Out: biasMono + biasOffset,
+        Left: mixInput(nodeId, "Left") + biasMono + biasOffset,
+        Right: mixInput(nodeId, "Right") + biasMono + biasOffset,
+      };
     } else if (node?.type === "softClipper") {
-      value = nodeGraphSoftClipperSample(
-        mixInput(nodeId),
-        readNodeGraphLiveEffectiveParam(runtime, node, "center", 0, frame, frames, frameValues),
-        readNodeGraphLiveEffectiveParam(runtime, node, "width", 2, frame, frames, frameValues),
-      );
+      const softClipperCenter = readNodeGraphLiveEffectiveParam(runtime, node, "center", 0, frame, frames, frameValues);
+      const softClipperWidth = readNodeGraphLiveEffectiveParam(runtime, node, "width", 2, frame, frames, frameValues);
+      const softClipperMono = mixInput(nodeId);
+      value = {
+        Out: nodeGraphSoftClipperSample(softClipperMono, softClipperCenter, softClipperWidth),
+        Left: nodeGraphSoftClipperSample(mixInput(nodeId, "Left") + softClipperMono, softClipperCenter, softClipperWidth),
+        Right: nodeGraphSoftClipperSample(mixInput(nodeId, "Right") + softClipperMono, softClipperCenter, softClipperWidth),
+      };
     } else if (node?.type === "rotate3dTo2d") {
       const angleX = readNodeGraphLiveEffectiveParam(runtime, node, "rotateX", 0, frame, frames, frameValues) * Math.PI * 2;
       const angleY = readNodeGraphLiveEffectiveParam(runtime, node, "rotateY", 0, frame, frames, frameValues) * Math.PI * 2;
@@ -4320,192 +4687,246 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
       );
       value = { Out: knobValue, value: knobValue };
     } else if (node?.type === "passiveFilter") {
-      const state = runtime.passiveFilterStates.get(nodeId) || createNodeGraphPassiveFilterState();
+      const state = runtime.passiveFilterStates.get(nodeId) || createNodeGraphStereoFilterState(createNodeGraphPassiveFilterState);
       runtime.passiveFilterStates.set(nodeId, state);
-      value = nodeGraphPassiveFilterSample(
+      const passiveMode = readNodeGraphLiveEffectiveParam(runtime, node, "mode", 0, frame, frames, frameValues);
+      const passiveLowFrequency = readNodeGraphLiveEffectiveParam(runtime, node, "lowFrequency", 200, frame, frames, frameValues);
+      const passiveHighFrequency = readNodeGraphLiveEffectiveParam(runtime, node, "highFrequency", 1000, frame, frames, frameValues);
+      const passiveMono = mixInput(nodeId);
+      value = {
+        Out: nodeGraphPassiveFilterSample(state.mono, passiveMono, passiveMode, passiveLowFrequency, passiveHighFrequency, sampleRate, runtime, `${nodeId}:mono`),
+        Left: nodeGraphPassiveFilterSample(state.left, mixInput(nodeId, "Left") + passiveMono, passiveMode, passiveLowFrequency, passiveHighFrequency, sampleRate, runtime, `${nodeId}:left`),
+        Right: nodeGraphPassiveFilterSample(state.right, mixInput(nodeId, "Right") + passiveMono, passiveMode, passiveLowFrequency, passiveHighFrequency, sampleRate, runtime, `${nodeId}:right`),
+      };
+    } else if (node?.type === "papoulisFilter") {
+      const state = runtime.papoulisFilterStates.get(nodeId) || createNodeGraphPapoulisFilterState();
+      runtime.papoulisFilterStates.set(nodeId, state);
+      value = nodeGraphPapoulisFilterSample(
         state,
         mixInput(nodeId),
-        readNodeGraphLiveEffectiveParam(runtime, node, "mode", 0, frame, frames, frameValues),
-        readNodeGraphLiveEffectiveParam(runtime, node, "lowFrequency", 200, frame, frames, frameValues),
-        readNodeGraphLiveEffectiveParam(runtime, node, "highFrequency", 1000, frame, frames, frameValues),
+        readNodeGraphLiveEffectiveParam(runtime, node, "cutoff", 1000, frame, frames, frameValues),
         sampleRate,
-        runtime,
+      );
+    } else if (node?.type === "phosphillator") {
+      const state = runtime.phosphillatorPlaybackStates.get(nodeId) || createNodeGraphPhosphillatorPlaybackState();
+      runtime.phosphillatorPlaybackStates.set(nodeId, state);
+      value = nodeGraphPhosphillatorPlaybackSample(
+        state,
+        node,
         nodeId,
+        mixInput(nodeId, "0.1V/Oct"),
+        readNodeGraphLiveEffectiveParam(runtime, node, "frequency", 2, frame, frames, frameValues),
+        readNodeGraphLiveEffectiveParam(runtime, node, "phase", 0, frame, frames, frameValues),
+        mixInput(nodeId, "Reset"),
+        sampleRate,
       );
     } else if (node?.type === "cookbookFilter") {
-      const state = runtime.cookbookFilterStates.get(nodeId) || createNodeGraphCookbookFilterState();
+      const state = runtime.cookbookFilterStates.get(nodeId) || createNodeGraphStereoFilterState(createNodeGraphCookbookFilterState);
       runtime.cookbookFilterStates.set(nodeId, state);
-      value = nodeGraphCookbookFilterSample(
-        state,
-        mixInput(nodeId),
-        readNodeGraphLiveEffectiveParam(runtime, node, "mode", 1, frame, frames, frameValues),
-        readNodeGraphLiveEffectiveParam(runtime, node, "frequency", 1000, frame, frames, frameValues),
-        readNodeGraphLiveEffectiveParam(runtime, node, "q", 1, frame, frames, frameValues),
-        readNodeGraphLiveEffectiveParam(runtime, node, "gain", 0, frame, frames, frameValues),
-        readNodeGraphLiveEffectiveParam(runtime, node, "stages", 2, frame, frames, frameValues),
-        sampleRate,
-        runtime,
-        nodeId,
-      );
+      const cookbookMode = readNodeGraphLiveEffectiveParam(runtime, node, "mode", 1, frame, frames, frameValues);
+      const cookbookFrequency = readNodeGraphLiveEffectiveParam(runtime, node, "frequency", 1000, frame, frames, frameValues);
+      const cookbookQ = readNodeGraphLiveEffectiveParam(runtime, node, "q", 1, frame, frames, frameValues);
+      const cookbookGain = readNodeGraphLiveEffectiveParam(runtime, node, "gain", 0, frame, frames, frameValues);
+      const cookbookStages = readNodeGraphLiveEffectiveParam(runtime, node, "stages", 2, frame, frames, frameValues);
+      const cookbookMono = mixInput(nodeId);
+      value = {
+        Out: nodeGraphCookbookFilterSample(state.mono, cookbookMono, cookbookMode, cookbookFrequency, cookbookQ, cookbookGain, cookbookStages, sampleRate, runtime, `${nodeId}:mono`),
+        Left: nodeGraphCookbookFilterSample(state.left, mixInput(nodeId, "Left") + cookbookMono, cookbookMode, cookbookFrequency, cookbookQ, cookbookGain, cookbookStages, sampleRate, runtime, `${nodeId}:left`),
+        Right: nodeGraphCookbookFilterSample(state.right, mixInput(nodeId, "Right") + cookbookMono, cookbookMode, cookbookFrequency, cookbookQ, cookbookGain, cookbookStages, sampleRate, runtime, `${nodeId}:right`),
+      };
     } else if (node?.type === "ladderFilter") {
-      const state = runtime.ladderFilterStates.get(nodeId) || createNodeGraphLadderFilterState();
+      const state = runtime.ladderFilterStates.get(nodeId) || createNodeGraphStereoFilterState(createNodeGraphLadderFilterState);
       runtime.ladderFilterStates.set(nodeId, state);
-      value = nodeGraphLadderFilterSample(
-        state,
-        mixInput(nodeId),
-        {
-          frequency: readNodeGraphLiveEffectiveParam(runtime, node, "frequency", 1000, frame, frames, frameValues),
-          mode: readNodeGraphLiveEffectiveParam(runtime, node, "mode", 1, frame, frames, frameValues),
-          resonance: readNodeGraphLiveEffectiveParam(runtime, node, "resonance", 0.2, frame, frames, frameValues),
-          stages: readNodeGraphLiveEffectiveParam(runtime, node, "stages", 4, frame, frames, frameValues),
-        },
-        sampleRate,
-        runtime,
-        nodeId,
-      );
+      const ladderParams = {
+        frequency: readNodeGraphLiveEffectiveParam(runtime, node, "frequency", 1000, frame, frames, frameValues),
+        mode: readNodeGraphLiveEffectiveParam(runtime, node, "mode", 1, frame, frames, frameValues),
+        resonance: readNodeGraphLiveEffectiveParam(runtime, node, "resonance", 0.2, frame, frames, frameValues),
+        stages: readNodeGraphLiveEffectiveParam(runtime, node, "stages", 4, frame, frames, frameValues),
+      };
+      const ladderMono = mixInput(nodeId);
+      value = {
+        Out: nodeGraphLadderFilterSample(state.mono, ladderMono, ladderParams, sampleRate, runtime, `${nodeId}:mono`),
+        Left: nodeGraphLadderFilterSample(state.left, mixInput(nodeId, "Left") + ladderMono, ladderParams, sampleRate, runtime, `${nodeId}:left`),
+        Right: nodeGraphLadderFilterSample(state.right, mixInput(nodeId, "Right") + ladderMono, ladderParams, sampleRate, runtime, `${nodeId}:right`),
+      };
     } else if (node?.type === "flowerChildFilter") {
-      const state = runtime.flowerChildFilterStates.get(nodeId) || createNodeGraphFlowerChildFilterState();
+      const state = runtime.flowerChildFilterStates.get(nodeId) || createNodeGraphStereoFilterState(createNodeGraphFlowerChildFilterState);
       runtime.flowerChildFilterStates.set(nodeId, state);
-      value = nodeGraphFlowerChildFilterSample(
-        state,
-        mixInput(nodeId),
-        {
-          chaos: readNodeGraphLiveEffectiveParam(runtime, node, "chaos", 0, frame, frames, frameValues),
-          frequency: readNodeGraphLiveEffectiveParam(runtime, node, "frequency", 0.5, frame, frames, frameValues),
-          mode: readNodeGraphLiveEffectiveParam(runtime, node, "mode", 0, frame, frames, frameValues),
-          resonance: readNodeGraphLiveEffectiveParam(runtime, node, "resonance", 0.2, frame, frames, frameValues),
-        },
-        sampleRate,
-        runtime,
-        nodeId,
-      );
+      const flowerChildParams = {
+        chaos: readNodeGraphLiveEffectiveParam(runtime, node, "chaos", 0, frame, frames, frameValues),
+        frequency: readNodeGraphLiveEffectiveParam(runtime, node, "frequency", 0.5, frame, frames, frameValues),
+        mode: readNodeGraphLiveEffectiveParam(runtime, node, "mode", 0, frame, frames, frameValues),
+        resonance: readNodeGraphLiveEffectiveParam(runtime, node, "resonance", 0.2, frame, frames, frameValues),
+      };
+      const flowerChildMono = mixInput(nodeId);
+      value = {
+        Out: nodeGraphFlowerChildFilterSample(state.mono, flowerChildMono, flowerChildParams, sampleRate, runtime, `${nodeId}:mono`),
+        Left: nodeGraphFlowerChildFilterSample(state.left, mixInput(nodeId, "Left") + flowerChildMono, flowerChildParams, sampleRate, runtime, `${nodeId}:left`),
+        Right: nodeGraphFlowerChildFilterSample(state.right, mixInput(nodeId, "Right") + flowerChildMono, flowerChildParams, sampleRate, runtime, `${nodeId}:right`),
+      };
     } else if (node?.type === "rsmetFilter") {
-      const state = runtime.rsmetFilterStates.get(nodeId) || createNodeGraphRsmetFilterState();
+      const state = runtime.rsmetFilterStates.get(nodeId) || createNodeGraphStereoFilterState(createNodeGraphRsmetFilterState);
       runtime.rsmetFilterStates.set(nodeId, state);
-      value = nodeGraphRsmetFilterSample(
-        state,
-        mixInput(nodeId),
-        {
-          chaos: readNodeGraphLiveEffectiveParam(runtime, node, "chaos", 0, frame, frames, frameValues),
-          frequency: readNodeGraphLiveEffectiveParam(runtime, node, "frequency", 0.5, frame, frames, frameValues),
-          mode: readNodeGraphLiveEffectiveParam(runtime, node, "mode", 0, frame, frames, frameValues),
-          resonance: readNodeGraphLiveEffectiveParam(runtime, node, "resonance", 0.2, frame, frames, frameValues),
-        },
-        sampleRate,
-        runtime,
-        nodeId,
-      );
+      const rsmetParams = {
+        chaos: readNodeGraphLiveEffectiveParam(runtime, node, "chaos", 0, frame, frames, frameValues),
+        frequency: readNodeGraphLiveEffectiveParam(runtime, node, "frequency", 0.5, frame, frames, frameValues),
+        mode: readNodeGraphLiveEffectiveParam(runtime, node, "mode", 0, frame, frames, frameValues),
+        resonance: readNodeGraphLiveEffectiveParam(runtime, node, "resonance", 0.2, frame, frames, frameValues),
+      };
+      const rsmetMono = mixInput(nodeId);
+      value = {
+        Out: nodeGraphRsmetFilterSample(state.mono, rsmetMono, rsmetParams, sampleRate, runtime, `${nodeId}:mono`),
+        Left: nodeGraphRsmetFilterSample(state.left, mixInput(nodeId, "Left") + rsmetMono, rsmetParams, sampleRate, runtime, `${nodeId}:left`),
+        Right: nodeGraphRsmetFilterSample(state.right, mixInput(nodeId, "Right") + rsmetMono, rsmetParams, sampleRate, runtime, `${nodeId}:right`),
+      };
     } else if (node?.type === "yellowjacketFilter") {
-      const state = runtime.yellowjacketFilterStates.get(nodeId) || createNodeGraphYellowjacketFilterState();
+      const state = runtime.yellowjacketFilterStates.get(nodeId) || createNodeGraphStereoFilterState(createNodeGraphYellowjacketFilterState);
       runtime.yellowjacketFilterStates.set(nodeId, state);
-      value = nodeGraphYellowjacketFilterSample(
-        state,
-        mixInput(nodeId),
-        {
-          chaos: readNodeGraphLiveEffectiveParam(runtime, node, "chaos", 0, frame, frames, frameValues),
-          frequency: readNodeGraphLiveEffectiveParam(runtime, node, "frequency", 0.5, frame, frames, frameValues),
-          resonance: readNodeGraphLiveEffectiveParam(runtime, node, "resonance", 0.2, frame, frames, frameValues),
-        },
-        sampleRate,
-        runtime,
-        nodeId,
-      );
+      const yellowjacketParams = {
+        chaos: readNodeGraphLiveEffectiveParam(runtime, node, "chaos", 0, frame, frames, frameValues),
+        frequency: readNodeGraphLiveEffectiveParam(runtime, node, "frequency", 0.5, frame, frames, frameValues),
+        resonance: readNodeGraphLiveEffectiveParam(runtime, node, "resonance", 0.2, frame, frames, frameValues),
+      };
+      const yellowjacketMono = mixInput(nodeId);
+      value = {
+        Out: nodeGraphYellowjacketFilterSample(state.mono, yellowjacketMono, yellowjacketParams, sampleRate, runtime, `${nodeId}:mono`),
+        Left: nodeGraphYellowjacketFilterSample(state.left, mixInput(nodeId, "Left") + yellowjacketMono, yellowjacketParams, sampleRate, runtime, `${nodeId}:left`),
+        Right: nodeGraphYellowjacketFilterSample(state.right, mixInput(nodeId, "Right") + yellowjacketMono, yellowjacketParams, sampleRate, runtime, `${nodeId}:right`),
+      };
     } else if (node?.type === "superloveFilter") {
-      const state = runtime.superloveFilterStates.get(nodeId) || createNodeGraphSuperloveFilterState();
+      const state = runtime.superloveFilterStates.get(nodeId) || createNodeGraphStereoFilterState(createNodeGraphSuperloveFilterState);
       runtime.superloveFilterStates.set(nodeId, state);
-      value = nodeGraphSuperloveFilterSample(
-        state,
-        mixInput(nodeId),
-        {
-          chaos: readNodeGraphLiveEffectiveParam(runtime, node, "chaos", 0.5, frame, frames, frameValues),
-          frequency: readNodeGraphLiveEffectiveParam(runtime, node, "frequency", 0.5, frame, frames, frameValues),
-          mode: readNodeGraphLiveEffectiveParam(runtime, node, "mode", 0, frame, frames, frameValues),
-          resonance: readNodeGraphLiveEffectiveParam(runtime, node, "resonance", 0.2, frame, frames, frameValues),
-        },
-        sampleRate,
-        runtime,
-        nodeId,
-      );
+      const superloveParams = {
+        chaos: readNodeGraphLiveEffectiveParam(runtime, node, "chaos", 0.5, frame, frames, frameValues),
+        frequency: readNodeGraphLiveEffectiveParam(runtime, node, "frequency", 0.5, frame, frames, frameValues),
+        mode: readNodeGraphLiveEffectiveParam(runtime, node, "mode", 0, frame, frames, frameValues),
+        resonance: readNodeGraphLiveEffectiveParam(runtime, node, "resonance", 0.2, frame, frames, frameValues),
+      };
+      const superloveMono = mixInput(nodeId);
+      value = {
+        Out: nodeGraphSuperloveFilterSample(state.mono, superloveMono, superloveParams, sampleRate, runtime, `${nodeId}:mono`),
+        Left: nodeGraphSuperloveFilterSample(state.left, mixInput(nodeId, "Left") + superloveMono, superloveParams, sampleRate, runtime, `${nodeId}:left`),
+        Right: nodeGraphSuperloveFilterSample(state.right, mixInput(nodeId, "Right") + superloveMono, superloveParams, sampleRate, runtime, `${nodeId}:right`),
+      };
     } else if (node?.type === "chaoticPhaseLockingFilter") {
-      const state = runtime.chaoticPhaseLockingFilterStates.get(nodeId) || createNodeGraphChaoticPhaseLockingFilterState();
+      const state = runtime.chaoticPhaseLockingFilterStates.get(nodeId) || createNodeGraphStereoFilterState(createNodeGraphChaoticPhaseLockingFilterState);
       runtime.chaoticPhaseLockingFilterStates.set(nodeId, state);
-      value = nodeGraphChaoticPhaseLockingFilterSample(
-        state,
-        mixInput(nodeId),
-        {
-          chaos: readNodeGraphLiveEffectiveParam(runtime, node, "chaos", 1, frame, frames, frameValues),
-          frequency: readNodeGraphLiveEffectiveParam(runtime, node, "frequency", 0.5, frame, frames, frameValues),
-          resonance: readNodeGraphLiveEffectiveParam(runtime, node, "resonance", 0.2, frame, frames, frameValues),
-        },
-        sampleRate,
-        runtime,
-        nodeId,
-      );
+      const chaoticPhaseLockingParams = {
+        chaos: readNodeGraphLiveEffectiveParam(runtime, node, "chaos", 1, frame, frames, frameValues),
+        frequency: readNodeGraphLiveEffectiveParam(runtime, node, "frequency", 0.5, frame, frames, frameValues),
+        resonance: readNodeGraphLiveEffectiveParam(runtime, node, "resonance", 0.2, frame, frames, frameValues),
+      };
+      const chaoticPhaseLockingMono = mixInput(nodeId);
+      value = {
+        Out: nodeGraphChaoticPhaseLockingFilterSample(state.mono, chaoticPhaseLockingMono, chaoticPhaseLockingParams, sampleRate, runtime, `${nodeId}:mono`),
+        Left: nodeGraphChaoticPhaseLockingFilterSample(state.left, mixInput(nodeId, "Left") + chaoticPhaseLockingMono, chaoticPhaseLockingParams, sampleRate, runtime, `${nodeId}:left`),
+        Right: nodeGraphChaoticPhaseLockingFilterSample(state.right, mixInput(nodeId, "Right") + chaoticPhaseLockingMono, chaoticPhaseLockingParams, sampleRate, runtime, `${nodeId}:right`),
+      };
     } else if (node?.type === "resonatorFilter") {
-      const state = runtime.resonatorFilterStates.get(nodeId) || createNodeGraphResonatorFilterState();
+      const state = runtime.resonatorFilterStates.get(nodeId) || createNodeGraphStereoFilterState(createNodeGraphResonatorFilterState);
       runtime.resonatorFilterStates.set(nodeId, state);
-      value = nodeGraphResonatorFilterSample(
-        state,
-        mixInput(nodeId),
-        {
-          chaos: readNodeGraphLiveEffectiveParam(runtime, node, "chaos", 0, frame, frames, frameValues),
-          frequency: readNodeGraphLiveEffectiveParam(runtime, node, "frequency", 0.5, frame, frames, frameValues),
-          mode: readNodeGraphLiveEffectiveParam(runtime, node, "mode", 0, frame, frames, frameValues),
-          resonance: readNodeGraphLiveEffectiveParam(runtime, node, "resonance", 0.2, frame, frames, frameValues),
-        },
-        sampleRate,
-        runtime,
-        nodeId,
-      );
+      const resonatorParams = {
+        chaos: readNodeGraphLiveEffectiveParam(runtime, node, "chaos", 0, frame, frames, frameValues),
+        frequency: readNodeGraphLiveEffectiveParam(runtime, node, "frequency", 0.5, frame, frames, frameValues),
+        mode: readNodeGraphLiveEffectiveParam(runtime, node, "mode", 0, frame, frames, frameValues),
+        resonance: readNodeGraphLiveEffectiveParam(runtime, node, "resonance", 0.2, frame, frames, frameValues),
+      };
+      const resonatorMono = mixInput(nodeId);
+      value = {
+        Out: nodeGraphResonatorFilterSample(state.mono, resonatorMono, resonatorParams, sampleRate, runtime, `${nodeId}:mono`),
+        Left: nodeGraphResonatorFilterSample(state.left, mixInput(nodeId, "Left") + resonatorMono, resonatorParams, sampleRate, runtime, `${nodeId}:left`),
+        Right: nodeGraphResonatorFilterSample(state.right, mixInput(nodeId, "Right") + resonatorMono, resonatorParams, sampleRate, runtime, `${nodeId}:right`),
+      };
     } else if (node?.type === "humanFilter") {
-      const state = runtime.humanFilterStates.get(nodeId) || createNodeGraphHumanFilterState();
+      const state = runtime.humanFilterStates.get(nodeId) || createNodeGraphStereoFilterState(createNodeGraphHumanFilterState);
       runtime.humanFilterStates.set(nodeId, state);
-      value = nodeGraphHumanFilterSample(
+      const humanFilterParams = {
+        chaos: readNodeGraphLiveEffectiveParam(runtime, node, "chaos", 0, frame, frames, frameValues),
+        frequency: readNodeGraphLiveEffectiveParam(runtime, node, "frequency", 0.5, frame, frames, frameValues),
+        mode: readNodeGraphLiveEffectiveParam(runtime, node, "mode", 0, frame, frames, frameValues),
+        resonance: readNodeGraphLiveEffectiveParam(runtime, node, "resonance", 0.2, frame, frames, frameValues),
+      };
+      const humanFilterMono = mixInput(nodeId);
+      value = {
+        Out: nodeGraphHumanFilterSample(state.mono, humanFilterMono, humanFilterParams, sampleRate, runtime, `${nodeId}:mono`),
+        Left: nodeGraphHumanFilterSample(state.left, mixInput(nodeId, "Left") + humanFilterMono, humanFilterParams, sampleRate, runtime, `${nodeId}:left`),
+        Right: nodeGraphHumanFilterSample(state.right, mixInput(nodeId, "Right") + humanFilterMono, humanFilterParams, sampleRate, runtime, `${nodeId}:right`),
+      };
+    } else if (node?.type === "pulseExplosion") {
+      const state = runtime.pulseExplosionStates.get(nodeId) || createNodeGraphPulseExplosionState();
+      runtime.pulseExplosionStates.set(nodeId, state);
+      value = nodeGraphPulseExplosionSample(
         state,
-        mixInput(nodeId),
+        mixInput(nodeId, "Trigger"),
         {
-          chaos: readNodeGraphLiveEffectiveParam(runtime, node, "chaos", 0, frame, frames, frameValues),
-          frequency: readNodeGraphLiveEffectiveParam(runtime, node, "frequency", 0.5, frame, frames, frameValues),
-          mode: readNodeGraphLiveEffectiveParam(runtime, node, "mode", 0, frame, frames, frameValues),
-          resonance: readNodeGraphLiveEffectiveParam(runtime, node, "resonance", 0.2, frame, frames, frameValues),
+          startTime: readNodeGraphLiveEffectiveParam(runtime, node, "startTime", 0, frame, frames, frameValues),
+          centerTime: readNodeGraphLiveEffectiveParam(runtime, node, "centerTime", 0.5, frame, frames, frameValues),
+          endTime: readNodeGraphLiveEffectiveParam(runtime, node, "endTime", 1, frame, frames, frameValues),
+          timeSpread: readNodeGraphLiveEffectiveParam(runtime, node, "timeSpread", 0.3, frame, frames, frameValues),
+          numberOfPulses: readNodeGraphLiveEffectiveParam(runtime, node, "numberOfPulses", 20, frame, frames, frameValues),
+          lowAmplitude: readNodeGraphLiveEffectiveParam(runtime, node, "lowAmplitude", 0.3, frame, frames, frameValues),
+          highAmplitude: readNodeGraphLiveEffectiveParam(runtime, node, "highAmplitude", 1, frame, frames, frameValues),
+          seed: readNodeGraphLiveEffectiveParam(runtime, node, "seed", 0, frame, frames, frameValues),
         },
         sampleRate,
         runtime,
         nodeId,
       );
     } else if (node?.type === "tb303Filter") {
-      const state = runtime.tb303FilterStates.get(nodeId) || createNodeGraphTb303FilterState();
+      const state = runtime.tb303FilterStates.get(nodeId) || createNodeGraphStereoFilterState(createNodeGraphTb303FilterState);
       runtime.tb303FilterStates.set(nodeId, state);
       const read = (key, fallback) => readNodeGraphLiveEffectiveParam(runtime, node, key, fallback, frame, frames, frameValues);
-      value = nodeGraphTb303FilterSample(
-        state,
-        mixInput(nodeId),
-        {
-          cutoff: read("cutoff", 1000),
-          drive: read("drive", 0),
-          mode: read("mode", 4),
-          resonance: read("resonance", 0),
-        },
-        sampleRate,
-        runtime,
-        nodeId,
-      );
+      const tb303Params = {
+        cutoff: read("cutoff", 1000),
+        drive: read("drive", 0),
+        mode: read("mode", 4),
+        resonance: read("resonance", 0),
+      };
+      const tb303Mono = mixInput(nodeId);
+      value = {
+        Out: nodeGraphTb303FilterSample(state.mono, tb303Mono, tb303Params, sampleRate, runtime, `${nodeId}:mono`),
+        Left: nodeGraphTb303FilterSample(state.left, mixInput(nodeId, "Left") + tb303Mono, tb303Params, sampleRate, runtime, `${nodeId}:left`),
+        Right: nodeGraphTb303FilterSample(state.right, mixInput(nodeId, "Right") + tb303Mono, tb303Params, sampleRate, runtime, `${nodeId}:right`),
+      };
     } else if (node?.type === "delayEffect") {
-      const state = runtime.delayEffectStates.get(nodeId) || createNodeGraphDelayEffectState();
+      const state = runtime.delayEffectStates.get(nodeId) || createNodeGraphStereoDelayEffectState();
       runtime.delayEffectStates.set(nodeId, state);
       const read = (key, fallback) => readNodeGraphLiveEffectiveParam(runtime, node, key, fallback, frame, frames, frameValues);
-      value = nodeGraphDelayEffectSample(
+      const delayParams = {
+        feedback: read("feedback", 0.25),
+        level: read("level", 1),
+        mix: read("mix", 0.35),
+        mode: read("mode", 0),
+        modAmount: read("modAmount", 0.02),
+        modRate: read("modRate", 0.1),
+        modVariation: read("modVariation", 0),
+        time: read("time", 0.18),
+      };
+      const delayMono = mixInput(nodeId);
+      const monoResult = nodeGraphDelayEffectSample(state.mono, delayMono, delayParams, sampleRate, runtime, `${nodeId}:mono`);
+      const leftResult = nodeGraphDelayEffectSample(state.left, mixInput(nodeId, "Left") + delayMono, delayParams, sampleRate, runtime, `${nodeId}:left`);
+      const rightResult = nodeGraphDelayEffectSample(state.right, mixInput(nodeId, "Right") + delayMono, delayParams, sampleRate, runtime, `${nodeId}:right`);
+      value = {
+        Out: monoResult.Out,
+        Left: leftResult.Out,
+        Right: rightResult.Out,
+        Wet: monoResult.Wet,
+      };
+    } else if (node?.type === "pingPongDelay") {
+      const state = runtime.pingPongDelayStates.get(nodeId) || createNodeGraphPingPongDelayState();
+      runtime.pingPongDelayStates.set(nodeId, state);
+      const read = (key, fallback) => readNodeGraphLiveEffectiveParam(runtime, node, key, fallback, frame, frames, frameValues);
+      value = nodeGraphPingPongDelaySample(
         state,
-        mixInput(nodeId),
+        mixInput(nodeId) + mixInput(nodeId, "Left") + mixInput(nodeId, "Right"),
         {
-          feedback: read("feedback", 0.25),
+          feedback: read("feedback", 0.35),
           level: read("level", 1),
           mix: read("mix", 0.35),
-          mode: read("mode", 0),
-          modAmount: read("modAmount", 0.02),
-          modRate: read("modRate", 0.1),
-          modVariation: read("modVariation", 0),
-          time: read("time", 0.18),
+          offsetMs: read("offsetMs", 0),
+          timeDenominator: read("timeDenominator", 4),
+          timeNumerator: read("timeNumerator", 1),
+          timingMode: read("timingMode", 0),
         },
         sampleRate,
         runtime,
@@ -4573,31 +4994,29 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         nodeId,
       );
     } else if (node?.type === "slewLimiter") {
-      const state = runtime.slewLimiterStates.get(nodeId) || createNodeGraphSlewLimiterState();
+      const state = runtime.slewLimiterStates.get(nodeId) || createNodeGraphStereoSlewLimiterState();
       runtime.slewLimiterStates.set(nodeId, state);
-      value = nodeGraphSlewLimiterSample(
-        state,
-        mixInput(nodeId),
-        readNodeGraphLiveEffectiveParam(runtime, node, "upTime", 0.05, frame, frames, frameValues),
-        readNodeGraphLiveEffectiveParam(runtime, node, "downTime", 0.20, frame, frames, frameValues),
-        sampleRate,
-        runtime,
-        nodeId,
-      );
+      const slewUpTime = readNodeGraphLiveEffectiveParam(runtime, node, "upTime", 0.05, frame, frames, frameValues);
+      const slewDownTime = readNodeGraphLiveEffectiveParam(runtime, node, "downTime", 0.20, frame, frames, frameValues);
+      const slewMono = mixInput(nodeId);
+      value = {
+        Out: nodeGraphSlewLimiterSample(state.mono, slewMono, slewUpTime, slewDownTime, sampleRate, runtime, nodeId),
+        Left: nodeGraphSlewLimiterSample(state.left, mixInput(nodeId, "Left") + slewMono, slewUpTime, slewDownTime, sampleRate, runtime, nodeId),
+        Right: nodeGraphSlewLimiterSample(state.right, mixInput(nodeId, "Right") + slewMono, slewUpTime, slewDownTime, sampleRate, runtime, nodeId),
+      };
     } else if (node?.type === "sampleHold") {
-      const state = runtime.sampleHoldStates.get(nodeId) || createNodeGraphSampleHoldState();
+      const state = runtime.sampleHoldStates.get(nodeId) || createNodeGraphStereoSampleHoldState();
       runtime.sampleHoldStates.set(nodeId, state);
-      value = nodeGraphSampleHoldSample(
-        state,
-        mixInput(nodeId, "In"),
-        mixInput(nodeId, "Trigger"),
-        readNodeGraphLiveEffectiveParam(runtime, node, "threshold", 0, frame, frames, frameValues),
-        readNodeGraphLiveEffectiveParam(runtime, node, "sampleFrequency", 0, frame, frames, frameValues),
-        sampleRate,
-        hasInput(nodeId, "In"),
-        runtime,
-        nodeId,
-      );
+      const sampleHoldTrigger = mixInput(nodeId, "Trigger");
+      const sampleHoldThreshold = readNodeGraphLiveEffectiveParam(runtime, node, "threshold", 0, frame, frames, frameValues);
+      const sampleHoldFrequency = readNodeGraphLiveEffectiveParam(runtime, node, "sampleFrequency", 0, frame, frames, frameValues);
+      const sampleHoldMonoHasIn = hasInput(nodeId, "In");
+      const sampleHoldMono = mixInput(nodeId, "In");
+      value = {
+        Out: nodeGraphSampleHoldSample(state.mono, sampleHoldMono, sampleHoldTrigger, sampleHoldThreshold, sampleHoldFrequency, sampleRate, sampleHoldMonoHasIn, runtime, `${nodeId}:mono`),
+        Left: nodeGraphSampleHoldSample(state.left, mixInput(nodeId, "Left") + sampleHoldMono, sampleHoldTrigger, sampleHoldThreshold, sampleHoldFrequency, sampleRate, sampleHoldMonoHasIn || hasInput(nodeId, "Left"), runtime, `${nodeId}:left`),
+        Right: nodeGraphSampleHoldSample(state.right, mixInput(nodeId, "Right") + sampleHoldMono, sampleHoldTrigger, sampleHoldThreshold, sampleHoldFrequency, sampleRate, sampleHoldMonoHasIn || hasInput(nodeId, "Right"), runtime, `${nodeId}:right`),
+      };
     } else if (node?.type === "expAdsr") {
       const state = runtime.expAdsrStates.get(nodeId) || createNodeGraphExpAdsrState();
       runtime.expAdsrStates.set(nodeId, state);
@@ -4667,26 +5086,36 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         runtime,
         nodeId,
       );
-    } else if (node?.type === "vactrolEnvelope" || node?.type === "vactrolEnvelopeC4") {
+    } else if (node?.type === "vactrolEnvelopeSeries" || node?.type === "vactrolEnvelopeCustom") {
       const state = runtime.vactrolEnvelopeStates.get(nodeId) || createNodeGraphVactrolEnvelopeState();
       runtime.vactrolEnvelopeStates.set(nodeId, state);
       const read = (key, fallback) => readNodeGraphLiveEffectiveParam(runtime, node, key, fallback, frame, frames, frameValues);
-      const isC4 = node?.type === "vactrolEnvelopeC4";
+      const isSeries = node?.type === "vactrolEnvelopeSeries";
+      const seriesSpec = isSeries ? nodeGraphVactrolSeriesSpec(read("part", 2)) : null;
       value = nodeGraphVactrolEnvelopeSample(
         state,
         mixInput(nodeId, "Light"),
         {
-          attack: read("attack", isC4 ? 0.006 : 0.0025),
+          attack: isSeries ? seriesSpec.attack : read("attack", 0.01),
           curve: read("curve", 1),
           darkCurrent: read("darkCurrent", 0),
           lightOffset: read("lightOffset", 0),
-          release: read("release", isC4 ? 1.5 : 0.035),
+          release: isSeries ? seriesSpec.release : read("release", 0.1),
           sensitivity: read("sensitivity", 1),
         },
         sampleRate,
         runtime,
         nodeId,
       );
+    } else if (node?.type === "impulseButton") {
+      const states = runtime.impulseButtonStates instanceof Map ? runtime.impulseButtonStates : new Map();
+      runtime.impulseButtonStates = states;
+      const state = states.get(nodeId) || createNodeGraphImpulseButtonState();
+      states.set(nodeId, state);
+      const pulseSamples = Math.max(0, Number(state.pulseSamples) || 0);
+      const amplitude = Math.max(0, Math.min(1, Number(state.amplitude ?? 1)));
+      state.pulseSamples = Math.max(0, pulseSamples - 1);
+      value = { Pulse: pulseSamples > 0 ? amplitude : 0 };
     } else if (node?.type === "flowerChildEnvelopeFollower") {
       const state = runtime.flowerChildEnvelopeFollowerStates.get(nodeId) || createNodeGraphFlowerChildEnvelopeFollowerState();
       runtime.flowerChildEnvelopeFollowerStates.set(nodeId, state);
@@ -4906,7 +5335,12 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
     } else if (node?.type === "badvalMonitor") {
       value = nodeGraphBadValueMonitorSample(mixInput(nodeId), runtime, nodeId);
     } else if (node?.type === "speakerProtection") {
-      value = nodeGraphSpeakerProtectionSample(mixInput(nodeId), runtime, nodeId);
+      const speakerProtectionMono = mixInput(nodeId);
+      value = {
+        Out: nodeGraphSpeakerProtectionSample(speakerProtectionMono, runtime, nodeId),
+        Left: nodeGraphSpeakerProtectionSample(mixInput(nodeId, "Left") + speakerProtectionMono, runtime, nodeId),
+        Right: nodeGraphSpeakerProtectionSample(mixInput(nodeId, "Right") + speakerProtectionMono, runtime, nodeId),
+      };
     } else if (node?.type === "groupOutput") {
       value = {
         Out: mixInput(nodeId, "In"),

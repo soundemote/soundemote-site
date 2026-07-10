@@ -25,12 +25,15 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "stepSequencer",
   "melodySequencer",
   "chordSequencer",
+  "lutCell",
+  "metallicRatio",
   "chordMemory",
   "turingMachine",
   "pitchQuantizer",
   "surgeOscillator",
   "dsfOscillator",
   "robinSupersaw",
+  "hypersaw",
   "arpeggiator",
   "spiral",
   "fractalSpiral",
@@ -56,6 +59,7 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "fractalBrownianNoise",
   "clapPlugin",
   "codeblock",
+  "scriptBox",
   "graph",
   "graph2",
   "gain",
@@ -67,6 +71,7 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "macroKnob",
   "bipolarKnob",
   "valueSlider",
+  "impulseButton",
   "rangeSlider",
   "midiOut",
   "midiNotePitch",
@@ -86,6 +91,7 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "groupInput",
   "groupOutput",
   "audioPlayer",
+  "phosphillator",
   "samplePlayer",
   "sampleLooper",
   "passiveFilter",
@@ -97,10 +103,13 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "resonatorFilter",
   "humanFilter",
   "flowerChildFilter",
+  "pulseExplosion",
   "ladderFilter",
   "tb303Filter",
+  "papoulisFilter",
   "slewLimiter",
   "delayEffect",
+  "pingPongDelay",
   "reverbEffect",
   "pll",
   "helmholtzPitch",
@@ -111,8 +120,8 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "flowerChildEnvelopeFollower",
   "linearEnvelope",
   "pluckEnvelope",
-  "vactrolEnvelope",
-  "vactrolEnvelopeC4",
+  "vactrolEnvelopeSeries",
+  "vactrolEnvelopeCustom",
   "sandboxVisuals",
   "screenSpaceShader",
   "bloomGlow",
@@ -124,6 +133,7 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "visualOscilloscope",
   "traceDisplay",
   "dotOscilloscope",
+  "oscilloscopeBank",
   "valueOscilloscope",
   "numberReadout",
   "lineBurnOscilloscope",
@@ -135,6 +145,7 @@ const nodeGraphModuleStoreTypes = Object.freeze([
   "speakerProtection",
   "badvalMonitor",
   "textBox",
+  "animatedTextBox",
 ]);
 
 let nodeGraphNativeModuleEntries = Object.freeze([]);
@@ -405,9 +416,21 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   chordSequencer: {
     category: "Sequence",
-    description: "Placeholder for arranging chord progressions and voicing changes inside the graph.",
-    label: "ChordSequencer",
-    notes: ["placeholder", "progressions", "voicing"],
+    description: "Steps through a built-in diatonic chord progression on each Clock. Scale outputs the current chord as a 12-bit pitch-class mask (feed it straight into Pitch Quantizer), Root outputs the chord's root as 0.1V/Oct.",
+    label: "Chord Sequencer",
+    notes: ["chord progression", "digital signal", "scale mask output", "root output"],
+  },
+  lutCell: {
+    category: "Logic",
+    description: "An FPGA logic slice, modeled directly: a 4-input lookup table (A/B/C/D) feeding a clocked D flip-flop. Truth Table is a 16-bit digital signal -- bit i is the cell's output for input combination i. Out is the combinational result, Q is the registered result that only updates on a Clock rising edge. Unwired Clock and A free-run at 220 Hz so a bare cell demonstrates itself immediately -- wire either one for real to take over.",
+    label: "LUT Cell",
+    notes: ["FPGA logic slice", "lookup table", "flip-flop", "digital signal"],
+  },
+  metallicRatio: {
+    category: "Math",
+    description: "A tribute to Robin Schmidt's RS-MET library: RAPT::rsRatioGenerator::metallic() ported directly. Ratio = (Index + sqrt(Index^2 + 4)) / 2 -- the metallic mean family. Index 0 = unity, 1 = the golden ratio, 2 = silver, 3 = bronze. Useful as an oscillator frequency ratio or a feedback-delay length, per the original library's own doc comment.",
+    label: "Metallic Ratio",
+    notes: ["RS-MET tribute", "metallic mean", "golden ratio", "Robin Schmidt"],
   },
   chordMemory: {
     category: "Sequence",
@@ -444,6 +467,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "A proof-of-concept supersaw built on Robin Schmidt's pitch dithering technique (RobinSchmidt/RS-MET, rsPitchDitherOsc) -- see this repo's README for the full explanation. Instead of correcting or avoiding the aliasing edge, each voice dithers its own cycle length between 3 neighboring integer sample-counts so every individual cycle rendered is exactly periodic (alias-free), trading aliasing for a small amount of pitch-jitter noise. Stacks up to 9 independently-dithered, detuned voices (Detune spreads them symmetrically in cents around a centered anchor voice) and sums them into a classic wall-of-saws supersaw. Native C++/WASM.",
     label: "RobinSupersaw",
     notes: ["oscillator", "supersaw", "pitch dithering", "anti-aliasing", "native"],
+  },
+  hypersaw: {
+    category: "Oscillator",
+    description: "A proof-of-concept port of soundemote's own HypersawUnit/HypersawMaster (see docs/reference/Hypersaw.hpp) -- a bank of up to 32 bandlimited (PolyBLEP) sawtooths spread across the phase cycle. Each voice's phase is dispersed three ways: Spread (scales the voice's fixed even position i/N across the cycle), Random (a fixed per-voice random offset), and Drift (a slow, continuously wandering per-voice offset). Center voices sum to both channels; the rest alternate Left/Right. The display burns one vertical phosphor line per voice at its current phase position (0..1 across the width). Native C++/WASM.",
+    label: "Hypersaw",
+    notes: ["oscillator", "supersaw", "polyblep", "anti-aliasing", "native", "phosphor display"],
   },
   arpeggiator: {
     category: "Sequence",
@@ -592,6 +621,11 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Patch-local JavaScript signal processor with editable input and output ports.",
     notes: ["dynamic ports", "JavaScript body", "local patch code"],
   },
+  scriptBox: {
+    category: "Controllers",
+    description: "Data-plane JavaScript transform with editable input and output ports -- runs on whole values (arrays, strings, numbers), not per-sample audio.",
+    notes: ["dynamic ports", "data-plane script", "port script node"],
+  },
   graph: {
     category: "Visual",
     description: "Patch-local soemdsp-style graph object with curve nodes and a vertical cursor position.",
@@ -654,6 +688,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Resizable bias-output slider for manual control in the modular view and UI view.",
     label: "Value Slider",
     notes: ["bias output", "resizable widget", "manual control"],
+  },
+  impulseButton: {
+    category: "Controllers",
+    description: "Click to fire a single-sample impulse at the amplitude set by the adjacent slider (0 to 1). A manual, on-demand trigger for auditioning envelopes and other transient-driven modules.",
+    label: "Impulse Button",
+    notes: ["manual trigger", "one-sample pulse", "amplitude slider"],
   },
   rangeSlider: {
     category: "Controllers",
@@ -827,6 +867,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "Music Player",
     notes: ["music playback", "scrubbable", "phasor", "audio source"],
   },
+  phosphillator: {
+    category: "Generate",
+    description: "Draw a shape freehand with the mouse (smoothed live with a Papoulis lowpass) and it becomes a closed-loop X/Y drawing you can play back.",
+    label: "Phosphillator",
+    notes: ["freehand draw", "phosphor", "xy oscillator", "papoulis smoothing"],
+  },
   sampleLooper: {
     category: "Audio",
     description: "Patch-local gated sample loop playback with loop bounds, pitch control, and seam crossfade.",
@@ -837,6 +883,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     category: "Filter",
     description: "1-pole RC filter with LP, HP, and BP modes. Low Cut is the HP edge; High Cut is the LP edge. BP chains HP then LP.",
     notes: ["lowpass", "highpass", "bandpass", "1-pole"],
+  },
+  papoulisFilter: {
+    category: "Filter",
+    description: "3rd-order Papoulis (Optimum-L) lowpass: monotonic, ripple-free passband like Butterworth but with a faster roll-off for the same order.",
+    label: "Papoulis Filter",
+    notes: ["lowpass", "optimum-l", "legendre", "monotonic", "3-pole"],
   },
   cookbookFilter: {
     category: "Filter",
@@ -886,6 +938,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "Flower Child Filter",
     notes: ["self-oscillating", "4 modes", "feedback FM"],
   },
+  pulseExplosion: {
+    category: "Sequence",
+    description: "On a rising-edge trigger, schedules a burst of single-sample pulses distributed over Start/Center/End Time, concentrated toward Center by Time Spread (0 = tight, 1 = wide). Each pulse gets its own randomized amplitude between Low and High Amplitude.",
+    label: "Pulse Explosion",
+    notes: ["trigger burst", "skewed distribution", "randomized amplitude"],
+  },
   ladderFilter: {
     category: "Filter",
     description: "RSMET ladder filter using the gain-compensated getSample path with frequency, resonance, stage depth, and mode controls.",
@@ -908,6 +966,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "SOEMDSP-style modulated fractional delay with feedback, wet/dry mix, and diffuse mode. Native C++/WASM.",
     label: "Delay",
     notes: ["modulated delay", "fractional echo", "diffuse mode", "native"],
+  },
+  pingPongDelay: {
+    category: "Delay",
+    description: "Basic stereo ping-pong delay, tempo-synced to the patch transport as a free X/Y fraction of a whole note (with Normal/Dotted/Triplet), plus a millisecond offset as a modulation entry.",
+    label: "Ping Pong Delay",
+    notes: ["ping pong", "tempo sync", "X/Y division", "dotted/triplet"],
   },
   reverbEffect: {
     category: "Delay",
@@ -968,15 +1032,15 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "PluckEnvelope",
     notes: ["trigger input", "decay energy", "auto release", "native"],
   },
-  vactrolEnvelope: {
+  vactrolEnvelopeSeries: {
     category: "Envelope",
-    description: "Optical-style control shaper modeled on the PerkinElmer VTL5C3, the classic fast Buchla/Serge-style LPG vactrol. Feed it light and get its 2.5ms attack, 35ms release response. Native C++/WASM.",
-    notes: ["light input", "attack/release lag", "dark current", "native"],
+    description: "Optical-style control shaper with a 10-way Part switch selecting PerkinElmer VTL5C-series datasheet timing and resistance figures (VTL5C1 through VTL5C10), from the classic fast VTL5C3 to the ~40x-slower VTL5C4. Native C++/WASM.",
+    notes: ["light input", "part switch", "dark current", "native"],
   },
-  vactrolEnvelopeC4: {
+  vactrolEnvelopeCustom: {
     category: "Envelope",
-    description: "Optical-style control shaper modeled on the PerkinElmer VTL5C4, the well-known slow vactrol with a ~1.5s release -- roughly 40x longer than the VTL5C3. Shares its native module with VTL5C3. Native C++/WASM.",
-    notes: ["light input", "slow release", "dark current", "native"],
+    description: "Optical-style control shaper with the same attack/release/curve/sensitivity/light offset/dark current knobs as the VTL5C Series module, but not tied to a named real part -- roll your own hypothetical vactrol. Native C++/WASM.",
+    notes: ["light input", "custom vactrol", "dark current", "native"],
   },
   sandboxVisuals: {
     category: "Visual",
@@ -1034,6 +1098,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Placeholder for a clock-like oscilloscope that draws one efficient brightness dot from the current buffered value.",
     label: "0D Burn",
     notes: ["clock display", "single dot", "latest value"],
+  },
+  oscilloscopeBank: {
+    category: "Oscilloscope",
+    description: "A phase-vs-amplitude scope for any voice-bank source (Hypersaw today). Wire Phases/Amplitudes/Pans from a compatible node -- x is phase (0..1), y is amplitude (bipolar stem), color is pan (red = left, green = center, blue = right). Additive blending so overlapping voices brighten instead of overpainting; phosphor persistence so you see where each line has been, not just where it is now.",
+    label: "Oscilloscope Bank",
+    notes: ["voice bank scope", "phase vs amplitude", "pan color", "additive blend", "phosphor burn"],
   },
   valueOscilloscope: {
     category: "Oscilloscope",
@@ -1097,6 +1167,11 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     category: "Visual",
     description: "In-world label plate for prompts, lore, instructions, and electric annotations.",
     notes: ["annotation", "layout", "field notes"],
+  },
+  animatedTextBox: {
+    category: "Visual",
+    description: "Text Box with data-plane Title/Text inputs and a Text Out -- wire it to Script Box or another Animated Text Box instead of typing it by hand.",
+    notes: ["data-plane ports", "port scripts", "wired label"],
   },
 });
 
@@ -1196,6 +1271,7 @@ function normalizeNodeGraphNativeModuleEntry(entry = {}) {
   return Object.freeze({
     kind: String(entry.kind || ""),
     label: String(entry.label || name),
+    libUrl: String(entry.libUrl || ""),
     name,
     source: String(entry.source || ""),
     sourceUrl: String(entry.sourceUrl || ""),
@@ -1277,6 +1353,10 @@ function nodeGraphJsSourceEntryForType(type) {
 function nodeGraphCodeEntryForType(type) {
   return nodeGraphNativeModulesForType(type).find((entry) => entry?.sourceUrl) ||
     nodeGraphJsSourceEntryForType(type);
+}
+
+function nodeGraphLibEntryForType(type) {
+  return nodeGraphNativeModulesForType(type).find((entry) => entry?.libUrl) || null;
 }
 
 function nodeGraphModuleStoreEntries() {

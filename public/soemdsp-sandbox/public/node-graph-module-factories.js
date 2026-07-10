@@ -39,15 +39,11 @@ function createNodeGraphIoColumn(node, type, ports, io) {
     row.dataset.port = port;
     row.dataset.io = io;
     row.dataset.alias = nodeGraphLabel(node, port);
-    if (
-      port === "0.1V/Oct" ||
-      (type === "turingMachine" && port === "Scale" && io === "output") ||
-      (type === "pitchQuantizer" && port === "Scale" && io === "input")
-    ) {
-      // 0.1V/Oct pitch CV and the 12-bit pitch-class bitmask are this
-      // sandbox's "digital signal" types -- give their wire and port taps
-      // solid white (colors only, no shape/animation change) so they read
-      // as visually distinct from free-form analog CV wires.
+    if (port === "0.1V/Oct" || port === "Scale") {
+      // 0.1V/Oct pitch CV and any Scale bitmask are this sandbox's "digital
+      // signal" types, on any node -- give their wire and port taps solid
+      // white (colors only, no shape/animation change) so they read as
+      // visually distinct from free-form analog CV wires.
       row.dataset.digitalSignal = io;
     }
     const portLabel = nodeGraphPatchNodePortDisplayLabel(node, type, port, io);
@@ -239,11 +235,37 @@ function createNodeGraphSliderWidgetBody(node, type) {
   return body;
 }
 
+function createNodeGraphButtonWidgetBody(node, type) {
+  const definition = nodeGraphModuleDefinitions[type];
+  const body = document.createElement("div");
+  body.className = "node-button-widget-body";
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "node-button-widget-trigger";
+  button.textContent = "TRIGGER";
+  button.setAttribute("aria-label", `${nodeGraphNodeLabels[type] || "Button"} trigger`);
+  button.addEventListener("click", () => {
+    triggerNodeGraphImpulseButton(node);
+    button.classList.remove("pulsing");
+    void button.offsetWidth;
+    button.classList.add("pulsing");
+  });
+  body.append(button);
+
+  for (const parameter of definition?.parameters || []) {
+    const row = createNodeGraphParameter(node, type, parameter);
+    row.classList.add("node-button-widget-row");
+    body.append(row);
+  }
+  return body;
+}
+
 function createNodeGraphPatchCommandBody(node) {
   const body = document.createElement("div");
   body.className = "node-patch-command-body";
   body.dataset.node = node;
-  const patchNode = nodeGraphPatchNodeById(node);
+  const patchNode = nodeGraphPatchNode(node);
   const previous = patchNode?.type === "previousPatch";
   const label = document.createElement("strong");
   label.textContent = previous ? "PREVIOUS PATCH" : "NEXT PATCH";

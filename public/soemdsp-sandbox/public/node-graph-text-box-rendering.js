@@ -114,11 +114,60 @@ function handleNodeGraphTextBoxWheel(event) {
   }
 }
 
+// Title/Text data-input resolution -- returns null when the port isn't
+// wired (caller falls back to the typed value), or the resolved string
+// (raw wire value, optionally transformed by a port script stored at
+// `patchNode.portScripts[port]`) when it is. Port scripts are plain
+// JavaScript, see node-graph-port-script.js.
+function nodeGraphTextBoxResolvedTitle(patchNode) {
+  const raw = readNodeGraphDataInput(patchNode.id, "Title");
+  if (raw === undefined) {
+    return null;
+  }
+  return String(evaluateNodeGraphPortScript(patchNode.portScripts?.Title, raw) ?? "");
+}
+
+function nodeGraphTextBoxResolvedText(patchNode) {
+  const raw = readNodeGraphDataInput(patchNode.id, "Text");
+  if (raw === undefined) {
+    return null;
+  }
+  return String(evaluateNodeGraphPortScript(patchNode.portScripts?.Text, raw) ?? "");
+}
+
+// Every module's title is directly editable inline now (see
+// createNodeGraphModuleHeader / commitNodeGraphModuleTitleFromHeaderInput
+// in node-graph-module-header-rendering.js and node-graph-module-actions.js
+// -- ".node-header-title" is always an <input>, committing to node.alias).
+// Text Box layers one thing on top of that generic behavior: when the
+// Title data-input port is connected, the wire's resolved value overrides
+// whatever's typed and the field goes read-only.
+function syncNodeGraphTextBoxTitle(element, patchNode) {
+  const field = element.querySelector(".node-header-title");
+  if (!field) {
+    return;
+  }
+  const resolvedTitle = nodeGraphTextBoxResolvedTitle(patchNode);
+  field.readOnly = resolvedTitle !== null;
+  const displayValue = resolvedTitle !== null ? resolvedTitle : nodeGraphPatchNodeTitle(patchNode.id);
+  if (document.activeElement !== field && field.value !== displayValue) {
+    field.value = displayValue;
+  }
+}
+
 function syncNodeGraphTextBoxElement(element, patchNode) {
   if (!element || !patchNode) {
     return;
   }
+  syncNodeGraphTextBoxTitle(element, patchNode);
   const layout = normalizeNodeGraphTextBoxLayout(patchNode.layout);
+  const resolvedText = nodeGraphTextBoxResolvedText(patchNode);
+  if (resolvedText !== null) {
+    layout.text = resolvedText;
+  }
+  if (nodeGraphModuleDefinitions[patchNode.type]?.dataOutputs?.includes("Text Out")) {
+    writeNodeGraphDataOutput(patchNode.id, "Text Out", layout.text);
+  }
   const body = element.querySelector(".node-text-box-body");
   if (!body) {
     return;

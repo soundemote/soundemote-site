@@ -636,7 +636,7 @@ const nodeGraphModuleActionControlIds = [
   "nodeSceneTextBoxHorizontalAlignControls",
   "nodeSceneTextBoxVerticalAlignControls",
   "nodeSceneToggleModuleEnabled",
-  "nodeSceneOpenNativeCode",
+  "nodeSceneCodeGroup",
   "nodeSceneDeleteModule",
 ];
 
@@ -869,6 +869,16 @@ function configureNodeSceneContextMenu(mode) {
   const codeblockOutputs = document.getElementById("nodeSceneCodeblockOutputs");
   const codeblockSource = document.getElementById("nodeSceneCodeblockSource");
   const codeblockStatus = document.getElementById("nodeSceneCodeblockStatus");
+  const scriptBoxControls = document.getElementById("nodeSceneScriptBoxControls");
+  const scriptBoxInputs = document.getElementById("nodeSceneScriptBoxInputs");
+  const scriptBoxOutputs = document.getElementById("nodeSceneScriptBoxOutputs");
+  const scriptBoxSource = document.getElementById("nodeSceneScriptBoxSource");
+  const scriptBoxStatus = document.getElementById("nodeSceneScriptBoxStatus");
+  const textBoxPortScriptControls = document.getElementById("nodeSceneTextBoxPortScriptControls");
+  const textBoxTitleScript = document.getElementById("nodeSceneTextBoxTitleScript");
+  const textBoxTitleScriptStatus = document.getElementById("nodeSceneTextBoxTitleScriptStatus");
+  const textBoxTextScript = document.getElementById("nodeSceneTextBoxTextScript");
+  const textBoxTextScriptStatus = document.getElementById("nodeSceneTextBoxTextScriptStatus");
   const graphControls = document.getElementById("nodeSceneGraphControls");
   const graphCursorX = document.getElementById("nodeSceneGraphCursorX");
   const graphNodeIndex = document.getElementById("nodeSceneGraphNodeIndex");
@@ -882,7 +892,9 @@ function configureNodeSceneContextMenu(mode) {
   const graphRemoveNode = document.getElementById("nodeSceneGraphRemoveNode");
   const toggleButtonsButton = document.getElementById("nodeSceneToggleButtons");
   const toggleModuleEnabledButton = document.getElementById("nodeSceneToggleModuleEnabled");
+  const nativeCodeGroup = document.getElementById("nodeSceneCodeGroup");
   const nativeCodeButton = document.getElementById("nodeSceneOpenNativeCode");
+  const nativeLibButton = document.getElementById("nodeSceneOpenNativeLib");
   const toggleOscilloscopeButton = document.getElementById("nodeSceneToggleOscilloscope");
   const toggleInterfaceControlsButton = document.getElementById("nodeSceneToggleInterfaceControls");
   const toggleSlidersButton = document.getElementById("nodeSceneToggleSliders");
@@ -931,6 +943,10 @@ function configureNodeSceneContextMenu(mode) {
   const nativeCodeEntry =
     targetNode && typeof nodeGraphCodeEntryForType === "function"
       ? nodeGraphCodeEntryForType(targetNode.type)
+      : null;
+  const nativeLibEntry =
+    targetNode && typeof nodeGraphLibEntryForType === "function"
+      ? nodeGraphLibEntryForType(targetNode.type)
       : null;
   const selectedWire = wireMode ? nodeGraphWireFromSelection(nodeGraphMvp.selected) : null;
   const hasModuleActionTarget = Boolean(targetNode) || multiModuleMode;
@@ -1027,10 +1043,15 @@ function configureNodeSceneContextMenu(mode) {
   aliasControl.hidden = !moduleMode;
   textBoxTextControls.hidden = !(moduleMode && !multiModuleMode && targetSupportsTextBoxHeight);
   codeblockControls.hidden = !(moduleMode && !multiModuleMode && targetNode?.type === "codeblock");
+  scriptBoxControls.hidden = !(moduleMode && !multiModuleMode && targetNode?.type === "scriptBox");
+  textBoxPortScriptControls.hidden = !(moduleMode && !multiModuleMode && targetNode?.type === "animatedTextBox");
   graphControls.hidden = !(moduleMode && !multiModuleMode && targetIsGraphType);
   toggleModuleEnabledButton.hidden = !moduleMode || multiModuleMode;
-  if (nativeCodeButton) {
-    nativeCodeButton.hidden = !moduleMode || multiModuleMode || !nativeCodeEntry;
+  if (nativeCodeGroup) {
+    nativeCodeGroup.hidden = !moduleMode || multiModuleMode || !nativeCodeEntry;
+  }
+  if (nativeLibButton) {
+    nativeLibButton.hidden = !nativeLibEntry;
   }
   toggleButtonsButton.hidden = !moduleMode || multiModuleMode;
   toggleOscilloscopeButton.hidden = !(moduleMode && !multiModuleMode && targetSupportsDisplayHeight);
@@ -1149,10 +1170,17 @@ function configureNodeSceneContextMenu(mode) {
       : "Disable this module.";
     if (nativeCodeButton) {
       nativeCodeButton.disabled = !nativeCodeEntry;
-      nativeCodeButton.querySelector("span").textContent = "Code";
+      nativeCodeButton.querySelector("span").textContent = "SRC";
       nativeCodeButton.title = nativeCodeEntry
         ? `Open ${nativeCodeEntry.source || "source"}.`
         : "Source unavailable.";
+    }
+    if (nativeLibButton) {
+      nativeLibButton.disabled = !nativeLibEntry;
+      nativeLibButton.querySelector("span").textContent = "LIB";
+      nativeLibButton.title = nativeLibEntry
+        ? `Open the reference library this module is based on (${nativeLibEntry.libUrl}).`
+        : "No third-party reference library for this module.";
     }
     toggleButtonsButton.disabled = !targetNode;
     toggleButtonsButton.querySelector("span").textContent = buttonsHidden ? "Show buttons" : "Hide buttons";
@@ -1229,6 +1257,36 @@ function configureNodeSceneContextMenu(mode) {
       codeblockOutputs.value = "";
       codeblockSource.value = "";
       codeblockStatus.textContent = "";
+    }
+    if (targetNode?.type === "scriptBox") {
+      const scriptBox = normalizeNodeGraphScriptBox(targetNode.scriptBox);
+      scriptBoxInputs.value = scriptBox.inputs.join(", ");
+      scriptBoxOutputs.value = scriptBox.outputs.join(", ");
+      scriptBoxSource.value = scriptBox.code;
+      const status = nodeGraphScriptBoxCompileStatus(scriptBox);
+      scriptBoxStatus.textContent = status.ok ? "code ok" : `compile error: ${status.message}`;
+    } else {
+      scriptBoxInputs.value = "";
+      scriptBoxOutputs.value = "";
+      scriptBoxSource.value = "";
+      scriptBoxStatus.textContent = "";
+    }
+    if (targetNode?.type === "animatedTextBox") {
+      const titleScript = targetNode.portScripts?.Title || "";
+      const textScript = targetNode.portScripts?.Text || "";
+      textBoxTitleScript.value = titleScript;
+      textBoxTextScript.value = textScript;
+      textBoxTitleScriptStatus.textContent = titleScript.trim()
+        ? (compileNodeGraphPortScript(titleScript) ? "code ok" : "compile error")
+        : "";
+      textBoxTextScriptStatus.textContent = textScript.trim()
+        ? (compileNodeGraphPortScript(textScript) ? "code ok" : "compile error")
+        : "";
+    } else {
+      textBoxTitleScript.value = "";
+      textBoxTextScript.value = "";
+      textBoxTitleScriptStatus.textContent = "";
+      textBoxTextScriptStatus.textContent = "";
     }
     if (targetIsGraphType) {
       syncNodeGraphGraphControls(nodeGraphGraphForNode(targetNode));
@@ -1307,6 +1365,14 @@ function configureNodeSceneContextMenu(mode) {
     codeblockOutputs.value = "";
     codeblockSource.value = "";
     codeblockStatus.textContent = "";
+    scriptBoxInputs.value = "";
+    scriptBoxOutputs.value = "";
+    scriptBoxSource.value = "";
+    scriptBoxStatus.textContent = "";
+    textBoxTitleScript.value = "";
+    textBoxTextScript.value = "";
+    textBoxTitleScriptStatus.textContent = "";
+    textBoxTextScriptStatus.textContent = "";
     graphCursorX.value = "";
     graphNodeIndex.replaceChildren();
     graphNodeList.replaceChildren();
@@ -1357,6 +1423,14 @@ function configureNodeSceneContextMenu(mode) {
     codeblockOutputs.value = "";
     codeblockSource.value = "";
     codeblockStatus.textContent = "";
+    scriptBoxInputs.value = "";
+    scriptBoxOutputs.value = "";
+    scriptBoxSource.value = "";
+    scriptBoxStatus.textContent = "";
+    textBoxTitleScript.value = "";
+    textBoxTextScript.value = "";
+    textBoxTitleScriptStatus.textContent = "";
+    textBoxTextScriptStatus.textContent = "";
     graphCursorX.value = "";
     graphNodeIndex.replaceChildren();
     graphNodeList.replaceChildren();
@@ -1430,17 +1504,36 @@ function openNodeScopeContextMenu(event) {
   return true;
 }
 
+const nodeGraphWorkspaceInteractiveDialogSelector =
+  "input, textarea, select, option, [contenteditable='true'], " +
+  "#nodeSceneContextMenu, #nodeParameterMetadataPopover, #nodeGlobalScopeMenu, " +
+  "#nodeModuleActionsWindow, #nodeShaderScriptDialog, #nodeCanvasScriptDialog, #nodeSavedPatchesWindow";
+const nodeGraphWorkspaceOccupiedElementSelector =
+  ".node-wire-hit-path, .node-wire-path, .dsp-node, .node-port, .node-param-port, .node-slider-readout";
+
+// Shared by the right-click scene menu and double-click-to-spawn: true only when
+// the event lands on truly empty canvas, not the toolbar, a dialog/input, a wire,
+// a node, or a port/readout.
+function nodeGraphEventTargetIsEmptyWorkspaceArea(event) {
+  if (event.target.closest?.(".node-view-toolbar")) {
+    return false;
+  }
+  if (event.target.closest?.(nodeGraphWorkspaceInteractiveDialogSelector)) {
+    return false;
+  }
+  if (event.target.closest?.(nodeGraphWorkspaceOccupiedElementSelector)) {
+    return false;
+  }
+  return true;
+}
+
 function openNodeSceneContextMenu(event) {
   if (event.target.closest?.(".node-view-toolbar")) {
     event.preventDefault();
     event.stopPropagation();
     return;
   }
-  if (event.target.closest?.(
-    "input, textarea, select, option, [contenteditable='true'], " +
-    "#nodeSceneContextMenu, #nodeParameterMetadataPopover, #nodeGlobalScopeMenu, " +
-    "#nodeModuleActionsWindow, #nodeShaderScriptDialog, #nodeCanvasScriptDialog, #nodeSavedPatchesWindow",
-  )) {
+  if (event.target.closest?.(nodeGraphWorkspaceInteractiveDialogSelector)) {
     return;
   }
   if (openNodeScopeContextMenu(event)) {

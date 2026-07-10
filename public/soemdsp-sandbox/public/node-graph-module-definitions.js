@@ -5,8 +5,10 @@ const nodeGraphNodeLabels = Object.freeze({
   graph2: "Graph 2",
   groupInput: "Group Input",
   groupOutput: "Group Output",
+  animatedTextBox: "Animated Text Box",
   moduleGroup: "Module Group",
   nextPatch: "Next Patch",
+  scriptBox: "Script Box",
   previousPatch: "Previous Patch",
   osc: "Osc",
   polyBlep: "PolyBLEP",
@@ -45,6 +47,10 @@ const nodeGraphNodeLabels = Object.freeze({
   surgeOscillator: "Surge Oscillator",
   dsfOscillator: "DSF Oscillator",
   robinSupersaw: "RobinSupersaw",
+  hypersaw: "Hypersaw",
+  chordSequencer: "Chord Sequencer",
+  lutCell: "LUT Cell",
+  metallicRatio: "Metallic Ratio",
   noiseGenerator: "Noise Generator",
   randomWalk: "Random Walk",
   fractalBrownianNoise: "Fractal Brownian Noise",
@@ -64,9 +70,13 @@ const nodeGraphNodeLabels = Object.freeze({
   chaoticPhaseLockingFilter: "Chaotic Phase Locking Filter",
   resonatorFilter: "Resonator Filter",
   humanFilter: "Human Filter",
+  pulseExplosion: "Pulse Explosion",
   ladderFilter: "Ladder Filter",
   tb303Filter: "TB-303 Filter",
+  papoulisFilter: "Papoulis Filter",
+  phosphillator: "Phosphillator",
   delayEffect: "Delay",
+  pingPongDelay: "Ping Pong Delay",
   reverbEffect: "Sabrina Reverb",
   pll: "PLL",
   helmholtzPitch: "Pitch Detector",
@@ -84,8 +94,9 @@ const nodeGraphNodeLabels = Object.freeze({
   flowerChildEnvelopeFollower: "FlowerChild Envelope Follower",
   linearEnvelope: "Linear Envelope",
   pluckEnvelope: "Pluck Envelope",
-  vactrolEnvelope: "VTL5C3",
-  vactrolEnvelopeC4: "VTL5C4",
+  vactrolEnvelopeSeries: "VTL5C Series",
+  vactrolEnvelopeCustom: "Roll Your Own Vactrol",
+  impulseButton: "Impulse Button",
   sandboxVisuals: "Screen Visuals",
   screenSpaceShader: "Screen Space Shader",
   bloomGlow: "Bloom & Glow",
@@ -97,6 +108,7 @@ const nodeGraphNodeLabels = Object.freeze({
   visualOscilloscope: "Display",
   traceDisplay: "1D Trace",
   dotOscilloscope: "0D Burn",
+  oscilloscopeBank: "Oscilloscope Bank",
   valueOscilloscope: "0D Value",
   numberReadout: "Number Readout",
   lineBurnOscilloscope: "1D Burn",
@@ -116,6 +128,52 @@ const nodeGraphTb303FilterModes = Object.freeze([
   "HP 6", "HP 12", "HP 18", "HP 24",
   "BP 12/12", "BP 6/18", "BP 18/6", "BP 6/12", "BP 12/6", "BP 6/6",
 ]);
+
+// The PerkinElmer VTL5C-series single-cell parts we have solid datasheet
+// figures for. attack/release are seconds; litKohm/darkKohm are the
+// R_ON@40mA / R_OFF(dark, min) figures used by vactrolEnvelopeSeries's
+// darkCurrent knob resistance readout. Index order matches that module's
+// "Part" choice parameter.
+//
+// Easter egg: VTL5C5 below is NOT a real PerkinElmer part -- there is no
+// C5 in the real catalog (the family table jumps C4 -> C6). As the story
+// goes: a dual-cell "medium" vactrol slotted between the slow C4 and the
+// fast, high-dark-resistance C6, meant to split the difference with a
+// ~200ms release. Reportedly reached pre-production samples in the early
+// '80s before PerkinElmer's optoelectronics division decided the gap
+// wasn't worth its own SKU, and the part number was quietly retired
+// rather than reassigned -- which is supposedly why old synth-DIY forum
+// posts occasionally mention "the mythical C5," usually turning out to be
+// a mislabeled C4. None of that is real. It's a hallucinated bedtime
+// story for a photoresistor, given its own row in the switch because it
+// was funnier to build than to explain. The numbers below just
+// interpolate between VTL5C4 and VTL5C6.
+const nodeGraphVactrolSeriesSpecs = Object.freeze([
+  { attack: 0.0025, darkKohm: 50000, label: "VTL5C1", litKohm: 0.2, release: 0.035 },
+  { attack: 0.0035, darkKohm: 1000, label: "VTL5C2", litKohm: 0.2, release: 0.5 },
+  { attack: 0.0025, darkKohm: 10000, label: "VTL5C3", litKohm: 0.0015, release: 0.035 },
+  { attack: 0.006, darkKohm: 400, label: "VTL5C4", litKohm: 0.075, release: 1.5 },
+  { attack: 0.005, darkKohm: 6000, label: "VTL5C5", litKohm: 0.4, release: 0.2 },
+  { attack: 0.0035, darkKohm: 100000, label: "VTL5C6", litKohm: 2, release: 0.05 },
+  { attack: 0.006, darkKohm: 1000, label: "VTL5C7", litKohm: 1.1, release: 1.0 },
+  { attack: 0.004, darkKohm: 10000, label: "VTL5C8", litKohm: 1, release: 0.06 },
+  { attack: 0.004, darkKohm: 50000, label: "VTL5C9", litKohm: 0.63, release: 0.05 },
+  { attack: 0.001, darkKohm: 400, label: "VTL5C10", litKohm: 0.4, release: 1.5 },
+]);
+
+function nodeGraphVactrolSeriesSpec(partIndex) {
+  const index = Math.round(Number(partIndex));
+  return nodeGraphVactrolSeriesSpecs[index] || nodeGraphVactrolSeriesSpecs[0];
+}
+
+// Reads another parameter's current live value on the same node -- used by
+// vactrolEnvelopeSeries's darkCurrent displayTransform so the resistance
+// readout reflects whichever "Part" is currently selected.
+function nodeGraphParameterSiblingValue(slider, key) {
+  const nodeId = slider?.closest?.(".dsp-node")?.dataset?.node;
+  const patchNode = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  return patchNode?.params?.[key];
+}
 
 const nodeGraphModuleDefinitions = Object.freeze({
   audioInput: {
@@ -146,6 +204,9 @@ const nodeGraphModuleDefinitions = Object.freeze({
   codeblock: {
     inputs: ["In1"],
     outputs: ["Out1"],
+    parameters: [],
+  },
+  scriptBox: {
     parameters: [],
   },
   graph: {
@@ -522,17 +583,12 @@ const nodeGraphModuleDefinitions = Object.freeze({
     outputs: ["Sine", "Cosine", "Pi", "Noise Below", "Noise Above"],
     parameters: [
       {
-        choices: ["Wavetable Emulator", "Fast Sin", "Standard", "Lo-Fi"],
-        defaultValue: "1",
-        displayChoices: true,
-        divideChoicesVisibly: true,
+        defaultValue: "12",
         key: "profile",
-        kind: "waveform",
         label: "Profile",
-        linearSmoothing: false,
-        max: "3",
-        mid: "1",
-        min: "0",
+        max: "24",
+        mid: "14",
+        min: "4",
         step: "1",
       },
       {
@@ -1241,6 +1297,61 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { key: "level", label: "Amplitude", defaultValue: "1", min: "0", mid: "0.5", max: "1", step: "0.01" },
     ],
   },
+  hypersaw: {
+    displayType: "hypersawBurn",
+    displayModes: [
+      { key: "hypersawBurn", renderer: "hypersawBurn", source: { value: "Left" } },
+    ],
+    displaySignals: [
+      { key: "Left", kind: "scalar" },
+    ],
+    inputs: ["Reset", "0.1V/Oct"],
+    outputs: ["Left", "Right"],
+    dataOutputs: ["Phases", "Amplitudes", "Pans"],
+    parameters: [
+      { key: "voices", label: "Num Sawtooths", defaultValue: "8", min: "1", mid: "8", max: "32", step: "1" },
+      { key: "phase", label: "Phase", kind: "phase", defaultValue: "0", min: "0", mid: "0.5", max: "1", step: "0.01", unit: "cycle", wraparound: true },
+      { key: "frequency", label: "Frequency", kind: "frequency", defaultValue: "100", min: "0", mid: "220", max: "20000", step: "any", unit: "Hz" },
+      { key: "spread", label: "Spread", defaultValue: "1", min: "0", mid: "0.5", max: "1", step: "0.01" },
+      { key: "random", label: "Random", defaultValue: "0.15", min: "0", mid: "0.5", max: "1", step: "0.01" },
+      { key: "drift", label: "Drift", defaultValue: "0.1", min: "0", mid: "0.5", max: "1", step: "0.01" },
+      { key: "level", label: "Amplitude", defaultValue: "0.35", min: "0", mid: "0.5", max: "1", step: "0.01" },
+    ],
+  },
+  chordSequencer: {
+    inputs: ["Clock", "Reset"],
+    outputs: ["Scale", "Root", "Gate"],
+    parameters: [
+      {
+        choices: ["I-V-vi-IV", "I-IV-V-I", "ii-V-I", "vi-IV-I-V", "I-vi-IV-V", "I-vi-ii-V"],
+        defaultValue: "0",
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        key: "progression",
+        label: "Progression",
+        linearSmoothing: false,
+        max: "5",
+        mid: "2.5",
+        min: "0",
+        nonlinearSlider: false,
+        step: "1",
+      },
+      { key: "level", label: "Level", defaultValue: "1", min: "0", mid: "0.5", max: "1", step: "0.01" },
+    ],
+  },
+  lutCell: {
+    inputs: ["A", "B", "C", "D", "Clock"],
+    outputs: ["Out", "Q"],
+    parameters: [
+      { key: "truthTable", label: "Truth Table", defaultValue: "27030", min: "0", mid: "32767.5", max: "65535", step: "1" },
+    ],
+  },
+  metallicRatio: {
+    outputs: ["Ratio"],
+    parameters: [
+      { key: "index", label: "Index", defaultValue: "1", min: "0", mid: "4", max: "8", step: "any" },
+    ],
+  },
   noiseGenerator: {
     outputs: ["Left Out", "Right Out"],
     parameters: [
@@ -1705,8 +1816,12 @@ const nodeGraphModuleDefinitions = Object.freeze({
     parameters: [],
   },
   gain: {
-    inputs: ["In"],
-    outputs: ["Out"],
+    inputAliases: { Mono: "In" },
+    inputLabels: { In: "Mono" },
+    inputs: ["In", "Left", "Right"],
+    outputAliases: { Mono: "Out" },
+    outputLabels: { Out: "Mono" },
+    outputs: ["Out", "Left", "Right"],
     parameters: [
       {
         defaultValue: "1",
@@ -1721,8 +1836,12 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   bias: {
-    inputs: ["In"],
-    outputs: ["Out"],
+    inputAliases: { Mono: "In" },
+    inputLabels: { In: "Mono" },
+    inputs: ["In", "Left", "Right"],
+    outputAliases: { Mono: "Out" },
+    outputLabels: { Out: "Mono" },
+    outputs: ["Out", "Left", "Right"],
     parameters: [
       {
         defaultValue: "0",
@@ -1737,8 +1856,12 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   softClipper: {
-    inputs: ["In"],
-    outputs: ["Out"],
+    inputAliases: { Mono: "In" },
+    inputLabels: { In: "Mono" },
+    inputs: ["In", "Left", "Right"],
+    outputAliases: { Mono: "Out" },
+    outputLabels: { Out: "Mono" },
+    outputs: ["Out", "Left", "Right"],
     parameters: [
       {
         defaultValue: "0",
@@ -1820,9 +1943,13 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   passiveFilter: {
-    inputs: ["In"],
+    inputAliases: { Mono: "In" },
+    inputLabels: { In: "Mono" },
+    inputs: ["In", "Left", "Right"],
     layout: "filterCurve",
-    outputs: ["Out"],
+    outputAliases: { Mono: "Out" },
+    outputLabels: { Out: "Mono" },
+    outputs: ["Out", "Left", "Right"],
     parameters: [
       {
         choices: ["LP", "BP", "HP"],
@@ -1863,10 +1990,33 @@ const nodeGraphModuleDefinitions = Object.freeze({
       },
     ],
   },
-  cookbookFilter: {
+  papoulisFilter: {
     inputs: ["In"],
     layout: "filterCurve",
     outputs: ["Out"],
+    parameters: [
+      {
+        defaultValue: "1000",
+        key: "cutoff",
+        kind: "frequency",
+        label: "Cutoff",
+        max: "20000",
+        maxDigits: 5,
+        mid: "1000",
+        min: "0.1",
+        step: "any",
+        unit: "Hz",
+      },
+    ],
+  },
+  cookbookFilter: {
+    inputAliases: { Mono: "In" },
+    inputLabels: { In: "Mono" },
+    inputs: ["In", "Left", "Right"],
+    layout: "filterCurve",
+    outputAliases: { Mono: "Out" },
+    outputLabels: { Out: "Mono" },
+    outputs: ["Out", "Left", "Right"],
     parameters: [
       {
         choices: nodeGraphCookbookFilterModes,
@@ -1929,8 +2079,12 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   rsmetFilter: {
-    inputs: ["In"],
-    outputs: ["Out"],
+    inputAliases: { Mono: "In" },
+    inputLabels: { In: "Mono" },
+    inputs: ["In", "Left", "Right"],
+    outputAliases: { Mono: "Out" },
+    outputLabels: { Out: "Mono" },
+    outputs: ["Out", "Left", "Right"],
     parameters: [
       {
         choices: ["LP6", "LP12", "LP18", "LP24", "HP6", "HP12", "HP18", "HP24", "BP6", "BP12"],
@@ -1952,8 +2106,12 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   yellowjacketFilter: {
-    inputs: ["In"],
-    outputs: ["Out"],
+    inputAliases: { Mono: "In" },
+    inputLabels: { In: "Mono" },
+    inputs: ["In", "Left", "Right"],
+    outputAliases: { Mono: "Out" },
+    outputLabels: { Out: "Mono" },
+    outputs: ["Out", "Left", "Right"],
     parameters: [
       { defaultValue: "0.5", key: "frequency", label: "Frequency", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any" },
       { defaultValue: "0.2", key: "resonance", label: "Resonance", max: "1", mid: "0.2", min: "0", nonlinearSlider: false, step: "any" },
@@ -1961,8 +2119,12 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   superloveFilter: {
-    inputs: ["In"],
-    outputs: ["Out"],
+    inputAliases: { Mono: "In" },
+    inputLabels: { In: "Mono" },
+    inputs: ["In", "Left", "Right"],
+    outputAliases: { Mono: "Out" },
+    outputLabels: { Out: "Mono" },
+    outputs: ["Out", "Left", "Right"],
     parameters: [
       {
         choices: ["LP18", "LP24", "HP6", "BP6"],
@@ -1984,8 +2146,12 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   chaoticPhaseLockingFilter: {
-    inputs: ["In"],
-    outputs: ["Out"],
+    inputAliases: { Mono: "In" },
+    inputLabels: { In: "Mono" },
+    inputs: ["In", "Left", "Right"],
+    outputAliases: { Mono: "Out" },
+    outputLabels: { Out: "Mono" },
+    outputs: ["Out", "Left", "Right"],
     parameters: [
       { defaultValue: "0.5", key: "frequency", label: "Frequency", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any" },
       { defaultValue: "0.2", key: "resonance", label: "Resonance", max: "1", mid: "0.2", min: "0", nonlinearSlider: false, step: "any" },
@@ -1993,8 +2159,12 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   resonatorFilter: {
-    inputs: ["In"],
-    outputs: ["Out"],
+    inputAliases: { Mono: "In" },
+    inputLabels: { In: "Mono" },
+    inputs: ["In", "Left", "Right"],
+    outputAliases: { Mono: "Out" },
+    outputLabels: { Out: "Mono" },
+    outputs: ["Out", "Left", "Right"],
     parameters: [
       {
         choices: ["Sinusoid", "Triangle", "Sawtooth"],
@@ -2016,8 +2186,12 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   humanFilter: {
-    inputs: ["In"],
-    outputs: ["Out"],
+    inputAliases: { Mono: "In" },
+    inputLabels: { In: "Mono" },
+    inputs: ["In", "Left", "Right"],
+    outputAliases: { Mono: "Out" },
+    outputLabels: { Out: "Mono" },
+    outputs: ["Out", "Left", "Right"],
     parameters: [
       {
         choices: ["BP6", "LP6", "LP12"],
@@ -2038,9 +2212,28 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { defaultValue: "0", key: "chaos", label: "Chaos", max: "1", mid: "0.1", min: "0", nonlinearSlider: false, step: "any" },
     ],
   },
+  pulseExplosion: {
+    inputs: ["Trigger"],
+    outputs: ["Out", "Curve"],
+    layout: "pulseCurve",
+    parameters: [
+      { defaultValue: "0", key: "startTime", label: "Start Time", max: "10", mid: "1", min: "0", nonlinearSlider: false, step: "any", unit: "s" },
+      { defaultValue: "0.5", key: "centerTime", label: "Center Time", max: "10", mid: "1", min: "0", nonlinearSlider: false, step: "any", unit: "s" },
+      { defaultValue: "1", key: "endTime", label: "End Time", max: "10", mid: "1", min: "0", nonlinearSlider: false, step: "any", unit: "s" },
+      { defaultValue: "0.3", key: "timeSpread", label: "Time Spread", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any" },
+      { defaultValue: "20", key: "numberOfPulses", label: "Number of Pulses", max: "128", mid: "20", min: "1", nonlinearSlider: false, step: "1" },
+      { defaultValue: "0.3", key: "lowAmplitude", label: "Low Amplitude", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any" },
+      { defaultValue: "1", key: "highAmplitude", label: "High Amplitude", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any" },
+      { defaultValue: "0", key: "seed", label: "Seed", max: "999999", mid: "1", min: "0", nonlinearSlider: false, step: "1" },
+    ],
+  },
   flowerChildFilter: {
-    inputs: ["In"],
-    outputs: ["Out"],
+    inputAliases: { Mono: "In" },
+    inputLabels: { In: "Mono" },
+    inputs: ["In", "Left", "Right"],
+    outputAliases: { Mono: "Out" },
+    outputLabels: { Out: "Mono" },
+    outputs: ["Out", "Left", "Right"],
     parameters: [
       {
         choices: ["Clean", "Dirty", "Rev3", "Downsampled"],
@@ -2089,9 +2282,13 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   ladderFilter: {
-    inputs: ["In"],
+    inputAliases: { Mono: "In" },
+    inputLabels: { In: "Mono" },
+    inputs: ["In", "Left", "Right"],
     layout: "filterCurve",
-    outputs: ["Out"],
+    outputAliases: { Mono: "Out" },
+    outputLabels: { Out: "Mono" },
+    outputs: ["Out", "Left", "Right"],
     parameters: [
       {
         choices: nodeGraphLadderFilterModes,
@@ -2143,9 +2340,13 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   tb303Filter: {
-    inputs: ["In"],
+    inputAliases: { Mono: "In" },
+    inputLabels: { In: "Mono" },
+    inputs: ["In", "Left", "Right"],
     layout: "filterCurve",
-    outputs: ["Out"],
+    outputAliases: { Mono: "Out" },
+    outputLabels: { Out: "Mono" },
+    outputs: ["Out", "Left", "Right"],
     parameters: [
       {
         choices: nodeGraphTb303FilterModes,
@@ -2201,8 +2402,12 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   delayEffect: {
-    inputs: ["In"],
-    outputs: ["Out", "Wet"],
+    inputAliases: { Mono: "In" },
+    inputLabels: { In: "Mono" },
+    inputs: ["In", "Left", "Right"],
+    outputAliases: { Mono: "Out" },
+    outputLabels: { Out: "Mono" },
+    outputs: ["Out", "Left", "Right", "Wet"],
     parameters: [
       { defaultValue: "0.18", key: "time", kind: "time", label: "Time", max: "4", maxDigits: 5, mid: "0.18", min: "0.001", step: "any", unit: "s" },
       { defaultValue: "0.25", key: "feedback", label: "Feedback", max: "0.95", mid: "0.25", min: "0", nonlinearSlider: false, step: "any" },
@@ -2212,6 +2417,21 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { defaultValue: "0.1", key: "modRate", kind: "frequency", label: "Mod Rate", max: "90", maxDigits: 5, mid: "0.1", min: "0", step: "any", unit: "Hz" },
       { defaultValue: "0", key: "modVariation", label: "Variation", max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "any" },
       { choices: ["Delay", "Diffuse"], defaultValue: "0", displayChoices: true, divideChoicesVisibly: true, key: "mode", label: "Mode", linearSmoothing: false, max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "1" },
+    ],
+  },
+  pingPongDelay: {
+    inputAliases: { Mono: "In" },
+    inputLabels: { In: "Mono" },
+    inputs: ["In", "Left", "Right"],
+    outputs: ["Left", "Right"],
+    parameters: [
+      { control: "number", defaultValue: "1", key: "timeNumerator", label: "X", linearSmoothing: false, max: "16", maxDigits: 0, mid: "1", min: "0", nonlinearSlider: false, step: "1", tooltip: "Numerator of the tempo-synced time fraction (X/Y of a whole note). Never clamped -- 0 or negative means no time, and this can be pushed past its slider range by automation/modulation." },
+      { control: "number", defaultValue: "4", key: "timeDenominator", label: "Y", linearSmoothing: false, max: "16", maxDigits: 0, mid: "4", min: "0", nonlinearSlider: false, step: "1", tooltip: "Denominator of the tempo-synced time fraction. X/0 is treated as X/1 for the actual computed time (denominator floored to 1 so it's never a divide-by-zero), but the Y value itself is never rejected or clamped." },
+      { choices: ["Normal", "Dotted", "Triplet"], defaultValue: "0", displayChoices: true, divideChoicesVisibly: true, key: "timingMode", label: "Sync", linearSmoothing: false, max: "2", mid: "0", min: "0", nonlinearSlider: false, step: "1", tooltip: "Normal = X/Y as written. Dotted = 1.5x that duration. Triplet = 2/3 that duration (three fit in the space of two normal notes)." },
+      { defaultValue: "0", key: "offsetMs", kind: "time", label: "Offset", max: "500", maxDigits: 5, mid: "0", min: "-500", nonlinearSlider: false, step: "any", unit: "ms", tooltip: "Added on top of the tempo-synced time in milliseconds. This is the modulation entry point -- patch an LFO/envelope here to push the ping-pong ahead of or behind the synced beat." },
+      { defaultValue: "0.35", key: "feedback", label: "Feedback", max: "0.95", mid: "0.35", min: "0", nonlinearSlider: false, step: "any" },
+      { defaultValue: "0.35", key: "mix", label: "Mix", max: "1", mid: "0.35", min: "0", nonlinearSlider: false, step: "any" },
+      { defaultValue: "1", key: "level", label: "Level", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any" },
     ],
   },
   reverbEffect: {
@@ -2264,6 +2484,11 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { key: "Pitch View", kind: "scalar" },
     ],
     inputs: ["In"],
+    // Like badvalMonitor: an analysis/monitor tool should keep running and
+    // updating its outputs as soon as something is wired into "In", even if
+    // nothing downstream routes to Output -- that's the whole point of a
+    // meter you read directly off the node.
+    monitorSink: true,
     outputs: ["Frequency", "Fidelity"],
     parameters: [
       {
@@ -2289,8 +2514,12 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   slewLimiter: {
-    inputs: ["In"],
-    outputs: ["Out"],
+    inputAliases: { Mono: "In" },
+    inputLabels: { In: "Mono" },
+    inputs: ["In", "Left", "Right"],
+    outputAliases: { Mono: "Out" },
+    outputLabels: { Out: "Mono" },
+    outputs: ["Out", "Left", "Right"],
     parameters: [
       {
         defaultValue: "0.05",
@@ -2319,8 +2548,12 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   sampleHold: {
-    inputs: ["In", "Trigger"],
-    outputs: ["Out"],
+    inputAliases: { Mono: "In" },
+    inputLabels: { In: "Mono" },
+    inputs: ["In", "Left", "Right", "Trigger"],
+    outputAliases: { Mono: "Out" },
+    outputLabels: { Out: "Mono" },
+    outputs: ["Out", "Left", "Right"],
     parameters: [
       {
         defaultValue: "0",
@@ -2412,8 +2645,18 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { choices: ["Forward", "One Shot"], defaultValue: "0", displayChoices: true, divideChoicesVisibly: true, key: "mode", label: "Mode", linearSmoothing: false, max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "1" },
     ],
   },
+  phosphillator: {
+    layout: "phosphillatorDraw",
+    inputs: ["0.1V/Oct", "Reset"],
+    outputs: ["X", "Y"],
+    parameters: [
+      { defaultValue: "2", key: "frequency", kind: "frequency", label: "Frequency", max: "2000", maxDigits: 5, mid: "2", min: "0", step: "any", unit: "Hz" },
+      { defaultValue: "0", key: "phase", kind: "phase", label: "Phase", max: "1", mid: "0.5", min: "0", step: "0.01", unit: "cycle", wraparound: true },
+      { defaultValue: "0.5", key: "smoothing", label: "Smoothing", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any" },
+    ],
+  },
   audioPlayer: {
-    displayType: "trace",
+    layout: "phosphorWaveform",
     inputs: ["Reset", "Speed", "Phase"],
     outputs: ["Mono", "Left", "Right", "Phase", "Trigger"],
     parameters: [
@@ -2581,20 +2824,61 @@ const nodeGraphModuleDefinitions = Object.freeze({
   // physics (photoconductive gamma, illuminance, dark resistance) so the numbers on
   // screen mean something to a real vactrol datasheet reader. Reference assumptions:
   // normalized Light input 1.0 == 1000 lux (bright close-range LED, the usual vactrol
-  // drive scenario); dark/lit resistance and attack/release defaults are taken directly
-  // from the PerkinElmer VTL5C-series datasheets for each named part below. VTL5C3 is
-  // the classic "fast" Buchla/Serge-style LPG vactrol; VTL5C4 is the well-known "slow"
-  // alternative with a ~40x longer release.
-  vactrolEnvelope: {
+  // drive scenario).
+  vactrolEnvelopeSeries: {
     inputs: ["Light"],
     outputs: ["Env"],
     parameters: [
       {
-        defaultValue: "0.0025", key: "attack", kind: "time", label: "Attack", max: "2", maxDigits: 5, mid: "0.0025", min: "0", step: "any", unit: "s",
+        choices: nodeGraphVactrolSeriesSpecs.map((spec) => spec.label),
+        defaultValue: "2",
+        displayChoices: true,
+        key: "part",
+        label: "Part",
+        max: String(nodeGraphVactrolSeriesSpecs.length - 1),
+        mid: "2",
+        min: "0",
+        nonlinearSlider: false,
+        step: "1",
+        tooltip: "Selects which real VTL5C-series datasheet timing/resistance figures drive this envelope.",
+      },
+      {
+        defaultValue: "1", key: "curve", label: "Curve", max: "8", maxDigits: 5, mid: "1", min: "0.001", step: "any",
+        displayTransform: (value) => ({ maxDigits: 3, unit: "γ (LDR gamma)", value }),
+      },
+      {
+        defaultValue: "1", key: "sensitivity", label: "Sensitivity", max: "4", maxDigits: 5, mid: "1", min: "0", nonlinearSlider: false, step: "any",
+        displayTransform: (value) => ({ maxDigits: 0, unit: "lux full-drive", value: 1000 / Math.max(value, 0.001) }),
+      },
+      {
+        defaultValue: "0", key: "lightOffset", label: "Light Offset", max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "any",
+        displayTransform: (value) => ({ maxDigits: 0, unit: "lux bias", value: value * 1000 }),
+      },
+      {
+        defaultValue: "0", key: "darkCurrent", label: "Dark Current", max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "any",
+        displayTransform: (value, slider) => {
+          const spec = nodeGraphVactrolSeriesSpec(nodeGraphParameterSiblingValue(slider, "part"));
+          const leak = Math.max(0, Math.min(1, value));
+          return { maxDigits: 1, unit: "kΩ dark R", value: spec.litKohm * Math.pow(spec.darkKohm / spec.litKohm, 1 - leak) };
+        },
+      },
+    ],
+  },
+  // Same knobs as VTL5C Series (minus the part switch), same DSP, but not modeling
+  // one named real part -- a blank-slate vactrol for dialing in your own attack/
+  // release/curve/dark-resistance combination. Dark-current reference resistances
+  // (10 ohm lit / 1 megohm dark) are a generic mid-range CdS-cell figure, not tied
+  // to a specific datasheet.
+  vactrolEnvelopeCustom: {
+    inputs: ["Light"],
+    outputs: ["Env"],
+    parameters: [
+      {
+        defaultValue: "0.01", key: "attack", kind: "time", label: "Attack", max: "2", maxDigits: 5, mid: "0.01", min: "0", step: "any", unit: "s",
         displayTransform: (value) => ({ maxDigits: 1, unit: "ms", value: value * 1000 }),
       },
       {
-        defaultValue: "0.035", key: "release", kind: "time", label: "Release", max: "5", maxDigits: 5, mid: "0.035", min: "0", step: "any", unit: "s",
+        defaultValue: "0.1", key: "release", kind: "time", label: "Release", max: "5", maxDigits: 5, mid: "0.1", min: "0", step: "any", unit: "s",
         displayTransform: (value) => ({ maxDigits: 1, unit: "ms", value: value * 1000 }),
       },
       {
@@ -2612,49 +2896,20 @@ const nodeGraphModuleDefinitions = Object.freeze({
       {
         defaultValue: "0", key: "darkCurrent", label: "Dark Current", max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "any",
         displayTransform: (value) => {
-          // VTL5C3: ~1.5 ohm lit (@40mA) to 10 megohm dark (datasheet min).
-          const litKohm = 0.0015;
-          const darkKohm = 10000;
+          const litKohm = 0.01;
+          const darkKohm = 1000;
           const leak = Math.max(0, Math.min(1, value));
           return { maxDigits: 1, unit: "kΩ dark R", value: litKohm * Math.pow(darkKohm / litKohm, 1 - leak) };
         },
       },
     ],
   },
-  vactrolEnvelopeC4: {
-    inputs: ["Light"],
-    outputs: ["Env"],
+  impulseButton: {
+    layout: "buttonWidget",
+    outputs: ["Pulse"],
     parameters: [
       {
-        defaultValue: "0.006", key: "attack", kind: "time", label: "Attack", max: "2", maxDigits: 5, mid: "0.006", min: "0", step: "any", unit: "s",
-        displayTransform: (value) => ({ maxDigits: 1, unit: "ms", value: value * 1000 }),
-      },
-      {
-        defaultValue: "1.5", key: "release", kind: "time", label: "Release", max: "5", maxDigits: 5, mid: "1.5", min: "0", step: "any", unit: "s",
-        displayTransform: (value) => ({ maxDigits: 1, unit: "ms", value: value * 1000 }),
-      },
-      {
-        defaultValue: "1", key: "curve", label: "Curve", max: "8", maxDigits: 5, mid: "1", min: "0.001", step: "any",
-        displayTransform: (value) => ({ maxDigits: 3, unit: "γ (LDR gamma)", value }),
-      },
-      {
-        defaultValue: "1", key: "sensitivity", label: "Sensitivity", max: "4", maxDigits: 5, mid: "1", min: "0", nonlinearSlider: false, step: "any",
-        displayTransform: (value) => ({ maxDigits: 0, unit: "lux full-drive", value: 1000 / Math.max(value, 0.001) }),
-      },
-      {
-        defaultValue: "0", key: "lightOffset", label: "Light Offset", max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "any",
-        displayTransform: (value) => ({ maxDigits: 0, unit: "lux bias", value: value * 1000 }),
-      },
-      {
-        defaultValue: "0", key: "darkCurrent", label: "Dark Current", max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "any",
-        displayTransform: (value) => {
-          // VTL5C4: ~75 ohm lit (@40mA) to 400 kilohm dark (datasheet min) -- much
-          // lower dynamic range than VTL5C3, matching its lower-resistance construction.
-          const litKohm = 0.075;
-          const darkKohm = 400;
-          const leak = Math.max(0, Math.min(1, value));
-          return { maxDigits: 1, unit: "kΩ dark R", value: litKohm * Math.pow(darkKohm / litKohm, 1 - leak) };
-        },
+        defaultValue: "1", key: "amplitude", label: "Amplitude", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any",
       },
     ],
   },
@@ -2869,6 +3124,14 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
     visualSink: true,
   },
+  oscilloscopeBank: {
+    displayType: "oscilloscopeBankBurn",
+    dataInputs: ["Phases", "Amplitudes", "Pans"],
+    layout: "traceDisplay",
+    outputs: [],
+    parameters: [],
+    visualSink: true,
+  },
   valueOscilloscope: {
     bufferedInputs: ["In"],
     displayHeightGu: 5,
@@ -2942,14 +3205,25 @@ const nodeGraphModuleDefinitions = Object.freeze({
     parameters: [],
   },
   speakerProtection: {
-    inputs: ["In"],
+    inputAliases: { Mono: "In" },
+    inputLabels: { In: "Mono" },
+    inputs: ["In", "Left", "Right"],
     layout: "speakerProtection",
-    outputs: ["Out"],
+    outputAliases: { Mono: "Out" },
+    outputLabels: { Out: "Mono" },
+    outputs: ["Out", "Left", "Right"],
     parameters: [],
   },
   textBox: {
     layout: "textBox",
     layoutOnly: true,
+    parameters: [],
+  },
+  animatedTextBox: {
+    layout: "textBox",
+    layoutOnly: true,
+    dataInputs: ["Title", "Text"],
+    dataOutputs: ["Text Out"],
     parameters: [],
   },
   output: {
@@ -2970,6 +3244,15 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
 });
+
+// Text Box and Animated Text Box share the exact same body/title rendering
+// (see node-graph-text-box-rendering.js) and layout/sizing rules -- the
+// only difference is Animated Text Box also has data-plane ports (Title,
+// Text, Text Out). Anything about the shared textBox layout (not the
+// wiring feature) should check this instead of hardcoding one type name.
+function nodeGraphNodeTypeHasTextBoxLayout(type) {
+  return nodeGraphModuleDefinitions[type]?.layout === "textBox";
+}
 
 const nodeGraphOutputInputPorts = Object.freeze(["Mono", "Left", "Right"]);
 const nodeGraphAudioBlockSize = 512;
@@ -3081,6 +3364,7 @@ function nodeGraphModuleProducesOutputWithoutSignalInput(type) {
     "clockDivider",
     "codeblock",
     "delayedTrigger",
+    "hypersaw",
     "transport",
     "wireBreak",
     "wireConnect",
@@ -3099,6 +3383,7 @@ function nodeGraphModuleProducesOutputWithoutSignalInput(type) {
     "logisticMap",
     "henonMap",
     "chuaAttractor",
+    "lutCell",
     "ellipsoid",
     "macroKnob",
     "macroControls",
@@ -3107,6 +3392,7 @@ function nodeGraphModuleProducesOutputWithoutSignalInput(type) {
     "moduleGroup",
     "noiseGenerator",
     "osc",
+    "phosphillator",
     "pitchModWheel",
     "bipolarKnob",
     "additiveOsc",
@@ -3127,8 +3413,8 @@ function nodeGraphModuleProducesOutputWithoutSignalInput(type) {
     "stepSequencer",
     "triggerCounter",
     "triggerDivider",
-    "vactrolEnvelope",
-    "vactrolEnvelopeC4",
+    "vactrolEnvelopeSeries",
+    "vactrolEnvelopeCustom",
     "visualOscilloscope",
     "spiral",
     "fractalSpiral",

@@ -106,7 +106,7 @@ function nodeGraphPatchNodeHasHideableOscilloscope(node) {
 function nodeGraphModuleSizingCapabilities(type) {
   const normalizedType = String(type || "").trim();
   const definition = nodeGraphModuleDefinitions[normalizedType];
-  const moduleHeight = normalizedType === "textBox"
+  const moduleHeight = nodeGraphNodeTypeHasTextBoxLayout(normalizedType)
     ? "textBox"
     : normalizedType === "canvas"
       ? "canvasScript"
@@ -219,6 +219,9 @@ function nodeGraphDefaultModuleGridWidthUnits(type) {
     return 14;
   }
   if (nodeGraphModuleDefinitions[type]?.layout === "filterCurve") {
+    return 8;
+  }
+  if (nodeGraphModuleDefinitions[type]?.layout === "pulseCurve") {
     return 8;
   }
   return 7;
@@ -463,6 +466,16 @@ function nodeGraphModuleHeightWidgetUnits(type, ui = {}) {
       { id: "inset", heightGu: nodeGraphModuleLayout.moduleGridInsetGu * 2, visible: true },
     ];
   }
+  if (nodeGraphModuleDefinitions[type]?.layout === "pulseCurve") {
+    return [
+      { id: "header", heightGu: nodeGraphModuleHeaderHeightUnits(ui), visible: true },
+      { id: "curve", heightGu: nodeGraphModuleDisplayHeightUnits(type, ui) * 1.5, visible: displayVisible },
+      { id: "io", heightGu: ioHeightGu, visible: ioVisible },
+      { id: "params", heightGu: nodeGraphModuleSliderBodyHeightGu(type), visible: slidersVisible },
+      { id: "fit", heightGu: nodeGraphModuleLayout.fitCushionGu, visible: true },
+      { id: "inset", heightGu: nodeGraphModuleLayout.moduleGridInsetGu * 2, visible: true },
+    ];
+  }
   return [
     { id: "header", heightGu: nodeGraphModuleHeaderHeightUnits(ui), visible: true },
     { id: "scope", heightGu: nodeGraphModuleDisplayHeightUnits(type, ui), visible: displayVisible },
@@ -499,7 +512,7 @@ function nodeGraphPatchNodeGridHeightUnits(node) {
   if (scriptGrid?.heightGu) {
     return normalizeNodeGraphModuleHeightUnits(node?.type, scriptGrid.heightGu);
   }
-  if (node?.type === "textBox" && Number.isFinite(Number(node.heightGu))) {
+  if (nodeGraphNodeTypeHasTextBoxLayout(node?.type) && Number.isFinite(Number(node.heightGu))) {
     return normalizeNodeGraphTextBoxHeightUnits(node.heightGu);
   }
   const autoHeightGu = nodeGraphModuleGridHeightUnitsForUi(node?.type, node?.ui);

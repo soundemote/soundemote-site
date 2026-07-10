@@ -275,6 +275,113 @@ body.node-ear-protection-tripped .node-ear-protection-fault {
   color: rgba(243, 241, 236, 0.86);
 }
 
+.node-module-diagnostics-fault {
+  position: fixed;
+  inset: 0;
+  z-index: 99998;
+  display: none;
+  place-items: center;
+  pointer-events: auto;
+  background:
+    radial-gradient(circle at 50% 48%, rgba(240, 197, 111, 0.1), transparent 34%),
+    rgba(0, 0, 0, 0.42);
+}
+
+body.node-module-diagnostics-tripped .node-module-diagnostics-fault {
+  display: grid;
+}
+
+.node-module-diagnostics-fault-panel {
+  min-inline-size: min(520px, calc(100vw - 32px));
+  max-inline-size: min(680px, calc(100vw - 32px));
+  max-height: min(70vh, 560px);
+  overflow: auto;
+  padding: 18px 22px;
+  border: 1px solid rgba(240, 197, 111, 0.42);
+  border-radius: 6px;
+  background:
+    linear-gradient(90deg, rgba(240, 197, 111, 0.08), rgba(127, 199, 217, 0.06)),
+    rgba(5, 7, 9, 0.92);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.86),
+    0 0 32px rgba(240, 197, 111, 0.2),
+    inset 0 0 24px rgba(240, 197, 111, 0.05);
+  color: var(--text);
+  font-family: "Cascadia Mono", "Cascadia Code", Consolas, "Courier New", monospace;
+  text-align: center;
+  pointer-events: auto;
+  user-select: text;
+}
+
+.node-module-diagnostics-fault-panel > * {
+  display: block;
+  user-select: text;
+}
+
+.node-module-diagnostics-fault-kicker,
+.node-module-diagnostics-fault-explain {
+  color: rgba(243, 241, 236, 0.74);
+  font-size: 0.78rem;
+}
+
+.node-module-diagnostics-fault-panel strong {
+  margin-block: 5px 7px;
+  color: rgba(240, 197, 111, 0.96);
+  font-size: 1.14rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.node-module-diagnostics-fault-list {
+  display: grid;
+  gap: 6px;
+  margin: 9px 0 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.node-module-diagnostics-fault-entry {
+  padding: 8px 10px;
+  border: 1px solid rgba(240, 197, 111, 0.28);
+  border-radius: 5px;
+  background: rgba(240, 197, 111, 0.06);
+  color: rgba(243, 241, 236, 0.9);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.node-module-diagnostics-fault-entry-ok {
+  border-color: rgba(127, 217, 160, 0.32);
+  background: rgba(127, 217, 160, 0.06);
+}
+
+.node-module-diagnostics-fault-close {
+  width: min(220px, 100%);
+  margin: 14px auto 0;
+  padding: 8px 14px;
+  border: 1px solid rgba(127, 199, 217, 0.36);
+  border-radius: 6px;
+  background: rgba(17, 20, 24, 0.82);
+  color: rgba(243, 241, 236, 0.92);
+  font: 700 0.82rem/1 "Cascadia Mono", "Cascadia Code", Consolas, "Courier New", monospace;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.node-module-diagnostics-fault-close:hover,
+.node-module-diagnostics-fault-close:focus-visible {
+  border-color: rgba(127, 199, 217, 0.68);
+  background: rgba(24, 31, 36, 0.92);
+  outline: 0;
+}
+
+.node-module-diagnostics-fault-explain {
+  max-inline-size: 58em;
+  margin: 9px auto 0;
+  line-height: 1.45;
+}
+
 .node-missing-sample-assets {
   position: fixed;
   inset: 0;
@@ -9047,6 +9154,8 @@ html.soemdsp-hide-ui .status-strip {
 .node-module-graph-display,
 .node-module-filter-curve-display,
 .node-filter-curve-display,
+.node-phosphor-waveform-display,
+.node-phosphillator-draw-display,
 .node-clap-plugin-body {
   pointer-events: auto;
 }
@@ -9430,6 +9539,58 @@ html.soemdsp-hide-ui .status-strip {
   height: 100%;
 }
 
+.node-phosphor-waveform-display {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border-top: 1px solid rgba(90, 255, 150, 0.16);
+  border-bottom: 1px solid rgba(90, 255, 150, 0.16);
+  background: #020a06;
+}
+
+.node-phosphor-waveform-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.node-phosphor-waveform-canvas.dragging {
+  cursor: grabbing;
+}
+
+.node-phosphillator-draw-display {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border-top: 1px solid rgba(90, 255, 150, 0.16);
+  border-bottom: 1px solid rgba(90, 255, 150, 0.16);
+  background: #020a06;
+}
+
+.node-phosphillator-draw-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.node-graph-workspace.pixelated-canvas-zoom .node-filter-curve-canvas,
+.node-graph-workspace.pixelated-canvas-zoom .node-phosphor-waveform-canvas,
+.node-graph-workspace.pixelated-canvas-zoom .node-phosphillator-draw-canvas {
+  image-rendering: pixelated;
+}
+
 .node-slider-widget-body {
   box-sizing: border-box;
   display: grid;
@@ -9639,6 +9800,71 @@ html.soemdsp-hide-ui .status-strip {
 }
 
 .node-slider-widget-io-section {
+  border-top: 1px solid rgba(128, 224, 224, 0.1);
+}
+
+.node-button-widget-body {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: stretch;
+  gap: calc(var(--node-grid-size) * 0.1);
+  min-width: 0;
+  min-height: 0;
+  padding: calc(var(--node-grid-size) * 0.18) calc(var(--node-grid-size) * 0.1) calc(var(--node-grid-size) * 0.08);
+}
+
+.node-button-widget-trigger {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 calc(var(--node-grid-size) * 0.14);
+  border: 1px solid rgba(127, 199, 217, 0.3);
+  border-radius: 4px;
+  background: rgba(9, 13, 16, 0.82);
+  color: rgba(127, 199, 217, 0.92);
+  font: 750 0.7rem/1 var(--mono);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.node-button-widget-trigger:hover,
+.node-button-widget-trigger:focus-visible {
+  border-color: rgba(127, 199, 217, 0.6);
+  background: rgba(127, 199, 217, 0.16);
+  color: var(--text);
+}
+
+.node-button-widget-trigger.pulsing {
+  animation: node-button-widget-pulse 0.22s ease-out;
+}
+
+@keyframes node-button-widget-pulse {
+  0% {
+    background: rgba(127, 199, 217, 0.55);
+    color: var(--text);
+  }
+  100% {
+    background: rgba(9, 13, 16, 0.82);
+    color: rgba(127, 199, 217, 0.92);
+  }
+}
+
+.node-button-widget-row {
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+}
+
+.node-button-widget-row .node-parameter-control,
+.node-button-widget-row .node-slider-readout,
+.node-button-widget-row .node-slider-readout-input {
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+}
+
+.node-button-widget-io-section {
   border-top: 1px solid rgba(128, 224, 224, 0.1);
 }
 
@@ -10432,6 +10658,10 @@ html.soemdsp-hide-ui .status-strip {
   display: none;
 }
 
+.dsp-node.phosphor-waveform-layout.oscilloscope-hidden .node-phosphor-waveform-display {
+  display: none;
+}
+
 .node-graph-workspace.module-oscilloscopes-hidden .dsp-node.filter-curve-layout,
 .dsp-node.filter-curve-layout.oscilloscope-hidden {
   grid-template-rows:
@@ -10440,8 +10670,8 @@ html.soemdsp-hide-ui .status-strip {
     auto;
 }
 
-.node-graph-workspace.module-oscilloscopes-hidden .dsp-node:not(.text-box-layout):not(.image-node-layout):not(.canvas-node-layout):not(.visual-scope-layout):not(.trace-display-layout):not(.graph-node-layout):not(.filter-curve-layout):not(.slider-widget-layout):not(.knob-widget-layout):not(.sample-module-layout):not(.screen-space-shader-layout),
-.dsp-node.oscilloscope-hidden:not(.text-box-layout):not(.image-node-layout):not(.canvas-node-layout):not(.visual-scope-layout):not(.trace-display-layout):not(.graph-node-layout):not(.filter-curve-layout):not(.slider-widget-layout):not(.knob-widget-layout):not(.sample-module-layout):not(.screen-space-shader-layout) {
+.node-graph-workspace.module-oscilloscopes-hidden .dsp-node:not(.text-box-layout):not(.image-node-layout):not(.canvas-node-layout):not(.visual-scope-layout):not(.trace-display-layout):not(.graph-node-layout):not(.filter-curve-layout):not(.slider-widget-layout):not(.knob-widget-layout):not(.sample-module-layout):not(.screen-space-shader-layout):not(.phosphillator-draw-layout),
+.dsp-node.oscilloscope-hidden:not(.text-box-layout):not(.image-node-layout):not(.canvas-node-layout):not(.visual-scope-layout):not(.trace-display-layout):not(.graph-node-layout):not(.filter-curve-layout):not(.slider-widget-layout):not(.knob-widget-layout):not(.sample-module-layout):not(.screen-space-shader-layout):not(.phosphillator-draw-layout) {
   grid-template-rows:
     var(--node-header-height)
     minmax(var(--node-io-section-min-height), auto)
@@ -10566,6 +10796,31 @@ html.soemdsp-hide-ui .status-strip {
   text-overflow: clip;
   text-transform: none;
   white-space: nowrap;
+}
+
+input.node-header-title {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  flex: 1 1 auto;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  box-shadow: none;
+  outline: none;
+  /* Editing only starts on triple-click (see
+     node-graph-module-header-rendering.js); a text-select cursor on
+     hover would falsely advertise "click to edit" the rest of the time,
+     so keep the same pointer cursor as the rest of the header row. */
+  cursor: default;
+}
+
+input.node-header-title:focus {
+  background: rgba(255, 255, 255, 0.06);
+  outline: none;
+  cursor: text;
 }
 
 .dsp-node-io-section {
@@ -13079,6 +13334,24 @@ button.saved-default,
 
 .node-scene-context-menu button[hidden] {
   display: none;
+}
+
+.scene-context-button-group {
+  display: flex;
+}
+
+.scene-context-button-group[hidden] {
+  display: none;
+}
+
+.scene-context-button-group button {
+  flex: 1 1 50%;
+  justify-content: center !important;
+  text-align: center !important;
+}
+
+.scene-context-button-group button:first-child {
+  border-inline-end: 1px solid var(--node-scene-context-menu-divider, rgba(243, 241, 236, 0.14));
 }
 
 .scene-context-selected-module {

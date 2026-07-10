@@ -174,6 +174,13 @@ function validateNodeGraphPatch(patch) {
     if (type === "codeblock") {
       normalizedNode.codeblock = normalizeNodeGraphCodeblock(node.codeblock);
     }
+    if (type === "scriptBox") {
+      normalizedNode.scriptBox = normalizeNodeGraphScriptBox(node.scriptBox);
+    }
+    const normalizedPortScripts = normalizeNodeGraphPortScripts(type, node.portScripts);
+    if (normalizedPortScripts) {
+      normalizedNode.portScripts = normalizedPortScripts;
+    }
     if (type === "canvas") {
       normalizedNode.canvasScript = normalizeNodeGraphCanvasScript(node.canvasScript);
     }
@@ -195,6 +202,12 @@ function validateNodeGraphPatch(patch) {
       normalizeNodeGraphSampleId(node.sample?.id)
     ) {
       normalizedNode.sample = { id: normalizeNodeGraphSampleId(node.sample?.id) };
+    }
+    if (type === "phosphillator") {
+      const drawnPath = normalizeNodeGraphPhosphillatorDrawnPath(node.drawnPath);
+      if (drawnPath) {
+        normalizedNode.drawnPath = drawnPath;
+      }
     }
     const ui = nodeGraphModuleDefinitions[type].layout === "textBox" && !Object.hasOwn(node, "ui")
       ? { buttonsHidden: true }
@@ -485,7 +498,13 @@ function applyNodeGraphPatchToDom() {
     element.dataset.structuralUiSignature = structuralUiSignature;
     const titleText = element.querySelector(".node-header-title");
     if (titleText) {
-      titleText.textContent = nodeGraphPatchNodeTitle(patchNode);
+      if (titleText.tagName === "INPUT") {
+        if (document.activeElement !== titleText) {
+          titleText.value = nodeGraphPatchNodeTitle(patchNode);
+        }
+      } else {
+        titleText.textContent = nodeGraphPatchNodeTitle(patchNode);
+      }
     }
     element.classList.toggle("buttons-hidden", patchNodeUi.buttonsHidden);
     element.classList.toggle("io-hidden", patchNodeUi.ioHidden);
@@ -548,6 +567,9 @@ function applyNodeGraphPatchToDom() {
     }
     if (typeof syncNodeGraphModulePortLabels === "function") {
       syncNodeGraphModulePortLabels(element, patchNode);
+    }
+    if (patchNode.type === "scriptBox" && typeof evaluateNodeGraphScriptBoxNode === "function") {
+      evaluateNodeGraphScriptBoxNode(patchNode);
     }
     if (nodeGraphModuleDefinitions[patchNode.type]?.layout === "textBox") {
       syncNodeGraphTextBoxElement(element, patchNode);

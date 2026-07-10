@@ -60,6 +60,7 @@ function nodeGraphModuleOutputPorts(type) {
   }
   return [
     ...(definition.outputs || []),
+    ...(definition.dataOutputs || []),
     ...(definition.parameters || []).map((parameter) => parameter.key),
   ];
 }
@@ -308,6 +309,9 @@ function nodeGraphPatchNodeInputPorts(node) {
   if (patchNode?.type === "codeblock") {
     return normalizeNodeGraphCodeblock(patchNode.codeblock).inputs;
   }
+  if (patchNode?.type === "scriptBox") {
+    return normalizeNodeGraphScriptBox(patchNode.scriptBox).inputs;
+  }
   if (patchNode?.type === "moduleGroup") {
     return normalizeNodeGraphModuleGroup(patchNode.moduleGroup).inputs.map((input) => input.name);
   }
@@ -323,13 +327,20 @@ function nodeGraphPatchNodeInputPorts(node) {
   if (patchNode?.type === "screenSpaceShader") {
     return normalizeNodeGraphScreenSpaceShader(patchNode.screenSpaceShader).inputs;
   }
-  return nodeGraphModuleDefinitions[patchNode?.type]?.inputs || [];
+  const definition = nodeGraphModuleDefinitions[patchNode?.type];
+  return [
+    ...(definition?.inputs || []),
+    ...(definition?.dataInputs || []),
+  ];
 }
 
 function nodeGraphPatchNodeOutputPorts(node) {
   const patchNode = typeof node === "string" ? nodeGraphPatchNode(node) : node;
   if (patchNode?.type === "codeblock") {
     return normalizeNodeGraphCodeblock(patchNode.codeblock).outputs;
+  }
+  if (patchNode?.type === "scriptBox") {
+    return normalizeNodeGraphScriptBox(patchNode.scriptBox).outputs;
   }
   if (patchNode?.type === "moduleGroup") {
     return normalizeNodeGraphModuleGroup(patchNode.moduleGroup).outputs.map((output) => output.name);
