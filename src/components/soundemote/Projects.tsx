@@ -39,6 +39,12 @@ const repositoryLinks: RepositoryLink[] = [
         href: "https://github.com/elanhickler/combustion",
     },
     {
+        emoji: "🐾",
+        name: "creatures",
+        href: "https://github.com/elanhickler/soemdsp-sandbox-creatures",
+        pulse: true,
+    },
+    {
         emoji: "⚡",
         name: "efficient-patch-system",
         href: "https://github.com/elanhickler/soemdsp-sandbox-digital-efficient-patch-system",
