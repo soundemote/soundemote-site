@@ -2,6 +2,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import type { ComponentPropsWithoutRef } from "react";
+import { Link } from "react-router-dom";
+import { featuredArticles } from "@/data/featuredArticles";
 import { slugifyHeading } from "./TableOfContents";
 
 function MarkdownHeading({ level, children, ...rest }: { level: 2 | 3 } & ComponentPropsWithoutRef<"h2">) {
@@ -11,6 +13,48 @@ function MarkdownHeading({ level, children, ...rest }: { level: 2 | 3 } & Compon
     <Tag id={slugifyHeading(text)} {...rest}>
       {children}
     </Tag>
+  );
+}
+
+// We don't want articles linking out to GitHub. Instead, links that point at a
+// repo we have an article for are redirected to that article's page on the site,
+// so readers stay on soundemote.io. The only GitHub link left alone is the base
+// soemdsp-sandbox repo (the live sandbox / its source). Any remaining third-party
+// GitHub link is flattened to plain text rather than sending readers off-site.
+const normalizeRepo = (href: string) =>
+  href
+    .replace(/^https?:\/\/(www\.)?github\.com\//i, "")
+    .replace(/\.git$/i, "")
+    .replace(/\/+$/, "")
+    .toLowerCase();
+
+// repoHref -> internal /slug route for every featured article.
+const repoToRoute = new Map<string, string>(
+  featuredArticles.map((a) => [normalizeRepo(a.repoHref), `/${a.slug}`]),
+);
+
+function MarkdownAnchor({ href, children, ...rest }: ComponentPropsWithoutRef<"a">) {
+  const isGithub = typeof href === "string" && /(^|\/\/)(www\.)?github\.com\//i.test(href);
+  if (isGithub && href) {
+    const key = normalizeRepo(href);
+    const route = repoToRoute.get(key);
+    if (route) {
+      return (
+        <Link to={route} {...(rest as ComponentPropsWithoutRef<typeof Link>)}>
+          {children}
+        </Link>
+      );
+    }
+    // The base sandbox repo is the one GitHub link we intentionally keep.
+    const isSandboxBase = /github\.com\/[^/]+\/soemdsp-sandbox(\/|$|\.git)/i.test(href);
+    if (!isSandboxBase) {
+      return <span {...(rest as ComponentPropsWithoutRef<"span">)}>{children}</span>;
+    }
+  }
+  return (
+    <a href={href} {...rest}>
+      {children}
+    </a>
   );
 }
 
@@ -37,6 +81,7 @@ const WikiMarkdown = ({ markdown, className }: { markdown: string; className?: s
             {children}
           </MarkdownHeading>
         ),
+        a: ({ children, ...rest }) => <MarkdownAnchor {...rest}>{children}</MarkdownAnchor>,
       }}
     >
       {markdown}
