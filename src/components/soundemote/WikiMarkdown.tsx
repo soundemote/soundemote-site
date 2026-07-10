@@ -14,6 +14,23 @@ function MarkdownHeading({ level, children, ...rest }: { level: 2 | 3 } & Compon
   );
 }
 
+// We don't want articles linking out to GitHub. The only GitHub links allowed
+// are the soemdsp-sandbox ones (the live sandbox app / its source); every other
+// github.com link gets flattened to plain text so it reads inline without a
+// clickable link off-site.
+function MarkdownAnchor({ href, children, ...rest }: ComponentPropsWithoutRef<"a">) {
+  const isGithub = typeof href === "string" && /(^|\/\/)(www\.)?github\.com\//i.test(href);
+  const isSandbox = typeof href === "string" && /soemdsp-sandbox/i.test(href);
+  if (isGithub && !isSandbox) {
+    return <span {...(rest as ComponentPropsWithoutRef<"span">)}>{children}</span>;
+  }
+  return (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  );
+}
+
 // The official wiki page styling -- every markdown article on the site
 // (patch wiki pages, the homepage featured spotlight, etc.) renders through
 // this component so they all read as one consistent GitHub-README-flavored
@@ -37,6 +54,7 @@ const WikiMarkdown = ({ markdown, className }: { markdown: string; className?: s
             {children}
           </MarkdownHeading>
         ),
+        a: ({ children, ...rest }) => <MarkdownAnchor {...rest}>{children}</MarkdownAnchor>,
       }}
     >
       {markdown}
