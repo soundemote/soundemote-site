@@ -19,6 +19,7 @@ import { SUPERSAW_MARKDOWN, SUPERSAW_REPO, SUPERSAW_BRANCH } from "./supersawArt
 import { SIMD_ARTICLE_MARKDOWN, SIMD_ARTICLE_SOURCE_URL } from "./simdArticle";
 import { LAST_CLOCK_ARTICLE_MARKDOWN, LAST_CLOCK_ARTICLE_SOURCE_URL } from "./lastClockArticle";
 import { ARCHIMEDES_ARTICLE_MARKDOWN, ARCHIMEDES_ARTICLE_SOURCE_URL } from "./archimedesArticle";
+import { CREATURES_ARTICLE_MARKDOWN, CREATURES_ARTICLE_SOURCE_URL, CREATURES_REPO } from "./creaturesArticle";
 
 export type FeaturedArticle = {
   slug: string;
