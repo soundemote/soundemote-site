@@ -178,6 +178,15 @@ export const featuredArticles: FeaturedArticle[] = [
     sourceUrl: `https://github.com/${SUPERSAW_REPO}`,
     markdown: rewriteRelativeLinks(SUPERSAW_MARKDOWN, SUPERSAW_REPO, SUPERSAW_BRANCH),
   },
+  {
+    slug: "creatures",
+    repoHref: "https://github.com/elanhickler/soemdsp-sandbox-creatures",
+    emoji: "🐾",
+    title: "Creature — a virtual pet that eats audio signal",
+    tagline: "A patchable native module that tracks Hunger and Health and settles into one of eight moods.",
+    sourceUrl: CREATURES_ARTICLE_SOURCE_URL,
+    markdown: rewriteRelativeLinks(CREATURES_ARTICLE_MARKDOWN, CREATURES_REPO),
+  },
 ];
 
 export const findFeaturedArticleByRepoHref = (href: string) =>
