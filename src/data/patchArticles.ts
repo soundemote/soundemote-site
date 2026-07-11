@@ -129,8 +129,7 @@ they're the same design instinct pointed at three different problems:
 *model the real physical behavior closely enough that the interesting,
 beautiful parts emerge on their own*, whether that behavior is a vactrol's
 glow, a waveform's edge, or a screen's afterimage. That's what this
-instrument is chasing, and it's a better name for it than "sandbox" ever
-was.
+instrument is chasing.
 
 Go play with it. It's the same app it always was — [open the full
 editor](/sandbox), or start with [Shooting Star](/shootingstar) and work
