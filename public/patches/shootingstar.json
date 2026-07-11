@@ -292,7 +292,7 @@
         "lightOffset": 0,
         "darkCurrent": 0
       },
-      "type": "vactrolEnvelope"
+      "type": "vactrolEnvelopeCustom"
     },
     {
       "gx": 10,
