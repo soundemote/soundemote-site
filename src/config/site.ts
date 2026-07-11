@@ -56,7 +56,6 @@ export const siteConfig = {
    * pages for these are kept as unreachable code for now.
    */
   frontPageRoutes: [
-    "analogbox",
     "aliasingwars",
     "sinewave",
     "dsf",
@@ -73,7 +72,8 @@ export const siteConfig = {
     "soemdsp-simd": "/simd",
     "soemdsp-last-clock": "/lastclock",
     "last-clock": "/lastclock",
-    "soemdsp-sandbox": "/analogbox",
+    "soemdsp-sandbox": "/sandbox",
+    "analogbox": "/sandbox",
     "analog-filters": "/analogfilters",
     "efficient-patch-system": "/efficientpatchsystem",
     "white-wire": "/whitewire",
@@ -83,8 +83,8 @@ export const siteConfig = {
     "rhythm-and-pitch-generator": "/rhythmandpitchgenerator",
   } as Record<string, string>,
 
-  /** Version text shown next to the analogbox link in the hero. */
-  analogBoxVersion: "v0.2.0",
+  /** Version text shown next to the sandbox link in the hero. */
+  sandboxVersion: "v0.2.0",
 
   /** Links shown on /webring. Add or remove rows here. */
 

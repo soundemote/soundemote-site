@@ -25,9 +25,9 @@ const PatchArticlePage = ({ slug: slugProp }: PatchArticlePageProps = {}) => {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const chapters = article ? extractChapters(article.body) : [];
   const tocTheme = slug === "aliasingwars" ? "war" : "default";
-  // Analog Box is the app itself, not just an article about it -- give it
+  // The sandbox is the app itself, not just an article about it -- give it
   // room to breathe instead of squeezing it into the standard wiki column.
-  const isWide = slug === "analogbox";
+  const isWide = slug === "sandbox";
   const sandboxPreviewSrc =
     "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autoframe=1&autostart=1&v=20260703-borderless";
 

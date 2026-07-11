@@ -30,36 +30,32 @@ export type PatchArticle = {
 
 export const PATCH_ARTICLES: PatchArticle[] = [
   {
-    slug: "analogbox",
-    title: "Analogbox",
+    slug: "sandbox",
+    title: "Sandbox",
     tagline: "Analog feel, digital precision, phosphor glow — one instrument.",
     status: "live",
-    patchUrl: "/patches/analogbox.json",
+    patchUrl: "/patches/sandbox.json",
     category: "Manifesto",
     badges: [
       { label: "status", value: "live", tone: "scope" },
       { label: "category", value: "philosophy", tone: "accent" },
-      { label: "formerly", value: "sandbox", tone: "muted" },
     ],
     facts: [
       { label: "Analog", value: "Circuit-accurate modeling (vactrols, ladder filters, chaos)" },
       { label: "Digital", value: "PolyBLEP, sub-sample sync, wavetables" },
       { label: "Phosphor", value: "CRT-decay trace rendering for the scope displays" },
-      { label: "Formerly known as", value: "the sandbox" },
       { label: "Soundtrack", value: "“Retrofusion” — Hydrus & Elan Hickler" },
     ],
     gallery: [
-      { type: "video", youtubeId: "PpcdN-DXYdc", title: "Analogbox in motion" },
+      { type: "video", youtubeId: "PpcdN-DXYdc", title: "The sandbox in motion" },
     ],
-    body: `## Why "Analogbox"
+    body: `## What the sandbox is for
 
-This used to just be called the sandbox — a fair name for a place to
-experiment, but not a name that says anything about what it's actually
-*for*. Every module and every trace on screen in here is chasing one goal:
-take the physical, imprecise, gorgeous mess of real analog and optical
-hardware and get it into a digital instrument without sanding off the parts
-that made it beautiful in the first place. **Analogbox** is a better name
-for that goal.
+The sandbox is a place to experiment — but every module and every trace on
+screen in here is chasing one goal: take the physical, imprecise, gorgeous
+mess of real analog and optical hardware and get it into a digital
+instrument without sanding off the parts that made it beautiful in the first
+place.
 
 There are three ideas doing the work, and none of them are optional — pull
 any one out and the other two stop making sense.
@@ -133,8 +129,7 @@ they're the same design instinct pointed at three different problems:
 *model the real physical behavior closely enough that the interesting,
 beautiful parts emerge on their own*, whether that behavior is a vactrol's
 glow, a waveform's edge, or a screen's afterimage. That's what this
-instrument is chasing, and it's a better name for it than "sandbox" ever
-was.
+instrument is chasing.
 
 Go play with it. It's the same app it always was — [open the full
 editor](/sandbox), or start with [Shooting Star](/shootingstar) and work
