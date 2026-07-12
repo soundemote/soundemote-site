@@ -73,7 +73,7 @@ export const siteConfig = {
     "soemdsp-last-clock": "/lastclock",
     "last-clock": "/lastclock",
     "soemdsp-sandbox": "/sandbox",
-    "analogbox": "/sandbox",
+    analogbox: "/sandbox",
     "analog-filters": "/analogfilters",
     "efficient-patch-system": "/efficientpatchsystem",
     "white-wire": "/whitewire",
@@ -87,7 +87,6 @@ export const siteConfig = {
   sandboxVersion: "v0.2.0",
 
   /** Links shown on /webring. Add or remove rows here. */
-
 
   webringLinks: [
     {
@@ -105,6 +104,7 @@ export const siteConfig = {
       description: "A toolkit for building and deploying interactive installations.",
     },
     /*https://www.shadertoy.com/view/MldcW2 clouds*/
+    /*https://github.com/xandergos/terrain-diffusion*/
     {
       href: "https://github.com/veryCoolTimo/texture-auto-upscaler",
       emoji: "🖼️",
@@ -133,10 +133,8 @@ export const siteConfig = {
       host: "github.com/udaysai12",
       description: "A podcasting project by Uday Sai.",
     },
-
   ] as WebringLink[],
 };
-
 
 export const { webringLinks } = siteConfig;
 
