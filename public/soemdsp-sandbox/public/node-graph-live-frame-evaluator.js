@@ -3523,6 +3523,12 @@ function nodeGraphAudioPlayerSample(runtime, node, nodeId, readInput, readParam,
   };
 }
 
+// Registry of per-module-type dispatch handlers extracted into their own
+// files (e.g. native_modules/logistic_map/logistic_map-live-evaluator.js),
+// each self-registering on load. Checked ahead of the big if/else-if chain
+// below so a migrated module type never requires editing this file again.
+const nodeGraphLiveModuleEvaluators = {};
+
 function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
   const frameValues = new Map();
   const mixInput = (nodeId, port = "In") => (runtime.inputConnections.get(`${nodeId}.${port}`) || []).reduce(
@@ -3584,7 +3590,10 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
     const node = runtime.nodes.get(nodeId);
     let value = 0;
 
-    if (node?.type === "groupInput") {
+    const liveModuleEvaluator = node?.type ? nodeGraphLiveModuleEvaluators[node.type] : null;
+    if (liveModuleEvaluator) {
+      value = liveModuleEvaluator({ runtime, node, nodeId, frame, frames, frameValues, mixInput, sampleRate });
+    } else if (node?.type === "groupInput") {
       value = {
         Out: Number(runtime.externalGroupInputs?.get(nodeId)) || 0,
       };
@@ -4292,40 +4301,6 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         Y: lorenz.y * level,
         Z: lorenz.z * level,
       };
-    } else if (node?.type === "logisticMap") {
-      const state = runtime.logisticMapStates.get(nodeId) || createNodeGraphLogisticMapState();
-      runtime.logisticMapStates.set(nodeId, state);
-      const read = (key, fallback) => readNodeGraphLiveEffectiveParam(runtime, node, key, fallback, frame, frames, frameValues);
-      value = {
-        Out: nodeGraphLogisticMapSample({
-          level: read("level", 1),
-          r: read("r", 3.9),
-          rate: read("rate", 8),
-          reset: mixInput(nodeId, "Reset"),
-          sampleRate,
-          seed: read("seed", 0.5),
-          state,
-        }),
-      };
-    } else if (node?.type === "henonMap") {
-      const state = runtime.henonMapStates.get(nodeId) || createNodeGraphHenonMapState();
-      runtime.henonMapStates.set(nodeId, state);
-      const read = (key, fallback) => readNodeGraphLiveEffectiveParam(runtime, node, key, fallback, frame, frames, frameValues);
-      const henon = nodeGraphHenonMapSample({
-        a: read("a", 1.4),
-        b: read("b", 0.3),
-        rate: read("rate", 8),
-        reset: mixInput(nodeId, "Reset"),
-        sampleRate,
-        seedX: read("seedX", 0.1),
-        seedY: read("seedY", 0.1),
-        state,
-      });
-      const henonLevel = read("level", 1);
-      value = {
-        X: henon.x * henonLevel,
-        Y: henon.y * henonLevel,
-      };
     } else if (node?.type === "chuaAttractor") {
       const state = runtime.chuaAttractorStates.get(nodeId) || createNodeGraphChuaAttractorState();
       runtime.chuaAttractorStates.set(nodeId, state);
@@ -4579,17 +4554,6 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
         latch: mixInput(nodeId, "Latch"),
         pitch: mixInput(nodeId, "Pitch"),
       });
-    } else if (node?.type === "turingMachine") {
-      const state = runtime.turingMachineStates.get(nodeId) || createNodeGraphTuringMachineState();
-      runtime.turingMachineStates.set(nodeId, state);
-      const read = (key, fallback) => readNodeGraphLiveEffectiveParam(runtime, node, key, fallback, frame, frames, frameValues);
-      value = nodeGraphTuringMachineSample(state, {
-        clock: mixInput(nodeId, "Clock"),
-        length: read("length", 8),
-        level: read("level", 1),
-        probability: read("probability", 0.25),
-        reset: mixInput(nodeId, "Reset"),
-      });
     } else if (node?.type === "pitchQuantizer") {
       const state = runtime.pitchQuantizerStates.get(nodeId) || createNodeGraphPitchQuantizerState();
       runtime.pitchQuantizerStates.set(nodeId, state);
@@ -4646,15 +4610,17 @@ function evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames) {
       // master "Pitch Reference Frequency" setting and a MIDI keyboard is
       // automatically in tune; double it to transpose up an octave.
       const baseFrequency = Math.max(0, read("frequency", 100));
-      const pitchInput = clampNodeSliderValue(nodeGraphSafeFilterNumber(
-        mixInput(nodeId, "0.1V/Oct"),
-        runtime,
-        nodeId,
-        null,
-        "RobinSupersaw 0.1v input",
-      ), -1, 1);
       const pitchReferenceAudio = normalizeNodeGraphPatchAudio(nodeGraphMvp.patch.audio);
       const referenceVoltage = pitchReferenceAudio.pitchReferenceMidiNote / 120;
+      const pitchInput = hasInput(nodeId, "0.1V/Oct")
+        ? clampNodeSliderValue(nodeGraphSafeFilterNumber(
+          mixInput(nodeId, "0.1V/Oct"),
+          runtime,
+          nodeId,
+          null,
+          "RobinSupersaw 0.1v input",
+        ), -1, 1)
+        : referenceVoltage;
       const pitchedFrequency = Math.max(0, baseFrequency * (2 ** ((pitchInput - referenceVoltage) / 0.1)));
       value = nodeGraphRobinSupersawSample(state, {
         frequencyHz: pitchedFrequency,
