@@ -116,9 +116,10 @@ async function loadInitPatch(userId: string | undefined): Promise<unknown> {
 type SandboxPageProps = {
   staticPatchUrl?: string;
   autostart?: boolean;
+  pagePatch?: string;
 };
 
-const SandboxPage = ({ staticPatchUrl, autostart = false }: SandboxPageProps = {}) => {
+const SandboxPage = ({ staticPatchUrl, autostart = false, pagePatch }: SandboxPageProps = {}) => {
   const location = useLocation();
   const params = useParams<SandboxRouteParams>();
   const { session } = useAuth();
@@ -126,6 +127,7 @@ const SandboxPage = ({ staticPatchUrl, autostart = false }: SandboxPageProps = {
   const [projectData, setProjectData] = useState<unknown>(null);
   const [projectError, setProjectError] = useState<string | null>(null);
   const [savingInit, setSavingInit] = useState(false);
+  const [savingPage, setSavingPage] = useState(false);
   const hasPatchRoute = Boolean(params.patch);
   const claimSlug = new URLSearchParams(location.search).get("claim");
   const wikiSlug = new URLSearchParams(location.search).get("wiki");
@@ -134,7 +136,7 @@ const SandboxPage = ({ staticPatchUrl, autostart = false }: SandboxPageProps = {
   // Autoframe is on by default across the site; opt out with ?autoframe=0.
   const autoframeParam = new URLSearchParams(location.search).get("autoframe");
   const wantsAutoframe = autoframeParam !== "0" && autoframeParam !== "false";
-  const isPlainSandbox = !hasPatchRoute && !wikiSlug && !hasShare;
+  const isPlainSandbox = !hasPatchRoute && !wikiSlug && !hasShare && !pagePatch;
   const targetLabel = hasPatchRoute
     ? `${params.user || "soundemote"} / ${params.bank || "main"} / ${params.patch}`
     : "soemdsp sandbox";
@@ -164,6 +166,19 @@ const SandboxPage = ({ staticPatchUrl, autostart = false }: SandboxPageProps = {
         })
         .catch((error) => {
           if (!cancelled) setProjectError(error?.message || String(error));
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (pagePatch && !supabaseConfigError) {
+      supabase
+        .from("page_patches")
+        .select("project_data")
+        .eq("slug", pagePatch)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (!cancelled) setProjectData((data as SharedProjectRow | null)?.project_data ?? null);
         });
       return () => {
         cancelled = true;
@@ -203,7 +218,7 @@ const SandboxPage = ({ staticPatchUrl, autostart = false }: SandboxPageProps = {
     return () => {
       cancelled = true;
     };
-  }, [hasPatchRoute, location.search, params.user, params.bank, params.patch, wikiSlug, isPlainSandbox, session?.user?.id, staticPatchUrl]);
+  }, [hasPatchRoute, location.search, params.user, params.bank, params.patch, wikiSlug, isPlainSandbox, session?.user?.id, staticPatchUrl, pagePatch]);
 
   const postProjectData = () => {
     // Fire autoframe on load regardless of whether we push project data — the
@@ -284,6 +299,35 @@ const SandboxPage = ({ staticPatchUrl, autostart = false }: SandboxPageProps = {
     }
   };
 
+  const savePagePatch = async () => {
+    if (!session?.user?.id || !pagePatch) return;
+    setSavingPage(true);
+    try {
+      const current = await requestCurrentPatch();
+      if (!current) {
+        toast({ title: "Could not read the current patch", variant: "destructive" });
+        return;
+      }
+      const { error } = await supabase
+        .from("page_patches")
+        .upsert(
+          {
+            slug: pagePatch,
+            owner_id: session.user.id,
+            project_data: current,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "slug" },
+        );
+      if (error) throw error;
+      toast({ title: `Saved to /${pagePatch}` });
+    } catch (error) {
+      toast({ title: "Save failed", description: String((error as Error)?.message || error), variant: "destructive" });
+    } finally {
+      setSavingPage(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-background text-foreground">
       {hasPatchRoute && !isEmbed && (
@@ -304,6 +348,17 @@ const SandboxPage = ({ staticPatchUrl, autostart = false }: SandboxPageProps = {
           aria-label="Save current patch as my init patch"
         >
           {savingInit ? "saving…" : "set as my init patch"}
+        </button>
+      )}
+      {pagePatch && !isEmbed && session?.user?.id && (
+        <button
+          type="button"
+          onClick={savePagePatch}
+          disabled={savingPage}
+          className="mono fixed right-3 top-3 z-50 rounded border border-cyan-300/35 bg-black/75 px-3 py-2 text-xs text-cyan-100 shadow-[0_0_18px_rgba(103,232,249,0.22)] backdrop-blur hover:bg-cyan-950/80 disabled:opacity-50"
+          aria-label={`Save current patch to /${pagePatch}`}
+        >
+          {savingPage ? "saving…" : `save to /${pagePatch}`}
         </button>
       )}
       {claimSlug && (
