@@ -238,7 +238,7 @@ const AuthPage = () => {
         </div>
 
         <div className="space-y-4">
-          {mode === "signup" && (
+          {mode === "signup" ? (
             <div className="space-y-2">
               <Label htmlFor="auth-handle">Handle</Label>
               <div className="flex items-center gap-1">
@@ -252,17 +252,33 @@ const AuthPage = () => {
                 />
               </div>
             </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="auth-handle">Handle</Label>
+              <div className="flex items-center gap-1">
+                <span className="mono text-sm text-muted-foreground">@</span>
+                <Input
+                  id="auth-handle"
+                  value={handle}
+                  onChange={(e) => setHandle(e.target.value)}
+                  placeholder="yourname"
+                  autoComplete="username"
+                />
+              </div>
+            </div>
           )}
-          <div className="space-y-2">
-            <Label htmlFor="auth-email">Email</Label>
-            <Input
-              id="auth-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-            />
-          </div>
+          {mode === "signup" && (
+            <div className="space-y-2">
+              <Label htmlFor="auth-email">Email</Label>
+              <Input
+                id="auth-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+              />
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="auth-password">Password</Label>
             <Input
