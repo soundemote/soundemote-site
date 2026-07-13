@@ -320,7 +320,10 @@ const SandboxPage = ({ staticPatchUrl, autostart = false, pagePatch }: SandboxPa
           { onConflict: "slug" },
         );
       if (error) throw error;
-      toast({ title: `Saved to /${pagePatch}` });
+      toast({
+        title: "Shared",
+        description: `This patch is now live at /${pagePatch}`,
+      });
     } catch (error) {
       toast({ title: "Save failed", description: String((error as Error)?.message || error), variant: "destructive" });
     } finally {
@@ -356,9 +359,9 @@ const SandboxPage = ({ staticPatchUrl, autostart = false, pagePatch }: SandboxPa
           onClick={savePagePatch}
           disabled={savingPage}
           className="mono fixed right-3 top-3 z-50 rounded border border-cyan-300/35 bg-black/75 px-3 py-2 text-xs text-cyan-100 shadow-[0_0_18px_rgba(103,232,249,0.22)] backdrop-blur hover:bg-cyan-950/80 disabled:opacity-50"
-          aria-label={`Save current patch to /${pagePatch}`}
+          aria-label={`Share current patch to /${pagePatch}`}
         >
-          {savingPage ? "saving…" : `save to /${pagePatch}`}
+          {savingPage ? "sharing…" : `share to /${pagePatch}`}
         </button>
       )}
       {claimSlug && (
