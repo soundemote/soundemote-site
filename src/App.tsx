@@ -57,6 +57,10 @@ const App = () => (
         <Route path="/silentlydreaming-live" element={<SandboxPage staticPatchUrl="/patches/silently-dreaming.json" autostart />} />
         <Route path="/shootingstar-live" element={<SandboxPage staticPatchUrl="/patches/shootingstar.json" autostart />} />
 
+        {/* Named page patches: a live sandbox bound to a URL. The owner can
+            overwrite the displayed patch from the sandbox toolbar. */}
+        <Route path="/robinsupersaw" element={<SandboxPage pagePatch="robinsupersaw" />} />
+
         {/* Article, patch, front-page and redirect routes are all defined in
             src/config/site.ts — edit that file to add or change them. */}
         {Object.entries(siteConfig.articleRoutes).map(([path, slug]) => (
