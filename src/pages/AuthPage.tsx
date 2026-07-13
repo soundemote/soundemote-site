@@ -107,21 +107,33 @@ const AuthPage = () => {
     setNotice(null);
     if (supabaseConfigError) return setError(supabaseConfigError);
 
-    const emailParsed = emailSchema.safeParse(email);
-    if (!emailParsed.success) return setError(emailParsed.error.errors[0].message);
-    const pwParsed = passwordSchema.safeParse(password);
-    if (!pwParsed.success) return setError(pwParsed.error.errors[0].message);
-
     setBusy(true);
     try {
       if (mode === "signin") {
+        // Sign in by @handle: resolve the handle to its account email first.
+        const handleParsed = handleSchema.safeParse(handle);
+        if (!handleParsed.success) return setError(handleParsed.error.errors[0].message);
+        if (!password) return setError("Enter your password.");
+
+        const { data: resolvedEmail, error: lookupError } = await supabase.rpc(
+          "email_for_handle",
+          { p_handle: handleParsed.data },
+        );
+        if (lookupError) return setError(lookupError.message);
+        if (!resolvedEmail) return setError("Invalid handle or password.");
+
         const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: emailParsed.data,
+          email: resolvedEmail as string,
           password,
         });
-        if (signInError) setError(signInError.message);
+        if (signInError) setError("Invalid handle or password.");
         return;
       }
+
+      const emailParsed = emailSchema.safeParse(email);
+      if (!emailParsed.success) return setError(emailParsed.error.errors[0].message);
+      const pwParsed = passwordSchema.safeParse(password);
+      if (!pwParsed.success) return setError(pwParsed.error.errors[0].message);
 
       // signup: validate + check handle availability first
       const handleParsed = handleSchema.safeParse(handle);
