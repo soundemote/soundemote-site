@@ -22,7 +22,7 @@ type Mode = "signin" | "signup";
 const AuthPage = () => {
   const navigate = useNavigate();
   const { session, profile, loading } = useAuth();
-  const [mode, setMode] = useState<Mode>("signup");
+  const [mode, setMode] = useState<Mode>("signin");
   const [handle, setHandle] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
