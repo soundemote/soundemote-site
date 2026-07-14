@@ -30,23 +30,35 @@ export const RootSlugResolver = () => {
   const { handle = "" } = useParams<{ handle: string }>();
   const decoded = decodeURIComponent(handle);
 
-  // `~` anywhere -> patch.
-  if (decoded.includes("~")) {
-    return <Navigate to={`/patch/${afterSigil(decoded, "~")}`} replace />;
+  const normalized = decoded.replace(/%23/g, "#");
+
+  // `@` scopes an owner and takes precedence: `@robin~mypatch` is robin's patch,
+  // not a global one. Extract the owner (chars after `@` up to the next sigil)
+  // then let `~`/`#` pick the user-owned resource.
+  if (normalized.includes("@")) {
+    const rest = afterSigil(normalized, "@");
+    const owner = rest.split(/[~#]/)[0];
+    if (rest.includes("~")) {
+      return <Navigate to={`/@${owner}/patch/${afterSigil(rest, "~")}`} replace />;
+    }
+    if (rest.includes("#")) {
+      return <Navigate to={`/@${owner}/wiki/${afterSigil(rest, "#")}`} replace />;
+    }
+    // Bare user handle. Canonical `/@owner` renders the profile directly.
+    if (normalized.startsWith("@")) {
+      return <UserPage />;
+    }
+    return <Navigate to={`/@${owner}`} replace />;
   }
 
-  // `#` anywhere -> wiki (only reaches here if percent-encoded as %23).
-  if (decoded.includes("#") || decoded.includes("%23")) {
-    const slug = afterSigil(decoded.replace(/%23/g, "#"), "#");
-    return <Navigate to={`/wiki/${slug}`} replace />;
+  // `~` anywhere -> global patch.
+  if (normalized.includes("~")) {
+    return <Navigate to={`/patch/${afterSigil(normalized, "~")}`} replace />;
   }
 
-  // `@` anywhere -> user. Canonical form starts with `@` -> render the profile.
-  if (decoded.startsWith("@")) {
-    return <UserPage />;
-  }
-  if (decoded.includes("@")) {
-    return <Navigate to={`/@${afterSigil(decoded, "@")}`} replace />;
+  // `#` anywhere -> global wiki (only reaches here if percent-encoded as %23).
+  if (normalized.includes("#")) {
+    return <Navigate to={`/wiki/${afterSigil(normalized, "#")}`} replace />;
   }
 
   // Legacy bare named-patch slugs -> /patch/slug
