@@ -9,6 +9,7 @@ type SandboxRouteParams = {
   user?: string;
   bank?: string;
   patch?: string;
+  slug?: string;
 };
 
 type SharedProjectRow = {
