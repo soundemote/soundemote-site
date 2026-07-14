@@ -9,9 +9,18 @@ import UserPage from "@/pages/UserPage";
 // Canonical namespaces:  /@<user>   /patch/<slug>   /wiki/<slug>
 // Shorthand sigils:      @<user>    ~<slug>         #<slug>
 //
+// A link's type is decided by which sigil appears ANYWHERE in it:
+//   `~` anywhere -> patch      `@` anywhere -> user      `#` anywhere -> wiki
+//
 // `@` and `~` are valid path characters; `#` is always a URL fragment and never
 // reaches the router, so it is handled client-side by ShorthandHashCatcher.
 // -----------------------------------------------------------------------------
+
+/** Strip a leading sigil and return the slug portion after it. */
+const afterSigil = (token: string, sigil: string) => {
+  const idx = token.indexOf(sigil);
+  return idx === -1 ? token : token.slice(idx + 1);
+};
 
 /**
  * Handles the bare single-segment route `/:handle`. Decides whether the segment
@@ -21,19 +30,23 @@ export const RootSlugResolver = () => {
   const { handle = "" } = useParams<{ handle: string }>();
   const decoded = decodeURIComponent(handle);
 
-  // Already a canonical user handle -> render the profile.
+  // `~` anywhere -> patch.
+  if (decoded.includes("~")) {
+    return <Navigate to={`/patch/${afterSigil(decoded, "~")}`} replace />;
+  }
+
+  // `#` anywhere -> wiki (only reaches here if percent-encoded as %23).
+  if (decoded.includes("#") || decoded.includes("%23")) {
+    const slug = afterSigil(decoded.replace(/%23/g, "#"), "#");
+    return <Navigate to={`/wiki/${slug}`} replace />;
+  }
+
+  // `@` anywhere -> user. Canonical form starts with `@` -> render the profile.
   if (decoded.startsWith("@")) {
     return <UserPage />;
   }
-
-  // ~slug -> /patch/slug
-  if (decoded.startsWith("~")) {
-    return <Navigate to={`/patch/${decoded.slice(1)}`} replace />;
-  }
-
-  // #slug -> /wiki/slug (only reaches here if percent-encoded)
-  if (decoded.startsWith("#") || decoded.startsWith("%23")) {
-    return <Navigate to={`/wiki/${decoded.replace(/^#|^%23/, "")}`} replace />;
+  if (decoded.includes("@")) {
+    return <Navigate to={`/@${afterSigil(decoded, "@")}`} replace />;
   }
 
   // Legacy bare named-patch slugs -> /patch/slug
@@ -53,11 +66,21 @@ export const ShorthandHashCatcher = () => {
   const navigate = useNavigate();
   useEffect(() => {
     const resolve = () => {
-      // Only treat the hash as a shorthand on the bare root, so in-page anchor
-      // links (TOC `#heading` on articles/wiki) are never hijacked.
-      if (window.location.pathname !== "/") return;
+      const path = window.location.pathname;
       const raw = window.location.hash.replace(/^#/, "");
       if (!raw) return;
+
+      // A `#` fragment sitting on a user path is the user-scoped wiki shorthand:
+      //   /@robin#mynote  ->  /@robin/wiki/mynote
+      const userMatch = /^\/@([^/]+)\/?$/.exec(path);
+      if (userMatch && /^[a-z0-9][a-z0-9-]*$/i.test(raw)) {
+        navigate(`/@${userMatch[1]}/wiki/${raw}`, { replace: true });
+        return;
+      }
+
+      // Otherwise only treat the hash as a shorthand on the bare root, so
+      // in-page anchor links (TOC `#heading` on articles/wiki) are untouched.
+      if (path !== "/") return;
       if (raw.startsWith("~")) {
         navigate(`/patch/${raw.slice(1)}`, { replace: true });
       } else if (raw.startsWith("@")) {

@@ -10,6 +10,7 @@ type SandboxRouteParams = {
   bank?: string;
   patch?: string;
   slug?: string;
+  handle?: string;
 };
 
 type SharedProjectRow = {
@@ -120,13 +121,22 @@ type SandboxPageProps = {
   pagePatch?: string;
   /** "showcase" opens the patch armed/framed; "sandbox" is a plain tool entry. */
   view?: "showcase" | "sandbox";
+  /** "user" scopes the route to /@<handle>/patch/<slug> (a user-owned patch). */
+  scope?: "user";
 };
 
-const SandboxPage = ({ staticPatchUrl, autostart = false, pagePatch: pagePatchProp, view }: SandboxPageProps = {}) => {
+const SandboxPage = ({ staticPatchUrl, autostart = false, pagePatch: pagePatchProp, view, scope }: SandboxPageProps = {}) => {
   const location = useLocation();
-  const params = useParams<SandboxRouteParams>();
+  const rawParams = useParams<SandboxRouteParams>();
+  // For /@<handle>/patch/<slug> map the user-scoped route onto the standard
+  // user/bank/patch shape so the existing loader/iframe wiring is reused.
+  const params: SandboxRouteParams =
+    scope === "user"
+      ? { user: (rawParams.handle || "").replace(/^@/, ""), bank: "main", patch: rawParams.slug }
+      : rawParams;
   // /patch/:slug and /patch/:slug/sandbox pass the slug via the route param.
-  const pagePatch = pagePatchProp ?? params.slug;
+  // User-scoped patches are not global page-patches, so no pagePatch there.
+  const pagePatch = scope === "user" ? undefined : (pagePatchProp ?? rawParams.slug);
   // Showcase view arms audio + frames automatically; sandbox view stays plain.
   const effectiveAutostart = autostart || view === "showcase";
   const { session } = useAuth();

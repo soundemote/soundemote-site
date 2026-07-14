@@ -18,12 +18,14 @@ type WikiPageRow = {
 };
 
 const WikiArticlePage = () => {
-  const { slug = "" } = useParams<{ slug: string }>();
+  const { slug = "", handle } = useParams<{ slug: string; handle?: string }>();
+  const userScope = handle ? handle.replace(/^@/, "") : null;
   const { loading: roleLoading, session, isTrusted } = useWikiRole();
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState<WikiPageRow | null>(null);
+  const [hasGlobalPatch, setHasGlobalPatch] = useState(false);
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -51,6 +53,24 @@ const WikiArticlePage = () => {
   useEffect(() => {
     load();
   }, [load]);
+
+  // A /wiki/<slug> and /patch/<slug> are two views of the same subject: if a
+  // global page-patch shares this slug, surface a cross-link to it.
+  useEffect(() => {
+    let cancelled = false;
+    if (supabaseConfigError || !slug) return;
+    supabase
+      .from("page_patches")
+      .select("slug")
+      .eq("slug", slug)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setHasGlobalPatch(Boolean(data));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
 
   // Push the saved patch into the embedded sandbox when ready.
   const postProjectData = () => {
@@ -176,12 +196,26 @@ const WikiArticlePage = () => {
               soundemote
             </Link>
             <span>/</span>
-            <Link to="/wiki" className="transition-colors hover:text-scope">
-              wiki
-            </Link>
+            {userScope ? (
+              <Link to={`/@${userScope}`} className="transition-colors hover:text-scope">
+                @{userScope}
+              </Link>
+            ) : (
+              <Link to="/wiki" className="transition-colors hover:text-scope">
+                wiki
+              </Link>
+            )}
             <span>/</span>
             <span className="text-scope">{slug}</span>
           </nav>
+          {hasGlobalPatch && (
+            <Link
+              to={`/patch/${slug}`}
+              className="mono text-xs text-foreground underline underline-offset-4 hover:text-muted-foreground"
+            >
+              open patch →
+            </Link>
+          )}
           {!editing && !roleLoading && (
             session ? (
               <Button size="sm" className="mono normal-case" onClick={startEditing}>

@@ -66,6 +66,15 @@ const App = () => (
         <Route path="/patch/:slug" element={<SandboxPage view="showcase" />} />
         <Route path="/patch/:slug/sandbox" element={<SandboxPage view="sandbox" />} />
 
+        {/* User-owned namespace. Canonical forms carry a static `patch`/`wiki`
+            segment so they rank above the generic /:handle/:bank routes.
+            /@<user>/patch/<slug>  -> that user's patch in the sandbox
+            /@<user>/wiki/<slug>   -> that user's wiki page
+            Shorthand `~`/`#` forms are canonicalized in UserPage / the hash
+            catcher. */}
+        <Route path="/@:handle/patch/:slug" element={<SandboxPage view="showcase" scope="user" />} />
+        <Route path="/@:handle/wiki/:slug" element={<WikiArticlePage />} />
+
         {/* Article, patch, front-page and redirect routes are all defined in
             src/config/site.ts — edit that file to add or change them. */}
         {Object.entries(siteConfig.articleRoutes).map(([path, slug]) => (
