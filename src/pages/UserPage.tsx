@@ -37,6 +37,12 @@ const Shell = ({ children }: { children: React.ReactNode }) => (
 const UserPage = () => {
   const { handle = "", bank, patch } = useParams<UserPageParams>();
   const username = handle.startsWith("@") ? handle.slice(1).toLowerCase() : "";
+
+  // Sigil-anywhere shorthands scoped under a user handle. `/@robin/~mypatch`
+  // arrives as bank="~mypatch"; canonicalize to /@robin/patch/mypatch. `#`
+  // never reaches here (it is a URL fragment handled by the hash catcher).
+  const bankSigil = bank && bank.includes("~");
+  const bankWiki = bank && bank.includes("#");
   const { session } = useAuth();
   const { userFilesUrl, listMyFiles, listPublicFiles } = useUserFiles();
 
@@ -169,6 +175,13 @@ const UserPage = () => {
 
   if (!handle.startsWith("@")) {
     return <Navigate to="/" replace />;
+  }
+
+  if (bankSigil) {
+    return <Navigate to={`/@${username}/patch/${bank!.slice(bank!.indexOf("~") + 1)}`} replace />;
+  }
+  if (bankWiki) {
+    return <Navigate to={`/@${username}/wiki/${bank!.slice(bank!.indexOf("#") + 1)}`} replace />;
   }
 
   if (loading) {
