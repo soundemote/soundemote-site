@@ -147,7 +147,7 @@ const SandboxPage = ({ staticPatchUrl, autostart = false, pagePatch: pagePatchPr
   const targetLabel = hasPatchRoute
     ? `${params.user || "soundemote"} / ${params.bank || "main"} / ${params.patch}`
     : "soemdsp sandbox";
-  const iframeSrc = sandboxIframeSrc(location.search, params, wantsAutoframe, autostart);
+  const iframeSrc = sandboxIframeSrc(location.search, params, wantsAutoframe, effectiveAutostart);
 
   useEffect(() => {
     let cancelled = false;
