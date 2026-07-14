@@ -86,6 +86,12 @@ export const siteConfig = {
   /** Version text shown next to the sandbox link in the hero. */
   sandboxVersion: "v0.2.0",
 
+  /**
+   * Legacy bare-root slugs that were named page-patches. They now redirect to
+   * the canonical /patch/<slug>. Add old named-patch links here.
+   */
+  legacyPatchSlugs: ["robinsupersaw"] as string[],
+
   /** Links shown on /webring. Add or remove rows here. */
 
   webringLinks: [
