@@ -261,6 +261,8 @@ function createNodeGraphLiveRuntime(plan) {
   const resonatorFilterStates = new Map();
   const humanFilterStates = new Map();
   const pulseExplosionStates = new Map();
+  const comparatorStates = new Map();
+  const aliasSineStates = new Map();
   const ladderFilterStates = new Map();
   const tb303FilterStates = new Map();
   const linearEnvelopeStates = new Map();
@@ -434,6 +436,12 @@ function createNodeGraphLiveRuntime(plan) {
     if (node.type === "pulseExplosion") {
       pulseExplosionStates.set(node.id, createNodeGraphPulseExplosionState());
     }
+    if (node.type === "comparator") {
+      comparatorStates.set(node.id, createNodeGraphComparatorState());
+    }
+    if (node.type === "aliasSine") {
+      aliasSineStates.set(node.id, createNodeGraphAliasSineState());
+    }
     if (node.type === "tb303Filter") {
       tb303FilterStates.set(node.id, createNodeGraphStereoFilterState(createNodeGraphTb303FilterState));
     }
@@ -565,6 +573,8 @@ function createNodeGraphLiveRuntime(plan) {
     resonatorFilterStates,
     humanFilterStates,
     pulseExplosionStates,
+    comparatorStates,
+    aliasSineStates,
     graphInputConnections,
     graphLfoStates,
     ladderFilterStates,
@@ -748,6 +758,12 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   }
   if (!runtime.pulseExplosionStates) {
     runtime.pulseExplosionStates = new Map();
+  }
+  if (!runtime.comparatorStates) {
+    runtime.comparatorStates = new Map();
+  }
+  if (!runtime.aliasSineStates) {
+    runtime.aliasSineStates = new Map();
   }
   if (!runtime.tb303FilterStates) {
     runtime.tb303FilterStates = new Map();
@@ -1038,6 +1054,12 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     }
     if (node.type === "pulseExplosion" && !runtime.pulseExplosionStates.has(node.id)) {
       runtime.pulseExplosionStates.set(node.id, createNodeGraphPulseExplosionState());
+    }
+    if (node.type === "comparator" && !runtime.comparatorStates.has(node.id)) {
+      runtime.comparatorStates.set(node.id, createNodeGraphComparatorState());
+    }
+    if (node.type === "aliasSine" && !runtime.aliasSineStates.has(node.id)) {
+      runtime.aliasSineStates.set(node.id, createNodeGraphAliasSineState());
     }
     if (node.type === "clock" && !runtime.clockStates.has(node.id)) {
       runtime.clockStates.set(node.id, createNodeGraphClockState());
@@ -1402,6 +1424,16 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   for (const id of [...runtime.pulseExplosionStates.keys()]) {
     if (!nodeIds.has(id)) {
       runtime.pulseExplosionStates.delete(id);
+    }
+  }
+  for (const id of [...runtime.comparatorStates.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.comparatorStates.delete(id);
+    }
+  }
+  for (const id of [...runtime.aliasSineStates.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.aliasSineStates.delete(id);
     }
   }
   for (const id of [...runtime.tb303FilterStates.keys()]) {

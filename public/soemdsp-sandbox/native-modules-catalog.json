@@ -14,6 +14,18 @@
       "wasmAvailable": true
     },
     {
+      "name": "alias_sine",
+      "label": "Alias Sine Generator",
+      "targetType": "aliasSine",
+      "kind": "oscillator",
+      "source": "native_modules/alias_sine/alias_sine.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/alias_sine/alias_sine.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/alias_sine/alias_sine.wasm",
+      "wasmUrl": "native_modules/alias_sine/alias_sine.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "antisaw",
       "label": "Antisaw",
       "targetType": "antisaw",
@@ -107,6 +119,18 @@
       "libUrl": "",
       "wasm": "native_modules/chua_attractor/chua_attractor.wasm",
       "wasmUrl": "native_modules/chua_attractor/chua_attractor.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "comparator",
+      "label": "Comparator",
+      "targetType": "comparator",
+      "kind": "utility",
+      "source": "native_modules/comparator/comparator.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/comparator/comparator.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/comparator/comparator.wasm",
+      "wasmUrl": "native_modules/comparator/comparator.wasm",
       "wasmAvailable": true
     },
     {
@@ -683,6 +707,18 @@
       "libUrl": "",
       "wasm": "native_modules/video_synth_raster/video_synth_raster.wasm",
       "wasmUrl": "native_modules/video_synth_raster/video_synth_raster.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "videoscope",
+      "label": "Videoscope",
+      "targetType": "videoscope",
+      "kind": "display",
+      "source": "native_modules/videoscope/videoscope.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/videoscope/videoscope.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/videoscope/videoscope.wasm",
+      "wasmUrl": "native_modules/videoscope/videoscope.wasm",
       "wasmAvailable": true
     },
     {

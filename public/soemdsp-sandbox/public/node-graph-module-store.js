@@ -228,6 +228,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "Osc",
     notes: ["multi-waveform", "cv input"],
   },
+  aliasSine: {
+    category: "Oscillator",
+    description: "Bare sine generator with a 0..1.5 normalized-frequency input (fraction of sample rate) that wraps naturally past Nyquist -- aliasing as an explicit, unhidden design choice rather than something to correct for.",
+    label: "Alias Sine",
+    notes: ["sine", "aliasing", "native"],
+  },
   additiveOsc: {
     category: "Oscillator",
     description: "Additive-synthesis oscillator building a waveform from summed harmonics. Native C++/WASM.",
@@ -281,6 +287,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     category: "Sequence",
     description: "Divides incoming trigger pulses into slower clocks for envelopes, sequencers, and rhythmic patches.",
     notes: ["trigger division", "reset input", "pulse width"],
+  },
+  comparator: {
+    category: "Sequence",
+    description: "One threshold, six views of it: continuous Gate/Inverted Gate, a Hold output for steady (unchanging) signal, and Up/Down/Up-Dn trigger-plus-pulse outputs on every rising and falling edge.",
+    label: "Comparator",
+    notes: ["gate", "edge detect", "native"],
   },
   stepSequencer: {
     category: "Sequence",
@@ -875,6 +887,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "A phase-vs-amplitude scope for any voice-bank source (Hypersaw today). Wire Phases/Amplitudes/Pans from a compatible node -- x is phase (0..1), y is amplitude (bipolar stem), color is pan (red = left, green = center, blue = right). Additive blending so overlapping voices brighten instead of overpainting; phosphor persistence so you see where each line has been, not just where it is now.",
     label: "Oscilloscope Bank",
     notes: ["voice bank scope", "phase vs amplitude", "pan color", "additive blend", "phosphor burn"],
+  },
+  videoscope: {
+    category: "Oscilloscope",
+    description: "A triggered oscilloscope for two audio-rate signals (A/B). Ring-buffers both channels, triggers on a configurable level crossing (source A or B, rising or falling), and captures a window around the trigger point. Dot and Line modes draw per-pixel-column min/max stems so brief spikes survive zoomed-out windows; XY mode plots A against B directly. Freeze holds the last captured window. Native C++/WASM.",
+    label: "Videoscope",
+    notes: ["oscilloscope", "trigger", "dot", "line", "xy", "native", "phosphor display"],
   },
   valueOscilloscope: {
     category: "Oscilloscope",
