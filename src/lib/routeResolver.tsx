@@ -53,6 +53,9 @@ export const ShorthandHashCatcher = () => {
   const navigate = useNavigate();
   useEffect(() => {
     const resolve = () => {
+      // Only treat the hash as a shorthand on the bare root, so in-page anchor
+      // links (TOC `#heading` on articles/wiki) are never hijacked.
+      if (window.location.pathname !== "/") return;
       const raw = window.location.hash.replace(/^#/, "");
       if (!raw) return;
       if (raw.startsWith("~")) {
