@@ -118,11 +118,17 @@ type SandboxPageProps = {
   staticPatchUrl?: string;
   autostart?: boolean;
   pagePatch?: string;
+  /** "showcase" opens the patch armed/framed; "sandbox" is a plain tool entry. */
+  view?: "showcase" | "sandbox";
 };
 
-const SandboxPage = ({ staticPatchUrl, autostart = false, pagePatch }: SandboxPageProps = {}) => {
+const SandboxPage = ({ staticPatchUrl, autostart = false, pagePatch: pagePatchProp, view }: SandboxPageProps = {}) => {
   const location = useLocation();
   const params = useParams<SandboxRouteParams>();
+  // /patch/:slug and /patch/:slug/sandbox pass the slug via the route param.
+  const pagePatch = pagePatchProp ?? params.slug;
+  // Showcase view arms audio + frames automatically; sandbox view stays plain.
+  const effectiveAutostart = autostart || view === "showcase";
   const { session } = useAuth();
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [projectData, setProjectData] = useState<unknown>(null);
