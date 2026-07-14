@@ -196,9 +196,15 @@ const WikiArticlePage = () => {
               soundemote
             </Link>
             <span>/</span>
-            <Link to="/wiki" className="transition-colors hover:text-scope">
-              wiki
-            </Link>
+            {userScope ? (
+              <Link to={`/@${userScope}`} className="transition-colors hover:text-scope">
+                @{userScope}
+              </Link>
+            ) : (
+              <Link to="/wiki" className="transition-colors hover:text-scope">
+                wiki
+              </Link>
+            )}
             <span>/</span>
             <span className="text-scope">{slug}</span>
           </nav>
