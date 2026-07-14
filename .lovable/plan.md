@@ -1,84 +1,59 @@
-## Goal
+# Forgiving sigil resolution (v2)
 
-Separate three entities that currently collide at the root — **user**, **patch**, **wiki** — into their own namespaces, with a forgiving shorthand layer that redirects sigils to clean canonical URLs.
+## Rule
+A link's type is decided by which sigil appears **anywhere** in it:
 
-## Sigils → canonical (all shorthands redirect)
+- `~` anywhere → **patch**
+- `@` anywhere → **user**
+- `#` anywhere → **wiki**
 
-```text
-@<user>        →  /@<user>              (user is the one namespace that stays literal + canonical)
-~<slug>        →  /patch/<slug>
-#<slug>        →  /wiki/<slug>
-```
-
-`#` can never be a real path char (it's the URL fragment), and `~` is fragile bare; so both are typed/branded shorthands only. A hash/prefix catcher rewrites them to the canonical path.
-
-## Canonical routes
+These combine for user-owned resources:
 
 ```text
-/                          front page (unchanged)
-/<article>                 article routes: phosphor, simd… (unchanged)
-/@<user>                   user profile + default patch
-/@<user>/~<patch>          a user's own patch      → redirects to /@<user>/patch/<patch>
-/@<user>/patch/<patch>     canonical user patch
-/@<user>/wiki/<wiki>       canonical user wiki
-/@<user>/files             user files (unchanged behavior)
-/patch/<slug>              global named patch (the old /robinsupersaw case) — showcase view
-/patch/<slug>/sandbox      same patch, sandbox-only entry
-/wiki/<slug>               global wiki (explanation + media, embeds the patch)
+@robin            -> user page
+~robinsupersaw    -> global patch
+#supersaw         -> global wiki page
+@robin/~mypatch   -> robin's patch "mypatch"
+@robin/#mynote    -> robin's wiki page "mynote"
 ```
 
-Key relation: **`/patch/<slug>` and `/wiki/<slug>` are two views of the same subject** (shared slug), cross-linked. The `/@<user>/...` forms are a **separate, user-owned** namespace and never equal the global one.
+Precedence when multiple sigils appear: `@` scopes the owner, then `~`/`#` picks the resource. A link with both `~` and `#` resolves to the first resource sigil found, else 404.
 
-Modular stays a **setting, not a route**: `?modular=1` / `?hideui=1` append to any patch/embed URL.
+## Canonical targets
+Shorthands always redirect (`replace`) to canonical routes:
 
-## Forgiving redirect layer
+```text
+~<slug>            -> /patch/<slug>
+#<slug>            -> /wiki/<slug>
+@<user>            -> /@<user>
+@<user> + ~<slug>  -> /@<user>/patch/<slug>
+@<user> + #<slug>  -> /@<user>/wiki/<slug>
+```
 
-A single resolver handles all shorthands and legacy links, redirecting (replace history) to canonical:
+## The `#` problem
+`#` is always a URL fragment and never reaches the router. So `#slug` and `@user/#slug` arrive as `location.hash`, not a path segment, and must be caught client-side. `~` and `@` are valid path chars and route normally.
 
-- `~<slug>` (bare root) → `/patch/<slug>`
-- `#<slug>` (typed/hash) → `/wiki/<slug>`
-- `/@<user>/~<patch>` → `/@<user>/patch/<patch>`
-- `/@<user>/#<wiki>` → `/@<user>/wiki/<wiki>`
-- legacy bare `/robinsupersaw` and other old named-patch slugs → `/patch/<slug>`
-- legacy bare `/<handle>` (no sigil) that matches a profile → `/@<handle>`
-- hash form `soundemote.io/#foo` / `/~foo` caught client-side and rewritten
+## Work
 
-Anything unmatched falls through to the existing article routes, then NotFound.
+1. **`src/lib/routeResolver.tsx`**
+   - `RootSlugResolver` (`/:handle`): scan the decoded segment for a sigil anywhere (not just prefix). `@`→user, `~`→patch, else legacy/user fallback.
+   - New `UserScopedResolver` (`/@:handle/:resource`): detect `~`/`#` anywhere in `:resource`, strip the sigil, redirect to `/@handle/patch/<x>` or `/@handle/wiki/<x>`.
+   - `ShorthandHashCatcher`: handle `#` fragments, rewriting `@user/#note` → `/@user/wiki/note` and bare `#slug` → `/wiki/slug`. Guard against in-page TOC anchors (see note).
 
-## Code changes
-
-1. **`src/App.tsx`**
-   - Remove the hardcoded `/robinsupersaw` route.
-   - Add `/patch/:slug` (SandboxPage showcase) and `/patch/:slug/sandbox` (sandbox-only).
-   - Add `/wiki/:slug` stays; add `/@:handle`, `/@:handle/patch/:patch`, `/@:handle/wiki/:wiki`, `/@:handle/files`.
-   - Constrain the old `/:handle` catch-all so it can't swallow `/patch`, `/wiki`, articles — turn it into a redirect resolver instead.
-
-2. **New `src/lib/routeResolver` (or a small `<RedirectResolver>` route element)**
-   - Central place that maps sigils/legacy paths → canonical and issues `<Navigate replace>`.
-   - Client-side hash listener for `#`/`~` forms landing on `/`.
+2. **`src/App.tsx`**
+   - Add canonical `/@:handle/patch/:slug` and `/@:handle/wiki/:slug` routes.
+   - Add `/@:handle/:resource` → `UserScopedResolver` for `~`/legacy shorthand form.
+   - Keep existing `/patch/:slug`, `/wiki/:slug`, `/@:handle`.
 
 3. **`src/pages/SandboxPage.tsx`**
-   - Add `view: "showcase" | "sandbox"` prop; both use existing `pagePatch` load/share logic.
-   - Support user-scoped patches via `/@user/patch/x` (reuse existing `loadSandboxRouteProject`).
+   - Accept `/@user/patch/:slug`: when a `handle` param is present, load that user's patch (reuse `loadSandboxRouteProject` with owner=handle) instead of the global `page_patches` lookup.
 
-4. **`src/pages/UserPage.tsx`**
-   - Require `@`; bare handle redirects to `/@handle`.
-   - Wire `/@user/patch/:patch` and `/@user/wiki/:wiki` sub-views.
+4. **`src/pages/WikiArticlePage.tsx`**
+   - Support user-scoped `/@user/wiki/:slug` reads; cross-link to `/patch/<slug>` when a matching global patch exists.
 
-5. **`src/pages/WikiArticlePage.tsx`**
-   - "open full sandbox" points to `/patch/<slug>/sandbox` when the slug has a global patch; keep `?wiki=` fallback.
-   - Cross-link to `/patch/<slug>` and vice-versa when slugs match.
+5. **`src/config/site.ts`** — `legacyPatchSlugs` stays as the legacy bare-slug allowlist.
 
-6. **`src/config/site.ts`**
-   - Add the legacy redirect entries (`robinsupersaw` → `/patch/robinsupersaw`, etc.). Article routes untouched.
+No DB schema changes: `page_patches` / `wiki_pages` back global; `shared_projects` + `profiles` back user-scoped.
 
-## DB
-
-No schema change. `page_patches` (slug + owner + project_data) already backs `/patch/<slug>`; `wiki_pages` backs `/wiki/<slug>`; `profiles` backs `/@user`. User-scoped patches already exist in `shared_projects` (owner/bank/patch).
-
-## Untouched
-
-Front page `/`, article routes, `/sandbox`, `/embed`, `*-live` embeds, and the existing `share to /<slug>` save flow all keep working.
-</content>
-<summary>Namespace user/patch/wiki with clean canonical paths (/@user, /patch/slug, /wiki/slug) and a forgiving redirect layer that maps the @/~/# sigils and legacy links onto them; modular stays an iframe setting.</summary>
-</invoke>
+## Anchor-safety note
+Since `#` resolves anywhere, the hash catcher must distinguish wiki shorthands from ordinary in-page anchors. Guard: only treat a hash as a wiki shorthand when the path is `/`, `/@<user>`, or otherwise has no article/wiki TOC context. On real article/wiki routes, leave `#heading` alone for the table of contents.
