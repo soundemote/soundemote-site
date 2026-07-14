@@ -9,6 +9,7 @@ type SandboxRouteParams = {
   user?: string;
   bank?: string;
   patch?: string;
+  slug?: string;
 };
 
 type SharedProjectRow = {
@@ -117,11 +118,17 @@ type SandboxPageProps = {
   staticPatchUrl?: string;
   autostart?: boolean;
   pagePatch?: string;
+  /** "showcase" opens the patch armed/framed; "sandbox" is a plain tool entry. */
+  view?: "showcase" | "sandbox";
 };
 
-const SandboxPage = ({ staticPatchUrl, autostart = false, pagePatch }: SandboxPageProps = {}) => {
+const SandboxPage = ({ staticPatchUrl, autostart = false, pagePatch: pagePatchProp, view }: SandboxPageProps = {}) => {
   const location = useLocation();
   const params = useParams<SandboxRouteParams>();
+  // /patch/:slug and /patch/:slug/sandbox pass the slug via the route param.
+  const pagePatch = pagePatchProp ?? params.slug;
+  // Showcase view arms audio + frames automatically; sandbox view stays plain.
+  const effectiveAutostart = autostart || view === "showcase";
   const { session } = useAuth();
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [projectData, setProjectData] = useState<unknown>(null);
@@ -140,7 +147,7 @@ const SandboxPage = ({ staticPatchUrl, autostart = false, pagePatch }: SandboxPa
   const targetLabel = hasPatchRoute
     ? `${params.user || "soundemote"} / ${params.bank || "main"} / ${params.patch}`
     : "soemdsp sandbox";
-  const iframeSrc = sandboxIframeSrc(location.search, params, wantsAutoframe, autostart);
+  const iframeSrc = sandboxIframeSrc(location.search, params, wantsAutoframe, effectiveAutostart);
 
   useEffect(() => {
     let cancelled = false;

@@ -30,6 +30,7 @@ import AdminWikiEdits from "./pages/AdminWikiEdits.tsx";
 import AdminUsers from "./pages/AdminUsers.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import { siteConfig } from "./config/site.ts";
+import { RootSlugResolver, ShorthandHashCatcher } from "./lib/routeResolver.tsx";
 
 const queryClient = new QueryClient();
 
@@ -40,6 +41,7 @@ const App = () => (
       <Sonner />
 
       {/* BrowserRouter is in main.tsx */}
+      <ShorthandHashCatcher />
       <Routes>
         <Route path="/" element={<Index />} />
         <Route path="/learning-lab" element={<LearningLab />} />
@@ -57,9 +59,12 @@ const App = () => (
         <Route path="/silentlydreaming-live" element={<SandboxPage staticPatchUrl="/patches/silently-dreaming.json" autostart />} />
         <Route path="/shootingstar-live" element={<SandboxPage staticPatchUrl="/patches/shootingstar.json" autostart />} />
 
-        {/* Named page patches: a live sandbox bound to a URL. The owner can
-            overwrite the displayed patch from the sandbox toolbar. */}
-        <Route path="/robinsupersaw" element={<SandboxPage pagePatch="robinsupersaw" />} />
+        {/* Named page patches live under the /patch namespace. A live sandbox
+            bound to a URL; the owner can overwrite it from the toolbar.
+            /patch/<slug>          -> showcase view (armed + framed)
+            /patch/<slug>/sandbox  -> plain sandbox-only entry */}
+        <Route path="/patch/:slug" element={<SandboxPage view="showcase" />} />
+        <Route path="/patch/:slug/sandbox" element={<SandboxPage view="sandbox" />} />
 
         {/* Article, patch, front-page and redirect routes are all defined in
             src/config/site.ts — edit that file to add or change them. */}
@@ -96,7 +101,8 @@ const App = () => (
         <Route path="/:handle/files" element={<FilesPage />} />
         <Route path="/:handle/:bank/:patch" element={<UserPage />} />
         <Route path="/:handle/:bank" element={<UserPage />} />
-        <Route path="/:handle" element={<UserPage />} />
+        {/* Bare single segment: resolve sigils / legacy slugs / user handles. */}
+        <Route path="/:handle" element={<RootSlugResolver />} />
 
         <Route path="*" element={<NotFound />} />
       </Routes>

@@ -1,28 +1,84 @@
-# Archimedes-generated Superdot curve
+## Goal
 
-Add a new **Lightness** curve mode, `Archimedes`, to the gradient curve widget. When selected, the Superdot's brightness falloff is shaped by a wavetable **captured from our Archimedes oscillator** instead of a smooth math function — so the oscillator's fixed-point + dithered-noise character bakes a subtle shimmer/jitter into the dot's radial banding. This is exactly the "generate a curve over time, capture it, apply it" idea.
+Separate three entities that currently collide at the root — **user**, **patch**, **wiki** — into their own namespaces, with a forgiving shorthand layer that redirects sigils to clean canonical URLs.
 
-## How it works
+## Sigils → canonical (all shorthands redirect)
 
-- On widget mount, run the Archimedes oscillator forward in time (step-by-step) and **capture one shaped cycle into a ~256-entry wavetable**, normalized to `[0,1]`. This happens once and is cached at module scope, so repeated re-renders reuse the same table.
-- The capture source is the real compiled module: fetch and instantiate `/soemdsp-sandbox/native_modules/archimedes/archimedes.wasm`, then call `soemdsp_archimedes_create` / `set_profile` / `set_frequency` / `step` to fill the table. If the fetch/instantiate fails, fall back to a faithful in-file JS port of the same integer symplectic + xorshift-dither math (identical algorithm to `archimedes.cpp`), so the UI never breaks.
-- A new `lightnessCurveValue` branch for `mode === "archimedes"` reads `t` from that captured table (with linear interpolation between entries). Because the table carries the dither jitter, the falloff wobbles slightly rather than being perfectly smooth — the demonstration you want.
+```text
+@<user>        →  /@<user>              (user is the one namespace that stays literal + canonical)
+~<slug>        →  /patch/<slug>
+#<slug>        →  /wiki/<slug>
+```
 
-## UI
+`#` can never be a real path char (it's the URL fragment), and `~` is fragile bare; so both are typed/branded shorthands only. A hash/prefix catcher rewrites them to the canonical path.
 
-- New button in the existing **Lightness** row: `Linear · Smooth · Gaussian · Filmic · Bokeh · **Archimedes**`.
-- Selecting it switches the Superdot (and every other preview mode) to the captured curve. It persists across reloads via the widget's existing localStorage settings (it already stores `lightnessMode`).
+## Canonical routes
 
-## Scope
+```text
+/                          front page (unchanged)
+/<article>                 article routes: phosphor, simd… (unchanged)
+/@<user>                   user profile + default patch
+/@<user>/~<patch>          a user's own patch      → redirects to /@<user>/patch/<patch>
+/@<user>/patch/<patch>     canonical user patch
+/@<user>/wiki/<wiki>       canonical user wiki
+/@<user>/files             user files (unchanged behavior)
+/patch/<slug>              global named patch (the old /robinsupersaw case) — showcase view
+/patch/<slug>/sandbox      same patch, sandbox-only entry
+/wiki/<slug>               global wiki (explanation + media, embeds the patch)
+```
 
-- Single file touched: `src/good-code/gradient-curve-widget/gradient-curve-widget.js`
-  - add the `archimedes` button markup in the Lightness segment
-  - add `"archimedes"` to the three places the lightness mode is validated (initial state, button handler, settings import)
-  - add the capture helper (wasm load + JS fallback + cached wavetable)
-  - add the `archimedes` branch in `lightnessCurveValue`
-- No changes to the Archimedes module, the article, or the constellation.
+Key relation: **`/patch/<slug>` and `/wiki/<slug>` are two views of the same subject** (shared slug), cross-linked. The `/@<user>/...` forms are a **separate, user-owned** namespace and never equal the global one.
 
-## Technical notes
+Modular stays a **setting, not a route**: `?modular=1` / `?hideui=1` append to any patch/embed URL.
 
-- The captured curve is **static** (the jitter is spatial across the dot's radius, captured from the oscillator's time evolution). No animation loop is added — the CSS-driven dot stays a static gradient, matching the capture-and-apply approach and keeping it cheap.
-- Capture parameters (profile `dtShift`, frequency, dither bits, sample count) will be tuned so the jitter is visible but tasteful — a shimmer, not noise.
+## Forgiving redirect layer
+
+A single resolver handles all shorthands and legacy links, redirecting (replace history) to canonical:
+
+- `~<slug>` (bare root) → `/patch/<slug>`
+- `#<slug>` (typed/hash) → `/wiki/<slug>`
+- `/@<user>/~<patch>` → `/@<user>/patch/<patch>`
+- `/@<user>/#<wiki>` → `/@<user>/wiki/<wiki>`
+- legacy bare `/robinsupersaw` and other old named-patch slugs → `/patch/<slug>`
+- legacy bare `/<handle>` (no sigil) that matches a profile → `/@<handle>`
+- hash form `soundemote.io/#foo` / `/~foo` caught client-side and rewritten
+
+Anything unmatched falls through to the existing article routes, then NotFound.
+
+## Code changes
+
+1. **`src/App.tsx`**
+   - Remove the hardcoded `/robinsupersaw` route.
+   - Add `/patch/:slug` (SandboxPage showcase) and `/patch/:slug/sandbox` (sandbox-only).
+   - Add `/wiki/:slug` stays; add `/@:handle`, `/@:handle/patch/:patch`, `/@:handle/wiki/:wiki`, `/@:handle/files`.
+   - Constrain the old `/:handle` catch-all so it can't swallow `/patch`, `/wiki`, articles — turn it into a redirect resolver instead.
+
+2. **New `src/lib/routeResolver` (or a small `<RedirectResolver>` route element)**
+   - Central place that maps sigils/legacy paths → canonical and issues `<Navigate replace>`.
+   - Client-side hash listener for `#`/`~` forms landing on `/`.
+
+3. **`src/pages/SandboxPage.tsx`**
+   - Add `view: "showcase" | "sandbox"` prop; both use existing `pagePatch` load/share logic.
+   - Support user-scoped patches via `/@user/patch/x` (reuse existing `loadSandboxRouteProject`).
+
+4. **`src/pages/UserPage.tsx`**
+   - Require `@`; bare handle redirects to `/@handle`.
+   - Wire `/@user/patch/:patch` and `/@user/wiki/:wiki` sub-views.
+
+5. **`src/pages/WikiArticlePage.tsx`**
+   - "open full sandbox" points to `/patch/<slug>/sandbox` when the slug has a global patch; keep `?wiki=` fallback.
+   - Cross-link to `/patch/<slug>` and vice-versa when slugs match.
+
+6. **`src/config/site.ts`**
+   - Add the legacy redirect entries (`robinsupersaw` → `/patch/robinsupersaw`, etc.). Article routes untouched.
+
+## DB
+
+No schema change. `page_patches` (slug + owner + project_data) already backs `/patch/<slug>`; `wiki_pages` backs `/wiki/<slug>`; `profiles` backs `/@user`. User-scoped patches already exist in `shared_projects` (owner/bank/patch).
+
+## Untouched
+
+Front page `/`, article routes, `/sandbox`, `/embed`, `*-live` embeds, and the existing `share to /<slug>` save flow all keep working.
+</content>
+<summary>Namespace user/patch/wiki with clean canonical paths (/@user, /patch/slug, /wiki/slug) and a forgiving redirect layer that maps the @/~/# sigils and legacy links onto them; modular stays an iframe setting.</summary>
+</invoke>
