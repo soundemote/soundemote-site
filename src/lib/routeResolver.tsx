@@ -84,8 +84,9 @@ export const RootSlugResolver = () => {
     return <Navigate to={`/patch/${decoded.toLowerCase()}`} replace />;
   }
 
-  // Anything else: assume a user handle and canonicalize to /@handle.
-  return <Navigate to={`/@${decoded}`} replace />;
+  // A user handle is ONLY the `@handle` form. A bare slug with no sigil is
+  // not a user, so fall through to the app's 404 rather than inventing one.
+  return <Navigate to="/404" replace />;
 };
 
 /**
