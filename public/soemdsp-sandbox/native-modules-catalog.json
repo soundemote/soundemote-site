@@ -98,6 +98,18 @@
       "wasmAvailable": true
     },
     {
+      "name": "chord_memory",
+      "label": "Chord Memory",
+      "targetType": "chordMemory",
+      "kind": "utility",
+      "source": "native_modules/chord_memory/chord_memory.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/chord_memory/chord_memory.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/chord_memory/chord_memory.wasm",
+      "wasmUrl": "native_modules/chord_memory/chord_memory.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "chord_sequencer",
       "label": "Chord Sequencer",
       "targetType": "chordSequencer",
@@ -122,6 +134,18 @@
       "wasmAvailable": true
     },
     {
+      "name": "clock",
+      "label": "Clock",
+      "targetType": "clock",
+      "kind": "utility",
+      "source": "native_modules/clock/clock.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/clock/clock.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/clock/clock.wasm",
+      "wasmUrl": "native_modules/clock/clock.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "comparator",
       "label": "Comparator",
       "targetType": "comparator",
@@ -143,6 +167,18 @@
       "libUrl": "",
       "wasm": "native_modules/delay_effect/delay_effect.wasm",
       "wasmUrl": "native_modules/delay_effect/delay_effect.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "delayed_trigger",
+      "label": "Delayed Trigger",
+      "targetType": "delayedTrigger",
+      "kind": "utility",
+      "source": "native_modules/delayed_trigger/delayed_trigger.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/delayed_trigger/delayed_trigger.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/delayed_trigger/delayed_trigger.wasm",
+      "wasmUrl": "native_modules/delayed_trigger/delayed_trigger.wasm",
       "wasmAvailable": true
     },
     {
@@ -179,6 +215,18 @@
       "libUrl": "",
       "wasm": "native_modules/exp_adsr/exp_adsr.wasm",
       "wasmUrl": "native_modules/exp_adsr/exp_adsr.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "flower_child_envelope_follower",
+      "label": "Flower Child Envelope Follower",
+      "targetType": "flowerChildEnvelopeFollower",
+      "kind": "envelope",
+      "source": "native_modules/flower_child_envelope_follower/flower_child_envelope_follower.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/flower_child_envelope_follower/flower_child_envelope_follower.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/flower_child_envelope_follower/flower_child_envelope_follower.wasm",
+      "wasmUrl": "native_modules/flower_child_envelope_follower/flower_child_envelope_follower.wasm",
       "wasmAvailable": true
     },
     {
@@ -470,6 +518,18 @@
       "wasmAvailable": true
     },
     {
+      "name": "papoulis_filter",
+      "label": "Papoulis Filter",
+      "targetType": "papoulisFilter",
+      "kind": "filter",
+      "source": "native_modules/papoulis_filter/papoulis_filter.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/papoulis_filter/papoulis_filter.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/papoulis_filter/papoulis_filter.wasm",
+      "wasmUrl": "native_modules/papoulis_filter/papoulis_filter.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "passive_filter",
       "label": "Passive Filter",
       "targetType": "passiveFilter",
@@ -482,6 +542,18 @@
       "wasmAvailable": true
     },
     {
+      "name": "phosphillator",
+      "label": "Phosphillator",
+      "targetType": "phosphillator",
+      "kind": "oscillator",
+      "source": "native_modules/phosphillator/phosphillator.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/phosphillator/phosphillator.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/phosphillator/phosphillator.wasm",
+      "wasmUrl": "native_modules/phosphillator/phosphillator.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "pi_spigot_noise",
       "label": "Pi Spigot Noise",
       "targetType": "piSpigotNoise",
@@ -491,6 +563,18 @@
       "libUrl": "",
       "wasm": "native_modules/pi_spigot_noise/pi_spigot_noise.wasm",
       "wasmUrl": "native_modules/pi_spigot_noise/pi_spigot_noise.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "ping_pong_delay",
+      "label": "Ping Pong Delay",
+      "targetType": "pingPongDelay",
+      "kind": "effect",
+      "source": "native_modules/ping_pong_delay/ping_pong_delay.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/ping_pong_delay/ping_pong_delay.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/ping_pong_delay/ping_pong_delay.wasm",
+      "wasmUrl": "native_modules/ping_pong_delay/ping_pong_delay.wasm",
       "wasmAvailable": true
     },
     {
@@ -554,6 +638,18 @@
       "wasmAvailable": true
     },
     {
+      "name": "random_clock",
+      "label": "Random Clock",
+      "targetType": "randomClock",
+      "kind": "utility",
+      "source": "native_modules/random_clock/random_clock.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/random_clock/random_clock.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/random_clock/random_clock.wasm",
+      "wasmUrl": "native_modules/random_clock/random_clock.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "random_walk",
       "label": "Random Walk",
       "targetType": "randomWalk",
@@ -614,6 +710,18 @@
       "wasmAvailable": true
     },
     {
+      "name": "sample_hold",
+      "label": "Sample & Hold",
+      "targetType": "sampleHold",
+      "kind": "utility",
+      "source": "native_modules/sample_hold/sample_hold.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/sample_hold/sample_hold.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/sample_hold/sample_hold.wasm",
+      "wasmUrl": "native_modules/sample_hold/sample_hold.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "shooting_star_explosion",
       "label": "Shooting Star Explosion",
       "targetType": "shootingStarExplosion",
@@ -638,6 +746,18 @@
       "wasmAvailable": true
     },
     {
+      "name": "slew_limiter",
+      "label": "Slew Limiter",
+      "targetType": "slewLimiter",
+      "kind": "utility",
+      "source": "native_modules/slew_limiter/slew_limiter.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/slew_limiter/slew_limiter.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/slew_limiter/slew_limiter.wasm",
+      "wasmUrl": "native_modules/slew_limiter/slew_limiter.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "soft_clipper",
       "label": "Soft Clipper",
       "targetType": "softClipper",
@@ -647,6 +767,18 @@
       "libUrl": "",
       "wasm": "native_modules/soft_clipper/soft_clipper.wasm",
       "wasmUrl": "native_modules/soft_clipper/soft_clipper.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "step_sequencer",
+      "label": "Step Sequencer",
+      "targetType": "stepSequencer",
+      "kind": "utility",
+      "source": "native_modules/step_sequencer/step_sequencer.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/step_sequencer/step_sequencer.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/step_sequencer/step_sequencer.wasm",
+      "wasmUrl": "native_modules/step_sequencer/step_sequencer.wasm",
       "wasmAvailable": true
     },
     {
@@ -683,6 +815,54 @@
       "libUrl": "https://github.com/RobinSchmidt/RS-MET",
       "wasm": "native_modules/tb303_filter/tb303_filter.wasm",
       "wasmUrl": "native_modules/tb303_filter/tb303_filter.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "transport",
+      "label": "Transport",
+      "targetType": "transport",
+      "kind": "utility",
+      "source": "native_modules/transport/transport.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/transport/transport.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/transport/transport.wasm",
+      "wasmUrl": "native_modules/transport/transport.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "trigger_counter",
+      "label": "Trigger Counter",
+      "targetType": "triggerCounter",
+      "kind": "utility",
+      "source": "native_modules/trigger_counter/trigger_counter.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/trigger_counter/trigger_counter.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/trigger_counter/trigger_counter.wasm",
+      "wasmUrl": "native_modules/trigger_counter/trigger_counter.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "trigger_divider",
+      "label": "Trigger Divider",
+      "targetType": "triggerDivider",
+      "kind": "utility",
+      "source": "native_modules/trigger_divider/trigger_divider.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/trigger_divider/trigger_divider.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/trigger_divider/trigger_divider.wasm",
+      "wasmUrl": "native_modules/trigger_divider/trigger_divider.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "turing_machine",
+      "label": "Turing Machine",
+      "targetType": "turingMachine",
+      "kind": "utility",
+      "source": "native_modules/turing_machine/turing_machine.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/turing_machine/turing_machine.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/turing_machine/turing_machine.wasm",
+      "wasmUrl": "native_modules/turing_machine/turing_machine.wasm",
       "wasmAvailable": true
     },
     {

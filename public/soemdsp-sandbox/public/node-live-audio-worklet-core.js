@@ -149,6 +149,36 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.nativeArchimedes = null;
     this.nativeArchimedesReady = false;
     this.archimedesStates = new Map();
+    this.nativeTransport = null;
+    this.nativeTransportReady = false;
+    this.nativeSlewLimiter = null;
+    this.nativeSlewLimiterReady = false;
+    this.nativeSampleHold = null;
+    this.nativeSampleHoldReady = false;
+    this.nativeChordMemory = null;
+    this.nativeChordMemoryReady = false;
+    this.nativeTuringMachine = null;
+    this.nativeTuringMachineReady = false;
+    this.nativeFlowerChildEnvelopeFollower = null;
+    this.nativeFlowerChildEnvelopeFollowerReady = false;
+    this.nativeTriggerDivider = null;
+    this.nativeTriggerDividerReady = false;
+    this.nativeStepSequencer = null;
+    this.nativeStepSequencerReady = false;
+    this.nativeTriggerCounter = null;
+    this.nativeTriggerCounterReady = false;
+    this.nativeDelayedTrigger = null;
+    this.nativeDelayedTriggerReady = false;
+    this.nativeClock = null;
+    this.nativeClockReady = false;
+    this.nativeRandomClock = null;
+    this.nativeRandomClockReady = false;
+    this.nativePingPongDelay = null;
+    this.nativePingPongDelayReady = false;
+    this.nativePapoulisFilter = null;
+    this.nativePapoulisFilterReady = false;
+    this.nativePhosphillator = null;
+    this.nativePhosphillatorReady = false;
     this.pllStates = new Map();
     this.fractalBrownianNoiseStates = new Map();
     this.graphInputConnections = new Map();
@@ -725,6 +755,247 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
           type: "nativeModuleStatus",
           name: "alias_sine",
           status: this.nativeAliasSineReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "transport" || targetType === "transport") {
+        for (const state of this.transportStates.values()) {
+          this.destroyTransportNativeState(state);
+        }
+        this.nativeTransport = exports;
+        this.nativeTransportReady = Boolean(
+          this.nativeTransport?.soemdsp_transport_create &&
+          this.nativeTransport?.soemdsp_transport_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "transport",
+          status: this.nativeTransportReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "slew_limiter" || targetType === "slewLimiter") {
+        for (const bundle of this.slewLimiterStates.values()) {
+          this.destroyStereoFilterNativeState(bundle, (s) => this.destroySlewLimiterNativeState(s));
+        }
+        this.nativeSlewLimiter = exports;
+        this.nativeSlewLimiterReady = Boolean(
+          this.nativeSlewLimiter?.soemdsp_slew_limiter_create &&
+          this.nativeSlewLimiter?.soemdsp_slew_limiter_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "slew_limiter",
+          status: this.nativeSlewLimiterReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "sample_hold" || targetType === "sampleHold") {
+        for (const bundle of this.sampleHoldStates.values()) {
+          this.destroyStereoFilterNativeState(bundle, (s) => this.destroySampleHoldNativeState(s));
+        }
+        this.nativeSampleHold = exports;
+        this.nativeSampleHoldReady = Boolean(
+          this.nativeSampleHold?.soemdsp_sample_hold_create &&
+          this.nativeSampleHold?.soemdsp_sample_hold_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "sample_hold",
+          status: this.nativeSampleHoldReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "chord_memory" || targetType === "chordMemory") {
+        for (const state of this.chordMemoryStates.values()) {
+          this.destroyChordMemoryNativeState(state);
+        }
+        this.nativeChordMemory = exports;
+        this.nativeChordMemoryReady = Boolean(
+          this.nativeChordMemory?.soemdsp_chord_memory_create &&
+          this.nativeChordMemory?.soemdsp_chord_memory_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "chord_memory",
+          status: this.nativeChordMemoryReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "turing_machine" || targetType === "turingMachine") {
+        for (const state of this.turingMachineStates.values()) {
+          this.destroyTuringMachineNativeState(state);
+        }
+        this.nativeTuringMachine = exports;
+        this.nativeTuringMachineReady = Boolean(
+          this.nativeTuringMachine?.soemdsp_turing_machine_create &&
+          this.nativeTuringMachine?.soemdsp_turing_machine_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "turing_machine",
+          status: this.nativeTuringMachineReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "flower_child_envelope_follower" || targetType === "flowerChildEnvelopeFollower") {
+        for (const state of this.flowerChildEnvelopeFollowerStates.values()) {
+          this.destroyFlowerChildEnvelopeFollowerNativeState(state);
+        }
+        this.nativeFlowerChildEnvelopeFollower = exports;
+        this.nativeFlowerChildEnvelopeFollowerReady = Boolean(
+          this.nativeFlowerChildEnvelopeFollower?.soemdsp_flower_child_envelope_follower_create &&
+          this.nativeFlowerChildEnvelopeFollower?.soemdsp_flower_child_envelope_follower_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "flower_child_envelope_follower",
+          status: this.nativeFlowerChildEnvelopeFollowerReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "trigger_divider" || targetType === "triggerDivider" || targetType === "clockDivider") {
+        for (const state of this.triggerDividerStates.values()) {
+          this.destroyTriggerDividerNativeState(state);
+        }
+        this.nativeTriggerDivider = exports;
+        this.nativeTriggerDividerReady = Boolean(
+          this.nativeTriggerDivider?.soemdsp_trigger_divider_create &&
+          this.nativeTriggerDivider?.soemdsp_trigger_divider_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "trigger_divider",
+          status: this.nativeTriggerDividerReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "step_sequencer" || targetType === "stepSequencer") {
+        for (const state of this.stepSequencerStates.values()) {
+          this.destroyStepSequencerNativeState(state);
+        }
+        this.nativeStepSequencer = exports;
+        this.nativeStepSequencerReady = Boolean(
+          this.nativeStepSequencer?.soemdsp_step_sequencer_create &&
+          this.nativeStepSequencer?.soemdsp_step_sequencer_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "step_sequencer",
+          status: this.nativeStepSequencerReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "trigger_counter" || targetType === "triggerCounter") {
+        for (const state of this.triggerCounterStates.values()) {
+          this.destroyTriggerCounterNativeState(state);
+        }
+        this.nativeTriggerCounter = exports;
+        this.nativeTriggerCounterReady = Boolean(
+          this.nativeTriggerCounter?.soemdsp_trigger_counter_create &&
+          this.nativeTriggerCounter?.soemdsp_trigger_counter_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "trigger_counter",
+          status: this.nativeTriggerCounterReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "delayed_trigger" || targetType === "delayedTrigger") {
+        for (const state of this.delayedTriggerStates.values()) {
+          this.destroyDelayedTriggerNativeState(state);
+        }
+        this.nativeDelayedTrigger = exports;
+        this.nativeDelayedTriggerReady = Boolean(
+          this.nativeDelayedTrigger?.soemdsp_delayed_trigger_create &&
+          this.nativeDelayedTrigger?.soemdsp_delayed_trigger_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "delayed_trigger",
+          status: this.nativeDelayedTriggerReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "clock" || targetType === "clock") {
+        for (const state of this.clockStates.values()) {
+          this.destroyClockNativeState(state);
+        }
+        this.nativeClock = exports;
+        this.nativeClockReady = Boolean(
+          this.nativeClock?.soemdsp_clock_create &&
+          this.nativeClock?.soemdsp_clock_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "clock",
+          status: this.nativeClockReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "random_clock" || targetType === "randomClock") {
+        for (const state of this.randomClockStates.values()) {
+          this.destroyRandomClockNativeState(state);
+        }
+        this.nativeRandomClock = exports;
+        this.nativeRandomClockReady = Boolean(
+          this.nativeRandomClock?.soemdsp_random_clock_create &&
+          this.nativeRandomClock?.soemdsp_random_clock_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "random_clock",
+          status: this.nativeRandomClockReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "ping_pong_delay" || targetType === "pingPongDelay") {
+        for (const state of this.pingPongDelayStates.values()) {
+          this.destroyPingPongDelayNativeState(state);
+        }
+        this.nativePingPongDelay = exports;
+        this.nativePingPongDelayReady = Boolean(
+          this.nativePingPongDelay?.soemdsp_ping_pong_delay_create &&
+          this.nativePingPongDelay?.soemdsp_ping_pong_delay_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "ping_pong_delay",
+          status: this.nativePingPongDelayReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "papoulis_filter" || targetType === "papoulisFilter") {
+        for (const state of this.papoulisFilterStates.values()) {
+          this.destroyPapoulisFilterNativeState(state);
+        }
+        this.nativePapoulisFilter = exports;
+        this.nativePapoulisFilterReady = Boolean(
+          this.nativePapoulisFilter?.soemdsp_papoulis_filter_create &&
+          this.nativePapoulisFilter?.soemdsp_papoulis_filter_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "papoulis_filter",
+          status: this.nativePapoulisFilterReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "phosphillator" || targetType === "phosphillator") {
+        for (const state of this.phosphillatorPlaybackStates.values()) {
+          this.destroyPhosphillatorNativeState(state);
+        }
+        this.nativePhosphillator = exports;
+        this.nativePhosphillatorReady = Boolean(
+          this.nativePhosphillator?.soemdsp_phosphillator_create &&
+          this.nativePhosphillator?.soemdsp_phosphillator_sample &&
+          this.nativePhosphillator?.soemdsp_phosphillator_set_path,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "phosphillator",
+          status: this.nativePhosphillatorReady ? "ready" : "missing exports",
         });
         return;
       }
@@ -1468,16 +1739,34 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       this.destroyStereoFilterNativeState(state, (s) => this.destroyPassiveFilterNativeState(s));
     }
     this.passiveFilterStates = new Map();
+    for (const state of this.papoulisFilterStates.values()) {
+      this.destroyPapoulisFilterNativeState(state);
+    }
     this.papoulisFilterStates = new Map();
+    for (const state of this.phosphillatorPlaybackStates.values()) {
+      this.destroyPhosphillatorNativeState(state);
+    }
     this.phosphillatorPlaybackStates = new Map();
     this.phosphillatorDecodedPathCache = new Map();
     this.clockDividerStates = new Map();
+    for (const state of this.clockStates.values()) {
+      this.destroyClockNativeState(state);
+    }
     this.clockStates = new Map();
+    for (const state of this.transportStates.values()) {
+      this.destroyTransportNativeState(state);
+    }
     this.transportStates = new Map();
     this.codeblockFunctions = new Map();
     this.cookbookFilterStates = new Map();
+    for (const state of this.delayedTriggerStates.values()) {
+      this.destroyDelayedTriggerNativeState(state);
+    }
     this.delayedTriggerStates = new Map();
     this.delayEffectStates = new Map();
+    for (const state of this.pingPongDelayStates.values()) {
+      this.destroyPingPongDelayNativeState(state);
+    }
     this.pingPongDelayStates = new Map();
     this.expAdsrStates = new Map();
     for (const state of this.fractalBrownianNoiseStates.values()) {
@@ -1487,6 +1776,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.gpuAdditiveQueues = new Map();
     this.gpuAdditiveStatusCounter = 0;
     this.gpuAdditiveUnderruns = 0;
+    for (const state of this.flowerChildEnvelopeFollowerStates.values()) {
+      this.destroyFlowerChildEnvelopeFollowerNativeState(state);
+    }
     this.flowerChildEnvelopeFollowerStates = new Map();
     for (const state of this.ladderFilterStates.values()) {
       this.destroyStereoFilterNativeState(state, (s) => this.destroyLadderFilterNativeState(s));
@@ -1550,9 +1842,15 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.keplerBouwkampStates = new Map();
     this.nyquistShannonStates = new Map();
     this.radarStates = new Map();
+    for (const state of this.chordMemoryStates.values()) {
+      this.destroyChordMemoryNativeState(state);
+    }
     this.chordMemoryStates = new Map();
     this.chordSequencerStates = new Map();
     this.lutCellStates = new Map();
+    for (const state of this.turingMachineStates.values()) {
+      this.destroyTuringMachineNativeState(state);
+    }
     this.turingMachineStates = new Map();
     this.pitchQuantizerStates = new Map();
     this.surgeOscillatorStates = new Map();
@@ -1564,6 +1862,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.oscResetStates = new Map();
     this.graphLfoStates = new Map();
     this.pluckEnvelopeStates = new Map();
+    for (const state of this.randomClockStates.values()) {
+      this.destroyRandomClockNativeState(state);
+    }
     this.randomClockStates = new Map();
     for (const state of this.reverbEffectStates.values()) {
       this.destroySabrinaReverbState(state);
@@ -1581,9 +1882,15 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.piSpigotNoiseStates = new Map();
     this.bradley2AStates = new Map();
     this.antisawStates = new Map();
+    for (const bundle of this.sampleHoldStates.values()) {
+      this.destroyStereoFilterNativeState(bundle, (s) => this.destroySampleHoldNativeState(s));
+    }
     this.sampleHoldStates = new Map();
     this.samplePlaybackStates = new Map();
     this.samples = new Map();
+    for (const bundle of this.slewLimiterStates.values()) {
+      this.destroyStereoFilterNativeState(bundle, (s) => this.destroySlewLimiterNativeState(s));
+    }
     this.slewLimiterStates = new Map();
     this.scopeBuffers = new Map();
     this.scopeCounter = 0;
@@ -1591,8 +1898,17 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.spiralStates = new Map();
     this.fractalSpiralStates = new Map();
     this.logSpiralStates = new Map();
+    for (const state of this.stepSequencerStates.values()) {
+      this.destroyStepSequencerNativeState(state);
+    }
     this.stepSequencerStates = new Map();
+    for (const state of this.triggerCounterStates.values()) {
+      this.destroyTriggerCounterNativeState(state);
+    }
     this.triggerCounterStates = new Map();
+    for (const state of this.triggerDividerStates.values()) {
+      this.destroyTriggerDividerNativeState(state);
+    }
     this.triggerDividerStates = new Map();
     this.triangleStates = new Map();
     this.vactrolEnvelopeStates = new Map();
@@ -2144,11 +2460,13 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
     for (const id of [...this.chordMemoryStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyChordMemoryNativeState(this.chordMemoryStates.get(id));
         this.chordMemoryStates.delete(id);
       }
     }
     for (const id of [...this.turingMachineStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyTuringMachineNativeState(this.turingMachineStates.get(id));
         this.turingMachineStates.delete(id);
       }
     }
@@ -2208,11 +2526,13 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
     for (const id of [...this.papoulisFilterStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyPapoulisFilterNativeState(this.papoulisFilterStates.get(id));
         this.papoulisFilterStates.delete(id);
       }
     }
     for (const id of [...this.phosphillatorPlaybackStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyPhosphillatorNativeState(this.phosphillatorPlaybackStates.get(id));
         this.phosphillatorPlaybackStates.delete(id);
         this.phosphillatorDecodedPathCache.delete(id);
       }
@@ -2231,6 +2551,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
     for (const id of [...this.clockStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyClockNativeState(this.clockStates.get(id));
         this.clockStates.delete(id);
       }
     }
@@ -2304,6 +2625,12 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         this.comparatorStates.delete(id);
       }
     }
+    for (const id of [...this.transportStates.keys()]) {
+      if (!ids.has(id)) {
+        this.destroyTransportNativeState(this.transportStates.get(id));
+        this.transportStates.delete(id);
+      }
+    }
     for (const id of [...this.aliasSineStates.keys()]) {
       if (!ids.has(id)) {
         this.destroyAliasSineNativeState(this.aliasSineStates.get(id));
@@ -2323,6 +2650,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
     for (const id of [...this.delayedTriggerStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyDelayedTriggerNativeState(this.delayedTriggerStates.get(id));
         this.delayedTriggerStates.delete(id);
       }
     }
@@ -2334,6 +2662,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
     for (const id of [...this.pingPongDelayStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyPingPongDelayNativeState(this.pingPongDelayStates.get(id));
         this.pingPongDelayStates.delete(id);
       }
     }
@@ -2357,6 +2686,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
     for (const id of [...this.sampleHoldStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyStereoFilterNativeState(this.sampleHoldStates.get(id), (s) => this.destroySampleHoldNativeState(s));
         this.sampleHoldStates.delete(id);
       }
     }
@@ -2372,6 +2702,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
     for (const id of [...this.slewLimiterStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyStereoFilterNativeState(this.slewLimiterStates.get(id), (s) => this.destroySlewLimiterNativeState(s));
         this.slewLimiterStates.delete(id);
       }
     }
@@ -2413,6 +2744,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
     for (const id of [...this.randomClockStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyRandomClockNativeState(this.randomClockStates.get(id));
         this.randomClockStates.delete(id);
       }
     }
@@ -2424,6 +2756,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
     for (const id of [...this.flowerChildEnvelopeFollowerStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyFlowerChildEnvelopeFollowerNativeState(this.flowerChildEnvelopeFollowerStates.get(id));
         this.flowerChildEnvelopeFollowerStates.delete(id);
       }
     }
@@ -2435,16 +2768,19 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
     for (const id of [...this.stepSequencerStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyStepSequencerNativeState(this.stepSequencerStates.get(id));
         this.stepSequencerStates.delete(id);
       }
     }
     for (const id of [...this.triggerCounterStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyTriggerCounterNativeState(this.triggerCounterStates.get(id));
         this.triggerCounterStates.delete(id);
       }
     }
     for (const id of [...this.triggerDividerStates.keys()]) {
       if (!ids.has(id)) {
+        this.destroyTriggerDividerNativeState(this.triggerDividerStates.get(id));
         this.triggerDividerStates.delete(id);
       }
     }
@@ -4117,6 +4453,103 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       this.nativeComparator.soemdsp_comparator_destroy(state.nativeHandle);
       state.nativeHandle = 0;
     }
+  }
+
+  destroyTransportNativeState(state) {
+    if (state.nativeHandle && this.nativeTransport?.soemdsp_transport_destroy) {
+      this.nativeTransport.soemdsp_transport_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+
+  destroySlewLimiterNativeState(state) {
+    if (state.nativeHandle && this.nativeSlewLimiter?.soemdsp_slew_limiter_destroy) {
+      this.nativeSlewLimiter.soemdsp_slew_limiter_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+
+  destroySampleHoldNativeState(state) {
+    if (state.nativeHandle && this.nativeSampleHold?.soemdsp_sample_hold_destroy) {
+      this.nativeSampleHold.soemdsp_sample_hold_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+
+  destroyChordMemoryNativeState(state) {
+    if (state.nativeHandle && this.nativeChordMemory?.soemdsp_chord_memory_destroy) {
+      this.nativeChordMemory.soemdsp_chord_memory_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+
+  destroyTuringMachineNativeState(state) {
+    if (state.nativeHandle && this.nativeTuringMachine?.soemdsp_turing_machine_destroy) {
+      this.nativeTuringMachine.soemdsp_turing_machine_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+
+  destroyFlowerChildEnvelopeFollowerNativeState(state) {
+    if (state.nativeHandle && this.nativeFlowerChildEnvelopeFollower?.soemdsp_flower_child_envelope_follower_destroy) {
+      this.nativeFlowerChildEnvelopeFollower.soemdsp_flower_child_envelope_follower_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+  destroyTriggerDividerNativeState(state) {
+    if (state.nativeHandle && this.nativeTriggerDivider?.soemdsp_trigger_divider_destroy) {
+      this.nativeTriggerDivider.soemdsp_trigger_divider_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+  destroyStepSequencerNativeState(state) {
+    if (state.nativeHandle && this.nativeStepSequencer?.soemdsp_step_sequencer_destroy) {
+      this.nativeStepSequencer.soemdsp_step_sequencer_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+  destroyTriggerCounterNativeState(state) {
+    if (state.nativeHandle && this.nativeTriggerCounter?.soemdsp_trigger_counter_destroy) {
+      this.nativeTriggerCounter.soemdsp_trigger_counter_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+  destroyDelayedTriggerNativeState(state) {
+    if (state.nativeHandle && this.nativeDelayedTrigger?.soemdsp_delayed_trigger_destroy) {
+      this.nativeDelayedTrigger.soemdsp_delayed_trigger_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+  destroyClockNativeState(state) {
+    if (state.nativeHandle && this.nativeClock?.soemdsp_clock_destroy) {
+      this.nativeClock.soemdsp_clock_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+  destroyRandomClockNativeState(state) {
+    if (state.nativeHandle && this.nativeRandomClock?.soemdsp_random_clock_destroy) {
+      this.nativeRandomClock.soemdsp_random_clock_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+  destroyPingPongDelayNativeState(state) {
+    if (state.nativeHandle && this.nativePingPongDelay?.soemdsp_ping_pong_delay_destroy) {
+      this.nativePingPongDelay.soemdsp_ping_pong_delay_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+  destroyPapoulisFilterNativeState(state) {
+    if (state.nativeHandle && this.nativePapoulisFilter?.soemdsp_papoulis_filter_destroy) {
+      this.nativePapoulisFilter.soemdsp_papoulis_filter_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+  }
+  destroyPhosphillatorNativeState(state) {
+    if (state.nativeHandle && this.nativePhosphillator?.soemdsp_phosphillator_destroy) {
+      this.nativePhosphillator.soemdsp_phosphillator_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+    state.nativePathRef = null;
   }
 
   destroyAliasSineNativeState(state) {

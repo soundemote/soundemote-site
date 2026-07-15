@@ -200,71 +200,20 @@ function nodeGraphBandpassMagnitudeAt(lowCut, highCut, frequency, sampleRate) {
     nodeGraphOnePoleLowpassMagnitudeAt(high, frequency, sampleRate);
 }
 
-function nodeGraphLadderFilterStageCount(stages) {
-  const value = Math.round(Number(stages));
-  return Number.isFinite(value) ? clampNodeSliderValue(value, 1, 4) : 4;
-}
+// nodeGraphLadderFilterStageCount / nodeGraphLadderFilterMix now live in
+// node-graph-stdlib/node-graph-shared-dsp-helpers.js and
+// public/modules/ladderFilter/ladder-filter-live-evaluator.js (this file's
+// copies were byte-for-byte identical).
 
-function nodeGraphLadderFilterMix(mode, stages) {
-  const safeMode = Math.round(clampNodeSliderValue(Number(mode) || 0, 0, 3));
-  const stageCount = nodeGraphLadderFilterStageCount(stages);
-  const c = [0, 0, 0, 0, 0];
-  let s = 1;
-  if (safeMode === 0) {
-    c[0] = 1;
-    s = 0.125;
-  } else if (safeMode === 1) {
-    c[stageCount] = 1;
-    s = stageCount * 0.25;
-  } else if (safeMode === 2) {
-    const coefficients = [
-      [1, -1],
-      [1, -2, 1],
-      [1, -3, 3, -1],
-      [1, -4, 6, -4, 1],
-    ][stageCount - 1];
-    for (let index = 0; index < coefficients.length; index += 1) {
-      c[index] = coefficients[index];
-    }
-    s = stageCount * 0.25;
-  } else {
-    const coefficients = stageCount <= 2
-      ? [0, 2, -2, 0, 0]
-      : stageCount === 3
-        ? [0, 0, 3, -3, 0]
-        : [0, 0, 4, -8, 4];
-    for (let index = 0; index < coefficients.length; index += 1) {
-      c[index] = coefficients[index];
-    }
-    s = 0.125;
-  }
-  return { c, s, stageCount, mode: safeMode };
-}
-
-function nodeGraphLadderFilterFeedbackFactor(feedback, cosWc, a) {
-  const b = 1 + a;
-  const denominator = Math.max(1e-12, 1 + a * a + 2 * a * cosWc);
-  const g2 = (b * b) / denominator;
-  return feedback / Math.max(1e-12, g2 * g2);
-}
-
-function nodeGraphLadderFilterCoefficients(frequency, resonance, mode, stages, sampleRate) {
-  const rate = Math.max(1, Number(sampleRate) || Number(globalThis.nodeGraphMvp?.sampleRate) || 44100);
-  const safeFrequency = clampNodeSliderValue(Number(frequency) || 0.000001, 0.000001, Math.min(20000, rate * 0.49));
-  const feedback = clampNodeSliderValue(Number(resonance) || 0, 0, 0.999);
-  const wc = clampNodeSliderValue((2 * Math.PI * safeFrequency) / rate, 1e-9, Math.PI * 0.98);
-  const sine = Math.sin(wc);
-  const cosine = Math.cos(wc);
-  const tangent = Math.tan(0.25 * (wc - Math.PI));
-  let a = tangent / Math.max(1e-12, sine - cosine * tangent);
-  if (!Number.isFinite(a)) {
-    a = -1;
-  }
-  const mix = nodeGraphLadderFilterMix(mode, stages);
-  const k = nodeGraphLadderFilterFeedbackFactor(feedback, cosine, a);
-  const g = 1 + mix.s * k;
-  return { ...mix, a, g, k };
-}
+// nodeGraphLadderFilterFeedbackFactor / nodeGraphLadderFilterCoefficients
+// used to be defined here too, but public/modules/ladderFilter/
+// ladder-filter-live-evaluator.js's script tag loads after this file and
+// redeclares both under the same global names -- meaning this file's own
+// copies were already dead/shadowed code (the call below has actually been
+// resolving to ladderFilter's richer version, with its extra runtime/
+// nodeId/state sanitization params defaulting harmlessly, ever since that
+// module file was added). Removed rather than left as confusing unreachable
+// code; no behavior change, since the shadowing was already in effect.
 
 function nodeGraphComplexMultiply(a, b) {
   return {

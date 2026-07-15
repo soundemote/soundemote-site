@@ -33,6 +33,7 @@ const nodeGraphNodeLabels = Object.freeze({
   randomClock: "Random Clock",
   triggerCounter: "Trigger Counter",
   triggerDivider: "Trigger Divider",
+  comparator: "Comparator",
   stepSequencer: "Step Sequencer",
   spiral: "Spiral",
   fractalSpiral: "Fractal Spiral",

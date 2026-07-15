@@ -9,7 +9,7 @@
   "controls": {
     "mouseLightEnabled": true,
     "showOriginMarker": false,
-    "modularShaderEnabled": true,
+    "modularShaderEnabled": false,
     "scopeBloomEnabled": false,
     "settingsHeaderTextSize": 100,
     "uiDevButtonTextSize": 50,
@@ -131,7 +131,7 @@
     "moduleOscilloscopesVisible": true,
     "moduleSlidersVisible": true,
     "moduleScopeBackgroundColor": "#000000",
-    "globalSmoothingSeconds": 0.1,
+    "globalSmoothingSeconds": 1,
     "globalSmoothingManual": true,
     "moduleScopeDotCore1Enabled": true,
     "moduleScopeDotCore1Size": 1.94,
@@ -167,7 +167,47 @@
     "sliderPositionVisible": true,
     "hideMouseWhileDragging": true,
     "moduleCatalogVisibility": {
+      "audioInput": {
+        "developer": true,
+        "home": false
+      },
+      "codeblock": {
+        "developer": true,
+        "home": false
+      },
+      "scriptBox": {
+        "developer": true,
+        "home": false
+      },
+      "graph": {
+        "developer": true,
+        "home": false
+      },
+      "graph2": {
+        "developer": true,
+        "home": false
+      },
+      "groupInput": {
+        "developer": true,
+        "home": false
+      },
+      "groupOutput": {
+        "developer": true,
+        "home": false
+      },
+      "moduleGroup": {
+        "developer": true,
+        "home": false
+      },
+      "osc": {
+        "developer": true,
+        "home": false
+      },
       "polyBlep": {
+        "developer": true,
+        "home": false
+      },
+      "blit": {
         "developer": true,
         "home": false
       },
@@ -175,15 +215,147 @@
         "developer": true,
         "home": false
       },
-      "drumMachine": {
+      "archimedes": {
         "developer": true,
         "home": false
       },
-      "kickDrum": {
+      "aliasSine": {
         "developer": true,
         "home": false
       },
-      "snareDrum": {
+      "additiveOsc": {
+        "developer": true,
+        "home": false
+      },
+      "gpuAdditiveOsc": {
+        "developer": true,
+        "home": false
+      },
+      "ellipsoid": {
+        "developer": true,
+        "home": false
+      },
+      "spiral": {
+        "developer": true,
+        "home": false
+      },
+      "fractalSpiral": {
+        "developer": true,
+        "home": false
+      },
+      "logSpiral": {
+        "developer": true,
+        "home": false
+      },
+      "lorenzAttractor": {
+        "developer": true,
+        "home": false
+      },
+      "logisticMap": {
+        "developer": true,
+        "home": false
+      },
+      "antisaw": {
+        "developer": true,
+        "home": false
+      },
+      "bradley2a": {
+        "developer": true,
+        "home": false
+      },
+      "henonMap": {
+        "developer": true,
+        "home": false
+      },
+      "wirdoSpiral": {
+        "developer": true,
+        "home": false
+      },
+      "blubb": {
+        "developer": true,
+        "home": false
+      },
+      "mushroom": {
+        "developer": true,
+        "home": false
+      },
+      "boing": {
+        "developer": true,
+        "home": false
+      },
+      "torus": {
+        "developer": true,
+        "home": false
+      },
+      "keplerBouwkamp": {
+        "developer": true,
+        "home": false
+      },
+      "nyquistShannon": {
+        "developer": true,
+        "home": false
+      },
+      "radar": {
+        "developer": true,
+        "home": false
+      },
+      "chuaAttractor": {
+        "developer": true,
+        "home": false
+      },
+      "chordMemory": {
+        "developer": true,
+        "home": false
+      },
+      "turingMachine": {
+        "developer": true,
+        "home": false
+      },
+      "pitchQuantizer": {
+        "developer": true,
+        "home": false
+      },
+      "surgeOscillator": {
+        "developer": true,
+        "home": false
+      },
+      "dsfOscillator": {
+        "developer": true,
+        "home": false
+      },
+      "robinSupersaw": {
+        "developer": true,
+        "home": false
+      },
+      "hypersaw": {
+        "developer": true,
+        "home": false
+      },
+      "chordSequencer": {
+        "developer": true,
+        "home": false
+      },
+      "lutCell": {
+        "developer": true,
+        "home": false
+      },
+      "metallicRatio": {
+        "developer": true,
+        "home": false
+      },
+      "noiseGenerator": {
+        "developer": true,
+        "home": false
+      },
+      "randomWalk": {
+        "developer": true,
+        "home": false
+      },
+      "piSpigotNoise": {
+        "developer": true,
+        "home": false
+      },
+      "fractalBrownianNoise": {
         "developer": true,
         "home": false
       },
@@ -192,6 +364,10 @@
         "home": false
       },
       "transport": {
+        "developer": true,
+        "home": false
+      },
+      "randomClock": {
         "developer": true,
         "home": false
       },
@@ -239,15 +415,7 @@
         "developer": true,
         "home": false
       },
-      "randomClock": {
-        "developer": true,
-        "home": false
-      },
       "triggerCounter": {
-        "developer": true,
-        "home": false
-      },
-      "triggerDivider": {
         "developer": true,
         "home": false
       },
@@ -255,71 +423,15 @@
         "developer": true,
         "home": false
       },
-      "melodySequencer": {
+      "triggerDivider": {
         "developer": true,
         "home": false
       },
-      "chordSequencer": {
-        "developer": true,
-        "home": false
-      },
-      "arpeggiator": {
-        "developer": true,
-        "home": false
-      },
-      "spiral": {
-        "developer": true,
-        "home": false
-      },
-      "lorenzAttractor": {
-        "developer": true,
-        "home": false
-      },
-      "rosslerAttractor": {
-        "developer": true,
-        "home": false
-      },
-      "chuaAttractor": {
-        "developer": true,
-        "home": false
-      },
-      "aizawaAttractor": {
-        "developer": true,
-        "home": false
-      },
-      "thomasAttractor": {
-        "developer": true,
-        "home": false
-      },
-      "halvorsenAttractor": {
-        "developer": true,
-        "home": false
-      },
-      "noiseGenerator": {
-        "developer": true,
-        "home": false
-      },
-      "randomWalk": {
-        "developer": true,
-        "home": false
-      },
-      "fractalBrownianNoise": {
+      "comparator": {
         "developer": true,
         "home": false
       },
       "clapPlugin": {
-        "developer": true,
-        "home": false
-      },
-      "codeblock": {
-        "developer": true,
-        "home": false
-      },
-      "graph": {
-        "developer": true,
-        "home": false
-      },
-      "graph2": {
         "developer": true,
         "home": false
       },
@@ -339,10 +451,6 @@
         "developer": true,
         "home": false
       },
-      "output": {
-        "developer": true,
-        "home": false
-      },
       "macroKnob": {
         "developer": true,
         "home": false
@@ -355,95 +463,47 @@
         "developer": true,
         "home": false
       },
-      "rangeSlider": {
-        "developer": true,
-        "home": false
-      },
-      "midiOut": {
-        "developer": true,
-        "home": false
-      },
-      "midiNotePitch": {
-        "developer": true,
-        "home": false
-      },
-      "midiController": {
-        "developer": true,
-        "home": false
-      },
-      "keyboardController": {
-        "developer": true,
-        "home": false
-      },
-      "macroControls": {
-        "developer": true,
-        "home": false
-      },
-      "pitchModWheel": {
-        "developer": true,
-        "home": false
-      },
-      "xyPad": {
-        "developer": true,
-        "home": false
-      },
-      "portalInLeft": {
-        "developer": true,
-        "home": false
-      },
-      "portalInRight": {
-        "developer": true,
-        "home": false
-      },
-      "portalInMono": {
-        "developer": true,
-        "home": false
-      },
-      "portalOutLeft": {
-        "developer": true,
-        "home": false
-      },
-      "portalOutRight": {
-        "developer": true,
-        "home": false
-      },
-      "portalOutMono": {
-        "developer": true,
-        "home": false
-      },
-      "portalGenericInput": {
-        "developer": true,
-        "home": false
-      },
-      "portalGenericOutput": {
-        "developer": true,
-        "home": false
-      },
-      "groupInput": {
-        "developer": true,
-        "home": false
-      },
-      "groupOutput": {
-        "developer": true,
-        "home": false
-      },
-      "audioPlayer": {
-        "developer": true,
-        "home": false
-      },
-      "samplePlayer": {
-        "developer": true,
-        "home": false
-      },
-      "sampleLooper": {
-        "developer": true,
-        "home": false
-      },
       "passiveFilter": {
         "developer": true,
         "home": false
       },
+      "papoulisFilter": {
+        "developer": true,
+        "home": false
+      },
       "cookbookFilter": {
+        "developer": true,
+        "home": false
+      },
+      "rsmetFilter": {
+        "developer": true,
+        "home": false
+      },
+      "yellowjacketFilter": {
+        "developer": true,
+        "home": false
+      },
+      "superloveFilter": {
+        "developer": true,
+        "home": false
+      },
+      "chaoticPhaseLockingFilter": {
+        "developer": true,
+        "home": false
+      },
+      "resonatorFilter": {
+        "developer": true,
+        "home": false
+      },
+      "humanFilter": {
+        "developer": true,
+        "home": false
+      },
+      "pulseExplosion": {
+        "developer": true,
+        "home": false
+      },
+      "flowerChildFilter": {
         "developer": true,
         "home": false
       },
@@ -455,11 +515,11 @@
         "developer": true,
         "home": false
       },
-      "slewLimiter": {
+      "delayEffect": {
         "developer": true,
         "home": false
       },
-      "delayEffect": {
+      "pingPongDelay": {
         "developer": true,
         "home": false
       },
@@ -471,7 +531,11 @@
         "developer": true,
         "home": false
       },
-      "distortionEffect": {
+      "helmholtzPitch": {
+        "developer": true,
+        "home": false
+      },
+      "slewLimiter": {
         "developer": true,
         "home": false
       },
@@ -479,15 +543,43 @@
         "developer": true,
         "home": false
       },
-      "digitalCurveEnvelope": {
+      "midiOut": {
+        "developer": true,
+        "home": false
+      },
+      "midiNotePitch": {
+        "developer": true,
+        "home": false
+      },
+      "keyboardController": {
+        "developer": true,
+        "home": false
+      },
+      "samplePlayer": {
+        "developer": true,
+        "home": false
+      },
+      "sampleLooper": {
+        "developer": true,
+        "home": false
+      },
+      "phosphillator": {
+        "developer": true,
+        "home": false
+      },
+      "audioPlayer": {
+        "developer": true,
+        "home": false
+      },
+      "macroControls": {
+        "developer": true,
+        "home": false
+      },
+      "pitchModWheel": {
         "developer": true,
         "home": false
       },
       "expAdsr": {
-        "developer": true,
-        "home": false
-      },
-      "flowerChildEnvelopeFollower": {
         "developer": true,
         "home": false
       },
@@ -499,7 +591,19 @@
         "developer": true,
         "home": false
       },
-      "vactrolEnvelope": {
+      "vactrolEnvelopeSeries": {
+        "developer": true,
+        "home": false
+      },
+      "vactrolEnvelopeCustom": {
+        "developer": true,
+        "home": false
+      },
+      "impulseButton": {
+        "developer": true,
+        "home": false
+      },
+      "flowerChildEnvelopeFollower": {
         "developer": true,
         "home": false
       },
@@ -547,7 +651,19 @@
         "developer": true,
         "home": false
       },
+      "oscilloscopeBank": {
+        "developer": true,
+        "home": false
+      },
+      "videoscope": {
+        "developer": true,
+        "home": false
+      },
       "valueOscilloscope": {
+        "developer": true,
+        "home": false
+      },
+      "numberReadout": {
         "developer": true,
         "home": false
       },
@@ -563,15 +679,7 @@
         "developer": true,
         "home": false
       },
-      "parabol": {
-        "developer": true,
-        "home": false
-      },
-      "vibratoGenerator": {
-        "developer": true,
-        "home": false
-      },
-      "wowAndFlutter": {
+      "badvalMonitor": {
         "developer": true,
         "home": false
       },
@@ -579,29 +687,33 @@
         "developer": true,
         "home": false
       },
-      "badvalMonitor": {
+      "textBox": {
         "developer": true,
         "home": false
       },
-      "textBox": {
+      "animatedTextBox": {
+        "developer": true,
+        "home": false
+      },
+      "output": {
         "developer": true,
         "home": false
       }
     },
     "sceneContextWindowSize": {
-      "width": 140
+      "width": 183
     },
     "moduleActionWindowSize": {
-      "width": 185,
-      "height": 620
+      "width": 188,
+      "height": 474
     },
     "workspaceWindowStatesVersion": 1,
     "workspaceWindowStates": {
       "commandCenter": {
         "open": false,
         "position": {
-          "left": 111,
-          "top": 466
+          "left": 283,
+          "top": 187
         }
       },
       "moduleActions": {
@@ -616,56 +728,59 @@
       "patchExplorer": {
         "open": false,
         "position": {
-          "left": 569,
-          "top": 512
+          "left": 804,
+          "top": 238
         }
       },
       "moduleBrowser": {
         "open": false,
         "position": {
-          "left": 49,
-          "top": 114
+          "left": 314,
+          "top": 163
         },
         "size": {
-          "width": 192,
-          "height": 418
+          "width": 191,
+          "height": 514
         }
       },
       "visibilityMenu": {
         "open": false,
         "position": {
-          "left": 1719,
+          "left": 854,
           "top": 114
         }
       },
       "uiSettings": {
         "open": false,
         "position": {
-          "left": 371,
-          "top": 164
+          "left": 1367,
+          "top": 172
         }
       },
       "uiDev": {
         "open": false
       },
       "traceDisplaySettings": {
-        "open": false
+        "open": false,
+        "targetNode": "scope2d-1"
       }
     },
     "sharedInspectorActive": "",
+    "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": -128.64158163265304,
-        "y": 57.1926020408163
+        "x": 0,
+        "y": 0
       },
-      "zoom": 1.2251781006308868
+      "zoom": 0.9469765198797898
     },
     "moduleStoreDepartment": "",
     "savedPatchBankIndex": 0,
     "savedPatchBankName": "chaos",
     "savedPatchGridColumns": 3,
     "savedPatchExplorerView": "banks",
-    "currentSavedPatchFilename": "",
+    "workingPatch": null,
+    "currentSavedPatchFilename": "bank000-program000-lorenz-demonstration-chaos--lorenz--attractor--strange.json",
     "patchDirtyState": "untouched"
   }
 });

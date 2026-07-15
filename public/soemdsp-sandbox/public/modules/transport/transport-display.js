@@ -67,15 +67,12 @@ function drawNodeGraphTransportBpmItem(renderer, item, pixelRatio) {
   const charCount = Math.max(1, digits.length);
   const digitFontSize = Math.max(1, Math.min(digitAreaHeight * 0.82, (canvas.width / charCount) * 1.55));
 
-  ctx.shadowColor = "rgba(90, 255, 150, 0.85)";
-  ctx.shadowBlur = Math.max(2, digitFontSize * 0.14);
   ctx.font = `${digitFontSize}px ${digitFontFamily}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = "rgba(120, 255, 170, 0.92)";
   ctx.fillText(digits, canvas.width * 0.5, digitAreaHeight * 0.5, canvas.width);
 
-  ctx.shadowBlur = 0;
   const labelFontSize = Math.max(1, Math.min(labelHeight * 0.7, canvas.width * 0.14));
   ctx.font = `${labelFontSize}px "Consolas", "Courier New", monospace`;
   ctx.fillStyle = "rgba(120, 255, 170, 0.55)";
