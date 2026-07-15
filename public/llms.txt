@@ -1,0 +1,27 @@
+# Soundemote
+
+> Soundemote builds analog-emulation instruments and signal-reactive visual tools for electronic music producers and VJs. The site hosts our open-source audio-visual DSP projects, an in-browser modular sandbox, patch pages, and a wiki of DSP articles.
+
+## Pages
+
+- [Home](/): Featured DSP article, hero sandbox, and project constellation.
+- [Sandbox](/sandbox): In-browser modular audio-visual DSP sandbox.
+- [Wiki](/wiki): Index of DSP and audio-visual articles.
+- [Webring](/webring): Links to friends and adjacent creative-tech projects.
+- [Changelog](/changelog): Notable updates to Soundemote projects.
+
+## Articles
+
+- [SIMD](/simd): SIMD-friendly DSP programming.
+- [Aliasing Wars](/aliasingwars): The ongoing war against digital aliasing.
+- [Phosphor](/phosphor): CRT phosphor visual emulation.
+- [Analog Filters](/analogfilters): Analog-modeled filter designs.
+- [Vactrols](/vactrols): Light-based analog envelope hardware.
+- [Synthwave Orchestra](/synthwaveorchestra): Robin Schmidt's supersaw research.
+- [Archimedes](/archimedes): Spiral-based generative oscillator.
+- [Combustion](/combustion): Chaotic combustion-model synthesis.
+
+## Patches
+
+- [Reverb](/reverb): Sabrina reverb patch in the sandbox.
+- [Shooting Star](/shootingstar): Chaos generator with a shooting-star explosion.
