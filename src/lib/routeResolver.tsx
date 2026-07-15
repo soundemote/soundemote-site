@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { siteConfig } from "@/config/site";
 import UserPage from "@/pages/UserPage";
+import NotFound from "@/pages/NotFound";
 
 /**
  * Renders `children` only when the `:handle` param is the `@user` form. For
@@ -84,8 +85,9 @@ export const RootSlugResolver = () => {
     return <Navigate to={`/patch/${decoded.toLowerCase()}`} replace />;
   }
 
-  // Anything else: assume a user handle and canonicalize to /@handle.
-  return <Navigate to={`/@${decoded}`} replace />;
+  // A user handle is ONLY the `@handle` form. A bare slug with no sigil is
+  // not a user, so render the 404 page rather than inventing an @handle.
+  return <NotFound />;
 };
 
 /**
