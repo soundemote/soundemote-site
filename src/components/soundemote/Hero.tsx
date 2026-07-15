@@ -107,6 +107,9 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
       <div className="absolute inset-0 scope-grid opacity-40" aria-hidden />
       <div className="absolute inset-0 bg-[var(--gradient-hero)]" aria-hidden />
       <div className="relative mx-auto flex min-h-[56vh] max-w-6xl flex-col items-center justify-center animate-fade-in px-4 text-center md:min-h-[62vh]">
+        <h1 className="sr-only">
+          Soundemote — audio-visual DSP instruments and signal-reactive visual tools for electronic music producers and VJs
+        </h1>
         <div className={sandboxLoaded
           ? "mx-auto w-full animate-fade-in [animation-delay:200ms]"
           : "mx-auto w-full max-w-[min(95vw,56rem)] animate-fade-in [animation-delay:200ms]"
