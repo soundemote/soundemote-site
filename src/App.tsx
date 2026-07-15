@@ -30,7 +30,7 @@ import AdminWikiEdits from "./pages/AdminWikiEdits.tsx";
 import AdminUsers from "./pages/AdminUsers.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import { siteConfig } from "./config/site.ts";
-import { RootSlugResolver, ShorthandHashCatcher } from "./lib/routeResolver.tsx";
+import { RootSlugResolver, ShorthandHashCatcher, UserScopedRoute } from "./lib/routeResolver.tsx";
 
 const queryClient = new QueryClient();
 
@@ -72,8 +72,27 @@ const App = () => (
             /@<user>/wiki/<slug>   -> that user's wiki page
             Shorthand `~`/`#` forms are canonicalized in UserPage / the hash
             catcher. */}
-        <Route path="/@:handle/patch/:slug" element={<SandboxPage view="showcase" scope="user" />} />
-        <Route path="/@:handle/wiki/:slug" element={<WikiArticlePage />} />
+        {/* React Router v6 only compiles `:name` as a param when the colon
+            directly follows a slash, so `/@:handle` won't work. Match the
+            whole segment as `:handle` (the `@` travels with it) and dispatch
+            in a small guard — falls back to UserPage for legacy /user/patch/x
+            style URLs where the bank happens to be named "patch" or "wiki". */}
+        <Route
+          path="/:handle/patch/:slug"
+          element={
+            <UserScopedRoute fallback={<UserPage />}>
+              <SandboxPage view="showcase" scope="user" />
+            </UserScopedRoute>
+          }
+        />
+        <Route
+          path="/:handle/wiki/:slug"
+          element={
+            <UserScopedRoute fallback={<UserPage />}>
+              <WikiArticlePage />
+            </UserScopedRoute>
+          }
+        />
 
         {/* Article, patch, front-page and redirect routes are all defined in
             src/config/site.ts — edit that file to add or change them. */}
