@@ -97,9 +97,21 @@ function ClaimSitePagePicker({ slug, userId }: { slug: string; userId: string })
       setBusy(false);
       return;
     }
-    if (chosen === "wiki") navigate(`/wiki/${slug}`, { replace: true });
-    else if (chosen === "sandbox") navigate(`/patch/${slug}`, { replace: true });
-    else navigate(`/${slug}`, { replace: true });
+    setBusy(false);
+    if (chosen === "wiki") {
+      navigate(`/wiki/${slug}`, { replace: true });
+    } else if (chosen === "sandbox") {
+      navigate(`/patch/${slug}`, { replace: true });
+    } else {
+      // Already at `/${slug}` — navigating there is a no-op and would leave
+      // the picker mounted. Hydrate the row locally so the resolver flips to
+      // rendering the homepage on this same render pass.
+      setRow({
+        slug,
+        style: "homepage",
+        target_slug: targetSlug.trim() || null,
+      });
+    }
   };
 
   return (
