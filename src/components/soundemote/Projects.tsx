@@ -188,8 +188,10 @@ export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => {
         <section id="projects" className="relative border-t border-border/40 pb-14 pt-14 md:pb-20 md:pt-20">
             <div className="container max-w-5xl">
                 <div className="mb-7 text-center md:mb-9">
-                    <p className="mono mb-3 text-xs uppercase tracking-[0.3em] text-muted-foreground">/* projects */</p>
-                    <p className="mono text-xs text-muted-foreground">audiovisual dsp</p>
+                    <h2 className="mono mb-3 text-xs uppercase tracking-[0.3em] text-muted-foreground">/* projects */</h2>
+                    <p className="mono text-xs text-muted-foreground">
+                        A constellation of open-source audio-visual DSP repositories — instruments, filters, oscilloscopes, and experimental modules powering the Soundemote sandbox.
+                    </p>
                 </div>
 
                 <div className="overflow-hidden rounded-xl border border-scope/30 bg-background/60 shadow-[0_0_38px_hsl(var(--scope)/0.08)]">

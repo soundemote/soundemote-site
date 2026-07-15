@@ -41,11 +41,11 @@ export const Audiences = () => (
             }`}
             aria-hidden
           />
-          <p
+          <h2
             className={`mono text-xs uppercase tracking-[0.3em] mb-4 ${g.labelClass}`}
           >
             {g.displayLabel}
-          </p>
+          </h2>
           <h3 className="display text-2xl md:text-3xl text-warm-white mb-6 leading-tight">
             {g.title}
           </h3>
