@@ -22,9 +22,10 @@ type SitePageRow = {
  *  - Row exists  -> render / redirect to its style.
  *  - Row missing -> trusted user sees a creator picker, everyone else 404s.
  */
-export default function SitePageResolver() {
-  const { slug: slugParam } = useParams<{ slug: string }>();
-  const slug = (slugParam || "").toLowerCase();
+export default function SitePageResolver({ slug: slugProp }: { slug?: string } = {}) {
+  const params = useParams<{ handle?: string; slug?: string }>();
+  const raw = slugProp ?? params.slug ?? params.handle ?? "";
+  const slug = raw.toLowerCase();
   const { loading: roleLoading, session, isTrusted } = useWikiRole();
   const [loading, setLoading] = useState(true);
   const [row, setRow] = useState<SitePageRow | null>(null);
