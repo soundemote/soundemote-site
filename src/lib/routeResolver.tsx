@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { siteConfig } from "@/config/site";
 import UserPage from "@/pages/UserPage";
-import NotFound from "@/pages/NotFound";
+import SitePageResolver from "@/pages/SitePageResolver";
 
 /**
  * Renders `children` only when the `:handle` param is the `@user` form. For
@@ -86,8 +86,10 @@ export const RootSlugResolver = () => {
   }
 
   // A user handle is ONLY the `@handle` form. A bare slug with no sigil is
-  // not a user, so render the 404 page rather than inventing an @handle.
-  return <NotFound />;
+  // not a user. Hand off to the site_pages resolver, which either renders a
+  // claimed bare-slug page, offers the creator picker to trusted users, or
+  // 404s.
+  return <SitePageResolver />;
 };
 
 /**
