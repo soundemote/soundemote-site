@@ -2,6 +2,25 @@ import { useEffect } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { siteConfig } from "@/config/site";
 import UserPage from "@/pages/UserPage";
+import SitePageResolver from "@/pages/SitePageResolver";
+
+/**
+ * Renders `children` only when the `:handle` param is the `@user` form. For
+ * bare handles (legacy `/user/bank/patch` style URLs) it renders `fallback`
+ * instead. This lets us mount user-scoped `/:handle/patch/:slug` and
+ * `/:handle/wiki/:slug` routes without hijacking legacy user URLs whose bank
+ * happens to be named "patch" or "wiki".
+ */
+export const UserScopedRoute = ({
+  children,
+  fallback,
+}: {
+  children: React.ReactNode;
+  fallback: React.ReactNode;
+}) => {
+  const { handle = "" } = useParams<{ handle: string }>();
+  return <>{handle.startsWith("@") ? children : fallback}</>;
+};
 
 // -----------------------------------------------------------------------------
 // Forgiving link layer.
@@ -66,8 +85,11 @@ export const RootSlugResolver = () => {
     return <Navigate to={`/patch/${decoded.toLowerCase()}`} replace />;
   }
 
-  // Anything else: assume a user handle and canonicalize to /@handle.
-  return <Navigate to={`/@${decoded}`} replace />;
+  // A user handle is ONLY the `@handle` form. A bare slug with no sigil is
+  // not a user. Hand off to the site_pages resolver, which either renders a
+  // claimed bare-slug page, offers the creator picker to trusted users, or
+  // 404s.
+  return <SitePageResolver />;
 };
 
 /**
