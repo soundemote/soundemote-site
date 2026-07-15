@@ -69,10 +69,24 @@ export default function SitePageResolver({ slug: slugProp }: { slug?: string } =
 
   if (!session || !isTrusted) return <NotFound />;
 
-  return <ClaimSitePagePicker slug={slug} userId={session.user.id} />;
+  return (
+    <ClaimSitePagePicker
+      slug={slug}
+      userId={session.user.id}
+      onCreated={(created) => setRow(created)}
+    />
+  );
 }
 
-function ClaimSitePagePicker({ slug, userId }: { slug: string; userId: string }) {
+function ClaimSitePagePicker({
+  slug,
+  userId,
+  onCreated,
+}: {
+  slug: string;
+  userId: string;
+  onCreated: (row: SitePageRow) => void;
+}) {
   const navigate = useNavigate();
   const [style, setStyle] = useState<SitePageStyle | null>(null);
   const [targetSlug, setTargetSlug] = useState("");
@@ -97,9 +111,21 @@ function ClaimSitePagePicker({ slug, userId }: { slug: string; userId: string })
       setBusy(false);
       return;
     }
-    if (chosen === "wiki") navigate(`/wiki/${slug}`, { replace: true });
-    else if (chosen === "sandbox") navigate(`/patch/${slug}`, { replace: true });
-    else navigate(`/${slug}`, { replace: true });
+    setBusy(false);
+    if (chosen === "wiki") {
+      navigate(`/wiki/${slug}`, { replace: true });
+    } else if (chosen === "sandbox") {
+      navigate(`/patch/${slug}`, { replace: true });
+    } else {
+      // Already at `/${slug}` — navigating there is a no-op and would leave
+      // the picker mounted. Tell the parent to hydrate the row so the
+      // resolver flips to rendering the homepage on this same render pass.
+      onCreated({
+        slug,
+        style: "homepage",
+        target_slug: targetSlug.trim() || null,
+      });
+    }
   };
 
   return (
