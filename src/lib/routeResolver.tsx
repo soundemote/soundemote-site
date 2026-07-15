@@ -75,6 +75,7 @@ export const RootSlugResolver = () => {
  * fragment never reaches the server, and rewrites them to canonical paths.
  */
 export const ShorthandHashCatcher = () => {
+  // placeholder
   const navigate = useNavigate();
   useEffect(() => {
     const resolve = () => {
