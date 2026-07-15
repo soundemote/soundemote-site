@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { siteConfig } from "@/config/site";
 import UserPage from "@/pages/UserPage";
+import NotFound from "@/pages/NotFound";
 
 /**
  * Renders `children` only when the `:handle` param is the `@user` form. For
@@ -85,8 +86,8 @@ export const RootSlugResolver = () => {
   }
 
   // A user handle is ONLY the `@handle` form. A bare slug with no sigil is
-  // not a user, so fall through to the app's 404 rather than inventing one.
-  return <Navigate to="/404" replace />;
+  // not a user, so render the 404 page rather than inventing an @handle.
+  return <NotFound />;
 };
 
 /**
