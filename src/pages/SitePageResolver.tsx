@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import Index from "@/pages/Index";
-import NotFound from "@/pages/NotFound";
 import { supabase, supabaseConfigError } from "@/lib/supabase";
 import { useWikiRole } from "@/hooks/useWikiRole";
 import { Button } from "@/components/ui/button";
@@ -67,7 +66,28 @@ export default function SitePageResolver({ slug: slugProp }: { slug?: string } =
     return <Index featuredSlug={row.target_slug || undefined} />;
   }
 
-  if (!session || !isTrusted) return <NotFound />;
+  if (!session || !isTrusted) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Helmet>
+          <title>/{slug} — not yet set up</title>
+          <meta name="robots" content="noindex, nofollow" />
+        </Helmet>
+        <div className="text-center">
+          <p className="mono text-xs uppercase tracking-widest text-muted-foreground">
+            /{slug}
+          </p>
+          <h1 className="mt-2 text-2xl font-semibold">page not yet setup</h1>
+          <Link
+            to="/"
+            className="mt-6 inline-block mono text-sm text-muted-foreground hover:text-foreground"
+          >
+            ← home
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <ClaimSitePagePicker
