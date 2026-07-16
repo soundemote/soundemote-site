@@ -427,6 +427,10 @@
         "developer": true,
         "home": false
       },
+      "minMax": {
+        "developer": true,
+        "home": false
+      },
       "comparator": {
         "developer": true,
         "home": false
@@ -635,10 +639,6 @@
         "developer": true,
         "home": false
       },
-      "led": {
-        "developer": true,
-        "home": false
-      },
       "visualOscilloscope": {
         "developer": true,
         "home": false
@@ -698,10 +698,18 @@
       "output": {
         "developer": true,
         "home": false
+      },
+      "led": {
+        "developer": true,
+        "home": false
+      },
+      "stepGrid": {
+        "developer": true,
+        "home": false
       }
     },
     "sceneContextWindowSize": {
-      "width": 183
+      "width": 143
     },
     "moduleActionWindowSize": {
       "width": 188,
