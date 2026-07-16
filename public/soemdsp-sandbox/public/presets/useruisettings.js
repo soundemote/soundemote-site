@@ -712,8 +712,8 @@
       "commandCenter": {
         "open": false,
         "position": {
-          "left": 283,
-          "top": 187
+          "left": 261,
+          "top": 230
         }
       },
       "moduleActions": {
@@ -735,8 +735,8 @@
       "moduleBrowser": {
         "open": false,
         "position": {
-          "left": 314,
-          "top": 163
+          "left": 67,
+          "top": 228
         },
         "size": {
           "width": 191,
@@ -769,8 +769,8 @@
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": 0,
-        "y": 0
+        "x": 10,
+        "y": -87
       },
       "zoom": 0.9469765198797898
     },
