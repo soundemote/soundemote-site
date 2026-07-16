@@ -132,7 +132,7 @@
         "lineThickness": 0.2,
         "padding": 0,
         "skipDiscontinuities": true,
-        "sourceSync": true,
+        "sourceSync": false,
         "zoomSeconds": 0.05
       }
     },
