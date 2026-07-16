@@ -1,7 +1,9 @@
 {
   "activeCameraId": "camera-1",
   "audio": {
-    "targetSampleRate": 44100
+    "targetSampleRate": 44100,
+    "pitchReferenceMidiNote": 48,
+    "pitchReferenceHz": 100
   },
   "bypassedNodes": [],
   "cameras": [
@@ -82,8 +84,8 @@
   "monitors": [],
   "nodes": [
     {
-      "gx": 18,
-      "gy": -9,
+      "gx": 8,
+      "gy": -5,
       "id": "output",
       "paramMeta": {
         "volume": {
@@ -102,6 +104,8 @@
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
+          "smoothingMode": "global",
+          "smoothingSeconds": null,
           "step": 0,
           "tooltip": "",
           "unboundedMax": false,
@@ -133,16 +137,70 @@
       }
     },
     {
-      "gx": -6,
-      "gy": -7,
+      "gx": -16,
+      "gy": -3,
       "id": "shootingStarExplosion-1",
-      "paramMeta": {},
-      "params": {},
+      "paramMeta": {
+        "lowRange": {
+          "alias": "",
+          "choices": [],
+          "curveAmount": 0,
+          "def": 0,
+          "displayChoices": false,
+          "divideChoicesVisibly": false,
+          "kind": "decimal",
+          "linearSmoothing": true,
+          "max": 1,
+          "maxDigits": 3,
+          "mid": 0.5,
+          "min": 0,
+          "nonlinearSlider": false,
+          "sliderCurve": "linear",
+          "showSign": false,
+          "smoothingMode": "global",
+          "smoothingSeconds": null,
+          "step": 0,
+          "tooltip": "Minimum explosion pulse amplitude (0-1 speed sends this).",
+          "unboundedMax": false,
+          "unboundedMin": false,
+          "unit": "",
+          "wraparound": false
+        },
+        "highRange": {
+          "alias": "",
+          "choices": [],
+          "curveAmount": 0,
+          "def": 1,
+          "displayChoices": false,
+          "divideChoicesVisibly": false,
+          "kind": "decimal",
+          "linearSmoothing": true,
+          "max": 1,
+          "maxDigits": 3,
+          "mid": 0.5,
+          "min": 0,
+          "nonlinearSlider": false,
+          "sliderCurve": "linear",
+          "showSign": false,
+          "smoothingMode": "global",
+          "smoothingSeconds": null,
+          "step": 0,
+          "tooltip": "Maximum explosion pulse amplitude (1 speed, or no speed data, sends this).",
+          "unboundedMax": false,
+          "unboundedMin": false,
+          "unit": "",
+          "wraparound": false
+        }
+      },
+      "params": {
+        "lowRange": 0,
+        "highRange": 1
+      },
       "type": "shootingStarExplosion"
     },
     {
-      "gx": 2,
-      "gy": -11,
+      "gx": -8,
+      "gy": -7,
       "id": "vactrolEnvelope-1",
       "paramMeta": {
         "attack": {
@@ -161,6 +219,8 @@
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
+          "smoothingMode": "global",
+          "smoothingSeconds": null,
           "step": 0,
           "tooltip": "",
           "unboundedMax": false,
@@ -184,6 +244,8 @@
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
+          "smoothingMode": "global",
+          "smoothingSeconds": null,
           "step": 0,
           "tooltip": "",
           "unboundedMax": false,
@@ -207,6 +269,8 @@
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
+          "smoothingMode": "global",
+          "smoothingSeconds": null,
           "step": 0,
           "tooltip": "",
           "unboundedMax": false,
@@ -230,6 +294,8 @@
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
+          "smoothingMode": "global",
+          "smoothingSeconds": null,
           "step": 0,
           "tooltip": "",
           "unboundedMax": false,
@@ -253,6 +319,8 @@
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
+          "smoothingMode": "global",
+          "smoothingSeconds": null,
           "step": 0,
           "tooltip": "",
           "unboundedMax": false,
@@ -276,6 +344,8 @@
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
+          "smoothingMode": "global",
+          "smoothingSeconds": null,
           "step": 0,
           "tooltip": "",
           "unboundedMax": false,
@@ -295,8 +365,8 @@
       "type": "vactrolEnvelopeCustom"
     },
     {
-      "gx": 10,
-      "gy": -12,
+      "gx": 0,
+      "gy": -8,
       "id": "lorenzAttractor-1",
       "paramMeta": {
         "speed": {
@@ -315,6 +385,8 @@
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
+          "smoothingMode": "global",
+          "smoothingSeconds": null,
           "step": 0.01,
           "tooltip": "",
           "unboundedMax": true,
@@ -338,6 +410,8 @@
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
+          "smoothingMode": "global",
+          "smoothingSeconds": null,
           "step": 0.01,
           "tooltip": "",
           "unboundedMax": false,
@@ -361,6 +435,8 @@
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
+          "smoothingMode": "global",
+          "smoothingSeconds": null,
           "step": 0.01,
           "tooltip": "",
           "unboundedMax": false,
@@ -384,6 +460,8 @@
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
+          "smoothingMode": "global",
+          "smoothingSeconds": null,
           "step": 0.0001,
           "tooltip": "",
           "unboundedMax": false,
@@ -407,6 +485,8 @@
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
+          "smoothingMode": "global",
+          "smoothingSeconds": null,
           "step": 0.01,
           "tooltip": "",
           "unboundedMax": false,
@@ -430,6 +510,8 @@
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
+          "smoothingMode": "global",
+          "smoothingSeconds": null,
           "step": 0.01,
           "tooltip": "",
           "unboundedMax": false,
@@ -453,6 +535,8 @@
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
+          "smoothingMode": "global",
+          "smoothingSeconds": null,
           "step": 0.01,
           "tooltip": "",
           "unboundedMax": false,
@@ -476,6 +560,8 @@
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
+          "smoothingMode": "global",
+          "smoothingSeconds": null,
           "step": 0.01,
           "tooltip": "",
           "unboundedMax": false,
@@ -514,9 +600,7 @@
   "requiredAssets": [],
   "samples": [
     {
-      "acceptedTypes": [
-        "audio/*"
-      ],
+      "acceptedTypes": ["audio/*"],
       "id": "silently-dreaming-startup",
       "kind": "audio",
       "file": {
@@ -546,7 +630,7 @@
   "view": {
     "heightGu": 24,
     "widthGu": 47,
-    "zoom": 0.9767044807325311
+    "zoom": 1.1454074074074074
   },
   "visual": {
     "background": {
