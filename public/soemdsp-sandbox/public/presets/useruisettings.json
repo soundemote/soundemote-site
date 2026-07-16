@@ -6,7 +6,7 @@
   "controls": {
     "mouseLightEnabled": true,
     "showOriginMarker": false,
-    "modularShaderEnabled": false,
+    "modularShaderEnabled": true,
     "scopeBloomEnabled": false,
     "settingsHeaderTextSize": 100,
     "uiDevButtonTextSize": 50,
@@ -128,7 +128,7 @@
     "moduleOscilloscopesVisible": true,
     "moduleSlidersVisible": true,
     "moduleScopeBackgroundColor": "#000000",
-    "globalSmoothingSeconds": 1,
+    "globalSmoothingSeconds": 0.1,
     "globalSmoothingManual": true,
     "moduleScopeDotCore1Enabled": true,
     "moduleScopeDotCore1Size": 1.94,
@@ -143,20 +143,20 @@
     "moduleScopeLineThickness": 1,
     "moduleScopeDiscontinuitySkipSamples": 1,
     "traceSettings": {
-      "brightness": 0.92,
-      "color": "#75ebff",
+      "brightness": 0.7385,
+      "color": "#2825d4",
       "dot1Enabled": true,
-      "dot1Size": 0.0175,
-      "dot2Brightness": 0.93,
+      "dot1Size": 0.0286,
+      "dot2Brightness": 0.18,
       "dot2Color": "#184fff",
       "dot2Enabled": false,
-      "dot2Size": 0.1,
-      "dot2LineThickness": 0,
-      "cycles": 2,
-      "lineThickness": 0.2,
+      "dot2Size": 0.24,
+      "dot2LineThickness": 0.48,
+      "cycles": 4,
+      "lineThickness": 0,
       "padding": 0,
       "skipDiscontinuities": true,
-      "sourceSync": false,
+      "sourceSync": true,
       "zoomSeconds": 0.05
     },
     "sliderLayout": "text-inside",
@@ -706,19 +706,19 @@
       }
     },
     "sceneContextWindowSize": {
-      "width": 143
+      "width": 140
     },
     "moduleActionWindowSize": {
-      "width": 188,
-      "height": 474
+      "width": 185,
+      "height": 620
     },
     "workspaceWindowStatesVersion": 1,
     "workspaceWindowStates": {
       "commandCenter": {
         "open": false,
         "position": {
-          "left": 261,
-          "top": 230
+          "left": 111,
+          "top": 466
         }
       },
       "moduleActions": {
@@ -733,33 +733,33 @@
       "patchExplorer": {
         "open": false,
         "position": {
-          "left": 804,
-          "top": 238
+          "left": 569,
+          "top": 512
         }
       },
       "moduleBrowser": {
         "open": false,
         "position": {
-          "left": 67,
-          "top": 228
+          "left": 91,
+          "top": 146
         },
         "size": {
-          "width": 191,
-          "height": 514
+          "width": 186,
+          "height": 683
         }
       },
       "visibilityMenu": {
         "open": false,
         "position": {
-          "left": 854,
+          "left": 1719,
           "top": 114
         }
       },
       "uiSettings": {
         "open": false,
         "position": {
-          "left": 1367,
-          "top": 172
+          "left": 371,
+          "top": 164
         }
       },
       "uiDev": {
@@ -767,17 +767,17 @@
       },
       "traceDisplaySettings": {
         "open": false,
-        "targetNode": "scope2d-1"
+        "targetNode": "fractalBrownianNoise-1"
       }
     },
     "sharedInspectorActive": "",
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": 26.28571428571422,
-        "y": -44.16964285714289
+        "x": 1671.6000000000004,
+        "y": -93.05250000000001
       },
-      "zoom": 0.7549238838327404
+      "zoom": 4.13212552139223
     },
     "moduleStoreDepartment": "",
     "savedPatchBankIndex": 0,
@@ -785,7 +785,7 @@
     "savedPatchGridColumns": 3,
     "savedPatchExplorerView": "banks",
     "workingPatch": null,
-    "currentSavedPatchFilename": "bank000-program000-lorenz-demonstration-chaos--lorenz--attractor--strange.json",
+    "currentSavedPatchFilename": "",
     "patchDirtyState": "untouched"
   }
 }
