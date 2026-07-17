@@ -766,7 +766,7 @@
       },
       "traceDisplaySettings": {
         "open": false,
-        "targetNode": "fractalBrownianNoise-1"
+        "targetNode": "output"
       }
     },
     "sharedInspectorActive": "",
