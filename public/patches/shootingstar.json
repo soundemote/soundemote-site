@@ -598,29 +598,6 @@
     }
   ],
   "requiredAssets": [],
-  "samples": [
-    {
-      "acceptedTypes": ["audio/*"],
-      "id": "silently-dreaming-startup",
-      "kind": "audio",
-      "file": {
-        "extension": "mp3",
-        "mime": "audio/mpeg",
-        "name": "Elan Hickler - Silently Dreaming.mp3",
-        "size": 9975640,
-        "sourcePath": "./public/resources/audio/Elan Hickler - Silently Dreaming.mp3"
-      },
-      "metadata": {
-        "artist": "Elan Hickler",
-        "title": "Silently Dreaming",
-        "startupMusic": true
-      },
-      "name": "Elan Hickler - Silently Dreaming",
-      "resourceId": "silently-dreaming-startup",
-      "sourceName": "Elan Hickler - Silently Dreaming.mp3",
-      "sourcePath": "./public/resources/audio/Elan Hickler - Silently Dreaming.mp3"
-    }
-  ],
   "timing": {
     "tempoBpm": 120,
     "timeSignatureDenominator": 4,
