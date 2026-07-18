@@ -1581,15 +1581,9 @@ html.soemdsp-hide-ui .status-strip {
   gap: 6px;
 }
 
-/* Bare knobs, no per-knob box -- the circular dial (.node-macro-knob i)
-   already carries the value indicator; the rectangular border/background
-   around it was just extra chrome in the dock's compact single-row
-   layout. Sized up from the module default (48px/0.62rem text) now that
-   the dock spans the full modular-view width and has room to spare. */
+/* Sized up from the module default (48px/0.62rem text) now that the dock
+   spans the full modular-view width and has room to spare. */
 .node-standalone-midi-keyboard-dock .node-macro-knob {
-  border: none;
-  border-radius: 0;
-  background: none;
   min-height: 66px;
   padding: 0;
   font-size: 0.78rem;
@@ -1795,41 +1789,100 @@ html.soemdsp-hide-ui .status-strip {
   grid-template-columns: repeat(4, minmax(42px, 1fr));
 }
 
+/* Bare knob, no card chrome around it -- the hollow arc (.node-macro-knob
+   i) is the whole visual, not a boxed square button. */
 .node-macro-knob {
   position: relative;
-  display: grid;
-  grid-template-rows: auto minmax(46px, 1fr) auto;
-  place-items: center;
+  display: block;
   min-width: 0;
   min-height: 86px;
   padding: 5px;
   overflow: hidden;
-  border: 1px solid rgba(243, 241, 236, 0.14);
-  border-radius: 6px;
-  background:
-    radial-gradient(circle at 50% 48%, rgba(127, 199, 217, 0.16), transparent 40%),
-    linear-gradient(180deg, rgba(243, 241, 236, 0.04), rgba(5, 6, 7, 0.52)),
-    #050607;
+  border: none;
+  border-radius: 0;
+  background: none;
   color: var(--muted);
   font: 700 0.62rem/1 "Cascadia Mono", Consolas, monospace;
   touch-action: none;
   cursor: var(--node-move-cursor);
   user-select: none;
+  /* Scales the whole widget (dial, label, value readout) as one unit,
+     centered in place -- a "zoom" on the knob rather than resizing any
+     one piece. Transform doesn't reflow the grid cell, so past ~100%
+     this deliberately overflows/clips against the panel's own
+     overflow:hidden instead of pushing sibling knobs around. */
+  transform: scale(var(--macro-knob-size-scale, 1));
+  transform-origin: center center;
+}
+
+/* Makes the knob's real interactive hit region visible -- it's this whole
+   rectangular button, not just the circular dial drawn inside it, so
+   dragging/clicking works well outside the visible arc unless you can see
+   where the actual box ends. */
+body.macro-knob-hitbox-outline .node-macro-knob {
+  outline: 1px solid rgba(241, 184, 75, 0.55);
+  outline-offset: -1px;
 }
 
 .node-macro-controls-module .node-macro-knob {
-  grid-template-rows: auto minmax(34px, 1fr) auto;
   min-height: 64px;
   padding: 4px;
 }
 
+/* Absolutely positioned rather than laid out in flow/grid alongside the
+   dial -- an earlier version shared a CSS Grid row between label/value/
+   dial, which let the dial's track get squeezed down to ~1px whenever
+   something else shared its row (a grid track-sizing interaction, not
+   anything intentional). Absolute positioning can't affect a sibling's
+   size at all: the dial (see .node-macro-knob i below) stays centered and
+   full size no matter where label/value are placed. Deliberately no
+   collision handling -- label, value, and the dial can all land on "mid"
+   and just overlap, which is fine. */
 .node-macro-knob span,
 .node-macro-knob strong {
-  position: relative;
+  position: absolute;
+  left: 50%;
   z-index: 2;
-  min-width: 0;
+  max-width: calc(100% - 8px);
   overflow: hidden;
+  white-space: nowrap;
   text-overflow: clip;
+  padding: 2px 4px;
+  transform: translateX(-50%);
+}
+
+/* Unconditional defaults (label=top, value=bottom) so there's no flash of
+   the wrong spot before JS sets the body[data-macro-knob-*-position]
+   attribute on load; the attribute selectors below only need to cover the
+   two positions that differ from each default. */
+.node-macro-knob span {
+  top: 2px;
+}
+
+.node-macro-knob strong {
+  bottom: 2px;
+}
+
+body[data-macro-knob-label-position="mid"] .node-macro-knob span {
+  top: 50%;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+
+body[data-macro-knob-label-position="bottom"] .node-macro-knob span {
+  top: auto;
+  bottom: 2px;
+}
+
+body[data-macro-knob-value-position="mid"] .node-macro-knob strong {
+  top: 50%;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+
+body[data-macro-knob-value-position="top"] .node-macro-knob strong {
+  top: 2px;
+  bottom: auto;
 }
 
 .node-macro-knob strong {
@@ -1837,32 +1890,75 @@ html.soemdsp-hide-ui .status-strip {
   font-size: 0.62rem;
 }
 
+/* Takes the value readout's exact spot (see .node-macro-knob strong above
+   and its body[data-macro-knob-value-position] overrides) while editing --
+   it replaces that <strong> in the DOM, so it needs the same positioning
+   rules to land in the same place instead of falling back into flow. */
+.node-macro-knob-edit-input {
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  z-index: 2;
+  width: calc(100% - 8px);
+  min-width: 0;
+  padding: 2px 4px;
+  border: 1px solid rgba(241, 184, 75, 0.42);
+  border-radius: 3px;
+  background: rgba(5, 6, 7, 0.85);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.62rem;
+  text-align: center;
+  cursor: text;
+  transform: translateX(-50%);
+}
+
+body[data-macro-knob-value-position="mid"] .node-macro-knob-edit-input {
+  top: 50%;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+
+body[data-macro-knob-value-position="top"] .node-macro-knob-edit-input {
+  top: 2px;
+  bottom: auto;
+}
+
+/* Hollow arc, not a filled disc -- a conic-gradient value arc swept over
+   the knob's usual -132deg..+132deg (264deg) travel, transparent past
+   that so the bottom notch stays a true gap instead of wrapping the full
+   circle, then a radial mask punches the center out into a ring. No more
+   flat grey-black fill behind it; the arc reads directly against the
+   module's own background. */
 .node-macro-knob i {
-  position: relative;
+  position: absolute;
+  top: 50%;
+  left: 50%;
   display: block;
   width: min(42px, 80%);
   aspect-ratio: 1 / 1;
-  border: 1px solid rgba(241, 184, 75, 0.42);
   border-radius: 50%;
-  background:
-    conic-gradient(from -132deg, rgba(241, 184, 75, 0.88) calc(var(--macro-value, 0) * 264deg), rgba(243, 241, 236, 0.08) 0),
-    #151a20;
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.34);
+  transform: translate(-50%, -50%);
+  /* The last stop (264deg..360deg) is the knob's mechanical-travel notch --
+     what makes this read as an open arc rather than a closed loop. Its
+     brightness is its own independent user setting (0% = fully
+     transparent, the normal open-arc look) rather than tied to arc
+     thickness. */
+  background: conic-gradient(
+    from -132deg,
+    rgba(241, 184, 75, 0.95) calc(var(--macro-value, 0) * 264deg),
+    rgba(241, 184, 75, 0.16) calc(var(--macro-value, 0) * 264deg) 264deg,
+    rgb(241 184 75 / var(--macro-knob-arc-gap-brightness, 0)) 264deg 360deg
+  );
+  /* A percent-of-radius fraction, not a fixed pixel amount -- this knob's
+     "100%" here is its own real closest-side distance, so the ring closes
+     into a genuinely full circle at 100% no matter what size this
+     particular dial actually renders at (compact module rows, the
+     standalone dock, etc. all use different dial sizes). */
+  -webkit-mask-image: radial-gradient(closest-side, transparent calc(100% - var(--macro-knob-arc-thickness-percent, 0.3) * 100%), #000 calc(100% - var(--macro-knob-arc-thickness-percent, 0.3) * 100% + 1px));
+  mask-image: radial-gradient(closest-side, transparent calc(100% - var(--macro-knob-arc-thickness-percent, 0.3) * 100%), #000 calc(100% - var(--macro-knob-arc-thickness-percent, 0.3) * 100% + 1px));
+  filter: drop-shadow(0 0 5px rgba(241, 184, 75, 0.4));
   pointer-events: none;
-}
-
-.node-macro-knob i::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 8%;
-  width: 2px;
-  height: 34%;
-  border-radius: 999px;
-  background: #fff6d5;
-  transform: translateX(-50%) rotate(var(--macro-angle, -132deg));
-  transform-origin: 50% 125%;
-  box-shadow: 0 0 6px rgba(241, 184, 75, 0.72);
 }
 
 .knob-widget-layout {

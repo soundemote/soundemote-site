@@ -1,140 +1,9 @@
-function nodeUserUiSettingsMirrorValue(definition) {
-  const input = document.getElementById(definition.id);
-  if (!input) {
-    return definition.defaultValue;
-  }
-  return definition.type === "boolean" ? input.checked : input.value;
-}
-
-let nodeUserUiSettingsActiveMirrorKey = null;
-
-function dispatchNodeUiDevControlInput(source, commit = false) {
-  source.dispatchEvent(new Event("input", { bubbles: true }));
-  if (commit) {
-    source.dispatchEvent(new Event("change", { bubbles: true }));
-  }
-}
-
-function createNodeUserUiSettingsControl(definition) {
-  if (!definition) {
-    return null;
-  }
-  const source = document.getElementById(definition.id);
-  if (!source) {
-    return null;
-  }
-  const row = document.createElement("label");
-  row.className = `node-user-ui-setting-control ${definition.type}`;
-  const title = document.createElement("span");
-  title.textContent = nodeUiDevControlLabel(definition);
-  row.append(title);
-
-  if (definition.type === "boolean") {
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.dataset.nodeUiDevMirror = definition.key;
-    input.checked = Boolean(nodeUserUiSettingsMirrorValue(definition));
-    input.addEventListener("change", () => {
-      source.checked = input.checked;
-      dispatchNodeUiDevControlInput(source, true);
-    });
-    row.append(input);
-    return row;
-  }
-
-  const input = definition.type === "select"
-    ? document.createElement("select")
-    : document.createElement("input");
-  if (definition.type === "select") {
-    for (const optionDefinition of definition.options || []) {
-      const option = document.createElement("option");
-      option.value = optionDefinition.value;
-      option.textContent = optionDefinition.label;
-      input.append(option);
-    }
-  } else {
-    input.type = definition.type === "color" ? "color" : "range";
-  }
-  input.value = String(nodeUserUiSettingsMirrorValue(definition));
-  input.dataset.nodeUiDevMirror = definition.key;
-  if (definition.type === "number") {
-    input.min = String(definition.min);
-    input.max = String(definition.max);
-    input.step = "1";
-  }
-  const output = definition.type === "number"
-    ? document.createElement("input")
-    : document.createElement("output");
-  if (definition.type === "number") {
-    output.type = "number";
-    output.min = String(definition.min);
-    output.max = String(definition.max);
-    output.step = "1";
-    output.dataset.nodeUiDevMirrorValue = definition.key;
-    output.value = input.value;
-  } else {
-    output.textContent = definition.type === "select"
-      ? nodeUiDevSelectLabel(definition, input.value)
-      : input.value;
-  }
-  const syncOutput = () => {
-    if (definition.type === "number") {
-      output.value = input.value;
-      return;
-    }
-    output.textContent = definition.type === "select"
-        ? nodeUiDevSelectLabel(definition, input.value)
-        : `${input.value}`;
-  };
-  const claimControl = () => {
-    nodeUserUiSettingsActiveMirrorKey = definition.key;
-  };
-  const releaseControl = () => {
-    window.setTimeout(() => {
-      if (nodeUserUiSettingsActiveMirrorKey === definition.key) {
-        nodeUserUiSettingsActiveMirrorKey = null;
-      }
-    }, 0);
-  };
-  input.addEventListener("pointerdown", claimControl);
-  input.addEventListener("focus", claimControl);
-  input.addEventListener("pointerup", releaseControl);
-  input.addEventListener("pointercancel", releaseControl);
-  input.addEventListener("blur", releaseControl);
-  input.addEventListener("input", () => {
-    claimControl();
-    source.value = input.value;
-    dispatchNodeUiDevControlInput(source, false);
-    syncOutput();
-  });
-  input.addEventListener("change", () => {
-    source.value = input.value;
-    dispatchNodeUiDevControlInput(source, true);
-    syncOutput();
-  });
-  if (definition.type === "number") {
-    output.addEventListener("pointerdown", claimControl);
-    output.addEventListener("focus", claimControl);
-    output.addEventListener("blur", releaseControl);
-    output.addEventListener("input", () => {
-      claimControl();
-      const value = normalizeNodeUiDevControlValue(definition, output.value);
-      input.value = String(value);
-      source.value = String(value);
-      dispatchNodeUiDevControlInput(source, false);
-    });
-    output.addEventListener("change", () => {
-      const value = normalizeNodeUiDevControlValue(definition, output.value);
-      output.value = String(value);
-      input.value = String(value);
-      source.value = String(value);
-      dispatchNodeUiDevControlInput(source, true);
-    });
-  }
-  row.append(input, output);
-  return row;
-}
-
+// The old exposed-control "mirror" system (createNodeUserUiSettingsControl
+// et al -- built a simplified proxy control that dispatched synthetic
+// input/change events back at the real UI Dev source input) has no callers
+// left now that renderNodeUserUiSettingsControls only renders the arc
+// thickness control directly; every UI Dev control already lives in UI Dev
+// itself, so there's nothing left to mirror out of it.
 function createNodeUserUiSettingsViewCheckbox({ key, label, getValue, setValue }) {
   const row = document.createElement("label");
   row.className = "node-user-ui-setting-control boolean";
@@ -320,6 +189,200 @@ function createNodeUserUiSettingsModuleScopeLineThicknessControl() {
   return row;
 }
 
+// The slider itself is felt as a plain 0-100% -- 0% is the 1px floor,
+// 100% is the knob's own radius (past that a "ring" is just a filled
+// disc again, see nodeGraphMacroKnobArcThicknessMaxPx). The number
+// readout still shows/accepts real pixels, converting back to the
+// matching percent so the two stay in lockstep.
+function createNodeUserUiSettingsMacroKnobArcThicknessControl() {
+  const row = document.createElement("label");
+  row.className = "node-user-ui-setting-control number";
+  const title = document.createElement("span");
+  title.textContent = "Macro knob arc thickness";
+  const input = document.createElement("input");
+  input.type = "range";
+  input.min = "0";
+  input.max = "100";
+  input.step = "1";
+  input.dataset.nodeUiViewSetting = "macroKnobArcThickness";
+  input.value = String(Math.round(nodeGraphMacroKnobArcThicknessPxToPercent(nodeGraphMvp.macroKnobArcThickness ?? 7)));
+  const output = document.createElement("input");
+  output.type = "number";
+  output.min = String(nodeGraphMacroKnobArcThicknessMinPx);
+  output.max = String(nodeGraphMacroKnobArcThicknessMaxPx);
+  output.step = "0.5";
+  output.dataset.nodeUiViewSettingValue = "macroKnobArcThickness";
+  output.value = normalizeNodeGraphMacroKnobArcThickness(nodeGraphMvp.macroKnobArcThickness ?? 7).toFixed(1);
+  input.addEventListener("input", () => {
+    setNodeGraphMacroKnobArcThickness(nodeGraphMacroKnobArcThicknessPercentToPx(input.value));
+    output.value = normalizeNodeGraphMacroKnobArcThickness(nodeGraphMvp.macroKnobArcThickness).toFixed(1);
+  });
+  input.addEventListener("change", () => {
+    setNodeGraphMacroKnobArcThickness(nodeGraphMacroKnobArcThicknessPercentToPx(input.value));
+    output.value = normalizeNodeGraphMacroKnobArcThickness(nodeGraphMvp.macroKnobArcThickness).toFixed(1);
+  });
+  output.addEventListener("input", () => {
+    setNodeGraphMacroKnobArcThickness(output.value);
+    input.value = String(Math.round(nodeGraphMacroKnobArcThicknessPxToPercent(nodeGraphMvp.macroKnobArcThickness)));
+  });
+  output.addEventListener("change", () => {
+    setNodeGraphMacroKnobArcThickness(output.value);
+    output.value = normalizeNodeGraphMacroKnobArcThickness(nodeGraphMvp.macroKnobArcThickness).toFixed(1);
+    input.value = String(Math.round(nodeGraphMacroKnobArcThicknessPxToPercent(nodeGraphMvp.macroKnobArcThickness)));
+  });
+  row.append(title, input, output);
+  return row;
+}
+
+// The knob's -132..+132deg travel-limit gap is what makes it read as an
+// open arc instead of a closed loop -- 0% keeps it fully transparent (the
+// normal arc look); turning it up dims it in rather than leaving it a hard
+// invisible notch, for anyone who wants a softer or fully closed pie look.
+function createNodeUserUiSettingsMacroKnobArcGapBrightnessControl() {
+  const row = document.createElement("label");
+  row.className = "node-user-ui-setting-control number";
+  const title = document.createElement("span");
+  title.textContent = "Macro knob arc-space brightness";
+  const input = document.createElement("input");
+  input.type = "range";
+  input.min = "0";
+  input.max = "100";
+  input.step = "1";
+  input.dataset.nodeUiViewSetting = "macroKnobArcGapBrightness";
+  input.value = String(normalizeNodeGraphMacroKnobArcGapBrightness(nodeGraphMvp.macroKnobArcGapBrightness ?? 0));
+  const output = document.createElement("input");
+  output.type = "number";
+  output.min = "0";
+  output.max = "100";
+  output.step = "1";
+  output.dataset.nodeUiViewSettingValue = "macroKnobArcGapBrightness";
+  output.value = input.value;
+  input.addEventListener("input", () => {
+    setNodeGraphMacroKnobArcGapBrightness(input.value);
+    output.value = String(normalizeNodeGraphMacroKnobArcGapBrightness(nodeGraphMvp.macroKnobArcGapBrightness));
+  });
+  input.addEventListener("change", () => {
+    setNodeGraphMacroKnobArcGapBrightness(input.value);
+    output.value = String(normalizeNodeGraphMacroKnobArcGapBrightness(nodeGraphMvp.macroKnobArcGapBrightness));
+  });
+  output.addEventListener("input", () => {
+    setNodeGraphMacroKnobArcGapBrightness(output.value);
+    input.value = String(normalizeNodeGraphMacroKnobArcGapBrightness(nodeGraphMvp.macroKnobArcGapBrightness));
+  });
+  output.addEventListener("change", () => {
+    setNodeGraphMacroKnobArcGapBrightness(output.value);
+    output.value = String(normalizeNodeGraphMacroKnobArcGapBrightness(nodeGraphMvp.macroKnobArcGapBrightness));
+    input.value = output.value;
+  });
+  row.append(title, input, output);
+  return row;
+}
+
+// Felt/shown as a percent (100% = the knob's normal size) even though the
+// stored value is a plain scale multiplier -- matches how the rest of this
+// section (arc thickness, arc-space brightness) already reads as percent.
+function createNodeUserUiSettingsMacroKnobSizeControl() {
+  const row = document.createElement("label");
+  row.className = "node-user-ui-setting-control number";
+  const title = document.createElement("span");
+  title.textContent = "Macro knob size";
+  const minPercent = Math.round(nodeGraphMacroKnobSizeScaleMin * 100);
+  const maxPercent = Math.round(nodeGraphMacroKnobSizeScaleMax * 100);
+  const input = document.createElement("input");
+  input.type = "range";
+  input.min = String(minPercent);
+  input.max = String(maxPercent);
+  input.step = "5";
+  input.dataset.nodeUiViewSetting = "macroKnobSizeScale";
+  input.value = String(Math.round(normalizeNodeGraphMacroKnobSizeScale(nodeGraphMvp.macroKnobSizeScale ?? 1) * 100));
+  const output = document.createElement("input");
+  output.type = "number";
+  output.min = String(minPercent);
+  output.max = String(maxPercent);
+  output.step = "5";
+  output.dataset.nodeUiViewSettingValue = "macroKnobSizeScale";
+  output.value = input.value;
+  input.addEventListener("input", () => {
+    setNodeGraphMacroKnobSizeScale(Number(input.value) / 100);
+    output.value = String(Math.round(nodeGraphMvp.macroKnobSizeScale * 100));
+  });
+  input.addEventListener("change", () => {
+    setNodeGraphMacroKnobSizeScale(Number(input.value) / 100);
+    output.value = String(Math.round(nodeGraphMvp.macroKnobSizeScale * 100));
+  });
+  output.addEventListener("input", () => {
+    setNodeGraphMacroKnobSizeScale(Number(output.value) / 100);
+    input.value = String(Math.round(nodeGraphMvp.macroKnobSizeScale * 100));
+  });
+  output.addEventListener("change", () => {
+    setNodeGraphMacroKnobSizeScale(Number(output.value) / 100);
+    output.value = String(Math.round(nodeGraphMvp.macroKnobSizeScale * 100));
+    input.value = output.value;
+  });
+  row.append(title, input, output);
+  return row;
+}
+
+function createNodeUserUiSettingsMacroKnobHitboxOutlineControl() {
+  return createNodeUserUiSettingsViewCheckbox({
+    key: "macroKnobHitboxOutlineVisible",
+    label: "Show macro knob hit-box outline",
+    getValue: () => Boolean(nodeGraphMvp.macroKnobHitboxOutlineVisible),
+    setValue: (visible) => {
+      setNodeGraphMacroKnobHitboxOutlineVisible(visible);
+    },
+  });
+}
+
+function createNodeUserUiSettingsSelect({ key, label, options, getValue, setValue }) {
+  const row = document.createElement("label");
+  row.className = "node-user-ui-setting-control select";
+  const title = document.createElement("span");
+  title.textContent = label;
+  const select = document.createElement("select");
+  select.dataset.nodeUiViewSetting = key;
+  for (const option of options) {
+    const optionElement = document.createElement("option");
+    optionElement.value = option.value;
+    optionElement.textContent = option.label;
+    select.append(optionElement);
+  }
+  select.value = getValue();
+  select.addEventListener("change", () => {
+    setValue(select.value);
+  });
+  row.append(title, select);
+  return row;
+}
+
+const nodeGraphMacroKnobPositionOptions = Object.freeze([
+  { value: "top", label: "Top" },
+  { value: "mid", label: "Mid" },
+  { value: "bottom", label: "Bottom" },
+]);
+
+// Deliberately no logic to keep label/value/dial apart -- any combination
+// (including all three on "mid") is allowed and just overlaps.
+function createNodeUserUiSettingsMacroKnobLabelPositionControl() {
+  return createNodeUserUiSettingsSelect({
+    key: "macroKnobLabelPosition",
+    label: "Macro knob label position",
+    options: nodeGraphMacroKnobPositionOptions,
+    getValue: () => normalizeNodeGraphMacroKnobLabelPosition(nodeGraphMvp.macroKnobLabelPosition),
+    setValue: (value) => setNodeGraphMacroKnobLabelPosition(value),
+  });
+}
+
+function createNodeUserUiSettingsMacroKnobValuePositionControl() {
+  return createNodeUserUiSettingsSelect({
+    key: "macroKnobValuePosition",
+    label: "Macro knob value position",
+    options: nodeGraphMacroKnobPositionOptions,
+    getValue: () => normalizeNodeGraphMacroKnobValuePosition(nodeGraphMvp.macroKnobValuePosition),
+    setValue: (value) => setNodeGraphMacroKnobValuePosition(value),
+  });
+}
+
 function createNodeUserUiSettingsModuleScopeFramesPerSecondControl() {
   const row = document.createElement("label");
   row.className = "node-user-ui-setting-control number";
@@ -403,51 +466,67 @@ function createNodeUserUiSettingsSection(title, controls) {
   return section;
 }
 
+// Every other user-facing view control that used to live in this panel has
+// moved into the UI Dev helper (see renderNodeUiDevHelperViewControls) --
+// User UI Settings is now just the one thing regular users are meant to
+// tune, everything else lives with the rest of the developer controls.
 function renderNodeUserUiSettingsControls() {
   const container = document.getElementById("nodeUserUiSettingsControls");
   if (!container) {
     return;
   }
   container.textContent = "";
-  const definitionsById = new Map(nodeUiDevSettingControls.map((definition) => [definition.id, definition]));
-  let renderedAnySection = false;
-  for (const section of nodeUiDevSettingSections) {
-    const controls = [];
-    if (section.title === "workspace") {
-      controls.push(createNodeUserUiSettingsHideMouseWhileDraggingControl());
-      controls.push(createNodeUserUiSettingsViewControl());
-      controls.push(createNodeUserUiSettingsSliderAmountControl());
-      controls.push(createNodeUserUiSettingsSliderPositionControl());
-    }
-    if (section.title === "modules and nodes") {
-      controls.push(createNodeUserUiSettingsModuleButtonsControl());
-      controls.push(createNodeUserUiSettingsModuleOscilloscopeControl());
-      controls.push(createNodeUserUiSettingsModuleInterfaceControlsControl());
-      controls.push(createNodeUserUiSettingsModuleScopeBrightnessControl());
-      controls.push(createNodeUserUiSettingsModuleScopeLineThicknessControl());
-      controls.push(createNodeUserUiSettingsModuleScopeFramesPerSecondControl());
-      controls.push(createNodeUserUiSettingsModuleSlidersControl());
-      controls.push(createNodeUserUiSettingsSliderLayoutControl());
-    }
-    for (const id of section.ids) {
-      const definition = definitionsById.get(id);
-      if (!definition || !nodeUiDevControlIsExposed(definition.key)) {
-        continue;
-      }
-      controls.push(createNodeUserUiSettingsControl(definition));
-    }
-    const sectionElement = createNodeUserUiSettingsSection(section.title, controls);
-    if (sectionElement) {
-      container.append(sectionElement);
-      renderedAnySection = true;
-    }
-  }
-  if (!renderedAnySection) {
+  const sectionElement = createNodeUserUiSettingsSection("knob style", [
+    createNodeUserUiSettingsMacroKnobArcThicknessControl(),
+    createNodeUserUiSettingsMacroKnobArcGapBrightnessControl(),
+    createNodeUserUiSettingsMacroKnobSizeControl(),
+    createNodeUserUiSettingsMacroKnobHitboxOutlineControl(),
+    createNodeUserUiSettingsMacroKnobLabelPositionControl(),
+    createNodeUserUiSettingsMacroKnobValuePositionControl(),
+  ]);
+  if (sectionElement) {
+    container.append(sectionElement);
+  } else {
     const empty = document.createElement("div");
     empty.className = "node-user-ui-settings-empty";
     empty.textContent = "no ui settings exposed";
     container.append(empty);
   }
+}
+
+// Mounts everything that used to live in the User UI Settings panel (view
+// toggles, module display controls, slider layout) into the UI Dev helper
+// instead, reusing the same control-factory functions so behavior/
+// persistence (data-node-ui-view-setting) is unchanged -- only where they're
+// displayed moves. Guarded by a dataset flag so repeated helper opens don't
+// duplicate the section.
+function renderNodeUiDevHelperViewControls() {
+  const helperBody = document.querySelector(".node-ui-dev-helper-body");
+  if (!helperBody || helperBody.dataset.viewControlsMounted === "true") {
+    return;
+  }
+  const workspaceSection = createNodeUserUiSettingsSection("workspace view", [
+    createNodeUserUiSettingsHideMouseWhileDraggingControl(),
+    createNodeUserUiSettingsViewControl(),
+    createNodeUserUiSettingsSliderAmountControl(),
+    createNodeUserUiSettingsSliderPositionControl(),
+  ]);
+  const moduleSection = createNodeUserUiSettingsSection("modules and nodes view", [
+    createNodeUserUiSettingsModuleButtonsControl(),
+    createNodeUserUiSettingsModuleOscilloscopeControl(),
+    createNodeUserUiSettingsModuleInterfaceControlsControl(),
+    createNodeUserUiSettingsModuleScopeBrightnessControl(),
+    createNodeUserUiSettingsModuleScopeLineThicknessControl(),
+    createNodeUserUiSettingsModuleScopeFramesPerSecondControl(),
+    createNodeUserUiSettingsModuleSlidersControl(),
+    createNodeUserUiSettingsSliderLayoutControl(),
+  ]);
+  for (const section of [workspaceSection, moduleSection]) {
+    if (section) {
+      helperBody.append(section);
+    }
+  }
+  helperBody.dataset.viewControlsMounted = "true";
 }
 
 function syncNodeUserUiSettingsViewControls() {
@@ -534,6 +613,60 @@ function syncNodeUserUiSettingsViewControls() {
       continue;
     }
     input.value = String(normalizeNodeGraphModuleScopeFramesPerSecond(nodeGraphMvp.moduleScopeFramesPerSecond ?? 60));
+  }
+  for (const input of document.querySelectorAll("[data-node-ui-view-setting='macroKnobArcThickness']")) {
+    if (document.activeElement === input) {
+      continue;
+    }
+    input.value = String(Math.round(nodeGraphMacroKnobArcThicknessPxToPercent(nodeGraphMvp.macroKnobArcThickness ?? 7)));
+  }
+  for (const input of document.querySelectorAll("[data-node-ui-view-setting-value='macroKnobArcThickness']")) {
+    if (document.activeElement === input) {
+      continue;
+    }
+    input.value = normalizeNodeGraphMacroKnobArcThickness(nodeGraphMvp.macroKnobArcThickness ?? 7).toFixed(1);
+  }
+  for (const input of document.querySelectorAll("[data-node-ui-view-setting='macroKnobArcGapBrightness']")) {
+    if (document.activeElement === input) {
+      continue;
+    }
+    input.value = String(normalizeNodeGraphMacroKnobArcGapBrightness(nodeGraphMvp.macroKnobArcGapBrightness ?? 0));
+  }
+  for (const input of document.querySelectorAll("[data-node-ui-view-setting-value='macroKnobArcGapBrightness']")) {
+    if (document.activeElement === input) {
+      continue;
+    }
+    input.value = String(normalizeNodeGraphMacroKnobArcGapBrightness(nodeGraphMvp.macroKnobArcGapBrightness ?? 0));
+  }
+  for (const input of document.querySelectorAll("[data-node-ui-view-setting='macroKnobSizeScale']")) {
+    if (document.activeElement === input) {
+      continue;
+    }
+    input.value = String(Math.round(normalizeNodeGraphMacroKnobSizeScale(nodeGraphMvp.macroKnobSizeScale ?? 1) * 100));
+  }
+  for (const input of document.querySelectorAll("[data-node-ui-view-setting-value='macroKnobSizeScale']")) {
+    if (document.activeElement === input) {
+      continue;
+    }
+    input.value = String(Math.round(normalizeNodeGraphMacroKnobSizeScale(nodeGraphMvp.macroKnobSizeScale ?? 1) * 100));
+  }
+  for (const input of document.querySelectorAll("[data-node-ui-view-setting='macroKnobHitboxOutlineVisible']")) {
+    if (document.activeElement === input) {
+      continue;
+    }
+    input.checked = Boolean(nodeGraphMvp.macroKnobHitboxOutlineVisible);
+  }
+  for (const select of document.querySelectorAll("[data-node-ui-view-setting='macroKnobLabelPosition']")) {
+    if (document.activeElement === select) {
+      continue;
+    }
+    select.value = normalizeNodeGraphMacroKnobLabelPosition(nodeGraphMvp.macroKnobLabelPosition);
+  }
+  for (const select of document.querySelectorAll("[data-node-ui-view-setting='macroKnobValuePosition']")) {
+    if (document.activeElement === select) {
+      continue;
+    }
+    select.value = normalizeNodeGraphMacroKnobValuePosition(nodeGraphMvp.macroKnobValuePosition);
   }
   for (const button of document.querySelectorAll("[data-node-ui-view-setting='sliderLayout']")) {
     const label = nodeGraphSliderLayoutLabel(nodeGraphMvp.sliderLayout);

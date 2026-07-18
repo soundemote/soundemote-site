@@ -1218,6 +1218,175 @@ function normalizeNodeGraphMacroValue(value) {
   return clampNodeSliderValue(Number(value) || 0, 0, 1);
 }
 
+// No arbitrary numeric ceiling (the old 2-16px range was just a made-up
+// cap) -- the real bounds are geometric. 1px is the hard floor a ring can
+// be and still read as a ring at all. The knob dial itself is
+// `width: min(42px, 80%)` (see .node-macro-knob i in styles.css), so its
+// radius -- 21px -- is the true maximum: past that the "ring" has consumed
+// its own hole and become a solid filled disc again, so there's nothing
+// more "100% thick" than that.
+const nodeGraphMacroKnobArcThicknessMinPx = 1;
+const nodeGraphMacroKnobArcThicknessMaxPx = 21;
+
+function normalizeNodeGraphMacroKnobArcThickness(value) {
+  const number = Number(value);
+  return Number.isFinite(number)
+    ? clampNodeSliderValue(number, nodeGraphMacroKnobArcThicknessMinPx, nodeGraphMacroKnobArcThicknessMaxPx)
+    : 7;
+}
+
+// The control itself is felt as a plain 0-100% slider (0% = the 1px floor,
+// 100% = the full-radius ceiling) -- these two convert between that percent
+// scale and the pixel value that's actually stored/applied, so the number
+// readout can keep showing real pixels while the slider stays percent-based.
+function nodeGraphMacroKnobArcThicknessPercentToPx(percent) {
+  const ratio = clampNodeSliderValue(Number(percent) || 0, 0, 100) / 100;
+  return nodeGraphMacroKnobArcThicknessMinPx +
+    ratio * (nodeGraphMacroKnobArcThicknessMaxPx - nodeGraphMacroKnobArcThicknessMinPx);
+}
+
+function nodeGraphMacroKnobArcThicknessPxToPercent(px) {
+  const clamped = normalizeNodeGraphMacroKnobArcThickness(px);
+  return ((clamped - nodeGraphMacroKnobArcThicknessMinPx) /
+    (nodeGraphMacroKnobArcThicknessMaxPx - nodeGraphMacroKnobArcThicknessMinPx)) * 100;
+}
+
+// The macro knob's ring is a mask cut into a circle (see .node-macro-knob i
+// in styles.css) rather than a border, so its thickness has to travel in as
+// a CSS custom property instead of a class toggle -- one global var read by
+// every knob's mask-image, kept in sync with the user setting here.
+//
+// The mask itself is driven by --macro-knob-arc-thickness-percent (a 0..1
+// fraction of the mask's own closest-side, i.e. THAT knob's real on-screen
+// radius) rather than the raw pixel value -- knobs don't all render at the
+// same size (compact module rows use a smaller `min(42px, 80%)` dial than
+// the default panel, the standalone dock uses a bigger one), so a fixed
+// pixel thickness that happened to equal one context's radius could exceed
+// a smaller knob's actual radius elsewhere, pushing the mask's percentage
+// stops negative and leaving it stuck looking hollow instead of closing
+// into a full circle at 100%. The percent fraction is always correct
+// relative to whatever radius a given knob actually has.
+function applyNodeGraphMacroKnobArcThickness() {
+  const thickness = normalizeNodeGraphMacroKnobArcThickness(nodeGraphMvp.macroKnobArcThickness);
+  const percentOfRadius = thickness / nodeGraphMacroKnobArcThicknessMaxPx;
+  document.documentElement?.style?.setProperty("--macro-knob-arc-thickness", `${thickness}px`);
+  document.documentElement?.style?.setProperty("--macro-knob-arc-thickness-percent", String(percentOfRadius));
+}
+
+function setNodeGraphMacroKnobArcThickness(value) {
+  nodeGraphMvp.macroKnobArcThickness = normalizeNodeGraphMacroKnobArcThickness(value);
+  applyNodeGraphMacroKnobArcThickness();
+}
+
+// The dial's conic-gradient always carries a transparent notch for the
+// knob's -132..+132deg mechanical travel limit -- that's what makes it read
+// as an open arc instead of a closed loop. Tying its brightness to arc
+// thickness (so it silently filled in as thickness rose) was wrong -- it
+// turned the default arc into a closed loop even at everyday thickness
+// values. This is its own independent setting instead: 0% keeps a true
+// transparent gap (the normal arc look), turn it up only if a closed/pie
+// look is actually wanted.
+function normalizeNodeGraphMacroKnobArcGapBrightness(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? clampNodeSliderValue(number, 0, 100) : 0;
+}
+
+function applyNodeGraphMacroKnobArcGapBrightness() {
+  const brightness = normalizeNodeGraphMacroKnobArcGapBrightness(nodeGraphMvp.macroKnobArcGapBrightness);
+  document.documentElement?.style?.setProperty("--macro-knob-arc-gap-brightness", String(brightness / 100));
+}
+
+function setNodeGraphMacroKnobArcGapBrightness(value) {
+  nodeGraphMvp.macroKnobArcGapBrightness = normalizeNodeGraphMacroKnobArcGapBrightness(value);
+  applyNodeGraphMacroKnobArcGapBrightness();
+}
+
+// A plain transform: scale() on the whole .node-macro-knob button (dial,
+// label, and value readout together, scaled and re-centered as one unit --
+// "zooming in" on the widget itself) rather than resizing any one part in
+// isolation. Transform doesn't reflow layout, so this deliberately doesn't
+// grow the knob's grid cell -- past ~100% it just overflows/clips against
+// the panel's own overflow:hidden, which is the accepted tradeoff for
+// letting this go arbitrarily large without fighting the grid.
+const nodeGraphMacroKnobSizeScaleMin = 0.25;
+const nodeGraphMacroKnobSizeScaleMax = 4;
+
+function normalizeNodeGraphMacroKnobSizeScale(value) {
+  const number = Number(value);
+  return Number.isFinite(number)
+    ? clampNodeSliderValue(number, nodeGraphMacroKnobSizeScaleMin, nodeGraphMacroKnobSizeScaleMax)
+    : 1;
+}
+
+function applyNodeGraphMacroKnobSizeScale() {
+  const scale = normalizeNodeGraphMacroKnobSizeScale(nodeGraphMvp.macroKnobSizeScale);
+  document.documentElement?.style?.setProperty("--macro-knob-size-scale", String(scale));
+}
+
+function setNodeGraphMacroKnobSizeScale(value) {
+  nodeGraphMvp.macroKnobSizeScale = normalizeNodeGraphMacroKnobSizeScale(value);
+  applyNodeGraphMacroKnobSizeScale();
+}
+
+// The knob's actual interactive hit region is the whole rectangular
+// button (.node-macro-knob), not just the visible circular dial inside
+// it -- dragging/clicking works anywhere in that rectangle, including the
+// corners well outside the arc. This just makes that real hit region
+// visible with a one-pixel stroke so it stops being a surprise; it
+// doesn't change the hit region itself.
+function applyNodeGraphMacroKnobHitboxOutlineVisible() {
+  // Toggled on body rather than #nodeGraphWorkspace -- macro knobs also
+  // render inside the standalone MIDI keyboard dock, which isn't a
+  // descendant of the workspace, so this needs to reach both.
+  document.body.classList.toggle("macro-knob-hitbox-outline", Boolean(nodeGraphMvp.macroKnobHitboxOutlineVisible));
+}
+
+function setNodeGraphMacroKnobHitboxOutlineVisible(visible) {
+  nodeGraphMvp.macroKnobHitboxOutlineVisible = Boolean(visible);
+  applyNodeGraphMacroKnobHitboxOutlineVisible();
+}
+
+// Where the label and value readout sit (top/mid/bottom). These are
+// absolutely positioned within the knob button, entirely independent of
+// the dial's own layout -- an earlier version put label/value/dial in a
+// shared CSS Grid row, which let the dial's track get squeezed down to
+// ~1px whenever something else shared its row (a grid track-sizing
+// interaction, not anything intentional). Absolute positioning can't
+// affect a sibling's size at all, which is exactly the point: the dial
+// stays centered and full size no matter where label/value are placed,
+// and label/value can still freely overlap each other or the dial (no
+// collision handling, same as before) since overlapping absolutely
+// positioned elements is just normal stacking.
+const nodeGraphMacroKnobPositionValues = Object.freeze(["top", "mid", "bottom"]);
+
+function normalizeNodeGraphMacroKnobLabelPosition(value) {
+  return nodeGraphMacroKnobPositionValues.includes(value) ? value : "top";
+}
+
+function applyNodeGraphMacroKnobLabelPosition() {
+  const position = normalizeNodeGraphMacroKnobLabelPosition(nodeGraphMvp.macroKnobLabelPosition);
+  document.body.dataset.macroKnobLabelPosition = position;
+}
+
+function setNodeGraphMacroKnobLabelPosition(value) {
+  nodeGraphMvp.macroKnobLabelPosition = normalizeNodeGraphMacroKnobLabelPosition(value);
+  applyNodeGraphMacroKnobLabelPosition();
+}
+
+function normalizeNodeGraphMacroKnobValuePosition(value) {
+  return nodeGraphMacroKnobPositionValues.includes(value) ? value : "bottom";
+}
+
+function applyNodeGraphMacroKnobValuePosition() {
+  const position = normalizeNodeGraphMacroKnobValuePosition(nodeGraphMvp.macroKnobValuePosition);
+  document.body.dataset.macroKnobValuePosition = position;
+}
+
+function setNodeGraphMacroKnobValuePosition(value) {
+  nodeGraphMvp.macroKnobValuePosition = normalizeNodeGraphMacroKnobValuePosition(value);
+  applyNodeGraphMacroKnobValuePosition();
+}
+
 function ensureNodeGraphMacroControls() {
   if (!Array.isArray(nodeGraphMvp.macroControls) || nodeGraphMvp.macroControls.length !== 8) {
     nodeGraphMvp.macroControls = new Array(8).fill(0);
@@ -1255,17 +1424,50 @@ function setNodeGraphMacroControl(index, value) {
   }
 }
 
+// Same modifier vocabulary as regular parameter sliders (see
+// slider.numeric's tooltip and node-graph-slider-dragging.js) -- macro
+// knobs store a flat 0..1 in nodeGraphMvp.macroControls rather than a
+// DOM range-input-backed patch parameter, so the slider drag functions
+// themselves don't apply here, but the modifier detection/math is shared
+// via nodeGraphNumericDragMultiplier (node-graph-slider-values.js) and
+// reproduced 1:1 for the rest.
+function nodeGraphMacroKnobValueAtPointer(knob, event) {
+  const rect = knob.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const dx = event.clientX - centerX;
+  const dy = event.clientY - centerY;
+  // 0deg = up, clockwise positive -- matches the conic-gradient's own
+  // `from -132deg` angle convention (see .node-macro-knob i in styles.css)
+  // so this lines up exactly with what's drawn on screen.
+  const angleDegrees = Math.atan2(dx, -dy) * (180 / Math.PI);
+  const clampedAngle = clampNodeSliderValue(angleDegrees, -132, 132);
+  return normalizeNodeGraphMacroValue((clampedAngle + 132) / 264);
+}
+
 function beginNodeGraphMacroControlDrag(event) {
+  if (event.button > 0 || event.detail > 1) {
+    return;
+  }
   const knob = event.currentTarget;
   const index = Math.max(0, Math.min(7, Math.round(Number(knob.dataset.macroIndex) || 0)));
   event.preventDefault();
   knob.setPointerCapture?.(event.pointerId);
+  const resetToDefaultOnClick = (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
+  const jumpToPointerOnClick = event.altKey && !(event.shiftKey && (event.ctrlKey || event.metaKey));
+  if (jumpToPointerOnClick) {
+    setNodeGraphMacroControl(index, nodeGraphMacroKnobValueAtPointer(knob, event));
+  }
   nodeGraphMvp.dragging = {
     type: "macro-control",
+    knob,
     index,
+    moved: false,
+    resetToDefaultOnClick,
     startX: event.clientX,
     startY: event.clientY,
     startValue: normalizeNodeGraphMacroValue(nodeGraphMvp.macroControls?.[index]),
+    fineScale: nodeGraphNumericDragMultiplier(event),
   };
 }
 
@@ -1275,7 +1477,32 @@ function dragNodeGraphMacroControl(event) {
     return;
   }
   event.preventDefault();
-  const delta = ((event.clientX - drag.startX) - (event.clientY - drag.startY)) / 240;
+  const horizontalDelta = event.clientX - drag.startX;
+  const verticalDelta = drag.startY - event.clientY;
+  if (Math.abs(horizontalDelta) > 1 || Math.abs(verticalDelta) > 1) {
+    drag.moved = true;
+  }
+  if (event.altKey && !(event.shiftKey && (event.ctrlKey || event.metaKey))) {
+    setNodeGraphMacroControl(drag.index, nodeGraphMacroKnobValueAtPointer(drag.knob, event));
+    drag.startX = event.clientX;
+    drag.startY = event.clientY;
+    drag.startValue = normalizeNodeGraphMacroValue(nodeGraphMvp.macroControls?.[drag.index]);
+    return;
+  }
+  // Fine/coarse scale is read live from the current event on every move (not
+  // just at pointer-down), matching dragNodeSlider -- pressing/releasing
+  // Shift or Ctrl mid-drag changes sensitivity immediately. Re-anchor on a
+  // scale change so the value doesn't jump; only further movement's
+  // sensitivity changes.
+  const currentFineScale = nodeGraphNumericDragMultiplier(event);
+  if (currentFineScale !== drag.fineScale) {
+    drag.startX = event.clientX;
+    drag.startY = event.clientY;
+    drag.startValue = normalizeNodeGraphMacroValue(nodeGraphMvp.macroControls?.[drag.index]);
+    drag.fineScale = currentFineScale;
+    return;
+  }
+  const delta = ((horizontalDelta + verticalDelta) / 240) * drag.fineScale;
   setNodeGraphMacroControl(drag.index, drag.startValue + delta);
 }
 
@@ -1283,8 +1510,66 @@ function endNodeGraphMacroControlDrag(event) {
   const drag = nodeGraphMvp.dragging;
   if (drag?.type === "macro-control") {
     event.currentTarget?.releasePointerCapture?.(event.pointerId);
+    if (drag.resetToDefaultOnClick && !drag.moved) {
+      setNodeGraphMacroControl(drag.index, 0);
+    }
     nodeGraphMvp.dragging = null;
   }
+}
+
+function cancelNodeGraphMacroKnobEdit(knob) {
+  const input = knob?.querySelector?.(".node-macro-knob-edit-input");
+  const readout = knob?._macroKnobEditReadout;
+  if (input && readout) {
+    input.replaceWith(readout);
+  }
+  if (knob) {
+    knob.dataset.editing = "false";
+    delete knob._macroKnobEditReadout;
+  }
+}
+
+function beginNodeGraphMacroKnobEdit(event) {
+  const knob = event.currentTarget;
+  if (knob.dataset.editing === "true") {
+    return;
+  }
+  const index = Math.max(0, Math.min(7, Math.round(Number(knob.dataset.macroIndex) || 0)));
+  const readout = knob.querySelector("[data-macro-value]");
+  if (!readout) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  knob.dataset.editing = "true";
+  knob._macroKnobEditReadout = readout;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.inputMode = "decimal";
+  input.className = "node-macro-knob-edit-input";
+  input.value = normalizeNodeGraphMacroValue(nodeGraphMvp.macroControls?.[index]).toFixed(2);
+  readout.replaceWith(input);
+  input.addEventListener("pointerdown", (pointerEvent) => pointerEvent.stopPropagation());
+  input.addEventListener("click", (clickEvent) => clickEvent.stopPropagation());
+  input.addEventListener("keydown", (keyEvent) => {
+    keyEvent.stopPropagation();
+    if (keyEvent.key === "Enter") {
+      keyEvent.preventDefault();
+      input.blur();
+    } else if (keyEvent.key === "Escape") {
+      keyEvent.preventDefault();
+      cancelNodeGraphMacroKnobEdit(knob);
+    }
+  });
+  input.addEventListener("blur", () => {
+    const parsed = Number(input.value);
+    cancelNodeGraphMacroKnobEdit(knob);
+    if (Number.isFinite(parsed)) {
+      setNodeGraphMacroControl(index, parsed);
+    }
+  });
+  input.focus();
+  input.select();
 }
 
 function bindNodeGraphMacroControlModuleEvents() {
@@ -1298,6 +1583,10 @@ function bindNodeGraphMacroControlModuleEvents() {
     knob.addEventListener("pointerup", endNodeGraphMacroControlDrag);
     knob.addEventListener("pointercancel", endNodeGraphMacroControlDrag);
     knob.addEventListener("lostpointercapture", endNodeGraphMacroControlDrag);
+    knob.addEventListener("dblclick", beginNodeGraphMacroKnobEdit);
+    if (typeof nodeGraphApplyTooltip === "function") {
+      nodeGraphApplyTooltip(knob, "slider.knob", {}, { title: false });
+    }
   });
   if (document.body.dataset.macroControlWindowBound !== "true") {
     document.body.dataset.macroControlWindowBound = "true";

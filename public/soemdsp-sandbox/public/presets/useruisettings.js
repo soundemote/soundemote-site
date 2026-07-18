@@ -126,14 +126,14 @@
   },
   "moduleDefaultOverrides": {},
   "view": {
-    "gridVisible": true,
-    "keyboardDebugInfoVisible": true,
+    "gridVisible": false,
+    "keyboardDebugInfoVisible": false,
     "moduleButtonsVisible": false,
     "moduleInterfaceControlsVisible": true,
     "moduleOscilloscopesVisible": true,
     "moduleSlidersVisible": true,
     "moduleScopeBackgroundColor": "#000000",
-    "globalSmoothingSeconds": 0.1,
+    "globalSmoothingSeconds": 1,
     "globalSmoothingManual": true,
     "moduleScopeDotCore1Enabled": true,
     "moduleScopeDotCore1Size": 1.94,
@@ -143,18 +143,24 @@
     "moduleScopePointBudget": 4096,
     "moduleScopeLineThickness": 1,
     "moduleScopeDiscontinuitySkipSamples": 1,
+    "macroKnobArcThickness": 7,
+    "macroKnobArcGapBrightness": 0,
+    "macroKnobSizeScale": 1,
+    "macroKnobHitboxOutlineVisible": false,
+    "macroKnobLabelPosition": "top",
+    "macroKnobValuePosition": "bottom",
     "traceSettings": {
-      "brightness": 0.6068,
-      "color": "#6b6d9e",
+      "brightness": 0.92,
+      "color": "#abcdef",
       "dot1Enabled": true,
-      "dot1Size": 0.0375,
-      "secondaryBrightness": 2,
-      "secondaryColor": "#ceffbd",
+      "dot1Size": 0.0175,
+      "secondaryBrightness": 0.18,
+      "secondaryColor": "#00ffaa",
       "secondaryEnabled": true,
-      "secondarySize": 0.0295,
-      "secondaryLineThickness": 0.53,
+      "secondarySize": 0.24,
+      "secondaryLineThickness": 0.48,
       "cycles": 2,
-      "lineThickness": 0.3875,
+      "lineThickness": 0.2,
       "padding": 0,
       "skipDiscontinuities": true,
       "sourceSync": false,
@@ -722,8 +728,8 @@
       "commandCenter": {
         "open": false,
         "position": {
-          "left": 311,
-          "top": 263
+          "left": 261,
+          "top": 230
         }
       },
       "moduleActions": {
@@ -763,16 +769,20 @@
       "uiSettings": {
         "open": false,
         "position": {
-          "left": 1367,
+          "left": 813,
           "top": 172
         }
       },
       "uiDev": {
-        "open": false
+        "open": false,
+        "position": {
+          "left": 0,
+          "top": 0
+        }
       },
       "traceDisplaySettings": {
         "open": false,
-        "targetNode": "output"
+        "targetNode": "traceDisplay-3"
       },
       "standaloneMidiKeyboard": {
         "open": false
@@ -780,12 +790,8 @@
       "tooltipWindow": {
         "open": false,
         "position": {
-          "left": 1194,
-          "top": 215
-        },
-        "size": {
-          "width": 408,
-          "height": 144
+          "left": 287,
+          "top": 698
         }
       }
     },
@@ -793,10 +799,10 @@
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": 250.92857142857144,
-        "y": 141.25
+        "x": 184.01999999999998,
+        "y": 204.64000000000001
       },
-      "zoom": 1.6688961939958273
+      "zoom": 1.1878873465372088
     },
     "moduleStoreDepartment": "",
     "savedPatchBankIndex": 0,
