@@ -43,13 +43,11 @@ function bindNodeGraphSceneMenuEvents() {
       button.addEventListener("click", () => setSelectedNodeGraphWireType(button.dataset.wireType));
     });
   bindNodeGraphSceneElementEvent("nodeSceneCopyModule", "click", copyNodeGraphModuleFromContext);
-  bindNodeGraphSceneElementEvent("nodeSceneToggleModularOnlyView", "click", () => {
-    const modularOnlyActive = document.getElementById("nodeWiringPanel")?.classList.contains("modular-only-view");
-    setNodeGraphViewMode(modularOnlyActive ? "modular" : "modular-only");
-  });
-  bindNodeGraphSceneElementEvent("nodeSceneToggleModularOnlyControls", "click", () => {
-    toggleNodeGraphModularOnlyControlsVisible();
-  });
+  bindNodeGraphSceneElementEvent("nodeSceneCopyModuleSettings", "click", copyNodeGraphModuleSettingsFromContext);
+  bindNodeGraphSceneElementEvent("nodeScenePasteModuleSettings", "click", pasteNodeGraphModuleSettingsFromContext);
+  bindNodeGraphSceneElementEvent("nodeSceneSetModuleSettingsAsDefault", "click", setNodeGraphModuleSettingsAsDefaultFromButton);
+  bindNodeGraphSceneElementEvent("nodeSceneToggleModularOnlyView", "click", toggleNodeGraphModularOnlyView);
+  bindNodeGraphSceneElementEvent("nodeSceneToggleModularOnlyControls", "click", toggleNodeGraphViewButtonsVisibility);
   bindNodeGraphSceneElementEvent("nodeSceneOpenModuleBrowser", "click", () => {
     openNodeGraphModuleShop(nodeGraphMvp.sceneContextPoint);
   });
@@ -63,9 +61,9 @@ function bindNodeGraphSceneMenuEvents() {
   bindNodeGraphSceneElementEvent("nodeSceneOpenSavedPatches", "click", () => {
     setNodeGraphSavedPatchesWindowVisible(true);
   });
+  bindNodeGraphSceneElementEvent("nodeSceneToggleStandaloneMidiKeyboard", "click", toggleNodeGraphStandaloneMidiKeyboard);
   bindNodeGraphSceneElementEvent("nodeSceneCopyPatch", "click", copyNodeGraphScriptToClipboard);
   bindNodeGraphSceneElementEvent("nodeScenePastePatch", "click", pasteNodeGraphScriptFromClipboard);
-  bindNodeGraphSceneElementEvent("nodeSceneSharePatch", "click", copyNodeGraphShareLinkToClipboard);
   bindNodeGraphSceneElementEvent("nodeSceneOpenUiSettings", "click", () => {
     setNodeUserUiSettingsVisible(true);
   });

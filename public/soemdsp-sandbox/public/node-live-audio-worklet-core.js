@@ -63,7 +63,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.meterProtectionMuteCount = 0;
     this.meterSamples = 0;
     this.meterSquareSum = 0;
-    this.macroControls = new Array(10).fill(0);
+    this.macroControls = new Array(8).fill(0);
     this.externalButtonEvents = new Map();
     this.wireBreakEvent = { pulseSamples: 0, gateSamples: 0 };
     this.wireConnectEvent = { pulseSamples: 0 };
@@ -78,6 +78,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.pitchModWheelSignal = { mod: 0, pitch: 0 };
     this.midiKeyboardGatePulseSamples = 0;
     this.midiKeyboardSignal = null;
+    this.midiKeyboardHeldKeysLowBitmask = 0;
+    this.midiKeyboardHeldKeysHighBitmask = 0;
+    this.midiKeyboardHeldKeysPhase = 0;
     this.moduleGroupRuntimes = new Map();
     this.modulationConnections = new Map();
     this.nodeOutputs = new Map();
@@ -427,6 +430,10 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     }
     if (message.type === "setMidiKeyboardSignal") {
       this.setMidiKeyboardSignal(message.signal);
+      return;
+    }
+    if (message.type === "setMidiKeyboardHeldKeysBitmask") {
+      this.setMidiKeyboardHeldKeysBitmask(message.low, message.high);
       return;
     }
     if (message.type === "setMacroControls") {
@@ -1756,7 +1763,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.meterProtectionMuteCount = 0;
     this.meterSamples = 0;
     this.meterSquareSum = 0;
-    this.macroControls = new Array(10).fill(0);
+    this.macroControls = new Array(8).fill(0);
     this.externalButtonEvents = new Map();
     this.wireBreakEvent = { pulseSamples: 0, gateSamples: 0 };
     this.wireConnectEvent = { pulseSamples: 0 };
@@ -1765,6 +1772,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.pitchModWheelSignal = { mod: 0, pitch: 0 };
     this.midiKeyboardGatePulseSamples = 0;
     this.midiKeyboardSignal = null;
+    this.midiKeyboardHeldKeysLowBitmask = 0;
+    this.midiKeyboardHeldKeysHighBitmask = 0;
+    this.midiKeyboardHeldKeysPhase = 0;
     this.moduleGroupRuntimes = new Map();
     this.modulationConnections = new Map();
     this.nodeOutputs = new Map();
@@ -3000,9 +3010,16 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   }
 
   setMacroControls(values) {
-    this.macroControls = Array.from({ length: 10 }, (_, index) => (
+    this.macroControls = Array.from({ length: 8 }, (_, index) => (
       this.clampValue(Number(values?.[index]) || 0, 0, 1)
     ));
+  }
+
+  setMidiKeyboardHeldKeysBitmask(low, high) {
+    const safeLow = Math.floor(Number(low));
+    const safeHigh = Math.floor(Number(high));
+    this.midiKeyboardHeldKeysLowBitmask = Number.isFinite(safeLow) && safeLow >= 0 ? safeLow : 0;
+    this.midiKeyboardHeldKeysHighBitmask = Number.isFinite(safeHigh) && safeHigh >= 0 ? safeHigh : 0;
   }
 
   setPitchModWheelSignal(signal) {
@@ -6967,6 +6984,21 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
           : y;
         const gatePulse = this.midiKeyboardGatePulseSamples > 0 ? 1 : 0;
         this.midiKeyboardGatePulseSamples = Math.max(0, this.midiKeyboardGatePulseSamples - 1);
+        // Held Keys phase-bit multiplexing -- see the design note on
+        // nodeGraphMidiKeyboardHeldKeysTransmitValue in
+        // node-graph-view-controls.js (duplicated here since this worklet
+        // runs in a separate global scope and can't call that function).
+        // Bit 49 of the transmitted value is a self-describing phase flag:
+        // low half every sample (0-delay) unless the high half is
+        // actually in use, in which case this instance alternates one
+        // half per sample via a persistent phase counter.
+        let heldKeysTransmitValue = this.midiKeyboardHeldKeysLowBitmask || 0;
+        if (this.midiKeyboardHeldKeysHighBitmask) {
+          this.midiKeyboardHeldKeysPhase = this.midiKeyboardHeldKeysPhase ? 0 : 1;
+          if (this.midiKeyboardHeldKeysPhase) {
+            heldKeysTransmitValue = (2 ** 49) + this.midiKeyboardHeldKeysHighBitmask;
+          }
+        }
         return {
           "1 Sample Gate": hasInput(nodeId, "Gate") ? gate : gatePulse,
           "0.1V/Oct": this.clampValue(midi / 120, 0, 1),
@@ -6980,6 +7012,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
           Q: q,
           X: x,
           Y: velocity,
+          "Held Keys": heldKeysTransmitValue,
         };
       },
       buttonEvents: () => ({
@@ -7012,7 +7045,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       macroControls: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         const resetActive = hasInput(nodeId, "Reset") && Number(mixInput(nodeId, "Reset")) > 0;
         const value = {};
-        for (let index = 0; index < 10; index += 1) {
+        for (let index = 0; index < 8; index += 1) {
           const port = `M${index + 1} In`;
           value[`M${index + 1}`] = resetActive
             ? 0
@@ -7047,6 +7080,21 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       led: (node, nodeId, frame, frames, frameValues, mixInput) => ({
         Out: this.safeFilterNumber(mixInput(nodeId, "In"), null),
       }),
+      bitConverter: (node, nodeId, frame, frames, frameValues, mixInput) => {
+        const bits = Math.max(1, Math.min(53, Math.round(
+          this.readEffectiveParameter(node, "bits", 53, frame, frames, frameValues),
+        )));
+        const maxValue = 2 ** bits - 1;
+        const fullScale = Math.max(0, Math.min(maxValue, Number(mixInput(nodeId, "Full Scale")) || 0));
+        const unipolar = Math.max(0, Math.min(1, Number(mixInput(nodeId, "Unipolar")) || 0));
+        const bipolar = Math.max(-1, Math.min(1, Number(mixInput(nodeId, "Bipolar")) || 0));
+        return {
+          "Full Scale to Unipolar": maxValue > 0 ? fullScale / maxValue : 0,
+          "Full Scale to Bipolar": maxValue > 0 ? (fullScale / maxValue) * 2 - 1 : -1,
+          "Unipolar to Full Scale": Math.round(unipolar * maxValue),
+          "Bipolar to Full Scale": Math.round(((bipolar + 1) / 2) * maxValue),
+        };
+      },
       bias: (node, nodeId, frame, frames, frameValues, mixInput) => {
         const biasOffset = this.readEffectiveParameter(node, "offset", 0, frame, frames, frameValues);
         const biasMono = mixInput(nodeId);
@@ -7834,7 +7882,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       }
     }
     this.meterCounter += frames;
-    if (this.meterCounter >= sampleRate / 10) {
+    if (this.meterCounter >= sampleRate / 60) {
       this.port.postMessage({
         audioPlayerNodeId: this.audioPlayerMeterNodeId || this.audioPlayerNodeIds[0] || "",
         audioPlayerNodeIds: [...this.audioPlayerNodeIds],

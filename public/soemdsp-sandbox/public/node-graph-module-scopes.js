@@ -2405,7 +2405,11 @@ function normalizeNodeGraphLineBurnSettings(settings = {}) {
       Infinity,
     ),
     dot1Color: normalizeNodeGraphTraceDisplayColor(source.dot1Color ?? source.color, defaults.dot1Color),
-    dot1Enabled: source.dot1Enabled !== false,
+    // Dot toggleability removed app-wide -- redundant with the display's
+    // own show/hide (if you don't want to see it, hide the whole
+    // display). Always true regardless of any stored/legacy value, same
+    // way this file already handles the Dot 2 removal.
+    dot1Enabled: true,
     dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
     lineThickness: normalizeNodeGraphTraceDisplayNumber(source.lineThickness, defaults.lineThickness, 0, 1),
     zoomSeconds: normalizeNodeGraphTraceDisplayZoomSeconds(zoomSeconds, defaults.zoomSeconds),
@@ -2424,7 +2428,7 @@ function normalizeNodeGraphZeroDBurnSettings(settings = {}) {
       2,
     ),
     dot1Color: normalizeNodeGraphTraceDisplayColor(source.dot1Color ?? source.color, defaults.dot1Color),
-    dot1Enabled: source.dot1Enabled !== false,
+    dot1Enabled: true,
     dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
     lineThickness: normalizeNodeGraphTraceDisplayNumber(
       source.lineThickness ?? source.dot1Blur,
@@ -2448,7 +2452,7 @@ function normalizeNodeGraphTraceDisplaySettings(settings = {}) {
       Infinity,
     ),
     color: normalizeNodeGraphTraceDisplayColor(source.color ?? source.dot1Color, defaults.color),
-    dot1Enabled: source.dot1Enabled !== false,
+    dot1Enabled: true,
     dot1Size: normalizeNodeGraphTraceDisplayNumber(
       source.dot1Size,
       defaults.dot1Size,
@@ -2500,7 +2504,7 @@ function normalizeNodeGraphValueOscilloscopeSettings(settings = {}) {
     capSize: normalizeNodeGraphTraceDisplayNumber(source.capSize, defaults.capSize, 0, 1),
     color: normalizeNodeGraphTraceDisplayColor(source.color ?? source.dot1Color, defaults.color),
     decay: normalizeNodeGraphTraceDisplayNumber(source.decay, defaults.decay, 0, 1),
-    dot1Enabled: source.dot1Enabled !== false,
+    dot1Enabled: true,
     dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
     lineLength: normalizeNodeGraphTraceDisplayNumber(source.lineLength, defaults.lineLength, 0, 1),
     lineThickness: normalizeNodeGraphTraceDisplayNumber(source.lineThickness, defaults.lineThickness, 0, 1),
@@ -2535,7 +2539,7 @@ function normalizeNodeGraphScope2dSettings(settings = {}) {
       Infinity,
     ),
     dot1Color: normalizeNodeGraphTraceDisplayColor(source.dot1Color ?? source.color, defaults.dot1Color),
-    dot1Enabled: source.dot1Enabled !== false,
+    dot1Enabled: true,
     dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
     lineThickness: normalizeNodeGraphTraceDisplayNumber(
       source.lineThickness ?? source.dot1Blur,
@@ -2557,7 +2561,7 @@ function normalizeNodeGraphScope2dTraceSettings(settings = {}) {
       Infinity,
     ),
     dot1Color: normalizeNodeGraphTraceDisplayColor(source.dot1Color ?? source.color, defaults.dot1Color),
-    dot1Enabled: source.dot1Enabled !== false,
+    dot1Enabled: true,
     dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
     historySeconds: normalizeNodeGraphTraceDisplayZoomSeconds(
       source.historySeconds ?? source.history,
@@ -2631,7 +2635,13 @@ function nodeGraphTraceDisplaySettingsEditingTraceDefaults() {
     return true;
   }
   const node = nodeGraphPatchNode(nodeGraphMvp?.traceDisplaySettingsTargetNode);
-  return nodeGraphModuleDisplaySettingsSchemaForNode(node) === "trace";
+  // Plain Trace nodes intentionally share one global look -- edits fall
+  // through to nodeGraphMvp.traceSettings below. Output reuses the same
+  // "trace" schema to render its Left/Right channels, but each Output
+  // node's colors/sizes are its own per-node choice (read straight off
+  // node.traceDisplaySettings in drawNodeGraphTraceDisplayCanvasItem), so
+  // it must never share the global bucket the way plain Trace nodes do.
+  return nodeGraphModuleDisplaySettingsSchemaForNode(node) === "trace" && node?.type !== "output";
 }
 
 const nodeGraphDisplayModeRenderers = Object.freeze(["trace", "clock", "dot", "value", "lineBurn", "hypersawBurn", "oscilloscopeBankBurn", "videoscopeBurn", "transportBpm", "scope2d", "scope2dTrace", "numberReadout", "spectrum"]);
@@ -2916,7 +2926,17 @@ function nodeGraphNodeCanOpenDisplaySettings(node) {
 }
 
 function nodeGraphTraceDisplaySettingsForSlot(slot) {
-  if (nodeGraphModuleDisplaySettingsSchemaForSlot(slot) === "trace") {
+  // Plain Trace nodes intentionally share one global look (see
+  // nodeGraphTraceDisplaySettingsEditingTraceDefaults). Output reuses the
+  // "trace" schema for its Left/Right channels but each Output node's own
+  // brightness/size/blur are per-node -- reading the global bucket here
+  // meant those fields silently never reflected what was actually saved
+  // on the node (only color worked, since the draw path reads color
+  // straight off the node as a separate override).
+  if (
+    nodeGraphModuleDisplaySettingsSchemaForSlot(slot) === "trace" &&
+    nodeGraphModuleScopeNodeForSlot(slot)?.type !== "output"
+  ) {
     return nodeGraphGlobalTraceSettings();
   }
   return nodeGraphTraceDisplaySettingsForNode(nodeGraphModuleScopeNodeForSlot(slot));
@@ -3439,7 +3459,7 @@ const nodeGraphTraceDisplaySettingFields = Object.freeze([
 const nodeGraphTraceDisplaySettingControlKeys = Object.freeze({
   fields: nodeGraphTraceDisplaySettingFields.map(([key]) => key),
   colors: ["dot1Color", "secondaryColor"],
-  toggles: ["sourceSync", "bipolarBrightness", "dot1Enabled", "secondaryEnabled", "capEnabled"],
+  toggles: ["sourceSync", "bipolarBrightness", "secondaryEnabled", "capEnabled"],
   choices: [],
 });
 
@@ -3455,7 +3475,7 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
       "secondaryBrightness",
     ]),
     colors: Object.freeze(["dot1Color", "secondaryColor"]),
-    toggles: Object.freeze(["sourceSync", "skipDiscontinuities", "dot1Enabled", "secondaryEnabled"]),
+    toggles: Object.freeze(["sourceSync", "skipDiscontinuities", "secondaryEnabled"]),
     choices: Object.freeze([]),
   }),
   dot: Object.freeze({
@@ -3465,7 +3485,7 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
       "dot1Brightness",
     ]),
     colors: Object.freeze(["dot1Color"]),
-    toggles: Object.freeze(["bipolarBrightness", "dot1Enabled"]),
+    toggles: Object.freeze(["bipolarBrightness"]),
     choices: Object.freeze([]),
   }),
   lineBurn: Object.freeze({
@@ -3478,7 +3498,7 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
       "dot1Brightness",
     ]),
     colors: Object.freeze(["dot1Color"]),
-    toggles: Object.freeze(["dot1Enabled"]),
+    toggles: Object.freeze([]),
     choices: Object.freeze([]),
   }),
   value: Object.freeze({
@@ -3493,7 +3513,7 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
       "capLength",
     ]),
     colors: Object.freeze(["dot1Color"]),
-    toggles: Object.freeze(["dot1Enabled", "capEnabled"]),
+    toggles: Object.freeze(["capEnabled"]),
     choices: Object.freeze([]),
   }),
   scope2d: Object.freeze({
@@ -3505,7 +3525,7 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
       "dot1Brightness",
     ]),
     colors: Object.freeze(["dot1Color"]),
-    toggles: Object.freeze(["dot1Enabled"]),
+    toggles: Object.freeze([]),
     choices: Object.freeze([]),
   }),
   scope2dTrace: Object.freeze({
@@ -3517,7 +3537,7 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
       "dot1Brightness",
     ]),
     colors: Object.freeze(["dot1Color"]),
-    toggles: Object.freeze(["dot1Enabled"]),
+    toggles: Object.freeze([]),
     choices: Object.freeze([]),
   }),
   numberReadout: Object.freeze({
@@ -3546,7 +3566,7 @@ const nodeGraphTraceDisplaySectionControls = Object.freeze({
   dot1: Object.freeze({
     fields: Object.freeze(["dot1Size", "lineThickness", "dot1Brightness"]),
     colors: Object.freeze(["dot1Color"]),
-    toggles: Object.freeze(["bipolarBrightness", "dot1Enabled"]),
+    toggles: Object.freeze(["bipolarBrightness"]),
     choices: Object.freeze([]),
   }),
   secondary: Object.freeze({
@@ -3727,12 +3747,7 @@ function nodeGraphTraceDisplaySettingsElement() {
         </label>
       </div>
       <div class="metadata-section-title node-trace-display-dot1-title">
-        <span>Dot</span>
-        <input
-          id="nodeTraceDisplayDot1Enabled"
-          type="checkbox"
-          aria-label="Dot on"
-          data-trace-display-toggle="dot1Enabled">
+        <span id="nodeTraceDisplayDot1TitleLabel">Dot</span>
       </div>
       <div class="metadata-field-section node-trace-display-dot1-section">
         <label class="metadata-checkbox-label node-trace-display-bipolar-brightness-row">
@@ -3769,7 +3784,7 @@ function nodeGraphTraceDisplaySettingsElement() {
         </label>
       </div>
       <div class="metadata-section-title node-trace-display-secondary-title">
-        <span>Secondary</span>
+        <span id="nodeTraceDisplaySecondaryTitleLabel">Secondary</span>
         <input
           id="nodeTraceDisplaySecondaryEnabled"
           type="checkbox"
@@ -3877,7 +3892,6 @@ function applyNodeGraphTraceDisplaySettingsTooltips(popover) {
   }
   const toggleKeys = {
     bipolarBrightness: "traceDisplaySettings.bipolarBrightness",
-    dot1Enabled: "traceDisplaySettings.dot1Enabled",
     secondaryEnabled: "traceDisplaySettings.secondaryEnabled",
     capEnabled: "traceDisplaySettings.capEnabled",
     sourceSync: "traceDisplaySettings.sourceSync",
@@ -4019,6 +4033,33 @@ function setNodeGraphTraceDisplaySettingsFormType(node = null) {
     node?.type === "output";
   setNodeGraphTraceDisplaySectionVisible(popover, "secondary", secondaryActive);
   setNodeGraphTraceDisplaySectionVisible(popover, "caps", nodeGraphTraceDisplaySectionHasActiveControls("caps", formType));
+
+  // Output repurposes the shared dot1/secondary fields to show its two
+  // speaker channels -- relabel them Left/Right there so it reads as a
+  // stereo pair instead of a "primary/secondary" trace pairing. Every other
+  // node type (plain Trace) keeps the generic labels, since "secondary"
+  // there is a decorative second layer, not a channel.
+  const isOutputNode = node?.type === "output";
+  const dot1TitleLabel = popover.querySelector("#nodeTraceDisplayDot1TitleLabel");
+  if (dot1TitleLabel) {
+    dot1TitleLabel.textContent = isOutputNode ? "Left" : "Dot";
+  }
+  const secondaryTitleLabel = popover.querySelector("#nodeTraceDisplaySecondaryTitleLabel");
+  if (secondaryTitleLabel) {
+    secondaryTitleLabel.textContent = isOutputNode ? "Right" : "Secondary";
+  }
+  const dot1ColorInput = popover.querySelector("#nodeTraceDisplayColor");
+  if (dot1ColorInput) {
+    dot1ColorInput.setAttribute("aria-label", isOutputNode ? "Left color" : "Dot color");
+  }
+  const secondaryEnabledInput = popover.querySelector("#nodeTraceDisplaySecondaryEnabled");
+  if (secondaryEnabledInput) {
+    secondaryEnabledInput.setAttribute("aria-label", isOutputNode ? "Right on" : "Secondary on");
+  }
+  const secondaryColorInput = popover.querySelector("#nodeTraceDisplaySecondaryColor");
+  if (secondaryColorInput) {
+    secondaryColorInput.setAttribute("aria-label", isOutputNode ? "Right color" : "Secondary color");
+  }
 }
 
 function nodeGraphTraceDisplaySettingsFormType() {
@@ -4146,6 +4187,12 @@ function nodeGraphTraceDisplayCurrentSettingsForFormType(formType = nodeGraphTra
   }
   if (settingsSchema === "numberReadout") {
     return normalizeNodeGraphNumberReadoutSettings(node.traceDisplaySettings);
+  }
+  // Reaching here with schema "trace" only happens for Output (plain Trace
+  // nodes are already caught by the editingTraceDefaults() check above) --
+  // its own per-node settings, not the shared global bucket.
+  if (settingsSchema === "trace" && node?.type === "output") {
+    return nodeGraphTraceDisplaySettingsForNode(node);
   }
   return nodeGraphGlobalTraceSettings();
 }
@@ -9996,7 +10043,7 @@ function buildNodeGraphTraceDisplayCanvasPoints(buffer, canvas, slot) {
   return points;
 }
 
-function drawNodeGraphTraceDisplayCanvasLayer(context, points, layer, canvas) {
+function drawNodeGraphTraceDisplayCanvasLayer(context, points, layer, canvas, options = {}) {
   if (!context || !Array.isArray(points) || points.length < 2 || !canvas) {
     return;
   }
@@ -10006,6 +10053,7 @@ function drawNodeGraphTraceDisplayCanvasLayer(context, points, layer, canvas) {
   if (!enabled || size <= 0 || brightness <= 0) {
     return;
   }
+  const glow = options.glow !== false;
   const blur = clampNodeSliderValue(layer.blur, 0, 1);
   const rgb = nodeGraphScopeRgbFloatsToCanvasRgb(nodeGraphScopeHexColorToRgb(layer.color));
   const lineWidth = Math.max(1, Math.min(canvas.width, canvas.height) * size);
@@ -10015,8 +10063,10 @@ function drawNodeGraphTraceDisplayCanvasLayer(context, points, layer, canvas) {
   context.lineJoin = "round";
   context.lineWidth = lineWidth;
   context.strokeStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${Math.min(1, brightness)})`;
-  context.shadowColor = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${Math.min(1, brightness)})`;
-  context.shadowBlur = lineWidth * blur * 1.5;
+  if (glow) {
+    context.shadowColor = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${Math.min(1, brightness)})`;
+    context.shadowBlur = lineWidth * blur * 1.5;
+  }
   context.beginPath();
   drawNodeGraphScopeCanvasSmoothPath(context, points);
   context.stroke();
@@ -10091,8 +10141,8 @@ function drawNodeGraphTraceDisplayCanvasItem(item, pixelRatio) {
       color: rawTraceSettings.secondaryColor ?? nodeGraphOutputTraceRightColor,
     };
     context.clearRect(0, 0, canvas.width, canvas.height);
-    drawNodeGraphTraceDisplayCanvasLayer(context, rightPoints, rightLayer, canvas);
-    drawNodeGraphTraceDisplayCanvasLayer(context, leftPoints, leftLayer, canvas);
+    drawNodeGraphTraceDisplayCanvasLayer(context, rightPoints, rightLayer, canvas, { glow: false });
+    drawNodeGraphTraceDisplayCanvasLayer(context, leftPoints, leftLayer, canvas, { glow: false });
     recordNodeGraphModuleScopeRenderMetrics(leftPoints.length + rightPoints.length, leftPoints.length + rightPoints.length);
     rememberNodeGraphTraceDisplaySignature(slot, item, buffer, settings);
     return true;

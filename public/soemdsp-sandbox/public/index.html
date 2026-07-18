@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>soemdsp-sandbox</title>
-  <link rel="stylesheet" href="./public/styles.css?v=module-diagnostics-2-20260711">
+  <link rel="stylesheet" href="./public/styles.css?v=stepgrid-selection-fix-20260715">
+  <link rel="stylesheet" href="./public/modules/stepGrid/step-grid.css?v=stepgrid-own-folder-20260715">
 </head>
 <body class="debug-collapsed node-boot-loading">
   <div class="node-boot-loading-screen" role="status" aria-live="polite" aria-label="loading">
@@ -136,15 +137,22 @@
             id="nodeModularOnlyViewButton"
             type="button"
             aria-label="Modular view"
-            aria-pressed="false"><span class="node-modular-view-icon" aria-hidden="true">🎛️</span></button>
+            aria-pressed="false"><span class="node-modular-view-icon" aria-hidden="true">💻</span></button>
           <button
             id="nodeModuleShopButton"
             type="button"
-            aria-pressed="false"><span>Module</span><span>Browser</span></button>
+            aria-label="Module Browser"
+            aria-pressed="false"><span class="node-modular-view-icon" aria-hidden="true">🎛️</span></button>
           <button
             id="nodeSavedPatchesWindowButton"
             type="button"
-            aria-pressed="false"><span>Patch</span><span>Browser</span></button>
+            aria-label="Patch Browser"
+            aria-pressed="false"><span class="node-modular-view-icon" aria-hidden="true">📖</span></button>
+          <button
+            id="nodeStandaloneMidiKeyboardButton"
+            type="button"
+            aria-label="MIDI Keyboard"
+            aria-pressed="false"><span class="node-modular-view-icon" aria-hidden="true">🎹</span></button>
           <span
             id="nodeWorldPositionReadout"
             class="node-world-position-readout"
@@ -233,9 +241,14 @@
             <button id="nodeOscilloscopeToggleButton" type="button" role="menuitem" aria-pressed="false">Show Displays</button>
             <button id="nodeModuleInterfaceControlsToggleButton" type="button" role="menuitem" aria-pressed="true">Hide Control Surfaces</button>
             <button id="nodeModuleSlidersToggleButton" type="button" role="menuitem" aria-pressed="true">Hide Sliders</button>
-            <button id="nodeTooltipToggleButton" type="button" role="menuitem" aria-pressed="true">Hide Tips</button>
+            <button id="nodeTooltipToggleButton" class="scene-context-window-button" type="button" role="menuitem" aria-pressed="true">
+              <span class="scene-context-window-button-icon" aria-hidden="true">📐</span>
+              <span class="scene-context-window-button-label">Hide Tips</span>
+              <kbd>T</kbd>
+            </button>
             <button id="nodeSliderAmountToggleButton" type="button" role="menuitem" aria-pressed="false">Show Amount Slider</button>
             <button id="nodeSliderPositionToggleButton" type="button" role="menuitem" aria-pressed="true">Hide Position Slider</button>
+            <button id="nodeKeyboardDebugToggleButton" type="button" role="menuitem" aria-pressed="true"><span>Hide Debug</span><kbd>D</kbd></button>
           </div>
           <button
             id="nodeVisibilityMenuResizeHandle"
@@ -312,8 +325,101 @@
         </section>
       </div>
 
-      <div class="node-help-stack">
+      <div
+        id="nodeTooltipWindow"
+        class="node-tooltip-window"
+        role="dialog"
+        aria-label="Tips"
+        hidden>
+        <div id="nodeTooltipWindowHeading" class="scene-context-heading">
+          <button
+            id="nodeTooltipWindowDragHandle"
+            class="scene-context-drag-handle"
+            type="button"
+            aria-label="Move tips">&#x2725;</button>
+          <div class="scene-context-title">
+            <span>Tips</span>
+          </div>
+          <button
+            id="nodeTooltipWindowCloseButton"
+            class="panel-close-button"
+            type="button"
+            aria-label="Close tips">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
         <div id="nodeInteractionHelp" class="node-interaction-help" role="status" aria-live="polite"></div>
+        <button
+          id="nodeTooltipWindowResizeHandle"
+          class="scene-context-resize-handle"
+          type="button"
+          aria-label="Resize tips"></button>
+      </div>
+
+      <div
+        id="nodePhosphorWaveformSettingsWindow"
+        class="node-phosphor-waveform-settings-window"
+        role="dialog"
+        aria-label="Waveform display options"
+        hidden>
+        <div class="scene-context-heading">
+          <button
+            id="nodePhosphorWaveformSettingsDragHandle"
+            class="scene-context-drag-handle"
+            type="button"
+            aria-label="Move waveform display options">&#x2725;</button>
+          <div class="scene-context-title">
+            <span>Waveform</span>
+            <small>display options</small>
+          </div>
+          <button
+            id="nodePhosphorWaveformSettingsClose"
+            class="panel-close-button"
+            type="button"
+            aria-label="Close waveform display options">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+        <label class="node-phosphor-waveform-settings-row">
+          <span>Time Window</span>
+          <input id="nodePhosphorWaveformTimeWindowInput" type="number" inputmode="decimal" step="0.05" min="0.05" max="60" autocomplete="off">
+          <span>s</span>
+        </label>
+        <div class="node-phosphor-waveform-settings-row" role="group" aria-label="Scroll mode">
+          <span>Scroll</span>
+          <button id="nodePhosphorWaveformScrollSmoothButton" type="button" data-scroll-mode="smooth" aria-pressed="true">Smooth</button>
+          <button id="nodePhosphorWaveformScrollSnapButton" type="button" data-scroll-mode="snap" aria-pressed="false">Snap</button>
+        </div>
+        <div class="node-phosphor-waveform-settings-row" role="group" aria-label="Scroll line position">
+          <span>Position</span>
+          <button id="nodePhosphorWaveformPositionLeftButton" type="button" data-scroll-position="left" aria-pressed="false">Left</button>
+          <button id="nodePhosphorWaveformPositionMidButton" type="button" data-scroll-position="mid" aria-pressed="true">Mid</button>
+          <button id="nodePhosphorWaveformPositionRightButton" type="button" data-scroll-position="right" aria-pressed="false">Right</button>
+        </div>
+        <label class="node-phosphor-waveform-settings-row">
+          <span>Line Width</span>
+          <input id="nodePhosphorWaveformLineWidthInput" type="number" inputmode="decimal" step="0.5" min="0.5" max="8" autocomplete="off">
+          <span>px</span>
+        </label>
+        <label class="node-phosphor-waveform-settings-row">
+          <span>Hue</span>
+          <input id="nodePhosphorWaveformHueInput" type="range" min="0" max="360" step="1">
+        </label>
+        <label class="node-phosphor-waveform-settings-row">
+          <span>Line Brightness</span>
+          <input id="nodePhosphorWaveformLineBrightnessInput" type="range" min="0" max="2" step="0.02">
+        </label>
+        <label class="node-phosphor-waveform-settings-row">
+          <span>BG Hue</span>
+          <input id="nodePhosphorWaveformBackgroundHueInput" type="range" min="0" max="360" step="1">
+        </label>
+        <label class="node-phosphor-waveform-settings-row">
+          <span>BG Brightness</span>
+          <input id="nodePhosphorWaveformBackgroundBrightnessInput" type="range" min="0" max="2" step="0.02">
+        </label>
+      </div>
+
+      <div class="node-help-stack">
         <div class="node-constraint-color-guide" aria-label="Resource constraint color guide">
           <span class="node-constraint-stack" data-constraint-stack="cpu">
             <label class="node-constraint-chip" data-constraint="cpu" data-tooltip-key="constraints.cpu">
@@ -401,6 +507,37 @@
           type="button"
           aria-label="Resize modular workspace"
           data-tooltip-key="workspace.resizeTitle"></button>
+      </div>
+
+      <div
+        id="nodeStandaloneMidiKeyboardDock"
+        class="node-standalone-midi-keyboard-dock"
+        role="dialog"
+        aria-label="Standalone MIDI keyboard"
+        hidden>
+        <div id="nodeStandaloneMidiKeyboardHeading" class="scene-context-heading">
+          <button
+            id="nodeStandaloneMidiKeyboardDragHandle"
+            class="scene-context-drag-handle"
+            type="button"
+            aria-label="Move keyboard">&#x2725;</button>
+          <div class="scene-context-title">
+            <span>Keyboard</span>
+          </div>
+          <button
+            id="nodeStandaloneMidiKeyboardCloseButton"
+            class="panel-close-button"
+            type="button"
+            aria-label="Close keyboard">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+        <div id="nodeStandaloneMidiKeyboardBody" class="node-standalone-midi-keyboard-body"></div>
+        <button
+          id="nodeStandaloneMidiKeyboardResizeHandle"
+          class="scene-context-resize-handle"
+          type="button"
+          aria-label="Resize keyboard"></button>
       </div>
 
       <section
@@ -1750,6 +1887,15 @@
           <span>Copy</span>
           <kbd>Ctrl+C</kbd>
         </button>
+        <button id="nodeSceneCopyModuleSettings" type="button" role="menuitem" hidden>
+          <span>Copy Settings</span>
+        </button>
+        <button id="nodeScenePasteModuleSettings" type="button" role="menuitem" hidden>
+          <span>Paste Settings</span>
+        </button>
+        <button id="nodeSceneSetModuleSettingsAsDefault" type="button" role="menuitem" hidden>
+          <span>Set as Default</span>
+        </button>
         <div id="nodeSceneWindowControls" class="scene-context-text-box-controls scene-context-window-controls">
           <div>
             <div class="scene-context-history-controls" role="group" aria-label="Patch history">
@@ -1766,16 +1912,35 @@
               <span class="scene-context-global-smoothing-unit">sec</span>
             </div>
             <div id="nodeSceneTimingControls" class="scene-context-timing-controls" role="group" aria-label="Patch timing"></div>
+            <div class="scene-context-modular-view-controls" role="group" aria-label="Modular view">
+              <button id="nodeSceneToggleModularOnlyView" class="scene-context-window-button" type="button" aria-label="Modular View" aria-pressed="false">
+                <span class="scene-context-window-button-icon" aria-hidden="true">💻</span>
+                <kbd>M</kbd>
+              </button>
+              <button id="nodeSceneToggleModularOnlyControls" class="scene-context-window-button" type="button" aria-label="View Buttons" aria-pressed="false">
+                <span class="scene-context-window-button-icon" aria-hidden="true">🗺️</span>
+                <kbd>V</kbd>
+              </button>
+              <button id="nodeSceneToggleStandaloneMidiKeyboard" class="scene-context-window-button" type="button" aria-label="Show Keyboard" aria-pressed="false">
+                <span class="scene-context-window-button-icon" aria-hidden="true">🎹</span>
+                <kbd>K</kbd>
+              </button>
+            </div>
+            <button id="nodeSceneOpenModuleBrowser" class="scene-context-window-button" type="button">
+              <span class="scene-context-window-button-icon" aria-hidden="true">🎛️</span>
+              <span class="scene-context-window-button-label">Modules</span>
+              <kbd>Shift+A</kbd>
+            </button>
             <button id="nodeSceneOpenSavedPatches" class="scene-context-window-button" type="button">
               <span class="scene-context-window-button-icon" aria-hidden="true">📁</span>
               <span class="scene-context-window-button-label">Patch Explorer</span>
             </button>
-            <button id="nodeSceneOpenModuleBrowser" class="scene-context-window-button" type="button">
-              <span class="scene-context-window-button-icon" aria-hidden="true">🎛️</span>
-              <span class="scene-context-window-button-label">Module Browser</span>
-            </button>
+            <div class="scene-context-patch-actions" role="group" aria-label="Patch actions">
+              <button id="nodeSceneCopyPatch" class="scene-context-patch-action-button" type="button" data-tooltip-key="actions.copyPatch">Copy</button>
+              <button id="nodeScenePastePatch" class="scene-context-patch-action-button" type="button" data-tooltip-key="actions.pastePatch">Paste</button>
+            </div>
             <button id="nodeSceneOpenModuleActions" class="scene-context-window-button" type="button">
-              <span class="scene-context-window-button-icon" aria-hidden="true">🛠️</span>
+              <span class="scene-context-window-button-icon" aria-hidden="true">⚙️</span>
               <span class="scene-context-window-button-label">Module Settings</span>
             </button>
             <button id="nodeSceneOpenUiSettings" class="scene-context-window-button" type="button">
@@ -2100,7 +2265,7 @@
         </button>
         <div id="nodeSceneCodeGroup" class="scene-context-button-group" role="group" hidden>
           <button id="nodeSceneOpenNativeCode" type="button" role="menuitem">
-            <span>SRC</span>
+            <span>Code</span>
           </button>
           <button id="nodeSceneOpenNativeLib" type="button" role="menuitem" hidden>
             <span>LIB</span>
@@ -2196,7 +2361,7 @@
                 type="button"
                 data-global-scope-dot-toggle="dot1"
                 data-tooltip-key="displaySettings.dot1Toggle"
-                aria-pressed="false">Dot 1</button>
+                aria-pressed="false">Dot</button>
               <label>
               <span>size px</span>
               <input id="nodeMasterScopeDotCore1Size" type="number" min="0.01" max="10" step="0.01" data-global-scope-input="dotCore1Size" data-global-scope-number-drag="true" data-tooltip-key="displaySettings.dot1Size" value="2">
@@ -2217,49 +2382,8 @@
                   width="64"
                   height="64"
                   data-tooltip-key="displaySettings.dot1Preview"
-                  aria-label="Generated display dot 1 image preview"></canvas>
+                  aria-label="Generated display dot image preview"></canvas>
               </div>
-            </div>
-            <div class="node-master-scope-dot-core-row">
-              <button
-                id="nodeMasterScopeDotCore2Enabled"
-                class="node-master-scope-dot-core-title"
-                type="button"
-                data-global-scope-dot-toggle="dot2"
-                data-tooltip-key="displaySettings.dot2Toggle"
-                aria-pressed="true">Dot 2</button>
-              <label>
-              <span>size px</span>
-              <input id="nodeMasterScopeDotCore2Size" type="number" min="0.01" max="10" step="0.01" data-global-scope-input="dotCore2Size" data-global-scope-number-drag="true" data-tooltip-key="displaySettings.dot2Size" value="4">
-              </label>
-              <label>
-              <span>brightness</span>
-              <input id="nodeMasterScopeDotCore2Brightness" type="number" min="0" max="40" step="0.01" data-global-scope-input="dotCore2Brightness" data-global-scope-number-drag="true" data-tooltip-key="displaySettings.dot2Brightness" value="0.45">
-              </label>
-              <label>
-                <span>color</span>
-                <input id="nodeMasterScopeDotCore2Color" type="color" data-global-scope-input="dotCore2Color" data-tooltip-key="displaySettings.dot2Color" value="#17002f">
-              </label>
-              <div class="node-master-scope-dot-preview-shell">
-                <span>dot image</span>
-                <canvas
-                  id="nodeMasterScopeDotCore2Preview"
-                  class="node-master-scope-dot-preview"
-                  width="64"
-                  height="64"
-                  data-tooltip-key="displaySettings.dot2Preview"
-                  aria-label="Generated display dot 2 image preview"></canvas>
-              </div>
-            </div>
-            <div class="node-master-scope-dot-preview-shell node-master-scope-dot-preview-combined">
-              <span>combined dot image</span>
-              <canvas
-                id="nodeMasterScopeDotPreview"
-                class="node-master-scope-dot-preview"
-                width="64"
-                height="64"
-                data-tooltip-key="displaySettings.combinedPreview"
-                aria-label="Generated display combined dot image preview"></canvas>
             </div>
           </div>
         </div>
@@ -2438,7 +2562,8 @@
           <div class="metadata-field-actions" aria-label="Metaparameter actions">
             <button id="metadataSaveFieldsButton" type="button">Save</button>
             <button id="metadataRestoreFieldsButton" type="button">Restore</button>
-            <button id="metadataSetDefaultButton" type="button">Defaults</button>
+            <button id="metadataSetCurrentAsDefaultButton" type="button" title="Set the parameter's current value as its new default">Set Default</button>
+            <button id="metadataRestoreDefaultButton" type="button" title="Reset this parameter's metadata to the standard template for its kind">Restore Default</button>
           </div>
           <div class="metadata-section-title">Range</div>
           <div class="metadata-field-section metadata-range-section">
@@ -3112,10 +3237,13 @@
   <script src="./public/node-graph-papoulis-filter.js?v=phosphillator-papoulis-2"></script>
   <script src="./public/node-graph-phosphor-draw-sample.js?v=phosphor-draw-sample-1"></script>
   <script src="./public/node-graph-color-standards.js?v=color-standards-1"></script>
-  <script src="./public/node-graph-module-definitions.js?v=stereo-modules-sweep-20260711"></script>
+  <script src="./public/node-graph-chromeless-module-registry.js?v=stepgrid-variable-steps-20260715"></script>
+  <script src="./public/modules/led/led-register.js?v=stepgrid-variable-steps-20260715"></script>
+  <script src="./public/modules/stepGrid/step-grid-register.js?v=stepgrid-variable-steps-20260715"></script>
+  <script src="./public/node-graph-module-definitions.js?v=stepgrid-variable-steps-20260715"></script>
   <script src="./public/node-graph-data-bus.js?v=data-plane-merge-20260711"></script>
-  <script src="./public/node-graph-module-store.js?v=stereo-modules-sweep-20260711"></script>
-  <script src="./public/node-graph-module-sizing.js?v=text-box-height-2"></script>
+  <script src="./public/node-graph-module-store.js?v=stepgrid-variable-steps-20260715"></script>
+  <script src="./public/node-graph-module-sizing.js?v=stepgrid-variable-steps-20260715"></script>
   <script src="./public/node-graph-metadata-kinds.js?v=0051"></script>
   <script src="./public/node-graph-parameter-metadata.js?v=script-box-merge-20260711"></script>
   <script src="./public/node-graph-metadata-defaults.js?v=decimal-template-1"></script>
@@ -3153,11 +3281,16 @@
   <script src="./public/node-graph-module-actions.js?v=src-lib-buttons-20260711"></script>
   <script src="./public/node-graph-code-screen.js?v=canvas-video-list-20260650"></script>
   <script src="./public/node-graph-module-scopes.js?v=spectrum-bars-full-intensity-20260711"></script>
+  <script src="./public/modules/oscilloscopeBank/oscilloscope-bank-display.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/videoscope/videoscope-display.js?v=videoscope-20260713"></script>
+  <script src="./public/modules/transport/transport-display.js?v=transport-bpm-20260714"></script>
   <script src="./public/node-graph-shader-script.js?v=unified-window-pos-1"></script>
   <script src="./public/node-graph-canvas-script.js?v=unified-window-pos-1"></script>
-  <script src="./public/node-graph-module-factories.js?v=vactrol-series-impulse-button-20260710"></script>
+  <script src="./public/node-graph-module-factories.js?v=stepgrid-variable-steps-20260715"></script>
+  <script src="./public/modules/led/led-ui.js?v=stepgrid-variable-steps-20260715"></script>
+  <script src="./public/modules/stepGrid/step-grid-ui.js?v=stepgrid-variable-steps-20260715"></script>
   <script src="./public/node-graph-module-header-rendering.js?v=0032"></script>
-  <script src="./public/node-graph-module-rendering.js?v=vactrol-series-impulse-button-20260710"></script>
+  <script src="./public/node-graph-module-rendering.js?v=stepgrid-variable-steps-20260715"></script>
   <script src="./public/node-graph-history.js?v=slider-unit-color-1780307400000"></script>
   <script src="./public/node-graph-visual-utils.js?v=text-light-registry-1780800000000"></script>
   <script src="./public/node-graph-patch-clone.js?v=script-box-merge-20260711"></script>
@@ -3239,7 +3372,118 @@
   <script src="./public/node-graph-chord-sequencer.js?v=chord-sequencer-20260711"></script>
   <script src="./public/node-graph-lut-cell.js?v=lut-cell-selfclock-20260711"></script>
   <script src="./public/node-graph-metallic-ratio.js?v=metallic-ratio-20260711"></script>
+  <script src="./public/node-graph-stdlib/node-graph-analog-filter-helpers.js?v=stdlib-batch3-20260715"></script>
+  <script src="./public/node-graph-stdlib/node-graph-visual-control-helpers.js?v=stdlib-batch3-20260715"></script>
+  <script src="./public/node-graph-stdlib/node-graph-seeded-rng-helpers.js?v=stdlib-batch3-20260715"></script>
+  <script src="./public/node-graph-stdlib/node-graph-shared-dsp-helpers.js?v=stdlib-batch3-20260715"></script>
   <script src="./public/node-graph-live-frame-evaluator.js?v=metallic-ratio-20260711"></script>
+  <script src="./native_modules/logistic_map/logistic_map-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/turingMachine/turing-machine-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/henonMap/henon-map-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/chuaAttractor/chua-attractor-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/chordMemory/chord-memory-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/pitchQuantizer/pitch-quantizer-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/wirdoSpiral/wirdo-spiral-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/blubb/blubb-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/mushroom/mushroom-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/boing/boing-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/torus/torus-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/keplerBouwkamp/kepler-bouwkamp-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/nyquistShannon/nyquist-shannon-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/radar/radar-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/surgeOscillator/surge-oscillator-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/dsfOscillator/dsf-oscillator-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/robinSupersaw/robin-supersaw-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/hypersaw/hypersaw-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/chordSequencer/chord-sequencer-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/lutCell/lut-cell-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/metallicRatio/metallic-ratio-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/passiveFilter/passive-filter-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/papoulisFilter/papoulis-filter-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/phosphillator/phosphillator-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/cookbookFilter/cookbook-filter-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/ladderFilter/ladder-filter-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/flowerChildFilter/flower-child-filter-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/rsmetFilter/rsmet-filter-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/yellowjacketFilter/yellowjacket-filter-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/superloveFilter/superlove-filter-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/chaoticPhaseLockingFilter/chaotic-phase-locking-filter-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/resonatorFilter/resonator-filter-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/humanFilter/human-filter-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/pulseExplosion/pulse-explosion-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/comparator/comparator-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/minMax/min-max-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/bitConverter/bit-converter-live-evaluator.js?v=bit-converter-20260717"></script>
+  <script src="./public/modules/aliasSine/alias-sine-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/tb303Filter/tb303-filter-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/delayEffect/delay-effect-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/pingPongDelay/ping-pong-delay-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/reverbEffect/reverb-effect-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/pll/pll-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/helmholtzPitch/helmholtz-pitch-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/slewLimiter/slew-limiter-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/sampleHold/sample-hold-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/expAdsr/exp-adsr-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/linearEnvelope/linear-envelope-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/pluckEnvelope/pluck-envelope-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/vactrolEnvelope/vactrol-envelope-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/impulseButton/impulse-button-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/flowerChildEnvelopeFollower/flower-child-envelope-follower-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/spiral/spiral-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/fractalSpiral/fractal-spiral-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/logSpiral/log-spiral-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/lorenzAttractor/lorenz-attractor-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/noiseGenerator/noise-generator-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/randomWalk/random-walk-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/piSpigotNoise/pi-spigot-noise-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/bradley2a/bradley-2a-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/antisaw/antisaw-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/fractalBrownianNoise/fractal-brownian-noise-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/clock/clock-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/transport/transport-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/randomClock/random-clock-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/clockDivider/clock-divider-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/delayedTrigger/delayed-trigger-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/triggerCounter/trigger-counter-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/triggerDivider/trigger-divider-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/stepSequencer/step-sequencer-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/stepGrid/step-grid-live-evaluator.js?v=stepgrid-variable-steps-20260715"></script>
+  <script src="./public/modules/midiOut/midi-out-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/midiNotePitch/midi-note-pitch-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/keyboardController/keyboard-controller-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/buttonEvents/button-events-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/wireEvents/wire-events-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/shootingStarExplosion/shooting-star-explosion-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/patchCommand/patch-command-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/macroControls/macro-controls-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/pitchModWheel/pitch-mod-wheel-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/gain/gain-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/led/led-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/bias/bias-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/softClipper/soft-clipper-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/rotate3dTo2d/rotate-3d-to-2d-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/valueSlider/value-slider-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/knob/knob-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/sandboxVisuals/sandbox-visuals-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/screenSpaceShader/screen-space-shader-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/bloomGlow/bloom-glow-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/rgbaHsla/rgba-hsla-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/chromaColor/chroma-color-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/badvalMonitor/badval-monitor-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/speakerProtection/speaker-protection-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/groupOutput/group-output-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/clapPlugin/clap-plugin-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/output/output-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/groupInput/group-input-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/audioInput/audio-input-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/audioPlayer/audio-player-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/moduleGroup/module-group-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/codeblock/codeblock-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/sineWavetable/sine-wavetable-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/ellipsoid/ellipsoid-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/additiveOsc/additive-osc-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/graph/graph-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/polyBlep/poly-blep-live-evaluator.js?v=per-module-dispatch-20260711"></script>
   <script src="./public/node-graph-pulse-explosion-display.js?v=1"></script>
   <script src="./public/node-graph-live-runtime.js?v=metallic-ratio-20260711"></script>
   <script src="./public/node-graph-wire-controller-bootstrap.js?v=wire-break-trigger-0129"></script>

@@ -60,13 +60,15 @@ async function initNodeGraphMvp() {
   scheduleNodeMetadataScriptParserSelfTestStatus();
   renderNodeGraphModuleScopeBrightnessControl();
   renderNodeGraphSnapGridButton();
-  renderNodeGraphTooltipToggle();
+  renderNodeGraphKeyboardDebugToggle();
   renderNodeGraphSliderVisibilityToggles();
   renderNodeGraphSliderLayout();
   ensureNodeGraphStartupModulesVisible();
   if (typeof applyNodeGraphWorkspaceWindowStates === "function") {
     applyNodeGraphWorkspaceWindowStates();
   }
+  renderNodeGraphStandaloneMidiKeyboardToggle();
+  renderNodeGraphTooltipWindowToggle();
   loadNodeMetadataKindTemplates();
   refreshNodeGraphLiveInputDevices();
   refreshNodeGraphLiveMicrophonePermissionState();

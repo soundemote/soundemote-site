@@ -1040,6 +1040,37 @@ audio {
   display: none !important;
 }
 
+/* No hard edge in the buttonless modular view -- the workspace already
+   fills the viewport edge-to-edge here (--node-modular-only-inset: 0px
+   above); a visible border/shadow on top of that reads as a wall around
+   an "infinite" canvas instead of it actually looking borderless. Same
+   treatment as the ?hideui=1 embed case below, just triggered by the
+   View Buttons toggle instead of a query param. */
+.node-wiring-panel.modular-only-controls-hidden .node-graph-workspace {
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+/* View Buttons off in the REGULAR (non-modular-only) view: the rule above
+   already drops the border/shadow, but the workspace itself was still
+   pinned to its saved (often manually-resized-smaller) width via inline
+   style -- modular-only-view's edge-to-edge treatment above only fires
+   alongside .modular-only-view, so plain View Buttons off did nothing
+   here. Re-assert the workspace's own natural "fill available space"
+   WIDTH (same calc() the base rule already uses) with !important to
+   cancel that inline override -- stays in normal document flow next to
+   whatever else is on the page. Height is deliberately left untouched:
+   overriding it too made the workspace jump to a much taller size the
+   instant View Buttons toggled off, a jarring reflow ("jitter") rather
+   than a clean expand. Whatever height the workspace already had before
+   the toggle stays exactly as-is after it. */
+.node-wiring-panel.modular-only-controls-hidden:not(.modular-only-view) .node-graph-workspace {
+  width: calc(100% - 6px) !important;
+  max-width: calc(100% - 6px);
+}
+
 /* Full-screen "no nonsense" embed (?hideui=1): kill remaining chrome. */
 .soemdsp-hide-ui .node-wiring-panel.modular-only-view {
   --node-modular-only-inset: 0px;
@@ -1074,7 +1105,7 @@ html.soemdsp-hide-ui .status-strip {
   display: none;
 }
 
-.node-wiring-panel.modular-only-view > :not(.node-graph-workspace):not(.node-view-toolbar):not(.node-scene-context-menu):not(.node-parameter-metadata-popover):not(.node-ui-dev-helper):not(.node-user-ui-settings-panel):not(.node-saved-patches-window):not(.node-module-shop-view):not(.node-shader-script-dialog) {
+.node-wiring-panel.modular-only-view > :not(.node-graph-workspace):not(.node-view-toolbar):not(.node-scene-context-menu):not(.node-parameter-metadata-popover):not(.node-ui-dev-helper):not(.node-user-ui-settings-panel):not(.node-saved-patches-window):not(.node-module-shop-view):not(.node-shader-script-dialog):not(.node-standalone-midi-keyboard-dock):not(.node-tooltip-window) {
   display: none;
 }
 
@@ -1351,6 +1382,227 @@ html.soemdsp-hide-ui .status-strip {
   display: none;
 }
 
+/* Free-floating, draggable, resizable window -- same generic
+   drag/resize/lock/keyboard-nudge subsystem as Command Center et al
+   (node-graph-floating-windows.js), not a workspace-docked panel.
+   Position is set inline by the drag handlers; width/height come from
+   the --node-standalone-keyboard-* vars applyNodeGraphFloatingWindowSizeVars
+   writes, matching every other floating window's sizing pattern. */
+.node-standalone-midi-keyboard-dock {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  /* Unlike most floating windows, this dock should be draggable all the
+     way to the true viewport edge (see viewportMargin: 0 on
+     nodeStandaloneMidiKeyboardDockDefaultSize) -- no "- 28px" margin
+     reimposed here, or the JS-side fix would be silently overridden by
+     this CSS clamp's own upper bound. */
+  width: clamp(
+    var(--node-standalone-keyboard-min-width, 420px),
+    var(--node-standalone-keyboard-width, 860px),
+    min(var(--node-standalone-keyboard-max-width, 8000px), 100vw)
+  );
+  height: var(--node-standalone-keyboard-height, auto);
+  min-height: var(--node-standalone-keyboard-min-height, 160px);
+  max-height: min(var(--node-standalone-keyboard-max-height, 640px), calc(100vh - 28px));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(241, 184, 75, 0.05), transparent 48%),
+    #080a0c;
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.42),
+    inset 0 0 0 1px rgba(226, 168, 109, 0.08);
+}
+
+.node-standalone-midi-keyboard-dock[hidden] {
+  display: none;
+}
+
+.node-standalone-midi-keyboard-dock .scene-context-heading {
+  flex: 0 0 auto;
+}
+
+.node-standalone-midi-keyboard-dock .scene-context-resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px 0 6px 0;
+  background:
+    linear-gradient(135deg, transparent 0 48%, rgba(241, 184, 75, 0.36) 50% 56%, transparent 58%),
+    linear-gradient(135deg, transparent 0 64%, rgba(241, 184, 75, 0.58) 66% 72%, transparent 74%),
+    rgba(7, 10, 13, 0.72);
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.node-standalone-midi-keyboard-dock .scene-context-resize-handle:hover,
+.node-standalone-midi-keyboard-dock .scene-context-resize-handle.dragging {
+  background:
+    linear-gradient(135deg, transparent 0 48%, rgba(241, 184, 75, 0.5) 50% 56%, transparent 58%),
+    linear-gradient(135deg, transparent 0 64%, rgba(241, 184, 75, 0.78) 66% 72%, transparent 74%),
+    rgba(7, 10, 13, 0.72);
+}
+
+/* Body wrapper -- macro row above the performance row (wheels +
+   keyboard), the layout the dock itself used to carry directly before
+   a heading/resize-handle needed their own space around it. Everything
+   that isn't the piano keys themselves is kept as short/horizontal as
+   possible -- the keyboard is the one thing that needs real height;
+   knobs and wheels should stay a thin strip, not stack into tall
+   columns that push the dock's total height up. */
+.node-standalone-midi-keyboard-body {
+  position: relative;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 4px;
+  min-height: 0;
+  overflow: auto;
+  /* One shared surface for the whole body -- the keyboard/wheels/macro
+     panels below have their own card chrome (border, background,
+     border-radius) stripped so nothing seams between them. Their actual
+     controls (keys, wheel track, knob dial) are untouched -- only the
+     outer card wrapper merges away. */
+  padding: 8px;
+}
+
+.node-standalone-performance-row {
+  display: grid;
+  /* Was minmax(140px, 22%), sized for two wheels side by side -- now that
+     they're stacked vertically (see the wheel-bank override below), each
+     wheel only needs to be wide enough to read its label, not a fifth of
+     the dock's width. Freed width goes to the keys instead. */
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 8px;
+  min-height: 0;
+}
+
+/* Pitch and mod wheel stacked vertically in the dock instead of side by
+   side -- this is a deliberate, explicitly requested exception to
+   "keep everything horizontal": stacked wheels read better and take no
+   more height than the keyboard already needs. Scoped to the dock
+   only; the wheels inside a placed pitchModWheel node are unaffected. */
+.node-standalone-midi-keyboard-dock .node-midi-keyboard-wheel-bank {
+  grid-template-columns: 1fr;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.node-standalone-midi-keyboard-dock .node-midi-keyboard-panel,
+.node-standalone-midi-keyboard-dock .node-performance-wheels-panel,
+.node-standalone-midi-keyboard-dock .node-macro-controls-panel {
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.node-standalone-midi-keyboard-dock .node-midi-keyboard-panel {
+  height: 100%;
+}
+
+/* Title-only text removed from the wheel and keyboard panels, same as
+   the macro-controls-heading treatment above -- the wheel heading is
+   pure text/status with no controls, so the whole thing hides; the
+   keyboard heading also holds functional controls (mode/octave/key
+   count/MIDI input), so only its title text is hidden, leaving those
+   controls visible. */
+.node-standalone-midi-keyboard-dock .node-performance-wheels-heading {
+  display: none;
+}
+
+.node-standalone-midi-keyboard-dock .node-midi-keyboard-title {
+  display: none;
+}
+
+/* Mode/octave/key-count/MIDI-input controls all on one horizontal row
+   in the dock -- the generic .node-midi-keyboard-module heading rule
+   (used by placed nodes too) grids title+controls into two columns
+   and lets the controls wrap onto a second line; the dock has no
+   title to share space with (hidden above) so the controls can run
+   as a single flex row instead. */
+/* Specificity note: .node-midi-keyboard-module .node-midi-keyboard-heading
+   (below) sets display: grid with a title/controls column split -- since
+   every dock surface also carries .node-midi-keyboard-module, that rule
+   ties with this one and wins on source order. Match its selector shape
+   (module + heading, doubled dock class to outrank it) so the dock
+   actually gets the single-row flex layout instead of a grid column the
+   hidden title's now-empty track leaves the controls stranded in. */
+.node-standalone-midi-keyboard-dock.node-standalone-midi-keyboard-dock .node-midi-keyboard-heading {
+  display: flex;
+}
+
+/* Specificity note: .node-midi-keyboard-module .node-midi-keyboard-heading
+   > .node-midi-keyboard-midi-controls (below) sets flex-wrap: wrap and
+   would otherwise win here since every dock surface also carries the
+   .node-midi-keyboard-module class -- match its selector shape so this
+   override actually applies. */
+.node-standalone-midi-keyboard-dock.node-standalone-midi-keyboard-dock .node-midi-keyboard-heading > .node-midi-keyboard-midi-controls {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+}
+
+.node-standalone-midi-keyboard-dock .node-macro-controls-panel {
+  /* Unbounded rather than a magic-number cap -- the row below is a
+     single short line now, so it never needs to grow past that. */
+  max-height: none;
+  margin: 0;
+  gap: 4px;
+}
+
+/* "Performance Surface" / "Macro Controls" / "N macros ready" -- the
+   node body's heading text isn't useful in the dock (no ambiguity about
+   what this panel is). Hides the whole heading rather than picking
+   apart its three text pieces individually. */
+.node-standalone-midi-keyboard-dock .node-macro-controls-heading {
+  display: none;
+}
+
+/* All 8 knobs on one short horizontal row above the keyboard, not a
+   tall multi-row grid -- the dock is wide enough to fit them across,
+   and a single row keeps this from eating vertical space the keyboard
+   needs. Scoped to the dock only; the macroControls node itself keeps
+   its own (narrower, 2-row) layout. */
+.node-standalone-midi-keyboard-dock .node-macro-controls-module .node-macro-controls-row,
+.node-standalone-midi-keyboard-dock .node-macro-controls-row {
+  grid-template-columns: repeat(8, minmax(56px, 1fr));
+  grid-template-rows: none;
+  gap: 6px;
+}
+
+/* Bare knobs, no per-knob box -- the circular dial (.node-macro-knob i)
+   already carries the value indicator; the rectangular border/background
+   around it was just extra chrome in the dock's compact single-row
+   layout. Sized up from the module default (48px/0.62rem text) now that
+   the dock spans the full modular-view width and has room to spare. */
+.node-standalone-midi-keyboard-dock .node-macro-knob {
+  border: none;
+  border-radius: 0;
+  background: none;
+  min-height: 66px;
+  padding: 0;
+  font-size: 0.78rem;
+}
+
+.node-standalone-midi-keyboard-dock .node-macro-knob strong {
+  font-size: 0.86rem;
+}
+
+.node-standalone-midi-keyboard-dock .node-macro-knob i {
+  width: min(56px, 82%);
+}
+
 .node-midi-keyboard-heading {
   display: flex;
   align-items: center;
@@ -1534,13 +1786,13 @@ html.soemdsp-hide-ui .status-strip {
 
 .node-macro-controls-row {
   display: grid;
-  grid-template-columns: repeat(10, minmax(54px, 1fr));
+  grid-template-columns: repeat(8, minmax(54px, 1fr));
   gap: 6px;
   min-width: 0;
 }
 
 .node-macro-controls-module .node-macro-controls-row {
-  grid-template-columns: repeat(5, minmax(42px, 1fr));
+  grid-template-columns: repeat(4, minmax(42px, 1fr));
 }
 
 .node-macro-knob {
@@ -1594,11 +1846,8 @@ html.soemdsp-hide-ui .status-strip {
   border-radius: 50%;
   background:
     conic-gradient(from -132deg, rgba(241, 184, 75, 0.88) calc(var(--macro-value, 0) * 264deg), rgba(243, 241, 236, 0.08) 0),
-    radial-gradient(circle at 38% 28%, rgba(243, 241, 236, 0.36), transparent 20%),
     #151a20;
-  box-shadow:
-    inset 0 0 0 4px rgba(5, 6, 7, 0.72),
-    0 8px 18px rgba(0, 0, 0, 0.34);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.34);
   pointer-events: none;
 }
 
@@ -1886,7 +2135,13 @@ html.soemdsp-hide-ui .status-strip {
   position: absolute;
   left: 12%;
   right: 12%;
-  bottom: calc((var(--wheel-value, 0.5) * 100%) - 10px);
+  /* Travel range must account for the thumb's own height (20px), or it
+     overshoots the track at both ends: the old `(value * 100%) - 10px`
+     put the thumb's bottom at -10px when value=0 (half hanging below the
+     container, clipped by overflow: hidden) and its top past 100% when
+     value=1. Interpolating across (100% - height) instead keeps the
+     whole thumb inside the track at every value. */
+  bottom: calc(var(--wheel-value, 0.5) * (100% - 20px));
   z-index: 1;
   height: 20px;
   border: 1px solid rgba(241, 184, 75, 0.46);
@@ -1986,6 +2241,25 @@ html.soemdsp-hide-ui .status-strip {
   text-shadow: 0 0 7px rgba(234, 248, 255, 0.84);
 }
 
+/* Ctrl+click "held keys" bitmask toggle -- distinct from .active (the
+   transient pointer-press/currently-sounding state) since a key can be
+   both at once: amber instead of .active's blue, so the two states
+   stay visually distinguishable. Placed after .active so a key that's
+   both shows the held look, since held is the more persistent/
+   intentional state of the two. */
+.node-midi-keyboard-white-row span.held {
+  color: #1a1200;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(255, 226, 173, 0.92), transparent 28%),
+    linear-gradient(180deg, #ffcf6b 0%, #e08a1e 74%, #7a3f06 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 226, 173, 0.82),
+    inset 0 0 22px rgba(224, 138, 30, 0.48),
+    0 0 14px rgba(241, 184, 75, 0.68),
+    0 0 34px rgba(224, 138, 30, 0.38);
+  text-shadow: 0 0 7px rgba(255, 236, 200, 0.84);
+}
+
 .node-midi-keyboard-white-row span:last-child {
   border-right: 0;
 }
@@ -2029,6 +2303,21 @@ html.soemdsp-hide-ui .status-strip {
     0 0 18px rgba(35, 162, 255, 0.72),
     0 0 36px rgba(35, 112, 255, 0.42);
   text-shadow: 0 0 7px rgba(234, 248, 255, 0.84);
+}
+
+.node-midi-keyboard-black-row span.held {
+  border-color: rgba(255, 200, 110, 0.96);
+  color: #1a1200;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(255, 210, 140, 0.7), transparent 30%),
+    linear-gradient(180deg, #c9760f 0%, #4a2604 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 226, 173, 0.72),
+    inset 0 0 18px rgba(224, 138, 30, 0.48),
+    0 8px 18px rgba(0, 0, 0, 0.45),
+    0 0 18px rgba(241, 184, 75, 0.72),
+    0 0 36px rgba(224, 138, 30, 0.42);
+  text-shadow: 0 0 7px rgba(255, 236, 200, 0.84);
 }
 
 .node-midi-keyboard-signal-bar {
@@ -2085,6 +2374,44 @@ html.soemdsp-hide-ui .status-strip {
 
 .node-midi-keyboard-signal-bar [data-keyboard-signal="increment"] {
   --keyboard-readout-width: 9ch;
+}
+
+/* Held-keys bitmask readout -- one square per bit (53, the largest
+   integer a double can represent exactly; see the bit-width note on
+   nodeGraphMidiKeyboardBitmaskHasBit), black square = held. */
+.node-midi-keyboard-bitmask-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+  margin-top: 6px;
+  color: var(--muted);
+  font: 700 0.86rem/1 "Cascadia Mono", Consolas, monospace;
+}
+
+.node-midi-keyboard-bitmask-row strong {
+  color: var(--text);
+  font-size: 1.3rem;
+  letter-spacing: 1px;
+  word-break: break-all;
+}
+
+/* Debug info hidden -- the keyboard's held-keys bitmask row (everywhere
+   a keyboardController surface renders, dock and placed nodes both)
+   and the CPU/RAM/GPU constraint guide, whose vertical space this
+   reclaims. Toggled from the Visibility menu's "Hide Debug" button. */
+body.keyboard-debug-hidden .node-midi-keyboard-bitmask-row,
+body.keyboard-debug-hidden .node-constraint-color-guide {
+  display: none;
+}
+
+/* The signal bar itself stays visible -- Freq/Pitch/X/Y aren't just
+   debug readouts, they're the keyboard's actual current output values,
+   so Hide Debug only hides the other (genuinely diagnostic) fields
+   inside it: gate/1s gate/key/q/oct/midi/double/.1v/oct/inc. */
+body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-keyboard-signal="frequency"])):not(:has([data-keyboard-signal="pitch"])):not(:has([data-keyboard-signal="x"])):not(:has([data-keyboard-signal="y"])) {
+  display: none;
 }
 
 .node-patch-header-fields {
@@ -2723,7 +3050,9 @@ html.soemdsp-hide-ui .status-strip {
   overflow-wrap: normal;
 }
 
-#nodeModularOnlyViewButton {
+#nodeModularOnlyViewButton,
+#nodeModuleShopButton,
+#nodeSavedPatchesWindowButton {
   display: grid;
   place-items: center;
   padding: 3px;
@@ -2736,15 +3065,6 @@ html.soemdsp-hide-ui .status-strip {
   height: 100%;
   font-size: 2.35rem;
   line-height: 1;
-}
-
-#nodeModuleShopButton span {
-  display: block;
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: clip;
-  white-space: nowrap;
 }
 
 #nodeDonateFiveButton,
@@ -2862,7 +3182,10 @@ html.soemdsp-hide-ui .status-strip {
 }
 
 .node-visibility-menu-list button {
+  display: flex;
+  align-items: center;
   justify-content: center;
+  gap: 6px;
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
@@ -3286,32 +3609,158 @@ html.soemdsp-hide-ui .status-strip {
   display: none;
 }
 
+/* Free-floating, draggable, resizable window -- same generic subsystem
+   as Command Center et al (node-graph-floating-windows.js) -- hosting
+   the interaction tips. Explicitly exempted from the modular-only-view
+   chrome-hiding rule above so tips stay reachable there too, which is
+   the whole point of pulling this out of .node-help-stack (a plain
+   in-flow row that modular-only view hides along with everything else). */
+.node-tooltip-window {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  width: clamp(
+    var(--node-tooltip-window-min-width, 260px),
+    var(--node-tooltip-window-width, 420px),
+    min(var(--node-tooltip-window-max-width, 900px), calc(100vw - 28px))
+  );
+  height: var(--node-tooltip-window-height, auto);
+  min-height: var(--node-tooltip-window-min-height, 90px);
+  max-height: min(var(--node-tooltip-window-max-height, 480px), calc(100vh - 28px));
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(127, 199, 217, 0.05), transparent 48%),
+    #080a0c;
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.42),
+    inset 0 0 0 1px rgba(127, 199, 217, 0.08);
+}
+
+.node-tooltip-window[hidden] {
+  display: none;
+}
+
+.node-phosphor-waveform-settings-window {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  width: 220px;
+  max-width: calc(100vw - 28px);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(90, 255, 150, 0.05), transparent 48%),
+    #080a0c;
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.42),
+    inset 0 0 0 1px rgba(90, 255, 150, 0.08);
+}
+
+.node-phosphor-waveform-settings-window[hidden] {
+  display: none;
+}
+
+.node-phosphor-waveform-settings-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-top: 1px solid rgba(226, 168, 109, 0.16);
+  font-size: 0.72rem;
+}
+
+.node-phosphor-waveform-settings-row > span:first-child {
+  flex: 1 1 auto;
+  color: var(--muted);
+}
+
+.node-phosphor-waveform-settings-row input[type="number"] {
+  width: 56px;
+  padding: 3px 4px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font: inherit;
+  text-align: right;
+}
+
+.node-phosphor-waveform-settings-row button {
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font: inherit;
+}
+
+.node-phosphor-waveform-settings-row button.active {
+  border-color: rgba(90, 255, 150, 0.62);
+  background: rgba(90, 255, 150, 0.16);
+  color: rgba(180, 255, 210, 0.95);
+}
+
+.node-phosphor-waveform-settings-row input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  accent-color: rgba(90, 255, 150, 0.85);
+}
+
+.node-tooltip-window .scene-context-resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px 0 6px 0;
+  background:
+    linear-gradient(135deg, transparent 0 48%, rgba(127, 199, 217, 0.36) 50% 56%, transparent 58%),
+    linear-gradient(135deg, transparent 0 64%, rgba(127, 199, 217, 0.58) 66% 72%, transparent 74%),
+    rgba(7, 10, 13, 0.72);
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.node-tooltip-window .scene-context-resize-handle:hover,
+.node-tooltip-window .scene-context-resize-handle.dragging {
+  background:
+    linear-gradient(135deg, transparent 0 48%, rgba(127, 199, 217, 0.5) 50% 56%, transparent 58%),
+    linear-gradient(135deg, transparent 0 64%, rgba(127, 199, 217, 0.78) 66% 72%, transparent 74%),
+    rgba(7, 10, 13, 0.72);
+}
+
+/* No border/background/box-shadow of its own -- .node-tooltip-window
+   (the only place this renders now) already provides that chrome as
+   the single visible boundary; this used to double up into a "box
+   inside box" look (its own card border sitting inside the window's
+   card border) back when it lived loose in .node-help-stack. Fills the
+   window (flex: 1 1 auto) instead of a fixed height now that the
+   window itself can be resized taller. */
 .node-interaction-help {
   display: flex;
+  flex: 1 1 auto;
   align-items: center;
   justify-content: center;
   min-height: 72px;
-  height: 72px;
   padding: 6px 10px;
-  border: 1px solid rgba(127, 199, 217, 0.16);
-  border-radius: 6px;
-  background:
-    linear-gradient(180deg, rgba(7, 10, 13, 0.92), rgba(14, 18, 22, 0.86));
   color: var(--muted);
   font-family: Consolas, "Courier New", monospace;
   font-size: var(--node-tooltip-text-size);
   line-height: 1.35;
   overflow: hidden;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.28) inset;
   text-align: center;
   white-space: pre-line;
-}
-
-.node-help-stack.tips-hidden .node-interaction-help {
-  border-color: rgba(127, 199, 217, 0.08);
-  background:
-    linear-gradient(180deg, rgba(5, 7, 9, 0.96), rgba(9, 12, 15, 0.92));
-  color: transparent;
 }
 
 .node-interaction-help:empty {
@@ -9406,7 +9855,10 @@ html.soemdsp-hide-ui .status-strip {
 }
 
 .node-clap-plugin-select,
-.node-clap-plugin-actions button {
+.node-clap-plugin-preset-select,
+.node-clap-plugin-preset-name,
+.node-clap-plugin-actions button,
+.node-clap-plugin-preset-row button {
   width: 100%;
   min-width: 0;
   min-height: 28px;
@@ -9419,8 +9871,16 @@ html.soemdsp-hide-ui .status-strip {
 }
 
 .node-clap-plugin-select:disabled,
-.node-clap-plugin-actions button:disabled {
+.node-clap-plugin-preset-select:disabled,
+.node-clap-plugin-actions button:disabled,
+.node-clap-plugin-preset-row button:disabled {
   opacity: 0.55;
+}
+
+.node-clap-plugin-preset-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
 }
 
 .node-clap-plugin-detail {
@@ -10696,6 +11156,38 @@ html.soemdsp-hide-ui .status-strip {
   display: none;
 }
 
+/* Music Player also carries .sample-module-layout (shared with
+   samplePlayer/sampleLooper), whose grid-template-rows/explicit grid-row
+   assignments have no slot for the waveform display -- it was landing
+   auto-placed into the unused scope row (row 2, since audioPlayer has no
+   .node-module-scope-window), rendering ABOVE the load-path/sample body
+   at row 3 regardless of DOM order. Inserts a dedicated row right after
+   the sample body and shifts io-section/body down one row accordingly;
+   scoped to .phosphor-waveform-layout specifically so
+   samplePlayer/sampleLooper's shared rows are untouched. Row 2 collapses
+   to 0 since nothing occupies it here. */
+.dsp-node.phosphor-waveform-layout.sample-module-layout {
+  grid-template-rows:
+    var(--node-header-height)
+    0px
+    var(--node-module-interface-controls-height)
+    auto
+    minmax(var(--node-io-section-min-height), auto)
+    auto;
+}
+
+.phosphor-waveform-layout.sample-module-layout .node-phosphor-waveform-display {
+  grid-row: 4;
+}
+
+.phosphor-waveform-layout.sample-module-layout .dsp-node-io-section {
+  grid-row: 5;
+}
+
+.phosphor-waveform-layout.sample-module-layout .dsp-node-body {
+  grid-row: 6;
+}
+
 .node-graph-workspace.module-oscilloscopes-hidden .dsp-node.filter-curve-layout,
 .dsp-node.filter-curve-layout.oscilloscope-hidden {
   grid-template-rows:
@@ -10835,6 +11327,14 @@ html.soemdsp-hide-ui .status-strip {
 input.node-header-title {
   appearance: none;
   -webkit-appearance: none;
+  /* Fill the title row's full cross-axis height -- an <input> isn't
+     stretched by the row's flex layout by default, which left a thin
+     strip above/below it still inside .node-header-title-row. That strip
+     showed the row's own (longer) drag/select tooltip right next to the
+     input's "click to edit" tooltip, reading as two tooltips fighting
+     over the same tiny title-bar area -- most noticeable once hiding
+     module buttons shrinks the header down to just this row's height. */
+  height: 100%;
   width: 100%;
   flex: 1 1 auto;
   border: none;
@@ -12231,7 +12731,16 @@ input[data-global-scope-number-drag="true"]:not([readonly]):focus,
   white-space: nowrap;
 }
 
-.node-trace-display-settings-popover .node-trace-display-dot1-title,
+/* Dot's title has no toggle checkbox anymore (removed app-wide -- see
+   dot1Enabled in node-graph-module-scopes.js -- redundant with the
+   display's own show/hide), so it's a single centered-text column;
+   Secondary still has its own enabled checkbox and keeps the 2-column
+   layout that reserves room for it. */
+.node-trace-display-settings-popover .node-trace-display-dot1-title {
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center stretch;
+}
+
 .node-trace-display-settings-popover .node-trace-display-secondary-title {
   grid-template-columns: minmax(0, 1fr) 28px;
   place-items: center stretch;
@@ -12242,7 +12751,6 @@ input[data-global-scope-number-drag="true"]:not([readonly]):focus,
   justify-self: center;
 }
 
-.node-trace-display-settings-popover .node-trace-display-dot1-title > input,
 .node-trace-display-settings-popover .node-trace-display-secondary-title > input {
   justify-self: center;
   margin: 0;
@@ -12780,6 +13288,24 @@ button.saved-default,
     0 0 22px rgba(102, 255, 175, 0.54),
     0 0 42px rgba(102, 255, 175, 0.24);
   animation: node-default-saved-pulse 1000ms ease-out both;
+}
+
+button#nodeScenePasteModuleSettings.settings-paste-mismatch {
+  border-color: rgba(242, 93, 93, 0.82);
+  background: rgba(122, 28, 28, 0.55);
+  color: #ffd7d7;
+  animation: node-paste-mismatch-glow 1400ms ease-in-out infinite;
+}
+
+@keyframes node-paste-mismatch-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 6px rgba(242, 93, 93, 0.22);
+  }
+
+  50% {
+    box-shadow: 0 0 16px rgba(242, 93, 93, 0.62);
+  }
 }
 
 @keyframes node-default-saved-pulse {
@@ -13696,7 +14222,8 @@ button.saved-default,
   text-align: center;
 }
 
-.scene-context-window-controls .scene-context-window-button {
+.scene-context-window-controls .scene-context-window-button,
+.node-visibility-menu-list .scene-context-window-button {
   display: grid;
   grid-template-columns: calc(var(--node-floating-window-button-height) + 4px) minmax(0, 1fr);
   align-items: stretch;
@@ -13709,6 +14236,42 @@ button.saved-default,
   color: rgba(243, 241, 236, 0.9);
   font-size: 0.7rem;
   font-weight: 700;
+}
+
+/* Extra column for a hotkey badge (<kbd>Ctrl+K</kbd> etc.) on buttons
+   that have one -- icon | label | kbd instead of just icon | label. */
+.scene-context-window-controls .scene-context-window-button:has(kbd),
+.node-visibility-menu-list .scene-context-window-button:has(kbd) {
+  grid-template-columns: calc(var(--node-floating-window-button-height) + 4px) minmax(0, 1fr) auto;
+}
+
+/* Icon-only buttons (no label span, e.g. Modular View/View Buttons)
+   collapse to a single column so the icon centers across the whole
+   button instead of sitting in the narrow icon column with an empty
+   label column beside it. Fixed height (not min-height) so a stacked
+   kbd badge can't grow the button taller than its siblings -- the
+   badge is pulled out of flow (absolute, see below) instead. */
+.scene-context-window-controls .scene-context-window-button:not(:has(.scene-context-window-button-label)),
+.node-visibility-menu-list .scene-context-window-button:not(:has(.scene-context-window-button-label)) {
+  position: relative;
+  grid-template-columns: minmax(0, 1fr);
+  height: var(--node-floating-window-button-height);
+}
+
+.scene-context-window-controls .scene-context-window-button:not(:has(.scene-context-window-button-label)) kbd,
+.node-visibility-menu-list .scene-context-window-button:not(:has(.scene-context-window-button-label)) kbd {
+  position: absolute;
+  right: 3px;
+  bottom: 1px;
+  padding: 0;
+  font-size: 0.55rem;
+  line-height: 1;
+}
+
+.scene-context-window-controls .scene-context-window-button:has(.scene-context-window-button-label) kbd,
+.node-visibility-menu-list .scene-context-window-button:has(.scene-context-window-button-label) kbd {
+  align-self: center;
+  padding-right: 8px;
 }
 
 .scene-context-global-smoothing-control {
@@ -13851,7 +14414,8 @@ button.saved-default,
 
 .scene-context-modular-view-controls {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* 3 now -- Show Keyboard joined Modular View/View Buttons in this row. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   min-width: 0;
   border: 1px solid rgba(226, 168, 109, 0.24);
 }
@@ -13867,7 +14431,9 @@ button.saved-default,
 
 .scene-context-patch-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* 2 columns, not 3 -- Share was removed (Copy/Paste remain), and a
+     leftover 3rd track left them off-center with a dead empty gap. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   min-width: 0;
   border: 1px solid rgba(226, 168, 109, 0.24);
   border-top-width: 0;
@@ -13883,6 +14449,17 @@ button.saved-default,
   color: rgba(243, 241, 236, 0.9);
   font-size: 0.7rem;
   font-weight: 700;
+  text-align: center;
+  line-height: 1;
+}
+
+/* Beats the generic ".node-scene-context-menu button:not(...)" rule's
+   "justify-content: flex-start; text-align: left" (4 classes + 1 element)
+   with an ID-scoped selector instead of piling on more :not() clauses. */
+#nodeSceneContextMenu .scene-context-patch-action-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
 }
 
@@ -13908,7 +14485,10 @@ button.saved-default,
   justify-items: center;
   width: 100%;
   height: var(--node-floating-window-button-height);
-  font-size: calc(var(--node-floating-window-button-height) * 0.48);
+  /* Was 0.48 -- emoji sat small in the middle of a lot of empty button
+     space. Bigger ratio lets them fill the button instead of floating
+     in a padded box. */
+  font-size: calc(var(--node-floating-window-button-height) * 0.78);
 }
 
 .scene-context-window-button-label {
@@ -13921,7 +14501,9 @@ button.saved-default,
 }
 
 .scene-context-window-controls .scene-context-window-button:hover,
-.scene-context-window-controls .scene-context-window-button:focus-visible {
+.scene-context-window-controls .scene-context-window-button:focus-visible,
+.node-visibility-menu-list .scene-context-window-button:hover,
+.node-visibility-menu-list .scene-context-window-button:focus-visible {
   border-color: rgba(127, 199, 217, 0.5);
   background: rgba(22, 32, 38, 0.96);
 }
@@ -13937,7 +14519,9 @@ button.saved-default,
 }
 
 .scene-context-window-controls .scene-context-window-button:first-child,
-.scene-context-window-controls .scene-context-window-button:last-child {
+.scene-context-window-controls .scene-context-window-button:last-child,
+.node-visibility-menu-list .scene-context-window-button:first-child,
+.node-visibility-menu-list .scene-context-window-button:last-child {
   border-radius: 5px;
 }
 

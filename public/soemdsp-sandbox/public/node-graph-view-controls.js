@@ -34,7 +34,7 @@ function renderNodeGraphVisibilityMenuButton() {
     nodeGraphMvp.moduleInterfaceControlsVisible === false ? 1 : 0,
     nodeGraphMvp.moduleOscilloscopesVisible === false ? 1 : 0,
     nodeGraphMvp.moduleSlidersVisible === false ? 1 : 0,
-    nodeGraphMvp.tooltipVisible ? 0 : 1,
+    document.getElementById("nodeTooltipWindow")?.hidden === false ? 0 : 1,
     nodeGraphMvp.sliderAmountVisible ? 0 : 1,
     nodeGraphMvp.sliderPositionVisible ? 0 : 1,
   ].reduce((total, value) => total + value, 0);
@@ -338,6 +338,9 @@ function setNodeGraphModuleButtonsVisibility(visible, options = {}) {
 
 function setNodeGraphModularOnlyControlsVisible(visible) {
   nodeGraphMvp.modularOnlyControlsVisible = Boolean(visible);
+  if (nodeGraphMvp.patch) {
+    nodeGraphMvp.patch.modularOnlyControlsVisible = nodeGraphMvp.modularOnlyControlsVisible;
+  }
   const hidden = nodeGraphMvp.modularOnlyControlsVisible === false;
   document.getElementById("nodeWiringPanel")?.classList.toggle("modular-only-controls-hidden", hidden);
   document.getElementById("nodeSceneToggleModularOnlyControls")?.classList.toggle("active", hidden);
@@ -348,6 +351,37 @@ function setNodeGraphModularOnlyControlsVisible(visible) {
 
 function toggleNodeGraphModularOnlyControlsVisible() {
   setNodeGraphModularOnlyControlsVisible(nodeGraphMvp.modularOnlyControlsVisible === false);
+}
+
+// Named so both the Command Center button click and the "M" hotkey
+// (node-graph-keyboard-shortcuts.js) can share the exact same behavior.
+function toggleNodeGraphModularOnlyView() {
+  const modularOnlyActive = document.getElementById("nodeWiringPanel")?.classList.contains("modular-only-view");
+  setNodeGraphViewMode(modularOnlyActive ? "modular" : "modular-only");
+}
+
+// Named so the Full UI button can share the exact same behavior as every
+// other view-mode toggle (M/V/etc) -- clicking it while already in UI view
+// should turn UI view off (back to the modular workspace), not just
+// re-apply "ui" mode as a no-op.
+function toggleNodeGraphFullUiView() {
+  const uiActive = !document.getElementById("nodeUiView")?.hidden;
+  setNodeGraphViewMode(uiActive ? "modular" : "ui");
+}
+
+// Named so both the Command Center button click and the "V" hotkey
+// (node-graph-keyboard-shortcuts.js) can share the exact same behavior --
+// "View Buttons" toggles module-button visibility, but if we're
+// currently off in settings/script/UI/mapping view it also needs to
+// bring us back to the modular workspace first -- otherwise there's
+// nothing on screen for the toggle to visibly affect. Preserves
+// modular-only mode if that's what we were already in.
+function toggleNodeGraphViewButtonsVisibility() {
+  if (document.getElementById("nodeGraphWorkspace")?.hidden) {
+    const modularOnlyActive = document.getElementById("nodeWiringPanel")?.classList.contains("modular-only-view");
+    setNodeGraphViewMode(modularOnlyActive ? "modular-only" : "modular");
+  }
+  toggleNodeGraphModularOnlyControlsVisible();
 }
 
 function setNodeGraphModuleScopeFramesPerSecond(value) {
@@ -563,22 +597,23 @@ function nodeGraphFloatingWindowPosition(element, x, y, options = {}) {
   return { left, top };
 }
 
-function renderNodeGraphTooltipToggle() {
-  const helpStack = document.querySelector(".node-help-stack");
-  const help = document.getElementById("nodeInteractionHelp");
-  const button = document.getElementById("nodeTooltipToggleButton");
-  const visible = Boolean(nodeGraphMvp.tooltipVisible);
-  helpStack?.classList.toggle("tips-hidden", !visible);
-  if (!visible && help) {
-    help.textContent = "";
-  }
+function renderNodeGraphKeyboardDebugToggle() {
+  const button = document.getElementById("nodeKeyboardDebugToggleButton");
+  const visible = nodeGraphMvp.keyboardDebugInfoVisible === true;
+  document.body.classList.toggle("keyboard-debug-hidden", !visible);
   if (button) {
-    button.textContent = visible ? "Hide Tips" : "Show Tips";
+    const label = button.querySelector("span");
+    if (label) {
+      label.textContent = visible ? "Hide Debug" : "Show Debug";
+    } else {
+      button.textContent = visible ? "Hide Debug" : "Show Debug";
+    }
     button.setAttribute("aria-pressed", visible ? "true" : "false");
     button.removeAttribute("title");
   }
   renderNodeGraphVisibilityMenuButton();
 }
+
 
 function setNodeGraphVisibilityMenuOpen(open) {
   const menu = document.getElementById("nodeVisibilityMenu");
@@ -788,6 +823,375 @@ function resetNodeGraphStartupView() {
   setNodeGraphViewMode(nodeGraphStartupViewModeFromUrl());
 }
 
+// Docked (not floating/draggable) performance surface, toggled on/off,
+// sitting below the modular workspace -- second instances of the exact
+// same keyboardController/pitchModWheel/macroControls module bodies, not
+// a separate implementation. Every one of these already keeps its state
+// in shared nodeGraphMvp fields (midiKeyboardSignal, performance wheel
+// values, macroControls array) and re-renders every matching DOM surface
+// in the whole document on change, so a second instance of each mirrors
+// its node counterpart for free. Populated once at bootstrap; only
+// visibility changes after that.
+function initNodeGraphStandaloneMidiKeyboard() {
+  const dock = document.getElementById("nodeStandaloneMidiKeyboardDock");
+  const body = document.getElementById("nodeStandaloneMidiKeyboardBody");
+  if (!dock || !body || dock.dataset.populated === "true") {
+    return;
+  }
+  dock.dataset.populated = "true";
+  const performanceRow = document.createElement("div");
+  performanceRow.className = "node-standalone-performance-row";
+  performanceRow.append(createNodeGraphPitchModWheelBody(), createNodeGraphKeyboardControllerBody());
+  body.append(createNodeGraphMacroControlsBody(), performanceRow);
+  renderNodeGraphKeyboardControllerModules();
+  bindNodeGraphMacroControlModuleEvents();
+}
+
+// Free-floating window, same generic drag/resize/lock/keyboard-nudge
+// subsystem as Command Center et al (node-graph-floating-windows.js) --
+// not a workspace-docked panel synced to #nodeGraphWorkspace's width
+// anymore. workspaceWindowStates.standaloneMidiKeyboard is the single
+// source of truth for open/closed, matching every other floating window
+// (no separate ad-hoc visibility flag).
+const nodeStandaloneMidiKeyboardDockDefaultSize = Object.freeze({
+  width: 860,
+  minWidth: 420,
+  // No real ceiling on drag-resize width -- normalizeNodeGraphFloatingWindowSize
+  // falls back to 720 if maxWidth isn't finite, so this can't just be
+  // omitted/Infinity; a large-but-finite number here means the resize is
+  // bounded only by the actual screen (viewportWidth, via viewportMargin: 0
+  // below -- this dock should be draggable all the way to the true edge,
+  // unlike most floating windows which keep the default small margin).
+  maxWidth: 8000,
+  viewportMargin: 0,
+  height: 260,
+  minHeight: 160,
+  maxHeight: 640,
+});
+
+function normalizeNodeGraphStandaloneMidiKeyboardDockSize(size = {}) {
+  return normalizeNodeGraphFloatingWindowSize(size, nodeStandaloneMidiKeyboardDockDefaultSize);
+}
+
+function applyNodeGraphStandaloneMidiKeyboardDockSize(size = nodeGraphMvp.standaloneMidiKeyboardWindowSize) {
+  const dock = document.getElementById("nodeStandaloneMidiKeyboardDock");
+  const normalized = normalizeNodeGraphStandaloneMidiKeyboardDockSize(size || nodeStandaloneMidiKeyboardDockDefaultSize);
+  nodeGraphMvp.standaloneMidiKeyboardWindowSize = normalized;
+  if (!dock) {
+    return normalized;
+  }
+  applyNodeGraphFloatingWindowSizeVars(dock, "node-standalone-keyboard", nodeStandaloneMidiKeyboardDockDefaultSize, normalized);
+  return normalized;
+}
+
+function positionNodeGraphStandaloneMidiKeyboardDockAtSavedOr(x, y) {
+  const dock = document.getElementById("nodeStandaloneMidiKeyboardDock");
+  if (!dock) {
+    return;
+  }
+  dock.hidden = false;
+  applyNodeGraphStandaloneMidiKeyboardDockSize();
+  const savedPosition = nodeGraphMvp.workspaceWindowStates?.standaloneMidiKeyboard?.position;
+  const hasSavedPosition =
+    Number.isFinite(Number(savedPosition?.left)) &&
+    Number.isFinite(Number(savedPosition?.top));
+  const { left, top } = nodeGraphFloatingWindowPosition(
+    dock,
+    hasSavedPosition ? savedPosition.left : x,
+    hasSavedPosition ? savedPosition.top : y,
+  );
+  setNodeGraphFloatingWindowViewportPosition(dock, left, top);
+  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+    rememberNodeGraphWorkspaceWindowState(
+      "standaloneMidiKeyboard",
+      dock,
+      { open: true, position: { left, top } },
+      { persist: false },
+    );
+  }
+}
+
+function beginNodeGraphStandaloneMidiKeyboardDrag(event) {
+  const dock = document.getElementById("nodeStandaloneMidiKeyboardDock");
+  if (!dock || dock.hidden) {
+    return;
+  }
+  beginNodeGraphFloatingWindowDrag(event, dock, "standaloneMidiKeyboardDragging");
+}
+
+function dragNodeGraphStandaloneMidiKeyboard(event) {
+  dragNodeGraphFloatingWindow(
+    event,
+    "standaloneMidiKeyboardDragging",
+    document.getElementById("nodeStandaloneMidiKeyboardDock"),
+    (next) => {
+      if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+        rememberNodeGraphWorkspaceWindowState(
+          "standaloneMidiKeyboard",
+          document.getElementById("nodeStandaloneMidiKeyboardDock"),
+          { open: true, position: next },
+          { persist: false },
+        );
+      }
+    },
+  );
+}
+
+function endNodeGraphStandaloneMidiKeyboardDrag(event) {
+  endNodeGraphFloatingWindowDrag(event, "standaloneMidiKeyboardDragging", () => {
+    if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+      rememberNodeGraphWorkspaceWindowState(
+        "standaloneMidiKeyboard",
+        document.getElementById("nodeStandaloneMidiKeyboardDock"),
+        { open: true },
+        { status: false },
+      );
+    }
+  });
+}
+
+function beginNodeGraphStandaloneMidiKeyboardResize(event) {
+  const dock = document.getElementById("nodeStandaloneMidiKeyboardDock");
+  beginNodeGraphFloatingWindowResize(event, dock, "standaloneMidiKeyboardResizing");
+}
+
+function dragNodeGraphStandaloneMidiKeyboardResize(event) {
+  dragNodeGraphFloatingWindowResize(event, "standaloneMidiKeyboardResizing", applyNodeGraphStandaloneMidiKeyboardDockSize);
+}
+
+function endNodeGraphStandaloneMidiKeyboardResize(event) {
+  endNodeGraphFloatingWindowResize(event, "standaloneMidiKeyboardResizing", () => {
+    if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+      rememberNodeGraphWorkspaceWindowState(
+        "standaloneMidiKeyboard",
+        document.getElementById("nodeStandaloneMidiKeyboardDock"),
+        { open: true, size: normalizeNodeGraphStandaloneMidiKeyboardDockSize(nodeGraphMvp.standaloneMidiKeyboardWindowSize) },
+        { status: false },
+      );
+    }
+  });
+}
+
+function renderNodeGraphStandaloneMidiKeyboardToggle() {
+  const button = document.getElementById("nodeStandaloneMidiKeyboardButton");
+  const sceneButton = document.getElementById("nodeSceneToggleStandaloneMidiKeyboard");
+  const dock = document.getElementById("nodeStandaloneMidiKeyboardDock");
+  const visible = Boolean(dock && !dock.hidden);
+  if (button) {
+    button.setAttribute("aria-pressed", visible ? "true" : "false");
+  }
+  if (sceneButton) {
+    sceneButton.setAttribute("aria-pressed", visible ? "true" : "false");
+  }
+}
+
+function closeNodeGraphStandaloneMidiKeyboard() {
+  const dock = document.getElementById("nodeStandaloneMidiKeyboardDock");
+  if (dock) {
+    dock.hidden = true;
+  }
+  if (nodeGraphMvp.standaloneMidiKeyboardDragging?.handle) {
+    nodeGraphMvp.standaloneMidiKeyboardDragging.handle.classList.remove("dragging");
+  }
+  if (nodeGraphMvp.standaloneMidiKeyboardResizing?.handle) {
+    nodeGraphMvp.standaloneMidiKeyboardResizing.handle.classList.remove("dragging");
+  }
+  nodeGraphMvp.standaloneMidiKeyboardDragging = null;
+  nodeGraphMvp.standaloneMidiKeyboardResizing = null;
+  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+    rememberNodeGraphWorkspaceWindowState("standaloneMidiKeyboard", dock, { open: false }, { status: false });
+  }
+  renderNodeGraphStandaloneMidiKeyboardToggle();
+  setNodeInteractionHelp("MIDI keyboard hidden.");
+}
+
+function toggleNodeGraphStandaloneMidiKeyboard() {
+  const dock = document.getElementById("nodeStandaloneMidiKeyboardDock");
+  const currentlyVisible = Boolean(dock && !dock.hidden);
+  if (currentlyVisible) {
+    closeNodeGraphStandaloneMidiKeyboard();
+    return;
+  }
+  initNodeGraphStandaloneMidiKeyboard();
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 900;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 700;
+  const defaultWidth = nodeStandaloneMidiKeyboardDockDefaultSize.width;
+  const defaultHeight = nodeStandaloneMidiKeyboardDockDefaultSize.height;
+  positionNodeGraphStandaloneMidiKeyboardDockAtSavedOr(
+    Math.max(12, (viewportWidth - defaultWidth) / 2),
+    Math.max(12, viewportHeight - defaultHeight - 24),
+  );
+  renderNodeGraphStandaloneMidiKeyboardToggle();
+  setNodeInteractionHelp("MIDI keyboard shown.");
+}
+
+// Free-floating, draggable, resizable window hosting #nodeInteractionHelp,
+// same generic drag/resize/lock/keyboard-nudge subsystem as Command
+// Center et al (node-graph-floating-windows.js). Exists so tips stay
+// reachable in modular-only view, where the old in-flow .node-help-stack
+// row (and everything else outside a floating window) gets hidden.
+const nodeTooltipWindowDefaultSize = Object.freeze({
+  width: 420,
+  minWidth: 260,
+  maxWidth: 900,
+  height: 90,
+  minHeight: 90,
+  maxHeight: 480,
+});
+
+function normalizeNodeGraphTooltipWindowSize(size = {}) {
+  return normalizeNodeGraphFloatingWindowSize(size, nodeTooltipWindowDefaultSize);
+}
+
+function applyNodeGraphTooltipWindowSize(size = nodeGraphMvp.tooltipWindowSize) {
+  const win = document.getElementById("nodeTooltipWindow");
+  const normalized = normalizeNodeGraphTooltipWindowSize(size || nodeTooltipWindowDefaultSize);
+  nodeGraphMvp.tooltipWindowSize = normalized;
+  if (!win) {
+    return normalized;
+  }
+  applyNodeGraphFloatingWindowSizeVars(win, "node-tooltip-window", nodeTooltipWindowDefaultSize, normalized);
+  return normalized;
+}
+
+function positionNodeGraphTooltipWindowAtSavedOr(x, y) {
+  const win = document.getElementById("nodeTooltipWindow");
+  if (!win) {
+    return;
+  }
+  win.hidden = false;
+  applyNodeGraphTooltipWindowSize();
+  const savedPosition = nodeGraphMvp.workspaceWindowStates?.tooltipWindow?.position;
+  const hasSavedPosition =
+    Number.isFinite(Number(savedPosition?.left)) &&
+    Number.isFinite(Number(savedPosition?.top));
+  const { left, top } = nodeGraphFloatingWindowPosition(
+    win,
+    hasSavedPosition ? savedPosition.left : x,
+    hasSavedPosition ? savedPosition.top : y,
+  );
+  setNodeGraphFloatingWindowViewportPosition(win, left, top);
+  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+    rememberNodeGraphWorkspaceWindowState(
+      "tooltipWindow",
+      win,
+      { open: true, position: { left, top } },
+      { persist: false },
+    );
+  }
+}
+
+function beginNodeGraphTooltipWindowDrag(event) {
+  const win = document.getElementById("nodeTooltipWindow");
+  if (!win || win.hidden) {
+    return;
+  }
+  beginNodeGraphFloatingWindowDrag(event, win, "tooltipWindowDragging");
+}
+
+function beginNodeGraphTooltipWindowResize(event) {
+  const win = document.getElementById("nodeTooltipWindow");
+  beginNodeGraphFloatingWindowResize(event, win, "tooltipWindowResizing");
+}
+
+function dragNodeGraphTooltipWindowResize(event) {
+  dragNodeGraphFloatingWindowResize(event, "tooltipWindowResizing", applyNodeGraphTooltipWindowSize);
+}
+
+function endNodeGraphTooltipWindowResize(event) {
+  endNodeGraphFloatingWindowResize(event, "tooltipWindowResizing", () => {
+    if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+      rememberNodeGraphWorkspaceWindowState(
+        "tooltipWindow",
+        document.getElementById("nodeTooltipWindow"),
+        { open: true, size: normalizeNodeGraphTooltipWindowSize(nodeGraphMvp.tooltipWindowSize) },
+        { status: false },
+      );
+    }
+  });
+}
+
+function dragNodeGraphTooltipWindow(event) {
+  dragNodeGraphFloatingWindow(
+    event,
+    "tooltipWindowDragging",
+    document.getElementById("nodeTooltipWindow"),
+    (next) => {
+      if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+        rememberNodeGraphWorkspaceWindowState(
+          "tooltipWindow",
+          document.getElementById("nodeTooltipWindow"),
+          { open: true, position: next },
+          { persist: false },
+        );
+      }
+    },
+  );
+}
+
+function endNodeGraphTooltipWindowDrag(event) {
+  endNodeGraphFloatingWindowDrag(event, "tooltipWindowDragging", () => {
+    if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+      rememberNodeGraphWorkspaceWindowState(
+        "tooltipWindow",
+        document.getElementById("nodeTooltipWindow"),
+        { open: true },
+        { status: false },
+      );
+    }
+  });
+}
+
+function renderNodeGraphTooltipWindowToggle() {
+  const button = document.getElementById("nodeTooltipToggleButton");
+  const win = document.getElementById("nodeTooltipWindow");
+  const visible = Boolean(win && !win.hidden);
+  if (button) {
+    const label = button.querySelector(".scene-context-window-button-label");
+    if (label) {
+      label.textContent = visible ? "Hide Tips" : "Show Tips";
+    }
+    button.setAttribute("aria-pressed", visible ? "true" : "false");
+    button.removeAttribute("title");
+  }
+  renderNodeGraphVisibilityMenuButton();
+}
+
+function closeNodeGraphTooltipWindow() {
+  const win = document.getElementById("nodeTooltipWindow");
+  if (win) {
+    win.hidden = true;
+  }
+  if (nodeGraphMvp.tooltipWindowDragging?.handle) {
+    nodeGraphMvp.tooltipWindowDragging.handle.classList.remove("dragging");
+  }
+  if (nodeGraphMvp.tooltipWindowResizing?.handle) {
+    nodeGraphMvp.tooltipWindowResizing.handle.classList.remove("dragging");
+  }
+  nodeGraphMvp.tooltipWindowDragging = null;
+  nodeGraphMvp.tooltipWindowResizing = null;
+  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+    rememberNodeGraphWorkspaceWindowState("tooltipWindow", win, { open: false }, { status: false });
+  }
+  renderNodeGraphTooltipWindowToggle();
+}
+
+function toggleNodeGraphTooltipWindow() {
+  const win = document.getElementById("nodeTooltipWindow");
+  const currentlyVisible = Boolean(win && !win.hidden);
+  if (currentlyVisible) {
+    closeNodeGraphTooltipWindow();
+    return;
+  }
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 900;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 700;
+  positionNodeGraphTooltipWindowAtSavedOr(
+    Math.max(12, (viewportWidth - 420) / 2),
+    Math.max(12, viewportHeight - 220),
+  );
+  renderNodeGraphTooltipWindowToggle();
+}
+
 function renderNodeGraphVideoViewToggle() {
   const button = document.getElementById("nodeVideoViewButton");
   const panel = document.getElementById("nodeVideoViewPanel");
@@ -815,8 +1219,8 @@ function normalizeNodeGraphMacroValue(value) {
 }
 
 function ensureNodeGraphMacroControls() {
-  if (!Array.isArray(nodeGraphMvp.macroControls) || nodeGraphMvp.macroControls.length !== 10) {
-    nodeGraphMvp.macroControls = new Array(10).fill(0);
+  if (!Array.isArray(nodeGraphMvp.macroControls) || nodeGraphMvp.macroControls.length !== 8) {
+    nodeGraphMvp.macroControls = new Array(8).fill(0);
   }
   nodeGraphMvp.macroControls = nodeGraphMvp.macroControls.map(normalizeNodeGraphMacroValue);
 }
@@ -824,7 +1228,7 @@ function ensureNodeGraphMacroControls() {
 function renderNodeGraphMacroControls() {
   ensureNodeGraphMacroControls();
   document.querySelectorAll("[data-macro-index]").forEach((knob) => {
-    const index = Math.max(0, Math.min(9, Math.round(Number(knob.dataset.macroIndex) || 0)));
+    const index = Math.max(0, Math.min(7, Math.round(Number(knob.dataset.macroIndex) || 0)));
     const value = normalizeNodeGraphMacroValue(nodeGraphMvp.macroControls[index]);
     const angle = -132 + value * 264;
     knob.style.setProperty("--macro-value", String(value));
@@ -837,13 +1241,13 @@ function renderNodeGraphMacroControls() {
   });
   document.querySelectorAll("[data-macro-controls-status]").forEach((status) => {
     const activeCount = nodeGraphMvp.macroControls.filter((value) => value > 0).length;
-    status.textContent = activeCount ? `${activeCount} active` : "10 macros ready";
+    status.textContent = activeCount ? `${activeCount} active` : "8 macros ready";
   });
 }
 
 function setNodeGraphMacroControl(index, value) {
   ensureNodeGraphMacroControls();
-  const safeIndex = Math.max(0, Math.min(9, Math.round(Number(index) || 0)));
+  const safeIndex = Math.max(0, Math.min(7, Math.round(Number(index) || 0)));
   nodeGraphMvp.macroControls[safeIndex] = normalizeNodeGraphMacroValue(value);
   renderNodeGraphMacroControls();
   if (typeof sendNodeGraphLiveMacroControls === "function") {
@@ -853,7 +1257,7 @@ function setNodeGraphMacroControl(index, value) {
 
 function beginNodeGraphMacroControlDrag(event) {
   const knob = event.currentTarget;
-  const index = Math.max(0, Math.min(9, Math.round(Number(knob.dataset.macroIndex) || 0)));
+  const index = Math.max(0, Math.min(7, Math.round(Number(knob.dataset.macroIndex) || 0)));
   event.preventDefault();
   knob.setPointerCapture?.(event.pointerId);
   nodeGraphMvp.dragging = {
@@ -904,9 +1308,297 @@ function bindNodeGraphMacroControlModuleEvents() {
   renderNodeGraphMacroControls();
 }
 
-const nodeGraphMidiKeyboardStartMidi = 48;
-const nodeGraphMidiKeyboardNoteCount = 25;
+const nodeGraphMidiKeyboardStartMidi = 24;
+const nodeGraphMidiKeyboardMinKeyCount = 8;
+// 88 covers a full piano keyboard. A single wire value can't safely hold an
+// 88-bit mask (see the Held Keys bit-width note below), so key indices are
+// split across a "low" half (0-48, 49 bits) and a "high" half (49-87, up to
+// 39 bits), each independently within the 53-bit safe-integer ceiling.
+const nodeGraphMidiKeyboardMaxKeyCount = 88;
+const nodeGraphMidiKeyboardHeldKeysLowBitCount = 49;
+const nodeGraphMidiKeyboardWhitePitchClasses = Object.freeze([0, 2, 4, 5, 7, 9, 11]);
+const nodeGraphMidiKeyboardBlackPitchClasses = Object.freeze(new Set([1, 3, 6, 8, 10]));
 const nodeGraphMidiKeyboardSampleRate = 44100;
+
+// User-configurable key count (shared/global, same mirroring pattern as
+// midiKeyboardOctave -- every rendered .node-midi-keyboard-module surface
+// shows the same span). Anchor note (nodeGraphMidiKeyboardStartMidi, C1)
+// stays fixed; only how many keys are visible from there changes.
+function nodeGraphMidiKeyboardKeyCount(value = nodeGraphMvp.midiKeyboardKeyCount) {
+  const count = Math.round(Number(value));
+  return Number.isFinite(count)
+    ? Math.max(nodeGraphMidiKeyboardMinKeyCount, Math.min(nodeGraphMidiKeyboardMaxKeyCount, count))
+    : 25;
+}
+
+// Walks startMidi..startMidi+keyCount-1, classifying each MIDI note as a
+// white or black key. Black key horizontal position is expressed as a
+// percentage of the white-key row's width, placed just past the 0.65 mark
+// of the white key before it -- matches where a real keyboard's black
+// keys sit relative to the white key they're attached to (reverse-derived
+// from this module's original hand-placed --key-left percentages, which
+// this replaces for an arbitrary key count).
+function nodeGraphMidiKeyboardGenerateKeys(startMidi = nodeGraphMidiKeyboardStartMidi, keyCount = nodeGraphMidiKeyboardKeyCount()) {
+  const whiteKeys = [];
+  const blackKeys = [];
+  for (let offset = 0; offset < keyCount; offset += 1) {
+    const midi = startMidi + offset;
+    const pitchClass = ((midi % 12) + 12) % 12;
+    if (nodeGraphMidiKeyboardBlackPitchClasses.has(pitchClass)) {
+      blackKeys.push({ midi, index: offset, leftWhiteIndex: whiteKeys.length - 1 });
+    } else {
+      whiteKeys.push({ midi, index: offset });
+    }
+  }
+  const totalWhite = whiteKeys.length;
+  for (const key of blackKeys) {
+    key.leftPercent = totalWhite > 0 && key.leftWhiteIndex >= 0
+      ? ((key.leftWhiteIndex + 0.65) / totalWhite) * 100
+      : 0;
+  }
+  return { whiteKeys, blackKeys, totalWhite };
+}
+
+// Rebuilds every rendered keyboard surface's white/black key DOM from the
+// current key count -- called once at bind time (populating the empty
+// rows createNodeGraphKeyboardControllerBody leaves behind) and again on
+// every key-count change. Full rebuild rather than incremental diffing:
+// key count changes are rare (a user clicking +/-), not a per-frame path.
+function renderNodeGraphMidiKeyboardKeys() {
+  const { whiteKeys, blackKeys, totalWhite } = nodeGraphMidiKeyboardGenerateKeys();
+  const octave = nodeGraphMidiKeyboardOctaveOffset();
+  const blackWidthPercent = totalWhite > 0 ? (0.63 / totalWhite) * 100 : 4.2;
+  document.querySelectorAll(".node-midi-keyboard-module .node-midi-keyboard-surface").forEach((surface) => {
+    const whiteRow = surface.querySelector(".node-midi-keyboard-white-row");
+    const blackRow = surface.querySelector(".node-midi-keyboard-black-row");
+    if (!whiteRow || !blackRow) {
+      return;
+    }
+    whiteRow.style.gridTemplateColumns = `repeat(${totalWhite}, minmax(0, 1fr))`;
+    whiteRow.replaceChildren(...whiteKeys.map((key) => {
+      const span = document.createElement("span");
+      span.dataset.midi = String(key.midi);
+      span.dataset.keyIndex = String(key.index);
+      span.textContent = nodeGraphMidiKeyboardPitchLabel(nodeGraphMidiKeyboardShiftMidi(key.midi, octave));
+      return span;
+    }));
+    blackRow.replaceChildren(...blackKeys.map((key) => {
+      const span = document.createElement("span");
+      span.dataset.midi = String(key.midi);
+      span.dataset.keyIndex = String(key.index);
+      span.style.setProperty("--key-left", `${key.leftPercent}%`);
+      span.style.width = `${blackWidthPercent}%`;
+      span.textContent = nodeGraphMidiKeyboardPitchLabel(nodeGraphMidiKeyboardShiftMidi(key.midi, octave));
+      return span;
+    }));
+  });
+  renderNodeGraphMidiKeyboardSignal(null);
+  renderNodeGraphMidiKeyboardHeldKeys();
+}
+
+// Ctrl/shift+click "held keys" bitmask -- bit i = "the key currently at
+// screen position i is toggled held." Positional, not absolute pitch:
+// stable across octave transpose (transpose only shifts output pitch,
+// never which screen position a key occupies), only shifts meaning if
+// key count itself changes. See docs/plan for the full design
+// discussion this came out of.
+//
+// Bit index can reach 87 (nodeGraphMidiKeyboardMaxKeyCount - 1), but
+// JS's native bitwise operators (<<, |, &, >>>) coerce to 32-bit
+// integers -- silently wrong past bit 31 (e.g. `1 << 40` does not
+// compute 2^40, it wraps to `1 << 8` per the spec's shift-amount-mod-32
+// rule). A double can exactly represent integers up to 2^53 via ordinary
+// arithmetic, just not via the truncating bitwise ops, so bit set/clear/
+// test here use arithmetic instead -- but that 53-bit ceiling is still a
+// real limit: a single JS Number cannot combine a low bit (e.g. index 0)
+// and a high bit (e.g. index 87) in the SAME value without silently
+// losing the low bit (float64 precision near 2^87 is +/-2^35, way
+// bigger than 1). So the 88-key range is stored as two independent
+// numbers -- low (bits 0-48) and high (bits 0-38, representing absolute
+// key index 49-87) -- never combined into one.
+function nodeGraphMidiKeyboardBitmaskHasBit(mask, index) {
+  return Math.floor((Number(mask) || 0) / 2 ** index) % 2 === 1;
+}
+
+function nodeGraphMidiKeyboardBitmaskSetBit(mask, index, on) {
+  const safeMask = Number(mask) || 0;
+  const has = nodeGraphMidiKeyboardBitmaskHasBit(safeMask, index);
+  if (has === Boolean(on)) {
+    return safeMask;
+  }
+  return on ? safeMask + 2 ** index : safeMask - 2 ** index;
+}
+
+// Routes an absolute key index (0..nodeGraphMidiKeyboardMaxKeyCount-1) to
+// which of the two storage numbers it lives in, and its bit position
+// within that number.
+function nodeGraphMidiKeyboardHeldKeyBitLocation(index) {
+  return index < nodeGraphMidiKeyboardHeldKeysLowBitCount
+    ? { half: "low", localIndex: index }
+    : { half: "high", localIndex: index - nodeGraphMidiKeyboardHeldKeysLowBitCount };
+}
+
+function nodeGraphMidiKeyboardHeldKeyBitIsSet(index, low = nodeGraphMvp.midiKeyboardHeldKeysLowBitmask, high = nodeGraphMvp.midiKeyboardHeldKeysHighBitmask) {
+  const location = nodeGraphMidiKeyboardHeldKeyBitLocation(index);
+  return nodeGraphMidiKeyboardBitmaskHasBit(location.half === "low" ? low : high, location.localIndex);
+}
+
+// Pure -- returns the updated {low, high} pair rather than mutating
+// nodeGraphMvp directly, so it composes with the rotate/transpose helpers
+// below (which build up a whole new pair bit-by-bit).
+function nodeGraphMidiKeyboardHeldKeysWithBit(low, high, index, on) {
+  const location = nodeGraphMidiKeyboardHeldKeyBitLocation(index);
+  return location.half === "low"
+    ? { low: nodeGraphMidiKeyboardBitmaskSetBit(low, location.localIndex, on), high }
+    : { low, high: nodeGraphMidiKeyboardBitmaskSetBit(high, location.localIndex, on) };
+}
+
+// Placeholder for ctrl+shift+click -- rotates the whole mask by one bit
+// position (wrap-around) within the current key count. Deliberately
+// simple/exploratory per explicit direction, not a finished feature;
+// revisit later.
+function nodeGraphMidiKeyboardBitmaskRotate(low, high, keyCount) {
+  if (keyCount <= 1) {
+    return { low, high };
+  }
+  const topBit = nodeGraphMidiKeyboardHeldKeyBitIsSet(keyCount - 1, low, high);
+  let rotated = { low: 0, high: 0 };
+  for (let index = keyCount - 1; index > 0; index -= 1) {
+    rotated = nodeGraphMidiKeyboardHeldKeysWithBit(
+      rotated.low,
+      rotated.high,
+      index,
+      nodeGraphMidiKeyboardHeldKeyBitIsSet(index - 1, low, high),
+    );
+  }
+  return nodeGraphMidiKeyboardHeldKeysWithBit(rotated.low, rotated.high, 0, topBit);
+}
+
+// Placeholder for shift+alt+click -- distinct from ctrl+shift+click's
+// generic rotate-by-one. Shifts every currently-held bit by a fixed
+// musically-meaningful interval (7 positions, a perfect fifth if keys
+// are semitone-spaced) instead of rotating the whole mask uniformly,
+// so it reshapes a held chord rather than just spinning it. Bits that
+// land past the current key count wrap back around. Deliberately
+// simple/exploratory, same spirit as the rotate placeholder above.
+function nodeGraphMidiKeyboardBitmaskTranspose(low, high, keyCount, interval) {
+  if (keyCount <= 1) {
+    return { low, high };
+  }
+  let transposed = { low: 0, high: 0 };
+  for (let index = 0; index < keyCount; index += 1) {
+    if (nodeGraphMidiKeyboardHeldKeyBitIsSet(index, low, high)) {
+      const target = ((index + interval) % keyCount + keyCount) % keyCount;
+      transposed = nodeGraphMidiKeyboardHeldKeysWithBit(transposed.low, transposed.high, target, true);
+    }
+  }
+  return transposed;
+}
+
+function nodeGraphMidiKeyboardToggleHeldKeyBit(index) {
+  const { low, high } = nodeGraphMidiKeyboardHeldKeysWithBit(
+    nodeGraphMvp.midiKeyboardHeldKeysLowBitmask,
+    nodeGraphMvp.midiKeyboardHeldKeysHighBitmask,
+    index,
+    !nodeGraphMidiKeyboardHeldKeyBitIsSet(index),
+  );
+  nodeGraphMvp.midiKeyboardHeldKeysLowBitmask = low;
+  nodeGraphMvp.midiKeyboardHeldKeysHighBitmask = high;
+  renderNodeGraphMidiKeyboardHeldKeys();
+  saveNodeGraphMidiKeyboardMemory();
+  if (typeof sendNodeGraphLiveMidiKeyboardHeldKeysBitmask === "function") {
+    sendNodeGraphLiveMidiKeyboardHeldKeysBitmask();
+  }
+}
+
+function renderNodeGraphMidiKeyboardHeldKeys() {
+  document.querySelectorAll(".node-midi-keyboard-module [data-key-index]").forEach((key) => {
+    const index = Number(key.dataset.keyIndex);
+    key.classList.toggle("held", nodeGraphMidiKeyboardHeldKeyBitIsSet(index));
+  });
+  renderNodeGraphMidiKeyboardBitmaskDisplay();
+}
+
+// One square per key, across the full key range (not a fixed 53 -- the
+// old single-number storage capped the display at its own safe-integer
+// ceiling, but that ceiling doesn't apply the same way to the low/high
+// pair, so the display now just tracks the real key range).
+function nodeGraphMidiKeyboardBitmaskDisplayBitCount() {
+  return nodeGraphMidiKeyboardMaxKeyCount;
+}
+
+// Phase-bit multiplexing for the "Held Keys" wire: a single wire is one
+// JS Number, safe up to 2^53-1, but the full held-keys state can span 88
+// bits. Rather than a second wire, the SAME wire carries the low half
+// (bits 0-48) every sample by default -- true 0-sample-delay as long as
+// nothing above key 48 is held -- and only starts alternating between
+// the low and high half, one per sample, once the high half is actually
+// in use. Bit 49 (nodeGraphMidiKeyboardHeldKeysLowBitCount) of the
+// TRANSMITTED value is a self-describing phase flag: any receiver can
+// decode a single sample in isolation (no shared state / sample-count
+// assumptions needed) as "value < 2^49 -> this is the low half" or
+// "value >= 2^49 -> subtract 2^49, this is the high half", then latch
+// each half into its own register and combine them for the real 88-bit
+// state. Worst-case update latency for any one bit is 1 sample, and only
+// while the high half is actively in use.
+const nodeGraphMidiKeyboardHeldKeysPhaseValue = 2 ** nodeGraphMidiKeyboardHeldKeysLowBitCount;
+
+function nodeGraphMidiKeyboardHeldKeysTransmitValue(low, high, phase) {
+  const safeHigh = Number(high) || 0;
+  if (!safeHigh) {
+    return Number(low) || 0;
+  }
+  return phase
+    ? nodeGraphMidiKeyboardHeldKeysPhaseValue + safeHigh
+    : Number(low) || 0;
+}
+
+// Leading square is the phase flag itself, not a key -- 🔴 when the high
+// half has any bits set (the wire will alternate low/high, one per
+// sample) or 🟢 when it's empty (the wire always carries the low half,
+// true 0-sample-delay). This can't track the actual audio-thread's
+// per-sample phase toggle (that's 44.1kHz, nothing to usefully show a
+// human at that rate, and it lives inside the worklet/offline evaluator,
+// not the main thread) -- it shows the thing that DECIDES whether
+// alternation happens at all, which is what's actually meaningful to see
+// at a glance. Then one square per key, across the full key range.
+function nodeGraphMidiKeyboardBitmaskEmoji(low, high) {
+  let out = (Number(high) || 0) !== 0 ? "🔴" : "🟢";
+  for (let index = 0; index < nodeGraphMidiKeyboardBitmaskDisplayBitCount(); index += 1) {
+    out += nodeGraphMidiKeyboardHeldKeyBitIsSet(index, low, high) ? "⬛" : "⬜";
+  }
+  return out;
+}
+
+function renderNodeGraphMidiKeyboardBitmaskDisplay() {
+  const text = nodeGraphMidiKeyboardBitmaskEmoji(
+    nodeGraphMvp.midiKeyboardHeldKeysLowBitmask,
+    nodeGraphMvp.midiKeyboardHeldKeysHighBitmask,
+  );
+  document.querySelectorAll("[data-midi-keyboard-bitmask-value]").forEach((el) => {
+    el.textContent = text;
+  });
+}
+
+function renderNodeGraphMidiKeyboardKeyCountControl() {
+  const value = nodeGraphMidiKeyboardKeyCount();
+  document.querySelectorAll("[data-midi-keyboard-key-count-value]").forEach((el) => {
+    el.textContent = String(value);
+  });
+  document.querySelectorAll("[data-midi-keyboard-key-count-down]").forEach((button) => {
+    button.disabled = value <= nodeGraphMidiKeyboardMinKeyCount;
+  });
+  document.querySelectorAll("[data-midi-keyboard-key-count-up]").forEach((button) => {
+    button.disabled = value >= nodeGraphMidiKeyboardMaxKeyCount;
+  });
+}
+
+function changeNodeGraphMidiKeyboardKeyCount(delta) {
+  nodeGraphMvp.midiKeyboardKeyCount = nodeGraphMidiKeyboardKeyCount(nodeGraphMidiKeyboardKeyCount() + delta);
+  renderNodeGraphMidiKeyboardKeyCountControl();
+  renderNodeGraphMidiKeyboardKeys();
+  saveNodeGraphMidiKeyboardMemory();
+}
 const nodeGraphMidiKeyboardMinOctave = -4;
 const nodeGraphMidiKeyboardMaxOctave = 4;
 const nodeGraphMidiKeyboardNoteNames = Object.freeze(["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]);
@@ -927,8 +1619,8 @@ function normalizeNodeGraphMidiKeyboardMemorySignal(signal, options = {}) {
   const midi = Math.max(0, Math.min(127, Math.round(Number(signal.midi) || 60)));
   const rawMidi = Math.max(0, Math.min(127, Math.round(Number(signal.rawMidi) || midi)));
   const octave = nodeGraphMidiKeyboardOctaveOffset(signal.octave);
-  const keyIndex = Math.max(0, Math.min(nodeGraphMidiKeyboardNoteCount - 1, Number(signal.keyIndex) || 0));
-  const keyQuantized = nodeGraphMidiKeyboardClamp01(signal.keyQuantized ?? (keyIndex / Math.max(1, nodeGraphMidiKeyboardNoteCount - 1)));
+  const keyIndex = Math.max(0, Math.min(nodeGraphMidiKeyboardKeyCount() - 1, Number(signal.keyIndex) || 0));
+  const keyQuantized = nodeGraphMidiKeyboardClamp01(signal.keyQuantized ?? (keyIndex / Math.max(1, nodeGraphMidiKeyboardKeyCount() - 1)));
   const frequency = Math.max(0, Number(signal.frequency) || 440 * 2 ** ((midi - 69) / 12));
   const gate = options.preserveGate ? (Number(signal.gate) > 0 ? 1 : 0) : 0;
   return {
@@ -951,9 +1643,17 @@ function normalizeNodeGraphMidiKeyboardMemorySignal(signal, options = {}) {
   };
 }
 
+function nodeGraphMidiKeyboardHeldKeysBitmaskValue(value) {
+  const mask = Math.floor(Number(value));
+  return Number.isFinite(mask) && mask >= 0 ? mask : 0;
+}
+
 function nodeGraphMidiKeyboardMemoryPayload() {
   return {
+    heldKeysLowBitmask: nodeGraphMidiKeyboardHeldKeysBitmaskValue(nodeGraphMvp.midiKeyboardHeldKeysLowBitmask),
+    heldKeysHighBitmask: nodeGraphMidiKeyboardHeldKeysBitmaskValue(nodeGraphMvp.midiKeyboardHeldKeysHighBitmask),
     inputId: nodeGraphMvp.midiKeyboardInputId || "",
+    keyCount: nodeGraphMidiKeyboardKeyCount(),
     mode: nodeGraphMidiKeyboardMode(),
     modWheel: nodeGraphPerformanceModWheelValue(),
     octave: nodeGraphMidiKeyboardOctaveOffset(),
@@ -985,7 +1685,10 @@ function loadNodeGraphMidiKeyboardMemory() {
       return null;
     }
     return {
+      heldKeysLowBitmask: nodeGraphMidiKeyboardHeldKeysBitmaskValue(payload.heldKeysLowBitmask),
+      heldKeysHighBitmask: nodeGraphMidiKeyboardHeldKeysBitmaskValue(payload.heldKeysHighBitmask),
       inputId: String(payload.inputId || ""),
+      keyCount: nodeGraphMidiKeyboardKeyCount(payload.keyCount),
       mode: nodeGraphMidiKeyboardMode(payload.mode),
       modWheel: nodeGraphPerformanceModWheelValue(payload.modWheel),
       octave: nodeGraphMidiKeyboardOctaveOffset(payload.octave),
@@ -1003,7 +1706,10 @@ function applyNodeGraphMidiKeyboardMemory() {
   if (!memory) {
     return false;
   }
+  nodeGraphMvp.midiKeyboardHeldKeysLowBitmask = memory.heldKeysLowBitmask;
+  nodeGraphMvp.midiKeyboardHeldKeysHighBitmask = memory.heldKeysHighBitmask;
   nodeGraphMvp.midiKeyboardInputId = memory.inputId;
+  nodeGraphMvp.midiKeyboardKeyCount = memory.keyCount;
   nodeGraphMvp.midiKeyboardMode = memory.mode;
   nodeGraphMvp.modWheelSignal = memory.modWheel;
   nodeGraphMvp.midiKeyboardOctave = memory.octave;
@@ -1132,7 +1838,7 @@ function nodeGraphMidiKeyboardOctaveLabel(value = nodeGraphMidiKeyboardOctaveOff
   return `${octave >= 0 ? "+" : ""}${octave}`;
 }
 
-const nodeGraphMidiKeyboardModes = Object.freeze(["press", "hold"]);
+const nodeGraphMidiKeyboardModes = Object.freeze(["press", "hold", "toggle"]);
 
 function nodeGraphMidiKeyboardMode(value = nodeGraphMvp.midiKeyboardMode) {
   return nodeGraphMidiKeyboardModes.includes(value) ? value : "press";
@@ -1142,6 +1848,7 @@ function nodeGraphMidiKeyboardModeLabel(value = nodeGraphMidiKeyboardMode()) {
   return {
     press: "Press",
     hold: "Hold",
+    toggle: "Toggle",
   }[nodeGraphMidiKeyboardMode(value)] || "Press";
 }
 
@@ -1167,9 +1874,9 @@ function nodeGraphMidiKeyboardSignalFromRaw(rawMidi, options = {}) {
   const midi = nodeGraphMidiKeyboardShiftMidi(rawMidi, octave);
   const rawKeyIndex = Math.max(
     0,
-    Math.min(nodeGraphMidiKeyboardNoteCount - 1, Math.round(Number(rawMidi) || 0) - nodeGraphMidiKeyboardStartMidi),
+    Math.min(nodeGraphMidiKeyboardKeyCount() - 1, Math.round(Number(rawMidi) || 0) - nodeGraphMidiKeyboardStartMidi),
   );
-  const keyQuantized = nodeGraphMidiKeyboardNoteCount > 1 ? rawKeyIndex / (nodeGraphMidiKeyboardNoteCount - 1) : 0;
+  const keyQuantized = nodeGraphMidiKeyboardKeyCount() > 1 ? rawKeyIndex / (nodeGraphMidiKeyboardKeyCount() - 1) : 0;
   const frequency = 440 * 2 ** ((midi - 69) / 12);
   return {
     source: options.source || "keyboard",
@@ -1208,8 +1915,8 @@ function nodeGraphMidiKeyboardSignalFromPointer(event, surface) {
   const target = event.target?.closest?.("[data-midi]");
   const targetMidi = target && surface.contains(target) ? Number(target.dataset.midi) : NaN;
   const fallbackKeyIndex = Math.min(
-    nodeGraphMidiKeyboardNoteCount - 1,
-    Math.max(0, Math.floor(x * nodeGraphMidiKeyboardNoteCount)),
+    nodeGraphMidiKeyboardKeyCount() - 1,
+    Math.max(0, Math.floor(x * nodeGraphMidiKeyboardKeyCount())),
   );
   const rawMidi = Number.isFinite(targetMidi) ? targetMidi : nodeGraphMidiKeyboardStartMidi + fallbackKeyIndex;
   const gate = event.buttons > 0 ? 1 : 0;
@@ -1443,6 +2150,91 @@ function updateNodeGraphMidiKeyboardSignal(event) {
     return;
   }
   const mode = nodeGraphMidiKeyboardMode();
+  // Ctrl+click builds the "held keys" bitmask -- checked before the
+  // existing shift/hold-mode branch below so plain shift+click (no
+  // ctrl) still falls through unchanged to that existing behavior.
+  if (event.type === "pointerdown" && event.ctrlKey) {
+    const target = event.target?.closest?.("[data-key-index]");
+    if (target && surface.contains(target)) {
+      const index = Number(target.dataset.keyIndex);
+      const keyCount = nodeGraphMidiKeyboardKeyCount();
+      if (event.shiftKey) {
+        const rotated = nodeGraphMidiKeyboardBitmaskRotate(
+          nodeGraphMvp.midiKeyboardHeldKeysLowBitmask,
+          nodeGraphMvp.midiKeyboardHeldKeysHighBitmask,
+          keyCount,
+        );
+        nodeGraphMvp.midiKeyboardHeldKeysLowBitmask = rotated.low;
+        nodeGraphMvp.midiKeyboardHeldKeysHighBitmask = rotated.high;
+        renderNodeGraphMidiKeyboardHeldKeys();
+        saveNodeGraphMidiKeyboardMemory();
+        if (typeof sendNodeGraphLiveMidiKeyboardHeldKeysBitmask === "function") {
+          sendNodeGraphLiveMidiKeyboardHeldKeysBitmask();
+        }
+      } else {
+        nodeGraphMidiKeyboardToggleHeldKeyBit(index);
+      }
+    }
+    event.preventDefault();
+    return;
+  }
+  // A plain click on a key that's already held -- however it got held,
+  // ctrl+click/toggle-mode's bitmask or shift+click's single-note latch
+  // -- releases it, instead of requiring the exact gesture that held it
+  // in the first place (shift+click again, or another ctrl+click).
+  // Checked before mode-specific behavior below so this takes priority
+  // in every mode.
+  if (event.type === "pointerdown" && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+    const target = event.target?.closest?.("[data-key-index]");
+    if (target && surface.contains(target)) {
+      const index = Number(target.dataset.keyIndex);
+      if (nodeGraphMidiKeyboardHeldKeyBitIsSet(index)) {
+        nodeGraphMidiKeyboardToggleHeldKeyBit(index);
+        event.preventDefault();
+        return;
+      }
+      const heldPointer = nodeGraphMidiKeyboardHeldPointerSignal();
+      const targetMidi = Number(target.dataset.midi);
+      if (heldPointer && heldPointer.midi === targetMidi) {
+        clearNodeGraphMidiKeyboardPointerHold(`${heldPointer.pitch} hold off`);
+        event.preventDefault();
+        return;
+      }
+    }
+  }
+  // Toggle mode turns a plain click into what ctrl+click already does --
+  // toggles that key's held-keys bit instead of playing a note. Ctrl and
+  // Shift+Alt keep their own meanings above regardless of mode, so this
+  // only fires for an unmodified click.
+  if (event.type === "pointerdown" && mode === "toggle" && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+    const target = event.target?.closest?.("[data-key-index]");
+    if (target && surface.contains(target)) {
+      nodeGraphMidiKeyboardToggleHeldKeyBit(Number(target.dataset.keyIndex));
+    }
+    event.preventDefault();
+    return;
+  }
+  // Shift+Alt+click transposes the held-keys bitmask -- checked before
+  // the plain shift/hold-mode branch below so plain shift+click (no
+  // alt) still falls through unchanged to that existing behavior.
+  if (event.type === "pointerdown" && event.shiftKey && event.altKey && !event.ctrlKey) {
+    const keyCount = nodeGraphMidiKeyboardKeyCount();
+    const transposed = nodeGraphMidiKeyboardBitmaskTranspose(
+      nodeGraphMvp.midiKeyboardHeldKeysLowBitmask,
+      nodeGraphMvp.midiKeyboardHeldKeysHighBitmask,
+      keyCount,
+      7,
+    );
+    nodeGraphMvp.midiKeyboardHeldKeysLowBitmask = transposed.low;
+    nodeGraphMvp.midiKeyboardHeldKeysHighBitmask = transposed.high;
+    renderNodeGraphMidiKeyboardHeldKeys();
+    saveNodeGraphMidiKeyboardMemory();
+    if (typeof sendNodeGraphLiveMidiKeyboardHeldKeysBitmask === "function") {
+      sendNodeGraphLiveMidiKeyboardHeldKeysBitmask();
+    }
+    event.preventDefault();
+    return;
+  }
   if (event.type === "pointerdown" && (event.shiftKey || mode === "hold")) {
     toggleNodeGraphMidiKeyboardPointerHold(event, surface);
     return;
@@ -1629,6 +2421,26 @@ function bindNodeGraphKeyboardControllerModuleEvents() {
     button.dataset.midiKeyboardOctaveBound = "true";
     button.addEventListener("click", () => changeNodeGraphMidiKeyboardOctave(1));
   });
+  document.querySelectorAll("[data-midi-keyboard-key-count-down]").forEach((button) => {
+    if (button.dataset.midiKeyboardKeyCountBound === "true") {
+      return;
+    }
+    button.dataset.midiKeyboardKeyCountBound = "true";
+    button.addEventListener("click", () => changeNodeGraphMidiKeyboardKeyCount(-1));
+  });
+  document.querySelectorAll("[data-midi-keyboard-key-count-up]").forEach((button) => {
+    if (button.dataset.midiKeyboardKeyCountBound === "true") {
+      return;
+    }
+    button.dataset.midiKeyboardKeyCountBound = "true";
+    button.addEventListener("click", () => changeNodeGraphMidiKeyboardKeyCount(1));
+  });
+  // Populates any newly-mounted surface's empty white/black rows (see
+  // createNodeGraphKeyboardControllerBody) and re-renders every surface
+  // to the current key count -- cheap enough to always run here rather
+  // than tracking "is this a first mount" separately.
+  renderNodeGraphMidiKeyboardKeys();
+  renderNodeGraphMidiKeyboardKeyCountControl();
   renderNodeGraphMidiKeyboardSignal(null);
   renderNodeGraphMidiKeyboardOctaveControl();
   renderNodeGraphPerformanceWheels();
@@ -1683,9 +2495,10 @@ function toggleNodeGraphModuleInterfaceControlsVisibility() {
   setNodeInteractionHelp(nodeGraphMvp.moduleInterfaceControlsVisible ? "Module control surfaces shown." : "Module control surfaces hidden.");
 }
 
-function toggleNodeGraphTooltipVisibility() {
-  nodeGraphMvp.tooltipVisible = !nodeGraphMvp.tooltipVisible;
-  renderNodeGraphTooltipToggle();
+function toggleNodeGraphKeyboardDebugVisibility() {
+  nodeGraphMvp.keyboardDebugInfoVisible = !(nodeGraphMvp.keyboardDebugInfoVisible === true);
+  renderNodeGraphKeyboardDebugToggle();
+  setNodeInteractionHelp(nodeGraphMvp.keyboardDebugInfoVisible ? "Keyboard debug info shown." : "Keyboard debug info hidden.");
 }
 
 function toggleNodeGraphSliderAmount() {
