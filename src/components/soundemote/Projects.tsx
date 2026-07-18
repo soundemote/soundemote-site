@@ -62,7 +62,7 @@ const repositoryLinks: RepositoryLink[] = [
     {
         emoji: "🌕",
         name: "phosphor",
-        href: "https://github.com/elanhickler/soemdsp-sandbox-phosphor",
+        href: "https://github.com/soundemote/soemdsp-sandbox",
         pulse: true,
     },
     {

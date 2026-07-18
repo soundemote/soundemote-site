@@ -55,7 +55,7 @@ struct VideoSynthState {
   bool active;
   LorenzState chaos;
   // Persistent per-pixel brightness from the previous frame -- this is
-  // the phosphor decay buffer, same math as the soemdsp-sandbox-phosphor
+  // the phosphor decay buffer, same math as the soemdsp-sandbox
   // fork documents: brightness = brightness * decay + newHit * (1 - decay).
   double previousFrame[kMaxPixels];
   double outFrame[kMaxPixels];
