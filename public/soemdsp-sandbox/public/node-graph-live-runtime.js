@@ -1465,7 +1465,7 @@ function sendNodeGraphLiveMidiKeyboardSignal(signal = nodeGraphMvp.midiKeyboardS
 }
 
 function sendNodeGraphLiveMacroControls(values = nodeGraphMvp.macroControls) {
-  const payload = Array.from({ length: 10 }, (_, index) => (
+  const payload = Array.from({ length: 8 }, (_, index) => (
     Math.max(0, Math.min(1, Number(values?.[index]) || 0))
   ));
   if (nodeGraphMvp.live.runtime) {
@@ -1475,6 +1475,27 @@ function sendNodeGraphLiveMacroControls(values = nodeGraphMvp.macroControls) {
     nodeGraphMvp.live.node.port.postMessage({
       values: payload,
       type: "setMacroControls",
+    });
+  }
+}
+
+function sendNodeGraphLiveMidiKeyboardHeldKeysBitmask(
+  low = nodeGraphMvp.midiKeyboardHeldKeysLowBitmask,
+  high = nodeGraphMvp.midiKeyboardHeldKeysHighBitmask,
+) {
+  const safeLow = Math.floor(Number(low));
+  const safeHigh = Math.floor(Number(high));
+  const lowPayload = Number.isFinite(safeLow) && safeLow >= 0 ? safeLow : 0;
+  const highPayload = Number.isFinite(safeHigh) && safeHigh >= 0 ? safeHigh : 0;
+  if (nodeGraphMvp.live.runtime) {
+    nodeGraphMvp.live.runtime.midiKeyboardHeldKeysLowBitmask = lowPayload;
+    nodeGraphMvp.live.runtime.midiKeyboardHeldKeysHighBitmask = highPayload;
+  }
+  if (nodeGraphMvp.live.usesWorklet && nodeGraphMvp.live.node?.port) {
+    nodeGraphMvp.live.node.port.postMessage({
+      high: highPayload,
+      low: lowPayload,
+      type: "setMidiKeyboardHeldKeysBitmask",
     });
   }
 }

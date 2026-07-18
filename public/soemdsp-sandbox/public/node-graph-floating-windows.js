@@ -1,13 +1,19 @@
 function normalizeNodeGraphFloatingWindowSize(size = {}, defaults = {}) {
   const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 720;
   const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 760;
+  // Small default margin so most floating windows don't sit flush against
+  // the physical screen edge (hard to grab an edge-aligned resize handle,
+  // etc.) -- but some windows (the standalone keyboard dock) explicitly
+  // want to be draggable all the way to the true viewport edge, so this
+  // is a per-window override via defaults.viewportMargin, not hardcoded.
+  const viewportMargin = Number.isFinite(Number(defaults.viewportMargin)) ? Number(defaults.viewportMargin) : 28;
   const minWidth = Math.max(1, Number(defaults.minWidth) || 160);
   const configuredMaxWidth = Number(defaults.maxWidth);
   const maxWidth = Math.max(
     minWidth,
     Math.min(
       Number.isFinite(configuredMaxWidth) ? configuredMaxWidth : 720,
-      viewportWidth - 28,
+      viewportWidth - viewportMargin,
     ),
   );
   const minHeight = Math.max(1, Number(defaults.minHeight) || 120);
@@ -16,7 +22,7 @@ function normalizeNodeGraphFloatingWindowSize(size = {}, defaults = {}) {
     minHeight,
     Math.min(
       Number.isFinite(configuredMaxHeight) ? configuredMaxHeight : 760,
-      viewportHeight - 28,
+      viewportHeight - viewportMargin,
     ),
   );
   const source = size && typeof size === "object" ? size : {};
@@ -427,6 +433,22 @@ function nodeGraphFloatingWindowKeyboardTargets() {
       elementId: "nodeTraceDisplaySettingsPopover",
       workspaceKey: "traceDisplaySettings",
       applySize: typeof applyNodeGraphTraceDisplaySettingsWindowSize === "function" ? applyNodeGraphTraceDisplaySettingsWindowSize : null,
+      sizeAxes: { width: true, height: true },
+    },
+    {
+      draggingKey: "standaloneMidiKeyboardDragging",
+      resizingKey: "standaloneMidiKeyboardResizing",
+      elementId: "nodeStandaloneMidiKeyboardDock",
+      workspaceKey: "standaloneMidiKeyboard",
+      applySize: typeof applyNodeGraphStandaloneMidiKeyboardDockSize === "function" ? applyNodeGraphStandaloneMidiKeyboardDockSize : null,
+      sizeAxes: { width: true, height: true },
+    },
+    {
+      draggingKey: "tooltipWindowDragging",
+      resizingKey: "tooltipWindowResizing",
+      elementId: "nodeTooltipWindow",
+      workspaceKey: "tooltipWindow",
+      applySize: typeof applyNodeGraphTooltipWindowSize === "function" ? applyNodeGraphTooltipWindowSize : null,
       sizeAxes: { width: true, height: true },
     },
   ];

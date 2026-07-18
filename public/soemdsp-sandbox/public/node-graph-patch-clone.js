@@ -261,6 +261,7 @@ function cloneNodeGraphPatch(patch) {
     grid: normalizeNodeGraphPatchGrid(patch.grid),
     graphConnections: normalizeNodeGraphGraphConnections(patch.graphConnections),
     info: normalizeNodeGraphPatchInfo(patch.info),
+    modularOnlyControlsVisible: Boolean(patch.modularOnlyControlsVisible),
     modulations: (patch.modulations || []).map((modulation) => ({
       ...modulation,
       tracePoints: normalizeNodeGraphTracePoints(modulation.tracePoints),
@@ -316,6 +317,9 @@ function cloneNodeGraphPatch(patch) {
           : {}),
         ...((node.type === "samplePlayer" || node.type === "sampleLooper" || node.type === "audioPlayer") && normalizeNodeGraphSampleId(node.sample?.id)
           ? { sample: { id: normalizeNodeGraphSampleId(node.sample?.id) } }
+          : {}),
+        ...(node.type === "audioPlayer" && Object.hasOwn(node, "phosphorWaveformSettings")
+          ? { phosphorWaveformSettings: normalizeNodeGraphPhosphorWaveformSettings(node.phosphorWaveformSettings) }
           : {}),
         paramMeta: normalizeNodeGraphParamMetaForNode(node.type, node.paramMeta),
         ...(Object.keys(normalizeNodeGraphPatchPortMeta(node.portMeta)).length

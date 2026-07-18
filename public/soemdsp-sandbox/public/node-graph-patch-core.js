@@ -203,6 +203,9 @@ function validateNodeGraphPatch(patch) {
     ) {
       normalizedNode.sample = { id: normalizeNodeGraphSampleId(node.sample?.id) };
     }
+    if (type === "audioPlayer" && Object.hasOwn(node, "phosphorWaveformSettings")) {
+      normalizedNode.phosphorWaveformSettings = normalizeNodeGraphPhosphorWaveformSettings(node.phosphorWaveformSettings);
+    }
     if (type === "phosphillator") {
       const drawnPath = normalizeNodeGraphPhosphillatorDrawnPath(node.drawnPath);
       if (drawnPath) {
@@ -392,6 +395,7 @@ function validateNodeGraphPatch(patch) {
     graphConnections,
     grid,
     info: normalizeNodeGraphPatchInfo(patch.info),
+    modularOnlyControlsVisible: Boolean(patch.modularOnlyControlsVisible),
     modulations,
     monitors: normalizeNodeGraphPatchMonitors(patch.monitors, {
       ...patch,

@@ -137,15 +137,22 @@
             id="nodeModularOnlyViewButton"
             type="button"
             aria-label="Modular view"
-            aria-pressed="false"><span class="node-modular-view-icon" aria-hidden="true">🎛️</span></button>
+            aria-pressed="false"><span class="node-modular-view-icon" aria-hidden="true">💻</span></button>
           <button
             id="nodeModuleShopButton"
             type="button"
-            aria-pressed="false"><span>Module</span><span>Browser</span></button>
+            aria-label="Module Browser"
+            aria-pressed="false"><span class="node-modular-view-icon" aria-hidden="true">🎛️</span></button>
           <button
             id="nodeSavedPatchesWindowButton"
             type="button"
-            aria-pressed="false"><span>Patch</span><span>Browser</span></button>
+            aria-label="Patch Browser"
+            aria-pressed="false"><span class="node-modular-view-icon" aria-hidden="true">📖</span></button>
+          <button
+            id="nodeStandaloneMidiKeyboardButton"
+            type="button"
+            aria-label="MIDI Keyboard"
+            aria-pressed="false"><span class="node-modular-view-icon" aria-hidden="true">🎹</span></button>
           <span
             id="nodeWorldPositionReadout"
             class="node-world-position-readout"
@@ -234,9 +241,14 @@
             <button id="nodeOscilloscopeToggleButton" type="button" role="menuitem" aria-pressed="false">Show Displays</button>
             <button id="nodeModuleInterfaceControlsToggleButton" type="button" role="menuitem" aria-pressed="true">Hide Control Surfaces</button>
             <button id="nodeModuleSlidersToggleButton" type="button" role="menuitem" aria-pressed="true">Hide Sliders</button>
-            <button id="nodeTooltipToggleButton" type="button" role="menuitem" aria-pressed="true">Hide Tips</button>
+            <button id="nodeTooltipToggleButton" class="scene-context-window-button" type="button" role="menuitem" aria-pressed="true">
+              <span class="scene-context-window-button-icon" aria-hidden="true">📐</span>
+              <span class="scene-context-window-button-label">Hide Tips</span>
+              <kbd>T</kbd>
+            </button>
             <button id="nodeSliderAmountToggleButton" type="button" role="menuitem" aria-pressed="false">Show Amount Slider</button>
             <button id="nodeSliderPositionToggleButton" type="button" role="menuitem" aria-pressed="true">Hide Position Slider</button>
+            <button id="nodeKeyboardDebugToggleButton" type="button" role="menuitem" aria-pressed="true"><span>Hide Debug</span><kbd>D</kbd></button>
           </div>
           <button
             id="nodeVisibilityMenuResizeHandle"
@@ -313,8 +325,101 @@
         </section>
       </div>
 
-      <div class="node-help-stack">
+      <div
+        id="nodeTooltipWindow"
+        class="node-tooltip-window"
+        role="dialog"
+        aria-label="Tips"
+        hidden>
+        <div id="nodeTooltipWindowHeading" class="scene-context-heading">
+          <button
+            id="nodeTooltipWindowDragHandle"
+            class="scene-context-drag-handle"
+            type="button"
+            aria-label="Move tips">&#x2725;</button>
+          <div class="scene-context-title">
+            <span>Tips</span>
+          </div>
+          <button
+            id="nodeTooltipWindowCloseButton"
+            class="panel-close-button"
+            type="button"
+            aria-label="Close tips">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
         <div id="nodeInteractionHelp" class="node-interaction-help" role="status" aria-live="polite"></div>
+        <button
+          id="nodeTooltipWindowResizeHandle"
+          class="scene-context-resize-handle"
+          type="button"
+          aria-label="Resize tips"></button>
+      </div>
+
+      <div
+        id="nodePhosphorWaveformSettingsWindow"
+        class="node-phosphor-waveform-settings-window"
+        role="dialog"
+        aria-label="Waveform display options"
+        hidden>
+        <div class="scene-context-heading">
+          <button
+            id="nodePhosphorWaveformSettingsDragHandle"
+            class="scene-context-drag-handle"
+            type="button"
+            aria-label="Move waveform display options">&#x2725;</button>
+          <div class="scene-context-title">
+            <span>Waveform</span>
+            <small>display options</small>
+          </div>
+          <button
+            id="nodePhosphorWaveformSettingsClose"
+            class="panel-close-button"
+            type="button"
+            aria-label="Close waveform display options">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+        <label class="node-phosphor-waveform-settings-row">
+          <span>Time Window</span>
+          <input id="nodePhosphorWaveformTimeWindowInput" type="number" inputmode="decimal" step="0.05" min="0.05" max="60" autocomplete="off">
+          <span>s</span>
+        </label>
+        <div class="node-phosphor-waveform-settings-row" role="group" aria-label="Scroll mode">
+          <span>Scroll</span>
+          <button id="nodePhosphorWaveformScrollSmoothButton" type="button" data-scroll-mode="smooth" aria-pressed="true">Smooth</button>
+          <button id="nodePhosphorWaveformScrollSnapButton" type="button" data-scroll-mode="snap" aria-pressed="false">Snap</button>
+        </div>
+        <div class="node-phosphor-waveform-settings-row" role="group" aria-label="Scroll line position">
+          <span>Position</span>
+          <button id="nodePhosphorWaveformPositionLeftButton" type="button" data-scroll-position="left" aria-pressed="false">Left</button>
+          <button id="nodePhosphorWaveformPositionMidButton" type="button" data-scroll-position="mid" aria-pressed="true">Mid</button>
+          <button id="nodePhosphorWaveformPositionRightButton" type="button" data-scroll-position="right" aria-pressed="false">Right</button>
+        </div>
+        <label class="node-phosphor-waveform-settings-row">
+          <span>Line Width</span>
+          <input id="nodePhosphorWaveformLineWidthInput" type="number" inputmode="decimal" step="0.5" min="0.5" max="8" autocomplete="off">
+          <span>px</span>
+        </label>
+        <label class="node-phosphor-waveform-settings-row">
+          <span>Hue</span>
+          <input id="nodePhosphorWaveformHueInput" type="range" min="0" max="360" step="1">
+        </label>
+        <label class="node-phosphor-waveform-settings-row">
+          <span>Line Brightness</span>
+          <input id="nodePhosphorWaveformLineBrightnessInput" type="range" min="0" max="2" step="0.02">
+        </label>
+        <label class="node-phosphor-waveform-settings-row">
+          <span>BG Hue</span>
+          <input id="nodePhosphorWaveformBackgroundHueInput" type="range" min="0" max="360" step="1">
+        </label>
+        <label class="node-phosphor-waveform-settings-row">
+          <span>BG Brightness</span>
+          <input id="nodePhosphorWaveformBackgroundBrightnessInput" type="range" min="0" max="2" step="0.02">
+        </label>
+      </div>
+
+      <div class="node-help-stack">
         <div class="node-constraint-color-guide" aria-label="Resource constraint color guide">
           <span class="node-constraint-stack" data-constraint-stack="cpu">
             <label class="node-constraint-chip" data-constraint="cpu" data-tooltip-key="constraints.cpu">
@@ -402,6 +507,37 @@
           type="button"
           aria-label="Resize modular workspace"
           data-tooltip-key="workspace.resizeTitle"></button>
+      </div>
+
+      <div
+        id="nodeStandaloneMidiKeyboardDock"
+        class="node-standalone-midi-keyboard-dock"
+        role="dialog"
+        aria-label="Standalone MIDI keyboard"
+        hidden>
+        <div id="nodeStandaloneMidiKeyboardHeading" class="scene-context-heading">
+          <button
+            id="nodeStandaloneMidiKeyboardDragHandle"
+            class="scene-context-drag-handle"
+            type="button"
+            aria-label="Move keyboard">&#x2725;</button>
+          <div class="scene-context-title">
+            <span>Keyboard</span>
+          </div>
+          <button
+            id="nodeStandaloneMidiKeyboardCloseButton"
+            class="panel-close-button"
+            type="button"
+            aria-label="Close keyboard">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+        <div id="nodeStandaloneMidiKeyboardBody" class="node-standalone-midi-keyboard-body"></div>
+        <button
+          id="nodeStandaloneMidiKeyboardResizeHandle"
+          class="scene-context-resize-handle"
+          type="button"
+          aria-label="Resize keyboard"></button>
       </div>
 
       <section
@@ -1751,6 +1887,15 @@
           <span>Copy</span>
           <kbd>Ctrl+C</kbd>
         </button>
+        <button id="nodeSceneCopyModuleSettings" type="button" role="menuitem" hidden>
+          <span>Copy Settings</span>
+        </button>
+        <button id="nodeScenePasteModuleSettings" type="button" role="menuitem" hidden>
+          <span>Paste Settings</span>
+        </button>
+        <button id="nodeSceneSetModuleSettingsAsDefault" type="button" role="menuitem" hidden>
+          <span>Set as Default</span>
+        </button>
         <div id="nodeSceneWindowControls" class="scene-context-text-box-controls scene-context-window-controls">
           <div>
             <div class="scene-context-history-controls" role="group" aria-label="Patch history">
@@ -1768,18 +1913,23 @@
             </div>
             <div id="nodeSceneTimingControls" class="scene-context-timing-controls" role="group" aria-label="Patch timing"></div>
             <div class="scene-context-modular-view-controls" role="group" aria-label="Modular view">
-              <button id="nodeSceneToggleModularOnlyView" class="scene-context-window-button" type="button" aria-pressed="false">
-                <span class="scene-context-window-button-icon" aria-hidden="true">🎛️</span>
-                <span class="scene-context-window-button-label">Modular View</span>
+              <button id="nodeSceneToggleModularOnlyView" class="scene-context-window-button" type="button" aria-label="Modular View" aria-pressed="false">
+                <span class="scene-context-window-button-icon" aria-hidden="true">💻</span>
+                <kbd>M</kbd>
               </button>
-              <button id="nodeSceneToggleModularOnlyControls" class="scene-context-window-button" type="button" aria-pressed="false">
-                <span class="scene-context-window-button-icon" aria-hidden="true">🔘</span>
-                <span class="scene-context-window-button-label">View Buttons</span>
+              <button id="nodeSceneToggleModularOnlyControls" class="scene-context-window-button" type="button" aria-label="View Buttons" aria-pressed="false">
+                <span class="scene-context-window-button-icon" aria-hidden="true">🗺️</span>
+                <kbd>V</kbd>
+              </button>
+              <button id="nodeSceneToggleStandaloneMidiKeyboard" class="scene-context-window-button" type="button" aria-label="Show Keyboard" aria-pressed="false">
+                <span class="scene-context-window-button-icon" aria-hidden="true">🎹</span>
+                <kbd>K</kbd>
               </button>
             </div>
             <button id="nodeSceneOpenModuleBrowser" class="scene-context-window-button" type="button">
               <span class="scene-context-window-button-icon" aria-hidden="true">🎛️</span>
-              <span class="scene-context-window-button-label">Module Browser</span>
+              <span class="scene-context-window-button-label">Modules</span>
+              <kbd>Shift+A</kbd>
             </button>
             <button id="nodeSceneOpenSavedPatches" class="scene-context-window-button" type="button">
               <span class="scene-context-window-button-icon" aria-hidden="true">📁</span>
@@ -1788,10 +1938,9 @@
             <div class="scene-context-patch-actions" role="group" aria-label="Patch actions">
               <button id="nodeSceneCopyPatch" class="scene-context-patch-action-button" type="button" data-tooltip-key="actions.copyPatch">Copy</button>
               <button id="nodeScenePastePatch" class="scene-context-patch-action-button" type="button" data-tooltip-key="actions.pastePatch">Paste</button>
-              <button id="nodeSceneSharePatch" class="scene-context-patch-action-button" type="button" data-tooltip-key="actions.sharePatch">Share</button>
             </div>
             <button id="nodeSceneOpenModuleActions" class="scene-context-window-button" type="button">
-              <span class="scene-context-window-button-icon" aria-hidden="true">🛠️</span>
+              <span class="scene-context-window-button-icon" aria-hidden="true">⚙️</span>
               <span class="scene-context-window-button-label">Module Settings</span>
             </button>
             <button id="nodeSceneOpenUiSettings" class="scene-context-window-button" type="button">
@@ -3264,6 +3413,7 @@
   <script src="./public/modules/pulseExplosion/pulse-explosion-live-evaluator.js?v=per-module-dispatch-20260711"></script>
   <script src="./public/modules/comparator/comparator-live-evaluator.js?v=per-module-dispatch-20260711"></script>
   <script src="./public/modules/minMax/min-max-live-evaluator.js?v=per-module-dispatch-20260711"></script>
+  <script src="./public/modules/bitConverter/bit-converter-live-evaluator.js?v=bit-converter-20260717"></script>
   <script src="./public/modules/aliasSine/alias-sine-live-evaluator.js?v=per-module-dispatch-20260711"></script>
   <script src="./public/modules/tb303Filter/tb303-filter-live-evaluator.js?v=per-module-dispatch-20260711"></script>
   <script src="./public/modules/delayEffect/delay-effect-live-evaluator.js?v=per-module-dispatch-20260711"></script>

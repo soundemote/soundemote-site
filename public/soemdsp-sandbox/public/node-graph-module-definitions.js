@@ -34,6 +34,7 @@ const nodeGraphNodeLabels = Object.freeze({
   triggerCounter: "Trigger Counter",
   triggerDivider: "Trigger Divider",
   comparator: "Comparator",
+  bitConverter: "Bit Converter",
   stepSequencer: "Step Sequencer",
   spiral: "Spiral",
   fractalSpiral: "Fractal Spiral",
@@ -1905,6 +1906,30 @@ const nodeGraphModuleDefinitions = Object.freeze({
     outputs: ["Left", "Right"],
     parameters: [],
   },
+  bitConverter: {
+    // Full Scale carries a raw, exact integer (e.g. keyboardController's
+    // Held Keys bitmask) -- must not be smoothed like a normal CV input,
+    // same reasoning as Held Keys itself being a digital output. The two
+    // "-> Full Scale" outputs are the same kind of raw value on the way
+    // back out; the two "Full Scale ->" outputs are normal 0..1/-1..1 CV
+    // and are left analog.
+    digitalInputs: ["Full Scale"],
+    digitalOutputs: ["Unipolar to Full Scale", "Bipolar to Full Scale"],
+    inputs: ["Full Scale", "Unipolar", "Bipolar"],
+    outputs: ["Full Scale to Unipolar", "Full Scale to Bipolar", "Unipolar to Full Scale", "Bipolar to Full Scale"],
+    parameters: [
+      {
+        defaultValue: "53",
+        key: "bits",
+        label: "Bits",
+        max: "53",
+        mid: "27",
+        min: "1",
+        nonlinearSlider: false,
+        step: "1",
+      },
+    ],
+  },
   gain: {
     inputAliases: { Mono: "In" },
     inputLabels: { In: "Mono" },
@@ -2697,13 +2722,14 @@ const nodeGraphModuleDefinitions = Object.freeze({
     parameters: [],
   },
   keyboardController: {
+    digitalOutputs: ["Held Keys"],
     inputs: ["MIDI Note", "Gate", "Velocity", "Octave", "Reset", "Hold", "X", "Y"],
     layout: "keyboardController",
     outputLabels: {
       "0.1V/Oct": "0.1V",
       Increment: "Inc.",
     },
-    outputs: ["Gate", "1 Sample Gate", "Key", "Q", "MIDI", "Double", "0.1V/Oct", "Increment", "Frequency", "Pitch", "X", "Y"],
+    outputs: ["Gate", "1 Sample Gate", "Key", "Q", "MIDI", "Double", "0.1V/Oct", "Increment", "Frequency", "Pitch", "X", "Y", "Held Keys"],
     parameters: [],
   },
   samplePlayer: {
@@ -2758,9 +2784,9 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   macroControls: {
-    inputs: ["M1 In", "M2 In", "M3 In", "M4 In", "M5 In", "M6 In", "M7 In", "M8 In", "M9 In", "M10 In", "Reset"],
+    inputs: ["M1 In", "M2 In", "M3 In", "M4 In", "M5 In", "M6 In", "M7 In", "M8 In", "Reset"],
     layout: "macroControls",
-    outputs: ["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10"],
+    outputs: ["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8"],
     parameters: [],
   },
   pitchModWheel: {

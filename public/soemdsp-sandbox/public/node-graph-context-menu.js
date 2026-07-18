@@ -611,6 +611,9 @@ function nodeGraphContextTargetSliderReadout(nodeId = nodeGraphModuleActionTarge
 
 const nodeGraphModuleActionControlIds = [
   "nodeSceneCopyModule",
+  "nodeSceneCopyModuleSettings",
+  "nodeScenePasteModuleSettings",
+  "nodeSceneSetModuleSettingsAsDefault",
   "nodeSceneSelectedModule",
   "nodeSceneAddToGroup",
   "nodeSceneAddToUi",
@@ -835,6 +838,9 @@ function configureNodeSceneContextMenu(mode) {
   const sceneMenu = document.getElementById("nodeSceneContextMenu");
   const moduleActionsWindow = document.getElementById("nodeModuleActionsWindow");
   const copyButton = document.getElementById("nodeSceneCopyModule");
+  const copySettingsButton = document.getElementById("nodeSceneCopyModuleSettings");
+  const pasteSettingsButton = document.getElementById("nodeScenePasteModuleSettings");
+  const setDefaultButton = document.getElementById("nodeSceneSetModuleSettingsAsDefault");
   const moduleActionsWindowButton = document.getElementById("nodeSceneOpenModuleActions");
   const metaparametersWindowButton = document.getElementById("nodeSceneOpenMetaparameters");
   const addToGroupButton = document.getElementById("nodeSceneAddToGroup");
@@ -1026,6 +1032,15 @@ function configureNodeSceneContextMenu(mode) {
     setNodeGraphModuleActionControlsHidden(false);
   }
   copyButton.hidden = !moduleMode;
+  if (copySettingsButton) {
+    copySettingsButton.hidden = !moduleMode || multiModuleMode;
+  }
+  if (pasteSettingsButton) {
+    pasteSettingsButton.hidden = !moduleMode || multiModuleMode;
+  }
+  if (setDefaultButton) {
+    setDefaultButton.hidden = !moduleMode || multiModuleMode;
+  }
   addToGroupButton.hidden = !moduleMode;
   const targetIsGraphType = nodeGraphModuleIsGraphType(targetNode?.type);
   if (addToUiButton) {
@@ -1095,6 +1110,31 @@ function configureNodeSceneContextMenu(mode) {
       : targetNode
         ? nodeGraphTooltipText("actions.copyUnavailableOutput")
         : nodeGraphTooltipText("actions.copyUnavailableOneModule");
+    const settingsClipboard = nodeGraphMvp.moduleSettingsClipboard;
+    if (copySettingsButton) {
+      copySettingsButton.disabled = !targetNode;
+      copySettingsButton.title = targetNode
+        ? "Copy this module's settings to paste onto another module of the same type."
+        : "Select a module to copy its settings.";
+    }
+    if (pasteSettingsButton) {
+      const settingsMismatch = Boolean(targetNode) && Boolean(settingsClipboard) && settingsClipboard.type !== targetNode.type;
+      pasteSettingsButton.disabled = !targetNode || !settingsClipboard;
+      pasteSettingsButton.classList.toggle("settings-paste-mismatch", settingsMismatch);
+      pasteSettingsButton.title = !targetNode
+        ? "Select a module to paste settings onto."
+        : !settingsClipboard
+          ? "Copy a module's settings first."
+          : settingsMismatch
+            ? `Clipboard holds ${settingsClipboard.type} settings, not ${targetNode.type}.`
+            : "Paste the copied settings onto this module.";
+    }
+    if (setDefaultButton) {
+      setDefaultButton.disabled = !targetNode;
+      setDefaultButton.title = targetNode
+        ? `Save these settings as the default for new ${targetNode.type} modules.`
+        : "Select a module to set its default settings.";
+    }
     addToGroupButton.disabled = true;
     addToGroupButton.setAttribute("aria-disabled", "true");
     addToGroupButton.classList.add("node-under-construction-control");
@@ -1506,10 +1546,32 @@ function openNodeScopeContextMenu(event) {
   return true;
 }
 
+// Right-click on the Music Player's waveform display -- deliberately does
+// NOT call closeNodeSceneContextMenu() or touch any other floating window.
+// The waveform settings window is fully independent, not part of the
+// shared-inspector displacement dance (metadata/module-actions/trace
+// settings auto-closing each other) -- opening it must never make another
+// window disappear.
+function openNodePhosphorWaveformContextMenu(event) {
+  const display = event.target.closest?.(".node-phosphor-waveform-display");
+  const nodeId = display?.dataset?.node || "";
+  if (!nodeId || !nodeGraphPatchNode(nodeId)) {
+    return false;
+  }
+  if (typeof openNodeGraphPhosphorWaveformSettings !== "function") {
+    return false;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  openNodeGraphPhosphorWaveformSettings(nodeId, event);
+  return true;
+}
+
 const nodeGraphWorkspaceInteractiveDialogSelector =
   "input, textarea, select, option, [contenteditable='true'], " +
   "#nodeSceneContextMenu, #nodeParameterMetadataPopover, #nodeGlobalScopeMenu, " +
-  "#nodeModuleActionsWindow, #nodeShaderScriptDialog, #nodeCanvasScriptDialog, #nodeSavedPatchesWindow";
+  "#nodeModuleActionsWindow, #nodeShaderScriptDialog, #nodeCanvasScriptDialog, #nodeSavedPatchesWindow, " +
+  "#nodePhosphorWaveformSettingsWindow";
 const nodeGraphWorkspaceOccupiedElementSelector =
   ".node-wire-hit-path, .node-wire-path, .dsp-node, .node-port, .node-param-port, .node-slider-readout";
 
@@ -1539,6 +1601,9 @@ function openNodeSceneContextMenu(event) {
     return;
   }
   if (openNodeScopeContextMenu(event)) {
+    return;
+  }
+  if (openNodePhosphorWaveformContextMenu(event)) {
     return;
   }
   const contextMenuClientPoint = rememberNodeGraphContextMenuClientPoint(event);
@@ -1609,18 +1674,18 @@ function openNodeSceneContextMenu(event) {
   nodeGraphMvp.sceneContextTargetNode = null;
   nodeGraphMvp.sceneContextTargetWire = null;
   clearNodeGraphSelection();
+  // Right-click on empty canvas always opens/repositions Command Center --
+  // it used to divert to opening the Module Browser instead when Command
+  // Center was already open, which was surprising (a second right-click
+  // should reposition the menu you already have, not switch to a
+  // different window). That change dropped the attention-pulse glow that
+  // used to accompany right-click along with it -- restored here so every
+  // right-click (open or reposition) glows the window, not just a
+  // conditional "already open" case.
   const commandCenter = document.getElementById("nodeSceneContextMenu");
-  const moduleBrowser = document.getElementById("nodeModuleShopView");
-  if (commandCenter && !commandCenter.hidden) {
-    if (moduleBrowser && !moduleBrowser.hidden) {
-      pulseNodeGraphFloatingWindowAttention(moduleBrowser);
-      return;
-    }
-    openNodeGraphModuleShop(nodeGraphMvp.sceneContextPoint, contextMenuClientPoint);
-    return;
-  }
   configureNodeSceneContextMenu("home");
   positionNodeSceneContextMenuAtCurrentSavedOrInitial(commandCenter, event.clientX, event.clientY);
+  pulseNodeGraphFloatingWindowAttention(commandCenter);
   if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
     rememberNodeGraphWorkspaceWindowState(
       "commandCenter",

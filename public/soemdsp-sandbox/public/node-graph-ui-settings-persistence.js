@@ -12,6 +12,8 @@ const nodeGraphWorkspaceWindowStateKeys = Object.freeze([
   "uiSettings",
   "uiDev",
   "traceDisplaySettings",
+  "standaloneMidiKeyboard",
+  "tooltipWindow",
 ]);
 
 const nodeGraphWorkspaceWindowElements = Object.freeze({
@@ -25,6 +27,8 @@ const nodeGraphWorkspaceWindowElements = Object.freeze({
   uiSettings: "nodeUserUiSettingsPanel",
   uiDev: "nodeUiDevHelper",
   traceDisplaySettings: "nodeTraceDisplaySettingsPopover",
+  standaloneMidiKeyboard: "nodeStandaloneMidiKeyboardDock",
+  tooltipWindow: "nodeTooltipWindow",
 });
 
 const nodeGraphSharedInspectorWindowKeys = Object.freeze([
@@ -351,7 +355,16 @@ function applyNodeGraphWorkspaceWindowStateToElement(key) {
     element.hidden = true;
     return;
   }
+  if (key === "standaloneMidiKeyboard" && state.open && typeof initNodeGraphStandaloneMidiKeyboard === "function") {
+    initNodeGraphStandaloneMidiKeyboard();
+  }
   element.hidden = !state.open;
+  if (key === "standaloneMidiKeyboard" && typeof applyNodeGraphStandaloneMidiKeyboardDockSize === "function") {
+    applyNodeGraphStandaloneMidiKeyboardDockSize(state.size);
+  }
+  if (key === "tooltipWindow" && typeof applyNodeGraphTooltipWindowSize === "function") {
+    applyNodeGraphTooltipWindowSize(state.size);
+  }
   if (key === "moduleActions" && typeof applyNodeModuleActionsWindowSize === "function") {
     applyNodeModuleActionsWindowSize(nodeGraphMvp.sharedInspectorWindowState?.size);
   }
@@ -468,6 +481,9 @@ function normalizeNodeUiDevSettings(settings = {}) {
   const nodeColors = settings.nodeColors && typeof settings.nodeColors === "object"
     ? settings.nodeColors
     : {};
+  const moduleDefaultOverrides = settings.moduleDefaultOverrides && typeof settings.moduleDefaultOverrides === "object"
+    ? settings.moduleDefaultOverrides
+    : {};
   const view = settings.view && typeof settings.view === "object"
     ? settings.view
     : {};
@@ -477,7 +493,21 @@ function normalizeNodeUiDevSettings(settings = {}) {
       normalizedColors[property] = normalizeNodeUiDevColor(value);
     }
   }
+  const normalizedModuleDefaultOverrides = {};
+  for (const [type, override] of Object.entries(moduleDefaultOverrides)) {
+    if (!Object.hasOwn(nodeGraphModuleDefinitions, type) || !override || typeof override !== "object") {
+      continue;
+    }
+    const snapshot = {};
+    for (const field of nodeGraphModuleSettingsFields) {
+      if (Object.hasOwn(override, field)) {
+        snapshot[field] = override[field];
+      }
+    }
+    normalizedModuleDefaultOverrides[type] = snapshot;
+  }
   const gridVisible = view.gridVisible ?? controls.gridVisible ?? controls.showGrid ?? nodeGraphMvp.gridVisible;
+  const keyboardDebugInfoVisible = Boolean(view.keyboardDebugInfoVisible ?? nodeGraphMvp.keyboardDebugInfoVisible);
   const moduleButtonsVisible = Boolean(view.moduleButtonsVisible ?? nodeGraphMvp.moduleButtonsVisible);
   const moduleInterfaceControlsVisible = Boolean(view.moduleInterfaceControlsVisible ?? nodeGraphMvp.moduleInterfaceControlsVisible);
   const moduleOscilloscopesVisible = Boolean(view.moduleOscilloscopesVisible ?? nodeGraphMvp.moduleOscilloscopesVisible);
@@ -621,8 +651,10 @@ function normalizeNodeUiDevSettings(settings = {}) {
       ]),
     ),
     nodeColors: normalizedColors,
+    moduleDefaultOverrides: normalizedModuleDefaultOverrides,
     view: {
       gridVisible: Boolean(gridVisible),
+      keyboardDebugInfoVisible,
       moduleButtonsVisible,
       moduleInterfaceControlsVisible,
       moduleOscilloscopesVisible,
@@ -701,8 +733,10 @@ function readNodeUiDevSettingsFromControls(options = {}) {
     controls,
     exposedControls,
     nodeColors,
+    moduleDefaultOverrides: nodeGraphMvp.moduleDefaultOverrides,
     view: {
       gridVisible: Boolean(nodeGraphMvp.gridVisible),
+      keyboardDebugInfoVisible: Boolean(nodeGraphMvp.keyboardDebugInfoVisible),
       moduleButtonsVisible: Boolean(nodeGraphMvp.moduleButtonsVisible),
       moduleInterfaceControlsVisible: Boolean(nodeGraphMvp.moduleInterfaceControlsVisible),
       moduleOscilloscopesVisible: Boolean(nodeGraphMvp.moduleOscilloscopesVisible),
@@ -804,7 +838,9 @@ function applyNodeUiDevSettings(settings) {
       input.value = color;
     }
   }
+  nodeGraphMvp.moduleDefaultOverrides = normalized.moduleDefaultOverrides;
   nodeGraphMvp.gridVisible = Boolean(normalized.view.gridVisible);
+  nodeGraphMvp.keyboardDebugInfoVisible = Boolean(normalized.view.keyboardDebugInfoVisible);
   nodeGraphMvp.moduleButtonsVisible = Boolean(normalized.view.moduleButtonsVisible);
   nodeGraphMvp.moduleInterfaceControlsVisible = Boolean(normalized.view.moduleInterfaceControlsVisible);
   nodeGraphMvp.moduleOscilloscopesVisible = Boolean(normalized.view.moduleOscilloscopesVisible);
@@ -893,6 +929,9 @@ function applyNodeUiDevSettings(settings) {
     applyNodeGraphPan();
   }
   renderNodeGraphGridToggle();
+  if (typeof renderNodeGraphKeyboardDebugToggle === "function") {
+    renderNodeGraphKeyboardDebugToggle();
+  }
   renderNodeGraphModuleVisibilityToggles();
   renderNodeGraphModuleScopeBrightnessControl();
   renderNodeGraphSliderVisibilityToggles();

@@ -447,10 +447,14 @@ function refreshNodeGraphScreenSpaceShaderBodyStatus(body) {
   status.textContent = `${script.inputs.length} inputs / ${script.visualInputs.length} controls`;
 }
 
-function createNodeGraphMacroControlsBody(node) {
+// node is optional -- see the comment on createNodeGraphKeyboardControllerBody;
+// same reuse pattern for the standalone performance dock.
+function createNodeGraphMacroControlsBody(node = null) {
   const section = document.createElement("section");
   section.className = "node-macro-controls-panel node-macro-controls-module";
-  section.dataset.node = node;
+  if (node) {
+    section.dataset.node = node;
+  }
   section.setAttribute("aria-label", "Macro controls");
   const heading = document.createElement("div");
   heading.className = "node-macro-controls-heading";
@@ -463,12 +467,12 @@ function createNodeGraphMacroControlsBody(node) {
   const status = document.createElement("span");
   status.className = "pill";
   status.dataset.macroControlsStatus = "true";
-  status.textContent = "10 macros ready";
+  status.textContent = "8 macros ready";
   heading.append(title, status);
   const row = document.createElement("div");
   row.className = "node-macro-controls-row";
   row.setAttribute("aria-label", "Macro knob row");
-  for (let index = 0; index < 10; index += 1) {
+  for (let index = 0; index < 8; index += 1) {
     const knob = document.createElement("button");
     knob.className = "node-macro-knob";
     knob.type = "button";
@@ -491,10 +495,14 @@ function createNodeGraphMacroControlsBody(node) {
   return section;
 }
 
-function createNodeGraphPitchModWheelBody(node) {
+// node is optional -- see the comment on createNodeGraphKeyboardControllerBody;
+// same reuse pattern for the standalone performance dock.
+function createNodeGraphPitchModWheelBody(node = null) {
   const section = document.createElement("section");
   section.className = "node-performance-wheels-panel node-performance-wheels-module";
-  section.dataset.node = node;
+  if (node) {
+    section.dataset.node = node;
+  }
   section.setAttribute("aria-label", "Pitch and modulation wheels");
   const heading = document.createElement("div");
   heading.className = "node-performance-wheels-heading";
@@ -532,10 +540,20 @@ function createNodeGraphPitchModWheelBody(node) {
   return section;
 }
 
-function createNodeGraphKeyboardControllerBody(node) {
+// node is optional -- the standalone MIDI keyboard dock (see
+// initNodeGraphStandaloneMidiKeyboard) calls this with no node at all.
+// Everything below is already generic/document-wide (renderNodeGraphMidiKeyboardSignal
+// and bindNodeGraphKeyboardControllerModuleEvents both query
+// ".node-midi-keyboard-module" across the whole document, not a specific
+// node), so a standalone instance mirrors every keyboardController node's
+// keyboard for free -- same shared nodeGraphMvp.midiKeyboardSignal, same
+// "active" key highlighting on every rendered surface.
+function createNodeGraphKeyboardControllerBody(node = null) {
   const section = document.createElement("section");
   section.className = "node-midi-keyboard-panel node-midi-keyboard-module";
-  section.dataset.node = node;
+  if (node) {
+    section.dataset.node = node;
+  }
   section.setAttribute("aria-label", "Mouse playable MIDI keyboard");
   const heading = document.createElement("div");
   heading.className = "node-midi-keyboard-heading";
@@ -555,7 +573,7 @@ function createNodeGraphKeyboardControllerBody(node) {
   const modeSelect = document.createElement("select");
   modeSelect.dataset.midiKeyboardModeSelect = "true";
   modeSelect.setAttribute("aria-label", "Keyboard mode");
-  for (const [value, label] of [["press", "Press"], ["hold", "Hold"]]) {
+  for (const [value, label] of [["press", "Press"], ["hold", "Hold"], ["toggle", "Toggle"]]) {
     const option = document.createElement("option");
     option.value = value;
     option.textContent = label;
@@ -579,6 +597,23 @@ function createNodeGraphKeyboardControllerBody(node) {
   up.setAttribute("aria-label", "Transpose keyboard up one octave");
   up.textContent = "+";
   octave.append(down, octaveValue, up);
+  const keyCount = document.createElement("span");
+  keyCount.className = "node-midi-keyboard-octave-control";
+  keyCount.setAttribute("aria-label", "Number of keys");
+  const keyCountDown = document.createElement("button");
+  keyCountDown.type = "button";
+  keyCountDown.dataset.midiKeyboardKeyCountDown = "true";
+  keyCountDown.setAttribute("aria-label", "Show fewer keys");
+  keyCountDown.textContent = "-";
+  const keyCountValue = document.createElement("strong");
+  keyCountValue.dataset.midiKeyboardKeyCountValue = "true";
+  keyCountValue.textContent = "25";
+  const keyCountUp = document.createElement("button");
+  keyCountUp.type = "button";
+  keyCountUp.dataset.midiKeyboardKeyCountUp = "true";
+  keyCountUp.setAttribute("aria-label", "Show more keys");
+  keyCountUp.textContent = "+";
+  keyCount.append(keyCountDown, keyCountValue, keyCountUp);
   const midiButton = document.createElement("button");
   midiButton.type = "button";
   midiButton.dataset.midiKeyboardMidiButton = "true";
@@ -591,7 +626,7 @@ function createNodeGraphKeyboardControllerBody(node) {
   emptyOption.value = "";
   emptyOption.textContent = "no midi input";
   midiSelect.append(emptyOption);
-  controls.append(modeLabel, octave, midiButton, midiSelect);
+  controls.append(modeLabel, octave, keyCount, midiButton, midiSelect);
   heading.append(title, controls);
 
   const performance = document.createElement("div");
@@ -599,28 +634,16 @@ function createNodeGraphKeyboardControllerBody(node) {
   const surface = document.createElement("div");
   surface.className = "node-midi-keyboard-surface";
   surface.setAttribute("aria-label", "Two octave keyboard preview");
+  // Left empty -- populated by renderNodeGraphMidiKeyboardKeys (called
+  // from bindNodeGraphKeyboardControllerModuleEvents right after mount)
+  // from the current key count, since the key set is now user-configurable
+  // rather than a fixed 2-octave layout.
   const whiteRow = document.createElement("div");
   whiteRow.className = "node-midi-keyboard-white-row";
   whiteRow.setAttribute("aria-hidden", "true");
-  for (const [midi, label] of [[48, "C3"], [50, "D3"], [52, "E3"], [53, "F3"], [55, "G3"], [57, "A3"], [59, "B3"], [60, "C4"], [62, "D4"], [64, "E4"], [65, "F4"], [67, "G4"], [69, "A4"], [71, "B4"], [72, "C5"]]) {
-    const key = document.createElement("span");
-    key.dataset.midi = String(midi);
-    key.textContent = label;
-    whiteRow.append(key);
-  }
   const blackRow = document.createElement("div");
   blackRow.className = "node-midi-keyboard-black-row";
   blackRow.setAttribute("aria-hidden", "true");
-  for (const keySpec of [
-    [49, "C#3", "4.6%"], [51, "D#3", "11.2%"], [54, "F#3", "24.6%"], [56, "G#3", "31.2%"], [58, "A#3", "37.9%"],
-    [61, "C#4", "51.2%"], [63, "D#4", "57.9%"], [66, "F#4", "71.2%"], [68, "G#4", "77.9%"], [70, "A#4", "84.6%"],
-  ]) {
-    const key = document.createElement("span");
-    key.dataset.midi = String(keySpec[0]);
-    key.style.setProperty("--key-left", keySpec[2]);
-    key.textContent = keySpec[1];
-    blackRow.append(key);
-  }
   surface.append(whiteRow, blackRow);
   performance.append(surface);
 
@@ -655,7 +678,17 @@ function createNodeGraphKeyboardControllerBody(node) {
     }
     signalBar.append(item);
   }
-  section.append(heading, performance, signalBar);
+  const bitmaskBar = document.createElement("div");
+  bitmaskBar.className = "node-midi-keyboard-bitmask-row";
+  bitmaskBar.dataset.midiKeyboardBitmaskRow = "true";
+  bitmaskBar.setAttribute("aria-live", "polite");
+  const bitmaskLabel = document.createElement("span");
+  bitmaskLabel.textContent = "held ";
+  const bitmaskValue = document.createElement("strong");
+  bitmaskValue.dataset.midiKeyboardBitmaskValue = "true";
+  bitmaskBar.append(bitmaskLabel, bitmaskValue);
+
+  section.append(heading, performance, signalBar, bitmaskBar);
   return section;
 }
 

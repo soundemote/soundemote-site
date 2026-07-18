@@ -6,7 +6,7 @@
   "controls": {
     "mouseLightEnabled": true,
     "showOriginMarker": false,
-    "modularShaderEnabled": true,
+    "modularShaderEnabled": false,
     "scopeBloomEnabled": false,
     "settingsHeaderTextSize": 100,
     "uiDevButtonTextSize": 50,
@@ -121,9 +121,11 @@
     "--node-param-output-fill": "#66e0a3",
     "--node-param-output-stroke": "#66e0a3"
   },
+  "moduleDefaultOverrides": {},
   "view": {
     "gridVisible": true,
-    "moduleButtonsVisible": true,
+    "keyboardDebugInfoVisible": true,
+    "moduleButtonsVisible": false,
     "moduleInterfaceControlsVisible": true,
     "moduleOscilloscopesVisible": true,
     "moduleSlidersVisible": true,
@@ -139,24 +141,24 @@
     "moduleScopeLineThickness": 1,
     "moduleScopeDiscontinuitySkipSamples": 1,
     "traceSettings": {
-      "brightness": 0.7385,
-      "color": "#2825d4",
+      "brightness": 0.6068,
+      "color": "#6b6d9e",
       "dot1Enabled": true,
-      "dot1Size": 0.0286,
-      "secondaryBrightness": 0.18,
-      "secondaryColor": "#184fff",
+      "dot1Size": 0.0375,
+      "secondaryBrightness": 2,
+      "secondaryColor": "#ceffbd",
       "secondaryEnabled": true,
-      "secondarySize": 0.24,
-      "secondaryLineThickness": 0.48,
-      "cycles": 4,
-      "lineThickness": 0,
+      "secondarySize": 0.0295,
+      "secondaryLineThickness": 0.53,
+      "cycles": 2,
+      "lineThickness": 0.3875,
       "padding": 0,
       "skipDiscontinuities": true,
-      "sourceSync": true,
+      "sourceSync": false,
       "zoomSeconds": 0.05
     },
     "sliderLayout": "text-inside",
-    "sliderAmountVisible": false,
+    "sliderAmountVisible": true,
     "sliderPositionVisible": true,
     "hideMouseWhileDragging": true,
     "moduleCatalogVisibility": {
@@ -432,6 +434,10 @@
         "developer": true,
         "home": false
       },
+      "bitConverter": {
+        "developer": true,
+        "home": false
+      },
       "gain": {
         "developer": true,
         "home": false
@@ -702,19 +708,19 @@
       }
     },
     "sceneContextWindowSize": {
-      "width": 140
+      "width": 143
     },
     "moduleActionWindowSize": {
-      "width": 185,
-      "height": 620
+      "width": 188,
+      "height": 474
     },
     "workspaceWindowStatesVersion": 1,
     "workspaceWindowStates": {
       "commandCenter": {
         "open": false,
         "position": {
-          "left": 111,
-          "top": 466
+          "left": 311,
+          "top": 263
         }
       },
       "moduleActions": {
@@ -729,33 +735,33 @@
       "patchExplorer": {
         "open": false,
         "position": {
-          "left": 569,
-          "top": 512
+          "left": 804,
+          "top": 238
         }
       },
       "moduleBrowser": {
         "open": false,
         "position": {
-          "left": 91,
-          "top": 146
+          "left": 67,
+          "top": 228
         },
         "size": {
-          "width": 186,
-          "height": 683
+          "width": 191,
+          "height": 514
         }
       },
       "visibilityMenu": {
         "open": false,
         "position": {
-          "left": 1719,
-          "top": 114
+          "left": 483,
+          "top": 153
         }
       },
       "uiSettings": {
         "open": false,
         "position": {
-          "left": 371,
-          "top": 164
+          "left": 1367,
+          "top": 172
         }
       },
       "uiDev": {
@@ -764,16 +770,30 @@
       "traceDisplaySettings": {
         "open": false,
         "targetNode": "output"
+      },
+      "standaloneMidiKeyboard": {
+        "open": false
+      },
+      "tooltipWindow": {
+        "open": false,
+        "position": {
+          "left": 1304,
+          "top": 289
+        },
+        "size": {
+          "width": 408,
+          "height": 144
+        }
       }
     },
     "sharedInspectorActive": "",
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": -11.964285714285666,
-        "y": -42.91964285714289
+        "x": 312.92857142857144,
+        "y": 93.24999999999997
       },
-      "zoom": 0.8455147498926691
+      "zoom": 1.6688961939958273
     },
     "moduleStoreDepartment": "",
     "savedPatchBankIndex": 0,
@@ -781,7 +801,7 @@
     "savedPatchGridColumns": 3,
     "savedPatchExplorerView": "banks",
     "workingPatch": null,
-    "currentSavedPatchFilename": "",
+    "currentSavedPatchFilename": "bank000-program000-lorenz-demonstration-chaos--lorenz--attractor--strange.json",
     "patchDirtyState": "untouched"
   }
 }
