@@ -777,8 +777,8 @@
       "tooltipWindow": {
         "open": false,
         "position": {
-          "left": 1304,
-          "top": 289
+          "left": 1194,
+          "top": 215
         },
         "size": {
           "width": 408,
@@ -790,8 +790,8 @@
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": 312.92857142857144,
-        "y": 93.24999999999997
+        "x": 250.92857142857144,
+        "y": 141.25
       },
       "zoom": 1.6688961939958273
     },
