@@ -59,7 +59,7 @@ const rewriteRelativeLinks = (markdown: string, repo: string, branch = "master")
 export const featuredArticles: FeaturedArticle[] = [
   {
     slug: "phosphor",
-    repoHref: "https://github.com/elanhickler/soemdsp-sandbox-phosphor",
+    repoHref: "https://github.com/soundemote/soemdsp-sandbox",
     emoji: "🌕",
     title: "Phosphor — an oscilloscope glow field guide",
     tagline: "Why our scopes glow the way they do.",
@@ -131,7 +131,7 @@ export const featuredArticles: FeaturedArticle[] = [
   },
   {
     slug: "jerobeammodules",
-    // The original source (the jerobeam-modules branch of soemdsp-sandbox-phosphor)
+    // The original source (the jerobeam-modules branch of soemdsp-sandbox)
     // has been deleted -- this article, its images, and its dedication doc are now
     // preserved locally (see jerobeamModules.ts and public/media/jerobeam-modules/)
     // rather than depending on a repo that no longer exists.
