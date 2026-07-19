@@ -770,12 +770,12 @@
       "moduleBrowser": {
         "open": false,
         "position": {
-          "left": 308,
-          "top": 74
+          "left": 365,
+          "top": 60
         },
         "size": {
-          "width": 201,
-          "height": 604
+          "width": 221,
+          "height": 760
         }
       },
       "visibilityMenu": {
@@ -815,7 +815,7 @@
       },
       "zoom": 0.3310960199373566
     },
-    "moduleStoreDepartment": "\u267e\ufe0fChaos",
+    "moduleStoreDepartment": "\ud83d\udd2cDigital",
     "savedPatchBankIndex": 0,
     "savedPatchBankName": "basic",
     "savedPatchGridColumns": 3,
