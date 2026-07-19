@@ -123,21 +123,21 @@
   },
   "moduleDefaultOverrides": {},
   "view": {
-    "gridVisible": false,
-    "keyboardDebugInfoVisible": false,
-    "moduleButtonsVisible": false,
+    "gridVisible": true,
+    "keyboardDebugInfoVisible": true,
+    "moduleButtonsVisible": true,
     "moduleInterfaceControlsVisible": true,
     "moduleOscilloscopesVisible": true,
     "moduleSlidersVisible": true,
     "moduleScopeBackgroundColor": "#000000",
-    "globalSmoothingSeconds": 1,
+    "globalSmoothingSeconds": 0.1,
     "globalSmoothingManual": true,
     "moduleScopeDotCore1Enabled": true,
     "moduleScopeDotCore1Size": 1.94,
     "moduleScopeDotCore1Brightness": 33.5,
     "moduleScopeDotCore1Color": "#ffffff",
     "moduleScopeFramesPerSecond": 60,
-    "moduleScopePointBudget": 4096,
+    "moduleScopePointBudget": 16384,
     "moduleScopeLineThickness": 1,
     "moduleScopeDiscontinuitySkipSamples": 1,
     "macroKnobArcThickness": 7,
@@ -148,11 +148,11 @@
     "macroKnobValuePosition": "bottom",
     "traceSettings": {
       "brightness": 0.92,
-      "color": "#abcdef",
+      "color": "#75ebff",
       "dot1Enabled": true,
-      "dot1Size": 0.0175,
+      "dot1Size": 0.08,
       "secondaryBrightness": 0.18,
-      "secondaryColor": "#00ffaa",
+      "secondaryColor": "#184fff",
       "secondaryEnabled": true,
       "secondarySize": 0.24,
       "secondaryLineThickness": 0.48,
@@ -160,11 +160,11 @@
       "lineThickness": 0.2,
       "padding": 0,
       "skipDiscontinuities": true,
-      "sourceSync": false,
+      "sourceSync": true,
       "zoomSeconds": 0.05
     },
     "sliderLayout": "text-inside",
-    "sliderAmountVisible": true,
+    "sliderAmountVisible": false,
     "sliderPositionVisible": true,
     "hideMouseWhileDragging": true,
     "moduleCatalogVisibility": {
@@ -180,19 +180,15 @@
         "developer": true,
         "home": false
       },
+      "customDisplay": {
+        "developer": true,
+        "home": false
+      },
       "graph": {
         "developer": true,
         "home": false
       },
       "graph2": {
-        "developer": true,
-        "home": false
-      },
-      "groupInput": {
-        "developer": true,
-        "home": false
-      },
-      "groupOutput": {
         "developer": true,
         "home": false
       },
@@ -532,6 +528,10 @@
         "developer": true,
         "home": false
       },
+      "wallDelay": {
+        "developer": true,
+        "home": false
+      },
       "reverbEffect": {
         "developer": true,
         "home": false
@@ -711,22 +711,41 @@
       "stepGrid": {
         "developer": true,
         "home": false
+      },
+      "groupInput": {
+        "developer": true,
+        "home": false
+      },
+      "groupOutput": {
+        "developer": true,
+        "home": false
       }
     },
     "sceneContextWindowSize": {
-      "width": 143
+      "width": 136
     },
     "moduleActionWindowSize": {
-      "width": 188,
-      "height": 474
+      "width": 202,
+      "height": 526
     },
     "workspaceWindowStatesVersion": 1,
     "workspaceWindowStates": {
       "commandCenter": {
         "open": false,
         "position": {
-          "left": 261,
-          "top": 230
+          "left": 22,
+          "top": 162
+        }
+      },
+      "codeBox": {
+        "open": false,
+        "position": {
+          "left": 409,
+          "top": 472
+        },
+        "size": {
+          "width": 407,
+          "height": 425
         }
       },
       "moduleActions": {
@@ -741,73 +760,65 @@
       "patchExplorer": {
         "open": false,
         "position": {
-          "left": 804,
-          "top": 238
+          "left": 90,
+          "top": 375
         }
       },
       "moduleBrowser": {
         "open": false,
         "position": {
-          "left": 67,
-          "top": 228
+          "left": 308,
+          "top": 74
         },
         "size": {
-          "width": 191,
-          "height": 514
+          "width": 201,
+          "height": 604
         }
       },
       "visibilityMenu": {
         "open": false,
         "position": {
-          "left": 483,
-          "top": 153
+          "left": 186,
+          "top": 131
         }
       },
       "uiSettings": {
-        "open": false,
-        "position": {
-          "left": 813,
-          "top": 172
-        }
-      },
-      "uiDev": {
         "open": false,
         "position": {
           "left": 0,
           "top": 0
         }
       },
+      "uiDev": {
+        "open": false
+      },
       "traceDisplaySettings": {
         "open": false,
-        "targetNode": "traceDisplay-3"
+        "targetNode": "scriptBox-1"
       },
       "standaloneMidiKeyboard": {
         "open": false
       },
       "tooltipWindow": {
-        "open": false,
-        "position": {
-          "left": 287,
-          "top": 698
-        }
+        "open": false
       }
     },
     "sharedInspectorActive": "",
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": 184.01999999999998,
-        "y": 204.64000000000001
+        "x": 20.099469491437617,
+        "y": 33.7294851360936
       },
-      "zoom": 1.1878873465372088
+      "zoom": 0.3310960199373566
     },
-    "moduleStoreDepartment": "",
+    "moduleStoreDepartment": "\u267e\ufe0fChaos",
     "savedPatchBankIndex": 0,
-    "savedPatchBankName": "chaos",
+    "savedPatchBankName": "basic",
     "savedPatchGridColumns": 3,
     "savedPatchExplorerView": "banks",
     "workingPatch": null,
-    "currentSavedPatchFilename": "bank000-program000-lorenz-demonstration-chaos--lorenz--attractor--strange.json",
+    "currentSavedPatchFilename": "",
     "patchDirtyState": "untouched"
   }
 }

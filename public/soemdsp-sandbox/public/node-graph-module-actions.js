@@ -88,10 +88,24 @@ function showNodeGraphModule(node, point = null, options = {}) {
   counts[type] = (counts[type] || 0) + 1;
   const id = `${type}-${counts[type]}`;
   const gridPoint = point ? nodeGraphPixelToGrid(point) : defaultNodeGraphModuleGridPoint(type);
+  // Group Input/Output are meaningless until named (their name becomes the
+  // matching port's name on the outer group box, see
+  // nodeGraphModuleGroupEndpointName) -- default to "Input N"/"Output N"
+  // right at creation, counted against the patch actually being edited
+  // (counts[type], already computed above from patch.nodes), so a fresh
+  // one is never left blank/generic until someone remembers to rename it.
+  // Only this fresh-creation path gets it: duplicate/copy and group-expand
+  // explicitly pass through the source node's own alias instead of calling
+  // showNodeGraphModule, so a copy keeps its original name rather than
+  // being renumbered.
+  const defaultAlias = type === "groupInput" ? `Input ${counts[type]}`
+    : type === "groupOutput" ? `Output ${counts[type]}`
+    : undefined;
   patch.nodes.push(createNodeGraphPatchNode(type, {
     id,
     gx: gridPoint.gx,
     gy: gridPoint.gy,
+    ...(defaultAlias ? { alias: defaultAlias } : {}),
   }));
   commitNodeGraphPatch(patch, { status: options.status || "module added" });
   return id;
@@ -385,6 +399,13 @@ function handleNodeGraphModuleStoreClick(event) {
     event.stopPropagation();
     return;
   }
+  const deleteGroupButton = event.target.closest("[data-delete-group]");
+  if (deleteGroupButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    deleteNodeGraphModuleGroupLocal(deleteGroupButton.dataset.deleteGroup);
+    return;
+  }
   const groupButton = event.target.closest("[data-context-group]");
   if (groupButton) {
     addNodeGraphModuleGroupFromBrowser(groupButton.dataset.contextGroup);
@@ -423,6 +444,11 @@ function nodeGraphModuleActionTargetNodeIds() {
 }
 
 function saveNodeGraphSelectionAsModuleGroup() {
+  setNodeGraphScriptStatus("module grouping is under construction", false);
+  if (typeof setNodeInteractionHelp === "function") {
+    setNodeInteractionHelp("Add to group under construction. Module grouping is under construction.");
+  }
+  return;
   const selectedIds = new Set(nodeGraphModuleGroupSelection());
   const selectionActive = selectedIds.size > 0;
   const sourceNodes = nodeGraphMvp.patch.nodes.filter((node) =>
@@ -453,14 +479,28 @@ function saveNodeGraphSelectionAsModuleGroup() {
   });
   const inferred = nodeGraphModuleGroupInterfaceFromPatch(sourcePatch);
   const groups = loadNodeGraphModuleGroupsLocal();
-  groups[groupName] = {
+  // groupName is auto-derived from the selected nodes' display names, so
+  // two DIFFERENT selections (e.g. plain default-labeled Group Input +
+  // Group Output pairs from separate test runs) can easily produce the
+  // exact same string and silently clobber an unrelated saved group with
+  // zero indication anything happened -- no new card, no overwrite
+  // warning. De-duping here means "Add to group" always produces a new,
+  // distinct entry; nothing is ever silently replaced. Explicit deletion
+  // (deleteNodeGraphModuleGroupLocal) is the only way to remove one.
+  let finalName = groupName;
+  let suffix = 2;
+  while (Object.hasOwn(groups, finalName)) {
+    finalName = `${groupName} (${suffix})`;
+    suffix += 1;
+  }
+  groups[finalName] = {
     createdAt: new Date().toISOString(),
     defaultSize: { heightGu: 6, widthGu: 8 },
     description: "",
-    id: `group-${nodeGraphStableSeed(`${groupName}:${Date.now()}`).toString(16)}`,
+    id: `group-${nodeGraphStableSeed(`${finalName}:${Date.now()}`).toString(16)}`,
     inputs: inferred.inputs,
     kind: "moduleGroup",
-    name: groupName,
+    name: finalName,
     outputs: inferred.outputs,
     parameters: [],
     sourcePatch,
@@ -480,6 +520,18 @@ function saveNodeGraphSelectionAsModuleGroup() {
   saveNodeGraphModuleGroupsLocal(groups);
   renderNodeGraphModuleStoreCatalog();
   configureNodeSceneContextMenu("module");
+  setNodeGraphScriptStatus(`saved module group "${finalName}" -- find it in the Module Browser's Portals section to add it to the scene`, true);
+}
+
+function deleteNodeGraphModuleGroupLocal(name) {
+  const groups = loadNodeGraphModuleGroupsLocal();
+  if (!Object.hasOwn(groups, name)) {
+    return;
+  }
+  delete groups[name];
+  saveNodeGraphModuleGroupsLocal(groups);
+  renderNodeGraphModuleStoreCatalog();
+  setNodeGraphScriptStatus(`deleted module group "${name}"`, true);
 }
 
 function addNodeGraphModuleGroupFromBrowser(name) {
@@ -597,6 +649,9 @@ function copyNodeGraphModule(sourceNode) {
     ...(sourceNode.type === "codeblock"
       ? { codeblock: normalizeNodeGraphCodeblock(sourceNode.codeblock) }
       : {}),
+    ...(sourceNode.type === "customDisplay"
+      ? { customDisplay: normalizeNodeGraphCustomDisplay(sourceNode.customDisplay) }
+      : {}),
     paramMeta: cloneNodeGraphParamMeta(sourceNode.paramMeta),
     params: { ...(sourceNode.params || {}) },
   });
@@ -630,6 +685,7 @@ const nodeGraphModuleSettingsFields = Object.freeze([
   "graph",
   "codeblock",
   "scriptBox",
+  "customDisplay",
   "canvasScript",
   "screenSpaceShader",
   "scopeShader",
@@ -817,7 +873,7 @@ function adjustNodeGraphModuleDisplayHeightFromContext(delta) {
   if (!targetNode || !nodeGraphPatchNodeHasHideableOscilloscope(targetNode)) {
     return;
   }
-  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui);
+  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
   const nextOffsetGu = normalizeNodeGraphModuleDisplayHeightOffsetUnits(
     targetNode.type,
     ui.displayHeightOffsetGu + delta * nodeGraphModuleDisplayHeightLimits.stepGu,
@@ -1793,7 +1849,7 @@ function toggleNodeGraphModuleButtonsFromContext() {
   if (!targetNode) {
     return;
   }
-  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui);
+  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
   ui.buttonsHidden = !ui.buttonsHidden;
   applyNodeGraphPatchNodeUi(targetNode, ui);
   commitNodeGraphPatch(patch, {
@@ -1842,7 +1898,7 @@ function toggleNodeGraphModuleTitleFromContext() {
   if (!targetNode) {
     return;
   }
-  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui);
+  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
   ui.titleHidden = !ui.titleHidden;
   applyNodeGraphPatchNodeUi(targetNode, ui);
   commitNodeGraphPatch(patch, {
@@ -1862,7 +1918,7 @@ function toggleNodeGraphModuleOscilloscopeFromContext() {
   if (!targetNode || !nodeGraphPatchNodeHasHideableOscilloscope(targetNode)) {
     return;
   }
-  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui);
+  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
   ui.oscilloscopeHidden = !ui.oscilloscopeHidden;
   applyNodeGraphPatchNodeUi(targetNode, ui);
   commitNodeGraphPatch(patch, {
@@ -1872,7 +1928,7 @@ function toggleNodeGraphModuleOscilloscopeFromContext() {
 }
 
 function applyNodeGraphPatchNodeUi(targetNode, ui) {
-  const normalizedUi = normalizeNodeGraphPatchNodeUi(ui);
+  const normalizedUi = normalizeNodeGraphPatchNodeUi(ui, targetNode?.type);
   if (
     normalizedUi.buttonsHidden ||
     normalizedUi.ioHidden ||
@@ -1899,7 +1955,7 @@ function toggleNodeGraphModuleInterfaceControlsFromContext() {
   if (!targetNode || !nodeGraphModuleTypeHasInterfaceControls(targetNode.type)) {
     return;
   }
-  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui);
+  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
   ui.interfaceControlsHidden = !ui.interfaceControlsHidden;
   applyNodeGraphPatchNodeUi(targetNode, ui);
   commitNodeGraphPatch(patch, {
@@ -1919,7 +1975,7 @@ function toggleNodeGraphModuleIoFromContext() {
   if (!targetNode) {
     return;
   }
-  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui);
+  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
   ui.ioHidden = !ui.ioHidden;
   applyNodeGraphPatchNodeUi(targetNode, ui);
   commitNodeGraphPatch(patch, {
@@ -1939,7 +1995,7 @@ function toggleNodeGraphModuleSlidersFromContext() {
   if (!targetNode || !nodeGraphModuleTypeHasHideableSliders(targetNode.type)) {
     return;
   }
-  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui);
+  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
   ui.slidersHidden = !ui.slidersHidden;
   applyNodeGraphPatchNodeUi(targetNode, ui);
   commitNodeGraphPatch(patch, {

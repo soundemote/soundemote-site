@@ -34,7 +34,7 @@ const nodeGraphModuleHeightLimits = Object.freeze({
 });
 
 const nodeGraphModuleDisplayHeightLimits = Object.freeze({
-  maxGu: 12,
+  maxGu: 48,
   minGu: 1,
   stepGu: 1,
 });
@@ -170,7 +170,7 @@ function nodeGraphModuleConfiguredDisplayHeightUnits(type, ui = {}) {
   if (!nodeGraphModuleTypeHasHideableOscilloscope(type)) {
     return 0;
   }
-  const normalizedUi = normalizeNodeGraphPatchNodeUi(ui);
+  const normalizedUi = normalizeNodeGraphPatchNodeUi(ui, type);
   const defaultHeightGu = nodeGraphModuleDefaultDisplayHeightUnits(type);
   return Math.max(
     1,
@@ -240,6 +240,9 @@ function nodeGraphDefaultModuleGridWidthUnits(type) {
     return 8;
   }
   if (nodeGraphModuleDefinitions[type]?.layout === "pulseCurve") {
+    return 8;
+  }
+  if (nodeGraphModuleDefinitions[type]?.layout === "wallRoomDisplay") {
     return 8;
   }
   return 7;
@@ -484,12 +487,42 @@ function nodeGraphModuleHeightWidgetUnits(type, ui = {}) {
       { id: "inset", heightGu: nodeGraphModuleLayout.moduleGridInsetGu * 2, visible: true },
     ];
   }
+  if (nodeGraphModuleDefinitions[type]?.layout === "wallRoomDisplay") {
+    return [
+      { id: "header", heightGu: nodeGraphModuleHeaderHeightUnits(ui), visible: true },
+      { id: "room", heightGu: nodeGraphModuleDisplayHeightUnits(type, ui) * 1.5, visible: displayVisible },
+      { id: "io", heightGu: ioHeightGu, visible: ioVisible },
+      { id: "params", heightGu: nodeGraphModuleSliderBodyHeightGu(type), visible: slidersVisible },
+      { id: "fit", heightGu: nodeGraphModuleLayout.fitCushionGu, visible: true },
+      { id: "inset", heightGu: nodeGraphModuleLayout.moduleGridInsetGu * 2, visible: true },
+    ];
+  }
   if (nodeGraphModuleDefinitions[type]?.layout === "pulseCurve") {
     return [
       { id: "header", heightGu: nodeGraphModuleHeaderHeightUnits(ui), visible: true },
       { id: "curve", heightGu: nodeGraphModuleDisplayHeightUnits(type, ui) * 1.5, visible: displayVisible },
       { id: "io", heightGu: ioHeightGu, visible: ioVisible },
       { id: "params", heightGu: nodeGraphModuleSliderBodyHeightGu(type), visible: slidersVisible },
+      { id: "fit", heightGu: nodeGraphModuleLayout.fitCushionGu, visible: true },
+      { id: "inset", heightGu: nodeGraphModuleLayout.moduleGridInsetGu * 2, visible: true },
+    ];
+  }
+  if (nodeGraphModuleDefinitions[type]?.layout === "clapPlugin") {
+    // clapPlugin has no static parameters[] (they're discovered live from
+    // whatever plugin is bound, see nodeGraphClapParameterPayload), so the
+    // generic "params" row below -- driven by nodeGraphModuleBodyRowCount's
+    // static definition.parameters.length -- always saw 0 and never grew
+    // the node. The 18gu body budget here is a fixed estimate sized to fit
+    // the plugin select, preset row, detail text, safety line, and the
+    // 8-button action grid at their real CSS min-heights, plus the
+    // scrollable parameter list's own 240px max-height (see
+    // .node-clap-plugin-param-list) -- so a plugin with many parameters
+    // (e.g. "Soundemote - soemdsp DSP Proof") scrolls its own param list
+    // instead of the node overlapping neighboring modules.
+    return [
+      { id: "header", heightGu: nodeGraphModuleHeaderHeightUnits(ui), visible: true },
+      { id: "clapBody", heightGu: 18, visible: true },
+      { id: "io", heightGu: ioHeightGu, visible: ioVisible },
       { id: "fit", heightGu: nodeGraphModuleLayout.fitCushionGu, visible: true },
       { id: "inset", heightGu: nodeGraphModuleLayout.moduleGridInsetGu * 2, visible: true },
     ];

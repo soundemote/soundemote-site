@@ -403,7 +403,7 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
   const outputNode = "output";
   const reachableNodes = new Set();
   const bypassedNodes = new Set(graph.bypassedNodes || []);
-  const passthroughTypes = new Set(["badvalMonitor", "bias", "chaoticPhaseLockingFilter", "cookbookFilter", "flowerChildFilter", "gain", "humanFilter", "ladderFilter", "papoulisFilter", "passiveFilter", "pll", "resonatorFilter", "reverbEffect", "rsmetFilter", "sampleHold", "slewLimiter", "softClipper", "speakerProtection", "superloveFilter", "tb303Filter", "yellowjacketFilter"]);
+  const passthroughTypes = new Set(["badvalMonitor", "bias", "chaoticPhaseLockingFilter", "cookbookFilter", "flowerChildFilter", "gain", "humanFilter", "ladderFilter", "papoulisFilter", "passiveFilter", "pll", "resonatorFilter", "reverbEffect", "rsmetFilter", "sampleHold", "slewLimiter", "softClipper", "speakerProtection", "superloveFilter", "tb303Filter", "wallDelay", "yellowjacketFilter"]);
 
   function markReachable(nodeId) {
     if (reachableNodes.has(nodeId) || !graph.nodeMap.has(nodeId)) {
@@ -419,7 +419,21 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
   if (hasOutputNode) {
     markReachable(outputNode);
   }
-  const groupOutputNodes = graph.nodes.filter((node) => node.type === "groupOutput");
+  // groupOutput nodes only need forced reachability when this compile IS a
+  // moduleGroup's own inner sourcePatch -- which, by construction
+  // (saveNodeGraphSelectionAsModuleGroup excludes type "output"), never has
+  // a real "output" node, so !hasOutputNode is exactly that signal. Forcing
+  // this unconditionally used to also run for the actual top-level patch,
+  // where a Group Output sitting around mid-build (not yet part of any
+  // built group, doing nothing real) would drag its whole upstream chain
+  // into strict validation and could invalidate the ENTIRE patch compile --
+  // muting all audio -- over an in-progress wire that has no bearing on
+  // anything the speaker route actually depends on. Elsewhere in this
+  // compiler, an unreached/dangling node is simply inert, never validated;
+  // this restores that same invariant for groupOutput on the top-level patch.
+  const groupOutputNodes = hasOutputNode
+    ? []
+    : graph.nodes.filter((node) => node.type === "groupOutput");
   for (const node of groupOutputNodes) {
     markReachable(node.id);
   }
@@ -525,7 +539,34 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
         issues.push(`missing ${nodeGraphNodeDisplayName(nodeId)} signal`);
       }
     } else if (!nodeGraphModuleProducesOutputWithoutSignalInput(type)) {
-      issues.push(`unsupported source ${nodeId}`);
+      // Generic fallback for any module type not covered by one of the
+      // specific branches above: check its own declared input ports
+      // (nodeGraphModuleDefinitions[type].inputs) for a connection, the
+      // same way the passthroughTypes branch above does for its
+      // explicitly-registered members -- reaching this branch already
+      // guarantees `inputs` is non-empty (nodeGraphModuleProducesOutputWithoutSignalInput
+      // returns true, short-circuiting this branch, for any type with no
+      // declared inputs).
+      //
+      // This used to unconditionally treat "not on a manually maintained
+      // list" as fatal ("unsupported source"), which meant every new
+      // simple effect module (Ping Pong Delay, then Wall Delay) silently
+      // broke ONLY the realtime live-audio path the moment it shipped --
+      // the offline/preview path doesn't run this check at all, so
+      // nothing caught it until someone specifically tested live
+      // playback. Checking the module's own declared ports instead of
+      // rejecting-unless-registered means a future module with a plain
+      // In-style port just works with no manual registration step, and
+      // gets the same friendly "missing X input" message the registered
+      // types get instead of a hard failure that blocks the whole patch.
+      const inputPorts = nodeGraphModuleDefinitions[type]?.inputs || [];
+      const inputCount = inputPorts.reduce(
+        (count, port) => count + (graph.inputConnections.get(nodeGraphInputKey(nodeId, port)) || []).length,
+        0,
+      );
+      if (!inputCount && nodeGraphNodeSignalOutputRequired(graph, nodeId)) {
+        issues.push(`missing ${nodeGraphNodeDisplayName(nodeId)} input`);
+      }
     }
   }
 

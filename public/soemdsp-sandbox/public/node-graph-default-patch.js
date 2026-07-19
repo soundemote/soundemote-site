@@ -50,7 +50,7 @@ function createNodeGraphPatchNode(type, options = {}) {
   }
   const ui = nodeGraphModuleDefinitions[type]?.layout === "textBox" && !Object.hasOwn(opts, "ui")
     ? { buttonsHidden: true }
-    : normalizeNodeGraphPatchNodeUi(opts.ui);
+    : normalizeNodeGraphPatchNodeUi(opts.ui, type);
   if (ui.buttonsHidden || ui.titleHidden) {
     node.ui = ui;
   }
@@ -69,6 +69,9 @@ function createNodeGraphPatchNode(type, options = {}) {
   }
   if (type === "scriptBox") {
     node.scriptBox = normalizeNodeGraphScriptBox(opts.scriptBox);
+  }
+  if (type === "customDisplay") {
+    node.customDisplay = normalizeNodeGraphCustomDisplay(opts.customDisplay);
   }
   if (type === "canvas") {
     node.canvasScript = normalizeNodeGraphCanvasScript(opts.canvasScript);
@@ -93,6 +96,14 @@ const nodeGraphDefaultNodeConfigs = Object.freeze([
     ...createNodeGraphPatchNode("audioPlayer", { id: "audioPlayer-1", gx: 1, gy: 1, widthGu: 8 }),
     params: { ...nodeGraphDefaultParamsForType("audioPlayer"), speed: 1, transport: 4 },
   },
+  // A CLAP Plugin module belongs on the canvas by default, unwired, same
+  // tier as the always-present Output module -- it's a normal, seamless
+  // part of the sandbox everywhere, including soundemote-site (see
+  // scripts/sync_soundemote_site.ps1). There's no local CLAP host
+  // companion process to use it with there, but that's communicated in
+  // place (see syncNodeGraphClapPluginBody's nodeGraphLocalDefaultPresetAllowed
+  // branch) rather than by hiding the module itself.
+  createNodeGraphPatchNode("clapPlugin", { id: "clapPlugin-1", gx: 1, gy: 8 }),
   {
     ...createNodeGraphPatchNode("output", { id: "output", gx: 12, gy: 5 }),
     params: { ...nodeGraphDefaultParamsForType("output"), volume: 0.8 },

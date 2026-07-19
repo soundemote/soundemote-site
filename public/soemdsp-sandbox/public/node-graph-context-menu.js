@@ -228,6 +228,8 @@ function positionNodeSceneContextMenu(menu, x, y, remember = false) {
     applyNodeSceneContextWindowSize();
   } else if (menu?.id === "nodeModuleActionsWindow") {
     applyNodeModuleActionsWindowSize();
+  } else if (menu?.id === "nodeCodeBoxWindow" && typeof applyNodeGraphCodeBoxWindowSize === "function") {
+    applyNodeGraphCodeBoxWindowSize();
   }
   const { left, top } = nodeGraphFloatingWindowPosition(menu, x, y);
   setNodeSceneContextMenuViewportPosition(menu, left, top);
@@ -238,6 +240,10 @@ function positionNodeSceneContextMenu(menu, x, y, remember = false) {
   } else if (menu?.id === "nodeModuleActionsWindow" && remember) {
     if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
       rememberNodeGraphWorkspaceWindowState("moduleActions", menu, { open: !menu.hidden, position: { left, top } }, { persist: false });
+    }
+  } else if (menu?.id === "nodeCodeBoxWindow" && remember) {
+    if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+      rememberNodeGraphWorkspaceWindowState("codeBox", menu, { open: !menu.hidden, position: { left, top } }, { persist: false });
     }
   } else if (menu?.id === "nodeGlobalScopeMenu" && remember) {
     if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
@@ -971,7 +977,7 @@ function configureNodeSceneContextMenu(mode) {
   const widthLimits = targetNode
     ? nodeGraphModuleWidthLimitsForType(targetNode.type)
     : nodeGraphModuleWidthLimits;
-  const targetNodeUi = normalizeNodeGraphPatchNodeUi(targetNode?.ui);
+  const targetNodeUi = normalizeNodeGraphPatchNodeUi(targetNode?.ui, targetNode?.type);
   const effectiveTargetNodeUi = nodeGraphEffectivePatchNodeUi(targetNode?.ui);
   const targetSizingCapabilities = targetNode
     ? nodeGraphModuleSizingCapabilities(targetNode.type)
@@ -1137,8 +1143,7 @@ function configureNodeSceneContextMenu(mode) {
     }
     addToGroupButton.disabled = true;
     addToGroupButton.setAttribute("aria-disabled", "true");
-    addToGroupButton.classList.add("node-under-construction-control");
-    addToGroupButton.title = "Module grouping is under construction.";
+    addToGroupButton.title = "Add to group under construction. Module grouping is under construction.";
     if (addToUiButton) {
       const canAddToUi = targetIsGraphType;
       const uiItems = normalizeNodeGraphPatchUiItems(nodeGraphMvp.patch.uiItems);
@@ -1570,7 +1575,7 @@ function openNodePhosphorWaveformContextMenu(event) {
 const nodeGraphWorkspaceInteractiveDialogSelector =
   "input, textarea, select, option, [contenteditable='true'], " +
   "#nodeSceneContextMenu, #nodeParameterMetadataPopover, #nodeGlobalScopeMenu, " +
-  "#nodeModuleActionsWindow, #nodeShaderScriptDialog, #nodeCanvasScriptDialog, #nodeSavedPatchesWindow, " +
+  "#nodeModuleActionsWindow, #nodeCodeBoxWindow, #nodeShaderScriptDialog, #nodeCanvasScriptDialog, #nodeSavedPatchesWindow, " +
   "#nodePhosphorWaveformSettingsWindow";
 const nodeGraphWorkspaceOccupiedElementSelector =
   ".node-wire-hit-path, .node-wire-path, .dsp-node, .node-port, .node-param-port, .node-slider-readout";

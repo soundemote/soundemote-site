@@ -17,8 +17,6 @@ const nodeGraphModuleStoreUnderConstructionTypes = Object.freeze(new Set([
   "canvas",
   "graph",
   "graph2",
-  "groupInput",
-  "groupOutput",
   "humanFilter",
   "shootingStarTail",
 ]));
@@ -27,46 +25,32 @@ const nodeGraphModuleGroupStorageKey = "soemdsp-sandbox.moduleGroups.v1";
 const nodeGraphModuleCatalogVisibilityStorageKey = "soemdsp-sandbox.moduleCatalogVisibility.v2";
 
 const nodeGraphModuleStoreDepartments = Object.freeze([
-  "Oscillator",
-  "Chaos",
-  "Jerobeam",
-  "Noise",
-  "Filter",
-  "Envelope",
-  "Modulators",
-  "Delay",
-  "Drum",
-  "Dynamics",
-  "Sequence",
-  "Audio",
-  "Visual",
-  "Oscilloscope",
-  "Controllers",
-  "Game Triggers",
-  "Portals",
-  "Loops",
-  "Samples",
-  "Debug",
+  "🎶AudioPlayer",
+  "♾️Chaos",
+  "🕹️Controller",
+  "🐞Debug",
+  "👾Digitial",
+  "🥁Drum",
+  "⚡Dynamics",
+  "📐Envelope",
+  "💧Filter",
+  "♟️Game Trigger",
+  "☄️Grains",
+  "♻️Jerobeam",
+  "🎞️Media",
+  "⚡Modulator",
+  "░Noise",
+  "⚪Oscillator",
+  "🖥️Display",
+  "🔌Plugin",
+  "🌌Portal",
+  "🔊Samples",
+  "⛪Space",
+  "🔬Time",
+  "📺Video",
 ]);
 
-const nodeGraphModuleStoreVisualGroups = Object.freeze([
-  {
-    label: "Generate",
-    departments: Object.freeze(["Oscillator", "Chaos", "Jerobeam", "Noise", "Drum", "Envelope"]),
-  },
-  {
-    label: "Process",
-    departments: Object.freeze(["Filter", "Modulators", "Dynamics"]),
-  },
-  {
-    label: "Memory",
-    departments: Object.freeze(["Audio", "Delay", "Loops", "Samples", "Sequence"]),
-  },
-  {
-    label: "Interact",
-    departments: Object.freeze(["Controllers", "Game Triggers", "Portals", "Oscilloscope", "Visual", "Debug"]),
-  },
-]);
+const nodeGraphModuleStoreVisualGroups = Object.freeze([]);
 
 const nodeGraphModuleStoreVisualGroupByDepartment = Object.freeze(
   nodeGraphModuleStoreVisualGroups.reduce((groups, group) => {
@@ -77,7 +61,44 @@ const nodeGraphModuleStoreVisualGroupByDepartment = Object.freeze(
   }, {}),
 );
 
+const nodeGraphModuleStoreDepartmentAliases = Object.freeze({
+  Arpeggiator: "🔬Time",
+  Audio: "🎶AudioPlayer",
+  "Audio Player": "🎶AudioPlayer",
+  Chaos: "♾️Chaos",
+  CLAP: "🔌Plugin",
+  Controllers: "🕹️Controller",
+  Debug: "🐞Debug",
+  Delay: "⛪Space",
+  Digital: "👾Digitial",
+  Drum: "🥁Drum",
+  Dynamics: "⚡Dynamics",
+  Envelope: "📐Envelope",
+  Filter: "💧Filter",
+  "Game Triggers": "♟️Game Trigger",
+  Grains: "☄️Grains",
+  Jerobeam: "♻️Jerobeam",
+  Loops: "🔊Samples",
+  Modulator: "⚡Modulator",
+  Modulators: "⚡Modulator",
+  Noise: "░Noise",
+  Oscillator: "⚪Oscillator",
+  Oscilloscope: "🖥️Display",
+  Other: "👾Digitial",
+  Portals: "🌌Portal",
+  Samples: "🔊Samples",
+  Sequence: "🔬Time",
+  Sequencer: "🔬Time",
+  Time: "🔬Time",
+  Visual: "📺Video",
+});
+
 const nodeGraphModuleStoreDepartmentAds = Object.freeze({
+  CLAP: {
+    symbol: "⧉",
+    title: "CLAP",
+    pitch: "Host a real installed CLAP plugin from a local companion process and run your patch's audio through it.",
+  },
   Oscillator: {
     symbol: "∿",
     title: "Oscillator",
@@ -142,6 +163,11 @@ const nodeGraphModuleStoreDepartmentAds = Object.freeze({
     symbol: "⌘",
     title: "Controllers",
     pitch: "Input devices and control bridges for keyboards, MIDI, gamepads, and external gestures.",
+  },
+  Digital: {
+    symbol: "{ }",
+    title: "Digital",
+    pitch: "Patch-local code surfaces, exact value conversion, and digital/visual programming tools inside the sandbox.",
   },
   Portals: {
     symbol: "IO",
@@ -301,9 +327,9 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["gate", "edge detect", "native"],
   },
   bitConverter: {
-    category: "Other",
+    category: "Digital",
     description: "Converts a raw full-scale integer (e.g. keyboardController's Held Keys bitmask) to and from normalized 0..1 (unipolar) and -1..1 (bipolar) CV, using 2^bits - 1 as the ceiling. Patch a digital wire's exact value into audio-rate CV, or reconstruct the original integer from a CV signal on the way back.",
-    label: "Bit Converter",
+    label: "AD/DA Converter",
     notes: ["normalize", "0..1", "-1..1", "bitmask"],
   },
   stepSequencer: {
@@ -320,13 +346,13 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["chord progression", "digital signal", "scale mask output", "root output"],
   },
   lutCell: {
-    category: "Other",
+    category: "Digital",
     description: "An FPGA logic slice, modeled directly: a 4-input lookup table (A/B/C/D) feeding a clocked D flip-flop. Truth Table is a 16-bit digital signal -- bit i is the cell's output for input combination i. Out is the combinational result, Q is the registered result that only updates on a Clock rising edge. Unwired Clock and A free-run at 220 Hz so a bare cell demonstrates itself immediately -- wire either one for real to take over.",
     label: "LUT Cell",
     notes: ["FPGA logic slice", "lookup table", "flip-flop", "digital signal"],
   },
   metallicRatio: {
-    category: "Other",
+    category: "Modulators",
     description: "A tribute to Robin Schmidt's RS-MET library: RAPT::rsRatioGenerator::metallic() ported directly. Ratio = (Index + sqrt(Index^2 + 4)) / 2 -- the metallic mean family. Index 0 = unity, 1 = the golden ratio, 2 = silver, 3 = bronze. Useful as an oscillator frequency ratio or a feedback-delay length, per the original library's own doc comment.",
     label: "Metallic Ratio",
     notes: ["RS-MET tribute", "metallic mean", "golden ratio", "Robin Schmidt"],
@@ -485,21 +511,25 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["real pi digits", "stereo independent seeds", "noise color", "gaussian smoothing", "native"],
   },
   clapPlugin: {
-    category: "Audio",
-    developerOnly: true,
+    category: "CLAP",
     description: "Browser-side shell for a local CLAP host plugin. Stores plugin identity and can use a host instance during bounded Render Sample.",
     label: "CLAP Plugin",
     notes: ["local host", "native plugin", "offline render"],
   },
   codeblock: {
-    category: "Controllers",
+    category: "Digital",
     description: "Patch-local JavaScript signal processor with editable input and output ports.",
     notes: ["dynamic ports", "JavaScript body", "local patch code"],
   },
   scriptBox: {
-    category: "Controllers",
+    category: "Digital",
     description: "Data-plane JavaScript transform with editable input and output ports -- runs on whole values (arrays, strings, numbers), not per-sample audio.",
     notes: ["dynamic ports", "data-plane script", "port script node"],
+  },
+  customDisplay: {
+    category: "Oscilloscope",
+    description: "Patch-local JavaScript display surface. Define inputs and draw custom visuals inside the module face.",
+    notes: ["custom draw", "JavaScript display", "visual sink"],
   },
   graph: {
     category: "Visual",
@@ -652,18 +682,6 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "Pitch / Mod Wheel",
     notes: ["pitch wheel", "mod wheel", "performance control"],
   },
-  groupInput: {
-    category: "Portals",
-    description: "Defines an exposed input on a saved module group.",
-    label: "Group Input",
-    notes: ["group interface", "public input", "patch boundary"],
-  },
-  groupOutput: {
-    category: "Portals",
-    description: "Defines an exposed output on a saved module group.",
-    label: "Group Output",
-    notes: ["group interface", "public output", "patch boundary"],
-  },
   samplePlayer: {
     category: "Audio",
     description: "Patch-local one-shot sample playback. Trigger starts from Start and plays to End with simple click ramps.",
@@ -782,6 +800,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "Ping Pong Delay",
     notes: ["ping pong", "tempo sync", "X/Y division", "dotted/triplet"],
   },
+  wallDelay: {
+    category: "Delay",
+    description: "Geometric delay from a superellipsoid room (Squircle/Random/Fractal, meters-scaled Width/Height/Roundness): Rays x Bounces delay taps per ear (Ear Distance in cm), each hop's distance and specular/scattered direction computed from the real room surface. Reflectivity blends mirror-like bounces against rough scattering, and drives a shared Sabrina-style diffusion cascade.",
+    label: "Wall Delay",
+    notes: ["wall geometry", "binaural", "superellipsoid", "ray bounces"],
+  },
   reverbEffect: {
     category: "Delay",
     description: "Raw Sabrina reverb port: serial diffusion stages with cross-feedback delay, modulation, recycle, and wet/dry mix. Seed randomizes the delay line pattern.",
@@ -870,7 +894,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["load image", "save image", "trace texture"],
   },
   canvas: {
-    category: "Oscilloscope",
+    category: "Digital",
     description: "Layered RGBA compositor for images, scopes, shader passes, transforms, and future game-engine surfaces.",
     notes: ["layer compositor", "RGBA output", "shader script"],
   },
@@ -1156,6 +1180,7 @@ function nodeGraphModuleStoreEntries() {
       const publicVisible = !developerOnly;
       return {
         ...(nodeGraphModuleStoreCatalog[type] || {}),
+        category: normalizeNodeGraphModuleStoreDepartment(nodeGraphModuleStoreCatalog[type]?.category || ""),
         type,
         demoPatch: nodeGraphModuleStoreDemoPatchAvailable(type),
         demoListen: nodeGraphModuleStoreDemoListenAvailable(type),
@@ -1191,10 +1216,7 @@ function setNodeGraphModuleCatalogVisibility(type, visible, shelf = "shop") {
 
 function normalizeNodeGraphModuleStoreDepartment(department = "") {
   const value = String(department || "");
-  if (value === "Sequencer") {
-    return "Sequence";
-  }
-  return value;
+  return nodeGraphModuleStoreDepartmentAliases[value] || value;
 }
 
 function setNodeGraphModuleStoreDepartment(department = "") {
@@ -1335,6 +1357,7 @@ function applyNodeGraphModuleShopWindowSize(size = {}) {
       panel.style.setProperty("--node-module-shop-height", `${normalized.height}px`);
     }
   }
+  requestAnimationFrame(updateNodeGraphModuleStoreScrollAffordance);
   return normalized;
 }
 
@@ -1621,14 +1644,40 @@ function saveNodeGraphModuleGroupsLocal(groups) {
 }
 
 function createNodeGraphModuleGroupButton(name, group) {
-  const card = document.createElement("div");
+  // A real <button>, not a <div> -- nodeGraphDialogDragTargetIsInteractive
+  // (node-graph-view-controls.js) only recognizes button/[role='button']/
+  // [data-context-module]/etc. as "don't start dragging the panel" targets.
+  // A bare div here meant every click's pointerdown got captured by the
+  // floating-window drag handler first, which retargets the resulting
+  // click event's target away from this card -- so clicks silently never
+  // reached handleNodeGraphModuleStoreClick's [data-context-group] lookup,
+  // even though that handler and this card's dataset already matched.
+  const card = document.createElement("button");
+  card.type = "button";
   card.className = "scene-context-store-card";
   card.dataset.moduleGroup = name;
   card.dataset.contextGroup = name;
+  card.title = `Add "${name}" to the scene`;
+  card.setAttribute("aria-label", `Add module group ${name} to the scene`);
   const label = document.createElement("strong");
   label.textContent = name;
   card.append(label);
-  return card;
+
+  // Separate sibling button, not nested inside `card` -- a <button> can't
+  // contain another interactive <button> (invalid HTML, unreliable click
+  // targeting), so a wrapping, non-interactive container holds both.
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.className = "scene-context-store-card-delete";
+  deleteButton.textContent = "×";
+  deleteButton.title = `Delete saved group "${name}"`;
+  deleteButton.setAttribute("aria-label", `Delete saved module group ${name}`);
+  deleteButton.dataset.deleteGroup = name;
+
+  const wrap = document.createElement("div");
+  wrap.className = "scene-context-store-card-wrap";
+  wrap.append(card, deleteButton);
+  return wrap;
 }
 
 function renderNodeGraphModuleGroupCatalog() {
@@ -1644,6 +1693,32 @@ function renderNodeGraphModuleGroupCatalog() {
     target.append(createNodeGraphModuleGroupButton(name, groups[name]));
   }
   shell.hidden = names.length === 0;
+}
+
+function updateNodeGraphModuleStoreScrollAffordance() {
+  const available = document.getElementById("nodeModuleDepartmentList");
+  if (!available) {
+    return;
+  }
+  const maxScrollTop = Math.max(0, available.scrollHeight - available.clientHeight);
+  const scrollTop = Math.max(0, available.scrollTop);
+  available.classList.toggle("can-scroll-up", scrollTop > 1);
+  available.classList.toggle("can-scroll-down", scrollTop < maxScrollTop - 1);
+}
+
+function bindNodeGraphModuleStoreScrollAffordance() {
+  const available = document.getElementById("nodeModuleDepartmentList");
+  if (!available || available.dataset.scrollAffordanceBound === "true") {
+    return;
+  }
+  available.dataset.scrollAffordanceBound = "true";
+  available.addEventListener("scroll", updateNodeGraphModuleStoreScrollAffordance, { passive: true });
+  available.addEventListener("pointerenter", updateNodeGraphModuleStoreScrollAffordance);
+  if (typeof ResizeObserver === "function") {
+    const observer = new ResizeObserver(() => updateNodeGraphModuleStoreScrollAffordance());
+    observer.observe(available);
+    available.nodeModuleStoreScrollAffordanceObserver = observer;
+  }
 }
 
 function renderNodeGraphModuleStoreCatalog() {
@@ -1713,25 +1788,11 @@ function renderNodeGraphModuleStoreCatalog() {
       available.append(createNodeGraphModuleStoreButton(entry));
     }
   } else {
-    const entriesByDepartment = new Map(publicDepartmentEntries);
-    const handledDepartments = new Set();
-    for (const group of nodeGraphModuleStoreVisualGroups) {
-      const groupDepartmentEntries = group.departments
-        .filter((department) => entriesByDepartment.has(department))
-        .map((department) => {
-          handledDepartments.add(department);
-          return [department, entriesByDepartment.get(department)];
-        });
-      renderNodeGraphModuleStoreDepartmentGroup(
-        available,
-        group.label,
-        groupDepartmentEntries,
-        departmentSearch,
-      );
-    }
-    const otherDepartmentEntries = publicDepartmentEntries.filter(([department]) => !handledDepartments.has(department));
-    if (otherDepartmentEntries.length) {
-      renderNodeGraphModuleStoreDepartmentGroup(available, "Other", otherDepartmentEntries, departmentSearch);
+    for (const [department, departmentEntries] of publicDepartmentEntries) {
+      if (!nodeGraphModuleStoreDepartmentMatchesSearch(department, departmentEntries, departmentSearch)) {
+        continue;
+      }
+      available.append(createNodeGraphModuleDepartmentButton(department, departmentEntries));
     }
   }
   if (!available.children.length) {
@@ -1745,6 +1806,8 @@ function renderNodeGraphModuleStoreCatalog() {
     available.append(empty);
   }
   renderNodeGraphModuleGroupCatalog();
+  bindNodeGraphModuleStoreScrollAffordance();
+  requestAnimationFrame(updateNodeGraphModuleStoreScrollAffordance);
 }
 
 function positionNodeGraphModuleShopView(x, y) {

@@ -193,6 +193,17 @@ function attachNodeGraphNodeEvents(node) {
   node.querySelector(".node-header-title-row")?.addEventListener("contextmenu", openNodeModuleActionMenu);
   node.querySelector(".node-led-face")?.addEventListener("pointerdown", beginNodeGraphNodeDrag);
   node.querySelector(".node-knob-widget-body")?.addEventListener("pointerdown", beginNodeGraphNodeDrag);
+  // Group Input/Output are chromeless (no .node-header-title-row to grab
+  // or double-click, see public/modules/groupInput|groupOutput/*-ui.js) --
+  // wire their own face to the exact same drag/settings behavior the
+  // header row gives every other module. Safe against the single .node-port
+  // each face contains: handlePortPointerDown (node-graph-wires.js)
+  // stopPropagation()s before this could also fire, same guarantee LED's
+  // face+port already relies on.
+  node.querySelector(".node-group-input-face")?.addEventListener("pointerdown", beginNodeGraphNodeDrag);
+  node.querySelector(".node-group-input-face")?.addEventListener("dblclick", openNodeModuleActionMenu);
+  node.querySelector(".node-group-output-face")?.addEventListener("pointerdown", beginNodeGraphNodeDrag);
+  node.querySelector(".node-group-output-face")?.addEventListener("dblclick", openNodeModuleActionMenu);
   node.querySelectorAll(".dsp-node-io-section")
     .forEach((section) => section.addEventListener("pointerdown", beginNodeGraphNodeDrag));
   node.querySelectorAll(".node-parameter-row")
@@ -313,7 +324,7 @@ function toggleNodeModuleDisplayVisibility(event) {
   if (!targetNode || !nodeGraphPatchNodeHasHideableOscilloscope(targetNode)) {
     return;
   }
-  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui);
+  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
   ui.oscilloscopeHidden = !ui.oscilloscopeHidden;
   applyNodeGraphPatchNodeUi(targetNode, ui);
   commitNodeGraphPatch(patch, {
@@ -352,7 +363,7 @@ function toggleNodeModuleSlidersVisibility(event) {
   if (!targetNode || !nodeGraphModuleTypeHasHideableSliders(targetNode.type)) {
     return;
   }
-  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui);
+  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
   ui.slidersHidden = !ui.slidersHidden;
   applyNodeGraphPatchNodeUi(targetNode, ui);
   commitNodeGraphPatch(patch, {
@@ -487,6 +498,7 @@ function nodeGraphModuleLayoutClassNames(type, definition, layout) {
     textBox: "text-box-layout",
     traceDisplay: "trace-display-layout",
     visualScope: "visual-scope-layout",
+    wallRoomDisplay: "wall-room-display-layout",
     ...nodeGraphChromelessModuleLayoutClassEntries(),
   };
   if (definition.layout === "canvas") {
@@ -711,6 +723,18 @@ function createNodeGraphModuleElement(type, node) {
   } else if (definition.layout === "filterCurve") {
     if (!patchNodeUi.oscilloscopeHidden) {
       article.append(createNodeGraphFilterCurveDisplay(node, type));
+    }
+
+    const ioSection = document.createElement("div");
+    ioSection.className = "dsp-node-io-section";
+    const inputColumn = createNodeGraphIoColumn(node, type, inputPorts, "input");
+    const outputColumn = createNodeGraphIoColumn(node, type, outputPorts, "output");
+    ioSection.append(inputColumn || document.createElement("div"));
+    ioSection.append(outputColumn || document.createElement("div"));
+    appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
+  } else if (definition.layout === "wallRoomDisplay") {
+    if (!patchNodeUi.oscilloscopeHidden && typeof createNodeGraphWallRoomDisplay === "function") {
+      article.append(createNodeGraphWallRoomDisplay(node, type));
     }
 
     const ioSection = document.createElement("div");
