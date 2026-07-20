@@ -185,10 +185,6 @@
         "developer": true,
         "home": false
       },
-      "scriptBox": {
-        "developer": true,
-        "home": false
-      },
       "customDisplay": {
         "developer": true,
         "home": false
@@ -820,10 +816,10 @@
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": -216.62500000000003,
-        "y": -200.2767857142857
+        "x": -210.57999999999998,
+        "y": -216.25250000000003
       },
-      "zoom": 0.5209859973903767
+      "zoom": 0.583504317077222
     },
     "moduleStoreDepartment": "",
     "savedPatchBankIndex": 0,
