@@ -5,6 +5,30 @@ import { siteConfig } from "@/config/site";
 import { SOUNDEMOTE_BANK } from "@/data/patchBank";
 import { SandboxNavLink } from "@/components/soundemote/Nav";
 
+type TransportButtonProps = {
+  label: string;
+  onClick: () => void;
+  pressed?: boolean;
+  children: React.ReactNode;
+};
+
+const TransportButton = ({ label, onClick, pressed, children }: TransportButtonProps) => (
+  <button
+    type="button"
+    onClick={onClick}
+    aria-label={label}
+    aria-pressed={pressed}
+    title={label}
+    className={
+      "inline-flex h-9 w-9 items-center justify-center rounded-sm border border-scope/30 bg-transparent text-scope transition-colors " +
+      "hover:bg-scope/10 active:bg-scope/20 focus:outline-none focus-visible:ring-1 focus-visible:ring-scope/60 " +
+      (pressed ? "bg-scope/15 border-scope/60 " : "")
+    }
+  >
+    {children}
+  </button>
+);
+
 
 
 
