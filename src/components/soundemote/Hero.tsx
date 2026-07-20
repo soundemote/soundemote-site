@@ -94,11 +94,7 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
   const handlePlayPause = useCallback(() => {
     const audio = getSandboxAudio();
     if (!audio) return;
-    if (audio.paused || audio.ended) {
-      audio.play().catch(() => {});
-    } else {
-      audio.pause();
-    }
+    audio.play().catch(() => {});
   }, [getSandboxAudio]);
 
   const handleStop = useCallback(() => {
@@ -272,16 +268,24 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
         </div>
 
         {sandboxLoaded && (
-          <div className="mt-4 flex flex-col items-center gap-3">
+          <div className="mt-[3px] flex w-full flex-col items-center gap-1">
+            <span className="mono flex min-w-[10rem] flex-col items-center text-xs uppercase tracking-[0.18em] text-scope">
+              {currentPatch.label}
+              {noDiff && (
+                <span className="mt-0.5 text-[0.6rem] normal-case tracking-normal text-scope/60">
+                  loaded · identical to previous
+                </span>
+              )}
+            </span>
             <div
               role="toolbar"
               aria-label="Sandbox transport"
-              className="flex items-center gap-2 rounded-md border border-scope/20 bg-background/40 px-3 py-2 backdrop-blur-sm"
+              className="flex w-full items-center justify-center gap-2 px-0 py-0"
             >
-              <TransportButton label="Preview / reload patch" onClick={handlePreview}>
+              <TransportButton label="Previous patch" onClick={() => gotoBank(-1)}>
                 <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
-                  <rect x="3" y="4" width="18" height="16" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
-                  <polygon points="10,9 10,17 17,13" fill="currentColor" />
+                  <rect x="5" y="4" width="3" height="16" fill="currentColor" />
+                  <polygon points="19,4 19,20 8,12" fill="currentColor" />
                 </svg>
               </TransportButton>
               <TransportButton label="Stop" onClick={handleStop}>
@@ -324,14 +328,6 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
                 </svg>
               </TransportButton>
             </div>
-            <span className="mono flex min-w-[10rem] flex-col items-center text-xs uppercase tracking-[0.18em] text-scope">
-              {currentPatch.label}
-              {noDiff && (
-                <span className="mt-0.5 text-[0.6rem] normal-case tracking-normal text-scope/60">
-                  loaded · identical to previous
-                </span>
-              )}
-            </span>
           </div>
         )}
         <div className="mt-2 flex items-center justify-center gap-1 mono text-xs normal-case tracking-[0.06em] text-muted-foreground/80">
