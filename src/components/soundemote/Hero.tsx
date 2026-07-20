@@ -267,9 +267,8 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
           </div>
         </div>
 
-        {sandboxLoaded && (
-          <div className="mt-[3px] flex w-full flex-col items-center gap-1">
-            <span className="mono flex min-w-[10rem] flex-col items-center text-xs uppercase tracking-[0.18em] text-scope">
+        <div className="mt-[2px] flex w-full flex-col items-center gap-[2px]">
+          <span className="mono flex min-w-[10rem] flex-col items-center text-xs uppercase tracking-[0.18em] text-scope leading-none">
               {currentPatch.label}
               {noDiff && (
                 <span className="mt-0.5 text-[0.6rem] normal-case tracking-normal text-scope/60">
@@ -328,9 +327,8 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
                 </svg>
               </TransportButton>
             </div>
-          </div>
-        )}
-        <div className="mt-2 flex items-center justify-center gap-1 mono text-xs normal-case tracking-[0.06em] text-muted-foreground/80">
+        </div>
+        <div className="mt-[2px] flex items-center justify-center gap-1 mono text-xs normal-case tracking-[0.06em] text-muted-foreground/80 leading-none">
           <span>/*</span>
           <SandboxNavLink href="/sandbox" label="sandbox" />
           <span>{siteConfig.sandboxVersion}</span>
