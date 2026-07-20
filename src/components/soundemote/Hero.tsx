@@ -248,7 +248,58 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
         </div>
 
         {sandboxLoaded && (
-          <div className="mt-4 flex items-center justify-center gap-3">
+          <div className="mt-4 flex flex-col items-center gap-3">
+            <div
+              role="toolbar"
+              aria-label="Sandbox transport"
+              className="flex items-center gap-2 rounded-md border border-scope/20 bg-background/40 px-3 py-2 backdrop-blur-sm"
+            >
+              <TransportButton label="Preview / reload patch" onClick={handlePreview}>
+                <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
+                  <rect x="3" y="4" width="18" height="16" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
+                  <polygon points="10,9 10,17 17,13" fill="currentColor" />
+                </svg>
+              </TransportButton>
+              <TransportButton label="Stop" onClick={handleStop}>
+                <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
+                  <rect x="6" y="6" width="12" height="12" fill="currentColor" />
+                </svg>
+              </TransportButton>
+              <TransportButton
+                label={isPlaying ? "Pause" : "Play"}
+                onClick={handlePlayPause}
+                pressed={isPlaying}
+              >
+                {isPlaying ? (
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
+                    <rect x="6" y="5" width="4" height="14" fill="currentColor" />
+                    <rect x="14" y="5" width="4" height="14" fill="currentColor" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
+                    <polygon points="7,4 7,20 20,12" fill="currentColor" />
+                  </svg>
+                )}
+              </TransportButton>
+              <TransportButton
+                label={isLooping ? "Loop on" : "Loop off"}
+                onClick={handleToggleLoop}
+                pressed={isLooping}
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 12a6 6 0 0 1 6-6h8" />
+                  <polyline points="15,3 18,6 15,9" fill="currentColor" stroke="none" />
+                  <path d="M20 12a6 6 0 0 1-6 6H6" />
+                  <polyline points="9,21 6,18 9,15" fill="currentColor" stroke="none" />
+                </svg>
+              </TransportButton>
+              <TransportButton label="Next patch" onClick={() => gotoBank(1)}>
+                <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
+                  <polygon points="5,4 5,20 16,12" fill="currentColor" />
+                  <rect x="16" y="4" width="3" height="16" fill="currentColor" />
+                </svg>
+              </TransportButton>
+            </div>
             <span className="mono flex min-w-[10rem] flex-col items-center text-xs uppercase tracking-[0.18em] text-scope">
               {currentPatch.label}
               {noDiff && (
