@@ -28,6 +28,7 @@ import AdminDashboard from "./pages/AdminDashboard.tsx";
 import AdminClaims from "./pages/AdminClaims.tsx";
 import AdminWikiEdits from "./pages/AdminWikiEdits.tsx";
 import AdminUsers from "./pages/AdminUsers.tsx";
+import SelfPage from "./pages/SelfPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import { siteConfig } from "./config/site.ts";
 import { RootSlugResolver, ShorthandHashCatcher, UserScopedRoute } from "./lib/routeResolver.tsx";
@@ -50,6 +51,7 @@ const App = () => (
         <Route path="/scope-scratch" element={<ScopeScratchPage />} />
         <Route path="/gradient-curve" element={<GradientCurvePage />} />
         <Route path="/sandbox" element={<SandboxPage />} />
+        <Route path="/self" element={<SelfPage />} />
         <Route path="/embed" element={<EmbedPage />} />
 
         {/* Embed-safe playable sandboxes: bare SandboxPage loading a static

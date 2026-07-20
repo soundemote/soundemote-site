@@ -29,6 +29,13 @@ const TransportButton = ({ label, onClick, pressed, children }: TransportButtonP
   </button>
 );
 
+// ── Transport icon SVGs ──
+const ICON_PREV = <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden><rect x="5" y="4" width="3" height="16" fill="currentColor" /><polygon points="19,4 19,20 8,12" fill="currentColor" /></svg>;
+const ICON_NEXT = <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden><polygon points="5,4 5,20 16,12" fill="currentColor" /><rect x="16" y="4" width="3" height="16" fill="currentColor" /></svg>;
+const ICON_STOP = <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden><rect x="6" y="6" width="12" height="12" fill="currentColor" /></svg>;
+const ICON_PLAY = <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden><polygon points="7,4 7,20 20,12" fill="currentColor" /></svg>;
+const ICON_PAUSE = <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden><rect x="6" y="5" width="4" height="14" fill="currentColor" /><rect x="14" y="5" width="4" height="14" fill="currentColor" /></svg>;
+
 
 
 
@@ -38,7 +45,7 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
   const navigate = useNavigate();
   // Live engine state synced from the sandbox via postMessage.
   const [liveEnabled, setLiveEnabled] = useState(false);
-  const [livePaused, setLivePaused] = useState(false);
+  const [liveSpeed, setLiveSpeed] = useState(1);
   // The route (e.g. /reverb, /shootingstar) selects which patch the single hero
   // sandbox loads. Unknown/absent slugs fall back to the first bank patch.
   const bankIndex = SOUNDEMOTE_BANK.findIndex((p) => p.slug === patchSlug);
@@ -68,9 +75,8 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
     iframeRef.current?.contentWindow?.postMessage(message, window.location.origin);
   }, []);
 
-  const isPlaying = liveEnabled && !livePaused;
-  const isPaused = liveEnabled && livePaused;
-  const isIdle = !liveEnabled;
+  const isPlaying = liveEnabled && liveSpeed > 0;
+  const isPaused = liveEnabled && liveSpeed === 0;
 
   const gotoBank = useCallback(
     (delta: number) => {
@@ -92,10 +98,9 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
     postPatchRef.current();
   }, [sandboxLoaded]);
 
-  // Transport: Play/resume — start the engine or unpause it.
+  // Transport: Play/resume — start the engine or resume from pause.
   const handlePlay = useCallback(() => {
     if (isPaused) {
-      postToSandbox({ type: "soundemote:set-live-paused", paused: false });
       postToSandbox({ type: "soundemote:set-live-speed", speed: 1 });
     } else {
       postToSandbox({ type: "soundemote:set-live-output", enabled: true });
@@ -105,7 +110,6 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
 
   // Transport: Pause — freeze the engine (speed → 0).
   const handlePause = useCallback(() => {
-    postToSandbox({ type: "soundemote:set-live-paused", paused: true });
     postToSandbox({ type: "soundemote:set-live-speed", speed: 0 });
   }, [postToSandbox]);
 
@@ -122,7 +126,7 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === "soundemote:live-output-changed") {
         setLiveEnabled(Boolean(event.data.enabled));
-        setLivePaused(Boolean(event.data.paused));
+        setLiveSpeed(Number(event.data.speed) || 1);
       }
     };
     window.addEventListener("message", onMessage);
@@ -263,43 +267,16 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
               aria-label="Sandbox transport"
               className="flex w-full items-center justify-center gap-2 px-0 py-0"
             >
-              <TransportButton label="Previous patch" onClick={() => gotoBank(-1)}>
-                <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
-                  <rect x="5" y="4" width="3" height="16" fill="currentColor" />
-                  <polygon points="19,4 19,20 8,12" fill="currentColor" />
-                </svg>
-              </TransportButton>
-              <TransportButton label="Stop" onClick={handleStop}>
-                <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
-                  <rect x="6" y="6" width="12" height="12" fill="currentColor" />
-                </svg>
-              </TransportButton>
+              <TransportButton label="Previous patch" onClick={() => gotoBank(-1)}>{ICON_PREV}</TransportButton>
+              <TransportButton label="Stop" onClick={handleStop}>{ICON_STOP}</TransportButton>
               <TransportButton
                 label={isPlaying ? "Pause" : "Play"}
                 onClick={isPlaying ? handlePause : handlePlay}
                 pressed={isPlaying}
               >
-                {isPaused ? (
-                  <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
-                    <polygon points="7,4 7,20 20,12" fill="currentColor" />
-                  </svg>
-                ) : isPlaying ? (
-                  <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
-                    <rect x="6" y="5" width="4" height="14" fill="currentColor" />
-                    <rect x="14" y="5" width="4" height="14" fill="currentColor" />
-                  </svg>
-                ) : (
-                  <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
-                    <polygon points="7,4 7,20 20,12" fill="currentColor" />
-                  </svg>
-                )}
+                {isPaused ? ICON_PLAY : isPlaying ? ICON_PAUSE : ICON_PLAY}
               </TransportButton>
-              <TransportButton label="Next patch" onClick={() => gotoBank(1)}>
-                <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
-                  <polygon points="5,4 5,20 16,12" fill="currentColor" />
-                  <rect x="16" y="4" width="3" height="16" fill="currentColor" />
-                </svg>
-              </TransportButton>
+              <TransportButton label="Next patch" onClick={() => gotoBank(1)}>{ICON_NEXT}</TransportButton>
             </div>
         </div>
         <div className="mt-[2px] flex items-center justify-center gap-1 mono text-xs normal-case tracking-[0.06em] text-muted-foreground/80 leading-none">
