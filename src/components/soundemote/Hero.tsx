@@ -36,8 +36,9 @@ const TransportButton = ({ label, onClick, pressed, children }: TransportButtonP
 export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
   const navigate = useNavigate();
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isLooping, setIsLooping] = useState(false);
+  // Live engine state synced from the sandbox via postMessage.
+  const [liveEnabled, setLiveEnabled] = useState(false);
+  const [livePaused, setLivePaused] = useState(false);
   // The route (e.g. /reverb, /shootingstar) selects which patch the single hero
   // sandbox loads. Unknown/absent slugs fall back to the first bank patch.
   const bankIndex = SOUNDEMOTE_BANK.findIndex((p) => p.slug === patchSlug);
@@ -62,14 +63,14 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
     "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autostart=1&autoframe=1&v=20260703-autoframe";
   const currentPatch = SOUNDEMOTE_BANK[patchIndex];
 
-  const getSandboxAudio = useCallback((): HTMLAudioElement | null => {
-    try {
-      const doc = iframeRef.current?.contentDocument;
-      return (doc?.getElementById("audioPlayer") as HTMLAudioElement) || null;
-    } catch {
-      return null;
-    }
+  // Send a postMessage into the sandbox iframe.
+  const postToSandbox = useCallback((message: unknown) => {
+    iframeRef.current?.contentWindow?.postMessage(message, window.location.origin);
   }, []);
+
+  const isPlaying = liveEnabled && !livePaused;
+  const isPaused = liveEnabled && livePaused;
+  const isIdle = !liveEnabled;
 
   const gotoBank = useCallback(
     (delta: number) => {
@@ -91,63 +92,44 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
     postPatchRef.current();
   }, [sandboxLoaded]);
 
-  const handlePlayPause = useCallback(() => {
-    const audio = getSandboxAudio();
-    if (!audio) return;
-    audio.play().catch(() => {});
-  }, [getSandboxAudio]);
-
-  const handleStop = useCallback(() => {
-    const audio = getSandboxAudio();
-    if (!audio) return;
-    try {
-      audio.pause();
-      audio.currentTime = 0;
-    } catch {
-      /* noop */
+  // Transport: Play/resume — start the engine or unpause it.
+  const handlePlay = useCallback(() => {
+    if (isPaused) {
+      postToSandbox({ type: "soundemote:set-live-paused", paused: false });
+      postToSandbox({ type: "soundemote:set-live-speed", speed: 1 });
+    } else {
+      postToSandbox({ type: "soundemote:set-live-output", enabled: true });
+      postToSandbox({ type: "soundemote:set-live-speed", speed: 1 });
     }
-  }, [getSandboxAudio]);
+  }, [isPaused, postToSandbox]);
 
-  const handleToggleLoop = useCallback(() => {
-    const audio = getSandboxAudio();
-    setIsLooping((prev) => {
-      const next = !prev;
-      if (audio) audio.loop = next;
-      return next;
-    });
-  }, [getSandboxAudio]);
+  // Transport: Pause — freeze the engine (speed → 0).
+  const handlePause = useCallback(() => {
+    postToSandbox({ type: "soundemote:set-live-paused", paused: true });
+    postToSandbox({ type: "soundemote:set-live-speed", speed: 0 });
+  }, [postToSandbox]);
 
-  // Track play state from the embedded audio element to keep play/pause icon accurate.
+  // Transport: Stop — tear down the audio engine entirely, reset speed.
+  const handleStop = useCallback(() => {
+    postToSandbox({ type: "soundemote:set-live-output", enabled: false });
+    postToSandbox({ type: "soundemote:set-live-speed", speed: 1 });
+  }, [postToSandbox]);
+
+  // Listen for live-output-changed messages from the sandbox to keep transport state in sync.
   useEffect(() => {
     if (!sandboxLoaded) return;
-    let raf = 0;
-    let detach: (() => void) | null = null;
-    const attach = () => {
-      const audio = getSandboxAudio();
-      if (!audio) {
-        raf = window.setTimeout(attach, 400) as unknown as number;
-        return;
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === "soundemote:live-output-changed") {
+        setLiveEnabled(Boolean(event.data.enabled));
+        setLivePaused(Boolean(event.data.paused));
       }
-      audio.loop = isLooping;
-      const onPlay = () => setIsPlaying(true);
-      const onPause = () => setIsPlaying(false);
-      const onEnded = () => setIsPlaying(false);
-      audio.addEventListener("play", onPlay);
-      audio.addEventListener("pause", onPause);
-      audio.addEventListener("ended", onEnded);
-      setIsPlaying(!audio.paused && !audio.ended);
-      detach = () => {
-        audio.removeEventListener("play", onPlay);
-        audio.removeEventListener("pause", onPause);
-        audio.removeEventListener("ended", onEnded);
-      };
     };
-    attach();
-    return () => {
-      if (raf) window.clearTimeout(raf);
-      detach?.();
-    };
-  }, [sandboxLoaded, patchIndex, getSandboxAudio, isLooping]);
+    window.addEventListener("message", onMessage);
+    // Also request current state in case the sandbox already started before we started listening.
+    postToSandbox({ type: "soundemote:request-live-state" });
+    return () => window.removeEventListener("message", onMessage);
+  }, [sandboxLoaded, postToSandbox]);
 
   const postPatch = useCallback(async () => {
     const win = iframeRef.current?.contentWindow;
@@ -294,10 +276,14 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
               </TransportButton>
               <TransportButton
                 label={isPlaying ? "Pause" : "Play"}
-                onClick={handlePlayPause}
+                onClick={isPlaying ? handlePause : handlePlay}
                 pressed={isPlaying}
               >
-                {isPlaying ? (
+                {isPaused ? (
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
+                    <polygon points="7,4 7,20 20,12" fill="currentColor" />
+                  </svg>
+                ) : isPlaying ? (
                   <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
                     <rect x="6" y="5" width="4" height="14" fill="currentColor" />
                     <rect x="14" y="5" width="4" height="14" fill="currentColor" />
@@ -307,18 +293,6 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
                     <polygon points="7,4 7,20 20,12" fill="currentColor" />
                   </svg>
                 )}
-              </TransportButton>
-              <TransportButton
-                label={isLooping ? "Loop on" : "Loop off"}
-                onClick={handleToggleLoop}
-                pressed={isLooping}
-              >
-                <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M4 12a6 6 0 0 1 6-6h8" />
-                  <polyline points="15,3 18,6 15,9" fill="currentColor" stroke="none" />
-                  <path d="M20 12a6 6 0 0 1-6 6H6" />
-                  <polyline points="9,21 6,18 9,15" fill="currentColor" stroke="none" />
-                </svg>
               </TransportButton>
               <TransportButton label="Next patch" onClick={() => gotoBank(1)}>
                 <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
