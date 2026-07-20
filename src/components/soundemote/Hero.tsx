@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import patchImage from "@/assets/soemdsp-patch.png";
 import { siteConfig } from "@/config/site";
 import { SOUNDEMOTE_BANK } from "@/data/patchBank";
@@ -10,6 +11,9 @@ import { SandboxNavLink } from "@/components/soundemote/Nav";
 
 export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
+  const navigate = useNavigate();
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isLooping, setIsLooping] = useState(false);
   // The route (e.g. /reverb, /shootingstar) selects which patch the single hero
   // sandbox loads. Unknown/absent slugs fall back to the first bank patch.
   const bankIndex = SOUNDEMOTE_BANK.findIndex((p) => p.slug === patchSlug);
@@ -33,6 +37,99 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
   const sandboxEmbedSrc =
     "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autostart=1&autoframe=1&v=20260703-autoframe";
   const currentPatch = SOUNDEMOTE_BANK[patchIndex];
+
+  const getSandboxAudio = useCallback((): HTMLAudioElement | null => {
+    try {
+      const doc = iframeRef.current?.contentDocument;
+      return (doc?.getElementById("audioPlayer") as HTMLAudioElement) || null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const gotoBank = useCallback(
+    (delta: number) => {
+      const n = SOUNDEMOTE_BANK.length;
+      const next = SOUNDEMOTE_BANK[(patchIndex + delta + n) % n];
+      navigate(`/${next.slug}`);
+    },
+    [navigate, patchIndex],
+  );
+
+  const handlePreview = useCallback(() => {
+    if (!sandboxLoaded) {
+      setSandboxLoaded(true);
+      return;
+    }
+    lastPostedRef.current = -1;
+    postPatch();
+  }, [sandboxLoaded]);
+
+  const handlePlayPause = useCallback(() => {
+    const audio = getSandboxAudio();
+    if (!audio) return;
+    if (audio.paused || audio.ended) {
+      audio.play().catch(() => {});
+    } else {
+      audio.pause();
+    }
+  }, [getSandboxAudio]);
+
+  const handleStop = useCallback(() => {
+    const audio = getSandboxAudio();
+    if (!audio) return;
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+    } catch {
+      /* noop */
+    }
+  }, [getSandboxAudio]);
+
+  const handleToggleLoop = useCallback(() => {
+    const audio = getSandboxAudio();
+    setIsLooping((prev) => {
+      const next = !prev;
+      if (audio) audio.loop = next;
+      return next;
+    });
+  }, [getSandboxAudio]);
+
+  // Track play state from the embedded audio element to keep play/pause icon accurate.
+  useEffect(() => {
+    if (!sandboxLoaded) return;
+    let raf = 0;
+    let detach: (() => void) | null = null;
+    const attach = () => {
+      const audio = getSandboxAudio();
+      if (!audio) {
+        raf = window.setTimeout(attach, 400) as unknown as number;
+        return;
+      }
+      audio.loop = isLooping;
+      const onPlay = () => setIsPlaying(true);
+      const onPause = () => setIsPlaying(false);
+      const onEnded = () => setIsPlaying(false);
+      audio.addEventListener("play", onPlay);
+      audio.addEventListener("pause", onPause);
+      audio.addEventListener("ended", onEnded);
+      setIsPlaying(!audio.paused && !audio.ended);
+      detach = () => {
+        audio.removeEventListener("play", onPlay);
+        audio.removeEventListener("pause", onPause);
+        audio.removeEventListener("ended", onEnded);
+      };
+    };
+    attach();
+    return () => {
+      if (raf) window.clearTimeout(raf);
+      detach?.();
+    };
+  }, [sandboxLoaded, patchIndex, getSandboxAudio, isLooping]);
+
+  // Forward-declare so handlePreview can call postPatch (defined below).
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  let _postPatchRef: unknown;
 
   const postPatch = useCallback(async () => {
     const win = iframeRef.current?.contentWindow;
