@@ -127,11 +127,11 @@
       },
       "type": "output",
       "traceDisplaySettings": {
-        "brightness": 0.92,
+        "brightness": 1,
         "color": "#ff0000",
         "dot1Enabled": true,
         "dot1Size": 0.0286,
-        "secondaryBrightness": 2,
+        "secondaryBrightness": 1,
         "secondaryColor": "#0008ff",
         "secondaryEnabled": true,
         "secondarySize": 0.026,
@@ -139,9 +139,9 @@
         "cycles": 2,
         "lineThickness": 0.2,
         "padding": 0,
-        "skipDiscontinuities": true,
+        "skipDiscontinuities": false,
         "sourceSync": false,
-        "zoomSeconds": 0.05
+        "zoomSeconds": 0.3625
       }
     },
     {
@@ -579,7 +579,7 @@
         }
       },
       "params": {
-        "speed": 1.65,
+        "speed": 1,
         "sigma": 10,
         "rho": 28,
         "beta": 3.2413,
@@ -611,7 +611,7 @@
   "view": {
     "heightGu": 24,
     "widthGu": 47,
-    "zoom": 1.9507640089552165
+    "zoom": 1.2899167337007282
   },
   "visual": {
     "background": {
