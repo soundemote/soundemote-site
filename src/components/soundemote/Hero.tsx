@@ -94,11 +94,7 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
   const handlePlayPause = useCallback(() => {
     const audio = getSandboxAudio();
     if (!audio) return;
-    if (audio.paused || audio.ended) {
-      audio.play().catch(() => {});
-    } else {
-      audio.pause();
-    }
+    audio.play().catch(() => {});
   }, [getSandboxAudio]);
 
   const handleStop = useCallback(() => {
@@ -286,10 +282,10 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
               aria-label="Sandbox transport"
               className="flex w-full items-center justify-center gap-2 px-0 py-0"
             >
-              <TransportButton label="Preview / reload patch" onClick={handlePreview}>
+              <TransportButton label="Previous patch" onClick={() => gotoBank(-1)}>
                 <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
-                  <rect x="3" y="4" width="18" height="16" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
-                  <polygon points="10,9 10,17 17,13" fill="currentColor" />
+                  <rect x="5" y="4" width="3" height="16" fill="currentColor" />
+                  <polygon points="19,4 19,20 8,12" fill="currentColor" />
                 </svg>
               </TransportButton>
               <TransportButton label="Stop" onClick={handleStop}>
