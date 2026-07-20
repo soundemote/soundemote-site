@@ -56,13 +56,15 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
     [navigate, patchIndex],
   );
 
+  const postPatchRef = useRef<() => void>(() => {});
+
   const handlePreview = useCallback(() => {
     if (!sandboxLoaded) {
       setSandboxLoaded(true);
       return;
     }
     lastPostedRef.current = -1;
-    postPatch();
+    postPatchRef.current();
   }, [sandboxLoaded]);
 
   const handlePlayPause = useCallback(() => {
@@ -127,10 +129,6 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
     };
   }, [sandboxLoaded, patchIndex, getSandboxAudio, isLooping]);
 
-  // Forward-declare so handlePreview can call postPatch (defined below).
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  let _postPatchRef: unknown;
-
   const postPatch = useCallback(async () => {
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
@@ -180,6 +178,10 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
       /* ignore fetch/post errors */
     }
   }, [currentPatch.label, currentPatch.url, patchIndex]);
+
+  useEffect(() => {
+    postPatchRef.current = postPatch;
+  }, [postPatch]);
 
   // Re-send whenever the selected patch changes (after initial load).
   useEffect(() => {
