@@ -1,8 +1,33 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import patchImage from "@/assets/soemdsp-patch.png";
 import { siteConfig } from "@/config/site";
 import { SOUNDEMOTE_BANK } from "@/data/patchBank";
 import { SandboxNavLink } from "@/components/soundemote/Nav";
+
+type TransportButtonProps = {
+  label: string;
+  onClick: () => void;
+  pressed?: boolean;
+  children: React.ReactNode;
+};
+
+const TransportButton = ({ label, onClick, pressed, children }: TransportButtonProps) => (
+  <button
+    type="button"
+    onClick={onClick}
+    aria-label={label}
+    aria-pressed={pressed}
+    title={label}
+    className={
+      "inline-flex h-9 w-9 items-center justify-center rounded-sm border border-scope/30 bg-transparent text-scope transition-colors " +
+      "hover:bg-scope/10 active:bg-scope/20 focus:outline-none focus-visible:ring-1 focus-visible:ring-scope/60 " +
+      (pressed ? "bg-scope/15 border-scope/60 " : "")
+    }
+  >
+    {children}
+  </button>
+);
 
 
 
@@ -10,6 +35,9 @@ import { SandboxNavLink } from "@/components/soundemote/Nav";
 
 export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
+  const navigate = useNavigate();
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isLooping, setIsLooping] = useState(false);
   // The route (e.g. /reverb, /shootingstar) selects which patch the single hero
   // sandbox loads. Unknown/absent slugs fall back to the first bank patch.
   const bankIndex = SOUNDEMOTE_BANK.findIndex((p) => p.slug === patchSlug);
@@ -33,6 +61,97 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
   const sandboxEmbedSrc =
     "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autostart=1&autoframe=1&v=20260703-autoframe";
   const currentPatch = SOUNDEMOTE_BANK[patchIndex];
+
+  const getSandboxAudio = useCallback((): HTMLAudioElement | null => {
+    try {
+      const doc = iframeRef.current?.contentDocument;
+      return (doc?.getElementById("audioPlayer") as HTMLAudioElement) || null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const gotoBank = useCallback(
+    (delta: number) => {
+      const n = SOUNDEMOTE_BANK.length;
+      const next = SOUNDEMOTE_BANK[(patchIndex + delta + n) % n];
+      navigate(`/${next.slug}`);
+    },
+    [navigate, patchIndex],
+  );
+
+  const postPatchRef = useRef<() => void>(() => {});
+
+  const handlePreview = useCallback(() => {
+    if (!sandboxLoaded) {
+      setSandboxLoaded(true);
+      return;
+    }
+    lastPostedRef.current = -1;
+    postPatchRef.current();
+  }, [sandboxLoaded]);
+
+  const handlePlayPause = useCallback(() => {
+    const audio = getSandboxAudio();
+    if (!audio) return;
+    if (audio.paused || audio.ended) {
+      audio.play().catch(() => {});
+    } else {
+      audio.pause();
+    }
+  }, [getSandboxAudio]);
+
+  const handleStop = useCallback(() => {
+    const audio = getSandboxAudio();
+    if (!audio) return;
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+    } catch {
+      /* noop */
+    }
+  }, [getSandboxAudio]);
+
+  const handleToggleLoop = useCallback(() => {
+    const audio = getSandboxAudio();
+    setIsLooping((prev) => {
+      const next = !prev;
+      if (audio) audio.loop = next;
+      return next;
+    });
+  }, [getSandboxAudio]);
+
+  // Track play state from the embedded audio element to keep play/pause icon accurate.
+  useEffect(() => {
+    if (!sandboxLoaded) return;
+    let raf = 0;
+    let detach: (() => void) | null = null;
+    const attach = () => {
+      const audio = getSandboxAudio();
+      if (!audio) {
+        raf = window.setTimeout(attach, 400) as unknown as number;
+        return;
+      }
+      audio.loop = isLooping;
+      const onPlay = () => setIsPlaying(true);
+      const onPause = () => setIsPlaying(false);
+      const onEnded = () => setIsPlaying(false);
+      audio.addEventListener("play", onPlay);
+      audio.addEventListener("pause", onPause);
+      audio.addEventListener("ended", onEnded);
+      setIsPlaying(!audio.paused && !audio.ended);
+      detach = () => {
+        audio.removeEventListener("play", onPlay);
+        audio.removeEventListener("pause", onPause);
+        audio.removeEventListener("ended", onEnded);
+      };
+    };
+    attach();
+    return () => {
+      if (raf) window.clearTimeout(raf);
+      detach?.();
+    };
+  }, [sandboxLoaded, patchIndex, getSandboxAudio, isLooping]);
 
   const postPatch = useCallback(async () => {
     const win = iframeRef.current?.contentWindow;
@@ -83,6 +202,10 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
       /* ignore fetch/post errors */
     }
   }, [currentPatch.label, currentPatch.url, patchIndex]);
+
+  useEffect(() => {
+    postPatchRef.current = postPatch;
+  }, [postPatch]);
 
   // Re-send whenever the selected patch changes (after initial load).
   useEffect(() => {
@@ -149,7 +272,58 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
         </div>
 
         {sandboxLoaded && (
-          <div className="mt-4 flex items-center justify-center gap-3">
+          <div className="mt-4 flex flex-col items-center gap-3">
+            <div
+              role="toolbar"
+              aria-label="Sandbox transport"
+              className="flex items-center gap-2 rounded-md border border-scope/20 bg-background/40 px-3 py-2 backdrop-blur-sm"
+            >
+              <TransportButton label="Preview / reload patch" onClick={handlePreview}>
+                <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
+                  <rect x="3" y="4" width="18" height="16" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
+                  <polygon points="10,9 10,17 17,13" fill="currentColor" />
+                </svg>
+              </TransportButton>
+              <TransportButton label="Stop" onClick={handleStop}>
+                <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
+                  <rect x="6" y="6" width="12" height="12" fill="currentColor" />
+                </svg>
+              </TransportButton>
+              <TransportButton
+                label={isPlaying ? "Pause" : "Play"}
+                onClick={handlePlayPause}
+                pressed={isPlaying}
+              >
+                {isPlaying ? (
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
+                    <rect x="6" y="5" width="4" height="14" fill="currentColor" />
+                    <rect x="14" y="5" width="4" height="14" fill="currentColor" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
+                    <polygon points="7,4 7,20 20,12" fill="currentColor" />
+                  </svg>
+                )}
+              </TransportButton>
+              <TransportButton
+                label={isLooping ? "Loop on" : "Loop off"}
+                onClick={handleToggleLoop}
+                pressed={isLooping}
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 12a6 6 0 0 1 6-6h8" />
+                  <polyline points="15,3 18,6 15,9" fill="currentColor" stroke="none" />
+                  <path d="M20 12a6 6 0 0 1-6 6H6" />
+                  <polyline points="9,21 6,18 9,15" fill="currentColor" stroke="none" />
+                </svg>
+              </TransportButton>
+              <TransportButton label="Next patch" onClick={() => gotoBank(1)}>
+                <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
+                  <polygon points="5,4 5,20 16,12" fill="currentColor" />
+                  <rect x="16" y="4" width="3" height="16" fill="currentColor" />
+                </svg>
+              </TransportButton>
+            </div>
             <span className="mono flex min-w-[10rem] flex-col items-center text-xs uppercase tracking-[0.18em] text-scope">
               {currentPatch.label}
               {noDiff && (

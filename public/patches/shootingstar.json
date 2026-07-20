@@ -40,6 +40,13 @@
     },
     {
       "destinationNode": "output",
+      "destinationPort": "Mono",
+      "sourceNode": "lorenzAttractor-1",
+      "sourcePort": "X",
+      "tracePoints": []
+    },
+    {
+      "destinationNode": "output",
       "destinationPort": "Left",
       "sourceNode": "lorenzAttractor-1",
       "sourcePort": "Y",
@@ -72,6 +79,7 @@
     "program": 0,
     "tags": "circle"
   },
+  "modularOnlyControlsVisible": false,
   "modulations": [
     {
       "destinationNode": "lorenzAttractor-1",
@@ -84,8 +92,8 @@
   "monitors": [],
   "nodes": [
     {
-      "gx": 8,
-      "gy": -5,
+      "gx": 7,
+      "gy": -7,
       "id": "output",
       "paramMeta": {
         "volume": {
@@ -119,21 +127,21 @@
       },
       "type": "output",
       "traceDisplaySettings": {
-        "brightness": 0.92,
-        "color": "#75ebff",
+        "brightness": 1,
+        "color": "#ff0000",
         "dot1Enabled": true,
-        "dot1Size": 0.08,
+        "dot1Size": 0.0286,
+        "secondaryBrightness": 1,
+        "secondaryColor": "#0008ff",
+        "secondaryEnabled": true,
+        "secondarySize": 0.026,
+        "secondaryLineThickness": 0.48,
         "cycles": 2,
         "lineThickness": 0.2,
         "padding": 0,
-        "skipDiscontinuities": true,
+        "skipDiscontinuities": false,
         "sourceSync": false,
-        "zoomSeconds": 0.05,
-        "secondaryColor": "#184fff",
-        "secondarySize": 0.24,
-        "secondaryBrightness": 0.18,
-        "secondaryLineThickness": 0.48,
-        "secondaryEnabled": true
+        "zoomSeconds": 0.3625
       }
     },
     {
@@ -365,8 +373,8 @@
       "type": "vactrolEnvelopeCustom"
     },
     {
-      "gx": 0,
-      "gy": -8,
+      "gx": -1,
+      "gy": -9,
       "id": "lorenzAttractor-1",
       "paramMeta": {
         "speed": {
@@ -571,18 +579,18 @@
         }
       },
       "params": {
-        "speed": 27.22,
+        "speed": 1,
         "sigma": 10,
         "rho": 28,
         "beta": 3.2413,
         "scale": 1.2,
         "rotate": 0,
         "zDepth": 0.4,
-        "level": 1
+        "level": 0.5
       },
       "type": "lorenzAttractor",
       "traceDisplaySettings": {
-        "burn": 0.5825,
+        "burn": 0,
         "decay": 0.12,
         "dot1Brightness": 0.92,
         "dot1Color": "#75ebff",
@@ -593,6 +601,7 @@
     }
   ],
   "requiredAssets": [],
+  "samples": [],
   "timing": {
     "tempoBpm": 120,
     "timeSignatureDenominator": 4,
@@ -602,7 +611,7 @@
   "view": {
     "heightGu": 24,
     "widthGu": 47,
-    "zoom": 1.1454074074074074
+    "zoom": 1.2899167337007282
   },
   "visual": {
     "background": {
