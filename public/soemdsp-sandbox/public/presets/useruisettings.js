@@ -23,6 +23,9 @@
     "moduleRoundness": 10,
     "gridColor": "#ffffff",
     "workspaceBackgroundColor": "#0d0d0d",
+    "moduleBrowserEntryHeight": 80,
+    "moduleBrowserEntryPadding": 10,
+    "moduleBrowserEntryTextSize": 24,
     "settingsHeaderTopRatio": 62,
     "settingsHeaderPadding": 2,
     "floatingWindowHeaderHeight": 30,
@@ -73,6 +76,9 @@
     "moduleRoundness": true,
     "gridColor": true,
     "workspaceBackgroundColor": true,
+    "moduleBrowserEntryHeight": true,
+    "moduleBrowserEntryPadding": true,
+    "moduleBrowserEntryTextSize": true,
     "settingsHeaderTopRatio": false,
     "settingsHeaderPadding": false,
     "floatingWindowHeaderHeight": true,
@@ -743,8 +749,8 @@
       "codeBox": {
         "open": false,
         "position": {
-          "left": 409,
-          "top": 472
+          "left": 377,
+          "top": 350
         },
         "size": {
           "width": 407,
@@ -770,8 +776,8 @@
       "moduleBrowser": {
         "open": false,
         "position": {
-          "left": 365,
-          "top": 60
+          "left": 224,
+          "top": 162
         },
         "size": {
           "width": 221,
@@ -788,16 +794,20 @@
       "uiSettings": {
         "open": false,
         "position": {
-          "left": 0,
-          "top": 0
+          "left": 32,
+          "top": 101
         }
       },
       "uiDev": {
-        "open": false
+        "open": false,
+        "position": {
+          "left": 600,
+          "top": 18
+        }
       },
       "traceDisplaySettings": {
         "open": false,
-        "targetNode": "scriptBox-1"
+        "targetNode": "audioPlayer-1"
       },
       "standaloneMidiKeyboard": {
         "open": false
@@ -810,10 +820,10 @@
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": 45.90000000000009,
-        "y": -304.89250000000004
+        "x": -216.62500000000003,
+        "y": -200.2767857142857
       },
-      "zoom": 0.9181553395645877
+      "zoom": 0.5209859973903767
     },
     "moduleStoreDepartment": "",
     "savedPatchBankIndex": 0,
