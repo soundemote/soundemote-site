@@ -132,8 +132,8 @@
   },
   "moduleDefaultOverrides": {},
   "view": {
-    "gridVisible": false,
-    "keyboardDebugInfoVisible": true,
+    "gridVisible": true,
+    "keyboardDebugInfoVisible": false,
     "moduleButtonsVisible": true,
     "moduleInterfaceControlsVisible": true,
     "moduleOscilloscopesVisible": true,
@@ -446,6 +446,10 @@
         "home": false
       },
       "gain": {
+        "developer": true,
+        "home": false
+      },
+      "gainBiasMix": {
         "developer": true,
         "home": false
       },
@@ -803,7 +807,7 @@
       },
       "traceDisplaySettings": {
         "open": false,
-        "targetNode": "polyBlep-1"
+        "targetNode": "sonogram-1"
       },
       "standaloneMidiKeyboard": {
         "open": false,
@@ -832,12 +836,12 @@
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": 163.7950257669055,
-        "y": 110.24509782485347
+        "x": -42.670918367346985,
+        "y": 32.123724489795904
       },
-      "zoom": 0.7920452652176722
+      "zoom": 1.0430946810995274
     },
-    "moduleStoreDepartment": "filter",
+    "moduleStoreDepartment": "",
     "savedPatchBankIndex": 0,
     "savedPatchBankName": "chaos",
     "savedPatchGridColumns": 3,
