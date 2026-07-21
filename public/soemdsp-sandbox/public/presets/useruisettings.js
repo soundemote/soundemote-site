@@ -769,8 +769,8 @@
       "patchExplorer": {
         "open": false,
         "position": {
-          "left": 804,
-          "top": 238
+          "left": 1259,
+          "top": 223
         }
       },
       "moduleBrowser": {
@@ -807,7 +807,7 @@
       },
       "traceDisplaySettings": {
         "open": false,
-        "targetNode": "polyBlep-3"
+        "targetNode": "polyBlep-4"
       },
       "standaloneMidiKeyboard": {
         "open": false,
