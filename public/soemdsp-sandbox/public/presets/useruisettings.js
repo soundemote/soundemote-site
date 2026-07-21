@@ -807,7 +807,7 @@
       },
       "traceDisplaySettings": {
         "open": false,
-        "targetNode": "polyBlep-5"
+        "targetNode": "output"
       },
       "standaloneMidiKeyboard": {
         "open": false,
@@ -836,10 +836,10 @@
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": 591.0357142857141,
-        "y": 322.10714285714283
+        "x": 370.6428571428571,
+        "y": 254.53571428571428
       },
-      "zoom": 1.3552347262948579
+      "zoom": 1.0803848264467935
     },
     "moduleStoreDepartment": "",
     "savedPatchBankIndex": 0,
