@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import patchImage from "@/assets/soemdsp-patch.png";
 import { siteConfig } from "@/config/site";
 import { SOUNDEMOTE_BANK } from "@/data/patchBank";
@@ -42,14 +41,21 @@ const ICON_PAUSE = <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden><rec
 
 export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
   const [sandboxLoaded, setSandboxLoaded] = useState(false);
-  const navigate = useNavigate();
   // Live engine state synced from the sandbox via postMessage.
   const [liveEnabled, setLiveEnabled] = useState(false);
   const [liveSpeed, setLiveSpeed] = useState(1);
   // The route (e.g. /reverb, /shootingstar) selects which patch the single hero
   // sandbox loads. Unknown/absent slugs fall back to the first bank patch.
-  const bankIndex = SOUNDEMOTE_BANK.findIndex((p) => p.slug === patchSlug);
-  const patchIndex = bankIndex >= 0 ? bankIndex : 0;
+  // This is the *initial* index; prev/next cycle the sandbox without changing
+  // the URL, so we track the active bank position in local state.
+  const routePatchIndex = SOUNDEMOTE_BANK.findIndex((p) => p.slug === patchSlug);
+  const initialPatchIndex = routePatchIndex >= 0 ? routePatchIndex : 0;
+  const [currentBankIndex, setCurrentBankIndex] = useState(initialPatchIndex);
+
+  // Sync local state when the route changes (someone navigated to a different URL).
+  useEffect(() => {
+    setCurrentBankIndex(initialPatchIndex);
+  }, [patchSlug, initialPatchIndex]);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   // -1 means "nothing posted yet" so the first onLoad always pushes the
   // starting patch (shooting star) -- the sandbox's own built-in default
@@ -68,7 +74,7 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
   // frames itself correctly no matter which patch loads.
   const sandboxEmbedSrc =
     "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autostart=1&autoframe=1&v=20260703-autoframe";
-  const currentPatch = SOUNDEMOTE_BANK[patchIndex];
+  const currentPatch = SOUNDEMOTE_BANK[currentBankIndex];
 
   // Send a postMessage into the sandbox iframe.
   const postToSandbox = useCallback((message: unknown) => {
@@ -78,13 +84,13 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
   const isPlaying = liveEnabled && liveSpeed > 0;
   const isPaused = liveEnabled && liveSpeed === 0;
 
+  // Prev/next: cycle the patch locally without changing the URL.
   const gotoBank = useCallback(
     (delta: number) => {
       const n = SOUNDEMOTE_BANK.length;
-      const next = SOUNDEMOTE_BANK[(patchIndex + delta + n) % n];
-      navigate(`/${next.slug}`);
+      setCurrentBankIndex((prev) => (prev + delta + n) % n);
     },
-    [navigate, patchIndex],
+    [],
   );
 
   const postPatchRef = useRef<() => void>(() => {});
@@ -99,14 +105,19 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
   }, [sandboxLoaded]);
 
   // Transport: Play/resume — start the engine or resume from pause.
+  // If the sandbox hasn't been loaded yet, load it first (like clicking the hero image).
   const handlePlay = useCallback(() => {
+    if (!sandboxLoaded) {
+      setSandboxLoaded(true);
+      return;
+    }
     if (isPaused) {
       postToSandbox({ type: "soundemote:set-live-speed", speed: 1 });
     } else {
       postToSandbox({ type: "soundemote:set-live-output", enabled: true });
       postToSandbox({ type: "soundemote:set-live-speed", speed: 1 });
     }
-  }, [isPaused, postToSandbox]);
+  }, [isPaused, postToSandbox, sandboxLoaded]);
 
   // Transport: Pause — freeze the engine (speed → 0).
   const handlePause = useCallback(() => {
@@ -126,7 +137,8 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === "soundemote:live-output-changed") {
         setLiveEnabled(Boolean(event.data.enabled));
-        setLiveSpeed(Number(event.data.speed) || 1);
+        const rawSpeed = event.data.speed;
+        setLiveSpeed(rawSpeed != null ? Number(rawSpeed) : 1);
       }
     };
     window.addEventListener("message", onMessage);
@@ -139,8 +151,8 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
     // Nothing to do if this patch is already loaded in the sandbox.
-    if (lastPostedRef.current === patchIndex) return;
-    lastPostedRef.current = patchIndex;
+    if (lastPostedRef.current === currentBankIndex) return;
+    lastPostedRef.current = currentBankIndex;
     try {
       const res = await fetch(currentPatch.url);
       const patchData = await res.json();
@@ -183,7 +195,7 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
     } catch {
       /* ignore fetch/post errors */
     }
-  }, [currentPatch.label, currentPatch.url, patchIndex]);
+  }, [currentPatch.label, currentPatch.url, currentBankIndex]);
 
   useEffect(() => {
     postPatchRef.current = postPatch;
