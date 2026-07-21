@@ -807,7 +807,7 @@
       },
       "traceDisplaySettings": {
         "open": false,
-        "targetNode": "sonogram-1"
+        "targetNode": "polyBlep-1"
       },
       "standaloneMidiKeyboard": {
         "open": false,
@@ -836,12 +836,12 @@
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": -42.670918367346985,
-        "y": 32.123724489795904
+        "x": 297.42857142857156,
+        "y": 116.92857142857144
       },
-      "zoom": 1.0430946810995274
+      "zoom": 0.6866040888412032
     },
-    "moduleStoreDepartment": "",
+    "moduleStoreDepartment": "oscillator",
     "savedPatchBankIndex": 0,
     "savedPatchBankName": "chaos",
     "savedPatchGridColumns": 3,
