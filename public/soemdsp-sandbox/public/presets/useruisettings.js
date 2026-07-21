@@ -157,7 +157,7 @@
     "macroKnobValuePosition": "bottom",
     "traceSettings": {
       "brightness": 0.6068,
-      "color": "#6b6d9e",
+      "color": "#0008ff",
       "dot1Enabled": true,
       "dot1Size": 0.0375,
       "secondaryBrightness": 2,
@@ -168,9 +168,9 @@
       "cycles": 2,
       "lineThickness": 0.3875,
       "padding": 0,
-      "skipDiscontinuities": true,
+      "skipDiscontinuities": false,
       "sourceSync": false,
-      "zoomSeconds": 0.05
+      "zoomSeconds": 2
     },
     "sliderLayout": "text-inside",
     "sliderAmountVisible": true,
@@ -742,8 +742,8 @@
       "commandCenter": {
         "open": false,
         "position": {
-          "left": 1199,
-          "top": 278
+          "left": 1636,
+          "top": 297
         }
       },
       "codeBox": {
@@ -772,8 +772,8 @@
       "moduleBrowser": {
         "open": false,
         "position": {
-          "left": 101,
-          "top": 139
+          "left": 993,
+          "top": 157
         },
         "size": {
           "width": 300,
@@ -790,8 +790,8 @@
       "uiSettings": {
         "open": false,
         "position": {
-          "left": 1359,
-          "top": 159
+          "left": 807,
+          "top": 117
         }
       },
       "uiDev": {
@@ -803,7 +803,7 @@
       },
       "traceDisplaySettings": {
         "open": false,
-        "targetNode": "output"
+        "targetNode": "polyBlep-1"
       },
       "standaloneMidiKeyboard": {
         "open": false,
@@ -832,12 +832,12 @@
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": 79.64285714285711,
-        "y": 114.9375
+        "x": 163.7950257669055,
+        "y": 110.24509782485347
       },
-      "zoom": 0.8455147498926695
+      "zoom": 0.7920452652176722
     },
-    "moduleStoreDepartment": "",
+    "moduleStoreDepartment": "filter",
     "savedPatchBankIndex": 0,
     "savedPatchBankName": "chaos",
     "savedPatchGridColumns": 3,
