@@ -156,21 +156,21 @@
     "macroKnobLabelPosition": "top",
     "macroKnobValuePosition": "bottom",
     "traceSettings": {
-      "brightness": 0.6068,
-      "color": "#0008ff",
+      "brightness": 2,
+      "color": "#66ff00",
       "dot1Enabled": true,
-      "dot1Size": 0.0375,
-      "secondaryBrightness": 2,
-      "secondaryColor": "#ceffbd",
+      "dot1Size": 0.08,
+      "secondaryBrightness": 0.18,
+      "secondaryColor": "#184fff",
       "secondaryEnabled": true,
-      "secondarySize": 0.0295,
-      "secondaryLineThickness": 0.53,
+      "secondarySize": 0.24,
+      "secondaryLineThickness": 0.48,
       "cycles": 2,
-      "lineThickness": 0.3875,
+      "lineThickness": 0.2,
       "padding": 0,
-      "skipDiscontinuities": false,
-      "sourceSync": false,
-      "zoomSeconds": 2
+      "skipDiscontinuities": true,
+      "sourceSync": true,
+      "zoomSeconds": 0.05
     },
     "sliderLayout": "text-inside",
     "sliderAmountVisible": true,
@@ -807,7 +807,7 @@
       },
       "traceDisplaySettings": {
         "open": false,
-        "targetNode": "polyBlep-1"
+        "targetNode": "polyBlep-2"
       },
       "standaloneMidiKeyboard": {
         "open": false,
@@ -836,12 +836,12 @@
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": 297.42857142857156,
-        "y": 116.92857142857144
+        "x": 409.67857142857156,
+        "y": 101.82142857142856
       },
-      "zoom": 0.6866040888412032
+      "zoom": 1.0803848264467935
     },
-    "moduleStoreDepartment": "oscillator",
+    "moduleStoreDepartment": "",
     "savedPatchBankIndex": 0,
     "savedPatchBankName": "chaos",
     "savedPatchGridColumns": 3,
