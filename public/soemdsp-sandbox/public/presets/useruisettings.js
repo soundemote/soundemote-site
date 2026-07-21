@@ -157,9 +157,9 @@
     "macroKnobValuePosition": "bottom",
     "traceSettings": {
       "brightness": 2,
-      "color": "#66ff00",
+      "color": "#75ebff",
       "dot1Enabled": true,
-      "dot1Size": 0.08,
+      "dot1Size": 0.0719,
       "secondaryBrightness": 0.18,
       "secondaryColor": "#184fff",
       "secondaryEnabled": true,
@@ -807,7 +807,7 @@
       },
       "traceDisplaySettings": {
         "open": false,
-        "targetNode": "polyBlep-4"
+        "targetNode": "polyBlep-5"
       },
       "standaloneMidiKeyboard": {
         "open": false,
@@ -836,10 +836,10 @@
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": 489.8571428571429,
-        "y": 240.78571428571422
+        "x": 591.0357142857141,
+        "y": 322.10714285714283
       },
-      "zoom": 0.9646293093274941
+      "zoom": 1.3552347262948579
     },
     "moduleStoreDepartment": "",
     "savedPatchBankIndex": 0,
