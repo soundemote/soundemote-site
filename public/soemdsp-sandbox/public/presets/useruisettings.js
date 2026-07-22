@@ -807,7 +807,7 @@
       },
       "traceDisplaySettings": {
         "open": false,
-        "targetNode": "gainBiasMix-1"
+        "targetNode": "output"
       },
       "standaloneMidiKeyboard": {
         "open": false,
