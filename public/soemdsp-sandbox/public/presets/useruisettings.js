@@ -149,10 +149,10 @@
     "moduleScopePointBudget": 4096,
     "moduleScopeLineThickness": 1,
     "moduleScopeDiscontinuitySkipSamples": 1,
-    "macroKnobArcThickness": 10.8,
-    "macroKnobArcGapBrightness": 100,
-    "macroKnobSizeScale": 1.25,
-    "macroKnobHitboxOutlineVisible": false,
+    "macroKnobArcThickness": 10.399999999999999,
+    "macroKnobArcGapBrightness": 29,
+    "macroKnobSizeScale": 1,
+    "macroKnobHitboxOutlineVisible": true,
     "macroKnobLabelPosition": "top",
     "macroKnobValuePosition": "bottom",
     "traceSettings": {
@@ -168,8 +168,8 @@
       "cycles": 2,
       "lineThickness": 0.2,
       "padding": 0,
-      "skipDiscontinuities": true,
-      "sourceSync": true,
+      "skipDiscontinuities": false,
+      "sourceSync": false,
       "zoomSeconds": 0.05
     },
     "sliderLayout": "text-inside",
@@ -776,8 +776,8 @@
       "moduleBrowser": {
         "open": false,
         "position": {
-          "left": 993,
-          "top": 157
+          "left": 1366,
+          "top": 277
         },
         "size": {
           "width": 300,
@@ -794,8 +794,8 @@
       "uiSettings": {
         "open": false,
         "position": {
-          "left": 807,
-          "top": 117
+          "left": 1334,
+          "top": 116
         }
       },
       "uiDev": {
@@ -807,13 +807,13 @@
       },
       "traceDisplaySettings": {
         "open": false,
-        "targetNode": "output"
+        "targetNode": "gainBiasMix-1"
       },
       "standaloneMidiKeyboard": {
         "open": false,
         "position": {
-          "left": 481,
-          "top": 584
+          "left": 226,
+          "top": 346
         },
         "size": {
           "width": 853,
@@ -836,10 +836,10 @@
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": 290.7857142857142,
-        "y": 266.3928571428571
+        "x": 184.6071428571429,
+        "y": 295.75
       },
-      "zoom": 0.8612761690424052
+      "zoom": 0.7971938775510201
     },
     "moduleStoreDepartment": "",
     "savedPatchBankIndex": 0,

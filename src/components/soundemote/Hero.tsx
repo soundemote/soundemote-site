@@ -35,7 +35,7 @@ const ICON_STOP = <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden><rect
 const ICON_PLAY = <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden><polygon points="7,4 7,20 20,12" fill="currentColor" /></svg>;
 const ICON_PAUSE = <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden><rect x="6" y="5" width="4" height="14" fill="currentColor" /><rect x="14" y="5" width="4" height="14" fill="currentColor" /></svg>;
 
-
+const ICON_DOWNLOAD = <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden><path d="M8 1v10M4 7l4 4 4-4M2 13h12" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg>;
 
 
 
@@ -130,7 +130,11 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
     postToSandbox({ type: "soundemote:set-live-speed", speed: 1 });
   }, [postToSandbox]);
 
-  // Listen for live-output-changed messages from the sandbox to keep transport state in sync.
+  const handleDownload = useCallback(() => {
+    postToSandbox({ type: "soundemote:render-sample" });
+  }, [postToSandbox]);
+
+  // Listen for messages from the sandbox.
   useEffect(() => {
     if (!sandboxLoaded) return;
     const onMessage = (event: MessageEvent) => {
@@ -139,6 +143,12 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
         setLiveEnabled(Boolean(event.data.enabled));
         const rawSpeed = event.data.speed;
         setLiveSpeed(rawSpeed != null ? Number(rawSpeed) : 1);
+      }
+      if (event.data?.type === "soundemote:rendered-sample" && event.data?.url) {
+        const a = document.createElement("a");
+        a.href = event.data.url;
+        a.download = `${currentPatch.label.replace(/\s+/g, "_")}.wav`;
+        a.click();
       }
     };
     window.addEventListener("message", onMessage);
@@ -274,22 +284,54 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
                 </span>
               )}
             </span>
-            <div
-              role="toolbar"
-              aria-label="Sandbox transport"
-              className="flex w-full items-center justify-center gap-2 px-0 py-0"
-            >
+
+          {/* ── Outside Media Player ── */}
+          <div className="flex w-full max-w-[900px] items-center justify-between gap-2 px-2 py-1 rounded-sm border border-scope/20 bg-[#0a0c14]">
+            {/* Transport */}
+            <div role="toolbar" aria-label="Media transport" className="flex items-center gap-1">
               <TransportButton label="Previous patch" onClick={() => gotoBank(-1)}>{ICON_PREV}</TransportButton>
               <TransportButton label="Stop" onClick={handleStop}>{ICON_STOP}</TransportButton>
-              <TransportButton
-                label={isPlaying ? "Pause" : "Play"}
+              <button
+                type="button"
                 onClick={isPlaying ? handlePause : handlePlay}
-                pressed={isPlaying}
+                aria-label={isPlaying ? "Pause" : "Play"}
+                aria-pressed={isPlaying}
+                title={isPlaying ? "Pause" : "Play"}
+                className={
+                  "inline-flex h-9 w-9 items-center justify-center rounded-sm border transition-colors " +
+                  "focus:outline-none focus-visible:ring-1 focus-visible:ring-scope/60 " +
+                  (isPlaying
+                    ? "border-scope/60 bg-scope/15 text-scope"
+                    : "border-scope/25 bg-transparent text-scope/60 hover:bg-scope/10 hover:text-scope")
+                }
               >
                 {isPaused ? ICON_PLAY : isPlaying ? ICON_PAUSE : ICON_PLAY}
-              </TransportButton>
+              </button>
               <TransportButton label="Next patch" onClick={() => gotoBank(1)}>{ICON_NEXT}</TransportButton>
             </div>
+
+            {/* Time display */}
+            <div className="hidden sm:flex items-center gap-1.5 mono text-[0.65rem] tracking-[0.06em] text-scope/60">
+              <span className="text-scope/40">0:00</span>
+              <span className="text-scope/20">/</span>
+              <span>0:00</span>
+            </div>
+
+            {/* Waveform placeholder */}
+            <div className="hidden sm:block h-8 flex-1 rounded-sm border border-scope/15 bg-[#03050a] opacity-50" aria-hidden />
+
+            {/* Download button */}
+            <button
+              type="button"
+              onClick={handleDownload}
+              className="mono inline-flex items-center gap-1 rounded-sm border border-scope/40 px-2 py-1 text-[0.65rem] uppercase tracking-[0.14em] text-scope/80 transition-colors hover:border-scope/60 hover:text-scope hover:bg-scope/10"
+              aria-label="Download rendered sample"
+              title="Download WAV"
+            >
+              {ICON_DOWNLOAD}
+              Download
+            </button>
+          </div>
         </div>
         <div className="mt-[2px] flex items-center justify-center gap-1 mono text-xs normal-case tracking-[0.06em] text-muted-foreground/80 leading-none">
           <span>/*</span>
