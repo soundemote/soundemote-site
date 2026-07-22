@@ -168,9 +168,9 @@
       "cycles": 2,
       "lineThickness": 0.2,
       "padding": 0,
-      "skipDiscontinuities": true,
-      "sourceSync": true,
-      "zoomSeconds": 0.05
+      "skipDiscontinuities": false,
+      "sourceSync": false,
+      "zoomSeconds": 0
     },
     "sliderLayout": "text-inside",
     "sliderAmountVisible": true,
@@ -807,7 +807,7 @@
       },
       "traceDisplaySettings": {
         "open": false,
-        "targetNode": "output"
+        "targetNode": "additiveOsc-1"
       },
       "standaloneMidiKeyboard": {
         "open": false,
@@ -836,12 +836,12 @@
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": 184.6071428571429,
-        "y": 295.75
+        "x": 367.392857142857,
+        "y": 233.41071428571428
       },
-      "zoom": 0.7971938775510201
+      "zoom": 0.8928571428571426
     },
-    "moduleStoreDepartment": "oscillator",
+    "moduleStoreDepartment": "",
     "savedPatchBankIndex": 0,
     "savedPatchBankName": "chaos",
     "savedPatchGridColumns": 3,
