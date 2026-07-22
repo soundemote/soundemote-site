@@ -133,7 +133,7 @@
   "moduleDefaultOverrides": {},
   "view": {
     "gridVisible": true,
-    "keyboardDebugInfoVisible": false,
+    "keyboardDebugInfoVisible": true,
     "moduleButtonsVisible": true,
     "moduleInterfaceControlsVisible": true,
     "moduleOscilloscopesVisible": true,
@@ -159,7 +159,7 @@
       "brightness": 2,
       "color": "#75ebff",
       "dot1Enabled": true,
-      "dot1Size": 0.0719,
+      "dot1Size": 0.07,
       "secondaryBrightness": 0.18,
       "secondaryColor": "#184fff",
       "secondaryEnabled": true,
@@ -168,8 +168,8 @@
       "cycles": 2,
       "lineThickness": 0.2,
       "padding": 0,
-      "skipDiscontinuities": false,
-      "sourceSync": false,
+      "skipDiscontinuities": true,
+      "sourceSync": true,
       "zoomSeconds": 0.05
     },
     "sliderLayout": "text-inside",
@@ -776,8 +776,8 @@
       "moduleBrowser": {
         "open": false,
         "position": {
-          "left": 1366,
-          "top": 277
+          "left": 72,
+          "top": 157
         },
         "size": {
           "width": 300,
@@ -794,8 +794,8 @@
       "uiSettings": {
         "open": false,
         "position": {
-          "left": 1334,
-          "top": 116
+          "left": 1695,
+          "top": 228
         }
       },
       "uiDev": {
@@ -841,7 +841,7 @@
       },
       "zoom": 0.7971938775510201
     },
-    "moduleStoreDepartment": "",
+    "moduleStoreDepartment": "oscillator",
     "savedPatchBankIndex": 0,
     "savedPatchBankName": "chaos",
     "savedPatchGridColumns": 3,
