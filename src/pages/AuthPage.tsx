@@ -213,72 +213,23 @@ const AuthPage = () => {
           </>
         ) : (
         <>
-        <h1 className="display mt-4 text-2xl">
-          {mode === "signup" ? "Create account" : "Sign in"}
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {mode === "signup"
-            ? "Claim your @handle and build your banks."
-            : "Welcome back."}
-        </p>
+        <h1 className="display mt-4 text-2xl">Sign in</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Welcome back.</p>
 
-        <div className="mt-8 space-y-3">
-          <Button variant="outline" className="w-full" onClick={() => oauth("google")}>
-            Continue with Google
-          </Button>
-          <Button variant="outline" className="w-full" onClick={() => oauth("discord")}>
-            Continue with Discord
-          </Button>
-        </div>
-
-        <div className="my-6 flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="h-px flex-1 bg-border" />
-          or
-          <span className="h-px flex-1 bg-border" />
-        </div>
-
-        <div className="space-y-4">
-          {mode === "signup" ? (
-            <div className="space-y-2">
-              <Label htmlFor="auth-handle">Handle</Label>
-              <div className="flex items-center gap-1">
-                <span className="mono text-sm text-muted-foreground">@</span>
-                <Input
-                  id="auth-handle"
-                  value={handle}
-                  onChange={(e) => setHandle(e.target.value)}
-                  placeholder="yourname"
-                  autoComplete="off"
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <Label htmlFor="auth-handle">Handle</Label>
-              <div className="flex items-center gap-1">
-                <span className="mono text-sm text-muted-foreground">@</span>
-                <Input
-                  id="auth-handle"
-                  value={handle}
-                  onChange={(e) => setHandle(e.target.value)}
-                  placeholder="yourname"
-                  autoComplete="username"
-                />
-              </div>
-            </div>
-          )}
-          {mode === "signup" && (
-            <div className="space-y-2">
-              <Label htmlFor="auth-email">Email</Label>
+        <div className="mt-8 space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="auth-handle">Handle</Label>
+            <div className="flex items-center gap-1">
+              <span className="mono text-sm text-muted-foreground">@</span>
               <Input
-                id="auth-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="email"
+                id="auth-handle"
+                value={handle}
+                onChange={(e) => setHandle(e.target.value)}
+                placeholder="yourname"
+                autoComplete="username"
               />
             </div>
-          )}
+          </div>
           <div className="space-y-2">
             <Label htmlFor="auth-password">Password</Label>
             <Input
@@ -286,7 +237,7 @@ const AuthPage = () => {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              autoComplete={mode === "signup" ? "new-password" : "current-password"}
+              autoComplete="current-password"
               onKeyDown={(e) => {
                 if (e.key === "Enter") submit();
               }}
@@ -295,20 +246,9 @@ const AuthPage = () => {
           {error && <p className="text-sm text-destructive break-words">{error}</p>}
           {notice && <p className="text-sm text-foreground break-words">{notice}</p>}
           <Button className="w-full" onClick={submit} disabled={busy}>
-            {busy ? "Working…" : mode === "signup" ? "Create account" : "Sign in"}
+            {busy ? "Working…" : "Sign in"}
           </Button>
         </div>
-
-        <button
-          className="mono mt-6 text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
-          onClick={() => {
-            setMode((m) => (m === "signup" ? "signin" : "signup"));
-            setError(null);
-            setNotice(null);
-          }}
-        >
-          {mode === "signup" ? "Already have an account? Sign in" : "Need an account? Sign up"}
-        </button>
         </>
         )}
       </div>
