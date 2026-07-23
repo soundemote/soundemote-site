@@ -76,6 +76,13 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
     "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autostart=1&autoframe=1&v=20260703-autoframe";
   const currentPatch = SOUNDEMOTE_BANK[currentBankIndex];
 
+  // Keep a live ref to the current patch label so the message listener
+  // (registered once) always uses the currently-selected patch's name.
+  const currentLabelRef = useRef(currentPatch.label);
+  useEffect(() => {
+    currentLabelRef.current = currentPatch.label;
+  }, [currentPatch.label]);
+
   // Send a postMessage into the sandbox iframe.
   const postToSandbox = useCallback((message: unknown) => {
     iframeRef.current?.contentWindow?.postMessage(message, window.location.origin);
@@ -147,7 +154,7 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
       if (event.data?.type === "soundemote:rendered-sample" && event.data?.url) {
         const a = document.createElement("a");
         a.href = event.data.url;
-        a.download = `${currentPatch.label.replace(/\s+/g, "_")}.wav`;
+        a.download = `${currentLabelRef.current.replace(/\s+/g, "_")}.wav`;
         a.click();
       }
     };
