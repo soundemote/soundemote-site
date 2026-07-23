@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import ShareProjectDialog from "./ShareProjectDialog";
-import { useAuth } from "@/hooks/useAuth";
-import { useUserFiles } from "@/hooks/useUserFiles";
 
 type Burst = {
   id: number;
@@ -154,8 +152,6 @@ export function SandboxNavLink({ href, label }: { href: string; label: string })
 }
 
 export const Nav = () => {
-  const { session, profile, signOut } = useAuth();
-  const { myFilesUrl } = useUserFiles();
   return (
   <header className="relative z-50 w-full border-b border-border/40 bg-background/70 backdrop-blur-xl">
     <nav className="container relative flex h-16 items-center justify-between" aria-label="Primary">
@@ -209,32 +205,7 @@ export const Nav = () => {
           />
         </a>
         <ShareProjectDialog />
-        {session ? (
-          <div className="flex items-center gap-2">
-            <a
-              href={myFilesUrl}
-              className="mono text-xs text-muted-foreground hover:text-foreground"
-            >
-              files
-            </a>
-            <a
-              href={profile ? `/@${profile.handle}` : "/auth"}
-              className="mono text-xs text-muted-foreground hover:text-foreground"
-            >
-              {profile ? `@${profile.handle}` : "account"}
-            </a>
-            <button
-              onClick={() => signOut()}
-              className="mono text-xs text-muted-foreground hover:text-foreground"
-            >
-              sign out
-            </button>
-          </div>
-        ) : (
-          <a href="/auth" className="mono text-xs text-muted-foreground hover:text-foreground">
-            sign in
-          </a>
-        )}
+        {/* User accounts hidden — feature not ready yet. */}
       </div>
     </nav>
   </header>

@@ -359,7 +359,7 @@ const SandboxPage = ({ staticPatchUrl, autostart = false, pagePatch: pagePatchPr
           &lt; full sandbox
         </Link>
       )}
-      {isPlainSandbox && !isEmbed && session?.user?.id && (
+      {false && isPlainSandbox && !isEmbed && session?.user?.id && (
         <button
           type="button"
           onClick={saveInitPatch}
