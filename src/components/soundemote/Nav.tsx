@@ -209,32 +209,7 @@ export const Nav = () => {
           />
         </a>
         <ShareProjectDialog />
-        {session ? (
-          <div className="flex items-center gap-2">
-            <a
-              href={myFilesUrl}
-              className="mono text-xs text-muted-foreground hover:text-foreground"
-            >
-              files
-            </a>
-            <a
-              href={profile ? `/@${profile.handle}` : "/auth"}
-              className="mono text-xs text-muted-foreground hover:text-foreground"
-            >
-              {profile ? `@${profile.handle}` : "account"}
-            </a>
-            <button
-              onClick={() => signOut()}
-              className="mono text-xs text-muted-foreground hover:text-foreground"
-            >
-              sign out
-            </button>
-          </div>
-        ) : (
-          <a href="/auth" className="mono text-xs text-muted-foreground hover:text-foreground">
-            sign in
-          </a>
-        )}
+        {/* User accounts hidden — feature not ready yet. */}
       </div>
     </nav>
   </header>
