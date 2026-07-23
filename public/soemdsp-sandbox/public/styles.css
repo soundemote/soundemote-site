@@ -7113,6 +7113,10 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   background: rgb(3, 5, 7);
   user-select: none;
   touch-action: none;
+  /* Keep the title bar (move + close + title) pinned while the body scrolls */
+  position: sticky;
+  top: 0;
+  z-index: 6;
 }
 
 .metadata-popover-heading.dragging,
@@ -17961,4 +17965,20 @@ code {
     min-height: var(--node-grid-height);
   }
 
+}
+
+.metadata-smoothing-mode-button.under-construction,
+.metadata-smoothing-mode-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  position: relative;
+}
+.metadata-smoothing-mode-button.under-construction::after {
+  content: "🚧";
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  font-size: 9px;
+  line-height: 1;
+  pointer-events: none;
 }

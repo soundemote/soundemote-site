@@ -133,19 +133,19 @@
   "moduleDefaultOverrides": {},
   "view": {
     "gridVisible": true,
-    "keyboardDebugInfoVisible": true,
+    "keyboardDebugInfoVisible": false,
     "moduleButtonsVisible": true,
     "moduleInterfaceControlsVisible": true,
     "moduleOscilloscopesVisible": true,
     "moduleSlidersVisible": true,
     "moduleScopeBackgroundColor": "#000000",
-    "globalSmoothingSeconds": 0.1,
+    "globalSmoothingSeconds": 0.13,
     "globalSmoothingManual": true,
     "moduleScopeDotCore1Enabled": true,
     "moduleScopeDotCore1Size": 1.94,
     "moduleScopeDotCore1Brightness": 33.5,
     "moduleScopeDotCore1Color": "#ffffff",
-    "moduleScopeFramesPerSecond": 60,
+    "moduleScopeFramesPerSecond": 53,
     "moduleScopePointBudget": 4096,
     "moduleScopeLineThickness": 1,
     "moduleScopeDiscontinuitySkipSamples": 1,
@@ -717,6 +717,10 @@
         "developer": true,
         "home": false
       },
+      "sinc": {
+        "developer": true,
+        "home": false
+      },
       "led": {
         "developer": true,
         "home": false
@@ -769,15 +773,15 @@
       "patchExplorer": {
         "open": false,
         "position": {
-          "left": 1259,
-          "top": 223
+          "left": 1421,
+          "top": 199
         }
       },
       "moduleBrowser": {
         "open": false,
         "position": {
-          "left": 72,
-          "top": 157
+          "left": 110,
+          "top": 117
         },
         "size": {
           "width": 300,
@@ -794,8 +798,8 @@
       "uiSettings": {
         "open": false,
         "position": {
-          "left": 1695,
-          "top": 228
+          "left": 1452,
+          "top": 196
         }
       },
       "uiDev": {
@@ -807,7 +811,7 @@
       },
       "traceDisplaySettings": {
         "open": false,
-        "targetNode": "additiveOsc-1"
+        "targetNode": "output"
       },
       "standaloneMidiKeyboard": {
         "open": false,
@@ -836,10 +840,10 @@
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": 613.5,
-        "y": 378.11607142857133
+        "x": 986.4642857142858,
+        "y": 431.2232142857142
       },
-      "zoom": 1.0606137022653641
+      "zoom": 0.9469765198797895
     },
     "moduleStoreDepartment": "",
     "savedPatchBankIndex": 0,
