@@ -85,7 +85,9 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
 
   // Send a postMessage into the sandbox iframe.
   const postToSandbox = useCallback((message: unknown) => {
-    iframeRef.current?.contentWindow?.postMessage(message, window.location.origin);
+    try {
+      iframeRef.current?.contentWindow?.postMessage(message, "*");
+    } catch (_) { /* iframe not ready */ }
   }, []);
 
   const isPlaying = liveEnabled && liveSpeed > 0;
