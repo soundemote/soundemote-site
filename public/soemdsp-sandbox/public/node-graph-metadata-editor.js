@@ -1604,7 +1604,7 @@ function nodeGraphSmoothingModeStatusText(mode, smoothingSamples) {
     case "global":
       return `🌍 Global — ${globalSamples} samples.`;
     case "blockSize":
-      return `📟 Block Size — ${nodeGraphAudioBlockSize} samples.`;
+      return "📟 Block Size — under construction 🚧";
     case "internalGlobal":
       return `🙂🌍 Internal + Global — ${internalSamples} internal + ${globalSamples} global = ${internalSamples + globalSamples} samples.`;
     case "off":

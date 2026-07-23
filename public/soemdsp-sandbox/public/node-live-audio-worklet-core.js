@@ -521,7 +521,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       const exports = result?.instance?.exports || null;
       if (name === "ellipsoid" || targetType === "ellipsoid") {
         this.nativeEllipsoid = exports;
-        this.nativeEllipsoidReady = Boolean(this.nativeEllipsoid?.soemdsp_ellipsoid_vector_sample);
+        this.nativeEllipsoidReady = Boolean(this.nativeEllipsoid?.soemdsp_ellipsoid_sample);
         this.port.postMessage({
           type: "nativeModuleStatus",
           name: "ellipsoid",
@@ -3954,7 +3954,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   //                       (0 samples bypasses smoothing for this param only)
   //   global          -- always use the global smoothing time, ignoring the
   //                       parameter's own smoothingSeconds
-  //   blockSize       -- always smooth over exactly one audio block
+  //   blockSize       -- smooth over exactly one audio processing block
   //   internalGlobal  -- internal samples PLUS the global smoothing time
   //   off             -- always instant, ignoring both internal and global
   resolveSmoothingSecondsForMode(mode, smoothingSamples, frames, rate = sampleRate, globalSeconds = this.autoSmoothingSeconds) {
@@ -3965,7 +3965,8 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       case "off":
         return 0;
       case "blockSize":
-        return Math.max(1, Number(frames) || 1) / safeRate;
+        // Under construction: behaves as no smoothing until implemented.
+        return 0;
       case "global":
         return safeGlobal;
       case "internalGlobal":
