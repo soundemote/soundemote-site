@@ -205,7 +205,14 @@ export const Nav = () => {
           />
         </a>
         <ShareProjectDialog />
-        {/* User accounts hidden — feature not ready yet. */}
+        <a
+          href="/auth"
+          className="mono text-[0.7rem] text-muted-foreground/60 hover:text-muted-foreground"
+          aria-label="Sign in"
+          title="Sign in"
+        >
+          ·
+        </a>
       </div>
     </nav>
   </header>
