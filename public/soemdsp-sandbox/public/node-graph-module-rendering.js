@@ -518,6 +518,20 @@ function appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, ou
   article.append(ioSection);
 }
 
+function createNodeGraphSolidModuleShell(node, type, customBody, registration, inputPorts, outputPorts) {
+  const shell = document.createElement("div");
+  shell.className = "node-solid-module-shell";
+  const inputColumn = createNodeGraphIoColumn(node, type, inputPorts, "input") || document.createElement("div");
+  const outputColumn = createNodeGraphIoColumn(node, type, outputPorts, "output") || document.createElement("div");
+  if (registration?.solidPortLabels === false) {
+    inputColumn.classList.add("labels-hidden");
+    outputColumn.classList.add("labels-hidden");
+  }
+  customBody.classList.add("node-solid-module-custom-ui");
+  shell.append(inputColumn, customBody, outputColumn);
+  return shell;
+}
+
 // Third UI tier alongside "generic" (knob/slider rows) and "generic + custom"
 // (e.g. audioPlayer's waveform bolted onto the standard header/IO shell):
 // fully custom, no shell at all. No header, no title, no drag handle, no
@@ -543,6 +557,7 @@ function createNodeGraphModuleElement(type, node) {
   article.className = nodeGraphModuleLayoutClassNames(type, definition, layout);
   article.dataset.node = node;
   article.dataset.nodeType = type;
+  article.classList.toggle("solid-module-layout", nodeGraphChromelessModuleUsesSolidShell(type));
   article.dataset.portSignature = `${inputPorts.join(",")}=>${outputPorts.join(",")}`;
   article.dataset.gridWidthGu = String(widthGu);
   article.dataset.gridHeightGu = String(heightGu);
@@ -566,7 +581,11 @@ function createNodeGraphModuleElement(type, node) {
     : null;
   if (chromelessRegistration) {
     const chromelessBody = chromelessRegistration.createBody(node, type);
-    article.append(chromelessBody);
+    article.append(
+      nodeGraphChromelessModuleUsesSolidShell(type)
+        ? createNodeGraphSolidModuleShell(node, type, chromelessBody, chromelessRegistration, inputPorts, outputPorts)
+        : chromelessBody,
+    );
     chromelessRegistration.afterMount?.(article, chromelessBody, node, type);
   } else {
     article.append(createNodeGraphModuleHeader(type, node, definition));
@@ -641,23 +660,27 @@ function createNodeGraphModuleElement(type, node) {
     ioSection.append(document.createElement("div"));
     appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
   } else if (definition.layout === "graph") {
+    // Same side-by-side arrangement as the solid-shell modules (XY Pad,
+    // Bug Button): inputs left, the interactive dot editor center, outputs
+    // right, via the shared createNodeGraphSolidModuleShell helper -- rather
+    // than the old stacked "display on top, IO strip below" layout. Graph
+    // keeps its normal header/title bar (it isn't chromeless-registered, so
+    // createNodeGraphModuleHeader above still ran), so the shell is pinned
+    // to rows 2-3 of the standard 4-row .dsp-node grid (header / scope /
+    // io / params) via .node-graph-solid-shell in styles.css, instead of
+    // adopting the "solid-module-layout" 2-row grid those headerless
+    // modules use.
     const graphSection = document.createElement("div");
     graphSection.className = "node-module-graph-display";
     graphSection.dataset.graphNode = node;
     graphSection.tabIndex = 0;
     graphSection.setAttribute("aria-label", `${nodeGraphNodeDisplayName(node)} graph display`);
-    article.append(graphSection);
     renderNodeGraphGraphDisplay(graphSection, nodeGraphGraphForNode(patchNode), null, {
       smoothingMode: nodeGraphGraphSmoothingModeForNode(patchNode),
     });
-
-    const ioSection = document.createElement("div");
-    ioSection.className = "dsp-node-io-section";
-    const inputColumn = createNodeGraphIoColumn(node, type, inputPorts, "input");
-    const outputColumn = createNodeGraphIoColumn(node, type, outputPorts, "output");
-    ioSection.append(inputColumn || document.createElement("div"));
-    ioSection.append(outputColumn || document.createElement("div"));
-    appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
+    const graphShell = createNodeGraphSolidModuleShell(node, type, graphSection, null, inputPorts, outputPorts);
+    graphShell.classList.add("node-graph-solid-shell");
+    article.append(graphShell);
   } else if (definition.layout === "sliderWidget") {
     article.append(createNodeGraphSliderWidgetBody(node, type));
 
@@ -783,12 +806,16 @@ function createNodeGraphModuleElement(type, node) {
     appendNodeGraphModuleIoSection(article, ioSection, node, inputPorts, outputPorts);
   } else {
     let scopeSection = null;
-    if (!patchNodeUi.oscilloscopeHidden) {
+    // xyPad's interactive pad IS its display -- no oscilloscope section.
+    if (!patchNodeUi.oscilloscopeHidden && type !== "xyPad") {
       scopeSection = createNodeGraphModuleScopeSection(node, type);
       article.append(scopeSection);
     }
     if ((type === "samplePlayer" || type === "sampleLooper" || type === "audioPlayer") && typeof createNodeGraphSampleModuleBody === "function") {
       article.append(createNodeGraphSampleModuleBody(node));
+    }
+    if (type === "xyPad" && typeof createNodeGraphXyPadBody === "function") {
+      article.append(createNodeGraphXyPadBody(node, type));
     }
     if (scopeSection) {
       registerNodeGraphModuleScopeSlot(article, { nodeId: node, type, scopeElement: scopeSection });
@@ -819,7 +846,13 @@ function createNodeGraphModuleElement(type, node) {
     article.append(stateBadge);
   }
 
-  if (definition.parameters?.length && definition.layout !== "sliderWidget" && layout !== "knobWidget" && definition.layout !== "buttonWidget" && !nodeGraphChromelessModuleLayouts.has(layout)) {
+  if (
+    definition.parameters?.length &&
+    definition.layout !== "sliderWidget" &&
+    layout !== "knobWidget" &&
+    definition.layout !== "buttonWidget" &&
+    (!nodeGraphChromelessModuleLayouts.has(layout) || nodeGraphChromelessModuleUsesSolidShell(type))
+  ) {
     const body = document.createElement("div");
     body.className = "dsp-node-body";
     const graphInputSection = createNodeGraphInputSection(node, type);

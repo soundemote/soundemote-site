@@ -290,113 +290,6 @@ body.node-ear-protection-tripped .node-ear-protection-fault {
   color: rgba(243, 241, 236, 0.86);
 }
 
-.node-module-diagnostics-fault {
-  position: fixed;
-  inset: 0;
-  z-index: 99998;
-  display: none;
-  place-items: center;
-  pointer-events: auto;
-  background:
-    radial-gradient(circle at 50% 48%, rgba(240, 197, 111, 0.1), transparent 34%),
-    rgba(0, 0, 0, 0.42);
-}
-
-body.node-module-diagnostics-tripped .node-module-diagnostics-fault {
-  display: grid;
-}
-
-.node-module-diagnostics-fault-panel {
-  min-inline-size: min(520px, calc(100vw - 32px));
-  max-inline-size: min(680px, calc(100vw - 32px));
-  max-height: min(70vh, 560px);
-  overflow: auto;
-  padding: 18px 22px;
-  border: 1px solid rgba(240, 197, 111, 0.42);
-  border-radius: 6px;
-  background:
-    linear-gradient(90deg, rgba(240, 197, 111, 0.08), rgba(127, 199, 217, 0.06)),
-    rgba(5, 7, 9, 0.92);
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.86),
-    0 0 32px rgba(240, 197, 111, 0.2),
-    inset 0 0 24px rgba(240, 197, 111, 0.05);
-  color: var(--text);
-  font-family: "Cascadia Mono", "Cascadia Code", Consolas, "Courier New", monospace;
-  text-align: center;
-  pointer-events: auto;
-  user-select: text;
-}
-
-.node-module-diagnostics-fault-panel > * {
-  display: block;
-  user-select: text;
-}
-
-.node-module-diagnostics-fault-kicker,
-.node-module-diagnostics-fault-explain {
-  color: rgba(243, 241, 236, 0.74);
-  font-size: 0.78rem;
-}
-
-.node-module-diagnostics-fault-panel strong {
-  margin-block: 5px 7px;
-  color: rgba(240, 197, 111, 0.96);
-  font-size: 1.14rem;
-  font-weight: 700;
-  letter-spacing: 0;
-}
-
-.node-module-diagnostics-fault-list {
-  display: grid;
-  gap: 6px;
-  margin: 9px 0 0;
-  padding: 0;
-  list-style: none;
-  text-align: left;
-}
-
-.node-module-diagnostics-fault-entry {
-  padding: 8px 10px;
-  border: 1px solid rgba(240, 197, 111, 0.28);
-  border-radius: 5px;
-  background: rgba(240, 197, 111, 0.06);
-  color: rgba(243, 241, 236, 0.9);
-  font-size: 0.82rem;
-  line-height: 1.4;
-}
-
-.node-module-diagnostics-fault-entry-ok {
-  border-color: rgba(127, 217, 160, 0.32);
-  background: rgba(127, 217, 160, 0.06);
-}
-
-.node-module-diagnostics-fault-close {
-  width: min(220px, 100%);
-  margin: 14px auto 0;
-  padding: 8px 14px;
-  border: 1px solid rgba(127, 199, 217, 0.36);
-  border-radius: 6px;
-  background: rgba(17, 20, 24, 0.82);
-  color: rgba(243, 241, 236, 0.92);
-  font: 700 0.82rem/1 "Cascadia Mono", "Cascadia Code", Consolas, "Courier New", monospace;
-  pointer-events: auto;
-  user-select: none;
-}
-
-.node-module-diagnostics-fault-close:hover,
-.node-module-diagnostics-fault-close:focus-visible {
-  border-color: rgba(127, 199, 217, 0.68);
-  background: rgba(24, 31, 36, 0.92);
-  outline: 0;
-}
-
-.node-module-diagnostics-fault-explain {
-  max-inline-size: 58em;
-  margin: 9px auto 0;
-  line-height: 1.45;
-}
-
 .node-missing-sample-assets {
   position: fixed;
   inset: 0;
@@ -691,29 +584,6 @@ button:disabled {
   background: var(--node-front-construction-hover-bg);
   box-shadow: none;
   color: var(--node-front-button-hover-color);
-}
-
-body.node-hide-mouse-while-dragging,
-body.node-hide-mouse-while-dragging * {
-  cursor: none !important;
-}
-
-body.node-slider-dragging.node-hide-mouse-while-dragging::after {
-  content: "";
-  position: fixed;
-  z-index: 2147483647;
-  left: var(--node-slider-cursor-x, -100px);
-  top: var(--node-slider-cursor-y, -100px);
-  inline-size: var(--node-slider-dot-size, 4px);
-  block-size: var(--node-slider-dot-size, 4px);
-  border: 1px solid rgba(255, 255, 255, 0.82);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.84);
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.62),
-    0 0 8px rgba(127, 199, 217, 0.32);
-  pointer-events: none;
-  transform: translate(-50%, -50%);
 }
 
 .panel-close-button {
@@ -3073,17 +2943,30 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
 
 .node-build-number-readout {
   flex: 1.2 1 0;
-  gap: 0;
-  padding: 0;
+  /* Two stacked lines (version / build), matching the X-Y and W-H readouts.
+     The old single-line 1.35-2rem layout needed ~280px for
+     "v0.3.0phosphor · B20260723s" in a ~178px slot, so both ends clipped
+     under the neighboring buttons. */
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 4px;
+  min-width: 0;
+  overflow: hidden;
   background: rgba(7, 11, 14, 0.94);
   color: rgba(127, 199, 217, 0.98);
   font-family: Consolas, "Courier New", monospace;
-  font-size: clamp(1.35rem, calc(var(--node-toolbar-row-height) * 0.56), 2rem);
+  font-size: clamp(0.85rem, calc(var(--node-toolbar-row-height) * 0.28), 1.1rem);
   font-weight: 900;
   letter-spacing: 0;
   text-transform: uppercase;
   user-select: text;
   -webkit-user-select: text;
+}
+
+.node-build-number-readout span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: clip;
 }
 
 .node-world-position-readout span,
@@ -4276,7 +4159,7 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   --node-port-idle-stroke: #f3f1ec;
   --node-port-hover-fill: #f3f1ec;
   --node-port-hover-stroke: #f3f1ec;
-  --node-dot-cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 13 13'%3E%3Ccircle cx='6.5' cy='6.5' r='2.5' fill='%23ffffff'/%3E%3Ccircle cx='6.5' cy='6.5' r='3.5' fill='none' stroke='%23000000' stroke-opacity='.72'/%3E%3Ccircle cx='6.5' cy='6.5' r='5.5' fill='none' stroke='%237fc7d9' stroke-opacity='.62'/%3E%3C/svg%3E") 6 6, crosshair;
+  --node-dot-cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 13 13'%3E%3Cpath d='M2.5 6.5h8M6.5 2.5v8' fill='none' stroke='%23ffffff' stroke-width='1' stroke-linecap='square'/%3E%3C/svg%3E") 6 6, crosshair;
   --node-move-cursor: move;
   --node-hover-glow-size-ratio: 0.5;
   --node-hover-glow-size: calc(var(--node-port-diameter) * var(--node-hover-glow-size-ratio));
@@ -6656,243 +6539,8 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   }
 }
 
-.node-ui-view {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 10px;
-  height: min(78dvh, 820px);
-  min-height: 420px;
-  margin-top: 16px;
-  padding: 12px;
-  border: 1px solid rgba(127, 199, 217, 0.16);
-  border-radius: 8px;
-  background:
-    linear-gradient(rgba(127, 199, 217, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(127, 199, 217, 0.04) 1px, transparent 1px),
-    #050708;
-  background-size: 24px 24px;
-}
+/* Patch Control Surface / WYSIWYG UI-item editor removed (see node-graph-ui-view.js). */
 
-.node-ui-view[hidden] {
-  display: none;
-}
-
-.node-ui-view-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-}
-
-.node-ui-view-heading > div {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.node-ui-view-heading span:first-child {
-  color: rgba(127, 199, 217, 0.84);
-  font-size: 0.72rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.node-ui-view-heading strong {
-  color: rgba(243, 241, 236, 0.86);
-  font-size: clamp(1.1rem, 2.2vw, 1.8rem);
-}
-
-.node-ui-view-stage {
-  position: relative;
-  min-height: 0;
-  overflow: auto;
-}
-
-.node-ui-view-empty {
-  display: grid;
-  place-items: center;
-  min-height: 180px;
-  color: rgba(198, 230, 224, 0.58);
-  font-family: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
-  font-size: 0.82rem;
-}
-
-.node-ui-item {
-  position: absolute;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 6px;
-  padding: 8px;
-  border: 1px solid rgba(127, 199, 217, 0.22);
-  border-radius: 6px;
-  background: rgba(5, 9, 12, 0.86);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.025) inset;
-}
-
-.node-ui-item.dragging,
-.node-ui-item.resizing {
-  border-color: rgba(226, 168, 109, 0.62);
-  box-shadow:
-    0 0 0 1px rgba(226, 168, 109, 0.12) inset,
-    0 0 18px rgba(226, 168, 109, 0.12);
-}
-
-.node-ui-item-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-  user-select: none;
-}
-
-.node-ui-item-header strong {
-  overflow: hidden;
-  color: rgba(243, 241, 236, 0.86);
-  font-family: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
-  font-size: 0.86rem;
-  text-overflow: clip;
-  white-space: nowrap;
-}
-
-.node-ui-item-header span {
-  flex: 0 0 auto;
-  color: rgba(127, 199, 217, 0.62);
-  font-size: 0.66rem;
-  text-transform: uppercase;
-}
-
-.node-ui-item-body {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
-  gap: 6px;
-  min-height: 0;
-}
-
-.node-ui-item-resize {
-  position: absolute;
-  right: 4px;
-  bottom: 4px;
-  width: 18px;
-  height: 18px;
-  min-width: 0;
-  padding: 0;
-  border: 1px solid rgba(127, 199, 217, 0.22);
-  border-radius: 3px;
-  background:
-    linear-gradient(135deg, transparent 0 42%, rgba(127, 199, 217, 0.32) 42% 52%, transparent 52%),
-    rgba(3, 8, 10, 0.86);
-  color: transparent;
-}
-
-.node-ui-item-resize:hover,
-.node-ui-item-resize:focus-visible {
-  border-color: rgba(226, 168, 109, 0.6);
-  background:
-    linear-gradient(135deg, transparent 0 42%, rgba(226, 168, 109, 0.52) 42% 52%, transparent 52%),
-    rgba(8, 10, 10, 0.94);
-}
-
-.node-ui-graph-display {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-}
-
-.node-ui-graph-toolbar {
-  display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
-  gap: 4px;
-  min-width: 0;
-}
-
-.node-ui-graph-toolbar button {
-  min-width: 0;
-  min-height: 24px;
-  padding: 0 5px;
-  overflow: hidden;
-  border: 1px solid rgba(127, 199, 217, 0.18);
-  border-radius: 4px;
-  background: rgba(3, 8, 10, 0.66);
-  color: rgba(198, 230, 224, 0.74);
-  font-family: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
-  font-size: 0.62rem;
-  text-overflow: clip;
-  white-space: nowrap;
-}
-
-.node-ui-graph-toolbar button:not(:disabled):hover,
-.node-ui-graph-toolbar button:not(:disabled):focus-visible {
-  border-color: rgba(226, 168, 109, 0.48);
-  background: rgba(26, 18, 10, 0.72);
-  color: rgba(255, 236, 181, 0.9);
-}
-
-.node-ui-graph-toolbar button:disabled {
-  opacity: 0.38;
-}
-
-.node-ui-graph-inspector {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 0.62fr)) minmax(0, 1.2fr);
-  gap: 5px;
-  min-width: 0;
-}
-
-.node-ui-graph-inspector label {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  color: rgba(127, 199, 217, 0.62);
-  font-family: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
-  font-size: 0.62rem;
-  text-transform: uppercase;
-}
-
-.node-ui-graph-inspector input,
-.node-ui-graph-inspector select {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  min-height: 24px;
-  border: 1px solid rgba(127, 199, 217, 0.18);
-  border-radius: 4px;
-  background: rgba(0, 2, 4, 0.72);
-  color: rgba(243, 241, 236, 0.84);
-  font-family: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
-  font-size: 0.68rem;
-}
-
-.node-ui-graph-inspector input {
-  padding: 0 5px;
-}
-
-.node-ui-graph-inspector select {
-  padding: 0 4px;
-}
-
-.node-ui-graph-status {
-  overflow: hidden;
-  color: rgba(127, 199, 217, 0.68);
-  font-family: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
-  font-size: 0.68rem;
-  text-overflow: clip;
-  white-space: nowrap;
-}
-
-.node-ui-item-placeholder {
-  display: grid;
-  grid-row: 1 / -1;
-  place-items: center;
-  height: 100%;
-  min-height: 42px;
-  color: rgba(198, 230, 224, 0.52);
-  font-family: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
-  font-size: 0.74rem;
-}
 
 .node-mapping-view {
   display: grid;
@@ -8926,26 +8574,9 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   font-size: 0.76rem;
 }
 
-.node-ui-dev-dot-control .node-ui-dev-control-row {
-  grid-template-columns: minmax(0, 1fr) 54px minmax(24px, max-content);
-}
-
 .node-ui-dev-bypass-icon-control .node-ui-dev-control-row,
 .node-ui-dev-symbol-size-control .node-ui-dev-control-row {
   grid-template-columns: minmax(0, 1fr) 54px minmax(28px, max-content);
-}
-
-.node-ui-dev-dot-preview {
-  display: inline-block;
-  justify-self: center;
-  inline-size: var(--node-slider-dot-size, 4px);
-  block-size: var(--node-slider-dot-size, 4px);
-  border: 1px solid rgba(255, 255, 255, 0.82);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.84);
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.62),
-    0 0 8px rgba(127, 199, 217, 0.32);
 }
 
 .node-ui-dev-symbol-preview {
@@ -10085,6 +9716,275 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   transform: translateY(-50%);
 }
 
+/* Bug Button -- a compact solid module with a custom pointer surface. */
+.dsp-node.bug-button-layout {
+  width: calc((var(--node-grid-width) * var(--node-grid-width-units, 1)) - (var(--node-module-grid-inset) * 2));
+  min-width: calc((var(--node-grid-width) * var(--node-grid-width-units, 1)) - (var(--node-module-grid-inset) * 2));
+  height: calc((var(--node-grid-height) * var(--node-grid-height-units, 1)) - (var(--node-module-grid-inset) * 2));
+  min-height: calc((var(--node-grid-height) * var(--node-grid-height-units, 1)) - (var(--node-module-grid-inset) * 2));
+  border-radius: 3px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(243, 241, 236, 0.08), transparent 58%),
+    rgba(2, 4, 7, 0.9);
+  box-shadow: none;
+}
+
+.dsp-node.solid-module-layout {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.node-solid-module-shell {
+  display: grid;
+  grid-template-columns:
+    minmax(0, max-content)
+    minmax(0, 1fr)
+    minmax(0, max-content);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.node-solid-module-shell > .node-io-column {
+  align-content: stretch;
+  gap: 0;
+  padding: 0;
+}
+
+.node-solid-module-shell > .node-io-column .node-io-row {
+  min-height: 0;
+  border-bottom: 1px solid rgba(127, 199, 217, 0.1);
+}
+
+.node-solid-module-shell > .node-io-column .node-io-label {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.node-solid-module-shell > .node-io-column .node-io-row:last-child {
+  border-bottom: 0;
+}
+
+.node-solid-module-shell > .node-io-column.labels-hidden .node-io-label {
+  display: none;
+}
+
+.node-solid-module-custom-ui {
+  grid-column: 2;
+  min-width: 0;
+  min-height: 0;
+}
+
+.node-bug-button-face {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.82) 0 42%, rgba(0, 0, 0, 0.28) 70%, transparent 100%),
+    rgba(3, 7, 10, 0.84);
+}
+
+.node-bug-button-control {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  background: transparent;
+}
+
+.node-bug-button-face.pressed {
+  --node-bug-button-pressed-scale: 0.82;
+}
+
+.node-bug-button-emoji {
+  position: absolute;
+  left: calc(50% + (var(--node-bug-button-x, 0) * 50%));
+  top: calc(50% - (var(--node-bug-button-y, 0) * 50%));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1em;
+  font-size: calc(min(
+    (var(--node-grid-width) * var(--node-grid-width-units, 1) * 0.58),
+    (var(--node-grid-height) * var(--node-grid-height-units, 1))
+  ) * 0.52 * var(--node-bug-button-size, 1));
+  line-height: 1;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(var(--node-bug-button-pressed-scale, 1));
+  transition: transform 80ms ease-out;
+}
+
+.node-bug-button-emoji.editing {
+  pointer-events: auto;
+  cursor: text;
+  outline: 1px solid rgba(127, 199, 217, 0.8);
+  background: rgba(0, 0, 0, 0.45);
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Rendered-sample transport player -- custom phosphor player replacing the
+   native <audio controls> row, inspired by the Music Player module: glowing
+   waveform seek surface, playhead, monospace time readout. The <audio>
+   element itself is the hidden playback engine. */
+.node-patch-audio-player-row #audioPlayer {
+  display: none;
+}
+
+.node-rendered-player {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid rgba(127, 199, 217, 0.22);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(57, 230, 163, 0.05), transparent 70%),
+    rgba(5, 9, 12, 0.92);
+}
+
+.node-rendered-player button {
+  flex: 0 0 auto;
+  width: 44px;
+  border: 1px solid rgba(57, 230, 163, 0.4);
+  border-radius: 6px;
+  background: rgba(9, 16, 14, 0.9);
+  color: rgba(57, 230, 163, 0.95);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.node-rendered-player button:hover:not(:disabled) {
+  background: rgba(20, 38, 30, 0.95);
+  box-shadow: 0 0 8px rgba(57, 230, 163, 0.3);
+}
+
+.node-rendered-player button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.node-rendered-player.playing button {
+  box-shadow: 0 0 10px rgba(57, 230, 163, 0.35);
+}
+
+.node-rendered-player-wave {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 120px;
+  height: 44px;
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid rgba(127, 199, 217, 0.16);
+  background: rgba(2, 5, 7, 0.9);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.node-rendered-player-wave canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.node-rendered-player-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background: rgba(127, 199, 217, 0.95);
+  box-shadow: 0 0 6px rgba(127, 199, 217, 0.8);
+  pointer-events: none;
+}
+
+.node-rendered-player.empty .node-rendered-player-playhead {
+  display: none;
+}
+
+.node-rendered-player-empty-hint {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: rgba(127, 199, 217, 0.45);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.node-rendered-player.empty .node-rendered-player-empty-hint {
+  display: flex;
+}
+
+.node-rendered-player-time {
+  flex: 0 0 auto;
+  align-self: center;
+  min-width: 92px;
+  text-align: right;
+  color: rgba(127, 199, 217, 0.92);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* XY Pad -- interactive pad body above the generic quantize/phase sliders
+   (standard chrome, custom widget: same tier as audioPlayer's waveform).
+   The module article is a GRID column (not flex), so the pad row must be
+   granted the leftover height explicitly: header / pad / io / parameters.
+   minmax(0, 1fr) lets the pad shrink cleanly on short modules too. */
+.node-xy-pad {
+  box-sizing: border-box;
+  padding: 4px 6px 2px;
+  /* The module article is a fixed-grid-height flex column; the pad takes
+     the space left over after the scope/io/parameter sections and MUST NOT
+     overflow it -- an earlier square-aspect canvas ran under the io section,
+     dimming the pad's lower edge and stealing its clicks. The custom UI
+     stays strictly inside its own section. */
+  width: 100%;
+  height: 100%;
+  min-height: 56px;
+  overflow: hidden;
+  display: flex;
+}
+
+.node-xy-pad-canvas {
+  display: block;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border-radius: 4px;
+  border: 1px solid rgba(127, 199, 217, 0.28);
+  background:
+    radial-gradient(circle at 50% 45%, rgba(127, 199, 217, 0.06), transparent 70%),
+    rgba(3, 7, 10, 0.9);
+  cursor: var(--node-dot-cursor);
+  touch-action: none;
+}
+
+/* x/y/gate are pad-driven internals -- their parameter rows exist (so the
+   normal parameter sync/persistence path drives the DSP) but stay hidden. */
+.dsp-node[data-node-type="xyPad"] .node-parameter-row[data-param="x"],
+.dsp-node[data-node-type="xyPad"] .node-parameter-row[data-param="y"],
+.dsp-node[data-node-type="xyPad"] .node-parameter-row[data-param="gate"] {
+  display: none;
+}
+
 /* Group Input / Group Output -- same chromeless 1gu-tile tier as LED
    (.dsp-node.led-layout above), just wired to a single input or output
    port instead of a light. Ports sit on the conventional edge (inputs
@@ -10709,6 +10609,18 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
 /* Step Grid's CSS lives in public/modules/stepGrid/step-grid.css now,
    loaded via its own <link> tag -- not here. */
 
+/* Graph / Graph 2 now use the same side-by-side shell as XY Pad and Bug
+   Button (createNodeGraphSolidModuleShell): inputs left, dot editor center,
+   outputs right. Graph still keeps its normal header/title bar though (it
+   isn't chromeless-registered), so instead of adopting the headerless
+   modules' 2-row ".solid-module-layout" grid, this pins the shell to rows
+   2-3 of the standard 4-row .dsp-node grid (header / scope / io / params)
+   -- the space display+IO used to occupy separately, now shared by the
+   shell as one taller area. */
+.node-graph-solid-shell {
+  grid-row: 2 / 4;
+}
+
 .node-module-graph-display {
   position: relative;
   box-sizing: border-box;
@@ -10769,6 +10681,22 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   stroke: rgba(255, 236, 181, 0.22);
   stroke-dasharray: 2.2 2.8;
   stroke-width: 0.7;
+}
+
+/* Live playhead -- the running Rate/Phase (LFO) or Input-mode CV position,
+   distinct from .node-module-graph-cursor (the manually-dragged probe).
+   Hidden until syncNodeGraphGraphLivePlayheads() confirms a live sample and
+   adds .live; pointer-events stays none, it's read-only. */
+.node-module-graph-playhead {
+  stroke: rgba(92, 232, 212, 0.9);
+  stroke-width: 1.1;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.node-module-graph-playhead.live {
+  opacity: 1;
 }
 
 .node-module-graph-curve {
@@ -12167,6 +12095,10 @@ input.node-header-title:focus {
   overflow: hidden;
 }
 
+.node-slider-readout:not([data-control="number"]) {
+  cursor: var(--node-dot-cursor);
+}
+
 .node-slider-readout:hover,
 .node-slider-readout:focus,
 .node-slider-readout:focus-visible,
@@ -12246,13 +12178,6 @@ input.node-header-title:focus {
   opacity: 1;
 }
 
-.node-slider-readout.value-hovering::before {
-  border-color: transparent;
-  box-shadow: none;
-  outline: none;
-  background: rgb(var(--node-slider-fill-rgb) / var(--node-slider-fill-alpha));
-}
-
 .node-slider-readout.value-dragging::before {
   border-color: transparent;
   box-shadow: none;
@@ -12260,14 +12185,11 @@ input.node-header-title:focus {
   background: rgb(var(--node-slider-fill-rgb) / var(--node-slider-fill-alpha));
 }
 
-.node-slider-readout.value-hovering,
 .node-slider-readout.value-dragging {
   border-color: transparent;
-  box-shadow: none;
   outline: none;
 }
 
-.node-slider-readout.has-ghost-slider.value-hovering::after,
 .node-slider-readout.has-ghost-slider.value-dragging::after {
   background: rgba(177, 132, 255, 0.38);
 }
@@ -12333,7 +12255,6 @@ input.node-header-title:focus {
   stroke-linejoin: miter;
 }
 
-.node-slider-readout.choices-divided.value-hovering .node-choice-debug-cell-fill,
 .node-slider-readout.choices-divided.value-dragging .node-choice-debug-cell-fill {
   fill: rgb(var(--node-slider-fill-rgb) / var(--node-slider-fill-alpha));
 }
@@ -12415,10 +12336,7 @@ input.node-header-title:focus {
   text-align: right;
 }
 
-.node-slider-readout:hover .node-slider-readout-unit,
-.node-slider-readout:focus-within .node-slider-readout-unit,
-.node-slider-readout.value-hovering .node-slider-readout-unit,
-.node-slider-readout.value-dragging .node-slider-readout-unit {
+.node-slider-readout:focus-within .node-slider-readout-unit {
   color: color-mix(in srgb, var(--node-slider-unit-color, #7fc7d9) 58%, rgba(160, 167, 176, 0.5));
 }
 
@@ -12621,10 +12539,6 @@ input.node-header-title:focus {
   align-self: center;
   justify-self: center;
   text-align: center;
-}
-
-.node-slider-readout.value-dragging {
-  color: rgba(255, 219, 176, 0.98);
 }
 
 .node-parameter-metadata-popover {
@@ -14300,6 +14214,19 @@ button#nodeScenePasteModuleSettings.settings-paste-mismatch {
   border-inline-end: 1px solid var(--node-scene-context-menu-divider, rgba(243, 241, 236, 0.14));
 }
 
+/* Copy Settings / Paste Settings / Set as Default on one row (see
+   nodeSceneModuleSettingsActionGroup in index.html) -- same shared row
+   pattern as the 2-button .scene-context-button-group above, but for 3. */
+.scene-context-button-group-3 button {
+  flex: 1 1 33.333%;
+  padding-inline: 4px;
+  font-size: 0.92em;
+}
+
+.scene-context-button-group-3 button:not(:last-child) {
+  border-inline-end: 1px solid var(--node-scene-context-menu-divider, rgba(243, 241, 236, 0.14));
+}
+
 .scene-context-selected-module {
   display: grid;
   gap: 2px;
@@ -15467,11 +15394,38 @@ button#nodeScenePasteModuleSettings.settings-paste-mismatch {
   min-height: 1em;
 }
 
-.scene-context-text-box-text-control textarea {
+.scene-context-text-box-text-control textarea,
+.scene-context-text-box-text-control input {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
   resize: vertical;
+  border: 1px solid rgba(127, 199, 217, 0.24);
+  border-radius: 4px;
+  background: rgba(2, 4, 7, 0.72);
+  color: rgba(243, 241, 236, 0.9);
+  font-family: "Cascadia Mono", "Cascadia Code", Consolas, "Courier New", monospace;
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+
+.scene-context-text-box-text-control input {
+  resize: none;
+}
+
+/* Bug button character editor -- just a text box, no box-in-box chrome. */
+.scene-context-bug-button-control {
+  display: grid;
+}
+
+.scene-context-bug-button-control[hidden] {
+  display: none;
+}
+
+.scene-context-bug-button-control input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
   border: 1px solid rgba(127, 199, 217, 0.24);
   border-radius: 4px;
   background: rgba(2, 4, 7, 0.72);
@@ -17203,10 +17157,9 @@ body.keyboard-debug-hidden #toggleDebugButton {
   display: none;
 }
 
-/* Check All Modules runs the same Module Diagnostics sanity pass this
-   session's native-module-load failures kept surfacing informally --
-   worth a deliberate, easy-to-reach trigger, but only while debug mode
-   is actually on (same master switch as the rest of this block). */
+/* Check All Modules writes native-module self-test results into the debug log.
+   Keep it available only while debug mode is on, matching the rest of this
+   developer-facing block. */
 body.keyboard-debug-hidden #nodeCheckAllModulesButton {
   display: none;
 }

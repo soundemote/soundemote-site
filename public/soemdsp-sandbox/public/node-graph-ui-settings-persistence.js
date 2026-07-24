@@ -585,11 +585,6 @@ function normalizeNodeUiDevSettings(settings = {}) {
     view.sliderPositionVisible ??
     nodeGraphMvp.sliderPositionVisible
   );
-  const hideMouseWhileDragging = Boolean(
-    view.hideMouseWhileDragging ??
-    nodeGraphMvp.hideMouseWhileDragging ??
-    true
-  );
   const moduleCatalogVisibility = normalizeNodeGraphModuleCatalogVisibility(
     view.moduleCatalogVisibility ?? settings.moduleCatalogVisibility ?? nodeGraphMvp.moduleCatalogVisibility,
   );
@@ -700,7 +695,6 @@ function normalizeNodeUiDevSettings(settings = {}) {
       sliderLayout,
       sliderAmountVisible,
       sliderPositionVisible,
-      hideMouseWhileDragging,
       moduleCatalogVisibility,
       sceneContextWindowSize,
       moduleActionWindowSize,
@@ -794,7 +788,6 @@ function readNodeUiDevSettingsFromControls(options = {}) {
       sliderLayout: normalizeNodeGraphSliderLayout(nodeGraphMvp.sliderLayout),
       sliderAmountVisible: Boolean(nodeGraphMvp.sliderAmountVisible),
       sliderPositionVisible: Boolean(nodeGraphMvp.sliderPositionVisible),
-      hideMouseWhileDragging: Boolean(nodeGraphMvp.hideMouseWhileDragging),
       moduleCatalogVisibility: nodeGraphModuleCatalogVisibility(),
       sceneContextWindowSize: typeof normalizeNodeSceneContextWindowSize === "function"
         ? normalizeNodeSceneContextWindowSize(nodeGraphMvp.sceneContextWindowSize)
@@ -927,7 +920,6 @@ function applyNodeUiDevSettings(settings) {
   nodeGraphMvp.sliderLayout = normalizeNodeGraphSliderLayout(normalized.view.sliderLayout);
   nodeGraphMvp.sliderAmountVisible = Boolean(normalized.view.sliderAmountVisible);
   nodeGraphMvp.sliderPositionVisible = Boolean(normalized.view.sliderPositionVisible);
-  nodeGraphMvp.hideMouseWhileDragging = Boolean(normalized.view.hideMouseWhileDragging);
   nodeGraphMvp.sceneContextWindowSize = normalized.view.sceneContextWindowSize;
   if (typeof applyNodeSceneContextWindowSize === "function") {
     applyNodeSceneContextWindowSize(nodeGraphMvp.sceneContextWindowSize);
@@ -1131,6 +1123,23 @@ function clearNodeUserStartupRuntimeState() {
   nodeGraphMvp.moduleStoreDepartment = "";
   nodeGraphMvp.moduleScopeSettings = {};
   nodeGraphMvp.savedPatchExplorerView = "banks";
+  // These "visible unless explicitly hidden" view toggles (Show displays,
+  // Show control surfaces, Show module buttons/sliders) are read straight
+  // from nodeGraphMvp when the cleared state gets re-serialized just below
+  // in clearNodeUserStartupState -- without resetting them here, whatever
+  // the user had hidden stayed hidden and got baked right back into the
+  // "cleared" default, making Clear Startup look like it did nothing for
+  // visibility.
+  nodeGraphMvp.moduleButtonsVisible = true;
+  nodeGraphMvp.moduleInterfaceControlsVisible = true;
+  nodeGraphMvp.moduleOscilloscopesVisible = true;
+  nodeGraphMvp.moduleSlidersVisible = true;
+  if (typeof renderNodeGraphModuleVisibilityToggles === "function") {
+    renderNodeGraphModuleVisibilityToggles();
+  }
+  if (typeof scheduleNodeGraphLivePlanSync === "function") {
+    scheduleNodeGraphLivePlanSync();
+  }
   if (typeof applyNodeGraphWorkspaceWindowStates === "function") {
     applyNodeGraphWorkspaceWindowStates();
   }

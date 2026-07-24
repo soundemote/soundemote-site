@@ -15,8 +15,6 @@ let nodeGraphNativeModuleCatalogLoadStarted = false;
 
 const nodeGraphModuleStoreUnderConstructionTypes = Object.freeze(new Set([
   "canvas",
-  "graph",
-  "graph2",
   "humanFilter",
   "shootingStarTail",
 ]));
@@ -32,28 +30,28 @@ const nodeGraphModuleCatalogVisibilityStorageKey = "soemdsp-sandbox.moduleCatalo
 const nodeGraphModuleStoreDepartments = Object.freeze([
   { id: "plugin",       emoji: "🔌", label: "Plugin",       symbol: "⧉",   title: "CLAP",     pitch: "Host a real installed CLAP plugin from a local companion process and run your patch's audio through it." },
   { id: "controller",   emoji: "🕹️", label: "Controller",   symbol: "⌘",   title: "Controllers", pitch: "Input devices and control bridges for keyboards, MIDI, gamepads, and external gestures." },
+  { id: "gametrigger",  emoji: "♟️", label: "Game Trigger",  symbol: "",    title: "Game Triggers", pitch: "" },
   { id: "portal",       emoji: "🌐", label: "Portal",       symbol: "IO",  title: "Portals",   pitch: "Patch boundary portals for moving left, right, and mono signal lanes between rooms, templates, and larger circuits." },
   { id: "drum",         emoji: "🥁", label: "Drum",         symbol: "▥",   title: "Drum",      pitch: "Rhythm machines, drum voices, pattern engines, and percussion control surfaces." },
   { id: "dynamics",     emoji: "⚡", label: "Dynamics",     symbol: "⚡",   title: "Dynamics",  pitch: "Power routing, level control, offsets, and response shaping for keeping a circuit alive under pressure." },
   { id: "envelope",     emoji: "📐", label: "Envelope",     symbol: "⌒",   title: "Envelope",  pitch: "Attack, decay, sustain, release, and gate-shaped motion. Make sound and visuals breathe on command." },
   { id: "filter",       emoji: "💧", label: "Filter",       symbol: "◫",   title: "Filter",    pitch: "Shape the airframe. Carve mass, reveal brightness, and teach a signal where it is allowed to fly." },
+  { id: "space",        emoji: "⛪", label: "Space",        symbol: "FX",  title: "Delay",     pitch: "Delay, reverb, distortion, and performance processors for shaping finished sound." },
+  { id: "digital",      emoji: "🔬", label: "Digital",      symbol: "{ }", title: "Digital",   pitch: "Patch-local code surfaces, exact value conversion, and digital/visual programming tools inside the sandbox." },
+  { id: "time",         emoji: "⌚", label: "Time",         symbol: "♪",   title: "Sequence",  pitch: "Pitch lanes and melodic pattern tools for generating lines, hooks, and motion." },
+  { id: "modulator",    emoji: "♾️", label: "Modulator",    symbol: "⇄",   title: "Modulator", pitch: "Motion sources for pitch, amplitude, time, and texture. Small control engines that make patches move." },
   { id: "oscillator",   emoji: "⚪", label: "Oscillator",   symbol: "∿",   title: "Oscillator", pitch: "Start with a voice. Tone generators, phase motion, and the raw signal that everything else learns to orbit." },
   { id: "chaos",        emoji: "🌌", label: "Chaos",        symbol: "∞",   title: "Chaos",     pitch: "All the various attractors and strange motion systems. The wild shelf where math starts looking back." },
   { id: "jerobeam",     emoji: "♻️", label: "Jerobeam",     symbol: "JRB", title: "Jerobeam",  pitch: "Jerobeam spiral and orbit motion systems. Spiral Generator lives here." },
   { id: "noise",        emoji: "🌧️", label: "Noise",        symbol: "✦",   title: "Noise",     pitch: "Noise, dust, instability, sparks, and all the useful mess a clean machine secretly needs." },
-  { id: "modulator",    emoji: "♾️", label: "Modulator",    symbol: "⇄",   title: "Modulator", pitch: "Motion sources for pitch, amplitude, time, and texture. Small control engines that make patches move." },
-  { id: "digital",      emoji: "🔬", label: "Digital",      symbol: "{ }", title: "Digital",   pitch: "Patch-local code surfaces, exact value conversion, and digital/visual programming tools inside the sandbox." },
   { id: "music",        emoji: "🎶", label: "Music",        symbol: "OUT", title: "Music",     pitch: "Music playback, audio sinks, and listening endpoints for turning patch signal into rendered or live sound." },
   { id: "sample",       emoji: "🔊", label: "Sample",       symbol: "▣",   title: "Samples",   pitch: "Audio-file shelf. Empty by default until sandbox has a real file-library flow." },
   { id: "grains",       emoji: "⏳", label: "Grains",       symbol: "",    title: "Grains",    pitch: "" },
-  { id: "space",        emoji: "⛪", label: "Space",        symbol: "FX",  title: "Delay",     pitch: "Delay, reverb, distortion, and performance processors for shaping finished sound." },
-  { id: "time",         emoji: "⌚", label: "Time",         symbol: "♪",   title: "Sequence",  pitch: "Pitch lanes and melodic pattern tools for generating lines, hooks, and motion." },
+  { id: "media",        emoji: "🎞️", label: "Media",        symbol: "",    title: "Media",     pitch: "" },
   { id: "led",          emoji: "🚥", label: "LED",          symbol: "●",   title: "LED",       pitch: "Compact in-world indicator lights. Patch any gate or control signal in and use it as a one-tile status light." },
   { id: "rgb",          emoji: "🌈", label: "RGB",          symbol: "◍",   title: "RGB",       pitch: "Color sinks for the screen wash — precise RGB/HSL channels or stylized chroma drift, alpha, bloom, and glow." },
   { id: "oscilloscope", emoji: "📺", label: "Oscilloscope", symbol: "OSC", title: "Oscilloscope", pitch: "Dedicated display testbeds for trace, line burn, 2D scope, videoscope, and canvas-style waveform inspection." },
   { id: "multimeter",   emoji: "📟", label: "Multimeter",   symbol: "0D",  title: "Multimeter", pitch: "Single-value readouts. Burn, line, or text display for the latest value on a signal — no waveform, just the number." },
-  { id: "media",        emoji: "🎞️", label: "Media",        symbol: "",    title: "Media",     pitch: "" },
-  { id: "gametrigger",  emoji: "♟️", label: "Game Trigger",  symbol: "",    title: "Game Triggers", pitch: "" },
   { id: "debug",        emoji: "🐞", label: "Debug",        symbol: "DBG", title: "Debug",     pitch: "Inspection tools, sentinels, and safety monitors for catching bad values while a patch is under test." },
 ]);
 
@@ -428,16 +426,11 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Patch-local JavaScript display surface. Define inputs and draw custom visuals inside the module face.",
     notes: ["custom draw", "JavaScript display", "visual sink"],
   },
-  graph: {
-    category: "controller",
-    description: "Patch-local soemdsp-style graph object with curve nodes and a vertical cursor position.",
-    notes: ["curve display", "cursor line", "graph nodes"],
-  },
   graph2: {
     category: "controller",
-    description: "Single-algorithm graph testbed for comparing linear, smooth, and meandering point interpolation.",
-    label: "Graph 2",
-    notes: ["global smoothing", "curve laboratory", "graph nodes"],
+    description: "Patch-local graph object with curve nodes, a global smoothing mode, and a vertical cursor position.",
+    label: "Graph",
+    notes: ["global smoothing", "curve display", "cursor line", "graph nodes"],
   },
   gain: {
     category: "dynamics",
@@ -514,7 +507,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["midi note input", "frequency output", "pitch conversion"],
   },
   buttonEvents: {
-    category: "controller",
+    category: "gametrigger",
     description: "External page button event source. Emits short pulses for explicit click, hover, down, up, enter, and leave events sent into sandbox.",
     label: "Button Events",
     notes: ["external UI", "button triggers", "music page bridge"],
@@ -556,13 +549,13 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["game trigger", "shooting star", "website bridge", "power scaled pulse", "low/high range"],
   },
   nextPatch: {
-    category: "controller",
+    category: "gametrigger",
     description: "Patch command receiver. A trigger edge loads the next saved patch through the main UI patch explorer path.",
     label: "Next Patch",
     notes: ["patch navigation", "trigger input", "music player"],
   },
   previousPatch: {
-    category: "controller",
+    category: "gametrigger",
     description: "Patch command receiver. A trigger edge loads the previous saved patch through the main UI patch explorer path.",
     label: "Previous Patch",
     notes: ["patch navigation", "trigger input", "music player"],
@@ -826,7 +819,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["voice bank scope", "phase vs amplitude", "pan color", "additive blend", "phosphor burn"],
   },
   videoscope: {
-    category: "oscilloscope",
+    category: "rgb",
     description: "A triggered oscilloscope for two audio-rate signals (A/B). Ring-buffers both channels, triggers on a configurable level crossing (source A or B, rising or falling), and captures a window around the trigger point. Dot and Line modes draw per-pixel-column min/max stems so brief spikes survive zoomed-out windows; XY mode plots A against B directly. Freeze holds the last captured window. Native C++/WASM.",
     label: "Videoscope",
     notes: ["oscilloscope", "trigger", "dot", "line", "xy", "native", "phosphor display"],
@@ -1425,7 +1418,7 @@ function listenToNodeGraphModuleStoreDemo(entry) {
 
 function watchNodeGraphModuleStoreDemo(entry) {
   withNodeGraphModuleStoreDemoPatch(entry, () => {
-    setNodeGraphViewMode("ui");
+    setNodeGraphViewMode("modular");
   });
 }
 
@@ -1656,8 +1649,11 @@ function renderNodeGraphModuleStoreCatalog() {
     nodeGraphMvp.moduleStoreDepartment = selectedDepartment;
   }
   const departmentSearch = nodeGraphMvp.moduleStoreDepartmentSearch || "";
-  const searchingAllModules = !selectedDepartment &&
-    Boolean(nodeGraphNormalizeModuleDepartmentSearch(departmentSearch));
+  const hasDepartmentSearchText = Boolean(nodeGraphNormalizeModuleDepartmentSearch(departmentSearch));
+  // Typing a search query always searches every module across every category,
+  // even while a specific category tab is selected -- previously search text
+  // was silently restricted to whatever category tab happened to be open.
+  const searchingAllModules = hasDepartmentSearchText;
   const departmentSearchField = document.getElementById("nodeModuleDepartmentSearch");
   if (departmentSearchField && departmentSearchField.value !== departmentSearch) {
     departmentSearchField.value = departmentSearch;
@@ -1676,7 +1672,10 @@ function renderNodeGraphModuleStoreCatalog() {
   const matchingEntries = entries.filter((item) => nodeGraphModuleStoreEntryMatchesSearch(item, departmentSearch));
   const publicEntries = matchingEntries.filter((entry) =>
     entry.visible &&
-    (!selectedDepartment || entry.category === selectedDepartment)
+    // Once there's search text, match against every category -- only fall
+    // back to restricting by the selected category tab when the search box
+    // is empty (plain category browsing).
+    (!selectedDepartment || hasDepartmentSearchText || entry.category === selectedDepartment)
   );
   const visibleModuleEntries = selectedDepartment || departmentSearch
     ? [...publicEntries].sort(nodeGraphModuleStoreSearchResultOrder)

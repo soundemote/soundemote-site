@@ -95,46 +95,30 @@ function beginNodeSliderReadoutEdit(readout) {
       commitNodeSliderReadoutEdit(input);
     }
   });
+  // Single-click anywhere outside the input commits and closes the edit.
+  // Blur alone doesn't cover this: workspace pointerdown handlers call
+  // preventDefault (pan/marquee/slider-drag), which suppresses the focus
+  // change so the input never blurs. Capture-phase document listener sees
+  // the pointerdown regardless; it self-removes once the edit is over.
+  const closeOnOutsidePointerDown = (event) => {
+    if (
+      !document.contains(input) ||
+      input.dataset.editCommitted === "true" ||
+      input.dataset.editCanceled === "true"
+    ) {
+      document.removeEventListener("pointerdown", closeOnOutsidePointerDown, true);
+      return;
+    }
+    if (event.target === input) {
+      return;
+    }
+    document.removeEventListener("pointerdown", closeOnOutsidePointerDown, true);
+    commitNodeSliderReadoutEdit(input);
+  };
+  document.addEventListener("pointerdown", closeOnOutsidePointerDown, true);
   readout.replaceWith(input);
   input.focus();
   input.select();
-}
-
-function updateNodeSliderValueHover(readout, event) {
-  const slider = document.getElementById(readout.dataset.sliderTarget);
-  if (!slider || slider.dataset.control === "number") {
-    readout.classList.remove("value-hovering");
-    return;
-  }
-
-  const rect = readout.getBoundingClientRect();
-  const scale = nodeSliderElementVisualScale(readout);
-  const width = Math.max(1, nodeSliderElementLayoutWidth(readout));
-  const x = (event.clientX - rect.left) / scale;
-  const choices = parseNodeMetadataChoices(slider.dataset.choices || "");
-  const usesChoiceSegment = (
-    nodeSliderShouldDisplayChoices(slider) &&
-    nodeSliderShouldDivideChoicesVisibly(slider) &&
-    choices.length > 0
-  );
-
-  let start = 0;
-  let end = 0;
-  if (usesChoiceSegment) {
-    const choiceIndex = Math.max(0, Math.min(choices.length - 1, Math.round(Number(slider.value))));
-    start = (choiceIndex / choices.length) * width;
-    end = ((choiceIndex + 1) / choices.length) * width;
-  } else {
-    const range = nodeSliderHandleRangeFromTravel(
-      slider,
-      readout,
-      nodeSliderTravelFromValue(slider, Number(slider.value)),
-    );
-    start = range.start;
-    end = range.end;
-  }
-
-  readout.classList.toggle("value-hovering", x >= start && x <= end);
 }
 
 function nodeSliderReadoutIsNumberOnly(readout) {
@@ -150,8 +134,6 @@ function stopNodeSliderReadoutPointer(event) {
 function attachNodeSliderReadoutEvents(readout) {
   readout.addEventListener("dblclick", () => beginNodeSliderReadoutEdit(readout));
   readout.addEventListener("contextmenu", (event) => openNodeMetadataPopover(event, readout));
-  readout.addEventListener("pointermove", (event) => updateNodeSliderValueHover(readout, event));
-  readout.addEventListener("pointerleave", () => readout.classList.remove("value-hovering"));
   if (nodeSliderReadoutIsNumberOnly(readout)) {
     readout.addEventListener("pointerdown", stopNodeSliderReadoutPointer);
     readout.addEventListener("mousedown", stopNodeSliderReadoutPointer);

@@ -441,6 +441,21 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
     if (nodeGraphVisualSinkActiveInPlan(node, { bypassedNodes })) {
       markReachable(node.id);
     }
+    // Solid-shell interactive modules (bug button, XY pad, ...) evaluate for
+    // their on-screen face, not only for downstream audio: a wired input
+    // (e.g. XY Pad X/Y -> Bug Button X/Y) has to reach the evaluator so the
+    // captured __Visual* / ghost scope ports drive the face even when the
+    // module's own outputs go nowhere. Marking it reachable also pulls its
+    // upstream sources (the XY pad itself) into the schedule.
+    if (
+      !bypassedNodes.has(node.id) &&
+      nodeGraphChromelessModuleUsesSolidShell(node.type) &&
+      nodeGraphPatchNodeInputPorts(node).some((port) =>
+        (graph.inputConnections.get(nodeGraphInputKey(node.id, port)) || []).length > 0
+      )
+    ) {
+      markReachable(node.id);
+    }
     if (
       nodeGraphModuleDefinitions[node.type]?.monitorSink &&
       (graph.inputConnections.get(nodeGraphInputKey(node.id, "In")) || []).length > 0
@@ -620,6 +635,8 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
       type === "ellipsoid" ||
       type === "macroKnob" ||
       type === "impulseButton" ||
+      type === "bugButton" ||
+      type === "xyPad" ||
       type === "macroControls" ||
       type === "midiOut" ||
       type === "noiseGenerator" ||
@@ -712,8 +729,13 @@ function nodeGraphCompiledScopeCaptureNodeIds(graph, reachableNodes) {
     .filter((node) =>
       reachableNodes.has(node.id) &&
       !bypassedNodes.has(node.id) &&
-      nodeGraphModuleDisplayRendererForNode(node) !== "legacy" &&
-      nodeGraphPatchNodeDisplayVisibleInPlan(node, { bypassedNodes })
+      (
+        nodeGraphChromelessModuleUsesSolidShell(node.type) ||
+        (
+          nodeGraphModuleDisplayRendererForNode(node) !== "legacy" &&
+          nodeGraphPatchNodeDisplayVisibleInPlan(node, { bypassedNodes })
+        )
+      )
     )
     .map((node) => node.id);
 }

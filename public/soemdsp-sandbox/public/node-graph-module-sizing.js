@@ -83,9 +83,32 @@ function nodeGraphPatchNodeLayout(node) {
   return fallback;
 }
 
+// Types whose CUSTOM UI occupies the display area instead of an
+// oscilloscope (e.g. xyPad's interactive pad, graph2's dot editor). They
+// participate in the display-height sizing system exactly like a scope --
+// same resize controls, same height contribution -- but the area can't be
+// hidden (hiding the module's own control surface would make it useless).
+// graph2 isn't registered in the chromeless-module registry (it still has a
+// normal header/title bar, unlike XY Pad/Bug Button), so it's called out
+// here directly rather than through nodeGraphChromelessModuleHasCustomDisplayArea
+// -- this is what gives it the same standard Width/Height controls as
+// every other custom-display module instead of neither one.
+function nodeGraphModuleTypeHasCustomDisplayArea(type) {
+  if (nodeGraphModuleDefinitions[type]?.layout === "graph") {
+    return true;
+  }
+  return nodeGraphChromelessModuleHasCustomDisplayArea(type);
+}
+
 function nodeGraphModuleTypeHasHideableOscilloscope(type) {
   const layout = nodeGraphModuleDefinitions[type]?.layout;
   if (nodeGraphChromelessModuleIsCompactTile(type)) {
+    return false;
+  }
+  // Custom-display-area types never render a scope section, so there is no
+  // oscilloscope to show/hide (their display HEIGHT still resizes -- see
+  // nodeGraphModuleSizingCapabilities).
+  if (nodeGraphModuleTypeHasCustomDisplayArea(type)) {
     return false;
   }
   return Boolean(nodeGraphModuleDefinitions[type]) && ![
@@ -114,6 +137,17 @@ function nodeGraphPatchNodeHasHideableOscilloscope(node) {
   return nodeGraphModuleTypeHasHideableOscilloscope(patchNode?.type);
 }
 
+// Resizable display AREA (oscilloscope OR custom UI) -- the gate for
+// display-height resize actions, as opposed to the show/hide toggle above
+// which only applies to actual oscilloscopes.
+function nodeGraphPatchNodeHasResizableDisplayArea(node) {
+  const patchNode = typeof node === "string" ? nodeGraphPatchNode(node) : node;
+  return (
+    nodeGraphPatchNodeHasHideableOscilloscope(patchNode) ||
+    nodeGraphModuleTypeHasCustomDisplayArea(patchNode?.type)
+  );
+}
+
 function nodeGraphModuleSizingCapabilities(type) {
   const normalizedType = String(type || "").trim();
   const definition = nodeGraphModuleDefinitions[normalizedType];
@@ -122,7 +156,11 @@ function nodeGraphModuleSizingCapabilities(type) {
     : normalizedType === "canvas"
       ? "canvasScript"
       : false;
-  const displayHeight = nodeGraphModuleTypeHasHideableOscilloscope(normalizedType);
+  // Display-height resizing works for any type with a display AREA --
+  // whether an oscilloscope fills it or the module's own custom UI does.
+  const displayHeight =
+    nodeGraphModuleTypeHasHideableOscilloscope(normalizedType) ||
+    nodeGraphModuleTypeHasCustomDisplayArea(normalizedType);
   return Object.freeze({
     width: Boolean(definition),
     moduleHeight,
@@ -132,6 +170,11 @@ function nodeGraphModuleSizingCapabilities(type) {
 }
 
 function nodeGraphModuleDisplayVisibleForUi(type, ui = {}) {
+  // A custom display area is always "visible" -- it's the module's own
+  // control surface, exempt from the oscilloscope show/hide flags.
+  if (nodeGraphModuleTypeHasCustomDisplayArea(type)) {
+    return true;
+  }
   if (!nodeGraphModuleTypeHasHideableOscilloscope(type)) {
     return false;
   }
@@ -167,7 +210,10 @@ function normalizeNodeGraphModuleDisplayHeightOffsetUnits(typeOrOffsetGu, offset
 }
 
 function nodeGraphModuleConfiguredDisplayHeightUnits(type, ui = {}) {
-  if (!nodeGraphModuleTypeHasHideableOscilloscope(type)) {
+  if (
+    !nodeGraphModuleTypeHasHideableOscilloscope(type) &&
+    !nodeGraphModuleTypeHasCustomDisplayArea(type)
+  ) {
     return 0;
   }
   const normalizedUi = normalizeNodeGraphPatchNodeUi(ui, type);
@@ -214,6 +260,10 @@ function nodeGraphPatchNodeCanvasScriptGridUnits(node) {
 }
 
 function nodeGraphDefaultModuleGridWidthUnits(type) {
+  const declaredWidthGu = Number(nodeGraphModuleDefinitions[type]?.defaultWidthGu);
+  if (Number.isFinite(declaredWidthGu)) {
+    return Math.max(1, Math.round(declaredWidthGu));
+  }
   if (nodeGraphChromelessModuleIsCompactTile(type)) {
     return 1;
   }
@@ -566,7 +616,14 @@ function nodeGraphModuleGridHeightUnitsForUi(type, ui = {}) {
   // keyboard shortcut), rather than being pinned at 1 regardless of that
   // setting.
   if (nodeGraphChromelessModuleLayouts.has(nodeGraphModuleDefinitions[type]?.layout)) {
-    if (nodeGraphModuleTypeHasHideableOscilloscope(type)) {
+    if (nodeGraphChromelessModuleUsesSolidShell(type)) {
+      const displayGu = nodeGraphModuleConfiguredDisplayHeightUnits(type, ui);
+      const sliderGu = nodeGraphModuleVisibleSliderRowCountForUi(type, ui) > 0
+        ? nodeGraphModuleSliderBodyHeightGu(type)
+        : 0;
+      return Math.ceil(displayGu + sliderGu + nodeGraphModuleLayout.moduleGridInsetGu * 2);
+    }
+    if (nodeGraphModuleSizingCapabilities(type).displayHeight) {
       return nodeGraphModuleConfiguredDisplayHeightUnits(type, ui);
     }
     return 1;
@@ -574,7 +631,16 @@ function nodeGraphModuleGridHeightUnitsForUi(type, ui = {}) {
   if (nodeGraphModuleDefinitions[type]?.layout === "knobWidget") {
     return 4;
   }
-  return Math.ceil(nodeGraphModuleRequiredHeightUnitsForUi(type, ui));
+  const requiredGu = nodeGraphModuleRequiredHeightUnitsForUi(type, ui);
+  let heightGu = Math.ceil(requiredGu);
+  // Bottom-clearance rule: if rounding up to whole grid units leaves less
+  // than 2px of slack under the last section (e.g. the module bottom lines
+  // up exactly with the bottom of a slider row), that reads as cramped --
+  // add one more grid unit so the content always breathes at the base.
+  if ((heightGu - requiredGu) * nodeGraphGrid.heightPx < 2) {
+    heightGu += 1;
+  }
+  return heightGu;
 }
 
 function nodeGraphPatchNodeGridHeightUnits(node) {

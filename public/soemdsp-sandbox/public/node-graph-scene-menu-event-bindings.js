@@ -30,6 +30,7 @@ function bindNodeGraphSceneMenuEvents() {
   document.addEventListener("pointerup", endNodeGraphModuleShopViewResize);
   document.addEventListener("pointercancel", endNodeGraphModuleShopViewResize);
   bindNodeGraphSceneElementEvent("nodeGraphWorkspace", "pointerdown", beginNodeGraphGraphNodeDrag, true);
+  bindNodeGraphSceneElementEvent("nodeGraphWorkspace", "dblclick", handleNodeGraphGraphNodeDoubleClick, true);
   document.addEventListener("pointermove", dragNodeGraphGraphNode);
   document.addEventListener("pointerup", endNodeGraphGraphNodeDrag);
   document.addEventListener("pointercancel", endNodeGraphGraphNodeDrag);
@@ -49,6 +50,13 @@ function bindNodeGraphSceneMenuEvents() {
       button.addEventListener("click", () => setSelectedNodeGraphWireType(button.dataset.wireType));
     });
   bindNodeGraphSceneElementEvent("nodeSceneCopyModule", "click", copyNodeGraphModuleFromContext);
+  // Wired but disabled -- module grouping itself is under construction (see
+  // saveNodeGraphSelectionAsModuleGroup's early return in
+  // node-graph-module-actions.js and configureNodeSceneContextMenu's
+  // addToGroupButton.disabled = true in node-graph-context-menu.js). The
+  // button exists now so the rest of the UI plumbing (menu placement,
+  // disabled/tooltip state) is in place ahead of building the feature out.
+  bindNodeGraphSceneElementEvent("nodeSceneAddToGroup", "click", saveNodeGraphSelectionAsModuleGroup);
   bindNodeGraphSceneElementEvent("nodeSceneCopyModuleSettings", "click", copyNodeGraphModuleSettingsFromContext);
   bindNodeGraphSceneElementEvent("nodeScenePasteModuleSettings", "click", pasteNodeGraphModuleSettingsFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneSetModuleSettingsAsDefault", "click", setNodeGraphModuleSettingsAsDefaultFromButton);
@@ -72,7 +80,6 @@ function bindNodeGraphSceneMenuEvents() {
   bindNodeGraphSceneElementEvent("nodeCodeBoxTitle", "change", applyNodeGraphCodeBoxWindowTitle);
   bindNodeGraphSceneElementEvent("nodeCodeBoxInputs", "input", scheduleNodeGraphCodeBoxWindowPortsApply);
   bindNodeGraphSceneElementEvent("nodeCodeBoxOutputs", "input", scheduleNodeGraphCodeBoxWindowPortsApply);
-  bindNodeGraphSceneElementEvent("nodeCodeBoxInputs", "change", applyNodeGraphCodeBoxWindowPorts);
   bindNodeGraphSceneElementEvent("nodeCodeBoxOutputs", "change", applyNodeGraphCodeBoxWindowPorts);
   bindNodeGraphSceneElementEvent("nodeCodeBoxSource", "input", handleNodeGraphCodeBoxWindowSourceInput);
   bindNodeGraphSceneElementEvent("nodeCodeBoxSource", "scroll", updateNodeGraphCodeBoxWindowEditorChrome);
@@ -104,8 +111,6 @@ function bindNodeGraphSceneMenuEvents() {
   if (typeof syncNodeGraphGlobalSmoothingControl === "function") {
     syncNodeGraphGlobalSmoothingControl({ force: true });
   }
-  bindNodeGraphSceneElementEvent("nodeSceneAddToGroup", "click", saveNodeGraphSelectionAsModuleGroup);
-  bindNodeGraphSceneElementEvent("nodeSceneAddToUi", "click", addNodeGraphModuleToUiFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneWidthDecrease", "click", () => adjustNodeGraphModuleWidthFromContext(-1));
   bindNodeGraphSceneElementEvent("nodeSceneWidthIncrease", "click", () => adjustNodeGraphModuleWidthFromContext(1));
   bindNodeGraphSceneElementEvent("nodeSceneDisplayHeightDecrease", "click", () => adjustNodeGraphModuleDisplayHeightFromContext(-1));
@@ -160,6 +165,7 @@ function bindNodeGraphSceneMenuEvents() {
   bindNodeGraphSceneElementEvent("nodeSceneCanvasScript", "click", openNodeGraphCanvasScriptFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneLedColor", "input", () => setNodeGraphLedColorFromContext({ record: false }));
   bindNodeGraphSceneElementEvent("nodeSceneLedColor", "change", () => setNodeGraphLedColorFromContext({ record: true }));
+  bindNodeGraphSceneElementEvent("nodeSceneBugButtonGlyph", "input", () => setNodeGraphBugButtonGlyphFromContext());
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxSingleLine", "click", () => setNodeGraphTextBoxModeFromContext("singleLine"));
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxMultiline", "click", () => setNodeGraphTextBoxModeFromContext("multiline"));
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxTextInput", "input", () => setNodeGraphTextBoxTextFromContext({ record: false }));

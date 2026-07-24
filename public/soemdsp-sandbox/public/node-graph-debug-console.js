@@ -44,7 +44,7 @@
     WARN: { tag: "WARN", color: "#ffcf6b", err: false },
     FAIL: { tag: "FAIL", color: "#ff6b6b", err: true },
     SMOOTH: { tag: "SMTH", color: "#b184ff", err: false },
-    ERROR: { tag: "ERR!", color: "#ff5555", err: true },
+    ERROR: { tag: "ERR", color: "#ff5555", err: true },
   };
 
   function push(level, msg, loc) {
@@ -64,6 +64,7 @@
     INFO: (msg) => push("INFO", msg, callerLoc()),
     WARN: (cond, msg) => { if (!cond) push("WARN", msg, callerLoc()); return cond; },
     CHECK: (cond, msg) => { if (!cond) { push("FAIL", msg || "CHECK failed", callerLoc()); try { console.assert(false, msg); } catch (_) {} } return cond; },
+    ERROR: (msg, loc = callerLoc()) => push("ERROR", msg || "ERROR", loc),
     FAIL: (msg) => push("FAIL", msg || "FAIL", callerLoc()),
     STOP: (msg) => push("FAIL", msg || "DEBUG BREAK", callerLoc()),
     WITHINSIZE: (value, container, msg) => {
@@ -87,6 +88,7 @@
     close: () => showPanel(false),
     clear: clearLog,
     entries: () => entries.slice(),
+    buildMode: () => seBuildMode(),
     smoothingWatch: (on) => setSmoothingWatch(on),
     devMode: (on) => {
       try { localStorage.setItem("seDebug", on ? "1" : "0"); } catch (_) {}
@@ -193,11 +195,13 @@
     const s = document.createElement("style");
     s.id = "seDebugStyles";
     s.textContent = `
-      #seDebugButton{width:34px;height:34px;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
+      #seDebugButton{width:40px;height:auto;align-self:stretch;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
         font-size:17px;line-height:1;border:1px solid #c0392b;border-radius:7px;cursor:pointer;
         background:linear-gradient(#e74c3c,#c0392b);color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.4);position:relative;padding:0;}
       #seDebugButton:hover{filter:brightness(1.12);}
       #seDebugButton[aria-pressed="true"]{outline:2px solid #fff3;}
+      /* Release build: same button, neutral instead of alarm-red -- see seBuildMode(). */
+      #seDebugButton.se-release-build{border-color:#3a4250;background:linear-gradient(#4a5262,#343b48);}
       #seDebugButton .se-badge{position:absolute;top:-6px;right:-6px;min-width:16px;height:16px;padding:0 3px;border-radius:9px;
         background:#000;color:#ff6b6b;font:700 10px/16px ui-monospace,monospace;text-align:center;display:none;border:1px solid #ff6b6b;}
       #seDebugPanel{position:fixed;z-index:2147483646;right:14px;bottom:14px;width:640px;height:380px;min-width:340px;min-height:200px;
@@ -205,7 +209,11 @@
         box-shadow:0 10px 40px rgba(0,0,0,.55);overflow:hidden;resize:both;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;}
       #seDebugPanel.se-open{display:flex;}
       #seDebugPanel .se-head{display:flex;align-items:center;gap:6px;padding:6px 8px;background:#171b22;border-bottom:1px solid #2a2f3a;cursor:move;user-select:none;}
-      #seDebugPanel .se-title{font-weight:700;color:#fff;margin-right:auto;}
+      #seDebugPanel .se-title{font-weight:700;color:#fff;margin-right:auto;font-size:17px;}
+      #seDebugPanel button.se-bug{background:none;border:1px solid #c0392b;border-radius:7px;cursor:pointer;
+        font-size:24px;line-height:1.15;padding:1px 5px;}
+      #seDebugPanel button.se-bug:hover{background:#2a1518;filter:brightness(1.2);}
+      #seDebugPanel button.se-bug:active{transform:scale(0.92);}
       #seDebugPanel button.se-tool{background:#232936;color:#cdd6e4;border:1px solid #313a4a;border-radius:5px;padding:2px 8px;cursor:pointer;font:inherit;}
       #seDebugPanel button.se-tool:hover{background:#2c3444;}
       #seDebugPanel .se-filters{display:flex;gap:4px;align-items:center;padding:5px 8px;background:#141821;border-bottom:1px solid #222834;flex-wrap:wrap;}
@@ -222,12 +230,29 @@
     document.head.appendChild(s);
   }
 
+  // server.py stamps {{BUILD_MODE}} ("debug" or "release", see BUILD_MODE
+  // there) onto #nodeBuildNumberReadout's data-build-mode-value attribute.
+  // Anything other than exactly "release" reads as "debug" -- a missing
+  // attribute (older cached HTML, a template that didn't get the
+  // replacement, etc.) fails toward the more-alarming red button rather
+  // than silently looking like a vetted release build.
+  function seBuildMode() {
+    try {
+      const value = document.getElementById("nodeBuildNumberReadout")?.dataset?.buildModeValue;
+      return value === "release" ? "release" : "debug";
+    } catch (_) {
+      return "debug";
+    }
+  }
+
   function buildButton() {
     if (document.getElementById("seDebugButton")) return;
     const btn = document.createElement("button");
     btn.id = "seDebugButton";
     btn.type = "button";
-    btn.title = "Debug log (soemdsp::debug)";
+    const mode = seBuildMode();
+    btn.classList.toggle("se-release-build", mode === "release");
+    btn.title = mode === "release" ? "Debug log (release build)" : "Debug log (soemdsp::debug)";
     btn.setAttribute("aria-label", "Open debug log");
     btn.setAttribute("aria-pressed", "false");
     btn.innerHTML = `🐞<span class="se-badge" data-se-badge>0</span>`;
@@ -245,7 +270,8 @@
     p.id = "seDebugPanel";
     p.innerHTML = `
       <div class="se-head" data-se-drag>
-        <span class="se-title">🐞 Debug Log</span>
+        <button class="se-bug" data-se-fake-err type="button" title="Click: generate a fake ERR entry (tests the log pipeline end to end)" aria-label="Generate a fake error">🐞</button>
+        <span class="se-title">Debug Log</span>
         <button class="se-tool" data-se-watch aria-pressed="false">○ smoothing</button>
         <button class="se-tool" data-se-pause>Pause</button>
         <button class="se-tool" data-se-copy>Copy</button>
@@ -263,6 +289,11 @@
     els.watchBtn = p.querySelector("[data-se-watch]");
 
     p.querySelector("[data-se-close]").addEventListener("click", () => showPanel(false));
+    // 🐞 is a first-class button: clicking it generates a fake ERR entry,
+    // exercising the full push -> render -> badge pipeline on demand.
+    p.querySelector("[data-se-fake-err]").addEventListener("click", () => {
+      push("ERROR", "ladybug", "debug-console");
+    });
     p.querySelector("[data-se-clear]").addEventListener("click", clearLog);
     p.querySelector("[data-se-copy]").addEventListener("click", copyLog);
     const pauseBtn = p.querySelector("[data-se-pause]");
@@ -360,7 +391,7 @@
       injectStyles();
       buildButton();
       buildPanel();
-      SE.INFO(`debug console ready — build ${(document.querySelector("[data-build-number-value]")?.textContent || "?")}`);
+      SE.INFO(`debug console ready — build ${(document.querySelector("[data-build-number-value]")?.textContent || "?")} (${seBuildMode()})`);
     } catch (err) {
       try { console.error("[se-debug] init failed", err); } catch (_) {}
     }

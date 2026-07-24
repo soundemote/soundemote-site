@@ -62,7 +62,6 @@ var nodeGraphMvp = {
   sliderLayout: "text-inside",
   sliderAmountVisible: false,
   sliderPositionVisible: true,
-  hideMouseWhileDragging: true,
   midiKeyboardSignal: null,
   midiKeyboardAccess: null,
   midiKeyboardHeldKeysLowBitmask: 0,

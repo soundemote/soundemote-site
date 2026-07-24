@@ -282,6 +282,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.triangleStates = new Map();
     this.vactrolEnvelopeStates = new Map();
     this.impulseButtonStates = new Map();
+    this.bugButtonStates = new Map();
     this.visualInputBuffers = new Map();
     this.visualSinks = [];
     this.resetVisualControls();
@@ -477,6 +478,10 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       this.setImpulseButtonTrigger(message.nodeId, message.amplitude);
       return;
     }
+    if (message.type === "bugButtonInteraction") {
+      this.setBugButtonInteraction(message);
+      return;
+    }
     if (message.type === "inputWireBreakTrigger") {
       this.setInputWireBreakTrigger(message.nodeId, message.port);
       return;
@@ -508,6 +513,30 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     const normalized = Number(amplitude);
     state.amplitude = Number.isFinite(normalized) ? Math.max(0, Math.min(1, normalized)) : 1;
     this.impulseButtonStates.set(nodeId, state);
+  }
+
+  createBugButtonState() {
+    return {
+      down: 0,
+      downPulseSamples: 0,
+      hover: 0,
+      upPulseSamples: 0,
+      x: 0,
+      y: 0,
+    };
+  }
+
+  setBugButtonInteraction(message = {}) {
+    const nodeId = String(message.nodeId || "");
+    if (!nodeId) return;
+    const state = this.bugButtonStates.get(nodeId) || this.createBugButtonState();
+    if (message.down !== undefined) state.down = message.down ? 1 : 0;
+    if (message.hover !== undefined) state.hover = message.hover ? 1 : 0;
+    if (Number.isFinite(Number(message.x))) state.x = Math.max(-1, Math.min(1, Number(message.x)));
+    if (Number.isFinite(Number(message.y))) state.y = Math.max(-1, Math.min(1, Number(message.y)));
+    if (message.downPulse) state.downPulseSamples += 1;
+    if (message.upPulse) state.upPulseSamples += 1;
+    this.bugButtonStates.set(nodeId, state);
   }
 
   async setNativeModuleWasm(message) {
@@ -2038,6 +2067,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.triangleStates = new Map();
     this.vactrolEnvelopeStates = new Map();
     this.impulseButtonStates = new Map();
+    this.bugButtonStates = new Map();
     this.polyBlepStates = new Map();
     this.visualSinks = [];
     this.resetVisualControls();
@@ -2327,7 +2357,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       if (node?.type === "clock" && !this.clockStates.has(id)) {
         this.clockStates.set(id, this.createClockState());
       }
-      if ((node?.type === "graph" || node?.type === "graph2") && !this.graphLfoStates.has(id)) {
+      if (node?.type === "graph2" && !this.graphLfoStates.has(id)) {
         this.graphLfoStates.set(id, this.createGraphLfoState());
       }
       if (node?.type === "clockDivider" && !this.clockDividerStates.has(id)) {
@@ -2419,6 +2449,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       }
       if (node?.type === "impulseButton" && !this.impulseButtonStates.has(id)) {
         this.impulseButtonStates.set(id, this.createImpulseButtonState());
+      }
+      if (node?.type === "bugButton" && !this.bugButtonStates.has(id)) {
+        this.bugButtonStates.set(id, this.createBugButtonState());
       }
       if (node?.type === "polyBlep" && !this.polyBlepStates.has(id)) {
         this.polyBlepStates.set(id, this.createPolyBlepState());
@@ -2945,6 +2978,11 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         this.impulseButtonStates.delete(id);
       }
     }
+    for (const id of [...this.bugButtonStates.keys()]) {
+      if (!ids.has(id)) {
+        this.bugButtonStates.delete(id);
+      }
+    }
     for (const id of [...this.polyBlepStates.keys()]) {
       if (!ids.has(id)) {
         this.destroyPolyBlepNativeState(this.polyBlepStates.get(id));
@@ -3422,7 +3460,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   }
 
   graphEndpointYLockEnabledForNode(node) {
-    return (node?.type === "graph" || node?.type === "graph2") && Number(node?.params?.lockEndpointY) >= 0.5;
+    return node?.type === "graph2" && Number(node?.params?.lockEndpointY) >= 0.5;
   }
 
   graphWithLockedEndpointY(graphValue) {
@@ -3596,7 +3634,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   }
 
   graphSmoothingModeForNode(node) {
-    return node?.type === "graph2" ? this.normalizeGraph2SmoothingMode(node?.params?.smoothingMode) : "legacy";
+    return this.normalizeGraph2SmoothingMode(node?.params?.smoothingMode);
   }
 
   graphSegmentValue(graph, x, index, smoothingMode = "legacy") {
@@ -7483,8 +7521,6 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         this.polyBlepOscillatorWorkletEvaluate(node, nodeId, frame, frames, frameValues, mixInput, safeRate),
       blit: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) =>
         this.polyBlepOscillatorWorkletEvaluate(node, nodeId, frame, frames, frameValues, mixInput, safeRate),
-      graph: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput, inputFrame, graphInputValue, graphOutputValue) =>
-        graphOutputValue(node, nodeId),
       graph2: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput, inputFrame, graphInputValue, graphOutputValue) =>
         graphOutputValue(node, nodeId),
       additiveOsc: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput, inputFrame, graphInputValue) =>
@@ -7875,7 +7911,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     const graphInputValue = (nodeId, graphInput, x, fallback) => {
       const connection = (this.graphInputConnections.get(this.graphInputKey(nodeId, graphInput)) || [])[0];
       const source = connection ? this.nodes.get(connection.sourceNode) : null;
-      if (!source || (source.type !== "graph" && source.type !== "graph2")) {
+      if (!source || source.type !== "graph2") {
         return fallback;
       }
       return this.graphValueAt(this.graphForNode(source), this.clampValue(Number(x) || 0, 0, 1), this.graphSmoothingModeForNode(source));
@@ -8088,4 +8124,3 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     return true;
   }
 }
-
