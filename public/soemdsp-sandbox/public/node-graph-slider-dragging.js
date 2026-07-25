@@ -373,6 +373,114 @@ function nodeSliderKeyboardStep(slider, event) {
   return range * (event.shiftKey ? 0.1 : 0.01) * (event.ctrlKey || event.metaKey ? 0.1 : 1);
 }
 
+// ── Plain <input type="range"/"number"> modifier parity ──────────────────
+//
+// Module sliders are a custom widget (a .node-slider-readout surface driving a
+// hidden input, see beginNodeSliderDrag above) -- none of that machinery can
+// be pointed at a bare native input. What CAN be shared is the modifier
+// vocabulary, so native inputs elsewhere in the app (waveform display options,
+// etc.) behave the way the module sliders taught the user to expect:
+//
+//   ctrl/cmd + click   reset to default
+//   shift              coarse   (10x step)
+//   ctrl/cmd           fine     (0.1x step)
+//   shift + ctrl/cmd   coarse and fine combined, i.e. 1x
+//
+// The step maths is nodeSliderKeyboardStep -- literally the same function the
+// module sliders use for arrow keys -- so the two can never drift apart.
+// Drag-with-modifiers is deliberately NOT reimplemented here: the browser owns
+// pointer tracking for a native range, and shadowing it would mean rebuilding
+// the whole drag path for a cosmetic gain. Wheel and arrow keys cover the same
+// ground on these controls.
+function bindNodeGraphNativeSliderModifiers(input, defaultValue) {
+  if (!input || input.dataset.nativeSliderModifiersBound === "true") {
+    return;
+  }
+  input.dataset.nativeSliderModifiersBound = "true";
+  const fallback = Number(defaultValue);
+  if (Number.isFinite(fallback)) {
+    input.dataset.default = String(fallback);
+  }
+  // nodeSliderKeyboardStep reads dataset.step, not the attribute.
+  const declaredStep = Number(input.step);
+  if (Number.isFinite(declaredStep) && declaredStep > 0) {
+    input.dataset.step = String(declaredStep);
+  }
+  if (input.type === "range") {
+    // A range input SNAPS any assigned value onto its step grid, which would
+    // silently swallow every fine (ctrl) nudge -- 200 + 0.1 on a step="1" hue
+    // slider lands straight back on 200. The nominal step now lives in
+    // dataset.step (read above), so the attribute can go fully continuous.
+    input.step = "any";
+  }
+
+  const clamp = (value) => {
+    const min = Number(input.min);
+    const max = Number(input.max);
+    let next = value;
+    if (Number.isFinite(min)) next = Math.max(min, next);
+    if (Number.isFinite(max)) next = Math.min(max, next);
+    return next;
+  };
+  // Both events: "input" drives the live-preview handlers (hue, brightness),
+  // "change" drives the commit-on-change handlers (time window, line width).
+  const emit = (value) => {
+    input.value = String(value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  const nudge = (event, direction) => {
+    const step = nodeSliderKeyboardStep(input, event);
+    const current = Number(input.value);
+    if (!Number.isFinite(current) || !Number.isFinite(step)) {
+      return;
+    }
+    // Round to the step grid so repeated fine nudges do not accumulate float
+    // dust into values like 0.30000000000000004.
+    const next = clamp(current + step * direction);
+    emit(Number(next.toFixed(6)));
+  };
+
+  input.addEventListener("pointerdown", (event) => {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) {
+      return;
+    }
+    if (!Number.isFinite(Number(input.dataset.default))) {
+      return;
+    }
+    emit(clamp(Number(input.dataset.default)));
+    // Stop the native range from also jumping to wherever the pointer landed.
+    event.preventDefault();
+    event.stopPropagation();
+  });
+
+  input.addEventListener("wheel", (event) => {
+    // No hover/focus guard needed: a wheel event is only delivered to the
+    // element under the pointer in the first place.
+    const delta = event.deltaY || event.deltaX;
+    if (!delta) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    nudge(event, delta < 0 ? 1 : -1);
+  }, { passive: false });
+
+  input.addEventListener("keydown", (event) => {
+    const direction = event.key === "ArrowUp" || event.key === "ArrowRight"
+      ? 1
+      : event.key === "ArrowDown" || event.key === "ArrowLeft"
+        ? -1
+        : 0;
+    if (!direction) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    nudge(event, direction);
+  });
+}
+
 function stepNodeSliderFromKeyboard(event) {
   const surface = event.currentTarget?.classList?.contains("node-slider-readout")
     ? event.currentTarget

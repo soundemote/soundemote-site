@@ -570,25 +570,18 @@ function createNodeUserUiSettingsSection(title, controls) {
   return section;
 }
 
-// Knob style is always-on; everything else in this panel is whatever UI Dev
-// controls have their "Expose in UI settings" checkbox checked, grouped by
-// the same sections UI Dev itself uses (see nodeUiDevSettingSections).
+// Everything in this panel is whatever UI Dev controls have their "Expose in
+// UI settings" checkbox checked, grouped by the same sections UI Dev itself
+// uses (see nodeUiDevSettingSections). Knob style used to be pinned here
+// always-on; it now lives in UI Dev with the rest of the builder-level knobs
+// (see renderNodeUiDevHelperViewControls) and is no longer user-exposed.
 function renderNodeUserUiSettingsControls() {
   const container = document.getElementById("nodeUserUiSettingsControls");
   if (!container) {
     return;
   }
   container.textContent = "";
-  const sections = [
-    createNodeUserUiSettingsSection("knob style", [
-      createNodeUserUiSettingsMacroKnobArcThicknessControl(),
-      createNodeUserUiSettingsMacroKnobArcGapBrightnessControl(),
-      createNodeUserUiSettingsMacroKnobSizeControl(),
-      createNodeUserUiSettingsMacroKnobHitboxOutlineControl(),
-      createNodeUserUiSettingsMacroKnobLabelPositionControl(),
-      createNodeUserUiSettingsMacroKnobValuePositionControl(),
-    ]),
-  ];
+  const sections = [];
   for (const section of nodeUiDevSettingSections) {
     const controls = section.ids
       .map((id) => nodeUiDevSettingControls.find((definition) => definition.id === id))
@@ -623,6 +616,14 @@ function renderNodeUiDevHelperViewControls() {
     createNodeUserUiSettingsSliderAmountControl(),
     createNodeUserUiSettingsSliderPositionControl(),
   ]);
+  const knobSection = createNodeUserUiSettingsSection("knob style", [
+    createNodeUserUiSettingsMacroKnobArcThicknessControl(),
+    createNodeUserUiSettingsMacroKnobArcGapBrightnessControl(),
+    createNodeUserUiSettingsMacroKnobSizeControl(),
+    createNodeUserUiSettingsMacroKnobHitboxOutlineControl(),
+    createNodeUserUiSettingsMacroKnobLabelPositionControl(),
+    createNodeUserUiSettingsMacroKnobValuePositionControl(),
+  ]);
   const moduleSection = createNodeUserUiSettingsSection("modules and nodes view", [
     createNodeUserUiSettingsModuleButtonsControl(),
     createNodeUserUiSettingsModuleOscilloscopeControl(),
@@ -633,7 +634,7 @@ function renderNodeUiDevHelperViewControls() {
     createNodeUserUiSettingsModuleSlidersControl(),
     createNodeUserUiSettingsSliderLayoutControl(),
   ]);
-  for (const section of [workspaceSection, moduleSection]) {
+  for (const section of [workspaceSection, moduleSection, knobSection]) {
     if (section) {
       helperBody.append(section);
     }

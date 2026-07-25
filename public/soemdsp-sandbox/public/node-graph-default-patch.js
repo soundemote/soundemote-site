@@ -90,11 +90,11 @@ function createNodeGraphPatchNode(type, options = {}) {
 
 const nodeGraphDefaultNodeConfigs = Object.freeze([
   {
-    ...createNodeGraphPatchNode("audioPlayer", { id: "audioPlayer-1", gx: 1, gy: 1, widthGu: 8 }),
+    ...createNodeGraphPatchNode("audioPlayer", { id: "audioPlayer-1", gx: -9, gy: -9, widthGu: 8 }),
     params: { ...nodeGraphDefaultParamsForType("audioPlayer"), speed: 1, transport: 4 },
   },
   {
-    ...createNodeGraphPatchNode("output", { id: "output", gx: 12, gy: 5 }),
+    ...createNodeGraphPatchNode("output", { id: "output", gx: 2, gy: -5 }),
     params: { ...nodeGraphDefaultParamsForType("output"), volume: 0.8 },
   },
 ]);

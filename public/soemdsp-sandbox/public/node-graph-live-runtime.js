@@ -502,6 +502,12 @@ function setNodeGraphLiveSpeed(speed) {
   }
   nodeGraphMvp.live.speedMultiplier = clamped;
   sendNodeGraphLiveSpeed();
+  // Every pause/play path funnels through here (transport button, spacebar,
+  // external host messages), so refresh the header Speed readout and the
+  // play/pause glyph from one place rather than at each call site.
+  if (typeof renderNodeGraphLiveControls === "function") {
+    renderNodeGraphLiveControls();
+  }
   if (typeof nodeGraphExternalNotifyLiveOutputChanged === "function") {
     nodeGraphExternalNotifyLiveOutputChanged();
   }
@@ -677,8 +683,7 @@ function nodeGraphStopGpuAdditiveProducer() {
 }
 
 function nodeGraphGpuAdditiveNodeParam(node, key, fallback) {
-  const value = Number(node?.params?.[key]);
-  return Number.isFinite(value) ? value : fallback;
+  return nodeGraphNodeParamNumber(node, key, fallback);
 }
 
 function nodeGraphGpuAdditiveNodeVersion(node, sampleRate) {
@@ -1943,7 +1948,7 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/radar/radar-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
   "./public/modules/audioPlayer/audio-player-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
   "./public/modules/gainBiasMix/gain-bias-mix-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/sinc/sinc-worklet-evaluator.js?v=sinc-20260723",
+  "./public/modules/sinc/sinc-worklet-evaluator.js?v=sinc-20260725",
   "./public/modules/videoscope/videoscope-worklet-evaluator.js?v=videoscope-20260713",
   "./public/modules/spectrogram/spectrogram-worklet-evaluator.js?v=spectrogram-20260720",
   "./public/node-live-audio-worklet-register.js?v=blob-loader-20260711",

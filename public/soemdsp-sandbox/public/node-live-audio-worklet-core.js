@@ -7600,9 +7600,17 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         const state = this.sincStates.get(nodeId) || this.createSincState();
         this.sincStates.set(nodeId, state);
         const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
+        const baseFreq = Math.max(0, read("freq", 100));
+        const referenceMidiNote = Number.isFinite(this.pitchReferenceMidiNote) ? this.pitchReferenceMidiNote : 48;
+        const referenceVoltage = referenceMidiNote / 120;
+        const pitchInput = this.inputConnections.has(this.inputKey(nodeId, "0.1V/Oct"))
+          ? this.clampValue(this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null), -1, 1)
+          : referenceVoltage;
         return this.sincSample(state, {
-          freq: read("freq", 100),
+          freq: Math.max(0, baseFreq * (2 ** ((pitchInput - referenceVoltage) / 0.1))),
           phase: read("phase", 0),
+          lobes: read("lobes", 4),
+          bandLimit: read("bandLimit", 1),
         }, nodeId);
       },
     };

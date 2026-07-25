@@ -6,7 +6,7 @@
   "controls": {
     "mouseLightEnabled": true,
     "showOriginMarker": false,
-    "modularShaderEnabled": true,
+    "modularShaderEnabled": false,
     "scopeBloomEnabled": false,
     "settingsHeaderTextSize": 100,
     "uiDevButtonTextSize": 50,
@@ -38,6 +38,14 @@
     "sliderUnitColor": "#7fc7d9",
     "sliderFillHoverColor": "#7fc7d9",
     "sliderFillHoverAlpha": 28,
+    "sliderAmountFillHue": 200,
+    "sliderAmountFillSaturation": 31,
+    "sliderAmountFillLightness": 15,
+    "sliderAmountFillAlpha": 100,
+    "sliderPositionFillHue": 203,
+    "sliderPositionFillSaturation": 55,
+    "sliderPositionFillLightness": 57,
+    "sliderPositionFillAlpha": 37,
     "nodeGlowSize": 50,
     "wirePatchPointSize": 36,
     "wireThickness": 19,
@@ -56,46 +64,54 @@
     "settingsHeaderHighlights": false
   },
   "exposedControls": {
-    "mouseLightEnabled": false,
+    "mouseLightEnabled": true,
     "showOriginMarker": false,
-    "modularShaderEnabled": false,
-    "scopeBloomEnabled": false,
+    "modularShaderEnabled": true,
+    "scopeBloomEnabled": true,
     "settingsHeaderTextSize": false,
     "uiDevButtonTextSize": false,
-    "liveToggleTextSize": false,
-    "modularHeaderButtonBackground": false,
-    "tooltipTextSize": false,
-    "minimumGridBrightness": false,
-    "moduleLightSpread": false,
-    "textGlowLevel": false,
-    "moduleGridInset": false,
-    "moduleRoundness": false,
-    "gridColor": false,
-    "workspaceBackgroundColor": false,
-    "moduleBrowserEntryHeight": false,
-    "moduleBrowserEntryPadding": false,
-    "moduleBrowserEntryTextSize": false,
+    "liveToggleTextSize": true,
+    "modularHeaderButtonBackground": true,
+    "tooltipTextSize": true,
+    "minimumGridBrightness": true,
+    "moduleLightSpread": true,
+    "textGlowLevel": true,
+    "moduleGridInset": true,
+    "moduleRoundness": true,
+    "gridColor": true,
+    "workspaceBackgroundColor": true,
+    "moduleBrowserEntryHeight": true,
+    "moduleBrowserEntryPadding": true,
+    "moduleBrowserEntryTextSize": true,
     "settingsHeaderTopRatio": false,
     "settingsHeaderPadding": false,
-    "floatingWindowHeaderHeight": false,
-    "moduleTitleFont": false,
-    "moduleTitleHeight": false,
-    "moduleTitleTextFill": false,
-    "moduleIoSectionHeight": false,
-    "moduleNodeSize": false,
-    "sliderWidth": false,
-    "sliderHeight": false,
-    "sliderLabelColor": false,
-    "sliderValueColor": false,
-    "sliderUnitColor": false,
-    "sliderFillHoverColor": false,
-    "sliderFillHoverAlpha": false,
-    "nodeGlowSize": false,
-    "wirePatchPointSize": false,
-    "wireThickness": false,
-    "traceWireThickness": false,
+    "floatingWindowHeaderHeight": true,
+    "moduleTitleFont": true,
+    "moduleTitleHeight": true,
+    "moduleTitleTextFill": true,
+    "moduleIoSectionHeight": true,
+    "moduleNodeSize": true,
+    "sliderWidth": true,
+    "sliderHeight": true,
+    "sliderLabelColor": true,
+    "sliderValueColor": true,
+    "sliderUnitColor": true,
+    "sliderFillHoverColor": true,
+    "sliderFillHoverAlpha": true,
+    "sliderAmountFillHue": false,
+    "sliderAmountFillSaturation": false,
+    "sliderAmountFillLightness": false,
+    "sliderAmountFillAlpha": false,
+    "sliderPositionFillHue": false,
+    "sliderPositionFillSaturation": false,
+    "sliderPositionFillLightness": false,
+    "sliderPositionFillAlpha": false,
+    "nodeGlowSize": true,
+    "wirePatchPointSize": true,
+    "wireThickness": true,
+    "traceWireThickness": true,
     "choiceSlideEmptyBorder": false,
-    "choiceDividerHeight": false,
+    "choiceDividerHeight": true,
     "choiceSlideDebugBoxes": false,
     "bypassIconSize": false,
     "bypassIconGlowSpread": false,
@@ -127,14 +143,15 @@
   },
   "moduleDefaultOverrides": {},
   "view": {
-    "gridVisible": false,
-    "keyboardDebugInfoVisible": false,
+    "gridVisible": true,
+    "keyboardDebugInfoVisible": true,
+    "tooltipEmbedded": true,
     "moduleButtonsVisible": true,
     "moduleInterfaceControlsVisible": true,
     "moduleOscilloscopesVisible": true,
     "moduleSlidersVisible": true,
     "moduleScopeBackgroundColor": "#000000",
-    "globalSmoothingSeconds": 0.5,
+    "globalSmoothingSeconds": 3.767674873964554,
     "globalSmoothingManual": false,
     "moduleScopeDotCore1Enabled": false,
     "moduleScopeDotCore1Size": 2,
@@ -144,28 +161,28 @@
     "moduleScopePointBudget": 4096,
     "moduleScopeLineThickness": 1,
     "moduleScopeDiscontinuitySkipSamples": 1,
-    "macroKnobArcThickness": 7,
+    "macroKnobArcThickness": 10,
     "macroKnobArcGapBrightness": 0,
     "macroKnobSizeScale": 1,
     "macroKnobHitboxOutlineVisible": false,
-    "macroKnobLabelPosition": "top",
+    "macroKnobLabelPosition": "mid",
     "macroKnobValuePosition": "bottom",
     "traceSettings": {
-      "brightness": 0.92,
+      "brightness": 1,
       "color": "#75ebff",
       "dot1Enabled": true,
-      "dot1Size": 0.08,
+      "dot1Size": 0.0795,
       "secondaryBrightness": 0.18,
       "secondaryColor": "#184fff",
       "secondaryEnabled": true,
       "secondarySize": 0.24,
       "secondaryLineThickness": 0.48,
       "cycles": 2,
-      "lineThickness": 0.2,
+      "lineThickness": 0,
       "padding": 0,
-      "skipDiscontinuities": true,
-      "sourceSync": true,
-      "zoomSeconds": 0.05
+      "skipDiscontinuities": false,
+      "sourceSync": false,
+      "zoomSeconds": 0.2
     },
     "sliderLayout": "text-inside",
     "sliderAmountVisible": false,
@@ -740,8 +757,8 @@
       "width": 185
     },
     "moduleActionWindowSize": {
-      "width": 342,
-      "height": 691
+      "width": 185,
+      "height": 620
     },
     "workspaceWindowStatesVersion": 1,
     "workspaceWindowStates": {
@@ -764,10 +781,18 @@
         "open": false
       },
       "moduleBrowser": {
-        "open": false
+        "open": false,
+        "position": {
+          "left": -19,
+          "top": 173
+        }
       },
       "visibilityMenu": {
-        "open": false
+        "open": false,
+        "position": {
+          "left": 1719,
+          "top": 114
+        }
       },
       "uiSettings": {
         "open": false
@@ -776,12 +801,16 @@
         "open": false
       },
       "traceDisplaySettings": {
-        "open": false
+        "open": false,
+        "targetNode": "spectrogram-1"
       },
       "standaloneMidiKeyboard": {
         "open": false
       },
       "tooltipWindow": {
+        "open": false
+      },
+      "phosphorWaveformSettings": {
         "open": false
       }
     },
@@ -789,12 +818,12 @@
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": 62.89285714285711,
-        "y": -98.46428571428572
+        "x": -391.57142857142856,
+        "y": 350.9375
       },
-      "zoom": 0.711780247813411
+      "zoom": 0.7971938775510203
     },
-    "moduleStoreDepartment": "",
+    "moduleStoreDepartment": "oscillator",
     "savedPatchBankIndex": 0,
     "savedPatchBankName": "chaos",
     "savedPatchGridColumns": 3,

@@ -255,6 +255,13 @@ function handleNodeGraphKeydown(event) {
     openNodeGraphModuleShop(null);
     return;
   }
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "c") {
+    event.preventDefault();
+    if (typeof openNodeGraphCommandCenter === "function") {
+      openNodeGraphCommandCenter();
+    }
+    return;
+  }
   if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "m") {
     event.preventDefault();
     if (typeof toggleNodeGraphModularOnlyView === "function") {

@@ -129,7 +129,7 @@ const nodeGraphNodeLabels = Object.freeze({
   videoscope: "Videoscope",
   valueOscilloscope: "0D Value",
   numberReadout: "Number Readout",
-  lineBurnOscilloscope: "1D Burn",
+  lineBurnOscilloscope: "1D Burn Dot",
   scope2d: "2D Burn",
   scope2dTrace: "2D Trace",
   speakerProtection: "Speaker Protection",
@@ -1723,6 +1723,9 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   randomClock: {
+    // Trigger-rate module: the dot display reads far better than a trace
+    // for something that is mostly flat with an occasional pulse.
+    displayType: "dot",
     inputs: ["Reset"],
     outputs: ["Trigger", "Gate"],
     parameters: [
@@ -1736,6 +1739,9 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   clockDivider: {
+    // Trigger-rate module: the dot display reads far better than a trace
+    // for something that is mostly flat with an occasional pulse.
+    displayType: "dot",
     inputs: ["Clock", "Reset"],
     outputs: ["Out"],
     parameters: [
@@ -1746,6 +1752,9 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   delayedTrigger: {
+    // Trigger-rate module: the dot display reads far better than a trace
+    // for something that is mostly flat with an occasional pulse.
+    displayType: "dot",
     inputs: ["Trigger", "Reset"],
     outputs: ["Out"],
     parameters: [
@@ -1809,6 +1818,9 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   triggerCounter: {
+    // Trigger-rate module: the dot display reads far better than a trace
+    // for something that is mostly flat with an occasional pulse.
+    displayType: "dot",
     inputs: ["Trigger", "Reset"],
     outputs: ["Count", "Pulse"],
     parameters: [
@@ -1866,6 +1878,9 @@ const nodeGraphModuleDefinitions = Object.freeze({
   // stepGrid registers its own definition from public/modules/stepGrid/
   // step-grid-register.js -- see node-graph-chromeless-module-registry.js.
   triggerDivider: {
+    // Trigger-rate module: the dot display reads far better than a trace
+    // for something that is mostly flat with an occasional pulse.
+    displayType: "dot",
     inputs: ["Trigger", "Reset"],
     outputs: ["Out"],
     parameters: [
@@ -3541,6 +3556,29 @@ const nodeGraphModuleDefinitions = Object.freeze({
         step: "any",
         unit: "Hz",
       },
+      {
+        defaultValue: "4",
+        key: "lobes",
+        kind: "count",
+        label: "Lobes",
+        max: "16",
+        min: "1",
+        step: "1",
+      },
+      {
+        choices: ["Ideal", "Band Limit"],
+        defaultValue: "1",
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        key: "bandLimit",
+        label: "Kernel",
+        linearSmoothing: false,
+        max: "1",
+        mid: "1",
+        min: "0",
+        nonlinearSlider: false,
+        step: "1",
+      },
     ],
   },
   // Chromeless / fully-custom-UI modules (stepGrid, led, ...) register
@@ -3576,9 +3614,14 @@ const nodeGraphModuleLayout = Object.freeze({
   fitCushionGu: 2 / 28,
   headerHeightGu: 76 / 28,
   headerTitleRowHeightGu: 22 / 28,
-  ioPaddingYGu: 4 / 28,
+  /* The io section renders with `padding: var(--node-io-section-padding-block) 0`
+     and that var is 0 (styles.css) -- the old 4px here was phantom height. */
+  ioPaddingYGu: 0,
   ioRowGapGu: 1 / 28,
-  ioRowHeightGu: 16 / 28,
+  /* .node-io-row is `font-size: 0.84rem; line-height: 1` with no padding, so a
+     row is exactly 13.44px tall. The old 16px over-reported every io section by
+     ~2.5px per port, which pushed many modules a whole grid unit too tall. */
+  ioRowHeightGu: 13.44 / 28,
   ioSectionMinHeightGu: 24 / 28,
   moduleGridInsetGu: 6 / 28,
   moduleScopeHeightGu: 2,

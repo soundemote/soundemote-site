@@ -208,6 +208,12 @@ function attachNodeGraphNodeEvents(node) {
     .forEach((section) => section.addEventListener("pointerdown", beginNodeGraphNodeDrag));
   node.querySelectorAll(".node-parameter-row")
     .forEach((row) => row.addEventListener("pointerdown", beginNodeGraphNodeDrag));
+  // The Music Player / sample modules have no spare chrome to grab -- the body
+  // is wall-to-wall controls -- so the phase readout doubles as a drag handle.
+  // The copy button inside it is unaffected: beginNodeGraphNodeDrag bails on
+  // any `button` target before it looks for a handle.
+  node.querySelectorAll(".node-sample-phase-readout")
+    .forEach((row) => row.addEventListener("pointerdown", beginNodeGraphNodeDrag));
   node.querySelector(".node-bypass-button")?.addEventListener("click", toggleNodeGraphModuleBypass);
   node.querySelector(".node-display-settings-button")?.addEventListener("click", openNodeModuleDisplaySettings);
   node.querySelector(".node-display-settings-button")?.addEventListener("contextmenu", openNodeModuleDisplaySettings);

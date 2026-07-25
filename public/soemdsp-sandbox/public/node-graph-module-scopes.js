@@ -1630,9 +1630,9 @@ function nodeGraphModuleScopeNodeForSlot(slot) {
     .find((node) => node.id === slot?.nodeId) || null;
 }
 
+// Name kept as-is: scripts/smoke_test.py asserts it exists.
 function nodeGraphModuleScopeNodeParam(node, key, fallback) {
-  const value = Number(node?.params?.[key]);
-  return Number.isFinite(value) ? value : fallback;
+  return nodeGraphNodeParamNumber(node, key, fallback);
 }
 
 function nodeGraphModuleScopeAdvanceFixedFrameClock(state, now, fps) {
@@ -2682,7 +2682,7 @@ function nodeGraphTraceDisplaySettingsEditingTraceDefaults() {
   return nodeGraphModuleDisplaySettingsSchemaForNode(node) === "trace" && node?.type !== "output";
 }
 
-const nodeGraphDisplayModeRenderers = Object.freeze(["trace", "clock", "dot", "value", "lineBurn", "hypersawBurn", "oscilloscopeBankBurn", "videoscopeBurn", "spectrogramBurn", "transportBpm", "scope2d", "scope2dTrace", "numberReadout", "customDisplay", "spectrum"]);
+const nodeGraphDisplayModeRenderers = Object.freeze(["trace", "clock", "dot", "value", "lineBurn", "hypersawBurn", "oscilloscopeBankBurn", "videoscopeBurn", "spectrogramBurn", "transportBpm", "scope2d", "scope2dTrace", "numberReadout", "customDisplay", "spectrum", "ledLamp"]);
 const nodeGraphDisplayModeSignalKinds = Object.freeze(["scalar", "xy", "buffer"]);
 
 function nodeGraphDisplayModeSettingsSchemaForRenderer(renderer) {
@@ -8482,6 +8482,11 @@ function nodeGraphOscilloscopeLatestSample(buffer, fallback = 0) {
   return fallback;
 }
 
+// The beam fragment shader converts its uSize uniform into a core radius via
+// `radius = max(uSize * 0.34, 0.0001)`. Callers that want a specific on-screen
+// radius have to divide by this; keep the two in step.
+const NODE_GRAPH_BEAM_SIZE_TO_RADIUS = 0.34;
+
 function drawNodeGraphOscilloscopeBeam(renderer, item, pixelRatio, x1, y1, x2, y2, options = {}) {
   const { canvas, gl } = renderer;
   const clipRect = nodeGraphModuleScopeClippedPixelRect(
@@ -8546,7 +8551,21 @@ function drawNodeGraphDotOscilloscopeItem(renderer, item, pixelRatio) {
   const centerX = square.left + square.width * 0.5;
   const centerY = square.top + square.height * 0.5;
   const dotSpace = Math.min(square.width, square.height);
-  const innerThickness = Math.max(0, dotSpace * clampNodeSliderValue(settings.dot1Size, 0, 1));
+  // The beam shader turns uSize into a core RADIUS of uSize * 0.34 (see the
+  // beam fragment shader: `radius = max(uSize * 0.34, 0.0001)`), so passing
+  // the square's side straight through as the thickness lit a disc only about
+  // 0.68 of the side across -- Dot size 1 visibly failed to fill the display.
+  //
+  // Size 1 = the INSCRIBED circle: radius on the half-side, so the disc is
+  // exactly as wide as the display and just touches all four edges. Going
+  // further (out to the half-diagonal, which would light the corners too)
+  // only buys those corners at the cost of the scissor slicing flat chords
+  // off the disc, which reads as harsh clipping rather than a bigger dot.
+  const halfSide = dotSpace * 0.5;
+  const innerThickness = Math.max(
+    0,
+    (clampNodeSliderValue(settings.dot1Size, 0, 1) * halfSide) / NODE_GRAPH_BEAM_SIZE_TO_RADIUS,
+  );
   const dotHalfLength = 0.01;
   if (settings.dot1Enabled !== false && settings.dot1Brightness > 0 && innerThickness > 0) {
     drawNodeGraphOscilloscopeBeam(renderer, item, pixelRatio, centerX - dotHalfLength, centerY, centerX + dotHalfLength, centerY, {
@@ -10538,6 +10557,7 @@ const nodeGraphModuleScopeCustomRenderers = {
   // public/modules/oscilloscopeBank/oscilloscope-bank-display.js
   // videoscopeBurn self-registers from
   // public/modules/videoscope/videoscope-display.js
+  // ledLamp self-registers from public/modules/led/led-display.js
 };
 
 function drawNodeGraphModuleScopeTypedItem(renderer, item, pixelRatio) {

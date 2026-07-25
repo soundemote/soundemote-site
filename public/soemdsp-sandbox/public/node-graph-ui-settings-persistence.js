@@ -15,6 +15,7 @@ const nodeGraphWorkspaceWindowStateKeys = Object.freeze([
   "traceDisplaySettings",
   "standaloneMidiKeyboard",
   "tooltipWindow",
+  "phosphorWaveformSettings",
 ]);
 
 const nodeGraphWorkspaceWindowElements = Object.freeze({
@@ -31,6 +32,8 @@ const nodeGraphWorkspaceWindowElements = Object.freeze({
   traceDisplaySettings: "nodeTraceDisplaySettingsPopover",
   standaloneMidiKeyboard: "nodeStandaloneMidiKeyboardDock",
   tooltipWindow: "nodeTooltipWindow",
+  phosphorWaveformSettings: "nodePhosphorWaveformSettingsWindow",
+  ledSettings: "nodeLedSettingsWindow",
 });
 
 const nodeGraphSharedInspectorWindowKeys = Object.freeze([
@@ -301,6 +304,40 @@ function saveNodeGraphWorkspaceWindowStatesToUserSettings(options = {}) {
   }
 }
 
+// App-wide floating-window open policy, in one place.
+//
+// A window spawns at the pointer ONCE. After that it has a remembered
+// position and every subsequent open restores it, so a window never jumps out
+// from under the user just because they re-opened it from a different spot.
+// Call this instead of positioning at the pointer directly: pass a
+// `spawnAtPointer` callback that does the first-time placement.
+//
+// Requires `key` to be present in nodeGraphWorkspaceWindowElements -- a
+// window that is not registered there has nowhere to remember a position, and
+// will silently spawn at the pointer forever.
+function openNodeGraphFloatingWindowAtPosition(key, element, spawnAtPointer) {
+  if (!element) {
+    return false;
+  }
+  // The glow decision lives in positionNodeGraphFloatingWindowWithAttention:
+  // it measures the element before and after, so "did not move" is detected
+  // the same way here as in every other open path.
+  // Whether the remembered position was applied (vs. a first-time spawn at
+  // the pointer) is what this function reports back, so it has to be captured
+  // from inside the callback -- the callback runs synchronously.
+  let restored = false;
+  positionNodeGraphFloatingWindowWithAttention(element, () => {
+    restored = positionNodeGraphWorkspaceWindowFromState(key, element);
+    if (!restored && typeof spawnAtPointer === "function") {
+      spawnAtPointer(element);
+    }
+  });
+  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
+    rememberNodeGraphWorkspaceWindowState(key, element, { open: true }, { status: false });
+  }
+  return restored;
+}
+
 function positionNodeGraphWorkspaceWindowFromState(key, element) {
   const state = normalizeNodeGraphWorkspaceWindowStates(nodeGraphMvp.workspaceWindowStates)[key];
   const sharedInspectorState = normalizeNodeGraphSharedInspectorWindowState(
@@ -510,6 +547,7 @@ function normalizeNodeUiDevSettings(settings = {}) {
   }
   const gridVisible = view.gridVisible ?? controls.gridVisible ?? controls.showGrid ?? nodeGraphMvp.gridVisible;
   const keyboardDebugInfoVisible = Boolean(view.keyboardDebugInfoVisible ?? nodeGraphMvp.keyboardDebugInfoVisible);
+  const tooltipEmbedded = Boolean(view.tooltipEmbedded ?? nodeGraphMvp.tooltipEmbedded);
   const moduleButtonsVisible = Boolean(view.moduleButtonsVisible ?? nodeGraphMvp.moduleButtonsVisible);
   const moduleInterfaceControlsVisible = Boolean(view.moduleInterfaceControlsVisible ?? nodeGraphMvp.moduleInterfaceControlsVisible);
   const moduleOscilloscopesVisible = Boolean(view.moduleOscilloscopesVisible ?? nodeGraphMvp.moduleOscilloscopesVisible);
@@ -670,6 +708,7 @@ function normalizeNodeUiDevSettings(settings = {}) {
     view: {
       gridVisible: Boolean(gridVisible),
       keyboardDebugInfoVisible,
+      tooltipEmbedded,
       moduleButtonsVisible,
       moduleInterfaceControlsVisible,
       moduleOscilloscopesVisible,
@@ -757,6 +796,7 @@ function readNodeUiDevSettingsFromControls(options = {}) {
     view: {
       gridVisible: Boolean(nodeGraphMvp.gridVisible),
       keyboardDebugInfoVisible: Boolean(nodeGraphMvp.keyboardDebugInfoVisible),
+      tooltipEmbedded: Boolean(nodeGraphMvp.tooltipEmbedded),
       moduleButtonsVisible: Boolean(nodeGraphMvp.moduleButtonsVisible),
       moduleInterfaceControlsVisible: Boolean(nodeGraphMvp.moduleInterfaceControlsVisible),
       moduleOscilloscopesVisible: Boolean(nodeGraphMvp.moduleOscilloscopesVisible),
@@ -866,6 +906,7 @@ function applyNodeUiDevSettings(settings) {
   nodeGraphMvp.moduleDefaultOverrides = normalized.moduleDefaultOverrides;
   nodeGraphMvp.gridVisible = Boolean(normalized.view.gridVisible);
   nodeGraphMvp.keyboardDebugInfoVisible = Boolean(normalized.view.keyboardDebugInfoVisible);
+  nodeGraphMvp.tooltipEmbedded = Boolean(normalized.view.tooltipEmbedded);
   nodeGraphMvp.moduleButtonsVisible = Boolean(normalized.view.moduleButtonsVisible);
   nodeGraphMvp.moduleInterfaceControlsVisible = Boolean(normalized.view.moduleInterfaceControlsVisible);
   nodeGraphMvp.moduleOscilloscopesVisible = Boolean(normalized.view.moduleOscilloscopesVisible);
@@ -946,6 +987,10 @@ function applyNodeUiDevSettings(settings) {
   nodeGraphMvp.moduleStoreDepartment = normalizeNodeGraphModuleStoreDepartmentState(
     normalized.view.moduleStoreDepartment,
   );
+  // The saved page IS the last clicked one (only clicks persist a page), so it
+  // seeds the anchor the module browser returns to -- see
+  // openNodeGraphModuleShop.
+  nodeGraphMvp.moduleStoreDepartmentAnchor = nodeGraphMvp.moduleStoreDepartment;
   nodeGraphMvp.savedPatchBankIndex = typeof normalizeNodeGraphSavedPatchBankIndex === "function"
     ? normalizeNodeGraphSavedPatchBankIndex(normalized.view.savedPatchBankIndex)
     : Math.max(0, Math.min(127, Math.round(Number(normalized.view.savedPatchBankIndex) || 0)));
@@ -1108,7 +1153,45 @@ function clearNodeUserStartupLocalStorage() {
   return removed;
 }
 
+// Clear Startup means "come back up as a brand new user", so every UI Dev
+// control returns to the defaultValue declared in nodeUiDevSettingControls
+// (and every expose checkbox to its exposeDefault). This is the general fix
+// for the trap documented in clearNodeUserStartupRuntimeState below: because
+// clearNodeUserStartupState re-serializes the LIVE DOM as the new startup
+// preset, any control left holding a user-tweaked value would silently become
+// the new default. Doing it definition-driven means new settings are covered
+// automatically instead of needing another hand-written reset each time.
+function resetNodeUiDevControlsToDeclaredDefaults() {
+  if (typeof nodeUiDevSettingControls === "undefined") {
+    return;
+  }
+  for (const definition of nodeUiDevSettingControls) {
+    const input = document.getElementById(definition.id);
+    if (input) {
+      if (definition.type === "boolean") {
+        input.checked = Boolean(definition.defaultValue);
+      } else {
+        input.value = String(definition.defaultValue);
+      }
+    }
+    const exposeInput = typeof nodeUiDevExposeCheckboxId === "function"
+      ? document.getElementById(nodeUiDevExposeCheckboxId(definition.key))
+      : null;
+    if (exposeInput) {
+      exposeInput.checked = Boolean(definition.exposeDefault);
+    }
+  }
+  // Push the restored values back out to the CSS custom properties they drive.
+  if (typeof syncNodeUiDevSliderFillColorControls === "function") {
+    syncNodeUiDevSliderFillColorControls();
+  }
+  if (typeof syncNodeUiDevSettingsHeaderControls === "function") {
+    syncNodeUiDevSettingsHeaderControls();
+  }
+}
+
 function clearNodeUserStartupRuntimeState() {
+  resetNodeUiDevControlsToDeclaredDefaults();
   if (typeof cloneNodeGraphPatch === "function" && typeof nodeGraphDefaultPatch !== "undefined") {
     nodeGraphMvp.patch = cloneNodeGraphPatch(nodeGraphDefaultPatch);
   }
@@ -1121,6 +1204,7 @@ function clearNodeUserStartupRuntimeState() {
   nodeGraphMvp.pan = { x: 0, y: 0 };
   nodeGraphMvp.zoom = 1;
   nodeGraphMvp.moduleStoreDepartment = "";
+  nodeGraphMvp.moduleStoreDepartmentAnchor = "";
   nodeGraphMvp.moduleScopeSettings = {};
   nodeGraphMvp.savedPatchExplorerView = "banks";
   // These "visible unless explicitly hidden" view toggles (Show displays,
@@ -1134,6 +1218,29 @@ function clearNodeUserStartupRuntimeState() {
   nodeGraphMvp.moduleInterfaceControlsVisible = true;
   nodeGraphMvp.moduleOscilloscopesVisible = true;
   nodeGraphMvp.moduleSlidersVisible = true;
+  // Grid and the slider amount fill are in the same "visible unless
+  // explicitly hidden" family.
+  nodeGraphMvp.gridVisible = true;
+  nodeGraphMvp.sliderAmountVisible = true;
+  if (typeof renderNodeGraphGridToggle === "function") {
+    renderNodeGraphGridToggle();
+  }
+  if (typeof renderNodeGraphSliderVisibilityToggles === "function") {
+    renderNodeGraphSliderVisibilityToggles();
+  }
+  // Same trap as the visibility toggles above: the screen ("modular") shader
+  // lives outside nodeGraphMvp, and clearNodeUserStartupState re-serializes
+  // the live DOM controls as the new default right after this runs -- so if
+  // the user had it on it got baked straight back into the cleared startup.
+  // persist:false because the localStorage key was just deleted and we do not
+  // want to immediately write it back.
+  if (typeof setNodeGraphShaderScriptEnabled === "function") {
+    setNodeGraphShaderScriptEnabled(false, { persist: false });
+  }
+  const modularShaderInput = document.getElementById("nodeUiDevModularShaderEnabled");
+  if (modularShaderInput) {
+    modularShaderInput.checked = false;
+  }
   if (typeof renderNodeGraphModuleVisibilityToggles === "function") {
     renderNodeGraphModuleVisibilityToggles();
   }

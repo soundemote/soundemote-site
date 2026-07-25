@@ -51,7 +51,12 @@ var nodeGraphMvp = {
   wireDragging: null,
   monitors: [],
   pan: { x: 0, y: 0 },
-  gridVisible: false,
+  // Header MIDI live toggle (see toggleNodeGraphMidiInput). Off by default --
+  // turning it on is what triggers the browser's Web MIDI permission prompt.
+  midiInputEnabled: false,
+  // Grid on by default -- a fresh profile, and anything reset by Clear
+  // Startup, should come up showing the workspace grid.
+  gridVisible: true,
   macroControls: new Array(10).fill(0),
   macroKnobArcThickness: 7,
   macroKnobArcGapBrightness: 0,
@@ -60,7 +65,9 @@ var nodeGraphMvp = {
   macroKnobLabelPosition: "top",
   macroKnobValuePosition: "bottom",
   sliderLayout: "text-inside",
-  sliderAmountVisible: false,
+  // Amount fill on by default, and restored by Clear Startup (see
+  // clearNodeUserStartupRuntimeState).
+  sliderAmountVisible: true,
   sliderPositionVisible: true,
   midiKeyboardSignal: null,
   midiKeyboardAccess: null,
@@ -139,6 +146,10 @@ var nodeGraphMvp = {
   moduleCatalogVisibility: defaultNodeGraphModuleCatalogVisibility(),
   workspaceWindowStates: {},
   keyboardDebugInfoVisible: false,
+  // Tips rendered in-flow next to the CPU/RAM/GPU guide rather than in the
+  // floating tips window. WHERE the tips are, not whether they are shown -
+  // that stays the Hide/Show Tooltips toggle in both modes.
+  tooltipEmbedded: false,
   modularOnlyControlsVisible: false,
   moduleButtonsVisible: false,
   moduleDefaultOverrides: {},
@@ -161,6 +172,11 @@ var nodeGraphMvp = {
   traceSettings: normalizeNodeGraphTraceDisplaySettings(),
   scopeBloomEnabled: false,
   moduleStoreDepartment: "",
+  // The last category the user actually CLICKED, as opposed to whatever page
+  // the browser happens to be showing (a search shows results across every
+  // category). Re-opening the browser returns here -- see
+  // openNodeGraphModuleShop.
+  moduleStoreDepartmentAnchor: "",
   moduleStoreDepartmentSearch: "",
   sampleBuffers: new Map(),
   sampleLoadErrors: new Map(),

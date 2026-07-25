@@ -1065,7 +1065,11 @@ function dragNodeGraphGraphNode(event) {
 function endNodeGraphGraphNodeDrag(event) {
   const drag = nodeGraphMvp.graphNodeDragging;
   if (!drag) {
-    nodeGraphGraphDebugTrace("graph pointerup fired with no active drag, ignoring");
+    // Bound on `document` (node-graph-scene-menu-event-bindings.js), so this
+    // runs on EVERY pointerup/pointercancel anywhere in the app -- clicking a
+    // button, closing a menu, releasing a slider. "No active graph drag" is
+    // the overwhelmingly normal case, not an anomaly, so tracing it just
+    // floods the debug console and buries the traces that matter.
     return;
   }
   nodeGraphGraphDebugTrace("graph pointerup, committing", { nodeId: drag.nodeId, index: drag.index, mode: drag.mode });

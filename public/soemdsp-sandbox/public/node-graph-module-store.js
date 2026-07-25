@@ -38,7 +38,7 @@ const nodeGraphModuleStoreDepartments = Object.freeze([
   { id: "filter",       emoji: "💧", label: "Filter",       symbol: "◫",   title: "Filter",    pitch: "Shape the airframe. Carve mass, reveal brightness, and teach a signal where it is allowed to fly." },
   { id: "space",        emoji: "⛪", label: "Space",        symbol: "FX",  title: "Delay",     pitch: "Delay, reverb, distortion, and performance processors for shaping finished sound." },
   { id: "digital",      emoji: "🔬", label: "Digital",      symbol: "{ }", title: "Digital",   pitch: "Patch-local code surfaces, exact value conversion, and digital/visual programming tools inside the sandbox." },
-  { id: "time",         emoji: "⌚", label: "Time",         symbol: "♪",   title: "Sequence",  pitch: "Pitch lanes and melodic pattern tools for generating lines, hooks, and motion." },
+  { id: "clock",        emoji: "⌚", label: "Clock",        symbol: "♪",   title: "Clock",     pitch: "Clocks, dividers, counters, and trigger timing -- everything that decides WHEN the rest of the patch fires." },
   { id: "modulator",    emoji: "♾️", label: "Modulator",    symbol: "⇄",   title: "Modulator", pitch: "Motion sources for pitch, amplitude, time, and texture. Small control engines that make patches move." },
   { id: "oscillator",   emoji: "⚪", label: "Oscillator",   symbol: "∿",   title: "Oscillator", pitch: "Start with a voice. Tone generators, phase motion, and the raw signal that everything else learns to orbit." },
   { id: "chaos",        emoji: "🌌", label: "Chaos",        symbol: "∞",   title: "Chaos",     pitch: "All the various attractors and strange motion systems. The wild shelf where math starts looking back." },
@@ -48,7 +48,7 @@ const nodeGraphModuleStoreDepartments = Object.freeze([
   { id: "sample",       emoji: "🔊", label: "Sample",       symbol: "▣",   title: "Samples",   pitch: "Audio-file shelf. Empty by default until sandbox has a real file-library flow." },
   { id: "grains",       emoji: "⏳", label: "Grains",       symbol: "",    title: "Grains",    pitch: "" },
   { id: "media",        emoji: "🎞️", label: "Media",        symbol: "",    title: "Media",     pitch: "" },
-  { id: "led",          emoji: "🚥", label: "LED",          symbol: "●",   title: "LED",       pitch: "Compact in-world indicator lights. Patch any gate or control signal in and use it as a one-tile status light." },
+  { id: "object",       emoji: "🧊", label: "Object",       symbol: "●",   title: "Object",    pitch: "Things you place in the world rather than wire into the signal path -- indicator lights, label plates, and other in-world props." },
   { id: "rgb",          emoji: "🌈", label: "RGB",          symbol: "◍",   title: "RGB",       pitch: "Color sinks for the screen wash — precise RGB/HSL channels or stylized chroma drift, alpha, bloom, and glow." },
   { id: "oscilloscope", emoji: "📺", label: "Oscilloscope", symbol: "OSC", title: "Oscilloscope", pitch: "Dedicated display testbeds for trace, line burn, 2D scope, videoscope, and canvas-style waveform inspection." },
   { id: "multimeter",   emoji: "📟", label: "Multimeter",   symbol: "0D",  title: "Multimeter", pitch: "Single-value readouts. Burn, line, or text display for the latest value on a signal — no waveform, just the number." },
@@ -71,7 +71,7 @@ const nodeGraphModuleStoreDepartmentIds = Object.freeze(
 // Backward-compatible: maps old bare-name category strings (from the catalog
 // entries and from the previous DepartmentAliases map) to canonical IDs.
 const nodeGraphModuleStoreDepartmentAliasToId = Object.freeze({
-  Arpeggiator:       "time",
+  Arpeggiator:       "clock",
   Audio:             "music",
   "Audio Player":    "music",
   Chaos:             "chaos",
@@ -87,7 +87,10 @@ const nodeGraphModuleStoreDepartmentAliasToId = Object.freeze({
   "Game Triggers":   "gametrigger",
   Grains:            "grains",
   Jerobeam:          "jerobeam",
-  LED:               "led",
+  // "LED" was this department's own name before it widened to Object; keep the
+  // alias so stored settings and old patches still resolve.
+  LED:               "object",
+  Object:            "object",
   Loops:             "sample",
   Modulator:         "modulator",
   Modulators:        "modulator",
@@ -99,9 +102,12 @@ const nodeGraphModuleStoreDepartmentAliasToId = Object.freeze({
   Portals:           "portal",
   RGB:               "rgb",
   Samples:           "sample",
-  Sequence:          "time",
-  Sequencer:         "time",
-  Time:              "time",
+  Sequence:          "clock",
+  Sequencer:         "clock",
+  Time:              "clock",
+  // Category id renamed 2026-07-25; keeps stored settings and old catalog
+  // strings resolving instead of silently falling back to "no department".
+  time:              "clock",
   Visual:            "digital",
 });
 
@@ -144,7 +150,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   sinc: {
     category: "oscillator",
-    description: "Sinc (sin(x)/x) oscillator — classic band-limited impulse at each cycle center. Useful as a modulation source and for resampling theory demos.",
+    description: "Sinc (sin(x)/x) oscillator. Band Limit mode uses the Dirichlet kernel (periodic sinc) with its harmonic count clamped to Nyquist, so it cannot alias; Ideal mode draws the literal sin(x)/x window, which is the textbook shape but aliases as an oscillator. Useful as a modulation source and for resampling theory demos.",
     label: "Sinc",
     notes: ["sinc", "sin(x)/x", "impulse", "oscillator"],
   },
@@ -179,38 +185,38 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["orbit motion", "multi-output", "native"],
   },
   clock: {
-    category: "time",
+    category: "clock",
     description: "Timer pulse source. Emits a steady gate for triggering samplers, sequencers, and motion events.",
     notes: ["rate and phase control", "duty cycle", "reset input"],
   },
   transport: {
-    category: "time",
+    category: "clock",
     description: "Project-synced beat clock source. Emits in-phase square waves derived from patch BPM.",
     label: "Transport",
     notes: ["project BPM", "beat divisions", "engine-start phase"],
   },
   clockDivider: {
-    category: "time",
+    category: "clock",
     description: "Clock-aware divider. Count incoming clock edges and emit a slower gate for rhythmic subdivision.",
     notes: ["clock input", "division control", "reset input"],
   },
   delayedTrigger: {
-    category: "time",
+    category: "clock",
     description: "One-shot timer. Catch a trigger, wait a precise delay, then emit a pulse for downstream events.",
     notes: ["delayed pulse", "reset input", "one-shot timing"],
   },
   randomClock: {
-    category: "time",
+    category: "clock",
     description: "Seeded random interval clock. Emits a short trigger and a duty-controlled gate between minimum and maximum seconds.",
     notes: ["random timing", "trigger and gate outputs", "reset input"],
   },
   triggerCounter: {
-    category: "time",
+    category: "clock",
     description: "Pulse counter. Count incoming triggers, emit a wrap pulse, and expose the count as modulation.",
     notes: ["count pulses", "wrap output", "reset input"],
   },
   triggerDivider: {
-    category: "time",
+    category: "clock",
     description: "Divides incoming trigger pulses into slower clocks for envelopes, sequencers, and rhythmic patches.",
     notes: ["trigger division", "reset input", "pulse width"],
   },
@@ -221,7 +227,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["Doepfer A-172", "voltage selector", "native"],
   },
   comparator: {
-    category: "time",
+    category: "digital",
     description: "One threshold, eight views of it: continuous Gate/Inverted Gate, a Hold output for steady (unchanging) signal, Up Trig/Down Trig/UpDn Trig pulse outputs on every rising and falling edge, and Last High/Last Low holding the signal's last value on each side of the threshold.",
     label: "Comparator",
     notes: ["gate", "edge detect", "native"],
@@ -233,14 +239,14 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["normalize", "0..1", "-1..1", "bitmask"],
   },
   stepSequencer: {
-    category: "time",
+    category: "clock",
     description: "Eight-step trigger sequencer. Advance it with Clock and route stepped control values anywhere.",
     notes: ["trigger input", "reset input", "stepped modulation"],
   },
   // stepGrid registers its own catalog entry from public/modules/stepGrid/
   // step-grid-register.js -- see node-graph-chromeless-module-registry.js.
   chordSequencer: {
-    category: "time",
+    category: "clock",
     description: "Steps through a built-in diatonic chord progression on each Clock. Scale outputs the current chord as a 12-bit pitch-class mask (feed it straight into Pitch Quantizer), Root outputs the chord's root as 0.1V/Oct.",
     label: "Chord Sequencer",
     notes: ["chord progression", "digital signal", "scale mask output", "root output"],
@@ -258,19 +264,19 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["RS-MET tribute", "metallic mean", "golden ratio", "Robin Schmidt"],
   },
   chordMemory: {
-    category: "time",
+    category: "clock",
     description: "Latches up to 4 notes from a mono Pitch input one at a time (Latch trigger), then outputs them as stacked simultaneous pitches or arpeggiated in sequence.",
     label: "Chord Memory",
     notes: ["latch", "mono to chord", "step record", "arpeggio output"],
   },
   turingMachine: {
-    category: "time",
+    category: "digital",
     description: "Classic mutating shift-register sequencer: each Clock, the pattern shifts and the new bit is randomly flipped with a set Probability, giving evolving, semi-repeating loops. Also outputs a 12-bit Scale mask.",
     label: "Turing Machine",
     notes: ["generative", "shift register", "mutating pattern", "scale mask output"],
   },
   pitchQuantizer: {
-    category: "time",
+    category: "clock",
     description: "Snaps a 0.1V/Oct pitch signal to the nearest note in a scale. Pick a preset (Major, Minor, Pentatonic...) or feed a 12-bit pitch-class mask into the Scale input.",
     label: "Pitch Quantizer",
     notes: ["quantizer", "scale", "0.1v/oct", "melody from chaos"],
@@ -662,7 +668,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["self-oscillating", "4 modes", "feedback FM"],
   },
   pulseExplosion: {
-    category: "time",
+    category: "clock",
     description: "On a rising-edge trigger, schedules a burst of single-sample pulses distributed over Start/Center/End Time, concentrated toward Center by Time Spread (0 = tight, 1 = wide). Each pulse gets its own randomized amplitude between Low and High Amplitude.",
     label: "Pulse Explosion",
     notes: ["trigger burst", "skewed distribution", "randomized amplitude"],
@@ -709,7 +715,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["Sabrina", "serial diffusion", "cross feedback", "seed"],
   },
   pll: {
-    category: "time",
+    category: "clock",
     description: "Phase-locked loop based on the Doepfer A-196. VCO tracks an incoming signal via a phase comparator (XOR, RS flip-flop, or PFD) and one-pole loop filter. Outputs VCO, PC, LPF CV, and lock gate.",
     label: "PLL",
     notes: ["phase locked loop", "A-196", "vco", "frequency tracking"],
@@ -750,7 +756,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["trigger input", "decay energy", "auto release", "native"],
   },
   vactrolEnvelopeSeries: {
-    category: "led",
+    category: "envelope",
     description: "Optical-style control shaper with a 10-way Part switch selecting PerkinElmer VTL5C-series datasheet timing and resistance figures (VTL5C1 through VTL5C10), from the classic fast VTL5C3 to the ~40x-slower VTL5C4. Native C++/WASM.",
     notes: ["light input", "part switch", "dark current", "native"],
   },
@@ -845,7 +851,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   lineBurnOscilloscope: {
     category: "oscilloscope",
     description: "First-pass line-burn oscilloscope style with a heavier trace pass, ready for dedicated burn tuning.",
-    label: "1D Burn",
+    label: "1D Burn Dot",
     notes: ["burn display", "line trace", "testbed"],
   },
   scope2d: {
@@ -871,12 +877,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["speaker safety", "ear protection", "hard limit"],
   },
   textBox: {
-    category: "rgb",
+    category: "object",
     description: "In-world label plate for prompts, lore, instructions, and electric annotations.",
     notes: ["annotation", "layout", "field notes"],
   },
   animatedTextBox: {
-    category: "led",
+    category: "object",
     description: "Text Box with data-plane Title/Text inputs and a Text Out -- wire it to another Animated Text Box instead of typing it by hand.",
     notes: ["data-plane ports", "port scripts", "wired label"],
   },
@@ -1125,8 +1131,14 @@ function normalizeNodeGraphModuleStoreDepartment(department = "") {
   return nodeGraphModuleStoreDepartmentAliasToId[value] || "";
 }
 
+// Every path that a USER CLICK takes to change page goes through here (the
+// category cards and the back button), which is exactly what makes this the
+// right place to record the anchor: the page the browser returns to next time
+// it opens. Pages the browser moves to on its own -- the all-categories view a
+// search drops you into -- never touch it.
 function setNodeGraphModuleStoreDepartment(department = "") {
   nodeGraphMvp.moduleStoreDepartment = normalizeNodeGraphModuleStoreDepartment(department);
+  nodeGraphMvp.moduleStoreDepartmentAnchor = nodeGraphMvp.moduleStoreDepartment;
   renderNodeGraphModuleStoreCatalog();
   if (typeof saveNodeGraphModuleStoreStateToUserSettings === "function") {
     saveNodeGraphModuleStoreStateToUserSettings();
@@ -1817,12 +1829,48 @@ function endNodeGraphModuleShopViewResize(event) {
   endNodeGraphFloatingWindowResize(event, "moduleShopResizing", saveNodeGraphModuleShopWindowSizeToUserSettings);
 }
 
+// Opening the browser is always a fresh start to type into: the search box is
+// emptied and focused, and the page goes back to the last category the user
+// clicked (nodeGraphMvp.moduleStoreDepartmentAnchor) rather than wherever the
+// previous search left it. Applies to an already-open browser too -- a second
+// right-click is a "give me a clean browser" gesture, not a no-op.
+function resetNodeGraphModuleShopSearch() {
+  nodeGraphMvp.moduleStoreDepartmentSearch = "";
+  const anchor = normalizeNodeGraphModuleStoreDepartment(nodeGraphMvp.moduleStoreDepartmentAnchor || "");
+  nodeGraphMvp.moduleStoreDepartmentAnchor = anchor;
+  nodeGraphMvp.moduleStoreDepartment = anchor;
+  const field = document.getElementById("nodeModuleDepartmentSearch");
+  if (field) {
+    field.value = "";
+  }
+}
+
+// Focus lands after the panel is unhidden AND positioned: focusing a hidden or
+// mid-move element is what makes browsers scroll the page to chase it.
+function focusNodeGraphModuleShopSearch() {
+  const field = document.getElementById("nodeModuleDepartmentSearch");
+  if (!field) {
+    return;
+  }
+  window.requestAnimationFrame(() => {
+    if (document.getElementById("nodeModuleShopView")?.hidden) {
+      return;
+    }
+    field.focus({ preventScroll: true });
+    field.select?.();
+  });
+}
+
 function openNodeGraphModuleShop(point = null, windowPoint = null) {
   const panel = document.getElementById("nodeModuleShopView");
   if (panel && !panel.hidden) {
+    resetNodeGraphModuleShopSearch();
+    renderNodeGraphModuleStoreCatalog();
     pulseNodeGraphFloatingWindowAttention(panel);
+    focusNodeGraphModuleShopSearch();
     return;
   }
+  resetNodeGraphModuleShopSearch();
   nodeGraphMvp.sceneContextPoint = point;
   nodeGraphMvp.sceneContextTargetNode = null;
   nodeGraphMvp.sceneContextTargetWire = null;
@@ -1838,15 +1886,12 @@ function openNodeGraphModuleShop(point = null, windowPoint = null) {
   if (typeof applyNodeGraphModuleShopWindowSize === "function") {
     applyNodeGraphModuleShopWindowSize(nodeGraphMvp.workspaceWindowStates?.moduleBrowser?.size);
   }
-  if (
-    typeof positionNodeGraphWorkspaceWindowFromState !== "function" ||
-    !positionNodeGraphWorkspaceWindowFromState("moduleBrowser", panel)
-  ) {
+  // Spawn at the pointer once, restore thereafter -- shared policy, see
+  // openNodeGraphFloatingWindowAtPosition.
+  openNodeGraphFloatingWindowAtPosition("moduleBrowser", panel, () => {
     positionNodeGraphModuleShopViewNearPoint(windowPoint || point);
-  }
-  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
-    rememberNodeGraphWorkspaceWindowState("moduleBrowser", panel, { open: true }, { status: false });
-  }
+  });
+  focusNodeGraphModuleShopSearch();
 }
 
 function closeNodeGraphModuleShop() {

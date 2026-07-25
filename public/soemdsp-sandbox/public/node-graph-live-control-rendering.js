@@ -139,6 +139,20 @@ function renderNodeGraphLiveControls(running = Boolean(nodeGraphMvp.live.node)) 
     tp.textContent = playing ? "⏸" : "▶";
     tp.setAttribute("aria-label", playing ? "Pause" : "Play");
   }
+  renderNodeGraphSpeedReadout();
+}
+
+// The header "Speed" field mirrors the engine's speed multiplier, so pausing
+// (transport pause button or spacebar -- both route through
+// setNodeGraphLiveSpeed) visibly reads 0 instead of staying at 1.0.
+function renderNodeGraphSpeedReadout() {
+  const speed = Math.max(0, Number(nodeGraphMvp.live.speedMultiplier ?? 1));
+  const text = speed.toFixed(1);
+  for (const input of document.querySelectorAll("[data-speed-readout]")) {
+    if (input.value !== text) {
+      input.value = text;
+    }
+  }
 }
 
 function bindNodeGraphTransportButtons() {
