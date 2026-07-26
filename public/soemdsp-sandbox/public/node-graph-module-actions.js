@@ -877,30 +877,34 @@ function adjustNodeGraphTextBoxTextSizeFromContext(delta) {
   configureNodeSceneContextMenu("module");
 }
 
-function adjustNodeGraphTextBoxHeightFromContext(delta) {
+function adjustNodeGraphModuleHeightFromContext(delta) {
   const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode || nodeGraphModuleSizingCapabilities(sourceNode.type).moduleHeight !== "textBox") {
+  const sourceCapability = nodeGraphModuleSizingCapabilities(sourceNode?.type).moduleHeight;
+  if (!sourceNode || !["custom", "textBox"].includes(sourceCapability)) {
     return;
   }
 
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
   const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
-  if (!targetNode || nodeGraphModuleSizingCapabilities(targetNode.type).moduleHeight !== "textBox") {
+  const targetCapability = nodeGraphModuleSizingCapabilities(targetNode?.type).moduleHeight;
+  if (!targetNode || !["custom", "textBox"].includes(targetCapability)) {
     return;
   }
   const currentHeightGu = nodeGraphPatchNodeGridHeightUnits(targetNode);
-  const nextHeightGu = normalizeNodeGraphTextBoxHeightUnits(currentHeightGu + delta);
+  const nextHeightGu = targetCapability === "textBox"
+    ? normalizeNodeGraphTextBoxHeightUnits(currentHeightGu + delta)
+    : normalizeNodeGraphModuleHeightUnits(targetNode.type, currentHeightGu + delta, targetNode.ui);
   if (nextHeightGu === currentHeightGu) {
     configureNodeSceneContextMenu("module");
     return;
   }
-  const defaultHeightGu = nodeGraphModuleGridHeightUnitsForUi("textBox", targetNode.ui);
+  const defaultHeightGu = nodeGraphModuleGridHeightUnitsForUi(targetNode.type, targetNode.ui);
   if (nextHeightGu === defaultHeightGu) {
     delete targetNode.heightGu;
   } else {
     targetNode.heightGu = nextHeightGu;
   }
-  commitNodeGraphPatch(patch, { status: "text box height changed" });
+  commitNodeGraphPatch(patch, { status: "module height changed" });
   configureNodeSceneContextMenu("module");
 }
 
@@ -1146,6 +1150,7 @@ function commitNodeGraphGraphEdit(patch, targetNode, status, options = {}) {
   targetNode.graph = nodeGraphGraphEndpointYLockEnabledForNode(targetNode)
     ? nodeGraphGraphWithLockedEndpointY(targetNode.graph, selectedIndex)
     : normalizeNodeGraphGraph(targetNode.graph);
+  syncNodeGraphGraphPhaseParameterFromCursor(targetNode);
   if (Number.isFinite(options.selectedX)) {
     selectedIndex = targetNode.graph.nodes.reduce((bestIndex, node, index) => {
       const best = targetNode.graph.nodes[bestIndex];
@@ -1780,17 +1785,22 @@ function toggleNodeGraphModuleButtonsFromContext() {
     return;
   }
 
+  const buttonsWereHidden = nodeGraphEffectivePatchNodeUi(sourceNode.ui).buttonsHidden;
+  if (buttonsWereHidden && nodeGraphMvp.moduleButtonsVisible === false) {
+    nodeGraphMvp.moduleButtonsVisible = true;
+  }
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
   const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
   if (!targetNode) {
     return;
   }
   const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
-  ui.buttonsHidden = !ui.buttonsHidden;
+  ui.buttonsHidden = !buttonsWereHidden;
   applyNodeGraphPatchNodeUi(targetNode, ui);
   commitNodeGraphPatch(patch, {
     status: ui.buttonsHidden ? "module buttons hidden" : "module buttons shown",
   });
+  renderNodeGraphModuleVisibilityToggles();
   configureNodeSceneContextMenu("module");
 }
 
@@ -1849,17 +1859,22 @@ function toggleNodeGraphModuleOscilloscopeFromContext() {
     return;
   }
 
+  const displayWasHidden = nodeGraphEffectivePatchNodeUi(sourceNode.ui).oscilloscopeHidden;
+  if (displayWasHidden && nodeGraphMvp.moduleOscilloscopesVisible === false) {
+    nodeGraphMvp.moduleOscilloscopesVisible = true;
+  }
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
   const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
   if (!targetNode || !nodeGraphPatchNodeHasHideableOscilloscope(targetNode)) {
     return;
   }
   const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
-  ui.oscilloscopeHidden = !ui.oscilloscopeHidden;
+  ui.oscilloscopeHidden = !displayWasHidden;
   applyNodeGraphPatchNodeUi(targetNode, ui);
   commitNodeGraphPatch(patch, {
     status: ui.oscilloscopeHidden ? "module display hidden" : "module display shown",
   });
+  renderNodeGraphModuleVisibilityToggles();
   configureNodeSceneContextMenu("module");
 }
 

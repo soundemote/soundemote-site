@@ -1002,6 +1002,7 @@ function configureNodeSceneContextMenu(mode) {
     : nodeGraphModuleSizingCapabilities("");
   const targetSupportsWidth = targetSizingCapabilities.width;
   const targetSupportsTextBoxHeight = targetSizingCapabilities.moduleHeight === "textBox";
+  const targetSupportsModuleHeight = ["custom", "textBox"].includes(targetSizingCapabilities.moduleHeight);
   const targetSupportsDisplayHeight = targetSizingCapabilities.displayHeight;
   const targetNodeDisabled = targetNode
     ? targetNode.id === "output"
@@ -1211,18 +1212,21 @@ function configureNodeSceneContextMenu(mode) {
       decreaseTitle: nodeGraphTooltipText("actions.textBoxTextSizeDecrease"),
       increaseTitle: nodeGraphTooltipText("actions.textBoxTextSizeIncrease"),
     });
-    const textBoxHeightGu = targetSupportsTextBoxHeight ? nodeGraphPatchNodeGridHeightUnits(targetNode) : 0;
+    const moduleHeightGu = targetSupportsModuleHeight ? nodeGraphPatchNodeGridHeightUnits(targetNode) : 0;
+    const moduleHeightLimits = targetSupportsTextBoxHeight
+      ? nodeGraphTextBoxHeightLimits
+      : nodeGraphModuleHeightLimitsForType(targetNode?.type);
     configureNodeGraphModuleSettingsSizeRow({
       controls: textBoxHeightControls,
       decreaseButton: textBoxHeightDecrease,
       increaseButton: textBoxHeightIncrease,
       valueElement: textBoxHeightValue,
-      hidden: !(moduleMode && !multiModuleMode && targetSupportsTextBoxHeight),
-      value: `${textBoxHeightGu} gu`,
-      decreaseDisabled: !targetNode || !targetSupportsTextBoxHeight || textBoxHeightGu <= nodeGraphTextBoxHeightLimits.minGu,
-      increaseDisabled: !targetNode || !targetSupportsTextBoxHeight || textBoxHeightGu >= nodeGraphTextBoxHeightLimits.maxGu,
-      decreaseTitle: nodeGraphTooltipText("actions.textBoxHeightDecrease"),
-      increaseTitle: nodeGraphTooltipText("actions.textBoxHeightIncrease"),
+      hidden: !(moduleMode && !multiModuleMode && targetSupportsModuleHeight),
+      value: `${moduleHeightGu} gu`,
+      decreaseDisabled: !targetNode || !targetSupportsModuleHeight || moduleHeightGu <= moduleHeightLimits.minGu,
+      increaseDisabled: !targetNode || !targetSupportsModuleHeight || moduleHeightGu >= moduleHeightLimits.maxGu,
+      decreaseTitle: "Decrease this module's height.",
+      increaseTitle: "Increase this module's height.",
     });
     toggleModuleEnabledButton.disabled = !targetNode;
     toggleModuleEnabledButton.querySelector("span").textContent = targetNodeDisabled ? "Enable module" : "Disable module";

@@ -61,6 +61,29 @@ function applyNodeGraphFloatingWindowSizeVars(element, cssPrefix, defaults = {},
   }
 }
 
+const nodeGraphFloatingWindowSurfaceClass = "node-floating-window-surface";
+
+function markNodeGraphFloatingWindowSurface(element) {
+  if (!element) {
+    return null;
+  }
+  element.classList.add(nodeGraphFloatingWindowSurfaceClass);
+  return element;
+}
+
+function syncNodeGraphRegisteredFloatingWindowSurfaces() {
+  if (typeof nodeGraphWorkspaceWindowElements === "undefined") {
+    return 0;
+  }
+  let count = 0;
+  for (const elementId of Object.values(nodeGraphWorkspaceWindowElements)) {
+    if (markNodeGraphFloatingWindowSurface(document.getElementById(elementId))) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 function nodeGraphFloatingWindowElementPosition(element) {
   if (!element) {
     return { left: 0, top: 0 };

@@ -345,8 +345,8 @@ function cloneNodeGraphPatch(patch) {
         ...(nodeGraphModuleIsGraphType(node.type)
           ? {
             graph: nodeGraphGraphEndpointYLockEnabledForNode(node)
-              ? nodeGraphGraphWithLockedEndpointY(node.graph)
-              : normalizeNodeGraphGraph(node.graph),
+              ? nodeGraphGraphWithLockedEndpointY(nodeGraphGraphWithPhaseCursor(node))
+              : nodeGraphGraphWithPhaseCursor(node),
           }
           : {}),
         ...(node.type === "codeblock"

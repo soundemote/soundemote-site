@@ -443,6 +443,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Signal booster and throttle. Use it to push, tame, or route engine power.",
     notes: ["multiplication", "level control", "headroom"],
   },
+  gainBias: {
+    category: "dynamics",
+    description: "Gain and Bias in one module: scale the signal, then offset it. Saves wiring the pair together every time you need to fit a signal into a range.",
+    label: "Gain Bias",
+    notes: ["multiplication", "offset", "scale and shift", "utility"],
+  },
   gainBiasMix: {
     category: "dynamics",
     description: "4-channel utility mixer with per-channel volume and bias, plus 3 bleed sends into output 1. Clean signal routing for multi-voice patches.",
@@ -478,29 +484,11 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "Input",
     notes: ["audio source", "left right outputs", "live input"],
   },
-  macroKnob: {
-    category: "controller",
-    description: "Compact 4x4 external knob module. Drag it by hand and patch its value output into another module's parameter modulation input.",
-    label: "Macro Knob",
-    notes: ["4x4 knob", "manual control", "parameter link"],
-  },
-  bipolarKnob: {
-    category: "controller",
-    description: "Compact 4x4 center-zero knob module for offsets, modulation depth, and expressive push/pull control links.",
-    label: "Bipolar Knob",
-    notes: ["4x4 knob", "center zero", "performance control"],
-  },
   valueSlider: {
     category: "controller",
     description: "Resizable bias-output slider for manual control in the modular view and UI view.",
     label: "Value Slider",
     notes: ["bias output", "resizable widget", "manual control"],
-  },
-  impulseButton: {
-    category: "controller",
-    description: "Click to fire a single-sample impulse at the amplitude set by the adjacent slider (0 to 1). A manual, on-demand trigger for auditioning envelopes and other transient-driven modules.",
-    label: "Impulse Button",
-    notes: ["manual trigger", "one-sample pulse", "amplitude slider"],
   },
   midiOut: {
     category: "controller",

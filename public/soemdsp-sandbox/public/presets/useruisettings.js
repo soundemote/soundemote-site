@@ -147,14 +147,14 @@
   "moduleDefaultOverrides": {},
   "view": {
     "gridVisible": true,
-    "keyboardDebugInfoVisible": true,
+    "keyboardDebugInfoVisible": false,
     "tooltipEmbedded": true,
     "moduleButtonsVisible": true,
     "moduleInterfaceControlsVisible": true,
     "moduleOscilloscopesVisible": true,
     "moduleSlidersVisible": true,
     "moduleScopeBackgroundColor": "#000000",
-    "globalSmoothingSeconds": 3.767674873964554,
+    "globalSmoothingSeconds": 0.018032093271517637,
     "globalSmoothingManual": false,
     "moduleScopeDotCore1Enabled": false,
     "moduleScopeDotCore1Size": 2,
@@ -188,7 +188,7 @@
       "zoomSeconds": 0.2
     },
     "sliderLayout": "text-inside",
-    "sliderAmountVisible": false,
+    "sliderAmountVisible": true,
     "sliderPositionVisible": true,
     "moduleCatalogVisibility": {
       "audioInput": {
@@ -459,6 +459,10 @@
         "developer": true,
         "home": false
       },
+      "gainBias": {
+        "developer": true,
+        "home": false
+      },
       "gainBiasMix": {
         "developer": true,
         "home": false
@@ -472,14 +476,6 @@
         "home": false
       },
       "rotate3dTo2d": {
-        "developer": true,
-        "home": false
-      },
-      "macroKnob": {
-        "developer": true,
-        "home": false
-      },
-      "bipolarKnob": {
         "developer": true,
         "home": false
       },
@@ -624,10 +620,6 @@
         "home": false
       },
       "vactrolEnvelopeCustom": {
-        "developer": true,
-        "home": false
-      },
-      "impulseButton": {
         "developer": true,
         "home": false
       },
@@ -786,26 +778,25 @@
       "moduleBrowser": {
         "open": false,
         "position": {
-          "left": -19,
-          "top": 173
+          "left": 1329,
+          "top": 205
         }
       },
       "visibilityMenu": {
-        "open": false,
-        "position": {
-          "left": 1719,
-          "top": 114
-        }
+        "open": false
       },
       "uiSettings": {
-        "open": false
+        "open": false,
+        "position": {
+          "left": 0,
+          "top": 0
+        }
       },
       "uiDev": {
         "open": false
       },
       "traceDisplaySettings": {
-        "open": false,
-        "targetNode": "spectrogram-1"
+        "open": false
       },
       "standaloneMidiKeyboard": {
         "open": false
@@ -815,18 +806,21 @@
       },
       "phosphorWaveformSettings": {
         "open": false
+      },
+      "ledSettings": {
+        "open": false
       }
     },
     "sharedInspectorActive": "",
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": -391.57142857142856,
-        "y": 350.9375
+        "x": -429.92857142857144,
+        "y": -19.74302455357143
       },
-      "zoom": 0.7971938775510203
+      "zoom": 0.7971938775510204
     },
-    "moduleStoreDepartment": "oscillator",
+    "moduleStoreDepartment": "",
     "savedPatchBankIndex": 0,
     "savedPatchBankName": "chaos",
     "savedPatchGridColumns": 3,

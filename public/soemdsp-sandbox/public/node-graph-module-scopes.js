@@ -1851,7 +1851,7 @@ function nodeGraphModuleScopeOfflineSourceFrequency(nodeId, nodeMap = nodeGraphM
   if (node.type === "clock") {
     return Math.max(0, nodeGraphModuleScopeNodeParam(node, "rate", 0));
   }
-  if (node.type === "gain" || node.type === "bias") {
+  if (node.type === "gain" || node.type === "bias" || node.type === "gainBias") {
     return Math.max(
       0,
       ...nodeGraphModuleScopeConnectionsTo(node.id, "In")
@@ -1989,6 +1989,10 @@ function nodeGraphModuleScopeOfflineSignalSample(context, nodeId, localTime, sam
   }
   if (node.type === "bias") {
     return input + nodeGraphModuleScopeNodeParam(node, "offset", 0);
+  }
+  if (node.type === "gainBias") {
+    return input * nodeGraphModuleScopeNodeParam(node, "amount", 1) +
+      nodeGraphModuleScopeNodeParam(node, "offset", 0);
   }
   return 0;
 }

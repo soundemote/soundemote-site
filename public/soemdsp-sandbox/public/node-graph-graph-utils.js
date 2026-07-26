@@ -217,6 +217,39 @@ function normalizeNodeGraphGraph(value = {}) {
   };
 }
 
+function nodeGraphGraphWithPhaseCursor(patchNode, graphValue = patchNode?.graph) {
+  const graph = normalizeNodeGraphGraph(graphValue);
+  if (!nodeGraphModuleIsGraphType(patchNode?.type)) {
+    return graph;
+  }
+  return normalizeNodeGraphGraph({
+    ...graph,
+    cursorX: normalizeNodeGraphGraphNumber(patchNode?.params?.phase, graph.cursorX),
+  });
+}
+
+function syncNodeGraphGraphPhaseParameterFromCursor(patchNode, graphValue = patchNode?.graph) {
+  if (!patchNode || !nodeGraphModuleIsGraphType(patchNode.type)) {
+    return normalizeNodeGraphGraph(graphValue);
+  }
+  const graph = normalizeNodeGraphGraph(graphValue);
+  patchNode.graph = graph;
+  patchNode.params = {
+    ...(patchNode.params || {}),
+    phase: graph.cursorX,
+  };
+  return graph;
+}
+
+function syncNodeGraphGraphPhaseSliderForNode(nodeId, phase) {
+  const slider = nodeGraphNodeElement(nodeId)?.querySelector('input[data-param="phase"]');
+  if (!slider) {
+    return;
+  }
+  slider.value = String(normalizeNodeGraphGraphNumber(phase, Number(slider.value) || 0));
+  syncNodeSliderReadout(slider);
+}
+
 function nodeGraphGraphEndpointYLockEnabledForNode(patchNode) {
   return nodeGraphModuleIsGraphType(patchNode?.type) && Number(patchNode?.params?.lockEndpointY) >= 0.5;
 }
@@ -239,7 +272,7 @@ function nodeGraphGraphWithLockedEndpointY(graphValue, selectedIndex = 0) {
 }
 
 function nodeGraphGraphForNode(patchNode, selectedIndex = 0) {
-  const graph = normalizeNodeGraphGraph(patchNode?.graph);
+  const graph = nodeGraphGraphWithPhaseCursor(patchNode);
   return nodeGraphGraphEndpointYLockEnabledForNode(patchNode)
     ? nodeGraphGraphWithLockedEndpointY(graph, selectedIndex)
     : graph;
@@ -460,12 +493,26 @@ function nodeGraphGraphSvgPlotRect(svg) {
   if (!rect?.width || !rect?.height) {
     return null;
   }
-  const size = Math.max(1, Math.min(rect.width, rect.height));
   return {
-    height: size,
-    left: rect.left + (rect.width - size) * 0.5,
-    top: rect.top + (rect.height - size) * 0.5,
-    width: size,
+    height: rect.height,
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+  };
+}
+
+function nodeGraphGraphScreenRoundRadii(element, radius) {
+  const rect = element?.getBoundingClientRect?.();
+  const width = Number(rect?.width);
+  const height = Number(rect?.height);
+  const safeRadius = Math.max(0, Number(radius) || 0);
+  if (!(width > 0) || !(height > 0)) {
+    return { rx: safeRadius, ry: safeRadius };
+  }
+  const shortestSide = Math.min(width, height);
+  return {
+    rx: safeRadius * shortestSide / width,
+    ry: safeRadius * shortestSide / height,
   };
 }
 
@@ -539,7 +586,7 @@ function renderNodeGraphGraphDisplay(element, graphValue, selectedIndex = null, 
   const svg = createNodeGraphGraphSvgElement("svg", {
     "aria-hidden": "true",
     class: "node-module-graph-svg",
-    preserveAspectRatio: "xMidYMid meet",
+    preserveAspectRatio: "none",
     viewBox: "0 0 100 100",
   });
   svg.append(createNodeGraphGraphSvgElement("rect", {
@@ -549,23 +596,6 @@ function renderNodeGraphGraphDisplay(element, graphValue, selectedIndex = null, 
     x: "8",
     y: "8",
   }));
-  [0.25, 0.5, 0.75].forEach((gridValue) => {
-    const gridPoint = nodeGraphGraphPointToSvg(gridValue, gridValue);
-    svg.append(createNodeGraphGraphSvgElement("line", {
-      class: `node-module-graph-grid-line${gridValue === 0.5 ? " major" : ""}`,
-      x1: gridPoint.x.toFixed(3),
-      x2: gridPoint.x.toFixed(3),
-      y1: "8",
-      y2: "92",
-    }));
-    svg.append(createNodeGraphGraphSvgElement("line", {
-      class: `node-module-graph-grid-line${gridValue === 0.5 ? " major" : ""}`,
-      x1: "8",
-      x2: "92",
-      y1: gridPoint.y.toFixed(3),
-      y2: gridPoint.y.toFixed(3),
-    }));
-  });
   svg.append(createNodeGraphGraphSvgElement("line", {
     class: "node-module-graph-axis",
     x1: "8",
@@ -629,23 +659,27 @@ function renderNodeGraphGraphDisplay(element, graphValue, selectedIndex = null, 
   });
   modeLabel.textContent = smoothingMode.slice(0, 3);
   svg.append(modeLabel);
+  const hitRadii = nodeGraphGraphScreenRoundRadii(element, 5.4);
+  const nodeRadii = nodeGraphGraphScreenRoundRadii(element, 1.5);
   graph.nodes.forEach((node, index) => {
     const point = nodeGraphGraphPointToSvg(node.x, node.y);
-    svg.append(createNodeGraphGraphSvgElement("circle", {
+    svg.append(createNodeGraphGraphSvgElement("ellipse", {
       class: `node-module-graph-node-hit${index === activeIndex ? " selected" : ""}`,
       cx: point.x.toFixed(3),
       cy: point.y.toFixed(3),
       "data-graph-node-index": String(index),
       "data-selected": index === activeIndex ? "true" : "false",
-      r: "5.4",
+      rx: hitRadii.rx.toFixed(3),
+      ry: hitRadii.ry.toFixed(3),
     }));
-    svg.append(createNodeGraphGraphSvgElement("circle", {
+    svg.append(createNodeGraphGraphSvgElement("ellipse", {
       class: `node-module-graph-node${index === activeIndex ? " selected" : ""}`,
       cx: point.x.toFixed(3),
       cy: point.y.toFixed(3),
       "data-graph-node-index": String(index),
       "data-selected": index === activeIndex ? "true" : "false",
-      r: "2.2",
+      rx: nodeRadii.rx.toFixed(3),
+      ry: nodeRadii.ry.toFixed(3),
     }));
   });
   element.append(svg);
@@ -844,8 +878,26 @@ function beginNodeGraphGraphNodeDrag(event) {
   event.stopPropagation();
 }
 
-// Double-click a node to remove it (the alternative to alt+click for
-// anyone who doesn't reach for a modifier key).
+function handleNodeGraphGraphNodeContextMenu(event) {
+  const circle = nodeGraphGraphNodeCircleFromEventTarget(event.target);
+  if (!circle) {
+    return;
+  }
+  const display = nodeGraphGraphDisplayFromEventTarget(circle);
+  const nodeId = nodeGraphGraphNodeIdFromDisplay(display);
+  const patchNode = nodeGraphPatchNode(nodeId);
+  if (!patchNode || !nodeGraphModuleIsGraphType(patchNode.type)) {
+    return;
+  }
+  const graph = nodeGraphGraphForNode(patchNode);
+  const index = nodeGraphGraphNodeIndexFromValue(graph, circle.dataset.graphNodeIndex);
+  display?.focus?.({ preventScroll: true });
+  removeNodeGraphGraphNodeAtIndex(nodeId, index);
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}
+
+// Double-click remains as a keyboard/mouse accessibility alternative.
 function handleNodeGraphGraphNodeDoubleClick(event) {
   const circle = nodeGraphGraphNodeCircleFromEventTarget(event.target);
   if (!circle) {
@@ -921,6 +973,7 @@ function addNodeGraphGraphNodeFromDisplayEvent(event) {
   targetNode.graph = nodeGraphGraphEndpointYLockEnabledForNode(targetNode)
     ? nodeGraphGraphWithLockedEndpointY(addition.graph, addition.selectedIndex)
     : addition.graph;
+  syncNodeGraphGraphPhaseParameterFromCursor(targetNode);
   commitNodeGraphPatch(patch, { status: "graph node added" });
   setNodeGraphGraphSelectedNodeIndex(nodeId, targetNode.graph, addition.selectedIndex);
   syncNodeGraphGraphDisplaysForNode(nodeId, targetNode);
@@ -1023,6 +1076,7 @@ function dragNodeGraphGraphNode(event) {
       ...drag.graph,
       cursorX: point.x,
     });
+    syncNodeGraphGraphPhaseSliderForNode(drag.nodeId, drag.graph.cursorX);
     renderNodeGraphGraphDisplay(drag.display, drag.graph, null, { smoothingMode });
     // syncNodeGraphGraphControls (below) can ALSO re-render this same
     // display a second time this tick, via syncNodeGraphGraphElement --
@@ -1081,6 +1135,9 @@ function endNodeGraphGraphNodeDrag(event) {
     targetNode.graph = nodeGraphGraphEndpointYLockEnabledForNode(targetNode)
       ? nodeGraphGraphWithLockedEndpointY(drag.graph, drag.index ?? 0)
       : normalizeNodeGraphGraph(drag.graph);
+    if (drag.mode === "cursor") {
+      syncNodeGraphGraphPhaseParameterFromCursor(targetNode);
+    }
     const status = drag.mode === "cursor" ? "graph cursor moved" : "graph node moved";
     commitNodeGraphPatch(patch, { status });
     const selectedIndex = nodeGraphGraphSelectedNodeIndex(drag.nodeId, targetNode.graph, drag.index ?? 0);
@@ -1092,7 +1149,7 @@ function endNodeGraphGraphNodeDrag(event) {
   event.stopPropagation();
 }
 
-// Shared removal path for keyboard delete, alt+click, and double-click --
+// Shared removal path for keyboard delete and direct pointer gestures --
 // takes an explicit index (rather than assuming "whatever's selected") so
 // alt+click/double-click can remove whichever node is actually under the
 // pointer, even if it isn't the currently selected one.
@@ -1167,6 +1224,7 @@ function addFocusedNodeGraphGraphNode() {
   targetNode.graph = nodeGraphGraphEndpointYLockEnabledForNode(targetNode)
     ? nodeGraphGraphWithLockedEndpointY(addition.graph, addition.selectedIndex)
     : addition.graph;
+  syncNodeGraphGraphPhaseParameterFromCursor(targetNode);
   commitNodeGraphPatch(patch, { status: "graph node added" });
   setNodeGraphGraphSelectedNodeIndex(nodeId, targetNode.graph, addition.selectedIndex);
   syncNodeGraphGraphDisplaysForNode(nodeId, targetNode);

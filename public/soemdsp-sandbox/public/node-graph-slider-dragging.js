@@ -34,6 +34,15 @@ function syncNodeGraphPatchMetadataFromSlider(slider, options = {}) {
       patchNode.paramMeta[key],
     ),
   };
+  const graphPhaseChanged = (
+    key === "phase" &&
+    nodeGraphModuleIsGraphType(patchNode.type) &&
+    typeof nodeGraphGraphWithPhaseCursor === "function"
+  );
+  if (graphPhaseChanged) {
+    patchNode.graph = nodeGraphGraphWithPhaseCursor(patchNode);
+    syncNodeGraphGraphDisplaysForNode(node, patchNode);
+  }
   syncNodeGraphScriptView(options.status || "metadata synced", true);
   renderNodeGraphExecutionPlanDebug();
   syncNodeGraphFilterCurveDisplays();
@@ -78,6 +87,15 @@ function syncNodeGraphPatchParameterFromSlider(slider, options = {}) {
       patchNode.paramMeta[key],
     ),
   };
+  const graphPhaseChanged = (
+    key === "phase" &&
+    nodeGraphModuleIsGraphType(patchNode.type) &&
+    typeof nodeGraphGraphWithPhaseCursor === "function"
+  );
+  if (graphPhaseChanged) {
+    patchNode.graph = nodeGraphGraphWithPhaseCursor(patchNode);
+    syncNodeGraphGraphDisplaysForNode(node, patchNode);
+  }
   if (
     nodeGraphModuleIsGraphType(patchNode.type) &&
     typeof nodeGraphGraphEndpointYLockEnabledForNode === "function" &&
@@ -126,7 +144,11 @@ function syncNodeGraphPatchParameterFromSlider(slider, options = {}) {
   renderNodeGraphExecutionPlanDebug();
   syncNodeGraphGhostSliders();
   syncNodeGraphFilterCurveDisplays();
-  if (nodeGraphModuleIsGraphType(patchNode.type) && typeof syncNodeGraphGraphDisplaysForNode === "function") {
+  if (
+    !graphPhaseChanged &&
+    nodeGraphModuleIsGraphType(patchNode.type) &&
+    typeof syncNodeGraphGraphDisplaysForNode === "function"
+  ) {
     syncNodeGraphGraphDisplaysForNode(node, patchNode);
   }
   if (options.record) {
@@ -250,13 +272,15 @@ function setNodeSliderValue(slider, value, options = {}) {
     delete slider.dataset.unboundedValue;
   }
   const normalized = normalizeNodeSliderValue(slider, value);
+  // The input value is authoritative for patch/audio sync. Only its painted
+  // readout is frame-batched, so dragging never depends on a scope draw loop.
+  slider.value = String(normalized);
   // Frame-gate during drags: if already pending rAF update, skip redundant patch work.
   // The flush will apply the latest value — object-spreads mid-frame are wasted.
   const alreadyPending = isDrag && nodeGraphMvp?._pendingReadoutUpdates?.has(slider);
   if (isDrag) {
     scheduleNodeSliderReadoutUpdate(slider, normalized);
   } else {
-    slider.value = String(normalized);
     syncNodeSliderReadout(slider);
   }
   if (!alreadyPending) {
@@ -745,13 +769,19 @@ function endNodeSliderDrag(event) {
 
 // ── Deferred readout display (decouples value from display, C++ ParameterPrototype pattern) ──
 // Moving the slider calls scheduleNodeSliderReadoutUpdate() which queues the display update.
-// The display is flushed in the scope draw rAF AFTER all layout reads, avoiding forced reflow.
+// The queue owns its animation frame so it also works without a visible scope.
 
 function scheduleNodeSliderReadoutUpdate(slider, normalized) {
   if (!nodeGraphMvp._pendingReadoutUpdates) {
     nodeGraphMvp._pendingReadoutUpdates = new Map();
   }
   nodeGraphMvp._pendingReadoutUpdates.set(slider, normalized);
+  if (!nodeGraphMvp._pendingReadoutFrame) {
+    nodeGraphMvp._pendingReadoutFrame = window.requestAnimationFrame(() => {
+      nodeGraphMvp._pendingReadoutFrame = 0;
+      flushNodeSliderReadoutUpdates();
+    });
+  }
 }
 
 function flushNodeSliderReadoutUpdates() {

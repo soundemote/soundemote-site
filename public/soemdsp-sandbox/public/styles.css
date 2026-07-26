@@ -946,7 +946,8 @@ audio {
      the folder row below. */
   border: 0;
   border-radius: 0;
-  font: 0.68rem/1 var(--mono);
+  font-family: var(--mono);
+  font-size: calc(var(--node-sample-control-height) * 0.72);
   line-height: 1;
   white-space: nowrap;
 }
@@ -1009,7 +1010,7 @@ audio {
 /* Square icon button -- the label is on aria-label, the face is the emoji.
    Size/border shared with .node-sample-copy-phase-button above. */
 .node-sample-path-button {
-  font-size: 0.72rem;
+  font-size: calc(var(--node-sample-control-height) * 0.72);
 }
 
 /* The global `button:hover { border-color: var(--accent) }` lit up the only
@@ -1123,7 +1124,7 @@ html.soemdsp-hide-ui .status-strip {
   display: none;
 }
 
-.node-wiring-panel.modular-only-view > :not(.node-graph-workspace):not(.node-view-toolbar):not(.node-scene-context-menu):not(.node-parameter-metadata-popover):not(.node-ui-dev-helper):not(.node-user-ui-settings-panel):not(.node-saved-patches-window):not(.node-module-shop-view):not(.node-shader-script-dialog):not(.node-standalone-midi-keyboard-dock):not(.node-tooltip-window) {
+.node-wiring-panel.modular-only-view > :not(.node-graph-workspace):not(.node-view-toolbar):not(.node-floating-window-surface):not(.node-shader-script-dialog) {
   display: none;
 }
 
@@ -1131,7 +1132,7 @@ html.soemdsp-hide-ui .status-strip {
   display: contents;
 }
 
-.node-wiring-panel.modular-only-view > .node-view-toolbar > :not(.node-saved-patches-window):not(.node-visibility-menu) {
+.node-wiring-panel.modular-only-view > .node-view-toolbar > :not(.node-floating-window-surface) {
   display: none;
 }
 
@@ -1991,209 +1992,6 @@ body[data-macro-knob-value-position="top"] .node-macro-knob-edit-input {
   pointer-events: none;
 }
 
-.knob-widget-layout {
-  --node-header-height: var(--node-header-title-row-height);
-  grid-template-rows: var(--node-header-height) minmax(0, 1fr);
-  overflow: visible;
-  padding: 0;
-  border-color: rgba(241, 184, 75, 0.28);
-  background:
-    radial-gradient(circle at 50% 44%, rgba(241, 184, 75, 0.14), transparent 58%),
-    linear-gradient(180deg, rgba(243, 241, 236, 0.045), rgba(5, 6, 7, 0.74)),
-    #050607;
-}
-
-.knob-widget-layout .dsp-node-header {
-  height: var(--node-header-height);
-  grid-template-rows: var(--node-header-height);
-}
-
-.knob-widget-layout .node-header-actions {
-  display: none;
-}
-
-.knob-widget-layout .node-header-title-row {
-  position: relative;
-  z-index: 7;
-}
-
-.knob-widget-layout .node-header-title {
-  color: var(--node-module-primary-text-color);
-  font-size: 0.72rem;
-}
-
-.knob-widget-layout.knob-widget-compact {
-  --node-header-height: 0px;
-  grid-template-rows: minmax(0, 1fr);
-}
-
-.knob-widget-layout.knob-widget-compact .dsp-node-header,
-.knob-widget-layout.knob-widget-compact .node-knob-widget-value {
-  display: none;
-}
-
-.node-knob-widget-body {
-  --knob-widget-footer-height: 17px;
-  position: relative;
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) var(--knob-widget-footer-height);
-  gap: 2px;
-  align-items: stretch;
-  justify-items: stretch;
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  overflow: visible;
-}
-
-.knob-widget-layout.knob-widget-compact .node-knob-widget-body {
-  --knob-widget-footer-height: 0px;
-  grid-row: 1 / -1;
-  grid-template-rows: minmax(0, 1fr);
-  gap: 0;
-}
-
-.node-knob-widget-input {
-  position: absolute;
-  inline-size: 1px;
-  block-size: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.knob-widget-layout .node-knob-widget-control {
-  --knob-widget-slot-size: 58px;
-  position: relative;
-  z-index: 2;
-  display: grid;
-  place-items: center;
-  grid-row: 1;
-  justify-self: center;
-  align-self: center;
-  box-sizing: border-box;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  min-width: 0;
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: rgba(243, 241, 236, 0.86);
-  font: 800 0.62rem/1 "Cascadia Mono", Consolas, monospace;
-  pointer-events: none;
-  touch-action: none;
-  user-select: none;
-}
-
-.node-knob-widget-slot {
-  box-sizing: border-box;
-  display: grid;
-  place-items: center;
-  inline-size: var(--knob-widget-slot-size);
-  block-size: var(--knob-widget-slot-size);
-  padding: 0;
-  aspect-ratio: 1 / 1;
-  pointer-events: none;
-}
-
-.node-knob-widget-control:hover,
-.node-knob-widget-control:focus-visible,
-.node-knob-widget-control.value-dragging {
-  color: #fff6d5;
-  outline: none;
-}
-
-.node-knob-widget-face {
-  position: relative;
-  display: block;
-  inline-size: 100%;
-  block-size: 100%;
-  aspect-ratio: 1 / 1;
-  border: 1px solid rgba(241, 184, 75, 0.58);
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 36% 28%, rgba(243, 241, 236, 0.34), transparent 20%),
-    radial-gradient(circle at 50% 54%, rgba(0, 0, 0, 0.68), rgba(8, 11, 13, 0.98) 64%),
-    #050607;
-  box-shadow:
-    inset 0 0 0 5px rgba(5, 6, 7, 0.78),
-    0 8px 18px rgba(0, 0, 0, 0.38),
-    0 0 18px rgba(241, 184, 75, 0.12);
-  pointer-events: auto;
-}
-
-.node-knob-widget-face::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 8%;
-  width: 2px;
-  height: 35%;
-  border-radius: 999px;
-  background: #fff6d5;
-  transform: translateX(-50%) rotate(var(--knob-widget-angle, -132deg));
-  transform-origin: 50% 124%;
-  box-shadow: 0 0 8px rgba(241, 184, 75, 0.72);
-}
-
-.node-knob-widget-value {
-  box-sizing: border-box;
-  grid-row: 2;
-  align-self: stretch;
-  justify-self: stretch;
-  z-index: 2;
-  display: grid;
-  place-items: center;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: clip;
-  white-space: nowrap;
-  pointer-events: none;
-  min-height: 0;
-  margin: 0 7px 4px;
-  padding: 0 4px;
-  border-top: 1px solid rgba(127, 199, 217, 0.12);
-  border-radius: 0 0 5px 5px;
-  background: linear-gradient(180deg, rgba(5, 9, 12, 0.16), rgba(5, 9, 12, 0.56));
-  color: rgba(127, 199, 217, 0.86);
-  font-size: 0.58rem;
-  line-height: 1;
-  text-align: center;
-}
-
-.knob-widget-layout .node-knob-widget-output {
-  position: absolute;
-  z-index: 5;
-  right: -4px;
-  top: 50%;
-  width: calc(var(--node-signal-port-width) * 0.86);
-  min-width: calc(var(--node-signal-port-width) * 0.86);
-  height: calc(var(--node-signal-port-height) * 1.1);
-  min-height: calc(var(--node-signal-port-height) * 1.1);
-  --node-port-hover-color: var(--node-param-output-fill);
-  --node-port-stroke-mask-color: color-mix(in srgb, var(--node-param-output-fill) 14%, transparent);
-  border-color: color-mix(in srgb, var(--node-param-output-stroke) 48%, transparent);
-  background: var(--node-port-stroke-mask-color);
-  transform: translateY(-50%);
-}
-
-.knob-widget-layout.knob-widget-compact .node-knob-widget-output {
-  right: -5px;
-  width: calc(var(--node-signal-port-width) * 0.7);
-  min-width: calc(var(--node-signal-port-width) * 0.7);
-  height: calc(var(--node-signal-port-height) * 0.9);
-  min-height: calc(var(--node-signal-port-height) * 0.9);
-}
-
-.knob-widget-layout .node-knob-widget-output::before {
-  right: -2px;
-  width: 4px;
-  background: color-mix(in srgb, var(--node-param-output-fill) 18%, transparent);
-}
-
 @media (max-width: 880px) {
   .node-macro-controls-row {
     grid-template-columns: repeat(5, minmax(54px, 1fr));
@@ -2777,20 +2575,16 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   display: none;
 }
 
-/* Continues the Render Sample / Start / End strip as one surface: no flex
-   gap between them (cancelled with the negative margin -- .node-graph-controls
-   sets a global 8px gap that the rest of the row still wants), and it takes
+/* Continues the Render Sample / Start / End strip as one surface and takes
    every pixel left over instead of stopping at a fixed max width. */
 .node-patch-audio-player-row {
   display: inline-grid;
+  grid-template-rows: minmax(0, 1fr);
   align-items: stretch;
   flex: 1 1 300px;
   min-width: 0;
   max-width: none;
-}
-
-.node-render-duration-control + .node-patch-audio-player-row {
-  margin-left: -8px;
+  overflow: hidden;
 }
 
 .node-patch-audio-player-row #audioPlayer {
@@ -3292,7 +3086,7 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   grid-template-rows: var(--node-floating-window-header-height) auto;
   box-sizing: border-box;
   width: min(196px, calc(100vw - 28px));
-  min-width: var(--node-module-actions-min-width, 24px);
+  min-width: min(180px, calc(100vw - 28px));
   max-width: calc(100vw - 28px);
   gap: 0;
   padding: 0;
@@ -3351,17 +3145,20 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   white-space: normal;
 }
 
-/* A menu ROW holds more than one button side by side. Without this the two
-   halves would stack like every other entry. */
-/* Two toggles sharing one row. Columns are sized to their CONTENT first and
-   only then share the leftover space -- a flat 1fr/1fr split forced both to
-   half the menu width regardless of what they say, so "Hide Tooltips" (which
-   also carries a T hotkey badge) had its label clipped by the narrower
-   "Embed Tips" beside it. */
+/* The tooltip toggles share one bounded row. Give the hotkey-bearing button
+   slightly more room, but never let either button's intrinsic text width
+   expand the row past the visibility window. */
 .node-visibility-menu-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(max-content, 1fr));
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
   min-width: 0;
+}
+
+.node-visibility-menu-row .scene-context-window-button-label {
+  padding-inline: 2px;
+  overflow-wrap: normal;
+  text-align: center;
+  white-space: normal;
 }
 
 /* The second button in a row IS :last-child of its wrapper, so the rule below
@@ -4330,11 +4127,6 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   --node-slider-label-color: #cfdde5;
   --node-slider-value-color: #ffffff;
   --node-slider-unit-color: #7fc7d9;
-  /* Slider fill is opaque #21333A. It used to be a 14%-alpha cyan, which let
-     the module body show through -- that translucency is what produced the
-     doubled/offset edges where the fill met the handle. */
-  --node-slider-fill-rgb: 33 51 58;
-  --node-slider-fill-alpha: 1;
   /* Amount band vs position/handle indicator, tunable as full HSLA from
      UI Dev -> "slider fill colors" (syncNodeUiDevSliderFillColorControls
      writes these). Defaults are #21333A for position and a darker sibling
@@ -7859,6 +7651,21 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   padding: 0 8px;
 }
 
+/* The search box is focused automatically every time the browser opens (see
+   focusNodeGraphModuleShopSearch), so the UA's default `outline: auto` focus
+   ring was on screen constantly -- Chrome draws that as a thick white double
+   stroke on a dark background. Removed outright rather than restyled: the box
+   already announces focus by being the thing you are typing into, and the
+   caret plus the lit border below are the cue. Nothing else inherits or needs
+   this ring. */
+.node-module-department-search-placeholder input:focus,
+.node-module-department-search-placeholder input:focus-visible {
+  outline: none;
+  border-color: rgba(127, 199, 217, 0.42);
+  background: rgba(3, 5, 7, 0.52);
+  color: rgba(243, 241, 236, 0.86);
+}
+
 .node-module-department-search-placeholder input::placeholder {
   color: rgba(174, 180, 187, 0.52);
 }
@@ -9831,10 +9638,6 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   grid-template-rows: var(--node-header-height) minmax(0, 1fr) minmax(var(--node-io-section-min-height), auto);
 }
 
-.dsp-node.knob-widget-layout {
-  grid-template-rows: var(--node-header-height) minmax(0, 1fr);
-}
-
 .dsp-node.patch-command-layout {
   grid-template-rows: var(--node-header-height) minmax(0, 1fr) minmax(var(--node-io-section-min-height), auto);
 }
@@ -10111,10 +9914,12 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   box-sizing: border-box;
   display: flex;
   align-items: stretch;
-  gap: 8px;
+  gap: 0;
   width: 100%;
   height: 100%;
-  padding: 4px 8px;
+  min-height: 0;
+  max-height: 100%;
+  padding: 0;
   /* Left edge is the End cell's right edge -- no border and no radius there,
      so the two read as one continuous control surface rather than two
      widgets sitting next to each other. */
@@ -10129,6 +9934,8 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
 .node-rendered-player button {
   flex: 0 0 auto;
   width: 44px;
+  height: 100%;
+  min-height: 0;
   border: 1px solid rgba(57, 230, 163, 0.4);
   border-radius: 6px;
   background: rgba(9, 16, 14, 0.9);
@@ -10156,7 +9963,9 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   position: relative;
   flex: 1 1 auto;
   min-width: 120px;
-  height: 44px;
+  align-self: stretch;
+  height: auto;
+  min-height: 0;
   border-radius: 5px;
   overflow: hidden;
   border: 1px solid rgba(127, 199, 217, 0.16);
@@ -10327,8 +10136,8 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   padding: 0;
 }
 
-.node-graph-workspace.module-buttons-hidden .dsp-node:not(.text-box-layout):not(.image-node-layout):not(.canvas-node-layout):not(.visual-scope-layout):not(.trace-display-layout):not(.graph-node-layout):not(.slider-widget-layout):not(.knob-widget-layout):not(.sample-module-layout):not(.screen-space-shader-layout):not(.clap-plugin-layout),
-.dsp-node.buttons-hidden:not(.text-box-layout):not(.image-node-layout):not(.visual-scope-layout):not(.trace-display-layout):not(.graph-node-layout):not(.slider-widget-layout):not(.knob-widget-layout):not(.sample-module-layout):not(.screen-space-shader-layout):not(.clap-plugin-layout) {
+.node-graph-workspace.module-buttons-hidden .dsp-node:not(.text-box-layout):not(.image-node-layout):not(.canvas-node-layout):not(.visual-scope-layout):not(.trace-display-layout):not(.graph-node-layout):not(.slider-widget-layout):not(.sample-module-layout):not(.screen-space-shader-layout):not(.clap-plugin-layout):not(.solid-module-layout),
+.dsp-node.buttons-hidden:not(.text-box-layout):not(.image-node-layout):not(.visual-scope-layout):not(.trace-display-layout):not(.graph-node-layout):not(.slider-widget-layout):not(.sample-module-layout):not(.screen-space-shader-layout):not(.clap-plugin-layout):not(.solid-module-layout) {
   grid-template-rows:
     var(--node-header-height)
     var(--node-module-scope-height)
@@ -10337,15 +10146,15 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
     auto;
 }
 
-.node-graph-workspace.module-buttons-hidden .dsp-node:not(.text-box-layout):not(.image-node-layout):not(.canvas-node-layout):not(.visual-scope-layout):not(.trace-display-layout):not(.graph-node-layout):not(.slider-widget-layout):not(.knob-widget-layout):not(.sample-module-layout):not(.screen-space-shader-layout):not(.clap-plugin-layout)::after,
-.dsp-node.buttons-hidden:not(.text-box-layout):not(.image-node-layout):not(.visual-scope-layout):not(.trace-display-layout):not(.graph-node-layout):not(.slider-widget-layout):not(.knob-widget-layout):not(.sample-module-layout):not(.screen-space-shader-layout):not(.clap-plugin-layout)::after {
+.node-graph-workspace.module-buttons-hidden .dsp-node:not(.text-box-layout):not(.image-node-layout):not(.canvas-node-layout):not(.visual-scope-layout):not(.trace-display-layout):not(.graph-node-layout):not(.slider-widget-layout):not(.sample-module-layout):not(.screen-space-shader-layout):not(.clap-plugin-layout):not(.solid-module-layout)::after,
+.dsp-node.buttons-hidden:not(.text-box-layout):not(.image-node-layout):not(.visual-scope-layout):not(.trace-display-layout):not(.graph-node-layout):not(.slider-widget-layout):not(.sample-module-layout):not(.screen-space-shader-layout):not(.clap-plugin-layout):not(.solid-module-layout)::after {
   content: "";
   display: block;
   min-height: 0;
 }
 
-.node-graph-workspace.module-buttons-hidden .dsp-node:not(.text-box-layout):not(.image-node-layout):not(.canvas-node-layout):not(.visual-scope-layout):not(.trace-display-layout):not(.graph-node-layout):not(.slider-widget-layout):not(.knob-widget-layout):not(.sample-module-layout):not(.screen-space-shader-layout):not(.clap-plugin-layout) .dsp-node-body,
-.dsp-node.buttons-hidden:not(.text-box-layout):not(.image-node-layout):not(.visual-scope-layout):not(.trace-display-layout):not(.graph-node-layout):not(.slider-widget-layout):not(.knob-widget-layout):not(.sample-module-layout):not(.screen-space-shader-layout):not(.clap-plugin-layout) .dsp-node-body {
+.node-graph-workspace.module-buttons-hidden .dsp-node:not(.text-box-layout):not(.image-node-layout):not(.canvas-node-layout):not(.visual-scope-layout):not(.trace-display-layout):not(.graph-node-layout):not(.slider-widget-layout):not(.sample-module-layout):not(.screen-space-shader-layout):not(.clap-plugin-layout):not(.solid-module-layout) .dsp-node-body,
+.dsp-node.buttons-hidden:not(.text-box-layout):not(.image-node-layout):not(.visual-scope-layout):not(.trace-display-layout):not(.graph-node-layout):not(.slider-widget-layout):not(.sample-module-layout):not(.screen-space-shader-layout):not(.clap-plugin-layout):not(.solid-module-layout) .dsp-node-body {
   align-content: start;
   grid-auto-rows: var(--node-body-row-height);
 }
@@ -10837,71 +10646,6 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   border-top: 1px solid rgba(128, 224, 224, 0.1);
 }
 
-.node-button-widget-body {
-  box-sizing: border-box;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: stretch;
-  gap: calc(var(--node-grid-size) * 0.1);
-  min-width: 0;
-  min-height: 0;
-  padding: calc(var(--node-grid-size) * 0.18) calc(var(--node-grid-size) * 0.1) calc(var(--node-grid-size) * 0.08);
-}
-
-.node-button-widget-trigger {
-  box-sizing: border-box;
-  min-width: 0;
-  min-height: 0;
-  padding: 0 calc(var(--node-grid-size) * 0.14);
-  border: 1px solid rgba(127, 199, 217, 0.3);
-  border-radius: 4px;
-  background: rgba(9, 13, 16, 0.82);
-  color: rgba(127, 199, 217, 0.92);
-  font: 750 0.7rem/1 var(--mono);
-  letter-spacing: 0.04em;
-  cursor: pointer;
-}
-
-.node-button-widget-trigger:hover,
-.node-button-widget-trigger:focus-visible {
-  border-color: rgba(127, 199, 217, 0.6);
-  background: rgba(127, 199, 217, 0.16);
-  color: var(--text);
-}
-
-.node-button-widget-trigger.pulsing {
-  animation: node-button-widget-pulse 0.22s ease-out;
-}
-
-@keyframes node-button-widget-pulse {
-  0% {
-    background: rgba(127, 199, 217, 0.55);
-    color: var(--text);
-  }
-  100% {
-    background: rgba(9, 13, 16, 0.82);
-    color: rgba(127, 199, 217, 0.92);
-  }
-}
-
-.node-button-widget-row {
-  height: 100%;
-  min-height: 0;
-  padding: 0;
-}
-
-.node-button-widget-row .node-parameter-control,
-.node-button-widget-row .node-slider-readout,
-.node-button-widget-row .node-slider-readout-input {
-  height: 100%;
-  min-height: 0;
-  max-height: none;
-}
-
-.node-button-widget-io-section {
-  border-top: 1px solid rgba(128, 224, 224, 0.1);
-}
-
 /* Step Grid's CSS lives in public/modules/stepGrid/step-grid.css now,
    loaded via its own <link> tag -- not here. */
 
@@ -10940,20 +10684,19 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   height: 100%;
 }
 
+.node-module-graph-svg :is(
+  rect,
+  line,
+  path,
+  ellipse
+) {
+  vector-effect: non-scaling-stroke;
+}
+
 .node-module-graph-frame {
   fill: rgba(0, 0, 0, 0.26);
   stroke: rgba(112, 206, 200, 0.16);
   stroke-width: 0.8;
-}
-
-.node-module-graph-grid-line {
-  stroke: rgba(112, 206, 200, 0.08);
-  stroke-width: 0.45;
-}
-
-.node-module-graph-grid-line.major {
-  stroke: rgba(218, 235, 226, 0.11);
-  stroke-width: 0.55;
 }
 
 .node-module-graph-axis {
@@ -11044,6 +10787,17 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   stroke: rgba(7, 10, 13, 0.9);
   stroke-width: 0.7;
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+
+.node-module-graph-display:hover .node-module-graph-node:not(.selected) {
+  opacity: 0.35;
+}
+
+.node-module-graph-display:hover .node-module-graph-node.selected,
+.node-module-graph-display.dragging .node-module-graph-node {
+  opacity: 1;
 }
 
 .node-module-graph-node.selected {
@@ -11802,8 +11556,8 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
     auto;
 }
 
-.node-graph-workspace.module-oscilloscopes-hidden .dsp-node:not(.text-box-layout):not(.image-node-layout):not(.canvas-node-layout):not(.visual-scope-layout):not(.trace-display-layout):not(.graph-node-layout):not(.filter-curve-layout):not(.slider-widget-layout):not(.knob-widget-layout):not(.sample-module-layout):not(.screen-space-shader-layout):not(.phosphillator-draw-layout),
-.dsp-node.oscilloscope-hidden:not(.text-box-layout):not(.image-node-layout):not(.canvas-node-layout):not(.visual-scope-layout):not(.trace-display-layout):not(.graph-node-layout):not(.filter-curve-layout):not(.slider-widget-layout):not(.knob-widget-layout):not(.sample-module-layout):not(.screen-space-shader-layout):not(.phosphillator-draw-layout) {
+.node-graph-workspace.module-oscilloscopes-hidden .dsp-node:not(.text-box-layout):not(.image-node-layout):not(.canvas-node-layout):not(.visual-scope-layout):not(.trace-display-layout):not(.graph-node-layout):not(.filter-curve-layout):not(.slider-widget-layout):not(.sample-module-layout):not(.screen-space-shader-layout):not(.phosphillator-draw-layout),
+.dsp-node.oscilloscope-hidden:not(.text-box-layout):not(.image-node-layout):not(.canvas-node-layout):not(.visual-scope-layout):not(.trace-display-layout):not(.graph-node-layout):not(.filter-curve-layout):not(.slider-widget-layout):not(.sample-module-layout):not(.screen-space-shader-layout):not(.phosphillator-draw-layout) {
   grid-template-rows:
     var(--node-header-height)
     minmax(var(--node-io-section-min-height), auto)
@@ -11864,11 +11618,6 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
 
 .node-graph-workspace.module-buttons-hidden .dsp-node.title-hidden {
   --node-header-height: 0px;
-}
-
-.node-graph-workspace.module-buttons-hidden .dsp-node.knob-widget-layout:not(.title-hidden),
-.dsp-node.buttons-hidden.knob-widget-layout:not(.title-hidden) {
-  grid-template-rows: var(--node-header-height) minmax(0, 1fr);
 }
 
 .node-graph-workspace.module-buttons-hidden .dsp-node:not(.title-hidden) .dsp-node-header,
@@ -12563,7 +12312,7 @@ input.node-header-title:focus {
 
 .node-choice-debug-square,
 .node-choice-debug-cell {
-  fill: rgb(var(--node-slider-fill-rgb) / var(--node-slider-fill-alpha));
+  fill: var(--node-slider-position-color);
   stroke: transparent;
   stroke-width: 1px;
   vector-effect: non-scaling-stroke;
@@ -12582,7 +12331,7 @@ input.node-header-title:focus {
 }
 
 .node-slider-readout.choices-divided.value-dragging .node-choice-debug-cell-fill {
-  fill: rgb(var(--node-slider-fill-rgb) / var(--node-slider-fill-alpha));
+  fill: var(--node-slider-position-color);
 }
 
 .node-choice-debug-cell-debug {
@@ -16672,16 +16421,6 @@ body.node-slider-dragging .node-param-port {
   background: var(--node-port-stroke-mask-color);
 }
 
-.knob-widget-layout .node-knob-widget-output.connected-port {
-  --node-patch-point-color: var(--node-param-output-fill);
-  --node-port-stroke-mask-color: color-mix(in srgb, var(--node-param-output-fill) 18%, transparent);
-  border-color: color-mix(in srgb, var(--node-param-output-stroke) 62%, transparent);
-  background: var(--node-port-stroke-mask-color);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--node-param-output-fill) 18%, transparent) inset,
-    0 0 12px color-mix(in srgb, var(--node-param-output-fill) 22%, transparent);
-}
-
 .node-param-port.parameter-output.connected-port {
   --node-patch-point-color: var(--node-param-output-fill);
   --node-patch-point-x: 100%;
@@ -16873,14 +16612,27 @@ body.node-slider-dragging .node-param-port {
 }
 
 .node-graph-controls {
+  --node-public-control-height: 2.8rem;
   display: flex;
   flex-wrap: wrap;
-  /* TODO: get rid of global gap. Groups that want to read as one control
-     surface have to cancel it locally (see the negative margin on
-     .node-render-duration-control + .node-patch-audio-player-row), which
-     does not scale -- spacing belongs on the groups that want it. */
-  gap: 8px;
+  align-items: flex-start;
+  align-content: flex-start;
+  gap: 0;
   margin-top: 14px;
+}
+
+.node-graph-controls > :is(
+  .node-patch-community-control,
+  .node-live-toggle-palette,
+  .node-transport-group,
+  .node-render-duration-control,
+  .node-patch-audio-player-row
+) {
+  box-sizing: border-box;
+  align-self: flex-start;
+  height: var(--node-public-control-height);
+  min-height: var(--node-public-control-height);
+  max-height: var(--node-public-control-height);
 }
 
 .node-debug-hidden-control {
@@ -16915,21 +16667,77 @@ body.node-slider-dragging .node-param-port {
 
 .node-live-toggle-palette {
   display: inline-grid;
-  /* Input / Output / MIDI */
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* The input/output level lanes sit between their two route buttons. */
+  grid-template-columns: 2.55rem repeat(2, 1.35rem) repeat(2, 2.55rem);
+  grid-template-rows: minmax(0, 1fr);
   align-items: stretch;
   gap: 0;
   border-right: none; /* remove divider between MIDI and Render Sample */
-  min-width: min(100%, 16.5rem);
+  min-width: 0;
   padding-right: 10px;
 }
 
 .node-transport-group {
   display: inline-flex;
-  align-items: center;
+  align-items: stretch;
   flex: 0 0 auto;
   gap: 2px;
   padding-right: 10px;
+}
+
+/* One 🔊 + slider + percent widget, used by all three volume controls (live
+   input in the toggle palette, live output in the transport group, rendered
+   sample in the player row). Sized in em so it inherits whatever type scale
+   its host row uses. The percent readout has a fixed width so the slider
+   doesn't shuffle sideways as the number goes 9% -> 100%. */
+.node-volume-control {
+  display: inline-grid;
+  grid-template-rows: minmax(0, 1fr);
+  place-items: center;
+  align-items: center;
+  flex: 0 0 1.35rem;
+  gap: 0;
+  min-width: 0;
+  padding: 2px;
+  color: var(--muted);
+  font: 0.62rem var(--mono);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Live levels occupy their own narrow columns instead of creating a second
+   row beneath the transport buttons. */
+.node-live-toggle-palette .node-volume-control {
+  border: 1px solid var(--line);
+  border-left: 0;
+}
+
+.node-live-toggle-palette .node-volume-control input[type="range"] {
+  width: 12px;
+  min-width: 12px;
+}
+
+.node-volume-control input[type="range"] {
+  width: 12px;
+  min-width: 12px;
+  max-width: 12px;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  appearance: slider-vertical;
+  accent-color: var(--accent, #39e6a3);
+  cursor: pointer;
+}
+
+.node-volume-control > span,
+.node-volume-control output {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 
 /* Square buttons sized from an explicit length rather than
@@ -16947,7 +16755,7 @@ body.node-slider-dragging .node-param-port {
   flex: 0 0 auto;
   width: 2.4rem;
   min-width: 2.4rem;
-  height: 2.4rem;
+  height: 100%;
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 3px;
@@ -16976,7 +16784,10 @@ body.node-slider-dragging .node-param-port {
   align-items: stretch;
   justify-items: stretch;
   min-width: 0;
-  min-height: 44px;
+  width: 2.55rem;
+  min-width: 2.55rem;
+  height: 100%;
+  min-height: 0;
   gap: 0;
   padding: 0;
   line-height: 1;
@@ -17040,7 +16851,7 @@ body.node-slider-dragging .node-param-port {
      for a 0.5px font and the label vanished. */
   grid-template-columns: repeat(3, var(--render-strip-cell-width, 6.2rem));
   gap: 0;
-  min-height: 36px;
+  min-height: 0;
   /* The Start/End cells size their caption/number from this the same way the
      BPM/BEATS/UNIT/FPS cells do. It is declared on the view toolbar, which is
      NOT an ancestor of this row -- without redeclaring it here the clamp()s
@@ -17071,7 +16882,8 @@ body.node-slider-dragging .node-param-port {
   justify-items: stretch;
   gap: 0;
   min-width: 6.2rem;
-  min-height: 44px;
+  height: 100%;
+  min-height: 0;
   padding: 0 10px;
   line-height: 1;
   text-transform: none;
@@ -17651,6 +17463,41 @@ body.keyboard-debug-hidden #toggleDebugButton {
    developer-facing block. */
 body.keyboard-debug-hidden #nodeCheckAllModulesButton {
   display: none;
+}
+
+/* Public render controls remain available with Debug off. Diagnostic surfaces
+   opt into this one shared marker instead of relying on DOM position. */
+body.keyboard-debug-hidden .node-debug-only {
+  display: none;
+}
+
+/* With diagnostics removed, let the normal modular workspace consume the
+   reclaimed viewport instead of retaining its old fixed 230px allowance.
+   Floating windows are fixed-position and therefore do not occupy this flex
+   column; the public control strip naturally lands against the bottom edge. */
+body.keyboard-debug-hidden
+  .node-wiring-panel:not(.modular-only-view):not(.camera-view-visible):has(> #nodeGraphWorkspace:not([hidden])) {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+body.keyboard-debug-hidden
+  .node-wiring-panel:not(.modular-only-view):not(.camera-view-visible)
+  > #nodeGraphWorkspace:not([hidden]) {
+  flex: 1 1 auto;
+  height: auto !important;
+  min-height: 0;
+}
+
+body.keyboard-debug-hidden
+  .node-wiring-panel:not(.modular-only-view):not(.camera-view-visible)
+  > .node-graph-controls {
+  flex: 0 0 auto;
+  margin-top: 3px;
 }
 
 body.keyboard-debug-hidden .node-wiring-panel ~ .panel,

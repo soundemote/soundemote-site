@@ -16,6 +16,7 @@ const nodeGraphWorkspaceWindowStateKeys = Object.freeze([
   "standaloneMidiKeyboard",
   "tooltipWindow",
   "phosphorWaveformSettings",
+  "ledSettings",
 ]);
 
 const nodeGraphWorkspaceWindowElements = Object.freeze({
@@ -319,6 +320,9 @@ function openNodeGraphFloatingWindowAtPosition(key, element, spawnAtPointer) {
   if (!element) {
     return false;
   }
+  if (typeof markNodeGraphFloatingWindowSurface === "function") {
+    markNodeGraphFloatingWindowSurface(element);
+  }
   // The glow decision lives in positionNodeGraphFloatingWindowWithAttention:
   // it measures the element before and after, so "did not move" is detected
   // the same way here as in every other open path.
@@ -383,6 +387,9 @@ function applyNodeGraphWorkspaceWindowStateToElement(key) {
   const element = document.getElementById(nodeGraphWorkspaceWindowElements[key]);
   if (!element) {
     return;
+  }
+  if (typeof markNodeGraphFloatingWindowSurface === "function") {
+    markNodeGraphFloatingWindowSurface(element);
   }
   if (key === "oscilloscopeSettings") {
     element.hidden = true;
@@ -459,6 +466,9 @@ function enforceNodeGraphWorkspaceClosedWindowStates(states = nodeGraphMvp.works
 }
 
 function applyNodeGraphWorkspaceWindowStates() {
+  if (typeof syncNodeGraphRegisteredFloatingWindowSurfaces === "function") {
+    syncNodeGraphRegisteredFloatingWindowSurfaces();
+  }
   nodeGraphMvp.workspaceWindowStates = normalizeNodeGraphWorkspaceWindowStates(
     nodeGraphMvp.workspaceWindowStates,
   );

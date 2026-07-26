@@ -98,6 +98,12 @@ var nodeGraphMvp = {
     micStatus: "off",
     inputStreamFactory: null,
     inputSource: null,
+    // User-facing input level (0..1) and the gain node that applies it. The
+    // node is rebuilt with the input stream; the number outlives it, so
+    // re-arming the mic keeps the level you set. See
+    // setNodeGraphLiveInputVolume.
+    inputVolume: 1,
+    inputVolumeGain: null,
     inputStatus: "off",
     inputStream: null,
     lastEvidence: null,
@@ -108,6 +114,11 @@ var nodeGraphMvp = {
     node: null,
     outputEnabled: false,
     outputGain: null,
+    // Master live level (0..1) and whether the safety/mute path currently
+    // holds output at zero. Both feed nodeGraphLiveOutputTargetGain, which is
+    // the only thing allowed to write outputGain.gain.
+    outputMuted: false,
+    outputVolume: 1,
     speedMultiplier: 1,
     planEvidence: null,
     activeNodeIds: new Set(),
@@ -198,7 +209,6 @@ var nodeGraphMvp = {
     badvalMonitor: 0,
     bandpass: 0,
     bias: 1,
-    bipolarKnob: 0,
     bloomGlow: 0,
     chromaColor: 0,
     buttonEvents: 0,
@@ -244,7 +254,6 @@ var nodeGraphMvp = {
     logisticMap: 0,
     lorenzAttractor: 0,
     lowpass: 0,
-    macroKnob: 0,
     midiNotePitch: 0,
     midiOut: 0,
     nextPatch: 0,
@@ -269,7 +278,6 @@ var nodeGraphMvp = {
     valueSlider: 0,
     vactrolEnvelopeSeries: 0,
     vactrolEnvelopeCustom: 0,
-    impulseButton: 0,
   },
   patch: cloneNodeGraphPatch(nodeGraphDefaultPatch),
   patchDirtyState: "untouched",

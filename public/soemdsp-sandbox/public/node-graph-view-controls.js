@@ -678,10 +678,7 @@ function positionNodeGraphVisibilityMenu(menu, x, y) {
 }
 
 function nodeGraphVisibilityMenuMinimumSize(menu = document.getElementById("nodeVisibilityMenu")) {
-  const sharedWindowMinWidth = typeof nodeModuleActionsWindowDefaultSize !== "undefined" &&
-    Number.isFinite(Number(nodeModuleActionsWindowDefaultSize?.minWidth))
-    ? Number(nodeModuleActionsWindowDefaultSize.minWidth)
-    : 24;
+  const readableWindowMinWidth = 180;
   const rootStyle = window.getComputedStyle(document.documentElement);
   const sharedHeaderHeight = Number.parseFloat(
     rootStyle.getPropertyValue("--node-floating-window-header-height"),
@@ -691,7 +688,7 @@ function nodeGraphVisibilityMenuMinimumSize(menu = document.getElementById("node
   ) || 30;
   const buttonCount = menu?.querySelectorAll?.(".node-visibility-menu-list button").length || 7;
   return {
-    width: Math.ceil(sharedWindowMinWidth),
+    width: readableWindowMinWidth,
     height: Math.ceil(sharedHeaderHeight + (buttonCount * sharedButtonHeight)),
   };
 }
@@ -3120,6 +3117,9 @@ function renderNodeGraphMappingView() {
 }
 
 function setNodeGraphViewMode(mode) {
+  if (typeof syncNodeGraphRegisteredFloatingWindowSurfaces === "function") {
+    syncNodeGraphRegisteredFloatingWindowSurfaces();
+  }
   if (mode !== "script") {
     flushNodeGraphScriptCommit();
   }
