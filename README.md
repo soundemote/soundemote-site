@@ -25,6 +25,9 @@ like documentation than blog posts.
   [`/gradient-curve`](src/pages/GradientCurvePage.tsx). Same idea as the
   audio side: a dot drawn from a curve instead of a stored image. The falloff
   handles reshape the curve; the render is just the curve, evaluated.
+- **Bezier control surface** ([`public/apps/bezier-controls/`](public/apps/bezier-controls/)) —
+  interactive cubic graph editor, embedded on the home page under the gradient
+  widget (`?embed=1`). Full page at `/apps/bezier-controls/index.html`.
 - **Scratch space** ([`src/good-code/`](src/good-code/)) — vendored or
   in-progress widgets that haven't earned a permanent home yet.
 - **Admin** ([`AdminDashboard.tsx`](src/pages/AdminDashboard.tsx) and

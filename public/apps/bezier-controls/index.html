@@ -1,0 +1,2460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bezier controls</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #121214;
+      color: #e1e1e6;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    h1 { margin: 0 0 4px; font-size: 22px; color: #fff; }
+    .sub {
+      color: #a8a8b3;
+      font-size: 13px;
+      max-width: 700px;
+      text-align: center;
+      margin: 0 0 8px;
+      line-height: 1.45;
+    }
+    /* No outer chrome — only the inner group cards */
+    .controls {
+      width: min(920px, 100%);
+      background: transparent;
+      padding: 0;
+      margin: 0 0 8px;
+      box-shadow: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .controls-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: stretch;
+    }
+    .ctrl-group {
+      flex: 1 1 200px;
+      min-width: 0;
+      background: #202024;
+      border: 1px solid #2c2c32;
+      border-radius: 6px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    }
+    .ctrl-group.actions {
+      flex: 0 1 auto;
+      justify-content: center;
+    }
+    .ctrl-group-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #8b8b98;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin: 0 0 2px;
+    }
+    .ctrl-group .fields {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .ctrl-group .fields.row {
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px 14px;
+    }
+    .ctrl-group .actions-btns {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    label {
+      font-weight: 600;
+      font-size: 12px;
+      color: #c4c4d0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 0;
+    }
+    label.checkbox {
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+    }
+    label.checkbox input {
+      accent-color: #4ea8de;
+      width: 14px;
+      height: 14px;
+      margin: 0;
+    }
+    label.slider {
+      display: grid;
+      grid-template-columns: minmax(5.5em, auto) 1fr minmax(2.8em, auto);
+      gap: 8px 10px;
+      align-items: center;
+      width: 100%;
+    }
+    label.slider .lbl {
+      color: #a8a8b3;
+      font-weight: 600;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    label.field {
+      gap: 6px;
+    }
+    .btn {
+      background: #4ea8de;
+      color: #121214;
+      border: none;
+      padding: 8px 14px;
+      font-weight: 700;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .btn:hover { background: #64b5f6; }
+    .btn.secondary { background: #35353c; color: #e1e1e6; }
+    .btn.secondary:hover { background: #45454e; }
+    input[type="range"] {
+      width: 100%;
+      min-width: 100px;
+      accent-color: #4ea8de;
+      vertical-align: middle;
+    }
+    .val {
+      font-variant-numeric: tabular-nums;
+      min-width: 2.8em;
+      color: #4ea8de;
+      font-size: 12px;
+      text-align: right;
+    }
+    .scrub-field {
+      width: 3.2em;
+      background: #121214;
+      border: 1px solid #3a3a42;
+      border-radius: 4px;
+      color: #4ea8de;
+      font-weight: 700;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+      padding: 4px 6px;
+      cursor: ew-resize;
+      user-select: none;
+    }
+    .scrub-field:focus {
+      outline: none;
+      border-color: #4ea8de;
+    }
+    .scrub-field.editing {
+      cursor: text;
+      user-select: text;
+      background: #1a1a20;
+      color: #e1e1e6;
+    }
+    /* Presets + canvas as one unit (no gap) */
+    .stage {
+      width: fit-content;
+      max-width: 100%;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      border: 2px solid #29292e;
+      background: #19191c;
+    }
+    .presets-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 12px;
+      align-items: center;
+      justify-content: center;
+      background: #202024;
+      padding: 10px 14px;
+      margin: 0;
+      border: none;
+      border-bottom: 1px solid #29292e;
+      border-radius: 0;
+      box-shadow: none;
+      width: 100%;
+    }
+    .presets-row .presets-title {
+      font-weight: 700;
+      font-size: 13px;
+      color: #a8a8b3;
+      margin-right: 4px;
+      letter-spacing: 0.02em;
+    }
+    .stage canvas {
+      display: block;
+      background: #19191c;
+      border: none;
+      border-radius: 0;
+      box-shadow: none;
+      cursor: crosshair;
+      touch-action: none;
+      max-width: 100%;
+      height: auto;
+    }
+    .legend {
+      display: flex;
+      gap: 14px;
+      margin-top: 8px;
+      font-size: 12px;
+      color: #a8a8b3;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .legend span { display: flex; align-items: center; gap: 6px; }
+    .swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .swatch.curve {
+      width: 18px;
+      height: 3px;
+      border-radius: 1px;
+      background: #4ea8de;
+    }
+    .swatch.pass { background: #ff79c6; }
+    .swatch.startEdge { background: #22c55e; }
+    .swatch.endEdge { background: #ef4444; }
+    .swatch.ctrl { background: #9bde6a; }
+    .swatch.purple { background: #c084fc; }
+    .swatch.tminus {
+      width: 10px; height: 10px; border-radius: 0;
+      background: #fb923c;
+      transform: rotate(45deg);
+    }
+    .swatch.tplus {
+      width: 10px; height: 10px; border-radius: 0;
+      background: #ef4444;
+      transform: rotate(45deg);
+    }
+    .notes {
+      margin-top: 10px;
+      font-size: 13px;
+      color: #a8a8b3;
+      max-width: 720px;
+      text-align: left;
+      line-height: 1.55;
+    }
+    .notes h2 {
+      margin: 0 0 10px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #e1e1e6;
+      text-align: center;
+    }
+    .notes ol {
+      margin: 0 0 12px;
+      padding-left: 1.35em;
+    }
+    .notes li { margin-bottom: 6px; }
+    .notes .howto-section {
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid #2a2a30;
+    }
+    .notes .howto-section strong.label {
+      color: #c4c4d0;
+      display: block;
+      margin-bottom: 4px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .notes p.hint {
+      margin: 8px 0 0;
+      font-size: 12px;
+      color: #7c7c8a;
+      text-align: center;
+    }
+    code {
+      background: #202024;
+      padding: 1px 5px;
+      border-radius: 3px;
+      color: #c4c4d0;
+    }
+    #status {
+      margin-top: 4px;
+      font-size: 11px;
+      color: #5a5a66;
+      font-family: ui-monospace, Consolas, monospace;
+    }
+    /* Site iframe: tighter chrome, hide docs */
+    body.embed {
+      padding: 8px;
+      min-height: 0;
+    }
+    body.embed h1,
+    body.embed .sub,
+    body.embed .legend,
+    body.embed .notes {
+      display: none;
+    }
+    body.embed .controls {
+      width: 100%;
+      max-width: none;
+    }
+    body.embed .stage {
+      width: 100%;
+      max-width: none;
+    }
+    body.embed .stage canvas {
+      width: 100%;
+      height: auto;
+    }
+  </style>
+</head>
+<body>
+  <script>
+    // ?embed=1 — used by soundemote home page iframe
+    if (/(?:^|[?&])embed=1(?:&|$)/.test(location.search)) {
+      document.body.classList.add("embed");
+    }
+  </script>
+  <h1>Bezier controls</h1>
+  <p class="sub">
+    Custom control surface: purples shape the curve, pinks sit on it, lime handles set tension.
+    Hover the graph or panel to show dots.
+  </p>
+
+  <div class="controls" id="controlsPanel">
+    <div class="controls-row">
+      <div class="ctrl-group">
+        <div class="ctrl-group-title">View</div>
+        <div class="fields row">
+          <label class="checkbox">
+            <input type="checkbox" id="hidePink">
+            Hide pinks
+          </label>
+          <label class="checkbox">
+            <input type="checkbox" id="lockEndY">
+            Lock start / end Y
+          </label>
+          <label class="checkbox">
+            <input type="checkbox" id="snapToGrid">
+            Snap to grid
+          </label>
+        </div>
+      </div>
+      <div class="ctrl-group">
+        <div class="ctrl-group-title">Grid</div>
+        <div class="fields row">
+          <label class="field" title="Double-click to type · drag to scrub">
+            Div X
+            <input type="text" class="scrub-field" id="gridDivX" value="4" readonly inputmode="numeric" spellcheck="false">
+          </label>
+          <label class="field" title="Double-click to type · drag to scrub">
+            Div Y
+            <input type="text" class="scrub-field" id="gridDivY" value="4" readonly inputmode="numeric" spellcheck="false">
+          </label>
+        </div>
+      </div>
+      <div class="ctrl-group actions">
+        <div class="ctrl-group-title">Actions</div>
+        <div class="actions-btns">
+          <button type="button" class="btn secondary" id="copySettingsBtn" title="Copy full curve JSON to clipboard">Copy settings</button>
+          <button type="button" class="btn secondary" id="pasteSettingsBtn" title="Paste curve JSON from clipboard">Paste settings</button>
+          <button type="button" class="btn secondary" id="copyPngBtn" title="Copy graph image to clipboard">Copy PNG</button>
+          <button type="button" class="btn" id="smoothBtn" title="Zero global/local pull &amp; blend">Smooth</button>
+        </div>
+      </div>
+    </div>
+    <div class="controls-row">
+      <div class="ctrl-group">
+        <div class="ctrl-group-title">Push-pull <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#5a5a66">(purple · ctrl+click → 0)</span></div>
+        <div class="fields">
+          <label class="slider">
+            <span class="lbl">Global</span>
+            <input type="range" id="pullSlider" min="-1" max="1" step="0.01" value="0" title="Ctrl+click → 0">
+            <span class="val" id="pullValue">0.00</span>
+          </label>
+          <label class="slider" id="localPullLabel">
+            <span class="lbl">Local</span>
+            <input type="range" id="localPullSlider" min="-1" max="1" step="0.01" value="0" title="Ctrl+click → 0 · select a purple">
+            <span class="val" id="localPullValue">—</span>
+          </label>
+          <label class="slider" id="localRotLabel">
+            <span class="lbl">Rotation</span>
+            <input type="range" id="localRotSlider" min="-90" max="90" step="1" value="0" title="Ctrl+click → 0 · select a purple">
+            <span class="val" id="localRotValue">—</span>
+          </label>
+        </div>
+      </div>
+      <div class="ctrl-group">
+        <div class="ctrl-group-title">Pass-through blend <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#5a5a66">(pink · ctrl+click → 0)</span></div>
+        <div class="fields">
+          <label class="slider">
+            <span class="lbl">Global</span>
+            <input type="range" id="blendSlider" min="-1" max="1" step="0.01" value="0" title="Ctrl+click → 0">
+            <span class="val" id="blendValue">0.00</span>
+          </label>
+          <label class="slider">
+            <span class="lbl">Local</span>
+            <input type="range" id="localBlendSlider" min="-1" max="1" step="0.01" value="0" title="Ctrl+click → 0 · select a pink">
+            <span class="val" id="localBlendValue">—</span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="presets-row" id="presetsPanel">
+      <span class="presets-title">Presets</span>
+      <button type="button" class="btn secondary" id="presetCorner">3-pt corner</button>
+      <button type="button" class="btn secondary" id="presetAdsr">ADSR</button>
+      <button type="button" class="btn secondary" id="presetTriangle">Triangle</button>
+    </div>
+    <canvas id="curveCanvas" width="720" height="420"></canvas>
+  </div>
+  <div id="status">ready</div>
+
+  <div class="legend">
+    <span><i class="swatch curve"></i> Curve</span>
+    <span><i class="swatch startEdge"></i> Start</span>
+    <span><i class="swatch endEdge"></i> End</span>
+    <span><i class="swatch purple"></i> Purple</span>
+    <span><i class="swatch pass"></i> Pink (on-curve)</span>
+    <span><i class="swatch ctrl"></i> Lime handle</span>
+    <span><i class="swatch tminus"></i> Tension in</span>
+    <span><i class="swatch tplus"></i> Tension out</span>
+  </div>
+
+  <div class="notes">
+    <h2>How it works</h2>
+    <ol>
+      <li>
+        The graph is a chain of cubics:
+        <code>cubic(pass → lime− → lime+ → next pass)</code>.
+        The blue line is that path as Y vs X.
+      </li>
+      <li>
+        <strong style="color:#c084fc">Purples</strong> are the joints that own each segment.
+        Drag them to move the joint. Purples and pinks snap to the grid when snap is on.
+        <strong style="color:#22c55e">Start</strong> and <strong style="color:#ef4444">end</strong>
+        are the same kind of joint, but locked to the left and right edges (Y free).
+      </li>
+      <li>
+        <strong style="color:#9bde6a">Lime handles</strong> (G− / G+) sit opposite through their purple.
+        Drag a lime to rotate the pair and set how far it spreads
+        (<em>push-pull</em>: 0 = stacked on purple; negative = soft/round; positive = sides swapped (sharper).
+      </li>
+      <li>
+        <strong style="color:#ff79c6">Pinks</strong> are on-curve pass-throughs between purples.
+        Drag a pink along the green corridor to blend left/right.
+        Pinks win clicks when stacked on other dots.
+      </li>
+      <li>
+        <strong style="color:#fb923c">Orange</strong> /
+        <strong style="color:#ef4444">red diamonds</strong> are the actual cubic tension points
+        (same places as the limes after finalize). Useful to see what the math is using.
+      </li>
+    </ol>
+
+    <div class="howto-section">
+      <strong class="label">Edit the shape</strong>
+      Drag purple / start / end · drag lime for angle &amp; push-pull · drag pink for blend ·
+      double-click empty to split &amp; add a purple · double-click a free purple or pink to remove
+      (start/end stay).
+    </div>
+    <div class="howto-section">
+      <strong class="label">Select &amp; move many</strong>
+      Drag empty for marquee · Shift-click to toggle · drag any selected when 2+ are selected
+      for a group move (rules still clamp).
+    </div>
+    <div class="howto-section">
+      <strong class="label">Panel</strong>
+      Select a purple for local push-pull &amp; rotation · select a pink for local blend ·
+      Ctrl-click any slider to zero · Smooth zeros all pull/blend · Snap to grid (purples + pinks) ·
+      grid divisions: drag to scrub, double-click to type · Copy/Paste settings (JSON) · Copy PNG
+      (curve only).
+    </div>
+    <p class="hint">
+      Dots show while the pointer is over the graph or the control panels.
+    </p>
+  </div>
+
+  <script>
+(function () {
+  "use strict";
+
+  const canvas = document.getElementById("curveCanvas");
+  const ctx = canvas.getContext("2d");
+  const hidePinkEl = document.getElementById("hidePink");
+  const lockEndYEl = document.getElementById("lockEndY");
+  const snapToGridEl = document.getElementById("snapToGrid");
+  const gridDivXEl = document.getElementById("gridDivX");
+  const gridDivYEl = document.getElementById("gridDivY");
+  const pullSlider = document.getElementById("pullSlider");
+  const pullValue = document.getElementById("pullValue");
+  const localPullSlider = document.getElementById("localPullSlider");
+  const localPullValue = document.getElementById("localPullValue");
+  const localRotSlider = document.getElementById("localRotSlider");
+  const localRotValue = document.getElementById("localRotValue");
+  const blendSlider = document.getElementById("blendSlider");
+  const blendValue = document.getElementById("blendValue");
+  const localBlendSlider = document.getElementById("localBlendSlider");
+  const localBlendValue = document.getElementById("localBlendValue");
+  const statusEl = document.getElementById("status");
+
+  // Fixed behavior (no UI toggles)
+  const MAX_ORBIT = Math.PI / 2; // ±90° from world +X
+  const WORLD_ANGLE_REF = 0;
+  const PULL_RANGE = 1;
+
+  /**
+   * pass[i]     — on-curve points. pass[0]/joint[0], pass[last]←joint[last]
+   *               (edge endpoints; not drawn). Interior mids are pink.
+   * joint[i]    — purple for segment i (between pass[i] and pass[i+1]).
+   *               joint[0] is always edge start (x=0, green); joint[last]
+   *               is always edge end (x=1, red). Same greens / push-pull /
+   *               rotation as interior purples — only X is locked.
+   * offset[i]   — half-vector at full |push-pull|=1
+   *               G+ = purple + offset * s
+   *               G- = purple - offset * s
+   *               s = |push-pull|
+   */
+  let nextId = 1;
+  let pass = [];
+  let joint = []; // purple { id, x, y }
+  let offset = []; // { x, y } half-offset at s=1
+  let localPull = []; // per-joint local push-pull ∈ [−1, +1]
+
+  let drag = null;
+  // Multi-select: "j:<jointId>" | "p:<passId>" | "g:<jointId>:minus|plus"
+  let selection = new Set();
+  let selectedPassId = null;
+  let selectedJoint = null; // index of purple selected for local push-pull
+  let canvasHover = false; // pointer over curve canvas
+  let panelHover = false; // pointer over control panel (sliders etc.)
+
+  const HIT = 12;
+  const GREEN_EPS = 0.02; // below this |pull|, greens stacked — don't hit them
+
+  function clamp(v, a, b) {
+    return Math.max(a, Math.min(b, v));
+  }
+
+  function angleDelta(from, to) {
+    return Math.atan2(Math.sin(to - from), Math.cos(to - from));
+  }
+
+  /** Grid lines / snap cells along an axis (integer ≥ 1). */
+  function gridDivisions(el) {
+    const n = Math.round(parseFloat(el.value, 10));
+    if (!isFinite(n) || n < 1) return 1;
+    return Math.min(64, n);
+  }
+
+  function snapX(x) {
+    if (!snapToGridEl.checked) return x;
+    const n = gridDivisions(gridDivXEl);
+    return clamp(Math.round(x * n) / n, 0, 1);
+  }
+
+  function snapY(y) {
+    if (!snapToGridEl.checked) return y;
+    const n = gridDivisions(gridDivYEl);
+    return clamp(Math.round(y * n) / n, 0, 1);
+  }
+
+  function maybeSnap(x, y) {
+    if (!snapToGridEl.checked) return { x: x, y: y };
+    return { x: snapX(x), y: snapY(y) };
+  }
+
+  /**
+   * Readonly number field: drag horizontally to scrub; double-click to type.
+   * Does not re-snap existing dots when the value changes (only live moves snap).
+   */
+  function bindScrubField(el, opts) {
+    const min = opts.min != null ? opts.min : 1;
+    const max = opts.max != null ? opts.max : 64;
+    const step = opts.step != null ? opts.step : 1;
+    let scrubbing = false;
+    let startX = 0;
+    let startVal = 0;
+
+    function parseVal() {
+      const n = Math.round(parseFloat(el.value, 10));
+      if (!isFinite(n)) return min;
+      return clamp(n, min, max);
+    }
+
+    function commitDisplay() {
+      el.value = String(parseVal());
+      el.classList.remove("editing");
+      el.readOnly = true;
+      el.blur();
+      if (opts.onChange) opts.onChange(parseVal());
+    }
+
+    el.addEventListener("dblclick", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      el.readOnly = false;
+      el.classList.add("editing");
+      el.select();
+    });
+
+    el.addEventListener("keydown", function (e) {
+      if (!el.classList.contains("editing")) return;
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commitDisplay();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        el.value = String(clamp(startVal || parseVal(), min, max));
+        el.classList.remove("editing");
+        el.readOnly = true;
+        el.blur();
+      }
+    });
+
+    el.addEventListener("blur", function () {
+      if (el.classList.contains("editing")) commitDisplay();
+    });
+
+    el.addEventListener("pointerdown", function (e) {
+      if (el.classList.contains("editing")) return;
+      if (e.button !== 0) return;
+      e.preventDefault();
+      scrubbing = true;
+      startX = e.clientX;
+      startVal = parseVal();
+      el.setPointerCapture(e.pointerId);
+    });
+
+    el.addEventListener("pointermove", function (e) {
+      if (!scrubbing || el.classList.contains("editing")) return;
+      const dx = e.clientX - startX;
+      // ~8px per step
+      const next = clamp(startVal + Math.round(dx / 8) * step, min, max);
+      el.value = String(next);
+      if (opts.onChange) opts.onChange(next);
+    });
+
+    function endScrub(e) {
+      if (!scrubbing) return;
+      scrubbing = false;
+      try {
+        el.releasePointerCapture(e.pointerId);
+      } catch (_) {}
+      commitDisplay();
+    }
+    el.addEventListener("pointerup", endScrub);
+    el.addEventListener("pointercancel", endScrub);
+  }
+
+  /** Clamp angle into world [−90°, +90°] from +X. */
+  function clampOrbitAngle(angle) {
+    const d = angleDelta(WORLD_ANGLE_REF, angle);
+    return WORLD_ANGLE_REF + clamp(d, -MAX_ORBIT, MAX_ORBIT);
+  }
+
+  /** Keep length; direction clamped ±90° from +X. G⁻ opposite through purple. */
+  function clampOffset(o) {
+    const len = Math.hypot(o.x, o.y);
+    if (len < 1e-12) return { x: 0, y: 0 };
+    const ang = clampOrbitAngle(Math.atan2(o.y, o.x));
+    return { x: Math.cos(ang) * len, y: Math.sin(ang) * len };
+  }
+
+  function setOffset(i, ox, oy) {
+    const c = clampOffset({ x: ox, y: oy });
+    offset[i].x = c.x;
+    offset[i].y = c.y;
+  }
+
+  function makePass(x, y, role) {
+    return {
+      id: nextId++,
+      role: role,
+      x: x,
+      y: y,
+      localBlend: 0, // mid only; combined with global pass-through blend
+    };
+  }
+
+  function makeJoint(x, y) {
+    return {
+      id: nextId++,
+      x: clamp(x, 0, 1),
+      y: clamp(y, 0, 1),
+      edge: null, // "start" | "end" | null — set by markEdgeJoints
+    };
+  }
+
+  /** First joint = start edge (x=0), last = end edge (x=1). */
+  function markEdgeJoints() {
+    for (let i = 0; i < joint.length; i++) {
+      joint[i].edge = null;
+    }
+    if (!joint.length) return;
+    joint[0].edge = "start";
+    joint[0].x = 0;
+    if (joint.length > 1) {
+      joint[joint.length - 1].edge = "end";
+      joint[joint.length - 1].x = 1;
+    }
+  }
+
+  /** Enforce joint[i].x ordered left→right; edges hard-locked to box sides. */
+  function clampJointX(i, x) {
+    if (!joint[i]) return clamp(x, 0, 1);
+    if (joint[i].edge === "start") return 0;
+    if (joint[i].edge === "end") return 1;
+    let xMin = 0;
+    let xMax = 1;
+    if (i > 0) xMin = joint[i - 1].x;
+    if (i < joint.length - 1) xMax = joint[i + 1].x;
+    if (xMin > xMax) {
+      const t = xMin;
+      xMin = xMax;
+      xMax = t;
+    }
+    return clamp(x, xMin, xMax);
+  }
+
+  function isEdgeJoint(i) {
+    return !!(joint[i] && joint[i].edge);
+  }
+
+  function passById(id) {
+    for (let i = 0; i < pass.length; i++) {
+      if (pass[i].id === id) return pass[i];
+    }
+    return null;
+  }
+
+  function indexOfPassId(id) {
+    for (let i = 0; i < pass.length; i++) {
+      if (pass[i].id === id) return i;
+    }
+    return -1;
+  }
+
+  function jointIndexById(id) {
+    for (let i = 0; i < joint.length; i++) {
+      if (joint[i].id === id) return i;
+    }
+    return -1;
+  }
+
+  // ── push-pull → two greens from purple ────────────────
+
+  function globalPullAmount() {
+    return clamp(parseFloat(pullSlider.value, 10) || 0, -PULL_RANGE, PULL_RANGE);
+  }
+
+  /**
+   * Per-joint combined amount, always in [−1, +1]:
+   *   combined = clamp(global + local[i], −1, +1)
+   */
+  function combinedPull(i) {
+    const loc = i >= 0 && i < localPull.length ? localPull[i] : 0;
+    return clamp(globalPullAmount() + loc, -1, 1);
+  }
+
+  function pullSpread(i) {
+    return Math.abs(combinedPull(i));
+  }
+
+  function pullFlip(i) {
+    return combinedPull(i) > 0 ? -1 : 1;
+  }
+
+  function offsetAngleDeg(i) {
+    if (i < 0 || i >= offset.length) return 0;
+    return (Math.atan2(offset[i].y, offset[i].x) * 180) / Math.PI;
+  }
+
+  function setOffsetAngleDeg(i, deg) {
+    if (i < 0 || i >= offset.length) return;
+    let L = Math.hypot(offset[i].x, offset[i].y);
+    if (L < 1e-6) L = 0.12;
+    const ang = clampOrbitAngle((deg * Math.PI) / 180);
+    setOffset(i, Math.cos(ang) * L, Math.sin(ang) * L);
+  }
+
+  function syncLocalPullSlider() {
+    if (
+      selectedJoint == null ||
+      selectedJoint < 0 ||
+      selectedJoint >= localPull.length
+    ) {
+      localPullSlider.disabled = true;
+      localPullValue.textContent = "—";
+      localRotSlider.disabled = true;
+      localRotValue.textContent = "—";
+      return;
+    }
+    localPullSlider.disabled = false;
+    const v = localPull[selectedJoint];
+    localPullSlider.value = String(v);
+    localPullValue.textContent = (v >= 0 ? "+" : "") + v.toFixed(2);
+
+    localRotSlider.disabled = false;
+    const d = clamp(offsetAngleDeg(selectedJoint), -90, 90);
+    localRotSlider.value = String(Math.round(d));
+    localRotValue.textContent = Math.round(d) + "°";
+  }
+
+  function setLocalPull(i, v) {
+    if (i < 0 || i >= localPull.length) return;
+    localPull[i] = clamp(v, -1, 1);
+    if (selectedJoint === i) syncLocalPullSlider();
+  }
+
+  /**
+   * Final green processing:
+   *  1) box clamp x,y ∈ [0,1]
+   *  2) horizontal pass-through clamp — greens may not cross past the pink/blue
+   *     they connect to on the control polygon (prevents G→P→G corners):
+   *       polygon … Pᵢ — G⁻ — G⁺ — Pᵢ₊₁ …
+   *       G⁻.x ≥ Pᵢ.x ,  G⁺.x ≤ Pᵢ₊₁.x
+   */
+  function finalizeGreen(i, gx, gy, side) {
+    let x = clamp(gx, 0, 1);
+    let y = clamp(gy, 0, 1);
+    if (i >= 0 && i < pass.length - 1) {
+      if (side === "minus") {
+        x = Math.max(x, pass[i].x);
+      } else {
+        x = Math.min(x, pass[i + 1].x);
+      }
+      x = clamp(x, 0, 1);
+    }
+    return { x: x, y: y };
+  }
+
+  function greenPair(i) {
+    const p = joint[i];
+    const o = offset[i];
+    const s = pullSpread(i);
+    const f = pullFlip(i);
+    return {
+      minus: finalizeGreen(i, p.x - f * o.x * s, p.y - f * o.y * s, "minus"),
+      plus: finalizeGreen(i, p.x + f * o.x * s, p.y + f * o.y * s, "plus"),
+    };
+  }
+
+  function greenMinus(i) {
+    return greenPair(i).minus;
+  }
+
+  function greenPlus(i) {
+    return greenPair(i).plus;
+  }
+
+  /** All green pairs for the current frame (avoid recomputing). */
+  function allGreenPairs() {
+    const out = [];
+    for (let i = 0; i < joint.length; i++) out.push(greenPair(i));
+    return out;
+  }
+
+  /** Place lime handles from a world target (shared by solo + group drag). */
+  function applyGreenFromWorld(i, side, wx, wy) {
+    if (i < 0 || i >= joint.length) return;
+    const px = joint[i].x;
+    const py = joint[i].y;
+    let L = Math.hypot(offset[i].x, offset[i].y);
+    if (L < 1e-6) L = 0.12;
+    let vx = wx - px;
+    let vy = wy - py;
+    if (side === "minus") {
+      vx = -vx;
+      vy = -vy;
+    }
+    const dist = Math.hypot(vx, vy);
+    const sharp = combinedPull(i) > 0;
+    const f = sharp ? -1 : 1;
+    let ang = Math.atan2(vy, vx);
+    if (f < 0) ang += Math.PI;
+    ang = clampOrbitAngle(ang);
+    setOffset(i, Math.cos(ang) * L, Math.sin(ang) * L);
+    let newS = dist / L;
+    if (newS < GREEN_EPS) newS = 0;
+    newS = clamp(newS, 0, 1);
+    setLocalPull(i, (sharp ? newS : -newS) - globalPullAmount());
+  }
+
+  /** Move purple joint to world pos (snap optional, edge X locked). */
+  function movePurpleTo(i, wx, wy, doSnap) {
+    if (i < 0 || i >= joint.length) return;
+    let mx = wx;
+    let my = wy;
+    if (doSnap) {
+      const s = maybeSnap(mx, my);
+      mx = s.x;
+      my = s.y;
+    }
+    if (isEdgeJoint(i)) {
+      joint[i].x = joint[i].edge === "start" ? 0 : 1;
+      joint[i].y = clamp(my, 0, 1);
+      if (lockEndYEl.checked) {
+        joint[0].y = joint[i].y;
+        joint[joint.length - 1].y = joint[i].y;
+      }
+    } else {
+      joint[i].x = clampJointX(i, mx);
+      joint[i].y = clamp(my, 0, 1);
+    }
+  }
+
+  // ── pass-through blend (global + per-mid local) ───────
+
+  function globalPassBlend() {
+    return clamp(parseFloat(blendSlider.value, 10) || 0, -1, 1);
+  }
+
+  /** combined = clamp(global + local, −1, +1) for mid at passIndex */
+  function combinedPassBlend(passIndex) {
+    const p = pass[passIndex];
+    if (!p || p.role !== "mid") return globalPassBlend();
+    return clamp(globalPassBlend() + (p.localBlend || 0), -1, 1);
+  }
+
+  /** −1 → t0, 0 → t0.5, +1 → t1 along left→right green of neighboring segments. */
+  function passBlendToT(b) {
+    return 0.5 + 0.5 * clamp(b, -1, 1);
+  }
+
+  /** Inverse: geometric t∈[0,1] → blend ∈[−1,+1]. */
+  function tToPassBlend(t) {
+    return clamp(2 * clamp(t, 0, 1) - 1, -1, 1);
+  }
+
+  /** Neighbor greens for mid pass index i (1..n-2): G+ of prev seg, G- of next seg. */
+  function midGreenPair(passIndex) {
+    if (passIndex <= 0 || passIndex >= pass.length - 1) return null;
+    return {
+      gL: greenPair(passIndex - 1).plus,
+      gR: greenPair(passIndex).minus,
+    };
+  }
+
+  function projectTOnSegment(wx, wy, gL, gR) {
+    const dx = gR.x - gL.x;
+    const dy = gR.y - gL.y;
+    const len2 = dx * dx + dy * dy;
+    if (len2 < 1e-14) return 0.5;
+    const t = ((wx - gL.x) * dx + (wy - gL.y) * dy) / len2;
+    return clamp(t, 0, 1);
+  }
+
+  /**
+   * Dragging a pink mid → update that mid's local blend so combined matches
+   * the drag (global stays put).
+   */
+  function setBlendFromPinkDrag(passIndex, wx, wy) {
+    const pair = midGreenPair(passIndex);
+    if (!pair) return;
+    const p = pass[passIndex];
+    if (!p || p.role !== "mid") return;
+    const t = projectTOnSegment(wx, wy, pair.gL, pair.gR);
+    const desired = tToPassBlend(t);
+    p.localBlend = clamp(desired - globalPassBlend(), -1, 1);
+    if (selectedPassId === p.id) syncLocalBlendSlider();
+  }
+
+  function selectedMidPass() {
+    if (selectedPassId == null) return null;
+    const p = passById(selectedPassId);
+    return p && p.role === "mid" ? p : null;
+  }
+
+  function syncLocalBlendSlider() {
+    const p = selectedMidPass();
+    if (!p) {
+      localBlendSlider.disabled = true;
+      localBlendValue.textContent = "—";
+      return;
+    }
+    localBlendSlider.disabled = false;
+    const v = p.localBlend || 0;
+    localBlendSlider.value = String(v);
+    localBlendValue.textContent = (v >= 0 ? "+" : "") + v.toFixed(2);
+  }
+
+  function updatePassFromControls() {
+    if (pass.length < 2 || joint.length !== pass.length - 1) return;
+    markEdgeJoints();
+
+    // Curve endpoints = edge purples (no separate start/end dots)
+    const startJ = joint[0];
+    const endJ = joint[joint.length - 1];
+    if (lockEndYEl.checked && startJ && endJ) {
+      endJ.y = startJ.y;
+    }
+    if (startJ) {
+      startJ.x = 0;
+      startJ.y = clamp(startJ.y, 0, 1);
+      pass[0].x = 0;
+      pass[0].y = startJ.y;
+      pass[0].role = "start";
+    }
+    if (endJ) {
+      endJ.x = 1;
+      endJ.y = clamp(endJ.y, 0, 1);
+      pass[pass.length - 1].x = 1;
+      pass[pass.length - 1].y = endJ.y;
+      pass[pass.length - 1].role = "end";
+    }
+
+    // Sequential: later mids may depend on earlier mid positions via finalizeGreen
+    for (let i = 1; i < pass.length - 1; i++) {
+      pass[i].role = "mid";
+      const t = passBlendToT(combinedPassBlend(i));
+      const gL = greenPair(i - 1).plus;
+      const gR = greenPair(i).minus;
+      pass[i].x = clamp(gL.x + (gR.x - gL.x) * t, 0.001, 0.999);
+      pass[i].y = clamp(gL.y + (gR.y - gL.y) * t, 0, 1);
+    }
+  }
+
+  // ── curve: cubic(P, G-, G+, Q) ────────────────────────
+
+  function cubicPoint(p0, p1, p2, p3, t) {
+    const u = 1 - t;
+    const tt = t * t;
+    const uu = u * u;
+    return {
+      x: uu * u * p0.x + 3 * uu * t * p1.x + 3 * u * tt * p2.x + tt * t * p3.x,
+      y: uu * u * p0.y + 3 * uu * t * p1.y + 3 * u * tt * p2.y + tt * t * p3.y,
+    };
+  }
+
+  function densifyCurve(steps, greensCache) {
+    const out = [];
+    const n = steps || 32;
+    const greens = greensCache || allGreenPairs();
+    for (let i = 0; i < joint.length; i++) {
+      const p0 = pass[i];
+      const p3 = pass[i + 1];
+      const g = greens[i];
+      for (let s = 0; s <= n; s++) {
+        if (out.length && s === 0) continue;
+        out.push(cubicPoint(p0, g.minus, g.plus, p3, s / n));
+      }
+    }
+    return out;
+  }
+
+  function lineYAtX(x, a, b) {
+    const dx = b.x - a.x;
+    if (Math.abs(dx) < 1e-12) return a.y;
+    return a.y + (b.y - a.y) * ((x - a.x) / dx);
+  }
+
+  /**
+   * Bake y-for-x across canvas width in one pass over densify edges.
+   * Path-order first-hit matches previous sampleCurveYFromDense behavior.
+   */
+  function bakeCurveY(dense, width) {
+    const w = width | 0;
+    const ys = new Float64Array(w + 1);
+    const has = new Uint8Array(w + 1);
+    let fallbackY = dense[0] ? dense[0].y : 0.5;
+
+    for (let i = 1; i < dense.length; i++) {
+      const a = dense[i - 1];
+      const b = dense[i];
+      const loX = Math.min(a.x, b.x);
+      const hiX = Math.max(a.x, b.x);
+      if (hiX - loX < 1e-14) continue;
+      let px0 = Math.floor(loX * w);
+      let px1 = Math.ceil(hiX * w);
+      if (px0 < 0) px0 = 0;
+      if (px1 > w) px1 = w;
+      for (let px = px0; px <= px1; px++) {
+        if (has[px]) continue;
+        const x = px / w;
+        if (x < loX - 1e-12 || x > hiX + 1e-12) continue;
+        ys[px] = clamp(lineYAtX(x, a, b), 0, 1);
+        has[px] = 1;
+      }
+    }
+
+    // Fill any gaps (vertical edges / holes) from nearest set sample
+    let last = clamp(fallbackY, 0, 1);
+    for (let px = 0; px <= w; px++) {
+      if (has[px]) last = ys[px];
+      else ys[px] = last;
+    }
+    return ys;
+  }
+
+  // ── coords / hit ──
+
+  function toCanvas(p) {
+    return { x: p.x * canvas.width, y: (1 - p.y) * canvas.height };
+  }
+
+  function fromEvent(e) {
+    const rect = canvas.getBoundingClientRect();
+    const sx = canvas.width / rect.width;
+    const sy = canvas.height / rect.height;
+    const cx = (e.clientX - rect.left) * sx;
+    const cy = (e.clientY - rect.top) * sy;
+    return {
+      x: cx / canvas.width,
+      y: 1 - cy / canvas.height,
+    };
+  }
+
+  function hitTest(mouse) {
+    const m = toCanvas(mouse);
+    let best = null;
+    let bestD = HIT;
+
+    // 1) Pink pass-throughs win over every other dot when in range
+    for (let i = 0; i < pass.length; i++) {
+      const p = pass[i];
+      if (p.role !== "mid") continue;
+      if (hidePinkEl.checked) continue;
+      const c = toCanvas(p);
+      const d = Math.hypot(c.x - m.x, c.y - m.y);
+      if (d <= bestD) {
+        bestD = d;
+        best = { kind: "pass", index: i, id: p.id };
+      }
+    }
+    if (best) return best;
+
+    // 2) Purples beat greens: if any purple is in range, pick it (ignore greens)
+    bestD = HIT;
+    best = null;
+    for (let i = 0; i < joint.length; i++) {
+      const c = toCanvas(joint[i]);
+      const d = Math.hypot(c.x - m.x, c.y - m.y);
+      if (d <= bestD) {
+        bestD = d;
+        best = { kind: "purple", index: i, jointId: joint[i].id };
+      }
+    }
+    if (best) return best;
+
+    // 3) Lime greens only when no purple was hit
+    bestD = HIT;
+    for (let i = 0; i < joint.length; i++) {
+      if (pullSpread(i) <= GREEN_EPS) continue;
+      const g = greenPair(i);
+      const sides = [
+        { side: "minus", p: g.minus },
+        { side: "plus", p: g.plus },
+      ];
+      for (let k = 0; k < 2; k++) {
+        const c = toCanvas(sides[k].p);
+        const d = Math.hypot(c.x - m.x, c.y - m.y);
+        if (d <= bestD) {
+          bestD = d;
+          best = {
+            kind: "green",
+            index: i,
+            side: sides[k].side,
+            jointId: joint[i].id,
+          };
+        }
+      }
+    }
+
+    return best;
+  }
+
+  // ── marquee / multi-select ────────────────────────────
+
+  function selKeyFromHit(hit) {
+    if (!hit) return null;
+    if (hit.kind === "purple") return "j:" + hit.jointId;
+    if (hit.kind === "green") return "g:" + hit.jointId + ":" + hit.side;
+    if (hit.kind === "pass") return "p:" + hit.id;
+    return null;
+  }
+
+  function clearSelection() {
+    selection = new Set();
+  }
+
+  function setSoloSelection(key) {
+    selection = new Set();
+    if (key) selection.add(key);
+  }
+
+  function toggleSelection(key) {
+    if (!key) return;
+    if (selection.has(key)) selection.delete(key);
+    else selection.add(key);
+  }
+
+  function pruneSelection() {
+    const valid = new Set();
+    for (let i = 0; i < joint.length; i++) {
+      valid.add("j:" + joint[i].id);
+      valid.add("g:" + joint[i].id + ":minus");
+      valid.add("g:" + joint[i].id + ":plus");
+    }
+    for (let i = 0; i < pass.length; i++) {
+      valid.add("p:" + pass[i].id);
+    }
+    const next = new Set();
+    selection.forEach(function (k) {
+      if (valid.has(k)) next.add(k);
+    });
+    selection = next;
+  }
+
+  function selectInRect(x0, y0, x1, y1) {
+    const loX = Math.min(x0, x1);
+    const hiX = Math.max(x0, x1);
+    const loY = Math.min(y0, y1);
+    const hiY = Math.max(y0, y1);
+    selection = new Set();
+    for (let i = 0; i < joint.length; i++) {
+      const j = joint[i];
+      if (j.x >= loX && j.x <= hiX && j.y >= loY && j.y <= hiY) {
+        selection.add("j:" + j.id);
+      }
+      if (pullSpread(i) > GREEN_EPS) {
+        const g = greenPair(i);
+        if (
+          g.minus.x >= loX &&
+          g.minus.x <= hiX &&
+          g.minus.y >= loY &&
+          g.minus.y <= hiY
+        ) {
+          selection.add("g:" + j.id + ":minus");
+        }
+        if (
+          g.plus.x >= loX &&
+          g.plus.x <= hiX &&
+          g.plus.y >= loY &&
+          g.plus.y <= hiY
+        ) {
+          selection.add("g:" + j.id + ":plus");
+        }
+      }
+    }
+    for (let i = 0; i < pass.length; i++) {
+      const p = pass[i];
+      // start/end pass points are not independent dots (edge purples own them)
+      if (p.role !== "mid") continue;
+      if (p.x >= loX && p.x <= hiX && p.y >= loY && p.y <= hiY) {
+        selection.add("p:" + p.id);
+      }
+    }
+  }
+
+  function drawSelRing(c, r) {
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+    ctx.strokeStyle = "#ffe066";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  /**
+   * Group move: apply the same world delta first, then each item's normal
+   * rules/clamps win (joint order, box, orbit limit, start/end X pin,
+   * mid on green corridor, green finalize, etc.).
+   */
+  function groupTranslate(dx, dy) {
+    if (!selection.size) return;
+    if (Math.abs(dx) < 1e-15 && Math.abs(dy) < 1e-15) return;
+
+    const moveJoint = new Set();
+    const moveGreen = []; // { index, side }
+    const movePass = []; // pass index
+
+    selection.forEach(function (key) {
+      const parts = key.split(":");
+      if (parts[0] === "j") {
+        const idx = jointIndexById(Number(parts[1]));
+        if (idx >= 0) moveJoint.add(idx);
+      } else if (parts[0] === "g") {
+        const idx = jointIndexById(Number(parts[1]));
+        const side = parts[2];
+        if (idx >= 0 && (side === "minus" || side === "plus")) {
+          moveGreen.push({ index: idx, side: side });
+        }
+      } else if (parts[0] === "p") {
+        const id = Number(parts[1]);
+        const pi = indexOfPassId(id);
+        if (pi >= 0) movePass.push(pi);
+      }
+    });
+
+    // 1) Ideal purple translate, then clamp (rules win)
+    //    Edge purples: Y only (X stays 0 / 1)
+    moveJoint.forEach(function (i) {
+      joint[i].y += dy;
+      if (!isEdgeJoint(i)) joint[i].x += dx;
+    });
+    for (let passN = 0; passN < 4; passN++) {
+      for (let i = 0; i < joint.length; i++) {
+        joint[i].x = clampJointX(i, joint[i].x);
+        joint[i].y = clamp(joint[i].y, 0, 1);
+      }
+    }
+    // Snap purples (start/end/free) — not lime greens
+    if (snapToGridEl.checked) {
+      moveJoint.forEach(function (i) {
+        if (isEdgeJoint(i)) {
+          joint[i].y = snapY(joint[i].y);
+        } else {
+          joint[i].x = snapX(joint[i].x);
+          joint[i].y = snapY(joint[i].y);
+          joint[i].x = clampJointX(i, joint[i].x);
+        }
+      });
+    }
+    markEdgeJoints();
+
+    // 2) Selected greens: never snap
+    for (let g = 0; g < moveGreen.length; g++) {
+      const i = moveGreen[g].index;
+      const side = moveGreen[g].side;
+      if (i < 0 || i >= joint.length) continue;
+      const cur = side === "minus" ? greenMinus(i) : greenPlus(i);
+      applyGreenFromWorld(i, side, cur.x + dx, cur.y + dy);
+    }
+
+    // 3) Pink mids — snap when enabled
+    for (let m = 0; m < movePass.length; m++) {
+      const pi = movePass[m];
+      const p = pass[pi];
+      if (!p || p.role !== "mid") continue;
+      const s = maybeSnap(p.x + dx, p.y + dy);
+      setBlendFromPinkDrag(pi, s.x, s.y);
+    }
+
+    updatePassFromControls();
+  }
+
+  // ── structure ──
+
+  /** Hand-tuned 3-pt corner from Copy settings (user preset). */
+  const PRESET_CORNER = {
+    v: 1,
+    kind: "bezier-controls",
+    pull: 0,
+    blend: 0,
+    lockEndY: false,
+    hidePink: false,
+    snapToGrid: false,
+    gridDivX: 8,
+    gridDivY: 8,
+    pass: [
+      { role: "start", x: 0, y: 1, localBlend: 0 },
+      { role: "mid", x: 0.001, y: 0.5, localBlend: 0 },
+      { role: "mid", x: 0.5, y: 0, localBlend: 0 },
+      { role: "end", x: 1, y: 0, localBlend: 0 },
+    ],
+    joint: [
+      { x: 0, y: 1 },
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+    ],
+    offset: [
+      { x: 0, y: 0 },
+      { x: 0.016391096372354835, y: -0.016391096372354808 },
+      { x: 8.831053657317262e-18, y: 0.14422205101855956 },
+    ],
+    localPull: [0, 0, 0],
+  };
+
+  /** Hand-tuned ADSR from Copy settings (user preset). */
+  const PRESET_ADSR = {
+    v: 1,
+    kind: "bezier-controls",
+    pull: 0,
+    blend: 0,
+    lockEndY: false,
+    hidePink: false,
+    snapToGrid: false,
+    gridDivX: 8,
+    gridDivY: 8,
+    pass: [
+      { role: "start", x: 0, y: 0, localBlend: 0 },
+      {
+        role: "mid",
+        x: 0.001,
+        y: 0.9160054818888161,
+        localBlend: 0.8320109637776323,
+      },
+      {
+        role: "mid",
+        x: 0.02942755044087461,
+        y: 0.9264311238978135,
+        localBlend: -0.7645795964730031,
+      },
+      { role: "mid", x: 0.5, y: 0.375, localBlend: 0 },
+      { role: "mid", x: 0.875, y: 0.1875, localBlend: 0 },
+      { role: "end", x: 1, y: 0, localBlend: 0 },
+    ],
+    joint: [
+      { x: 0, y: 0 },
+      { x: 0, y: 1 },
+      { x: 0.25, y: 0.375 },
+      { x: 0.75, y: 0.375 },
+      { x: 1, y: 0 },
+    ],
+    offset: [
+      { x: 0.004192460350956274, y: 0.06987433918260452 },
+      { x: 0.03512026628402922, y: -0.060552183248326244 },
+      { x: 9.615809742884127e-19, y: 0.01570380904858287 },
+      { x: 1.6126509310371622e-18, y: -0.026336588347921255 },
+      { x: 0.03601470287992687, y: -0.060024504799878094 },
+    ],
+    localPull: [0, 0, 0, 0, 0],
+  };
+
+  /** Hand-tuned triangle from Copy settings (user preset). */
+  const PRESET_TRIANGLE = {
+    v: 1,
+    kind: "bezier-controls",
+    pull: 0,
+    blend: 0,
+    lockEndY: true,
+    hidePink: false,
+    snapToGrid: false,
+    gridDivX: 8,
+    gridDivY: 8,
+    pass: [
+      { role: "start", x: 0, y: 0.5, localBlend: 0 },
+      {
+        role: "mid",
+        x: 0.2082931564682581,
+        y: 0.08341368706348379,
+        localBlend: 0.6663452517460648,
+      },
+      {
+        role: "mid",
+        x: 0.29855363285729175,
+        y: 0.09710726571458347,
+        localBlend: -0.6115709371416661,
+      },
+      {
+        role: "mid",
+        x: 0.7135027820018323,
+        y: 0.9075751096273911,
+        localBlend: 0.6691613472621116,
+      },
+      {
+        role: "mid",
+        x: 0.8035396903992494,
+        y: 0.892920619201501,
+        localBlend: -0.6091461294410807,
+      },
+      { role: "end", x: 1, y: 0.5, localBlend: 0 },
+    ],
+    joint: [
+      { x: 0, y: 0.5 },
+      { x: 0.25, y: 0 },
+      { x: 0.5, y: 0.5 },
+      { x: 0.7558204242532169, y: 0.9883591514935659 },
+      { x: 1, y: 0.5 },
+    ],
+    offset: [
+      { x: 0, y: 0 },
+      { x: 0.013671875000000002, y: -0.013671874999999998 },
+      { x: 0.029096103785167415, y: 0.05819220757033486 },
+      { x: 0.004157445895155044, y: -0.008314891790310086 },
+      { x: 8.831053657317262e-18, y: 0.14422205101855956 },
+    ],
+    localPull: [0, 0, 0, 0, 0],
+  };
+
+  function loadPreset(data) {
+    importState(JSON.parse(JSON.stringify(data)));
+  }
+
+  function ensureJoints() {
+    while (joint.length < pass.length - 1) {
+      const i = joint.length;
+      const a = pass[i];
+      const b = pass[i + 1];
+      const mx = (a.x + b.x) * 0.5;
+      const my = (a.y + b.y) * 0.5;
+      joint.push(makeJoint(mx, my));
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len = Math.hypot(dx, dy) || 1;
+      offset.push(
+        clampOffset({ x: (dx / len) * 0.1, y: (dy / len) * 0.1 + 0.05 })
+      );
+      // New joints start with limes stacked on the purple
+      localPull.push(clamp(-globalPullAmount(), -1, 1));
+    }
+    while (joint.length > pass.length - 1) {
+      joint.pop();
+      offset.pop();
+      localPull.pop();
+    }
+    markEdgeJoints();
+  }
+
+  function lerp2(a, b, t) {
+    return {
+      x: a.x + (b.x - a.x) * t,
+      y: a.y + (b.y - a.y) * t,
+    };
+  }
+
+  /**
+   * Fit purple + offset + localPull so greens match target G− / G+ as closely
+   * as the push-pull model allows (rules still clamp after).
+   */
+  function fitJointToControls(gm, gp) {
+    const j = makeJoint((gm.x + gp.x) * 0.5, (gm.y + gp.y) * 0.5);
+    const global = globalPullAmount();
+    // Prefer full spread, no flip (combined ≈ −1)
+    let loc = clamp(-1 - global, -1, 1);
+    let comb = clamp(global + loc, -1, 1);
+    if (Math.abs(comb) < 0.05) {
+      loc = clamp(1 - global, -1, 1);
+      comb = clamp(global + loc, -1, 1);
+    }
+    let s = Math.abs(comb);
+    let f = comb > 0 ? -1 : 1;
+    if (s < 1e-6) {
+      s = 1;
+      f = 1;
+      loc = clamp(-global, -1, 1);
+    }
+    // G− = p − f·o·s , G+ = p + f·o·s  →  o = (G+ − G−) / (2·f·s)
+    const ox = (gp.x - gm.x) / (2 * f * s);
+    const oy = (gp.y - gm.y) / (2 * f * s);
+    return {
+      joint: j,
+      offset: clampOffset({ x: ox, y: oy }),
+      localPull: loc,
+    };
+  }
+
+  /**
+   * Closest sample on the current cubic chain → segment index + t + point.
+   */
+  function closestOnCurve(wx, wy) {
+    let bestSeg = 0;
+    let bestT = 0.5;
+    let bestD = Infinity;
+    let bestPt = { x: wx, y: wy };
+    const n = 48;
+    for (let i = 0; i < joint.length; i++) {
+      const p0 = pass[i];
+      const p3 = pass[i + 1];
+      const g = greenPair(i);
+      for (let s = 0; s <= n; s++) {
+        const t = s / n;
+        const pt = cubicPoint(p0, g.minus, g.plus, p3, t);
+        const d = Math.hypot(pt.x - wx, pt.y - wy);
+        if (d < bestD) {
+          bestD = d;
+          bestSeg = i;
+          bestT = t;
+          bestPt = pt;
+        }
+      }
+    }
+    return { seg: bestSeg, t: bestT, pt: bestPt, dist: bestD };
+  }
+
+  /**
+   * Double-click empty: insert a purple by splitting the nearest cubic segment
+   * (de Casteljau) so the curve stays essentially the same.
+   * Click chooses *where along the curve* to split; pink mid lands on-curve;
+   * the two new purples are fitted to the split control polygons (not a raw
+   * spawn at the mouse, which used to rewrite the wrong joint and kink hard).
+   */
+  function addJointAt(mouse) {
+    const wx = clamp(mouse.x, 0.02, 0.98);
+    const wy = clamp(mouse.y, 0, 1);
+
+    if (pass.length < 2) {
+      pass = [makePass(0, wy, "start"), makePass(1, wy, "end")];
+      joint = [];
+      offset = [];
+      localPull = [];
+      ensureJoints();
+      if (joint.length) {
+        joint[0].x = clampJointX(0, wx);
+        joint[0].y = wy;
+        selectedJoint = 0;
+        setSoloSelection("j:" + joint[0].id);
+      }
+      updatePassFromControls();
+      syncLocalPullSlider();
+      return;
+    }
+
+    if (!joint.length) {
+      ensureJoints();
+    }
+
+    const hit = closestOnCurve(wx, wy);
+    // Keep away from endpoints so we don't create a zero-length segment
+    const t = clamp(hit.t, 0.08, 0.92);
+    const seg = hit.seg;
+
+    const p0 = { x: pass[seg].x, y: pass[seg].y };
+    const p3 = { x: pass[seg + 1].x, y: pass[seg + 1].y };
+    const p1 = greenMinus(seg);
+    const p2 = greenPlus(seg);
+
+    // de Casteljau split of cubic(p0,p1,p2,p3) at t
+    const p01 = lerp2(p0, p1, t);
+    const p12 = lerp2(p1, p2, t);
+    const p23 = lerp2(p2, p3, t);
+    const p012 = lerp2(p01, p12, t);
+    const p123 = lerp2(p12, p23, t);
+    const midPt = lerp2(p012, p123, t);
+
+    // Left cubic: p0, p01, p012, midPt  → G−=p01, G+=p012
+    // Right:      midPt, p123, p23, p3 → G−=p123, G+=p23
+    const left = fitJointToControls(p01, p012);
+    const right = fitJointToControls(p123, p23);
+
+    const midPass = makePass(midPt.x, midPt.y, "mid");
+    // Corridor after split is G+(left) → G−(right) ≈ p012 → p123; mid at t
+    midPass.localBlend = clamp(
+      tToPassBlend(t) - globalPassBlend(),
+      -1,
+      1
+    );
+
+    pass.splice(seg + 1, 0, midPass);
+    joint.splice(seg, 1, left.joint, right.joint);
+    offset.splice(seg, 1, left.offset, right.offset);
+    // Stack lime handles on the new purples (same position as joint)
+    // by forcing combined pull to 0; keep fitted offset as orbit seed
+    // for when the user later increases push-pull.
+    const stackLocal = clamp(-globalPullAmount(), -1, 1);
+    localPull.splice(seg, 1, stackLocal, stackLocal);
+    markEdgeJoints();
+
+    // Select the new purple closer to the click (prefer non-edge if both new)
+    let sel = seg;
+    const dL = Math.hypot(joint[seg].x - wx, joint[seg].y - wy);
+    const dR = Math.hypot(joint[seg + 1].x - wx, joint[seg + 1].y - wy);
+    if (dR < dL) sel = seg + 1;
+
+    selectedJoint = sel;
+    selectedPassId = null;
+    setSoloSelection("j:" + joint[sel].id);
+    updatePassFromControls();
+    syncLocalPullSlider();
+  }
+
+  function removePass(id) {
+    const p = passById(id);
+    if (!p || p.role !== "mid") return;
+    const idx = indexOfPassId(id);
+    pass = pass.filter(function (q) {
+      return q.id !== id;
+    });
+    if (idx > 0 && idx - 1 < joint.length) {
+      joint.splice(idx - 1, 1);
+      offset.splice(idx - 1, 1);
+      localPull.splice(idx - 1, 1);
+    }
+    ensureJoints();
+    updatePassFromControls();
+    if (selectedPassId === id) selectedPassId = null;
+    if (selectedJoint != null && selectedJoint >= joint.length) {
+      selectedJoint = null;
+    }
+    pruneSelection();
+    syncLocalPullSlider();
+  }
+
+  /** Remove purple joint i (edge start/end cannot be removed). */
+  function removeJointAt(i) {
+    if (i < 0 || i >= joint.length) return;
+    if (isEdgeJoint(i)) return; // edge purples are permanent
+    if (joint.length <= 2) return; // keep at least start + end
+    // Drop the mid on the right of this joint if possible, else left
+    if (i + 1 < pass.length && pass[i + 1].role === "mid") {
+      removePass(pass[i + 1].id);
+      return;
+    }
+    if (pass[i] && pass[i].role === "mid") {
+      removePass(pass[i].id);
+      return;
+    }
+  }
+
+  // ── draw ──
+
+  function fmtSigned(v) {
+    return (v >= 0 ? "+" : "") + v.toFixed(2);
+  }
+
+  function draw() {
+    const pa = globalPullAmount();
+    const ba = globalPassBlend();
+    pullValue.textContent = fmtSigned(pa);
+    blendValue.textContent = fmtSigned(ba);
+    syncLocalPullSlider();
+    syncLocalBlendSlider();
+    updatePassFromControls();
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Shared green cache for densify + optional dots
+    const greens = allGreenPairs();
+
+    // grid (one path, fewer state changes)
+    const gdx = gridDivisions(gridDivXEl);
+    const gdy = gridDivisions(gridDivYEl);
+    ctx.beginPath();
+    ctx.strokeStyle = snapToGridEl.checked ? "#35353c" : "#29292e";
+    ctx.lineWidth = 1;
+    for (let i = 1; i < gdx; i++) {
+      const gx = (canvas.width * i) / gdx;
+      ctx.moveTo(gx, 0);
+      ctx.lineTo(gx, canvas.height);
+    }
+    for (let i = 1; i < gdy; i++) {
+      const gy = (canvas.height * i) / gdy;
+      ctx.moveTo(0, gy);
+      ctx.lineTo(canvas.width, gy);
+    }
+    ctx.stroke();
+
+    // curve: densify once, bake y[px] once, stroke
+    const dense = densifyCurve(40, greens);
+    if (dense.length >= 2) {
+      const ys = bakeCurveY(dense, canvas.width);
+      ctx.beginPath();
+      ctx.strokeStyle = "#4ea8de";
+      ctx.lineWidth = 3;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      for (let px = 0; px <= canvas.width; px++) {
+        const py = (1 - ys[px]) * canvas.height;
+        if (px === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    }
+
+    // control dots while over canvas or the control panel (or dragging)
+    const showDots = canvasHover || panelHover || !!drag;
+
+    if (showDots) {
+      function drawDiamond(pt, fill) {
+        const c = toCanvas(pt);
+        const r = 6;
+        ctx.beginPath();
+        ctx.moveTo(c.x, c.y - r);
+        ctx.lineTo(c.x + r, c.y);
+        ctx.lineTo(c.x, c.y + r);
+        ctx.lineTo(c.x - r, c.y);
+        ctx.closePath();
+        ctx.fillStyle = fill;
+        ctx.fill();
+        ctx.strokeStyle = "#121214";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+
+      function strokeSeg(x0, y0, x1, y1, style, width, dash) {
+        ctx.beginPath();
+        ctx.strokeStyle = style;
+        ctx.lineWidth = width;
+        ctx.setLineDash(dash || []);
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        ctx.stroke();
+        if (dash && dash.length) ctx.setLineDash([]);
+      }
+
+      // stems + tension handles
+      for (let i = 0; i < joint.length; i++) {
+        const jc = toCanvas(joint[i]);
+        const gm = toCanvas(greens[i].minus);
+        const gp = toCanvas(greens[i].plus);
+        const a = toCanvas(pass[i]);
+        const b = toCanvas(pass[i + 1]);
+
+        ctx.beginPath();
+        ctx.strokeStyle = "rgba(192, 132, 252, 0.5)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 3]);
+        ctx.moveTo(gm.x, gm.y);
+        ctx.lineTo(jc.x, jc.y);
+        ctx.lineTo(gp.x, gp.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        strokeSeg(a.x, a.y, gm.x, gm.y, "#3d5a40", 1, [3, 3]);
+        strokeSeg(gp.x, gp.y, b.x, b.y, "#3d5a40", 1, [3, 3]);
+        strokeSeg(a.x, a.y, gm.x, gm.y, "rgba(251, 146, 60, 0.75)", 1.5);
+        strokeSeg(gp.x, gp.y, b.x, b.y, "rgba(239, 68, 68, 0.75)", 1.5);
+        strokeSeg(gm.x, gm.y, gp.x, gp.y, "rgba(255, 255, 255, 0.22)", 1, [3, 3]);
+        drawDiamond(greens[i].minus, "#fb923c");
+        drawDiamond(greens[i].plus, "#ef4444");
+      }
+
+      // lime greens first so purples can sit on top when stacked
+      for (let i = 0; i < joint.length; i++) {
+        if (pullSpread(i) <= 0.001) continue;
+        const sides = [
+          { side: "minus", p: greens[i].minus },
+          { side: "plus", p: greens[i].plus },
+        ];
+        for (let k = 0; k < 2; k++) {
+          const c = toCanvas(sides[k].p);
+          const active =
+            drag &&
+            drag.kind === "green" &&
+            drag.index === i &&
+            drag.side === sides[k].side;
+          const selected = selection.has(
+            "g:" + joint[i].id + ":" + sides[k].side
+          );
+          if (selected) drawSelRing(c, 10);
+          ctx.beginPath();
+          ctx.arc(c.x, c.y, active ? 7 : 6, 0, Math.PI * 2);
+          ctx.fillStyle = active ? "#fff" : "#9bde6a";
+          ctx.fill();
+          ctx.strokeStyle = "#121214";
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      }
+
+      // purples on top of greens
+      for (let i = 0; i < joint.length; i++) {
+        const c = toCanvas(joint[i]);
+        const active = drag && drag.kind === "purple" && drag.index === i;
+        const selected =
+          selectedJoint === i || selection.has("j:" + joint[i].id);
+        if (selected) drawSelRing(c, 11);
+        let fill = "#c084fc";
+        if (joint[i].edge === "start") fill = "#22c55e";
+        else if (joint[i].edge === "end") fill = "#ef4444";
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, active ? 8 : 7, 0, Math.PI * 2);
+        ctx.fillStyle = active ? "#fff" : fill;
+        ctx.fill();
+        ctx.strokeStyle = "#121214";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      // pink pass-throughs last
+      if (!hidePinkEl.checked) {
+        for (let i = 0; i < pass.length; i++) {
+          const p = pass[i];
+          if (p.role !== "mid") continue;
+          const c = toCanvas(p);
+          const selected =
+            selectedPassId === p.id || selection.has("p:" + p.id);
+          if (selected) drawSelRing(c, 10);
+          ctx.beginPath();
+          ctx.arc(c.x, c.y, 6, 0, Math.PI * 2);
+          ctx.fillStyle = "#ff79c6";
+          ctx.fill();
+          ctx.strokeStyle = "#121214";
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      }
+    }
+
+    // marquee rectangle
+    if (drag && drag.kind === "marquee") {
+      const a = toCanvas({ x: drag.x0, y: drag.y0 });
+      const b = toCanvas({ x: drag.x1, y: drag.y1 });
+      const x = Math.min(a.x, b.x);
+      const y = Math.min(a.y, b.y);
+      const w = Math.abs(b.x - a.x);
+      const h = Math.abs(b.y - a.y);
+      ctx.beginPath();
+      ctx.strokeStyle = "rgba(255, 224, 102, 0.9)";
+      ctx.fillStyle = "rgba(255, 224, 102, 0.12)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.rect(x, y, w, h);
+      ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    statusEl.textContent =
+      "pass=" +
+      pass.length +
+      " joints=" +
+      joint.length +
+      " push-pull=" +
+      fmtSigned(pa) +
+      " blend=" +
+      fmtSigned(ba) +
+      (selection.size ? " sel=" + selection.size : "") +
+      (drag ? " drag=" + drag.kind : "");
+  }
+
+  // ── interaction ──
+
+  function pointerOverCanvas(e) {
+    try {
+      const r = canvas.getBoundingClientRect();
+      return (
+        e.clientX >= r.left &&
+        e.clientX <= r.right &&
+        e.clientY >= r.top &&
+        e.clientY <= r.bottom
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function redraw() {
+    updatePassFromControls();
+    draw();
+  }
+
+  canvas.addEventListener("pointerenter", function () {
+    canvasHover = true;
+    draw();
+  });
+  canvas.addEventListener("pointerleave", function () {
+    if (drag) return;
+    canvasHover = false;
+    draw();
+  });
+
+  function bindPanelHover(el) {
+    if (!el) return;
+    el.addEventListener("pointerenter", function () {
+      panelHover = true;
+      draw();
+    });
+    el.addEventListener("pointerleave", function () {
+      panelHover = false;
+      draw();
+    });
+  }
+  bindPanelHover(document.getElementById("controlsPanel"));
+  bindPanelHover(document.getElementById("presetsPanel"));
+
+  canvas.addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch (_) {}
+
+    const mouse = fromEvent(e);
+    const hit = hitTest(mouse);
+    const shift = e.shiftKey;
+    const key = selKeyFromHit(hit);
+
+    if (hit && shift && key) {
+      toggleSelection(key);
+      if (hit.kind === "purple") {
+        selectedJoint = hit.index;
+        syncLocalPullSlider();
+      }
+      if (hit.kind === "pass") selectedPassId = hit.id;
+      drag = null;
+      draw();
+      return;
+    }
+
+    // Multi-select group drag: drag any already-selected dot
+    if (hit && key && selection.has(key) && selection.size > 1) {
+      drag = { kind: "group", lastX: mouse.x, lastY: mouse.y };
+      draw();
+      return;
+    }
+
+    if (hit && hit.kind === "purple") {
+      selectedJoint = hit.index;
+      setSoloSelection(key);
+      drag = { kind: "purple", index: hit.index };
+      syncLocalPullSlider();
+      draw();
+      return;
+    }
+    if (hit && hit.kind === "green") {
+      setSoloSelection(key);
+      drag = {
+        kind: "green",
+        index: hit.index,
+        side: hit.side,
+        jointId: hit.jointId,
+      };
+      draw();
+      return;
+    }
+    if (hit && hit.kind === "pass") {
+      selectedPassId = hit.id;
+      setSoloSelection(key);
+      drag = { kind: "pass", index: hit.index, id: hit.id };
+      draw();
+      return;
+    }
+
+    // Empty: marquee box (clear selection unless shift)
+    if (!shift) clearSelection();
+    drag = {
+      kind: "marquee",
+      x0: mouse.x,
+      y0: mouse.y,
+      x1: mouse.x,
+      y1: mouse.y,
+    };
+    draw();
+  });
+
+  canvas.addEventListener("pointermove", function (e) {
+    if (!drag) return;
+    e.preventDefault();
+    const mouse = fromEvent(e);
+
+    if (drag.kind === "marquee") {
+      drag.x1 = mouse.x;
+      drag.y1 = mouse.y;
+      draw();
+      return;
+    }
+
+    if (drag.kind === "group") {
+      const dx = mouse.x - drag.lastX;
+      const dy = mouse.y - drag.lastY;
+      drag.lastX = mouse.x;
+      drag.lastY = mouse.y;
+      groupTranslate(dx, dy);
+      draw();
+      return;
+    }
+
+    if (drag.kind === "pass") {
+      const s = maybeSnap(mouse.x, mouse.y);
+      setBlendFromPinkDrag(drag.index, s.x, s.y);
+      redraw();
+      return;
+    }
+
+    const i = drag.index;
+    if (i < 0 || i >= joint.length) return;
+
+    if (drag.kind === "purple") {
+      movePurpleTo(i, mouse.x, mouse.y, snapToGridEl.checked);
+    } else if (drag.kind === "green") {
+      applyGreenFromWorld(i, drag.side, mouse.x, mouse.y);
+      selectedJoint = i;
+    }
+
+    redraw();
+  });
+
+  function endDrag(e) {
+    if (!drag) return;
+    if (drag.kind === "marquee") {
+      const w = Math.abs(drag.x1 - drag.x0);
+      const h = Math.abs(drag.y1 - drag.y0);
+      if (w > 0.01 || h > 0.01) {
+        selectInRect(drag.x0, drag.y0, drag.x1, drag.y1);
+      }
+    } else {
+      updatePassFromControls();
+    }
+    drag = null;
+    canvasHover = pointerOverCanvas(e);
+    draw();
+    try {
+      canvas.releasePointerCapture(e.pointerId);
+    } catch (_) {}
+  }
+  canvas.addEventListener("pointerup", endDrag);
+  canvas.addEventListener("pointercancel", endDrag);
+
+  canvas.addEventListener("dblclick", function (e) {
+    e.preventDefault();
+    const mouse = fromEvent(e);
+    const hit = hitTest(mouse);
+    if (!hit) {
+      // Purple is primary; pink mid is created with it
+      addJointAt(mouse);
+      draw();
+      return;
+    }
+    if (hit.kind === "purple") {
+      removeJointAt(hit.index);
+      draw();
+      return;
+    }
+    if (hit.kind === "pass") {
+      const p = pass[hit.index];
+      if (p && p.role === "mid") {
+        removePass(p.id);
+        draw();
+      }
+    }
+  });
+
+  canvas.addEventListener("dragstart", function (e) {
+    e.preventDefault();
+  });
+
+  function bindCtrlClickReset(slider, onReset) {
+    slider.addEventListener("click", function (e) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      slider.value = "0";
+      if (onReset) onReset();
+    });
+  }
+
+  hidePinkEl.addEventListener("change", draw);
+
+  lockEndYEl.addEventListener("change", function () {
+    if (lockEndYEl.checked && joint.length >= 2) {
+      joint[joint.length - 1].y = joint[0].y;
+    }
+    redraw();
+  });
+
+  function onSliderRedraw() {
+    redraw();
+  }
+  pullSlider.addEventListener("input", onSliderRedraw);
+  bindCtrlClickReset(pullSlider, onSliderRedraw);
+  blendSlider.addEventListener("input", onSliderRedraw);
+  bindCtrlClickReset(blendSlider, onSliderRedraw);
+
+  localPullSlider.addEventListener("input", function () {
+    if (selectedJoint == null) return;
+    setLocalPull(selectedJoint, parseFloat(localPullSlider.value, 10) || 0);
+    redraw();
+  });
+  bindCtrlClickReset(localPullSlider, function () {
+    if (selectedJoint != null) setLocalPull(selectedJoint, 0);
+    redraw();
+  });
+
+  localRotSlider.addEventListener("input", function () {
+    if (selectedJoint == null) return;
+    setOffsetAngleDeg(selectedJoint, parseFloat(localRotSlider.value, 10) || 0);
+    redraw();
+  });
+  bindCtrlClickReset(localRotSlider, function () {
+    if (selectedJoint != null) setOffsetAngleDeg(selectedJoint, 0);
+    redraw();
+  });
+
+  localBlendSlider.addEventListener("input", function () {
+    const p = selectedMidPass();
+    if (!p) return;
+    p.localBlend = clamp(parseFloat(localBlendSlider.value, 10) || 0, -1, 1);
+    redraw();
+  });
+  bindCtrlClickReset(localBlendSlider, function () {
+    const p = selectedMidPass();
+    if (p) p.localBlend = 0;
+    redraw();
+  });
+
+  // ── settings export / import (presets) ────────────────
+
+  function exportState() {
+    return {
+      v: 1,
+      kind: "bezier-controls",
+      pull: globalPullAmount(),
+      blend: globalPassBlend(),
+      lockEndY: !!lockEndYEl.checked,
+      hidePink: !!hidePinkEl.checked,
+      snapToGrid: !!snapToGridEl.checked,
+      gridDivX: gridDivisions(gridDivXEl),
+      gridDivY: gridDivisions(gridDivYEl),
+      pass: pass.map(function (p) {
+        return {
+          role: p.role,
+          x: p.x,
+          y: p.y,
+          localBlend: p.localBlend || 0,
+        };
+      }),
+      joint: joint.map(function (j) {
+        return { x: j.x, y: j.y };
+      }),
+      offset: offset.map(function (o) {
+        return { x: o.x, y: o.y };
+      }),
+      localPull: localPull.slice(),
+    };
+  }
+
+  function importState(data) {
+    if (!data || typeof data !== "object") {
+      throw new Error("Not a settings object");
+    }
+    if (data.kind && data.kind !== "bezier-controls") {
+      throw new Error("Wrong settings kind: " + data.kind);
+    }
+    if (data.v != null && data.v !== 1) {
+      throw new Error("Unsupported settings version: " + data.v);
+    }
+    if (!Array.isArray(data.pass) || data.pass.length < 2) {
+      throw new Error("Need at least 2 pass points");
+    }
+    if (!Array.isArray(data.joint) || data.joint.length !== data.pass.length - 1) {
+      throw new Error(
+        "joint count must be pass count − 1 (got " +
+          (data.joint && data.joint.length) +
+          " joints, " +
+          data.pass.length +
+          " pass)"
+      );
+    }
+    if (!Array.isArray(data.offset) || data.offset.length !== data.joint.length) {
+      throw new Error("offset count must match joints");
+    }
+    const pulls = Array.isArray(data.localPull)
+      ? data.localPull
+      : data.joint.map(function () {
+          return 0;
+        });
+    if (pulls.length !== data.joint.length) {
+      throw new Error("localPull count must match joints");
+    }
+
+    nextId = 1;
+    pullSlider.value = String(clamp(Number(data.pull) || 0, -1, 1));
+    blendSlider.value = String(clamp(Number(data.blend) || 0, -1, 1));
+    lockEndYEl.checked = !!data.lockEndY;
+    hidePinkEl.checked = !!data.hidePink;
+    if (data.snapToGrid != null) snapToGridEl.checked = !!data.snapToGrid;
+    if (data.gridDivX != null) {
+      gridDivXEl.value = String(
+        clamp(Math.round(Number(data.gridDivX) || 4), 1, 64)
+      );
+    }
+    if (data.gridDivY != null) {
+      gridDivYEl.value = String(
+        clamp(Math.round(Number(data.gridDivY) || 4), 1, 64)
+      );
+    }
+
+    pass = data.pass.map(function (p) {
+      const role =
+        p.role === "start" || p.role === "end" || p.role === "mid"
+          ? p.role
+          : "mid";
+      const np = makePass(
+        clamp(Number(p.x) || 0, 0, 1),
+        clamp(Number(p.y) || 0, 0, 1),
+        role
+      );
+      np.localBlend = clamp(Number(p.localBlend) || 0, -1, 1);
+      return np;
+    });
+    // Force first/last roles
+    pass[0].role = "start";
+    pass[pass.length - 1].role = "end";
+
+    joint = data.joint.map(function (j) {
+      return makeJoint(Number(j.x) || 0, Number(j.y) || 0);
+    });
+    offset = data.offset.map(function (o) {
+      return clampOffset({
+        x: Number(o.x) || 0,
+        y: Number(o.y) || 0,
+      });
+    });
+    localPull = pulls.map(function (v) {
+      return clamp(Number(v) || 0, -1, 1);
+    });
+
+    markEdgeJoints();
+    selectedPassId = null;
+    selectedJoint = null;
+    selection = new Set();
+    drag = null;
+    updatePassFromControls();
+  }
+
+  function setStatusTemp(msg, ms) {
+    statusEl.textContent = msg;
+    if (ms) {
+      setTimeout(function () {
+        draw();
+      }, ms);
+    }
+  }
+
+  async function copySettingsToClipboard() {
+    const text = JSON.stringify(exportState(), null, 2);
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatusTemp("settings copied (" + text.length + " chars)", 2000);
+    } catch (err) {
+      // Fallback: prompt so user can still copy
+      window.prompt("Copy settings JSON:", text);
+      setStatusTemp("settings shown in prompt (clipboard blocked)", 2500);
+    }
+  }
+
+  async function pasteSettingsFromClipboard() {
+    let text = "";
+    try {
+      text = await navigator.clipboard.readText();
+    } catch (err) {
+      text = window.prompt("Paste settings JSON:") || "";
+    }
+    text = (text || "").trim();
+    if (!text) {
+      setStatusTemp("paste cancelled / empty", 2000);
+      return;
+    }
+    try {
+      const data = JSON.parse(text);
+      importState(data);
+      draw();
+      setStatusTemp(
+        "settings pasted · pass=" + pass.length + " joints=" + joint.length,
+        2500
+      );
+    } catch (err) {
+      setStatusTemp("paste failed: " + (err && err.message ? err.message : err), 4000);
+    }
+  }
+
+  /** Render curve-only frame, copy PNG to clipboard (download fallback). */
+  async function copyGraphPng() {
+    const prevHover = canvasHover;
+    const prevDrag = drag;
+    canvasHover = false;
+    drag = null;
+    draw();
+
+    function restore() {
+      canvasHover = prevHover;
+      drag = prevDrag;
+      draw();
+    }
+
+    try {
+      const blob = await new Promise(function (resolve, reject) {
+        if (!canvas.toBlob) {
+          reject(new Error("canvas.toBlob not supported"));
+          return;
+        }
+        canvas.toBlob(function (b) {
+          if (b) resolve(b);
+          else reject(new Error("toBlob returned null"));
+        }, "image/png");
+      });
+
+      if (navigator.clipboard && window.ClipboardItem) {
+        await navigator.clipboard.write([
+          new ClipboardItem({ "image/png": blob }),
+        ]);
+        restore();
+        setStatusTemp("PNG copied to clipboard", 2000);
+        return;
+      }
+
+      // Fallback: download file
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "curve.png";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      restore();
+      setStatusTemp("PNG downloaded (clipboard image not available)", 2500);
+    } catch (err) {
+      restore();
+      setStatusTemp(
+        "PNG copy failed: " + (err && err.message ? err.message : err),
+        4000
+      );
+    }
+  }
+
+  document.getElementById("smoothBtn").addEventListener("click", function () {
+    pullSlider.value = "0";
+    blendSlider.value = "0";
+    for (let i = 0; i < localPull.length; i++) localPull[i] = 0;
+    for (let i = 0; i < pass.length; i++) {
+      if (pass[i] && pass[i].role === "mid") pass[i].localBlend = 0;
+    }
+    syncLocalPullSlider();
+    syncLocalBlendSlider();
+    redraw();
+  });
+
+  snapToGridEl.addEventListener("change", draw);
+  bindScrubField(gridDivXEl, { min: 1, max: 64, onChange: draw });
+  bindScrubField(gridDivYEl, { min: 1, max: 64, onChange: draw });
+
+  function bindPreset(id, data) {
+    document.getElementById(id).addEventListener("click", function () {
+      selectedPassId = null;
+      selectedJoint = null;
+      drag = null;
+      loadPreset(data);
+      draw();
+    });
+  }
+  bindPreset("presetCorner", PRESET_CORNER);
+  bindPreset("presetAdsr", PRESET_ADSR);
+  bindPreset("presetTriangle", PRESET_TRIANGLE);
+
+  document
+    .getElementById("copySettingsBtn")
+    .addEventListener("click", function () {
+      copySettingsToClipboard();
+    });
+  document
+    .getElementById("pasteSettingsBtn")
+    .addEventListener("click", function () {
+      pasteSettingsFromClipboard();
+    });
+  document.getElementById("copyPngBtn").addEventListener("click", function () {
+    copyGraphPng();
+  });
+
+  loadPreset(PRESET_CORNER);
+  draw();
+})();
+  </script>
+</body>
+</html>
