@@ -2284,13 +2284,30 @@
                 inputmode="decimal"
                 autocomplete="off">
             </label>
-            <!-- Per-point curve shape/contour controls belonged to the retired
-                 "graph" module type; graph2 (the only graph type left) uses
-                 one global smoothing mode instead, so these were removed. -->
-            <input id="nodeSceneGraphNodeContour" type="hidden" value="">
-            <select id="nodeSceneGraphNodeShape" hidden>
-              <option value="rational">rational</option>
-            </select>
+            <!-- Contour/shape are for Graph_Copy (per-node segments). Graph
+                 (graph2) hides them and only shows x/y in the node list. -->
+            <label id="nodeSceneGraphNodeContourLabel" hidden>
+              <span>curve</span>
+              <input
+                id="nodeSceneGraphNodeContour"
+                type="number"
+                min="-0.999"
+                max="0.999"
+                step="0.001"
+                inputmode="decimal"
+                autocomplete="off"
+                value="0">
+            </label>
+            <label id="nodeSceneGraphNodeShapeLabel" hidden>
+              <span>shape</span>
+              <select id="nodeSceneGraphNodeShape">
+                <option value="linear">linear</option>
+                <option value="smooth">smooth</option>
+                <option value="rational">rational</option>
+                <option value="exponential">exponential</option>
+                <option value="hold">hold</option>
+              </select>
+            </label>
           </div>
           <div
             id="nodeSceneGraphNodeList"
@@ -3536,6 +3553,7 @@
   <script src="./public/modules/groupInput/group-input-register.js?v=chromeless-portals-1"></script>
   <script src="./public/modules/groupOutput/group-output-register.js?v=chromeless-portals-1"></script>
   <script src="./public/node-graph-module-definitions.js?v=module-height-clearance-20260725"></script>
+  <script src="./public/node-graph-module-controls.js?v=f-input-speed-limit-20260726"></script>
   <script src="./public/node-graph-data-bus.js?v=data-plane-merge-20260711"></script>
   <script src="./public/node-graph-module-store.js?v=object-category-20260725"></script>
   <script src="./public/node-graph-module-sizing.js?v=led-settings-20260725"></script>

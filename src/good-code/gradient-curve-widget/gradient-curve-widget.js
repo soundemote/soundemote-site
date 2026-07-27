@@ -1593,6 +1593,7 @@ export function mountGradientCurveWidget(host, options = {}) {
         <div class="gcw-actions">
           <button class="gcw-delete" type="button">Delete Color</button>
           <button class="gcw-remove" type="button">Save Selected</button>
+          <label class="gcw-toggle"><input class="gcw-invert" type="checkbox" /> Invert</label>
           <label class="gcw-toggle"><input class="gcw-auto-order" type="checkbox" /> Auto Order</label>
           <label class="gcw-toggle"><input class="gcw-auto-bright" type="checkbox" /> Auto Bright</label>
           <label class="gcw-index-control"><span>Indexes</span><input class="gcw-index-count" type="number" min="2" max="256" step="1" /></label>
@@ -1639,7 +1640,6 @@ export function mountGradientCurveWidget(host, options = {}) {
             <button class="gcw-arch-target-option" type="button" data-arch-target="color">Color</button>
             <button class="gcw-arch-target-option" type="button" data-arch-target="position">Position</button>
           </div>
-          <label class="gcw-toggle"><input class="gcw-invert" type="checkbox" /> Invert</label>
           <button class="gcw-copy" type="button">Copy CSS</button>
           <button class="gcw-export-png" type="button">Copy PNG</button>
         </div>

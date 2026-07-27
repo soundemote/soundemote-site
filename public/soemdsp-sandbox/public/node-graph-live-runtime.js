@@ -576,6 +576,22 @@ function sendNodeGraphLiveSpeed() {
   }
 }
 
+function sendNodeGraphLiveSpeedLimit() {
+  if (!nodeGraphMvp.live.node || !nodeGraphMvp.live.usesWorklet) {
+    return;
+  }
+  try {
+    nodeGraphMvp.live.node.port.postMessage({
+      type: "setSpeedLimit",
+      speedLimit: typeof nodeGraphLiveSpeedLimitHz === "function"
+        ? nodeGraphLiveSpeedLimitHz()
+        : (Number(nodeGraphMvp.live.speedLimit) || 20000),
+    });
+  } catch (_error) {
+    // Worklet may be disconnected.
+  }
+}
+
 function renderNodeGraphLiveScriptBlock(event) {
   const output = event.outputBuffer;
   const frames = output.length;
@@ -1393,7 +1409,7 @@ function nodeGraphLiveConnectionUpdatePayload(plan = {}, audio = {}) {
   const pitchReference = normalizeNodeGraphPatchAudio(nodeGraphMvp.patch.audio);
   const graphData = {};
   for (const node of plan.nodes || []) {
-    if (node.type === "graph2" && node.graph) {
+    if (nodeGraphModuleIsGraphType(node.type) && node.graph) {
       graphData[node.id] = node.graph;
     }
   }
@@ -1475,6 +1491,8 @@ async function sendNodeGraphLivePlan() {
             sessionId: nodeGraphMvp.live.sessionId,
             type: "setPlan",
           });
+          sendNodeGraphLiveSpeed();
+          sendNodeGraphLiveSpeedLimit();
         }
         // Lazily send wasm for any native module type this plan introduced
         // (no-op for already-sent modules; see sendNodeGraphLiveNativeModules).

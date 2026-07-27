@@ -727,6 +727,9 @@ function nodeGraphCompiledScopeCaptureNodeIds(graph, reachableNodes) {
       reachableNodes.has(node.id) &&
       !bypassedNodes.has(node.id) &&
       (
+        // Graph editor playhead reads "__GraphPhase" from scope buffers -- always
+        // capture graph modules even when they have no separate oscilloscope face.
+        nodeGraphModuleIsGraphType(node.type) ||
         nodeGraphChromelessModuleUsesSolidShell(node.type) ||
         (
           nodeGraphModuleDisplayRendererForNode(node) !== "legacy" &&

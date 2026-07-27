@@ -1997,22 +1997,26 @@ function nodeGraphModuleScopeOfflineSignalSample(context, nodeId, localTime, sam
   return 0;
 }
 
+// Matches LFO/basic_oscillator waveform indices:
+// 0 Saw, 1 Ramp, 2 Square, 3 Triangle, 4 Sine, 5 Noise.
 function nodeGraphModuleScopeOfflineOscillatorSample(waveform, phaseCycle) {
   const cycle = wrapNodeSliderValue(phaseCycle, 0, 1);
   switch (Math.round(Number(waveform) || 0)) {
-    case 1:
+    case 1: // Ramp
+      return -1 + cycle * 2;
+    case 2: // Square
       return cycle < 0.5 ? 1 : -1;
-    case 2:
-      return cycle < 0.5 ? (cycle * 4 - 1) : (3 - cycle * 4);
-    case 3:
+    case 3: // Triangle
+      return 1 - 4 * Math.abs(cycle - 0.5);
+    case 4: // Sine
       return Math.sin(cycle * Math.PI * 2);
-    case 4:
+    case 5: // Noise (deterministic-ish hash of phase for offline scope)
       return Math.tanh(
         Math.sin((cycle * 17.13 + 0.17) * Math.PI * 2) * 0.62 +
         Math.sin((cycle * 37.71 + 0.41) * Math.PI * 2) * 0.38 +
         Math.sin((cycle * 73.19 + 0.73) * Math.PI * 2) * 0.24,
       );
-    case 0:
+    case 0: // Saw
     default:
       return 1 - cycle * 2;
   }
@@ -2716,7 +2720,10 @@ function nodeGraphModuleOutputPortsForType(type) {
 
 function nodeGraphModuleDefaultScalarDisplayPort(type) {
   const outputs = nodeGraphModuleOutputPortsForType(type);
+  // Prefer the selected-waveform port used by LFO/PolyBLEP/BLIT (Wave Out)
+  // before falling back to a fixed shape port like Saw.
   return outputs.find((port) => port === "Out") ||
+    outputs.find((port) => port === "Wave Out") ||
     outputs.find((port) => port === "Mono") ||
     outputs.find((port) => port === "Wave") ||
     outputs[0] ||

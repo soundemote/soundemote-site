@@ -2,13 +2,11 @@ const nodeGraphNodeLabels = Object.freeze({
   audioInput: "Input",
   codeblock: "Codeblock",
   customDisplay: "Custom Display",
-  // "graph" (per-point curve shape/contour) was retired in favor of this
-  // module -- both worked the same in practice, and this is the one that
-  // was working well, so it keeps the plain "Graph" label now that it's
-  // the only survivor (see nodeGraphRetiredNodeTypes in
-  // node-graph-patch-core.js). Its internal type stays "graph2" so
-  // existing saved patches referencing that type keep loading unchanged.
+  // graph2: global "best curve through points" (no per-node shapes).
+  // graphCopy: same I/O/LFO wiring, but per-node shape/contour segments.
+  // (The old "graph" type was retired -- see nodeGraphRetiredNodeTypes.)
   graph2: "Graph",
+  graphCopy: "Graph_Copy",
   animatedTextBox: "Animated Text Box",
   moduleGroup: "Module Group",
   nextPatch: "Next Patch",
@@ -195,6 +193,18 @@ function nodeGraphParameterSiblingValue(slider, key) {
   return patchNode?.params?.[key];
 }
 
+// Module definition shape — three control surfaces (do not mix these up):
+//
+//   inputs: [...]      → left IO-column jacks (mixInput / hasInput)
+//   parameters: [...]  → body sliders; each also gets a tiny mod port on the
+//                        row (readEffectiveParam already applies modulation)
+//   outputs: [...]     → right IO-column jacks
+//
+// Trap: "add a phase input" often means a left-side CV jack → must list it in
+// `inputs`. Putting it only under `parameters` creates a knob, not a left
+// jack. PolyBLEP: 0.1V/Oct is an input; Phase/Amplitude are parameters only.
+// DSF: uses both (knob + dedicated Phase/Amplitude jacks). Full write-up:
+// docs/MODULE_PATTERN_REFERENCE.md § "Three control surfaces".
 const nodeGraphModuleDefinitions = Object.freeze({
   audioInput: {
     outputs: ["Left", "Right"],
@@ -245,10 +255,31 @@ const nodeGraphModuleDefinitions = Object.freeze({
     outputs: ["Out"],
     parameters: [
       { choices: ["Input", "LFO"], defaultValue: "0", displayChoices: true, divideChoicesVisibly: true, key: "mode", label: "Mode", linearSmoothing: false, max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "1" },
-      { choices: ["Linear", "Smooth", "Meander", "Quadratic Through", "Cubic Through"], defaultValue: "1", displayChoices: true, divideChoicesVisibly: true, key: "smoothingMode", label: "Smoothing", linearSmoothing: false, max: "4", mid: "2", min: "0", nonlinearSlider: false, step: "1" },
+      // Quadratic/Cubic = Lagrange through the points (old "… Through" labels).
+      { choices: ["Linear", "Smooth", "Bezier", "Quadratic", "Cubic", "Catmull Rom"], defaultValue: "1", displayChoices: true, divideChoicesVisibly: true, key: "smoothingMode", label: "Smoothing", linearSmoothing: false, max: "5", mid: "2", min: "0", nonlinearSlider: false, step: "1" },
+      { choices: ["Off", "On"], defaultValue: "0", displayChoices: true, divideChoicesVisibly: true, key: "lockEndpointY", label: "Lock Ends", linearSmoothing: false, max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "1" },
+      { defaultValue: "1", key: "tension", label: "Tension", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "0.01" },
+      { defaultValue: "1", key: "rate", kind: "frequency", label: "Rate", max: "40", maxDigits: 5, mid: "1", min: "0", step: "any", unit: "Hz" },
+      { defaultValue: "0", key: "phase", kind: "phase", label: "Phase", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "0.01", unit: "cycle", wraparound: true },
+      { defaultValue: "0", key: "inputMin", label: "In Min", max: "1", mid: "0", min: "-1", nonlinearSlider: false, step: "any" },
+      { defaultValue: "1", key: "inputMax", label: "In Max", max: "1", mid: "0", min: "-1", nonlinearSlider: false, step: "any" },
+      { defaultValue: "0", key: "outputMin", label: "Out Min", max: "1", mid: "0", min: "-1", nonlinearSlider: false, step: "any" },
+      { defaultValue: "1", key: "outputMax", label: "Out Max", max: "1", mid: "0", min: "-1", nonlinearSlider: false, step: "any" },
+    ],
+  },
+  // Same wiring as graph2; evaluation uses per-node shape/contour instead of
+  // a single global smoothing mode (see nodeGraphGraphUsesPerNodeShapes).
+  graphCopy: {
+    inputs: ["In"],
+    layout: "graph",
+    outputs: ["Out"],
+    parameters: [
+      { choices: ["Input", "LFO"], defaultValue: "0", displayChoices: true, divideChoicesVisibly: true, key: "mode", label: "Mode", linearSmoothing: false, max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "1" },
       { choices: ["Off", "On"], defaultValue: "0", displayChoices: true, divideChoicesVisibly: true, key: "lockEndpointY", label: "Lock Ends", linearSmoothing: false, max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "1" },
       { defaultValue: "1", key: "rate", kind: "frequency", label: "Rate", max: "40", maxDigits: 5, mid: "1", min: "0", step: "any", unit: "Hz" },
       { defaultValue: "0", key: "phase", kind: "phase", label: "Phase", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "0.01", unit: "cycle", wraparound: true },
+      { defaultValue: "0", key: "inputMin", label: "In Min", max: "1", mid: "0", min: "-1", nonlinearSlider: false, step: "any" },
+      { defaultValue: "1", key: "inputMax", label: "In Max", max: "1", mid: "0", min: "-1", nonlinearSlider: false, step: "any" },
       { defaultValue: "0", key: "outputMin", label: "Out Min", max: "1", mid: "0", min: "-1", nonlinearSlider: false, step: "any" },
       { defaultValue: "1", key: "outputMax", label: "Out Max", max: "1", mid: "0", min: "-1", nonlinearSlider: false, step: "any" },
     ],
@@ -259,11 +290,19 @@ const nodeGraphModuleDefinitions = Object.freeze({
     parameters: [],
   },
   osc: {
-    displayType: "trace",
-    inputs: ["Reset", "0.1V/Oct", "Increment"],
+    displayType: "lineBurn",
+    displayModes: [
+      { key: "lineBurn", renderer: "lineBurn", source: { value: "Wave Out" } },
+    ],
+    displaySignals: [
+      { key: "Wave Out", kind: "scalar" },
+    ],
+    // f = universal linear frequency jack (absolute Hz 0..Speed Limit).
+    inputs: ["Reset", "0.1V/Oct", "Increment", "f"],
     inputLabels: {
       "0.1V/Oct": "0.1V",
       Increment: "Inc.",
+      f: "f",
     },
     outputAliases: {
       Out: "Wave Out",
@@ -323,6 +362,12 @@ const nodeGraphModuleDefinitions = Object.freeze({
       },
     ],
   },
+  // Reference oscillator for port layout:
+  //   inputs[]     = left jacks only (Reset / 0.1V / Increment)
+  //   parameters[] = sliders (Waveform / Frequency / Phase / Amplitude)
+  // Phase and Amplitude are NOT left-side jacks here — only knobs (+ auto mod
+  // ports on each slider row). If a consumer needs full left-column Phase/Amp
+  // jacks, see dsfOscillator (knob + dedicated CV input).
   polyBlep: {
     displayType: "lineBurn",
     displayModes: [
@@ -331,10 +376,11 @@ const nodeGraphModuleDefinitions = Object.freeze({
     displaySignals: [
       { key: "Wave Out", kind: "scalar" },
     ],
-    inputs: ["Reset", "0.1V/Oct", "Increment"],
+    inputs: ["Reset", "0.1V/Oct", "Increment", "f"],
     inputLabels: {
       "0.1V/Oct": "0.1V",
       Increment: "Inc.",
+      f: "f",
     },
     outputAliases: {
       Out: "Wave Out",
@@ -402,10 +448,11 @@ const nodeGraphModuleDefinitions = Object.freeze({
     displaySignals: [
       { key: "Wave Out", kind: "scalar" },
     ],
-    inputs: ["Reset", "0.1V/Oct", "Increment"],
+    inputs: ["Reset", "0.1V/Oct", "Increment", "f"],
     inputLabels: {
       "0.1V/Oct": "0.1V",
       Increment: "Inc.",
+      f: "f",
     },
     outputAliases: {
       Out: "Wave Out",
@@ -466,7 +513,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
   },
   sineWavetable: {
     displayType: "trace",
-    inputs: ["0.1V/Oct", "Freq", "Amplitude"],
+    inputs: ["0.1V/Oct", "Freq", "Amplitude", "f"],
     inputAliases: {
       "0.1V": "0.1V/Oct",
       "0.1v": "0.1V/Oct",
@@ -475,6 +522,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
     },
     inputLabels: {
       "0.1V/Oct": "0.1V",
+      f: "f",
     },
     outputAliases: {
       Cos: "cos",
@@ -567,7 +615,8 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   aliasSine: {
-    inputs: [],
+    inputs: ["f"],
+    inputLabels: { f: "f" },
     outputs: ["Out"],
     parameters: [
       { defaultValue: "0.1", key: "normFreq", label: "Norm Freq", max: "1.5", mid: "0.5", min: "0", nonlinearSlider: false, step: "any" },
@@ -576,10 +625,11 @@ const nodeGraphModuleDefinitions = Object.freeze({
   },
   additiveOsc: {
     graphInputs: ["Damping Graph", "Phase Graph"],
-    inputs: ["Reset", "0.1V/Oct", "Increment"],
+    inputs: ["Reset", "0.1V/Oct", "Increment", "f"],
     inputLabels: {
       "0.1V/Oct": "0.1V",
       Increment: "Inc.",
+      f: "f",
     },
     outputs: ["Out"],
     parameters: [
@@ -629,10 +679,11 @@ const nodeGraphModuleDefinitions = Object.freeze({
   },
   gpuAdditiveOsc: {
     graphInputs: ["Damping Graph", "Phase Graph"],
-    inputs: ["Reset", "0.1V/Oct", "Increment"],
+    inputs: ["Reset", "0.1V/Oct", "Increment", "f"],
     inputLabels: {
       "0.1V/Oct": "0.1V",
       Increment: "Inc.",
+      f: "f",
     },
     outputs: ["Out"],
     parameters: [
@@ -1215,7 +1266,8 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   surgeOscillator: {
-    inputs: ["0.1V/Oct", "Sync"],
+    inputs: ["0.1V/Oct", "Sync", "f"],
+    inputLabels: { "0.1V/Oct": "0.1V", f: "f" },
     outputs: ["Out", "Saw", "Square", "Tri", "Sine", "Synced", "Internal Sync"],
     parameters: [
       {
@@ -1238,6 +1290,20 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
   },
   dsfOscillator: {
+    // Left jacks (inputs[]) AND knobs (parameters[]) for pitch/phase/level:
+    //   0.1V/Oct  → pitch CV (PolyBLEP-style; not a parameter)
+    //   Phase     → CV jack that ADDS to the Phase knob
+    //   Amplitude → CV jack that MULTIPLIES the Amplitude knob
+    // First attempt only put phase/level in parameters[] — user looking at
+    // the left IO column correctly saw only 0.1V. See MODULE_PATTERN_REFERENCE
+    // "Three control surfaces".
+    inputs: ["0.1V/Oct", "Phase", "Amplitude", "f"],
+    inputLabels: {
+      "0.1V/Oct": "0.1V",
+      Phase: "Phase",
+      Amplitude: "Amp",
+      f: "f",
+    },
     outputs: ["Out"],
     parameters: [
       {
@@ -1255,14 +1321,36 @@ const nodeGraphModuleDefinitions = Object.freeze({
         step: "1",
       },
       { key: "frequency", label: "Frequency", kind: "frequency", defaultValue: "100", min: "0", mid: "220", max: "20000", step: "any", unit: "Hz" },
+      {
+        defaultValue: "0",
+        key: "phase",
+        kind: "phase",
+        label: "Phase",
+        max: "1",
+        mid: "0.5",
+        min: "0",
+        step: "0.01",
+        unit: "cycle",
+        wraparound: true,
+      },
       { key: "morph", label: "Harmonics", defaultValue: "1", min: "0", mid: "0.5", max: "1", step: "0.001" },
       { key: "pulseWidth", label: "PWM", defaultValue: "0.5", min: "0.01", mid: "0.5", max: "0.99", step: "0.01" },
       { key: "blend", label: "SquSaw", defaultValue: "0.5", min: "0", mid: "0.5", max: "1", step: "0.01" },
-      { key: "level", label: "Level", defaultValue: "1", min: "0", mid: "0.5", max: "1", step: "0.01" },
+      {
+        defaultValue: "1",
+        key: "level",
+        label: "Amplitude",
+        max: "1",
+        mid: "0.5",
+        min: "0",
+        nonlinearSlider: false,
+        step: "any",
+      },
     ],
   },
   robinSupersaw: {
-    inputs: ["0.1V/Oct"],
+    inputs: ["0.1V/Oct", "f"],
+    inputLabels: { "0.1V/Oct": "0.1V", f: "f" },
     outputs: ["Mono", "Left", "Right"],
     parameters: [
       // "Frequency" is the pitch heard at the sandbox-wide "Pitch
@@ -1286,7 +1374,8 @@ const nodeGraphModuleDefinitions = Object.freeze({
     displaySignals: [
       { key: "Left", kind: "scalar" },
     ],
-    inputs: ["Reset", "0.1V/Oct"],
+    inputs: ["Reset", "0.1V/Oct", "f"],
+    inputLabels: { "0.1V/Oct": "0.1V", f: "f" },
     outputs: ["Left", "Right"],
     dataOutputs: ["Phases", "Amplitudes", "Pans"],
     parameters: [
@@ -3515,9 +3604,9 @@ const nodeGraphModuleDefinitions = Object.freeze({
   },
   sinc: {
     displayType: "trace",
-    inputs: ["0.1V/Oct", "Freq", "Phase"],
+    inputs: ["0.1V/Oct", "Freq", "Phase", "f"],
     inputAliases: { "0.1V": "0.1V/Oct", freq: "Freq", phase: "Phase" },
-    inputLabels: { "0.1V/Oct": "0.1V" },
+    inputLabels: { "0.1V/Oct": "0.1V", f: "f" },
     outputs: ["Out"],
     parameters: [
       {

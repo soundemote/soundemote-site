@@ -92,6 +92,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.hostSampleRate = sampleRate;
     this.oversamplingRatio = 1;
     this.speedMultiplier = 1;
+    this.speedLimit = 20000;
     this.raptEllipticDecimatorLeft = this.createRaptEllipticDecimatorState();
     this.raptEllipticDecimatorRight = this.createRaptEllipticDecimatorState();
     this.raptEllipticDecimatorRatio = 1;
@@ -268,6 +269,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.scopeCaptureNodeIds = [];
     this.scopeCounter = 0;
     this.scopeSampleStride = 1;
+    // Continuous engine-sample counter for free-running graph LFO phase
+    // (Rate mode). Advanced once per evaluateFrame call.
+    this.absoluteFrame = 0;
     this.slewLimiterStates = new Map();
     this.smoothers = new Map();
     this.spiralStates = new Map();
@@ -489,6 +493,10 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       this.setSpeed(message.speed);
       return;
     }
+    if (message.type === "setSpeedLimit") {
+      this.setSpeedLimit(message.speedLimit);
+      return;
+    }
   }
 
   setInputWireBreakTrigger(nodeId, port) {
@@ -499,6 +507,38 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   setSpeed(speed) {
     const value = Number(speed);
     this.speedMultiplier = Number.isFinite(value) ? Math.max(0, value) : 1;
+  }
+
+  setSpeedLimit(limit) {
+    const value = Number(limit);
+    this.speedLimit = Number.isFinite(value) && value > 0 ? value : 20000;
+  }
+
+  speedLimitHz() {
+    const value = Number(this.speedLimit);
+    return Number.isFinite(value) && value > 0 ? value : 20000;
+  }
+
+  // Universal linear frequency jack `f`: absolute Hz in [0, speedLimit].
+  // Returns null when unwired so each oscillator can keep its own pitch path.
+  readFInputHz(mixInput, nodeId, port = "f") {
+    if (!this.inputConnections.has(this.inputKey(nodeId, port))) {
+      return null;
+    }
+    const raw = Number(mixInput(nodeId, port));
+    const limit = this.speedLimitHz();
+    if (!Number.isFinite(raw)) {
+      return 0;
+    }
+    return Math.max(0, Math.min(limit, raw));
+  }
+
+  resolveFrequencyHz(baseHz, fHzOrNull) {
+    if (fHzOrNull != null && Number.isFinite(Number(fHzOrNull))) {
+      return Math.max(0, Number(fHzOrNull));
+    }
+    const base = Number(baseHz);
+    return Number.isFinite(base) ? Math.max(0, base) : 0;
   }
 
   effectiveSampleRate() {
@@ -2357,7 +2397,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       if (node?.type === "clock" && !this.clockStates.has(id)) {
         this.clockStates.set(id, this.createClockState());
       }
-      if (node?.type === "graph2" && !this.graphLfoStates.has(id)) {
+      if ((node?.type === "graph2" || node?.type === "graphCopy") && !this.graphLfoStates.has(id)) {
         this.graphLfoStates.set(id, this.createGraphLfoState());
       }
       if (node?.type === "clockDivider" && !this.clockDividerStates.has(id)) {
@@ -3466,7 +3506,8 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   }
 
   graphEndpointYLockEnabledForNode(node) {
-    return node?.type === "graph2" && Number(node?.params?.lockEndpointY) >= 0.5;
+    return (node?.type === "graph2" || node?.type === "graphCopy") &&
+      Number(node?.params?.lockEndpointY) >= 0.5;
   }
 
   graphWithLockedEndpointY(graphValue) {
@@ -3518,11 +3559,14 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   }
 
   normalizeGraph2SmoothingMode(value) {
+    if (value === "legacy") {
+      return "legacy";
+    }
     if (Number.isFinite(Number(value))) {
-      return ["linear", "smooth", "meander", "quadratic", "cubic"][Math.max(0, Math.min(4, Math.round(Number(value))))];
+      return ["linear", "smooth", "bezier", "quadratic", "cubic", "catmullRom"][Math.max(0, Math.min(5, Math.round(Number(value))))];
     }
     const mode = String(value || "").trim().toLowerCase();
-    return ["linear", "smooth", "meander", "quadratic", "cubic"].includes(mode) ? mode : "smooth";
+    return ["linear", "smooth", "bezier", "quadratic", "cubic", "catmullRom"].includes(mode) ? mode : "smooth";
   }
 
   graphMeanderCurve(position, index = 0) {
@@ -3537,15 +3581,15 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     if (normalizedMode === "linear") {
       return this.normalizeGraphNumber(position, 0, 0, 1);
     }
-    if (normalizedMode === "meander") {
+    if (normalizedMode === "bezier") {
       return this.graphMeanderCurve(position, index);
     }
     return this.graphSmoothCurve(position);
   }
 
-  graphBezierPointAt(nodes, position = 0) {
+  graphBezierPointAt(controls, position = 0) {
     const t = this.normalizeGraphNumber(position, 0, 0, 1);
-    let points = nodes.map((node) => ({
+    let points = controls.map((node) => ({
       x: this.normalizeGraphNumber(node.x, 0),
       y: this.normalizeGraphNumber(node.y, 0),
     }));
@@ -3564,31 +3608,116 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     return points[0];
   }
 
-  graphBezierValueAt(graph, xValue) {
+  // Guide-point Bezier: start+end on-curve only; interior nodes are handles.
+  // Tension 0 = line, 1 = tight pull toward guides (no hard corners).
+  // Mirrors offline nodeGraphGraphGuideBezierValueAt.
+  graphGuideBezierControls(nodes, tension = 1) {
+    const count = nodes.length;
+    if (count < 2) {
+      return nodes.map((node) => ({ x: node.x, y: node.y }));
+    }
+    const u = this.normalizeGraphNumber(tension, 1, 0, 1);
+    if (u <= 1e-6) {
+      return [
+        { x: nodes[0].x, y: nodes[0].y },
+        { x: nodes[count - 1].x, y: nodes[count - 1].y },
+      ];
+    }
+    const pull = 0.08 + 1.42 * (u ** 0.6);
+    const first = nodes[0];
+    const last = nodes[count - 1];
+    return nodes.map((node, index) => {
+      if (index === 0 || index === count - 1) {
+        return { x: node.x, y: node.y };
+      }
+      const s = index / (count - 1);
+      const chordX = first.x + (last.x - first.x) * s;
+      const chordY = first.y + (last.y - first.y) * s;
+      return {
+        x: chordX + (node.x - chordX) * pull,
+        y: chordY + (node.y - chordY) * pull,
+      };
+    });
+  }
+
+  graphGuideBezierValueAt(graph, xValue, tension = 1) {
     const x = this.normalizeGraphNumber(xValue, 0, -Infinity, Infinity);
-    if (graph.nodes.length < 2) {
-      return graph.nodes[0]?.y ?? 0;
+    const nodes = graph.nodes;
+    if (nodes.length < 2) {
+      return nodes[0]?.y ?? 0;
     }
-    if (x <= graph.nodes[0].x) {
-      return graph.nodes[0].y;
+    if (x <= nodes[0].x) {
+      return nodes[0].y;
     }
-    const last = graph.nodes[graph.nodes.length - 1];
+    const last = nodes[nodes.length - 1];
     if (x >= last.x) {
       return last.y;
     }
-    let low = 0;
-    let high = 1;
-    let point = this.graphBezierPointAt(graph.nodes, x);
-    for (let iteration = 0; iteration < 28; iteration += 1) {
-      const t = (low + high) * 0.5;
-      point = this.graphBezierPointAt(graph.nodes, t);
-      if (point.x < x) {
-        low = t;
-      } else {
-        high = t;
+    const controls = this.graphGuideBezierControls(nodes, tension);
+    const samples = 96;
+    let prev = this.graphBezierPointAt(controls, 0);
+    for (let index = 1; index <= samples; index += 1) {
+      const point = this.graphBezierPointAt(controls, index / samples);
+      const minX = Math.min(prev.x, point.x);
+      const maxX = Math.max(prev.x, point.x);
+      if (x >= minX && x <= maxX) {
+        const dx = point.x - prev.x;
+        const a = Math.abs(dx) < 1e-12 ? 0 : (x - prev.x) / dx;
+        return this.safeFilterNumber(prev.y + (point.y - prev.y) * a, null);
+      }
+      prev = point;
+    }
+    let bestY = nodes[0].y;
+    let bestDist = Infinity;
+    for (let index = 0; index <= samples; index += 1) {
+      const point = this.graphBezierPointAt(controls, index / samples);
+      const dist = Math.abs(point.x - x);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestY = point.y;
       }
     }
-    return point.y;
+    return this.safeFilterNumber(bestY, null);
+  }
+
+  graphBezierValueAt(graph, xValue, tension = 1) {
+    return this.graphGuideBezierValueAt(graph, xValue, tension);
+  }
+
+  graphPolylineValueAt(graph, xValue) {
+    const x = this.normalizeGraphNumber(xValue, 0, -Infinity, Infinity);
+    const nodes = graph.nodes;
+    if (!nodes.length) {
+      return 0;
+    }
+    if (nodes.length < 2 || x <= nodes[0].x) {
+      return nodes[0].y;
+    }
+    if (x >= nodes[nodes.length - 1].x) {
+      return nodes[nodes.length - 1].y;
+    }
+    for (let index = 0; index < nodes.length - 1; index += 1) {
+      if (x <= nodes[index + 1].x) {
+        const left = nodes[index];
+        const right = nodes[index + 1];
+        const dx = right.x - left.x;
+        if (Math.abs(dx) < 0.000001) {
+          return 0.5 * (left.y + right.y);
+        }
+        const t = (x - left.x) / dx;
+        return left.y + (right.y - left.y) * t;
+      }
+    }
+    return nodes[nodes.length - 1].y;
+  }
+
+  graphHermiteY(y1, y2, m1, m2, t) {
+    const t2 = t * t;
+    const t3 = t2 * t;
+    return (2 * t3 - 3 * t2 + 1) * y1
+      + (t3 - 2 * t2 + t) * m1
+      + (-2 * t3 + 3 * t2) * y2
+      + (t3 - t2) * m2;
   }
 
   graphInterpolationWindowStart(nodes, x, degree) {
@@ -3639,7 +3768,79 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     return value;
   }
 
+  // Cardinal through-points: tension 0 = polyline, mid = tight rounded, 1 = loose.
+  // Matches offline nodeGraphGraphCardinalValueAt (see graph-utils).
+  graphCardinalValueAt(graph, xValue, tension = 1) {
+    const x = this.normalizeGraphNumber(xValue, 0, -Infinity, Infinity);
+    const nodes = graph.nodes;
+    if (nodes.length < 2) {
+      return nodes[0]?.y ?? 0;
+    }
+    for (const node of nodes) {
+      if (Math.abs(x - node.x) < 0.000001) {
+        return node.y;
+      }
+    }
+    if (x <= nodes[0].x) {
+      return nodes[0].y;
+    }
+    if (x >= nodes[nodes.length - 1].x) {
+      return nodes[nodes.length - 1].y;
+    }
+    const u = this.normalizeGraphNumber(tension, 1, 0, 1);
+    if (u <= 1e-6) {
+      return this.graphPolylineValueAt(graph, x);
+    }
+    const s = 0.5 * (0.12 + 1.55 * (u ** 0.55));
+    const yAt = (i) => {
+      if (i < 0) {
+        return 2 * nodes[0].y - nodes[1].y;
+      }
+      if (i >= nodes.length) {
+        return 2 * nodes[nodes.length - 1].y - nodes[nodes.length - 2].y;
+      }
+      return nodes[i].y;
+    };
+    const xAt = (i) => {
+      if (i < 0) {
+        return 2 * nodes[0].x - nodes[1].x;
+      }
+      if (i >= nodes.length) {
+        return 2 * nodes[nodes.length - 1].x - nodes[nodes.length - 2].x;
+      }
+      return nodes[i].x;
+    };
+    for (let index = 0; index < nodes.length - 1; index += 1) {
+      if (x > nodes[index + 1].x) {
+        continue;
+      }
+      const x1 = nodes[index].x;
+      const x2 = nodes[index + 1].x;
+      const y1 = nodes[index].y;
+      const y2 = nodes[index + 1].y;
+      const dx = x2 - x1;
+      if (Math.abs(dx) < 0.000001) {
+        return 0.5 * (y1 + y2);
+      }
+      const t = (x - x1) / dx;
+      const dxIn = xAt(index + 1) - xAt(index - 1);
+      const dxOut = xAt(index + 2) - xAt(index);
+      const m1 = Math.abs(dxIn) < 1e-9 ? 0 : s * (yAt(index + 1) - yAt(index - 1)) / dxIn * dx;
+      const m2 = Math.abs(dxOut) < 1e-9 ? 0 : s * (yAt(index + 2) - yAt(index)) / dxOut * dx;
+      return this.safeFilterNumber(this.graphHermiteY(y1, y2, m1, m2, t), null);
+    }
+    return nodes[nodes.length - 1].y;
+  }
+
+  graphCatmullRomValueAt(graph, xValue, tension = 1) {
+    return this.graphCardinalValueAt(graph, xValue, tension);
+  }
+
   graphSmoothingModeForNode(node) {
+    // Graph_Copy uses per-node segment shapes; Graph uses a global mode.
+    if (node?.type === "graphCopy") {
+      return "legacy";
+    }
     return this.normalizeGraph2SmoothingMode(node?.params?.smoothingMode);
   }
 
@@ -3668,15 +3869,19 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     return left.y + (right.y - left.y) * shaped;
   }
 
-  graphValueAt(graphValue, xValue, smoothingMode = "legacy") {
+  graphValueAt(graphValue, xValue, smoothingMode = "legacy", tension = 1) {
     const graph = this.normalizeGraph(graphValue);
     const x = this.normalizeGraphNumber(xValue, 0, -Infinity, Infinity);
     if (!graph.nodes.length) {
       return 0;
     }
     const normalizedMode = this.normalizeGraph2SmoothingMode(smoothingMode);
-    if (normalizedMode === "meander") {
-      return this.safeFilterNumber(this.graphBezierValueAt(graph, x), null);
+    if (
+      normalizedMode === "bezier" ||
+      normalizedMode === "smooth" ||
+      normalizedMode === "catmullRom"
+    ) {
+      return this.graphGuideBezierValueAt(graph, x, tension);
     }
     if (x < graph.nodes[0].x) {
       return graph.nodes[0].y;
@@ -6053,8 +6258,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
           10,
         );
         const frequencyHz = Math.max(0, baseFrequency * (2 ** (pitchInput / 0.1)));
+        const effectiveFrequency = this.resolveFrequencyHz(frequencyHz, this.readFInputHz(mixInput, nodeId));
         return this.surgeOscillatorSample(state, {
-          frequencyHz,
+          frequencyHz: effectiveFrequency,
           sampleRate: safeRate,
           syncIn: mixInput(nodeId, "Sync"),
           hasExternalSync: hasInput(nodeId, "Sync"),
@@ -6067,14 +6273,36 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         const state = this.dsfOscillatorStates.get(nodeId) || this.createDsfOscillatorState();
         this.dsfOscillatorStates.set(nodeId, state);
         const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
+        // Same 0.1V/Oct + pitch-reference convention as PolyBLEP / RobinSupersaw.
+        const baseFrequency = Math.max(0, read("frequency", 100));
+        const referenceMidiNote = Number.isFinite(this.pitchReferenceMidiNote) ? this.pitchReferenceMidiNote : 48;
+        const referenceVoltage = referenceMidiNote / 120;
+        const hasPitchInput = this.inputConnections.has(this.inputKey(nodeId, "0.1V/Oct"));
+        const pitchInput = hasPitchInput
+          ? this.clampValue(this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null), -1, 1)
+          : referenceVoltage;
+        const pitchedFrequency = Math.max(0, baseFrequency * (2 ** ((pitchInput - referenceVoltage) / 0.1)));
+        const effectiveFrequency = this.resolveFrequencyHz(pitchedFrequency, this.readFInputHz(mixInput, nodeId));
+        // Phase / Amplitude jacks: Phase adds to the Phase knob (cycles);
+        // Amplitude multiplies the Amplitude knob when wired.
+        const phaseKnob = read("phase", 0);
+        const phaseCv = this.inputConnections.has(this.inputKey(nodeId, "Phase"))
+          ? this.safeFilterNumber(mixInput(nodeId, "Phase"), null)
+          : 0;
+        const phase = this.wrapValue(phaseKnob + phaseCv, 0, 1);
+        const levelKnob = read("level", 1);
+        const level = this.inputConnections.has(this.inputKey(nodeId, "Amplitude"))
+          ? levelKnob * this.safeFilterNumber(mixInput(nodeId, "Amplitude"), null)
+          : levelKnob;
         return this.dsfOscillatorSample(state, {
-          frequencyHz: Math.max(0, read("frequency", 100)),
+          frequencyHz: effectiveFrequency,
           sampleRate: safeRate,
           waveform: read("waveform", 1),
           morph: read("morph", 1),
           pulseWidth: read("pulseWidth", 0.5),
           blend: read("blend", 0.5),
-          level: read("level", 1),
+          phase,
+          level,
         });
       },
       robinSupersaw: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
@@ -6094,8 +6322,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
           ? this.clampValue(this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null), -1, 1)
           : referenceVoltage;
         const pitchedFrequency = Math.max(0, baseFrequency * (2 ** ((pitchInput - referenceVoltage) / 0.1)));
+        const effectiveFrequency = this.resolveFrequencyHz(pitchedFrequency, this.readFInputHz(mixInput, nodeId));
         return this.robinSupersawSample(state, {
-          frequencyHz: pitchedFrequency,
+          frequencyHz: effectiveFrequency,
           sampleRate: safeRate,
           detuneCents: read("detuneCents", 30),
           voices: read("voices", 7),
@@ -6119,8 +6348,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
           ? this.clampValue(this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null), -1, 1)
           : referenceVoltage;
         const pitchedFrequency = Math.max(0, baseFrequency * (2 ** ((pitchInput - referenceVoltage) / 0.1)));
+        const effectiveFrequency = this.resolveFrequencyHz(pitchedFrequency, this.readFInputHz(mixInput, nodeId));
         return this.hypersawSample(state, {
-          frequencyHz: pitchedFrequency,
+          frequencyHz: effectiveFrequency,
           sampleRate: safeRate,
           phaseOffset: read("phase", 0),
           numVoices: read("voices", 8),
@@ -6382,9 +6612,13 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
       aliasSine: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
         const state = this.aliasSineStates.get(nodeId) || this.createAliasSineState();
         this.aliasSineStates.set(nodeId, state);
+        // When universal `f` is wired (absolute Hz), convert to cycles/sample.
+        const fHz = this.readFInputHz(mixInput, nodeId);
+        const normFromKnob = this.readEffectiveParameter(node, "normFreq", 0.1, frame, frames, frameValues);
+        const normFreq = fHz != null ? fHz / Math.max(1, safeRate) : normFromKnob;
         return this.aliasSineSample(
           state,
-          this.readEffectiveParameter(node, "normFreq", 0.1, frame, frames, frameValues),
+          normFreq,
           this.readEffectiveParameter(node, "level", 1, frame, frames, frameValues),
           safeRate,
         );
@@ -7530,6 +7764,8 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         this.polyBlepOscillatorWorkletEvaluate(node, nodeId, frame, frames, frameValues, mixInput, safeRate),
       graph2: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput, inputFrame, graphInputValue, graphOutputValue) =>
         graphOutputValue(node, nodeId),
+      graphCopy: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput, inputFrame, graphInputValue, graphOutputValue) =>
+        graphOutputValue(node, nodeId),
       additiveOsc: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput, inputFrame, graphInputValue) =>
         this.additiveOscWorkletEvaluate(node, nodeId, frame, frames, frameValues, mixInput, safeRate, graphInputValue),
       gpuAdditiveOsc: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput, inputFrame, graphInputValue) =>
@@ -7613,8 +7849,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         const pitchInput = this.inputConnections.has(this.inputKey(nodeId, "0.1V/Oct"))
           ? this.clampValue(this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null), -1, 1)
           : referenceVoltage;
+        const pitched = Math.max(0, baseFreq * (2 ** ((pitchInput - referenceVoltage) / 0.1)));
         return this.sincSample(state, {
-          freq: Math.max(0, baseFreq * (2 ** ((pitchInput - referenceVoltage) / 0.1))),
+          freq: this.resolveFrequencyHz(pitched, this.readFInputHz(mixInput, nodeId)),
           phase: read("phase", 0),
           lobes: read("lobes", 4),
           bandLimit: read("bandLimit", 1),
@@ -7873,6 +8110,8 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
 
   evaluateFrame(frame, frames, inputs = [], rate = this.engineSampleRate || sampleRate, inputFrame = frame) {
     const safeRate = Math.max(1, Number(rate) || sampleRate || 44100);
+    // Advance free-running sample clock used by graph LFO Rate mode.
+    this.absoluteFrame = (Number(this.absoluteFrame) || 0) + 1;
     const frameValues = new Map();
     const mixInput = (nodeId, port = "In") => {
       const base = (
@@ -7899,22 +8138,65 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
         ? Math.max(0, Number(sourceNode.params?.rate) || 0)
         : 0;
     };
+    // Map a raw control input from [inputMin, inputMax] into the graph's unit
+    // domain [0, 1]. Equal endpoints fall back to 0 so a zero-width range does
+    // not produce NaN; result is not clamped so wrap/phase can still loop.
+    const graphMapInputToUnit = (raw, inputMin, inputMax) => {
+      const min = Number(inputMin);
+      const max = Number(inputMax);
+      const lo = Number.isFinite(min) ? min : 0;
+      const hi = Number.isFinite(max) ? max : 1;
+      const span = hi - lo;
+      if (Math.abs(span) < 1e-12) {
+        return 0;
+      }
+      return ((Number(raw) || 0) - lo) / span;
+    };
     const graphSampleX = (node, nodeId) => {
-      return this.wrapValue(this.readEffectiveParameter(node, "phase", 0, frame, frames, frameValues), 0, 1);
+      const mode = Math.round(this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues));
+      const phaseValue = this.readEffectiveParameter(node, "phase", 0, frame, frames, frameValues);
+      // Phase is always a pure time/position offset: same loop, just starts
+      // reading at phase instead of 0.
+      if (mode <= 0) {
+        const inputMin = this.readEffectiveParameter(node, "inputMin", 0, frame, frames, frameValues);
+        const inputMax = this.readEffectiveParameter(node, "inputMax", 1, frame, frames, frameValues);
+        return this.wrapValue(
+          graphMapInputToUnit(mixInput(nodeId), inputMin, inputMax) + phaseValue,
+          0,
+          1,
+        );
+      }
+      const rateValue = Math.max(0, this.readEffectiveParameter(node, "rate", 1, frame, frames, frameValues));
+      const state = this.graphLfoStates.get(nodeId) || this.createGraphLfoState();
+      this.graphLfoStates.set(nodeId, state);
+      const resetValue = 0;
+      const currentFrame = Number(this.absoluteFrame) || 0;
+      if (state.lastReset <= 0 && resetValue > 0) {
+        state.resetFrame = currentFrame;
+      }
+      state.lastReset = resetValue;
+      const resetFrame = Number.isFinite(state.resetFrame) ? state.resetFrame : 0;
+      return this.wrapValue(((currentFrame - resetFrame) / safeRate) * rateValue + phaseValue, 0, 1);
     };
     const graphOutputValue = (node, nodeId) => {
-      const normalizedValue = this.graphValueAt(this.graphForNode(node), graphSampleX(node, nodeId), this.graphSmoothingModeForNode(node));
+      const sampleX = graphSampleX(node, nodeId);
+      const nodeTension = Number(node?.params?.tension) ?? 1;
+      const normalizedValue = this.graphValueAt(this.graphForNode(node), sampleX, this.graphSmoothingModeForNode(node), nodeTension);
       const outputMin = this.readEffectiveParameter(node, "outputMin", 0, frame, frames, frameValues);
       const outputMax = this.readEffectiveParameter(node, "outputMax", 1, frame, frames, frameValues);
-      return outputMin + normalizedValue * (outputMax - outputMin);
+      return {
+        Out: outputMin + normalizedValue * (outputMax - outputMin),
+        // Live playhead on the graph editor reads this port.
+        __GraphPhase: sampleX,
+      };
     };
     const graphInputValue = (nodeId, graphInput, x, fallback) => {
       const connection = (this.graphInputConnections.get(this.graphInputKey(nodeId, graphInput)) || [])[0];
       const source = connection ? this.nodes.get(connection.sourceNode) : null;
-      if (!source || source.type !== "graph2") {
+      if (!source || (source.type !== "graph2" && source.type !== "graphCopy")) {
         return fallback;
       }
-      return this.graphValueAt(this.graphForNode(source), this.clampValue(Number(x) || 0, 0, 1), this.graphSmoothingModeForNode(source));
+      return this.graphValueAt(this.graphForNode(source), this.clampValue(Number(x) || 0, 0, 1), this.graphSmoothingModeForNode(source), Number(source?.params?.tension) ?? 1);
     };
 
     for (const nodeId of this.order) {

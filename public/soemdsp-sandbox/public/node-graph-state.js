@@ -120,6 +120,8 @@ var nodeGraphMvp = {
     outputMuted: false,
     outputVolume: 1,
     speedMultiplier: 1,
+    // Full-scale ceiling for universal oscillator `f` input (linear Hz 0..limit).
+    speedLimit: 20000,
     planEvidence: null,
     activeNodeIds: new Set(),
     autoSmoothingSeconds: 0.5,
@@ -247,6 +249,7 @@ var nodeGraphMvp = {
     humanFilter: 0,
     pulseExplosion: 0,
     graph2: 0,
+    graphCopy: 0,
     highpass: 0,
     image: 0,
     ladderFilter: 0,

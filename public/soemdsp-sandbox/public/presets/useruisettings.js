@@ -154,7 +154,7 @@
     "moduleOscilloscopesVisible": true,
     "moduleSlidersVisible": true,
     "moduleScopeBackgroundColor": "#000000",
-    "globalSmoothingSeconds": 0.018032093271517637,
+    "globalSmoothingSeconds": 0.11635713276549976,
     "globalSmoothingManual": false,
     "moduleScopeDotCore1Enabled": false,
     "moduleScopeDotCore1Size": 2,
@@ -174,18 +174,18 @@
       "brightness": 1,
       "color": "#75ebff",
       "dot1Enabled": true,
-      "dot1Size": 0.0795,
+      "dot1Size": 0.0219,
       "secondaryBrightness": 0.18,
       "secondaryColor": "#184fff",
       "secondaryEnabled": true,
       "secondarySize": 0.24,
       "secondaryLineThickness": 0.48,
       "cycles": 2,
-      "lineThickness": 0,
+      "lineThickness": 0.9,
       "padding": 0,
       "skipDiscontinuities": false,
       "sourceSync": false,
-      "zoomSeconds": 0.2
+      "zoomSeconds": 0.05
     },
     "sliderLayout": "text-inside",
     "sliderAmountVisible": true,
@@ -204,6 +204,10 @@
         "home": false
       },
       "graph2": {
+        "developer": true,
+        "home": false
+      },
+      "graphCopy": {
         "developer": true,
         "home": false
       },
@@ -752,13 +756,17 @@
       "width": 185
     },
     "moduleActionWindowSize": {
-      "width": 185,
-      "height": 620
+      "width": 360,
+      "height": 666
     },
     "workspaceWindowStatesVersion": 1,
     "workspaceWindowStates": {
       "commandCenter": {
-        "open": false
+        "open": false,
+        "position": {
+          "left": 1431,
+          "top": 322
+        }
       },
       "codeBox": {
         "open": false
@@ -767,7 +775,8 @@
         "open": false
       },
       "metaparameters": {
-        "open": false
+        "open": false,
+        "locked": true
       },
       "oscilloscopeSettings": {
         "open": false
@@ -778,8 +787,8 @@
       "moduleBrowser": {
         "open": false,
         "position": {
-          "left": 1329,
-          "top": 205
+          "left": 1549,
+          "top": 288
         }
       },
       "visibilityMenu": {
@@ -796,7 +805,8 @@
         "open": false
       },
       "traceDisplaySettings": {
-        "open": false
+        "open": false,
+        "targetNode": "graph2-1"
       },
       "standaloneMidiKeyboard": {
         "open": false
@@ -815,10 +825,10 @@
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": -429.92857142857144,
-        "y": -19.74302455357143
+        "x": 89.03771865889212,
+        "y": 84.99471182864886
       },
-      "zoom": 0.7971938775510204
+      "zoom": 0.9469765198797896
     },
     "moduleStoreDepartment": "",
     "savedPatchBankIndex": 0,

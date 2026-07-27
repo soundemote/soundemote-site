@@ -4,6 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bezier controls</title>
+  <script>
+    // Apply before first paint so embed never lays out at full-page size (no scrollbars).
+    if (/(?:^|[?&])embed=1(?:&|$)/.test(location.search)) {
+      document.documentElement.classList.add("embed");
+    }
+  </script>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -122,8 +128,8 @@
       gap: 6px;
     }
     .btn {
-      background: #4ea8de;
-      color: #121214;
+      background: #35353c;
+      color: #e1e1e6;
       border: none;
       padding: 8px 14px;
       font-weight: 700;
@@ -131,9 +137,17 @@
       cursor: pointer;
       font-size: 13px;
     }
-    .btn:hover { background: #64b5f6; }
+    .btn:hover { background: #45454e; }
+    .btn:active {
+      background: #4ea8de;
+      color: #121214;
+    }
     .btn.secondary { background: #35353c; color: #e1e1e6; }
     .btn.secondary:hover { background: #45454e; }
+    .btn.secondary:active {
+      background: #4ea8de;
+      color: #121214;
+    }
     input[type="range"] {
       width: 100%;
       min-width: 100px;
@@ -307,35 +321,46 @@
       color: #5a5a66;
       font-family: ui-monospace, Consolas, monospace;
     }
-    /* Site iframe: tighter chrome, hide docs */
-    body.embed {
-      padding: 8px;
-      min-height: 0;
+    /*
+     * Embed = same layout as full page (centered, natural widths, same control cards).
+     * Hide page chrome; content-sized (no forced 100% height → no empty bottom strip).
+     * Host sizes iframe from postMessage height.
+     */
+    html.embed {
+      overflow: hidden !important;
     }
-    body.embed h1,
-    body.embed .sub,
-    body.embed .legend,
-    body.embed .notes {
-      display: none;
+    html.embed body {
+      min-height: 0 !important;
+      height: auto !important;
+      margin: 0;
+      padding: 2px 2px 5px;
+      justify-content: flex-start;
+      box-sizing: border-box;
+      overflow: hidden !important;
     }
-    body.embed .controls {
-      width: 100%;
-      max-width: none;
+    html.embed body > h1,
+    html.embed body > .sub,
+    html.embed body > .legend,
+    html.embed body > .notes,
+    html.embed body > #status {
+      display: none !important;
     }
-    body.embed .stage {
-      width: 100%;
-      max-width: none;
+    html.embed .controls {
+      width: min(912px, 100%);
+      margin: 0 0 6px;
     }
-    body.embed .stage canvas {
-      width: 100%;
-      height: auto;
+    html.embed .stage {
+      margin: 0 auto;
+    }
+    html.embed .stage canvas {
+      display: block;
     }
   </style>
 </head>
 <body>
   <script>
-    // ?embed=1 — used by soundemote home page iframe
-    if (/(?:^|[?&])embed=1(?:&|$)/.test(location.search)) {
+    // Keep body class for any legacy body.embed hooks
+    if (document.documentElement.classList.contains("embed")) {
       document.body.classList.add("embed");
     }
   </script>
@@ -383,7 +408,7 @@
           <button type="button" class="btn secondary" id="copySettingsBtn" title="Copy full curve JSON to clipboard">Copy settings</button>
           <button type="button" class="btn secondary" id="pasteSettingsBtn" title="Paste curve JSON from clipboard">Paste settings</button>
           <button type="button" class="btn secondary" id="copyPngBtn" title="Copy graph image to clipboard">Copy PNG</button>
-          <button type="button" class="btn" id="smoothBtn" title="Zero global/local pull &amp; blend">Smooth</button>
+          <button type="button" class="btn secondary" id="smoothBtn" title="Zero global/local pull &amp; blend">Smooth</button>
         </div>
       </div>
     </div>
@@ -2455,6 +2480,36 @@
   loadPreset(PRESET_CORNER);
   draw();
 })();
+  </script>
+  <script>
+    // Tell host iframe height = content (no bottom black gap)
+    (function () {
+      if (!document.documentElement.classList.contains("embed")) return;
+      function reportHeight() {
+        var body = document.body;
+        var h = Math.max(
+          body ? body.scrollHeight : 0,
+          body ? body.offsetHeight : 0,
+          document.documentElement.scrollHeight || 0
+        );
+        if (h < 100) return;
+        try {
+          parent.postMessage({ type: "bezier-controls-height", height: h }, "*");
+        } catch (_) { /* not embedded */ }
+      }
+      reportHeight();
+      window.addEventListener("load", reportHeight);
+      window.addEventListener("resize", reportHeight);
+      if (typeof ResizeObserver !== "undefined") {
+        var ro = new ResizeObserver(function () { reportHeight(); });
+        ro.observe(document.body);
+        var stage = document.querySelector(".stage");
+        if (stage) ro.observe(stage);
+      }
+      // fonts / layout settle
+      setTimeout(reportHeight, 50);
+      setTimeout(reportHeight, 250);
+    })();
   </script>
 </body>
 </html>

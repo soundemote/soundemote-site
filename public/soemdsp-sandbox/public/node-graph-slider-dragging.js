@@ -39,8 +39,15 @@ function syncNodeGraphPatchMetadataFromSlider(slider, options = {}) {
     nodeGraphModuleIsGraphType(patchNode.type) &&
     typeof nodeGraphGraphWithPhaseCursor === "function"
   );
+  const graphTensionChanged = (
+    key === "tension" &&
+    nodeGraphModuleIsGraphType(patchNode.type)
+  );
   if (graphPhaseChanged) {
     patchNode.graph = nodeGraphGraphWithPhaseCursor(patchNode);
+    syncNodeGraphGraphDisplaysForNode(node, patchNode);
+  }
+  if (graphTensionChanged) {
     syncNodeGraphGraphDisplaysForNode(node, patchNode);
   }
   syncNodeGraphScriptView(options.status || "metadata synced", true);
@@ -120,6 +127,15 @@ function syncNodeGraphPatchParameterFromSlider(slider, options = {}) {
     saveNodeGraphWorkingPatchToUserSettings();
   }
   if (options.deferUi) {
+    // Graph curve shape depends on tension/smoothing -- keep the SVG in sync
+    // while dragging even when the rest of the deferred UI is skipped.
+    if (
+      nodeGraphModuleIsGraphType(patchNode.type) &&
+      (key === "tension" || key === "smoothingMode") &&
+      typeof syncNodeGraphGraphDisplaysForNode === "function"
+    ) {
+      syncNodeGraphGraphDisplaysForNode(node, patchNode);
+    }
     return;
   }
   // transport's "BPM" param mirrors the patch-wide tempo, not an independent
@@ -283,7 +299,14 @@ function setNodeSliderValue(slider, value, options = {}) {
   } else {
     syncNodeSliderReadout(slider);
   }
-  if (!alreadyPending) {
+  // Tension/smoothing on graph modules must refresh the curve every pointer
+  // move (not once per rAF), otherwise the shape only jumps on mouse-up /
+  // next-frame flush. Other params keep the cheaper once-per-frame path.
+  const graphCurveLiveParam = isDrag && (
+    slider?.dataset?.param === "tension" ||
+    slider?.dataset?.param === "smoothingMode"
+  );
+  if (!alreadyPending || graphCurveLiveParam) {
     syncNodeGraphPatchParameterFromSlider(slider, {
       interaction: options.interaction,
       deferAutosave: isDrag,
@@ -298,7 +321,7 @@ function setNodeSliderValue(slider, value, options = {}) {
     syncNodeGraphGhostSliders();
     markNodeGraphRenderPending();
   }
-  if (!alreadyPending) {
+  if (!alreadyPending || graphCurveLiveParam) {
     scheduleNodeGraphLiveParameterSync();
   }
 }
