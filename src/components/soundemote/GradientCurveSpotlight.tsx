@@ -39,7 +39,7 @@ const BezierControlsEmbed = () => {
           rel="noreferrer"
           className="mono text-[0.65rem] uppercase tracking-[0.14em] text-scope underline underline-offset-4 hover:text-foreground"
         >
-          open full page
+          open workbench
         </a>
       </div>
       <iframe
@@ -72,7 +72,7 @@ const GradientCurveSpotlight = ({ compact = false }: { compact?: boolean }) => (
           to="/gradient-curve"
           className="mono text-xs uppercase tracking-[0.14em] text-scope underline underline-offset-4 hover:text-foreground"
         >
-          open full workbench
+          open workbench
         </Link>
       </div>
       <div
