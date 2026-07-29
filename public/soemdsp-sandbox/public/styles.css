@@ -1,9 +1,9 @@
-/* DSEG7 Classic (keshikan, SIL OFL 1.1 -- see public/fonts/DSEG7-Classic/LICENSE.txt).
-   A seven-segment LCD/LED digit font: the Classic cut keeps faint "ghost"
-   unlit segments visible behind the lit ones, which is what gives it that
-   phosphor/LCD-panel look instead of reading as plain bold text. Digits and
-   a handful of symbols only -- pair with a system monospace fallback for
-   anything else. */
+/* DSEG7 Classic — keshikan/DSEG (https://github.com/keshikan/DSEG), SIL OFL 1.1
+   (see public/fonts/DSEG7-Classic/LICENSE.txt).
+   Seven-segment LCD/LED digit font. The Classic cut keeps faint "ghost"
+   unlit segments behind the lit ones (phosphor/LCD panel, not plain bold).
+   Usage notes from upstream: period is zero-width; "!" is all-off; colon and
+   space share advance width. Pair with monospace for non-digit unit labels. */
 @font-face {
   font-family: "DSEG7 Classic";
   src: url("./fonts/DSEG7-Classic/DSEG7Classic-Bold.woff2") format("woff2"),
@@ -2872,9 +2872,7 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   -webkit-user-select: text;
 }
 
-.node-wiring-panel.modular-only-view .node-modular-view-size-readout {
-  display: none;
-}
+/* Keep W/H canvas size visible in modular-only view (was hidden). */
 
 .node-history-controls a {
   color: inherit;
@@ -4253,6 +4251,15 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
 
 .node-wiring-panel.modular-only-view .node-modular-only-back-button {
   display: inline-flex;
+}
+
+/* During pan/zoom: light CSS + lite wires; full chrome resumes on settle. */
+.node-graph-workspace.viewport-gesturing {
+  cursor: grab;
+}
+.node-graph-workspace.viewport-gesturing.panning,
+.node-graph-workspace.viewport-gesturing.smooth-zooming {
+  cursor: grabbing;
 }
 
 .node-graph-workspace.panning {
@@ -9450,16 +9457,22 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
 .node-io-row.port-connection-selected .node-port {
   color: var(--accent);
   --node-port-stroke-mask-color: color-mix(in srgb, var(--accent) 16%, transparent);
-  border-color: color-mix(in srgb, var(--accent) 80%, transparent);
-  background-color: var(--node-port-stroke-mask-color);
+  --node-port-crescent-fill: var(--node-port-stroke-mask-color);
+  --node-port-crescent-stroke: color-mix(in srgb, var(--accent) 80%, transparent);
+  border-color: transparent;
   cursor: crosshair;
 }
 
 .node-port.port-connection-selected,
 .node-param-port.port-connection-selected {
   filter: brightness(1.15);
-  border-color: color-mix(in srgb, var(--accent) 80%, transparent) !important;
+  border-color: transparent !important;
   cursor: crosshair;
+}
+
+.node-param-port.port-connection-selected {
+  --node-port-crescent-fill: color-mix(in srgb, var(--accent) 16%, transparent);
+  --node-port-crescent-stroke: color-mix(in srgb, var(--accent) 80%, transparent);
 }
 
 .node-wire-path.destroyed {
@@ -9519,11 +9532,49 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   min-height: calc((var(--node-grid-height) * var(--node-grid-height-units, 4)) - (var(--node-module-grid-inset) * 2));
   padding: 0;
   border-radius: 5px;
-  outline: 1px solid color-mix(in srgb, var(--node-module-stroke) 16%, transparent);
+  /* Frame stroke is SVG .node-module-frame (gaps at jacks). No CSS outline —
+     outline cannot leave holes for ports and always paints over them. */
+  outline: none;
   background: var(--node-module-fill);
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.26);
   overflow: visible;
   pointer-events: none;
+}
+
+/* Gapped module chrome — under ports/content, never covers inlets/outlets.
+   Higher specificity than `.dsp-node svg { pointer-events: auto }` so the
+   outline never steals hits from faces (XY pad, scopes, etc.). */
+.dsp-node > .node-module-frame,
+.node-module-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none !important;
+  z-index: 0;
+}
+
+.node-module-frame-path {
+  fill: none;
+  stroke: color-mix(in srgb, var(--node-module-stroke) 16%, transparent);
+  stroke-width: 1px;
+  stroke-linecap: butt;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.dsp-node.connected .node-module-frame-path {
+  stroke: color-mix(in srgb, var(--node-module-stroke) 16%, transparent);
+}
+
+.dsp-node.dragging .node-module-frame-path {
+  stroke: color-mix(in srgb, var(--node-module-drag-stroke) 62%, transparent);
+}
+
+.dsp-node.selected .node-module-frame-path {
+  stroke: var(--node-module-selected-stroke);
+  stroke-width: 1.5px;
 }
 
 .dsp-node-header,
@@ -9532,6 +9583,10 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
 .node-port,
 .node-io-row,
 .node-param-port,
+/* Solid shell must be on the whitelist: .dsp-node is pointer-events:none. */
+.node-solid-module-shell,
+.node-solid-module-custom-ui,
+.node-xy-pad,
 .dsp-node button,
 .dsp-node input,
 .dsp-node select,
@@ -9558,24 +9613,14 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.26);
 }
 
-.dsp-node.connected {
-  outline-color: color-mix(in srgb, var(--node-module-stroke) 16%, transparent);
-}
-
-.dsp-node.dragging {
-  outline-color: color-mix(in srgb, var(--node-module-drag-stroke) 62%, transparent);
-}
-
 .dsp-node.placing {
   filter: drop-shadow(0 0 calc(var(--node-grid-size) * 0.55) color-mix(in srgb, var(--node-module-drag-stroke) 62%, transparent));
   pointer-events: none;
 }
 
 .dsp-node.selected {
-  outline-color: var(--node-module-selected-stroke);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--node-module-selected-stroke) 45%, transparent),
-    0 14px 30px rgba(0, 0, 0, 0.32);
+  /* Drop shadow only — no solid ring (rings crossed ports). Selection edge is SVG. */
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.32);
 }
 
 .dsp-node.bypassed {
@@ -9800,9 +9845,35 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
 
 .dsp-node.solid-module-layout {
   display: grid;
+  /* Shell (IO + face) fills remaining height; param rows size to content. */
   grid-template-rows: minmax(0, 1fr) auto;
 }
 
+.node-parameter-row-hidden,
+.node-parameter-row[hidden] {
+  display: none !important;
+}
+
+/* Number Readout solid face — LCD plate fills the shell center cell. */
+.dsp-node.number-readout-layout .node-number-readout-face,
+.dsp-node.number-readout-layout .node-module-scope-window {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Ray Bouncer solid face — phosphor scope fills the shell center cell. */
+.dsp-node.ray-bouncer-layout .node-ray-bouncer-face,
+.dsp-node.ray-bouncer-layout .node-module-scope-window {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Shared solid-shell contract (chromeless + graph solid faces):
+   - shell height = max(display, denser 1gu IO column) via --node-module-shell-height-units
+   - columns stretch full shell height; jacks space-evenly in fixed 1gu bands
+   - gaps between jacks hit the shell (module drag); jack neighborhood wires */
 .node-solid-module-shell {
   display: grid;
   grid-template-columns:
@@ -9810,18 +9881,36 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
     minmax(0, 1fr)
     minmax(0, max-content);
   min-width: 0;
-  min-height: 0;
+  min-height: calc(
+    var(--node-grid-height) * var(
+      --node-module-shell-height-units,
+      var(--node-module-display-height-units, 2)
+    )
+  );
+  height: 100%;
   overflow: hidden;
+  /* Always receive empty-gap clicks (graph + chromeless solid). */
+  pointer-events: auto;
 }
 
 .node-solid-module-shell > .node-io-column {
-  align-content: stretch;
+  align-self: stretch;
+  align-content: space-evenly;
+  justify-content: center;
   gap: 0;
   padding: 0;
+  min-height: 0;
+  /* Gaps between jacks fall through to the shell (module drag/select). */
+  pointer-events: none;
 }
 
 .node-solid-module-shell > .node-io-column .node-io-row {
-  min-height: 0;
+  /* One local 1gu band around the jack — not 1/N of the face height. */
+  box-sizing: border-box;
+  height: var(--node-port-area-size);
+  min-height: var(--node-port-area-size);
+  max-height: var(--node-port-area-size);
+  pointer-events: auto;
   border-bottom: 1px solid rgba(127, 199, 217, 0.1);
 }
 
@@ -9842,6 +9931,8 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   grid-column: 2;
   min-width: 0;
   min-height: 0;
+  height: 100%;
+  pointer-events: auto;
 }
 
 .node-bug-button-face {
@@ -10029,19 +10120,37 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
    The module article is a GRID column (not flex), so the pad row must be
    granted the leftover height explicitly: header / pad / io / parameters.
    minmax(0, 1fr) lets the pad shrink cleanly on short modules too. */
+/* Display Settings: reset residual plate on XY Pad. */
+.node-xy-pad-reset-canvas-button {
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border: 1px solid rgba(127, 199, 217, 0.35);
+  border-radius: 4px;
+  color: rgba(220, 240, 245, 0.92);
+  background: rgba(8, 16, 22, 0.9);
+  font: inherit;
+  cursor: pointer;
+}
+
+.node-xy-pad-reset-canvas-button:hover {
+  border-color: rgba(127, 199, 217, 0.55);
+  background: rgba(16, 28, 36, 0.95);
+}
+
+/* XY Pad face fills the solid shell center cell (shared solid contract). */
 .node-xy-pad {
   box-sizing: border-box;
-  padding: 4px 6px 2px;
-  /* The module article is a fixed-grid-height flex column; the pad takes
-     the space left over after the scope/io/parameter sections and MUST NOT
-     overflow it -- an earlier square-aspect canvas ran under the io section,
-     dimming the pad's lower edge and stealing its clicks. The custom UI
-     stays strictly inside its own section. */
+  /* No outer padding — padding used to create a dead ring that started
+     module-drag instead of pad drag (hitbox felt "shifted"). */
+  padding: 0;
   width: 100%;
   height: 100%;
-  min-height: 56px;
+  min-height: 0;
   overflow: hidden;
   display: flex;
+  background: #000;
 }
 
 .node-xy-pad-canvas {
@@ -10050,11 +10159,10 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   width: 100%;
   height: 100%;
   min-height: 0;
-  border-radius: 4px;
-  border: 1px solid rgba(127, 199, 217, 0.28);
-  background:
-    radial-gradient(circle at 50% 45%, rgba(127, 199, 217, 0.06), transparent 70%),
-    rgba(3, 7, 10, 0.9);
+  border-radius: 0;
+  border: 0;
+  /* Opaque phosphor plate only — drawn face is pure black + residual. */
+  background: #000;
   cursor: var(--node-dot-cursor);
   touch-action: none;
 }
@@ -10293,6 +10401,11 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   pointer-events: none;
 }
 
+/*
+ * Face canvases (phosphor + vector) paint an opaque plate + content.
+ * MUST be normal blend: screen turns black/near-black into "see-through",
+ * so module chrome (teal/green strokes) bled through as a green tint.
+ */
 .node-module-scope-local-fallback-canvas {
   position: absolute;
   inset: 0;
@@ -10300,15 +10413,29 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   display: block;
   width: 100%;
   height: 100%;
-  mix-blend-mode: screen;
+  mix-blend-mode: normal;
   pointer-events: none;
 }
 
-.node-number-readout-canvas {
+/*
+ * VECTOR Trace faces: continuous polylines into a face buffer.
+ * - normal blend (opaque strokes)
+ * - density < 1: always pixelated (chunky lo-fi buffer)
+ * - density ≥ 1: default smooth; .pixelated-canvas-zoom (workspace zoom ≥ 2.5)
+ *   switches to crisp nearest-neighbor so zoom-in stays sharp, not mushy
+ */
+.node-module-scope-local-fallback-canvas.node-module-scope-vector-trace {
+  mix-blend-mode: normal;
+}
+
+.node-number-readout-canvas,
+.node-phosphor-light-canvas {
   position: absolute;
   inset: 0;
   z-index: 2;
   display: block;
+  /* Buffer = layout face (clientWidth) × dpr — fixed under workspace zoom.
+     CSS 100% scales the bitmap; pixelated-canvas-zoom keeps it crisp. */
   width: 100%;
   height: 100%;
   pointer-events: none;
@@ -10331,6 +10458,8 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   border-top: 1px solid rgba(128, 224, 224, 0.16);
   border-bottom: 1px solid rgba(128, 224, 224, 0.16);
   background: #020609;
+  /* Display-only face — must not steal pointer from module drag / knobs. */
+  pointer-events: none;
 }
 
 .node-filter-curve-canvas {
@@ -10430,8 +10559,22 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
 .node-graph-workspace.pixelated-canvas-zoom .node-filter-curve-canvas,
 .node-graph-workspace.pixelated-canvas-zoom .node-phosphor-waveform-canvas,
 .node-graph-workspace.pixelated-canvas-zoom .node-phosphillator-draw-canvas,
-.node-graph-workspace.pixelated-canvas-zoom .node-module-scope-local-fallback-canvas {
+.node-graph-workspace.pixelated-canvas-zoom .node-xy-pad-canvas,
+.node-graph-workspace.pixelated-canvas-zoom .node-module-scope-local-fallback-canvas,
+.node-graph-workspace.pixelated-canvas-zoom .node-number-readout-canvas,
+.node-graph-workspace.pixelated-canvas-zoom .node-phosphor-light-canvas {
   image-rendering: pixelated;
+}
+
+/*
+ * TEMP vanilla sharpness test: nearest-neighbor CSS scaling (was `auto`,
+ * which bilinear-filters when the workspace / face is scaled and looked
+ * soft/blurry). Revert to `auto` if hop-column dropouts return.
+ */
+.node-module-scope-local-fallback-canvas.node-spectrogram-canvas,
+.node-graph-workspace.pixelated-canvas-zoom .node-module-scope-local-fallback-canvas.node-spectrogram-canvas {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
 .node-slider-widget-body {
@@ -13024,6 +13167,116 @@ input[data-global-scope-number-drag="true"]:not([readonly]):focus,
   gap: 0;
   grid-template-columns: minmax(52px, 0.34fr) minmax(0, 1fr);
   padding: 0;
+}
+
+/*
+ * Inline SoundColorWidget for Trace display colors.
+ * Must NOT wrap a native type=color in a <label> — that opens the OS picker
+ * and parks it top-left when the input has no geometry.
+ * Host needs a real width/height: the widget sizes via container queries.
+ */
+.node-trace-display-settings-popover .node-trace-display-color-widget-row {
+  display: grid;
+  grid-template-columns: minmax(52px, 0.34fr) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0;
+  min-height: 104px;
+  padding: 0;
+}
+
+.node-trace-display-settings-popover .node-trace-display-color-widget-row > span:first-child {
+  align-self: center;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 4px 0 0;
+  text-overflow: clip;
+  white-space: nowrap;
+  color: var(--muted, rgba(243, 240, 230, 0.72));
+  font-size: 0.72rem;
+}
+
+.node-trace-display-settings-popover .node-trace-display-color-widget-row > input[type="hidden"] {
+  display: none;
+}
+
+.node-trace-display-settings-popover .node-trace-display-color-widget-host {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 104px;
+  min-height: 104px;
+  /* Match shader-token color widget theme so strips are readable. */
+  --color-widget-accent: rgba(127, 199, 217, 0.86);
+  --color-widget-bg: rgba(0, 5, 7, 0.42);
+  --color-widget-border: rgba(127, 199, 217, 0.2);
+  --color-widget-control-border: rgba(127, 199, 217, 0.22);
+  --color-widget-hex-bg: rgba(0, 5, 7, 0.68);
+  --color-widget-hex-ink: rgba(236, 251, 246, 0.9);
+  --color-widget-label-ink: rgba(156, 164, 166, 0.78);
+}
+
+.node-trace-display-settings-popover .node-trace-display-color-widget-host.scw-mount {
+  display: grid;
+  height: 104px;
+  min-height: 104px;
+  place-items: stretch;
+}
+
+.node-trace-display-settings-popover .node-trace-display-color-widget-host .scw-root {
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+}
+
+/*
+ * Global `button { min-height: 38px; padding; background: panel }` would
+ * crush container-query strips and paint over hue/bright gradients.
+ */
+.node-trace-display-settings-popover .node-trace-display-color-widget-host button.scw-control {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  box-sizing: border-box;
+  min-height: 0 !important;
+  height: 100% !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 1px solid var(--color-widget-control-border, rgba(127, 199, 217, 0.22)) !important;
+  border-radius: 4px !important;
+  color: transparent !important;
+  box-shadow: none !important;
+  cursor: ew-resize;
+}
+
+.node-trace-display-settings-popover .node-trace-display-color-widget-host button.scw-control:hover {
+  border-color: var(--color-widget-accent, rgba(127, 199, 217, 0.86)) !important;
+}
+
+.node-trace-display-settings-popover .node-trace-display-color-widget-host .scw-hue {
+  background: linear-gradient(
+    90deg,
+    hsl(0 100% 50%),
+    hsl(60 100% 50%),
+    hsl(120 100% 50%),
+    hsl(180 100% 50%),
+    hsl(240 100% 50%),
+    hsl(300 100% 50%),
+    hsl(360 100% 50%)
+  ) !important;
+}
+
+.node-trace-display-settings-popover .node-trace-display-color-widget-host .scw-brightness {
+  background: linear-gradient(90deg, #000, #fff) !important;
+}
+
+.node-trace-display-settings-popover .node-trace-display-color-widget-host .scw-controls {
+  min-height: 28px;
+  height: 100%;
+  align-self: stretch;
+}
+
+.node-trace-display-settings-popover .node-trace-display-color-widget-host .scw-hex {
+  min-height: 22px;
 }
 
 .node-trace-display-settings-popover .metadata-section-title {
@@ -16251,9 +16504,21 @@ button#nodeScenePasteModuleSettings.settings-paste-mismatch {
   font-size: 0.78rem;
 }
 
+/*
+ * Half-jacks: fill + permanent stroke on the crescent (curved half-circle)
+ * only. The flat outer edge stays stroke-free so the inlet/outlet reads as
+ * open to the wire gap (no full-box border / 1px ring).
+ *
+ * Technique: radial-gradient circle centered on the flat edge; only the arc
+ * that lies inside the half-disk is painted (the diameter is not stroked).
+ */
 .node-port {
   position: relative;
+  z-index: 2;
   --node-port-stroke-mask-color: color-mix(in srgb, var(--node-port-idle-fill) 42%, transparent);
+  --node-port-crescent-fill: var(--node-port-stroke-mask-color);
+  --node-port-crescent-stroke: color-mix(in srgb, var(--node-port-idle-stroke) 34%, transparent);
+  --node-port-crescent-at: left center;
   display: block;
   box-sizing: border-box;
   width: var(--node-signal-port-width);
@@ -16267,8 +16532,15 @@ button#nodeScenePasteModuleSettings.settings-paste-mismatch {
   overflow: hidden;
   text-indent: -999px;
   cursor: var(--node-dot-cursor);
-  border-color: color-mix(in srgb, var(--node-port-idle-stroke) 34%, transparent);
-  background: var(--node-port-stroke-mask-color);
+  border: 0;
+  border-color: transparent;
+  background: radial-gradient(
+    circle farthest-side at var(--node-port-crescent-at),
+    var(--node-port-crescent-fill) calc(100% - 1px),
+    var(--node-port-crescent-stroke) calc(100% - 1px),
+    var(--node-port-crescent-stroke) 100%
+  );
+  box-shadow: none;
 }
 
 body.node-slider-dragging .node-port,
@@ -16276,21 +16548,16 @@ body.node-slider-dragging .node-param-port {
   pointer-events: none;
 }
 
+/* Former edge mask strip for CSS module outline — removed; frame is gapped SVG. */
 .node-port:not(.node-param-port)::before {
-  content: "";
-  position: absolute;
-  z-index: 2;
-  top: -2px;
-  bottom: -2px;
-  width: 4px;
-  background: var(--node-port-stroke-mask-color);
-  pointer-events: none;
+  content: none;
 }
 
 .node-port.output {
   --node-patch-point-x: 100%;
   --node-port-hover-color: var(--node-output-fill);
-  border-right-width: 0;
+  --node-port-crescent-at: right center;
+  /* Flat outer edge on the right; curved inner arc on the left. */
   border-radius: 999px 0 0 999px;
 }
 
@@ -16299,19 +16566,21 @@ body.node-slider-dragging .node-param-port {
 }
 
 .dsp-node-io-section .node-port.output:not(.connected-port) {
-  border-color: color-mix(in srgb, var(--node-port-idle-stroke) 34%, transparent);
+  border-color: transparent;
 }
 
 .dsp-node-io-section .node-port.output:not(.connected-port):hover {
   --node-port-stroke-mask-color: color-mix(in srgb, var(--node-output-fill) 14%, transparent);
-  border-color: color-mix(in srgb, var(--node-output-stroke) 64%, transparent);
-  background: var(--node-port-stroke-mask-color);
+  --node-port-crescent-fill: var(--node-port-stroke-mask-color);
+  --node-port-crescent-stroke: color-mix(in srgb, var(--node-output-stroke) 64%, transparent);
+  border-color: transparent;
 }
 
 .node-port.input {
   --node-patch-point-x: 0%;
   --node-port-hover-color: var(--node-input-fill);
-  border-left-width: 0;
+  --node-port-crescent-at: left center;
+  /* Flat outer edge on the left; curved inner arc on the right. */
   border-radius: 0 999px 999px 0;
 }
 
@@ -16321,7 +16590,11 @@ body.node-slider-dragging .node-param-port {
 
 .node-param-port {
   position: relative;
+  z-index: 2;
   --node-port-stroke-mask-color: color-mix(in srgb, var(--node-port-idle-fill) 42%, transparent);
+  --node-port-crescent-fill: var(--node-port-stroke-mask-color);
+  --node-port-crescent-stroke: color-mix(in srgb, var(--node-port-idle-stroke) 34%, transparent);
+  --node-port-crescent-at: left center;
   grid-column: 1;
   grid-row: 1;
   align-self: center;
@@ -16340,8 +16613,10 @@ body.node-slider-dragging .node-param-port {
   color: transparent;
   overflow: visible;
   text-indent: -999px;
+  box-shadow: none;
 }
 
+/* Visible jack: half-disk fill + crescent arc stroke (no flat-edge stroke). */
 .node-param-port::before {
   content: "";
   position: absolute;
@@ -16351,8 +16626,14 @@ body.node-slider-dragging .node-param-port {
   min-width: var(--node-port-area-radius);
   height: var(--node-port-area-size);
   min-height: var(--node-port-area-size);
-  border: 1px solid color-mix(in srgb, var(--node-port-idle-stroke) 34%, transparent);
-  background: var(--node-port-stroke-mask-color);
+  border: 0;
+  background: radial-gradient(
+    circle farthest-side at var(--node-port-crescent-at),
+    var(--node-port-crescent-fill) calc(100% - 1px),
+    var(--node-port-crescent-stroke) calc(100% - 1px),
+    var(--node-port-crescent-stroke) 100%
+  );
+  box-shadow: none;
   pointer-events: none;
 }
 
@@ -16360,22 +16641,21 @@ body.node-slider-dragging .node-param-port {
   --node-patch-point-x: 0%;
   --node-param-hover-color: var(--node-mod-input-fill);
   --node-param-hover-stroke: var(--node-mod-input-stroke);
+  --node-port-crescent-at: left center;
 }
 
 .node-param-port.graph-input {
   --node-patch-point-x: 0%;
   --node-param-hover-color: var(--node-mod-input-fill);
   --node-param-hover-stroke: var(--node-mod-input-stroke);
+  --node-port-crescent-at: left center;
 }
 
 .node-param-port.modulation-input::before,
 .node-param-port.graph-input::before {
   left: 0;
-  border-left-width: 0;
   border-radius: 0 999px 999px 0;
-  box-shadow:
-    -1px 0 0 var(--node-port-stroke-mask-color),
-    -2px 0 0 var(--node-port-stroke-mask-color);
+  box-shadow: none;
   transform: translateY(-50%) scale(var(--node-port-size-ratio));
   transform-origin: left center;
 }
@@ -16384,6 +16664,7 @@ body.node-slider-dragging .node-param-port {
   --node-patch-point-x: 100%;
   --node-param-hover-color: var(--node-param-output-fill);
   --node-param-hover-stroke: var(--node-param-output-stroke);
+  --node-port-crescent-at: right center;
   grid-column: 3;
   grid-row: 1;
   align-self: center;
@@ -16396,11 +16677,8 @@ body.node-slider-dragging .node-param-port {
 
 .node-param-port.parameter-output::before {
   right: 0;
-  border-right-width: 0;
   border-radius: 999px 0 0 999px;
-  box-shadow:
-    1px 0 0 var(--node-port-stroke-mask-color),
-    2px 0 0 var(--node-port-stroke-mask-color);
+  box-shadow: none;
   transform: translateY(-50%) scale(var(--node-port-size-ratio));
   transform-origin: right center;
 }
@@ -16409,15 +16687,18 @@ body.node-slider-dragging .node-param-port {
   --node-patch-point-color: var(--node-output-fill);
   --node-patch-point-x: 100%;
   --node-port-stroke-mask-color: color-mix(in srgb, var(--node-output-fill) 15%, transparent);
-  border-color: color-mix(in srgb, var(--node-output-stroke) 56%, transparent);
-  background: var(--node-port-stroke-mask-color);
+  --node-port-crescent-fill: var(--node-port-stroke-mask-color);
+  --node-port-crescent-stroke: color-mix(in srgb, var(--node-output-stroke) 56%, transparent);
+  border-color: transparent;
 }
 
 .node-param-port.parameter-output.connected-port {
   --node-patch-point-color: var(--node-param-output-fill);
   --node-patch-point-x: 100%;
   --node-port-stroke-mask-color: color-mix(in srgb, var(--node-param-output-fill) 15%, transparent);
-  border-color: color-mix(in srgb, var(--node-param-output-stroke) 62%, transparent);
+  --node-port-crescent-fill: var(--node-port-stroke-mask-color);
+  --node-port-crescent-stroke: color-mix(in srgb, var(--node-param-output-stroke) 62%, transparent);
+  border-color: transparent;
   background: transparent;
 }
 
@@ -16425,17 +16706,17 @@ body.node-slider-dragging .node-param-port {
   right: 0;
   width: var(--node-port-area-size);
   min-width: var(--node-port-area-size);
-  border-color: color-mix(in srgb, var(--node-param-output-stroke) 62%, transparent);
+  border: 0;
   border-radius: 6px 0 0 6px;
+  /* Connected param out is a tab, not a half-disk — stroke the inner (left)
+     curve only via a left-side ring; keep the flat outer (right) open. */
   background: linear-gradient(
     90deg,
     color-mix(in srgb, var(--node-param-output-fill) 8%, transparent),
     color-mix(in srgb, var(--node-param-output-fill) 34%, transparent)
   );
   box-shadow:
-    1px 0 0 color-mix(in srgb, var(--node-param-output-fill) 34%, transparent),
-    2px 0 0 color-mix(in srgb, var(--node-param-output-fill) 24%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--node-param-output-fill) 30%, transparent) inset,
+    inset 1px 0 0 0 color-mix(in srgb, var(--node-param-output-stroke) 50%, transparent),
     0 0 var(--node-hover-glow-size) color-mix(in srgb, var(--node-param-output-fill) 18%, transparent);
   transform: translateY(-50%);
 }
@@ -16444,15 +16725,18 @@ body.node-slider-dragging .node-param-port {
   --node-patch-point-color: var(--node-input-fill);
   --node-patch-point-x: 0%;
   --node-port-stroke-mask-color: color-mix(in srgb, var(--node-input-fill) 15%, transparent);
-  border-color: color-mix(in srgb, var(--node-input-stroke) 56%, transparent);
-  background: var(--node-port-stroke-mask-color);
+  --node-port-crescent-fill: var(--node-port-stroke-mask-color);
+  --node-port-crescent-stroke: color-mix(in srgb, var(--node-input-stroke) 56%, transparent);
+  border-color: transparent;
 }
 
 .node-param-port.modulation-input.connected-port {
   --node-patch-point-color: var(--node-mod-input-fill);
   --node-patch-point-x: 0%;
   --node-port-stroke-mask-color: color-mix(in srgb, var(--node-mod-input-fill) 15%, transparent);
-  border-color: color-mix(in srgb, var(--node-mod-input-stroke) 62%, transparent);
+  --node-port-crescent-fill: var(--node-port-stroke-mask-color);
+  --node-port-crescent-stroke: color-mix(in srgb, var(--node-mod-input-stroke) 62%, transparent);
+  border-color: transparent;
   background: transparent;
 }
 
@@ -16460,7 +16744,9 @@ body.node-slider-dragging .node-param-port {
   --node-patch-point-color: var(--node-mod-input-fill);
   --node-patch-point-x: 0%;
   --node-port-stroke-mask-color: color-mix(in srgb, var(--node-mod-input-fill) 15%, transparent);
-  border-color: color-mix(in srgb, var(--node-mod-input-stroke) 62%, transparent);
+  --node-port-crescent-fill: var(--node-port-stroke-mask-color);
+  --node-port-crescent-stroke: color-mix(in srgb, var(--node-mod-input-stroke) 62%, transparent);
+  border-color: transparent;
   background: transparent;
 }
 
@@ -16470,12 +16756,18 @@ body.node-slider-dragging .node-param-port {
 }
 
 .node-port:not(.node-param-port).connected-port::before {
-  background: var(--node-port-stroke-mask-color);
+  background: transparent;
 }
 
 .node-param-port.connected-port::before {
-  border-color: color-mix(in srgb, var(--node-patch-point-color, var(--node-port-hover-stroke)) 56%, transparent);
-  background: var(--node-port-stroke-mask-color);
+  border: 0;
+  /* Keep crescent stroke via inherited --node-port-crescent-* vars. */
+  background: radial-gradient(
+    circle farthest-side at var(--node-port-crescent-at),
+    var(--node-port-crescent-fill) calc(100% - 1px),
+    var(--node-port-crescent-stroke) calc(100% - 1px),
+    var(--node-port-crescent-stroke) 100%
+  );
 }
 
 .node-port.connected-port::after,
@@ -16487,8 +16779,9 @@ body.node-slider-dragging .node-param-port {
   width: var(--node-wire-patch-point-size);
   aspect-ratio: 1 / 1;
   border-radius: 999px;
+  /* Solid jack fill only — no ring stroke (that sat in the module-frame gap). */
   background: var(--node-patch-point-color, var(--node-port-hover-fill));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--node-patch-point-color, var(--node-port-hover-fill)) 42%, transparent);
+  box-shadow: none;
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
@@ -16509,9 +16802,9 @@ body.node-slider-dragging .node-param-port {
   height: calc(var(--node-wire-patch-point-size) * 0.62);
   border-radius: 50%;
   pointer-events: none;
+  /* Center monitor pip + soft glow only (no outer jack ring). */
   background: color-mix(in srgb, var(--node-monitor-color) 72%, transparent);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--node-monitor-color) 64%, transparent),
     0 0 calc(var(--node-hover-glow-size) * 0.7) color-mix(in srgb, var(--node-monitor-color) 46%, transparent);
   transform: translate(-50%, -50%);
 }
@@ -16529,8 +16822,8 @@ body.node-slider-dragging .node-param-port {
 
 .node-port.monitored-port.connected-port::after,
 .node-param-port.monitored-port.connected-port::after {
+  /* Glow only — no 1px ring stroke at the inlet. */
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--node-patch-point-color, var(--node-port-hover-fill)) 52%, transparent),
     0 0 calc(var(--node-hover-glow-size) * 0.75) color-mix(in srgb, var(--node-monitor-color) 54%, transparent);
 }
 
@@ -16539,14 +16832,22 @@ body.node-slider-dragging .node-param-port {
   filter: brightness(1.08);
 }
 
+/* Hover: tinted fill + brighter crescent stroke + soft glow. Flat edge stays open. */
 .node-param-port:not(.connected-port):hover::before,
 .node-param-port:not(.connected-port).patch-point-hover::before {
   /* Legacy smoke contract token: color-mix(in srgb, var(--node-port-hover-fill). */
   --node-port-stroke-mask-color: color-mix(in srgb, var(--node-param-hover-color, var(--node-port-hover-fill)) 16%, transparent);
-  border-color: color-mix(in srgb, var(--node-param-hover-stroke, var(--node-port-hover-stroke)) 68%, transparent);
-  background: var(--node-port-stroke-mask-color);
+  --node-port-crescent-fill: var(--node-port-stroke-mask-color);
+  --node-port-crescent-stroke: color-mix(in srgb, var(--node-param-hover-stroke, var(--node-port-hover-stroke)) 68%, transparent);
+  border: 0;
+  border-color: transparent;
+  background: radial-gradient(
+    circle farthest-side at var(--node-port-crescent-at),
+    var(--node-port-crescent-fill) calc(100% - 1px),
+    var(--node-port-crescent-stroke) calc(100% - 1px),
+    var(--node-port-crescent-stroke) 100%
+  );
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--node-param-hover-color, var(--node-port-hover-fill)) 32%, transparent),
     0 0 var(--node-hover-glow-size) var(--node-hover-glow-spread) color-mix(in srgb, var(--node-param-hover-color, var(--node-port-hover-fill)) 38%, transparent);
 }
 
@@ -16555,7 +16856,6 @@ body.node-slider-dragging .node-param-port {
 .node-param-port.connected-port:hover::after,
 .node-param-port.connected-port.patch-point-hover::after {
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--node-patch-point-color, var(--node-port-hover-fill)) 52%, transparent),
     0 0 var(--node-hover-glow-size) var(--node-hover-glow-spread) color-mix(in srgb, var(--node-patch-point-color, var(--node-port-hover-fill)) 34%, transparent);
 }
 
@@ -16564,18 +16864,43 @@ body.node-slider-dragging .node-param-port {
 .node-io-row:hover .node-port:not(.node-param-port),
 .node-io-row.patch-point-hover .node-port:not(.node-param-port) {
   --node-port-stroke-mask-color: color-mix(in srgb, var(--node-port-hover-color, var(--node-port-hover-fill)) 16%, transparent);
-  border-color: color-mix(in srgb, var(--node-port-hover-color, var(--node-port-hover-stroke)) 68%, transparent);
-  background-color: var(--node-port-stroke-mask-color);
+  --node-port-crescent-fill: var(--node-port-stroke-mask-color);
+  --node-port-crescent-stroke: color-mix(in srgb, var(--node-port-hover-color, var(--node-port-hover-stroke)) 68%, transparent);
+  border: 0;
+  border-color: transparent;
+  background: radial-gradient(
+    circle farthest-side at var(--node-port-crescent-at),
+    var(--node-port-crescent-fill) calc(100% - 1px),
+    var(--node-port-crescent-stroke) calc(100% - 1px),
+    var(--node-port-crescent-stroke) 100%
+  );
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--node-port-hover-color, var(--node-port-hover-fill)) 32%, transparent),
     0 0 var(--node-hover-glow-size) var(--node-hover-glow-spread) color-mix(in srgb, var(--node-port-hover-color, var(--node-port-hover-fill)) 38%, transparent);
   filter: brightness(1.08);
 }
 
+/* Defeat global `button:hover { border-color: var(--accent) }` on jacks. */
+.node-port:hover,
+.node-param-port:hover,
+.node-port.patch-point-hover,
+.node-param-port.patch-point-hover {
+  border-color: transparent;
+}
+
 .node-port.dragging {
-  border-color: var(--node-module-drag-stroke);
+  --node-port-crescent-fill: color-mix(in srgb, var(--node-module-drag-stroke) 18%, transparent);
+  --node-port-crescent-stroke: color-mix(in srgb, var(--node-module-drag-stroke) 70%, transparent);
+  border-color: transparent;
   color: var(--node-module-drag-stroke);
   filter: brightness(1.35);
+  background: radial-gradient(
+    circle farthest-side at var(--node-port-crescent-at),
+    var(--node-port-crescent-fill) calc(100% - 1px),
+    var(--node-port-crescent-stroke) calc(100% - 1px),
+    var(--node-port-crescent-stroke) 100%
+  );
+  box-shadow:
+    0 0 var(--node-hover-glow-size) var(--node-hover-glow-spread) color-mix(in srgb, var(--node-module-drag-stroke) 34%, transparent);
 }
 
 .node-zap-particle {

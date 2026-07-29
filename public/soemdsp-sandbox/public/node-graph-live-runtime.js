@@ -28,12 +28,11 @@ function normalizeNodeGraphVolume(value, fallback = 1) {
   return Math.max(0, Math.min(1, number));
 }
 
-// The ONE thing allowed to decide what outputGain.gain should be. Mute is a
-// state flag rather than a hardcoded 0/1 pair, because unmuting used to snap
-// straight back to 1 -- which would blow past the user's volume setting every
-// time the safety path, a plan restart, or gpu priming released the mute.
+// Host Web Audio gain is MUTE ONLY. Loudness is the Output module's `volume`
+// param (applied inside the graph). Toolbar 🔊 is a mirror of that param —
+// not a second volume stage (would double-attenuate).
 function nodeGraphLiveOutputTargetGain() {
-  return nodeGraphMvp.live.outputMuted ? 0 : normalizeNodeGraphVolume(nodeGraphMvp.live.outputVolume);
+  return nodeGraphMvp.live.outputMuted ? 0 : 1;
 }
 
 function applyNodeGraphLiveOutputGain() {
@@ -57,30 +56,220 @@ function setNodeGraphLiveOutputMuted(muted) {
   applyNodeGraphLiveOutputGain();
 }
 
-function setNodeGraphLiveOutputVolume(value) {
-  nodeGraphMvp.live.outputVolume = normalizeNodeGraphVolume(value);
-  applyNodeGraphLiveOutputGain();
-  return nodeGraphMvp.live.outputVolume;
-}
+// ── Module level mirrors (toolbar 🔊 ↔ Input/Output module params) ────────
+// Loudness lives in the graph (audioInput.level, output.volume). Host gain is
+// mute-only for output and unity for input so we never double-apply.
 
-// Input level rides its own gain node between the mic stream and the engine
-// (see startNodeGraphLiveInputSource). The node only exists while input is
-// live; the number is kept on nodeGraphMvp.live either way, so the slider
-// still means something before the mic is armed.
-function setNodeGraphLiveInputVolume(value) {
-  nodeGraphMvp.live.inputVolume = normalizeNodeGraphVolume(value);
-  const gainNode = nodeGraphMvp.live.inputVolumeGain;
-  const context = nodeGraphMvp.live.context;
-  if (gainNode?.gain) {
-    const time = context?.currentTime || 0;
-    try {
-      gainNode.gain.cancelScheduledValues(time);
-      gainNode.gain.setValueAtTime(nodeGraphMvp.live.inputVolume, time);
-    } catch (_error) {
-      gainNode.gain.value = nodeGraphMvp.live.inputVolume;
+function nodeGraphPatchModuleNodeByType(type, fallbackId = "") {
+  const nodes = nodeGraphMvp?.patch?.nodes;
+  if (!Array.isArray(nodes)) {
+    return null;
+  }
+  const found = nodes.find((node) => node?.type === type);
+  if (found) {
+    return found;
+  }
+  if (fallbackId && typeof nodeGraphPatchNode === "function") {
+    const byId = nodeGraphPatchNode(fallbackId);
+    if (byId?.type === type) {
+      return byId;
     }
   }
-  return nodeGraphMvp.live.inputVolume;
+  return null;
+}
+
+function nodeGraphModuleParamSlider(node, paramKey) {
+  if (!node?.id || !paramKey) {
+    return null;
+  }
+  const esc = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(node.id) : node.id;
+  return document.getElementById(`node-${node.id}-${paramKey}`)
+    || document.querySelector(`.dsp-node[data-node="${esc}"] input[data-param="${paramKey}"]`)
+    || null;
+}
+
+function nodeGraphReadModuleParamLevel(node, paramKey, fallback) {
+  if (!node) {
+    return normalizeNodeGraphVolume(fallback, 1);
+  }
+  const slider = nodeGraphModuleParamSlider(node, paramKey);
+  if (slider) {
+    const fromDom = Number(slider.value);
+    if (Number.isFinite(fromDom)) {
+      return normalizeNodeGraphVolume(fromDom);
+    }
+  }
+  const fromParams = Number(node.params?.[paramKey]);
+  if (Number.isFinite(fromParams)) {
+    return normalizeNodeGraphVolume(fromParams);
+  }
+  return normalizeNodeGraphVolume(fallback, 1);
+}
+
+/**
+ * Write a 0..1 level onto a module param + its slider, keep a toolbar mirror.
+ * lockKey: e.g. "_outputVolumeMirrorLock" — blocks recursive toolbar sync.
+ */
+function nodeGraphWriteModuleParamLevel(node, paramKey, value, options = {}) {
+  const level = normalizeNodeGraphVolume(value);
+  const lockKey = options.lockKey || "";
+  if (node && !options.fromModuleSlider) {
+    node.params = { ...(node.params || {}), [paramKey]: level };
+    const slider = nodeGraphModuleParamSlider(node, paramKey);
+    if (slider && typeof setNodeSliderValue === "function") {
+      if (lockKey) {
+        nodeGraphMvp[lockKey] = true;
+      }
+      try {
+        setNodeSliderValue(slider, level, {
+          interaction: options.interaction || "drag",
+        });
+      } finally {
+        if (lockKey) {
+          nodeGraphMvp[lockKey] = false;
+        }
+      }
+    } else {
+      if (slider) {
+        slider.value = String(level);
+        if (typeof syncNodeSliderReadout === "function") {
+          syncNodeSliderReadout(slider);
+        }
+      }
+      if (typeof scheduleNodeGraphLiveParameterSync === "function") {
+        scheduleNodeGraphLiveParameterSync();
+      }
+    }
+  }
+  return level;
+}
+
+function nodeGraphOutputModuleNode() {
+  return nodeGraphPatchModuleNodeByType("output", "output");
+}
+
+function nodeGraphAudioInputModuleNode() {
+  // Prefer the first Input module in the patch (usually the live mic path).
+  return nodeGraphPatchModuleNodeByType("audioInput", "audioInput");
+}
+
+/** Canonical live out level = Output module volume (0..1). */
+function getNodeGraphOutputModuleVolume() {
+  return nodeGraphReadModuleParamLevel(
+    nodeGraphOutputModuleNode(),
+    "volume",
+    nodeGraphMvp?.live?.outputVolume ?? 0.1,
+  );
+}
+
+/** Canonical live in level = Input module Amplitude / level (0..1). */
+function getNodeGraphAudioInputModuleLevel() {
+  return nodeGraphReadModuleParamLevel(
+    nodeGraphAudioInputModuleNode(),
+    "level",
+    nodeGraphMvp?.live?.inputVolume ?? 1,
+  );
+}
+
+function setNodeGraphOutputModuleVolume(value, options = {}) {
+  const level = nodeGraphWriteModuleParamLevel(
+    nodeGraphOutputModuleNode(),
+    "volume",
+    value,
+    { ...options, lockKey: "_outputVolumeMirrorLock" },
+  );
+  if (nodeGraphMvp?.live) {
+    nodeGraphMvp.live.outputVolume = level;
+  }
+  if (!options.fromToolbar && typeof syncNodeGraphVolumeSlider === "function") {
+    syncNodeGraphVolumeSlider("nodeLiveOutputVolume", "nodeLiveOutputVolumeValue", level);
+  }
+  return level;
+}
+
+function setNodeGraphAudioInputModuleLevel(value, options = {}) {
+  const level = nodeGraphWriteModuleParamLevel(
+    nodeGraphAudioInputModuleNode(),
+    "level",
+    value,
+    { ...options, lockKey: "_inputVolumeMirrorLock" },
+  );
+  if (nodeGraphMvp?.live) {
+    nodeGraphMvp.live.inputVolume = level;
+  }
+  // Host mic gain is unity — level is applied on the audioInput module only.
+  applyNodeGraphLiveInputHostGain();
+  if (!options.fromToolbar && typeof syncNodeGraphVolumeSlider === "function") {
+    syncNodeGraphVolumeSlider("nodeLiveInputVolume", "nodeLiveInputVolumeValue", level);
+  }
+  return level;
+}
+
+/** Toolbar / API: set volume = Output module volume (mirrored). */
+function setNodeGraphLiveOutputVolume(value) {
+  return setNodeGraphOutputModuleVolume(value, { fromToolbar: true, interaction: "drag" });
+}
+
+/** Toolbar / API: set level = Input module Amplitude (mirrored). */
+function setNodeGraphLiveInputVolume(value) {
+  return setNodeGraphAudioInputModuleLevel(value, { fromToolbar: true, interaction: "drag" });
+}
+
+/** Pull toolbar 🔊 from the Output module (after patch load / module drag). */
+function syncNodeGraphLiveOutputVolumeFromOutputModule() {
+  if (nodeGraphMvp?._outputVolumeMirrorLock) {
+    return getNodeGraphOutputModuleVolume();
+  }
+  const level = getNodeGraphOutputModuleVolume();
+  if (nodeGraphMvp?.live) {
+    nodeGraphMvp.live.outputVolume = level;
+  }
+  if (typeof syncNodeGraphVolumeSlider === "function") {
+    syncNodeGraphVolumeSlider("nodeLiveOutputVolume", "nodeLiveOutputVolumeValue", level);
+  }
+  applyNodeGraphLiveOutputGain();
+  return level;
+}
+
+/** Pull toolbar 🔊 from the Input module Amplitude (after patch load / drag). */
+function syncNodeGraphLiveInputVolumeFromInputModule() {
+  if (nodeGraphMvp?._inputVolumeMirrorLock) {
+    return getNodeGraphAudioInputModuleLevel();
+  }
+  const level = getNodeGraphAudioInputModuleLevel();
+  if (nodeGraphMvp?.live) {
+    nodeGraphMvp.live.inputVolume = level;
+  }
+  if (typeof syncNodeGraphVolumeSlider === "function") {
+    syncNodeGraphVolumeSlider("nodeLiveInputVolume", "nodeLiveInputVolumeValue", level);
+  }
+  applyNodeGraphLiveInputHostGain();
+  return level;
+}
+
+function syncNodeGraphLiveVolumeMirrorsFromModules() {
+  syncNodeGraphLiveOutputVolumeFromOutputModule();
+  syncNodeGraphLiveInputVolumeFromInputModule();
+}
+
+/**
+ * Mic host gain is always unity. Attenuation is audioInput.level in the graph
+ * (same rule as output: one place for loudness). Node still exists so the
+ * stream can be rewired without re-prompting for permission.
+ */
+function applyNodeGraphLiveInputHostGain() {
+  const gainNode = nodeGraphMvp?.live?.inputVolumeGain;
+  const context = nodeGraphMvp?.live?.context;
+  if (!gainNode?.gain) {
+    return;
+  }
+  const time = context?.currentTime || 0;
+  try {
+    gainNode.gain.cancelScheduledValues(time);
+    gainNode.gain.setValueAtTime(1, time);
+  } catch (_error) {
+    gainNode.gain.value = 1;
+  }
 }
 
 let nodeGraphLiveNativeModuleCatalogPromise = null;
@@ -185,14 +374,26 @@ async function sendNodeGraphLiveNativeModules(liveNode, plan = null) {
   const sent = liveNode.nodeGraphSentNativeModules;
   const catalog = await fetchNodeGraphLiveNativeModuleCatalog();
   const nativeModules = Array.isArray(catalog?.modules) ? catalog.modules : [];
-  const eligibleEntries = nativeModules.filter((entry) =>
+  const eligibleEntries = nativeModules.filter((entry) => {
     // video-poc entries (e.g. video_synth_raster) have their own standalone
     // demo page that fetches and instantiates their wasm directly -- they
     // were never wired into the worklet's nativeModuleStatus dispatch, so
     // sending them here only produces a false-positive "unsupported
     // native module" diagnostic.
-    entry?.wasmAvailable && entry.kind !== "video-poc",
-  );
+    if (!entry?.wasmAvailable || entry.kind === "video-poc") {
+      return false;
+    }
+    // Under-construction modules (see nodeGraphModuleStoreUnderConstructionTypes)
+    // may ship placeholder native shells (wall_delay version stub). Skip them
+    // so the worklet never posts "unsupported native module" for expected UC.
+    if (
+      typeof nodeGraphNativeModuleRefIsUnderConstruction === "function" &&
+      nodeGraphNativeModuleRefIsUnderConstruction(entry)
+    ) {
+      return false;
+    }
+    return true;
+  });
   // Preferred path: ONE combined .wasm carrying every module, sharing ONE
   // linear memory (built by scripts/build_native_modules.ps1). Chrome caps
   // the number of wasm memories per process (~100); 77 standalone instances
@@ -560,6 +761,24 @@ function setNodeGraphLiveSpeed(speed) {
   if (typeof nodeGraphExternalNotifyLiveOutputChanged === "function") {
     nodeGraphExternalNotifyLiveOutputChanged();
   }
+  // Speed 0 = simulation pause: stop phosphor energy steps immediately so
+  // trails do not keep decaying on the main-thread draw loop.
+  if (clamped <= 0 && typeof absorbNodeGraphModuleScopePhosphorDrawCursors === "function") {
+    if (typeof nodeGraphModuleScopeState === "object" && nodeGraphModuleScopeState) {
+      if (nodeGraphModuleScopeState.drawFrame) {
+        window.cancelAnimationFrame(nodeGraphModuleScopeState.drawFrame);
+        nodeGraphModuleScopeState.drawFrame = 0;
+        nodeGraphModuleScopeState.drawFrameRequestedAt = 0;
+      }
+      if (nodeGraphModuleScopeState.drawFrameWatchdog) {
+        window.clearTimeout(nodeGraphModuleScopeState.drawFrameWatchdog);
+        nodeGraphModuleScopeState.drawFrameWatchdog = 0;
+      }
+    }
+    absorbNodeGraphModuleScopePhosphorDrawCursors();
+  } else if (clamped > 0 && typeof scheduleNodeGraphModuleScopeDraw === "function") {
+    scheduleNodeGraphModuleScopeDraw();
+  }
 }
 
 function sendNodeGraphLiveSpeed() {
@@ -703,7 +922,7 @@ function renderNodeGraphLiveScriptBlock(event) {
       y: Number(runtime.visualControls?.y) || 0,
     };
   }
-  finishNodeGraphParameterSmoothing(runtime.smoothers);
+  finishNodeGraphParameterSmoothing(runtime.smoothers, runtime);
   runtime.meterCounter += frames;
   if (runtime.meterCounter >= sampleRate / 10) {
     setNodeGraphLiveInputMeter(
@@ -1180,12 +1399,18 @@ function handleNodeGraphLiveWorkletMessage(event) {
   } else if (message.type === "nativeModuleStatus") {
     setNodeGraphLiveEvidence("native-module", message);
     if (message.status && message.status !== "ready") {
-      setNodeGraphLivePlanStatus(
-        `${message.name || "native module"} ${message.status}`,
-        "warn",
-      );
-      if (typeof nodeGraphRecordNativeModuleFault === "function") {
-        nodeGraphRecordNativeModuleFault(message);
+      const underConstruction = typeof nodeGraphNativeModuleRefIsUnderConstruction === "function"
+        && nodeGraphNativeModuleRefIsUnderConstruction(message);
+      // UC modules: keep evidence for debugging, but no plan-status warn and
+      // no SE.ERROR (nodeGraphRecordModuleFault also no-ops for UC).
+      if (!underConstruction) {
+        setNodeGraphLivePlanStatus(
+          `${message.name || "native module"} ${message.status}`,
+          "warn",
+        );
+        if (typeof nodeGraphRecordNativeModuleFault === "function") {
+          nodeGraphRecordNativeModuleFault(message);
+        }
       }
       // Un-mark the module in the lazy-send dedupe set so the next full
       // plan update retries it -- without this, one transient instantiate
@@ -1896,11 +2121,17 @@ async function stopNodeGraphLiveAudio() {
   nodeGraphMvp.live.syncMode = "";
   nodeGraphMvp.live.usesWorklet = false;
   nodeGraphStopGpuAdditiveProducer();
+  // Full simulation restart on live output off: wipe scope history, phosphor
+  // residual, and display state so the next start is a clean cold boot (not
+  // a resume of trails / attractors mid-orbit).
   if (typeof clearNodeGraphModuleScopeBuffers === "function") {
     clearNodeGraphModuleScopeBuffers({
-      preserveBuffers: true,
-      preserveDisplay: true,
+      preserveBuffers: false,
+      preserveDisplay: false,
     });
+  }
+  if (typeof nodeGraphPhosphorWaveformViewStates !== "undefined" && nodeGraphPhosphorWaveformViewStates?.clear) {
+    nodeGraphPhosphorWaveformViewStates.clear();
   }
   nodeGraphClearVisualControls();
 
@@ -1937,95 +2168,98 @@ async function stopNodeGraphLiveAudio() {
 // then register.js calls registerProcessor last, once everything above it
 // has finished defining/registering.
 const nodeGraphLiveWorkletSourceFiles = [
-  "./public/node-live-audio-worklet-core.js?v=retire-graph-type-20260724",
-  "./public/modules/codeblock/codeblock-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/moduleGroup/module-group-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/ellipsoid/ellipsoid-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/sineWavetable/sine-wavetable-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/additiveOsc/additive-osc-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/polyBlep/poly-blep-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/noiseGenerator/noise-generator-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/randomWalk/random-walk-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/piSpigotNoise/pi-spigot-noise-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/bradley2a/bradley-2a-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/antisaw/antisaw-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/fractalBrownianNoise/fractal-brownian-noise-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/logisticMap/logistic-map-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/turingMachine/turing-machine-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/henonMap/henon-map-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/chuaAttractor/chua-attractor-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/chordMemory/chord-memory-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/pitchQuantizer/pitch-quantizer-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/wirdoSpiral/wirdo-spiral-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/blubb/blubb-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/mushroom/mushroom-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/boing/boing-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/torus/torus-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/keplerBouwkamp/kepler-bouwkamp-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/nyquistShannon/nyquist-shannon-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/surgeOscillator/surge-oscillator-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/dsfOscillator/dsf-oscillator-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/robinSupersaw/robin-supersaw-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/hypersaw/hypersaw-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/chordSequencer/chord-sequencer-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/lutCell/lut-cell-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/passiveFilter/passive-filter-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/papoulisFilter/papoulis-filter-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/phosphillator/phosphillator-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/cookbookFilter/cookbook-filter-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/ladderFilter/ladder-filter-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/flowerChildFilter/flower-child-filter-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/rsmetFilter/rsmet-filter-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/yellowjacketFilter/yellowjacket-filter-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/superloveFilter/superlove-filter-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/chaoticPhaseLockingFilter/chaotic-phase-locking-filter-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/resonatorFilter/resonator-filter-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/humanFilter/human-filter-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/pulseExplosion/pulse-explosion-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/comparator/comparator-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/minMax/min-max-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/aliasSine/alias-sine-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/tb303Filter/tb303-filter-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/delayEffect/delay-effect-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/pingPongDelay/ping-pong-delay-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/wallDelay/wall-delay-worklet-evaluator.js?v=wall-delay-nudge-helper-20260718",
-  "./public/modules/reverbEffect/reverb-effect-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/pll/pll-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/helmholtzPitch/helmholtz-pitch-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/slewLimiter/slew-limiter-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/sampleHold/sample-hold-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/expAdsr/exp-adsr-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/linearEnvelope/linear-envelope-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/pluckEnvelope/pluck-envelope-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/vactrolEnvelopeSeries/vactrol-envelope-series-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/bugButton/bug-button-worklet-evaluator.js?v=solid-module-shell-2-20260723",
-  "./public/modules/xyPad/xy-pad-worklet-evaluator.js?v=xy-pad-ghost-input-20260723",
-  "./public/modules/flowerChildEnvelopeFollower/flower-child-envelope-follower-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/spiral/spiral-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/fractalSpiral/fractal-spiral-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/logSpiral/log-spiral-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/lorenzAttractor/lorenz-attractor-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/clock/clock-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/transport/transport-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/randomClock/random-clock-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/triggerDivider/trigger-divider-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/delayedTrigger/delayed-trigger-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/triggerCounter/trigger-counter-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/stepSequencer/step-sequencer-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/stepGrid/step-grid-worklet-evaluator.js?v=stepgrid-20260714",
-  "./public/modules/nextPatch/next-patch-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/softClipper/soft-clipper-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/rgbaHsla/rgba-hsla-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/screenSpaceShader/screen-space-shader-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/metallicRatio/metallic-ratio-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/speakerProtection/speaker-protection-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/badvalMonitor/badval-monitor-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/radar/radar-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/audioPlayer/audio-player-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/gainBiasMix/gain-bias-mix-worklet-evaluator.js?v=gainbiasmix-fix-20260722",
-  "./public/modules/sinc/sinc-worklet-evaluator.js?v=sinc-20260725",
-  "./public/modules/videoscope/videoscope-worklet-evaluator.js?v=videoscope-20260713",
-  "./public/modules/spectrogram/spectrogram-worklet-evaluator.js?v=spectrogram-20260720",
+  "./public/node-graph-parameter-smoother-filters.js?v=xy-pad-native-1",
+  "./public/node-live-audio-worklet-core.js?v=graph-shape-clean-1",
+  "./public/modules/codeblock/codeblock-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/moduleGroup/module-group-worklet-evaluator.js?v=xy-pad-dsp-path-1",
+  "./public/modules/ellipsoid/ellipsoid-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/sineWavetable/sine-wavetable-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/additiveOsc/additive-osc-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/polyBlep/poly-blep-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/noiseGenerator/noise-generator-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/randomWalk/random-walk-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/piSpigotNoise/pi-spigot-noise-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/bradley2a/bradley-2a-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/antisaw/antisaw-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/fractalBrownianNoise/fractal-brownian-noise-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/logisticMap/logistic-map-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/turingMachine/turing-machine-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/henonMap/henon-map-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/rayBouncer/ray-bouncer-worklet-evaluator.js?v=ray-bouncer-native-only-1",
+  "./public/modules/chuaAttractor/chua-attractor-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/chordMemory/chord-memory-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/pitchQuantizer/pitch-quantizer-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/wirdoSpiral/wirdo-spiral-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/blubb/blubb-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/mushroom/mushroom-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/boing/boing-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/torus/torus-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/keplerBouwkamp/kepler-bouwkamp-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/nyquistShannon/nyquist-shannon-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/surgeOscillator/surge-oscillator-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/dsfOscillator/dsf-oscillator-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/robinSupersaw/robin-supersaw-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/hypersaw/hypersaw-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/chordSequencer/chord-sequencer-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/lutCell/lut-cell-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/passiveFilter/passive-filter-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/papoulisFilter/papoulis-filter-worklet-evaluator.js?v=xy-pad-native-1",
+  "./public/modules/phosphillator/phosphillator-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/cookbookFilter/cookbook-filter-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/ladderFilter/ladder-filter-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/flowerChildFilter/flower-child-filter-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/rsmetFilter/rsmet-filter-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/yellowjacketFilter/yellowjacket-filter-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/superloveFilter/superlove-filter-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/chaoticPhaseLockingFilter/chaotic-phase-locking-filter-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/resonatorFilter/resonator-filter-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/humanFilter/human-filter-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/pulseExplosion/pulse-explosion-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/comparator/comparator-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/minMax/min-max-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/aliasSine/alias-sine-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/tb303Filter/tb303-filter-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/delayEffect/delay-effect-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/pingPongDelay/ping-pong-delay-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/wallDelay/wall-delay-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/reverbEffect/reverb-effect-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/pll/pll-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/helmholtzPitch/helmholtz-pitch-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/slewLimiter/slew-limiter-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/sampleHold/sample-hold-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/expAdsr/exp-adsr-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/linearEnvelope/linear-envelope-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/pluckEnvelope/pluck-envelope-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/vactrolEnvelopeSeries/vactrol-envelope-series-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/bugButton/bug-button-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/xyPad/xy-pad-dsp.js?v=xy-pad-center-q-1",
+  "./public/modules/xyPad/xy-pad-worklet-evaluator.js?v=xy-pad-phosphor-out-1",
+  "./public/modules/flowerChildEnvelopeFollower/flower-child-envelope-follower-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/spiral/spiral-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/fractalSpiral/fractal-spiral-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/logSpiral/log-spiral-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/lorenzAttractor/lorenz-attractor-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/clock/clock-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/transport/transport-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/randomClock/random-clock-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/triggerDivider/trigger-divider-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/delayedTrigger/delayed-trigger-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/triggerCounter/trigger-counter-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/stepSequencer/step-sequencer-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/stepGrid/step-grid-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/nextPatch/next-patch-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/softClipper/soft-clipper-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/rgbaHsla/rgba-hsla-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/screenSpaceShader/screen-space-shader-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/metallicRatio/metallic-ratio-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/speakerProtection/speaker-protection-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/badvalMonitor/badval-monitor-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/radar/radar-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/audioPlayer/audio-player-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/gainBiasMix/gain-bias-mix-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/sinc/sinc-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/videoscope/videoscope-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/spectrogram/spectrogram-worklet-evaluator.js?v=native-strip-1",
   "./public/node-live-audio-worklet-register.js?v=blob-loader-20260711",
 ];
 
@@ -2157,11 +2391,13 @@ async function startNodeGraphLiveInputSource() {
       stream = await requestNodeGraphLiveInputStream("");
     }
     const source = context.createMediaStreamSource(stream);
-    // Input volume rides a gain node between the mic and the engine rather
-    // than a constraint on the stream, so changing it is sample-accurate and
-    // never re-prompts for permission.
+    // Host gain is unity; Input module Amplitude (level) scales inside the graph.
+    // Keep a gain node so the stream can be rewired without re-prompting.
+    if (typeof syncNodeGraphLiveInputVolumeFromInputModule === "function") {
+      syncNodeGraphLiveInputVolumeFromInputModule();
+    }
     const inputVolumeGain = context.createGain();
-    inputVolumeGain.gain.value = normalizeNodeGraphVolume(nodeGraphMvp.live.inputVolume);
+    inputVolumeGain.gain.value = 1;
     source.connect(inputVolumeGain);
     inputVolumeGain.connect(liveNode);
     nodeGraphMvp.live.inputVolumeGain = inputVolumeGain;
@@ -2242,9 +2478,12 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
       return;
     }
     const outputGain = context.createGain();
-    // Start at whatever the volume slider currently says, not at unity -- a
-    // fresh engine must not come up louder than the level you set before it.
-    outputGain.gain.value = normalizeNodeGraphVolume(nodeGraphMvp.live.outputVolume);
+    // Host gain is mute-only; loudness is Output.volume inside the graph.
+    // Sync cache from the module before start so UI mirrors stay honest.
+    if (typeof syncNodeGraphLiveOutputVolumeFromOutputModule === "function") {
+      syncNodeGraphLiveOutputVolumeFromOutputModule();
+    }
+    outputGain.gain.value = nodeGraphLiveOutputTargetGain();
     let liveNode = null;
     let usesWorklet = false;
     try {

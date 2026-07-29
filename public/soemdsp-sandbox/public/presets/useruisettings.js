@@ -147,14 +147,14 @@
   "moduleDefaultOverrides": {},
   "view": {
     "gridVisible": true,
-    "keyboardDebugInfoVisible": false,
+    "keyboardDebugInfoVisible": true,
     "tooltipEmbedded": true,
     "moduleButtonsVisible": true,
     "moduleInterfaceControlsVisible": true,
     "moduleOscilloscopesVisible": true,
     "moduleSlidersVisible": true,
     "moduleScopeBackgroundColor": "#000000",
-    "globalSmoothingSeconds": 0.11635713276549976,
+    "globalSmoothingSeconds": 0.08637990932399603,
     "globalSmoothingManual": false,
     "moduleScopeDotCore1Enabled": false,
     "moduleScopeDotCore1Size": 2,
@@ -171,20 +171,26 @@
     "macroKnobLabelPosition": "mid",
     "macroKnobValuePosition": "bottom",
     "traceSettings": {
-      "brightness": 1,
-      "color": "#75ebff",
+      "background": "#000000",
+      "brightness": 0.92,
+      "color": "#ff0000",
       "dot1Enabled": true,
-      "dot1Size": 0.0219,
-      "secondaryBrightness": 0.18,
-      "secondaryColor": "#184fff",
+      "dot1Size": 0.08,
+      "secondaryBrightness": 0.92,
+      "secondaryColor": "#0000ff",
       "secondaryEnabled": true,
-      "secondarySize": 0.24,
-      "secondaryLineThickness": 0.48,
+      "secondarySize": 0.08,
+      "secondaryLineThickness": 0,
       "cycles": 2,
-      "lineThickness": 0.9,
+      "lineThickness": 0,
+      "pixelDensity": 1,
       "padding": 0,
-      "skipDiscontinuities": false,
+      "scale": 1,
+      "skipDiscontinuities": true,
       "sourceSync": false,
+      "stereoBlend": "combine",
+      "meetColor": "auto",
+      "syncChannel": "off",
       "zoomSeconds": 0.05
     },
     "sliderLayout": "text-inside",
@@ -687,15 +693,15 @@
         "developer": true,
         "home": false
       },
-      "numberReadout": {
-        "developer": true,
-        "home": false
-      },
       "lineBurnOscilloscope": {
         "developer": true,
         "home": false
       },
       "scope2d": {
+        "developer": true,
+        "home": false
+      },
+      "phosphorLight": {
         "developer": true,
         "home": false
       },
@@ -739,6 +745,14 @@
         "developer": true,
         "home": false
       },
+      "numberReadout": {
+        "developer": true,
+        "home": false
+      },
+      "rayBouncer": {
+        "developer": true,
+        "home": false
+      },
       "stepGrid": {
         "developer": true,
         "home": false
@@ -753,20 +767,16 @@
       }
     },
     "sceneContextWindowSize": {
-      "width": 185
+      "width": 276
     },
     "moduleActionWindowSize": {
-      "width": 360,
-      "height": 666
+      "width": 298,
+      "height": 656
     },
     "workspaceWindowStatesVersion": 1,
     "workspaceWindowStates": {
       "commandCenter": {
-        "open": false,
-        "position": {
-          "left": 1431,
-          "top": 322
-        }
+        "open": false
       },
       "codeBox": {
         "open": false
@@ -775,8 +785,7 @@
         "open": false
       },
       "metaparameters": {
-        "open": false,
-        "locked": true
+        "open": false
       },
       "oscilloscopeSettings": {
         "open": false
@@ -787,26 +796,22 @@
       "moduleBrowser": {
         "open": false,
         "position": {
-          "left": 1549,
-          "top": 288
+          "left": 1124,
+          "top": 547
         }
       },
       "visibilityMenu": {
         "open": false
       },
       "uiSettings": {
-        "open": false,
-        "position": {
-          "left": 0,
-          "top": 0
-        }
+        "open": false
       },
       "uiDev": {
         "open": false
       },
       "traceDisplaySettings": {
         "open": false,
-        "targetNode": "graph2-1"
+        "targetNode": "output"
       },
       "standaloneMidiKeyboard": {
         "open": false
@@ -825,10 +830,10 @@
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": 89.03771865889212,
-        "y": 84.99471182864886
+        "x": 652.872895136115,
+        "y": 5.241599064982665
       },
-      "zoom": 0.9469765198797896
+      "zoom": 1.1768350632806033
     },
     "moduleStoreDepartment": "",
     "savedPatchBankIndex": 0,

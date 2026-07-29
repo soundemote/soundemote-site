@@ -136,6 +136,9 @@ function syncNodeGraphPatchParameterFromSlider(slider, options = {}) {
     ) {
       syncNodeGraphGraphDisplaysForNode(node, patchNode);
     }
+    // Filter curve faces track cutoff live mid-drag via the readout flush
+    // (and parameter-visual sync). Do not schedule a full multi-face redraw
+    // here on every pointer sample — that was thrashing layout.
     return;
   }
   // transport's "BPM" param mirrors the patch-wide tempo, not an independent
@@ -323,6 +326,25 @@ function setNodeSliderValue(slider, value, options = {}) {
   }
   if (!alreadyPending || graphCurveLiveParam) {
     scheduleNodeGraphLiveParameterSync();
+  }
+  // Module levels ↔ bottom toolbar 🔊 mirrors.
+  const nodeType = slider.closest?.(".dsp-node")?.dataset?.nodeType;
+  const param = slider?.dataset?.param;
+  if (
+    !nodeGraphMvp?._outputVolumeMirrorLock
+    && param === "volume"
+    && nodeType === "output"
+    && typeof syncNodeGraphLiveOutputVolumeFromOutputModule === "function"
+  ) {
+    syncNodeGraphLiveOutputVolumeFromOutputModule();
+  }
+  if (
+    !nodeGraphMvp?._inputVolumeMirrorLock
+    && param === "level"
+    && nodeType === "audioInput"
+    && typeof syncNodeGraphLiveInputVolumeFromInputModule === "function"
+  ) {
+    syncNodeGraphLiveInputVolumeFromInputModule();
   }
 }
 
@@ -820,12 +842,23 @@ function flushNodeSliderReadoutUpdates() {
     }
   }
   pending.clear();
-  // Keep parameter-driven visuals (bug button glyph, XY pad grid/puck, etc.)
-  // tracking the slider live during a drag. Slider drags don't dispatch "input"
-  // events and the deferred-UI path skips visual sync, so without this the
-  // visual only catches up on the next full re-render (e.g. resizing the module).
+  // Keep parameter-driven visuals (bug button glyph, XY pad grid/puck, filter
+  // curves, etc.) tracking the slider live during a drag. Slider drags don't
+  // dispatch "input" events and the deferred-UI path skips visual sync, so
+  // without this the visual only catches up on mouse-up / re-render.
   for (const nodeElement of touchedNodes) {
     syncNodeGraphParameterVisualsForNodeElement(nodeElement);
+  }
+  // Metaparameter→metaparameter ghosts: source/dest values are live on the
+  // inputs, but drag uses deferUi and skips the full sync path — refresh
+  // ghosts once per frame here so the ghost handle tracks while dragging.
+  if (typeof syncNodeGraphGhostSliders === "function") {
+    syncNodeGraphGhostSliders();
+  }
+  // Any param change can feed a filter curve (own cutoff or a modulator source
+  // that ghosts into another node's cutoff) — coalesce one redraw for all faces.
+  if (typeof scheduleNodeGraphFilterCurveDraw === "function") {
+    scheduleNodeGraphFilterCurveDraw();
   }
   if (nodeGraphMvp._needsHeaderSync && typeof syncNodeGraphCurrentSavedPatchHeader === "function") {
     nodeGraphMvp._needsHeaderSync = false;

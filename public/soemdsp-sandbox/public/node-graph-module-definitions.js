@@ -2,8 +2,8 @@ const nodeGraphNodeLabels = Object.freeze({
   audioInput: "Input",
   codeblock: "Codeblock",
   customDisplay: "Custom Display",
-  // graph2: global "best curve through points" (no per-node shapes).
-  // graphCopy: same I/O/LFO wiring, but per-node shape/contour segments.
+  // graph2: point-to-point segments (shape + contour per control point).
+  // graphCopy: same as graph2 (kept as an alias-style twin).
   // (The old "graph" type was retired -- see nodeGraphRetiredNodeTypes.)
   graph2: "Graph",
   graphCopy: "Graph_Copy",
@@ -53,6 +53,7 @@ const nodeGraphNodeLabels = Object.freeze({
   bradley2a: "Bradley 2A Jitter/Hit Synth",
   antisaw: "Antisaw",
   henonMap: "Henon Map",
+  rayBouncer: "Ray Bouncer",
   chuaAttractor: "Chua Attractor",
   chordMemory: "Chord Memory",
   turingMachine: "Turing Machine",
@@ -120,14 +121,15 @@ const nodeGraphNodeLabels = Object.freeze({
   canvas: "Canvas",
   visualOscilloscope: "Display",
   traceDisplay: "1D Trace",
-  dotOscilloscope: "0D Burn",
+  dotOscilloscope: "Phosphor Dot",
   oscilloscopeBank: "Oscilloscope Bank",
   videoscope: "Videoscope",
   valueOscilloscope: "0D Value",
   numberReadout: "Number Readout",
   lineBurnOscilloscope: "1D Burn Dot",
-  scope2d: "2D Burn",
+  scope2d: "2D Phosphor",
   scope2dTrace: "2D Trace",
+  phosphorLight: "2D Phosphor",
   speakerProtection: "Speaker Protection",
   badvalMonitor: "BADVAL Monitor",
   textBox: "Text Box",
@@ -255,10 +257,8 @@ const nodeGraphModuleDefinitions = Object.freeze({
     outputs: ["Out"],
     parameters: [
       { choices: ["Input", "LFO"], defaultValue: "0", displayChoices: true, divideChoicesVisibly: true, key: "mode", label: "Mode", linearSmoothing: false, max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "1" },
-      // Quadratic/Cubic = Lagrange through the points (old "… Through" labels).
-      { choices: ["Linear", "Smooth", "Bezier", "Quadratic", "Cubic", "Catmull Rom"], defaultValue: "1", displayChoices: true, divideChoicesVisibly: true, key: "smoothingMode", label: "Smoothing", linearSmoothing: false, max: "5", mid: "2", min: "0", nonlinearSlider: false, step: "1" },
       { choices: ["Off", "On"], defaultValue: "0", displayChoices: true, divideChoicesVisibly: true, key: "lockEndpointY", label: "Lock Ends", linearSmoothing: false, max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "1" },
-      { defaultValue: "1", key: "tension", label: "Tension", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "0.01" },
+      // Segment shape/contour live on each control point (scene panel + face).
       { defaultValue: "1", key: "rate", kind: "frequency", label: "Rate", max: "40", maxDigits: 5, mid: "1", min: "0", step: "any", unit: "Hz" },
       { defaultValue: "0", key: "phase", kind: "phase", label: "Phase", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "0.01", unit: "cycle", wraparound: true },
       { defaultValue: "0", key: "inputMin", label: "In Min", max: "1", mid: "0", min: "-1", nonlinearSlider: false, step: "any" },
@@ -267,8 +267,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { defaultValue: "1", key: "outputMax", label: "Out Max", max: "1", mid: "0", min: "-1", nonlinearSlider: false, step: "any" },
     ],
   },
-  // Same wiring as graph2; evaluation uses per-node shape/contour instead of
-  // a single global smoothing mode (see nodeGraphGraphUsesPerNodeShapes).
+  // Same point-to-point segment model as graph2.
   graphCopy: {
     inputs: ["In"],
     layout: "graph",
@@ -740,7 +739,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { key: "X/Y", kind: "xy" },
     ],
     displayModes: [
-      { key: "xyBurn", label: "X/Y Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
+      { key: "xyBurn", label: "X/Y Phosphor", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
       { key: "xyTrace", label: "X/Y Trace", renderer: "scope2dTrace", settingsSchema: "scope2dTrace", source: { x: "X", y: "Y" } },
     ],
     defaultDisplayMode: "xyBurn",
@@ -776,7 +775,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { key: "X/Y", kind: "xy" },
     ],
     displayModes: [
-      { key: "xyBurn", label: "X/Y Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
+      { key: "xyBurn", label: "X/Y Phosphor", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
       { key: "xyTrace", label: "X/Y Trace", renderer: "scope2dTrace", settingsSchema: "scope2dTrace", source: { x: "X", y: "Y" } },
     ],
     defaultDisplayMode: "xyBurn",
@@ -806,7 +805,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { key: "X/Y", kind: "xy" },
     ],
     displayModes: [
-      { key: "xyBurn", label: "X/Y Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
+      { key: "xyBurn", label: "X/Y Phosphor", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
       { key: "xyTrace", label: "X/Y Trace", renderer: "scope2dTrace", settingsSchema: "scope2dTrace", source: { x: "X", y: "Y" } },
     ],
     defaultDisplayMode: "xyBurn",
@@ -832,7 +831,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { key: "X/Y", kind: "xy" },
     ],
     displayModes: [
-      { key: "xyBurn", label: "X/Y Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
+      { key: "xyBurn", label: "X/Y Phosphor", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
       { key: "xyTrace", label: "X/Y Trace", renderer: "scope2dTrace", settingsSchema: "scope2dTrace", source: { x: "X", y: "Y" } },
     ],
     defaultDisplayMode: "xyBurn",
@@ -855,7 +854,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { key: "X/Y", kind: "xy" },
     ],
     displayModes: [
-      { key: "xyBurn", label: "X/Y Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
+      { key: "xyBurn", label: "X/Y Phosphor", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
       { key: "xyTrace", label: "X/Y Trace", renderer: "scope2dTrace", settingsSchema: "scope2dTrace", source: { x: "X", y: "Y" } },
     ],
     defaultDisplayMode: "xyBurn",
@@ -928,7 +927,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { key: "X/Y", kind: "xy" },
     ],
     displayModes: [
-      { key: "xyBurn", label: "X/Y Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
+      { key: "xyBurn", label: "X/Y Phosphor", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
       { key: "xyTrace", label: "X/Y Trace", renderer: "scope2dTrace", settingsSchema: "scope2dTrace", source: { x: "X", y: "Y" } },
     ],
     defaultDisplayMode: "xyBurn",
@@ -943,6 +942,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { key: "level", label: "Level", defaultValue: "1", min: "0", mid: "0.5", max: "1", step: "0.01" },
     ],
   },
+  // rayBouncer: solid chromeless registration (public/modules/rayBouncer/*-register.js).
   wirdoSpiral: {
     displayType: "scope2d",
     displaySignals: [
@@ -951,7 +951,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { key: "X/Y", kind: "xy" },
     ],
     displayModes: [
-      { key: "xyBurn", label: "X/Y Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
+      { key: "xyBurn", label: "X/Y Phosphor", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
       { key: "xyTrace", label: "X/Y Trace", renderer: "scope2dTrace", settingsSchema: "scope2dTrace", source: { x: "X", y: "Y" } },
     ],
     defaultDisplayMode: "xyBurn",
@@ -982,7 +982,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { key: "X/Y", kind: "xy" },
     ],
     displayModes: [
-      { key: "xyBurn", label: "X/Y Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
+      { key: "xyBurn", label: "X/Y Phosphor", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
       { key: "xyTrace", label: "X/Y Trace", renderer: "scope2dTrace", settingsSchema: "scope2dTrace", source: { x: "X", y: "Y" } },
     ],
     defaultDisplayMode: "xyBurn",
@@ -1005,7 +1005,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { key: "X/Y", kind: "xy" },
     ],
     displayModes: [
-      { key: "xyBurn", label: "X/Y Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
+      { key: "xyBurn", label: "X/Y Phosphor", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
       { key: "xyTrace", label: "X/Y Trace", renderer: "scope2dTrace", settingsSchema: "scope2dTrace", source: { x: "X", y: "Y" } },
     ],
     defaultDisplayMode: "xyBurn",
@@ -1040,7 +1040,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { key: "X/Y", kind: "xy" },
     ],
     displayModes: [
-      { key: "xyBurn", label: "X/Y Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
+      { key: "xyBurn", label: "X/Y Phosphor", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
       { key: "xyTrace", label: "X/Y Trace", renderer: "scope2dTrace", settingsSchema: "scope2dTrace", source: { x: "X", y: "Y" } },
     ],
     defaultDisplayMode: "xyBurn",
@@ -1072,7 +1072,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { key: "X/Y", kind: "xy" },
     ],
     displayModes: [
-      { key: "xyBurn", label: "X/Y Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
+      { key: "xyBurn", label: "X/Y Phosphor", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
       { key: "xyTrace", label: "X/Y Trace", renderer: "scope2dTrace", settingsSchema: "scope2dTrace", source: { x: "X", y: "Y" } },
     ],
     defaultDisplayMode: "xyBurn",
@@ -1108,7 +1108,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { key: "X/Y", kind: "xy" },
     ],
     displayModes: [
-      { key: "xyBurn", label: "X/Y Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
+      { key: "xyBurn", label: "X/Y Phosphor", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
       { key: "xyTrace", label: "X/Y Trace", renderer: "scope2dTrace", settingsSchema: "scope2dTrace", source: { x: "X", y: "Y" } },
     ],
     defaultDisplayMode: "xyBurn",
@@ -1133,7 +1133,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { key: "X/Y", kind: "xy" },
     ],
     displayModes: [
-      { key: "xyBurn", label: "X/Y Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
+      { key: "xyBurn", label: "X/Y Phosphor", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
       { key: "xyTrace", label: "X/Y Trace", renderer: "scope2dTrace", settingsSchema: "scope2dTrace", source: { x: "X", y: "Y" } },
     ],
     defaultDisplayMode: "xyBurn",
@@ -1165,7 +1165,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { key: "X/Y", kind: "xy" },
     ],
     displayModes: [
-      { key: "xyBurn", label: "X/Y Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
+      { key: "xyBurn", label: "X/Y Phosphor", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
       { key: "xyTrace", label: "X/Y Trace", renderer: "scope2dTrace", settingsSchema: "scope2dTrace", source: { x: "X", y: "Y" } },
     ],
     defaultDisplayMode: "xyBurn",
@@ -1208,7 +1208,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { key: "X/Y", kind: "xy" },
     ],
     displayModes: [
-      { key: "xyBurn", label: "X/Y Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
+      { key: "xyBurn", label: "X/Y Phosphor", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
       { key: "xyTrace", label: "X/Y Trace", renderer: "scope2dTrace", settingsSchema: "scope2dTrace", source: { x: "X", y: "Y" } },
     ],
     defaultDisplayMode: "xyBurn",
@@ -1620,7 +1620,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { key: "X/Y", kind: "xy" },
     ],
     displayModes: [
-      { key: "xyBurn", label: "X/Y Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "Out X Raw", y: "Out Y Raw" } },
+      { key: "xyBurn", label: "X/Y Phosphor", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "Out X Raw", y: "Out Y Raw" } },
       { key: "xyTrace", label: "X/Y Trace", renderer: "scope2dTrace", settingsSchema: "scope2dTrace", source: { x: "Out X Raw", y: "Out Y Raw" } },
       { key: "xTrace", label: "X Trace", renderer: "trace", settingsSchema: "trace", source: { value: "Out X Raw" } },
       { key: "yTrace", label: "Y Trace", renderer: "trace", settingsSchema: "trace", source: { value: "Out Y Raw" } },
@@ -2704,7 +2704,7 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { key: "vcoTrace", label: "VCO Trace", renderer: "trace", settingsSchema: "trace", source: { value: "VCO Out" } },
       { key: "pcTrace", label: "PC Trace", renderer: "trace", settingsSchema: "trace", source: { value: "PC Out" } },
       { key: "lpfTrace", label: "LPF Trace", renderer: "trace", settingsSchema: "trace", source: { value: "LPF Out" } },
-      { key: "vcoPcBurn", label: "VCO/PC Burn", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "VCO Out", y: "PC Out" } },
+      { key: "vcoPcBurn", label: "VCO/PC Phosphor", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "VCO Out", y: "PC Out" } },
     ],
     defaultDisplayMode: "vcoTrace",
     inputs: ["Signal In", "VCO CV In"],
@@ -2908,6 +2908,23 @@ const nodeGraphModuleDefinitions = Object.freeze({
       { defaultValue: "1", key: "speed", label: "Speed", linearSmoothing: false, max: "8", maxDigits: 4, mid: "1", min: "0", step: "any", unit: "x" },
       { defaultValue: "0", key: "start", label: "Start", linearSmoothing: false, max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any" },
       { defaultValue: "1", key: "end", label: "End", linearSmoothing: false, max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any" },
+      // Relative scrub: added to free-running phase so Shift+drag does not jump transport.
+      // Range −1…+1 with wrap; −1 and +1 are the same position (full-cycle identity).
+      {
+        defaultValue: "0",
+        key: "phaseOffset",
+        kind: "phase",
+        label: "Phase Offset",
+        linearSmoothing: false,
+        max: "1",
+        mid: "0",
+        min: "-1",
+        nonlinearSlider: false,
+        step: "any",
+        unit: "cycle",
+        wraparound: true,
+        tooltip: "Relative playhead offset (−1…+1, wrap). Shift+drag the waveform to scrub without stopping playback. −1 and +1 are the same.",
+      },
       { choices: ["Off (reset)", "Stop", "Pause", "Loop", "Play"], defaultValue: "4", displayChoices: true, divideChoicesVisibly: true, key: "transport", label: "Play Mode", linearSmoothing: false, max: "4", mid: "2", min: "0", nonlinearSlider: false, step: "1" },
     ],
   },
@@ -3309,9 +3326,42 @@ const nodeGraphModuleDefinitions = Object.freeze({
   },
   // led registers its own definition from public/modules/led/led-register.js
   // -- see node-graph-chromeless-module-registry.js.
+  // Multi-mode Display sink: flip face family without swapping modules.
+  // Default remains 2D Trace (X/Y). Mono modes use In; XY modes use X/Y.
   visualOscilloscope: {
     bufferedInputs: ["In", "X", "Y"],
     displayType: "scope2dTrace",
+    defaultDisplayMode: "xyTrace",
+    displayModes: [
+      {
+        key: "xyTrace",
+        label: "2D Trace",
+        renderer: "scope2dTrace",
+        settingsSchema: "scope2dTrace",
+        source: { x: "X", y: "Y" },
+      },
+      {
+        key: "xyBurn",
+        label: "2D Phosphor",
+        renderer: "scope2d",
+        settingsSchema: "scope2d",
+        source: { x: "X", y: "Y" },
+      },
+      {
+        key: "monoTrace",
+        label: "1D Trace",
+        renderer: "trace",
+        settingsSchema: "trace",
+        source: { value: "In" },
+      },
+      {
+        key: "monoDot",
+        label: "Phosphor Dot",
+        renderer: "dot",
+        settingsSchema: "dot",
+        source: { value: "In" },
+      },
+    ],
     inputAliases: { Mono: "In" },
     inputLabels: { In: "Mono" },
     inputs: ["In", "X", "Y"],
@@ -3437,54 +3487,12 @@ const nodeGraphModuleDefinitions = Object.freeze({
     inputs: ["In"],
     layout: "traceDisplay",
     outputs: [],
+    // Module: levels only. Analysis look (window / overlap / freq scale) lives
+    // in Spectrogram display settings with FFT size / history / gradient.
     parameters: [
-      {
-        choices: ["256", "512", "1024", "2048"],
-        defaultValue: "2",
-        displayChoices: true,
-        divideChoicesVisibly: true,
-        key: "fftSize",
-        label: "FFT Size",
-        linearSmoothing: false,
-        max: "3",
-        mid: "2",
-        min: "0",
-        nonlinearSlider: false,
-        step: "1",
-      },
-      {
-        choices: ["50%", "75%", "87.5%"],
-        defaultValue: "1",
-        displayChoices: true,
-        divideChoicesVisibly: true,
-        key: "overlap",
-        label: "Overlap",
-        linearSmoothing: false,
-        max: "2",
-        mid: "1",
-        min: "0",
-        nonlinearSlider: false,
-        step: "1",
-      },
-      { key: "smoothing", label: "Smoothing", defaultValue: "0.85", min: "0", mid: "0.85", max: "0.999", step: "0.001", maxDigits: 4 },
       { key: "brightness", label: "Brightness", defaultValue: "1", min: "0.1", mid: "1", max: "2", step: "0.01", maxDigits: 4 },
-      { key: "outputBins", label: "Bins", defaultValue: "256", min: "32", mid: "256", max: "1024", step: "1" },
       { key: "minThreshold", label: "Min Thresh", defaultValue: "0", min: "0", mid: "0", max: "1", step: "0.01", maxDigits: 4 },
       { key: "maxThreshold", label: "Max Thresh", defaultValue: "1", min: "0", mid: "1", max: "1", step: "0.01", maxDigits: 4 },
-      {
-        choices: ["Low Bias", "Linear", "High Bias"],
-        defaultValue: "0",
-        displayChoices: true,
-        divideChoicesVisibly: true,
-        key: "freqScale",
-        label: "Freq Scale",
-        linearSmoothing: false,
-        max: "2",
-        mid: "0",
-        min: "0",
-        nonlinearSlider: false,
-        step: "1",
-      },
     ],
     visualInputs: [
       { key: "spectrogram", label: "In", port: "In" },
@@ -3504,32 +3512,37 @@ const nodeGraphModuleDefinitions = Object.freeze({
     ],
     visualSink: true,
   },
-  numberReadout: {
-    bufferedInputs: ["In"],
-    displayHeightGu: 1,
-    displayType: "numberReadout",
-    inputs: ["In"],
-    layout: "traceDisplay",
-    outputs: [],
-    parameters: [],
-    visualInputs: [
-      { key: "numberReadout", label: "In", port: "In" },
-    ],
-    visualSink: true,
-  },
+  // numberReadout: solid chromeless registration (public/modules/numberReadout/*-register.js).
   lineBurnOscilloscope: {
-    bufferedInputs: ["In"],
+    bufferedInputs: ["In", "Reset"],
     displayType: "lineBurn",
-    inputs: ["In"],
+    inputs: ["In", "Reset"],
     layout: "traceDisplay",
     outputs: [],
     parameters: [],
     visualInputs: [
       { key: "lineBurnOscilloscope", label: "In", port: "In" },
+      { key: "lineBurnReset", label: "Reset", port: "Reset" },
     ],
     visualSink: true,
   },
   scope2d: {
+    bufferedInputs: ["X", "Y"],
+    displayHeightGu: 5,
+    displayType: "scope2d",
+    inputs: ["X", "Y"],
+    layout: "traceDisplay",
+    outputs: [],
+    parameters: [],
+    visualInputs: [
+      { key: "scope2dX", label: "X", port: "X" },
+      { key: "scope2dY", label: "Y", port: "Y" },
+    ],
+    visualSink: true,
+  },
+  // Legacy alias of scope2d (2D Phosphor). Hidden from shop; patches migrate
+  // to type "scope2d" on load. Kept so mid-session / odd loaders still resolve.
+  phosphorLight: {
     bufferedInputs: ["X", "Y"],
     displayHeightGu: 5,
     displayType: "scope2d",
@@ -3805,6 +3818,7 @@ function nodeGraphModuleProducesOutputWithoutSignalInput(type) {
     "lorenzAttractor",
     "logisticMap",
     "henonMap",
+    "rayBouncer",
     "chuaAttractor",
     "lutCell",
     "ellipsoid",

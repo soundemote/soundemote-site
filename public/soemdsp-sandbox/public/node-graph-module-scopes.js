@@ -107,7 +107,9 @@ function notifyNodeGraphModuleScopeSnapshotListeners() {
 }
 const nodeGraphModuleScopeSettingsStorageKey = "soemdsp-sandbox.moduleScopeSettings.v1";
 const nodeGraphModuleScopeMaxBackingStoreSize = 4096;
-const nodeGraphTraceDisplayMaxZoomSeconds = 2;
+// 1D Trace history window (UI label "History (s)"). 10s covers slow LFO /
+// envelope inspection without absurd live-buffer growth at 48k.
+const nodeGraphTraceDisplayMaxZoomSeconds = 10;
 const nodeGraphModuleScopeDefaultSettings = Object.freeze({
   blinkLightShape: "circle",
   brightness: 1,
@@ -1009,7 +1011,12 @@ function syncNodeGraphModuleScopeHeartbeat() {
   }
   nodeGraphModuleScopeState.drawFrameHeartbeat = window.setInterval(() => {
     syncNodeGraphScopeGpuDebugDisplay();
-    if (!nodeGraphModuleScopeHasDrawableSlots() || nodeGraphModuleScopePaused()) {
+    if (!nodeGraphModuleScopeHasDrawableSlots()) {
+      return;
+    }
+    if (nodeGraphModuleScopePaused()) {
+      // While frozen, only absorb phosphor sample cursors — never step energy.
+      absorbNodeGraphModuleScopePhosphorDrawCursors();
       return;
     }
     const pendingFrame = Number(nodeGraphModuleScopeState.drawFrame) || 0;
@@ -1190,7 +1197,7 @@ function nodeGraphModuleScopeHasModelDisplay() {
       nodeGraphModuleScopeIsOscillatorType(slot.type) ||
       (["traceDisplay", "dotOscilloscope", "valueOscilloscope", "lineBurnOscilloscope"].includes(slot.type) &&
         nodeGraphModuleScopeConnectionsTo(slot.nodeId, "In").length > 0) ||
-      (["scope2d", "scope2dTrace"].includes(renderer) && (
+      (["scope2d", "scope2dTrace", "phosphorLight"].includes(renderer) && (
         (outputs.includes("X") && outputs.includes("Y")) ||
         (
           nodeGraphModuleScopeConnectionsTo(slot.nodeId, "X").length > 0 &&
@@ -1252,6 +1259,30 @@ function clearNodeGraphModuleScopeBuffers(options = {}) {
   if (!preserveDisplay) {
     setNodeGraphModuleScopesEnabled(false);
     clearNodeGraphModuleScopeCanvas();
+    // Drop per-face phosphor residual (2D phosphor / number readout ghosts) so
+    // the next live-output start is a cold simulation, not mid-trail.
+    if (typeof document !== "undefined" && typeof nodeGraphPhosphorEnergyGlDestroy === "function") {
+      for (const canvas of document.querySelectorAll("canvas")) {
+        const glFace = canvas._phosphorEnergyGl;
+        if (glFace) {
+          try {
+            nodeGraphPhosphorEnergyGlDestroy(glFace);
+          } catch (_error) {
+            // Best-effort; a torn-down WebGL context is already dark.
+          }
+          canvas._phosphorEnergyGl = null;
+        }
+        if (canvas._numberReadoutLastValueText !== undefined) {
+          canvas._numberReadoutLastValueText = "";
+          canvas._numberReadoutLastTextChangeAt = 0;
+          canvas._nodeGraphNumberReadoutText = "";
+        }
+        if (canvas._numberReadoutResidualPresent) {
+          const rctx = canvas._numberReadoutResidualPresent.getContext?.("2d");
+          rctx?.clearRect(0, 0, canvas._numberReadoutResidualPresent.width, canvas._numberReadoutResidualPresent.height);
+        }
+      }
+    }
   }
 }
 
@@ -1554,14 +1585,21 @@ function beginNodeGraphLiveModuleScopeCapture(plan = {}, options = {}) {
     : (Array.isArray(plan.nodes) ? plan.nodes.map((node) => node.id) : []);
   const frameCapacity = nodeGraphLiveModuleScopeFrameCapacity({ ...options, patch: options.patch || nodeGraphMvp?.patch });
   const patchFingerprint = String(plan.patchFingerprint || nodeGraphPatchFingerprint());
-  const canReuseBuffers = nodeGraphModuleScopeState.mode === "live" &&
-    nodeGraphModuleScopeState.patchFingerprint === patchFingerprint;
+  const topologyFingerprint = nodeGraphLiveModuleScopeFingerprint(plan);
+  // Full patch fingerprint includes layout (gx/gy) and cosmetic UI. Moving a
+  // module must NOT wipe sample history, sync locks, or phosphor windows.
+  // Reuse by live mode + same capture node set (topology), not full hash.
+  const topologyUnchanged = nodeGraphModuleScopeState.mode === "live"
+    && nodeGraphModuleScopeState.monitorFingerprint === topologyFingerprint;
+  // Always try per-id reuse while already live — never allocate empty rings
+  // just because the patch text hash changed.
+  const preferReuse = nodeGraphModuleScopeState.mode === "live";
   const nextBuffers = new Map();
   for (const id of ids.map((candidate) => String(candidate || "")).filter(Boolean)) {
-    const previous = canReuseBuffers ? nodeGraphModuleScopeState.buffers.get(id) : null;
+    const previous = preferReuse ? nodeGraphModuleScopeState.buffers.get(id) : null;
     nextBuffers.set(id, resizeNodeGraphLiveModuleScopeBuffer(previous, frameCapacity));
   }
-  if (canReuseBuffers) {
+  if (preferReuse) {
     for (const [key, previous] of nodeGraphModuleScopeState.buffers) {
       if (!String(key || "").includes(":")) {
         continue;
@@ -1571,17 +1609,19 @@ function beginNodeGraphLiveModuleScopeCapture(plan = {}, options = {}) {
         nextBuffers.set(key, resizeNodeGraphLiveModuleScopeBuffer(previous, frameCapacity));
       }
     }
-  } else {
+  }
+  if (!topologyUnchanged) {
+    // Topology (which nodes are captured) actually changed — drop draw caches.
     nodeGraphModuleScopeState.traceDisplayDrawCache.clear();
     nodeGraphModuleScopeState.traceDisplayScratch.clear();
     nodeGraphModuleScopeState.traceDisplaySyncLocks.clear();
   }
   nodeGraphModuleScopeState.buffers = nextBuffers;
   nodeGraphModuleScopeState.frames = frameCapacity;
-  nodeGraphModuleScopeState.monitorFingerprint = nodeGraphLiveModuleScopeFingerprint(plan);
+  nodeGraphModuleScopeState.monitorFingerprint = topologyFingerprint;
   nodeGraphModuleScopeState.mode = "live";
   nodeGraphModuleScopeState.patchFingerprint = patchFingerprint;
-  nodeGraphModuleScopeState.sampleRate = Number(options.sampleRate) || 0;
+  nodeGraphModuleScopeState.sampleRate = Number(options.sampleRate) || Number(nodeGraphModuleScopeState.sampleRate) || 0;
   scheduleNodeGraphModuleScopeDraw();
 }
 
@@ -2267,7 +2307,7 @@ function nodeGraphModuleScopeCapturedBufferForSlot(slot) {
     return null;
   }
   const renderer = nodeGraphModuleDisplayRendererForSlot(slot);
-  if (["scope2d", "scope2dTrace"].includes(renderer)) {
+  if (["scope2d", "scope2dTrace", "phosphorLight"].includes(renderer)) {
     const source = nodeGraphModuleScopeSlotUsesWiredInputs(slot)
       ? null
       : nodeGraphModuleDisplaySourceForSlot(slot);
@@ -2276,6 +2316,12 @@ function nodeGraphModuleScopeCapturedBufferForSlot(slot) {
       : {});
   }
   if (["traceDisplay", "dotOscilloscope", "valueOscilloscope", "numberReadout", "lineBurnOscilloscope"].includes(slot?.type)) {
+    return nodeGraphModuleScopeState.buffers.get(`${nodeId}:In`) ||
+      nodeGraphModuleScopeConnectedSourceBuffer(nodeId, "In") ||
+      null;
+  }
+  // Multi-mode Display (visualOscilloscope): mono modes feed from In.
+  if (slot?.type === "visualOscilloscope" && (renderer === "trace" || renderer === "dot")) {
     return nodeGraphModuleScopeState.buffers.get(`${nodeId}:In`) ||
       nodeGraphModuleScopeConnectedSourceBuffer(nodeId, "In") ||
       null;
@@ -2311,34 +2357,56 @@ function nodeGraphModuleScopeCapturedBufferForSlot(slot) {
 // displayType/renderer "trace"), so the field exists here for all of them,
 // but a non-Output trace node's draw path never reads it.
 const nodeGraphTraceDisplaySettingsDefaults = Object.freeze({
+  // Face plate under the stroke (same family as 2D Trace / Phosphor).
+  background: "#000000",
   brightness: 0.92,
-  color: "#75ebff",
+  color: "#ff0000",
   dot1Enabled: true,
   dot1Size: 0.08,
-  secondaryBrightness: 0.18,
-  secondaryColor: "#184fff",
+  // Output stereo: combine | lighter | screen | source-over | multiply | difference | exclusion | xor
+  stereoBlend: "combine",
+  // Meet always auto from Left/Right (complement + soft screen lift).
+  meetColor: "auto",
+  secondaryBrightness: 0.92,
+  secondaryColor: "#0000ff",
   secondaryEnabled: true,
-  secondarySize: 0.24,
-  secondaryLineThickness: 0.48,
+  secondarySize: 0.08,
+  secondaryLineThickness: 0,
   cycles: 2,
-  lineThickness: 0.2,
+  // Trace blur unused (hard stroke only); kept for schema compat / phosphor forms.
+  lineThickness: 0,
+  // Vector stroke into a density-scaled face buffer (lo-fi look when < 1).
+  // Not a phosphor energy grid — still one polyline; density only sets buffer size.
+  pixelDensity: 1,
   padding: 0,
+  // Amplitude zoom for quieter signals (1 = full-scale ±1 fills the face).
+  scale: 1,
   skipDiscontinuities: false,
+  // off | left | right | mono — Output stereo chooses which channel triggers the shared window.
+  // Non-output single traces treat any non-off as "sync on" for that buffer.
   sourceSync: false,
+  syncChannel: "off",
   zoomSeconds: 0.05,
 });
 
+// 1D Burn Dot = heart-monitor phosphor: pen takes sweepSeconds to cross left→right.
+// Y = sample. Optional rising-edge Reset snaps to the left. Tune seconds to match
+// the period you care about (easier UX than Hz).
 const nodeGraphLineBurnSettingsDefaults = Object.freeze({
+  background: "#000000",
   burn: 0.3,
-  cycles: 2,
   decay: 0.3,
-  dot1Blur: 0.2,
+  // Amplitude zoom (Y).
+  scale: 1,
   dot1Brightness: 2,
   dot1Color: "#75ebff",
   dot1Enabled: true,
   dot1Size: 0.07,
   lineThickness: 0.2,
-  zoomSeconds: 2,
+  // 0 = 1×1 pixel … 1 layout×dpr … 4 AA (same as 2D Phosphor / Trace).
+  pixelDensity: 1,
+  // Seconds for one full left→right pass (default 2 s).
+  sweepSeconds: 2,
 });
 
 const nodeGraphTraceDisplayRenderPointBudgetDefault = 4096;
@@ -2350,15 +2418,22 @@ function nodeGraphTraceDisplayRenderPointBudget() {
 }
 
 const nodeGraphZeroDBurnSettingsDefaults = Object.freeze({
+  background: "#000000",
   bipolarBrightness: false,
+  burn: 0.55,
+  decay: 0.22,
   dot1Brightness: 0.92,
   dot1Color: "#75ebff",
   dot1Enabled: true,
-  dot1Size: 0.08,
-  lineThickness: 0.2,
+  dot1Size: 0.35,
+  // Blur 0 hard … 1 soft (same as 2D Phosphor stamps).
+  lineThickness: 0.25,
+  // 0 = 1×1 pixel … 1 layout×dpr … 4 AA.
+  pixelDensity: 1,
 });
 
 const nodeGraphValueOscilloscopeSettingsDefaults = Object.freeze({
+  background: "#000000",
   brightness: 0.92,
   burn: 0,
   capEnabled: true,
@@ -2370,35 +2445,451 @@ const nodeGraphValueOscilloscopeSettingsDefaults = Object.freeze({
   dot1Size: 0.08,
   lineLength: 0.88,
   lineThickness: 0.2,
-});
-
-// numberReadout owns a fully independent schema: only decimals, color, and
-// brightness. It deliberately does not carry any Trace/Dot/Caps/Burn/Zoom/
-// Sync/2D field so those renderers' settings can never leak into it.
-const nodeGraphNumberReadoutSettingsDefaults = Object.freeze({
-  brightness: 0.92,
-  color: "#75ebff",
-  decimals: 2,
-});
-
-const nodeGraphScope2dSettingsDefaults = Object.freeze({
-  burn: 0.82,
-  decay: 0.12,
-  dot1Brightness: 0.92,
-  dot1Color: "#75ebff",
-  dot1Enabled: true,
-  dot1Size: 0.08,
-  lineThickness: 0.2,
+  // 0 = 1×1 pixel … 1 layout×dpr … 4 AA.
+  pixelDensity: 1,
+  // Amplitude zoom (Y).
   scale: 1,
 });
 
+// numberReadout: independent schema. Residual is previous-digit ghosts only.
+// "decay" UI = how long the last number's ghost remains (0 = off, 1 = long).
+const nodeGraphNumberReadoutSettingsDefaults = Object.freeze({
+  background: "#000000",
+  brightness: 0.92,
+  color: "#75ebff",
+  decay: 0.45,
+  decimals: 2,
+  ghost: 0.22,
+  innerGlow: 0.35,
+  innerShadow: 0.4,
+});
+
+// Spectrogram display settings (not module params).
+// Regular fixed STFT (RX-style). Display owns: History, FFT size, Window,
+// Overlap, Freq Scale, Smooth, gradient. Dual-written to params for worklet.
+const nodeGraphSpectrogramFftSizes = Object.freeze([
+  128, 256, 512, 1024, 2048, 4096, 8192, 16384,
+]);
+const nodeGraphSpectrogramSettingsDefaults = Object.freeze({
+  fftSize: 1024,
+  historySeconds: 2,
+  // Choice indices (match worklet tables).
+  window: 1, // Hann
+  // Time hop index into [1,2,4,8]: default 4× (hop N/4). 0 = none (hop N).
+  overlap: 2,
+  // Frequency overlap = zero-pad factor on the analysis window (denser Hz grid).
+  // 0→1× (no pad), 1→2×, 2→4×. FFT length = min(window×factor, 32768).
+  freqOverlap: 0,
+  freqScale: 1, // Mel
+  // Lowest gradient stop is the face/history "background" — no separate color.
+  gradientStops: Object.freeze([
+    Object.freeze({ t: 0, color: "#000000" }),
+    Object.freeze({ t: 0.25, color: "#000080" }),
+    Object.freeze({ t: 0.5, color: "#00c0ff" }),
+    Object.freeze({ t: 0.75, color: "#ffff00" }),
+    Object.freeze({ t: 1, color: "#ffffff" }),
+  ]),
+});
+
+/** Snap FFT size to the allowed table (accepts legacy choice index 0…3). */
+function nodeGraphSpectrogramSnapFftSize(value) {
+  const raw = Number(value);
+  if (!Number.isFinite(raw)) {
+    return nodeGraphSpectrogramSettingsDefaults.fftSize;
+  }
+  // Legacy module choice index.
+  if (raw >= 0 && raw <= 3 && Math.abs(raw - Math.round(raw)) < 1e-6) {
+    return nodeGraphSpectrogramFftSizes[Math.round(raw)] || nodeGraphSpectrogramSettingsDefaults.fftSize;
+  }
+  let best = nodeGraphSpectrogramFftSizes[0];
+  let bestDist = Math.abs(raw - best);
+  for (const v of nodeGraphSpectrogramFftSizes) {
+    const d = Math.abs(raw - v);
+    if (d < bestDist) {
+      best = v;
+      bestDist = d;
+    }
+  }
+  return best;
+}
+
+/** Step FFT size along the table. */
+function nodeGraphSpectrogramStepFftSize(value, direction) {
+  const current = nodeGraphSpectrogramSnapFftSize(value);
+  const idx = Math.max(0, nodeGraphSpectrogramFftSizes.indexOf(current));
+  const next = idx + (direction < 0 ? -1 : 1);
+  return nodeGraphSpectrogramFftSizes[Math.max(0, Math.min(nodeGraphSpectrogramFftSizes.length - 1, next))];
+}
+
+/** FFT size for a spectrogram node from display settings / dual-write / defaults. */
+function nodeGraphSpectrogramFftSizeFromNode(node) {
+  const fromSettings = node?.traceDisplaySettings?.fftSize;
+  const fromParams = node?.params?.fftSize;
+  return nodeGraphSpectrogramSnapFftSize(
+    fromSettings ?? fromParams ?? nodeGraphSpectrogramSettingsDefaults.fftSize,
+  );
+}
+
+/**
+ * Shared gradient stop normalize (spectrogram + all phosphor faces).
+ * Prefer the shared editor helpers when loaded; fall back to local parse.
+ */
+function normalizeNodeGraphSharedGradientStops(raw, fallbackStops = null) {
+  if (typeof normalizeSharedGradientStops === "function") {
+    const normalized = normalizeSharedGradientStops(raw);
+    if (Array.isArray(normalized) && normalized.length >= 2) {
+      return normalized.map((s) => ({ t: s.t, color: s.color }));
+    }
+  }
+  if (typeof spectrogramNormalizeGradientStops === "function") {
+    const normalized = spectrogramNormalizeGradientStops(raw);
+    if (Array.isArray(normalized) && normalized.length >= 2) {
+      return normalized.map((s) => ({ t: s.t, color: s.color }));
+    }
+  }
+  const list = Array.isArray(raw) ? raw : [];
+  const fallback = Array.isArray(fallbackStops) && fallbackStops.length >= 2
+    ? fallbackStops
+    : (typeof PHOSPHOR_DEFAULT_GRADIENT_STOPS !== "undefined"
+      ? PHOSPHOR_DEFAULT_GRADIENT_STOPS
+      : nodeGraphSpectrogramSettingsDefaults.gradientStops);
+  const out = [];
+  for (let i = 0; i < list.length; i += 1) {
+    const stop = list[i];
+    if (!stop) continue;
+    const fb = fallback[Math.min(i, fallback.length - 1)]?.color || "#ffffff";
+    const hex = normalizeNodeGraphTraceDisplayColor(stop.color ?? stop.hex, fb);
+    const t = Number.isFinite(Number(stop.t))
+      ? clampNodeSliderValue(Number(stop.t), 0, 1)
+      : (list.length <= 1 ? 0 : i / (list.length - 1));
+    out.push({ t, color: hex });
+  }
+  if (out.length < 2) {
+    return fallback.map((s) => ({ t: s.t, color: s.color }));
+  }
+  out.sort((a, b) => a.t - b.t);
+  out[0].t = 0;
+  out[out.length - 1].t = 1;
+  return out;
+}
+
+function normalizeNodeGraphSpectrogramGradientStops(raw) {
+  return normalizeNodeGraphSharedGradientStops(
+    raw,
+    nodeGraphSpectrogramSettingsDefaults.gradientStops,
+  );
+}
+
+/** Classic CRT phosphor ramp from peak hex (+ floor). */
+function nodeGraphPhosphorDefaultGradientStops(peakHex = "#75ebff", backgroundHex = "#000000") {
+  if (typeof phosphorStopsFromPeak === "function") {
+    return phosphorStopsFromPeak(peakHex, backgroundHex);
+  }
+  const peak = normalizeNodeGraphTraceDisplayColor(peakHex, "#75ebff");
+  const bg = normalizeNodeGraphTraceDisplayColor(backgroundHex, "#000000");
+  const mixHex = (a, b, t) => {
+    const ar = parseInt(a.slice(1, 3), 16);
+    const ag = parseInt(a.slice(3, 5), 16);
+    const ab = parseInt(a.slice(5, 7), 16);
+    const br = parseInt(b.slice(1, 3), 16);
+    const bg_ = parseInt(b.slice(3, 5), 16);
+    const bb = parseInt(b.slice(5, 7), 16);
+    const m = (x, y) => Math.round(x + (y - x) * t);
+    return `#${m(ar, br).toString(16).padStart(2, "0")}${m(ag, bg_).toString(16).padStart(2, "0")}${m(ab, bb).toString(16).padStart(2, "0")}`;
+  };
+  return [
+    { t: 0, color: bg },
+    { t: 0.18, color: mixHex(bg, peak, 0.28) },
+    { t: 0.55, color: mixHex(bg, peak, 0.7) },
+    { t: 1, color: peak },
+  ];
+}
+
+/**
+ * Resolve gradientStops for any phosphor display settings object.
+ * Migrates legacy single color + background into a multi-stop ramp when needed.
+ */
+function nodeGraphPhosphorGradientStopsFromSettings(settings = {}, peakFallback = "#75ebff") {
+  const source = settings && typeof settings === "object" ? settings : {};
+  const peak = normalizeNodeGraphTraceDisplayColor(
+    source.dot1Color ?? source.color ?? peakFallback,
+    peakFallback,
+  );
+  const bg = normalizeNodeGraphTraceDisplayColor(
+    source.background ?? source.backgroundColor ?? "#000000",
+    "#000000",
+  );
+  if (source.gradientStops || source.gradient) {
+    return normalizeNodeGraphSharedGradientStops(
+      source.gradientStops ?? source.gradient,
+      nodeGraphPhosphorDefaultGradientStops(peak, bg),
+    );
+  }
+  return nodeGraphPhosphorDefaultGradientStops(peak, bg);
+}
+
+/**
+ * Apply shared multi-stop gradient as the energy→color LUT on a phosphor face.
+ * Prefer this over setLutFromPeak for all retained burn scopes.
+ */
+function nodeGraphPhosphorApplyGradientLut(faceOrEnergyGl, settings, peakFallback = "#75ebff") {
+  if (!faceOrEnergyGl) {
+    return false;
+  }
+  const stops = nodeGraphPhosphorGradientStopsFromSettings(settings, peakFallback);
+  if (typeof PhosphorDrawer !== "undefined" && PhosphorDrawer?.setLutStops) {
+    return PhosphorDrawer.setLutStops(faceOrEnergyGl, stops);
+  }
+  if (typeof nodeGraphPhosphorEnergyGlSetLutFromStops === "function") {
+    return Boolean(nodeGraphPhosphorEnergyGlSetLutFromStops(faceOrEnergyGl, stops));
+  }
+  // Legacy peak LUT fallback.
+  const peak = stops[stops.length - 1]?.color || peakFallback;
+  const bg = stops[0]?.color || "#000000";
+  const peakRgb = typeof nodeGraphScopeRgbFloatsToCanvasRgb === "function"
+    && typeof nodeGraphScopeHexColorToRgb === "function"
+    ? nodeGraphScopeRgbFloatsToCanvasRgb(nodeGraphScopeHexColorToRgb(peak))
+    : [117, 235, 255];
+  if (typeof nodeGraphPhosphorEnergyGlSetLutFromPeak === "function") {
+    nodeGraphPhosphorEnergyGlSetLutFromPeak(faceOrEnergyGl, peakRgb, bg);
+    return true;
+  }
+  return false;
+}
+
+/** Form types that use the shared gradient editor for color (not single swatches). */
+function nodeGraphDisplaySettingsFormTypeUsesGradient(type) {
+  return [
+    "spectrogramBurn",
+    "scope2d",
+    "phosphorLight",
+    "xyPad",
+    "dot",
+    "lineBurn",
+  ].includes(type);
+}
+
+function normalizeNodeGraphSpectrogramSettings(settings = {}, node = null) {
+  const source = settings && typeof settings === "object" ? settings : {};
+  const defaults = nodeGraphSpectrogramSettingsDefaults;
+  // FFT: display setting, dual-write, or legacy module choice index.
+  const fftRaw = source.fftSize ?? node?.params?.fftSize ?? defaults.fftSize;
+  const fftSize = nodeGraphSpectrogramSnapFftSize(fftRaw);
+  const snapChoice = (raw, max, fallback) => {
+    const n = Math.round(Number(raw));
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(0, Math.min(max, n));
+  };
+  const window = snapChoice(
+    source.window ?? node?.params?.window ?? defaults.window,
+    4,
+    defaults.window,
+  );
+  // Time overlap grew from 3 choices (2×/4×/8× @ 0–2) to 4 (none/2×/4×/8× @ 0–3).
+  // Patches without freqOverlap still use the old index map — shift +1 so hop
+  // settings keep their previous meaning.
+  let overlapRaw = source.overlap ?? node?.params?.overlap ?? defaults.overlap;
+  const legacyNoFreqOverlap = !Object.hasOwn(source, "freqOverlap")
+    && !(node?.params && Object.hasOwn(node.params, "freqOverlap"));
+  if (legacyNoFreqOverlap) {
+    const n = Math.round(Number(overlapRaw));
+    if (Number.isFinite(n) && n >= 0 && n <= 2) {
+      overlapRaw = n + 1;
+    }
+  }
+  const overlap = snapChoice(overlapRaw, 5, defaults.overlap);
+  const freqOverlap = snapChoice(
+    source.freqOverlap ?? node?.params?.freqOverlap ?? defaults.freqOverlap,
+    2,
+    defaults.freqOverlap,
+  );
+  const freqScale = snapChoice(
+    source.freqScale ?? node?.params?.freqScale ?? defaults.freqScale,
+    2,
+    defaults.freqScale,
+  );
+  const gradientStops = normalizeNodeGraphSpectrogramGradientStops(
+    source.gradientStops ?? source.gradient,
+  );
+  // Face fill follows gradient floor (t≈0) — no independent background control.
+  const gradientFloor = gradientStops[0]?.color
+    || defaults.gradientStops[0].color
+    || "#000000";
+  return {
+    background: normalizeNodeGraphTraceDisplayColor(gradientFloor, "#000000"),
+    fftSize,
+    window,
+    overlap,
+    freqOverlap,
+    freqScale,
+    // Face width = historySeconds of audio. Longer = slower scroll.
+    // Min 0.1 s (0 was a fake “empty” that the display remapped to 0.05).
+    historySeconds: (() => {
+      const minH = 0.1;
+      const maxH = 30;
+      const raw = source.historySeconds ?? source.zoomSeconds;
+      if (raw === undefined || raw === null || raw === "") {
+        return defaults.historySeconds;
+      }
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < 0) {
+        return defaults.historySeconds;
+      }
+      if (n === 0) {
+        return minH;
+      }
+      return clampNodeSliderValue(n, minH, maxH);
+    })(),
+    gradientStops,
+  };
+}
+
+/** Push analysis settings into params for the worklet. */
+function syncNodeGraphSpectrogramDisplaySettingsToParams(node, settings) {
+  if (!node) return;
+  const safe = normalizeNodeGraphSpectrogramSettings(settings, node);
+  node.params = node.params && typeof node.params === "object" ? { ...node.params } : {};
+  node.params.fftSize = safe.fftSize; // analysis window (128…16384)
+  node.params.window = safe.window;
+  node.params.overlap = safe.overlap; // time hop factor index
+  node.params.freqOverlap = safe.freqOverlap; // zero-pad factor index
+  node.params.freqScale = safe.freqScale;
+  // History window: worklet re-STFTs this many seconds of reference audio
+  // when analysis settings change (reprint whole spectrogram, no clear).
+  node.params.historySeconds = safe.historySeconds;
+  // Removed / migrated controls.
+  delete node.params.outputBins;
+  delete node.params.smoothing;
+}
+
+const nodeGraphScope2dSettingsDefaults = Object.freeze({
+  // Face plate follows gradient floor (t≈0); kept for plate CSS / migration.
+  background: "#000000",
+  burn: 0.82,
+  decay: 0.12,
+  dot1Brightness: 0.92,
+  // Peak color = last gradient stop (migration + puck/overlays).
+  dot1Color: "#75ebff",
+  dot1Enabled: true,
+  // 0–1 of face min side: 1 = diameter fills the square (same as PhosphorLight).
+  dot1Size: 0.08,
+  // Soft stamp budget (ceiling). Under load, dots spread evenly (skips), not head-only.
+  dotBudget: 2048,
+  // Multi-stop energy→color LUT (shared gradient editor).
+  gradientStops: Object.freeze([
+    Object.freeze({ t: 0, color: "#000000" }),
+    Object.freeze({ t: 0.18, color: "#0a2a33" }),
+    Object.freeze({ t: 0.55, color: "#3a9aab" }),
+    Object.freeze({ t: 1, color: "#75ebff" }),
+  ]),
+  // Stamp blur 0–1: 0 hard disc, 1 full soft bleed.
+  lineThickness: 0.35,
+  // 0 = single pixel, 1 = layout×dpr, 4 = 4× AA.
+  pixelDensity: 1,
+  scale: 1,
+});
+
+// XY Pad = built-in phosphor of Out X/Y + cheap UI overlay (puck/grid).
+// No "scale" — that would zoom the beam relative to unit Phase/puck and
+// desync the control surface from the trail. Beam size is stamp size only;
+// puck has its own size.
+const nodeGraphXyPadDisplaySettingsDefaults = Object.freeze({
+  background: "#000000",
+  burn: 0.82,
+  // Trail residual fade while depositing (higher = faster decay).
+  decay: 0.35,
+  // Phosphor beam brightness 0..1.
+  dot1Brightness: 0.78,
+  // Peak = last gradient stop (UI overlay tints from this).
+  dot1Color: "#7fc7d9",
+  // Phosphor beam diameter as fraction of face min side (scope stamp size).
+  dot1Size: 0.07,
+  // Soft-stamp budget ceiling.
+  dotBudget: 2048,
+  // Default ON: always spend dense packing up to Dot budget (hard solid trails).
+  fullDotEconomy: true,
+  gradientStops: Object.freeze([
+    Object.freeze({ t: 0, color: "#000000" }),
+    Object.freeze({ t: 0.18, color: "#0a2830" }),
+    Object.freeze({ t: 0.55, color: "#3a8899" }),
+    Object.freeze({ t: 1, color: "#7fc7d9" }),
+  ]),
+  // Stamp blur 0–1: 0 hard disc, 1 full soft bleed.
+  lineThickness: 0.42,
+  // 0 = single pixel, 1 = layout×dpr, 4 = 4× AA (phosphor face only).
+  pixelDensity: 1,
+  // UI puck radius as fraction of face min side (vector overlay, not energy).
+  puckSize: 0.045,
+});
+
+function normalizeNodeGraphXyPadDisplaySettings(settings = {}) {
+  const source = settings && typeof settings === "object" ? settings : {};
+  const defaults = nodeGraphXyPadDisplaySettingsDefaults;
+  const gradientStops = nodeGraphPhosphorGradientStopsFromSettings(source, defaults.dot1Color);
+  const floor = gradientStops[0]?.color || defaults.background;
+  const peak = gradientStops[gradientStops.length - 1]?.color || defaults.dot1Color;
+  return {
+    background: normalizeNodeGraphTraceDisplayColor(floor, defaults.background),
+    burn: normalizeNodeGraphTraceDisplayNumber(source.burn, defaults.burn, 0, 1),
+    decay: normalizeNodeGraphTraceDisplayNumber(source.decay, defaults.decay, 0, 1),
+    dot1Brightness: normalizeNodeGraphTraceDisplayNumber(
+      source.dot1Brightness ?? source.brightness,
+      defaults.dot1Brightness,
+      0,
+      Infinity,
+    ),
+    dot1Color: normalizeNodeGraphTraceDisplayColor(peak, defaults.dot1Color),
+    dot1Enabled: true,
+    dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
+    dotBudget: Math.max(
+      64,
+      Math.min(8192, Math.round(
+        Number(source.dotBudget ?? defaults.dotBudget) || defaults.dotBudget,
+      )),
+    ),
+    // Default ON when missing (devilish solid trails). Explicit false stays off.
+    fullDotEconomy: source.fullDotEconomy !== false
+      && source.useFullDotEconomy !== false,
+    gradientStops,
+    lineThickness: nodeGraphTraceDisplayClampStampBlur(
+      source.lineThickness ?? source.dot1Blur ?? defaults.lineThickness,
+    ),
+    pixelDensity: normalizeNodeGraphTraceDisplayNumber(
+      source.pixelDensity,
+      defaults.pixelDensity,
+      0,
+      4,
+    ),
+    // Ignore legacy scale for layout; keep puckSize (migrate old scale→puck if missing).
+    puckSize: normalizeNodeGraphTraceDisplayNumber(
+      source.puckSize ?? (Number.isFinite(Number(source.scale)) && Number(source.scale) > 0
+        ? defaults.puckSize * Math.min(2, Number(source.scale))
+        : defaults.puckSize),
+      defaults.puckSize,
+      0.005,
+      0.25,
+    ),
+  };
+}
+
+function nodeGraphXyPadDisplaySettingsForNode(node) {
+  if (!node) {
+    return normalizeNodeGraphXyPadDisplaySettings();
+  }
+  return normalizeNodeGraphXyPadDisplaySettings(node.traceDisplaySettings);
+}
+
 const nodeGraphScope2dTraceSettingsDefaults = Object.freeze({
+  // Same family as PhosphorLight / Number Readout face plate.
+  background: "#000000",
   dot1Brightness: 0.92,
   dot1Color: "#75ebff",
   dot1Enabled: true,
   dot1Size: 0.08,
   historySeconds: 0.05,
   lineThickness: 0.2,
+  // Vector stroke; density scales face buffer for lo-fi/chunky look (default 1).
+  pixelDensity: 1,
   scale: 1,
 });
 
@@ -2435,14 +2926,47 @@ function normalizeNodeGraphTraceDisplayZoomSeconds(value, fallback) {
   return Number.isFinite(safeFallback) ? clampNodeSliderValue(safeFallback, 0, nodeGraphTraceDisplayMaxZoomSeconds) : 0;
 }
 
+/** Clamp sweep duration: 0.01 s … 10 s (same ceiling as Trace history). */
+function nodeGraphTraceDisplayClampSweepSeconds(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) {
+    return nodeGraphLineBurnSettingsDefaults.sweepSeconds;
+  }
+  return clampNodeSliderValue(n, 0.01, 10);
+}
+
+/**
+ * Resolve seconds-per-pass. Migrates legacy sweepHz (crossings/sec) and
+ * older zoomSeconds/windowSeconds fields that already meant duration.
+ */
+function normalizeNodeGraphLineBurnSweepSeconds(source, defaults) {
+  const explicit = Number(source?.sweepSeconds);
+  if (Number.isFinite(explicit) && explicit > 0) {
+    return nodeGraphTraceDisplayClampSweepSeconds(explicit);
+  }
+  // Legacy: sweepHz = full left→right crossings per second.
+  const legacyHz = Number(source?.sweepHz);
+  if (Number.isFinite(legacyHz) && legacyHz > 0) {
+    return nodeGraphTraceDisplayClampSweepSeconds(1 / legacyHz);
+  }
+  // Legacy window fields already meant "seconds per sweep".
+  const legacyWindowMs = source?.windowMs === undefined ? undefined : Number(source.windowMs) / 1000;
+  const zoomSeconds = Number(source?.zoomSeconds ?? source?.windowSeconds ?? legacyWindowMs);
+  if (Number.isFinite(zoomSeconds) && zoomSeconds > 0) {
+    return nodeGraphTraceDisplayClampSweepSeconds(zoomSeconds);
+  }
+  return defaults.sweepSeconds;
+}
+
 function normalizeNodeGraphLineBurnSettings(settings = {}) {
   const source = settings && typeof settings === "object" ? settings : {};
   const defaults = nodeGraphLineBurnSettingsDefaults;
-  const legacyWindowMs = source.windowMs === undefined ? undefined : Number(source.windowMs) / 1000;
-  const zoomSeconds = source.zoomSeconds ?? source.windowSeconds ?? legacyWindowMs;
+  const gradientStops = nodeGraphPhosphorGradientStopsFromSettings(source, defaults.dot1Color);
+  const floor = gradientStops[0]?.color || defaults.background;
+  const peak = gradientStops[gradientStops.length - 1]?.color || defaults.dot1Color;
   return {
+    background: normalizeNodeGraphTraceDisplayColor(floor, defaults.background),
     burn: normalizeNodeGraphTraceDisplayNumber(source.burn, defaults.burn, 0, 1),
-    cycles: normalizeNodeGraphTraceDisplayNumber(source.cycles, defaults.cycles, 1, 64, true),
     decay: normalizeNodeGraphTraceDisplayNumber(source.decay, defaults.decay, 0, 1),
     dot1Brightness: normalizeNodeGraphTraceDisplayNumber(
       source.dot1Brightness ?? source.brightness,
@@ -2450,37 +2974,54 @@ function normalizeNodeGraphLineBurnSettings(settings = {}) {
       0,
       Infinity,
     ),
-    dot1Color: normalizeNodeGraphTraceDisplayColor(source.dot1Color ?? source.color, defaults.dot1Color),
-    // Dot toggleability removed app-wide -- redundant with the display's
-    // own show/hide (if you don't want to see it, hide the whole
-    // display). Always true regardless of any stored/legacy value, same
-    // way this file already handles the Dot 2 removal.
+    dot1Color: normalizeNodeGraphTraceDisplayColor(peak, defaults.dot1Color),
+    // Always on — hide the display if you don't want the pen.
     dot1Enabled: true,
     dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
-    lineThickness: normalizeNodeGraphTraceDisplayNumber(source.lineThickness, defaults.lineThickness, 0, 1),
-    zoomSeconds: normalizeNodeGraphTraceDisplayZoomSeconds(zoomSeconds, defaults.zoomSeconds),
+    gradientStops,
+    lineThickness: nodeGraphTraceDisplayClampStampBlur(
+      source.lineThickness ?? defaults.lineThickness,
+    ),
+    pixelDensity: normalizeNodeGraphTraceDisplayNumber(
+      source.pixelDensity,
+      defaults.pixelDensity,
+      0,
+      4,
+    ),
+    scale: normalizeNodeGraphTraceDisplayNumber(source.scale, defaults.scale, 0.01, 100),
+    sweepSeconds: normalizeNodeGraphLineBurnSweepSeconds(source, defaults),
   };
 }
 
 function normalizeNodeGraphZeroDBurnSettings(settings = {}) {
   const source = settings && typeof settings === "object" ? settings : {};
   const defaults = nodeGraphZeroDBurnSettingsDefaults;
+  const gradientStops = nodeGraphPhosphorGradientStopsFromSettings(source, defaults.dot1Color);
+  const floor = gradientStops[0]?.color || defaults.background;
+  const peak = gradientStops[gradientStops.length - 1]?.color || defaults.dot1Color;
   return {
+    background: normalizeNodeGraphTraceDisplayColor(floor, defaults.background),
     bipolarBrightness: source.bipolarBrightness === true,
+    burn: normalizeNodeGraphTraceDisplayNumber(source.burn, defaults.burn, 0, 1),
+    decay: normalizeNodeGraphTraceDisplayNumber(source.decay, defaults.decay, 0, 1),
     dot1Brightness: normalizeNodeGraphTraceDisplayNumber(
       source.dot1Brightness ?? source.brightness,
       defaults.dot1Brightness,
       0,
       2,
     ),
-    dot1Color: normalizeNodeGraphTraceDisplayColor(source.dot1Color ?? source.color, defaults.dot1Color),
+    dot1Color: normalizeNodeGraphTraceDisplayColor(peak, defaults.dot1Color),
     dot1Enabled: true,
     dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
-    lineThickness: normalizeNodeGraphTraceDisplayNumber(
-      source.lineThickness ?? source.dot1Blur,
-      defaults.lineThickness,
+    gradientStops,
+    lineThickness: nodeGraphTraceDisplayClampStampBlur(
+      source.lineThickness ?? source.dot1Blur ?? defaults.lineThickness,
+    ),
+    pixelDensity: normalizeNodeGraphTraceDisplayNumber(
+      source.pixelDensity,
+      defaults.pixelDensity,
       0,
-      1,
+      4,
     ),
   };
 }
@@ -2491,6 +3032,10 @@ function normalizeNodeGraphTraceDisplaySettings(settings = {}) {
   const legacyWindowMs = source.windowMs === undefined ? undefined : Number(source.windowMs) / 1000;
   const zoomSeconds = source.zoomSeconds ?? source.windowSeconds ?? legacyWindowMs;
   return {
+    background: normalizeNodeGraphTraceDisplayColor(
+      source.background ?? source.backgroundColor,
+      defaults.background,
+    ),
     brightness: normalizeNodeGraphTraceDisplayNumber(
       source.brightness ?? source.dot1Brightness,
       defaults.brightness,
@@ -2519,17 +3064,44 @@ function normalizeNodeGraphTraceDisplaySettings(settings = {}) {
       0,
       1,
     ),
-    secondaryLineThickness: normalizeNodeGraphTraceDisplayNumber(
-      source.secondaryLineThickness,
-      defaults.secondaryLineThickness,
-      0,
-      1,
-    ),
+    secondaryLineThickness: 0,
     cycles: normalizeNodeGraphTraceDisplayNumber(source.cycles, defaults.cycles, -Infinity, Infinity),
-    lineThickness: normalizeNodeGraphTraceDisplayNumber(source.lineThickness, defaults.lineThickness, 0, 1),
+    // Trace is hard-stroke only (blur not meaningful for Canvas paths).
+    lineThickness: 0,
+    pixelDensity: normalizeNodeGraphTraceDisplayNumber(
+      source.pixelDensity,
+      defaults.pixelDensity,
+      0,
+      4,
+    ),
     padding: normalizeNodeGraphTraceDisplayNumber(source.padding, defaults.padding, -Infinity, Infinity),
+    // Amplitude zoom: multiplies samples before face mapping (1 = full-scale).
+    scale: normalizeNodeGraphTraceDisplayNumber(source.scale, defaults.scale ?? 1, 0.01, 100),
     skipDiscontinuities: source.skipDiscontinuities !== false,
     sourceSync: source.sourceSync !== false,
+    stereoBlend: (function () {
+      const raw = String(source.stereoBlend || defaults.stereoBlend || "combine").toLowerCase().trim();
+      const ok = typeof TraceStroke !== "undefined" && Array.isArray(TraceStroke.STEREO_BLEND_MODES)
+        ? TraceStroke.STEREO_BLEND_MODES
+        : ["combine", "lighter", "screen", "source-over", "multiply", "difference", "exclusion", "xor"];
+      return ok.includes(raw) ? raw : "combine";
+    })(),
+    // Always auto — derived from Left/Right via meetColorFromPair (no manual meet).
+    meetColor: "auto",
+    syncChannel: (function normalizeSyncChannel() {
+      const raw = String(source.syncChannel || "").toLowerCase().trim();
+      if (raw === "left" || raw === "right" || raw === "mono" || raw === "off") {
+        return raw;
+      }
+      // Legacy boolean: true → mono (single-channel trigger), false → off.
+      if (source.sourceSync === false || source.sourceSync === 0 || source.sourceSync === "false") {
+        return "off";
+      }
+      if (source.sourceSync === true || source.sourceSync === 1 || source.sourceSync === "true") {
+        return "mono";
+      }
+      return defaults.syncChannel || "off";
+    })(),
     zoomSeconds: normalizeNodeGraphTraceDisplayZoomSeconds(zoomSeconds, defaults.zoomSeconds),
   };
 }
@@ -2538,6 +3110,10 @@ function normalizeNodeGraphValueOscilloscopeSettings(settings = {}) {
   const source = settings && typeof settings === "object" ? settings : {};
   const defaults = nodeGraphValueOscilloscopeSettingsDefaults;
   return {
+    background: normalizeNodeGraphTraceDisplayColor(
+      source.background ?? source.backgroundColor,
+      defaults.background,
+    ),
     brightness: normalizeNodeGraphTraceDisplayNumber(
       source.brightness ?? source.dot1Brightness,
       defaults.brightness,
@@ -2554,6 +3130,13 @@ function normalizeNodeGraphValueOscilloscopeSettings(settings = {}) {
     dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
     lineLength: normalizeNodeGraphTraceDisplayNumber(source.lineLength, defaults.lineLength, 0, 1),
     lineThickness: normalizeNodeGraphTraceDisplayNumber(source.lineThickness, defaults.lineThickness, 0, 1),
+    pixelDensity: normalizeNodeGraphTraceDisplayNumber(
+      source.pixelDensity,
+      defaults.pixelDensity,
+      0,
+      4,
+    ),
+    scale: normalizeNodeGraphTraceDisplayNumber(source.scale, defaults.scale, 0.01, 100),
   };
 }
 
@@ -2561,6 +3144,10 @@ function normalizeNodeGraphNumberReadoutSettings(settings = {}) {
   const source = settings && typeof settings === "object" ? settings : {};
   const defaults = nodeGraphNumberReadoutSettingsDefaults;
   return {
+    background: normalizeNodeGraphTraceDisplayColor(
+      source.background ?? source.backgroundColor,
+      defaults.background,
+    ),
     brightness: normalizeNodeGraphTraceDisplayNumber(
       source.brightness ?? source.dot1Brightness,
       defaults.brightness,
@@ -2568,14 +3155,23 @@ function normalizeNodeGraphNumberReadoutSettings(settings = {}) {
       2,
     ),
     color: normalizeNodeGraphTraceDisplayColor(source.color ?? source.dot1Color, defaults.color),
+    // Ghost hold of previous number (0 = none, 1 = long). Not phosphor "burn".
+    decay: normalizeNodeGraphTraceDisplayNumber(source.decay, defaults.decay, 0, 1),
     decimals: normalizeNodeGraphTraceDisplayNumber(source.decimals, defaults.decimals, 0, 8, true),
+    ghost: normalizeNodeGraphTraceDisplayNumber(source.ghost, defaults.ghost, 0, 1),
+    innerGlow: normalizeNodeGraphTraceDisplayNumber(source.innerGlow, defaults.innerGlow, 0, 1),
+    innerShadow: normalizeNodeGraphTraceDisplayNumber(source.innerShadow, defaults.innerShadow, 0, 1),
   };
 }
 
 function normalizeNodeGraphScope2dSettings(settings = {}) {
   const source = settings && typeof settings === "object" ? settings : {};
   const defaults = nodeGraphScope2dSettingsDefaults;
+  const gradientStops = nodeGraphPhosphorGradientStopsFromSettings(source, defaults.dot1Color);
+  const floor = gradientStops[0]?.color || defaults.background;
+  const peak = gradientStops[gradientStops.length - 1]?.color || defaults.dot1Color;
   return {
+    background: normalizeNodeGraphTraceDisplayColor(floor, defaults.background),
     burn: normalizeNodeGraphTraceDisplayNumber(source.burn, defaults.burn, 0, 1),
     decay: normalizeNodeGraphTraceDisplayNumber(source.decay, defaults.decay, 0, 1),
     dot1Brightness: normalizeNodeGraphTraceDisplayNumber(
@@ -2584,15 +3180,26 @@ function normalizeNodeGraphScope2dSettings(settings = {}) {
       0,
       Infinity,
     ),
-    dot1Color: normalizeNodeGraphTraceDisplayColor(source.dot1Color ?? source.color, defaults.dot1Color),
+    dot1Color: normalizeNodeGraphTraceDisplayColor(peak, defaults.dot1Color),
     dot1Enabled: true,
     dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
-    lineThickness: normalizeNodeGraphTraceDisplayNumber(
-      source.lineThickness ?? source.dot1Blur,
-      defaults.lineThickness,
-      0,
-      1,
+    dotBudget: Math.max(
+      64,
+      Math.min(8192, Math.round(
+        Number(source.dotBudget ?? defaults.dotBudget) || defaults.dotBudget,
+      )),
     ),
+    gradientStops,
+    lineThickness: nodeGraphTraceDisplayClampStampBlur(
+      source.lineThickness ?? source.dot1Blur ?? defaults.lineThickness,
+    ),
+    pixelDensity: normalizeNodeGraphTraceDisplayNumber(
+      source.pixelDensity,
+      defaults.pixelDensity,
+      0,
+      4,
+    ),
+    scale: normalizeNodeGraphTraceDisplayNumber(source.scale, defaults.scale, 0, Infinity),
   };
 }
 
@@ -2600,6 +3207,10 @@ function normalizeNodeGraphScope2dTraceSettings(settings = {}) {
   const source = settings && typeof settings === "object" ? settings : {};
   const defaults = nodeGraphScope2dTraceSettingsDefaults;
   return {
+    background: normalizeNodeGraphTraceDisplayColor(
+      source.background ?? source.backgroundColor,
+      defaults.background,
+    ),
     dot1Brightness: normalizeNodeGraphTraceDisplayNumber(
       source.dot1Brightness ?? source.brightness,
       defaults.dot1Brightness,
@@ -2613,11 +3224,14 @@ function normalizeNodeGraphScope2dTraceSettings(settings = {}) {
       source.historySeconds ?? source.history,
       defaults.historySeconds,
     ),
-    lineThickness: normalizeNodeGraphTraceDisplayNumber(
-      source.lineThickness ?? source.dot1Blur,
-      defaults.lineThickness,
+    lineThickness: nodeGraphTraceDisplayClampStampBlur(
+      source.lineThickness ?? source.dot1Blur ?? defaults.lineThickness,
+    ),
+    pixelDensity: normalizeNodeGraphTraceDisplayNumber(
+      source.pixelDensity,
+      defaults.pixelDensity,
       0,
-      1,
+      4,
     ),
     scale: normalizeNodeGraphTraceDisplayNumber(source.scale, defaults.scale, 0, Infinity),
   };
@@ -2690,7 +3304,7 @@ function nodeGraphTraceDisplaySettingsEditingTraceDefaults() {
   return nodeGraphModuleDisplaySettingsSchemaForNode(node) === "trace" && node?.type !== "output";
 }
 
-const nodeGraphDisplayModeRenderers = Object.freeze(["trace", "clock", "dot", "value", "lineBurn", "hypersawBurn", "oscilloscopeBankBurn", "videoscopeBurn", "spectrogramBurn", "transportBpm", "scope2d", "scope2dTrace", "numberReadout", "customDisplay", "spectrum", "ledLamp"]);
+const nodeGraphDisplayModeRenderers = Object.freeze(["trace", "clock", "dot", "value", "lineBurn", "hypersawBurn", "oscilloscopeBankBurn", "videoscopeBurn", "spectrogramBurn", "transportBpm", "scope2d", "scope2dTrace", "phosphorLight", "numberReadout", "xyPad", "customDisplay", "spectrum", "ledLamp"]);
 const nodeGraphDisplayModeSignalKinds = Object.freeze(["scalar", "xy", "buffer"]);
 
 function nodeGraphDisplayModeSettingsSchemaForRenderer(renderer) {
@@ -2888,7 +3502,7 @@ function nodeGraphModuleDisplayTypeForSlot(slot) {
 }
 
 function nodeGraphModuleScopeSlotUsesWiredInputs(slot) {
-  return ["traceDisplay", "dotOscilloscope", "valueOscilloscope", "lineBurnOscilloscope", "scope2d", "scope2dTrace", "visualOscilloscope", "numberReadout"].includes(slot?.type);
+  return ["traceDisplay", "dotOscilloscope", "valueOscilloscope", "lineBurnOscilloscope", "scope2d", "scope2dTrace", "phosphorLight", "visualOscilloscope", "numberReadout"].includes(slot?.type);
 }
 
 function nodeGraphModuleDisplaySourceForSlot(slot) {
@@ -2960,7 +3574,7 @@ if (typeof window !== "undefined") {
 }
 
 function nodeGraphModuleDisplayTypeHasLocalSettings(displayType) {
-  return ["trace", "dot", "value", "lineBurn", "scope2d", "scope2dTrace"].includes(displayType);
+  return ["trace", "dot", "value", "lineBurn", "scope2d", "scope2dTrace", "phosphorLight", "numberReadout", "xyPad"].includes(displayType);
 }
 
 function nodeGraphNodeHasLocalDisplaySettings(node) {
@@ -2982,11 +3596,13 @@ function nodeGraphTraceDisplaySettingsForSlot(slot) {
   // meant those fields silently never reflected what was actually saved
   // on the node (only color worked, since the draw path reads color
   // straight off the node as a separate override).
-  if (
-    nodeGraphModuleDisplaySettingsSchemaForSlot(slot) === "trace" &&
-    nodeGraphModuleScopeNodeForSlot(slot)?.type !== "output"
-  ) {
-    return nodeGraphGlobalTraceSettings();
+  // Multi-mode Display (visualOscilloscope) also keeps per-node Trace settings
+  // when Mode = 1D Trace.
+  if (nodeGraphModuleDisplaySettingsSchemaForSlot(slot) === "trace") {
+    const nodeType = nodeGraphModuleScopeNodeForSlot(slot)?.type;
+    if (nodeType !== "output" && nodeType !== "visualOscilloscope") {
+      return nodeGraphGlobalTraceSettings();
+    }
   }
   return nodeGraphTraceDisplaySettingsForNode(nodeGraphModuleScopeNodeForSlot(slot));
 }
@@ -3435,7 +4051,7 @@ function nodeGraphModuleScopeDisplayBuffer(slot, capturedBuffer = null) {
       historySeconds: settings.historySeconds,
       ...(source ? { xPort: source.x, yPort: source.y } : {}),
     }) || capturedBuffer;
-  } else if (renderer === "scope2d") {
+  } else if (renderer === "scope2d" || renderer === "phosphorLight") {
     const source = nodeGraphModuleScopeSlotUsesWiredInputs(slot)
       ? null
       : nodeGraphModuleDisplaySourceForSlot(slot);
@@ -3485,17 +4101,27 @@ const nodeGraphTraceDisplaySettingsWindowSize = Object.freeze({
 });
 
 const nodeGraphTraceDisplaySettingFields = Object.freeze([
-  ["zoomSeconds", "Zoom (s)"],
+  ["zoomSeconds", "History (s)"],
   ["historySeconds", "History (s)"],
   ["scale", "Scale"],
+  ["sweepSeconds", "Sweep (s)"],
+  ["sweepHz", "Sweep (Hz)"],
+  ["fftSize", "FFT size"],
+  ["bins", "Bins"],
   ["burn", "Burn"],
   ["decay", "Decay"],
+  ["pixelDensity", "Pixel density"],
+  ["dotBudget", "Dot budget"],
   ["padding", "Amp"],
   ["cycles", "Cycles"],
   ["decimals", "Decimals"],
+  ["ghost", "LCD plate"],
+  ["innerGlow", "Inner glow"],
+  ["innerShadow", "Inner shadow"],
 
-  ["dot1Size", "Dot size"],
-  ["lineThickness", "Dot blur"],
+  ["dot1Size", "Size"],
+  ["puckSize", "Puck size"],
+  ["lineThickness", "Blur"],
   ["dot1Brightness", "Dot light"],
   ["secondarySize", "Secondary size"],
   ["secondaryLineThickness", "Secondary blur"],
@@ -3507,61 +4133,78 @@ const nodeGraphTraceDisplaySettingFields = Object.freeze([
 
 const nodeGraphTraceDisplaySettingControlKeys = Object.freeze({
   fields: nodeGraphTraceDisplaySettingFields.map(([key]) => key),
-  colors: ["dot1Color", "secondaryColor"],
-  toggles: ["sourceSync", "bipolarBrightness", "secondaryEnabled", "capEnabled"],
-  choices: [],
+  colors: ["dot1Color", "secondaryColor", "backgroundColor"],
+  // Every control key that exists in the shared popover MUST be listed here.
+  // setNodeGraphTraceDisplaySettingsFormType only show/hides keys from these
+  // lists — anything missing leaks onto every module (e.g. Output saw
+  // Window / Overlap / Freq scale because those choices were unregistered).
+  toggles: ["sourceSync", "skipDiscontinuities", "bipolarBrightness", "secondaryEnabled", "capEnabled", "fullDotEconomy"],
+  choices: ["syncChannel", "stereoBlend", "window", "overlap", "freqOverlap", "freqScale"],
 });
 
 const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
+  // TRACE = VECTOR stroke into an optional lo-fi face buffer (density).
+  // Density only sizes the canvas; it is not phosphor energy stamps / strip-chart.
   trace: Object.freeze({
     fields: Object.freeze([
       "zoomSeconds",
+      "scale",
+      "pixelDensity",
       "dot1Size",
-      "lineThickness",
       "dot1Brightness",
       "secondarySize",
-      "secondaryLineThickness",
       "secondaryBrightness",
     ]),
-    colors: Object.freeze(["dot1Color", "secondaryColor"]),
+    colors: Object.freeze(["dot1Color", "secondaryColor", "backgroundColor"]),
+    // sourceSync kept for legacy single-channel; Output uses syncChannel choice.
     toggles: Object.freeze(["sourceSync", "skipDiscontinuities", "secondaryEnabled"]),
-    choices: Object.freeze([]),
+    choices: Object.freeze(["syncChannel", "stereoBlend"]),
   }),
+  // Phosphor energy faces: color via shared Gradient editor (not single swatches).
   dot: Object.freeze({
     fields: Object.freeze([
+      "burn",
+      "decay",
+      "pixelDensity",
       "dot1Size",
       "lineThickness",
       "dot1Brightness",
     ]),
-    colors: Object.freeze(["dot1Color"]),
+    colors: Object.freeze([]),
     toggles: Object.freeze(["bipolarBrightness"]),
     choices: Object.freeze([]),
   }),
   lineBurn: Object.freeze({
+    // Heart-monitor phosphor: seconds to cross + burn/decay/density (+ pen).
+    // Free-run phasor; optional Reset jack; set Sweep (s) to match your period.
     fields: Object.freeze([
+      "sweepSeconds",
+      "scale",
       "burn",
       "decay",
-      "cycles",
+      "pixelDensity",
       "dot1Size",
       "lineThickness",
       "dot1Brightness",
     ]),
-    colors: Object.freeze(["dot1Color"]),
+    colors: Object.freeze([]),
     toggles: Object.freeze([]),
     choices: Object.freeze([]),
   }),
   value: Object.freeze({
     fields: Object.freeze([
       "lineLength",
+      "scale",
       "burn",
       "decay",
+      "pixelDensity",
       "dot1Size",
       "lineThickness",
       "dot1Brightness",
       "capSize",
       "capLength",
     ]),
-    colors: Object.freeze(["dot1Color"]),
+    colors: Object.freeze(["dot1Color", "backgroundColor"]),
     toggles: Object.freeze(["capEnabled"]),
     choices: Object.freeze([]),
   }),
@@ -3570,30 +4213,83 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
       "burn",
       "decay",
       "scale",
-      "dot1Size",
-      "dot1Brightness",
-    ]),
-    colors: Object.freeze(["dot1Color"]),
-    toggles: Object.freeze([]),
-    choices: Object.freeze([]),
-  }),
-  scope2dTrace: Object.freeze({
-    fields: Object.freeze([
-      "historySeconds",
-      "scale",
+      "pixelDensity",
+      "dotBudget",
       "dot1Size",
       "lineThickness",
       "dot1Brightness",
     ]),
-    colors: Object.freeze(["dot1Color"]),
+    colors: Object.freeze([]),
+    toggles: Object.freeze([]),
+    choices: Object.freeze([]),
+  }),
+  // 2D Trace = VECTOR path; density = face buffer lo-fi/AA only.
+  scope2dTrace: Object.freeze({
+    fields: Object.freeze([
+      "historySeconds",
+      "scale",
+      "pixelDensity",
+      "dot1Size",
+      "dot1Brightness",
+    ]),
+    colors: Object.freeze(["dot1Color", "backgroundColor"]),
     toggles: Object.freeze([]),
     choices: Object.freeze([]),
   }),
   numberReadout: Object.freeze({
-    fields: Object.freeze(["decimals", "dot1Brightness"]),
-    colors: Object.freeze(["dot1Color"]),
+    fields: Object.freeze([
+      "decimals",
+      "decay",
+      "ghost",
+      "innerGlow",
+      "innerShadow",
+      "dot1Brightness",
+    ]),
+    colors: Object.freeze(["dot1Color", "backgroundColor"]),
     toggles: Object.freeze([]),
     choices: Object.freeze([]),
+  }),
+  // XY Pad: phosphor of Out X/Y + UI puck. No scale (would desync puck/trail).
+  xyPad: Object.freeze({
+    fields: Object.freeze([
+      "burn",
+      "decay",
+      "pixelDensity",
+      "dotBudget",
+      "dot1Size",
+      "lineThickness",
+      "dot1Brightness",
+      "puckSize",
+    ]),
+    colors: Object.freeze([]),
+    toggles: Object.freeze(["fullDotEconomy"]),
+    choices: Object.freeze([]),
+  }),
+  // Same controls as scope2d — kept so any leftover formType="phosphorLight" still works.
+  phosphorLight: Object.freeze({
+    fields: Object.freeze([
+      "burn",
+      "decay",
+      "scale",
+      "pixelDensity",
+      "dotBudget",
+      "dot1Size",
+      "lineThickness",
+      "dot1Brightness",
+    ]),
+    colors: Object.freeze([]),
+    toggles: Object.freeze([]),
+    choices: Object.freeze([]),
+  }),
+  // Spectrogram: history + FFT + analysis choices. Gradient separate.
+  spectrogramBurn: Object.freeze({
+    fields: Object.freeze([
+      "historySeconds",
+      "fftSize",
+    ]),
+    colors: Object.freeze([]),
+    toggles: Object.freeze([]),
+    choices: Object.freeze(["window", "overlap", "freqOverlap", "freqScale"]),
   }),
 });
 
@@ -3613,7 +4309,7 @@ const nodeGraphTraceDisplaySectionControls = Object.freeze({
     choices: Object.freeze([]),
   }),
   dot1: Object.freeze({
-    fields: Object.freeze(["dot1Size", "lineThickness", "dot1Brightness"]),
+    fields: Object.freeze(["dot1Size", "lineThickness", "dot1Brightness", "puckSize"]),
     colors: Object.freeze(["dot1Color"]),
     toggles: Object.freeze(["bipolarBrightness"]),
     choices: Object.freeze([]),
@@ -3625,10 +4321,27 @@ const nodeGraphTraceDisplaySectionControls = Object.freeze({
     choices: Object.freeze([]),
   }),
   trace: Object.freeze({
-    fields: Object.freeze(["burn", "decay", "zoomSeconds", "historySeconds", "scale", "padding", "decimals"]),
-    colors: Object.freeze([]),
-    toggles: Object.freeze(["sourceSync", "skipDiscontinuities"]),
-    choices: Object.freeze([]),
+    fields: Object.freeze([
+      "burn",
+      "decay",
+      "zoomSeconds",
+      "historySeconds",
+      "scale",
+      "pixelDensity",
+      "dotBudget",
+      "padding",
+      "decimals",
+      "ghost",
+      "innerGlow",
+      "innerShadow",
+      "fftSize",
+      "sweepSeconds",
+    ]),
+    // Face plate lives with Trace (not Left/Dot channel color).
+    colors: Object.freeze(["backgroundColor"]),
+    toggles: Object.freeze(["sourceSync", "skipDiscontinuities", "fullDotEconomy"]),
+    // window/overlap/freqOverlap/freqScale = spectrogram; syncChannel/stereoBlend = Output.
+    choices: Object.freeze(["window", "overlap", "freqOverlap", "freqScale", "syncChannel", "stereoBlend"]),
   }),
   value: Object.freeze({
     fields: Object.freeze(["lineLength"]),
@@ -3668,6 +4381,482 @@ function formatNodeGraphTraceDisplaySetting(value) {
     : number.toFixed(4).replace(/\.?0+$/g, "");
 }
 
+/** Open display-settings shell (singleton). All field queries should use this root. */
+function nodeGraphTraceDisplaySettingsRoot() {
+  return document.getElementById("nodeTraceDisplaySettingsPopover");
+}
+
+// Field labels / input modes for schema-exclusive body builders.
+const nodeGraphDisplaySettingsFieldMeta = Object.freeze({
+  burn: Object.freeze({ label: "Burn", inputmode: "decimal", id: "nodeTraceDisplayBurn" }),
+  decay: Object.freeze({
+    label: "Decay",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayDecay",
+    // Number readout: ghost hold of the previous value (0 = none, 1 = long).
+    // Other form types still use decay as phosphor fade rate via their own docs.
+    title: "How long the ghost of the previous number remains (0 = none, 1 = longest). Static numbers are never burned.",
+  }),
+  historySeconds: Object.freeze({
+    label: "History (s)",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayHistorySeconds",
+    title: "Seconds of audio across the face width (0.1–30 s). Longer = slower waterfall; shorter = faster. +/− steps whole seconds (min 1 s).",
+  }),
+  fftSize: Object.freeze({
+    label: "FFT size",
+    inputmode: "numeric",
+    id: "nodeTraceDisplayFftSize",
+    title: "Analysis window length (samples). Steps 128…16384. Time hop = N / time-overlap. Freq overlap zero-pads the FFT.",
+  }),
+  scale: Object.freeze({
+    label: "Scale",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayScale",
+    title: "Amplitude zoom (1 = full-scale ±1 fills the face). Raise to enlarge quieter signals.",
+  }),
+  pixelDensity: Object.freeze({ label: "Pixel density", inputmode: "decimal", id: "nodeTraceDisplayPixelDensity" }),
+  dotBudget: Object.freeze({ label: "Dot budget", inputmode: "numeric", id: "nodeTraceDisplayDotBudget" }),
+  zoomSeconds: Object.freeze({ label: "History (s)", inputmode: "decimal", id: "nodeTraceDisplayZoomSeconds" }),
+  sweepSeconds: Object.freeze({ label: "Sweep (s)", inputmode: "decimal", id: "nodeTraceDisplaySweepSeconds" }),
+  cycles: Object.freeze({ label: "Cycles", inputmode: "decimal", id: "nodeTraceDisplayCycles" }),
+  decimals: Object.freeze({ label: "Decimals", inputmode: "decimal", id: "nodeTraceDisplayDecimals" }),
+  ghost: Object.freeze({ label: "LCD plate", inputmode: "decimal", id: "nodeTraceDisplayGhost" }),
+  innerGlow: Object.freeze({ label: "Inner glow", inputmode: "decimal", id: "nodeTraceDisplayInnerGlow" }),
+  innerShadow: Object.freeze({ label: "Inner shadow", inputmode: "decimal", id: "nodeTraceDisplayInnerShadow" }),
+  padding: Object.freeze({ label: "Amp", inputmode: "decimal", id: "nodeTraceDisplayPadding" }),
+  lineLength: Object.freeze({ label: "Line length", inputmode: "decimal", id: "nodeTraceDisplayValueLineLength" }),
+  dot1Brightness: Object.freeze({ label: "Brightness", inputmode: "decimal", id: "nodeTraceDisplayBrightness" }),
+  lineThickness: Object.freeze({ label: "Blur", inputmode: "decimal", id: "nodeTraceDisplayLineThickness" }),
+  dot1Size: Object.freeze({ label: "Size", inputmode: "decimal", id: "nodeTraceDisplayDot1Size" }),
+  puckSize: Object.freeze({
+    label: "Puck size",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayPuckSize",
+    title: "UI puck radius (vector overlay). Does not scale the phosphor trail or Phase mapping.",
+  }),
+  secondaryBrightness: Object.freeze({ label: "Brightness", inputmode: "decimal", id: "nodeTraceDisplaySecondaryBrightness" }),
+  secondaryLineThickness: Object.freeze({ label: "Blur", inputmode: "decimal", id: "nodeTraceDisplaySecondaryLineThickness" }),
+  secondarySize: Object.freeze({ label: "Size", inputmode: "decimal", id: "nodeTraceDisplaySecondarySize" }),
+  capSize: Object.freeze({ label: "Size", inputmode: "decimal", id: "nodeTraceDisplayCapSize" }),
+  capLength: Object.freeze({ label: "Length", inputmode: "decimal", id: "nodeTraceDisplayCapLength" }),
+});
+
+const nodeGraphDisplaySettingsToggleMeta = Object.freeze({
+  sourceSync: Object.freeze({ label: "Sync", id: "nodeTraceDisplaySourceSync" }),
+  skipDiscontinuities: Object.freeze({ label: "Skip discontinuities", id: "nodeTraceDisplaySkipDiscontinuities" }),
+  bipolarBrightness: Object.freeze({ label: "Bipolar", id: "nodeTraceDisplayBipolarBrightness" }),
+  secondaryEnabled: Object.freeze({ label: "Secondary on", id: "nodeTraceDisplaySecondaryEnabled" }),
+  capEnabled: Object.freeze({ label: "Caps on", id: "nodeTraceDisplayCapEnabled" }),
+  fullDotEconomy: Object.freeze({
+    label: "Full dot economy",
+    id: "nodeTraceDisplayFullDotEconomy",
+    title: "Always spend dense packing up to Dot budget (default on). Off = thrifty spacing that may under-use the budget.",
+  }),
+});
+
+const nodeGraphDisplaySettingsColorMeta = Object.freeze({
+  backgroundColor: Object.freeze({
+    label: "Background",
+    aria: "Background color",
+    defaultValue: "#000000",
+    id: "nodeTraceDisplayBackgroundColor",
+  }),
+  dot1Color: Object.freeze({
+    label: "Color",
+    aria: "Dot color",
+    defaultValue: "#ff0000",
+    id: "nodeTraceDisplayColor",
+  }),
+  secondaryColor: Object.freeze({
+    label: "Color",
+    aria: "Secondary color",
+    defaultValue: "#0000ff",
+    id: "nodeTraceDisplaySecondaryColor",
+  }),
+});
+
+const nodeGraphDisplaySettingsChoiceMeta = Object.freeze({
+  syncChannel: Object.freeze({
+    label: "Sync",
+    aria: "Sync channel",
+    id: "nodeTraceDisplaySyncChannel",
+    options: Object.freeze([
+      Object.freeze({ value: "off", label: "Off" }),
+      Object.freeze({ value: "left", label: "Left" }),
+      Object.freeze({ value: "right", label: "Right" }),
+      Object.freeze({ value: "mono", label: "Mono" }),
+    ]),
+  }),
+  stereoBlend: Object.freeze({
+    label: "Blend",
+    aria: "Stereo blend mode",
+    id: "nodeTraceDisplayStereoBlend",
+    options: Object.freeze([
+      Object.freeze({ value: "combine", label: "Combine (meet)" }),
+      Object.freeze({ value: "lighter", label: "Add (lighter)" }),
+      Object.freeze({ value: "screen", label: "Screen" }),
+      Object.freeze({ value: "source-over", label: "Over" }),
+      Object.freeze({ value: "multiply", label: "Multiply" }),
+      Object.freeze({ value: "difference", label: "Difference" }),
+      Object.freeze({ value: "exclusion", label: "Exclusion" }),
+      Object.freeze({ value: "xor", label: "Xor" }),
+    ]),
+  }),
+  window: Object.freeze({
+    label: "Window",
+    aria: "STFT window",
+    id: "nodeTraceDisplayWindow",
+    options: Object.freeze([
+      Object.freeze({ value: "0", label: "Rectangular" }),
+      Object.freeze({ value: "1", label: "Hann" }),
+      Object.freeze({ value: "2", label: "Hamming" }),
+      Object.freeze({ value: "3", label: "Blackman" }),
+      Object.freeze({ value: "4", label: "Blackman-Harris" }),
+    ]),
+  }),
+  overlap: Object.freeze({
+    label: "Time overlap",
+    aria: "STFT time hop overlap",
+    id: "nodeTraceDisplayOverlap",
+    title: "How often we emit a new spectrum (hop = N / factor). Higher = denser time samples, thinner waterfall stripes. None = hop N; 32× = hop N/32.",
+    options: Object.freeze([
+      Object.freeze({ value: "0", label: "1× (none)" }),
+      Object.freeze({ value: "1", label: "2× (50%)" }),
+      Object.freeze({ value: "2", label: "4× (75%)" }),
+      Object.freeze({ value: "3", label: "8× (87.5%)" }),
+      Object.freeze({ value: "4", label: "16× (93.8%)" }),
+      Object.freeze({ value: "5", label: "32× (96.9%)" }),
+    ]),
+  }),
+  freqOverlap: Object.freeze({
+    label: "Freq overlap",
+    aria: "STFT frequency zero-pad",
+    id: "nodeTraceDisplayFreqOverlap",
+    title: "Zero-pad the analysis window before the FFT for a denser frequency grid (does not lengthen the time window).",
+    options: Object.freeze([
+      Object.freeze({ value: "0", label: "1× (none)" }),
+      Object.freeze({ value: "1", label: "2× pad" }),
+      Object.freeze({ value: "2", label: "4× pad" }),
+    ]),
+  }),
+  freqScale: Object.freeze({
+    label: "Freq scale",
+    aria: "Frequency scale",
+    id: "nodeTraceDisplayFreqScale",
+    options: Object.freeze([
+      Object.freeze({ value: "0", label: "Linear" }),
+      Object.freeze({ value: "1", label: "Mel" }),
+      Object.freeze({ value: "2", label: "Bark" }),
+    ]),
+  }),
+});
+
+const nodeGraphDisplaySettingsFormTypeTitles = Object.freeze({
+  trace: "Trace",
+  value: "Value",
+  lineBurn: "Burn",
+  scope2d: "2D",
+  scope2dTrace: "Trace",
+  numberReadout: "Readout",
+  xyPad: "Phosphor",
+  phosphorLight: "2D Phosphor",
+  dot: "Phosphor Dot",
+  spectrogramBurn: "Spectrogram",
+});
+
+const nodeGraphDisplaySettingsSectionOrder = Object.freeze([
+  "trace",
+  "value",
+  "dot1",
+  "secondary",
+  "gradient",
+  "caps",
+]);
+
+function nodeGraphDisplaySettingsEscapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function nodeGraphDisplaySettingsBuildStepperRowHtml(key) {
+  const meta = nodeGraphDisplaySettingsFieldMeta[key] || { label: key, inputmode: "decimal" };
+  const titleAttr = meta.title
+    ? ` title="${nodeGraphDisplaySettingsEscapeHtml(meta.title)}"`
+    : "";
+  const idAttr = meta.id ? ` id="${nodeGraphDisplaySettingsEscapeHtml(meta.id)}"` : "";
+  return `
+    <label class="node-trace-display-line-burn-row" data-trace-display-control-row>
+      <span>${nodeGraphDisplaySettingsEscapeHtml(meta.label)}</span>
+      <span class="metadata-stepper-control">
+        <button type="button" data-trace-display-step-target="${key}" data-trace-display-step-direction="-1">-</button>
+        <input type="text" inputmode="${meta.inputmode || "decimal"}" data-trace-display-field="${key}"${idAttr}${titleAttr}>
+        <button type="button" data-trace-display-step-target="${key}" data-trace-display-step-direction="1">+</button>
+      </span>
+    </label>`;
+}
+
+function nodeGraphDisplaySettingsBuildToggleRowHtml(key) {
+  const meta = nodeGraphDisplaySettingsToggleMeta[key] || { label: key };
+  const idAttr = meta.id ? ` id="${nodeGraphDisplaySettingsEscapeHtml(meta.id)}"` : "";
+  const titleAttr = meta.title
+    ? ` title="${nodeGraphDisplaySettingsEscapeHtml(meta.title)}"`
+    : "";
+  return `
+    <label class="metadata-checkbox-label" data-trace-display-control-row${titleAttr}>
+      <input type="checkbox" data-trace-display-toggle="${key}"${idAttr}${titleAttr}>
+      ${nodeGraphDisplaySettingsEscapeHtml(meta.label)}
+    </label>`;
+}
+
+function nodeGraphDisplaySettingsBuildChoiceRowHtml(key) {
+  const meta = nodeGraphDisplaySettingsChoiceMeta[key];
+  if (!meta) {
+    return "";
+  }
+  const idAttr = meta.id ? ` id="${nodeGraphDisplaySettingsEscapeHtml(meta.id)}"` : "";
+  const options = (meta.options || [])
+    .map((option) => (
+      `<option value="${nodeGraphDisplaySettingsEscapeHtml(option.value)}">${nodeGraphDisplaySettingsEscapeHtml(option.label)}</option>`
+    ))
+    .join("");
+  return `
+    <label class="node-trace-display-line-burn-row" data-trace-display-control-row data-trace-display-choice-row="${key}">
+      <span>${nodeGraphDisplaySettingsEscapeHtml(meta.label)}</span>
+      <select data-trace-display-choice="${key}"${idAttr} aria-label="${nodeGraphDisplaySettingsEscapeHtml(meta.aria || meta.label)}">
+        ${options}
+      </select>
+    </label>`;
+}
+
+function nodeGraphDisplaySettingsBuildColorRowHtml(key) {
+  const meta = nodeGraphDisplaySettingsColorMeta[key] || {
+    label: key,
+    aria: key,
+    defaultValue: "#ffffff",
+  };
+  const idAttr = meta.id ? ` id="${nodeGraphDisplaySettingsEscapeHtml(meta.id)}"` : "";
+  return `
+    <div class="node-trace-display-color-widget-row" data-trace-display-control-row data-trace-display-color-row="${key}">
+      <span>${nodeGraphDisplaySettingsEscapeHtml(meta.label)}</span>
+      <div
+        class="node-trace-display-color-widget-host"
+        data-trace-display-color-widget="${key}"
+        role="group"
+        aria-label="${nodeGraphDisplaySettingsEscapeHtml(meta.aria || meta.label)}"></div>
+      <input type="hidden" data-trace-display-color="${key}"${idAttr} value="${nodeGraphDisplaySettingsEscapeHtml(meta.defaultValue || "#ffffff")}">
+    </div>`;
+}
+
+/**
+ * Schema-exclusive body: only controls for this formType exist in the DOM.
+ * Replaces the old mega-form + hide loop so spectrogram never shares markup with Output.
+ */
+function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
+  const type = formType || "trace";
+  const activeFields = nodeGraphTraceDisplayActiveControlSet("fields", type);
+  const activeColors = nodeGraphTraceDisplayActiveControlSet("colors", type);
+  const activeToggles = nodeGraphTraceDisplayActiveControlSet("toggles", type);
+  const activeChoices = nodeGraphTraceDisplayActiveControlSet("choices", type);
+  const isOutputNode = node?.type === "output";
+  const parts = [];
+
+  // Filter keys that only apply on Output for the shared "trace" schema.
+  const allowKey = (kind, key) => {
+    if (type !== "trace") {
+      return true;
+    }
+    if (!isOutputNode) {
+      if (
+        key === "secondarySize" ||
+        key === "secondaryBrightness" ||
+        key === "secondaryLineThickness" ||
+        key === "secondaryEnabled" ||
+        key === "secondaryColor" ||
+        key === "syncChannel" ||
+        key === "stereoBlend"
+      ) {
+        return false;
+      }
+    } else if (key === "sourceSync") {
+      // Output uses syncChannel select, not the legacy Sync checkbox.
+      return false;
+    }
+    return true;
+  };
+
+  for (const section of nodeGraphDisplaySettingsSectionOrder) {
+    if (section === "gradient") {
+      if (!nodeGraphDisplaySettingsFormTypeUsesGradient(type)) {
+        continue;
+      }
+      parts.push(`<div class="metadata-section-title node-trace-display-gradient-title">Gradient</div>`);
+      parts.push(`
+        <div class="metadata-field-section node-trace-display-gradient-section">
+          <div
+            id="nodeTraceDisplaySharedGradientHost"
+            class="node-spectrogram-gradient-host node-shared-gradient-host"
+            data-spectrogram-gradient-host
+            data-shared-gradient-host></div>
+        </div>`);
+      continue;
+    }
+
+    const sectionControls = nodeGraphTraceDisplaySectionControls[section];
+    if (!sectionControls) {
+      continue;
+    }
+    const fieldKeys = (sectionControls.fields || []).filter(
+      (key) => activeFields.has(key) && allowKey("fields", key),
+    );
+    const colorKeys = (sectionControls.colors || []).filter(
+      (key) => activeColors.has(key) && allowKey("colors", key),
+    );
+    const toggleKeys = (sectionControls.toggles || []).filter(
+      (key) => activeToggles.has(key) && allowKey("toggles", key),
+    );
+    const choiceKeys = (sectionControls.choices || []).filter(
+      (key) => activeChoices.has(key) && allowKey("choices", key),
+    );
+    // syncChannel / stereoBlend live in activeChoices but are listed under
+    // "trace" sectionChoices only for spectrogram historically — include
+    // Output sync choices from active set even if not in section map.
+    if (section === "trace" && type === "trace" && isOutputNode) {
+      for (const key of ["syncChannel", "stereoBlend"]) {
+        if (activeChoices.has(key) && !choiceKeys.includes(key)) {
+          choiceKeys.push(key);
+        }
+      }
+    }
+    if (!fieldKeys.length && !colorKeys.length && !toggleKeys.length && !choiceKeys.length) {
+      // secondaryEnabled is only in section title for secondary; handle below.
+      if (!(section === "secondary" && activeToggles.has("secondaryEnabled") && isOutputNode && type === "trace")) {
+        continue;
+      }
+    }
+
+    let titleText = section === "trace"
+      ? (nodeGraphDisplaySettingsFormTypeTitles[type] || "Trace")
+      : section === "value"
+        ? "Line"
+        : section === "dot1"
+          ? (isOutputNode && type === "trace" ? "Left" : "Dot")
+          : section === "secondary"
+            ? (isOutputNode && type === "trace" ? "Right" : "Secondary")
+            : section === "caps"
+              ? "Caps"
+              : section;
+    if (section === "secondary") {
+      const enabledToggle = isOutputNode && type === "trace" && activeToggles.has("secondaryEnabled")
+        ? `<input id="nodeTraceDisplaySecondaryEnabled" type="checkbox" aria-label="${isOutputNode ? "Right on" : "Secondary on"}" data-trace-display-toggle="secondaryEnabled">`
+        : "";
+      parts.push(`
+        <div class="metadata-section-title node-trace-display-secondary-title">
+          <span id="nodeTraceDisplaySecondaryTitleLabel">${nodeGraphDisplaySettingsEscapeHtml(titleText)}</span>
+          ${enabledToggle}
+        </div>`);
+    } else if (section === "dot1") {
+      // XY Pad: beam stamp + puck size (outer title is already "Phosphor").
+      const dotTitle = type === "xyPad" ? "Beam & puck" : titleText;
+      parts.push(`
+        <div class="metadata-section-title node-trace-display-dot1-title">
+          <span id="nodeTraceDisplayDot1TitleLabel">${nodeGraphDisplaySettingsEscapeHtml(dotTitle)}</span>
+        </div>`);
+    } else {
+      parts.push(`<div class="metadata-section-title node-trace-display-${section}-title">${nodeGraphDisplaySettingsEscapeHtml(titleText)}</div>`);
+    }
+
+    const rows = [];
+    // Preferred order: choices (sync), toggles, fields, colors — matches prior UX.
+    for (const key of choiceKeys) {
+      rows.push(nodeGraphDisplaySettingsBuildChoiceRowHtml(key));
+    }
+    for (const key of toggleKeys) {
+      if (section === "secondary" && key === "secondaryEnabled") {
+        continue; // already in title
+      }
+      rows.push(nodeGraphDisplaySettingsBuildToggleRowHtml(key));
+    }
+    for (const key of fieldKeys) {
+      rows.push(nodeGraphDisplaySettingsBuildStepperRowHtml(key));
+    }
+    for (const key of colorKeys) {
+      rows.push(nodeGraphDisplaySettingsBuildColorRowHtml(key));
+    }
+    parts.push(`<div class="metadata-field-section node-trace-display-${section}-section">${rows.join("")}</div>`);
+  }
+
+  return parts.join("\n");
+}
+
+function mountNodeGraphDisplaySettingsBody(popover, formType, node = null) {
+  if (!popover) {
+    return;
+  }
+  const host = popover.querySelector("[data-display-settings-body]");
+  if (!host) {
+    return;
+  }
+  const type = formType || "trace";
+  // Tear down widgets bound to the previous schema body before replacing DOM.
+  if (typeof destroyNodeGraphTraceDisplayColorWidgets === "function") {
+    destroyNodeGraphTraceDisplayColorWidgets();
+  }
+  if (nodeGraphMvp?.spectrogramGradientEditor?.destroy) {
+    nodeGraphMvp.spectrogramGradientEditor.destroy();
+    nodeGraphMvp.spectrogramGradientEditor = null;
+  }
+  host.innerHTML = buildNodeGraphDisplaySettingsBodyHtml(type, node);
+  // XY Pad: action row for clearing the phosphor residual buffer.
+  if (type === "xyPad") {
+    host.insertAdjacentHTML(
+      "beforeend",
+      `<div class="metadata-field-section node-trace-display-xy-pad-actions">
+        <button type="button" data-xy-pad-reset-canvas class="node-xy-pad-reset-canvas-button">
+          Reset canvas
+        </button>
+      </div>`,
+    );
+    const resetButton = host.querySelector("[data-xy-pad-reset-canvas]");
+    if (resetButton && !resetButton.dataset.bound) {
+      resetButton.dataset.bound = "true";
+      resetButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        const nodeId = popover.dataset.displaySettingsTargetNode
+          || nodeGraphMvp?.traceDisplaySettingsTargetNode
+          || node?.id
+          || "";
+        if (typeof nodeGraphXyPadResetCanvas === "function") {
+          nodeGraphXyPadResetCanvas(nodeId);
+        }
+      });
+    }
+  }
+  popover.dataset.displaySettingsType = type;
+  popover.dataset.displaySettingsTargetNode = node?.id ? String(node.id) : "";
+  popover.dataset.displaySettingsBodyType = type;
+  // Output Left/Right aria on color hosts.
+  const isOutputNode = node?.type === "output";
+  if (isOutputNode && type === "trace") {
+    const leftColorHost = host.querySelector(`[data-trace-display-color-widget="dot1Color"]`);
+    if (leftColorHost) {
+      leftColorHost.setAttribute("aria-label", "Left color");
+    }
+    const rightColorHost = host.querySelector(`[data-trace-display-color-widget="secondaryColor"]`);
+    if (rightColorHost) {
+      rightColorHost.setAttribute("aria-label", "Right color");
+    }
+  }
+  if (nodeGraphDisplaySettingsFormTypeUsesGradient(type)) {
+    syncNodeGraphSharedGradientEditor(popover, true);
+  }
+  applyNodeGraphTraceDisplaySettingsTooltips(popover);
+  syncNodeGraphTraceDisplayColorWidgets(popover);
+}
+
 function nodeGraphTraceDisplaySettingsElement() {
   let popover = document.getElementById("nodeTraceDisplaySettingsPopover");
   if (popover) {
@@ -3678,6 +4867,7 @@ function nodeGraphTraceDisplaySettingsElement() {
   popover.className = "node-parameter-metadata-popover node-trace-display-settings-popover";
   popover.hidden = true;
   popover.setAttribute("aria-label", "Trace Display drawing settings");
+  // Shell only: schema body is mounted per open (schema-exclusive controls).
   popover.innerHTML = `
     <div class="scene-context-heading node-trace-display-settings-heading">
       <button
@@ -3709,190 +4899,7 @@ function nodeGraphTraceDisplaySettingsElement() {
           <select id="nodeTraceDisplayModeSelect" data-trace-display-mode-select></select>
         </label>
       </div>
-      <div class="metadata-section-title node-trace-display-trace-title">Trace</div>
-      <div class="metadata-field-section node-trace-display-trace-section">
-        <label class="metadata-checkbox-label node-trace-display-sync-row">
-          <input id="nodeTraceDisplaySourceSync" type="checkbox" data-trace-display-toggle="sourceSync">
-          Sync
-        </label>
-        <label class="node-trace-display-line-burn-row">
-          <span>Burn</span>
-          <span class="metadata-stepper-control">
-            <button type="button" data-trace-display-step-target="burn" data-trace-display-step-direction="-1">-</button>
-            <input id="nodeTraceDisplayBurn" type="text" inputmode="decimal" data-trace-display-field="burn">
-            <button type="button" data-trace-display-step-target="burn" data-trace-display-step-direction="1">+</button>
-          </span>
-        </label>
-        <label class="node-trace-display-line-burn-row">
-          <span>Decay</span>
-          <span class="metadata-stepper-control">
-            <button type="button" data-trace-display-step-target="decay" data-trace-display-step-direction="-1">-</button>
-            <input id="nodeTraceDisplayDecay" type="text" inputmode="decimal" data-trace-display-field="decay">
-            <button type="button" data-trace-display-step-target="decay" data-trace-display-step-direction="1">+</button>
-          </span>
-        </label>
-        <label class="node-trace-display-trace-thickness-row">
-          <span>History (s)</span>
-          <span class="metadata-stepper-control">
-            <button type="button" data-trace-display-step-target="historySeconds" data-trace-display-step-direction="-1">-</button>
-            <input id="nodeTraceDisplayHistorySeconds" type="text" inputmode="decimal" data-trace-display-field="historySeconds">
-            <button type="button" data-trace-display-step-target="historySeconds" data-trace-display-step-direction="1">+</button>
-          </span>
-        </label>
-        <label class="node-trace-display-trace-thickness-row">
-          <span>Scale</span>
-          <span class="metadata-stepper-control">
-            <button type="button" data-trace-display-step-target="scale" data-trace-display-step-direction="-1">-</button>
-            <input id="nodeTraceDisplayScale" type="text" inputmode="decimal" data-trace-display-field="scale">
-            <button type="button" data-trace-display-step-target="scale" data-trace-display-step-direction="1">+</button>
-          </span>
-        </label>
-        <label class="node-trace-display-trace-thickness-row">
-          <span>Zoom (s)</span>
-          <span class="metadata-stepper-control">
-            <button type="button" data-trace-display-step-target="zoomSeconds" data-trace-display-step-direction="-1">-</button>
-            <input id="nodeTraceDisplayZoomSeconds" type="text" inputmode="decimal" data-trace-display-field="zoomSeconds">
-            <button type="button" data-trace-display-step-target="zoomSeconds" data-trace-display-step-direction="1">+</button>
-          </span>
-        </label>
-        <label class="node-trace-display-trace-thickness-row">
-          <span>Cycles</span>
-          <span class="metadata-stepper-control">
-            <button type="button" data-trace-display-step-target="cycles" data-trace-display-step-direction="-1">-</button>
-            <input id="nodeTraceDisplayCycles" type="text" inputmode="decimal" data-trace-display-field="cycles">
-            <button type="button" data-trace-display-step-target="cycles" data-trace-display-step-direction="1">+</button>
-          </span>
-        </label>
-        <label class="node-trace-display-trace-thickness-row">
-          <span>Decimals</span>
-          <span class="metadata-stepper-control">
-            <button type="button" data-trace-display-step-target="decimals" data-trace-display-step-direction="-1">-</button>
-            <input id="nodeTraceDisplayDecimals" type="text" inputmode="decimal" data-trace-display-field="decimals">
-            <button type="button" data-trace-display-step-target="decimals" data-trace-display-step-direction="1">+</button>
-          </span>
-        </label>
-        <label class="node-trace-display-dot2-thickness-row">
-          <span>Amp</span>
-          <span class="metadata-stepper-control">
-            <button type="button" data-trace-display-step-target="padding" data-trace-display-step-direction="-1">-</button>
-            <input id="nodeTraceDisplayPadding" type="text" inputmode="decimal" data-trace-display-field="padding">
-            <button type="button" data-trace-display-step-target="padding" data-trace-display-step-direction="1">+</button>
-          </span>
-        </label>
-        <label class="metadata-checkbox-label">
-          <input id="nodeTraceDisplaySkipDiscontinuities" type="checkbox" data-trace-display-toggle="skipDiscontinuities">
-          Skip discontinuities
-        </label>
-      </div>
-      <div class="metadata-section-title node-trace-display-value-title">Line</div>
-      <div class="metadata-field-section node-trace-display-value-section">
-        <label>
-          <span>Line length</span>
-          <span class="metadata-stepper-control">
-            <button type="button" data-trace-display-step-target="lineLength" data-trace-display-step-direction="-1">-</button>
-            <input id="nodeTraceDisplayValueLineLength" type="text" inputmode="decimal" data-trace-display-field="lineLength">
-            <button type="button" data-trace-display-step-target="lineLength" data-trace-display-step-direction="1">+</button>
-          </span>
-        </label>
-      </div>
-      <div class="metadata-section-title node-trace-display-dot1-title">
-        <span id="nodeTraceDisplayDot1TitleLabel">Dot</span>
-      </div>
-      <div class="metadata-field-section node-trace-display-dot1-section">
-        <label class="metadata-checkbox-label node-trace-display-bipolar-brightness-row">
-          <input id="nodeTraceDisplayBipolarBrightness" type="checkbox" data-trace-display-toggle="bipolarBrightness">
-          Bipolar
-        </label>
-        <label>
-          <span>Brightness</span>
-          <span class="metadata-stepper-control">
-            <button type="button" data-trace-display-step-target="dot1Brightness" data-trace-display-step-direction="-1">-</button>
-            <input id="nodeTraceDisplayBrightness" type="text" inputmode="decimal" data-trace-display-field="dot1Brightness">
-            <button type="button" data-trace-display-step-target="dot1Brightness" data-trace-display-step-direction="1">+</button>
-          </span>
-        </label>
-        <label class="node-trace-display-trace-line-thickness-row">
-          <span>Blur</span>
-          <span class="metadata-stepper-control">
-            <button type="button" data-trace-display-step-target="lineThickness" data-trace-display-step-direction="-1">-</button>
-            <input id="nodeTraceDisplayLineThickness" type="text" inputmode="decimal" data-trace-display-field="lineThickness">
-            <button type="button" data-trace-display-step-target="lineThickness" data-trace-display-step-direction="1">+</button>
-          </span>
-        </label>
-        <label>
-          <span>Size</span>
-          <span class="metadata-stepper-control">
-            <button type="button" data-trace-display-step-target="dot1Size" data-trace-display-step-direction="-1">-</button>
-            <input id="nodeTraceDisplayDot1Size" type="text" inputmode="decimal" data-trace-display-field="dot1Size">
-            <button type="button" data-trace-display-step-target="dot1Size" data-trace-display-step-direction="1">+</button>
-          </span>
-        </label>
-        <label>
-          <span>Color</span>
-          <input id="nodeTraceDisplayColor" type="color" data-trace-display-color="dot1Color" aria-label="Dot color">
-        </label>
-      </div>
-      <div class="metadata-section-title node-trace-display-secondary-title">
-        <span id="nodeTraceDisplaySecondaryTitleLabel">Secondary</span>
-        <input
-          id="nodeTraceDisplaySecondaryEnabled"
-          type="checkbox"
-          aria-label="Secondary on"
-          data-trace-display-toggle="secondaryEnabled">
-      </div>
-      <div class="metadata-field-section node-trace-display-secondary-section">
-        <label>
-          <span>Brightness</span>
-          <span class="metadata-stepper-control">
-            <button type="button" data-trace-display-step-target="secondaryBrightness" data-trace-display-step-direction="-1">-</button>
-            <input id="nodeTraceDisplaySecondaryBrightness" type="text" inputmode="decimal" data-trace-display-field="secondaryBrightness">
-            <button type="button" data-trace-display-step-target="secondaryBrightness" data-trace-display-step-direction="1">+</button>
-          </span>
-        </label>
-        <label class="node-trace-display-secondary-line-thickness-row">
-          <span>Blur</span>
-          <span class="metadata-stepper-control">
-            <button type="button" data-trace-display-step-target="secondaryLineThickness" data-trace-display-step-direction="-1">-</button>
-            <input id="nodeTraceDisplaySecondaryLineThickness" type="text" inputmode="decimal" data-trace-display-field="secondaryLineThickness">
-            <button type="button" data-trace-display-step-target="secondaryLineThickness" data-trace-display-step-direction="1">+</button>
-          </span>
-        </label>
-        <label>
-          <span>Size</span>
-          <span class="metadata-stepper-control">
-            <button type="button" data-trace-display-step-target="secondarySize" data-trace-display-step-direction="-1">-</button>
-            <input id="nodeTraceDisplaySecondarySize" type="text" inputmode="decimal" data-trace-display-field="secondarySize">
-            <button type="button" data-trace-display-step-target="secondarySize" data-trace-display-step-direction="1">+</button>
-          </span>
-        </label>
-        <label>
-          <span>Color</span>
-          <input id="nodeTraceDisplaySecondaryColor" type="color" data-trace-display-color="secondaryColor" aria-label="Secondary color">
-        </label>
-      </div>
-      <div class="metadata-section-title node-trace-display-caps-title">Caps</div>
-      <div class="metadata-field-section node-trace-display-caps-section">
-        <label class="metadata-checkbox-label">
-          <input id="nodeTraceDisplayCapEnabled" type="checkbox" data-trace-display-toggle="capEnabled">
-          Caps on
-        </label>
-        <label>
-          <span>Size</span>
-          <span class="metadata-stepper-control">
-            <button type="button" data-trace-display-step-target="capSize" data-trace-display-step-direction="-1">-</button>
-            <input id="nodeTraceDisplayCapSize" type="text" inputmode="decimal" data-trace-display-field="capSize">
-            <button type="button" data-trace-display-step-target="capSize" data-trace-display-step-direction="1">+</button>
-          </span>
-        </label>
-        <label>
-          <span>Length</span>
-          <span class="metadata-stepper-control">
-            <button type="button" data-trace-display-step-target="capLength" data-trace-display-step-direction="-1">-</button>
-            <input id="nodeTraceDisplayCapLength" type="text" inputmode="decimal" data-trace-display-field="capLength">
-            <button type="button" data-trace-display-step-target="capLength" data-trace-display-step-direction="1">+</button>
-          </span>
-        </label>
-      </div>
+      <div data-display-settings-body class="node-trace-display-settings-body"></div>
     </div>
     <div
       id="nodeTraceDisplaySettingsCornerDrag"
@@ -3914,12 +4921,17 @@ function applyNodeGraphTraceDisplaySettingsTooltips(popover) {
   const fieldKeys = {
     dot1Brightness: "traceDisplaySettings.brightness",
     dot1Size: "traceDisplaySettings.dot1Size",
+    puckSize: "traceDisplaySettings.puckSize",
     secondaryBrightness: "traceDisplaySettings.secondaryBrightness",
     secondarySize: "traceDisplaySettings.secondarySize",
     secondaryLineThickness: "traceDisplaySettings.secondaryLineThickness",
     burn: "traceDisplaySettings.burn",
     decay: "traceDisplaySettings.decay",
+    pixelDensity: "traceDisplaySettings.pixelDensity",
+    dotBudget: "traceDisplaySettings.dotBudget",
     zoomSeconds: "traceDisplaySettings.zoomSeconds",
+    sweepSeconds: "traceDisplaySettings.sweepSeconds",
+    sweepHz: "traceDisplaySettings.sweepHz",
     skipDiscontinuities: "traceDisplaySettings.skipDiscontinuities",
     padding: "traceDisplaySettings.padding",
     lineThickness: "traceDisplaySettings.lineThickness",
@@ -3935,19 +4947,25 @@ function applyNodeGraphTraceDisplaySettingsTooltips(popover) {
   const colorKeys = {
     dot1Color: "traceDisplaySettings.color",
     secondaryColor: "traceDisplaySettings.secondaryColor",
+    backgroundColor: "traceDisplaySettings.background",
   };
   for (const [field, key] of Object.entries(colorKeys)) {
     popover.querySelector(`[data-trace-display-color="${field}"]`)?.setAttribute("data-tooltip-key", key);
+    popover.querySelector(`[data-trace-display-color-widget="${field}"]`)?.setAttribute("data-tooltip-key", key);
   }
   const toggleKeys = {
     bipolarBrightness: "traceDisplaySettings.bipolarBrightness",
     secondaryEnabled: "traceDisplaySettings.secondaryEnabled",
     capEnabled: "traceDisplaySettings.capEnabled",
     sourceSync: "traceDisplaySettings.sourceSync",
+    syncChannel: "traceDisplaySettings.syncChannel",
+    fullDotEconomy: "traceDisplaySettings.fullDotEconomy",
   };
   for (const [field, key] of Object.entries(toggleKeys)) {
     popover.querySelector(`[data-trace-display-toggle="${field}"]`)?.setAttribute("data-tooltip-key", key);
   }
+  popover.querySelector('[data-trace-display-choice="stereoBlend"]')
+    ?.setAttribute("data-tooltip-key", "traceDisplaySettings.stereoBlend");
   const keyedControls = {
     nodeTraceDisplaySettingsDefaults: "traceDisplaySettings.defaults",
   };
@@ -4016,98 +5034,29 @@ function syncNodeGraphTraceDisplayModeSelector(node = null) {
 }
 
 function setNodeGraphTraceDisplaySettingsFormType(node = null) {
-  const popover = document.getElementById("nodeTraceDisplaySettingsPopover");
+  const popover = nodeGraphTraceDisplaySettingsRoot();
   if (!popover) {
     return;
   }
   const settingsSchema = node
     ? nodeGraphModuleDisplaySettingsSchemaForNode(node)
     : "";
+  // Global defaults editor uses plain Trace schema when node is null.
   const formType = settingsSchema || "trace";
-  popover.dataset.displaySettingsType = formType;
-  popover.dataset.displaySettingsTargetNode = node?.id ? String(node.id) : "";
   syncNodeGraphTraceDisplayModeSelector(node);
-  const activeFields = nodeGraphTraceDisplayActiveControlSet("fields", formType);
-  const activeColors = nodeGraphTraceDisplayActiveControlSet("colors", formType);
-  const activeToggles = nodeGraphTraceDisplayActiveControlSet("toggles", formType);
-  const activeChoices = nodeGraphTraceDisplayActiveControlSet("choices", formType);
-  const setControlHidden = (selector, hidden) => {
-    for (const element of popover.querySelectorAll(selector)) {
-      const row = element.closest("[data-trace-display-control-row], label") || element;
-      row.hidden = hidden;
-    }
-  };
-  for (const field of nodeGraphTraceDisplaySettingControlKeys.fields) {
-    setControlHidden(
-      `[data-trace-display-field="${field}"], [data-trace-display-step-target="${field}"]`,
-      !activeFields.has(field),
-    );
-  }
-  for (const color of nodeGraphTraceDisplaySettingControlKeys.colors) {
-    setControlHidden(`[data-trace-display-color="${color}"]`, !activeColors.has(color));
-  }
-  for (const toggle of nodeGraphTraceDisplaySettingControlKeys.toggles) {
-    setControlHidden(`[data-trace-display-toggle="${toggle}"]`, !activeToggles.has(toggle));
-  }
-  for (const choice of nodeGraphTraceDisplaySettingControlKeys.choices) {
-    setControlHidden(
-      `[data-trace-display-choice="${choice}"], [data-trace-display-choice-row="${choice}"]`,
-      !activeChoices.has(choice),
-    );
-  }
-  const traceSectionVisible = nodeGraphTraceDisplaySectionHasActiveControls("trace", formType);
-  setNodeGraphTraceDisplaySectionVisible(popover, "trace", traceSectionVisible);
-  const traceTitle = popover.querySelector(".node-trace-display-trace-title");
-  if (traceTitle) {
-    traceTitle.textContent = formType === "value"
-      ? "Value"
-      : formType === "lineBurn"
-        ? "Burn"
-        : formType === "scope2d"
-          ? "2D"
-          : formType === "scope2dTrace"
-            ? "Trace"
-            : formType === "numberReadout"
-              ? "Readout"
-              : "Trace";
-  }
-  setNodeGraphTraceDisplaySectionVisible(popover, "value", nodeGraphTraceDisplaySectionHasActiveControls("value", formType));
-  setNodeGraphTraceDisplaySectionVisible(popover, "dot1", nodeGraphTraceDisplaySectionHasActiveControls("dot1", formType));
-  // The "trace" schema is shared by Output's stereo display and every plain
-  // single-value Trace node -- secondary* only ever renders for Output (see
-  // drawNodeGraphTraceDisplayCanvasItem), so gate the section on node type
-  // too, or a Trace node would show live-looking Secondary controls that
-  // silently do nothing.
-  const secondaryActive = nodeGraphTraceDisplaySectionHasActiveControls("secondary", formType) &&
-    node?.type === "output";
-  setNodeGraphTraceDisplaySectionVisible(popover, "secondary", secondaryActive);
-  setNodeGraphTraceDisplaySectionVisible(popover, "caps", nodeGraphTraceDisplaySectionHasActiveControls("caps", formType));
-
-  // Output repurposes the shared dot1/secondary fields to show its two
-  // speaker channels -- relabel them Left/Right there so it reads as a
-  // stereo pair instead of a "primary/secondary" trace pairing. Every other
-  // node type (plain Trace) keeps the generic labels, since "secondary"
-  // there is a decorative second layer, not a channel.
-  const isOutputNode = node?.type === "output";
-  const dot1TitleLabel = popover.querySelector("#nodeTraceDisplayDot1TitleLabel");
-  if (dot1TitleLabel) {
-    dot1TitleLabel.textContent = isOutputNode ? "Left" : "Dot";
-  }
-  const secondaryTitleLabel = popover.querySelector("#nodeTraceDisplaySecondaryTitleLabel");
-  if (secondaryTitleLabel) {
-    secondaryTitleLabel.textContent = isOutputNode ? "Right" : "Secondary";
-  }
-  const dot1ColorInput = popover.querySelector("#nodeTraceDisplayColor");
-  if (dot1ColorInput) {
-    dot1ColorInput.setAttribute("aria-label", isOutputNode ? "Left color" : "Dot color");
-  }
-  const secondaryEnabledInput = popover.querySelector("#nodeTraceDisplaySecondaryEnabled");
-  if (secondaryEnabledInput) {
-    secondaryEnabledInput.setAttribute("aria-label", isOutputNode ? "Right on" : "Secondary on");
-  }
-  const secondaryColorInput = popover.querySelector("#nodeTraceDisplaySecondaryColor");
-  if (secondaryColorInput) {
-    secondaryColorInput.setAttribute("aria-label", isOutputNode ? "Right color" : "Secondary color");
+  // Schema-exclusive body: rebuild so only this form type's controls exist.
+  // Avoid remount when already mounted for same type+node (mode selector
+  // re-entry / write cycles would thrash color widgets).
+  const nodeId = node?.id ? String(node.id) : "";
+  const alreadyMounted =
+    popover.dataset.displaySettingsBodyType === formType &&
+    popover.dataset.displaySettingsTargetNode === nodeId &&
+    popover.querySelector("[data-display-settings-body]")?.childElementCount > 0;
+  if (!alreadyMounted) {
+    mountNodeGraphDisplaySettingsBody(popover, formType, node);
+  } else {
+    popover.dataset.displaySettingsType = formType;
+    popover.dataset.displaySettingsTargetNode = nodeId;
   }
 }
 
@@ -4142,6 +5091,16 @@ function nodeGraphDisplaySettingsDefaultsForFormType(type = nodeGraphTraceDispla
   if (type === "numberReadout") {
     return normalizeNodeGraphNumberReadoutSettings(nodeGraphNumberReadoutSettingsDefaults);
   }
+  if (type === "xyPad") {
+    return normalizeNodeGraphXyPadDisplaySettings(nodeGraphXyPadDisplaySettingsDefaults);
+  }
+  // phosphorLight form type is an alias of scope2d (legacy module).
+  if (type === "phosphorLight") {
+    return normalizeNodeGraphScope2dSettings(nodeGraphScope2dSettingsDefaults);
+  }
+  if (type === "spectrogramBurn") {
+    return normalizeNodeGraphSpectrogramSettings(nodeGraphSpectrogramSettingsDefaults);
+  }
   return normalizeNodeGraphTraceDisplaySettings(nodeGraphTraceDisplaySettingsDefaults);
 }
 
@@ -4150,6 +5109,10 @@ function nodeGraphDisplaySettingsDefaultValue(key) {
 }
 
 function normalizeNodeGraphDisplaySettingsForFormType(settings, type = nodeGraphTraceDisplaySettingsFormType()) {
+  if (type === "spectrogramBurn") {
+    const node = nodeGraphPatchNode(nodeGraphTraceDisplaySettingsTargetNodeId());
+    return normalizeNodeGraphSpectrogramSettings(settings, node);
+  }
   if (type === "dot") {
     return normalizeNodeGraphZeroDBurnSettings(settings);
   }
@@ -4167,6 +5130,12 @@ function normalizeNodeGraphDisplaySettingsForFormType(settings, type = nodeGraph
   }
   if (type === "numberReadout") {
     return normalizeNodeGraphNumberReadoutSettings(settings);
+  }
+  if (type === "xyPad") {
+    return normalizeNodeGraphXyPadDisplaySettings(settings);
+  }
+  if (type === "phosphorLight") {
+    return normalizeNodeGraphScope2dSettings(settings);
   }
   return normalizeNodeGraphTraceDisplaySettings(settings);
 }
@@ -4234,13 +5203,31 @@ function nodeGraphTraceDisplayCurrentSettingsForFormType(formType = nodeGraphTra
   if (settingsSchema === "scope2dTrace") {
     return normalizeNodeGraphScope2dTraceSettings(node.traceDisplaySettings);
   }
+  if (settingsSchema === "phosphorLight") {
+    const normalize = typeof normalizeNodeGraphPhosphorLightSettings === "function"
+      ? normalizeNodeGraphPhosphorLightSettings
+      : (value) => value || {};
+    return normalize(node.traceDisplaySettings);
+  }
   if (settingsSchema === "numberReadout") {
     return normalizeNodeGraphNumberReadoutSettings(node.traceDisplaySettings);
   }
-  // Reaching here with schema "trace" only happens for Output (plain Trace
-  // nodes are already caught by the editingTraceDefaults() check above) --
-  // its own per-node settings, not the shared global bucket.
-  if (settingsSchema === "trace" && node?.type === "output") {
+  if (settingsSchema === "xyPad") {
+    return normalizeNodeGraphXyPadDisplaySettings(node.traceDisplaySettings);
+  }
+  if (settingsSchema === "spectrogramBurn") {
+    const merged = { ...(node.traceDisplaySettings || {}) };
+    if (merged.fftSize == null && node.params?.fftSize != null) {
+      merged.fftSize = node.params.fftSize;
+    }
+    return normalizeNodeGraphSpectrogramSettings(merged, node);
+  }
+  // Per-node Trace schema: Output stereo + multi-mode Display (monoTrace).
+  // Plain Trace modules use the shared global bucket (editingTraceDefaults).
+  if (
+    settingsSchema === "trace" &&
+    (node?.type === "output" || node?.type === "visualOscilloscope")
+  ) {
     return nodeGraphTraceDisplaySettingsForNode(node);
   }
   return nodeGraphGlobalTraceSettings();
@@ -4248,6 +5235,7 @@ function nodeGraphTraceDisplayCurrentSettingsForFormType(formType = nodeGraphTra
 
 function readNodeGraphTraceDisplaySettingsForm() {
   const formType = nodeGraphTraceDisplaySettingsFormType();
+  const root = nodeGraphTraceDisplaySettingsRoot();
   const current = normalizeNodeGraphDisplaySettingsForFormType(
     nodeGraphTraceDisplayCurrentSettingsForFormType(formType),
     formType,
@@ -4258,7 +5246,7 @@ function readNodeGraphTraceDisplaySettingsForm() {
   const activeToggles = nodeGraphTraceDisplayActiveControlSet("toggles", formType);
   const activeChoices = nodeGraphTraceDisplayActiveControlSet("choices", formType);
   for (const key of activeFields) {
-    const input = document.querySelector(`[data-trace-display-field="${key}"]`);
+    const input = root?.querySelector?.(`[data-trace-display-field="${key}"]`);
     if (input) {
       const sanitizedValue = typeof sanitizeNodeGraphNumericText === "function"
         ? sanitizeNodeGraphNumericText(input.value)
@@ -4273,25 +5261,46 @@ function readNodeGraphTraceDisplaySettingsForm() {
     }
   }
   for (const key of activeColors) {
-    const input = document.querySelector(`[data-trace-display-color="${key}"]`);
+    const input = root?.querySelector?.(`[data-trace-display-color="${key}"]`);
     if (input) {
       next[key] = input.value;
       if (key === "dot1Color") {
         next.color = input.value;
       }
+      if (key === "backgroundColor") {
+        next.background = input.value;
+      }
     }
   }
+  // Meet always derived from Left/Right (no manual override / Auto checkbox).
+  next.meetColor = "auto";
   for (const key of activeToggles) {
-    const input = document.querySelector(`[data-trace-display-toggle="${key}"]`);
+    const input = root?.querySelector?.(`[data-trace-display-toggle="${key}"]`);
     if (input) {
       next[key] = input.checked;
     }
   }
   for (const key of activeChoices) {
-    const input = document.querySelector(`[data-trace-display-choice="${key}"]`);
+    const input = root?.querySelector?.(`[data-trace-display-choice="${key}"]`);
     if (input) {
       next[key] = input.value;
     }
+  }
+  // Shared gradient stops (spectrogram + all phosphor energy faces).
+  if (nodeGraphDisplaySettingsFormTypeUsesGradient(formType)) {
+    const editor = nodeGraphMvp?.spectrogramGradientEditor
+      || nodeGraphMvp?.sharedGradientEditor;
+    if (editor && typeof editor.getStops === "function") {
+      next.gradientStops = editor.getStops();
+    }
+  }
+  // Output: choice is source of truth. Non-output: checkbox maps to off/mono.
+  if (next.syncChannel) {
+    next.sourceSync = next.syncChannel !== "off";
+  } else if (next.sourceSync === true) {
+    next.syncChannel = "mono";
+  } else if (next.sourceSync === false) {
+    next.syncChannel = "off";
   }
   return normalizeNodeGraphDisplaySettingsForFormType(next, formType);
 }
@@ -4303,18 +5312,25 @@ function nodeGraphDisplaySettingsFormValue(settings, key) {
   if (key === "dot1Color") {
     return settings.dot1Color ?? settings.color;
   }
+  if (key === "backgroundColor") {
+    return settings.backgroundColor ?? settings.background;
+  }
+  if (key === "syncChannel") {
+    return nodeGraphTraceDisplaySyncChannel(settings);
+  }
   return settings[key];
 }
 
 function writeNodeGraphTraceDisplaySettingsForm(settings) {
   const formType = nodeGraphTraceDisplaySettingsFormType();
+  const root = nodeGraphTraceDisplaySettingsRoot();
   const normalized = normalizeNodeGraphDisplaySettingsForFormType(settings, formType);
   const activeFields = nodeGraphTraceDisplayActiveControlSet("fields", formType);
   const activeColors = nodeGraphTraceDisplayActiveControlSet("colors", formType);
   const activeToggles = nodeGraphTraceDisplayActiveControlSet("toggles", formType);
   const activeChoices = nodeGraphTraceDisplayActiveControlSet("choices", formType);
   for (const key of activeFields) {
-    const input = document.querySelector(`[data-trace-display-field="${key}"]`);
+    const input = root?.querySelector?.(`[data-trace-display-field="${key}"]`);
     if (input) {
       input.value = formatNodeGraphTraceDisplaySetting(nodeGraphDisplaySettingsFormValue(normalized, key));
       input.readOnly = true;
@@ -4322,23 +5338,92 @@ function writeNodeGraphTraceDisplaySettingsForm(settings) {
     }
   }
   for (const key of activeColors) {
-    const input = document.querySelector(`[data-trace-display-color="${key}"]`);
+    const input = root?.querySelector?.(`[data-trace-display-color="${key}"]`);
     if (input) {
       input.value = nodeGraphDisplaySettingsFormValue(normalized, key);
     }
   }
   for (const key of activeToggles) {
-    const input = document.querySelector(`[data-trace-display-toggle="${key}"]`);
+    const input = root?.querySelector?.(`[data-trace-display-toggle="${key}"]`);
     if (input) {
       input.checked = Boolean(normalized[key]);
     }
   }
   for (const key of activeChoices) {
-    const input = document.querySelector(`[data-trace-display-choice="${key}"]`);
+    const input = root?.querySelector?.(`[data-trace-display-choice="${key}"]`);
     if (input) {
-      input.value = nodeGraphDisplaySettingsFormValue(normalized, key);
+      input.value = String(nodeGraphDisplaySettingsFormValue(normalized, key) ?? "");
     }
   }
+  if (nodeGraphDisplaySettingsFormTypeUsesGradient(formType)) {
+    const editor = nodeGraphMvp?.spectrogramGradientEditor
+      || nodeGraphMvp?.sharedGradientEditor;
+    if (editor && typeof editor.setStops === "function" && normalized.gradientStops) {
+      editor.setStops(normalized.gradientStops);
+    }
+  }
+  syncNodeGraphTraceDisplayColorWidgets(
+    document.getElementById("nodeTraceDisplaySettingsPopover"),
+  );
+}
+
+/** Shared multi-stop gradient editor (spectrogram + phosphor energy faces). */
+function syncNodeGraphSharedGradientEditor(popover, visible) {
+  const host = popover?.querySelector?.("[data-shared-gradient-host], [data-spectrogram-gradient-host]")
+    || document.getElementById("nodeTraceDisplaySharedGradientHost")
+    || document.getElementById("nodeTraceDisplaySpectrogramGradientHost");
+  if (!host) {
+    return;
+  }
+  if (!visible) {
+    if (nodeGraphMvp?.spectrogramGradientEditor?.destroy) {
+      nodeGraphMvp.spectrogramGradientEditor.destroy();
+      nodeGraphMvp.spectrogramGradientEditor = null;
+    }
+    nodeGraphMvp.sharedGradientEditor = null;
+    return;
+  }
+  const mount = typeof mountSharedGradientEditor === "function"
+    ? mountSharedGradientEditor
+    : (typeof mountPhosphorGradientEditor === "function"
+      ? mountPhosphorGradientEditor
+      : (typeof mountSpectrogramGradientEditor === "function"
+        ? mountSpectrogramGradientEditor
+        : null));
+  if (typeof mount !== "function") {
+    host.textContent = "Gradient editor failed to load.";
+    return;
+  }
+  const formType = nodeGraphTraceDisplaySettingsFormType();
+  const settings = nodeGraphTraceDisplayCurrentSettingsForFormType(formType);
+  const stops = settings?.gradientStops
+    || nodeGraphPhosphorGradientStopsFromSettings(settings || {});
+  // Reuse mounted editor when still open on the same host.
+  if (nodeGraphMvp?.spectrogramGradientEditor?.setStops && host.dataset.sgeMounted === "1") {
+    nodeGraphMvp.spectrogramGradientEditor.setStops(stops);
+    return;
+  }
+  if (nodeGraphMvp?.spectrogramGradientEditor?.destroy) {
+    nodeGraphMvp.spectrogramGradientEditor.destroy();
+  }
+  host.dataset.sgeMounted = "1";
+  const editor = mount(host, {
+    stops,
+    hint: formType === "spectrogramBurn"
+      ? "Select a stop · presets fill stops + hex list · live audition on the spectrogram"
+      : "Select a stop · presets fill stops + hex list · live audition on the phosphor face",
+    onChange() {
+      // Live gradient audition on the open face.
+      applyNodeGraphTraceDisplaySettingsForm({ persist: "debounce", record: false });
+    },
+  });
+  nodeGraphMvp.spectrogramGradientEditor = editor;
+  nodeGraphMvp.sharedGradientEditor = editor;
+}
+
+/** @deprecated alias — use syncNodeGraphSharedGradientEditor */
+function syncNodeGraphSpectrogramGradientEditor(popover, visible) {
+  return syncNodeGraphSharedGradientEditor(popover, visible);
 }
 
 function nodeGraphTraceDisplayStepperQuantum(input) {
@@ -4348,6 +5433,28 @@ function nodeGraphTraceDisplayStepperQuantum(input) {
   if (["cycles", "decimals"].includes(input.dataset?.traceDisplayField)) {
     return 1;
   }
+  if (input.dataset?.traceDisplayField === "dotBudget") {
+    return 64;
+  }
+  if (input.dataset?.traceDisplayField === "bins") {
+    return 8;
+  }
+  if (input.dataset?.traceDisplayField === "fftSize") {
+    return 1; // stepped via table in stepNodeGraphTraceDisplaySetting
+  }
+  // History (s): +/− buttons step whole seconds (drag still uses continuous value).
+  if (input.dataset?.traceDisplayField === "historySeconds") {
+    return 1;
+  }
+  if (input.dataset?.traceDisplayField === "pixelDensity") {
+    return 0.05;
+  }
+  if (input.dataset?.traceDisplayField === "sweepSeconds") {
+    return 0.05;
+  }
+  if (input.dataset?.traceDisplayField === "sweepHz") {
+    return 0.05;
+  }
   return 0.1;
 }
 
@@ -4356,14 +5463,19 @@ function nodeGraphTraceDisplaySizeControlField(key) {
 }
 
 function nodeGraphTraceDisplaySensitiveControlField(key) {
+  // historySeconds is linear seconds (0–30 spectrogram / 0–10 elsewhere) — not a
+  // 0–1 size fader. Including it here capped max at 1 and made "+" jump 2→1.
   return nodeGraphTraceDisplaySizeControlField(key) ||
-    key === "historySeconds" ||
+    key === "pixelDensity" ||
     ["dot1Brightness", "secondaryBrightness"].includes(key);
 }
 
 const nodeGraphTraceDisplaySensitiveControlExponent = 3;
 
 function nodeGraphTraceDisplaySensitiveControlMax(key) {
+  if (key === "pixelDensity") {
+    return 4;
+  }
   return ["dot1Brightness", "secondaryBrightness"].includes(key) ? 2 : 1;
 }
 
@@ -4408,8 +5520,40 @@ function nodeGraphTraceDisplayClampNonNegative(value) {
   return Math.max(0, Number(value) || 0);
 }
 
+/** History / zoom window: 0 … nodeGraphTraceDisplayMaxZoomSeconds (10 s). */
+function nodeGraphTraceDisplayClampHistorySeconds(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return 0;
+  }
+  return clampNodeSliderValue(n, 0, nodeGraphTraceDisplayMaxZoomSeconds);
+}
+
 function nodeGraphTraceDisplayClampBrightness(value) {
   return clampNodeSliderValue(Number(value) || 0, 0, 2);
+}
+
+function nodeGraphTraceDisplayClampPixelDensity(value) {
+  return clampNodeSliderValue(Number(value) || 0, 0, 4);
+}
+
+// Stamp blur 0–1 (hard→soft). Migrates legacy signed -1..1 patch values.
+function nodeGraphTraceDisplayClampStampBlur(value) {
+  if (typeof PhosphorDrawer !== "undefined" && PhosphorDrawer?.normalizeBlur) {
+    return PhosphorDrawer.normalizeBlur(value, 0.35);
+  }
+  let v = Number(value);
+  if (!Number.isFinite(v)) return 0.35;
+  if (v < 0) v = (Math.max(-1, v) + 1) * 0.5;
+  return clampNodeSliderValue(v, 0, 1);
+}
+
+function nodeGraphTraceDisplayClampDotBudget(value) {
+  const n = Math.round(Number(value) || 0);
+  if (!Number.isFinite(n)) {
+    return 2048;
+  }
+  return Math.max(64, Math.min(8192, n));
 }
 
 // Clamp rules shared by every display-settings form type, keyed by field name.
@@ -4421,31 +5565,71 @@ const nodeGraphTraceDisplaySharedValueClamps = Object.freeze({
   capSize: nodeGraphTraceDisplayClampUnit,
   cycles: (value) => Math.max(1, Math.min(64, Math.round(Number(value) || 0))),
   decay: nodeGraphTraceDisplayClampUnit,
+  dotBudget: nodeGraphTraceDisplayClampDotBudget,
   decimals: (value) => Math.max(0, Math.min(8, Math.round(Number(value) || 0))),
   dot1Brightness: nodeGraphTraceDisplayClampBrightness,
   dot1Size: nodeGraphTraceDisplayClampUnit,
+  ghost: nodeGraphTraceDisplayClampUnit,
+  historySeconds: nodeGraphTraceDisplayClampHistorySeconds,
+  innerGlow: nodeGraphTraceDisplayClampUnit,
+  innerShadow: nodeGraphTraceDisplayClampUnit,
+  lineLength: nodeGraphTraceDisplayClampUnit,
+  lineThickness: nodeGraphTraceDisplayClampNonNegative,
+  pixelDensity: nodeGraphTraceDisplayClampPixelDensity,
+  puckSize: (value) => clampNodeSliderValue(Number(value) || 0, 0.005, 0.25),
+  scale: nodeGraphTraceDisplayClampNonNegative,
   secondaryBrightness: nodeGraphTraceDisplayClampBrightness,
   secondaryLineThickness: nodeGraphTraceDisplayClampNonNegative,
   secondarySize: nodeGraphTraceDisplayClampUnit,
-  historySeconds: nodeGraphTraceDisplayClampNonNegative,
-  lineLength: nodeGraphTraceDisplayClampUnit,
-  lineThickness: nodeGraphTraceDisplayClampNonNegative,
-  scale: nodeGraphTraceDisplayClampNonNegative,
-  zoomSeconds: nodeGraphTraceDisplayClampNonNegative,
+  // 1D Burn Dot: seconds for one left→right pass.
+  sweepSeconds: nodeGraphTraceDisplayClampSweepSeconds,
+  // Legacy Hz field (migrated on load); keep clamp if old UI still posts it.
+  sweepHz: (value) => clampNodeSliderValue(Number(value) || 0, 0.01, 100),
+  fftSize: (value) => (typeof nodeGraphSpectrogramSnapFftSize === "function"
+    ? nodeGraphSpectrogramSnapFftSize(value)
+    : 1024),
+  zoomSeconds: nodeGraphTraceDisplayClampHistorySeconds,
 });
 
 // Per-formType overrides, only for the (formType, field) pairs that diverge
 // from the shared table above. Isolated per formType so a new override can't
 // leak into unrelated display types.
 const nodeGraphTraceDisplayFormTypeValueClampOverrides = Object.freeze({
-  dot: Object.freeze({
-    lineThickness: nodeGraphTraceDisplayClampUnit,
+  // Spectrogram: History (s) 0…30 (waterfall scroll rate; longer = slower).
+  spectrogramBurn: Object.freeze({
+    historySeconds: (value) => {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return 2;
+      // 0 is not meaningful (was silently treated as ~0.05 s).
+      if (n <= 0) return 0.1;
+      return clampNodeSliderValue(n, 0.1, 30);
+    },
   }),
+  // Phosphor Dot: same blur continuum as 2D Phosphor stamps.
+  dot: Object.freeze({
+    lineThickness: nodeGraphTraceDisplayClampStampBlur,
+  }),
+  // 1D Burn Dot: stamp blur + sweep rate.
+  lineBurn: Object.freeze({
+    lineThickness: nodeGraphTraceDisplayClampStampBlur,
+  }),
+  // Soft phosphor stamps: blur 0 hard … 1 full soft.
   scope2d: Object.freeze({
-    lineThickness: nodeGraphTraceDisplayClampUnit,
+    lineThickness: nodeGraphTraceDisplayClampStampBlur,
+  }),
+  phosphorLight: Object.freeze({
+    lineThickness: nodeGraphTraceDisplayClampStampBlur,
+  }),
+  xyPad: Object.freeze({
+    lineThickness: nodeGraphTraceDisplayClampStampBlur,
   }),
   scope2dTrace: Object.freeze({
-    lineThickness: nodeGraphTraceDisplayClampUnit,
+    lineThickness: nodeGraphTraceDisplayClampStampBlur,
+  }),
+  // 1D Trace / Output: blur 0 hard … 1 soft skirt (instant, no persistence).
+  trace: Object.freeze({
+    lineThickness: nodeGraphTraceDisplayClampStampBlur,
+    secondaryLineThickness: nodeGraphTraceDisplayClampStampBlur,
   }),
 });
 
@@ -4475,10 +5659,22 @@ function setNodeGraphTraceDisplayFieldEditing(input, editing) {
   }
 }
 
+function nodeGraphTraceDisplayEditingField() {
+  const root = nodeGraphTraceDisplaySettingsRoot();
+  return root?.querySelector?.("[data-trace-display-field].trace-display-field-editing")
+    || root?.querySelector?.("[data-trace-display-field]:not([readonly])")
+    || null;
+}
+
 function beginNodeGraphTraceDisplayFieldEdit(event) {
   const input = nodeGraphTraceDisplayFieldFromTarget(event.target);
   if (!input) {
     return;
+  }
+  // Commit any other field still in edit mode.
+  const prev = nodeGraphTraceDisplayEditingField();
+  if (prev && prev !== input && !prev.readOnly) {
+    commitNodeGraphTraceDisplayFieldEdit(prev);
   }
   if (input.dataset.traceDisplayField === "zoomSeconds") {
     setNodeGraphTraceDisplayZoomEditActive(true);
@@ -4488,9 +5684,9 @@ function beginNodeGraphTraceDisplayFieldEdit(event) {
   event.stopPropagation();
 }
 
-function finishNodeGraphTraceDisplayFieldEdit(event) {
-  const input = nodeGraphTraceDisplayFieldFromTarget(event.target);
-  if (!input) {
+/** Commit typed value and leave edit mode (Enter / focus leave / click outside). */
+function commitNodeGraphTraceDisplayFieldEdit(input) {
+  if (!input || input.readOnly) {
     return;
   }
   setNodeGraphTraceDisplayFieldEditing(input, false);
@@ -4506,23 +5702,65 @@ function finishNodeGraphTraceDisplayFieldEdit(event) {
   );
 }
 
+function finishNodeGraphTraceDisplayFieldEdit(event) {
+  // focusout bubbles (blur does not) — use event.target as the field that lost focus.
+  const input = nodeGraphTraceDisplayFieldFromTarget(event.target);
+  if (!input || input.readOnly) {
+    return;
+  }
+  // Still focused within the same field (e.g. internal) — skip.
+  const next = event.relatedTarget;
+  if (next instanceof Node && input.contains(next)) {
+    return;
+  }
+  commitNodeGraphTraceDisplayFieldEdit(input);
+}
+
 function handleNodeGraphTraceDisplayFieldEditKeydown(event) {
   const input = nodeGraphTraceDisplayFieldFromTarget(event.target);
   if (!input || input.readOnly) {
     return;
   }
   if (event.key === "Enter") {
-    input.blur();
+    // Commit immediately — do not rely on blur (parent blur listeners never see it).
     event.preventDefault();
+    event.stopPropagation();
+    commitNodeGraphTraceDisplayFieldEdit(input);
+    input.blur();
   } else if (event.key === "Escape") {
     if (input.dataset.traceDisplayField === "zoomSeconds") {
       setNodeGraphTraceDisplayZoomEditActive(false);
     }
     writeNodeGraphTraceDisplaySettingsForm(nodeGraphTraceDisplayCurrentSettingsForFormType());
+    setNodeGraphTraceDisplayFieldEditing(input, false);
     input.blur();
     event.preventDefault();
+    event.stopPropagation();
+  } else {
+    event.stopPropagation();
   }
-  event.stopPropagation();
+}
+
+/** Click / pointer outside an editing field commits it (including outside the window). */
+function handleNodeGraphTraceDisplayFieldEditPointerDown(event) {
+  const editing = nodeGraphTraceDisplayEditingField();
+  if (!editing || editing.readOnly) {
+    return;
+  }
+  const target = event.target;
+  if (target instanceof Node && (editing === target || editing.contains(target))) {
+    return;
+  }
+  // Allow steppers for this field without fighting the click.
+  if (
+    target instanceof Element
+    && target.closest?.(`[data-trace-display-step-target="${editing.dataset.traceDisplayField}"]`)
+  ) {
+    commitNodeGraphTraceDisplayFieldEdit(editing);
+    return;
+  }
+  commitNodeGraphTraceDisplayFieldEdit(editing);
+  // Don't steal the click from other UI — just end text edit.
 }
 
 function preventNodeGraphTraceDisplayReadonlyFieldTextInteraction(event) {
@@ -4636,23 +5874,45 @@ function stepNodeGraphTraceDisplaySetting(event) {
     return;
   }
   const key = button.dataset.traceDisplayStepTarget;
-  const input = document.querySelector(`[data-trace-display-field="${key}"]`);
+  const root = nodeGraphTraceDisplaySettingsRoot();
+  const input = root?.querySelector?.(`[data-trace-display-field="${key}"]`)
+    || button.closest("label")?.querySelector?.(`[data-trace-display-field="${key}"]`);
   if (!input) {
     return;
   }
   event.preventDefault();
   event.stopPropagation();
   const direction = Number(button.dataset.traceDisplayStepDirection) < 0 ? -1 : 1;
-  const quantum = nodeGraphTraceDisplayStepperQuantum(input);
   const current = Number(input.value);
   const baseValue = Number.isFinite(current) ? current : nodeGraphDisplaySettingsDefaultValue(key);
-  const nextValue = normalizeNodeGraphTraceDisplaySettingValueForKey(
-    key,
-    adjustNodeGraphTraceDisplaySettingByControlDelta(key, baseValue, direction * quantum),
-  );
-  input.value = formatNodeGraphTraceDisplaySetting(
-    nextValue,
-  );
+  let nextValue;
+  // Spectrogram: FFT steps the size table.
+  if (
+    key === "fftSize" &&
+    nodeGraphTraceDisplaySettingsFormType() === "spectrogramBurn" &&
+    typeof nodeGraphSpectrogramStepFftSize === "function"
+  ) {
+    nextValue = nodeGraphSpectrogramStepFftSize(baseValue, direction);
+  } else if (key === "historySeconds") {
+    // Whole-second steps (ceil/floor so 2.3 + → 3, 2.3 − → 2). Spectrogram min 1 s via +/−.
+    const quantum = 1;
+    if (direction > 0) {
+      nextValue = Math.floor(baseValue + 1e-9) + quantum;
+    } else {
+      nextValue = Math.ceil(baseValue - 1e-9) - quantum;
+    }
+    if (nodeGraphTraceDisplaySettingsFormType() === "spectrogramBurn") {
+      nextValue = Math.max(1, nextValue);
+    }
+    nextValue = normalizeNodeGraphTraceDisplaySettingValueForKey(key, nextValue);
+  } else {
+    const quantum = nodeGraphTraceDisplayStepperQuantum(input);
+    nextValue = normalizeNodeGraphTraceDisplaySettingValueForKey(
+      key,
+      adjustNodeGraphTraceDisplaySettingByControlDelta(key, baseValue, direction * quantum),
+    );
+  }
+  input.value = formatNodeGraphTraceDisplaySetting(nextValue);
   applyNodeGraphTraceDisplaySettingsForm({ persist: "immediate", record: true });
 }
 
@@ -4700,6 +5960,30 @@ function assignNodeGraphTypedDisplaySettingsToNode(node, displayType, settings) 
   }
   if (displayType === "scope2dTrace") {
     node.traceDisplaySettings = normalizeNodeGraphScope2dTraceSettings(settings);
+    return node.traceDisplaySettings;
+  }
+  // Must not fall through to Trace normalize: that drops decimals and expands
+  // a full Trace schema onto the multimeter (can thrash draw/history/persist).
+  if (displayType === "numberReadout") {
+    node.traceDisplaySettings = normalizeNodeGraphNumberReadoutSettings(settings);
+    return node.traceDisplaySettings;
+  }
+  if (displayType === "xyPad") {
+    node.traceDisplaySettings = normalizeNodeGraphXyPadDisplaySettings(settings);
+    return node.traceDisplaySettings;
+  }
+  if (displayType === "phosphorLight") {
+    // Legacy alias — same schema as 2D Phosphor.
+    node.traceDisplaySettings = normalizeNodeGraphScope2dSettings(settings);
+    return node.traceDisplaySettings;
+  }
+  if (displayType === "spectrogramBurn") {
+    const merged = { ...(settings || {}) };
+    if (merged.fftSize == null && node.params?.fftSize != null) {
+      merged.fftSize = node.params.fftSize;
+    }
+    node.traceDisplaySettings = normalizeNodeGraphSpectrogramSettings(merged, node);
+    syncNodeGraphSpectrogramDisplaySettingsToParams(node, node.traceDisplaySettings);
     return node.traceDisplaySettings;
   }
   node.traceDisplaySettings = normalizeNodeGraphTraceDisplaySettings(settings);
@@ -4774,6 +6058,11 @@ function changeNodeGraphTraceDisplayMode(event) {
     return true;
   }
   nodeGraphMvp.patchDirtyState = "edited";
+  // Mode can switch settings schema (e.g. 2D Phosphor ↔ Trace) — force body remount.
+  const popover = nodeGraphTraceDisplaySettingsRoot();
+  if (popover) {
+    popover.dataset.displaySettingsBodyType = "";
+  }
   setNodeGraphTraceDisplaySettingsFormType(node);
   writeNodeGraphTraceDisplaySettingsForm(nodeGraphTraceDisplayCurrentSettingsForFormType(selectedMode.settingsSchema));
   persistNodeGraphTraceDisplaySettingsSoon("immediate");
@@ -4820,6 +6109,289 @@ function persistNodeGraphTraceDisplaySettingsSoon(persistMode = "debounce") {
   }, 350);
 }
 
+// --- Trace display color widgets (scan hue/sat/bright without native picker) ---
+const nodeGraphTraceDisplayColorWidgetState = {
+  load: null,
+  widgets: new Map(), // field -> SoundColorWidget
+  syncing: false,
+};
+
+/** Resolve color-widget.js next to this scopes script (never document-relative ./public/…). */
+function nodeGraphTraceDisplayColorWidgetModuleUrl() {
+  // Prefer global boot from index.html <script type="module"> if already ready.
+  if (typeof window !== "undefined" && typeof window.mountColorWidget === "function") {
+    return null;
+  }
+  const script = document.querySelector('script[src*="node-graph-module-scopes.js"]');
+  if (script?.src) {
+    return new URL("color-widget.js?v=trace-display-3", script.src).href;
+  }
+  // Fallbacks: site root /public/, then document-relative public/
+  try {
+    return new URL("/public/color-widget.js?v=trace-display-3", window.location.origin).href;
+  } catch {
+    return new URL("public/color-widget.js?v=trace-display-3", window.location.href).href;
+  }
+}
+
+function loadNodeGraphTraceDisplayColorWidgetModule() {
+  if (typeof window !== "undefined" && typeof window.mountColorWidget === "function") {
+    return Promise.resolve({
+      mountColorWidget: window.mountColorWidget,
+      SoundColorWidget: window.SoundColorWidget,
+      hslToHex: window.hslToHex,
+    });
+  }
+  // Boot script may still be in flight — wait briefly for color-widget-ready.
+  if (typeof window !== "undefined" && !nodeGraphTraceDisplayColorWidgetState.load) {
+    const waitForBoot = new Promise((resolve, reject) => {
+      if (typeof window.mountColorWidget === "function") {
+        resolve({
+          mountColorWidget: window.mountColorWidget,
+          SoundColorWidget: window.SoundColorWidget,
+          hslToHex: window.hslToHex,
+        });
+        return;
+      }
+      const onReady = () => {
+        window.removeEventListener("color-widget-ready", onReady);
+        if (typeof window.mountColorWidget === "function") {
+          resolve({
+            mountColorWidget: window.mountColorWidget,
+            SoundColorWidget: window.SoundColorWidget,
+            hslToHex: window.hslToHex,
+          });
+        } else {
+          reject(new Error("color-widget-ready fired without mountColorWidget"));
+        }
+      };
+      window.addEventListener("color-widget-ready", onReady, { once: true });
+      // If boot never arrives, fall through to dynamic import after a short wait.
+      window.setTimeout(() => {
+        window.removeEventListener("color-widget-ready", onReady);
+        if (typeof window.mountColorWidget === "function") {
+          resolve({
+            mountColorWidget: window.mountColorWidget,
+            SoundColorWidget: window.SoundColorWidget,
+            hslToHex: window.hslToHex,
+          });
+          return;
+        }
+        const url = nodeGraphTraceDisplayColorWidgetModuleUrl();
+        if (!url) {
+          reject(new Error("color-widget module URL unresolved"));
+          return;
+        }
+        import(/* webpackIgnore: true */ url)
+          .then((mod) => {
+            if (mod.mountColorWidget) {
+              window.mountColorWidget = mod.mountColorWidget;
+            }
+            if (mod.SoundColorWidget) {
+              window.SoundColorWidget = mod.SoundColorWidget;
+            }
+            if (mod.hslToHex) {
+              window.hslToHex = mod.hslToHex;
+            }
+            resolve(mod);
+          })
+          .catch((err) => {
+            const detail = err?.stack || err?.message || String(err);
+            console.warn("[trace-display] color-widget import failed", url, detail);
+            reject(err);
+          });
+      }, 400);
+    });
+    nodeGraphTraceDisplayColorWidgetState.load = waitForBoot.catch((err) => {
+      nodeGraphTraceDisplayColorWidgetState.load = null;
+      throw err;
+    });
+  }
+  return nodeGraphTraceDisplayColorWidgetState.load
+    || Promise.reject(new Error("color-widget load unavailable"));
+}
+
+function nodeGraphTraceDisplayNormalizeHexColor(value, fallback = "#ffffff") {
+  const color = String(value || "").trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(color)) {
+    return color.toLowerCase();
+  }
+  if (/^#[0-9a-fA-F]{3}$/.test(color)) {
+    const [, r, g, b] = color.toLowerCase();
+    return `#${r}${r}${g}${g}${b}${b}`;
+  }
+  return fallback;
+}
+
+function nodeGraphTraceDisplayHexToHsl(hexToken = "#ffffff") {
+  const hex = nodeGraphTraceDisplayNormalizeHexColor(hexToken);
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const lightness = (max + min) / 2;
+  let hue = 0;
+  let saturation = 0;
+  if (max !== min) {
+    const delta = max - min;
+    saturation = lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+    if (max === r) {
+      hue = (g - b) / delta + (g < b ? 6 : 0);
+    } else if (max === g) {
+      hue = (b - r) / delta + 2;
+    } else {
+      hue = (r - g) / delta + 4;
+    }
+    hue /= 6;
+  }
+  return {
+    a: 1,
+    h: Math.round(hue * 359),
+    l: Math.round(lightness * 100),
+    s: Math.round(saturation * 100),
+  };
+}
+
+function destroyNodeGraphTraceDisplayColorWidgets() {
+  for (const widget of nodeGraphTraceDisplayColorWidgetState.widgets.values()) {
+    try {
+      widget?.destroy?.();
+    } catch {
+      // ignore
+    }
+  }
+  nodeGraphTraceDisplayColorWidgetState.widgets.clear();
+}
+
+function nodeGraphTraceDisplayColorWidgetLabel(field) {
+  if (field === "secondaryColor") {
+    return "Right";
+  }
+  if (field === "backgroundColor") {
+    return "Bg";
+  }
+  if (field === "dot1Color") {
+    const isOutput = nodeGraphPatchNode(nodeGraphTraceDisplaySettingsTargetNodeId())?.type === "output";
+    return isOutput ? "Left" : "Color";
+  }
+  return "Color";
+}
+
+function syncNodeGraphTraceDisplayColorWidgets(popover = document.getElementById("nodeTraceDisplaySettingsPopover")) {
+  if (!popover || popover.hidden) {
+    return;
+  }
+  const formType = nodeGraphTraceDisplaySettingsFormType();
+  const activeColors = nodeGraphTraceDisplayActiveControlSet("colors", formType);
+  // Drop widgets for inactive fields.
+  for (const [field, widget] of [...nodeGraphTraceDisplayColorWidgetState.widgets.entries()]) {
+    if (!activeColors.has(field)) {
+      try {
+        widget?.destroy?.();
+      } catch {
+        // ignore
+      }
+      nodeGraphTraceDisplayColorWidgetState.widgets.delete(field);
+      const host = popover.querySelector(`[data-trace-display-color-widget="${field}"]`);
+      if (host) {
+        host.replaceChildren();
+      }
+    }
+  }
+  loadNodeGraphTraceDisplayColorWidgetModule().then((module) => {
+    const livePopover = document.getElementById("nodeTraceDisplaySettingsPopover");
+    if (!livePopover || livePopover.hidden) {
+      return;
+    }
+    const mount = module?.mountColorWidget || window.mountColorWidget;
+    if (typeof mount !== "function") {
+      console.warn("[trace-display] color-widget module missing mountColorWidget");
+      return;
+    }
+    const liveType = nodeGraphTraceDisplaySettingsFormType();
+    const liveColors = nodeGraphTraceDisplayActiveControlSet("colors", liveType);
+    for (const field of liveColors) {
+      const host = livePopover.querySelector(`[data-trace-display-color-widget="${field}"]`);
+      const input = livePopover.querySelector(`[data-trace-display-color="${field}"]`);
+      if (!host || !input) {
+        continue;
+      }
+      // Host row may still be hidden by section visibility.
+      const row = host.closest("[data-trace-display-color-row], [data-trace-display-control-row], label");
+      if (row?.hidden || host.closest("[hidden]")) {
+        const existing = nodeGraphTraceDisplayColorWidgetState.widgets.get(field);
+        if (existing) {
+          try {
+            existing.destroy?.();
+          } catch {
+            // ignore
+          }
+          nodeGraphTraceDisplayColorWidgetState.widgets.delete(field);
+          host.replaceChildren();
+        }
+        continue;
+      }
+      const hex = nodeGraphTraceDisplayNormalizeHexColor(input.value, "#ffffff");
+      const hsl = nodeGraphTraceDisplayHexToHsl(hex);
+      const label = nodeGraphTraceDisplayColorWidgetLabel(field);
+      let widget = nodeGraphTraceDisplayColorWidgetState.widgets.get(field);
+      if (!widget) {
+        try {
+          host.replaceChildren();
+          widget = mount(host, {
+            label,
+            ...hsl,
+            onChange: (color) => {
+              if (nodeGraphTraceDisplayColorWidgetState.syncing) {
+                return;
+              }
+              const nextHex = nodeGraphTraceDisplayNormalizeHexColor(color?.hex, hex);
+              const colorInput = nodeGraphTraceDisplaySettingsRoot()?.querySelector?.(
+                `[data-trace-display-color="${field}"]`,
+              );
+              if (colorInput) {
+                colorInput.value = nextHex;
+              }
+              // Live paint while dragging strips.
+              applyNodeGraphTraceDisplaySettingsForm({ persist: "none", record: false });
+            },
+          });
+          nodeGraphTraceDisplayColorWidgetState.widgets.set(field, widget);
+          requestAnimationFrame(() => {
+            try {
+              widget?.fitFittedText?.();
+              widget?.render?.();
+            } catch {
+              // ignore
+            }
+          });
+        } catch (mountErr) {
+          console.warn(
+            "[trace-display] color-widget mount failed",
+            field,
+            mountErr?.message || String(mountErr),
+          );
+        }
+      } else {
+        nodeGraphTraceDisplayColorWidgetState.syncing = true;
+        try {
+          widget.label = label;
+          widget.setColor(hsl, false);
+        } finally {
+          nodeGraphTraceDisplayColorWidgetState.syncing = false;
+        }
+      }
+    }
+  }).catch((err) => {
+    console.warn(
+      "[trace-display] color-widget failed to load",
+      err?.message || String(err),
+      err?.stack || "",
+    );
+  });
+}
+
 function applyNodeGraphTraceDisplaySettingsForm(options = {}) {
   const settings = readNodeGraphTraceDisplaySettingsForm();
   const commit = Boolean(options.record || options.commit);
@@ -4832,6 +6404,10 @@ function applyNodeGraphTraceDisplaySettingsForm(options = {}) {
     }
     const settingsSchema = nodeGraphModuleDisplaySettingsSchemaForNode(node);
     assignNodeGraphTypedDisplaySettingsEverywhere(node, settingsSchema, settings);
+    // Spectrogram bins ride params for the worklet — push a param sync.
+    if (settingsSchema === "spectrogramBurn" && typeof scheduleNodeGraphLiveParameterSync === "function") {
+      scheduleNodeGraphLiveParameterSync();
+    }
   }
   nodeGraphMvp.patchDirtyState = "edited";
   persistNodeGraphTraceDisplaySettingsSoon(options.persist || "debounce");
@@ -4849,6 +6425,10 @@ function applyNodeGraphTraceDisplaySettingsForm(options = {}) {
     }
   }
   scheduleNodeGraphModuleScopeDraw();
+  // XY Pad face is not a scope slot — repaint pads when display settings change.
+  if (typeof nodeGraphXyPadRedrawAll === "function") {
+    nodeGraphXyPadRedrawAll();
+  }
   return settings;
 }
 
@@ -4889,6 +6469,7 @@ function finishCloseNodeGraphTraceDisplaySettings() {
   if (popover) {
     popover.hidden = true;
   }
+  destroyNodeGraphTraceDisplayColorWidgets();
   rememberNodeGraphTraceDisplaySettingsWindowState({ open: false }, { status: false });
   nodeGraphMvp.traceDisplaySettingsTargetNode = null;
   scheduleNodeGraphModuleScopeDraw();
@@ -5050,6 +6631,8 @@ function openNodeGraphGlobalTraceSettings(event = {}) {
     : (nodeGraphMvp.sharedInspectorWindowState || {});
   applyNodeGraphTraceDisplaySettingsWindowSize(sharedInspectorState.size);
   popover.hidden = false;
+  // Widgets skip mount while popover is hidden — refresh after unhide.
+  syncNodeGraphTraceDisplayColorWidgets(popover);
   const position = nodeGraphTraceDisplaySettingsOpenPosition(popover, sharedInspectorState, replacementRect, event);
   popover.style.position = "fixed";
   if (typeof setNodeGraphFloatingWindowViewportPosition === "function") {
@@ -5058,6 +6641,12 @@ function openNodeGraphGlobalTraceSettings(event = {}) {
     popover.style.left = `${position.left}px`;
     popover.style.top = `${position.top}px`;
     popover.style.right = "auto";
+  }
+  if (typeof markNodeGraphFloatingWindowSurface === "function") {
+    markNodeGraphFloatingWindowSurface(popover);
+  }
+  if (typeof raiseNodeGraphFloatingWindow === "function") {
+    raiseNodeGraphFloatingWindow(popover);
   }
   rememberNodeGraphTraceDisplaySettingsWindowState(
     { open: true, position, targetNode: "__globalTraceSettings" },
@@ -5134,7 +6723,8 @@ function bindNodeGraphTraceDisplaySettingsEvents(popover) {
   popover.addEventListener("change", commitNodeGraphTraceDisplaySettingsChange);
   popover.addEventListener("click", stepNodeGraphTraceDisplaySetting);
   popover.addEventListener("dblclick", beginNodeGraphTraceDisplayFieldEdit, true);
-  popover.addEventListener("blur", finishNodeGraphTraceDisplayFieldEdit, true);
+  // focusout bubbles; blur does not — parent never saw Enter→blur before.
+  popover.addEventListener("focusout", finishNodeGraphTraceDisplayFieldEdit, true);
   popover.addEventListener("keydown", handleNodeGraphTraceDisplayFieldEditKeydown, true);
   popover.addEventListener("focusin", preventNodeGraphTraceDisplayReadonlyFieldTextInteraction, true);
   popover.addEventListener("selectstart", preventNodeGraphTraceDisplayReadonlyFieldTextInteraction, true);
@@ -5151,11 +6741,21 @@ function bindNodeGraphTraceDisplaySettingsEvents(popover) {
   document.addEventListener("pointermove", dragNodeGraphTraceDisplaySettings);
   document.addEventListener("pointerup", endNodeGraphTraceDisplaySettingsDrag);
   document.addEventListener("pointercancel", endNodeGraphTraceDisplaySettingsDrag);
+  // Click outside the field (including outside the window) ends text edit.
+  document.addEventListener("pointerdown", handleNodeGraphTraceDisplayFieldEditPointerDown, true);
 }
 
 function openNodeGraphTraceDisplaySettings(nodeId, event = {}) {
   const node = nodeGraphPatchNode(nodeId);
   if (!node) {
+    return false;
+  }
+  // Music Player owns nodePhosphorWaveformSettingsWindow — do not fall through
+  // into the shared Trace/schema form (display gear routes there first).
+  if (typeof nodeGraphNodeUsesPhosphorWaveformDisplay === "function" && nodeGraphNodeUsesPhosphorWaveformDisplay(node)) {
+    return false;
+  }
+  if (typeof openNodeGraphLedSettings === "function" && node?.type === "led") {
     return false;
   }
   if (!nodeGraphNodeCanOpenDisplaySettings(node)) {
@@ -5200,6 +6800,8 @@ function openNodeGraphTraceDisplaySettings(nodeId, event = {}) {
     : (nodeGraphMvp.sharedInspectorWindowState || {});
   applyNodeGraphTraceDisplaySettingsWindowSize(sharedInspectorState.size);
   popover.hidden = false;
+  // Widgets skip mount while popover is hidden — refresh after unhide.
+  syncNodeGraphTraceDisplayColorWidgets(popover);
   const position = nodeGraphTraceDisplaySettingsOpenPosition(popover, sharedInspectorState, replacementRect, event);
   popover.style.position = "fixed";
   if (typeof setNodeGraphFloatingWindowViewportPosition === "function") {
@@ -5208,6 +6810,12 @@ function openNodeGraphTraceDisplaySettings(nodeId, event = {}) {
     popover.style.left = `${position.left}px`;
     popover.style.top = `${position.top}px`;
     popover.style.right = "auto";
+  }
+  if (typeof markNodeGraphFloatingWindowSurface === "function") {
+    markNodeGraphFloatingWindowSurface(popover);
+  }
+  if (typeof raiseNodeGraphFloatingWindow === "function") {
+    raiseNodeGraphFloatingWindow(popover);
   }
   rememberNodeGraphTraceDisplaySettingsWindowState(
     { open: true, position, targetNode: node.id },
@@ -5267,7 +6875,7 @@ function nodeGraphScopeContiguousSampleCount(buffer) {
 }
 
 function nodeGraphModuleScopeCapturedScope2dBuffer(slot, options = {}) {
-  if (!["scope2d", "scope2dTrace"].includes(nodeGraphModuleDisplayRendererForSlot(slot))) {
+  if (!["scope2d", "scope2dTrace", "phosphorLight"].includes(nodeGraphModuleDisplayRendererForSlot(slot))) {
     return null;
   }
   const xPort = String(options.xPort || "X").trim() || "X";
@@ -5305,12 +6913,18 @@ function nodeGraphModuleScopeCapturedScope2dBuffer(slot, options = {}) {
     : 0;
   const historySeconds = Number(options.historySeconds);
   const minWindowFrames = nodeGraphScope2dSourceFrameCount(sampleRate, fps, validLength);
+  // Capture only what we need to deposit this frame (new samples + a small
+  // pad). The energy FBO holds the trail via decay — re-capturing ~1s and
+  // re-stamping it every frame painted a lagging "second path" behind the beam.
   const frames = Number.isFinite(historySeconds)
     ? Math.min(
       validLength,
       Math.max(1, Math.ceil(Math.max(0, historySeconds) * sampleRate)),
     )
-    : Math.min(validLength, Math.max(minWindowFrames, newSinceLastDraw));
+    : Math.min(
+      validLength,
+      Math.max(minWindowFrames, newSinceLastDraw, 1),
+    );
   const start = Math.max(0, length - frames);
   const startFrame = Math.max(0, absoluteFrame - frames);
   const x = new Float32Array(frames);
@@ -5670,8 +7284,10 @@ function nodeGraphModuleScopeBuffersCurrent() {
   }
   const patch = nodeGraphMvp?.patch;
   if (nodeGraphModuleScopeState.mode === "live") {
-    return Boolean(nodeGraphMvp?.live?.node)
-      && nodeGraphModuleScopeState.patchFingerprint === nodeGraphPatchFingerprint();
+    // Live rings stay valid while the audio session is up. Layout commits
+    // change the full patch fingerprint without invalidating sample history;
+    // do not treat that as "stale" or scopes go blank until the next plan sync.
+    return Boolean(nodeGraphMvp?.live?.node);
   }
   return nodeGraphModuleScopeState.patchFingerprint === nodeGraphPatchFingerprint()
     && nodeGraphModuleScopeState.monitorFingerprint === nodeGraphModuleScopeMonitorFingerprint(
@@ -5715,7 +7331,22 @@ function nodeGraphModuleScopeCircuitRunning() {
   );
 }
 
+/**
+ * Simulation / transport pause: live speedMultiplier === 0 (Play/Pause, no
+ * separate "scope pause" clock). That is the only dedicated freeze signal we
+ * use for holding phosphor; visualControls.scopePaused is an optional patch
+ * overlay on top.
+ */
+function nodeGraphModuleScopeEnginePaused() {
+  const speed = Number(nodeGraphMvp?.live?.speedMultiplier);
+  return Number.isFinite(speed) && speed <= 0;
+}
+
 function nodeGraphModuleScopePaused() {
+  // Engine speed 0 = simulation paused (transport Play/Pause).
+  if (nodeGraphModuleScopeEnginePaused()) {
+    return true;
+  }
   const visualPause = Number(nodeGraphMvp?.visualControls?.scopePaused) || 0;
   if (visualPause > 0.5) {
     return true;
@@ -5724,6 +7355,57 @@ function nodeGraphModuleScopePaused() {
     return true;
   }
   return !nodeGraphModuleScopeHasModelDisplay() && !nodeGraphModuleScopeHasRenderableSlots();
+}
+
+/**
+ * Phosphor freeze: no new deposits, no decay/bleed step, hold the last face pixels.
+ * Primary signal is engine speed 0. While frozen we still advance per-canvas
+ * sample cursors so unpause does not dump a backlog of stamps.
+ */
+function nodeGraphModuleScopePhosphorFrozen() {
+  return nodeGraphModuleScopePaused();
+}
+
+function absorbNodeGraphPhosphorDrawCursorOnCanvas(canvas, endFrame) {
+  if (!canvas || !Number.isFinite(Number(endFrame))) {
+    return;
+  }
+  const frame = Number(endFrame);
+  canvas._nodeGraphScope2dLastDrawnFrame = frame;
+  canvas._nodeGraphOneDimensionalBurnLastDrawnFrame = frame;
+  canvas._phosphorScope2dLastFrame = frame;
+  if (canvas._nodeGraphScope2dBurnRenderer) {
+    canvas._nodeGraphScope2dBurnRenderer.lastFrame = frame;
+    canvas._nodeGraphScope2dBurnRenderer._nodeGraphScope2dLastDrawnFrame = frame;
+  }
+}
+
+function absorbNodeGraphModuleScopePhosphorDrawCursors() {
+  if (typeof nodeGraphModuleScopeSlots !== "function") {
+    return;
+  }
+  for (const slot of nodeGraphModuleScopeSlots() || []) {
+    const buffer = nodeGraphModuleScopeDisplayBuffer?.(
+      slot,
+      nodeGraphModuleScopeCapturedBufferForSlot?.(slot),
+    ) || nodeGraphModuleScopeCapturedBufferForSlot?.(slot);
+    const endFrame = Number(buffer?.nodeGraphScopeAbsoluteFrame);
+    if (!Number.isFinite(endFrame)) {
+      continue;
+    }
+    const burnCanvas = typeof nodeGraphScope2dBurnCanvasForSlot === "function"
+      ? nodeGraphScope2dBurnCanvasForSlot(slot)
+      : null;
+    absorbNodeGraphPhosphorDrawCursorOnCanvas(burnCanvas, endFrame);
+    const localCanvas = typeof nodeGraphModuleScopeLocalFallbackCanvas === "function"
+      ? nodeGraphModuleScopeLocalFallbackCanvas(slot)
+      : null;
+    absorbNodeGraphPhosphorDrawCursorOnCanvas(localCanvas, endFrame);
+    const numberCanvas = typeof nodeGraphNumberReadoutCanvasForSlot === "function"
+      ? nodeGraphNumberReadoutCanvasForSlot(slot)
+      : null;
+    absorbNodeGraphPhosphorDrawCursorOnCanvas(numberCanvas, endFrame);
+  }
 }
 
 function nodeGraphModuleScopeBackingPixelRatio(rect, requestedPixelRatio = window.devicePixelRatio || 1) {
@@ -5739,6 +7421,65 @@ function nodeGraphModuleScopeBackingPixelRatio(rect, requestedPixelRatio = windo
       maxSize / height,
     ),
   );
+}
+
+/**
+ * Fixed pixel-grid backing for face-local scopes (scope2d burn / Lorenz,
+ * PhosphorLight, Number Readout, local fallback canvases).
+ *
+ * Uses layout CSS size (clientWidth/offsetWidth) × devicePixelRatio — the same
+ * contract as nodeGraphSizeDisplayCanvas (filter curve, phosphor waveform).
+ * Workspace zoom must NOT grow the buffer: getBoundingClientRect is screen-
+ * space and balloons with zoom, killing FPS on burn/energy FBOs. CSS width/
+ * height 100% scales the fixed bitmap; .pixelated-canvas-zoom keeps it crisp
+ * (blocky) when zoomed in instead of bilinear mush.
+ */
+function nodeGraphModuleScopeFaceBackingSize(screenElement, requestedPixelRatio = window.devicePixelRatio || 1) {
+  if (!screenElement) {
+    return null;
+  }
+  const rect = typeof screenElement.getBoundingClientRect === "function"
+    ? screenElement.getBoundingClientRect()
+    : { width: 0, height: 0 };
+  const zoom = Math.max(
+    0.01,
+    Number(
+      typeof nodeGraphZoom === "function"
+        ? nodeGraphZoom()
+        : (nodeGraphMvp && nodeGraphMvp.zoom),
+    ) || 1,
+  );
+  // Layout (pre-transform) CSS pixels — stable under workspace zoom.
+  const cssWidth = Math.max(
+    1,
+    Number(screenElement.clientWidth || screenElement.offsetWidth || 0)
+      || (Number(rect.width) || 1) / zoom,
+  );
+  const cssHeight = Math.max(
+    1,
+    Number(screenElement.clientHeight || screenElement.offsetHeight || 0)
+      || (Number(rect.height) || 1) / zoom,
+  );
+  // Face buffers use devicePixelRatio only (capped by max store vs layout size).
+  // Do not inherit a workspace-rect-derived ratio that shrank for the whole
+  // graph, and never scale by workspace zoom.
+  const requested = Math.max(
+    0.25,
+    Number(window.devicePixelRatio)
+      || Number(requestedPixelRatio)
+      || 1,
+  );
+  const pixelRatio = nodeGraphModuleScopeBackingPixelRatio(
+    { width: cssWidth, height: cssHeight },
+    requested,
+  );
+  return {
+    cssHeight,
+    cssWidth,
+    height: Math.max(1, Math.round(cssHeight * pixelRatio)),
+    pixelRatio,
+    width: Math.max(1, Math.round(cssWidth * pixelRatio)),
+  };
 }
 
 function syncNodeGraphModuleScopeCanvas() {
@@ -6189,26 +7930,44 @@ function nodeGraphTraceDisplayVisibleSamples(buffer, settings) {
   return Math.max(0, Math.min(buffer.length, Math.round(requestedSamples)));
 }
 
-// Re-anchoring the trigger from scratch every frame (nearest zero-crossing to
-// the buffer tail) looks fine for a perfectly stable tone, but for anything
-// less clean -- noise, FM, a slowly evolving waveform -- the "nearest
-// crossing" can land on a different cycle each frame, reading as constant
-// jitter instead of a locked trace. This holds the previous lock's absolute
-// phase and only re-searches when the lock is actually lost (period drifted
-// too far, the window size changed, or the predicted position fell out of
-// range). The buffer is a fixed-capacity scrolling window (old samples are
-// shifted out as new ones arrive, so a fixed index does NOT mean a fixed
-// point in time) -- nodeGraphScopeTotalSampleCount is the only thing that
-// tracks how far the window has actually scrolled since the last lock, so
-// the predicted anchor is shifted by exactly that amount, then folded back
-// into range by whole periods (which preserves phase).
-//
-// `lock` is the caller's per-DISPLAY-node entry in
-// nodeGraphModuleScopeState.traceDisplaySyncLocks, not a property on
-// `buffer` -- `buffer` is the shared captured-signal object for whichever
-// source node this display watches, so two scopes watching the same source
-// (each with their own zoom/cycles) would otherwise stomp each other's lock
-// every frame instead of each holding a stable trigger.
+/**
+ * Snap the visible sample window so freerun scroll advances in whole pixels.
+ *
+ * Without this: each frame the window end tracks the latest sample (start += N),
+ * and x is remapped as 0..width across the window. When history is long,
+ * samples-per-pixel (spp) is >> 1, so a 1-sample advance is a fraction of a
+ * pixel — the waveform crawls with subpixel shimmer. Short history (spp≈1)
+ * or low pixel density (few columns) already hides it.
+ *
+ * Snapping start to floor(start / spp) * spp keeps the stroke locked to the
+ * pixel grid until enough samples arrive for a full 1px step.
+ */
+function nodeGraphTraceDisplayPixelLockedView(view, canvasWidthPx) {
+  if (!view || !Number.isFinite(Number(view.start)) || !Number.isFinite(Number(view.end))) {
+    return view;
+  }
+  const visible = Number(view.end) - Number(view.start);
+  if (!(visible > 0) || !Number.isFinite(visible)) {
+    return view;
+  }
+  const width = Math.max(1, Math.floor(Number(canvasWidthPx) || 1));
+  const spp = visible / width;
+  if (!(spp > 1e-9) || !Number.isFinite(spp)) {
+    return view;
+  }
+  const snappedStart = Math.floor(Number(view.start) / spp) * spp;
+  if (!Number.isFinite(snappedStart)) {
+    return view;
+  }
+  return {
+    ...view,
+    start: snappedStart,
+    end: snappedStart + visible,
+  };
+}
+
+// TRACE = VECTOR (polylines). Strip-chart pixel-scroll removed — that model is phosphor/waterfall only.
+
 function nodeGraphTraceDisplayStabilizedSyncStart(lock, buffer, syncBuffer, cycleEstimate, visibleSamples, validStart, validEnd) {
   const periodSamples = Number(cycleEstimate?.periodSamples) || 0;
   if (!(periodSamples > 0)) {
@@ -6263,22 +8022,86 @@ function nodeGraphTraceDisplayStabilizedSyncStart(lock, buffer, syncBuffer, cycl
   return reacquired;
 }
 
-function nodeGraphTraceDisplayBufferView(buffer, slot) {
+/**
+ * Resolve sync mode: "off" | "left" | "right" | "mono".
+ * Legacy sourceSync true → mono; false → off.
+ */
+function nodeGraphTraceDisplaySyncChannel(settings) {
+  const raw = String(settings?.syncChannel || "").toLowerCase().trim();
+  if (raw === "left" || raw === "right" || raw === "mono" || raw === "off") {
+    return raw;
+  }
+  if (settings?.sourceSync === false) {
+    return "off";
+  }
+  if (settings?.sourceSync) {
+    return "mono";
+  }
+  return "off";
+}
+
+/** Average L/R into a lightweight buffer for mono cycle detection. */
+function nodeGraphTraceDisplayMonoSyncBuffer(leftBuffer, rightBuffer) {
+  if (!leftBuffer?.length || !rightBuffer?.length) {
+    return leftBuffer || rightBuffer || null;
+  }
+  const n = Math.min(leftBuffer.length, rightBuffer.length);
+  let mono = leftBuffer._traceMonoSyncScratch;
+  if (!mono || !(mono instanceof Float32Array) || mono.length < n) {
+    mono = new Float32Array(n);
+    leftBuffer._traceMonoSyncScratch = mono;
+  }
+  for (let i = 0; i < n; i += 1) {
+    const a = Number(leftBuffer[i]);
+    const b = Number(rightBuffer[i]);
+    mono[i] = ((Number.isFinite(a) ? a : 0) + (Number.isFinite(b) ? b : 0)) * 0.5;
+  }
+  // Attach the same metadata cycle/view helpers expect on captured buffers.
+  const head = {
+    length: n,
+    nodeGraphScopeTotalSampleCount: leftBuffer.nodeGraphScopeTotalSampleCount
+      ?? rightBuffer.nodeGraphScopeTotalSampleCount,
+    nodeGraphScopeRecentSampleCount: leftBuffer.nodeGraphScopeRecentSampleCount
+      ?? rightBuffer.nodeGraphScopeRecentSampleCount,
+  };
+  // Proxy numeric index access onto the Float32Array.
+  return new Proxy(head, {
+    get(target, prop) {
+      if (prop === "length") {
+        return n;
+      }
+      if (typeof prop === "string" && /^[0-9]+$/.test(prop)) {
+        return mono[Number(prop)];
+      }
+      if (prop in target) {
+        return target[prop];
+      }
+      return mono[prop];
+    },
+  });
+}
+
+function nodeGraphTraceDisplayBufferView(buffer, slot, options = {}) {
   const settings = nodeGraphTraceDisplaySettingsForSlot(slot);
   const zoomEditActive = Boolean(nodeGraphMvp?.traceDisplayZoomEditActive);
-  const syncBuffer = nodeGraphModuleScopeSyncBuffer(buffer);
+  const syncChannel = options.syncChannel || nodeGraphTraceDisplaySyncChannel(settings);
+  const forceOff = options.forceSyncOff === true || syncChannel === "off";
+  const syncSourceBuffer = options.syncBuffer || buffer;
+  const syncBuffer = nodeGraphModuleScopeSyncBuffer(syncSourceBuffer);
   const availableSamples = nodeGraphScopeAvailableSampleCount(buffer);
-  const validEnd = buffer.length;
+  const validEnd = buffer?.length || 0;
   const validStart = availableSamples > 0
     ? Math.max(0, validEnd - Math.min(validEnd, availableSamples))
     : 0;
   const validSamples = Math.max(0, validEnd - validStart);
   const visibleSamples = Math.min(validSamples, nodeGraphTraceDisplayVisibleSamples(buffer, settings));
   let start = Math.max(validStart, validEnd - visibleSamples);
-  const syncEligible = settings.sourceSync && !zoomEditActive && visibleSamples < validSamples;
-  const estimatedCycle = syncEligible ? nodeGraphModuleScopeEstimatedCycle(syncBuffer || buffer) : null;
+  const syncEligible = !forceOff && !zoomEditActive && visibleSamples < validSamples;
+  const estimatedCycle = syncEligible
+    ? nodeGraphModuleScopeEstimatedCycle(syncBuffer || syncSourceBuffer)
+    : null;
   if (syncEligible && estimatedCycle) {
-    const lockKey = String(slot?.nodeId || "");
+    const lockKey = `${String(slot?.nodeId || "")}:${syncChannel}`;
     let lock = nodeGraphModuleScopeState.traceDisplaySyncLocks.get(lockKey);
     if (!lock) {
       lock = {};
@@ -6286,7 +8109,7 @@ function nodeGraphTraceDisplayBufferView(buffer, slot) {
     }
     const triggeredStart = nodeGraphTraceDisplayStabilizedSyncStart(
       lock,
-      buffer,
+      syncSourceBuffer,
       syncBuffer,
       estimatedCycle,
       visibleSamples,
@@ -6297,11 +8120,56 @@ function nodeGraphTraceDisplayBufferView(buffer, slot) {
       start = triggeredStart;
     }
   }
+  if (Number.isFinite(options.forceStart)) {
+    start = Math.max(validStart, Math.min(validEnd - visibleSamples, Math.floor(options.forceStart)));
+  }
+  const ampScale = Number(settings?.scale);
   return {
     end: Math.min(validEnd, start + visibleSamples),
-    gain: 1,
+    // Amplitude zoom for Output / Trace drawers (1 = full-scale face).
+    gain: Number.isFinite(ampScale) && ampScale > 0
+      ? clampNodeSliderValue(ampScale, 0.01, 100)
+      : 1,
     offset: 0,
     start,
+  };
+}
+
+/**
+ * Shared window for Output L/R so both channels stay time-aligned.
+ * syncChannel: off (each freeruns) | left | right | mono.
+ */
+function nodeGraphTraceDisplayStereoBufferViews(leftBuffer, rightBuffer, slot) {
+  const settings = nodeGraphTraceDisplaySettingsForSlot(slot);
+  const syncChannel = nodeGraphTraceDisplaySyncChannel(settings);
+  if (syncChannel === "off" || !leftBuffer?.length || !rightBuffer?.length) {
+    return {
+      left: nodeGraphTraceDisplayBufferView(leftBuffer, slot, { forceSyncOff: true }),
+      right: nodeGraphTraceDisplayBufferView(rightBuffer, slot, { forceSyncOff: true }),
+      syncChannel: "off",
+    };
+  }
+  let syncBuffer = leftBuffer;
+  if (syncChannel === "right") {
+    syncBuffer = rightBuffer;
+  } else if (syncChannel === "mono") {
+    syncBuffer = nodeGraphTraceDisplayMonoSyncBuffer(leftBuffer, rightBuffer) || leftBuffer;
+  }
+  // Trigger window from the chosen source, then force both channels to that start.
+  const master = nodeGraphTraceDisplayBufferView(syncBuffer, slot, {
+    syncBuffer,
+    syncChannel: "mono",
+  });
+  return {
+    left: nodeGraphTraceDisplayBufferView(leftBuffer, slot, {
+      forceStart: master.start,
+      forceSyncOff: true,
+    }),
+    right: nodeGraphTraceDisplayBufferView(rightBuffer, slot, {
+      forceStart: master.start,
+      forceSyncOff: true,
+    }),
+    syncChannel,
   };
 }
 
@@ -6581,6 +8449,8 @@ function nodeGraphTraceDisplayDrawSignature(slot, item, buffer, settings) {
   return [
     Number(buffer?.nodeGraphScopeVersion) || 0,
     nodeGraphScopeAvailableSampleCount(buffer),
+    // Strip chart advances on absolute sample count, not just retained length.
+    Math.floor(Number(buffer?.nodeGraphScopeTotalSampleCount) || 0),
     Math.round(Number(item?.scopeRect?.left) || 0),
     Math.round(Number(item?.scopeRect?.top) || 0),
     Math.round(Number(item?.scopeRect?.width) || 0),
@@ -6589,6 +8459,7 @@ function nodeGraphTraceDisplayDrawSignature(slot, item, buffer, settings) {
     Math.round((Number(item?.visibleProgressRange?.[1]) || 0) * 10000),
     settings.zoomSeconds,
     settings.padding,
+    Number(settings.scale) || 1,
     settings.skipDiscontinuities ? 1 : 0,
     settings.lineThickness,
     settings.brightness,
@@ -6596,7 +8467,13 @@ function nodeGraphTraceDisplayDrawSignature(slot, item, buffer, settings) {
     settings.secondaryLineThickness,
     settings.secondaryBrightness,
     settings.secondaryColor,
+    settings.stereoBlend || "combine",
+    settings.meetColor || "auto",
+    // Keep 0 density as 0 (Number(0) || 1 would wrongly snap to 1).
+    Number.isFinite(Number(settings.pixelDensity)) ? Number(settings.pixelDensity) : 1,
+    settings.background || settings.backgroundColor || "",
     settings.sourceSync === false ? 0 : 1,
+    settings.syncChannel || "off",
   ].join("|");
 }
 
@@ -8017,6 +9894,8 @@ function nodeGraphModuleScopeLocalFallbackCanvas(slot) {
   // Brand new canvas — create and cache it.
   canvas = document.createElement("canvas");
   canvas.className = "node-module-scope-local-fallback-canvas";
+  // Opaque face (never screen-blend — that made black plates go green/teal).
+  canvas.style.mixBlendMode = "normal";
   canvas.setAttribute("aria-hidden", "true");
   screenElement.appendChild(canvas);
   if (nodeId) {
@@ -8025,13 +9904,30 @@ function nodeGraphModuleScopeLocalFallbackCanvas(slot) {
   return canvas;
 }
 
-function syncNodeGraphModuleScopeLocalFallbackCanvas(canvas, screenElement, pixelRatio) {
+/**
+ * Size a local face canvas to layout×dpr × pixelDensity.
+ *
+ * TRACE: still a vector polyline into this buffer; density only sets how coarse
+ * the backing store is (0 = chunky lo-fi, 1 = full face, 4 = supersample).
+ * PHOSPHOR: same knob on energy grids — different product, same sizing helper.
+ * Never use density as an excuse for strip-chart / column-paint Trace models.
+ */
+function syncNodeGraphModuleScopeLocalFallbackCanvas(canvas, screenElement, pixelRatio, pixelDensity = 1) {
   if (!canvas || !screenElement) {
     return false;
   }
-  const rect = screenElement.getBoundingClientRect();
-  const width = Math.max(1, Math.round(rect.width * pixelRatio));
-  const height = Math.max(1, Math.round(rect.height * pixelRatio));
+  const size = nodeGraphModuleScopeFaceBackingSize(screenElement, pixelRatio);
+  if (!size) {
+    return false;
+  }
+  const resolved = typeof nodeGraphScope2dResolvePixelDensity === "function"
+    ? nodeGraphScope2dResolvePixelDensity(pixelDensity, size.width, size.height)
+    : { density: 1, effective: 1 };
+  // 0 is valid (1×1 pixel). Never use `|| 1` — that snaps density 0 up to full res.
+  const densityRaw = Number(resolved.effective);
+  const density = Number.isFinite(densityRaw) ? Math.max(0, densityRaw) : 1;
+  const width = Math.max(1, Math.round(size.width * density));
+  const height = Math.max(1, Math.round(size.height * density));
   if (canvas.width !== width || canvas.height !== height) {
     const previousWidth = canvas.width;
     const previousHeight = canvas.height;
@@ -8052,6 +9948,16 @@ function syncNodeGraphModuleScopeLocalFallbackCanvas(canvas, screenElement, pixe
       context.imageSmoothingEnabled = false;
       context.drawImage(previousCanvas, 0, 0, previousWidth, previousHeight, 0, 0, width, height);
     }
+  }
+  // Below 1: intentional chunky CSS upscale. At/above 1: smooth scale (AA when density > 1).
+  if (density < 0.999) {
+    canvas.style.imageRendering = "pixelated";
+  } else if (canvas.style.imageRendering) {
+    canvas.style.imageRendering = "";
+  }
+  if (canvas.style.width || canvas.style.height) {
+    canvas.style.width = "";
+    canvas.style.height = "";
   }
   return true;
 }
@@ -8542,50 +10448,100 @@ function drawNodeGraphOscilloscopeBeam(renderer, item, pixelRatio, x1, y1, x2, y
 }
 
 function drawNodeGraphDotOscilloscopeItem(renderer, item, pixelRatio) {
+  // Phosphor Dot: one efficient soft stamp on the mono energy drawer.
+  // Brightness is pre-averaged over the latest capture window (sub-frame /
+  // multi-sample intensity), not a single sample snap.
   const buffer = item?.buffer;
-  const rect = item?.scopeRect;
-  if (!buffer || !rect) {
+  if (!buffer) {
     return;
   }
   renderNodeGraphModuleScopeAnalyzer(item.slot, buffer);
   const settings = nodeGraphZeroDBurnSettingsForNode(nodeGraphModuleScopeNodeForSlot(item.slot));
-  clearNodeGraphModuleScopeLocalFallback(item.slot);
-  const brightness = clampNodeSliderValue(
+  const canvas = nodeGraphModuleScopeLocalFallbackCanvas(item?.slot);
+  const screenElement = item?.screenElement || item?.slot?.scopeElement;
+  if (!canvas || !syncNodeGraphModuleScopeLocalFallbackCanvas(
+    canvas,
+    screenElement,
+    pixelRatio,
+    settings.pixelDensity,
+  )) {
+    return;
+  }
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return;
+  }
+  const brightness01 = clampNodeSliderValue(
     Number(settings.bipolarBrightness ? buffer.nodeGraphScopeBipolarLightTarget : buffer.nodeGraphScopeLightTarget) || 0,
     0,
     1,
   );
-  if (brightness <= 0.002) {
+  const bg = nodeGraphFacePlateBackground(settings);
+  nodeGraphFacePlateApplyCss(screenElement, bg);
+  const width = canvas.width;
+  const height = canvas.height;
+  const minSide = Math.max(1, Math.min(width, height));
+  const size01 = clampNodeSliderValue(settings.dot1Size, 0, 1);
+  const radius = Math.max(0.5, minSide * size01 * 0.5);
+  const blur = nodeGraphTraceDisplayClampStampBlur(settings.lineThickness);
+  const burn = clampNodeSliderValue(Number(settings.burn) || 0, 0, 1);
+  const decay = clampNodeSliderValue(Number(settings.decay) || 0, 0, 1);
+
+  // Opaque face plate (CSS mix-blend is normal; never screen-tint the module chrome).
+  canvas.style.mixBlendMode = "normal";
+  // Prefer shared energy phosphor path (same stamps as 2D Phosphor).
+  const energyGl = typeof nodeGraphPhosphorEnergyGlEnsure === "function"
+    ? nodeGraphPhosphorEnergyGlEnsure(canvas, width, height, "_phosphorEnergyGl")
+    : null;
+  if (energyGl && typeof nodeGraphPhosphorEnergyGlStepBeams === "function") {
+    nodeGraphPhosphorApplyGradientLut(energyGl, settings, "#75ebff");
+    const deposit = brightness01 > 0.001 && settings.dot1Brightness > 0
+      ? (typeof PhosphorDrawer !== "undefined" && PhosphorDrawer.depositGain
+        ? PhosphorDrawer.depositGain(burn, settings.dot1Brightness * brightness01, size01)
+        : settings.dot1Brightness * brightness01 * (0.02 + burn * 0.08))
+      : 0;
+    const cx = width * 0.5;
+    const cy = height * 0.5;
+    // Freeze = hold energy FBO: no deposit, no decay, no bleed. Still present.
+    if (!nodeGraphModuleScopePhosphorFrozen()) {
+      nodeGraphPhosphorEnergyGlStepBeams(energyGl, {
+        decay,
+        pathPoints: deposit > 1e-8 ? [{ x: cx, y: cy }] : [],
+        radius,
+        brightness: deposit,
+        blur,
+        mode: "dots",
+        maxDots: 8,
+      });
+    }
+    const exposure = typeof PhosphorDrawer !== "undefined" && PhosphorDrawer.exposure
+      ? PhosphorDrawer.exposure(burn)
+      : 1.85 + burn * 2.1;
+    nodeGraphFacePlateFillCanvas(context, canvas, bg);
+    if (typeof nodeGraphPhosphorEnergyGlPresent === "function"
+      && nodeGraphPhosphorEnergyGlPresent(energyGl, 1, { exposure })) {
+      context.save();
+      context.globalCompositeOperation = "lighter";
+      context.imageSmoothingEnabled = true;
+      context.drawImage(energyGl.canvas, 0, 0, width, height);
+      context.restore();
+    }
+    recordNodeGraphModuleScopeRenderMetrics(1, 1);
     return;
   }
-  const square = nodeGraphModuleScopeCenteredSquareRect(rect);
-  const centerX = square.left + square.width * 0.5;
-  const centerY = square.top + square.height * 0.5;
-  const dotSpace = Math.min(square.width, square.height);
-  // The beam shader turns uSize into a core RADIUS of uSize * 0.34 (see the
-  // beam fragment shader: `radius = max(uSize * 0.34, 0.0001)`), so passing
-  // the square's side straight through as the thickness lit a disc only about
-  // 0.68 of the side across -- Dot size 1 visibly failed to fill the display.
-  //
-  // Size 1 = the INSCRIBED circle: radius on the half-side, so the disc is
-  // exactly as wide as the display and just touches all four edges. Going
-  // further (out to the half-diagonal, which would light the corners too)
-  // only buys those corners at the cost of the scissor slicing flat chords
-  // off the disc, which reads as harsh clipping rather than a bigger dot.
-  const halfSide = dotSpace * 0.5;
-  const innerThickness = Math.max(
-    0,
-    (clampNodeSliderValue(settings.dot1Size, 0, 1) * halfSide) / NODE_GRAPH_BEAM_SIZE_TO_RADIUS,
-  );
-  const dotHalfLength = 0.01;
-  if (settings.dot1Enabled !== false && settings.dot1Brightness > 0 && innerThickness > 0) {
-    drawNodeGraphOscilloscopeBeam(renderer, item, pixelRatio, centerX - dotHalfLength, centerY, centerX + dotHalfLength, centerY, {
-      blur: settings.lineThickness,
-      color: nodeGraphScopeHexColorToRgb(settings.dot1Color),
-      intensity: brightness * settings.dot1Brightness,
-      thicknessPx: innerThickness,
+
+  // Fallback: instant TraceStroke disc (no persistence).
+  nodeGraphFacePlateFillCanvas(context, canvas, bg);
+  if (brightness01 > 0.001 && typeof TraceStroke !== "undefined" && TraceStroke.draw) {
+    TraceStroke.draw(context, [{ x: width * 0.5, y: height * 0.5 }], {
+      size: size01,
+      blur,
+      brightness: settings.dot1Brightness * brightness01,
+      color: settings.dot1Color,
+      faceMinSide: minSide,
     });
   }
+  recordNodeGraphModuleScopeRenderMetrics(1, 1);
 }
 
 function drawNodeGraphValueOscilloscopeCanvasLine(context, points, color, brightness, thickness, blur) {
@@ -8623,38 +10579,51 @@ function nodeGraphValueOscilloscopeTrailSamples(buffer) {
 function drawNodeGraphValueOscilloscopeTrail(item, pixelRatio, geometry, settings) {
   const canvas = nodeGraphModuleScopeLocalFallbackCanvas(item?.slot);
   const screenElement = item?.screenElement || item?.slot?.scopeElement;
-  if (!canvas || !syncNodeGraphModuleScopeLocalFallbackCanvas(canvas, screenElement, pixelRatio)) {
+  if (!canvas || !syncNodeGraphModuleScopeLocalFallbackCanvas(
+    canvas,
+    screenElement,
+    pixelRatio,
+    settings?.pixelDensity,
+  )) {
     return;
   }
   const context = canvas.getContext("2d");
   if (!context) {
     return;
   }
+  const bg = nodeGraphFacePlateBackground(settings);
+  nodeGraphFacePlateApplyCss(screenElement, bg);
   nodeGraphOneDimensionalBurnFadeTrail(context, canvas, settings);
+  // Ensure plate under fade holes / first frames.
+  nodeGraphFacePlateFillUnder(context, canvas, bg);
   const burn = clampNodeSliderValue(Number(settings?.burn) || 0, 0, 1);
   if (burn <= 0 || !geometry) {
     return;
   }
   const screenRect = item?.screenRect;
-  if (!screenRect) {
+  if (!screenRect || !(screenRect.width > 0) || !(screenRect.height > 0)) {
     return;
   }
+  // Map workspace/screen face coords → buffer pixels. Multiplying by dpr alone
+  // is wrong under zoom (screen rect grows, buffer stays layout×dpr).
   const toCanvas = (x, y) => ({
-    x: (x - screenRect.left) * pixelRatio,
-    y: (y - screenRect.top) * pixelRatio,
+    x: ((x - screenRect.left) / screenRect.width) * canvas.width,
+    y: ((y - screenRect.top) / screenRect.height) * canvas.height,
   });
   const samples = nodeGraphValueOscilloscopeTrailSamples(item?.buffer);
   if (!samples.length) {
     return;
   }
+  const amp = nodeGraphDisplaySettingsAmplitudeScale(settings);
   const sampleLines = samples.map((sample) => {
-    const y = geometry.squareTop + geometry.squareHeight * 0.5 - sample * geometry.squareHeight * 0.44;
+    const v = clampNodeSliderValue(sample * amp, -1, 1);
+    const y = geometry.squareTop + geometry.squareHeight * 0.5 - v * geometry.squareHeight * 0.44;
     return {
       end: toCanvas(geometry.x2, y),
       start: toCanvas(geometry.x1, y),
     };
   });
-  const lineBase = Math.max(1, Math.min(geometry.squareWidth, geometry.squareHeight)) * pixelRatio;
+  const lineBase = Math.max(1, Math.min(canvas.width, canvas.height));
   const innerThickness = Math.max(0, lineBase * clampNodeSliderValue(settings.dot1Size, 0, 1));
   const capThickness = Math.max(0, lineBase * clampNodeSliderValue(settings.capSize, 0, 1));
   const trailIntensity = (0.04 + burn * 0.22) / Math.max(1, Math.sqrt(sampleLines.length));
@@ -8674,7 +10643,8 @@ function drawNodeGraphValueOscilloscopeTrail(item, pixelRatio, geometry, setting
     return;
   }
   for (const sample of samples) {
-    const y = geometry.squareTop + geometry.squareHeight * 0.5 - sample * geometry.squareHeight * 0.44;
+    const v = clampNodeSliderValue(sample * amp, -1, 1);
+    const y = geometry.squareTop + geometry.squareHeight * 0.5 - v * geometry.squareHeight * 0.44;
     for (const capX of [geometry.x1, geometry.x2]) {
       const capStart = toCanvas(capX, y - geometry.capLength);
       const capEnd = toCanvas(capX, y + geometry.capLength);
@@ -8700,7 +10670,12 @@ function drawNodeGraphValueOscilloscopeItem(renderer, item, pixelRatio) {
   renderNodeGraphModuleScopeAnalyzer(item.slot, item.buffer);
   const node = nodeGraphModuleScopeNodeForSlot(item.slot);
   const settings = nodeGraphTraceDisplaySettingsForNode(node);
-  const value = clampNodeSliderValue(nodeGraphOscilloscopeLatestSample(item?.buffer, 0), -1, 1);
+  const amp = nodeGraphDisplaySettingsAmplitudeScale(settings);
+  const value = clampNodeSliderValue(
+    nodeGraphOscilloscopeLatestSample(item?.buffer, 0) * amp,
+    -1,
+    1,
+  );
   const lineLength = clampNodeSliderValue(settings.lineLength, 0, 1);
   const square = nodeGraphModuleScopeCenteredSquareRect(rect);
   const displayLeft = Number(rect.left) || 0;
@@ -8747,12 +10722,217 @@ function drawNodeGraphValueOscilloscopeItem(renderer, item, pixelRatio) {
   }
 }
 
-// Number Readout owns a dedicated canvas/state, separate from the burn
-// renderers' shared retained canvas. It draws the latest formatted value as
-// text and redraws only when the formatted string (or its style) changes —
-// deliberately not per-sample — so it stays cheap regardless of sample rate.
-// A future sample-bin/decay burn extension can layer on top of this same
-// canvas without needing to touch the 1D/2D burn compositor.
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared 0–1 energy phosphor (foundation for LCD + scope burn surfaces)
+//
+// Burn light as a single energy channel (grayscale canvas), then map 0–1 → RGB
+// with a gradient at present time. Soft edges are trivial (blur the deposit);
+// color is a cheap colormap, not RGB trails.
+//
+// Energy buffer: R=G=B = energy*255 (luma). Decay uses destination-out.
+// Deposit uses soft white ink (shadowBlur). Present samples luma → gradient.
+//
+// Number Readout is the first consumer; other burn paths can migrate later.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function nodeGraphPhosphorEnergyEnsureCanvas(host, key, width, height) {
+  if (!host || !(width > 0) || !(height > 0)) {
+    return null;
+  }
+  let canvas = host[key];
+  if (!canvas || canvas.width !== width || canvas.height !== height) {
+    canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    host[key] = canvas;
+  }
+  return canvas;
+}
+
+/**
+ * Per-frame energy erase amount in 0–1 (destination-out alpha).
+ * Decay alone drives fade rate. Burn is deposit gain only — do not cancel fade
+ * with burn or small decay values become invisible under continuous re-deposit.
+ */
+function nodeGraphPhosphorEnergyFadeAmount(decay) {
+  const d = clampNodeSliderValue(Number(decay) || 0, 0, 1);
+  if (d <= 0.001) {
+    return 0;
+  }
+  // Gentler floor so low burn can still accumulate a dim continuous trail
+  // (old 0.025 min erase created a dead band near burn ~0.04).
+  // At ~60fps: decay 0.3 → ~0.07/frame; decay 1 → dies in a few frames.
+  return clampNodeSliderValue(0.006 + d * 0.11 + d * d * 0.32, 0.006, 0.55);
+}
+
+/**
+ * Smooth mono-energy deposit gain from burn × brightness × size.
+ * Monotonic, no dead zone: low burn is dim, high burn is hot — not off/on.
+ */
+function nodeGraphScope2dEnergyBurnDepositGain(burn, brightness, size01) {
+  const b = clampNodeSliderValue(Number(burn) || 0, 0, 1);
+  const br = Math.max(0, Number(brightness) || 0);
+  const s = clampNodeSliderValue(Number(size01) || 0, 0, 1);
+  // Slight low-end lift (pow < 1) so scrubbing 0.02→0.08 feels continuous.
+  // Floor keeps a faint tip at burn 0; span covers strong dwell at burn 1.
+  const burnShape = Math.pow(b, 0.78);
+  const sizeFactor = 1.12 - s * 0.42;
+  return Math.max(0, br * (0.022 + burnShape * 0.10) * sizeFactor);
+}
+
+/** Soft present exposure — mostly stable so burn doesn't double-attenuate. */
+function nodeGraphScope2dEnergyBurnExposure(burn) {
+  const b = clampNodeSliderValue(Number(burn) || 0, 0, 1);
+  // Base exposure keeps low residual visible; burn only gently opens the film.
+  return 1.85 + b * 2.1;
+}
+
+function nodeGraphPhosphorEnergyFade(context, width, height, burn, decay) {
+  if (!context || !(width > 0) || !(height > 0)) {
+    return;
+  }
+  const fadeAlpha = nodeGraphPhosphorEnergyFadeAmount(decay);
+  if (fadeAlpha <= 0) {
+    return;
+  }
+  context.save();
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.globalCompositeOperation = "destination-out";
+  context.fillStyle = `rgba(0, 0, 0, ${fadeAlpha.toFixed(4)})`;
+  context.fillRect(0, 0, width, height);
+  context.restore();
+}
+
+/** Softness in buffer px for energy deposits (scales with face/font + burn). */
+function nodeGraphPhosphorEnergySoftnessPx(sizePx, burn = 0.5) {
+  const size = Math.max(1, Number(sizePx) || 1);
+  const b = clampNodeSliderValue(Number(burn) || 0, 0, 1);
+  // Always a bit of blur so residual never stamps harsh 1-bit edges.
+  return Math.max(1.25, size * (0.1 + b * 0.22));
+}
+
+/**
+ * Build a 0–1 → RGB gradient for phosphor presentation.
+ * peakRgb: 0–255 triple (or 0–1 floats — both accepted).
+ * Stops: floor → dim body → peak → hot shoulder.
+ */
+function nodeGraphPhosphorBuildGradientStops(peakRgb, backgroundHex = "#000000") {
+  const peak = Array.isArray(peakRgb) ? peakRgb : [120, 255, 170];
+  const toByte = (v) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 0;
+    return n <= 1 ? Math.round(clampNodeSliderValue(n, 0, 1) * 255) : Math.round(clampNodeSliderValue(n, 0, 255));
+  };
+  const pr = toByte(peak[0]);
+  const pg = toByte(peak[1]);
+  const pb = toByte(peak[2]);
+  const bg = normalizeNodeGraphTraceDisplayColor(backgroundHex, "#000000");
+  const br = parseInt(bg.slice(1, 3), 16) || 0;
+  const bg_ = parseInt(bg.slice(3, 5), 16) || 0;
+  const bb = parseInt(bg.slice(5, 7), 16) || 0;
+  const mix = (a, b, t) => Math.round(a + (b - a) * t);
+  // No hot-white clip — residual stays in the phosphor hue, not harsh RGB white.
+  return Object.freeze([
+    Object.freeze({ t: 0, r: br, g: bg_, b: bb }),
+    Object.freeze({ t: 0.18, r: mix(br, pr, 0.28), g: mix(bg_, pg, 0.28), b: mix(bb, pb, 0.28) }),
+    Object.freeze({ t: 0.55, r: mix(br, pr, 0.7), g: mix(bg_, pg, 0.7), b: mix(bb, pb, 0.7) }),
+    Object.freeze({ t: 1, r: pr, g: pg, b: pb }),
+  ]);
+}
+
+function nodeGraphPhosphorSampleGradient(energy01, stops) {
+  const e = clampNodeSliderValue(Number(energy01) || 0, 0, 1);
+  const list = Array.isArray(stops) && stops.length ? stops : nodeGraphPhosphorBuildGradientStops([120, 255, 170]);
+  if (e <= list[0].t) {
+    return list[0];
+  }
+  const last = list[list.length - 1];
+  if (e >= last.t) {
+    return last;
+  }
+  for (let i = 1; i < list.length; i += 1) {
+    const a = list[i - 1];
+    const b = list[i];
+    if (e <= b.t) {
+      const span = Math.max(1e-6, b.t - a.t);
+      const u = (e - a.t) / span;
+      return {
+        r: Math.round(a.r + (b.r - a.r) * u),
+        g: Math.round(a.g + (b.g - a.g) * u),
+        b: Math.round(a.b + (b.b - a.b) * u),
+      };
+    }
+  }
+  return last;
+}
+
+/**
+ * Map grayscale energy canvas → colored RGBA into colorCanvas (same size).
+ * Energy luma is max(R,G,B)/255. Output alpha tracks energy for lighter blit.
+ */
+function nodeGraphPhosphorMapEnergyToColorCanvas(energyCanvas, colorCanvas, stops) {
+  if (!energyCanvas || !colorCanvas) {
+    return false;
+  }
+  const w = energyCanvas.width;
+  const h = energyCanvas.height;
+  if (colorCanvas.width !== w || colorCanvas.height !== h) {
+    colorCanvas.width = w;
+    colorCanvas.height = h;
+  }
+  const ectx = energyCanvas.getContext("2d", { willReadFrequently: true });
+  const cctx = colorCanvas.getContext("2d");
+  if (!ectx || !cctx) {
+    return false;
+  }
+  const src = ectx.getImageData(0, 0, w, h);
+  let out = colorCanvas._phosphorMappedImageData;
+  if (!out || out.width !== w || out.height !== h) {
+    out = cctx.createImageData(w, h);
+    colorCanvas._phosphorMappedImageData = out;
+  }
+  const s = src.data;
+  const d = out.data;
+  const gradient = stops || nodeGraphPhosphorBuildGradientStops([120, 255, 170]);
+  for (let i = 0; i < s.length; i += 4) {
+    // Mild gamma so mid-energy soft edges stay soft instead of posterizing bright.
+    const raw = Math.max(s[i], s[i + 1], s[i + 2]) / 255;
+    const energy = Math.pow(raw, 1.15);
+    if (energy < 0.006) {
+      d[i] = 0;
+      d[i + 1] = 0;
+      d[i + 2] = 0;
+      d[i + 3] = 0;
+      continue;
+    }
+    const c = nodeGraphPhosphorSampleGradient(energy, gradient);
+    d[i] = c.r;
+    d[i + 1] = c.g;
+    d[i + 2] = c.b;
+    d[i + 3] = Math.min(255, Math.round(energy * 230));
+  }
+  cctx.putImageData(out, 0, 0);
+  return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Number Readout — energy phosphor + hard LCD plate / live digits
+// DSEG7 Classic: https://github.com/keshikan/DSEG (SIL OFL 1.1)
+//
+// Residual model (simple, intentional):
+//   • Live reading is ALWAYS hard DSEG — never energy-charged. No change ⇒ clean.
+//   • On text change, stamp only *changed* previous cells (static digits never charged).
+//   • Present punches live glyphs out of residual every frame (no brightening under 0s).
+//   • "Decay" UI = ghost hold length (0 = no ghosts, 1 = longest). Mapped to fade rate.
+//   • No burn param. No soft blur / bleed on stamps.
+// ─────────────────────────────────────────────────────────────────────────────
+let nodeGraphNumberReadoutDsegReady = false;
+document.fonts.load('700 40px "DSEG7 Classic"').then(() => {
+  nodeGraphNumberReadoutDsegReady = document.fonts.check('700 40px "DSEG7 Classic"');
+}).catch(() => {
+  // Monospace stack below if the font fails to load.
+});
+
 function nodeGraphNumberReadoutCanvasForSlot(slot) {
   const screenElement = slot?.scopeElement;
   if (!screenElement) {
@@ -8772,14 +10952,55 @@ function syncNodeGraphNumberReadoutCanvas(canvas, screenElement, pixelRatio) {
   if (!canvas || !screenElement) {
     return false;
   }
-  const rect = screenElement.getBoundingClientRect();
-  const width = Math.max(1, Math.round(rect.width * pixelRatio));
-  const height = Math.max(1, Math.round(rect.height * pixelRatio));
+  // Fixed layout pixel grid (clientWidth × dpr). Do NOT use getBoundingClientRect
+  // — that is screen-space and grows with workspace zoom (FPS death on energy
+  // FBOs). CSS width/height:100% rides the zoom transform; pixelated-canvas-zoom
+  // keeps the grid crisp. Never set style.width from a screen rect.
+  const size = nodeGraphModuleScopeFaceBackingSize(screenElement, pixelRatio);
+  if (!size) {
+    return false;
+  }
+  const { width, height } = size;
   if (canvas.width !== width || canvas.height !== height) {
     canvas.width = width;
     canvas.height = height;
+    // Soft deposit mask is one-frame only. Energy residual survives real face
+    // resizes via nodeGraphPhosphorEnergyGlEnsure resize+copy.
+    canvas._numberReadoutEnergyMask = null;
+  }
+  if (canvas.style.width || canvas.style.height) {
+    canvas.style.width = "";
+    canvas.style.height = "";
   }
   return true;
+}
+
+function nodeGraphNumberReadoutEnergyMaskCanvas(canvas) {
+  return nodeGraphPhosphorEnergyEnsureCanvas(
+    canvas,
+    "_numberReadoutEnergyMask",
+    canvas?.width || 0,
+    canvas?.height || 0,
+  );
+}
+
+function nodeGraphNumberReadoutEnergyGl(canvas) {
+  if (!canvas?.width || !canvas?.height) {
+    return null;
+  }
+  if (typeof nodeGraphPhosphorEnergyGlEnsure !== "function") {
+    return null;
+  }
+  return nodeGraphPhosphorEnergyGlEnsure(canvas, canvas.width, canvas.height, "_phosphorEnergyGl");
+}
+
+function nodeGraphNumberReadoutSafeDecimals(decimals) {
+  // toFixed(NaN) throws RangeError and can take down the rAF draw loop.
+  const n = Math.round(Number(decimals));
+  if (!Number.isFinite(n)) {
+    return 2;
+  }
+  return Math.max(0, Math.min(8, n));
 }
 
 function nodeGraphNumberReadoutFormatValue(sample, decimals) {
@@ -8787,11 +11008,30 @@ function nodeGraphNumberReadoutFormatValue(sample, decimals) {
   if (!Number.isFinite(value)) {
     return "--";
   }
-  const fixed = value.toFixed(clampNodeSliderValue(Math.round(Number(decimals) || 0), 0, 8));
-  // Reserve a sign column so the text width (and its centered position)
-  // stays constant as the value crosses zero — otherwise the "-" appearing
-  // and disappearing shifts the whole readout horizontally every time.
+  const places = nodeGraphNumberReadoutSafeDecimals(decimals);
+  let fixed;
+  try {
+    fixed = value.toFixed(places);
+  } catch {
+    fixed = value.toFixed(2);
+  }
+  // Reserve a sign column so width stays stable across zero (DSEG space =
+  // colon advance — keshikan/DSEG usage notes).
   return fixed.startsWith("-") ? fixed : ` ${fixed}`;
+}
+
+// DSEG period has zero advance; every other character is one equal LCD cell
+// (width of "8"). Fixed cells keep lit digits and ghost plate locked together.
+// https://github.com/keshikan/DSEG#usage
+function nodeGraphNumberReadoutDsegWidthChars(text) {
+  return Math.max(1, String(text || "").replace(/\./g, "").length);
+}
+
+// Ghost plate: full-width cells only. Digits / all-off "!" → all-on "8".
+// Spaces stay blank cells (drawn as "!" under the plate path). Do NOT map
+// space→"8" — space is narrower than a digit in DSEG and shifts the plate.
+function nodeGraphNumberReadoutGhostPlateText(valueText) {
+  return String(valueText || "").replace(/[0-9!]/g, "8");
 }
 
 function nodeGraphNumberReadoutUnitForSlot(slot) {
@@ -8804,6 +11044,240 @@ function nodeGraphNumberReadoutUnitForSlot(slot) {
   return sourceNode?.type === "helmholtzPitch" && connection.sourcePort === "Frequency"
     ? "Hz"
     : "";
+}
+
+function nodeGraphNumberReadoutSettingsSignature(settings) {
+  return [
+    settings.background,
+    settings.brightness,
+    settings.color,
+    settings.decay,
+    settings.decimals,
+    settings.ghost,
+    settings.innerGlow,
+    settings.innerShadow,
+  ].join("|");
+}
+
+/**
+ * Natural (unskewed) DSEG layout for the face.
+ * Height-first em size from the font; uniform shrink only if the block would
+ * overflow the face width. Never non-uniform scale to fill the module.
+ */
+function nodeGraphNumberReadoutComputeLayout(context, valueText, fontFamily, faceW, faceH, hasUnit) {
+  const labelH = hasUnit ? Math.max(0, faceH * 0.18) : 0;
+  const digitAreaH = Math.max(1, faceH - labelH);
+  // Designed em height — original DSEG proportions, not stretched to width.
+  let fontSize = Math.max(1, digitAreaH * 0.78);
+  context.font = `700 ${fontSize}px ${fontFamily}`;
+  let cellW = Math.max(1, context.measureText("8").width);
+  const cells = nodeGraphNumberReadoutDsegWidthChars(valueText);
+  let totalW = cells * cellW;
+  const maxW = Math.max(1, faceW * 0.94);
+  if (totalW > maxW) {
+    const scale = maxW / totalW;
+    fontSize = Math.max(1, fontSize * scale);
+    context.font = `700 ${fontSize}px ${fontFamily}`;
+    cellW = Math.max(1, context.measureText("8").width);
+    totalW = cells * cellW;
+  }
+  return {
+    cellW,
+    cells,
+    digitAreaH,
+    fontSize,
+    labelH,
+    totalW,
+  };
+}
+
+// Ghost deposit text: only previous glyphs that *left* (char-level).
+// Unchanged cells become "!" (skip draw, keep spacing) so static "0"s never
+// receive residual energy — canvas XOR of full strings left AA fringes on them.
+// When cell counts differ (layout shift), return full previous string.
+function nodeGraphNumberReadoutGhostDepositText(previousText, currentText) {
+  const prev = String(previousText || "");
+  const curr = String(currentText || "");
+  if (!prev) {
+    return "";
+  }
+  if (!curr) {
+    return prev;
+  }
+  const prevCells = nodeGraphNumberReadoutDsegWidthChars(prev);
+  const currCells = nodeGraphNumberReadoutDsegWidthChars(curr);
+  if (prevCells !== currCells) {
+    // Width/layout changed — whole previous reading is the ghost.
+    return prev;
+  }
+  // Walk both strings; periods are zero-width and stay only when they left.
+  let i = 0;
+  let j = 0;
+  let out = "";
+  let deposited = false;
+  while (i < prev.length || j < curr.length) {
+    const pc = i < prev.length ? prev[i] : "";
+    const cc = j < curr.length ? curr[j] : "";
+    if (pc === "." && cc === ".") {
+      // Period still present — no deposit, no alignment token needed (zero advance).
+      i += 1;
+      j += 1;
+      continue;
+    }
+    if (pc === ".") {
+      // Period left this frame.
+      out += ".";
+      deposited = true;
+      i += 1;
+      continue;
+    }
+    if (cc === ".") {
+      // Period appeared — skip on ghost string (no previous ink there).
+      j += 1;
+      continue;
+    }
+    if (!pc) {
+      break;
+    }
+    if (!cc) {
+      out += pc;
+      deposited = true;
+      i += 1;
+      continue;
+    }
+    if (pc === cc) {
+      // Unchanged cell: keep spacing, draw nothing.
+      out += pc === " " ? " " : "!";
+    } else {
+      out += pc;
+      deposited = true;
+    }
+    i += 1;
+    j += 1;
+  }
+  return deposited ? out : "";
+}
+
+// Draw DSEG on a fixed cell grid (cell = natural advance of "8" at fontSize).
+// Ghost plate and lit value share the same pen positions. No X/Y stretch.
+// softBlurPx: when set, deposits a soft energy/glow edge (for 0–1 phosphor).
+function nodeGraphNumberReadoutDrawDigits(context, {
+  text,
+  centerX,
+  centerY,
+  fontFamily,
+  fontSize,
+  cellW: cellWIn,
+  rgb,
+  alpha,
+  glow = 0,
+  softBlurPx = 0,
+  plate = false,
+  // energy: force white ink (luma) for the 0–1 energy buffer
+  energy = false,
+}) {
+  const raw = String(text || "");
+  const ink = energy ? [255, 255, 255] : rgb;
+  context.save();
+  // Identity geometry in canvas pixels — never scaleX ≠ scaleY for glyphs.
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.font = `700 ${fontSize}px ${fontFamily}`;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  const cellW = Math.max(1, Number(cellWIn) || context.measureText("8").width);
+  let cellCount = 0;
+  for (let i = 0; i < raw.length; i += 1) {
+    if (raw[i] !== ".") {
+      cellCount += 1;
+    }
+  }
+  cellCount = Math.max(1, cellCount);
+  let penX = centerX - (cellCount * cellW) * 0.5 + cellW * 0.5;
+  const blurPx = Math.max(
+    0,
+    Number(softBlurPx) || (glow > 0.001 ? fontSize * (0.08 + glow * 0.55) : 0),
+  );
+
+  const drawGlyph = (glyph, x) => {
+    if (blurPx > 0.001) {
+      context.shadowColor = `rgba(${ink[0]}, ${ink[1]}, ${ink[2]}, ${(alpha * 0.95).toFixed(4)})`;
+      context.shadowBlur = blurPx;
+    } else {
+      context.shadowBlur = 0;
+    }
+    context.fillStyle = `rgba(${ink[0]}, ${ink[1]}, ${ink[2]}, ${alpha.toFixed(4)})`;
+    context.fillText(glyph, x, centerY);
+    // Crisp core under soft deposit (still white when energy=true).
+    if (blurPx > 0.001 && !energy) {
+      context.shadowBlur = 0;
+      context.fillStyle = `rgba(${ink[0]}, ${ink[1]}, ${ink[2]}, ${Math.min(1, alpha * 1.05).toFixed(4)})`;
+      context.fillText(glyph, x, centerY);
+    } else if (blurPx > 0.001 && energy) {
+      // Soft energy: second lighter core without killing the soft edge.
+      context.shadowBlur = blurPx * 0.35;
+      context.fillStyle = `rgba(255, 255, 255, ${Math.min(1, alpha).toFixed(4)})`;
+      context.fillText(glyph, x, centerY);
+    }
+  };
+
+  for (let i = 0; i < raw.length; i += 1) {
+    const ch = raw[i];
+    if (ch === ".") {
+      // Zero advance — sit at the boundary between the previous and next cell.
+      drawGlyph(".", penX - cellW * 0.5);
+      continue;
+    }
+    let glyph = ch;
+    if (plate) {
+      // Unlit LCD grid: every full cell is all-on "8".
+      glyph = "8";
+    } else if (ch === " ") {
+      // Lit path: leave sign column empty (still advance a full cell).
+      penX += cellW;
+      continue;
+    } else if (ch === "!") {
+      // All-off placeholder cell — skip draw, keep spacing.
+      penX += cellW;
+      continue;
+    }
+    drawGlyph(glyph, penX);
+    penX += cellW;
+  }
+  context.restore();
+}
+
+function nodeGraphNumberReadoutDrawInnerShadow(context, left, top, width, height, amount) {
+  if (!(amount > 0.001) || width < 2 || height < 2) {
+    return;
+  }
+  const depth = Math.max(2, Math.min(width, height) * (0.06 + amount * 0.18));
+  const edge = Math.max(0.12, Math.min(0.85, amount * 0.72));
+  context.save();
+  // Top + left (darker lip), bottom + right (softer).
+  let grad = context.createLinearGradient(left, top, left, top + depth);
+  grad.addColorStop(0, `rgba(0, 0, 0, ${edge.toFixed(4)})`);
+  grad.addColorStop(1, "rgba(0, 0, 0, 0)");
+  context.fillStyle = grad;
+  context.fillRect(left, top, width, depth);
+
+  grad = context.createLinearGradient(left, top, left + depth, top);
+  grad.addColorStop(0, `rgba(0, 0, 0, ${(edge * 0.9).toFixed(4)})`);
+  grad.addColorStop(1, "rgba(0, 0, 0, 0)");
+  context.fillStyle = grad;
+  context.fillRect(left, top, depth, height);
+
+  grad = context.createLinearGradient(left, top + height, left, top + height - depth);
+  grad.addColorStop(0, `rgba(0, 0, 0, ${(edge * 0.55).toFixed(4)})`);
+  grad.addColorStop(1, "rgba(0, 0, 0, 0)");
+  context.fillStyle = grad;
+  context.fillRect(left, top + height - depth, width, depth);
+
+  grad = context.createLinearGradient(left + width, top, left + width - depth, top);
+  grad.addColorStop(0, `rgba(0, 0, 0, ${(edge * 0.5).toFixed(4)})`);
+  grad.addColorStop(1, "rgba(0, 0, 0, 0)");
+  context.fillStyle = grad;
+  context.fillRect(left + width - depth, top, depth, height);
+  context.restore();
 }
 
 function drawNodeGraphNumberReadoutItem(renderer, item, pixelRatio) {
@@ -8826,41 +11300,252 @@ function drawNodeGraphNumberReadoutItem(renderer, item, pixelRatio) {
   const settings = nodeGraphNumberReadoutSettingsForNode(node);
   const hasSample = item?.buffer?.length > 0 && !item.buffer?.nodeGraphScopeXy;
   const unit = nodeGraphNumberReadoutUnitForSlot(slot);
+  const decimals = nodeGraphNumberReadoutSafeDecimals(settings.decimals);
+  // No input: DSEG all-off ("!") placeholders.
+  // https://github.com/keshikan/DSEG#usage
   const valueText = hasSample
-    ? nodeGraphNumberReadoutFormatValue(nodeGraphOscilloscopeLatestSample(item.buffer, 0), settings.decimals)
-    : "--";
+    ? nodeGraphNumberReadoutFormatValue(nodeGraphOscilloscopeLatestSample(item.buffer, 0), decimals)
+    : (decimals > 0 ? ` !.${"!".repeat(decimals)}` : " !");
   const text = unit ? `${valueText} ${unit}` : valueText;
-  if (
-    canvas._nodeGraphNumberReadoutText === text &&
-    canvas._nodeGraphNumberReadoutColor === settings.color &&
-    canvas._nodeGraphNumberReadoutBrightness === settings.brightness &&
-    canvas._nodeGraphNumberReadoutWidth === canvas.width &&
-    canvas._nodeGraphNumberReadoutHeight === canvas.height
-  ) {
+  // Decay UI = ghost hold of previous number (0 = none, 1 = longest).
+  const decay = clampNodeSliderValue(Number(settings.decay) || 0, 0, 1);
+  const ghost = clampNodeSliderValue(Number(settings.ghost) || 0, 0, 1);
+  const innerGlow = clampNodeSliderValue(Number(settings.innerGlow) || 0, 0, 1);
+  const innerShadow = clampNodeSliderValue(Number(settings.innerShadow) || 0, 0, 1);
+  const settingsSig = nodeGraphNumberReadoutSettingsSignature(settings);
+  const styleChanged =
+    canvas._nodeGraphNumberReadoutSettingsSig !== settingsSig ||
+    canvas._nodeGraphNumberReadoutFontReady !== nodeGraphNumberReadoutDsegReady ||
+    canvas._nodeGraphNumberReadoutWidth !== canvas.width ||
+    canvas._nodeGraphNumberReadoutHeight !== canvas.height;
+  const textChanged = canvas._nodeGraphNumberReadoutText !== text;
+  // Ghost residual only when decay > 0; static live digit is never energy-charged.
+  const frozen = nodeGraphModuleScopePhosphorFrozen();
+  const energyActive = decay > 0.001;
+  const needsContinuous = !frozen && energyActive;
+  if (!textChanged && !styleChanged && !needsContinuous) {
     return;
   }
+  const now = performance.now?.() || Date.now();
+
+  // Draw in full canvas buffer pixels (layout face × dpr — fixed under zoom).
+  const left = 0;
+  const top = 0;
+  const width = canvas.width;
+  const height = canvas.height;
+  const rgb = nodeGraphScopeRgbFloatsToCanvasRgb(nodeGraphScopeHexColorToRgb(settings.color));
+  const bg = nodeGraphFacePlateBackground(settings);
+  const bright = Number(settings.brightness);
+  const alpha = Math.max(0.15, (Number.isFinite(bright) ? Math.max(0, Math.min(2, bright)) : 0.92) / 2);
+  const digitFontFamily = nodeGraphNumberReadoutDsegReady
+    ? '"DSEG7 Classic", "Consolas", monospace'
+    : '"Consolas", "Courier New", monospace';
+  const hasUnit = Boolean(unit);
+  // Natural DSEG metrics — face only letterboxes; never skews glyphs to fill it.
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  const layout = nodeGraphNumberReadoutComputeLayout(
+    context,
+    valueText,
+    digitFontFamily,
+    width,
+    height,
+    hasUnit,
+  );
+  const digitFontSize = layout.fontSize;
+  const cellW = layout.cellW;
+  const labelHeight = layout.labelH;
+  const digitAreaHeight = layout.digitAreaH;
+  const digitX = left + width * 0.5;
+  const digitY = top + digitAreaHeight * 0.5;
+
+  // ── Ghost of previous number only (decay = hold length) ──
+  // Live reading is hard DSEG only. On change, stamp only *changed* previous
+  // cells into residual (static digits never charged). Decay = ghost hold.
+  const energyGl = energyActive ? nodeGraphNumberReadoutEnergyGl(canvas) : null;
+  let maskCanvas = null;
+  let depositGain = 0;
+  const previousValueText = String(canvas._numberReadoutLastValueText || "");
+  const shouldDeposit = energyActive
+    && !frozen
+    && textChanged
+    && Boolean(previousValueText)
+    && previousValueText !== valueText;
+  if (shouldDeposit) {
+    const ghostText = nodeGraphNumberReadoutGhostDepositText(previousValueText, valueText);
+    if (ghostText) {
+      maskCanvas = nodeGraphNumberReadoutEnergyMaskCanvas(canvas);
+      if (maskCanvas) {
+        const mctx = maskCanvas.getContext("2d");
+        if (mctx) {
+          mctx.setTransform(1, 0, 0, 1, 0, 0);
+          mctx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+          // Use previous layout metrics so outgoing glyphs sit where they were.
+          const prevLayout = nodeGraphNumberReadoutComputeLayout(
+            mctx,
+            previousValueText,
+            digitFontFamily,
+            width,
+            height,
+            hasUnit,
+          );
+          mctx.save();
+          mctx.globalCompositeOperation = "source-over";
+          // Only changed cells (others are "!" / space) — no full-string XOR,
+          // which left anti-aliased energy under static "0"s.
+          nodeGraphNumberReadoutDrawDigits(mctx, {
+            text: ghostText,
+            centerX: left + width * 0.5,
+            centerY: top + prevLayout.digitAreaH * 0.5,
+            fontFamily: digitFontFamily,
+            fontSize: prevLayout.fontSize,
+            cellW: prevLayout.cellW,
+            rgb: [255, 255, 255],
+            alpha: 1,
+            softBlurPx: 0,
+            energy: true,
+            plate: false,
+          });
+          mctx.restore();
+          // Fixed crisp strike — lifetime is controlled only by decay hold.
+          depositGain = clampNodeSliderValue(0.85 * alpha, 0.35, 1.1);
+        }
+      }
+    }
+    canvas._numberReadoutLastTextChangeAt = now;
+  }
+  if (energyGl && typeof nodeGraphPhosphorEnergyGlStep === "function") {
+    if (typeof nodeGraphPhosphorEnergyGlSetLutFromPeak === "function") {
+      nodeGraphPhosphorEnergyGlSetLutFromPeak(energyGl, rgb, bg);
+    }
+    if (!frozen) {
+      // UI decay high = long ghost → low energy fade. UI 0 = no residual system.
+      // Map hold [0,1] → fade [~0.55, ~0.012] (gentle curve so mid feels useful).
+      const hold = decay;
+      const energyFade = Math.max(0.01, Math.min(0.6, Math.pow(1 - hold, 1.65) * 0.55 + 0.01));
+      nodeGraphPhosphorEnergyGlStep(energyGl, {
+        decay: energyFade,
+        depositGain: maskCanvas && depositGain > 0.001 ? depositGain : 0,
+        maskCanvas: maskCanvas && depositGain > 0.001 ? maskCanvas : null,
+        bleed: 0,
+      });
+    }
+  } else if (!energyActive) {
+    canvas._numberReadoutLastTextChangeAt = 0;
+  }
+  canvas._numberReadoutLastValueText = valueText;
+
+  // ── Present ──
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.save();
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.fillStyle = bg;
+  context.fillRect(left, top, width, height);
+
+  if (ghost > 0.001) {
+    nodeGraphNumberReadoutDrawDigits(context, {
+      text: valueText,
+      centerX: digitX,
+      centerY: digitY,
+      fontFamily: digitFontFamily,
+      fontSize: digitFontSize,
+      cellW,
+      rgb,
+      alpha: Math.max(0.04, ghost * (nodeGraphNumberReadoutDsegReady ? 0.38 : 0.28)),
+      softBlurPx: 0,
+      plate: true,
+    });
+  }
+
+  // Ghost residual, punched free of live glyph pixels every frame so static
+  // digits stay clean even if older energy still sits under them.
+  if (energyGl && energyActive && typeof nodeGraphPhosphorEnergyGlPresent === "function") {
+    const presented = nodeGraphPhosphorEnergyGlPresent(energyGl, 0.95);
+    if (presented !== false) {
+      const residualLayer = nodeGraphPhosphorEnergyEnsureCanvas(
+        canvas,
+        "_numberReadoutResidualPresent",
+        width,
+        height,
+      );
+      if (residualLayer) {
+        const rctx = residualLayer.getContext("2d");
+        if (rctx) {
+          rctx.setTransform(1, 0, 0, 1, 0, 0);
+          rctx.clearRect(0, 0, width, height);
+          rctx.globalCompositeOperation = "source-over";
+          rctx.imageSmoothingEnabled = false;
+          rctx.drawImage(energyGl.canvas, 0, 0, width, height);
+          // Carve live digits out of residual (slight soft expand eats AA skirts).
+          rctx.globalCompositeOperation = "destination-out";
+          const punchExpandPx = Math.max(1.25, digitFontSize * 0.045);
+          nodeGraphNumberReadoutDrawDigits(rctx, {
+            text: valueText,
+            centerX: digitX,
+            centerY: digitY,
+            fontFamily: digitFontFamily,
+            fontSize: digitFontSize,
+            cellW,
+            rgb: [255, 255, 255],
+            alpha: 1,
+            softBlurPx: punchExpandPx,
+            energy: true,
+            plate: false,
+          });
+          rctx.globalCompositeOperation = "source-over";
+          context.save();
+          context.globalCompositeOperation = "lighter";
+          context.imageSmoothingEnabled = false;
+          context.globalAlpha = Math.min(1, 0.4 + decay * 0.45);
+          context.drawImage(residualLayer, 0, 0, width, height);
+          context.globalAlpha = 1;
+          context.restore();
+        }
+      } else {
+        context.save();
+        context.globalCompositeOperation = "lighter";
+        context.imageSmoothingEnabled = false;
+        context.globalAlpha = Math.min(1, 0.4 + decay * 0.45);
+        context.drawImage(energyGl.canvas, 0, 0, width, height);
+        context.globalAlpha = 1;
+        context.restore();
+      }
+    }
+  }
+
+  // Live value — hard/crisp on plate (never energy-charged). Opaque enough that
+  // any residual fringe left outside the punch cannot tint the digit core.
+  nodeGraphNumberReadoutDrawDigits(context, {
+    text: valueText,
+    centerX: digitX,
+    centerY: digitY,
+    fontFamily: digitFontFamily,
+    fontSize: digitFontSize,
+    cellW,
+    rgb,
+    alpha,
+    softBlurPx: 0,
+    glow: innerGlow,
+    plate: false,
+  });
+
+  if (hasUnit) {
+    const labelFontSize = Math.max(1, Math.min(labelHeight * 0.7, width * 0.14, digitFontSize * 0.35));
+    context.font = `${labelFontSize}px "Consolas", "Courier New", monospace`;
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${(alpha * 0.55).toFixed(4)})`;
+    context.fillText(unit, left + width * 0.5, top + digitAreaHeight + labelHeight * 0.5);
+  }
+
+  nodeGraphNumberReadoutDrawInnerShadow(context, left, top, width, height, innerShadow);
+  context.restore();
+
   canvas._nodeGraphNumberReadoutText = text;
-  canvas._nodeGraphNumberReadoutColor = settings.color;
-  canvas._nodeGraphNumberReadoutBrightness = settings.brightness;
+  canvas._nodeGraphNumberReadoutSettingsSig = settingsSig;
+  canvas._nodeGraphNumberReadoutFontReady = nodeGraphNumberReadoutDsegReady;
   canvas._nodeGraphNumberReadoutWidth = canvas.width;
   canvas._nodeGraphNumberReadoutHeight = canvas.height;
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  const screenRect = item?.screenRect || rect;
-  const left = (Number(rect.left) - Number(screenRect.left)) * pixelRatio;
-  const top = (Number(rect.top) - Number(screenRect.top)) * pixelRatio;
-  const width = Math.max(1, Number(rect.width) || 1) * pixelRatio;
-  const height = Math.max(1, Number(rect.height) || 1) * pixelRatio;
-  const charCount = Math.max(1, text.length);
-  const fontSize = Math.max(1, Math.min(height * 0.72, (width / charCount) * 1.7));
-  const rgb = nodeGraphScopeRgbFloatsToCanvasRgb(nodeGraphScopeHexColorToRgb(settings.color));
-  const alpha = clampNodeSliderValue(settings.brightness, 0, 2) / 2;
-  context.save();
-  context.font = `${fontSize}px "Consolas", "Courier New", monospace`;
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  context.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${Math.max(0.15, alpha).toFixed(4)})`;
-  context.fillText(text, left + width * 0.5, top + height * 0.5, width);
-  context.restore();
+  canvas._nodeGraphNumberReadoutPaintAt = now;
 }
 
 function nodeGraphCustomDisplayCanvasForSlot(slot) {
@@ -8959,19 +11644,15 @@ function drawNodeGraphCustomDisplayItem(renderer, item, pixelRatio) {
   }
 }
 
-function nodeGraphOneDimensionalBurnSampleToY(sample, rect) {
-  return rect.top + rect.height * 0.5 - clampNodeSliderValue(sample, -1, 1) * rect.height * 0.44;
+function nodeGraphDisplaySettingsAmplitudeScale(settings) {
+  const s = Number(settings?.scale);
+  return Number.isFinite(s) && s > 0 ? clampNodeSliderValue(s, 0.01, 100) : 1;
 }
 
-function nodeGraphOneDimensionalBurnViewportPointToCanvas(item, pixelRatio, point) {
-  const screenRect = item?.screenRect;
-  if (!screenRect || !point) {
-    return null;
-  }
-  return {
-    x: (point.x - screenRect.left) * pixelRatio,
-    y: (point.y - screenRect.top) * pixelRatio,
-  };
+function nodeGraphOneDimensionalBurnSampleToY(sample, height, settings = null) {
+  const h = Math.max(1, Number(height) || 1);
+  const amp = nodeGraphDisplaySettingsAmplitudeScale(settings);
+  return h * 0.5 - clampNodeSliderValue((Number(sample) || 0) * amp, -1, 1) * h * 0.44;
 }
 
 function nodeGraphOneDimensionalBurnFadeTrail(context, canvas, settings) {
@@ -8996,6 +11677,19 @@ function nodeGraphScopeRgbFloatsToCanvasRgb(color) {
   return rgb.map((value) => Math.max(0, Math.min(255, Math.round(clampNodeSliderValue(Number(value) || 0, 0, 1) * 255))));
 }
 
+/** Rising-edge threshold for 1D Burn Dot Reset (same family as osc Reset jacks). */
+const nodeGraphLineBurnResetThreshold = 0.5;
+
+/**
+ * Heart-monitor 1D burn: free-running left→right pen with its own phasor.
+ *
+ * Position is NOT derived from absoluteFrame / duration (that jumps when you
+ * change Sweep). Each face keeps canvas._lineBurnPhasor in [0, 1) and advances
+ * it sample-by-sample:
+ *   phasor += 1 / (sweepSeconds * sampleRate)
+ * so changing duration mid-sweep continues from the current X.
+ * Wrap or rising-edge Reset (≥ 0.5) snaps to 0 and breaks the path.
+ */
 function nodeGraphOneDimensionalBurnBufferFrameInfo(buffer, count) {
   const endFrame = Number(buffer?.nodeGraphScopeAbsoluteFrame);
   const startFrame = Number(buffer?.nodeGraphScopeStartFrame);
@@ -9015,9 +11709,7 @@ function nodeGraphOneDimensionalBurnBufferFrameInfo(buffer, count) {
     };
   }
   const fallbackEndFrame = Number(buffer?.nodeGraphScopeVersion);
-  const end = Number.isFinite(fallbackEndFrame)
-    ? fallbackEndFrame
-    : 0;
+  const end = Number.isFinite(fallbackEndFrame) ? fallbackEndFrame : 0;
   return {
     startFrame: Math.max(0, end - safeCount),
     endFrame: end,
@@ -9026,7 +11718,10 @@ function nodeGraphOneDimensionalBurnBufferFrameInfo(buffer, count) {
 
 function nodeGraphOneDimensionalBurnDrawStartIndex(canvas, buffer, count) {
   const frameInfo = nodeGraphOneDimensionalBurnBufferFrameInfo(buffer, count);
-  const lastFrame = Number(canvas?._nodeGraphOneDimensionalBurnLastDrawnFrame ?? canvas?._nodeGraphScope2dLastDrawnFrame);
+  const lastFrame = Number(
+    canvas?._nodeGraphOneDimensionalBurnLastDrawnFrame
+    ?? canvas?._nodeGraphScope2dLastDrawnFrame,
+  );
   if (
     !Number.isFinite(frameInfo.startFrame) ||
     !Number.isFinite(frameInfo.endFrame) ||
@@ -9041,31 +11736,56 @@ function nodeGraphOneDimensionalBurnDrawStartIndex(canvas, buffer, count) {
   if (lastFrame <= frameInfo.startFrame) {
     return 0;
   }
+  // Bridge one sample into previous frame so the trail stays continuous.
   const frameOffset = Math.max(0, Math.floor(lastFrame - frameInfo.startFrame) - 1);
   return Math.min(Math.max(0, Math.floor(Number(count) || 0) - 1), frameOffset);
 }
 
-const nodeGraphOneDimensionalBurnTriggerHigh = 0.02;
-const nodeGraphOneDimensionalBurnTriggerLow = -0.02;
-const nodeGraphOneDimensionalBurnMinSweepHz = 20000;
+/**
+ * Sample Reset at the same time as In[index] in the current draw window.
+ *
+ * Visual-input ports each keep their own absoluteFrame counters, so if Reset
+ * was wired later the two windows do not share frame numbers. Always align
+ * by distance-from-end of the recent tails (both streams are written together
+ * each engine sample while both are connected).
+ *
+ * inIndex: 0 .. inCount-1 within In's recent window (0 = oldest of the window).
+ */
+function nodeGraphOneDimensionalBurnResetSample(resetBuffer, inIndex, inCount) {
+  if (!resetBuffer?.length || !(inCount > 0)) {
+    return 0;
+  }
+  const safeInCount = Math.max(1, Math.floor(Number(inCount) || 1));
+  const safeIndex = Math.max(0, Math.min(safeInCount - 1, Math.floor(Number(inIndex) || 0)));
+  // Prefer Reset's recent window; fall back to full buffer.
+  const rRecent = Math.floor(Number(resetBuffer.nodeGraphScopeRecentSampleCount) || 0);
+  const rCount = Math.max(1, Math.min(
+    resetBuffer.length,
+    rRecent > 0 ? rRecent : resetBuffer.length,
+  ));
+  // Align ends: last sample of In window ↔ last sample of Reset window.
+  const fromEnd = (safeInCount - 1) - safeIndex;
+  const rIndex = (resetBuffer.length - 1) - fromEnd;
+  // If Reset has a shorter recent tail, clamp into that tail.
+  const rStart = resetBuffer.length - rCount;
+  if (rIndex < rStart || rIndex >= resetBuffer.length) {
+    // Still try absolute-frame overlap when both streams share a clock range
+    // (same absoluteFrame counters when both ports ran from the start).
+    return 0;
+  }
+  return Number(resetBuffer[rIndex]) || 0;
+}
 
-function nodeGraphOneDimensionalBurnInitTriggerState(buffer, sampleRate) {
-  if (!Number.isFinite(buffer.nodeGraphScopeBurnSweepLength) || buffer.nodeGraphScopeBurnSweepLength <= 0) {
-    buffer.nodeGraphScopeBurnSweepLength = Math.max(1, Math.round(sampleRate * nodeGraphLineBurnSettingsDefaults.zoomSeconds));
-  }
-  if (!Number.isFinite(buffer.nodeGraphScopeBurnCrossings)) {
-    buffer.nodeGraphScopeBurnCrossings = 0;
-  }
-  if (!Number.isFinite(buffer.nodeGraphScopeBurnLastSample)) {
-    buffer.nodeGraphScopeBurnLastSample = 0;
-  }
-  if (!Number.isFinite(buffer.nodeGraphScopeBurnArmed)) {
-    buffer.nodeGraphScopeBurnArmed = 1;
+function nodeGraphOneDimensionalBurnBreakPath(points) {
+  if (typeof breakNodeGraphScope2dPath === "function") {
+    breakNodeGraphScope2dPath(points);
+  } else {
+    points.push(null);
   }
 }
 
-function nodeGraphOneDimensionalBurnFramePoints(canvas, buffer, rect, settings) {
-  if (!buffer?.length || !rect) {
+function nodeGraphOneDimensionalBurnFramePoints(canvas, buffer, settings, resetBuffer = null) {
+  if (!buffer?.length || !canvas?.width || !canvas?.height) {
     return [];
   }
   const count = Math.max(1, Math.min(
@@ -9077,52 +11797,87 @@ function nodeGraphOneDimensionalBurnFramePoints(canvas, buffer, rect, settings) 
   if (drawStartIndex >= count) {
     return [];
   }
-  const points = [];
-  const frameInfo = nodeGraphOneDimensionalBurnBufferFrameInfo(buffer, count);
-  const sampleRate = nodeGraphScopeSampleRate(buffer);
-  const targetCycles = Math.max(1, Math.round(
-    Number(settings?.cycles) || nodeGraphLineBurnSettingsDefaults.cycles,
-  ));
-  nodeGraphOneDimensionalBurnInitTriggerState(buffer, sampleRate);
-  if (!Number.isFinite(buffer.nodeGraphScopeBurnSweepStart)) {
-    buffer.nodeGraphScopeBurnSweepStart = frameInfo.startFrame;
+  const sampleRate = Math.max(1, Number(nodeGraphScopeSampleRate(buffer)) || 44100);
+  // Seconds to cross the face → phase advance per sample.
+  let sweepSeconds = Number(settings?.sweepSeconds);
+  if (!Number.isFinite(sweepSeconds) || sweepSeconds <= 0) {
+    // Legacy patches that still only have sweepHz.
+    const legacyHz = Number(settings?.sweepHz);
+    sweepSeconds = Number.isFinite(legacyHz) && legacyHz > 0
+      ? 1 / legacyHz
+      : nodeGraphLineBurnSettingsDefaults.sweepSeconds;
   }
-  const minSweepLength = Math.max(1, Math.round(sampleRate / nodeGraphOneDimensionalBurnMinSweepHz));
-  let previousProgress = null;
-  let prevSample = buffer.nodeGraphScopeBurnLastSample;
-  for (let index = drawStartIndex; index < count; index += 1) {
-    const frame = frameInfo.startFrame + index;
-    const sample = buffer[start + index];
-    if (buffer.nodeGraphScopeBurnArmed && sample > nodeGraphOneDimensionalBurnTriggerHigh) {
-      buffer.nodeGraphScopeBurnArmed = 0;
-      buffer.nodeGraphScopeBurnCrossings += 1;
-      if (buffer.nodeGraphScopeBurnCrossings >= targetCycles) {
-        const sweepLength = frame - buffer.nodeGraphScopeBurnSweepStart;
-        if (sweepLength >= minSweepLength) {
-          buffer.nodeGraphScopeBurnSweepLength = sweepLength;
-        }
-        buffer.nodeGraphScopeBurnSweepStart = frame;
-        buffer.nodeGraphScopeBurnCrossings = 0;
+  sweepSeconds = Math.max(0.01, Math.min(10, sweepSeconds));
+  const phaseInc = 1 / (sweepSeconds * sampleRate);
+  const width = canvas.width;
+  const height = canvas.height;
+
+  // Persistent free-run phasor on this face — survives Sweep (s) changes.
+  let phasor = Number(canvas._lineBurnPhasor);
+  if (!Number.isFinite(phasor) || phasor < 0 || phasor >= 1) {
+    phasor = 0;
+  }
+  let resetWasHigh = canvas._lineBurnResetWasHigh === true;
+
+  const stepPhasorAndReset = (resetSample) => {
+    const resetHigh = Number(resetSample) >= nodeGraphLineBurnResetThreshold;
+    const snapped = resetHigh && !resetWasHigh;
+    if (snapped) {
+      phasor = 0;
+    }
+    resetWasHigh = resetHigh;
+    phasor += phaseInc;
+    if (phasor >= 1) {
+      phasor -= Math.floor(phasor);
+      if (phasor < 0 || phasor >= 1) {
+        phasor = 0;
       }
-    } else if (!buffer.nodeGraphScopeBurnArmed && sample < nodeGraphOneDimensionalBurnTriggerLow) {
-      buffer.nodeGraphScopeBurnArmed = 1;
     }
-    prevSample = sample;
-    const progress = wrapNodeSliderValue(
-      (frame - buffer.nodeGraphScopeBurnSweepStart) / Math.max(1, buffer.nodeGraphScopeBurnSweepLength),
-      0,
-      1,
-    );
-    if (previousProgress !== null && progress < previousProgress) {
-      breakNodeGraphScope2dPath(points);
-    }
-    points.push({
-      x: rect.left + rect.width * progress,
-      y: nodeGraphOneDimensionalBurnSampleToY(sample, rect),
-    });
-    previousProgress = progress;
+    return snapped;
+  };
+
+  // Samples already consumed still update phasor + Reset so edges are not missed.
+  for (let index = 0; index < drawStartIndex; index += 1) {
+    stepPhasorAndReset(nodeGraphOneDimensionalBurnResetSample(resetBuffer, index, count));
   }
-  buffer.nodeGraphScopeBurnLastSample = prevSample;
+
+  const points = [];
+  let hadPoint = false;
+  for (let index = drawStartIndex; index < count; index += 1) {
+    const resetSample = nodeGraphOneDimensionalBurnResetSample(resetBuffer, index, count);
+    const resetHigh = Number(resetSample) >= nodeGraphLineBurnResetThreshold;
+    if (resetHigh && !resetWasHigh) {
+      // Rising edge Reset: snap to left edge for this sample.
+      if (hadPoint) {
+        nodeGraphOneDimensionalBurnBreakPath(points);
+      }
+      phasor = 0;
+      hadPoint = false;
+    }
+    resetWasHigh = resetHigh;
+
+    // Draw at current phasor, then advance — so changing Sweep keeps X.
+    points.push({
+      x: phasor * width,
+      y: nodeGraphOneDimensionalBurnSampleToY(buffer[start + index], height, settings),
+    });
+    hadPoint = true;
+
+    phasor += phaseInc;
+    if (phasor >= 1) {
+      // Completed a pass — break path; residual starts the next pass at left.
+      nodeGraphOneDimensionalBurnBreakPath(points);
+      phasor -= Math.floor(phasor);
+      if (phasor < 0 || phasor >= 1) {
+        phasor = 0;
+      }
+      hadPoint = false;
+    }
+  }
+
+  canvas._lineBurnPhasor = phasor;
+  canvas._lineBurnResetWasHigh = resetWasHigh;
+  delete canvas._lineBurnSweepOriginFrame;
   return points;
 }
 
@@ -9235,7 +11990,9 @@ function nodeGraphScope2dStrokeSpace(canvas) {
   return Math.min(canvas?.width || 0, canvas?.height || 0);
 }
 
-const nodeGraphScope2dBurnRendererVersion = "webgl-retained-burn-screen-space-1";
+// Energy mono + LUT present (shared phosphor device). Soft GPU segment beams
+// unchanged — only storage/composite moved off RGB burn.
+const nodeGraphScope2dBurnRendererVersion = "energy-mono-lut-soft-beam-1";
 
 // Explicit, deterministic teardown of a burn-renderer's GL resources
 // (buffers, programs, framebuffers, textures) instead of waiting on GC.
@@ -9291,27 +12048,122 @@ function nodeGraphScope2dBurnCanvasForSlot(slot) {
   if (!canvas) {
     canvas = document.createElement("canvas");
     canvas.className = "node-module-scope-local-fallback-canvas";
+    canvas.style.mixBlendMode = "normal";
     canvas.dataset.scope2dRenderer = nodeGraphScope2dBurnRendererVersion;
     canvas.setAttribute("aria-hidden", "true");
     screenElement.appendChild(canvas);
+  } else if (canvas.style.mixBlendMode !== "normal") {
+    canvas.style.mixBlendMode = "normal";
   }
   return canvas;
 }
 
-function syncNodeGraphScope2dBurnCanvas(canvas, screenElement, pixelRatio) {
+/**
+ * Resolve face pixel density 0–4 to an effective scale.
+ * Full range: 0 → single pixel (1×1), 1 → layout×dpr, 4 → supersample AA.
+ * (No lo-fi floor — user wants the whole dial.)
+ */
+function nodeGraphScope2dResolvePixelDensity(pixelDensity, layoutWidth = 1, layoutHeight = 1) {
+  const raw = Number(pixelDensity);
+  const density = Number.isFinite(raw) ? Math.max(0, Math.min(4, raw)) : 1;
+  // effective === density; canvas size uses max(1, round(layout * density)).
+  return { density, effective: density, minDensity: 0 };
+}
+
+/** Default face plate — pure black (no teal/CRT tint in the plate color). */
+const nodeGraphFacePlateDefaultBackground = "#000000";
+
+/** Resolve face plate color from any display settings object. */
+function nodeGraphFacePlateBackground(settings, fallback = nodeGraphFacePlateDefaultBackground) {
+  return normalizeNodeGraphTraceDisplayColor(
+    settings?.background ?? settings?.backgroundColor,
+    fallback,
+  );
+}
+
+/**
+ * Pixel density 0–4 from settings. Preserves 0 (never `|| 1`).
+ * 0 → 1×1 buffer; 1 → layout×dpr; 4 → supersample.
+ */
+function nodeGraphFacePlateDensity(settings, fallback = 1) {
+  const n = Number(settings?.pixelDensity);
+  if (!Number.isFinite(n)) {
+    const fb = Number(fallback);
+    return Number.isFinite(fb) ? Math.max(0, Math.min(4, fb)) : 1;
+  }
+  return Math.max(0, Math.min(4, n));
+}
+
+function nodeGraphFacePlateApplyCss(screenElement, bg) {
+  if (screenElement?.style) {
+    screenElement.style.setProperty(
+      "--node-scope-background",
+      bg || nodeGraphFacePlateDefaultBackground,
+    );
+    // Plate under the face canvas is solid CSS; keep it true to settings.
+    if (screenElement.classList?.contains("node-module-scope-window")
+      || screenElement.classList?.contains("node-module-scope-window-surface")) {
+      screenElement.style.background = bg || nodeGraphFacePlateDefaultBackground;
+    }
+  }
+}
+
+function nodeGraphFacePlateFillCanvas(context, canvas, bg) {
+  if (!context || !canvas) {
+    return;
+  }
+  context.save();
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.globalCompositeOperation = "source-over";
+  context.fillStyle = bg || nodeGraphFacePlateDefaultBackground;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.restore();
+}
+
+/** Paint plate under existing pixels (e.g. after putImageData / transparent energy). */
+function nodeGraphFacePlateFillUnder(context, canvas, bg) {
+  if (!context || !canvas) {
+    return;
+  }
+  context.save();
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.globalCompositeOperation = "destination-over";
+  context.fillStyle = bg || nodeGraphFacePlateDefaultBackground;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.restore();
+}
+
+function syncNodeGraphScope2dBurnCanvas(canvas, screenElement, pixelRatio, pixelDensity = 1) {
   if (!canvas || !screenElement) {
     return { resized: false, synced: false };
   }
-  const rect = screenElement.getBoundingClientRect();
-  const backingPixelRatio = nodeGraphModuleScopeBackingPixelRatio(rect, pixelRatio);
-  const width = Math.max(1, Math.round(Math.max(1, rect.width) * backingPixelRatio));
-  const height = Math.max(1, Math.round(Math.max(1, rect.height) * backingPixelRatio));
+  // Layout pixel grid × density — not screen-space getBoundingClientRect.
+  // Workspace zoom must not reallocate burn FBOs (that was the FPS cliff).
+  // pixelDensity 2–4 supersamples so zoomed-in views stay soft, not blocky.
+  const size = nodeGraphModuleScopeFaceBackingSize(screenElement, pixelRatio);
+  if (!size) {
+    return { resized: false, synced: false };
+  }
+  const resolved = nodeGraphScope2dResolvePixelDensity(pixelDensity, size.width, size.height);
+  const density = resolved.effective;
+  const width = Math.max(1, Math.round(size.width * density));
+  const height = Math.max(1, Math.round(size.height * density));
   const resized = canvas.width !== width || canvas.height !== height;
   if (resized) {
     canvas.width = width;
     canvas.height = height;
   }
-  return { resized, synced: true };
+  // Below 1: intentional chunk. At/above 1: smooth CSS scale (AA when density > 1).
+  if (density < 0.999) {
+    canvas.style.imageRendering = "pixelated";
+  } else if (canvas.style.imageRendering) {
+    canvas.style.imageRendering = "";
+  }
+  if (canvas.style.width || canvas.style.height) {
+    canvas.style.width = "";
+    canvas.style.height = "";
+  }
+  return { resized, synced: true, density, userDensity: resolved.density };
 }
 
 function nodeGraphScope2dBurnTextureFormats(gl) {
@@ -9665,7 +12517,7 @@ function nodeGraphScope2dBurnDecayValues(settings) {
   return {
     decayFast: decay > 0 ? 1 - decay * 0.38 : 1,
     decaySlow: decay > 0 ? 1 - decay * 0.1 : 1,
-    exposure: 1.35 + burn * 3.5,
+    exposure: nodeGraphScope2dEnergyBurnExposure(burn),
     floor: decay > 0 ? decay * 0.0035 : 0,
   };
 }
@@ -9692,14 +12544,19 @@ function decayNodeGraphScope2dBurn(renderer, settings) {
 function nodeGraphScope2dBurnLayers(settings, dotSpace) {
   const layers = [];
   if (settings?.dot1Enabled !== false) {
+    // Size 0–1 of face min side: diameter = size * minSide (radius = half).
+    // Blur 0–1: hard-ish core → soft wide skirt (shader), not geometric size.
+    const size01 = clampNodeSliderValue(settings.dot1Size, 0, 1);
+    const side = Math.max(1, Number(dotSpace) || 1);
     layers.push({
-      blur: clampNodeSliderValue(settings.lineThickness, 0, 1),
+      // Blur 0 hard disc … 1 full soft gaussian.
+      blur: nodeGraphTraceDisplayClampStampBlur(settings.lineThickness),
       brightness: Math.max(0, Number(settings.dot1Brightness) || 0),
       color: nodeGraphScopeHexColorToRgb(settings.dot1Color),
-      radius: dotSpace * clampNodeSliderValue(settings.dot1Size, 0, 1) * 0.5,
+      radius: Math.max(0.5, side * size01 * 0.5),
     });
   }
-  return layers.filter((layer) => layer.radius > 0.25 && layer.brightness > 0);
+  return layers.filter((layer) => layer.brightness > 0 && layer.radius > 0);
 }
 
 function appendNodeGraphScope2dBurnSegment(vertices, from, to) {
@@ -9798,36 +12655,168 @@ function compositeNodeGraphScope2dBurn(renderer, settings, options = {}) {
   renderer.readSurface = nextRead;
 }
 
+/**
+ * Beautiful soft-beam retained burn on mono energy + gradient LUT.
+ * Same continuous gaussian segment ribbons as classic scope2d; storage is
+ * scalar energy (shared phosphor device), color only at present via LUT.
+ * Returns true if handled (caller should not run legacy RGB WebGL burn).
+ */
+function drawNodeGraphScope2dEnergyBurnPath(item, pixelRatio, pathPoints, settings, options = {}) {
+  if (typeof nodeGraphPhosphorEnergyGlEnsure !== "function"
+    || typeof nodeGraphPhosphorEnergyGlStepBeams !== "function"
+    || typeof nodeGraphPhosphorEnergyGlPresent !== "function") {
+    return false;
+  }
+  const canvas = nodeGraphScope2dBurnCanvasForSlot(item?.slot);
+  const screenElement = item?.screenElement || item?.slot?.scopeElement;
+  const sync = syncNodeGraphScope2dBurnCanvas(
+    canvas,
+    screenElement,
+    pixelRatio,
+    nodeGraphFacePlateDensity(settings),
+  );
+  if (!sync.synced || !canvas) {
+    return false;
+  }
+  // Opaque plate — never CSS screen (that was the green/teal bleed).
+  canvas.style.mixBlendMode = "normal";
+  // Face must be 2D — dispose any leftover RGB WebGL burn on this canvas once.
+  if (nodeGraphModuleScopeState.scope2dBurnRenderers?.get?.(canvas)) {
+    disposeNodeGraphScope2dBurnRendererForCanvas(canvas);
+  }
+  const context = canvas.getContext("2d");
+  if (!context) {
+    // Canvas already has a lost/foreign WebGL context — recreate the face.
+    disposeNodeGraphScope2dBurnRendererForCanvas(canvas);
+    canvas.remove();
+    return false;
+  }
+
+  const width = canvas.width;
+  const height = canvas.height;
+  const points = Array.isArray(pathPoints) ? pathPoints : [];
+  const endFrame = Number(options.endFrame);
+  // Always absorb sample cursor when an endFrame is known (including freeze)
+  // so pause does not bank up stamps for a resume dump.
+  if (Number.isFinite(endFrame)) {
+    absorbNodeGraphPhosphorDrawCursorOnCanvas(canvas, endFrame);
+  }
+
+  const energyGl = nodeGraphPhosphorEnergyGlEnsure(canvas, width, height, "_phosphorEnergyGl");
+  if (!energyGl) {
+    return false;
+  }
+
+  const burn = clampNodeSliderValue(Number(settings?.burn) || 0, 0, 1);
+  const decay = clampNodeSliderValue(Number(settings?.decay) || 0, 0, 1);
+  const dotSpace = nodeGraphScope2dStrokeSpace(canvas);
+  const layers = nodeGraphScope2dBurnLayers(settings, dotSpace);
+  const layer = layers[0] || null;
+  // Multi-stop energy→color LUT from shared gradient editor.
+  const bgHex = nodeGraphFacePlateBackground(settings);
+  nodeGraphFacePlateApplyCss(screenElement, bgHex);
+  nodeGraphPhosphorApplyGradientLut(energyGl, settings, "#75ebff");
+
+  // Engine speed 0 (and other pause paths): never step energy — hold FBO as-is.
+  const frozen = nodeGraphModuleScopePhosphorFrozen();
+  if (frozen) {
+    // Present only (below). No decay, no bleed, no deposit.
+  } else if (layer) {
+    // Soft circular hits on NEW motion only. Burn gain is smooth (no dead band).
+    const size01 = clampNodeSliderValue(settings?.dot1Size, 0, 1);
+    const beamBrightness = nodeGraphScope2dEnergyBurnDepositGain(
+      burn,
+      layer.brightness,
+      size01,
+    );
+    nodeGraphPhosphorEnergyGlStepBeams(energyGl, {
+      decay,
+      pathPoints: points,
+      radius: Math.max(0.35, layer.radius),
+      brightness: beamBrightness,
+      blur: nodeGraphTraceDisplayClampStampBlur(layer.blur),
+      mode: "dots",
+      // User / face ceiling. Under load: even skips across full path (not head-only).
+      maxDots: Math.max(
+        64,
+        Math.min(
+          8192,
+          Math.round(Number(settings?.dotBudget) || nodeGraphScope2dMaxSamplesPerFrame(canvas)),
+        ),
+      ),
+    });
+  } else if (typeof nodeGraphPhosphorEnergyGlStep === "function") {
+    // Fade + bleed when no drawable layer (trail still softens outward).
+    nodeGraphPhosphorEnergyGlStep(energyGl, { decay, depositGain: 0, bleed: 0.1 });
+  }
+
+  if (!frozen) {
+    const lastPoint = lastNodeGraphScope2dPathPoint(points);
+    if (lastPoint) {
+      canvas._nodeGraphScope2dLastDrawnPoint = lastPoint;
+    }
+  }
+
+  // Soft film exposure — stable base so low burn stays dim, not blank.
+  // Re-present while frozen so the face stays visible if something cleared the 2D canvas.
+  const exposure = nodeGraphScope2dEnergyBurnExposure(burn);
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  nodeGraphFacePlateFillCanvas(context, canvas, bgHex);
+  if (nodeGraphPhosphorEnergyGlPresent(energyGl, 1, { exposure })) {
+    context.save();
+    context.globalCompositeOperation = "lighter";
+    // Smooth when density ≥ 1 (supersample AA); nearest when intentionally chunky.
+    const dens = Number(sync.density);
+    context.imageSmoothingEnabled = Number.isFinite(dens) ? dens >= 0.999 : true;
+    context.drawImage(energyGl.canvas, 0, 0, width, height);
+    context.restore();
+  }
+  return true;
+}
+
 function drawNodeGraphScope2dRetainedBurn(item, pixelRatio, square, buffer, settings) {
   const canvas = nodeGraphScope2dBurnCanvasForSlot(item?.slot);
   const screenElement = item?.screenElement || item?.slot?.scopeElement;
-  const sync = syncNodeGraphScope2dBurnCanvas(canvas, screenElement, pixelRatio);
+  const sync = syncNodeGraphScope2dBurnCanvas(
+    canvas,
+    screenElement,
+    pixelRatio,
+    nodeGraphFacePlateDensity(settings),
+  );
   if (!sync.synced) {
     return;
   }
-  const renderer = nodeGraphScope2dBurnRendererForCanvas(canvas);
-  if (!renderer) {
-    return;
-  }
-  resizeNodeGraphScope2dBurnRenderer(renderer, canvas.width, canvas.height);
   const canvasSquare = nodeGraphScope2dBurnCanvasSquare(canvas);
   if (!canvasSquare) {
     return;
   }
-  if (nodeGraphModuleScopePaused()) {
-    drawNodeGraphRetainedBurnPath(item, pixelRatio, [], settings);
+  if (nodeGraphModuleScopePhosphorFrozen()) {
+    // Freeze: re-present held energy, absorb sample cursor, no new stamps/decay.
+    drawNodeGraphRetainedBurnPath(item, pixelRatio, [], settings, {
+      endFrame: Number(buffer?.nodeGraphScopeAbsoluteFrame),
+    });
     return;
   }
+  // Deposit only samples since last draw (+ bridge). Phosphor residual is the
+  // lagging trail — do not re-stamp the full history every frame.
   const count = Math.min(buffer?.x?.length || 0, buffer?.y?.length || 0);
-  const drawStartIndex = nodeGraphScope2dDrawStartIndex(renderer, buffer, count);
+  const budget = nodeGraphScope2dMaxSamplesPerFrame(canvas);
+  const rawStart = nodeGraphScope2dDrawStartIndex(canvas, buffer, count);
+  const drawStartIndex = nodeGraphScope2dClampDrawStartIndex(rawStart, count, budget);
   let pathPoints = drawStartIndex < count
-    ? buildNodeGraphScope2dPathPoints(canvasSquare, buffer, drawStartIndex, { interpolate: true, settings })
+    ? buildNodeGraphScope2dPathPoints(canvasSquare, buffer, drawStartIndex, {
+      interpolate: false,
+      settings,
+    })
     : [];
   pathPoints = bridgeNodeGraphScope2dAdjacentFramePath(
     canvas,
     pathPoints,
     nodeGraphScope2dTraceMaxSegmentPixels(canvasSquare),
-    nodeGraphScope2dInterpolationSpacingPx(settings, Math.min(canvasSquare.width, canvasSquare.height)),
+    nodeGraphScope2dInterpolationSpacingPx(
+      settings,
+      Math.min(canvasSquare.width, canvasSquare.height),
+    ),
   );
   drawNodeGraphRetainedBurnPath(item, pixelRatio, pathPoints, settings, {
     endFrame: Number(buffer.nodeGraphScopeAbsoluteFrame),
@@ -9835,9 +12824,20 @@ function drawNodeGraphScope2dRetainedBurn(item, pixelRatio, square, buffer, sett
 }
 
 function drawNodeGraphRetainedBurnPath(item, pixelRatio, pathPoints, settings, options = {}) {
+  // Canonical: mono energy + LUT phosphor drawer (the one burn path).
+  if (drawNodeGraphScope2dEnergyBurnPath(item, pixelRatio, pathPoints, settings, options)) {
+    return;
+  }
+
+  // Legacy RGB retained burn only if energy GL unavailable.
   const canvas = nodeGraphScope2dBurnCanvasForSlot(item?.slot);
   const screenElement = item?.screenElement || item?.slot?.scopeElement;
-  const sync = syncNodeGraphScope2dBurnCanvas(canvas, screenElement, pixelRatio);
+  const sync = syncNodeGraphScope2dBurnCanvas(
+    canvas,
+    screenElement,
+    pixelRatio,
+    nodeGraphFacePlateDensity(settings),
+  );
   if (!sync.synced) {
     return;
   }
@@ -9846,7 +12846,13 @@ function drawNodeGraphRetainedBurnPath(item, pixelRatio, pathPoints, settings, o
     return;
   }
   resizeNodeGraphScope2dBurnRenderer(renderer, canvas.width, canvas.height);
-  if (nodeGraphModuleScopePaused()) {
+  if (nodeGraphModuleScopePhosphorFrozen()) {
+    // Legacy RGB path: composite held surfaces only — no decay pass.
+    const endFrame = Number(options.endFrame);
+    if (Number.isFinite(endFrame)) {
+      absorbNodeGraphPhosphorDrawCursorOnCanvas(canvas, endFrame);
+      renderer.lastFrame = endFrame;
+    }
     compositeNodeGraphScope2dBurn(renderer, settings, {
       sourceSurface: renderer.readSurface,
       swap: false,
@@ -9888,89 +12894,97 @@ function drawNodeGraphRetainedBurnPath(item, pixelRatio, pathPoints, settings, o
   compositeNodeGraphScope2dBurn(renderer, settings);
 }
 
-function drawNodeGraphOneDimensionalBurnTrail(item, pixelRatio, points, settings, buffer = null) {
-  const canvas = nodeGraphScope2dBurnCanvasForSlot(item?.slot);
-  const reducedPoints = reduceNodeGraphOneDimensionalBurnPoints(
-    Array.isArray(points) ? points : [points],
-    nodeGraphOneDimensionalBurnPointBudget(canvas),
-  );
-  const canvasPoints = reducedPoints.map((point) => (
-    point ? nodeGraphOneDimensionalBurnViewportPointToCanvas(item, pixelRatio, point) : null
-  ));
-  drawNodeGraphRetainedBurnPath(item, pixelRatio, canvasPoints, settings, {
-    endFrame: Number(buffer?.nodeGraphScopeAbsoluteFrame),
-  });
-}
-
 function drawNodeGraphLineBurnOscilloscopeItem(renderer, item, pixelRatio) {
   const buffer = item?.buffer;
-  const rect = item?.scopeRect;
-  if (!buffer?.length || !rect) {
+  if (!buffer?.length) {
     return;
   }
   renderNodeGraphModuleScopeAnalyzer(item.slot, buffer);
   const settings = nodeGraphLineBurnSettingsForNode(nodeGraphModuleScopeNodeForSlot(item.slot));
   const canvas = nodeGraphScope2dBurnCanvasForSlot(item?.slot);
-  if (!canvas) {
+  const screenElement = item?.screenElement || item?.slot?.scopeElement;
+  // Size face buffer once (layout×dpr × density) — same as 2D phosphor.
+  const sync = syncNodeGraphScope2dBurnCanvas(
+    canvas,
+    screenElement,
+    pixelRatio,
+    nodeGraphFacePlateDensity(settings),
+  );
+  if (!sync.synced || !canvas) {
     return;
   }
-  drawNodeGraphOneDimensionalBurnTrail(
-    item,
-    pixelRatio,
-    nodeGraphOneDimensionalBurnFramePoints(canvas, buffer, rect, settings),
-    settings,
-    buffer,
+  const endFrame = Number(buffer.nodeGraphScopeAbsoluteFrame);
+  if (nodeGraphModuleScopePhosphorFrozen()) {
+    // Freeze held phosphor; absorb cursor so resume does not flood the face.
+    drawNodeGraphRetainedBurnPath(item, pixelRatio, [], settings, { endFrame });
+    return;
+  }
+  const nodeId = String(item?.slot?.nodeId || "");
+  // Prefer the sink's own Reset capture (full-rate visual input buffer).
+  // Fall back to whatever is wired into Reset if the port buffer is empty
+  // (e.g. plan not yet rebuilt after adding the jack).
+  let resetBuffer = null;
+  if (nodeId) {
+    const own = nodeGraphModuleScopeState.buffers.get(`${nodeId}:Reset`);
+    const ownLen = own?.length || 0;
+    const ownRecent = Math.floor(Number(own?.nodeGraphScopeRecentSampleCount) || 0);
+    if (own && ownLen > 0 && (ownRecent > 0 || ownLen > 0)) {
+      resetBuffer = own;
+    } else if (typeof nodeGraphModuleScopeConnectedSourceBuffer === "function") {
+      resetBuffer = nodeGraphModuleScopeConnectedSourceBuffer(nodeId, "Reset");
+    }
+  }
+  // Points already in canvas pixel space (not workspace screen rect).
+  const pathPoints = reduceNodeGraphOneDimensionalBurnPoints(
+    nodeGraphOneDimensionalBurnFramePoints(canvas, buffer, settings, resetBuffer),
+    nodeGraphOneDimensionalBurnPointBudget(canvas),
   );
+  drawNodeGraphRetainedBurnPath(item, pixelRatio, pathPoints, settings, { endFrame });
 }
 
 // Draws one vertical line per Hypersaw voice, at x = that voice's current
-// phase (0..1) mapped straight across the canvas width. Deliberately a
-// fresh, self-contained 2D-canvas renderer -- no WebGL burn pipeline, no
-// dot1/dot2 settings (those belong to lineBurn's oscilloscope-trace
-// concept, which doesn't apply here: this is a snapshot of N voice
-// positions, not a swept time-domain signal). Phosphor persistence is
-// done the simple way: paint a translucent black rect over the previous
-// frame instead of clearing it, so old lines fade rather than vanish.
-// Voice phase snapshots come from nodeGraphModuleScopeState.hypersawVoicePhases,
-// populated by the frame evaluator's and worklet's "hypersaw" dispatch.
+// phase (0..1) across the face. Canonical mono energy phosphor drawer
+// (same soft/hard stamps as 2D Burn / Lorenz).
 function drawNodeGraphHypersawBurnItem(renderer, item, pixelRatio) {
+  // Vertical voice stems on the canonical mono energy phosphor drawer.
   const nodeId = item?.slot?.nodeId;
   if (!nodeId) {
     return;
   }
-  const canvas = nodeGraphModuleScopeLocalFallbackCanvas(item?.slot);
+  const canvas = nodeGraphScope2dBurnCanvasForSlot(item?.slot);
   const screenElement = item?.screenElement || item?.slot?.scopeElement;
-  if (!canvas || !syncNodeGraphModuleScopeLocalFallbackCanvas(canvas, screenElement, pixelRatio)) {
+  const sync = syncNodeGraphScope2dBurnCanvas(canvas, screenElement, pixelRatio, 1);
+  if (!sync.synced || !canvas) {
     return;
   }
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    return;
-  }
-  ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  // Reads its own just-published Phases output directly off the data bus
-  // (see node-graph-data-bus.js) -- this is Hypersaw looking at its own
-  // data, not a wired input, so it bypasses readNodeGraphDataInput's wire
-  // lookup and addresses the bus by its own node id.
-  const phases = nodeGraphDataBus.get(nodeGraphDataBusKey(String(nodeId), "Phases"));
-  if (!Array.isArray(phases) || !phases.length) {
-    return;
-  }
-  ctx.strokeStyle = "#3de0ff";
-  ctx.lineWidth = Math.max(1, canvas.width / 160);
-  for (const phase of phases) {
-    const p = Number(phase);
-    if (!Number.isFinite(p)) {
-      continue;
+  const phases = typeof nodeGraphDataBus !== "undefined"
+    ? nodeGraphDataBus.get(nodeGraphDataBusKey(String(nodeId), "Phases"))
+    : null;
+  const pathPoints = [];
+  if (Array.isArray(phases) && phases.length && typeof PhosphorDrawer !== "undefined") {
+    const spacing = Math.max(1.5, canvas.height / 48);
+    for (const phase of phases) {
+      const p = Number(phase);
+      if (!Number.isFinite(p)) continue;
+      const x = clampNodeSliderValue(p, 0, 1) * canvas.width;
+      PhosphorDrawer.appendSegment(pathPoints, x, 0, x, canvas.height, spacing);
     }
-    const x = clampNodeSliderValue(p, 0, 1) * canvas.width;
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, canvas.height);
-    ctx.stroke();
   }
+  const minSide = Math.max(1, Math.min(canvas.width, canvas.height));
+  const settings = {
+    burn: 0.55,
+    decay: 0.22,
+    dot1Brightness: 0.95,
+    dot1Color: "#3de0ff",
+    dot1Enabled: true,
+    dot1Size: Math.max(0.012, Math.min(0.06, 5 / minSide)),
+    lineThickness: 0.25,
+    pixelDensity: 1,
+    dotBudget: 4096,
+  };
+  drawNodeGraphScope2dEnergyBurnPath(item, pixelRatio, pathPoints, settings, {
+    endFrame: Number(item?.buffer?.nodeGraphScopeAbsoluteFrame),
+  });
 }
 
 // Oscilloscope Bank -- a standalone, reusable "phase x amplitude" scope for
@@ -10020,7 +13034,7 @@ function nodeGraphScope2dTracePointFromSamples(square, x, y, settings) {
   if (sampleX === null || sampleY === null) {
     return null;
   }
-  const scale = Math.max(0, Number(settings?.scale) || 0);
+  const scale = Math.max(0, Number(settings?.scale) || 1);
   return {
     x: square.left + square.width * 0.5 + sampleX * scale * square.width * 0.5,
     y: square.top + square.height * 0.5 - sampleY * scale * square.height * 0.5,
@@ -10031,17 +13045,14 @@ function nodeGraphScope2dSampleIsFinite(x, y) {
   return nodeGraphScope2dFiniteSample(x) !== null && nodeGraphScope2dFiniteSample(y) !== null;
 }
 
-function nodeGraphScope2dTraceCanvasSquare(item, pixelRatio, square) {
-  const screenRect = item?.screenRect;
-  if (!screenRect || !square) {
-    return null;
-  }
-  return {
-    left: (square.left - screenRect.left) * pixelRatio,
-    top: (square.top - screenRect.top) * pixelRatio,
-    width: square.width * pixelRatio,
-    height: square.height * pixelRatio,
-  };
+/**
+ * Map a face-local canvas into a centered square in **buffer pixels**.
+ * Do NOT use workspace/screen rects here — those scale with zoom while the
+ * local-fallback canvas buffer is layout×dpr (fixed under zoom). Mixing the
+ * two made 2D Trace walk outside the face and clip into the walls.
+ */
+function nodeGraphScope2dTraceCanvasSquare(canvas) {
+  return nodeGraphScope2dBurnCanvasSquare(canvas);
 }
 
 function nodeGraphScope2dBurnCanvasSquare(canvas) {
@@ -10086,31 +13097,48 @@ function nodeGraphScope2dTraceSegmentIsContinuous(previousPoint, point, maxSegme
   return distance <= Math.max(1, Number(maxSegmentPixels) || 1);
 }
 
-function buildNodeGraphScope2dTraceCanvasPoints(item, pixelRatio, square, buffer, settings) {
-  const canvasSquare = nodeGraphScope2dTraceCanvasSquare(item, pixelRatio, square);
+function buildNodeGraphScope2dTraceCanvasPoints(canvasSquare, buffer, settings) {
   const count = Math.min(buffer?.x?.length || 0, buffer?.y?.length || 0);
   if (!canvasSquare || count <= 0) {
     return [];
   }
+  // Control-point budget only — canvas stroke fills segments (no densify loop).
+  const budget = typeof TraceStroke !== "undefined" && TraceStroke.pointBudget
+    ? TraceStroke.pointBudget(canvasSquare.width, canvasSquare.height)
+    : Math.max(256, Math.min(4096, Math.floor(Math.sqrt(canvasSquare.width * canvasSquare.height) * 8)));
+  const indices = typeof nodeGraphScope2dEvenSampleIndices === "function"
+    ? nodeGraphScope2dEvenSampleIndices(count, budget)
+    : null;
   const points = [];
   const maxSegmentPixels = nodeGraphScope2dTraceMaxSegmentPixels(canvasSquare);
-  const spacingPx = nodeGraphScope2dContinuitySpacingPx(
-    settings,
-    Math.min(canvasSquare.width, canvasSquare.height),
-  );
   let previousPoint = null;
-  for (let index = 0; index < count; index += 1) {
-    const point = nodeGraphScope2dTracePointFromSamples(canvasSquare, buffer.x[index], buffer.y[index], settings);
+  const visit = (index) => {
+    const point = nodeGraphScope2dTracePointFromSamples(
+      canvasSquare,
+      buffer.x[index],
+      buffer.y[index],
+      settings,
+    );
     if (!point) {
       breakNodeGraphScope2dPath(points);
       previousPoint = null;
-      continue;
+      return;
     }
     if (!nodeGraphScope2dTraceSegmentIsContinuous(previousPoint, point, maxSegmentPixels)) {
       breakNodeGraphScope2dPath(points);
       previousPoint = null;
     }
-    previousPoint = appendNodeGraphScope2dSegment(points, previousPoint, point, spacingPx);
+    points.push(point);
+    previousPoint = point;
+  };
+  if (indices && indices.length) {
+    for (let i = 0; i < indices.length; i += 1) {
+      visit(indices[i]);
+    }
+  } else {
+    for (let index = 0; index < count; index += 1) {
+      visit(index);
+    }
   }
   return points;
 }
@@ -10119,70 +13147,100 @@ function drawNodeGraphScope2dTraceLayer(context, points, dotSpace, settings) {
   if (!context || !Array.isArray(points) || !points.length) {
     return;
   }
-  const enabled = settings.dot1Enabled !== false;
-  const size = clampNodeSliderValue(settings.dot1Size, 0, 1);
-  const brightness = Math.max(0, Number(settings.dot1Brightness) || 0);
-  if (!enabled || size <= 0 || brightness <= 0) {
+  if (settings.dot1Enabled === false) {
     return;
   }
-  const blur = clampNodeSliderValue(settings.lineThickness, 0, 1);
+  // VECTOR polyline (same philosophy as 1D Trace — not energy stamps).
+  if (typeof TraceStroke !== "undefined" && TraceStroke.draw) {
+    const count = TraceStroke.draw(context, points, {
+      size: settings.dot1Size,
+      blur: 0,
+      brightness: settings.dot1Brightness,
+      color: settings.dot1Color,
+      faceMinSide: Math.max(1, Number(dotSpace) || 1),
+      composite: "source-over",
+    });
+    if (count > 0) {
+      recordNodeGraphModuleScopeRenderMetrics(count, count);
+    }
+    return;
+  }
+  const size = clampNodeSliderValue(settings.dot1Size, 0, 1);
+  const brightness = Math.max(0, Number(settings.dot1Brightness) || 0);
+  if (size <= 0 || brightness <= 0) {
+    return;
+  }
   const rgb = nodeGraphScopeRgbFloatsToCanvasRgb(nodeGraphScopeHexColorToRgb(settings.dot1Color));
-  const alpha = Math.min(1, brightness);
-  const radius = Math.max(0.5, dotSpace * size * 0.5);
+  const radius = Math.max(0.5, Math.max(1, Number(dotSpace) || 1) * size * 0.5);
   context.save();
   context.globalCompositeOperation = "lighter";
   context.lineCap = "round";
   context.lineJoin = "round";
   context.lineWidth = radius * 2;
-  context.strokeStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`;
-  context.shadowColor = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${Math.min(1, alpha * 0.9)})`;
-  context.shadowBlur = radius * (0.35 + blur * 2.2);
-  const visiblePoints = points.filter(Boolean);
-  if (visiblePoints.length === 1) {
-    drawNodeGraphModuleScopeLightShape(context, "circle", visiblePoints[0].x, visiblePoints[0].y, radius);
-    context.fillStyle = context.strokeStyle;
-    context.fill();
-  } else {
-    context.beginPath();
-    drawNodeGraphScopeCanvasSmoothPath(context, points);
-    context.stroke();
-  }
-  recordNodeGraphModuleScopeRenderMetrics(visiblePoints.length, visiblePoints.length);
+  context.strokeStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${Math.min(1, brightness)})`;
+  context.shadowBlur = 0;
+  context.beginPath();
+  drawNodeGraphScopeCanvasSmoothPath(context, points);
+  context.stroke();
   context.restore();
 }
 
 function drawNodeGraphScope2dTraceItem(renderer, item, pixelRatio) {
-  const rect = item?.scopeRect;
   const buffer = item?.buffer;
-  if (!rect || !buffer?.nodeGraphScopeXy || !buffer.x?.length || !buffer.y?.length) {
+  if (!buffer?.nodeGraphScopeXy || !buffer.x?.length || !buffer.y?.length) {
     return;
   }
   renderNodeGraphModuleScopeAnalyzer(item.slot, buffer);
   const canvas = nodeGraphModuleScopeLocalFallbackCanvas(item?.slot);
   const screenElement = item?.screenElement || item?.slot?.scopeElement;
-  if (!canvas || !syncNodeGraphModuleScopeLocalFallbackCanvas(canvas, screenElement, pixelRatio)) {
+  const settings = nodeGraphScope2dTraceSettingsForNode(nodeGraphModuleScopeNodeForSlot(item.slot));
+  // VECTOR polyline; density scales face buffer for lo-fi/AA (default 1).
+  const density = nodeGraphFacePlateDensity(settings, 1);
+  if (!canvas || !syncNodeGraphModuleScopeLocalFallbackCanvas(
+    canvas,
+    screenElement,
+    pixelRatio,
+    density,
+  )) {
     return;
+  }
+  // Vector class: normal blend. Density < 1 stays pixelated (sync); density ≥ 1
+  // clears inline image-rendering so workspace.pixelated-canvas-zoom can crisp
+  // zoom-in without mushy bilinear scale.
+  canvas.classList.add("node-module-scope-vector-trace");
+  if (density < 0.999) {
+    canvas.style.imageRendering = "pixelated";
+  } else {
+    canvas.style.imageRendering = "";
   }
   const context = canvas.getContext("2d");
   if (!context) {
     return;
   }
+  context.imageSmoothingEnabled = density >= 0.999;
+  if ("imageSmoothingQuality" in context && density >= 0.999) {
+    context.imageSmoothingQuality = "high";
+  }
   if (canvas.dataset.scope2dRenderer !== "sample-history-trace-1") {
     canvas.dataset.scope2dRenderer = "sample-history-trace-1";
   }
-  const square = nodeGraphModuleScopeCenteredSquareRect(rect);
-  const settings = nodeGraphScope2dTraceSettingsForNode(nodeGraphModuleScopeNodeForSlot(item.slot));
-  const points = buildNodeGraphScope2dTraceCanvasPoints(item, pixelRatio, square, buffer, settings);
+  // Buffer-local square (layout×dpr). Never use item.scopeRect/screenRect —
+  // those are workspace screen coords and grow with zoom, so the stroke would
+  // walk out of the face and clip into the module chrome.
+  const canvasSquare = nodeGraphScope2dTraceCanvasSquare(canvas);
+  const points = buildNodeGraphScope2dTraceCanvasPoints(canvasSquare, buffer, settings);
+  const bg = nodeGraphFacePlateBackground(settings, nodeGraphScope2dTraceSettingsDefaults.background);
+  nodeGraphFacePlateApplyCss(screenElement, bg);
+  nodeGraphFacePlateFillCanvas(context, canvas, bg);
   if (!points.some(Boolean)) {
     return;
   }
-  context.clearRect(0, 0, canvas.width, canvas.height);
   const dotSpace = Math.min(canvas.width, canvas.height);
   drawNodeGraphScope2dTraceLayer(context, points, dotSpace, settings);
 }
 
-function buildNodeGraphTraceDisplaySamples(buffer, slot, pointCount, progressFn, samplesPerPoint) {
-  const view = nodeGraphTraceDisplayBufferView(buffer, slot);
+function buildNodeGraphTraceDisplaySamples(buffer, slot, pointCount, progressFn, samplesPerPoint, viewOverride = null) {
+  const view = viewOverride || nodeGraphTraceDisplayBufferView(buffer, slot);
   if (!view || view.end <= view.start) {
     return null;
   }
@@ -10214,11 +13272,13 @@ function buildNodeGraphTraceDisplaySamples(buffer, slot, pointCount, progressFn,
   return samples;
 }
 
-function buildNodeGraphTraceDisplayCanvasPoints(buffer, canvas, slot) {
+function buildNodeGraphTraceDisplayCanvasPoints(buffer, canvas, slot, viewOverride = null) {
   if (!buffer?.length || !canvas?.width || !canvas?.height) {
     return [];
   }
-  const view = nodeGraphTraceDisplayBufferView(buffer, slot);
+  const width = Math.max(1, canvas.width);
+  // VECTOR: continuous sample window → continuous face coords (no pixel lock / column snap).
+  const view = viewOverride || nodeGraphTraceDisplayBufferView(buffer, slot);
   const halfHeight = canvas.height * nodeGraphModuleScopeTraceHalfHeightRatio(slot, buffer, { height: canvas.height });
   if (!view || view.end <= view.start) {
     const sample = nodeGraphModuleScopeInterpolatedSample(buffer, Math.max(0, buffer.length - 1));
@@ -10232,12 +13292,22 @@ function buildNodeGraphTraceDisplayCanvasPoints(buffer, canvas, slot) {
     }];
   }
   const visibleSamples = Math.max(1, view.end - view.start);
-  const width = Math.max(1, canvas.width);
-  const pointCount = Math.max(2, Math.min(width, Math.ceil(visibleSamples)));
+  // Control-point budget is sample/CPU limited — NOT min(canvas.width) (that is a pixel paradigm).
+  const budget = typeof TraceStroke !== "undefined" && TraceStroke.pointBudget
+    ? TraceStroke.pointBudget(canvas.width, canvas.height, nodeGraphTraceDisplayRenderPointBudget())
+    : Math.max(256, Math.min(4096, nodeGraphTraceDisplayRenderPointBudget()));
+  const pointCount = Math.max(2, Math.min(visibleSamples, budget));
   const midY = canvas.height * 0.5;
   const samplesPerPoint = visibleSamples / Math.max(1, pointCount - 1);
   const progressFn = (index, count) => count <= 1 ? 0 : index / (count - 1);
-  const samples = buildNodeGraphTraceDisplaySamples(buffer, slot, pointCount, progressFn, samplesPerPoint);
+  const samples = buildNodeGraphTraceDisplaySamples(
+    buffer,
+    slot,
+    pointCount,
+    progressFn,
+    samplesPerPoint,
+    view,
+  );
   if (!samples) {
     return [];
   }
@@ -10248,52 +13318,61 @@ function buildNodeGraphTraceDisplayCanvasPoints(buffer, canvas, slot) {
         points.push(null);
       }
     } else {
-      points.push({ x: s.progress * width, y: midY - s.value * halfHeight });
+      // Continuous face coordinates — GPU/canvas antialiases the stroke.
+      points.push({
+        x: s.progress * width,
+        y: midY - s.value * halfHeight,
+      });
     }
   }
   return points;
 }
 
 function drawNodeGraphTraceDisplayCanvasLayer(context, points, layer, canvas, options = {}) {
-  if (!context || !Array.isArray(points) || points.length < 2 || !canvas) {
+  if (!context || !Array.isArray(points) || points.length < 1 || !canvas) {
     return;
   }
-  const enabled = layer.enabled !== false;
+  if (layer.enabled === false) {
+    return;
+  }
+  const face = Math.min(canvas.width, canvas.height);
+  if (typeof TraceStroke !== "undefined" && TraceStroke.draw) {
+    // VECTOR polyline: opaque source-over (not additive pixel glow).
+    TraceStroke.draw(context, points, {
+      size: layer.size,
+      blur: 0,
+      brightness: layer.brightness,
+      color: layer.color,
+      faceMinSide: face,
+      composite: "source-over",
+    });
+    return;
+  }
   const size = clampNodeSliderValue(layer.size, 0, 1);
   const brightness = Math.max(0, Number(layer.brightness) || 0);
-  if (!enabled || size <= 0 || brightness <= 0) {
+  if (size <= 0 || brightness <= 0) {
     return;
   }
-  const glow = options.glow !== false;
-  const blur = clampNodeSliderValue(layer.blur, 0, 1);
   const rgb = nodeGraphScopeRgbFloatsToCanvasRgb(nodeGraphScopeHexColorToRgb(layer.color));
-  const lineWidth = Math.max(1, Math.min(canvas.width, canvas.height) * size);
+  const gain = Math.min(1, brightness);
+  const lineWidth = Math.max(1, face * size);
   context.save();
-  context.globalCompositeOperation = "lighter";
+  context.globalCompositeOperation = "source-over";
+  context.imageSmoothingEnabled = true;
   context.lineCap = "round";
   context.lineJoin = "round";
   context.lineWidth = lineWidth;
-  context.strokeStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${Math.min(1, brightness)})`;
-  if (glow) {
-    context.shadowColor = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${Math.min(1, brightness)})`;
-    context.shadowBlur = lineWidth * blur * 1.5;
-  }
+  context.strokeStyle = `rgb(${Math.round(rgb[0] * gain)}, ${Math.round(rgb[1] * gain)}, ${Math.round(rgb[2] * gain)})`;
+  context.shadowBlur = 0;
   context.beginPath();
   drawNodeGraphScopeCanvasSmoothPath(context, points);
   context.stroke();
   context.restore();
 }
 
-// The Output module shows its Left/Right channels as two separate colored
-// traces: Left uses the trace display's primary/dot1 fields, Right uses its
-// own dedicated secondary* fields (secondaryColor/secondarySize/etc.) so
-// each channel's visibility and color use the standard trace settings
-// toggles/color pickers instead of being hardcoded. Red/blue below are only
-// the fallback defaults when the user hasn't set color/secondaryColor
-// themselves.
-const nodeGraphOutputTraceLeftColor = "#ff4d4d";
-const nodeGraphOutputTraceRightColor = "#4d8dff";
-
+// Output stereo: any Left/Right colors + blend modes.
+// Combine equation (default): m=min(L,R); pixel=(L-m)·C_L+(R-m)·C_R+m·C_meet
+// C_meet defaults to max(0,1−C_L−C_R) so classic red+blue→green still holds.
 function nodeGraphOutputStereoTraceBuffers(nodeId) {
   const id = String(nodeId || "");
   if (!id) {
@@ -10312,7 +13391,8 @@ function nodeGraphTraceDisplayPrimaryLayer(settings, color) {
     enabled: settings.dot1Enabled,
     size: settings.dot1Size,
     brightness: settings.brightness,
-    blur: settings.lineThickness,
+    // Trace is hard-stroke only — soft skirts don't fit line ribbons.
+    blur: 0,
     color,
   };
 }
@@ -10324,44 +13404,130 @@ function drawNodeGraphTraceDisplayCanvasItem(item, pixelRatio) {
   if (!slot || !buffer?.length || !screenElement) {
     return false;
   }
+  const settings = nodeGraphTraceDisplaySettingsForSlot(slot);
   const canvas = nodeGraphModuleScopeLocalFallbackCanvas(slot);
-  if (!canvas || !syncNodeGraphModuleScopeLocalFallbackCanvas(canvas, screenElement, pixelRatio)) {
+  // VECTOR polyline into density-scaled face buffer (default 1 = current look).
+  const density = nodeGraphFacePlateDensity(settings, 1);
+  if (!canvas || !syncNodeGraphModuleScopeLocalFallbackCanvas(
+    canvas,
+    screenElement,
+    pixelRatio,
+    density,
+  )) {
     return false;
+  }
+  // Vector class: normal blend (not screen). Density < 1 always chunky;
+  // density ≥ 1 defers to CSS (smooth at 1:1, pixelated under zoom ≥ 2.5).
+  canvas.classList.add("node-module-scope-vector-trace");
+  if (density < 0.999) {
+    canvas.style.imageRendering = "pixelated";
+  } else {
+    canvas.style.imageRendering = "";
   }
   const context = canvas.getContext("2d");
   if (!context) {
     return false;
   }
-  const settings = nodeGraphTraceDisplaySettingsForSlot(slot);
+  // At lo-fi density, keep nearest-neighbor presentation; at ≥1, smooth AA into buffer.
+  context.imageSmoothingEnabled = density >= 0.999;
+  if ("imageSmoothingQuality" in context && density >= 0.999) {
+    context.imageSmoothingQuality = "high";
+  }
+  const bg = nodeGraphFacePlateBackground(settings);
+  nodeGraphFacePlateApplyCss(screenElement, bg);
+  const fillTraceBackground = () => nodeGraphFacePlateFillCanvas(context, canvas, bg);
+  // putImageData (combine) replaces pixels — paint plate *under* with destination-over after.
+  const paintBackgroundUnder = () => nodeGraphFacePlateFillUnder(context, canvas, bg);
   const stereoBuffers = slot?.type === "output" ? nodeGraphOutputStereoTraceBuffers(slot.nodeId) : null;
   if (stereoBuffers) {
     const leftBuffer = prepareNodeGraphTraceDisplayBuffer(stereoBuffers.left, settings);
     const rightBuffer = prepareNodeGraphTraceDisplayBuffer(stereoBuffers.right, settings);
-    const leftPoints = buildNodeGraphTraceDisplayCanvasPoints(leftBuffer, canvas, slot);
-    const rightPoints = buildNodeGraphTraceDisplayCanvasPoints(rightBuffer, canvas, slot);
-    const rawTraceSettings = nodeGraphModuleScopeNodeForSlot(slot)?.traceDisplaySettings || {};
-    const leftLayer = nodeGraphTraceDisplayPrimaryLayer(
-      settings,
-      rawTraceSettings.color ?? rawTraceSettings.dot1Color ?? nodeGraphOutputTraceLeftColor,
-    );
+    const views = nodeGraphTraceDisplayStereoBufferViews(leftBuffer, rightBuffer, slot);
+    const leftPoints = buildNodeGraphTraceDisplayCanvasPoints(leftBuffer, canvas, slot, views.left);
+    const rightPoints = buildNodeGraphTraceDisplayCanvasPoints(rightBuffer, canvas, slot, views.right);
+    const leftColor = settings.color || settings.dot1Color || "#ff0000";
+    const rightColor = settings.secondaryColor || "#0000ff";
+    const leftLayer = nodeGraphTraceDisplayPrimaryLayer(settings, leftColor);
     const rightLayer = {
-      enabled: settings.secondaryEnabled,
+      enabled: settings.secondaryEnabled !== false,
       size: settings.secondarySize,
       brightness: settings.secondaryBrightness,
-      blur: settings.secondaryLineThickness,
-      color: rawTraceSettings.secondaryColor ?? nodeGraphOutputTraceRightColor,
+      blur: 0,
+      color: rightColor,
     };
     context.clearRect(0, 0, canvas.width, canvas.height);
-    drawNodeGraphTraceDisplayCanvasLayer(context, rightPoints, rightLayer, canvas, { glow: false });
-    drawNodeGraphTraceDisplayCanvasLayer(context, leftPoints, leftLayer, canvas, { glow: false });
-    recordNodeGraphModuleScopeRenderMetrics(leftPoints.length + rightPoints.length, leftPoints.length + rightPoints.length);
+    const face = Math.min(canvas.width, canvas.height);
+    let painted = 0;
+    const blend = settings.stereoBlend || "combine";
+    if (blend !== "combine") {
+      // Canvas composites: plate first, then strokes.
+      fillTraceBackground();
+    }
+    if (typeof TraceStroke !== "undefined" && TraceStroke.drawStereo) {
+      painted = TraceStroke.drawStereo(
+        context,
+        leftLayer.enabled === false ? [] : leftPoints,
+        rightLayer.enabled === false ? [] : rightPoints,
+        {
+          size: leftLayer.size,
+          blur: 0,
+          brightness: leftLayer.brightness,
+          color: leftColor,
+          faceMinSide: face,
+        },
+        {
+          size: rightLayer.size,
+          blur: 0,
+          brightness: rightLayer.brightness,
+          color: rightColor,
+          faceMinSide: face,
+        },
+        {
+          blend,
+          leftColor,
+          rightColor,
+          meetColor: "auto",
+        },
+      );
+    } else if (typeof TraceStroke !== "undefined" && TraceStroke.drawStereoRedBlueGreen) {
+      painted = TraceStroke.drawStereoRedBlueGreen(
+        context,
+        leftLayer.enabled === false ? [] : leftPoints,
+        rightLayer.enabled === false ? [] : rightPoints,
+        {
+          size: leftLayer.size,
+          blur: 0,
+          brightness: leftLayer.brightness,
+          faceMinSide: face,
+        },
+        {
+          size: rightLayer.size,
+          blur: 0,
+          brightness: rightLayer.brightness,
+          faceMinSide: face,
+        },
+      );
+    } else {
+      fillTraceBackground();
+      // Fallback: layered RGB (overlap may look like additive mix, not meet).
+      drawNodeGraphTraceDisplayCanvasLayer(context, rightPoints, rightLayer, canvas, { glow: false });
+      drawNodeGraphTraceDisplayCanvasLayer(context, leftPoints, leftLayer, canvas, { glow: false });
+      painted = leftPoints.length + rightPoints.length;
+    }
+    // Combine putImageData leaves transparent holes — plate goes underneath.
+    if (blend === "combine") {
+      paintBackgroundUnder();
+    }
+    recordNodeGraphModuleScopeRenderMetrics(painted, painted);
     rememberNodeGraphTraceDisplaySignature(slot, item, buffer, settings);
     return true;
   }
-  const points = buildNodeGraphTraceDisplayCanvasPoints(buffer, canvas, slot);
-  context.clearRect(0, 0, canvas.width, canvas.height);
+  // Mono 1D Trace = VECTOR polyline (not a pixel strip / energy grid).
+  const prepared = prepareNodeGraphTraceDisplayBuffer(buffer, settings);
+  fillTraceBackground();
+  const points = buildNodeGraphTraceDisplayCanvasPoints(prepared || buffer, canvas, slot);
   const layer = nodeGraphTraceDisplayPrimaryLayer(settings, settings.color);
-  drawNodeGraphTraceDisplayCanvasLayer(context, points, layer, canvas);
+  drawNodeGraphTraceDisplayCanvasLayer(context, points, layer, canvas, { glow: false });
   recordNodeGraphModuleScopeRenderMetrics(points.length, points.length);
   rememberNodeGraphTraceDisplaySignature(slot, item, buffer, settings);
   return true;
@@ -10459,16 +13625,107 @@ function bridgeNodeGraphScope2dAdjacentFramePath(canvas, pathPoints, maxDistance
   if (!previousPoint || !firstPoint || nodeGraphScope2dPointDistance(previousPoint, firstPoint) > maxDistancePx) {
     return pathPoints;
   }
-  const bridgePoints = [previousPoint];
-  appendNodeGraphScope2dInterpolatedPoint(bridgePoints, firstPoint, spacingPx);
-  return bridgePoints.length > 1
-    ? [...bridgePoints, ...pathPoints]
-    : pathPoints;
+  // One bridge vertex only — soft GPU beam segments already fill the gap
+  // (prettyscope/woscope style). Dense CPU interpolation here multiplies
+  // segment count and tanks FPS at high speed without improving softness.
+  void spacingPx;
+  return [previousPoint, ...pathPoints];
+}
+
+/**
+ * Hard cap path control points / stamps per visual frame for retained 2D burn.
+ * Cost stays O(budget); quality for slow orbits comes from even coverage of the
+ * full history window, not from densifying one short arc of newest samples.
+ */
+function nodeGraphScope2dMaxSamplesPerFrame(canvas) {
+  const area = Math.max(1, (canvas?.width || 1) * (canvas?.height || 1));
+  return Math.max(768, Math.min(4096, Math.floor(Math.sqrt(area) * 6)));
+}
+
+/**
+ * Evenly pick up to maxPoints indices across [0, count) for path geometry.
+ * This is a control-point cap for the polyline — stamp count is decided later
+ * by ideal spacing (may be far below maxPoints).
+ */
+function nodeGraphScope2dEvenSampleIndices(count, maxPoints) {
+  const safeCount = Math.max(0, Math.floor(Number(count) || 0));
+  if (safeCount <= 0) {
+    return [];
+  }
+  const cap = Math.max(2, Math.floor(Number(maxPoints) || 2));
+  if (safeCount <= cap) {
+    const all = new Array(safeCount);
+    for (let i = 0; i < safeCount; i += 1) {
+      all[i] = i;
+    }
+    return all;
+  }
+  const indices = new Array(cap);
+  const last = safeCount - 1;
+  for (let i = 0; i < cap; i += 1) {
+    indices[i] = Math.min(last, Math.round((i * last) / (cap - 1)));
+  }
+  return indices;
+}
+
+/**
+ * Build path polyline from the capture window. Prefer enough control points to
+ * follow the curve; do NOT force maxPoints when fewer samples exist.
+ * Stamp budget is applied separately (ideal spacing, stop when empty).
+ */
+function buildNodeGraphScope2dEvenPathPoints(square, buffer, maxPoints, settings) {
+  const count = Math.min(buffer?.x?.length || 0, buffer?.y?.length || 0);
+  if (!count || !square) {
+    return [];
+  }
+  // Control points: use all samples if modest; otherwise even-subsample.
+  // Cap control verts so we don't iterate 44k points — stamps are budgeted later.
+  const controlCap = Math.min(
+    count,
+    Math.max(256, Math.min(Math.floor(Number(maxPoints) || 2048) * 2, 8192)),
+  );
+  const indices = nodeGraphScope2dEvenSampleIndices(count, controlCap);
+  const pathPoints = [];
+  for (let i = 0; i < indices.length; i += 1) {
+    const index = indices[i];
+    if (!nodeGraphScope2dSampleIsFinite(buffer.x[index], buffer.y[index])) {
+      breakNodeGraphScope2dPath(pathPoints);
+      continue;
+    }
+    const point = nodeGraphScope2dPointFromSamples(
+      square,
+      buffer.x[index],
+      buffer.y[index],
+      settings,
+    );
+    if (!point) {
+      breakNodeGraphScope2dPath(pathPoints);
+      continue;
+    }
+    pathPoints.push(point);
+  }
+  return pathPoints;
+}
+
+/**
+ * If more samples arrived than we can afford this frame, skip the middle and
+ * start from the newest window so we never fall into a catch-up death spiral.
+ * (Used by segment / incremental modes.)
+ */
+function nodeGraphScope2dClampDrawStartIndex(startIndex, count, maxSamples) {
+  const safeCount = Math.max(0, Math.floor(Number(count) || 0));
+  const safeStart = Math.max(0, Math.min(safeCount, Math.floor(Number(startIndex) || 0)));
+  const cap = Math.max(64, Math.floor(Number(maxSamples) || 2048));
+  if (safeCount - safeStart <= cap) {
+    return safeStart;
+  }
+  return Math.max(0, safeCount - cap);
 }
 
 function nodeGraphScope2dCanvasSettingsSignature(settings) {
   const safeSettings = normalizeNodeGraphScope2dSettings(settings);
   return [
+    safeSettings.background,
     safeSettings.burn,
     safeSettings.decay,
     safeSettings.dot1Enabled ? 1 : 0,
@@ -10476,6 +13733,7 @@ function nodeGraphScope2dCanvasSettingsSignature(settings) {
     safeSettings.dot1Brightness,
     safeSettings.dot1Color,
     safeSettings.lineThickness,
+    Number.isFinite(Number(safeSettings.pixelDensity)) ? Number(safeSettings.pixelDensity) : 1,
   ].join("|");
 }
 
@@ -10620,6 +13878,10 @@ function drawNodeGraphModuleScopes() {
   const workspaceRect = workspace.getBoundingClientRect();
   const prePixelRatio = nodeGraphModuleScopeBackingPixelRatio(workspaceRect);
   flushNodeSliderReadoutUpdates();
+  // Do NOT schedule filter-curve redraws from the scope loop. That forced
+  // getBoundingClientRect on every filter every frame, layout-thrashed the
+  // main thread, and made module dragging feel dead. Filter faces update from
+  // slider flush / param sync only (still live while you drag cutoffs).
   if (nodeGraphModuleScopeTracesOff()) {
     if (!nodeGraphModuleScopeState.scopeTracesOffActive) {
       clearNodeGraphModuleScopeCanvas();
@@ -10631,6 +13893,9 @@ function drawNodeGraphModuleScopes() {
   nodeGraphModuleScopeState.scopeTracesOffActive = false;
   const scopePaused = nodeGraphModuleScopePaused();
   if (scopePaused && !nodeGraphModuleScopeHasModelDisplay()) {
+    // Phosphor freeze: hold face pixels, stop decay/deposit, absorb sample cursors
+    // so unpause does not stamp a backlog onto the frozen image.
+    absorbNodeGraphModuleScopePhosphorDrawCursors();
     nodeGraphModuleScopeState.animationLastTime = (performance.now?.() || Date.now()) / 1000;
     markNodeGraphModuleScopeDebugSkip("paused");
     return;
@@ -10771,6 +14036,8 @@ function scheduleNodeGraphModuleScopeDraw() {
     return;
   }
   if (nodeGraphModuleScopePaused() && !nodeGraphModuleScopeHasModelDisplay()) {
+    // Keep cursors current while frozen (no full redraw / no decay).
+    absorbNodeGraphModuleScopePhosphorDrawCursors();
     return;
   }
   if (nodeGraphModuleScopeState.drawFrame) {

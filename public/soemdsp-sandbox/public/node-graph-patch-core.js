@@ -53,6 +53,36 @@ const nodeGraphRetiredNodeTypes = new Set([
   "scriptBox",
 ]);
 
+/**
+ * Legacy phosphorLight → scope2d (2D Phosphor).
+ * Ports stay X/Y; settings map color/brightness → dot1Color/dot1Brightness.
+ */
+function migrateNodeGraphPhosphorLightToScope2d(node) {
+  if (!node || String(node.type || "").trim() !== "phosphorLight") {
+    return node;
+  }
+  const src = node.traceDisplaySettings && typeof node.traceDisplaySettings === "object"
+    ? node.traceDisplaySettings
+    : {};
+  const migratedSettings = {
+    ...src,
+    background: src.background ?? src.backgroundColor,
+    burn: src.burn,
+    decay: src.decay,
+    scale: src.scale,
+    dot1Size: src.dot1Size,
+    lineThickness: src.lineThickness ?? src.dot1Blur,
+    pixelDensity: src.pixelDensity,
+    dot1Color: src.dot1Color ?? src.color,
+    dot1Brightness: src.dot1Brightness ?? src.brightness,
+  };
+  return {
+    ...node,
+    type: "scope2d",
+    traceDisplaySettings: migratedSettings,
+  };
+}
+
 function validateNodeGraphPatch(patch) {
   if (!patch || typeof patch !== "object") {
     throw new Error("patch must be an object");
@@ -88,7 +118,10 @@ function validateNodeGraphPatch(patch) {
       .filter(Boolean),
   );
   const ids = new Set();
-  const nodes = patch.nodes.filter((node) => !retiredNodeTypes.has(String(node.type || "").trim())).map((node) => {
+  const nodes = patch.nodes
+    .filter((node) => !retiredNodeTypes.has(String(node.type || "").trim()))
+    .map((rawNode) => migrateNodeGraphPhosphorLightToScope2d(rawNode))
+    .map((node) => {
     const id = String(node.id || "").trim();
     const type = String(node.type || "").trim();
     if (!id) {
@@ -230,6 +263,13 @@ function validateNodeGraphPatch(patch) {
     }
     if (type === "audioPlayer" && Object.hasOwn(node, "phosphorWaveformSettings")) {
       normalizedNode.phosphorWaveformSettings = normalizeNodeGraphPhosphorWaveformSettings(node.phosphorWaveformSettings);
+    }
+    // Remembered playhead (0..1) so Music Player restores position after refresh.
+    if (type === "audioPlayer" && Object.hasOwn(node, "samplePhase")) {
+      const samplePhase = Number(node.samplePhase);
+      if (Number.isFinite(samplePhase)) {
+        normalizedNode.samplePhase = Math.max(0, Math.min(1, samplePhase));
+      }
     }
     if (type === "phosphillator") {
       const drawnPath = normalizeNodeGraphPhosphillatorDrawnPath(node.drawnPath);
@@ -517,7 +557,11 @@ function applyNodeGraphPatchToDom() {
     }
     element.style.setProperty("--node-grid-width-units", String(nodeGraphPatchNodeGridWidthUnits(patchNode)));
     element.style.setProperty("--node-grid-height-units", String(nodeGraphPatchNodeGridHeightUnits(patchNode)));
-    element.style.setProperty("--node-module-display-height-units", String(nodeGraphPatchNodeDisplayHeightUnits(patchNode)));
+    if (typeof nodeGraphApplyModuleShellHeightCssVars === "function") {
+      nodeGraphApplyModuleShellHeightCssVars(element, patchNode);
+    } else {
+      element.style.setProperty("--node-module-display-height-units", String(nodeGraphPatchNodeDisplayHeightUnits(patchNode)));
+    }
     element.style.setProperty("--node-module-interface-controls-height-units", String(nodeGraphPatchNodeInterfaceControlsHeightUnits(patchNode)));
     const point = nodeGraphGridToPixel(patchNode);
     positionNodeGraphNode(element, point, { clamp: false, snap: false });
@@ -632,6 +676,15 @@ function applyNodeGraphPatchToDom() {
   }
   if (typeof scheduleNodeGraphWireRedrawAfterLayout === "function") {
     scheduleNodeGraphWireRedrawAfterLayout();
+  }
+  if (typeof syncNodeGraphModuleFramesAfterDom === "function") {
+    syncNodeGraphModuleFramesAfterDom();
+  }
+  // Bottom 🔊 mirrors Output.volume + Input.level after every full DOM rebuild.
+  if (typeof syncNodeGraphLiveVolumeMirrorsFromModules === "function") {
+    syncNodeGraphLiveVolumeMirrorsFromModules();
+  } else if (typeof syncNodeGraphLiveOutputVolumeFromOutputModule === "function") {
+    syncNodeGraphLiveOutputVolumeFromOutputModule();
   }
 }
 

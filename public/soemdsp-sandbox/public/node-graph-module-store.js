@@ -13,11 +13,57 @@ let nodeGraphNativeModuleEntries = Object.freeze([]);
 let nodeGraphNativeModuleEntriesByTarget = Object.freeze({});
 let nodeGraphNativeModuleCatalogLoadStarted = false;
 
+// Module types that appear in the Module Browser as disabled
+// "under construction" cards (not spawnable from the shop). Also the
+// single source of truth for suppressing expected native-engine noise:
+// placeholder native shells (e.g. wall_delay) must not spam
+// module-diagnostics when Live Audio loads the combined wasm.
+//
+// When you mark a module UC here, diagnostics + native wasm send both
+// consult nodeGraphModuleTypeIsUnderConstruction / 
+// nodeGraphNativeModuleRefIsUnderConstruction automatically.
 const nodeGraphModuleStoreUnderConstructionTypes = Object.freeze(new Set([
   "canvas",
   "humanFilter",
+  "oscilloscopeBank",
   "shootingStarTail",
+  // Geometric room delay / "wall verb" — JS prototype only; native is a
+  // version stub that the worklet does not wire (unsupported native module).
+  "wallDelay",
 ]));
+
+function nodeGraphModuleTypeIsUnderConstruction(type) {
+  return nodeGraphModuleStoreUnderConstructionTypes.has(String(type || "").trim());
+}
+
+/** native catalog name (snake_case) → module type (camelCase). */
+function nodeGraphNativeModuleNameToType(name) {
+  const raw = String(name || "").trim();
+  if (!raw) {
+    return "";
+  }
+  // wall_delay → wallDelay, human_filter → humanFilter
+  return raw.replace(/_([a-z0-9])/g, (_, ch) => String(ch).toUpperCase());
+}
+
+/**
+ * True when a native-module status/fault refers to an under-construction
+ * module type (by targetType, moduleType, or snake_case native name).
+ */
+function nodeGraphNativeModuleRefIsUnderConstruction(ref = {}) {
+  const targetType = String(
+    ref?.targetType || ref?.moduleType || ref?.type || "",
+  ).trim();
+  if (targetType && nodeGraphModuleTypeIsUnderConstruction(targetType)) {
+    return true;
+  }
+  const name = String(ref?.name || ref?.moduleName || "").trim();
+  if (!name) {
+    return false;
+  }
+  const fromName = nodeGraphNativeModuleNameToType(name);
+  return Boolean(fromName && nodeGraphModuleTypeIsUnderConstruction(fromName));
+}
 
 const nodeGraphModuleGroupStorageKey = "soemdsp-sandbox.moduleGroups.v1";
 const nodeGraphModuleCatalogVisibilityStorageKey = "soemdsp-sandbox.moduleCatalogVisibility.v2";
@@ -389,6 +435,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "Henon Map",
     notes: ["chaos", "discrete map", "2D attractor"],
   },
+  // rayBouncer: chromeless catalog (public/modules/rayBouncer/*-register.js).
   chuaAttractor: {
     category: "chaos",
     description: "Chua's Circuit double-scroll attractor: a classic chaotic circuit with a different lobe/scroll character than Lorenz.",
@@ -434,15 +481,15 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   graph2: {
     category: "controller",
-    description: "Patch-local graph object: fit a global smoothing mode through control points. Input range mapping and LFO or CV-driven readout.",
+    description: "Point-to-point graph: each control point’s outgoing segment has a shape (linear / rational / exponential / log / hold) and contour. LFO or CV-driven readout with range mapping.",
     label: "Graph",
-    notes: ["global smoothing", "curve through points", "cursor line", "graph nodes", "input range", "LFO rate"],
+    notes: ["per-point shape", "contour", "lin · rational · expo · log · hold", "LFO rate"],
   },
   graphCopy: {
     category: "controller",
-    description: "Same as Graph, but each segment has its own shape and contour (per-node curve style).",
+    description: "Same point-to-point Graph (per-segment shape and contour).",
     label: "Graph_Copy",
-    notes: ["per-node shapes", "curve display", "cursor line", "graph nodes", "input range", "LFO rate"],
+    notes: ["per-point shape", "contour", "lin · rational · expo · log · hold", "LFO rate"],
   },
   gain: {
     category: "dynamics",
@@ -698,9 +745,9 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   wallDelay: {
     category: "space",
-    description: "Geometric delay from a superellipsoid room (Squircle/Random/Fractal, meters-scaled Width/Height/Roundness): Rays x Bounces delay taps per ear (Ear Distance in cm), each hop's distance and specular/scattered direction computed from the real room surface. Reflectivity blends mirror-like bounces against rough scattering, and drives a shared Sabrina-style diffusion cascade.",
+    description: "Under construction. Geometric room delay / wall verb from a superellipsoid (Rays × Bounces taps per ear). JS prototype only for now — native engine is a placeholder stub.",
     label: "Wall Delay",
-    notes: ["wall geometry", "binaural", "superellipsoid", "ray bounces"],
+    notes: ["under construction", "wall geometry", "binaural", "wall verb"],
   },
   reverbEffect: {
     category: "space",
@@ -798,8 +845,9 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   // -- see node-graph-chromeless-module-registry.js.
   visualOscilloscope: {
     category: "oscilloscope",
-    description: "Square in-world display tile. Patch any signal into In and use it as a dedicated visual display.",
-    notes: ["square display", "signal display", "visual sink"],
+    description: "Multi-mode Display sink. Modes: 2D Trace / 2D Phosphor (X/Y), 1D Trace / Phosphor Dot (Mono). Same face settings as the dedicated modules.",
+    label: "Display",
+    notes: ["multi-mode", "2D Trace", "2D Phosphor", "1D Trace", "Phosphor Dot", "visual sink"],
   },
   traceDisplay: {
     category: "oscilloscope",
@@ -808,15 +856,15 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   dotOscilloscope: {
     category: "oscilloscope",
-    description: "Placeholder for a clock-like oscilloscope that draws one efficient brightness dot from the current buffered value.",
-    label: "0D Burn",
-    notes: ["clock display", "single dot", "latest value"],
+    description: "Efficient single-dot phosphor: one soft stamp on the mono energy drawer. Intensity is averaged over the latest capture window (sub-frame brightness), not a single sample snap.",
+    label: "Phosphor Dot",
+    notes: ["phosphor", "single dot", "sub-frame brightness", "energy drawer"],
   },
   oscilloscopeBank: {
     category: "oscilloscope",
-    description: "A phase-vs-amplitude scope for any voice-bank source (Hypersaw today). Wire Phases/Amplitudes/Pans from a compatible node -- x is phase (0..1), y is amplitude (bipolar stem), color is pan (red = left, green = center, blue = right). Additive blending so overlapping voices brighten instead of overpainting; phosphor persistence so you see where each line has been, not just where it is now.",
+    description: "Work in progress. Phase-vs-amplitude scope for voice-bank sources (Hypersaw today). Wire Phases/Amplitudes/Pans — not polished with the core face stack yet.",
     label: "Oscilloscope Bank",
-    notes: ["voice bank scope", "phase vs amplitude", "pan color", "additive blend", "phosphor burn"],
+    notes: ["work in progress", "voice bank scope", "phase vs amplitude", "under construction"],
   },
   videoscope: {
     category: "rgb",
@@ -826,7 +874,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   spectrogram: {
     category: "oscilloscope",
-    description: "Spectrogram SG-1 style scrolling spectrogram. Overlapping FFT windows with exponential moving-average smoothing per frequency bin, logarithmic frequency scaling, and a classic cool-to-hot color ramp (black → blue → cyan → yellow → white). Five controls: FFT Size, Overlap, Smoothing, Brightness, and output Bin count.",
+    description: "Regular STFT spectrogram. Module: Brightness, Min/Max Thresh. Display: History, FFT size, Window, Overlap, Freq Scale, Smooth, gradient presets.",
     label: "Spectrogram",
     notes: ["fft", "spectrum", "frequency waterfall", "spectral display"],
   },
@@ -838,25 +886,44 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   numberReadout: {
     category: "multimeter",
-    description: "Digital readout that draws the latest input value as formatted text. Redraws only when the displayed value changes.",
+    description: "Phosphor LCD readout (DSEG7 Classic): 0–1 energy burn + gradient colormap, soft trails, hard plate/live digits. Shows the latest input value.",
     label: "Number Readout",
-    notes: ["numeric display", "digital readout", "text display", "latest value"],
+    notes: [
+      "numeric display",
+      "digital readout",
+      "DSEG7 Classic",
+      "seven-segment",
+      "energy phosphor",
+      "gradient map",
+      "burn",
+      "decay",
+      "LCD plate",
+      "latest value",
+    ],
   },
   lineBurnOscilloscope: {
     category: "oscilloscope",
-    description: "First-pass line-burn oscilloscope style with a heavier trace pass, ready for dedicated burn tuning.",
+    description: "Heart-monitor phosphor: pen takes Sweep (s) to cross left→right. Rising-edge Reset (≥0.5) snaps back to the left. Burn, decay, pixel density.",
     label: "1D Burn Dot",
-    notes: ["burn display", "line trace", "testbed"],
+    notes: ["heart monitor", "phosphor sweep", "reset", "burn", "decay"],
   },
   scope2d: {
     category: "oscilloscope",
-    description: "First-pass 2D scope display for inspecting the latest X/Y signal point.",
-    label: "2D Burn",
-    notes: ["xy display", "2D scope", "latest point"],
+    description: "XY phosphor scope (mono energy + gradient LUT). Soft/hard stamps, burn, decay, and dwell bleed — the path Lorenz and other attractors use.",
+    label: "2D Phosphor",
+    notes: ["xy phosphor", "energy drawer", "burn", "decay", "2D scope"],
+  },
+  phosphorLight: {
+    category: "oscilloscope",
+    // Hidden + load-migrated to scope2d. Do not re-enable in shop.
+    hidden: true,
+    description: "Retired. Opens as 2D Phosphor (scope2d). Use the 2D Phosphor module for new patches.",
+    label: "2D Phosphor (legacy)",
+    notes: ["legacy", "migrates to scope2d", "hidden"],
   },
   scope2dTrace: {
     category: "oscilloscope",
-    description: "Sample-history X/Y oscilloscope for inspecting deterministic 2D traces without pixel burn decay.",
+    description: "Sample-history X/Y oscilloscope for inspecting deterministic 2D traces (instant RGB stroke, no phosphor persistence).",
     label: "2D Trace",
     notes: ["xy trace", "sample history", "2D oscilloscope"],
   },
@@ -1079,7 +1146,8 @@ function nodeGraphModuleStoreEntries() {
         !nodeGraphModuleStoreUnderConstructionTypes.has(type);
       const developerVisible = nodeGraphModuleIsStoreVisible(type, "developer");
       const developerOnly = nodeGraphModuleStoreCatalog[type]?.developerOnly === true;
-      const publicVisible = !developerOnly;
+      const catalogHidden = nodeGraphModuleStoreCatalog[type]?.hidden === true;
+      const publicVisible = !developerOnly && !catalogHidden;
       return {
         ...(nodeGraphModuleStoreCatalog[type] || {}),
         category: normalizeNodeGraphModuleStoreDepartment(nodeGraphModuleStoreCatalog[type]?.category || ""),
@@ -1087,8 +1155,8 @@ function nodeGraphModuleStoreEntries() {
         demoPatch: nodeGraphModuleStoreDemoPatchAvailable(type),
         demoListen: nodeGraphModuleStoreDemoListenAvailable(type),
         developerOnly,
-        developerVisible,
-        homeVisible: nodeGraphModuleIsStoreVisible(type, "home") && implemented,
+        developerVisible: developerVisible && !catalogHidden,
+        homeVisible: nodeGraphModuleIsStoreVisible(type, "home") && implemented && !catalogHidden,
         implemented,
         label: nodeGraphModuleStoreCatalog[type]?.label || nodeGraphNodeLabels[type] || type,
         nativeAvailable: nativeModules.some((entry) => entry.wasmAvailable),
