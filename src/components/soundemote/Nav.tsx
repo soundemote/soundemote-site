@@ -207,14 +207,28 @@ export const Nav = () => {
           />
         </a>
         <ShareProjectDialog />
-        <a
-          href="/auth"
-          className="mono text-[0.7rem] text-muted-foreground/60 hover:text-muted-foreground"
-          aria-label="Sign in"
-          title="Sign in"
-        >
-          ·
-        </a>
+        {session ? (
+          <button
+            type="button"
+            onClick={() => {
+              void signOut();
+            }}
+            className="mono text-[0.7rem] text-muted-foreground/60 hover:text-muted-foreground"
+            aria-label="Sign out"
+            title="Sign out"
+          >
+            sign out
+          </button>
+        ) : (
+          <a
+            href="/auth"
+            className="mono text-[0.7rem] text-muted-foreground/60 hover:text-muted-foreground"
+            aria-label="Sign in"
+            title="Sign in"
+          >
+            ·
+          </a>
+        )}
       </div>
     </nav>
   </header>
