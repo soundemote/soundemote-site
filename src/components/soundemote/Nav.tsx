@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import ShareProjectDialog from "./ShareProjectDialog";
+import { useAuth } from "@/hooks/useAuth";
 
 type Burst = {
   id: number;
@@ -152,6 +153,7 @@ export function SandboxNavLink({ href, label }: { href: string; label: string })
 }
 
 export const Nav = () => {
+  const { session, signOut } = useAuth();
   return (
   <header className="relative z-50 w-full border-b border-border/40 bg-background/70 backdrop-blur-xl">
     <nav className="container relative flex h-16 items-center justify-between" aria-label="Primary">
