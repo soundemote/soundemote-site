@@ -14,10 +14,24 @@ export type BankVideo = {
   youtubeId: string;
 };
 
-export type BankItem = BankPatch | BankVideo;
+export type BankAudius = {
+  kind: "audius";
+  slug: string;
+  label: string;
+  /** Audius embed id (from /v1/resolve). */
+  audiusId: string;
+};
+
+export type BankItem = BankPatch | BankVideo | BankAudius;
 
 export const SOUNDEMOTE_BANK: BankItem[] = [
   { kind: "video", slug: "intro-video", label: "soundemote sandbox — intro", youtubeId: "PpcdN-DXYdc" },
+  {
+    kind: "audius",
+    slug: "synthesizer-audio-demos",
+    label: "synthesizer audio demos",
+    audiusId: "Q4xp1vv",
+  },
   { slug: "shootingstar", label: "shooting star", url: "/patches/shootingstar.json" },
   { slug: "silently-dreaming", label: "silently dreaming", url: "/patches/silently-dreaming.json" },
   { slug: "reverb", label: "reverb", url: "/patches/reverb.json" },

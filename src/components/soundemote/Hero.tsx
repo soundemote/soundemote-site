@@ -76,6 +76,7 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
     "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autostart=1&autoframe=1&v=20260703-autoframe";
   const currentPatch = SOUNDEMOTE_BANK[currentBankIndex];
   const isVideo = currentPatch.kind === "video";
+  const isAudius = currentPatch.kind === "audius";
 
   // Keep a live ref to the current patch label so the message listener
   // (registered once) always uses the currently-selected patch's name.
@@ -167,7 +168,7 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
     const item = SOUNDEMOTE_BANK[currentBankIndex];
-    if (item.kind === "video") return;
+    if (item.kind === "video" || item.kind === "audius") return;
     // Nothing to do if this patch is already loaded in the sandbox.
     if (lastPostedRef.current === currentBankIndex) return;
     lastPostedRef.current = currentBankIndex;
@@ -263,6 +264,18 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
                   className="h-full w-full border-0"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
                   allowFullScreen
+                />
+              </div>
+            ) : isAudius ? (
+              <div
+                className="flex w-full items-center justify-center overflow-hidden bg-black"
+                style={{ height: sandboxViewportHeight }}
+              >
+                <iframe
+                  title={currentPatch.label}
+                  src={`https://audius.co/embed/playlist/${(currentPatch as { audiusId: string }).audiusId}?flavor=card`}
+                  className="h-full w-full max-w-[900px] border-0"
+                  allow="encrypted-media"
                 />
               </div>
             ) : sandboxLoaded ? (
