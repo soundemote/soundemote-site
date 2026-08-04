@@ -256,7 +256,20 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
           <div
             className={previewFrameClass}
           >
-            {sandboxLoaded ? (
+            {isVideo ? (
+              <div
+                className="w-full overflow-hidden bg-black"
+                style={{ height: sandboxViewportHeight }}
+              >
+                <iframe
+                  title={currentPatch.label}
+                  src={`https://www.youtube.com/embed/${(currentPatch as { youtubeId: string }).youtubeId}?rel=0`}
+                  className="h-full w-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                  allowFullScreen
+                />
+              </div>
+            ) : sandboxLoaded ? (
               <iframe
                 ref={iframeRef}
                 id="hero-sandbox-iframe"
