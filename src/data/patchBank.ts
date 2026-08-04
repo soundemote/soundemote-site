@@ -32,6 +32,7 @@ export const SOUNDEMOTE_BANK: BankItem[] = [
     label: "synthesizer audio demos",
     audiusId: "Q4xp1vv",
   },
+  { kind: "video", slug: "sandbox-demo-2", label: "soundemote sandbox — demo", youtubeId: "FHT0u1GDvw0" },
   { slug: "shootingstar", label: "shooting star", url: "/patches/shootingstar.json" },
   { slug: "silently-dreaming", label: "silently dreaming", url: "/patches/silently-dreaming.json" },
   { slug: "reverb", label: "reverb", url: "/patches/reverb.json" },
