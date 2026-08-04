@@ -140,10 +140,6 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
     postToSandbox({ type: "soundemote:set-live-speed", speed: 1 });
   }, [postToSandbox]);
 
-  const handleDownload = useCallback(() => {
-    postToSandbox({ type: "soundemote:render-sample" });
-  }, [postToSandbox]);
-
   // Listen for messages from the sandbox.
   useEffect(() => {
     if (!sandboxLoaded) return;
