@@ -346,16 +346,17 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
             <div className="hidden sm:block h-8 flex-1 rounded-sm border border-scope/15 bg-[#03050a] opacity-50" aria-hidden />
 
             {/* Download button */}
-            <button
-              type="button"
-              onClick={handleDownload}
+            <a
+              href="https://github.com/soundemote/soemdsp-sandbox"
+              target="_blank"
+              rel="noopener noreferrer"
               className="mono inline-flex items-center gap-1 rounded-sm border border-scope/40 px-2 py-1 text-[0.65rem] uppercase tracking-[0.14em] text-scope/80 transition-colors hover:border-scope/60 hover:text-scope hover:bg-scope/10"
-              aria-label="Download rendered sample"
-              title="Download WAV"
+              aria-label="Download the sandbox"
+              title="Download"
             >
               {ICON_DOWNLOAD}
               Download
-            </button>
+            </a>
           </div>
         </div>
         <div className="mt-[2px] flex items-center justify-center gap-1 mono text-xs normal-case tracking-[0.06em] text-muted-foreground/80 leading-none">
