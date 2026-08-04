@@ -25,14 +25,14 @@ export type BankAudius = {
 export type BankItem = BankPatch | BankVideo | BankAudius;
 
 export const SOUNDEMOTE_BANK: BankItem[] = [
-  { kind: "video", slug: "intro-video", label: "soundemote sandbox — intro", youtubeId: "PpcdN-DXYdc" },
+  { kind: "video", slug: "intro-video", label: "Hydrus - Retro Fusion", youtubeId: "PpcdN-DXYdc" },
   {
     kind: "audius",
     slug: "synthesizer-audio-demos",
     label: "synthesizer audio demos",
     audiusId: "Q4xp1vv",
   },
-  { kind: "video", slug: "sandbox-demo-2", label: "soundemote sandbox — demo", youtubeId: "FHT0u1GDvw0" },
+  { kind: "video", slug: "sandbox-demo-2", label: "Soundemote Sandbox", youtubeId: "FHT0u1GDvw0" },
   { slug: "shootingstar", label: "shooting star", url: "/patches/shootingstar.json" },
   { slug: "silently-dreaming", label: "silently dreaming", url: "/patches/silently-dreaming.json" },
   { slug: "reverb", label: "reverb", url: "/patches/reverb.json" },
