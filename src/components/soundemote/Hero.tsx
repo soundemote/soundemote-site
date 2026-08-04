@@ -266,6 +266,18 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
                   allowFullScreen
                 />
               </div>
+            ) : isAudius ? (
+              <div
+                className="flex w-full items-center justify-center overflow-hidden bg-black"
+                style={{ height: sandboxViewportHeight }}
+              >
+                <iframe
+                  title={currentPatch.label}
+                  src={`https://audius.co/embed/playlist/${(currentPatch as { audiusId: string }).audiusId}?flavor=card`}
+                  className="h-full w-full max-w-[900px] border-0"
+                  allow="encrypted-media"
+                />
+              </div>
             ) : sandboxLoaded ? (
               <iframe
                 ref={iframeRef}
