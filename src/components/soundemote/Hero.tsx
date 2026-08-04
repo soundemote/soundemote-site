@@ -75,6 +75,7 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
   const sandboxEmbedSrc =
     "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autostart=1&autoframe=1&v=20260703-autoframe";
   const currentPatch = SOUNDEMOTE_BANK[currentBankIndex];
+  const isVideo = currentPatch.kind === "video";
 
   // Keep a live ref to the current patch label so the message listener
   // (registered once) always uses the currently-selected patch's name.
