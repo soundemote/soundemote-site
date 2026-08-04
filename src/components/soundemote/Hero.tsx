@@ -75,6 +75,7 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
   const sandboxEmbedSrc =
     "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autostart=1&autoframe=1&v=20260703-autoframe";
   const currentPatch = SOUNDEMOTE_BANK[currentBankIndex];
+  const isVideo = currentPatch.kind === "video";
 
   // Keep a live ref to the current patch label so the message listener
   // (registered once) always uses the currently-selected patch's name.
@@ -169,11 +170,13 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
   const postPatch = useCallback(async () => {
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
+    const item = SOUNDEMOTE_BANK[currentBankIndex];
+    if (item.kind === "video") return;
     // Nothing to do if this patch is already loaded in the sandbox.
     if (lastPostedRef.current === currentBankIndex) return;
     lastPostedRef.current = currentBankIndex;
     try {
-      const res = await fetch(currentPatch.url);
+      const res = await fetch(item.url);
       const patchData = await res.json();
       // Detect no-op loads: same graph body as what's already showing.
       const body = JSON.stringify(patchData?.patch_data ?? patchData);
@@ -214,7 +217,7 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
     } catch {
       /* ignore fetch/post errors */
     }
-  }, [currentPatch.label, currentPatch.url, currentBankIndex]);
+  }, [currentPatch.label, currentBankIndex]);
 
   useEffect(() => {
     postPatchRef.current = postPatch;
@@ -253,7 +256,20 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
           <div
             className={previewFrameClass}
           >
-            {sandboxLoaded ? (
+            {isVideo ? (
+              <div
+                className="w-full overflow-hidden bg-black"
+                style={{ height: sandboxViewportHeight }}
+              >
+                <iframe
+                  title={currentPatch.label}
+                  src={`https://www.youtube.com/embed/${(currentPatch as { youtubeId: string }).youtubeId}?rel=0`}
+                  className="h-full w-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                  allowFullScreen
+                />
+              </div>
+            ) : sandboxLoaded ? (
               <iframe
                 ref={iframeRef}
                 id="hero-sandbox-iframe"
