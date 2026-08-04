@@ -170,11 +170,13 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
   const postPatch = useCallback(async () => {
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
+    const item = SOUNDEMOTE_BANK[currentBankIndex];
+    if (item.kind === "video") return;
     // Nothing to do if this patch is already loaded in the sandbox.
     if (lastPostedRef.current === currentBankIndex) return;
     lastPostedRef.current = currentBankIndex;
     try {
-      const res = await fetch(currentPatch.url);
+      const res = await fetch(item.url);
       const patchData = await res.json();
       // Detect no-op loads: same graph body as what's already showing.
       const body = JSON.stringify(patchData?.patch_data ?? patchData);
@@ -215,7 +217,7 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
     } catch {
       /* ignore fetch/post errors */
     }
-  }, [currentPatch.label, currentPatch.url, currentBankIndex]);
+  }, [currentPatch.label, currentBankIndex]);
 
   useEffect(() => {
     postPatchRef.current = postPatch;
