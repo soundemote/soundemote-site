@@ -226,7 +226,7 @@ If/when this sandbox's own phosphor renderers get upgraded past a flat
 \`decay\` value, \`prettyscope-revival\`'s shader source is the concrete
 reference implementation to study — not a from-scratch redesign. (Also
 worth a look, tangentially: the fork's own
-[\`jerobeam-modules\` branch](https://github.com/elanhickler/soemdsp-sandbox-phosphor/tree/jerobeam-modules)
+[\`jerobeam-modules\` branch](/phosphor)
 has active work touching the Jerobeam Spiral/Radar family, which a real
 long-exposure radar-sweep reference above connects to directly.)
 
