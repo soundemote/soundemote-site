@@ -18,7 +18,7 @@ export type WebringLink = {
 
 export const siteConfig = {
   /** Article featured on the home page ("/"). Must match a slug in featuredArticles.ts. */
-  homeFeaturedSlug: "simd",
+  homeFeaturedSlug: "phosphor",
 
   /**
    * URL -> featured article. Visiting the path shows the front page with that
