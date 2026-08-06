@@ -1,4 +1,4 @@
-// Full README from https://github.com/elanhickler/soemdsp-sandbox-phosphor,
+// Full README from https://github.com/soundemote/soemdsp-sandbox,
 // fetched verbatim (raw.githubusercontent.com, master branch). Featured
 // front-and-center on the homepage per explicit request. Media is vendored
 // locally (see below) so this article doesn't depend on that repo existing.
@@ -186,8 +186,7 @@ already-built, in-house model that does exactly this.
 
 ## 🏺 Prior art: PrettyScope
 
-\`prettyscope-revival\`
-and [\`prettyscope-clap\`](https://github.com/soundemote/prettyscope-clap) are
+\`prettyscope-revival\` is
 soundemote's own prior work on a real OpenGL oscilloscope/signal
 visualizer — same org, MIT licensed, genuinely reusable, not outside IP.
 \`prettyscope-revival\`'s \`src/visual/\` already implements a working, tested
@@ -305,7 +304,6 @@ built to reproduce.
 - Test & Measurement Tips — [Digital phosphor oscilloscopes, persistence, and eye patterns](https://www.testandmeasurementtips.com/digital-phosphor-oscilloscope-persistence-and-eye-patterns-faq/)
 - Electronic Design — [Super Phosphor Oscilloscope](https://www.electronicdesign.com/technologies/power/power-supply/power-electronics-systems/article/21197100/super-phosphor-oscilloscope)
 - soundemote — \`prettyscope-revival\` (in-house prior art, phosphor shader)
-- soundemote — [\`prettyscope-clap\`](https://github.com/soundemote/prettyscope-clap) (in-house prior art, CLAP plugin shell)
 
 ## ⚖️ A note on naming & IP
 
