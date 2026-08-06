@@ -1,4 +1,4 @@
-// Full README from https://github.com/elanhickler/soemdsp-sandbox-phosphor,
+// Full README from https://github.com/soundemote/soemdsp-sandbox,
 // fetched verbatim (raw.githubusercontent.com, master branch). Featured
 // front-and-center on the homepage per explicit request. Media is vendored
 // locally (see below) so this article doesn't depend on that repo existing.
@@ -186,8 +186,7 @@ already-built, in-house model that does exactly this.
 
 ## 🏺 Prior art: PrettyScope
 
-[\`prettyscope-revival\`](https://github.com/soundemote/prettyscope-revival)
-and [\`prettyscope-clap\`](https://github.com/soundemote/prettyscope-clap) are
+\`prettyscope-revival\` is
 soundemote's own prior work on a real OpenGL oscilloscope/signal
 visualizer — same org, MIT licensed, genuinely reusable, not outside IP.
 \`prettyscope-revival\`'s \`src/visual/\` already implements a working, tested
@@ -226,7 +225,7 @@ If/when this sandbox's own phosphor renderers get upgraded past a flat
 \`decay\` value, \`prettyscope-revival\`'s shader source is the concrete
 reference implementation to study — not a from-scratch redesign. (Also
 worth a look, tangentially: the fork's own
-[\`jerobeam-modules\` branch](https://github.com/elanhickler/soemdsp-sandbox-phosphor/tree/jerobeam-modules)
+[\`jerobeam-modules\` branch](/phosphor)
 has active work touching the Jerobeam Spiral/Radar family, which a real
 long-exposure radar-sweep reference above connects to directly.)
 
@@ -304,8 +303,7 @@ built to reproduce.
 - Tektronix — [Digital Phosphor Oscilloscope (TDS784D datasheet)](https://www.tek.com/en/datasheet/tds784d)
 - Test & Measurement Tips — [Digital phosphor oscilloscopes, persistence, and eye patterns](https://www.testandmeasurementtips.com/digital-phosphor-oscilloscope-persistence-and-eye-patterns-faq/)
 - Electronic Design — [Super Phosphor Oscilloscope](https://www.electronicdesign.com/technologies/power/power-supply/power-electronics-systems/article/21197100/super-phosphor-oscilloscope)
-- soundemote — [\`prettyscope-revival\`](https://github.com/soundemote/prettyscope-revival) (in-house prior art, phosphor shader)
-- soundemote — [\`prettyscope-clap\`](https://github.com/soundemote/prettyscope-clap) (in-house prior art, CLAP plugin shell)
+- soundemote — \`prettyscope-revival\` (in-house prior art, phosphor shader)
 
 ## ⚖️ A note on naming & IP
 
@@ -330,4 +328,4 @@ export const PHOSPHOR_ARTICLE_MARKDOWN = RAW_MARKDOWN
   .replace(/(<img src=")media\//g, `$1${LOCAL_MEDIA_BASE}`)
   .replace(/(\]\()media\//g, `$1${LOCAL_MEDIA_BASE}`);
 
-export const PHOSPHOR_ARTICLE_SOURCE_URL = "https://github.com/elanhickler/soemdsp-sandbox-phosphor";
+export const PHOSPHOR_ARTICLE_SOURCE_URL = "https://github.com/soundemote/soemdsp-sandbox";

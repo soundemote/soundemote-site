@@ -28,9 +28,13 @@ const normalizeRepo = (href: string) =>
     .replace(/\/+$/, "")
     .toLowerCase();
 
-// repoHref -> internal /slug route for every featured article.
+// repoHref -> internal /slug route for every featured article. The base
+// sandbox repo is excluded so it keeps pointing at GitHub.
+const SANDBOX_BASE_REPO = "soundemote/soemdsp-sandbox";
 const repoToRoute = new Map<string, string>(
-  featuredArticles.map((a) => [normalizeRepo(a.repoHref), `/${a.slug}`]),
+  featuredArticles
+    .filter((a) => normalizeRepo(a.repoHref) !== SANDBOX_BASE_REPO)
+    .map((a) => [normalizeRepo(a.repoHref), `/${a.slug}`]),
 );
 
 function MarkdownAnchor({ href, children, ...rest }: ComponentPropsWithoutRef<"a">) {

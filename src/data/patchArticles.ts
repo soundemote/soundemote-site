@@ -166,7 +166,7 @@ sounds terrible.
 
 We are not okay with this. **soemdsp-sandbox-aliasing-wars** — [the fork
 where this fight actually happens on
-GitHub](https://github.com/elanhickler/soemdsp-sandbox-aliasing-wars) — is
+GitHub](/aliasingwars) — is
 this toolkit's dedicated front line. Three weapons have shipped from it so
 far. Here's the arsenal.
 
@@ -213,7 +213,7 @@ the tactics: correct the edge (PolyBLEP), time the reset precisely
 
 This isn't a closed front. If you've got a technique that band-limits
 something this toolkit doesn't handle cleanly yet, [the aliasing-wars
-repo](https://github.com/elanhickler/soemdsp-sandbox-aliasing-wars) is
+repo](/aliasingwars) is
 where that fight gets picked up next. Go [hear the current arsenal in
 action](/surgeoscillator), or read the [DSF](/dsf) and [PolyBLEP](/polyblep)
 field notes. The war against ugly digital sound doesn't end — it just gets
