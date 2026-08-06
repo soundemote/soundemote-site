@@ -330,4 +330,4 @@ export const PHOSPHOR_ARTICLE_MARKDOWN = RAW_MARKDOWN
   .replace(/(<img src=")media\//g, `$1${LOCAL_MEDIA_BASE}`)
   .replace(/(\]\()media\//g, `$1${LOCAL_MEDIA_BASE}`);
 
-export const PHOSPHOR_ARTICLE_SOURCE_URL = "https://github.com/elanhickler/soemdsp-sandbox-phosphor";
+export const PHOSPHOR_ARTICLE_SOURCE_URL = "https://github.com/soundemote/soemdsp-sandbox";
