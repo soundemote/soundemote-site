@@ -320,7 +320,7 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
             </span>
 
           {/* ── Outside Media Player ── */}
-          <div className="flex w-full max-w-[900px] items-center justify-between gap-2 px-2 py-1 rounded-sm border border-scope/20 bg-[#0a0c14]">
+          <div className="flex w-full max-w-[900px] items-center justify-center gap-1 px-2 py-1 rounded-sm border border-scope/20 bg-[#0a0c14]">
             {/* Transport */}
             <div role="toolbar" aria-label="Media transport" className="flex items-center gap-1">
               <TransportButton label="Previous patch" onClick={() => gotoBank(-1)}>{ICON_PREV}</TransportButton>
