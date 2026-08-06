@@ -186,7 +186,7 @@ already-built, in-house model that does exactly this.
 
 ## 🏺 Prior art: PrettyScope
 
-[\`prettyscope-revival\`](https://github.com/soundemote/prettyscope-revival)
+\`prettyscope-revival\`
 and [\`prettyscope-clap\`](https://github.com/soundemote/prettyscope-clap) are
 soundemote's own prior work on a real OpenGL oscilloscope/signal
 visualizer — same org, MIT licensed, genuinely reusable, not outside IP.
@@ -304,7 +304,7 @@ built to reproduce.
 - Tektronix — [Digital Phosphor Oscilloscope (TDS784D datasheet)](https://www.tek.com/en/datasheet/tds784d)
 - Test & Measurement Tips — [Digital phosphor oscilloscopes, persistence, and eye patterns](https://www.testandmeasurementtips.com/digital-phosphor-oscilloscope-persistence-and-eye-patterns-faq/)
 - Electronic Design — [Super Phosphor Oscilloscope](https://www.electronicdesign.com/technologies/power/power-supply/power-electronics-systems/article/21197100/super-phosphor-oscilloscope)
-- soundemote — [\`prettyscope-revival\`](https://github.com/soundemote/prettyscope-revival) (in-house prior art, phosphor shader)
+- soundemote — \`prettyscope-revival\` (in-house prior art, phosphor shader)
 - soundemote — [\`prettyscope-clap\`](https://github.com/soundemote/prettyscope-clap) (in-house prior art, CLAP plugin shell)
 
 ## ⚖️ A note on naming & IP
