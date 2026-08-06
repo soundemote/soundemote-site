@@ -320,19 +320,20 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
             </span>
 
           {/* ── Outside Media Player ── */}
-          <div className="flex w-full max-w-[900px] items-center justify-center gap-1 px-2 py-1 rounded-sm border border-scope/20 bg-[#0a0c14]">
-            {/* Transport */}
-            <div role="toolbar" aria-label="Media transport" className="flex items-center gap-1">
-              <TransportButton label="Previous patch" onClick={() => gotoBank(-1)}>{ICON_PREV}</TransportButton>
-              <TransportButton label="Next patch" onClick={() => gotoBank(1)}>{ICON_NEXT}</TransportButton>
-            </div>
+          <div
+            role="toolbar"
+            aria-label="Media transport"
+            className="inline-flex items-center gap-1 rounded-sm border border-scope/20 bg-[#0a0c14] p-1"
+          >
+            <TransportButton label="Previous patch" onClick={() => gotoBank(-1)}>{ICON_PREV}</TransportButton>
+            <TransportButton label="Next patch" onClick={() => gotoBank(1)}>{ICON_NEXT}</TransportButton>
 
             {/* Download button */}
             <a
               href="https://github.com/soundemote/soemdsp-sandbox"
               target="_blank"
               rel="noopener noreferrer"
-              className="mono inline-flex items-center gap-1 rounded-sm border border-scope/40 px-2 py-1 text-[0.65rem] uppercase tracking-[0.14em] text-scope/80 transition-colors hover:border-scope/60 hover:text-scope hover:bg-scope/10"
+              className="mono inline-flex h-9 items-center gap-1.5 rounded-sm border border-scope/30 px-3 text-[0.65rem] uppercase tracking-[0.14em] text-scope/80 transition-colors hover:border-scope/60 hover:bg-scope/10 hover:text-scope"
               aria-label="Download the sandbox"
               title="Download"
             >
