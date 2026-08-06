@@ -324,35 +324,8 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
             {/* Transport */}
             <div role="toolbar" aria-label="Media transport" className="flex items-center gap-1">
               <TransportButton label="Previous patch" onClick={() => gotoBank(-1)}>{ICON_PREV}</TransportButton>
-              <TransportButton label="Stop" onClick={handleStop}>{ICON_STOP}</TransportButton>
-              <button
-                type="button"
-                onClick={isPlaying ? handlePause : handlePlay}
-                aria-label={isPlaying ? "Pause" : "Play"}
-                aria-pressed={isPlaying}
-                title={isPlaying ? "Pause" : "Play"}
-                className={
-                  "inline-flex h-9 w-9 items-center justify-center rounded-sm border transition-colors " +
-                  "focus:outline-none focus-visible:ring-1 focus-visible:ring-scope/60 " +
-                  (isPlaying
-                    ? "border-scope/60 bg-scope/15 text-scope"
-                    : "border-scope/25 bg-transparent text-scope/60 hover:bg-scope/10 hover:text-scope")
-                }
-              >
-                {isPaused ? ICON_PLAY : isPlaying ? ICON_PAUSE : ICON_PLAY}
-              </button>
               <TransportButton label="Next patch" onClick={() => gotoBank(1)}>{ICON_NEXT}</TransportButton>
             </div>
-
-            {/* Time display */}
-            <div className="hidden sm:flex items-center gap-1.5 mono text-[0.65rem] tracking-[0.06em] text-scope/60">
-              <span className="text-scope/40">0:00</span>
-              <span className="text-scope/20">/</span>
-              <span>0:00</span>
-            </div>
-
-            {/* Waveform placeholder */}
-            <div className="hidden sm:block h-8 flex-1 rounded-sm border border-scope/15 bg-[#03050a] opacity-50" aria-hidden />
 
             {/* Download button */}
             <a
