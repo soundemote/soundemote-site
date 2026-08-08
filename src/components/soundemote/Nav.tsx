@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import ShareProjectDialog from "./ShareProjectDialog";
 import { useAuth } from "@/hooks/useAuth";
+import soundemoteLogo from "@/assets/soundemote-logo.svg.asset.json";
 
 type Burst = {
   id: number;
@@ -159,7 +160,7 @@ export const Nav = () => {
     <nav className="container relative flex h-16 items-center justify-between" aria-label="Primary">
       <div className="z-10 flex items-center gap-4">
         <a href="/" className="group flex items-center gap-2 mono text-sm tracking-wider">
-          <span className="text-scope text-glow">✧</span>
+          <img src={soundemoteLogo.url} alt="Soundemote logo" className="h-5 w-5" />
           <span className="display text-warm-white">soundemote</span>
         </a>
       </div>
