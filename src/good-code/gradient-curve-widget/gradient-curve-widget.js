@@ -1852,22 +1852,26 @@ export function mountGradientCurveWidget(host, options = {}) {
   }
 
   function addGradientColorFromHsl(hsl) {
-    const activeIndex = state.stops.findIndex((stop) => stop.id === state.activeStopId);
-    const insertIndex = activeIndex >= 0 ? activeIndex : clamp(state.addInsertIndex, 0, state.stops.length);
+    // The + card is a user-placed insertion point: always insert there and
+    // leave the + where the user parked it (only trailing placement follows
+    // the growing list so "on the end" stays "on the end").
+    const wasAtEnd = clamp(state.addInsertIndex, 0, state.stops.length) === state.stops.length;
+    const insertIndex = clamp(state.addInsertIndex, 0, state.stops.length);
     const next = normalizeStop({ id: "", ...hsl }, insertIndex, state.stops.length + 1);
     state.stops.splice(insertIndex, 0, next);
     state.activeStopId = next.id;
-    state.addInsertIndex = clamp(insertIndex + 1, 0, state.stops.length);
+    state.addInsertIndex = clamp(wasAtEnd ? insertIndex + 1 : insertIndex, 0, state.stops.length);
     return next;
   }
 
   function addColorAtInsertPoint(hex) {
+    const wasAtEnd = clamp(state.addInsertIndex, 0, state.stops.length) === state.stops.length;
     const insertIndex = clamp(state.addInsertIndex, 0, state.stops.length);
     const next = normalizeStop({ id: "", ...hexToHsl(hex) }, insertIndex, state.stops.length + 1);
     state.stops.splice(insertIndex, 0, next);
     state.pendingAddStopId = next.id;
     state.activeStopId = next.id;
-    state.addInsertIndex = clamp(insertIndex + 1, 0, state.stops.length);
+    state.addInsertIndex = clamp(wasAtEnd ? insertIndex + 1 : insertIndex, 0, state.stops.length);
     return next;
   }
 
