@@ -166,11 +166,12 @@
     "tooltipEmbedded": true,
     "tooltipEmbedHeight": 156,
     "moduleButtonsVisible": false,
+    "appChromeBarsVisible": true,
     "moduleInterfaceControlsVisible": true,
     "moduleOscilloscopesVisible": true,
     "moduleSlidersVisible": true,
     "moduleScopeBackgroundColor": "#000000",
-    "globalSmoothingSeconds": 0.8869091287608292,
+    "globalSmoothingSeconds": 1,
     "globalSmoothingManual": true,
     "moduleScopeDotCore1Enabled": false,
     "moduleScopeDotCore1Size": 2,
@@ -206,7 +207,7 @@
       "brightness": 0.7045,
       "color": "#00ff62",
       "dot1Enabled": true,
-      "dot1Size": 0.035,
+      "dot1Size": 0.0614,
       "secondaryBrightness": 0.95,
       "secondaryColor": "#3366ff",
       "secondaryEnabled": true,
@@ -222,7 +223,7 @@
       "stereoBlend": "combine",
       "meetColor": "auto",
       "syncChannel": "off",
-      "zoomSeconds": 0.05
+      "zoomSeconds": 0.2
     },
     "sliderLayout": "text-inside",
     "sliderAmountVisible": true,
@@ -1184,7 +1185,7 @@
       },
       "traceDisplaySettings": {
         "open": false,
-        "targetNode": "helmholtzPitch-2"
+        "targetNode": "sineWavetable-1"
       },
       "standaloneMidiKeyboard": {
         "open": false
@@ -1204,10 +1205,10 @@
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": 330.7857142857143,
-        "y": 216.8819754464285
+        "x": 373.57142857142844,
+        "y": 438.88197544642844
       },
-      "zoom": 1.1199999999999999
+      "zoom": 1.7132041739339947
     },
     "moduleStoreDepartment": "",
     "savedPatchBankIndex": 0,
