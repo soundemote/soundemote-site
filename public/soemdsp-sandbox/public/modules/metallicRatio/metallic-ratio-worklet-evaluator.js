@@ -1,11 +1,12 @@
+// Metallic Ratio — native preferred; pure math fallback (metallic-ratio-math.js).
+
 NodeLiveAudioProcessor.prototype.metallicRatioSample = function metallicRatioSample(index) {
-    const n = Number(index) || 0;
-    const fallback = () => 0.5 * (n + Math.sqrt(n * n + 4));
-    if (!this.nativeMetallicRatioReady || !this.nativeMetallicRatio?.soemdsp_metallic_ratio_sample) {
-      return fallback();
-    }
+  if (this.nativeMetallicRatioReady && this.nativeMetallicRatio?.soemdsp_metallic_ratio_sample) {
     try {
-      return this.safeFilterNumber(this.nativeMetallicRatio.soemdsp_metallic_ratio_sample(n), null);
+      return this.safeFilterNumber(
+        this.nativeMetallicRatio.soemdsp_metallic_ratio_sample(Number(index) || 0),
+        null,
+      );
     } catch (error) {
       this.nativeMetallicRatioReady = false;
       this.port.postMessage({
@@ -14,7 +15,11 @@ NodeLiveAudioProcessor.prototype.metallicRatioSample = function metallicRatioSam
         status: "disabled",
         message: String(error?.message || error || "native Metallic Ratio failed"),
       });
-      return fallback();
     }
-  };
-
+  }
+  if (typeof nodeGraphMetallicRatioSample === "function") {
+    const out = nodeGraphMetallicRatioSample(index);
+    return this.safeFilterNumber(out?.Ratio, null);
+  }
+  return 0;
+};

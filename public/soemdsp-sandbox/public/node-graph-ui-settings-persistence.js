@@ -7,7 +7,6 @@ const nodeGraphWorkspaceWindowStateKeys = Object.freeze([
   "moduleActions",
   "metaparameters",
   "oscilloscopeSettings",
-  "patchExplorer",
   "moduleBrowser",
   "visibilityMenu",
   "uiSettings",
@@ -16,7 +15,6 @@ const nodeGraphWorkspaceWindowStateKeys = Object.freeze([
   "standaloneMidiKeyboard",
   "tooltipWindow",
   "phosphorWaveformSettings",
-  "ledSettings",
 ]);
 
 const nodeGraphWorkspaceWindowElements = Object.freeze({
@@ -25,7 +23,6 @@ const nodeGraphWorkspaceWindowElements = Object.freeze({
   moduleActions: "nodeModuleActionsWindow",
   metaparameters: "nodeParameterMetadataPopover",
   oscilloscopeSettings: "nodeGlobalScopeMenu",
-  patchExplorer: "nodeSavedPatchesWindow",
   moduleBrowser: "nodeModuleShopView",
   visibilityMenu: "nodeVisibilityMenu",
   uiSettings: "nodeUserUiSettingsPanel",
@@ -34,7 +31,6 @@ const nodeGraphWorkspaceWindowElements = Object.freeze({
   standaloneMidiKeyboard: "nodeStandaloneMidiKeyboardDock",
   tooltipWindow: "nodeTooltipWindow",
   phosphorWaveformSettings: "nodePhosphorWaveformSettingsWindow",
-  ledSettings: "nodeLedSettingsWindow",
 });
 
 const nodeGraphSharedInspectorWindowKeys = Object.freeze([
@@ -73,12 +69,34 @@ function normalizeNodeGraphWorkspaceWindowPosition(position = {}) {
   };
 }
 
+/**
+ * True when a saved floating-window position is safe to restore.
+ * Rejects null/NaN and the common false memory of {0,0} (CSS default for an
+ * unpositioned fixed window captured before first real placement) — that is
+ * what made Module Settings / Display Settings jump to the upper-left on
+ * right-click after a bad remember.
+ */
+function nodeGraphFloatingWindowSavedPositionIsUsable(position = null) {
+  const left = Number(position?.left);
+  const top = Number(position?.top);
+  if (!Number.isFinite(left) || !Number.isFinite(top)) {
+    return false;
+  }
+  if (left === 0 && top === 0) {
+    return false;
+  }
+  return true;
+}
+
 function nodeGraphSharedInspectorGeometryFromStates(states = {}) {
   let position = null;
   let size = null;
   for (const key of nodeGraphSharedInspectorWindowKeys) {
     if (!position && states?.[key]?.position) {
-      position = normalizeNodeGraphWorkspaceWindowPosition(states[key].position);
+      const candidate = normalizeNodeGraphWorkspaceWindowPosition(states[key].position);
+      if (nodeGraphFloatingWindowSavedPositionIsUsable(candidate)) {
+        position = candidate;
+      }
     }
     if (!size && states?.[key]?.size) {
       const width = Number(states[key].size.width);
@@ -101,7 +119,12 @@ function nodeGraphSharedInspectorGeometryFromStates(states = {}) {
 function normalizeNodeGraphSharedInspectorWindowState(state = {}, fallbackStates = {}) {
   const source = state && typeof state === "object" ? state : {};
   const fallback = nodeGraphSharedInspectorGeometryFromStates(fallbackStates);
-  const position = normalizeNodeGraphWorkspaceWindowPosition(source.position) || fallback.position;
+  let position = normalizeNodeGraphWorkspaceWindowPosition(source.position) || fallback.position;
+  // Drop false 0,0 memory so inspectors re-spawn at the pointer.
+  if (position && typeof nodeGraphFloatingWindowSavedPositionIsUsable === "function"
+    && !nodeGraphFloatingWindowSavedPositionIsUsable(position)) {
+    position = null;
+  }
   const rawSize = source.size && typeof source.size === "object" ? source.size : fallback.size;
   const size = rawSize && typeof rawSize === "object"
     ? {
@@ -225,11 +248,21 @@ function normalizeNodeGraphModuleStoreDepartmentState(value = "") {
   if (!department) {
     return "";
   }
+  // Prefer shared resolver (canonical ids + aliases: music→sample, etc.).
+  if (typeof normalizeNodeGraphModuleStoreDepartment === "function") {
+    return normalizeNodeGraphModuleStoreDepartment(department);
+  }
   if (
     typeof nodeGraphModuleStoreDepartmentIds !== "undefined" &&
     nodeGraphModuleStoreDepartmentIds.has(department)
   ) {
     return department;
+  }
+  if (
+    typeof nodeGraphModuleStoreDepartmentAliasToId !== "undefined" &&
+    nodeGraphModuleStoreDepartmentAliasToId[department]
+  ) {
+    return nodeGraphModuleStoreDepartmentAliasToId[department];
   }
   return "";
 }
@@ -241,19 +274,28 @@ function nodeGraphWorkspaceWindowPositionFromElement(element) {
   const rect = element.getBoundingClientRect?.();
   const styleLeft = Number.parseFloat(element.style.left);
   const styleTop = Number.parseFloat(element.style.top);
+  let position = null;
   if (
     Number.isFinite(styleLeft) &&
     Number.isFinite(styleTop) &&
     typeof nodeGraphFloatingWindowViewportPositionFromCss === "function"
   ) {
-    return normalizeNodeGraphWorkspaceWindowPosition(
+    position = normalizeNodeGraphWorkspaceWindowPosition(
       nodeGraphFloatingWindowViewportPositionFromCss(styleLeft, styleTop),
     );
+  } else {
+    position = normalizeNodeGraphWorkspaceWindowPosition({
+      left: Number.isFinite(styleLeft) ? styleLeft : rect?.left,
+      top: Number.isFinite(styleTop) ? styleTop : rect?.top,
+    });
   }
-  return normalizeNodeGraphWorkspaceWindowPosition({
-    left: Number.isFinite(styleLeft) ? styleLeft : rect?.left,
-    top: Number.isFinite(styleTop) ? styleTop : rect?.top,
-  });
+  // Do not persist a false 0,0 memory (unpositioned fixed window).
+  if (typeof nodeGraphFloatingWindowSavedPositionIsUsable === "function"
+    ? !nodeGraphFloatingWindowSavedPositionIsUsable(position)
+    : !position) {
+    return null;
+  }
+  return position;
 }
 
 function rememberNodeGraphWorkspaceWindowState(key, element, patch = {}, options = {}) {
@@ -307,11 +349,11 @@ function saveNodeGraphWorkspaceWindowStatesToUserSettings(options = {}) {
 
 // App-wide floating-window open policy, in one place.
 //
-// A window spawns at the pointer ONCE. After that it has a remembered
-// position and every subsequent open restores it, so a window never jumps out
-// from under the user just because they re-opened it from a different spot.
-// Call this instead of positioning at the pointer directly: pass a
-// `spawnAtPointer` callback that does the first-time placement.
+// Activation is NOT a move. Order of placement:
+//   1) remembered workspace seat (user-dragged / saved)
+//   2) existing fixed left/top style already on the element
+//   3) current on-screen layout box (e.g. CSS top/right defaults) — lock it
+//   4) only then spawnAtPointer (true first placement with no seat at all)
 //
 // Requires `key` to be present in nodeGraphWorkspaceWindowElements -- a
 // window that is not registered there has nowhere to remember a position, and
@@ -332,6 +374,10 @@ function openNodeGraphFloatingWindowAtPosition(key, element, spawnAtPointer) {
   let restored = false;
   positionNodeGraphFloatingWindowWithAttention(element, () => {
     restored = positionNodeGraphWorkspaceWindowFromState(key, element);
+    if (!restored) {
+      // Keep an existing seat — never re-home just because the user activated.
+      restored = lockNodeGraphFloatingWindowExistingSeat(element);
+    }
     if (!restored && typeof spawnAtPointer === "function") {
       spawnAtPointer(element);
     }
@@ -346,6 +392,54 @@ function openNodeGraphFloatingWindowAtPosition(key, element, spawnAtPointer) {
   return restored;
 }
 
+/**
+ * If the element already has a fixed seat (inline left/top, or a real on-screen
+ * layout from CSS like top/right), convert/lock it to left/top and return true.
+ * Used so activation never jumps a window that already has a place.
+ */
+function lockNodeGraphFloatingWindowExistingSeat(element) {
+  if (!element) {
+    return false;
+  }
+  const styleLeft = Number.parseFloat(element.style.left);
+  const styleTop = Number.parseFloat(element.style.top);
+  let left = null;
+  let top = null;
+  if (Number.isFinite(styleLeft) && Number.isFinite(styleTop)) {
+    if (typeof nodeGraphFloatingWindowViewportPositionFromCss === "function") {
+      const fromCss = nodeGraphFloatingWindowViewportPositionFromCss(styleLeft, styleTop);
+      left = fromCss.left;
+      top = fromCss.top;
+    } else {
+      left = styleLeft;
+      top = styleTop;
+    }
+  } else {
+    // CSS-only placement (e.g. Visibility: top/right without inline left).
+    const rect = element.getBoundingClientRect?.();
+    if (rect && rect.width > 0 && rect.height > 0) {
+      left = rect.left;
+      top = rect.top;
+    }
+  }
+  if (
+    typeof nodeGraphFloatingWindowSavedPositionIsUsable === "function"
+      ? !nodeGraphFloatingWindowSavedPositionIsUsable({ left, top })
+      : !(Number.isFinite(left) && Number.isFinite(top))
+  ) {
+    return false;
+  }
+  if (typeof setNodeGraphFloatingWindowViewportPosition === "function") {
+    setNodeGraphFloatingWindowViewportPosition(element, left, top);
+  } else {
+    element.style.position = "fixed";
+    element.style.left = `${Math.round(left)}px`;
+    element.style.top = `${Math.round(top)}px`;
+    element.style.right = "auto";
+  }
+  return true;
+}
+
 function positionNodeGraphWorkspaceWindowFromState(key, element) {
   const state = normalizeNodeGraphWorkspaceWindowStates(nodeGraphMvp.workspaceWindowStates)[key];
   const sharedInspectorState = normalizeNodeGraphSharedInspectorWindowState(
@@ -355,7 +449,12 @@ function positionNodeGraphWorkspaceWindowFromState(key, element) {
   const position = nodeGraphSharedInspectorWindowKeys.includes(key)
     ? sharedInspectorState.position
     : state?.position;
-  if (!element || !position) {
+  if (
+    !element
+    || !(typeof nodeGraphFloatingWindowSavedPositionIsUsable === "function"
+      ? nodeGraphFloatingWindowSavedPositionIsUsable(position)
+      : position)
+  ) {
     return false;
   }
   const wasHidden = element.hidden;
@@ -412,14 +511,17 @@ function applyNodeGraphWorkspaceWindowStateToElement(key) {
   if (key === "tooltipWindow" && typeof applyNodeGraphTooltipWindowSize === "function") {
     applyNodeGraphTooltipWindowSize(state.size);
   }
+  if (key === "uiSettings" && typeof applyNodeUserUiSettingsWindowSize === "function") {
+    applyNodeUserUiSettingsWindowSize(state.size);
+  }
+  if (key === "uiDev" && typeof applyNodeUiDevHelperWindowSize === "function") {
+    applyNodeUiDevHelperWindowSize(state.size);
+  }
   if (key === "moduleActions" && typeof applyNodeModuleActionsWindowSize === "function") {
     applyNodeModuleActionsWindowSize(nodeGraphMvp.sharedInspectorWindowState?.size);
   }
   if (key === "codeBox" && typeof applyNodeGraphCodeBoxWindowSize === "function") {
     applyNodeGraphCodeBoxWindowSize(state.size);
-  }
-  if (key === "patchExplorer" && typeof applyNodeGraphSavedPatchesWindowSize === "function") {
-    applyNodeGraphSavedPatchesWindowSize(state.size);
   }
   if (key === "moduleBrowser" && typeof applyNodeGraphModuleShopWindowSize === "function") {
     applyNodeGraphModuleShopWindowSize(state.size);
@@ -493,17 +595,6 @@ function applyNodeGraphWorkspaceWindowStates() {
   document
     .getElementById("nodeUiDevButton")
     ?.classList.toggle("active", !document.getElementById("nodeUiDevHelper")?.hidden);
-  document
-    .getElementById("nodeSavedPatchesWindowButton")
-    ?.classList.toggle("active", !document.getElementById("nodeSavedPatchesWindow")?.hidden);
-  if (!document.getElementById("nodeSavedPatchesWindow")?.hidden) {
-    if (typeof syncNodeGraphSavedPatchGridColumns === "function") {
-      syncNodeGraphSavedPatchGridColumns();
-    }
-    if (typeof renderNodeGraphDemoPatchList === "function") {
-      renderNodeGraphDemoPatchList();
-    }
-  }
   if (!document.getElementById("nodeModuleShopView")?.hidden) {
     if (typeof renderNodeGraphModuleStoreCatalog === "function") {
       renderNodeGraphModuleStoreCatalog();
@@ -529,8 +620,21 @@ function normalizeNodeUiDevSettings(settings = {}) {
     throw new Error("UI settings must be a JSON object");
   }
   const controls = settings.controls && typeof settings.controls === "object"
-    ? settings.controls
+    ? { ...settings.controls }
     : {};
+  // Migrate legacy combined hover dimmer cutout keys → split toggles.
+  if (controls.dimmerCutoutSliderEnabled === undefined
+    && typeof controls.hoverModuleDimmerCutoutEnabled === "boolean") {
+    controls.dimmerCutoutSliderEnabled = controls.hoverModuleDimmerCutoutEnabled;
+  }
+  if (controls.dimmerCutoutMouseEnabled === undefined
+    && typeof controls.hoverModuleDimmerCutoutEnabled === "boolean") {
+    controls.dimmerCutoutMouseEnabled = controls.hoverModuleDimmerCutoutEnabled;
+  }
+  if (controls.dimmerCutoutTitleEnabled === undefined
+    && typeof controls.hoverModuleTitleDimmerCutoutEnabled === "boolean") {
+    controls.dimmerCutoutTitleEnabled = controls.hoverModuleTitleDimmerCutoutEnabled;
+  }
   const exposedControls = settings.exposedControls && typeof settings.exposedControls === "object"
     ? settings.exposedControls
     : {};
@@ -563,8 +667,19 @@ function normalizeNodeUiDevSettings(settings = {}) {
     normalizedModuleDefaultOverrides[type] = snapshot;
   }
   const gridVisible = view.gridVisible ?? controls.gridVisible ?? controls.showGrid ?? nodeGraphMvp.gridVisible;
-  const keyboardDebugInfoVisible = Boolean(view.keyboardDebugInfoVisible ?? nodeGraphMvp.keyboardDebugInfoVisible);
+  const gridLightVisible = view.gridLightVisible !== undefined
+    ? Boolean(view.gridLightVisible)
+    : (nodeGraphMvp.gridLightVisible !== false);
+  const wireLengthsVisible = view.wireLengthsVisible !== undefined
+    ? Boolean(view.wireLengthsVisible)
+    : (nodeGraphMvp.wireLengthsVisible !== false);
+  const wiresAboveModules = Boolean(view.wiresAboveModules ?? nodeGraphMvp.wiresAboveModules);
+  // Debug chrome is session-only — never default on, never restore from UI settings.
+  const keyboardDebugInfoVisible = false;
   const tooltipEmbedded = Boolean(view.tooltipEmbedded ?? nodeGraphMvp.tooltipEmbedded);
+  const tooltipEmbedHeight = typeof normalizeNodeGraphTooltipEmbedHeight === "function"
+    ? normalizeNodeGraphTooltipEmbedHeight(view.tooltipEmbedHeight ?? nodeGraphMvp.tooltipEmbedHeight ?? 46)
+    : Math.max(32, Math.min(320, Math.round(Number(view.tooltipEmbedHeight ?? nodeGraphMvp.tooltipEmbedHeight) || 46)));
   const moduleButtonsVisible = Boolean(view.moduleButtonsVisible ?? nodeGraphMvp.moduleButtonsVisible);
   const moduleInterfaceControlsVisible = Boolean(view.moduleInterfaceControlsVisible ?? nodeGraphMvp.moduleInterfaceControlsVisible);
   const moduleOscilloscopesVisible = Boolean(view.moduleOscilloscopesVisible ?? nodeGraphMvp.moduleOscilloscopesVisible);
@@ -625,8 +740,13 @@ function normalizeNodeUiDevSettings(settings = {}) {
     view.macroKnobLabelPosition ?? nodeGraphMvp.macroKnobLabelPosition ?? "top",
   );
   const macroKnobValuePosition = normalizeNodeGraphMacroKnobValuePosition(
-    view.macroKnobValuePosition ?? nodeGraphMvp.macroKnobValuePosition ?? "bottom",
+    view.macroKnobValuePosition ?? nodeGraphMvp.macroKnobValuePosition ?? "mid",
   );
+  const macroControlsFace = typeof normalizeNodeGraphMacroControlsFaceSettings === "function"
+    ? normalizeNodeGraphMacroControlsFaceSettings(
+      view.macroControlsFace ?? nodeGraphMvp.macroControlsFace,
+    )
+    : (view.macroControlsFace ?? nodeGraphMvp.macroControlsFace ?? null);
   const traceSettings = typeof normalizeNodeGraphTraceDisplaySettings === "function"
     ? normalizeNodeGraphTraceDisplaySettings(
       typeof migrateNodeGraphLegacyDot2Settings === "function"
@@ -680,12 +800,15 @@ function normalizeNodeUiDevSettings(settings = {}) {
   );
   let workingPatch = null;
   if (view.workingPatch && typeof view.workingPatch === "object") {
-    try {
-      workingPatch = cloneNodeGraphPatch(validateNodeGraphPatch(view.workingPatch));
-      workingPatch = sanitizeNodeUiDevWorkingPatchForStartup(workingPatch);
-    } catch {
-      workingPatch = null;
-    }
+    // Hard fail: never swallow validate errors into null (that silently
+    // replaced the graph with the default and looked like "lost modules").
+    const loaded = typeof loadNodeGraphPatchFromObject === "function"
+      ? loadNodeGraphPatchFromObject(view.workingPatch)
+      : validateNodeGraphPatch(view.workingPatch);
+    workingPatch = cloneNodeGraphPatch(loaded);
+    workingPatch = typeof sanitizeNodeUiDevWorkingPatchForStartup === "function"
+      ? sanitizeNodeUiDevWorkingPatchForStartup(workingPatch)
+      : workingPatch;
   }
   const currentSavedPatchFilename = String(view.currentSavedPatchFilename || "").trim();
   const patchDirtyState = ["saved", "edited", "untouched"].includes(view.patchDirtyState)
@@ -702,7 +825,12 @@ function normalizeNodeUiDevSettings(settings = {}) {
   const savedPatchBankName = typeof nodeGraphOneLineText === "function"
     ? nodeGraphOneLineText(view.savedPatchBankName ?? nodeGraphMvp.savedPatchBankName ?? "")
     : String(view.savedPatchBankName ?? nodeGraphMvp.savedPatchBankName ?? "").trim();
-  const savedPatchExplorerView = view.savedPatchExplorerView === "patches" ? "patches" : "banks";
+  const savedPatchFactoryPath = String(
+    view.savedPatchFactoryPath ?? nodeGraphMvp.savedPatchFactoryPath ?? "",
+  ).trim();
+  const savedPatchUserPath = String(
+    view.savedPatchUserPath ?? nodeGraphMvp.savedPatchUserPath ?? "",
+  ).trim();
   return {
     format: {
       kind: "soemdsp-sandbox-user-ui-settings",
@@ -724,8 +852,12 @@ function normalizeNodeUiDevSettings(settings = {}) {
     moduleDefaultOverrides: normalizedModuleDefaultOverrides,
     view: {
       gridVisible: Boolean(gridVisible),
+      gridLightVisible: Boolean(gridLightVisible),
+      wireLengthsVisible: Boolean(wireLengthsVisible),
+      wiresAboveModules,
       keyboardDebugInfoVisible,
       tooltipEmbedded,
+      tooltipEmbedHeight,
       moduleButtonsVisible,
       moduleInterfaceControlsVisible,
       moduleOscilloscopesVisible,
@@ -747,6 +879,7 @@ function normalizeNodeUiDevSettings(settings = {}) {
       macroKnobHitboxOutlineVisible,
       macroKnobLabelPosition,
       macroKnobValuePosition,
+      macroControlsFace,
       traceSettings,
       sliderLayout,
       sliderAmountVisible,
@@ -762,8 +895,9 @@ function normalizeNodeUiDevSettings(settings = {}) {
       moduleStoreDepartment,
       savedPatchBankIndex,
       savedPatchBankName,
+      savedPatchFactoryPath,
+      savedPatchUserPath,
       savedPatchGridColumns,
-      savedPatchExplorerView,
       workingPatch,
       currentSavedPatchFilename,
       patchDirtyState,
@@ -812,8 +946,15 @@ function readNodeUiDevSettingsFromControls(options = {}) {
     moduleDefaultOverrides: nodeGraphMvp.moduleDefaultOverrides,
     view: {
       gridVisible: Boolean(nodeGraphMvp.gridVisible),
-      keyboardDebugInfoVisible: Boolean(nodeGraphMvp.keyboardDebugInfoVisible),
+      gridLightVisible: nodeGraphMvp.gridLightVisible !== false,
+      wireLengthsVisible: nodeGraphMvp.wireLengthsVisible !== false,
+      wiresAboveModules: Boolean(nodeGraphMvp.wiresAboveModules),
+      // Never persist "show debug" — refresh / defaults always hide diagnostics.
+      keyboardDebugInfoVisible: false,
       tooltipEmbedded: Boolean(nodeGraphMvp.tooltipEmbedded),
+      tooltipEmbedHeight: typeof normalizeNodeGraphTooltipEmbedHeight === "function"
+        ? normalizeNodeGraphTooltipEmbedHeight(nodeGraphMvp.tooltipEmbedHeight ?? 46)
+        : Math.max(32, Math.min(320, Math.round(Number(nodeGraphMvp.tooltipEmbedHeight) || 46))),
       moduleButtonsVisible: Boolean(nodeGraphMvp.moduleButtonsVisible),
       moduleInterfaceControlsVisible: Boolean(nodeGraphMvp.moduleInterfaceControlsVisible),
       moduleOscilloscopesVisible: Boolean(nodeGraphMvp.moduleOscilloscopesVisible),
@@ -838,7 +979,10 @@ function readNodeUiDevSettingsFromControls(options = {}) {
       macroKnobSizeScale: normalizeNodeGraphMacroKnobSizeScale(nodeGraphMvp.macroKnobSizeScale ?? 1),
       macroKnobHitboxOutlineVisible: Boolean(nodeGraphMvp.macroKnobHitboxOutlineVisible),
       macroKnobLabelPosition: normalizeNodeGraphMacroKnobLabelPosition(nodeGraphMvp.macroKnobLabelPosition ?? "top"),
-      macroKnobValuePosition: normalizeNodeGraphMacroKnobValuePosition(nodeGraphMvp.macroKnobValuePosition ?? "bottom"),
+      macroKnobValuePosition: normalizeNodeGraphMacroKnobValuePosition(nodeGraphMvp.macroKnobValuePosition ?? "mid"),
+      macroControlsFace: typeof normalizeNodeGraphMacroControlsFaceSettings === "function"
+        ? normalizeNodeGraphMacroControlsFaceSettings(nodeGraphMvp.macroControlsFace)
+        : nodeGraphMvp.macroControlsFace,
       traceSettings: typeof normalizeNodeGraphTraceDisplaySettings === "function"
         ? normalizeNodeGraphTraceDisplaySettings(nodeGraphMvp.traceSettings)
         : nodeGraphMvp.traceSettings,
@@ -860,7 +1004,17 @@ function readNodeUiDevSettingsFromControls(options = {}) {
         zoom: typeof nodeGraphZoom === "function" ? nodeGraphZoom() : nodeGraphMvp.zoom,
       }),
       moduleStoreDepartment: normalizeNodeGraphModuleStoreDepartmentState(nodeGraphMvp.moduleStoreDepartment),
-      savedPatchExplorerView: nodeGraphMvp.savedPatchExplorerView === "patches" ? "patches" : "banks",
+      savedPatchBankIndex: typeof normalizeNodeGraphSavedPatchBankIndex === "function"
+        ? normalizeNodeGraphSavedPatchBankIndex(nodeGraphMvp.savedPatchBankIndex)
+        : Math.max(0, Math.min(127, Math.round(Number(nodeGraphMvp.savedPatchBankIndex) || 0))),
+      savedPatchBankName: typeof nodeGraphOneLineText === "function"
+        ? nodeGraphOneLineText(nodeGraphMvp.savedPatchBankName)
+        : String(nodeGraphMvp.savedPatchBankName || "").trim(),
+      savedPatchFactoryPath: String(nodeGraphMvp.savedPatchFactoryPath || "").trim(),
+      savedPatchUserPath: String(nodeGraphMvp.savedPatchUserPath || "").trim(),
+      savedPatchGridColumns: typeof normalizeNodeGraphSavedPatchGridColumns === "function"
+        ? normalizeNodeGraphSavedPatchGridColumns(nodeGraphMvp.savedPatchGridColumns)
+        : Math.max(1, Math.min(16, Math.round(Number(nodeGraphMvp.savedPatchGridColumns) || 3))),
       workingPatch: workingPatchForSettings,
       currentSavedPatchFilename: includeWorkingPatch ? (nodeGraphMvp.currentSavedPatchFilename || "") : "",
       patchDirtyState: !includeWorkingPatch
@@ -922,8 +1076,24 @@ function applyNodeUiDevSettings(settings) {
   }
   nodeGraphMvp.moduleDefaultOverrides = normalized.moduleDefaultOverrides;
   nodeGraphMvp.gridVisible = Boolean(normalized.view.gridVisible);
-  nodeGraphMvp.keyboardDebugInfoVisible = Boolean(normalized.view.keyboardDebugInfoVisible);
+  nodeGraphMvp.gridLightVisible = normalized.view.gridLightVisible !== false;
+  nodeGraphMvp.wireLengthsVisible = normalized.view.wireLengthsVisible !== false;
+  nodeGraphMvp.wiresAboveModules = Boolean(normalized.view.wiresAboveModules);
+  // Force-hide debug on every UI-settings apply / page load (not a saved
+  // preference). Same for debug and release builds — Clear Startup / Save /
+  // cold boot must never leave developer chrome visible by default.
+  if (typeof hideNodeGraphDebugChrome === "function") {
+    hideNodeGraphDebugChrome();
+  } else {
+    nodeGraphMvp.keyboardDebugInfoVisible = false;
+  }
   nodeGraphMvp.tooltipEmbedded = Boolean(normalized.view.tooltipEmbedded);
+  nodeGraphMvp.tooltipEmbedHeight = typeof normalizeNodeGraphTooltipEmbedHeight === "function"
+    ? normalizeNodeGraphTooltipEmbedHeight(normalized.view.tooltipEmbedHeight ?? 46)
+    : Math.max(32, Math.min(320, Math.round(Number(normalized.view.tooltipEmbedHeight) || 46)));
+  if (typeof applyNodeGraphTooltipEmbedHeight === "function") {
+    applyNodeGraphTooltipEmbedHeight(nodeGraphMvp.tooltipEmbedHeight);
+  }
   nodeGraphMvp.moduleButtonsVisible = Boolean(normalized.view.moduleButtonsVisible);
   nodeGraphMvp.moduleInterfaceControlsVisible = Boolean(normalized.view.moduleInterfaceControlsVisible);
   nodeGraphMvp.moduleOscilloscopesVisible = Boolean(normalized.view.moduleOscilloscopesVisible);
@@ -972,6 +1142,12 @@ function applyNodeUiDevSettings(settings) {
   if (typeof applyNodeGraphMacroKnobValuePosition === "function") {
     applyNodeGraphMacroKnobValuePosition();
   }
+  if (typeof normalizeNodeGraphMacroControlsFaceSettings === "function") {
+    nodeGraphMvp.macroControlsFace = normalizeNodeGraphMacroControlsFaceSettings(normalized.view.macroControlsFace);
+    if (typeof applyNodeGraphMacroControlsFaceSettings === "function") {
+      applyNodeGraphMacroControlsFaceSettings();
+    }
+  }
   nodeGraphMvp.traceSettings = typeof normalizeNodeGraphTraceDisplaySettings === "function"
     ? normalizeNodeGraphTraceDisplaySettings(normalized.view.traceSettings)
     : normalized.view.traceSettings;
@@ -1014,10 +1190,11 @@ function applyNodeUiDevSettings(settings) {
   nodeGraphMvp.savedPatchBankName = typeof nodeGraphOneLineText === "function"
     ? nodeGraphOneLineText(normalized.view.savedPatchBankName)
     : String(normalized.view.savedPatchBankName || "").trim();
+  nodeGraphMvp.savedPatchFactoryPath = String(normalized.view.savedPatchFactoryPath || "").trim();
+  nodeGraphMvp.savedPatchUserPath = String(normalized.view.savedPatchUserPath || "").trim();
   nodeGraphMvp.savedPatchGridColumns = typeof normalizeNodeGraphSavedPatchGridColumns === "function"
     ? normalizeNodeGraphSavedPatchGridColumns(normalized.view.savedPatchGridColumns)
     : Math.max(1, Math.min(16, Math.round(Number(normalized.view.savedPatchGridColumns) || 3)));
-  nodeGraphMvp.savedPatchExplorerView = normalized.view.savedPatchExplorerView === "patches" ? "patches" : "banks";
   nodeGraphMvp.workingPatch = normalized.view.workingPatch
     ? cloneNodeGraphPatch(normalized.view.workingPatch)
     : null;
@@ -1039,7 +1216,19 @@ function applyNodeUiDevSettings(settings) {
     applyNodeGraphPan();
   }
   renderNodeGraphGridToggle();
-  if (typeof renderNodeGraphKeyboardDebugToggle === "function") {
+  if (typeof renderNodeGraphGridLightToggle === "function") {
+    renderNodeGraphGridLightToggle();
+  }
+  if (typeof renderNodeGraphWireLengthsToggle === "function") {
+    renderNodeGraphWireLengthsToggle();
+  }
+  if (typeof renderNodeGraphWiresAboveModulesToggle === "function") {
+    renderNodeGraphWiresAboveModulesToggle();
+  }
+  // Debug hide already applied above; re-render so body classes + buttons match.
+  if (typeof hideNodeGraphDebugChrome === "function") {
+    hideNodeGraphDebugChrome();
+  } else if (typeof renderNodeGraphKeyboardDebugToggle === "function") {
     renderNodeGraphKeyboardDebugToggle();
   }
   renderNodeGraphModuleVisibilityToggles();
@@ -1073,7 +1262,21 @@ function loadNodeUiDevLocalDefaultSettings() {
   try {
     const text = window.localStorage.getItem(nodeUiDevDefaultSettingsStorageKey);
     return text ? loadNodeUiDevSettingsFromScript(text) : null;
-  } catch {
+  } catch (error) {
+    const message = String(error?.message || error || "");
+    // Hard patch-load failures must not be swallowed into "no settings".
+    if (message.startsWith("failed to load patch at:")) {
+      console.error(message);
+      try {
+        if (typeof window !== "undefined" && window.SE?.ERROR) {
+          window.SE.ERROR(message, "patch-load");
+        }
+      } catch (_error) {
+        // Debug console optional.
+      }
+      throw (error instanceof Error ? error : new Error(message));
+    }
+    console.error("[soemdsp] Failed to load local UI settings:", message);
     return null;
   }
 }
@@ -1088,13 +1291,10 @@ function sanitizeNodeUiDevWorkingPatchForStartup(patch) {
       nodes: patch.nodes.filter((node) => !(typeof nodeGraphRetiredNodeTypes !== "undefined" && nodeGraphRetiredNodeTypes.has(node?.type))),
     };
   }
-  if (
-    typeof nodeGraphMissingSampleAssets === "function" &&
-    typeof cloneNodeGraphPatch === "function" &&
-    nodeGraphMissingSampleAssets(patch).length
-  ) {
-    return cloneNodeGraphPatch(nodeGraphDefaultPatch);
-  }
+  // Do NOT replace the entire working patch when samples are missing.
+  // That used to run at settings-load time (often before the resource
+  // catalog was ready) and wipe modules → default empty-ish patch.
+  // Missing samples are handled later by the missing-sample dialog.
   return patch;
 }
 
@@ -1124,12 +1324,15 @@ function saveNodeUiDevLocalDefaultSettings(text) {
   try {
     window.localStorage.setItem(nodeUiDevDefaultSettingsStorageKey, text);
     return true;
-  } catch {
-    try {
-      window.localStorage.removeItem(nodeUiDevDefaultSettingsStorageKey);
-    } catch {
-      // If storage is blocked entirely, the server-side settings file remains the fallback.
-    }
+  } catch (error) {
+    // NEVER remove the previous key on failure. QuotaExceeded used to delete
+    // the last good startup blob, so the next refresh fell back to the bundled
+    // default (empty workingPatch) — intermittent "I lost all my modules".
+    console.warn(
+      "[soemdsp] Failed to write startup settings to localStorage; keeping previous save.",
+      error?.name || error,
+      typeof text === "string" ? `(payload ~${Math.round(text.length / 1024)} KB)` : "",
+    );
     return false;
   }
 }
@@ -1144,7 +1347,6 @@ function clearNodeUserStartupLocalStorage() {
     "soemdsp-sandbox.",
   ];
   const exactKeys = [
-    "nodeGraphClapHostBaseUrl",
     "signalPlotSettings",
   ];
   let removed = 0;
@@ -1223,24 +1425,45 @@ function clearNodeUserStartupRuntimeState() {
   nodeGraphMvp.moduleStoreDepartment = "";
   nodeGraphMvp.moduleStoreDepartmentAnchor = "";
   nodeGraphMvp.moduleScopeSettings = {};
-  nodeGraphMvp.savedPatchExplorerView = "banks";
-  // These "visible unless explicitly hidden" view toggles (Show displays,
-  // Show control surfaces, Show module buttons/sliders) are read straight
-  // from nodeGraphMvp when the cleared state gets re-serialized just below
-  // in clearNodeUserStartupState -- without resetting them here, whatever
-  // the user had hidden stayed hidden and got baked right back into the
-  // "cleared" default, making Clear Startup look like it did nothing for
-  // visibility.
-  nodeGraphMvp.moduleButtonsVisible = true;
+  // These view toggles are read straight from nodeGraphMvp when the cleared
+  // state gets re-serialized just below in clearNodeUserStartupState --
+  // without resetting them here, whatever the user had changed stayed put
+  // and got baked right back into the "cleared" default, making Clear
+  // Startup look like it did nothing for visibility. App policy: module
+  // header buttons stay hidden by default; control surfaces, displays, and
+  // sliders come back on.
+  nodeGraphMvp.moduleButtonsVisible = false;
   nodeGraphMvp.moduleInterfaceControlsVisible = true;
   nodeGraphMvp.moduleOscilloscopesVisible = true;
   nodeGraphMvp.moduleSlidersVisible = true;
   // Grid and the slider amount fill are in the same "visible unless
   // explicitly hidden" family.
   nodeGraphMvp.gridVisible = true;
+  nodeGraphMvp.gridLightVisible = true;
+  nodeGraphMvp.wireLengthsVisible = true;
   nodeGraphMvp.sliderAmountVisible = true;
+  nodeGraphMvp.wiresAboveModules = false;
+  // Clear Startup / reset view: never bake "Show Debug" into the next load.
+  // Force off before re-serializing settings as the new startup default.
+  if (typeof hideNodeGraphDebugChrome === "function") {
+    hideNodeGraphDebugChrome();
+  } else {
+    nodeGraphMvp.keyboardDebugInfoVisible = false;
+    if (typeof renderNodeGraphKeyboardDebugToggle === "function") {
+      renderNodeGraphKeyboardDebugToggle();
+    }
+  }
   if (typeof renderNodeGraphGridToggle === "function") {
     renderNodeGraphGridToggle();
+  }
+  if (typeof renderNodeGraphGridLightToggle === "function") {
+    renderNodeGraphGridLightToggle();
+  }
+  if (typeof renderNodeGraphWireLengthsToggle === "function") {
+    renderNodeGraphWireLengthsToggle();
+  }
+  if (typeof renderNodeGraphWiresAboveModulesToggle === "function") {
+    renderNodeGraphWiresAboveModulesToggle();
   }
   if (typeof renderNodeGraphSliderVisibilityToggles === "function") {
     renderNodeGraphSliderVisibilityToggles();
@@ -1251,12 +1474,8 @@ function clearNodeUserStartupRuntimeState() {
   // the user had it on it got baked straight back into the cleared startup.
   // persist:false because the localStorage key was just deleted and we do not
   // want to immediately write it back.
-  if (typeof setNodeGraphShaderScriptEnabled === "function") {
-    setNodeGraphShaderScriptEnabled(false, { persist: false });
-  }
-  const modularShaderInput = document.getElementById("nodeUiDevModularShaderEnabled");
-  if (modularShaderInput) {
-    modularShaderInput.checked = false;
+  if (typeof setNodeGraphRoomDim === "function") {
+    setNodeGraphRoomDim(0, { persist: false });
   }
   if (typeof renderNodeGraphModuleVisibilityToggles === "function") {
     renderNodeGraphModuleVisibilityToggles();
@@ -1318,7 +1537,52 @@ function saveNodeGraphWorkspaceViewToUserSettings(options = {}) {
 }
 
 async function loadNodeUiDevDefaultSettings() {
-  const storedSettings = loadNodeUiDevLocalDefaultSettings();
+  let storedSettings = null;
+  try {
+    storedSettings = loadNodeUiDevLocalDefaultSettings();
+  } catch (error) {
+    const message = String(error?.message || error || "failed to load patch");
+    document.documentElement.dataset.nodeUiDevSettingsSource = "patch-load-failed";
+    // Full settings blob so the user can still recover their file from the dialog.
+    let script = String(error?.patchScript || "");
+    if (!script) {
+      try {
+        script = window.localStorage?.getItem?.(nodeUiDevDefaultSettingsStorageKey) || "";
+      } catch (_error) {
+        script = "";
+      }
+    }
+    if (typeof nodeGraphShowPatchLoadFault === "function") {
+      nodeGraphShowPatchLoadFault({
+        message,
+        script,
+        title: "Failed to load saved patch",
+      });
+    } else {
+      if (typeof setNodeGraphScriptStatus === "function") {
+        setNodeGraphScriptStatus(message, false);
+      }
+      if (typeof setNodeUiDevSettingsStatus === "function") {
+        setNodeUiDevSettingsStatus(message, false);
+      }
+      console.error(message);
+    }
+    // Modal blocks the graph; still boot chrome with bundled UI defaults
+    // (no working patch) so Initialize can run.
+    const bundledSettings = loadNodeUiDevBundledDefaultSettings();
+    if (bundledSettings) {
+      try {
+        // Drop any working patch from bundled blob — user must Initialize.
+        if (bundledSettings.view) {
+          bundledSettings.view = { ...bundledSettings.view, workingPatch: null };
+        }
+        applyNodeUiDevSettings(bundledSettings);
+      } catch (_error) {
+        // Controls-only fallback below.
+      }
+    }
+    return;
+  }
   if (storedSettings) {
     applyNodeUiDevSettings(storedSettings);
     const storedCatalogVisibility = loadNodeGraphModuleCatalogVisibilityLocal();

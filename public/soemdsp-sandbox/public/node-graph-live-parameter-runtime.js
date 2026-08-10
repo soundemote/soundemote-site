@@ -1,3 +1,6 @@
+// Thin wrappers over param-surface helpers + smoother state.
+// Canonical MOD/DOMAIN math: node-graph-param-surface-helpers.js (Phase F).
+
 // Thin wrapper over the stdlib helper -- kept because this short name is used
 // throughout the live/render evaluator lane.
 function readNodeGraphLiveParam(node, key, fallback = 0) {
@@ -14,23 +17,27 @@ function readNodeGraphLiveSmoothedParam(runtime, node, key, fallback, frame, fra
 }
 
 function nodeGraphApplyParameterBounds(value, metadata = {}) {
+  // DOMAIN: min/max are slider guides unless wraparound / resource constraint / hardClamp.
+  if (typeof nodeGraphParamApplyDomainBounds === "function") {
+    return nodeGraphParamApplyDomainBounds(value, metadata);
+  }
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  if (metadata.wraparound) {
+    const min = Number(metadata.min);
+    const max = Number(metadata.max);
+    if (Number.isFinite(min) && Number.isFinite(max) && max > min) {
+      return wrapNodeSliderValue(n, min, max);
+    }
+  }
+  const c = String(metadata.constraint || "").toLowerCase();
+  const hard = metadata.hardClamp === true
+    || c === "cpu" || c === "gpu" || c === "ram" || c === "memory";
+  if (!hard) return n;
   const min = Number(metadata.min);
   const max = Number(metadata.max);
-  if (metadata.unboundedMin && metadata.unboundedMax) {
-    return value;
-  }
-  if (metadata.unboundedMin && Number.isFinite(max)) {
-    return Math.min(value, max);
-  }
-  if (metadata.unboundedMax && Number.isFinite(min)) {
-    return Math.max(value, min);
-  }
-  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
-    return value;
-  }
-  return metadata.wraparound
-    ? wrapNodeSliderValue(value, min, max)
-    : clampNodeSliderValue(value, min, max);
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return n;
+  return clampNodeSliderValue(n, min, max);
 }
 
 function readNodeGraphRuntimeOutput(runtime, frameValues, nodeId, port = "Out") {
@@ -54,18 +61,27 @@ function readNodeGraphRuntimeOutput(runtime, frameValues, nodeId, port = "Out") 
   return output === undefined || output === null ? 0 : Number(output);
 }
 
+/** DOMAIN → unit (parameter port used as a bus source). */
 function normalizeNodeGraphParameterOutputValue(value, metadata = {}) {
+  if (typeof nodeGraphParamDomainToModOutput === "function") {
+    return nodeGraphParamDomainToModOutput(value, metadata);
+  }
   return nodeGraphParameterValueToNormalizedSignal(value, metadata);
 }
 
+/** MOD surface: raw sample in domain units (no unit clamp). */
 function normalizeNodeGraphParameterModulationInput(value, metadata = {}) {
-  const number = Number(value) || 0;
-  return normalizeNodeMetadataKind(metadata.kind) === "frequency" && metadata.nonlinearSlider
-    ? clampNodeSliderValue(number, -1, 1)
-    : clampNodeSliderValue(number, 0, 1);
+  if (typeof nodeGraphParamNormalizeModInput === "function") {
+    return nodeGraphParamNormalizeModInput(value, metadata);
+  }
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
 }
 
 function nodeGraphParameterSkewExponent(metadata = {}) {
+  if (typeof nodeGraphParamSkewExponent === "function") {
+    return nodeGraphParamSkewExponent(metadata);
+  }
   if (!metadata.nonlinearSlider) {
     return 1;
   }
@@ -81,6 +97,9 @@ function nodeGraphParameterSkewExponent(metadata = {}) {
 }
 
 function nodeGraphParameterValueToNormalizedSignal(value, metadata = {}) {
+  if (typeof nodeGraphParamDomainToUnit === "function") {
+    return nodeGraphParamDomainToUnit(value, metadata);
+  }
   const min = Number(metadata.min);
   const max = Number(metadata.max);
   const range = max - min;
@@ -99,6 +118,9 @@ function nodeGraphParameterValueToNormalizedSignal(value, metadata = {}) {
 }
 
 function nodeGraphNormalizedSignalToParameterValue(signal, metadata = {}) {
+  if (typeof nodeGraphParamUnitToDomain === "function") {
+    return nodeGraphParamUnitToDomain(signal, metadata);
+  }
   const min = Number(metadata.min);
   const max = Number(metadata.max);
   const range = max - min;
@@ -112,14 +134,47 @@ function nodeGraphNormalizedSignalToParameterValue(signal, metadata = {}) {
   return nodeGraphApplyParameterBounds(min + range * normalizedValue, metadata);
 }
 
+/** DOMAIN + MOD → effective domain (linear unit map / absolute hybrid SSOT). */
 function nodeGraphApplyParameterModulation(base, modulationSignal, metadata = {}) {
-  if (normalizeNodeMetadataKind(metadata.kind) === "frequency" && metadata.nonlinearSlider) {
-    const baseFrequency = Math.max(0.000001, Number(base) || 0.000001);
-    const octaves = (Number(modulationSignal) || 0) / 0.1;
-    return nodeGraphApplyParameterBounds(baseFrequency * (2 ** octaves), metadata);
+  if (typeof nodeGraphParamApplyMod === "function") {
+    return nodeGraphParamApplyMod(base, modulationSignal, metadata);
   }
-  const baseSignal = nodeGraphParameterValueToNormalizedSignal(base, metadata);
-  return nodeGraphNormalizedSignalToParameterValue(baseSignal + modulationSignal, metadata);
+  // Fallback mirrors nodeGraphParamApplyMod (linear unit, no skew).
+  const baseN = Number(base);
+  const b = Number.isFinite(baseN) ? baseN : 0;
+  let mod = Number(modulationSignal);
+  if (!Number.isFinite(mod)) {
+    mod = 0;
+  }
+  const bipolar = metadata && Object.hasOwn(metadata, "bipolar")
+    ? Boolean(metadata.bipolar)
+    : (Number(metadata?.min) < 0 && Number(metadata?.max) > 0);
+  if (!bipolar) {
+    mod = Math.max(0, mod);
+  }
+  const min = Number(metadata.min);
+  const max = Number(metadata.max);
+  const range = max - min;
+  if (Number.isFinite(range) && range > 0 && Math.abs(mod) <= 1 + 1e-9) {
+    const baseUnit = (b - min) / range;
+    const unit = baseUnit + mod;
+    const result = min + unit * range;
+    return Number.isFinite(result) ? result : 0;
+  }
+  let result = b + mod;
+  if (!Number.isFinite(result)) {
+    return 0;
+  }
+  let shouldClamp = false;
+  if (Object.hasOwn(metadata, "modClamp")) {
+    shouldClamp = Boolean(metadata.modClamp);
+  } else if (metadata.wraparound || metadata.hardClamp === true) {
+    shouldClamp = true;
+  } else {
+    const c = String(metadata.constraint || "").toLowerCase();
+    shouldClamp = c === "cpu" || c === "gpu" || c === "ram" || c === "memory";
+  }
+  return shouldClamp ? nodeGraphApplyParameterBounds(result, metadata) : result;
 }
 
 function readNodeGraphRuntimePortOutput(runtime, frameValues, nodeId, port = "Out", frame = 0, frames = 1) {
@@ -151,10 +206,7 @@ function readNodeGraphLiveEffectiveParam(
 ) {
   const base = readNodeGraphLiveSmoothedParam(runtime, node, key, fallback, frame, frames);
   const modulations = runtime.modulationConnections?.get(nodeGraphParameterKey(node?.id, key));
-  // See node-live-audio-worklet-core.js readEffectiveParameter: skip the
-  // normalize/denormalize round trip (Math.log-based skew math) entirely
-  // when nothing modulates this parameter, instead of paying it every
-  // sample for every parameter regardless.
+  // Skip unit-space round trip when nothing modulates this parameter.
   if (!modulations || !modulations.length) {
     return base;
   }

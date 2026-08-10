@@ -57,13 +57,22 @@ var nodeGraphMvp = {
   // Grid on by default -- a fresh profile, and anything reset by Clear
   // Startup, should come up showing the workspace grid.
   gridVisible: true,
+  // Module glow heatmap around nodes (expensive O(modules) CSS). Off skips all rebuilds.
+  gridLightVisible: true,
+  // Cable stroke paths; when false only endpoint dots (jack plugs) draw.
+  wireLengthsVisible: true,
+  // Cable strokes under modules by default; Visibility can raise them above.
+  wiresAboveModules: false,
   macroControls: new Array(10).fill(0),
+  // Face appearance (bg / arc fill / track / names) — shared by module + dock.
+  macroControlsFace: null,
   macroKnobArcThickness: 7,
   macroKnobArcGapBrightness: 0,
   macroKnobSizeScale: 1,
   macroKnobHitboxOutlineVisible: false,
   macroKnobLabelPosition: "top",
-  macroKnobValuePosition: "bottom",
+  // Value centered in the circle; title sits above the dial widget.
+  macroKnobValuePosition: "mid",
   sliderLayout: "text-inside",
   // Amount fill on by default, and restored by Clear Startup (see
   // clearNodeUserStartupRuntimeState).
@@ -120,6 +129,8 @@ var nodeGraphMvp = {
     outputMuted: false,
     outputVolume: 1,
     speedMultiplier: 1,
+    // Last non-zero transport speed (pause uses 0; stop restores this).
+    lastPlaySpeed: 1,
     // Full-scale ceiling for universal oscillator `f` input (linear Hz 0..limit).
     speedLimit: 20000,
     planEvidence: null,
@@ -150,6 +161,13 @@ var nodeGraphMvp = {
   metadataScriptDirty: false,
   sharedInspectorActive: "",
   sharedInspectorWindowState: {},
+  // Unified floating window: one active page at a time (command center,
+  // modules, module/display/parameter settings).
+  unifiedWindowPage: "",
+  unifiedWindowPosition: null,
+  unifiedWindowSize: null,
+  _unifiedWindowSwitching: false,
+  _unifiedWindowPendingPosition: null,
   moduleActionDragging: null,
   moduleActionResizing: null,
   moduleActionWindowSize: null,
@@ -163,12 +181,18 @@ var nodeGraphMvp = {
   // floating tips window. WHERE the tips are, not whether they are shown -
   // that stays the Hide/Show Tooltips toggle in both modes.
   tooltipEmbedded: false,
+  // Embedded tips band height (px). User-draggable between tips and modular view.
+  tooltipEmbedHeight: 46,
+  tooltipEmbedResizing: null,
   modularOnlyControlsVisible: false,
   moduleButtonsVisible: false,
   moduleDefaultOverrides: {},
   moduleSettingsClipboard: null,
   moduleInterfaceControlsVisible: true,
-  moduleOscilloscopesVisible: false,
+  // Default ON — matches Clear Startup / useruisettings policy. false here
+  // hid every face (Output Trace + Music Player waveform) until settings
+  // rehydrated, which looked like "scopes totally broken" on a fresh load.
+  moduleOscilloscopesVisible: true,
   modulePlacement: null,
   moduleShopDragging: null,
   moduleSlidersVisible: true,
@@ -184,6 +208,17 @@ var nodeGraphMvp = {
   moduleScopeSettings: {},
   traceSettings: normalizeNodeGraphTraceDisplaySettings(),
   scopeBloomEnabled: false,
+  // Room dimmer hover cutouts (UI Dev).
+  dimmerCutoutSliderEnabled: true,
+  dimmerCutoutModuleEnabled: false,
+  dimmerCutoutTitleEnabled: true,
+  dimmerCutoutMouseEnabled: false,
+  dimmerMouseSize: 56,
+  dimmerMouseSoftness: 25,
+  dimmerMouseShape: 0,
+  // Legacy mirrors (combined mouse+slider / title) for older presets.
+  hoverModuleDimmerCutoutEnabled: true,
+  hoverModuleTitleDimmerCutoutEnabled: true,
   moduleStoreDepartment: "",
   // The last category the user actually CLICKED, as opposed to whatever page
   // the browser happens to be showing (a search shows results across every
@@ -191,6 +226,8 @@ var nodeGraphMvp = {
   // openNodeGraphModuleShop.
   moduleStoreDepartmentAnchor: "",
   moduleStoreDepartmentSearch: "",
+  // Command Center module search (independent of Module Browser search box).
+  commandCenterModuleSearch: "",
   sampleBuffers: new Map(),
   sampleLoadErrors: new Map(),
   sampleRuntimeStatus: new Map(),
@@ -239,10 +276,11 @@ var nodeGraphMvp = {
     expAdsr: 0,
     flowerChildEnvelopeFollower: 0,
     fractalBrownianNoise: 0,
+    fbmField: 0,
     gain: 1,
     graph: 0,
     flowerChildFilter: 0,
-    rsmetFilter: 0,
+    activeFilter: 0,
     yellowjacketFilter: 0,
     superloveFilter: 0,
     chaoticPhaseLockingFilter: 0,
@@ -279,7 +317,7 @@ var nodeGraphMvp = {
     textBox: 0,
     triggerCounter: 0,
     triggerDivider: 0,
-    valueSlider: 0,
+    knob: 0,
     vactrolEnvelopeSeries: 0,
     vactrolEnvelopeCustom: 0,
   },
@@ -303,12 +341,13 @@ var nodeGraphMvp = {
   sceneContextPoint: null,
   savedPatchBankIndex: 0,
   savedPatchBankName: "",
+  // Exposed while patch library locations settle (factory pack vs user saves).
+  savedPatchFactoryPath: "",
+  savedPatchUserPath: "",
   savedPatchGridColumns: 3,
-  savedPatchExplorerView: "banks",
   selectedSavedPatchProgram: 0,
   savedPatchTagFilters: [],
   savedPatchEntries: [],
-  savedPatchesWindowDragging: null,
   scopeContextDragging: null,
   scopeContextTargetNode: null,
   scopeContextWindowPosition: null,
@@ -331,6 +370,12 @@ var nodeGraphMvp = {
   sceneContextDragging: null,
   sceneContextResizing: null,
   sceneContextWindowSize: null,
+  userUiSettingsDragging: null,
+  userUiSettingsResizing: null,
+  userUiSettingsWindowSize: null,
+  uiDevHelperDragging: null,
+  uiDevHelperResizing: null,
+  uiDevHelperWindowSize: null,
   sliderDragging: null,
   smoothZoomDragging: null,
   snapGridWhilePanning: false,

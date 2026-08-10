@@ -6,25 +6,133 @@
 //    math into one shared scheme — each module stays its own universe.
 // 2) Optional `controls[]` on a definition expands into inputs/parameters so
 //    new modules can declare knob + jack roles in one place.
-// 3) Universal linear frequency jack `f`: absolute Hz in [0, speedLimit].
-//    Speed Limit lives next to Speed in the header (default 20000).
+// 3) Project Speed Limit: ONE runtime ceiling for pitch/f resolution and DSP
+//    Hz clamps. Not written into parameter min/max (those stay definition /
+//    user metaparam). No project minimum frequency (0 is allowed). Header +
+//    patch audio field; default 20000 (user-adjustable).
 
 const nodeGraphModuleDefinitionCache = new Map();
 
-function nodeGraphLiveSpeedLimitHz() {
-  const n = Number(nodeGraphMvp?.live?.speedLimit);
-  if (Number.isFinite(n) && n > 0) {
-    return n;
-  }
-  return 20000;
+/** Default project speed limit (Hz). Live clamp default; not a knob-domain bake. */
+const NODE_GRAPH_PROJECT_SPEED_LIMIT_DEFAULT_HZ = 20000;
+/** Upper bound for the Speed Limit control itself (not signal Hz floor). */
+const NODE_GRAPH_PROJECT_SPEED_LIMIT_CONTROL_MAX_HZ = 192000;
+
+function nodeGraphProjectSpeedLimitDefaultHz() {
+  return NODE_GRAPH_PROJECT_SPEED_LIMIT_DEFAULT_HZ;
 }
 
-function setNodeGraphLiveSpeedLimit(value) {
-  const n = Number(value);
-  const next = Number.isFinite(n) && n > 0 ? n : 20000;
-  if (Number(nodeGraphMvp?.live?.speedLimit) === next) {
-    return;
+/**
+ * Project maximum frequency (Hz). Prefer live session value, then patch.audio,
+ * then default. No minimum frequency for signals — only this maximum.
+ */
+function nodeGraphProjectSpeedLimitHz() {
+  const live = Number(nodeGraphMvp?.live?.speedLimit);
+  if (Number.isFinite(live) && live > 0) {
+    return live;
   }
+  const fromPatch = Number(nodeGraphMvp?.patch?.audio?.speedLimitHz);
+  if (Number.isFinite(fromPatch) && fromPatch > 0) {
+    return fromPatch;
+  }
+  return NODE_GRAPH_PROJECT_SPEED_LIMIT_DEFAULT_HZ;
+}
+
+/** Alias used by f-jack / live transport path. */
+function nodeGraphLiveSpeedLimitHz() {
+  return nodeGraphProjectSpeedLimitHz();
+}
+
+/**
+ * Optional helper: what a declared domain max would be if clamped to Speed Limit.
+ * Prefer NOT writing this into paramMeta — Speed Limit is applied at runtime
+ * (resolveFrequencyHz / worklet). Kept for tooling / diagnostics only.
+ */
+function nodeGraphFrequencyParamDomainMaxHz(declaredMax) {
+  const limit = nodeGraphProjectSpeedLimitHz();
+  const d = Number(declaredMax);
+  if (Number.isFinite(d) && d > 0) {
+    return Math.min(d, limit);
+  }
+  return limit;
+}
+
+/** Clamp unsigned Hz into [0, project speed limit]. No positive minimum. */
+function nodeGraphClampHzToProjectSpeedLimit(hz) {
+  const limit = nodeGraphProjectSpeedLimitHz();
+  const n = Number(hz);
+  if (!Number.isFinite(n) || n <= 0) {
+    return 0;
+  }
+  return n > limit ? limit : n;
+}
+
+/** Clamp signed Hz into [−limit, +limit] (through-zero). */
+function nodeGraphClampSignedHzToProjectSpeedLimit(hz) {
+  const limit = nodeGraphProjectSpeedLimitHz();
+  const n = Number(hz);
+  if (!Number.isFinite(n)) {
+    return 0;
+  }
+  if (n > limit) return limit;
+  if (n < -limit) return -limit;
+  return n;
+}
+
+/**
+ * Set project speed limit. Persists to patch.audio.speedLimitHz by default and
+ * pushes to the audio worklet.
+ */
+function setNodeGraphProjectSpeedLimitHz(value, options = {}) {
+  const persist = options.persist !== false;
+  const n = Number(value);
+  const next = Number.isFinite(n) && n > 0
+    ? Math.min(NODE_GRAPH_PROJECT_SPEED_LIMIT_CONTROL_MAX_HZ, n)
+    : NODE_GRAPH_PROJECT_SPEED_LIMIT_DEFAULT_HZ;
+  const prev = Number(nodeGraphMvp?.live?.speedLimit);
+  if (nodeGraphMvp?.live) {
+    nodeGraphMvp.live.speedLimit = next;
+  }
+  if (persist && nodeGraphMvp?.patch) {
+    const audio = typeof normalizeNodeGraphPatchAudio === "function"
+      ? normalizeNodeGraphPatchAudio({
+        ...(nodeGraphMvp.patch.audio || {}),
+        speedLimitHz: next,
+      })
+      : {
+        ...(nodeGraphMvp.patch.audio || {}),
+        speedLimitHz: next,
+      };
+    nodeGraphMvp.patch.audio = audio;
+  }
+  if (prev === next && options.force !== true) {
+    // Still refresh UI if asked
+  } else {
+    if (typeof sendNodeGraphLiveSpeedLimit === "function") {
+      sendNodeGraphLiveSpeedLimit();
+    }
+  }
+  if (typeof renderNodeGraphSpeedLimitReadout === "function") {
+    renderNodeGraphSpeedLimitReadout();
+  }
+  // Keep patch-settings field in sync when present.
+  const patchField = document.getElementById("patchSpeedLimitHzValue");
+  if (patchField && String(patchField.value) !== String(next)) {
+    patchField.value = String(next);
+  }
+}
+
+/** Alias for header / existing call sites. */
+function setNodeGraphLiveSpeedLimit(value) {
+  setNodeGraphProjectSpeedLimitHz(value, { persist: true });
+}
+
+/** Apply patch.audio.speedLimitHz → live (patch load / sync). */
+function syncNodeGraphProjectSpeedLimitFromPatch() {
+  const fromPatch = Number(nodeGraphMvp?.patch?.audio?.speedLimitHz);
+  const next = Number.isFinite(fromPatch) && fromPatch > 0
+    ? fromPatch
+    : NODE_GRAPH_PROJECT_SPEED_LIMIT_DEFAULT_HZ;
   if (nodeGraphMvp?.live) {
     nodeGraphMvp.live.speedLimit = next;
   }
@@ -111,32 +219,25 @@ function nodeGraphModuleDefinitionInvalidateCache(type = null) {
 }
 
 /**
- * Read universal linear frequency jack `f` (absolute Hz).
- * Returns null when the port is not wired; otherwise clamps to [0, speedLimit].
- * Offline: pass mixInput/hasInput from the frame evaluator.
+ * @deprecated Absolute-Hz f jack retired — always null (unwired).
+ * Use domain-add MOD on Frequency instead.
  */
-function nodeGraphReadFInputHz(mixInput, hasInput, nodeId, options = {}) {
-  const port = options.port || "f";
-  if (typeof hasInput !== "function" || !hasInput(nodeId, port)) {
-    return null;
-  }
-  const limit = Number(options.limit);
-  const maxHz = Number.isFinite(limit) && limit > 0 ? limit : nodeGraphLiveSpeedLimitHz();
-  const raw = typeof mixInput === "function" ? Number(mixInput(nodeId, port)) : Number(mixInput);
-  if (!Number.isFinite(raw)) {
-    return 0;
-  }
-  return Math.max(0, Math.min(maxHz, raw));
+function nodeGraphReadFInputHz(_mixInput, _hasInput, _nodeId, _options = {}) {
+  return null;
 }
 
 /**
- * Prefer wired `f` (absolute Hz). Otherwise use the module's own baseHz path
- * (0.1V/Oct, Freq, knob, etc. — left entirely to the caller).
+ * Clamp signed Hz to ±Speed Limit. Second arg ignored (legacy f mult removed).
+ * Through-zero: negative Hz allowed (reverse phase) when base is bipolar MOD.
  */
-function nodeGraphResolveFrequencyHz(baseHz, fHzOrNull) {
-  if (fHzOrNull != null && Number.isFinite(Number(fHzOrNull))) {
-    return Math.max(0, Number(fHzOrNull));
-  }
+function nodeGraphResolveFrequencyHz(baseHz, _fHzOrNull, options = {}) {
+  const limitOpt = Number(options?.limit);
+  const maxHz = Number.isFinite(limitOpt) && limitOpt > 0
+    ? limitOpt
+    : nodeGraphProjectSpeedLimitHz();
   const base = Number(baseHz);
-  return Number.isFinite(base) ? Math.max(0, base) : 0;
+  if (!Number.isFinite(base)) return 0;
+  if (base > maxHz) return maxHz;
+  if (base < -maxHz) return -maxHz;
+  return base;
 }

@@ -3,6 +3,76 @@ function nodeGraphEventTargetIsEditable(target) {
     Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
 }
 
+/**
+ * True when keyboard shortcuts must yield to typing (text/search fields).
+ * Range / checkbox / button inputs do not count — Shift+arrows still resize.
+ */
+function nodeGraphEventTargetIsTextEditable(target) {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+  if (target.closest?.("[contenteditable='true']")) {
+    return true;
+  }
+  const field = target.closest?.("textarea, select, input");
+  if (!field) {
+    return false;
+  }
+  if (field.tagName === "TEXTAREA" || field.tagName === "SELECT") {
+    return true;
+  }
+  if (field.tagName !== "INPUT") {
+    return false;
+  }
+  if (field.readOnly || field.disabled) {
+    return false;
+  }
+  const type = String(field.type || "text").toLowerCase();
+  return [
+    "text",
+    "search",
+    "email",
+    "url",
+    "password",
+    "tel",
+    "number",
+  ].includes(type);
+}
+
+/**
+ * Blur a focused text field when the user clicks the modular area / modules /
+ * sliders / etc. Module drag and slider handlers call preventDefault on
+ * pointerdown, which otherwise leaves Search modules focused and steals
+ * Shift+arrow (and every other bare-key shortcut).
+ */
+function nodeGraphBlurActiveTextEditableIfOutside(eventTarget) {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement) || !nodeGraphEventTargetIsTextEditable(active)) {
+    return false;
+  }
+  if (eventTarget instanceof Node) {
+    if (active === eventTarget || active.contains(eventTarget)) {
+      return false;
+    }
+    const label = eventTarget instanceof Element ? eventTarget.closest("label") : null;
+    if (label && (label.contains(active) || label.control === active)) {
+      return false;
+    }
+    // Moving into another *writable* text field — let the browser handle focus.
+    // Read-only header titles (rename locked) must not block blur of an active
+    // alias/title editor when the user clicks another module.
+    if (nodeGraphEventTargetIsTextEditable(eventTarget)) {
+      return false;
+    }
+  }
+  try {
+    active.blur();
+  } catch {
+    // ignore
+  }
+  return true;
+}
+
 function nudgeSelectedNodeGraphModulesOnGrid(axis, direction) {
   const selectedNodeIds = new Set([...nodeGraphSelectedNodeIds()].filter((id) =>
     nodeGraphMvp.activeNodes.has(id),
@@ -208,29 +278,53 @@ function handleNodeGraphKeydown(event) {
     setNodeGraphViewMode("modular");
     return;
   }
-  // Space ALWAYS controls audio transport (pause/play/start) — even when
-  // an input is focused. Misused audio can cause distress; Space must be a
-  // reliable panic button regardless of UI focus.
+  // While typing in a text/search field (module search, name boxes, code
+  // editor), bare-key shortcuts must not fire -- e.g. Space stolen for
+  // transport, or single-letter view hotkeys while typing. Range/checkbox
+  // focus does not block shortcuts. Modifier combos (Ctrl+Z, etc.) still work.
+  if (nodeGraphEventTargetIsTextEditable(event.target) && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    return;
+  }
+  // Space controls audio transport when not typing (panic / play-pause).
+  // Text inputs are excluded above so module search and name fields can take spaces.
   if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.code === "Space") {
     event.preventDefault();
-    event.stopPropagation(); // prevent the editable-target check below from eating it
-    if (nodeGraphMvp?.live?.outputEnabled && nodeGraphMvp?.live?.node) {
-      // Engine is running: Space toggles speed between 0 (pause) and 1 (play).
+    event.stopPropagation();
+    // Same path as the transport ▶ button so Space and click stay in lockstep
+    // (start when cold, pause/resume when engine is up — never a bare toggle
+    // that can leave outputEnabled true with no worklet).
+    if (typeof nodeGraphTransportHandleAction === "function") {
+      nodeGraphTransportHandleAction("play");
+    } else if (nodeGraphMvp?.live?.node) {
       const isPaused = (nodeGraphMvp.live.speedMultiplier ?? 1) === 0;
       const nextSpeed = isPaused ? 1 : 0;
       if (typeof setNodeGraphLiveSpeed === "function") {
         setNodeGraphLiveSpeed(nextSpeed);
       }
+    } else if (typeof setNodeGraphLiveOutputEnabled === "function") {
+      setNodeGraphLiveOutputEnabled(true);
     } else if (typeof toggleNodeGraphLiveOutput === "function") {
-      // Engine is off: Space starts it.
       toggleNodeGraphLiveOutput();
     }
     return;
   }
-  // While typing in a text field (module search, name boxes, code editor),
-  // bare-key shortcuts must not fire -- e.g. "d" toggling debug while you search
-  // for "led". Modifier combos (Ctrl+Z, etc.) and Space (above) still work.
-  if (nodeGraphEventTargetIsEditable(event.target) && !event.ctrlKey && !event.metaKey && !event.altKey) {
+  // Ctrl/Cmd+S → native save dialog for the current patch (Desktop when
+  // showSaveFilePicker supports startIn). Code Screen owns Ctrl+S when focus
+  // is inside it (draft apply / metadata).
+  if (
+    (event.ctrlKey || event.metaKey)
+    && !event.shiftKey
+    && !event.altKey
+    && event.key.toLowerCase() === "s"
+  ) {
+    if (event.target?.closest?.("#nodeCodeScreenView, .node-code-screen-view")) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    if (typeof saveNodeGraphPatchWithNativeDialog === "function") {
+      void saveNodeGraphPatchWithNativeDialog();
+    }
     return;
   }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z" && !event.shiftKey) {
@@ -268,50 +362,32 @@ function handleNodeGraphKeydown(event) {
     }
     return;
   }
-  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "k") {
-    event.preventDefault();
-    if (typeof toggleNodeGraphStandaloneMidiKeyboard === "function") {
-      toggleNodeGraphStandaloneMidiKeyboard();
-    }
-    return;
-  }
   if (event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "a") {
     event.preventDefault();
-    openNodeGraphModuleShop(null);
+    if (typeof openNodeGraphUnifiedWindowPage === "function") {
+      openNodeGraphUnifiedWindowPage("moduleBrowser");
+    } else {
+      openNodeGraphModuleShop(null);
+    }
     return;
   }
   if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "c") {
     event.preventDefault();
-    if (typeof openNodeGraphCommandCenter === "function") {
+    if (typeof openNodeGraphUnifiedWindowPage === "function") {
+      openNodeGraphUnifiedWindowPage("commandCenter");
+    } else if (typeof openNodeGraphCommandCenter === "function") {
       openNodeGraphCommandCenter();
     }
     return;
   }
-  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "m") {
-    event.preventDefault();
-    if (typeof toggleNodeGraphModularOnlyView === "function") {
-      toggleNodeGraphModularOnlyView();
-    }
-    return;
-  }
+  // V → infinite modular canvas (View Buttons / hide chrome), not the enclosed
+  // modular-only box with back/resize drag widgets (that is Modular View / M).
   if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "v") {
     event.preventDefault();
     if (typeof toggleNodeGraphViewButtonsVisibility === "function") {
       toggleNodeGraphViewButtonsVisibility();
-    }
-    return;
-  }
-  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "d") {
-    event.preventDefault();
-    if (typeof toggleNodeGraphKeyboardDebugVisibility === "function") {
-      toggleNodeGraphKeyboardDebugVisibility();
-    }
-    return;
-  }
-  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "t") {
-    event.preventDefault();
-    if (typeof toggleNodeGraphTooltipWindow === "function") {
-      toggleNodeGraphTooltipWindow();
+    } else if (typeof toggleNodeGraphModularOnlyControlsVisible === "function") {
+      toggleNodeGraphModularOnlyControlsVisible();
     }
     return;
   }
@@ -373,7 +449,7 @@ function handleNodeGraphKeydown(event) {
     return;
   }
   // Don't delete modules while the user is typing in a text field.
-  if (nodeGraphEventTargetIsEditable(event.target)) {
+  if (nodeGraphEventTargetIsTextEditable(event.target)) {
     return;
   }
 

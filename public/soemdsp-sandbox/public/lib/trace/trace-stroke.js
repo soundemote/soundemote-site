@@ -7,7 +7,7 @@
 //
 // Not burn: no energy FBO, no decay, no bleed. Clear + redraw each frame.
 // Hard stroke by default (blur ignored on stereo; mono paths force blur 0).
-// Size = 0–1 face diameter.
+// Size = 0–1 of face min side: 0 → 1px, 1 → full side (exponential).
 
 (function initTraceStroke(global) {
   function clamp01(value, fallback = 0) {
@@ -35,11 +35,24 @@
     return Math.max(0, Math.min(1, v));
   }
 
-  /** Diameter in px from size 0–1 of face min side. */
+  /**
+   * Diameter in px — linear map matching phosphor (size * face min side).
+   * Size 0 → 1px (minimum draw size for now).
+   */
   function diameterPx(faceMinSide, size01) {
+    if (typeof global.PhosphorDrawer?.size01ToDiameterPx === "function") {
+      return global.PhosphorDrawer.size01ToDiameterPx(faceMinSide, size01);
+    }
     const side = Math.max(1, Number(faceMinSide) || 1);
-    const t = clamp01(size01, 0.08);
+    const t = clamp01(size01, 0);
     return Math.max(1, side * t);
+  }
+
+  function radiusPx(faceMinSide, size01) {
+    if (typeof global.PhosphorDrawer?.size01ToRadiusPx === "function") {
+      return global.PhosphorDrawer.size01ToRadiusPx(faceMinSide, size01);
+    }
+    return Math.max(0.5, diameterPx(faceMinSide, size01) * 0.5);
   }
 
   /**
@@ -82,24 +95,37 @@
       return pieces;
     }
     let drawing = false;
+    let segmentStart = -1;
     for (let i = 0; i < points.length; i += 1) {
       const p = points[i];
       if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
         drawing = false;
+        segmentStart = -1;
         continue;
       }
       if (!drawing) {
         context.beginPath();
         context.moveTo(p.x, p.y);
         drawing = true;
+        segmentStart = i;
         pieces += 1;
       } else {
         context.lineTo(p.x, p.y);
       }
       const next = points[i + 1];
-      if (!next || !Number.isFinite(next?.x)) {
-        context.stroke();
+      if (!next || !Number.isFinite(next?.x) || !Number.isFinite(next?.y)) {
+        // 1-point segments: stroke() is invisible — draw a dot instead.
+        if (segmentStart === i) {
+          const w = Math.max(1, Number(context.lineWidth) || 1);
+          context.beginPath();
+          context.arc(p.x, p.y, w * 0.5, 0, Math.PI * 2);
+          context.fillStyle = context.strokeStyle;
+          context.fill();
+        } else {
+          context.stroke();
+        }
         drawing = false;
+        segmentStart = -1;
       }
     }
     if (drawing) {
@@ -119,10 +145,11 @@
       return 0;
     }
     const face = Math.max(1, Number(options.faceMinSide) || 1);
-    const size01 = clamp01(options.size, 0.08);
+    // size 0 is valid (1px min) — only brightness gates draw.
+    const size01 = clamp01(options.size, 0);
     const blur = normalizeBlur(options.blur, 0.2);
     const brightness = Math.max(0, Number(options.brightness) || 0);
-    if (size01 <= 0 || brightness <= 0) {
+    if (brightness <= 0) {
       return 0;
     }
 
@@ -139,8 +166,8 @@
         rgb = [117, 235, 255];
       }
     }
-    // Brightness scales RGB (opaque stroke) — not alpha stacks / lighter glow.
-    const gain = Math.min(1, brightness);
+    // Brightness is 0…1 exactly (UI + settings). No 0…2→half remap here.
+    const gain = Math.max(0, Math.min(1, brightness));
     const r = Math.round(rgb[0] * gain);
     const g = Math.round(rgb[1] * gain);
     const b = Math.round(rgb[2] * gain);
@@ -362,14 +389,16 @@
   /**
    * Output stereo dual-trace.
    *
-   * blend "combine" (default) keeps the equation:
+   * blend "combine" (default / Meet UI):
    *   m = min(L, R)
    *   pixel = (L-m)·C_left + (R-m)·C_right + m·C_meet
    * With C_left=red, C_right=blue, C_meet=green this is the original R/B→G.
-   * Any colors work; C_meet defaults to max(0, 1-C_L-C_R) per channel.
+   * C_meet defaults to max(0, 1-C_L-C_R) per channel (complement).
+   * Caller fills plate under transparent holes (destination-over).
    *
-   * Other blends: draw Left then Right with that Canvas composite mode.
-   * Trace blur is ignored (always hard stroke) — soft skirts don't fit lines.
+   * Other blends: draw Left then Right with that Canvas composite mode
+   * (plate must already be filled by the caller).
+   * Trace blur is ignored (always hard stroke).
    */
   function drawStereo(destCtx, leftPoints, rightPoints, leftOptions = {}, rightOptions = {}, stereo = {}) {
     if (!destCtx?.canvas) {
@@ -431,9 +460,14 @@
     leftCtx.fillRect(0, 0, w, h);
     rightCtx.fillRect(0, 0, w, h);
 
+    // Mask must be drawn at full ink. Brightness used to multiply the white
+    // mask (default Instant Trace brightness 0.08 from phosphor look defaults)
+    // which crushed Meet recolor to ~8% of the chosen Left/Right colors — the
+    // plate showed through and strokes looked black / “not taking color”.
     const leftCount = draw(leftCtx, leftPoints, {
       ...leftOptions,
       blur: 0,
+      brightness: 1,
       color: "#ffffff",
       rgb: [255, 255, 255],
       faceMinSide: face,
@@ -442,17 +476,24 @@
     const rightCount = draw(rightCtx, rightPoints, {
       ...rightOptions,
       blur: 0,
+      brightness: 1,
       color: "#ffffff",
       rgb: [255, 255, 255],
       faceMinSide: face,
       composite: "lighter",
     });
 
-    const cL = parseRgb01(stereo.leftColor ?? leftOptions.color ?? leftOptions.rgb, [1, 0, 0]);
-    const cR = parseRgb01(stereo.rightColor ?? rightOptions.color ?? rightOptions.rgb, [0, 0, 1]);
-    const cM = stereo.meetColor != null && stereo.meetColor !== "" && stereo.meetColor !== "auto"
-      ? parseRgb01(stereo.meetColor, meetColorFromPair(cL, cR))
-      : meetColorFromPair(cL, cR);
+    const gainL = clamp01(leftOptions.brightness, 1);
+    const gainR = clamp01(rightOptions.brightness, 1);
+    const cLraw = parseRgb01(stereo.leftColor ?? leftOptions.color ?? leftOptions.rgb, [1, 0, 0]);
+    const cRraw = parseRgb01(stereo.rightColor ?? rightOptions.color ?? rightOptions.rgb, [0, 0, 1]);
+    const cL = [cLraw[0] * gainL, cLraw[1] * gainL, cLraw[2] * gainL];
+    const cR = [cRraw[0] * gainR, cRraw[1] * gainR, cRraw[2] * gainR];
+    const meetGain = Math.max(gainL, gainR);
+    const cMraw = stereo.meetColor != null && stereo.meetColor !== "" && stereo.meetColor !== "auto"
+      ? parseRgb01(stereo.meetColor, meetColorFromPair(cLraw, cRraw))
+      : meetColorFromPair(cLraw, cRraw);
+    const cM = [cMraw[0] * meetGain, cMraw[1] * meetGain, cMraw[2] * meetGain];
 
     const leftData = leftCtx.getImageData(0, 0, w, h);
     const rightData = rightCtx.getImageData(0, 0, w, h);
@@ -493,14 +534,15 @@
     clamp01,
     normalizeBlur,
     diameterPx,
+    radiusPx,
     edgeProfile,
     draw,
     drawStereo,
     drawStereoRedBlueGreen,
+    normalizeStereoBlend,
+    STEREO_BLEND_MODES,
     meetColorFromPair,
     parseRgb01,
-    STEREO_BLEND_MODES,
-    normalizeStereoBlend,
     budgetPoints,
     pointBudget,
   };

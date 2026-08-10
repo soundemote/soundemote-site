@@ -10,6 +10,12 @@
 //
 // This keeps motion tied to real time without needing a huge hop ring, and
 // avoids the “zoom/stretch as we fill” effect.
+//
+// Zoom / face-resize:
+//   Workspace zoom must NOT reallocate the permanent buffer (layout CSS size is
+//   stable; CSS scales the face canvas). Module drag-resize does change layout
+//   size — we rebuffer with bilinear stretch and only when the size moves by a
+//   few pixels so continuous drag doesn’t thrash nearest-neighbor every frame.
 
 const spectrogramHistory = new Map();
 const spectrogramLutRgbCache = new Map();
@@ -19,6 +25,8 @@ const spectrogramLutRgbCache = new Map();
 const SPECTROGRAM_MAX_HISTORY_SECONDS = 30;
 // 0 is not valid (used to coerce to 0.05 while UI showed 0).
 const SPECTROGRAM_MIN_HISTORY_SECONDS = 0.1;
+// Don’t re-stretch permanent ink for 1–2 px layout chatter during drag-resize.
+const SPECTROGRAM_REBUFFER_DELTA_PX = 3;
 // (Transport bin count is half-FFT length from the worklet — not a fixed 256.)
 
 function spectrogramDefaultGradientStops() {
@@ -35,23 +43,53 @@ function spectrogramDefaultGradientStops() {
 }
 
 function spectrogramSettingsForNode(node) {
+  let base;
   if (typeof normalizeNodeGraphSpectrogramSettings === "function") {
-    return normalizeNodeGraphSpectrogramSettings(
+    base = normalizeNodeGraphSpectrogramSettings(
       node?.traceDisplaySettings || node?.spectrogramDisplaySettings,
       node,
     );
+  } else {
+    const source = node?.traceDisplaySettings || {};
+    base = {
+      historySeconds: Math.max(
+        SPECTROGRAM_MIN_HISTORY_SECONDS,
+        Math.min(SPECTROGRAM_MAX_HISTORY_SECONDS, Number(source.historySeconds) || 2),
+      ),
+      fftSize: Math.max(128, Math.min(16384, Math.round(Number(source.fftSize) || 1024))),
+      freqScale: Math.max(0, Math.min(2, Math.round(Number(source.freqScale) || 0))),
+      minFreq: 20,
+      maxFreq: 20000,
+      window: Math.max(0, Math.min(4, Math.round(Number(source.window) || 1))),
+      overlap: Math.max(0, Math.min(5, Math.round(Number(source.overlap) || 2))),
+      gradientStops: Array.isArray(source.gradientStops) ? source.gradientStops : spectrogramDefaultGradientStops(),
+    };
   }
-  const source = node?.traceDisplaySettings || {};
+  // View knobs live on the module face (params). Display settings only as legacy fallback.
+  const p = node?.params && typeof node.params === "object" ? node.params : {};
+  let minFreq = Number(p.minFreq);
+  if (!Number.isFinite(minFreq)) minFreq = Number(base.minFreq) || 20;
+  let maxFreq = Number(p.maxFreq);
+  if (!Number.isFinite(maxFreq)) maxFreq = Number(base.maxFreq) || 20000;
+  minFreq = Math.max(1, Math.min(24000, minFreq));
+  maxFreq = Math.max(1, Math.min(24000, maxFreq));
+  if (!(maxFreq > minFreq)) {
+    maxFreq = Math.min(24000, minFreq + 1);
+    if (!(maxFreq > minFreq)) minFreq = Math.max(1, maxFreq - 1);
+  }
+  let historySeconds = Number(p.historySeconds);
+  if (!Number.isFinite(historySeconds) || historySeconds <= 0) {
+    historySeconds = Number(base.historySeconds) || 2;
+  }
+  historySeconds = Math.max(
+    SPECTROGRAM_MIN_HISTORY_SECONDS,
+    Math.min(SPECTROGRAM_MAX_HISTORY_SECONDS, historySeconds),
+  );
   return {
-    historySeconds: Math.max(
-      SPECTROGRAM_MIN_HISTORY_SECONDS,
-      Math.min(SPECTROGRAM_MAX_HISTORY_SECONDS, Number(source.historySeconds) || 2),
-    ),
-    fftSize: Math.max(128, Math.min(16384, Math.round(Number(source.fftSize) || 1024))),
-    freqScale: Math.max(0, Math.min(2, Math.round(Number(source.freqScale) || 0))),
-    window: Math.max(0, Math.min(4, Math.round(Number(source.window) || 1))),
-    overlap: Math.max(0, Math.min(5, Math.round(Number(source.overlap) || 2))),
-    gradientStops: Array.isArray(source.gradientStops) ? source.gradientStops : spectrogramDefaultGradientStops(),
+    ...base,
+    minFreq,
+    maxFreq,
+    historySeconds,
   };
 }
 
@@ -164,39 +202,73 @@ function spectrogramBarkToHz(bark) {
   return 600 * Math.sinh(bark / 6);
 }
 
-function spectrogramRowTToHz(t, freqScaleIdx, sampleRate) {
+/**
+ * Resolve vertical view band in Hz, clamped to [1, Nyquist] with min < max.
+ * Defaults match classic spectrogram (20 Hz … Nyquist).
+ */
+function spectrogramResolveViewBand(minFreqHz, maxFreqHz, sampleRate) {
   const sr = Math.max(1, Number(sampleRate) || 44100);
   const nyquist = sr / 2;
-  const minFreq = 20;
+  let lo = Number(minFreqHz);
+  let hi = Number(maxFreqHz);
+  if (!Number.isFinite(lo)) lo = 20;
+  if (!Number.isFinite(hi)) hi = nyquist;
+  lo = Math.max(1, Math.min(nyquist - 1e-6, lo));
+  hi = Math.max(lo + 1e-6, Math.min(nyquist, hi));
+  if (!(hi > lo)) {
+    hi = Math.min(nyquist, lo + 1);
+    if (!(hi > lo)) lo = Math.max(1, hi - 1);
+  }
+  return { minFreq: lo, maxFreq: hi, nyquist };
+}
+
+/**
+ * Row t=0 (top of face) → high freq; t=1 (bottom) → low freq.
+ * Maps the chosen Min/Max band through Linear / Mel / Bark.
+ */
+function spectrogramRowTToHz(t, freqScaleIdx, sampleRate, minFreqHz, maxFreqHz) {
+  const band = spectrogramResolveViewBand(minFreqHz, maxFreqHz, sampleRate);
   const scale = Math.max(0, Math.min(2, Math.round(Number(freqScaleIdx) || 0)));
+  // Face y grows downward; invert so top of face = Max freq.
   const u = Math.max(0, Math.min(1, 1 - t));
   if (scale === 1) {
-    const melMin = spectrogramHzToMel(minFreq);
-    const melMax = spectrogramHzToMel(nyquist);
+    const melMin = spectrogramHzToMel(band.minFreq);
+    const melMax = spectrogramHzToMel(band.maxFreq);
     return spectrogramMelToHz(melMin + u * (melMax - melMin));
   }
   if (scale === 2) {
-    const barkMin = spectrogramHzToBark(minFreq);
-    const barkMax = spectrogramHzToBark(nyquist);
+    const barkMin = spectrogramHzToBark(band.minFreq);
+    const barkMax = spectrogramHzToBark(band.maxFreq);
     return spectrogramBarkToHz(barkMin + u * (barkMax - barkMin));
   }
-  return minFreq + u * (nyquist - minFreq);
+  return band.minFreq + u * (band.maxFreq - band.minFreq);
 }
 
+/** Absolute Hz → linear FFT bin index (spectrum covers 0…Nyquist). */
 function spectrogramHzToLinearBin(hz, linearBins, sampleRate) {
   const sr = Math.max(1, Number(sampleRate) || 44100);
   const nyquist = sr / 2;
-  const minFreq = 20;
   const lb = Math.max(1, linearBins | 0);
-  const t = (hz - minFreq) / Math.max(1e-9, nyquist - minFreq);
+  // Bin 0 ≈ DC, last bin ≈ Nyquist (matches worklet magnitude packing).
+  const t = Math.max(0, Number(hz) || 0) / Math.max(1e-9, nyquist);
   return Math.max(0, Math.min(lb - 1, t * (lb - 1)));
 }
 
 /**
  * Map one LINEAR spectrum column → face-height magnitudes (peak-normalized).
  * Bilinear blend between FFT bins for smooth freq-scale remap.
+ * minFreqHz/maxFreqHz zoom the vertical axis onto a sub-band of the spectrum.
  */
-function spectrogramSpectrumToColumnMags(out, spectrum, spectrumBins, faceH, freqScaleIdx, sampleRate) {
+function spectrogramSpectrumToColumnMags(
+  out,
+  spectrum,
+  spectrumBins,
+  faceH,
+  freqScaleIdx,
+  sampleRate,
+  minFreqHz,
+  maxFreqHz,
+) {
   const h = Math.max(1, faceH | 0);
   if (!out || out.length < h) return;
   out.fill(0);
@@ -206,7 +278,7 @@ function spectrogramSpectrumToColumnMags(out, spectrum, spectrumBins, faceH, fre
   let peak = 1e-12;
   for (let y = 0; y < h; y += 1) {
     const t = y / rowDenom;
-    const hz = spectrogramRowTToHz(t, freqScaleIdx, sampleRate);
+    const hz = spectrogramRowTToHz(t, freqScaleIdx, sampleRate, minFreqHz, maxFreqHz);
     const binF = spectrogramHzToLinearBin(hz, spectrumBins, sampleRate);
     const b0 = Math.max(0, Math.min(spectrumBins - 1, Math.floor(binF)));
     const b1 = Math.min(spectrumBins - 1, b0 + 1);
@@ -255,6 +327,7 @@ function spectrogramCreateState(faceW, faceH) {
  * Resize face bitmap without wiping history or changing wall-clock scroll rate.
  * Stretch existing ink to the new face so full width still means History (s).
  * scrollDebtSec stays in seconds (independent of face pixel size).
+ * Uses bilinear stretch so module resize / dpr changes don’t look staircased.
  */
 function spectrogramResizePreserve(st, faceW, faceH) {
   const w = Math.max(1, faceW | 0);
@@ -272,40 +345,63 @@ function spectrogramResizePreserve(st, faceW, faceH) {
   next.lastHistorySerial = st.lastHistorySerial;
   next.paintFreqScale = st.paintFreqScale;
   next.paintSampleRate = st.paintSampleRate;
+  next.paintMinFreq = st.paintMinFreq;
+  next.paintMaxFreq = st.paintMaxFreq;
   next.historySeconds = st.historySeconds;
   next.pendingValid = Boolean(st.pendingValid);
   if (st.pendingValid && st.pendingMags?.length) {
+    // Bilinear-ish vertical remap of pending column (sample neighbors).
     for (let y = 0; y < h; y += 1) {
-      const srcY = Math.min(oldH - 1, Math.floor((y * oldH) / h));
-      next.pendingMags[y] = st.pendingMags[srcY] || 0;
+      const srcF = oldH <= 1 ? 0 : (y * (oldH - 1)) / Math.max(1, h - 1);
+      const y0 = Math.max(0, Math.min(oldH - 1, Math.floor(srcF)));
+      const y1 = Math.min(oldH - 1, y0 + 1);
+      const t = srcF - y0;
+      const a = Number(st.pendingMags[y0]) || 0;
+      const b = Number(st.pendingMags[y1]) || 0;
+      next.pendingMags[y] = a * (1 - t) + b * t;
     }
   }
 
   const nctx = next.ctx;
   if (nctx && st.canvas) {
-    // Stretch full face → full face so painted time scale still matches History (s).
-    nctx.imageSmoothingEnabled = false;
+    // Smooth stretch — nearest-neighbor rebuffer on every layout tick looked
+    // like broken drawing under workspace zoom / module resize.
+    nctx.imageSmoothingEnabled = true;
+    if ("imageSmoothingQuality" in nctx) nctx.imageSmoothingQuality = "medium";
     nctx.drawImage(st.canvas, 0, 0, oldW, oldH, 0, 0, w, h);
+    nctx.imageSmoothingEnabled = false;
   }
   return next;
 }
 
 function spectrogramEnsureState(nodeId, faceW, faceH, historySeconds) {
   let st = spectrogramHistory.get(String(nodeId || ""));
-  const w = Math.max(1, faceW | 0);
-  const h = Math.max(1, faceH | 0);
+  const wantW = Math.max(1, faceW | 0);
+  const wantH = Math.max(1, faceH | 0);
   const hist = Math.max(
     SPECTROGRAM_MIN_HISTORY_SECONDS,
     Math.min(SPECTROGRAM_MAX_HISTORY_SECONDS, Number(historySeconds) || 2),
   );
   const key = String(nodeId || "");
   if (!st) {
-    st = spectrogramCreateState(w, h);
+    st = spectrogramCreateState(wantW, wantH);
     spectrogramHistory.set(key, st);
-  } else if (st.faceW !== w || st.faceH !== h) {
-    st = spectrogramResizePreserve(st, w, h);
-    spectrogramHistory.set(key, st);
+  } else {
+    const dw = Math.abs((st.faceW | 0) - wantW);
+    const dh = Math.abs((st.faceH | 0) - wantH);
+    // Rebuffer when size moves enough. Tiny 1–2 px chatter during drag is
+    // presented via smooth drawImage instead of thrashing nearest-neighbor.
+    if (
+      dw >= SPECTROGRAM_REBUFFER_DELTA_PX
+      || dh >= SPECTROGRAM_REBUFFER_DELTA_PX
+    ) {
+      st = spectrogramResizePreserve(st, wantW, wantH);
+      spectrogramHistory.set(key, st);
+    }
   }
+  // Desired present size (may differ slightly from permanent buffer during drag).
+  st.presentW = wantW;
+  st.presentH = wantH;
   // History (s) only changes scroll rate for new ink — never wipes the bitmap.
   st.historySeconds = hist;
   return st;
@@ -385,15 +481,19 @@ function spectrogramIngestHop(
   minThresh,
   threshRange,
   brightness,
+  minFreqHz,
+  maxFreqHz,
 ) {
   const h = st.faceH;
-  const w = st.faceW;
+  // Wall-clock width = what the user sees (present), not a stale buffer size
+  // while module resize is mid-drag.
+  const w = Math.max(1, (st.presentW | 0) || (st.faceW | 0));
   const hist = Math.max(
     SPECTROGRAM_MIN_HISTORY_SECONDS,
     Number(st.historySeconds) || 2,
   );
   const hopSec = Math.max(1, hopSize) / Math.max(1, sampleRate);
-  // Seconds of audio represented by one face pixel.
+  // Seconds of audio represented by one *display* face pixel.
   // Smaller history → fewer seconds per pixel → faster scroll (same hop covers more px).
   const secPerPx = hist / Math.max(1, w);
 
@@ -408,16 +508,21 @@ function spectrogramIngestHop(
     h,
     freqScaleIdx,
     sampleRate,
+    minFreqHz,
+    maxFreqHz,
   );
   spectrogramPoolPending(st, st.columnScratch);
 
   st.scrollDebtSec = Math.max(0, Number(st.scrollDebtSec) || 0) + hopSec;
-  // Emit whole pixels; keep leftover audio-seconds for the next hop.
-  let whole = Math.floor(st.scrollDebtSec / Math.max(1e-12, secPerPx));
+  // Emit whole *buffer* pixels. Map display sec/px → buffer pixels so scroll
+  // rate matches History (s) even if present size ≠ buffer size mid-resize.
+  const bufW = Math.max(1, st.faceW | 0);
+  const secPerBufPx = hist / bufW;
+  let whole = Math.floor(st.scrollDebtSec / Math.max(1e-12, secPerBufPx));
   if (whole >= 1) {
-    whole = Math.min(w, whole);
+    whole = Math.min(bufW, whole);
     spectrogramScrollPaintPixels(st, whole, lutRgb, minThresh, threshRange, brightness);
-    st.scrollDebtSec -= whole * secPerPx;
+    st.scrollDebtSec -= whole * secPerBufPx;
     if (st.scrollDebtSec < 0) st.scrollDebtSec = 0;
   }
 }
@@ -428,10 +533,14 @@ function spectrogramPresent(ctx, st, faceW, faceH, bg) {
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, faceW, faceH);
   if (!st?.canvas || faceW < 1 || faceH < 1) return;
-  // 1:1 permanent bitmap (same size as face). TEMP: no smoothing anywhere.
-  ctx.imageSmoothingEnabled = false;
-  if ("imageSmoothingQuality" in ctx) ctx.imageSmoothingQuality = "low";
-  ctx.drawImage(st.canvas, 0, 0, faceW, faceH);
+  const srcW = Math.max(1, st.faceW | 0);
+  const srcH = Math.max(1, st.faceH | 0);
+  // 1:1 when buffer matches face (crisp). Smooth scale when sizes differ
+  // (module mid-drag, or brief size mismatch) so zoom doesn’t stair-step.
+  const exact = srcW === faceW && srcH === faceH;
+  ctx.imageSmoothingEnabled = !exact;
+  if ("imageSmoothingQuality" in ctx) ctx.imageSmoothingQuality = exact ? "low" : "medium";
+  ctx.drawImage(st.canvas, 0, 0, srcW, srcH, 0, 0, faceW, faceH);
 }
 
 function drawNodeGraphSpectrogramItem(renderer, item, pixelRatio) {
@@ -445,14 +554,14 @@ function drawNodeGraphSpectrogramItem(renderer, item, pixelRatio) {
   if (!syncNodeGraphModuleScopeLocalFallbackCanvas(canvas, screenElement, pixelRatio, 1)) return;
   canvas.style.mixBlendMode = "normal";
   canvas.classList.add("node-spectrogram-canvas");
-  // TEMP vanilla: force nearest-neighbor CSS scaling (was "auto" = browser blur).
-  canvas.style.imageRendering = "pixelated";
-  canvas.style.setProperty("image-rendering", "pixelated");
+  // Don’t force pixelated here — CSS smooth-scales under workspace zoom;
+  // .pixelated-canvas-zoom (≥ 2.5) switches to nearest-neighbor like other faces.
+  if (canvas.style.imageRendering) {
+    canvas.style.imageRendering = "";
+  }
 
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
-  ctx.imageSmoothingEnabled = false;
-  if ("imageSmoothingQuality" in ctx) ctx.imageSmoothingQuality = "low";
 
   const faceW = canvas.width | 0;
   const faceH = canvas.height | 0;
@@ -460,11 +569,13 @@ function drawNodeGraphSpectrogramItem(renderer, item, pixelRatio) {
 
   const node = nodeGraphPatchNode(nodeId);
   const settings = spectrogramSettingsForNode(node);
-  const brightness = Math.max(0.1, Math.min(2, Number(node?.params?.brightness) || 1));
+  const brightness = Math.max(0, Math.min(1, Number(node?.params?.brightness) || 1));
   const minThresh = Math.max(0, Number(node?.params?.minThreshold) || 0);
   const maxThresh = Math.max(minThresh + 0.001, Number(node?.params?.maxThreshold) || 1);
   const threshRange = maxThresh - minThresh;
   const freqScaleIdx = Math.max(0, Math.min(2, Math.round(Number(settings.freqScale) || 0)));
+  const minFreqHz = Number(settings.minFreq);
+  const maxFreqHz = Number(settings.maxFreq);
   const lutRgb = spectrogramLutRgbForStops(settings.gradientStops);
   const historySeconds = Math.max(
     SPECTROGRAM_MIN_HISTORY_SECONDS,
@@ -490,6 +601,8 @@ function drawNodeGraphSpectrogramItem(renderer, item, pixelRatio) {
   // Ink uses settings at paint time; already-drawn pixels stay as-is.
   st.paintFreqScale = freqScaleIdx;
   st.paintSampleRate = sampleRate;
+  st.paintMinFreq = minFreqHz;
+  st.paintMaxFreq = maxFreqHz;
 
   const frozen = typeof nodeGraphModuleScopePhosphorFrozen === "function"
     && nodeGraphModuleScopePhosphorFrozen();
@@ -521,6 +634,8 @@ function drawNodeGraphSpectrogramItem(renderer, item, pixelRatio) {
           minThresh,
           threshRange,
           brightness,
+          minFreqHz,
+          maxFreqHz,
         );
       }
       st.lastHop = hopSerial;
@@ -536,12 +651,41 @@ function drawNodeGraphSpectrogramItem(renderer, item, pixelRatio) {
         minThresh,
         threshRange,
         brightness,
+        minFreqHz,
+        maxFreqHz,
       );
       st.lastHop = hopSerial;
     }
   }
 
   spectrogramPresent(ctx, st, faceW, faceH, plateBg);
+}
+
+/** Drop waterfall history so engine stop returns faces to a cold empty plate. */
+function clearNodeGraphSpectrogramHistory() {
+  for (const st of spectrogramHistory.values()) {
+    try {
+      const ctx = st?.ctx;
+      if (ctx && st.canvas) {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalCompositeOperation = "source-over";
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(0, 0, st.canvas.width, st.canvas.height);
+        ctx.restore();
+      }
+      if (st?.pendingMags?.fill) {
+        st.pendingMags.fill(0);
+      }
+      st.pendingValid = false;
+      st.lastHop = 0;
+      st.scrollDebtSec = 0;
+    } catch (_error) {
+      // Best-effort per face.
+    }
+  }
+  spectrogramHistory.clear();
+  spectrogramLutRgbCache.clear();
 }
 
 nodeGraphModuleScopeCustomRenderers.spectrogramBurn = drawNodeGraphSpectrogramItem;

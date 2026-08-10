@@ -1,10 +1,7 @@
-// LED's own settings model + "LED options" floating window.
+// LED settings model + Command Center Display Settings panel.
 //
-// Mirrors the Music Player's waveform-display-options window
-// (node-graph-phosphor-waveform.js) deliberately: same per-node persistence
-// spot on the patch, same first-open-at-the-pointer-then-remember policy, and
-// the same independent-window rules (opening it must never close another
-// window, and nothing else closes it).
+// LED options live only in the shared Display Settings popover (same path as
+// Number Readout / scopes). There is no separate floating "LED options" window.
 //
 // Settings live on node.led, normalized by normalizeNodeGraphLedLayout in
 // node-graph-patch-clone.js -- that function is the single source of truth for
@@ -13,64 +10,107 @@
 // ---------------------------------------------------------------------------
 // Light mathematics
 // ---------------------------------------------------------------------------
-// The input level drives the lamp from off to blown out:
+// Mono energy, then free multi-stop LUT (same idea as phosphor scopes):
 //
-//   0.0  black       (no light)
-//   0.5  the hue     (fully saturated -- the LED at its rated color)
-//   1.0  white       (over-driven, all three channels railed)
+//   energy = clamp(level * brightness, 0..1)   // brightness is 0…1 (1 = full)
+//   color  = sample(gradientStops, energy)     // arbitrary; may go bright→dim
 //
-// Mixing happens in LINEAR light, not in sRGB or HSL, because that is what a
-// real emitter does: twice the drive is twice the photons. Doing it in gamma
-// space instead makes the lower half look washed out and the upper half read
-// as the color simply fading, rather than the hue holding while the other two
-// channels catch up to it.
+// Legacy callers may still pass (hue, level, brightness) without stops; we
+// seed a black→hue→white ramp in that case.
 
-function nodeGraphLedSrgbToLinear(channel) {
-  const value = Math.max(0, Math.min(1, Number(channel) || 0));
-  return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+function nodeGraphLedHexToRgb255(hex) {
+  if (typeof nodeGraphScopeHexColorToRgb === "function") {
+    const floats = nodeGraphScopeHexColorToRgb(hex);
+    return floats.map((c) => Math.round(Math.max(0, Math.min(1, c)) * 255));
+  }
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || "").trim());
+  if (!match) {
+    return [255, 255, 255];
+  }
+  return match.slice(1).map((part) => Number.parseInt(part, 16));
 }
 
-function nodeGraphLedLinearToSrgb(channel) {
-  const value = Math.max(0, Math.min(1, Number(channel) || 0));
-  return value <= 0.0031308 ? value * 12.92 : 1.055 * value ** (1 / 2.4) - 0.055;
+function nodeGraphLedNormalizeStops(stops, hueFallback = 0) {
+  if (typeof normalizeNodeGraphLedGradientStops === "function") {
+    return normalizeNodeGraphLedGradientStops(stops, hueFallback);
+  }
+  if (Array.isArray(stops) && stops.length >= 2) {
+    return stops;
+  }
+  if (typeof nodeGraphLedGradientStopsFromHue === "function") {
+    return nodeGraphLedGradientStopsFromHue(hueFallback);
+  }
+  return [
+    { t: 0, color: "#000000" },
+    { t: 1, color: "#ffffff" },
+  ];
 }
 
-// Fully saturated hue at HSL lightness 50% -- the "rated color" of the part.
-function nodeGraphLedHueToSrgb(hue) {
-  const h = ((((Number(hue) || 0) % 360) + 360) % 360) / 60;
-  const x = 1 - Math.abs((h % 2) - 1);
-  if (h < 1) return [1, x, 0];
-  if (h < 2) return [x, 1, 0];
-  if (h < 3) return [0, 1, x];
-  if (h < 4) return [0, x, 1];
-  if (h < 5) return [x, 0, 1];
-  return [1, 0, x];
+/** Sample multi-stop gradient at energy t∈[0,1] → [r,g,b] 0..255. */
+function nodeGraphLedSampleGradientRgb(stops, energy) {
+  const list = Array.isArray(stops) && stops.length ? stops : nodeGraphLedNormalizeStops(null, 0);
+  const t = Math.max(0, Math.min(1, Number(energy) || 0));
+  const parsed = list.map((s) => {
+    const [r, g, b] = nodeGraphLedHexToRgb255(s?.color);
+    return {
+      t: Math.max(0, Math.min(1, Number(s?.t) || 0)),
+      r,
+      g,
+      b,
+    };
+  }).sort((a, b) => a.t - b.t);
+  if (t <= parsed[0].t) {
+    return [parsed[0].r, parsed[0].g, parsed[0].b];
+  }
+  const last = parsed[parsed.length - 1];
+  if (t >= last.t) {
+    return [last.r, last.g, last.b];
+  }
+  for (let i = 1; i < parsed.length; i += 1) {
+    const a = parsed[i - 1];
+    const b = parsed[i];
+    if (t <= b.t) {
+      const u = (t - a.t) / Math.max(1e-6, b.t - a.t);
+      return [
+        Math.round(a.r + (b.r - a.r) * u),
+        Math.round(a.g + (b.g - a.g) * u),
+        Math.round(a.b + (b.b - a.b) * u),
+      ];
+    }
+  }
+  return [last.r, last.g, last.b];
 }
 
-// level 0..1 -> [r, g, b] each 0..255. brightness scales the emitted light in
-// linear space AFTER the ramp, so turning it down dims the lamp without
-// changing which color it is at a given level.
-function nodeGraphLedEmittedRgb(hue, level, brightness = 1) {
-  const drive = Math.max(0, Math.min(1, Number(level) || 0));
-  const gain = Math.max(0, Math.min(2, Number.isFinite(Number(brightness)) ? Number(brightness) : 1));
-  return nodeGraphLedHueToSrgb(hue)
-    .map(nodeGraphLedSrgbToLinear)
-    .map((channel) => (
-      drive <= 0.5
-        // Off -> rated color: scale the hue's own light up from nothing.
-        ? channel * (drive / 0.5)
-        // Rated color -> white: the two dim channels climb to meet the bright
-        // one. The already-railed channel stays put, so the hue holds until it
-        // physically cannot any more.
-        : channel + (1 - channel) * ((drive - 0.5) / 0.5)
-    ))
-    .map((channel) => Math.round(
-      Math.max(0, Math.min(1, nodeGraphLedLinearToSrgb(channel * gain))) * 255,
-    ));
+/**
+ * level 0..1, brightness multiplies mono energy before the LUT.
+ * settings may be a full LED layout (preferred) or omitted for legacy (hue, level, brightness).
+ */
+function nodeGraphLedEmittedRgb(hueOrSettings, level, brightness = 1) {
+  let stops = null;
+  let hue = 0;
+  let gain = 1;
+  let drive = Math.max(0, Math.min(1, Number(level) || 0));
+  if (hueOrSettings && typeof hueOrSettings === "object" && !Array.isArray(hueOrSettings)) {
+    const settings = hueOrSettings;
+    stops = settings.gradientStops || settings.gradient;
+    hue = Number(settings.hue) || 0;
+    gain = Math.max(0, Math.min(1, Number.isFinite(Number(settings.brightness))
+      ? Number(settings.brightness)
+      : 1));
+    // Second arg is still level when called as (settings, level).
+    drive = Math.max(0, Math.min(1, Number(level) || 0));
+  } else {
+    hue = Number(hueOrSettings) || 0;
+    gain = Math.max(0, Math.min(1, Number.isFinite(Number(brightness)) ? Number(brightness) : 1));
+  }
+  // Mono energy channel: signal × brightness gain, then free gradient remap.
+  const energy = Math.max(0, Math.min(1, drive * gain));
+  const normalizedStops = nodeGraphLedNormalizeStops(stops, hue);
+  return nodeGraphLedSampleGradientRgb(normalizedStops, energy);
 }
 
-function nodeGraphLedEmittedColor(hue, level, brightness = 1) {
-  const [r, g, b] = nodeGraphLedEmittedRgb(hue, level, brightness);
+function nodeGraphLedEmittedColor(hueOrSettings, level, brightness = 1) {
+  const [r, g, b] = nodeGraphLedEmittedRgb(hueOrSettings, level, brightness);
   return `rgb(${r}, ${g}, ${b})`;
 }
 
@@ -82,92 +122,255 @@ function nodeGraphLedSettingsForNode(nodeId) {
   return normalizeNodeGraphLedLayout(nodeGraphPatchNode(nodeId)?.led);
 }
 
-function renderNodeGraphLedSettingsWindow() {
-  const nodeId = nodeGraphMvp.ledSettingsTargetNode;
-  const win = document.getElementById("nodeLedSettingsWindow");
-  if (!win || !nodeId) {
+function nodeGraphLedSettingsTargetNodeId() {
+  return String(
+    nodeGraphMvp?.ledSettingsTargetNode
+    || nodeGraphMvp?.traceDisplaySettingsTargetNode
+    || document.getElementById("nodeTraceDisplaySettingsPopover")?.dataset?.displaySettingsTargetNode
+    || "",
+  );
+}
+
+/** LED range-slider control scheme (shared Display Settings body, not steppers). */
+function buildNodeGraphLedDisplaySettingsBodyHtml() {
+  // Shared .node-led-settings-row rules style this panel inside Display Settings.
+  // Gradient host uses the same selector as other phosphor faces.
+  return `
+    <div class="node-led-display-settings-panel" data-led-display-settings-panel>
+      <div class="metadata-section-title node-trace-display-gradient-title">Gradient</div>
+      <div class="metadata-field-section node-trace-display-gradient-section">
+        <div
+          id="nodeTraceDisplayGradientSelectorHost"
+          class="node-gradient-selector-host node-shared-gradient-host node-spectrogram-gradient-host"
+          data-gradient-selector-host
+          data-shared-gradient-host
+          data-spectrogram-gradient-host></div>
+      </div>
+      <div class="node-led-settings-row" aria-label="Energy → color preview">
+        <span class="node-led-color-preview" data-led-color-preview aria-hidden="true"></span>
+      </div>
+      <label class="node-led-settings-row">
+        <span>Brightness</span>
+        <input type="range" min="0" max="1" step="0.01" data-led-field="brightness" aria-label="LED brightness 0–1 (scales mono energy into the gradient)">
+      </label>
+      <label class="node-led-settings-row">
+        <span>Blur</span>
+        <input type="range" min="0" max="1" step="0.01" data-led-field="blur" aria-label="LED blur">
+      </label>
+      <label class="node-led-settings-row">
+        <span>Fill</span>
+        <input type="range" min="0" max="100" step="1" data-led-field="fillPercent" aria-label="LED fill of available space">
+        <span>%</span>
+      </label>
+      <div class="node-led-settings-row" role="group" aria-label="Corner shape">
+        <span>Corners</span>
+        <button type="button" data-led-corner="square" aria-pressed="false">Pill</button>
+        <button type="button" data-led-corner="squircle" aria-pressed="true">Squircle</button>
+      </div>
+      <label class="node-led-settings-row">
+        <span>Rounding</span>
+        <input type="range" min="0" max="100" step="1" data-led-field="rounding" aria-label="LED rounding">
+        <span>%</span>
+      </label>
+      <div class="node-led-settings-row node-led-image-row" data-led-image-row="bottom">
+        <span>Bottom image</span>
+        <button type="button" data-led-image-pick="bottom">Load</button>
+        <button type="button" data-led-image-clear="bottom">Clear</button>
+        <span class="node-led-image-filename" data-led-image-filename="bottom">none</span>
+        <input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" data-led-image-file="bottom" hidden>
+      </div>
+      <div class="node-led-settings-row node-led-image-row" data-led-image-row="top">
+        <span>Top image</span>
+        <button type="button" data-led-image-pick="top">Load</button>
+        <button type="button" data-led-image-clear="top">Clear</button>
+        <span class="node-led-image-filename" data-led-image-filename="top">none</span>
+        <input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" data-led-image-file="top" hidden>
+      </div>
+    </div>`;
+}
+
+function syncNodeGraphLedDisplaySettingsControls(root, settings) {
+  if (!root || !settings) {
     return;
   }
-  const settings = nodeGraphLedSettingsForNode(nodeId);
-  const setValueUnlessFocused = (id, value) => {
-    const el = document.getElementById(id);
+  const setRange = (key, value) => {
+    const el = root.querySelector?.(`[data-led-field="${key}"]`);
     if (el && document.activeElement !== el) {
       el.value = String(value);
     }
   };
-  setValueUnlessFocused("nodeLedHueInput", settings.hue);
-  setValueUnlessFocused("nodeLedBrightnessInput", settings.brightness);
-  setValueUnlessFocused("nodeLedBlurInput", settings.blur);
-  setValueUnlessFocused("nodeLedRoundingInput", settings.rounding);
-  const setPressed = (id, active) => {
-    const el = document.getElementById(id);
-    if (!el) {
-      return;
+  setRange("brightness", settings.brightness);
+  setRange("blur", settings.blur);
+  setRange("rounding", settings.rounding);
+  setRange("fillPercent", settings.fillPercent);
+  for (const button of root.querySelectorAll?.("[data-led-corner]") || []) {
+    const shape = button.getAttribute("data-led-corner");
+    const active = shape === settings.cornerShape;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  }
+  for (const layer of ["bottom", "top"]) {
+    const key = layer === "bottom" ? "bottomImage" : "topImage";
+    const name = settings[key]?.fileName || (settings[key]?.dataUrl ? "image" : "none");
+    const el = root.querySelector?.(`[data-led-image-filename="${layer}"]`);
+    if (el) {
+      el.textContent = name;
+      el.title = name;
     }
-    el.classList.toggle("active", active);
-    el.setAttribute("aria-pressed", String(active));
-  };
-  setPressed("nodeLedCornerSquareButton", settings.cornerShape === "square");
-  setPressed("nodeLedCornerSquircleButton", settings.cornerShape === "squircle");
-  // Live swatch: off / quarter / rated color / over-driven / white, painted
-  // with the exact same ramp the face is.
-  const preview = document.getElementById("nodeLedColorPreview");
-  if (preview) {
+  }
+  const preview = root.querySelector?.("[data-led-color-preview]");
+  if (preview && typeof nodeGraphLedEmittedColor === "function") {
+    // Preview the actual LUT path (level × brightness → gradient sample).
     preview.style.background = `linear-gradient(90deg, ${[0, 0.25, 0.5, 0.75, 1]
-      .map((level) => nodeGraphLedEmittedColor(settings.hue, level, settings.brightness))
+      .map((level) => nodeGraphLedEmittedColor(settings, level))
       .join(", ")})`;
   }
 }
 
-function positionNodeGraphLedSettingsAt(x, y) {
-  const win = document.getElementById("nodeLedSettingsWindow");
-  if (!win) {
-    return;
+function nodeGraphLedPickImageLayer(host, layer) {
+  const input = host?.querySelector?.(`[data-led-image-file="${layer}"]`);
+  if (input) {
+    input.click();
   }
-  win.hidden = false;
-  // Shared app-wide policy: spawn at the pointer the FIRST time only, then
-  // restore wherever the user left it -- and glow if it did not move.
-  if (typeof openNodeGraphFloatingWindowAtPosition === "function") {
-    openNodeGraphFloatingWindowAtPosition("ledSettings", win, () => {
-      const { left, top } = nodeGraphFloatingWindowPosition(win, x, y);
-      setNodeGraphFloatingWindowViewportPosition(win, left, top);
-    });
-    return;
-  }
-  const { left, top } = nodeGraphFloatingWindowPosition(win, x, y);
-  setNodeGraphFloatingWindowViewportPosition(win, left, top);
 }
 
+function nodeGraphLedClearImageLayer(layer) {
+  const key = layer === "top" ? "topImage" : "bottomImage";
+  updateNodeGraphLedSettings({ [key]: { dataUrl: "", fileName: "" } });
+}
+
+function nodeGraphLedLoadImageLayerFromFile(layer, file) {
+  if (!file) {
+    return;
+  }
+  const type = String(file.type || "").toLowerCase();
+  const ok = /image\/(png|jpe?g|webp|gif|svg\+xml)/i.test(type)
+    || /\.(png|jpe?g|webp|gif|svg)$/i.test(file.name || "");
+  if (!ok) {
+    if (typeof setNodeInteractionHelp === "function") {
+      setNodeInteractionHelp("Image type not supported (use PNG, JPEG, WebP, GIF, or SVG).");
+    }
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const dataUrl = String(reader.result || "");
+    if (!dataUrl.startsWith("data:image/") || dataUrl.length > 3_000_000) {
+      if (typeof setNodeInteractionHelp === "function") {
+        setNodeInteractionHelp("Image is too large or invalid.");
+      }
+      return;
+    }
+    const key = layer === "top" ? "topImage" : "bottomImage";
+    updateNodeGraphLedSettings({
+      [key]: {
+        dataUrl,
+        fileName: file.name || `${layer}-image`,
+      },
+    });
+  };
+  reader.readAsDataURL(file);
+}
+
+function bindNodeGraphLedDisplaySettingsBody(host) {
+  if (!host || host.dataset.ledSettingsBound === "true") {
+    return;
+  }
+  host.dataset.ledSettingsBound = "true";
+  host.addEventListener("input", (event) => {
+    const field = event.target?.closest?.("[data-led-field]")?.getAttribute?.("data-led-field");
+    if (!field) {
+      return;
+    }
+    updateNodeGraphLedSettings({ [field]: Number(event.target.value) });
+  });
+  host.addEventListener("change", (event) => {
+    const field = event.target?.closest?.("[data-led-field]")?.getAttribute?.("data-led-field");
+    if (field) {
+      updateNodeGraphLedSettings({ [field]: Number(event.target.value) });
+      return;
+    }
+    const fileInput = event.target?.closest?.("[data-led-image-file]");
+    if (fileInput && host.contains(fileInput)) {
+      const layer = fileInput.getAttribute("data-led-image-file");
+      const file = fileInput.files?.[0];
+      fileInput.value = "";
+      nodeGraphLedLoadImageLayerFromFile(layer, file);
+    }
+  });
+  host.addEventListener("click", (event) => {
+    const corner = event.target?.closest?.("[data-led-corner]");
+    if (corner && host.contains(corner)) {
+      event.preventDefault();
+      setNodeGraphLedCornerShape(corner.getAttribute("data-led-corner"));
+      return;
+    }
+    const pick = event.target?.closest?.("[data-led-image-pick]");
+    if (pick && host.contains(pick)) {
+      event.preventDefault();
+      nodeGraphLedPickImageLayer(host, pick.getAttribute("data-led-image-pick"));
+      return;
+    }
+    const clear = event.target?.closest?.("[data-led-image-clear]");
+    if (clear && host.contains(clear)) {
+      event.preventDefault();
+      nodeGraphLedClearImageLayer(clear.getAttribute("data-led-image-clear"));
+    }
+  });
+  // Ctrl/cmd-click reset + shift/ctrl step scaling (shared slider binder).
+  if (typeof bindNodeGraphNativeSliderModifiers === "function"
+    && typeof nodeGraphLedDefaultSettings === "object") {
+    for (const [key, fallback] of Object.entries({
+      brightness: nodeGraphLedDefaultSettings.brightness,
+      blur: nodeGraphLedDefaultSettings.blur,
+      rounding: nodeGraphLedDefaultSettings.rounding,
+      fillPercent: nodeGraphLedDefaultSettings.fillPercent,
+    })) {
+      const input = host.querySelector(`[data-led-field="${key}"]`);
+      if (input) {
+        bindNodeGraphNativeSliderModifiers(input, fallback);
+      }
+    }
+  }
+}
+
+/** Sync LED controls in the Command Center Display Settings panel. */
+function renderNodeGraphLedSettingsWindow() {
+  const nodeId = nodeGraphLedSettingsTargetNodeId();
+  if (!nodeId) {
+    return;
+  }
+  const settings = nodeGraphLedSettingsForNode(nodeId);
+  const panel = document.querySelector(
+    "#nodeTraceDisplaySettingsPopover [data-led-display-settings-panel]",
+  );
+  if (panel) {
+    syncNodeGraphLedDisplaySettingsControls(panel, settings);
+  }
+}
+
+/** Open LED options via shared Display Settings (Command Center path). */
 function openNodeGraphLedSettings(nodeId, event) {
   const node = nodeGraphPatchNode(nodeId);
   if (!node || node.type !== "led") {
     return false;
   }
-  nodeGraphMvp.ledSettingsTargetNode = nodeId;
-  renderNodeGraphLedSettingsWindow();
-  positionNodeGraphLedSettingsAt(
-    Number.isFinite(Number(event?.clientX)) ? event.clientX : window.innerWidth / 2,
-    Number.isFinite(Number(event?.clientY)) ? event.clientY : window.innerHeight / 2,
-  );
-  return true;
+  if (typeof openNodeGraphTraceDisplaySettings === "function") {
+    return openNodeGraphTraceDisplaySettings(nodeId, event);
+  }
+  return false;
 }
 
 function closeNodeGraphLedSettings() {
-  const win = document.getElementById("nodeLedSettingsWindow");
-  if (win) {
-    if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
-      rememberNodeGraphWorkspaceWindowState("ledSettings", win, { open: false }, { status: false });
-    }
-    win.hidden = true;
-  }
   nodeGraphMvp.ledSettingsTargetNode = null;
 }
 
 function updateNodeGraphLedSettings(patch) {
-  const nodeId = nodeGraphMvp.ledSettingsTargetNode;
+  const nodeId = nodeGraphLedSettingsTargetNodeId();
   if (!nodeId) {
     return;
   }
+  nodeGraphMvp.ledSettingsTargetNode = nodeId;
   const clonedPatch = cloneNodeGraphPatch(nodeGraphMvp.patch);
   const targetNode = clonedPatch.nodes.find((node) => node.id === nodeId);
   if (!targetNode) {
@@ -179,79 +382,17 @@ function updateNodeGraphLedSettings(patch) {
   });
   commitNodeGraphPatch(clonedPatch, { status: "led options changed" });
   renderNodeGraphLedSettingsWindow();
+  // Cosmetic face update — works with the audio engine off (no scope buffer).
+  if (typeof scheduleNodeGraphLedFaceRefresh === "function") {
+    scheduleNodeGraphLedFaceRefresh(nodeId);
+  } else if (typeof refreshNodeGraphLedFaceForNode === "function") {
+    refreshNodeGraphLedFaceForNode(nodeId);
+  }
   if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
     scheduleNodeGraphModuleScopeDraw();
   }
 }
 
-function handleNodeGraphLedHueChange(event) {
-  updateNodeGraphLedSettings({ hue: Number(event.target.value) });
-}
-
-function handleNodeGraphLedBrightnessChange(event) {
-  updateNodeGraphLedSettings({ brightness: Number(event.target.value) });
-}
-
-function handleNodeGraphLedBlurChange(event) {
-  updateNodeGraphLedSettings({ blur: Number(event.target.value) });
-}
-
-function handleNodeGraphLedRoundingChange(event) {
-  updateNodeGraphLedSettings({ rounding: Number(event.target.value) });
-}
-
 function setNodeGraphLedCornerShape(shape) {
   updateNodeGraphLedSettings({ cornerShape: shape === "squircle" ? "squircle" : "square" });
-}
-
-// Same modifier vocabulary as the module sliders (ctrl/cmd+click resets to
-// default, shift/ctrl scale the step) -- the shared binder from
-// node-graph-slider-dragging.js, not a reimplementation. Defaults come from
-// the one settings object so they cannot drift from what normalize* falls
-// back to.
-const nodeGraphLedSettingInputs = Object.freeze([
-  ["nodeLedHueInput", "hue"],
-  ["nodeLedBrightnessInput", "brightness"],
-  ["nodeLedBlurInput", "blur"],
-  ["nodeLedRoundingInput", "rounding"],
-]);
-
-function bindNodeGraphLedSettingModifiers() {
-  if (typeof bindNodeGraphNativeSliderModifiers !== "function") {
-    return;
-  }
-  for (const [id, key] of nodeGraphLedSettingInputs) {
-    bindNodeGraphNativeSliderModifiers(
-      document.getElementById(id),
-      nodeGraphLedDefaultSettings[key],
-    );
-  }
-}
-
-// Drag by the title bar, matching every other floating window.
-function beginNodeGraphLedSettingsDrag(event) {
-  const win = document.getElementById("nodeLedSettingsWindow");
-  if (!win || win.hidden) {
-    return;
-  }
-  beginNodeGraphFloatingWindowDrag(event, win, "ledSettingsDragging");
-}
-
-function dragNodeGraphLedSettings(event) {
-  dragNodeGraphFloatingWindow(event, "ledSettingsDragging", document.getElementById("nodeLedSettingsWindow"));
-}
-
-function endNodeGraphLedSettingsDrag(event) {
-  endNodeGraphFloatingWindowDrag(event, "ledSettingsDragging", () => {
-    // Record where the user parked it so the next open restores it instead of
-    // jumping back to the pointer.
-    if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
-      rememberNodeGraphWorkspaceWindowState(
-        "ledSettings",
-        document.getElementById("nodeLedSettingsWindow"),
-        { open: true },
-        { status: false },
-      );
-    }
-  });
 }

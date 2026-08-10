@@ -11,13 +11,32 @@ function nodeGraphHelmholtzPitchView(frequencyHz) {
   return norm * 2 - 1;
 }
 
+/**
+ * Detune vs equal temperament, −1…+1 (see worklet helmholtzDetune).
+ * 0 = exact nearest pitch; ±1 ≈ half-semitone (midpoint wraps −1↔+1).
+ */
+function nodeGraphHelmholtzDetune(frequencyHz, a4Hz = 440) {
+  const f = Number(frequencyHz);
+  if (!(f > 0) || !Number.isFinite(f)) {
+    return 0;
+  }
+  const a4 = Number(a4Hz) > 0 ? Number(a4Hz) : 440;
+  const midi = 69 + 12 * Math.log2(f / a4);
+  if (!Number.isFinite(midi)) {
+    return 0;
+  }
+  const nearest = Math.round(midi);
+  const cents = (midi - nearest) * 100;
+  return Math.max(-1, Math.min(1, cents / 50));
+}
+
 
 function createNodeGraphHelmholtzState() {
   return { nativeHandle: 0, nativeParamKey: "", nativeSampleRate: 0 };
 }
 
 function nodeGraphHelmholtzSample(state, input, params, inputConnected, sampleRate, runtime = null, nodeId = "") {
-  const silent = { Frequency: 0, Fidelity: 0, "Pitch View": -1 };
+  const silent = { Frequency: 0, Fidelity: 0, Gate: 0, Detune: 0, "Pitch View": -1 };
   if (!inputConnected) {
     if (state.nativeHandle && runtime?.nativeHelmholtz?.soemdsp_helmholtz_destroy) {
       runtime.nativeHelmholtz.soemdsp_helmholtz_destroy(state.nativeHandle);
@@ -40,19 +59,25 @@ function nodeGraphHelmholtzSample(state, input, params, inputConnected, sampleRa
       state.nativeParamKey = "";
     }
     if (!state.nativeHandle) return silent;
-    const windowSize = Math.max(128, Math.min(1024, Math.round(Number(params.windowSize) || 512)));
-    const threshold = Math.max(0.5, Math.min(0.999, Number(params.threshold) || 0.93));
-    const paramKey = `${windowSize}:${Math.round(threshold * 1000)}`;
+    const windowSize = Math.max(128, Math.min(4096, Math.round(Number(params.windowSize) || 1024)));
+    const threshold = Math.max(0, Math.min(1, Number(params.threshold) || 0.93));
+    const nativeThreshold = Math.max(0, Math.min(0.999, threshold));
+    const paramKey = `${windowSize}:${Math.round(nativeThreshold * 1000)}`;
     if (paramKey !== state.nativeParamKey && native.soemdsp_helmholtz_set_params) {
       state.nativeParamKey = paramKey;
-      native.soemdsp_helmholtz_set_params(state.nativeHandle, safeRate, windowSize, threshold);
+      native.soemdsp_helmholtz_set_params(state.nativeHandle, safeRate, windowSize, nativeThreshold);
     }
     const safeIn = nodeGraphSafeFilterNumber(input, runtime, nodeId, null, "pitch detector input");
     native.soemdsp_helmholtz_process(state.nativeHandle, safeIn);
     const frequency = nodeGraphSafeFilterNumber(native.soemdsp_helmholtz_frequency?.(state.nativeHandle), runtime, nodeId, null, "pitch detector frequency");
+    const fidelity = nodeGraphSafeFilterNumber(native.soemdsp_helmholtz_fidelity?.(state.nativeHandle), runtime, nodeId, null, "pitch detector fidelity");
+    // Gate high when a pitch is locked (Frequency set only if fidelity ≥ threshold).
+    const gate = frequency > 0 ? 1 : 0;
     return {
       Frequency: frequency,
-      Fidelity: nodeGraphSafeFilterNumber(native.soemdsp_helmholtz_fidelity?.(state.nativeHandle), runtime, nodeId, null, "pitch detector fidelity"),
+      Fidelity: fidelity,
+      Gate: gate,
+      Detune: nodeGraphHelmholtzDetune(frequency),
       "Pitch View": nodeGraphHelmholtzPitchView(frequency),
     };
   } catch {
@@ -75,7 +100,7 @@ nodeGraphLiveModuleEvaluators.helmholtzPitch = ({ runtime, node, nodeId, frame, 
     state,
     mixInput(nodeId, "In"),
     {
-      windowSize: read("windowSize", 512),
+      windowSize: read("windowSize", 1024),
       threshold: read("threshold", 0.93),
     },
     hasInput(nodeId, "In"),

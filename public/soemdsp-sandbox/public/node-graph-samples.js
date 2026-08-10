@@ -448,9 +448,13 @@ function nodeGraphSampleNameElementForNode(nodeId) {
     .find((element) => element.dataset.sampleNameForNode === nodeId) || null;
 }
 
-function nodeGraphSamplePhaseElementForNode(nodeId) {
+function nodeGraphSamplePhaseElementsForNode(nodeId) {
   return [...document.querySelectorAll("[data-sample-phase-for-node]")]
-    .find((element) => element.dataset.samplePhaseForNode === nodeId) || null;
+    .filter((element) => element.dataset.samplePhaseForNode === nodeId);
+}
+
+function nodeGraphSamplePhaseElementForNode(nodeId) {
+  return nodeGraphSamplePhaseElementsForNode(nodeId)[0] || null;
 }
 
 function nodeGraphSamplePhaseForNode(nodeId) {
@@ -642,13 +646,20 @@ function syncNodeGraphAudioPlayerRuntimeStatus(message = {}) {
   for (const nodeId of new Set([...nodeIds, primaryNodeId].filter(Boolean))) {
     syncNodeGraphSampleDisplayForNode(nodeId);
   }
+  // Music Player playlist: auto-advance on complete + live scrubber value.
+  if (primaryNodeId && typeof nodeGraphAudioPlayerPlaylistOnRuntimeStatus === "function") {
+    nodeGraphAudioPlayerPlaylistOnRuntimeStatus(primaryNodeId, reason);
+  }
 }
 
 function syncNodeGraphSampleDisplayForNode(nodeId) {
   applyNodeGraphSampleTextRow(nodeGraphSampleNameElementForNode(nodeId), nodeGraphSampleNameForNode(nodeId));
-  const phaseElement = nodeGraphSamplePhaseElementForNode(nodeId);
-  if (phaseElement) {
-    phaseElement.textContent = nodeGraphSamplePhaseForNode(nodeId).toFixed(4);
+  // Module body and waveform display settings each host a phase readout;
+  // update every live copy so hiding the control surface still leaves a
+  // correct number in settings.
+  const phaseText = nodeGraphSamplePhaseForNode(nodeId).toFixed(4);
+  for (const phaseElement of nodeGraphSamplePhaseElementsForNode(nodeId)) {
+    phaseElement.textContent = phaseText;
   }
   setNodeGraphSampleStatus(nodeId, nodeGraphSampleStatusForNode(nodeId));
 }
@@ -860,6 +871,68 @@ async function loadNodeGraphSamplePathForNode(nodeId, path) {
   }
   setNodeGraphSampleStatus(nodeId, "loading local path...");
   nodeGraphMvp.sampleLoadErrors?.delete?.(nodeId);
+  const patchNode = nodeGraphPatchNode(nodeId);
+  const isMusicPlayer = patchNode?.type === "audioPlayer";
+
+  // Folder → list audio files and load into playlist (Music Player).
+  if (isMusicPlayer) {
+    try {
+      const listResponse = await fetch("/api/audio-file/list", {
+        body: JSON.stringify({ path: sourcePath }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const listPayload = await listResponse.json().catch(() => ({}));
+      if (listResponse.ok && listPayload?.ok && listPayload?.kind === "dir" && Array.isArray(listPayload.files)) {
+        if (!listPayload.files.length) {
+          throw new Error("folder has no supported audio files");
+        }
+        setNodeGraphSampleStatus(nodeId, `loading ${listPayload.files.length} files...`);
+        for (const file of listPayload.files) {
+          const filePath = String(file.path || "").trim();
+          if (!filePath) {
+            continue;
+          }
+          const response = await fetch("/api/audio-file/data-url", {
+            body: JSON.stringify({ path: filePath }),
+            headers: { "Content-Type": "application/json" },
+            method: "POST",
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok || !payload?.ok || !payload?.dataUrl) {
+            continue;
+          }
+          await loadNodeGraphSampleDataUrlForNode(
+            nodeId,
+            payload.dataUrl,
+            payload.name || file.name || "Sample",
+            {
+              sourceName: payload.name || file.name || "Sample",
+              sourcePath: filePath,
+            },
+          );
+          if (typeof nodeGraphAudioPlayerPlaylistAppendSample === "function") {
+            const node = nodeGraphPatchNode(nodeId);
+            nodeGraphAudioPlayerPlaylistAppendSample(nodeId, {
+              id: node?.sample?.id,
+              name: payload.name || file.name,
+            });
+          }
+        }
+        setNodeGraphSampleStatus(nodeId, `playlist ${listPayload.files.length} from folder`);
+        if (typeof nodeGraphAudioPlayerPlaylistSetFace === "function") {
+          nodeGraphAudioPlayerPlaylistSetFace(nodeId, "pl");
+        }
+        return;
+      }
+    } catch (error) {
+      // Fall through to single-file load if list is unavailable / not a dir.
+      if (String(error?.message || "").includes("folder has no")) {
+        throw error;
+      }
+    }
+  }
+
   const response = await fetch("/api/audio-file/data-url", {
     body: JSON.stringify({ path: sourcePath }),
     headers: { "Content-Type": "application/json" },
@@ -878,6 +951,13 @@ async function loadNodeGraphSamplePathForNode(nodeId, path) {
       sourcePath,
     },
   );
+  if (isMusicPlayer && typeof nodeGraphAudioPlayerPlaylistAppendSample === "function") {
+    const node = nodeGraphPatchNode(nodeId);
+    nodeGraphAudioPlayerPlaylistAppendSample(nodeId, {
+      id: node?.sample?.id,
+      name: payload.name || sourcePath.split(/[\\/]/).pop(),
+    });
+  }
 }
 
 async function nodeGraphDataUrlForSampleReference(reference = {}) {
@@ -1012,6 +1092,35 @@ async function loadNodeGraphSampleDataUrlForNode(nodeId, dataUrl, name = "Sample
   scheduleNodeGraphLivePlanSync("plan");
 }
 
+// Phase readout + 📋 copy button. Shared by the Music Player body and the
+// Waveform display options window so hiding the module control surface does
+// not strand phase without a copy path.
+function createNodeGraphSamplePhaseReadout(nodeId) {
+  const phase = document.createElement("div");
+  phase.className = "node-sample-phase-readout";
+  const phaseValue = document.createElement("strong");
+  phaseValue.dataset.samplePhaseForNode = nodeId;
+  phaseValue.textContent = nodeGraphSamplePhaseForNode(nodeId).toFixed(4);
+  const copyPhaseButton = document.createElement("button");
+  copyPhaseButton.className = "node-sample-copy-phase-button";
+  copyPhaseButton.type = "button";
+  copyPhaseButton.textContent = "📋";
+  copyPhaseButton.setAttribute("aria-label", "Copy the current phase as a full precision number");
+  copyPhaseButton.title = "Copy the current phase as a full precision number";
+  protectNodeGraphSampleControl(copyPhaseButton);
+  copyPhaseButton.addEventListener("click", () => {
+    copyNodeGraphSamplePhaseForNode(nodeId).catch((error) => {
+      const message = String(error?.message || error || "copy phase failed");
+      setNodeInteractionHelp(message);
+      setNodeGraphSampleStatus(nodeId, message);
+    });
+  });
+  // Icon buttons sit on the LEFT of the thing they act on, matching the
+  // folder button on the path row.
+  phase.append(copyPhaseButton, phaseValue);
+  return { phase, phaseValue, copyPhaseButton };
+}
+
 // The 📂-button-plus-path-box loader, built once here so every place that
 // offers "load a sample into this node" is the same widget with the same
 // gestures (double-click the box to type, Enter loads, empty box + button
@@ -1028,24 +1137,52 @@ function createNodeGraphSamplePathLoader(nodeId, { instance = "" } = {}) {
   input.className = "node-sample-file-input";
   input.type = "file";
   input.accept = "audio/*,.wav,.wave,.mp3,.ogg,.oga,.opus,.flac,.m4a,.aac";
-  input.title = isMusicPlayer ? "Load music file" : "Load sample file";
+  if (isMusicPlayer) {
+    // Multi-select builds the playlist in one gesture.
+    input.multiple = true;
+  }
+  input.title = isMusicPlayer ? "Load music file(s) into playlist" : "Load sample file";
   protectNodeGraphSampleControl(input);
   input.addEventListener("click", () => {
     setNodeGraphSampleStatus(nodeId, "file picker opened");
   });
   input.addEventListener("change", () => {
     setNodeGraphSampleStatus(nodeId, "file selection changed");
-    const file = input.files?.[0];
-    if (!file) {
+    const files = [...(input.files || [])];
+    if (!files.length) {
       setNodeGraphSampleStatus(nodeId, "no file selected");
       return;
     }
-    loadNodeGraphSampleForNode(nodeId, file).catch((error) => {
-      const message = String(error?.message || error || "load failed");
-      nodeGraphMvp.sampleLoadErrors?.set?.(nodeId, message);
-      setNodeGraphSampleStatus(nodeId, message);
-      setNodeInteractionHelp(`Sample load failed: ${message}`);
-    });
+    const loadOne = async (file) => {
+      await loadNodeGraphSampleForNode(nodeId, file);
+      if (isMusicPlayer && typeof nodeGraphAudioPlayerPlaylistAppendSample === "function") {
+        const node = nodeGraphPatchNode(nodeId);
+        nodeGraphAudioPlayerPlaylistAppendSample(nodeId, {
+          id: node?.sample?.id,
+          name: file.name || node?.sample?.name,
+        });
+      }
+    };
+    (async () => {
+      try {
+        for (const file of files) {
+          await loadOne(file);
+        }
+        if (isMusicPlayer && files.length > 1) {
+          if (typeof setNodeGraphSampleStatus === "function") {
+            setNodeGraphSampleStatus(nodeId, `playlist +${files.length} files`);
+          }
+          if (typeof nodeGraphAudioPlayerPlaylistSetFace === "function") {
+            nodeGraphAudioPlayerPlaylistSetFace(nodeId, "pl");
+          }
+        }
+      } catch (error) {
+        const message = String(error?.message || error || "load failed");
+        nodeGraphMvp.sampleLoadErrors?.set?.(nodeId, message);
+        setNodeGraphSampleStatus(nodeId, message);
+        setNodeInteractionHelp(`Sample load failed: ${message}`);
+      }
+    })();
   });
 
   const pathShell = document.createElement("div");
@@ -1123,28 +1260,7 @@ function createNodeGraphSampleModuleBody(nodeOrId) {
   status.className = "node-sample-status";
   status.dataset.sampleStatusForNode = nodeId;
   applyNodeGraphSampleTextRow(status, nodeGraphSampleStatusForNode(nodeId));
-  const phase = document.createElement("div");
-  phase.className = "node-sample-phase-readout";
-  const phaseValue = document.createElement("strong");
-  phaseValue.dataset.samplePhaseForNode = nodeId;
-  phaseValue.textContent = nodeGraphSamplePhaseForNode(nodeId).toFixed(4);
-  const copyPhaseButton = document.createElement("button");
-  copyPhaseButton.className = "node-sample-copy-phase-button";
-  copyPhaseButton.type = "button";
-  copyPhaseButton.textContent = "📋";
-  copyPhaseButton.setAttribute("aria-label", "Copy the current phase as a full precision number");
-  copyPhaseButton.title = "Copy the current phase as a full precision number";
-  protectNodeGraphSampleControl(copyPhaseButton);
-  copyPhaseButton.addEventListener("click", () => {
-    copyNodeGraphSamplePhaseForNode(nodeId).catch((error) => {
-      const message = String(error?.message || error || "copy phase failed");
-      setNodeInteractionHelp(message);
-      setNodeGraphSampleStatus(nodeId, message);
-    });
-  });
-  // Icon buttons sit on the LEFT of the thing they act on, matching the
-  // folder button on the path row below.
-  phase.append(copyPhaseButton, phaseValue);
+  const { phase } = createNodeGraphSamplePhaseReadout(nodeId);
   const { fileInput: input, pathShell } = createNodeGraphSamplePathLoader(nodeId);
   const inputId = input.id;
   const picker = document.createElement("label");

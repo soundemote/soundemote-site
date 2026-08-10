@@ -5,9 +5,13 @@ const nodeSliderMinSkewExponent = 0.25;
 const nodeSliderMaxSkewExponent = 4;
 const nodeGraphAutoSmoothingDefaultSeconds = 0.5;
 
-const nodeGraphSmoothingModes = Object.freeze(["global", "blockSize", "internal", "internalGlobal", "off"]);
+const nodeGraphSmoothingModes = Object.freeze(["global", "internal", "internalGlobal", "off"]);
 
 function nodeGraphSmoothingModeNormalize(value) {
+  // blockSize UI retired; map any saved value to global.
+  if (value === "blockSize") {
+    return "global";
+  }
   return nodeGraphSmoothingModes.includes(value) ? value : "global";
 }
 
@@ -63,6 +67,56 @@ function nodeGraphNumericDragMultiplier(event) {
   return 1;
 }
 
+/**
+ * App-wide pointer drag axes (screen space).
+ *
+ * Policy: no separate “horizontal only” / “vertical only” value change for
+ * 1D controls. Right and up both increase; left and down both decrease:
+ *   horizontal = clientX - startX
+ *   vertical   = startY - clientY   (up is positive)
+ *   combined   = horizontal + vertical
+ *
+ * Same formula as slider drag, global smoothing drag, color widgets, etc.
+ * Prefer this helper over hand-rolled dx/dy so the policy stays one place.
+ *
+ * @returns {{ horizontal: number, vertical: number, combined: number }}
+ */
+function nodeGraphPointerDragScreenDelta(startClientX, startClientY, clientX, clientY) {
+  const startX = Number(startClientX);
+  const startY = Number(startClientY);
+  const x = Number(clientX);
+  const y = Number(clientY);
+  const horizontal = (Number.isFinite(x) && Number.isFinite(startX) ? x - startX : 0);
+  // Invert Y so upward mouse motion is positive (matches value increase).
+  const vertical = (Number.isFinite(startY) && Number.isFinite(y) ? startY - y : 0);
+  return {
+    horizontal,
+    vertical,
+    combined: horizontal + vertical,
+  };
+}
+
+/**
+ * 1D travel delta in unit space (0..1 span) from the diagonal drag policy.
+ * `travelWidthPx` is the pixel distance that maps to a full 0→1 sweep
+ * (slider lane width, graph plot width, etc.).
+ */
+function nodeGraphPointerDragTravelDelta(startClientX, startClientY, clientX, clientY, travelWidthPx, fineScale = 1) {
+  const width = Math.max(1, Number(travelWidthPx) || 1);
+  const scale = Number.isFinite(Number(fineScale)) ? Number(fineScale) : 1;
+  const { combined } = nodeGraphPointerDragScreenDelta(startClientX, startClientY, clientX, clientY);
+  return (combined / width) * scale;
+}
+
+/**
+ * True when the diagonal drag has moved past a small click threshold.
+ */
+function nodeGraphPointerDragExceededMoveThreshold(startClientX, startClientY, clientX, clientY, thresholdPx = 1) {
+  const { horizontal, vertical } = nodeGraphPointerDragScreenDelta(startClientX, startClientY, clientX, clientY);
+  const limit = Math.max(0, Number(thresholdPx) || 0);
+  return Math.abs(horizontal) > limit || Math.abs(vertical) > limit;
+}
+
 function clampNodeSliderValue(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -89,7 +143,11 @@ function shortestNodeGraphWrapDelta(from, to, min, max) {
   return delta;
 }
 
-const nodeGraphSmootherConvergenceEpsilon = 1e-7;
+// Prefer shared constant from parameter-smoother-filters.js (1e-6).
+const nodeGraphSmootherConvergenceEpsilon =
+  typeof nodeGraphParameterSmootherConvergenceEpsilon === "number"
+    ? nodeGraphParameterSmootherConvergenceEpsilon
+    : 1e-6;
 
 // Mirrors soemdsp::filter::SmootherBase::needsSmoothing() -- a settled/
 // unmodulated parameter has outputBuffer already within epsilon of
@@ -106,8 +164,12 @@ function nodeGraphOnePoleParameterLowpassSample(state, input, frequency, rate) {
   const w = Math.min((Math.PI * 2) / safeRate, 0.000142475857) * frequencyValue;
   const a1 = Math.exp(-w);
   const b0 = 1 - a1;
-  state.outputBuffer = b0 * safeInput + a1 * (Number(state.outputBuffer) || 0);
-  return state.outputBuffer;
+  let out = b0 * safeInput + a1 * (Number(state.outputBuffer) || 0);
+  if (Math.abs(out - safeInput) <= nodeGraphSmootherConvergenceEpsilon) {
+    out = safeInput;
+  }
+  state.outputBuffer = out;
+  return out;
 }
 
 function normalizeNodeGraphSmootherSignal(value, metadata = {}) {
@@ -176,9 +238,12 @@ function createNodeGraphParameterSmoother(initialValue, metadata = {}) {
   const smoothingType = typeof normalizeNodeGraphMetadataSmoothingType === "function"
     ? normalizeNodeGraphMetadataSmoothingType(metadata.smoothingType)
     : "onePole";
+  const usesFilter = typeof nodeGraphParameterSmootherUsesFilter === "function"
+    ? nodeGraphParameterSmootherUsesFilter(smoothingType)
+    : (smoothingType !== "none" && metadata.linearSmoothing !== false);
   const smoother = {
     current: safeValue,
-    linearSmoothing: metadata.linearSmoothing !== false,
+    linearSmoothing: usesFilter,
     max: Number.isFinite(Number(metadata.max)) ? Number(metadata.max) : 1,
     metadata,
     min: Number.isFinite(Number(metadata.min)) ? Number(metadata.min) : 0,
@@ -301,10 +366,17 @@ function nodeGraphStepParameterSmootherOneSample(smoother, frames) {
   const signal = typeof nodeGraphParameterSmootherFilterSample === "function"
     ? nodeGraphParameterSmootherFilterSample(smoother, smoother.targetSignal, cutoff, rate)
     : nodeGraphOnePoleParameterLowpassSample(smoother, smoother.targetSignal, cutoff, rate);
+  // Critical: when the filter lands inside epsilon, snap domain value to the
+  // exact target. Returning needsWork===false without settle left lastValue
+  // stuck at ~0.999… (Number Readout never showed 1.00).
+  if (!nodeGraphSmootherNeedsWork(smoother)) {
+    nodeGraphSettleParameterSmoother(smoother);
+    return false;
+  }
   const value = denormalizeNodeGraphSmootherSignal(signal, smoother.metadata);
   smoother.current = value;
   smoother.lastValue = value;
-  return nodeGraphSmootherNeedsWork(smoother);
+  return true;
 }
 
 /** soemdsp SmootherManager::run + clean for offline runtime. */
@@ -337,7 +409,6 @@ function nodeGraphRunActiveParameterSmoothers(runtime, frames) {
 function updateNodeGraphParameterSmoother(smoother, targetValue, metadata = {}, runtime = null, smootherKey = null) {
   const value = Number(targetValue);
   smoother.target = Number.isFinite(value) ? value : smoother.target;
-  smoother.linearSmoothing = metadata.linearSmoothing !== false;
   smoother.max = Number.isFinite(Number(metadata.max)) ? Number(metadata.max) : smoother.max;
   smoother.metadata = metadata;
   smoother.min = Number.isFinite(Number(metadata.min)) ? Number(metadata.min) : smoother.min;
@@ -353,6 +424,9 @@ function updateNodeGraphParameterSmoother(smoother, targetValue, metadata = {}, 
   } else {
     smoother.smoothingType = nextType;
   }
+  smoother.linearSmoothing = typeof nodeGraphParameterSmootherUsesFilter === "function"
+    ? nodeGraphParameterSmootherUsesFilter(nextType)
+    : (nextType !== "none" && metadata.linearSmoothing !== false);
   smoother.targetSignal = normalizeNodeGraphSmootherSignal(smoother.target, metadata);
   smoother.wraparound = Boolean(metadata.wraparound);
   const key = smootherKey || smoother._activeKey || null;
@@ -421,13 +495,48 @@ function finishNodeGraphParameterSmoothing(smoothers, runtime = null) {
   }
 }
 
+/**
+ * Normalize a domain value for the slider *thumb* / HTML range.
+ * Ordinary params are not hard-clipped (min/max are guides). Wraparound wraps.
+ * Resource-constrained params (data-constraint cpu|gpu|ram) and hardClamp clamp.
+ */
 function normalizeNodeSliderValue(slider, value, min = Number(slider.min), max = Number(slider.max)) {
   if (!Number.isFinite(value)) {
     return Number.isFinite(min) ? min : 0;
   }
-  return nodeSliderShouldWraparound(slider)
-    ? wrapNodeSliderValue(value, min, max)
-    : clampNodeSliderValue(value, min, max);
+  if (nodeSliderShouldWraparound(slider)) {
+    return wrapNodeSliderValue(value, min, max);
+  }
+  const constraint = String(slider?.dataset?.constraint || "").toLowerCase();
+  const hard = slider?.dataset?.hardClamp === "true"
+    || constraint === "cpu"
+    || constraint === "gpu"
+    || constraint === "ram"
+    || constraint === "memory";
+  if (!hard) {
+    return value;
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+    return value;
+  }
+  return clampNodeSliderValue(value, min, max);
+}
+
+/** Thumb position on an HTML range (must stay in min/max). */
+function nodeSliderThumbDisplayValue(slider, domainValue) {
+  const min = Number(slider.min);
+  const max = Number(slider.max);
+  const n = Number(domainValue);
+  if (!Number.isFinite(n)) {
+    return Number.isFinite(min) ? min : 0;
+  }
+  if (nodeSliderShouldWraparound(slider) && Number.isFinite(min) && Number.isFinite(max) && max > min) {
+    return wrapNodeSliderValue(n, min, max);
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+    return n;
+  }
+  return clampNodeSliderValue(n, min, max);
 }
 
 function normalizedNodeSliderMid(slider) {
@@ -442,8 +551,27 @@ function normalizedNodeSliderMid(slider) {
   return clampNodeSliderValue((mid - min) / range, 0.000001, 0.999999);
 }
 
+/**
+ * Mid-style power exponent for travel→value.
+ * - mid skew: knee from domain MID (center of travel lands on mid)
+ * - custom skew: knee from SENSITIVITY (−1…+1): 0 = linear,
+ *   +1 = fine near min (mid toward max), −1 = fine near max (mid toward min)
+ * - edge skew / off: 1 (linear in this path; edges uses its own S-curve)
+ */
+function nodeSliderSkewExponentFromSensitivity(amount) {
+  const a = clampNodeSliderValue(Number(amount) || 0, -1, 1);
+  if (a <= 0) {
+    return 1 + (-a) * (nodeSliderMaxSkewExponent - 1);
+  }
+  return 1 + a * (nodeSliderMinSkewExponent - 1);
+}
+
 function nodeSliderSkewExponent(slider) {
-  if (nodeSliderCurve(slider) !== "skew") {
+  const curve = nodeSliderCurve(slider);
+  if (curve === "custom") {
+    return nodeSliderSkewExponentFromSensitivity(nodeSliderCurveAmount(slider));
+  }
+  if (curve !== "skew") {
     return 1;
   }
   const exponent = Math.log(normalizedNodeSliderMid(slider)) / Math.log(0.5);
@@ -474,6 +602,7 @@ function nodeSliderCurveValueFromTravel(slider, travel) {
     }
     return 0.5 + 0.5 * ((normalizedTravel - 0.5) * 2) ** power;
   }
+  // mid skew + custom skew: shared power law
   return normalizedTravel ** nodeSliderSkewExponent(slider);
 }
 
@@ -537,12 +666,7 @@ function nodeSliderValueFromRelativeTravel(slider, travel) {
   if (!Number.isFinite(range) || range <= 0 || !Number.isFinite(numericTravel)) {
     return min;
   }
-  if (numericTravel < 0 && slider.dataset.unboundedMin === "true") {
-    return min + range * numericTravel;
-  }
-  if (numericTravel > 1 && slider.dataset.unboundedMax === "true") {
-    return max + range * (numericTravel - 1);
-  }
+  // No UI overshoot — travel outside [0,1] clamps via pointer travel helper.
   return nodeSliderValueFromPointerTravel(slider, numericTravel);
 }
 
@@ -642,9 +766,26 @@ function setNodeSliderMetadata(slider, metadata) {
   const control = slider.closest(".node-parameter-control");
   const alias = normalizeNodeGraphPatchMetadataAlias(metadata.alias);
   slider.dataset.alias = alias;
+  // Display name: custom alias wins, else factory default (e.g. "→"), else prior label.
+  const nextLabel = alias
+    || control?.dataset?.defaultParamLabel
+    || control?.dataset?.paramLabel
+    || "";
   if (control) {
-    control.dataset.paramLabel = alias || control.dataset.defaultParamLabel || control.dataset.paramLabel || "";
-    control.setAttribute("aria-label", control.dataset.paramLabel || slider.dataset.param || slider.id);
+    control.dataset.paramLabel = nextLabel;
+    control.setAttribute("aria-label", nextLabel || slider.dataset.param || slider.id);
+  }
+  // Readout keeps its own data-param-label (set at create time). It used to
+  // stay stuck on the factory label ("→") after alias edits because
+  // syncNodeSliderReadout preferred readout.dataset.paramLabel over the control.
+  const readout = control?.querySelector?.(".node-slider-readout")
+    || slider.closest?.("label")?.querySelector?.(".node-slider-readout");
+  if (readout && nextLabel) {
+    readout.dataset.paramLabel = nextLabel;
+    readout.setAttribute(
+      "aria-label",
+      `${nextLabel} current value`,
+    );
   }
   slider.min = String(metadata.min);
   slider.max = String(metadata.max);
@@ -661,13 +802,18 @@ function setNodeSliderMetadata(slider, metadata) {
   slider.dataset.unit = metadata.unit ?? "";
   slider.dataset.tooltip = metadata.tooltip ?? "";
   slider.dataset.choices = formatNodeMetadataChoices(metadata.choices || []);
+  // Independent flags (labels vs separators) — never mirror one onto the other.
   slider.dataset.displayChoices = metadata.displayChoices ? "true" : "false";
   slider.dataset.divideChoicesVisibly = metadata.divideChoicesVisibly ? "true" : "false";
-  slider.dataset.linearSmoothing = metadata.linearSmoothing ? "true" : "false";
-  slider.dataset.smoothingMode = nodeGraphSmoothingModeNormalize(metadata.smoothingMode);
-  slider.dataset.smoothingType = typeof normalizeNodeGraphMetadataSmoothingType === "function"
+  const smoothingType = typeof normalizeNodeGraphMetadataSmoothingType === "function"
     ? normalizeNodeGraphMetadataSmoothingType(metadata.smoothingType)
     : "onePole";
+  const linearSmoothing = typeof nodeGraphMetadataLinearSmoothingFromType === "function"
+    ? nodeGraphMetadataLinearSmoothingFromType(smoothingType)
+    : (metadata.linearSmoothing !== false && smoothingType !== "none");
+  slider.dataset.linearSmoothing = linearSmoothing ? "true" : "false";
+  slider.dataset.smoothingMode = nodeGraphSmoothingModeNormalize(metadata.smoothingMode);
+  slider.dataset.smoothingType = smoothingType;
   slider.dataset.smoothingSeconds = Number.isFinite(Number(metadata.smoothingSeconds)) && Number(metadata.smoothingSeconds) >= 0
     ? String(metadata.smoothingSeconds)
     : "";
@@ -675,10 +821,24 @@ function setNodeSliderMetadata(slider, metadata) {
   slider.dataset.curveAmount = String(normalizeNodeSliderCurveAmount(metadata.curveAmount));
   slider.dataset.nonlinearSlider = slider.dataset.sliderCurve === "linear" ? "false" : "true";
   slider.dataset.showSign = metadata.showSign ? "true" : "false";
-  slider.dataset.unboundedMax = metadata.unboundedMax ? "true" : "false";
-  slider.dataset.unboundedMin = metadata.unboundedMin ? "true" : "false";
+  slider.dataset.bipolar = metadata.bipolar ? "true" : "false";
+  // Clear legacy overshoot keys if present (older sessions).
+  if (slider.dataset.unboundedMax != null) delete slider.dataset.unboundedMax;
+  if (slider.dataset.unboundedMin != null) delete slider.dataset.unboundedMin;
+  if (slider.dataset.unboundedValue != null) delete slider.dataset.unboundedValue;
   slider.dataset.wraparound = metadata.wraparound ? "true" : "false";
-  slider.value = String(normalizeNodeSliderValue(slider, Number(slider.value), metadata.min, metadata.max));
+  // Prefer existing domainValue so metadata edits do not snap the parameter to
+  // a clamped HTML thumb (or leave domainValue stale relative to value).
+  const domainSource = Number.isFinite(Number(slider.dataset.domainValue))
+    ? Number(slider.dataset.domainValue)
+    : Number(slider.value);
+  const domain = normalizeNodeSliderValue(slider, domainSource, metadata.min, metadata.max);
+  slider.dataset.domainValue = String(domain);
+  slider.value = String(
+    typeof nodeSliderThumbDisplayValue === "function"
+      ? nodeSliderThumbDisplayValue(slider, domain)
+      : domain,
+  );
   syncNodeSliderReadout(slider);
 }
 

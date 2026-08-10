@@ -1,9 +1,8 @@
-// Registers the offline/render-time dispatch handler for additiveOsc and
-// gpuAdditiveOsc into nodeGraphLiveModuleEvaluators (declared in
-// node-graph-live-frame-evaluator.js). Both types share the same evaluator
-// -- extracted from the inline if/else-if branch that used to live in that
-// file, which matched both type strings via a single condition.
+// Offline/render host for additiveOsc / gpuAdditiveOsc.
+// Same additive_osc.wasm as the worklet (APP_POLICY §5). Silence when
+// Damping/Phase graphs are wired (native has no curve path) or WASM cold.
 function nodeGraphAdditiveOscLiveEvaluator({ runtime, node, nodeId, frame, frames, frameValues, mixInput, hasInput, sampleRate, graphInputValue }) {
+  void graphInputValue;
   const resetState = runtime.oscResetStates.get(nodeId) || createNodeGraphOscResetState();
   runtime.oscResetStates.set(nodeId, resetState);
   const resetValue = nodeGraphSafeFilterNumber(
@@ -35,7 +34,8 @@ function nodeGraphAdditiveOscLiveEvaluator({ runtime, node, nodeId, frame, frame
     frameValues,
   );
   const referenceVoltage = normalizeNodeGraphPatchAudio(nodeGraphMvp.patch.audio).pitchReferenceMidiNote / 120;
-  const pitchInput = hasInput(nodeId, "0.1V/Oct")
+  const hasPitch = hasInput(nodeId, "0.1V/Oct");
+  const pitchCv = hasPitch
     ? clampNodeSliderValue(nodeGraphSafeFilterNumber(
       mixInput(nodeId, "0.1V/Oct"),
       runtime,
@@ -44,13 +44,16 @@ function nodeGraphAdditiveOscLiveEvaluator({ runtime, node, nodeId, frame, frame
       "additive osc 0.1v/oct input",
     ), -1, 1)
     : referenceVoltage;
-  const pitchedFrequency = Math.max(0, frequency * (2 ** ((pitchInput - referenceVoltage) / 0.1)));
-  const fHz = typeof nodeGraphReadFInputHz === "function"
-    ? nodeGraphReadFInputHz(mixInput, hasInput, nodeId)
-    : null;
-  const effectiveFrequency = typeof nodeGraphResolveFrequencyHz === "function"
-    ? nodeGraphResolveFrequencyHz(pitchedFrequency, fHz)
-    : pitchedFrequency;
+  const effectiveFrequency = typeof nodeGraphParamResolveOscPitchHz === "function"
+    ? nodeGraphParamResolveOscPitchHz({
+      baseHz: frequency,
+      hasPitchCv: hasPitch,
+      pitchCv,
+      referenceVoltage,
+    })
+    : (typeof nodeGraphPitchedFrequency === "function"
+      ? nodeGraphPitchedFrequency(frequency, pitchCv, referenceVoltage)
+      : frequency * (2 ** ((pitchCv - referenceVoltage) / 0.1)));
   const incrementInput = nodeGraphSafeFilterNumber(
     mixInput(nodeId, "Increment"),
     runtime,
@@ -59,6 +62,13 @@ function nodeGraphAdditiveOscLiveEvaluator({ runtime, node, nodeId, frame, frame
     "additive osc increment input",
   );
   const phaseIncrement = (effectiveFrequency / sampleRate) + incrementInput;
+  const graphKey = typeof nodeGraphGraphInputKey === "function"
+    ? (id, name) => nodeGraphGraphInputKey(id, name)
+    : (id, name) => `${id}:${name}`;
+  const hasGraphInput = (
+    (runtime.graphInputConnections?.get(graphKey(nodeId, "Damping Graph")) || []).length > 0
+    || (runtime.graphInputConnections?.get(graphKey(nodeId, "Phase Graph")) || []).length > 0
+  );
   const additiveSample = nodeGraphAdditiveOscillatorSample(
     runtime,
     nodeId,
@@ -66,13 +76,12 @@ function nodeGraphAdditiveOscLiveEvaluator({ runtime, node, nodeId, frame, frame
     {
       frequency: effectiveFrequency,
       dampingFilterFrequency: readNodeGraphLiveEffectiveParam(runtime, node, "dampingFilterFrequency", 20000, frame, frames, frameValues),
-      dampingGraphValueAt: (x) => graphInputValue(nodeId, "Damping Graph", x, 1),
+      hasGraphInput,
       harmonics: readNodeGraphLiveEffectiveParam(runtime, node, "harmonics", 32, frame, frames, frameValues),
       harmonicPhaseAdd: readNodeGraphLiveEffectiveParam(runtime, node, "harmonicPhaseAdd", 0, frame, frames, frameValues),
       harmonicPhaseMultiply: readNodeGraphLiveEffectiveParam(runtime, node, "harmonicPhaseMultiply", 0, frame, frames, frameValues),
-      level: readNodeGraphLiveEffectiveParam(runtime, node, "level", 0.35, frame, frames, frameValues),
+      level: readNodeGraphLiveEffectiveParam(runtime, node, "amplitude", 0.35, frame, frames, frameValues),
       modA: readNodeGraphLiveEffectiveParam(runtime, node, "modA", 0.5, frame, frames, frameValues),
-      phaseGraphValueAt: (x) => graphInputValue(nodeId, "Phase Graph", x, 0),
       waveform: readNodeGraphLiveEffectiveParam(runtime, node, "waveform", 1, frame, frames, frameValues),
     },
     sampleRate,

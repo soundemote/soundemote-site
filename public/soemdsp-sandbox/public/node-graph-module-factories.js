@@ -25,20 +25,32 @@ function nodeGraphPatchNodePortDisplayLabel(node, type, port, io) {
   return alias || nodeGraphPortDisplayLabel(type, port, io);
 }
 
+/**
+ * Apply a DOMAIN parameter value onto a slider input.
+ * Clears legacy unbounded* dataset keys from older sessions, keeps
+ * `dataset.domainValue` aligned with the stored patch value (readouts and
+ * commit paths prefer domainValue over the HTML range thumb), and sets the
+ * thumb to an in-range display value when domain exceeds min/max.
+ */
 function applyNodeGraphInputUnboundedValue(input, value) {
-  const number = Number(value);
-  const min = Number(input?.min);
-  const max = Number(input?.max);
-  const unboundedMin = input?.dataset?.unboundedMin === "true";
-  const unboundedMax = input?.dataset?.unboundedMax === "true";
-  if (
-    Number.isFinite(number) &&
-    ((unboundedMin && Number.isFinite(min) && number < min) ||
-      (unboundedMax && Number.isFinite(max) && number > max))
-  ) {
-    input.dataset.unboundedValue = String(number);
-  } else if (input) {
-    delete input.dataset.unboundedValue;
+  if (!input?.dataset) {
+    return;
+  }
+  delete input.dataset.unboundedValue;
+  delete input.dataset.unboundedMax;
+  delete input.dataset.unboundedMin;
+  if (value === undefined || value === null || value === "") {
+    return;
+  }
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return;
+  }
+  input.dataset.domainValue = String(n);
+  if (typeof nodeSliderThumbDisplayValue === "function") {
+    input.value = String(nodeSliderThumbDisplayValue(input, n));
+  } else {
+    input.value = String(n);
   }
 }
 
@@ -49,6 +61,9 @@ function createNodeGraphIoColumn(node, type, ports, io) {
 
   const column = document.createElement("div");
   column.className = `node-io-column ${io}`;
+  // Longest label (char count) drives min width for every row in this column so
+  // inlet hitboxes match each other and outlet hitboxes match each other.
+  let maxLabelChars = 1;
   for (const port of ports) {
     const row = document.createElement("div");
     row.className = `node-io-row ${io}`;
@@ -66,6 +81,7 @@ function createNodeGraphIoColumn(node, type, ports, io) {
       row.dataset.digitalSignal = io;
     }
     const portLabel = nodeGraphPatchNodePortDisplayLabel(node, type, port, io);
+    maxLabelChars = Math.max(maxLabelChars, String(portLabel || "").length);
     row.setAttribute(
       "aria-label",
       `${nodeGraphNodeLabels[type]} ${io} port ${portLabel} interaction area`,
@@ -81,6 +97,10 @@ function createNodeGraphIoColumn(node, type, ports, io) {
     }
     column.append(row);
   }
+  // CSS: .node-io-label min-width uses 1ch × this (monospace IO font).
+  // LayoutA section tracks also read --node-io-{input|output}-label-ch.
+  column.style.setProperty("--node-io-label-min-ch", String(maxLabelChars));
+  column.dataset.maxLabelChars = String(maxLabelChars);
   return column;
 }
 
@@ -217,9 +237,11 @@ function createNodeGraphInputSection(node, type) {
 
 function createNodeGraphModuleScopeSection(node, type) {
   const section = document.createElement("div");
-  section.className = "node-module-scope-window";
+  section.className = "node-module-scope-window node-light-source";
   section.dataset.node = node;
   section.dataset.nodeType = type;
+  // Layer A app dimmer: all screen displays produce light (modular view shader punches here).
+  section.dataset.lightSource = "screen";
   section.dataset.tooltipKey = "module.scopeWindow";
   section.setAttribute("aria-label", `${nodeGraphNodeDisplayName(node)} scope`);
   if (typeof nodeGraphApplyTooltip === "function") {
@@ -239,17 +261,14 @@ function createNodeGraphModuleScopeSection(node, type) {
 
 // createNodeGraphLedFace moved to public/modules/led/led-ui.js.
 
+// createNodeGraphKnobFace is defined in
+// public/modules/knob/knob-face.js (loaded after this file).
+
+/** @deprecated use createNodeGraphKnobFace */
 function createNodeGraphSliderWidgetBody(node, type) {
-  const definition = nodeGraphModuleDefinitions[type];
-  const body = document.createElement("div");
-  body.className = "node-slider-widget-body";
-  const parameter = definition?.parameters?.[0];
-  if (parameter) {
-    const row = createNodeGraphParameter(node, type, parameter);
-    row.classList.add("node-slider-widget-row");
-    body.append(row);
-  }
-  return body;
+  return typeof createNodeGraphKnobFace === "function"
+    ? createNodeGraphKnobFace(node, type)
+    : document.createElement("div");
 }
 
 // Step Grid's UI (createNodeGraphStepGridBody, toggleNodeGraphStepGridStep)
@@ -353,26 +372,15 @@ function refreshNodeGraphScreenSpaceShaderBodyStatus(body) {
 
 // node is optional -- see the comment on createNodeGraphKeyboardControllerBody;
 // same reuse pattern for the standalone performance dock.
+// The knob bank IS the module display (no title/status chrome).
 function createNodeGraphMacroControlsBody(node = null) {
   const section = document.createElement("section");
-  section.className = "node-macro-controls-panel node-macro-controls-module";
+  section.className = "node-macro-controls-panel node-macro-controls-module node-module-scope-window";
   if (node) {
     section.dataset.node = node;
   }
+  section.dataset.macroControlsDisplay = "true";
   section.setAttribute("aria-label", "Macro controls");
-  const heading = document.createElement("div");
-  heading.className = "node-macro-controls-heading";
-  const title = document.createElement("div");
-  const kicker = document.createElement("span");
-  kicker.textContent = "Performance Surface";
-  const strong = document.createElement("strong");
-  strong.textContent = "Macro Controls";
-  title.append(kicker, strong);
-  const status = document.createElement("span");
-  status.className = "pill";
-  status.dataset.macroControlsStatus = "true";
-  status.textContent = "8 macros ready";
-  heading.append(title, status);
   const row = document.createElement("div");
   row.className = "node-macro-controls-row";
   row.setAttribute("aria-label", "Macro knob row");
@@ -386,16 +394,35 @@ function createNodeGraphMacroControlsBody(node = null) {
     knob.setAttribute("aria-valuemax", "1");
     knob.setAttribute("aria-valuenow", "0");
     knob.setAttribute("role", "slider");
+    const face = typeof nodeGraphMacroControlsFaceSettings === "function"
+      ? nodeGraphMacroControlsFaceSettings()
+      : null;
+    // Shared layout: title above dial, value centered in the circle.
     const label = document.createElement("span");
-    label.textContent = `M${index + 1}`;
-    const indicator = document.createElement("i");
+    label.className = "node-macro-knob-label";
+    label.dataset.macroKnobLabel = "true";
+    label.textContent = face?.labels?.[index] || `M${index + 1}`;
+    const dial = document.createElement("span");
+    dial.className = "node-macro-knob-dial";
+    dial.dataset.macroKnobDial = "true";
     const value = document.createElement("strong");
+    value.className = "node-macro-knob-value";
     value.dataset.macroValue = String(index);
     value.textContent = "0.00";
-    knob.append(label, indicator, value);
+    const indicator = document.createElement("i");
+    indicator.className = "node-macro-knob-arc";
+    indicator.dataset.macroKnobArc = "true";
+    indicator.setAttribute("aria-hidden", "true");
+    dial.append(value, indicator);
+    knob.append(label, dial);
+    knob.setAttribute("aria-label", label.textContent);
     row.append(knob);
   }
-  section.append(heading, row);
+  section.append(row);
+  if (typeof applyNodeGraphMacroControlsFaceSettings === "function") {
+    // Defer so CSS vars apply after insert (dock + module).
+    requestAnimationFrame(() => applyNodeGraphMacroControlsFaceSettings());
+  }
   return section;
 }
 
@@ -599,10 +626,11 @@ function createNodeGraphKeyboardControllerBody(node = null) {
 function createNodeGraphParameter(node, type, parameter) {
   const row = document.createElement("div");
   row.className = "node-parameter-row";
-  // Hidden params still exist in the DOM (pad UI / worklet read by id) but
+  // Hidden params still exist in the DOM (face drag targets, pad state) but
   // must not consume vertical layout — otherwise solid modules (XY Pad)
   // under-count height vs real content and clip the face.
-  if (parameter?.hidden === true) {
+  const isHidden = parameter?.hidden === true;
+  if (isHidden) {
     row.hidden = true;
     row.classList.add("node-parameter-row-hidden");
   }
@@ -611,7 +639,14 @@ function createNodeGraphParameter(node, type, parameter) {
   if (constraint) {
     row.dataset.nodeConstraint = constraint;
   }
-  row.append(createNodeParameterModulationPort(node, type, parameter));
+  // Module-first controls (Slider/Knob face): hidden state params keep a range
+  // input for persistence/drag targets, but no mod/param-out jacks fighting
+  // the single module Bias/Out.
+  const showModPort = !isHidden && parameter?.modulation !== false;
+  const showParamOut = !isHidden && parameter?.parameterOutput !== false;
+  if (showModPort) {
+    row.append(createNodeParameterModulationPort(node, type, parameter));
+  }
 
   const label = document.createElement("label");
   label.className = "node-parameter-control";
@@ -655,14 +690,22 @@ function createNodeGraphParameter(node, type, parameter) {
   input.dataset.curveAmount = String(normalizeNodeSliderCurveAmount(metadata?.curveAmount));
   input.dataset.nonlinearSlider = metadata?.nonlinearSlider ? "true" : "false";
   input.dataset.showSign = metadata?.showSign ? "true" : "false";
-  input.dataset.unboundedMax = metadata?.unboundedMax ? "true" : "false";
-  input.dataset.unboundedMin = metadata?.unboundedMin ? "true" : "false";
   input.dataset.wraparound = metadata?.wraparound ? "true" : "false";
+  // Domain hard-clamp policy (slider-values): only constraint / hardClamp clip.
+  if (metadata?.constraint || parameter.constraint) {
+    input.dataset.constraint = String(metadata?.constraint || parameter.constraint || "");
+  }
+  if (metadata?.hardClamp || parameter.hardClamp) {
+    input.dataset.hardClamp = "true";
+  }
+  input.dataset.domainValue = String(metadata?.def ?? parameter.defaultValue);
   applyNodeGraphInputUnboundedValue(input, input.value);
   input.setAttribute("aria-label", `${nodeGraphNodeLabels[type]} ${parameter.label}`);
   label.append(input);
   row.append(label);
-  row.append(createNodeParameterOutputPort(node, type, parameter));
+  if (showParamOut) {
+    row.append(createNodeParameterOutputPort(node, type, parameter));
+  }
   return row;
 }
 

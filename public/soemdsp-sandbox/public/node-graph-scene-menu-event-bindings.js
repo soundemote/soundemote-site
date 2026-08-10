@@ -15,41 +15,39 @@ function bindNodeGraphSceneMenuEvents() {
   bindNodeGraphSceneElementEvent("nodeModuleShopView", "keydown", handleNodeGraphModuleStoreKeydown);
   bindNodeGraphSceneElementEvent("nodeModuleShopClose", "click", closeNodeGraphModuleShop);
   bindNodeGraphSceneElementEvent("nodeModuleShopView", "pointerdown", beginNodeGraphModuleStorePointerPlacement);
-  bindNodeGraphSceneElementEvent("nodeModuleShopView", "pointerdown", beginNodeGraphModuleShopViewDrag);
-  bindNodeGraphSceneElementEvent("nodeModuleShopHeading", "pointerdown", beginNodeGraphModuleShopViewDrag);
-  bindNodeGraphSceneElementEvent("nodeModuleShopResizeHandle", "pointerdown", beginNodeGraphModuleShopViewResize);
+  bindNodeGraphSceneElementEvent("nodeModuleShopView", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "moduleBrowser"));
+  bindNodeGraphSceneElementEvent("nodeModuleShopHeading", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "moduleBrowser"));
+  bindNodeGraphSceneElementEvent("nodeModuleShopResizeHandle", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowResize(event, "moduleBrowser"));
   bindNodeGraphSceneElementEvent("nodeModuleDepartmentSearch", "input", handleNodeGraphModuleDepartmentSearchInput);
   bindNodeGraphSceneElementEvent("nodeModuleDepartmentSearch", "keydown", handleNodeGraphModuleDepartmentSearchKeydown);
+  bindNodeGraphSceneElementEvent("nodeCommandCenterModuleSearchInput", "input", handleNodeGraphCommandCenterModuleSearchInput);
+  bindNodeGraphSceneElementEvent("nodeCommandCenterModuleSearchInput", "keydown", handleNodeGraphCommandCenterModuleSearchKeydown);
+  bindNodeGraphSceneElementEvent("nodeCommandCenterModuleSearchResults", "click", handleNodeGraphModuleStoreClick);
+  bindNodeGraphSceneElementEvent("nodeCommandCenterModuleSearchResults", "pointerdown", beginNodeGraphModuleStorePointerPlacement);
   bindNodeGraphSceneElementEvent("nodeModuleDepartmentBack", "click", () => setNodeGraphModuleStoreDepartment(""));
-  document.addEventListener("pointermove", dragNodeGraphModuleShopView);
-  document.addEventListener("pointerup", endNodeGraphModuleShopViewDrag);
-  document.addEventListener("pointercancel", endNodeGraphModuleShopViewDrag);
+  // Module shop / module actions / code box / command center drag+resize:
+  // registry pointer bridge (node-graph-floating-windows.js)
   document.addEventListener("pointerup", releaseNodeGraphModuleStorePointerPlacement);
   document.addEventListener("pointercancel", cancelNodeGraphModuleStorePointerPlacement);
-  document.addEventListener("pointermove", dragNodeGraphModuleShopViewResize);
-  document.addEventListener("pointerup", endNodeGraphModuleShopViewResize);
-  document.addEventListener("pointercancel", endNodeGraphModuleShopViewResize);
   bindNodeGraphSceneElementEvent("nodeGraphWorkspace", "pointerdown", beginNodeGraphGraphNodeDrag, true);
   bindNodeGraphSceneElementEvent("nodeGraphWorkspace", "contextmenu", handleNodeGraphGraphNodeContextMenu, true);
   bindNodeGraphSceneElementEvent("nodeGraphWorkspace", "dblclick", handleNodeGraphGraphNodeDoubleClick, true);
   document.addEventListener("pointermove", dragNodeGraphGraphNode);
   document.addEventListener("pointerup", endNodeGraphGraphNodeDrag);
   document.addEventListener("pointercancel", endNodeGraphGraphNodeDrag);
-  document.addEventListener("pointermove", dragNodeModuleActionsWindowResize);
-  document.addEventListener("pointerup", endNodeModuleActionsWindowResize);
-  document.addEventListener("pointercancel", endNodeModuleActionsWindowResize);
-  document.addEventListener("pointermove", dragNodeGraphCodeBoxWindow);
-  document.addEventListener("pointerup", endNodeGraphCodeBoxWindowDrag);
-  document.addEventListener("pointercancel", endNodeGraphCodeBoxWindowDrag);
-  document.addEventListener("pointermove", dragNodeGraphCodeBoxWindowResize);
-  document.addEventListener("pointerup", endNodeGraphCodeBoxWindowResize);
-  document.addEventListener("pointercancel", endNodeGraphCodeBoxWindowResize);
   bindNodeGraphSceneElementEvent("nodeSceneDeleteModule", "click", deleteNodeGraphSelectionFromContext);
   document
     .querySelectorAll("#nodeSceneWireTypeControl [data-wire-type]")
     .forEach((button) => {
       button.addEventListener("click", () => setSelectedNodeGraphWireType(button.dataset.wireType));
     });
+  document.getElementById("nodeSceneWirePixelToggle")?.addEventListener("click", () => {
+    const btn = document.getElementById("nodeSceneWirePixelToggle");
+    const next = btn?.getAttribute("aria-pressed") !== "true";
+    if (typeof setSelectedNodeGraphWirePixel === "function") {
+      setSelectedNodeGraphWirePixel(next);
+    }
+  });
   bindNodeGraphSceneElementEvent("nodeSceneCopyModule", "click", copyNodeGraphModuleFromContext);
   // Wired but disabled -- module grouping itself is under construction (see
   // saveNodeGraphSelectionAsModuleGroup's early return in
@@ -64,17 +62,29 @@ function bindNodeGraphSceneMenuEvents() {
   bindNodeGraphSceneElementEvent("nodeSceneToggleModularOnlyView", "click", toggleNodeGraphModularOnlyView);
   bindNodeGraphSceneElementEvent("nodeSceneToggleModularOnlyControls", "click", toggleNodeGraphViewButtonsVisibility);
   bindNodeGraphSceneElementEvent("nodeSceneOpenModuleBrowser", "click", () => {
+    if (typeof openNodeGraphUnifiedWindowPage === "function") {
+      openNodeGraphUnifiedWindowPage("moduleBrowser", {
+        point: nodeGraphMvp.sceneContextPoint,
+      });
+      return;
+    }
     openNodeGraphModuleShop(nodeGraphMvp.sceneContextPoint);
   });
-  bindNodeGraphSceneElementEvent("nodeSceneOpenModuleActions", "click", openNodeGraphModuleActionsFromContextWindow);
+  bindNodeGraphSceneElementEvent("nodeSceneOpenModuleActions", "click", () => {
+    if (typeof openNodeGraphUnifiedWindowPage === "function") {
+      openNodeGraphUnifiedWindowPage("moduleActions");
+      return;
+    }
+    openNodeGraphModuleActionsFromContextWindow();
+  });
   bindNodeGraphSceneElementEvent("nodeModuleActionsClose", "click", closeNodeModuleActionsWindow);
-  bindNodeGraphSceneElementEvent("nodeModuleActionsWindowHeading", "pointerdown", beginNodeModuleActionsWindowDrag);
-  bindNodeGraphSceneElementEvent("nodeModuleActionsDragHandle", "pointerdown", beginNodeModuleActionsWindowDrag);
-  bindNodeGraphSceneElementEvent("nodeModuleActionsResizeHandle", "pointerdown", beginNodeModuleActionsWindowResize);
+  bindNodeGraphSceneElementEvent("nodeModuleActionsWindowHeading", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "moduleActions"));
+  bindNodeGraphSceneElementEvent("nodeModuleActionsDragHandle", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "moduleActions"));
+  bindNodeGraphSceneElementEvent("nodeModuleActionsResizeHandle", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowResize(event, "moduleActions"));
   bindNodeGraphSceneElementEvent("nodeCodeBoxClose", "click", closeNodeGraphCodeBoxWindow);
-  bindNodeGraphSceneElementEvent("nodeCodeBoxWindowHeading", "pointerdown", beginNodeGraphCodeBoxWindowDrag);
-  bindNodeGraphSceneElementEvent("nodeCodeBoxDragHandle", "pointerdown", beginNodeGraphCodeBoxWindowDrag);
-  bindNodeGraphSceneElementEvent("nodeCodeBoxResizeHandle", "pointerdown", beginNodeGraphCodeBoxWindowResize);
+  bindNodeGraphSceneElementEvent("nodeCodeBoxWindowHeading", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "codeBox"));
+  bindNodeGraphSceneElementEvent("nodeCodeBoxDragHandle", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "codeBox"));
+  bindNodeGraphSceneElementEvent("nodeCodeBoxResizeHandle", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowResize(event, "codeBox"));
   bindNodeGraphSceneElementEvent("nodeCodeBoxApplyCode", "click", applyNodeGraphCodeBoxWindowCode);
   bindNodeGraphSceneElementEvent("nodeCodeBoxOpenFullScreen", "click", openNodeGraphCodeBoxWindowFullScreen);
   bindNodeGraphSceneElementEvent("nodeCodeBoxTitle", "input", scheduleNodeGraphCodeBoxWindowTitleApply);
@@ -86,19 +96,20 @@ function bindNodeGraphSceneMenuEvents() {
   bindNodeGraphSceneElementEvent("nodeCodeBoxSource", "scroll", updateNodeGraphCodeBoxWindowEditorChrome);
   bindNodeGraphSceneElementEvent("nodeSceneUndoButton", "click", undoNodeGraphPatch);
   bindNodeGraphSceneElementEvent("nodeSceneRedoButton", "click", redoNodeGraphPatch);
-  bindNodeGraphSceneElementEvent("nodeSceneOpenSavedPatches", "click", () => {
-    setNodeGraphSavedPatchesWindowVisible(true);
-  });
   bindNodeGraphSceneElementEvent("nodeSceneToggleStandaloneMidiKeyboard", "click", toggleNodeGraphStandaloneMidiKeyboard);
-  bindNodeGraphSceneElementEvent("nodeSceneCopyPatch", "click", copyNodeGraphScriptToClipboard);
-  bindNodeGraphSceneElementEvent("nodeScenePastePatch", "click", pasteNodeGraphScriptFromClipboard);
   bindNodeGraphSceneElementEvent("nodeSceneOpenUiSettings", "click", () => {
+    if (typeof openNodeGraphUnifiedWindowPage === "function") {
+      openNodeGraphUnifiedWindowPage("uiSettings");
+      return;
+    }
     setNodeUserUiSettingsVisible(true);
   });
+  // Room dimmer: focus the 💡 control (no legacy shader dialog).
   bindNodeGraphSceneElementEvent("nodeSceneOpenPostProcessing", "click", () => {
-    openNodeGraphGlobalShaderScript();
+    document.getElementById("nodeRoomDimmerButton")?.focus?.();
   });
   bindNodeGraphSceneElementEvent("nodeSceneOpenVisibility", "click", () => {
+    // Standalone Visibility window (own seat) — never unified seat handoff.
     setNodeGraphVisibilityMenuOpen(true);
   });
   bindNodeGraphSceneElementEvent("nodeSceneGlobalSmoothingSeconds", "change", handleNodeGraphGlobalSmoothingSecondsChange);
@@ -136,9 +147,7 @@ function bindNodeGraphSceneMenuEvents() {
   document.addEventListener("pointermove", dragNodeScopeContextMenu);
   document.addEventListener("pointerup", endNodeScopeContextMenuDrag);
   document.addEventListener("pointercancel", endNodeScopeContextMenuDrag);
-  document.addEventListener("pointermove", dragNodeModuleActionsWindow);
-  document.addEventListener("pointerup", endNodeModuleActionsWindowDrag);
-  document.addEventListener("pointercancel", endNodeModuleActionsWindowDrag);
+  // Module actions drag: registry pointer bridge
   document.addEventListener("pointermove", dragNodeGlobalScopeMenu);
   document.addEventListener("pointerup", endNodeGlobalScopeMenuDrag);
   document.addEventListener("pointercancel", endNodeGlobalScopeMenuDrag);
@@ -160,15 +169,40 @@ function bindNodeGraphSceneMenuEvents() {
   bindNodeGraphSceneElementEvent("nodeSceneToggleInterfaceControls", "click", toggleNodeGraphModuleInterfaceControlsFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneToggleSliders", "click", toggleNodeGraphModuleSlidersFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneToggleIo", "click", toggleNodeGraphModuleIoFromContext);
+  bindNodeGraphSceneElementEvent("nodeSceneToggleHideUnused", "click", toggleNodeGraphModuleHideUnusedFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneToggleTitle", "click", toggleNodeGraphModuleTitleFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneImageSave", "click", saveNodeGraphImageFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneImageRefresh", "click", refreshNodeGraphImageFromContext);
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceLoad1", "click", () => pickNodeGraphKnobFaceImage("image1"));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceClear1", "click", () => clearNodeGraphKnobFaceImage("image1"));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceRotate1", "change", () => setNodeGraphKnobFaceLayerRotateFromContext("image1", { record: true }));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceLoad2", "click", () => pickNodeGraphKnobFaceImage("image2"));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceClear2", "click", () => clearNodeGraphKnobFaceImage("image2"));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceRotate2", "change", () => setNodeGraphKnobFaceLayerRotateFromContext("image2", { record: true }));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceLoad3", "click", () => pickNodeGraphKnobFaceImage("image3"));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceClear3", "click", () => clearNodeGraphKnobFaceImage("image3"));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceRotate3", "change", () => setNodeGraphKnobFaceLayerRotateFromContext("image3", { record: true }));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceLoad4", "click", () => pickNodeGraphKnobFaceImage("image4"));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceClear4", "click", () => clearNodeGraphKnobFaceImage("image4"));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceRotate4", "change", () => setNodeGraphKnobFaceLayerRotateFromContext("image4", { record: true }));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceLoad5", "click", () => pickNodeGraphKnobFaceImage("image5"));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceClear5", "click", () => clearNodeGraphKnobFaceImage("image5"));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceRotate5", "change", () => setNodeGraphKnobFaceLayerRotateFromContext("image5", { record: true }));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceLoad6", "click", () => pickNodeGraphKnobFaceImage("image6"));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceClear6", "click", () => clearNodeGraphKnobFaceImage("image6"));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceRotate6", "change", () => setNodeGraphKnobFaceLayerRotateFromContext("image6", { record: true }));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceRotationDegrees", "input", () => setNodeGraphKnobFaceRotationDegreesFromContext({ record: false }));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceRotationDegrees", "change", () => setNodeGraphKnobFaceRotationDegreesFromContext({ record: true }));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceRotationOffset", "input", () => setNodeGraphKnobFaceRotationOffsetFromContext({ record: false }));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceRotationOffset", "change", () => setNodeGraphKnobFaceRotationOffsetFromContext({ record: true }));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceShowReadout", "change", () => setNodeGraphKnobFaceShowReadoutFromContext({ record: true }));
   bindNodeGraphSceneElementEvent("nodeSceneCanvasScript", "click", openNodeGraphCanvasScriptFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneLedColor", "input", () => setNodeGraphLedColorFromContext({ record: false }));
   bindNodeGraphSceneElementEvent("nodeSceneLedColor", "change", () => setNodeGraphLedColorFromContext({ record: true }));
   bindNodeGraphSceneElementEvent("nodeSceneBugButtonGlyph", "input", () => setNodeGraphBugButtonGlyphFromContext());
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxSingleLine", "click", () => setNodeGraphTextBoxModeFromContext("singleLine"));
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxMultiline", "click", () => setNodeGraphTextBoxModeFromContext("multiline"));
+  bindNodeGraphSceneElementEvent("nodeSceneTextBoxFill", "click", () => setNodeGraphTextBoxModeFromContext("fill"));
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxTextInput", "input", () => setNodeGraphTextBoxTextFromContext({ record: false }));
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxTextInput", "change", () => setNodeGraphTextBoxTextFromContext({ record: true }));
   bindNodeGraphSceneElementEvent("nodeSceneCodeblockApplyPorts", "click", applyNodeGraphCodeblockPortsFromContext);
@@ -181,35 +215,15 @@ function bindNodeGraphSceneMenuEvents() {
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxTextScript", "change", () => setNodeGraphTextBoxPortScriptFromContext("Text", { record: true }));
   bindNodeGraphSceneElementEvent("nodeSceneGraphCursorX", "input", () => setNodeGraphGraphCursorFromContext({ record: false }));
   bindNodeGraphSceneElementEvent("nodeSceneGraphCursorX", "change", () => setNodeGraphGraphCursorFromContext({ record: true }));
-  bindNodeGraphSceneElementEvent("nodeSceneGraphNodeIndex", "change", selectNodeGraphGraphNodeFromContext);
-  bindNodeGraphSceneElementEvent("nodeSceneGraphNodeX", "input", () => setNodeGraphGraphNodeFromContext({ record: false }));
-  bindNodeGraphSceneElementEvent("nodeSceneGraphNodeX", "change", () => setNodeGraphGraphNodeFromContext({ record: true }));
-  bindNodeGraphSceneElementEvent("nodeSceneGraphNodeY", "input", () => setNodeGraphGraphNodeFromContext({ record: false }));
-  bindNodeGraphSceneElementEvent("nodeSceneGraphNodeY", "change", () => setNodeGraphGraphNodeFromContext({ record: true }));
-  bindNodeGraphSceneElementEvent("nodeSceneGraphNodeContour", "input", () => setNodeGraphGraphNodeFromContext({ record: false }));
-  bindNodeGraphSceneElementEvent("nodeSceneGraphNodeContour", "change", () => setNodeGraphGraphNodeFromContext({ record: true }));
-  bindNodeGraphSceneElementEvent("nodeSceneGraphNodeShape", "change", () => setNodeGraphGraphNodeFromContext({ record: true }));
+  // List owns node edit / select / remove / add ([+] under last row, ✕ per row).
   bindNodeGraphSceneElementEvent("nodeSceneGraphNodeList", "click", handleNodeGraphGraphNodeListClick);
   bindNodeGraphSceneElementEvent("nodeSceneGraphNodeList", "input", handleNodeGraphGraphNodeListInput);
   bindNodeGraphSceneElementEvent("nodeSceneGraphNodeList", "change", handleNodeGraphGraphNodeListChange);
-  bindNodeGraphSceneElementEvent("nodeSceneGraphPreviousNode", "click", () => selectNodeGraphGraphNodeOffsetFromContext(-1));
-  bindNodeGraphSceneElementEvent("nodeSceneGraphNextNode", "click", () => selectNodeGraphGraphNodeOffsetFromContext(1));
-  bindNodeGraphSceneElementEvent("nodeSceneGraphAddNode", "click", addNodeGraphGraphNodeFromContext);
-  bindNodeGraphSceneElementEvent("nodeSceneGraphDuplicateNode", "click", duplicateNodeGraphGraphNodeFromContext);
-  bindNodeGraphSceneElementEvent("nodeSceneGraphRemoveNode", "click", removeNodeGraphGraphNodeFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneGraphReset", "click", resetNodeGraphGraphFromContext);
   document
     .querySelectorAll("#nodeSceneGraphPresetControls [data-graph-preset]")
     .forEach((button) => {
       button.addEventListener("click", () => setNodeGraphGraphPresetFromContext(button.dataset.graphPreset));
-    });
-  document
-    .querySelectorAll("#nodeSceneGraphRangeControls [data-graph-range-min][data-graph-range-max]")
-    .forEach((button) => {
-      button.addEventListener("click", () => setNodeGraphGraphOutputRangeFromContext(
-        button.dataset.graphRangeMin,
-        button.dataset.graphRangeMax,
-      ));
     });
   document
     .querySelectorAll("#nodeSceneGraphTransformControls [data-graph-transform]")
@@ -225,12 +239,9 @@ function bindNodeGraphSceneMenuEvents() {
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxVerticalAlign", "change", () => setNodeGraphTextBoxVerticalAlignFromContext({ record: true }));
   bindNodeGraphSceneElementEvent("nodeSceneCloseMenu", "click", () =>
     closeNodeSceneContextMenu({ explicit: true }));
-  bindNodeGraphSceneElementEvent("nodeSceneDragHandle", "pointerdown", beginNodeSceneContextMenuDrag);
-  bindNodeGraphSceneElementEvent("nodeSceneContextResizeHandle", "pointerdown", beginNodeSceneContextWindowResize);
-  document.addEventListener("pointermove", dragNodeSceneContextWindowResize);
-  document.addEventListener("pointerup", endNodeSceneContextWindowResize);
-  document.addEventListener("pointercancel", endNodeSceneContextWindowResize);
+  bindNodeGraphSceneElementEvent("nodeSceneDragHandle", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "commandCenter"));
+  bindNodeGraphSceneElementEvent("nodeSceneContextResizeHandle", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowResize(event, "commandCenter"));
   document
     .querySelector("#nodeSceneContextMenu .scene-context-heading")
-    ?.addEventListener("pointerdown", beginNodeSceneContextMenuDrag);
+    ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "commandCenter"));
 }

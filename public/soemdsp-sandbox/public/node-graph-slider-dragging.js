@@ -39,15 +39,21 @@ function syncNodeGraphPatchMetadataFromSlider(slider, options = {}) {
     nodeGraphModuleIsGraphType(patchNode.type) &&
     typeof nodeGraphGraphWithPhaseCursor === "function"
   );
-  const graphTensionChanged = (
-    key === "tension" &&
+  const graphFaceChanged = (
+    (
+      key === "tension"
+      || key === "smoothingMode"
+      || key === "steps"
+      || key === "segmentShape"
+      || key === "curveOffset"
+    ) &&
     nodeGraphModuleIsGraphType(patchNode.type)
   );
   if (graphPhaseChanged) {
     patchNode.graph = nodeGraphGraphWithPhaseCursor(patchNode);
     syncNodeGraphGraphDisplaysForNode(node, patchNode);
   }
-  if (graphTensionChanged) {
+  if (graphFaceChanged) {
     syncNodeGraphGraphDisplaysForNode(node, patchNode);
   }
   syncNodeGraphScriptView(options.status || "metadata synced", true);
@@ -85,15 +91,51 @@ function syncNodeGraphPatchParameterFromSlider(slider, options = {}) {
       patchNode.paramMeta?.[key] || nodeSliderMetadata(slider),
     ),
   };
+  // Prefer explicit domain value (typed entry may exceed HTML range min/max).
+  const rawDomain = options.domainValue != null
+    ? Number(options.domainValue)
+    : (Number.isFinite(Number(slider?.dataset?.domainValue))
+      ? Number(slider.dataset.domainValue)
+      : nodeGraphReadNodeNumber(node, key));
   patchNode.params = {
     ...(patchNode.params || {}),
     [key]: normalizeNodeGraphPatchParameter(
       patchNode.type,
       key,
-      nodeGraphReadNodeNumber(node, key),
+      rawDomain,
       patchNode.paramMeta[key],
     ),
   };
+  // Pitch Quantizer: preset Scale slider writes the face keyboard mask so
+  // audio + keyboard stay in sync. Custom (choice 6) leaves scaleMask alone.
+  if (patchNode.type === "pitchQuantizer" && key === "scale") {
+    const choice = Math.round(Number(patchNode.params.scale) || 0);
+    if (
+      choice >= 0
+      && choice <= 5
+      && typeof nodeGraphPitchQuantizerMaskFromChoice === "function"
+    ) {
+      const mask = nodeGraphPitchQuantizerMaskFromChoice(choice);
+      patchNode.params.scaleMask = normalizeNodeGraphPatchParameter(
+        patchNode.type,
+        "scaleMask",
+        mask,
+        patchNode.paramMeta?.scaleMask,
+      );
+      if (typeof syncNodeGraphPitchQuantizerFace === "function") {
+        syncNodeGraphPitchQuantizerFace(node);
+      }
+    }
+  }
+  // Value-only writes (mid-frame drag coalesce): domain is already on the
+  // patch; skip graph-face / history / transport side effects until a full sync.
+  if (options.skipGraphFace) {
+    if (options.interaction === "drag") {
+      nodeGraphMvp.patchDirtyState = "edited";
+      nodeGraphMvp._needsHeaderSync = true;
+    }
+    return;
+  }
   const graphPhaseChanged = (
     key === "phase" &&
     nodeGraphModuleIsGraphType(patchNode.type) &&
@@ -127,11 +169,17 @@ function syncNodeGraphPatchParameterFromSlider(slider, options = {}) {
     saveNodeGraphWorkingPatchToUserSettings();
   }
   if (options.deferUi) {
-    // Graph curve shape depends on tension/smoothing -- keep the SVG in sync
+    // Graph face depends on tension/smoothing/steps -- keep the SVG in sync
     // while dragging even when the rest of the deferred UI is skipped.
     if (
       nodeGraphModuleIsGraphType(patchNode.type) &&
-      (key === "tension" || key === "smoothingMode") &&
+      (
+        key === "tension"
+        || key === "smoothingMode"
+        || key === "steps"
+        || key === "segmentShape"
+        || key === "curveOffset"
+      ) &&
       typeof syncNodeGraphGraphDisplaysForNode === "function"
     ) {
       syncNodeGraphGraphDisplaysForNode(node, patchNode);
@@ -190,19 +238,16 @@ function updateNodeSliderCurrentValue(slider, rawValue) {
     return;
   }
 
-  const unboundedMin = slider.dataset.unboundedMin === "true";
-  const unboundedMax = slider.dataset.unboundedMax === "true";
-  const min = Number(slider.min);
-  const max = Number(slider.max);
-  if ((unboundedMin && Number.isFinite(min) && value < min) || (unboundedMax && Number.isFinite(max) && value > max)) {
-    slider.dataset.unboundedValue = String(value);
-    slider.value = String(normalizeNodeSliderValue(slider, value));
-  } else {
-    delete slider.dataset.unboundedValue;
-    slider.value = String(normalizeNodeSliderValue(slider, value));
-  }
+  // Domain may leave slider min/max; HTML range thumb stays in-range for display.
+  const domain = normalizeNodeSliderValue(slider, value);
+  slider.dataset.domainValue = String(domain);
+  const thumb = typeof nodeSliderThumbDisplayValue === "function"
+    ? nodeSliderThumbDisplayValue(slider, domain)
+    : domain;
+  slider.value = String(thumb);
   syncNodeSliderReadout(slider);
   syncNodeGraphPatchParameterFromSlider(slider, {
+    domainValue: domain,
     record: true,
     status: "parameter changed",
   });
@@ -265,7 +310,9 @@ function scheduleNodeSliderDragAutosave() {
 
 function commitNodeSliderDragValue(slider, status = "parameter changed") {
   clearNodeSliderDragAutosaveTimer();
+  const domainRaw = Number(slider?.dataset?.domainValue);
   syncNodeGraphPatchParameterFromSlider(slider, {
+    domainValue: Number.isFinite(domainRaw) ? domainRaw : undefined,
     record: true,
     status,
   });
@@ -276,45 +323,45 @@ function commitNodeSliderDragValue(slider, status = "parameter changed") {
 
 function setNodeSliderValue(slider, value, options = {}) {
   const isDrag = options.interaction === "drag";
-  const number = Number(value);
-  const min = Number(slider.min);
-  const max = Number(slider.max);
-  const unboundedMin = slider.dataset.unboundedMin === "true";
-  const unboundedMax = slider.dataset.unboundedMax === "true";
-  if (
-    Number.isFinite(number) &&
-    ((unboundedMin && Number.isFinite(min) && number < min) ||
-      (unboundedMax && Number.isFinite(max) && number > max))
-  ) {
-    slider.dataset.unboundedValue = String(number);
-  } else {
-    delete slider.dataset.unboundedValue;
-  }
-  const normalized = normalizeNodeSliderValue(slider, value);
-  // The input value is authoritative for patch/audio sync. Only its painted
-  // readout is frame-batched, so dragging never depends on a scope draw loop.
-  slider.value = String(normalized);
-  // Frame-gate during drags: if already pending rAF update, skip redundant patch work.
-  // The flush will apply the latest value — object-spreads mid-frame are wasted.
+  const domain = normalizeNodeSliderValue(slider, value);
+  slider.dataset.domainValue = String(domain);
+  // Drag values stay in track; typed/non-drag may exceed min/max for the thumb.
+  const thumb = isDrag || typeof nodeSliderThumbDisplayValue !== "function"
+    ? domain
+    : nodeSliderThumbDisplayValue(slider, domain);
+  slider.value = String(thumb);
+  // Frame-gate painted readout work during drag. The patch + live engine must
+  // still see every domain write: flushNodeSliderReadoutUpdates only paints the
+  // thumb/readout — it does NOT write the patch. Skipping patch here made
+  // mid-frame moves vanish from audio and snap the value on the next touch.
   const alreadyPending = isDrag && nodeGraphMvp?._pendingReadoutUpdates?.has(slider);
   if (isDrag) {
-    scheduleNodeSliderReadoutUpdate(slider, normalized);
+    scheduleNodeSliderReadoutUpdate(slider, domain);
   } else {
     syncNodeSliderReadout(slider);
   }
-  // Tension/smoothing on graph modules must refresh the curve every pointer
-  // move (not once per rAF), otherwise the shape only jumps on mouse-up /
-  // next-frame flush. Other params keep the cheaper once-per-frame path.
+  // Tension/smoothing/steps on graph modules must refresh the face every
+  // pointer move (not once per rAF), otherwise the curve / step grid only
+  // jumps on mouse-up / next-frame flush.
   const graphCurveLiveParam = isDrag && (
     slider?.dataset?.param === "tension" ||
-    slider?.dataset?.param === "smoothingMode"
+    slider?.dataset?.param === "smoothingMode" ||
+    slider?.dataset?.param === "steps" ||
+    slider?.dataset?.param === "segmentShape" ||
+    slider?.dataset?.param === "curveOffset"
   );
+  // Always write domain into the patch (live sync reads from patch, rAF-coalesced).
+  syncNodeGraphPatchParameterFromSlider(slider, {
+    domainValue: domain,
+    interaction: options.interaction,
+    deferAutosave: isDrag,
+    // Drag defers heavy UI; non-drag keeps the full sync path.
+    deferUi: isDrag,
+    // Mid-frame drag: still write domain, skip graph-face side effects.
+    // Graph curve params need every sample for live face animation.
+    skipGraphFace: alreadyPending && !graphCurveLiveParam,
+  });
   if (!alreadyPending || graphCurveLiveParam) {
-    syncNodeGraphPatchParameterFromSlider(slider, {
-      interaction: options.interaction,
-      deferAutosave: isDrag,
-      deferUi: true,
-    });
     scheduleNodeGraphModuleScopeDrawIfNeeded();
   }
   if (isDrag) {
@@ -324,9 +371,8 @@ function setNodeSliderValue(slider, value, options = {}) {
     syncNodeGraphGhostSliders();
     markNodeGraphRenderPending();
   }
-  if (!alreadyPending || graphCurveLiveParam) {
-    scheduleNodeGraphLiveParameterSync();
-  }
+  // Always schedule (coalesced) so the pending live flush sees the latest patch.
+  scheduleNodeGraphLiveParameterSync();
   // Module levels ↔ bottom toolbar 🔊 mirrors.
   const nodeType = slider.closest?.(".dsp-node")?.dataset?.nodeType;
   const param = slider?.dataset?.param;
@@ -366,7 +412,7 @@ function setNodeChoiceSliderFromPointer(slider, surface, clientX, options = {}) 
   if (!Number.isFinite(value)) {
     return false;
   }
-  const current = Number(slider.dataset.unboundedValue ?? slider.value);
+  const current = Number(slider.value);
   if (Number.isFinite(current) && Math.round(current) === Math.round(value)) {
     return false;
   }
@@ -550,10 +596,48 @@ function bindNodeGraphNativeSliderModifiers(input, defaultValue) {
   });
 }
 
+/** True if `el` is a surface that drives a range slider via data-slider-target. */
+function nodeSliderIsDragSurface(el) {
+  return Boolean(
+    el?.classList?.contains("node-slider-readout")
+    || el?.classList?.contains("node-knob-face"),
+  );
+}
+
+/**
+ * Resolve the drag surface for a pointer/keyboard event.
+ * Knob face mirrors Bias `.node-slider-readout` (same modifiers + path).
+ */
+function nodeSliderDragSurfaceFromEvent(event) {
+  if (nodeSliderIsDragSurface(event?.currentTarget)) {
+    return event.currentTarget;
+  }
+  return event?.target?.closest?.(".node-slider-readout, .node-knob-face") || null;
+}
+
+/** Type-in edit for a surface (face → linked Bias readout so we never replace the face DOM). */
+function beginNodeSliderSurfaceEdit(surface) {
+  if (!surface || typeof beginNodeSliderReadoutEdit !== "function") {
+    return;
+  }
+  if (surface.classList.contains("node-knob-face")) {
+    const sliderId = String(surface.dataset.sliderTarget || "").trim();
+    if (!sliderId) {
+      return;
+    }
+    const linked = document.querySelector(
+      `.node-slider-readout[data-slider-target="${CSS.escape(sliderId)}"]`,
+    );
+    if (linked) {
+      beginNodeSliderReadoutEdit(linked);
+    }
+    return;
+  }
+  beginNodeSliderReadoutEdit(surface);
+}
+
 function stepNodeSliderFromKeyboard(event) {
-  const surface = event.currentTarget?.classList?.contains("node-slider-readout")
-    ? event.currentTarget
-    : event.target?.closest?.(".node-slider-readout");
+  const surface = nodeSliderDragSurfaceFromEvent(event);
   const slider = document.getElementById(surface?.dataset?.sliderTarget || "");
   if (!surface || !slider) {
     return false;
@@ -569,7 +653,7 @@ function stepNodeSliderFromKeyboard(event) {
   };
   const min = Number(slider.min);
   const max = Number(slider.max);
-  const current = Number(slider.value);
+  const current = nodeSliderDomainForTravel(slider);
   let nextValue = current;
   if (event.key === "Home") {
     nextValue = min;
@@ -591,8 +675,19 @@ function stepNodeSliderFromKeyboard(event) {
   return true;
 }
 
+function nodeSliderDomainForTravel(slider) {
+  const fromDomain = Number(slider?.dataset?.domainValue);
+  if (Number.isFinite(fromDomain)) {
+    return fromDomain;
+  }
+  const fromValue = Number(slider?.value);
+  return Number.isFinite(fromValue) ? fromValue : 0;
+}
+
 function reanchorNodeSliderDragAtPointer(drag, event) {
-  drag.startTravel = nodeSliderTravelFromValue(drag.slider, Number(drag.slider.value));
+  // Re-anchor from domain (not the clamped HTML thumb) so relative drag stays
+  // continuous for values outside min/max.
+  drag.startTravel = nodeSliderTravelFromValue(drag.slider, nodeSliderDomainForTravel(drag.slider));
   drag.startX = event.clientX;
   drag.startY = event.clientY;
 }
@@ -651,9 +746,7 @@ function beginNodeSliderDrag(event) {
     return;
   }
 
-  const surface = event.currentTarget?.classList?.contains("node-slider-readout")
-    ? event.currentTarget
-    : event.target?.closest?.(".node-slider-readout");
+  const surface = nodeSliderDragSurfaceFromEvent(event);
   if (!surface) {
     return;
   }
@@ -662,7 +755,7 @@ function beginNodeSliderDrag(event) {
   // instead of relying on the native "dblclick" event -- pointerdown always
   // fires, so this path can't be suppressed. The old `event.detail > 1`
   // early-return is folded in here: either signal routes to the editor
-  // instead of a second drag.
+  // instead of a second drag. Face surfaces edit the linked Bias readout.
   const lastDown = nodeGraphMvp.sliderLastPointerDown;
   const now = performance.now();
   const isDoubleClick =
@@ -677,9 +770,7 @@ function beginNodeSliderDrag(event) {
     nodeGraphMvp.sliderLastPointerDown = null;
     event.preventDefault();
     event.stopPropagation();
-    if (typeof beginNodeSliderReadoutEdit === "function") {
-      beginNodeSliderReadoutEdit(surface);
-    }
+    beginNodeSliderSurfaceEdit(surface);
     return;
   }
   const slider = document.getElementById(surface.dataset.sliderTarget);
@@ -691,14 +782,16 @@ function beginNodeSliderDrag(event) {
   const resetToDefaultOnClick = (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
   const jumpToPointerOnClick = event.altKey && !(event.shiftKey && (event.ctrlKey || event.metaKey));
   const pointerMode = "relative";
-  let startTravel = nodeSliderTravelFromValue(slider, Number(slider.value));
+  // Start relative drag from domainValue so a stale/clamped HTML thumb cannot
+  // jump the parameter when the pointer first moves.
+  let startTravel = nodeSliderTravelFromValue(slider, nodeSliderDomainForTravel(slider));
   if (jumpToPointerOnClick) {
     if (setNodeSliderValueAtPointer(slider, surface, event, { interaction: "drag" })) {
-      startTravel = nodeSliderTravelFromValue(slider, Number(slider.value));
+      startTravel = nodeSliderTravelFromValue(slider, nodeSliderDomainForTravel(slider));
     }
   } else if (!resetToDefaultOnClick && nodeSliderShouldDisplayChoices(slider) && nodeSliderShouldDivideChoicesVisibly(slider)) {
     setNodeChoiceSliderFromPointer(slider, surface, event.clientX, { interaction: "drag" });
-    startTravel = nodeSliderTravelFromValue(slider, Number(slider.value));
+    startTravel = nodeSliderTravelFromValue(slider, nodeSliderDomainForTravel(slider));
   }
   nodeGraphMvp.sliderDragging = {
     moved: false,
@@ -743,9 +836,11 @@ function dragNodeSlider(event) {
   }
   drag._lastMoveEvent = event;
 
-  const horizontalDelta = event.clientX - drag.startX;
-  const verticalDelta = drag.startY - event.clientY;
-  if (Math.abs(horizontalDelta) > 1 || Math.abs(verticalDelta) > 1) {
+  if (
+    typeof nodeGraphPointerDragExceededMoveThreshold === "function"
+      ? nodeGraphPointerDragExceededMoveThreshold(drag.startX, drag.startY, event.clientX, event.clientY, 1)
+      : (Math.abs(event.clientX - drag.startX) > 1 || Math.abs(drag.startY - event.clientY) > 1)
+  ) {
     drag.moved = true;
   }
 
@@ -759,18 +854,24 @@ function dragNodeSlider(event) {
   }
 
   // Fine/coarse scale from modifier keys — live per-event.
-  // Re-anchor startTravel when scale changes to prevent value jump (10x delta).
+  // Re-anchor travel AND pointer origin when scale changes so releasing Shift
+  // mid-drag does not apply the whole path at the new scale (RS-MET style).
   const currentFineScale = nodeSliderFineTuneScale(event);
   if (currentFineScale !== drag.fineScale) {
-    drag.startTravel = nodeSliderTravelFromValue(drag.slider, Number(drag.slider.value));
+    reanchorNodeSliderDragAtPointer(drag, event);
     drag.fineScale = currentFineScale;
+    event.preventDefault();
+    return;
   }
 
   // Wrap pointer at screen edges to approximate infinite drag.
   wrapNodeSliderDragAtScreenEdge(drag, event);
 
   const visualTravelWidth = Math.max(1, drag.width * (Number(drag.visualScale) || 1));
-  const travelDelta = ((horizontalDelta + verticalDelta) / visualTravelWidth) * drag.fineScale;
+  // App-wide diagonal policy: right + up increase (see nodeGraphPointerDragTravelDelta).
+  const travelDelta = typeof nodeGraphPointerDragTravelDelta === "function"
+    ? nodeGraphPointerDragTravelDelta(drag.startX, drag.startY, event.clientX, event.clientY, visualTravelWidth, drag.fineScale)
+    : (((event.clientX - drag.startX) + (drag.startY - event.clientY)) / visualTravelWidth) * drag.fineScale;
   const nextTravel = drag.startTravel + travelDelta;
   setNodeSliderValue(
     drag.slider,

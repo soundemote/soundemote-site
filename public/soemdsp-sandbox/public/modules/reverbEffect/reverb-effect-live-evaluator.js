@@ -54,8 +54,8 @@ function createNodeGraphSabrinaReverbState() {
 function nodeGraphSabrinaReverbSample(state, leftInput, rightInput, params, sampleRate, runtime = null, nodeId = "") {
   const dryLeft = nodeGraphSafeFilterNumber(leftInput, runtime, nodeId, null, "Sabrina left input");
   const dryRight = nodeGraphSafeFilterNumber(rightInput, runtime, nodeId, null, "Sabrina right input");
-  const dryMono = (dryLeft + dryRight) * 0.5;
-  const dry = { "Left Dry": dryLeft, "Mono Dry": dryMono, "Right Dry": dryRight, "Left Mix": dryLeft, "Mono Mix": dryMono, "Right Mix": dryRight };
+  // Dry = pure input; Mix = dry/wet blend (no wet-only outs).
+  const dry = { "Dry L": dryLeft, "Dry R": dryRight, "Mix L": dryLeft, "Mix R": dryRight };
   const native = runtime?.nativeSabrinaReverbReady ? runtime?.nativeSabrinaReverb : null;
   if (!native?.soemdsp_sabrina_reverb_create || !native?.soemdsp_sabrina_reverb_process) {
     return dry;
@@ -77,7 +77,7 @@ function nodeGraphSabrinaReverbSample(state, leftInput, rightInput, params, samp
     native.soemdsp_sabrina_reverb_process(state.nativeHandle, dryLeft, dryRight);
     const mixLeft = nodeGraphSafeFilterNumber(native.soemdsp_sabrina_reverb_left?.(state.nativeHandle), runtime, nodeId, null, "Sabrina mix left");
     const mixRight = nodeGraphSafeFilterNumber(native.soemdsp_sabrina_reverb_right?.(state.nativeHandle), runtime, nodeId, null, "Sabrina mix right");
-    return { "Left Dry": dryLeft, "Mono Dry": dryMono, "Right Dry": dryRight, "Left Mix": mixLeft, "Mono Mix": (mixLeft + mixRight) * 0.5, "Right Mix": mixRight };
+    return { "Dry L": dryLeft, "Dry R": dryRight, "Mix L": mixLeft, "Mix R": mixRight };
   } catch (error) {
     if (runtime) {
       runtime.nativeSabrinaReverbReady = false;
@@ -99,8 +99,10 @@ nodeGraphLiveModuleEvaluators.reverbEffect = ({ runtime, node, nodeId, frame, fr
   const state = runtime.reverbEffectStates.get(nodeId) || createNodeGraphSabrinaReverbState();
   runtime.reverbEffectStates.set(nodeId, state);
   const read = (key, fallback) => readNodeGraphLiveEffectiveParam(runtime, node, key, fallback, frame, frames, frameValues);
-  const leftInput = mixInput(nodeId, "Left");
-  const rightInput = hasInput(nodeId, "Right") ? mixInput(nodeId, "Right") : leftInput;
+  // Match worklet: mono In feeds both channels; Left/Right are true stereo.
+  const monoInput = mixInput(nodeId, "In");
+  const leftInput = mixInput(nodeId, "Left") + monoInput;
+  const rightInput = (hasInput(nodeId, "Right") ? mixInput(nodeId, "Right") : mixInput(nodeId, "Left")) + monoInput;
   return nodeGraphSabrinaReverbSample(
     state,
     leftInput,

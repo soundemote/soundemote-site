@@ -57,40 +57,52 @@
       );
     }
 
+    /** Resolve a CSS length token on the zoom surface (handles calc()). */
+    function resolveCssLengthPx(cssVarName, fallbackPx) {
+      const workspace = document.getElementById("nodeGraphWorkspace");
+      const surface = typeof deps.zoomSurface === "function" ? deps.zoomSurface() : null;
+      const host = surface || workspace;
+      if (host && typeof document !== "undefined") {
+        const probe = document.createElement("div");
+        probe.style.cssText = "position:absolute;left:0;top:0;visibility:hidden;pointer-events:none;"
+          + `width:var(${cssVarName});height:0;`;
+        host.append(probe);
+        const size = probe.offsetWidth;
+        probe.remove();
+        if (Number.isFinite(size) && size > 0) {
+          return size;
+        }
+      }
+      return fallbackPx;
+    }
+
+    /** Radius of the contact plug in zoom-surface units (matches CSS token). */
+    function wireEndpointCapRadius() {
+      const size = resolveCssLengthPx("--node-wire-patch-point-size", 6);
+      return Math.max(1.5, size * 0.5);
+    }
+
     /**
-     * Tuck wire ends under the jack so round linecaps don’t paint a ring in the
-     * module-frame gap at the inlet/outlet edge.
+     * Attach center = middle of the inlet/outlet flat edge (patch-point).
+     * Wire path and contact both use this point. Caps paint on a layer
+     * *above* modules so the plug is visible mid-jack (cable SVG stays under).
      */
-    function insetWireEndpoint(point, role, amount) {
-      if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
-        return point;
+    function wireEndpointCapCenter(attachPoint, _role) {
+      if (!attachPoint || !Number.isFinite(attachPoint.x) || !Number.isFinite(attachPoint.y)) {
+        return attachPoint;
       }
-      const pad = Math.max(0, Number(amount) || 0);
-      if (pad <= 0) {
-        return point;
-      }
-      // "from" = source (output, wire leaves rightward); "to" = destination (input).
-      if (role === "from") {
-        return { x: point.x + pad, y: point.y };
-      }
-      if (role === "to") {
-        return { x: point.x - pad, y: point.y };
-      }
-      return point;
+      return { x: attachPoint.x, y: attachPoint.y };
     }
 
-    function wireEndpointInsetPx() {
-      const style = typeof getComputedStyle === "function"
-        ? getComputedStyle(document.documentElement)
-        : null;
-      const thickness = Number.parseFloat(style?.getPropertyValue("--node-wire-thickness") || "") || 3;
-      return Math.max(2, thickness * 0.55);
+    function endpointCapSvg() {
+      return document.getElementById("nodeWireEndpointSvg")
+        || document.getElementById("nodeWireSvg");
     }
 
+    /** Wire path ends at the contact centers (mid inlet / mid outlet). */
     function path(from, to) {
-      const pad = wireEndpointInsetPx();
-      const a = insetWireEndpoint(from, "from", pad);
-      const b = insetWireEndpoint(to, "to", pad);
+      const a = wireEndpointCapCenter(from, "from");
+      const b = wireEndpointCapCenter(to, "to");
       const horizontalDistance = Math.abs(b.x - a.x);
       const verticalDistance = Math.abs(b.y - a.y);
       const span = Math.min(96, horizontalDistance * 0.48 + verticalDistance * 0.12);
@@ -98,10 +110,41 @@
     }
 
     function straightPath(from, to) {
-      const pad = wireEndpointInsetPx();
-      const a = insetWireEndpoint(from, "from", pad);
-      const b = insetWireEndpoint(to, "to", pad);
+      const a = wireEndpointCapCenter(from, "from");
+      const b = wireEndpointCapCenter(to, "to");
       return `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
+    }
+
+    /**
+     * Solid full-circle contact on the overlay above modules, centered on the
+     * mid-jack attach point. Fill is the endpoint port color (same as the
+     * gradient stop at that end) — no glow, no stub line.
+     */
+    function drawEndpointCap(_svg, attachPoint, role, paint, extraClass = "", options = {}) {
+      const target = endpointCapSvg();
+      const point = wireEndpointCapCenter(attachPoint, role);
+      if (!target || !point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+        return null;
+      }
+      const endColor = options.endColor || null;
+      // Prefer solid end color so the disc matches the gradient stop at 0%/100%.
+      // Fall back to stroke paint only if color is missing.
+      const fill = endColor || paint || null;
+      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      circle.setAttribute(
+        "class",
+        ["node-wire-endpoint-cap", extraClass].filter(Boolean).join(" "),
+      );
+      circle.setAttribute("cx", String(point.x));
+      circle.setAttribute("cy", String(point.y));
+      circle.setAttribute("r", String(wireEndpointCapRadius()));
+      if (fill) {
+        circle.setAttribute("fill", fill);
+        circle.style.fill = fill;
+      }
+      circle.setAttribute("pointer-events", "none");
+      target.append(circle);
+      return circle;
     }
 
     // Currently unreachable from any live call site (nodeGraphManualTracePathOptions
@@ -153,7 +196,20 @@
       return `rgb(${channel("r")} ${channel("g")} ${channel("b")})`;
     }
 
+    function ensureSvgDefs(svg) {
+      if (!svg) {
+        return null;
+      }
+      let defs = svg.querySelector("defs");
+      if (!defs) {
+        defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+        svg.prepend(defs);
+      }
+      return defs;
+    }
+
     function createGradient(svg, id, from, to, stopClass = "node-wire-gradient-stop", colors = null) {
+      const [fromColor, toColor] = colors || [null, null];
       const gradient = document.createElementNS("http://www.w3.org/2000/svg", "linearGradient");
       gradient.id = id;
       gradient.setAttribute("gradientUnits", "userSpaceOnUse");
@@ -162,24 +218,31 @@
       gradient.setAttribute("x2", String(to.x));
       gradient.setAttribute("y2", String(to.y));
 
-      const [fromColor, toColor] = colors || [null, null];
       // Same color on both ends: skip the opacity dip entirely rather than
       // faking a transition that never actually changes color -- app-wide
       // policy, not specific to any one wire kind.
       const sameColor = Boolean(fromColor) && Boolean(toColor) && fromColor === toColor;
       const middleColor = !sameColor && fromColor && toColor ? mixWireColor(fromColor, toColor) : null;
-      // Legacy smoke contract strings: ["48%", "0.36", fromColor], ["52%", "0.36", toColor].
+      // End plateaus: solid port color near each jack (matches contact discs);
+      // phosphor dip + crossfade only in the middle of the cable.
+      const endPlateau = 0.14;
+      const p0 = "0%";
+      const pFrom = `${Math.round(endPlateau * 100)}%`;
+      const pTo = `${Math.round((1 - endPlateau) * 100)}%`;
+      const p1 = "100%";
       const stops = sameColor
         ? [
-            ["0%", "1", fromColor],
-            ["100%", "1", toColor],
+            [p0, "1", fromColor],
+            [p1, "1", toColor],
           ]
         : [
-            ["0%", "1", fromColor],
+            [p0, "1", fromColor],
+            [pFrom, "1", fromColor],
             ["48%", "0.36", fromColor],
             ["50%", "0.34", middleColor],
             ["52%", "0.36", toColor],
-            ["100%", "1", toColor],
+            [pTo, "1", toColor],
+            [p1, "1", toColor],
           ];
       for (const [offset, opacity, color] of stops) {
         const stop = document.createElementNS("http://www.w3.org/2000/svg", "stop");
@@ -193,8 +256,33 @@
         gradient.append(stop);
       }
 
-      svg.querySelector("defs")?.append(gradient);
+      // Paint server on both layers: under-module cable SVG and over-module
+      // endpoint SVG (caps always; strokes when "Wires Above Modules" is on).
+      const capSvg = endpointCapSvg();
+      ensureSvgDefs(svg)?.append(gradient);
+      if (capSvg && capSvg !== svg) {
+        ensureSvgDefs(capSvg)?.append(gradient.cloneNode(true));
+      }
       return `url(#${id})`;
+    }
+
+    /** True when cable strokes paint above module faces (Visibility toggle). */
+    function wiresAboveModules() {
+      return Boolean(
+        typeof nodeGraphMvp !== "undefined" && nodeGraphMvp?.wiresAboveModules,
+      );
+    }
+
+    /**
+     * Visual cable stroke host. Hit targets always stay on the under-module
+     * wire SVG. Caps always stay on the endpoint overlay (mid-jack discs).
+     * Stroke layer follows Visibility → Wires Above Modules.
+     */
+    function visualCableSvg(wireSvg) {
+      if (wiresAboveModules()) {
+        return endpointCapSvg() || wireSvg;
+      }
+      return wireSvg;
     }
 
     function drawPath(svg, options) {
@@ -212,12 +300,15 @@
         to,
         wireColors = null,
         wireType = "cable",
+        pixelWire = false,
       } = options;
       const normalizedWireType = normalizeNodeGraphWireType(wireType);
       const isTrace = normalizedWireType === nodeGraphWireTypes.trace;
+      const isPixel = pixelWire === true
+        || (typeof normalizeNodeGraphWirePixel === "function" && normalizeNodeGraphWirePixel(pixelWire));
       const pathData = explicitPathData || (isTrace ? tracePath(from, to) : path(from, to));
       const stroke = createGradient(svg, gradientId, from, to, gradientClass, wireColors);
-      // Hit paths are interactive overhead — skip while pan/zoom gesturing.
+      // Hit paths stay on the under-module wire SVG (interaction only).
       if (!skipHitPath) {
         const hitPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
         hitPath.setAttribute("class", "node-wire-hit-path");
@@ -225,6 +316,9 @@
         hitPath.dataset.connectionIndex = String(index);
         hitPath.dataset.connectionKind = kind;
         hitPath.dataset.interactionMode = mode;
+        if (isPixel) {
+          hitPath.dataset.pixelWire = "true";
+        }
         if (Array.isArray(options.tracePoints)) {
           hitPath.dataset.tracePoints = nodeGraphTraceWaypointAttribute(options.tracePoints);
         }
@@ -233,21 +327,63 @@
         svg.append(hitPath);
       }
 
+      // Caps always on the endpoint overlay (visible mid-jack above faces).
+      // Cable stroke: under modules by default; above when Visibility toggle on.
+      // Visibility → Wire Lengths off: skip the stroke, keep dots + hit targets.
+      // When stroke + disc share a layer, paint discs first then stroke so the
+      // join has no AA fringe (disc-over-stroke samples a third color at edge).
+      const paintSvg = visualCableSvg(svg) || svg;
+      const above = paintSvg !== svg;
+      const showLength = typeof nodeGraphMvp === "undefined"
+        || nodeGraphMvp?.wireLengthsVisible !== false;
+      const [fromColor, toColor] = wireColors || [null, null];
+      const capClass = [
+        String(pathClass).includes("inactive-wire") ? "inactive-wire" : "",
+        kind === "modulation" || kind === "graph" ? "modulation" : "",
+      ].filter(Boolean).join(" ");
+
+      const drawCaps = () => {
+        drawEndpointCap(svg, from, "from", stroke, capClass, {
+          endColor: fromColor,
+          gradientId,
+        });
+        drawEndpointCap(svg, to, "to", stroke, capClass, {
+          endColor: toColor,
+          gradientId,
+        });
+      };
+
+      if (!showLength) {
+        drawCaps();
+        return;
+      }
+
       const renderedPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
       renderedPath.setAttribute(
         "class",
-        `${pathClass}${isTrace ? " trace-wire" : ""}`,
+        `${pathClass}${isTrace ? " trace-wire" : ""}${isPixel ? " pixel-wire" : ""}`,
       );
       renderedPath.dataset.alias = alias;
       renderedPath.dataset.connectionIndex = String(index);
       renderedPath.dataset.connectionKind = kind;
       renderedPath.dataset.interactionMode = mode;
+      if (isPixel) {
+        renderedPath.dataset.pixelWire = "true";
+      }
       if (Array.isArray(options.tracePoints)) {
         renderedPath.dataset.tracePoints = nodeGraphTraceWaypointAttribute(options.tracePoints);
       }
       renderedPath.setAttribute("d", pathData);
       renderedPath.setAttribute("stroke", stroke);
-      svg.append(renderedPath);
+      renderedPath.style.stroke = stroke;
+
+      if (above) {
+        drawCaps();
+        paintSvg.append(renderedPath);
+      } else {
+        paintSvg.append(renderedPath);
+        drawCaps();
+      }
     }
 
     function elementForEndpoint(endpoint) {
@@ -268,66 +404,77 @@
     }
 
     function endpointHitboxClientRect(endpoint, hitboxElement = null) {
-      // Geometry is always centered on the jack.
-      // - Solid shells: jack-local pad only (row is a full 1gu band; expanding
-      //   to the whole row stole module drag and felt like shifting hitboxes).
-      // - Headered stacked IO: if the row is already a tight band, use it;
-      //   tall stretched rows keep only the local jack neighborhood.
+      // Hitbox must match the glowing jack (screen px), not a larger "near
+      // face" zone that only lights the jack while clicks hit the face above.
+      // - Solid shells: jack box + glow pad; optional label reach only when
+      //   labels are visible (pointer can land on the row, not the face).
+      // - Headered stacked IO: tight rows use the full row; tall rows stay
+      //   jack-local + glow.
       const row = hitboxElement?.classList?.contains("node-io-row")
         ? hitboxElement
         : hitboxElement?.closest?.(".node-io-row") || null;
-      const solidShell = Boolean(row?.closest?.(".node-solid-module-shell"));
+      const solidShell = Boolean(
+        row?.closest?.(".node-solid-module-shell")
+        || row?.closest?.(".node-module-chrome-layout-b-shell")
+        || hitboxElement?.closest?.(".node-solid-module-shell")
+        || hitboxElement?.closest?.(".node-module-chrome-layout-b-shell"),
+      );
       const jack = row?.querySelector?.(".node-port")
         || (hitboxElement?.classList?.contains("node-port") ? hitboxElement : null)
+        || (hitboxElement?.classList?.contains("node-param-port") ? hitboxElement : null)
         || elementForEndpoint(endpoint);
       if (!jack && !row) {
         return null;
       }
-      const visual = jack || row;
       const jackRect = (jack || row).getBoundingClientRect();
       if (jackRect.width <= 0 || jackRect.height <= 0) {
         return null;
       }
-      const style = getComputedStyle(visual);
-      const portDiameter =
-        Number.parseFloat(style.getPropertyValue("--node-port-diameter")) ||
-        Math.max(jackRect.width, jackRect.height);
-      const portArea =
-        Number.parseFloat(style.getPropertyValue("--node-port-area-size")) ||
-        portDiameter / 0.57;
-      // Local surrounding pad around the jack.
-      const padX = Math.max(portDiameter * 0.65, 8);
-      const padY = Math.max(portArea * 0.42, portDiameter * 0.55, 8);
+      // Screen-space diameter: half-jacks are width≈radius, height≈diameter.
+      const diameter = Math.max(jackRect.height, jackRect.width * 2, 8);
+      // Match CSS glow halo around the jack (size 0.5×d + spread ≈ 0.21×d).
+      const glowPad = diameter * 0.72;
+
       const center = typeof nodeGraphElementPatchPointClientCenter === "function"
         ? nodeGraphElementPatchPointClientCenter(jack || row, endpoint?.io)
         : {
           x: endpoint?.io === "output"
             ? jackRect.right
-            : (endpoint?.io === "input" ? jackRect.left : jackRect.left + jackRect.width * 0.5),
+            : (endpoint?.io === "input" || endpoint?.io === "modulation" || endpoint?.io === "graph"
+              ? jackRect.left
+              : jackRect.left + jackRect.width * 0.5),
           y: jackRect.top + jackRect.height * 0.5,
         };
 
-      let left = center.x - padX;
-      let right = center.x + padX;
-      let top = center.y - padY;
-      let bottom = center.y + padY;
-
-      // Always cover the jack box itself.
-      left = Math.min(left, jackRect.left);
-      right = Math.max(right, jackRect.right);
-      top = Math.min(top, jackRect.top);
-      bottom = Math.max(bottom, jackRect.bottom);
+      // Jack box + glow pad — the luminous hover region users aim at.
+      let left = jackRect.left - glowPad;
+      let right = jackRect.right + glowPad;
+      let top = jackRect.top - glowPad;
+      let bottom = jackRect.bottom + glowPad;
 
       if (solidShell) {
-        // Reach a short way toward the label so the name is still wirable,
-        // but leave most of the row free for module select/drag.
-        const labelReach = Math.max(portArea * 0.9, 18);
-        if (endpoint?.io === "input") {
-          right = Math.max(right, center.x + labelReach);
-        } else if (endpoint?.io === "output") {
-          left = Math.min(left, center.x - labelReach);
+        const column = row?.closest?.(".node-io-column") || jack?.closest?.(".node-io-column");
+        const labelsHidden = Boolean(
+          column?.classList?.contains("labels-hidden")
+          || row?.closest?.(".io-hidden")
+          || jack?.closest?.(".io-hidden"),
+        );
+        // Labels visible: full row width (column sized by longest label → equal
+        // hitboxes for every inlet / every outlet). Labels hidden: jack band only.
+        if (!labelsHidden && row) {
+          const rowRect = row.getBoundingClientRect();
+          left = Math.min(left, rowRect.left);
+          right = Math.max(right, rowRect.right);
+        } else if (labelsHidden && column) {
+          // Keep hits inside the jack band (where the port element actually is).
+          const colRect = column.getBoundingClientRect();
+          left = Math.max(left, colRect.left);
+          right = Math.min(right, colRect.right);
+          // Still cover the jack fully.
+          left = Math.min(left, jackRect.left);
+          right = Math.max(right, jackRect.right);
         }
-        // Vertical: stay inside the 1gu port band so space-evenly gaps stay drag.
+        // Vertical: stay inside the port band so inter-jack gaps stay drag.
         if (row) {
           const rowRect = row.getBoundingClientRect();
           top = Math.max(top, rowRect.top);
@@ -335,8 +482,18 @@
         }
       } else if (row) {
         const rowRect = row.getBoundingClientRect();
-        const maxBand = portArea * 1.35;
-        if (rowRect.height > 0 && rowRect.height <= maxBand) {
+        // LayoutA compact rows + LayoutC (title+I/O only): whole row is the hit
+        // band. LayoutC rows stretch 1fr tall on small shells — always use full
+        // row so L/R and X/Y stay easy to grab at 3×3 gu.
+        const isLayoutC = Boolean(
+          row.closest?.(".chrome-layout-c")
+          || row.closest?.("[data-chrome-layout='LayoutC']"),
+        );
+        const maxBand = diameter * 2.4;
+        if (
+          rowRect.height > 0
+          && (isLayoutC || rowRect.height <= maxBand)
+        ) {
           left = Math.min(left, rowRect.left);
           right = Math.max(right, rowRect.right);
           top = Math.min(top, rowRect.top);
@@ -540,6 +697,7 @@
     return {
       connectEndpoints,
       createGradient,
+      drawEndpointCap,
       drawPath,
       endpointFromElement,
       endpointPoint,
@@ -548,6 +706,7 @@
       patchPointTargetFromPoint,
       path,
       pointInEndpointHitbox,
+      wireEndpointCapCenter,
       straightPath,
       tracePath,
     };
@@ -612,6 +771,7 @@
         element.querySelector?.(".node-port")?.classList.remove("port-connection-selected");
       }
       state.portConnectionMode = null;
+      state.portMovePointer = null;
     }
 
     function cancelPortConnectionMode() {
@@ -628,8 +788,45 @@
       if (!mode) {
         return;
       }
-      for (const { endpoint, from } of mode.selected.values()) {
-        const connected = helpers.connectEndpoints(endpoint, targetEndpoint);
+      // Moving existing wires: remove originals first (one commit), then reattach.
+      if (mode.movingWires) {
+        const removes = [];
+        for (const entry of mode.selected.values()) {
+          if (entry.remove && Number.isInteger(entry.remove.index)) {
+            removes.push({ kind: entry.remove.kind || "signal", index: entry.remove.index });
+          }
+          if (Array.isArray(entry.extraRemoves)) {
+            for (const extra of entry.extraRemoves) {
+              if (extra && Number.isInteger(extra.index)) {
+                removes.push({ kind: extra.kind || "signal", index: extra.index });
+              }
+            }
+          }
+        }
+        if (removes.length) {
+          if (typeof disconnectNodeGraphConnections === "function") {
+            disconnectNodeGraphConnections(removes, {
+              status: removes.length === 1 ? "wire moved" : `${removes.length} wires moved`,
+            });
+          } else {
+            const byKind = new Map();
+            for (const entry of removes) {
+              const list = byKind.get(entry.kind) || [];
+              list.push(entry.index);
+              byKind.set(entry.kind, list);
+            }
+            for (const [kind, indices] of byKind) {
+              indices.sort((a, b) => b - a);
+              for (const index of indices) {
+                disconnectNodeGraphConnection(index, kind);
+              }
+            }
+          }
+        }
+      }
+      for (const { endpoint, from, connectOptions } of mode.selected.values()) {
+        const options = connectOptions || {};
+        const connected = helpers.connectEndpoints(endpoint, targetEndpoint, options);
         if (!connected && helpers.endpointsShouldBurst(endpoint, targetEndpoint)) {
           const to = helpers.endpointPoint(targetEndpoint, targetElement);
           animateDestroyedWire(from, to);
@@ -638,8 +835,318 @@
           deps.triggerWireBreak?.("port-click");
         }
       }
+      // Keep a one-shot suppressClick arm if the caller set one (drag-drop),
+      // so the trailing click does not start a new wire.
+      const suppressClick = Boolean(state.portMovePointer?.suppressClick);
       clearPortConnectionMode();
+      if (suppressClick) {
+        state.portMovePointer = { suppressClick: true, active: false, pointerId: null };
+      }
       deps.drawWires();
+    }
+
+    function portsMatch(a, b) {
+      return String(a || "").trim() === String(b || "").trim();
+    }
+
+    function wireListForKind(kind) {
+      if (kind === "modulation") {
+        return Array.isArray(state.modulations)
+          ? state.modulations
+          : (state.patch?.modulations || []);
+      }
+      if (kind === "graph") {
+        return Array.isArray(state.graphConnections)
+          ? state.graphConnections
+          : (state.patch?.graphConnections || []);
+      }
+      return Array.isArray(state.connections)
+        ? state.connections
+        : (state.patch?.connections || []);
+    }
+
+    function wireTouchesEndpoint(kind, wire, endpoint) {
+      if (!wire || !endpoint) {
+        return null;
+      }
+      const node = String(endpoint.node || "");
+      if (endpoint.io === "input" && kind === "signal") {
+        if (
+          String(wire.destinationNode || "") === node &&
+          portsMatch(wire.destinationPort, endpoint.port)
+        ) {
+          return {
+            freeRole: "destination",
+            fixedEndpoint: {
+              io: "output",
+              node: wire.sourceNode,
+              port: wire.sourcePort,
+            },
+          };
+        }
+      }
+      if (endpoint.io === "modulation" && kind === "modulation") {
+        const param = endpoint.param || endpoint.port;
+        if (
+          String(wire.destinationNode || "") === node &&
+          portsMatch(wire.destinationParam, param)
+        ) {
+          return {
+            freeRole: "destination",
+            fixedEndpoint: {
+              io: "output",
+              node: wire.sourceNode,
+              port: wire.sourcePort,
+            },
+          };
+        }
+      }
+      if (endpoint.io === "graph" && kind === "graph") {
+        const graphInput = endpoint.graphInput || endpoint.port;
+        if (
+          String(wire.destinationNode || "") === node &&
+          portsMatch(wire.destinationGraphInput, graphInput)
+        ) {
+          return {
+            freeRole: "destination",
+            fixedEndpoint: {
+              io: "output",
+              node: wire.sourceNode,
+              port: wire.sourcePort,
+            },
+          };
+        }
+      }
+      if (endpoint.io === "output") {
+        if (
+          String(wire.sourceNode || "") === node &&
+          portsMatch(wire.sourcePort, endpoint.port)
+        ) {
+          // Grabbing the source end: free end is the output; fixed is destination.
+          if (kind === "signal") {
+            return {
+              freeRole: "source",
+              fixedEndpoint: {
+                io: "input",
+                node: wire.destinationNode,
+                port: wire.destinationPort,
+              },
+            };
+          }
+          if (kind === "modulation") {
+            return {
+              freeRole: "source",
+              fixedEndpoint: {
+                io: "modulation",
+                node: wire.destinationNode,
+                param: wire.destinationParam,
+                port: wire.destinationParam,
+              },
+            };
+          }
+          if (kind === "graph") {
+            return {
+              freeRole: "source",
+              fixedEndpoint: {
+                io: "graph",
+                node: wire.destinationNode,
+                graphInput: wire.destinationGraphInput,
+                port: wire.destinationGraphInput,
+              },
+            };
+          }
+        }
+      }
+      return null;
+    }
+
+    /**
+     * Selected wires that touch this jack (only those — not every cable on the port).
+     */
+    function selectedWiresAtEndpoint(endpoint) {
+      if (!endpoint) {
+        return [];
+      }
+      const entries = typeof nodeGraphSelectedWireEntries === "function"
+        ? nodeGraphSelectedWireEntries(state.selected)
+        : [];
+      if (!entries.length) {
+        return [];
+      }
+      const results = [];
+      for (const entry of entries) {
+        const kind = entry.kind || "signal";
+        const list = wireListForKind(kind);
+        const wire = list[entry.index];
+        if (!wire) {
+          continue;
+        }
+        const touch = wireTouchesEndpoint(kind, wire, endpoint);
+        if (!touch) {
+          continue;
+        }
+        results.push({
+          kind,
+          index: entry.index,
+          wire,
+          freeRole: touch.freeRole,
+          fixedEndpoint: touch.fixedEndpoint,
+        });
+      }
+      return results;
+    }
+
+    function elementForEndpoint(endpoint) {
+      if (!endpoint) {
+        return null;
+      }
+      if (endpoint.io === "input" || endpoint.io === "output") {
+        if (typeof nodeGraphPortElementForWireEndpoint === "function") {
+          const portEl = nodeGraphPortElementForWireEndpoint(endpoint.node, endpoint.port, endpoint.io);
+          return portEl?.closest?.(".node-io-row") || portEl || null;
+        }
+        return null;
+      }
+      if (endpoint.io === "modulation" && typeof nodeGraphModulationPortSelector === "function") {
+        return document.querySelector(nodeGraphModulationPortSelector(endpoint.node, endpoint.param || endpoint.port));
+      }
+      if (endpoint.io === "graph" && typeof nodeGraphGraphInputPortSelector === "function") {
+        return document.querySelector(
+          nodeGraphGraphInputPortSelector(endpoint.node, endpoint.graphInput || endpoint.port),
+        );
+      }
+      return null;
+    }
+
+    function connectOptionsFromWire(wire) {
+      if (!wire) {
+        return { autoPair: false };
+      }
+      const options = { autoPair: false };
+      if (wire.wireType) {
+        options.wireType = wire.wireType;
+      }
+      if (wire.pixelWire) {
+        options.pixelWire = true;
+      }
+      if (Array.isArray(wire.tracePoints) && wire.tracePoints.length) {
+        options.tracePoints = wire.tracePoints.slice();
+      }
+      return options;
+    }
+
+    function markEndpointSelected(element) {
+      if (!element) {
+        return;
+      }
+      element.classList.add("port-connection-selected");
+      element.querySelector?.(".node-port")?.classList.add("port-connection-selected");
+      if (element.classList.contains("node-port")) {
+        element.classList.add("port-connection-selected");
+      }
+    }
+
+    function fixedEndpointPoint(fixedEndpoint, clientX, clientY) {
+      const element = elementForEndpoint(fixedEndpoint);
+      let from = helpers.endpointPoint(fixedEndpoint, element);
+      if (!from && typeof nodeGraphPortCenter === "function" && (fixedEndpoint.io === "input" || fixedEndpoint.io === "output")) {
+        from = nodeGraphPortCenter(fixedEndpoint.node, fixedEndpoint.port, fixedEndpoint.io);
+      }
+      if (!from && fixedEndpoint.io === "modulation" && typeof nodeGraphModulationPortCenter === "function") {
+        from = nodeGraphModulationPortCenter(fixedEndpoint.node, fixedEndpoint.param || fixedEndpoint.port);
+      }
+      if (!from && fixedEndpoint.io === "graph" && typeof nodeGraphGraphInputPortCenter === "function") {
+        from = nodeGraphGraphInputPortCenter(fixedEndpoint.node, fixedEndpoint.graphInput || fixedEndpoint.port);
+      }
+      if (!from) {
+        from = deps.clientPoint({ clientX, clientY });
+      }
+      return { from, element };
+    }
+
+    /**
+     * Soft-lift only selected wires that attach to this jack.
+     * Cable paths hide while moving; endpoint dots stay (drawn as caps).
+     */
+    function startMoveSelectedWiresAtPort(endpoint, clientX, clientY) {
+      const movable = selectedWiresAtEndpoint(endpoint);
+      if (!movable.length) {
+        return false;
+      }
+
+      state.wireDragging = null;
+
+      // Grabbing destination end → free end seeks a new input (fixed = sources).
+      // Grabbing source end → free end seeks a new output (fixed = destinations).
+      const freeIsDestination = movable[0].freeRole === "destination";
+      const direction = freeIsDestination ? "output" : "input";
+
+      const selected = new Map();
+      const hideWireKeys = [];
+      const fixedCapEndpoints = [];
+
+      for (const entry of movable) {
+        // Only move wires grabbed from the same end type as the first match.
+        if ((entry.freeRole === "destination") !== freeIsDestination) {
+          continue;
+        }
+        hideWireKeys.push(`${entry.kind}:${entry.index}`);
+        const fixed = entry.fixedEndpoint;
+        const fixedKey = endpointKey(fixed);
+        const { from, element } = fixedEndpointPoint(fixed, clientX, clientY);
+        fixedCapEndpoints.push({
+          endpoint: fixed,
+          point: from,
+          kind: entry.kind,
+        });
+        if (selected.has(fixedKey)) {
+          const existing = selected.get(fixedKey);
+          if (!existing.extraRemoves) {
+            existing.extraRemoves = [];
+          }
+          existing.extraRemoves.push({ kind: entry.kind, index: entry.index });
+          continue;
+        }
+        selected.set(fixedKey, {
+          endpoint: fixed,
+          element,
+          from,
+          connectOptions: connectOptionsFromWire(entry.wire),
+          remove: { kind: entry.kind, index: entry.index },
+        });
+        markEndpointSelected(element);
+      }
+
+      if (selected.size === 0) {
+        return false;
+      }
+
+      // Endpoint dots while moving use the color of the jack the user grabbed.
+      let interactColor = null;
+      if (typeof nodeGraphPortWireColor === "function") {
+        const portName = endpoint.port || endpoint.param || endpoint.graphInput || "";
+        interactColor = nodeGraphPortWireColor(endpoint.node, portName, endpoint.io) || null;
+      }
+
+      state.portConnectionMode = {
+        direction,
+        selected,
+        cursorPoint: deps.clientPoint({ clientX, clientY }),
+        movingWires: true,
+        hideWireKeys,
+        // Caps for fixed ends (and original grab port) while cable paths are hidden.
+        fixedCapEndpoints,
+        interactColor,
+        originEndpoint: {
+          io: endpoint.io,
+          node: endpoint.node,
+          port: endpoint.port,
+          param: endpoint.param,
+          graphInput: endpoint.graphInput,
+        },
+      };
+      deps.drawWires();
+      return true;
     }
 
     function handlePortClickFromElement(portElement, clientX, clientY) {
@@ -655,7 +1162,16 @@
         ? (hitboxElement.querySelector(".node-port") || hitboxElement)
         : hitboxElement;
       const mode = state.portConnectionMode;
+
+      // Swallow the synthetic click after a selected-wire drag (drop or cancel)
+      // so we don't also start a brand-new wire on the same gesture.
+      if (state.portMovePointer?.suppressClick) {
+        state.portMovePointer = null;
+        return true;
+      }
+
       if (!mode) {
+        // Normal click-to-start (or multi-select) a new wire from this jack.
         const from = helpers.endpointPoint(endpoint, hitboxElement);
         if (!from) {
           return false;
@@ -775,6 +1291,24 @@
       if (!helpers.pointInEndpointHitbox(endpoint, event.clientX, event.clientY, hitboxElement)) {
         return;
       }
+
+      // Arm selected-wire move: only selected wires that touch THIS port.
+      // Actual lift happens after drag threshold so plain click still starts
+      // a normal new wire.
+      const movable = selectedWiresAtEndpoint(endpoint);
+      if (movable.length > 0 && !state.portConnectionMode) {
+        state.portMovePointer = {
+          pointerId: event.pointerId ?? null,
+          startClientX: event.clientX,
+          startClientY: event.clientY,
+          endpoint,
+          active: false,
+          suppressClick: false,
+        };
+        event.stopPropagation();
+        return;
+      }
+
       const from = helpers.endpointPoint(endpoint, hitboxElement);
       if (!from) {
         return;
@@ -793,6 +1327,44 @@
     }
 
     function handleWireDragMove(event) {
+      const movePtr = state.portMovePointer;
+      if (movePtr) {
+        if (
+          movePtr.pointerId !== null &&
+          event.pointerId !== undefined &&
+          movePtr.pointerId !== event.pointerId
+        ) {
+          // not our pointer
+        } else {
+          const dx = event.clientX - movePtr.startClientX;
+          const dy = event.clientY - movePtr.startClientY;
+          if (!movePtr.active && Math.hypot(dx, dy) >= 4) {
+            // Crossed drag threshold → soft-lift selected wires at this port.
+            if (
+              startMoveSelectedWiresAtPort(
+                movePtr.endpoint,
+                event.clientX,
+                event.clientY,
+              )
+            ) {
+              movePtr.active = true;
+              movePtr.suppressClick = true;
+            } else {
+              // Selection no longer valid; fall back to normal new-wire drag.
+              state.portMovePointer = null;
+            }
+          }
+          if (movePtr?.active && state.portConnectionMode?.movingWires) {
+            state.portConnectionMode.cursorPoint = deps.clientPoint(event);
+            deps.drawWires();
+            return;
+          }
+          if (movePtr && !movePtr.active) {
+            // Still arming — don't start a parallel single-wire drag.
+            return;
+          }
+        }
+      }
       const drag = state.wireDragging;
       if (!drag) {
         return;
@@ -811,6 +1383,42 @@
     }
 
     function handleWireDragEnd(event) {
+      const movePtr = state.portMovePointer;
+      if (movePtr) {
+        if (
+          movePtr.pointerId !== null &&
+          event.pointerId !== undefined &&
+          movePtr.pointerId !== event.pointerId
+        ) {
+          // not our pointer
+        } else if (movePtr.active && state.portConnectionMode?.movingWires) {
+          const target = helpers.patchPointTargetFromPoint(event.clientX, event.clientY);
+          const targetHitbox = target?.closest?.(".node-io-row") || target;
+          const targetEndpoint = targetHitbox ? helpers.endpointFromElement(targetHitbox) : null;
+          // Swallow the trailing click after a real drag-move (drop or cancel).
+          state.portMovePointer = {
+            pointerId: movePtr.pointerId,
+            suppressClick: true,
+            active: false,
+          };
+          if (
+            targetEndpoint &&
+            isCompatibleTarget(state.portConnectionMode, targetEndpoint)
+          ) {
+            commitPortConnectionMode(targetEndpoint, targetHitbox);
+            return;
+          }
+          // Dropped on empty / invalid: cancel move (wires snap back).
+          // Keep suppressClick arm so click does not start a new wire.
+          const suppress = state.portMovePointer;
+          cancelPortConnectionMode();
+          state.portMovePointer = suppress;
+          return;
+        } else if (!movePtr.active) {
+          // Never dragged — clear arm so click can start a normal new wire.
+          state.portMovePointer = null;
+        }
+      }
       const drag = state.wireDragging;
       if (!drag) {
         return;

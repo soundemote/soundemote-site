@@ -294,7 +294,13 @@ function syncNodeGraphSliderReadouts() {
   }
 }
 
+// Knob face live sync: modules/knob/knob-face.js
+// (syncNodeGraphKnobFaceFromSlider).
+
 function syncNodeSliderReadout(slider) {
+  if (typeof syncNodeGraphKnobFaceFromSlider === "function") {
+    syncNodeGraphKnobFaceFromSlider(slider);
+  }
   const readout = slider.closest("label")?.querySelector(".node-slider-readout");
   if (!readout) {
     return;
@@ -307,10 +313,10 @@ function syncNodeSliderReadout(slider) {
   const labelText = readout.querySelector(".node-slider-readout-label");
   const valueText = readout.querySelector(".node-slider-readout-value");
   const unitText = readout.querySelector(".node-slider-readout-unit");
-  const displayValue = Number.isFinite(Number(slider.dataset.unboundedValue))
-    ? Number(slider.dataset.unboundedValue)
-    : Number(slider.value);
-  const position = nodeSliderTravelFromValue(slider, Number(slider.value)) * 100;
+  // Prefer unbounded domain value (typed Amplitude etc.); thumb may be clamped.
+  const domainRaw = Number(slider.dataset?.domainValue);
+  const displayValue = Number.isFinite(domainRaw) ? domainRaw : Number(slider.value);
+  const position = nodeSliderTravelFromValue(slider, displayValue) * 100;
   let unit = (slider.dataset.unit || "").trim();
   let formattedValue = displayValue;
   let formattedKind = slider.dataset.kind;
@@ -345,7 +351,13 @@ function syncNodeSliderReadout(slider) {
   const usesNumericReadout = !choiceLabel;
   const usesPortalWrap = nodeSliderShouldWraparound(slider) && !usesChoices;
   if (labelText) {
-    labelText.textContent = readout.dataset.paramLabel || nodeSliderLabelText(slider);
+    // Prefer live control/alias (nodeSliderLabelText) over a stale
+    // readout.dataset.paramLabel left over from factory create ("→").
+    const displayLabel = nodeSliderLabelText(slider);
+    if (displayLabel) {
+      readout.dataset.paramLabel = displayLabel;
+    }
+    labelText.textContent = displayLabel || readout.dataset.paramLabel || "";
   }
   valueText.textContent = choiceLabel ? ` ${choiceLabel}` : formatNodeSliderNumber(formattedValue, {
     kind: formattedKind,
@@ -363,21 +375,53 @@ function syncNodeSliderReadout(slider) {
   readout.classList.toggle("reserves-sign-column", usesNumericReadout || usesChoices);
   readout.removeAttribute("title");
   if (dividesChoices) {
+    readout.style.removeProperty("--amount-start");
     readout.style.removeProperty("--amount-end");
     readout.style.removeProperty("--value-start");
     readout.style.removeProperty("--value-end");
+    readout.classList.remove("is-bipolar");
     readout.style.setProperty("--choice-divider-background", "none");
     syncNodeSliderChoiceDebugSquares(readout, choices, true, Number(slider.value));
     syncNodeSliderPortalHandle(readout, slider, position, false);
   } else {
     const travel = Math.max(0, Math.min(1, position / 100));
     const range = nodeSliderHandleRangeFromTravel(slider, readout, travel);
-    // Amount fill ends at the handle's RIGHT edge, not its centre. The handle
-    // centre stops half a handle short of the track end even at full travel,
-    // so a centre-anchored fill never reached the right edge -- and because
-    // the handle itself is translucent you saw the fill edge through it as a
-    // second, offset edge. range.end lines the fill up with the handle edge.
-    readout.style.setProperty("--amount-end", `${range.end}px`);
+    // Amount fill must NOT sit under the translucent handle. Overlap stacks
+    // amount color + handle alpha and reads as a second rectangle / split thumb.
+    // Unipolar: fill 0 → handle LEFT edge. Bipolar: mid → nearer handle edge.
+    const bipolar = slider.dataset.bipolar === "true";
+    readout.classList.toggle("is-bipolar", bipolar);
+    if (bipolar) {
+      const midValue = Number(slider.dataset.mid);
+      const midTravel = nodeSliderTravelFromValue(
+        slider,
+        Number.isFinite(midValue) ? midValue : 0,
+      );
+      const midRange = nodeSliderHandleRangeFromTravel(slider, readout, midTravel);
+      const mid = midRange.center;
+      let fillLeft;
+      let fillRight;
+      if (range.center >= mid) {
+        // Value right of mid: fill mid → handle left (no overlap under thumb).
+        fillLeft = mid;
+        fillRight = range.start;
+      } else {
+        // Value left of mid: fill handle right → mid.
+        fillLeft = range.end;
+        fillRight = mid;
+      }
+      if (fillRight < fillLeft) {
+        const t = fillLeft;
+        fillLeft = fillRight;
+        fillRight = t;
+      }
+      readout.style.setProperty("--amount-start", `${fillLeft}px`);
+      readout.style.setProperty("--amount-end", `${fillRight}px`);
+    } else {
+      readout.style.setProperty("--amount-start", "0px");
+      // Stop at handle left edge so thumb is pure position color over track bg.
+      readout.style.setProperty("--amount-end", `${range.start}px`);
+    }
     readout.style.setProperty(
       "--value-start",
       `${range.start}px`,
@@ -394,13 +438,25 @@ function syncNodeSliderReadout(slider) {
 }
 
 function nodeSliderLabelText(slider) {
-  const controlLabel = slider.closest(".node-parameter-control")?.dataset.paramLabel?.trim();
+  // Explicit metadata alias (Bias → "Cutoff", etc.)
+  const alias = typeof normalizeNodeGraphPatchMetadataAlias === "function"
+    ? normalizeNodeGraphPatchMetadataAlias(slider?.dataset?.alias)
+    : String(slider?.dataset?.alias || "").trim();
+  if (alias) {
+    return alias;
+  }
+  const control = slider?.closest?.(".node-parameter-control");
+  const controlLabel = control?.dataset?.paramLabel?.trim();
   if (controlLabel) {
     return controlLabel;
   }
-  const label = slider.closest("label");
+  const defaultLabel = control?.dataset?.defaultParamLabel?.trim();
+  if (defaultLabel) {
+    return defaultLabel;
+  }
+  const label = slider?.closest?.("label");
   if (!label) {
-    return slider.id;
+    return slider?.id || "";
   }
   for (const node of label.childNodes) {
     if (node.nodeType === Node.TEXT_NODE) {
@@ -410,7 +466,7 @@ function nodeSliderLabelText(slider) {
       }
     }
   }
-  return slider.id;
+  return slider?.id || "";
 }
 
 function nodeSliderDebugPath(slider) {

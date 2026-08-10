@@ -10,9 +10,19 @@ function nodeGraphModuleDefaultOverrideForType(type) {
     : null;
 }
 
+function nodeGraphResolveModuleTypeAlias(type) {
+  const t = String(type || "").trim();
+  // phosphorLight → scope2d (2D Phosphor).
+  if (t === "phosphorLight") return "scope2d";
+  // Gain Bias folded into Gain (offset lives on Gain now).
+  if (t === "gainBias") return "gain";
+  // GainBiasMix renamed to Mix.
+  if (t === "gainBiasMix") return "mix";
+  return t;
+}
+
 function createNodeGraphPatchNode(type, options = {}) {
-  // phosphorLight is a retired alias of scope2d (2D Phosphor).
-  const resolvedType = type === "phosphorLight" ? "scope2d" : type;
+  const resolvedType = nodeGraphResolveModuleTypeAlias(type);
   const override = nodeGraphModuleDefaultOverrideForType(resolvedType);
   const opts = override ? { ...override, ...options } : options;
   const node = {
@@ -43,18 +53,71 @@ function createNodeGraphPatchNode(type, options = {}) {
       }
     }
   }
-  if (Object.hasOwn(opts, "widthGu")) {
-    node.widthGu = normalizeNodeGraphModuleWidthUnits(resolvedType, opts.widthGu);
+  // Explicit opts.alias wins. Else definition.defaultAlias (e.g. Vectorscope → "90°").
+  let aliasSource = opts.alias;
+  if (!Object.hasOwn(opts, "alias")) {
+    const defAlias = nodeGraphModuleDefinitions[resolvedType]?.defaultAlias;
+    if (defAlias != null && String(defAlias).trim()) {
+      aliasSource = defAlias;
+    }
   }
-  const alias = normalizeNodeGraphPatchNodeAlias(opts.alias);
+  const alias = normalizeNodeGraphPatchNodeAlias(aliasSource);
   if (alias) {
     node.alias = alias;
   }
-  const ui = nodeGraphModuleDefinitions[resolvedType]?.layout === "textBox" && !Object.hasOwn(opts, "ui")
-    ? { buttonsHidden: true }
-    : normalizeNodeGraphPatchNodeUi(opts.ui, resolvedType);
-  if (ui.buttonsHidden || ui.titleHidden) {
+  // Explicit opts.ui wins. Else module definition.defaultUi (e.g. Vectorscope
+  // Rotation). textBox still defaults buttons off when nothing else is set.
+  let uiSource = opts.ui;
+  if (!Object.hasOwn(opts, "ui")) {
+    const defUi = nodeGraphModuleDefinitions[resolvedType]?.defaultUi;
+    if (defUi && typeof defUi === "object") {
+      uiSource = defUi;
+    } else if (nodeGraphModuleDefinitions[resolvedType]?.layout === "textBox") {
+      uiSource = { buttonsHidden: true };
+    }
+  }
+  const ui = normalizeNodeGraphPatchNodeUi(uiSource, resolvedType);
+  if (
+    ui.buttonsHidden
+    || ui.titleHidden
+    || ui.oscilloscopeHidden
+    || ui.ioHidden
+    || ui.hideUnused
+    || ui.slidersHidden
+    || ui.interfaceControlsHidden
+    || ui.movementLocked
+  ) {
     node.ui = ui;
+  }
+  if (Object.hasOwn(opts, "widthGu")) {
+    node.widthGu = normalizeNodeGraphModuleWidthUnits(resolvedType, opts.widthGu);
+  } else if (
+    typeof nodeGraphModuleUsesLayoutC === "function"
+    && nodeGraphModuleUsesLayoutC(resolvedType)
+  ) {
+    // LayoutC: defaultWidthGu is the spawn width (e.g. Vectorscope 3gu).
+    const defW = Number(nodeGraphModuleDefinitions[resolvedType]?.defaultWidthGu);
+    if (Number.isFinite(defW)) {
+      node.widthGu = normalizeNodeGraphModuleWidthUnits(resolvedType, defW);
+    }
+  }
+  if (Object.hasOwn(opts, "heightGu")) {
+    node.heightGu = typeof nodeGraphLayoutCGridHeightUnits === "function"
+      && typeof nodeGraphModuleUsesLayoutC === "function"
+      && nodeGraphModuleUsesLayoutC(resolvedType)
+      ? nodeGraphLayoutCGridHeightUnits(resolvedType, ui, opts.heightGu)
+      : normalizeNodeGraphModuleHeightUnits(resolvedType, opts.heightGu, ui);
+  } else if (
+    typeof nodeGraphModuleUsesLayoutC === "function"
+    && nodeGraphModuleUsesLayoutC(resolvedType)
+  ) {
+    // LayoutC: freehand height is the module bounds (defaultHeightGu, e.g. 3).
+    const defH = Number(nodeGraphModuleDefinitions[resolvedType]?.defaultHeightGu);
+    if (Number.isFinite(defH)) {
+      node.heightGu = typeof nodeGraphLayoutCGridHeightUnits === "function"
+        ? nodeGraphLayoutCGridHeightUnits(resolvedType, ui, defH)
+        : Math.max(2, Math.round(defH));
+    }
   }
   if (nodeGraphModuleDefinitions[resolvedType]?.layout === "textBox") {
     node.layout = normalizeNodeGraphTextBoxLayout(opts.layout);
@@ -72,6 +135,24 @@ function createNodeGraphPatchNode(type, options = {}) {
   if (resolvedType === "customDisplay") {
     node.customDisplay = normalizeNodeGraphCustomDisplay(opts.customDisplay);
   }
+  if (resolvedType === "matrixWaterfall" && typeof normalizeNodeGraphMatrixWaterfall === "function") {
+    node.matrixWaterfall = normalizeNodeGraphMatrixWaterfall(
+      opts.matrixWaterfall || opts.matrixDisplay || opts.asciiscope,
+    );
+  }
+  if (resolvedType === "matrixDisplay") {
+    if (typeof normalizeNodeGraphMatrixPlate === "function") {
+      node.matrixDisplay = normalizeNodeGraphMatrixPlate(opts.matrixDisplay || opts.asciiscope);
+    } else if (typeof normalizeNodeGraphAsciiscope === "function") {
+      node.matrixDisplay = normalizeNodeGraphAsciiscope(opts.matrixDisplay || opts.asciiscope);
+    }
+  }
+  if (resolvedType === "asciiscope" && typeof normalizeNodeGraphMatrixDisplay === "function") {
+    node.asciiscope = normalizeNodeGraphMatrixDisplay(opts.asciiscope || opts.matrixDisplay);
+  }
+  if (resolvedType === "textStream" && typeof normalizeNodeGraphTextStream === "function") {
+    node.textStream = normalizeNodeGraphTextStream(opts.textStream);
+  }
   if (resolvedType === "canvas") {
     node.canvasScript = normalizeNodeGraphCanvasScript(opts.canvasScript);
   }
@@ -84,8 +165,17 @@ function createNodeGraphPatchNode(type, options = {}) {
   if (resolvedType === "moduleGroup") {
     node.moduleGroup = normalizeNodeGraphModuleGroup(options.moduleGroup);
   }
-  if (resolvedType === "clapPlugin") {
-    node.clap = normalizeNodeGraphClapPluginBinding(options.clap);
+  if (resolvedType === "knob" && typeof normalizeNodeGraphKnobFace === "function") {
+    const face = normalizeNodeGraphKnobFace(opts.knobFace);
+    if (typeof nodeGraphKnobFaceIsNonDefault === "function"
+      ? nodeGraphKnobFaceIsNonDefault(face)
+      : (typeof nodeGraphKnobFaceHasAnyImage === "function"
+        ? nodeGraphKnobFaceHasAnyImage(face)
+        : face.layers?.some?.((layer) => layer?.dataUrl))) {
+      node.knobFace = typeof nodeGraphKnobFaceToPatch === "function"
+        ? nodeGraphKnobFaceToPatch(face)
+        : face;
+    }
   }
   return node;
 }

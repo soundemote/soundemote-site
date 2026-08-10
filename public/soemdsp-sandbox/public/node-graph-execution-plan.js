@@ -57,9 +57,8 @@ function nodeGraphBuildDependencyMap(patch = nodeGraphMvp.patch) {
       issues.push(`connection destination port invalid: ${connection.destinationNode}.${connection.destinationPort}`);
       continue;
     }
-    if (bypassedNodes.has(connection.sourceNode) || bypassedNodes.has(connection.destinationNode)) {
-      continue;
-    }
+    // Signal wires still route through bypassed nodes (passthrough DSP at
+    // evaluate time). Dropping them used to mute the entire downstream chain.
     const canonicalConnection = { ...connection, sourcePort, destinationPort };
     const key = nodeGraphInputKey(connection.destinationNode, destinationPort);
     const connections = inputConnections.get(key) || [];
@@ -86,7 +85,9 @@ function nodeGraphBuildDependencyMap(patch = nodeGraphMvp.patch) {
       issues.push(`modulation destination parameter invalid: ${modulation.destinationNode}.${modulation.destinationParam}`);
       continue;
     }
-    if (bypassedNodes.has(modulation.sourceNode) || bypassedNodes.has(modulation.destinationNode)) {
+    // Bypassed destinations do not run DSP — skip modulations into them.
+    // Sources may still emit (silence or pass) so keep source-side mods.
+    if (bypassedNodes.has(modulation.destinationNode)) {
       continue;
     }
     const key = nodeGraphParameterKey(modulation.destinationNode, modulation.destinationParam);
@@ -112,9 +113,7 @@ function nodeGraphBuildDependencyMap(patch = nodeGraphMvp.patch) {
       issues.push(`graph connection destination invalid: ${graphConnection.destinationNode}.${graphConnection.destinationGraphInput}`);
       continue;
     }
-    if (bypassedNodes.has(graphConnection.sourceNode) || bypassedNodes.has(graphConnection.destinationNode)) {
-      continue;
-    }
+    // Graph wires also keep flowing through bypassed modules (passthrough).
     const key = nodeGraphGraphInputKey(graphConnection.destinationNode, graphConnection.destinationGraphInput);
     const connections = graphInputConnections.get(key) || [];
     connections.push({ ...graphConnection, sourcePort });
@@ -359,8 +358,23 @@ function nodeGraphVisualSinkActiveInPlan(node, options = {}) {
   return true;
 }
 
+/**
+ * True when the worklet should capture/buffer visual samples for this sink.
+ * Reachability for DSP still uses ActiveInPlan; capture is gated by face UI
+ * so oscilloscopeHidden / global “displays off” stop audio-thread writes.
+ */
+function nodeGraphVisualSinkNeedsAudioCapture(node, options = {}) {
+  if (!nodeGraphVisualSinkActiveInPlan(node, options)) {
+    return false;
+  }
+  if (typeof nodeGraphPatchNodeDisplayVisibleInPlan === "function") {
+    return nodeGraphPatchNodeDisplayVisibleInPlan(node, options);
+  }
+  return true;
+}
+
 function nodeGraphVisualSinkDisplayVisible(node, options = {}) {
-  return nodeGraphVisualSinkActiveInPlan(node, options);
+  return nodeGraphVisualSinkNeedsAudioCapture(node, options);
 }
 
 function nodeGraphPatchNodeDisplayVisibleInPlan(node, options = {}) {
@@ -370,17 +384,17 @@ function nodeGraphPatchNodeDisplayVisibleInPlan(node, options = {}) {
   if (node?.id && bypassedNodes.has(node.id)) {
     return false;
   }
+  // DisplayVisibleForUi already applies the global "Show displays" flag for
+  // hideable analyzer scopes, while keeping custom faces (Number Readout,
+  // Knob, LED, …) always active so they still receive live buffers.
+  if (typeof nodeGraphModuleDisplayVisibleForUi === "function") {
+    return nodeGraphModuleDisplayVisibleForUi(node?.type, node?.ui);
+  }
   if (nodeGraphMvp?.moduleOscilloscopesVisible === false) {
     return false;
   }
-  if (
-    typeof nodeGraphModuleDisplayVisibleForUi === "function" &&
-    !nodeGraphModuleDisplayVisibleForUi(node.type, node.ui)
-  ) {
-    return false;
-  }
   const normalizedUi = node?.ui && typeof nodeGraphEffectivePatchNodeUi === "function"
-    ? nodeGraphEffectivePatchNodeUi(node.ui)
+    ? nodeGraphEffectivePatchNodeUi(node.ui, node.type)
     : (node?.ui || {});
   return normalizedUi?.oscilloscopeHidden !== true;
 }
@@ -403,7 +417,7 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
   const outputNode = "output";
   const reachableNodes = new Set();
   const bypassedNodes = new Set(graph.bypassedNodes || []);
-  const passthroughTypes = new Set(["badvalMonitor", "bias", "chaoticPhaseLockingFilter", "cookbookFilter", "flowerChildFilter", "gain", "gainBias", "humanFilter", "ladderFilter", "papoulisFilter", "passiveFilter", "pll", "resonatorFilter", "reverbEffect", "rsmetFilter", "sampleHold", "slewLimiter", "softClipper", "speakerProtection", "superloveFilter", "tb303Filter", "wallDelay", "yellowjacketFilter"]);
+  const passthroughTypes = new Set(["asciiscope", "matrixDisplay", "matrixWaterfall", "activeFilter", "allpass", "badvalMonitor", "bandpass", "crossover2", "crossover3", "crossover4", "crossover5", "crossover6", "modeResonator", "combResonator", "waveguide", "phaser", "flanger", "chorus", "bode", "phaseDisperse", "stftBlur", "bessel", "bias", "butterworth", "chaoticPhaseLockingFilter", "chebyshev", "cookbookFilter", "elliptic", "eqFilter", "flowerChildFilter", "formantFilter", "gain", "humanFilter", "inertialFilter", "ladderFilter", "linkwitzRiley", "papoulisFilter", "passiveFilter", "pll", "resonatorFilter", "reverbEffect", "sampleDelay", "sampleHold", "slewLimiter", "softClipper", "airClipper", "speakerProtection", "spectrogram", "speedColorInertia", "superloveFilter", "tb303Filter", "tiltFilter", "wallDelay", "yellowjacketFilter", "midSideEncode", "quadrature", "lookaheadLimiter"]);
 
   function markReachable(nodeId) {
     if (reachableNodes.has(nodeId) || !graph.nodeMap.has(nodeId)) {
@@ -418,6 +432,12 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
   const hasOutputNode = graph.nodeMap.has(outputNode);
   if (hasOutputNode) {
     markReachable(outputNode);
+  }
+  // Plugin Output nodes are audio sinks; keep them reachable so upstream evaluates.
+  for (const node of graph.nodes) {
+    if (node?.type === "pluginOutput" && !bypassedNodes.has(node.id)) {
+      markReachable(node.id);
+    }
   }
   // groupOutput nodes only need forced reachability when this compile IS a
   // moduleGroup's own inner sourcePatch -- which, by construction
@@ -441,13 +461,13 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
     if (nodeGraphVisualSinkActiveInPlan(node, { bypassedNodes })) {
       markReachable(node.id);
     }
-    // Solid-shell interactive modules (bug button, XY pad, ...) always evaluate
-    // for their on-screen face — not only when wired into the speaker path.
-    // XY Pad needs this so Phase+CV still runs through audio-rate Smoothing
-    // (Papoulis) and scope capture feeds the phosphor even when Out X/Y are
-    // unconnected. Marking reachable also pulls any CV sources upstream.
+    // Interactive LayoutB chromeless faces (bug button, XY pad, …) always
+    // evaluate for their on-screen UI — not only when wired into the speaker
+    // path. XY Pad needs this so Phase+CV still runs through smoothing and
+    // phosphor even when Out X/Y are unconnected.
     if (
       !bypassedNodes.has(node.id) &&
+      typeof nodeGraphChromelessModuleUsesSolidShell === "function" &&
       nodeGraphChromelessModuleUsesSolidShell(node.type)
     ) {
       markReachable(node.id);
@@ -484,7 +504,7 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
       if (!inputCount && nodeGraphNodeSignalOutputRequired(graph, nodeId)) {
         issues.push(`missing ${nodeGraphNodeDisplayName(nodeId)} input`);
       }
-    } else if (type === "expAdsr") {
+    } else if (type === "expAdsr" || type === "attackDecay") {
       const gateCount = (graph.inputConnections.get(nodeGraphInputKey(nodeId, "Gate")) || []).length;
       if (!gateCount && nodeGraphNodeSignalOutputRequired(graph, nodeId)) {
         issues.push(`missing ${nodeGraphNodeDisplayName(nodeId)} gate`);
@@ -583,63 +603,18 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
 
   const scheduling = nodeGraphBuildSchedulingDependencies(graph, reachableNodes);
 
-  // Surface CLAP feedback at plan time so the user sees the issue before hitting Render.
-  for (const connection of scheduling.feedbackConnections) {
-    const sourceType = graph.nodeMap.get(connection.sourceNode)?.type;
-    const destinationType = graph.nodeMap.get(connection.destinationNode)?.type;
-    if (sourceType === "clapPlugin" || destinationType === "clapPlugin") {
-      issues.push(`feedback involving CLAP Plugin nodes is not supported yet: ${connection.sourceNode} -> ${connection.destinationNode}`);
-    }
-  }
-  for (const modulation of scheduling.feedbackModulations) {
-    const sourceType = graph.nodeMap.get(modulation.sourceNode)?.type;
-    const destinationType = graph.nodeMap.get(modulation.destinationNode)?.type;
-    if (sourceType === "clapPlugin" || destinationType === "clapPlugin") {
-      issues.push(`feedback modulation involving CLAP Plugin nodes is not supported yet: ${modulation.sourceNode} -> ${modulation.destinationNode}`);
-    }
-  }
-  for (const graphConnection of scheduling.feedbackGraphConnections) {
-    const sourceType = graph.nodeMap.get(graphConnection.sourceNode)?.type;
-    const destinationType = graph.nodeMap.get(graphConnection.destinationNode)?.type;
-    if (sourceType === "clapPlugin" || destinationType === "clapPlugin") {
-      issues.push(`feedback graph connection involving CLAP Plugin nodes is not supported yet: ${graphConnection.sourceNode} -> ${graphConnection.destinationNode}`);
-    }
-  }
 
   const topology = nodeGraphTopologicalOrder(graph.nodes, scheduling.orderDependencies, reachableNodes);
   const order = topology.order.filter((nodeId) => reachableNodes.has(nodeId));
+  // B3: source seeding is data-driven via planRole (+ legacy fallback inside
+  // nodeGraphModuleIsPlanSourceType until NODE_GRAPH_PLAN_LEGACY_SOURCE_TYPES retires).
   const sourceNodes = order.filter((nodeId) => {
     const type = graph.nodeMap.get(nodeId)?.type;
-    return type === "audioInput" ||
-      type === "audioPlayer" ||
-      type === "clock" ||
-      type === "transport" ||
-      type === "wireBreak" ||
-      type === "wireConnect" ||
-      type === "wireDisconnect" ||
-      type === "windowReopen" ||
-      type === "shootingStarExplosion" ||
-      nodeGraphModuleIsRealtimeOscillatorType(type) ||
-      type === "fractalBrownianNoise" ||
-      type === "keyboardController" ||
-      type === "lorenzAttractor" ||
-      type === "logisticMap" ||
-      type === "henonMap" ||
-      type === "rayBouncer" ||
-      type === "chuaAttractor" ||
-      type === "surgeOscillator" ||
-      type === "dsfOscillator" ||
-      type === "ellipsoid" ||
-      type === "bugButton" ||
-      type === "xyPad" ||
-      type === "macroControls" ||
-      type === "midiOut" ||
-      type === "noiseGenerator" ||
-      type === "pitchModWheel" ||
-      type === "additiveOsc" ||
-      type === "gpuAdditiveOsc" ||
-      type === "randomWalk" ||
-      type === "spiral";
+    if (typeof nodeGraphModuleIsPlanSourceType === "function") {
+      return nodeGraphModuleIsPlanSourceType(type);
+    }
+    // Boot-order fallback if plan-roles.js failed to load.
+    return nodeGraphModuleIsRealtimeOscillatorType(type);
   });
   const inactiveNodes = graph.nodes
     .filter((node) => !reachableNodes.has(node.id))
@@ -695,13 +670,18 @@ function nodeGraphCompiledVisualSinks(graph, reachableNodes) {
     .filter((node) =>
       reachableNodes.has(node.id) &&
       !bypassedNodes.has(node.id) &&
-      nodeGraphVisualSinkActiveInPlan(node, { bypassedNodes })
+      // Only sinks whose face is currently shown — hidden scopes must not
+      // allocate rings or run per-sample visual writes on the audio thread.
+      nodeGraphVisualSinkNeedsAudioCapture(node, { bypassedNodes })
     )
     .map((node) => {
       const bufferedInputs = nodeGraphPatchNodeBufferedInputs(node);
       const bufferedSet = new Set(bufferedInputs);
       return {
         bufferSampleLimit: nodeGraphVisualSinkBufferSampleLimit(node),
+        // Target visual write rate (Hz). Worklet hops engine samples to this.
+        // ~12 kHz is enough for phosphor / scopes; full rate was starving audio.
+        visualWriteHz: nodeGraphVisualSinkWriteHz(node),
         bufferedInputs,
         hasParameters: (nodeGraphModuleDefinitions[node.type]?.parameters || []).length > 0,
         inputs: nodeGraphPatchNodeVisualInputs(node).map((input) => ({
@@ -727,7 +707,11 @@ function nodeGraphCompiledScopeCaptureNodeIds(graph, reachableNodes) {
         // Graph editor playhead reads "__GraphPhase" from scope buffers -- always
         // capture graph modules even when they have no separate oscilloscope face.
         nodeGraphModuleIsGraphType(node.type) ||
-        nodeGraphChromelessModuleUsesSolidShell(node.type) ||
+        (
+          typeof nodeGraphChromelessModuleUsesSolidShell === "function"
+          && nodeGraphChromelessModuleUsesSolidShell(node.type)
+          && nodeGraphPatchNodeDisplayVisibleInPlan(node, { bypassedNodes })
+        ) ||
         (
           nodeGraphModuleDisplayRendererForNode(node) !== "legacy" &&
           nodeGraphPatchNodeDisplayVisibleInPlan(node, { bypassedNodes })
@@ -737,13 +721,24 @@ function nodeGraphCompiledScopeCaptureNodeIds(graph, reachableNodes) {
     .map((node) => node.id);
 }
 
-const nodeGraphVisualSinkHistorySeconds = 10;
+// History length is for display windows, not full 10s of engine-rate audio.
+// CPU cost is write rate (decimated in worklet); capacity stays modest.
+const nodeGraphVisualSinkHistorySeconds = 1;
+
+/** Target samples/sec into visual rings (display quality, not audio fidelity). */
+function nodeGraphVisualSinkWriteHz(node) {
+  void node;
+  // Match legacy scope hop (~12 kHz): dense enough for 2D phosphor paths.
+  return 12000;
+}
 
 function nodeGraphVisualSinkBufferSampleLimit(node) {
-  const fallback = Math.max(1, Math.round(Number(nodeGraphBufferedInputSampleLimit) || 262144));
   const sampleRate = Math.max(1, Math.round(Number(nodeGraphMvp?.sampleRate) || 44100));
-  void node;
-  return Math.max(fallback, Math.ceil(sampleRate * nodeGraphVisualSinkHistorySeconds));
+  const writeHz = Math.max(1, Math.round(Number(nodeGraphVisualSinkWriteHz(node)) || 12000));
+  // Capacity in *written* samples (after hop), not engine-rate samples.
+  const historySamples = Math.ceil(writeHz * nodeGraphVisualSinkHistorySeconds);
+  const fallback = Math.max(1, Math.round(Number(nodeGraphBufferedInputSampleLimit) || 65536));
+  return Math.min(fallback, Math.max(4096, historySamples));
 }
 
 function nodeGraphNodeSignalOutputRequired(graph, nodeId) {

@@ -38,11 +38,6 @@ function bindNodeGraphSettingsFormEvents() {
     field.addEventListener("input", handleNodeGraphSettingsInput);
     field.addEventListener("change", commitNodeGraphSettingsHistory);
   }
-  for (const field of document.querySelectorAll("[data-patch-header-info-field]")) {
-    applyNodeGraphDoubleClickToEdit(field);
-    field.addEventListener("input", handleNodeGraphHeaderInfoInput);
-    field.addEventListener("change", commitNodeGraphSettingsHistory);
-  }
   for (const field of document.querySelectorAll("[data-patch-bank-name-field]")) {
     field.addEventListener("input", handleNodeGraphSavedPatchBankNameInput);
     field.addEventListener("change", commitNodeGraphSettingsHistory);

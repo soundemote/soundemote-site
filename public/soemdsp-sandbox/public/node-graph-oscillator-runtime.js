@@ -183,28 +183,92 @@ function nodeGraphOscillatorWaveformSample(runtime, nodeId, phase, phaseIncremen
   return sample;
 }
 
-function nodeGraphEllipsoidSample(phase, offset = 0, shape = 0, scale = 1) {
+/**
+ * soemdsp Ellipsoid::getSineToSquare — Limit AA always on (C floor by ω=2πf/sr).
+ * phaseCycles 0..1 | shape 0=sine 1=square
+ */
+function nodeGraphEllipsoidSineToSquare(
+  phaseCycles,
+  shape = 0,
+  frequencyHz = 0,
+  sampleRate = 44100,
+  mode = 1, // ignored — Limit always
+  phaseIncCycles = 0, // unused; ABI
+) {
+  const sr = Math.max(1, Number(sampleRate) || 44100);
+  const f = Math.max(0, Number(frequencyHz) || 0);
+  const angle = (Number(phaseCycles) || 0) * Math.PI * 2;
+  const sinPhase = Math.sin(angle);
+  const cosPhase = Math.cos(angle);
+  let c = 1 - clampNodeSliderValue(Number(shape) || 0, 0, 1);
+  const cMin = Math.max(0, Math.min(1, (Math.PI * 2 * f) / sr));
+  if (c < cMin) c = cMin;
+  const xx = (cosPhase * cosPhase) + (sinPhase * c) * (sinPhase * c);
+  if (xx <= 1e-24) {
+    if (cosPhase > 0) return 1;
+    if (cosPhase < 0) return -1;
+    return 0;
+  }
+  const out = cosPhase / Math.sqrt(xx);
+  return Number.isFinite(out) ? out : 0;
+}
+
+function nodeGraphEllipsoidSineToSquareVector(phaseCycles, params = {}) {
+  const level = Number(params.amplitude) || Number(params.level) || 0;
+  const shape = clampNodeSliderValue(Number(params.shape) || 0, 0, 1);
+  const phase = Number(phaseCycles) || 0;
+  const frequencyHz = Number(params.frequencyHz) || 0;
+  const sampleRate = Number(params.sampleRate) || 44100;
+  // Bi: −1…1 quadrature; Uni: 0…1 = (bi + 1) / 2
+  const biX = nodeGraphEllipsoidSineToSquare(phase, shape, frequencyHz, sampleRate) * level;
+  const biY = nodeGraphEllipsoidSineToSquare(phase - 0.25, shape, frequencyHz, sampleRate) * level;
+  const uniX = 0.5 * (biX + level);
+  const uniY = 0.5 * (biY + level);
+  return {
+    "Bi X": biX,
+    "Bi Y": biY,
+    "Uni X": uniX,
+    "Uni Y": uniY,
+    // Face / legacy aliases
+    X: biX,
+    Y: biY,
+  };
+}
+
+// Full multi-param getEllipsoid (phase radians). Limit: scale floor by f/sr.
+function nodeGraphEllipsoidSample(phase, offset = 0, shape = 0, scale = 1, frequencyHz = 0, sampleRate = 44100) {
   const phaseRadians = Number(phase) || 0;
   const sinPhase = Math.sin(phaseRadians);
   const cosPhase = Math.cos(phaseRadians);
   const shapeRadians = (Number(shape) || 0) * Math.PI;
   const shapeSin = Math.sin(shapeRadians);
   const shapeCos = Math.cos(shapeRadians);
-  const safeOffset = clampNodeSliderValue(Number(offset) || 0, -1, 1);
-  const safeScale = Math.max(0, Number(scale) || 0);
-  const x = safeOffset + cosPhase;
-  const y = safeScale * sinPhase;
-  const denominator = Math.sqrt((x * x) + (y * y));
+  const safeOffset = Number(offset) || 0;
+  let safeScale = Math.max(0, Number(scale) || 0);
+  const sr = Math.max(1, Number(sampleRate) || 44100);
+  const f = Math.max(0, Number(frequencyHz) || 0);
+  const scaleFloor = Math.max(0, Math.min(1, (Math.PI * 2 * f) / sr));
+  if (safeScale < scaleFloor) safeScale = scaleFloor;
+  const ax = safeOffset + cosPhase;
+  const ay = safeScale * sinPhase;
+  const denominator = Math.sqrt((ax * ax) + (ay * ay));
   if (denominator <= 1e-12) {
     return 0;
   }
-  return clampNodeSliderValue(((x * shapeCos) + (y * shapeSin)) / denominator, -1, 1);
+  const out = ((ax * shapeCos) + (ay * shapeSin)) / denominator;
+  return Number.isFinite(out) ? out : 0;
 }
 
 function nodeGraphEllipsoidVectorSample(phase, params = {}) {
-  const level = clampNodeSliderValue(Number(params.level) || 0, 0, 1);
-  const x = nodeGraphEllipsoidSample(phase, params.offsetX, params.shapeX, params.scaleX) * level;
-  const y = nodeGraphEllipsoidSample(phase - Math.PI * 0.5, params.offsetY, params.shapeY, params.scaleY) * level;
+  // Prefer sine→square when `shape` is provided (RoundShape path).
+  if (params && Object.prototype.hasOwnProperty.call(params, "shape") && params.scaleX == null) {
+    return nodeGraphEllipsoidSineToSquareVector(phase, params);
+  }
+  const level = Math.max(0, Number(params.amplitude) || Number(params.level) || 0);
+  const frequencyHz = Number(params.frequencyHz) || 0;
+  const sampleRate = Number(params.sampleRate) || 44100;
+  const x = nodeGraphEllipsoidSample(phase, params.offsetX, params.shapeX, params.scaleX, frequencyHz, sampleRate) * level;
+  const y = nodeGraphEllipsoidSample(phase - Math.PI * 0.5, params.offsetY, params.shapeY, params.scaleY, frequencyHz, sampleRate) * level;
   return {
     Out: x,
     Mono: x,
@@ -343,85 +407,51 @@ function nodeGraphAdditiveHarmonicCurveAmount({
   }), 0, 1);
 }
 
-function nodeGraphAdditiveWaveformHarmonic(waveform, harmonic, modA = 0.5) {
-  const n = Math.max(1, Math.floor(Number(harmonic) || 1));
-  const h = n;
-  const mod = clampNodeSliderValue(Number(modA) || 0, 0, 1);
-  switch (Math.round(Number(waveform) || 0)) {
-    case 0:
-      return { amplitude: n === Math.max(1, Math.floor(99 * mod + 1)) ? 1 : 0, phase: 0 };
-    case 2:
-      return { amplitude: n % 2 === 1 ? 1 / h : 0, phase: mod * 0.5 };
-    case 3:
-      return { amplitude: n % 2 === 1 ? 1 / (h * h) : 0, phase: n % 4 === 1 ? 0 : 0.5 };
-    case 4:
-      return { amplitude: n % 2 === 1 ? 1 / h : (1 / h) * (1 - mod), phase: 0 };
-    case 5:
-      return { amplitude: Math.cos(h * mod * 0.5) / h, phase: 0 };
-    case 6:
-      {
-        const peak = clampNodeSliderValue(mod, 0.001, 0.999);
-        return { amplitude: (Math.sin(0.5 * h * peak) / (peak * (1 - peak) * h * h)) * 0.2, phase: 0 };
-      }
-    case 7:
-      {
-        const octaves = Math.max(2, Math.floor(2 + mod * 11));
-        let target = 1;
-        while (target < n) {
-          target *= octaves;
-        }
-        return { amplitude: target === n ? 1 / h : 0, phase: 0 };
-      }
-    case 1:
-    default:
-      return { amplitude: 1 / h, phase: n % 2 === 1 ? 0.5 : 0 };
+// Offline additive core: same additive_osc.wasm as the worklet (APP_POLICY §5).
+// No JS harmonic twin. Graph inputs force silence (matches worklet: native
+// path only when Damping/Phase graphs are unwired).
+const nodeGraphAdditiveOscWasm = { promise: null, exports: null, failed: false };
+
+function nodeGraphAdditiveOscLoadWasm() {
+  if (nodeGraphAdditiveOscWasm.promise || typeof fetch !== "function" || typeof WebAssembly === "undefined") {
+    return;
   }
+  nodeGraphAdditiveOscWasm.promise = fetch("/native_modules/additive_osc/additive_osc.wasm")
+    .then((response) => {
+      if (!response.ok) throw new Error(`additive_osc wasm HTTP ${response.status}`);
+      return response.arrayBuffer();
+    })
+    .then((bytes) => WebAssembly.instantiate(bytes, {}))
+    .then((result) => {
+      nodeGraphAdditiveOscWasm.exports = result.instance.exports;
+    })
+    .catch(() => {
+      nodeGraphAdditiveOscWasm.failed = true;
+    });
 }
 
 function nodeGraphAdditiveOscillatorSample(runtime, nodeId, phase, params = {}, sampleRate = nodeGraphMvp?.sampleRate || 44100) {
-  const safeRate = Math.max(1, Number(sampleRate) || nodeGraphMvp?.sampleRate || 44100);
-  const frequency = Math.max(0, Number(params.frequency) || 0);
-  const maxHarmonics = Math.max(
-    1,
-    Math.min(nodeGraphAdditiveHardMaxHarmonics, Math.round(Number(params.harmonics) || 32)),
-  );
-  const waveform = Math.round(Number(params.waveform) || 0);
-  const modA = clampNodeSliderValue(Number(params.modA) || 0, 0, 1);
-  const harmonicPhaseAdd = clampNodeSliderValue(Number(params.harmonicPhaseAdd) || 0, 0, 1);
-  const harmonicPhaseMultiply = clampNodeSliderValue(Number(params.harmonicPhaseMultiply) || 0, 0, 4);
-  const level = clampNodeSliderValue(Number(params.level) || 0, 0, 1);
-  const dampingFilterFrequency = nodeGraphAdditiveFilterFrequencyValue(params.dampingFilterFrequency, safeRate);
-  const dampingGraphValueAt = typeof params.dampingGraphValueAt === "function"
-    ? params.dampingGraphValueAt
-    : () => 1;
-  const phaseGraphValueAt = typeof params.phaseGraphValueAt === "function"
-    ? params.phaseGraphValueAt
-    : () => 0;
-  const harmonicLimit = Math.max(1, Math.min(maxHarmonics, Math.floor(Math.min(20000, safeRate * 0.45) / Math.max(1, frequency))));
-  let total = 0;
-  let norm = 0;
-  for (let harmonic = 1; harmonic <= harmonicLimit; harmonic += 1) {
-    const partial = nodeGraphAdditiveWaveformHarmonic(waveform, harmonic, modA);
-    const dampingX = clampNodeSliderValue((frequency * harmonic) / dampingFilterFrequency, 0, 1);
-    const amplitude = (Number(partial.amplitude) || 0) * clampNodeSliderValue(
-      Number(dampingGraphValueAt(dampingX)) || 0,
-      0,
-      1,
-    );
-    if (amplitude === 0) {
-      continue;
-    }
-    const harmonicRatio = harmonicLimit > 1
-      ? (harmonic - 1) / (harmonicLimit - 1)
-      : 0;
-    const phaseCurve = clampNodeSliderValue(Number(phaseGraphValueAt(harmonicRatio)) || 0, 0, 1);
-    const phaseMultiplier = 1 + phaseCurve * harmonicPhaseMultiply;
-    const phaseOffset = (Number(partial.phase) || 0) + phaseCurve * harmonicPhaseAdd;
-    total += Math.sin((phase * harmonic * phaseMultiplier) + phaseOffset * Math.PI * 2) * amplitude;
-    norm += Math.abs(amplitude);
-  }
-  if (norm <= 0) {
+  // Graph curves are not in the native export; silence rather than a JS twin.
+  if (params.hasGraphInput) {
     return 0;
   }
-  return clampNodeSliderValue((total / Math.max(1, norm * 0.72)) * level, -1, 1);
+  nodeGraphAdditiveOscLoadWasm();
+  const wasm = nodeGraphAdditiveOscWasm.exports;
+  if (!wasm?.soemdsp_additive_osc_sample) {
+    return 0;
+  }
+  const safeRate = Math.max(1, Number(sampleRate) || nodeGraphMvp?.sampleRate || 44100);
+  const out = wasm.soemdsp_additive_osc_sample(
+    Number(phase) || 0,
+    Math.max(0, Number(params.frequency) || 0),
+    Math.max(1, Math.min(nodeGraphAdditiveHardMaxHarmonics, Math.round(Number(params.harmonics) || 32))),
+    Math.round(Number(params.waveform) || 0),
+    clampNodeSliderValue(Number(params.modA) || 0, 0, 1),
+    clampNodeSliderValue(Number(params.harmonicPhaseAdd) || 0, 0, 1),
+    clampNodeSliderValue(Number(params.harmonicPhaseMultiply) || 0, 0, 4),
+    Math.max(0, Number(params.amplitude) || 0),
+    Number(params.dampingFilterFrequency) || 20000,
+    safeRate,
+  );
+  return Number.isFinite(out) ? out : 0;
 }

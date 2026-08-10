@@ -6,7 +6,7 @@ function normalizeNodeGraphPatchParameter(type, key, value, metadata = null) {
   const parameter = nodeGraphModuleDefinitions[type]?.parameters?.find(
     (candidate) => candidate.key === key,
   );
-  if (!parameter && type !== "clapPlugin") {
+  if (!parameter) {
     return null;
   }
   const number = Number(value);
@@ -16,23 +16,39 @@ function normalizeNodeGraphPatchParameter(type, key, value, metadata = null) {
     : Number.isFinite(fallback)
       ? fallback
       : 0;
-  const min = Number(metadata?.min ?? parameter?.min);
-  const max = Number(metadata?.max ?? parameter?.max);
-  const unboundedMin = Boolean(metadata?.unboundedMin ?? parameter?.unboundedMin);
-  const unboundedMax = Boolean(metadata?.unboundedMax ?? parameter?.unboundedMax);
-  if (unboundedMin && unboundedMax) {
+  // min/max are slider guides — only hard-clamp wraparound / resource constraints.
+  const meta = metadata && typeof metadata === "object"
+    ? metadata
+    : {
+      min: parameter?.min,
+      max: parameter?.max,
+      wraparound: parameter?.wraparound,
+      constraint: parameter?.constraint,
+      hardClamp: parameter?.hardClamp,
+    };
+  if (typeof nodeGraphParamApplyDomainBounds === "function") {
+    return nodeGraphParamApplyDomainBounds(candidate, {
+      min: meta.min ?? parameter?.min,
+      max: meta.max ?? parameter?.max,
+      wraparound: meta.wraparound ?? parameter?.wraparound,
+      constraint: meta.constraint ?? parameter?.constraint,
+      hardClamp: meta.hardClamp ?? parameter?.hardClamp,
+    });
+  }
+  const min = Number(meta.min ?? parameter?.min);
+  const max = Number(meta.max ?? parameter?.max);
+  const wrap = Boolean(meta.wraparound ?? parameter?.wraparound);
+  const constraint = String(meta.constraint ?? parameter?.constraint ?? "").toLowerCase();
+  const hard = meta.hardClamp === true
+    || wrap
+    || constraint === "cpu"
+    || constraint === "gpu"
+    || constraint === "ram"
+    || constraint === "memory";
+  if (!hard || !Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
     return candidate;
   }
-  if (unboundedMin && Number.isFinite(max)) {
-    return Math.min(candidate, max);
-  }
-  if (unboundedMax && Number.isFinite(min)) {
-    return Math.max(candidate, min);
-  }
-  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
-    return candidate;
-  }
-  return metadata?.wraparound || parameter?.wraparound
+  return wrap
     ? wrapNodeSliderValue(candidate, min, max)
     : clampNodeSliderValue(candidate, min, max);
 }
@@ -44,6 +60,8 @@ function normalizeNodeGraphPatchParameter(type, key, value, metadata = null) {
 // any other retired type below, rather than crashing on load.
 const nodeGraphRetiredNodeTypes = new Set([
   "bipolarKnob",
+  // Legacy host module type; drop silently so old patches don't throw unknown-type.
+  "clapPlugin",
   "formulaVisual",
   "graph",
   "impulseButton",
@@ -67,7 +85,6 @@ function migrateNodeGraphPhosphorLightToScope2d(node) {
   const migratedSettings = {
     ...src,
     background: src.background ?? src.backgroundColor,
-    burn: src.burn,
     decay: src.decay,
     scale: src.scale,
     dot1Size: src.dot1Size,
@@ -87,6 +104,12 @@ function validateNodeGraphPatch(patch) {
   if (!patch || typeof patch !== "object") {
     throw new Error("patch must be an object");
   }
+
+  // Phase C: climb format.version before shape checks / unknown-type throws.
+  const migrated = typeof migrateNodeGraphPatchToCurrent === "function"
+    ? migrateNodeGraphPatchToCurrent(patch)
+    : patch;
+  patch = migrated;
 
   if (patch.format !== undefined) {
     if (
@@ -120,10 +143,18 @@ function validateNodeGraphPatch(patch) {
   const ids = new Set();
   const nodes = patch.nodes
     .filter((node) => !retiredNodeTypes.has(String(node.type || "").trim()))
-    .map((rawNode) => migrateNodeGraphPhosphorLightToScope2d(rawNode))
+    // phosphorLight → scope2d also runs inside migrateNodeGraphPatchToCurrent;
+    // keep local map for boot if migrations.js is missing.
+    .map((rawNode) => (
+      typeof migrateNodeGraphPhosphorLightToScope2d === "function"
+        ? migrateNodeGraphPhosphorLightToScope2d(rawNode)
+        : rawNode
+    ))
     .map((node) => {
     const id = String(node.id || "").trim();
-    const type = String(node.type || "").trim();
+    const type = typeof nodeGraphResolveModuleTypeAlias === "function"
+      ? nodeGraphResolveModuleTypeAlias(node.type)
+      : String(node.type || "").trim();
     if (!id) {
       throw new Error("node id missing");
     }
@@ -159,40 +190,51 @@ function validateNodeGraphPatch(patch) {
     }
     const params = {};
     const paramMeta = {};
+    const rawParams = node.params && typeof node.params === "object" ? node.params : {};
+    const rawParamMeta = node.paramMeta && typeof node.paramMeta === "object" ? node.paramMeta : {};
     for (const parameter of nodeGraphModuleDefinitions[type].parameters || []) {
+      // Legacy source "level" → "amplitude" (RoundShape and other sources).
+      const legacyLevelMeta = parameter.key === "amplitude" ? rawParamMeta.level : undefined;
       const metadata = normalizeNodeGraphPatchParameterMetadata(
         type,
         parameter.key,
-        node.paramMeta?.[parameter.key],
+        rawParamMeta[parameter.key] ?? legacyLevelMeta,
       );
       paramMeta[parameter.key] = metadata;
-      const value = Object.hasOwn(node.params || {}, parameter.key)
-        ? node.params[parameter.key]
-        : parameter.defaultValue;
+      let value = Object.hasOwn(rawParams, parameter.key)
+        ? rawParams[parameter.key]
+        : (parameter.key === "amplitude" && Object.hasOwn(rawParams, "level")
+          ? rawParams.level
+          : (parameter.key === "filters"
+            && type === "phaseDisperse"
+            && Object.hasOwn(rawParams, "amount")
+            ? (typeof nodeGraphPhaseDisperseAmountToStages === "function"
+              ? nodeGraphPhaseDisperseAmountToStages(rawParams.amount)
+              : 1 + Math.max(0, Math.min(1, Number(rawParams.amount) || 0)) * 63)
+            : parameter.defaultValue));
+      // Smooth Graph Curve: collapse old 6-choice layout (Linear/Smooth/Bezier/
+      // Quadratic/Cubic/Catmull) where Smooth/Bezier/Catmull were one path.
+      // Detect old layout via saved max≥5 or orphan indices 4–5.
+      if (type === "graph2" && parameter.key === "smoothingMode") {
+        const sourceMax = Number(node.paramMeta?.[parameter.key]?.max);
+        const n = Math.round(Number(value));
+        const looksLegacySix = (Number.isFinite(sourceMax) && sourceMax >= 5)
+          || n === 4
+          || n === 5;
+        if (looksLegacySix && typeof nodeGraphGraph2SmoothingModeFourIndexFromLegacy === "function") {
+          value = nodeGraphGraph2SmoothingModeFourIndexFromLegacy(value);
+        } else if (looksLegacySix) {
+          // Fallback if graph-utils not loaded yet (plan/worklet paths).
+          const six = [0, 1, 1, 2, 3, 1];
+          value = Number.isFinite(n) && n >= 0 && n < six.length ? six[n] : 1;
+        }
+      }
       params[parameter.key] = normalizeNodeGraphPatchParameter(
         type,
         parameter.key,
         value,
         metadata,
       );
-    }
-    if (type === "clapPlugin") {
-      for (const [key, sourceMetadata] of Object.entries(node.paramMeta || {})) {
-        if (Object.hasOwn(paramMeta, key)) {
-          continue;
-        }
-        const metadata = normalizeNodeGraphPatchParameterMetadata(type, key, sourceMetadata);
-        if (!metadata) {
-          continue;
-        }
-        paramMeta[key] = metadata;
-        params[key] = normalizeNodeGraphPatchParameter(
-          type,
-          key,
-          Object.hasOwn(node.params || {}, key) ? node.params[key] : metadata.def,
-          metadata,
-        );
-      }
     }
     ids.add(id);
     const normalizedNode = {
@@ -235,6 +277,48 @@ function validateNodeGraphPatch(patch) {
         glyph: normalizeNodeGraphBugButtonGlyph(node.bugButton?.glyph),
       };
     }
+    // matrixWaterfall = rain glyphs; matrixDisplay = plate message; asciiscope = XY glyphRamp.
+    if (type === "matrixWaterfall" && typeof normalizeNodeGraphMatrixWaterfall === "function") {
+      normalizedNode.matrixWaterfall = normalizeNodeGraphMatrixWaterfall(
+        node.matrixWaterfall || node.matrixDisplay,
+      );
+    }
+    if (type === "matrixDisplay") {
+      if (typeof normalizeNodeGraphMatrixPlate === "function") {
+        normalizedNode.matrixDisplay = normalizeNodeGraphMatrixPlate(node.matrixDisplay);
+      } else if (typeof normalizeNodeGraphAsciiscope === "function") {
+        normalizedNode.matrixDisplay = normalizeNodeGraphAsciiscope(node.matrixDisplay);
+      }
+    }
+    if (type === "asciiscope" && typeof normalizeNodeGraphMatrixDisplay === "function") {
+      const xy = node.asciiscope?.glyphRamp != null ? node.asciiscope : node.matrixDisplay;
+      normalizedNode.asciiscope = normalizeNodeGraphMatrixDisplay(xy);
+    }
+    if (type === "textStream" && typeof normalizeNodeGraphTextStream === "function") {
+      normalizedNode.textStream = normalizeNodeGraphTextStream(node.textStream);
+    }
+    if (type === "knob" && typeof normalizeNodeGraphKnobFace === "function") {
+      const face = normalizeNodeGraphKnobFace(node.knobFace);
+      if (typeof nodeGraphKnobFaceIsNonDefault === "function"
+        ? nodeGraphKnobFaceIsNonDefault(face)
+        : (typeof nodeGraphKnobFaceHasAnyImage === "function"
+          ? nodeGraphKnobFaceHasAnyImage(face)
+          : face.layers?.some?.((layer) => layer?.dataUrl))) {
+        normalizedNode.knobFace = typeof nodeGraphKnobFaceToPatch === "function"
+          ? nodeGraphKnobFaceToPatch(face)
+          : face;
+      }
+    }
+    if (type === "rgbPicture" && typeof normalizeNodeGraphRgbPictureSettings === "function") {
+      const picture = normalizeNodeGraphRgbPictureSettings(
+        node.rgbPicture || node.traceDisplaySettings,
+      );
+      if (picture.dataUrl || (picture.background && picture.background !== "#000000")) {
+        normalizedNode.rgbPicture = typeof nodeGraphRgbPictureToPatch === "function"
+          ? nodeGraphRgbPictureToPatch(picture)
+          : picture;
+      }
+    }
     const normalizedPortScripts = normalizeNodeGraphPortScripts(type, node.portScripts);
     if (normalizedPortScripts) {
       normalizedNode.portScripts = normalizedPortScripts;
@@ -252,9 +336,6 @@ function validateNodeGraphPatch(patch) {
     if (type === "moduleGroup") {
       normalizedNode.moduleGroup = normalizeNodeGraphModuleGroup(node.moduleGroup);
     }
-    if (type === "clapPlugin") {
-      normalizedNode.clap = normalizeNodeGraphClapPluginBinding(node.clap);
-    }
     if (
       (type === "samplePlayer" || type === "sampleLooper" || type === "audioPlayer") &&
       normalizeNodeGraphSampleId(node.sample?.id)
@@ -271,6 +352,9 @@ function validateNodeGraphPatch(patch) {
         normalizedNode.samplePhase = Math.max(0, Math.min(1, samplePhase));
       }
     }
+    if (type === "audioPlayer" && Object.hasOwn(node, "playlist") && typeof nodeGraphAudioPlayerPlaylistNormalize === "function") {
+      normalizedNode.playlist = nodeGraphAudioPlayerPlaylistNormalize(node.playlist);
+    }
     if (type === "phosphillator") {
       const drawnPath = normalizeNodeGraphPhosphillatorDrawnPath(node.drawnPath);
       if (drawnPath) {
@@ -280,8 +364,25 @@ function validateNodeGraphPatch(patch) {
     const ui = nodeGraphModuleDefinitions[type].layout === "textBox" && !Object.hasOwn(node, "ui")
       ? { buttonsHidden: true }
       : normalizeNodeGraphPatchNodeUi(node.ui, node.type);
-    ui.displayModeKey = normalizeNodeGraphPatchNodeDisplayModeKey(type, ui.displayModeKey);
-    if (ui.buttonsHidden || ui.displayModeKey || ui.ioHidden || ui.interfaceControlsHidden || ui.movementLocked || ui.titleHidden || ui.oscilloscopeHidden || ui.slidersHidden || ui.displayHeightOffsetGu) {
+    // Drop legacy multi-mode face selection (one display type per module now).
+    if (ui.displayModeKey) {
+      ui.displayModeKey = "";
+    }
+    if (
+      ui.buttonsHidden
+      || ui.buttonsForceShow
+      || ui.ioHidden
+      || ui.hideUnused
+      || ui.interfaceControlsHidden
+      || ui.interfaceControlsForceShow
+      || ui.movementLocked
+      || ui.titleHidden
+      || ui.oscilloscopeHidden
+      || ui.oscilloscopeForceShow
+      || ui.slidersHidden
+      || ui.slidersForceShow
+      || ui.displayHeightOffsetGu
+    ) {
       normalizedNode.ui = ui;
     }
     return normalizedNode;
@@ -345,12 +446,16 @@ function validateNodeGraphPatch(patch) {
       destinationPort,
       sourceNode,
       sourcePort,
-      ...(nodeGraphWireTypePatchValue(connection.wireType)
-        ? { wireType: nodeGraphWireTypePatchValue(connection.wireType) }
-        : {}),
-      ...(normalizeNodeGraphTracePoints(connection.tracePoints).length
-        ? { tracePoints: normalizeNodeGraphTracePoints(connection.tracePoints) }
-        : {}),
+      ...(typeof nodeGraphWireOptionalPatchFields === "function"
+        ? nodeGraphWireOptionalPatchFields(connection)
+        : {
+          ...(nodeGraphWireTypePatchValue(connection.wireType)
+            ? { wireType: nodeGraphWireTypePatchValue(connection.wireType) }
+            : {}),
+          ...(normalizeNodeGraphTracePoints(connection.tracePoints).length
+            ? { tracePoints: normalizeNodeGraphTracePoints(connection.tracePoints) }
+            : {}),
+        }),
     }];
   });
 
@@ -390,12 +495,16 @@ function validateNodeGraphPatch(patch) {
         destinationParam,
         sourceNode,
         sourcePort,
-        ...(nodeGraphWireTypePatchValue(modulation.wireType)
-          ? { wireType: nodeGraphWireTypePatchValue(modulation.wireType) }
-          : {}),
-        ...(normalizeNodeGraphTracePoints(modulation.tracePoints).length
-          ? { tracePoints: normalizeNodeGraphTracePoints(modulation.tracePoints) }
-          : {}),
+        ...(typeof nodeGraphWireOptionalPatchFields === "function"
+          ? nodeGraphWireOptionalPatchFields(modulation)
+          : {
+            ...(nodeGraphWireTypePatchValue(modulation.wireType)
+              ? { wireType: nodeGraphWireTypePatchValue(modulation.wireType) }
+              : {}),
+            ...(normalizeNodeGraphTracePoints(modulation.tracePoints).length
+              ? { tracePoints: normalizeNodeGraphTracePoints(modulation.tracePoints) }
+              : {}),
+          }),
       }];
     });
 
@@ -432,12 +541,16 @@ function validateNodeGraphPatch(patch) {
       destinationNode,
       sourceNode,
       sourcePort,
-      ...(nodeGraphWireTypePatchValue(connection.wireType)
-        ? { wireType: nodeGraphWireTypePatchValue(connection.wireType) }
-        : {}),
-      ...(normalizeNodeGraphTracePoints(connection.tracePoints).length
-        ? { tracePoints: normalizeNodeGraphTracePoints(connection.tracePoints) }
-        : {}),
+      ...(typeof nodeGraphWireOptionalPatchFields === "function"
+        ? nodeGraphWireOptionalPatchFields(connection)
+        : {
+          ...(nodeGraphWireTypePatchValue(connection.wireType)
+            ? { wireType: nodeGraphWireTypePatchValue(connection.wireType) }
+            : {}),
+          ...(normalizeNodeGraphTracePoints(connection.tracePoints).length
+            ? { tracePoints: normalizeNodeGraphTracePoints(connection.tracePoints) }
+            : {}),
+        }),
     }];
   }) : [];
 
@@ -487,15 +600,173 @@ function validateNodeGraphPatch(patch) {
   };
 }
 
-function loadNodeGraphPatchFromScript(text) {
-  try {
-    return validateNodeGraphPatch(JSON.parse(text));
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      throw new Error(`script JSON parse failed: ${error.message}`);
-    }
-    throw new Error(`script validation failed: ${error.message}`);
+/**
+ * Hard-fail patch load diagnostics. No soft recovery — either the patch
+ * validates or we throw with a concrete source line.
+ *
+ * Message shape:
+ *   failed to load patch at: line N: <that line of patch code>
+ *   <underlying reason>
+ */
+
+function nodeGraphPatchSourceLines(text) {
+  return String(text ?? "").split(/\r?\n/);
+}
+
+function nodeGraphPatchFindLineNumber(sourceText, needle) {
+  const target = String(needle || "").trim();
+  if (!target) {
+    return 0;
   }
+  const lines = nodeGraphPatchSourceLines(sourceText);
+  for (let i = 0; i < lines.length; i += 1) {
+    if (lines[i].includes(target)) {
+      return i + 1;
+    }
+  }
+  return 0;
+}
+
+/** Map JSON SyntaxError / message → 1-based line in sourceText. */
+function nodeGraphPatchErrorLineNumber(sourceText, error) {
+  const source = String(sourceText ?? "");
+  const msg = String(error?.message || error || "");
+
+  const posMatch = msg.match(/position\s+(\d+)/i);
+  if (posMatch) {
+    const pos = Math.max(0, Number(posMatch[1]) || 0);
+    let line = 1;
+    const limit = Math.min(pos, source.length);
+    for (let i = 0; i < limit; i += 1) {
+      if (source.charCodeAt(i) === 10) {
+        line += 1;
+      }
+    }
+    return line;
+  }
+
+  const lineMatch = msg.match(/\bline\s+(\d+)\b/i);
+  if (lineMatch) {
+    return Math.max(1, Number(lineMatch[1]) || 1);
+  }
+
+  // Validation messages often name a type or id — land on that line of JSON.
+  const typeMatch = msg.match(/unknown node type\s+([A-Za-z0-9_.:-]+)/i);
+  if (typeMatch) {
+    const t = typeMatch[1];
+    const hit = nodeGraphPatchFindLineNumber(source, `"type": "${t}"`)
+      || nodeGraphPatchFindLineNumber(source, `"type":"${t}"`);
+    if (hit) {
+      return hit;
+    }
+  }
+
+  const idMatch = msg.match(/(?:duplicate node id|bypassed node missing:|node)\s+([A-Za-z0-9_.:-]+)/i);
+  if (idMatch) {
+    const id = idMatch[1];
+    if (id !== "id" && id !== "type" && id !== "missing") {
+      const hit = nodeGraphPatchFindLineNumber(source, `"id": "${id}"`)
+        || nodeGraphPatchFindLineNumber(source, `"id":"${id}"`);
+      if (hit) {
+        return hit;
+      }
+    }
+  }
+
+  const portMatch = msg.match(/(?:source port invalid|destination port invalid|destination parameter invalid):\s*([A-Za-z0-9_.:-]+)/i);
+  if (portMatch) {
+    const nodeId = String(portMatch[1]).split(".")[0];
+    if (nodeId) {
+      const hit = nodeGraphPatchFindLineNumber(source, `"id": "${nodeId}"`)
+        || nodeGraphPatchFindLineNumber(source, `"id":"${nodeId}"`);
+      if (hit) {
+        return hit;
+      }
+    }
+  }
+
+  return source ? 1 : 1;
+}
+
+function nodeGraphPatchLoadFailureMessage(sourceText, lineNumber, detail) {
+  const lines = nodeGraphPatchSourceLines(sourceText);
+  const total = Math.max(1, lines.length);
+  const raw = Number(lineNumber);
+  const lineNo = Number.isFinite(raw) && raw >= 1
+    ? Math.min(total, Math.floor(raw))
+    : 1;
+  const line = lines[lineNo - 1] ?? "";
+  const reason = String(detail || "").trim();
+  const head = `failed to load patch at: line ${lineNo}: ${line.trimEnd()}`;
+  return reason ? `${head}\n${reason}` : head;
+}
+
+function nodeGraphPatchThrowLoadFailure(sourceText, error) {
+  const source = String(sourceText ?? "");
+  const existing = String(error?.message || error || "");
+  // Preserve prior hard-fail message; still attach script + open dialog.
+  let message = existing;
+  if (!existing.startsWith("failed to load patch at:")) {
+    const line = nodeGraphPatchErrorLineNumber(source, error);
+    message = nodeGraphPatchLoadFailureMessage(source, line, existing);
+  }
+  const fail = new Error(message);
+  fail.patchScript = source;
+  fail.patchLoadFailure = true;
+  // Keep the script on screen — do not rely on clipboard alone.
+  if (typeof nodeGraphShowPatchLoadFault === "function") {
+    try {
+      nodeGraphShowPatchLoadFault({ message, script: source });
+    } catch (_error) {
+      // Dialog optional at early boot; still throw.
+    }
+  }
+  throw fail;
+}
+
+/**
+ * Load + validate a patch from JSON text. Hard-fails with line context.
+ */
+function loadNodeGraphPatchFromScript(text) {
+  const source = String(text ?? "");
+  let data;
+  try {
+    data = JSON.parse(source);
+  } catch (error) {
+    nodeGraphPatchThrowLoadFailure(source, error);
+  }
+  try {
+    return validateNodeGraphPatch(data);
+  } catch (error) {
+    // Pretty-print so line numbers match readable patch JSON when possible.
+    let pretty = source;
+    try {
+      pretty = JSON.stringify(data, null, 2);
+    } catch (_error) {
+      pretty = source;
+    }
+    nodeGraphPatchThrowLoadFailure(pretty, error);
+  }
+}
+
+/**
+ * Load + validate an in-memory patch object. Hard-fails with line context from
+ * a pretty-printed snapshot (no silent null / soft recovery).
+ */
+function loadNodeGraphPatchFromObject(patch) {
+  let pretty = "";
+  try {
+    pretty = JSON.stringify(patch, null, 2);
+  } catch (error) {
+    throw new Error(
+      nodeGraphPatchLoadFailureMessage(
+        "(unserializable patch)",
+        1,
+        error?.message || String(error),
+      ),
+    );
+  }
+  return loadNodeGraphPatchFromScript(pretty);
 }
 
 function nodeGraphModuleShouldBeVisible(node) {
@@ -538,8 +809,13 @@ function applyNodeGraphPatchToDom() {
       (port) => !(nodeGraphModuleDefinitions[patchNode.type]?.parameters || []).some((parameter) => parameter.key === port),
     );
     const portSignature = `${nodeGraphPatchNodeInputPorts(patchNode).join(",")}=>${outputPorts.join(",")}=>${nodeGraphModuleGraphInputs(patchNode.type).join(",")}`;
-    const patchNodeUi = nodeGraphEffectivePatchNodeUi(patchNode.ui);
-    const structuralUiSignature = patchNodeUi.oscilloscopeHidden ? "scope-hidden" : "scope-visible";
+    const patchNodeUi = nodeGraphEffectivePatchNodeUi(patchNode.ui, patchNode.type);
+    // Headerless LayoutB mounts/unmounts the title bar with titleHidden — rebuild
+    // when that changes (scope-hidden already forces a rebuild for LayoutA displays).
+    const structuralUiSignature = [
+      patchNodeUi.oscilloscopeHidden ? "scope-hidden" : "scope-visible",
+      patchNodeUi.titleHidden ? "title-hidden" : "title-visible",
+    ].join("|");
     if (
       element &&
       (
@@ -571,21 +847,38 @@ function applyNodeGraphPatchToDom() {
     element.dataset.structuralUiSignature = structuralUiSignature;
     const titleText = element.querySelector(".node-header-title");
     if (titleText) {
+      // Chrome bar shows alias when set, else type/plugin name.
+      const chromeTitle = typeof nodeGraphPatchNodeTitle === "function"
+        ? nodeGraphPatchNodeTitle(patchNode)
+        : (typeof nodeGraphModuleChromeTitle === "function"
+          ? nodeGraphModuleChromeTitle(patchNode)
+          : nodeGraphDefaultNodeTitle(patchNode.type, patchNode.id));
       if (titleText.tagName === "INPUT") {
         if (document.activeElement !== titleText) {
-          titleText.value = nodeGraphPatchNodeTitle(patchNode);
+          titleText.value = chromeTitle;
         }
       } else {
-        titleText.textContent = nodeGraphPatchNodeTitle(patchNode);
+        titleText.textContent = chromeTitle;
       }
     }
     element.classList.toggle("buttons-hidden", patchNodeUi.buttonsHidden);
+    element.classList.toggle("buttons-forced-visible", Boolean(patchNodeUi.buttonsForceShow));
     element.classList.toggle("io-hidden", patchNodeUi.ioHidden);
+    element.classList.toggle(
+      "unused-hidden",
+      Boolean(normalizeNodeGraphPatchNodeUi(patchNode.ui, patchNode.type).hideUnused),
+    );
     element.classList.toggle("interface-controls-hidden", patchNodeUi.interfaceControlsHidden);
+    element.classList.toggle("interface-controls-forced-visible", Boolean(patchNodeUi.interfaceControlsForceShow));
     element.classList.toggle("movement-locked", patchNodeUi.movementLocked);
     element.classList.toggle("oscilloscope-hidden", patchNodeUi.oscilloscopeHidden);
+    element.classList.toggle("oscilloscope-forced-visible", Boolean(patchNodeUi.oscilloscopeForceShow));
     element.classList.toggle("sliders-hidden", patchNodeUi.slidersHidden);
+    element.classList.toggle("sliders-forced-visible", Boolean(patchNodeUi.slidersForceShow));
     element.classList.toggle("title-hidden", patchNodeUi.titleHidden);
+    if (typeof syncNodeGraphLayoutBNoParamsClass === "function") {
+      syncNodeGraphLayoutBNoParamsClass(element, patchNode.type, patchNodeUi);
+    }
     const dragHandle = element.querySelector(".node-drag-handle");
     if (dragHandle) {
       dragHandle.textContent = patchNodeUi.movementLocked ? "\uD83D\uDD12" : "\u2725";
@@ -632,10 +925,18 @@ function applyNodeGraphPatchToDom() {
       );
       const value = patchNode.params?.[parameter.key] ??
         nodeGraphParameterFallback(patchNode.type, parameter.key);
+      // Keep domainValue + thumb in lockstep with the patch. Readouts prefer
+      // dataset.domainValue; if only input.value is set, the displayed value
+      // can stay stuck at factory default until the user jiggles the slider.
       if (typeof applyNodeGraphInputUnboundedValue === "function") {
         applyNodeGraphInputUnboundedValue(input, value);
+      } else {
+        const n = Number(value);
+        if (Number.isFinite(n)) {
+          input.dataset.domainValue = String(n);
+        }
+        input.value = String(value);
       }
-      input.value = String(value);
       syncNodeSliderReadout(input);
     }
     if (typeof syncNodeGraphParameterVisualsForNodeElement === "function") {
@@ -653,10 +954,11 @@ function applyNodeGraphPatchToDom() {
     } else if (nodeGraphModuleDefinitions[patchNode.type]?.layout === "graph") {
       syncNodeGraphGraphElement(element, patchNode);
     } else if (
-      nodeGraphModuleDefinitions[patchNode.type]?.layout === "clapPlugin" &&
-      typeof syncNodeGraphClapPluginElement === "function"
+      patchNode.type === "knob"
+      && typeof renderNodeGraphKnobFace === "function"
     ) {
-      syncNodeGraphClapPluginElement(element, patchNode);
+      // Keep face art / frame-hide in sync after patch DOM apply.
+      renderNodeGraphKnobFace(patchNode.id);
     }
   }
   syncNodeGraphInputModuleLiveState();
@@ -688,14 +990,64 @@ function applyNodeGraphPatchToDom() {
   }
 }
 
+/**
+ * Layout-only path after module drag: positions are already on the DOM.
+ * Avoid full applyNodeGraphPatchToDom (re-syncs every slider / face / knob),
+ * live plan rebuild, and render-pending — none of those depend on gx/gy.
+ */
+function applyNodeGraphLayoutPositionsToDom(patch = nodeGraphMvp.patch) {
+  for (const patchNode of patch?.nodes || []) {
+    const element = typeof nodeGraphNodeElement === "function"
+      ? nodeGraphNodeElement(patchNode.id)
+      : null;
+    if (!element) {
+      continue;
+    }
+    const point = typeof nodeGraphGridToPixel === "function"
+      ? nodeGraphGridToPixel(patchNode)
+      : null;
+    if (point && typeof positionNodeGraphNode === "function") {
+      positionNodeGraphNode(element, point, { clamp: false, snap: false });
+    }
+    element.dataset.gridX = String(patchNode.gx);
+    element.dataset.gridY = String(patchNode.gy);
+  }
+  if (typeof updateNodeGraphGridHeatmap === "function") {
+    updateNodeGraphGridHeatmap();
+  }
+  if (typeof scheduleNodeGraphWireRedrawAfterLayout === "function") {
+    scheduleNodeGraphWireRedrawAfterLayout();
+  }
+}
+
 function commitNodeGraphPatch(patch, options = {}) {
   const isWireEdit = Boolean(options.wireEdit);
-  nodeGraphMvp.patch = cloneNodeGraphPatch(validateNodeGraphPatch(patch));
+  // layoutEdit: module move / snap only — skip DOM rebuild + audio plan + render pending.
+  const isLayoutEdit = Boolean(options.layoutEdit);
+  // softDom: cosmetic module face / label-only edits — keep existing module DOM
+  // (avoids image reload flash on Knob readout/rotate toggles).
+  const isSoftDom = Boolean(options.softDom || options.faceEdit);
+  let validated;
+  try {
+    validated = validateNodeGraphPatch(patch);
+  } catch (error) {
+    // Hard fail with source line — no soft recovery.
+    let pretty = "";
+    try {
+      pretty = JSON.stringify(patch, null, 2);
+    } catch (_error) {
+      pretty = String(error?.message || error || "invalid patch");
+    }
+    nodeGraphPatchThrowLoadFailure(pretty, error);
+  }
+  nodeGraphMvp.patch = cloneNodeGraphPatch(validated);
   if (typeof preserveNodeGraphEditorZoomOnPatch === "function") {
     preserveNodeGraphEditorZoomOnPatch(nodeGraphMvp.patch);
   }
   syncNodeGraphRuntimeFromPatch();
-  if (!isWireEdit) {
+  if (isLayoutEdit) {
+    applyNodeGraphLayoutPositionsToDom(nodeGraphMvp.patch);
+  } else if (!isWireEdit && !isSoftDom) {
     applyNodeGraphPatchToDom();
     if (typeof applyNodeGraphZoom === "function") {
       applyNodeGraphZoom();
@@ -703,10 +1055,11 @@ function commitNodeGraphPatch(patch, options = {}) {
     syncNodeGraphMonitorIndicators();
     pruneNodeGraphSelectionAfterPatch();
   }
-  if (options.markPending !== false) {
+  // Positions / face cosmetics do not change offline render output.
+  if (options.markPending !== false && !isLayoutEdit && !isSoftDom) {
     markNodeGraphRenderPending();
   }
-  if (typeof scheduleNodeGraphWireRedrawAfterLayout === "function") {
+  if (typeof scheduleNodeGraphWireRedrawAfterLayout === "function" && !isSoftDom) {
     scheduleNodeGraphWireRedrawAfterLayout();
   }
   if (options.patchDirtyState) {
@@ -714,26 +1067,40 @@ function commitNodeGraphPatch(patch, options = {}) {
   } else if (options.autosaveWorkingPatch !== false) {
     nodeGraphMvp.patchDirtyState = "edited";
   }
-  scheduleNodeGraphLivePlanSync();
+  // Audio graph topology/params are unchanged by gx/gy or face cosmetics.
+  // Ghost module placement can skip live plan until drop (see skipLivePlan).
+  if (!isLayoutEdit && !isSoftDom && options.skipLivePlan !== true) {
+    scheduleNodeGraphLivePlanSync();
+  }
 
   const runDeferredUiPanels = () => {
-    renderNodePalette();
-    renderNodeGraphConnectionList();
-    syncNodeGraphGhostSliders();
-    syncNodeGraphFilterCurveDisplays();
-    renderNodeGraphVisualSettings();
-    syncNodeGraphSettingsView();
-    if (typeof renderNodeGraphMissingSampleAssetsDialog === "function") {
-      renderNodeGraphMissingSampleAssetsDialog(nodeGraphMvp.patch);
+    if (isSoftDom) {
+      // Face-only: skip palette/connection/scope rewrites (those flash modules).
+      if (typeof syncNodeGraphCurrentSavedPatchHeader === "function") {
+        syncNodeGraphCurrentSavedPatchHeader();
+      }
+    } else if (!isLayoutEdit) {
+      renderNodePalette();
+      renderNodeGraphConnectionList();
+      syncNodeGraphGhostSliders();
+      syncNodeGraphFilterCurveDisplays();
+      renderNodeGraphVisualSettings();
+      syncNodeGraphSettingsView();
+      if (typeof renderNodeGraphMissingSampleAssetsDialog === "function") {
+        renderNodeGraphMissingSampleAssetsDialog(nodeGraphMvp.patch);
+      }
+      if (typeof renderNodeGraphCodeScreen === "function" && !document.getElementById("nodeCodeScreenView")?.hidden) {
+        renderNodeGraphCodeScreen();
+      }
+      const scriptStatus = nodeGraphPatchScriptStatus(
+        options.status || "script synced",
+        options.ok ?? true,
+      );
+      syncNodeGraphScriptView(scriptStatus.message, scriptStatus.ok);
+    } else if (typeof syncNodeGraphCurrentSavedPatchHeader === "function") {
+      // Light header dirty-state only — no full script panel rewrite.
+      syncNodeGraphCurrentSavedPatchHeader();
     }
-    if (typeof renderNodeGraphCodeScreen === "function" && !document.getElementById("nodeCodeScreenView")?.hidden) {
-      renderNodeGraphCodeScreen();
-    }
-    const scriptStatus = nodeGraphPatchScriptStatus(
-      options.status || "script synced",
-      options.ok ?? true,
-    );
-    syncNodeGraphScriptView(scriptStatus.message, scriptStatus.ok);
     if (options.record !== false) {
       recordNodeGraphHistory();
     } else {
@@ -741,12 +1108,14 @@ function commitNodeGraphPatch(patch, options = {}) {
     }
     if (options.autosaveWorkingPatch !== false && typeof saveNodeGraphWorkingPatchToUserSettings === "function") {
       saveNodeGraphWorkingPatchToUserSettings();
-    } else if (typeof syncNodeGraphCurrentSavedPatchHeader === "function") {
+    } else if (typeof syncNodeGraphCurrentSavedPatchHeader === "function" && !isLayoutEdit) {
       syncNodeGraphCurrentSavedPatchHeader();
     }
   };
 
-  if (isWireEdit) {
+  // Wire/layout edits and ghost placement (deferUiPanels) keep the UI responsive:
+  // history/autosave/palette work runs after the current pointer/frame.
+  if (isWireEdit || isLayoutEdit || options.deferUiPanels) {
     window.requestAnimationFrame(() => {
       window.setTimeout(runDeferredUiPanels, 0);
     });
@@ -774,8 +1143,25 @@ function deleteSelectedNodeGraphItem() {
     return;
   }
 
-  if (selection.type === "wire") {
-    disconnectNodeGraphConnection(selection.index, selection.kind || "signal");
+  if (selection.type === "wire" || selection.type === "wires") {
+    const entries = typeof nodeGraphSelectedWireEntries === "function"
+      ? nodeGraphSelectedWireEntries(selection)
+      : [{ kind: selection.kind || "signal", index: selection.index }];
+    // High → low per kind so indices stay valid while removing.
+    const byKind = new Map();
+    for (const entry of entries) {
+      const kind = entry.kind || "signal";
+      if (!byKind.has(kind)) {
+        byKind.set(kind, []);
+      }
+      byKind.get(kind).push(Number(entry.index));
+    }
+    for (const [kind, indices] of byKind) {
+      indices.sort((a, b) => b - a);
+      for (const index of indices) {
+        disconnectNodeGraphConnection(index, kind);
+      }
+    }
     return;
   }
 

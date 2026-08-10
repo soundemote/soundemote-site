@@ -64,7 +64,8 @@ const nodeMetadataPopoverDefaultSize = Object.freeze({
   height: 620,
   minWidth: 24,
   maxWidth: 900,
-  minHeight: 120,
+  /* Tall enough for heading + a few fixed-height rows; shorter = scroll, never compress. */
+  minHeight: 220,
   maxHeight: 820,
 });
 
@@ -91,18 +92,27 @@ function normalizeNodeMetadataPopoverSize(size = {}) {
   };
 }
 
-function applyNodeMetadataPopoverSize(size = {}) {
-  const popover = document.getElementById("nodeParameterMetadataPopover");
+function applyNodeMetadataPopoverSize(size = {}, element = null) {
+  const popover = element || document.getElementById("nodeParameterMetadataPopover");
   const normalized = normalizeNodeMetadataPopoverSize(size);
+  const stored = {
+    width: normalized.width,
+    ...(Number.isFinite(normalized.height) ? { height: normalized.height } : {}),
+  };
   if (popover) {
     if (typeof applyNodeGraphFloatingWindowSizeVars === "function") {
       applyNodeGraphFloatingWindowSizeVars(popover, "metadata-popover", nodeMetadataPopoverDefaultSize, normalized);
     } else {
-      popover.style.setProperty("--metadata-popover-width", `${normalized.width}px`);
-      popover.style.setProperty("--metadata-popover-height", `${normalized.height}px`);
+      popover.style.setProperty("--metadata-popover-width", `${stored.width}px`);
+      if (Number.isFinite(stored.height)) {
+        popover.style.setProperty("--metadata-popover-height", `${stored.height}px`);
+      }
+    }
+    if (typeof syncNodeGraphFloatingWindowInlineBox === "function") {
+      syncNodeGraphFloatingWindowInlineBox(popover, stored);
     }
   }
-  return normalized;
+  return stored;
 }
 
 function nodeMetadataPopoverSizeFromElement(popover = document.getElementById("nodeParameterMetadataPopover")) {
@@ -210,7 +220,7 @@ function beginNodeMetadataPopoverDrag(event) {
     beginNodeMetadataPopoverResize(event);
     return;
   }
-  const headingTarget = event.currentTarget?.classList?.contains("metadata-popover-heading") ||
+  const headingTarget = event.currentTarget?.classList?.contains("scene-context-heading") ||
     event.currentTarget?.id === "metadataPopoverDragHandle";
   if (!headingTarget && !nodeMetadataPopoverEmptyDragTarget(event)) {
     return;
@@ -221,7 +231,7 @@ function beginNodeMetadataPopoverDrag(event) {
     return;
   }
 
-  const heading = document.querySelector("#nodeParameterMetadataPopover .metadata-popover-heading");
+  const heading = document.querySelector("#nodeParameterMetadataPopover .scene-context-heading");
   const drag = beginNodeGraphFloatingWindowDrag(event, popover, "metadataDragging");
   if (drag) {
     drag.heading = heading;
@@ -305,6 +315,7 @@ const nodeMetadataScriptSupportedKeys = new Set([
   "displayChoices",
   "divideChoicesVisibly",
   "kind",
+  "bipolar",
   "linearSmoothing",
   "max",
   "maxDigits",
@@ -323,6 +334,7 @@ const nodeMetadataScriptSupportedKeys = new Set([
 ]);
 
 const nodeMetadataScriptBooleanKeys = new Set([
+  "bipolar",
   "displayChoices",
   "divideChoicesVisibly",
   "linearSmoothing",
@@ -725,6 +737,7 @@ function formatNodeMetadataScript(slider, metadata = nodeSliderMetadata(slider))
     `param.${key}.choices = ${nodeMetadataScriptValue(metadata.choices, "choices")};`,
     `param.${key}.displayChoices = ${nodeMetadataScriptValue(metadata.displayChoices, "displayChoices")};`,
     `param.${key}.divideChoicesVisibly = ${nodeMetadataScriptValue(metadata.divideChoicesVisibly, "divideChoicesVisibly")};`,
+    `param.${key}.bipolar = ${nodeMetadataScriptValue(Boolean(metadata.bipolar), "bipolar")};`,
     `param.${key}.linearSmoothing = ${nodeMetadataScriptValue(metadata.linearSmoothing, "linearSmoothing")};`,
     `param.${key}.smoothingMode = ${nodeMetadataScriptValue(metadata.smoothingMode, "smoothingMode")};`,
     `param.${key}.smoothingSeconds = ${nodeMetadataScriptValue(metadata.smoothingSeconds, "smoothingSeconds")};`,
@@ -1214,7 +1227,7 @@ function parseNodeMetadataScriptValue(rawValue, key, current) {
   if (key === "choices") {
     return parseNodeMetadataScriptChoices(value);
   }
-  if (["displayChoices", "divideChoicesVisibly", "linearSmoothing", "nonlinearSlider", "showSign", "wraparound"].includes(key)) {
+  if (["bipolar", "displayChoices", "divideChoicesVisibly", "linearSmoothing", "nonlinearSlider", "showSign", "wraparound"].includes(key)) {
     return parseNodeMetadataScriptBoolean(value, current[key]);
   }
   if (key === "kind") {
@@ -1326,6 +1339,25 @@ function applyNodeMetadataScriptPortAliases(slider, portAliases = []) {
   patchNode.portMeta = normalizeNodeGraphPatchPortMeta(nextPortMeta);
 }
 
+function syncNodeMetadataChoiceToggleAvailability() {
+  // Divide is independent storage, but separators only paint when labels are on.
+  // Keep the checkbox enabled so users can set divide before turning display on.
+  const displayInput = document.getElementById("metadataDisplayChoicesValue");
+  const divideInput = document.getElementById("metadataDivideChoicesValue");
+  const divideLabel = divideInput?.closest?.("label");
+  if (!displayInput || !divideInput) {
+    return;
+  }
+  const displayOn = Boolean(displayInput.checked);
+  divideInput.disabled = false;
+  if (divideLabel) {
+    divideLabel.classList.toggle("is-choice-divide-idle", !displayOn);
+    divideLabel.title = displayOn
+      ? ""
+      : "Separators only show while Display choices is on (this flag is still saved).";
+  }
+}
+
 function writeNodeMetadataEditorValues(metadata) {
   document.getElementById("metadataAliasValue").value = metadata.alias || "";
   document.getElementById("metadataTooltipValue").value = metadata.tooltip || "";
@@ -1341,9 +1373,19 @@ function writeNodeMetadataEditorValues(metadata) {
   document.getElementById("metadataUnitValue").value = metadata.unit;
   document.getElementById("metadataChoicesValue").value =
     formatNodeMetadataChoices(metadata.choices);
-  document.getElementById("metadataDisplayChoicesValue").checked = metadata.displayChoices;
-  document.getElementById("metadataDivideChoicesValue").checked = metadata.divideChoicesVisibly;
-  document.getElementById("metadataLinearSmoothingValue").checked = metadata.linearSmoothing;
+  // Independent booleans — never assign one from the other.
+  const displayChoicesInput = document.getElementById("metadataDisplayChoicesValue");
+  const divideChoicesInput = document.getElementById("metadataDivideChoicesValue");
+  if (displayChoicesInput) {
+    displayChoicesInput.checked = Boolean(metadata.displayChoices);
+  }
+  if (divideChoicesInput) {
+    divideChoicesInput.checked = Boolean(metadata.divideChoicesVisibly);
+  }
+  const bipolarCheckbox = document.getElementById("metadataBipolarValue");
+  if (bipolarCheckbox) {
+    bipolarCheckbox.checked = Boolean(metadata.bipolar);
+  }
   document.getElementById("metadataNonlinearSliderValue").checked = metadata.nonlinearSlider;
   document.getElementById("metadataSmoothingSecondsValue").value =
     Number.isFinite(Number(metadata.smoothingSeconds))
@@ -1356,6 +1398,53 @@ function writeNodeMetadataEditorValues(metadata) {
   document.getElementById("metadataShowSignValue").checked = metadata.showSign;
   document.getElementById("metadataWraparoundValue").checked = metadata.wraparound;
   syncNodeMetadataMidVisibility();
+  syncNodeMetadataChoiceToggleAvailability();
+}
+
+/**
+ * Place empty-state copy BELOW the unified nav toolbar (heading → nav → empty).
+ * Never insert as heading's next sibling when a nav host already exists.
+ */
+function placeNodeGraphUnifiedInspectorEmpty(popover, empty) {
+  if (!popover || !empty) {
+    return;
+  }
+  const nav = popover.querySelector(":scope > .node-unified-window-nav-host");
+  const heading = popover.querySelector(":scope > .scene-context-heading");
+  const grid = popover.querySelector(
+    ":scope > .metadata-popover-grid, :scope > .node-trace-display-settings-grid",
+  );
+  if (nav) {
+    nav.after(empty);
+  } else if (grid) {
+    popover.insertBefore(empty, grid);
+  } else if (heading) {
+    heading.after(empty);
+  } else {
+    popover.append(empty);
+  }
+}
+
+/** Show/hide the parameter form vs the “right-click a slider” empty state. */
+function setNodeMetadataPopoverBlankState(blank = true, message = "Right-click on a slider") {
+  const popover = document.getElementById("nodeParameterMetadataPopover");
+  if (!popover) {
+    return;
+  }
+  const grid = popover.querySelector(".metadata-popover-grid");
+  let empty = popover.querySelector(":scope > .node-unified-inspector-empty");
+  if (!empty) {
+    empty = document.createElement("div");
+    empty.className = "node-unified-inspector-empty";
+    empty.setAttribute("role", "status");
+  }
+  empty.textContent = message;
+  placeNodeGraphUnifiedInspectorEmpty(popover, empty);
+  empty.hidden = !blank;
+  if (grid) {
+    grid.hidden = Boolean(blank);
+  }
+  popover.dataset.inspectorBlank = blank ? "true" : "false";
 }
 
 function fillNodeMetadataPopover(slider) {
@@ -1373,7 +1462,8 @@ function fillNodeMetadataPopover(slider) {
   setNodeMetadataScriptDirty(false, "script ready", false);
   setNodeMetadataAdvancedScriptVisible(false);
   setNodeMetadataFieldsDirty(false);
-  document.getElementById("metadataRestoreDefaultButton").classList.remove("armed");
+  document.getElementById("metadataRestoreDefaultButton")?.classList.remove("armed");
+  setNodeMetadataPopoverBlankState(false);
 }
 
 function openNodeMetadataPopover(event, readout) {
@@ -1409,46 +1499,85 @@ function openNodeMetadataPopover(event, readout) {
     Number.isFinite(Number(savedPosition?.top));
   applyNodeMetadataPopoverSize(sharedInspectorState.size);
   const popover = document.getElementById("nodeParameterMetadataPopover");
-  positionNodeMetadataPopover(
-    popover,
-    hasSavedPosition
-      ? savedPosition.left
-      : nodeMetadataReplacementX(displayRect || moduleActionsRect, popover, event.clientX),
-    hasSavedPosition
-      ? savedPosition.top
-      : (displayRect?.top ?? moduleActionsRect?.top ?? event.clientY),
-  );
+  // Unified switcher seats after return — skip independent placement.
+  if (nodeGraphMvp._unifiedWindowSwitching) {
+    popover.hidden = false;
+    if (typeof markNodeGraphFloatingWindowSurface === "function") {
+      markNodeGraphFloatingWindowSurface(popover);
+    }
+  } else {
+    positionNodeMetadataPopover(
+      popover,
+      hasSavedPosition
+        ? savedPosition.left
+        : nodeMetadataReplacementX(displayRect || moduleActionsRect, popover, event.clientX),
+      hasSavedPosition
+        ? savedPosition.top
+        : (displayRect?.top ?? moduleActionsRect?.top ?? event.clientY),
+    );
+  }
   if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
     rememberNodeGraphWorkspaceWindowState("metaparameters", popover, { open: true }, { status: false });
   }
+  if (typeof noteNodeGraphUnifiedWindowOpened === "function") {
+    noteNodeGraphUnifiedWindowOpened("metaparameters", popover);
+  }
 }
 
+/**
+ * Parameter Settings never auto-bind from module selection — only right-click
+ * on a slider fills the form. Selection changes only clear to the blank state
+ * when nothing is selected or the open parameter no longer belongs to the selection.
+ */
 function syncOpenNodeMetadataPopoverToModule(nodeId) {
   const popover = document.getElementById("nodeParameterMetadataPopover");
   if (!popover || popover.hidden || nodeGraphMvp.sharedInspectorActive !== "metaparameters") {
     return false;
   }
-  const readout = typeof nodeGraphContextTargetSliderReadout === "function"
-    ? nodeGraphContextTargetSliderReadout(nodeId)
-    : null;
-  const slider = readout?.dataset?.sliderTarget
-    ? document.getElementById(readout.dataset.sliderTarget)
-    : null;
-  if (!slider) {
-    return false;
-  }
-  if (nodeGraphMvp.metadataEditorTarget === slider.id) {
+  const selectedNode = String(nodeId || "").trim();
+  const targetId = String(nodeGraphMvp.metadataEditorTarget || "").trim();
+  if (!targetId) {
+    // Already blank — keep blank even when a module is selected.
     return true;
   }
+  const slider = document.getElementById(targetId);
+  const targetModuleId = String(slider?.closest?.(".dsp-node")?.dataset?.node || "").trim();
+  if (selectedNode && targetModuleId && selectedNode === targetModuleId) {
+    return true;
+  }
+  // Unselected, multi-select, or different module: clear to empty state.
   if (nodeGraphMvp.metadataEditorTarget && !confirmNodeMetadataScriptDiscard()) {
     return false;
   }
-  nodeGraphMvp.metadataEditorTarget = slider.id;
-  fillNodeMetadataPopover(slider);
-  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
-    rememberNodeGraphWorkspaceWindowState("metaparameters", popover, { open: true }, { status: false });
-  }
+  showBlankNodeMetadataPopoverContent();
   return true;
+}
+
+/** Content-only blank fill (no positioning). Used by open + selection sync. */
+function showBlankNodeMetadataPopoverContent() {
+  nodeGraphMvp.metadataEditorTarget = null;
+  nodeGraphMvp.sharedInspectorActive = "metaparameters";
+  const title = document.getElementById("metadataPopoverTitle");
+  const subtitle = document.getElementById("metadataPopoverSubtitle");
+  const scriptTarget = document.getElementById("metadataScriptTarget");
+  if (title) {
+    title.textContent = "PARAMETER";
+  }
+  if (subtitle) {
+    subtitle.textContent = "Settings";
+  }
+  if (scriptTarget) {
+    scriptTarget.textContent = "No parameter selected";
+  }
+  setMetadataScriptSourceText("");
+  if (typeof updateNodeMetadataScriptPreview === "function") {
+    updateNodeMetadataScriptPreview("");
+  }
+  if (typeof updateNodeMetadataScriptEffective === "function") {
+    updateNodeMetadataScriptEffective("");
+  }
+  setNodeMetadataScriptDirty(false, "no parameter selected", false, "Right-click on a slider");
+  setNodeMetadataPopoverBlankState(true, "Right-click on a slider");
 }
 
 function openBlankNodeMetadataPopover(event = {}) {
@@ -1467,15 +1596,7 @@ function openBlankNodeMetadataPopover(event = {}) {
   const moduleActionsRect = typeof prepareNodeModuleActionsWindowForInspectorReplacement === "function"
     ? prepareNodeModuleActionsWindowForInspectorReplacement()
     : null;
-  nodeGraphMvp.metadataEditorTarget = null;
-  nodeGraphMvp.sharedInspectorActive = "metaparameters";
-  document.getElementById("metadataPopoverTitle").textContent = "PARAMETER";
-  document.getElementById("metadataPopoverSubtitle").textContent = "Settings";
-  document.getElementById("metadataScriptTarget").textContent = "No parameter selected";
-  setMetadataScriptSourceText("");
-  updateNodeMetadataScriptPreview("");
-  updateNodeMetadataScriptEffective("");
-  setNodeMetadataScriptDirty(false, "no parameter selected", false, "Right-click a slider readout or choose a module with parameters.");
+  showBlankNodeMetadataPopoverContent();
   const sharedInspectorState = typeof normalizeNodeGraphSharedInspectorWindowState === "function"
     ? normalizeNodeGraphSharedInspectorWindowState(nodeGraphMvp.sharedInspectorWindowState, nodeGraphMvp.workspaceWindowStates)
     : (nodeGraphMvp.sharedInspectorWindowState || {});
@@ -1485,17 +1606,27 @@ function openBlankNodeMetadataPopover(event = {}) {
     Number.isFinite(Number(savedPosition?.top));
   applyNodeMetadataPopoverSize(sharedInspectorState.size);
   const popover = document.getElementById("nodeParameterMetadataPopover");
-  positionNodeMetadataPopover(
-    popover,
-    hasSavedPosition
-      ? savedPosition.left
-      : nodeMetadataReplacementX(displayRect || moduleActionsRect, popover, event.clientX ?? window.innerWidth * 0.5),
-    hasSavedPosition
-      ? savedPosition.top
-      : (displayRect?.top ?? moduleActionsRect?.top ?? event.clientY ?? window.innerHeight * 0.25),
-  );
+  if (nodeGraphMvp._unifiedWindowSwitching) {
+    popover.hidden = false;
+    if (typeof markNodeGraphFloatingWindowSurface === "function") {
+      markNodeGraphFloatingWindowSurface(popover);
+    }
+  } else {
+    positionNodeMetadataPopover(
+      popover,
+      hasSavedPosition
+        ? savedPosition.left
+        : nodeMetadataReplacementX(displayRect || moduleActionsRect, popover, event.clientX ?? window.innerWidth * 0.5),
+      hasSavedPosition
+        ? savedPosition.top
+        : (displayRect?.top ?? moduleActionsRect?.top ?? event.clientY ?? window.innerHeight * 0.25),
+    );
+  }
   if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
     rememberNodeGraphWorkspaceWindowState("metaparameters", popover, { open: true }, { status: false });
+  }
+  if (typeof noteNodeGraphUnifiedWindowOpened === "function") {
+    noteNodeGraphUnifiedWindowOpened("metaparameters", popover);
   }
 }
 
@@ -1565,20 +1696,57 @@ function toggleNodeMetadataAdvancedScript() {
   setNodeMetadataAdvancedScriptVisible(!popover?.classList.contains("metadata-script-open"));
 }
 
-function metadataStepperQuantum(input) {
+/**
+ * Parameter Settings −/+ step size from current magnitude + direction.
+ * Same rules as nodeGraphMagnitudeStepperQuantum:
+ *   |value| < 1 → 0.1 · 1…<10 → 1 · 10…<100 → 10 · …
+ * Stepping DOWN from an exact decade (1, 10, 100, 1000) uses the next finer
+ * step so 1→0.9 (not 1→0), 10→9, etc.
+ * Max digits always steps by 1.
+ *
+ * @param {HTMLInputElement|null} input
+ * @param {number} currentValue
+ * @param {number} [direction]  -1 = minus, +1 = plus
+ */
+function metadataStepperQuantum(input, currentValue, direction = 0) {
   if (input?.id === "metadataMaxDigitsValue") {
     return 1;
   }
-  return 0.1;
+  if (typeof nodeGraphMagnitudeStepperQuantum === "function") {
+    return nodeGraphMagnitudeStepperQuantum(currentValue, direction);
+  }
+  // Fallback if display-settings controls script not loaded yet.
+  const abs = Math.abs(Number(currentValue));
+  let q;
+  if (!Number.isFinite(abs) || abs < 1 - 1e-12) {
+    q = 0.1;
+  } else if (abs < 10) {
+    q = 1;
+  } else if (abs < 100) {
+    q = 10;
+  } else if (abs < 1000) {
+    q = 100;
+  } else {
+    q = 1000;
+  }
+  if (direction < 0 && Number.isFinite(abs) && abs > 0 && Math.abs(abs - q) <= 1e-9) {
+    if (q === 1) q = 0.1;
+    else if (q === 10) q = 1;
+    else if (q === 100) q = 10;
+    else if (q >= 1000) q = 100;
+  }
+  return q;
 }
 
 function formatMetadataStepperValue(value, quantum) {
   if (!Number.isFinite(value)) {
     return "0";
   }
-  if (Number.isInteger(quantum)) {
+  // Whole-unit quanta (1, 10, 100, 1000) and max-digits: integer display.
+  if (!Number.isFinite(quantum) || quantum >= 1 - 1e-12) {
     return String(Math.round(value));
   }
+  // Sub-unit steps (0.1): keep one decimal without float dust.
   const decimals = Math.min(8, Math.max(0, String(quantum).split(".")[1]?.length || 0));
   return value.toFixed(decimals).replace(/\.?0+$/g, "");
 }
@@ -1600,11 +1768,27 @@ function stepNodeMetadataField(event) {
   event.preventDefault();
   event.stopPropagation();
   const direction = Number(button.dataset.metadataStepDirection) < 0 ? -1 : 1;
-  const quantum = metadataStepperQuantum(input);
   const current = Number(input.value);
-  let next = (Number.isFinite(current) ? current : 0) + direction * quantum;
+  const base = Number.isFinite(current) ? current : 0;
+  // Pass direction so 1 − → 0.9 (not 1 − → 0).
+  const quantum = metadataStepperQuantum(input, base, direction);
+  let next = base + direction * quantum;
+  if (quantum < 1 - 1e-12) {
+    next = Math.round(next * 10) / 10;
+  }
   if (input.id === "metadataMaxDigitsValue") {
-    next = Math.max(0, Math.min(12, Math.round(next)));
+    // App-wide: maxDigits ≥ 1 (0 is invalid).
+    next = Math.max(1, Math.min(12, Math.round(next)));
+  }
+  // Optional clamp (e.g. SENSITIVITY uses standard curve range −1…+1).
+  const clampMin = Number(input.dataset.metadataClampMin);
+  const clampMax = Number(input.dataset.metadataClampMax);
+  if (Number.isFinite(clampMin) && Number.isFinite(clampMax) && clampMax >= clampMin) {
+    next = Math.max(clampMin, Math.min(clampMax, next));
+  } else if (input.id === "metadataCurveSensitivityValue") {
+    next = typeof normalizeNodeSliderCurveAmount === "function"
+      ? normalizeNodeSliderCurveAmount(next, 0)
+      : Math.max(-1, Math.min(1, next));
   }
   input.value = formatMetadataStepperValue(next, quantum);
   syncNodeMetadataMidVisibility();
@@ -1623,8 +1807,6 @@ function nodeGraphSmoothingModeStatusText(mode, smoothingSamples) {
   switch (mode) {
     case "global":
       return `🌍 Global — ${globalSamples} samples.`;
-    case "blockSize":
-      return "📟 Block Size — under construction 🚧";
     case "internalGlobal":
       return `🙂🌍 Internal + Global — ${internalSamples} internal + ${globalSamples} global = ${internalSamples + globalSamples} samples.`;
     case "off":
@@ -1653,8 +1835,15 @@ function syncMetadataSmoothingModeButtons(metadata = {}) {
 
 function nodeGraphSmoothingTypeStatusText(type) {
   switch (normalizeNodeGraphMetadataSmoothingType(type)) {
+    case "linear":
+      return "L Linear — constant-rate lerp over the smoothing time.";
+    case "none":
+      // Discrete / legacy instant. User-facing “no smooth” is SOURCE ❌.
+      return "Instant (no filter). For continuous params use SOURCE ❌ Off.";
+    case "twoPole":
+      return "2P Two-pole - cascaded one poles (more smooth and less expensive than papoulis)";
     case "papoulis":
-      return "Π Papoulis — 3rd-order Optimum-L lowpass (monotonic, steeper than one-pole).";
+      return "Π Papoulis - 3rd-order Optimum-L lowpass (most smooth but higher cpu usage)";
     case "onePole":
     default:
       return "1P One-pole — classic exponential parameter chase.";
@@ -1767,27 +1956,44 @@ function bindNodeGraphMetadataPopoverEvents() {
     closeDiscard.dataset.metadataCloseDiscardBound = "true";
     closeDiscard.addEventListener("click", discardAndCloseNodeMetadataPopover);
   }
+  const beginMetaDrag = (event) => {
+    if (typeof beginNodeGraphRegisteredFloatingWindowDrag === "function") {
+      // Empty-body drag still allowed via beginNodeMetadataPopoverDrag for non-heading targets.
+      if (event.currentTarget?.classList?.contains("scene-context-heading")
+        || event.currentTarget?.id === "metadataPopoverDragHandle"
+        || event.currentTarget?.classList?.contains("scene-context-drag-handle")) {
+        beginNodeGraphRegisteredFloatingWindowDrag(event, "metaparameters");
+        return;
+      }
+    }
+    beginNodeMetadataPopoverDrag(event);
+  };
+  const beginMetaResize = (event) => {
+    if (typeof beginNodeGraphRegisteredFloatingWindowResize === "function") {
+      beginNodeGraphRegisteredFloatingWindowResize(event, "metaparameters");
+      return;
+    }
+    beginNodeMetadataPopoverResize(event);
+  };
   const dragHandle = document.getElementById("metadataPopoverDragHandle");
   if (dragHandle && dragHandle.dataset.metadataDragBound !== "true") {
     dragHandle.dataset.metadataDragBound = "true";
-    dragHandle.addEventListener("pointerdown", beginNodeMetadataPopoverDrag);
+    dragHandle.addEventListener("pointerdown", beginMetaDrag);
   }
   const cornerDrag = document.getElementById("metadataPopoverCornerDrag");
   if (cornerDrag && cornerDrag.dataset.metadataCornerDragBound !== "true") {
     cornerDrag.dataset.metadataCornerDragBound = "true";
-    cornerDrag.addEventListener("pointerdown", beginNodeMetadataPopoverResize);
+    cornerDrag.addEventListener("pointerdown", beginMetaResize);
   }
-  const dragHeading = document.querySelector("#nodeParameterMetadataPopover .metadata-popover-heading");
+  const dragHeading = document.querySelector("#nodeParameterMetadataPopover .scene-context-heading");
   if (dragHeading && dragHeading.dataset.metadataDragHeadingBound !== "true") {
     dragHeading.dataset.metadataDragHeadingBound = "true";
-    dragHeading.addEventListener("pointerdown", beginNodeMetadataPopoverDrag);
+    dragHeading.addEventListener("pointerdown", beginMetaDrag);
   }
   if (popover && popover.dataset.metadataEmptyDragBound !== "true") {
     popover.dataset.metadataEmptyDragBound = "true";
     popover.addEventListener("pointerdown", beginNodeMetadataPopoverDrag);
-    document.addEventListener("pointermove", dragNodeMetadataPopoverResize);
-    document.addEventListener("pointerup", endNodeMetadataPopoverResize);
-    document.addEventListener("pointercancel", endNodeMetadataPopoverResize);
+    // Move/resize end: registry pointer bridge (empty-body drag still uses metadataDragging key)
   }
   const defaultButton = document.getElementById("metadataRestoreDefaultButton");
   if (defaultButton && defaultButton.dataset.metadataDefaultBound !== "true") {
@@ -1996,10 +2202,14 @@ function readNodeMetadataEditorValues(slider) {
   const smoothingSeconds = smoothingSecondsInput === ""
     ? 0
     : nodeGraphMetadataSmoothingSecondsToSamples(parseNodeMetadataNumber(smoothingSecondsInput, smoothingSecondsFallback));
+  const smoothingType = normalizeNodeGraphMetadataSmoothingType(
+    document.getElementById("metadataSmoothingTypeGroup")?.dataset.type,
+  );
   return {
     alias: normalizeNodeGraphPatchMetadataAlias(document.getElementById("metadataAliasValue").value),
     tooltip: String(document.getElementById("metadataTooltipValue").value || "").trim().slice(0, 240),
     curveAmount: normalizeNodeSliderCurveAmount(
+      // Already −1…+1 in normalizeNodeSliderCurveAmount (standard bipolar curve range).
       sanitizeMetadataNumberInput("metadataCurveSensitivityValue"),
       current.curveAmount,
     ),
@@ -2013,16 +2223,18 @@ function readNodeMetadataEditorValues(slider) {
     mid: parseNodeMetadataNumber(sanitizeMetadataNumberInput("metadataMidValue"), current.mid),
     min,
     choices: parseNodeMetadataChoices(document.getElementById("metadataChoicesValue").value),
-    displayChoices: document.getElementById("metadataDisplayChoicesValue").checked,
-    divideChoicesVisibly: document.getElementById("metadataDivideChoicesValue").checked,
-    linearSmoothing: document.getElementById("metadataLinearSmoothingValue").checked,
+    bipolar: Boolean(document.getElementById("metadataBipolarValue")?.checked),
+    // Keep these independent — do not force divide from display or vice versa.
+    displayChoices: Boolean(document.getElementById("metadataDisplayChoicesValue")?.checked),
+    divideChoicesVisibly: Boolean(document.getElementById("metadataDivideChoicesValue")?.checked),
+    linearSmoothing: typeof nodeGraphMetadataLinearSmoothingFromType === "function"
+      ? nodeGraphMetadataLinearSmoothingFromType(smoothingType)
+      : smoothingType !== "none",
     nonlinearSlider: document.getElementById("metadataSliderCurveValue").value !== "linear",
     smoothingMode: normalizeNodeGraphMetadataSmoothingMode(
       document.getElementById("metadataSmoothingModeGroup")?.dataset.mode,
     ),
-    smoothingType: normalizeNodeGraphMetadataSmoothingType(
-      document.getElementById("metadataSmoothingTypeGroup")?.dataset.type,
-    ),
+    smoothingType,
     smoothingSeconds,
     sliderCurve: normalizeNodeSliderCurve(document.getElementById("metadataSliderCurveValue").value),
     step: Math.max(0, parseNodeMetadataNumber(stepInput, current.step)),
@@ -2162,10 +2374,25 @@ function setNodeMetadataDefaultsFromKind() {
   document.getElementById("metadataMaxDigitsValue").value =
     String(normalizeNodeGraphMetadataMaxDigits(template.maxDigits, kind));
   document.getElementById("metadataChoicesValue").value = formatNodeMetadataChoices(choices);
-  document.getElementById("metadataDisplayChoicesValue").checked = Boolean(template.displayChoices);
-  document.getElementById("metadataDivideChoicesValue").checked = Boolean(template.divideChoicesVisibly);
-  document.getElementById("metadataLinearSmoothingValue").checked = template.linearSmoothing !== false;
+  const displayChoicesInput = document.getElementById("metadataDisplayChoicesValue");
+  const divideChoicesInput = document.getElementById("metadataDivideChoicesValue");
+  if (displayChoicesInput) {
+    displayChoicesInput.checked = Boolean(template.displayChoices);
+  }
+  if (divideChoicesInput) {
+    divideChoicesInput.checked = Boolean(template.divideChoicesVisibly);
+  }
+  syncNodeMetadataChoiceToggleAvailability();
+  const bipolarCheckbox = document.getElementById("metadataBipolarValue");
+  if (bipolarCheckbox) {
+    bipolarCheckbox.checked = Boolean(template.bipolar);
+  }
   document.getElementById("metadataNonlinearSliderValue").checked = Boolean(template.nonlinearSlider);
+  // Smoothing type buttons: migrate linearSmoothing=false → none (instant).
+  const restoreType = template.linearSmoothing === false
+    ? "none"
+    : normalizeNodeGraphMetadataSmoothingType(template.smoothingType || "onePole");
+  syncMetadataSmoothingTypeButtons({ smoothingType: restoreType });
   document.getElementById("metadataSmoothingSecondsValue").value =
     Number.isFinite(Number(template.smoothingSeconds)) ? formatNodeSliderCompactNumber(template.smoothingSeconds) : "";
   document.getElementById("metadataSliderCurveValue").value = normalizeNodeSliderCurve(template.sliderCurve, template.nonlinearSlider);
@@ -2233,8 +2460,34 @@ function handleNodeMetadataEditorInput(event) {
     syncNodeMetadataScriptDiagnostics();
     return;
   }
+  // Checkboxes fire both "input" and "change". Applying twice is wasteful and
+  // used to re-read mid-toggle form state in some browsers. Prefer change only.
+  const target = event?.target;
+  if (
+    target
+    && target.type === "checkbox"
+    && event.type === "input"
+  ) {
+    return;
+  }
   syncNodeMetadataMidVisibility();
+  syncNodeMetadataChoiceToggleAvailability();
   setNodeMetadataFieldsDirty(true);
   applyNodeMetadataEditor({ keepDirty: true });
+  // Re-assert independent choice flags from the slider we just wrote so a
+  // stray form rewrite cannot couple Display ↔ Divide.
+  const slider = document.getElementById(nodeGraphMvp.metadataEditorTarget);
+  if (slider) {
+    const live = nodeSliderMetadata(slider);
+    const displayInput = document.getElementById("metadataDisplayChoicesValue");
+    const divideInput = document.getElementById("metadataDivideChoicesValue");
+    if (displayInput) {
+      displayInput.checked = Boolean(live.displayChoices);
+    }
+    if (divideInput) {
+      divideInput.checked = Boolean(live.divideChoicesVisibly);
+    }
+    syncNodeMetadataChoiceToggleAvailability();
+  }
   syncNodeMetadataScriptFromFields({ force: true });
 }

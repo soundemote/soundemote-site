@@ -45,8 +45,29 @@ const nodeGraphChromelessModuleLayouts = Object.freeze({
 
 function nodeGraphChromelessModuleDefinitionEntries() {
   const entries = {};
+  const layoutA = typeof NodeGraphModuleChromeLayout !== "undefined"
+    ? NodeGraphModuleChromeLayout.LayoutA
+    : "LayoutA";
+  const layoutB = typeof NodeGraphModuleChromeLayout !== "undefined"
+    ? NodeGraphModuleChromeLayout.LayoutB
+    : "LayoutB";
   for (const [type, config] of nodeGraphChromelessModuleRegistrations) {
-    entries[type] = { layout: type, ...config.definition };
+    // Custom UI modules always declare chrome explicitly:
+    //   solidModule (ports beside face) → LayoutB
+    //   otherwise (ports under / compact tile) → LayoutA
+    // definition.chrome may still override when intentional.
+    const fromDef = config.definition && typeof config.definition === "object"
+      ? config.definition
+      : {};
+    const chrome = typeof normalizeNodeGraphModuleChromeLayout === "function"
+      ? (normalizeNodeGraphModuleChromeLayout(fromDef.chrome)
+        || (config.solidModule ? layoutB : layoutA))
+      : (fromDef.chrome || (config.solidModule ? layoutB : layoutA));
+    entries[type] = {
+      layout: type,
+      ...fromDef,
+      chrome,
+    };
   }
   return entries;
 }
@@ -81,9 +102,9 @@ function nodeGraphChromelessModuleHasCustomDisplayArea(type) {
   return Boolean(nodeGraphChromelessModuleRegistrations.get(type)?.customDisplayArea);
 }
 
-// Solid custom modules keep the app's normal signal/parameter language while
-// replacing only the center surface: inputs at left, custom UI in the middle,
-// outputs at right, and ordinary parameter sliders below.
+// True when this chromeless type registered solidModule (LayoutB shell DOM).
+// Prefer nodeGraphModuleUsesLayoutB() for port placement; this flag remains
+// for registration-time checks (e.g. always-evaluate interactive faces).
 function nodeGraphChromelessModuleUsesSolidShell(type) {
   return Boolean(nodeGraphChromelessModuleRegistrations.get(type)?.solidModule);
 }

@@ -77,22 +77,30 @@ NodeLiveAudioProcessor.prototype.sineWavetableWorkletEvaluate = function sineWav
     frameValues,
   );
   const freqInput = this.safeFilterNumber(mixInput(nodeId, "Freq"), null);
-  const ampInput = this.safeFilterNumber(mixInput(nodeId, "Amplitude"), null);
-  const pitchInput = this.clampValue(
-    this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null),
-    -1,
-    1,
+  // Amp parameter only (Amplitude CV jack removed).
+  const amplitude = Math.max(
+    0,
+    this.readEffectiveParameter(node, "amp", 1, frame, frames, frameValues),
   );
-  const pitchedFrequency = Math.max(0, (baseFrequency + freqInput) * (2 ** (pitchInput / 0.1)));
-  const effectiveFrequency = this.resolveFrequencyHz(pitchedFrequency, this.readFInputHz(mixInput, nodeId));
-  const amplitude = Math.max(0, this.readEffectiveParameter(
-    node,
-    "amp",
-    1,
-    frame,
-    frames,
-    frameValues,
-  ) + ampInput);
+  const referenceMidiNote = Number.isFinite(this.pitchReferenceMidiNote) ? this.pitchReferenceMidiNote : 48;
+  const referenceVoltage = referenceMidiNote / 120;
+  const hasPitchInput = this.inputConnections.has(this.inputKey(nodeId, "0.1V/Oct"));
+  const pitchCv = hasPitchInput
+    ? this.clampValue(this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null), -1, 1)
+    : referenceVoltage;
+  const baseWithFreqJack = baseFrequency + freqInput;
+  const effectiveFrequency = typeof nodeGraphParamResolveOscPitchHz === "function"
+    ? nodeGraphParamResolveOscPitchHz({
+      baseHz: baseWithFreqJack,
+      hasPitchCv: hasPitchInput,
+      pitchCv,
+      referenceVoltage,
+    })
+    : this.resolveFrequencyHz(
+      (typeof nodeGraphPitchedFrequency === "function"
+        ? nodeGraphPitchedFrequency(baseWithFreqJack, pitchCv, referenceVoltage)
+        : Math.max(0, baseWithFreqJack * (2 ** ((pitchCv - referenceVoltage) / 0.1)))),
+    );
   let value;
   if (
     this.nativeSineWavetableReady &&

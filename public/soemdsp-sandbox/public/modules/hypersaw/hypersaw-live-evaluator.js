@@ -12,7 +12,8 @@ nodeGraphLiveModuleEvaluators.hypersaw = ({ runtime, node, nodeId, frame, frames
   const baseFrequency = Math.max(0, read("frequency", 100));
   const pitchReferenceAudio = normalizeNodeGraphPatchAudio(nodeGraphMvp.patch.audio);
   const referenceVoltage = pitchReferenceAudio.pitchReferenceMidiNote / 120;
-  const pitchInput = hasInput(nodeId, "0.1V/Oct")
+  const hasPitch = hasInput(nodeId, "0.1V/Oct");
+  const pitchCv = hasPitch
     ? clampNodeSliderValue(nodeGraphSafeFilterNumber(
       mixInput(nodeId, "0.1V/Oct"),
       runtime,
@@ -21,13 +22,16 @@ nodeGraphLiveModuleEvaluators.hypersaw = ({ runtime, node, nodeId, frame, frames
       "Hypersaw 0.1v input",
     ), -1, 1)
     : referenceVoltage;
-  const pitchedFrequency = Math.max(0, baseFrequency * (2 ** ((pitchInput - referenceVoltage) / 0.1)));
-  const fHz = typeof nodeGraphReadFInputHz === "function"
-    ? nodeGraphReadFInputHz(mixInput, hasInput, nodeId)
-    : null;
-  const effectiveFrequency = typeof nodeGraphResolveFrequencyHz === "function"
-    ? nodeGraphResolveFrequencyHz(pitchedFrequency, fHz)
-    : pitchedFrequency;
+  const effectiveFrequency = typeof nodeGraphParamResolveOscPitchHz === "function"
+    ? nodeGraphParamResolveOscPitchHz({
+      baseHz: baseFrequency,
+      hasPitchCv: hasPitch,
+      pitchCv,
+      referenceVoltage,
+    })
+    : (typeof nodeGraphPitchedFrequency === "function"
+      ? nodeGraphPitchedFrequency(baseFrequency, pitchCv, referenceVoltage)
+      : baseFrequency * (2 ** ((pitchCv - referenceVoltage) / 0.1)));
   const hypersawResult = nodeGraphHypersawSample(state, {
     frequencyHz: effectiveFrequency,
     sampleRate,
@@ -36,7 +40,7 @@ nodeGraphLiveModuleEvaluators.hypersaw = ({ runtime, node, nodeId, frame, frames
     spread: read("spread", 1),
     randomAmount: read("random", 0.15),
     driftAmount: read("drift", 0.1),
-    level: read("level", 0.35),
+    level: read("amplitude", 0.35),
   });
   if (typeof writeNodeGraphDataOutput === "function") {
     writeNodeGraphDataOutput(String(nodeId), "Phases", hypersawResult.voicePhases);

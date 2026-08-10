@@ -3,7 +3,11 @@ function bindNodeGraphHeaderControlEvents() {
   document
     .getElementById("nodeCheckAllModulesButton")
     ?.addEventListener("click", runNodeGraphModuleSelfTest);
-  bindNodeGraphShaderScriptEvents();
+  if (typeof bindNodeGraphRoomDimmer === "function") {
+    bindNodeGraphRoomDimmer();
+  } else if (typeof bindNodeGraphShaderScriptEvents === "function") {
+    bindNodeGraphShaderScriptEvents();
+  }
   bindNodeGraphCanvasScriptEvents();
   bindNodeGraphCodeScreenEvents();
   renderNodeGraphPatchTimingControls();
@@ -13,52 +17,49 @@ function bindNodeGraphHeaderControlEvents() {
   document.getElementById("nodeFullUiButton")?.addEventListener("click", toggleNodeGraphFullUiView);
   document.getElementById("nodeVisibilityMenuClose").addEventListener("click", () => setNodeGraphVisibilityMenuOpen(false));
   document
-    .querySelector("#nodeVisibilityMenu .node-visibility-menu-heading")
-    .addEventListener("pointerdown", beginNodeGraphVisibilityMenuDrag);
+    .querySelector("#nodeVisibilityMenu .scene-context-heading")
+    ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "visibilityMenu"));
   document
     .getElementById("nodeVisibilityMenuResizeHandle")
-    .addEventListener("pointerdown", beginNodeGraphVisibilityMenuResize);
-  document.addEventListener("pointermove", dragNodeGraphVisibilityMenu);
-  document.addEventListener("pointermove", dragNodeGraphVisibilityMenuResize);
-  document.addEventListener("pointerup", endNodeGraphVisibilityMenuDrag);
-  document.addEventListener("pointerup", endNodeGraphVisibilityMenuResize);
-  document.addEventListener("pointercancel", endNodeGraphVisibilityMenuDrag);
-  document.addEventListener("pointercancel", endNodeGraphVisibilityMenuResize);
+    ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowResize(event, "visibilityMenu"));
+  // Move/up: nodeGraphFloatingWindowRegistryPointerBridge (floating-windows.js)
   document.getElementById("nodeVisibilityMenuButton").addEventListener("click", toggleNodeGraphVisibilityMenu);
-  document.getElementById("nodeSavedPatchesWindowButton")?.addEventListener("click", toggleNodeGraphSavedPatchesWindow);
   document.getElementById("nodeStandaloneMidiKeyboardButton")?.addEventListener("click", toggleNodeGraphStandaloneMidiKeyboard);
   document.getElementById("nodeStandaloneMidiKeyboardCloseButton")?.addEventListener("click", closeNodeGraphStandaloneMidiKeyboard);
   document
     .getElementById("nodeStandaloneMidiKeyboardDragHandle")
-    ?.addEventListener("pointerdown", beginNodeGraphStandaloneMidiKeyboardDrag);
+    ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "standaloneMidiKeyboard"));
   document
     .getElementById("nodeStandaloneMidiKeyboardHeading")
-    ?.addEventListener("pointerdown", beginNodeGraphStandaloneMidiKeyboardDrag);
+    ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "standaloneMidiKeyboard"));
   document
     .getElementById("nodeStandaloneMidiKeyboardResizeHandle")
-    ?.addEventListener("pointerdown", beginNodeGraphStandaloneMidiKeyboardResize);
-  document.addEventListener("pointermove", dragNodeGraphStandaloneMidiKeyboard);
-  document.addEventListener("pointermove", dragNodeGraphStandaloneMidiKeyboardResize);
-  document.addEventListener("pointerup", endNodeGraphStandaloneMidiKeyboardDrag);
-  document.addEventListener("pointerup", endNodeGraphStandaloneMidiKeyboardResize);
-  document.addEventListener("pointercancel", endNodeGraphStandaloneMidiKeyboardDrag);
-  document.addEventListener("pointercancel", endNodeGraphStandaloneMidiKeyboardResize);
+    ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowResize(event, "standaloneMidiKeyboard"));
+  // Move/up: registry pointer bridge
   document.getElementById("nodeTooltipWindowCloseButton")?.addEventListener("click", closeNodeGraphTooltipWindow);
   document
     .getElementById("nodeTooltipWindowDragHandle")
-    ?.addEventListener("pointerdown", beginNodeGraphTooltipWindowDrag);
+    ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "tooltipWindow"));
   document
     .getElementById("nodeTooltipWindowHeading")
-    ?.addEventListener("pointerdown", beginNodeGraphTooltipWindowDrag);
+    ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "tooltipWindow"));
   document
     .getElementById("nodeTooltipWindowResizeHandle")
-    ?.addEventListener("pointerdown", beginNodeGraphTooltipWindowResize);
-  document.addEventListener("pointermove", dragNodeGraphTooltipWindow);
-  document.addEventListener("pointermove", dragNodeGraphTooltipWindowResize);
-  document.addEventListener("pointerup", endNodeGraphTooltipWindowDrag);
-  document.addEventListener("pointerup", endNodeGraphTooltipWindowResize);
-  document.addEventListener("pointercancel", endNodeGraphTooltipWindowDrag);
-  document.addEventListener("pointercancel", endNodeGraphTooltipWindowResize);
+    ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowResize(event, "tooltipWindow"));
+  // Embedded tips height: drag strip between tips band and modular workspace.
+  const embedResize = document.getElementById("nodeInteractionHelpEmbedResize");
+  if (embedResize && typeof beginNodeGraphTooltipEmbedResize === "function") {
+    embedResize.addEventListener("pointerdown", beginNodeGraphTooltipEmbedResize);
+    embedResize.addEventListener("pointermove", (event) => {
+      if (nodeGraphMvp?.tooltipEmbedResizing) {
+        dragNodeGraphTooltipEmbedResize(event);
+      }
+    });
+    embedResize.addEventListener("pointerup", endNodeGraphTooltipEmbedResize);
+    embedResize.addEventListener("pointercancel", endNodeGraphTooltipEmbedResize);
+    embedResize.addEventListener("lostpointercapture", endNodeGraphTooltipEmbedResize);
+  }
+  // Move/up: registry pointer bridge
   document.getElementById("nodePhosphorWaveformSettingsClose")?.addEventListener("click", closeNodeGraphPhosphorWaveformSettings);
   document
     .getElementById("nodePhosphorWaveformSettingsDragHandle")
@@ -69,40 +70,13 @@ function bindNodeGraphHeaderControlEvents() {
   if (typeof bindNodeGraphPhosphorWaveformTimeWindowEditing === "function") {
     bindNodeGraphPhosphorWaveformTimeWindowEditing();
   }
+  if (typeof bindNodeGraphPhosphorWaveformPxFields === "function") {
+    bindNodeGraphPhosphorWaveformPxFields();
+  }
   if (typeof bindNodeGraphPhosphorWaveformSettingModifiers === "function") {
     bindNodeGraphPhosphorWaveformSettingModifiers();
   }
-  document.getElementById("nodeLedSettingsClose")?.addEventListener("click", closeNodeGraphLedSettings);
-  document
-    .getElementById("nodeLedSettingsDragHandle")
-    ?.addEventListener("pointerdown", beginNodeGraphLedSettingsDrag);
-  document
-    .getElementById("nodeLedSettingsHeading")
-    ?.addEventListener("pointerdown", beginNodeGraphLedSettingsDrag);
-  if (typeof bindNodeGraphLedSettingModifiers === "function") {
-    bindNodeGraphLedSettingModifiers();
-  }
-  document.addEventListener("pointermove", dragNodeGraphLedSettings);
-  document.addEventListener("pointerup", endNodeGraphLedSettingsDrag);
-  document.addEventListener("pointercancel", endNodeGraphLedSettingsDrag);
-  document
-    .getElementById("nodeLedHueInput")
-    ?.addEventListener("input", handleNodeGraphLedHueChange);
-  document
-    .getElementById("nodeLedBrightnessInput")
-    ?.addEventListener("input", handleNodeGraphLedBrightnessChange);
-  document
-    .getElementById("nodeLedBlurInput")
-    ?.addEventListener("input", handleNodeGraphLedBlurChange);
-  document
-    .getElementById("nodeLedRoundingInput")
-    ?.addEventListener("input", handleNodeGraphLedRoundingChange);
-  document
-    .getElementById("nodeLedCornerSquareButton")
-    ?.addEventListener("click", () => setNodeGraphLedCornerShape("square"));
-  document
-    .getElementById("nodeLedCornerSquircleButton")
-    ?.addEventListener("click", () => setNodeGraphLedCornerShape("squircle"));
+  // LED options: Command Center Display Settings only (no standalone window).
   document.addEventListener("pointermove", dragNodeGraphPhosphorWaveformSettings);
   document.addEventListener("pointerup", endNodeGraphPhosphorWaveformSettingsDrag);
   document.addEventListener("pointercancel", endNodeGraphPhosphorWaveformSettingsDrag);
@@ -164,6 +138,12 @@ function bindNodeGraphHeaderControlEvents() {
     .getElementById("nodePhosphorWaveformLabelInsetInput")
     ?.addEventListener("input", handleNodeGraphPhosphorWaveformLabelInsetChange);
   document.getElementById("nodeGridToggleButton").addEventListener("click", toggleNodeGraphGridVisibility);
+  document.getElementById("nodeGridLightToggleButton")
+    ?.addEventListener("click", toggleNodeGraphGridLightVisibility);
+  document.getElementById("nodeWireLengthsToggleButton")
+    ?.addEventListener("click", toggleNodeGraphWireLengthsVisibility);
+  document.getElementById("nodeWiresAboveModulesToggleButton")
+    ?.addEventListener("click", toggleNodeGraphWiresAboveModules);
   document.getElementById("nodeVideoViewButton")?.addEventListener("click", toggleNodeGraphVideoView);
   document.getElementById("nodeMappingViewButton")?.addEventListener("click", () => setNodeGraphViewMode("mapping"));
   document.getElementById("nodeModuleButtonsToggleButton").addEventListener("click", toggleNodeGraphModuleButtonsVisibility);
@@ -248,25 +228,7 @@ function bindNodeGraphHeaderControlEvents() {
     .getElementById("nodeSceneBlinkLightShape")
     .addEventListener("change", handleNodeGraphSceneScopeOptionInput);
   document.getElementById("nodeModuleSlidersToggleButton").addEventListener("click", toggleNodeGraphModuleSlidersVisibility);
-  document.getElementById("nodeTooltipToggleButton").addEventListener("click", toggleNodeGraphTooltipWindow);
-  document.getElementById("nodePreviousSavedPatchButton").addEventListener("click", () => loadAdjacentNodeGraphSavedPatch(-1));
-  document.getElementById("nodeNextSavedPatchButton").addEventListener("click", () => loadAdjacentNodeGraphSavedPatch(1));
-  document.getElementById("nodePatchInitButton").addEventListener("click", confirmAndInitNodeGraphPatchFromDefault);
-  document.getElementById("nodePatchSaveButton").addEventListener("click", confirmAndSaveNodeGraphScript);
-  document.getElementById("nodePatchShareLinkButton").addEventListener("click", copyNodeGraphShareLinkToClipboard);
-  document.getElementById("nodeSavedPatchesWindowHeading").addEventListener("pointerdown", beginNodeGraphSavedPatchesWindowDrag);
-  document.getElementById("nodeSavedPatchesDragHandle").addEventListener("pointerdown", beginNodeGraphSavedPatchesWindowDrag);
-  document.getElementById("nodeSavedPatchesResizeHandle").addEventListener("pointerdown", beginNodeGraphSavedPatchesWindowResize);
-  document.getElementById("nodePatchEditButton").addEventListener("click", () => setNodeGraphViewMode("settings"));
-  document.getElementById("nodePatchCopyButton").addEventListener("click", copyNodeGraphScriptToClipboard);
-  document.getElementById("nodePatchPasteButton").addEventListener("click", pasteNodeGraphScriptFromClipboard);
-  document.addEventListener("pointermove", dragNodeGraphSavedPatchesWindow);
-  document.addEventListener("pointerup", endNodeGraphSavedPatchesWindowDrag);
-  document.addEventListener("pointercancel", endNodeGraphSavedPatchesWindowDrag);
-  document.addEventListener("pointermove", dragNodeGraphSavedPatchesWindowResize);
-  document.addEventListener("pointerup", endNodeGraphSavedPatchesWindowResize);
-  document.addEventListener("pointercancel", endNodeGraphSavedPatchesWindowResize);
-  document.getElementById("nodeSavedPatchesCloseButton").addEventListener("click", () => setNodeGraphSavedPatchesWindowVisible(false));
+  document.getElementById("nodeTooltipToggleButton")?.addEventListener("click", toggleNodeGraphTooltipWindow);
   document
     .getElementById("nodeUserUiSettingsSaveDefault")
     .addEventListener("click", handleSaveNodeUserUiSettingsDefaultClick);
@@ -285,14 +247,16 @@ function bindNodeGraphHeaderControlEvents() {
   document.getElementById("nodeUserUiSettingsClose").addEventListener("click", () => setNodeUserUiSettingsVisible(false));
   document
     .getElementById("nodeUserUiSettingsDragHandle")
-    .addEventListener("pointerdown", beginNodeUserUiSettingsDrag);
+    ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "uiSettings"));
   document
     .getElementById("nodeUserUiSettingsHeading")
-    .addEventListener("pointerdown", beginNodeUserUiSettingsDrag);
+    ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "uiSettings"));
+  if (typeof bindNodeGraphFloatingWindowResizeHandle === "function") {
+    bindNodeGraphFloatingWindowResizeHandle("uiSettings");
+  }
   document.getElementById("nodeSliderAmountToggleButton").addEventListener("click", toggleNodeGraphSliderAmount);
   document.getElementById("nodeSliderPositionToggleButton").addEventListener("click", toggleNodeGraphSliderPosition);
   document.getElementById("nodeKeyboardDebugToggleButton").addEventListener("click", toggleNodeGraphKeyboardDebugVisibility);
-  document.getElementById("nodeTooltipEmbedToggleButton")?.addEventListener("click", toggleNodeGraphTooltipEmbed);
   document
     .getElementById("nodeZoomOutButton")
     .addEventListener("click", (event) => zoomNodeGraphBy(-1, event));
@@ -327,10 +291,16 @@ function bindNodeGraphHeaderControlEvents() {
     .getElementById("nodeModuleShopButton")
     ?.addEventListener("click", () => {
       const shopVisible =
-        !document.getElementById("nodeModuleShopView").hidden;
+        !document.getElementById("nodeModuleShopView")?.hidden;
       nodeGraphMvp.sceneContextPoint = null;
       if (shopVisible) {
-        closeNodeGraphModuleShop();
+        if (typeof closeNodeGraphUnifiedWindowPage === "function") {
+          closeNodeGraphUnifiedWindowPage("moduleBrowser");
+        } else {
+          closeNodeGraphModuleShop();
+        }
+      } else if (typeof openNodeGraphUnifiedWindowPage === "function") {
+        openNodeGraphUnifiedWindowPage("moduleBrowser");
       } else {
         openNodeGraphModuleShop(null);
       }
@@ -340,13 +310,26 @@ function bindNodeGraphHeaderControlEvents() {
     ?.addEventListener("click", (event) => {
       // Anchor the first-ever spawn under the button rather than at the
       // pointer -- every later open restores the remembered position, same
-      // as every other floating window.
+      // as every other floating window. Unified open closes Modules / etc.
       const rect = event.currentTarget.getBoundingClientRect();
-      openNodeGraphCommandCenter(rect.left, rect.bottom);
+      if (typeof openNodeGraphUnifiedWindowPage === "function") {
+        openNodeGraphUnifiedWindowPage("commandCenter", {
+          x: rect.left,
+          y: rect.bottom,
+        });
+      } else {
+        openNodeGraphCommandCenter(rect.left, rect.bottom);
+      }
     });
   document
     .getElementById("nodeGraphEmptyModuleButton")
-    .addEventListener("click", () => openNodeGraphModuleShop(null));
+    .addEventListener("click", () => {
+      if (typeof openNodeGraphUnifiedWindowPage === "function") {
+        openNodeGraphUnifiedWindowPage("moduleBrowser");
+      } else {
+        openNodeGraphModuleShop(null);
+      }
+    });
   document
     .getElementById("nodeModularOnlyViewButton")
     .addEventListener("click", () => setNodeGraphViewMode("modular-only"));
@@ -356,18 +339,19 @@ function bindNodeGraphHeaderControlEvents() {
   document
     .getElementById("nodeModularOnlyBackButton")
     .addEventListener("click", () => setNodeGraphViewMode("modular"));
-  document
-    .getElementById("nodeSettingsScriptViewButton")
-    .addEventListener("click", () => setNodeGraphViewMode("script"));
-  document.getElementById("nodePatchScript").addEventListener("input", handleNodePatchScriptInput);
-  document.getElementById("saveNodeGraphScriptEditorButton")?.addEventListener("click", saveNodeGraphScriptEditor);
-  document.getElementById("downloadNodeGraphScriptButton").addEventListener("click", saveNodeGraphScript);
-  document.getElementById("nodePatchPresetSaveButton").addEventListener("click", saveCurrentNodeGraphPatchPreset);
-  document.getElementById("nodePatchPresetLoadButton").addEventListener("click", loadSelectedNodeGraphPatchPreset);
-  document.getElementById("nodePatchPresetDeleteButton").addEventListener("click", deleteSelectedNodeGraphPatchPreset);
-  document.getElementById("nodePatchPresetSelect").addEventListener("change", handleNodeGraphPatchPresetSelectChange);
-  document.getElementById("updateDefaultPresetButton").addEventListener("click", handleUpdateDefaultNodeGraphPresetClick);
+  document.getElementById("updateDefaultPresetButton")?.addEventListener("click", handleUpdateDefaultNodeGraphPresetClick);
   document.getElementById("loadNodeGraphScriptButton").addEventListener("click", loadNodeGraphScript);
-  document.getElementById("nodeSettingsSaveScriptButton").addEventListener("click", saveNodeGraphScript);
-  renderNodeGraphPatchPresetControls();
+  // Native save dialog (File System Access API) — same as Ctrl+S.
+  document.getElementById("nodeSettingsSaveScriptButton").addEventListener("click", () => {
+    if (typeof saveNodeGraphPatchWithNativeDialog === "function") {
+      void saveNodeGraphPatchWithNativeDialog();
+      return;
+    }
+    if (typeof saveNodeGraphScript === "function") {
+      void saveNodeGraphScript();
+    }
+  });
+  // Copy / Paste patch: toolbar only (not Command Center).
+  document.getElementById("nodeToolbarCopyPatchButton")?.addEventListener("click", copyNodeGraphScriptToClipboard);
+  document.getElementById("nodeToolbarPastePatchButton")?.addEventListener("click", pasteNodeGraphScriptFromClipboard);
 }

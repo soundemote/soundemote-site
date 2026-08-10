@@ -1,12 +1,11 @@
+// Soft Clipper — native preferred; pure math fallback (soft-clipper-math.js).
+
 NodeLiveAudioProcessor.prototype.nativeSoftClipperSample = function nativeSoftClipperSample(input, center = 0, width = 2) {
-    const dry = Number(input) || 0;
-    if (!this.nativeSoftClipperReady || !this.nativeSoftClipper?.soemdsp_soft_clipper_sample) {
-      return dry;
-    }
+  if (this.nativeSoftClipperReady && this.nativeSoftClipper?.soemdsp_soft_clipper_sample) {
     try {
       return this.safeFilterNumber(
         this.nativeSoftClipper.soemdsp_soft_clipper_sample(
-          dry,
+          Number(input) || 0,
           Number(center) || 0,
           Number(width) || 2,
         ),
@@ -20,7 +19,10 @@ NodeLiveAudioProcessor.prototype.nativeSoftClipperSample = function nativeSoftCl
         status: "disabled",
         message: String(error?.message || error || "native Soft Clipper failed"),
       });
-      return dry;
     }
-  };
-
+  }
+  if (typeof nodeGraphSoftClipperSample === "function") {
+    return this.safeFilterNumber(nodeGraphSoftClipperSample(input, center, width), null);
+  }
+  return this.safeFilterNumber(input, null) ?? 0;
+};

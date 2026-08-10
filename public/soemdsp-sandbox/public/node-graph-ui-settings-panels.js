@@ -1,3 +1,85 @@
+const nodeUserUiSettingsWindowDefaultSize = Object.freeze({
+  width: 360,
+  height: 620,
+  minWidth: 280,
+  minHeight: 240,
+});
+
+const nodeUiDevHelperWindowDefaultSize = Object.freeze({
+  width: 360,
+  height: 520,
+  minWidth: 280,
+  minHeight: 200,
+});
+
+function normalizeNodeUserUiSettingsWindowSize(size = {}, element = null) {
+  return normalizeNodeGraphFloatingWindowSize(
+    size,
+    nodeUserUiSettingsWindowDefaultSize,
+    { element: element || document.getElementById("nodeUserUiSettingsPanel") },
+  );
+}
+
+function normalizeNodeUiDevHelperWindowSize(size = {}, element = null) {
+  return normalizeNodeGraphFloatingWindowSize(
+    size,
+    nodeUiDevHelperWindowDefaultSize,
+    { element: element || document.getElementById("nodeUiDevHelper") },
+  );
+}
+
+function applyNodeUserUiSettingsWindowSize(size = nodeGraphMvp.userUiSettingsWindowSize, element = null) {
+  const panel = element || document.getElementById("nodeUserUiSettingsPanel");
+  const merged = (size && typeof size === "object")
+    ? size
+    : (nodeGraphMvp.userUiSettingsWindowSize || nodeUserUiSettingsWindowDefaultSize);
+  const normalized = normalizeNodeUserUiSettingsWindowSize(merged, panel);
+  const stored = {
+    width: normalized.width,
+    ...(Number.isFinite(normalized.height) ? { height: normalized.height } : {}),
+  };
+  nodeGraphMvp.userUiSettingsWindowSize = stored;
+  if (!panel) {
+    return stored;
+  }
+  applyNodeGraphFloatingWindowSizeVars(
+    panel,
+    "node-user-ui-settings",
+    nodeUserUiSettingsWindowDefaultSize,
+    { ...stored, _maxWidth: normalized._maxWidth, _maxHeight: normalized._maxHeight },
+  );
+  if (typeof syncNodeGraphFloatingWindowInlineBox === "function") {
+    syncNodeGraphFloatingWindowInlineBox(panel, stored);
+  }
+  return stored;
+}
+
+function applyNodeUiDevHelperWindowSize(size = nodeGraphMvp.uiDevHelperWindowSize, element = null) {
+  const helper = element || document.getElementById("nodeUiDevHelper");
+  const merged = (size && typeof size === "object")
+    ? size
+    : (nodeGraphMvp.uiDevHelperWindowSize || nodeUiDevHelperWindowDefaultSize);
+  const normalized = normalizeNodeUiDevHelperWindowSize(merged, helper);
+  const stored = {
+    width: normalized.width,
+    ...(Number.isFinite(normalized.height) ? { height: normalized.height } : {}),
+  };
+  nodeGraphMvp.uiDevHelperWindowSize = stored;
+  if (!helper) {
+    return stored;
+  }
+  applyNodeGraphFloatingWindowSizeVars(
+    helper,
+    "node-ui-dev-helper",
+    nodeUiDevHelperWindowDefaultSize,
+    { ...stored, _maxWidth: normalized._maxWidth, _maxHeight: normalized._maxHeight },
+  );
+  if (typeof syncNodeGraphFloatingWindowInlineBox === "function") {
+    syncNodeGraphFloatingWindowInlineBox(helper, stored);
+  }
+  return stored;
+}
+
 function setNodeUiDevHelperVisible(visible) {
   const helper = document.getElementById("nodeUiDevHelper");
   const button = document.getElementById("nodeUiDevButton");
@@ -7,8 +89,26 @@ function setNodeUiDevHelperVisible(visible) {
   helper.hidden = !visible;
   button.classList.toggle("active", visible);
   button.setAttribute("aria-pressed", String(visible));
-  if (visible && typeof positionNodeGraphWorkspaceWindowFromState === "function") {
-    positionNodeGraphWorkspaceWindowFromState("uiDev", helper);
+  if (visible) {
+    // Always re-check: closed <details> leave only section titles visible.
+    if (typeof organizeNodeUiDevSections === "function") {
+      organizeNodeUiDevSections();
+    }
+    if (typeof syncNodeUiDevPatchGridFields === "function") {
+      syncNodeUiDevPatchGridFields();
+    }
+    if (typeof bindNodeGraphFloatingWindowResizeHandle === "function") {
+      bindNodeGraphFloatingWindowResizeHandle("uiDev");
+    }
+    if (typeof markNodeGraphFloatingWindowSurface === "function") {
+      markNodeGraphFloatingWindowSurface(helper);
+    }
+    const savedSize = nodeGraphMvp.workspaceWindowStates?.uiDev?.size
+      || nodeGraphMvp.uiDevHelperWindowSize;
+    applyNodeUiDevHelperWindowSize(savedSize || nodeUiDevHelperWindowDefaultSize, helper);
+    if (typeof positionNodeGraphWorkspaceWindowFromState === "function") {
+      positionNodeGraphWorkspaceWindowFromState("uiDev", helper);
+    }
   }
   setNodeInteractionHelp(
     visible
@@ -28,21 +128,44 @@ function toggleNodeUiDevHelper() {
 function setNodeUserUiSettingsVisible(visible) {
   const panel = document.getElementById("nodeUserUiSettingsPanel");
   const button = document.getElementById("nodeUserUiSettingsButton");
-  if (!panel || !button) {
+  if (!panel) {
     return;
   }
   if (visible && !panel.hidden) {
     pulseNodeGraphFloatingWindowAttention(panel);
+    if (typeof noteNodeGraphUnifiedWindowOpened === "function") {
+      noteNodeGraphUnifiedWindowOpened("uiSettings", panel);
+    }
     return;
   }
   panel.hidden = !visible;
-  button.classList.toggle("active", visible);
-  button.setAttribute("aria-pressed", String(visible));
+  button?.classList.toggle("active", visible);
+  button?.setAttribute("aria-pressed", String(visible));
   if (visible) {
-    if (typeof positionNodeGraphWorkspaceWindowFromState === "function") {
+    if (typeof bindNodeGraphFloatingWindowResizeHandle === "function") {
+      bindNodeGraphFloatingWindowResizeHandle("uiSettings");
+    }
+    if (typeof markNodeGraphFloatingWindowSurface === "function") {
+      markNodeGraphFloatingWindowSurface(panel);
+    }
+    const savedSize = nodeGraphMvp.workspaceWindowStates?.uiSettings?.size
+      || nodeGraphMvp.userUiSettingsWindowSize;
+    applyNodeUserUiSettingsWindowSize(savedSize || nodeUserUiSettingsWindowDefaultSize, panel);
+    const pending = nodeGraphMvp._unifiedWindowPendingPosition;
+    if (pending && Number.isFinite(Number(pending.left)) && Number.isFinite(Number(pending.top))) {
+      if (typeof setNodeGraphFloatingWindowViewportPosition === "function") {
+        setNodeGraphFloatingWindowViewportPosition(panel, pending.left, pending.top);
+      } else {
+        panel.style.left = `${Math.round(pending.left)}px`;
+        panel.style.top = `${Math.round(pending.top)}px`;
+      }
+    } else if (typeof positionNodeGraphWorkspaceWindowFromState === "function") {
       positionNodeGraphWorkspaceWindowFromState("uiSettings", panel);
     }
     renderNodeUserUiSettingsControls();
+    if (typeof noteNodeGraphUnifiedWindowOpened === "function") {
+      noteNodeGraphUnifiedWindowOpened("uiSettings", panel);
+    }
   }
   if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
     rememberNodeGraphWorkspaceWindowState("uiSettings", panel, { open: visible }, { status: false });
@@ -69,6 +192,7 @@ function installNodeUiDevExposeControls() {
     checkbox.type = "checkbox";
     checkbox.id = nodeUiDevExposeCheckboxId(definition.key);
     checkbox.dataset.nodeUiDevExpose = definition.key;
+    // Default off — UI Settings starts empty; opt-in per control in UIDEV.
     checkbox.checked = Boolean(definition.exposeDefault);
     checkbox.setAttribute("aria-label", `Expose ${nodeUiDevControlLabel(definition)} in UI settings`);
     label.append(checkbox);
@@ -83,222 +207,132 @@ function installNodeUiDevExposeControls() {
   }
 }
 
-function organizeNodeUiDevSections() {
-  const helperBody = document.querySelector(".node-ui-dev-helper-body");
-  if (!helperBody || helperBody.dataset.sectionsOrganized === "true") {
+/**
+ * Flatten any prior section/details wrappers so control rows sit back in the
+ * helper body (closed <details> hide everything but the title).
+ */
+function flattenNodeUiDevSections(helperBody) {
+  if (!helperBody) {
     return;
   }
-  const rowForId = (id) => document
-    .getElementById(id)
-    ?.closest(".node-ui-dev-control, .node-ui-dev-color-control, .node-ui-dev-check");
+  // Nested or top-level — unwrap completely.
+  for (const old of [...helperBody.querySelectorAll(".node-ui-dev-section, details.node-ui-dev-section")]) {
+    // Prefer body contents; if missing, move every non-heading child.
+    const body = old.querySelector(":scope > .node-ui-dev-section-body");
+    if (body) {
+      while (body.firstChild) {
+        old.before(body.firstChild);
+      }
+    }
+    for (const child of [...old.childNodes]) {
+      if (
+        child.nodeType === 1
+        && (
+          child.classList?.contains("node-ui-dev-section-heading")
+          || child.classList?.contains("node-ui-dev-section-body")
+          || child.tagName === "SUMMARY"
+        )
+      ) {
+        continue;
+      }
+      if (child.nodeType === 1 || (child.nodeType === 3 && child.textContent.trim())) {
+        old.before(child);
+      }
+    }
+    old.remove();
+  }
+  // Any leftover closed details in the helper (defensive).
+  for (const details of [...helperBody.querySelectorAll("details")]) {
+    details.open = true;
+    while (details.firstChild) {
+      const child = details.firstChild;
+      if (child.tagName === "SUMMARY") {
+        details.removeChild(child);
+        continue;
+      }
+      details.before(child);
+    }
+    details.remove();
+  }
+}
+
+/**
+ * Group UIDEV controls into always-visible section boxes (never <details>).
+ * Re-runs when leftover details are detected so options cannot stay hidden.
+ */
+function organizeNodeUiDevSections() {
+  const helperBody = document.querySelector("#nodeUiDevHelper .node-ui-dev-helper-body")
+    || document.querySelector(".node-ui-dev-helper-body");
+  if (!helperBody) {
+    return;
+  }
+  const organizerVersion = "section-v3-flat";
+  const hasHiddenDetails = Boolean(
+    helperBody.querySelector("details.node-ui-dev-section:not([open]), details:not([open])"),
+  );
+  const hasDetailsAtAll = Boolean(helperBody.querySelector("details"));
+  if (
+    helperBody.dataset.sectionsOrganized === organizerVersion
+    && !hasHiddenDetails
+    && !hasDetailsAtAll
+  ) {
+    return;
+  }
+
+  flattenNodeUiDevSections(helperBody);
+
+  const rowForId = (id) => {
+    const el = document.getElementById(id);
+    if (!el || !helperBody.contains(el)) {
+      return null;
+    }
+    return el.closest(".node-ui-dev-control, .node-ui-dev-color-control, .node-ui-dev-check");
+  };
+
   for (const section of nodeUiDevSettingSections) {
     const rows = section.ids.map(rowForId).filter(Boolean);
     if (!rows.length) {
       continue;
     }
-    const details = document.createElement("details");
-    details.className = "node-ui-dev-section";
-    details.open = true;
-    const summary = document.createElement("summary");
-    summary.textContent = section.title;
+    const box = document.createElement("section");
+    box.className = "node-ui-dev-section";
+    box.setAttribute("aria-label", section.title);
+    const heading = document.createElement("div");
+    heading.className = "node-ui-dev-section-heading";
+    heading.textContent = section.title;
     const body = document.createElement("div");
     body.className = "node-ui-dev-section-body";
-    rows[0].before(details);
-    details.append(summary, body);
+    rows[0].before(box);
+    box.append(heading, body);
     for (const row of rows) {
       body.append(row);
     }
   }
-  helperBody.dataset.sectionsOrganized = "true";
+
+  helperBody.dataset.sectionsOrganized = organizerVersion;
 }
 
-let nodeUserUiSettingsDragging = null;
-
-function positionNodeUserUiSettingsPanel(panel, x, y) {
-  if (!panel) {
-    return;
-  }
-  const { left, top } = nodeGraphFloatingWindowPosition(panel, x, y);
-  setNodeGraphFloatingWindowViewportPosition(panel, left, top);
-  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
-    rememberNodeGraphWorkspaceWindowState(
-      "uiSettings",
-      panel,
-      { open: !panel.hidden, position: { left, top } },
-      { persist: false },
-    );
-  }
-}
+// Move / resize use the shared floating-window registry
+// (beginNodeGraphRegisteredFloatingWindowDrag/Resize + pointer bridge).
+// Keep thin wrappers so existing event bindings keep compiling.
 
 function beginNodeUserUiSettingsDrag(event) {
-  if (event.button > 0 || event.target.closest(".panel-close-button")) {
-    return;
-  }
-  const panel = document.getElementById("nodeUserUiSettingsPanel");
-  if (!panel || panel.hidden) {
-    return;
-  }
-  const rect = panel.getBoundingClientRect();
-  const handle =
-    event.currentTarget.id === "nodeUserUiSettingsHeading"
-      ? document.getElementById("nodeUserUiSettingsDragHandle")
-      : event.currentTarget;
-  nodeUserUiSettingsDragging = {
-    handle,
-    heading: document.getElementById("nodeUserUiSettingsHeading"),
-    offsetX: event.clientX - rect.left,
-    offsetY: event.clientY - rect.top,
-    pointerId: event.pointerId ?? null,
-  };
-  handle?.classList.add("dragging");
-  nodeUserUiSettingsDragging.heading?.classList.add("dragging");
-  if (event.pointerId !== undefined) {
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }
-  event.preventDefault();
-  event.stopPropagation();
-}
-
-function dragNodeUserUiSettings(event) {
-  const drag = nodeUserUiSettingsDragging;
-  if (
-    !drag ||
-    (drag.pointerId !== null && event.pointerId !== undefined && drag.pointerId !== event.pointerId)
-  ) {
-    return;
-  }
-  positionNodeUserUiSettingsPanel(
-    document.getElementById("nodeUserUiSettingsPanel"),
-    event.clientX - drag.offsetX,
-    event.clientY - drag.offsetY,
-  );
-  event.preventDefault();
-}
-
-function endNodeUserUiSettingsDrag(event) {
-  const drag = nodeUserUiSettingsDragging;
-  if (
-    !drag ||
-    (drag.pointerId !== null && event.pointerId !== undefined && drag.pointerId !== event.pointerId)
-  ) {
-    return;
-  }
-  drag.handle?.classList.remove("dragging");
-  drag.heading?.classList.remove("dragging");
-  if (event.pointerId !== undefined) {
-    const heading = document.getElementById("nodeUserUiSettingsHeading");
-    const handle = document.getElementById("nodeUserUiSettingsDragHandle");
-    if (heading?.hasPointerCapture?.(event.pointerId)) {
-      heading.releasePointerCapture(event.pointerId);
-    }
-    if (handle?.hasPointerCapture?.(event.pointerId)) {
-      handle.releasePointerCapture(event.pointerId);
-    }
-  }
-  nodeUserUiSettingsDragging = null;
-  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
-    rememberNodeGraphWorkspaceWindowState(
-      "uiSettings",
-      document.getElementById("nodeUserUiSettingsPanel"),
-      { open: true },
-      { status: false },
-    );
-  }
-}
-
-let nodeUiDevHelperDragging = null;
-
-function positionNodeUiDevHelper(helper, x, y) {
-  if (!helper) {
-    return;
-  }
-  const { left, top } = nodeGraphFloatingWindowPosition(helper, x, y);
-  setNodeGraphFloatingWindowViewportPosition(helper, left, top);
-  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
-    rememberNodeGraphWorkspaceWindowState(
-      "uiDev",
-      helper,
-      { open: !helper.hidden, position: { left, top } },
-      { persist: false },
-    );
+  if (typeof beginNodeGraphRegisteredFloatingWindowDrag === "function") {
+    beginNodeGraphRegisteredFloatingWindowDrag(event, "uiSettings");
   }
 }
 
 function beginNodeUiDevHelperDrag(event) {
-  if (event.button > 0 || event.target.closest(".panel-close-button")) {
-    return;
-  }
-
-  const helper = document.getElementById("nodeUiDevHelper");
-  if (!helper || helper.hidden) {
-    return;
-  }
-
-  const rect = helper.getBoundingClientRect();
-  const handle =
-    event.currentTarget.id === "nodeUiDevHelperHeading"
-      ? document.getElementById("nodeUiDevHelperDragHandle")
-      : event.currentTarget;
-  nodeUiDevHelperDragging = {
-    handle,
-    heading: document.getElementById("nodeUiDevHelperHeading"),
-    offsetX: event.clientX - rect.left,
-    offsetY: event.clientY - rect.top,
-    pointerId: event.pointerId ?? null,
-  };
-  handle?.classList.add("dragging");
-  nodeUiDevHelperDragging.heading?.classList.add("dragging");
-  if (event.pointerId !== undefined) {
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }
-  event.preventDefault();
-  event.stopPropagation();
-}
-
-function dragNodeUiDevHelper(event) {
-  const drag = nodeUiDevHelperDragging;
-  if (
-    !drag ||
-    (drag.pointerId !== null && event.pointerId !== undefined && drag.pointerId !== event.pointerId)
-  ) {
-    return;
-  }
-  positionNodeUiDevHelper(
-    document.getElementById("nodeUiDevHelper"),
-    event.clientX - drag.offsetX,
-    event.clientY - drag.offsetY,
-  );
-  event.preventDefault();
-}
-
-function endNodeUiDevHelperDrag(event) {
-  const drag = nodeUiDevHelperDragging;
-  if (
-    !drag ||
-    (drag.pointerId !== null && event.pointerId !== undefined && drag.pointerId !== event.pointerId)
-  ) {
-    return;
-  }
-
-  drag.handle?.classList.remove("dragging");
-  drag.heading?.classList.remove("dragging");
-  if (event.pointerId !== undefined) {
-    const heading = document.getElementById("nodeUiDevHelperHeading");
-    const handle = document.getElementById("nodeUiDevHelperDragHandle");
-    if (heading?.hasPointerCapture?.(event.pointerId)) {
-      heading.releasePointerCapture(event.pointerId);
-    }
-    if (handle?.hasPointerCapture?.(event.pointerId)) {
-      handle.releasePointerCapture(event.pointerId);
-    }
-  }
-  nodeUiDevHelperDragging = null;
-  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
-    rememberNodeGraphWorkspaceWindowState(
-      "uiDev",
-      document.getElementById("nodeUiDevHelper"),
-      { open: true },
-      { status: false },
-    );
+  if (typeof beginNodeGraphRegisteredFloatingWindowDrag === "function") {
+    beginNodeGraphRegisteredFloatingWindowDrag(event, "uiDev");
   }
 }
+
+/** @deprecated registry pointer bridge owns move/up */
+function dragNodeUserUiSettings() {}
+/** @deprecated registry pointer bridge owns move/up */
+function endNodeUserUiSettingsDrag() {}
+/** @deprecated registry pointer bridge owns move/up */
+function dragNodeUiDevHelper() {}
+/** @deprecated registry pointer bridge owns move/up */
+function endNodeUiDevHelperDrag() {}

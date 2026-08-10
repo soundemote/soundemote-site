@@ -15,13 +15,14 @@ function nodeGraphBuildLivePlan() {
     .map((modulation) => ({ ...modulation }));
 
   const plan = {
+    bypassedNodes: [...(compiled.bypassedNodes || [])],
     connections: activeSignalConnections,
     feedbackConnections: compiled.feedbackConnections.map((connection) => ({ ...connection })),
     feedbackGraphConnections: (compiled.feedbackGraphConnections || []).map((connection) => ({ ...connection })),
     feedbackModulations: compiled.feedbackModulations.map((modulation) => ({ ...modulation })),
     graphConnections: activeGraphConnections,
     modulations: activeModulations,
-    nodes: nodeGraphBuildLiveParameterNodes(activeNodeIds),
+    nodes: nodeGraphBuildLiveParameterNodes(activeNodeIds, compiled.bypassedNodes),
     order: [...compiled.order],
     outputNode: compiled.outputNode,
     patchFingerprint: nodeGraphPatchFingerprint(),
@@ -50,13 +51,14 @@ function nodeGraphBuildLivePlanForPatch(patch) {
   }
   const activeNodeIds = nodeGraphActiveNodeIds(compiled);
   const plan = {
+    bypassedNodes: [...(compiled.bypassedNodes || [])],
     connections: nodeGraphActiveSignalConnections(compiled).map((connection) => ({ ...connection })),
     feedbackConnections: compiled.feedbackConnections.map((connection) => ({ ...connection })),
     feedbackGraphConnections: (compiled.feedbackGraphConnections || []).map((connection) => ({ ...connection })),
     feedbackModulations: compiled.feedbackModulations.map((modulation) => ({ ...modulation })),
     graphConnections: nodeGraphActiveGraphConnections(compiled).map((connection) => ({ ...connection })),
     modulations: nodeGraphActiveModulations(compiled).map((modulation) => ({ ...modulation })),
-    nodes: nodeGraphBuildLiveParameterNodesForPatch(normalizedPatch, activeNodeIds),
+    nodes: nodeGraphBuildLiveParameterNodesForPatch(normalizedPatch, activeNodeIds, compiled.bypassedNodes),
     order: [...compiled.order],
     outputNode: compiled.outputNode,
     patchFingerprint: nodeGraphPatchFingerprint(normalizedPatch),
@@ -73,13 +75,15 @@ function nodeGraphBuildLivePlanForPatch(patch) {
 }
 
 /**
- * Spectrogram analysis knobs live in display settings. Inject into worklet
- * params (fftSize, window, overlap, freqOverlap, freqScale, historySeconds).
+ * Spectrogram: analysis knobs from display settings; view knobs from module params.
+ * Inject into worklet (fftSize, window, overlap, freqOverlap, freqScale) +
+ * historySeconds / minFreq / maxFreq for any main-thread consumers.
  */
 function nodeGraphInjectSpectrogramWorkletParams(node, params) {
   if (!node || node.type !== "spectrogram" || !params || typeof params !== "object") {
     return;
   }
+  const p = node.params && typeof node.params === "object" ? node.params : {};
   if (typeof normalizeNodeGraphSpectrogramSettings === "function") {
     const safe = normalizeNodeGraphSpectrogramSettings(node.traceDisplaySettings || {}, node);
     params.fftSize = safe.fftSize;
@@ -87,20 +91,31 @@ function nodeGraphInjectSpectrogramWorkletParams(node, params) {
     params.overlap = safe.overlap;
     params.freqOverlap = safe.freqOverlap;
     params.freqScale = safe.freqScale;
-    params.historySeconds = safe.historySeconds;
+    // Face view: module sliders win; fall back to legacy display settings.
+    const hist = Number(p.historySeconds ?? safe.historySeconds);
+    params.historySeconds = Number.isFinite(hist) && hist > 0 ? hist : 2;
+    const minF = Number(p.minFreq ?? safe.minFreq);
+    const maxF = Number(p.maxFreq ?? safe.maxFreq);
+    params.minFreq = Number.isFinite(minF) ? minF : 20;
+    params.maxFreq = Number.isFinite(maxF) ? maxF : 20000;
     return;
   }
-  const rawFft = node.traceDisplaySettings?.fftSize ?? node.params?.fftSize ?? 1024;
+  const rawFft = node.traceDisplaySettings?.fftSize ?? p.fftSize ?? 1024;
   params.fftSize = Number.isFinite(Number(rawFft)) ? Number(rawFft) : 1024;
-  params.window = Number(node.traceDisplaySettings?.window ?? node.params?.window ?? 1) || 1;
-  params.overlap = Number(node.traceDisplaySettings?.overlap ?? node.params?.overlap ?? 2) || 2;
-  params.freqOverlap = Number(node.traceDisplaySettings?.freqOverlap ?? node.params?.freqOverlap ?? 0) || 0;
-  params.freqScale = Number(node.traceDisplaySettings?.freqScale ?? node.params?.freqScale ?? 1) || 1;
-  params.historySeconds = Number(node.traceDisplaySettings?.historySeconds ?? node.params?.historySeconds ?? 2) || 2;
+  params.window = Number(node.traceDisplaySettings?.window ?? p.window ?? 1) || 1;
+  params.overlap = Number(node.traceDisplaySettings?.overlap ?? p.overlap ?? 2) || 2;
+  params.freqOverlap = Number(node.traceDisplaySettings?.freqOverlap ?? p.freqOverlap ?? 0) || 0;
+  params.freqScale = Number(node.traceDisplaySettings?.freqScale ?? p.freqScale ?? 1) || 1;
+  params.historySeconds = Number(p.historySeconds ?? node.traceDisplaySettings?.historySeconds ?? 2) || 2;
+  params.minFreq = Number(p.minFreq ?? 20) || 20;
+  params.maxFreq = Number(p.maxFreq ?? 20000) || 20000;
 }
 
-function nodeGraphBuildLiveParameterNodes(activeNodeIds = null) {
+function nodeGraphBuildLiveParameterNodes(activeNodeIds = null, bypassedNodes = null) {
   const activeIds = activeNodeIds instanceof Set ? activeNodeIds : null;
+  const bypassed = bypassedNodes instanceof Set
+    ? bypassedNodes
+    : new Set(Array.isArray(bypassedNodes) ? bypassedNodes : (nodeGraphMvp.patch.bypassedNodes || []));
   return nodeGraphMvp.patch.nodes
     .filter((node) => !activeIds || activeIds.has(node.id))
     .map((node) => {
@@ -115,30 +130,16 @@ function nodeGraphBuildLiveParameterNodes(activeNodeIds = null) {
         paramMeta[parameter.key] = nodeGraphReadPatchParameterMetadata(node, parameter.key);
       }
       nodeGraphInjectSpectrogramWorkletParams(node, params);
-      if (node.type === "clapPlugin") {
-        for (const [key, metadata] of Object.entries(node.paramMeta || {})) {
-          if (Object.hasOwn(paramMeta, key)) {
-            continue;
-          }
-          const normalizedMetadata = normalizeNodeGraphPatchParameterMetadata(node.type, key, metadata);
-          if (!normalizedMetadata) {
-            continue;
-          }
-          paramMeta[key] = normalizedMetadata;
-          params[key] = normalizeNodeGraphPatchParameter(
-            node.type,
-            key,
-            Object.hasOwn(node.params || {}, key) ? node.params[key] : normalizedMetadata.def,
-            normalizedMetadata,
-          );
-        }
-      }
       const runtimeNode = {
         id: node.id,
         paramMeta,
         params,
         type: node.type,
       };
+      if (bypassed.has(node.id) && typeof nodeGraphModuleBypassSpec === "function") {
+        runtimeNode.bypassed = true;
+        runtimeNode.bypassSpec = nodeGraphModuleBypassSpec(node.type);
+      }
       if (node.type === "codeblock") {
         runtimeNode.codeblock = normalizeNodeGraphCodeblock(node.codeblock);
       }
@@ -148,14 +149,14 @@ function nodeGraphBuildLiveParameterNodes(activeNodeIds = null) {
           runtimeNode.moduleGroupPlan = nodeGraphBuildLivePlanForPatch(runtimeNode.moduleGroup.sourcePatch);
         }
       }
-      if (node.type === "clapPlugin") {
-        runtimeNode.clap = normalizeNodeGraphClapPluginBinding(node.clap);
-      }
       if (node.type === "samplePlayer" || node.type === "sampleLooper" || node.type === "audioPlayer") {
         runtimeNode.sample = { id: normalizeNodeGraphSampleId(node.sample?.id) };
       }
       if (node.type === "audioPlayer" && Number.isFinite(Number(node.samplePhase))) {
         runtimeNode.samplePhase = Math.max(0, Math.min(1, Number(node.samplePhase)));
+      }
+      if (node.type === "audioPlayer" && Number.isFinite(Number(node.samplePhaseSeek))) {
+        runtimeNode.samplePhaseSeek = Math.max(0, Math.round(Number(node.samplePhaseSeek)) || 0);
       }
       if (node.type === "phosphillator" && Array.isArray(node.drawnPath?.points)) {
         runtimeNode.drawnPath = { points: node.drawnPath.points };
@@ -167,8 +168,11 @@ function nodeGraphBuildLiveParameterNodes(activeNodeIds = null) {
     });
 }
 
-function nodeGraphBuildLiveParameterNodesForPatch(patch, activeNodeIds = null) {
+function nodeGraphBuildLiveParameterNodesForPatch(patch, activeNodeIds = null, bypassedNodes = null) {
   const activeIds = activeNodeIds instanceof Set ? activeNodeIds : null;
+  const bypassed = bypassedNodes instanceof Set
+    ? bypassedNodes
+    : new Set(Array.isArray(bypassedNodes) ? bypassedNodes : (patch.bypassedNodes || []));
   return (patch.nodes || [])
     .filter((node) => !activeIds || activeIds.has(node.id))
     .map((node) => {
@@ -187,30 +191,16 @@ function nodeGraphBuildLiveParameterNodesForPatch(patch, activeNodeIds = null) {
         ) || nodeGraphParameterDefinitionMetadata(parameter);
       }
       nodeGraphInjectSpectrogramWorkletParams(node, params);
-      if (node.type === "clapPlugin") {
-        for (const [key, metadata] of Object.entries(node.paramMeta || {})) {
-          if (Object.hasOwn(paramMeta, key)) {
-            continue;
-          }
-          const normalizedMetadata = normalizeNodeGraphPatchParameterMetadata(node.type, key, metadata);
-          if (!normalizedMetadata) {
-            continue;
-          }
-          paramMeta[key] = normalizedMetadata;
-          params[key] = normalizeNodeGraphPatchParameter(
-            node.type,
-            key,
-            Object.hasOwn(node.params || {}, key) ? node.params[key] : normalizedMetadata.def,
-            normalizedMetadata,
-          );
-        }
-      }
       const runtimeNode = {
         id: node.id,
         paramMeta,
         params,
         type: node.type,
       };
+      if (bypassed.has(node.id) && typeof nodeGraphModuleBypassSpec === "function") {
+        runtimeNode.bypassed = true;
+        runtimeNode.bypassSpec = nodeGraphModuleBypassSpec(node.type);
+      }
       if (node.type === "codeblock") {
         runtimeNode.codeblock = normalizeNodeGraphCodeblock(node.codeblock);
       }
@@ -220,14 +210,14 @@ function nodeGraphBuildLiveParameterNodesForPatch(patch, activeNodeIds = null) {
           runtimeNode.moduleGroupPlan = nodeGraphBuildLivePlanForPatch(runtimeNode.moduleGroup.sourcePatch);
         }
       }
-      if (node.type === "clapPlugin") {
-        runtimeNode.clap = normalizeNodeGraphClapPluginBinding(node.clap);
-      }
       if (node.type === "samplePlayer" || node.type === "sampleLooper" || node.type === "audioPlayer") {
         runtimeNode.sample = { id: normalizeNodeGraphSampleId(node.sample?.id) };
       }
       if (node.type === "audioPlayer" && Number.isFinite(Number(node.samplePhase))) {
         runtimeNode.samplePhase = Math.max(0, Math.min(1, Number(node.samplePhase)));
+      }
+      if (node.type === "audioPlayer" && Number.isFinite(Number(node.samplePhaseSeek))) {
+        runtimeNode.samplePhaseSeek = Math.max(0, Math.round(Number(node.samplePhaseSeek)) || 0);
       }
       if (node.type === "phosphillator" && Array.isArray(node.drawnPath?.points)) {
         runtimeNode.drawnPath = { points: node.drawnPath.points };
@@ -271,11 +261,16 @@ function nodeGraphLiveModulationConnectionMap(plan) {
   );
 }
 
-function createNodeGraphLiveRuntime(plan) {
+function createNodeGraphLiveRuntime(plan, previousRuntime = null) {
   const nodes = new Map((plan.nodes || []).map((node) => [node.id, node]));
   const inputConnections = nodeGraphLiveInputConnectionMap(plan);
   const graphInputConnections = nodeGraphLiveGraphInputConnectionMap(plan);
   const modulationConnections = nodeGraphLiveModulationConnectionMap(plan);
+  // Preserve Soft Fractal map orbit across plan rebuilds (module resize →
+  // scheduleLivePlanSync must not reseed zx/zy / orbitPhasor).
+  const previousRgbFractalStates = previousRuntime?.rgbFractalStates instanceof Map
+    ? previousRuntime.rgbFractalStates
+    : null;
   const phases = new Map();
   const noiseSeedKeys = new Map();
   const noiseSeeds = new Map();
@@ -294,10 +289,33 @@ function createNodeGraphLiveRuntime(plan) {
   const pingPongDelayStates = new Map();
   const wallDelayStates = new Map();
   const expAdsrStates = new Map();
+  const attackDecayStates = new Map();
   const fractalBrownianNoiseStates = new Map();
+  const fbmFieldStates = new Map();
+  const rgbFractalStates = new Map();
   const flowerChildEnvelopeFollowerStates = new Map();
   const flowerChildFilterStates = new Map();
-  const rsmetFilterStates = new Map();
+  const activeFilterStates = new Map();
+  const butterworthStates = new Map();
+  const linkwitzRileyStates = new Map();
+  const besselStates = new Map();
+  const chebyshevStates = new Map();
+  const ellipticStates = new Map();
+  const bandpassStates = new Map();
+  const allpassStates = new Map();
+  const crossover2States = new Map();
+  const crossover3States = new Map();
+  const crossover4States = new Map();
+  const crossover5States = new Map();
+  const crossover6States = new Map();
+  const modeResonatorStates = new Map();
+  const combResonatorStates = new Map();
+  const waveguideStates = new Map();
+  const phaseDisperseStates = new Map();
+  const bodeStates = new Map();
+  const stftBlurStates = new Map();
+  const softpopOscillatorStates = new Map();
+  const sinepulseStates = new Map();
   const yellowjacketFilterStates = new Map();
   const superloveFilterStates = new Map();
   const chaoticPhaseLockingFilterStates = new Map();
@@ -305,7 +323,13 @@ function createNodeGraphLiveRuntime(plan) {
   const humanFilterStates = new Map();
   const pulseExplosionStates = new Map();
   const comparatorStates = new Map();
+  const speedColorInertiaStates = new Map();
+  const inertialFilterStates = new Map();
+  const airClipperStates = new Map();
+  const tiltFilterStates = new Map();
+  const eqFilterStates = new Map();
   const aliasSineStates = new Map();
+  const robinSinusoidStates = new Map();
   const ladderFilterStates = new Map();
   const tb303FilterStates = new Map();
   const linearEnvelopeStates = new Map();
@@ -325,6 +349,14 @@ function createNodeGraphLiveRuntime(plan) {
   const turingMachineStates = new Map();
   const pitchQuantizerStates = new Map();
   const surgeOscillatorStates = new Map();
+  const softwaveOscStates = new Map();
+  const curveOscStates = new Map();
+  const snowflakeStates = new Map();
+  const textStreamStates = new Map();
+  const degreeTuringStates = new Map();
+  const gravityWalkerStates = new Map();
+  const degreePhraseStates = new Map();
+  const noteGlideStates = new Map();
   const dsfOscillatorStates = new Map();
   const robinSupersawStates = new Map();
   const hypersawStates = new Map();
@@ -343,9 +375,11 @@ function createNodeGraphLiveRuntime(plan) {
   const bradley2AStates = new Map();
   const antisawStates = new Map();
   const reverbEffectStates = new Map();
+  const soemReverbStates = new Map();
   const pllStates = new Map();
   const helmholtzStates = new Map();
   const sampleHoldStates = new Map();
+  const sampleDelayStates = new Map();
   const samplePlaybackStates = new Map();
   const samples = new Map((plan.samples || []).map((sample) => [sample.id, sample]));
   const slewLimiterStates = new Map();
@@ -432,6 +466,30 @@ function createNodeGraphLiveRuntime(plan) {
     if (node.type === "surgeOscillator") {
       surgeOscillatorStates.set(node.id, createNodeGraphSurgeOscillatorState());
     }
+    if (node.type === "softwaveOsc") {
+      softwaveOscStates.set(node.id, createNodeGraphSoftwaveOscillatorState());
+    }
+    if (node.type === "curveOsc" && typeof createNodeGraphCurveOscState === "function") {
+      curveOscStates.set(node.id, createNodeGraphCurveOscState());
+    }
+    if (node.type === "snowflake" && typeof createNodeGraphSnowflakeState === "function") {
+      snowflakeStates.set(node.id, createNodeGraphSnowflakeState());
+    }
+    if (node.type === "textStream" && typeof createNodeGraphTextStreamState === "function") {
+      textStreamStates.set(node.id, createNodeGraphTextStreamState());
+    }
+    if (node.type === "degreeTuring" && typeof createNodeGraphDegreeTuringState === "function") {
+      degreeTuringStates.set(node.id, createNodeGraphDegreeTuringState());
+    }
+    if (node.type === "gravityWalker" && typeof createNodeGraphGravityWalkerState === "function") {
+      gravityWalkerStates.set(node.id, createNodeGraphGravityWalkerState());
+    }
+    if (node.type === "degreePhrase" && typeof createNodeGraphDegreePhraseState === "function") {
+      degreePhraseStates.set(node.id, createNodeGraphDegreePhraseState());
+    }
+    if (node.type === "noteGlide" && typeof createNodeGraphNoteGlideState === "function") {
+      noteGlideStates.set(node.id, createNodeGraphNoteGlideState());
+    }
     if (node.type === "dsfOscillator") {
       dsfOscillatorStates.set(node.id, createNodeGraphDsfOscillatorState());
     }
@@ -465,8 +523,49 @@ function createNodeGraphLiveRuntime(plan) {
     if (node.type === "flowerChildFilter") {
       flowerChildFilterStates.set(node.id, createNodeGraphStereoFilterState(createNodeGraphFlowerChildFilterState));
     }
-    if (node.type === "rsmetFilter") {
-      rsmetFilterStates.set(node.id, createNodeGraphStereoFilterState(createNodeGraphRsmetFilterState));
+    if (node.type === "activeFilter") {
+      activeFilterStates.set(
+        node.id,
+        typeof createNodeGraphStereoActiveFilterState === "function"
+          ? createNodeGraphStereoActiveFilterState()
+          : createNodeGraphStereoFilterState(createNodeGraphActiveFilterState),
+      );
+    }
+    if (node.type === "butterworth" || node.type === "linkwitzRiley" || node.type === "bessel" || node.type === "chebyshev" || node.type === "elliptic") {
+      const map = ({ butterworth: butterworthStates, linkwitzRiley: linkwitzRileyStates, bessel: besselStates, chebyshev: chebyshevStates, elliptic: ellipticStates })[node.type];
+      map.set(node.id, createNodeGraphStereoScientificIirState());
+    }
+    if (node.type === "bandpass") {
+      bandpassStates.set(
+        node.id,
+        typeof createNodeGraphStereoEqFilterState === "function"
+          ? createNodeGraphStereoEqFilterState()
+          : createNodeGraphStereoFilterState(createNodeGraphEqFilterState),
+      );
+    }
+    if (node.type === "allpass") {
+      allpassStates.set(
+        node.id,
+        typeof createNodeGraphStereoEqFilterState === "function"
+          ? createNodeGraphStereoEqFilterState()
+          : createNodeGraphStereoFilterState(createNodeGraphEqFilterState),
+      );
+    }
+    if (node.type === "softpopOscillator") {
+      softpopOscillatorStates.set(
+        node.id,
+        typeof createNodeGraphSoftpopOscillatorState === "function"
+          ? createNodeGraphSoftpopOscillatorState()
+          : { left: {}, right: {}, lastReset: false, generation: 0, lastSeed: NaN },
+      );
+    }
+    if (node.type === "sinepulse") {
+      sinepulseStates.set(
+        node.id,
+        typeof createNodeGraphSinepulseState === "function"
+          ? createNodeGraphSinepulseState()
+          : { tooth: 0, phase: 0, lastReset: 0 },
+      );
     }
     if (node.type === "yellowjacketFilter") {
       yellowjacketFilterStates.set(node.id, createNodeGraphStereoFilterState(createNodeGraphYellowjacketFilterState));
@@ -489,8 +588,29 @@ function createNodeGraphLiveRuntime(plan) {
     if (node.type === "comparator") {
       comparatorStates.set(node.id, createNodeGraphComparatorState());
     }
+    if (node.type === "speedColorInertia") {
+      speedColorInertiaStates.set(node.id, createNodeGraphSpeedColorInertiaState());
+    }
+    if (node.type === "inertialFilter") {
+      inertialFilterStates.set(node.id, createNodeGraphStereoInertialFilterState());
+    }
+    if (node.type === "airClipper" && typeof createNodeGraphAirClipperState === "function") {
+      airClipperStates.set(node.id, createNodeGraphAirClipperState());
+    }
+    if (node.type === "tiltFilter") {
+      tiltFilterStates.set(node.id, createNodeGraphStereoTiltFilterState());
+    }
+    if (node.type === "eqFilter") {
+      eqFilterStates.set(node.id, createNodeGraphStereoEqFilterState());
+    }
+    if (node.type === "sampleDelay") {
+      sampleDelayStates.set(node.id, createNodeGraphSampleDelayState());
+    }
     if (node.type === "aliasSine") {
       aliasSineStates.set(node.id, createNodeGraphAliasSineState());
+    }
+    if (node.type === "robinSinusoid" && typeof createNodeGraphRobinSinusoidState === "function") {
+      robinSinusoidStates.set(node.id, createNodeGraphRobinSinusoidState());
     }
     if (node.type === "tb303Filter") {
       tb303FilterStates.set(node.id, createNodeGraphStereoFilterState(createNodeGraphTb303FilterState));
@@ -508,7 +628,12 @@ function createNodeGraphLiveRuntime(plan) {
       delayedTriggerStates.set(node.id, createNodeGraphDelayedTriggerState());
     }
     if (node.type === "delayEffect") {
-      delayEffectStates.set(node.id, createNodeGraphDelayEffectState());
+      delayEffectStates.set(
+        node.id,
+        typeof createNodeGraphStereoDelayEffectState === "function"
+          ? createNodeGraphStereoDelayEffectState()
+          : createNodeGraphDelayEffectState(),
+      );
     }
     if (node.type === "pingPongDelay") {
       pingPongDelayStates.set(node.id, createNodeGraphPingPongDelayState());
@@ -543,6 +668,14 @@ function createNodeGraphLiveRuntime(plan) {
     if (node.type === "expAdsr") {
       expAdsrStates.set(node.id, createNodeGraphExpAdsrState());
     }
+    if (node.type === "attackDecay") {
+      attackDecayStates.set(
+        node.id,
+        typeof createNodeGraphAttackDecayState === "function"
+          ? createNodeGraphAttackDecayState()
+          : { raw: 0 },
+      );
+    }
     if (node.type === "linearEnvelope") {
       linearEnvelopeStates.set(node.id, createNodeGraphLinearEnvelopeState());
     }
@@ -563,6 +696,21 @@ function createNodeGraphLiveRuntime(plan) {
     }
     if (node.type === "fractalBrownianNoise") {
       fractalBrownianNoiseStates.set(node.id, createNodeGraphFractalBrownianNoiseState());
+    }
+    if (node.type === "fbmField") {
+      fbmFieldStates.set(node.id, createNodeGraphFbmFieldState());
+    }
+    if (node.type === "rgbFractal") {
+      const kept = previousRgbFractalStates?.get(node.id);
+      rgbFractalStates.set(
+        node.id,
+        kept
+          || (typeof createNodeGraphRgbFractalState === "function"
+            ? createNodeGraphRgbFractalState()
+            : (typeof createNodeGraphRgbFractalAudioState === "function"
+              ? createNodeGraphRgbFractalAudioState()
+              : {})),
+      );
     }
     if (node.type === "flowerChildEnvelopeFollower") {
       flowerChildEnvelopeFollowerStates.set(node.id, createNodeGraphFlowerChildEnvelopeFollowerState());
@@ -615,10 +763,33 @@ function createNodeGraphLiveRuntime(plan) {
     pingPongDelayStates,
     wallDelayStates,
     expAdsrStates,
+    attackDecayStates,
     fractalBrownianNoiseStates,
+    fbmFieldStates,
+    rgbFractalStates,
     flowerChildEnvelopeFollowerStates,
     flowerChildFilterStates,
-    rsmetFilterStates,
+    activeFilterStates,
+    butterworthStates,
+    linkwitzRileyStates,
+    besselStates,
+    chebyshevStates,
+    ellipticStates,
+    bandpassStates,
+    allpassStates,
+    crossover2States,
+    crossover3States,
+    crossover4States,
+    crossover5States,
+    crossover6States,
+    modeResonatorStates,
+    combResonatorStates,
+    waveguideStates,
+    phaseDisperseStates,
+    bodeStates,
+    stftBlurStates,
+    softpopOscillatorStates,
+    sinepulseStates,
     yellowjacketFilterStates,
     superloveFilterStates,
     chaoticPhaseLockingFilterStates,
@@ -626,7 +797,13 @@ function createNodeGraphLiveRuntime(plan) {
     humanFilterStates,
     pulseExplosionStates,
     comparatorStates,
+    speedColorInertiaStates,
+    inertialFilterStates,
+    airClipperStates,
+    tiltFilterStates,
+    eqFilterStates,
     aliasSineStates,
+    robinSinusoidStates,
     graphInputConnections,
     graphLfoStates,
     ladderFilterStates,
@@ -648,6 +825,14 @@ function createNodeGraphLiveRuntime(plan) {
     turingMachineStates,
     pitchQuantizerStates,
     surgeOscillatorStates,
+    softwaveOscStates,
+    curveOscStates,
+    snowflakeStates,
+    textStreamStates,
+    degreeTuringStates,
+    gravityWalkerStates,
+    degreePhraseStates,
+    noteGlideStates,
     dsfOscillatorStates,
     robinSupersawStates,
     hypersawStates,
@@ -689,6 +874,7 @@ function createNodeGraphLiveRuntime(plan) {
     pluckEnvelopeStates,
     randomClockStates,
     reverbEffectStates,
+    soemReverbStates,
     pllStates,
     helmholtzStates,
     order: [...(plan.order || [])],
@@ -700,6 +886,7 @@ function createNodeGraphLiveRuntime(plan) {
     bradley2AStates,
     antisawStates,
     sampleHoldStates,
+    sampleDelayStates,
     samplePlaybackStates,
     samples,
     scopeCaptureNodeIds: [...(plan.scopeCaptureNodeIds || [])],
@@ -799,8 +986,12 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   if (!runtime.flowerChildFilterStates) {
     runtime.flowerChildFilterStates = new Map();
   }
-  if (!runtime.rsmetFilterStates) {
-    runtime.rsmetFilterStates = new Map();
+  if (!runtime.activeFilterStates) {
+    runtime.activeFilterStates = new Map();
+  }
+  for (const sci of ["butterworth", "linkwitzRiley", "bessel", "chebyshev", "elliptic", "bandpass", "allpass", "crossover2", "crossover3", "crossover4", "crossover5", "crossover6", "modeResonator", "combResonator", "waveguide", "phaseDisperse", "bode", "stftBlur", "softpopOscillator", "sinepulse"]) {
+    const key = `${sci}States`;
+    if (!runtime[key]) runtime[key] = new Map();
   }
   if (!runtime.yellowjacketFilterStates) {
     runtime.yellowjacketFilterStates = new Map();
@@ -823,8 +1014,29 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   if (!runtime.comparatorStates) {
     runtime.comparatorStates = new Map();
   }
+  if (!runtime.speedColorInertiaStates) {
+    runtime.speedColorInertiaStates = new Map();
+  }
+  if (!runtime.inertialFilterStates) {
+    runtime.inertialFilterStates = new Map();
+  }
+  if (!runtime.airClipperStates) {
+    runtime.airClipperStates = new Map();
+  }
+  if (!runtime.tiltFilterStates) {
+    runtime.tiltFilterStates = new Map();
+  }
+  if (!runtime.eqFilterStates) {
+    runtime.eqFilterStates = new Map();
+  }
+  if (!runtime.sampleDelayStates) {
+    runtime.sampleDelayStates = new Map();
+  }
   if (!runtime.aliasSineStates) {
     runtime.aliasSineStates = new Map();
+  }
+  if (!runtime.robinSinusoidStates) {
+    runtime.robinSinusoidStates = new Map();
   }
   if (!runtime.tb303FilterStates) {
     runtime.tb303FilterStates = new Map();
@@ -883,6 +1095,20 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   if (!runtime.surgeOscillatorStates) {
     runtime.surgeOscillatorStates = new Map();
   }
+  if (!runtime.softwaveOscStates) {
+    runtime.softwaveOscStates = new Map();
+  }
+  if (!runtime.curveOscStates) {
+    runtime.curveOscStates = new Map();
+  }
+  if (!runtime.snowflakeStates) {
+    runtime.snowflakeStates = new Map();
+  }
+  if (!runtime.textStreamStates) runtime.textStreamStates = new Map();
+  if (!runtime.degreeTuringStates) runtime.degreeTuringStates = new Map();
+  if (!runtime.gravityWalkerStates) runtime.gravityWalkerStates = new Map();
+  if (!runtime.degreePhraseStates) runtime.degreePhraseStates = new Map();
+  if (!runtime.noteGlideStates) runtime.noteGlideStates = new Map();
   if (!runtime.dsfOscillatorStates) {
     runtime.dsfOscillatorStates = new Map();
   }
@@ -925,6 +1151,9 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   if (!runtime.reverbEffectStates) {
     runtime.reverbEffectStates = new Map();
   }
+  if (!runtime.soemReverbStates) {
+    runtime.soemReverbStates = new Map();
+  }
   if (!runtime.pllStates) {
     runtime.pllStates = new Map();
   }
@@ -942,6 +1171,9 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   }
   if (!runtime.expAdsrStates) {
     runtime.expAdsrStates = new Map();
+  }
+  if (!runtime.attackDecayStates) {
+    runtime.attackDecayStates = new Map();
   }
   if (!runtime.noiseGeneratorStates) {
     runtime.noiseGeneratorStates = new Map();
@@ -963,6 +1195,12 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   }
   if (!runtime.fractalBrownianNoiseStates) {
     runtime.fractalBrownianNoiseStates = new Map();
+  }
+  if (!runtime.fbmFieldStates) {
+    runtime.fbmFieldStates = new Map();
+  }
+  if (!runtime.rgbFractalStates) {
+    runtime.rgbFractalStates = new Map();
   }
   if (!runtime.flowerChildEnvelopeFollowerStates) {
     runtime.flowerChildEnvelopeFollowerStates = new Map();
@@ -1071,6 +1309,30 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     if (node.type === "surgeOscillator" && !runtime.surgeOscillatorStates.has(node.id)) {
       runtime.surgeOscillatorStates.set(node.id, createNodeGraphSurgeOscillatorState());
     }
+    if (node.type === "softwaveOsc" && !runtime.softwaveOscStates.has(node.id)) {
+      runtime.softwaveOscStates.set(node.id, createNodeGraphSoftwaveOscillatorState());
+    }
+    if (node.type === "curveOsc" && !runtime.curveOscStates.has(node.id) && typeof createNodeGraphCurveOscState === "function") {
+      runtime.curveOscStates.set(node.id, createNodeGraphCurveOscState());
+    }
+    if (node.type === "snowflake" && !runtime.snowflakeStates.has(node.id) && typeof createNodeGraphSnowflakeState === "function") {
+      runtime.snowflakeStates.set(node.id, createNodeGraphSnowflakeState());
+    }
+    if (node.type === "textStream" && !runtime.textStreamStates.has(node.id) && typeof createNodeGraphTextStreamState === "function") {
+      runtime.textStreamStates.set(node.id, createNodeGraphTextStreamState());
+    }
+    if (node.type === "degreeTuring" && !runtime.degreeTuringStates.has(node.id) && typeof createNodeGraphDegreeTuringState === "function") {
+      runtime.degreeTuringStates.set(node.id, createNodeGraphDegreeTuringState());
+    }
+    if (node.type === "gravityWalker" && !runtime.gravityWalkerStates.has(node.id) && typeof createNodeGraphGravityWalkerState === "function") {
+      runtime.gravityWalkerStates.set(node.id, createNodeGraphGravityWalkerState());
+    }
+    if (node.type === "degreePhrase" && !runtime.degreePhraseStates.has(node.id) && typeof createNodeGraphDegreePhraseState === "function") {
+      runtime.degreePhraseStates.set(node.id, createNodeGraphDegreePhraseState());
+    }
+    if (node.type === "noteGlide" && !runtime.noteGlideStates.has(node.id) && typeof createNodeGraphNoteGlideState === "function") {
+      runtime.noteGlideStates.set(node.id, createNodeGraphNoteGlideState());
+    }
     if (node.type === "dsfOscillator" && !runtime.dsfOscillatorStates.has(node.id)) {
       runtime.dsfOscillatorStates.set(node.id, createNodeGraphDsfOscillatorState());
     }
@@ -1104,8 +1366,56 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     if (node.type === "flowerChildFilter" && !runtime.flowerChildFilterStates.has(node.id)) {
       runtime.flowerChildFilterStates.set(node.id, createNodeGraphStereoFilterState(createNodeGraphFlowerChildFilterState));
     }
-    if (node.type === "rsmetFilter" && !runtime.rsmetFilterStates.has(node.id)) {
-      runtime.rsmetFilterStates.set(node.id, createNodeGraphStereoFilterState(createNodeGraphRsmetFilterState));
+    if (node.type === "activeFilter" && !runtime.activeFilterStates.has(node.id)) {
+      runtime.activeFilterStates.set(
+        node.id,
+        typeof createNodeGraphStereoActiveFilterState === "function"
+          ? createNodeGraphStereoActiveFilterState()
+          : createNodeGraphStereoFilterState(createNodeGraphActiveFilterState),
+      );
+    }
+    for (const sciType of ["butterworth", "linkwitzRiley", "bessel", "chebyshev", "elliptic"]) {
+      const mapName = `${sciType}States`;
+      if (!runtime[mapName]) runtime[mapName] = new Map();
+      if (node.type === sciType && !runtime[mapName].has(node.id)) {
+        runtime[mapName].set(node.id, createNodeGraphStereoScientificIirState());
+      }
+    }
+    if (!runtime.bandpassStates) runtime.bandpassStates = new Map();
+    if (node.type === "bandpass" && !runtime.bandpassStates.has(node.id)) {
+      runtime.bandpassStates.set(
+        node.id,
+        typeof createNodeGraphStereoEqFilterState === "function"
+          ? createNodeGraphStereoEqFilterState()
+          : createNodeGraphStereoFilterState(createNodeGraphEqFilterState),
+      );
+    }
+    if (!runtime.allpassStates) runtime.allpassStates = new Map();
+    if (node.type === "allpass" && !runtime.allpassStates.has(node.id)) {
+      runtime.allpassStates.set(
+        node.id,
+        typeof createNodeGraphStereoEqFilterState === "function"
+          ? createNodeGraphStereoEqFilterState()
+          : createNodeGraphStereoFilterState(createNodeGraphEqFilterState),
+      );
+    }
+    if (!runtime.softpopOscillatorStates) runtime.softpopOscillatorStates = new Map();
+    if (node.type === "softpopOscillator" && !runtime.softpopOscillatorStates.has(node.id)) {
+      runtime.softpopOscillatorStates.set(
+        node.id,
+        typeof createNodeGraphSoftpopOscillatorState === "function"
+          ? createNodeGraphSoftpopOscillatorState()
+          : { left: {}, right: {}, lastReset: false, generation: 0, lastSeed: NaN },
+      );
+    }
+    if (!runtime.sinepulseStates) runtime.sinepulseStates = new Map();
+    if (node.type === "sinepulse" && !runtime.sinepulseStates.has(node.id)) {
+      runtime.sinepulseStates.set(
+        node.id,
+        typeof createNodeGraphSinepulseState === "function"
+          ? createNodeGraphSinepulseState()
+          : { tooth: 0, phase: 0, lastReset: 0 },
+      );
     }
     if (node.type === "yellowjacketFilter" && !runtime.yellowjacketFilterStates.has(node.id)) {
       runtime.yellowjacketFilterStates.set(node.id, createNodeGraphStereoFilterState(createNodeGraphYellowjacketFilterState));
@@ -1131,8 +1441,37 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     if (node.type === "comparator" && !runtime.comparatorStates.has(node.id)) {
       runtime.comparatorStates.set(node.id, createNodeGraphComparatorState());
     }
+    if (node.type === "speedColorInertia" && !runtime.speedColorInertiaStates.has(node.id)) {
+      runtime.speedColorInertiaStates.set(node.id, createNodeGraphSpeedColorInertiaState());
+    }
+    if (node.type === "inertialFilter" && !runtime.inertialFilterStates.has(node.id)) {
+      runtime.inertialFilterStates.set(node.id, createNodeGraphStereoInertialFilterState());
+    }
+    if (
+      node.type === "airClipper"
+      && typeof createNodeGraphAirClipperState === "function"
+      && !runtime.airClipperStates.has(node.id)
+    ) {
+      runtime.airClipperStates.set(node.id, createNodeGraphAirClipperState());
+    }
+    if (node.type === "tiltFilter" && !runtime.tiltFilterStates.has(node.id)) {
+      runtime.tiltFilterStates.set(node.id, createNodeGraphStereoTiltFilterState());
+    }
+    if (node.type === "eqFilter" && !runtime.eqFilterStates.has(node.id)) {
+      runtime.eqFilterStates.set(node.id, createNodeGraphStereoEqFilterState());
+    }
+    if (node.type === "sampleDelay" && !runtime.sampleDelayStates.has(node.id)) {
+      runtime.sampleDelayStates.set(node.id, createNodeGraphSampleDelayState());
+    }
     if (node.type === "aliasSine" && !runtime.aliasSineStates.has(node.id)) {
       runtime.aliasSineStates.set(node.id, createNodeGraphAliasSineState());
+    }
+    if (
+      node.type === "robinSinusoid"
+      && typeof createNodeGraphRobinSinusoidState === "function"
+      && !runtime.robinSinusoidStates.has(node.id)
+    ) {
+      runtime.robinSinusoidStates.set(node.id, createNodeGraphRobinSinusoidState());
     }
     if (node.type === "clock" && !runtime.clockStates.has(node.id)) {
       runtime.clockStates.set(node.id, createNodeGraphClockState());
@@ -1147,7 +1486,12 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
       runtime.delayedTriggerStates.set(node.id, createNodeGraphDelayedTriggerState());
     }
     if (node.type === "delayEffect" && !runtime.delayEffectStates.has(node.id)) {
-      runtime.delayEffectStates.set(node.id, createNodeGraphDelayEffectState());
+      runtime.delayEffectStates.set(
+        node.id,
+        typeof createNodeGraphStereoDelayEffectState === "function"
+          ? createNodeGraphStereoDelayEffectState()
+          : createNodeGraphDelayEffectState(),
+      );
     }
     if (node.type === "pingPongDelay" && !runtime.pingPongDelayStates.has(node.id)) {
       runtime.pingPongDelayStates.set(node.id, createNodeGraphPingPongDelayState());
@@ -1157,6 +1501,9 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     }
     if (node.type === "reverbEffect" && !runtime.reverbEffectStates.has(node.id)) {
       runtime.reverbEffectStates.set(node.id, createNodeGraphSabrinaReverbState());
+    }
+    if (node.type === "soemReverb" && !runtime.soemReverbStates.has(node.id)) {
+      runtime.soemReverbStates.set(node.id, createNodeGraphSoemReverbState());
     }
     if (node.type === "pll" && !runtime.pllStates.has(node.id)) {
       runtime.pllStates.set(node.id, createNodeGraphPllState());
@@ -1182,6 +1529,14 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     if (node.type === "expAdsr" && !runtime.expAdsrStates.has(node.id)) {
       runtime.expAdsrStates.set(node.id, createNodeGraphExpAdsrState());
     }
+    if (node.type === "attackDecay" && !runtime.attackDecayStates.has(node.id)) {
+      runtime.attackDecayStates.set(
+        node.id,
+        typeof createNodeGraphAttackDecayState === "function"
+          ? createNodeGraphAttackDecayState()
+          : { raw: 0 },
+      );
+    }
     if (node.type === "linearEnvelope" && !runtime.linearEnvelopeStates.has(node.id)) {
       runtime.linearEnvelopeStates.set(node.id, createNodeGraphLinearEnvelopeState());
     }
@@ -1202,6 +1557,22 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     }
     if (node.type === "fractalBrownianNoise" && !runtime.fractalBrownianNoiseStates.has(node.id)) {
       runtime.fractalBrownianNoiseStates.set(node.id, createNodeGraphFractalBrownianNoiseState());
+    }
+    if (node.type === "fbmField" && !runtime.fbmFieldStates.has(node.id)) {
+      runtime.fbmFieldStates.set(node.id, createNodeGraphFbmFieldState());
+    }
+    if (!runtime.rgbFractalStates) {
+      runtime.rgbFractalStates = new Map();
+    }
+    if (node.type === "rgbFractal" && !runtime.rgbFractalStates.has(node.id)) {
+      runtime.rgbFractalStates.set(
+        node.id,
+        typeof createNodeGraphRgbFractalState === "function"
+          ? createNodeGraphRgbFractalState()
+          : (typeof createNodeGraphRgbFractalAudioState === "function"
+            ? createNodeGraphRgbFractalAudioState()
+            : {}),
+      );
     }
     if (
       node.type === "flowerChildEnvelopeFollower" &&
@@ -1398,6 +1769,34 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
       runtime.surgeOscillatorStates.delete(id);
     }
   }
+  if (runtime.softwaveOscStates) {
+    for (const id of [...runtime.softwaveOscStates.keys()]) {
+      if (!nodeIds.has(id)) {
+        runtime.softwaveOscStates.delete(id);
+      }
+    }
+  }
+  if (runtime.curveOscStates) {
+    for (const id of [...runtime.curveOscStates.keys()]) {
+      if (!nodeIds.has(id)) {
+        runtime.curveOscStates.delete(id);
+      }
+    }
+  }
+  if (runtime.snowflakeStates) {
+    for (const id of [...runtime.snowflakeStates.keys()]) {
+      if (!nodeIds.has(id)) {
+        runtime.snowflakeStates.delete(id);
+      }
+    }
+  }
+  for (const mapName of ["textStreamStates", "degreeTuringStates", "gravityWalkerStates", "degreePhraseStates", "noteGlideStates"]) {
+    const map = runtime[mapName];
+    if (!map) continue;
+    for (const id of [...map.keys()]) {
+      if (!nodeIds.has(id)) map.delete(id);
+    }
+  }
   for (const id of [...runtime.dsfOscillatorStates.keys()]) {
     if (!nodeIds.has(id)) {
       runtime.dsfOscillatorStates.delete(id);
@@ -1481,9 +1880,18 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
       runtime.flowerChildFilterStates.delete(id);
     }
   }
-  for (const id of [...runtime.rsmetFilterStates.keys()]) {
-    if (!nodeIds.has(id)) {
-      runtime.rsmetFilterStates.delete(id);
+  if (runtime.activeFilterStates) {
+    for (const id of [...runtime.activeFilterStates.keys()]) {
+      if (!nodeIds.has(id)) {
+        runtime.activeFilterStates.delete(id);
+      }
+    }
+  }
+  for (const sciType of ["butterworth", "linkwitzRiley", "bessel", "chebyshev", "elliptic", "bandpass", "allpass", "crossover2", "crossover3", "crossover4", "crossover5", "crossover6", "modeResonator", "combResonator", "waveguide", "phaseDisperse", "bode", "stftBlur", "softpopOscillator", "sinepulse"]) {
+    const map = runtime[`${sciType}States`];
+    if (!map) continue;
+    for (const id of [...map.keys()]) {
+      if (!nodeIds.has(id)) map.delete(id);
     }
   }
   for (const id of [...runtime.yellowjacketFilterStates.keys()]) {
@@ -1521,9 +1929,56 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
       runtime.comparatorStates.delete(id);
     }
   }
+  if (runtime.speedColorInertiaStates) {
+    for (const id of [...runtime.speedColorInertiaStates.keys()]) {
+      if (!nodeIds.has(id)) {
+        runtime.speedColorInertiaStates.delete(id);
+      }
+    }
+  }
+  if (runtime.inertialFilterStates) {
+    for (const id of [...runtime.inertialFilterStates.keys()]) {
+      if (!nodeIds.has(id)) {
+        runtime.inertialFilterStates.delete(id);
+      }
+    }
+  }
+  if (runtime.airClipperStates) {
+    for (const id of [...runtime.airClipperStates.keys()]) {
+      if (!nodeIds.has(id)) {
+        runtime.airClipperStates.delete(id);
+      }
+    }
+  }
+  if (runtime.tiltFilterStates) {
+    for (const id of [...runtime.tiltFilterStates.keys()]) {
+      if (!nodeIds.has(id)) {
+        runtime.tiltFilterStates.delete(id);
+      }
+    }
+  }
+  if (runtime.eqFilterStates) {
+    for (const id of [...runtime.eqFilterStates.keys()]) {
+      if (!nodeIds.has(id)) {
+        runtime.eqFilterStates.delete(id);
+      }
+    }
+  }
+  for (const id of [...runtime.sampleDelayStates.keys()]) {
+    if (!nodeIds.has(id)) {
+      runtime.sampleDelayStates.delete(id);
+    }
+  }
   for (const id of [...runtime.aliasSineStates.keys()]) {
     if (!nodeIds.has(id)) {
       runtime.aliasSineStates.delete(id);
+    }
+  }
+  if (runtime.robinSinusoidStates) {
+    for (const id of [...runtime.robinSinusoidStates.keys()]) {
+      if (!nodeIds.has(id)) {
+        runtime.robinSinusoidStates.delete(id);
+      }
     }
   }
   for (const id of [...runtime.tb303FilterStates.keys()]) {
@@ -1561,6 +2016,11 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
       runtime.reverbEffectStates.delete(id);
     }
   }
+  for (const id of [...(runtime.soemReverbStates?.keys() || [])]) {
+    if (!nodeIds.has(id)) {
+      runtime.soemReverbStates.delete(id);
+    }
+  }
   for (const id of [...(runtime.pllStates?.keys() || [])]) {
     if (!nodeIds.has(id)) {
       runtime.pllStates.delete(id);
@@ -1596,6 +2056,13 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
       runtime.expAdsrStates.delete(id);
     }
   }
+  if (runtime.attackDecayStates) {
+    for (const id of [...runtime.attackDecayStates.keys()]) {
+      if (!nodeIds.has(id)) {
+        runtime.attackDecayStates.delete(id);
+      }
+    }
+  }
   for (const id of [...runtime.noiseGeneratorStates.keys()]) {
     if (!nodeIds.has(id)) {
       runtime.noiseGeneratorStates.delete(id);
@@ -1629,6 +2096,20 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   for (const id of [...runtime.fractalBrownianNoiseStates.keys()]) {
     if (!nodeIds.has(id)) {
       runtime.fractalBrownianNoiseStates.delete(id);
+    }
+  }
+  if (runtime.fbmFieldStates) {
+    for (const id of [...runtime.fbmFieldStates.keys()]) {
+      if (!nodeIds.has(id)) {
+        runtime.fbmFieldStates.delete(id);
+      }
+    }
+  }
+  if (runtime.rgbFractalStates) {
+    for (const id of [...runtime.rgbFractalStates.keys()]) {
+      if (!nodeIds.has(id)) {
+        runtime.rgbFractalStates.delete(id);
+      }
     }
   }
   for (const id of [...runtime.flowerChildEnvelopeFollowerStates.keys()]) {

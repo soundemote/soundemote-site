@@ -1,53 +1,149 @@
-function normalizeNodeGraphFloatingWindowSize(size = {}, defaults = {}) {
-  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 720;
-  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 760;
-  // Small default margin so most floating windows don't sit flush against
-  // the physical screen edge (hard to grab an edge-aligned resize handle,
-  // etc.) -- but some windows (the standalone keyboard dock) explicitly
-  // want to be draggable all the way to the true viewport edge, so this
-  // is a per-window override via defaults.viewportMargin, not hardcoded.
-  const viewportMargin = Number.isFinite(Number(defaults.viewportMargin)) ? Number(defaults.viewportMargin) : 28;
+/**
+ * Tiny pad so a max-stretch still leaves the SE grip on the last pixels of the
+ * viewport. Not a framing margin — free drag may still leave the box half off.
+ */
+function nodeGraphFloatingWindowEdgePad(defaults = {}) {
+  if (Number.isFinite(Number(defaults.edgePad))) {
+    return Math.max(0, Number(defaults.edgePad));
+  }
+  return 2;
+}
+
+function nodeGraphFloatingWindowViewportSize() {
+  return {
+    width: window.innerWidth || document.documentElement.clientWidth || 720,
+    height: window.innerHeight || document.documentElement.clientHeight || 760,
+  };
+}
+
+/**
+ * Max box size from current top-left to the viewport bottom-right.
+ * Position-aware: a window lower on screen gets a shorter max height so the
+ * SE resize grip is never resized off the bottom of the view.
+ *
+ * Does NOT force the window fully on-screen — free drag may park half off.
+ * context: { element?, left?, top?, width?, height? }
+ */
+function nodeGraphFloatingWindowAvailableBox(defaults = {}, context = {}) {
+  const viewport = nodeGraphFloatingWindowViewportSize();
+  const pad = nodeGraphFloatingWindowEdgePad(defaults);
+  let left = Number(context.left);
+  let top = Number(context.top);
+  if (context.element && !context.element.hidden) {
+    const rect = context.element.getBoundingClientRect();
+    if (!Number.isFinite(left)) left = rect.left;
+    if (!Number.isFinite(top)) top = rect.top;
+  }
+  if (!Number.isFinite(left)) left = 0;
+  if (!Number.isFinite(top)) top = 0;
+  // Room from current origin to viewport edge (pad keeps SE grip grabable).
+  const maxWidth = Math.max(1, Math.floor(viewport.width - left - pad));
+  const maxHeight = Math.max(1, Math.floor(viewport.height - top - pad));
+  return {
+    maxWidth,
+    maxHeight,
+    viewportWidth: viewport.width,
+    viewportHeight: viewport.height,
+    left,
+    top,
+    pad,
+  };
+}
+
+/**
+ * size + defaults + optional context { element, left, top }.
+ * Max height/width are available view space from the window origin — no fixed
+ * pixel ceiling. Optional defaults.maxWidth/maxHeight only apply when smaller
+ * than available (product caps), never as a substitute for viewport room.
+ */
+function normalizeNodeGraphFloatingWindowSize(size = {}, defaults = {}, context = {}) {
+  const available = nodeGraphFloatingWindowAvailableBox(defaults, context);
   const minWidth = Math.max(1, Number(defaults.minWidth) || 160);
-  const configuredMaxWidth = Number(defaults.maxWidth);
-  const maxWidth = Math.max(
-    minWidth,
-    Math.min(
-      Number.isFinite(configuredMaxWidth) ? configuredMaxWidth : 720,
-      viewportWidth - viewportMargin,
-    ),
-  );
   const minHeight = Math.max(1, Number(defaults.minHeight) || 120);
+  const configuredMaxWidth = Number(defaults.maxWidth);
   const configuredMaxHeight = Number(defaults.maxHeight);
-  const maxHeight = Math.max(
-    minHeight,
-    Math.min(
-      Number.isFinite(configuredMaxHeight) ? configuredMaxHeight : 760,
-      viewportHeight - viewportMargin,
-    ),
-  );
+  let maxWidth = Math.max(minWidth, available.maxWidth);
+  let maxHeight = Math.max(minHeight, available.maxHeight);
+  // Soft product caps only when they are tighter than available view space.
+  if (Number.isFinite(configuredMaxWidth) && configuredMaxWidth > 0) {
+    maxWidth = Math.max(minWidth, Math.min(maxWidth, configuredMaxWidth));
+  }
+  if (Number.isFinite(configuredMaxHeight) && configuredMaxHeight > 0) {
+    maxHeight = Math.max(minHeight, Math.min(maxHeight, configuredMaxHeight));
+  }
   const source = size && typeof size === "object" ? size : {};
   const width = Math.max(
     minWidth,
     Math.min(maxWidth, Number(source.width) || Number(defaults.width) || minWidth),
   );
-  const height = Number.isFinite(Number(source.height))
-    ? Math.max(minHeight, Math.min(maxHeight, Number(source.height)))
+  // Never drop height on partial updates (width-only). Fall back to defaults
+  // so applySizeVars does not remove --*-height and snap the window to auto.
+  let heightRaw = Number(source.height);
+  if (!Number.isFinite(heightRaw)) {
+    heightRaw = Number(defaults.height);
+  }
+  const height = Number.isFinite(heightRaw)
+    ? Math.max(minHeight, Math.min(maxHeight, heightRaw))
     : null;
   return {
     width: Math.round(width),
-    ...(height ? { height: Math.round(height) } : {}),
+    ...(Number.isFinite(height) ? { height: Math.round(height) } : {}),
+    // Expose caps so callers can debug / UI can show limits.
+    _maxWidth: Math.round(maxWidth),
+    _maxHeight: Math.round(maxHeight),
   };
+}
+
+/**
+ * If the SE corner sits below/right of the viewport after a size or browser
+ * resize, shrink the box (keep top-left) so the grip is reachable again.
+ * Does not move the window — free drag half-off is unchanged.
+ */
+function ensureNodeGraphFloatingWindowResizeHandleReachable(element, applySize, defaults = {}) {
+  if (!element || element.hidden || typeof applySize !== "function") {
+    return null;
+  }
+  const rect = element.getBoundingClientRect();
+  const available = nodeGraphFloatingWindowAvailableBox(defaults, {
+    element,
+    left: rect.left,
+    top: rect.top,
+  });
+  const minWidth = Math.max(1, Number(defaults.minWidth) || 96);
+  const minHeight = Math.max(1, Number(defaults.minHeight) || 120);
+  let width = Math.round(rect.width);
+  let height = Math.round(rect.height);
+  let changed = false;
+  if (width > available.maxWidth) {
+    width = Math.max(minWidth, available.maxWidth);
+    changed = true;
+  }
+  if (height > available.maxHeight) {
+    height = Math.max(minHeight, available.maxHeight);
+    changed = true;
+  }
+  if (!changed) {
+    return null;
+  }
+  return applySize({ width, height });
 }
 
 function applyNodeGraphFloatingWindowSizeVars(element, cssPrefix, defaults = {}, normalized = {}) {
   if (!element || !cssPrefix) {
     return;
   }
+  // Prefer live available-view caps from normalize (_max*) over fixed defaults.
+  const maxWidth = Number.isFinite(Number(normalized._maxWidth))
+    ? normalized._maxWidth
+    : defaults.maxWidth;
+  const maxHeight = Number.isFinite(Number(normalized._maxHeight))
+    ? normalized._maxHeight
+    : defaults.maxHeight;
   const pairs = [
     ["min-width", defaults.minWidth],
-    ["max-width", defaults.maxWidth],
+    ["max-width", maxWidth],
     ["min-height", defaults.minHeight],
-    ["max-height", defaults.maxHeight],
+    ["max-height", maxHeight],
     ["width", normalized.width],
     ["height", normalized.height],
   ];
@@ -55,9 +151,169 @@ function applyNodeGraphFloatingWindowSizeVars(element, cssPrefix, defaults = {},
     const propertyName = `--${cssPrefix}-${name}`;
     if (Number.isFinite(Number(value))) {
       element.style.setProperty(propertyName, `${Math.round(Number(value))}px`);
-    } else if (name === "height") {
+    } else if (name === "height" || name === "max-height" || name === "max-width") {
+      // Drop stale fixed ceilings so available-view math can own the limit.
       element.style.removeProperty(propertyName);
     }
+  }
+}
+
+/**
+ * After the browser viewport changes, shrink any visible floating window whose
+ * SE grip is below/right of the view (height/width too large for its origin).
+ * Does not move windows — free half-off placement is preserved when size fits.
+ */
+/**
+ * Shared SE corner resize grip — one class, one look, one attachment path.
+ * Creates the button if missing so every floating window gets the same widget
+ * without bespoke markup drift.
+ */
+function ensureNodeGraphFloatingWindowResizeHandle(element, options = {}) {
+  if (!element) {
+    return null;
+  }
+  let handle = element.querySelector(":scope > .scene-context-resize-handle");
+  if (!handle) {
+    handle = document.createElement("button");
+    handle.type = "button";
+    handle.className = "scene-context-resize-handle";
+    element.append(handle);
+  }
+  if (options.id && !handle.id) {
+    handle.id = String(options.id);
+  }
+  if (options.ariaLabel) {
+    handle.setAttribute("aria-label", String(options.ariaLabel));
+  } else if (!handle.getAttribute("aria-label")) {
+    handle.setAttribute("aria-label", "Resize window");
+  }
+  handle.tabIndex = -1;
+  return handle;
+}
+
+/**
+ * Ensure every registered floating window has the shared SE grip DOM.
+ * Call bindNodeGraphFloatingWindowResizeHandle(workspaceKey) to attach the
+ * shared registry resize listener (idempotent).
+ */
+function installNodeGraphFloatingWindowResizeHandles() {
+  for (const entry of nodeGraphFloatingWindowRegistryEntries) {
+    if (entry.resizeStateKey == null) {
+      continue;
+    }
+    const element = document.getElementById(entry.elementId);
+    if (!element) {
+      continue;
+    }
+    ensureNodeGraphFloatingWindowResizeHandle(element, {
+      id: entry.resizeHandleId || `${entry.elementId}ResizeHandle`,
+      ariaLabel: entry.resizeAriaLabel || `Resize ${entry.workspaceKey}`,
+    });
+  }
+}
+
+/** Bind shared registry resize on a window's SE grip (once). */
+function bindNodeGraphFloatingWindowResizeHandle(workspaceKey) {
+  const entry = nodeGraphFloatingWindowRegistryEntryByWorkspaceKey(workspaceKey);
+  const element = entry ? document.getElementById(entry.elementId) : null;
+  if (!entry || !element || entry.resizeStateKey == null) {
+    return null;
+  }
+  const handle = ensureNodeGraphFloatingWindowResizeHandle(element, {
+    id: entry.resizeHandleId || `${entry.elementId}ResizeHandle`,
+    ariaLabel: entry.resizeAriaLabel || `Resize ${entry.workspaceKey}`,
+  });
+  if (!handle || handle.dataset.floatingWindowResizeBound === "true") {
+    return handle;
+  }
+  handle.dataset.floatingWindowResizeBound = "true";
+  handle.addEventListener("pointerdown", (event) => {
+    beginNodeGraphRegisteredFloatingWindowResize(event, entry.workspaceKey);
+  });
+  return handle;
+}
+
+function fitNodeGraphFloatingWindowsToViewport() {
+  // Prefer the single registry list so new windows pick up viewport fit free.
+  if (typeof nodeGraphFloatingWindowRegistryEntries !== "undefined") {
+    for (const entry of nodeGraphFloatingWindowRegistryEntries) {
+      if (entry.sizeAxes?.width === false && entry.sizeAxes?.height === false) {
+        continue;
+      }
+      const apply = nodeGraphFloatingWindowRegistryApplySize(entry);
+      if (!apply) {
+        continue;
+      }
+      const element = document.getElementById(entry.elementId);
+      if (!element || element.hidden) {
+        continue;
+      }
+      ensureNodeGraphFloatingWindowResizeHandleReachable(element, apply, {
+        minWidth: 96,
+        minHeight: 120,
+      });
+    }
+    return;
+  }
+  const jobs = [
+    {
+      id: "nodeSceneContextMenu",
+      apply: typeof applyNodeSceneContextWindowSize === "function" ? applyNodeSceneContextWindowSize : null,
+      defaults: typeof nodeSceneContextWindowDefaultSize !== "undefined" ? nodeSceneContextWindowDefaultSize : { minWidth: 24, minHeight: 160 },
+    },
+    {
+      id: "nodeModuleActionsWindow",
+      apply: typeof applyNodeModuleActionsWindowSize === "function" ? applyNodeModuleActionsWindowSize : null,
+      defaults: typeof nodeModuleActionsWindowDefaultSize !== "undefined" ? nodeModuleActionsWindowDefaultSize : { minWidth: 24, minHeight: 120 },
+    },
+    {
+      id: "nodeModuleShopView",
+      apply: typeof applyNodeGraphModuleShopWindowSize === "function" ? applyNodeGraphModuleShopWindowSize : null,
+      defaults: typeof nodeGraphModuleShopWindowDefaultSize !== "undefined" ? nodeGraphModuleShopWindowDefaultSize : { minWidth: 96, minHeight: 120 },
+    },
+    {
+      id: "nodeParameterMetadataPopover",
+      apply: typeof applyNodeMetadataPopoverSize === "function" ? applyNodeMetadataPopoverSize : null,
+      defaults: { minWidth: 140, minHeight: 220 },
+    },
+    {
+      id: "nodeTraceDisplaySettingsPopover",
+      apply: typeof applyNodeGraphTraceDisplaySettingsWindowSize === "function"
+        ? applyNodeGraphTraceDisplaySettingsWindowSize
+        : null,
+      defaults: { minWidth: 140, minHeight: 120 },
+    },
+  ];
+  for (const job of jobs) {
+    if (!job.apply) continue;
+    const element = document.getElementById(job.id);
+    if (!element || element.hidden) continue;
+    ensureNodeGraphFloatingWindowResizeHandleReachable(element, job.apply, job.defaults);
+  }
+}
+
+function bindNodeGraphFloatingWindowViewportFit() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (window.__nodeGraphFloatingWindowViewportFitBound) {
+    return;
+  }
+  window.__nodeGraphFloatingWindowViewportFitBound = true;
+  let timer = 0;
+  window.addEventListener("resize", () => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => {
+      fitNodeGraphFloatingWindowsToViewport();
+    }, 50);
+  });
+}
+
+if (typeof window !== "undefined") {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bindNodeGraphFloatingWindowViewportFit, { once: true });
+  } else {
+    bindNodeGraphFloatingWindowViewportFit();
   }
 }
 
@@ -168,13 +424,10 @@ function nodeGraphFloatingWindowElementPosition(element) {
 
 const nodeGraphFloatingWindowUnlockedIcon = "\u2725";
 const nodeGraphFloatingWindowLockedIcon = "\uD83D\uDD12";
+// Single shared move handle class for floating-window title chrome.
+// Code Box keeps an id-only handle until it is migrated onto the same bar.
 const nodeGraphFloatingWindowLockHandleSelector = [
   ".scene-context-drag-handle",
-  ".metadata-popover-drag-handle",
-  ".node-saved-patches-drag-handle",
-  ".node-module-shop-drag-handle",
-  ".node-ui-dev-drag-handle",
-  ".node-user-ui-settings-drag-handle",
   "#nodeCodeBoxDragHandle",
 ].join(",");
 
@@ -404,6 +657,9 @@ function beginNodeGraphFloatingWindowDrag(event, element, stateKey) {
     currentTop: current.top,
     locked: nodeGraphFloatingWindowLocked(element),
   };
+  if (typeof nodeGraphMvp === "undefined" || !nodeGraphMvp) {
+    return null;
+  }
   nodeGraphMvp[stateKey] = drag;
   event.currentTarget.classList.add("dragging");
   event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -413,6 +669,9 @@ function beginNodeGraphFloatingWindowDrag(event, element, stateKey) {
 }
 
 function dragNodeGraphFloatingWindow(event, stateKey, element, onMove = null) {
+  if (typeof nodeGraphMvp === "undefined" || !nodeGraphMvp) {
+    return false;
+  }
   const drag = nodeGraphMvp[stateKey];
   if (
     !drag ||
@@ -442,6 +701,9 @@ function dragNodeGraphFloatingWindow(event, stateKey, element, onMove = null) {
 }
 
 function endNodeGraphFloatingWindowDrag(event, stateKey, onEnd = null) {
+  if (typeof nodeGraphMvp === "undefined" || !nodeGraphMvp) {
+    return false;
+  }
   const drag = nodeGraphMvp[stateKey];
   if (
     !drag ||
@@ -464,10 +726,14 @@ function beginNodeGraphFloatingWindowResize(event, element, stateKey) {
   if (event.button > 0 || !element || element.hidden || !stateKey) {
     return null;
   }
+  if (typeof nodeGraphMvp === "undefined" || !nodeGraphMvp) {
+    return null;
+  }
   raiseNodeGraphFloatingWindow(element);
   const rect = element.getBoundingClientRect();
   const drag = {
     handle: event.currentTarget,
+    element,
     pointerId: event.pointerId ?? null,
     startClientX: event.clientX,
     startClientY: event.clientY,
@@ -475,6 +741,9 @@ function beginNodeGraphFloatingWindowResize(event, element, stateKey) {
     lastClientY: event.clientY,
     startWidth: rect.width,
     startHeight: rect.height,
+    // Freeze origin for max-size math so mid-drag layout shifts don't jitter the cap.
+    startLeft: rect.left,
+    startTop: rect.top,
   };
   nodeGraphMvp[stateKey] = drag;
   event.currentTarget.classList.add("dragging");
@@ -485,6 +754,9 @@ function beginNodeGraphFloatingWindowResize(event, element, stateKey) {
 }
 
 function dragNodeGraphFloatingWindowResize(event, stateKey, applySize, axes = {}) {
+  if (typeof nodeGraphMvp === "undefined" || !nodeGraphMvp) {
+    return false;
+  }
   const drag = nodeGraphMvp[stateKey];
   if (
     !drag ||
@@ -500,14 +772,32 @@ function dragNodeGraphFloatingWindowResize(event, stateKey, applySize, axes = {}
   if (axes.height !== false) {
     nextSize.height = drag.startHeight + event.clientY - drag.startClientY;
   }
+  // Cap by available view from the window origin (not a fixed maxHeight).
+  const available = nodeGraphFloatingWindowAvailableBox({}, {
+    element: drag.element,
+    left: drag.startLeft,
+    top: drag.startTop,
+  });
+  if (axes.width !== false && Number.isFinite(nextSize.width)) {
+    nextSize.width = Math.min(nextSize.width, available.maxWidth);
+  }
+  if (axes.height !== false && Number.isFinite(nextSize.height)) {
+    nextSize.height = Math.min(nextSize.height, available.maxHeight);
+  }
   drag.lastClientX = event.clientX;
   drag.lastClientY = event.clientY;
-  applySize(nextSize);
+  // Pass element so apply/normalize uses the same origin-aware caps.
+  if (typeof applySize === "function") {
+    applySize(nextSize, drag.element);
+  }
   event.preventDefault();
   return true;
 }
 
 function endNodeGraphFloatingWindowResize(event, stateKey, onEnd = null) {
+  if (typeof nodeGraphMvp === "undefined" || !nodeGraphMvp) {
+    return false;
+  }
   const drag = nodeGraphMvp[stateKey];
   if (
     !drag ||
@@ -526,96 +816,363 @@ function endNodeGraphFloatingWindowResize(event, stateKey, onEnd = null) {
   return true;
 }
 
+/**
+ * Single floating-window registry (core reduction plan).
+ * Keyboard nudge, document pointer bridge, and workspace element map all
+ * read this. Add new floating inspectors here — do not invent parallel lists.
+ *
+ * applySizeName: global function name resolved at call time (defs load later).
+ * pinPositionOnWidthResize: visibility-style width-only resize keeps left/top.
+ * headingDragClass: toggle .dragging on the title bar during move.
+ */
+function nodeGraphFloatingWindowRegistry() {
+  return nodeGraphFloatingWindowRegistryEntries;
+}
+
+const nodeGraphFloatingWindowRegistryEntries = Object.freeze([
+  Object.freeze({
+    workspaceKey: "commandCenter",
+    elementId: "nodeSceneContextMenu",
+    dragStateKey: "sceneContextDragging",
+    resizeStateKey: "sceneContextResizing",
+    applySizeName: "applyNodeSceneContextWindowSize",
+    sizeAxes: Object.freeze({ width: true, height: true }),
+    headingDragClass: true,
+  }),
+  Object.freeze({
+    workspaceKey: "moduleActions",
+    elementId: "nodeModuleActionsWindow",
+    dragStateKey: "moduleActionDragging",
+    resizeStateKey: "moduleActionResizing",
+    applySizeName: "applyNodeModuleActionsWindowSize",
+    sizeAxes: Object.freeze({ width: true, height: true }),
+    headingDragClass: true,
+  }),
+  Object.freeze({
+    workspaceKey: "moduleBrowser",
+    elementId: "nodeModuleShopView",
+    dragStateKey: "moduleShopDragging",
+    resizeStateKey: "moduleShopResizing",
+    applySizeName: "applyNodeGraphModuleShopWindowSize",
+    sizeAxes: Object.freeze({ width: true, height: true }),
+  }),
+  Object.freeze({
+    workspaceKey: "visibilityMenu",
+    elementId: "nodeVisibilityMenu",
+    dragStateKey: "visibilityMenuDragging",
+    resizeStateKey: "visibilityMenuResizing",
+    applySizeName: "applyNodeGraphVisibilityMenuSize",
+    sizeAxes: Object.freeze({ width: true, height: false }),
+    pinPositionOnWidthResize: true,
+  }),
+  Object.freeze({
+    workspaceKey: "metaparameters",
+    elementId: "nodeParameterMetadataPopover",
+    dragStateKey: "metadataDragging",
+    resizeStateKey: "metadataResizing",
+    applySizeName: "applyNodeMetadataPopoverSize",
+    sizeAxes: Object.freeze({ width: true, height: true }),
+    headingDragClass: true,
+  }),
+  Object.freeze({
+    workspaceKey: "traceDisplaySettings",
+    elementId: "nodeTraceDisplaySettingsPopover",
+    dragStateKey: "traceDisplaySettingsDragging",
+    resizeStateKey: "traceDisplaySettingsResizing",
+    applySizeName: "applyNodeGraphTraceDisplaySettingsWindowSize",
+    sizeAxes: Object.freeze({ width: true, height: true }),
+    headingDragClass: true,
+  }),
+  Object.freeze({
+    workspaceKey: "standaloneMidiKeyboard",
+    elementId: "nodeStandaloneMidiKeyboardDock",
+    dragStateKey: "standaloneMidiKeyboardDragging",
+    resizeStateKey: "standaloneMidiKeyboardResizing",
+    applySizeName: "applyNodeGraphStandaloneMidiKeyboardDockSize",
+    sizeAxes: Object.freeze({ width: true, height: true }),
+  }),
+  Object.freeze({
+    workspaceKey: "tooltipWindow",
+    elementId: "nodeTooltipWindow",
+    dragStateKey: "tooltipWindowDragging",
+    resizeStateKey: "tooltipWindowResizing",
+    applySizeName: "applyNodeGraphTooltipWindowSize",
+    sizeAxes: Object.freeze({ width: true, height: true }),
+  }),
+  Object.freeze({
+    workspaceKey: "codeBox",
+    elementId: "nodeCodeBoxWindow",
+    dragStateKey: "codeBoxWindowDragging",
+    resizeStateKey: "codeBoxWindowResizing",
+    applySizeName: "applyNodeGraphCodeBoxWindowSize",
+    sizeAxes: Object.freeze({ width: true, height: true }),
+    headingDragClass: true,
+  }),
+  Object.freeze({
+    workspaceKey: "uiSettings",
+    elementId: "nodeUserUiSettingsPanel",
+    dragStateKey: "userUiSettingsDragging",
+    resizeStateKey: "userUiSettingsResizing",
+    applySizeName: "applyNodeUserUiSettingsWindowSize",
+    sizeAxes: Object.freeze({ width: true, height: true }),
+    headingDragClass: true,
+    resizeHandleId: "nodeUserUiSettingsResizeHandle",
+    resizeAriaLabel: "Resize UI settings",
+  }),
+  Object.freeze({
+    workspaceKey: "uiDev",
+    elementId: "nodeUiDevHelper",
+    dragStateKey: "uiDevHelperDragging",
+    resizeStateKey: "uiDevHelperResizing",
+    applySizeName: "applyNodeUiDevHelperWindowSize",
+    sizeAxes: Object.freeze({ width: true, height: true }),
+    headingDragClass: true,
+    resizeHandleId: "nodeUiDevHelperResizeHandle",
+    resizeAriaLabel: "Resize UIDEV helper",
+  }),
+]);
+
+function nodeGraphFloatingWindowRegistryEntryByWorkspaceKey(workspaceKey) {
+  return nodeGraphFloatingWindowRegistryEntries.find((entry) => entry.workspaceKey === workspaceKey) || null;
+}
+
+function nodeGraphFloatingWindowRegistryEntryByElement(element) {
+  if (!element) {
+    return null;
+  }
+  return nodeGraphFloatingWindowRegistryEntries.find((entry) => {
+    const el = document.getElementById(entry.elementId);
+    return el && (el === element || el.contains(element));
+  }) || null;
+}
+
+/**
+ * Resolve a page's applySize and wrap it so every registry window gets the
+ * same post-apply behavior: pin inline width/height (and clear max caps)
+ * when the page resizes both axes. Prevents page-specific helpers that only
+ * write CSS vars from going inert after unified seating sets inline size.
+ */
+function nodeGraphFloatingWindowRegistryApplySize(entry) {
+  if (!entry?.applySizeName || typeof globalThis[entry.applySizeName] !== "function") {
+    return null;
+  }
+  const apply = globalThis[entry.applySizeName];
+  const axes = entry.sizeAxes || { width: true, height: true };
+  // Width-only (Visibility) and similar keep their own apply path.
+  if (axes.width === false || axes.height === false) {
+    return apply;
+  }
+  return function nodeGraphFloatingWindowRegistryApplySizeWrapped(size, element) {
+    const el = element || (entry.elementId ? document.getElementById(entry.elementId) : null);
+    const result = apply.length >= 2 ? apply(size, el) : apply(size);
+    const box = result && typeof result === "object" ? result : size;
+    if (el && typeof syncNodeGraphFloatingWindowInlineBox === "function") {
+      const width = Number(box?.width);
+      const height = Number(box?.height);
+      if (width > 40 || height > 40) {
+        syncNodeGraphFloatingWindowInlineBox(el, {
+          width: width > 40 ? width : undefined,
+          height: height > 40 ? height : undefined,
+        });
+      }
+    }
+    return result;
+  };
+}
+
+/** @deprecated prefer nodeGraphFloatingWindowRegistry — same data for keyboard nudge */
 function nodeGraphFloatingWindowKeyboardTargets() {
-  return [
-    {
-      draggingKey: "sceneContextDragging",
-      resizingKey: "sceneContextResizing",
-      elementId: "nodeSceneContextMenu",
-      workspaceKey: "commandCenter",
-      applySize: typeof applyNodeSceneContextWindowSize === "function" ? applyNodeSceneContextWindowSize : null,
-      sizeAxes: { width: true, height: false },
-    },
-    {
-      draggingKey: "moduleActionDragging",
-      resizingKey: "moduleActionResizing",
-      elementId: "nodeModuleActionsWindow",
-      workspaceKey: "moduleActions",
-      applySize: typeof applyNodeModuleActionsWindowSize === "function" ? applyNodeModuleActionsWindowSize : null,
-      sizeAxes: { width: true, height: true },
-    },
-    {
-      draggingKey: "moduleShopDragging",
-      resizingKey: "moduleShopResizing",
-      elementId: "nodeModuleShopView",
-      workspaceKey: "moduleBrowser",
-      applySize: typeof applyNodeGraphModuleShopWindowSize === "function" ? applyNodeGraphModuleShopWindowSize : null,
-      sizeAxes: { width: true, height: true },
-    },
-    {
-      draggingKey: "savedPatchesWindowDragging",
-      resizingKey: "savedPatchesWindowResizing",
-      elementId: "nodeSavedPatchesWindow",
-      workspaceKey: "patchExplorer",
-      applySize: typeof applyNodeGraphSavedPatchesWindowSize === "function" ? applyNodeGraphSavedPatchesWindowSize : null,
-      sizeAxes: { width: true, height: true },
-    },
-    {
-      draggingKey: "visibilityMenuDragging",
-      resizingKey: "visibilityMenuResizing",
-      elementId: "nodeVisibilityMenu",
-      workspaceKey: "visibilityMenu",
-      applySize: typeof applyNodeGraphVisibilityMenuSize === "function" ? applyNodeGraphVisibilityMenuSize : null,
-      sizeAxes: { width: true, height: false },
-    },
-    {
-      draggingKey: "metadataDragging",
-      resizingKey: "metadataResizing",
-      elementId: "nodeParameterMetadataPopover",
-      workspaceKey: "metaparameters",
-      applySize: typeof applyNodeMetadataPopoverSize === "function" ? applyNodeMetadataPopoverSize : null,
-      sizeAxes: { width: true, height: true },
-    },
-    {
-      draggingKey: "traceDisplaySettingsDragging",
-      resizingKey: "traceDisplaySettingsResizing",
-      elementId: "nodeTraceDisplaySettingsPopover",
-      workspaceKey: "traceDisplaySettings",
-      applySize: typeof applyNodeGraphTraceDisplaySettingsWindowSize === "function" ? applyNodeGraphTraceDisplaySettingsWindowSize : null,
-      sizeAxes: { width: true, height: true },
-    },
-    {
-      draggingKey: "standaloneMidiKeyboardDragging",
-      resizingKey: "standaloneMidiKeyboardResizing",
-      elementId: "nodeStandaloneMidiKeyboardDock",
-      workspaceKey: "standaloneMidiKeyboard",
-      applySize: typeof applyNodeGraphStandaloneMidiKeyboardDockSize === "function" ? applyNodeGraphStandaloneMidiKeyboardDockSize : null,
-      sizeAxes: { width: true, height: true },
-    },
-    {
-      draggingKey: "tooltipWindowDragging",
-      resizingKey: "tooltipWindowResizing",
-      elementId: "nodeTooltipWindow",
-      workspaceKey: "tooltipWindow",
-      applySize: typeof applyNodeGraphTooltipWindowSize === "function" ? applyNodeGraphTooltipWindowSize : null,
-      sizeAxes: { width: true, height: true },
-    },
-  ];
+  return nodeGraphFloatingWindowRegistryEntries.map((entry) => ({
+    draggingKey: entry.dragStateKey,
+    resizingKey: entry.resizeStateKey,
+    elementId: entry.elementId,
+    workspaceKey: entry.workspaceKey,
+    applySize: nodeGraphFloatingWindowRegistryApplySize(entry),
+    sizeAxes: entry.sizeAxes || { width: true, height: true },
+  }));
 }
 
 function nodeGraphActiveFloatingWindowKeyboardTarget() {
-  for (const config of nodeGraphFloatingWindowKeyboardTargets()) {
-    const resizeDrag = config.resizingKey ? nodeGraphMvp[config.resizingKey] : null;
-    const drag = nodeGraphMvp[config.draggingKey];
-    const element = document.getElementById(config.elementId);
-    if (resizeDrag && element && !element.hidden) {
-      return { ...config, drag: resizeDrag, element, keyboardMode: "resize" };
+  // floating-windows.js loads before node-graph-state.js; never assume mvp exists.
+  if (typeof nodeGraphMvp === "undefined" || !nodeGraphMvp) {
+    return null;
+  }
+  for (const entry of nodeGraphFloatingWindowRegistryEntries) {
+    const element = document.getElementById(entry.elementId);
+    if (!element || element.hidden) {
+      continue;
     }
-    if (drag && element && !element.hidden) {
-      return { ...config, drag, element, keyboardMode: "move" };
+    const resizeDrag = entry.resizeStateKey ? nodeGraphMvp[entry.resizeStateKey] : null;
+    if (resizeDrag) {
+      return {
+        draggingKey: entry.dragStateKey,
+        resizingKey: entry.resizeStateKey,
+        elementId: entry.elementId,
+        workspaceKey: entry.workspaceKey,
+        applySize: nodeGraphFloatingWindowRegistryApplySize(entry),
+        sizeAxes: entry.sizeAxes || { width: true, height: true },
+        drag: resizeDrag,
+        element,
+        keyboardMode: "resize",
+      };
+    }
+    const drag = entry.dragStateKey ? nodeGraphMvp[entry.dragStateKey] : null;
+    if (drag) {
+      return {
+        draggingKey: entry.dragStateKey,
+        resizingKey: entry.resizeStateKey,
+        elementId: entry.elementId,
+        workspaceKey: entry.workspaceKey,
+        applySize: nodeGraphFloatingWindowRegistryApplySize(entry),
+        sizeAxes: entry.sizeAxes || { width: true, height: true },
+        drag,
+        element,
+        keyboardMode: "move",
+      };
     }
   }
   return null;
+}
+
+function nodeGraphFloatingWindowRegistryHeading(element) {
+  return element?.querySelector?.(":scope > .scene-context-heading") || null;
+}
+
+/**
+ * Begin drag for a registered window. Prefer this over per-window begin* wrappers.
+ */
+function beginNodeGraphRegisteredFloatingWindowDrag(event, workspaceKey) {
+  const entry = nodeGraphFloatingWindowRegistryEntryByWorkspaceKey(workspaceKey);
+  const element = entry ? document.getElementById(entry.elementId) : null;
+  if (!entry || !element || element.hidden) {
+    return null;
+  }
+  const drag = beginNodeGraphFloatingWindowDrag(event, element, entry.dragStateKey);
+  if (drag && entry.headingDragClass) {
+    const heading = nodeGraphFloatingWindowRegistryHeading(element);
+    drag.heading = heading;
+    heading?.classList.add("dragging");
+  }
+  return drag;
+}
+
+function beginNodeGraphRegisteredFloatingWindowResize(event, workspaceKey) {
+  const entry = nodeGraphFloatingWindowRegistryEntryByWorkspaceKey(workspaceKey);
+  const element = entry ? document.getElementById(entry.elementId) : null;
+  if (!entry || !element) {
+    return null;
+  }
+  const drag = beginNodeGraphFloatingWindowResize(event, element, entry.resizeStateKey);
+  if (drag && entry.pinPositionOnWidthResize) {
+    const current = nodeGraphFloatingWindowElementPosition(element);
+    drag.startLeft = current.left;
+    drag.startTop = current.top;
+  }
+  return drag;
+}
+
+function nodeGraphFloatingWindowRegistryPointerMove(event) {
+  // Bridge installs on DOMContentLoaded while this file loads before state.js.
+  // pointermove can fire before (or if) nodeGraphMvp is missing — never throw.
+  if (typeof nodeGraphMvp === "undefined" || !nodeGraphMvp) {
+    return;
+  }
+  for (const entry of nodeGraphFloatingWindowRegistryEntries) {
+    if (entry.dragStateKey && nodeGraphMvp[entry.dragStateKey]) {
+      const element = document.getElementById(entry.elementId);
+      dragNodeGraphFloatingWindow(event, entry.dragStateKey, element, (next) => {
+        if (entry.workspaceKey && typeof rememberNodeGraphWorkspaceWindowState === "function") {
+          rememberNodeGraphWorkspaceWindowState(
+            entry.workspaceKey,
+            element,
+            { open: true, position: next },
+            { persist: false },
+          );
+        }
+      });
+    }
+    if (entry.resizeStateKey && nodeGraphMvp[entry.resizeStateKey]) {
+      const applySize = nodeGraphFloatingWindowRegistryApplySize(entry);
+      if (!applySize) {
+        continue;
+      }
+      const handled = dragNodeGraphFloatingWindowResize(
+        event,
+        entry.resizeStateKey,
+        applySize,
+        entry.sizeAxes || { width: true, height: true },
+      );
+      if (handled && entry.pinPositionOnWidthResize) {
+        const drag = nodeGraphMvp[entry.resizeStateKey];
+        const element = document.getElementById(entry.elementId);
+        if (drag && element && Number.isFinite(drag.startLeft) && Number.isFinite(drag.startTop)) {
+          setNodeGraphFloatingWindowViewportPosition(element, drag.startLeft, drag.startTop);
+        }
+      }
+    }
+  }
+}
+
+function nodeGraphFloatingWindowRegistryPointerEnd(event) {
+  if (typeof nodeGraphMvp === "undefined" || !nodeGraphMvp) {
+    return;
+  }
+  for (const entry of nodeGraphFloatingWindowRegistryEntries) {
+    if (entry.dragStateKey && nodeGraphMvp[entry.dragStateKey]) {
+      const drag = nodeGraphMvp[entry.dragStateKey];
+      drag.heading?.classList.remove("dragging");
+      endNodeGraphFloatingWindowDrag(event, entry.dragStateKey, () => {
+        if (entry.workspaceKey && typeof rememberNodeGraphWorkspaceWindowState === "function") {
+          rememberNodeGraphWorkspaceWindowState(
+            entry.workspaceKey,
+            document.getElementById(entry.elementId),
+            {},
+            { status: false },
+          );
+        }
+      });
+    }
+    if (entry.resizeStateKey && nodeGraphMvp[entry.resizeStateKey]) {
+      endNodeGraphFloatingWindowResize(event, entry.resizeStateKey, () => {
+        if (entry.workspaceKey && typeof rememberNodeGraphWorkspaceWindowState === "function") {
+          const element = document.getElementById(entry.elementId);
+          const rect = element?.getBoundingClientRect?.();
+          const size = rect
+            ? {
+              ...(entry.sizeAxes?.width !== false ? { width: Math.round(rect.width) } : {}),
+              ...(entry.sizeAxes?.height !== false ? { height: Math.round(rect.height) } : {}),
+            }
+            : null;
+          rememberNodeGraphWorkspaceWindowState(
+            entry.workspaceKey,
+            element,
+            { open: true, ...(size && Object.keys(size).length ? { size } : {}) },
+            { status: false },
+          );
+        }
+      });
+    }
+  }
+}
+
+/** One move/up bridge for all registry windows — replaces N per-window listeners. */
+function bindNodeGraphFloatingWindowRegistryPointerBridge() {
+  if (typeof document === "undefined") {
+    return;
+  }
+  if (document.documentElement.dataset.floatingWindowRegistryBridge === "true") {
+    return;
+  }
+  document.documentElement.dataset.floatingWindowRegistryBridge = "true";
+  document.addEventListener("pointermove", nodeGraphFloatingWindowRegistryPointerMove);
+  document.addEventListener("pointerup", nodeGraphFloatingWindowRegistryPointerEnd);
+  document.addEventListener("pointercancel", nodeGraphFloatingWindowRegistryPointerEnd);
+  // Shared SE grips for every registry surface (creates if markup omitted).
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", installNodeGraphFloatingWindowResizeHandles, { once: true });
+  } else {
+    installNodeGraphFloatingWindowResizeHandles();
+  }
 }
 
 function rebaseNodeGraphFloatingWindowDrag(target, next) {
@@ -826,12 +1383,15 @@ function handleNodeGraphFloatingWindowKeyboardRelease(event) {
   return false;
 }
 
-// Install popup stacking as soon as this module loads (and again after DOM
-// is ready if the script ran early).
+// Install popup stacking + registry pointer bridge as soon as this module loads.
 if (typeof document !== "undefined") {
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", bindNodeGraphFloatingWindowStacking, { once: true });
+    document.addEventListener("DOMContentLoaded", () => {
+      bindNodeGraphFloatingWindowStacking();
+      bindNodeGraphFloatingWindowRegistryPointerBridge();
+    }, { once: true });
   } else {
     bindNodeGraphFloatingWindowStacking();
+    bindNodeGraphFloatingWindowRegistryPointerBridge();
   }
 }

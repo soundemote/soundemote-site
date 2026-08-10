@@ -8,19 +8,25 @@
   },
   "controls": {
     "mouseLightEnabled": true,
+    "dimmerCutoutSliderEnabled": true,
+    "dimmerCutoutModuleEnabled": false,
+    "dimmerCutoutTitleEnabled": true,
+    "dimmerCutoutMouseEnabled": true,
+    "dimmerMouseSize": 56,
+    "dimmerMouseSoftness": 25,
+    "dimmerMouseShape": 0,
     "showOriginMarker": false,
-    "modularShaderEnabled": false,
     "scopeBloomEnabled": false,
     "settingsHeaderTextSize": 100,
     "uiDevButtonTextSize": 50,
     "liveToggleTextSize": 76,
     "modularHeaderButtonBackground": 62,
-    "tooltipTextSize": 14,
+    "tooltipTextSize": 64,
     "minimumGridBrightness": 0,
     "moduleLightSpread": 78,
     "textGlowLevel": 18,
     "moduleGridInset": 6,
-    "moduleRoundness": 10,
+    "moduleRoundness": 0,
     "gridColor": "#ffffff",
     "workspaceBackgroundColor": "#0d0d0d",
     "moduleBrowserEntryHeight": 46,
@@ -44,7 +50,7 @@
     "sliderAmountFillHue": 200,
     "sliderAmountFillSaturation": 31,
     "sliderAmountFillLightness": 15,
-    "sliderAmountFillAlpha": 100,
+    "sliderAmountFillAlpha": 55,
     "sliderPositionFillHue": 203,
     "sliderPositionFillSaturation": 55,
     "sliderPositionFillLightness": 57,
@@ -67,40 +73,46 @@
     "settingsHeaderHighlights": false
   },
   "exposedControls": {
-    "mouseLightEnabled": true,
+    "mouseLightEnabled": false,
+    "dimmerCutoutSliderEnabled": false,
+    "dimmerCutoutModuleEnabled": false,
+    "dimmerCutoutTitleEnabled": false,
+    "dimmerCutoutMouseEnabled": false,
+    "dimmerMouseSize": false,
+    "dimmerMouseSoftness": false,
+    "dimmerMouseShape": false,
     "showOriginMarker": false,
-    "modularShaderEnabled": true,
-    "scopeBloomEnabled": true,
+    "scopeBloomEnabled": false,
     "settingsHeaderTextSize": false,
     "uiDevButtonTextSize": false,
-    "liveToggleTextSize": true,
-    "modularHeaderButtonBackground": true,
-    "tooltipTextSize": true,
-    "minimumGridBrightness": true,
-    "moduleLightSpread": true,
-    "textGlowLevel": true,
-    "moduleGridInset": true,
-    "moduleRoundness": true,
-    "gridColor": true,
-    "workspaceBackgroundColor": true,
-    "moduleBrowserEntryHeight": true,
-    "moduleBrowserEntryPadding": true,
-    "moduleBrowserEntryTextSize": true,
+    "liveToggleTextSize": false,
+    "modularHeaderButtonBackground": false,
+    "tooltipTextSize": false,
+    "minimumGridBrightness": false,
+    "moduleLightSpread": false,
+    "textGlowLevel": false,
+    "moduleGridInset": false,
+    "moduleRoundness": false,
+    "gridColor": false,
+    "workspaceBackgroundColor": false,
+    "moduleBrowserEntryHeight": false,
+    "moduleBrowserEntryPadding": false,
+    "moduleBrowserEntryTextSize": false,
     "settingsHeaderTopRatio": false,
     "settingsHeaderPadding": false,
-    "floatingWindowHeaderHeight": true,
-    "moduleTitleFont": true,
-    "moduleTitleHeight": true,
-    "moduleTitleTextFill": true,
-    "moduleIoSectionHeight": true,
-    "moduleNodeSize": true,
-    "sliderWidth": true,
-    "sliderHeight": true,
-    "sliderLabelColor": true,
-    "sliderValueColor": true,
-    "sliderUnitColor": true,
-    "sliderFillHoverColor": true,
-    "sliderFillHoverAlpha": true,
+    "floatingWindowHeaderHeight": false,
+    "moduleTitleFont": false,
+    "moduleTitleHeight": false,
+    "moduleTitleTextFill": false,
+    "moduleIoSectionHeight": false,
+    "moduleNodeSize": false,
+    "sliderWidth": false,
+    "sliderHeight": false,
+    "sliderLabelColor": false,
+    "sliderValueColor": false,
+    "sliderUnitColor": false,
+    "sliderFillHoverColor": false,
+    "sliderFillHoverAlpha": false,
     "sliderAmountFillHue": false,
     "sliderAmountFillSaturation": false,
     "sliderAmountFillLightness": false,
@@ -109,12 +121,12 @@
     "sliderPositionFillSaturation": false,
     "sliderPositionFillLightness": false,
     "sliderPositionFillAlpha": false,
-    "nodeGlowSize": true,
-    "wirePatchPointSize": true,
-    "wireThickness": true,
-    "traceWireThickness": true,
+    "nodeGlowSize": false,
+    "wirePatchPointSize": false,
+    "wireThickness": false,
+    "traceWireThickness": false,
     "choiceSlideEmptyBorder": false,
-    "choiceDividerHeight": true,
+    "choiceDividerHeight": false,
     "choiceSlideDebugBoxes": false,
     "bypassIconSize": false,
     "bypassIconGlowSpread": false,
@@ -147,15 +159,19 @@
   "moduleDefaultOverrides": {},
   "view": {
     "gridVisible": true,
-    "keyboardDebugInfoVisible": true,
+    "gridLightVisible": true,
+    "wireLengthsVisible": true,
+    "wiresAboveModules": false,
+    "keyboardDebugInfoVisible": false,
     "tooltipEmbedded": true,
-    "moduleButtonsVisible": true,
+    "tooltipEmbedHeight": 156,
+    "moduleButtonsVisible": false,
     "moduleInterfaceControlsVisible": true,
     "moduleOscilloscopesVisible": true,
     "moduleSlidersVisible": true,
     "moduleScopeBackgroundColor": "#000000",
-    "globalSmoothingSeconds": 0.08637990932399603,
-    "globalSmoothingManual": false,
+    "globalSmoothingSeconds": 0.8869091287608292,
+    "globalSmoothingManual": true,
     "moduleScopeDotCore1Enabled": false,
     "moduleScopeDotCore1Size": 2,
     "moduleScopeDotCore1Brightness": 0.23,
@@ -170,23 +186,38 @@
     "macroKnobHitboxOutlineVisible": false,
     "macroKnobLabelPosition": "mid",
     "macroKnobValuePosition": "bottom",
+    "macroControlsFace": {
+      "background": "#000000",
+      "arcFill": "#005ca3",
+      "arcTrack": "#404040",
+      "labels": [
+        "M1",
+        "M2",
+        "M3",
+        "M4",
+        "M5",
+        "M6",
+        "M7",
+        "M8"
+      ]
+    },
     "traceSettings": {
       "background": "#000000",
-      "brightness": 0.92,
-      "color": "#ff0000",
+      "brightness": 0.7045,
+      "color": "#00ff62",
       "dot1Enabled": true,
-      "dot1Size": 0.08,
-      "secondaryBrightness": 0.92,
-      "secondaryColor": "#0000ff",
+      "dot1Size": 0.035,
+      "secondaryBrightness": 0.95,
+      "secondaryColor": "#3366ff",
       "secondaryEnabled": true,
-      "secondarySize": 0.08,
+      "secondarySize": 0.035,
       "secondaryLineThickness": 0,
       "cycles": 2,
       "lineThickness": 0,
       "pixelDensity": 1,
       "padding": 0,
       "scale": 1,
-      "skipDiscontinuities": true,
+      "skipDiscontinuities": false,
       "sourceSync": false,
       "stereoBlend": "combine",
       "meetColor": "auto",
@@ -245,6 +276,10 @@
         "developer": true,
         "home": false
       },
+      "robinSinusoid": {
+        "developer": true,
+        "home": false
+      },
       "additiveOsc": {
         "developer": true,
         "home": false
@@ -254,6 +289,10 @@
         "home": false
       },
       "ellipsoid": {
+        "developer": true,
+        "home": false
+      },
+      "ellipsoidOsc": {
         "developer": true,
         "home": false
       },
@@ -333,11 +372,47 @@
         "developer": true,
         "home": false
       },
+      "degreeTuring": {
+        "developer": true,
+        "home": false
+      },
+      "gravityWalker": {
+        "developer": true,
+        "home": false
+      },
+      "degreePhrase": {
+        "developer": true,
+        "home": false
+      },
+      "noteGlide": {
+        "developer": true,
+        "home": false
+      },
+      "noteTranspose": {
+        "developer": true,
+        "home": false
+      },
       "pitchQuantizer": {
         "developer": true,
         "home": false
       },
+      "chordPad": {
+        "developer": true,
+        "home": false
+      },
       "surgeOscillator": {
+        "developer": true,
+        "home": false
+      },
+      "softwaveOsc": {
+        "developer": true,
+        "home": false
+      },
+      "curveOsc": {
+        "developer": true,
+        "home": false
+      },
+      "snowflake": {
         "developer": true,
         "home": false
       },
@@ -457,7 +532,7 @@
         "developer": true,
         "home": false
       },
-      "clapPlugin": {
+      "sampleDelay": {
         "developer": true,
         "home": false
       },
@@ -473,6 +548,10 @@
         "developer": true,
         "home": false
       },
+      "mix": {
+        "developer": true,
+        "home": false
+      },
       "gainBiasMix": {
         "developer": true,
         "home": false
@@ -485,11 +564,51 @@
         "developer": true,
         "home": false
       },
+      "airClipper": {
+        "developer": true,
+        "home": false
+      },
       "rotate3dTo2d": {
         "developer": true,
         "home": false
       },
-      "valueSlider": {
+      "vectorscopeTransform": {
+        "developer": true,
+        "home": false
+      },
+      "speedColorInertia": {
+        "developer": true,
+        "home": false
+      },
+      "knob": {
+        "developer": true,
+        "home": false
+      },
+      "pluginSlider": {
+        "developer": true,
+        "home": false
+      },
+      "toggleButton": {
+        "developer": true,
+        "home": false
+      },
+      "momentaryButton": {
+        "developer": true,
+        "home": false
+      },
+      "pluginInput": {
+        "developer": true,
+        "home": false
+      },
+      "pluginOutput": {
+        "developer": true,
+        "home": false
+      },
+      "pluginMidiIn": {
+        "developer": true,
+        "home": false
+      },
+      "pluginMidiOut": {
         "developer": true,
         "home": false
       },
@@ -497,7 +616,131 @@
         "developer": true,
         "home": false
       },
+      "tiltFilter": {
+        "developer": true,
+        "home": false
+      },
+      "eqFilter": {
+        "developer": true,
+        "home": false
+      },
       "papoulisFilter": {
+        "developer": true,
+        "home": false
+      },
+      "butterworth": {
+        "developer": true,
+        "home": false
+      },
+      "linkwitzRiley": {
+        "developer": true,
+        "home": false
+      },
+      "bessel": {
+        "developer": true,
+        "home": false
+      },
+      "chebyshev": {
+        "developer": true,
+        "home": false
+      },
+      "elliptic": {
+        "developer": true,
+        "home": false
+      },
+      "bandpass": {
+        "developer": true,
+        "home": false
+      },
+      "allpass": {
+        "developer": true,
+        "home": false
+      },
+      "crossover2": {
+        "developer": true,
+        "home": false
+      },
+      "crossover3": {
+        "developer": true,
+        "home": false
+      },
+      "crossover4": {
+        "developer": true,
+        "home": false
+      },
+      "crossover5": {
+        "developer": true,
+        "home": false
+      },
+      "crossover6": {
+        "developer": true,
+        "home": false
+      },
+      "softpopOscillator": {
+        "developer": true,
+        "home": false
+      },
+      "sinepulse": {
+        "developer": true,
+        "home": false
+      },
+      "electroKick": {
+        "developer": true,
+        "home": false
+      },
+      "electroSnare": {
+        "developer": true,
+        "home": false
+      },
+      "electroHat": {
+        "developer": true,
+        "home": false
+      },
+      "formantFilter": {
+        "developer": true,
+        "home": false
+      },
+      "binaryClock": {
+        "developer": true,
+        "home": false
+      },
+      "theremin": {
+        "developer": true,
+        "home": false
+      },
+      "wavetable2d": {
+        "developer": true,
+        "home": false
+      },
+      "wavetable3d": {
+        "developer": true,
+        "home": false
+      },
+      "pixelGrid": {
+        "developer": true,
+        "home": false
+      },
+      "flexGrid": {
+        "developer": true,
+        "home": false
+      },
+      "chaosfly": {
+        "developer": true,
+        "home": false
+      },
+      "drummer": {
+        "developer": true,
+        "home": false
+      },
+      "arp": {
+        "developer": true,
+        "home": false
+      },
+      "ePiano": {
+        "developer": true,
+        "home": false
+      },
+      "percussion": {
         "developer": true,
         "home": false
       },
@@ -505,7 +748,7 @@
         "developer": true,
         "home": false
       },
-      "rsmetFilter": {
+      "activeFilter": {
         "developer": true,
         "home": false
       },
@@ -518,6 +761,42 @@
         "home": false
       },
       "chaoticPhaseLockingFilter": {
+        "developer": true,
+        "home": false
+      },
+      "modeResonator": {
+        "developer": true,
+        "home": false
+      },
+      "combResonator": {
+        "developer": true,
+        "home": false
+      },
+      "phaser": {
+        "developer": true,
+        "home": false
+      },
+      "flanger": {
+        "developer": true,
+        "home": false
+      },
+      "chorus": {
+        "developer": true,
+        "home": false
+      },
+      "bode": {
+        "developer": true,
+        "home": false
+      },
+      "phaseDisperse": {
+        "developer": true,
+        "home": false
+      },
+      "stftBlur": {
+        "developer": true,
+        "home": false
+      },
+      "waveguide": {
         "developer": true,
         "home": false
       },
@@ -561,6 +840,10 @@
         "developer": true,
         "home": false
       },
+      "soemReverb": {
+        "developer": true,
+        "home": false
+      },
       "pll": {
         "developer": true,
         "home": false
@@ -570,6 +853,22 @@
         "home": false
       },
       "slewLimiter": {
+        "developer": true,
+        "home": false
+      },
+      "midSideEncode": {
+        "developer": true,
+        "home": false
+      },
+      "quadrature": {
+        "developer": true,
+        "home": false
+      },
+      "lookaheadLimiter": {
+        "developer": true,
+        "home": false
+      },
+      "inertialFilter": {
         "developer": true,
         "home": false
       },
@@ -614,6 +913,10 @@
         "home": false
       },
       "expAdsr": {
+        "developer": true,
+        "home": false
+      },
+      "attackDecay": {
         "developer": true,
         "home": false
       },
@@ -689,6 +992,22 @@
         "developer": true,
         "home": false
       },
+      "matrixWaterfall": {
+        "developer": true,
+        "home": false
+      },
+      "matrixDisplay": {
+        "developer": true,
+        "home": false
+      },
+      "textStream": {
+        "developer": true,
+        "home": false
+      },
+      "asciiscope": {
+        "developer": true,
+        "home": false
+      },
       "valueOscilloscope": {
         "developer": true,
         "home": false
@@ -737,6 +1056,26 @@
         "developer": true,
         "home": false
       },
+      "rgbShape": {
+        "developer": true,
+        "home": false
+      },
+      "rgbPicture": {
+        "developer": true,
+        "home": false
+      },
+      "rgbFractal": {
+        "developer": true,
+        "home": false
+      },
+      "evolveField": {
+        "developer": true,
+        "home": false
+      },
+      "fbmField": {
+        "developer": true,
+        "home": false
+      },
       "bugButton": {
         "developer": true,
         "home": false
@@ -746,6 +1085,10 @@
         "home": false
       },
       "numberReadout": {
+        "developer": true,
+        "home": false
+      },
+      "valueLcd": {
         "developer": true,
         "home": false
       },
@@ -767,19 +1110,36 @@
       }
     },
     "sceneContextWindowSize": {
-      "width": 276
+      "width": 196,
+      "height": 698,
+      "_maxWidth": 980,
+      "_maxHeight": 951
     },
     "moduleActionWindowSize": {
-      "width": 298,
-      "height": 656
+      "width": 196,
+      "height": 698,
+      "_maxWidth": 980,
+      "_maxHeight": 951
     },
     "workspaceWindowStatesVersion": 1,
     "workspaceWindowStates": {
       "commandCenter": {
-        "open": false
+        "open": false,
+        "position": {
+          "left": 19,
+          "top": 133
+        },
+        "size": {
+          "width": 208,
+          "height": 494
+        }
       },
       "codeBox": {
-        "open": false
+        "open": false,
+        "position": {
+          "left": 247,
+          "top": 116
+        }
       },
       "moduleActions": {
         "open": false
@@ -790,28 +1150,41 @@
       "oscilloscopeSettings": {
         "open": false
       },
-      "patchExplorer": {
-        "open": false
-      },
       "moduleBrowser": {
         "open": false,
         "position": {
-          "left": 1124,
-          "top": 547
+          "left": 19,
+          "top": 133
+        },
+        "size": {
+          "width": 142,
+          "height": 584
         }
       },
       "visibilityMenu": {
-        "open": false
+        "open": false,
+        "position": {
+          "left": 1540,
+          "top": 141
+        }
       },
       "uiSettings": {
-        "open": false
+        "open": false,
+        "position": {
+          "left": 1242,
+          "top": 643
+        }
       },
       "uiDev": {
-        "open": false
+        "open": false,
+        "position": {
+          "left": 1527,
+          "top": 18
+        }
       },
       "traceDisplaySettings": {
         "open": false,
-        "targetNode": "output"
+        "targetNode": "helmholtzPitch-2"
       },
       "standaloneMidiKeyboard": {
         "open": false
@@ -820,28 +1193,30 @@
         "open": false
       },
       "phosphorWaveformSettings": {
-        "open": false
-      },
-      "ledSettings": {
-        "open": false
+        "open": false,
+        "position": {
+          "left": 48,
+          "top": 78
+        }
       }
     },
     "sharedInspectorActive": "",
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": 652.872895136115,
-        "y": 5.241599064982665
+        "x": 330.7857142857143,
+        "y": 216.8819754464285
       },
-      "zoom": 1.1768350632806033
+      "zoom": 1.1199999999999999
     },
     "moduleStoreDepartment": "",
     "savedPatchBankIndex": 0,
     "savedPatchBankName": "chaos",
+    "savedPatchFactoryPath": "",
+    "savedPatchUserPath": "",
     "savedPatchGridColumns": 3,
-    "savedPatchExplorerView": "banks",
     "workingPatch": null,
-    "currentSavedPatchFilename": "",
+    "currentSavedPatchFilename": "LEDLCDCROSS.json",
     "patchDirtyState": "untouched"
   }
 });

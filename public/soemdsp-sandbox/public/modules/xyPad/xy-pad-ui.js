@@ -106,7 +106,6 @@ function nodeGraphXyPadWritePosition(pad, x, y, options = {}) {
       if (!slider) {
         continue;
       }
-      delete slider.dataset.unboundedValue;
       slider.value = String(value);
       if (isDrag && typeof scheduleNodeSliderReadoutUpdate === "function") {
         scheduleNodeSliderReadoutUpdate(slider, value);
@@ -523,8 +522,21 @@ function nodeGraphXyPadStepPhosphor(pad, canvas, ctx, width, height, options = {
     face._xyPadLutKey = lutKey;
   }
 
-  const decay = Math.max(0, Math.min(1, Number(options.decay) || 0.12));
-  const burn = Math.max(0, Math.min(1, Number(options.burn) || 0.82));
+  const Residual = typeof PhosphorResidual !== "undefined" ? PhosphorResidual : null;
+  const trail = Residual && typeof Residual.migrateTrail === "function"
+    ? Residual.migrateTrail(options, 0.88)
+    : Math.max(0, Math.min(1, Number(options.trail) ?? (Number.isFinite(Number(options.decay)) ? 1 - Number(options.decay) : 0.88)));
+  const ghost = Residual && typeof Residual.migrateGhost === "function"
+    ? Residual.migrateGhost(options, 0.45)
+    : Math.max(0, Math.min(1, Number(options.ghost) || 0));
+  const burn = Residual && typeof Residual.migrateBurn === "function"
+    ? Residual.migrateBurn(options, 0)
+    : (
+      Number(options.residualSchema) >= 2
+        ? Math.max(0, Math.min(1, Number(options.burn) || 0))
+        : 0
+    );
+  const residualSchema = Residual?.RESIDUAL_SCHEMA || 2;
   const brightness01 = Math.max(0, Number(options.brightness) || 0.78);
   const minSide = Math.max(1, Math.min(width, height));
   // Full 0–1 size range (was capped at 0.2 — blocked large hard discs).
@@ -534,14 +546,16 @@ function nodeGraphXyPadStepPhosphor(pad, canvas, ctx, width, height, options = {
     : Math.max(0, Math.min(1, Number(options.blur) || 0));
   const radius = Math.max(
     0.5,
-    Number(options.radius) || (drawer?.radiusFromSize
-      ? drawer.radiusFromSize(minSide, size01)
-      : minSide * size01 * 0.5),
+    Number(options.radius) || (drawer?.size01ToRadiusPx
+      ? drawer.size01ToRadiusPx(minSide, size01)
+      : (drawer?.radiusFromSize
+        ? drawer.radiusFromSize(minSide, size01)
+        : Math.max(0.5, Math.pow(minSide, size01) * 0.5))),
   );
-  // Energy deposit gain (not raw 0..1 UX) — matches scope2d burn ribbons.
+  // Energy deposit from brightness only (decay fades residual).
   const deposit = drawer?.depositGain
-    ? drawer.depositGain(burn, brightness01, size01)
-    : brightness01 * (0.022 + Math.pow(burn, 0.78) * 0.1) * (1.12 - size01 * 0.42);
+    ? drawer.depositGain(brightness01, size01)
+    : brightness01 * 0.1 * (1.12 - size01 * 0.42);
   const liveDeposit = Boolean(options.liveDeposit);
   let pathPoints = Array.isArray(options.pathPoints) ? options.pathPoints : null;
   // Beam segments need ≥2 points; a dwell stamp is a near-zero segment.
@@ -564,7 +578,10 @@ function nodeGraphXyPadStepPhosphor(pad, canvas, ctx, width, height, options = {
     const mode = options.mode === "dots" ? "dots" : "segments";
     if (typeof nodeGraphPhosphorEnergyGlStepBeams === "function") {
       nodeGraphPhosphorEnergyGlStepBeams(face, {
-        decay,
+        trail,
+        ghost,
+        burn,
+        residualSchema,
         pathPoints,
         radius,
         brightness: deposit,
@@ -576,18 +593,23 @@ function nodeGraphXyPadStepPhosphor(pad, canvas, ctx, width, height, options = {
       });
     } else if (mode === "dots" && drawer?.stepDots) {
       drawer.stepDots(face, {
-        decay,
+        trail,
+        ghost,
+        burn,
+        residualSchema,
         pathPoints,
         radius,
         brightness: deposit,
         blur,
         maxDots,
-        burn,
         fullDotEconomy,
       });
     } else if (drawer?.stepBeams) {
       drawer.stepBeams(face, {
-        decay,
+        trail,
+        ghost,
+        burn,
+        residualSchema,
         pathPoints,
         radius,
         brightness: deposit,
@@ -599,13 +621,15 @@ function nodeGraphXyPadStepPhosphor(pad, canvas, ctx, width, height, options = {
       });
     } else if (drawer?.stepDots) {
       drawer.stepDots(face, {
-        decay,
+        trail,
+        ghost,
+        burn,
+        residualSchema,
         pathPoints,
         radius,
         brightness: deposit,
         blur,
         maxDots,
-        burn,
         fullDotEconomy,
       });
     }
@@ -618,8 +642,8 @@ function nodeGraphXyPadStepPhosphor(pad, canvas, ctx, width, height, options = {
   }
 
   const exposure = drawer?.exposure
-    ? drawer.exposure(burn)
-    : 1.85 + burn * 2.1;
+    ? drawer.exposure()
+    : 2.9;
   if (typeof nodeGraphPhosphorEnergyGlPresent === "function") {
     if (!nodeGraphPhosphorEnergyGlPresent(face, 1, { exposure })) {
       face._xyPadPresentedIdle = true;
@@ -627,7 +651,8 @@ function nodeGraphXyPadStepPhosphor(pad, canvas, ctx, width, height, options = {
     }
     face._xyPadPresentedIdle = !liveDeposit;
     ctx.save();
-    ctx.globalCompositeOperation = "lighter";
+    // Energy is already additive mono; LUT paints color (incl. dark peaks).
+    ctx.globalCompositeOperation = "source-over";
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(face.canvas, 0, 0, width, height);
     ctx.restore();
@@ -639,7 +664,7 @@ function nodeGraphXyPadStepPhosphor(pad, canvas, ctx, width, height, options = {
       width,
       height,
       smooth: true,
-      composite: "lighter",
+      composite: "source-over",
     });
     face._xyPadPresentedIdle = !liveDeposit;
     return ok;
@@ -715,8 +740,21 @@ function drawNodeGraphXyPad(pad, options = {}) {
     || "#7fc7d9";
   // Face = phosphor of Out X/Y (same idea as wiring Out → scope2d) + vector UI.
   const brightness = Math.max(0, Number(display.dot1Brightness) || 0.78);
-  const decayUx = Math.max(0, Math.min(1, Number(display.decay) || 0.35));
-  const burn = Math.max(0, Math.min(1, Number(display.burn) || 0.82));
+  const ResidualUx = typeof PhosphorResidual !== "undefined" ? PhosphorResidual : null;
+  const trailUx = ResidualUx && typeof ResidualUx.migrateTrail === "function"
+    ? ResidualUx.migrateTrail(display, 0.65)
+    : Math.max(0, Math.min(1, Number(display.trail) ?? (Number.isFinite(Number(display.decay)) ? 1 - Number(display.decay) : 0.65)));
+  const ghostUx = ResidualUx && typeof ResidualUx.migrateGhost === "function"
+    ? ResidualUx.migrateGhost(display, 0.45)
+    : Math.max(0, Math.min(1, Number(display.ghost) || 0));
+  const burnUx = ResidualUx && typeof ResidualUx.migrateBurn === "function"
+    ? ResidualUx.migrateBurn(display, 0)
+    : (
+      Number(display.residualSchema) >= 2
+        ? Math.max(0, Math.min(1, Number(display.burn) || 0))
+        : 0
+    );
+  const residualSchemaUx = ResidualUx?.RESIDUAL_SCHEMA || 2;
   // Phosphor beam stamp size (unit face); not multiplied by a global scale.
   const beamSize01 = Math.max(0.005, Math.min(1, Number(display.dot1Size) || 0.07));
   const blur = typeof nodeGraphTraceDisplayClampStampBlur === "function"
@@ -801,9 +839,12 @@ function drawNodeGraphXyPad(pad, options = {}) {
     phosphorColor: phosphorHex,
     background: bgHex,
     gradientStops,
-    decay: decayUx,
+    // Prefer trail/ghost/burn (display settings UX); step helper migrates legacy.
+    trail: trailUx,
+    ghost: ghostUx,
+    burn: burnUx,
+    residualSchema: residualSchemaUx,
     brightness,
-    burn,
     blur,
     size01: beamSize01,
     maxDots: dotBudget,
@@ -915,23 +956,31 @@ function nodeGraphXyPadDisplaySettings(pad) {
   if (typeof normalizeNodeGraphXyPadDisplaySettings === "function") {
     return normalizeNodeGraphXyPadDisplaySettings(node?.traceDisplaySettings);
   }
+  // Fallback if normalize helpers missing — full analog pixel burn look.
+  const look = typeof nodeGraphScopePhosphorLookDefaults !== "undefined"
+    ? nodeGraphScopePhosphorLookDefaults
+    : null;
   return {
-    background: "#000000",
-    burn: 0.82,
-    decay: 0.35,
-    dot1Brightness: 0.78,
-    dot1Color: "#7fc7d9",
-    dot1Size: 0.07,
-    dotBudget: 2048,
-    fullDotEconomy: true,
-    gradientStops: [
-      { t: 0, color: "#000000" },
-      { t: 0.18, color: "#0a2830" },
-      { t: 0.55, color: "#3a8899" },
-      { t: 1, color: "#7fc7d9" },
-    ],
-    lineThickness: 0.42,
-    pixelDensity: 1,
+    background: look?.background ?? "#000004",
+    ghost: look?.ghost ?? 0.55,
+    trail: look?.trail ?? 0.5175,
+    dot1Brightness: look?.brightness ?? 1,
+    dot1Color: look?.peakColor ?? "#fcfdbf",
+    dot1Size: look?.size ?? 0.0385,
+    dotBudget: look?.dotBudget ?? 2048,
+    fullDotEconomy: look?.fullDotEconomy !== false,
+    gradientStops: look?.gradientStops
+      ? look.gradientStops.map((s) => ({ t: s.t, color: s.color }))
+      : [
+        { t: 0, color: "#000004" },
+        { t: 0.2, color: "#3b0f70" },
+        { t: 0.4, color: "#8c2981" },
+        { t: 0.6, color: "#de4968" },
+        { t: 0.8, color: "#fe9f6d" },
+        { t: 1, color: "#fcfdbf" },
+      ],
+    lineThickness: look?.blur ?? 0.1062,
+    pixelDensity: look?.pixelDensity ?? 1,
     puckSize: 0.045,
   };
 }
@@ -1079,9 +1128,10 @@ function nodeGraphXyPadNormalizeGhostUnit(value, fallbackUnit = 0.5) {
 
 function createNodeGraphXyPadBody(node, type) {
   const pad = document.createElement("div");
-  pad.className = "node-xy-pad";
+  pad.className = "node-xy-pad node-light-source";
   pad.dataset.node = node;
   pad.dataset.nodeType = type;
+  pad.dataset.lightSource = "screen";
   pad.dataset.parameterVisual = "true";
   const canvas = document.createElement("canvas");
   canvas.className = "node-xy-pad-canvas";

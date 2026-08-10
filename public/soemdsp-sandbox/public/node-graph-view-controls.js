@@ -30,6 +30,8 @@ function renderNodeGraphVisibilityMenuButton() {
   }
   const hiddenCount = [
     nodeGraphMvp.gridVisible ? 0 : 1,
+    nodeGraphMvp.gridLightVisible === false ? 1 : 0,
+    nodeGraphMvp.wireLengthsVisible === false ? 1 : 0,
     nodeGraphMvp.moduleButtonsVisible === false ? 1 : 0,
     nodeGraphMvp.moduleInterfaceControlsVisible === false ? 1 : 0,
     nodeGraphMvp.moduleOscilloscopesVisible === false ? 1 : 0,
@@ -52,18 +54,184 @@ function renderNodeGraphVisibilityMenuButton() {
   button.removeAttribute("title");
 }
 
+/** Visibility menu mark: white square = default on; black square = off/hidden. */
+const nodeGraphVisibilityMarkOn = "⬜";
+const nodeGraphVisibilityMarkOff = "⬛";
+
+/**
+ * Per-item “on” glyph for the Visibility menu (off stays ⬛).
+ * Amount/Position keep the default white square.
+ */
+const nodeGraphVisibilityOnMarks = Object.freeze({
+  grid: "🗺️",
+  gridLight: "💡",
+  wireLengths: "🧬",
+  wiresAbove: "⬆️",
+  moduleButtons: "🔘",
+  displays: "📺",
+  controlSurfaces: "🔢",
+  sliders: "📊",
+  amountSlider: "⬜",
+  positionSlider: "⬜",
+  debug: "🐞",
+  tooltipsOff: "⬛",
+  tooltipsFloating: "💬",
+  tooltipsEmbedded: "📌",
+});
+
+/**
+ * Label a Visibility-menu toggle without the words Show/Hide.
+ * @param {HTMLElement|null} button
+ * @param {boolean} enabled  true = visible/on
+ * @param {string} name  short noun phrase ("Grid", "Sliders", …)
+ * @param {{ labelEl?: HTMLElement|null, onMark?: string, offMark?: string }} [options]
+ */
+function setNodeGraphVisibilityToggleLabel(button, enabled, name, options = {}) {
+  if (!button) {
+    return;
+  }
+  const onMark = options.onMark || nodeGraphVisibilityMarkOn;
+  const offMark = options.offMark || nodeGraphVisibilityMarkOff;
+  const mark = enabled ? onMark : offMark;
+  const label = `${mark} ${name}`;
+  const target = options.labelEl
+    || button.querySelector(":scope > .node-visibility-toggle-label, :scope > span:not(kbd)")
+    || null;
+  if (target && target !== button) {
+    target.textContent = label;
+  } else if (!button.querySelector("kbd")) {
+    button.textContent = label;
+  } else {
+    // Keep sibling <kbd>; rewrite first text-ish span or prepend label span.
+    let span = button.querySelector(":scope > span:not(kbd)");
+    if (!span) {
+      span = document.createElement("span");
+      span.className = "node-visibility-toggle-label";
+      button.insertBefore(span, button.firstChild);
+    }
+    span.textContent = label;
+  }
+  button.setAttribute("aria-pressed", enabled ? "true" : "false");
+  button.setAttribute("aria-label", `${name}, ${enabled ? "visible" : "hidden"}`);
+  button.removeAttribute("title");
+}
+
 function renderNodeGraphGridToggle() {
   const workspace = document.getElementById("nodeGraphWorkspace");
   const button = document.getElementById("nodeGridToggleButton");
   const visible = Boolean(nodeGraphMvp.gridVisible);
   workspace?.classList.toggle("grid-visible", visible);
-  if (button) {
-    button.textContent = visible ? "Hide Grid" : "Show Grid";
-    button.setAttribute("aria-pressed", visible ? "true" : "false");
-    button.removeAttribute("title");
-  }
+  setNodeGraphVisibilityToggleLabel(button, visible, "Grid", {
+    onMark: nodeGraphVisibilityOnMarks.grid,
+  });
   renderNodeGraphVisibilityMenuButton();
   syncNodeUserUiSettingsViewControls();
+}
+
+/** Module glow heatmap around nodes — off skips all O(modules) light rebuilds. */
+function renderNodeGraphGridLightToggle() {
+  const workspace = document.getElementById("nodeGraphWorkspace");
+  const button = document.getElementById("nodeGridLightToggleButton");
+  const visible = nodeGraphMvp.gridLightVisible !== false;
+  nodeGraphMvp.gridLightVisible = visible;
+  workspace?.classList.toggle("grid-light-visible", visible);
+  setNodeGraphVisibilityToggleLabel(button, visible, "Grid Light", {
+    onMark: nodeGraphVisibilityOnMarks.gridLight,
+  });
+  if (visible) {
+    if (typeof updateNodeGraphGridHeatmap === "function") {
+      updateNodeGraphGridHeatmap({ force: true });
+    }
+  } else {
+    const heatmap = document.getElementById("nodeGridHeatmap");
+    if (heatmap) {
+      heatmap.style.setProperty("--node-grid-heatmap", "none");
+      heatmap.style.setProperty(
+        "--node-grid-heatmap-mask",
+        "linear-gradient(transparent, transparent)",
+      );
+    }
+  }
+  renderNodeGraphVisibilityMenuButton();
+  if (typeof syncNodeUserUiSettingsViewControls === "function") {
+    syncNodeUserUiSettingsViewControls();
+  }
+}
+
+function toggleNodeGraphGridLightVisibility() {
+  nodeGraphMvp.gridLightVisible = !(nodeGraphMvp.gridLightVisible !== false);
+  renderNodeGraphGridLightToggle();
+  if (typeof setNodeInteractionHelp === "function") {
+    setNodeInteractionHelp(
+      nodeGraphMvp.gridLightVisible !== false
+        ? "Grid light on."
+        : "Grid light off (faster pan / less GPU style work).",
+    );
+  }
+}
+
+/**
+ * Cable stroke paths on/off. When off, only jack endpoint dots draw
+ * (hit targets stay so wires remain selectable).
+ */
+function renderNodeGraphWireLengthsToggle() {
+  const workspace = document.getElementById("nodeGraphWorkspace");
+  const button = document.getElementById("nodeWireLengthsToggleButton");
+  const visible = nodeGraphMvp.wireLengthsVisible !== false;
+  nodeGraphMvp.wireLengthsVisible = visible;
+  workspace?.classList.toggle("wire-lengths-hidden", !visible);
+  setNodeGraphVisibilityToggleLabel(button, visible, "Wire Lengths", {
+    onMark: nodeGraphVisibilityOnMarks.wireLengths,
+  });
+  if (typeof drawNodeGraphWires === "function") {
+    drawNodeGraphWires();
+  }
+  renderNodeGraphVisibilityMenuButton();
+  if (typeof syncNodeUserUiSettingsViewControls === "function") {
+    syncNodeUserUiSettingsViewControls();
+  }
+}
+
+function toggleNodeGraphWireLengthsVisibility() {
+  nodeGraphMvp.wireLengthsVisible = !(nodeGraphMvp.wireLengthsVisible !== false);
+  renderNodeGraphWireLengthsToggle();
+  if (typeof setNodeInteractionHelp === "function") {
+    setNodeInteractionHelp(
+      nodeGraphMvp.wireLengthsVisible !== false
+        ? "Wire lengths shown."
+        : "Wire lengths hidden (dots only).",
+    );
+  }
+}
+
+/** Cable strokes under modules (default) or above faces (Visibility toggle). */
+function renderNodeGraphWiresAboveModulesToggle() {
+  const workspace = document.getElementById("nodeGraphWorkspace");
+  const button = document.getElementById("nodeWiresAboveModulesToggleButton");
+  const above = Boolean(nodeGraphMvp.wiresAboveModules);
+  workspace?.classList.toggle("wires-above-modules", above);
+  setNodeGraphVisibilityToggleLabel(button, above, "Wires Above Modules", {
+    onMark: nodeGraphVisibilityOnMarks.wiresAbove,
+  });
+  if (typeof drawNodeGraphWires === "function") {
+    drawNodeGraphWires();
+  }
+  renderNodeGraphVisibilityMenuButton();
+  if (typeof syncNodeUserUiSettingsViewControls === "function") {
+    syncNodeUserUiSettingsViewControls();
+  }
+}
+
+function toggleNodeGraphWiresAboveModules() {
+  nodeGraphMvp.wiresAboveModules = !nodeGraphMvp.wiresAboveModules;
+  renderNodeGraphWiresAboveModulesToggle();
+  if (typeof setNodeInteractionHelp === "function") {
+    setNodeInteractionHelp(
+      nodeGraphMvp.wiresAboveModules
+        ? "Wires drawn above modules."
+        : "Wires drawn under modules.",
+    );
+  }
 }
 
 function renderNodeGraphSliderVisibilityToggles() {
@@ -74,16 +242,12 @@ function renderNodeGraphSliderVisibilityToggles() {
   const positionVisible = Boolean(nodeGraphMvp.sliderPositionVisible);
   workspace?.classList.toggle("show-slider-amount", amountVisible);
   workspace?.classList.toggle("hide-slider-position", !positionVisible);
-  if (amountButton) {
-    amountButton.textContent = amountVisible ? "Hide Amount Slider" : "Show Amount Slider";
-    amountButton.setAttribute("aria-pressed", amountVisible ? "true" : "false");
-    amountButton.removeAttribute("title");
-  }
-  if (positionButton) {
-    positionButton.textContent = positionVisible ? "Hide Position Slider" : "Show Position Slider";
-    positionButton.setAttribute("aria-pressed", positionVisible ? "true" : "false");
-    positionButton.removeAttribute("title");
-  }
+  setNodeGraphVisibilityToggleLabel(amountButton, amountVisible, "Amount Slider", {
+    onMark: nodeGraphVisibilityOnMarks.amountSlider,
+  });
+  setNodeGraphVisibilityToggleLabel(positionButton, positionVisible, "Position Slider", {
+    onMark: nodeGraphVisibilityOnMarks.positionSlider,
+  });
   renderNodeGraphVisibilityMenuButton();
   syncNodeUserUiSettingsViewControls();
 }
@@ -129,34 +293,33 @@ function renderNodeGraphModuleVisibilityToggles() {
       : null;
     if (!patchNode) continue;
     const effectiveUi = typeof nodeGraphEffectivePatchNodeUi === "function"
-      ? nodeGraphEffectivePatchNodeUi(patchNode.ui)
+      ? nodeGraphEffectivePatchNodeUi(patchNode.ui, patchNode.type)
       : null;
     if (!effectiveUi) continue;
     element.classList.toggle("buttons-hidden", effectiveUi.buttonsHidden);
+    element.classList.toggle("buttons-forced-visible", Boolean(effectiveUi.buttonsForceShow));
     element.classList.toggle("oscilloscope-hidden", effectiveUi.oscilloscopeHidden);
+    element.classList.toggle("oscilloscope-forced-visible", Boolean(effectiveUi.oscilloscopeForceShow));
     element.classList.toggle("interface-controls-hidden", effectiveUi.interfaceControlsHidden);
+    element.classList.toggle("interface-controls-forced-visible", Boolean(effectiveUi.interfaceControlsForceShow));
     element.classList.toggle("sliders-hidden", effectiveUi.slidersHidden);
+    element.classList.toggle("sliders-forced-visible", Boolean(effectiveUi.slidersForceShow));
+    if (typeof syncNodeGraphLayoutBNoParamsClass === "function") {
+      syncNodeGraphLayoutBNoParamsClass(element, patchNode.type, effectiveUi);
+    }
   }
-  if (buttonsButton) {
-    buttonsButton.textContent = buttonsVisible ? "Hide Module Buttons" : "Show Module Buttons";
-    buttonsButton.setAttribute("aria-pressed", buttonsVisible ? "true" : "false");
-    buttonsButton.removeAttribute("title");
-  }
-  if (scopesButton) {
-    scopesButton.textContent = scopesVisible ? "Hide Displays" : "Show Displays";
-    scopesButton.setAttribute("aria-pressed", scopesVisible ? "true" : "false");
-    scopesButton.removeAttribute("title");
-  }
-  if (interfaceControlsButton) {
-    interfaceControlsButton.textContent = interfaceControlsVisible ? "Hide Control Surfaces" : "Show Control Surfaces";
-    interfaceControlsButton.setAttribute("aria-pressed", interfaceControlsVisible ? "true" : "false");
-    interfaceControlsButton.removeAttribute("title");
-  }
-  if (slidersButton) {
-    slidersButton.textContent = slidersVisible ? "Hide Sliders" : "Show Sliders";
-    slidersButton.setAttribute("aria-pressed", slidersVisible ? "true" : "false");
-    slidersButton.removeAttribute("title");
-  }
+  setNodeGraphVisibilityToggleLabel(buttonsButton, buttonsVisible, "Module Buttons", {
+    onMark: nodeGraphVisibilityOnMarks.moduleButtons,
+  });
+  setNodeGraphVisibilityToggleLabel(scopesButton, scopesVisible, "Displays", {
+    onMark: nodeGraphVisibilityOnMarks.displays,
+  });
+  setNodeGraphVisibilityToggleLabel(interfaceControlsButton, interfaceControlsVisible, "Control Surfaces", {
+    onMark: nodeGraphVisibilityOnMarks.controlSurfaces,
+  });
+  setNodeGraphVisibilityToggleLabel(slidersButton, slidersVisible, "Sliders", {
+    onMark: nodeGraphVisibilityOnMarks.sliders,
+  });
   if (!scopesVisible && typeof closeNodeScopeContextMenu === "function") {
     closeNodeScopeContextMenu();
   }
@@ -327,26 +490,32 @@ function renderNodeGraphModuleScopeBrightnessControl() {
 
 function setNodeGraphModuleButtonsVisibility(visible, options = {}) {
   nodeGraphMvp.moduleButtonsVisible = Boolean(visible);
-  if (nodeGraphMvp.moduleButtonsVisible && options.clearNodeOverrides !== false) {
+  // Drop overrides that match the new global default (keep opposite overrides).
+  // Global shown → clear force-show. Global hidden → clear force-hide.
+  if (options.clearNodeOverrides !== false && nodeGraphMvp.patch) {
     const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
     let changed = false;
     for (const node of patch.nodes) {
       const ui = normalizeNodeGraphPatchNodeUi(node.ui, node.type);
-      if (!ui.buttonsHidden) {
+      let dirty = false;
+      if (visible && ui.buttonsForceShow) {
+        ui.buttonsForceShow = false;
+        dirty = true;
+      }
+      if (!visible && ui.buttonsHidden) {
+        ui.buttonsHidden = false;
+        dirty = true;
+      }
+      if (!dirty) {
         continue;
       }
-      ui.buttonsHidden = false;
-      if (ui.titleHidden) {
-        node.ui = ui;
-      } else {
-        delete node.ui;
-      }
+      applyNodeGraphPatchNodeUi(node, ui);
       changed = true;
     }
     if (changed) {
       commitNodeGraphPatch(patch, {
         markPending: false,
-        status: "module buttons shown",
+        status: visible ? "module buttons shown" : "module buttons hidden",
       });
     }
   }
@@ -373,20 +542,31 @@ function toggleNodeGraphModularOnlyControlsVisible() {
   setNodeGraphModularOnlyControlsVisible(nodeGraphMvp.modularOnlyControlsVisible === false);
 }
 
-// Named so both the Command Center button click and the "M" hotkey
-// (node-graph-keyboard-shortcuts.js) can share the exact same behavior.
+// Shared by laptop toolbar button path, scene Modular View control, and V hotkey.
+//
+// Windowed / infinite modular view WITH chrome (back button + resize/drag handle).
+// Entering this mode always re-shows chrome so it never looks like plain "hide UI".
 function toggleNodeGraphModularOnlyView() {
-  const modularOnlyActive = document.getElementById("nodeWiringPanel")?.classList.contains("modular-only-view");
-  setNodeGraphViewMode(modularOnlyActive ? "modular" : "modular-only");
+  const panel = document.getElementById("nodeWiringPanel");
+  const modularOnlyActive = panel?.classList.contains("modular-only-view");
+  if (modularOnlyActive) {
+    setNodeGraphViewMode("modular");
+    return;
+  }
+  // Ensure resize handle + back button are visible in the windowed frame.
+  if (typeof setNodeGraphModularOnlyControlsVisible === "function") {
+    setNodeGraphModularOnlyControlsVisible(true);
+  } else {
+    nodeGraphMvp.modularOnlyControlsVisible = true;
+    panel?.classList.remove("modular-only-controls-hidden");
+  }
+  setNodeGraphViewMode("modular-only");
 }
 
-// Named so both the Command Center button click and the "V" hotkey
-// (node-graph-keyboard-shortcuts.js) can share the exact same behavior --
-// "View Buttons" toggles module-button visibility, but if we're
-// currently off in settings/script/UI/mapping view it also needs to
-// bring us back to the modular workspace first -- otherwise there's
-// nothing on screen for the toggle to visibly affect. Preserves
-// modular-only mode if that's what we were already in.
+// "View Buttons" toggles modular chrome visibility. If we're currently off in
+// settings/script/UI/mapping view it also needs to bring us back to the modular
+// workspace first — otherwise there's nothing on screen for the toggle to
+// visibly affect. Preserves modular-only mode if that's what we were already in.
 function toggleNodeGraphViewButtonsVisibility() {
   if (document.getElementById("nodeGraphWorkspace")?.hidden) {
     const modularOnlyActive = document.getElementById("nodeWiringPanel")?.classList.contains("modular-only-view");
@@ -485,7 +665,7 @@ function handleNodeGraphModuleScopeDiscontinuitySkipSamplesInput(event) {
 
 const nodeGraphSliderLayouts = Object.freeze([
   { key: "text-inside", label: "Text Inside" },
-  { key: "label-value-slider", label: "Label Value Slider" },
+  { key: "label-value-slider", label: "Label Knob" },
   { key: "value-unit-left", label: "Value And Unit Left" },
   { key: "value-unit-right", label: "Value And Unit Right" },
   { key: "label-outside", label: "Label Outside" },
@@ -572,10 +752,17 @@ function setNodeGraphFloatingWindowViewportPosition(element, left, top) {
   if (!element) {
     return { left: 0, top: 0 };
   }
+  // Always pin to the viewport — never leave relative/static windows that
+  // expand document flow (module browser regressed into the wiring panel).
+  const style = element.style;
+  if (style.position !== "fixed") {
+    style.position = "fixed";
+  }
+  style.margin = style.margin || "0";
   const css = nodeGraphFloatingWindowCssPositionFromViewport(left, top);
-  element.style.left = `${css.left}px`;
-  element.style.top = `${css.top}px`;
-  element.style.right = "auto";
+  style.left = `${css.left}px`;
+  style.top = `${css.top}px`;
+  style.right = "auto";
   return {
     left: Math.round(Number(left) || 0),
     top: Math.round(Number(top) || 0),
@@ -608,77 +795,85 @@ function nodeGraphFloatingWindowPosition(element, x, y, options = {}) {
   return { left, top };
 }
 
+/**
+ * Master debug chrome: Visibility "Show Debug" (keyboard diagnostics,
+ * constraint guide, evidence / .node-debug-only surfaces).
+ *
+ * Default is ALWAYS off — debug and release builds alike. Session-only via
+ * Visibility → Debug; never restored from UI settings / Clear Startup / Save.
+ * Hiding also re-collapses the evidence panels so a prior "Show Evidence"
+ * cannot leave developer chrome visible after Hide Debug or a cold start.
+ */
 function renderNodeGraphKeyboardDebugToggle() {
   const button = document.getElementById("nodeKeyboardDebugToggleButton");
-  const visible = nodeGraphMvp.keyboardDebugInfoVisible === true;
+  const visible = nodeGraphMvp?.keyboardDebugInfoVisible === true;
   document.body.classList.toggle("keyboard-debug-hidden", !visible);
-  if (button) {
-    const label = button.querySelector("span");
-    if (label) {
-      label.textContent = visible ? "Hide Debug" : "Show Debug";
-    } else {
-      button.textContent = visible ? "Hide Debug" : "Show Debug";
+  // When debug is off, force evidence collapsed too (release-like UX).
+  if (!visible) {
+    document.body.classList.add("debug-collapsed");
+    const evidence = document.getElementById("toggleDebugButton");
+    if (evidence) {
+      evidence.textContent = "Show Evidence";
+      evidence.setAttribute("aria-pressed", "false");
     }
-    button.setAttribute("aria-pressed", visible ? "true" : "false");
-    button.removeAttribute("title");
   }
+  setNodeGraphVisibilityToggleLabel(button, visible, "Debug", {
+    onMark: nodeGraphVisibilityOnMarks.debug,
+  });
   renderNodeGraphVisibilityMenuButton();
+}
+
+/** Force diagnostics off (startup, Clear Startup, UI-settings apply). */
+function hideNodeGraphDebugChrome() {
+  if (typeof nodeGraphMvp === "object" && nodeGraphMvp) {
+    nodeGraphMvp.keyboardDebugInfoVisible = false;
+  }
+  document.body.classList.add("keyboard-debug-hidden");
+  document.body.classList.add("debug-collapsed");
+  if (typeof renderNodeGraphKeyboardDebugToggle === "function") {
+    renderNodeGraphKeyboardDebugToggle();
+  } else {
+    const evidence = document.getElementById("toggleDebugButton");
+    if (evidence) {
+      evidence.textContent = "Show Evidence";
+      evidence.setAttribute("aria-pressed", "false");
+    }
+    const button = document.getElementById("nodeKeyboardDebugToggleButton");
+    setNodeGraphVisibilityToggleLabel(button, false, "Debug", {
+      onMark: nodeGraphVisibilityOnMarks.debug,
+    });
+  }
 }
 
 
 function setNodeGraphVisibilityMenuOpen(open) {
   const menu = document.getElementById("nodeVisibilityMenu");
   if (menu) {
+    // Already open: activation only — raise + glow. Never re-home.
     if (open && !menu.hidden) {
-      pulseNodeGraphFloatingWindowAttention(menu);
+      if (typeof pulseNodeGraphFloatingWindowAttention === "function") {
+        pulseNodeGraphFloatingWindowAttention(menu);
+      } else if (typeof raiseNodeGraphFloatingWindow === "function") {
+        raiseNodeGraphFloatingWindow(menu);
+      }
       renderNodeGraphVisibilityMenuButton();
       return;
     }
     menu.hidden = !open;
     if (open) {
+      // Standalone window: own workspaceWindowStates.visibilityMenu seat/size.
+      // Do not share unified Command Center / Module Browser geometry.
       applyNodeGraphVisibilityMenuSize(nodeGraphMvp.workspaceWindowStates?.visibilityMenu?.size);
-      openNodeGraphFloatingWindowAtPosition("visibilityMenu", menu, () => {
-        positionNodeGraphVisibilityMenuNearButton(menu);
-      });
+      openNodeGraphFloatingWindowAtPosition("visibilityMenu", menu);
+      // Strip any leftover unified-nav host (Visibility is not a unified page).
+      menu.querySelectorAll?.(".node-unified-window-nav-host, .node-unified-window-nav")
+        ?.forEach?.((el) => el.remove());
     }
   }
   if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
     rememberNodeGraphWorkspaceWindowState("visibilityMenu", menu, { open: Boolean(open) }, { status: false });
   }
   renderNodeGraphVisibilityMenuButton();
-}
-
-function positionNodeGraphVisibilityMenuNearButton(menu = document.getElementById("nodeVisibilityMenu")) {
-  const button = document.getElementById("nodeVisibilityMenuButton");
-  if (!menu) {
-    return;
-  }
-  if (!button) {
-    const menuRect = menu.getBoundingClientRect();
-    positionNodeGraphVisibilityMenu(
-      menu,
-      (window.innerWidth - menuRect.width) * 0.5,
-      (window.innerHeight - menuRect.height) * 0.25,
-    );
-    return;
-  }
-  const rect = button.getBoundingClientRect();
-  menu.hidden = false;
-  const menuRect = menu.getBoundingClientRect();
-  positionNodeGraphVisibilityMenu(menu, rect.right - menuRect.width, rect.bottom + 8);
-}
-
-function positionNodeGraphVisibilityMenu(menu, x, y) {
-  if (!menu) {
-    return;
-  }
-  menu.style.position = "fixed";
-  const rect = menu.getBoundingClientRect();
-  const { left, top } = nodeGraphFloatingWindowPosition(menu, x, y, {
-    visibleWidth: rect.width,
-    visibleHeight: rect.height,
-  });
-  setNodeGraphFloatingWindowViewportPosition(menu, left, top);
 }
 
 function nodeGraphVisibilityMenuMinimumSize(menu = document.getElementById("nodeVisibilityMenu")) {
@@ -1057,6 +1252,10 @@ function applyNodeGraphTooltipWindowSize(size = nodeGraphMvp.tooltipWindowSize) 
     return normalized;
   }
   applyNodeGraphFloatingWindowSizeVars(win, "node-tooltip-window", nodeTooltipWindowDefaultSize, normalized);
+  // Window size is the box the tip text fills — re-fit after every resize.
+  if (typeof fitNodeInteractionHelpText === "function") {
+    fitNodeInteractionHelpText(document.getElementById("nodeInteractionHelp"));
+  }
   return normalized;
 }
 
@@ -1148,16 +1347,12 @@ function endNodeGraphTooltipWindowDrag(event) {
   });
 }
 
-// ── Tips: SHOWN is one question, WHERE is another ─────────────────────────
-// Two independent toggles sharing one row in the visibility menu.
-//
-//   Hide/Show Tooltips - are the tips displayed at all
-//   Embed Tips         - floating window, or in-flow band beside the
-//                        CPU/RAM/GPU guide
+// ── Tips: one 3-state control ─────────────────────────────────────────────
+// Visibility menu button (and T) cycles:
+//   embedded → float → off → embedded → …
 //
 // Shown-ness has no state variable of its own; it is read off whichever host
-// is currently in use, so there is nothing to keep in sync and no way for the
-// button label to disagree with what is on screen.
+// is currently in use, so the button label cannot disagree with the screen.
 function nodeGraphTooltipsShown() {
   if (nodeGraphMvp.tooltipEmbedded === true) {
     return document.getElementById("nodeInteractionHelpEmbedSlot")?.hidden === false;
@@ -1165,28 +1360,151 @@ function nodeGraphTooltipsShown() {
   return document.getElementById("nodeTooltipWindow")?.hidden === false;
 }
 
+/** @returns {"embedded"|"float"|"off"} */
+function nodeGraphTooltipMode() {
+  if (!nodeGraphTooltipsShown()) {
+    return "off";
+  }
+  return nodeGraphMvp.tooltipEmbedded === true ? "embedded" : "float";
+}
+
 function renderNodeGraphTooltipWindowToggle() {
   const button = document.getElementById("nodeTooltipToggleButton");
-  const visible = nodeGraphTooltipsShown();
+  const mode = nodeGraphTooltipMode();
   if (button) {
-    const label = button.querySelector(".scene-context-window-button-label");
+    const mark = mode === "embedded"
+      ? nodeGraphVisibilityOnMarks.tooltipsEmbedded
+      : mode === "float"
+        ? nodeGraphVisibilityOnMarks.tooltipsFloating
+        : nodeGraphVisibilityOnMarks.tooltipsOff;
+    const name = mode === "embedded"
+      ? "Tooltips embedded"
+      : mode === "float"
+        ? "Tooltips floating"
+        : "Tooltips off";
+    const text = `${mark} ${name}`;
+    const label =
+      button.querySelector(".node-tooltip-mode-label") ||
+      button.querySelector(".scene-context-window-button-label");
     if (label) {
-      label.textContent = visible ? "Hide Tooltips" : "Show Tooltips";
+      label.textContent = text;
+    } else if (!button.querySelector("kbd") && button.childElementCount === 0) {
+      button.textContent = text;
+    } else {
+      let span = button.querySelector(":scope > span:not(kbd)");
+      if (!span) {
+        span = document.createElement("span");
+        span.className = "node-tooltip-mode-label";
+        button.insertBefore(span, button.firstChild);
+      }
+      span.textContent = text;
     }
-    button.setAttribute("aria-pressed", visible ? "true" : "false");
+    button.dataset.tooltipMode = mode;
+    button.setAttribute("aria-pressed", mode === "off" ? "false" : "true");
+    button.setAttribute("aria-label", name);
     button.removeAttribute("title");
   }
-  const embedButton = document.getElementById("nodeTooltipEmbedToggleButton");
-  if (embedButton) {
-    const embedded = nodeGraphMvp.tooltipEmbedded === true;
-    const label = embedButton.querySelector(".scene-context-window-button-label");
-    if (label) {
-      label.textContent = embedded ? "Float Tips" : "Embed Tips";
-    }
-    embedButton.setAttribute("aria-pressed", embedded ? "true" : "false");
-    embedButton.removeAttribute("title");
-  }
   renderNodeGraphVisibilityMenuButton();
+}
+
+// Embedded tips height (in-flow band above modular workspace). User-draggable;
+// text is fitted to the box so hover tips do not reflow the graph.
+const nodeTooltipEmbedHeightDefault = 46;
+const nodeTooltipEmbedHeightMin = 32;
+const nodeTooltipEmbedHeightMax = 320;
+
+function normalizeNodeGraphTooltipEmbedHeight(value) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) {
+    return nodeTooltipEmbedHeightDefault;
+  }
+  return Math.max(nodeTooltipEmbedHeightMin, Math.min(nodeTooltipEmbedHeightMax, n));
+}
+
+function applyNodeGraphTooltipEmbedHeight(height = nodeGraphMvp.tooltipEmbedHeight) {
+  const px = normalizeNodeGraphTooltipEmbedHeight(
+    height ?? nodeGraphMvp.tooltipEmbedHeight ?? nodeTooltipEmbedHeightDefault,
+  );
+  const prev = Number(nodeGraphMvp.tooltipEmbedHeight);
+  nodeGraphMvp.tooltipEmbedHeight = px;
+  const panel = document.getElementById("nodeWiringPanel");
+  const help = document.getElementById("nodeInteractionHelp");
+  const css = `${px}px`;
+  panel?.style?.setProperty("--node-tooltip-embed-height", css);
+  if (help?.classList.contains("is-embedded")) {
+    help.style.setProperty("--node-tooltip-embed-height", css);
+  }
+  // Height changes reflow the modular workspace under the tips band.
+  if (prev !== px && typeof notifyNodeGraphChromeLayoutChanged === "function") {
+    notifyNodeGraphChromeLayoutChanged();
+  }
+  return px;
+}
+
+function beginNodeGraphTooltipEmbedResize(event) {
+  if (event.button != null && event.button !== 0) {
+    return;
+  }
+  const handle = document.getElementById("nodeInteractionHelpEmbedResize");
+  const help = document.getElementById("nodeInteractionHelp");
+  if (!handle || !help?.classList.contains("is-embedded")) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  handle.classList.add("dragging");
+  nodeGraphMvp.tooltipEmbedResizing = {
+    handle,
+    startY: event.clientY,
+    startHeight: normalizeNodeGraphTooltipEmbedHeight(
+      nodeGraphMvp.tooltipEmbedHeight ?? nodeTooltipEmbedHeightDefault,
+    ),
+    pointerId: event.pointerId,
+  };
+  try {
+    handle.setPointerCapture?.(event.pointerId);
+  } catch {
+    // ignore
+  }
+}
+
+function dragNodeGraphTooltipEmbedResize(event) {
+  const state = nodeGraphMvp.tooltipEmbedResizing;
+  if (!state) {
+    return;
+  }
+  // Drag down = taller tips (toward modular workspace); drag up = shorter.
+  const delta = event.clientY - state.startY;
+  const next = applyNodeGraphTooltipEmbedHeight(state.startHeight + delta);
+  const help = document.getElementById("nodeInteractionHelp");
+  if (typeof fitNodeInteractionHelpText === "function") {
+    fitNodeInteractionHelpText(help);
+  }
+  return next;
+}
+
+function endNodeGraphTooltipEmbedResize(event) {
+  const state = nodeGraphMvp.tooltipEmbedResizing;
+  if (!state) {
+    return;
+  }
+  if (event?.pointerId != null) {
+    try {
+      state.handle?.releasePointerCapture?.(event.pointerId);
+    } catch {
+      // ignore
+    }
+  }
+  state.handle?.classList.remove("dragging");
+  nodeGraphMvp.tooltipEmbedResizing = null;
+  applyNodeGraphTooltipEmbedHeight();
+  const help = document.getElementById("nodeInteractionHelp");
+  if (typeof fitNodeInteractionHelpText === "function") {
+    fitNodeInteractionHelpText(help);
+  }
+  if (typeof saveNodeGraphWorkingPatchToUserSettings === "function") {
+    saveNodeGraphWorkingPatchToUserSettings({ immediateFile: false });
+  }
 }
 
 // Physically relocates #nodeInteractionHelp between the floating window and
@@ -1196,6 +1514,7 @@ function applyNodeGraphTooltipEmbed({ shown } = {}) {
   const help = document.getElementById("nodeInteractionHelp");
   const slot = document.getElementById("nodeInteractionHelpEmbedSlot");
   const win = document.getElementById("nodeTooltipWindow");
+  const resize = document.getElementById("nodeInteractionHelpEmbedResize");
   if (!help || !slot || !win) {
     return;
   }
@@ -1203,12 +1522,24 @@ function applyNodeGraphTooltipEmbed({ shown } = {}) {
   const wantShown = shown === undefined ? nodeGraphTooltipsShown() : Boolean(shown);
   help.classList.toggle("is-embedded", embedded);
   if (embedded) {
+    // Help first, then resize grip (stay under the tip, above modular view).
     if (help.parentElement !== slot) {
-      slot.append(help);
+      if (resize && resize.parentElement === slot) {
+        slot.insertBefore(help, resize);
+      } else {
+        slot.append(help);
+      }
+    }
+    if (resize && resize.parentElement !== slot) {
+      slot.append(resize);
     }
     // The window is empty in this mode - there is nothing left in it to show.
     win.hidden = true;
     slot.hidden = !wantShown;
+    if (resize) {
+      resize.hidden = !wantShown;
+    }
+    applyNodeGraphTooltipEmbedHeight();
   } else {
     if (help.parentElement !== win) {
       // Before the resize handle, so the handle stays the last child and keeps
@@ -1216,8 +1547,14 @@ function applyNodeGraphTooltipEmbed({ shown } = {}) {
       win.insertBefore(help, document.getElementById("nodeTooltipWindowResizeHandle"));
     }
     slot.hidden = true;
+    if (resize) {
+      resize.hidden = true;
+    }
     if (wantShown && win.hidden) {
       openNodeGraphTooltipWindow();
+      if (typeof notifyNodeGraphChromeLayoutChanged === "function") {
+        notifyNodeGraphChromeLayoutChanged();
+      }
       return;
     }
     if (!wantShown) {
@@ -1230,16 +1567,57 @@ function applyNodeGraphTooltipEmbed({ shown } = {}) {
     fitNodeInteractionHelpText(help);
   }
   renderNodeGraphTooltipWindowToggle();
+  // Embedded tips take in-flow space above the workspace; wire SVG viewBox must
+  // remeasure after that reflow or cables stretch off their jacks.
+  if (typeof notifyNodeGraphChromeLayoutChanged === "function") {
+    notifyNodeGraphChromeLayoutChanged();
+  }
 }
 
 function toggleNodeGraphTooltipEmbed() {
+  // Kept for callers that only want to flip host without cycling off.
   const wasShown = nodeGraphTooltipsShown();
   nodeGraphMvp.tooltipEmbedded = !(nodeGraphMvp.tooltipEmbedded === true);
   applyNodeGraphTooltipEmbed({ shown: wasShown });
   setNodeInteractionHelp(
     nodeGraphMvp.tooltipEmbedded
-      ? "Tips embedded beside the resource meters."
-      : "Tips floating in their own window.",
+      ? "Tooltips embedded beside the resource meters."
+      : "Tooltips floating in their own window.",
+  );
+}
+
+function hideNodeGraphTooltips() {
+  if (nodeGraphMvp.tooltipEmbedded === true) {
+    const slot = document.getElementById("nodeInteractionHelpEmbedSlot");
+    const resize = document.getElementById("nodeInteractionHelpEmbedResize");
+    if (slot) {
+      slot.hidden = true;
+    }
+    if (resize) {
+      resize.hidden = true;
+    }
+    renderNodeGraphTooltipWindowToggle();
+    if (typeof notifyNodeGraphChromeLayoutChanged === "function") {
+      notifyNodeGraphChromeLayoutChanged();
+    }
+    return;
+  }
+  closeNodeGraphTooltipWindow();
+}
+
+/** Apply one of the three tips modes: embedded | float | off. */
+function setNodeGraphTooltipMode(mode) {
+  const next = mode === "embedded" || mode === "float" || mode === "off" ? mode : "off";
+  if (next === "off") {
+    hideNodeGraphTooltips();
+    return;
+  }
+  nodeGraphMvp.tooltipEmbedded = next === "embedded";
+  applyNodeGraphTooltipEmbed({ shown: true });
+  setNodeInteractionHelp(
+    next === "embedded"
+      ? "Tooltips embedded beside the resource meters."
+      : "Tooltips floating in their own window.",
   );
 }
 
@@ -1272,23 +1650,12 @@ function openNodeGraphTooltipWindow() {
   renderNodeGraphTooltipWindowToggle();
 }
 
-// Bound to both the menu button and the T key. In embedded mode there is no
-// window to open, so this shows/hides the in-flow slot instead - same button,
-// same meaning, different host.
+// Bound to the visibility menu button and the T key.
+// Cycles: embedded → float → off → embedded → …
 function toggleNodeGraphTooltipWindow() {
-  if (nodeGraphMvp.tooltipEmbedded === true) {
-    const slot = document.getElementById("nodeInteractionHelpEmbedSlot");
-    if (slot) {
-      slot.hidden = !slot.hidden;
-    }
-    renderNodeGraphTooltipWindowToggle();
-    return;
-  }
-  if (document.getElementById("nodeTooltipWindow")?.hidden === false) {
-    closeNodeGraphTooltipWindow();
-    return;
-  }
-  openNodeGraphTooltipWindow();
+  const mode = nodeGraphTooltipMode();
+  const next = mode === "embedded" ? "float" : mode === "float" ? "off" : "embedded";
+  setNodeGraphTooltipMode(next);
 }
 
 function renderNodeGraphVideoViewToggle() {
@@ -1473,7 +1840,8 @@ function setNodeGraphMacroKnobLabelPosition(value) {
 }
 
 function normalizeNodeGraphMacroKnobValuePosition(value) {
-  return nodeGraphMacroKnobPositionValues.includes(value) ? value : "bottom";
+  // Default mid — value sits in the center of the circle; title stays above the dial.
+  return nodeGraphMacroKnobPositionValues.includes(value) ? value : "mid";
 }
 
 function applyNodeGraphMacroKnobValuePosition() {
@@ -1495,6 +1863,9 @@ function ensureNodeGraphMacroControls() {
 
 function renderNodeGraphMacroControls() {
   ensureNodeGraphMacroControls();
+  const face = typeof nodeGraphMacroControlsFaceSettings === "function"
+    ? nodeGraphMacroControlsFaceSettings()
+    : null;
   document.querySelectorAll("[data-macro-index]").forEach((knob) => {
     const index = Math.max(0, Math.min(7, Math.round(Number(knob.dataset.macroIndex) || 0)));
     const value = normalizeNodeGraphMacroValue(nodeGraphMvp.macroControls[index]);
@@ -1502,14 +1873,16 @@ function renderNodeGraphMacroControls() {
     knob.style.setProperty("--macro-value", String(value));
     knob.style.setProperty("--macro-angle", `${angle}deg`);
     knob.setAttribute("aria-valuenow", value.toFixed(3));
+    const name = face?.labels?.[index] || `M${index + 1}`;
+    const nameEl = knob.querySelector(":scope > span");
+    if (nameEl) {
+      nameEl.textContent = name;
+    }
+    knob.setAttribute("aria-label", name);
     const readout = knob.querySelector("[data-macro-value]");
     if (readout) {
       readout.textContent = value.toFixed(2);
     }
-  });
-  document.querySelectorAll("[data-macro-controls-status]").forEach((status) => {
-    const activeCount = nodeGraphMvp.macroControls.filter((value) => value > 0).length;
-    status.textContent = activeCount ? `${activeCount} active` : "8 macros ready";
   });
 }
 
@@ -1530,8 +1903,16 @@ function setNodeGraphMacroControl(index, value) {
 // themselves don't apply here, but the modifier detection/math is shared
 // via nodeGraphNumericDragMultiplier (node-graph-slider-values.js) and
 // reproduced 1:1 for the rest.
+/** Dial circle rect (not the full button — label sits above the circle). */
+function nodeGraphMacroKnobDialElement(knob) {
+  return knob?.querySelector?.("[data-macro-knob-arc], .node-macro-knob-arc, .node-macro-knob-dial i, :scope > i")
+    || knob?.querySelector?.("[data-macro-knob-dial], .node-macro-knob-dial")
+    || knob;
+}
+
 function nodeGraphMacroKnobValueAtPointer(knob, event) {
-  const rect = knob.getBoundingClientRect();
+  // Angle is relative to the arc circle center, not the label+dial bounding box.
+  const rect = nodeGraphMacroKnobDialElement(knob).getBoundingClientRect();
   const centerX = rect.left + rect.width / 2;
   const centerY = rect.top + rect.height / 2;
   const dx = event.clientX - centerX;
@@ -1576,9 +1957,11 @@ function dragNodeGraphMacroControl(event) {
     return;
   }
   event.preventDefault();
-  const horizontalDelta = event.clientX - drag.startX;
-  const verticalDelta = drag.startY - event.clientY;
-  if (Math.abs(horizontalDelta) > 1 || Math.abs(verticalDelta) > 1) {
+  if (
+    typeof nodeGraphPointerDragExceededMoveThreshold === "function"
+      ? nodeGraphPointerDragExceededMoveThreshold(drag.startX, drag.startY, event.clientX, event.clientY, 1)
+      : (Math.abs(event.clientX - drag.startX) > 1 || Math.abs(drag.startY - event.clientY) > 1)
+  ) {
     drag.moved = true;
   }
   if (event.altKey && !(event.shiftKey && (event.ctrlKey || event.metaKey))) {
@@ -1601,7 +1984,9 @@ function dragNodeGraphMacroControl(event) {
     drag.fineScale = currentFineScale;
     return;
   }
-  const delta = ((horizontalDelta + verticalDelta) / 240) * drag.fineScale;
+  const delta = typeof nodeGraphPointerDragTravelDelta === "function"
+    ? nodeGraphPointerDragTravelDelta(drag.startX, drag.startY, event.clientX, event.clientY, 240, drag.fineScale)
+    : (((event.clientX - drag.startX) + (drag.startY - event.clientY)) / 240) * drag.fineScale;
   setNodeGraphMacroControl(drag.index, drag.startValue + delta);
 }
 
@@ -3029,9 +3414,16 @@ function toggleNodeGraphModuleInterfaceControlsVisibility() {
 }
 
 function toggleNodeGraphKeyboardDebugVisibility() {
+  // Session-only: Visibility → Debug toggles debug chrome for this visit.
+  // Not written to UI settings; refresh / Clear Startup / Save always start hidden
+  // (debug and release builds alike).
   nodeGraphMvp.keyboardDebugInfoVisible = !(nodeGraphMvp.keyboardDebugInfoVisible === true);
   renderNodeGraphKeyboardDebugToggle();
-  setNodeInteractionHelp(nodeGraphMvp.keyboardDebugInfoVisible ? "Keyboard debug info shown." : "Keyboard debug info hidden.");
+  setNodeInteractionHelp(
+    nodeGraphMvp.keyboardDebugInfoVisible
+      ? "Debug chrome shown (session only — not saved)."
+      : "Debug chrome hidden.",
+  );
 }
 
 function toggleNodeGraphSliderAmount() {
@@ -3124,15 +3516,18 @@ function setNodeGraphViewMode(mode) {
   if (typeof syncNodeGraphRegisteredFloatingWindowSurfaces === "function") {
     syncNodeGraphRegisteredFloatingWindowSurfaces();
   }
-  if (mode !== "script") {
+  // Legacy "script" view removed — map to settings so old call sites stay safe.
+  if (mode === "script") {
+    mode = "settings";
+  }
+  if (typeof flushNodeGraphScriptCommit === "function") {
     flushNodeGraphScriptCommit();
   }
   const settingsMode = mode === "settings";
-  const scriptMode = mode === "script";
   const codeMode = mode === "code";
   const mappingMode = mode === "mapping";
   const modularOnlyMode = mode === "modular-only";
-  const modularMode = modularOnlyMode || (!settingsMode && !scriptMode && !codeMode && !mappingMode);
+  const modularMode = modularOnlyMode || (!settingsMode && !codeMode && !mappingMode);
   const workspaceMode = modularMode;
   const wiringPanel = document.getElementById("nodeWiringPanel");
   wiringPanel?.classList.toggle("modular-only-view", modularOnlyMode);
@@ -3141,32 +3536,36 @@ function setNodeGraphViewMode(mode) {
   document
     .getElementById("nodeModularOnlyBackButton")
     .setAttribute("aria-label", "Return to full modular view");
-  document.getElementById("nodeScriptView").hidden = !scriptMode;
+  const scriptView = document.getElementById("nodeScriptView");
+  if (scriptView) {
+    scriptView.hidden = true;
+  }
   document.getElementById("nodeCodeScreenView").hidden = !codeMode;
   document.getElementById("nodeMappingView").hidden = !mappingMode;
   document.getElementById("nodeSettingsView").hidden = !settingsMode;
   renderNodeGraphKeyboardControllerModules();
   renderNodeGraphMacroControls();
   renderNodeGraphVideoViewToggle();
-  document.getElementById("nodeSettingsViewButton").classList.toggle("active", settingsMode);
-  document.getElementById("nodeModularOnlyViewButton").classList.toggle("active", modularOnlyMode);
+  const settingsBtn = document.getElementById("nodeSettingsViewButton");
+  settingsBtn?.classList.toggle("active", settingsMode);
+  settingsBtn?.setAttribute("aria-pressed", String(settingsMode));
+  document.getElementById("nodeModularOnlyViewButton")?.classList.toggle("active", modularOnlyMode);
   document.getElementById("nodeSceneToggleModularOnlyView")?.classList.toggle("active", modularOnlyMode);
   document.getElementById("nodeMappingViewButton")?.classList.toggle("active", mappingMode);
-  document.getElementById("nodeCodeScreenViewButton").classList.toggle("active", codeMode);
-  document.getElementById("nodeSettingsScriptViewButton").classList.toggle("active", scriptMode);
-  document.getElementById("nodeSettingsViewButton").setAttribute("aria-pressed", String(settingsMode));
-  document.getElementById("nodeModularOnlyViewButton").setAttribute("aria-pressed", String(modularOnlyMode));
+  document.getElementById("nodeCodeScreenViewButton")?.classList.toggle("active", codeMode);
+  document.getElementById("nodeModularOnlyViewButton")?.setAttribute("aria-pressed", String(modularOnlyMode));
   document.getElementById("nodeSceneToggleModularOnlyView")?.setAttribute("aria-pressed", String(modularOnlyMode));
   document.getElementById("nodeMappingViewButton")?.setAttribute("aria-pressed", String(mappingMode));
-  document.getElementById("nodeCodeScreenViewButton").setAttribute("aria-pressed", String(codeMode));
-  document.getElementById("nodeSettingsScriptViewButton").setAttribute("aria-pressed", String(scriptMode));
-  if (scriptMode) {
-    syncNodeGraphScriptView();
-  } else if (codeMode) {
+  document.getElementById("nodeCodeScreenViewButton")?.setAttribute("aria-pressed", String(codeMode));
+  // Header/footer chrome always stay put; pin footer on content modes.
+  document.getElementById("nodeWiringPanel")?.classList.toggle("content-view-mode", settingsMode || codeMode || mappingMode);
+  if (codeMode) {
     renderNodeGraphCodeScreen();
   } else if (settingsMode) {
     syncNodeGraphSettingsView();
-    scheduleNodeSettingsHeaderTextFit();
+    if (typeof scheduleNodeSettingsHeaderTextFit === "function") {
+      scheduleNodeSettingsHeaderTextFit();
+    }
   } else if (mappingMode) {
     renderNodeGraphMappingView();
   } else {

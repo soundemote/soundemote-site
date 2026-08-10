@@ -107,7 +107,15 @@ function showNodeGraphModule(node, point = null, options = {}) {
     gy: gridPoint.gy,
     ...(defaultAlias ? { alias: defaultAlias } : {}),
   }));
-  commitNodeGraphPatch(patch, { status: options.status || "module added" });
+  commitNodeGraphPatch(patch, {
+    status: options.status || "module added",
+    // Ghost drag-from-shop: keep pointer responsive (no history/autosave/live plan
+    // until drop). Heavy modules like multi-out crossovers were freezing on grab.
+    record: options.record,
+    autosaveWorkingPatch: options.autosaveWorkingPatch,
+    skipLivePlan: options.skipLivePlan,
+    deferUiPanels: options.deferUiPanels,
+  });
   return id;
 }
 
@@ -206,7 +214,14 @@ function cancelNodeGraphModulePlacement(status = "module placement cancelled") {
   );
   patch.bypassedNodes = (patch.bypassedNodes || []).filter((nodeId) => nodeId !== placement.nodeId);
   nodeGraphMvp.modulePlacement = null;
-  commitNodeGraphPatch(patch, { status });
+  // Ghost was never history/autosave/live-plan committed — keep cancel light too.
+  commitNodeGraphPatch(patch, {
+    status,
+    record: false,
+    autosaveWorkingPatch: false,
+    skipLivePlan: true,
+    deferUiPanels: true,
+  });
   clearNodeGraphSelection();
   return true;
 }
@@ -248,7 +263,13 @@ function beginNodeGraphModulePlacement(type, point = null) {
   }
 
   const cursorPoint = point || nodeGraphGridToPixel(defaultNodeGraphModuleGridPoint(type));
-  const id = showNodeGraphModule(type, cursorPoint, { status: "module ghost: release in modular view" });
+  const id = showNodeGraphModule(type, cursorPoint, {
+    status: "module ghost: release in modular view",
+    record: false,
+    autosaveWorkingPatch: false,
+    skipLivePlan: true,
+    deferUiPanels: true,
+  });
   if (!id) {
     return "";
   }
@@ -311,6 +332,7 @@ function finishNodeGraphModulePlacementAtCurrentPosition(status = "module placed
     patchNode.gy = gridPoint.gy;
   }
   nodeGraphMvp.modulePlacement = null;
+  // Full commit on drop: history + autosave + live plan (ghost create skipped these).
   commitNodeGraphPatch(patch, { status });
   clearNodeGraphSelection();
   return true;
@@ -640,6 +662,13 @@ function copyNodeGraphModule(sourceNode) {
     ...(sourceNode.type === "image"
       ? { layout: normalizeNodeGraphImageLayout(sourceNode.layout) }
       : {}),
+    ...(sourceNode.type === "knob" && typeof normalizeNodeGraphKnobFace === "function"
+      ? {
+        knobFace: typeof nodeGraphKnobFaceToPatch === "function"
+          ? nodeGraphKnobFaceToPatch(sourceNode.knobFace)
+          : normalizeNodeGraphKnobFace(sourceNode.knobFace),
+      }
+      : {}),
     ...(sourceNode.type === "led"
       ? { led: normalizeNodeGraphLedLayout(sourceNode.led) }
       : {}),
@@ -672,10 +701,10 @@ function copyNodeGraphModuleFromContext() {
 }
 
 // The subset of a node's fields that count as "settings" for the Copy
-// Settings / Paste Settings / Set as Default actions -- everything about a
+// Settings / Paste Settings / Save to Default actions -- everything about a
 // module except its grid position/id/type. Deliberately excludes
-// `moduleGroup` (a full nested sub-patch) and `clap` (a plugin instance
-// binding) since those aren't meaningfully "default-able" per module type.
+// `moduleGroup` (a full nested sub-patch) since that isn't meaningfully
+// "default-able" per module type.
 const nodeGraphModuleSettingsFields = Object.freeze([
   "alias",
   "widthGu",
@@ -685,6 +714,7 @@ const nodeGraphModuleSettingsFields = Object.freeze([
   "graph",
   "codeblock",
   "customDisplay",
+  "knobFace",
   "canvasScript",
   "screenSpaceShader",
   "scopeShader",
@@ -823,30 +853,39 @@ function adjustNodeGraphModuleWidthFromContext(delta) {
 }
 
 function adjustNodeGraphModuleDisplayHeightFromContext(delta) {
-  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
   // Resize applies to any display AREA -- oscilloscope or custom UI (e.g.
-  // xyPad's pad); the show/hide toggle below stays oscilloscope-only.
-  if (!sourceNode || !nodeGraphPatchNodeHasResizableDisplayArea(sourceNode)) {
+  // xyPad's pad); the show/hide toggle stays oscilloscope-only.
+  const targetNodeIds = nodeGraphModuleActionTargetNodeIds();
+  if (!targetNodeIds.length) {
     return;
   }
 
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
-  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
-  if (!targetNode || !nodeGraphPatchNodeHasResizableDisplayArea(targetNode)) {
-    return;
+  let changedCount = 0;
+  for (const targetNode of patch.nodes) {
+    if (!targetNodeIds.includes(targetNode.id)) {
+      continue;
+    }
+    if (!nodeGraphPatchNodeHasResizableDisplayArea(targetNode)) {
+      continue;
+    }
+    const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
+    const nextOffsetGu = normalizeNodeGraphModuleDisplayHeightOffsetUnits(
+      targetNode.type,
+      ui.displayHeightOffsetGu + delta * nodeGraphModuleDisplayHeightLimits.stepGu,
+    );
+    if (nextOffsetGu === ui.displayHeightOffsetGu) {
+      continue;
+    }
+    ui.displayHeightOffsetGu = nextOffsetGu;
+    applyNodeGraphPatchNodeUi(targetNode, ui);
+    changedCount += 1;
   }
-  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
-  const nextOffsetGu = normalizeNodeGraphModuleDisplayHeightOffsetUnits(
-    targetNode.type,
-    ui.displayHeightOffsetGu + delta * nodeGraphModuleDisplayHeightLimits.stepGu,
-  );
-  if (nextOffsetGu === ui.displayHeightOffsetGu) {
-    configureNodeSceneContextMenu("module");
-    return;
+  if (changedCount) {
+    commitNodeGraphPatch(patch, {
+      status: changedCount > 1 ? "module display heights changed" : "module display height changed",
+    });
   }
-  ui.displayHeightOffsetGu = nextOffsetGu;
-  applyNodeGraphPatchNodeUi(targetNode, ui);
-  commitNodeGraphPatch(patch, { status: "module display height changed" });
   configureNodeSceneContextMenu("module");
 }
 
@@ -878,34 +917,150 @@ function adjustNodeGraphTextBoxTextSizeFromContext(delta) {
 }
 
 function adjustNodeGraphModuleHeightFromContext(delta) {
-  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  const sourceCapability = nodeGraphModuleSizingCapabilities(sourceNode?.type).moduleHeight;
-  if (!sourceNode || !["custom", "textBox"].includes(sourceCapability)) {
+  const targetNodeIds = nodeGraphModuleActionTargetNodeIds();
+  if (!targetNodeIds.length) {
     return;
   }
 
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
-  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
-  const targetCapability = nodeGraphModuleSizingCapabilities(targetNode?.type).moduleHeight;
-  if (!targetNode || !["custom", "textBox"].includes(targetCapability)) {
-    return;
+  let changedCount = 0;
+  for (const targetNode of patch.nodes) {
+    if (!targetNodeIds.includes(targetNode.id)) {
+      continue;
+    }
+    const targetCapability = nodeGraphModuleSizingCapabilities(targetNode?.type).moduleHeight;
+    if (!["custom", "textBox"].includes(targetCapability)) {
+      continue;
+    }
+    const currentHeightGu = nodeGraphPatchNodeGridHeightUnits(targetNode);
+    const nextHeightGu = targetCapability === "textBox"
+      ? normalizeNodeGraphTextBoxHeightUnits(currentHeightGu + delta)
+      : normalizeNodeGraphModuleHeightUnits(targetNode.type, currentHeightGu + delta, targetNode.ui);
+    if (nextHeightGu === currentHeightGu) {
+      continue;
+    }
+    const defaultHeightGu = nodeGraphModuleGridHeightUnitsForUi(targetNode.type, targetNode.ui);
+    if (nextHeightGu === defaultHeightGu) {
+      delete targetNode.heightGu;
+    } else {
+      targetNode.heightGu = nextHeightGu;
+    }
+    changedCount += 1;
   }
-  const currentHeightGu = nodeGraphPatchNodeGridHeightUnits(targetNode);
-  const nextHeightGu = targetCapability === "textBox"
-    ? normalizeNodeGraphTextBoxHeightUnits(currentHeightGu + delta)
-    : normalizeNodeGraphModuleHeightUnits(targetNode.type, currentHeightGu + delta, targetNode.ui);
-  if (nextHeightGu === currentHeightGu) {
-    configureNodeSceneContextMenu("module");
-    return;
+  if (changedCount) {
+    commitNodeGraphPatch(patch, {
+      status: changedCount > 1 ? "module heights changed" : "module height changed",
+    });
   }
-  const defaultHeightGu = nodeGraphModuleGridHeightUnitsForUi(targetNode.type, targetNode.ui);
-  if (nextHeightGu === defaultHeightGu) {
-    delete targetNode.heightGu;
-  } else {
-    targetNode.heightGu = nextHeightGu;
-  }
-  commitNodeGraphPatch(patch, { status: "module height changed" });
   configureNodeSceneContextMenu("module");
+}
+
+/**
+ * Header titles are readOnly until an explicit rename session (triple-click).
+ * Multi-select may rename several modules at once; selection changes must not
+ * silently retarget a focused alias/title field onto a non-editing module.
+ */
+function nodeGraphModuleTitleInputIsEditing(input) {
+  return Boolean(input?.dataset?.titleEditing === "1");
+}
+
+function nodeGraphModuleTitleInputsEditing() {
+  return [...document.querySelectorAll("input.node-header-title[data-title-editing='1']")];
+}
+
+function nodeGraphModuleTitleInputForNodeId(nodeId) {
+  const id = String(nodeId || "");
+  if (!id) {
+    return null;
+  }
+  return document.querySelector(
+    `.dsp-node[data-node="${CSS.escape(id)}"] input.node-header-title`,
+  );
+}
+
+/** End any open header-title rename sessions (commit or revert). */
+function endAllNodeGraphModuleTitleEdits({ commit = true, revert = false } = {}) {
+  const editing = nodeGraphModuleTitleInputsEditing();
+  if (!editing.length) {
+    return;
+  }
+  const primary = editing.find((el) => document.activeElement === el) || editing[0];
+  const value = primary?.value;
+  const ids = editing.map((el) => el.dataset.node).filter(Boolean);
+  for (const input of editing) {
+    if (revert && input.dataset.node) {
+      const patchNode = typeof nodeGraphPatchNode === "function"
+        ? nodeGraphPatchNode(input.dataset.node)
+        : null;
+      input.value = typeof nodeGraphPatchNodeTitle === "function"
+        ? nodeGraphPatchNodeTitle(patchNode || { id: input.dataset.node })
+        : input.value;
+    }
+    input.readOnly = true;
+    input.tabIndex = -1;
+    delete input.dataset.titleEditing;
+  }
+  if (commit && !revert && ids.length) {
+    commitNodeGraphModuleTitleFromHeaderInput(ids[0], value, { multiIds: ids });
+  }
+}
+
+/**
+ * Begin rename on primaryInput. If that module is multi-selected, open a
+ * rename session on every selected module (same alias applied on commit).
+ */
+function startNodeGraphModuleTitleEdit(primaryInput) {
+  if (!(primaryInput instanceof HTMLInputElement)) {
+    return;
+  }
+  const primaryId = String(primaryInput.dataset.node || "");
+  if (!primaryId) {
+    return;
+  }
+  let ids = [primaryId];
+  if (typeof nodeGraphSelectedNodeIds === "function") {
+    const selected = [...nodeGraphSelectedNodeIds()];
+    if (selected.includes(primaryId) && selected.length > 1) {
+      ids = selected;
+    }
+  }
+  // Close any other title sessions first (commit their value).
+  const already = nodeGraphModuleTitleInputsEditing();
+  const alreadyIds = new Set(already.map((el) => el.dataset.node));
+  if (already.length && ![...alreadyIds].every((id) => ids.includes(id))) {
+    endAllNodeGraphModuleTitleEdits({ commit: true });
+  }
+  for (const id of ids) {
+    const input = id === primaryId
+      ? primaryInput
+      : nodeGraphModuleTitleInputForNodeId(id);
+    if (!(input instanceof HTMLInputElement)) {
+      continue;
+    }
+    input.readOnly = false;
+    input.tabIndex = 0;
+    input.dataset.titleEditing = "1";
+  }
+  try {
+    primaryInput.focus({ preventScroll: true });
+    primaryInput.select();
+  } catch {
+    primaryInput.focus();
+    primaryInput.select();
+  }
+}
+
+/** Sync sibling multi-edit title fields while typing. */
+function syncNodeGraphModuleTitleEditPeers(sourceInput) {
+  if (!nodeGraphModuleTitleInputIsEditing(sourceInput)) {
+    return;
+  }
+  const value = sourceInput.value;
+  for (const input of nodeGraphModuleTitleInputsEditing()) {
+    if (input !== sourceInput && input.value !== value) {
+      input.value = value;
+    }
+  }
 }
 
 // Commits an inline edit made directly in a module's header title field
@@ -914,20 +1069,43 @@ function adjustNodeGraphModuleHeightFromContext(delta) {
 // just addressed by node id instead of reading the currently-targeted
 // context-menu node, since the header input can be edited without the
 // context menu open at all.
-function commitNodeGraphModuleTitleFromHeaderInput(nodeId, value) {
-  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
-  const targetNode = patch.nodes.find((node) => node.id === nodeId);
-  if (!targetNode) {
+// multiIds: optional list for multi-select rename (one undo step).
+function commitNodeGraphModuleTitleFromHeaderInput(nodeId, value, { multiIds = null } = {}) {
+  const ids = [...new Set(
+    (Array.isArray(multiIds) && multiIds.length ? multiIds : [nodeId])
+      .map((id) => String(id || ""))
+      .filter(Boolean),
+  )];
+  if (!ids.length) {
     return;
   }
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
   const alias = normalizeNodeGraphPatchNodeAlias(value);
-  if (alias) {
-    targetNode.alias = alias;
-  } else {
-    delete targetNode.alias;
+  let changed = 0;
+  for (const id of ids) {
+    const targetNode = patch.nodes.find((node) => node.id === id);
+    if (!targetNode) {
+      continue;
+    }
+    const prev = normalizeNodeGraphPatchNodeAlias(targetNode.alias) || "";
+    const next = alias || "";
+    if (prev === next && Boolean(targetNode.alias) === Boolean(alias)) {
+      continue;
+    }
+    if (alias) {
+      targetNode.alias = alias;
+    } else {
+      delete targetNode.alias;
+    }
+    changed += 1;
+  }
+  if (!changed) {
+    return;
   }
   commitNodeGraphPatch(patch, {
-    status: alias ? "module title changed" : "module title cleared",
+    status: changed > 1
+      ? (alias ? "module titles changed" : "module titles cleared")
+      : (alias ? "module title changed" : "module title cleared"),
   });
 }
 
@@ -937,9 +1115,43 @@ function setNodeGraphModuleAliasFromContext({ record = true } = {}) {
     return;
   }
   const input = document.getElementById("nodeSceneAliasInput");
+  // Capture before any commit — applyNodeGraphPatchToDom rebuilds modules and
+  // can blur the field mid-keystroke (Backspace was the usual repro).
+  const hadFocus = Boolean(input && document.activeElement === input);
   const selectionStart = input?.selectionStart ?? null;
   const selectionEnd = input?.selectionEnd ?? selectionStart;
   const alias = normalizeNodeGraphPatchNodeAlias(input?.value);
+
+  // Live typing (input event, record:false): mutate the live patch + soft-update
+  // alias consumers (header title, Knob face) without a full commit
+  // (which rebuilds every module DOM and kicks the caret out of the field).
+  if (!record) {
+    if (alias) {
+      sourceNode.alias = alias;
+    } else {
+      delete sourceNode.alias;
+    }
+    if (nodeGraphMvp) {
+      nodeGraphMvp.patchDirtyState = "edited";
+    }
+    // Header title tracks alias live while Module Settings is open.
+    const moduleEl = document.querySelector(`.dsp-node[data-node="${CSS.escape(sourceNode.id)}"]`);
+    const headerTitle = moduleEl?.querySelector?.(".node-header-title");
+    if (headerTitle && document.activeElement !== headerTitle) {
+      const display = alias || nodeGraphDefaultNodeTitle(sourceNode.type, sourceNode.id);
+      if (headerTitle.tagName === "INPUT") {
+        headerTitle.value = display;
+      } else {
+        headerTitle.textContent = display;
+      }
+    }
+    // Knob face label tracks alias live.
+    if (sourceNode.type === "knob" && typeof renderNodeGraphKnobFace === "function") {
+      renderNodeGraphKnobFace(sourceNode.id);
+    }
+    return;
+  }
+
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
   const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
   if (!targetNode) {
@@ -954,10 +1166,16 @@ function setNodeGraphModuleAliasFromContext({ record = true } = {}) {
     record,
     status: alias ? "module alias changed" : "module alias cleared",
   });
-  if (document.activeElement === input) {
-    input.focus();
-    if (selectionStart !== null) {
-      input.setSelectionRange?.(selectionStart, selectionEnd);
+  // Restore after full rebuild (change/blur path). Use hadFocus — activeElement
+  // is often already body by the time we get here.
+  if (hadFocus && input?.isConnected) {
+    input.focus({ preventScroll: true });
+    if (selectionStart !== null && typeof input.setSelectionRange === "function") {
+      try {
+        input.setSelectionRange(selectionStart, selectionEnd ?? selectionStart);
+      } catch {
+        // setSelectionRange can throw on non-text inputs; alias is type=text.
+      }
     }
   }
 }
@@ -1046,20 +1264,28 @@ function renderNodeGraphGraphNodeList(graph, selectedIndex = selectedNodeGraphGr
     return;
   }
   const graphData = normalizeNodeGraphGraph(graph);
-  // Graph / Graph_Copy: x/y plus curve contour + shape per segment.
-  const usesPerNodeShapes = Boolean(options.usesPerNodeShapes);
+  // Step Graph: x/y + curve + shape on one row. Smooth Graph: x/y only.
+  const usesPerNodeContour = Boolean(options.usesPerNodeContour);
+  const usesPerNodeShapeSelect = Boolean(options.usesPerNodeShapeSelect);
   const activeIndex = selectedNodeGraphGraphIndex(graphData, selectedIndex);
+  const canRemove = graphData.nodes.length > 2;
   list.replaceChildren();
   const header = document.createElement("div");
   header.className = "scene-context-graph-node-row scene-context-graph-node-row-header";
-  const labels = usesPerNodeShapes ? ["node", "x", "y", "curve", "shape"] : ["node", "x", "y"];
+  const labels = usesPerNodeContour
+    ? (usesPerNodeShapeSelect
+      ? ["#", "x", "y", "curve", "shape", ""]
+      : ["#", "x", "y", "curve", ""])
+    : ["#", "x", "y", ""];
   for (const label of labels) {
     const span = document.createElement("span");
     span.textContent = label;
     header.append(span);
   }
   list.append(header);
-  list.dataset.graphListMode = usesPerNodeShapes ? "per-node" : "points";
+  list.dataset.graphListMode = usesPerNodeContour
+    ? (usesPerNodeShapeSelect ? "curve-shape" : "curve")
+    : "points";
   graphData.nodes.forEach((node, index) => {
     const row = document.createElement("div");
     row.className = "scene-context-graph-node-row";
@@ -1071,78 +1297,81 @@ function renderNodeGraphGraphNodeList(graph, selectedIndex = selectedNodeGraphGr
     label.textContent = String(index + 1);
     label.dataset.graphNodeSelect = String(index);
     label.setAttribute("aria-pressed", index === activeIndex ? "true" : "false");
+    label.title = "Select node";
     row.append(label);
     row.append(createNodeGraphGraphRowNumberInput(index, "x", node.x));
     row.append(createNodeGraphGraphRowNumberInput(index, "y", node.y));
-    if (usesPerNodeShapes) {
+    if (usesPerNodeContour) {
+      // Curve + shape sit on the same row (never a separate editor block).
       row.append(createNodeGraphGraphRowNumberInput(index, "c", node.c, {
-        min: -0.999,
-        max: 0.999,
+        min: -1,
+        max: 1,
       }));
-      row.append(createNodeGraphGraphRowShapeSelect(index, node.shape));
+      if (usesPerNodeShapeSelect) {
+        row.append(createNodeGraphGraphRowShapeSelect(index, node.shape));
+      }
     }
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "scene-context-graph-node-remove";
+    remove.textContent = "✕";
+    remove.dataset.graphNodeRemove = String(index);
+    remove.setAttribute("aria-label", `Remove graph node ${index + 1}`);
+    remove.title = canRemove ? "Remove node" : "Need at least 2 nodes";
+    remove.disabled = !canRemove;
+    row.append(remove);
     list.append(row);
   });
+  // [+] square under the last node — only add affordance.
+  const addRow = document.createElement("div");
+  addRow.className = "scene-context-graph-node-add-row";
+  const addButton = document.createElement("button");
+  addButton.type = "button";
+  addButton.id = "nodeSceneGraphAddNode";
+  addButton.className = "scene-context-graph-node-add";
+  addButton.textContent = "+";
+  addButton.setAttribute("aria-label", "Add graph node");
+  addButton.title = "Add node";
+  addRow.append(addButton);
+  list.append(addRow);
 }
 
-function syncNodeGraphGraphControls(graph, selectedIndex = selectedNodeGraphGraphIndex(graph)) {
+function syncNodeGraphGraphControls(graph, selectedIndex = selectedNodeGraphGraphIndex(graph), options = {}) {
   const graphData = normalizeNodeGraphGraph(graph);
   const index = selectedNodeGraphGraphIndex(graphData, selectedIndex);
-  const nodeId = nodeGraphModuleActionTargetNodeId();
-  const graphNodeType = nodeGraphPatchNode(nodeId)?.type || "";
-  const usesPerNodeShapes = nodeGraphGraphUsesPerNodeShapes(graphNodeType);
-  if (nodeGraphModuleIsGraphType(nodeGraphPatchNode(nodeId)?.type)) {
+  // Prefer an explicit node id (drag / caller). Falling back to the module
+  // actions target is fine for panel edits, but must never paint face A with
+  // graph data meant for face B.
+  const nodeId = String(options.nodeId || nodeGraphModuleActionTargetNodeId() || "").trim();
+  const patchNode = nodeGraphPatchNode(nodeId);
+  const graphNodeType = patchNode?.type || "";
+  const usesPerNodeContour = typeof nodeGraphGraphUsesPerNodeContour === "function"
+    ? nodeGraphGraphUsesPerNodeContour(graphNodeType)
+    : nodeGraphGraphUsesPerNodeShapes(graphNodeType);
+  const usesPerNodeShapeSelect = typeof nodeGraphGraphUsesPerNodeShapeSelect === "function"
+    ? nodeGraphGraphUsesPerNodeShapeSelect(graphNodeType)
+    : false;
+  const paintFace = options.face !== false;
+  if (nodeGraphModuleIsGraphType(graphNodeType)) {
     setNodeGraphGraphSelectedNodeIndex(nodeId, graphData, index);
-    syncNodeGraphGraphElement(nodeGraphNodeElement(nodeId), {
-      ...nodeGraphPatchNode(nodeId),
-      graph: graphData,
-      id: nodeId,
-    });
+    if (paintFace) {
+      // Only ever paint the workspace face for this exact node id.
+      const moduleElement = typeof nodeGraphGraphLiveDisplayForNodeId === "function"
+        ? nodeGraphGraphLiveDisplayForNodeId(nodeId)?.closest?.(".dsp-node")
+        : nodeGraphNodeElement(nodeId);
+      if (moduleElement) {
+        syncNodeGraphGraphElement(moduleElement, {
+          ...patchNode,
+          graph: graphData,
+          id: nodeId,
+        });
+      }
+    }
   }
-  const node = graphData.nodes[index] || graphData.nodes.at(-1);
-  populateNodeGraphGraphNodeIndexSelect(graphData, index);
-  renderNodeGraphGraphNodeList(graphData, index, { usesPerNodeShapes });
+  renderNodeGraphGraphNodeList(graphData, index, { usesPerNodeContour, usesPerNodeShapeSelect });
   const cursorInput = document.getElementById("nodeSceneGraphCursorX");
-  const xInput = document.getElementById("nodeSceneGraphNodeX");
-  const yInput = document.getElementById("nodeSceneGraphNodeY");
-  const contourInput = document.getElementById("nodeSceneGraphNodeContour");
-  const shapeInput = document.getElementById("nodeSceneGraphNodeShape");
-  const previousButton = document.getElementById("nodeSceneGraphPreviousNode");
-  const nextButton = document.getElementById("nodeSceneGraphNextNode");
-  const removeButton = document.getElementById("nodeSceneGraphRemoveNode");
   if (cursorInput) {
     cursorInput.value = graphData.cursorX.toFixed(3);
-  }
-  if (xInput) {
-    xInput.value = node.x.toFixed(3);
-  }
-  if (yInput) {
-    yInput.value = node.y.toFixed(3);
-  }
-  const contourLabel = document.getElementById("nodeSceneGraphNodeContourLabel");
-  const shapeLabel = document.getElementById("nodeSceneGraphNodeShapeLabel");
-  if (contourInput) {
-    contourInput.value = node.c.toFixed(3);
-    contourInput.disabled = !usesPerNodeShapes;
-  }
-  if (shapeInput) {
-    shapeInput.value = normalizeNodeGraphGraphShape(node.shape);
-    shapeInput.disabled = !usesPerNodeShapes;
-  }
-  if (contourLabel) {
-    contourLabel.hidden = !usesPerNodeShapes;
-  }
-  if (shapeLabel) {
-    shapeLabel.hidden = !usesPerNodeShapes;
-  }
-  if (previousButton) {
-    previousButton.disabled = index <= 0;
-  }
-  if (nextButton) {
-    nextButton.disabled = index >= graphData.nodes.length - 1;
-  }
-  if (removeButton) {
-    removeButton.disabled = graphData.nodes.length <= 2;
   }
 }
 
@@ -1186,88 +1415,12 @@ function setNodeGraphGraphCursorFromContext({ record = true } = {}) {
   commitNodeGraphGraphEdit(patch, targetNode, "graph cursor changed", { record });
 }
 
-function setNodeGraphGraphNodeFromContext({ record = true } = {}) {
-  const { patch, targetNode } = nodeGraphGraphTargetFromContext();
-  if (!targetNode) {
-    return;
-  }
-  const graph = normalizeNodeGraphGraph(targetNode.graph);
-  const selectedIndex = selectedNodeGraphGraphIndex(graph);
-  const node = graph.nodes[selectedIndex];
-  const usesPerNodeShapes = nodeGraphGraphUsesPerNodeShapes(targetNode.type);
-  const parseGraphNumberField = (raw, fallback) => {
-    const text = String(raw ?? "").trim();
-    if (text === "" || text === "-" || text === "." || text === "-." || !Number.isFinite(Number(text))) {
-      return fallback;
-    }
-    return text;
-  };
-  const nextX = parseGraphNumberField(document.getElementById("nodeSceneGraphNodeX")?.value, node.x);
-  const nextY = parseGraphNumberField(document.getElementById("nodeSceneGraphNodeY")?.value, node.y);
-  const nextC = usesPerNodeShapes
-    ? parseGraphNumberField(document.getElementById("nodeSceneGraphNodeContour")?.value, node.c)
-    : node.c;
-  graph.nodes[selectedIndex] = normalizeNodeGraphGraphNode({
-    c: nextC,
-    shape: usesPerNodeShapes ? document.getElementById("nodeSceneGraphNodeShape")?.value ?? node.shape : node.shape,
-    x: nextX,
-    y: nextY,
-  }, selectedIndex);
-  targetNode.graph = graph;
-  if (!record) {
-    const liveNode = nodeGraphMvp?.patch?.nodes?.find?.((candidate) => candidate.id === targetNode.id);
-    if (liveNode) {
-      liveNode.graph = nodeGraphGraphEndpointYLockEnabledForNode(liveNode)
-        ? nodeGraphGraphWithLockedEndpointY(graph, selectedIndex)
-        : normalizeNodeGraphGraph(graph);
-      syncNodeGraphGraphDisplaysForNode(targetNode.id, liveNode);
-      // Update list row values in place without destroying focused single-field inputs.
-      const list = document.getElementById("nodeSceneGraphNodeList");
-      const row = list?.querySelector?.(`[data-graph-node-row="${selectedIndex}"]`);
-      if (row) {
-        const xField = row.querySelector('[data-graph-node-field="x"]');
-        const yField = row.querySelector('[data-graph-node-field="y"]');
-        const cField = row.querySelector('[data-graph-node-field="c"]');
-        const shapeField = row.querySelector('[data-graph-node-field="shape"]');
-        const edited = liveNode.graph.nodes[selectedIndex];
-        if (xField && document.activeElement !== xField) xField.value = Number(edited.x).toFixed(3);
-        if (yField && document.activeElement !== yField) yField.value = Number(edited.y).toFixed(3);
-        if (cField && document.activeElement !== cField) cField.value = Number(edited.c).toFixed(3);
-        if (shapeField && document.activeElement !== shapeField) {
-          shapeField.value = normalizeNodeGraphGraphShape(edited.shape);
-        }
-      }
-    }
-    if (typeof scheduleNodeGraphLivePlanSync === "function") {
-      scheduleNodeGraphLivePlanSync();
-    }
-    if (typeof setNodeGraphPatchDirtyState === "function") {
-      setNodeGraphPatchDirtyState("edited");
-    } else {
-      nodeGraphMvp.patchDirtyState = "edited";
-    }
-    return;
-  }
-  commitNodeGraphGraphEdit(patch, targetNode, "graph node changed", { record: true, selectedIndex });
-}
-
 function selectNodeGraphGraphNodeFromContext() {
   const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
   if (!sourceNode || !nodeGraphModuleIsGraphType(sourceNode.type)) {
     return;
   }
   syncNodeGraphGraphControls(nodeGraphGraphForNode(sourceNode));
-}
-
-function selectNodeGraphGraphNodeOffsetFromContext(offset) {
-  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode || !nodeGraphModuleIsGraphType(sourceNode.type)) {
-    return;
-  }
-  const graph = nodeGraphGraphForNode(sourceNode);
-  const selectedIndex = selectedNodeGraphGraphIndex(graph);
-  const nextIndex = nodeGraphGraphNodeIndexFromValue(graph, selectedIndex + Number(offset || 0));
-  syncNodeGraphGraphControls(graph, nextIndex);
 }
 
 function setNodeGraphGraphNodeListValueFromContext(event, { record = true } = {}) {
@@ -1280,7 +1433,16 @@ function setNodeGraphGraphNodeListValueFromContext(event, { record = true } = {}
   if (!targetNode) {
     return;
   }
-  if (!nodeGraphGraphUsesPerNodeShapes(targetNode.type) && (field === "c" || field === "shape")) {
+  const usesPerNodeContour = typeof nodeGraphGraphUsesPerNodeContour === "function"
+    ? nodeGraphGraphUsesPerNodeContour(targetNode.type)
+    : nodeGraphGraphUsesPerNodeShapes(targetNode.type);
+  const usesPerNodeShapeSelect = typeof nodeGraphGraphUsesPerNodeShapeSelect === "function"
+    ? nodeGraphGraphUsesPerNodeShapeSelect(targetNode.type)
+    : false;
+  if (field === "c" && !usesPerNodeContour) {
+    return;
+  }
+  if (field === "shape" && !usesPerNodeShapeSelect) {
     return;
   }
   // While typing, intermediate values like "" or "0." are not finite yet.
@@ -1313,17 +1475,6 @@ function setNodeGraphGraphNodeListValueFromContext(event, { record = true } = {}
         : normalizeNodeGraphGraph(graph);
       syncNodeGraphGraphDisplaysForNode(targetNode.id, liveNode);
     }
-    const xInput = document.getElementById("nodeSceneGraphNodeX");
-    const yInput = document.getElementById("nodeSceneGraphNodeY");
-    const contourInput = document.getElementById("nodeSceneGraphNodeContour");
-    const shapeInput = document.getElementById("nodeSceneGraphNodeShape");
-    const edited = graph.nodes[selectedIndex];
-    if (selectedNodeGraphGraphIndex(graph) === selectedIndex && edited) {
-      if (xInput && field === "x") xInput.value = Number(edited.x).toFixed(3);
-      if (yInput && field === "y") yInput.value = Number(edited.y).toFixed(3);
-      if (contourInput && field === "c") contourInput.value = Number(edited.c).toFixed(3);
-      if (shapeInput && field === "shape") shapeInput.value = normalizeNodeGraphGraphShape(edited.shape);
-    }
     if (typeof scheduleNodeGraphLivePlanSync === "function") {
       scheduleNodeGraphLivePlanSync();
     }
@@ -1340,6 +1491,16 @@ function setNodeGraphGraphNodeListValueFromContext(event, { record = true } = {}
 }
 
 function handleNodeGraphGraphNodeListClick(event) {
+  const addButton = event.target?.closest?.("#nodeSceneGraphAddNode, .scene-context-graph-node-add");
+  if (addButton) {
+    addNodeGraphGraphNodeFromContext();
+    return;
+  }
+  const removeButton = event.target?.closest?.("[data-graph-node-remove]");
+  if (removeButton) {
+    removeNodeGraphGraphNodeFromContext(removeButton.dataset.graphNodeRemove);
+    return;
+  }
   const selectButton = event.target?.closest?.("[data-graph-node-select]");
   if (!selectButton) {
     return;
@@ -1370,24 +1531,7 @@ function addNodeGraphGraphNodeFromContext() {
   });
 }
 
-function duplicateNodeGraphGraphNodeFromContext() {
-  const { patch, targetNode } = nodeGraphGraphTargetFromContext();
-  if (!targetNode) {
-    return;
-  }
-  const graph = normalizeNodeGraphGraph(targetNode.graph);
-  const selectedIndex = selectedNodeGraphGraphIndex(graph);
-  const duplicate = duplicateNodeGraphGraphNodeData(graph, selectedIndex);
-  if (!duplicate.duplicated) {
-    return;
-  }
-  targetNode.graph = duplicate.graph;
-  commitNodeGraphGraphEdit(patch, targetNode, "graph node duplicated", {
-    selectedIndex: duplicate.selectedIndex,
-  });
-}
-
-function removeNodeGraphGraphNodeFromContext() {
+function removeNodeGraphGraphNodeFromContext(indexOverride = null) {
   const { patch, targetNode } = nodeGraphGraphTargetFromContext();
   if (!targetNode) {
     return;
@@ -1396,12 +1540,15 @@ function removeNodeGraphGraphNodeFromContext() {
   if (graph.nodes.length <= 2) {
     return;
   }
-  const selectedIndex = selectedNodeGraphGraphIndex(graph);
+  const selectedIndex = indexOverride != null && String(indexOverride).trim() !== ""
+    ? nodeGraphGraphNodeIndexFromValue(graph, indexOverride)
+    : selectedNodeGraphGraphIndex(graph);
   graph.nodes.splice(selectedIndex, 1);
   targetNode.graph = graph;
-  setNodeGraphGraphSelectedNodeIndex(targetNode.id, graph, Math.max(0, selectedIndex - 1));
+  const nextIndex = Math.max(0, Math.min(selectedIndex, graph.nodes.length - 1));
+  setNodeGraphGraphSelectedNodeIndex(targetNode.id, graph, nextIndex);
   commitNodeGraphGraphEdit(patch, targetNode, "graph node removed", {
-    selectedIndex: Math.max(0, selectedIndex - 1),
+    selectedIndex: nextIndex,
   });
 }
 
@@ -1423,26 +1570,6 @@ function setNodeGraphGraphPresetFromContext(preset) {
   commitNodeGraphGraphEdit(patch, targetNode, `graph preset: ${preset}`, {
     selectedIndex: Math.min(1, targetNode.graph.nodes.length - 1),
   });
-}
-
-function setNodeGraphGraphOutputRangeFromContext(minValue, maxValue) {
-  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode || !nodeGraphModuleIsGraphType(sourceNode.type)) {
-    return;
-  }
-  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
-  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
-  if (!targetNode || !nodeGraphModuleIsGraphType(targetNode.type)) {
-    return;
-  }
-  targetNode.params = {
-    ...(targetNode.params || {}),
-    outputMax: normalizeNodeGraphPatchParameter(targetNode.type, "outputMax", maxValue),
-    outputMin: normalizeNodeGraphPatchParameter(targetNode.type, "outputMin", minValue),
-  };
-  commitNodeGraphPatch(patch, { status: "graph output range changed" });
-  syncNodeGraphPatchParameters();
-  configureNodeSceneContextMenu("module");
 }
 
 function transformNodeGraphGraphFromContext(transform) {
@@ -1879,115 +2006,231 @@ function setNodeGraphBugButtonGlyphFromContext({ record = true } = {}) {
   }
 }
 
+/** Multi-select visibility: if any eligible is visible → hide all; else show all. */
+function nodeGraphModuleActionMultiWantHidden(eligibleNodes, isEffectivelyHidden) {
+  if (!eligibleNodes.length) {
+    return null;
+  }
+  const anyVisible = eligibleNodes.some((node) => !isEffectivelyHidden(node));
+  return anyVisible;
+}
+
 function toggleNodeGraphModuleButtonsFromContext() {
-  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode) {
+  const targetNodeIds = nodeGraphModuleActionTargetNodeIds();
+  if (!targetNodeIds.length) {
+    return;
+  }
+  const sources = targetNodeIds
+    .map((id) => nodeGraphPatchNode(id))
+    .filter(Boolean);
+  if (!sources.length) {
+    return;
+  }
+  const wantHidden = nodeGraphModuleActionMultiWantHidden(
+    sources,
+    (node) => nodeGraphEffectivePatchNodeUi(node.ui, node.type).buttonsHidden,
+  );
+  if (wantHidden === null) {
     return;
   }
 
-  const buttonsWereHidden = nodeGraphEffectivePatchNodeUi(sourceNode.ui).buttonsHidden;
-  if (buttonsWereHidden && nodeGraphMvp.moduleButtonsVisible === false) {
-    nodeGraphMvp.moduleButtonsVisible = true;
-  }
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
-  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
-  if (!targetNode) {
-    return;
+  let changedCount = 0;
+  for (const targetNode of patch.nodes) {
+    if (!targetNodeIds.includes(targetNode.id)) {
+      continue;
+    }
+    const ui = nodeGraphPatchNodeUiSetSectionWantHidden(
+      normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type),
+      "buttons",
+      wantHidden,
+      nodeGraphMvp.moduleButtonsVisible,
+    );
+    applyNodeGraphPatchNodeUi(targetNode, ui);
+    changedCount += 1;
   }
-  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
-  ui.buttonsHidden = !buttonsWereHidden;
-  applyNodeGraphPatchNodeUi(targetNode, ui);
-  commitNodeGraphPatch(patch, {
-    status: ui.buttonsHidden ? "module buttons hidden" : "module buttons shown",
-  });
+  if (changedCount) {
+    commitNodeGraphPatch(patch, {
+      status: wantHidden
+        ? (changedCount > 1 ? "module buttons hidden" : "module buttons hidden")
+        : (changedCount > 1 ? "module buttons shown" : "module buttons shown"),
+    });
+  }
   renderNodeGraphModuleVisibilityToggles();
   configureNodeSceneContextMenu("module");
 }
 
 function toggleNodeGraphModuleEnabledFromContext() {
-  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode) {
+  const targetNodeIds = nodeGraphModuleActionTargetNodeIds();
+  if (!targetNodeIds.length) {
     return;
   }
-  if (sourceNode.id === "output") {
+  const sources = targetNodeIds
+    .map((id) => nodeGraphPatchNode(id))
+    .filter(Boolean);
+  if (!sources.length) {
+    return;
+  }
+
+  // Single Output selection keeps the dedicated live-output toggle.
+  if (sources.length === 1 && sources[0].id === "output") {
     toggleNodeGraphLiveOutput();
     configureNodeSceneContextMenu("module");
     return;
   }
 
-  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
-  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
-  if (!targetNode) {
+  const isEnabled = (node) => {
+    if (node.id === "output") {
+      return Boolean(nodeGraphMvp.live.outputEnabled);
+    }
+    return !nodeGraphNodeDisplaysBypassed(node.id);
+  };
+  const anyEnabled = sources.some(isEnabled);
+  const wantEnabled = !anyEnabled;
+
+  let outputToggled = false;
+  if (sources.some((node) => node.id === "output")) {
+    const outputEnabled = Boolean(nodeGraphMvp.live.outputEnabled);
+    if (outputEnabled !== wantEnabled) {
+      toggleNodeGraphLiveOutput();
+      outputToggled = true;
+    }
+  }
+
+  const nonOutputIds = sources
+    .filter((node) => node.id !== "output")
+    .map((node) => node.id);
+  if (!nonOutputIds.length) {
+    if (outputToggled) {
+      configureNodeSceneContextMenu("module");
+    }
     return;
   }
+
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
   const bypassed = new Set(patch.bypassedNodes || []);
-  if (bypassed.has(targetNode.id)) {
-    bypassed.delete(targetNode.id);
-  } else {
-    bypassed.add(targetNode.id);
+  for (const id of nonOutputIds) {
+    if (wantEnabled) {
+      bypassed.delete(id);
+    } else {
+      bypassed.add(id);
+    }
   }
   patch.bypassedNodes = [...bypassed];
   commitNodeGraphPatch(patch, {
-    status: bypassed.has(targetNode.id) ? "module disabled" : "module enabled",
+    status: wantEnabled
+      ? (nonOutputIds.length > 1 ? "modules enabled" : "module enabled")
+      : (nonOutputIds.length > 1 ? "modules disabled" : "module disabled"),
   });
   configureNodeSceneContextMenu("module");
 }
 
 function toggleNodeGraphModuleTitleFromContext() {
-  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode) {
+  const targetNodeIds = nodeGraphModuleActionTargetNodeIds();
+  if (!targetNodeIds.length) {
+    return;
+  }
+  const sources = targetNodeIds
+    .map((id) => nodeGraphPatchNode(id))
+    .filter(Boolean);
+  if (!sources.length) {
+    return;
+  }
+  const wantHidden = nodeGraphModuleActionMultiWantHidden(
+    sources,
+    (node) => Boolean(normalizeNodeGraphPatchNodeUi(node.ui, node.type).titleHidden),
+  );
+  if (wantHidden === null) {
     return;
   }
 
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
-  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
-  if (!targetNode) {
-    return;
+  let changedCount = 0;
+  for (const targetNode of patch.nodes) {
+    if (!targetNodeIds.includes(targetNode.id)) {
+      continue;
+    }
+    const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
+    if (Boolean(ui.titleHidden) === wantHidden) {
+      continue;
+    }
+    ui.titleHidden = wantHidden;
+    applyNodeGraphPatchNodeUi(targetNode, ui);
+    changedCount += 1;
   }
-  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
-  ui.titleHidden = !ui.titleHidden;
-  applyNodeGraphPatchNodeUi(targetNode, ui);
-  commitNodeGraphPatch(patch, {
-    status: ui.titleHidden ? "module title hidden" : "module title shown",
-  });
+  if (changedCount) {
+    commitNodeGraphPatch(patch, {
+      status: wantHidden
+        ? (changedCount > 1 ? "module titles hidden" : "module title hidden")
+        : (changedCount > 1 ? "module titles shown" : "module title shown"),
+    });
+  }
   configureNodeSceneContextMenu("module");
 }
 
 function toggleNodeGraphModuleOscilloscopeFromContext() {
-  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode || !nodeGraphPatchNodeHasHideableOscilloscope(sourceNode)) {
+  const targetNodeIds = nodeGraphModuleActionTargetNodeIds();
+  if (!targetNodeIds.length) {
+    return;
+  }
+  const sources = targetNodeIds
+    .map((id) => nodeGraphPatchNode(id))
+    .filter((node) => node && nodeGraphPatchNodeHasHideableOscilloscope(node));
+  if (!sources.length) {
+    return;
+  }
+  const wantHidden = nodeGraphModuleActionMultiWantHidden(
+    sources,
+    (node) => nodeGraphEffectivePatchNodeUi(node.ui, node.type).oscilloscopeHidden,
+  );
+  if (wantHidden === null) {
     return;
   }
 
-  const displayWasHidden = nodeGraphEffectivePatchNodeUi(sourceNode.ui).oscilloscopeHidden;
-  if (displayWasHidden && nodeGraphMvp.moduleOscilloscopesVisible === false) {
-    nodeGraphMvp.moduleOscilloscopesVisible = true;
-  }
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
-  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
-  if (!targetNode || !nodeGraphPatchNodeHasHideableOscilloscope(targetNode)) {
-    return;
+  let changedCount = 0;
+  const eligibleIds = new Set(sources.map((node) => node.id));
+  for (const targetNode of patch.nodes) {
+    if (!eligibleIds.has(targetNode.id) || !nodeGraphPatchNodeHasHideableOscilloscope(targetNode)) {
+      continue;
+    }
+    const ui = nodeGraphPatchNodeUiSetSectionWantHidden(
+      normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type),
+      "oscilloscope",
+      wantHidden,
+      nodeGraphMvp.moduleOscilloscopesVisible,
+    );
+    applyNodeGraphPatchNodeUi(targetNode, ui);
+    changedCount += 1;
   }
-  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
-  ui.oscilloscopeHidden = !displayWasHidden;
-  applyNodeGraphPatchNodeUi(targetNode, ui);
-  commitNodeGraphPatch(patch, {
-    status: ui.oscilloscopeHidden ? "module display hidden" : "module display shown",
-  });
+  if (changedCount) {
+    commitNodeGraphPatch(patch, {
+      status: wantHidden
+        ? (changedCount > 1 ? "module displays hidden" : "module display hidden")
+        : (changedCount > 1 ? "module displays shown" : "module display shown"),
+    });
+  }
   renderNodeGraphModuleVisibilityToggles();
   configureNodeSceneContextMenu("module");
 }
 
 function applyNodeGraphPatchNodeUi(targetNode, ui) {
   const normalizedUi = normalizeNodeGraphPatchNodeUi(ui, targetNode?.type);
+  // Persist ui only when a non-default flag is set. LayoutB titles default on
+  // (titleHidden:false); Hide title persists via titleHidden:true.
   if (
-    normalizedUi.buttonsHidden ||
-    normalizedUi.ioHidden ||
-    normalizedUi.interfaceControlsHidden ||
-    normalizedUi.titleHidden ||
-    normalizedUi.oscilloscopeHidden ||
-    normalizedUi.slidersHidden ||
-    normalizedUi.displayHeightOffsetGu
+    normalizedUi.buttonsHidden
+    || normalizedUi.buttonsForceShow
+    || normalizedUi.ioHidden
+    || normalizedUi.hideUnused
+    || normalizedUi.interfaceControlsHidden
+    || normalizedUi.interfaceControlsForceShow
+    || normalizedUi.titleHidden
+    || normalizedUi.oscilloscopeHidden
+    || normalizedUi.oscilloscopeForceShow
+    || normalizedUi.slidersHidden
+    || normalizedUi.slidersForceShow
+    || normalizedUi.displayHeightOffsetGu
   ) {
     targetNode.ui = normalizedUi;
   } else {
@@ -1995,63 +2238,186 @@ function applyNodeGraphPatchNodeUi(targetNode, ui) {
   }
 }
 
-function toggleNodeGraphModuleInterfaceControlsFromContext() {
-  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode || !nodeGraphModuleTypeHasInterfaceControls(sourceNode.type)) {
+/** Hide unconnected jacks — under construction; no-op until re-enabled. */
+function toggleNodeGraphModuleHideUnusedFromContext() {
+  if (typeof setNodeInteractionHelp === "function") {
+    setNodeInteractionHelp("Hide unused is under construction.");
+  }
+  return;
+  const targetNodeIds = nodeGraphModuleActionTargetNodeIds();
+  if (!targetNodeIds.length) {
+    return;
+  }
+  const sources = targetNodeIds
+    .map((id) => nodeGraphPatchNode(id))
+    .filter(Boolean);
+  if (!sources.length) {
+    return;
+  }
+  const wantHidden = nodeGraphModuleActionMultiWantHidden(
+    sources,
+    (node) => Boolean(normalizeNodeGraphPatchNodeUi(node.ui, node.type).hideUnused),
+  );
+  if (wantHidden === null) {
     return;
   }
 
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
-  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
-  if (!targetNode || !nodeGraphModuleTypeHasInterfaceControls(targetNode.type)) {
+  let changedCount = 0;
+  for (const targetNode of patch.nodes) {
+    if (!targetNodeIds.includes(targetNode.id)) {
+      continue;
+    }
+    const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
+    if (Boolean(ui.hideUnused) === wantHidden) {
+      continue;
+    }
+    ui.hideUnused = wantHidden;
+    applyNodeGraphPatchNodeUi(targetNode, ui);
+    changedCount += 1;
+  }
+  if (changedCount) {
+    commitNodeGraphPatch(patch, {
+      status: wantHidden
+        ? (changedCount > 1 ? "unused ports hidden" : "unused ports hidden")
+        : (changedCount > 1 ? "unused ports shown" : "unused ports shown"),
+    });
+  }
+  configureNodeSceneContextMenu("module");
+}
+
+function toggleNodeGraphModuleInterfaceControlsFromContext() {
+  const targetNodeIds = nodeGraphModuleActionTargetNodeIds();
+  if (!targetNodeIds.length) {
     return;
   }
-  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
-  ui.interfaceControlsHidden = !ui.interfaceControlsHidden;
-  applyNodeGraphPatchNodeUi(targetNode, ui);
-  commitNodeGraphPatch(patch, {
-    status: ui.interfaceControlsHidden ? "module control surface hidden" : "module control surface shown",
-  });
+  const sources = targetNodeIds
+    .map((id) => nodeGraphPatchNode(id))
+    .filter((node) => node && nodeGraphModuleTypeHasInterfaceControls(node.type));
+  if (!sources.length) {
+    return;
+  }
+  const wantHidden = nodeGraphModuleActionMultiWantHidden(
+    sources,
+    (node) => nodeGraphEffectivePatchNodeUi(node.ui, node.type).interfaceControlsHidden,
+  );
+  if (wantHidden === null) {
+    return;
+  }
+
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  let changedCount = 0;
+  const eligibleIds = new Set(sources.map((node) => node.id));
+  for (const targetNode of patch.nodes) {
+    if (!eligibleIds.has(targetNode.id) || !nodeGraphModuleTypeHasInterfaceControls(targetNode.type)) {
+      continue;
+    }
+    const ui = nodeGraphPatchNodeUiSetSectionWantHidden(
+      normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type),
+      "interfaceControls",
+      wantHidden,
+      nodeGraphMvp.moduleInterfaceControlsVisible,
+    );
+    applyNodeGraphPatchNodeUi(targetNode, ui);
+    changedCount += 1;
+  }
+  if (changedCount) {
+    commitNodeGraphPatch(patch, {
+      status: wantHidden
+        ? (changedCount > 1 ? "module control surfaces hidden" : "module control surface hidden")
+        : (changedCount > 1 ? "module control surfaces shown" : "module control surface shown"),
+    });
+  }
+  renderNodeGraphModuleVisibilityToggles();
   configureNodeSceneContextMenu("module");
 }
 
 function toggleNodeGraphModuleIoFromContext() {
-  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode) {
+  const targetNodeIds = nodeGraphModuleActionTargetNodeIds();
+  if (!targetNodeIds.length) {
+    return;
+  }
+  const sources = targetNodeIds
+    .map((id) => nodeGraphPatchNode(id))
+    .filter(Boolean);
+  if (!sources.length) {
+    return;
+  }
+  const wantHidden = nodeGraphModuleActionMultiWantHidden(
+    sources,
+    (node) => Boolean(normalizeNodeGraphPatchNodeUi(node.ui, node.type).ioHidden),
+  );
+  if (wantHidden === null) {
     return;
   }
 
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
-  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
-  if (!targetNode) {
-    return;
+  let changedCount = 0;
+  for (const targetNode of patch.nodes) {
+    if (!targetNodeIds.includes(targetNode.id)) {
+      continue;
+    }
+    const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
+    if (Boolean(ui.ioHidden) === wantHidden) {
+      continue;
+    }
+    ui.ioHidden = wantHidden;
+    applyNodeGraphPatchNodeUi(targetNode, ui);
+    changedCount += 1;
   }
-  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
-  ui.ioHidden = !ui.ioHidden;
-  applyNodeGraphPatchNodeUi(targetNode, ui);
-  commitNodeGraphPatch(patch, {
-    status: ui.ioHidden ? "module in/out hidden" : "module in/out shown",
-  });
+  if (changedCount) {
+    commitNodeGraphPatch(patch, {
+      status: wantHidden
+        ? (changedCount > 1 ? "module in/out hidden" : "module in/out hidden")
+        : (changedCount > 1 ? "module in/out shown" : "module in/out shown"),
+    });
+  }
   configureNodeSceneContextMenu("module");
 }
 
 function toggleNodeGraphModuleSlidersFromContext() {
-  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode || !nodeGraphModuleTypeHasHideableSliders(sourceNode.type)) {
+  const targetNodeIds = nodeGraphModuleActionTargetNodeIds();
+  if (!targetNodeIds.length) {
+    return;
+  }
+  const sources = targetNodeIds
+    .map((id) => nodeGraphPatchNode(id))
+    .filter((node) => node && nodeGraphModuleTypeHasHideableSliders(node.type));
+  if (!sources.length) {
+    return;
+  }
+  const wantHidden = nodeGraphModuleActionMultiWantHidden(
+    sources,
+    (node) => nodeGraphEffectivePatchNodeUi(node.ui, node.type).slidersHidden,
+  );
+  if (wantHidden === null) {
     return;
   }
 
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
-  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
-  if (!targetNode || !nodeGraphModuleTypeHasHideableSliders(targetNode.type)) {
-    return;
+  let changedCount = 0;
+  const eligibleIds = new Set(sources.map((node) => node.id));
+  for (const targetNode of patch.nodes) {
+    if (!eligibleIds.has(targetNode.id) || !nodeGraphModuleTypeHasHideableSliders(targetNode.type)) {
+      continue;
+    }
+    const ui = nodeGraphPatchNodeUiSetSectionWantHidden(
+      normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type),
+      "sliders",
+      wantHidden,
+      nodeGraphMvp.moduleSlidersVisible,
+    );
+    applyNodeGraphPatchNodeUi(targetNode, ui);
+    changedCount += 1;
   }
-  const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
-  ui.slidersHidden = !ui.slidersHidden;
-  applyNodeGraphPatchNodeUi(targetNode, ui);
-  commitNodeGraphPatch(patch, {
-    status: ui.slidersHidden ? "module sliders hidden" : "module sliders shown",
-  });
+  if (changedCount) {
+    commitNodeGraphPatch(patch, {
+      status: wantHidden
+        ? (changedCount > 1 ? "module sliders hidden" : "module sliders hidden")
+        : (changedCount > 1 ? "module sliders shown" : "module sliders shown"),
+    });
+  }
+  renderNodeGraphModuleVisibilityToggles();
   configureNodeSceneContextMenu("module");
 }
 

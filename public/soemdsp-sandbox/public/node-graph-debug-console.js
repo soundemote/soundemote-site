@@ -1,5 +1,6 @@
-// In-app debug console for the sandbox. Adds a red 🐞 button next to Download
-// that opens a log panel. Mirrors the C++ soemdsp::debug API from sehelper.hpp
+// In-app debug console for the sandbox. Adds a 🐞 button next to Download that
+// opens a log panel. Red in debug builds, neutral in release (never hidden).
+// Mirrors the C++ soemdsp::debug API from sehelper.hpp
 // (LOG / WARN / CHECK / FAIL / STOP / BADVAL / WITHINRANGE / WITHINSIZE) as
 // window.SE, captures uncaught errors + console.warn/error, and can watch the
 // live-audio parameter stream to show what smoothing the engine actually gets.
@@ -11,18 +12,56 @@
   if (window.__seDebugConsole) return;
 
   const CAP = 4000;
+  // Survives F5 in the same tab. localStorage keeps a "last unload" dump so a
+  // hard crash / new tab can still recover the previous session's log.
+  const STORAGE_SESSION = "seDebugLog.session.v1";
+  const STORAGE_LAST_UNLOAD = "seDebugLog.lastUnload.v1";
   const entries = [];
   let seq = 0;
   let errorCount = 0;
   let paused = false;
   let filter = "all";
   let search = "";
+  let persistTimer = 0;
+  let restoring = false;
+  // Wall-clock of last live push — drives ch4os-style [+Nms] deltas.
+  let lastPushTs = 0;
   const els = {};
 
-  const pad = (n, w = 2) => String(n).padStart(w, "0");
-  function stamp() {
-    const d = new Date();
-    return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
+  /**
+   * Human-readable clock (ch4os formatLogTime): "2:09:25 AM"
+   * 12-hour, hour not zero-padded; seconds kept for dense bursts.
+   */
+  function formatLogTime(ts, sequence = 0) {
+    const d = new Date(Number.isFinite(ts) ? ts : Date.now());
+    if (Number.isNaN(d.getTime())) {
+      return `t${sequence}`;
+    }
+    let h = d.getHours();
+    const m = d.getMinutes();
+    const s = d.getSeconds();
+    const ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12;
+    if (h === 0) h = 12;
+    const mm = String(m).padStart(2, "0");
+    const ss = String(s).padStart(2, "0");
+    return `${h}:${mm}:${ss} ${ampm}`;
+  }
+
+  function formatDelta(deltaMs) {
+    const d = Math.max(0, Number(deltaMs) || 0);
+    return d >= 1000 ? `+${(d / 1000).toFixed(1)}s` : `+${Math.round(d)}ms`;
+  }
+
+  function deltaColor(deltaMs) {
+    const d = Math.max(0, Number(deltaMs) || 0);
+    if (d >= 1000) return "#f87171";
+    if (d >= 100) return "#fbbf24";
+    return "#4b5563";
+  }
+
+  function stampIso() {
+    try { return new Date().toISOString(); } catch (_) { return String(Date.now()); }
   }
 
   // Parse the first stack frame outside this file -> "file:line".
@@ -48,14 +87,170 @@
   };
 
   function push(level, msg, loc) {
+    if (paused && level !== "ERROR" && level !== "FAIL") {
+      // Still persist critical failures even while paused? Keep old pause
+      // semantics: push always records; pause only freezes live UI follow.
+    }
     const lv = LEVELS[level] || LEVELS.LOG;
-    const e = { id: ++seq, t: stamp(), level, loc: loc || "", msg: String(msg) };
-    entries.push(e);
-    if (entries.length > CAP) entries.splice(0, entries.length - CAP);
+    const ts = Date.now();
+    const delta = lastPushTs ? Math.max(0, ts - lastPushTs) : 0;
+    lastPushTs = ts;
+    const id = ++seq;
+    const e = {
+      id,
+      // ch4os-style clock for display + copy (AM/PM).
+      t: formatLogTime(ts, id),
+      ts,
+      delta,
+      level,
+      loc: loc || "",
+      msg: String(msg),
+    };
+    // Newest first: unshift so the array and the panel read top→bottom as new→old.
+    entries.unshift(e);
+    if (entries.length > CAP) entries.length = CAP;
     if (lv.err) errorCount++;
-    render(e);
-    updateBadge();
+    if (!restoring) {
+      render(e);
+      updateBadge();
+      schedulePersist();
+    }
     return e;
+  }
+
+  function serializeLogPayload(reason = "") {
+    return {
+      v: 2,
+      reason: String(reason || ""),
+      savedAt: stampIso(),
+      seq,
+      errorCount,
+      entries: entries.slice(0, CAP).map((e) => ({
+        id: e.id,
+        t: e.t,
+        ts: e.ts || 0,
+        delta: e.delta || 0,
+        level: e.level,
+        loc: e.loc || "",
+        msg: e.msg,
+      })),
+    };
+  }
+
+  function persistLogNow(reason = "tick") {
+    // Persistence is opt-in via SE.dump() only. Auto-saving on every push made
+    // F5 restore racey with clearLogOnStartup and confused "clear on refresh".
+    if (reason !== "manual" && reason !== "dump") {
+      return;
+    }
+    try {
+      const payload = serializeLogPayload(reason);
+      const text = JSON.stringify(payload);
+      try { sessionStorage.setItem(STORAGE_SESSION, text); } catch (_) {}
+      try { localStorage.setItem(STORAGE_LAST_UNLOAD, text); } catch (_) {}
+    } catch (_) {}
+  }
+
+  function schedulePersist() {
+    // No auto-persist — refresh must show an empty log.
+  }
+
+  function readStoredLog(key, store) {
+    try {
+      const raw = store.getItem(key);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (!data || !Array.isArray(data.entries)) return null;
+      return data;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function restorePersistedLog() {
+    restoring = true;
+    try {
+      const session = readStoredLog(STORAGE_SESSION, sessionStorage);
+      const lastUnload = readStoredLog(STORAGE_LAST_UNLOAD, localStorage);
+      // Prefer same-tab session (continues across F5). Fall back to last unload.
+      const data = (session?.entries?.length ? session : null)
+        || (lastUnload?.entries?.length ? lastUnload : null);
+      if (!data?.entries?.length) return 0;
+
+      // Payload is newest-first. Map then recompute deltas oldest→newest so
+      // [+Nms] stays meaningful after a restore without stored deltas.
+      const restored = data.entries
+        .filter((e) => e && typeof e.msg === "string")
+        .slice(0, CAP)
+        .map((e) => {
+          const id = ++seq;
+          const ts = Number(e.ts) || 0;
+          return {
+            id,
+            t: e.t && /AM|PM/i.test(String(e.t))
+              ? String(e.t)
+              : (ts ? formatLogTime(ts, id) : String(e.t || "?")),
+            ts,
+            delta: Number(e.delta) || 0,
+            level: LEVELS[e.level] ? e.level : "LOG",
+            loc: String(e.loc || ""),
+            msg: String(e.msg),
+            restored: true,
+          };
+        });
+      // Recompute deltas in chronological order (oldest first).
+      const chrono = restored.slice().reverse();
+      let prevTs = 0;
+      for (const e of chrono) {
+        if (e.ts) {
+          e.delta = prevTs ? Math.max(0, e.ts - prevTs) : 0;
+          e.t = formatLogTime(e.ts, e.id);
+          prevTs = e.ts;
+        }
+      }
+      if (prevTs) lastPushTs = prevTs;
+      // Stored / restored list is newest-first for the panel.
+      for (let i = restored.length - 1; i >= 0; i--) {
+        entries.unshift(restored[i]);
+      }
+      if (entries.length > CAP) entries.length = CAP;
+      errorCount = entries.reduce((n, e) => n + (LEVELS[e.level]?.err ? 1 : 0), 0);
+      const from = session?.entries?.length ? "sessionStorage (same tab)" : "localStorage lastUnload";
+      const when = data.savedAt || "?";
+      const why = data.reason || "unknown";
+      // Marker stays at top (newest).
+      push(
+        "INFO",
+        `restored ${restored.length} log lines from before refresh — ${from}, savedAt=${when}, reason=${why}. Clear wipes storage.`,
+        "debug-persist",
+      );
+      return restored.length;
+    } catch (_) {
+      return 0;
+    } finally {
+      restoring = false;
+      updateBadge();
+      // Don't schedulePersist during restore loop; one flush after.
+      persistLogNow("restore");
+    }
+  }
+
+  function installPersistLifecycle() {
+    // Crash/dump only via SE.dump() — do NOT re-persist on pagehide/F5.
+    // Refresh must start empty; writing here raced clearLogOnStartup and
+    // left a recoverable dump that users saw as "log not clearing".
+    // Optional: keep a last-unload dump only for explicit manual dump.
+    window.addEventListener("pageshow", (event) => {
+      // BFCache restores the full JS heap (entries + DOM) without re-running
+      // init — force a wipe so refresh/back always looks empty.
+      if (event.persisted) {
+        clearLogOnStartup();
+        try { rebuild(); updateBadge(); } catch (_) {}
+        try {
+          SE.INFO("log cleared after back-forward restore");
+        } catch (_) {}
+      }
+    });
   }
 
   // ---- sehelper.hpp-style API ----------------------------------------------
@@ -88,6 +283,12 @@
     close: () => showPanel(false),
     clear: clearLog,
     entries: () => entries.slice(),
+    /** Force-write log to sessionStorage + localStorage (also runs on refresh). */
+    dump: (reason = "manual") => {
+      persistLogNow(reason || "manual");
+      return { session: STORAGE_SESSION, lastUnload: STORAGE_LAST_UNLOAD, count: entries.length };
+    },
+    storageKeys: () => ({ session: STORAGE_SESSION, lastUnload: STORAGE_LAST_UNLOAD }),
     buildMode: () => seBuildMode(),
     smoothingWatch: (on) => setSmoothingWatch(on),
     devMode: (on) => {
@@ -206,9 +407,10 @@
         background:#000;color:#ff6b6b;font:700 10px/16px ui-monospace,monospace;text-align:center;display:none;border:1px solid #ff6b6b;}
       #seDebugPanel{position:fixed;z-index:2147483646;right:14px;bottom:14px;width:640px;height:380px;min-width:340px;min-height:200px;
         display:none;flex-direction:column;background:#11141a;color:#d8dee9;border:1px solid #2a2f3a;border-radius:10px;
-        box-shadow:0 10px 40px rgba(0,0,0,.55);overflow:hidden;resize:both;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;}
+        box-shadow:0 10px 40px rgba(0,0,0,.55);overflow:hidden;/* custom SE grip — not CSS resize (that scrolls the log) */
+        font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;}
       #seDebugPanel.se-open{display:flex;}
-      #seDebugPanel .se-head{display:flex;align-items:center;gap:6px;padding:6px 8px;background:#171b22;border-bottom:1px solid #2a2f3a;cursor:move;user-select:none;}
+      #seDebugPanel .se-head{display:flex;align-items:center;gap:6px;padding:6px 8px;background:#171b22;border-bottom:1px solid #2a2f3a;cursor:move;user-select:none;flex:0 0 auto;}
       #seDebugPanel .se-title{font-weight:700;color:#fff;margin-right:auto;font-size:17px;}
       #seDebugPanel button.se-bug{background:none;border:1px solid #c0392b;border-radius:7px;cursor:pointer;
         font-size:24px;line-height:1.15;padding:1px 5px;}
@@ -216,16 +418,39 @@
       #seDebugPanel button.se-bug:active{transform:scale(0.92);}
       #seDebugPanel button.se-tool{background:#232936;color:#cdd6e4;border:1px solid #313a4a;border-radius:5px;padding:2px 8px;cursor:pointer;font:inherit;}
       #seDebugPanel button.se-tool:hover{background:#2c3444;}
-      #seDebugPanel .se-filters{display:flex;gap:4px;align-items:center;padding:5px 8px;background:#141821;border-bottom:1px solid #222834;flex-wrap:wrap;}
+      #seDebugPanel .se-filters{display:flex;gap:4px;align-items:center;padding:5px 8px;background:#141821;border-bottom:1px solid #222834;flex-wrap:wrap;flex:0 0 auto;}
       #seDebugPanel .se-chip{cursor:pointer;padding:1px 8px;border-radius:10px;border:1px solid #2c3444;color:#9aa4b2;background:#191e28;font-size:11px;}
       #seDebugPanel .se-chip.on{color:#fff;border-color:#4b6;background:#1c2a22;}
       #seDebugPanel input.se-search{flex:1;min-width:80px;background:#0d1016;border:1px solid #2c3444;color:#cdd6e4;border-radius:5px;padding:2px 7px;font:inherit;}
-      #seDebugPanel .se-log{flex:1;overflow:auto;padding:4px 8px;-webkit-user-select:text;user-select:text;cursor:text;}
-      #seDebugPanel .se-row{white-space:pre-wrap;word-break:break-word;padding:1px 0;border-bottom:1px solid #171b22;-webkit-user-select:text;user-select:text;}
-      #seDebugPanel .se-row .se-t{color:#5b6472;}
-      #seDebugPanel .se-row .se-lv{font-weight:700;margin:0 6px;}
-      #seDebugPanel .se-row .se-loc{color:#6b7688;margin-right:6px;}
+      /* body { user-select:none } is global — force selectable text in the log. */
+      #seDebugPanel .se-log,
+      #seDebugPanel .se-log *,
+      #seDebugPanel .se-row,
+      #seDebugPanel .se-row *{
+        -webkit-user-select:text !important;user-select:text !important;
+        -moz-user-select:text !important;-ms-user-select:text !important;
+      }
+      #seDebugPanel .se-log{flex:1 1 auto;min-height:0;overflow:auto;padding:6px 10px;cursor:text;
+        background:#0a0c0e;font-size:11px;line-height:1.45;overscroll-behavior:contain;}
+      #seDebugPanel.se-resizing .se-log{overflow:hidden;pointer-events:none;}
+      #seDebugPanel .se-resize-grip{position:absolute;right:0;bottom:0;width:18px;height:18px;cursor:nwse-resize;z-index:3;
+        background:linear-gradient(135deg,transparent 0 48%,#3a4558 48% 52%,transparent 52% 68%,#3a4558 68% 72%,transparent 72%);
+        touch-action:none;}
+      #seDebugPanel .se-row{white-space:pre-wrap;word-break:break-word;padding:2px 0;
+        border-bottom:1px solid #12151a;}
+      /* ch4os-style: [#n 2:09:25 AM] [+12ms] LEVEL loc: msg */
+      #seDebugPanel .se-row .se-meta{color:#64748b;}
+      #seDebugPanel .se-row .se-t{color:#64748b;}
+      #seDebugPanel .se-row .se-delta{margin:0 2px;}
+      #seDebugPanel .se-row .se-lv{font-weight:700;margin:0 4px 0 2px;}
+      #seDebugPanel .se-row .se-loc{color:#38bdf8;margin-right:4px;}
+      #seDebugPanel .se-row .se-loc::after{content:":";color:#38bdf8;}
+      #seDebugPanel .se-row .se-msg{color:#e2e8f0;}
       #seDebugPanel .se-empty{color:#5b6472;padding:10px;}
+      #seDebugPanel input.se-search,
+      #seDebugPanel button{
+        -webkit-user-select:none !important;user-select:none !important;
+      }
     `;
     document.head.appendChild(s);
   }
@@ -273,6 +498,7 @@
         <button class="se-bug" data-se-fake-err type="button" title="Click: generate a fake ERR entry (tests the log pipeline end to end)" aria-label="Generate a fake error">🐞</button>
         <span class="se-title">Debug Log</span>
         <button class="se-tool" data-se-watch aria-pressed="false">○ smoothing</button>
+        <button class="se-tool" data-se-cats title="Copy module category list (emoji + name, one per line)" aria-label="Copy module category list">📋🎛️</button>
         <button class="se-tool" data-se-pause>Pause</button>
         <button class="se-tool" data-se-copy>Copy</button>
         <button class="se-tool" data-se-clear>Clear</button>
@@ -282,7 +508,8 @@
         ${["all","LOG","WARN","FAIL","SMOOTH","ERROR"].map((f)=>`<span class="se-chip${f==="all"?" on":""}" data-se-filter="${f}">${f}</span>`).join("")}
         <input class="se-search" data-se-search placeholder="filter text…">
       </div>
-      <div class="se-log" data-se-list><div class="se-empty">No log entries yet.</div></div>`;
+      <div class="se-log node-text-selectable" data-se-list tabindex="0"><div class="se-empty">No log entries yet.</div></div>
+      <div class="se-resize-grip" data-se-resize title="Resize" aria-hidden="true"></div>`;
     document.body.appendChild(p);
     els.panel = p;
     els.list = p.querySelector("[data-se-list]");
@@ -296,6 +523,7 @@
     });
     p.querySelector("[data-se-clear]").addEventListener("click", clearLog);
     p.querySelector("[data-se-copy]").addEventListener("click", copyLog);
+    p.querySelector("[data-se-cats]")?.addEventListener("click", dumpModuleCategories);
     const pauseBtn = p.querySelector("[data-se-pause]");
     pauseBtn.addEventListener("click", () => { paused = !paused; pauseBtn.textContent = paused ? "Resume" : "Pause"; if (!paused) rebuild(); });
     els.watchBtn.addEventListener("click", () => setSmoothingWatch(!smoothingWatch));
@@ -306,7 +534,32 @@
     }));
     p.querySelector("[data-se-search]").addEventListener("input", (e) => { search = e.target.value.toLowerCase(); rebuild(); });
 
+    // Keep selection/copy working inside the log: stop workspace/drag handlers
+    // from eating pointer/selectstart, and don't clear ranges on mousedown.
+    if (els.list) {
+      const stopBubble = (e) => { e.stopPropagation(); };
+      els.list.addEventListener("pointerdown", stopBubble);
+      els.list.addEventListener("mousedown", stopBubble);
+      els.list.addEventListener("click", stopBubble);
+      els.list.addEventListener("selectstart", (e) => {
+        e.stopPropagation();
+      });
+      // Ctrl/Cmd+C copies current selection when focus is in the log.
+      els.list.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && String(e.key).toLowerCase() === "c") {
+          const selected = window.getSelection?.()?.toString?.() || "";
+          if (selected) {
+            // Let the browser handle native copy of the selection.
+            return;
+          }
+          e.preventDefault();
+          copyLog();
+        }
+      });
+    }
+
     makeDraggable(p, p.querySelector("[data-se-drag]"));
+    makeResizable(p, p.querySelector("[data-se-resize]"), els.list);
   }
 
   function makeDraggable(panel, handle) {
@@ -329,17 +582,105 @@
     handle.addEventListener("pointercancel", end);
   }
 
+  /**
+   * Custom SE resize grip. Native CSS resize:both on the panel scrolls the
+   * overflow:auto log while dragging; this grip freezes scroll + pointer-events
+   * on the log for the duration of the resize.
+   */
+  function makeResizable(panel, grip, list) {
+    if (!panel || !grip) return;
+    const minW = 340;
+    const minH = 200;
+    let on = false;
+    let sx = 0;
+    let sy = 0;
+    let startW = 0;
+    let startH = 0;
+    let startL = 0;
+    let startT = 0;
+    let frozenScroll = 0;
+
+    const freezeLog = () => {
+      if (!list) return;
+      frozenScroll = list.scrollTop;
+      panel.classList.add("se-resizing");
+      list.scrollTop = frozenScroll;
+    };
+    const unfreezeLog = () => {
+      panel.classList.remove("se-resizing");
+      if (list) list.scrollTop = frozenScroll;
+    };
+
+    grip.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      on = true;
+      sx = e.clientX;
+      sy = e.clientY;
+      const r = panel.getBoundingClientRect();
+      startW = r.width;
+      startH = r.height;
+      startL = r.left;
+      startT = r.top;
+      // Pin top-left so SE-corner drag grows down/right and never pans content.
+      panel.style.right = "auto";
+      panel.style.bottom = "auto";
+      panel.style.left = `${startL}px`;
+      panel.style.top = `${startT}px`;
+      freezeLog();
+      grip.setPointerCapture?.(e.pointerId);
+    });
+    grip.addEventListener("pointermove", (e) => {
+      if (!on) return;
+      e.preventDefault();
+      const nextW = Math.max(minW, startW + (e.clientX - sx));
+      const nextH = Math.max(minH, startH + (e.clientY - sy));
+      panel.style.width = `${nextW}px`;
+      panel.style.height = `${nextH}px`;
+      if (list) list.scrollTop = frozenScroll;
+    });
+    const end = (e) => {
+      if (!on) return;
+      on = false;
+      unfreezeLog();
+      try { grip.releasePointerCapture?.(e.pointerId); } catch (_) {}
+    };
+    grip.addEventListener("pointerup", end);
+    grip.addEventListener("pointercancel", end);
+    grip.addEventListener("lostpointercapture", () => {
+      if (!on) return;
+      on = false;
+      unfreezeLog();
+    });
+  }
+
   function matches(e) {
     if (filter !== "all" && e.level !== filter) return false;
-    if (search && !(`${e.loc} ${e.msg}`.toLowerCase().includes(search))) return false;
+    if (search && !(`${e.loc} ${e.msg} ${e.t}`.toLowerCase().includes(search))) return false;
     return true;
   }
+
+  /** Plain text line (copy / dump) — matches ch4os formatEntryLine shape. */
+  function formatEntryLine(e) {
+    const lv = LEVELS[e.level] || LEVELS.LOG;
+    const t = e.t || formatLogTime(e.ts, e.id);
+    const dStr = formatDelta(e.delta);
+    const loc = e.loc ? ` ${e.loc}:` : "";
+    return `[#${e.id} ${t}] [${dStr}] ${lv.tag}${loc} ${e.msg}`;
+  }
+
   function rowHtml(e) {
     const lv = LEVELS[e.level] || LEVELS.LOG;
-    const esc = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-    return `<div class="se-row" data-id="${e.id}"><span class="se-t">${e.t}</span>`
+    const esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+    const t = e.t || formatLogTime(e.ts, e.id);
+    const dStr = formatDelta(e.delta);
+    const dCol = deltaColor(e.delta);
+    // [#42 2:09:25 AM] [+12ms] LOG loc: message
+    return `<div class="se-row" data-id="${e.id}">`
+      + `<span class="se-meta">[#${e.id} <span class="se-t">${esc(t)}</span>]</span> `
+      + `<span class="se-delta" style="color:${dCol}">[${esc(dStr)}]</span> `
       + `<span class="se-lv" style="color:${lv.color}">${lv.tag}</span>`
-      + (e.loc ? `<span class="se-loc">${esc(e.loc)}</span>` : "")
+      + (e.loc ? ` <span class="se-loc">${esc(e.loc)}</span> ` : " ")
       + `<span class="se-msg">${esc(e.msg)}</span></div>`;
   }
   function render(e) {
@@ -347,20 +688,130 @@
     const empty = els.list.querySelector(".se-empty");
     if (empty) empty.remove();
     if (!matches(e)) return;
-    const atBottom = els.list.scrollHeight - els.list.scrollTop - els.list.clientHeight < 30;
-    els.list.insertAdjacentHTML("beforeend", rowHtml(e));
-    if (atBottom) els.list.scrollTop = els.list.scrollHeight;
+    // Newest at top: stick to top when already near the top (following live feed).
+    const atTop = els.list.scrollTop < 30;
+    els.list.insertAdjacentHTML("afterbegin", rowHtml(e));
+    if (atTop) els.list.scrollTop = 0;
   }
   function rebuild() {
     if (!els.list) return;
+    // entries is already newest-first.
     const rows = entries.filter(matches);
     els.list.innerHTML = rows.length ? rows.map(rowHtml).join("") : `<div class="se-empty">No matching entries.</div>`;
-    els.list.scrollTop = els.list.scrollHeight;
+    els.list.scrollTop = 0;
   }
-  function clearLog() { entries.length = 0; errorCount = 0; updateBadge(); rebuild(); }
+  function wipePersistedLogStorage() {
+    try { sessionStorage.removeItem(STORAGE_SESSION); } catch (_) {}
+    try { localStorage.removeItem(STORAGE_LAST_UNLOAD); } catch (_) {}
+  }
+
+  /** Fresh empty log for this page load (storage wiped so refresh does not restore). */
+  function clearLogOnStartup() {
+    entries.length = 0;
+    errorCount = 0;
+    lastPushTs = 0;
+    seq = 0;
+    wipePersistedLogStorage();
+  }
+
+  function clearLog() {
+    entries.length = 0;
+    errorCount = 0;
+    lastPushTs = 0;
+    wipePersistedLogStorage();
+    updateBadge();
+    rebuild();
+    SE.INFO("log cleared (including persisted dump)");
+  }
   function copyLog() {
-    const text = entries.filter(matches).map((e) => `[${e.t}] ${(LEVELS[e.level]||{}).tag} ${e.loc} | ${e.msg}`).join("\n");
-    navigator.clipboard?.writeText(text).then(() => SE.INFO("log copied to clipboard"), () => {});
+    // Prefer the user's current selection when it sits inside the log.
+    let text = "";
+    try {
+      const sel = window.getSelection?.();
+      const selected = sel?.toString?.() || "";
+      if (selected && els.list && sel.rangeCount > 0) {
+        const anchor = sel.anchorNode;
+        if (anchor && (els.list === anchor || els.list.contains(anchor.nodeType === 1 ? anchor : anchor.parentElement))) {
+          text = selected;
+        }
+      }
+    } catch (_) {}
+    if (!text) {
+      // Newest-first plain text, same shape as ch4os snapshot lines.
+      text = entries.filter(matches).map(formatEntryLine).join("\n");
+    }
+    if (!text) {
+      SE.INFO("nothing to copy");
+      return;
+    }
+    const done = (ok) => {
+      if (ok) SE.INFO(text.includes("\n") || text.length > 80 ? "log copied to clipboard" : "selection copied");
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => done(true), () => {
+        try {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.setAttribute("readonly", "");
+          ta.style.cssText = "position:fixed;left:-9999px;opacity:0";
+          document.body.appendChild(ta);
+          ta.select();
+          const ok = document.execCommand("copy");
+          ta.remove();
+          done(ok);
+        } catch (_) { done(false); }
+      });
+    } else {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.cssText = "position:fixed;left:-9999px;opacity:0";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        ta.remove();
+        done(ok);
+      } catch (_) { done(false); }
+    }
+  }
+
+  /**
+   * Module department list as one multi-line LOG entry (emoji + name per line).
+   * Shape (easy select/copy of a single log row):
+   *   [#2410 10:31:53 AM] [+0ms] LOG categories:
+   *   🕹️ Controllers
+   *   ♟️ Game Triggers
+   *   …
+   */
+  function dumpModuleCategories() {
+    const deps = (typeof nodeGraphModuleStoreDepartments !== "undefined"
+      && Array.isArray(nodeGraphModuleStoreDepartments))
+      ? nodeGraphModuleStoreDepartments
+      : [];
+    if (!deps.length) {
+      push("WARN", "no module categories available (store not loaded)", "debug-console");
+      return;
+    }
+    const lines = deps.map((dep) => {
+      const emoji = String(dep?.emoji || "").trim() || "·";
+      const name = String(dep?.title || dep?.label || dep?.id || "").trim() || "?";
+      return `${emoji} ${name}`;
+    });
+    // One entry: header + emoji lines. formatEntryLine → easy single-block copy.
+    //   [#n t] [+0ms] LOG categories:
+    //   🕹️ Controllers
+    //   …
+    const entry = push("LOG", `categories:\n${lines.join("\n")}`, "");
+    const text = formatEntryLine(entry);
+    try {
+      navigator.clipboard?.writeText(text).then(
+        () => SE.INFO("module categories copied (one log entry)"),
+        () => {},
+      );
+    } catch (_) {
+      // Clipboard may be denied; the multi-line entry is still in the log.
+    }
   }
   function updateBadge() {
     if (!els.badge) return;
@@ -374,24 +825,38 @@
     if (open) { rebuild(); }
   }
 
-  // Dev gate: only show the panel/button in a dev context (localhost, file://,
-  // ?debug in the URL, or SE.devMode(true)). A public deploy hides it entirely;
-  // the window.SE logging API and error capture stay active regardless.
+  // Always show the 🐞 button (localhost, release site, iframe deploy). Release
+  // builds only change color (neutral via .se-release-build) — never hide the
+  // button. SE.devMode(false) can still tear the UI down on demand; logging
+  // and error capture stay active regardless.
   function seDevEnabled() {
     try {
-      const host = location.hostname || "";
-      if (/^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])$/.test(host) || location.protocol === "file:") return true;
-      if (/(^|[?&])debug(=1|=true)?(&|$)/.test(location.search)) return true;
-      return localStorage.getItem("seDebug") === "1";
-    } catch (_) { return false; }
+      // Explicit opt-out only (not the default on public/release pages).
+      if (localStorage.getItem("seDebug") === "0") return false;
+      return true;
+    } catch (_) {
+      return true;
+    }
   }
   function init() {
     try {
-      if (!seDevEnabled()) { return; }
+      installPersistLifecycle();
+      // Fresh log every startup / refresh — never restore prior dump.
+      clearLogOnStartup();
+      // Drop any leftover dump from older builds that auto-persisted on hide.
+      wipePersistedLogStorage();
+      if (!seDevEnabled()) {
+        // Keep logging without the panel.
+        SE.INFO(`debug console (headless) — build ${seBuildMode()}`);
+        return;
+      }
       injectStyles();
       buildButton();
       buildPanel();
-      SE.INFO(`debug console ready — build ${(document.querySelector("[data-build-number-value]")?.textContent || "?")} (${seBuildMode()})`);
+      SE.INFO(
+        `debug console ready — build ${(document.querySelector("[data-build-number-value]")?.textContent || "?")} (${seBuildMode()}) · log cleared on load`,
+      );
+      rebuild();
     } catch (err) {
       try { console.error("[se-debug] init failed", err); } catch (_) {}
     }

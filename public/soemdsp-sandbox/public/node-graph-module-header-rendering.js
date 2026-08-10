@@ -23,6 +23,10 @@ function syncNodeGraphHeaderTimingWidgets() {
       input.value = String(audio[audioKey]);
     }
   }
+  // Header Smooth Time field mirrors Command Center global smoothing.
+  if (typeof syncNodeGraphGlobalSmoothingControl === "function") {
+    syncNodeGraphGlobalSmoothingControl();
+  }
 }
 
 // Keeps every transport node's own "BPM" parameter mirrored to the patch-wide
@@ -101,6 +105,19 @@ function commitNodeGraphHeaderNumberInput(input) {
     updateNodeGraphPatchTimingFromHeader(input);
   } else if (input.dataset.audioField) {
     updateNodeGraphPatchAudioFromHeader(input);
+  } else if (input.dataset.speedLimit === "true") {
+    if (typeof setNodeGraphProjectSpeedLimitHz === "function") {
+      setNodeGraphProjectSpeedLimitHz(input.value, { persist: true });
+    } else if (typeof setNodeGraphLiveSpeedLimit === "function") {
+      setNodeGraphLiveSpeedLimit(input.value);
+    }
+    input.value = String(
+      typeof nodeGraphProjectSpeedLimitHz === "function"
+        ? nodeGraphProjectSpeedLimitHz()
+        : (typeof nodeGraphLiveSpeedLimitHz === "function"
+          ? nodeGraphLiveSpeedLimitHz()
+          : 20000),
+    );
   } else if (input.dataset.globalScopeInput) {
     setNodeGraphScopeNumberInputValue(input, input.value);
   }
@@ -112,13 +129,19 @@ function bindNodeGraphHeaderTimingWidgets(root = document) {
     if (input.dataset.timingBound === "true") {
       continue;
     }
+    // Global smoothing has its own drag/edit handlers (same as Command Center).
+    if (input.dataset.globalSmoothingSeconds === "true") {
+      input.dataset.timingBound = "true";
+      continue;
+    }
     input.dataset.timingBound = "true";
     if (input.dataset.globalScopeNumberDrag === "true") {
       input.readOnly = true;
     }
     input.addEventListener("change", () => commitNodeGraphHeaderNumberInput(input));
     input.addEventListener("blur", () => commitNodeGraphHeaderNumberInput(input));
-    if (input.dataset.timingField || input.dataset.audioField) {
+    // timing / audio / speedLimit: double-click unlocks typing after drag-mode readOnly.
+    if (input.dataset.timingField || input.dataset.audioField || input.dataset.speedLimit === "true") {
       input.addEventListener("dblclick", beginNodeGraphScopeNumberEdit);
     }
     input.addEventListener("keydown", (event) => {
@@ -129,7 +152,10 @@ function bindNodeGraphHeaderTimingWidgets(root = document) {
       event.stopPropagation();
     });
     input.addEventListener("pointerdown", (event) => {
-      if ((input.dataset.timingField || input.dataset.audioField) && input.readOnly) {
+      if (
+        (input.dataset.timingField || input.dataset.audioField || input.dataset.speedLimit === "true")
+        && input.readOnly
+      ) {
         event.preventDefault();
       }
       event.stopPropagation();
@@ -268,13 +294,16 @@ function createNodeGraphHeaderSpeedPlaceholder() {
   return field;
 }
 
-// Full-scale ceiling (Hz) for the universal oscillator `f` input: 0..speedLimit.
+// Project Speed Limit (Hz): live pitch/f + DSP ceiling only (not knob metaparam max).
+// No project minimum frequency (0 allowed). Default 20000; user-adjustable.
+// Same interaction as BPM / pitch ref: drag to tune, double-click to type.
 function createNodeGraphHeaderSpeedLimitField() {
   const field = document.createElement("label");
   field.className = "node-header-timing-field node-header-scope-field";
-  field.setAttribute("aria-label", "Speed limit for oscillator f input in Hertz");
+  field.setAttribute("aria-label", "Project speed limit in Hertz");
   field.dataset.headerNumberDrag = "true";
-  field.title = "Max Hz for the universal oscillator f input (linear 0…limit).";
+  field.title =
+    "Project Speed Limit (Hz): runtime max for pitch / f jacks / DSP frequency resolve. Does not rewrite frequency knob ranges. No minimum frequency. Default 20000. Drag to tune; double-click to type.";
 
   const caption = document.createElement("span");
   caption.className = "node-header-timing-caption";
@@ -284,31 +313,85 @@ function createNodeGraphHeaderSpeedLimitField() {
   const input = document.createElement("input");
   input.className = "node-header-timing-input";
   input.dataset.speedLimit = "true";
+  // Required so field-level drag/dblclick resolve this input (see
+  // nodeGraphScopeNumberDragInputFromTarget).
+  input.dataset.globalScopeNumberDrag = "true";
   input.inputMode = "decimal";
   input.min = "1";
-  input.max = "192000";
-  input.step = "any";
-  input.type = "number";
-  input.value = String(
-    typeof nodeGraphLiveSpeedLimitHz === "function"
-      ? nodeGraphLiveSpeedLimitHz()
-      : (nodeGraphMvp?.live?.speedLimit ?? 20000),
+  input.max = String(
+    typeof NODE_GRAPH_PROJECT_SPEED_LIMIT_CONTROL_MAX_HZ === "number"
+      ? NODE_GRAPH_PROJECT_SPEED_LIMIT_CONTROL_MAX_HZ
+      : 192000,
   );
-  input.setAttribute("aria-label", "Speed limit Hertz for f input");
-  input.addEventListener("keydown", (event) => event.stopPropagation());
-  input.addEventListener("pointerdown", (event) => event.stopPropagation());
-  const commit = () => {
-    if (typeof setNodeGraphLiveSpeedLimit === "function") {
-      setNodeGraphLiveSpeedLimit(input.value);
-    }
-    input.value = String(
-      typeof nodeGraphLiveSpeedLimitHz === "function"
+  // Integer Hz; "any" + NaN step broke drag snap into 0.01 steps oddly for this range.
+  input.step = "1";
+  input.type = "number";
+  input.readOnly = true;
+  input.value = String(
+    typeof nodeGraphProjectSpeedLimitHz === "function"
+      ? nodeGraphProjectSpeedLimitHz()
+      : (typeof nodeGraphLiveSpeedLimitHz === "function"
         ? nodeGraphLiveSpeedLimitHz()
-        : 20000,
-    );
-  };
-  input.addEventListener("change", commit);
-  input.addEventListener("blur", commit);
+        : (nodeGraphMvp?.live?.speedLimit ?? 20000)),
+  );
+  input.setAttribute("aria-label", "Project speed limit Hertz");
+  input.title = field.title;
+  field.append(input);
+  return field;
+}
+
+// Copy of the Command Center global smoothing-time control, styled like
+// Speed Limit (caption + number). Shares autoSmoothingSeconds state with
+// #nodeSceneGlobalSmoothingSeconds — both stay in sync via
+// syncNodeGraphGlobalSmoothingControl.
+function createNodeGraphHeaderSmoothingTimeField() {
+  const field = document.createElement("label");
+  field.className = "node-header-timing-field node-header-scope-field node-header-smoothing-field";
+  field.setAttribute("aria-label", "Global smoothing time in seconds");
+  field.dataset.tooltipKey = "timing.globalSmoothing";
+  field.title = "Global smoothing time in seconds. Drag to tune; double-click to type. Ctrl-click resets to one audio block.";
+
+  const caption = document.createElement("span");
+  caption.className = "node-header-timing-caption";
+  caption.textContent = "Smooth Time";
+  field.append(caption);
+
+  const input = document.createElement("input");
+  input.id = "nodeHeaderGlobalSmoothingSeconds";
+  input.className = "node-header-timing-input";
+  input.dataset.globalSmoothingSeconds = "true";
+  // Mark so bindNodeGraphHeaderTimingWidgets does not attach BPM-style handlers.
+  input.dataset.timingBound = "true";
+  input.inputMode = "decimal";
+  input.min = "0";
+  input.step = "0.001";
+  input.type = "number";
+  input.readOnly = true;
+  input.autocomplete = "off";
+  input.setAttribute("aria-label", "Global smoothing time in seconds");
+  input.dataset.tooltipKey = "timing.globalSmoothing";
+  input.title = field.title;
+  input.value = typeof formatNodeGraphGlobalSmoothingSeconds === "function"
+    && typeof nodeGraphGlobalSmoothingSeconds === "function"
+    ? formatNodeGraphGlobalSmoothingSeconds(nodeGraphGlobalSmoothingSeconds())
+    : "0.001";
+
+  // Same interaction model as the scene-context smoothing widget.
+  if (typeof handleNodeGraphGlobalSmoothingSecondsChange === "function") {
+    input.addEventListener("change", handleNodeGraphGlobalSmoothingSecondsChange);
+    input.addEventListener("blur", handleNodeGraphGlobalSmoothingSecondsChange);
+  }
+  if (typeof handleNodeGraphGlobalSmoothingSecondsKeydown === "function") {
+    input.addEventListener("keydown", handleNodeGraphGlobalSmoothingSecondsKeydown);
+  }
+  if (typeof beginNodeGraphGlobalSmoothingSecondsEdit === "function") {
+    input.addEventListener("dblclick", beginNodeGraphGlobalSmoothingSecondsEdit);
+  }
+  if (typeof beginNodeGraphGlobalSmoothingSecondsDrag === "function") {
+    input.addEventListener("pointerdown", beginNodeGraphGlobalSmoothingSecondsDrag);
+  }
+  input.addEventListener("keydown", (event) => event.stopPropagation());
+
   field.append(input);
   return field;
 }
@@ -454,6 +537,7 @@ function createNodeGraphHeaderTimingWidgets() {
     ),
     createNodeGraphHeaderSpeedPlaceholder(),
     createNodeGraphHeaderSpeedLimitField(),
+    createNodeGraphHeaderSmoothingTimeField(),
     createNodeGraphHeaderRenderRangeInput("node-header-render-start-input", "Start", nodeGraphMvp.renderStartSeconds ?? 0, { ariaLabel: "Render start time in seconds", min: 0, max: 3599, tooltip: "Sets the Render Sample start point (seconds)" }),
     createNodeGraphHeaderRenderRangeInput("node-header-render-end-input", "End", nodeGraphMvp.renderEndSeconds ?? (nodeGraphMvp.seconds ?? 2), { ariaLabel: "Render end time in seconds", min: 0.05, max: 3600, tooltip: "Sets the Render Sample end point (seconds)" }),
   );
@@ -506,7 +590,11 @@ function renderNodeGraphPatchTimingControls() {
     syncNodeGraphHeaderTimingWidgets();
     return;
   }
-  if (!host.querySelector(".node-header-timing-widgets")) {
+  // Rebuild if missing the widget group or the Smooth Time field (added next to Speed Limit).
+  if (
+    !host.querySelector(".node-header-timing-widgets")
+    || !host.querySelector("#nodeHeaderGlobalSmoothingSeconds")
+  ) {
     host.replaceChildren(createNodeGraphHeaderTimingWidgets());
   }
   bindNodeGraphHeaderTimingWidgets(host);
@@ -546,25 +634,82 @@ function createNodeGraphModuleHeader(type, node, definition) {
   titleText.className = "node-header-title node-header-title-input";
   titleText.dataset.node = node;
   titleText.spellcheck = false;
-  titleText.value = nodeGraphPatchNodeTitle({ id: node, type });
-  // Single/double click on the title behave exactly like clicking anywhere
-  // else in the header row (select/drag the module, or open the module
-  // settings menu on double-click) -- pointerdown isn't stopped, so it
-  // still bubbles to the row's own drag/select listener. What IS blocked
-  // is the input's native "mousedown focuses + places caret" behavior,
-  // which would otherwise start an edit on click #1. Editing only begins
-  // on a genuine triple-click, detected via the "click" event's `detail`
-  // (the browser's own consecutive-click counter).
-  titleText.addEventListener("pointerdown", (event) => event.preventDefault());
+  // Locked until triple-click rename — never focusable as a normal text field.
+  titleText.readOnly = true;
+  titleText.tabIndex = -1;
+  // Shows user alias when set, otherwise the default type title.
+  // Pass node id so patch lookup can read alias (not a bare {id,type} stub).
+  titleText.value = typeof nodeGraphPatchNodeTitle === "function"
+    ? nodeGraphPatchNodeTitle(node)
+    : (nodeGraphNodeLabels?.[type] || type);
+  titleText.title = "Triple-click to rename (alias). Multi-select renames all selected. Double-click header for Module Settings.";
+  // Single/double click: select/drag or open module settings (bubbles to row).
+  // preventDefault blocks the input's native caret placement on click #1.
+  // Triple-click (detail >= 3) starts an explicit rename session only.
+  titleText.addEventListener("pointerdown", (event) => {
+    // While already renaming this field, allow normal caret/selection.
+    if (titleText.dataset.titleEditing === "1") {
+      return;
+    }
+    event.preventDefault();
+  });
   titleText.addEventListener("click", (event) => {
     if (event.detail < 3) {
       return;
     }
     event.stopPropagation();
-    titleText.focus();
-    titleText.select();
+    if (typeof startNodeGraphModuleTitleEdit === "function") {
+      startNodeGraphModuleTitleEdit(titleText);
+    } else {
+      titleText.readOnly = false;
+      titleText.focus();
+      titleText.select();
+    }
   });
-  titleText.addEventListener("change", () => commitNodeGraphModuleTitleFromHeaderInput(node, titleText.value));
+  titleText.addEventListener("input", () => {
+    if (typeof syncNodeGraphModuleTitleEditPeers === "function") {
+      syncNodeGraphModuleTitleEditPeers(titleText);
+    }
+  });
+  // Commit only on blur of an active rename session (never from accidental focus).
+  titleText.addEventListener("blur", () => {
+    if (titleText.dataset.titleEditing !== "1") {
+      titleText.readOnly = true;
+      titleText.tabIndex = -1;
+      return;
+    }
+    if (typeof endAllNodeGraphModuleTitleEdits === "function") {
+      endAllNodeGraphModuleTitleEdits({ commit: true, revert: false });
+      return;
+    }
+    if (typeof commitNodeGraphModuleTitleFromHeaderInput === "function") {
+      commitNodeGraphModuleTitleFromHeaderInput(node, titleText.value);
+    }
+    titleText.readOnly = true;
+    titleText.tabIndex = -1;
+    delete titleText.dataset.titleEditing;
+  });
+  titleText.addEventListener("keydown", (event) => {
+    if (titleText.dataset.titleEditing !== "1") {
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      titleText.blur();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      if (typeof endAllNodeGraphModuleTitleEdits === "function") {
+        endAllNodeGraphModuleTitleEdits({ commit: false, revert: true });
+      } else {
+        const patchNode = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(node) : null;
+        titleText.value = typeof nodeGraphPatchNodeTitle === "function"
+          ? nodeGraphPatchNodeTitle(patchNode || { id: node, type })
+          : titleText.value;
+        titleText.readOnly = true;
+        titleText.blur();
+      }
+    }
+  });
   titleRow.append(titleText);
   header.append(titleRow);
 

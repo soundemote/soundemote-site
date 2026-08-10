@@ -145,7 +145,24 @@ function finishNodeBootLoading() {
     return;
   }
   if (typeof resetNodeGraphStartupView === "function") {
-    resetNodeGraphStartupView();
+    try {
+      resetNodeGraphStartupView();
+    } catch (error) {
+      console.warn("Unable to reset startup view before hiding boot screen", error);
+    }
+  }
+  // Boot reveal must match release UX: diagnostics off even on debug servers.
+  if (typeof hideNodeGraphDebugChrome === "function") {
+    try {
+      hideNodeGraphDebugChrome();
+    } catch (error) {
+      console.warn("Unable to hide debug chrome before revealing interface", error);
+      document.body.classList.add("keyboard-debug-hidden");
+      document.body.classList.add("debug-collapsed");
+    }
+  } else {
+    document.body.classList.add("keyboard-debug-hidden");
+    document.body.classList.add("debug-collapsed");
   }
   setNodeBootLoadingProgress(100, "ready");
   document.body.dataset.nodeBootFinished = "interface-ready";

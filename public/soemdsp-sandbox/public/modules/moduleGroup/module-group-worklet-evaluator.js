@@ -63,12 +63,27 @@ NodeLiveAudioProcessor.prototype.createNestedRuntime = function createNestedRunt
   runtime.delayEffectStates = new Map();
   runtime.pingPongDelayStates = new Map();
   runtime.expAdsrStates = new Map();
+  runtime.attackDecayStates = new Map();
   runtime.fractalBrownianNoiseStates = new Map();
+  runtime.fbmFieldStates = new Map();
   runtime.flowerChildEnvelopeFollowerStates = new Map();
   runtime.graphInputConnections = new Map();
   runtime.ladderFilterStates = new Map();
   runtime.flowerChildFilterStates = new Map();
-  runtime.rsmetFilterStates = new Map();
+  runtime.activeFilterStates = new Map();
+  runtime.butterworthStates = new Map();
+  runtime.linkwitzRileyStates = new Map();
+  runtime.besselStates = new Map();
+  runtime.chebyshevStates = new Map();
+  runtime.ellipticStates = new Map();
+  runtime.bandpassStates = new Map();
+  runtime.allpassStates = new Map();
+  runtime.crossover2States = new Map();
+  runtime.crossover3States = new Map();
+  runtime.crossover4States = new Map();
+  runtime.crossover5States = new Map();
+  runtime.crossover6States = new Map();
+  runtime.softpopOscillatorStates = new Map();
   runtime.yellowjacketFilterStates = new Map();
   runtime.superloveFilterStates = new Map();
   runtime.chaoticPhaseLockingFilterStates = new Map();
@@ -99,6 +114,7 @@ NodeLiveAudioProcessor.prototype.createNestedRuntime = function createNestedRunt
   runtime.scopeBuffers = new Map();
   runtime.scopeCounter = 0;
   runtime.slewLimiterStates = new Map();
+  runtime.airClipperStates = new Map();
   runtime.smoothers = new Map();
   runtime.activeSmoothers = [];
   runtime.activeSmootherKeys = new Set();
@@ -198,7 +214,22 @@ NodeLiveAudioProcessor.prototype.setNestedPlan = function setNestedPlan(plan) {
     if (node?.type === "cookbookFilter") this.cookbookFilterStates.set(id, this.createStereoFilterState(() => this.createCookbookFilterState()));
     if (node?.type === "ladderFilter") this.ladderFilterStates.set(id, this.createStereoFilterState(() => this.createLadderFilterState()));
     if (node?.type === "flowerChildFilter") this.flowerChildFilterStates.set(id, this.createStereoFilterState(() => this.createFlowerChildFilterState()));
-    if (node?.type === "rsmetFilter") this.rsmetFilterStates.set(id, this.createStereoFilterState(() => this.createRsmetFilterState()));
+    if (node?.type === "activeFilter") {
+      this.activeFilterStates.set(id, this.createStereoActiveFilterState());
+    }
+    if (node?.type === "butterworth") this.butterworthStates.set(id, this.createStereoScientificIirState());
+    if (node?.type === "linkwitzRiley") this.linkwitzRileyStates.set(id, this.createStereoScientificIirState());
+    if (node?.type === "bessel") this.besselStates.set(id, this.createStereoScientificIirState());
+    if (node?.type === "chebyshev") this.chebyshevStates.set(id, this.createStereoScientificIirState());
+    if (node?.type === "elliptic") this.ellipticStates.set(id, this.createStereoScientificIirState());
+    if (node?.type === "bandpass") this.bandpassStates.set(id, this.createStereoBandpassState());
+    if (node?.type === "allpass") this.allpassStates.set(id, this.createStereoAllpassState());
+    for (let n = 2; n <= 6; n += 1) {
+      if (node?.type === `crossover${n}`) {
+        this[`crossover${n}States`].set(id, this.createCrossoverStereoState(n));
+      }
+    }
+    if (node?.type === "softpopOscillator") this.softpopOscillatorStates.set(id, this.createSoftpopOscillatorState());
     if (node?.type === "yellowjacketFilter") this.yellowjacketFilterStates.set(id, this.createStereoFilterState(() => this.createYellowjacketFilterState()));
     if (node?.type === "superloveFilter") this.superloveFilterStates.set(id, this.createStereoFilterState(() => this.createSuperloveFilterState()));
     if (node?.type === "chaoticPhaseLockingFilter") this.chaoticPhaseLockingFilterStates.set(id, this.createStereoFilterState(() => this.createChaoticPhaseLockingFilterState()));
@@ -221,7 +252,11 @@ NodeLiveAudioProcessor.prototype.setNestedPlan = function setNestedPlan(plan) {
     }
     if (node?.type === "nextPatch" || node?.type === "previousPatch") this.patchCommandStates.set(id, this.createPatchCommandState());
     if (node?.type === "slewLimiter") this.slewLimiterStates.set(id, this.createStereoSlewLimiterState());
+    if (node?.type === "airClipper" && typeof this.createAirClipperState === "function") {
+      this.airClipperStates.set(id, this.createAirClipperState());
+    }
     if (node?.type === "expAdsr") this.expAdsrStates.set(id, this.createExpAdsrState());
+    if (node?.type === "attackDecay") this.attackDecayStates.set(id, this.createAttackDecayState());
     if (node?.type === "linearEnvelope") this.linearEnvelopeStates.set(id, this.createLinearEnvelopeState());
     if (node?.type === "noiseGenerator") this.noiseGeneratorStates.set(id, this.createNoiseGeneratorState());
     if (node?.type === "randomWalk") this.randomWalkStates.set(id, this.createRandomWalkState());
@@ -229,6 +264,7 @@ NodeLiveAudioProcessor.prototype.setNestedPlan = function setNestedPlan(plan) {
     if (node?.type === "bradley2a") this.bradley2AStates.set(id, this.createBradley2AState());
     if (node?.type === "antisaw") this.antisawStates.set(id, this.createAntisawState());
     if (node?.type === "fractalBrownianNoise") this.fractalBrownianNoiseStates.set(id, this.createFractalBrownianNoiseState());
+    if (node?.type === "fbmField") this.fbmFieldStates.set(id, this.createFbmFieldState());
     if (node?.type === "flowerChildEnvelopeFollower") this.flowerChildEnvelopeFollowerStates.set(id, this.createFlowerChildEnvelopeFollowerState());
     if (node?.type === "pluckEnvelope") this.pluckEnvelopeStates.set(id, this.createPluckEnvelopeState());
     if (node?.type === "stepSequencer") this.stepSequencerStates.set(id, this.createStepSequencerState());

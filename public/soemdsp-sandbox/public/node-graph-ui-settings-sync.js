@@ -25,7 +25,7 @@ function syncNodeUiDevNodeColorControls() {
 // so anything added to it inherits that fragility. This reads its own controls
 // by definition key and writes two CSS custom properties, nothing else.
 const nodeUiDevSliderFillColorTargets = Object.freeze([
-  { property: "--node-slider-amount-color", prefix: "nodeUiDevSliderAmountFill", fallback: [200, 31, 15, 100] },
+  { property: "--node-slider-amount-color", prefix: "nodeUiDevSliderAmountFill", fallback: [200, 31, 15, 55] },
   { property: "--node-slider-position-color", prefix: "nodeUiDevSliderPositionFill", fallback: [203, 55, 57, 37] },
 ]);
 
@@ -79,14 +79,106 @@ function bindNodeUiDevSliderFillColorControls() {
   syncNodeUiDevSliderFillColorControls();
 }
 
+/**
+ * Room-dimmer hover cutout toggles + mouse size/softness/shape.
+ * Separate from the big header sync so a missing unrelated control cannot
+ * block dimmer updates (same pattern as slider fill colors).
+ */
+function syncNodeUiDevDimmerCutoutControls() {
+  const sliderEl = document.getElementById("nodeUiDevDimmerCutoutSlider");
+  const moduleEl = document.getElementById("nodeUiDevDimmerCutoutModule");
+  const titleEl = document.getElementById("nodeUiDevDimmerCutoutTitle");
+  const mouseEl = document.getElementById("nodeUiDevDimmerCutoutMouse");
+  const sizeEl = document.getElementById("nodeUiDevDimmerMouseSize");
+  const sizeOut = document.getElementById("nodeUiDevDimmerMouseSizeValue");
+  const softEl = document.getElementById("nodeUiDevDimmerMouseSoftness");
+  const softOut = document.getElementById("nodeUiDevDimmerMouseSoftnessValue");
+  const shapeEl = document.getElementById("nodeUiDevDimmerMouseShape");
+  const shapeOut = document.getElementById("nodeUiDevDimmerMouseShapeValue");
+
+  // Defaults match definitions when DOM is incomplete.
+  let sliderOn = true;
+  let moduleOn = false;
+  let titleOn = true;
+  let mouseOn = false;
+  let size = 56;
+  let soft = 25;
+  let shape = 0;
+
+  if (sliderEl) sliderOn = Boolean(sliderEl.checked);
+  if (moduleEl) moduleOn = Boolean(moduleEl.checked);
+  if (titleEl) titleOn = Boolean(titleEl.checked);
+  if (mouseEl) mouseOn = Boolean(mouseEl.checked);
+  if (sizeEl) {
+    size = Math.max(8, Math.min(240, Number(sizeEl.value) || 56));
+    sizeEl.value = String(size);
+  }
+  if (softEl) {
+    soft = Math.max(0, Math.min(100, Number(softEl.value) || 0));
+    softEl.value = String(soft);
+  }
+  if (shapeEl) {
+    shape = Math.max(0, Math.min(100, Number(shapeEl.value) || 0));
+    shapeEl.value = String(shape);
+  }
+
+  if (sizeOut) sizeOut.textContent = `${size}px`;
+  if (softOut) softOut.textContent = `${soft}%`;
+  if (shapeOut) {
+    shapeOut.textContent = shape <= 8
+      ? "square"
+      : (shape >= 92 ? "circle" : (shape < 55 ? "squircle" : "round"));
+  }
+
+  const ws = document.getElementById("nodeGraphWorkspace");
+  ws?.classList.toggle("dimmer-cutout-slider-enabled", sliderOn);
+  ws?.classList.toggle("dimmer-cutout-module-enabled", moduleOn);
+  ws?.classList.toggle("dimmer-cutout-title-enabled", titleOn);
+  ws?.classList.toggle("dimmer-cutout-mouse-enabled", mouseOn);
+  // Legacy class names (CSS / tooling may still key off them).
+  ws?.classList.toggle("hover-module-dimmer-cutout-enabled", sliderOn || mouseOn);
+  ws?.classList.toggle("hover-module-title-dimmer-cutout-enabled", titleOn);
+
+  if (typeof nodeGraphMvp !== "undefined" && nodeGraphMvp) {
+    nodeGraphMvp.dimmerCutoutSliderEnabled = sliderOn;
+    nodeGraphMvp.dimmerCutoutModuleEnabled = moduleOn;
+    nodeGraphMvp.dimmerCutoutTitleEnabled = titleOn;
+    nodeGraphMvp.dimmerCutoutMouseEnabled = mouseOn;
+    nodeGraphMvp.dimmerMouseSize = size;
+    nodeGraphMvp.dimmerMouseSoftness = soft;
+    nodeGraphMvp.dimmerMouseShape = shape;
+    nodeGraphMvp.hoverModuleDimmerCutoutEnabled = sliderOn || mouseOn;
+    nodeGraphMvp.hoverModuleTitleDimmerCutoutEnabled = titleOn;
+  }
+
+  if (typeof setNodeGraphDimmerCutoutOptions === "function") {
+    setNodeGraphDimmerCutoutOptions({
+      slider: sliderOn,
+      module: moduleOn,
+      title: titleOn,
+      mouse: mouseOn,
+      mouseSize: size,
+      mouseSoftness: soft,
+      mouseShape: shape,
+    });
+  } else {
+    if (typeof setNodeGraphHoverModuleDimmerCutoutEnabled === "function") {
+      setNodeGraphHoverModuleDimmerCutoutEnabled(sliderOn || mouseOn);
+    }
+    if (typeof setNodeGraphHoverModuleTitleDimmerCutoutEnabled === "function") {
+      setNodeGraphHoverModuleTitleDimmerCutoutEnabled(titleOn);
+    }
+  }
+}
+
 function syncNodeUiDevSettingsHeaderControls() {
   // Runs before the early-return guard below so the slider fill colors apply
   // even if some unrelated control is absent from the DOM.
   syncNodeUiDevSliderFillColorControls();
+  syncNodeUiDevDimmerCutoutControls();
   const settingsView = document.getElementById("nodeSettingsView");
   const mouseLightEnabledInput = document.getElementById("nodeUiDevMouseLightEnabled");
   const showOriginMarkerInput = document.getElementById("nodeUiDevShowOriginMarker");
-  const modularShaderEnabledInput = document.getElementById("nodeUiDevModularShaderEnabled");
   const scopeBloomEnabledInput = document.getElementById("nodeUiDevScopeBloomEnabled");
   const textSizeInput = document.getElementById("nodeUiDevSettingsHeaderTextSize");
   const textSizeValue = document.getElementById("nodeUiDevSettingsHeaderTextSizeValue");
@@ -185,7 +277,6 @@ function syncNodeUiDevSettingsHeaderControls() {
     !settingsView ||
     !mouseLightEnabledInput ||
     !showOriginMarkerInput ||
-    !modularShaderEnabledInput ||
     !scopeBloomEnabledInput ||
     !textSizeInput ||
     !textSizeValue ||
@@ -286,7 +377,6 @@ function syncNodeUiDevSettingsHeaderControls() {
 
   const mouseLightEnabled = Boolean(mouseLightEnabledInput.checked);
   const showOriginMarker = Boolean(showOriginMarkerInput.checked);
-  const modularShaderEnabled = Boolean(modularShaderEnabledInput.checked);
   const scopeBloomEnabled = Boolean(scopeBloomEnabledInput.checked);
   const textPercent = Math.max(0, Math.min(100, Number(textSizeInput.value) || 0));
   const uiDevTextPercent = Math.max(0, Math.min(100, Number(uiDevTextSizeInput.value) || 0));
@@ -295,7 +385,8 @@ function syncNodeUiDevSettingsHeaderControls() {
     0,
     Math.min(100, Number(modularHeaderButtonBackgroundInput.value) || 0),
   );
-  const tooltipTextSizePx = Math.max(8, Math.min(28, Number(tooltipTextSizeInput.value) || 14));
+  // Max ceiling for tip fit-to-box (not a fixed display size).
+  const tooltipTextSizePx = Math.max(12, Math.min(96, Number(tooltipTextSizeInput.value) || 64));
   const minimumGridBrightnessPercent = Math.max(
     0,
     Math.min(100, Number(minimumGridBrightnessInput.value) || 0),
@@ -370,6 +461,10 @@ function syncNodeUiDevSettingsHeaderControls() {
   document
     .getElementById("nodeWiringPanel")
     ?.style.setProperty("--node-tooltip-text-size", `${tooltipTextSizePx}px`);
+  // Tip text scales to the box; re-fit when the max ceiling changes.
+  if (typeof fitNodeInteractionHelpText === "function") {
+    fitNodeInteractionHelpText(document.getElementById("nodeInteractionHelp"));
+  }
   document
     .documentElement
     .style
@@ -383,9 +478,6 @@ function syncNodeUiDevSettingsHeaderControls() {
   document
     .getElementById("nodeGraphWorkspace")
     ?.classList.toggle("origin-marker-visible", showOriginMarker);
-  if (typeof setNodeGraphShaderScriptEnabled === "function") {
-    setNodeGraphShaderScriptEnabled(modularShaderEnabled, { persist: false });
-  }
   if (typeof nodeGraphMvp !== "undefined" && nodeGraphMvp) {
     const previousScopeBloomEnabled = Boolean(nodeGraphMvp.scopeBloomEnabled);
     nodeGraphMvp.scopeBloomEnabled = scopeBloomEnabled;
@@ -417,6 +509,12 @@ function syncNodeUiDevSettingsHeaderControls() {
   document
     .getElementById("nodeGraphWorkspace")
     ?.style.setProperty("--node-module-roundness-ratio", String(moduleRoundnessPercent / 100));
+  // Module frame SVG reads border-radius — rebuild outlines when roundness changes.
+  if (typeof scheduleNodeGraphModuleFramesUpdate === "function") {
+    scheduleNodeGraphModuleFramesUpdate({ force: true });
+  } else if (typeof updateAllNodeGraphModuleFrames === "function") {
+    updateAllNodeGraphModuleFrames({ force: true });
+  }
   gridColorInput.value = gridColor;
   workspaceBackgroundColorInput.value = workspaceBackgroundColor;
   document

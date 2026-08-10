@@ -1,12 +1,16 @@
-// Registers the offline/render-time dispatch handler for gain into
-// nodeGraphLiveModuleEvaluators (declared in node-graph-live-frame-evaluator.js).
-// Extracted from the inline if/else-if branch that used to live in that file.
+// Offline/render-time dispatch for gain. Pure math: gain-math.js.
+
 nodeGraphLiveModuleEvaluators.gain = ({ runtime, node, nodeId, frame, frames, frameValues, mixInput }) => {
-  const gainAmount = readNodeGraphLiveEffectiveParam(runtime, node, "amount", 1, frame, frames, frameValues);
-  const gainMono = mixInput(nodeId);
-  return {
-    Out: gainMono * gainAmount,
-    Left: (mixInput(nodeId, "Left") + gainMono) * gainAmount,
-    Right: (mixInput(nodeId, "Right") + gainMono) * gainAmount,
-  };
+  const amount = readNodeGraphLiveEffectiveParam(runtime, node, "amount", 1, frame, frames, frameValues);
+  const offset = readNodeGraphLiveEffectiveParam(runtime, node, "offset", 0, frame, frames, frameValues);
+  return nodeGraphGainFrame(
+    mixInput(nodeId),
+    mixInput(nodeId, "Left"),
+    mixInput(nodeId, "Right"),
+    amount,
+    offset,
+  );
 };
+
+// Legacy type id: old patches may still say gainBias until next save.
+nodeGraphLiveModuleEvaluators.gainBias = nodeGraphLiveModuleEvaluators.gain;

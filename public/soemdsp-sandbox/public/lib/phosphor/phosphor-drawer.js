@@ -45,26 +45,73 @@
     return Math.max(0, Math.min(1, v));
   }
 
-  /** Deposit gain: smooth low end, no dead band near burn 0. */
-  function depositGain(burn, brightness, size01) {
-    const b = clamp01(burn, 0);
+  /**
+   * Peak stamp energy from Bright (and Size).
+   *
+   * Residual model (phosphor-residual.js):
+   *   Bright → peak deposit / present light
+   *   Trail  → hot residual length (1 ≈ freeze)
+   *   Ghost  → dim scorched floor hang — NOT deposit
+   *
+   * Call forms:
+   *   depositGain(brightness, size01)
+   *   depositGain(ignoredBurn, brightness, size01)  // legacy; burn ignored
+   *
+   * Ghost must never starve Bright: Bright 1 deposits a solid tip that
+   * accumulates to full film white under Trail≈1 as hits stack.
+   */
+  function depositGain(a, b, c) {
+    let brightness;
+    let size01;
+    if (arguments.length >= 3 && c !== undefined) {
+      // Legacy (burn, brightness, size01) — Ghost/burn is residual, not ink.
+      brightness = b;
+      size01 = c;
+    } else {
+      brightness = a;
+      size01 = b;
+    }
     const br = Math.max(0, Number(brightness) || 0);
+    if (br <= 1e-8) {
+      return 0;
+    }
     const s = clamp01(size01, 0);
-    const burnShape = Math.pow(b, 0.78);
-    return Math.max(0, br * (0.022 + burnShape * 0.1) * (1.12 - s * 0.42));
+    // 1px stamps (size 0) need slightly more ink to read; large discs a touch less.
+    const sizeFactor = 1.12 - s * 0.32;
+    // Soft low end so Bright 0.05 still ticks; Bright 1 ≈ solid tip.
+    const shape = Math.pow(Math.min(br, 2), 0.88);
+    // ~0.48 at Bright 1 / Size 0 — first hit clearly visible; a few revisits → white.
+    return Math.max(0, shape * 0.48 * sizeFactor);
   }
 
-  /** Soft film exposure — mostly stable so burn doesn’t double-crush. */
-  function exposure(burn) {
-    return 1.85 + clamp01(burn, 0) * 2.1;
+  /**
+   * Soft film exposure for present — driven by Bright (peak light), not Ghost.
+   * Bright 0 stays dim-readable; Bright 1 opens the film so freeze-collect can white.
+   */
+  function exposure(bright01) {
+    return 1.55 + clamp01(bright01, 0) * 2.55;
   }
 
-  /** Radius in buffer px: size 0–1 of face min side → diameter = size * minSide. */
-  function radiusFromSize(faceMinSide, size01) {
+  // Size 0–1 linear diameter map: diameter = size * faceMinSide.
+  // Floor: size 0 → 1 buffer pixel (radius 0.5). Soft blur still AA's the edge.
+  const MIN_DIAMETER_PX = 1;
+  const MIN_RADIUS_PX = MIN_DIAMETER_PX * 0.5;
+
+  /** Diameter in buffer px: size 0–1 of face min side (1px floor at size 0). */
+  function diameterFromSize(faceMinSide, size01) {
     const side = Math.max(1, Number(faceMinSide) || 1);
-    const t = clamp01(size01, 0.08);
-    return Math.max(0.35, side * t * 0.5);
+    const t = clamp01(size01, 0);
+    return Math.max(MIN_DIAMETER_PX, side * t);
   }
+
+  /** Radius in buffer px: half of diameterFromSize (0.5px floor at size 0). */
+  function radiusFromSize(faceMinSide, size01) {
+    return Math.max(MIN_RADIUS_PX, diameterFromSize(faceMinSide, size01) * 0.5);
+  }
+
+  // Canonical names used across paint-helpers / TraceStroke.
+  const size01ToDiameterPx = diameterFromSize;
+  const size01ToRadiusPx = radiusFromSize;
 
   function ensure(hostCanvas, width, height, key = "_phosphorEnergyGl") {
     if (typeof global.nodeGraphPhosphorEnergyGlEnsure !== "function") {
@@ -91,38 +138,62 @@
 
   /**
    * One frame: fade + optional bleed + soft/hard dots along pathPoints.
-   * options.burn is optional convenience for deposit gain when brightness is raw.
+   * Deposit from Bright (options.brightness or options.dotBrightness).
+   * Trail/Ghost residual via options.trail / options.ghost (or decay legacy).
    */
   function stepDots(face, options = {}) {
     if (!face || typeof global.nodeGraphPhosphorEnergyGlStepBeams !== "function") {
       return false;
     }
     const blur = normalizeBlur(options.blur, DEFAULT_BLUR);
-    const burn = clamp01(options.burn, DEFAULT_BURN);
     const size01 = clamp01(options.size01, 0.08);
     let brightness = Number(options.brightness);
-    if (!Number.isFinite(brightness) || options.useBurnGain) {
-      brightness = depositGain(
-        burn,
-        Number.isFinite(Number(options.dotBrightness))
-          ? Number(options.dotBrightness)
-          : Number(options.brightness) || 0.92,
-        size01,
-      );
+    // If caller passed raw Bright (useDepositGain / missing pre-shaped gain), map it.
+    if (!Number.isFinite(brightness) || options.useDepositGain || options.useBurnGain) {
+      const rawBright = Number.isFinite(Number(options.dotBrightness))
+        ? Number(options.dotBrightness)
+        : (Number.isFinite(Number(options.brightness)) ? Number(options.brightness) : 0.92);
+      brightness = depositGain(rawBright, size01);
+    }
+    const radiusRaw = Number(options.radius);
+    const radius = Number.isFinite(radiusRaw) && radiusRaw > 0
+      ? Math.max(MIN_RADIUS_PX, radiusRaw)
+      : (Number.isFinite(Number(options.size01))
+        ? radiusFromSize(Math.max(1, Number(options.faceMinSide) || 256), size01)
+        : Math.max(MIN_RADIUS_PX, 2));
+    // Site path: always dots for soft circular hits (segments only if forced).
+    const mode = String(options.mode || "dots").toLowerCase() === "segments"
+      ? "segments"
+      : "dots";
+    // Hard stamps freeze crisp — never invent thrifty seepage.
+    let bleed = options.bleed;
+    if (bleed === undefined && blur <= 0.001) {
+      bleed = 0;
     }
     return global.nodeGraphPhosphorEnergyGlStepBeams(face, {
-      decay: clamp01(options.decay, DEFAULT_DECAY),
+      decay: options.decay != null ? clamp01(options.decay, DEFAULT_DECAY) : undefined,
+      trail: options.trail,
+      ghost: options.ghost,
+      burn: options.burn,
+      residualSchema: options.residualSchema,
       pathPoints: options.pathPoints || null,
       vertices: options.vertices || null,
-      radius: Math.max(0.35, Number(options.radius) || 2),
+      radius: Math.max(0.35, radius),
       brightness: Math.max(0, brightness || 0),
       blur,
-      mode: "dots",
+      mode,
       maxDots: Math.max(64, Math.min(8192, Math.round(Number(options.maxDots) || 2048))),
-      bleed: options.bleed,
+      bleed,
       fullEconomy: options.fullEconomy === true
         || options.fullDotEconomy === true
+        || options.useFullDotEconomy === true
+        || options.fullEconomy === 1
+        || options.fullDotEconomy === 1,
+      fullDotEconomy: options.fullDotEconomy === true
+        || options.fullEconomy === true
         || options.useFullDotEconomy === true,
+      dotsOnly: options.dotsOnly === true || options.verticesOnly === true,
+      verticesOnly: options.dotsOnly === true || options.verticesOnly === true,
     });
   }
 
@@ -131,7 +202,11 @@
       return false;
     }
     return global.nodeGraphPhosphorEnergyGlStep(face, {
-      decay: clamp01(options.decay, DEFAULT_DECAY),
+      decay: options.decay != null ? clamp01(options.decay, DEFAULT_DECAY) : undefined,
+      trail: options.trail,
+      ghost: options.ghost,
+      burn: options.burn,
+      residualSchema: options.residualSchema,
       depositGain: 0,
       maskCanvas: null,
       bleed: Number.isFinite(Number(options.bleed)) ? Number(options.bleed) : 0.1,
@@ -139,7 +214,10 @@
   }
 
   /**
-   * Present energy×LUT into dest 2D context (lighter composite).
+   * Present energy×LUT into dest 2D context.
+   * Default composite is source-over: mono energy is already additive; the LUT
+   * paints face color (any gradient, including white→black). "lighter" would
+   * only add RGB and make dark peaks invisible.
    */
   function presentTo(face, destCtx, options = {}) {
     if (!face || !destCtx || typeof global.nodeGraphPhosphorEnergyGlPresent !== "function") {
@@ -162,7 +240,7 @@
       return false;
     }
     destCtx.save();
-    destCtx.globalCompositeOperation = options.composite || "lighter";
+    destCtx.globalCompositeOperation = options.composite || "source-over";
     destCtx.imageSmoothingEnabled = options.smooth !== false;
     destCtx.drawImage(face.canvas, 0, 0, width, height);
     destCtx.restore();
@@ -218,11 +296,16 @@
     DEFAULT_BLUR,
     DEFAULT_BURN,
     DEFAULT_DECAY,
+    MIN_DIAMETER_PX,
+    MIN_RADIUS_PX,
     clamp01,
     normalizeBlur,
     depositGain,
     exposure,
+    diameterFromSize,
     radiusFromSize,
+    size01ToDiameterPx,
+    size01ToRadiusPx,
     ensure,
     setLut,
     setLutStops,

@@ -47,7 +47,10 @@ function beginNodeGraphNodeDrag(event) {
       // intentionally NOT listed: solid-module rows are a 1gu band around each
       // jack; geometric miss (see endpointHitboxClientRect) falls through to
       // shell/face drag without stopping here.
-      ".node-port, .node-param-port, button:not(.node-drag-handle), input:not(.node-header-title-input), textarea, select, option, [contenteditable='true'], .node-xy-pad-canvas",
+      // Graph face owns its own pointer gestures (points / phase) — never start
+      // a module move from inside .node-module-graph-display.
+      // Knob face is a Bias drag surface (same as .node-slider-readout).
+      ".node-port, .node-param-port, button:not(.node-drag-handle), input:not(.node-header-title-input), textarea, select, option, [contenteditable='true'], .node-xy-pad-canvas, .node-module-graph-display, .node-knob-face",
     )
   ) {
     return;
@@ -72,7 +75,10 @@ function beginNodeGraphNodeDrag(event) {
     return;
   }
 
-  const additiveSelection = event.ctrlKey || event.metaKey || event.shiftKey;
+  // Ctrl/Cmd multi-select only. Shift is reserved for keyboard resize/nudge
+  // (Shift+arrows) — treating Shift+click as additive made sole selection
+  // toggle off when the user held Shift and re-clicked before resizing.
+  const additiveSelection = event.ctrlKey || event.metaKey;
   const selectedNodeIds = nodeGraphSelectedNodeIds();
   const wasSelectedAtStart = selectedNodeIds.has(node.dataset.node);
   const point = nodeGraphClientPoint(event);
@@ -202,8 +208,13 @@ function endNodeGraphNodeDrag(event) {
     toggleNodeGraphNodeSelection(node.dataset.node, additiveSelection);
     return;
   }
+  // Micro-drag / move must leave modules selected so Shift+arrows work without
+  // a second click. Previously only additive drags updated selection — a
+  // slightly imperfect click moved the LED and left it unselected.
   if (additiveDragSelection) {
     setNodeGraphNodeSelection(pendingSelectionIds);
+  } else {
+    setNodeGraphNodeSelection(draggedNodes.map((dragged) => dragged.id));
   }
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
   for (const dragged of draggedNodes) {
@@ -216,5 +227,7 @@ function endNodeGraphNodeDrag(event) {
       patchNode.gy = gridPoint.gy;
     }
   }
-  commitNodeGraphPatch(patch, { status: "layout snapped" });
+  // layoutEdit: persist gx/gy + history without rebuilding every module/slider/face
+  // (full applyNodeGraphPatchToDom was causing knob/face jitter on every move).
+  commitNodeGraphPatch(patch, { status: "layout snapped", layoutEdit: true });
 }

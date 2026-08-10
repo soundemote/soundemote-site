@@ -9,10 +9,13 @@ async function bindNodeGraphUiDevSettingsEvents() {
   document.getElementById("nodeUiDevHelperClose").addEventListener("click", () => setNodeUiDevHelperVisible(false));
   document
     .getElementById("nodeUiDevHelperDragHandle")
-    .addEventListener("pointerdown", beginNodeUiDevHelperDrag);
+    ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "uiDev"));
   document
     .getElementById("nodeUiDevHelperHeading")
-    .addEventListener("pointerdown", beginNodeUiDevHelperDrag);
+    ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "uiDev"));
+  if (typeof bindNodeGraphFloatingWindowResizeHandle === "function") {
+    bindNodeGraphFloatingWindowResizeHandle("uiDev");
+  }
   document
     .getElementById("nodeUiDevSettingsHeaderTextSize")
     .addEventListener("input", syncNodeUiDevSettingsHeaderControls);
@@ -34,15 +37,28 @@ async function bindNodeGraphUiDevSettingsEvents() {
   document
     .getElementById("nodeUiDevMouseLightEnabled")
     .addEventListener("change", syncNodeUiDevSettingsHeaderControls);
+  for (const id of [
+    "nodeUiDevDimmerCutoutSlider",
+    "nodeUiDevDimmerCutoutModule",
+    "nodeUiDevDimmerCutoutTitle",
+    "nodeUiDevDimmerCutoutMouse",
+  ]) {
+    document.getElementById(id)?.addEventListener("change", syncNodeUiDevSettingsHeaderControls);
+  }
+  for (const id of [
+    "nodeUiDevDimmerMouseSize",
+    "nodeUiDevDimmerMouseSoftness",
+    "nodeUiDevDimmerMouseShape",
+  ]) {
+    document.getElementById(id)?.addEventListener("input", syncNodeUiDevSettingsHeaderControls);
+    document.getElementById(id)?.addEventListener("change", syncNodeUiDevSettingsHeaderControls);
+  }
   document
     .getElementById("nodeUiDevShowOriginMarker")
     .addEventListener("change", syncNodeUiDevSettingsHeaderControls);
   document
-    .getElementById("nodeUiDevModularShaderEnabled")
-    .addEventListener("change", syncNodeUiDevSettingsHeaderControls);
-  document
     .getElementById("nodeUiDevScopeBloomEnabled")
-    .addEventListener("change", syncNodeUiDevSettingsHeaderControls);
+    ?.addEventListener("change", syncNodeUiDevSettingsHeaderControls);
   document
     .getElementById("nodeUiDevModuleLightSpread")
     .addEventListener("input", syncNodeUiDevSettingsHeaderControls);
@@ -61,6 +77,24 @@ async function bindNodeGraphUiDevSettingsEvents() {
   document
     .getElementById("nodeUiDevGridColor")
     .addEventListener("change", syncNodeUiDevSettingsHeaderControls);
+  // Patch grid unit size (px/gu) — lives on the patch, edited in UIDEV.
+  const applyPatchGrid = () => {
+    if (typeof applyNodeUiDevPatchGridFromFields === "function") {
+      applyNodeUiDevPatchGridFromFields({ record: false });
+    }
+  };
+  const commitPatchGrid = () => {
+    if (typeof applyNodeUiDevPatchGridFromFields === "function") {
+      applyNodeUiDevPatchGridFromFields({ record: true });
+    }
+  };
+  document.getElementById("nodeUiDevPatchGridWidthPx")?.addEventListener("input", applyPatchGrid);
+  document.getElementById("nodeUiDevPatchGridWidthPx")?.addEventListener("change", commitPatchGrid);
+  document.getElementById("nodeUiDevPatchGridHeightPx")?.addEventListener("input", applyPatchGrid);
+  document.getElementById("nodeUiDevPatchGridHeightPx")?.addEventListener("change", commitPatchGrid);
+  if (typeof syncNodeUiDevPatchGridFields === "function") {
+    syncNodeUiDevPatchGridFields();
+  }
   document
     .getElementById("nodeUiDevWorkspaceBackgroundColor")
     .addEventListener("input", syncNodeUiDevSettingsHeaderControls);
@@ -191,10 +225,12 @@ async function bindNodeGraphUiDevSettingsEvents() {
   installNodeLiveToggleTextFitObserver();
   await loadNodeUiDevDefaultSettings();
   syncNodeUiDevSettingsHeaderControls();
-  document.addEventListener("pointermove", dragNodeUiDevHelper);
-  document.addEventListener("pointerup", endNodeUiDevHelperDrag);
-  document.addEventListener("pointercancel", endNodeUiDevHelperDrag);
-  document.addEventListener("pointermove", dragNodeUserUiSettings);
-  document.addEventListener("pointerup", endNodeUserUiSettingsDrag);
-  document.addEventListener("pointercancel", endNodeUserUiSettingsDrag);
+  // Move/up/resize: nodeGraphFloatingWindowRegistryPointerBridge (floating-windows.js)
+  if (typeof installNodeGraphFloatingWindowResizeHandles === "function") {
+    installNodeGraphFloatingWindowResizeHandles();
+  }
+  if (typeof bindNodeGraphFloatingWindowResizeHandle === "function") {
+    bindNodeGraphFloatingWindowResizeHandle("uiSettings");
+    bindNodeGraphFloatingWindowResizeHandle("uiDev");
+  }
 }

@@ -1,9 +1,10 @@
-// Number Readout — solid-module layout (same shell family as XY Pad):
-// short input on the left, LCD face in the center, no outputs.
-// Scope/draw path stays in node-graph-module-scopes.js (displayType numberReadout).
+// Value LED — solid-module layout (same shell family as XY Pad):
+// short input on the left, lit seven-segment face in the center, → thru on the right.
+// Scope/draw path stays in node-graph-module-scope-number-readout.js (displayType numberReadout).
+// Internal type id remains numberReadout for patch compatibility.
 
 registerNodeGraphChromelessModule("numberReadout", {
-  label: "Number Readout",
+  label: "Value LED",
   customDisplayArea: true,
   solidModule: true,
   definition: {
@@ -15,7 +16,9 @@ registerNodeGraphChromelessModule("numberReadout", {
       In: "In",
     },
     inputs: ["In"],
-    outputs: [],
+    // Dry passthrough so the face can sit in-line (In → face + Thru).
+    outputs: ["Thru"],
+    outputLabels: { Thru: "→" },
     parameters: [],
     visualInputs: [
       { key: "numberReadout", label: "In", port: "In" },
@@ -23,8 +26,26 @@ registerNodeGraphChromelessModule("numberReadout", {
     visualSink: true,
   },
   catalog: {
-    category: "display",
-    description: "Solid LCD number face: hard DSEG digits with residual ghosts of previous values. Side-mounted input, no header chrome.",
-    notes: ["solid module", "LCD readout", "decay ghosts", "DSEG7"],
+    category: "multimeter",
+    description: "Value LED: lit DSEG digits with Ghost/Trail residual hang + Burn sticky floor (app-wide residual policy). Side-mounted input, → thru for chaining. Search: value, LED, numeric display.",
+    notes: [
+      "value",
+      "value led",
+      "value readout",
+      "number readout",
+      "value display",
+      "latest value",
+      "numeric display",
+      "numeric value",
+      "digital readout",
+      "solid module",
+      "LED readout",
+      "ghost",
+      "trail",
+      "burn",
+      "burnAmount",
+      "DSEG7",
+      "multimeter",
+    ],
   },
 });
