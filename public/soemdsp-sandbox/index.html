@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>soemdsp-sandbox</title>
-  <link rel="stylesheet" href="./public/styles.css?v=pitch-meta-1">
+  <link rel="stylesheet" href="./public/styles.css?v=music-pl-layout-2">
   <link rel="stylesheet" href="./public/modules/stepGrid/step-grid.css?v=module-bottom-inset-half-1">
   <link rel="stylesheet" href="./public/modules/pitchQuantizer/pitch-quantizer-ui.css?v=chord-pad-1">
   <link rel="stylesheet" href="./public/modules/chordPad/chord-pad-ui.css?v=chord-pad-1">
@@ -26,7 +26,7 @@
         <span id="nodeBootLoadingBarFill" style="width: 4%;"></span>
       </div>
       <div class="node-boot-loading-meta">
-        <span class="node-boot-build-number">0.5.1 GHOST &nbsp;·&nbsp; build 2026.8.10 &nbsp;·&nbsp; {{BUILD_TOKEN}}</span>
+        <span class="node-boot-build-number">v0.4.3 GHOSTLIVE &nbsp;·&nbsp; build 2026.8.2.Ghostlive &nbsp;·&nbsp; {{BUILD_TOKEN}}</span>
         <span id="nodeBootSysinfo" class="node-boot-sysinfo"></span>
       </div>
       <div id="nodeBootLoadingMessages" class="node-boot-loading-messages" aria-live="polite"></div>
@@ -286,11 +286,11 @@
           <span
             id="nodeBuildNumberReadout"
             class="node-build-number-readout"
-            aria-label="Version 0.5.1 GHOST, build 2026.8.10, stamp {{BUILD_TOKEN}}"
-            title="Version 0.5.1 GHOST · build 2026.8.10 · {{BUILD_TOKEN}}"
+            aria-label="Version v0.4.3 GHOSTLIVE, build 2026.8.2.Ghostlive, stamp {{BUILD_TOKEN}}"
+            title="Version v0.4.3 GHOSTLIVE · build 2026.8.2.Ghostlive · {{BUILD_TOKEN}}"
             data-build-mode-value="release">
-            <span data-sandbox-version>0.5.1 GHOST</span>
-            <span data-build-number-value>2026.8.10</span>
+            <span data-sandbox-version>v0.4.3 GHOSTLIVE</span>
+            <span data-build-number-value>2026.8.2.Ghostlive</span>
             <span data-build-token-value>{{BUILD_TOKEN}}</span>
           </span>
           <button id="nodeVisibilityMenuButton" type="button" aria-pressed="false" aria-haspopup="menu">Visibility</button>
@@ -3413,7 +3413,7 @@
   <script src="./public/node-graph-image-utils.js?v=pre-formula-restore-1"></script>
   <script src="./public/node-graph-graph-utils.js?v=graph-settings-list-1"></script>
   <script src="./public/node-graph-samples.js?v=music-player-phase-persist-1"></script>
-  <script src="./public/modules/audioPlayer/audio-player-playlist.js?v=music-pl-1"></script>
+  <script src="./public/modules/audioPlayer/audio-player-playlist.js?v=music-pl-layout-2"></script>
   <script src="./public/node-graph-phosphor-waveform.js?v=time-window-light-1"></script>
   <script src="./public/node-graph-stdlib/node-graph-phasor-helpers.js?v=phasor-helpers-1"></script>
   <script src="./public/node-graph-stdlib/node-graph-param-surface-helpers.js?v=unit-mod-linear-1"></script>
@@ -3468,11 +3468,11 @@
   <script src="./public/node-graph-module-scope-settings-window.js?v=display-settings-multi-sync-1"></script>
   <script src="./public/node-graph-module-scope-settings-ui.js?v=one-face-1"></script>
   <script src="./public/node-graph-module-scope-capture.js?v=fuse-pack-1"></script>
-  <script src="./public/node-graph-module-scope-number-readout.js?v=pitch-meta-1"></script>
+  <script src="./public/node-graph-module-scope-number-readout.js?v=dimmer-punch-fix-2"></script>
   <script src="./public/node-graph-module-scope-draw-basic.js?v=burn-amount-1"></script>
   <script src="./public/node-graph-module-scope-draw-burn.js?v=burn-amount-1"></script>
   <script src="./public/node-graph-module-scopes.js?v=clear-pause-bright-1"></script>
-  <script src="./public/node-graph-module-scope-spectrum.js?v=burn-x-1"></script>
+  <script src="./public/node-graph-module-scope-spectrum.js?v=value-face-rearm-2"></script>
   <script src="./public/node-graph-module-scope-buffer-io.js?v=visual-rate-meta-1"></script>
   <script src="./public/node-graph-module-scope-sync.js?v=scope-sync-lock-1"></script>
   <script src="./public/node-graph-module-scope-metrics.js?v=live-trace-loop-1"></script>
@@ -3480,32 +3480,32 @@
   <script src="./public/node-graph-module-scope-webgl.js?v=0d-soft-edge-1"></script>
   <script src="./public/node-graph-module-scope-vertices.js?v=beam-gauss-1"></script>
   <script src="./public/node-graph-module-scope-offline.js?v=one-face-1"></script>
-  <script src="./public/node-graph-module-scope-screen-items.js?v=no-freeze-wipe-1"></script>
+  <script src="./public/node-graph-module-scope-screen-items.js?v=value-face-rearm-2"></script>
   <script src="./public/node-graph-module-scope-slots.js?v=phosphor-blank-fix-1"></script>
   <script src="./public/node-graph-module-scope-buffer-view.js?v=scope-sync-lock-1"></script>
   <script src="./public/node-graph-module-scope-monitors.js?v=scope-monitors-1"></script>
   <script src="./public/node-graph-module-scope-scene-controls.js?v=drag-reanchor-1"></script>
   <script src="./public/node-graph-module-scope-shader-settings.js?v=scope-shader-settings-1"></script>
   <script src="./public/node-graph-module-scope-trace-controls.js?v=pad-linear-neg-1"></script>
-  <script src="./public/node-graph-module-scope-wipe.js?v=clear-multi-2"></script>
+  <script src="./public/node-graph-module-scope-wipe.js?v=dimmer-punch-fix-2"></script>
   <script src="./public/node-graph-module-scope-graph-query.js?v=scope-graph-query-1"></script>
   <script src="./public/node-graph-module-scope-settings.js?v=scope-settings-1"></script>
   <script src="./public/node-graph-module-scope-lifecycle.js?v=paint-gate-1"></script>
-  <script src="./public/node-graph-module-scope-paint-gate.js?v=paint-gate-1"></script>
+  <script src="./public/node-graph-module-scope-paint-gate.js?v=stop-unfreeze-1"></script>
   <script src="./public/node-graph-module-scope-canvas.js?v=paint-gate-1"></script>
   <script src="./public/node-graph-module-scope-paint-helpers.js?v=burn-sticky-1"></script>
-  <script src="./public/node-graph-module-scope-draw-orchestrator.js?v=paint-gate-1"></script>
+  <script src="./public/node-graph-module-scope-draw-orchestrator.js?v=value-face-rearm-2"></script>
   <script src="./public/modules/phosphorLight/phosphor-light-display.js?v=alias-only-1"></script>
   <script src="./public/modules/oscilloscopeBank/oscilloscope-bank-display.js?v=burn-sticky-1"></script>
   <script src="./public/modules/videoscope/videoscope-display.js?v=burn-sticky-1"></script>
   <script src="./public/modules/spectrogram/spectrogram-display.js?v=spec-zoom-smooth-1"></script>
   <script src="./public/modules/transport/transport-display.js?v=transport-bpm-20260714"></script>
-  <script src="./public/node-graph-room-dimmer.js?v=title-light-box-1"></script>
+  <script src="./public/node-graph-room-dimmer.js?v=dimmer-punch-fix-2"></script>
   <script src="./public/node-graph-canvas-script.js?v=floating-chrome-unify-1"></script>
   <script src="./public/node-graph-module-factories.js?v=io-label-hitbox-1"></script>
   <script src="./public/modules/led/led-ui.js?v=led-fill-images-1"></script>
   <script src="./public/modules/led/led-settings.js?v=led-gradient-lut-1"></script>
-  <script src="./public/modules/led/led-display.js?v=led-gradient-lut-1"></script>
+  <script src="./public/modules/led/led-display.js?v=dimmer-punch-fix-2"></script>
   <script src="./public/modules/rgbShape/rgb-shape-ui.js?v=rgb-shape-1"></script>
   <script src="./public/modules/rgbShape/rgb-shape-display.js?v=rgb-shape-1"></script>
   <script src="./public/modules/rgbPicture/rgb-picture-ui.js?v=rgb-picture-1"></script>
@@ -3849,7 +3849,7 @@
   <script src="./public/modules/graph/graph-live-evaluator.js?v=retire-graph-type-20260724"></script>
   <script src="./public/modules/polyBlep/poly-blep-live-evaluator.js?v=one-core-native-20260803"></script>
   <script src="./public/node-graph-pulse-explosion-display.js?v=shared-canvas-sizing-20260725"></script>
-  <script src="./public/node-graph-live-runtime.js?v=xo-slim-combined-fallback-1"></script>
+  <script src="./public/node-graph-live-runtime.js?v=dimmer-punch-fix-2"></script>
   <script src="./public/node-graph-wire-controller-bootstrap.js?v=wire-break-trigger-0129"></script>
   <script src="./public/node-graph-workspace-event-bindings.js?v=readout-no-kb-1"></script>
   <script src="./public/node-graph-render-live-event-bindings.js?v=midi-toggle-20260725"></script>

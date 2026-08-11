@@ -32,9 +32,15 @@ function invalidateNodeGraphNumberReadoutPaintCache(canvas) {
   canvas._nodeGraphNumberReadoutFontReady = null;
   canvas._nodeGraphNumberReadoutWidth = -1;
   canvas._nodeGraphNumberReadoutHeight = -1;
+  canvas._nodeGraphNumberReadoutZoom = null;
   canvas._nodeGraphNumberReadoutPaintAt = 0;
   canvas._numberReadoutEnergyMask = null;
   canvas._nodeGraphNumberReadoutFrozenHoldSig = null;
+  // Pause absorb stamps these; if they survive Stop wipe, Instant Trace /
+  // burn cursors can believe the new session is already fully drawn.
+  canvas._nodeGraphScope2dLastDrawnFrame = undefined;
+  canvas._nodeGraphOneDimensionalBurnLastDrawnFrame = undefined;
+  canvas._phosphorScope2dLastFrame = undefined;
   nodeGraphNumberReadoutClearBurnPlate(canvas);
   for (const key of ["_phosphorEnergyGl"]) {
     const face = canvas[key];
@@ -47,6 +53,148 @@ function invalidateNodeGraphNumberReadoutPaintCache(canvas) {
     }
     canvas[key] = null;
   }
+}
+
+/**
+ * After a cold engine start (esp. pause→stop→play), drop freeze-hold state so
+ * Value LCD/LED paint live samples again instead of early-outing as "still paused".
+ */
+function nodeGraphNumberReadoutRearmAllFacesAfterLiveStart() {
+  if (typeof document === "undefined") {
+    return;
+  }
+  for (const canvas of document.querySelectorAll("canvas.node-number-readout-canvas")) {
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      continue;
+    }
+    canvas._nodeGraphNumberReadoutFrozenHoldSig = null;
+    canvas._nodeGraphScope2dLastDrawnFrame = undefined;
+    canvas._nodeGraphOneDimensionalBurnLastDrawnFrame = undefined;
+    canvas._phosphorScope2dLastFrame = undefined;
+    // Force next draw to treat text as dirty (null cache).
+    canvas._nodeGraphNumberReadoutText = null;
+    canvas._nodeGraphNumberReadoutSettingsSig = null;
+    canvas._numberReadoutLastValueText = "";
+    canvas._numberReadoutLastGoodValueText = "";
+  }
+  for (const face of document.querySelectorAll(".node-led-face")) {
+    if (face?.dataset) {
+      delete face.dataset.ledAppearance;
+      // Stop wipe zeros these; allow live paint to re-light.
+      if (face.dataset.ledLevel != null) {
+        face.dataset.ledLevel = "0";
+      }
+    }
+    const lamp = face.querySelector?.(".node-led-lamp");
+    if (lamp?.dataset) {
+      delete lamp.dataset.ledAppearance;
+    }
+  }
+}
+
+/**
+ * Paint Value LCD / Value LED / Pitch readout / lamp LED faces NOW without the
+ * shared scope canvas gate. After pause→stop the main draw loop often early-outs
+ * on empty buffers ("stale-buffers") and never reaches these face painters —
+ * so digits stay wiped / lamps stay black until something else forces a pass.
+ *
+ * @returns {number} how many faces were painted
+ */
+function paintNodeGraphValueFacesNow(pixelRatio = window.devicePixelRatio || 1) {
+  if (typeof nodeGraphVisibleModuleScopeSlots !== "function") {
+    return 0;
+  }
+  const pr = Math.max(1, Number(pixelRatio) || 1);
+  let painted = 0;
+  for (const slot of nodeGraphVisibleModuleScopeSlots()) {
+    const renderer = typeof nodeGraphModuleDisplayRendererForSlot === "function"
+      ? nodeGraphModuleDisplayRendererForSlot(slot)
+      : "";
+    const type = String(slot?.type || "");
+    const isNumberFace =
+      renderer === "numberReadout"
+      || type === "numberReadout"
+      || type === "valueLcd"
+      || type === "helmholtzPitch";
+    const isLedLamp = renderer === "ledLamp" || type === "led";
+    if (!isNumberFace && !isLedLamp) {
+      continue;
+    }
+    const captured = typeof nodeGraphModuleScopeCapturedBufferForSlot === "function"
+      ? nodeGraphModuleScopeCapturedBufferForSlot(slot)
+      : null;
+    const buffer = typeof nodeGraphModuleScopeDisplayBuffer === "function"
+      ? nodeGraphModuleScopeDisplayBuffer(slot, captured)
+      : captured;
+    const face = slot.scopeElement;
+    if (!face) {
+      continue;
+    }
+    // Synthetic scope rect from layout box (draw path only needs positive size).
+    const w = Math.max(1, face.clientWidth || face.offsetWidth || 1);
+    const h = Math.max(1, face.clientHeight || face.offsetHeight || 1);
+    const item = {
+      buffer,
+      nodeId: slot.nodeId,
+      screenElement: face,
+      scopeRect: { height: h, left: 0, top: 0, width: w },
+      slot,
+    };
+    try {
+      if (isLedLamp && typeof drawNodeGraphLedLampItem === "function") {
+        // Ensure light target from samples when metadata is missing.
+        if (buffer && !(Number(buffer.nodeGraphScopeLightTarget) > 0)) {
+          let peak = 0;
+          const n = Math.min(buffer.length || 0, 64);
+          for (let i = Math.max(0, (buffer.length || 0) - n); i < (buffer.length || 0); i += 1) {
+            const s = Math.abs(Number(buffer[i]) || 0);
+            if (s > peak) peak = s;
+          }
+          buffer.nodeGraphScopeLightTarget = Math.max(0, Math.min(1, peak));
+        }
+        drawNodeGraphLedLampItem(null, item, pr);
+        painted += 1;
+        continue;
+      }
+      if (isNumberFace && typeof drawNodeGraphNumberReadoutItem === "function") {
+        // Clear freeze-hold so draw cannot early-out as "still paused".
+        const canvas = typeof nodeGraphNumberReadoutCanvasForSlot === "function"
+          ? nodeGraphNumberReadoutCanvasForSlot(slot)
+          : null;
+        if (canvas) {
+          canvas._nodeGraphNumberReadoutFrozenHoldSig = null;
+          canvas._nodeGraphNumberReadoutText = null;
+        }
+        drawNodeGraphNumberReadoutItem(null, item, pr);
+        const isLcd = typeof nodeGraphNumberReadoutFaceStyleForSlot === "function"
+          && nodeGraphNumberReadoutFaceStyleForSlot(
+            slot,
+            typeof nodeGraphModuleScopeNodeForSlot === "function"
+              ? nodeGraphModuleScopeNodeForSlot(slot)
+              : null,
+          ) === "lcd";
+        const s = isLcd && typeof nodeGraphLcdDisplayLightStrength === "number"
+          ? nodeGraphLcdDisplayLightStrength
+          : 1;
+        // Always re-open room-dimmer punches (face + canvas).
+        if (typeof nodeGraphModuleScopeMarkScreenLit === "function") {
+          nodeGraphModuleScopeMarkScreenLit(face, s);
+        }
+        if (canvas?.dataset) {
+          canvas.dataset.lightSource = "screen";
+          canvas.dataset.lightStrength = String(s);
+        }
+        if (face?.dataset) {
+          face.dataset.lightSource = "screen";
+          face.dataset.lightStrength = String(s);
+        }
+        painted += 1;
+      }
+    } catch (_error) {
+      // Never let one face kill rearm for the rest.
+    }
+  }
+  return painted;
 }
 
 /**
@@ -604,13 +752,25 @@ function nodeGraphNumberReadoutPresentBurnPlate(
 }
 
 
-function paintNodeGraphNumberReadoutColdBoot(canvas, screenElement, node = null) {
+/**
+ * Idle plate for Value LCD / Value LED / Pitch Detector.
+ * @param {HTMLCanvasElement} canvas
+ * @param {HTMLElement} screenElement
+ * @param {object|null} node
+ * @param {boolean|{force?: boolean}} [options] force=true: intentional Stop wipe
+ *   always paints (ignores residual-hold freeze).
+ */
+function paintNodeGraphNumberReadoutColdBoot(canvas, screenElement, node = null, options = null) {
   if (!canvas || !screenElement) {
     return false;
   }
-  // Never cold-boot while simulation is frozen (speed 0 / visual pause) —
+  const force = options === true
+    || (options && typeof options === "object" && options.force === true);
+  // Never cold-boot while simulation is transport-paused (engine still up) —
   // that wiped Pitch Detector / Value LED residual on deselect + no-buffer.
-  if (typeof nodeGraphModuleScopePhosphorFrozen === "function"
+  // Full Stop (no live node) is not freeze — Stop wipe must repaint idle plates.
+  if (!force
+    && typeof nodeGraphModuleScopePhosphorFrozen === "function"
     && nodeGraphModuleScopePhosphorFrozen()) {
     return false;
   }
@@ -633,9 +793,18 @@ function paintNodeGraphNumberReadoutColdBoot(canvas, screenElement, node = null)
   const bg = nodeGraphFacePlateBackground(settings);
   if (isLcd) {
     nodeGraphNumberReadoutApplyLcdLightCutout(screenElement, canvas);
-  } else if (screenElement.dataset) {
-    // LED: full hole when the plate is present (0…1 dimmer is the only gain).
-    screenElement.dataset.lightStrength = "1";
+  } else {
+    // Value LED: full hole on face AND canvas (canvas is the dimmer punch target).
+    for (const el of [screenElement, canvas].filter(Boolean)) {
+      el.classList?.add?.("node-light-source");
+      if (el.dataset) {
+        el.dataset.lightSource = "screen";
+        el.dataset.lightStrength = "1";
+      }
+      if (typeof setNodeGraphLightStrength === "function") {
+        setNodeGraphLightStrength(el, 1);
+      }
+    }
   }
   nodeGraphFacePlateApplyCss(screenElement, bg);
   const width = canvas.width;
@@ -656,7 +825,7 @@ function wipeNodeGraphNumberReadoutScreensToColdBoot() {
     return;
   }
   for (const face of document.querySelectorAll(
-    ".node-number-readout-face, .dsp-node.number-readout-layout .node-module-scope-window, .dsp-node.value-lcd-layout .node-module-scope-window",
+    ".node-number-readout-face, .dsp-node.number-readout-layout .node-module-scope-window, .dsp-node.value-lcd-layout .node-module-scope-window, .node-value-lcd-face, .node-pitch-detector-lcd",
   )) {
     let canvas = face.querySelector?.(":scope > .node-number-readout-canvas")
       || face.querySelector?.(".node-number-readout-canvas");
@@ -670,7 +839,8 @@ function wipeNodeGraphNumberReadoutScreensToColdBoot() {
     const node = nodeId && typeof nodeGraphPatchNode === "function"
       ? nodeGraphPatchNode(nodeId)
       : null;
-    paintNodeGraphNumberReadoutColdBoot(canvas, face, node);
+    // Intentional Stop / full wipe — always repaint idle plate.
+    paintNodeGraphNumberReadoutColdBoot(canvas, face, node, { force: true });
   }
 }
 
@@ -2123,9 +2293,21 @@ function drawNodeGraphNumberReadoutItem(renderer, item, pixelRatio) {
   const rgb = nodeGraphNumberReadoutLightRgb(settings);
   const bg = nodeGraphFacePlateBackground(settings);
   const alpha = 1;
+  // Room dimmer punches the canvas (not only the face). Always set both —
+  // stop wipe used to leave canvas at strength 0 and veil painted digits.
+  const punch = Math.max(0.001, Number(bright) || 0).toFixed(3);
+  if (canvas?.dataset) {
+    canvas.dataset.lightSource = "screen";
+    canvas.dataset.lightStrength = punch;
+  }
   if (canvas?.parentElement?.dataset) {
-    canvas.parentElement.dataset.lightStrength = bright.toFixed(3);
+    canvas.parentElement.dataset.lightSource = "screen";
+    canvas.parentElement.dataset.lightStrength = punch;
     canvas.parentElement.dataset.valueFaceStyle = "led";
+  }
+  if (screenElement?.dataset) {
+    screenElement.dataset.lightSource = "screen";
+    screenElement.dataset.lightStrength = punch;
   }
 
   context.setTransform(1, 0, 0, 1, 0, 0);

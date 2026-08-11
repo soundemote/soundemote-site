@@ -210,6 +210,16 @@ function drawNodeGraphModuleScopes(options = {}) {
   }
   if (!canvas || !workspace || !nodeGraphModuleScopeBuffersCurrent()) {
     markNodeGraphModuleScopeDebugSkip(!canvas ? "no-canvas" : !workspace ? "no-workspace" : "stale-buffers");
+    // Pause→stop→play: rings may be empty for a few frames while the worklet
+    // arms. Still repaint Value LCD/LED/lamp faces so they do not stay wiped
+    // black under the room dimmer until a full shared-canvas pass succeeds.
+    if (typeof paintNodeGraphValueFacesNow === "function") {
+      try {
+        paintNodeGraphValueFacesNow(window.devicePixelRatio || 1);
+      } catch (_error) {
+        // Best-effort.
+      }
+    }
     // Live but capture/layout not ready yet — keep ticking until rings exist.
     nodeGraphModuleScopeKeepDrawLoopAlive(false);
     return;

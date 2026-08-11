@@ -1089,20 +1089,28 @@ audio {
 }
 
 /* ── Music Player face: waveform ↔ playlist (pl) ───────────────────────── */
+/* Display cell size is fixed by the module grid. Wave and playlist pages are
+   absolute overlays of that cell (not flex siblings that re-split height).
+   Author `display:flex` must NOT beat the HTML hidden attribute or both
+   pages stay visible and slowly steal space from the waveform. */
 .node-phosphor-waveform-display {
   position: relative;
-  display: flex;
-  flex-direction: column;
+  display: block;
   min-height: 0;
+  overflow: hidden;
 }
 .node-music-player-face-bar {
   position: absolute;
   top: 4px;
   right: 4px;
-  z-index: 3;
+  z-index: 4;
   display: flex;
   gap: 3px;
   pointer-events: auto;
+}
+/* Hide face-bar PL control while playlist page is open (back is enough). */
+.node-phosphor-waveform-display[data-music-player-face="pl"] .node-music-player-face-bar {
+  display: none;
 }
 .node-music-player-face-btn {
   min-width: 22px;
@@ -1126,15 +1134,26 @@ audio {
   border-color: rgba(100, 220, 180, 0.75);
   color: rgba(160, 255, 210, 0.98);
 }
+/* Fill the display content box (inside --phosphor-waveform-inset padding).
+   Absolute children ignore parent padding, so match the inset explicitly —
+   same box the canvas used when it was a flow child. */
 .node-music-player-page {
-  flex: 1 1 auto;
+  position: absolute;
+  top: var(--phosphor-waveform-inset, 2px);
+  right: var(--phosphor-waveform-inset, 2px);
+  bottom: var(--phosphor-waveform-inset, 2px);
+  left: var(--phosphor-waveform-inset, 2px);
   min-height: 0;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
+}
+/* Critical: class `display:flex` would otherwise override [hidden]. */
+.node-music-player-page[hidden] {
+  display: none !important;
 }
 .node-music-player-page-wave {
-  position: relative;
-  min-height: 0;
+  z-index: 1;
 }
 .node-music-player-page-wave .node-phosphor-waveform-canvas {
   width: 100%;
@@ -1142,13 +1161,16 @@ audio {
   display: block;
 }
 .node-music-player-page-pl {
+  z-index: 2;
   gap: 4px;
   padding: 4px 6px 6px;
-  background: rgba(0, 4, 8, 0.92);
+  background: rgba(0, 4, 8, 0.96);
   color: rgba(190, 220, 230, 0.95);
   font: 600 0.72rem/1.25 "Cascadia Mono", Consolas, monospace;
+  overflow: hidden;
 }
 .node-music-player-pl-head {
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
@@ -1161,6 +1183,7 @@ audio {
   text-transform: uppercase;
   font-size: 0.65rem;
 }
+/* RAM / "GB" toggle — also closes the debug panel (no extra ×). */
 .node-music-player-pl-ram {
   justify-self: end;
   max-width: 55%;
@@ -1187,11 +1210,16 @@ audio {
   color: rgba(255, 160, 120, 0.98);
   background: rgba(40, 8, 0, 0.65);
 }
+.node-music-player-pl-ram[aria-pressed="true"] {
+  border-color: rgba(220, 160, 80, 0.85);
+  background: rgba(40, 18, 0, 0.75);
+}
 .node-music-player-pl-ram-panel {
+  flex: 0 1 auto;
   display: flex;
   flex-direction: column;
   gap: 3px;
-  max-height: 42%;
+  max-height: 38%;
   min-height: 0;
   padding: 4px 5px;
   border: 1px solid rgba(180, 120, 60, 0.4);
@@ -1203,9 +1231,9 @@ audio {
   display: none !important;
 }
 .node-music-player-pl-ram-head {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 6px;
   font-size: 0.62rem;
   letter-spacing: 0.06em;
@@ -1264,17 +1292,17 @@ audio {
   line-height: 1.3;
   white-space: normal;
 }
+/* List fills leftover page height; rows keep natural size; overflow scrolls. */
 .node-music-player-pl-list {
   flex: 1 1 auto;
-  min-height: 48px;
-  max-height: 100%;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  display: block;
   border: 1px solid rgba(80, 120, 140, 0.35);
   border-radius: 3px;
   background: rgba(0, 0, 0, 0.35);
+  overscroll-behavior: contain;
 }
 .node-music-player-pl-empty {
   padding: 10px 8px;
@@ -1296,6 +1324,8 @@ audio {
   font: inherit;
   text-align: left;
   cursor: pointer;
+  flex: none;
+  box-sizing: border-box;
 }
 .node-music-player-pl-row:hover,
 .node-music-player-pl-row:focus-visible {
@@ -1321,6 +1351,7 @@ audio {
   font-variant-numeric: tabular-nums;
 }
 .node-music-player-pl-scrub {
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) 3.4rem;
   gap: 6px;

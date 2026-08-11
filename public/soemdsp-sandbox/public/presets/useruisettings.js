@@ -164,7 +164,7 @@
     "wiresAboveModules": false,
     "keyboardDebugInfoVisible": false,
     "tooltipEmbedded": true,
-    "tooltipEmbedHeight": 156,
+    "tooltipEmbedHeight": 32,
     "moduleButtonsVisible": false,
     "appChromeBarsVisible": true,
     "moduleInterfaceControlsVisible": true,
@@ -1117,8 +1117,8 @@
       "_maxHeight": 951
     },
     "moduleActionWindowSize": {
-      "width": 196,
-      "height": 698,
+      "width": 327,
+      "height": 734,
       "_maxWidth": 980,
       "_maxHeight": 951
     },
@@ -1154,7 +1154,7 @@
       "moduleBrowser": {
         "open": false,
         "position": {
-          "left": 19,
+          "left": 34,
           "top": 133
         },
         "size": {
@@ -1205,10 +1205,10 @@
     "sharedInspectorWindowState": {},
     "workspaceView": {
       "pan": {
-        "x": 178.3571428571429,
-        "y": 273.9534040178571
+        "x": 216.82142857142844,
+        "y": 176.23911830357144
       },
-      "zoom": 1.0887722245336686
+      "zoom": 0.9303463482310752
     },
     "moduleStoreDepartment": "",
     "savedPatchBankIndex": 0,
@@ -1217,7 +1217,7 @@
     "savedPatchUserPath": "",
     "savedPatchGridColumns": 3,
     "workingPatch": null,
-    "currentSavedPatchFilename": "LEDLCDCROSS.json",
+    "currentSavedPatchFilename": "",
     "patchDirtyState": "untouched"
   }
 });
