@@ -40,7 +40,8 @@ const ICON_DOWNLOAD = <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidd
 
 
 export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
-  const [sandboxLoaded, setSandboxLoaded] = useState(false);
+  // The first bank entry (lcd) is a live patch that should start immediately.
+  const [sandboxLoaded, setSandboxLoaded] = useState(true);
   // Live engine state synced from the sandbox via postMessage.
   const [liveEnabled, setLiveEnabled] = useState(false);
   const [liveSpeed, setLiveSpeed] = useState(1);
@@ -211,10 +212,17 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
       postRetryTimers.current = [250, 700, 1400, 2600, 4200].map((delay) =>
         window.setTimeout(sendProjectData, delay),
       );
+      // Autoplay: arm the live engine once the patch is in.
+      postRetryTimers.current.push(
+        window.setTimeout(() => {
+          postToSandbox({ type: "soundemote:set-live-output", enabled: true });
+          postToSandbox({ type: "soundemote:set-live-speed", speed: 1 });
+        }, 900),
+      );
     } catch {
       /* ignore fetch/post errors */
     }
-  }, [currentPatch.label, currentBankIndex]);
+  }, [currentPatch.label, currentBankIndex, postToSandbox]);
 
   useEffect(() => {
     postPatchRef.current = postPatch;
