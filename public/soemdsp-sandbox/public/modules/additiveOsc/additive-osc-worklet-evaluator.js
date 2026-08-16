@@ -80,14 +80,16 @@ NodeLiveAudioProcessor.prototype.additiveOscWorkletEvaluate = function additiveO
   const referenceVoltage = referenceMidiNote / 120;
   const hasPitch = this.inputConnections.has(this.inputKey(nodeId, "0.1V/Oct"));
   const pitchCv = hasPitch
-    ? this.clampValue(this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null), -1, 1)
+    ? this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null)
     : referenceVoltage;
   const effectiveFrequency = typeof nodeGraphParamResolveOscPitchHz === "function"
-    ? nodeGraphParamResolveOscPitchHz({
-      baseHz: frequency,
+    ? nodeGraphParamResolveOscPitchHz({baseHz: frequency,
       hasPitchCv: hasPitch,
       pitchCv,
       referenceVoltage,
+      hasInput: typeof hasInput === "function" ? hasInput : (id, port) => this.inputConnections.has(this.inputKey(id, port)),
+      mixInput,
+      nodeId,
     })
     : (typeof nodeGraphPitchedFrequency === "function"
         ? nodeGraphPitchedFrequency(frequency, pitchCv, referenceVoltage)

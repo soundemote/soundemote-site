@@ -97,16 +97,17 @@ function nodeGraphParamShouldHardClampDomain(metadata = {}) {
  * Wraparound always wraps; resource-constrained / hardClamp params clamp.
  */
 function nodeGraphParamApplyDomainBounds(value, metadata = {}) {
+  const meta = metadata && typeof metadata === "object" ? metadata : {};
   const n = Number(value);
   if (!Number.isFinite(n)) {
     return 0;
   }
-  const min = Number(metadata.min);
-  const max = Number(metadata.max);
-  if (metadata.wraparound && Number.isFinite(min) && Number.isFinite(max) && max > min) {
+  const min = Number(meta.min);
+  const max = Number(meta.max);
+  if (meta.wraparound && Number.isFinite(min) && Number.isFinite(max) && max > min) {
     return nodeGraphParamWrap(n, min, max);
   }
-  if (!nodeGraphParamShouldHardClampDomain(metadata)) {
+  if (!nodeGraphParamShouldHardClampDomain(meta)) {
     return n;
   }
   if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
@@ -191,18 +192,19 @@ function nodeGraphParamDomainToUnit(value, metadata = {}) {
  * Unit [0, 1] → DOMAIN for UI (inverse of skewed domainToUnit).
  */
 function nodeGraphParamUnitToDomain(unit, metadata = {}) {
-  const min = Number(metadata.min);
-  const max = Number(metadata.max);
+  const meta = metadata && typeof metadata === "object" ? metadata : {};
+  const min = Number(meta.min);
+  const max = Number(meta.max);
   const range = max - min;
   if (!Number.isFinite(range) || range <= 0) {
     return Number.isFinite(min) ? min : 0;
   }
-  const normalizedSignal = metadata.wraparound
+  const normalizedSignal = meta.wraparound
     ? nodeGraphParamWrap(Number(unit) || 0, 0, 1)
     : nodeGraphParamClamp(Number(unit) || 0, 0, 1);
-  const exp = nodeGraphParamSkewExponent(metadata);
+  const exp = nodeGraphParamSkewExponent(meta);
   const normalizedValue = normalizedSignal ** exp;
-  return nodeGraphParamApplyDomainBounds(min + range * normalizedValue, metadata);
+  return nodeGraphParamApplyDomainBounds(min + range * normalizedValue, meta);
 }
 
 /**
@@ -271,34 +273,49 @@ const NODE_GRAPH_PARAM_MOD_UNIT_BAND = 1 + 1e-9;
  *   Uni 0…1 + base at min → full range (e.g. Freq 1…20000).
  * Absolute (|mod| > 1): domain-add base + mod (exact Hz sources).
  *
- * Unipolar: mod contribution ≥ 0. Bipolar: signed (thru-zero capable).
+ * Signed MOD on every dest (negative LFO moves toward min). Only clip
+ * negatives when metadata.unipolarMod === true (explicit).
+ * Callers that have several sources should fold unit vs absolute per source
+ * via nodeGraphParamFoldModSources, not by summing first (avoids the |Σ| > 1 cliff).
  */
 function nodeGraphParamApplyMod(base, modSum, metadata = {}) {
+  const folded = nodeGraphParamFoldModSources(base, [modSum], metadata);
+  return folded;
+}
+
+/**
+ * Combine one or more MOD samples onto DOMAIN base.
+ * Each source: |mod| ≤ 1 → unit-map contribution; |mod| > 1 → domain-add.
+ */
+function nodeGraphParamFoldModSources(base, sources, metadata = {}) {
   const baseN = Number(base);
   const b = Number.isFinite(baseN) ? baseN : 0;
-  let mod = Number(modSum);
-  if (!Number.isFinite(mod)) {
-    mod = 0;
-  }
-  const bipolar = nodeGraphParamIsBipolar(metadata);
-  if (!bipolar) {
-    mod = Math.max(0, mod);
-  }
-
   const min = Number(metadata.min);
   const max = Number(metadata.max);
   const range = max - min;
-  const absMod = Math.abs(mod);
-
-  // Unit CV path: linear min…max, never skew (even if slider is log-ish).
-  if (Number.isFinite(range) && range > 0 && absMod <= NODE_GRAPH_PARAM_MOD_UNIT_BAND) {
-    const baseUnit = nodeGraphParamDomainToUnitLinear(b, metadata);
-    const unit = baseUnit + mod;
-    return nodeGraphParamUnitToDomainLinear(unit, metadata);
+  const clipNeg = metadata && metadata.unipolarMod === true;
+  let unitAdd = 0;
+  let domainAdd = 0;
+  const list = Array.isArray(sources) ? sources : [sources];
+  for (const raw of list) {
+    let mod = Number(raw);
+    if (!Number.isFinite(mod)) {
+      mod = 0;
+    }
+    if (clipNeg) {
+      mod = Math.max(0, mod);
+    }
+    if (Number.isFinite(range) && range > 0 && Math.abs(mod) <= NODE_GRAPH_PARAM_MOD_UNIT_BAND) {
+      unitAdd += mod;
+    } else {
+      domainAdd += mod;
+    }
   }
-
-  // Absolute domain-add (Pitch Detector Hz, Bias ≫ 1, …).
-  let result = b + mod;
+  let result = b + domainAdd;
+  if (Number.isFinite(range) && range > 0 && unitAdd !== 0) {
+    const baseUnit = nodeGraphParamDomainToUnitLinear(b, metadata);
+    result = nodeGraphParamUnitToDomainLinear(baseUnit + unitAdd, metadata) + domainAdd;
+  }
   if (!Number.isFinite(result)) {
     return 0;
   }
@@ -357,19 +374,42 @@ function nodeGraphParamSignalInAmplitude(domainLevel, ampSample, hasAmp) {
 }
 
 /**
+ * Absolute-Hz jack (ƒ / Freq) when wired. Returns null if unwired.
+ */
+function nodeGraphResolveAbsHzJack(hasInput, mixInput, nodeId) {
+  if (typeof hasInput !== "function" || typeof mixInput !== "function" || !nodeId) {
+    return null;
+  }
+  if (hasInput(nodeId, "f")) {
+    return mixInput(nodeId, "f");
+  }
+  if (hasInput(nodeId, "Freq")) {
+    return mixInput(nodeId, "Freq");
+  }
+  return null;
+}
+
+/**
  * Resolve osc pitch from domain frequency + optional 0.1V/Oct jack.
- * Domain Freq already includes parameter MOD (domain-add). f jack removed —
- * use Freq MOD with domain-unit sources (Pitch Detector, Knob, …).
+ * Wired ƒ / Freq is absolute Hz and wins over the Frequency knob + 0.1V/Oct.
  * Through-zero: signed base Hz (negative reverses phase via bipolar Freq).
  */
 function nodeGraphParamResolveOscPitchHz(options = {}) {
+  if (options.hasAbsHz === true) {
+    const abs = Number(options.fHz);
+    return Number.isFinite(abs) ? abs : 0;
+  }
+  const jackHz = nodeGraphResolveAbsHzJack(options.hasInput, options.mixInput, options.nodeId);
+  if (jackHz != null) {
+    const abs = Number(jackHz);
+    return Number.isFinite(abs) ? abs : 0;
+  }
   const rawBase = Number(options.baseHz);
   const baseHz = Number.isFinite(rawBase) ? rawBase : 0;
   const pitchCv = options.pitchCv;
   const referenceVoltage = Number(options.referenceVoltage);
   const ref = Number.isFinite(referenceVoltage) ? referenceVoltage : 0;
   const hasPitch = options.hasPitchCv === true;
-  // Legacy options.fHz ignored (absolute-Hz f jack retired).
   const cv = hasPitch ? pitchCv : ref;
   if (typeof nodeGraphPitchedFrequency === "function") {
     return nodeGraphPitchedFrequency(baseHz, cv, ref);

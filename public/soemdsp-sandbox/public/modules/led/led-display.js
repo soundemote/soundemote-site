@@ -210,7 +210,7 @@ function drawNodeGraphLedLampItem(renderer, item, pixelRatio) {
   let level = 0;
   if (buffer?.length) {
     level = Number(buffer.nodeGraphScopeLightTarget);
-    if (!(level > 0)) {
+    if (!Number.isFinite(level)) {
       // Live rings often omit lightTarget metadata — use peak |sample|.
       let peak = 0;
       const n = Math.min(buffer.length, 64);

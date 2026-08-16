@@ -9,7 +9,10 @@ NodeLiveAudioProcessor.prototype.process = function process(inputs, outputs) {
     // App-wide: oversampling under construction — never multi-rate in process.
     const oversamplingRatio = 1;
     const rawEngineSampleRate = Math.max(1, this.hostSampleRate || this.engineSampleRate || sampleRate || 44100);
-    const effectiveRate = Math.max(1, rawEngineSampleRate * Math.max(0, this.speedMultiplier ?? 1));
+    const speedMul = Math.max(0, this.speedMultiplier ?? 1);
+    const effectiveRate = speedMul > 0
+      ? Math.max(1, rawEngineSampleRate / speedMul)
+      : 1;
     const engineFrames = frames;
     // Speed 0 = pause: fill silence and return immediately.
     if (this.speedMultiplier === 0) {
@@ -26,8 +29,10 @@ NodeLiveAudioProcessor.prototype.process = function process(inputs, outputs) {
     }
 
     for (let frame = 0; frame < frames; frame += 1) {
-      const inputLeft = Number(input[0]?.[frame]) || 0;
-      const inputRight = Number(input[1]?.[frame]) || inputLeft;
+      const rawLeft = Number(input[0]?.[frame]);
+      const rawRight = Number(input[1]?.[frame]);
+      const inputLeft = Number.isFinite(rawLeft) ? rawLeft : 0;
+      const inputRight = Number.isFinite(rawRight) ? rawRight : inputLeft;
       this.inputMeterPeak = Math.max(this.inputMeterPeak, Math.abs(inputLeft), Math.abs(inputRight));
       this.inputMeterSquareSum += (inputLeft * inputLeft + inputRight * inputRight) * 0.5;
       this.inputMeterSamples += 1;
@@ -78,24 +83,21 @@ NodeLiveAudioProcessor.prototype.process = function process(inputs, outputs) {
         this.outputSampleTripsEarProtection(frameOutput.left) ||
         this.outputSampleTripsEarProtection(frameOutput.right)
       ) {
-        this.meterProtectionMuteCount += 1;
         this.speakerProtectionPeak = Math.max(
           Number(this.speakerProtectionPeak) || 0,
           Number.isFinite(Number(frameOutput.left)) ? Math.abs(Number(frameOutput.left)) : Infinity,
           Number.isFinite(Number(frameOutput.right)) ? Math.abs(Number(frameOutput.right)) : Infinity,
         );
         this.speakerProtectionNodeId = "output";
-        for (let channelIndex = 0; channelIndex < output.length; channelIndex += 1) {
-          output[channelIndex][frame] = 0;
-        }
-        continue;
       }
       const protectedFrame = this.earProtector.protect(frameOutput.left, frameOutput.right);
-      if (protectedFrame.muted) {
+      if (protectedFrame.engaged || protectedFrame.muted) {
         this.meterProtectionMuteCount += 1;
       }
-      const left = this.clampValue(protectedFrame.left, -0.95, 0.95);
-      const right = this.clampValue(protectedFrame.right, -0.95, 0.95);
+      this.protectionEngaged = Boolean(protectedFrame.engaged);
+      this.protectionGain = Number(protectedFrame.gain);
+      const left = Number.isFinite(Number(protectedFrame.left)) ? Number(protectedFrame.left) : 0;
+      const right = Number.isFinite(Number(protectedFrame.right)) ? Number(protectedFrame.right) : 0;
       this.meterPeak = Math.max(this.meterPeak, Math.abs(left), Math.abs(right));
       this.meterSquareSum += (left * left + right * right) * 0.5;
       this.meterSamples += 1;
@@ -120,10 +122,10 @@ NodeLiveAudioProcessor.prototype.process = function process(inputs, outputs) {
       this.port.postMessage({
         audioPlayerNodeId: this.audioPlayerMeterNodeId || this.audioPlayerNodeIds[0] || "",
         audioPlayerNodeIds: [...this.audioPlayerNodeIds],
-        audioPlayerPeak: this.audioPlayerMeterPeak,
         audioPlayerPhase: this.audioPlayerMeterPhase,
+        audioPlayerSpeed: this.audioPlayerMeterSpeed,
+        audioPlayerSpeeds: this.audioPlayerMeterSpeeds || {},
         audioPlayerReason: this.audioPlayerMeterReason,
-        audioPlayerSamples: this.audioPlayerMeterSamples,
         clipCount: this.meterClipCount,
         badNumberCount: this.badNumberCount,
         lastBadValueReason: this.lastBadValueReason,
@@ -138,6 +140,8 @@ NodeLiveAudioProcessor.prototype.process = function process(inputs, outputs) {
         protectionNodeId: this.speakerProtectionNodeId || "",
         protectionPeak: Number(this.speakerProtectionPeak) || 0,
         protectionMuteCount: this.meterProtectionMuteCount,
+        protectionEngaged: Boolean(this.protectionEngaged),
+        protectionGain: Number.isFinite(Number(this.protectionGain)) ? Number(this.protectionGain) : 1,
         sessionId: this.sessionId,
         rms: Math.sqrt(this.meterSquareSum / Math.max(1, this.meterSamples)),
         type: "meter",
@@ -145,10 +149,10 @@ NodeLiveAudioProcessor.prototype.process = function process(inputs, outputs) {
       this.meterCounter = 0;
       this.inputMeterPeak = 0;
       this.audioPlayerMeterNodeId = "";
-      this.audioPlayerMeterPeak = 0;
       this.audioPlayerMeterPhase = 0;
+      this.audioPlayerMeterSpeed = 0;
+      this.audioPlayerMeterSpeeds = Object.create(null);
       this.audioPlayerMeterReason = "";
-      this.audioPlayerMeterSamples = 0;
       this.inputMeterSamples = 0;
       this.inputMeterSquareSum = 0;
       this.meterClipCount = 0;

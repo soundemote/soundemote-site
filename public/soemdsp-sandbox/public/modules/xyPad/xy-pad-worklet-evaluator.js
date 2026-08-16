@@ -35,6 +35,22 @@
       const pulseSamples = Math.max(0, Number(state.pulseSamples) || 0);
       state.pulseSamples = Math.max(0, pulseSamples - 1);
 
+      const gate = read("gate", 0) > 0.5 ? 1 : 0;
+      const pauseOnLift = read("pauseOnLift", 0) > 0.5;
+      const ampFn = typeof nodeGraphXyPadDspOutputAmplitude === "function"
+        ? nodeGraphXyPadDspOutputAmplitude
+        : (raw) => (Number.isFinite(Number(raw)) ? Number(raw) : 1);
+      const ampX = ampFn(read("xAmplitude", 1));
+      const ampY = ampFn(read("yAmplitude", 1));
+      if (pauseOnLift && gate < 1 && pair.held && Number.isFinite(pair.held.X) && Number.isFinite(pair.held.Y)) {
+        return {
+          X: pair.held.X * ampX,
+          Y: pair.held.Y * ampY,
+          Gate: 0,
+          Spike: pulseSamples > 0 ? (Number(state.amplitude) || 1) : 0,
+        };
+      }
+
       const rawMouseX = Number(read("x", read("xPhase", 0.5)));
       const rawMouseY = Number(read("y", read("yPhase", 0.5)));
       // Do not use `n || 0.5` — that maps legitimate edge 0 to center.
@@ -53,7 +69,7 @@
         && this.nativePapoulisFilterReady
         && typeof this.papoulisFilterSample === "function";
 
-      return {
+      const out = {
         X: nodeGraphXyPadDspProcessAxis(sigX, {
           cutoff,
           order,
@@ -70,9 +86,13 @@
             ? (s) => this.papoulisFilterSample(pair.y, s, cutoff, rate)
             : null,
         }),
-        Gate: read("gate", 0) > 0.5 ? 1 : 0,
+        Gate: gate,
         Spike: pulseSamples > 0 ? (Number(state.amplitude) || 1) : 0,
       };
+      pair.held = { X: out.X, Y: out.Y };
+      out.X *= ampX;
+      out.Y *= ampY;
+      return out;
     };
     return evaluators;
   };

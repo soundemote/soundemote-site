@@ -1,6 +1,4 @@
 const nodeSliderHandleHalfWidthPx = 8;
-const nodeSliderHandleLeftWallClearancePx = 1;
-const nodeSliderHandleRightWallClearancePx = 3;
 const nodeSliderMinSkewExponent = 0.25;
 const nodeSliderMaxSkewExponent = 4;
 const nodeGraphAutoSmoothingDefaultSeconds = 0.5;
@@ -207,7 +205,15 @@ function nodeGraphParameterSmoothingSecondsFromMetadata(metadata = {}) {
     return null;
   }
   const value = Number(metadata.smoothingSeconds);
-  return Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
+  if (!Number.isFinite(value) || value <= 0) {
+    return 0;
+  }
+  // Values in (0, 1) are seconds (e.g. 0.0333); ≥ 1 are sample counts.
+  if (value > 0 && value < 1) {
+    const rate = Math.max(1, Number(nodeGraphMvp?.sampleRate) || 44100);
+    return Math.max(1, Math.round(value * rate));
+  }
+  return Math.max(0, Math.round(value));
 }
 
 // See resolveSmoothingSecondsForMode() in node-live-audio-worklet-core.js for the
@@ -227,7 +233,12 @@ function nodeGraphResolveSmoothingSecondsForMode(mode, smoothingSamples, frames,
       return internalSeconds + safeGlobal;
     case "internal":
     default:
-      return internalSeconds;
+      if (internalSeconds > 0) {
+        return internalSeconds;
+      }
+      return typeof nodeGraphModuleSmoothingDefaultSeconds === "function"
+        ? nodeGraphModuleSmoothingDefaultSeconds()
+        : 0.0333;
   }
 }
 
@@ -585,9 +596,67 @@ function nodeSliderEdgeCurvePower(slider) {
   return 1 + Math.abs(nodeSliderCurveAmount(slider)) * 7;
 }
 
+/**
+ * Rational map on 0…1. Same continuous form as nodeGraphGraphRationalCurveContinuous.
+ * c < 0 stays below p (compress toward 0); c > 0 stays above p.
+ */
+function nodeSliderRationalCurveContinuous(position, contour) {
+  const p = clampNodeSliderValue(Number(position) || 0, 0, 1);
+  const c = clampNodeSliderValue(Number(contour) || 0, -1, 1);
+  if (Math.abs(c) < 0.000001) {
+    return p;
+  }
+  const cSafe = clampNodeSliderValue(c, -0.999999, 0.999999);
+  return cSafe < 0
+    ? (p * (1 + cSafe)) / (1 + cSafe * p)
+    : p / (1 - cSafe + cSafe * p);
+}
+
+function nodeSliderRationalCurveContinuousInverse(value, contour) {
+  const y = clampNodeSliderValue(Number(value) || 0, 0, 1);
+  const c = clampNodeSliderValue(Number(contour) || 0, -1, 1);
+  if (Math.abs(c) < 0.000001) {
+    return y;
+  }
+  const cSafe = clampNodeSliderValue(c, -0.999999, 0.999999);
+  if (cSafe < 0) {
+    const denom = 1 + cSafe - y * cSafe;
+    return denom === 0 ? y : clampNodeSliderValue(y / denom, 0, 1);
+  }
+  const denom = 1 - y * cSafe;
+  return denom === 0 ? y : clampNodeSliderValue(y * (1 - cSafe) / denom, 0, 1);
+}
+
+/**
+ * Symmetric around travel 0.5. Sensitivity 0 = linear;
+ * +1 = finer at center; −1 = finer at extremes.
+ */
+function nodeSliderBipolarRationalValueFromTravel(travel, amount) {
+  const t = clampNodeSliderValue(Number(travel) || 0, 0, 1);
+  const signed = (t - 0.5) * 2;
+  if (signed === 0) {
+    return 0.5;
+  }
+  const mapped = nodeSliderRationalCurveContinuous(Math.abs(signed), -Number(amount) || 0);
+  return 0.5 + 0.5 * Math.sign(signed) * mapped;
+}
+
+function nodeSliderBipolarRationalTravelFromValue(value, amount) {
+  const v = clampNodeSliderValue(Number(value) || 0, 0, 1);
+  const signed = (v - 0.5) * 2;
+  if (signed === 0) {
+    return 0.5;
+  }
+  const mapped = nodeSliderRationalCurveContinuousInverse(Math.abs(signed), -Number(amount) || 0);
+  return 0.5 + 0.5 * Math.sign(signed) * mapped;
+}
+
 function nodeSliderCurveValueFromTravel(slider, travel) {
   const normalizedTravel = normalizeNodeSliderTravel(slider, travel);
   const curve = nodeSliderCurve(slider);
+  if (curve === "bipolarRational") {
+    return nodeSliderBipolarRationalValueFromTravel(normalizedTravel, nodeSliderCurveAmount(slider));
+  }
   if (curve === "edges") {
     const amount = nodeSliderCurveAmount(slider);
     const power = nodeSliderEdgeCurvePower(slider);
@@ -609,6 +678,9 @@ function nodeSliderCurveValueFromTravel(slider, travel) {
 function nodeSliderCurveTravelFromValue(slider, normalizedValue) {
   const value = clampNodeSliderValue(normalizedValue, 0, 1);
   const curve = nodeSliderCurve(slider);
+  if (curve === "bipolarRational") {
+    return nodeSliderBipolarRationalTravelFromValue(value, nodeSliderCurveAmount(slider));
+  }
   if (curve === "edges") {
     const amount = nodeSliderCurveAmount(slider);
     const power = nodeSliderEdgeCurvePower(slider);
@@ -683,8 +755,18 @@ function nodeSliderTravelFromValue(slider, value) {
 }
 
 function nodeSliderElementLayoutWidth(element) {
+  if (
+    typeof nodeGraphElementInSkippedContentVisibility === "function"
+    && nodeGraphElementInSkippedContentVisibility(element)
+  ) {
+    const last = Number(element?._awakeClientWidth);
+    return last > 0 ? last : 0;
+  }
   const width = Number(element?.clientWidth || element?.offsetWidth || 0);
   if (Number.isFinite(width) && width > 0) {
+    if (element) {
+      element._awakeClientWidth = width;
+    }
     return width;
   }
   const rectWidth = Number(element?.getBoundingClientRect?.().width) || 0;
@@ -693,8 +775,18 @@ function nodeSliderElementLayoutWidth(element) {
 }
 
 function nodeSliderElementLayoutHeight(element) {
+  if (
+    typeof nodeGraphElementInSkippedContentVisibility === "function"
+    && nodeGraphElementInSkippedContentVisibility(element)
+  ) {
+    const last = Number(element?._awakeClientHeight);
+    return last > 0 ? last : 0;
+  }
   const height = Number(element?.clientHeight || element?.offsetHeight || 0);
   if (Number.isFinite(height) && height > 0) {
+    if (element) {
+      element._awakeClientHeight = height;
+    }
     return height;
   }
   const rectHeight = Number(element?.getBoundingClientRect?.().height) || 0;
@@ -703,6 +795,12 @@ function nodeSliderElementLayoutHeight(element) {
 }
 
 function nodeSliderElementVisualScale(element) {
+  if (
+    typeof nodeGraphElementInSkippedContentVisibility === "function"
+    && nodeGraphElementInSkippedContentVisibility(element)
+  ) {
+    return 1;
+  }
   const layoutWidth = nodeSliderElementLayoutWidth(element);
   const rectWidth = Number(element?.getBoundingClientRect?.().width) || 0;
   if (!Number.isFinite(layoutWidth) || !Number.isFinite(rectWidth) || layoutWidth <= 0 || rectWidth <= 0) {
@@ -714,15 +812,10 @@ function nodeSliderElementVisualScale(element) {
 function nodeSliderVisualLane(surface, slider) {
   const width = nodeSliderElementLayoutWidth(surface);
   const handleHalfWidth = Math.min(nodeSliderHandleHalfWidthPx, width / 2);
-  const maxClearance = Math.max(0, width / 2 - handleHalfWidth);
-  const leftClearance = nodeSliderShouldWraparound(slider)
-    ? 0
-    : Math.min(nodeSliderHandleLeftWallClearancePx, maxClearance);
-  const rightClearance = nodeSliderShouldWraparound(slider)
-    ? 0
-    : Math.min(nodeSliderHandleRightWallClearancePx, maxClearance);
-  const leftInset = nodeSliderShouldWraparound(slider) ? 0 : handleHalfWidth + leftClearance;
-  const rightInset = nodeSliderShouldWraparound(slider) ? 0 : handleHalfWidth + rightClearance;
+  // Travel is handle-center. Zero clearance: at 0 the handle left edge is
+  // the track left; at 1 the handle right edge is the track right.
+  const leftInset = nodeSliderShouldWraparound(slider) ? 0 : handleHalfWidth;
+  const rightInset = nodeSliderShouldWraparound(slider) ? 0 : handleHalfWidth;
   return {
     handleHalfWidth,
     inset: leftInset,
@@ -766,7 +859,7 @@ function setNodeSliderMetadata(slider, metadata) {
   const control = slider.closest(".node-parameter-control");
   const alias = normalizeNodeGraphPatchMetadataAlias(metadata.alias);
   slider.dataset.alias = alias;
-  // Display name: custom alias wins, else factory default (e.g. "→"), else prior label.
+  // Display name: custom alias wins, else factory default (e.g. "←" out), else prior label.
   const nextLabel = alias
     || control?.dataset?.defaultParamLabel
     || control?.dataset?.paramLabel
@@ -821,12 +914,16 @@ function setNodeSliderMetadata(slider, metadata) {
   slider.dataset.curveAmount = String(normalizeNodeSliderCurveAmount(metadata.curveAmount));
   slider.dataset.nonlinearSlider = slider.dataset.sliderCurve === "linear" ? "false" : "true";
   slider.dataset.showSign = metadata.showSign ? "true" : "false";
+  slider.dataset.removeTrailingZeros = metadata.removeTrailingZeros ? "true" : "false";
   slider.dataset.bipolar = metadata.bipolar ? "true" : "false";
   // Clear legacy overshoot keys if present (older sessions).
   if (slider.dataset.unboundedMax != null) delete slider.dataset.unboundedMax;
   if (slider.dataset.unboundedMin != null) delete slider.dataset.unboundedMin;
   if (slider.dataset.unboundedValue != null) delete slider.dataset.unboundedValue;
   slider.dataset.wraparound = metadata.wraparound ? "true" : "false";
+  if (Object.hasOwn(metadata, "visible")) {
+    slider.dataset.visible = metadata.visible === false ? "false" : "true";
+  }
   // Prefer existing domainValue so metadata edits do not snap the parameter to
   // a clamped HTML thumb (or leave domainValue stale relative to value).
   const domainSource = Number.isFinite(Number(slider.dataset.domainValue))

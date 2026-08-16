@@ -52,18 +52,26 @@ NodeLiveAudioProcessor.prototype.resolveSoftpopOrBandpassHz = function resolveSo
   frameValues,
   mixInput,
 ) {
+  if (this.inputConnections.has(this.inputKey(nodeId, "f"))) {
+    return mixInput(nodeId, "f");
+  }
+  if (this.inputConnections.has(this.inputKey(nodeId, "Freq"))) {
+    return mixInput(nodeId, "Freq");
+  }
   const referenceMidiNote = Number.isFinite(this.pitchReferenceMidiNote) ? this.pitchReferenceMidiNote : 48;
   const referenceVoltage = referenceMidiNote / 120;
   const hasPitch = this.inputConnections.has(this.inputKey(nodeId, "0.1V/Oct"));
   const pitchCv = hasPitch
-    ? this.clampValue(this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null), -1, 1)
+    ? this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null)
     : referenceVoltage;
   if (typeof nodeGraphParamResolveOscPitchHz === "function") {
-    return Math.max(0, nodeGraphParamResolveOscPitchHz({
-      baseHz,
+    return Math.max(0, nodeGraphParamResolveOscPitchHz({baseHz,
       hasPitchCv: hasPitch,
       pitchCv,
       referenceVoltage,
+      hasInput: typeof hasInput === "function" ? hasInput : (id, port) => this.inputConnections.has(this.inputKey(id, port)),
+      mixInput,
+      nodeId,
     }));
   }
   return Math.max(0, Number(baseHz) || 0);

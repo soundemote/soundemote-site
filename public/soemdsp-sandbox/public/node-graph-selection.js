@@ -5,7 +5,9 @@ function setNodeGraphSelection(selection) {
   // newly clicked module — renaming modules that were never put into edit mode.
   const active = document.activeElement;
   if (active instanceof HTMLElement) {
-    if (active.id === "nodeSceneAliasInput") {
+    if (typeof nodeGraphTextBoxIsTypingElement === "function" && nodeGraphTextBoxIsTypingElement(active)) {
+      // Title / area editors stay put — window chrome is not a focus target.
+    } else if (active.id === "nodeSceneAliasInput" || active.id === "nodeSceneKnobTextInput") {
       try {
         active.blur();
       } catch {
@@ -28,6 +30,9 @@ function setNodeGraphSelection(selection) {
     nodeGraphMvp.lastModuleActionTargetNode = selectedNode;
   }
   renderNodeGraphSelection();
+  if (typeof nodeGraphViewportCullSyncSelection === "function") {
+    nodeGraphViewportCullSyncSelection();
+  }
 }
 
 function clearNodeGraphSelection() {
@@ -94,13 +99,16 @@ function nodeGraphEventTargetIsFloatingWindow(target) {
     "#nodeTraceDisplaySettingsPopover",
     "#nodeGlobalScopeMenu",
     "#nodeVisibilityMenu",
+    "#nodeHotkeysPage",
+    "#nodeEmojiPage",
     "#nodeModuleShopView",
     "#nodeUserUiSettingsPanel",
+    "#nodePatchDefaultsPanel",
     "#nodeUiDevHelper",
     "#nodePhosphorWaveformSettingsWindow",
     "#nodeCodeBoxWindow",
     "#nodeStandaloneMidiKeyboardDock",
-    "#nodeTooltipWindow",
+
     ".node-canvas-script-dialog",
     ".node-scene-context-menu",
     ".node-parameter-metadata-popover",
@@ -235,12 +243,30 @@ function nodeGraphModuleActionTargetNodeId() {
   return null;
 }
 
+function nodeGraphSelectionDisplaySyncKey() {
+  const nodes = [...nodeGraphSelectedNodeIds()].sort().join(",");
+  const wire = typeof nodeGraphWireFromSelection === "function"
+    ? nodeGraphWireFromSelection()
+    : null;
+  const wireKey = wire ? `${wire.kind}:${wire.index}` : "";
+  return `${nodes}|${wireKey}`;
+}
+
 function syncNodeGraphModuleActionTargetFromSelection() {
   const commandMenu = document.getElementById("nodeSceneContextMenu");
   const actionWindow = document.getElementById("nodeModuleActionsWindow");
   const commandMenuOpen = commandMenu && !commandMenu.hidden && commandMenu.dataset.mode !== "add";
   const actionWindowOpen = actionWindow && !actionWindow.hidden;
   if (!commandMenuOpen && !actionWindowOpen) {
+    return;
+  }
+  const syncKey = nodeGraphSelectionDisplaySyncKey();
+  const displayChanged = syncKey !== nodeGraphMvp._displayChangeSyncKey;
+  nodeGraphMvp._displayChangeSyncKey = syncKey;
+  // Wire redraw also calls renderNodeGraphSelection. Only retarget the
+  // inspector when the actual selection changed — right-click pins a
+  // context module without becoming the selection.
+  if (!displayChanged) {
     return;
   }
   const selectedWire = nodeGraphWireFromSelection();
@@ -251,6 +277,9 @@ function syncNodeGraphModuleActionTargetFromSelection() {
     };
     nodeGraphMvp.sceneContextTargetNode = null;
     configureNodeSceneContextMenu("wire");
+    if (displayChanged && typeof noteNodeGraphDisplayChange === "function") {
+      noteNodeGraphDisplayChange();
+    }
     return;
   }
   const selectedNode = nodeGraphSingleSelectedNodeId();
@@ -268,6 +297,9 @@ function syncNodeGraphModuleActionTargetFromSelection() {
     } else if (actionWindowOpen) {
       configureNodeSceneContextMenu("module");
     }
+  }
+  if (displayChanged && typeof noteNodeGraphDisplayChange === "function") {
+    noteNodeGraphDisplayChange();
   }
 }
 
@@ -381,15 +413,19 @@ function toggleNodeGraphNodeSelection(id, additive = false) {
   if (!nodeGraphMvp.activeNodes.has(id)) {
     return;
   }
+  const selectedNodeIds = nodeGraphSelectedNodeIds();
   if (!additive) {
-    // Always select — never toggle off on re-click. Empty canvas / marquee clear
-    // selection. Toggle-off made Shift+arrow resize flaky: click #1 selects,
-    // click #2 (or a second try) deselects, keys appear "broken".
-    setNodeGraphNodeSelection([id]);
+    // Click (no drag) toggles: unselected → sole selection; selected → drop it.
+    // Drag never reaches here — endNodeGraphNodeDrag only calls this when !moved.
+    if (selectedNodeIds.has(id)) {
+      selectedNodeIds.delete(id);
+      setNodeGraphNodeSelection([...selectedNodeIds]);
+    } else {
+      setNodeGraphNodeSelection([id]);
+    }
     return;
   }
 
-  const selectedNodeIds = nodeGraphSelectedNodeIds();
   if (selectedNodeIds.has(id)) {
     // Multi-select remove only when other modules stay selected. Shift+click on
     // the sole selected module (common before Shift+arrow resize) must not
@@ -470,6 +506,12 @@ function nodeGraphWireFromSelection(selection = nodeGraphMvp.selected) {
 }
 
 function nodeGraphWireSelectionLabel(selection = nodeGraphMvp.selected) {
+  const entries = typeof nodeGraphSelectedWireEntries === "function"
+    ? nodeGraphSelectedWireEntries(selection)
+    : [];
+  if (entries.length > 1) {
+    return `${entries.length} wires`;
+  }
   const selectedWire = nodeGraphWireFromSelection(selection);
   if (!selectedWire) {
     return "none";
@@ -619,9 +661,16 @@ function renderNodeGraphSelection() {
   }
   renderNodeGraphExecutionSummarySelection();
 
-  const button = document.getElementById("nodeDeleteButton");
-  button.disabled = !nodeGraphSelectionCanDelete();
-  button.title = nodeGraphDeleteTitle();
+  const canDelete = nodeGraphSelectionCanDelete();
+  const deleteTitle = nodeGraphDeleteTitle();
+  for (const id of ["nodeDeleteButton", "nodeSceneHistoryDeleteButton"]) {
+    const button = document.getElementById(id);
+    if (!button) {
+      continue;
+    }
+    button.disabled = !canDelete;
+    button.title = deleteTitle;
+  }
 
   syncNodeGraphModuleActionTargetFromSelection();
   syncNodeGraphSharedInspectorTargetFromSelection();
@@ -629,6 +678,10 @@ function renderNodeGraphSelection() {
 }
 
 function selectNodeGraphWire(event, index, kind = "signal") {
+  if (typeof nodeGraphPatchIsLocked === "function" && nodeGraphPatchIsLocked()) {
+    event?.stopPropagation?.();
+    return;
+  }
   event.stopPropagation();
   setNodeGraphSelection({ type: "wire", kind, index });
 }

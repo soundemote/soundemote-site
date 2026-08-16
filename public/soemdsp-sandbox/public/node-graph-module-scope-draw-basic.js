@@ -219,8 +219,7 @@ function drawNodeGraphModuleScopeCanvasDotPath(context, points, proxyCanvas, pix
 
   context.save();
   context.globalCompositeOperation = "lighter";
-  context.imageSmoothingEnabled = true;
-  context.imageSmoothingQuality = "high";
+  context.imageSmoothingEnabled = false;
 
   const drawConnectedStroke = (lineWidth, _shadowBlurIgnored, rgb, alpha) => {
     context.beginPath();
@@ -231,7 +230,6 @@ function drawNodeGraphModuleScopeCanvasDotPath(context, points, proxyCanvas, pix
     context.shadowBlur = 0;
     context.strokeStyle = nodeGraphModuleScopeCanvasRgba(rgb, alpha);
     let pathOpen = false;
-    let localSkipThroughSegment = -1;
     for (let index = 0; index + 3 < pixelPoints.length; index += 2) {
       const segmentIndex = index / 2;
       if (skippedPoints?.[segmentIndex] || skippedPoints?.[segmentIndex + 1]) {
@@ -246,12 +244,9 @@ function drawNodeGraphModuleScopeCanvasDotPath(context, points, proxyCanvas, pix
           Number.isFinite(currentRaw) &&
           Math.abs(currentRaw - previousRaw) > nodeGraphModuleScopeDiscontinuityThreshold
         ) {
-          localSkipThroughSegment = Math.max(localSkipThroughSegment, segmentIndex + skipSamples - 1);
+          pathOpen = false;
+          continue;
         }
-      }
-      if (segmentIndex <= localSkipThroughSegment) {
-        pathOpen = false;
-        continue;
       }
       const x1 = pixelPoints[index];
       const y1 = pixelPoints[index + 1];
@@ -657,7 +652,7 @@ function drawNodeGraphValueOscilloscopeItem(renderer, item, pixelRatio) {
     }
   }
 
-  // Size 0…1 of the face square min side: 0 = 1 CSS px (min), 1 = full square.
+  // Size 0…1 of the face square min side: 0 = gone, 1 = full square.
   // Beam path multiplies thicknessPx by pixelRatio for device pixels.
   const faceMinSide = Math.max(
     1,
@@ -668,17 +663,16 @@ function drawNodeGraphValueOscilloscopeItem(renderer, item, pixelRatio) {
   );
   const size01ToPx = (size01) => {
     const t = clampNodeSliderValue(Number(size01) || 0, 0, 1);
-    if (typeof nodeGraphScopeSize01ToDiameterPx === "function") {
-      return nodeGraphScopeSize01ToDiameterPx(faceMinSide, t);
+    if (typeof TraceStroke !== "undefined" && typeof TraceStroke.diameterPx === "function") {
+      return TraceStroke.diameterPx(faceMinSide, t);
     }
-    if (typeof PhosphorDrawer !== "undefined" && PhosphorDrawer.size01ToDiameterPx) {
-      return PhosphorDrawer.size01ToDiameterPx(faceMinSide, t);
-    }
-    // Linear: diameter = size * faceMinSide, floor 1px at size 0.
-    return Math.max(1, faceMinSide * t);
+    return faceMinSide * t;
   };
   const size01 = clampNodeSliderValue(Number(safeSettings.dot1Size) || 0, 0, 1);
   const thicknessPx = size01ToPx(size01);
+  if (!(thicknessPx > 0)) {
+    return;
+  }
   const intensity = Math.max(0.05, Math.min(1.25, brightness * 0.95 + 0.05));
   // lineThickness = Blur 0…1 (smoothstep edge). Hard 0 stair-steps; a light
   // floor keeps ~1px of AA so thin lines/caps don't look aliased.

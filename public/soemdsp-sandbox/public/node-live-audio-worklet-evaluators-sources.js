@@ -422,15 +422,17 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_sources = function bu
         const referenceVoltage = referenceMidiNote / 120;
         const hasPitch = this.inputConnections.has(this.inputKey(nodeId, "0.1V/Oct"));
         const pitchCv = hasPitch
-          ? this.clampValue(this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null), -1, 1)
+          ? this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null)
           : referenceVoltage;
         const effectiveFrequency = typeof nodeGraphParamResolveOscPitchHz === "function"
-          ? nodeGraphParamResolveOscPitchHz({
-            baseHz: baseFrequency,
+          ? nodeGraphParamResolveOscPitchHz({baseHz: baseFrequency,
             hasPitchCv: hasPitch,
             pitchCv,
             referenceVoltage,
-          })
+      hasInput: typeof hasInput === "function" ? hasInput : (id, port) => this.inputConnections.has(this.inputKey(id, port)),
+      mixInput,
+      nodeId,
+    })
           : (typeof nodeGraphPitchedFrequency === "function"
               ? nodeGraphPitchedFrequency(baseFrequency, pitchCv, referenceVoltage)
               : baseFrequency * (2 ** ((pitchCv - referenceVoltage) / 0.1)));
@@ -479,15 +481,17 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_sources = function bu
         const referenceVoltage = referenceMidiNote / 120;
         const hasPitchInput = this.inputConnections.has(this.inputKey(nodeId, "0.1V/Oct"));
         const pitchCv = hasPitchInput
-          ? this.clampValue(this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct")), -1, 1)
+          ? this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"))
           : referenceVoltage;
         const effectiveFrequency = typeof nodeGraphParamResolveOscPitchHz === "function"
-          ? nodeGraphParamResolveOscPitchHz({
-            baseHz: baseFrequency,
+          ? nodeGraphParamResolveOscPitchHz({baseHz: baseFrequency,
             hasPitchCv: hasPitchInput,
             pitchCv,
             referenceVoltage,
-          })
+      hasInput: typeof hasInput === "function" ? hasInput : (id, port) => this.inputConnections.has(this.inputKey(id, port)),
+      mixInput,
+      nodeId,
+    })
           : (typeof nodeGraphPitchedFrequency === "function"
               ? nodeGraphPitchedFrequency(baseFrequency, pitchCv, referenceVoltage)
               : baseFrequency * (2 ** ((pitchCv - referenceVoltage) / 0.1)));
@@ -539,15 +543,17 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_sources = function bu
         const referenceVoltage = referenceMidiNote / 120;
         const hasPitchInput = this.inputConnections.has(this.inputKey(nodeId, "0.1V/Oct"));
         const pitchCv = hasPitchInput
-          ? this.clampValue(this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null), -1, 1)
+          ? this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null)
           : referenceVoltage;
         const effectiveFrequency = typeof nodeGraphParamResolveOscPitchHz === "function"
-          ? nodeGraphParamResolveOscPitchHz({
-            baseHz: baseFrequency,
+          ? nodeGraphParamResolveOscPitchHz({baseHz: baseFrequency,
             hasPitchCv: hasPitchInput,
             pitchCv,
             referenceVoltage,
-          })
+      hasInput: typeof hasInput === "function" ? hasInput : (id, port) => this.inputConnections.has(this.inputKey(id, port)),
+      mixInput,
+      nodeId,
+    })
           : (typeof nodeGraphPitchedFrequency === "function"
               ? nodeGraphPitchedFrequency(baseFrequency, pitchCv, referenceVoltage)
               : baseFrequency * (2 ** ((pitchCv - referenceVoltage) / 0.1)));
@@ -594,15 +600,17 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_sources = function bu
         const referenceVoltage = referenceMidiNote / 120;
         const hasPitchInput = this.inputConnections.has(this.inputKey(nodeId, "0.1V/Oct"));
         const pitchCv = hasPitchInput
-          ? this.clampValue(this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct")), -1, 1)
+          ? this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"))
           : referenceVoltage;
         const effectiveFrequency = typeof nodeGraphParamResolveOscPitchHz === "function"
-          ? nodeGraphParamResolveOscPitchHz({
-            baseHz: baseFrequency,
+          ? nodeGraphParamResolveOscPitchHz({baseHz: baseFrequency,
             hasPitchCv: hasPitchInput,
             pitchCv,
             referenceVoltage,
-          })
+      hasInput: typeof hasInput === "function" ? hasInput : (id, port) => this.inputConnections.has(this.inputKey(id, port)),
+      mixInput,
+      nodeId,
+    })
           : (typeof nodeGraphPitchedFrequency === "function"
               ? nodeGraphPitchedFrequency(baseFrequency, pitchCv, referenceVoltage)
               : baseFrequency * (2 ** ((pitchCv - referenceVoltage) / 0.1)));
@@ -639,15 +647,17 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_sources = function bu
         const referenceVoltage = referenceMidiNote / 120;
         const hasPitchInput = this.inputConnections.has(this.inputKey(nodeId, "0.1V/Oct"));
         const pitchCv = hasPitchInput
-          ? this.clampValue(this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null), -1, 1)
+          ? this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null)
           : referenceVoltage;
         const effectiveFrequency = typeof nodeGraphParamResolveOscPitchHz === "function"
-          ? nodeGraphParamResolveOscPitchHz({
-            baseHz: baseFrequency,
+          ? nodeGraphParamResolveOscPitchHz({baseHz: baseFrequency,
             hasPitchCv: hasPitchInput,
             pitchCv,
             referenceVoltage,
-          })
+      hasInput: typeof hasInput === "function" ? hasInput : (id, port) => this.inputConnections.has(this.inputKey(id, port)),
+      mixInput,
+      nodeId,
+    })
           : (typeof nodeGraphPitchedFrequency === "function"
               ? nodeGraphPitchedFrequency(baseFrequency, pitchCv, referenceVoltage)
               : baseFrequency * (2 ** ((pitchCv - referenceVoltage) / 0.1)));
@@ -691,15 +701,17 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_sources = function bu
         const referenceVoltage = referenceMidiNote / 120;
         const hasPitchInput = this.inputConnections.has(this.inputKey(nodeId, "0.1V/Oct"));
         const pitchCv = hasPitchInput
-          ? this.clampValue(this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null), -1, 1)
+          ? this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null)
           : referenceVoltage;
         const effectiveFrequency = typeof nodeGraphParamResolveOscPitchHz === "function"
-          ? nodeGraphParamResolveOscPitchHz({
-            baseHz: baseFrequency,
+          ? nodeGraphParamResolveOscPitchHz({baseHz: baseFrequency,
             hasPitchCv: hasPitchInput,
             pitchCv,
             referenceVoltage,
-          })
+      hasInput: typeof hasInput === "function" ? hasInput : (id, port) => this.inputConnections.has(this.inputKey(id, port)),
+      mixInput,
+      nodeId,
+    })
           : (typeof nodeGraphPitchedFrequency === "function"
               ? nodeGraphPitchedFrequency(baseFrequency, pitchCv, referenceVoltage)
               : baseFrequency * (2 ** ((pitchCv - referenceVoltage) / 0.1)));
@@ -725,15 +737,17 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_sources = function bu
         const referenceVoltage = referenceMidiNote / 120;
         const hasPitchInput = this.inputConnections.has(this.inputKey(nodeId, "0.1V/Oct"));
         const pitchCv = hasPitchInput
-          ? this.clampValue(this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct")), -1, 1)
+          ? this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"))
           : referenceVoltage;
         const effectiveFrequency = typeof nodeGraphParamResolveOscPitchHz === "function"
-          ? nodeGraphParamResolveOscPitchHz({
-            baseHz: baseFrequency,
+          ? nodeGraphParamResolveOscPitchHz({baseHz: baseFrequency,
             hasPitchCv: hasPitchInput,
             pitchCv,
             referenceVoltage,
-          })
+      hasInput: typeof hasInput === "function" ? hasInput : (id, port) => this.inputConnections.has(this.inputKey(id, port)),
+      mixInput,
+      nodeId,
+    })
           : (typeof nodeGraphPitchedFrequency === "function"
               ? nodeGraphPitchedFrequency(baseFrequency, pitchCv, referenceVoltage)
               : baseFrequency * (2 ** ((pitchCv - referenceVoltage) / 0.1)));
@@ -864,7 +878,7 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_sources = function bu
         const referenceVoltage = referenceMidiNote / 120;
         const hasPitchInput = this.inputConnections.has(this.inputKey(nodeId, "0.1V/Oct"));
         const pitchCv = hasPitchInput
-          ? this.clampValue(this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct")), -1, 1)
+          ? this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"))
           : referenceVoltage;
         const pitched = typeof nodeGraphParamResolveOscPitchHz === "function"
           ? nodeGraphParamResolveOscPitchHz({
@@ -872,6 +886,9 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_sources = function bu
             hasPitchCv: hasPitchInput,
             pitchCv,
             referenceVoltage,
+            hasInput: (id, port) => this.inputConnections.has(this.inputKey(id, port)),
+            mixInput,
+            nodeId,
           })
           : (typeof nodeGraphPitchedFrequency === "function"
               ? nodeGraphPitchedFrequency(baseFreq, pitchCv, referenceVoltage)
@@ -979,6 +996,76 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_sources = function bu
           Math.round(this.readEffectiveParameter(node, "hardReset", 1, frame, frames, frameValues)),
         );
       },
+      kickEnvelope: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
+        if (!this.kickEnvelopeStates) this.kickEnvelopeStates = new Map();
+        let state = this.kickEnvelopeStates.get(nodeId);
+        if (!state) {
+          state = this.createKickEnvelopeState();
+          this.kickEnvelopeStates.set(nodeId, state);
+        }
+        const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
+        const unit = (primary, legacy, fallback) => (
+          typeof nodeGraphKickEnvelopeReadUnit === "function"
+            ? nodeGraphKickEnvelopeReadUnit(read(primary, NaN), read(legacy, NaN), fallback)
+            : Math.max(0, Math.min(1, Number(read(primary, fallback)) || fallback))
+        );
+        const sharpRaw = read("sharpness", NaN);
+        const sharpness = Number.isFinite(Number(sharpRaw))
+          ? Number(sharpRaw)
+          : unit("roundness", "shape", 0);
+        return this.kickEnvelopeSample(
+          state,
+          mixInput(nodeId, "T"),
+          unit("low", "lowFreq", 0),
+          unit("high", "highFreq", 1),
+          sharpness,
+          safeRate,
+          Math.round(Number(read("curve", 1)) || 0) !== 0 ? 1 : 0,
+          read("speed", 0.2),
+          read("amplitude", 1),
+        );
+      },
+      sineKick: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
+        if (!this.sineKickStates) this.sineKickStates = new Map();
+        let state = this.sineKickStates.get(nodeId);
+        if (!state) {
+          state = this.createSineKickState();
+          this.sineKickStates.set(nodeId, state);
+        }
+        const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
+        const decayRaw = read("decay", NaN);
+        const decay = Number.isFinite(Number(decayRaw)) ? decayRaw : read("speed", 0.28);
+        const referenceMidiNote = Number.isFinite(this.pitchReferenceMidiNote) ? this.pitchReferenceMidiNote : 48;
+        const referenceVoltage = referenceMidiNote / 120;
+        const hasPitch = this.inputConnections.has(this.inputKey(nodeId, "0.1V/Oct"));
+        const pitchCv = hasPitch
+          ? this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null)
+          : referenceVoltage;
+        const pitched = typeof nodeGraphParamResolveOscPitchHz === "function"
+          ? nodeGraphParamResolveOscPitchHz({
+            baseHz: read("pitch", 52),
+            hasPitchCv: hasPitch,
+            pitchCv,
+            referenceVoltage,
+            hasInput: (id, port) => this.inputConnections.has(this.inputKey(id, port)),
+            mixInput,
+            nodeId,
+          })
+          : read("pitch", 52);
+        const sharpRaw = read("sharpness", NaN);
+        const sharpness = Number.isFinite(Number(sharpRaw)) ? Number(sharpRaw) : 0;
+        return this.sineKickSample(
+          state,
+          mixInput(nodeId, "T"),
+          pitched,
+          read("punch", 1.7),
+          decay,
+          read("amplitude", 1),
+          safeRate,
+          1,
+          sharpness,
+        );
+      },
       randomWalk: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
         const state = this.randomWalkStates.get(nodeId) || this.createRandomWalkState();
         this.randomWalkStates.set(nodeId, state);
@@ -1039,10 +1126,13 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_sources = function bu
         const state = this.antisawStates.get(nodeId) || this.createAntisawState();
         this.antisawStates.set(nodeId, state);
         const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
+        const fundKnob = read("fundamental", 110);
         return this.antisawSample(
           state,
           {
-            fundamental: read("fundamental", 110),
+            fundamental: this.inputConnections.has(this.inputKey(nodeId, "f"))
+              ? mixInput(nodeId, "f")
+              : fundKnob,
             reflections: read("reflections", 64),
             tilt: read("tilt", 0),
             level: read("amplitude", 1),
@@ -1058,6 +1148,7 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_sources = function bu
           state,
           {
             frequency: read("frequency", 0.5),
+            amplitude: read("amplitude", 1),
             level: read("amplitude", 1),
             octaves: read("octaves", 4),
             persistence: read("persistence", 0.5),
@@ -1213,6 +1304,8 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_sources = function bu
         });
         const level = read("amplitude", 1);
         return {
+          DisplayX: lorenz.x,
+          DisplayY: lorenz.y,
           X: lorenz.x * level,
           Y: lorenz.y * level,
           Z: lorenz.z * level,

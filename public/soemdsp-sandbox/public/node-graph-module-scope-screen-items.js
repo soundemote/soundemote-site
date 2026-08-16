@@ -144,6 +144,10 @@ function nodeGraphModuleScopeScreenItems(workspace, canvas, pixelRatio) {
   const slotDebug = [];
   const items = nodeGraphVisibleModuleScopeSlots()
     .map((slot) => {
+      const host = slot?.scopeElement?.closest?.(".dsp-node");
+      if (host?.classList.contains("viewport-asleep")) {
+        return null;
+      }
       const buffer = nodeGraphModuleScopeDisplayBuffer(
         slot,
         nodeGraphModuleScopeCapturedBufferForSlot(slot),
@@ -177,6 +181,13 @@ function nodeGraphModuleScopeScreenItems(workspace, canvas, pixelRatio) {
               screenElement: slot.scopeElement,
               buffer: null,
             }, 1);
+          } else if (selfPaint === "rasterRgbFace" || slot?.type === "rasterRgb") {
+            if (typeof drawNodeGraphRasterRgbFaceItem === "function") {
+              drawNodeGraphRasterRgbFaceItem(null, {
+                slot,
+                screenElement: slot.scopeElement,
+              }, pixelRatio);
+            }
           } else if (
             selfPaint === "trace"
             || selfPaint === "dot"
@@ -226,10 +237,7 @@ function nodeGraphModuleScopeScreenItems(workspace, canvas, pixelRatio) {
             );
           }
           // frozen: leave canvas + burn plate pixels as-is (no kill).
-        } else if (
-          slot?.type === "led"
-          || nodeGraphModuleDisplayRendererForSlot(slot) === "ledLamp"
-        ) {
+        } else if (nodeGraphModuleDisplayRendererForSlot(slot) === "ledLamp") {
           // Keep lamp cosmetics (radius/fill) while capture is empty.
           if (typeof drawNodeGraphLedLampItem === "function") {
             drawNodeGraphLedLampItem(null, {

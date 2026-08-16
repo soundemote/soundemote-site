@@ -11,20 +11,7 @@ function cloneNodeGraphParamMeta(paramMeta = {}) {
 }
 
 function normalizeNodeGraphParamMetaForNode(type, paramMeta = {}) {
-  const metadata = cloneNodeGraphParamMeta(paramMeta);
-  if (type === "output" && metadata.volume) {
-    metadata.volume = {
-      ...metadata.volume,
-      def: 0.1,
-      kind: "decimal",
-      max: 1,
-      mid: 0.1,
-      min: 0,
-      showSign: false,
-      modClamp: true,
-    };
-  }
-  return metadata;
+  return cloneNodeGraphParamMeta(paramMeta);
 }
 
 function normalizeNodeGraphPatchPortMeta(portMeta = {}) {
@@ -90,9 +77,10 @@ function normalizeNodeGraphPatchNodeDisplayModeKey(_type, _value = "") {
 
 /**
  * Global Visibility + local override:
- * - global shown → modules follow; local *Hidden forces hide
+ * - global shown → modules follow; a global Show also clears leftover *Hidden
+ *   so H / Visibility unhide actually reveals every module
  * - global hidden → modules hide; local *ForceShow forces show
- * Never flips the global flag when toggling one module.
+ * Per-module toggle never flips the global flag.
  */
 function nodeGraphPatchNodeSectionEffectivelyHidden(localHidden, localForceShow, globalVisible) {
   if (localForceShow) {
@@ -251,15 +239,9 @@ const nodeGraphLedDefaultSettings = Object.freeze({
 });
 
 function normalizeNodeGraphLedImageLayer(source = {}) {
-  const raw = source && typeof source === "object" ? source : {};
-  const dataUrl = String(raw.dataUrl || raw.src || "").trim();
-  const safeUrl = dataUrl.startsWith("data:image/") && dataUrl.length <= 3_000_000
-    ? dataUrl
-    : "";
-  return {
-    dataUrl: safeUrl,
-    fileName: String(raw.fileName || raw.name || "").trim().slice(0, 96),
-  };
+  return typeof nodeGraphNormalizeImageAsset === "function"
+    ? nodeGraphNormalizeImageAsset(source)
+    : { dataUrl: "", fileName: "" };
 }
 
 // A legacy node.led.color hex becomes the equivalent hue, so patches saved
@@ -489,6 +471,11 @@ function cloneNodeGraphTypedDisplaySettings(node) {
     // LED face settings live on node.led (not traceDisplaySettings).
     return { led: normalizeNodeGraphLedLayout(node.led) };
   }
+  if (displayType === "phosphorWaveform" && typeof normalizeNodeGraphPhosphorWaveformSettings === "function") {
+    return {
+      phosphorWaveformSettings: normalizeNodeGraphPhosphorWaveformSettings(node.phosphorWaveformSettings),
+    };
+  }
   if (displayType === "evolveFieldFace" && typeof normalizeNodeGraphEvolveFieldSettings === "function") {
     return {
       traceDisplaySettings: normalizeNodeGraphEvolveFieldSettings(migrate(node.traceDisplaySettings, false)),
@@ -504,8 +491,21 @@ function cloneNodeGraphTypedDisplaySettings(node) {
       traceDisplaySettings: normalizeNodeGraphFbmFieldSettings(migrate(node.traceDisplaySettings, false)),
     };
   }
+  if (displayType === "patchFace" && typeof normalizeNodeGraphPatchFaceDisplaySettings === "function") {
+    return {
+      traceDisplaySettings: normalizeNodeGraphPatchFaceDisplaySettings(migrate(node.traceDisplaySettings, false)),
+    };
+  }
   if (displayType === "trace" && Object.hasOwn(node, "traceDisplaySettings")) {
     return { traceDisplaySettings: normalizeNodeGraphTraceDisplaySettings(migrate(node.traceDisplaySettings, isOutput)) };
+  }
+  if (displayType === "traceXyz" && Object.hasOwn(node, "traceDisplaySettings")) {
+    return { traceDisplaySettings: normalizeNodeGraphTraceDisplaySettings(migrate(node.traceDisplaySettings, false)) };
+  }
+  if (displayType === "gradientVectorscopeFace" && typeof normalizeNodeGraphGradientVectorscopeSettings === "function") {
+    return {
+      traceDisplaySettings: normalizeNodeGraphGradientVectorscopeSettings(migrate(node.traceDisplaySettings, false)),
+    };
   }
   // Last resort: if a face still has settings but schema is unknown/new,
   // preserve the object rather than dropping it on every validate/clone.
@@ -558,6 +558,9 @@ function cloneNodeGraphPatch(patch) {
           : {}),
         ...(nodeGraphModuleDefinitions[node.type]?.layout === "textBox"
           ? { layout: normalizeNodeGraphTextBoxLayout(node.layout) }
+          : {}),
+        ...(node.type === "keypad" && typeof normalizeNodeGraphKeypadLayout === "function"
+          ? { layout: normalizeNodeGraphKeypadLayout(node.layout) }
           : {}),
         ...(nodeGraphModuleDefinitions[node.type]?.layout === "image"
           ? { layout: normalizeNodeGraphImageLayout(node.layout) }

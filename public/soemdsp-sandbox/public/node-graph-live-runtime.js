@@ -153,13 +153,32 @@ function nodeGraphAudioInputModuleNode() {
   return nodeGraphPatchModuleNodeByType("audioInput", "audioInput");
 }
 
-/** Canonical live out level = Output module volume (0..1). */
+/** Canonical live out level in dB (Output module Volume). */
+function getNodeGraphOutputModuleVolumeDb() {
+  const node = nodeGraphOutputModuleNode();
+  const fallback = -20;
+  if (!node) {
+    return fallback;
+  }
+  const slider = nodeGraphModuleParamSlider(node, "volume");
+  if (slider) {
+    const domain = Number(slider.dataset?.domainValue);
+    const fromDom = Number.isFinite(domain) ? domain : Number(slider.value);
+    if (Number.isFinite(fromDom)) {
+      return fromDom;
+    }
+  }
+  const fromParams = Number(node.params?.volume);
+  return Number.isFinite(fromParams) ? fromParams : fallback;
+}
+
+/** Toolbar 0…1 position for Output Volume (1 = 0 dB). */
 function getNodeGraphOutputModuleVolume() {
-  return nodeGraphReadModuleParamLevel(
-    nodeGraphOutputModuleNode(),
-    "volume",
-    nodeGraphMvp?.live?.outputVolume ?? 0.1,
-  );
+  const db = getNodeGraphOutputModuleVolumeDb();
+  const lin = typeof nodeGraphOutputVolumeDbToLin === "function"
+    ? nodeGraphOutputVolumeDbToLin(db)
+    : (!Number.isFinite(db) || db <= -140 ? 0 : 10 ** (db / 20));
+  return Math.max(0, Math.min(1, lin));
 }
 
 /** Canonical live in level = Input module Amplitude / level (0..1). */
@@ -171,20 +190,63 @@ function getNodeGraphAudioInputModuleLevel() {
   );
 }
 
-function setNodeGraphOutputModuleVolume(value, options = {}) {
-  const level = nodeGraphWriteModuleParamLevel(
-    nodeGraphOutputModuleNode(),
-    "volume",
-    value,
-    { ...options, lockKey: "_outputVolumeMirrorLock" },
-  );
+function setNodeGraphOutputModuleVolumeDb(db, options = {}) {
+  const node = nodeGraphOutputModuleNode();
+  const value = Number.isFinite(Number(db)) ? Number(db) : -20;
+  const lockKey = "_outputVolumeMirrorLock";
+  if (node && !options.fromModuleSlider) {
+    node.params = { ...(node.params || {}), volume: value };
+    const slider = nodeGraphModuleParamSlider(node, "volume");
+    if (slider && typeof setNodeSliderValue === "function") {
+      nodeGraphMvp[lockKey] = true;
+      try {
+        setNodeSliderValue(slider, value, {
+          interaction: options.interaction || "drag",
+        });
+      } finally {
+        nodeGraphMvp[lockKey] = false;
+      }
+    } else {
+      if (slider) {
+        slider.value = String(value);
+        slider.dataset.domainValue = String(value);
+        if (typeof syncNodeSliderReadout === "function") {
+          syncNodeSliderReadout(slider);
+        }
+      }
+      if (typeof scheduleNodeGraphLiveParameterSync === "function") {
+        scheduleNodeGraphLiveParameterSync();
+      }
+    }
+  }
+  const lin = typeof nodeGraphOutputVolumeDbToLin === "function"
+    ? nodeGraphOutputVolumeDbToLin(value)
+    : (!Number.isFinite(value) || value <= -140 ? 0 : 10 ** (value / 20));
   if (nodeGraphMvp?.live) {
-    nodeGraphMvp.live.outputVolume = level;
+    nodeGraphMvp.live.outputVolume = Math.max(0, Math.min(1, lin));
   }
-  if (!options.fromToolbar && typeof syncNodeGraphVolumeSlider === "function") {
-    syncNodeGraphVolumeSlider("nodeLiveOutputVolume", "nodeLiveOutputVolumeValue", level);
+  if (!options.fromToolbar && typeof syncNodeGraphOutputVolumeSlider === "function") {
+    syncNodeGraphOutputVolumeSlider(value);
+  } else if (!options.fromToolbar && typeof syncNodeGraphVolumeSlider === "function") {
+    syncNodeGraphVolumeSlider(
+      "nodeLiveOutputVolume",
+      "nodeLiveOutputVolumeValue",
+      Math.max(0, Math.min(1, lin)),
+    );
   }
-  return level;
+  return value;
+}
+
+function setNodeGraphOutputModuleVolume(value, options = {}) {
+  if (options.fromToolbar) {
+    const db = typeof nodeGraphOutputLinToVolumeDb === "function"
+      ? nodeGraphOutputLinToVolumeDb(value)
+      : (!Number.isFinite(Number(value)) || Number(value) <= 0
+        ? -140
+        : 20 * Math.log10(Number(value)));
+    return setNodeGraphOutputModuleVolumeDb(db, options);
+  }
+  return setNodeGraphOutputModuleVolumeDb(value, options);
 }
 
 function setNodeGraphAudioInputModuleLevel(value, options = {}) {
@@ -220,11 +282,14 @@ function syncNodeGraphLiveOutputVolumeFromOutputModule() {
   if (nodeGraphMvp?._outputVolumeMirrorLock) {
     return getNodeGraphOutputModuleVolume();
   }
+  const db = getNodeGraphOutputModuleVolumeDb();
   const level = getNodeGraphOutputModuleVolume();
   if (nodeGraphMvp?.live) {
     nodeGraphMvp.live.outputVolume = level;
   }
-  if (typeof syncNodeGraphVolumeSlider === "function") {
+  if (typeof syncNodeGraphOutputVolumeSlider === "function") {
+    syncNodeGraphOutputVolumeSlider(db);
+  } else if (typeof syncNodeGraphVolumeSlider === "function") {
     syncNodeGraphVolumeSlider("nodeLiveOutputVolume", "nodeLiveOutputVolumeValue", level);
   }
   applyNodeGraphLiveOutputGain();
@@ -441,7 +506,7 @@ async function sendNodeGraphLiveNativeModule(liveNode, entry) {
 // Chrome caps wasm memories per process (~100); many standalone instances
 // hit that cap. Slim is for small used-sets when per-module files exist;
 // huge patches / site deploys should use combined.
-const nodeGraphLiveCombinedNativeModuleUrl = "native_modules/combined/soemdsp_combined.wasm?v=window-4096-1";
+const nodeGraphLiveCombinedNativeModuleUrl = "native_modules/combined/soemdsp_combined.wasm?v=raster-rgb-1";
 
 /** @type {null|"slim"|"combined"} */
 let nodeGraphLiveNativeWasmLoadModeResolved = null;
@@ -608,7 +673,7 @@ async function sendNodeGraphLiveNativeModules(liveNode, plan = null) {
     if (!entry?.wasmAvailable || entry.kind === "video-poc") {
       return false;
     }
-    // Under-construction modules (see nodeGraphModuleStoreUnderConstructionTypes)
+    // Under-construction modules (underconstructionsort catalog shelf)
     // may ship placeholder native shells (wall_delay version stub). Skip them
     // so the worklet never posts "unsupported native module" for expected UC.
     if (
@@ -944,13 +1009,6 @@ function toggleNodeGraphLiveInput() {
 }
 
 async function setNodeGraphLiveOutputEnabled(enabled) {
-  if (enabled && nodeGraphEarProtectionIsTripped()) {
-    nodeGraphMvp.live.outputEnabled = false;
-    nodeGraphTripEarProtection({ source: "live" });
-    renderNodeGraphLiveControls(false);
-    renderNodeGraphExecutionPlanDebug();
-    return;
-  }
   const outputEnabled = Boolean(enabled);
 
   // Idempotent enable: re-arming while already live/starting used to bump
@@ -1020,13 +1078,6 @@ async function setNodeGraphLiveOutputEnabled(enabled) {
  * toggles pause and the engine never comes back.
  */
 async function restartNodeGraphLiveSimulation() {
-  if (nodeGraphEarProtectionIsTripped()) {
-    nodeGraphTripEarProtection({ source: "live" });
-    renderNodeGraphLiveControls(false);
-    renderNodeGraphExecutionPlanDebug();
-    return false;
-  }
-
   // One serial for this whole restart so nothing mid-flight from a prior
   // enable/disable can "win" and leave us half-started.
   const serial = nodeGraphMvp.live.outputToggleSerial + 1;
@@ -1084,10 +1135,6 @@ async function restartNodeGraphLiveSimulation() {
  * full stop. If off, start. Pause is transport-only until we have a timeline.
  */
 function toggleNodeGraphLiveOutput() {
-  if (nodeGraphEarProtectionIsTripped()) {
-    nodeGraphTripEarProtection({ source: "live" });
-    return;
-  }
   const engineUp = Boolean(nodeGraphMvp.live.node || nodeGraphMvp.live.context);
   const outputOn = Boolean(nodeGraphMvp.live.outputEnabled);
   if (outputOn || engineUp) {
@@ -1274,6 +1321,7 @@ function renderNodeGraphLiveScriptBlock(event) {
   const blockStartFrame = Number.isFinite(runtime.absoluteFrameCursor)
     ? runtime.absoluteFrameCursor
     : 0;
+  let lastProtect = { engaged: false, gain: 1 };
   for (let frame = 0; frame < frames; frame += 1) {
     runtime.absoluteFrame = blockStartFrame + frame;
     const inputLeft = Number(runtime.externalInput.left?.[frame]) || 0;
@@ -1297,34 +1345,23 @@ function renderNodeGraphLiveScriptBlock(event) {
       nodeGraphOutputSampleTripsEarProtection(frameOutput.left) ||
       nodeGraphOutputSampleTripsEarProtection(frameOutput.right)
     ) {
-      runtime.meterProtectionMuteCount = (runtime.meterProtectionMuteCount || 0) + 1;
       runtime.speakerProtectionPeak = Math.max(
         Number(runtime.speakerProtectionPeak) || 0,
         Number.isFinite(Number(frameOutput.left)) ? Math.abs(Number(frameOutput.left)) : Infinity,
         Number.isFinite(Number(frameOutput.right)) ? Math.abs(Number(frameOutput.right)) : Infinity,
       );
-      nodeGraphTripEarProtection({
-        source: "live output > 1.0",
-        protectionMuteCount: runtime.meterProtectionMuteCount,
-        protectionPeak: Number(runtime.speakerProtectionPeak) || 0,
-      });
-      for (let channel = 0; channel < output.numberOfChannels; channel += 1) {
-        output.getChannelData(channel)[frame] = 0;
-      }
-      continue;
     }
     const protectedFrame = runtime.earProtector?.protect(frameOutput.left, frameOutput.right) || {
       left: frameOutput.left,
       muted: false,
+      engaged: false,
+      gain: 1,
       right: frameOutput.right,
     };
-    if (protectedFrame.muted) {
+    if (protectedFrame.engaged || protectedFrame.muted) {
       runtime.meterProtectionMuteCount = (runtime.meterProtectionMuteCount || 0) + 1;
-      nodeGraphTripEarProtection({
-        source: "live",
-        protectionMuteCount: runtime.meterProtectionMuteCount,
-      });
     }
+    lastProtect = protectedFrame;
     const left = nodeGraphClampOutputSample(protectedFrame.left);
     const right = nodeGraphClampOutputSample(protectedFrame.right);
     const value = Math.max(Math.abs(left), Math.abs(right));
@@ -1336,6 +1373,12 @@ function renderNodeGraphLiveScriptBlock(event) {
     }
   }
   runtime.absoluteFrameCursor = blockStartFrame + frames;
+  if (typeof nodeGraphSetEarProtectionEngaged === "function") {
+    nodeGraphSetEarProtectionEngaged(Boolean(lastProtect.engaged), {
+      source: "live",
+      protectionGain: lastProtect.gain,
+    });
+  }
   runtime.externalInput = null;
   nodeGraphSetVisualControls(runtime.visualControls || { screenShake: 0 });
   if (nodeGraphMvp.live.lastEvidence) {
@@ -1809,10 +1852,10 @@ function handleNodeGraphLiveWorkletMessage(event) {
       syncNodeGraphAudioPlayerRuntimeStatus({
         nodeId: message.audioPlayerNodeId || "",
         nodeIds: message.audioPlayerNodeIds || [],
-        peak: Number(message.audioPlayerPeak) || 0,
         phase: Number(message.audioPlayerPhase) || 0,
+        speed: Number(message.audioPlayerSpeed),
+        speeds: message.audioPlayerSpeeds || null,
         reason: message.audioPlayerReason || "",
-        samples: Number(message.audioPlayerSamples) || 0,
       });
     }
     if (Number(message.badNumberCount) > 0) {
@@ -1830,13 +1873,17 @@ function handleNodeGraphLiveWorkletMessage(event) {
     } else if (typeof nodeGraphClearAllTrackedModuleSilence === "function") {
       nodeGraphClearAllTrackedModuleSilence();
     }
-    if (Number(message.protectionMuteCount) > 0) {
-      nodeGraphTripEarProtection({
-        nodeId: message.protectionNodeId || "",
-        protectionPeak: Number(message.protectionPeak) || 0,
-        source: "Worklet",
-        protectionMuteCount: Number(message.protectionMuteCount) || 0,
-      });
+    if (typeof nodeGraphSetEarProtectionEngaged === "function") {
+      nodeGraphSetEarProtectionEngaged(
+        Boolean(message.protectionEngaged) || Number(message.protectionMuteCount) > 0,
+        {
+          nodeId: message.protectionNodeId || "",
+          protectionPeak: Number(message.protectionPeak) || 0,
+          protectionGain: Number(message.protectionGain),
+          source: "Worklet",
+          protectionMuteCount: Number(message.protectionMuteCount) || 0,
+        },
+      );
     }
   } else if (message.type === "nativeModuleStatus") {
     setNodeGraphLiveEvidence("native-module", message);
@@ -2094,6 +2141,11 @@ function nodeGraphLiveConnectionUpdatePayload(plan = {}, audio = {}) {
     graphConnections: Array.isArray(plan.graphConnections) ? plan.graphConnections : [],
     graphData: Object.keys(graphData).length > 0 ? graphData : undefined,
     modulations: Array.isArray(plan.modulations) ? plan.modulations : [],
+    autoSmoothingSeconds: Number(nodeGraphMvp.live?.autoSmoothingSeconds)
+      || Number(nodeGraphMvp.patch?.audio?.smoothingSeconds)
+      || undefined,
+    bypassedNodes: Array.isArray(plan.bypassedNodes) ? plan.bypassedNodes : [],
+    nodes: Array.isArray(plan.nodes) ? plan.nodes : [],
     outputNode: plan.outputNode || "output",
     oversamplingRatio: audio.oversamplingRatio,
     patchFingerprint: plan.patchFingerprint,
@@ -2103,6 +2155,7 @@ function nodeGraphLiveConnectionUpdatePayload(plan = {}, audio = {}) {
     sampleRate: nodeGraphMvp.live.context?.sampleRate || nodeGraphMvp.sampleRate,
     scopeCaptureNodeIds: Array.isArray(plan.scopeCaptureNodeIds) ? plan.scopeCaptureNodeIds : [],
     sessionId: nodeGraphMvp.live.sessionId,
+    timing: plan.timing || null,
     type: "setConnections",
     visualSinks: Array.isArray(plan.visualSinks) ? plan.visualSinks : [],
   };
@@ -2126,8 +2179,13 @@ async function sendNodeGraphLivePlan() {
 
   try {
     const plan = nodeGraphBuildLivePlan();
+    nodeGraphMvp.live.planSendGen = (Number(nodeGraphMvp.live.planSendGen) || 0) + 1;
+    const planSendGen = nodeGraphMvp.live.planSendGen;
     if (typeof nodeGraphEnsureLiveSamplesForPlan === "function") {
       await nodeGraphEnsureLiveSamplesForPlan(plan, nodeGraphMvp.patch);
+    }
+    if (planSendGen !== nodeGraphMvp.live.planSendGen) {
+      return true;
     }
     const audio = nodeGraphAudioDerivation(nodeGraphMvp.patch);
     const planShapeSignature = nodeGraphLivePlanShapeSignature(plan);
@@ -2159,6 +2217,9 @@ async function sendNodeGraphLivePlan() {
         {
           const pitchReference = normalizeNodeGraphPatchAudio(nodeGraphMvp.patch.audio);
           nodeGraphMvp.live.node?.port?.postMessage({
+            autoSmoothingSeconds: Number(nodeGraphMvp.live?.autoSmoothingSeconds)
+              || Number(nodeGraphMvp.patch?.audio?.smoothingSeconds)
+              || undefined,
             engineSampleRate: audio.clampedEngineSampleRate,
             oversamplingRatio: audio.oversamplingRatio,
             plan,
@@ -2306,19 +2367,12 @@ function sendNodeGraphLiveParameterUpdate() {
     const nodes = nodeGraphBuildLiveParameterNodes(nodeGraphMvp.live.activeNodeIds);
     const patchFingerprint = nodeGraphPatchFingerprint();
     const now = performance.now();
-    const previous = Number(nodeGraphMvp.live.lastParameterUpdateTime) || 0;
-    const measuredSeconds = previous > 0 ? (now - previous) / 1000 : nodeGraphMvp.live.autoSmoothingSeconds;
     nodeGraphMvp.live.lastParameterUpdateTime = now;
-    if (!nodeGraphMvp.live.autoSmoothingManual) {
-      nodeGraphMvp.live.autoSmoothingSeconds = clampNodeGraphAutoSmoothingSeconds(
-        (Number(nodeGraphMvp.live.autoSmoothingSeconds) || nodeGraphAutoSmoothingDefaultSeconds) * 0.82 +
-        clampNodeGraphAutoSmoothingSeconds(measuredSeconds) * 0.18,
-      );
-    } else {
-      nodeGraphMvp.live.autoSmoothingSeconds = clampNodeGraphAutoSmoothingSeconds(nodeGraphMvp.live.autoSmoothingSeconds);
-    }
-    const autoSmoothingSeconds = nodeGraphMvp.live.autoSmoothingSeconds;
-    syncNodeGraphGlobalSmoothingControl();
+    // Smooth Time is user-owned. Do not rewrite it from slider update cadence.
+    const autoSmoothingSeconds = clampNodeGraphAutoSmoothingSeconds(
+      nodeGraphMvp.live.autoSmoothingSeconds,
+    );
+    nodeGraphMvp.live.autoSmoothingSeconds = autoSmoothingSeconds;
     nodeGraphMvp.live.planSerial += 1;
     if (nodeGraphMvp.live.usesWorklet) {
       setNodeGraphLiveEvidence("params-sent", {
@@ -2790,35 +2844,38 @@ const nodeGraphLiveWorkletSourceFiles = [
   // Pure stdlib first so per-module worklet chunks can call nodeGraphWrap01 /
   // nodeGraphTrisaw / nodeGraphPitchedFrequency / nodeGraphAdvancePhase01.
   "./public/node-graph-stdlib/node-graph-phasor-helpers.js?v=phasor-helpers-1",
-  "./public/node-graph-stdlib/node-graph-control-bus-helpers.js?v=control-bus-1",
+  "./public/node-graph-stdlib/node-graph-control-bus-helpers.js?v=io3-1",
+  "./public/modules/portal/portal-math.js?v=io3-1",
   "./public/node-graph-stdlib/node-graph-param-surface-helpers.js?v=unit-mod-linear-1",
   "./public/node-graph-stdlib/node-graph-seeded-rng-helpers.js?v=softpop-1",
-  "./public/node-graph-parameter-smoother-filters.js?v=linear-lerp-1",
+  "./public/node-graph-parameter-smoother-filters.js?v=module-smooth-0333-1",
   // Bypass passthrough maps + frame eval (shared with main thread).
-  "./public/node-graph-module-bypass.js?v=vectorscope-bypass-1",
-  "./public/node-live-audio-worklet-core.js?v=plan-d-split-8",
+  "./public/node-graph-module-bypass.js?v=t-series-1",
+  "./public/node-live-audio-worklet-core.js?v=player-speed-readout-1",
   // Phase D: class methods extracted from core (must follow class definition).
   "./public/node-live-audio-worklet-graph.js?v=plan-d-split-5",
-  "./public/node-live-audio-worklet-smoother.js?v=unit-mod-linear-1",
+  "./public/node-live-audio-worklet-smoother.js?v=module-smooth-0333-1",
   "./public/node-live-audio-worklet-param-map.js?v=domain-mod-1",
   "./public/node-live-audio-worklet-destroy.js?v=plan-d-split-6",
   "./public/node-live-audio-worklet-analog.js?v=plan-d-split-7",
-  "./public/node-live-audio-worklet-dsp-state.js?v=plan-d-split-8",
+  "./public/lib/sample-interpolate.js?v=hermite-1",
+  "./public/node-live-audio-worklet-dsp-state.js?v=peak-eps-1e7-1",
   "./public/node-live-audio-worklet-events.js?v=domain-mod-1",
   "./public/node-live-audio-worklet-visual.js?v=plan-d-split-7",
   "./public/node-live-audio-worklet-scope-io.js?v=visual-rate-meta-1",
   "./public/node-live-audio-worklet-native-load.js?v=plan-d-split-7",
-  "./public/node-live-audio-worklet-evaluators-sources.js?v=domain-mod-1",
-  "./public/node-live-audio-worklet-evaluators-processors.js?v=domain-mod-1",
-  "./public/node-live-audio-worklet-evaluators-utility.js?v=domain-mod-1",
+  "./public/node-live-audio-worklet-evaluators-sources.js?v=fbm-amp-1",
+  "./public/node-live-audio-worklet-evaluators-processors.js?v=t-series-1",
+  "./public/node-live-audio-worklet-evaluators-utility.js?v=io3-1",
   "./public/node-live-audio-worklet-evaluators.js?v=evaluators-split-1",
-  "./public/node-live-audio-worklet-native-exports.js?v=plan-d-split-2",
-  "./public/node-live-audio-worklet-set-plan.js?v=os-disabled-1",
-  "./public/node-live-audio-worklet-clear-plan.js?v=plan-d-split-3",
-  "./public/node-live-audio-worklet-handle-message.js?v=plan-d-split-4",
+  "./public/node-live-audio-worklet-native-exports.js?v=soft-clipper-gain-1",
+  "./public/node-live-audio-worklet-set-plan.js?v=kick-split-1",
+  "./public/node-live-audio-worklet-clear-plan.js?v=kick-split-1",
+  "./public/node-live-audio-worklet-handle-message.js?v=keypad-1",
   "./public/node-live-audio-worklet-scope-snapshot.js?v=visual-rate-meta-1",
-  "./public/node-live-audio-worklet-evaluate-frame.js?v=output-scope-bus-1",
-  "./public/node-live-audio-worklet-process.js?v=os-disabled-1",
+  "./public/modules/_shared/output-amplitude.js?v=output-amp-1",
+  "./public/node-live-audio-worklet-evaluate-frame.js?v=io3-1",
+  "./public/node-live-audio-worklet-process.js?v=player-speed-readout-1",
   "./public/modules/codeblock/codeblock-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/moduleGroup/module-group-worklet-evaluator.js?v=xy-pad-dsp-path-1",
   "./public/modules/ellipsoid/ellipsoid-worklet-evaluator.js?v=uni-bi-outs-1",
@@ -2832,7 +2889,7 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/piSpigotNoise/pi-spigot-noise-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/bradley2a/bradley-2a-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/antisaw/antisaw-worklet-evaluator.js?v=native-strip-1",
-  "./public/modules/fractalBrownianNoise/fractal-brownian-noise-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/fractalBrownianNoise/fractal-brownian-noise-worklet-evaluator.js?v=fbm-amp-1",
   "./public/modules/fbmField/fbm-field-worklet-evaluator.js?v=fbm-field-21",
   "./public/modules/rgbFractal/rgb-fractal-math.js?v=orbit-speed-1",
   "./public/modules/rgbFractal/rgb-fractal-worklet-evaluator.js?v=orbit-speed-1",
@@ -2901,27 +2958,31 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/soemReverb/soem-reverb-worklet-evaluator.js?v=5-ping-pong",
   "./public/modules/pll/pll-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/helmholtzPitch/helmholtz-pitch-worklet-evaluator.js?v=pitch-display-1",
-  "./public/modules/slewLimiter/slew-limiter-math.js?v=slew-1",
-  "./public/modules/slewLimiter/slew-limiter-worklet-evaluator.js?v=slew-1",
-  "./public/modules/midSideEncode/mid-side-encode-math.js?v=ms-quad-lim-1",
-  "./public/modules/midSideEncode/mid-side-encode-worklet-evaluator.js?v=ms-quad-lim-1",
+  "./public/modules/noiseDetector/noise-detector-math.js?v=noise-detector-1",
+  "./public/modules/noiseDetector/noise-detector-worklet-evaluator.js?v=noise-detector-1",
+  "./public/modules/slewLimiter/slew-limiter-math.js?v=slew-shape-1",
+  "./public/modules/slewLimiter/slew-limiter-worklet-evaluator.js?v=slew-shape-1",
+  "./public/modules/midSideEncode/mid-side-encode-math.js?v=dip-ms-db-1",
+  "./public/modules/midSideEncode/mid-side-encode-worklet-evaluator.js?v=dip-ms-db-1",
   "./public/modules/quadrature/quadrature-math.js?v=ms-quad-lim-1",
   "./public/modules/quadrature/quadrature-worklet-evaluator.js?v=ms-quad-lim-1",
-  "./public/modules/lookaheadLimiter/lookahead-limiter-math.js?v=ms-quad-lim-1",
-  "./public/modules/lookaheadLimiter/lookahead-limiter-worklet-evaluator.js?v=ms-quad-lim-1",
-  "./public/modules/inertialFilter/inertial-filter-math.js?v=inertial-filter-1",
-  "./public/modules/inertialFilter/inertial-filter-worklet-evaluator.js?v=inertial-filter-1",
+  "./public/modules/hilbert/hilbert-math.js?v=hilbert-1",
+  "./public/modules/hilbert/hilbert-worklet-evaluator.js?v=hilbert-1",
+  "./public/modules/lookaheadLimiter/lookahead-limiter-math.js?v=dip-ms-db-1",
+  "./public/modules/lookaheadLimiter/lookahead-limiter-worklet-evaluator.js?v=dip-ms-db-1",
+  "./public/modules/inertialFilter/inertial-filter-math.js?v=inertial-hz-1",
+  "./public/modules/inertialFilter/inertial-filter-worklet-evaluator.js?v=inertial-hz-1",
   "./public/modules/tiltFilter/tilt-filter-math.js?v=tilt-eq-1",
   "./public/modules/tiltFilter/tilt-filter-worklet-evaluator.js?v=tilt-eq-1",
   "./public/modules/eqFilter/eq-filter-math.js?v=eq-zero-hz-1",
   "./public/modules/eqFilter/eq-filter-worklet-evaluator.js?v=eq-zero-hz-1",
   "./public/modules/scientificIir/scientific-iir-math.js?v=scientific-iir-1",
-  "./public/modules/scientificIir/scientific-iir-worklet-evaluator.js?v=sequence-uc-1",
+  "./public/modules/scientificIir/scientific-iir-worklet-evaluator.js?v=bt-msd-uc-1",
   "./public/modules/crossover/crossover-math.js?v=xo-native-1",
   "./public/modules/crossover/crossover-worklet-evaluator.js?v=xo-native-create-1",
-  "./public/modules/modeResonator/mode-resonator-math.js?v=mode-resonator-native-1",
+  "./public/modules/modeResonator/mode-resonator-math.js?v=mode-resonator-clip-1",
   "./public/modules/modeResonator/mode-resonator-worklet-evaluator.js?v=mode-resonator-native-1",
-  "./public/modules/combResonator/comb-resonator-math.js?v=comb-resonator-native-1",
+  "./public/modules/combResonator/comb-resonator-math.js?v=comb-resonator-clip-1",
   "./public/modules/combResonator/comb-resonator-worklet-evaluator.js?v=comb-resonator-native-1",
   "./public/modules/waveguide/waveguide-math.js?v=waveguide-stub-1",
   "./public/modules/waveguide/waveguide-worklet-evaluator.js?v=waveguide-stub-1",
@@ -2937,6 +2998,10 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/softpopOscillator/softpop-oscillator-worklet-evaluator.js?v=softpop-1",
   "./public/modules/sinepulse/sinepulse-math.js?v=sinepulse-24",
   "./public/modules/sinepulse/sinepulse-worklet-evaluator.js?v=sinepulse-24",
+  "./public/modules/kickEnvelope/kick-envelope-math.js?v=kick-split-1",
+  "./public/modules/kickEnvelope/kick-envelope-worklet-evaluator.js?v=kick-split-1",
+  "./public/modules/sineKick/sine-kick-math.js?v=kick-split-1",
+  "./public/modules/sineKick/sine-kick-worklet-evaluator.js?v=kick-split-1",
   "./public/modules/sampleHold/sample-hold-math.js?v=sample-hold-1",
   "./public/modules/sampleHold/sample-hold-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/expAdsr/exp-adsr-math.js?v=exp-adsr-1",
@@ -2948,8 +3013,17 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/pluckEnvelope/pluck-envelope-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/vactrolEnvelopeSeries/vactrol-envelope-series-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/bugButton/bug-button-worklet-evaluator.js?v=native-strip-1",
-  "./public/modules/xyPad/xy-pad-dsp.js?v=xy-pad-center-q-1",
-  "./public/modules/xyPad/xy-pad-worklet-evaluator.js?v=xy-pad-phosphor-out-1",
+  "./public/modules/keypad/keypad-math.js?v=keypad-latch-1",
+  "./public/modules/keypad/keypad-worklet-evaluator.js?v=keypad-latch-1",
+  "./public/modules/tSeries/t-series-math.js?v=t-series-1",
+  "./public/modules/tSeries/t-series-worklet-evaluator.js?v=t-series-1",
+  "./public/modules/rasterRgb/raster-rgb-math.js?v=paint-2",
+  "./public/modules/rasterRgb/raster-rgb-worklet-evaluator.js?v=paint-2",
+  "./public/modules/rgbDisplays/rgb-display-worklet-evaluator.js?v=trace-xyz-1",
+  "./public/modules/phoneTone/phone-tone-math.js?v=phone-tone-layout-a-1",
+  "./public/modules/phoneTone/phone-tone-worklet-evaluator.js?v=phone-tone-layout-a-1",
+  "./public/modules/xyPad/xy-pad-dsp.js?v=xy-amp-xy-1",
+  "./public/modules/xyPad/xy-pad-worklet-evaluator.js?v=xy-amp-xy-1",
   "./public/modules/flowerChildEnvelopeFollower/flower-child-envelope-follower-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/spiral/spiral-worklet-evaluator.js?v=phasor-stdlib-1",
   "./public/modules/fractalSpiral/fractal-spiral-worklet-evaluator.js?v=native-strip-1",
@@ -2960,8 +3034,8 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/clock/clock-worklet-evaluator.js?v=clock-1",
   "./public/modules/transport/transport-math.js?v=transport-1",
   "./public/modules/transport/transport-worklet-evaluator.js?v=transport-1",
-  "./public/modules/randomClock/random-clock-math.js?v=random-clock-1",
-  "./public/modules/randomClock/random-clock-worklet-evaluator.js?v=random-clock-1",
+  "./public/modules/randomClock/random-clock-math.js?v=random-clock-range-1",
+  "./public/modules/randomClock/random-clock-worklet-evaluator.js?v=random-clock-range-1",
   "./public/modules/triggerDivider/trigger-divider-math.js?v=trigger-divider-1",
   "./public/modules/triggerDivider/trigger-divider-worklet-evaluator.js?v=trigger-divider-1",
   "./public/modules/delayedTrigger/delayed-trigger-math.js?v=delayed-trigger-1",
@@ -2972,8 +3046,12 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/stepSequencer/step-sequencer-worklet-evaluator.js?v=step-sequencer-1",
   "./public/modules/stepGrid/step-grid-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/nextPatch/next-patch-worklet-evaluator.js?v=native-strip-1",
-  "./public/modules/softClipper/soft-clipper-math.js?v=soft-clipper-1",
-  "./public/modules/softClipper/soft-clipper-worklet-evaluator.js?v=soft-clipper-js-fallback-1",
+  "./public/modules/softClipper/soft-clipper-math.js?v=soft-clipper-os-1",
+  "./public/modules/softClipper/soft-clipper-worklet-evaluator.js?v=soft-clipper-os-1",
+  "./public/modules/speakerProtector2/speaker-protector-2-math.js?v=peak-eps-1e7-1",
+  "./public/modules/speakerProtector2/speaker-protector-2-worklet-evaluator.js?v=speaker-protector-noclip-1",
+  "./public/modules/clipperLimiter/clipper-limiter-math.js?v=soft-clipper-os-1",
+  "./public/modules/clipperLimiter/clipper-limiter-worklet-evaluator.js?v=soft-clipper-os-1",
   "./public/modules/airClipper/air-clipper-math.js?v=air-clipper-1",
   "./public/modules/airClipper/air-clipper-worklet-evaluator.js?v=air-clipper-1",
   "./public/modules/rgbaHsla/rgba-hsla-worklet-evaluator.js?v=native-strip-1",
@@ -2983,17 +3061,20 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/speakerProtection/speaker-protection-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/badvalMonitor/badval-monitor-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/radar/radar-worklet-evaluator.js?v=phasor-stdlib-1",
-  "./public/modules/audioPlayer/audio-player-worklet-evaluator.js?v=music-pl-2",
+  "./public/modules/audioPlayer/audio-player-math.js?v=mp-time-io-1",
+  "./public/modules/audioPlayer/audio-player-worklet-evaluator.js?v=mp-time-io-1",
   "./public/modules/gainBiasMix/gain-bias-mix-worklet-evaluator.js?v=native-strip-1",
-  "./public/modules/gain/gain-math.js?v=gain-offset-1",
-  "./public/modules/gain/gain-worklet-evaluator.js?v=gain-offset-1",
-  "./public/modules/bias/bias-math.js?v=bias-1",
-  "./public/modules/bias/bias-worklet-evaluator.js?v=bias-1",
+  "./public/modules/gain/gain-math.js?v=output-db-1",
+  "./public/modules/gain/gain-worklet-evaluator.js?v=gain-db-1",
+  "./public/modules/bias/bias-math.js?v=bias-io-1",
+  "./public/modules/bias/bias-worklet-evaluator.js?v=bias-io-1",
+  "./public/modules/attenuverter/attenuverter-math.js?v=attenuverter-1",
+  "./public/modules/attenuverter/attenuverter-worklet-evaluator.js?v=attenuverter-1",
 
   "./public/modules/rotate3dTo2d/rotate-3d-to-2d-math.js?v=rotate-3d-to-2d-1",
   "./public/modules/rotate3dTo2d/rotate-3d-to-2d-worklet-evaluator.js?v=rotate-3d-to-2d-1",
-  "./public/modules/vectorscopeTransform/vectorscope-transform-math.js?v=vectorscope-rotation-1",
-  "./public/modules/vectorscopeTransform/vectorscope-transform-worklet-evaluator.js?v=vectorscope-rotation-1",
+  "./public/modules/vectorscopeTransform/vectorscope-transform-math.js?v=vs-rotate-param-1",
+  "./public/modules/vectorscopeTransform/vectorscope-transform-worklet-evaluator.js?v=vs-rotate-param-1",
   "./public/modules/speedColorInertia/speed-color-inertia-math.js?v=speed-color-inertia-2",
   "./public/modules/speedColorInertia/speed-color-inertia-worklet-evaluator.js?v=speed-color-inertia-2",
   "./public/modules/sinc/sinc-worklet-evaluator.js?v=native-core-1",
@@ -3241,12 +3322,6 @@ async function nodeGraphLiveOutputDisposeCancelledStart(outputSerial, localConte
 }
 
 async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputToggleSerial) {
-  if (nodeGraphEarProtectionIsTripped()) {
-    nodeGraphTripEarProtection({ source: "live" });
-    renderNodeGraphLiveControls(false);
-    renderNodeGraphExecutionPlanDebug();
-    return;
-  }
   if (nodeGraphLiveOutputStartCancelled(outputSerial)) {
     nodeGraphLiveOutputAbortStart("stopped");
     return;
@@ -3395,6 +3470,9 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
     clearNodeGraphLiveStatusTitle();
     if (typeof setNodeGraphLiveStatus === "function") {
       setNodeGraphLiveStatus("running", "good");
+    }
+    if (typeof logNodeGraphSampleRateInfo === "function") {
+      logNodeGraphSampleRateInfo("live start");
     }
     // Keep the arming flag honest once the worklet is up.
     nodeGraphMvp.live.outputEnabled = true;

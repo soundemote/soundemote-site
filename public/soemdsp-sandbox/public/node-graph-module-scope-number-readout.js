@@ -116,7 +116,7 @@ function paintNodeGraphValueFacesNow(pixelRatio = window.devicePixelRatio || 1) 
       || type === "numberReadout"
       || type === "valueLcd"
       || type === "helmholtzPitch";
-    const isLedLamp = renderer === "ledLamp" || type === "led";
+    const isLedLamp = renderer === "ledLamp";
     if (!isNumberFace && !isLedLamp) {
       continue;
     }
@@ -143,7 +143,7 @@ function paintNodeGraphValueFacesNow(pixelRatio = window.devicePixelRatio || 1) 
     try {
       if (isLedLamp && typeof drawNodeGraphLedLampItem === "function") {
         // Ensure light target from samples when metadata is missing.
-        if (buffer && !(Number(buffer.nodeGraphScopeLightTarget) > 0)) {
+        if (buffer && !Number.isFinite(Number(buffer.nodeGraphScopeLightTarget))) {
           let peak = 0;
           const n = Math.min(buffer.length || 0, 64);
           for (let i = Math.max(0, (buffer.length || 0) - n); i < (buffer.length || 0); i += 1) {
@@ -390,9 +390,8 @@ function nodeGraphNumberReadoutApplyResidualPlate(burnCtx, width, height, trailH
 /** LED (phosphor light) vs LCD (reflective ink) face style for a slot/node. */
 function nodeGraphNumberReadoutFaceStyleForSlot(slot, node = null) {
   const type = String(slot?.type || node?.type || "");
-  // Pitch Detector = phosphor LED Value readout (not LCD vector plate).
   if (type === "helmholtzPitch") {
-    return "led";
+    return "lcd";
   }
   if (type === "valueLcd") {
     return "lcd";
@@ -417,10 +416,9 @@ function nodeGraphNumberReadoutIsLcdFaceElement(el) {
   if (!el) {
     return false;
   }
-  // Pitch plate class is layout-only; paint style is LED phosphor.
   if (el.classList?.contains("node-pitch-detector-lcd")
     || el.closest?.(".node-pitch-detector-face")) {
-    return false;
+    return true;
   }
   if (el.classList?.contains("node-value-lcd-face")) {
     return true;
@@ -881,6 +879,16 @@ function syncNodeGraphNumberReadoutCanvas(canvas, screenElement, pixelRatio, opt
     }
     width = w;
     height = h;
+    // Same 1px hysteresis as Value LED — drag/subpixel hops must not
+    // assign canvas.width (browser wipe) while the LCD is paused.
+    if (canvas.width >= 2 && canvas.height >= 2) {
+      const dw = Math.abs(width - canvas.width);
+      const dh = Math.abs(height - canvas.height);
+      if (dw <= 1 && dh <= 1) {
+        width = canvas.width;
+        height = canvas.height;
+      }
+    }
     canvas.classList.add("node-number-readout-canvas-vector");
     canvas.style.imageRendering = "auto";
   } else {
@@ -913,11 +921,30 @@ function syncNodeGraphNumberReadoutCanvas(canvas, screenElement, pixelRatio, opt
     canvas.style.imageRendering = "";
   }
   if (canvas.width !== width || canvas.height !== height) {
-    // Resizing the host canvas clears its pixels (browser). Burn plate is
-    // preserved separately in EnsureBurnPlate — do not clear residual here.
+    // Resizing the host canvas clears its pixels (browser). Copy the last
+    // plate first so pause+move/resize does not blank the LCD.
+    const prevW = canvas.width | 0;
+    const prevH = canvas.height | 0;
+    let previous = null;
+    if (prevW > 1 && prevH > 1 && width > 0 && height > 0) {
+      previous = document.createElement("canvas");
+      previous.width = prevW;
+      previous.height = prevH;
+      const prevCtx = previous.getContext("2d");
+      if (prevCtx) {
+        prevCtx.drawImage(canvas, 0, 0);
+      }
+    }
     canvas.width = width;
     canvas.height = height;
     canvas._numberReadoutEnergyMask = null;
+    if (previous) {
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(previous, 0, 0, prevW, prevH, 0, 0, width, height);
+      }
+    }
   }
   if (canvas.style.width || canvas.style.height) {
     canvas.style.width = "";
@@ -1141,11 +1168,67 @@ function nodeGraphNumberReadoutFacePadding01(settings = null) {
  * Never bypass budget when GROW is off — even at facePadding 0 (old pad≈0
  * shortcut always returned live text and ignored GROW off).
  */
+function nodeGraphNumberReadoutUsesDigitBins(settings = null) {
+  if (!settings) {
+    return true;
+  }
+  if (Object.hasOwn(settings, "digitBins")) {
+    return Boolean(settings.digitBins);
+  }
+  return settings.digitBins !== false;
+}
+
+function nodeGraphNumberReadoutUsesFixedBudget(settings = null) {
+  if (!settings) {
+    return true;
+  }
+  return Boolean(settings.decimalBudget) || nodeGraphNumberReadoutUsesDigitBins(settings);
+}
+
+/**
+ * Right-align a formatted reading into fixed Digits+Decimals bins.
+ * Unused integer bins are spaces (ghost 8s), not zeros — like a real meter.
+ */
+function nodeGraphNumberReadoutPadValueToBins(valueText, digits, decimals, options = null) {
+  const total = nodeGraphNumberReadoutSafeDigits(digits);
+  const d = Math.min(nodeGraphNumberReadoutSafeDecimals(decimals), Math.max(0, total - 1));
+  const ints = Math.max(1, total - d);
+  const reserveSign = options?.reserveSignSpace !== false;
+  let raw = String(valueText ?? "");
+  if (/^[!.\s—–-]+$/.test(raw.trim())) {
+    const frac = d > 0 ? `.${"!".repeat(d)}` : "";
+    return `${reserveSign ? " " : ""}${"!".repeat(ints)}${frac}`;
+  }
+  const neg = raw.startsWith("-");
+  if (neg || raw.startsWith(" ")) {
+    raw = raw.slice(1);
+  }
+  const dot = raw.indexOf(".");
+  let intPart = dot >= 0 ? raw.slice(0, dot) : raw;
+  let fracPart = dot >= 0 ? raw.slice(dot + 1) : "";
+  intPart = String(intPart || "0").replace(/\D/g, "") || "0";
+  if (intPart.length > ints) {
+    intPart = intPart.slice(-ints);
+  } else {
+    intPart = intPart.padStart(ints, " ");
+  }
+  if (d > 0) {
+    const padZeros = options?.removeTrailingZeros !== true;
+    fracPart = String(fracPart || "").replace(/\D/g, "");
+    fracPart = padZeros ? fracPart.padEnd(d, "0").slice(0, d) : fracPart.slice(0, d).padEnd(d, " ");
+  } else {
+    fracPart = "";
+  }
+  const body = d > 0 ? `${intPart}.${fracPart}` : intPart;
+  if (!reserveSign) {
+    return neg ? `-${body.replace(/^ /, "")}` : body;
+  }
+  return `${neg ? "-" : " "}${body}`;
+}
+
 function nodeGraphNumberReadoutLayoutFitText(slot, valueText, decimals, settings = null) {
-  const budgetOn = settings
-    ? Boolean(settings.decimalBudget)
-    : false;
-  // GROW on / no lock: fill plate to the live reading.
+  const budgetOn = nodeGraphNumberReadoutUsesFixedBudget(settings);
+  // GROW on and Digit bins off: fill plate to the live reading.
   if (!budgetOn) {
     return valueText;
   }
@@ -1160,7 +1243,15 @@ function nodeGraphNumberReadoutLayoutFitText(slot, valueText, decimals, settings
 
 
 function nodeGraphNumberReadoutGhostPlateText(valueText) {
-  return String(valueText || "").replace(/[0-9!]/g, "8");
+  // Digits and unused bins ghost as a full 8. Sign cell is only the minus bar.
+  let s = String(valueText || "");
+  const sign = (s.startsWith("-") || s.startsWith(" ")) ? s[0] : "";
+  const rest = sign ? s.slice(1) : s;
+  const ghostRest = rest.replace(/[0-9! ]/g, "8");
+  if (sign === " ") {
+    return `-${ghostRest}`;
+  }
+  return `${sign}${ghostRest}`;
 }
 
 
@@ -1198,6 +1289,7 @@ function nodeGraphNumberReadoutSettingsSignature(settings) {
     settings.digits,
     settings.decimals,
     settings.decimalBudget ? 1 : 0,
+    settings.digitBins === false ? 0 : 1,
     settings.lightBlend,
     settings.facePadding,
     settings.unlitSegments,
@@ -1205,8 +1297,54 @@ function nodeGraphNumberReadoutSettingsSignature(settings) {
     settings.innerShadowSharpness,
     settings.innerShadowOffsetX,
     settings.innerShadowOffsetY,
+    settings.centsBand,
     stopsSig,
   ].join("|");
+}
+
+/** 8ve-page cents stripes: red…blue…red. Index 4 = in tune (0–10¢). */
+const NODE_GRAPH_PITCH_CENTS_BAND_RGB = Object.freeze([
+  Object.freeze([220, 48, 40]),
+  Object.freeze([240, 140, 20]),
+  Object.freeze([236, 210, 36]),
+  Object.freeze([56, 176, 72]),
+  Object.freeze([36, 120, 230]),
+  Object.freeze([56, 176, 72]),
+  Object.freeze([236, 210, 36]),
+  Object.freeze([240, 140, 20]),
+  Object.freeze([220, 48, 40]),
+]);
+
+function nodeGraphPitchCentsBandIndex(cents) {
+  const n = Number(cents);
+  if (!Number.isFinite(n)) {
+    return -1;
+  }
+  const abs = Math.abs(n);
+  if (abs <= 10) return 4;
+  if (abs <= 20) return n < 0 ? 3 : 5;
+  if (abs <= 30) return n < 0 ? 2 : 6;
+  if (abs <= 40) return n < 0 ? 1 : 7;
+  return n < 0 ? 0 : 8;
+}
+
+function nodeGraphPitchDetectorDrawCentsBands(context, left, top, width, height, cents, brightness) {
+  const b = clampNodeSliderValue(Number(brightness) || 0, 0, 1);
+  if (!context || !(width > 0) || !(height > 0) || b <= 0.0005) {
+    return;
+  }
+  const n = NODE_GRAPH_PITCH_CENTS_BAND_RGB.length;
+  const bandW = width / n;
+  const hi = nodeGraphPitchCentsBandIndex(cents);
+  context.save();
+  for (let i = 0; i < n; i += 1) {
+    const rgb = NODE_GRAPH_PITCH_CENTS_BAND_RGB[i];
+    const alpha = i === hi ? b : b * 0.2;
+    context.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`;
+    const x = left + i * bandW;
+    context.fillRect(x, top, bandW + 0.75, height);
+  }
+  context.restore();
 }
 
 
@@ -1600,8 +1738,8 @@ function nodeGraphNumberReadoutDrawDigits(context, {
     }
     let glyph = ch;
     if (plate) {
-      // Unlit LCD grid: every full cell is all-on "8".
-      glyph = "8";
+      // Unlit LCD grid: digits are all-on "8". Sign column is only the minus bar.
+      glyph = (ch === "-" || ch === " ") ? "-" : "8";
     } else if (ch === " ") {
       // Lit path: leave sign column empty (still advance a full cell).
       penX += cellW;
@@ -1657,7 +1795,7 @@ function nodeGraphNumberReadoutDrawInnerShadow(context, left, top, width, height
  * Value LCD — vector DSEG (no phosphor residual hang).
  * Background + multiply unlit “8”s + solid FG digits + glass inner shadow.
  */
-function drawNodeGraphValueLcdFace(canvas, context, screenElement, settings, valueText, unit, slot = null) {
+function drawNodeGraphValueLcdFace(canvas, context, screenElement, settings, valueText, unit, slot = null, options = null) {
   if (!canvas || !context) {
     return;
   }
@@ -1742,6 +1880,14 @@ function drawNodeGraphValueLcdFace(canvas, context, screenElement, settings, val
   context.save();
   context.fillStyle = bg;
   context.fillRect(left, top, width, height);
+
+  // 8ve page: cents-accuracy stripes behind the note-name text.
+  const pitchMode = options && options.pitchMode;
+  const centsOff = options && options.cents;
+  const centsBand = clampNodeSliderValue(Number(settings?.centsBand) || 0, 0, 1);
+  if (slot?.type === "helmholtzPitch" && pitchMode === "name" && centsBand > 0.0005) {
+    nodeGraphPitchDetectorDrawCentsBands(context, left, top, width, height, centsOff, centsBand);
+  }
 
   // Max padding: one screen pixel of LCD “on” (no DSEG at pin size).
   if (layout.pixelPin) {
@@ -1885,9 +2031,8 @@ function drawNodeGraphNumberReadoutItem(renderer, item, pixelRatio) {
   const digits = nodeGraphNumberReadoutSafeDigits(settings.digits);
   const formatOptions = {
     digits,
-    // Fixed bins: pad fractional places (removeTrailingZeros false).
-    // GROW does not change the number string economy — only layout fit.
-    removeTrailingZeros: false,
+    removeTrailingZeros: Boolean(settings.removeTrailingZeros),
+    reserveSignSpace: String(settings.polarity || "bipolar") !== "unipolar",
     // Value LCD: settle on decimals+1 before visible budget (sign stability).
     ...(isLcd ? { guardExtraPlace: true } : null),
   };
@@ -1933,11 +2078,22 @@ function drawNodeGraphNumberReadoutItem(renderer, item, pixelRatio) {
   } else {
     liveValueText = hasSample
       ? nodeGraphNumberReadoutFormatValue(
-        nodeGraphOscilloscopeLatestSample(item.buffer, 0),
+        (() => {
+          const raw = nodeGraphOscilloscopeLatestSample(item.buffer, 0);
+          return String(settings.polarity || "bipolar") === "unipolar" ? Math.abs(Number(raw) || 0) : raw;
+        })(),
         decimals,
         formatOptions,
       )
       : (decimals > 0 ? ` !.${"!".repeat(decimals)}` : " !");
+    if (nodeGraphNumberReadoutUsesDigitBins(settings)) {
+      liveValueText = nodeGraphNumberReadoutPadValueToBins(
+        liveValueText,
+        digits,
+        decimals,
+        formatOptions,
+      );
+    }
   }
   // Hold last good reading — never paint empty "!" over a held phosphor face
   // (pause + wire connect / deselect was clearing Pitch Detector ghosts).
@@ -1972,7 +2128,15 @@ function drawNodeGraphNumberReadoutItem(renderer, item, pixelRatio) {
   }
   // Note names need letter glyphs (not DSEG-only).
   const pitchNameMode = slot?.type === "helmholtzPitch" && pitchMode === "name";
-  const text = `${valueText}${unit ? ` ${unit}` : ""}${pitchMode !== "hz" ? `|${pitchMode}` : ""}`;
+  const pitchHz = slot?.type === "helmholtzPitch" && hasSample
+    ? nodeGraphOscilloscopeLatestSample(item.buffer, 0)
+    : Number.NaN;
+  const pitchCents = pitchNameMode && typeof nodeGraphFrequencyToCentsOff === "function"
+    ? nodeGraphFrequencyToCentsOff(pitchHz)
+    : Number.NaN;
+  const text = `${valueText}${unit ? ` ${unit}` : ""}${pitchMode !== "hz" ? `|${pitchMode}` : ""}|¢${
+    Number.isFinite(pitchCents) ? pitchCents.toFixed(1) : ""
+  }`;
   // Value LCD: dedicated vector path (no residual hang / burn plate).
   if (isLcd) {
     const settingsSig = nodeGraphNumberReadoutSettingsSignature(settings);
@@ -1994,7 +2158,10 @@ function drawNodeGraphNumberReadoutItem(renderer, item, pixelRatio) {
     if ("imageSmoothingQuality" in context) {
       context.imageSmoothingQuality = "high";
     }
-    drawNodeGraphValueLcdFace(canvas, context, screenElement, settings, valueText, unit, slot);
+    drawNodeGraphValueLcdFace(canvas, context, screenElement, settings, valueText, unit, slot, {
+      pitchMode,
+      cents: pitchCents,
+    });
     nodeGraphNumberReadoutRememberGoodValue(canvas, valueText);
     return;
   }
@@ -2268,8 +2435,7 @@ function drawNodeGraphNumberReadoutItem(renderer, item, pixelRatio) {
   const depositEnergy = Number(canvas._numberReadoutResidualEnergy) || 0;
   if (depositEnergy <= 0.008) {
     canvas._numberReadoutResidualEnergy = 0;
-    // Only hard-clear plate crumbs when Trail is on. Pure Ghost (Trail 0)
-    // keeps the long sticky analog tail — do not wipe the last ink early.
+    // Hard-clear plate crumbs when residual energy is gone (Trail 0 wipes).
     if (
       depositEnergy > 0
       && hangOn
@@ -2470,7 +2636,7 @@ function drawNodeGraphNumberReadoutItem(renderer, item, pixelRatio) {
     context.fillText(
       unit,
       left + padPx + layout.contentW * 0.5,
-      top + padPx + digitAreaHeight + labelHeight * 0.5,
+      top + padPxY + digitAreaHeight + labelHeight * 0.5,
     );
   }
 

@@ -14,6 +14,12 @@ function nodeGraphEventTargetIsTextEditable(target) {
   if (target.closest?.("[contenteditable='true']")) {
     return true;
   }
+  if (typeof nodeGraphTextBoxIsTypingElement === "function" && nodeGraphTextBoxIsTypingElement(target)) {
+    return true;
+  }
+  if (target.closest?.(".node-text-box-input, #nodeSceneTextBoxTextInput, #nodeSceneAliasInput, #nodeSceneKnobTextInput, [data-knob-face-label]")) {
+    return true;
+  }
   const field = target.closest?.("textarea, select, input");
   if (!field) {
     return false;
@@ -97,6 +103,7 @@ function nudgeSelectedNodeGraphModulesOnGrid(axis, direction) {
   }
 
   commitNodeGraphPatch(patch, {
+    layoutEdit: true,
     status: movedCount === 1 ? "module moved" : "modules moved",
   });
   return true;
@@ -132,73 +139,17 @@ function resizeNodeGraphCanvasModuleOnGrid(patchNode, delta) {
   return true;
 }
 
-function resizeNodeGraphTextBoxModuleHeightOnGrid(patchNode, delta) {
-  if (nodeGraphModuleSizingCapabilities(patchNode?.type).moduleHeight !== "textBox") {
-    return false;
-  }
-  const currentHeightGu = nodeGraphPatchNodeGridHeightUnits(patchNode);
-  const nextHeightGu = normalizeNodeGraphTextBoxHeightUnits(currentHeightGu + delta);
-  if (nextHeightGu === currentHeightGu) {
-    return false;
-  }
-  const defaultHeightGu = nodeGraphModuleGridHeightUnitsForUi("textBox", patchNode.ui);
-  if (nextHeightGu === defaultHeightGu) {
-    delete patchNode.heightGu;
-  } else {
-    patchNode.heightGu = nextHeightGu;
-  }
-  return true;
-}
-
-function resizeNodeGraphCustomModuleHeightOnGrid(patchNode, delta) {
-  if (nodeGraphModuleSizingCapabilities(patchNode?.type).moduleHeight !== "custom") {
-    return false;
-  }
-  const currentHeightGu = nodeGraphPatchNodeGridHeightUnits(patchNode);
-  const nextHeightGu = normalizeNodeGraphModuleHeightUnits(
-    patchNode.type,
-    currentHeightGu + delta,
-    patchNode.ui,
-  );
-  if (nextHeightGu === currentHeightGu) {
-    return false;
-  }
-  const defaultHeightGu = nodeGraphModuleGridHeightUnitsForUi(patchNode.type, patchNode.ui);
-  if (nextHeightGu === defaultHeightGu) {
-    delete patchNode.heightGu;
-  } else {
-    patchNode.heightGu = nextHeightGu;
-  }
-  return true;
-}
-
-function resizeNodeGraphDisplayModuleHeightOnGrid(patchNode, delta) {
-  if (!nodeGraphModuleSizingCapabilities(patchNode?.type).displayHeight) {
-    return false;
-  }
-  const ui = normalizeNodeGraphPatchNodeUi(patchNode.ui, patchNode.type);
-  const nextOffsetGu = normalizeNodeGraphModuleDisplayHeightOffsetUnits(
-    patchNode.type,
-    ui.displayHeightOffsetGu + delta * nodeGraphModuleDisplayHeightLimits.stepGu,
-  );
-  if (nextOffsetGu === ui.displayHeightOffsetGu) {
-    return false;
-  }
-  ui.displayHeightOffsetGu = nextOffsetGu;
-  applyNodeGraphPatchNodeUi(patchNode, ui);
-  return true;
-}
-
 function resizeNodeGraphHeightAdjustableModuleOnGrid(patchNode, delta) {
   const capabilities = nodeGraphModuleSizingCapabilities(patchNode?.type);
-  if (capabilities.moduleHeight === "textBox") {
-    return resizeNodeGraphTextBoxModuleHeightOnGrid(patchNode, delta);
+  if (capabilities.moduleHeight === "canvasScript") {
+    return false;
   }
-  if (capabilities.moduleHeight === "custom") {
-    return resizeNodeGraphCustomModuleHeightOnGrid(patchNode, delta);
-  }
-  if (capabilities.displayHeight) {
-    return resizeNodeGraphDisplayModuleHeightOnGrid(patchNode, delta);
+  if (
+    capabilities.moduleHeight === "textBox"
+    || capabilities.moduleHeight === "custom"
+    || capabilities.displayHeight
+  ) {
+    return nodeGraphApplyModuleHeightDelta(patchNode, delta);
   }
   return false;
 }
@@ -259,14 +210,35 @@ function resizeSelectedNodeGraphModulesOnGrid(axis, delta) {
   if (!changedCount) {
     return false;
   }
-  commitNodeGraphPatch(patch, {
-    status: axis === "height" ? "module height changed" : "module width changed",
-  });
-  configureNodeSceneContextMenu("module");
+  const ids = [...selectedNodeIds];
+  const status = axis === "height" ? "module height changed" : "module width changed";
+  // Chrome path: update size CSS on the live module. A full applyNodeGraphPatchToDom
+  // remounts every face/scope and drops the app below 1 fps on key repeat.
+  const commitOpts = typeof nodeGraphChromeCommitOptions === "function"
+    ? nodeGraphChromeCommitOptions(ids, { status })
+    : {
+      chromeEdit: true,
+      chromeNodeIds: ids,
+      deferUiPanels: true,
+      markPending: false,
+      skipLivePlan: true,
+      status,
+    };
+  commitNodeGraphPatch(patch, commitOpts);
   return true;
 }
 
 function handleNodeGraphKeydown(event) {
+  // Title + area Text Box share this gate. Check before window-nudge / H-V-M.
+  if (
+    !event.ctrlKey
+    && !event.metaKey
+    && !event.altKey
+    && typeof nodeGraphTextBoxIsTyping === "function"
+    && nodeGraphTextBoxIsTyping(event)
+  ) {
+    return;
+  }
   if (handleNodeGraphFloatingWindowKeyboardNudge(event)) {
     return;
   }
@@ -285,16 +257,14 @@ function handleNodeGraphKeydown(event) {
   if (nodeGraphEventTargetIsTextEditable(event.target) && !event.ctrlKey && !event.metaKey && !event.altKey) {
     return;
   }
-  // Space controls audio transport when not typing (panic / play-pause).
+  // Space toggles simulation play/pause when not typing.
   // Text inputs are excluded above so module search and name fields can take spaces.
   if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.code === "Space") {
     event.preventDefault();
     event.stopPropagation();
-    // Same path as the transport ▶ button so Space and click stay in lockstep
-    // (start when cold, pause/resume when engine is up — never a bare toggle
-    // that can leave outputEnabled true with no worklet).
+    // Space is play/pause, not the dedicated Play button (play never pauses).
     if (typeof nodeGraphTransportHandleAction === "function") {
-      nodeGraphTransportHandleAction("play");
+      nodeGraphTransportHandleAction("playpause");
     } else if (nodeGraphMvp?.live?.node) {
       const isPaused = (nodeGraphMvp.live.speedMultiplier ?? 1) === 0;
       const nextSpeed = isPaused ? 1 : 0;
@@ -346,6 +316,9 @@ function handleNodeGraphKeydown(event) {
     return;
   }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+    if (nodeGraphEventTargetIsTextEditable(event.target)) {
+      return;
+    }
     event.preventDefault();
     selectAllNodeGraphModules();
     return;
@@ -366,35 +339,61 @@ function handleNodeGraphKeydown(event) {
     event.preventDefault();
     if (typeof openNodeGraphUnifiedWindowPage === "function") {
       openNodeGraphUnifiedWindowPage("moduleBrowser");
-    } else {
+    } else if (typeof openNodeGraphModuleShop === "function") {
       openNodeGraphModuleShop(null);
+    }
+    // Already-open unified pages only pulse and never reach the shop opener,
+    // so Shift+A must always land the caret in search after the window is up.
+    if (typeof resetNodeGraphModuleShopSearch === "function") {
+      resetNodeGraphModuleShopSearch();
+    }
+    if (typeof renderNodeGraphModuleStoreCatalog === "function") {
+      renderNodeGraphModuleStoreCatalog();
+    }
+    if (typeof focusNodeGraphModuleShopSearch === "function") {
+      focusNodeGraphModuleShopSearch();
     }
     return;
   }
   if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "c") {
     event.preventDefault();
-    if (typeof openNodeGraphUnifiedWindowPage === "function") {
+    if (typeof cycleNodeGraphCommandCenterPresentation === "function") {
+      cycleNodeGraphCommandCenterPresentation();
+    } else if (typeof openNodeGraphUnifiedWindowPage === "function") {
       openNodeGraphUnifiedWindowPage("commandCenter");
     } else if (typeof openNodeGraphCommandCenter === "function") {
       openNodeGraphCommandCenter();
     }
     return;
   }
-  // V → 💻 hide/show top+bottom bars (independent).
-  // M → 📱 condensed modular frame with resize (independent).
+  // V → view: hide/show top + bottom app bars (not per-module header buttons).
+  // Phone / condensed modular frame is click/touch only (no M hotkey).
   if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "v") {
     event.preventDefault();
     if (typeof toggleNodeGraphAppChromeBarsVisibility === "function") {
       toggleNodeGraphAppChromeBarsVisibility();
-    } else if (typeof toggleNodeGraphModularInfiniteView === "function") {
-      toggleNodeGraphModularInfiniteView();
     }
     return;
   }
-  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "m") {
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "d") {
     event.preventDefault();
-    if (typeof toggleNodeGraphModularWindowedView === "function") {
-      toggleNodeGraphModularWindowedView();
+    if (typeof toggleNodeGraphConstraintGuideVisibility === "function") {
+      toggleNodeGraphConstraintGuideVisibility();
+    }
+    return;
+  }
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    if (typeof toggleNodeGraphStandaloneMidiKeyboard === "function") {
+      toggleNodeGraphStandaloneMidiKeyboard();
+    }
+    return;
+  }
+  // T → docked tooltips on/off.
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "t") {
+    event.preventDefault();
+    if (typeof toggleNodeGraphTooltipWindow === "function") {
+      toggleNodeGraphTooltipWindow();
     }
     return;
   }

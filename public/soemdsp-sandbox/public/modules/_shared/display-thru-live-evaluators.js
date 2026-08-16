@@ -22,8 +22,17 @@
     Y: nodeGraphSafeFilterNumber(mixInput(nodeId, "Y"), runtime, nodeId, null, tagY),
   });
 
+  const stereoThru = (tagL, tagR) => ({ runtime, nodeId, mixInput }) => ({
+    Left: nodeGraphSafeFilterNumber(mixInput(nodeId, "Left"), runtime, nodeId, null, tagL),
+    Right: nodeGraphSafeFilterNumber(mixInput(nodeId, "Right"), runtime, nodeId, null, tagR),
+  });
+
   // Mono / primary In → Thru
   nodeGraphLiveModuleEvaluators.traceDisplay = thruFrom("In", "traceDisplay in");
+  nodeGraphLiveModuleEvaluators.traceDisplayStereo = stereoThru(
+    "traceDisplayStereo left",
+    "traceDisplayStereo right",
+  );
   nodeGraphLiveModuleEvaluators.dotOscilloscope = thruFrom("In", "dotOscilloscope in");
   nodeGraphLiveModuleEvaluators.valueOscilloscope = thruFrom("In", "valueOscilloscope in");
   nodeGraphLiveModuleEvaluators.lineBurnOscilloscope = thruFrom("In", "lineBurnOscilloscope in");
@@ -37,4 +46,18 @@
   nodeGraphLiveModuleEvaluators.phosphorLight = xyThru("phosphorLight X", "phosphorLight Y");
   nodeGraphLiveModuleEvaluators.scope2dTrace = xyThru("scope2dTrace X", "scope2dTrace Y");
   nodeGraphLiveModuleEvaluators.visualOscilloscope = xyThru("visualOscilloscope X", "visualOscilloscope Y");
+  nodeGraphLiveModuleEvaluators.gradientVectorscope = xyThru("gradientVectorscope X", "gradientVectorscope Y");
+  nodeGraphLiveModuleEvaluators.traceXyz = ({ runtime, nodeId, mixInput }) => ({
+    X: nodeGraphSafeFilterNumber(mixInput(nodeId, "X"), runtime, nodeId, null, "traceXyz X"),
+    Y: nodeGraphSafeFilterNumber(mixInput(nodeId, "Y"), runtime, nodeId, null, "traceXyz Y"),
+    Z: nodeGraphSafeFilterNumber(mixInput(nodeId, "Z"), runtime, nodeId, null, "traceXyz Z"),
+  });
+  nodeGraphLiveModuleEvaluators.vectorRgb = ({ runtime, nodeId, mixInput }) => ({
+    X: nodeGraphSafeFilterNumber(mixInput(nodeId, "X"), runtime, nodeId, null, "vectorRgb X"),
+    Y: nodeGraphSafeFilterNumber(mixInput(nodeId, "Y"), runtime, nodeId, null, "vectorRgb Y"),
+    R: nodeGraphSafeFilterNumber(mixInput(nodeId, "R"), runtime, nodeId, null, "vectorRgb R"),
+    G: nodeGraphSafeFilterNumber(mixInput(nodeId, "G"), runtime, nodeId, null, "vectorRgb G"),
+    B: nodeGraphSafeFilterNumber(mixInput(nodeId, "B"), runtime, nodeId, null, "vectorRgb B"),
+    Blank: nodeGraphSafeFilterNumber(mixInput(nodeId, "Blank"), runtime, nodeId, null, "vectorRgb Blank"),
+  });
 })();

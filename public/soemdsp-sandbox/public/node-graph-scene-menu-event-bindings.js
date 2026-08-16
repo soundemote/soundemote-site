@@ -13,10 +13,16 @@ function bindNodeGraphSceneMenuEvents() {
   ensureNodeGraphModuleActionsWindowBody();
   bindNodeGraphSceneElementEvent("nodeModuleShopView", "click", handleNodeGraphModuleStoreClick);
   bindNodeGraphSceneElementEvent("nodeModuleShopView", "keydown", handleNodeGraphModuleStoreKeydown);
-  bindNodeGraphSceneElementEvent("nodeModuleShopClose", "click", closeNodeGraphModuleShop);
+  bindNodeGraphSceneElementEvent("nodeModuleShopClose", "click", () => {
+    if (typeof closeNodeGraphUnifiedWindowPage === "function") {
+      closeNodeGraphUnifiedWindowPage("moduleBrowser");
+      return;
+    }
+    closeNodeGraphModuleShop();
+  });
   bindNodeGraphSceneElementEvent("nodeModuleShopView", "pointerdown", beginNodeGraphModuleStorePointerPlacement);
-  bindNodeGraphSceneElementEvent("nodeModuleShopView", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "moduleBrowser"));
   bindNodeGraphSceneElementEvent("nodeModuleShopHeading", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "moduleBrowser"));
+  bindNodeGraphSceneElementEvent("nodeModuleShopDragHandle", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "moduleBrowser"));
   bindNodeGraphSceneElementEvent("nodeModuleShopResizeHandle", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowResize(event, "moduleBrowser"));
   bindNodeGraphSceneElementEvent("nodeModuleDepartmentSearch", "input", handleNodeGraphModuleDepartmentSearchInput);
   bindNodeGraphSceneElementEvent("nodeModuleDepartmentSearch", "keydown", handleNodeGraphModuleDepartmentSearchKeydown);
@@ -24,7 +30,7 @@ function bindNodeGraphSceneMenuEvents() {
   bindNodeGraphSceneElementEvent("nodeCommandCenterModuleSearchInput", "keydown", handleNodeGraphCommandCenterModuleSearchKeydown);
   bindNodeGraphSceneElementEvent("nodeCommandCenterModuleSearchResults", "click", handleNodeGraphModuleStoreClick);
   bindNodeGraphSceneElementEvent("nodeCommandCenterModuleSearchResults", "pointerdown", beginNodeGraphModuleStorePointerPlacement);
-  bindNodeGraphSceneElementEvent("nodeModuleDepartmentBack", "click", () => setNodeGraphModuleStoreDepartment(""));
+
   // Module shop / module actions / code box / command center drag+resize:
   // registry pointer bridge (node-graph-floating-windows.js)
   document.addEventListener("pointerup", releaseNodeGraphModuleStorePointerPlacement);
@@ -36,6 +42,7 @@ function bindNodeGraphSceneMenuEvents() {
   document.addEventListener("pointerup", endNodeGraphGraphNodeDrag);
   document.addEventListener("pointercancel", endNodeGraphGraphNodeDrag);
   bindNodeGraphSceneElementEvent("nodeSceneDeleteModule", "click", deleteNodeGraphSelectionFromContext);
+  bindNodeGraphSceneElementEvent("nodeSceneHistoryDeleteButton", "click", deleteSelectedNodeGraphItem);
   document
     .querySelectorAll("#nodeSceneWireTypeControl [data-wire-type]")
     .forEach((button) => {
@@ -46,6 +53,19 @@ function bindNodeGraphSceneMenuEvents() {
     const next = btn?.getAttribute("aria-pressed") !== "true";
     if (typeof setSelectedNodeGraphWirePixel === "function") {
       setSelectedNodeGraphWirePixel(next);
+    }
+  });
+  if (typeof ensureNodeGraphWireCurveControl === "function") {
+    ensureNodeGraphWireCurveControl();
+  }
+  bindNodeGraphSceneElementEvent("nodeSceneWireAttenuate", "click", () => {
+    if (typeof attenuateSelectedNodeGraphWires === "function") {
+      attenuateSelectedNodeGraphWires("attenuate");
+    }
+  });
+  bindNodeGraphSceneElementEvent("nodeSceneWireAttenuvert", "click", () => {
+    if (typeof attenuateSelectedNodeGraphWires === "function") {
+      attenuateSelectedNodeGraphWires("attenuvert");
     }
   });
   bindNodeGraphSceneElementEvent("nodeSceneCopyModule", "click", copyNodeGraphModuleFromContext);
@@ -59,8 +79,29 @@ function bindNodeGraphSceneMenuEvents() {
   bindNodeGraphSceneElementEvent("nodeSceneCopyModuleSettings", "click", copyNodeGraphModuleSettingsFromContext);
   bindNodeGraphSceneElementEvent("nodeScenePasteModuleSettings", "click", pasteNodeGraphModuleSettingsFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneSetModuleSettingsAsDefault", "click", setNodeGraphModuleSettingsAsDefaultFromButton);
-  bindNodeGraphSceneElementEvent("nodeSceneToggleModularInfiniteView", "click", toggleNodeGraphAppChromeBarsVisibility);
-  bindNodeGraphSceneElementEvent("nodeSceneToggleModularWindowedView", "click", toggleNodeGraphModularWindowedView);
+  bindNodeGraphSceneElementEvent("nodeSceneBroomBatch", "click", applyNodeGraphPatchDefaultsFromCurrentSelection);
+  bindNodeGraphSceneElementEvent("nodePatchLockButton", "click", toggleNodeGraphPatchLocked);
+  bindNodeGraphSceneElementEvent("nodePatchHideUnusedButton", "click", toggleNodeGraphPatchHideUnusedPorts);
+  bindNodeGraphSceneElementEvent("nodePatchDefaultsClose", "click", () => {
+    if (typeof closeNodeGraphUnifiedWindowPage === "function") {
+      closeNodeGraphUnifiedWindowPage("patchDefaults");
+      return;
+    }
+    setNodeGraphPatchDefaultsVisible(false);
+  });
+  bindNodeGraphSceneElementEvent("nodePatchDefaultsHeading", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "patchDefaults"));
+  bindNodeGraphSceneElementEvent("nodePatchDefaultsDragHandle", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "patchDefaults"));
+  bindNodeGraphSceneElementEvent("nodePatchDefaultsResizeHandle", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowResize(event, "patchDefaults"));
+  bindNodeGraphSceneElementEvent("nodeSceneToggleModularInfiniteView", "click", () => {
+    if (typeof setNodeGraphModularWindowedActive === "function") {
+      setNodeGraphModularWindowedActive(false);
+    }
+  });
+  bindNodeGraphSceneElementEvent("nodeSceneToggleModularWindowedView", "click", () => {
+    if (typeof setNodeGraphModularWindowedActive === "function") {
+      setNodeGraphModularWindowedActive(true);
+    }
+  });
   // Legacy ids (hidden).
   bindNodeGraphSceneElementEvent("nodeSceneToggleModularOnlyView", "click", toggleNodeGraphModularWindowedView);
   bindNodeGraphSceneElementEvent("nodeSceneToggleModularOnlyControls", "click", toggleNodeGraphAppChromeBarsVisibility);
@@ -80,7 +121,13 @@ function bindNodeGraphSceneMenuEvents() {
     }
     openNodeGraphModuleActionsFromContextWindow();
   });
-  bindNodeGraphSceneElementEvent("nodeModuleActionsClose", "click", closeNodeModuleActionsWindow);
+  bindNodeGraphSceneElementEvent("nodeModuleActionsClose", "click", () => {
+    if (typeof closeNodeGraphUnifiedWindowPage === "function") {
+      closeNodeGraphUnifiedWindowPage("moduleActions");
+      return;
+    }
+    closeNodeModuleActionsWindow();
+  });
   bindNodeGraphSceneElementEvent("nodeModuleActionsWindowHeading", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "moduleActions"));
   bindNodeGraphSceneElementEvent("nodeModuleActionsDragHandle", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "moduleActions"));
   bindNodeGraphSceneElementEvent("nodeModuleActionsResizeHandle", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowResize(event, "moduleActions"));
@@ -112,7 +159,10 @@ function bindNodeGraphSceneMenuEvents() {
     document.getElementById("nodeRoomDimmerButton")?.focus?.();
   });
   bindNodeGraphSceneElementEvent("nodeSceneOpenVisibility", "click", () => {
-    // Standalone Visibility window (own seat) — never unified seat handoff.
+    if (typeof openNodeGraphUnifiedWindowPage === "function") {
+      openNodeGraphUnifiedWindowPage("visibilityMenu");
+      return;
+    }
     setNodeGraphVisibilityMenuOpen(true);
   });
   bindNodeGraphSceneElementEvent("nodeSceneGlobalSmoothingSeconds", "change", handleNodeGraphGlobalSmoothingSecondsChange);
@@ -164,6 +214,10 @@ function bindNodeGraphSceneMenuEvents() {
     adjustNodeGraphModuleHeightFromContext(1));
   bindNodeGraphSceneElementEvent("nodeSceneAliasInput", "input", () => setNodeGraphModuleAliasFromContext({ record: false }));
   bindNodeGraphSceneElementEvent("nodeSceneAliasInput", "change", () => setNodeGraphModuleAliasFromContext({ record: true }));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobTextInput", "input", () => setNodeGraphKnobTextFromContext({ record: false }));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobTextInput", "change", () => setNodeGraphKnobTextFromContext({ record: true }));
+  bindNodeGraphSceneElementEvent("nodeSceneKnobTextInput", "keydown", (event) => event.stopPropagation());
+  bindNodeGraphSceneElementEvent("nodeSceneKnobTextInput", "keyup", (event) => event.stopPropagation());
   bindNodeGraphSceneElementEvent("nodeSceneToggleButtons", "click", toggleNodeGraphModuleButtonsFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneToggleModuleEnabled", "click", toggleNodeGraphModuleEnabledFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneOpenNativeCode", "click", openNodeGraphNativeModuleCodeFromContext);
@@ -173,7 +227,9 @@ function bindNodeGraphSceneMenuEvents() {
   bindNodeGraphSceneElementEvent("nodeSceneToggleSliders", "click", toggleNodeGraphModuleSlidersFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneToggleIo", "click", toggleNodeGraphModuleIoFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneToggleHideUnused", "click", toggleNodeGraphModuleHideUnusedFromContext);
+  bindNodeGraphSceneElementEvent("nodeSceneToggleCollapsed", "click", toggleNodeGraphModuleCollapsedFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneToggleTitle", "click", toggleNodeGraphModuleTitleFromContext);
+  bindNodeGraphSceneElementEvent("nodeSceneImageLoad", "click", loadNodeGraphImageFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneImageSave", "click", saveNodeGraphImageFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneImageRefresh", "click", refreshNodeGraphImageFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneKnobFaceLoad1", "click", () => pickNodeGraphKnobFaceImage("image1"));
@@ -198,16 +254,36 @@ function bindNodeGraphSceneMenuEvents() {
   bindNodeGraphSceneElementEvent("nodeSceneKnobFaceRotationDegrees", "change", () => setNodeGraphKnobFaceRotationDegreesFromContext({ record: true }));
   bindNodeGraphSceneElementEvent("nodeSceneKnobFaceRotationOffset", "input", () => setNodeGraphKnobFaceRotationOffsetFromContext({ record: false }));
   bindNodeGraphSceneElementEvent("nodeSceneKnobFaceRotationOffset", "change", () => setNodeGraphKnobFaceRotationOffsetFromContext({ record: true }));
-  bindNodeGraphSceneElementEvent("nodeSceneKnobFaceShowReadout", "change", () => setNodeGraphKnobFaceShowReadoutFromContext({ record: true }));
   bindNodeGraphSceneElementEvent("nodeSceneCanvasScript", "click", openNodeGraphCanvasScriptFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneLedColor", "input", () => setNodeGraphLedColorFromContext({ record: false }));
   bindNodeGraphSceneElementEvent("nodeSceneLedColor", "change", () => setNodeGraphLedColorFromContext({ record: true }));
+  bindNodeGraphSceneElementEvent("nodeSceneKeypadFont", "change", () => setNodeGraphKeypadLayoutFromContext({ record: true }));
+  bindNodeGraphSceneElementEvent("nodeSceneKeypadTextSize", "input", () => setNodeGraphKeypadLayoutFromContext({ record: false }));
+  bindNodeGraphSceneElementEvent("nodeSceneKeypadTextSize", "change", () => setNodeGraphKeypadLayoutFromContext({ record: true }));
+  bindNodeGraphSceneElementEvent("nodeSceneKeypadTextWeight", "input", () => setNodeGraphKeypadLayoutFromContext({ record: false }));
+  bindNodeGraphSceneElementEvent("nodeSceneKeypadTextWeight", "change", () => setNodeGraphKeypadLayoutFromContext({ record: true }));
+  bindNodeGraphSceneElementEvent("nodeSceneKeypadButtonColor", "input", () => setNodeGraphKeypadLayoutFromContext({ record: false }));
+  bindNodeGraphSceneElementEvent("nodeSceneKeypadButtonColor", "change", () => setNodeGraphKeypadLayoutFromContext({ record: true }));
+  bindNodeGraphSceneElementEvent("nodeSceneKeypadTextColor", "input", () => setNodeGraphKeypadLayoutFromContext({ record: false }));
+  bindNodeGraphSceneElementEvent("nodeSceneKeypadTextColor", "change", () => setNodeGraphKeypadLayoutFromContext({ record: true }));
+  bindNodeGraphSceneElementEvent("nodeSceneKeypadButtonWidth", "input", () => setNodeGraphKeypadLayoutFromContext({ record: false }));
+  bindNodeGraphSceneElementEvent("nodeSceneKeypadButtonWidth", "change", () => setNodeGraphKeypadLayoutFromContext({ record: true }));
+  bindNodeGraphSceneElementEvent("nodeSceneKeypadButtonHeight", "input", () => setNodeGraphKeypadLayoutFromContext({ record: false }));
+  bindNodeGraphSceneElementEvent("nodeSceneKeypadButtonHeight", "change", () => setNodeGraphKeypadLayoutFromContext({ record: true }));
   bindNodeGraphSceneElementEvent("nodeSceneBugButtonGlyph", "input", () => setNodeGraphBugButtonGlyphFromContext());
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxSingleLine", "click", () => setNodeGraphTextBoxModeFromContext("singleLine"));
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxMultiline", "click", () => setNodeGraphTextBoxModeFromContext("multiline"));
-  bindNodeGraphSceneElementEvent("nodeSceneTextBoxFill", "click", () => setNodeGraphTextBoxModeFromContext("fill"));
+
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxTextInput", "input", () => setNodeGraphTextBoxTextFromContext({ record: false }));
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxTextInput", "change", () => setNodeGraphTextBoxTextFromContext({ record: true }));
+  if (typeof nodeGraphTextBoxBindFloatingFieldSteals === "function") {
+    nodeGraphTextBoxBindFloatingFieldSteals();
+  } else {
+    bindNodeGraphSceneElementEvent("nodeSceneTextBoxTextInput", "keydown", (event) => event.stopPropagation());
+    bindNodeGraphSceneElementEvent("nodeSceneTextBoxTextInput", "keyup", (event) => event.stopPropagation());
+    bindNodeGraphSceneElementEvent("nodeSceneAliasInput", "keydown", (event) => event.stopPropagation());
+    bindNodeGraphSceneElementEvent("nodeSceneAliasInput", "keyup", (event) => event.stopPropagation());
+  }
   bindNodeGraphSceneElementEvent("nodeSceneCodeblockApplyPorts", "click", applyNodeGraphCodeblockPortsFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneCodeblockOpenCodeScreen", "click", () => openNodeGraphCodeBoxWindowForNode());
   bindNodeGraphSceneElementEvent("nodeSceneCodeblockSource", "input", () => setNodeGraphCodeblockSourceFromContext({ record: false }));
@@ -247,4 +323,15 @@ function bindNodeGraphSceneMenuEvents() {
   document
     .querySelector("#nodeSceneContextMenu .scene-context-heading")
     ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "commandCenter"));
+  document
+    .querySelector("#nodeSceneContextMenu .scene-context-heading")
+    ?.addEventListener("dblclick", (event) => {
+      if (typeof undockNodeGraphCommandCenterInPlace === "function" && undockNodeGraphCommandCenterInPlace()) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    });
+  if (typeof bindNodeGraphCommandCenterDockSplit === "function") {
+    bindNodeGraphCommandCenterDockSplit();
+  }
 }

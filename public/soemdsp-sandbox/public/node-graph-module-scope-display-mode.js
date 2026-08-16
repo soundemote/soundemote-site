@@ -2,6 +2,9 @@
 // (Phase D). Load after normalize.js, before scopes.js.
 
 function nodeGraphDisplayModeSettingsSchemaForRenderer(renderer) {
+  if (renderer === "phosphorWaveform") {
+    return "phosphorWaveform";
+  }
   return nodeGraphDisplayModeRenderers.includes(renderer) ? renderer : "trace";
 }
 
@@ -82,7 +85,7 @@ function normalizeNodeGraphDisplayMode(mode, type = "", index = 0) {
 
 
 function nodeGraphModuleImplicitDisplayModeSource(type, renderer) {
-  if (["scope2d", "scope2dTrace"].includes(renderer)) {
+  if (["scope2d", "scope2dTrace", "vectorRgbFace", "gradientVectorscopeFace"].includes(renderer)) {
     return nodeGraphModuleDefaultXyDisplaySource(type) || { value: nodeGraphModuleDefaultScalarDisplayPort(type) };
   }
   return { value: nodeGraphModuleDefaultScalarDisplayPort(type) };
@@ -186,8 +189,24 @@ function nodeGraphModuleDisplayTypeHasLocalSettings(displayType) {
     "fbmFieldFace",
     // Macro Controls face: bg / arc colors / names (global bank).
     "macroControlsFace",
+    "keyboardControllerFace",
     // Knob module: macro dial colors, image layers, centered span, readout.
     "knobFace",
+    // Keypad look: fonts, weight, button size, Sound Color Widgets.
+    "keypadFace",
+    // Music Player waveform / playlist look.
+    "phosphorWaveform",
+    // Text Box look: mode, align, size, Sound Color Widgets.
+    "textBoxFace",
+    "portalFace",
+    "roundShapeFace",
+    "limiterGainFace",
+    // Patch identity plate — not Trace.
+    "patchFace",
+    "vectorRgbFace",
+    "rasterRgbFace",
+    "gradientVectorscopeFace",
+    "traceXyz",
   ].includes(displayType);
 }
 
@@ -206,18 +225,6 @@ function nodeGraphNodeCanOpenDisplaySettings(node) {
 
 
 function nodeGraphTraceDisplaySettingsForSlot(slot) {
-  // Plain Trace nodes share one global look (see editingTraceDefaults).
-  // Per-node Trace faces (Output / Display / stereoTracePorts) must read
-  // node.traceDisplaySettings — global here made Sync/colors never stick.
-  if (nodeGraphModuleDisplaySettingsSchemaForSlot(slot) === "trace") {
-    const nodeType = nodeGraphModuleScopeNodeForSlot(slot)?.type;
-    const perNode = typeof nodeGraphModuleKeepsPerNodeTraceDisplaySettings === "function"
-      ? nodeGraphModuleKeepsPerNodeTraceDisplaySettings(nodeType)
-      : (nodeType === "output" || nodeType === "visualOscilloscope");
-    if (!perNode) {
-      return nodeGraphGlobalTraceSettings();
-    }
-  }
   return nodeGraphTraceDisplaySettingsForNode(nodeGraphModuleScopeNodeForSlot(slot));
 }
 

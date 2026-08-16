@@ -1,5 +1,12 @@
 const nodeUiDevDefaultSettingsUrl = "./public/presets/useruisettings.json";
-const nodeUiDevDefaultSettingsStorageKey = "soemdsp-sandbox.userUiSettings.startup.v12";
+const nodeUiDevDefaultSettingsStorageKey = "soemdsp-sandbox.userUiSettings.startup.v13";
+const nodeGraphUserSessionStorageKey = "soemdsp-sandbox.userSession.startup.v1";
+const nodeGraphUserSessionFormatKind = "soemdsp-sandbox-user-session";
+const nodeGraphUserSessionFormatVersion = 1;
+// Until the first load/apply finishes, serialize() only sees HTML defaults.
+// Any persist in that window (window-seat remember, unload flush) would
+// overwrite the last good localStorage blob. Refuse those writes.
+let nodeUiDevSettingsHydrated = false;
 
 const nodeGraphWorkspaceWindowStateKeys = Object.freeze([
   "commandCenter",
@@ -15,6 +22,7 @@ const nodeGraphWorkspaceWindowStateKeys = Object.freeze([
   "standaloneMidiKeyboard",
   "tooltipWindow",
   "phosphorWaveformSettings",
+  "emoji",
 ]);
 
 const nodeGraphWorkspaceWindowElements = Object.freeze({
@@ -26,11 +34,13 @@ const nodeGraphWorkspaceWindowElements = Object.freeze({
   moduleBrowser: "nodeModuleShopView",
   visibilityMenu: "nodeVisibilityMenu",
   uiSettings: "nodeUserUiSettingsPanel",
+  patchDefaults: "nodePatchDefaultsPanel",
   uiDev: "nodeUiDevHelper",
   traceDisplaySettings: "nodeTraceDisplaySettingsPopover",
   standaloneMidiKeyboard: "nodeStandaloneMidiKeyboardDock",
   tooltipWindow: "nodeTooltipWindow",
   phosphorWaveformSettings: "nodePhosphorWaveformSettingsWindow",
+  emoji: "nodeEmojiPage",
 });
 
 const nodeGraphSharedInspectorWindowKeys = Object.freeze([
@@ -157,6 +167,9 @@ function nodeGraphWorkspaceStatesWithSharedInspectorGeometry(states = {}) {
 
 function normalizeNodeGraphWorkspaceWindowStateEntry(entry = {}, key = "") {
   const source = entry && typeof entry === "object" ? entry : {};
+  if (key === "visibilityMenu") {
+    return { open: Boolean(source.open) };
+  }
   const isSharedInspector = nodeGraphSharedInspectorWindowKeys.includes(key);
   const position = isSharedInspector
     ? null
@@ -303,6 +316,20 @@ function rememberNodeGraphWorkspaceWindowState(key, element, patch = {}, options
     return null;
   }
   const states = normalizeNodeGraphWorkspaceWindowStates(nodeGraphMvp.workspaceWindowStates);
+  // Unified pages share one seat (unifiedWindowPosition). An independent
+  // per-page seat is what yanked Command Center when switching pages.
+  if (typeof nodeGraphWorkspaceKeyIsUnifiedPage === "function"
+    ? nodeGraphWorkspaceKeyIsUnifiedPage(key)
+    : key === "visibilityMenu") {
+    states[key] = normalizeNodeGraphWorkspaceWindowStateEntry({
+      ...states[key],
+      open: patch.open ?? (element ? !element.hidden : states[key]?.open),
+      position: null,
+      size: key === "visibilityMenu" ? null : states[key]?.size,
+    }, key);
+    nodeGraphMvp.workspaceWindowStates = states;
+    return states[key];
+  }
   const shouldCapturePosition = options.capturePosition !== false;
   const position = patch.position || (shouldCapturePosition ? nodeGraphWorkspaceWindowPositionFromElement(element) : null);
   if (nodeGraphSharedInspectorWindowKeys.includes(key)) {
@@ -335,13 +362,7 @@ function rememberNodeGraphWorkspaceWindowState(key, element, patch = {}, options
 }
 
 function saveNodeGraphWorkspaceWindowStatesToUserSettings(options = {}) {
-  if (
-    typeof serializeNodeUiDevSettings !== "function" ||
-    typeof saveNodeUiDevLocalDefaultSettings !== "function"
-  ) {
-    return;
-  }
-  saveNodeUiDevLocalDefaultSettings(serializeNodeUiDevSettings());
+  persistNodeGraphUserSession();
   if (options.status !== false && typeof setNodeUiDevSettingsStatus === "function") {
     setNodeUiDevSettingsStatus("workspace ui settings saved", true);
   }
@@ -373,7 +394,14 @@ function openNodeGraphFloatingWindowAtPosition(key, element, spawnAtPointer) {
   // from inside the callback -- the callback runs synchronously.
   let restored = false;
   positionNodeGraphFloatingWindowWithAttention(element, () => {
-    restored = positionNodeGraphWorkspaceWindowFromState(key, element);
+    if (typeof nodeGraphWorkspaceKeyIsUnifiedPage === "function"
+      && nodeGraphWorkspaceKeyIsUnifiedPage(key)
+      && typeof applyNodeGraphUnifiedSeatToElement === "function") {
+      restored = applyNodeGraphUnifiedSeatToElement(element);
+    }
+    if (!restored) {
+      restored = positionNodeGraphWorkspaceWindowFromState(key, element);
+    }
     if (!restored) {
       // Keep an existing seat — never re-home just because the user activated.
       restored = lockNodeGraphFloatingWindowExistingSeat(element);
@@ -441,6 +469,12 @@ function lockNodeGraphFloatingWindowExistingSeat(element) {
 }
 
 function positionNodeGraphWorkspaceWindowFromState(key, element) {
+  if (typeof nodeGraphWorkspaceKeyIsUnifiedPage === "function"
+    && nodeGraphWorkspaceKeyIsUnifiedPage(key)) {
+    return typeof applyNodeGraphUnifiedSeatToElement === "function"
+      ? applyNodeGraphUnifiedSeatToElement(element)
+      : false;
+  }
   const state = normalizeNodeGraphWorkspaceWindowStates(nodeGraphMvp.workspaceWindowStates)[key];
   const sharedInspectorState = normalizeNodeGraphSharedInspectorWindowState(
     nodeGraphMvp.sharedInspectorWindowState,
@@ -491,10 +525,18 @@ function applyNodeGraphWorkspaceWindowStateToElement(key) {
   if (!element) {
     return;
   }
-  if (typeof markNodeGraphFloatingWindowSurface === "function") {
+  if (key !== "standaloneMidiKeyboard" && typeof markNodeGraphFloatingWindowSurface === "function") {
     markNodeGraphFloatingWindowSurface(element);
   }
   if (key === "oscilloscopeSettings") {
+    element.hidden = true;
+    return;
+  }
+  if (typeof nodeGraphWorkspaceKeyIsUnifiedPage === "function"
+    ? nodeGraphWorkspaceKeyIsUnifiedPage(key)
+    : key === "visibilityMenu") {
+    // Unified pages are one window. Restore that window after all keys,
+    // never independently unhide/re-home each page from its old seat.
     element.hidden = true;
     return;
   }
@@ -502,14 +544,8 @@ function applyNodeGraphWorkspaceWindowStateToElement(key) {
     initNodeGraphStandaloneMidiKeyboard();
   }
   element.hidden = !state.open;
-  if (state.open && typeof raiseNodeGraphFloatingWindow === "function") {
+  if (key !== "standaloneMidiKeyboard" && state.open && typeof raiseNodeGraphFloatingWindow === "function") {
     raiseNodeGraphFloatingWindow(element);
-  }
-  if (key === "standaloneMidiKeyboard" && typeof applyNodeGraphStandaloneMidiKeyboardDockSize === "function") {
-    applyNodeGraphStandaloneMidiKeyboardDockSize(state.size);
-  }
-  if (key === "tooltipWindow" && typeof applyNodeGraphTooltipWindowSize === "function") {
-    applyNodeGraphTooltipWindowSize(state.size);
   }
   if (key === "uiSettings" && typeof applyNodeUserUiSettingsWindowSize === "function") {
     applyNodeUserUiSettingsWindowSize(state.size);
@@ -526,11 +562,8 @@ function applyNodeGraphWorkspaceWindowStateToElement(key) {
   if (key === "moduleBrowser" && typeof applyNodeGraphModuleShopWindowSize === "function") {
     applyNodeGraphModuleShopWindowSize(state.size);
   }
-  if (key === "visibilityMenu" && typeof applyNodeGraphVisibilityMenuSize === "function") {
-    applyNodeGraphVisibilityMenuSize(state.size);
-  }
   if (key === "metaparameters" && typeof applyNodeMetadataPopoverSize === "function") {
-    applyNodeMetadataPopoverSize(nodeGraphMvp.sharedInspectorWindowState?.size);
+    applyNodeMetadataPopoverSize(nodeGraphMvp.unifiedWindowSize || nodeGraphMvp.sharedInspectorWindowState?.size);
   }
   if (key === "traceDisplaySettings" && typeof applyNodeGraphTraceDisplaySettingsWindowSize === "function") {
     applyNodeGraphTraceDisplaySettingsWindowSize(nodeGraphMvp.sharedInspectorWindowState?.size);
@@ -589,6 +622,9 @@ function applyNodeGraphWorkspaceWindowStates() {
     applyNodeGraphWorkspaceWindowStateToElement(key);
   }
   enforceNodeGraphWorkspaceClosedWindowStates(nodeGraphMvp.workspaceWindowStates);
+  if (typeof restoreNodeGraphUnifiedWindowAfterWorkspaceStates === "function") {
+    restoreNodeGraphUnifiedWindowAfterWorkspaceStates();
+  }
   document
     .getElementById("nodeUserUiSettingsButton")
     ?.classList.toggle("active", !document.getElementById("nodeUserUiSettingsPanel")?.hidden);
@@ -622,22 +658,42 @@ function normalizeNodeUiDevSettings(settings = {}) {
   const controls = settings.controls && typeof settings.controls === "object"
     ? { ...settings.controls }
     : {};
-  // Migrate legacy combined hover dimmer cutout keys → split toggles.
-  if (controls.dimmerCutoutSliderEnabled === undefined
-    && typeof controls.hoverModuleDimmerCutoutEnabled === "boolean") {
-    controls.dimmerCutoutSliderEnabled = controls.hoverModuleDimmerCutoutEnabled;
+  if (!Object.hasOwn(controls, "jackAnalog")) {
+    if (controls.jackAnalogOut) {
+      controls.jackAnalog = controls.jackAnalogOut;
+    } else if (controls.jackAnalogIn) {
+      controls.jackAnalog = controls.jackAnalogIn;
+    }
   }
-  if (controls.dimmerCutoutMouseEnabled === undefined
-    && typeof controls.hoverModuleDimmerCutoutEnabled === "boolean") {
-    controls.dimmerCutoutMouseEnabled = controls.hoverModuleDimmerCutoutEnabled;
+  if (controls.sliderHandleHue == null && controls.sliderPositionFillHue != null) {
+    controls.sliderHandleHue = controls.sliderPositionFillHue;
   }
-  if (controls.dimmerCutoutTitleEnabled === undefined
-    && typeof controls.hoverModuleTitleDimmerCutoutEnabled === "boolean") {
-    controls.dimmerCutoutTitleEnabled = controls.hoverModuleTitleDimmerCutoutEnabled;
+  if (controls.sliderHandleBrightness == null) {
+    if (controls.sliderPositionFillBrightness != null) {
+      controls.sliderHandleBrightness = controls.sliderPositionFillBrightness;
+    } else if (controls.sliderPositionFillLightness != null) {
+      controls.sliderHandleBrightness = controls.sliderPositionFillLightness;
+    }
+  }
+  if (controls.sliderHandleAlpha == null && controls.sliderPositionFillAlpha != null) {
+    controls.sliderHandleAlpha = controls.sliderPositionFillAlpha;
   }
   const exposedControls = settings.exposedControls && typeof settings.exposedControls === "object"
-    ? settings.exposedControls
+    ? { ...settings.exposedControls }
     : {};
+  if (exposedControls.sliderHandleHue == null && exposedControls.sliderPositionFillHue != null) {
+    exposedControls.sliderHandleHue = exposedControls.sliderPositionFillHue;
+  }
+  if (exposedControls.sliderHandleBrightness == null) {
+    if (exposedControls.sliderPositionFillBrightness != null) {
+      exposedControls.sliderHandleBrightness = exposedControls.sliderPositionFillBrightness;
+    } else if (exposedControls.sliderPositionFillLightness != null) {
+      exposedControls.sliderHandleBrightness = exposedControls.sliderPositionFillLightness;
+    }
+  }
+  if (exposedControls.sliderHandleAlpha == null && exposedControls.sliderPositionFillAlpha != null) {
+    exposedControls.sliderHandleAlpha = exposedControls.sliderPositionFillAlpha;
+  }
   const nodeColors = settings.nodeColors && typeof settings.nodeColors === "object"
     ? settings.nodeColors
     : {};
@@ -673,17 +729,29 @@ function normalizeNodeUiDevSettings(settings = {}) {
   const wireLengthsVisible = view.wireLengthsVisible !== undefined
     ? Boolean(view.wireLengthsVisible)
     : (nodeGraphMvp.wireLengthsVisible !== false);
+  const wireCurve = typeof normalizeNodeGraphWireCurve === "function"
+    ? normalizeNodeGraphWireCurve(view.wireCurve ?? nodeGraphMvp.wireCurve)
+    : (() => {
+      const n = Number(view.wireCurve ?? nodeGraphMvp.wireCurve ?? 1);
+      return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 1;
+    })();
   const wiresAboveModules = Boolean(view.wiresAboveModules ?? nodeGraphMvp.wiresAboveModules);
   // Debug chrome is session-only — never default on, never restore from UI settings.
   const keyboardDebugInfoVisible = false;
-  const tooltipEmbedded = Boolean(view.tooltipEmbedded ?? nodeGraphMvp.tooltipEmbedded);
+  const tooltipEmbedded = view.tooltipEmbedded !== undefined
+    ? Boolean(view.tooltipEmbedded)
+    : (nodeGraphMvp.tooltipEmbedded !== false);
   const tooltipEmbedHeight = typeof normalizeNodeGraphTooltipEmbedHeight === "function"
     ? normalizeNodeGraphTooltipEmbedHeight(view.tooltipEmbedHeight ?? nodeGraphMvp.tooltipEmbedHeight ?? 46)
     : Math.max(32, Math.min(320, Math.round(Number(view.tooltipEmbedHeight ?? nodeGraphMvp.tooltipEmbedHeight) || 46)));
+  const controllerDockHeight = typeof normalizeNodeGraphControllerDockHeight === "function"
+    ? normalizeNodeGraphControllerDockHeight(view.controllerDockHeight ?? nodeGraphMvp.controllerDockHeight ?? 0)
+    : Math.max(0, Math.min(620, Math.round(Number(view.controllerDockHeight ?? nodeGraphMvp.controllerDockHeight) || 0)));
   const moduleButtonsVisible = Boolean(view.moduleButtonsVisible ?? nodeGraphMvp.moduleButtonsVisible);
   const appChromeBarsVisible = view.appChromeBarsVisible === undefined
     ? (nodeGraphMvp.appChromeBarsVisible !== false)
     : Boolean(view.appChromeBarsVisible);
+  const transportChromeStuck = Boolean(view.transportChromeStuck ?? nodeGraphMvp.transportChromeStuck);
   const moduleInterfaceControlsVisible = Boolean(view.moduleInterfaceControlsVisible ?? nodeGraphMvp.moduleInterfaceControlsVisible);
   const moduleOscilloscopesVisible = Boolean(view.moduleOscilloscopesVisible ?? nodeGraphMvp.moduleOscilloscopesVisible);
   const moduleSlidersVisible = Boolean(view.moduleSlidersVisible ?? nodeGraphMvp.moduleSlidersVisible);
@@ -700,6 +768,12 @@ function normalizeNodeUiDevSettings(settings = {}) {
   const globalSmoothingManual = Boolean(
     view.globalSmoothingManual ?? nodeGraphMvp?.live?.autoSmoothingManual ?? false,
   );
+  const snakeMouseSmooth = typeof clampNodeGraphSnakeMouseSmooth === "function"
+    ? clampNodeGraphSnakeMouseSmooth(view.snakeMouseSmooth ?? nodeGraphMvp?.snakeMouseSmooth ?? 0)
+    : (() => {
+      const n = Number(view.snakeMouseSmooth ?? nodeGraphMvp?.snakeMouseSmooth ?? 0);
+      return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0;
+    })();
   const moduleScopeDotCore1Enabled = normalizeNodeGraphModuleScopeDotCoreEnabled(
     view.moduleScopeDotCore1Enabled ?? nodeGraphMvp.moduleScopeDotCore1Enabled ?? false,
   );
@@ -727,29 +801,32 @@ function normalizeNodeUiDevSettings(settings = {}) {
   const moduleScopeDiscontinuitySkipSamples = normalizeNodeGraphModuleScopeDiscontinuitySkipSamples(
     view.moduleScopeDiscontinuitySkipSamples ?? nodeGraphMvp.moduleScopeDiscontinuitySkipSamples ?? 1,
   );
-  const macroKnobArcThickness = normalizeNodeGraphMacroKnobArcThickness(
-    view.macroKnobArcThickness ?? nodeGraphMvp.macroKnobArcThickness ?? 7,
-  );
-  const macroKnobArcGapBrightness = normalizeNodeGraphMacroKnobArcGapBrightness(
-    view.macroKnobArcGapBrightness ?? nodeGraphMvp.macroKnobArcGapBrightness ?? 0,
-  );
-  const macroKnobSizeScale = normalizeNodeGraphMacroKnobSizeScale(
-    view.macroKnobSizeScale ?? nodeGraphMvp.macroKnobSizeScale ?? 1,
-  );
-  const macroKnobHitboxOutlineVisible = Boolean(
-    view.macroKnobHitboxOutlineVisible ?? nodeGraphMvp.macroKnobHitboxOutlineVisible,
-  );
-  const macroKnobLabelPosition = normalizeNodeGraphMacroKnobLabelPosition(
-    view.macroKnobLabelPosition ?? nodeGraphMvp.macroKnobLabelPosition ?? "top",
-  );
-  const macroKnobValuePosition = normalizeNodeGraphMacroKnobValuePosition(
-    view.macroKnobValuePosition ?? nodeGraphMvp.macroKnobValuePosition ?? "mid",
-  );
+  const macroControlsFaceRaw = {
+    ...((view.macroControlsFace && typeof view.macroControlsFace === "object")
+      ? view.macroControlsFace
+      : (nodeGraphMvp.macroControlsFace && typeof nodeGraphMvp.macroControlsFace === "object"
+        ? nodeGraphMvp.macroControlsFace
+        : {})),
+  };
+  // Legacy UIDEV view keys fold into the face SSOT.
+  if (macroControlsFaceRaw.arcThickness == null) {
+    macroControlsFaceRaw.arcThickness = view.macroKnobArcThickness ?? nodeGraphMvp.macroKnobArcThickness;
+  }
+  if (macroControlsFaceRaw.arcGapBrightness == null) {
+    macroControlsFaceRaw.arcGapBrightness = view.macroKnobArcGapBrightness ?? nodeGraphMvp.macroKnobArcGapBrightness;
+  }
+  if (macroControlsFaceRaw.sizeScale == null) {
+    macroControlsFaceRaw.sizeScale = view.macroKnobSizeScale ?? nodeGraphMvp.macroKnobSizeScale;
+  }
+  if (macroControlsFaceRaw.labelPosition == null) {
+    macroControlsFaceRaw.labelPosition = view.macroKnobLabelPosition ?? nodeGraphMvp.macroKnobLabelPosition;
+  }
+  if (macroControlsFaceRaw.valuePosition == null) {
+    macroControlsFaceRaw.valuePosition = view.macroKnobValuePosition ?? nodeGraphMvp.macroKnobValuePosition;
+  }
   const macroControlsFace = typeof normalizeNodeGraphMacroControlsFaceSettings === "function"
-    ? normalizeNodeGraphMacroControlsFaceSettings(
-      view.macroControlsFace ?? nodeGraphMvp.macroControlsFace,
-    )
-    : (view.macroControlsFace ?? nodeGraphMvp.macroControlsFace ?? null);
+    ? normalizeNodeGraphMacroControlsFaceSettings(macroControlsFaceRaw)
+    : macroControlsFaceRaw;
   const traceSettings = typeof normalizeNodeGraphTraceDisplaySettings === "function"
     ? normalizeNodeGraphTraceDisplaySettings(
       typeof migrateNodeGraphLegacyDot2Settings === "function"
@@ -801,24 +878,6 @@ function normalizeNodeUiDevSettings(settings = {}) {
   const moduleStoreDepartment = normalizeNodeGraphModuleStoreDepartmentState(
     view.moduleStoreDepartment ?? nodeGraphMvp.moduleStoreDepartment,
   );
-  let workingPatch = null;
-  if (view.workingPatch && typeof view.workingPatch === "object") {
-    // Hard fail: never swallow validate errors into null (that silently
-    // replaced the graph with the default and looked like "lost modules").
-    const loaded = typeof loadNodeGraphPatchFromObject === "function"
-      ? loadNodeGraphPatchFromObject(view.workingPatch)
-      : validateNodeGraphPatch(view.workingPatch);
-    workingPatch = cloneNodeGraphPatch(loaded);
-    workingPatch = typeof sanitizeNodeUiDevWorkingPatchForStartup === "function"
-      ? sanitizeNodeUiDevWorkingPatchForStartup(workingPatch)
-      : workingPatch;
-  }
-  const currentSavedPatchFilename = String(view.currentSavedPatchFilename || "").trim();
-  const patchDirtyState = ["saved", "edited", "untouched"].includes(view.patchDirtyState)
-    ? view.patchDirtyState
-    : workingPatch
-      ? "edited"
-      : "untouched";
   const savedPatchBankIndex = typeof normalizeNodeGraphSavedPatchBankIndex === "function"
     ? normalizeNodeGraphSavedPatchBankIndex(view.savedPatchBankIndex ?? nodeGraphMvp.savedPatchBankIndex)
     : Math.max(0, Math.min(127, Math.round(Number(view.savedPatchBankIndex ?? nodeGraphMvp.savedPatchBankIndex) || 0)));
@@ -857,18 +916,21 @@ function normalizeNodeUiDevSettings(settings = {}) {
       gridVisible: Boolean(gridVisible),
       gridLightVisible: Boolean(gridLightVisible),
       wireLengthsVisible: Boolean(wireLengthsVisible),
+      wireCurve,
       wiresAboveModules,
       keyboardDebugInfoVisible,
       tooltipEmbedded,
       tooltipEmbedHeight,
       moduleButtonsVisible,
       appChromeBarsVisible,
+      transportChromeStuck,
       moduleInterfaceControlsVisible,
       moduleOscilloscopesVisible,
       moduleSlidersVisible,
       moduleScopeBackgroundColor,
       globalSmoothingSeconds,
       globalSmoothingManual,
+      snakeMouseSmooth,
       moduleScopeDotCore1Enabled,
       moduleScopeDotCore1Size,
       moduleScopeDotCore1Brightness,
@@ -877,49 +939,18 @@ function normalizeNodeUiDevSettings(settings = {}) {
       moduleScopePointBudget,
       moduleScopeLineThickness,
       moduleScopeDiscontinuitySkipSamples,
-      macroKnobArcThickness,
-      macroKnobArcGapBrightness,
-      macroKnobSizeScale,
-      macroKnobHitboxOutlineVisible,
-      macroKnobLabelPosition,
-      macroKnobValuePosition,
       macroControlsFace,
       traceSettings,
       sliderLayout,
       sliderAmountVisible,
       sliderPositionVisible,
       moduleCatalogVisibility,
-      sceneContextWindowSize,
-      moduleActionWindowSize,
-      workspaceWindowStatesVersion: 1,
-      workspaceWindowStates,
-      sharedInspectorActive,
-      sharedInspectorWindowState,
-      workspaceView,
-      moduleStoreDepartment,
-      savedPatchBankIndex,
-      savedPatchBankName,
-      savedPatchFactoryPath,
-      savedPatchUserPath,
-      savedPatchGridColumns,
-      workingPatch,
-      currentSavedPatchFilename,
-      patchDirtyState,
     },
   };
 }
 
 function readNodeUiDevSettingsFromControls(options = {}) {
-  const includeWorkingPatch = options.includeWorkingPatch !== false;
-  const workingPatchForSettings = includeWorkingPatch && nodeGraphMvp.workingPatch
-    ? cloneNodeGraphPatch(nodeGraphMvp.workingPatch)
-    : null;
-  if (workingPatchForSettings && typeof normalizeNodeGraphPatchView === "function") {
-    workingPatchForSettings.view = {
-      ...normalizeNodeGraphPatchView(workingPatchForSettings.view),
-      zoom: typeof nodeGraphZoom === "function" ? nodeGraphZoom() : nodeGraphMvp.zoom,
-    };
-  }
+  void options;
   const controls = {};
   for (const definition of nodeUiDevSettingControls) {
     const input = document.getElementById(definition.id);
@@ -952,6 +983,9 @@ function readNodeUiDevSettingsFromControls(options = {}) {
       gridVisible: Boolean(nodeGraphMvp.gridVisible),
       gridLightVisible: nodeGraphMvp.gridLightVisible !== false,
       wireLengthsVisible: nodeGraphMvp.wireLengthsVisible !== false,
+      wireCurve: typeof normalizeNodeGraphWireCurve === "function"
+        ? normalizeNodeGraphWireCurve(nodeGraphMvp.wireCurve)
+        : Number(nodeGraphMvp.wireCurve ?? 1),
       wiresAboveModules: Boolean(nodeGraphMvp.wiresAboveModules),
       // Never persist "show debug" — refresh / defaults always hide diagnostics.
       keyboardDebugInfoVisible: false,
@@ -961,6 +995,7 @@ function readNodeUiDevSettingsFromControls(options = {}) {
         : Math.max(32, Math.min(320, Math.round(Number(nodeGraphMvp.tooltipEmbedHeight) || 46))),
       moduleButtonsVisible: Boolean(nodeGraphMvp.moduleButtonsVisible),
       appChromeBarsVisible: nodeGraphMvp.appChromeBarsVisible !== false,
+      transportChromeStuck: Boolean(nodeGraphMvp.transportChromeStuck),
       moduleInterfaceControlsVisible: Boolean(nodeGraphMvp.moduleInterfaceControlsVisible),
       moduleOscilloscopesVisible: Boolean(nodeGraphMvp.moduleOscilloscopesVisible),
       moduleSlidersVisible: Boolean(nodeGraphMvp.moduleSlidersVisible),
@@ -969,6 +1004,9 @@ function readNodeUiDevSettingsFromControls(options = {}) {
         nodeGraphMvp?.live?.autoSmoothingSeconds ?? nodeGraphAutoSmoothingDefaultSeconds,
       ),
       globalSmoothingManual: Boolean(nodeGraphMvp?.live?.autoSmoothingManual),
+      snakeMouseSmooth: typeof clampNodeGraphSnakeMouseSmooth === "function"
+        ? clampNodeGraphSnakeMouseSmooth(nodeGraphMvp?.snakeMouseSmooth ?? 0)
+        : Math.max(0, Math.min(1, Number(nodeGraphMvp?.snakeMouseSmooth) || 0)),
       moduleScopeDotCore1Enabled: normalizeNodeGraphModuleScopeDotCoreEnabled(nodeGraphMvp.moduleScopeDotCore1Enabled ?? false),
       moduleScopeDotCore1Size: normalizeNodeGraphModuleScopeDotCoreSize(nodeGraphMvp.moduleScopeDotCore1Size ?? 2, 2),
       moduleScopeDotCore1Brightness: normalizeNodeGraphModuleScopeDotCoreBrightness(nodeGraphMvp.moduleScopeDotCore1Brightness ?? 0.23, 0.23),
@@ -979,12 +1017,6 @@ function readNodeUiDevSettingsFromControls(options = {}) {
       moduleScopeDiscontinuitySkipSamples: normalizeNodeGraphModuleScopeDiscontinuitySkipSamples(
         nodeGraphMvp.moduleScopeDiscontinuitySkipSamples ?? 1,
       ),
-      macroKnobArcThickness: normalizeNodeGraphMacroKnobArcThickness(nodeGraphMvp.macroKnobArcThickness ?? 7),
-      macroKnobArcGapBrightness: normalizeNodeGraphMacroKnobArcGapBrightness(nodeGraphMvp.macroKnobArcGapBrightness ?? 0),
-      macroKnobSizeScale: normalizeNodeGraphMacroKnobSizeScale(nodeGraphMvp.macroKnobSizeScale ?? 1),
-      macroKnobHitboxOutlineVisible: Boolean(nodeGraphMvp.macroKnobHitboxOutlineVisible),
-      macroKnobLabelPosition: normalizeNodeGraphMacroKnobLabelPosition(nodeGraphMvp.macroKnobLabelPosition ?? "top"),
-      macroKnobValuePosition: normalizeNodeGraphMacroKnobValuePosition(nodeGraphMvp.macroKnobValuePosition ?? "mid"),
       macroControlsFace: typeof normalizeNodeGraphMacroControlsFaceSettings === "function"
         ? normalizeNodeGraphMacroControlsFaceSettings(nodeGraphMvp.macroControlsFace)
         : nodeGraphMvp.macroControlsFace,
@@ -995,42 +1027,6 @@ function readNodeUiDevSettingsFromControls(options = {}) {
       sliderAmountVisible: Boolean(nodeGraphMvp.sliderAmountVisible),
       sliderPositionVisible: Boolean(nodeGraphMvp.sliderPositionVisible),
       moduleCatalogVisibility: nodeGraphModuleCatalogVisibility(),
-      sceneContextWindowSize: typeof normalizeNodeSceneContextWindowSize === "function"
-        ? normalizeNodeSceneContextWindowSize(nodeGraphMvp.sceneContextWindowSize)
-        : nodeGraphMvp.sceneContextWindowSize,
-      moduleActionWindowSize: typeof normalizeNodeModuleActionsWindowSize === "function"
-        ? normalizeNodeModuleActionsWindowSize(nodeGraphMvp.moduleActionWindowSize)
-        : nodeGraphMvp.moduleActionWindowSize,
-      workspaceWindowStates: normalizeNodeGraphWorkspaceWindowStates(nodeGraphMvp.workspaceWindowStates),
-      sharedInspectorActive: normalizeNodeGraphSharedInspectorActive(nodeGraphMvp.sharedInspectorActive),
-      sharedInspectorWindowState: normalizeNodeGraphSharedInspectorWindowState(nodeGraphMvp.sharedInspectorWindowState),
-      workspaceView: normalizeNodeGraphWorkspaceViewState({
-        pan: nodeGraphMvp.pan,
-        zoom: typeof nodeGraphZoom === "function" ? nodeGraphZoom() : nodeGraphMvp.zoom,
-      }),
-      moduleStoreDepartment: normalizeNodeGraphModuleStoreDepartmentState(nodeGraphMvp.moduleStoreDepartment),
-      savedPatchBankIndex: typeof normalizeNodeGraphSavedPatchBankIndex === "function"
-        ? normalizeNodeGraphSavedPatchBankIndex(nodeGraphMvp.savedPatchBankIndex)
-        : Math.max(0, Math.min(127, Math.round(Number(nodeGraphMvp.savedPatchBankIndex) || 0))),
-      savedPatchBankName: typeof nodeGraphOneLineText === "function"
-        ? nodeGraphOneLineText(nodeGraphMvp.savedPatchBankName)
-        : String(nodeGraphMvp.savedPatchBankName || "").trim(),
-      savedPatchFactoryPath: String(nodeGraphMvp.savedPatchFactoryPath || "").trim(),
-      savedPatchUserPath: String(nodeGraphMvp.savedPatchUserPath || "").trim(),
-      savedPatchGridColumns: typeof normalizeNodeGraphSavedPatchGridColumns === "function"
-        ? normalizeNodeGraphSavedPatchGridColumns(nodeGraphMvp.savedPatchGridColumns)
-        : Math.max(1, Math.min(16, Math.round(Number(nodeGraphMvp.savedPatchGridColumns) || 3))),
-      workingPatch: workingPatchForSettings,
-      currentSavedPatchFilename: includeWorkingPatch ? (nodeGraphMvp.currentSavedPatchFilename || "") : "",
-      patchDirtyState: !includeWorkingPatch
-        ? "untouched"
-        : (
-          ["saved", "edited", "untouched"].includes(nodeGraphMvp.patchDirtyState)
-            ? nodeGraphMvp.patchDirtyState
-            : nodeGraphMvp.workingPatch
-              ? "edited"
-              : "untouched"
-        ),
     },
   });
 }
@@ -1052,6 +1048,430 @@ function loadNodeUiDevSettingsFromScript(text) {
     throw new Error("UI settings format version mismatch");
   }
   return normalizeNodeUiDevSettings(payload);
+}
+
+function normalizeNodeGraphPersistedViewMode(value = "") {
+  const mode = String(value || "").trim();
+  if (mode === "script") {
+    return "settings";
+  }
+  if (
+    mode === "modular"
+    || mode === "modular-windowed"
+    || mode === "settings"
+    || mode === "code"
+    || mode === "mapping"
+  ) {
+    return mode;
+  }
+  return "modular";
+}
+
+function nodeGraphUserSessionFormat() {
+  return {
+    kind: nodeGraphUserSessionFormatKind,
+    version: nodeGraphUserSessionFormatVersion,
+  };
+}
+
+function cloneNodeGraphWorkingPatchForSession(patch) {
+  if (!patch || typeof patch !== "object") {
+    return null;
+  }
+  const workingPatchForSession = cloneNodeGraphPatch(patch);
+  if (typeof nodeGraphPatchSamplesWithoutEmbeddedAudio === "function") {
+    workingPatchForSession.samples = nodeGraphPatchSamplesWithoutEmbeddedAudio(
+      workingPatchForSession.samples,
+    );
+  }
+  if (typeof normalizeNodeGraphPatchView === "function") {
+    workingPatchForSession.view = {
+      ...normalizeNodeGraphPatchView(workingPatchForSession.view),
+      zoom: typeof nodeGraphZoom === "function" ? nodeGraphZoom() : nodeGraphMvp.zoom,
+    };
+  }
+  return typeof sanitizeNodeUiDevWorkingPatchForStartup === "function"
+    ? sanitizeNodeUiDevWorkingPatchForStartup(workingPatchForSession)
+    : workingPatchForSession;
+}
+
+function loadNodeGraphWorkingPatchFromSessionView(view = {}) {
+  if (!view.workingPatch || typeof view.workingPatch !== "object") {
+    return null;
+  }
+  const loaded = typeof loadNodeGraphPatchFromObject === "function"
+    ? loadNodeGraphPatchFromObject(view.workingPatch)
+    : validateNodeGraphPatch(view.workingPatch);
+  const workingPatch = cloneNodeGraphPatch(loaded);
+  return typeof sanitizeNodeUiDevWorkingPatchForStartup === "function"
+    ? sanitizeNodeUiDevWorkingPatchForStartup(workingPatch)
+    : workingPatch;
+}
+
+function normalizeNodeGraphUserSession(payload = {}) {
+  const view = payload?.view && typeof payload.view === "object"
+    ? payload.view
+    : (payload && typeof payload === "object" ? payload : {});
+  const workingPatch = Object.prototype.hasOwnProperty.call(payload, "workingPatch")
+    ? (payload.workingPatch && typeof payload.workingPatch === "object"
+      ? loadNodeGraphWorkingPatchFromSessionView({ workingPatch: payload.workingPatch })
+      : null)
+    : loadNodeGraphWorkingPatchFromSessionView(view);
+  const currentSavedPatchFilename = String(
+    payload.currentSavedPatchFilename ?? view.currentSavedPatchFilename ?? "",
+  ).trim();
+  const patchDirtyState = ["saved", "edited", "untouched"].includes(payload.patchDirtyState)
+    ? payload.patchDirtyState
+    : ["saved", "edited", "untouched"].includes(view.patchDirtyState)
+      ? view.patchDirtyState
+      : workingPatch
+        ? "edited"
+        : "untouched";
+  const controllerDockHeight = typeof normalizeNodeGraphControllerDockHeight === "function"
+    ? normalizeNodeGraphControllerDockHeight(payload.controllerDockHeight ?? view.controllerDockHeight ?? nodeGraphMvp.controllerDockHeight ?? 0)
+    : Math.max(0, Math.min(620, Math.round(Number(payload.controllerDockHeight ?? view.controllerDockHeight ?? nodeGraphMvp.controllerDockHeight) || 0)));
+  const sceneContextWindowSize = typeof normalizeNodeSceneContextWindowSize === "function"
+    ? normalizeNodeSceneContextWindowSize(
+      payload.sceneContextWindowSize ?? view.sceneContextWindowSize ?? nodeGraphMvp.sceneContextWindowSize ?? undefined,
+    )
+    : (payload.sceneContextWindowSize ?? view.sceneContextWindowSize ?? nodeGraphMvp.sceneContextWindowSize ?? null);
+  const moduleActionWindowSize = typeof normalizeNodeModuleActionsWindowSize === "function"
+    ? normalizeNodeModuleActionsWindowSize(
+      payload.moduleActionWindowSize ?? view.moduleActionWindowSize ?? nodeGraphMvp.moduleActionWindowSize ?? undefined,
+    )
+    : (payload.moduleActionWindowSize ?? view.moduleActionWindowSize ?? nodeGraphMvp.moduleActionWindowSize ?? null);
+  const rawWorkspaceWindowStates = payload.workspaceWindowStates
+    ?? view.workspaceWindowStates
+    ?? view.windowStates
+    ?? null;
+  const loadedWorkspaceWindowStates = rawWorkspaceWindowStates ?? nodeGraphMvp.workspaceWindowStates;
+  const invalidAllOpenWorkspaceState =
+    rawWorkspaceWindowStates &&
+    nodeGraphWorkspaceWindowStatesAllOpen(rawWorkspaceWindowStates);
+  const workspaceWindowStates = invalidAllOpenWorkspaceState
+    ? closeNodeGraphWorkspaceWindowStates(rawWorkspaceWindowStates)
+    : normalizeNodeGraphWorkspaceWindowStates(loadedWorkspaceWindowStates);
+  const sharedInspectorWindowState = normalizeNodeGraphSharedInspectorWindowState(
+    payload.sharedInspectorWindowState ?? view.sharedInspectorWindowState,
+    loadedWorkspaceWindowStates,
+  );
+  const sharedInspectorActive = normalizeNodeGraphSharedInspectorActive(
+    payload.sharedInspectorActive ?? view.sharedInspectorActive ?? nodeGraphMvp.sharedInspectorActive,
+  );
+  nodeGraphWorkspaceWindowStatesWithActiveSharedInspector(workspaceWindowStates, sharedInspectorActive);
+  const workspaceView = normalizeNodeGraphWorkspaceViewState(
+    payload.workspaceView ?? view.workspaceView ?? {
+      pan: view.workspacePan ?? nodeGraphMvp.pan,
+      zoom: view.workspaceZoom ?? nodeGraphMvp.zoom,
+    },
+  );
+  const moduleStoreDepartment = normalizeNodeGraphModuleStoreDepartmentState(
+    payload.moduleStoreDepartment ?? view.moduleStoreDepartment ?? nodeGraphMvp.moduleStoreDepartment,
+  );
+  const savedPatchBankIndex = typeof normalizeNodeGraphSavedPatchBankIndex === "function"
+    ? normalizeNodeGraphSavedPatchBankIndex(payload.savedPatchBankIndex ?? view.savedPatchBankIndex ?? nodeGraphMvp.savedPatchBankIndex)
+    : Math.max(0, Math.min(127, Math.round(Number(payload.savedPatchBankIndex ?? view.savedPatchBankIndex ?? nodeGraphMvp.savedPatchBankIndex) || 0)));
+  const savedPatchGridColumns = typeof normalizeNodeGraphSavedPatchGridColumns === "function"
+    ? normalizeNodeGraphSavedPatchGridColumns(payload.savedPatchGridColumns ?? view.savedPatchGridColumns ?? nodeGraphMvp.savedPatchGridColumns)
+    : Math.max(1, Math.min(16, Math.round(Number(payload.savedPatchGridColumns ?? view.savedPatchGridColumns ?? nodeGraphMvp.savedPatchGridColumns) || 3)));
+  const savedPatchBankName = typeof nodeGraphOneLineText === "function"
+    ? nodeGraphOneLineText(payload.savedPatchBankName ?? view.savedPatchBankName ?? nodeGraphMvp.savedPatchBankName ?? "")
+    : String(payload.savedPatchBankName ?? view.savedPatchBankName ?? nodeGraphMvp.savedPatchBankName ?? "").trim();
+  const savedPatchFactoryPath = String(
+    payload.savedPatchFactoryPath ?? view.savedPatchFactoryPath ?? nodeGraphMvp.savedPatchFactoryPath ?? "",
+  ).trim();
+  const savedPatchUserPath = String(
+    payload.savedPatchUserPath ?? view.savedPatchUserPath ?? nodeGraphMvp.savedPatchUserPath ?? "",
+  ).trim();
+  return {
+    format: nodeGraphUserSessionFormat(),
+    workingPatch,
+    currentSavedPatchFilename,
+    patchDirtyState,
+    controllerDockHeight,
+    sceneContextWindowSize,
+    moduleActionWindowSize,
+    workspaceWindowStatesVersion: 1,
+    workspaceWindowStates,
+    sharedInspectorActive,
+    sharedInspectorWindowState,
+    workspaceView,
+    moduleStoreDepartment,
+    savedPatchBankIndex,
+    savedPatchBankName,
+    savedPatchFactoryPath,
+    savedPatchUserPath,
+    savedPatchGridColumns,
+    filePicker: typeof normalizeNodeGraphFilePickerState === "function"
+      ? normalizeNodeGraphFilePickerState(payload.filePicker ?? view.filePicker ?? nodeGraphMvp?.filePicker)
+      : (payload.filePicker ?? view.filePicker ?? nodeGraphMvp?.filePicker ?? { startIn: "desktop" }),
+    viewMode: normalizeNodeGraphPersistedViewMode(
+      payload.viewMode ?? view.viewMode ?? nodeGraphMvp?.viewMode,
+    ),
+    bookScriptPage: payload.bookScriptPage === "ui-settings" || view.bookScriptPage === "ui-settings"
+      ? "ui-settings"
+      : "patch",
+    unifiedWindowPage: typeof nodeGraphUnifiedWindowPageConfig === "function"
+      && nodeGraphUnifiedWindowPageConfig(payload.unifiedWindowPage ?? view.unifiedWindowPage)
+      ? String(payload.unifiedWindowPage ?? view.unifiedWindowPage)
+      : "",
+    unifiedWindowPresentation: ["open", "embedLeft", "embedRight", "float", "closed"].includes(
+      payload.unifiedWindowPresentation ?? view.unifiedWindowPresentation,
+    )
+      ? String(payload.unifiedWindowPresentation ?? view.unifiedWindowPresentation)
+      : "closed",
+    unifiedWindowPosition: (() => {
+      const raw = payload.unifiedWindowPosition ?? view.unifiedWindowPosition;
+      const left = Math.round(Number(raw?.left));
+      const top = Math.round(Number(raw?.top));
+      return Number.isFinite(left) && Number.isFinite(top) ? { left, top } : null;
+    })(),
+    unifiedWindowSize: (() => {
+      const raw = payload.unifiedWindowSize ?? view.unifiedWindowSize;
+      const width = Math.round(Number(raw?.width));
+      const height = Math.round(Number(raw?.height));
+      return width >= 24 && height >= 120 ? { width, height } : null;
+    })(),
+  };
+}
+
+function nodeGraphUserSessionFromLegacySettings(settings = {}) {
+  const view = settings?.view && typeof settings.view === "object" ? settings.view : {};
+  return normalizeNodeGraphUserSession({
+    format: nodeGraphUserSessionFormat(),
+    workingPatch: view.workingPatch ?? null,
+    currentSavedPatchFilename: view.currentSavedPatchFilename,
+    patchDirtyState: view.patchDirtyState,
+    ...view,
+    view,
+  });
+}
+
+function readNodeGraphUserSessionFromState() {
+  const workingPatchForSession = cloneNodeGraphWorkingPatchForSession(nodeGraphMvp.workingPatch);
+  return {
+    format: nodeGraphUserSessionFormat(),
+    workingPatch: workingPatchForSession,
+    currentSavedPatchFilename: nodeGraphMvp.currentSavedPatchFilename || "",
+    patchDirtyState: ["saved", "edited", "untouched"].includes(nodeGraphMvp.patchDirtyState)
+      ? nodeGraphMvp.patchDirtyState
+      : nodeGraphMvp.workingPatch
+        ? "edited"
+        : "untouched",
+    controllerDockHeight: typeof normalizeNodeGraphControllerDockHeight === "function"
+      ? normalizeNodeGraphControllerDockHeight(nodeGraphMvp.controllerDockHeight ?? 0)
+      : Math.max(0, Math.min(620, Math.round(Number(nodeGraphMvp.controllerDockHeight) || 0))),
+    sceneContextWindowSize: typeof normalizeNodeSceneContextWindowSize === "function"
+      ? normalizeNodeSceneContextWindowSize(nodeGraphMvp.sceneContextWindowSize)
+      : nodeGraphMvp.sceneContextWindowSize,
+    moduleActionWindowSize: typeof normalizeNodeModuleActionsWindowSize === "function"
+      ? normalizeNodeModuleActionsWindowSize(nodeGraphMvp.moduleActionWindowSize)
+      : nodeGraphMvp.moduleActionWindowSize,
+    workspaceWindowStatesVersion: 1,
+    workspaceWindowStates: normalizeNodeGraphWorkspaceWindowStates(nodeGraphMvp.workspaceWindowStates),
+    sharedInspectorActive: normalizeNodeGraphSharedInspectorActive(nodeGraphMvp.sharedInspectorActive),
+    sharedInspectorWindowState: normalizeNodeGraphSharedInspectorWindowState(nodeGraphMvp.sharedInspectorWindowState),
+    workspaceView: normalizeNodeGraphWorkspaceViewState({
+      pan: nodeGraphMvp.pan,
+      zoom: typeof nodeGraphZoom === "function" ? nodeGraphZoom() : nodeGraphMvp.zoom,
+    }),
+    moduleStoreDepartment: normalizeNodeGraphModuleStoreDepartmentState(nodeGraphMvp.moduleStoreDepartment),
+    savedPatchBankIndex: typeof normalizeNodeGraphSavedPatchBankIndex === "function"
+      ? normalizeNodeGraphSavedPatchBankIndex(nodeGraphMvp.savedPatchBankIndex)
+      : Math.max(0, Math.min(127, Math.round(Number(nodeGraphMvp.savedPatchBankIndex) || 0))),
+    savedPatchBankName: typeof nodeGraphOneLineText === "function"
+      ? nodeGraphOneLineText(nodeGraphMvp.savedPatchBankName)
+      : String(nodeGraphMvp.savedPatchBankName || "").trim(),
+    savedPatchFactoryPath: String(nodeGraphMvp.savedPatchFactoryPath || "").trim(),
+    savedPatchUserPath: String(nodeGraphMvp.savedPatchUserPath || "").trim(),
+    savedPatchGridColumns: typeof normalizeNodeGraphSavedPatchGridColumns === "function"
+      ? normalizeNodeGraphSavedPatchGridColumns(nodeGraphMvp.savedPatchGridColumns)
+      : Math.max(1, Math.min(16, Math.round(Number(nodeGraphMvp.savedPatchGridColumns) || 3))),
+    filePicker: typeof normalizeNodeGraphFilePickerState === "function"
+      ? normalizeNodeGraphFilePickerState(nodeGraphMvp.filePicker)
+      : nodeGraphMvp.filePicker,
+    viewMode: normalizeNodeGraphPersistedViewMode(nodeGraphMvp.viewMode),
+    bookScriptPage: nodeGraphMvp.bookScriptPage === "ui-settings" ? "ui-settings" : "patch",
+    unifiedWindowPage: String(nodeGraphMvp.unifiedWindowPage || ""),
+    unifiedWindowPresentation: String(nodeGraphMvp.unifiedWindowPresentation || "closed"),
+    unifiedWindowPosition: nodeGraphMvp.unifiedWindowPosition
+      && Number.isFinite(Number(nodeGraphMvp.unifiedWindowPosition.left))
+      ? {
+        left: Math.round(Number(nodeGraphMvp.unifiedWindowPosition.left)),
+        top: Math.round(Number(nodeGraphMvp.unifiedWindowPosition.top)),
+      }
+      : null,
+    unifiedWindowSize: nodeGraphMvp.unifiedWindowSize?.width >= 24
+      && nodeGraphMvp.unifiedWindowSize?.height >= 120
+      ? {
+        width: Math.round(Number(nodeGraphMvp.unifiedWindowSize.width)),
+        height: Math.round(Number(nodeGraphMvp.unifiedWindowSize.height)),
+      }
+      : null,
+  };
+}
+
+function serializeNodeGraphUserSession() {
+  return JSON.stringify(readNodeGraphUserSessionFromState(), null, 2);
+}
+
+function loadNodeGraphUserSessionFromScript(text) {
+  const payload = JSON.parse(text);
+  const format = payload?.format;
+  if (!format || typeof format !== "object") {
+    throw new Error("session missing format object");
+  }
+  if (format.kind === "soemdsp-sandbox-user-ui-settings") {
+    return nodeGraphUserSessionFromLegacySettings(payload);
+  }
+  if (format.kind !== nodeGraphUserSessionFormatKind) {
+    throw new Error("session format kind mismatch");
+  }
+  if (format.version !== nodeGraphUserSessionFormatVersion) {
+    throw new Error("session format version mismatch");
+  }
+  return normalizeNodeGraphUserSession(payload);
+}
+
+function applyNodeGraphUserSession(session, options = {}) {
+  const normalized = session?.format?.kind === nodeGraphUserSessionFormatKind
+    ? normalizeNodeGraphUserSession(session)
+    : normalizeNodeGraphUserSession(session || {});
+  nodeGraphMvp.controllerDockHeight = normalized.controllerDockHeight;
+  if (typeof applyNodeGraphControllerDockHeight === "function") {
+    applyNodeGraphControllerDockHeight(nodeGraphMvp.controllerDockHeight);
+  }
+  nodeGraphMvp.sceneContextWindowSize = normalized.sceneContextWindowSize;
+  if (typeof applyNodeSceneContextWindowSize === "function") {
+    applyNodeSceneContextWindowSize(nodeGraphMvp.sceneContextWindowSize);
+  }
+  nodeGraphMvp.moduleActionWindowSize = normalized.moduleActionWindowSize;
+  if (typeof applyNodeModuleActionsWindowSize === "function") {
+    applyNodeModuleActionsWindowSize(nodeGraphMvp.moduleActionWindowSize);
+  }
+  nodeGraphMvp.workspaceWindowStates = normalizeNodeGraphWorkspaceWindowStates(
+    normalized.workspaceWindowStates,
+  );
+  nodeGraphMvp.sharedInspectorActive = normalizeNodeGraphSharedInspectorActive(normalized.sharedInspectorActive);
+  nodeGraphMvp.sharedInspectorWindowState = normalizeNodeGraphSharedInspectorWindowState(
+    normalized.sharedInspectorWindowState,
+    normalized.workspaceWindowStates,
+  );
+  nodeGraphWorkspaceWindowStatesWithActiveSharedInspector(
+    nodeGraphMvp.workspaceWindowStates,
+    nodeGraphMvp.sharedInspectorActive,
+  );
+  const workspaceView = normalizeNodeGraphWorkspaceViewState(normalized.workspaceView);
+  nodeGraphMvp.pan = { ...workspaceView.pan };
+  nodeGraphMvp.zoom = workspaceView.zoom;
+  nodeGraphMvp.moduleStoreDepartment = normalizeNodeGraphModuleStoreDepartmentState(
+    normalized.moduleStoreDepartment,
+  );
+  // The saved page IS the last clicked one (only clicks persist a page), so it
+  // seeds the anchor the module browser returns to -- see
+  // openNodeGraphModuleShop.
+  nodeGraphMvp.moduleStoreDepartmentAnchor = nodeGraphMvp.moduleStoreDepartment;
+  nodeGraphMvp.savedPatchBankIndex = typeof normalizeNodeGraphSavedPatchBankIndex === "function"
+    ? normalizeNodeGraphSavedPatchBankIndex(normalized.savedPatchBankIndex)
+    : Math.max(0, Math.min(127, Math.round(Number(normalized.savedPatchBankIndex) || 0)));
+  nodeGraphMvp.savedPatchBankName = typeof nodeGraphOneLineText === "function"
+    ? nodeGraphOneLineText(normalized.savedPatchBankName)
+    : String(normalized.savedPatchBankName || "").trim();
+  nodeGraphMvp.savedPatchFactoryPath = String(normalized.savedPatchFactoryPath || "").trim();
+  nodeGraphMvp.savedPatchUserPath = String(normalized.savedPatchUserPath || "").trim();
+  nodeGraphMvp.savedPatchGridColumns = typeof normalizeNodeGraphSavedPatchGridColumns === "function"
+    ? normalizeNodeGraphSavedPatchGridColumns(normalized.savedPatchGridColumns)
+    : Math.max(1, Math.min(16, Math.round(Number(normalized.savedPatchGridColumns) || 3)));
+  if (normalized.workingPatch) {
+    nodeGraphMvp.workingPatch = cloneNodeGraphPatch(normalized.workingPatch);
+  } else if (options.replaceWorkingPatch) {
+    nodeGraphMvp.workingPatch = null;
+  }
+  nodeGraphMvp.filePicker = typeof normalizeNodeGraphFilePickerState === "function"
+    ? normalizeNodeGraphFilePickerState(normalized.filePicker)
+    : (normalized.filePicker || { startIn: "desktop" });
+  nodeGraphMvp.currentSavedPatchFilename = String(normalized.currentSavedPatchFilename || "");
+  nodeGraphMvp.patchDirtyState = ["saved", "edited", "untouched"].includes(normalized.patchDirtyState)
+    ? normalized.patchDirtyState
+    : nodeGraphMvp.workingPatch
+      ? "edited"
+      : "untouched";
+  nodeGraphMvp.viewMode = normalizeNodeGraphPersistedViewMode(normalized.viewMode);
+  nodeGraphMvp.bookScriptPage = normalized.bookScriptPage === "ui-settings" ? "ui-settings" : "patch";
+  nodeGraphMvp.unifiedWindowPage = String(normalized.unifiedWindowPage || "");
+  nodeGraphMvp.unifiedWindowPresentation = String(normalized.unifiedWindowPresentation || "closed");
+  nodeGraphMvp.unifiedWindowPosition = normalized.unifiedWindowPosition || null;
+  nodeGraphMvp.unifiedWindowSize = normalized.unifiedWindowSize || null;
+  if (typeof applyNodeGraphWorkspaceWindowStates === "function") {
+    applyNodeGraphWorkspaceWindowStates();
+  }
+  if (typeof applyNodeGraphZoom === "function") {
+    applyNodeGraphZoom();
+  }
+  if (typeof applyNodeGraphPan === "function") {
+    applyNodeGraphPan();
+  }
+}
+
+function saveNodeGraphUserSessionLocal(text) {
+  if (!nodeGraphLocalDefaultPresetAllowed()) {
+    return false;
+  }
+  if (!nodeUiDevSettingsHydrated) {
+    console.warn("[soemdsp] Refusing to persist session before UI settings have been loaded.");
+    return false;
+  }
+  try {
+    window.localStorage.setItem(nodeGraphUserSessionStorageKey, text);
+    return true;
+  } catch (error) {
+    console.warn(
+      "[soemdsp] Failed to write session to localStorage; keeping previous save.",
+      error?.name || error,
+      typeof text === "string" ? `(payload ~${Math.round(text.length / 1024)} KB)` : "",
+    );
+    return false;
+  }
+}
+
+function persistNodeGraphUserSession() {
+  if (typeof serializeNodeGraphUserSession !== "function") {
+    return false;
+  }
+  return saveNodeGraphUserSessionLocal(serializeNodeGraphUserSession());
+}
+
+function loadNodeGraphUserSessionLocal() {
+  try {
+    const sessionText = window.localStorage.getItem(nodeGraphUserSessionStorageKey);
+    if (sessionText) {
+      return loadNodeGraphUserSessionFromScript(sessionText);
+    }
+    const settingsText = window.localStorage.getItem(nodeUiDevDefaultSettingsStorageKey);
+    if (!settingsText) {
+      return null;
+    }
+    const parsed = JSON.parse(settingsText);
+    if (parsed?.format?.kind !== "soemdsp-sandbox-user-ui-settings") {
+      return null;
+    }
+    return nodeGraphUserSessionFromLegacySettings(parsed);
+  } catch (error) {
+    const message = String(error?.message || error || "");
+    if (message.startsWith("failed to load patch at:")) {
+      console.error(message);
+      try {
+        if (typeof window !== "undefined" && window.SE?.ERROR) {
+          window.SE.ERROR(message, "patch-load");
+        }
+      } catch (_error) {
+        // Debug console optional.
+      }
+      throw (error instanceof Error ? error : new Error(message));
+    }
+    console.error("[soemdsp] Failed to load local session:", message);
+    return null;
+  }
 }
 
 function applyNodeUiDevSettings(settings) {
@@ -1083,6 +1503,12 @@ function applyNodeUiDevSettings(settings) {
   nodeGraphMvp.gridVisible = Boolean(normalized.view.gridVisible);
   nodeGraphMvp.gridLightVisible = normalized.view.gridLightVisible !== false;
   nodeGraphMvp.wireLengthsVisible = normalized.view.wireLengthsVisible !== false;
+  nodeGraphMvp.wireCurve = typeof normalizeNodeGraphWireCurve === "function"
+    ? normalizeNodeGraphWireCurve(normalized.view.wireCurve)
+    : Number(normalized.view.wireCurve ?? 1);
+  if (typeof syncNodeGraphWireCurveControl === "function") {
+    syncNodeGraphWireCurveControl();
+  }
   nodeGraphMvp.wiresAboveModules = Boolean(normalized.view.wiresAboveModules);
   // Force-hide debug on every UI-settings apply / page load (not a saved
   // preference). Same for debug and release builds — Clear Startup / Save /
@@ -1092,11 +1518,13 @@ function applyNodeUiDevSettings(settings) {
   } else {
     nodeGraphMvp.keyboardDebugInfoVisible = false;
   }
-  nodeGraphMvp.tooltipEmbedded = Boolean(normalized.view.tooltipEmbedded);
+  nodeGraphMvp.tooltipEmbedded = normalized.view.tooltipEmbedded !== false;
   nodeGraphMvp.tooltipEmbedHeight = typeof normalizeNodeGraphTooltipEmbedHeight === "function"
     ? normalizeNodeGraphTooltipEmbedHeight(normalized.view.tooltipEmbedHeight ?? 46)
     : Math.max(32, Math.min(320, Math.round(Number(normalized.view.tooltipEmbedHeight) || 46)));
-  if (typeof applyNodeGraphTooltipEmbedHeight === "function") {
+  if (typeof applyNodeGraphTooltipEmbed === "function") {
+    applyNodeGraphTooltipEmbed({ shown: nodeGraphMvp.tooltipEmbedded });
+  } else if (typeof applyNodeGraphTooltipEmbedHeight === "function") {
     applyNodeGraphTooltipEmbedHeight(nodeGraphMvp.tooltipEmbedHeight);
   }
   nodeGraphMvp.moduleButtonsVisible = Boolean(normalized.view.moduleButtonsVisible);
@@ -1105,6 +1533,10 @@ function applyNodeUiDevSettings(settings) {
     : Boolean(normalized.view.appChromeBarsVisible);
   if (typeof setNodeGraphAppChromeBarsVisible === "function") {
     setNodeGraphAppChromeBarsVisible(nodeGraphMvp.appChromeBarsVisible, { help: false });
+  }
+  nodeGraphMvp.transportChromeStuck = Boolean(normalized.view.transportChromeStuck);
+  if (typeof setNodeGraphTransportChromeStuck === "function") {
+    setNodeGraphTransportChromeStuck(nodeGraphMvp.transportChromeStuck, { help: false });
   }
   nodeGraphMvp.moduleInterfaceControlsVisible = Boolean(normalized.view.moduleInterfaceControlsVisible);
   nodeGraphMvp.moduleOscilloscopesVisible = Boolean(normalized.view.moduleOscilloscopesVisible);
@@ -1119,6 +1551,12 @@ function applyNodeUiDevSettings(settings) {
   if (typeof syncNodeGraphGlobalSmoothingControl === "function") {
     syncNodeGraphGlobalSmoothingControl({ force: true });
   }
+  nodeGraphMvp.snakeMouseSmooth = typeof clampNodeGraphSnakeMouseSmooth === "function"
+    ? clampNodeGraphSnakeMouseSmooth(normalized.view.snakeMouseSmooth ?? 0)
+    : Math.max(0, Math.min(1, Number(normalized.view.snakeMouseSmooth) || 0));
+  if (typeof syncNodeGraphSnakeMouseSmoothControl === "function") {
+    syncNodeGraphSnakeMouseSmoothControl();
+  }
   nodeGraphMvp.moduleScopeDotCore1Enabled = normalizeNodeGraphModuleScopeDotCoreEnabled(normalized.view.moduleScopeDotCore1Enabled);
   nodeGraphMvp.moduleScopeDotCore1Size = normalizeNodeGraphModuleScopeDotCoreSize(normalized.view.moduleScopeDotCore1Size, 2);
   nodeGraphMvp.moduleScopeDotCore1Brightness = normalizeNodeGraphModuleScopeDotCoreBrightness(normalized.view.moduleScopeDotCore1Brightness, 0.23);
@@ -1129,30 +1567,6 @@ function applyNodeUiDevSettings(settings) {
   nodeGraphMvp.moduleScopeDiscontinuitySkipSamples = normalizeNodeGraphModuleScopeDiscontinuitySkipSamples(
     normalized.view.moduleScopeDiscontinuitySkipSamples,
   );
-  nodeGraphMvp.macroKnobArcThickness = normalizeNodeGraphMacroKnobArcThickness(normalized.view.macroKnobArcThickness);
-  if (typeof applyNodeGraphMacroKnobArcThickness === "function") {
-    applyNodeGraphMacroKnobArcThickness();
-  }
-  nodeGraphMvp.macroKnobArcGapBrightness = normalizeNodeGraphMacroKnobArcGapBrightness(normalized.view.macroKnobArcGapBrightness);
-  if (typeof applyNodeGraphMacroKnobArcGapBrightness === "function") {
-    applyNodeGraphMacroKnobArcGapBrightness();
-  }
-  nodeGraphMvp.macroKnobSizeScale = normalizeNodeGraphMacroKnobSizeScale(normalized.view.macroKnobSizeScale);
-  if (typeof applyNodeGraphMacroKnobSizeScale === "function") {
-    applyNodeGraphMacroKnobSizeScale();
-  }
-  nodeGraphMvp.macroKnobHitboxOutlineVisible = Boolean(normalized.view.macroKnobHitboxOutlineVisible);
-  if (typeof applyNodeGraphMacroKnobHitboxOutlineVisible === "function") {
-    applyNodeGraphMacroKnobHitboxOutlineVisible();
-  }
-  nodeGraphMvp.macroKnobLabelPosition = normalizeNodeGraphMacroKnobLabelPosition(normalized.view.macroKnobLabelPosition);
-  if (typeof applyNodeGraphMacroKnobLabelPosition === "function") {
-    applyNodeGraphMacroKnobLabelPosition();
-  }
-  nodeGraphMvp.macroKnobValuePosition = normalizeNodeGraphMacroKnobValuePosition(normalized.view.macroKnobValuePosition);
-  if (typeof applyNodeGraphMacroKnobValuePosition === "function") {
-    applyNodeGraphMacroKnobValuePosition();
-  }
   if (typeof normalizeNodeGraphMacroControlsFaceSettings === "function") {
     nodeGraphMvp.macroControlsFace = normalizeNodeGraphMacroControlsFaceSettings(normalized.view.macroControlsFace);
     if (typeof applyNodeGraphMacroControlsFaceSettings === "function") {
@@ -1165,67 +1579,10 @@ function applyNodeUiDevSettings(settings) {
   nodeGraphMvp.sliderLayout = normalizeNodeGraphSliderLayout(normalized.view.sliderLayout);
   nodeGraphMvp.sliderAmountVisible = Boolean(normalized.view.sliderAmountVisible);
   nodeGraphMvp.sliderPositionVisible = Boolean(normalized.view.sliderPositionVisible);
-  nodeGraphMvp.sceneContextWindowSize = normalized.view.sceneContextWindowSize;
-  if (typeof applyNodeSceneContextWindowSize === "function") {
-    applyNodeSceneContextWindowSize(nodeGraphMvp.sceneContextWindowSize);
-  }
-  nodeGraphMvp.moduleActionWindowSize = normalized.view.moduleActionWindowSize;
-  if (typeof applyNodeModuleActionsWindowSize === "function") {
-    applyNodeModuleActionsWindowSize(nodeGraphMvp.moduleActionWindowSize);
-  }
-  nodeGraphMvp.workspaceWindowStates = normalizeNodeGraphWorkspaceWindowStates(
-    normalized.view.workspaceWindowStates,
-  );
-  nodeGraphMvp.sharedInspectorActive = normalizeNodeGraphSharedInspectorActive(normalized.view.sharedInspectorActive);
-  nodeGraphMvp.sharedInspectorWindowState = normalizeNodeGraphSharedInspectorWindowState(
-    normalized.view.sharedInspectorWindowState,
-    normalized.view.workspaceWindowStates,
-  );
-  nodeGraphWorkspaceWindowStatesWithActiveSharedInspector(
-    nodeGraphMvp.workspaceWindowStates,
-    nodeGraphMvp.sharedInspectorActive,
-  );
-  const workspaceView = normalizeNodeGraphWorkspaceViewState(normalized.view.workspaceView);
-  nodeGraphMvp.pan = { ...workspaceView.pan };
-  nodeGraphMvp.zoom = workspaceView.zoom;
-  nodeGraphMvp.moduleStoreDepartment = normalizeNodeGraphModuleStoreDepartmentState(
-    normalized.view.moduleStoreDepartment,
-  );
-  // The saved page IS the last clicked one (only clicks persist a page), so it
-  // seeds the anchor the module browser returns to -- see
-  // openNodeGraphModuleShop.
-  nodeGraphMvp.moduleStoreDepartmentAnchor = nodeGraphMvp.moduleStoreDepartment;
-  nodeGraphMvp.savedPatchBankIndex = typeof normalizeNodeGraphSavedPatchBankIndex === "function"
-    ? normalizeNodeGraphSavedPatchBankIndex(normalized.view.savedPatchBankIndex)
-    : Math.max(0, Math.min(127, Math.round(Number(normalized.view.savedPatchBankIndex) || 0)));
-  nodeGraphMvp.savedPatchBankName = typeof nodeGraphOneLineText === "function"
-    ? nodeGraphOneLineText(normalized.view.savedPatchBankName)
-    : String(normalized.view.savedPatchBankName || "").trim();
-  nodeGraphMvp.savedPatchFactoryPath = String(normalized.view.savedPatchFactoryPath || "").trim();
-  nodeGraphMvp.savedPatchUserPath = String(normalized.view.savedPatchUserPath || "").trim();
-  nodeGraphMvp.savedPatchGridColumns = typeof normalizeNodeGraphSavedPatchGridColumns === "function"
-    ? normalizeNodeGraphSavedPatchGridColumns(normalized.view.savedPatchGridColumns)
-    : Math.max(1, Math.min(16, Math.round(Number(normalized.view.savedPatchGridColumns) || 3)));
-  nodeGraphMvp.workingPatch = normalized.view.workingPatch
-    ? cloneNodeGraphPatch(normalized.view.workingPatch)
-    : null;
-  nodeGraphMvp.currentSavedPatchFilename = String(normalized.view.currentSavedPatchFilename || "");
-  nodeGraphMvp.patchDirtyState = ["saved", "edited", "untouched"].includes(normalized.view.patchDirtyState)
-    ? normalized.view.patchDirtyState
-    : nodeGraphMvp.workingPatch
-      ? "edited"
-      : "untouched";
-  applyNodeGraphWorkspaceWindowStates();
   if (typeof syncNodeSliderHiddenMouseClass === "function") {
     syncNodeSliderHiddenMouseClass();
   }
   applyNodeGraphModuleCatalogVisibility(normalized.view.moduleCatalogVisibility);
-  if (typeof applyNodeGraphZoom === "function") {
-    applyNodeGraphZoom();
-  }
-  if (typeof applyNodeGraphPan === "function") {
-    applyNodeGraphPan();
-  }
   renderNodeGraphGridToggle();
   if (typeof renderNodeGraphGridLightToggle === "function") {
     renderNodeGraphGridLightToggle();
@@ -1249,6 +1606,12 @@ function applyNodeUiDevSettings(settings) {
   syncNodeUiDevSettingsHeaderControls();
   if (!document.activeElement?.dataset?.nodeUiDevMirror) {
     renderNodeUserUiSettingsControls();
+  }
+  if (typeof scheduleNodeUiDevSettingsAutosave === "function") {
+    scheduleNodeUiDevSettingsAutosave();
+  }
+  if (typeof syncNodeUiDevSettingsScriptView === "function") {
+    syncNodeUiDevSettingsScriptView();
   }
   setNodeUiDevSettingsStatus("ui settings applied", true);
 }
@@ -1328,8 +1691,32 @@ function loadNodeUiDevBundledDefaultSettings() {
   }
 }
 
+let nodeUiDevSettingsAutosaveTimer = 0;
+
+function scheduleNodeUiDevSettingsAutosave() {
+  if (!nodeUiDevSettingsHydrated) {
+    return;
+  }
+  if (nodeUiDevSettingsAutosaveTimer) {
+    window.clearTimeout(nodeUiDevSettingsAutosaveTimer);
+  }
+  nodeUiDevSettingsAutosaveTimer = window.setTimeout(() => {
+    nodeUiDevSettingsAutosaveTimer = 0;
+    if (typeof serializeNodeUiDevSettings === "function") {
+      saveNodeUiDevLocalDefaultSettings(serializeNodeUiDevSettings());
+    }
+    if (typeof syncNodeUiDevSettingsScriptView === "function") {
+      syncNodeUiDevSettingsScriptView();
+    }
+  }, 250);
+}
+
 function saveNodeUiDevLocalDefaultSettings(text) {
   if (!nodeGraphLocalDefaultPresetAllowed()) {
+    return false;
+  }
+  if (!nodeUiDevSettingsHydrated) {
+    console.warn("[soemdsp] Refusing to persist UI settings before they have been loaded.");
     return false;
   }
   try {
@@ -1415,6 +1802,30 @@ function resetNodeUiDevControlsToDeclaredDefaults() {
   if (typeof syncNodeUiDevSliderFillColorControls === "function") {
     syncNodeUiDevSliderFillColorControls();
   }
+  if (typeof syncNodeUiDevSnakeSelectColor === "function") {
+    syncNodeUiDevSnakeSelectColor();
+  }
+  if (typeof syncNodeUiDevModuleLightGridControls === "function") {
+    syncNodeUiDevModuleLightGridControls();
+  }
+  if (typeof syncNodeUiDevModuleIdleStroke === "function") {
+    syncNodeUiDevModuleIdleStroke();
+  }
+  if (typeof syncNodeUiDevModuleRoundness === "function") {
+    syncNodeUiDevModuleRoundness();
+  }
+  if (typeof syncNodeUiDevPortSize === "function") {
+    syncNodeUiDevPortSize();
+  }
+  if (typeof syncNodeUiDevIoSectionPadding === "function") {
+    syncNodeUiDevIoSectionPadding();
+  }
+  if (typeof syncNodeUiDevPortBrightness === "function") {
+    syncNodeUiDevPortBrightness();
+  }
+  if (typeof syncNodeUiDevGridDivisionMultiply === "function") {
+    syncNodeUiDevGridDivisionMultiply();
+  }
   if (typeof syncNodeUiDevSettingsHeaderControls === "function") {
     syncNodeUiDevSettingsHeaderControls();
   }
@@ -1428,6 +1839,8 @@ function clearNodeUserStartupRuntimeState() {
   nodeGraphMvp.workingPatch = null;
   nodeGraphMvp.currentSavedPatchFilename = "";
   nodeGraphMvp.patchDirtyState = "untouched";
+  nodeGraphMvp.viewMode = "modular";
+  nodeGraphMvp.bookScriptPage = "patch";
   nodeGraphMvp.workspaceWindowStates = closeNodeGraphWorkspaceWindowStates({});
   nodeGraphMvp.sharedInspectorActive = "";
   nodeGraphMvp.sharedInspectorWindowState = {};
@@ -1445,6 +1858,10 @@ function clearNodeUserStartupRuntimeState() {
   // sliders come back on.
   nodeGraphMvp.moduleButtonsVisible = false;
   nodeGraphMvp.appChromeBarsVisible = true;
+  nodeGraphMvp.transportChromeStuck = false;
+  if (typeof setNodeGraphTransportChromeStuck === "function") {
+    setNodeGraphTransportChromeStuck(false, { help: false });
+  }
   if (typeof setNodeGraphAppChromeBarsVisible === "function") {
     setNodeGraphAppChromeBarsVisible(true, { help: false });
   }
@@ -1456,7 +1873,15 @@ function clearNodeUserStartupRuntimeState() {
   nodeGraphMvp.gridVisible = true;
   nodeGraphMvp.gridLightVisible = true;
   nodeGraphMvp.wireLengthsVisible = true;
-  nodeGraphMvp.sliderAmountVisible = true;
+  nodeGraphMvp.wireCurve = 1;
+  if (typeof syncNodeGraphWireCurveControl === "function") {
+    syncNodeGraphWireCurveControl();
+  }
+  nodeGraphMvp.snakeMouseSmooth = 0;
+  if (typeof syncNodeGraphSnakeMouseSmoothControl === "function") {
+    syncNodeGraphSnakeMouseSmoothControl();
+  }
+  nodeGraphMvp.sliderAmountVisible = false;
   nodeGraphMvp.wiresAboveModules = false;
   // Clear Startup / reset view: never bake "Show Debug" into the next load.
   // Force off before re-serializing settings as the new startup default.
@@ -1507,7 +1932,7 @@ function clearNodeUserStartupState() {
   const removed = clearNodeUserStartupLocalStorage();
   clearNodeUserStartupRuntimeState();
   const text = typeof serializeNodeUiDevSettings === "function"
-    ? serializeNodeUiDevSettings({ includeWorkingPatch: false })
+    ? serializeNodeUiDevSettings()
     : "";
   if (
     text &&
@@ -1527,28 +1952,58 @@ function clearNodeUserStartupState() {
 let nodeGraphWorkspaceViewAutosaveTimer = 0;
 
 function saveNodeGraphWorkspaceViewToUserSettings(options = {}) {
-  if (
-    typeof serializeNodeUiDevSettings !== "function" ||
-    typeof saveNodeUiDevLocalDefaultSettings !== "function"
-  ) {
-    return false;
-  }
-  const text = serializeNodeUiDevSettings();
-  const saved = saveNodeUiDevLocalDefaultSettings(text);
+  void options;
   // Ambient autosave (pan/zoom/smoothing-drag/etc.) only persists to this
-  // browser's localStorage so a refresh doesn't lose progress. It must never
-  // silently overwrite the shipped default preset on the server -- that only
-  // happens when the user explicitly clicks Save/Update Default UI Settings.
-  if (options.file === true && typeof postNodeUiDevSettingsPreset === "function") {
-    if (nodeGraphWorkspaceViewAutosaveTimer) {
-      window.clearTimeout(nodeGraphWorkspaceViewAutosaveTimer);
-    }
-    nodeGraphWorkspaceViewAutosaveTimer = window.setTimeout(() => {
-      nodeGraphWorkspaceViewAutosaveTimer = 0;
-      postNodeUiDevSettingsPreset(serializeNodeUiDevSettings()).catch(() => {});
-    }, 350);
+  // browser's session blob so a refresh doesn't lose progress. It must never
+  // silently overwrite the shipped default UI settings preset on the server.
+  return persistNodeGraphUserSession();
+}
+
+function finishNodeUiDevSettingsHydration() {
+  const storedCatalogVisibility = loadNodeGraphModuleCatalogVisibilityLocal();
+  if (storedCatalogVisibility) {
+    applyNodeGraphModuleCatalogVisibility(storedCatalogVisibility);
   }
-  return saved;
+  loadNodeGraphModuleStoreStateLocal();
+  loadNodeGraphModuleScopeSettingsLocal();
+  nodeUiDevSettingsHydrated = true;
+}
+
+function reportNodeGraphSessionLoadFault(error) {
+  const message = String(error?.message || error || "failed to load patch");
+  document.documentElement.dataset.nodeUiDevSettingsSource = "patch-load-failed";
+  let script = String(error?.patchScript || "");
+  if (!script) {
+    try {
+      script = window.localStorage?.getItem?.(nodeGraphUserSessionStorageKey)
+        || window.localStorage?.getItem?.(nodeUiDevDefaultSettingsStorageKey)
+        || "";
+    } catch (_error) {
+      script = "";
+    }
+  }
+  if (typeof nodeGraphShowPatchLoadFault === "function") {
+    nodeGraphShowPatchLoadFault({
+      message,
+      script,
+      title: "Failed to load saved patch",
+    });
+  } else {
+    if (typeof setNodeGraphScriptStatus === "function") {
+      setNodeGraphScriptStatus(message, false);
+    }
+    if (typeof setNodeUiDevSettingsStatus === "function") {
+      setNodeUiDevSettingsStatus(message, false);
+    }
+    console.error(message);
+  }
+}
+
+function applyNodeGraphBootSession(session, options = {}) {
+  if (!session) {
+    return;
+  }
+  applyNodeGraphUserSession(session, options);
 }
 
 async function loadNodeUiDevDefaultSettings() {
@@ -1556,73 +2011,68 @@ async function loadNodeUiDevDefaultSettings() {
   try {
     storedSettings = loadNodeUiDevLocalDefaultSettings();
   } catch (error) {
-    const message = String(error?.message || error || "failed to load patch");
-    document.documentElement.dataset.nodeUiDevSettingsSource = "patch-load-failed";
-    // Full settings blob so the user can still recover their file from the dialog.
-    let script = String(error?.patchScript || "");
-    if (!script) {
-      try {
-        script = window.localStorage?.getItem?.(nodeUiDevDefaultSettingsStorageKey) || "";
-      } catch (_error) {
-        script = "";
-      }
-    }
-    if (typeof nodeGraphShowPatchLoadFault === "function") {
-      nodeGraphShowPatchLoadFault({
-        message,
-        script,
-        title: "Failed to load saved patch",
-      });
-    } else {
-      if (typeof setNodeGraphScriptStatus === "function") {
-        setNodeGraphScriptStatus(message, false);
-      }
-      if (typeof setNodeUiDevSettingsStatus === "function") {
-        setNodeUiDevSettingsStatus(message, false);
-      }
-      console.error(message);
-    }
-    // Modal blocks the graph; still boot chrome with bundled UI defaults
-    // (no working patch) so Initialize can run.
+    reportNodeGraphSessionLoadFault(error);
     const bundledSettings = loadNodeUiDevBundledDefaultSettings();
     if (bundledSettings) {
       try {
-        // Drop any working patch from bundled blob — user must Initialize.
-        if (bundledSettings.view) {
-          bundledSettings.view = { ...bundledSettings.view, workingPatch: null };
-        }
         applyNodeUiDevSettings(bundledSettings);
       } catch (_error) {
         // Controls-only fallback below.
       }
     }
+    finishNodeUiDevSettingsHydration();
     return;
   }
+
+  let storedSession = null;
+  let sessionLoadFailed = false;
+  try {
+    storedSession = loadNodeGraphUserSessionLocal();
+    if (storedSession) {
+      try {
+        if (!window.localStorage.getItem(nodeGraphUserSessionStorageKey)) {
+          window.localStorage.setItem(
+            nodeGraphUserSessionStorageKey,
+            JSON.stringify(storedSession),
+          );
+        }
+      } catch (_error) {
+        // Quota: keep the legacy settings blob until a later session persist.
+      }
+    }
+  } catch (error) {
+    sessionLoadFailed = true;
+    reportNodeGraphSessionLoadFault(error);
+  }
+
   if (storedSettings) {
     applyNodeUiDevSettings(storedSettings);
-    const storedCatalogVisibility = loadNodeGraphModuleCatalogVisibilityLocal();
-    if (storedCatalogVisibility) {
-      applyNodeGraphModuleCatalogVisibility(storedCatalogVisibility);
+    if (!sessionLoadFailed) {
+      applyNodeGraphBootSession(storedSession);
     }
-    loadNodeGraphModuleStoreStateLocal();
-    loadNodeGraphModuleScopeSettingsLocal();
     document.documentElement.dataset.nodeUiDevSettingsSource = "local";
+    finishNodeUiDevSettingsHydration();
+    if (!sessionLoadFailed && storedSession) {
+      persistNodeGraphUserSession();
+    }
     return;
   }
+
   if (typeof fetch === "function") {
     try {
       const response = await fetch(nodeUiDevDefaultSettingsUrl, { cache: "no-store" });
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
-      applyNodeUiDevSettings(loadNodeUiDevSettingsFromScript(await response.text()));
-      const storedCatalogVisibility = loadNodeGraphModuleCatalogVisibilityLocal();
-      if (storedCatalogVisibility) {
-        applyNodeGraphModuleCatalogVisibility(storedCatalogVisibility);
+      const text = await response.text();
+      applyNodeUiDevSettings(loadNodeUiDevSettingsFromScript(text));
+      if (!sessionLoadFailed && storedSession) {
+        applyNodeGraphBootSession(storedSession);
+      } else if (!sessionLoadFailed) {
+        applyNodeGraphBootSession(nodeGraphUserSessionFromLegacySettings(JSON.parse(text)));
       }
-      loadNodeGraphModuleStoreStateLocal();
-      loadNodeGraphModuleScopeSettingsLocal();
       document.documentElement.dataset.nodeUiDevSettingsSource = "fetch";
+      finishNodeUiDevSettingsHydration();
       return;
     } catch {
       // Fall through to the bundled preset for browser surfaces without request APIs.
@@ -1631,12 +2081,15 @@ async function loadNodeUiDevDefaultSettings() {
   const bundledSettings = loadNodeUiDevBundledDefaultSettings();
   document.documentElement.dataset.nodeUiDevSettingsSource = bundledSettings ? "bundled" : "controls";
   applyNodeUiDevSettings(bundledSettings || readNodeUiDevSettingsFromControls());
-  const storedCatalogVisibility = loadNodeGraphModuleCatalogVisibilityLocal();
-  if (storedCatalogVisibility) {
-    applyNodeGraphModuleCatalogVisibility(storedCatalogVisibility);
+  if (!sessionLoadFailed && storedSession) {
+    applyNodeGraphBootSession(storedSession);
+  } else if (!sessionLoadFailed) {
+    const bundledRaw = window.nodeUiDevBundledDefaultSettings;
+    if (bundledRaw) {
+      applyNodeGraphBootSession(nodeGraphUserSessionFromLegacySettings(bundledRaw));
+    }
   }
-  loadNodeGraphModuleStoreStateLocal();
-  loadNodeGraphModuleScopeSettingsLocal();
+  finishNodeUiDevSettingsHydration();
 }
 
 async function copyNodeUiDevSettingsToClipboard() {
@@ -1648,23 +2101,97 @@ async function copyNodeUiDevSettingsToClipboard() {
   }
 }
 
-function saveNodeUiDevSettingsFile() {
-  const blob = new Blob([`${serializeNodeUiDevSettings()}\n`], {
-    type: "application/json",
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "useruisettings.json";
-  document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
-  setNodeUiDevSettingsStatus("ui settings saved", true);
+async function pasteNodeUiDevSettingsFromClipboard(event) {
+  const button = event?.currentTarget;
+  if (typeof confirmNodeGraphDefaultButtonClick === "function" && button) {
+    if (!confirmNodeGraphDefaultButtonClick(
+      button,
+      () => setNodeUiDevSettingsStatus("click Confirm Paste to apply clipboard UI settings", true),
+      { confirmText: "Confirm Paste" },
+    )) {
+      return;
+    }
+  }
+  let text = "";
+  try {
+    text = await navigator.clipboard.readText();
+  } catch (error) {
+    setNodeUiDevSettingsStatus("paste blocked: clipboard permission denied", false);
+    return;
+  }
+  try {
+    applyNodeUiDevSettings(loadNodeUiDevSettingsFromScript(text));
+    setNodeUiDevSettingsStatus("ui settings pasted", true);
+    if (typeof flashNodeGraphDefaultButtonSaved === "function" && button) {
+      flashNodeGraphDefaultButtonSaved(button, "Pasted");
+    }
+  } catch (error) {
+    setNodeUiDevSettingsStatus(error?.message || "paste failed: not valid UI settings", false);
+  }
 }
 
-function loadNodeUiDevSettingsFile() {
-  document.getElementById("nodeUiDevSettingsFileInput")?.click();
+async function saveNodeUiDevSettingsFile() {
+  const text = `${serializeNodeUiDevSettings()}\n`;
+  const suggested = typeof nodeGraphFilePickerState === "function"
+    ? nodeGraphFilePickerState().lastSettingsName
+    : "useruisettings.json";
+  try {
+    const result = typeof nodeGraphSaveTextFileWithNativeDialog === "function"
+      ? await nodeGraphSaveTextFileWithNativeDialog({
+        text,
+        suggestedName: suggested || "useruisettings.json",
+        description: "soemdsp UI settings JSON",
+        accept: { "application/json": [".json"] },
+      })
+      : { ok: false };
+    if (result.cancelled) {
+      setNodeUiDevSettingsStatus("file save cancelled", true);
+      return;
+    }
+    if (!result.ok) {
+      setNodeUiDevSettingsStatus("file save failed", false);
+      return;
+    }
+    if (typeof rememberNodeGraphFilePickerMeta === "function") {
+      rememberNodeGraphFilePickerMeta({ lastSettingsName: result.name || suggested });
+    }
+    setNodeUiDevSettingsStatus(
+      result.downloaded ? `ui settings file downloaded: ${result.name}` : `ui settings file written: ${result.name}`,
+      true,
+    );
+  } catch (error) {
+    setNodeUiDevSettingsStatus(`file save failed: ${error?.message || error}`, false);
+  }
+}
+
+async function loadNodeUiDevSettingsFile() {
+  try {
+    const result = typeof nodeGraphOpenTextFileWithNativeDialog === "function"
+      ? await nodeGraphOpenTextFileWithNativeDialog({
+        description: "soemdsp UI settings JSON",
+        accept: { "application/json": [".json"] },
+        fallbackInputId: "nodeUiDevSettingsFileInput",
+      })
+      : { ok: false };
+    if (result.cancelled) {
+      setNodeUiDevSettingsStatus("file load cancelled", true);
+      return;
+    }
+    if (!result.ok) {
+      setNodeUiDevSettingsStatus(result.error || "file load failed", false);
+      return;
+    }
+    applyNodeUiDevSettings(loadNodeUiDevSettingsFromScript(result.text));
+    if (typeof rememberNodeGraphFilePickerMeta === "function") {
+      rememberNodeGraphFilePickerMeta({ lastSettingsName: result.name });
+    }
+    if (typeof scheduleNodeUiDevSettingsAutosave === "function") {
+      scheduleNodeUiDevSettingsAutosave();
+    }
+    setNodeUiDevSettingsStatus(`ui settings loaded: ${result.name || "file"}`, true);
+  } catch (error) {
+    setNodeUiDevSettingsStatus(error?.message || "file load failed", false);
+  }
 }
 
 function handleNodeUiDevSettingsFileLoad(event) {

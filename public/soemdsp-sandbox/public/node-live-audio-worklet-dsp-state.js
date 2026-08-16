@@ -2,31 +2,23 @@
 // Load after core class, before registerProcessor.
 
 NodeLiveAudioProcessor.prototype.createEarProtector = function createEarProtector(rate = sampleRate) {
-    const threshold = Math.pow(10, 6 / 20);
-    const clipLimit = 0.8;
-    const increment = 1 / Math.max(1, 0.0005 * rate);
-    const decrement = 1 / Math.max(1, 0.15 * rate);
-    const w = Math.min((Math.PI * 2) / Math.max(1, rate), 0.000142475857) * 1000;
-    const a1 = Math.exp(-w);
-    const b0 = 0.5 * (1 + a1);
-    const b1 = -b0;
-    let counter = 0;
-    let inputBuffer = 0;
-    let outputBuffer = 0;
+    const safeRate = Math.max(1, Number(rate) || sampleRate || 44100);
+    const state = typeof createNodeGraphSpeakerProtector2State === "function"
+      ? createNodeGraphSpeakerProtector2State(safeRate)
+      : this.createSpeakerProtector2State?.(safeRate);
     return {
+      state,
       protect: (left = 0, right = left) => {
-        const mono = ((Number(left) || 0) + (Number(right) || 0)) * 0.5;
-        outputBuffer = b0 * mono + b1 * inputBuffer + a1 * outputBuffer;
-        inputBuffer = mono;
-        if (Math.abs(outputBuffer) >= threshold) {
-          counter += increment;
+        if (typeof nodeGraphSpeakerProtector2Protect === "function" && state) {
+          return nodeGraphSpeakerProtector2Protect(state, left, right, safeRate);
         }
-        const gain = counter >= 1 ? 0 : 1;
-        counter = Math.max(0, Math.min(2, counter)) - decrement;
         return {
-          left: this.clampValue((Number(left) || 0) * gain, -clipLimit, clipLimit),
-          muted: gain <= 0,
-          right: this.clampValue((Number(right) || 0) * gain, -clipLimit, clipLimit),
+          left: Number(left) || 0,
+          right: Number(right) || 0,
+          gain: 1,
+          muted: false,
+          engaged: false,
+          mode: "idle",
         };
       },
     };
@@ -61,8 +53,12 @@ NodeLiveAudioProcessor.prototype.outputSampleClipped = function outputSampleClip
 };
 
 NodeLiveAudioProcessor.prototype.outputSampleTripsEarProtection = function outputSampleTripsEarProtection(value) {
+    if (typeof nodeGraphSpeakerProtector2SampleTrips === "function") {
+      return nodeGraphSpeakerProtector2SampleTrips(value);
+    }
     const number = Number(value);
-    return !Number.isFinite(number) || Math.abs(number) > 1;
+    const eps = typeof NODE_GRAPH_NUMERIC_PRECISION === "number" ? NODE_GRAPH_NUMERIC_PRECISION : 1e-7;
+    return !Number.isFinite(number) || Math.abs(number) > 1 + eps;
 };
 
 NodeLiveAudioProcessor.prototype.badValueReason = function badValueReason(value) {
@@ -205,7 +201,9 @@ NodeLiveAudioProcessor.prototype.createGraphLfoState = function createGraphLfoSt
 
 NodeLiveAudioProcessor.prototype.createSamplePlaybackState = function createSamplePlaybackState() {
     return {
+      lastGate: 0,
       lastReset: 0,
+      lastTrigger: 0,
       phase: 0,
       playing: false,
       rangeKey: "",
@@ -295,6 +293,9 @@ NodeLiveAudioProcessor.prototype.safeFilterNumber = function safeFilterNumber(va
 
 NodeLiveAudioProcessor.prototype.sampleChannelAt = function sampleChannelAt(sample, channelIndex, frameIndex) {
     const channel = sample?.channelData?.[channelIndex] || sample?.samples;
+    if (typeof nodeGraphSampleReadHermite === "function") {
+      return nodeGraphSampleReadHermite(channel, frameIndex);
+    }
     if (!channel?.length) {
       return 0;
     }

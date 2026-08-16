@@ -339,7 +339,7 @@
     },
     {
       "name": "fractal_brownian_noise",
-      "label": "Fractal Brownian Noise",
+      "label": "Fractal Brownian Motion",
       "targetType": "fractalBrownianNoise",
       "kind": "noise",
       "source": "native_modules/fractal_brownian_noise/fractal_brownian_noise.cpp",
@@ -791,6 +791,18 @@
       "libUrl": "",
       "wasm": "native_modules/random_walk/random_walk.wasm",
       "wasmUrl": "native_modules/random_walk/random_walk.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "raster_rgb",
+      "label": "Raster RGB",
+      "targetType": "rasterRgb",
+      "kind": "processor",
+      "source": "native_modules/raster_rgb/raster_rgb.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/raster_rgb/raster_rgb.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/raster_rgb/raster_rgb.wasm",
+      "wasmUrl": "native_modules/raster_rgb/raster_rgb.wasm",
       "wasmAvailable": true
     },
     {

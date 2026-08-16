@@ -45,10 +45,10 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.lastBadValueNodeId = "";
     this.lastBadValueSource = "";
     this.audioPlayerMeterNodeId = "";
-    this.audioPlayerMeterPeak = 0;
     this.audioPlayerMeterPhase = 0;
+    this.audioPlayerMeterSpeed = 0;
+    this.audioPlayerMeterSpeeds = Object.create(null);
     this.audioPlayerMeterReason = "";
-    this.audioPlayerMeterSamples = 0;
     this.audioPlayerNodeIds = [];
     this.inputMeterPeak = 0;
     this.inputMeterSamples = 0;
@@ -237,6 +237,8 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.stftBlurStates = new Map();
     this.softpopOscillatorStates = new Map();
     this.sinepulseStates = new Map();
+    this.kickEnvelopeStates = new Map();
+    this.sineKickStates = new Map();
     this.nativeButterworth = null;
     this.nativeButterworthReady = false;
     this.nativeLinkwitzRiley = null;
@@ -260,6 +262,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.humanFilterStates = new Map();
     this.pulseExplosionStates = new Map();
     this.comparatorStates = new Map();
+    this.noiseDetectorStates = new Map();
     this.speedColorInertiaStates = new Map();
     this.inertialFilterStates = new Map();
     this.tiltFilterStates = new Map();
@@ -268,6 +271,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.minMaxStates = new Map();
     this.aliasSineStates = new Map();
     this.robinSinusoidStates = new Map();
+    this.phoneToneStates = new Map();
     this.ladderFilterStates = new Map();
     this.tb303FilterStates = new Map();
     this.linearEnvelopeStates = new Map();
@@ -278,6 +282,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.sincStates = new Map();
     this.nativeSinc = null;
     this.nativeSincReady = false;
+    this.rasterRgbStates = new Map();
+    this.nativeRasterRgb = null;
+    this.nativeRasterRgbReady = false;
     this.nativeSoftwave = null;
     this.nativeSoftwaveReady = false;
     this.henonMapStates = new Map();
@@ -335,6 +342,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     // (Rate mode). Advanced once per evaluateFrame call.
     this.absoluteFrame = 0;
     this.slewLimiterStates = new Map();
+    this.speakerProtector2States = new Map();
     this.airClipperStates = new Map();
     this.smoothers = new Map();
     // Dirty list (soemdsp SmootherManager::toSmooth_): only moving chases run.
@@ -352,6 +360,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.vactrolEnvelopeStates = new Map();
     this.impulseButtonStates = new Map();
     this.bugButtonStates = new Map();
+    this.keypadStates = new Map();
     this.visualInputBuffers = new Map();
     this.visualSinks = [];
     this.resetVisualControls();

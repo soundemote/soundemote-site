@@ -131,15 +131,15 @@ function nodeInteractionMouseHint(element) {
     return nodeGraphTooltipText("view.snapGrid");
   }
   if (element.id === "nodeSettingsViewButton") {
-    return nodeGraphTooltipText("view.patchSettings") || "Open the Patch page (name, bank, grid).";
+    return nodeGraphTooltipText("view.patchSettings") || "Script page";
   }
   if (element.id === "nodeModularInfiniteViewButton") {
     return nodeGraphTooltipText("view.infiniteModular")
-      || "Hide top and bottom bars for a bigger canvas (V).";
+      || "Computer view — infinite canvas, no crop.";
   }
   if (element.id === "nodeModularWindowedViewButton") {
     return nodeGraphTooltipText("view.windowedModular")
-      || "Condensed modular frame with resize handle (M).";
+      || "Phone view — condensed frame with resize widget.";
   }
   if (element.id === "nodeUndoButton" || element.id === "nodeRedoButton") {
     return nodeGraphTooltipText("history.help");
@@ -151,21 +151,9 @@ function nodeInteractionMouseHint(element) {
     return nodeGraphTooltipText("view.gridHelp");
   }
   if (element.id === "nodeTooltipToggleButton") {
-    const mode =
-      typeof nodeGraphTooltipMode === "function"
-        ? nodeGraphTooltipMode()
-        : nodeGraphTooltipsShown()
-          ? nodeGraphMvp.tooltipEmbedded
-            ? "embedded"
-            : "float"
-          : "off";
-    if (mode === "embedded") {
-      return nodeGraphTooltipText("view.tipsCycleFloat");
-    }
-    if (mode === "float") {
-      return nodeGraphTooltipText("view.tipsCycleOff");
-    }
-    return nodeGraphTooltipText("view.tipsCycleEmbed");
+    return nodeGraphTooltipsShown()
+      ? (nodeGraphTooltipText("view.tipsCycleOff") || "Hide docked tips (T).")
+      : (nodeGraphTooltipText("view.tipsCycleEmbed") || "Show docked tips (T).");
   }
   if (element.id === "nodeSliderAmountToggleButton") {
     return nodeGraphTooltipText(nodeGraphMvp.sliderAmountVisible ? "view.sliderAmountHide" : "view.sliderAmountShow");
@@ -185,7 +173,7 @@ function nodeInteractionMouseHint(element) {
   if (element.id === "nodeCopyExecutionJsonButton") {
     return nodeGraphTooltipText("actions.copyExecutionJson");
   }
-  if (element.id === "nodeDeleteButton") {
+  if (element.id === "nodeDeleteButton" || element.id === "nodeSceneHistoryDeleteButton") {
     return nodeGraphTooltipText("actions.deleteSelection");
   }
   if (element.matches("button")) {

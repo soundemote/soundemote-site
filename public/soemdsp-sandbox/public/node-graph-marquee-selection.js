@@ -1,10 +1,13 @@
 // Hitpoint / “snake” selection: drag a thick dotted trail on empty canvas;
 // whatever the trail crosses is selected. First hit locks mode to modules XOR wires.
+// Locked patch: trail + wire hits still run; modules are never selected.
 // Samples the mouse path with lerp so fast drags do not skip over modules/wires.
 // Wires also use geometric path hits (isPointInStroke / length sampling) because
 // cable hit-paths live under modules and elementFromPoint alone misses them.
 
-const nodeGraphHitTrailMinStepPx = 2;
+// Near-duplicate skip only. A 2px collapse + in-place tip rewrite was eating
+// the first samples (dot, then delay) and turning the trail into a polyline.
+const nodeGraphHitTrailMinStepPx = 0.12;
 const nodeGraphHitTrailMaxPoints = 4000;
 /**
  * Layout-px step along a segment when sampling hits.
@@ -80,23 +83,106 @@ function nodeGraphHitTrailSmoothPathD(points) {
   return d;
 }
 
+function nodeGraphHitTrailKeptStrokes() {
+  if (!Array.isArray(nodeGraphMvp.hitTrailKeptStrokes)) {
+    nodeGraphMvp.hitTrailKeptStrokes = [];
+  }
+  return nodeGraphMvp.hitTrailKeptStrokes;
+}
+
+function nodeGraphHitTrailLivePen(zoom = nodeGraphHitTrailZoom()) {
+  const z = Math.max(0.0001, Number(zoom) || 1);
+  return {
+    width: 6 / z,
+    dash: `${14 / z} ${11 / z}`,
+  };
+}
+
+function clearNodeGraphHitTrailKept() {
+  nodeGraphMvp.hitTrailKeptStrokes = [];
+}
+
+function nodeGraphHitTrailPushKept(points, pen = null) {
+  if (!points?.length) {
+    return;
+  }
+  const style = pen || nodeGraphHitTrailLivePen();
+  const strokes = nodeGraphHitTrailKeptStrokes();
+  strokes.push({
+    dash: style.dash,
+    points: points.map((p) => ({ x: Number(p.x) || 0, y: Number(p.y) || 0 })),
+    width: style.width,
+  });
+  while (strokes.length > 48) {
+    strokes.shift();
+  }
+}
+
+function nodeGraphHitTrailMirrorPoint(point, center) {
+  // Vertical axis through the Shift+click: left↔right only (heart, not 180° spin).
+  return {
+    x: (2 * center.x) - point.x,
+    y: point.y,
+  };
+}
+
+function nodeGraphHitTrailMirrorStroke(points, center) {
+  if (!points?.length || !center) {
+    return [];
+  }
+  return points.map((p) => nodeGraphHitTrailMirrorPoint(p, center));
+}
+
+function nodeGraphHitTrailAllStrokes() {
+  const strokes = nodeGraphHitTrailKeptStrokes().slice();
+  const drag = nodeGraphMvp.marqueeSelection;
+  const live = drag?.points;
+  if (live?.length) {
+    const pen = nodeGraphHitTrailLivePen();
+    const liveStroke = { dash: pen.dash, live: true, points: live, width: pen.width };
+    strokes.push(liveStroke);
+    if (drag.mirrorDraw && nodeGraphMvp.hitTrailMirrorCenter) {
+      strokes.push({
+        dash: pen.dash,
+        live: true,
+        points: nodeGraphHitTrailMirrorStroke(live, nodeGraphMvp.hitTrailMirrorCenter),
+        width: pen.width,
+      });
+    }
+  }
+  return strokes;
+}
+
+function nodeGraphHitTrailSyncPaths(svg, count) {
+  const ns = "http://www.w3.org/2000/svg";
+  const paths = [...svg.querySelectorAll("path")];
+  while (paths.length < count) {
+    const next = document.createElementNS(ns, "path");
+    next.setAttribute("class", "node-selection-hit-trail-path");
+    svg.append(next);
+    paths.push(next);
+  }
+  while (paths.length > Math.max(1, count)) {
+    paths.pop().remove();
+  }
+  return paths;
+}
+
 function renderNodeGraphMarqueeSelection() {
   // Legacy name kept for call sites. Renders the hit trail snake.
   const svg = nodeGraphHitTrailSvg();
-  const path = nodeGraphHitTrailPath();
   const marquee = document.getElementById("nodeSelectionMarquee");
   if (marquee) {
     marquee.hidden = true;
   }
-  const drag = nodeGraphMvp.marqueeSelection;
-  if (!svg || !path || !drag?.points?.length) {
-    if (svg) {
-      svg.setAttribute("hidden", "");
-      svg.style.display = "none";
-    }
-    if (path) {
-      path.removeAttribute("d");
-    }
+  const strokes = nodeGraphHitTrailAllStrokes();
+  if (!svg) {
+    return;
+  }
+  if (!strokes.length) {
+    svg.setAttribute("hidden", "");
+    svg.style.display = "none";
+    nodeGraphHitTrailSyncPaths(svg, 1)[0]?.removeAttribute("d");
     return;
   }
 
@@ -112,39 +198,132 @@ function renderNodeGraphMarqueeSelection() {
   svg.style.opacity = "1";
   svg.style.pointerEvents = "none";
 
-  // Visual only — cubic Catmull–Rom stroke. Hit sampling still uses drag.points raw.
-  path.setAttribute("d", nodeGraphHitTrailSmoothPathD(drag.points));
-  // Keep ~6 screen-px thick dashes stable under workspace CSS zoom.
-  const zoom = nodeGraphHitTrailZoom();
-  path.setAttribute("stroke", "var(--accent, #7fc7d9)");
-  path.setAttribute("fill", "none");
-  path.setAttribute("stroke-width", String(6 / zoom));
-  path.setAttribute("stroke-linecap", "round");
-  path.setAttribute("stroke-linejoin", "round");
-  path.setAttribute("stroke-dasharray", `${14 / zoom} ${11 / zoom}`);
-  path.style.opacity = "0.95";
+  const paths = nodeGraphHitTrailSyncPaths(svg, strokes.length);
+  for (let i = 0; i < strokes.length; i += 1) {
+    const stroke = strokes[i];
+    const el = paths[i];
+    const d = nodeGraphHitTrailSmoothPathD(stroke.points);
+    el.setAttribute("d", d);
+    el.setAttribute("fill", "none");
+    el.style.strokeWidth = String(stroke.width);
+    el.style.strokeDasharray = stroke.dash;
+    el.style.opacity = "0.95";
+  }
+}
+
+function clampNodeGraphSnakeMouseSmooth(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(1, n));
+}
+
+function nodeGraphSnakeMouseSmoothAmount() {
+  return clampNodeGraphSnakeMouseSmooth(nodeGraphMvp?.snakeMouseSmooth);
+}
+
+function syncNodeGraphSnakeMouseSmoothControl() {
+  const input = document.getElementById("nodeSnakeMouseSmoothSlider");
+  if (!input) {
+    return;
+  }
+  const amount = nodeGraphSnakeMouseSmoothAmount();
+  if (document.activeElement !== input) {
+    input.value = String(amount);
+  }
+  input.setAttribute("aria-valuetext", `${Math.round(amount * 100)}%`);
+}
+
+function persistNodeGraphSnakeMouseSmoothSetting() {
+  if (typeof serializeNodeUiDevSettings !== "function") {
+    return;
+  }
+  if (typeof saveNodeUiDevLocalDefaultSettings === "function") {
+    saveNodeUiDevLocalDefaultSettings(serializeNodeUiDevSettings());
+  }
+}
+
+function setNodeGraphSnakeMouseSmooth(value, options = {}) {
+  nodeGraphMvp.snakeMouseSmooth = clampNodeGraphSnakeMouseSmooth(value);
+  if (options.sync !== false) {
+    syncNodeGraphSnakeMouseSmoothControl();
+  }
+  if (options.persist) {
+    persistNodeGraphSnakeMouseSmoothSetting();
+  }
+  return nodeGraphMvp.snakeMouseSmooth;
+}
+
+function bindNodeGraphSnakeMouseSmoothControl() {
+  const input = document.getElementById("nodeSnakeMouseSmoothSlider");
+  if (!input || input.dataset.snakeMouseSmoothBound === "true") {
+    return;
+  }
+  input.dataset.snakeMouseSmoothBound = "true";
+  input.min = "0";
+  input.max = "1";
+  input.step = "0.01";
+  input.addEventListener("input", (event) => {
+    setNodeGraphSnakeMouseSmooth(event.currentTarget.value, { persist: false, sync: false });
+    event.currentTarget.setAttribute(
+      "aria-valuetext",
+      `${Math.round(nodeGraphSnakeMouseSmoothAmount() * 100)}%`,
+    );
+  });
+  input.addEventListener("change", (event) => {
+    setNodeGraphSnakeMouseSmooth(event.currentTarget.value, { persist: true, sync: false });
+  });
+  syncNodeGraphSnakeMouseSmoothControl();
+}
+
+function nodeGraphHitTrailEnsureMouseSmooth(drag, point, amount) {
+  if (!drag || typeof createNodeGraphMouseSmoothState !== "function") {
+    return null;
+  }
+  if (!drag.mouseSmooth) {
+    drag.mouseSmooth = createNodeGraphMouseSmoothState(point.x, point.y);
+    if (typeof nodeGraphMouseSmoothBegin === "function") {
+      nodeGraphMouseSmoothBegin(drag.mouseSmooth, amount, point.x, point.y);
+    }
+  }
+  return drag.mouseSmooth;
+}
+
+function nodeGraphHitTrailSmoothPointer(drag, point) {
+  const amount = nodeGraphSnakeMouseSmoothAmount();
+  let sx = Number(point.x) || 0;
+  let sy = Number(point.y) || 0;
+  const filter = nodeGraphHitTrailEnsureMouseSmooth(drag, point, amount);
+  if (filter && typeof nodeGraphMouseSmoothPoint === "function") {
+    const smoothed = nodeGraphMouseSmoothPoint(filter, sx, sy, amount);
+    sx = smoothed.x;
+    sy = smoothed.y;
+  }
+  // Amount 0: Papoulis is passthrough. Keep the former light 1-frame EMA so
+  // the lowest slider notch is the original (working) snake feel.
+  if (amount <= 1e-4 && drag.points?.length) {
+    const last = drag.points[drag.points.length - 1];
+    const ema = 0.65;
+    sx = last.x + (sx - last.x) * ema;
+    sy = last.y + (sy - last.y) * ema;
+  }
+  return { x: sx, y: sy };
 }
 
 function nodeGraphHitTrailAppendPoint(drag, point) {
+  const smoothed = nodeGraphHitTrailSmoothPointer(drag, point);
   if (!drag.points?.length) {
-    drag.points = [{ x: point.x, y: point.y }];
+    drag.points = [smoothed];
     return true;
   }
   const last = drag.points[drag.points.length - 1];
-  // Light 1-frame EMA on the tip (~0.65 toward cursor) — one step smoother
-  // than raw pointer without lagging the snake.
-  const smooth = 0.65;
-  const sx = last.x + (point.x - last.x) * smooth;
-  const sy = last.y + (point.y - last.y) * smooth;
-  const dx = sx - last.x;
-  const dy = sy - last.y;
+  const dx = smoothed.x - last.x;
+  const dy = smoothed.y - last.y;
   if ((dx * dx) + (dy * dy) < nodeGraphHitTrailMinStepPx * nodeGraphHitTrailMinStepPx) {
-    // Still update tip so the line tracks the cursor tightly.
-    last.x = sx;
-    last.y = sy;
     return false;
   }
-  drag.points.push({ x: sx, y: sy });
+  drag.points.push(smoothed);
   if (drag.points.length > nodeGraphHitTrailMaxPoints) {
     drag.points.splice(0, drag.points.length - nodeGraphHitTrailMaxPoints);
   }
@@ -519,6 +698,10 @@ function nodeGraphHitTrailApplyHit(drag, hit) {
   if (!drag || !hit) {
     return;
   }
+  // Locked patch: trail and wire hits stay live; modules are not selectable.
+  if (drag.skipModuleHits && hit.kind === "module") {
+    return;
+  }
   // Lock to first hit type: modules XOR wires for this drag.
   if (!drag.lockMode) {
     drag.lockMode = hit.kind === "wire" ? "wires" : "modules";
@@ -568,7 +751,9 @@ function nodeGraphHitTrailFlushSelection(drag) {
   }
   drag.selectionDirty = false;
   if (drag.lockMode === "modules") {
-    setNodeGraphNodeSelection([...(drag.hitNodeIds || [])]);
+    if (!drag.skipModuleHits) {
+      setNodeGraphNodeSelection([...(drag.hitNodeIds || [])]);
+    }
     return;
   }
   if (drag.lockMode === "wires") {
@@ -594,7 +779,9 @@ function nodeGraphHitTrailSampleSegment(drag, fromSurface, toSurface) {
   const dy = toSurface.y - from.y;
   const dist = Math.hypot(dx, dy);
   const steps = Math.max(1, Math.ceil(dist / nodeGraphHitTrailSampleStepPx));
-  const moduleBounds = nodeGraphHitTrailEnsureModuleBoundsCache(drag);
+  const moduleBounds = drag.skipModuleHits
+    ? null
+    : nodeGraphHitTrailEnsureModuleBoundsCache(drag);
   // Only build wire geom when we might need it (unlocked or wire-locked).
   const mayHitWires = !drag.lockMode || drag.lockMode === "wires";
   const wireGeoms = mayHitWires ? nodeGraphHitTrailEnsureWireGeomCache(drag) : null;
@@ -621,7 +808,7 @@ function nodeGraphHitTrailSampleSegment(drag, fromSurface, toSurface) {
     const baseY = from.y + dy * t;
     const center = { x: baseX, y: baseY };
 
-    if (!drag.lockMode || drag.lockMode === "modules") {
+    if (!drag.skipModuleHits && (!drag.lockMode || drag.lockMode === "modules")) {
       for (const hit of nodeGraphModulesContainingSurfacePoint(center, 2, moduleBounds)) {
         nodeGraphHitTrailApplyHit(drag, hit);
       }
@@ -653,10 +840,15 @@ function updateNodeGraphMarqueeSelection(event = null) {
     return;
   }
   if (event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
-    const toSurface = nodeGraphClientPoint(event);
-    const fromSurface = drag.lastSampleSurface || drag.current || drag.start || toSurface;
-    nodeGraphHitTrailSampleSegment(drag, fromSurface, toSurface);
-    drag.lastSampleSurface = { x: toSurface.x, y: toSurface.y };
+    const raw = nodeGraphClientPoint(event);
+    const fromSurface = drag.lastSampleSurface || drag.points?.[drag.points.length - 1] || drag.current || drag.start || raw;
+    nodeGraphHitTrailAppendPoint(drag, raw);
+    const tip = drag.points?.[drag.points.length - 1] || raw;
+    if (!drag.cosmetic) {
+      nodeGraphHitTrailSampleSegment(drag, fromSurface, tip);
+    }
+    drag.current = raw;
+    drag.lastSampleSurface = { x: tip.x, y: tip.y };
     drag.lastClient = { x: event.clientX, y: event.clientY };
   }
   renderNodeGraphMarqueeSelection();
@@ -674,26 +866,43 @@ function startNodeGraphMarqueeSelection(event, workspace) {
     document.activeElement.blur();
   }
   const point = nodeGraphClientPoint(event);
-  const additive = event.shiftKey || event.ctrlKey || event.metaKey;
+  const keepCtrl = Boolean(event.ctrlKey);
+  const mirrorDraw = Boolean(event.shiftKey);
+  const cosmetic = keepCtrl || mirrorDraw;
+  if (mirrorDraw) {
+    // Shift+click plants the mirror origin. Drag never moves it.
+    nodeGraphMvp.hitTrailMirrorCenter = { x: point.x, y: point.y };
+  }
   const startSelectedWires = typeof nodeGraphSelectedWireEntries === "function"
     ? nodeGraphSelectedWireEntries()
     : [];
+  const skipModuleHits = typeof nodeGraphPatchIsLocked === "function" && nodeGraphPatchIsLocked();
+  const smoothAmount = nodeGraphSnakeMouseSmoothAmount();
+  const mouseSmooth = typeof createNodeGraphMouseSmoothState === "function"
+    ? createNodeGraphMouseSmoothState(point.x, point.y)
+    : null;
+  if (mouseSmooth && typeof nodeGraphMouseSmoothBegin === "function") {
+    nodeGraphMouseSmoothBegin(mouseSmooth, smoothAmount, point.x, point.y);
+  }
   nodeGraphMvp.marqueeSelection = {
-    additive,
+    additive: false,
+    cosmetic,
+    keepTrail: keepCtrl,
+    mirrorDraw,
     current: point,
-    hitNodeIds: additive ? new Set(nodeGraphSelectedNodeIds()) : new Set(),
-    hitWires: additive ? [...startSelectedWires] : [],
-    hitWireKeys: additive
-      ? new Set(startSelectedWires.map((w) => `${w.kind}:${w.index}`))
-      : new Set(),
+    hitNodeIds: new Set(),
+    hitWires: [],
+    hitWireKeys: new Set(),
     lastClient: { x: event.clientX, y: event.clientY },
     lastSampleSurface: { x: point.x, y: point.y },
     lockMode: null,
     moduleBoundsCache: null,
+    mouseSmooth,
     moved: false,
     pointerId: event.pointerId,
     points: [{ x: point.x, y: point.y }],
     selectionDirty: false,
+    skipModuleHits,
     start: point,
     startSelectedIds: [...nodeGraphSelectedNodeIds()],
     startSelectedWires,
@@ -701,17 +910,19 @@ function startNodeGraphMarqueeSelection(event, workspace) {
     wirePathCache: null,
   };
   // Pre-warm module AABBs once on pointerdown. Wire polylines are built lazily
-  // on first wire hunt (modules-only snakes never pay that cost).
-  nodeGraphHitTrailEnsureModuleBoundsCache(nodeGraphMvp.marqueeSelection);
-  if (!additive) {
-    setNodeGraphSelection(null);
+  // on first wire hunt (modules-only snakes never pay that cost). Locked patch
+  // still draws and can hit wires; it never selects modules.
+  if (!cosmetic) {
+    if (!skipModuleHits) {
+      nodeGraphHitTrailEnsureModuleBoundsCache(nodeGraphMvp.marqueeSelection);
+      setNodeGraphSelection(null);
+    }
+    nodeGraphHitTrailSampleSegment(
+      nodeGraphMvp.marqueeSelection,
+      point,
+      point,
+    );
   }
-  // Sample under cursor immediately (usually empty at start).
-  nodeGraphHitTrailSampleSegment(
-    nodeGraphMvp.marqueeSelection,
-    point,
-    point,
-  );
   renderNodeGraphMarqueeSelection();
   try {
     workspace.setPointerCapture(event.pointerId);
@@ -725,7 +936,6 @@ function startNodeGraphMarqueeSelection(event, workspace) {
 function beginNodeGraphMarqueeSelection(event) {
   if (
     event.button !== 0 ||
-    event.ctrlKey ||
     nodeGraphMarqueeTargetIsBlocked(event.target)
   ) {
     return;
@@ -766,7 +976,6 @@ function beginNodeGraphMarqueeSelectionOnEntry(event) {
     !entry ||
     entry.pointerId !== event.pointerId ||
     !(event.buttons & 1) ||
-    event.ctrlKey ||
     nodeGraphMvp.marqueeSelection ||
     nodeGraphMvp.dragging ||
     nodeGraphMvp.nodeDragging ||
@@ -788,11 +997,17 @@ function dragNodeGraphMarqueeSelection(event) {
 
   const point = nodeGraphClientPoint(event);
   drag.current = point;
+  const wasMoved = drag.moved;
   drag.moved ||=
     Math.abs(point.x - drag.start.x) > 2 ||
     Math.abs(point.y - drag.start.y) > 2;
-  nodeGraphHitTrailAppendPoint(drag, point);
-  // Always sample + render once moved (or every frame so the snake draws immediately).
+  if (drag.moved && !wasMoved && !drag.keepTrail && !drag.cosmetic) {
+    clearNodeGraphHitTrailKept();
+  }
+  if (event.ctrlKey) {
+    drag.keepTrail = true;
+    drag.cosmetic = true;
+  }
   updateNodeGraphMarqueeSelection(event);
   event.preventDefault();
   event.stopPropagation();
@@ -804,11 +1019,26 @@ function endNodeGraphMarqueeSelection(event) {
     return;
   }
 
+  if (event.ctrlKey) {
+    drag.keepTrail = true;
+  }
   if (drag.moved) {
     updateNodeGraphMarqueeSelection(event);
-    nodeGraphHitTrailFlushSelection(drag);
-  } else if (!drag.additive) {
+    if (!drag.cosmetic) {
+      nodeGraphHitTrailFlushSelection(drag);
+    }
+  } else if (!drag.cosmetic && !drag.skipModuleHits) {
     setNodeGraphSelection(null);
+  }
+  if (drag.keepTrail && drag.moved && drag.points?.length) {
+    const pen = nodeGraphHitTrailLivePen();
+    nodeGraphHitTrailPushKept(drag.points, pen);
+    if (drag.mirrorDraw && nodeGraphMvp.hitTrailMirrorCenter) {
+      nodeGraphHitTrailPushKept(
+        nodeGraphHitTrailMirrorStroke(drag.points, nodeGraphMvp.hitTrailMirrorCenter),
+        pen,
+      );
+    }
   }
   nodeGraphMvp.marqueeSelection = null;
   renderNodeGraphMarqueeSelection();

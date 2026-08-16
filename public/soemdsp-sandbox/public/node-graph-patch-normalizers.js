@@ -5,6 +5,7 @@ function normalizeNodeGraphPatchInfo(info = {}) {
     author: nodeGraphOneLineText(info.author),
     bank: Number.isFinite(bank) ? Math.max(0, Math.min(127, bank)) : 0,
     bankName: nodeGraphOneLineText(info.bankName),
+    category: nodeGraphOneLineText(info.category),
     description: String(info.description ?? "").trim(),
     name: nodeGraphOneLineText(info.name),
     program: Number.isFinite(program) ? Math.max(0, Math.min(127, program)) : 0,
@@ -850,6 +851,10 @@ function normalizeNodeGraphPatchViewZoom(value) {
 function normalizeNodeGraphPatchView(view = {}) {
   const widthGu = Math.round(Number(view?.widthGu));
   const heightGu = Math.round(Number(view?.heightGu));
+  const source = view && typeof view === "object" ? view : {};
+  const flag = (key, fallback) => (
+    Object.hasOwn(source, key) ? Boolean(source[key]) : fallback
+  );
   return {
     heightGu: Number.isFinite(heightGu)
       ? Math.max(0, heightGu)
@@ -858,6 +863,18 @@ function normalizeNodeGraphPatchView(view = {}) {
       ? Math.max(0, widthGu)
       : 0,
     zoom: normalizeNodeGraphPatchViewZoom(view?.zoom),
+    gridVisible: flag("gridVisible", true),
+    gridLightVisible: flag("gridLightVisible", true),
+    wireLengthsVisible: flag("wireLengthsVisible", true),
+    wiresAboveModules: flag("wiresAboveModules", false),
+    moduleButtonsVisible: flag("moduleButtonsVisible", false),
+    moduleOscilloscopesVisible: flag("moduleOscilloscopesVisible", true),
+    moduleInterfaceControlsVisible: flag("moduleInterfaceControlsVisible", true),
+    moduleSlidersVisible: flag("moduleSlidersVisible", true),
+    sliderAmountVisible: flag("sliderAmountVisible", false),
+    sliderPositionVisible: flag("sliderPositionVisible", true),
+    locked: flag("locked", false),
+    hideUnusedPorts: flag("hideUnusedPorts", false),
   };
 }
 

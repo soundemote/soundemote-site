@@ -30,10 +30,7 @@ function nodeGraphClampOutputSample(value) {
   if (!Number.isFinite(Number(value))) {
     return 0;
   }
-  return Math.max(
-    -nodeGraphOutputClipLimit,
-    Math.min(nodeGraphOutputClipLimit, Number(value)),
-  );
+  return Number(value);
 }
 
 function nodeGraphOutputSampleClipped(value) {
@@ -46,8 +43,12 @@ function nodeGraphOutputSampleClipped(value) {
 }
 
 function nodeGraphOutputSampleTripsEarProtection(value) {
+  if (typeof nodeGraphSpeakerProtector2SampleTrips === "function") {
+    return nodeGraphSpeakerProtector2SampleTrips(value);
+  }
   const number = Number(value);
-  return !Number.isFinite(number) || Math.abs(number) > 1;
+  const eps = typeof NODE_GRAPH_NUMERIC_PRECISION === "number" ? NODE_GRAPH_NUMERIC_PRECISION : 1e-7;
+  return !Number.isFinite(number) || Math.abs(number) > 1 + eps;
 }
 
 function nodeGraphTemporaryPrefilterForResample(samples, sourceRate, outputRate) {
@@ -192,10 +193,6 @@ function markNodeGraphRenderPending(summary = "") {
 }
 
 async function renderNodeGraphAudio() {
-  if (nodeGraphEarProtectionIsTripped()) {
-    nodeGraphTripEarProtection({ source: "render" });
-    return;
-  }
   if (!nodeGraphScriptReadyForGraphAction("render")) {
     markNodeGraphRenderScriptBlocked();
     return;
@@ -351,15 +348,13 @@ async function renderNodeGraphAudio() {
     stateReadCount,
     badNumberCount: runtime.badNumberCount || 0,
   };
-  if (protectionMuteCount > 0) {
-    nodeGraphTripEarProtection({
+  if (protectionMuteCount > 0 && typeof nodeGraphSetEarProtectionEngaged === "function") {
+    nodeGraphSetEarProtectionEngaged(false, {
       nodeId: runtime.lastSpeakerProtection?.nodeId || "",
       protectionPeak: Number(runtime.speakerProtectionPeak) || 0,
       source: "render",
       protectionMuteCount,
     });
-    nodeGraphMvp.rendered = null;
-    return;
   }
   syncNodeGraphRenderedAudioElement();
   renderStatus.textContent = "render ready";

@@ -97,11 +97,76 @@ function nodeGraphClampUnit(value) {
 // CSS pixels with a setTransform(pixelRatio, ...), while the phosphor
 // waveform draws in raw device pixels so it can snap lines to real pixels.
 // Returns null when there is nothing to draw into.
-function nodeGraphSizeDisplayCanvas(section, canvas) {
+/**
+ * Shared hue brightness (snake, Music Player line, grid).
+ * Slider 0…1: black → full hue at 0.5 → white at 1.
+ * Walks the HSV cone edge (dim hue, then tint to white) so we never slog
+ * through grey. Smoothstep + gamma 2.2 keeps the ends from sticking.
+ */
+function nodeGraphHueUnitRgb01(hueDeg) {
+  const h = ((((Number(hueDeg) || 0) % 360) + 360) % 360) / 60;
+  const x = 1 - Math.abs((h % 2) - 1);
+  if (h < 1) return [1, x, 0];
+  if (h < 2) return [x, 1, 0];
+  if (h < 3) return [0, 1, x];
+  if (h < 4) return [0, x, 1];
+  if (h < 5) return [x, 0, 1];
+  return [1, 0, x];
+}
+
+function nodeGraphHueBrightnessRgb01(hueDeg, brightness01) {
+  const t = Math.max(0, Math.min(1, Number(brightness01) || 0));
+  const [hr, hg, hb] = nodeGraphHueUnitRgb01(hueDeg);
+  const toLin = (c) => c ** 2.2;
+  const toSrgb = (c) => Math.max(0, c) ** (1 / 2.2);
+  const ease = (u) => {
+    const x = Math.max(0, Math.min(1, u));
+    return x * x * (3 - 2 * x);
+  };
+  let r;
+  let g;
+  let b;
+  if (t <= 0.5) {
+    const e = ease(t / 0.5);
+    r = toSrgb(toLin(hr) * e);
+    g = toSrgb(toLin(hg) * e);
+    b = toSrgb(toLin(hb) * e);
+  } else {
+    const e = ease((t - 0.5) / 0.5);
+    r = toSrgb(toLin(hr) * (1 - e) + e);
+    g = toSrgb(toLin(hg) * (1 - e) + e);
+    b = toSrgb(toLin(hb) * (1 - e) + e);
+  }
+  return [r, g, b];
+}
+
+function nodeGraphHueBrightnessCss(hueDeg, brightness01, alpha01 = 1) {
+  const [r, g, b] = nodeGraphHueBrightnessRgb01(hueDeg, brightness01);
+  const R = Math.round(r * 255);
+  const G = Math.round(g * 255);
+  const B = Math.round(b * 255);
+  const a = Math.max(0, Math.min(1, Number(alpha01)));
+  if (!(a < 1)) {
+    return `rgb(${R} ${G} ${B})`;
+  }
+  return `rgb(${R} ${G} ${B} / ${a})`;
+}
+
+/** Face backing 0…1. 1 = CSS × dpr; below 1 = lo-fi. */
+function nodeGraphResolveDisplayPixelDensity(pixelDensity) {
+  if (typeof nodeGraphTraceDisplayClampPixelDensity === "function") {
+    return nodeGraphTraceDisplayClampPixelDensity(pixelDensity);
+  }
+  const raw = Number(pixelDensity);
+  return Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 1;
+}
+
+function nodeGraphSizeDisplayCanvas(section, canvas, options = {}) {
   if (!section || !canvas) {
     return null;
   }
-  const pixelRatio = window.devicePixelRatio || 1;
+  const devicePixelRatio = window.devicePixelRatio || 1;
+  const density = nodeGraphResolveDisplayPixelDensity(options?.pixelDensity);
   // Prefer layout sizes (offset/client) so we do not force a layout reflow via
   // getBoundingClientRect on every filter-curve / face paint. Workspace zoom is
   // a CSS transform; face backing must stay on the unzoomed layout grid.
@@ -119,8 +184,10 @@ function nodeGraphSizeDisplayCanvas(section, canvas) {
   }
   cssWidth = Math.max(1, cssWidth);
   cssHeight = Math.max(1, cssHeight);
-  const width = Math.max(1, Math.round(cssWidth * pixelRatio));
-  const height = Math.max(1, Math.round(cssHeight * pixelRatio));
+  const nativeWidth = Math.max(1, Math.round(cssWidth * devicePixelRatio));
+  const nativeHeight = Math.max(1, Math.round(cssHeight * devicePixelRatio));
+  const width = Math.max(1, Math.round(nativeWidth * density));
+  const height = Math.max(1, Math.round(nativeHeight * density));
   if (canvas.width !== width) {
     canvas.width = width;
   }
@@ -128,7 +195,66 @@ function nodeGraphSizeDisplayCanvas(section, canvas) {
     canvas.height = height;
   }
   const context = canvas.getContext("2d");
-  return context ? { context, cssHeight, cssWidth, height, pixelRatio, width } : null;
+  const pixelRatio = devicePixelRatio * Math.max(density, 1e-6);
+  return context
+    ? {
+      context,
+      cssHeight,
+      cssWidth,
+      density,
+      devicePixelRatio,
+      height,
+      pixelRatio,
+      width,
+    }
+    : null;
+}
+
+/**
+ * Cheap vector blur: redraw the current path at a diamond of CSS-px offsets
+ * (center + 4 cardinal + 4 diagonal) with a tent kernel. No extra canvas.
+ */
+function nodeGraphStrokePathWithLineBlur(context, options = {}) {
+  if (!context) {
+    return;
+  }
+  const strokeStyle = options.strokeStyle || options.color || "#ffffff";
+  const lineWidth = Math.max(0.25, Number(options.lineWidth) || 1);
+  const blur = Math.max(0, Number(options.lineBlur ?? options.blur) || 0);
+  context.lineJoin = options.lineJoin || "round";
+  context.lineCap = options.lineCap || "round";
+  context.strokeStyle = strokeStyle;
+  if (!(blur > 0.02)) {
+    context.lineWidth = lineWidth;
+    context.stroke();
+    return;
+  }
+  const taps = [
+    { x: 0, y: 0, w: 1 },
+    { x: blur, y: 0, w: 0.5 },
+    { x: -blur, y: 0, w: 0.5 },
+    { x: 0, y: blur, w: 0.5 },
+    { x: 0, y: -blur, w: 0.5 },
+    { x: blur * 0.707, y: blur * 0.707, w: 0.25 },
+    { x: -blur * 0.707, y: blur * 0.707, w: 0.25 },
+    { x: blur * 0.707, y: -blur * 0.707, w: 0.25 },
+    { x: -blur * 0.707, y: -blur * 0.707, w: 0.25 },
+  ];
+  let sum = 0;
+  for (let i = 0; i < taps.length; i += 1) {
+    sum += taps[i].w;
+  }
+  context.save();
+  context.lineWidth = lineWidth;
+  for (let i = 0; i < taps.length; i += 1) {
+    const tap = taps[i];
+    context.save();
+    context.translate(tap.x, tap.y);
+    context.globalAlpha = tap.w / sum;
+    context.stroke();
+    context.restore();
+  }
+  context.restore();
 }
 
 function nodeGraphHslToHex(background = {}) {

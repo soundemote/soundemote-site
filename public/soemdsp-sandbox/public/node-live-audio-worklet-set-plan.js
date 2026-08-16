@@ -8,7 +8,15 @@ NodeLiveAudioProcessor.prototype.setPlan = function setPlan(plan, message = {}) 
     this.sessionId = message.sessionId || 0;
     this.gpuAdditiveQueues = new Map();
     this.gpuAdditiveUnderruns = 0;
-    this.autoSmoothingSeconds = 0.016;
+    if (Number.isFinite(Number(message.autoSmoothingSeconds)) && typeof this.clampAutoSmoothingSeconds === "function") {
+      this.autoSmoothingSeconds = this.clampAutoSmoothingSeconds(message.autoSmoothingSeconds);
+    }
+    if (Number.isFinite(Number(message.pitchReferenceMidiNote))) {
+      this.pitchReferenceMidiNote = Number(message.pitchReferenceMidiNote);
+    }
+    if (Number.isFinite(Number(message.pitchReferenceHz))) {
+      this.pitchReferenceHz = Number(message.pitchReferenceHz);
+    }
     this.hostSampleRate = Math.max(1, Number(message.sampleRate) || sampleRate || 44100);
     // App-wide: oversampling under construction — always ×1 (ignore plan/message).
     this.oversamplingRatio = 1;
@@ -259,6 +267,14 @@ NodeLiveAudioProcessor.prototype.setPlan = function setPlan(plan, message = {}) 
       if (node?.type === "sinepulse" && !this.sinepulseStates.has(id)) {
         this.sinepulseStates.set(id, this.createSinepulseState());
       }
+      if (!this.kickEnvelopeStates) this.kickEnvelopeStates = new Map();
+      if (node?.type === "kickEnvelope" && !this.kickEnvelopeStates.has(id)) {
+        this.kickEnvelopeStates.set(id, this.createKickEnvelopeState());
+      }
+      if (!this.sineKickStates) this.sineKickStates = new Map();
+      if (node?.type === "sineKick" && !this.sineKickStates.has(id)) {
+        this.sineKickStates.set(id, this.createSineKickState());
+      }
       if (node?.type === "yellowjacketFilter" && !this.yellowjacketFilterStates.has(id)) {
         this.yellowjacketFilterStates.set(id, this.createStereoFilterState(() => this.createYellowjacketFilterState()));
       }
@@ -279,6 +295,9 @@ NodeLiveAudioProcessor.prototype.setPlan = function setPlan(plan, message = {}) 
       }
       if (node?.type === "comparator" && !this.comparatorStates.has(id)) {
         this.comparatorStates.set(id, this.createComparatorState());
+      }
+      if (node?.type === "noiseDetector" && !this.noiseDetectorStates.has(id)) {
+        this.noiseDetectorStates.set(id, this.createNoiseDetectorState());
       }
       if (node?.type === "speedColorInertia" && !this.speedColorInertiaStates.has(id)) {
         this.speedColorInertiaStates.set(id, this.createSpeedColorInertiaState());
@@ -349,6 +368,10 @@ NodeLiveAudioProcessor.prototype.setPlan = function setPlan(plan, message = {}) 
       if (node?.type === "slewLimiter" && !this.slewLimiterStates.has(id)) {
         this.slewLimiterStates.set(id, this.createStereoSlewLimiterState());
       }
+      if (node?.type === "speakerProtector2" && !this.speakerProtector2States.has(id)) {
+        if (!this.speakerProtector2States) this.speakerProtector2States = new Map();
+        this.speakerProtector2States.set(id, this.createSpeakerProtector2State());
+      }
       if (node?.type === "expAdsr" && !this.expAdsrStates.has(id)) {
         this.expAdsrStates.set(id, this.createExpAdsrState());
       }
@@ -409,6 +432,12 @@ NodeLiveAudioProcessor.prototype.setPlan = function setPlan(plan, message = {}) 
       }
       if (node?.type === "bugButton" && !this.bugButtonStates.has(id)) {
         this.bugButtonStates.set(id, this.createBugButtonState());
+      }
+      if (node?.type === "keypad" && !this.keypadStates.has(id)) {
+        this.keypadStates.set(id, this.createKeypadState());
+      }
+      if (node?.type === "phoneTone" && !this.phoneToneStates.has(id)) {
+        this.phoneToneStates.set(id, this.createPhoneToneState());
       }
       if (node?.type === "polyBlep" && !this.polyBlepStates.has(id)) {
         this.polyBlepStates.set(id, this.createPolyBlepState());
@@ -820,6 +849,16 @@ NodeLiveAudioProcessor.prototype.setPlan = function setPlan(plan, message = {}) 
         if (!ids.has(id)) this.sinepulseStates.delete(id);
       }
     }
+    if (this.kickEnvelopeStates) {
+      for (const id of [...this.kickEnvelopeStates.keys()]) {
+        if (!ids.has(id)) this.kickEnvelopeStates.delete(id);
+      }
+    }
+    if (this.sineKickStates) {
+      for (const id of [...this.sineKickStates.keys()]) {
+        if (!ids.has(id)) this.sineKickStates.delete(id);
+      }
+    }
     for (const id of [...this.yellowjacketFilterStates.keys()]) {
       if (!ids.has(id)) {
         this.destroyStereoFilterNativeState(this.yellowjacketFilterStates.get(id), (s) => this.destroyYellowjacketFilterNativeState(s));
@@ -860,6 +899,13 @@ NodeLiveAudioProcessor.prototype.setPlan = function setPlan(plan, message = {}) 
       if (!ids.has(id)) {
         this.destroyComparatorNativeState(this.comparatorStates.get(id));
         this.comparatorStates.delete(id);
+      }
+    }
+    if (this.noiseDetectorStates) {
+      for (const id of [...this.noiseDetectorStates.keys()]) {
+        if (!ids.has(id)) {
+          this.noiseDetectorStates.delete(id);
+        }
       }
     }
     if (this.speedColorInertiaStates) {
@@ -999,6 +1045,13 @@ NodeLiveAudioProcessor.prototype.setPlan = function setPlan(plan, message = {}) 
         this.slewLimiterStates.delete(id);
       }
     }
+    if (this.speakerProtector2States) {
+      for (const id of [...this.speakerProtector2States.keys()]) {
+        if (!ids.has(id)) {
+          this.speakerProtector2States.delete(id);
+        }
+      }
+    }
     for (const id of [...this.expAdsrStates.keys()]) {
       if (!ids.has(id)) {
         this.destroyExpAdsrNativeState(this.expAdsrStates.get(id));
@@ -1114,6 +1167,20 @@ NodeLiveAudioProcessor.prototype.setPlan = function setPlan(plan, message = {}) 
     for (const id of [...this.bugButtonStates.keys()]) {
       if (!ids.has(id)) {
         this.bugButtonStates.delete(id);
+      }
+    }
+    if (this.keypadStates) {
+      for (const id of [...this.keypadStates.keys()]) {
+        if (!ids.has(id)) {
+          this.keypadStates.delete(id);
+        }
+      }
+    }
+    if (this.phoneToneStates) {
+      for (const id of [...this.phoneToneStates.keys()]) {
+        if (!ids.has(id)) {
+          this.phoneToneStates.delete(id);
+        }
       }
     }
     for (const id of [...this.polyBlepStates.keys()]) {

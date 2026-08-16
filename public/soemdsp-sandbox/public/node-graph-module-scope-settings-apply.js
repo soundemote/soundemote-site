@@ -47,6 +47,61 @@ function assignNodeGraphTypedDisplaySettingsToNode(node, displayType, settings) 
     node.traceDisplaySettings = normalizeNodeGraphNumberReadoutSettings(packed, defaults);
     return node.traceDisplaySettings;
   }
+  if (displayType === "portalFace") {
+    const channel = typeof nodeGraphPortalClampChannel === "function"
+      ? nodeGraphPortalClampChannel(settings?.channel)
+      : Math.max(0, Math.round(Number(settings?.channel) || 0));
+    node.params = { ...(node.params || {}), channel };
+    if (typeof applyNodeGraphPortalDisplaySettingsToFace === "function") {
+      applyNodeGraphPortalDisplaySettingsToFace(node);
+    }
+    return { channel };
+  }
+  if (displayType === "roundShapeFace") {
+    node.traceDisplaySettings = typeof normalizeNodeGraphRoundShapeFaceSettings === "function"
+      ? normalizeNodeGraphRoundShapeFaceSettings(settings)
+      : (settings || {});
+    if (typeof applyNodeGraphRoundShapeDisplaySettingsToFace === "function") {
+      applyNodeGraphRoundShapeDisplaySettingsToFace(node);
+    }
+    return node.traceDisplaySettings;
+  }
+  if (displayType === "keypadFace") {
+    node.layout = typeof normalizeNodeGraphKeypadLayout === "function"
+      ? normalizeNodeGraphKeypadLayout(settings)
+      : (settings || {});
+    if (typeof applyNodeGraphKeypadDisplaySettingsToFace === "function") {
+      applyNodeGraphKeypadDisplaySettingsToFace(node);
+    }
+    return node.layout;
+  }
+  if (displayType === "phosphorWaveform") {
+    node.phosphorWaveformSettings = typeof normalizeNodeGraphPhosphorWaveformSettings === "function"
+      ? normalizeNodeGraphPhosphorWaveformSettings(settings)
+      : (settings || {});
+    if (typeof applyNodeGraphPhosphorWaveformDisplaySettingsToFace === "function") {
+      applyNodeGraphPhosphorWaveformDisplaySettingsToFace(node);
+    }
+    return node.phosphorWaveformSettings;
+  }
+  if (displayType === "limiterGainFace") {
+    node.traceDisplaySettings = typeof normalizeNodeGraphLimiterGainFaceSettings === "function"
+      ? normalizeNodeGraphLimiterGainFaceSettings(settings)
+      : (settings || {});
+    return node.traceDisplaySettings;
+  }
+  if (displayType === "textBoxFace") {
+    const previous = typeof normalizeNodeGraphTextBoxLayout === "function"
+      ? normalizeNodeGraphTextBoxLayout(node.layout)
+      : (node.layout || {});
+    node.layout = typeof normalizeNodeGraphTextBoxLayout === "function"
+      ? normalizeNodeGraphTextBoxLayout({ ...previous, ...(settings || {}), text: previous.text })
+      : { ...previous, ...(settings || {}), text: previous.text };
+    if (typeof applyNodeGraphTextBoxDisplaySettingsToFace === "function") {
+      applyNodeGraphTextBoxDisplaySettingsToFace(node);
+    }
+    return node.layout;
+  }
   if (displayType === "knobFace") {
     const normalized = normalizeNodeGraphKnobFaceDisplaySettings(settings);
     node.traceDisplaySettings = normalized;
@@ -56,9 +111,6 @@ function assignNodeGraphTypedDisplaySettingsToNode(node, displayType, settings) 
       const nextFace = {
         ...face,
         rotationDegrees: normalized.rotationDegrees,
-        // Keep face blob in sync for image-layer rotate math (centered span).
-        showReadout: normalized.showReadout,
-        showLabel: normalized.showLabel,
       };
       node.knobFace = typeof nodeGraphKnobFaceToPatch === "function"
         ? nodeGraphKnobFaceToPatch(nextFace)
@@ -70,6 +122,16 @@ function assignNodeGraphTypedDisplaySettingsToNode(node, displayType, settings) 
       if (el) {
         paintNodeGraphKnobFaceLive(el, node.id, null);
       }
+    }
+    return node.traceDisplaySettings;
+  }
+  if (displayType === "patchFace") {
+    node.traceDisplaySettings = typeof normalizeNodeGraphPatchFaceDisplaySettings === "function"
+      ? normalizeNodeGraphPatchFaceDisplaySettings(settings)
+      : (settings || {});
+    if (typeof applyNodeGraphPatchFaceDisplay === "function" && node?.id) {
+      const el = document.querySelector?.(`.node-patch-face[data-node="${CSS.escape(String(node.id))}"]`);
+      applyNodeGraphPatchFaceDisplay(el, node);
     }
     return node.traceDisplaySettings;
   }
@@ -122,6 +184,24 @@ function assignNodeGraphTypedDisplaySettingsToNode(node, displayType, settings) 
   if (displayType === "fbmFieldFace") {
     node.traceDisplaySettings = typeof normalizeNodeGraphFbmFieldSettings === "function"
       ? normalizeNodeGraphFbmFieldSettings(settings)
+      : (settings || {});
+    return node.traceDisplaySettings;
+  }
+  if (displayType === "vectorRgbFace") {
+    node.traceDisplaySettings = typeof normalizeNodeGraphVectorRgbSettings === "function"
+      ? normalizeNodeGraphVectorRgbSettings(settings)
+      : (settings || {});
+    return node.traceDisplaySettings;
+  }
+  if (displayType === "rasterRgbFace") {
+    node.traceDisplaySettings = typeof normalizeNodeGraphRasterRgbSettings === "function"
+      ? normalizeNodeGraphRasterRgbSettings(settings)
+      : (settings || {});
+    return node.traceDisplaySettings;
+  }
+  if (displayType === "gradientVectorscopeFace") {
+    node.traceDisplaySettings = typeof normalizeNodeGraphGradientVectorscopeSettings === "function"
+      ? normalizeNodeGraphGradientVectorscopeSettings(settings)
       : (settings || {});
     return node.traceDisplaySettings;
   }
@@ -223,6 +303,68 @@ function assignNodeGraphDisplayModeKeyEverywhere(node, modeKey) {
 /** @deprecated Mode dropdown removed. */
 function changeNodeGraphTraceDisplayMode(_event) {
   return false;
+}
+
+/** Swap Left/Right look (color, size, blur, brightness) on Output / stereo Trace. */
+function swapNodeGraphOutputTraceLook() {
+  const nodeId = typeof nodeGraphTraceDisplaySettingsTargetNodeId === "function"
+    ? nodeGraphTraceDisplaySettingsTargetNodeId()
+    : "";
+  const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  if (!node) {
+    return;
+  }
+  const apply = () => {
+    const s = { ...(node.traceDisplaySettings || {}) };
+    const leftColor = s.dot1Color ?? s.color;
+    const rightColor = s.secondaryColor;
+    s.dot1Color = rightColor;
+    s.color = rightColor;
+    s.secondaryColor = leftColor;
+    const leftSize = s.dot1Size ?? s.size;
+    const rightSize = s.secondarySize;
+    s.dot1Size = rightSize;
+    if (s.size !== undefined) {
+      s.size = rightSize;
+    }
+    s.secondarySize = leftSize;
+    const leftBright = s.dot1Brightness ?? s.brightness;
+    const rightBright = s.secondaryBrightness;
+    s.dot1Brightness = rightBright;
+    if (s.brightness !== undefined) {
+      s.brightness = rightBright;
+    }
+    s.secondaryBrightness = leftBright;
+    const leftBlur = s.lineThickness;
+    s.lineThickness = s.secondaryLineThickness;
+    s.secondaryLineThickness = leftBlur;
+    node.traceDisplaySettings = s;
+    if (typeof commitNodeGraphPatch === "function") {
+      const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+      const dest = patch.nodes.find((n) => n.id === node.id);
+      if (dest) {
+        dest.traceDisplaySettings = { ...s };
+        commitNodeGraphPatch(patch, {
+          status: "swapped L/R look",
+          deferUiPanels: true,
+        });
+      }
+    }
+    if (typeof writeNodeGraphTraceDisplaySettingsForm === "function") {
+      writeNodeGraphTraceDisplaySettingsForm(s);
+    }
+    if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
+      scheduleNodeGraphModuleScopeDraw({ force: true });
+    }
+  };
+  if (typeof noteNodeGraphHeavyHistoryAction === "function") {
+    noteNodeGraphHeavyHistoryAction("swapLr");
+  }
+  if (typeof runNodeGraphHistoryAfterGlow === "function") {
+    runNodeGraphHistoryAfterGlow("last", apply);
+    return;
+  }
+  apply();
 }
 
 let nodeGraphTraceDisplaySettingsPersistTimer = 0;
@@ -351,7 +493,8 @@ function nodeGraphTraceDisplayExistingSettingsForNode(node, settingsSchema) {
   if (settingsSchema === "lineBurn" || settingsSchema === "value" || settingsSchema === "trace"
     || settingsSchema === "scope2d" || settingsSchema === "scope2dTrace"
     || settingsSchema === "numberReadout" || settingsSchema === "knobFace"
-    || settingsSchema === "phosphorLight") {
+    || settingsSchema === "phosphorLight" || settingsSchema === "roundShapeFace"
+    || settingsSchema === "limiterGainFace") {
     return node.traceDisplaySettings && typeof node.traceDisplaySettings === "object"
       ? { ...node.traceDisplaySettings }
       : {};
@@ -363,6 +506,22 @@ function nodeGraphTraceDisplayExistingSettingsForNode(node, settingsSchema) {
   }
   if (settingsSchema === "ledLamp") {
     return node.led && typeof node.led === "object" ? { ...node.led } : {};
+  }
+  if (settingsSchema === "portalFace") {
+    return typeof nodeGraphPortalDisplaySettingsForNode === "function"
+      ? nodeGraphPortalDisplaySettingsForNode(node)
+      : { channel: Number(node?.params?.channel) || 0 };
+  }
+  if (settingsSchema === "keypadFace") {
+    return node.layout && typeof node.layout === "object" ? { ...node.layout } : {};
+  }
+  if (settingsSchema === "phosphorWaveform") {
+    return node.phosphorWaveformSettings && typeof node.phosphorWaveformSettings === "object"
+      ? { ...node.phosphorWaveformSettings }
+      : {};
+  }
+  if (settingsSchema === "textBoxFace") {
+    return node.layout && typeof node.layout === "object" ? { ...node.layout } : {};
   }
   return node.traceDisplaySettings && typeof node.traceDisplaySettings === "object"
     ? { ...node.traceDisplaySettings }
@@ -441,12 +600,27 @@ function applyNodeGraphTraceDisplaySettingsForm(options = {}) {
   // otherwise skip the full path; cold plates still run, but force refreshes
   // energy faces too after Clear-while-paused style freezes).
   scheduleNodeGraphModuleScopeDraw({ force: true });
+  if (typeof nodeGraphDisplaySettingsIsVectorTraceFormType === "function"
+    && nodeGraphDisplaySettingsIsVectorTraceFormType(
+      typeof nodeGraphTraceDisplaySettingsFormType === "function"
+        ? nodeGraphTraceDisplaySettingsFormType()
+        : "",
+    )
+    && typeof syncNodeGraphInstantTracePreview === "function") {
+    syncNodeGraphInstantTracePreview(
+      document.getElementById("nodeTraceDisplaySettingsPopover"),
+      settings,
+    );
+  }
   if (typeof paintNodeGraphModuleScopeColdPlatesOnly === "function") {
-    paintNodeGraphModuleScopeColdPlatesOnly();
+    paintNodeGraphModuleScopeColdPlatesOnly(undefined, { force: true });
   }
   // XY Pad face is not a scope slot — repaint pads when display settings change.
   if (typeof nodeGraphXyPadRedrawAll === "function") {
     nodeGraphXyPadRedrawAll();
+  }
+  if (typeof nodeGraphSyncOutputProtectOverlay === "function") {
+    nodeGraphSyncOutputProtectOverlay(globalThis.nodeGraphOutputProtectMute || 0, { force: true });
   }
   // Knob face readout decimals live in Display Settings.
   if (typeof refreshNodeGraphKnobFaces === "function") {
@@ -461,6 +635,16 @@ function applyNodeGraphTraceDisplaySettingsForm(options = {}) {
       const faceNode = faceNodeId ? nodeGraphPatchNode(faceNodeId) : null;
       if (!faceNode) {
         continue;
+      }
+      if (faceNode.type === "keypad") {
+        if (typeof applyNodeGraphKeypadDisplaySettingsToFace === "function") {
+          applyNodeGraphKeypadDisplaySettingsToFace(faceNode);
+        } else if (typeof syncNodeGraphKeypadElement === "function") {
+          const el = typeof nodeGraphNodeElement === "function"
+            ? nodeGraphNodeElement(faceNodeId)
+            : null;
+          if (el) syncNodeGraphKeypadElement(el, faceNode);
+        }
       }
       if (faceNode.type === "led") {
         if (typeof scheduleNodeGraphLedFaceRefresh === "function") {
@@ -521,6 +705,9 @@ const NODE_GRAPH_DISPLAY_SETTINGS_PRESERVE_LOOK_KEYS = Object.freeze([
   "ghostColor",
   "arcFill",
   "arcTrack",
+  "buttonColor",
+  "textColor",
+  "strokeColor",
 ]);
 
 function setNodeGraphTraceDisplaySettingsDefaults() {

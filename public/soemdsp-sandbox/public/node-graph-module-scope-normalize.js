@@ -265,6 +265,7 @@ function nodeGraphDisplaySettingsFormTypeUsesGradient(type) {
     "rgbFractalFace",
     "evolveFieldFace",
     "fbmFieldFace",
+    "gradientVectorscopeFace",
     "matrixFace",
     "matrixWaterfallFace",
     "matrixDisplayFace",
@@ -441,7 +442,7 @@ function normalizeNodeGraphXyPadDisplaySettings(settings = {}) {
       source.pixelDensity,
       defaults.pixelDensity,
       0,
-      4,
+      1,
     ),
     // Ignore legacy scale for layout; keep puckSize (migrate old scale→puck if missing).
     puckSize: normalizeNodeGraphTraceDisplayNumber(
@@ -601,7 +602,7 @@ function normalizeNodeGraphLineBurnSettings(settings = {}) {
       source.pixelDensity,
       defaults.pixelDensity,
       0,
-      4,
+      1,
     ),
     scale: normalizeNodeGraphTraceDisplayNumber(source.scale, defaults.scale, 0.01, 100),
     sweepSeconds: normalizeNodeGraphLineBurnSweepSeconds(source, defaults),
@@ -640,7 +641,7 @@ function normalizeNodeGraphZeroDBurnSettings(settings = {}) {
       source.pixelDensity,
       defaults.pixelDensity,
       0,
-      4,
+      1,
     ),
   };
 }
@@ -680,15 +681,36 @@ function normalizeNodeGraphTraceDisplaySettings(settings = {}) {
       0,
       1,
     ),
-    secondaryLineThickness: 0,
+    secondaryLineThickness: typeof nodeGraphTraceDisplayClampStampBlur === "function"
+      ? nodeGraphTraceDisplayClampStampBlur(
+        source.secondaryLineThickness ?? defaults.secondaryLineThickness,
+      )
+      : normalizeNodeGraphTraceDisplayNumber(
+        source.secondaryLineThickness,
+        defaults.secondaryLineThickness ?? 0,
+        0,
+        1,
+      ),
     cycles: normalizeNodeGraphTraceDisplayNumber(source.cycles, defaults.cycles, -Infinity, Infinity),
-    // Trace is hard-stroke only (blur not meaningful for Canvas paths).
-    lineThickness: 0,
+    lineThickness: typeof nodeGraphTraceDisplayClampStampBlur === "function"
+      ? nodeGraphTraceDisplayClampStampBlur(source.lineThickness ?? source.blur ?? defaults.lineThickness)
+      : normalizeNodeGraphTraceDisplayNumber(
+        source.lineThickness ?? source.blur,
+        defaults.lineThickness ?? 0.15,
+        0,
+        1,
+      ),
+    dotBudget: Math.max(
+      64,
+      Math.min(8192, Math.round(
+        Number(source.dotBudget ?? defaults.dotBudget) || defaults.dotBudget || 2048,
+      )),
+    ),
     pixelDensity: normalizeNodeGraphTraceDisplayNumber(
       source.pixelDensity,
       defaults.pixelDensity,
       0,
-      4,
+      1,
     ),
     padding: normalizeNodeGraphTraceDisplayNumber(source.padding, defaults.padding, -Infinity, Infinity),
     // Amplitude zoom: multiplies samples before face mapping (1 = full-scale).
@@ -735,7 +757,18 @@ function normalizeNodeGraphTraceDisplaySettings(settings = {}) {
       }
       return defaults.syncChannel || "off";
     })(),
-    zoomSeconds: normalizeNodeGraphTraceDisplayZoomSeconds(zoomSeconds, defaults.zoomSeconds),
+    zoomSeconds: normalizeNodeGraphTraceDisplayZoomSeconds(
+      source.historySeconds ?? zoomSeconds,
+      defaults.historySeconds ?? defaults.zoomSeconds,
+    ),
+    historySeconds: normalizeNodeGraphTraceDisplayZoomSeconds(
+      source.historySeconds ?? zoomSeconds,
+      defaults.historySeconds ?? defaults.zoomSeconds,
+    ),
+    fade: normalizeNodeGraphTraceDisplayNumber(source.fade, defaults.fade ?? 0, 0, 1),
+    xyzLayout: String(source.xyzLayout || defaults.xyzLayout || "stack").toLowerCase() === "separate"
+      ? "separate"
+      : "stack",
   };
 }
 
@@ -772,7 +805,7 @@ function normalizeNodeGraphValueOscilloscopeSettings(settings = {}) {
       source.pixelDensity,
       defaults.pixelDensity,
       0,
-      4,
+      1,
     ),
     scale: normalizeNodeGraphTraceDisplayNumber(source.scale, defaults.scale, 0.01, 100),
   };
@@ -944,6 +977,22 @@ function normalizeNodeGraphNumberReadoutSettings(settings = {}, defaultsOverride
       true,
     ),
     decimals: normalizeNodeGraphTraceDisplayNumber(source.decimals, defaults.decimals, 0, 8, true),
+    polarity: (() => {
+      const raw = String(source.polarity ?? source.signMode ?? defaults.polarity ?? "bipolar")
+        .trim()
+        .toLowerCase();
+      return raw === "unipolar" || raw === "uni" || raw === "unsigned" ? "unipolar" : "bipolar";
+    })(),
+    removeTrailingZeros: (() => {
+      const raw = source.removeTrailingZeros ?? source.stripTrailingZeros ?? defaults.removeTrailingZeros;
+      if (raw === true || raw === "true" || raw === 1 || raw === "1") {
+        return true;
+      }
+      if (raw === false || raw === "false" || raw === 0 || raw === "0") {
+        return false;
+      }
+      return Boolean(defaults.removeTrailingZeros);
+    })(),
     // Fixed digit-slot budget vs live resize (see LayoutFitText).
     // GROW UI inverts this: GROW on ⇒ decimalBudget false.
     decimalBudget: (() => {
@@ -955,6 +1004,21 @@ function normalizeNodeGraphNumberReadoutSettings(settings = {}, defaultsOverride
         return false;
       }
       return Boolean(defaults.decimalBudget);
+    })(),
+    // Digit bins: Digits slider is the number of slots. Unused slots stay put.
+    digitBins: (() => {
+      const raw = source.digitBins ?? source.fixedDigitBins ?? source.binDigits;
+      if (raw === true || raw === "true" || raw === 1 || raw === "1") {
+        return true;
+      }
+      if (raw === false || raw === "false" || raw === 0 || raw === "0") {
+        return false;
+      }
+      // Old GROW-on patches (decimalBudget stored false) keep live resize.
+      if (source.decimalBudget === false || source.decimalBudget === "false" || source.decimalBudget === 0) {
+        return false;
+      }
+      return defaults.digitBins !== false;
     })(),
     // Live light × residual gradient composite (dropdown). LCD defaults to source-over.
     lightBlend: (() => {
@@ -986,6 +1050,12 @@ function normalizeNodeGraphNumberReadoutSettings(settings = {}, defaultsOverride
     unlitSegments: normalizeNodeGraphTraceDisplayNumber(
       source.unlitSegments ?? source.segmentFloor ?? source.plateGhost,
       defaults.unlitSegments ?? 0.01,
+      0,
+      1,
+    ),
+    centsBand: normalizeNodeGraphTraceDisplayNumber(
+      source.centsBand ?? source.tuneBand ?? source.octaveTune,
+      defaults.centsBand ?? 0,
       0,
       1,
     ),
@@ -1056,8 +1126,6 @@ function normalizeNodeGraphKnobFaceDisplaySettings(settings = {}) {
     ),
     arcFill: parseColor(source.arcFill ?? source.dot1Color, defaults.arcFill),
     arcTrack: parseColor(source.arcTrack ?? source.secondaryColor, defaults.arcTrack),
-    showLabel: source.showLabel !== false && source.showLabel !== "false",
-    showReadout: source.showReadout !== false && source.showReadout !== "false",
     // Centered span only (offset removed — start is always −span/2).
     rotationDegrees: normalizeNodeGraphTraceDisplayNumber(
       source.rotationDegrees,
@@ -1073,6 +1141,30 @@ function normalizeNodeGraphKnobFaceDisplaySettings(settings = {}) {
       0,
       1,
     ),
+    labelSize: normalizeNodeGraphTraceDisplayNumber(
+      source.labelSize ?? source.titleSize,
+      defaults.labelSize ?? 0.45,
+      0,
+      1,
+    ),
+    valueSize: normalizeNodeGraphTraceDisplayNumber(
+      source.valueSize ?? source.readoutSize,
+      defaults.valueSize ?? 0.45,
+      0,
+      1,
+    ),
+    labelPosition: normalizeNodeGraphKnobFaceTextPosition(
+      source.showLabel === false || source.showLabel === "false"
+        ? "off"
+        : (source.labelPosition ?? source.titlePosition),
+      defaults.labelPosition || "above",
+    ),
+    valuePosition: normalizeNodeGraphKnobFaceTextPosition(
+      source.showReadout === false || source.showReadout === "false"
+        ? "off"
+        : (source.valuePosition ?? source.readoutPosition),
+      defaults.valuePosition || "mid",
+    ),
     // Arc ring hole 0…1 (maps to 1 − thickness of the conic mask).
     innerRadius: normalizeNodeGraphTraceDisplayNumber(
       source.innerRadius ?? source.arcInnerRadius,
@@ -1080,7 +1172,33 @@ function normalizeNodeGraphKnobFaceDisplaySettings(settings = {}) {
       0,
       0.95,
     ),
+    labelText: typeof nodeGraphKnobFaceNormalizeLabelText === "function"
+      ? nodeGraphKnobFaceNormalizeLabelText(source.labelText ?? source.knobText ?? source.text)
+      : String(source.labelText ?? source.knobText ?? source.text ?? defaults.labelText ?? "Knob")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 48),
   };
+}
+
+const nodeGraphKnobFaceTextPositions = Object.freeze(["off", "above", "mid", "below"]);
+
+function normalizeNodeGraphKnobFaceTextPosition(value, fallback = "mid") {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "top") {
+    return "above";
+  }
+  if (raw === "middle" || raw === "center") {
+    return "mid";
+  }
+  if (raw === "bottom") {
+    return "below";
+  }
+  if (nodeGraphKnobFaceTextPositions.includes(raw)) {
+    return raw;
+  }
+  const fb = String(fallback || "mid").trim().toLowerCase();
+  return nodeGraphKnobFaceTextPositions.includes(fb) ? fb : "mid";
 }
 
 
@@ -1152,7 +1270,7 @@ function normalizeNodeGraphScope2dSettings(settings = {}, defaultsOverride = nul
       source.pixelDensity,
       defaults.pixelDensity,
       0,
-      4,
+      1,
     ),
     scale: normalizeNodeGraphTraceDisplayNumber(source.scale, defaults.scale, 0, Infinity),
   };
@@ -1180,6 +1298,7 @@ function normalizeNodeGraphScope2dTraceSettings(settings = {}, typeDefaults = nu
       source.historySeconds ?? source.history,
       defaults.historySeconds,
     ),
+    fade: normalizeNodeGraphTraceDisplayNumber(source.fade, defaults.fade ?? 0, 0, 1),
     lineThickness: nodeGraphTraceDisplayClampStampBlur(
       source.lineThickness ?? source.dot1Blur ?? defaults.lineThickness,
     ),
@@ -1187,7 +1306,7 @@ function normalizeNodeGraphScope2dTraceSettings(settings = {}, typeDefaults = nu
       source.pixelDensity,
       defaults.pixelDensity,
       0,
-      4,
+      1,
     ),
     scale: normalizeNodeGraphTraceDisplayNumber(source.scale, defaults.scale, 0, Infinity),
   };
@@ -1207,9 +1326,19 @@ function nodeGraphTraceDisplaySettingsForNode(node) {
     return normalizeNodeGraphTraceDisplaySettings();
   }
   const settingsSchema = nodeGraphModuleDisplaySettingsSchemaForNode(node);
-  return settingsSchema === "value"
-    ? normalizeNodeGraphValueOscilloscopeSettings(node.traceDisplaySettings)
-    : normalizeNodeGraphTraceDisplaySettings(node.traceDisplaySettings);
+  if (settingsSchema === "value") {
+    return normalizeNodeGraphValueOscilloscopeSettings(node.traceDisplaySettings);
+  }
+  // Instant Trace: seed from the global bucket until this module is edited.
+  if (settingsSchema === "trace") {
+    const local = node.traceDisplaySettings;
+    const hasLocal = Boolean(local && typeof local === "object" && Object.keys(local).length);
+    if (!hasLocal) {
+      return nodeGraphGlobalTraceSettings();
+    }
+    return normalizeNodeGraphTraceDisplaySettings(local);
+  }
+  return normalizeNodeGraphTraceDisplaySettings(node.traceDisplaySettings);
 }
 
 
@@ -1223,12 +1352,9 @@ function nodeGraphLineBurnSettingsForNode(node) {
 
 function nodeGraphNumberReadoutFaceStyleForNode(node) {
   const type = String(node?.type || "");
-  // Pitch Detector uses phosphor Value LED readout (not reflective LCD).
-  if (type === "valueLcd") {
+  // Pitch Detector is a reflective LCD plate (DSEG + unlit ghost 8s).
+  if (type === "valueLcd" || type === "helmholtzPitch") {
     return "lcd";
-  }
-  if (type === "helmholtzPitch") {
-    return "led";
   }
   const fromSettings = String(node?.traceDisplaySettings?.faceStyle || "").toLowerCase();
   if (fromSettings === "lcd") {
@@ -1238,18 +1364,21 @@ function nodeGraphNumberReadoutFaceStyleForNode(node) {
 }
 
 function nodeGraphNumberReadoutDefaultsForNode(node) {
-  // Pitch always uses LED phosphor defaults (trail/ghost residual), never LCD pack.
   if (String(node?.type || "") === "helmholtzPitch") {
-    const led = typeof nodeGraphNumberReadoutSettingsDefaults !== "undefined"
-      ? nodeGraphNumberReadoutSettingsDefaults
+    const lcd = typeof nodeGraphValueLcdSettingsDefaults !== "undefined"
+      ? nodeGraphValueLcdSettingsDefaults
       : {};
     return {
-      ...led,
-      faceStyle: "led",
+      ...lcd,
+      faceStyle: "lcd",
       // Pitch Hz: ~4 integer + 2 decimal slots → total digit budget 6.
       digits: 6,
-      // false = GROW on (digits resize to fill). User can turn GROW off for fixed bins.
-      decimalBudget: false,
+      decimalBudget: true,
+      digitBins: true,
+      // Unlit 8-plate must be visible (0.01 is below what the LCD ghost reads as).
+      unlitSegments: 0.28,
+      // 8ve page cents-accuracy stripes (0 = off, 1 = opaque).
+      centsBand: 0.45,
     };
   }
   const base = nodeGraphNumberReadoutFaceStyleForNode(node) === "lcd"
@@ -1270,6 +1399,10 @@ function nodeGraphNumberReadoutSettingsForNode(node) {
       : {}),
     faceStyle: nodeGraphNumberReadoutFaceStyleForNode(node),
   };
+  // Old Pitch Detector LED packs stored unlitSegments 0 (no LCD ghost).
+  if (String(node.type || "") === "helmholtzPitch" && !(Number(packed.unlitSegments) > 0)) {
+    packed.unlitSegments = defaults.unlitSegments ?? 0.28;
+  }
   return normalizeNodeGraphNumberReadoutSettings(packed, defaults);
 }
 
@@ -1311,16 +1444,14 @@ function nodeGraphTraceDisplaySettingsEditingTraceDefaults() {
     return true;
   }
   const node = nodeGraphPatchNode(nodeGraphMvp?.traceDisplaySettingsTargetNode);
-  // Plain Trace nodes share one global look (nodeGraphMvp.traceSettings).
-  // Per-node Trace faces (Output stereo, Display, stereoTracePorts modules)
-  // must edit node.traceDisplaySettings — otherwise the form shows node
-  // values, apply writes global, and draw reads node (settings never stick).
+  // Instant Trace is per-module. Only the explicit Global page writes
+  // nodeGraphMvp.traceSettings (a seed for unedited faces).
   if (nodeGraphModuleDisplaySettingsSchemaForNode(node) !== "trace") {
     return false;
   }
   if (typeof nodeGraphModuleKeepsPerNodeTraceDisplaySettings === "function") {
     return !nodeGraphModuleKeepsPerNodeTraceDisplaySettings(node?.type);
   }
-  return node?.type !== "output";
+  return false;
 }
 

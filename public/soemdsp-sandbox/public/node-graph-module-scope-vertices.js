@@ -85,12 +85,11 @@ function buildNodeGraphTraceDisplayVertices(buffer, rect, canvas, pixelRatio, sl
       vertexFloatCount: vertexOffset,
     };
   }
-  const visibleSamples = Math.max(1, view.end - view.start);
   const midY = rect.top + rect.height * 0.5;
   const halfHeight = rect.height * nodeGraphModuleScopeTraceHalfHeightRatio(slot, buffer, rect);
   const metricRect = nodeGraphModuleScopeVisibleMetricRect(rect, options);
-  const pointCount = nodeGraphTraceDisplayVisualPointCount(metricRect, buffer);
-  const scratch = nodeGraphTraceDisplayScratchForSlot(slot, Math.max(0, pointCount - 1) * 36);
+  const pointCountHint = nodeGraphTraceDisplayVisualPointCount(metricRect, buffer);
+  const scratch = nodeGraphTraceDisplayScratchForSlot(slot, Math.max(0, pointCountHint - 1) * 36);
   const vertices = scratch.vertices;
   const pointGenerationStartMs = timing ? nodeGraphModuleScopeNowMs() : 0;
   let previousX = 0;
@@ -98,15 +97,53 @@ function buildNodeGraphTraceDisplayVertices(buffer, rect, canvas, pixelRatio, sl
   let hasPrevious = false;
   let vertexOffset = 0;
   let segmentCount = 0;
-  const samplesPerPoint = (visibleSamples * drawSpan) / Math.max(1, pointCount);
-  const progressFn = (index, count) => start + ((index + 0.5) / count) * drawSpan;
-  const traceSamples = buildNodeGraphTraceDisplaySamples(buffer, slot, pointCount, progressFn, samplesPerPoint);
-  for (let pointIndex = 0; pointIndex < (traceSamples?.length ?? 0); pointIndex += 1) {
-    const s = traceSamples[pointIndex];
-    const x = rect.left + s.progress * rect.width;
-    const y = midY - s.value * halfHeight;
-    if (hasPrevious && !s.breakBefore) {
-      const segmentIndex = pointIndex - 1;
+  const skipSamples = typeof nodeGraphModuleScopeDiscontinuitySkipSamplesForSlot === "function"
+    ? nodeGraphModuleScopeDiscontinuitySkipSamplesForSlot(slot, buffer)
+    : 0;
+  const pathPoints = typeof TraceWaveform !== "undefined" && typeof TraceWaveform.buildPoints === "function"
+    ? TraceWaveform.buildPoints({
+      buffer,
+      start: view.start + start * Math.max(0, view.end - view.start),
+      end: view.start + end * Math.max(0, view.end - view.start),
+      width: rect.width,
+      height: rect.height,
+      midY,
+      halfHeight,
+      gain: view.gain,
+      offset: view.offset,
+      skipDiscontinuities: skipSamples > 0,
+      discontinuityThreshold: typeof nodeGraphModuleScopeDiscontinuityThreshold === "number"
+        ? nodeGraphModuleScopeDiscontinuityThreshold
+        : 0.85,
+    })
+    : [];
+  const usable = pathPoints.length
+    ? pathPoints
+    : (buildNodeGraphTraceDisplaySamples(
+      buffer,
+      slot,
+      pointCountHint,
+      (index, count) => start + ((index + 0.5) / count) * drawSpan,
+      ((view.end - view.start) * drawSpan) / Math.max(1, pointCountHint),
+    ) || []).map((s) => (
+      s.breakBefore
+        ? null
+        : {
+          x: rect.left + s.progress * rect.width,
+          y: midY - s.value * halfHeight,
+        }
+    ));
+  const pointCount = usable.filter((p) => p).length;
+  for (let pointIndex = 0; pointIndex < usable.length; pointIndex += 1) {
+    const p = usable[pointIndex];
+    if (!p) {
+      hasPrevious = false;
+      continue;
+    }
+    const x = (p.x || 0) + (pathPoints.length ? rect.left : 0);
+    const y = p.y;
+    if (hasPrevious) {
+      const segmentIndex = Math.max(0, segmentCount);
       const x1 = previousX * pixelRatio;
       const y1 = previousY * pixelRatio;
       const x2 = x * pixelRatio;
@@ -595,12 +632,8 @@ function nodeGraphModuleScopeLocalFallbackCanvas(slot) {
 }
 
 /**
- * Size a local face canvas to layout×dpr × pixelDensity.
- *
- * TRACE: still a vector polyline into this buffer; density only sets how coarse
- * the backing store is (0 = chunky lo-fi, 1 = full face, 4 = supersample).
- * PHOSPHOR: same knob on energy grids — different product, same sizing helper.
- * Never use density as an excuse for strip-chart / column-paint Trace models.
+ * Size a local face canvas to layout×dpr × pixelDensity (0…1).
+ * 0 = 1×1 lo-fi; 1 = native face. No supersample path.
  */
 function syncNodeGraphModuleScopeLocalFallbackCanvas(canvas, screenElement, pixelRatio, pixelDensity = 1) {
   if (!canvas || !screenElement) {
@@ -610,14 +643,24 @@ function syncNodeGraphModuleScopeLocalFallbackCanvas(canvas, screenElement, pixe
   if (!size) {
     return false;
   }
-  const resolved = typeof nodeGraphScope2dResolvePixelDensity === "function"
-    ? nodeGraphScope2dResolvePixelDensity(pixelDensity, size.width, size.height)
-    : { density: 1, effective: 1 };
-  // 0 is valid (1×1 pixel). Never use `|| 1` — that snaps density 0 up to full res.
-  const densityRaw = Number(resolved.effective);
-  const density = Number.isFinite(densityRaw) ? Math.max(0, densityRaw) : 1;
-  const width = Math.max(1, Math.round(size.width * density));
-  const height = Math.max(1, Math.round(size.height * density));
+  const density = typeof nodeGraphFacePlateDensity === "function"
+    ? nodeGraphFacePlateDensity({ pixelDensity }, 1)
+    : Math.max(0, Math.min(1, Number(pixelDensity) || 0));
+  let width = Math.max(1, Math.round(size.width * density));
+  let height = Math.max(1, Math.round(size.height * density));
+  // Subpixel hops while paused must not assign canvas.width (browser wipe).
+  const frozen = typeof scopePaintIsFrozen === "function"
+    ? scopePaintIsFrozen()
+    : (typeof nodeGraphModuleScopePhosphorFrozen === "function"
+      && nodeGraphModuleScopePhosphorFrozen());
+  if (frozen && canvas.width >= 2 && canvas.height >= 2) {
+    const dw = Math.abs(width - canvas.width);
+    const dh = Math.abs(height - canvas.height);
+    if (dw <= 1 && dh <= 1) {
+      width = canvas.width;
+      height = canvas.height;
+    }
+  }
   if (canvas.width !== width || canvas.height !== height) {
     const previousWidth = canvas.width;
     const previousHeight = canvas.height;
@@ -637,7 +680,6 @@ function syncNodeGraphModuleScopeLocalFallbackCanvas(canvas, screenElement, pixe
     canvas._nodeGraphScope2dLastDrawnPoint = null;
     const context = previousCanvas ? canvas.getContext("2d") : null;
     if (context) {
-      // Nearest when going chunky; smooth when supersampling up.
       context.imageSmoothingEnabled = density >= 0.999;
       context.drawImage(previousCanvas, 0, 0, previousWidth, previousHeight, 0, 0, width, height);
     }

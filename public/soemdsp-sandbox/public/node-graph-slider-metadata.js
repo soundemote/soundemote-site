@@ -105,9 +105,12 @@ function nodeSliderIncrementWholeDigits(whole) {
 
 function formatNodeSliderNumber(value, options = {}) {
   const number = Number(value);
+  if (options.kind === "decibels" && Number.isFinite(number) && number <= -139.5) {
+    return options.reserveSignSpace ? " −∞" : "−∞";
+  }
   const maxDigits = normalizeNodeGraphMetadataMaxDigits(options.maxDigits, options.kind);
   const text = Number.isFinite(number)
-    ? limit_decimals(String(number), maxDigits, maxDigits, maxDigits, false)
+    ? limit_decimals(String(number), maxDigits, maxDigits, maxDigits, Boolean(options.removeTrailingZeros))
     : "";
   if (options.showSign && number >= 0) {
     return `+${text}`;
@@ -116,9 +119,18 @@ function formatNodeSliderNumber(value, options = {}) {
 }
 
 function parseNodeSliderMathExpression(text) {
-  const source = String(text ?? "").trim();
+  let source = String(text ?? "").trim()
+    .replace(/[−–—]/g, "-")
+    .replace(/∞/g, "inf");
+  source = source.replace(/\s*(dB|db|Hz|kHz|ms|sec|s|%|deg|°)\s*$/i, "").trim();
   if (!source) {
     return NaN;
+  }
+  if (/^-inf(inity)?$/i.test(source)) {
+    return -Infinity;
+  }
+  if (/^\+?inf(inity)?$/i.test(source)) {
+    return Infinity;
   }
   if (!/^[\d.eE+\-*/()\s]+$/.test(source)) {
     return Number(source);
@@ -238,6 +250,14 @@ function normalizeNodeSliderCurve(value, nonlinearSlider = false) {
   if (curve === "custom" || curve === "sens" || curve === "sensitivity") {
     return "custom";
   }
+  if (
+    curve === "bipolarrational"
+    || curve === "bipolar-rational"
+    || curve === "bipolar_rational"
+    || curve === "bipolar"
+  ) {
+    return "bipolarRational";
+  }
   if (curve === "skew" || curve === "mid" || curve === "nonlinear" || curve === "exponential") {
     return "skew";
   }
@@ -247,7 +267,7 @@ function normalizeNodeSliderCurve(value, nonlinearSlider = false) {
 /** True when SKEW mode uses the SENSITIVITY (−1…+1) field. */
 function nodeSliderCurveUsesSensitivity(curve) {
   const c = normalizeNodeSliderCurve(curve, false);
-  return c === "custom" || c === "edges";
+  return c === "custom" || c === "edges" || c === "bipolarRational";
 }
 
 /** True when SKEW mode uses the MID domain field for the response knee. */
@@ -400,6 +420,7 @@ function nodeSliderMetadata(slider) {
       ? normalizeNodeGraphMetadataSmoothingType(slider.dataset.smoothingType)
       : "onePole",
     wraparound: nodeSliderShouldWraparound(slider),
+    visible: slider.dataset.visible !== "false",
     unit: slider.dataset.unit ?? "",
     kind: slider.dataset.kind || "decimal",
     max,
@@ -434,10 +455,13 @@ function formatNodeSliderMetadataTooltip(slider) {
     `smoothing type ${metadata.smoothingType || "onePole"}`,
     `show sign ${metadata.showSign}`,
     `wraparound ${metadata.wraparound}`,
+    `visible ${metadata.visible !== false}`,
   ];
   if (typeof nodeSliderCurveUsesSensitivity === "function"
     ? nodeSliderCurveUsesSensitivity(metadata.sliderCurve)
-    : (metadata.sliderCurve === "edges" || metadata.sliderCurve === "custom")) {
+    : (metadata.sliderCurve === "edges"
+      || metadata.sliderCurve === "custom"
+      || metadata.sliderCurve === "bipolarRational")) {
     rows.push(`sensitivity ${formatNodeSliderCompactNumber(metadata.curveAmount)}`);
   }
   if (typeof nodeSliderCurveUsesMid === "function"

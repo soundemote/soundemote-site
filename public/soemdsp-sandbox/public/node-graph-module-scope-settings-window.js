@@ -29,7 +29,7 @@ function nodeGraphTraceDisplaySettingsElement() {
         class="panel-close-button"
         type="button"
         aria-label="Close Trace Display drawing settings">
-        <span aria-hidden="true">&times;</span>
+        <span class="panel-close-glyph" aria-hidden="true"></span>
       </button>
     </div>
     <div class="metadata-popover-grid node-trace-display-settings-grid">
@@ -185,7 +185,21 @@ function showBlankNodeGraphTraceDisplaySettingsContent() {
   popover.dataset.displaySettingsTargetNode = "";
   popover.dataset.displaySettingsType = "";
   destroyNodeGraphTraceDisplayColorWidgets();
-  setNodeGraphTraceDisplaySettingsBlankState(true, "Right-click on a display");
+  setNodeGraphTraceDisplaySettingsBlankState(true, "Choose a module");
+  const empty = popover.querySelector(":scope > .node-unified-inspector-empty");
+  if (empty && typeof fillNodeGraphUnifiedInspectorModuleList === "function") {
+    fillNodeGraphUnifiedInspectorModuleList(empty, {
+      kind: "display",
+      hint: "Choose a module",
+      emptyHint: "No displays in this patch.",
+      onPick(node, event) {
+        if (typeof nodeGraphSelectInspectorModule === "function") {
+          nodeGraphSelectInspectorModule(node.id);
+        }
+        openNodeGraphTraceDisplaySettings(node.id, event);
+      },
+    });
+  }
 }
 
 function nodeGraphTraceDisplaySettingsTargetLabel(node) {
@@ -441,6 +455,7 @@ function finishCloseNodeGraphTraceDisplaySettings() {
   destroyNodeGraphTraceDisplayColorWidgets();
   rememberNodeGraphTraceDisplaySettingsWindowState({ open: false }, { status: false });
   nodeGraphMvp.traceDisplaySettingsTargetNode = null;
+  nodeGraphMvp.traceDisplaySettingsFollowedSelectionKey = "";
   setNodeGraphTraceDisplaySettingsMultiTargets(null);
   scheduleNodeGraphModuleScopeDraw();
 }
@@ -453,6 +468,7 @@ function hideNodeGraphTraceDisplaySettingsForInspectorReplacement() {
   }
   rememberNodeGraphTraceDisplaySettingsWindowState({ open: false }, { status: false });
   nodeGraphMvp.traceDisplaySettingsTargetNode = null;
+  nodeGraphMvp.traceDisplaySettingsFollowedSelectionKey = "";
   setNodeGraphTraceDisplaySettingsMultiTargets(null);
 }
 
@@ -540,6 +556,7 @@ function restoreNodeGraphTraceDisplaySettingsWindowFromState(state = {}) {
   // Resolve multi from current selection (same schema as primary).
   const multiTargetIds = nodeGraphTraceDisplaySettingsResolveMultiTargetIds(node.id);
   nodeGraphMvp.traceDisplaySettingsTargetNode = node.id;
+  nodeGraphMvp.traceDisplaySettingsFollowedSelectionKey = nodeGraphTraceDisplaySettingsSelectionFollowKey();
   setNodeGraphTraceDisplaySettingsMultiTargets(multiTargetIds);
   setNodeGraphTraceDisplaySettingsHeader(
     "DISPLAY",
@@ -605,6 +622,13 @@ function syncOpenNodeGraphTraceDisplaySettingsToNode(nodeId) {
  * Call on every selection render so LCD↔LED / multi cohort switches update
  * the shared inspector (Command Center page + floating window).
  */
+function nodeGraphTraceDisplaySettingsSelectionFollowKey() {
+  if (typeof nodeGraphSelectedNodeIds !== "function") {
+    return "";
+  }
+  return [...nodeGraphSelectedNodeIds()].map((id) => String(id || "")).filter(Boolean).sort().join(",");
+}
+
 function syncOpenNodeGraphTraceDisplaySettingsToSelection() {
   const popover = document.getElementById("nodeTraceDisplaySettingsPopover");
   if (
@@ -615,12 +639,18 @@ function syncOpenNodeGraphTraceDisplaySettingsToSelection() {
   ) {
     return false;
   }
+  const followKey = nodeGraphTraceDisplaySettingsSelectionFollowKey();
+  if (followKey && followKey === String(nodeGraphMvp.traceDisplaySettingsFollowedSelectionKey || "")) {
+    return false;
+  }
   const primaryId = nodeGraphTraceDisplaySettingsPrimaryFromSelection();
   if (!primaryId) {
     // Empty / non-display selection: keep pinned form (don't wipe mid-edit).
     return false;
   }
-  return syncOpenNodeGraphTraceDisplaySettingsToNode(primaryId);
+  const changed = syncOpenNodeGraphTraceDisplaySettingsToNode(primaryId);
+  nodeGraphMvp.traceDisplaySettingsFollowedSelectionKey = followKey;
+  return changed;
 }
 
 function openNodeGraphGlobalTraceSettings(event = {}) {
@@ -750,6 +780,15 @@ function bindNodeGraphTraceDisplaySettingsEvents(popover) {
   popover.addEventListener("input", updateNodeGraphTraceDisplaySettingsLive);
   popover.addEventListener("change", commitNodeGraphTraceDisplaySettingsChange);
   popover.addEventListener("click", stepNodeGraphTraceDisplaySetting);
+  popover.addEventListener("click", (event) => {
+    if (event.target?.id === "nodeTraceDisplaySwapStereoLook") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (typeof swapNodeGraphOutputTraceLook === "function") {
+        swapNodeGraphOutputTraceLook();
+      }
+    }
+  });
   popover.addEventListener("dblclick", beginNodeGraphTraceDisplayFieldEdit, true);
   // focusout bubbles; blur does not — parent never saw Enter→blur before.
   popover.addEventListener("focusout", finishNodeGraphTraceDisplayFieldEdit, true);
@@ -801,6 +840,11 @@ function openNodeGraphTraceDisplaySettings(nodeId, event = {}) {
       ? openNodeGraphMacroControlsDisplaySettings(event)
       : false;
   }
+  if (nodeId === "__keyboardControllerFace") {
+    return typeof openNodeGraphKeyboardControllerDisplaySettings === "function"
+      ? openNodeGraphKeyboardControllerDisplaySettings(event)
+      : false;
+  }
   const node = nodeGraphPatchNode(nodeId);
   if (!node) {
     return false;
@@ -808,16 +852,13 @@ function openNodeGraphTraceDisplaySettings(nodeId, event = {}) {
   if (node.type === "macroControls" && typeof openNodeGraphMacroControlsDisplaySettings === "function") {
     return openNodeGraphMacroControlsDisplaySettings(event);
   }
-  // Music Player owns nodePhosphorWaveformSettingsWindow — do not fall through
-  // into the shared Trace/schema form (display gear routes there first).
-  if (typeof nodeGraphNodeUsesPhosphorWaveformDisplay === "function" && nodeGraphNodeUsesPhosphorWaveformDisplay(node)) {
-    return false;
-  }
   // LED uses the shared display inspector (formType ledLamp) — same popover
   // as Number Readout / XY Pad / scopes.
   if (!nodeGraphNodeCanOpenDisplaySettings(node)) {
     return false;
   }
+  // Do not change graph selection. Pin the form to this face; follow-key is
+  // the current selection so wire redraws do not steal the inspector.
   // Multi-select: if every selected module shares this display schema, edit all.
   const multiTargetIds = nodeGraphTraceDisplaySettingsResolveMultiTargetIds(node.id);
   const multiKey = multiTargetIds.join(",");
@@ -854,6 +895,7 @@ function openNodeGraphTraceDisplaySettings(nodeId, event = {}) {
   const popover = nodeGraphTraceDisplaySettingsElement();
   bindNodeGraphTraceDisplaySettingsEvents(popover);
   nodeGraphMvp.traceDisplaySettingsTargetNode = node.id;
+  nodeGraphMvp.traceDisplaySettingsFollowedSelectionKey = nodeGraphTraceDisplaySettingsSelectionFollowKey();
   setNodeGraphTraceDisplaySettingsMultiTargets(multiTargetIds);
   nodeGraphMvp.sharedInspectorActive = "traceDisplaySettings";
   setNodeGraphTraceDisplaySettingsHeader(
@@ -872,7 +914,21 @@ function openNodeGraphTraceDisplaySettings(nodeId, event = {}) {
   // Widgets skip mount while popover is hidden — refresh after unhide.
   syncNodeGraphTraceDisplayColorWidgets(popover);
   const unifiedDriving = Boolean(nodeGraphMvp._unifiedWindowSwitching);
-  if (!unifiedDriving) {
+  if (unifiedDriving) {
+    if (typeof markNodeGraphFloatingWindowSurface === "function") {
+      markNodeGraphFloatingWindowSurface(popover);
+    }
+    rememberNodeGraphTraceDisplaySettingsWindowState(
+      { open: true, targetNode: node.id },
+      { capturePosition: false, status: false },
+    );
+  } else if (typeof applyNodeGraphUnifiedSeatToElement === "function"
+    && applyNodeGraphUnifiedSeatToElement(popover)) {
+    rememberNodeGraphTraceDisplaySettingsWindowState(
+      { open: true, targetNode: node.id },
+      { capturePosition: false, status: false },
+    );
+  } else {
     const position = nodeGraphTraceDisplaySettingsOpenPosition(popover, sharedInspectorState, replacementRect, event);
     popover.style.position = "fixed";
     if (typeof setNodeGraphFloatingWindowViewportPosition === "function") {
@@ -885,14 +941,6 @@ function openNodeGraphTraceDisplaySettings(nodeId, event = {}) {
     rememberNodeGraphTraceDisplaySettingsWindowState(
       { open: true, position, targetNode: node.id },
       { status: false },
-    );
-  } else {
-    if (typeof markNodeGraphFloatingWindowSurface === "function") {
-      markNodeGraphFloatingWindowSurface(popover);
-    }
-    rememberNodeGraphTraceDisplaySettingsWindowState(
-      { open: true, targetNode: node.id },
-      { capturePosition: false, status: false },
     );
   }
   if (typeof raiseNodeGraphFloatingWindow === "function") {
@@ -925,7 +973,21 @@ function openBlankNodeGraphTraceDisplaySettings(event = {}) {
   applyNodeGraphTraceDisplaySettingsWindowSize(sharedInspectorState.size);
   popover.hidden = false;
   const unifiedDriving = Boolean(nodeGraphMvp._unifiedWindowSwitching);
-  if (!unifiedDriving) {
+  if (unifiedDriving) {
+    if (typeof markNodeGraphFloatingWindowSurface === "function") {
+      markNodeGraphFloatingWindowSurface(popover);
+    }
+    rememberNodeGraphTraceDisplaySettingsWindowState(
+      { open: true, targetNode: "" },
+      { capturePosition: false, status: false },
+    );
+  } else if (typeof applyNodeGraphUnifiedSeatToElement === "function"
+    && applyNodeGraphUnifiedSeatToElement(popover)) {
+    rememberNodeGraphTraceDisplaySettingsWindowState(
+      { open: true, targetNode: "" },
+      { capturePosition: false, status: false },
+    );
+  } else {
     const position = nodeGraphTraceDisplaySettingsOpenPosition(popover, sharedInspectorState, replacementRect, event);
     popover.style.position = "fixed";
     if (typeof setNodeGraphFloatingWindowViewportPosition === "function") {
@@ -938,14 +1000,6 @@ function openBlankNodeGraphTraceDisplaySettings(event = {}) {
     rememberNodeGraphTraceDisplaySettingsWindowState(
       { open: true, position, targetNode: "" },
       { status: false },
-    );
-  } else {
-    if (typeof markNodeGraphFloatingWindowSurface === "function") {
-      markNodeGraphFloatingWindowSurface(popover);
-    }
-    rememberNodeGraphTraceDisplaySettingsWindowState(
-      { open: true, targetNode: "" },
-      { capturePosition: false, status: false },
     );
   }
   if (typeof raiseNodeGraphFloatingWindow === "function") {

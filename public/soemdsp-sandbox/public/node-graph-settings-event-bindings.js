@@ -38,6 +38,47 @@ function bindNodeGraphSettingsFormEvents() {
     field.addEventListener("input", handleNodeGraphSettingsInput);
     field.addEventListener("change", commitNodeGraphSettingsHistory);
   }
+  const raw = document.getElementById("nodePatchRawText");
+  if (raw) {
+    const refreshHighlight = () => {
+      if (typeof syncNodePatchRawTextHighlight === "function") {
+        syncNodePatchRawTextHighlight();
+      }
+    };
+    raw.addEventListener("input", () => {
+      refreshHighlight();
+      if (typeof scheduleNodeGraphScriptCommit === "function") {
+        scheduleNodeGraphScriptCommit(raw.value);
+      }
+    });
+    raw.addEventListener("change", () => {
+      refreshHighlight();
+      if (typeof commitNodeGraphScript === "function") {
+        commitNodeGraphScript(raw.value);
+      }
+    });
+    raw.addEventListener("scroll", refreshHighlight);
+  }
+  const uiSettingsRaw = document.getElementById("nodeUiSettingsRawText");
+  if (uiSettingsRaw) {
+    uiSettingsRaw.addEventListener("input", () => {
+      if (typeof scheduleNodeUiDevSettingsScriptCommit === "function") {
+        scheduleNodeUiDevSettingsScriptCommit(uiSettingsRaw.value);
+      }
+    });
+    uiSettingsRaw.addEventListener("change", () => {
+      if (typeof commitNodeUiDevSettingsScript === "function") {
+        commitNodeUiDevSettingsScript(uiSettingsRaw.value);
+      }
+    });
+  }
+  for (const tab of document.querySelectorAll(".node-patch-script-tabs [data-book-script-page]")) {
+    tab.addEventListener("click", () => {
+      if (typeof setNodeGraphBookScriptPage === "function") {
+        setNodeGraphBookScriptPage(tab.dataset.bookScriptPage);
+      }
+    });
+  }
   for (const field of document.querySelectorAll("[data-patch-bank-name-field]")) {
     field.addEventListener("input", handleNodeGraphSavedPatchBankNameInput);
     field.addEventListener("change", commitNodeGraphSettingsHistory);

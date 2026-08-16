@@ -19,7 +19,14 @@ function normalizeNodeGraphMetadataSmoothingSeconds(value) {
     return null;
   }
   const number = Number(value);
-  return Number.isFinite(number) && number >= 0 ? Math.round(number) : 0;
+  if (!Number.isFinite(number) || number < 0) {
+    return 0;
+  }
+  // (0, 1) = seconds (e.g. 0.0333). ≥ 1 = sample count. Matches the worklet.
+  if (number > 0 && number < 1) {
+    return number;
+  }
+  return Math.round(number);
 }
 
 // global          -- always use the global smoothing time (default: matches
@@ -83,7 +90,10 @@ function nodeGraphDefaultParamsForType(type) {
     ? nodeGraphModuleDefinition(type)
     : nodeGraphModuleDefinitions[type];
   for (const parameter of definition?.parameters || []) {
-    const value = Number(parameter.defaultValue);
+    // spawnValue = first instance only. defaultValue stays paramMeta.def (reset).
+    const value = Object.hasOwn(parameter, "spawnValue")
+      ? Number(parameter.spawnValue)
+      : Number(parameter.defaultValue);
     params[parameter.key] = Number.isFinite(value) ? value : 0;
   }
   return params;
@@ -330,6 +340,75 @@ function nodeGraphPatchNodeOutputPorts(node) {
   }
   return nodeGraphModuleOutputPorts(patchNode?.type);
 }
+/** Definition `hidden: true` is the default-off visibility, not a permanent skip. */
+function nodeGraphParameterDefaultVisible(parameter) {
+  return parameter?.hidden !== true;
+}
+
+/**
+ * Effective slider-row visibility. Patch `paramMeta.visible` overrides the
+ * definition default. Shown by default; already-hidden definitions stay hidden
+ * until the metaparameter Show toggle is turned on.
+ */
+function nodeGraphParameterEffectiveVisible(parameter, paramMetaEntry) {
+  if (paramMetaEntry && typeof paramMetaEntry === "object" && typeof paramMetaEntry.visible === "boolean") {
+    return paramMetaEntry.visible;
+  }
+  return nodeGraphParameterDefaultVisible(parameter);
+}
+
+function applyNodeGraphParameterRowVisibility(rowOrSlider, visible) {
+  const row = rowOrSlider?.classList?.contains?.("node-parameter-row")
+    ? rowOrSlider
+    : rowOrSlider?.closest?.(".node-parameter-row");
+  if (!row) {
+    return null;
+  }
+  const shown = visible !== false;
+  row.hidden = !shown;
+  row.classList.toggle("node-parameter-row-hidden", !shown);
+  return row;
+}
+
+let nodeGraphParameterVisibilityRefreshDepth = 0;
+
+function refreshNodeGraphModuleParameterVisibility(element, patchNode) {
+  if (!element || !patchNode || nodeGraphParameterVisibilityRefreshDepth > 0) {
+    return;
+  }
+  nodeGraphParameterVisibilityRefreshDepth += 1;
+  try {
+    refreshNodeGraphModuleParameterVisibilityBody(element, patchNode);
+  } finally {
+    nodeGraphParameterVisibilityRefreshDepth -= 1;
+  }
+}
+
+function refreshNodeGraphModuleParameterVisibilityBody(element, patchNode) {
+  const parameters = nodeGraphModuleDefinitions[patchNode.type]?.parameters || [];
+  for (const parameter of parameters) {
+    const row = element.querySelector(`.node-parameter-row[data-param="${CSS.escape(parameter.key)}"]`);
+    if (!row) {
+      continue;
+    }
+    applyNodeGraphParameterRowVisibility(
+      row,
+      nodeGraphParameterEffectiveVisible(parameter, patchNode.paramMeta?.[parameter.key]),
+    );
+  }
+  if (typeof syncNodeGraphLayoutBNoParamsClass === "function") {
+    syncNodeGraphLayoutBNoParamsClass(element, patchNode.type, patchNode.ui);
+  }
+  if (typeof syncNodeGraphModuleChromeElement === "function") {
+    syncNodeGraphModuleChromeElement(element, patchNode);
+  } else if (typeof nodeGraphApplyModuleShellHeightCssVars === "function") {
+    nodeGraphApplyModuleShellHeightCssVars(element, patchNode);
+  }
+  if (typeof markNodeGraphRenderPending === "function") {
+    markNodeGraphRenderPending();
+  }
+}
+
 function nodeGraphParameterOutputPort(typeOrNode, port) {
   const list = typeOrNode && typeof typeOrNode === "object"
     ? nodeGraphPatchNodeParameterDefinitions(typeOrNode)
@@ -338,9 +417,8 @@ function nodeGraphParameterOutputPort(typeOrNode, port) {
   if (!parameter) {
     return null;
   }
-  // Hidden / no-output control state (Slider value, Knob offset, …) is not a
-  // wireable param-out jack — the module Bias/Out is the single outlet.
-  if (parameter.hidden === true || parameter.parameterOutput === false) {
+  // Visibility is UI only. `parameterOutput: false` is the no-jack flag.
+  if (parameter.parameterOutput === false) {
     return null;
   }
   return parameter;
@@ -404,7 +482,7 @@ function nodeGraphParameterDefinitionMetadata(parameter) {
     // Legacy checkbox: false meant instant snaps, not linear ramps.
     smoothingType = "none";
   }
-  return {
+  const defined = {
     choices: normalizeNodeGraphMetadataChoices(parameter.choices || []),
     control: String(parameter.control || "").trim() === "number" ? "number" : "",
     curveAmount: normalizeNodeSliderCurveAmount(parameter.curveAmount),
@@ -431,6 +509,7 @@ function nodeGraphParameterDefinitionMetadata(parameter) {
       ? Boolean(parameter.nonlinearSlider)
       : midInsideRange && Math.abs(safeMid - (safeMin + safeMax) / 2) > Number.EPSILON),
     showSign: Boolean(parameter.showSign),
+    removeTrailingZeros: Boolean(parameter.removeTrailingZeros),
     smoothingMode: normalizeNodeGraphMetadataSmoothingMode(parameter.smoothingMode),
     smoothingSeconds: normalizeNodeGraphMetadataSmoothingSeconds(parameter.smoothingSeconds),
     smoothingType,
@@ -445,7 +524,54 @@ function nodeGraphParameterDefinitionMetadata(parameter) {
     constraint: parameter.constraint ? String(parameter.constraint) : "",
     unit: parameter.unit ?? "",
     wraparound: Boolean(parameter.wraparound),
+    visible: nodeGraphParameterDefaultVisible(parameter),
   };
+  if (nodeGraphParameterNeedsDefaultModuleSmoothing(defined, parameter)) {
+    nodeGraphApplyDefaultModuleSmoothing(defined);
+  }
+  return defined;
+}
+
+/**
+ * Continuous params with no time (or 0) get the shared 0.0333 s linear
+ * *internal* stash. Source stays Global so they follow the header time.
+ * Discrete / off / already-timed params are left alone.
+ */
+function nodeGraphParameterNeedsDefaultModuleSmoothing(meta, source = {}) {
+  if (!meta || typeof meta !== "object") {
+    return false;
+  }
+  if (normalizeNodeGraphMetadataSmoothingMode(meta.smoothingMode) === "off") {
+    return false;
+  }
+  if (normalizeNodeGraphMetadataSmoothingType(meta.smoothingType) === "none") {
+    return false;
+  }
+  if (source.linearSmoothing === false || meta.linearSmoothing === false) {
+    return false;
+  }
+  if (Array.isArray(meta.choices) && meta.choices.length > 0) {
+    return false;
+  }
+  if (String(meta.kind || "") === "seed") {
+    return false;
+  }
+  const seconds = Number(meta.smoothingSeconds);
+  return !Number.isFinite(seconds) || seconds <= 0;
+}
+
+function nodeGraphApplyDefaultModuleSmoothing(meta) {
+  if (!meta || typeof meta !== "object") {
+    return meta;
+  }
+  const seconds = typeof nodeGraphModuleSmoothingDefaultSeconds === "function"
+    ? nodeGraphModuleSmoothingDefaultSeconds()
+    : 0.0333;
+  meta.smoothingType = "linear";
+  meta.linearSmoothing = true;
+  meta.smoothingMode = "global";
+  meta.smoothingSeconds = seconds;
+  return meta;
 }
 
 function normalizeNodeMetadataKindTemplate(template = {}, kind = "decimal") {
@@ -576,6 +702,9 @@ function normalizeNodeGraphPatchParameterMetadata(type, key, metadata = {}) {
       Object.hasOwn(source, "nonlinearSlider") ? Boolean(source.nonlinearSlider) : fallback.nonlinearSlider,
     ),
     showSign: Object.hasOwn(source, "showSign") ? Boolean(source.showSign) : fallback.showSign,
+    removeTrailingZeros: Object.hasOwn(source, "removeTrailingZeros")
+      ? Boolean(source.removeTrailingZeros)
+      : Boolean(fallback.removeTrailingZeros),
     smoothingMode: normalizeNodeGraphMetadataSmoothingMode(
       Object.hasOwn(source, "smoothingMode") ? source.smoothingMode : fallback.smoothingMode,
     ),
@@ -618,8 +747,14 @@ function normalizeNodeGraphPatchParameterMetadata(type, key, metadata = {}) {
     wraparound: fallback.wraparound && Object.hasOwn(source, "wraparound")
       ? Boolean(source.wraparound)
       : fallback.wraparound,
+    visible: Object.hasOwn(source, "visible")
+      ? Boolean(source.visible)
+      : nodeGraphParameterDefaultVisible(parameter),
   };
   normalized.linearSmoothing = nodeGraphMetadataLinearSmoothingFromType(normalized.smoothingType);
+  if (nodeGraphParameterNeedsDefaultModuleSmoothing(normalized, source)) {
+    nodeGraphApplyDefaultModuleSmoothing(normalized);
+  }
   // XY pad mouse/phase targets are instant UI only (audio path owns Papoulis).
   if (
     type === "xyPad"
@@ -634,5 +769,36 @@ function normalizeNodeGraphPatchParameterMetadata(type, key, metadata = {}) {
     normalized.smoothingMode = "off";
     normalized.smoothingSeconds = 0;
   }
+  // Input / Output volume: always 0.0333s linear. Saved paramMeta cannot change it.
+  if (nodeGraphIsHardcodedIoVolumeParam(type, key)) {
+    nodeGraphApplyHardcodedIoVolumeSmoothing(normalized);
+  }
+  return normalized;
+}
+
+const NODE_GRAPH_IO_VOLUME_SMOOTHING_SECONDS = typeof nodeGraphModuleSmoothingDefaultSeconds === "function"
+  ? nodeGraphModuleSmoothingDefaultSeconds()
+  : 0.0333;
+
+function nodeGraphIsHardcodedIoVolumeParam(type, key) {
+  const t = String(type || "");
+  const k = String(key || "");
+  if ((t === "output" || t === "pluginOutput") && k === "volume") {
+    return true;
+  }
+  if ((t === "audioInput" || t === "pluginInput") && (k === "amplitude" || k === "level")) {
+    return true;
+  }
+  return false;
+}
+
+function nodeGraphApplyHardcodedIoVolumeSmoothing(normalized) {
+  if (!normalized || typeof normalized !== "object") {
+    return normalized;
+  }
+  normalized.smoothingType = "linear";
+  normalized.linearSmoothing = true;
+  normalized.smoothingMode = "internal";
+  normalized.smoothingSeconds = NODE_GRAPH_IO_VOLUME_SMOOTHING_SECONDS;
   return normalized;
 }

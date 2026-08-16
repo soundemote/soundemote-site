@@ -19,15 +19,46 @@ function syncNodeUiDevNodeColorControls() {
   }
 }
 
-// Slider fill colors (amount band + position/handle indicator) as full HSLA.
+// Slider fill colors. Amount + ghost stay HSLA. Handles (numeric + choice)
+// use hue / physically-plausible brightness / alpha.
 // Deliberately NOT folded into syncNodeUiDevSettingsHeaderControls below --
 // that function bails early if any one of its ~80 hardcoded inputs is missing,
-// so anything added to it inherits that fragility. This reads its own controls
-// by definition key and writes two CSS custom properties, nothing else.
+// so anything added to it inherits that fragility.
 const nodeUiDevSliderFillColorTargets = Object.freeze([
   { property: "--node-slider-amount-color", prefix: "nodeUiDevSliderAmountFill", fallback: [200, 31, 15, 55] },
-  { property: "--node-slider-position-color", prefix: "nodeUiDevSliderPositionFill", fallback: [203, 55, 57, 37] },
+  { property: "--node-slider-ghost-color", prefix: "nodeUiDevSliderGhostFill", fallback: [262, 100, 76, 38] },
 ]);
+
+function syncNodeUiDevSnakeSelectColor() {
+  const workspace = document.getElementById("nodeGraphWorkspace");
+  if (!workspace) {
+    return;
+  }
+  const hue = nodeUiDevSliderFillChannel("nodeUiDevSnakeSelectHue", 191, 360);
+  const brightness = nodeUiDevSliderFillChannel("nodeUiDevSnakeSelectBrightness", 50, 100);
+  const alpha = nodeUiDevSliderFillChannel("nodeUiDevSnakeSelectAlpha", 95, 100);
+  const css = typeof nodeGraphHueBrightnessCss === "function"
+    ? nodeGraphHueBrightnessCss(hue, brightness / 100)
+    : `hsl(${hue} 100% 50%)`;
+  workspace.style.setProperty("--node-selection-hit-trail-color", css);
+  workspace.style.setProperty("--node-selection-hit-trail-alpha", String(alpha / 100));
+  document.documentElement.style.setProperty("--node-selection-hit-trail-alpha", String(alpha / 100));
+  if (typeof nodeGraphMagnifierIsActive === "function" && nodeGraphMagnifierIsActive()) {
+    applyNodeGraphMagnifierLayout();
+  }
+  const hueOut = document.getElementById("nodeUiDevSnakeSelectHueValue");
+  if (hueOut) {
+    hueOut.textContent = `${hue}deg`;
+  }
+  const brightOut = document.getElementById("nodeUiDevSnakeSelectBrightnessValue");
+  if (brightOut) {
+    brightOut.textContent = `${brightness}%`;
+  }
+  const alphaOut = document.getElementById("nodeUiDevSnakeSelectAlphaValue");
+  if (alphaOut) {
+    alphaOut.textContent = `${alpha}%`;
+  }
+}
 
 function nodeUiDevSliderFillChannel(id, fallback, max) {
   const input = document.getElementById(id);
@@ -35,11 +66,38 @@ function nodeUiDevSliderFillChannel(id, fallback, max) {
   return Number.isFinite(value) ? Math.max(0, Math.min(max, value)) : fallback;
 }
 
+function syncNodeUiDevSliderHandleColor() {
+  const workspace = document.getElementById("nodeGraphWorkspace");
+  if (!workspace) {
+    return;
+  }
+  const hue = nodeUiDevSliderFillChannel("nodeUiDevSliderHandleHue", 203, 360);
+  const brightness = nodeUiDevSliderFillChannel("nodeUiDevSliderHandleBrightness", 57, 100);
+  const alpha = nodeUiDevSliderFillChannel("nodeUiDevSliderHandleAlpha", 37, 100);
+  const css = typeof nodeGraphHueBrightnessCss === "function"
+    ? nodeGraphHueBrightnessCss(hue, brightness / 100, alpha / 100)
+    : `hsl(${hue} 100% 50% / ${alpha / 100})`;
+  workspace.style.setProperty("--node-slider-position-color", css);
+  const hueOut = document.getElementById("nodeUiDevSliderHandleHueValue");
+  if (hueOut) {
+    hueOut.textContent = `${hue}deg`;
+  }
+  const brightOut = document.getElementById("nodeUiDevSliderHandleBrightnessValue");
+  if (brightOut) {
+    brightOut.textContent = `${brightness}%`;
+  }
+  const alphaOut = document.getElementById("nodeUiDevSliderHandleAlphaValue");
+  if (alphaOut) {
+    alphaOut.textContent = `${alpha}%`;
+  }
+}
+
 function syncNodeUiDevSliderFillColorControls() {
   const workspace = document.getElementById("nodeGraphWorkspace");
   if (!workspace) {
     return;
   }
+  syncNodeUiDevSliderHandleColor();
   for (const target of nodeUiDevSliderFillColorTargets) {
     const [hueFallback, satFallback, lightFallback, alphaFallback] = target.fallback;
     const hue = nodeUiDevSliderFillChannel(`${target.prefix}Hue`, hueFallback, 360);
@@ -64,6 +122,66 @@ function syncNodeUiDevSliderFillColorControls() {
   }
 }
 
+function syncNodeUiDevWiresFollowPortColors() {
+  const input = document.getElementById("nodeUiDevWiresFollowPortColors");
+  const on = input ? Boolean(input.checked) : true;
+  if (typeof nodeGraphMvp === "object" && nodeGraphMvp) {
+    nodeGraphMvp.wiresFollowPortColors = on;
+  }
+  if (typeof drawNodeGraphWires === "function") {
+    drawNodeGraphWires();
+  }
+}
+
+function bindNodeUiDevWiresFollowPortColors() {
+  const input = document.getElementById("nodeUiDevWiresFollowPortColors");
+  if (input && input.dataset.wiresFollowPortColorsBound !== "true") {
+    input.dataset.wiresFollowPortColorsBound = "true";
+    input.addEventListener("change", () => {
+      syncNodeUiDevWiresFollowPortColors();
+      if (typeof scheduleNodeUiDevSettingsAutosave === "function") {
+        scheduleNodeUiDevSettingsAutosave();
+      }
+    });
+  }
+  syncNodeUiDevWiresFollowPortColors();
+}
+
+function nodeGraphFullyOpaqueWires() {
+  if (typeof nodeGraphMvp === "object" && nodeGraphMvp && typeof nodeGraphMvp.fullyOpaqueWires === "boolean") {
+    return nodeGraphMvp.fullyOpaqueWires;
+  }
+  const input = typeof document !== "undefined"
+    ? document.getElementById("nodeUiDevFullyOpaqueWires")
+    : null;
+  return Boolean(input?.checked);
+}
+
+function syncNodeUiDevFullyOpaqueWires() {
+  const input = document.getElementById("nodeUiDevFullyOpaqueWires");
+  const on = input ? Boolean(input.checked) : false;
+  if (typeof nodeGraphMvp === "object" && nodeGraphMvp) {
+    nodeGraphMvp.fullyOpaqueWires = on;
+  }
+  if (typeof drawNodeGraphWires === "function") {
+    drawNodeGraphWires();
+  }
+}
+
+function bindNodeUiDevFullyOpaqueWires() {
+  const input = document.getElementById("nodeUiDevFullyOpaqueWires");
+  if (input && input.dataset.fullyOpaqueWiresBound !== "true") {
+    input.dataset.fullyOpaqueWiresBound = "true";
+    input.addEventListener("change", () => {
+      syncNodeUiDevFullyOpaqueWires();
+      if (typeof scheduleNodeUiDevSettingsAutosave === "function") {
+        scheduleNodeUiDevSettingsAutosave();
+      }
+    });
+  }
+  syncNodeUiDevFullyOpaqueWires();
+}
+
 function bindNodeUiDevSliderFillColorControls() {
   for (const target of nodeUiDevSliderFillColorTargets) {
     for (const suffix of ["Hue", "Saturation", "Lightness", "Alpha"]) {
@@ -76,18 +194,179 @@ function bindNodeUiDevSliderFillColorControls() {
       input.addEventListener("change", syncNodeUiDevSliderFillColorControls);
     }
   }
+  for (const id of ["nodeUiDevSliderHandleHue", "nodeUiDevSliderHandleBrightness", "nodeUiDevSliderHandleAlpha"]) {
+    const input = document.getElementById(id);
+    if (!input || input.dataset.sliderHandleColorBound === "true") {
+      continue;
+    }
+    input.dataset.sliderHandleColorBound = "true";
+    input.addEventListener("input", syncNodeUiDevSliderHandleColor);
+    input.addEventListener("change", syncNodeUiDevSliderHandleColor);
+  }
+  for (const id of ["nodeUiDevSnakeSelectHue", "nodeUiDevSnakeSelectBrightness", "nodeUiDevSnakeSelectAlpha"]) {
+    const input = document.getElementById(id);
+    if (!input || input.dataset.snakeSelectColorBound === "true") {
+      continue;
+    }
+    input.dataset.snakeSelectColorBound = "true";
+    input.addEventListener("input", syncNodeUiDevSnakeSelectColor);
+    input.addEventListener("change", syncNodeUiDevSnakeSelectColor);
+  }
   syncNodeUiDevSliderFillColorControls();
+  syncNodeUiDevSnakeSelectColor();
+  bindNodeUiDevWiresFollowPortColors();
+  bindNodeUiDevFullyOpaqueWires();
+}
+
+// Unselected plate outline. CSS-only — do not fold into the header sync
+// (that rebuilds the patch / heatmap / wires on every input event).
+function syncNodeUiDevModuleIdleStroke() {
+  const thicknessInput = document.getElementById("nodeUiDevModuleStrokeThickness");
+  const thicknessOut = document.getElementById("nodeUiDevModuleStrokeThicknessValue");
+  const colorInput = document.getElementById("nodeUiDevModuleStrokeColor");
+  const colorOut = document.getElementById("nodeUiDevModuleStrokeColorValue");
+  const alphaInput = document.getElementById("nodeUiDevModuleStrokeAlpha");
+  const alphaOut = document.getElementById("nodeUiDevModuleStrokeAlphaValue");
+  const selectedColorInput = document.getElementById("nodeUiDevModuleSelectedStrokeColor");
+  const selectedColorOut = document.getElementById("nodeUiDevModuleSelectedStrokeColorValue");
+  const selectedAlphaInput = document.getElementById("nodeUiDevModuleSelectedStrokeAlpha");
+  const selectedAlphaOut = document.getElementById("nodeUiDevModuleSelectedStrokeAlphaValue");
+  const thicknessRaw = Number(thicknessInput?.value);
+  const thicknessPx = Number.isFinite(thicknessRaw)
+    ? Math.max(0, Math.min(8, thicknessRaw))
+    : 1;
+  const color = normalizeNodeUiDevColor(colorInput?.value, "#ffffff");
+  const alphaRaw = Number(alphaInput?.value);
+  const alphaPercent = Number.isFinite(alphaRaw)
+    ? Math.max(0, Math.min(100, alphaRaw))
+    : 50;
+  const selectedColor = normalizeNodeUiDevColor(selectedColorInput?.value, "#e2a86d");
+  const selectedAlphaRaw = Number(selectedAlphaInput?.value);
+  const selectedAlphaPercent = Number.isFinite(selectedAlphaRaw)
+    ? Math.max(0, Math.min(100, selectedAlphaRaw))
+    : 100;
+  if (thicknessInput && !thicknessInput.matches(":active")) {
+    thicknessInput.value = String(thicknessPx);
+  }
+  if (colorInput) {
+    colorInput.value = color;
+  }
+  if (alphaInput && !alphaInput.matches(":active")) {
+    alphaInput.value = String(alphaPercent);
+  }
+  if (thicknessOut) {
+    thicknessOut.textContent = `${thicknessPx}px`;
+  }
+  if (colorOut) {
+    colorOut.textContent = color;
+  }
+  if (alphaOut) {
+    alphaOut.textContent = `${alphaPercent}%`;
+  }
+  if (selectedColorInput) {
+    selectedColorInput.value = selectedColor;
+  }
+  if (selectedAlphaInput && !selectedAlphaInput.matches(":active")) {
+    selectedAlphaInput.value = String(selectedAlphaPercent);
+  }
+  if (selectedColorOut) {
+    selectedColorOut.textContent = selectedColor;
+  }
+  if (selectedAlphaOut) {
+    selectedAlphaOut.textContent = `${selectedAlphaPercent}%`;
+  }
+  const workspace = document.getElementById("nodeGraphWorkspace");
+  workspace?.style.setProperty("--node-module-idle-stroke-width", `${thicknessPx}px`);
+  workspace?.style.setProperty(
+    "--node-module-idle-stroke",
+    `rgb(${nodeUiDevHexColorToRgbTriplet(color)} / ${alphaPercent / 100})`,
+  );
+  workspace?.style.setProperty(
+    "--node-module-selected-stroke",
+    `rgb(${nodeUiDevHexColorToRgbTriplet(selectedColor)} / ${selectedAlphaPercent / 100})`,
+  );
+}
+
+function syncNodeUiDevModuleRoundness() {
+  const roundEl = document.getElementById("nodeUiDevModuleRoundness");
+  const roundOut = document.getElementById("nodeUiDevModuleRoundnessValue");
+  const shapeEl = document.getElementById("nodeUiDevModuleCornerShape");
+  const workspace = document.getElementById("nodeGraphWorkspace");
+  const percent = Math.max(0, Math.min(100, Number(roundEl?.value) || 0));
+  const shape = String(shapeEl?.value || "pill").toLowerCase() === "squircle" ? "squircle" : "pill";
+  if (roundEl && !roundEl.matches(":active")) {
+    roundEl.value = String(percent);
+  }
+  if (shapeEl) {
+    shapeEl.value = shape;
+  }
+  if (roundOut) {
+    roundOut.textContent = `${percent}%`;
+  }
+  for (const btn of document.querySelectorAll("[data-module-corner-shape]")) {
+    const active = btn.getAttribute("data-module-corner-shape") === shape;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-pressed", String(active));
+  }
+  workspace?.style.setProperty("--node-module-roundness-ratio", String(percent / 100));
+  workspace?.style.setProperty("--node-module-corner-shape", shape === "squircle" ? "squircle" : "round");
+}
+
+function bindNodeUiDevModuleRoundness() {
+  const roundEl = document.getElementById("nodeUiDevModuleRoundness");
+  if (roundEl && roundEl.dataset.moduleRoundnessBound !== "true") {
+    roundEl.dataset.moduleRoundnessBound = "true";
+    roundEl.addEventListener("input", syncNodeUiDevModuleRoundness);
+    roundEl.addEventListener("change", syncNodeUiDevModuleRoundness);
+  }
+  const host = document.getElementById("nodeUiDevHelper");
+  if (host && host.dataset.moduleCornerShapeBound !== "true") {
+    host.dataset.moduleCornerShapeBound = "true";
+    host.addEventListener("click", (event) => {
+      const btn = event.target?.closest?.("[data-module-corner-shape]");
+      if (!btn || !host.contains(btn)) {
+        return;
+      }
+      event.preventDefault();
+      const shape = btn.getAttribute("data-module-corner-shape") === "squircle" ? "squircle" : "pill";
+      const input = document.getElementById("nodeUiDevModuleCornerShape");
+      if (input) {
+        input.value = shape;
+      }
+      syncNodeUiDevModuleRoundness();
+      if (typeof scheduleNodeUiDevSettingsAutosave === "function") {
+        scheduleNodeUiDevSettingsAutosave();
+      }
+    });
+  }
+  syncNodeUiDevModuleRoundness();
+}
+
+function bindNodeUiDevModuleIdleStroke() {
+  for (const id of [
+    "nodeUiDevModuleStrokeThickness",
+    "nodeUiDevModuleStrokeColor",
+    "nodeUiDevModuleStrokeAlpha",
+    "nodeUiDevModuleSelectedStrokeColor",
+    "nodeUiDevModuleSelectedStrokeAlpha",
+  ]) {
+    const input = document.getElementById(id);
+    if (!input || input.dataset.moduleIdleStrokeBound === "true") {
+      continue;
+    }
+    input.dataset.moduleIdleStrokeBound = "true";
+    input.addEventListener("input", syncNodeUiDevModuleIdleStroke);
+    input.addEventListener("change", syncNodeUiDevModuleIdleStroke);
+  }
+  syncNodeUiDevModuleIdleStroke();
 }
 
 /**
- * Room-dimmer hover cutout toggles + mouse size/softness/shape.
+ * Room-dimmer mouse cutout + size/softness/shape.
  * Separate from the big header sync so a missing unrelated control cannot
  * block dimmer updates (same pattern as slider fill colors).
  */
 function syncNodeUiDevDimmerCutoutControls() {
-  const sliderEl = document.getElementById("nodeUiDevDimmerCutoutSlider");
-  const moduleEl = document.getElementById("nodeUiDevDimmerCutoutModule");
-  const titleEl = document.getElementById("nodeUiDevDimmerCutoutTitle");
   const mouseEl = document.getElementById("nodeUiDevDimmerCutoutMouse");
   const sizeEl = document.getElementById("nodeUiDevDimmerMouseSize");
   const sizeOut = document.getElementById("nodeUiDevDimmerMouseSizeValue");
@@ -96,30 +375,23 @@ function syncNodeUiDevDimmerCutoutControls() {
   const shapeEl = document.getElementById("nodeUiDevDimmerMouseShape");
   const shapeOut = document.getElementById("nodeUiDevDimmerMouseShapeValue");
 
-  // Defaults match definitions when DOM is incomplete.
-  let sliderOn = true;
-  let moduleOn = false;
-  let titleOn = true;
   let mouseOn = false;
   let size = 56;
   let soft = 25;
   let shape = 0;
 
-  if (sliderEl) sliderOn = Boolean(sliderEl.checked);
-  if (moduleEl) moduleOn = Boolean(moduleEl.checked);
-  if (titleEl) titleOn = Boolean(titleEl.checked);
   if (mouseEl) mouseOn = Boolean(mouseEl.checked);
   if (sizeEl) {
     size = Math.max(8, Math.min(240, Number(sizeEl.value) || 56));
-    sizeEl.value = String(size);
+    if (!sizeEl.matches(":active")) sizeEl.value = String(size);
   }
   if (softEl) {
     soft = Math.max(0, Math.min(100, Number(softEl.value) || 0));
-    softEl.value = String(soft);
+    if (!softEl.matches(":active")) softEl.value = String(soft);
   }
   if (shapeEl) {
     shape = Math.max(0, Math.min(100, Number(shapeEl.value) || 0));
-    shapeEl.value = String(shape);
+    if (!shapeEl.matches(":active")) shapeEl.value = String(shape);
   }
 
   if (sizeOut) sizeOut.textContent = `${size}px`;
@@ -131,127 +403,328 @@ function syncNodeUiDevDimmerCutoutControls() {
   }
 
   const ws = document.getElementById("nodeGraphWorkspace");
-  ws?.classList.toggle("dimmer-cutout-slider-enabled", sliderOn);
-  ws?.classList.toggle("dimmer-cutout-module-enabled", moduleOn);
-  ws?.classList.toggle("dimmer-cutout-title-enabled", titleOn);
   ws?.classList.toggle("dimmer-cutout-mouse-enabled", mouseOn);
-  // Legacy class names (CSS / tooling may still key off them).
-  ws?.classList.toggle("hover-module-dimmer-cutout-enabled", sliderOn || mouseOn);
-  ws?.classList.toggle("hover-module-title-dimmer-cutout-enabled", titleOn);
 
   if (typeof nodeGraphMvp !== "undefined" && nodeGraphMvp) {
-    nodeGraphMvp.dimmerCutoutSliderEnabled = sliderOn;
-    nodeGraphMvp.dimmerCutoutModuleEnabled = moduleOn;
-    nodeGraphMvp.dimmerCutoutTitleEnabled = titleOn;
     nodeGraphMvp.dimmerCutoutMouseEnabled = mouseOn;
     nodeGraphMvp.dimmerMouseSize = size;
     nodeGraphMvp.dimmerMouseSoftness = soft;
     nodeGraphMvp.dimmerMouseShape = shape;
-    nodeGraphMvp.hoverModuleDimmerCutoutEnabled = sliderOn || mouseOn;
-    nodeGraphMvp.hoverModuleTitleDimmerCutoutEnabled = titleOn;
   }
 
   if (typeof setNodeGraphDimmerCutoutOptions === "function") {
     setNodeGraphDimmerCutoutOptions({
-      slider: sliderOn,
-      module: moduleOn,
-      title: titleOn,
       mouse: mouseOn,
       mouseSize: size,
       mouseSoftness: soft,
       mouseShape: shape,
     });
-  } else {
-    if (typeof setNodeGraphHoverModuleDimmerCutoutEnabled === "function") {
-      setNodeGraphHoverModuleDimmerCutoutEnabled(sliderOn || mouseOn);
-    }
-    if (typeof setNodeGraphHoverModuleTitleDimmerCutoutEnabled === "function") {
-      setNodeGraphHoverModuleTitleDimmerCutoutEnabled(titleOn);
-    }
   }
+}
+
+function nodeGraphGridVisualScaleFromMultiply(multiply) {
+  const n = Math.round(Number(multiply));
+  const step = Number.isFinite(n) ? Math.max(1, Math.min(8, n)) : 2;
+  return 2 ** (step - 1);
+}
+
+function syncNodeUiDevGridDivisionMultiply() {
+  const input = document.getElementById("nodeUiDevGridDivisionMultiply");
+  const raw = Math.round(Number(input?.value));
+  const multiply = Number.isFinite(raw) ? Math.max(1, Math.min(8, raw)) : 2;
+  if (input) {
+    input.value = String(multiply);
+  }
+  const scale = nodeGraphGridVisualScaleFromMultiply(multiply);
+  const output = document.getElementById("nodeUiDevGridDivisionMultiplyValue");
+  if (output) {
+    output.textContent = `${scale}×`;
+  }
+  const workspace = document.getElementById("nodeGraphWorkspace");
+  const css = String(scale);
+  workspace?.style.setProperty("--node-grid-visual-scale", css);
+  document.documentElement.style.setProperty("--node-grid-visual-scale", css);
+  if (typeof applyNodeGraphGridVisualCellSize === "function") {
+    applyNodeGraphGridVisualCellSize(workspace);
+  }
+}
+
+function nodeUiDevSyncPortBrightnessControl(inputId, outputId, cssVar, fallback) {
+  const input = document.getElementById(inputId);
+  const raw = Number(input?.value);
+  const brightness = Number.isFinite(raw)
+    ? Math.max(0, Math.min(1, raw))
+    : fallback;
+  if (input) {
+    input.value = String(brightness);
+  }
+  const output = document.getElementById(outputId);
+  if (output) {
+    output.textContent = brightness.toFixed(2);
+  }
+  const css = `${Math.round(brightness * 100)}%`;
+  const workspace = document.getElementById("nodeGraphWorkspace");
+  workspace?.style.setProperty(cssVar, css);
+  document.documentElement.style.setProperty(cssVar, css);
+}
+
+function syncNodeUiDevIoSectionPadding() {
+  const apply = (inputId, outputId, cssVar, fallback) => {
+    const input = document.getElementById(inputId);
+    const raw = Number(input?.value);
+    const px = Number.isFinite(raw) ? Math.max(0, Math.min(32, raw)) : fallback;
+    if (input && input.value !== String(px)) {
+      input.value = String(px);
+    }
+    const output = document.getElementById(outputId);
+    if (output) {
+      output.textContent = `${Math.round(px)}px`;
+    }
+    const css = `${Math.round(px)}px`;
+    const workspace = document.getElementById("nodeGraphWorkspace");
+    workspace?.style.setProperty(cssVar, css);
+    document.documentElement.style.setProperty(cssVar, css);
+  };
+  apply(
+    "nodeUiDevIoSectionPaddingTop",
+    "nodeUiDevIoSectionPaddingTopValue",
+    "--node-io-section-padding-top",
+    0,
+  );
+  apply(
+    "nodeUiDevIoSectionPaddingBottom",
+    "nodeUiDevIoSectionPaddingBottomValue",
+    "--node-io-section-padding-bottom",
+    0,
+  );
+  if (typeof scheduleNodeGraphModuleFramesUpdate === "function") {
+    scheduleNodeGraphModuleFramesUpdate();
+  }
+}
+
+function syncNodeUiDevPortSize() {
+  const input = document.getElementById("nodeUiDevInletOutletSize");
+  const raw = Number(input?.value);
+  const percent = Number.isFinite(raw)
+    ? Math.max(20, Math.min(100, raw))
+    : 52;
+  if (input && input.value !== String(percent)) {
+    input.value = String(percent);
+  }
+  const output = document.getElementById("nodeUiDevInletOutletSizeValue");
+  if (output) {
+    output.textContent = `${Math.round(percent)}%`;
+  }
+  const css = String(percent / 100);
+  const workspace = document.getElementById("nodeGraphWorkspace");
+  workspace?.style.setProperty("--node-port-size-ratio", css);
+  document.documentElement.style.setProperty("--node-port-size-ratio", css);
+  if (typeof scheduleNodeGraphModuleFramesUpdate === "function") {
+    scheduleNodeGraphModuleFramesUpdate();
+  }
+}
+
+function syncNodeUiDevPortBrightness() {
+  nodeUiDevSyncPortBrightnessControl(
+    "nodeUiDevUsedPortBrightness",
+    "nodeUiDevUsedPortBrightnessValue",
+    "--node-port-used-brightness",
+    0.85,
+  );
+  nodeUiDevSyncPortBrightnessControl(
+    "nodeUiDevUnusedPortBrightness",
+    "nodeUiDevUnusedPortBrightnessValue",
+    "--node-port-unused-brightness",
+    0.4,
+  );
+}
+
+function nodeUiDevApplyJackColorVar(inputId, outputId, cssVar, fallback) {
+  const input = document.getElementById(inputId);
+  const color = typeof normalizeNodeUiDevColor === "function"
+    ? normalizeNodeUiDevColor(input?.value, fallback)
+    : (String(input?.value || fallback));
+  if (input && input.value !== color) {
+    input.value = color;
+  }
+  const output = document.getElementById(outputId);
+  if (output) {
+    output.textContent = color;
+  }
+  const workspace = document.getElementById("nodeGraphWorkspace");
+  workspace?.style.setProperty(cssVar, color);
+  document.documentElement.style.setProperty(cssVar, color);
+  return color;
+}
+
+function syncNodeUiDevJackColors() {
+  const red = nodeUiDevApplyJackColorVar(
+    "nodeUiDevJackRgbRed",
+    "nodeUiDevJackRgbRedValue",
+    "--node-jack-red",
+    "#f25d5d",
+  );
+  const green = nodeUiDevApplyJackColorVar(
+    "nodeUiDevJackRgbGreen",
+    "nodeUiDevJackRgbGreenValue",
+    "--node-jack-green",
+    "#3ddc84",
+  );
+  const blue = nodeUiDevApplyJackColorVar(
+    "nodeUiDevJackRgbBlue",
+    "nodeUiDevJackRgbBlueValue",
+    "--node-jack-blue",
+    "#4d8dff",
+  );
+  const analog = nodeUiDevApplyJackColorVar(
+    "nodeUiDevJackAnalog",
+    "nodeUiDevJackAnalogValue",
+    "--node-output-fill",
+    "#e2a86d",
+  );
+  nodeUiDevApplyJackColorVar(
+    "nodeUiDevJackDigital",
+    "nodeUiDevJackDigitalValue",
+    "--node-digital-fill",
+    "#ffffff",
+  );
+  const workspace = document.getElementById("nodeGraphWorkspace");
+  const root = document.documentElement;
+  const setBoth = (name, value) => {
+    workspace?.style.setProperty(name, value);
+    root.style.setProperty(name, value);
+  };
+  setBoth("--node-input-fill", analog);
+  setBoth("--node-input-stroke", analog);
+  setBoth("--node-output-stroke", analog);
+  setBoth("--node-inlet-blue-stroke", analog);
+  workspace?.style.removeProperty("--node-port-idle-crescent-stroke");
+  root.style.removeProperty("--node-port-idle-crescent-stroke");
+  workspace?.style.removeProperty("--node-port-idle-stroke");
+  root.style.removeProperty("--node-port-idle-stroke");
+  workspace?.style.removeProperty("--node-port-crescent-stroke");
+  root.style.removeProperty("--node-port-crescent-stroke");
+  const fillIn = document.getElementById("nodeUiDevInputFillColor");
+  const fillOut = document.getElementById("nodeUiDevOutputFillColor");
+  if (fillIn) fillIn.value = analog;
+  if (fillOut) fillOut.value = analog;
+  const strokeIn = document.getElementById("nodeUiDevInputStrokeColor");
+  const strokeOut = document.getElementById("nodeUiDevOutputStrokeColor");
+  if (strokeIn) strokeIn.value = analog;
+  if (strokeOut) strokeOut.value = analog;
+  void red;
+  void green;
+  void blue;
+}
+
+function nodeUiDevSpreadRatioFromPercent(value, fallback = 78) {
+  const raw = Number(value);
+  const percent = Number.isFinite(raw) ? raw : fallback;
+  return Math.max(0.4, Math.min(2.2, Math.max(40, Math.min(220, percent)) / 100));
+}
+
+function syncNodeUiDevModuleLightGridControls() {
+  const lightBrightEl = document.getElementById("nodeUiDevModuleLightBrightness");
+  const lightSpreadEl = document.getElementById("nodeUiDevModuleLightSpread");
+  const gridBrightEl = document.getElementById("nodeUiDevMinimumGridBrightness");
+  const gridSpreadEl = document.getElementById("nodeUiDevGridSpread");
+  const lightBrightOut = document.getElementById("nodeUiDevModuleLightBrightnessValue");
+  const lightSpreadOut = document.getElementById("nodeUiDevModuleLightSpreadValue");
+  const gridBrightOut = document.getElementById("nodeUiDevMinimumGridBrightnessValue");
+  const gridSpreadOut = document.getElementById("nodeUiDevGridSpreadValue");
+
+  const lightBright = Math.max(0, Math.min(100, Number(lightBrightEl?.value) || 0));
+  const lightSpread = Math.max(40, Math.min(220, Number(lightSpreadEl?.value) || 78));
+  const gridBright = Math.max(0, Math.min(100, Number(gridBrightEl?.value) || 0));
+  const gridSpread = Math.max(40, Math.min(220, Number(gridSpreadEl?.value) || 78));
+
+  if (lightBrightOut) lightBrightOut.textContent = `${lightBright}%`;
+  if (lightSpreadOut) lightSpreadOut.textContent = `${lightSpread}%`;
+  if (gridBrightOut) gridBrightOut.textContent = `${gridBright}%`;
+  if (gridSpreadOut) gridSpreadOut.textContent = `${gridSpread}%`;
+
+  const ws = document.getElementById("nodeGraphWorkspace");
+  ws?.style.setProperty("--node-module-light-brightness", String(lightBright / 100));
+  ws?.style.setProperty("--node-module-light-spread", String(nodeUiDevSpreadRatioFromPercent(lightSpread)));
+  ws?.style.setProperty("--node-grid-line-alpha", String(gridBright / 100));
+  ws?.style.setProperty("--node-grid-reveal-spread", String(nodeUiDevSpreadRatioFromPercent(gridSpread)));
+  // Never paint a full-workspace grid. Reveal is radius-around-modules only.
+  ws?.style.setProperty("--node-min-grid-brightness-alpha", "0");
+  document.getElementById("nodeWiringPanel")?.style.setProperty("--node-min-grid-brightness-alpha", "0");
+
+  if (typeof updateNodeGraphGridHeatmap === "function") {
+    updateNodeGraphGridHeatmap({ force: true });
+  }
+}
+
+function bindNodeUiDevModuleLightGridControls() {
+  for (const id of [
+    "nodeUiDevModuleLightBrightness",
+    "nodeUiDevModuleLightSpread",
+    "nodeUiDevMinimumGridBrightness",
+    "nodeUiDevGridSpread",
+  ]) {
+    const input = document.getElementById(id);
+    if (!input || input.dataset.lightGridBound === "true") {
+      continue;
+    }
+    input.dataset.lightGridBound = "true";
+    input.addEventListener("input", syncNodeUiDevModuleLightGridControls);
+    input.addEventListener("change", syncNodeUiDevModuleLightGridControls);
+  }
+  syncNodeUiDevModuleLightGridControls();
 }
 
 function syncNodeUiDevSettingsHeaderControls() {
   // Runs before the early-return guard below so the slider fill colors apply
   // even if some unrelated control is absent from the DOM.
   syncNodeUiDevSliderFillColorControls();
+  if (typeof syncNodeUiDevSnakeSelectColor === "function") {
+    syncNodeUiDevSnakeSelectColor();
+  }
+  if (typeof syncNodeUiDevWiresFollowPortColors === "function") {
+    syncNodeUiDevWiresFollowPortColors();
+  }
+  syncNodeUiDevModuleIdleStroke();
   syncNodeUiDevDimmerCutoutControls();
+  syncNodeUiDevPortSize();
+  syncNodeUiDevIoSectionPadding();
+  syncNodeUiDevPortBrightness();
+  syncNodeUiDevJackColors();
+  if (typeof syncNodeUiDevFullyOpaqueWires === "function") {
+    syncNodeUiDevFullyOpaqueWires();
+  }
+  syncNodeUiDevGridDivisionMultiply();
+  syncNodeUiDevModuleLightGridControls();
   const settingsView = document.getElementById("nodeSettingsView");
   const mouseLightEnabledInput = document.getElementById("nodeUiDevMouseLightEnabled");
   const showOriginMarkerInput = document.getElementById("nodeUiDevShowOriginMarker");
-  const scopeBloomEnabledInput = document.getElementById("nodeUiDevScopeBloomEnabled");
-  const textSizeInput = document.getElementById("nodeUiDevSettingsHeaderTextSize");
-  const textSizeValue = document.getElementById("nodeUiDevSettingsHeaderTextSizeValue");
-  const uiDevTextSizeInput = document.getElementById("nodeUiDevButtonTextSize");
-  const uiDevTextSizeValue = document.getElementById("nodeUiDevButtonTextSizeValue");
-  const liveToggleTextSizeInput = document.getElementById("nodeUiDevLiveToggleTextSize");
-  const liveToggleTextSizeValue = document.getElementById("nodeUiDevLiveToggleTextSizeValue");
-  const modularHeaderButtonBackgroundInput = document.getElementById("nodeUiDevModularHeaderButtonBackground");
-  const modularHeaderButtonBackgroundValue = document.getElementById("nodeUiDevModularHeaderButtonBackgroundValue");
   const tooltipTextSizeInput = document.getElementById("nodeUiDevTooltipTextSize");
   const tooltipTextSizeValue = document.getElementById("nodeUiDevTooltipTextSizeValue");
   const minimumGridBrightnessInput = document.getElementById("nodeUiDevMinimumGridBrightness");
   const minimumGridBrightnessValue = document.getElementById("nodeUiDevMinimumGridBrightnessValue");
   const moduleLightSpreadInput = document.getElementById("nodeUiDevModuleLightSpread");
   const moduleLightSpreadValue = document.getElementById("nodeUiDevModuleLightSpreadValue");
-  const textGlowLevelInput = document.getElementById("nodeUiDevTextGlowLevel");
-  const textGlowLevelValue = document.getElementById("nodeUiDevTextGlowLevelValue");
   const moduleGridInsetInput = document.getElementById("nodeUiDevModuleGridInset");
   const moduleGridInsetValue = document.getElementById("nodeUiDevModuleGridInsetValue");
-  const moduleRoundnessInput = document.getElementById("nodeUiDevModuleRoundness");
-  const moduleRoundnessValue = document.getElementById("nodeUiDevModuleRoundnessValue");
   const gridColorInput = document.getElementById("nodeUiDevGridColor");
   const gridColorValue = document.getElementById("nodeUiDevGridColorValue");
   const workspaceBackgroundColorInput = document.getElementById("nodeUiDevWorkspaceBackgroundColor");
   const workspaceBackgroundColorValue = document.getElementById("nodeUiDevWorkspaceBackgroundColorValue");
-  const moduleBrowserEntryHeightInput = document.getElementById("nodeUiDevModuleBrowserEntryHeight");
-  const moduleBrowserEntryHeightValue = document.getElementById("nodeUiDevModuleBrowserEntryHeightValue");
-  const moduleBrowserEntryPaddingInput = document.getElementById("nodeUiDevModuleBrowserEntryPadding");
-  const moduleBrowserEntryPaddingValue = document.getElementById("nodeUiDevModuleBrowserEntryPaddingValue");
-  const moduleBrowserEntryTextSizeInput = document.getElementById("nodeUiDevModuleBrowserEntryTextSize");
-  const moduleBrowserEntryTextSizeValue = document.getElementById("nodeUiDevModuleBrowserEntryTextSizeValue");
-  const topRatioInput = document.getElementById("nodeUiDevSettingsHeaderTopRatio");
-  const topRatioValue = document.getElementById("nodeUiDevSettingsHeaderTopRatioValue");
-  const paddingInput = document.getElementById("nodeUiDevSettingsHeaderPadding");
-  const paddingValue = document.getElementById("nodeUiDevSettingsHeaderPaddingValue");
-  const floatingWindowHeaderHeightInput = document.getElementById("nodeUiDevFloatingWindowHeaderHeight");
-  const floatingWindowHeaderHeightValue = document.getElementById("nodeUiDevFloatingWindowHeaderHeightValue");
-  const moduleTitleFontInput = document.getElementById("nodeUiDevModuleTitleFont");
-  const moduleTitleFontValue = document.getElementById("nodeUiDevModuleTitleFontValue");
-  const moduleTitleHeightInput = document.getElementById("nodeUiDevModuleTitleHeight");
-  const moduleTitleHeightValue = document.getElementById("nodeUiDevModuleTitleHeightValue");
-  const moduleTitleTextFillInput = document.getElementById("nodeUiDevModuleTitleTextFill");
-  const moduleTitleTextFillValue = document.getElementById("nodeUiDevModuleTitleTextFillValue");
-  const moduleIoSectionHeightInput = document.getElementById("nodeUiDevModuleIoSectionHeight");
-  const moduleIoSectionHeightValue = document.getElementById("nodeUiDevModuleIoSectionHeightValue");
-  const moduleNodeSizeInput = document.getElementById("nodeUiDevModuleNodeSize");
-  const moduleNodeSizeValue = document.getElementById("nodeUiDevModuleNodeSizeValue");
-  const sliderWidthInput = document.getElementById("nodeUiDevSliderWidth");
-  const sliderWidthValue = document.getElementById("nodeUiDevSliderWidthValue");
-  const sliderHeightInput = document.getElementById("nodeUiDevSliderHeight");
-  const sliderHeightValue = document.getElementById("nodeUiDevSliderHeightValue");
+  const moduleFillColorInput = document.getElementById("nodeUiDevModuleFillColor");
+  const moduleFillColorValue = document.getElementById("nodeUiDevModuleFillColorValue");
+  const moduleFillAlphaInput = document.getElementById("nodeUiDevModuleFillAlpha");
+  const moduleFillAlphaValue = document.getElementById("nodeUiDevModuleFillAlphaValue");
   const sliderLabelColorInput = document.getElementById("nodeUiDevSliderLabelColor");
   const sliderLabelColorValue = document.getElementById("nodeUiDevSliderLabelColorValue");
   const sliderValueColorInput = document.getElementById("nodeUiDevSliderValueColor");
   const sliderValueColorValue = document.getElementById("nodeUiDevSliderValueColorValue");
   const sliderUnitColorInput = document.getElementById("nodeUiDevSliderUnitColor");
   const sliderUnitColorValue = document.getElementById("nodeUiDevSliderUnitColorValue");
-  const sliderFillHoverColorInput = document.getElementById("nodeUiDevSliderFillHoverColor");
-  const sliderFillHoverColorValue = document.getElementById("nodeUiDevSliderFillHoverColorValue");
-  const sliderFillHoverAlphaInput = document.getElementById("nodeUiDevSliderFillHoverAlpha");
-  const sliderFillHoverAlphaValue = document.getElementById("nodeUiDevSliderFillHoverAlphaValue");
-  const nodeGlowSizeInput = document.getElementById("nodeUiDevNodeGlowSize");
-  const nodeGlowSizeValue = document.getElementById("nodeUiDevNodeGlowSizeValue");
-  const wirePatchPointSizeInput = document.getElementById("nodeUiDevWirePatchPointSize");
-  const wirePatchPointSizeValue = document.getElementById("nodeUiDevWirePatchPointSizeValue");
-  const wireThicknessInput = document.getElementById("nodeUiDevWireThickness");
-  const wireThicknessValue = document.getElementById("nodeUiDevWireThicknessValue");
   const traceWireThicknessInput = document.getElementById("nodeUiDevTraceWireThickness");
   const traceWireThicknessValue = document.getElementById("nodeUiDevTraceWireThicknessValue");
   const choiceSlideEmptyBorderInput = document.getElementById("nodeUiDevChoiceSlideEmptyBorder");
   const choiceSlideEmptyBorderValue = document.getElementById("nodeUiDevChoiceSlideEmptyBorderValue");
-  const choiceDividerHeightInput = document.getElementById("nodeUiDevChoiceDividerHeight");
-  const choiceDividerHeightValue = document.getElementById("nodeUiDevChoiceDividerHeightValue");
   const choiceSlideDebugBoxesInput = document.getElementById("nodeUiDevChoiceSlideDebugBoxes");
   const bypassIconSizeInput = document.getElementById("nodeUiDevBypassIconSize");
   const bypassIconSizeValue = document.getElementById("nodeUiDevBypassIconSizeValue");
@@ -266,90 +739,42 @@ function syncNodeUiDevSettingsHeaderControls() {
   const bypassOnBackgroundColorValue = document.getElementById("nodeUiDevBypassOnBackgroundColorValue");
   const bypassOffBackgroundColorInput = document.getElementById("nodeUiDevBypassOffBackgroundColor");
   const bypassOffBackgroundColorValue = document.getElementById("nodeUiDevBypassOffBackgroundColorValue");
-  const moveSymbolSizeInput = document.getElementById("nodeUiDevMoveSymbolSize");
-  const moveSymbolSizeValue = document.getElementById("nodeUiDevMoveSymbolSizeValue");
-  const moveSymbolPreview = document.getElementById("nodeUiDevMoveSymbolPreview");
-  const closeIconSizeInput = document.getElementById("nodeUiDevCloseIconSize");
-  const closeIconSizeValue = document.getElementById("nodeUiDevCloseIconSizeValue");
-  const closeIconPreview = document.getElementById("nodeUiDevCloseIconPreview");
-  const highlightInput = document.getElementById("nodeUiDevSettingsHeaderHighlights");
+  if (typeof syncNodeUiDevModuleRoundness === "function") {
+    syncNodeUiDevModuleRoundness();
+  }
+  if (typeof scheduleNodeUiDevSettingsAutosave === "function") {
+    scheduleNodeUiDevSettingsAutosave();
+  }
   if (
     !settingsView ||
     !mouseLightEnabledInput ||
     !showOriginMarkerInput ||
-    !scopeBloomEnabledInput ||
-    !textSizeInput ||
-    !textSizeValue ||
-    !uiDevTextSizeInput ||
-    !uiDevTextSizeValue ||
-    !liveToggleTextSizeInput ||
-    !liveToggleTextSizeValue ||
-    !modularHeaderButtonBackgroundInput ||
-    !modularHeaderButtonBackgroundValue ||
     !tooltipTextSizeInput ||
     !tooltipTextSizeValue ||
     !minimumGridBrightnessInput ||
     !minimumGridBrightnessValue ||
     !moduleLightSpreadInput ||
     !moduleLightSpreadValue ||
-    !textGlowLevelInput ||
-    !textGlowLevelValue ||
     !moduleGridInsetInput ||
     !moduleGridInsetValue ||
-    !moduleRoundnessInput ||
-    !moduleRoundnessValue ||
     !gridColorInput ||
     !gridColorValue ||
     !workspaceBackgroundColorInput ||
     !workspaceBackgroundColorValue ||
-    !moduleBrowserEntryHeightInput ||
-    !moduleBrowserEntryHeightValue ||
-    !moduleBrowserEntryPaddingInput ||
-    !moduleBrowserEntryPaddingValue ||
-    !moduleBrowserEntryTextSizeInput ||
-    !moduleBrowserEntryTextSizeValue ||
-    !topRatioInput ||
-    !topRatioValue ||
-    !paddingInput ||
-    !paddingValue ||
-    !floatingWindowHeaderHeightInput ||
-    !floatingWindowHeaderHeightValue ||
-    !moduleTitleFontInput ||
-    !moduleTitleFontValue ||
-    !moduleTitleHeightInput ||
-    !moduleTitleHeightValue ||
-    !moduleTitleTextFillInput ||
-    !moduleTitleTextFillValue ||
-    !moduleIoSectionHeightInput ||
-    !moduleIoSectionHeightValue ||
-    !moduleNodeSizeInput ||
-    !moduleNodeSizeValue ||
-    !sliderWidthInput ||
-    !sliderWidthValue ||
-    !sliderHeightInput ||
-    !sliderHeightValue ||
+    !moduleFillColorInput ||
+    !moduleFillColorValue ||
+    !moduleFillAlphaInput ||
+    !moduleFillAlphaValue ||
     !sliderLabelColorInput ||
     !sliderLabelColorValue ||
     !sliderValueColorInput ||
     !sliderValueColorValue ||
     !sliderUnitColorInput ||
     !sliderUnitColorValue ||
-    !sliderFillHoverColorInput ||
-    !sliderFillHoverColorValue ||
-    !sliderFillHoverAlphaInput ||
-    !sliderFillHoverAlphaValue ||
-    !nodeGlowSizeInput ||
-    !nodeGlowSizeValue ||
-    !wirePatchPointSizeInput ||
-    !wirePatchPointSizeValue ||
-    !wireThicknessInput ||
-    !wireThicknessValue ||
     !traceWireThicknessInput ||
     !traceWireThicknessValue ||
     !choiceSlideEmptyBorderInput ||
     !choiceSlideEmptyBorderValue ||
-    !choiceDividerHeightInput ||
-    !choiceDividerHeightValue ||
     !choiceSlideDebugBoxesInput ||
     !bypassIconSizeInput ||
     !bypassIconSizeValue ||
@@ -363,28 +788,13 @@ function syncNodeUiDevSettingsHeaderControls() {
     !bypassOnBackgroundColorInput ||
     !bypassOnBackgroundColorValue ||
     !bypassOffBackgroundColorInput ||
-    !bypassOffBackgroundColorValue ||
-    !moveSymbolSizeInput ||
-    !moveSymbolSizeValue ||
-    !moveSymbolPreview ||
-    !closeIconSizeInput ||
-    !closeIconSizeValue ||
-    !closeIconPreview ||
-    !highlightInput
+    !bypassOffBackgroundColorValue
   ) {
     return;
   }
 
   const mouseLightEnabled = Boolean(mouseLightEnabledInput.checked);
   const showOriginMarker = Boolean(showOriginMarkerInput.checked);
-  const scopeBloomEnabled = Boolean(scopeBloomEnabledInput.checked);
-  const textPercent = Math.max(0, Math.min(100, Number(textSizeInput.value) || 0));
-  const uiDevTextPercent = Math.max(0, Math.min(100, Number(uiDevTextSizeInput.value) || 0));
-  const liveToggleTextPercent = Math.max(0, Math.min(100, Number(liveToggleTextSizeInput.value) || 0));
-  const modularHeaderButtonBackgroundPercent = Math.max(
-    0,
-    Math.min(100, Number(modularHeaderButtonBackgroundInput.value) || 0),
-  );
   // Max ceiling for tip fit-to-box (not a fixed display size).
   const tooltipTextSizePx = Math.max(12, Math.min(96, Number(tooltipTextSizeInput.value) || 64));
   const minimumGridBrightnessPercent = Math.max(
@@ -392,51 +802,20 @@ function syncNodeUiDevSettingsHeaderControls() {
     Math.min(100, Number(minimumGridBrightnessInput.value) || 0),
   );
   const moduleLightSpreadPercent = Math.max(40, Math.min(220, Number(moduleLightSpreadInput.value) || 78));
-  const textGlowLevelPercent = Math.max(0, Math.min(100, Number(textGlowLevelInput.value) || 0));
   const moduleGridInsetPx = Math.max(0, Math.min(20, Number(moduleGridInsetInput.value) || 0));
-  const moduleRoundnessPercent = Math.max(0, Math.min(100, Number(moduleRoundnessInput.value) || 0));
   const gridColor = normalizeNodeUiDevColor(gridColorInput.value, "#ffffff");
-  const workspaceBackgroundColor = normalizeNodeUiDevColor(workspaceBackgroundColorInput.value, "#0d0d0d");
-  const moduleBrowserEntryHeightPx = Math.max(
-    24,
-    Math.min(120, Number(moduleBrowserEntryHeightInput.value) || 46),
-  );
-  const moduleBrowserEntryPaddingPx = Math.max(
+  const workspaceBackgroundColor = normalizeNodeUiDevColor(workspaceBackgroundColorInput.value, "#1d1b1b");
+  const moduleFillColor = normalizeNodeUiDevColor(moduleFillColorInput.value, "#171a1f");
+  const moduleFillAlphaRaw = Number(moduleFillAlphaInput.value);
+  const moduleFillAlphaPercent = Math.max(
     0,
-    Math.min(20, Number(moduleBrowserEntryPaddingInput.value) || 0),
+    Math.min(100, Number.isFinite(moduleFillAlphaRaw) ? moduleFillAlphaRaw : 100),
   );
-  const moduleBrowserEntryTextSizePx = Math.max(
-    8,
-    Math.min(28, Number(moduleBrowserEntryTextSizeInput.value) || 16),
-  );
-  const topPercent = Math.max(0, Math.min(100, Number(topRatioInput.value) || 0));
-  const paddingPx = Math.max(0, Math.min(20, Number(paddingInput.value) || 0));
-  const floatingWindowHeaderHeightPx = Math.max(
-    20,
-    Math.min(48, Number(floatingWindowHeaderHeightInput.value) || 30),
-  );
-  const moduleTitleFont = normalizeNodeUiDevControlValue(
-    nodeUiDevSettingControls.find((definition) => definition.key === "moduleTitleFont"),
-    moduleTitleFontInput.value,
-  );
-  const moduleTitleHeightPx = Math.max(12, Math.min(44, Number(moduleTitleHeightInput.value) || 26));
-  const moduleTitleTextFillPercent = Math.max(0, Math.min(100, Number(moduleTitleTextFillInput.value) || 0));
-  const moduleIoSectionHeightPx = 24;
-  moduleIoSectionHeightInput.value = String(moduleIoSectionHeightPx);
-  const moduleNodeSizePercent = Math.max(0, Math.min(100, Number(moduleNodeSizeInput.value) || 0));
-  const sliderWidthPercent = Math.max(20, Math.min(100, Number(sliderWidthInput.value) || 100));
-  const sliderHeightPx = Math.max(8, Math.min(40, Number(sliderHeightInput.value) || 28));
   const sliderLabelColor = normalizeNodeUiDevColor(sliderLabelColorInput.value, "#cfdde5");
   const sliderValueColor = normalizeNodeUiDevColor(sliderValueColorInput.value, "#ffffff");
   const sliderUnitColor = normalizeNodeUiDevColor(sliderUnitColorInput.value, "#7fc7d9");
-  const sliderFillHoverColor = normalizeNodeUiDevColor(sliderFillHoverColorInput.value, "#7fc7d9");
-  const sliderFillHoverAlphaPercent = Math.max(0, Math.min(100, Number(sliderFillHoverAlphaInput.value) || 0));
-  const nodeGlowSizePercent = Math.max(0, Math.min(200, Number(nodeGlowSizeInput.value) || 0));
-  const wirePatchPointSizePercent = Math.max(0, Math.min(200, Number(wirePatchPointSizeInput.value) || 0));
-  const wireThicknessPercent = Math.max(0, Math.min(100, Number(wireThicknessInput.value) || 0));
   const traceWireThicknessPx = Math.max(1, Math.min(12, Number(traceWireThicknessInput.value) || 1));
   const choiceSlideEmptyBorderPx = Math.max(0, Math.min(8, Number(choiceSlideEmptyBorderInput.value) || 0));
-  const choiceDividerHeightPx = Math.max(0, Math.min(35, Number(choiceDividerHeightInput.value) || 0));
   const bypassIconSizePercent = Math.max(0, Math.min(100, Number(bypassIconSizeInput.value) || 0));
   const bypassIconGlowSpreadPercent = Math.max(
     0,
@@ -446,18 +825,6 @@ function syncNodeUiDevSettingsHeaderControls() {
   const bypassIconOnColor = normalizeNodeUiDevColor(bypassIconOnColorInput.value, "#f7b758");
   const bypassOnBackgroundColor = normalizeNodeUiDevColor(bypassOnBackgroundColorInput.value, "#5c1818");
   const bypassOffBackgroundColor = normalizeNodeUiDevColor(bypassOffBackgroundColorInput.value, "#000000");
-  const moveSymbolSizePercent = Math.max(0, Math.min(100, Number(moveSymbolSizeInput.value) || 0));
-  const closeIconSizePercent = Math.max(0, Math.min(100, Number(closeIconSizeInput.value) || 0));
-  const moduleTitleHeightGu = moduleTitleHeightPx / nodeGraphGrid.heightPx;
-  settingsView.style.setProperty("--node-settings-knob-text-ratio", String(textPercent / 100));
-  settingsView.style.setProperty("--node-settings-knob-top-ratio", String(topPercent / 100));
-  settingsView.style.setProperty("--node-settings-knob-extra-padding", `${paddingPx}px`);
-  document
-    .getElementById("nodeWiringPanel")
-    ?.style.setProperty(
-      "--node-toolbar-button-bg-alpha",
-      String(modularHeaderButtonBackgroundPercent / 100),
-    );
   document
     .getElementById("nodeWiringPanel")
     ?.style.setProperty("--node-tooltip-text-size", `${tooltipTextSizePx}px`);
@@ -466,28 +833,11 @@ function syncNodeUiDevSettingsHeaderControls() {
     fitNodeInteractionHelpText(document.getElementById("nodeInteractionHelp"));
   }
   document
-    .documentElement
-    .style
-    .setProperty("--node-floating-window-header-height", `${floatingWindowHeaderHeightPx}px`);
-  document
-    .getElementById("nodeWiringPanel")
-    ?.style.setProperty("--node-min-grid-brightness-alpha", String(minimumGridBrightnessPercent / 100));
-  document
     .getElementById("nodeGraphWorkspace")
     ?.style.setProperty("--node-mouse-light-amount", mouseLightEnabled ? "0.79" : "0");
   document
     .getElementById("nodeGraphWorkspace")
     ?.classList.toggle("origin-marker-visible", showOriginMarker);
-  if (typeof nodeGraphMvp !== "undefined" && nodeGraphMvp) {
-    const previousScopeBloomEnabled = Boolean(nodeGraphMvp.scopeBloomEnabled);
-    nodeGraphMvp.scopeBloomEnabled = scopeBloomEnabled;
-    document
-      .getElementById("nodeGraphWorkspace")
-      ?.classList.toggle("scope-bloom-enabled", scopeBloomEnabled);
-    if (previousScopeBloomEnabled !== scopeBloomEnabled && typeof scheduleNodeGraphModuleScopeDraw === "function") {
-      scheduleNodeGraphModuleScopeDraw();
-    }
-  }
   document
     .getElementById("nodeGraphWorkspace")
     ?.style.setProperty("--node-mouse-light-spread", "0.05");
@@ -496,77 +846,29 @@ function syncNodeUiDevSettingsHeaderControls() {
     ?.style.setProperty("--node-mouse-light-color-rgb", "127 199 217");
   document
     .getElementById("nodeGraphWorkspace")
-    ?.style.setProperty("--node-module-light-spread", String(moduleLightSpreadPercent / 100));
-  document
-    .getElementById("nodeGraphWorkspace")
-    ?.style.setProperty("--node-text-light-level", String(textGlowLevelPercent / 100));
-  document
-    .getElementById("nodeWiringPanel")
-    ?.style.setProperty("--node-text-light-level", String(textGlowLevelPercent / 100));
-  document
-    .getElementById("nodeGraphWorkspace")
     ?.style.setProperty("--node-module-grid-inset", `${moduleGridInsetPx}px`);
-  document
-    .getElementById("nodeGraphWorkspace")
-    ?.style.setProperty("--node-module-roundness-ratio", String(moduleRoundnessPercent / 100));
-  // Module frame SVG reads border-radius — rebuild outlines when roundness changes.
-  if (typeof scheduleNodeGraphModuleFramesUpdate === "function") {
-    scheduleNodeGraphModuleFramesUpdate({ force: true });
-  } else if (typeof updateAllNodeGraphModuleFrames === "function") {
-    updateAllNodeGraphModuleFrames({ force: true });
-  }
   gridColorInput.value = gridColor;
   workspaceBackgroundColorInput.value = workspaceBackgroundColor;
+  moduleFillColorInput.value = moduleFillColor;
   document
     .getElementById("nodeGraphWorkspace")
     ?.style.setProperty("--node-grid-color-rgb", nodeUiDevHexColorToRgbTriplet(gridColor));
   document
     .getElementById("nodeGraphWorkspace")
     ?.style.setProperty("--node-workspace-bg", workspaceBackgroundColor);
-  document.body.style.setProperty(
-    "--node-module-category-row-height",
-    `${moduleBrowserEntryHeightPx}px`,
-  );
-  document.body.style.setProperty(
-    "--node-module-category-row-padding",
-    `${moduleBrowserEntryPaddingPx}px`,
-  );
-  document.body.style.setProperty(
-    "--node-module-category-row-text-size",
-    `${moduleBrowserEntryTextSizePx}px`,
-  );
   document
     .getElementById("nodeGraphWorkspace")
     ?.style.setProperty(
-      "--node-header-title-font-family",
-      nodeUiDevSelectCssValue(
-        nodeUiDevSettingControls.find((definition) => definition.key === "moduleTitleFont"),
-        moduleTitleFont,
-      ),
+      "--node-module-fill",
+      `rgb(${nodeUiDevHexColorToRgbTriplet(moduleFillColor)} / ${moduleFillAlphaPercent / 100})`,
     );
-  moduleTitleFontInput.value = moduleTitleFont;
+  // --node-port-size-ratio is owned by syncNodeUiDevPortSize().
   document
     .getElementById("nodeGraphWorkspace")
-    ?.style.setProperty("--node-header-title-row-height", `calc(var(--node-grid-height) * ${moduleTitleHeightGu})`);
-  document
-    .getElementById("nodeGraphWorkspace")
-    ?.style.setProperty("--node-header-title-text-ratio", String(moduleTitleTextFillPercent / 100));
-  document
-    .getElementById("nodeGraphWorkspace")
-    ?.style.setProperty("--node-io-section-min-height", `${moduleIoSectionHeightPx}px`);
-  document
-    .getElementById("nodeGraphWorkspace")
-    ?.style.setProperty("--node-port-size-ratio", String(moduleNodeSizePercent / 100));
-  document
-    .getElementById("nodeGraphWorkspace")
-    ?.style.setProperty("--node-slider-width-ratio", String(sliderWidthPercent / 100));
-  document
-    .getElementById("nodeGraphWorkspace")
-    ?.style.setProperty("--node-slider-readout-height", `${sliderHeightPx}px`);
+    ?.style.removeProperty("--node-slider-readout-height");
   sliderLabelColorInput.value = sliderLabelColor;
   sliderValueColorInput.value = sliderValueColor;
   sliderUnitColorInput.value = sliderUnitColor;
-  sliderFillHoverColorInput.value = sliderFillHoverColor;
   document
     .getElementById("nodeGraphWorkspace")
     ?.style.setProperty("--node-slider-label-color", sliderLabelColor);
@@ -578,28 +880,10 @@ function syncNodeUiDevSettingsHeaderControls() {
     ?.style.setProperty("--node-slider-unit-color", sliderUnitColor);
   document
     .getElementById("nodeGraphWorkspace")
-    ?.style.setProperty("--node-slider-fill-hover-rgb", nodeUiDevHexColorToRgbTriplet(sliderFillHoverColor));
-  document
-    .getElementById("nodeGraphWorkspace")
-    ?.style.setProperty("--node-slider-fill-hover-alpha", String(sliderFillHoverAlphaPercent / 100));
-  document
-    .getElementById("nodeGraphWorkspace")
-    ?.style.setProperty("--node-hover-glow-size-ratio", String(nodeGlowSizePercent / 100));
-  document
-    .getElementById("nodeGraphWorkspace")
-    ?.style.setProperty("--node-wire-patch-point-size-ratio", String(wirePatchPointSizePercent / 100));
-  document
-    .getElementById("nodeGraphWorkspace")
-    ?.style.setProperty("--node-wire-thickness-ratio", String(wireThicknessPercent / 100));
-  document
-    .getElementById("nodeGraphWorkspace")
     ?.style.setProperty("--node-trace-wire-thickness", `${traceWireThicknessPx}px`);
   document
     .getElementById("nodeGraphWorkspace")
     ?.style.setProperty("--node-choice-slide-empty-border", `${choiceSlideEmptyBorderPx}`);
-  document
-    .getElementById("nodeGraphWorkspace")
-    ?.style.setProperty("--node-choice-divider-height", `${choiceDividerHeightPx}px`);
   document
     .getElementById("nodeWiringPanel")
     ?.classList.toggle("choice-slider-debug", choiceSlideDebugBoxesInput.checked);
@@ -621,47 +905,19 @@ function syncNodeUiDevSettingsHeaderControls() {
   document
     .getElementById("nodeGraphWorkspace")
     ?.style.setProperty("--node-bypass-off-bg", bypassOffBackgroundColor);
-  document.body.style.setProperty("--node-move-symbol-size-ratio", String(moveSymbolSizePercent / 100));
-  document.body.style.setProperty("--panel-close-glyph-size-ratio", String(closeIconSizePercent / 100));
-  textSizeValue.textContent = `${textPercent}%`;
-  uiDevTextSizeValue.textContent = `${uiDevTextPercent}%`;
-  liveToggleTextSizeValue.textContent = `${liveToggleTextPercent}%`;
-  modularHeaderButtonBackgroundValue.textContent = `${modularHeaderButtonBackgroundPercent}%`;
   tooltipTextSizeValue.textContent = `${tooltipTextSizePx}px`;
   minimumGridBrightnessValue.textContent = `${minimumGridBrightnessPercent}%`;
   moduleLightSpreadValue.textContent = `${moduleLightSpreadPercent}%`;
-  textGlowLevelValue.textContent = `${textGlowLevelPercent}%`;
   moduleGridInsetValue.textContent = `${moduleGridInsetPx}px`;
-  moduleRoundnessValue.textContent = `${moduleRoundnessPercent}%`;
   gridColorValue.textContent = gridColor;
   workspaceBackgroundColorValue.textContent = workspaceBackgroundColor;
-  moduleBrowserEntryHeightValue.textContent = `${moduleBrowserEntryHeightPx}px`;
-  moduleBrowserEntryPaddingValue.textContent = `${moduleBrowserEntryPaddingPx}px`;
-  moduleBrowserEntryTextSizeValue.textContent = `${moduleBrowserEntryTextSizePx}px`;
-  topRatioValue.textContent = `${topPercent}%`;
-  paddingValue.textContent = `${paddingPx}px`;
-  floatingWindowHeaderHeightValue.textContent = `${floatingWindowHeaderHeightPx}px`;
-  moduleTitleFontValue.textContent = nodeUiDevSelectLabel(
-    nodeUiDevSettingControls.find((definition) => definition.key === "moduleTitleFont"),
-    moduleTitleFont,
-  );
-  moduleTitleHeightValue.textContent = `${moduleTitleHeightPx}px`;
-  moduleTitleTextFillValue.textContent = `${moduleTitleTextFillPercent}%`;
-  moduleIoSectionHeightValue.textContent = `${moduleIoSectionHeightPx}px`;
-  moduleNodeSizeValue.textContent = `${moduleNodeSizePercent}%`;
-  sliderWidthValue.textContent = `${sliderWidthPercent}%`;
-  sliderHeightValue.textContent = `${sliderHeightPx}px`;
+  moduleFillColorValue.textContent = moduleFillColor;
+  moduleFillAlphaValue.textContent = `${moduleFillAlphaPercent}%`;
   sliderLabelColorValue.textContent = sliderLabelColor;
   sliderValueColorValue.textContent = sliderValueColor;
   sliderUnitColorValue.textContent = sliderUnitColor;
-  sliderFillHoverColorValue.textContent = sliderFillHoverColor;
-  sliderFillHoverAlphaValue.textContent = `${sliderFillHoverAlphaPercent}%`;
-  nodeGlowSizeValue.textContent = `${nodeGlowSizePercent}%`;
-  wirePatchPointSizeValue.textContent = `${wirePatchPointSizePercent}%`;
-  wireThicknessValue.textContent = `${wireThicknessPercent}%`;
   traceWireThicknessValue.textContent = `${traceWireThicknessPx}px`;
   choiceSlideEmptyBorderValue.textContent = `${choiceSlideEmptyBorderPx}px`;
-  choiceDividerHeightValue.textContent = `${choiceDividerHeightPx}px`;
   bypassIconSizeValue.textContent = `${bypassIconSizePercent}%`;
   bypassIconGlowSpreadValue.textContent = `${bypassIconGlowSpreadPercent}%`;
   bypassIconGlowColorInput.value = bypassIconGlowColor;
@@ -672,8 +928,6 @@ function syncNodeUiDevSettingsHeaderControls() {
   bypassOnBackgroundColorValue.textContent = bypassOnBackgroundColor;
   bypassOffBackgroundColorInput.value = bypassOffBackgroundColor;
   bypassOffBackgroundColorValue.textContent = bypassOffBackgroundColor;
-  moveSymbolSizeValue.textContent = `${moveSymbolSizePercent}%`;
-  closeIconSizeValue.textContent = `${closeIconSizePercent}%`;
   bypassIconPreview.style.setProperty(
     "--node-ui-dev-symbol-preview-size",
     String(bypassIconSizePercent / 100),
@@ -689,12 +943,6 @@ function syncNodeUiDevSettingsHeaderControls() {
   bypassIconPreview.style.setProperty("--node-ui-dev-bypass-preview-glow-color", bypassIconGlowColor);
   bypassIconPreview.style.setProperty("--node-ui-dev-bypass-preview-on-color", bypassIconOnColor);
   bypassIconPreview.style.setProperty("--node-ui-dev-bypass-preview-bg", bypassOnBackgroundColor);
-  moveSymbolPreview.style.setProperty("--node-ui-dev-symbol-preview-size", String(moveSymbolSizePercent / 100));
-  closeIconPreview.style.setProperty("--node-ui-dev-symbol-preview-size", String(closeIconSizePercent / 100));
-  document
-    .getElementById("nodeWiringPanel")
-    ?.classList.toggle("settings-header-layout-debug", highlightInput.checked);
-  syncNodeUiDevNodeColorControls();
   syncNodeUserUiSettingsMirrorControls();
   applyNodeGraphPatchToDom();
   updateNodeGraphGridHeatmap();

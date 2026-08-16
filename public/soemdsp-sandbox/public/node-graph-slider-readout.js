@@ -37,6 +37,12 @@ function nodeSliderChoiceDividerBackground(readout, choices) {
 }
 
 function nodeSliderReadCssNumber(element, property, fallback, min = -Infinity, max = Infinity) {
+  if (
+    typeof nodeGraphElementInSkippedContentVisibility === "function"
+    && nodeGraphElementInSkippedContentVisibility(element)
+  ) {
+    return fallback;
+  }
   const value = Number.parseFloat(getComputedStyle(element).getPropertyValue(property));
   if (!Number.isFinite(value)) {
     return fallback;
@@ -126,10 +132,8 @@ function nodeSliderSelectedChoiceDividerLines(dividerLines, selectedIndex) {
   ));
 }
 
-function nodeSliderChoiceDividerHeight(readout, layerHeight) {
-  const zoom = Math.max(0.01, Number(nodeGraphMvp?.zoom) || 1);
-  const heightAtOneToOne = nodeSliderReadCssNumber(readout, "--node-choice-divider-height", 35, 0, 35);
-  return Math.max(0, Math.min(layerHeight, heightAtOneToOne / zoom));
+function nodeSliderChoiceDividerInset(readout) {
+  return nodeSliderReadCssNumber(readout, "--node-choice-divider-padding", 3, 0, 16);
 }
 
 function nodeSliderSnapStrokeCoordinate(localPosition, viewportOrigin, strokeWidth = 1, visualScale = 1) {
@@ -165,6 +169,12 @@ function syncNodeSliderChoiceDebugSquares(readout, choices, enabled, selectedInd
     readout.append(layer);
   }
 
+  if (
+    typeof nodeGraphElementInSkippedContentVisibility === "function"
+    && nodeGraphElementInSkippedContentVisibility(layer)
+  ) {
+    return;
+  }
   const layerRect = layer.getBoundingClientRect();
   const layerWidth = nodeSliderElementLayoutWidth(layer);
   const layerHeight = nodeSliderElementLayoutHeight(layer);
@@ -173,8 +183,9 @@ function syncNodeSliderChoiceDebugSquares(readout, choices, enabled, selectedInd
   layer.setAttribute("viewBox", `0 0 ${layerWidth.toFixed(3)} ${layerHeight.toFixed(3)}`);
   layer.setAttribute("preserveAspectRatio", "none");
   const segmentRects = nodeSliderChoiceCellRects(layerWidth, layerHeight, choices);
-  const dividerHeight = nodeSliderChoiceDividerHeight(readout, layerHeight);
-  const dividerTop = (layerHeight - dividerHeight) * 0.5;
+  const dividerInset = nodeSliderChoiceDividerInset(readout);
+  const dividerHeight = Math.max(0, layerHeight - dividerInset * 2);
+  const dividerTop = dividerInset;
   const dividerLines = nodeSliderChoiceDividerLinesFromCells(segmentRects).map((divider, index) => ({
     ...divider,
     height: dividerHeight,
@@ -287,6 +298,12 @@ function syncNodeSliderChoiceDebugSquares(readout, choices, enabled, selectedInd
 
 function syncNodeGraphSliderReadouts() {
   for (const slider of document.querySelectorAll(".dsp-node input[data-param]")) {
+    if (
+      typeof nodeGraphElementInSkippedContentVisibility === "function"
+      && nodeGraphElementInSkippedContentVisibility(slider)
+    ) {
+      continue;
+    }
     syncNodeSliderReadout(slider);
   }
   if (typeof syncNodeGraphGhostSliders === "function") {
@@ -294,10 +311,31 @@ function syncNodeGraphSliderReadouts() {
   }
 }
 
+function scheduleNodeGraphSliderReadoutRelayout() {
+  if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") {
+    return;
+  }
+  if (scheduleNodeGraphSliderReadoutRelayout._frame) {
+    return;
+  }
+  scheduleNodeGraphSliderReadoutRelayout._frame = window.requestAnimationFrame(() => {
+    scheduleNodeGraphSliderReadoutRelayout._frame = window.requestAnimationFrame(() => {
+      scheduleNodeGraphSliderReadoutRelayout._frame = 0;
+      syncNodeGraphSliderReadouts();
+    });
+  });
+}
+
 // Knob face live sync: modules/knob/knob-face.js
 // (syncNodeGraphKnobFaceFromSlider).
 
 function syncNodeSliderReadout(slider) {
+  if (
+    typeof nodeGraphElementInSkippedContentVisibility === "function"
+    && nodeGraphElementInSkippedContentVisibility(slider)
+  ) {
+    return;
+  }
   if (typeof syncNodeGraphKnobFaceFromSlider === "function") {
     syncNodeGraphKnobFaceFromSlider(slider);
   }
@@ -352,7 +390,7 @@ function syncNodeSliderReadout(slider) {
   const usesPortalWrap = nodeSliderShouldWraparound(slider) && !usesChoices;
   if (labelText) {
     // Prefer live control/alias (nodeSliderLabelText) over a stale
-    // readout.dataset.paramLabel left over from factory create ("→").
+    // readout.dataset.paramLabel left over from factory create ("←").
     const displayLabel = nodeSliderLabelText(slider);
     if (displayLabel) {
       readout.dataset.paramLabel = displayLabel;
@@ -364,6 +402,7 @@ function syncNodeSliderReadout(slider) {
     maxDigits: formattedMaxDigits,
     reserveSignSpace: true,
     showSign: nodeSliderShouldShowSign(slider),
+    removeTrailingZeros: slider.dataset.removeTrailingZeros === "true",
   });
   unitText.textContent = unit;
   unitText.classList.toggle("is-empty", !unit);
@@ -456,7 +495,10 @@ function nodeSliderLabelText(slider) {
   }
   const label = slider?.closest?.("label");
   if (!label) {
-    return slider?.id || "";
+    return "";
+  }
+  if (Object.hasOwn(label.dataset, "paramLabel")) {
+    return String(label.dataset.paramLabel || "").trim();
   }
   for (const node of label.childNodes) {
     if (node.nodeType === Node.TEXT_NODE) {
@@ -466,7 +508,7 @@ function nodeSliderLabelText(slider) {
       }
     }
   }
-  return slider?.id || "";
+  return "";
 }
 
 function nodeSliderDebugPath(slider) {

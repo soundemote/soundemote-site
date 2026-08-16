@@ -3,6 +3,71 @@ const nodeGraphWireTypes = Object.freeze({
   trace: "trace",
 });
 
+function normalizeNodeGraphWireCurve(value, fallback = 1) {
+  const n = Number(value);
+  const base = Number.isFinite(n) ? n : Number(fallback);
+  const safe = Number.isFinite(base) ? base : 1;
+  return Math.max(0, Math.min(1, safe));
+}
+
+function nodeGraphWireCurve() {
+  return normalizeNodeGraphWireCurve(
+    typeof nodeGraphMvp === "object" ? nodeGraphMvp?.wireCurve : undefined,
+  );
+}
+
+function ensureNodeGraphWireCurveControl() {
+  const slot = document.getElementById("nodeSceneWireCurveSlot");
+  const existing = document.getElementById("nodeSceneWireCurve");
+  if (!slot || existing) {
+    return existing;
+  }
+  if (typeof mountNodeGraphSettingsRangeRow !== "function") {
+    return null;
+  }
+  const { input } = mountNodeGraphSettingsRangeRow(slot, {
+    id: "nodeSceneWireCurve",
+    label: "Curve",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    value: nodeGraphWireCurve(),
+    ariaLabel: "Analog wire curve",
+    title: "Cubic cable bow. 1 = original, 0 = straight.",
+  });
+  input.addEventListener("input", () => setNodeGraphWireCurve(input.value, { persist: false, sync: false }));
+  input.addEventListener("change", () => setNodeGraphWireCurve(input.value, { persist: true, sync: false }));
+  return input;
+}
+
+function syncNodeGraphWireCurveControl() {
+  const input = ensureNodeGraphWireCurveControl();
+  if (!input || input.matches(":active") || document.activeElement === input) {
+    return;
+  }
+  const text = String(nodeGraphWireCurve());
+  if (input.value !== text) {
+    input.value = text;
+  }
+}
+
+function setNodeGraphWireCurve(value, options = {}) {
+  const next = normalizeNodeGraphWireCurve(value);
+  if (typeof nodeGraphMvp === "object" && nodeGraphMvp) {
+    nodeGraphMvp.wireCurve = next;
+  }
+  if (options.sync !== false) {
+    syncNodeGraphWireCurveControl();
+  }
+  if (typeof drawNodeGraphWires === "function") {
+    drawNodeGraphWires();
+  }
+  if (options.persist !== false && typeof scheduleNodeGraphWorkspaceViewPersist === "function") {
+    scheduleNodeGraphWorkspaceViewPersist();
+  }
+  return next;
+}
+
 function normalizeNodeGraphWireType(value) {
   return Object.values(nodeGraphWireTypes).includes(value)
     ? value
@@ -43,37 +108,78 @@ function nodeGraphWireOptionalPatchFields(wireOrOptions = {}) {
   return fields;
 }
 
-function setSelectedNodeGraphWirePixel(enabled) {
+function nodeGraphPatchWireCollection(patch, kind) {
+  if (kind === "graph") {
+    return patch.graphConnections;
+  }
+  if (kind === "modulation") {
+    return patch.modulations;
+  }
+  return patch.connections;
+}
+
+function nodeGraphSelectedWireSnapshots(selection = nodeGraphMvp.selected) {
+  const entries = typeof nodeGraphSelectedWireEntries === "function"
+    ? nodeGraphSelectedWireEntries(selection)
+    : [];
+  const out = [];
+  for (const entry of entries) {
+    const kind = entry.kind || "signal";
+    const live = kind === "graph"
+      ? nodeGraphMvp.graphConnections
+      : kind === "modulation"
+        ? nodeGraphMvp.modulations
+        : nodeGraphMvp.connections;
+    const wire = live?.[entry.index];
+    if (!wire) {
+      continue;
+    }
+    out.push({ kind, index: entry.index, wire });
+  }
+  return out;
+}
+
+function applySelectedNodeGraphWires(mutateWire, status) {
   const selection = nodeGraphMvp.selected;
-  const selectedWire = nodeGraphWireFromSelection(selection);
-  if (!selectedWire) {
-    return false;
+  const entries = typeof nodeGraphSelectedWireEntries === "function"
+    ? nodeGraphSelectedWireEntries(selection)
+    : [];
+  if (!entries.length) {
+    return 0;
   }
-
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
-  const collection = selectedWire.kind === "graph"
-    ? patch.graphConnections
-    : selectedWire.kind === "modulation"
-      ? patch.modulations
-      : patch.connections;
-  const wire = collection[selectedWire.index];
-  if (!wire) {
-    return false;
+  let changed = 0;
+  for (const entry of entries) {
+    const collection = nodeGraphPatchWireCollection(patch, entry.kind);
+    const wire = collection[entry.index];
+    if (!wire) {
+      continue;
+    }
+    if (mutateWire(wire, entry) !== false) {
+      changed += 1;
+    }
   }
-
-  const next = Boolean(enabled);
-  if (next) {
-    wire.pixelWire = true;
-  } else {
-    delete wire.pixelWire;
+  if (!changed) {
+    return 0;
   }
-  commitNodeGraphPatch(patch, {
-    status: next ? "wire set to pixel" : "wire set to vector",
-    wireEdit: true,
-  });
+  commitNodeGraphPatch(patch, { status, wireEdit: true });
   setNodeGraphSelection(selection);
-  configureNodeSceneContextMenu("wire");
-  return true;
+  if (typeof configureNodeSceneContextMenu === "function") {
+    configureNodeSceneContextMenu("wire");
+  }
+  return changed;
+}
+
+function setSelectedNodeGraphWirePixel(enabled) {
+  const next = Boolean(enabled);
+  const changed = applySelectedNodeGraphWires((wire) => {
+    if (next) {
+      wire.pixelWire = true;
+    } else {
+      delete wire.pixelWire;
+    }
+  }, next ? "wires set to pixel" : "wires set to vector");
+  return changed > 0;
 }
 
 function nodeGraphConnectionOptionsWithSelfTrace(sourceNode, destinationNode, options = {}) {
@@ -87,34 +193,196 @@ function nodeGraphConnectionOptionsWithSelfTrace(sourceNode, destinationNode, op
 }
 
 function setSelectedNodeGraphWireType(wireType) {
-  const selection = nodeGraphMvp.selected;
-  const selectedWire = nodeGraphWireFromSelection(selection);
-  if (!selectedWire) {
-    return false;
+  const nextType = normalizeNodeGraphWireType(wireType);
+  const changed = applySelectedNodeGraphWires((wire) => {
+    if (nextType === nodeGraphWireTypes.cable) {
+      delete wire.wireType;
+      delete wire.tracePoints;
+    } else {
+      wire.wireType = nextType;
+    }
+  }, `wires set to ${nextType}`);
+  return changed > 0;
+}
+
+function nodeGraphAttenuateInsertGridPoint(patch, sourceId, destinationId, slot) {
+  const source = patch.nodes.find((node) => node.id === sourceId);
+  const destination = patch.nodes.find((node) => node.id === destinationId);
+  const sgx = Number(source?.gx) || 0;
+  const sgy = Number(source?.gy) || 0;
+  const dgx = Number(destination?.gx) || 0;
+  const dgy = Number(destination?.gy) || 0;
+  return {
+    gx: Math.round((sgx + dgx) / 2),
+    gy: Math.round((sgy + dgy) / 2) + Number(slot || 0),
+  };
+}
+
+function nodeGraphAttenuateWireIdentity(kind, wire) {
+  if (!wire) {
+    return "";
+  }
+  if (kind === "modulation") {
+    return `m:${wire.sourceNode}|${wire.sourcePort}|${wire.destinationNode}|${wire.destinationParam}`;
+  }
+  return `s:${wire.sourceNode}|${wire.sourcePort}|${wire.destinationNode}|${wire.destinationPort}`;
+}
+
+function nodeGraphAttenuateWireAlias(patch, entry) {
+  const wire = entry?.wire;
+  if (!wire) {
+    return "";
+  }
+  const src = patch?.nodes?.find((node) => node.id === wire.sourceNode);
+  const dst = patch?.nodes?.find((node) => node.id === wire.destinationNode);
+  const from = String(
+    typeof nodeGraphPatchNodePortDisplayLabel === "function"
+      ? nodeGraphPatchNodePortDisplayLabel(src, src?.type, wire.sourcePort, "output")
+      : wire.sourcePort || "",
+  ).trim();
+  const to = String(
+    entry.kind === "modulation"
+      ? (wire.destinationParam || "")
+      : (typeof nodeGraphPatchNodePortDisplayLabel === "function"
+        ? nodeGraphPatchNodePortDisplayLabel(dst, dst?.type, wire.destinationPort, "input")
+        : wire.destinationPort || ""),
+  ).trim();
+  if (!from || !to) {
+    return from || to || "";
+  }
+  return `${from} → ${to}`;
+}
+
+function attenuateSelectedNodeGraphWires(mode = "attenuate") {
+  const bipolar = mode === "attenuvert";
+  const snapshots = nodeGraphSelectedWireSnapshots().filter((entry) => entry.kind !== "graph");
+  if (!snapshots.length) {
+    return 0;
   }
 
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
-  const collection = selectedWire.kind === "graph"
-    ? patch.graphConnections
-    : selectedWire.kind === "modulation"
-      ? patch.modulations
-      : patch.connections;
-  const wire = collection[selectedWire.index];
-  if (!wire) {
-    return false;
-  }
+  const drop = new Set(snapshots.map((entry) => nodeGraphAttenuateWireIdentity(entry.kind, entry.wire)));
+  patch.connections = (patch.connections || []).filter(
+    (wire) => !drop.has(nodeGraphAttenuateWireIdentity("signal", wire)),
+  );
+  patch.modulations = (patch.modulations || []).filter(
+    (wire) => !drop.has(nodeGraphAttenuateWireIdentity("modulation", wire)),
+  );
 
-  const nextType = normalizeNodeGraphWireType(wireType);
-  if (nextType === nodeGraphWireTypes.cable) {
-    delete wire.wireType;
-    delete wire.tracePoints;
-  } else {
-    wire.wireType = nextType;
+  const counts = typeof nextNodeGraphTypeCounts === "function"
+    ? nextNodeGraphTypeCounts(patch.nodes)
+    : {};
+  const pairSlots = new Map();
+  const newIds = [];
+  for (const entry of snapshots) {
+    const wire = entry.wire;
+    if (!wire?.sourceNode || !wire?.destinationNode) {
+      continue;
+    }
+    if (!patch.nodes.some((node) => node.id === wire.sourceNode)
+      || !patch.nodes.some((node) => node.id === wire.destinationNode)) {
+      continue;
+    }
+    const pairKey = `${wire.sourceNode}→${wire.destinationNode}`;
+    const slot = pairSlots.get(pairKey) || 0;
+    pairSlots.set(pairKey, slot + 1);
+    counts.attenuverter = (counts.attenuverter || 0) + 1;
+    const id = `attenuverter-${counts.attenuverter}`;
+    const point = nodeGraphAttenuateInsertGridPoint(patch, wire.sourceNode, wire.destinationNode, slot);
+    const alias = nodeGraphAttenuateWireAlias(patch, entry);
+    patch.nodes.push(createNodeGraphPatchNode("attenuverter", {
+      id,
+      gx: point.gx,
+      gy: point.gy,
+      alias,
+      ui: {
+        buttonsHidden: true,
+        oscilloscopeHidden: true,
+        ioHidden: true,
+      },
+      params: {
+        amplitude: bipolar ? 1 : 0.5,
+        offset: 0,
+      },
+      paramMeta: bipolar
+        ? {
+          amplitude: {
+            bipolar: true,
+            def: 1,
+            max: 1,
+            mid: 0,
+            min: -1,
+            nonlinearSlider: true,
+            showSign: true,
+            sliderCurve: "bipolarRational",
+            visible: true,
+          },
+          offset: {
+            bipolar: true,
+            def: 0,
+            max: 1,
+            mid: 0,
+            min: -1,
+            showSign: true,
+            visible: true,
+          },
+        }
+        : {
+          amplitude: {
+            bipolar: false,
+            def: 0.5,
+            max: 1,
+            mid: 0.5,
+            min: 0,
+            nonlinearSlider: false,
+            showSign: false,
+            sliderCurve: "linear",
+            visible: true,
+          },
+          offset: { visible: false },
+        },
+    }));
+    newIds.push(id);
+    const extras = nodeGraphWireOptionalPatchFields(wire);
+    patch.connections.push({
+      sourceNode: wire.sourceNode,
+      sourcePort: wire.sourcePort,
+      destinationNode: id,
+      destinationPort: "In",
+      ...extras,
+    });
+    if (entry.kind === "modulation") {
+      patch.modulations.push({
+        sourceNode: id,
+        sourcePort: "Out",
+        destinationNode: wire.destinationNode,
+        destinationParam: wire.destinationParam,
+        ...extras,
+      });
+    } else {
+      patch.connections.push({
+        sourceNode: id,
+        sourcePort: "Out",
+        destinationNode: wire.destinationNode,
+        destinationPort: wire.destinationPort,
+        ...extras,
+      });
+    }
   }
-  commitNodeGraphPatch(patch, { status: `wire set to ${nextType}`, wireEdit: true });
-  setNodeGraphSelection(selection);
-  configureNodeSceneContextMenu("wire");
-  return true;
+  if (!newIds.length) {
+    return 0;
+  }
+  const noun = bipolar ? "attenuvert" : "attenuate";
+  commitNodeGraphPatch(patch, {
+    status: newIds.length === 1 ? `${noun} inserted` : `${newIds.length} ${noun}s inserted`,
+  });
+  if (typeof setNodeGraphNodeSelection === "function") {
+    setNodeGraphNodeSelection(newIds);
+  }
+  if (typeof configureNodeSceneContextMenu === "function") {
+    configureNodeSceneContextMenu("module");
+  }
+  return newIds.length;
 }
 
 function disconnectNodeGraphConnection(index, kind = "signal") {
@@ -253,8 +521,8 @@ function connectNodeGraphGraphInput(sourceNode, sourcePort, destinationNode, des
 
 /**
  * Double-connection (auto-pair) port groups.
- * Connecting one side of a pair also connects the sibling when both modules
- * expose matching ports. Same role (0=L/X, 1=R/Y) + same group → auto-pair.
+ * Connecting Left/X (red) also connects the sibling when both modules
+ * expose matching ports. Right/Y (blue) is a single wire — no multi-connect.
  *
  * All stereo L/R-style names share stereo-xy-lr so Wet L→Left also wires
  * Wet R→Right (and Dry L/R, X/Y, Left Out/Right Out, legacy Mix/Dry names).
@@ -263,6 +531,7 @@ function connectNodeGraphGraphInput(sourceNode, sourcePort, destinationNode, des
  * Groups:
  *   stereo-xy-lr  — X/Left/Wet L/Dry L/…  ↔  Y/Right/Wet R/Dry R/…
  *   ab            — A  ↔  B
+ *   rgb           — R/Red ↔ G/Green ↔ B/Blue (see nodeGraphAutoPairRgbConnections)
  */
 function nodeGraphPortPairMeta(port) {
   const original = String(port || "").trim();
@@ -478,14 +747,318 @@ function nodeGraphAutoPairAvailablePorts(nodeId, side = "output") {
   return [];
 }
 
+const NODE_GRAPH_RGB_COLOR_PORT_NAMES = Object.freeze({
+  red: Object.freeze(["R", "Red"]),
+  green: Object.freeze(["G", "Green"]),
+  blue: Object.freeze(["B", "Blue"]),
+});
+
+/** Color of an R/G/B or Red/Green/Blue jack. Never treats Right as red. */
+function nodeGraphRgbNamedColor(port) {
+  const key = String(port || "").trim();
+  if (key === "R" || key === "Red" || key === "red") {
+    return "red";
+  }
+  if (key === "G" || key === "Green" || key === "green") {
+    return "green";
+  }
+  if (key === "B" || key === "Blue" || key === "blue") {
+    return "blue";
+  }
+  return "";
+}
+
+function nodeGraphRgbChromeColor(type, port) {
+  if (typeof nodeGraphJackChannel === "function") {
+    return nodeGraphJackChannel(type, port, "output") || "";
+  }
+  return "";
+}
+
+function nodeGraphRgbSourcePortColor(type, port) {
+  return nodeGraphRgbNamedColor(port) || nodeGraphRgbChromeColor(type, port);
+}
+
+function nodeGraphRgbPickNamedPort(availablePorts, color) {
+  const names = NODE_GRAPH_RGB_COLOR_PORT_NAMES[color];
+  if (!names) {
+    return "";
+  }
+  const byLower = new Map();
+  for (const p of availablePorts || []) {
+    const name = String(p || "").trim();
+    if (name && !byLower.has(name.toLowerCase())) {
+      byLower.set(name.toLowerCase(), name);
+    }
+  }
+  for (const candidate of names) {
+    const hit = byLower.get(candidate.toLowerCase());
+    if (!hit) {
+      continue;
+    }
+    if (candidate.length === 1 && hit.length !== 1) {
+      continue;
+    }
+    return hit;
+  }
+  return "";
+}
+
+/** Dest RGB input map when the module has all three color inlets. */
+function nodeGraphRgbColorInputMap(availablePorts = []) {
+  const map = {
+    red: nodeGraphRgbPickNamedPort(availablePorts, "red"),
+    green: nodeGraphRgbPickNamedPort(availablePorts, "green"),
+    blue: nodeGraphRgbPickNamedPort(availablePorts, "blue"),
+  };
+  return map.red && map.green && map.blue ? map : null;
+}
+
+function nodeGraphRgbSourcePortForColor(type, availablePorts, color) {
+  const named = nodeGraphRgbPickNamedPort(availablePorts, color);
+  if (named) {
+    return named;
+  }
+  const hits = [];
+  for (const port of availablePorts || []) {
+    if (nodeGraphRgbChromeColor(type, port) === color) {
+      hits.push(port);
+    }
+  }
+  if (!hits.length) {
+    return "";
+  }
+  const axis = hits.find((port) => {
+    const token = String(port || "").trim().toLowerCase().split(/[\s/_-]+/).filter(Boolean).pop();
+    return token === "x" || token === "y" || token === "z";
+  });
+  return axis || hits[0];
+}
+
+function nodeGraphAutoPairHasConnection(patch, sourceNode, sourcePort, destinationNode, destinationPort) {
+  return (patch?.connections || []).some(
+    (connection) =>
+      connection.sourceNode === sourceNode &&
+      connection.sourcePort === sourcePort &&
+      connection.destinationNode === destinationNode &&
+      connection.destinationPort === destinationPort,
+  );
+}
+
+function nodeGraphAutoPairPushConnection(patch, sourceNode, sourcePort, destinationNode, destinationPort, wireData = {}) {
+  if (
+    !sourcePort
+    || !destinationPort
+    || nodeGraphAutoPairHasConnection(patch, sourceNode, sourcePort, destinationNode, destinationPort)
+  ) {
+    return 0;
+  }
+  patch.connections.push({
+    sourceNode,
+    sourcePort,
+    destinationNode,
+    destinationPort,
+    ...wireData,
+  });
+  return 1;
+}
+
+/**
+ * RGB multi-connect: only red→red on a module with RGB inlets also wires
+ * green→green and blue→blue. Blue→blue and green→green stay a single cable.
+ * Source color is the named R/G/B jack, or outlet chrome (Left/X red).
+ */
+function nodeGraphAutoPairRgbConnections(patch, sourceNode, sourcePort, destinationNode, destinationPort, wireData = {}) {
+  if (!patch) {
+    return 0;
+  }
+  const destinationPorts = nodeGraphAutoPairAvailablePorts(destinationNode, "input");
+  const destMap = nodeGraphRgbColorInputMap(destinationPorts);
+  if (!destMap) {
+    return 0;
+  }
+  const destColor = nodeGraphRgbNamedColor(destinationPort);
+  if (!destColor || !Object.values(destMap).includes(destinationPort)) {
+    return 0;
+  }
+  const source = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(sourceNode) : null;
+  const sourceType = source?.type;
+  const srcColor = nodeGraphRgbSourcePortColor(sourceType, sourcePort);
+  if (!srcColor || srcColor !== destColor || destColor !== "red") {
+    return 0;
+  }
+  const sourcePorts = nodeGraphAutoPairAvailablePorts(sourceNode, "output");
+  let added = 0;
+  for (const color of ["red", "green", "blue"]) {
+    if (color === destColor) {
+      continue;
+    }
+    const nextSourcePort = nodeGraphRgbSourcePortForColor(sourceType, sourcePorts, color);
+    const nextDestinationPort = destMap[color];
+    if (!nextSourcePort || !nextDestinationPort) {
+      continue;
+    }
+    if (nextSourcePort === sourcePort || nextDestinationPort === destinationPort) {
+      continue;
+    }
+    added += nodeGraphAutoPairPushConnection(
+      patch,
+      sourceNode,
+      nextSourcePort,
+      destinationNode,
+      nextDestinationPort,
+      wireData,
+    );
+  }
+  return added;
+}
+
+/**
+ * Vectorscope Rotation jacks are L/R (labels Left/Right) with X/Y aliases.
+ * X/Left → Left also wires Y/Right → Right. Right→Right does not pair Left.
+ */
+function nodeGraphAutoPairVectorscopeRotationConnections(
+  patch,
+  sourceNode,
+  sourcePort,
+  destinationNode,
+  destinationPort,
+  wireData = {},
+) {
+  if (!patch) {
+    return 0;
+  }
+  const destNode = typeof nodeGraphPatchNode === "function"
+    ? nodeGraphPatchNode(destinationNode)
+    : null;
+  const destIsRotation = destNode?.type === "vectorscopeTransform";
+  const srcNode = typeof nodeGraphPatchNode === "function"
+    ? nodeGraphPatchNode(sourceNode)
+    : null;
+  const srcIsRotation = srcNode?.type === "vectorscopeTransform";
+  if (!destIsRotation && !srcIsRotation) {
+    return 0;
+  }
+  const destPorts = nodeGraphAutoPairAvailablePorts(destinationNode, "input");
+  const sourcePorts = nodeGraphAutoPairAvailablePorts(sourceNode, "output");
+  const destCanon = typeof nodeGraphCanonicalInputPort === "function"
+    ? nodeGraphCanonicalInputPort(destNode?.type, destinationPort)
+    : String(destinationPort || "").trim();
+  const srcCanon = typeof nodeGraphCanonicalOutputPort === "function"
+    ? nodeGraphCanonicalOutputPort(srcNode?.type, sourcePort)
+    : String(sourcePort || "").trim();
+  const destKey = String(destCanon || destinationPort || "").trim().toLowerCase();
+  const srcKey = String(srcCanon || sourcePort || "").trim().toLowerCase();
+  const destLeft = destKey === "l" || destKey === "left" || destKey === "x";
+  const srcLeft = srcKey === "x" || srcKey === "left" || srcKey === "l";
+  if (!(destLeft && srcLeft)) {
+    return 0;
+  }
+  const nextDestName = ["R", "Right", "Y"];
+  const nextSrcName = ["Y", "Right", "R"];
+  const findPort = (want, ports) => {
+    const lower = new Map();
+    for (const p of ports || []) {
+      const name = String(p || "").trim();
+      if (name && !lower.has(name.toLowerCase())) {
+        lower.set(name.toLowerCase(), name);
+      }
+    }
+    for (const name of want) {
+      const hit = lower.get(String(name).toLowerCase());
+      if (hit) {
+        return hit;
+      }
+    }
+    return "";
+  };
+  const nextDestinationPort = findPort(nextDestName, destPorts);
+  const nextSourcePort = findPort(nextSrcName, sourcePorts);
+  if (!nextSourcePort || !nextDestinationPort) {
+    return 0;
+  }
+  return nodeGraphAutoPairPushConnection(
+    patch,
+    sourceNode,
+    nextSourcePort,
+    destinationNode,
+    nextDestinationPort,
+    wireData,
+  );
+}
+
+/**
+ * Videoscope A/B is group "ab", stereo is "stereo-xy-lr" — they do not
+ * auto-pair through the shared table. Left/X → A also wires Right/Y → B
+ * when the destination is a videoscope. B / Right does not pair A / Left.
+ */
+function nodeGraphAutoPairVideoscopeAbConnections(
+  patch,
+  sourceNode,
+  sourcePort,
+  destinationNode,
+  destinationPort,
+  wireData = {},
+) {
+  if (!patch) {
+    return 0;
+  }
+  const destNode = typeof nodeGraphPatchNode === "function"
+    ? nodeGraphPatchNode(destinationNode)
+    : null;
+  if (destNode?.type !== "videoscope") {
+    return 0;
+  }
+  const destKey = String(destinationPort || "").trim().toUpperCase();
+  if (destKey !== "A") {
+    return 0;
+  }
+  const destPorts = nodeGraphAutoPairAvailablePorts(destinationNode, "input");
+  const destSiblingPort = destPorts.find((port) => String(port || "").trim().toUpperCase() === "B");
+  if (!destSiblingPort) {
+    return 0;
+  }
+  const srcMeta = nodeGraphPortPairMeta(sourcePort);
+  if (!srcMeta || srcMeta.group !== "stereo-xy-lr") {
+    return 0;
+  }
+  if (srcMeta.role !== 0) {
+    return 0;
+  }
+  const sourcePorts = nodeGraphAutoPairAvailablePorts(sourceNode, "output");
+  const nextSourcePort = nodeGraphPortPairSiblingOnModule(sourcePort, sourcePorts);
+  if (!nextSourcePort || nextSourcePort === sourcePort) {
+    return 0;
+  }
+  return nodeGraphAutoPairPushConnection(
+    patch,
+    sourceNode,
+    nextSourcePort,
+    destinationNode,
+    destSiblingPort,
+    wireData,
+  );
+}
+
 function nodeGraphAutoPairPortConnections(patch, sourceNode, sourcePort, destinationNode, destinationPort, wireData = {}) {
   if (!patch) {
     return 0;
   }
+  // RGB color jacks are not stereo Right/Left — handled by the RGB trio rule.
+  // A lone "R" on Vectorscope Rotation is Right, not RGB red.
+  if (nodeGraphRgbNamedColor(sourcePort) || nodeGraphRgbNamedColor(destinationPort)) {
+    const destPorts = nodeGraphAutoPairAvailablePorts(destinationNode, "input");
+    if (nodeGraphRgbColorInputMap(destPorts)) {
+      return 0;
+    }
+  }
   const srcMeta = nodeGraphPortPairMeta(sourcePort);
   const dstMeta = nodeGraphPortPairMeta(destinationPort);
-  // Same pair group and same role (both L-side or both R-side).
+  // Same pair group, and only the Left/X (red) role starts multi-connect.
   if (!srcMeta || !dstMeta || srcMeta.group !== dstMeta.group || srcMeta.role !== dstMeta.role) {
+    return 0;
+  }
+  if (srcMeta.role !== 0) {
     return 0;
   }
   const sourcePorts = nodeGraphAutoPairAvailablePorts(sourceNode, "output");
@@ -557,9 +1130,9 @@ function connectNodeGraphPorts(sourceNode, sourcePort, destinationNode, destinat
     destinationPort,
     ...nextWireData,
   });
-  const autoConnected = options.autoPair === false
-    ? 0
-    : nodeGraphAutoPairPortConnections(
+  let autoConnected = 0;
+  if (options.autoPair !== false) {
+    autoConnected += nodeGraphAutoPairRgbConnections(
       patch,
       sourceNode,
       sourcePort,
@@ -567,6 +1140,31 @@ function connectNodeGraphPorts(sourceNode, sourcePort, destinationNode, destinat
       destinationPort,
       nextWireData,
     );
+    autoConnected += nodeGraphAutoPairPortConnections(
+      patch,
+      sourceNode,
+      sourcePort,
+      destinationNode,
+      destinationPort,
+      nextWireData,
+    );
+    autoConnected += nodeGraphAutoPairVideoscopeAbConnections(
+      patch,
+      sourceNode,
+      sourcePort,
+      destinationNode,
+      destinationPort,
+      nextWireData,
+    );
+    autoConnected += nodeGraphAutoPairVectorscopeRotationConnections(
+      patch,
+      sourceNode,
+      sourcePort,
+      destinationNode,
+      destinationPort,
+      nextWireData,
+    );
+  }
   commitNodeGraphPatch(patch, { status: autoConnected ? `wire connected +${autoConnected}` : "wire connected", wireEdit: true });
   if (typeof triggerNodeGraphWireConnectEvent === "function") {
     triggerNodeGraphWireConnectEvent("signal");

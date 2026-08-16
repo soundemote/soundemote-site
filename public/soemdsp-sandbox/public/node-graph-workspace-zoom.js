@@ -14,6 +14,12 @@ function applyNodeGraphZoom(options = {}) {
     workspace.dataset.zoom = nodeGraphZoom().toFixed(2);
     workspace.classList.toggle("pixelated-canvas-zoom", nodeGraphZoom() >= 2.5);
   }
+  if (
+    typeof renderNodeGraphMarqueeSelection === "function"
+    && (nodeGraphMvp?.marqueeSelection || nodeGraphMvp?.hitTrailKeptStrokes?.length)
+  ) {
+    renderNodeGraphMarqueeSelection();
+  }
   // Workspace size CSS only when not mid-wheel (avoids layout thrash).
   if (options.layout !== false && typeof applyNodeGraphWorkspaceView === "function") {
     if (!options.gesture || options.forceLayout) {
@@ -35,9 +41,23 @@ function applyNodeGraphZoom(options = {}) {
   if (options.skipHeavy) {
     return;
   }
-  // Gesture path: coalesce heavy chrome to rAF + settle full fidelity.
-  if (options.gesture !== false && typeof markNodeGraphViewportGesture === "function") {
+  // Only a real gesture (wheel / pinch / explicit gestureKind) hides jacks.
+  // Bare applyNodeGraphZoom() on load/persist used to mark "zoom" and never
+  // settle, so inlets/outlets stayed visibility:hidden.
+  const inGesture = options.gesture === true || Boolean(options.gestureKind);
+  if (inGesture && typeof markNodeGraphViewportGesture === "function") {
     markNodeGraphViewportGesture(options.gestureKind || "zoom");
+  } else if (typeof clearNodeGraphViewportGestureClass === "function") {
+    clearNodeGraphViewportGestureClass();
+    if (typeof flushNodeGraphViewportImmediate === "function") {
+      flushNodeGraphViewportImmediate({ zoom: true, pan: true, persist: options.persist !== false });
+    } else {
+      updateNodeGraphGridHeatmap();
+      drawNodeGraphWires();
+      if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
+        scheduleNodeGraphModuleScopeDraw();
+      }
+    }
   } else if (typeof flushNodeGraphViewportImmediate === "function") {
     flushNodeGraphViewportImmediate({ zoom: true, pan: true, persist: options.persist !== false });
   } else {
@@ -74,10 +94,13 @@ function setNodeGraphZoom(nextZoom, anchor = null) {
   nodeGraphMvp.zoom = zoom;
   syncNodeGraphPatchViewZoom(zoom);
   const nextCenter = workspace ? nodeGraphWorkspaceCenterOffset(workspace) : { x: 0, y: 0 };
+  const pin = typeof nodeGraphWorkspaceChromePin === "function"
+    ? nodeGraphWorkspaceChromePin()
+    : { x: 0, y: 0 };
   const nextPan = workspaceRect && anchorPoint && anchoredContentPoint
     ? {
-      x: anchorPoint.x - workspaceRect.left - nextCenter.x - anchoredContentPoint.x * zoom,
-      y: anchorPoint.y - workspaceRect.top - nextCenter.y - anchoredContentPoint.y * zoom,
+      x: anchorPoint.x - workspaceRect.left - nextCenter.x - (Number(pin.x) || 0) - anchoredContentPoint.x * zoom,
+      y: anchorPoint.y - workspaceRect.top - nextCenter.y - (Number(pin.y) || 0) - anchoredContentPoint.y * zoom,
     }
     : oldPan;
   nodeGraphMvp.pan = {
@@ -330,6 +353,9 @@ function handleNodeGraphZoomResetClick(event) {
 
 function handleNodeGraphWorkspaceWheel(event) {
   if (!event.deltaY) {
+    return;
+  }
+  if (typeof resizeNodeGraphMagnifierByWheel === "function" && resizeNodeGraphMagnifierByWheel(event)) {
     return;
   }
   event.preventDefault();

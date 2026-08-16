@@ -98,7 +98,7 @@ function nodeGraphTraceDisplayBufferView(buffer, slot, options = {}) {
     }
   }
   if (Number.isFinite(options.forceStart)) {
-    start = Math.max(validStart, Math.min(validEnd - visibleSamples, Math.floor(options.forceStart)));
+    start = Math.max(validStart, Math.min(validEnd - visibleSamples, Number(options.forceStart)));
   }
   const ampScale = Number(settings?.scale);
   return {
@@ -167,12 +167,18 @@ function nodeGraphModuleScopeBufferView(buffer, slot) {
     };
   }
   const estimatedCycle = nodeGraphModuleScopeEstimatedCycle(buffer);
-  const cycleEstimate = settings.sync ? estimatedCycle : null;
+  const displaySettings = typeof nodeGraphTraceDisplaySettingsForSlot === "function"
+    ? nodeGraphTraceDisplaySettingsForSlot(slot)
+    : null;
+  const syncOn = typeof nodeGraphDisplaySyncIsOn === "function"
+    ? nodeGraphDisplaySyncIsOn(displaySettings || settings)
+    : Boolean(settings.sync);
+  const cycleEstimate = syncOn ? estimatedCycle : null;
   const visibleSamples = nodeGraphModuleScopeVisibleSamples(buffer, settings, estimatedCycle);
   const syncBuffer = nodeGraphModuleScopeSyncBuffer(buffer);
   const defaultStart = Math.max(0, buffer.length - visibleSamples);
   let start = defaultStart;
-  if (settings.sync && cycleEstimate && visibleSamples < buffer.length) {
+  if (syncOn && cycleEstimate && visibleSamples < buffer.length) {
     // Oscilloscope auto-trigger: lock when an edge fits; otherwise freerun
     // (keep defaultStart) so quiet / aperiodic signals never freeze.
     const triggeredStart = nodeGraphModuleScopeTriggeredStart(syncBuffer, cycleEstimate, visibleSamples);
@@ -181,7 +187,7 @@ function nodeGraphModuleScopeBufferView(buffer, slot) {
     }
   }
   const rawPanCycles = Number(settings.pan) || 0;
-  const panCycles = settings.sync && cycleEstimate
+  const panCycles = syncOn && cycleEstimate
     ? Math.round(rawPanCycles)
     : rawPanCycles;
   const panSamples = panCycles
@@ -224,36 +230,11 @@ function nodeGraphModuleScopeSampleInfo(buffer, position) {
   };
 }
 
-function nodeGraphTraceDisplaySampleInfo(buffer, position, samplesPerPoint = 1) {
-  const center = nodeGraphModuleScopeSampleInfo(buffer, position);
-  const span = Math.max(0, Number(samplesPerPoint) || 0);
-  if (!buffer?.length || span <= 1.25) {
-    return center;
-  }
-  const halfSpan = Math.min(span * 0.5, 64);
-  const first = clampNodeSliderValue(Number(position) - halfSpan, 0, Math.max(0, buffer.length - 1));
-  const last = clampNodeSliderValue(Number(position) + halfSpan, 0, Math.max(0, buffer.length - 1));
-  const taps = Math.max(3, Math.min(33, Math.ceil((last - first) * 2)));
-  let total = 0;
-  let weightTotal = 0;
-  let spanMin = Infinity;
-  let spanMax = -Infinity;
-  for (let tap = 0; tap < taps; tap += 1) {
-    const t = taps <= 1 ? 0.5 : tap / (taps - 1);
-    const samplePosition = first + (last - first) * t;
-    const weight = 1 - Math.abs(t - 0.5) * 0.75;
-    const tapValue = nodeGraphModuleScopeInterpolatedSample(buffer, samplePosition);
-    total += tapValue * weight;
-    weightTotal += weight;
-    if (tapValue < spanMin) spanMin = tapValue;
-    if (tapValue > spanMax) spanMax = tapValue;
-  }
-  const spanDiscontinuity = center.discontinuity || (spanMax - spanMin) > nodeGraphModuleScopeDiscontinuityThreshold;
-  return {
-    ...center,
-    discontinuity: spanDiscontinuity,
-    value: weightTotal > 0 ? total / weightTotal : center.value,
-  };
+function nodeGraphTraceDisplaySampleInfo(buffer, position, _samplesPerPoint = 1) {
+  // Point sample only. Never average a span or flag peak-to-peak of a
+  // downsampled bucket as a discontinuity — that made Skip treat every
+  // zoomed-out sine as a wrap and blank the stroke.
+  return nodeGraphModuleScopeSampleInfo(buffer, position);
 }
 
 function nodeGraphModuleScopeBufferValue(buffer, position, view) {

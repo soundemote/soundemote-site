@@ -8,6 +8,13 @@ function closeNodeSceneContextMenu(options = {}) {
   }
   const menu = document.getElementById("nodeSceneContextMenu");
   menu.hidden = true;
+  if (!nodeGraphMvp._unifiedWindowSwitching) {
+    nodeGraphMvp.unifiedWindowPresentation = "closed";
+    nodeGraphMvp.unifiedWindowPage = "";
+    if (typeof restoreNodeGraphUnifiedWindowFromDock === "function") {
+      restoreNodeGraphUnifiedWindowFromDock();
+    }
+  }
   clearNodeSceneContextMenuDragState();
   if (nodeGraphMvp.sceneContextResizing?.handle) {
     nodeGraphMvp.sceneContextResizing.handle.classList.remove("dragging");
@@ -33,20 +40,20 @@ const nodeSceneContextWindowDefaultSize = Object.freeze({
   // Content-height cold open (no fixed tall box full of empty chrome).
   // User resize / unified seat still pin an explicit height when set.
   // height omitted → CSS height:auto from content.
-  minWidth: 24,
+  minWidth: nodeGraphUnifiedWindowMinSize.minWidth,
   // Match module-browser max so the unified floating window can keep one size
   // when switching Command Center ↔ Modules without clamping narrower.
   maxWidth: 980,
-  minHeight: 120,
+  minHeight: nodeGraphUnifiedWindowMinSize.minHeight,
   // Height max is available view space from the window top (no fixed ceiling).
 });
 
 const nodeModuleActionsWindowDefaultSize = Object.freeze({
   width: 185,
   height: 620,
-  minWidth: 24,
+  minWidth: nodeGraphUnifiedWindowMinSize.minWidth,
   maxWidth: 980,
-  minHeight: 120,
+  minHeight: nodeGraphUnifiedWindowMinSize.minHeight,
 });
 
 // pulseNodeGraphFloatingWindowAttention moved to node-graph-floating-windows.js
@@ -95,20 +102,29 @@ function syncNodeGraphFloatingWindowInlineBox(element, size = {}) {
   }
   const width = Math.round(Number(size.width));
   const height = Math.round(Number(size.height));
-  if (width > 40) {
+  const minWidth = typeof nodeGraphUnifiedWindowMinSize !== "undefined"
+    ? nodeGraphUnifiedWindowMinSize.minWidth
+    : 24;
+  const minHeight = typeof nodeGraphUnifiedWindowMinSize !== "undefined"
+    ? nodeGraphUnifiedWindowMinSize.minHeight
+    : 120;
+  if (width >= minWidth) {
     element.style.width = `${width}px`;
   }
-  if (height > 40) {
+  if (height >= minHeight) {
     element.style.height = `${height}px`;
   }
-  if (width > 40 || height > 40) {
+  if (width >= minWidth || height >= minHeight) {
     element.style.boxSizing = "border-box";
     // Clear CSS max-* so authored maxHeight vars cannot block stretch once
     // the user has an explicit box (still clamped in normalize to viewport).
     element.style.maxWidth = "none";
     element.style.maxHeight = "none";
   }
-  if (width > 40 && height > 40 && nodeGraphMvp) {
+  if (typeof applyNodeGraphUnifiedWindowMinBoxToElement === "function") {
+    applyNodeGraphUnifiedWindowMinBoxToElement(element);
+  }
+  if (width >= minWidth && height >= minHeight && nodeGraphMvp) {
     nodeGraphMvp.unifiedWindowSize = { width, height };
   }
 }
@@ -465,6 +481,14 @@ function positionNodeSceneContextMenuAtCurrentSavedOrInitial(menu, x, y) {
 }
 
 function positionNodeSceneContextMenuAtSavedOr(menu, x, y) {
+  const unified = nodeGraphMvp.unifiedWindowPosition;
+  if (typeof applyNodeGraphUnifiedSeatToElement === "function"
+    && unified
+    && Number.isFinite(Number(unified.left))
+    && Number.isFinite(Number(unified.top))) {
+    applyNodeGraphUnifiedSeatToElement(menu);
+    return;
+  }
   const workspaceState = nodeGraphMvp.workspaceWindowStates?.commandCenter;
   const savedPosition = workspaceState?.position;
   const hasSavedPosition = typeof nodeGraphFloatingWindowSavedPositionIsUsable === "function"
@@ -735,7 +759,11 @@ function nodeGraphContextTargetModuleElement(nodeId = nodeGraphModuleActionTarge
 }
 
 function nodeGraphContextTargetSliderReadout(nodeId = nodeGraphModuleActionTargetNodeId()) {
-  return nodeGraphContextTargetModuleElement(nodeId)?.querySelector(".node-slider-readout") || null;
+  const element = nodeGraphContextTargetModuleElement(nodeId);
+  if (typeof firstNodeModuleSliderReadout === "function") {
+    return firstNodeModuleSliderReadout(element);
+  }
+  return element?.querySelector(".node-slider-readout") || null;
 }
 
 /**
@@ -776,7 +804,6 @@ const nodeGraphModuleActionControlIds = [
   "nodeSceneModuleSettingsActionGroup",
   // Show/Hide chrome toggles — immediately under copy/settings row.
   "nodeSceneModuleVisibilitySection",
-  "nodeSceneAliasControl",
   "nodeSceneAddToUi",
   "nodeSceneWireTypeControl",
   "nodeSceneAddToGroup",
@@ -792,6 +819,7 @@ const nodeGraphModuleActionControlIds = [
   "nodeSceneKnobFaceControls",
   "nodeSceneCanvasControls",
   "nodeSceneLedControls",
+  "nodeSceneKeypadControls",
   "nodeSceneBugButtonControls",
   "nodeSceneTextBoxControls",
   "nodeSceneTextBoxHorizontalAlignControls",
@@ -876,30 +904,86 @@ function showNodeModuleActionsWindow(anchorRect = null) {
     bottom: window.innerHeight * 0.25,
   };
   nodeGraphMvp.sharedInspectorActive = "moduleActions";
-  positionNodeModuleActionsWindowAtSavedOr(
-    menu,
-    Number.isFinite(Number(pending?.left))
-      ? pending.left
-      : Number.isFinite(Number(replacementRect?.left))
-      ? replacementRect.left
-      : Number.isFinite(Number(rect.right))
-      ? rect.right + 8
-      : window.innerWidth * 0.5,
-    Number.isFinite(Number(pending?.top))
-      ? pending.top
-      : Number.isFinite(Number(replacementRect?.top))
-      ? replacementRect.top
-      : Number.isFinite(Number(rect.top))
-      ? rect.top
-      : Number(rect.bottom) || window.innerHeight * 0.25,
-  );
-  menu.hidden = false;
+  if (nodeGraphMvp._unifiedWindowSwitching) {
+    menu.hidden = false;
+    if (typeof markNodeGraphFloatingWindowSurface === "function") {
+      markNodeGraphFloatingWindowSurface(menu);
+    }
+  } else if (typeof applyNodeGraphUnifiedSeatToElement === "function"
+    && applyNodeGraphUnifiedSeatToElement(menu)) {
+    menu.hidden = false;
+  } else {
+    positionNodeModuleActionsWindowAtSavedOr(
+      menu,
+      Number.isFinite(Number(pending?.left))
+        ? pending.left
+        : Number.isFinite(Number(replacementRect?.left))
+        ? replacementRect.left
+        : Number.isFinite(Number(rect.right))
+        ? rect.right + 8
+        : window.innerWidth * 0.5,
+      Number.isFinite(Number(pending?.top))
+        ? pending.top
+        : Number.isFinite(Number(replacementRect?.top))
+        ? replacementRect.top
+        : Number.isFinite(Number(rect.top))
+        ? rect.top
+        : Number(rect.bottom) || window.innerHeight * 0.25,
+    );
+    menu.hidden = false;
+  }
   syncNodeModuleActionsWindowHeightLimit();
   if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
     rememberNodeGraphWorkspaceWindowState("moduleActions", menu, { open: true }, { status: false });
   }
   if (typeof noteNodeGraphUnifiedWindowOpened === "function") {
     noteNodeGraphUnifiedWindowOpened("moduleActions", menu);
+  }
+}
+
+function hideNodeModuleActionsBlankPicker(menu = document.getElementById("nodeModuleActionsWindow")) {
+  const empty = menu?.querySelector?.(":scope > .node-unified-inspector-empty");
+  if (empty) {
+    empty.hidden = true;
+  }
+}
+
+function fillNodeModuleActionsBlankPicker(menu = document.getElementById("nodeModuleActionsWindow")) {
+  if (!menu) {
+    return;
+  }
+  let empty = menu.querySelector(":scope > .node-unified-inspector-empty");
+  if (!empty) {
+    empty = document.createElement("div");
+    empty.className = "node-unified-inspector-empty";
+    empty.setAttribute("role", "status");
+    if (typeof placeNodeGraphUnifiedInspectorEmpty === "function") {
+      placeNodeGraphUnifiedInspectorEmpty(menu, empty);
+    } else {
+      const nav = menu.querySelector(":scope > .node-unified-window-nav-host");
+      const body = menu.querySelector(".node-module-actions-window-body");
+      if (nav) {
+        nav.after(empty);
+      } else if (body) {
+        body.before(empty);
+      } else {
+        menu.append(empty);
+      }
+    }
+  }
+  empty.hidden = false;
+  if (typeof fillNodeGraphUnifiedInspectorModuleList === "function") {
+    fillNodeGraphUnifiedInspectorModuleList(empty, {
+      kind: "settings",
+      hint: "Choose a module",
+      emptyHint: "No modules in this patch.",
+      onPick(node) {
+        if (typeof nodeGraphSelectInspectorModule === "function") {
+          nodeGraphSelectInspectorModule(node.id);
+        }
+        configureNodeSceneContextMenu("module");
+      },
+    });
   }
 }
 
@@ -1038,6 +1122,14 @@ function configureNodeSceneContextMenu(mode) {
   const wirePixelToggle = document.getElementById("nodeSceneWirePixelToggle");
   const aliasControl = document.getElementById("nodeSceneAliasControl");
   const aliasInput = document.getElementById("nodeSceneAliasInput");
+  const knobTextControl = document.getElementById("nodeSceneKnobTextControl");
+  const knobTextInput = document.getElementById("nodeSceneKnobTextInput");
+  if (knobTextControl) {
+    knobTextControl.hidden = true;
+  }
+  if (knobTextInput) {
+    knobTextInput.disabled = true;
+  }
   const addToGroupButton = document.getElementById("nodeSceneAddToGroup");
   const widthControls = document.getElementById("nodeSceneWidthControls");
   const widthDecrease = document.getElementById("nodeSceneWidthDecrease");
@@ -1080,6 +1172,7 @@ function configureNodeSceneContextMenu(mode) {
   const toggleSlidersButton = document.getElementById("nodeSceneToggleSliders");
   const toggleIoButton = document.getElementById("nodeSceneToggleIo");
   const toggleHideUnusedButton = document.getElementById("nodeSceneToggleHideUnused");
+  const toggleCollapsedButton = document.getElementById("nodeSceneToggleCollapsed");
   const toggleTitleButton = document.getElementById("nodeSceneToggleTitle");
   const imageControls = document.getElementById("nodeSceneImageControls");
   const imageSave = document.getElementById("nodeSceneImageSave");
@@ -1089,12 +1182,19 @@ function configureNodeSceneContextMenu(mode) {
   const canvasScript = document.getElementById("nodeSceneCanvasScript");
   const ledControls = document.getElementById("nodeSceneLedControls");
   const ledColor = document.getElementById("nodeSceneLedColor");
+  const keypadControls = document.getElementById("nodeSceneKeypadControls");
+  const keypadFont = document.getElementById("nodeSceneKeypadFont");
+  const keypadTextSize = document.getElementById("nodeSceneKeypadTextSize");
+  const keypadTextWeight = document.getElementById("nodeSceneKeypadTextWeight");
+  const keypadButtonColor = document.getElementById("nodeSceneKeypadButtonColor");
+  const keypadTextColor = document.getElementById("nodeSceneKeypadTextColor");
+  const keypadButtonWidth = document.getElementById("nodeSceneKeypadButtonWidth");
+  const keypadButtonHeight = document.getElementById("nodeSceneKeypadButtonHeight");
   const bugButtonControls = document.getElementById("nodeSceneBugButtonControls");
   const bugButtonGlyph = document.getElementById("nodeSceneBugButtonGlyph");
   const textBoxControls = document.getElementById("nodeSceneTextBoxControls");
   const textBoxSingleLine = document.getElementById("nodeSceneTextBoxSingleLine");
   const textBoxMultiline = document.getElementById("nodeSceneTextBoxMultiline");
-  const textBoxFill = document.getElementById("nodeSceneTextBoxFill");
   const textBoxHorizontalAlignControls = document.getElementById("nodeSceneTextBoxHorizontalAlignControls");
   const textBoxAlignLeft = document.getElementById("nodeSceneTextBoxAlignLeft");
   const textBoxAlignCenter = document.getElementById("nodeSceneTextBoxAlignCenter");
@@ -1134,6 +1234,10 @@ function configureNodeSceneContextMenu(mode) {
       ? nodeGraphLibEntryForType(targetNode.type)
       : null;
   const selectedWire = wireMode ? nodeGraphWireFromSelection(nodeGraphMvp.selected) : null;
+  const selectedWireEntries = wireMode && typeof nodeGraphSelectedWireEntries === "function"
+    ? nodeGraphSelectedWireEntries(nodeGraphMvp.selected)
+    : (selectedWire ? [{ kind: selectedWire.kind, index: selectedWire.index }] : []);
+  const canAttenuateWires = selectedWireEntries.some((entry) => entry.kind !== "graph");
   const hasModuleActionTarget = Boolean(targetNode) || multiModuleMode;
   const canDelete = wireMode
     ? Boolean(selectedWire)
@@ -1187,7 +1291,12 @@ function configureNodeSceneContextMenu(mode) {
     if (moduleMode) {
       setNodeModuleSettingsWindowHeader("");
     } else {
-      setNodeModuleActionsWindowHeader("WIRE ACTIONS", wireMode ? "selected wire" : "no wire selected");
+      setNodeModuleActionsWindowHeader(
+        "WIRE ACTIONS",
+        wireMode
+          ? (selectedWireEntries.length > 1 ? `${selectedWireEntries.length} selected wires` : "selected wire")
+          : "no wire selected",
+      );
     }
     menu.setAttribute("aria-label", moduleMode ? "Module settings" : "Wire actions");
   } else {
@@ -1216,9 +1325,15 @@ function configureNodeSceneContextMenu(mode) {
       homeModules.hidden = true;
     }
     closeButton.hidden = false;
+    if (moduleMode) {
+      fillNodeModuleActionsBlankPicker(menu);
+    } else {
+      hideNodeModuleActionsBlankPicker(menu);
+    }
     syncNodeModuleActionsWindowHeightLimit();
     return;
   }
+  hideNodeModuleActionsBlankPicker(menu);
   if (actionMode) {
     setNodeGraphModuleActionControlsHidden(false);
   }
@@ -1343,6 +1458,9 @@ function configureNodeSceneContextMenu(mode) {
   if (toggleHideUnusedButton) {
     toggleHideUnusedButton.hidden = !moduleMode || (multiModuleMode && !selectedNodes.length);
   }
+  if (toggleCollapsedButton) {
+    toggleCollapsedButton.hidden = !moduleMode || (multiModuleMode && !selectedNodes.length);
+  }
   toggleTitleButton.hidden = !moduleMode || (multiModuleMode && !multiCanButtons);
   imageControls.hidden = !(moduleMode && !multiModuleMode && targetNode?.type === "image");
   // Image layers / span / offset / readout live in Display Settings, not Module Settings.
@@ -1350,11 +1468,17 @@ function configureNodeSceneContextMenu(mode) {
     knobFaceControls.hidden = true;
   }
   canvasControls.hidden = !(moduleMode && !multiModuleMode && targetNode?.type === "canvas");
-  ledControls.hidden = !(moduleMode && !multiModuleMode && targetNode?.type === "led");
+  // Phosphor Dot settings live in Display Settings, not the Module Settings color swatch.
+  ledControls.hidden = true;
+  // Keypad look (font, weight, colors, button size) lives in Display Settings.
+  if (keypadControls) {
+    keypadControls.hidden = true;
+  }
   bugButtonControls.hidden = !(moduleMode && !multiModuleMode && targetNode?.type === "bugButton");
-  textBoxControls.hidden = !(moduleMode && !multiModuleMode && targetSupportsTextBoxHeight);
-  textBoxHorizontalAlignControls.hidden = !(moduleMode && !multiModuleMode && targetSupportsTextBoxHeight);
-  textBoxVerticalAlignControls.hidden = !(moduleMode && !multiModuleMode && targetSupportsTextBoxHeight);
+  // Text Box look (mode, align, size, colors) lives in Display Settings.
+  textBoxControls.hidden = true;
+  textBoxHorizontalAlignControls.hidden = true;
+  textBoxVerticalAlignControls.hidden = true;
   closeButton.hidden = false;
   if (!moduleMode) {
     resetNodeGraphModuleSettingsSizeRow(widthControls, widthDecrease, widthIncrease, widthValue);
@@ -1389,8 +1513,22 @@ function configureNodeSceneContextMenu(mode) {
     }
     aliasInput.placeholder = targetNode && !multiModuleMode
       ? nodeGraphDefaultNodeTitle(targetNode.type, targetNode.id)
-      : "display alias";
+      : "module title";
     aliasInput.title = nodeGraphTooltipText("actions.moduleAlias");
+    const knobSelected = Boolean(targetNode && targetNode.type === "knob" && !multiModuleMode);
+    if (knobTextControl) {
+      knobTextControl.hidden = !knobSelected;
+    }
+    if (knobTextInput) {
+      knobTextInput.disabled = !knobSelected;
+      if (document.activeElement !== knobTextInput) {
+        knobTextInput.value = knobSelected && typeof nodeGraphKnobFaceLabelTextForNode === "function"
+          ? nodeGraphKnobFaceLabelTextForNode(targetNode)
+          : "";
+      }
+      knobTextInput.placeholder = "knob text";
+      knobTextInput.title = "Face name on the dial. Separate from the module title.";
+    }
     if (copyButton) {
       setNodeGraphSceneContextButtonLines(copyButton, "Copy", "Module");
       copyButton.hidden = multiModuleMode;
@@ -1494,9 +1632,7 @@ function configureNodeSceneContextMenu(mode) {
       if (!nodeGraphPatchNodeHasResizableDisplayArea(node)) {
         return false;
       }
-      const face = nodeGraphModuleConfiguredDisplayHeightUnits(node.type, node.ui);
-      const minFace = nodeGraphModuleDisplayHeightLimits.minGu;
-      return face > minFace;
+      return nodeGraphPatchNodeGridHeightUnits(node) > nodeGraphModuleGuPolicy.minGu;
     });
     const multiDisplayCanIncrease = multiModuleMode && selectedNodes.some((node) => {
       if (!nodeGraphPatchNodeHasResizableDisplayArea(node)) {
@@ -1505,7 +1641,6 @@ function configureNodeSceneContextMenu(mode) {
       const face = nodeGraphModuleConfiguredDisplayHeightUnits(node.type, node.ui);
       return face < nodeGraphModuleDisplayHeightLimits.maxGu;
     });
-    const faceMin = nodeGraphModuleDisplayHeightLimits.minGu;
     const faceMax = nodeGraphModuleDisplayHeightLimits.maxGu;
     configureNodeGraphModuleSettingsSizeRow({
       controls: displayHeightControls,
@@ -1520,13 +1655,13 @@ function configureNodeSceneContextMenu(mode) {
         : `${outerHeightGu} gu`,
       decreaseDisabled: multiModuleMode
         ? !multiDisplayCanDecrease
-        : !targetNode || !targetSupportsDisplayHeight || faceHeightGu <= faceMin,
+        : !targetNode || !targetSupportsDisplayHeight || outerHeightGu <= nodeGraphModuleGuPolicy.minGu,
       increaseDisabled: multiModuleMode
         ? !multiDisplayCanIncrease
         : !targetNode || !targetSupportsDisplayHeight || faceHeightGu >= faceMax,
       decreaseTitle: multiModuleMode
-        ? "Decrease module height (shrinks face; min when face is 1gu)."
-        : "Decrease module height (grid cells). Face floor is 1gu.",
+        ? "Decrease module height (1gu min)."
+        : "Decrease module height. App-wide floor is 1gu.",
       increaseTitle: multiModuleMode
         ? "Increase module height (grows face; max face 60gu)."
         : "Increase module height (grid cells). Face max is 60gu.",
@@ -1536,7 +1671,7 @@ function configureNodeSceneContextMenu(mode) {
       decreaseButton: textBoxTextSizeDecrease,
       increaseButton: textBoxTextSizeIncrease,
       valueElement: textBoxTextSizeValue,
-      hidden: !(moduleMode && !multiModuleMode && targetSupportsTextBoxHeight),
+      hidden: true,
       value: `${textBoxLayout.textSizePercent}%`,
       decreaseDisabled: !targetNode || !targetSupportsTextBoxHeight || textBoxLayout.textSizePercent <= nodeGraphTextBoxTextSizeLimits.minPercent,
       increaseDisabled: !targetNode || !targetSupportsTextBoxHeight || textBoxLayout.textSizePercent >= nodeGraphTextBoxTextSizeLimits.maxPercent,
@@ -1545,7 +1680,10 @@ function configureNodeSceneContextMenu(mode) {
     });
     const moduleHeightGu = targetSupportsModuleHeight ? nodeGraphPatchNodeGridHeightUnits(targetNode) : 0;
     const moduleHeightLimits = targetSupportsTextBoxHeight
-      ? nodeGraphTextBoxHeightLimits
+      ? {
+        minGu: nodeGraphTextBoxMinOuterHeightGu(targetNode?.ui),
+        maxGu: nodeGraphTextBoxHeightLimits.maxGu,
+      }
       : nodeGraphModuleHeightLimitsForType(targetNode?.type);
     const multiModuleHeights = multiModuleMode
       ? selectedNodes
@@ -1561,7 +1699,10 @@ function configureNodeSceneContextMenu(mode) {
       }
       const current = nodeGraphPatchNodeGridHeightUnits(node);
       const limits = capability === "textBox"
-        ? nodeGraphTextBoxHeightLimits
+        ? {
+          minGu: nodeGraphTextBoxMinOuterHeightGu(node.ui),
+          maxGu: nodeGraphTextBoxHeightLimits.maxGu,
+        }
         : nodeGraphModuleHeightLimitsForType(node.type);
       return current > limits.minGu;
     });
@@ -1572,7 +1713,10 @@ function configureNodeSceneContextMenu(mode) {
       }
       const current = nodeGraphPatchNodeGridHeightUnits(node);
       const limits = capability === "textBox"
-        ? nodeGraphTextBoxHeightLimits
+        ? {
+          minGu: nodeGraphTextBoxMinOuterHeightGu(node.ui),
+          maxGu: nodeGraphTextBoxHeightLimits.maxGu,
+        }
         : nodeGraphModuleHeightLimitsForType(node.type);
       return current < limits.maxGu;
     });
@@ -1751,11 +1895,26 @@ function configureNodeSceneContextMenu(mode) {
         ? "Show this module's input and output ports."
         : "Hide this module's input and output ports.");
     if (toggleHideUnusedButton) {
-      // Under construction — not reliable yet; leave disabled app-wide.
-      toggleHideUnusedButton.disabled = true;
-      toggleHideUnusedButton.setAttribute("aria-disabled", "true");
-      setVisLines(toggleHideUnusedButton, false, "Hide unused");
-      toggleHideUnusedButton.title = "Hide unused — under construction (disabled).";
+      toggleHideUnusedButton.disabled = multiModuleMode ? !selectedNodes.length : !targetNode;
+      toggleHideUnusedButton.removeAttribute("aria-disabled");
+      setVisLines(toggleHideUnusedButton, multiHideUnused, "Hide unused");
+      toggleHideUnusedButton.title = multiHideUnused
+        ? "Show unused inlets and outlets."
+        : "Hide unused inlets and outlets.";
+    }
+    if (toggleCollapsedButton) {
+      const collapsedNow = multiModuleMode
+        ? selectedNodes.every((node) => typeof nodeGraphModuleIsCollapsedUi === "function"
+          && nodeGraphModuleIsCollapsedUi(node.type, node.ui))
+        : (targetNode
+          && typeof nodeGraphModuleIsCollapsedUi === "function"
+          && nodeGraphModuleIsCollapsedUi(targetNode.type, targetNode.ui));
+      toggleCollapsedButton.disabled = multiModuleMode ? !selectedNodes.length : !targetNode;
+      toggleCollapsedButton.removeAttribute("aria-disabled");
+      setVisLines(toggleCollapsedButton, collapsedNow, "Collapsed");
+      toggleCollapsedButton.title = collapsedNow
+        ? "Expand this module (show title, display, buttons, I/O, sliders)."
+        : "Collapse this module (hide display, title, buttons, I/O, sliders).";
     }
     toggleTitleButton.disabled = multiModuleMode ? !selectedNodes.length : !targetNode;
     setVisLines(toggleTitleButton, multiTitleHidden, "Title");
@@ -1787,6 +1946,45 @@ function configureNodeSceneContextMenu(mode) {
       ledColor.disabled = true;
       ledColor.value = nodeGraphLedDefaultColor;
     }
+    if (targetNode?.type === "keypad" && typeof normalizeNodeGraphKeypadLayout === "function") {
+      const pad = normalizeNodeGraphKeypadLayout(targetNode.layout);
+      if (keypadFont) {
+        keypadFont.disabled = false;
+        keypadFont.value = pad.font;
+      }
+      if (keypadTextSize) {
+        keypadTextSize.disabled = false;
+        keypadTextSize.value = String(pad.textSizePx);
+      }
+      if (keypadTextWeight) {
+        keypadTextWeight.disabled = false;
+        keypadTextWeight.value = String(pad.textWeight);
+      }
+      if (keypadButtonColor) {
+        keypadButtonColor.disabled = false;
+        keypadButtonColor.value = pad.buttonColor;
+      }
+      if (keypadTextColor) {
+        keypadTextColor.disabled = false;
+        keypadTextColor.value = pad.textColor;
+      }
+      if (keypadButtonWidth) {
+        keypadButtonWidth.disabled = false;
+        keypadButtonWidth.value = String(pad.buttonWidth);
+      }
+      if (keypadButtonHeight) {
+        keypadButtonHeight.disabled = false;
+        keypadButtonHeight.value = String(pad.buttonHeight);
+      }
+    } else {
+      if (keypadFont) keypadFont.disabled = true;
+      if (keypadTextSize) keypadTextSize.disabled = true;
+      if (keypadTextWeight) keypadTextWeight.disabled = true;
+      if (keypadButtonColor) keypadButtonColor.disabled = true;
+      if (keypadTextColor) keypadTextColor.disabled = true;
+      if (keypadButtonWidth) keypadButtonWidth.disabled = true;
+      if (keypadButtonHeight) keypadButtonHeight.disabled = true;
+    }
     if (targetNode?.type === "bugButton") {
       bugButtonGlyph.disabled = false;
       if (document.activeElement !== bugButtonGlyph) {
@@ -1798,15 +1996,12 @@ function configureNodeSceneContextMenu(mode) {
     }
     textBoxSingleLine?.setAttribute("aria-pressed", textBoxMode === "singleLine" ? "true" : "false");
     textBoxMultiline?.setAttribute("aria-pressed", textBoxMode === "multiline" ? "true" : "false");
-    textBoxFill?.setAttribute("aria-pressed", textBoxMode === "fill" ? "true" : "false");
     if (textBoxSingleLine) textBoxSingleLine.title = nodeGraphTooltipText("actions.textBoxSingleLine") || "Single line";
-    if (textBoxMultiline) textBoxMultiline.title = nodeGraphTooltipText("actions.textBoxMultiline") || "Multiline (fixed size; shrink if too wide)";
-    if (textBoxFill) {
-      textBoxFill.title = nodeGraphTooltipText("actions.textBoxFill")
-        || "Fill — multiline text grows or shrinks to use the available face";
-    }
+    if (textBoxMultiline) textBoxMultiline.title = nodeGraphTooltipText("actions.textBoxMultiline") || "Multiline (wraps in the face)";
     textBoxTextInput.disabled = !targetNode || !targetSupportsTextBoxHeight;
-    textBoxTextInput.value = targetSupportsTextBoxHeight ? textBoxLayout.text : "";
+    if (document.activeElement !== textBoxTextInput) {
+      textBoxTextInput.value = targetSupportsTextBoxHeight ? textBoxLayout.text : "";
+    }
     textBoxTextInput.title = nodeGraphTooltipText("actions.textBoxContent");
     if (targetNode?.type === "codeblock") {
       const codeblock = normalizeNodeGraphCodeblock(targetNode.codeblock);
@@ -1865,9 +2060,11 @@ function configureNodeSceneContextMenu(mode) {
     const wireLabel = selectedModule.querySelector("span");
     if (wireLabel) {
       wireLabel.hidden = false;
-      wireLabel.textContent = selectedWire?.kind === "modulation"
-        ? "selected modulation"
-        : "selected wire";
+      wireLabel.textContent = selectedWireEntries.length > 1
+        ? "selected wires"
+        : selectedWire?.kind === "modulation"
+          ? "selected modulation"
+          : "selected wire";
     }
     selectedModule.querySelector("strong").textContent = nodeGraphWireSelectionLabel(nodeGraphMvp.selected);
     const selectedWireType = normalizeNodeGraphWireType(selectedWire?.wire?.wireType);
@@ -1884,6 +2081,21 @@ function configureNodeSceneContextMenu(mode) {
       wirePixelToggle.setAttribute("aria-pressed", pixelOn ? "true" : "false");
       wirePixelToggle.title = nodeGraphTooltipText("actions.wirePixel")
         || "Pixel wire (manual). Raster beam renderer later; flag is saved on the wire.";
+    }
+    if (typeof syncNodeGraphWireCurveControl === "function") {
+      syncNodeGraphWireCurveControl();
+    }
+    const attenuateButton = document.getElementById("nodeSceneWireAttenuate");
+    if (attenuateButton) {
+      attenuateButton.disabled = !canAttenuateWires;
+      attenuateButton.title = nodeGraphTooltipText("actions.wireAttenuate")
+        || "Insert a slim attenuverter on each selected signal or modulation wire.";
+    }
+    const attenuvertButton = document.getElementById("nodeSceneWireAttenuvert");
+    if (attenuvertButton) {
+      attenuvertButton.disabled = !canAttenuateWires;
+      attenuvertButton.title = nodeGraphTooltipText("actions.wireAttenuvert")
+        || "Insert a bipolar attenuverter (−1…+1 amplitude and offset) on each selected wire.";
     }
     deleteButton.disabled = !canDelete;
     deleteButton.title = canDelete
@@ -1917,6 +2129,9 @@ function configureNodeSceneContextMenu(mode) {
     if (toggleHideUnusedButton) {
       toggleHideUnusedButton.disabled = true;
     }
+    if (toggleCollapsedButton) {
+      toggleCollapsedButton.disabled = true;
+    }
     toggleTitleButton.disabled = true;
     imageSave.disabled = true;
     imageRefresh.disabled = true;
@@ -1935,6 +2150,14 @@ function configureNodeSceneContextMenu(mode) {
     if (wirePixelToggle) {
       wirePixelToggle.disabled = true;
       wirePixelToggle.setAttribute("aria-pressed", "false");
+    }
+    const idleAttenuate = document.getElementById("nodeSceneWireAttenuate");
+    if (idleAttenuate) {
+      idleAttenuate.disabled = true;
+    }
+    const idleAttenuvert = document.getElementById("nodeSceneWireAttenuvert");
+    if (idleAttenuvert) {
+      idleAttenuvert.disabled = true;
     }
     copyButton.disabled = true;
     copyButton.title = nodeGraphTooltipText("actions.copyUnavailableModule");
@@ -1966,6 +2189,9 @@ function configureNodeSceneContextMenu(mode) {
     if (toggleHideUnusedButton) {
       toggleHideUnusedButton.disabled = true;
     }
+    if (toggleCollapsedButton) {
+      toggleCollapsedButton.disabled = true;
+    }
     toggleTitleButton.disabled = true;
     imageSave.disabled = true;
     imageRefresh.disabled = true;
@@ -1987,6 +2213,11 @@ function configureNodeSceneContextMenu(mode) {
  * @returns {boolean} true if handled
  */
 function openNodeGraphModuleSettingsFromContextEvent(event, nodeElement = null) {
+  if (event?.type === "dblclick" && event.altKey) {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    return false;
+  }
   ensureNodeGraphModuleActionsWindowBody();
   const node = nodeElement
     || event?.currentTarget?.closest?.(".dsp-node")
@@ -1998,10 +2229,9 @@ function openNodeGraphModuleSettingsFromContextEvent(event, nodeElement = null) 
   event?.preventDefault?.();
   event?.stopPropagation?.();
   event?.stopImmediatePropagation?.();
-  // Make this module the sole selection so Module Settings has a clear target
-  // even if a multi-selection was active under the pointer.
-  if (typeof setNodeGraphSelection === "function") {
-    setNodeGraphSelection({ type: "node", id: nodeId });
+  // Pin Module Settings to this module without changing graph selection.
+  if (typeof nodeGraphSelectionDisplaySyncKey === "function") {
+    nodeGraphMvp._displayChangeSyncKey = nodeGraphSelectionDisplaySyncKey();
   }
   nodeGraphMvp.sceneContextPoint = null;
   if (typeof closeNodeScopeContextMenu === "function") {
@@ -2050,6 +2280,16 @@ function openNodeGraphModuleSettingsFromContextEvent(event, nodeElement = null) 
 }
 
 function openNodeModuleActionMenu(event) {
+  if (typeof nodeGraphMagnifierShouldBlockContext === "function" && nodeGraphMagnifierShouldBlockContext()) {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    return;
+  }
+  if (event?.type === "dblclick" && event.altKey) {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    return;
+  }
   // Module shell binds contextmenu on the whole .dsp-node, which runs before
   // the document-level scene menu. Specialized display faces must claim the
   // event here (and stopPropagation) or Module Settings always wins.
@@ -2060,6 +2300,9 @@ function openNodeModuleActionMenu(event) {
     return;
   }
   if (typeof openNodeKnobFaceContextMenu === "function" && openNodeKnobFaceContextMenu(event)) {
+    return;
+  }
+  if (typeof openNodeKeypadDisplaySettings === "function" && openNodeKeypadDisplaySettings(event)) {
     return;
   }
   if (typeof openNodeScopeContextMenu === "function" && openNodeScopeContextMenu(event)) {
@@ -2103,13 +2346,6 @@ function openNodeXyPadContextMenu(event) {
   event.stopImmediatePropagation?.();
   // Prefer phosphor Display Settings (color / background / reset canvas).
   if (typeof openNodeGraphTraceDisplaySettings === "function") {
-    // Keep multi-select when the face is already part of the selection so
-    // same-display multi-adjust can apply. Collapse only when not selected.
-    const alreadySelected = typeof nodeGraphSelectedNodeIds === "function"
-      && nodeGraphSelectedNodeIds().has(nodeId);
-    if (!alreadySelected && typeof setNodeGraphSelection === "function") {
-      setNodeGraphSelection({ type: "node", id: nodeId });
-    }
     nodeGraphMvp.sceneContextTargetNode = nodeId;
     nodeGraphMvp.lastModuleActionTargetNode = nodeId;
     if (openNodeGraphTraceDisplaySettings(nodeId, event)) {
@@ -2145,24 +2381,22 @@ function openNodeScopeContextMenu(event) {
   return true;
 }
 
-// Right-click on the Music Player's waveform display -- deliberately does
-// NOT call closeNodeSceneContextMenu() or touch any other floating window.
-// The waveform settings window is fully independent, not part of the
-// shared-inspector displacement dance (metadata/module-actions/trace
-// settings auto-closing each other) -- opening it must never make another
-// window disappear.
+// Right-click on the Music Player's waveform display opens Command Center
+// Display Settings (same seat as keypad / LED / scopes).
 function openNodePhosphorWaveformContextMenu(event) {
   const display = event.target.closest?.(".node-phosphor-waveform-display");
   const nodeId = display?.dataset?.node || "";
   if (!nodeId || !nodeGraphPatchNode(nodeId)) {
     return false;
   }
-  if (typeof openNodeGraphPhosphorWaveformSettings !== "function") {
-    return false;
-  }
   event.preventDefault();
   event.stopPropagation();
-  openNodeGraphPhosphorWaveformSettings(nodeId, event);
+  if (typeof openNodeGraphTraceDisplaySettings === "function" && openNodeGraphTraceDisplaySettings(nodeId, event)) {
+    return true;
+  }
+  if (typeof openNodeGraphPhosphorWaveformSettings === "function") {
+    return openNodeGraphPhosphorWaveformSettings(nodeId, event);
+  }
   return true;
 }
 
@@ -2173,7 +2407,10 @@ const nodeGraphWorkspaceFloatingUiSelector =
   "#nodeSceneContextMenu, #nodeParameterMetadataPopover, #nodeGlobalScopeMenu, " +
   "#nodeModuleActionsWindow, #nodeCodeBoxWindow, #nodeCanvasScriptDialog, " +
   "#nodePhosphorWaveformSettingsWindow, #nodeModuleShopView, " +
-  "#nodeTraceDisplaySettingsPopover";
+  "#nodeTraceDisplaySettingsPopover, #nodeUserUiSettingsPanel, #nodeUiDevHelper, " +
+  "#nodeVisibilityMenu, #nodePatchDefaultsPanel, #nodeStandaloneMidiKeyboardDock, " +
+  "#nodeHotkeysPage, #nodeEmojiPage, " +
+  ".node-floating-window-surface";
 // Legacy alias: includes form fields for empty-canvas / marquee checks only.
 const nodeGraphWorkspaceInteractiveDialogSelector =
   "input, textarea, select, option, [contenteditable='true'], " +
@@ -2182,23 +2419,43 @@ const nodeGraphWorkspaceOccupiedElementSelector =
   ".node-wire-hit-path, .node-wire-path, .dsp-node, .node-port, .node-param-port, .node-slider-readout";
 
 // Shared by the right-click scene menu and double-click-to-spawn: true only when
-// the event lands on truly empty canvas, not the toolbar, a dialog/input, a wire,
-// a node, or a port/readout.
+// the event lands on empty modular background (inside #nodeGraphWorkspace),
+// not the top/bottom bars, a floating window, a wire, a node, or a port/readout.
 function nodeGraphEventTargetIsEmptyWorkspaceArea(event) {
-  if (event.target.closest?.(".node-view-toolbar")) {
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target?.closest?.("#nodeGraphWorkspace")) {
     return false;
   }
-  if (event.target.closest?.(nodeGraphWorkspaceInteractiveDialogSelector)) {
+  if (target.closest?.(".node-view-toolbar, .node-graph-controls")) {
     return false;
   }
-  if (event.target.closest?.(nodeGraphWorkspaceOccupiedElementSelector)) {
+  if (target.closest?.(nodeGraphWorkspaceInteractiveDialogSelector)) {
+    return false;
+  }
+  if (target.closest?.(nodeGraphWorkspaceOccupiedElementSelector)) {
     return false;
   }
   return true;
 }
 
+function nodeGraphCssColorForSvgStroke(value) {
+  const text = String(value || "").trim();
+  if (/^#[0-9a-fA-F]{3,8}$/.test(text)) {
+    return text;
+  }
+  if (/^(?:rgb|hsl)a?\([^)]+\)$/.test(text)) {
+    return text;
+  }
+  return "rgb(0 208 255)";
+}
+
 function openNodeSceneContextMenu(event) {
-  if (event.target.closest?.(".node-view-toolbar")) {
+  if (typeof nodeGraphMagnifierShouldBlockContext === "function" && nodeGraphMagnifierShouldBlockContext()) {
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
+  if (event.target.closest?.(".node-view-toolbar, .node-graph-controls")) {
     event.preventDefault();
     event.stopPropagation();
     return;
@@ -2215,6 +2472,9 @@ function openNodeSceneContextMenu(event) {
   }
 
   // Specialized faces first (display settings, LED, phosphor waveform, XY pad, …).
+  if (typeof openNodeKeypadDisplaySettings === "function" && openNodeKeypadDisplaySettings(event)) {
+    return;
+  }
   if (openNodeScopeContextMenu(event)) {
     return;
   }
@@ -2270,28 +2530,19 @@ function openNodeSceneContextMenu(event) {
   }
 
   // Anywhere on a module (ports, inputs, body, header) → Module Settings.
-  // Never Module Browser. Shared with title dblclick / gear action button.
+  // Never Module Browser. Shared with the gear action button.
   if (openNodeGraphModuleSettingsFromContextEvent(event, onModule)) {
     return;
   }
 
+  if (!nodeGraphEventTargetIsEmptyWorkspaceArea(event)) {
+    return;
+  }
   event.preventDefault();
   event.stopPropagation();
   nodeGraphMvp.sceneContextPoint = nodeGraphClientPoint(event);
   nodeGraphMvp.sceneContextTargetNode = null;
   nodeGraphMvp.sceneContextTargetWire = null;
-  clearNodeGraphSelection();
-  // Right-click empty canvas opens (or refocuses) the Module Browser at the
-  // pointer so new modules spawn where you clicked. Contextual right-clicks
-  // (module / parameter / display) switch the unified window to that page.
-  if (typeof openNodeGraphUnifiedWindowPage === "function") {
-    openNodeGraphUnifiedWindowPage("moduleBrowser", {
-      point: nodeGraphMvp.sceneContextPoint,
-      windowPoint: { x: event.clientX, y: event.clientY },
-    });
-    return;
-  }
-  openNodeGraphModuleShop(nodeGraphMvp.sceneContextPoint, { x: event.clientX, y: event.clientY });
 }
 
 // Command Center open path (toolbar rocket / "C" hotkey / unified switcher).

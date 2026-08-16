@@ -275,7 +275,6 @@ function spectrogramSpectrumToColumnMags(
   if (!(spectrumBins > 0) || !spectrum) return;
 
   const rowDenom = Math.max(1, h - 1);
-  let peak = 1e-12;
   for (let y = 0; y < h; y += 1) {
     const t = y / rowDenom;
     const hz = spectrogramRowTToHz(t, freqScaleIdx, sampleRate, minFreqHz, maxFreqHz);
@@ -285,10 +284,7 @@ function spectrogramSpectrumToColumnMags(
     const bf = binF - b0;
     const v = (Number(spectrum[b0]) || 0) * (1 - bf) + (Number(spectrum[b1]) || 0) * bf;
     out[y] = v;
-    if (v > peak) peak = v;
   }
-  const inv = 1 / peak;
-  for (let y = 0; y < h; y += 1) out[y] *= inv;
 }
 
 function spectrogramCreateState(faceW, faceH) {
@@ -445,6 +441,15 @@ function spectrogramScrollPaintPixels(st, nPixels, lutRgb, minThresh, threshRang
     sctx.globalCompositeOperation = "source-over";
   }
 
+  // 0 brightness: scroll history, deposit nothing (black strip).
+  if (!(brightness > 0)) {
+    sctx.fillStyle = "#000000";
+    sctx.fillRect(Math.max(0, w - n), 0, Math.min(n, w), h);
+    st.pendingValid = false;
+    st.pendingMags.fill(0);
+    return;
+  }
+
   // Paint n identical right columns (large hop covering many pixels).
   for (let p = 0; p < n; p += 1) {
     const x = w - n + p;
@@ -569,7 +574,8 @@ function drawNodeGraphSpectrogramItem(renderer, item, pixelRatio) {
 
   const node = nodeGraphPatchNode(nodeId);
   const settings = spectrogramSettingsForNode(node);
-  const brightness = Math.max(0, Math.min(1, Number(node?.params?.brightness) || 1));
+  const brightnessRaw = Number(node?.params?.brightness);
+  const brightness = Math.max(0, Math.min(1, Number.isFinite(brightnessRaw) ? brightnessRaw : 0.2));
   const minThresh = Math.max(0, Number(node?.params?.minThreshold) || 0);
   const maxThresh = Math.max(minThresh + 0.001, Number(node?.params?.maxThreshold) || 1);
   const threshRange = maxThresh - minThresh;
@@ -686,6 +692,34 @@ function clearNodeGraphSpectrogramHistory() {
   }
   spectrogramHistory.clear();
   spectrogramLutRgbCache.clear();
+}
+
+function clearNodeGraphSpectrogramHistoryForNode(nodeId) {
+  const key = String(nodeId || "");
+  const st = spectrogramHistory.get(key);
+  if (!st) {
+    return;
+  }
+  try {
+    const ctx = st.ctx;
+    if (ctx && st.canvas) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = "#000000";
+      ctx.fillRect(0, 0, st.canvas.width, st.canvas.height);
+      ctx.restore();
+    }
+    if (st.pendingMags?.fill) {
+      st.pendingMags.fill(0);
+    }
+    st.pendingValid = false;
+    st.lastHop = 0;
+    st.scrollDebtSec = 0;
+  } catch (_error) {
+    // Best-effort.
+  }
+  spectrogramHistory.delete(key);
 }
 
 nodeGraphModuleScopeCustomRenderers.spectrogramBurn = drawNodeGraphSpectrogramItem;

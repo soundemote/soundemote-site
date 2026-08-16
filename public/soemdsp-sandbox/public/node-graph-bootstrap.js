@@ -46,7 +46,10 @@ async function initNodeGraphMvp() {
   resetNodeGraphStartupView();
   recordNodeGraphHistory();
   markNodeGraphRenderPending();
-  applyNodeGraphZoom();
+  applyNodeGraphZoom({ immediate: true, persist: false });
+  if (typeof clearNodeGraphViewportGestureClass === "function") {
+    clearNodeGraphViewportGestureClass();
+  }
   renderNodeGraphGridToggle();
   if (typeof renderNodeGraphGridLightToggle === "function") {
     renderNodeGraphGridLightToggle();
@@ -61,14 +64,14 @@ async function initNodeGraphMvp() {
   bindNodeGraphKeyboardControllerModuleEvents();
   bindNodeGraphMetadataPopoverEvents();
   renderNodeGraphMacroControls();
-  applyNodeGraphMacroKnobArcThickness();
-  applyNodeGraphMacroKnobArcGapBrightness();
-  applyNodeGraphMacroKnobSizeScale();
-  applyNodeGraphMacroKnobHitboxOutlineVisible();
-  applyNodeGraphMacroKnobLabelPosition();
-  applyNodeGraphMacroKnobValuePosition();
   if (typeof applyNodeGraphMacroControlsFaceSettings === "function") {
     applyNodeGraphMacroControlsFaceSettings();
+  } else {
+    applyNodeGraphMacroKnobArcThickness();
+    applyNodeGraphMacroKnobArcGapBrightness();
+    applyNodeGraphMacroKnobSizeScale();
+    applyNodeGraphMacroKnobLabelPosition();
+    applyNodeGraphMacroKnobValuePosition();
   }
   if (typeof bindNodeGraphMacroControlsDisplayContextMenu === "function") {
     bindNodeGraphMacroControlsDisplayContextMenu();

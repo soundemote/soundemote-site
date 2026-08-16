@@ -6,10 +6,12 @@
 // At 100% the room is blacked out; painted displays stay lit (rect punches) and
 // the dimmer button stays punched/stacked above the veil so you can drag back.
 //
-// Simple light sim only:
-//   - black veil alpha = dim (true 0…1)
-//   - hard rect holes from painted light faces + the dimmer control itself
-// Cables stay under the veil.
+// Two lights only:
+//   1. Module lamps — CSS heatmap (fades 0.5…1).
+//   2. Screen glow  — veil holes on painted canvases (0.5…1, sim on).
+// 0…0.5: clip the veil off the workspace (CSS). Graph stays on heatmap.
+// 0.5…1: fade a CSS-pixel workspace hole (1−deep) so lamps do not pop.
+//         Same client→UV path as screens — no buffer snap (that box drifted).
 //
 // Punch geometry:
 //   Prefer the *painted* surface (scope fallback canvas, music-player panel
@@ -22,14 +24,12 @@
   "use strict";
 
   const STORAGE_KEY = "soemdsp-sandbox.roomDimmer.v1";
-  const MAX_RECTS = 48;
-  const SHADER_REV = 10;
+  const MAX_RECTS = 128;
+  const SHADER_REV = 15;
   // Inset punch by this many CSS px so 1px borders / AA don't open chrome.
   const PUNCH_INSET_CSS = 1.25;
 
-  // Prefer painted canvases first; shells only if no canvas child.
-  // Hover cutouts (mouse / slider / title / module) are pushed in collectLights.
-  const LIGHT_SELECTOR = [
+  const SCREEN_SELECTOR = [
     "canvas.node-phosphor-waveform-canvas",
     "canvas.node-module-scope-local-fallback-canvas",
     "canvas.node-xy-pad-canvas",
@@ -37,18 +37,9 @@
     "canvas.node-asciiscope-canvas",
     "canvas.node-matrix-display-canvas",
     "canvas.node-filter-curve-canvas",
-    ".node-led-lamp",
-    ".node-module-scope-window",
-    ".node-xy-pad",
-    ".node-number-readout-face",
-    ".node-knob-face",
-    ".node-ray-bouncer-face",
-    ".node-phosphor-waveform-display",
-    ".node-filter-curve-display",
-    ".node-asciiscope-stage",
-    ".node-matrix-display-stage",
-    "[data-light-source]",
-    ".node-light-source",
+    "canvas.node-raster-rgb-canvas",
+    ".node-keypad-face",
+    ".node-text-box-body",
   ].join(", ");
   // Default mouse cutout size (CSS px); UI Dev can override.
   const HOVER_CURSOR_CUTOUT_CSS_DEFAULT = 56;
@@ -66,27 +57,31 @@ void main() {
 precision mediump float;
 
 uniform float uDim;
+uniform vec2 uCanvasPx;
 uniform int uRectCount;
 uniform vec4 uRect[${MAX_RECTS}];
 uniform float uRectStr[${MAX_RECTS}];
-// Soft edge width in UV (0 ≈ hard AA). Roundness 0=square … 1=circle.
+// Soft edge / corner radius in CSS pixels (isotropic). 0 ≈ 0.6px AA.
 uniform float uRectSoft[${MAX_RECTS}];
 uniform float uRectRound[${MAX_RECTS}];
 
 varying vec2 vUv;
 
-// Rounded box SDF in UV space (r = xy min, zw size; rr = corner radius 0…half-min).
-float roundedBoxSdf(vec2 p, vec4 r, float rr) {
+// Rounded box SDF in CSS-pixel space (r = xy min, zw size in UV).
+float roundedBoxSdfPx(vec2 pPx, vec4 rUv, float rrPx) {
+  vec2 scale = max(uCanvasPx, vec2(1.0));
+  vec4 r = vec4(rUv.xy * scale, rUv.zw * scale);
   vec2 c = r.xy + r.zw * 0.5;
   vec2 h = max(r.zw * 0.5, vec2(1e-4));
-  float rad = clamp(rr, 0.0, min(h.x, h.y));
-  vec2 q = abs(p - c) - h + vec2(rad);
+  float rad = clamp(rrPx, 0.0, min(h.x, h.y));
+  vec2 q = abs(pPx - c) - h + vec2(rad);
   return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - rad;
 }
 
 void main() {
   // Dim is a true 0…1 gain: 0 = no veil, 1 = pure black outside holes.
   float veil = clamp(uDim, 0.0, 1.0);
+  vec2 pPx = vUv * max(uCanvasPx, vec2(1.0));
 
   // open = 1 → full hole (nothing of the veil over this pixel).
   float open = 0.0;
@@ -94,10 +89,21 @@ void main() {
     if (i >= uRectCount) break;
     float s = clamp(uRectStr[i], 0.0, 1.0);
     if (s < 0.001) continue;
-    float soft = max(uRectSoft[i], 0.0005);
-    float d = roundedBoxSdf(vUv, uRect[i], uRectRound[i]);
-    // soft = edge feather in UV; strength s is hole gain.
-    float inside = 1.0 - smoothstep(-soft, soft, d);
+    float d = roundedBoxSdfPx(pPx, uRect[i], uRectRound[i]);
+    float soft = uRectSoft[i];
+    float inside;
+    if (soft < 0.0) {
+      // Screen: fully open on the glass (d<=0). Smoothstep *outward* only.
+      float bloom = max(-soft, 1.0);
+      float t = clamp(max(d, 0.0) / bloom, 0.0, 1.0);
+      float s1 = t * t * (3.0 - 2.0 * t);
+      float fall = 1.0 - s1 * s1;
+      float core = 1.0 - smoothstep(-0.6, 0.6, d);
+      inside = max(core, fall);
+    } else {
+      float feather = max(soft, 0.6);
+      inside = 1.0 - smoothstep(-feather, feather, d);
+    }
     open = max(open, inside * s);
   }
   open = clamp(open, 0.0, 1.0);
@@ -132,6 +138,46 @@ void main() {
     return clamp01(n);
   }
 
+  /** 0 below half-dim; 1 at full black. Second-stage mix. */
+  function dimDeep(dim = state.dim) {
+    const d = clampDim(dim);
+    return d <= 0.5 ? 0 : Math.min(1, (d - 0.5) * 2);
+  }
+
+  function simulationOn() {
+    if (typeof nodeGraphLiveEngineIsUp === "function") {
+      return Boolean(nodeGraphLiveEngineIsUp());
+    }
+    const live = typeof nodeGraphMvp !== "undefined" ? nodeGraphMvp.live : null;
+    return Boolean(live && live.outputEnabled && live.node);
+  }
+
+  function moduleLightSpread() {
+    const ws = workspace();
+    if (!ws) return 0.78;
+    const raw = Number.parseFloat(
+      ws.style.getPropertyValue("--node-module-light-spread")
+      || getComputedStyle(ws).getPropertyValue("--node-module-light-spread")
+      || "",
+    );
+    return Number.isFinite(raw) ? Math.max(0.4, Math.min(2.2, raw)) : 0.78;
+  }
+
+  function punchCornerRadiusPx(el, boxW, boxH) {
+    if (!el) {
+      return 0;
+    }
+    const cs = getComputedStyle(el);
+    const raw = String(cs.borderTopLeftRadius || "").trim();
+    const n = Number.parseFloat(raw);
+    if (!Number.isFinite(n) || n <= 0) {
+      return 0;
+    }
+    const short = Math.max(1, Math.min(Number(boxW) || 0, Number(boxH) || 0));
+    const px = raw.endsWith("%") ? (n / 100) * short : n;
+    return Math.max(0, Math.min(short * 0.5, px));
+  }
+
   // Persist at most half-dark so a refresh never restores a pure-black UI.
   const PERSIST_DIM_MAX = 0.5;
 
@@ -154,6 +200,29 @@ void main() {
 
   function buttonEl() {
     return document.getElementById("nodeRoomDimmerButton");
+  }
+
+  /** 0…0.5: veil paints chrome only. Never a shader hole the size of the graph. */
+  function clipVeilOffWorkspace(canvas, offWorkspace) {
+    if (!canvas) return;
+    if (!offWorkspace) {
+      canvas.style.clipPath = "";
+      return;
+    }
+    const ws = workspace();
+    const cr = canvas.getBoundingClientRect();
+    const wr = ws?.getBoundingClientRect();
+    if (!wr || !(cr.width > 0) || !(cr.height > 0)) {
+      canvas.style.clipPath = "";
+      return;
+    }
+    const l = wr.left - cr.left;
+    const t = wr.top - cr.top;
+    const r = wr.right - cr.left;
+    const b = wr.bottom - cr.top;
+    const w = cr.width;
+    const h = cr.height;
+    canvas.style.clipPath = `polygon(evenodd, 0px 0px, ${w}px 0px, ${w}px ${h}px, 0px ${h}px, 0px 0px, ${l}px ${t}px, ${l}px ${b}px, ${r}px ${b}px, ${r}px ${t}px, ${l}px ${t}px)`;
   }
 
   function setVeilActive(on) {
@@ -262,6 +331,7 @@ void main() {
     state.locs = {
       aPos: gl.getAttribLocation(prog, "aPos"),
       uDim: gl.getUniformLocation(prog, "uDim"),
+      uCanvasPx: gl.getUniformLocation(prog, "uCanvasPx"),
       uRectCount: gl.getUniformLocation(prog, "uRectCount"),
       uRect: Array.from({ length: MAX_RECTS }, (_, i) =>
         gl.getUniformLocation(prog, `uRect[${i}]`)),
@@ -324,17 +394,19 @@ void main() {
   function resolvePunchElement(el) {
     if (!el) return null;
     if (el.matches?.("canvas.node-phosphor-waveform-canvas")) return el;
+    if (el.matches?.("canvas.node-raster-rgb-canvas")) return el;
     if (el.matches?.("canvas.node-module-scope-local-fallback-canvas")) return el;
     if (el.matches?.("canvas.node-xy-pad-canvas")) return el;
     if (el.matches?.("canvas.node-number-readout-canvas")) return el;
     if (el.matches?.("canvas.node-asciiscope-canvas")) return el;
     if (el.matches?.("canvas.node-matrix-display-canvas")) return el;
     if (el.matches?.("canvas.node-filter-curve-canvas")) return el;
+    if (el.matches?.(".node-keypad-face")) return el;
     if (el.matches?.(".node-led-lamp")) return el;
 
     // Outer shells: only if no painted canvas is already the target.
     const painted = el.querySelector?.(
-      "canvas.node-module-scope-local-fallback-canvas, canvas.node-phosphor-waveform-canvas, canvas.node-xy-pad-canvas, canvas.node-number-readout-canvas, canvas.node-asciiscope-canvas, canvas.node-matrix-display-canvas, canvas.node-filter-curve-canvas, .node-led-lamp",
+      "canvas.node-raster-rgb-canvas, canvas.node-module-scope-local-fallback-canvas, canvas.node-phosphor-waveform-canvas, canvas.node-xy-pad-canvas, canvas.node-number-readout-canvas, canvas.node-asciiscope-canvas, canvas.node-matrix-display-canvas, canvas.node-filter-curve-canvas, .node-keypad-face, .node-led-lamp",
     );
     if (painted) return painted;
 
@@ -360,7 +432,7 @@ void main() {
     rounds.push(Math.max(0, Number(round) || 0));
   }
 
-  function pushRectLight(el, canvasRect, canvas, seen, rects, strengths, softs, rounds) {
+  function pushRectLight(el, canvasRect, canvas, seen, rects, strengths, softs, rounds, opts = {}) {
     if (!el || seen.has(el)) return;
     if (el.offsetParent === null && el !== document.body) {
       // Zoom surface uses pointer-events:none; offsetParent can be null.
@@ -373,7 +445,7 @@ void main() {
     if (
       punchEl !== el
       && el.matches?.(
-        ".node-module-scope-window, .node-xy-pad, .node-number-readout-face, .node-knob-face, .node-ray-bouncer-face, .node-phosphor-waveform-display, [data-light-source], .node-light-source",
+        ".node-module-scope-window, .node-xy-pad, .node-number-readout-face, .node-knob-face, .node-ray-bouncer-face, .node-phosphor-waveform-display, .node-text-box-body, [data-light-source], .node-light-source",
       )
     ) {
       // Still mark shell seen so generic selectors don't double-add.
@@ -383,41 +455,56 @@ void main() {
     seen.add(punchEl);
     seen.add(el);
 
-    const str = lightStrength(punchEl);
+    const scale = opts.strengthScale == null ? 1 : opts.strengthScale;
+    // Keypad plate = LCD-style partial hole (50%), not a full phosphor punch.
+    const str = punchEl.matches?.(".node-keypad-face")
+      ? 0.5 * scale
+      : lightStrength(punchEl) * scale;
     if (str < 0.001) return;
 
     const r = punchEl.getBoundingClientRect();
     if (r.width < 1.5 || r.height < 1.5) return;
 
-    // Map in the veil canvas's client space (same box the GL buffer fills).
     const cr = canvasRect;
     const cssW = Math.max(1e-6, cr.width);
     const cssH = Math.max(1e-6, cr.height);
-    // Device-pixel snap after inset so zoom doesn't leave half-pixel leaks.
-    const dprX = canvas.width / cssW;
-    const dprY = canvas.height / cssH;
-    const insetX = Math.max(1, Math.round(PUNCH_INSET_CSS * dprX));
-    const insetY = Math.max(1, Math.round(PUNCH_INSET_CSS * dprY));
-
-    let leftPx = Math.round((r.left - cr.left) * dprX) + insetX;
-    let topPx = Math.round((r.top - cr.top) * dprY) + insetY;
-    let rightPx = Math.round((r.right - cr.left) * dprX) - insetX;
-    let bottomPx = Math.round((r.bottom - cr.top) * dprY) - insetY;
-    if (rightPx <= leftPx + 1 || bottomPx <= topPx + 1) {
-      // Face smaller than inset budget — use un-inset snapped rect.
-      leftPx = Math.round((r.left - cr.left) * dprX);
-      topPx = Math.round((r.top - cr.top) * dprY);
-      rightPx = Math.round((r.right - cr.left) * dprX);
-      bottomPx = Math.round((r.bottom - cr.top) * dprY);
+    const screenSoft = Number(opts.screenSoft) || 0;
+    const glowOn = screenSoft > 0 && simulationOn();
+    // Client → UV, no buffer-pixel snap (that drifted under CSS zoom).
+    let left = Number(r.left) - cr.left;
+    let top = Number(r.top) - cr.top;
+    let right = Number(r.right) - cr.left;
+    let bottom = Number(r.bottom) - cr.top;
+    if (screenSoft > 0) {
+      left -= 0.5;
+      top -= 0.5;
+      right += 0.5;
+      bottom += 0.5;
+    } else {
+      const inset = PUNCH_INSET_CSS;
+      left += inset;
+      top += inset;
+      right -= inset;
+      bottom -= inset;
+      if (right <= left + 1 || bottom <= top + 1) {
+        left = Number(r.left) - cr.left;
+        top = Number(r.top) - cr.top;
+        right = Number(r.right) - cr.left;
+        bottom = Number(r.bottom) - cr.top;
+      }
     }
-    if (rightPx <= leftPx || bottomPx <= topPx) return;
+    if (right <= left || bottom <= top) return;
 
-    // Shader UV: origin bottom-left of canvas buffer (matches previous convention).
-    const x = leftPx / canvas.width;
-    const y = (canvas.height - bottomPx) / canvas.height;
-    const w = (rightPx - leftPx) / canvas.width;
-    const h = (bottomPx - topPx) / canvas.height;
-    pushRectArrays(rects, strengths, softs, rounds, x, y, w, h, str, 0, 0);
+    const x = left / cssW;
+    const y = (cssH - bottom) / cssH;
+    const w = (right - left) / cssW;
+    const h = (bottom - top) / cssH;
+    const bloomCss = glowOn
+      ? Math.max(28, Math.min(52, 24 + 20 * (moduleLightSpread() - 0.4))) * screenSoft
+      : 0;
+    const soft = glowOn ? -bloomCss : 0;
+    const round = punchCornerRadiusPx(punchEl, r.width, r.height);
+    pushRectArrays(rects, strengths, softs, rounds, x, y, w, h, str, soft, round);
   }
 
   /**
@@ -464,6 +551,35 @@ void main() {
     pushRectArrays(rects, strengths, softs, rounds, x, y, w, h, str, softUv, roundUv);
   }
 
+  /** Workspace open in CSS pixels (same UV as screen punches). No buffer snap. */
+  function pushWorkspaceOpen(canvasRect, canvas, rects, strengths, softs, rounds, strength) {
+    const ws = workspace();
+    const str = clamp01(strength);
+    if (!ws || !canvas || str < 0.001 || rects.length >= MAX_RECTS) return;
+    const wr = ws.getBoundingClientRect();
+    const cr = canvasRect;
+    const cssW = Math.max(1e-6, cr.width);
+    const cssH = Math.max(1e-6, cr.height);
+    const left = Number(wr.left) - cr.left;
+    const top = Number(wr.top) - cr.top;
+    const right = Number(wr.right) - cr.left;
+    const bottom = Number(wr.bottom) - cr.top;
+    if (right <= left || bottom <= top) return;
+    pushRectArrays(
+      rects,
+      strengths,
+      softs,
+      rounds,
+      left / cssW,
+      (cssH - bottom) / cssH,
+      (right - left) / cssW,
+      (bottom - top) / cssH,
+      str,
+      0,
+      0,
+    );
+  }
+
   function collectLights(canvas) {
     if (!canvas?.width || !canvas?.height) {
       return { rects: [], rectStr: [], rectSoft: [], rectRound: [] };
@@ -478,34 +594,37 @@ void main() {
     const rectStr = [];
     const rectSoft = [];
     const rectRound = [];
-    // Lights live in the graph; query the document so we still find them if
-    // the canvas is reparented outside the workspace.
-    const root = document;
-    for (const el of root.querySelectorAll(LIGHT_SELECTOR)) {
-      if (rects.length >= MAX_RECTS) break;
-      // Dimmer control is handled below (always full hole, even at 100% dim).
-      if (el.closest?.("#nodeRoomDimmerButton, .node-room-dimmer-button")) continue;
-      pushRectLight(el, canvasRect, canvas, seen, rects, rectStr, rectSoft, rectRound);
+    const deep = dimDeep();
+    // 0…0.5: clip handles this (no shader hole). 0.5…1: fade the hole so
+    // the veil eases onto the plates with the heatmap lamps (no 0.5 pop).
+    if (deep > 0) {
+      pushWorkspaceOpen(canvasRect, canvas, rects, rectStr, rectSoft, rectRound, 1 - deep);
+      for (const el of document.querySelectorAll(SCREEN_SELECTOR)) {
+        if (rects.length >= MAX_RECTS) break;
+        if (!el.closest?.("#nodeGraphWorkspace")) continue;
+        pushRectLight(el, canvasRect, canvas, seen, rects, rectStr, rectSoft, rectRound, {
+          screenSoft: deep,
+        });
+      }
     }
 
-    // Always punch the dimmer button so it stays visible/usable at full black.
-    const btn = buttonEl();
-    if (btn && rects.length < MAX_RECTS) {
-      const prev = btn.dataset?.lightStrength;
-      if (btn.dataset) {
-        btn.dataset.lightStrength = "1";
+    // Punch the dimmer + magnifier pair so both stay usable at full black.
+    const punch = document.querySelector(".node-room-tool-pair") || buttonEl();
+    if (punch && rects.length < MAX_RECTS) {
+      const prev = punch.dataset?.lightStrength;
+      if (punch.dataset) {
+        punch.dataset.lightStrength = "1";
       }
-      pushRectLight(btn, canvasRect, canvas, seen, rects, rectStr, rectSoft, rectRound);
-      if (btn.dataset) {
+      pushRectLight(punch, canvasRect, canvas, seen, rects, rectStr, rectSoft, rectRound);
+      if (punch.dataset) {
         if (prev == null || prev === "") {
-          delete btn.dataset.lightStrength;
+          delete punch.dataset.lightStrength;
         } else {
-          btn.dataset.lightStrength = prev;
+          punch.dataset.lightStrength = prev;
         }
       }
     }
 
-    // Hover scheme (UI Dev): mouse / slider / title / full module cutouts.
     const cssW = Math.max(1e-6, canvasRect.width);
     const mouseOpts = readMouseCutoutOptions(cssW, canvas.width);
 
@@ -525,18 +644,9 @@ void main() {
         rectSoft,
         rectRound,
         1,
-        mouseOpts.softUv,
-        mouseOpts.roundUv,
+        mouseOpts.softUv * cssW,
+        mouseOpts.roundUv * cssW,
       );
-    }
-    if (isSliderCutoutEnabled() && hoverSliderStrip) {
-      pushClientRectLight(hoverSliderStrip, canvasRect, canvas, rects, rectStr, rectSoft, rectRound, 1);
-    }
-    if (isTitleCutoutEnabled() && hoverTitleStrip) {
-      pushClientRectLight(hoverTitleStrip, canvasRect, canvas, rects, rectStr, rectSoft, rectRound, 1);
-    }
-    if (isModuleCutoutEnabled() && hoverModuleRect) {
-      pushClientRectLight(hoverModuleRect, canvasRect, canvas, rects, rectStr, rectSoft, rectRound, 1);
     }
 
     return { rects, rectStr, rectSoft, rectRound };
@@ -550,11 +660,13 @@ void main() {
 
     if (dim <= 0.0005) {
       setVeilActive(false);
+      clipVeilOffWorkspace(canvas, false);
       clearCanvas();
       return;
     }
 
     setVeilActive(true);
+    clipVeilOffWorkspace(canvas, dimDeep(dim) <= 0);
     if (!resizeCanvas(canvas)) {
       scheduleDraw();
       return;
@@ -587,7 +699,11 @@ void main() {
     gl.enableVertexAttribArray(locs.aPos);
     gl.vertexAttribPointer(locs.aPos, 2, gl.FLOAT, false, 0, 0);
 
+    const cr = canvas.getBoundingClientRect();
     gl.uniform1f(locs.uDim, dim);
+    if (locs.uCanvasPx) {
+      gl.uniform2f(locs.uCanvasPx, Math.max(1, cr.width || canvas.width), Math.max(1, cr.height || canvas.height));
+    }
     gl.uniform1i(locs.uRectCount, rects.length);
 
     for (let i = 0; i < MAX_RECTS; i += 1) {
@@ -627,7 +743,13 @@ void main() {
     const on = dim > 0.0005;
     const pct = Math.round(dim * 100);
     // Drives CSS crossfade: on opacity = 1−dim, off opacity = dim.
+    const deep = dimDeep(dim);
     btn.style.setProperty("--room-dim", String(dim));
+    btn.style.setProperty("--room-dim-deep", String(deep));
+    workspace()?.style.setProperty("--room-dim", String(dim));
+    workspace()?.style.setProperty("--room-dim-deep", String(deep));
+    veilHost()?.style?.setProperty?.("--room-dim", String(dim));
+    veilHost()?.style?.setProperty?.("--room-dim-deep", String(deep));
     btn.setAttribute("aria-pressed", on ? "true" : "false");
     btn.setAttribute("aria-valuenow", String(pct));
     btn.setAttribute("aria-valuemin", "0");
@@ -720,35 +842,12 @@ void main() {
     });
   }
 
-  /**
-   * UI Dev hover cutouts (independent toggles):
-   *   - mouse pointer cutout (size / softness / shape)
-   *   - full-width slider strip
-   *   - full-width title-row light box
-   *   - full module plate
-   */
-  let cutoutSliderEnabled = true;
-  let cutoutModuleEnabled = false;
-  let cutoutTitleEnabled = true;
   let cutoutMouseEnabled = false;
   let mouseSizeCss = HOVER_CURSOR_CUTOUT_CSS_DEFAULT;
   let mouseSoftness01 = 0.25;
   let mouseShape01 = 0;
   /** @type {{ x: number, y: number } | null} */
   let hoverPointer = null;
-  /** @type {{ left: number, top: number, right: number, bottom: number } | null} */
-  let hoverSliderStrip = null;
-  /** @type {{ left: number, top: number, right: number, bottom: number } | null} */
-  let hoverTitleStrip = null;
-  /** @type {{ left: number, top: number, right: number, bottom: number } | null} */
-  let hoverModuleRect = null;
-
-  function mvpBool(key, fallback) {
-    if (typeof nodeGraphMvp !== "undefined" && nodeGraphMvp && typeof nodeGraphMvp[key] === "boolean") {
-      return nodeGraphMvp[key];
-    }
-    return fallback;
-  }
 
   function mvpNumber(key, fallback, min, max) {
     if (typeof nodeGraphMvp !== "undefined" && nodeGraphMvp) {
@@ -760,52 +859,12 @@ void main() {
     return fallback;
   }
 
-  function isSliderCutoutEnabled() {
-    // Prefer split key; fall back to legacy combined hover toggle.
-    if (typeof nodeGraphMvp !== "undefined" && nodeGraphMvp
-      && typeof nodeGraphMvp.dimmerCutoutSliderEnabled === "boolean") {
-      return nodeGraphMvp.dimmerCutoutSliderEnabled;
-    }
-    if (typeof nodeGraphMvp !== "undefined" && nodeGraphMvp
-      && typeof nodeGraphMvp.hoverModuleDimmerCutoutEnabled === "boolean") {
-      return nodeGraphMvp.hoverModuleDimmerCutoutEnabled;
-    }
-    return cutoutSliderEnabled;
-  }
-
-  function isModuleCutoutEnabled() {
-    return mvpBool("dimmerCutoutModuleEnabled", cutoutModuleEnabled);
-  }
-
-  function isTitleCutoutEnabled() {
-    if (typeof nodeGraphMvp !== "undefined" && nodeGraphMvp
-      && typeof nodeGraphMvp.dimmerCutoutTitleEnabled === "boolean") {
-      return nodeGraphMvp.dimmerCutoutTitleEnabled;
-    }
-    if (typeof nodeGraphMvp !== "undefined" && nodeGraphMvp
-      && typeof nodeGraphMvp.hoverModuleTitleDimmerCutoutEnabled === "boolean") {
-      return nodeGraphMvp.hoverModuleTitleDimmerCutoutEnabled;
-    }
-    return cutoutTitleEnabled;
-  }
-
   function isMouseCutoutEnabled() {
     if (typeof nodeGraphMvp !== "undefined" && nodeGraphMvp
       && typeof nodeGraphMvp.dimmerCutoutMouseEnabled === "boolean") {
       return nodeGraphMvp.dimmerCutoutMouseEnabled;
     }
-    if (typeof nodeGraphMvp !== "undefined" && nodeGraphMvp
-      && typeof nodeGraphMvp.hoverModuleDimmerCutoutEnabled === "boolean") {
-      return nodeGraphMvp.hoverModuleDimmerCutoutEnabled;
-    }
     return cutoutMouseEnabled;
-  }
-
-  function anyHoverCutoutEnabled() {
-    return isSliderCutoutEnabled()
-      || isModuleCutoutEnabled()
-      || isTitleCutoutEnabled()
-      || isMouseCutoutEnabled();
   }
 
   /**
@@ -813,7 +872,10 @@ void main() {
    * Shape 0 = square, ~0.5 = squircle, 1 = circle.
    */
   function readMouseCutoutOptions(cssW, canvasW) {
-    const sizeCss = mvpNumber("dimmerMouseSize", mouseSizeCss, 8, 240);
+    const zoom = typeof nodeGraphZoom === "function"
+      ? nodeGraphZoom()
+      : (Number(typeof nodeGraphMvp !== "undefined" ? nodeGraphMvp?.zoom : 1) || 1);
+    const sizeCss = mvpNumber("dimmerMouseSize", mouseSizeCss, 8, 240) * Math.max(0.05, zoom);
     const soft01 = mvpNumber("dimmerMouseSoftness", mouseSoftness01 * 100, 0, 100) / 100;
     const shape01 = mvpNumber("dimmerMouseShape", mouseShape01 * 100, 0, 100) / 100;
     // Softness: map 0…1 → ~0.5px … ~22% of cutout diameter in UV.
@@ -831,110 +893,25 @@ void main() {
 
   function clearHoverCutouts() {
     hoverPointer = null;
-    hoverSliderStrip = null;
-    hoverTitleStrip = null;
-    hoverModuleRect = null;
-  }
-
-  /**
-   * Full module width × row height strip in client px.
-   */
-  function moduleWidthStripFromRow(moduleEl, rowEl, padY = 2) {
-    if (!moduleEl || !rowEl) return null;
-    const mr = moduleEl.getBoundingClientRect();
-    const rr = rowEl.getBoundingClientRect();
-    if (!(mr.width > 1) || !(rr.height > 1)) return null;
-    return {
-      left: mr.left,
-      right: mr.right,
-      top: rr.top - padY,
-      bottom: rr.bottom + padY,
-    };
-  }
-
-  function moduleRectFromEventTarget(target) {
-    if (!(target instanceof Element)) return null;
-    const moduleEl = target.closest?.(".dsp-node");
-    if (!moduleEl) return null;
-    const r = moduleEl.getBoundingClientRect();
-    if (!(r.width > 1) || !(r.height > 1)) return null;
-    return {
-      left: r.left,
-      right: r.right,
-      top: r.top,
-      bottom: r.bottom,
-    };
-  }
-
-  /**
-   * Slider row strip: module full width × parameter-row height (client px).
-   */
-  function sliderStripFromEventTarget(target) {
-    if (!(target instanceof Element)) return null;
-    const row = target.closest?.(
-      ".node-parameter-row, .node-slider-readout, .node-parameter-control",
-    );
-    if (!row) return null;
-    // Prefer the parameter row for height; fall back to the readout itself.
-    const rowEl = row.classList?.contains("node-parameter-row")
-      ? row
-      : (row.closest?.(".node-parameter-row") || row);
-    const moduleEl = rowEl.closest?.(".dsp-node");
-    return moduleWidthStripFromRow(moduleEl, rowEl, 2);
-  }
-
-  /**
-   * Title light box: full module width × header title row height.
-   */
-  function titleStripFromEventTarget(target) {
-    if (!(target instanceof Element)) return null;
-    const hit = target.closest?.(
-      ".node-header-title-row, .node-header-title, .dsp-node-header, .node-header-actions",
-    );
-    if (!hit) return null;
-    const rowEl = hit.classList?.contains("node-header-title-row")
-      ? hit
-      : (hit.closest?.(".node-header-title-row")
-        || hit.closest?.(".dsp-node-header")
-        || hit);
-    const moduleEl = rowEl.closest?.(".dsp-node");
-    return moduleWidthStripFromRow(moduleEl, rowEl, 1);
   }
 
   function updateHoverFromEvent(event) {
-    if (!anyHoverCutoutEnabled()) {
+    if (!isMouseCutoutEnabled()) {
       clearHoverCutouts();
       return;
     }
     if (!event || !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) {
       return;
     }
-    hoverPointer = isMouseCutoutEnabled()
-      ? { x: event.clientX, y: event.clientY }
-      : null;
-    hoverSliderStrip = isSliderCutoutEnabled()
-      ? sliderStripFromEventTarget(event.target)
-      : null;
-    hoverTitleStrip = isTitleCutoutEnabled()
-      ? titleStripFromEventTarget(event.target)
-      : null;
-    hoverModuleRect = isModuleCutoutEnabled()
-      ? moduleRectFromEventTarget(event.target)
-      : null;
+    hoverPointer = { x: event.clientX, y: event.clientY };
   }
 
   function bindHoverCutout() {
     const ws = document.getElementById("nodeGraphWorkspace");
     if (!ws || ws.dataset.roomDimmerHoverBound === "1") return;
     ws.dataset.roomDimmerHoverBound = "1";
-    // Pointermove drives mouse / slider / title / module cutouts while dimmer is on.
     ws.addEventListener("pointermove", (event) => {
-      if (!anyHoverCutoutEnabled()) return;
-      updateHoverFromEvent(event);
-      if (state.dim > 0.0005) scheduleDraw();
-    }, { passive: true });
-    ws.addEventListener("pointerover", (event) => {
-      if (!anyHoverCutoutEnabled()) return;
+      if (!isMouseCutoutEnabled()) return;
       updateHoverFromEvent(event);
       if (state.dim > 0.0005) scheduleDraw();
     }, { passive: true });
@@ -946,24 +923,8 @@ void main() {
 
   function applyHoverCutoutFlagsFromMvp() {
     if (typeof nodeGraphMvp === "undefined" || !nodeGraphMvp) return;
-    // New split keys.
-    if (typeof nodeGraphMvp.dimmerCutoutSliderEnabled === "boolean") {
-      cutoutSliderEnabled = nodeGraphMvp.dimmerCutoutSliderEnabled;
-    } else if (typeof nodeGraphMvp.hoverModuleDimmerCutoutEnabled === "boolean") {
-      cutoutSliderEnabled = nodeGraphMvp.hoverModuleDimmerCutoutEnabled;
-    }
     if (typeof nodeGraphMvp.dimmerCutoutMouseEnabled === "boolean") {
       cutoutMouseEnabled = nodeGraphMvp.dimmerCutoutMouseEnabled;
-    } else if (typeof nodeGraphMvp.hoverModuleDimmerCutoutEnabled === "boolean") {
-      cutoutMouseEnabled = nodeGraphMvp.hoverModuleDimmerCutoutEnabled;
-    }
-    if (typeof nodeGraphMvp.dimmerCutoutTitleEnabled === "boolean") {
-      cutoutTitleEnabled = nodeGraphMvp.dimmerCutoutTitleEnabled;
-    } else if (typeof nodeGraphMvp.hoverModuleTitleDimmerCutoutEnabled === "boolean") {
-      cutoutTitleEnabled = nodeGraphMvp.hoverModuleTitleDimmerCutoutEnabled;
-    }
-    if (typeof nodeGraphMvp.dimmerCutoutModuleEnabled === "boolean") {
-      cutoutModuleEnabled = nodeGraphMvp.dimmerCutoutModuleEnabled;
     }
     const size = Number(nodeGraphMvp.dimmerMouseSize);
     if (Number.isFinite(size)) mouseSizeCss = Math.max(8, Math.min(240, size));
@@ -973,37 +934,8 @@ void main() {
     if (Number.isFinite(shape)) mouseShape01 = Math.max(0, Math.min(100, shape)) / 100;
   }
 
-  /** @deprecated Prefer setNodeGraphDimmerCutoutOptions / split toggles. */
-  function setHoverModuleDimmerCutoutEnabled(on) {
-    const v = Boolean(on);
-    cutoutSliderEnabled = v;
-    cutoutMouseEnabled = v;
-    if (typeof nodeGraphMvp !== "undefined" && nodeGraphMvp) {
-      nodeGraphMvp.hoverModuleDimmerCutoutEnabled = v;
-      nodeGraphMvp.dimmerCutoutSliderEnabled = v;
-      nodeGraphMvp.dimmerCutoutMouseEnabled = v;
-    }
-    if (!anyHoverCutoutEnabled()) clearHoverCutouts();
-    scheduleDraw();
-  }
-
-  /** @deprecated Prefer dimmerCutoutTitleEnabled. */
-  function setHoverModuleTitleDimmerCutoutEnabled(on) {
-    cutoutTitleEnabled = Boolean(on);
-    if (typeof nodeGraphMvp !== "undefined" && nodeGraphMvp) {
-      nodeGraphMvp.hoverModuleTitleDimmerCutoutEnabled = cutoutTitleEnabled;
-      nodeGraphMvp.dimmerCutoutTitleEnabled = cutoutTitleEnabled;
-    }
-    if (!anyHoverCutoutEnabled()) clearHoverCutouts();
-    else if (!cutoutTitleEnabled) hoverTitleStrip = null;
-    scheduleDraw();
-  }
-
   function setDimmerCutoutOptions(opts = {}) {
     if (opts && typeof opts === "object") {
-      if (typeof opts.slider === "boolean") cutoutSliderEnabled = opts.slider;
-      if (typeof opts.module === "boolean") cutoutModuleEnabled = opts.module;
-      if (typeof opts.title === "boolean") cutoutTitleEnabled = opts.title;
       if (typeof opts.mouse === "boolean") cutoutMouseEnabled = opts.mouse;
       if (Number.isFinite(Number(opts.mouseSize))) {
         mouseSizeCss = Math.max(8, Math.min(240, Number(opts.mouseSize)));
@@ -1016,18 +948,12 @@ void main() {
       }
     }
     if (typeof nodeGraphMvp !== "undefined" && nodeGraphMvp) {
-      nodeGraphMvp.dimmerCutoutSliderEnabled = cutoutSliderEnabled;
-      nodeGraphMvp.dimmerCutoutModuleEnabled = cutoutModuleEnabled;
-      nodeGraphMvp.dimmerCutoutTitleEnabled = cutoutTitleEnabled;
       nodeGraphMvp.dimmerCutoutMouseEnabled = cutoutMouseEnabled;
       nodeGraphMvp.dimmerMouseSize = mouseSizeCss;
       nodeGraphMvp.dimmerMouseSoftness = Math.round(mouseSoftness01 * 100);
       nodeGraphMvp.dimmerMouseShape = Math.round(mouseShape01 * 100);
-      // Keep legacy mirrors for older UI Dev code paths.
-      nodeGraphMvp.hoverModuleDimmerCutoutEnabled = cutoutSliderEnabled || cutoutMouseEnabled;
-      nodeGraphMvp.hoverModuleTitleDimmerCutoutEnabled = cutoutTitleEnabled;
     }
-    if (!anyHoverCutoutEnabled()) clearHoverCutouts();
+    if (!isMouseCutoutEnabled()) clearHoverCutouts();
     scheduleDraw();
     if (typeof scheduleNodeGraphGridHeatmapUpdate === "function") {
       scheduleNodeGraphGridHeatmapUpdate();
@@ -1056,12 +982,12 @@ void main() {
 
   window.setNodeGraphRoomDim = setDim;
   window.nodeGraphRoomDim = () => clampDim(state.dim);
+  window.nodeGraphRoomDimDeep = () => dimDeep();
   window.nodeGraphRoomDimMax = () => 1;
+  window.nodeGraphRoomDimScreenSelector = () => SCREEN_SELECTOR;
   window.bindNodeGraphRoomDimmer = bind;
   window.setNodeGraphLightStrength = setLightStrength;
   window.scheduleNodeGraphRoomDimmerDraw = scheduleDraw;
-  window.setNodeGraphHoverModuleDimmerCutoutEnabled = setHoverModuleDimmerCutoutEnabled;
-  window.setNodeGraphHoverModuleTitleDimmerCutoutEnabled = setHoverModuleTitleDimmerCutoutEnabled;
   window.setNodeGraphDimmerCutoutOptions = setDimmerCutoutOptions;
 
   window.setNodeGraphShaderScriptEnabled = (on) => {

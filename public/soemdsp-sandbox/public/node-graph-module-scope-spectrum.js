@@ -134,10 +134,10 @@ function nodeGraphModuleScopeDisplayBuffer(slot, capturedBuffer = null) {
     // Value LCD / Value LED must only ever show real captured input — never an
     // offline model guess. No fallback chain here on purpose.
     buffer = capturedBuffer;
-  } else if (slot?.type === "led" || renderer === "ledLamp") {
-    // Lamp LED: derive light target from the capture ring when metadata is absent.
+  } else if (renderer === "ledLamp") {
+    // Legacy CSS lamp: derive light target from the capture ring when metadata is absent.
     buffer = capturedBuffer;
-    if (buffer?.length && !(Number(buffer.nodeGraphScopeLightTarget) > 0)) {
+    if (buffer?.length && !Number.isFinite(Number(buffer.nodeGraphScopeLightTarget))) {
       let peak = 0;
       const n = Math.min(buffer.length, 64);
       for (let i = Math.max(0, buffer.length - n); i < buffer.length; i += 1) {
@@ -151,6 +151,19 @@ function nodeGraphModuleScopeDisplayBuffer(slot, capturedBuffer = null) {
       nodeGraphModuleScopeOfflineClockBlinkBuffer(slot, capturedBuffer);
   } else if (renderer === "transportBpm") {
     buffer = nodeGraphModuleScopeTransportBpmBuffer(slot);
+  } else if (renderer === "phoneToneFace" || slot?.type === "phoneTone") {
+    buffer = { length: 1 };
+  } else if (
+    renderer === "vectorRgbFace"
+    || renderer === "rasterRgbFace"
+    || renderer === "gradientVectorscopeFace"
+    || renderer === "traceXyz"
+    || slot?.type === "vectorRgb"
+    || slot?.type === "rasterRgb"
+    || slot?.type === "gradientVectorscope"
+    || slot?.type === "traceXyz"
+  ) {
+    buffer = { length: 1 };
   } else if (renderer === "dot") {
     buffer = nodeGraphModuleScopeDotOscilloscopeLightBuffer(capturedBuffer);
   } else if (slot?.type === "lineBurnOscilloscope") {
@@ -177,14 +190,19 @@ const nodeGraphTraceDisplaySettingsWindowSize = Object.freeze({
   height: 620,
   maxHeight: 820,
   maxWidth: 760,
-  minHeight: 260,
-  minWidth: 24,
+  minHeight: typeof nodeGraphUnifiedWindowMinSize !== "undefined"
+    ? nodeGraphUnifiedWindowMinSize.minHeight
+    : 120,
+  minWidth: typeof nodeGraphUnifiedWindowMinSize !== "undefined"
+    ? nodeGraphUnifiedWindowMinSize.minWidth
+    : 24,
   width: 185,
 });
 
 const nodeGraphTraceDisplaySettingFields = Object.freeze([
   ["zoomSeconds", "History (s)"],
   ["historySeconds", "History (s)"],
+  ["fade", "Fade"],
   ["scale", "Scale"],
   ["sweepSeconds", "Sweep (s)"],
   ["sweepHz", "Sweep (Hz)"],
@@ -207,11 +225,14 @@ const nodeGraphTraceDisplaySettingFields = Object.freeze([
   ["rounding", "Rounding"],
   ["innerRadius", "Inner radius"],
   ["rotationDegrees", "Span °"],
-  ["dialSize", "Size"],
+  ["dialSize", "Knob size"],
+  ["labelSize", "Label size"],
+  ["valueSize", "Value size"],
 
   ["dot1Size", "Size"],
   ["puckSize", "Puck size"],
   ["lineThickness", "Blur"],
+  ["lineBlur", "Line blur"],
   ["dot1Brightness", "Bright"],
   ["secondarySize", "Secondary size"],
   ["secondaryLineThickness", "Secondary blur"],
@@ -224,7 +245,7 @@ const nodeGraphTraceDisplaySettingFields = Object.freeze([
 /**
  * Shared phosphor Display Settings order (app-wide, including Lorenz).
  * Faces pick a subset; builders keep this relative order.
- * Bright → Size → Blur → Ghost → Trail → Burn → Scale → Pixel density → Dot Budget
+ * Bright → Size → Blur → Ghost → Trail → Scale → Pixel density → Dot Budget
  */
 const nodeGraphPhosphorDisplayFieldOrder = Object.freeze([
   "dot1Brightness",
@@ -232,8 +253,6 @@ const nodeGraphPhosphorDisplayFieldOrder = Object.freeze([
   "lineThickness",
   "ghost",
   "trail",
-  "burn",
-  "burnAmount",
   "scale",
   "pixelDensity",
   "dotBudget",

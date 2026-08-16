@@ -148,17 +148,32 @@ NodeLiveAudioProcessor.prototype.evaluateFrame = function evaluateFrame(frame, f
         const liveModuleEvaluator = node?.type ? this.liveModuleEvaluators[node.type] : null;
         if (liveModuleEvaluator) {
           value = liveModuleEvaluator(node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput, inputFrame, graphInputValue, graphOutputValue);
+          if (typeof nodeGraphApplyPostAmplitude === "function") {
+            value = nodeGraphApplyPostAmplitude(
+              node.type,
+              value,
+              this.readEffectiveParameter(node, "amplitude", 1, frame, frames, frameValues),
+            );
+          }
         } else if (node?.type === "audioInput") {
           // Hardware process() buffers (not externalInput map) — same stereo math as helpers.
           const input = inputs[0] || [];
           const leftChannel = input[0] || input[1] || null;
           const rightChannel = input[1] || input[0] || null;
-          const level = this.readEffectiveParameter(node, "level", 1, frame, frames, frameValues);
-          value = nodeGraphDspExternalStereoFrame(
+          const level = this.readEffectiveParameter(node, "amplitude", 1, frame, frames, frameValues);
+          const live = nodeGraphDspExternalStereoFrame(
             { left: leftChannel, right: rightChannel },
             inputFrame,
             level,
           );
+          value = typeof nodeGraphDspSandboxIoFrame === "function"
+            ? nodeGraphDspSandboxIoFrame(
+              live,
+              mixInput(nodeId, "Mono"),
+              mixInput(nodeId, "Left"),
+              mixInput(nodeId, "Right"),
+            )
+            : live;
         }
       }
       frameValues.set(nodeId, value);
@@ -167,13 +182,27 @@ NodeLiveAudioProcessor.prototype.evaluateFrame = function evaluateFrame(frame, f
 
     const outputNodeId = this.outputNode || "output";
     const outputNode = this.nodes.get(outputNodeId);
-    const outputVolume = outputNode
-      ? this.readEffectiveParameter(outputNode, "volume", 0.1, frame, frames, frameValues)
-      : 1;
+    const outputDb = outputNode
+      ? this.readEffectiveParameter(outputNode, "volume", -20, frame, frames, frameValues)
+      : 0;
+    const outputVolume = typeof nodeGraphOutputVolumeDbToLin === "function"
+      ? nodeGraphOutputVolumeDbToLin(outputDb)
+      : (!Number.isFinite(outputDb) || outputDb <= -140 ? 0 : 10 ** (outputDb / 20));
+    const outputPan = outputNode
+      ? this.readEffectiveParameter(outputNode, "pan", 0, frame, frames, frameValues)
+      : 0;
+    const outputPanGains = typeof nodeGraphOutputPanGains === "function"
+      ? nodeGraphOutputPanGains(outputPan)
+      : { left: 1, right: 1 };
 
     const outputMono = mixInput(outputNodeId, "Mono");
-    const left = (outputMono + mixInput(outputNodeId, "Left")) * outputVolume;
-    const right = (outputMono + mixInput(outputNodeId, "Right")) * outputVolume;
+    let left = (outputMono + mixInput(outputNodeId, "Left")) * outputVolume * outputPanGains.left;
+    let right = (outputMono + mixInput(outputNodeId, "Right")) * outputVolume * outputPanGains.right;
+    if (typeof nodeGraphPortalMixOutlets === "function") {
+      const mixed = nodeGraphPortalMixOutlets(this.nodes, mixInput, left, right);
+      left = mixed.left;
+      right = mixed.right;
+    }
     // Output is a speaker sink with no DSP evaluator — the order loop above
     // only stored scalar 0. Scope capture reads nodeOutputs for stereo Trace
     // (output:Left / output:Right); publish the real bus so the face is not

@@ -19,6 +19,9 @@ function registerNodeGraphModuleScopeSlot(moduleElement, options = {}) {
     bindNodeGraphModuleScopeWindowEvents(scopeElement);
   }
   nodeGraphModuleScopeState.slots.set(nodeId, slot);
+  if (slot.type === "rasterRgb" && typeof scheduleNodeGraphRasterRgbPump === "function") {
+    scheduleNodeGraphRasterRgbPump();
+  }
   // Patch load registers many slots; don't queue a full scope pass while
   // stopped (each schedule used to reflow every face via HasModelDisplay).
   if (typeof nodeGraphModuleScopePaused !== "function" || !nodeGraphModuleScopePaused()) {
@@ -158,7 +161,7 @@ function nodeGraphModuleScopeHasModelDisplay() {
     return slot.type === "clock" ||
       slot.type === "transport" ||
       nodeGraphModuleScopeIsOscillatorType(slot.type) ||
-      (["traceDisplay", "dotOscilloscope", "valueOscilloscope", "lineBurnOscilloscope"].includes(slot.type) &&
+      (["traceDisplay", "dotOscilloscope", "valueOscilloscope", "lineBurnOscilloscope", "led"].includes(slot.type) &&
         nodeGraphModuleScopeConnectionsTo(slot.nodeId, "In").length > 0) ||
       (["scope2d", "scope2dTrace", "phosphorLight"].includes(renderer) && (
         // Prefer live X/Y wires. Do NOT treat dry Thru ports alone as a model:

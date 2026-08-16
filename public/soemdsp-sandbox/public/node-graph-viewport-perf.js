@@ -51,7 +51,9 @@ function markNodeGraphViewportGesture(kind = "gesture") {
   }
   // Pan / drag-zoom: lights + wires stay frozen until pointerup (no settle timer
   // mid-drag). Wheel has no mouse-up, so only wheel schedules a settle.
-  if (kind === "wheel") {
+  // Kind "zoom" (programmatic / mis-tagged) must also settle — otherwise
+  // viewport-zooming sticks and jacks never come back.
+  if (kind === "wheel" || kind === "zoom") {
     nodeGraphViewportPerf.wheelActiveUntil = (performance.now?.() || Date.now())
       + nodeGraphViewportPerf.wheelHoldMs;
     scheduleNodeGraphViewportSettle();
@@ -91,6 +93,9 @@ function clearNodeGraphViewportGestureClass() {
     return;
   }
   workspace.classList.remove("viewport-gesturing", "viewport-zooming");
+  if (typeof invalidateNodeGraphWorkspaceLayoutMetrics === "function") {
+    invalidateNodeGraphWorkspaceLayoutMetrics();
+  }
 }
 
 /**
@@ -145,6 +150,15 @@ function applyNodeGraphViewportCssLight(options = {}) {
       syncNodeGraphOriginMarker();
     }
   }
+  if (
+    typeof scheduleNodeGraphRoomDimmerDraw === "function"
+    && !(typeof nodeGraphViewportGestureActive === "function" && nodeGraphViewportGestureActive())
+  ) {
+    scheduleNodeGraphRoomDimmerDraw();
+  }
+  if (typeof updateNodeGraphGridHeatmap === "function") {
+    updateNodeGraphGridHeatmap({ lite: true });
+  }
 }
 
 function nodeGraphWirePlanCacheKey() {
@@ -189,16 +203,16 @@ function invalidateNodeGraphViewportWirePlanCache() {
  */
 function flushNodeGraphViewportHeavyChrome(options = {}) {
   const gesturing = nodeGraphViewportGestureActive();
-  const full = options.full === true || !gesturing;
-  if (!full) {
-    // Frozen mid-gesture: no lights, no wires.
-    return;
+  if (typeof scheduleNodeGraphRoomDimmerDraw === "function") {
+    scheduleNodeGraphRoomDimmerDraw();
   }
-  if (
-    typeof updateNodeGraphGridHeatmap === "function"
-    && nodeGraphMvp?.gridLightVisible !== false
-  ) {
-    updateNodeGraphGridHeatmap();
+  const full = options.full === true || !gesturing;
+  if (typeof updateNodeGraphGridHeatmap === "function") {
+    updateNodeGraphGridHeatmap({ lite: !full });
+  }
+  if (!full) {
+    // Pause module lights / wires mid-gesture. Grid position already updated.
+    return;
   }
   if (typeof drawNodeGraphWires === "function") {
     drawNodeGraphWires({
@@ -258,6 +272,181 @@ function scheduleNodeGraphWorkspaceViewPersist() {
 }
 
 /** Immediate full chrome (no gesture). Use after reset / auto-frame. */
+const nodeGraphViewportCull = {
+  observer: null,
+};
+
+function nodeGraphModuleIsViewportAsleep(nodeOrElement) {
+  const element = nodeOrElement instanceof Element
+    ? (nodeOrElement.classList.contains("dsp-node")
+      ? nodeOrElement
+      : nodeOrElement.closest?.(".dsp-node"))
+    : (typeof nodeGraphNodeElement === "function"
+      ? nodeGraphNodeElement(nodeOrElement)
+      : null);
+  return Boolean(element?.classList.contains("viewport-asleep"));
+}
+
+/** Bands CSS skips with content-visibility:hidden on .viewport-asleep. */
+var NODE_GRAPH_VIEWPORT_ASLEEP_SKIP_SEL = [
+  ".node-module-face",
+  ".node-module-scope-window",
+  ".node-solid-module-custom-ui",
+].join(", ");
+
+/**
+ * True when measuring this node would force-render a content-visibility:hidden
+ * band (Chrome: "Rendering was performed in a subtree hidden by content-visibility").
+ * I/O columns stay painted on asleep modules — only face / params / custom UI skip.
+ */
+function nodeGraphElementInSkippedContentVisibility(element) {
+  if (!element?.closest) {
+    return false;
+  }
+  const module = element.closest(".dsp-node");
+  if (!module?.classList?.contains("viewport-asleep")) {
+    return false;
+  }
+  return Boolean(element.closest(NODE_GRAPH_VIEWPORT_ASLEEP_SKIP_SEL));
+}
+
+/**
+ * CSS box without forcing a content-visibility:hidden subtree to paint.
+ * Asleep faces reuse the last awake size (or fallback).
+ */
+function nodeGraphElementClientSize(element, fallbackW = 1, fallbackH = 1) {
+  const fw = Math.max(1, Number(fallbackW) || 1);
+  const fh = Math.max(1, Number(fallbackH) || 1);
+  if (!element) {
+    return { width: fw, height: fh, skipped: true };
+  }
+  if (nodeGraphElementInSkippedContentVisibility(element)) {
+    const lastW = Number(element._awakeClientWidth);
+    const lastH = Number(element._awakeClientHeight);
+    return {
+      width: Math.max(1, lastW > 0 ? lastW : fw),
+      height: Math.max(1, lastH > 0 ? lastH : fh),
+      skipped: true,
+    };
+  }
+  const width = Math.max(1, Math.floor(Number(element.clientWidth) || fw));
+  const height = Math.max(1, Math.floor(Number(element.clientHeight) || fh));
+  element._awakeClientWidth = width;
+  element._awakeClientHeight = height;
+  return { width, height, skipped: false };
+}
+
+function nodeGraphViewportCullWakePainters(element) {
+  if (!element) {
+    return;
+  }
+  const nodeId = String(element.dataset?.node || "");
+  for (const face of element.querySelectorAll(".node-fbm-field-face")) {
+    if (typeof nodeGraphFbmFieldStartLoop === "function") {
+      nodeGraphFbmFieldStartLoop(face, nodeId || face.dataset?.node);
+    }
+  }
+  element.dispatchEvent(new CustomEvent("nodegraphviewport", {
+    bubbles: false,
+    detail: { asleep: false },
+  }));
+}
+
+function nodeGraphViewportCullSleepPainters(element) {
+  if (!element) {
+    return;
+  }
+  for (const face of element.querySelectorAll(".node-fbm-field-face")) {
+    if (typeof nodeGraphFbmFieldStopLoop === "function") {
+      nodeGraphFbmFieldStopLoop(face);
+    }
+  }
+  element.dispatchEvent(new CustomEvent("nodegraphviewport", {
+    bubbles: false,
+    detail: { asleep: true },
+  }));
+}
+
+function nodeGraphViewportCullApply(element, intersecting) {
+  if (!element?.classList?.contains("dsp-node")) {
+    return;
+  }
+  const nodeId = String(element.dataset?.node || "");
+  const selected = Boolean(
+    nodeId
+    && typeof nodeGraphSelectedNodeIds === "function"
+    && nodeGraphSelectedNodeIds().has(nodeId),
+  );
+  const awake = intersecting || selected;
+  const wasAsleep = element.classList.contains("viewport-asleep");
+  element.classList.toggle("viewport-asleep", !awake);
+  if (wasAsleep === !awake) {
+    return;
+  }
+  if (awake) {
+    nodeGraphViewportCullWakePainters(element);
+  } else {
+    nodeGraphViewportCullSleepPainters(element);
+  }
+}
+
+function ensureNodeGraphViewportModuleCull() {
+  const root = document.getElementById("nodeGraphWorkspace");
+  if (!root || typeof IntersectionObserver !== "function") {
+    return null;
+  }
+  if (nodeGraphViewportCull.observer) {
+    return nodeGraphViewportCull.observer;
+  }
+  nodeGraphViewportCull.observer = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      const node = entry.target?.classList?.contains("dsp-node")
+        ? entry.target
+        : entry.target?.closest?.(".dsp-node");
+      if (node) {
+        nodeGraphViewportCullApply(node, entry.isIntersecting);
+      }
+    }
+  }, {
+    root,
+    rootMargin: "160px",
+    threshold: 0,
+  });
+  return nodeGraphViewportCull.observer;
+}
+
+function nodeGraphViewportCullObserve(element) {
+  const node = element?.classList?.contains("dsp-node")
+    ? element
+    : element?.closest?.(".dsp-node");
+  if (!node) {
+    return;
+  }
+  const observer = ensureNodeGraphViewportModuleCull();
+  if (!observer) {
+    return;
+  }
+  try {
+    observer.observe(node);
+  } catch (_error) {
+    // Ignore detached / double-observe.
+  }
+}
+
+function nodeGraphViewportCullSyncSelection() {
+  const selected = typeof nodeGraphSelectedNodeIds === "function"
+    ? nodeGraphSelectedNodeIds()
+    : new Set();
+  for (const id of selected) {
+    const element = typeof nodeGraphNodeElement === "function"
+      ? nodeGraphNodeElement(id)
+      : null;
+    if (element?.classList.contains("viewport-asleep")) {
+      nodeGraphViewportCullApply(element, true);
+    }
+  }
+}
+
 function flushNodeGraphViewportImmediate(options = {}) {
   if (nodeGraphViewportPerf.heavyRaf) {
     window.cancelAnimationFrame(nodeGraphViewportPerf.heavyRaf);

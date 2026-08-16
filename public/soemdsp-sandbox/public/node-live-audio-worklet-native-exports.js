@@ -112,9 +112,20 @@ NodeLiveAudioProcessor.prototype.applyNativeModuleExports = function applyNative
         return;
       }
       if (name === "soft_clipper" || targetType === "softClipper") {
+        if (this.softClipperStates) {
+          for (const state of this.softClipperStates.values()) {
+            this.destroySoftClipperState?.(state);
+          }
+        }
+        if (this.clipperLimiterStates) {
+          for (const state of this.clipperLimiterStates.values()) {
+            this.destroySoftClipperState?.(state);
+          }
+        }
         this.nativeSoftClipper = exports;
         this.nativeSoftClipperReady = Boolean(
-          this.nativeSoftClipper?.soemdsp_soft_clipper_sample,
+          this.nativeSoftClipper?.soemdsp_soft_clipper_sample
+          || this.nativeSoftClipper?.soemdsp_soft_clipper_sample_aa,
         );
         this.port.postMessage({
           type: "nativeModuleStatus",
@@ -1365,6 +1376,28 @@ NodeLiveAudioProcessor.prototype.applyNativeModuleExports = function applyNative
           type: "nativeModuleStatus",
           name: "additive_osc",
           status: this.nativeAdditiveOscReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "raster_rgb" || targetType === "rasterRgb") {
+        if (this.rasterRgbStates) {
+          for (const state of this.rasterRgbStates.values()) {
+            if (state?.nativeHandle && this.nativeRasterRgb?.soemdsp_raster_rgb_destroy) {
+              this.nativeRasterRgb.soemdsp_raster_rgb_destroy(state.nativeHandle);
+              state.nativeHandle = 0;
+            }
+          }
+        }
+        this.nativeRasterRgb = exports;
+        this.nativeRasterRgbReady = Boolean(
+          this.nativeRasterRgb?.soemdsp_raster_rgb_create
+          && this.nativeRasterRgb?.soemdsp_raster_rgb_sample
+          && this.nativeRasterRgb?.soemdsp_raster_rgb_r,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "raster_rgb",
+          status: this.nativeRasterRgbReady ? "ready" : "missing exports",
         });
         return;
       }

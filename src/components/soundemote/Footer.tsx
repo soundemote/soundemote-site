@@ -5,7 +5,7 @@ export const Footer = () => (
     <div className="container flex flex-col md:flex-row items-center justify-between gap-4 mono text-xs text-muted-foreground">
       <div className="flex items-center gap-2">
         <span className="text-scope">✧</span>
-        <span>soundemote@gmail.com</span>
+        <span className="select-text cursor-text">soundemote@gmail.com</span>
       </div>
       <div className="flex items-center gap-6">
         <Link to="/webring" className="hover:text-scope transition-colors uppercase tracking-[0.2em]">webring</Link>

@@ -415,9 +415,14 @@ function nodeGraphXyPadPhosphorTargetUnit(pad) {
     };
   const outX = process(sigX, { cutoff: 0, order, quantizeAmt: qX, filterSample: null });
   const outY = process(sigY, { cutoff: 0, order, quantizeAmt: qY, filterSample: null });
+  const ampFn = typeof nodeGraphXyPadDspOutputAmplitude === "function"
+    ? nodeGraphXyPadDspOutputAmplitude
+    : (raw) => (Number.isFinite(Number(raw)) ? Number(raw) : 1);
+  const ampX = ampFn(nodeGraphXyPadParam(pad, "xAmplitude", 1));
+  const ampY = ampFn(nodeGraphXyPadParam(pad, "yAmplitude", 1));
   return {
-    x: nodeGraphXyPadNormalizeGhostUnit(outX, phaseX),
-    y: nodeGraphXyPadNormalizeGhostUnit(outY, phaseY),
+    x: nodeGraphXyPadNormalizeGhostUnit(outX * ampX, phaseX),
+    y: nodeGraphXyPadNormalizeGhostUnit(outY * ampY, phaseY),
     fromOut: false,
   };
 }
@@ -702,11 +707,11 @@ function drawNodeGraphXyPad(pad, options = {}) {
     layoutW = Math.round((rect.width / zoom) * dpr);
     layoutH = Math.round((rect.height / zoom) * dpr);
   }
-  // Pixel density 0–4 (same as 2D Phosphor): 0 → 1×1, 1 → layout×dpr, 4 AA.
+  // Pixel density 0–1 (same as 2D Phosphor): 0 → 1×1, 1 → layout×dpr.
   const densityRaw = typeof nodeGraphFacePlateDensity === "function"
     ? nodeGraphFacePlateDensity(display, 1)
     : Number(display.pixelDensity);
-  const density = Number.isFinite(densityRaw) ? Math.max(0, Math.min(4, densityRaw)) : 1;
+  const density = Number.isFinite(densityRaw) ? Math.max(0, Math.min(1, densityRaw)) : 1;
   const width = Math.max(1, Math.round(layoutW * density));
   const height = Math.max(1, Math.round(layoutH * density));
   if (canvas.width !== width || canvas.height !== height) {
@@ -1180,6 +1185,8 @@ function createNodeGraphXyPadBody(node, type) {
     // reconcile/mirror and nudge axes mid-commit.
     try {
       nodeGraphXyPadSetGate(pad, false);
+      const returnToCenter = nodeGraphXyPadParam(pad, "returnToCenter", 0) > 0.5;
+      const pauseOnLift = nodeGraphXyPadParam(pad, "pauseOnLift", 0) > 0.5;
       if (completedDrag.resetToDefault && !completedDrag.moved) {
         const xSlider = nodeGraphXyPadSlider(pad, "x");
         const ySlider = nodeGraphXyPadSlider(pad, "y");
@@ -1191,6 +1198,15 @@ function createNodeGraphXyPadBody(node, type) {
           Number.isFinite(defaultY) ? defaultY : 0.5,
           { interaction: "drag", commit: true, commitStatus: "XY pad reset to default" },
         );
+        drawNodeGraphXyPad(pad);
+        return;
+      }
+      if (returnToCenter && !pauseOnLift) {
+        nodeGraphXyPadWritePosition(pad, 0.5, 0.5, {
+          interaction: "drag",
+          commit: true,
+          commitStatus: "XY pad return to center",
+        });
         drawNodeGraphXyPad(pad);
         return;
       }

@@ -63,8 +63,11 @@ function nodeGraphTraceDisplayStepperQuantum(input, currentValue = null, directi
     return 0.1;
   }
   const key = input.dataset?.traceDisplayField;
-  if (["cycles", "decimals"].includes(key)) {
+  if (["cycles", "decimals", "textSizePx"].includes(key)) {
     return 1;
+  }
+  if (key === "textWeight") {
+    return 100;
   }
   if (key === "dotBudget") {
     return 64;
@@ -92,6 +95,11 @@ function nodeGraphTraceDisplayStepperQuantum(input, currentValue = null, directi
     && key !== "capSize") {
     return 0.04;
   }
+  // Instant Trace Blur: control-space step (exp map) — fine near a hard line.
+  if (typeof nodeGraphTraceDisplayInstantTraceBlurField === "function"
+    && nodeGraphTraceDisplayInstantTraceBlurField(key)) {
+    return 0.03;
+  }
   // 0…1 unit fields (Bright, Ghost Bright, Residual, …): always 0.1.
   if (typeof nodeGraphTraceDisplayUnitDragField === "function"
     && nodeGraphTraceDisplayUnitDragField(key)) {
@@ -103,6 +111,18 @@ function nodeGraphTraceDisplayStepperQuantum(input, currentValue = null, directi
 
 function nodeGraphTraceDisplaySizeControlField(key) {
   return ["dot1Size", "secondarySize", "capSize"].includes(key);
+}
+
+/** Instant Trace Blur (not phosphor stamp blur). */
+function nodeGraphTraceDisplayInstantTraceBlurField(key) {
+  if (key !== "lineThickness" && key !== "secondaryLineThickness") {
+    return false;
+  }
+  const type = typeof nodeGraphTraceDisplaySettingsFormType === "function"
+    ? nodeGraphTraceDisplaySettingsFormType()
+    : "";
+  return typeof nodeGraphDisplaySettingsIsVectorTraceFormType === "function"
+    && nodeGraphDisplaySettingsIsVectorTraceFormType(type);
 }
 
 /** History window fields (seconds) — use exponential control mapping. */
@@ -118,6 +138,7 @@ function nodeGraphTraceDisplayUnitDragField(key) {
   return [
     "dot1Brightness",
     "secondaryBrightness",
+    "fade",
     "ghostBrightness",
     "residual",
     "ghost",
@@ -125,13 +146,20 @@ function nodeGraphTraceDisplayUnitDragField(key) {
     "burn",
     "burnAmount",
     "unlitSegments",
+    "centsBand",
     "facePadding",
+    "screenPadding",
     "innerShadowDistance",
     "innerShadowSharpness",
     "innerShadowOffsetX",
     "innerShadowOffsetY",
     "dialSize",
+    "labelSize",
+    "valueSize",
     "innerRadius",
+    "buttonWidth",
+    "buttonHeight",
+    "textSize",
     "capLength",
     "capPadding",
     "capSize",
@@ -146,6 +174,9 @@ function nodeGraphTraceDisplayUnitDragRange(key) {
   // Value LED/LCD padding: negative grows digits toward plate walls.
   if (key === "facePadding") {
     return { min: -0.5, max: 1 };
+  }
+  if (key === "buttonWidth" || key === "buttonHeight" || key === "textSize") {
+    return { min: 0, max: 1 };
   }
   if (key === "burnAmount") {
     const max = (typeof PhosphorResidual !== "undefined" && PhosphorResidual.BURN_AMOUNT_MAX) || 4;
@@ -169,11 +200,15 @@ const nodeGraphTraceDisplayUnitDragPixels = 220;
  */
 const nodeGraphTraceDisplaySizeDragPixels = 520;
 
+/** Instant Trace Blur: longer travel than Bright (visual halo is hot near 0). */
+const nodeGraphTraceDisplayBlurDragPixels = 640;
+
 function nodeGraphTraceDisplaySensitiveControlField(key) {
   // Brightness / residual are linear unit drags — not size-style exp maps.
-  // Exp remains for stamp size, pixel density, history windows only.
+  // Exp remains for stamp size, Instant Trace blur, pixel density, history.
   return nodeGraphTraceDisplaySizeControlField(key) ||
     nodeGraphTraceDisplayHistoryControlField(key) ||
+    nodeGraphTraceDisplayInstantTraceBlurField(key) ||
     key === "pixelDensity";
 }
 
@@ -184,7 +219,7 @@ const nodeGraphTraceDisplayHistoryControlExponent = 3.5;
 
 function nodeGraphTraceDisplaySensitiveControlMax(key) {
   if (key === "pixelDensity") {
-    return 4;
+    return 1;
   }
   // Bright is 0…1 energy app-wide (1 = full tip / full deposit).
   return 1;
@@ -305,7 +340,7 @@ function nodeGraphTraceDisplayClampBrightness(value) {
 }
 
 function nodeGraphTraceDisplayClampPixelDensity(value) {
-  return clampNodeSliderValue(Number(value) || 0, 0, 4);
+  return clampNodeSliderValue(Number(value) || 0, 0, 1);
 }
 
 // Stamp blur 0–1 (hard→soft). Migrates legacy signed -1..1 patch values.
@@ -352,16 +387,20 @@ const nodeGraphTraceDisplaySharedValueClamps = Object.freeze({
   residual: nodeGraphTraceDisplayClampUnit,
   ghostBrightness: nodeGraphTraceDisplayClampBrightness,
   unlitSegments: nodeGraphTraceDisplayClampUnit,
+  centsBand: nodeGraphTraceDisplayClampUnit,
   facePadding: (value) => {
     const n = Number(value);
     return Number.isFinite(n) ? clampNodeSliderValue(n, -0.5, 1) : 0;
   },
+  screenPadding: nodeGraphTraceDisplayClampUnit,
   innerShadowDistance: nodeGraphTraceDisplayClampUnit,
   innerShadowSharpness: nodeGraphTraceDisplayClampUnit,
   innerShadowOffsetX: nodeGraphTraceDisplayClampBipolarUnit,
   innerShadowOffsetY: nodeGraphTraceDisplayClampBipolarUnit,
-  // Knob dial ring size 0…1.
+  // Knob dial / label / value size 0…1.
   dialSize: nodeGraphTraceDisplayClampUnit,
+  labelSize: nodeGraphTraceDisplayClampUnit,
+  valueSize: nodeGraphTraceDisplayClampUnit,
   dotBudget: nodeGraphTraceDisplayClampDotBudget,
   digits: (value) => {
     const n = Math.round(Number(value));
@@ -375,8 +414,10 @@ const nodeGraphTraceDisplaySharedValueClamps = Object.freeze({
   dot1Size: nodeGraphTraceDisplayClampUnit,
   ghost: nodeGraphTraceDisplayClampUnit,
   historySeconds: nodeGraphTraceDisplayClampHistorySeconds,
+  fade: nodeGraphTraceDisplayClampUnit,
   lineLength: nodeGraphTraceDisplayClampUnit,
   lineThickness: nodeGraphTraceDisplayClampNonNegative,
+  lineBlur: (value) => clampNodeSliderValue(Number(value) || 0, 0, 8),
   pixelDensity: nodeGraphTraceDisplayClampPixelDensity,
   puckSize: (value) => clampNodeSliderValue(Number(value) || 0, 0.005, 0.25),
   scale: nodeGraphTraceDisplayClampNonNegative,
@@ -401,6 +442,21 @@ const nodeGraphTraceDisplaySharedValueClamps = Object.freeze({
     return clampNodeSliderValue(n, 1, 24000);
   },
   zoomSeconds: nodeGraphTraceDisplayClampHistorySeconds,
+  textSize: (value) => (typeof nodeGraphKeypadClampTextSize === "function"
+    ? nodeGraphKeypadClampTextSize(value)
+    : Math.max(0, Math.min(1, Number(value) || 0.55))),
+  textSizePx: (value) => (typeof nodeGraphKeypadClampTextSize === "function"
+    ? nodeGraphKeypadClampTextSize(value)
+    : Math.max(0, Math.min(1, Number(value) || 0.55))),
+  textWeight: (value) => (typeof nodeGraphKeypadClampWeight === "function"
+    ? nodeGraphKeypadClampWeight(value)
+    : Math.max(100, Math.min(900, Math.round((Number(value) || 400) / 100) * 100))),
+  buttonWidth: (value) => (typeof nodeGraphKeypadClampWidth === "function"
+    ? nodeGraphKeypadClampWidth(value)
+    : Math.max(0, Math.min(1, Number(value) || 0.94))),
+  buttonHeight: (value) => (typeof nodeGraphKeypadClampHeight === "function"
+    ? nodeGraphKeypadClampHeight(value)
+    : Math.max(0, Math.min(1, Number(value) || 0.94))),
 });
 
 // Per-formType overrides, only for the (formType, field) pairs that diverge
@@ -468,6 +524,11 @@ const nodeGraphTraceDisplayFormTypeValueClampOverrides = Object.freeze({
   }),
   scope2dTrace: Object.freeze({
     lineThickness: nodeGraphTraceDisplayClampStampBlur,
+  }),
+  roundShapeFace: Object.freeze({
+    lineThickness: (value) => clampNodeSliderValue(Number(value) || 2, 0.25, 16),
+    lineBlur: (value) => clampNodeSliderValue(Number(value) || 0, 0, 8),
+    pixelDensity: nodeGraphTraceDisplayClampPixelDensity,
   }),
   // 1D Trace / Output: blur 0 hard … 1 soft skirt (instant, no persistence).
   trace: Object.freeze({

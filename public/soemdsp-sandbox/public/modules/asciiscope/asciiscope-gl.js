@@ -111,13 +111,13 @@ void main() {
       mono = max(mono, cov * 1.0);
     }
   } else {
-    // Waterfall: one glyph; trail length from energy decay (Trail param), not brightness.
-    // No hardcoded tip glow — brightness is present gain only.
+    // Waterfall: live tip = full Bright; residual = film(energy) (drawer model).
     float gi = liveIdx > spaceIdx + 0.5 ? liveIdx : resIdx;
-    if (gi > spaceIdx + 0.5 && energy > 0.001) {
+    float tip = d.a;
+    if (gi > spaceIdx + 0.5 && (energy > 0.001 || tip > 0.5)) {
       float cov = sampleGlyph(gi, local);
-      float film = filmEnergy(energy);
-      mono = max(mono, cov * film);
+      float body = tip > 0.5 ? 1.0 : filmEnergy(energy);
+      mono = max(mono, cov * body);
     }
   }
 
@@ -427,18 +427,49 @@ function matrixGlSyncCanvasSize(canvas, columns, rows, renderStyle = "vector") {
   const designH = MATRIX_GL_CELL_H;
 
   const stage = canvas.parentElement;
-  const cssW = Math.max(1, Math.floor(stage?.clientWidth || canvas.clientWidth || cols * designW));
-  const cssH = Math.max(1, Math.floor(stage?.clientHeight || canvas.clientHeight || rws * designH));
+  const fallbackW = cols * designW;
+  const fallbackH = rws * designH;
+  const box = typeof nodeGraphElementClientSize === "function"
+    ? nodeGraphElementClientSize(stage || canvas, fallbackW, fallbackH)
+    : (
+      typeof nodeGraphElementInSkippedContentVisibility === "function"
+      && nodeGraphElementInSkippedContentVisibility(stage || canvas)
+        ? { width: fallbackW, height: fallbackH, skipped: true }
+        : {
+          width: Math.max(1, Math.floor(stage?.clientWidth || canvas.clientWidth || fallbackW)),
+          height: Math.max(1, Math.floor(stage?.clientHeight || canvas.clientHeight || fallbackH)),
+          skipped: false,
+        }
+    );
+  if (box.skipped) {
+    if (canvas._matrixLastFit) {
+      return canvas._matrixLastFit;
+    }
+    return {
+      w: Math.max(1, canvas.width || fallbackW),
+      h: Math.max(1, canvas.height || fallbackH),
+      style,
+      cssW: Math.max(1, box.width || fallbackW),
+      cssH: Math.max(1, box.height || fallbackH),
+      left: 0,
+      top: 0,
+      pxPerCol: Math.max(1, designW),
+      pxPerRow: Math.max(1, designH),
+      loFi,
+    };
+  }
+  const cssW = Math.max(1, Math.floor(box.width || fallbackW));
+  const cssH = Math.max(1, Math.floor(box.height || fallbackH));
 
   canvas.style.display = "block";
   canvas.style.position = "absolute";
+  canvas.style.inset = "0";
   canvas.style.left = "0";
   canvas.style.top = "0";
-  canvas.style.right = "auto";
-  canvas.style.bottom = "auto";
-  canvas.style.inset = "auto";
-  canvas.style.width = `${cssW}px`;
-  canvas.style.height = `${cssH}px`;
+  canvas.style.right = "0";
+  canvas.style.bottom = "0";
+  canvas.style.width = "100%";
+  canvas.style.height = "100%";
 
   // Identical buffer for Sharp and Pixel (dpr×ss supersample).
   const maxPx = 3072;
@@ -476,7 +507,7 @@ function matrixGlSyncCanvasSize(canvas, columns, rows, renderStyle = "vector") {
   // Only assign size when it changes — style-only toggles must not clear the surface.
   if (canvas.width !== w) canvas.width = w;
   if (canvas.height !== h) canvas.height = h;
-  return {
+  const fit = {
     w,
     h,
     style,
@@ -488,6 +519,8 @@ function matrixGlSyncCanvasSize(canvas, columns, rows, renderStyle = "vector") {
     pxPerRow,
     loFi,
   };
+  canvas._matrixLastFit = fit;
+  return fit;
 }
 
 function matrixGlPackCells(state, glState) {
@@ -508,7 +541,7 @@ function matrixGlPackCells(state, glState) {
     data[o] = glyphIndex(live[i] || " ") & 255;
     data[o + 1] = glyphIndex(residual[i] || " ") & 255;
     data[o + 2] = Math.min(255, Math.max(0, (energy[i] * 255) | 0));
-    data[o + 3] = 255;
+    data[o + 3] = state.tip?.[i] ? 255 : 0;
   }
   return data;
 }
@@ -572,6 +605,12 @@ function matrixGlSyncLut(glState, stops) {
  * @returns {boolean} true if drawn on GPU
  */
 function matrixGlDrawFace(canvas, state, params, mode) {
+  if (
+    typeof nodeGraphElementInSkippedContentVisibility === "function"
+    && nodeGraphElementInSkippedContentVisibility(canvas)
+  ) {
+    return true;
+  }
   const glState = matrixGlEnsure(canvas);
   if (!glState?.gl) return false;
 
@@ -662,7 +701,7 @@ function matrixGlDrawFace(canvas, state, params, mode) {
 }
 
 /** Engine-off plate — same GPU path, static "ENGINE OFF" stamp (one upload + draw). */
-function matrixGlDrawColdPlate(canvas, columns = 96, rows = 64, renderStyle = "pixel", gradientStops = null) {
+function matrixGlDrawColdPlate(canvas, columns = 96, rows = 64, renderStyle = "vector", gradientStops = null) {
   const glState = matrixGlEnsure(canvas);
   if (!glState?.gl) return false;
   const gl = glState.gl;

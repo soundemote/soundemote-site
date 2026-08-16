@@ -11,6 +11,16 @@ const nodeGraphMacroControlsFaceDefaults = Object.freeze({
   // Unfilled ring / “slider area” behind the value.
   arcTrack: "#3a3428",
   labels: Object.freeze(["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8"]),
+  // Look used to live in UIDEV. One face object is the SSOT.
+  arcThickness: 7,
+  arcGapBrightness: 0,
+  sizeScale: 1,
+  knobSpacing: 4,
+  labelPosition: "top",
+  valuePosition: "mid",
+  rotationDegrees: 264,
+  showLabels: true,
+  showValues: true,
 });
 
 function nodeGraphMacroControlsDefaultLabels() {
@@ -49,6 +59,43 @@ function normalizeNodeGraphMacroControlsFaceSettings(raw = {}) {
     arcFill: parseColor(source.arcFill, nodeGraphMacroControlsFaceDefaults.arcFill),
     arcTrack: parseColor(source.arcTrack, nodeGraphMacroControlsFaceDefaults.arcTrack),
     labels,
+    arcThickness: typeof normalizeNodeGraphMacroKnobArcThickness === "function"
+      ? normalizeNodeGraphMacroKnobArcThickness(
+        source.arcThickness ?? source.macroKnobArcThickness ?? nodeGraphMvp?.macroKnobArcThickness,
+      )
+      : Number(source.arcThickness) || nodeGraphMacroControlsFaceDefaults.arcThickness,
+    arcGapBrightness: typeof normalizeNodeGraphMacroKnobArcGapBrightness === "function"
+      ? normalizeNodeGraphMacroKnobArcGapBrightness(
+        source.arcGapBrightness ?? source.macroKnobArcGapBrightness ?? nodeGraphMvp?.macroKnobArcGapBrightness,
+      )
+      : Number(source.arcGapBrightness) || 0,
+    sizeScale: typeof normalizeNodeGraphMacroKnobSizeScale === "function"
+      ? normalizeNodeGraphMacroKnobSizeScale(
+        source.sizeScale ?? source.macroKnobSizeScale ?? nodeGraphMvp?.macroKnobSizeScale,
+      )
+      : Number(source.sizeScale) || 1,
+    knobSpacing: (() => {
+      const n = Number(source.knobSpacing ?? source.spacing);
+      return Number.isFinite(n) ? Math.max(0, Math.min(32, Math.round(n))) : 4;
+    })(),
+    labelPosition: typeof normalizeNodeGraphMacroKnobLabelPosition === "function"
+      ? normalizeNodeGraphMacroKnobLabelPosition(
+        source.labelPosition ?? source.macroKnobLabelPosition ?? nodeGraphMvp?.macroKnobLabelPosition,
+      )
+      : (source.labelPosition || "top"),
+    valuePosition: typeof normalizeNodeGraphMacroKnobValuePosition === "function"
+      ? normalizeNodeGraphMacroKnobValuePosition(
+        source.valuePosition ?? source.macroKnobValuePosition ?? nodeGraphMvp?.macroKnobValuePosition,
+      )
+      : (source.valuePosition || "mid"),
+    rotationDegrees: (() => {
+      const n = Number(source.rotationDegrees);
+      return Number.isFinite(n)
+        ? Math.max(0, Math.min(1440, n))
+        : nodeGraphMacroControlsFaceDefaults.rotationDegrees;
+    })(),
+    showLabels: source.showLabels !== false,
+    showValues: source.showValues !== false,
   };
 }
 
@@ -70,6 +117,44 @@ function setNodeGraphMacroControlsFaceSettings(next, options = {}) {
     && typeof saveNodeUiDevLocalDefaultSettings === "function") {
     saveNodeUiDevLocalDefaultSettings(serializeNodeUiDevSettings());
   }
+}
+
+function applyNodeGraphMacroControlsLook(settings) {
+  const s = settings || nodeGraphMacroControlsFaceSettings();
+  if (typeof nodeGraphMvp !== "undefined" && nodeGraphMvp) {
+    nodeGraphMvp.macroKnobArcThickness = s.arcThickness;
+    nodeGraphMvp.macroKnobArcGapBrightness = s.arcGapBrightness;
+    nodeGraphMvp.macroKnobSizeScale = s.sizeScale;
+    nodeGraphMvp.macroKnobLabelPosition = s.labelPosition;
+    nodeGraphMvp.macroKnobValuePosition = s.valuePosition;
+  }
+  if (typeof applyNodeGraphMacroKnobArcThickness === "function") {
+    applyNodeGraphMacroKnobArcThickness();
+  }
+  if (typeof applyNodeGraphMacroKnobArcGapBrightness === "function") {
+    applyNodeGraphMacroKnobArcGapBrightness();
+  }
+  if (typeof applyNodeGraphMacroKnobSizeScale === "function") {
+    applyNodeGraphMacroKnobSizeScale();
+  }
+  if (typeof applyNodeGraphMacroKnobLabelPosition === "function") {
+    applyNodeGraphMacroKnobLabelPosition();
+  }
+  if (typeof applyNodeGraphMacroKnobValuePosition === "function") {
+    applyNodeGraphMacroKnobValuePosition();
+  }
+  const root = document.documentElement;
+  if (root?.style) {
+    const span = Number(s.rotationDegrees) || nodeGraphMacroControlsFaceDefaults.rotationDegrees;
+    root.style.setProperty("--macro-arc-start-deg", `${-span * 0.5}deg`);
+    root.style.setProperty("--macro-arc-span-deg", `${span}deg`);
+    const gap = Number.isFinite(Number(s.knobSpacing)) ? Math.max(0, Math.min(32, Number(s.knobSpacing))) : 4;
+    root.style.setProperty("--macro-knob-gap", `${gap}px`);
+  }
+  document.querySelectorAll(".node-macro-controls-panel, [data-macro-controls-display]").forEach((panel) => {
+    panel.classList.toggle("macro-labels-hidden", s.showLabels === false);
+    panel.classList.toggle("macro-values-hidden", s.showValues === false);
+  });
 }
 
 function applyNodeGraphMacroControlsFaceSettings() {
@@ -96,6 +181,7 @@ function applyNodeGraphMacroControlsFaceSettings() {
     knob.setAttribute("aria-label", name);
     knob.dataset.macroLabel = name;
   });
+  applyNodeGraphMacroControlsLook(settings);
 }
 
 function buildNodeGraphMacroControlsFaceDisplaySettingsBodyHtml() {
@@ -111,11 +197,16 @@ function buildNodeGraphMacroControlsFaceDisplaySettingsBodyHtml() {
   const bg = toHex(s.background, "#000000");
   const fill = toHex(s.arcFill, "#f1b84b");
   const track = toHex(s.arcTrack, "#3a3428");
+  const posOpts = (current) => ["top", "mid", "bottom"].map((value) =>
+    `<option value="${value}"${current === value ? " selected" : ""}>${value}</option>`).join("");
   const labelRows = s.labels.map((label, i) => `
     <label class="node-trace-display-line-burn-row" data-macro-face-label-row>
       <span>M${i + 1}</span>
       <input type="text" maxlength="12" data-macro-face-label="${i}" value="${String(label).replace(/"/g, "&quot;")}" aria-label="Macro ${i + 1} name">
     </label>`).join("");
+  const thicknessMax = typeof nodeGraphMacroKnobArcThicknessMaxPx === "number"
+    ? nodeGraphMacroKnobArcThicknessMaxPx
+    : 21;
   return `
     <div class="metadata-field-section" data-macro-face-settings>
       <div class="metadata-section-title">Appearance</div>
@@ -131,6 +222,46 @@ function buildNodeGraphMacroControlsFaceDisplaySettingsBodyHtml() {
         <span>Arc track</span>
         <input type="color" data-macro-face-color="arcTrack" value="${track}" aria-label="Macro arc unfilled track">
       </label>
+      <div class="node-trace-display-line-burn-row">
+        <span>Label</span>
+        <span class="metadata-parameter-picker-controls">
+          <select data-macro-face-select="labelPosition" aria-label="Macro label position">${posOpts(s.labelPosition)}</select>
+          <span class="metadata-parameter-visibility-stepper" role="group" aria-label="Hide or show labels">
+            <button type="button" data-macro-face-visibility="showLabels" data-macro-face-visibility-on="false" title="Hide labels" aria-pressed="${s.showLabels ? "false" : "true"}">-</button>
+            <button type="button" data-macro-face-visibility="showLabels" data-macro-face-visibility-on="true" title="Show labels" aria-pressed="${s.showLabels ? "true" : "false"}">+</button>
+          </span>
+        </span>
+      </div>
+      <div class="node-trace-display-line-burn-row">
+        <span>Value</span>
+        <span class="metadata-parameter-picker-controls">
+          <select data-macro-face-select="valuePosition" aria-label="Macro value position">${posOpts(s.valuePosition)}</select>
+          <span class="metadata-parameter-visibility-stepper" role="group" aria-label="Hide or show values">
+            <button type="button" data-macro-face-visibility="showValues" data-macro-face-visibility-on="false" title="Hide values" aria-pressed="${s.showValues ? "false" : "true"}">-</button>
+            <button type="button" data-macro-face-visibility="showValues" data-macro-face-visibility-on="true" title="Show values" aria-pressed="${s.showValues ? "true" : "false"}">+</button>
+          </span>
+        </span>
+      </div>
+      <label class="node-trace-display-line-burn-row">
+        <span>Knob size</span>
+        <input type="range" min="0.25" max="4" step="0.05" data-macro-face-num="sizeScale" value="${s.sizeScale}" aria-label="Macro knob size">
+      </label>
+      <label class="node-trace-display-line-burn-row">
+        <span>Knob spacing</span>
+        <input type="range" min="0" max="32" step="1" data-macro-face-num="knobSpacing" value="${s.knobSpacing}" aria-label="Space between macro knobs">
+      </label>
+      <label class="node-trace-display-line-burn-row">
+        <span>Arc span</span>
+        <input type="range" min="0" max="1440" step="1" data-macro-face-num="rotationDegrees" value="${s.rotationDegrees}" aria-label="Macro arc span">
+      </label>
+      <label class="node-trace-display-line-burn-row">
+        <span>Arc thickness</span>
+        <input type="range" min="1" max="${thicknessMax}" step="0.5" data-macro-face-num="arcThickness" value="${s.arcThickness}" aria-label="Macro arc thickness">
+      </label>
+      <label class="node-trace-display-line-burn-row">
+        <span>Arc gap</span>
+        <input type="range" min="0" max="100" step="1" data-macro-face-num="arcGapBrightness" value="${s.arcGapBrightness}" aria-label="Macro arc gap brightness">
+      </label>
       <div class="metadata-section-title" style="margin-top:0.75rem">Names</div>
       ${labelRows}
     </div>`;
@@ -141,11 +272,30 @@ function bindNodeGraphMacroControlsFaceDisplaySettingsBody(host) {
     return;
   }
   host.dataset.macroFaceBound = "true";
+  const lookSelector = [
+    "[data-macro-face-color]",
+    "[data-macro-face-label]",
+    "[data-macro-face-num]",
+    "[data-macro-face-select]",
+    "[data-macro-face-toggle]",
+  ].join(", ");
   const readForm = () => {
     const next = { ...nodeGraphMacroControlsFaceSettings() };
     for (const input of host.querySelectorAll("[data-macro-face-color]")) {
       const key = input.getAttribute("data-macro-face-color");
       if (key && input.value) next[key] = input.value;
+    }
+    for (const input of host.querySelectorAll("[data-macro-face-num]")) {
+      const key = input.getAttribute("data-macro-face-num");
+      if (key) next[key] = Number(input.value);
+    }
+    for (const input of host.querySelectorAll("[data-macro-face-select]")) {
+      const key = input.getAttribute("data-macro-face-select");
+      if (key) next[key] = input.value;
+    }
+    for (const input of host.querySelectorAll("[data-macro-face-toggle]")) {
+      const key = input.getAttribute("data-macro-face-toggle");
+      if (key) next[key] = Boolean(input.checked);
     }
     const labels = [];
     for (let i = 0; i < 8; i += 1) {
@@ -158,19 +308,42 @@ function bindNodeGraphMacroControlsFaceDisplaySettingsBody(host) {
   const commit = () => {
     setNodeGraphMacroControlsFaceSettings(readForm(), { persist: true });
   };
+  const syncVisibilityButtons = (settings) => {
+    const s = settings || nodeGraphMacroControlsFaceSettings();
+    for (const btn of host.querySelectorAll("[data-macro-face-visibility]")) {
+      const key = btn.getAttribute("data-macro-face-visibility");
+      const on = btn.getAttribute("data-macro-face-visibility-on") === "true";
+      btn.setAttribute("aria-pressed", s[key] === on ? "true" : "false");
+    }
+  };
   host.addEventListener("input", (event) => {
     const t = event.target;
     if (!(t instanceof HTMLElement)) return;
-    if (t.matches("[data-macro-face-color], [data-macro-face-label]")) {
+    if (t.matches(lookSelector)) {
       setNodeGraphMacroControlsFaceSettings(readForm(), { persist: false });
     }
   });
   host.addEventListener("change", (event) => {
     const t = event.target;
     if (!(t instanceof HTMLElement)) return;
-    if (t.matches("[data-macro-face-color], [data-macro-face-label]")) {
+    if (t.matches(lookSelector)) {
       commit();
     }
+  });
+  host.addEventListener("click", (event) => {
+    const btn = event.target?.closest?.("[data-macro-face-visibility]");
+    if (!btn || !host.contains(btn)) {
+      return;
+    }
+    event.preventDefault();
+    const key = btn.getAttribute("data-macro-face-visibility");
+    if (!key) {
+      return;
+    }
+    const on = btn.getAttribute("data-macro-face-visibility-on") === "true";
+    const next = { ...nodeGraphMacroControlsFaceSettings(), [key]: on };
+    setNodeGraphMacroControlsFaceSettings(next, { persist: true });
+    syncVisibilityButtons(next);
   });
 }
 

@@ -343,6 +343,9 @@
         --sge-ink-dim: rgba(248, 252, 255, 0.62);
         --sge-active: #f1b84b;
         display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        width: 100%;
+        max-width: 100%;
         gap: 0;
         min-width: 0;
         user-select: none;
@@ -365,12 +368,16 @@
       .sge-root button.sge-stop-cell:hover,
       .sge-root button.sge-stop-cell:focus,
       .sge-root button.sge-stop-cell:focus-visible,
+      .sge-root button.sge-stop-cell:active,
       .sge-root button.sge-preset:hover,
       .sge-root button.sge-preset:focus,
-      .sge-root button.sge-preset:focus-visible {
+      .sge-root button.sge-preset:focus-visible,
+      .sge-root button.sge-preset:active {
         border: none !important;
         box-shadow: none !important;
         outline: none !important;
+        filter: none !important;
+        background: transparent !important;
       }
 
       /* Gradient bar + per-stop cells */
@@ -395,7 +402,7 @@
         min-width: 0;
         min-height: 0 !important;
         color: inherit !important;
-        cursor: pointer;
+        cursor: var(--node-dot-cursor);
       }
       .sge-stop-swatch {
         display: block;
@@ -404,9 +411,13 @@
         min-height: var(--sge-bar-h);
         max-height: var(--sge-bar-h);
       }
-      .sge-stop-cell[data-active="true"] .sge-stop-swatch {
-        outline: 2px solid var(--sge-active);
-        outline-offset: -2px;
+      .sge-stop-cell[data-active="true"] .sge-stop-swatch,
+      .sge-stop-cell:hover .sge-stop-swatch,
+      .sge-stop-cell:focus .sge-stop-swatch,
+      .sge-stop-cell:focus-visible .sge-stop-swatch {
+        outline: none !important;
+        box-shadow: none !important;
+        filter: none !important;
       }
       .sge-stop-pos {
         margin: 0;
@@ -438,16 +449,14 @@
         padding: 5px 6px !important;
         color: #000 !important;
         font-size: 0.68rem;
-        cursor: pointer;
+        cursor: var(--node-dot-cursor);
         overflow: hidden;
       }
       .sge-root button.sge-preset:hover,
-      .sge-root button.sge-preset:focus-visible {
-        filter: brightness(1.06);
-        color: #000 !important;
-      }
+      .sge-root button.sge-preset:focus,
+      .sge-root button.sge-preset:focus-visible,
       .sge-root button.sge-preset[data-active="true"] {
-        filter: brightness(1.1);
+        filter: none !important;
         color: #000 !important;
       }
       .sge-preset-swatch {
@@ -506,6 +515,20 @@
         height: var(--sge-plane-h) !important;
         min-height: var(--sge-plane-h) !important;
         max-height: var(--sge-plane-h) !important;
+      }
+      .sge-color-widget-host .scw-label:hover,
+      .sge-color-widget-host .scw-label:focus,
+      .sge-color-widget-host .scw-label:focus-visible,
+      .sge-color-widget-host .scw-label[data-copied="true"],
+      .sge-color-widget-host .scw-control:hover,
+      .sge-color-widget-host .scw-control:focus,
+      .sge-color-widget-host .scw-control:focus-visible,
+      .sge-color-widget-host .scw-hex:hover,
+      .sge-color-widget-host .scw-hex:focus,
+      .sge-color-widget-host .scw-hex:focus-visible {
+        outline: none !important;
+        box-shadow: none !important;
+        filter: none !important;
       }
       /* Hue spectrum from color-widget SSOT (padded track = half drag-dot). */
       .sge-color-widget-host .scw-hue,
@@ -1335,10 +1358,15 @@
       hint: "Full-plate fractal energy → color · Speed/Color/Seed on the module",
     }),
     // Fractal Brownian Field: mono field energy → multi-stop gradient.
-    fbmFieldFace: Object.freeze({
+    gradientVectorscopeFace: Object.freeze({
       channels: "color",
       defaultStops: "phosphor",
-      hint: "Field energy (black→white) → color · same gradient as scopes/LED",
+      hint: "Color along path length — oldest at the first stop, newest at the last",
+    }),
+    fbmFieldFace: Object.freeze({
+      channels: "color",
+      defaultStops: "fbmField",
+      hint: "Field energy → color · late black-to-white ramp (face default)",
     }),
     // Matrix faces: cell energy (black→white underlying) → multi-stop LUT.
     // defaultStops "matrix" = digital-rain ramp (green body, white tip).
@@ -1365,6 +1393,13 @@
     Object.freeze({ t: 1, color: "#e8e8e8" }),
   ]);
 
+  const DEFAULT_FBM_FIELD_STOPS = Object.freeze([
+    Object.freeze({ t: 0, color: "#000000" }),
+    Object.freeze({ t: 0.396, color: "#000000" }),
+    Object.freeze({ t: 0.999, color: "#ffffff" }),
+    Object.freeze({ t: 1, color: "#ffffff" }),
+  ]);
+
   function defaultStopsForKind(kind) {
     if (kind === "bw") {
       return DEFAULT_BW_STOPS.map((s) => ({ t: s.t, color: s.color }));
@@ -1377,6 +1412,9 @@
     }
     if (kind === "softFractal") {
       return DEFAULT_SOFT_FRACTAL_STOPS.map((s) => ({ t: s.t, color: s.color }));
+    }
+    if (kind === "fbmField") {
+      return DEFAULT_FBM_FIELD_STOPS.map((s) => ({ t: s.t, color: s.color }));
     }
     // phosphor / color energy faces (including numberReadout LCD)
     return DEFAULT_PHOSPHOR_STOPS.map((s) => ({ t: s.t, color: s.color }));

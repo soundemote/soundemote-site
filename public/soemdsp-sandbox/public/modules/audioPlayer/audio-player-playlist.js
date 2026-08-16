@@ -1,5 +1,6 @@
-// Music Player playlist face — "pl" button swaps waveform ↔ playlist page.
-// Tracks load into sampleBuffers (RAM); list UI + phase scrubber + RAM debug.
+// Music Player faces — dock: wave / playlist / playinfo / wavplay / XY / LR.
+// wavplay is playlist + waveform (2 playlist-row heights) + transport + dock.
+// playinfo is the decoded-buffer table. List UI + phase scrubber.
 
 function nodeGraphAudioPlayerPlaylistNormalize(raw = null) {
   const source = raw && typeof raw === "object" ? raw : {};
@@ -9,6 +10,12 @@ function nodeGraphAudioPlayerPlaylistNormalize(raw = null) {
         if (!item || typeof item !== "object") {
           return null;
         }
+        const card = typeof nodeGraphAudioPlayerLibraryNormalizeCard === "function"
+          ? nodeGraphAudioPlayerLibraryNormalizeCard(item, index)
+          : null;
+        if (card) {
+          return card;
+        }
         const sampleId = String(item.sampleId || item.id || "").trim();
         if (!sampleId) {
           return null;
@@ -16,6 +23,8 @@ function nodeGraphAudioPlayerPlaylistNormalize(raw = null) {
         return {
           id: String(item.id || `pl-${index}-${sampleId}`).slice(0, 80),
           name: String(item.name || sampleId).trim().slice(0, 160) || sampleId,
+          path: String(item.path || "").trim(),
+          fileKey: String(item.fileKey || "").trim(),
           sampleId: normalizeNodeGraphSampleId
             ? normalizeNodeGraphSampleId(sampleId)
             : sampleId,
@@ -28,9 +37,67 @@ function nodeGraphAudioPlayerPlaylistNormalize(raw = null) {
       .filter(Boolean)
     : [];
   const index = Math.max(0, Math.min(items.length ? items.length - 1 : 0, Math.round(Number(source.index) || 0)));
-  const face = String(source.face || "wave").toLowerCase() === "pl" ? "pl" : "wave";
-  const ramOpen = source.ramOpen === true || source.ramOpen === "true" || source.ramOpen === 1;
-  return { face, index, items, ramOpen };
+  const selectedIndex = Math.max(
+    0,
+    Math.min(items.length ? items.length - 1 : 0, Math.round(Number(source.selectedIndex ?? source.index) || 0)),
+  );
+  const face = nodeGraphAudioPlayerPlaylistNormalizeFace(source.face);
+  const shuffle = source.shuffle === true || source.shuffle === "true" || source.shuffle === 1;
+  let loopMode = String(source.loopMode || "").trim().toLowerCase();
+  if (loopMode !== "off" && loopMode !== "one" && loopMode !== "all") {
+    loopMode = "off";
+  }
+  const folderPath = String(source.folderPath || "").trim();
+  const folderDive = source.folderDive === true || source.folderDive === "true" || source.folderDive === 1;
+  const used = Array.isArray(source.used)
+    ? source.used.map((path) => String(path || "").trim()).filter(Boolean).slice(0, 10000)
+    : [];
+  return { face, folderDive, folderPath, index, items, selectedIndex, shuffle, loopMode, used };
+}
+
+const nodeGraphAudioPlayerPlaylistFaces = Object.freeze(["wave", "pl", "playinfo", "wavplay", "vsxy", "vslr"]);
+
+function nodeGraphAudioPlayerPlaylistNormalizeFace(value) {
+  const raw = String(value || "wave").trim().toLowerCase();
+  if (raw === "pl" || raw === "playlist") {
+    return "pl";
+  }
+  if (raw === "playinfo" || raw === "play-info" || raw === "info") {
+    return "playinfo";
+  }
+  if (raw === "wavplay" || raw === "waveplay" || raw === "wav-play") {
+    return "wavplay";
+  }
+  if (raw === "vsxy" || raw === "xy") {
+    return "vsxy";
+  }
+  if (raw === "vslr" || raw === "lr") {
+    return "vslr";
+  }
+  return "wave";
+}
+
+function nodeGraphAudioPlayerFaceIsWave(sectionOrFace) {
+  const face = typeof sectionOrFace === "string"
+    ? sectionOrFace
+    : (sectionOrFace?.dataset?.musicPlayerFace || "wave");
+  const normalized = nodeGraphAudioPlayerPlaylistNormalizeFace(face);
+  return normalized === "wave" || normalized === "wavplay";
+}
+
+function nodeGraphAudioPlayerFaceShowsPlaylist(sectionOrFace) {
+  const face = typeof sectionOrFace === "string"
+    ? sectionOrFace
+    : (sectionOrFace?.dataset?.musicPlayerFace || "wave");
+  const normalized = nodeGraphAudioPlayerPlaylistNormalizeFace(face);
+  return normalized === "pl" || normalized === "wavplay";
+}
+
+function nodeGraphAudioPlayerFaceShowsPlayinfo(sectionOrFace) {
+  const face = typeof sectionOrFace === "string"
+    ? sectionOrFace
+    : (sectionOrFace?.dataset?.musicPlayerFace || "wave");
+  return nodeGraphAudioPlayerPlaylistNormalizeFace(face) === "playinfo";
 }
 
 function nodeGraphAudioPlayerPlaylistForNode(nodeId) {
@@ -40,6 +107,15 @@ function nodeGraphAudioPlayerPlaylistForNode(nodeId) {
   }
   const normalized = nodeGraphAudioPlayerPlaylistNormalize(node.playlist);
   node.playlist = normalized;
+  if (
+    typeof nodeGraphAudioPlayerLibraryCatalog === "function"
+    && !nodeGraphAudioPlayerLibraryCatalog(node.id).length
+    && normalized.items.length
+    && !normalized.folderPath
+    && typeof nodeGraphAudioPlayerLibrarySetCatalog === "function"
+  ) {
+    nodeGraphAudioPlayerLibrarySetCatalog(node.id, normalized.items);
+  }
   return normalized;
 }
 
@@ -114,21 +190,17 @@ function nodeGraphAudioPlayerPlaylistRamSummary(nodeId) {
     frames,
     tracks: pl.items.length,
     loaded,
-    label: `${nodeGraphAudioPlayerPlaylistFormatBytes(bytes)} · ${pl.items.length} track${pl.items.length === 1 ? "" : "s"}`,
+    label: `${pl.items.length} track${pl.items.length === 1 ? "" : "s"}`,
     hog: bytes >= 64 * 1024 * 1024,
   };
 }
 
-function nodeGraphAudioPlayerPlaylistPersist(nodeId, { status = true } = {}) {
+function nodeGraphAudioPlayerPlaylistPersist(nodeId) {
   const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
   if (!node || node.type !== "audioPlayer") {
     return;
   }
   node.playlist = nodeGraphAudioPlayerPlaylistNormalize(node.playlist);
-  if (status && typeof setNodeGraphSampleStatus === "function") {
-    const ram = nodeGraphAudioPlayerPlaylistRamSummary(nodeId);
-    setNodeGraphSampleStatus(nodeId, `playlist ${ram.tracks} · ${ram.label}`);
-  }
   if (typeof saveNodeGraphWorkingPatchToUserSettings === "function") {
     saveNodeGraphWorkingPatchToUserSettings();
   } else if (typeof markNodeGraphRenderPending === "function") {
@@ -136,8 +208,244 @@ function nodeGraphAudioPlayerPlaylistPersist(nodeId, { status = true } = {}) {
   }
 }
 
+/** Playmode base 0…5. Writes the param (modulation still stacks on top). */
+function nodeGraphAudioPlayerWriteTransport(nodeId, mode, { record = false } = {}) {
+  const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  if (!node || node.type !== "audioPlayer") {
+    return;
+  }
+  const next = Math.max(0, Math.min(5, Math.round(Number(mode) || 0)));
+  node.params = { ...(node.params || {}), transport: String(next) };
+  const slider = document.querySelector(
+    `.dsp-node[data-node="${CSS.escape(String(nodeId))}"] input[data-param="transport"]`,
+  );
+  if (slider) {
+    if (typeof setNodeSliderValue === "function") {
+      setNodeSliderValue(slider, next, { interaction: "program" });
+    } else {
+      slider.value = String(next);
+      if (typeof syncNodeSliderReadout === "function") {
+        syncNodeSliderReadout(slider);
+      }
+    }
+  }
+  if (typeof scheduleNodeGraphLiveParameterSync === "function") {
+    scheduleNodeGraphLiveParameterSync();
+  }
+  if (record && typeof saveNodeGraphWorkingPatchToUserSettings === "function") {
+    saveNodeGraphWorkingPatchToUserSettings();
+  }
+  nodeGraphAudioPlayerPlaylistSyncTransport(nodeId);
+}
+
+function nodeGraphAudioPlayerTransportBase(nodeId) {
+  const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  const n = Math.round(Number(node?.params?.transport));
+  return Number.isFinite(n) ? Math.max(0, Math.min(5, n)) : 4;
+}
+
+function nodeGraphAudioPlayerPlaylistPlayModeForLoop(loopMode) {
+  if (loopMode === "one") {
+    return 3;
+  }
+  if (loopMode === "all") {
+    return 5;
+  }
+  return 4;
+}
+
+function nodeGraphAudioPlayerPlaylistUnbindCurrentSample(nodeId) {
+  const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  if (!node || node.type !== "audioPlayer") {
+    return;
+  }
+  delete node.sample;
+  node.samplePhase = 0;
+  nodeGraphMvp?.sampleLoadErrors?.delete?.(nodeId);
+  nodeGraphMvp?.sampleRuntimeStatus?.delete?.(nodeId);
+  nodeGraphMvp?.audioPlayerActualSpeeds?.delete?.(nodeId);
+  if (typeof nodeGraphAudioPlayerWriteTransport === "function") {
+    nodeGraphAudioPlayerWriteTransport(nodeId, 0);
+  }
+  if (typeof syncNodeGraphSampleDisplayForNode === "function") {
+    syncNodeGraphSampleDisplayForNode(nodeId);
+  }
+  if (typeof renderNodeGraphMissingSampleAssetsDialog === "function") {
+    renderNodeGraphMissingSampleAssetsDialog(nodeGraphMvp?.patch);
+  }
+  if (typeof scheduleNodeGraphLivePlanSync === "function") {
+    scheduleNodeGraphLivePlanSync("plan");
+  }
+}
+
+function nodeGraphAudioPlayerPlaylistClear(nodeId) {
+  const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  if (!node || node.type !== "audioPlayer") {
+    return;
+  }
+  const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
+  pl.items = [];
+  pl.index = 0;
+  pl.selectedIndex = 0;
+  pl.used = [];
+  pl.folderPath = "";
+  node.playlist = pl;
+  if (typeof nodeGraphAudioPlayerLibraryCatalogs === "function") {
+    nodeGraphAudioPlayerLibraryCatalogs().delete(String(nodeId));
+  }
+  nodeGraphAudioPlayerPlaylistUnbindCurrentSample(nodeId);
+  nodeGraphAudioPlayerPlaylistRefreshUi(nodeId);
+  nodeGraphAudioPlayerPlaylistPersist(nodeId);
+}
+
+function nodeGraphAudioPlayerPlaylistRemoveSelected(nodeId) {
+  const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  if (!node || node.type !== "audioPlayer") {
+    return;
+  }
+  const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
+  if (!pl.items.length) {
+    return;
+  }
+  const selected = Number.isInteger(pl.selectedIndex) ? pl.selectedIndex : pl.index;
+  const i = Math.max(0, Math.min(pl.items.length - 1, selected));
+  const removed = pl.items[i];
+  pl.items.splice(i, 1);
+  pl.index = Math.max(0, Math.min(pl.items.length ? pl.items.length - 1 : 0, i));
+  pl.selectedIndex = pl.index;
+  node.playlist = pl;
+  const sid = typeof normalizeNodeGraphSampleId === "function"
+    ? normalizeNodeGraphSampleId(node.sample?.id)
+    : String(node.sample?.id || "").trim();
+  if (!pl.items.length) {
+    nodeGraphAudioPlayerPlaylistUnbindCurrentSample(nodeId);
+  } else if (removed && sid && removed.sampleId === sid) {
+    nodeGraphAudioPlayerPlaylistPlayIndex(nodeId, pl.index, { autoplay: false });
+  }
+  nodeGraphAudioPlayerPlaylistRefreshUi(nodeId);
+  nodeGraphAudioPlayerPlaylistPersist(nodeId);
+}
+
+function nodeGraphAudioPlayerPlaylistToggleShuffle(nodeId) {
+  const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
+  pl.shuffle = !pl.shuffle;
+  const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  if (node) {
+    node.playlist = pl;
+  }
+  nodeGraphAudioPlayerPlaylistPersist(nodeId);
+  nodeGraphAudioPlayerPlaylistSyncTransport(nodeId);
+}
+
+function nodeGraphAudioPlayerPlaylistCycleLoop(nodeId) {
+  const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
+  const order = ["off", "one", "all"];
+  const i = order.indexOf(pl.loopMode);
+  pl.loopMode = order[(i + 1) % order.length];
+  const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  if (node) {
+    node.playlist = pl;
+  }
+  nodeGraphAudioPlayerPlaylistPersist(nodeId);
+  const transport = nodeGraphAudioPlayerTransportBase(nodeId);
+  if (transport >= 3) {
+    nodeGraphAudioPlayerWriteTransport(nodeId, nodeGraphAudioPlayerPlaylistPlayModeForLoop(pl.loopMode));
+    return;
+  }
+  nodeGraphAudioPlayerPlaylistSyncTransport(nodeId);
+}
+
+function nodeGraphAudioPlayerPlaylistPlay(nodeId) {
+  const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
+  const item = pl.items[pl.index] || pl.items[0];
+  if (item && typeof nodeGraphAudioPlayerLibraryItemLoaded === "function" && !nodeGraphAudioPlayerLibraryItemLoaded(item)) {
+    nodeGraphAudioPlayerPlaylistPlayIndex(nodeId, pl.items[pl.index] ? pl.index : 0, { autoplay: true });
+    return;
+  }
+  const transport = nodeGraphAudioPlayerTransportBase(nodeId);
+  if (transport >= 3) {
+    return;
+  }
+  nodeGraphAudioPlayerWriteTransport(nodeId, nodeGraphAudioPlayerPlaylistPlayModeForLoop(pl.loopMode));
+}
+
+function nodeGraphAudioPlayerPlaylistPause(nodeId) {
+  const transport = nodeGraphAudioPlayerTransportBase(nodeId);
+  if (transport < 3) {
+    return;
+  }
+  nodeGraphAudioPlayerWriteTransport(nodeId, 2);
+}
+
+function nodeGraphAudioPlayerPlaylistTogglePlayPause(nodeId) {
+  const transport = nodeGraphAudioPlayerTransportBase(nodeId);
+  if (transport >= 3) {
+    nodeGraphAudioPlayerPlaylistPause(nodeId);
+    return;
+  }
+  nodeGraphAudioPlayerPlaylistPlay(nodeId);
+}
+
+function nodeGraphAudioPlayerPlaylistPickNeighbor(pl, from, dir) {
+  const n = pl.items.length;
+  if (n <= 0) {
+    return -1;
+  }
+  return from + dir;
+}
+
+function nodeGraphAudioPlayerPlaylistCurrentSampleRef(node) {
+  const sampleId = typeof normalizeNodeGraphSampleId === "function"
+    ? normalizeNodeGraphSampleId(node?.sample?.id)
+    : String(node?.sample?.id || "").trim();
+  if (!sampleId) {
+    return null;
+  }
+  const samples = Array.isArray(nodeGraphMvp?.patch?.samples) ? nodeGraphMvp.patch.samples : [];
+  const stored = samples.find((entry) => {
+    const id = typeof normalizeNodeGraphSampleId === "function"
+      ? normalizeNodeGraphSampleId(entry?.id)
+      : String(entry?.id || "").trim();
+    return id === sampleId;
+  });
+  const name = String(
+    stored?.name
+    || stored?.sourceName
+    || node?.sample?.name
+    || (typeof nodeGraphSampleNameForNode === "function" ? nodeGraphSampleNameForNode(node.id) : "")
+    || sampleId,
+  ).trim();
+  return { id: sampleId, name: name || sampleId };
+}
+
+/** If the module is playing / holding a sample, that track belongs on the playlist. */
+function nodeGraphAudioPlayerPlaylistEnsureCurrentSample(nodeId, options = {}) {
+  const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  if (!node || node.type !== "audioPlayer") {
+    return null;
+  }
+  const ref = nodeGraphAudioPlayerPlaylistCurrentSampleRef(node);
+  if (!ref) {
+    return null;
+  }
+  const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
+  const existing = pl.items.find((item) => item.sampleId === ref.id);
+  if (existing) {
+    return existing;
+  }
+  const byName = pl.items.find((item) => !item.sampleId && item.name === ref.name);
+  if (byName) {
+    byName.sampleId = ref.id;
+    return byName;
+  }
+  if (pl.folderPath || pl.items.length) {
+    return null;
+  }
+  return nodeGraphAudioPlayerPlaylistAppendSample(nodeId, ref, options);
+}
+
 /** Append a loaded sample to the playlist (dedupe by sampleId). */
-function nodeGraphAudioPlayerPlaylistAppendSample(nodeId, sampleRef = {}) {
+function nodeGraphAudioPlayerPlaylistAppendSample(nodeId, sampleRef = {}, options = {}) {
   const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
   if (!node || node.type !== "audioPlayer") {
     return null;
@@ -168,8 +476,12 @@ function nodeGraphAudioPlayerPlaylistAppendSample(nodeId, sampleRef = {}) {
     pl.index = pl.items.length - 1;
   }
   node.playlist = pl;
-  nodeGraphAudioPlayerPlaylistPersist(nodeId, { status: false });
-  nodeGraphAudioPlayerPlaylistRefreshUi(nodeId);
+  if (options.persist !== false) {
+    nodeGraphAudioPlayerPlaylistPersist(nodeId);
+  }
+  if (options.refresh !== false) {
+    nodeGraphAudioPlayerPlaylistRefreshUi(nodeId);
+  }
   return entry;
 }
 
@@ -179,10 +491,10 @@ function nodeGraphAudioPlayerPlaylistSetFace(nodeId, face) {
     return;
   }
   const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
-  pl.face = face === "pl" ? "pl" : "wave";
+  pl.face = nodeGraphAudioPlayerPlaylistNormalizeFace(face);
   node.playlist = pl;
   nodeGraphAudioPlayerPlaylistApplyFace(nodeId);
-  nodeGraphAudioPlayerPlaylistPersist(nodeId, { status: false });
+  nodeGraphAudioPlayerPlaylistPersist(nodeId);
 }
 
 /**
@@ -207,7 +519,369 @@ function nodeGraphAudioPlayerPlaylistGoToWave(nodeId) {
   pl.face = "wave";
   node.playlist = pl;
   nodeGraphAudioPlayerPlaylistApplyFace(nodeId);
-  nodeGraphAudioPlayerPlaylistPersist(nodeId, { status: false });
+  nodeGraphAudioPlayerPlaylistPersist(nodeId);
+}
+
+function nodeGraphAudioPlayerPlaylistCreateTransport(nodeId) {
+  const bar = document.createElement("div");
+  bar.className = "node-music-player-pl-transport";
+  bar.dataset.musicPlayerTransport = "true";
+  bar.setAttribute("role", "toolbar");
+  bar.setAttribute("aria-label", "Playlist transport");
+  const specs = [
+    ["prev", "◁", "Previous"],
+    ["next", "▷", "Next"],
+    ["stop", "⏹️", "Stop"],
+    ["play", "▶️", "Play"],
+    ["pause", "⏸️", "Pause"],
+    ["loop", "↪️", "Loop"],
+    ["shuffle", "🔀", "Shuffle next 100"],
+    ["dive", "📂+", "Folder dive"],
+  ];
+  for (const [action, label, title] of specs) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "node-music-player-pl-transport-btn";
+    btn.dataset.musicPlayerTransport = action;
+    btn.textContent = label;
+    btn.title = title;
+    btn.setAttribute("aria-label", title);
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      nodeGraphAudioPlayerPlaylistTransportAction(nodeId, action);
+    });
+    btn.addEventListener("pointerdown", (event) => event.stopPropagation());
+    bar.append(btn);
+  }
+  return bar;
+}
+
+function nodeGraphAudioPlayerPlaylistTransportAction(nodeId, action) {
+  if (action === "prev") {
+    nodeGraphAudioPlayerPlaylistPlayPrev(nodeId);
+    return;
+  }
+  if (action === "next") {
+    nodeGraphAudioPlayerPlaylistPlayNext(nodeId);
+    return;
+  }
+  if (action === "stop") {
+    nodeGraphAudioPlayerWriteTransport(nodeId, 1);
+    return;
+  }
+  if (action === "play") {
+    nodeGraphAudioPlayerPlaylistPlay(nodeId);
+    return;
+  }
+  if (action === "pause") {
+    nodeGraphAudioPlayerPlaylistPause(nodeId);
+    return;
+  }
+  if (action === "loop") {
+    nodeGraphAudioPlayerPlaylistCycleLoop(nodeId);
+    return;
+  }
+  if (action === "shuffle") {
+    nodeGraphAudioPlayerPlaylistToggleShuffle(nodeId);
+    return;
+  }
+  if (action === "dive") {
+    if (typeof nodeGraphAudioPlayerLibraryToggleDive === "function") {
+      nodeGraphAudioPlayerLibraryToggleDive(nodeId);
+    }
+  }
+}
+
+function nodeGraphAudioPlayerPlaylistSyncTransport(nodeId) {
+  const section = document.querySelector(
+    `.node-phosphor-waveform-display[data-node="${CSS.escape(String(nodeId || ""))}"]`,
+  );
+  const bar = section?.querySelector?.("[data-music-player-transport]");
+  if (!bar) {
+    return;
+  }
+  const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
+  const transport = nodeGraphAudioPlayerTransportBase(nodeId);
+  const loopBtn = bar.querySelector("[data-music-player-transport='loop']");
+  if (loopBtn) {
+    const loop = transport === 3 ? "one" : transport === 5 ? "all" : pl.loopMode;
+    loopBtn.textContent = loop === "one" ? "🔂" : loop === "all" ? "🔁" : "↪️";
+    loopBtn.title = loop === "one" ? "Loop single" : loop === "all" ? "Loop all" : "Loop off";
+    loopBtn.setAttribute("aria-label", loopBtn.title);
+    loopBtn.classList.toggle("is-active", loop !== "off");
+  }
+  const prevBtn = bar.querySelector("[data-music-player-transport='prev']");
+  if (prevBtn) {
+    prevBtn.textContent = "◁";
+  }
+  const nextBtn = bar.querySelector("[data-music-player-transport='next']");
+  if (nextBtn) {
+    nextBtn.textContent = "▷";
+  }
+  const playBtn = bar.querySelector("[data-music-player-transport='play']");
+  if (playBtn) {
+    playBtn.textContent = "▶️";
+    playBtn.title = "Play";
+    playBtn.setAttribute("aria-label", "Play");
+    playBtn.classList.toggle("is-active", transport >= 3);
+  }
+  const pauseBtn = bar.querySelector("[data-music-player-transport='pause']");
+  if (pauseBtn) {
+    pauseBtn.textContent = "⏸️";
+    pauseBtn.title = "Pause";
+    pauseBtn.setAttribute("aria-label", "Pause");
+    pauseBtn.classList.toggle("is-active", transport === 2);
+  }
+  const stopBtn = bar.querySelector("[data-music-player-transport='stop']");
+  if (stopBtn) {
+    stopBtn.classList.toggle("is-active", transport === 1);
+  }
+  const shuffleBtn = bar.querySelector("[data-music-player-transport='shuffle']");
+  if (shuffleBtn) {
+    shuffleBtn.classList.toggle("is-active", Boolean(pl.shuffle));
+    shuffleBtn.setAttribute("aria-pressed", pl.shuffle ? "true" : "false");
+  }
+  const diveBtn = bar.querySelector("[data-music-player-transport='dive']");
+  if (diveBtn) {
+    diveBtn.classList.toggle("is-active", Boolean(pl.folderDive));
+    diveBtn.setAttribute("aria-pressed", pl.folderDive ? "true" : "false");
+    diveBtn.title = pl.folderDive ? "Folder dive on — next 100 can come from subfolders" : "Folder dive off — this folder only";
+  }
+}
+
+function nodeGraphAudioPlayerPlaylistEnsureFaceBar(section, nodeId) {
+  if (!section) {
+    return;
+  }
+  let bar = section.querySelector(":scope > .node-music-player-face-bar");
+  if (bar) {
+    return bar;
+  }
+  bar = document.createElement("div");
+  bar.className = "node-music-player-face-bar";
+  const plBtn = document.createElement("button");
+  plBtn.type = "button";
+  plBtn.className = "node-music-player-face-btn";
+  plBtn.dataset.musicPlayerFace = "pl";
+  plBtn.textContent = "playlist";
+  plBtn.title = "Open playlist";
+  plBtn.setAttribute("aria-label", "Open playlist");
+  plBtn.setAttribute("aria-pressed", "false");
+  plBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    nodeGraphAudioPlayerPlaylistSetFace(nodeId, "pl");
+  });
+  plBtn.addEventListener("pointerdown", (event) => event.stopPropagation());
+  bar.append(plBtn);
+  section.append(bar);
+  return bar;
+}
+
+const nodeGraphAudioPlayerPlaylistDockFaces = Object.freeze([
+  ["wave", "wave", "Wave"],
+  ["pl", "playlist", "Playlist"],
+  ["playinfo", "playinfo", "Playinfo"],
+  ["wavplay", "wavplay", "Waveform + playlist"],
+  ["vsxy", "XY", "XY"],
+  ["vslr", "LR", "LR"],
+]);
+
+function nodeGraphAudioPlayerPlaylistEnsurePlayinfoPage(section) {
+  if (!section) {
+    return null;
+  }
+  let page = section.querySelector("[data-music-player-page='playinfo']");
+  if (!page) {
+    page = document.createElement("div");
+    page.className = "node-music-player-page node-music-player-page-playinfo";
+    page.dataset.musicPlayerPage = "playinfo";
+    page.hidden = true;
+    const dock = section.querySelector(":scope > .node-music-player-dock");
+    if (dock) {
+      section.insertBefore(page, dock);
+    } else {
+      section.append(page);
+    }
+  }
+  if (!page.querySelector("[data-music-player-ram-panel]")) {
+    let panel = section.querySelector("[data-music-player-ram-panel]");
+    if (!panel) {
+      panel = document.createElement("div");
+      panel.className = "node-music-player-pl-ram-panel";
+      panel.dataset.musicPlayerRamPanel = "true";
+      const body = document.createElement("div");
+      body.className = "node-music-player-pl-ram-body";
+      body.dataset.musicPlayerRamBody = "true";
+      panel.append(body);
+    }
+    page.append(panel);
+  }
+  return page;
+}
+
+function nodeGraphAudioPlayerPlaylistEnsureWavplayPage(section) {
+  if (!section) {
+    return null;
+  }
+  let page = section.querySelector("[data-music-player-page='wavplay']");
+  if (page) {
+    if (!page.querySelector("[data-music-player-wave-host]")) {
+      const host = document.createElement("div");
+      host.className = "node-music-player-wavplay-wave";
+      host.dataset.musicPlayerWaveHost = "true";
+      page.prepend(host);
+    }
+    return page;
+  }
+  page = document.createElement("div");
+  page.className = "node-music-player-page node-music-player-page-wavplay";
+  page.dataset.musicPlayerPage = "wavplay";
+  page.hidden = true;
+  const host = document.createElement("div");
+  host.className = "node-music-player-wavplay-wave";
+  host.dataset.musicPlayerWaveHost = "true";
+  page.append(host);
+  const dock = section.querySelector(":scope > .node-music-player-dock");
+  if (dock) {
+    section.insertBefore(page, dock);
+  } else {
+    section.append(page);
+  }
+  return page;
+}
+
+function nodeGraphAudioPlayerPlaylistEnsureDock(section, nodeId) {
+  if (!section) {
+    return null;
+  }
+  let dock = section.querySelector(":scope > .node-music-player-dock");
+  if (!dock) {
+    dock = document.createElement("div");
+    dock.className = "node-music-player-dock";
+    dock.setAttribute("role", "tablist");
+    dock.setAttribute("aria-label", "Music player views");
+    section.append(dock);
+  }
+  const existing = [...dock.querySelectorAll("[data-music-player-face]")]
+    .map((btn) => `${btn.dataset.musicPlayerFace}:${btn.textContent}`)
+    .join(",");
+  const wanted = nodeGraphAudioPlayerPlaylistDockFaces
+    .map((entry) => `${entry[0]}:${entry[1]}`)
+    .join(",");
+  if (existing === wanted) {
+    return dock;
+  }
+  dock.replaceChildren();
+  for (const [face, label, title] of nodeGraphAudioPlayerPlaylistDockFaces) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "node-music-player-dock-btn";
+    btn.dataset.musicPlayerFace = face;
+    btn.textContent = label;
+    btn.title = title;
+    btn.setAttribute("aria-label", title);
+    btn.setAttribute("aria-pressed", "false");
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      nodeGraphAudioPlayerPlaylistSetFace(nodeId, face);
+    });
+    btn.addEventListener("pointerdown", (event) => event.stopPropagation());
+    dock.append(btn);
+  }
+  return dock;
+}
+
+function nodeGraphAudioPlayerPlaylistPlaceShared(section, nodeId, face) {
+  if (!section) {
+    return;
+  }
+  const wavplayPage = nodeGraphAudioPlayerPlaylistEnsureWavplayPage(section);
+  const playinfoPage = nodeGraphAudioPlayerPlaylistEnsurePlayinfoPage(section);
+  const wavePage = section.querySelector("[data-music-player-page='wave']");
+  const plPage = section.querySelector("[data-music-player-page='pl']");
+  const waveHost = wavplayPage?.querySelector("[data-music-player-wave-host]");
+  const canvas = section.querySelector(".node-phosphor-waveform-canvas");
+  const ramPanel = section.querySelector("[data-music-player-ram-panel]");
+  const list = section.querySelector("[data-music-player-list]");
+  let transport = section.querySelector("[data-music-player-transport]");
+  if (!transport && nodeId) {
+    transport = nodeGraphAudioPlayerPlaylistCreateTransport(nodeId);
+  }
+  if (canvas) {
+    if (face === "wavplay" && waveHost && canvas.parentElement !== waveHost) {
+      waveHost.append(canvas);
+    } else if (face !== "wavplay" && wavePage && canvas.parentElement !== wavePage) {
+      wavePage.append(canvas);
+    }
+  }
+  if (ramPanel && playinfoPage && ramPanel.parentElement !== playinfoPage) {
+    playinfoPage.append(ramPanel);
+  }
+  const dest = face === "wavplay" ? wavplayPage : plPage;
+  if (!dest) {
+    return;
+  }
+  if (list) {
+    dest.append(list);
+    if (nodeId) {
+      nodeGraphAudioPlayerPlaylistBindListResize(list, nodeId);
+    }
+  }
+  if (face === "wavplay" && waveHost) {
+    dest.append(waveHost);
+  }
+  if (transport) {
+    dest.append(transport);
+  }
+}
+
+function nodeGraphAudioPlayerPlaylistEnsureLayout(section, nodeId) {
+  if (!section) {
+    return;
+  }
+  for (const back of section.querySelectorAll("[data-music-player-back]")) {
+    if (back.classList.contains("node-music-player-pl-row")) {
+      continue;
+    }
+    back.remove();
+  }
+  for (const leftover of section.querySelectorAll("[data-music-player-now]")) {
+    leftover.remove();
+  }
+  for (const leftover of section.querySelectorAll("[data-music-player-ram]")) {
+    leftover.remove();
+  }
+  for (const head of section.querySelectorAll(".node-music-player-pl-head")) {
+    if (!head.querySelector(":scope > :not([hidden])")) {
+      head.remove();
+    }
+  }
+  nodeGraphAudioPlayerPlaylistEnsureWavplayPage(section);
+  nodeGraphAudioPlayerPlaylistEnsurePlayinfoPage(section);
+  nodeGraphAudioPlayerPlaylistEnsureDock(section, nodeId);
+  const list = section.querySelector("[data-music-player-list]");
+  if (list && nodeId) {
+    nodeGraphAudioPlayerPlaylistBindListResize(list, nodeId);
+  }
+  if (nodeId) {
+    const existing = section.querySelector("[data-music-player-transport]");
+    if (existing && !existing.querySelector("[data-music-player-transport='pause']")) {
+      existing.remove();
+    }
+    if (!section.querySelector("[data-music-player-transport]")) {
+      const plPage = section.querySelector("[data-music-player-page='pl']");
+      if (plPage) {
+        plPage.append(nodeGraphAudioPlayerPlaylistCreateTransport(nodeId));
+      }
+    }
+  }
+  nodeGraphAudioPlayerPlaylistEnsureFaceBar(section, nodeId);
+  if (typeof nodeGraphPhosphorWaveformEnsureZoomControl === "function") {
+    nodeGraphPhosphorWaveformEnsureZoomControl(section);
+  }
 }
 
 function nodeGraphAudioPlayerPlaylistApplyFace(nodeId) {
@@ -217,38 +891,38 @@ function nodeGraphAudioPlayerPlaylistApplyFace(nodeId) {
   if (!section) {
     return;
   }
+  nodeGraphAudioPlayerPlaylistEnsureLayout(section, nodeId);
   const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
-  const isPl = pl.face === "pl";
-  section.dataset.musicPlayerFace = isPl ? "pl" : "wave";
-  const wavePage = section.querySelector("[data-music-player-page='wave']");
-  const plPage = section.querySelector("[data-music-player-page='pl']");
-  if (wavePage) {
-    wavePage.hidden = isPl;
-  }
-  if (plPage) {
-    plPage.hidden = !isPl;
+  const face = nodeGraphAudioPlayerPlaylistNormalizeFace(pl.face);
+  pl.face = face;
+  section.dataset.musicPlayerFace = face;
+  nodeGraphAudioPlayerPlaylistPlaceShared(section, nodeId, face);
+  for (const page of section.querySelectorAll("[data-music-player-page]")) {
+    page.hidden = page.dataset.musicPlayerPage !== face;
   }
   for (const btn of section.querySelectorAll("[data-music-player-face]")) {
-    const on = btn.dataset.musicPlayerFace === (isPl ? "pl" : "wave");
+    const on = btn.dataset.musicPlayerFace === face;
     btn.classList.toggle("is-active", on);
     btn.setAttribute("aria-pressed", on ? "true" : "false");
   }
-  const ramBtn = section.querySelector("[data-music-player-ram]");
-  if (ramBtn) {
-    ramBtn.setAttribute("aria-pressed", pl.ramOpen ? "true" : "false");
-  }
-  if (isPl) {
+  if (nodeGraphAudioPlayerFaceShowsPlaylist(face)) {
     nodeGraphAudioPlayerPlaylistRefreshUi(nodeId);
     nodeGraphAudioPlayerPlaylistStartScrubLoop(nodeId);
+    window.requestAnimationFrame(() => {
+      nodeGraphAudioPlayerPlaylistPaintWaves(nodeId);
+    });
+  } else if (nodeGraphAudioPlayerFaceShowsPlayinfo(face)) {
+    nodeGraphAudioPlayerPlaylistStopScrubLoop(nodeId);
+    nodeGraphAudioPlayerPlaylistRefreshRamDebug(nodeId);
   } else {
     nodeGraphAudioPlayerPlaylistStopScrubLoop(nodeId);
-    if (typeof scheduleNodeGraphPhosphorWaveformFrame === "function") {
-      scheduleNodeGraphPhosphorWaveformFrame(section);
-    }
+  }
+  if (typeof scheduleNodeGraphPhosphorWaveformFrame === "function") {
+    scheduleNodeGraphPhosphorWaveformFrame(section);
   }
 }
 
-/** Write phaseOffset (and optional absolute seek) through the same live param path as knobs. */
+/** Write playlist scrub offset (hidden param). Does not touch ◀◀ ▶▶ / Scratch. */
 function nodeGraphAudioPlayerPlaylistWritePhaseOffset(nodeId, phaseOffset, { record = false } = {}) {
   const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
   if (!node || node.type !== "audioPlayer") {
@@ -258,21 +932,12 @@ function nodeGraphAudioPlayerPlaylistWritePhaseOffset(nodeId, phaseOffset, { rec
   if (!Number.isFinite(next)) {
     next = 0;
   }
-  // Wrap to −1…+1 like the Phase Offset param.
   if (typeof wrapNodeSliderValue === "function") {
     next = wrapNodeSliderValue(next, -1, 1);
   } else {
     next = ((((next + 1) % 2) + 2) % 2) - 1;
   }
-  node.params = { ...(node.params || {}), phaseOffset: String(next) };
-  const moduleEl = document.querySelector(`.dsp-node[data-node="${CSS.escape(String(nodeId))}"]`);
-  const slider = moduleEl?.querySelector?.('input[data-param="phaseOffset"]');
-  if (slider) {
-    slider.value = String(next);
-    if (typeof syncNodeSliderReadout === "function") {
-      syncNodeSliderReadout(slider);
-    }
-  }
+  node.params = { ...(node.params || {}), playlistScrub: String(next) };
   if (typeof scheduleNodeGraphLiveParameterSync === "function") {
     scheduleNodeGraphLiveParameterSync();
   }
@@ -293,17 +958,9 @@ function nodeGraphAudioPlayerPlaylistSeekAbsolute(nodeId, phase01, { record = fa
   const phase = Math.max(0, Math.min(1, Number(phase01) || 0));
   node.samplePhase = phase;
   node.samplePhaseSeek = (Math.round(Number(node.samplePhaseSeek) || 0) + 1) || 1;
-  node.params = { ...(node.params || {}), phaseOffset: "0" };
+  node.params = { ...(node.params || {}), playlistScrub: "0" };
   if (typeof rememberNodeGraphAudioPlayerSamplePhase === "function") {
     rememberNodeGraphAudioPlayerSamplePhase(nodeId, phase);
-  }
-  const moduleEl = document.querySelector(`.dsp-node[data-node="${CSS.escape(String(nodeId))}"]`);
-  const phaseOffset = moduleEl?.querySelector?.('input[data-param="phaseOffset"]');
-  if (phaseOffset) {
-    phaseOffset.value = "0";
-    if (typeof syncNodeSliderReadout === "function") {
-      syncNodeSliderReadout(phaseOffset);
-    }
   }
   if (typeof scheduleNodeGraphLiveParameterSync === "function") {
     scheduleNodeGraphLiveParameterSync();
@@ -333,7 +990,7 @@ function nodeGraphAudioPlayerPlaylistApplyScrub(nodeId, raw, { record = false, c
   const actual = typeof nodeGraphSamplePhaseForNode === "function"
     ? nodeGraphSamplePhaseForNode(nodeId)
     : Number(node.samplePhase) || 0;
-  const currentOffset = Number(node.params?.phaseOffset) || 0;
+  const currentOffset = Number(node.params?.playlistScrub) || 0;
   const offset01 = ((currentOffset % 1) + 1) % 1;
   const base = ((actual - offset01) % 1 + 1) % 1;
   let newOffset = desired - base;
@@ -350,97 +1007,33 @@ function nodeGraphAudioPlayerPlaylistApplyScrub(nodeId, raw, { record = false, c
   }
 }
 
-function nodeGraphAudioPlayerPlaylistPlayIndex(nodeId, index, { autoplay = true } = {}) {
+function nodeGraphAudioPlayerPlaylistPlayIndex(nodeId, index, options = {}) {
+  if (typeof nodeGraphAudioPlayerLibraryPlayIndex === "function") {
+    return nodeGraphAudioPlayerLibraryPlayIndex(nodeId, index, options);
+  }
+}
+
+function nodeGraphAudioPlayerPlaylistPlayingFrom(nodeId, pl) {
   const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
-  if (!node || node.type !== "audioPlayer") {
-    return;
-  }
-  const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
-  if (!pl.items.length) {
-    return;
-  }
-  const nextIndex = Math.max(0, Math.min(pl.items.length - 1, Math.round(Number(index) || 0)));
-  const item = pl.items[nextIndex];
-  if (!item) {
-    return;
-  }
-  pl.index = nextIndex;
-  node.playlist = pl;
-
-  // Bind module sample to playlist entry.
-  const ref = (typeof normalizeNodeGraphPatchSamples === "function"
-    ? normalizeNodeGraphPatchSamples(nodeGraphMvp.patch?.samples || [])
-    : [])
-    .find((sample) => sample.id === item.sampleId);
-  node.sample = ref
-    ? { id: ref.id, name: ref.name || item.name }
-    : { id: item.sampleId, name: item.name };
-  node.samplePhase = 0;
-  node.samplePhaseSeek = (Math.round(Number(node.samplePhaseSeek) || 0) + 1) || 1;
-  if (!node.params || typeof node.params !== "object") {
-    node.params = {};
-  }
-  // Play mode: 4 = Play (once) so auto-advance can fire; user can switch to Loop.
-  if (autoplay) {
-    node.params.transport = "4";
-  }
-  node.params.phaseOffset = "0";
-
-  // Mirror transport slider if present.
-  const moduleEl = document.querySelector(`.dsp-node[data-node="${CSS.escape(String(nodeId))}"]`);
-  const transport = moduleEl?.querySelector?.('input[data-param="transport"]');
-  if (transport && autoplay) {
-    transport.value = "4";
-    if (typeof syncNodeSliderReadout === "function") {
-      syncNodeSliderReadout(transport);
-    }
-  }
-  const phaseOffset = moduleEl?.querySelector?.('input[data-param="phaseOffset"]');
-  if (phaseOffset) {
-    phaseOffset.value = "0";
-    if (typeof syncNodeSliderReadout === "function") {
-      syncNodeSliderReadout(phaseOffset);
-    }
-  }
-
-  // Sample swap needs plan rebuild; phase seek rides on the same payload.
-  if (typeof scheduleNodeGraphLivePlanSync === "function") {
-    scheduleNodeGraphLivePlanSync();
-  } else if (typeof scheduleNodeGraphLiveParameterSync === "function") {
-    scheduleNodeGraphLiveParameterSync();
-  }
-  if (typeof setNodeGraphSampleStatus === "function") {
-    setNodeGraphSampleStatus(nodeId, `playing ${item.name}`);
-  }
-  if (typeof syncNodeGraphSampleDisplayForNode === "function") {
-    syncNodeGraphSampleDisplayForNode(nodeId);
-  }
-  nodeGraphAudioPlayerPlaylistAdvanceArmed.set(nodeId, true);
-  nodeGraphAudioPlayerPlaylistRefreshUi(nodeId);
-  nodeGraphAudioPlayerPlaylistPersist(nodeId, { status: false });
+  const sid = typeof normalizeNodeGraphSampleId === "function"
+    ? normalizeNodeGraphSampleId(node?.sample?.id)
+    : String(node?.sample?.id || "").trim();
+  const playing = sid
+    ? pl.items.findIndex((item) => item.sampleId === sid)
+    : pl.index;
+  return playing >= 0 ? playing : pl.index;
 }
 
 function nodeGraphAudioPlayerPlaylistPlayNext(nodeId) {
-  const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
-  if (!pl.items.length) {
-    return;
+  if (typeof nodeGraphAudioPlayerLibraryPlayNext === "function") {
+    nodeGraphAudioPlayerLibraryPlayNext(nodeId);
   }
-  const next = pl.index + 1;
-  if (next >= pl.items.length) {
-    // End of list: stop (transport Stop).
-    const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
-    if (node) {
-      node.params = { ...(node.params || {}), transport: "1" };
-      if (typeof scheduleNodeGraphLiveParameterSync === "function") {
-        scheduleNodeGraphLiveParameterSync();
-      }
-      if (typeof setNodeGraphSampleStatus === "function") {
-        setNodeGraphSampleStatus(nodeId, "playlist finished");
-      }
-    }
-    return;
+}
+
+function nodeGraphAudioPlayerPlaylistPlayPrev(nodeId) {
+  if (typeof nodeGraphAudioPlayerLibraryPlayPrev === "function") {
+    nodeGraphAudioPlayerLibraryPlayPrev(nodeId);
   }
-  nodeGraphAudioPlayerPlaylistPlayIndex(nodeId, next, { autoplay: true });
 }
 
 // Debounce auto-advance so a held "complete" reason does not skip tracks.
@@ -453,7 +1046,10 @@ function nodeGraphAudioPlayerPlaylistOnRuntimeStatus(nodeId, reason = "") {
     return;
   }
   const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
-  if (pl.items.length < 2) {
+  const catalogCount = typeof nodeGraphAudioPlayerLibraryCatalog === "function"
+    ? nodeGraphAudioPlayerLibraryCatalog(nodeId).length
+    : 0;
+  if (pl.items.length < 2 && catalogCount <= pl.items.length) {
     nodeGraphAudioPlayerPlaylistSyncScrubber(nodeId);
     return;
   }
@@ -467,9 +1063,9 @@ function nodeGraphAudioPlayerPlaylistOnRuntimeStatus(nodeId, reason = "") {
   if (!nodeGraphAudioPlayerPlaylistAdvanceArmed.get(nodeId)) {
     return;
   }
-  // Only auto-advance when transport is Play (once)=4, not Loop=3.
+  // Auto-advance on Play (4) and Loop All (5), not Loop single (3).
   const transport = Math.round(Number(node.params?.transport) || 0);
-  if (transport !== 4) {
+  if (transport !== 4 && transport !== 5) {
     return;
   }
   nodeGraphAudioPlayerPlaylistAdvanceArmed.set(nodeId, false);
@@ -482,7 +1078,7 @@ function nodeGraphAudioPlayerPlaylistSyncScrubber(nodeId) {
   const section = document.querySelector(
     `.node-phosphor-waveform-display[data-node="${CSS.escape(String(nodeId || ""))}"]`,
   );
-  if (!section || section.dataset.musicPlayerFace !== "pl") {
+  if (!section || !nodeGraphAudioPlayerFaceShowsPlaylist(section)) {
     return;
   }
   const scrub = section.querySelector("[data-music-player-phase-scrub]");
@@ -501,11 +1097,8 @@ function nodeGraphAudioPlayerPlaylistSyncScrubber(nodeId) {
   if (valueEl) {
     valueEl.textContent = live.toFixed(4);
   }
-  const ramEl = section.querySelector("[data-music-player-ram]");
-  if (ramEl) {
-    const ram = nodeGraphAudioPlayerPlaylistRamSummary(nodeId);
-    ramEl.textContent = ram.label;
-    ramEl.classList.toggle("is-hog", ram.hog);
+  if (typeof nodeGraphAudioPlayerPlaylistPaintWaves === "function") {
+    nodeGraphAudioPlayerPlaylistPaintWaves(nodeId, { liveOnly: true });
   }
 }
 
@@ -518,7 +1111,7 @@ function nodeGraphAudioPlayerPlaylistStartScrubLoop(nodeId) {
     const section = document.querySelector(
       `.node-phosphor-waveform-display[data-node="${CSS.escape(id)}"]`,
     );
-    if (!section || section.dataset.musicPlayerFace !== "pl") {
+    if (!section || !nodeGraphAudioPlayerFaceShowsPlaylist(section)) {
       nodeGraphAudioPlayerPlaylistScrubLoops.delete(id);
       return;
     }
@@ -539,6 +1132,392 @@ function nodeGraphAudioPlayerPlaylistStopScrubLoop(nodeId) {
   }
 }
 
+const nodeGraphAudioPlayerPlaylistEnvelopeCache = new Map();
+const nodeGraphAudioPlayerPlaylistEnvelopeBins = 512;
+const nodeGraphAudioPlayerPlaylistEnvelopeStrideCap = 64;
+
+function nodeGraphAudioPlayerPlaylistSamplesForId(sampleId) {
+  const id = normalizeNodeGraphSampleId
+    ? normalizeNodeGraphSampleId(sampleId)
+    : String(sampleId || "").trim();
+  if (!id) {
+    return null;
+  }
+  const buf = nodeGraphMvp?.sampleBuffers?.get?.(id);
+  if (!buf) {
+    return null;
+  }
+  if (buf.samples?.length) {
+    return buf.samples;
+  }
+  const channel = buf.channelData?.[0];
+  return channel?.length ? channel : null;
+}
+
+function nodeGraphAudioPlayerPlaylistEnvelope(sampleId) {
+  const samples = nodeGraphAudioPlayerPlaylistSamplesForId(sampleId);
+  const length = samples?.length || 0;
+  if (!length) {
+    return null;
+  }
+  const cached = nodeGraphAudioPlayerPlaylistEnvelopeCache.get(sampleId);
+  if (cached && cached.length === length) {
+    return cached;
+  }
+  const bins = Math.min(nodeGraphAudioPlayerPlaylistEnvelopeBins, length);
+  const mins = new Float32Array(bins);
+  const maxs = new Float32Array(bins);
+  for (let bin = 0; bin < bins; bin += 1) {
+    const t0 = Math.floor((bin * length) / bins);
+    const t1 = Math.max(t0 + 1, Math.floor(((bin + 1) * length) / bins));
+    const stride = Math.max(1, Math.floor((t1 - t0) / nodeGraphAudioPlayerPlaylistEnvelopeStrideCap));
+    let minV = 1;
+    let maxV = -1;
+    for (let frame = t0; frame < t1; frame += stride) {
+      const value = samples[frame];
+      if (value < minV) minV = value;
+      if (value > maxV) maxV = value;
+    }
+    const last = samples[t1 - 1];
+    if (last < minV) minV = last;
+    if (last > maxV) maxV = last;
+    mins[bin] = minV;
+    maxs[bin] = maxV;
+  }
+  const envelope = { length, bins, mins, maxs };
+  nodeGraphAudioPlayerPlaylistEnvelopeCache.set(sampleId, envelope);
+  return envelope;
+}
+
+function nodeGraphAudioPlayerPlaylistSizeWaveCanvas(canvas) {
+  if (!canvas) {
+    return null;
+  }
+  const cssW = Math.max(1, canvas.clientWidth || 0);
+  const cssH = Math.max(1, canvas.clientHeight || 0);
+  const dpr = Math.max(1, Number(window.devicePixelRatio) || 1);
+  const width = Math.max(1, Math.round(cssW * dpr));
+  const height = Math.max(1, Math.round(cssH * dpr));
+  if (canvas.width !== width) {
+    canvas.width = width;
+  }
+  if (canvas.height !== height) {
+    canvas.height = height;
+  }
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return null;
+  }
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  return { context, width, height, pixelRatio: dpr };
+}
+
+function nodeGraphAudioPlayerPlaylistStrokeEnvelope(context, envelope, viewStart, viewEnd, width, midY, amplitude) {
+  if (!envelope || !(width > 1)) {
+    return false;
+  }
+  const span = Math.max(1e-9, viewEnd - viewStart);
+  const startBin = Math.max(0, Math.floor((viewStart / envelope.length) * envelope.bins));
+  const endBin = Math.min(envelope.bins - 1, Math.ceil((viewEnd / envelope.length) * envelope.bins));
+  if (endBin < startBin) {
+    return false;
+  }
+  context.beginPath();
+  let started = false;
+  for (let bin = startBin; bin <= endBin; bin += 1) {
+    const frame = ((bin + 0.5) / envelope.bins) * envelope.length;
+    const x = ((frame - viewStart) / span) * width;
+    const yMax = midY - envelope.maxs[bin] * amplitude;
+    if (!started) {
+      context.moveTo(x, yMax);
+      started = true;
+    } else {
+      context.lineTo(x, yMax);
+    }
+  }
+  for (let bin = endBin; bin >= startBin; bin -= 1) {
+    const frame = ((bin + 0.5) / envelope.bins) * envelope.length;
+    const x = ((frame - viewStart) / span) * width;
+    context.lineTo(x, midY - envelope.mins[bin] * amplitude);
+  }
+  context.closePath();
+  return started;
+}
+
+function nodeGraphAudioPlayerPlaylistPaintWaveCanvas(canvas, {
+  sampleId,
+  live = false,
+  viewStart = 0,
+  viewEnd = 0,
+  playheadFrame = null,
+  settings = null,
+} = {}) {
+  const sized = nodeGraphAudioPlayerPlaylistSizeWaveCanvas(canvas);
+  if (!sized) {
+    return;
+  }
+  const { context, width, height, pixelRatio } = sized;
+  context.fillStyle = live ? "hsl(140, 18%, 5%)" : "#050805";
+  context.fillRect(0, 0, width, height);
+  const samples = nodeGraphAudioPlayerPlaylistSamplesForId(sampleId);
+  const total = samples?.length || 0;
+  if (!total) {
+    return;
+  }
+  const start = live ? Number(viewStart) || 0 : 0;
+  const end = live && viewEnd > viewStart ? viewEnd : total;
+  const midY = height * 0.5;
+  const amplitude = midY * 0.9;
+  const look = settings;
+  const stroke = typeof nodeGraphPhosphorWaveformLineColor === "function" && look
+    ? nodeGraphPhosphorWaveformLineColor(look, 82, 0.92)
+    : "rgba(120, 220, 180, 0.9)";
+  const fill = typeof nodeGraphPhosphorWaveformLineColor === "function" && look
+    ? nodeGraphPhosphorWaveformLineColor(look, 75, 0.28)
+    : "rgba(80, 180, 140, 0.28)";
+  let drew = false;
+  if (
+    live
+    && typeof nodeGraphPhosphorWaveformBuildVectorPath === "function"
+    && typeof nodeGraphPhosphorWaveformStrokeVectorPath === "function"
+  ) {
+    const points = nodeGraphPhosphorWaveformBuildVectorPath(
+      samples,
+      start,
+      end,
+      width,
+      midY,
+      amplitude,
+    );
+    if (nodeGraphPhosphorWaveformStrokeVectorPath(context, points)) {
+      context.strokeStyle = stroke;
+      context.lineWidth = Math.max(1, pixelRatio);
+      context.lineJoin = "miter";
+      context.stroke();
+      drew = true;
+    }
+  }
+  if (!drew) {
+    const envelope = nodeGraphAudioPlayerPlaylistEnvelope(sampleId);
+    if (nodeGraphAudioPlayerPlaylistStrokeEnvelope(context, envelope, start, end, width, midY, amplitude)) {
+      context.fillStyle = fill;
+      context.fill();
+      context.strokeStyle = stroke;
+      context.lineWidth = Math.max(1, pixelRatio);
+      context.stroke();
+    }
+  }
+  if (live && Number.isFinite(playheadFrame) && playheadFrame >= start && playheadFrame <= end) {
+    const x = ((playheadFrame - start) / Math.max(1e-9, end - start)) * width;
+    context.strokeStyle = "rgba(255, 255, 255, 0.88)";
+    context.lineWidth = Math.max(1, pixelRatio);
+    context.beginPath();
+    context.moveTo(x, 0);
+    context.lineTo(x, height);
+    context.stroke();
+  }
+}
+
+function nodeGraphAudioPlayerPlaylistPaintWaves(nodeId, { liveOnly = false } = {}) {
+  const section = document.querySelector(
+    `.node-phosphor-waveform-display[data-node="${CSS.escape(String(nodeId || ""))}"]`,
+  );
+  if (!section || !nodeGraphAudioPlayerFaceShowsPlaylist(section)) {
+    return;
+  }
+  if (typeof applyNodeGraphPhosphorWaveformHudVars === "function") {
+    applyNodeGraphPhosphorWaveformHudVars(
+      section,
+      typeof nodeGraphPhosphorWaveformSettingsForNode === "function"
+        ? nodeGraphPhosphorWaveformSettingsForNode(nodeId)
+        : null,
+    );
+  }
+  const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  const playingId = normalizeNodeGraphSampleId
+    ? normalizeNodeGraphSampleId(node?.sample?.id)
+    : String(node?.sample?.id || "").trim();
+  const settings = typeof nodeGraphPhosphorWaveformSettingsForNode === "function"
+    ? nodeGraphPhosphorWaveformSettingsForNode(nodeId)
+    : null;
+  const playingEntry = typeof nodeGraphPhosphorWaveformSampleEntry === "function"
+    ? nodeGraphPhosphorWaveformSampleEntry(nodeId)
+    : null;
+  const view = playingEntry && typeof nodeGraphPhosphorWaveformViewState === "function"
+    ? nodeGraphPhosphorWaveformViewState(nodeId, playingEntry.frames)
+    : null;
+  const phase = typeof nodeGraphSamplePhaseForNode === "function"
+    ? nodeGraphSamplePhaseForNode(nodeId)
+    : 0;
+  const playheadFrame = playingEntry ? phase * playingEntry.frames : 0;
+  if (view && playingEntry && settings && typeof nodeGraphPhosphorWaveformContinuousView === "function") {
+    const frames = Math.max(1, playingEntry.frames || 1);
+    const rate = Math.max(1, Number(playingEntry.sampleRate) || 44100);
+    const windowFrames = settings.timeWindowSeconds <= 0
+      ? 1
+      : Math.max(1, Math.min(frames, Math.round(settings.timeWindowSeconds * rate)));
+    const ratio = typeof nodeGraphPhosphorWaveformScrollLineRatio === "function"
+      ? nodeGraphPhosphorWaveformScrollLineRatio(settings)
+      : 0.5;
+    const next = nodeGraphPhosphorWaveformContinuousView(
+      playheadFrame - windowFrames * ratio,
+      windowFrames,
+      frames,
+    );
+    view.startFrame = next.viewStart;
+    view.endFrame = next.viewEnd;
+  }
+  for (const row of section.querySelectorAll(".node-music-player-pl-row")) {
+    const sampleId = row.dataset.sampleId || "";
+    const live = Boolean(playingId && sampleId && sampleId === playingId);
+    row.dataset.playing = live ? "true" : "false";
+  }
+  nodeGraphAudioPlayerPlaylistApplyRowFade(section, nodeId, playingId);
+}
+
+function nodeGraphAudioPlayerPlaylistSmoothstep(t) {
+  const x = Math.max(0, Math.min(1, Number(t) || 0));
+  return x * x * (3 - 2 * x);
+}
+
+function nodeGraphAudioPlayerPlaylistPlayingIndex(nodeId, playingId = "") {
+  const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
+  const sid = normalizeNodeGraphSampleId
+    ? normalizeNodeGraphSampleId(playingId)
+    : String(playingId || "").trim();
+  if (sid) {
+    const found = pl.items.findIndex((item) => item.sampleId === sid);
+    if (found >= 0) {
+      return found;
+    }
+  }
+  return Math.max(0, Math.round(Number(pl.index) || 0));
+}
+
+/** Fade only downward from the playing row. Rows above stay full. */
+function nodeGraphAudioPlayerPlaylistRowFade(index, playingIndex, itemCount, playlistFade = 1) {
+  const n = Math.max(1, Number(itemCount) || 1);
+  const fade = Math.max(0, Math.min(1, Number(playlistFade)));
+  const span = Math.max(1, 1 + (n - 1) * fade);
+  const i = Math.round(Number(index) || 0);
+  const p = Math.max(0, Math.round(Number(playingIndex) || 0));
+  if (i <= p) {
+    return 1;
+  }
+  return 1 - nodeGraphAudioPlayerPlaylistSmoothstep((i - p) / span);
+}
+
+function nodeGraphAudioPlayerPlaylistApplyRowFade(section, nodeId, playingId = "") {
+  const list = section?.querySelector?.("[data-music-player-list]");
+  if (!list) {
+    return;
+  }
+  const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
+  const rows = list.querySelectorAll(".node-music-player-pl-row");
+  const itemCount = pl.items.length || Math.max(1, rows.length);
+  const playingIndex = nodeGraphAudioPlayerPlaylistPlayingIndex(nodeId, playingId);
+  const settings = typeof nodeGraphPhosphorWaveformSettingsForNode === "function"
+    ? nodeGraphPhosphorWaveformSettingsForNode(nodeId)
+    : null;
+  const playlistFade = settings?.playlistFade;
+  rows.forEach((row) => {
+    const index = Number(row.dataset.playlistIndex);
+    const fade = nodeGraphAudioPlayerPlaylistRowFade(index, playingIndex, itemCount, playlistFade);
+    row.style.setProperty("--node-music-player-pl-fade", String(fade));
+  });
+}
+
+function nodeGraphAudioPlayerPlaylistRowHeightPx(list) {
+  const sample = list?.querySelector?.(".node-music-player-pl-row");
+  if (sample && sample.offsetHeight > 0) {
+    return sample.offsetHeight;
+  }
+  const raw = list ? getComputedStyle(list).getPropertyValue("--node-music-player-pl-row-height") : "";
+  const parsed = Number.parseFloat(raw);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    const fontSize = Number.parseFloat(list ? getComputedStyle(list).fontSize : "") || 16;
+    return raw.trim().endsWith("rem") ? parsed * fontSize : parsed;
+  }
+  return 18;
+}
+
+function nodeGraphAudioPlayerPlaylistVisibleSlotCount(list) {
+  const height = Math.max(0, list?.clientHeight || 0);
+  const rowH = Math.max(14, nodeGraphAudioPlayerPlaylistRowHeightPx(list));
+  return Math.max(1, Math.floor(height / rowH) || 1);
+}
+
+function nodeGraphAudioPlayerPlaylistBindListResize(list, nodeId) {
+  if (!list || list.dataset.slotResizeBound === "1" || typeof ResizeObserver === "undefined") {
+    return;
+  }
+  list.dataset.slotResizeBound = "1";
+  const observer = new ResizeObserver(() => {
+    nodeGraphAudioPlayerPlaylistRefreshUi(nodeId);
+  });
+  observer.observe(list);
+}
+
+function nodeGraphAudioPlayerPlaylistMakeRowShell(index, { empty = false } = {}) {
+  const row = document.createElement("button");
+  row.type = "button";
+  row.className = "node-music-player-pl-row";
+  row.dataset.playlistIndex = String(index);
+  if (empty) {
+    row.classList.add("is-empty");
+    row.dataset.slot = "empty";
+    row.tabIndex = -1;
+    row.setAttribute("aria-hidden", "true");
+  }
+  const num = document.createElement("span");
+  num.className = "node-music-player-pl-num";
+  num.textContent = String(index + 1).padStart(2, "0");
+  const name = document.createElement("span");
+  name.className = "node-music-player-pl-name";
+  row.append(num, name);
+  return row;
+}
+
+function nodeGraphAudioPlayerPlaylistBindTrackRow(row, nodeId, item, index) {
+  row.dataset.sampleId = item.sampleId;
+  row.title = "Double-click to play";
+  row.addEventListener("dblclick", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+    const sid = normalizeNodeGraphSampleId
+      ? normalizeNodeGraphSampleId(node?.sample?.id)
+      : String(node?.sample?.id || "").trim();
+    const already = Boolean(item.sampleId && sid && item.sampleId === sid);
+    const transport = Number(node?.params?.transport);
+    const playing = Number.isFinite(transport) ? transport >= 3 : false;
+    if (already && playing) {
+      return;
+    }
+    nodeGraphAudioPlayerPlaylistPlayIndex(nodeId, index, { autoplay: true });
+  });
+  row.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+    if (!node) {
+      return;
+    }
+    const cur = nodeGraphAudioPlayerPlaylistForNode(nodeId);
+    cur.selectedIndex = index;
+    node.playlist = cur;
+    const listEl = row.closest("[data-music-player-list]");
+    if (listEl) {
+      listEl.querySelectorAll(".node-music-player-pl-row").forEach((el) => {
+        el.dataset.active = el.dataset.playlistIndex === String(index) ? "true" : "false";
+      });
+    }
+  });
+  row.addEventListener("pointerdown", (event) => {
+    event.stopPropagation();
+  });
+}
+
 function nodeGraphAudioPlayerPlaylistRefreshUi(nodeId) {
   const section = document.querySelector(
     `.node-phosphor-waveform-display[data-node="${CSS.escape(String(nodeId || ""))}"]`,
@@ -549,71 +1528,64 @@ function nodeGraphAudioPlayerPlaylistRefreshUi(nodeId) {
   const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
   const list = section.querySelector("[data-music-player-list]");
   if (list) {
-    list.replaceChildren();
-    if (!pl.items.length) {
-      const empty = document.createElement("div");
-      empty.className = "node-music-player-pl-empty";
-      empty.textContent = "Load files (📂 multi-select) to build a playlist.";
-      list.append(empty);
+    nodeGraphAudioPlayerPlaylistBindListResize(list, nodeId);
+    const visibleSlots = nodeGraphAudioPlayerPlaylistVisibleSlotCount(list);
+    const rowCount = Math.max(pl.items.length, visibleSlots);
+    const signature = `${pl.items.map((item) => item.sampleId).join("|")}#${rowCount}`;
+    const reuse = list.dataset.itemSignature === signature
+      && list.querySelectorAll(".node-music-player-pl-row").length === rowCount;
+    if (!reuse) {
+      list.dataset.itemSignature = signature;
+      list.replaceChildren();
+      const selected = Number.isInteger(pl.selectedIndex) ? pl.selectedIndex : pl.index;
+      const playingId = normalizeNodeGraphSampleId
+        ? normalizeNodeGraphSampleId(nodeGraphPatchNode(nodeId)?.sample?.id)
+        : String(nodeGraphPatchNode(nodeId)?.sample?.id || "").trim();
+      for (let index = 0; index < rowCount; index += 1) {
+        const item = pl.items[index];
+        if (item) {
+          const row = nodeGraphAudioPlayerPlaylistMakeRowShell(index);
+          const name = row.querySelector(".node-music-player-pl-name");
+          if (name) {
+            name.textContent = item.name;
+          }
+          row.dataset.active = index === selected ? "true" : "false";
+          row.dataset.playing = playingId && item.sampleId === playingId ? "true" : "false";
+          nodeGraphAudioPlayerPlaylistBindTrackRow(row, nodeId, item, index);
+          list.append(row);
+          continue;
+        }
+        list.append(nodeGraphAudioPlayerPlaylistMakeRowShell(index, { empty: true }));
+      }
+      nodeGraphAudioPlayerPlaylistApplyRowFade(section, nodeId);
     } else {
-      pl.items.forEach((item, index) => {
-        const row = document.createElement("button");
-        row.type = "button";
-        row.className = "node-music-player-pl-row";
-        row.dataset.playlistIndex = String(index);
-        row.dataset.active = index === pl.index ? "true" : "false";
-        row.title = "Double-click to play";
-        const num = document.createElement("span");
-        num.className = "node-music-player-pl-num";
-        num.textContent = String(index + 1).padStart(2, "0");
-        const name = document.createElement("span");
-        name.className = "node-music-player-pl-name";
-        name.textContent = item.name;
-        const meta = document.createElement("span");
-        meta.className = "node-music-player-pl-meta";
-        const est = nodeGraphAudioPlayerPlaylistEstimateBytes(item.sampleId);
-        meta.textContent = nodeGraphAudioPlayerPlaylistFormatBytes(est.bytes || item.bytes || 0);
-        row.append(num, name, meta);
-        row.addEventListener("dblclick", (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
-          const cur = nodeGraphAudioPlayerPlaylistForNode(nodeId);
-          const sid = normalizeNodeGraphSampleId
-            ? normalizeNodeGraphSampleId(node?.sample?.id)
-            : String(node?.sample?.id || "").trim();
-          // Already the loaded/playing track → just return to its waveform (no restart).
-          if (item.sampleId && sid && item.sampleId === sid) {
-            nodeGraphAudioPlayerPlaylistGoToWave(nodeId);
-            return;
-          }
-          if (index === cur.index && sid && item.sampleId === sid) {
-            nodeGraphAudioPlayerPlaylistGoToWave(nodeId);
-            return;
-          }
-          nodeGraphAudioPlayerPlaylistPlayIndex(nodeId, index, { autoplay: true });
-        });
-        row.addEventListener("click", (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          // Single click selects without forcing play.
-          const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
-          if (node) {
-            const cur = nodeGraphAudioPlayerPlaylistForNode(nodeId);
-            cur.index = index;
-            node.playlist = cur;
-            nodeGraphAudioPlayerPlaylistRefreshUi(nodeId);
-          }
-        });
-        row.addEventListener("pointerdown", (event) => {
-          event.stopPropagation();
-        });
-        list.append(row);
+      const selected = Number.isInteger(pl.selectedIndex) ? pl.selectedIndex : pl.index;
+      const playingId = normalizeNodeGraphSampleId
+        ? normalizeNodeGraphSampleId(nodeGraphPatchNode(nodeId)?.sample?.id)
+        : String(nodeGraphPatchNode(nodeId)?.sample?.id || "").trim();
+      list.querySelectorAll(".node-music-player-pl-row").forEach((row) => {
+        if (row.dataset.slot === "empty") {
+          return;
+        }
+        const index = Number(row.dataset.playlistIndex);
+        const item = pl.items[index];
+        row.dataset.active = index === selected ? "true" : "false";
+        row.dataset.playing = playingId && item?.sampleId === playingId ? "true" : "false";
+        const name = row.querySelector(".node-music-player-pl-name");
+        if (name && item) {
+          name.textContent = item.name;
+        }
       });
+      nodeGraphAudioPlayerPlaylistApplyRowFade(section, nodeId);
     }
   }
   nodeGraphAudioPlayerPlaylistRefreshRamDebug(nodeId);
+  nodeGraphAudioPlayerPlaylistSyncTransport(nodeId);
   nodeGraphAudioPlayerPlaylistSyncScrubber(nodeId);
+  nodeGraphAudioPlayerPlaylistPaintWaves(nodeId);
+  window.requestAnimationFrame(() => {
+    nodeGraphAudioPlayerPlaylistPaintWaves(nodeId);
+  });
 }
 
 function nodeGraphAudioPlayerPlaylistRefreshRamDebug(nodeId) {
@@ -625,22 +1597,11 @@ function nodeGraphAudioPlayerPlaylistRefreshRamDebug(nodeId) {
   }
   const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
   const ram = nodeGraphAudioPlayerPlaylistRamSummary(nodeId);
-  const ramEl = section.querySelector("[data-music-player-ram]");
-  if (ramEl) {
-    ramEl.textContent = ram.label;
-    ramEl.classList.toggle("is-hog", ram.hog);
-    ramEl.setAttribute("aria-pressed", pl.ramOpen ? "true" : "false");
-    ramEl.title = pl.ramOpen
-      ? `RAM debug open — click again to close (${ram.label})`
-      : ram.hog
-        ? `RAM hog warning: ${ram.label} decoded Float32 in sampleBuffers — click for debug`
-        : "Decoded sample RAM (Float32) — click to toggle debug";
-  }
   const panel = section.querySelector("[data-music-player-ram-panel]");
   if (!panel) {
     return;
   }
-  panel.hidden = !pl.ramOpen;
+  panel.hidden = false;
   const body = panel.querySelector("[data-music-player-ram-body]");
   if (!body) {
     return;
@@ -663,46 +1624,45 @@ function nodeGraphAudioPlayerPlaylistRefreshRamDebug(nodeId) {
     tr.innerHTML = '<td colspan="7" class="node-music-player-pl-ram-empty">No tracks in playlist</td>';
     tbody.append(tr);
   } else {
+    const playingId = normalizeNodeGraphSampleId
+      ? normalizeNodeGraphSampleId(nodeGraphPatchNode(nodeId)?.sample?.id)
+      : String(nodeGraphPatchNode(nodeId)?.sample?.id || "").trim();
     pl.items.forEach((item, index) => {
       const est = nodeGraphAudioPlayerPlaylistEstimateBytes(item.sampleId);
       const tr = document.createElement("tr");
       if (index === pl.index) {
         tr.dataset.active = "true";
       }
+      if (playingId && item.sampleId === playingId) {
+        tr.dataset.playing = "true";
+      }
       if ((est.bytes || item.bytes || 0) >= 32 * 1024 * 1024) {
         tr.classList.add("is-heavy");
       }
-      tr.innerHTML = [
-        `<td>${String(index + 1).padStart(2, "0")}</td>`,
-        `<td class="node-music-player-pl-ram-name" title="${String(item.name).replace(/"/g, "&quot;")}">${item.name}</td>`,
-        `<td>${nodeGraphAudioPlayerPlaylistFormatBytes(est.bytes || item.bytes || 0)}</td>`,
-        `<td>${(est.frames || item.frames || 0).toLocaleString()}</td>`,
-        `<td>${est.channels || item.channels || "—"}</td>`,
-        `<td>${est.sampleRate || item.sampleRate || "—"}</td>`,
-        `<td>${est.loaded ? "RAM" : "—"}</td>`,
-      ].join("");
+      const td = (text, className) => {
+        const cell = document.createElement("td");
+        if (className) cell.className = className;
+        cell.textContent = text;
+        return cell;
+      };
+      tr.append(
+        td(String(index + 1).padStart(2, "0")),
+        (() => {
+          const cell = td(String(item.name || ""), "node-music-player-pl-ram-name");
+          cell.title = String(item.name || "");
+          return cell;
+        })(),
+        td(nodeGraphAudioPlayerPlaylistFormatBytes(est.bytes || item.bytes || 0)),
+        td((est.frames || item.frames || 0).toLocaleString()),
+        td(String(est.channels || item.channels || "—")),
+        td(String(est.sampleRate || item.sampleRate || "—")),
+        td(est.loaded ? "RAM" : "—"),
+      );
       tbody.append(tr);
     });
   }
   table.append(tbody);
   body.append(table);
-
-  const tip = document.createElement("div");
-  tip.className = "node-music-player-pl-ram-tip";
-  tip.textContent = "All playlist samples stay decoded in sampleBuffers (Float32). Large files = RAM hog. Unload tracks by clearing the patch samples if needed.";
-  body.append(tip);
-}
-
-function nodeGraphAudioPlayerPlaylistToggleRamDebug(nodeId) {
-  const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
-  if (!node || node.type !== "audioPlayer") {
-    return;
-  }
-  const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
-  pl.ramOpen = !pl.ramOpen;
-  node.playlist = pl;
-  nodeGraphAudioPlayerPlaylistRefreshRamDebug(nodeId);
-  nodeGraphAudioPlayerPlaylistPersist(nodeId, { status: false });
 }
 
 function nodeGraphAudioPlayerPlaylistBindScrubber(nodeId, scrub) {
@@ -765,129 +1725,245 @@ function nodeGraphAudioPlayerPlaylistEnhanceDisplay(section, nodeId) {
   plPage.dataset.musicPlayerPage = "pl";
   plPage.hidden = true;
 
-  const plHead = document.createElement("div");
-  plHead.className = "node-music-player-pl-head";
-  const back = document.createElement("button");
-  back.type = "button";
-  back.className = "node-music-player-face-btn";
-  back.dataset.musicPlayerFace = "wave";
-  back.dataset.musicPlayerBack = "true";
-  back.textContent = "←";
-  back.title = "Back to currently playing waveform";
-  back.setAttribute("aria-label", "Back to currently playing waveform");
-  back.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    nodeGraphAudioPlayerPlaylistGoToWave(nodeId);
-  });
-  back.addEventListener("pointerdown", (event) => event.stopPropagation());
-  const title = document.createElement("span");
-  title.className = "node-music-player-pl-title";
-  title.textContent = "Playlist";
-  const ram = document.createElement("button");
-  ram.type = "button";
-  ram.className = "node-music-player-pl-ram";
-  ram.dataset.musicPlayerRam = "true";
-  ram.title = "Decoded sample RAM (Float32) — click to toggle debug";
-  ram.textContent = "0 B · 0 tracks";
-  ram.setAttribute("aria-label", "Toggle playlist RAM debug");
-  ram.setAttribute("aria-pressed", "false");
-  ram.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    nodeGraphAudioPlayerPlaylistToggleRamDebug(nodeId);
-  });
-  ram.addEventListener("pointerdown", (event) => event.stopPropagation());
-  plHead.append(back, title, ram);
-
-  // RAM debug panel (per-track decoded buffer sizes). Closed via the RAM/GB button only.
-  const ramPanel = document.createElement("div");
-  ramPanel.className = "node-music-player-pl-ram-panel";
-  ramPanel.dataset.musicPlayerRamPanel = "true";
-  ramPanel.hidden = true;
-  const ramHead = document.createElement("div");
-  ramHead.className = "node-music-player-pl-ram-head";
-  const ramTitle = document.createElement("span");
-  ramTitle.textContent = "RAM debug";
-  ramHead.append(ramTitle);
-  const ramBody = document.createElement("div");
-  ramBody.className = "node-music-player-pl-ram-body";
-  ramBody.dataset.musicPlayerRamBody = "true";
-  ramPanel.append(ramHead, ramBody);
-
   const list = document.createElement("div");
   list.className = "node-music-player-pl-list";
   list.dataset.musicPlayerList = "true";
   list.setAttribute("role", "listbox");
   list.setAttribute("aria-label", "Playlist tracks");
 
-  const scrubRow = document.createElement("div");
-  scrubRow.className = "node-music-player-pl-scrub";
-  scrubRow.title = "Phase scrubber — drives Phase Offset (like any param). Value = actual engine Phase after smoothing.";
-  const scrubLabel = document.createElement("span");
-  scrubLabel.className = "node-music-player-pl-scrub-label";
-  scrubLabel.textContent = "Phase";
-  const scrub = document.createElement("input");
-  scrub.type = "range";
-  scrub.min = "0";
-  scrub.max = "1";
-  scrub.step = "0.0001";
-  scrub.value = "0";
-  scrub.className = "node-music-player-pl-scrub-input";
-  scrub.dataset.musicPlayerPhaseScrub = "true";
-  scrub.setAttribute("aria-label", "Phase scrubber");
-  const scrubValue = document.createElement("strong");
-  scrubValue.className = "node-music-player-pl-scrub-value";
-  scrubValue.dataset.musicPlayerPhaseValue = "true";
-  scrubValue.textContent = "0.0000";
-  scrubRow.append(scrubLabel, scrub, scrubValue);
-  nodeGraphAudioPlayerPlaylistBindScrubber(nodeId, scrub);
+  plPage.append(list);
 
-  plPage.append(plHead, ramPanel, list, scrubRow);
+  const playinfoPage = document.createElement("div");
+  playinfoPage.className = "node-music-player-page node-music-player-page-playinfo";
+  playinfoPage.dataset.musicPlayerPage = "playinfo";
+  playinfoPage.hidden = true;
+  const ramPanel = document.createElement("div");
+  ramPanel.className = "node-music-player-pl-ram-panel";
+  ramPanel.dataset.musicPlayerRamPanel = "true";
+  const ramBody = document.createElement("div");
+  ramBody.className = "node-music-player-pl-ram-body";
+  ramBody.dataset.musicPlayerRamBody = "true";
+  ramPanel.append(ramBody);
+  playinfoPage.append(ramPanel);
 
-  // PL lives on the waveform face (top-right) so you can open the playlist from
-  // the single-track view. Hidden via CSS while playlist page is open.
-  const faceBar = document.createElement("div");
-  faceBar.className = "node-music-player-face-bar";
-  const plBtn = document.createElement("button");
-  plBtn.type = "button";
-  plBtn.className = "node-music-player-face-btn";
-  plBtn.dataset.musicPlayerFace = "pl";
-  plBtn.textContent = "PL";
-  plBtn.title = "Open playlist";
-  plBtn.setAttribute("aria-label", "Open playlist");
-  plBtn.setAttribute("aria-pressed", "false");
-  plBtn.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    nodeGraphAudioPlayerPlaylistSetFace(nodeId, "pl");
-  });
-  plBtn.addEventListener("pointerdown", (event) => event.stopPropagation());
-  faceBar.append(plBtn);
+  const vsxyPage = document.createElement("div");
+  vsxyPage.className = "node-music-player-page node-music-player-page-vs";
+  vsxyPage.dataset.musicPlayerPage = "vsxy";
+  vsxyPage.hidden = true;
+  const vsxyCanvas = document.createElement("canvas");
+  vsxyCanvas.className = "node-music-player-vs-canvas";
+  vsxyCanvas.dataset.musicPlayerVs = "xy";
+  vsxyPage.append(vsxyCanvas);
 
-  section.replaceChildren(faceBar, wavePage, plPage);
+  const vslrPage = document.createElement("div");
+  vslrPage.className = "node-music-player-page node-music-player-page-vs";
+  vslrPage.dataset.musicPlayerPage = "vslr";
+  vslrPage.hidden = true;
+  const vslrCanvas = document.createElement("canvas");
+  vslrCanvas.className = "node-music-player-vs-canvas";
+  vslrCanvas.dataset.musicPlayerVs = "lr";
+  vslrPage.append(vslrCanvas);
 
-  // Restore face from patch.
-  const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
-  if (pl.face === "pl") {
-    nodeGraphAudioPlayerPlaylistApplyFace(nodeId);
-  } else {
-    nodeGraphAudioPlayerPlaylistRefreshUi(nodeId);
-  }
+  const wavplayPage = document.createElement("div");
+  wavplayPage.className = "node-music-player-page node-music-player-page-wavplay";
+  wavplayPage.dataset.musicPlayerPage = "wavplay";
+  wavplayPage.hidden = true;
+  const wavplayWave = document.createElement("div");
+  wavplayWave.className = "node-music-player-wavplay-wave";
+  wavplayWave.dataset.musicPlayerWaveHost = "true";
+  wavplayPage.append(wavplayWave);
 
-  // Ensure current sample is on the playlist once buffers exist.
+  plPage.append(nodeGraphAudioPlayerPlaylistCreateTransport(nodeId));
+
+  section.replaceChildren(wavePage, plPage, playinfoPage, wavplayPage, vsxyPage, vslrPage);
+  nodeGraphAudioPlayerPlaylistEnsureLayout(section, nodeId);
+
+  nodeGraphAudioPlayerPlaylistApplyFace(nodeId);
+
   window.requestAnimationFrame(() => {
-    const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
-    const sid = node?.sample?.id;
-    if (sid) {
-      nodeGraphAudioPlayerPlaylistAppendSample(nodeId, {
-        id: sid,
-        name: node.sample?.name || nodeGraphSampleNameForNode?.(nodeId) || sid,
-      });
-    }
+    nodeGraphAudioPlayerPlaylistEnsureCurrentSample(nodeId);
   });
 
   return section;
+}
+
+function nodeGraphAudioPlayerVideoscopeChannels(nodeId) {
+  const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  const sampleId = node?.sample?.id;
+  const entry = sampleId ? nodeGraphMvp?.sampleBuffers?.get?.(sampleId) : null;
+  const left = entry?.channelData?.[0] || entry?.samples;
+  if (!left?.length) {
+    return null;
+  }
+  return {
+    left,
+    right: entry?.channelData?.[1] || left,
+    frames: Math.max(1, Number(entry.frames) || left.length),
+    sampleRate: Math.max(1, Number(entry.sampleRate) || 44100),
+  };
+}
+
+function nodeGraphAudioPlayerVideoscopeWindow(nodeId, frames, sampleRate) {
+  const settings = typeof nodeGraphPhosphorWaveformSettingsForNode === "function"
+    ? nodeGraphPhosphorWaveformSettingsForNode(nodeId)
+    : null;
+  const rate = Math.max(1, Number(sampleRate) || 44100);
+  const seconds = Number(settings?.timeWindowSeconds);
+  const want = Number.isFinite(seconds) && seconds > 0
+    ? Math.round(seconds * rate)
+    : 2048;
+  const span = Math.max(64, Math.min(frames, want, 8192));
+  const phase = typeof nodeGraphSamplePhaseForNode === "function"
+    ? nodeGraphSamplePhaseForNode(nodeId)
+    : 0;
+  const playhead = Math.max(0, Math.min(frames, phase * frames));
+  let start = Math.round(playhead - span * 0.5);
+  if (start < 0) {
+    start = 0;
+  }
+  if (start + span > frames) {
+    start = Math.max(0, frames - span);
+  }
+  return { start, end: Math.min(frames, start + span), playhead, span };
+}
+
+function nodeGraphAudioPlayerVideoscopePaint(section) {
+  const face = section?.dataset?.musicPlayerFace;
+  if (face !== "vsxy" && face !== "vslr") {
+    return;
+  }
+  const canvas = section.querySelector(`[data-music-player-page="${face}"] canvas`);
+  if (!canvas) {
+    return;
+  }
+  const nodeId = section.dataset.node || "";
+  const settings = typeof nodeGraphPhosphorWaveformSettingsForNode === "function"
+    ? nodeGraphPhosphorWaveformSettingsForNode(nodeId)
+    : null;
+  const metrics = typeof nodeGraphMusicPlayerFaceMetrics === "function"
+    ? nodeGraphMusicPlayerFaceMetrics(section, canvas, face)
+    : null;
+  const context = metrics?.context || canvas.getContext("2d");
+  if (!context) {
+    return;
+  }
+  const width = Math.max(1, metrics?.width || canvas.width);
+  const height = Math.max(1, metrics?.height || canvas.height);
+  const pixelRatio = metrics?.pixelRatio || Math.max(1, window.devicePixelRatio || 1);
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.clearRect(0, 0, width, height);
+  const bg = typeof nodeGraphPhosphorWaveformBackgroundColor === "function"
+    ? nodeGraphPhosphorWaveformBackgroundColor(settings)
+    : "#050805";
+  context.fillStyle = bg;
+  context.fillRect(0, 0, width, height);
+  const channels = nodeGraphAudioPlayerVideoscopeChannels(nodeId);
+  if (!channels) {
+    if (typeof drawNodeGraphPhosphorWaveformPlaceholder === "function") {
+      drawNodeGraphPhosphorWaveformPlaceholder(
+        context,
+        width,
+        height,
+        "No sample loaded",
+        pixelRatio,
+        settings,
+      );
+    }
+    return;
+  }
+  const win = nodeGraphAudioPlayerVideoscopeWindow(nodeId, channels.frames, channels.sampleRate);
+  if (face === "vsxy") {
+    nodeGraphAudioPlayerVideoscopePaintXy(context, width, height, channels, win, settings);
+  } else {
+    nodeGraphAudioPlayerVideoscopePaintLr(context, width, height, channels, win, settings);
+  }
+}
+
+function nodeGraphAudioPlayerVideoscopePaintXy(context, width, height, channels, win, settings) {
+  const axis = typeof nodeGraphPhosphorWaveformLineColor === "function"
+    ? nodeGraphPhosphorWaveformLineColor(settings, 57, 0.28)
+    : "rgba(80, 160, 130, 0.28)";
+  const ink = typeof nodeGraphPhosphorWaveformLineColor === "function"
+    ? nodeGraphPhosphorWaveformLineColor(settings, 82, 0.9)
+    : "rgba(180, 230, 200, 0.9)";
+  context.strokeStyle = axis;
+  context.lineWidth = 1;
+  context.beginPath();
+  context.moveTo(width * 0.5, 0);
+  context.lineTo(width * 0.5, height);
+  context.moveTo(0, height * 0.5);
+  context.lineTo(width, height * 0.5);
+  context.stroke();
+  const count = Math.max(1, win.end - win.start);
+  const step = Math.max(1, Math.floor(count / Math.max(width, 256)));
+  context.strokeStyle = ink;
+  context.lineWidth = Math.max(1, Math.round((Number(settings?.traceWidth) || 1.5)));
+  context.beginPath();
+  let started = false;
+  for (let i = win.start; i < win.end; i += step) {
+    const x = ((Number(channels.left[i]) || 0) * 0.5 + 0.5) * (width - 1);
+    const y = (0.5 - (Number(channels.right[i]) || 0) * 0.5) * (height - 1);
+    if (!started) {
+      context.moveTo(x, y);
+      started = true;
+    } else {
+      context.lineTo(x, y);
+    }
+  }
+  if (started) {
+    context.stroke();
+  }
+  const play = Math.max(win.start, Math.min(win.end - 1, Math.round(win.playhead)));
+  const hx = ((Number(channels.left[play]) || 0) * 0.5 + 0.5) * (width - 1);
+  const hy = (0.5 - (Number(channels.right[play]) || 0) * 0.5) * (height - 1);
+  context.strokeStyle = "rgba(255, 255, 255, 0.9)";
+  context.lineWidth = 1;
+  context.beginPath();
+  context.moveTo(hx - 4, hy);
+  context.lineTo(hx + 4, hy);
+  context.moveTo(hx, hy - 4);
+  context.lineTo(hx, hy + 4);
+  context.stroke();
+}
+
+function nodeGraphAudioPlayerVideoscopePaintLr(context, width, height, channels, win, settings) {
+  const mid = Math.round(height * 0.5);
+  const line = typeof nodeGraphPhosphorWaveformLineColor === "function"
+    ? nodeGraphPhosphorWaveformLineColor(settings, 57, 0.28)
+    : "rgba(80, 160, 130, 0.28)";
+  context.fillStyle = line;
+  context.fillRect(0, mid, width, 1);
+  const paintPane = (channel, top, paneH, color) => {
+    const center = top + paneH * 0.5;
+    const amp = paneH * 0.42;
+    const count = Math.max(1, win.end - win.start);
+    context.strokeStyle = color;
+    context.lineWidth = Math.max(1, Math.round(width / 400));
+    context.beginPath();
+    for (let x = 0; x < width; x += 1) {
+      const i0 = win.start + Math.floor((x / width) * count);
+      const i1 = win.start + Math.floor(((x + 1) / width) * count);
+      let min = 1;
+      let max = -1;
+      for (let i = i0; i < Math.max(i0 + 1, i1); i += 1) {
+        const s = Number(channel[i]) || 0;
+        if (s < min) min = s;
+        if (s > max) max = s;
+      }
+      const y0 = center - max * amp;
+      const y1 = center - min * amp;
+      context.moveTo(x + 0.5, y0);
+      context.lineTo(x + 0.5, y1);
+    }
+    context.stroke();
+  };
+  paintPane(channels.left, 0, mid, "rgba(220, 70, 70, 0.92)");
+  paintPane(channels.right, mid, height - mid, "rgba(70, 140, 230, 0.92)");
+  const playX = win.span > 0
+    ? Math.round(((win.playhead - win.start) / win.span) * width)
+    : 0;
+  context.fillStyle = "rgba(255, 255, 255, 0.85)";
+  context.fillRect(playX, 0, 1, height);
 }
 
 // Hook runtime status → auto-advance + scrubber live update.
@@ -917,3 +1993,19 @@ function nodeGraphAudioPlayerPlaylistEnhanceDisplay(section, nodeId) {
     syncNodeGraphAudioPlayerRuntimeStatus = wrapped;
   };
 })();
+
+function nodeGraphAudioPlayerPlaylistMigrateOpenDisplays() {
+  document.querySelectorAll(".node-phosphor-waveform-display[data-music-player-enhanced='1']").forEach((section) => {
+    const nodeId = section.dataset.node;
+    if (nodeId) {
+      nodeGraphAudioPlayerPlaylistApplyFace(nodeId);
+    }
+  });
+}
+if (typeof document !== "undefined") {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", nodeGraphAudioPlayerPlaylistMigrateOpenDisplays, { once: true });
+  } else {
+    window.requestAnimationFrame(nodeGraphAudioPlayerPlaylistMigrateOpenDisplays);
+  }
+}

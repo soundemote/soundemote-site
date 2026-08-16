@@ -36,6 +36,9 @@ function nodeGraphLookaheadLimiterDbToGain(db) {
  * @param {number} attackMs  gain attack toward reduction (0 = instant)
  * @param {number} releaseMs gain release (default 100)
  * @param {number} sampleRate
+ * @param {number} [lookaheadEnabled]  >0.5 = use look-ahead delay; else delay is 0
+ * @param {number} [gainCompensation]  >0.5 = makeup −ceiling so limited peaks hit 0 dBFS
+ * @param {number} [dipGain]  over-reduction exponent (1 = exact brickwall, 2 = twice the dB cut)
  * @returns {{ Out: number, Left: number, Right: number, Gain: number }}
  */
 function nodeGraphLookaheadLimiterFrame(
@@ -48,6 +51,9 @@ function nodeGraphLookaheadLimiterFrame(
   attackMs,
   releaseMs,
   sampleRate,
+  lookaheadEnabled,
+  gainCompensation,
+  dipGain,
 ) {
   if (!state || !state.delayL) {
     const x = Number(left) || 0;
@@ -60,8 +66,9 @@ function nodeGraphLookaheadLimiterFrame(
   const rIn = Number(right) || 0;
   const ceiling = Math.max(1e-6, nodeGraphLookaheadLimiterDbToGain(ceilingDb));
 
-  const laFromMs = Math.max(0, Number(lookaheadMs) || 0) * 0.001 * rate;
-  const laFromSamples = Math.max(0, Number(lookaheadSamples) || 0);
+  const laOn = lookaheadEnabled == null ? true : Number(lookaheadEnabled) > 0.5;
+  const laFromMs = laOn ? Math.max(0, Number(lookaheadMs) || 0) * 0.001 * rate : 0;
+  const laFromSamples = laOn ? Math.max(0, Number(lookaheadSamples) || 0) : 0;
   let la = Math.round(laFromMs + laFromSamples);
   if (!Number.isFinite(la) || la < 0) la = 0;
   if (la > state.cap - 1) la = state.cap - 1;
@@ -83,6 +90,11 @@ function nodeGraphLookaheadLimiterFrame(
   let targetGain = 1;
   if (state.env > ceiling) {
     targetGain = ceiling / state.env;
+    const dip = Number(dipGain);
+    if (Number.isFinite(dip) && dip !== 1 && targetGain < 1) {
+      const k = Math.max(0.5, Math.min(3, dip));
+      targetGain = Math.pow(targetGain, k);
+    }
   }
   // One-pole on gain (attack when reducing = follow attCoeff; release = relCoeff).
   if (targetGain < state.gain) {
@@ -114,6 +126,11 @@ function nodeGraphLookaheadLimiterFrame(
   else if (dL < -ceiling) dL = -ceiling;
   if (dR > ceiling) dR = ceiling;
   else if (dR < -ceiling) dR = -ceiling;
+  if (Number(gainCompensation) > 0.5) {
+    const makeup = 1 / ceiling;
+    dL *= makeup;
+    dR *= makeup;
+  }
   if (!Number.isFinite(dL)) dL = 0;
   if (!Number.isFinite(dR)) dR = 0;
 

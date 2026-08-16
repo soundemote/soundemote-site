@@ -12,7 +12,7 @@ function nodeGraphCombResonatorLoadMainWasm() {
     nodeGraphCombResonatorMainWasm.failed = true;
     return;
   }
-  nodeGraphCombResonatorMainWasm.promise = fetch("/native_modules/comb_resonator/comb_resonator.wasm")
+  nodeGraphCombResonatorMainWasm.promise = fetch("/native_modules/comb_resonator/comb_resonator.wasm?v=resonator-clip-1")
     .then((response) => {
       if (!response.ok) throw new Error(`comb_resonator wasm HTTP ${response.status}`);
       return response.arrayBuffer();
@@ -29,6 +29,9 @@ function nodeGraphCombResonatorLoadMainWasm() {
 function nodeGraphCombResonatorResolveFrequencyHz(
   runtime, node, nodeId, frame, frames, frameValues, mixInput, hasInput,
 ) {
+  if (typeof hasInput === "function" && hasInput(nodeId, "f")) {
+    return mixInput(nodeId, "f");
+  }
   const frequency = readNodeGraphLiveEffectiveParam(runtime, node, "frequency", 110, frame, frames, frameValues);
   const referenceVoltage = typeof normalizeNodeGraphPatchAudio === "function" && nodeGraphMvp?.patch?.audio
     ? normalizeNodeGraphPatchAudio(nodeGraphMvp.patch.audio).pitchReferenceMidiNote / 120
@@ -38,11 +41,13 @@ function nodeGraphCombResonatorResolveFrequencyHz(
     ? Math.max(-1, Math.min(1, Number(mixInput(nodeId, "0.1V/Oct")) || 0))
     : referenceVoltage;
   if (typeof nodeGraphParamResolveOscPitchHz === "function") {
-    return nodeGraphParamResolveOscPitchHz({
-      baseHz: frequency,
+    return nodeGraphParamResolveOscPitchHz({baseHz: frequency,
       hasPitchCv: hasPitch,
       pitchCv,
       referenceVoltage,
+      hasInput,
+      mixInput,
+      nodeId,
     });
   }
   return frequency;

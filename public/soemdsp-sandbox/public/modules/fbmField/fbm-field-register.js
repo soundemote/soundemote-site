@@ -5,6 +5,7 @@ registerNodeGraphChromelessModule("fbmField", {
   customDisplayArea: true,
   definition: {
     planRole: "source",
+    defaultAlias: "fBf",
     defaultWidthGu: 5,
     displayHeightGu: 5,
     displayType: "fbmFieldFace",
@@ -87,10 +88,14 @@ registerNodeGraphChromelessModule("fbmField", {
         key: "frequency",
         kind: "frequency",
         label: "Frequency",
+        linearSmoothing: true,
         max: "2000",
         maxDigits: 5,
         mid: "20",
         min: "0",
+        smoothingMode: "internal",
+        smoothingSeconds: 0.0333,
+        smoothingType: "linear",
         step: "any",
         unit: "Hz",
         tooltip:

@@ -65,6 +65,32 @@ function nodeGraphDspStereoMix(mono, left, right) {
   };
 }
 
+/** Sandbox I/O is locked to 3: Mono, Left, Right. */
+const NODE_GRAPH_SANDBOX_IO_PORTS = Object.freeze(["Mono", "Left", "Right"]);
+
+function nodeGraphDspSandboxIoTrio(mix) {
+  const left = Number(mix?.Left) || 0;
+  const right = Number(mix?.Right) || 0;
+  const mono = Number(mix?.Out) || (left + right) * 0.5;
+  return {
+    Left: left,
+    Mono: mono,
+    Out: mono,
+    Right: right,
+  };
+}
+
+/** Live mic/host plus wired Mono/Left/Right. */
+function nodeGraphDspSandboxIoFrame(liveStereo, mono, left, right) {
+  const wired = nodeGraphDspStereoMix(mono, left, right);
+  const live = liveStereo && typeof liveStereo === "object" ? liveStereo : {};
+  return nodeGraphDspSandboxIoTrio({
+    Left: (Number(live.Left) || 0) + wired.Left,
+    Right: (Number(live.Right) || 0) + wired.Right,
+    Out: (Number(live.Out) || 0) + wired.Out,
+  });
+}
+
 /**
  * Read one frame of external stereo input (mic/host) at amplitude level.
  * externalInput shape: { left?: Float32Array|number[], right?: ... }
@@ -73,8 +99,10 @@ function nodeGraphDspExternalStereoFrame(externalInput, frame, level) {
   const input = externalInput || {};
   const leftChannel = input.left || input.right || null;
   const rightChannel = input.right || input.left || null;
-  const left = Number(leftChannel?.[frame]) || 0;
-  const right = Number(rightChannel?.[frame]) || left;
+  const rawL = Number(leftChannel?.[frame]);
+  const rawR = Number(rightChannel?.[frame]);
+  const left = Number.isFinite(rawL) ? rawL : 0;
+  const right = Number.isFinite(rawR) ? rawR : left;
   const ampRaw = Number(level);
   const amp = Number.isFinite(ampRaw) ? ampRaw : 1;
   return {

@@ -141,6 +141,7 @@ function validateNodeGraphPatch(patch) {
       .filter(Boolean),
   );
   const ids = new Set();
+  const uniqueTypesSeen = new Set();
   const nodes = patch.nodes
     .filter((node) => !retiredNodeTypes.has(String(node.type || "").trim()))
     // phosphorLight → scope2d also runs inside migrateNodeGraphPatchToCurrent;
@@ -150,6 +151,19 @@ function validateNodeGraphPatch(patch) {
         ? migrateNodeGraphPhosphorLightToScope2d(rawNode)
         : rawNode
     ))
+    .filter((node) => {
+      const type = typeof nodeGraphResolveModuleTypeAlias === "function"
+        ? nodeGraphResolveModuleTypeAlias(node.type)
+        : String(node.type || "").trim();
+      if (typeof nodeGraphModuleTypeIsUniqueInPatch === "function"
+        && nodeGraphModuleTypeIsUniqueInPatch(type)) {
+        if (uniqueTypesSeen.has(type)) {
+          return false;
+        }
+        uniqueTypesSeen.add(type);
+      }
+      return true;
+    })
     .map((node) => {
     const id = String(node.id || "").trim();
     const type = typeof nodeGraphResolveModuleTypeAlias === "function"
@@ -182,7 +196,7 @@ function validateNodeGraphPatch(patch) {
       && Object.hasOwn(node, "heightGu");
     const heightGu = hasCustomModuleHeight
       ? sizingCapabilities.moduleHeight === "textBox"
-        ? normalizeNodeGraphTextBoxHeightUnits(node.heightGu)
+        ? normalizeNodeGraphTextBoxHeightUnits(node.heightGu, node.ui)
         : normalizeNodeGraphModuleHeightUnits(type, node.heightGu, node.ui)
       : null;
     if (hasCustomModuleHeight && !Number.isFinite(Number(node.heightGu))) {
@@ -200,6 +214,23 @@ function validateNodeGraphPatch(patch) {
         parameter.key,
         rawParamMeta[parameter.key] ?? legacyLevelMeta,
       );
+      // Raster RGB used to hard-floor Width/Height at 8 (and cap 320/240).
+      // 0 = no raster, 1 = one pixel; lift old factory mins so settings accept 1.
+      if (
+        type === "rasterRgb"
+        && (parameter.key === "width" || parameter.key === "height")
+        && metadata
+      ) {
+        if (Number(metadata.min) === 8) {
+          metadata.min = 0;
+        }
+        if (
+          (parameter.key === "width" && Number(metadata.max) === 320)
+          || (parameter.key === "height" && Number(metadata.max) === 240)
+        ) {
+          metadata.max = 512;
+        }
+      }
       paramMeta[parameter.key] = metadata;
       let value = Object.hasOwn(rawParams, parameter.key)
         ? rawParams[parameter.key]
@@ -215,6 +246,26 @@ function validateNodeGraphPatch(patch) {
       // Smooth Graph Curve: collapse old 6-choice layout (Linear/Smooth/Bezier/
       // Quadratic/Cubic/Catmull) where Smooth/Bezier/Catmull were one path.
       // Detect old layout via saved max≥5 or orphan indices 4–5.
+      // Inertial Filter: Attack/Release used to be 0…1 mix/sample. Now Hz.
+      if (
+        type === "inertialFilter"
+        && (parameter.key === "attack" || parameter.key === "release")
+      ) {
+        const sourceMax = Number(rawParamMeta[parameter.key]?.max);
+        const n = Number(value);
+        const legacyUnit = Number.isFinite(sourceMax) && sourceMax <= 1 && sourceMax > 0;
+        const legacyDefault = !Number.isFinite(sourceMax)
+          && Number.isFinite(n)
+          && (
+            (parameter.key === "attack" && n === 1)
+            || (parameter.key === "release" && Math.abs(n - 0.005) < 1e-9)
+          );
+        if ((legacyUnit || legacyDefault) && Number.isFinite(n) && n >= 0 && n <= 1) {
+          value = n >= 1
+            ? 20000
+            : (n <= 0 ? 0 : -44100 * Math.log(1 - n) / (2 * Math.PI));
+        }
+      }
       if (type === "graph2" && parameter.key === "smoothingMode") {
         const sourceMax = Number(node.paramMeta?.[parameter.key]?.max);
         const n = Math.round(Number(value));
@@ -255,6 +306,8 @@ function validateNodeGraphPatch(patch) {
     };
     if (nodeGraphModuleDefinitions[type].layout === "textBox") {
       normalizedNode.layout = normalizeNodeGraphTextBoxLayout(node.layout);
+    } else if (type === "keypad" && typeof normalizeNodeGraphKeypadLayout === "function") {
+      normalizedNode.layout = normalizeNodeGraphKeypadLayout(node.layout);
     } else if (nodeGraphModuleDefinitions[type].layout === "image") {
       normalizedNode.layout = normalizeNodeGraphImageLayout(node.layout);
     } else if (nodeGraphModuleDefinitions[type].layout === "led") {
@@ -411,14 +464,15 @@ function validateNodeGraphPatch(patch) {
     }
   }
 
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const connectionKeys = new Set();
   const connections = (Array.isArray(patch.connections) ? patch.connections : []).flatMap((connection) => {
     const sourceNode = String(connection.sourceNode || "").trim();
     let sourcePort = String(connection.sourcePort || "").trim();
     const destinationNode = String(connection.destinationNode || "").trim();
     let destinationPort = String(connection.destinationPort || "").trim();
-    const sourceType = nodes.find((node) => node.id === sourceNode)?.type;
-    const destinationType = nodes.find((node) => node.id === destinationNode)?.type;
+    const sourceType = nodeById.get(sourceNode)?.type;
+    const destinationType = nodeById.get(destinationNode)?.type;
     if (!sourceType || !destinationType) {
       if (retiredNodeIds.has(sourceNode) || retiredNodeIds.has(destinationNode)) {
         return [];
@@ -426,14 +480,14 @@ function validateNodeGraphPatch(patch) {
       throw new Error("connection references missing node");
     }
     sourcePort = nodeGraphCanonicalOutputPort(sourceType, sourcePort);
-    if (!nodeGraphPatchNodeOutputPorts(nodes.find((node) => node.id === sourceNode)).includes(sourcePort)) {
+    if (!nodeGraphPatchNodeOutputPorts(nodeById.get(sourceNode)).includes(sourcePort)) {
       throw new Error(`connection source port invalid: ${sourceNode}.${sourcePort}`);
     }
     if (destinationType === "output" && destinationPort === "In") {
       destinationPort = "Mono";
     }
     destinationPort = nodeGraphCanonicalInputPort(destinationType, destinationPort);
-    if (!nodeGraphPatchNodeInputPorts(nodes.find((node) => node.id === destinationNode)).includes(destinationPort)) {
+    if (!nodeGraphPatchNodeInputPorts(nodeById.get(destinationNode)).includes(destinationPort)) {
       throw new Error(`connection destination port invalid: ${destinationNode}.${destinationPort}`);
     }
     const key = `${sourceNode}.${sourcePort}->${destinationNode}.${destinationPort}`;
@@ -469,8 +523,8 @@ function validateNodeGraphPatch(patch) {
       if (!sourceNode || !sourcePort || !destinationNode || !destinationParam) {
         throw new Error("modulation entries require sourceNode, sourcePort, destinationNode, destinationParam");
       }
-      const sourceType = nodes.find((node) => node.id === sourceNode)?.type;
-      const destinationType = nodes.find((node) => node.id === destinationNode)?.type;
+      const sourceType = nodeById.get(sourceNode)?.type;
+      const destinationType = nodeById.get(destinationNode)?.type;
       if (!sourceType || !destinationType) {
         if (retiredNodeIds.has(sourceNode) || retiredNodeIds.has(destinationNode)) {
           return [];
@@ -478,10 +532,10 @@ function validateNodeGraphPatch(patch) {
         throw new Error("modulation references missing node");
       }
       sourcePort = nodeGraphCanonicalOutputPort(sourceType, sourcePort);
-      if (!nodeGraphPatchNodeOutputPorts(nodes.find((node) => node.id === sourceNode)).includes(sourcePort)) {
+      if (!nodeGraphPatchNodeOutputPorts(nodeById.get(sourceNode)).includes(sourcePort)) {
         throw new Error(`modulation source port invalid: ${sourceNode}.${sourcePort}`);
       }
-      const destinationPatchNode = nodes.find((node) => node.id === destinationNode);
+      const destinationPatchNode = nodeById.get(destinationNode);
       if (!nodeGraphPatchNodeParameterDefinitions(destinationPatchNode).some((parameter) => parameter.key === destinationParam)) {
         throw new Error(`modulation destination parameter invalid: ${destinationNode}.${destinationParam}`);
       }
@@ -517,11 +571,14 @@ function validateNodeGraphPatch(patch) {
     if (!sourceNode || !sourcePort || !destinationNode || !destinationGraphInput) {
       throw new Error("graph connection entries require sourceNode, sourcePort, destinationNode, destinationGraphInput");
     }
-    const sourcePatchNode = nodes.find((node) => node.id === sourceNode);
-    const destinationPatchNode = nodes.find((node) => node.id === destinationNode);
+    const sourcePatchNode = nodeById.get(sourceNode);
+    const destinationPatchNode = nodeById.get(destinationNode);
     const sourceType = sourcePatchNode?.type;
     const destinationType = destinationPatchNode?.type;
     if (!sourceType || !destinationType) {
+      if (retiredNodeIds.has(sourceNode) || retiredNodeIds.has(destinationNode)) {
+        return [];
+      }
       throw new Error("graph connection references missing node");
     }
     sourcePort = nodeGraphCanonicalOutputPort(sourceType, sourcePort);
@@ -782,11 +839,287 @@ function nodeGraphPatchNodeIsVisible(nodeId) {
   );
 }
 
-function applyNodeGraphPatchToDom() {
+function nodeGraphModuleStructuralUiSignature(patchNode) {
+  const patchNodeUi = typeof nodeGraphEffectivePatchNodeUi === "function"
+    ? nodeGraphEffectivePatchNodeUi(patchNode?.ui, patchNode?.type)
+    : (patchNode?.ui || {});
+  return [
+    patchNodeUi.oscilloscopeHidden ? "scope-hidden" : "scope-visible",
+    patchNodeUi.titleHidden ? "title-hidden" : "title-visible",
+  ].join("|");
+}
+
+function nodeGraphModulePortSignature(patchNode) {
+  const outputPorts = nodeGraphPatchNodeOutputPorts(patchNode).filter(
+    (port) => !(nodeGraphModuleDefinitions[patchNode.type]?.parameters || []).some((parameter) => parameter.key === port),
+  );
+  return `${nodeGraphPatchNodeInputPorts(patchNode).join(",")}=>${outputPorts.join(",")}=>${nodeGraphModuleGraphInputs(patchNode.type).join(",")}`;
+}
+
+function syncNodeGraphModuleChromeElement(element, patchNode) {
+  const patchNodeUi = nodeGraphEffectivePatchNodeUi(patchNode.ui, patchNode.type);
+  const structuralUiSignature = nodeGraphModuleStructuralUiSignature(patchNode);
+  element.style.setProperty("--node-grid-width-units", String(nodeGraphPatchNodeGridWidthUnits(patchNode)));
+  element.style.setProperty("--node-grid-height-units", String(nodeGraphPatchNodeGridHeightUnits(patchNode)));
+  if (typeof nodeGraphApplyModuleShellHeightCssVars === "function") {
+    nodeGraphApplyModuleShellHeightCssVars(element, patchNode);
+  } else {
+    element.style.setProperty("--node-module-display-height-units", String(nodeGraphPatchNodeDisplayHeightUnits(patchNode)));
+  }
+  element.style.setProperty("--node-module-interface-controls-height-units", String(nodeGraphPatchNodeInterfaceControlsHeightUnits(patchNode)));
+  const point = nodeGraphGridToPixel(patchNode);
+  positionNodeGraphNode(element, point, { clamp: false, snap: false });
+  element.hidden = !nodeGraphModuleShouldBeVisible(patchNode);
+  element.dataset.gridX = String(patchNode.gx);
+  element.dataset.gridY = String(patchNode.gy);
+  element.dataset.gridWidthGu = String(nodeGraphPatchNodeGridWidthUnits(patchNode));
+  element.dataset.gridHeightGu = String(nodeGraphPatchNodeGridHeightUnits(patchNode));
+  element.dataset.portSignature = nodeGraphModulePortSignature(patchNode);
+  element.dataset.structuralUiSignature = structuralUiSignature;
+  const titleText = element.querySelector(".node-header-title");
+  if (titleText) {
+    const chromeTitle = typeof nodeGraphPatchNodeTitle === "function"
+      ? nodeGraphPatchNodeTitle(patchNode)
+      : (typeof nodeGraphModuleChromeTitle === "function"
+        ? nodeGraphModuleChromeTitle(patchNode)
+        : nodeGraphDefaultNodeTitle(patchNode.type, patchNode.id));
+    if (titleText.tagName === "INPUT") {
+      if (document.activeElement !== titleText) {
+        titleText.value = chromeTitle;
+      }
+    } else {
+      titleText.textContent = chromeTitle;
+    }
+    if (typeof scheduleNodeGraphModuleTitleTextFit === "function") {
+      scheduleNodeGraphModuleTitleTextFit();
+    }
+  }
+  element.classList.toggle("buttons-hidden", patchNodeUi.buttonsHidden);
+  element.classList.toggle("buttons-forced-visible", Boolean(patchNodeUi.buttonsForceShow));
+  element.classList.toggle("io-hidden", patchNodeUi.ioHidden);
+  element.classList.toggle(
+    "unused-hidden",
+    Boolean(normalizeNodeGraphPatchNodeUi(patchNode.ui, patchNode.type).hideUnused),
+  );
+  element.classList.toggle("interface-controls-hidden", patchNodeUi.interfaceControlsHidden);
+  element.classList.toggle("interface-controls-forced-visible", Boolean(patchNodeUi.interfaceControlsForceShow));
+  element.classList.toggle("movement-locked", patchNodeUi.movementLocked);
+  element.classList.toggle("oscilloscope-hidden", patchNodeUi.oscilloscopeHidden);
+  element.classList.toggle("oscilloscope-forced-visible", Boolean(patchNodeUi.oscilloscopeForceShow));
+  element.classList.toggle("sliders-hidden", patchNodeUi.slidersHidden);
+  element.classList.toggle("sliders-forced-visible", Boolean(patchNodeUi.slidersForceShow));
+  element.classList.toggle("title-hidden", patchNodeUi.titleHidden);
+  element.classList.toggle(
+    "title-only",
+    typeof nodeGraphModuleIsTitleOnlyUi === "function"
+      && nodeGraphModuleIsTitleOnlyUi(patchNode.type, patchNode.ui),
+  );
+  element.classList.toggle(
+    "module-collapsed",
+    typeof nodeGraphModuleIsCollapsedUi === "function"
+      && nodeGraphModuleIsCollapsedUi(patchNode.type, patchNode.ui),
+  );
+  if (typeof syncNodeGraphLayoutBNoParamsClass === "function") {
+    syncNodeGraphLayoutBNoParamsClass(element, patchNode.type, patchNodeUi);
+  }
+  const dragHandle = element.querySelector(".node-drag-handle");
+  if (dragHandle) {
+    dragHandle.textContent = patchNodeUi.movementLocked ? "\uD83D\uDD12" : "\u2725";
+    dragHandle.setAttribute(
+      "aria-label",
+      patchNodeUi.movementLocked
+        ? `Unlock ${nodeGraphNodeDisplayName(patchNode.id)} module movement`
+        : `Move ${nodeGraphNodeDisplayName(patchNode.id)} module`,
+    );
+    dragHandle.classList.toggle("node-drag-handle-locked", patchNodeUi.movementLocked);
+  }
+  const displayButton = element.querySelector(".node-display-settings-button");
+  if (displayButton) {
+    displayButton.setAttribute("aria-pressed", patchNodeUi.oscilloscopeHidden ? "false" : "true");
+  }
+  const metaparameterButton = element.querySelector(".node-metaparameter-button");
+  if (metaparameterButton) {
+    metaparameterButton.setAttribute("aria-pressed", patchNodeUi.slidersHidden ? "false" : "true");
+  }
+  const bypassed = nodeGraphNodeDisplaysBypassed(patchNode.id);
+  element.classList.toggle("bypassed", bypassed);
+  const bypassButton = element.querySelector(".node-bypass-button");
+  if (bypassButton) {
+    bypassButton.setAttribute("aria-pressed", bypassed ? "true" : "false");
+    bypassButton.textContent = nodeGraphBypassGlyph(bypassed);
+    nodeGraphApplyTooltip(
+      bypassButton,
+      patchNode.id === "output"
+        ? (bypassed ? "module.outputOn" : "module.outputOff")
+        : (bypassed ? "module.include" : "module.bypass"),
+      {},
+      { title: false },
+    );
+  }
+}
+
+function syncNodeGraphModuleParamElement(element, patchNode) {
+  for (const parameter of nodeGraphModuleDefinitions[patchNode.type]?.parameters || []) {
+    const input = element.querySelector(`input[data-param="${CSS.escape(parameter.key)}"]`);
+    if (!input) {
+      continue;
+    }
+    setNodeSliderMetadata(
+      input,
+      patchNode.paramMeta?.[parameter.key] ||
+      nodeGraphParameterDefinitionMetadata(parameter),
+    );
+    const value = patchNode.params?.[parameter.key] ??
+      nodeGraphParameterFallback(patchNode.type, parameter.key);
+    if (typeof applyNodeGraphInputUnboundedValue === "function") {
+      applyNodeGraphInputUnboundedValue(input, value);
+    } else {
+      const n = Number(value);
+      if (Number.isFinite(n)) {
+        input.dataset.domainValue = String(n);
+      }
+      input.value = String(value);
+    }
+    syncNodeSliderReadout(input);
+  }
+  if (typeof refreshNodeGraphModuleParameterVisibility === "function") {
+    refreshNodeGraphModuleParameterVisibility(element, patchNode);
+  }
+  if (typeof scheduleNodeGraphSliderReadoutRelayout === "function") {
+    scheduleNodeGraphSliderReadoutRelayout();
+  }
+  if (typeof syncNodeGraphParameterVisualsForNodeElement === "function") {
+    syncNodeGraphParameterVisualsForNodeElement(element);
+  } else {
+    for (const visual of element.querySelectorAll("[data-parameter-visual]")) {
+      visual.syncFromParameters?.();
+    }
+  }
+  if (typeof syncNodeGraphModulePortLabels === "function") {
+    syncNodeGraphModulePortLabels(element, patchNode);
+  }
+  if (nodeGraphModuleDefinitions[patchNode.type]?.layout === "textBox") {
+    syncNodeGraphTextBoxElement(element, patchNode);
+  } else if (patchNode.type === "keypad" && typeof syncNodeGraphKeypadElement === "function") {
+    syncNodeGraphKeypadElement(element, patchNode);
+  } else if (nodeGraphModuleDefinitions[patchNode.type]?.layout === "graph") {
+    syncNodeGraphGraphElement(element, patchNode);
+  } else if (
+    patchNode.type === "knob"
+    && typeof renderNodeGraphKnobFace === "function"
+  ) {
+    renderNodeGraphKnobFace(patchNode.id);
+  }
+}
+
+function applyNodeGraphModuleElementFromPatch(patchNode, options = {}) {
+  const container = document.getElementById("nodeGraphNodes");
+  if (!container || !patchNode) {
+    return null;
+  }
+  let element = nodeGraphNodeElement(patchNode.id);
+  const portSignature = nodeGraphModulePortSignature(patchNode);
+  const structuralUiSignature = nodeGraphModuleStructuralUiSignature(patchNode);
+  let reusedUnchanged = false;
+  if (
+    element &&
+    (
+      element.dataset.nodeType !== patchNode.type ||
+      element.dataset.portSignature !== portSignature ||
+      element.dataset.structuralUiSignature !== structuralUiSignature
+    )
+  ) {
+    element.remove();
+    element = null;
+  } else if (element) {
+    reusedUnchanged = true;
+  }
+  if (!element) {
+    element = createNodeGraphModuleElement(patchNode.type, patchNode.id);
+    container.append(element);
+    if (typeof nodeGraphModuleFrameObserve === "function") {
+      nodeGraphModuleFrameObserve(element);
+    }
+    if (typeof nodeGraphViewportCullObserve === "function") {
+      nodeGraphViewportCullObserve(element);
+    }
+  }
+  if (options.skipExistingChrome && reusedUnchanged) {
+    return element;
+  }
+  syncNodeGraphModuleChromeElement(element, patchNode);
+  if (options.paramSync !== false) {
+    syncNodeGraphModuleParamElement(element, patchNode);
+  } else if (nodeGraphModuleDefinitions[patchNode.type]?.layout === "textBox") {
+    syncNodeGraphTextBoxElement(element, patchNode);
+  } else if (patchNode.type === "keypad" && typeof syncNodeGraphKeypadElement === "function") {
+    syncNodeGraphKeypadElement(element, patchNode);
+  }
+  return element;
+}
+
+let nodeGraphChromeHeavyTimer = 0;
+
+function scheduleNodeGraphChromeHeavyAfterResize() {
+  if (nodeGraphChromeHeavyTimer) {
+    window.clearTimeout(nodeGraphChromeHeavyTimer);
+  }
+  nodeGraphChromeHeavyTimer = window.setTimeout(() => {
+    nodeGraphChromeHeavyTimer = 0;
+    if (typeof updateNodeGraphGridHeatmap === "function") {
+      updateNodeGraphGridHeatmap();
+    }
+    if (typeof drawNodeGraphWires === "function") {
+      drawNodeGraphWires({
+        lite: false,
+        skipHeatmap: true,
+        skipScopes: true,
+        skipSelection: true,
+      });
+    }
+  }, 90);
+}
+
+function applyNodeGraphChromeNodesToDom(nodeIds = []) {
+  const ids = Array.isArray(nodeIds) && nodeIds.length
+    ? nodeIds
+    : (nodeGraphMvp.patch.nodes || []).map((node) => node.id);
+  const elements = [];
+  for (const id of ids) {
+    const patchNode = nodeGraphPatchNode(id);
+    if (!patchNode) {
+      continue;
+    }
+    const element = applyNodeGraphModuleElementFromPatch(patchNode, { paramSync: false });
+    if (element) {
+      elements.push(element);
+    }
+  }
+  if (typeof scheduleNodeGraphModuleFramesUpdate === "function") {
+    for (const element of elements) {
+      scheduleNodeGraphModuleFramesUpdate({ force: true, nodeElement: element });
+    }
+  }
+  if (typeof nodeGraphViewportCullObserve === "function") {
+    for (const element of elements) {
+      nodeGraphViewportCullObserve(element);
+    }
+  }
+  // Heatmap + all-wire measure used to run on every key-repeat size step and
+  // forced layout of every module (including off-screen FBM / LCD faces).
+  scheduleNodeGraphChromeHeavyAfterResize();
+  return elements;
+}
+
+function applyNodeGraphPatchToDom(options = {}) {
   const container = document.getElementById("nodeGraphNodes");
   if (!container) {
     return;
   }
+  const skipExistingSync = Boolean(options.skipExistingSync);
+  const paramSyncIds = Array.isArray(options.paramSyncIds)
+    ? new Set(options.paramSyncIds)
+    : (options.paramSyncIds instanceof Set ? options.paramSyncIds : null);
 
   applyNodeGraphWorkspaceView();
   const workspace = document.getElementById("nodeGraphWorkspace");
@@ -804,161 +1137,16 @@ function applyNodeGraphPatchToDom() {
   }
 
   for (const patchNode of nodeGraphMvp.patch.nodes) {
-    let element = nodeGraphNodeElement(patchNode.id);
-    const outputPorts = nodeGraphPatchNodeOutputPorts(patchNode).filter(
-      (port) => !(nodeGraphModuleDefinitions[patchNode.type]?.parameters || []).some((parameter) => parameter.key === port),
-    );
-    const portSignature = `${nodeGraphPatchNodeInputPorts(patchNode).join(",")}=>${outputPorts.join(",")}=>${nodeGraphModuleGraphInputs(patchNode.type).join(",")}`;
-    const patchNodeUi = nodeGraphEffectivePatchNodeUi(patchNode.ui, patchNode.type);
-    // Headerless LayoutB mounts/unmounts the title bar with titleHidden — rebuild
-    // when that changes (scope-hidden already forces a rebuild for LayoutA displays).
-    const structuralUiSignature = [
-      patchNodeUi.oscilloscopeHidden ? "scope-hidden" : "scope-visible",
-      patchNodeUi.titleHidden ? "title-hidden" : "title-visible",
-    ].join("|");
-    if (
-      element &&
-      (
-        element.dataset.nodeType !== patchNode.type ||
-        element.dataset.portSignature !== portSignature ||
-        element.dataset.structuralUiSignature !== structuralUiSignature
-      )
-    ) {
-      element.remove();
-      element = null;
-    }
-    if (!element) {
-      element = createNodeGraphModuleElement(patchNode.type, patchNode.id);
-      container.append(element);
-    }
-    element.style.setProperty("--node-grid-width-units", String(nodeGraphPatchNodeGridWidthUnits(patchNode)));
-    element.style.setProperty("--node-grid-height-units", String(nodeGraphPatchNodeGridHeightUnits(patchNode)));
-    if (typeof nodeGraphApplyModuleShellHeightCssVars === "function") {
-      nodeGraphApplyModuleShellHeightCssVars(element, patchNode);
-    } else {
-      element.style.setProperty("--node-module-display-height-units", String(nodeGraphPatchNodeDisplayHeightUnits(patchNode)));
-    }
-    element.style.setProperty("--node-module-interface-controls-height-units", String(nodeGraphPatchNodeInterfaceControlsHeightUnits(patchNode)));
-    const point = nodeGraphGridToPixel(patchNode);
-    positionNodeGraphNode(element, point, { clamp: false, snap: false });
-    element.hidden = !nodeGraphModuleShouldBeVisible(patchNode);
-    element.dataset.gridX = String(patchNode.gx);
-    element.dataset.gridY = String(patchNode.gy);
-    element.dataset.structuralUiSignature = structuralUiSignature;
-    const titleText = element.querySelector(".node-header-title");
-    if (titleText) {
-      // Chrome bar shows alias when set, else type/plugin name.
-      const chromeTitle = typeof nodeGraphPatchNodeTitle === "function"
-        ? nodeGraphPatchNodeTitle(patchNode)
-        : (typeof nodeGraphModuleChromeTitle === "function"
-          ? nodeGraphModuleChromeTitle(patchNode)
-          : nodeGraphDefaultNodeTitle(patchNode.type, patchNode.id));
-      if (titleText.tagName === "INPUT") {
-        if (document.activeElement !== titleText) {
-          titleText.value = chromeTitle;
-        }
-      } else {
-        titleText.textContent = chromeTitle;
-      }
-    }
-    element.classList.toggle("buttons-hidden", patchNodeUi.buttonsHidden);
-    element.classList.toggle("buttons-forced-visible", Boolean(patchNodeUi.buttonsForceShow));
-    element.classList.toggle("io-hidden", patchNodeUi.ioHidden);
-    element.classList.toggle(
-      "unused-hidden",
-      Boolean(normalizeNodeGraphPatchNodeUi(patchNode.ui, patchNode.type).hideUnused),
-    );
-    element.classList.toggle("interface-controls-hidden", patchNodeUi.interfaceControlsHidden);
-    element.classList.toggle("interface-controls-forced-visible", Boolean(patchNodeUi.interfaceControlsForceShow));
-    element.classList.toggle("movement-locked", patchNodeUi.movementLocked);
-    element.classList.toggle("oscilloscope-hidden", patchNodeUi.oscilloscopeHidden);
-    element.classList.toggle("oscilloscope-forced-visible", Boolean(patchNodeUi.oscilloscopeForceShow));
-    element.classList.toggle("sliders-hidden", patchNodeUi.slidersHidden);
-    element.classList.toggle("sliders-forced-visible", Boolean(patchNodeUi.slidersForceShow));
-    element.classList.toggle("title-hidden", patchNodeUi.titleHidden);
-    if (typeof syncNodeGraphLayoutBNoParamsClass === "function") {
-      syncNodeGraphLayoutBNoParamsClass(element, patchNode.type, patchNodeUi);
-    }
-    const dragHandle = element.querySelector(".node-drag-handle");
-    if (dragHandle) {
-      dragHandle.textContent = patchNodeUi.movementLocked ? "\uD83D\uDD12" : "\u2725";
-      dragHandle.setAttribute(
-        "aria-label",
-        patchNodeUi.movementLocked
-          ? `Unlock ${nodeGraphNodeDisplayName(patchNode.id)} module movement`
-          : `Move ${nodeGraphNodeDisplayName(patchNode.id)} module`,
-      );
-      dragHandle.classList.toggle("node-drag-handle-locked", patchNodeUi.movementLocked);
-    }
-    const displayButton = element.querySelector(".node-display-settings-button");
-    if (displayButton) {
-      displayButton.setAttribute("aria-pressed", patchNodeUi.oscilloscopeHidden ? "false" : "true");
-    }
-    const metaparameterButton = element.querySelector(".node-metaparameter-button");
-    if (metaparameterButton) {
-      metaparameterButton.setAttribute("aria-pressed", patchNodeUi.slidersHidden ? "false" : "true");
-    }
-    const bypassed = nodeGraphNodeDisplaysBypassed(patchNode.id);
-    element.classList.toggle("bypassed", bypassed);
-    const bypassButton = element.querySelector(".node-bypass-button");
-    if (bypassButton) {
-      bypassButton.setAttribute("aria-pressed", bypassed ? "true" : "false");
-      bypassButton.textContent = nodeGraphBypassGlyph(bypassed);
-      nodeGraphApplyTooltip(
-        bypassButton,
-        patchNode.id === "output"
-          ? (bypassed ? "module.outputOn" : "module.outputOff")
-          : (bypassed ? "module.include" : "module.bypass"),
-        {},
-        { title: false },
-      );
-    }
-    for (const parameter of nodeGraphModuleDefinitions[patchNode.type]?.parameters || []) {
-      const input = element.querySelector(`input[data-param="${CSS.escape(parameter.key)}"]`);
-      if (!input) {
-        continue;
-      }
-      setNodeSliderMetadata(
-        input,
-        patchNode.paramMeta?.[parameter.key] ||
-        nodeGraphParameterDefinitionMetadata(parameter),
-      );
-      const value = patchNode.params?.[parameter.key] ??
-        nodeGraphParameterFallback(patchNode.type, parameter.key);
-      // Keep domainValue + thumb in lockstep with the patch. Readouts prefer
-      // dataset.domainValue; if only input.value is set, the displayed value
-      // can stay stuck at factory default until the user jiggles the slider.
-      if (typeof applyNodeGraphInputUnboundedValue === "function") {
-        applyNodeGraphInputUnboundedValue(input, value);
-      } else {
-        const n = Number(value);
-        if (Number.isFinite(n)) {
-          input.dataset.domainValue = String(n);
-        }
-        input.value = String(value);
-      }
-      syncNodeSliderReadout(input);
-    }
-    if (typeof syncNodeGraphParameterVisualsForNodeElement === "function") {
-      syncNodeGraphParameterVisualsForNodeElement(element);
-    } else {
-      for (const visual of element.querySelectorAll("[data-parameter-visual]")) {
-        visual.syncFromParameters?.();
-      }
-    }
-    if (typeof syncNodeGraphModulePortLabels === "function") {
-      syncNodeGraphModulePortLabels(element, patchNode);
-    }
-    if (nodeGraphModuleDefinitions[patchNode.type]?.layout === "textBox") {
-      syncNodeGraphTextBoxElement(element, patchNode);
-    } else if (nodeGraphModuleDefinitions[patchNode.type]?.layout === "graph") {
-      syncNodeGraphGraphElement(element, patchNode);
-    } else if (
-      patchNode.type === "knob"
-      && typeof renderNodeGraphKnobFace === "function"
-    ) {
-      // Keep face art / frame-hide in sync after patch DOM apply.
-      renderNodeGraphKnobFace(patchNode.id);
+    const existing = nodeGraphNodeElement(patchNode.id);
+    const syncThis = skipExistingSync
+      ? !existing
+      : (paramSyncIds ? paramSyncIds.has(patchNode.id) : true);
+    const element = applyNodeGraphModuleElementFromPatch(patchNode, {
+      paramSync: syncThis,
+      skipExistingChrome: Boolean(existing) && (skipExistingSync || (paramSyncIds && !syncThis)),
+    });
+    if (element && typeof nodeGraphViewportCullObserve === "function") {
+      nodeGraphViewportCullObserve(element);
     }
   }
   syncNodeGraphInputModuleLiveState();
@@ -987,6 +1175,9 @@ function applyNodeGraphPatchToDom() {
     syncNodeGraphLiveVolumeMirrorsFromModules();
   } else if (typeof syncNodeGraphLiveOutputVolumeFromOutputModule === "function") {
     syncNodeGraphLiveOutputVolumeFromOutputModule();
+  }
+  if (typeof nodeGraphScheduleJackVisibilityLog === "function") {
+    nodeGraphScheduleJackVisibilityLog("patch-dom");
   }
 }
 
@@ -1020,46 +1211,85 @@ function applyNodeGraphLayoutPositionsToDom(patch = nodeGraphMvp.patch) {
   }
 }
 
+let nodeGraphChromeHistoryTimer = 0;
+
+function scheduleNodeGraphChromeHistoryAndAutosave(options = {}) {
+  if (options.record === false && options.autosaveWorkingPatch === false) {
+    return;
+  }
+  if (nodeGraphChromeHistoryTimer) {
+    window.clearTimeout(nodeGraphChromeHistoryTimer);
+  }
+  nodeGraphChromeHistoryTimer = window.setTimeout(() => {
+    nodeGraphChromeHistoryTimer = 0;
+    if (options.record !== false && typeof recordNodeGraphHistory === "function") {
+      recordNodeGraphHistory();
+    }
+    if (options.autosaveWorkingPatch !== false && typeof saveNodeGraphWorkingPatchToUserSettings === "function") {
+      saveNodeGraphWorkingPatchToUserSettings();
+    }
+  }, 160);
+}
+
 function commitNodeGraphPatch(patch, options = {}) {
   const isWireEdit = Boolean(options.wireEdit);
   // layoutEdit: module move / snap only — skip DOM rebuild + audio plan + render pending.
   const isLayoutEdit = Boolean(options.layoutEdit);
+  // topologyEdit: add/remove modules — do not re-sync every existing slider/face.
+  const isTopologyEdit = Boolean(options.topologyEdit);
+  // chromeEdit: size / show-hide — touch only named modules, defer history/serialize.
+  const isChromeEdit = Boolean(options.chromeEdit);
   // softDom: cosmetic module face / label-only edits — keep existing module DOM
   // (avoids image reload flash on Knob readout/rotate toggles).
   const isSoftDom = Boolean(options.softDom || options.faceEdit);
-  let validated;
-  try {
-    validated = validateNodeGraphPatch(patch);
-  } catch (error) {
-    // Hard fail with source line — no soft recovery.
-    let pretty = "";
+  const skipValidate = Boolean(options.skipValidate);
+  if (skipValidate) {
+    // Size / show-hide already cloned the live patch. Re-validating every
+    // parameter of every module on key-repeat is what made Patch plate resize
+    // hitch even when it was the only module on screen.
+    nodeGraphMvp.patch = patch;
+  } else {
+    let validated;
     try {
-      pretty = JSON.stringify(patch, null, 2);
-    } catch (_error) {
-      pretty = String(error?.message || error || "invalid patch");
+      validated = validateNodeGraphPatch(patch);
+    } catch (error) {
+      // Hard fail with source line — no soft recovery.
+      let pretty = "";
+      try {
+        pretty = JSON.stringify(patch, null, 2);
+      } catch (_error) {
+        pretty = String(error?.message || error || "invalid patch");
+      }
+      nodeGraphPatchThrowLoadFailure(pretty, error);
     }
-    nodeGraphPatchThrowLoadFailure(pretty, error);
+    nodeGraphMvp.patch = cloneNodeGraphPatch(validated);
   }
-  nodeGraphMvp.patch = cloneNodeGraphPatch(validated);
   if (typeof preserveNodeGraphEditorZoomOnPatch === "function") {
     preserveNodeGraphEditorZoomOnPatch(nodeGraphMvp.patch);
   }
-  syncNodeGraphRuntimeFromPatch();
+  if (!isChromeEdit) {
+    syncNodeGraphRuntimeFromPatch();
+  }
   if (isLayoutEdit) {
     applyNodeGraphLayoutPositionsToDom(nodeGraphMvp.patch);
+  } else if (isChromeEdit) {
+    applyNodeGraphChromeNodesToDom(options.chromeNodeIds);
   } else if (!isWireEdit && !isSoftDom) {
-    applyNodeGraphPatchToDom();
-    if (typeof applyNodeGraphZoom === "function") {
+    applyNodeGraphPatchToDom({
+      skipExistingSync: isTopologyEdit,
+      paramSyncIds: options.paramSyncIds,
+    });
+    if (!isTopologyEdit && typeof applyNodeGraphZoom === "function") {
       applyNodeGraphZoom();
     }
     syncNodeGraphMonitorIndicators();
     pruneNodeGraphSelectionAfterPatch();
   }
-  // Positions / face cosmetics do not change offline render output.
-  if (options.markPending !== false && !isLayoutEdit && !isSoftDom) {
+  // Positions / face cosmetics / chrome size do not change offline render output.
+  if (options.markPending !== false && !isLayoutEdit && !isSoftDom && !isChromeEdit) {
     markNodeGraphRenderPending();
   }
-  if (typeof scheduleNodeGraphWireRedrawAfterLayout === "function" && !isSoftDom) {
+  if (typeof scheduleNodeGraphWireRedrawAfterLayout === "function" && !isSoftDom && !isChromeEdit) {
     scheduleNodeGraphWireRedrawAfterLayout();
   }
   if (options.patchDirtyState) {
@@ -1067,13 +1297,34 @@ function commitNodeGraphPatch(patch, options = {}) {
   } else if (options.autosaveWorkingPatch !== false) {
     nodeGraphMvp.patchDirtyState = "edited";
   }
-  // Audio graph topology/params are unchanged by gx/gy or face cosmetics.
-  // Ghost module placement can skip live plan until drop (see skipLivePlan).
-  if (!isLayoutEdit && !isSoftDom && options.skipLivePlan !== true) {
+  // Audio graph topology/params are unchanged by gx/gy, size, or most chrome.
+  // Hide-display may defer a plan sync so the click stays responsive.
+  if (isChromeEdit && options.deferLivePlan) {
+    window.requestAnimationFrame(() => {
+      window.setTimeout(() => {
+        if (typeof scheduleNodeGraphLivePlanSync === "function") {
+          scheduleNodeGraphLivePlanSync();
+        }
+      }, 0);
+    });
+  } else if (options.liveParamsOnly) {
+    if (typeof scheduleNodeGraphLiveParameterSync === "function") {
+      scheduleNodeGraphLiveParameterSync();
+    } else if (typeof scheduleNodeGraphLivePlanSync === "function") {
+      scheduleNodeGraphLivePlanSync();
+    }
+  } else if (!isLayoutEdit && !isSoftDom && !isChromeEdit && options.skipLivePlan !== true) {
     scheduleNodeGraphLivePlanSync();
   }
 
   const runDeferredUiPanels = () => {
+    if (isChromeEdit) {
+      if (typeof syncNodeGraphCurrentSavedPatchHeader === "function") {
+        syncNodeGraphCurrentSavedPatchHeader();
+      }
+      scheduleNodeGraphChromeHistoryAndAutosave(options);
+      return;
+    }
     if (isSoftDom) {
       // Face-only: skip palette/connection/scope rewrites (those flash modules).
       if (typeof syncNodeGraphCurrentSavedPatchHeader === "function") {
@@ -1113,9 +1364,9 @@ function commitNodeGraphPatch(patch, options = {}) {
     }
   };
 
-  // Wire/layout edits and ghost placement (deferUiPanels) keep the UI responsive:
-  // history/autosave/palette work runs after the current pointer/frame.
-  if (isWireEdit || isLayoutEdit || options.deferUiPanels) {
+  // Wire/layout/chrome edits keep the UI responsive: history/autosave/palette
+  // work runs after the current pointer/frame.
+  if (isWireEdit || isLayoutEdit || isChromeEdit || isTopologyEdit || options.deferUiPanels) {
     window.requestAnimationFrame(() => {
       window.setTimeout(runDeferredUiPanels, 0);
     });
@@ -1135,10 +1386,44 @@ function clearNodeGraphWires() {
 }
 
 function deleteSelectedNodeGraphItem() {
+  if (typeof nodeGraphPatchIsLocked === "function" && nodeGraphPatchIsLocked()) {
+    if (typeof setNodeInteractionHelp === "function") {
+      setNodeInteractionHelp("Patch is locked.");
+    }
+    return;
+  }
   if (!nodeGraphScriptReadyForGraphAction("delete")) {
     return;
   }
+  if (typeof nodeGraphSelectionCanDelete === "function" && !nodeGraphSelectionCanDelete()) {
+    return;
+  }
   const selection = nodeGraphMvp.selected;
+  if (!selection) {
+    return;
+  }
+  const deletingModule = selection.type !== "wire"
+    && selection.type !== "wires"
+    && (typeof nodeGraphSelectedNodeIds === "function"
+      ? [...nodeGraphSelectedNodeIds(selection)].some((id) => {
+        const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(id) : null;
+        return node
+          && typeof nodeGraphNodeCanBeDeleted === "function"
+          && nodeGraphNodeCanBeDeleted(node)
+          && !(typeof nodeGraphNodeDeleteHidesOnly === "function" && nodeGraphNodeDeleteHidesOnly(node));
+      })
+      : true);
+  if (deletingModule && typeof noteNodeGraphHeavyHistoryAction === "function") {
+    noteNodeGraphHeavyHistoryAction("delete");
+  }
+  if (typeof runNodeGraphHistoryAfterGlow === "function") {
+    runNodeGraphHistoryAfterGlow(deletingModule ? "last" : "delete", () => performNodeGraphDeleteSelection(selection));
+    return;
+  }
+  performNodeGraphDeleteSelection(selection);
+}
+
+function performNodeGraphDeleteSelection(selection = nodeGraphMvp.selected) {
   if (!selection) {
     return;
   }
@@ -1206,6 +1491,8 @@ function deleteSelectedNodeGraphItem() {
     );
     setNodeGraphSelection(null);
     commitNodeGraphPatch(patch, {
+      topologyEdit: true,
+      deferUiPanels: true,
       status: removableNodeIds.size === 1 ? "module deleted" : "modules deleted",
     });
     renderNodeGraphLiveControls();

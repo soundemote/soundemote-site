@@ -248,10 +248,12 @@ function fitNodeGraphFloatingWindowsToViewport() {
       if (!element || element.hidden) {
         continue;
       }
-      ensureNodeGraphFloatingWindowResizeHandleReachable(element, apply, {
-        minWidth: 96,
-        minHeight: 120,
-      });
+      const unified = typeof nodeGraphWorkspaceKeyIsUnifiedPage === "function"
+        && nodeGraphWorkspaceKeyIsUnifiedPage(entry.workspaceKey);
+      const mins = unified && typeof nodeGraphUnifiedWindowMinBox === "function"
+        ? nodeGraphUnifiedWindowMinBox()
+        : { minWidth: 96, minHeight: 120 };
+      ensureNodeGraphFloatingWindowResizeHandleReachable(element, apply, mins);
     }
     return;
   }
@@ -336,13 +338,20 @@ function markNodeGraphFloatingWindowSurface(element) {
  * Bring a floating popup to the front of all other popups.
  * Newest interacted (or newly opened) window wins.
  */
+function nodeGraphFloatingWindowIsFrontmost(element) {
+  if (!element || element.hidden) {
+    return false;
+  }
+  const current = Number.parseInt(String(element.style.zIndex || ""), 10);
+  return Number.isFinite(current) && current >= nodeGraphFloatingWindowStackTop;
+}
+
 function raiseNodeGraphFloatingWindow(element) {
   if (!element || element.hidden) {
     return false;
   }
   markNodeGraphFloatingWindowSurface(element);
-  const current = Number.parseInt(String(element.style.zIndex || ""), 10);
-  if (Number.isFinite(current) && current >= nodeGraphFloatingWindowStackTop) {
+  if (nodeGraphFloatingWindowIsFrontmost(element)) {
     return true;
   }
   nodeGraphFloatingWindowStackTop += 1;
@@ -484,8 +493,9 @@ function syncNodeGraphFloatingWindowLockHandles(element) {
   }
   const locked = nodeGraphFloatingWindowLocked(element);
   for (const handle of element.querySelectorAll(nodeGraphFloatingWindowLockHandleSelector)) {
-    if (!handle.dataset.floatingWindowUnlockedIcon) {
-      handle.dataset.floatingWindowUnlockedIcon = handle.textContent?.trim() || nodeGraphFloatingWindowUnlockedIcon;
+    const stored = String(handle.dataset.floatingWindowUnlockedIcon || "").trim();
+    if (!stored || stored === nodeGraphFloatingWindowLockedIcon) {
+      handle.dataset.floatingWindowUnlockedIcon = nodeGraphFloatingWindowUnlockedIcon;
     }
     handle.textContent = locked
       ? nodeGraphFloatingWindowLockedIcon
@@ -526,6 +536,16 @@ function toggleNodeGraphFloatingWindowLock(event) {
   if (!element) {
     return false;
   }
+  if (
+    typeof nodeGraphCommandCenterIsDocked === "function"
+    && nodeGraphCommandCenterIsDocked()
+    && typeof undockNodeGraphCommandCenterInPlace === "function"
+  ) {
+    undockNodeGraphCommandCenterInPlace();
+    event.preventDefault();
+    event.stopPropagation();
+    return true;
+  }
   setNodeGraphFloatingWindowLocked(element, !nodeGraphFloatingWindowLocked(element));
   event.preventDefault();
   event.stopPropagation();
@@ -534,6 +554,9 @@ function toggleNodeGraphFloatingWindowLock(event) {
 
 function bindNodeGraphFloatingWindowLockHandle(handle) {
   if (!handle || handle.dataset.floatingWindowLockBound === "true") {
+    return;
+  }
+  if (handle.matches && !handle.matches(nodeGraphFloatingWindowLockHandleSelector)) {
     return;
   }
   handle.dataset.floatingWindowLockBound = "true";
@@ -566,6 +589,8 @@ function pulseNodeGraphFloatingWindowAttention(element) {
   if (!element) {
     return false;
   }
+  // Attention is a CSS glow only. Never steal caret/focus from an editor.
+  const keep = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   raiseNodeGraphFloatingWindow(element);
   if (typeof triggerNodeGraphWindowReopenEvent === "function") {
     triggerNodeGraphWindowReopenEvent(element.id || element.dataset?.windowKey || "floating-window");
@@ -578,6 +603,18 @@ function pulseNodeGraphFloatingWindowAttention(element) {
   window.setTimeout(() => {
     element.classList.remove("node-floating-window-attention");
   }, 1050);
+  if (
+    keep
+    && document.contains(keep)
+    && document.activeElement !== keep
+    && typeof keep.focus === "function"
+  ) {
+    try {
+      keep.focus({ preventScroll: true });
+    } catch {
+      try { keep.focus(); } catch { /* ignore */ }
+    }
+  }
   return true;
 }
 
@@ -630,12 +667,42 @@ function moveNodeGraphFloatingWindowElement(element, left, top) {
   return next;
 }
 
+function nodeGraphFloatingWindowDragIsFromTitleBar(event, element) {
+  const raw = event?.target;
+  const target = raw instanceof Element
+    ? raw
+    : (raw instanceof Node ? raw.parentElement : null);
+  if (!target || !element?.contains?.(target)) {
+    return false;
+  }
+  if (target.closest(
+    ".scene-context-resize-handle, .panel-close-button, .node-unified-window-nav-host, .node-module-shop-column, .scene-context-store-empty, .scene-context-module-search, input, textarea, select, [role='listbox']",
+  )) {
+    return false;
+  }
+  const heading = element.querySelector(":scope > .scene-context-heading");
+  if (!heading || !heading.contains(target)) {
+    return false;
+  }
+  const handle = target.closest(
+    ".scene-context-drag-handle, .node-drag-handle, [id$='DragHandle']",
+  );
+  if (handle && heading.contains(handle)) {
+    return true;
+  }
+  return true;
+}
+
 function beginNodeGraphFloatingWindowDrag(event, element, stateKey) {
   if (
     event.button > 0 ||
     !element ||
     element.hidden ||
     !stateKey ||
+    element.closest?.("#nodeCommandCenterDock") ||
+    (typeof nodeGraphCommandCenterIsDocked === "function" && nodeGraphCommandCenterIsDocked()
+      && element.classList?.contains("is-embedded-dock")) ||
+    !nodeGraphFloatingWindowDragIsFromTitleBar(event, element) ||
     (typeof nodeGraphDialogDragTargetIsInteractive === "function" &&
       nodeGraphDialogDragTargetIsInteractive(event))
   ) {
@@ -862,8 +929,30 @@ const nodeGraphFloatingWindowRegistryEntries = Object.freeze([
     dragStateKey: "visibilityMenuDragging",
     resizeStateKey: "visibilityMenuResizing",
     applySizeName: "applyNodeGraphVisibilityMenuSize",
-    sizeAxes: Object.freeze({ width: true, height: false }),
-    pinPositionOnWidthResize: true,
+    sizeAxes: Object.freeze({ width: true, height: true }),
+    headingDragClass: true,
+  }),
+  Object.freeze({
+    workspaceKey: "hotkeys",
+    elementId: "nodeHotkeysPage",
+    dragStateKey: "hotkeysPageDragging",
+    resizeStateKey: "hotkeysPageResizing",
+    applySizeName: "applyNodeGraphHotkeysPageSize",
+    sizeAxes: Object.freeze({ width: true, height: true }),
+    headingDragClass: true,
+    resizeHandleId: "nodeHotkeysPageResizeHandle",
+    resizeAriaLabel: "Resize hotkeys",
+  }),
+  Object.freeze({
+    workspaceKey: "emoji",
+    elementId: "nodeEmojiPage",
+    dragStateKey: "emojiPageDragging",
+    resizeStateKey: "emojiPageResizing",
+    applySizeName: "applyNodeGraphEmojiPageSize",
+    sizeAxes: Object.freeze({ width: true, height: true }),
+    headingDragClass: true,
+    resizeHandleId: "nodeEmojiPageResizeHandle",
+    resizeAriaLabel: "Resize emojis",
   }),
   Object.freeze({
     workspaceKey: "metaparameters",
@@ -884,22 +973,6 @@ const nodeGraphFloatingWindowRegistryEntries = Object.freeze([
     headingDragClass: true,
   }),
   Object.freeze({
-    workspaceKey: "standaloneMidiKeyboard",
-    elementId: "nodeStandaloneMidiKeyboardDock",
-    dragStateKey: "standaloneMidiKeyboardDragging",
-    resizeStateKey: "standaloneMidiKeyboardResizing",
-    applySizeName: "applyNodeGraphStandaloneMidiKeyboardDockSize",
-    sizeAxes: Object.freeze({ width: true, height: true }),
-  }),
-  Object.freeze({
-    workspaceKey: "tooltipWindow",
-    elementId: "nodeTooltipWindow",
-    dragStateKey: "tooltipWindowDragging",
-    resizeStateKey: "tooltipWindowResizing",
-    applySizeName: "applyNodeGraphTooltipWindowSize",
-    sizeAxes: Object.freeze({ width: true, height: true }),
-  }),
-  Object.freeze({
     workspaceKey: "codeBox",
     elementId: "nodeCodeBoxWindow",
     dragStateKey: "codeBoxWindowDragging",
@@ -918,6 +991,17 @@ const nodeGraphFloatingWindowRegistryEntries = Object.freeze([
     headingDragClass: true,
     resizeHandleId: "nodeUserUiSettingsResizeHandle",
     resizeAriaLabel: "Resize UI settings",
+  }),
+  Object.freeze({
+    workspaceKey: "patchDefaults",
+    elementId: "nodePatchDefaultsPanel",
+    dragStateKey: "patchDefaultsDragging",
+    resizeStateKey: "patchDefaultsResizing",
+    applySizeName: "applyNodeGraphPatchDefaultsWindowSize",
+    sizeAxes: Object.freeze({ width: true, height: true }),
+    headingDragClass: true,
+    resizeHandleId: "nodePatchDefaultsResizeHandle",
+    resizeAriaLabel: "Resize defaults",
   }),
   Object.freeze({
     workspaceKey: "uiDev",
@@ -969,10 +1053,16 @@ function nodeGraphFloatingWindowRegistryApplySize(entry) {
     if (el && typeof syncNodeGraphFloatingWindowInlineBox === "function") {
       const width = Number(box?.width);
       const height = Number(box?.height);
-      if (width > 40 || height > 40) {
+      const minWidth = typeof nodeGraphUnifiedWindowMinSize !== "undefined"
+        ? nodeGraphUnifiedWindowMinSize.minWidth
+        : 24;
+      const minHeight = typeof nodeGraphUnifiedWindowMinSize !== "undefined"
+        ? nodeGraphUnifiedWindowMinSize.minHeight
+        : 120;
+      if (width >= minWidth || height >= minHeight) {
         syncNodeGraphFloatingWindowInlineBox(el, {
-          width: width > 40 ? width : undefined,
-          height: height > 40 ? height : undefined,
+          width: width >= minWidth ? width : undefined,
+          height: height >= minHeight ? height : undefined,
         });
       }
     }
@@ -1081,6 +1171,20 @@ function nodeGraphFloatingWindowRegistryPointerMove(event) {
     if (entry.dragStateKey && nodeGraphMvp[entry.dragStateKey]) {
       const element = document.getElementById(entry.elementId);
       dragNodeGraphFloatingWindow(event, entry.dragStateKey, element, (next) => {
+        const unified = typeof nodeGraphUnifiedWindowPageConfig === "function"
+          && nodeGraphUnifiedWindowPageConfig(entry.workspaceKey);
+        if (unified && typeof storeNodeGraphUnifiedWindowSeat === "function") {
+          storeNodeGraphUnifiedWindowSeat({
+            left: next.left,
+            top: next.top,
+            width: nodeGraphMvp?.unifiedWindowSize?.width,
+            height: nodeGraphMvp?.unifiedWindowSize?.height,
+          });
+        }
+        if (typeof nodeGraphWorkspaceKeyIsUnifiedPage === "function"
+          && nodeGraphWorkspaceKeyIsUnifiedPage(entry.workspaceKey)) {
+          return;
+        }
         if (entry.workspaceKey && typeof rememberNodeGraphWorkspaceWindowState === "function") {
           rememberNodeGraphWorkspaceWindowState(
             entry.workspaceKey,
@@ -1122,10 +1226,20 @@ function nodeGraphFloatingWindowRegistryPointerEnd(event) {
       const drag = nodeGraphMvp[entry.dragStateKey];
       drag.heading?.classList.remove("dragging");
       endNodeGraphFloatingWindowDrag(event, entry.dragStateKey, () => {
+        const element = document.getElementById(entry.elementId);
+        if (typeof rememberNodeGraphUnifiedWindowSizeFromElement === "function"
+          && typeof nodeGraphUnifiedWindowPageConfig === "function"
+          && nodeGraphUnifiedWindowPageConfig(entry.workspaceKey)) {
+          rememberNodeGraphUnifiedWindowSizeFromElement(element);
+        }
+        if (typeof nodeGraphWorkspaceKeyIsUnifiedPage === "function"
+          && nodeGraphWorkspaceKeyIsUnifiedPage(entry.workspaceKey)) {
+          return;
+        }
         if (entry.workspaceKey && typeof rememberNodeGraphWorkspaceWindowState === "function") {
           rememberNodeGraphWorkspaceWindowState(
             entry.workspaceKey,
-            document.getElementById(entry.elementId),
+            element,
             {},
             { status: false },
           );
@@ -1134,8 +1248,17 @@ function nodeGraphFloatingWindowRegistryPointerEnd(event) {
     }
     if (entry.resizeStateKey && nodeGraphMvp[entry.resizeStateKey]) {
       endNodeGraphFloatingWindowResize(event, entry.resizeStateKey, () => {
+        const element = document.getElementById(entry.elementId);
+        if (typeof rememberNodeGraphUnifiedWindowSizeFromElement === "function"
+          && typeof nodeGraphUnifiedWindowPageConfig === "function"
+          && nodeGraphUnifiedWindowPageConfig(entry.workspaceKey)) {
+          rememberNodeGraphUnifiedWindowSizeFromElement(element);
+        }
+        if (typeof nodeGraphWorkspaceKeyIsUnifiedPage === "function"
+          && nodeGraphWorkspaceKeyIsUnifiedPage(entry.workspaceKey)) {
+          return;
+        }
         if (entry.workspaceKey && typeof rememberNodeGraphWorkspaceWindowState === "function") {
-          const element = document.getElementById(entry.elementId);
           const rect = element?.getBoundingClientRect?.();
           const size = rect
             ? {

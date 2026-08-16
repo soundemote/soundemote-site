@@ -61,22 +61,25 @@ var nodeGraphMvp = {
   gridLightVisible: true,
   // Cable stroke paths; when false only endpoint dots (jack plugs) draw.
   wireLengthsVisible: true,
+  // Cubic cable bow (1 = original span, 0 = straight).
+  wireCurve: 1,
+  wiresFollowPortColors: true,
+  fullyOpaqueWires: false,
   // Cable strokes under modules by default; Visibility can raise them above.
   wiresAboveModules: false,
   macroControls: new Array(10).fill(0),
-  // Face appearance (bg / arc fill / track / names) — shared by module + dock.
+  // Face appearance + look (colors, names, thickness, span, size, positions).
+  // Live macroKnob* fields below are mirrors applied from this object.
   macroControlsFace: null,
   macroKnobArcThickness: 7,
   macroKnobArcGapBrightness: 0,
   macroKnobSizeScale: 1,
-  macroKnobHitboxOutlineVisible: false,
   macroKnobLabelPosition: "top",
   // Value centered in the circle; title sits above the dial widget.
   macroKnobValuePosition: "mid",
   sliderLayout: "text-inside",
-  // Amount fill on by default, and restored by Clear Startup (see
-  // clearNodeUserStartupRuntimeState).
-  sliderAmountVisible: true,
+  // Amount fill off until the user turns it on (Visibility / UI settings).
+  sliderAmountVisible: false,
   sliderPositionVisible: true,
   midiKeyboardSignal: null,
   midiKeyboardAccess: null,
@@ -85,7 +88,9 @@ var nodeGraphMvp = {
   midiKeyboardHeldNotes: new Map(),
   midiKeyboardInputId: "",
   midiKeyboardInputs: [],
+  midiListenChannel: 0,
   midiKeyboardMemoryLoaded: false,
+  midiKeyboardLayout: null,
   midiKeyboardMode: "press",
   midiKeyboardOctave: 0,
   midiKeyboardPointerHeldSignal: null,
@@ -136,7 +141,7 @@ var nodeGraphMvp = {
     planEvidence: null,
     activeNodeIds: new Set(),
     autoSmoothingSeconds: 0.5,
-    autoSmoothingManual: false,
+    autoSmoothingManual: true,
     lastParameterUpdateTime: 0,
     outputToggleSerial: 0,
     planSerial: 0,
@@ -155,6 +160,9 @@ var nodeGraphMvp = {
   },
   marqueeSelection: null,
   marqueeSelectionEntryPointer: null,
+  // Snake-select mouse smoothing 0..1. 0 = former light 1-frame EMA (dense).
+  snakeMouseSmooth: 0,
+  magnifier: null,
   metadataDragging: null,
   metadataEditorTarget: null,
   metadataPopoverPosition: null,
@@ -166,6 +174,11 @@ var nodeGraphMvp = {
   unifiedWindowPage: "",
   unifiedWindowPosition: null,
   unifiedWindowSize: null,
+  // closed | open | embedLeft | embedRight | float
+  unifiedWindowPresentation: "closed",
+  commandCenterDockWidth: 320,
+  // 0 = hug controller content. After the user drags the seam, stored px.
+  controllerDockHeight: 0,
   _unifiedWindowSwitching: false,
   _unifiedWindowPendingPosition: null,
   moduleActionDragging: null,
@@ -177,19 +190,22 @@ var nodeGraphMvp = {
   moduleCatalogVisibility: defaultNodeGraphModuleCatalogVisibility(),
   workspaceWindowStates: {},
   keyboardDebugInfoVisible: false,
-  // Tips rendered in-flow next to the CPU/RAM/GPU guide rather than in the
-  // floating tips window. WHERE the tips are, not whether they are shown -
-  // that stays the Hide/Show Tooltips toggle in both modes.
-  tooltipEmbedded: false,
+  // D hotkey: CPU / RAM / GPU chips only (not the rest of debug chrome).
+  constraintGuideVisible: false,
+  // Docked tips band (on/off). No floating tips window.
+  filePicker: { startIn: "desktop", lastSettingsName: "useruisettings.json", lastPatchName: "" },
+  tooltipEmbedded: true,
   // Embedded tips band height (px). User-draggable between tips and modular view.
   tooltipEmbedHeight: 46,
   tooltipEmbedResizing: null,
-  // modular | modular-windowed (📱/M condensed + resize). V is bars, not a mode.
+  // modular | modular-windowed (📱 condensed + resize). 💻 is infinite canvas.
   viewMode: "modular",
-  // Windowed frame always keeps back + resize when M is on.
+  // Windowed frame always keeps back + resize when phone view is on.
   modularOnlyControlsVisible: true,
-  // Top toolbar + bottom transport (💻/V). Independent of M.
+  // Top toolbar + bottom transport (V).
   appChromeBarsVisible: true,
+  // T — keep bottom transport even when V hides bars.
+  transportChromeStuck: false,
   moduleButtonsVisible: false,
   moduleDefaultOverrides: {},
   moduleSettingsClipboard: null,
@@ -198,6 +214,7 @@ var nodeGraphMvp = {
   // hid every face (Output Trace + Music Player waveform) until settings
   // rehydrated, which looked like "scopes totally broken" on a fresh load.
   moduleOscilloscopesVisible: true,
+  lastHeavyAction: "",
   modulePlacement: null,
   moduleShopDragging: null,
   moduleSlidersVisible: true,
@@ -212,18 +229,10 @@ var nodeGraphMvp = {
   moduleScopeDiscontinuitySkipSamples: 1,
   moduleScopeSettings: {},
   traceSettings: normalizeNodeGraphTraceDisplaySettings(),
-  scopeBloomEnabled: false,
-  // Room dimmer hover cutouts (UI Dev).
-  dimmerCutoutSliderEnabled: true,
-  dimmerCutoutModuleEnabled: false,
-  dimmerCutoutTitleEnabled: true,
   dimmerCutoutMouseEnabled: false,
   dimmerMouseSize: 56,
   dimmerMouseSoftness: 25,
   dimmerMouseShape: 0,
-  // Legacy mirrors (combined mouse+slider / title) for older presets.
-  hoverModuleDimmerCutoutEnabled: true,
-  hoverModuleTitleDimmerCutoutEnabled: true,
   moduleStoreDepartment: "",
   // The last category the user actually CLICKED, as opposed to whatever page
   // the browser happens to be showing (a search shows results across every
@@ -233,9 +242,11 @@ var nodeGraphMvp = {
   moduleStoreDepartmentSearch: "",
   // Command Center module search (independent of Module Browser search box).
   commandCenterModuleSearch: "",
+  shopSpeakerMarks: false,
   sampleBuffers: new Map(),
   sampleLoadErrors: new Map(),
   sampleRuntimeStatus: new Map(),
+  audioPlayerActualSpeeds: new Map(),
   resources: { resources: [], version: 1 },
   resourceMap: new Map(),
   resourcePathMap: new Map(),
@@ -367,6 +378,9 @@ var nodeGraphMvp = {
   scriptCommitDelayMs: 250,
   scriptDirty: false,
   scriptCommitTimer: 0,
+  bookScriptPage: "patch",
+  uiSettingsScriptDirty: false,
+  uiSettingsScriptCommitTimer: 0,
   selected: null,
   sampleRate: 44100,
   seconds: 2,
@@ -381,6 +395,8 @@ var nodeGraphMvp = {
   uiDevHelperDragging: null,
   uiDevHelperResizing: null,
   uiDevHelperWindowSize: null,
+  emojiPageDragging: null,
+  emojiPageResizing: null,
   sliderDragging: null,
   smoothZoomDragging: null,
   snapGridWhilePanning: false,
@@ -413,6 +429,7 @@ var nodeGraphMvp = {
     screenShakeY: 0,
   },
   workspaceResizing: null,
+  chromeSectionResizing: false,
   zoom: 1,
   zoomResetClickTimer: 0,
 };

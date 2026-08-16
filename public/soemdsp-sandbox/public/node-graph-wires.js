@@ -103,9 +103,13 @@
     function path(from, to) {
       const a = wireEndpointCapCenter(from, "from");
       const b = wireEndpointCapCenter(to, "to");
-      const horizontalDistance = Math.abs(b.x - a.x);
-      const verticalDistance = Math.abs(b.y - a.y);
-      const span = Math.min(96, horizontalDistance * 0.48 + verticalDistance * 0.12);
+      const curve = typeof nodeGraphWireCurve === "function"
+        ? nodeGraphWireCurve()
+        : 1;
+      const span = Math.min(
+        96,
+        (Math.abs(b.x - a.x) * 0.48 + Math.abs(b.y - a.y) * 0.12) * curve,
+      );
       return `M ${a.x} ${a.y} C ${a.x + span} ${a.y}, ${b.x - span} ${b.y}, ${b.x} ${b.y}`;
     }
 
@@ -118,18 +122,31 @@
     /**
      * Solid full-circle contact on the overlay above modules, centered on the
      * mid-jack attach point. Fill is the endpoint port color (same as the
-     * gradient stop at that end) — no glow, no stub line.
+     * gradient stop at that end). The cable is the overlay stroke — not a
+     * second under-module path plus a short jut.
      */
-    function drawEndpointCap(_svg, attachPoint, role, paint, extraClass = "", options = {}) {
-      const target = endpointCapSvg();
+    function wireEndColor(endColor, paint) {
+      const hex = String(endColor || "").trim();
+      if (hex && !hex.startsWith("url(")) {
+        return hex;
+      }
+      const fallback = String(paint || "").trim();
+      if (fallback && !fallback.startsWith("url(")) {
+        return fallback;
+      }
+      return "";
+    }
+
+    function drawEndpointCap(svg, attachPoint, role, paint, extraClass = "", options = {}) {
+      // Always on the overlay above modules — fakes the plug where the
+      // under-module cable disappears into the plate. Do not follow the cable
+      // host (visualCableSvg); that hid the disc under the idle stroke.
+      const target = endpointCapSvg() || visualCableSvg(svg) || svg;
       const point = wireEndpointCapCenter(attachPoint, role);
       if (!target || !point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
         return null;
       }
-      const endColor = options.endColor || null;
-      // Prefer solid end color so the disc matches the gradient stop at 0%/100%.
-      // Fall back to stroke paint only if color is missing.
-      const fill = endColor || paint || null;
+      const fill = wireEndColor(options.endColor, paint);
       const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       circle.setAttribute(
         "class",
@@ -138,6 +155,7 @@
       circle.setAttribute("cx", String(point.x));
       circle.setAttribute("cy", String(point.y));
       circle.setAttribute("r", String(wireEndpointCapRadius()));
+      circle.setAttribute("color-interpolation", "sRGB");
       if (fill) {
         circle.setAttribute("fill", fill);
         circle.style.fill = fill;
@@ -213,37 +231,53 @@
       const gradient = document.createElementNS("http://www.w3.org/2000/svg", "linearGradient");
       gradient.id = id;
       gradient.setAttribute("gradientUnits", "userSpaceOnUse");
-      gradient.setAttribute("x1", String(from.x));
-      gradient.setAttribute("y1", String(from.y));
-      gradient.setAttribute("x2", String(to.x));
-      gradient.setAttribute("y2", String(to.y));
+      gradient.setAttribute("color-interpolation", "sRGB");
+      // Push the axis past each jack so a curved stroke still samples the
+      // solid end color at the contact disc (userSpaceOnUse is a chord, not
+      // the bezier).
+      const dx = (Number(to.x) || 0) - (Number(from.x) || 0);
+      const dy = (Number(to.y) || 0) - (Number(from.y) || 0);
+      const len = Math.hypot(dx, dy) || 1;
+      const pad = Math.max(wireEndpointCapRadius() * 3, Math.min(36, len * 0.12));
+      const ux = dx / len;
+      const uy = dy / len;
+      gradient.setAttribute("x1", String(from.x - ux * pad));
+      gradient.setAttribute("y1", String(from.y - uy * pad));
+      gradient.setAttribute("x2", String(to.x + ux * pad));
+      gradient.setAttribute("y2", String(to.y + uy * pad));
+      gradient.setAttribute("spreadMethod", "pad");
 
       // Same color on both ends: skip the opacity dip entirely rather than
       // faking a transition that never actually changes color -- app-wide
       // policy, not specific to any one wire kind.
       const sameColor = Boolean(fromColor) && Boolean(toColor) && fromColor === toColor;
       const middleColor = !sameColor && fromColor && toColor ? mixWireColor(fromColor, toColor) : null;
-      // End plateaus: solid port color near each jack (matches contact discs);
-      // phosphor dip + crossfade only in the middle of the cable.
-      const endPlateau = 0.14;
-      const p0 = "0%";
-      const pFrom = `${Math.round(endPlateau * 100)}%`;
-      const pTo = `${Math.round((1 - endPlateau) * 100)}%`;
-      const p1 = "100%";
+      const opaque = typeof nodeGraphFullyOpaqueWires === "function"
+        ? nodeGraphFullyOpaqueWires()
+        : Boolean(typeof nodeGraphMvp !== "undefined" && nodeGraphMvp?.fullyOpaqueWires);
+      // Opacity stays 1 until near the midpoint so the plug and the cable
+      // leaving it are the same color. The phosphor dip is only the center.
       const stops = sameColor
         ? [
-            [p0, "1", fromColor],
-            [p1, "1", toColor],
+            ["0%", "1", fromColor],
+            ["100%", "1", toColor],
           ]
-        : [
-            [p0, "1", fromColor],
-            [pFrom, "1", fromColor],
-            ["48%", "0.36", fromColor],
-            ["50%", "0.34", middleColor],
-            ["52%", "0.36", toColor],
-            [pTo, "1", toColor],
-            [p1, "1", toColor],
-          ];
+        : opaque
+          ? [
+              ["0%", "1", fromColor],
+              ["42%", "1", fromColor],
+              ["58%", "1", toColor],
+              ["100%", "1", toColor],
+            ]
+          : [
+              ["0%", "1", fromColor],
+              ["42%", "1", fromColor],
+              ["48%", "0.36", fromColor],
+              ["50%", "0.34", middleColor],
+              ["52%", "0.36", toColor],
+              ["58%", "1", toColor],
+              ["100%", "1", toColor],
+            ];
       for (const [offset, opacity, color] of stops) {
         const stop = document.createElementNS("http://www.w3.org/2000/svg", "stop");
         stop.setAttribute("class", stopClass);
@@ -256,8 +290,7 @@
         gradient.append(stop);
       }
 
-      // Paint server on both layers: under-module cable SVG and over-module
-      // endpoint SVG (caps always; strokes when "Wires Above Modules" is on).
+      // Paint server on both layers so the same url(#id) works above or below.
       const capSvg = endpointCapSvg();
       ensureSvgDefs(svg)?.append(gradient);
       if (capSvg && capSvg !== svg) {
@@ -274,9 +307,9 @@
     }
 
     /**
-     * Visual cable stroke host. Hit targets always stay on the under-module
-     * wire SVG. Caps always stay on the endpoint overlay (mid-jack discs).
-     * Stroke layer follows Visibility → Wires Above Modules.
+     * Visual curve + dots host.
+     * Above modules → overlay. Below → #nodeWireSvg (dots go with the cable).
+     * Hit targets always stay on the under-module wire SVG.
      */
     function visualCableSvg(wireSvg) {
       if (wiresAboveModules()) {
@@ -327,13 +360,9 @@
         svg.append(hitPath);
       }
 
-      // Caps always on the endpoint overlay (visible mid-jack above faces).
-      // Cable stroke: under modules by default; above when Visibility toggle on.
-      // Visibility → Wire Lengths off: skip the stroke, keep dots + hit targets.
-      // When stroke + disc share a layer, paint discs first then stroke so the
-      // join has no AA fringe (disc-over-stroke samples a third color at edge).
+      // Curve follows Visibility → Wires Above. Contact discs are always
+      // drawn on #nodeWireEndpointSvg (drawEndpointCap), above the plate.
       const paintSvg = visualCableSvg(svg) || svg;
-      const above = paintSvg !== svg;
       const showLength = typeof nodeGraphMvp === "undefined"
         || nodeGraphMvp?.wireLengthsVisible !== false;
       const [fromColor, toColor] = wireColors || [null, null];
@@ -342,48 +371,31 @@
         kind === "modulation" || kind === "graph" ? "modulation" : "",
       ].filter(Boolean).join(" ");
 
-      const drawCaps = () => {
-        drawEndpointCap(svg, from, "from", stroke, capClass, {
-          endColor: fromColor,
-          gradientId,
-        });
-        drawEndpointCap(svg, to, "to", stroke, capClass, {
-          endColor: toColor,
-          gradientId,
-        });
-      };
-
-      if (!showLength) {
-        drawCaps();
-        return;
-      }
-
-      const renderedPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      renderedPath.setAttribute(
-        "class",
-        `${pathClass}${isTrace ? " trace-wire" : ""}${isPixel ? " pixel-wire" : ""}`,
-      );
-      renderedPath.dataset.alias = alias;
-      renderedPath.dataset.connectionIndex = String(index);
-      renderedPath.dataset.connectionKind = kind;
-      renderedPath.dataset.interactionMode = mode;
-      if (isPixel) {
-        renderedPath.dataset.pixelWire = "true";
-      }
-      if (Array.isArray(options.tracePoints)) {
-        renderedPath.dataset.tracePoints = nodeGraphTraceWaypointAttribute(options.tracePoints);
-      }
-      renderedPath.setAttribute("d", pathData);
-      renderedPath.setAttribute("stroke", stroke);
-      renderedPath.style.stroke = stroke;
-
-      if (above) {
-        drawCaps();
+      if (showLength) {
+        const renderedPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        renderedPath.setAttribute(
+          "class",
+          `${pathClass}${isTrace ? " trace-wire" : ""}${isPixel ? " pixel-wire" : ""}`,
+        );
+        renderedPath.dataset.alias = alias;
+        renderedPath.dataset.connectionIndex = String(index);
+        renderedPath.dataset.connectionKind = kind;
+        renderedPath.dataset.interactionMode = mode;
+        if (isPixel) {
+          renderedPath.dataset.pixelWire = "true";
+        }
+        if (Array.isArray(options.tracePoints)) {
+          renderedPath.dataset.tracePoints = nodeGraphTraceWaypointAttribute(options.tracePoints);
+        }
+        renderedPath.setAttribute("d", pathData);
+        renderedPath.setAttribute("stroke", stroke);
+        renderedPath.setAttribute("color-interpolation", "sRGB");
+        renderedPath.style.stroke = stroke;
         paintSvg.append(renderedPath);
-      } else {
-        paintSvg.append(renderedPath);
-        drawCaps();
       }
+
+      drawEndpointCap(paintSvg, from, "from", fromColor, capClass, { endColor: fromColor });
+      drawEndpointCap(paintSvg, to, "to", toColor, capClass, { endColor: toColor });
     }
 
     function elementForEndpoint(endpoint) {
@@ -403,104 +415,40 @@
       return null;
     }
 
-    function endpointHitboxClientRect(endpoint, hitboxElement = null) {
-      // Hitbox must match the glowing jack (screen px), not a larger "near
-      // face" zone that only lights the jack while clicks hit the face above.
-      // - Solid shells: jack box + glow pad; optional label reach only when
-      //   labels are visible (pointer can land on the row, not the face).
-      // - Headered stacked IO: tight rows use the full row; tall rows stay
-      //   jack-local + glow.
+    function endpointJackElement(endpoint, hitboxElement = null) {
       const row = hitboxElement?.classList?.contains("node-io-row")
         ? hitboxElement
         : hitboxElement?.closest?.(".node-io-row") || null;
-      const solidShell = Boolean(
-        row?.closest?.(".node-solid-module-shell")
-        || row?.closest?.(".node-module-chrome-layout-b-shell")
-        || hitboxElement?.closest?.(".node-solid-module-shell")
-        || hitboxElement?.closest?.(".node-module-chrome-layout-b-shell"),
-      );
-      const jack = row?.querySelector?.(".node-port")
+      return row?.querySelector?.(".node-port")
         || (hitboxElement?.classList?.contains("node-port") ? hitboxElement : null)
         || (hitboxElement?.classList?.contains("node-param-port") ? hitboxElement : null)
         || elementForEndpoint(endpoint);
-      if (!jack && !row) {
+    }
+
+    function endpointIoRow(hitboxElement = null) {
+      if (hitboxElement?.classList?.contains("node-io-row")) {
+        return hitboxElement;
+      }
+      return hitboxElement?.closest?.(".node-io-row") || null;
+    }
+
+    function visibleIoLabel(row) {
+      const label = row?.querySelector?.(":scope > .node-io-label");
+      if (!label) {
         return null;
       }
-      const jackRect = (jack || row).getBoundingClientRect();
-      if (jackRect.width <= 0 || jackRect.height <= 0) {
+      const style = getComputedStyle(label);
+      if (style.display === "none" || style.visibility === "hidden") {
         return null;
       }
-      // Screen-space diameter: half-jacks are width≈radius, height≈diameter.
-      const diameter = Math.max(jackRect.height, jackRect.width * 2, 8);
-      // Match CSS glow halo around the jack (size 0.5×d + spread ≈ 0.21×d).
-      const glowPad = diameter * 0.72;
+      return label;
+    }
 
-      const center = typeof nodeGraphElementPatchPointClientCenter === "function"
-        ? nodeGraphElementPatchPointClientCenter(jack || row, endpoint?.io)
-        : {
-          x: endpoint?.io === "output"
-            ? jackRect.right
-            : (endpoint?.io === "input" || endpoint?.io === "modulation" || endpoint?.io === "graph"
-              ? jackRect.left
-              : jackRect.left + jackRect.width * 0.5),
-          y: jackRect.top + jackRect.height * 0.5,
-        };
-
-      // Jack box + glow pad — the luminous hover region users aim at.
-      let left = jackRect.left - glowPad;
-      let right = jackRect.right + glowPad;
-      let top = jackRect.top - glowPad;
-      let bottom = jackRect.bottom + glowPad;
-
-      if (solidShell) {
-        const column = row?.closest?.(".node-io-column") || jack?.closest?.(".node-io-column");
-        const labelsHidden = Boolean(
-          column?.classList?.contains("labels-hidden")
-          || row?.closest?.(".io-hidden")
-          || jack?.closest?.(".io-hidden"),
-        );
-        // Labels visible: full row width (column sized by longest label → equal
-        // hitboxes for every inlet / every outlet). Labels hidden: jack band only.
-        if (!labelsHidden && row) {
-          const rowRect = row.getBoundingClientRect();
-          left = Math.min(left, rowRect.left);
-          right = Math.max(right, rowRect.right);
-        } else if (labelsHidden && column) {
-          // Keep hits inside the jack band (where the port element actually is).
-          const colRect = column.getBoundingClientRect();
-          left = Math.max(left, colRect.left);
-          right = Math.min(right, colRect.right);
-          // Still cover the jack fully.
-          left = Math.min(left, jackRect.left);
-          right = Math.max(right, jackRect.right);
-        }
-        // Vertical: stay inside the port band so inter-jack gaps stay drag.
-        if (row) {
-          const rowRect = row.getBoundingClientRect();
-          top = Math.max(top, rowRect.top);
-          bottom = Math.min(bottom, rowRect.bottom);
-        }
-      } else if (row) {
-        const rowRect = row.getBoundingClientRect();
-        // LayoutA compact rows + LayoutC (title+I/O only): whole row is the hit
-        // band. LayoutC rows stretch 1fr tall on small shells — always use full
-        // row so L/R and X/Y stay easy to grab at 3×3 gu.
-        const isLayoutC = Boolean(
-          row.closest?.(".chrome-layout-c")
-          || row.closest?.("[data-chrome-layout='LayoutC']"),
-        );
-        const maxBand = diameter * 2.4;
-        if (
-          rowRect.height > 0
-          && (isLayoutC || rowRect.height <= maxBand)
-        ) {
-          left = Math.min(left, rowRect.left);
-          right = Math.max(right, rowRect.right);
-          top = Math.min(top, rowRect.top);
-          bottom = Math.max(bottom, rowRect.bottom);
-        }
-      }
-
+    function unionClientRect(a, b) {
+      const left = Math.min(a.left, b.left);
+      const top = Math.min(a.top, b.top);
+      const right = Math.max(a.right, b.right);
+      const bottom = Math.max(a.bottom, b.bottom);
       return {
         bottom,
         height: Math.max(0, bottom - top),
@@ -511,29 +459,84 @@
       };
     }
 
+    function endpointHitboxClientRect(endpoint, hitboxElement = null) {
+      // One item: jack ∪ visible label. Empty row chrome is not a wire target.
+      const jack = endpointJackElement(endpoint, hitboxElement);
+      if (!jack) {
+        return null;
+      }
+      if (
+        typeof nodeGraphElementInSkippedContentVisibility === "function"
+        && nodeGraphElementInSkippedContentVisibility(jack)
+      ) {
+        return null;
+      }
+      const jackRect = jack.getBoundingClientRect();
+      if (jackRect.width <= 0 || jackRect.height <= 0) {
+        return null;
+      }
+      const row = endpointIoRow(hitboxElement) || jack.closest?.(".node-io-row");
+      const label = visibleIoLabel(row);
+      if (!label) {
+        return {
+          bottom: jackRect.bottom,
+          height: jackRect.height,
+          left: jackRect.left,
+          right: jackRect.right,
+          top: jackRect.top,
+          width: jackRect.width,
+        };
+      }
+      const labelRect = label.getBoundingClientRect();
+      if (labelRect.width <= 0 || labelRect.height <= 0) {
+        return {
+          bottom: jackRect.bottom,
+          height: jackRect.height,
+          left: jackRect.left,
+          right: jackRect.right,
+          top: jackRect.top,
+          width: jackRect.width,
+        };
+      }
+      return unionClientRect(jackRect, labelRect);
+    }
+
     function pointInEndpointHitbox(endpoint, clientX, clientY, hitboxElement = null) {
       const rect = endpointHitboxClientRect(endpoint, hitboxElement);
       if (!rect) {
         return false;
       }
-      return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+      return clientX >= rect.left && clientX <= rect.right
+        && clientY >= rect.top && clientY <= rect.bottom;
     }
 
     function patchPointTargetFromPoint(clientX, clientY) {
       let best = null;
       let bestDistance = Infinity;
-      for (const target of document.querySelectorAll(".node-port, .node-io-row, .node-param-port.modulation-input, .node-param-port.graph-input")) {
+      const targets = document.querySelectorAll(
+        ".node-io-row, .node-param-port.modulation-input, .node-param-port.graph-input, .node-port:not(.node-io-row .node-port)",
+      );
+      for (const target of targets) {
+        if (
+          typeof nodeGraphElementInSkippedContentVisibility === "function"
+          && nodeGraphElementInSkippedContentVisibility(target)
+        ) {
+          continue;
+        }
         const endpoint = endpointFromElement(target);
-        const rect = endpointHitboxClientRect(endpoint, target);
         const visualElement = visualEndpointElement(target);
+        if (
+          visualElement
+          && typeof nodeGraphElementInSkippedContentVisibility === "function"
+          && nodeGraphElementInSkippedContentVisibility(visualElement)
+        ) {
+          continue;
+        }
         const elementRect = visualElement?.getBoundingClientRect();
         if (
-          !rect ||
-          !elementRect ||
-          clientX < rect.left ||
-          clientX > rect.right ||
-          clientY < rect.top ||
-          clientY > rect.bottom
+          !endpoint
+          || !elementRect
+          || !pointInEndpointHitbox(endpoint, clientX, clientY, target)
         ) {
           continue;
         }
@@ -706,7 +709,9 @@
       patchPointTargetFromPoint,
       path,
       pointInEndpointHitbox,
+      visualCableSvg,
       wireEndpointCapCenter,
+      wireEndpointCapRadius,
       straightPath,
       tracePath,
     };
@@ -717,11 +722,16 @@
     let hoveredPatchPoint = null;
 
     function setHoveredPatchPoint(target) {
-      if (hoveredPatchPoint === target) {
+      const item = !target
+        ? null
+        : (target.classList?.contains("node-io-row")
+          ? target
+          : (target.closest?.(".node-io-row") || target));
+      if (hoveredPatchPoint === item) {
         return;
       }
       hoveredPatchPoint?.classList.remove("patch-point-hover");
-      hoveredPatchPoint = target || null;
+      hoveredPatchPoint = item || null;
       hoveredPatchPoint?.classList.add("patch-point-hover");
     }
 
@@ -1237,6 +1247,9 @@
       if (event.button !== undefined && event.button !== 0) {
         return;
       }
+      if (typeof nodeGraphPatchIsLocked === "function" && nodeGraphPatchIsLocked()) {
+        return;
+      }
       const port = event.currentTarget instanceof Element ? event.currentTarget : null;
       if (!port) {
         return;
@@ -1275,6 +1288,9 @@
 
     function handlePortPointerDown(event) {
       if (event.button !== 0) {
+        return;
+      }
+      if (typeof nodeGraphPatchIsLocked === "function" && nodeGraphPatchIsLocked()) {
         return;
       }
       const port = event.currentTarget instanceof Element ? event.currentTarget : null;
@@ -1458,14 +1474,12 @@
         setHoveredPatchPoint(null);
         return;
       }
-      const directTarget = target.closest?.(".node-port, .node-io-row, .node-param-port.modulation-input, .node-param-port.graph-input");
+      const directTarget = target.closest?.(
+        ".node-io-row, .node-param-port.modulation-input, .node-param-port.graph-input, .node-port:not(.node-io-row .node-port)",
+      );
       if (directTarget) {
-        const endpoint = helpers.endpointFromElement(
-          directTarget.classList?.contains("node-io-row")
-            ? directTarget
-            : (directTarget.closest?.(".node-io-row") || directTarget),
-        );
-        const hitbox = directTarget.closest?.(".node-io-row") || directTarget;
+        const endpoint = helpers.endpointFromElement(directTarget);
+        const hitbox = directTarget;
         if (
           endpoint &&
           helpers.pointInEndpointHitbox(endpoint, event.clientX, event.clientY, hitbox)
@@ -1473,8 +1487,7 @@
           setHoveredPatchPoint(directTarget);
           return;
         }
-        // Over a stretched/empty part of an io-row but outside the jack —
-        // do not highlight.
+        // Over empty row chrome, not jack∪label — leave it for module drag.
         setHoveredPatchPoint(null);
         return;
       }

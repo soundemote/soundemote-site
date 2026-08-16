@@ -163,16 +163,13 @@ function nodeGraphModuleFramePortVisualHalfPx(port, nodeElement, layoutBox = nul
     // Signal ports: element size is already the half-disk.
     return hitHalf;
   }
-  // Param jack face is ::before, scaled by --node-port-size-ratio from the
-  // full 1gu band. Prefer that visual diameter over the tall hit target.
+  // Param jack face is ::before at --node-port-size-ratio of the 1gu slot.
   const cs = getComputedStyle(nodeElement);
-  const area = Number.parseFloat(cs.getPropertyValue("--node-port-area-size"))
-    || Number.parseFloat(cs.getPropertyValue("--node-grid-height"))
-    || hitHalf * 2;
-  const ratio = Number.parseFloat(cs.getPropertyValue("--node-port-size-ratio"));
-  const sizeRatio = Number.isFinite(ratio) && ratio > 0.05 && ratio <= 1 ? ratio : 0.57;
-  const visualDiameter = Math.max(2, area * sizeRatio);
-  return Math.max(1, visualDiameter * 0.5);
+  const visualDiameter = Number.parseFloat(cs.getPropertyValue("--node-port-diameter"));
+  if (Number.isFinite(visualDiameter) && visualDiameter > 1) {
+    return Math.max(1, visualDiameter * 0.5);
+  }
+  return hitHalf;
 }
 
 function nodeGraphModuleFrameCollectGaps(nodeElement, width, height, nodeRect) {
@@ -246,9 +243,9 @@ function nodeGraphModuleFrameCollectGaps(nodeElement, width, height, nodeRect) {
  * (selected and unselected).
  */
 function nodeGraphModuleFrameBuildPath(width, height, radius, leftGaps, rightGaps, outset = 0) {
-  // Integer layout box — must match the SVG viewBox exactly.
-  const w = Math.max(1, Math.round(Number(width) || 0));
-  const h = Math.max(1, Math.round(Number(height) || 0));
+  // Same units as the viewBox (live CSS box, not rounded).
+  const w = Math.max(1, Number(width) || 0);
+  const h = Math.max(1, Number(height) || 0);
   // Outset: expand path beyond the plate (negative would be inset — wrong).
   const s = Math.max(0, Number(outset) || 0);
   const left = -s;
@@ -354,31 +351,7 @@ function nodeGraphModuleFrameGridSizePx(nodeElement) {
 }
 
 function nodeGraphModuleFrameRadiusPx(nodeElement) {
-  // Stroke-only TOP corner radius (bottom corners are always square in the path).
-  // Selected modules use a dedicated rounded top-edge stroke radius.
-  const cs = getComputedStyle(nodeElement);
-  const grid = nodeGraphModuleFrameGridSizePx(nodeElement);
-  const selected = nodeElement.classList?.contains("selected");
-  if (selected) {
-    const selectedPx = nodeGraphModuleFrameResolveCssPx(
-      nodeElement,
-      cs.getPropertyValue("--node-module-selected-frame-radius"),
-      grid * 0.5,
-    );
-    // Always show clear top rounding when selected (min ~8px at default grid).
-    return Math.max(selectedPx, grid * 0.35, 8);
-  }
-  const framePx = nodeGraphModuleFrameResolveCssPx(
-    nodeElement,
-    cs.getPropertyValue("--node-module-frame-radius"),
-    grid * 0.35,
-  );
-  if (framePx > 0.01) {
-    return framePx;
-  }
-  // Fallback: plate border-radius when frame radius is unset/0.
-  const first = String(cs.borderRadius || "").split(/\s+/)[0];
-  return nodeGraphModuleFrameResolveCssPx(nodeElement, first, 0);
+  return nodeGraphModuleFrameGridSizePx(nodeElement) * 2 * 0.53;
 }
 
 /**
@@ -408,14 +381,9 @@ function nodeGraphModuleFrameHide(nodeElement) {
   }
   const svg = nodeElement.querySelector(":scope > .node-module-frame");
   if (svg) {
-    // Remove from DOM so nothing can repaint a stroke around the face/image.
     svg.remove();
   }
   nodeElement.dataset.moduleFrameFp = "hidden";
-  // Even if a frame is recreated before the next hide, paint nothing.
-  nodeElement.style.setProperty("--node-module-stroke", "transparent");
-  nodeElement.style.setProperty("--node-module-selected-stroke", "transparent");
-  nodeElement.style.setProperty("--node-module-drag-stroke", "transparent");
 }
 
 function nodeGraphModuleFrameRestoreStrokeVars(nodeElement) {
@@ -432,70 +400,14 @@ function nodeGraphModuleFrameRestoreStrokeVars(nodeElement) {
  * geometry fingerprint is unchanged.
  */
 function updateNodeGraphModuleFrame(nodeElement) {
-  if (!nodeElement?.classList?.contains("dsp-node") || nodeElement.hidden) {
+  if (!nodeElement?.classList?.contains("dsp-node")) {
     return;
   }
-  // Face art: drop outline (CSS alone was not reliable for all states).
-  if (nodeGraphModuleFrameShouldHide(nodeElement)) {
-    nodeGraphModuleFrameHide(nodeElement);
-    return;
+  // Retired: gapped 1px breathing-room SVG. Plate stroke is CSS ::before.
+  nodeGraphModuleFrameHide(nodeElement);
+  if (typeof applyNodeGraphModulePlateClip === "function") {
+    applyNodeGraphModulePlateClip(nodeElement);
   }
-  nodeGraphModuleFrameRestoreStrokeVars(nodeElement);
-  const w = Math.max(1, Math.round(nodeElement.clientWidth || 0));
-  const h = Math.max(1, Math.round(nodeElement.clientHeight || 0));
-  if (w < 2 || h < 2) {
-    return;
-  }
-  // Layout offsets first; getBoundingClientRect only if offset chain fails.
-  const nodeRect = nodeElement.getBoundingClientRect();
-  const { left, right } = nodeGraphModuleFrameCollectGaps(nodeElement, w, h, nodeRect);
-  const radius = nodeGraphModuleFrameRadiusPx(nodeElement);
-  // 1 screen px outside plate + past jacks, independent of workspace zoom.
-  const breath = nodeGraphModuleFrameBreathingLayoutPx(nodeElement);
-  const selected = nodeElement.classList.contains("selected") ? 1 : 0;
-  const fingerprint = [
-    w,
-    h,
-    radius.toFixed(2),
-    breath.toFixed(4),
-    selected,
-    left.map((g) => `${g.cy.toFixed(2)}:${g.half.toFixed(2)}`).join(","),
-    right.map((g) => `${g.cy.toFixed(2)}:${g.half.toFixed(2)}`).join(","),
-  ].join("|");
-  if (nodeElement.dataset.moduleFrameFp === fingerprint) {
-    return;
-  }
-  nodeElement.dataset.moduleFrameFp = fingerprint;
-
-  const svg = nodeGraphModuleFrameEnsureSvg(nodeElement);
-  const path = svg?.querySelector(".node-module-frame-path");
-  if (!svg || !path) {
-    return;
-  }
-  // Keep frame under jacks/content in DOM order (first child) + CSS z-index 0.
-  if (svg !== nodeElement.firstChild) {
-    nodeElement.insertBefore(svg, nodeElement.firstChild);
-  }
-  // Re-show after a previous face-art hide.
-  svg.removeAttribute("hidden");
-  svg.style.display = "";
-  svg.style.visibility = "";
-  svg.style.opacity = "";
-  path.removeAttribute("stroke");
-  // CSS sizes the SVG to the plate (inset:0; width/height 100%). viewBox maps
-  // path 0…w×0…h onto that box 1:1 — do not also set width/height attributes
-  // (those fight fractional CSS boxes under zoom and walk the stroke off-edge).
-  svg.removeAttribute("width");
-  svg.removeAttribute("height");
-  // viewBox matches the plate; path is outset past 0…w×0…h and paints via
-  // overflow:visible (do not expand viewBox — that would scale the ring in).
-  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
-  svg.setAttribute("preserveAspectRatio", "none");
-  // 1 screen px outside the plate; side gaps open around jacks by the same.
-  path.setAttribute(
-    "d",
-    nodeGraphModuleFrameBuildPath(w, h, radius, left, right, breath),
-  );
 }
 
 function updateAllNodeGraphModuleFrames(options = {}) {
@@ -597,6 +509,9 @@ function nodeGraphModuleFrameObserve(nodeElement) {
     nodeGraphModuleFrameObserver.observe(nodeElement);
   } catch (_error) {
     // Ignore double-observe / detached.
+  }
+  if (typeof nodeGraphViewportCullObserve === "function") {
+    nodeGraphViewportCullObserve(nodeElement);
   }
   // Port rows can change size without the module box resizing (label toggle,
   // solid-shell reflow). Observe jacks so gaps recompute without a manual resize.

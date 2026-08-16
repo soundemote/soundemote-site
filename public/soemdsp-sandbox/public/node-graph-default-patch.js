@@ -53,7 +53,7 @@ function createNodeGraphPatchNode(type, options = {}) {
       }
     }
   }
-  // Explicit opts.alias wins. Else definition.defaultAlias (e.g. Vectorscope → "90°").
+  // Explicit opts.alias wins. Else definition.defaultAlias (e.g. Vectorscope → "Rotate").
   let aliasSource = opts.alias;
   if (!Object.hasOwn(opts, "alias")) {
     const defAlias = nodeGraphModuleDefinitions[resolvedType]?.defaultAlias;
@@ -79,23 +79,23 @@ function createNodeGraphPatchNode(type, options = {}) {
   const ui = normalizeNodeGraphPatchNodeUi(uiSource, resolvedType);
   if (
     ui.buttonsHidden
+    || ui.buttonsForceShow
     || ui.titleHidden
     || ui.oscilloscopeHidden
+    || ui.oscilloscopeForceShow
     || ui.ioHidden
     || ui.hideUnused
     || ui.slidersHidden
+    || ui.slidersForceShow
     || ui.interfaceControlsHidden
+    || ui.interfaceControlsForceShow
     || ui.movementLocked
   ) {
     node.ui = ui;
   }
   if (Object.hasOwn(opts, "widthGu")) {
     node.widthGu = normalizeNodeGraphModuleWidthUnits(resolvedType, opts.widthGu);
-  } else if (
-    typeof nodeGraphModuleUsesLayoutC === "function"
-    && nodeGraphModuleUsesLayoutC(resolvedType)
-  ) {
-    // LayoutC: defaultWidthGu is the spawn width (e.g. Vectorscope 3gu).
+  } else {
     const defW = Number(nodeGraphModuleDefinitions[resolvedType]?.defaultWidthGu);
     if (Number.isFinite(defW)) {
       node.widthGu = normalizeNodeGraphModuleWidthUnits(resolvedType, defW);
@@ -107,20 +107,20 @@ function createNodeGraphPatchNode(type, options = {}) {
       && nodeGraphModuleUsesLayoutC(resolvedType)
       ? nodeGraphLayoutCGridHeightUnits(resolvedType, ui, opts.heightGu)
       : normalizeNodeGraphModuleHeightUnits(resolvedType, opts.heightGu, ui);
-  } else if (
-    typeof nodeGraphModuleUsesLayoutC === "function"
-    && nodeGraphModuleUsesLayoutC(resolvedType)
-  ) {
-    // LayoutC: freehand height is the module bounds (defaultHeightGu, e.g. 3).
+  } else {
     const defH = Number(nodeGraphModuleDefinitions[resolvedType]?.defaultHeightGu);
     if (Number.isFinite(defH)) {
       node.heightGu = typeof nodeGraphLayoutCGridHeightUnits === "function"
+        && typeof nodeGraphModuleUsesLayoutC === "function"
+        && nodeGraphModuleUsesLayoutC(resolvedType)
         ? nodeGraphLayoutCGridHeightUnits(resolvedType, ui, defH)
-        : Math.max(2, Math.round(defH));
+        : normalizeNodeGraphModuleHeightUnits(resolvedType, defH, ui);
     }
   }
   if (nodeGraphModuleDefinitions[resolvedType]?.layout === "textBox") {
     node.layout = normalizeNodeGraphTextBoxLayout(opts.layout);
+  } else if (resolvedType === "keypad" && typeof normalizeNodeGraphKeypadLayout === "function") {
+    node.layout = normalizeNodeGraphKeypadLayout(opts.layout);
   } else if (nodeGraphModuleDefinitions[resolvedType]?.layout === "image") {
     node.layout = normalizeNodeGraphImageLayout(opts.layout);
   } else if (nodeGraphModuleDefinitions[resolvedType]?.layout === "led") {
@@ -182,12 +182,12 @@ function createNodeGraphPatchNode(type, options = {}) {
 
 const nodeGraphDefaultNodeConfigs = Object.freeze([
   {
-    ...createNodeGraphPatchNode("audioPlayer", { id: "audioPlayer-1", gx: -9, gy: -9, widthGu: 8 }),
+    ...createNodeGraphPatchNode("audioPlayer", { id: "audioPlayer-1", gx: -9, gy: -9, widthGu: 11, heightGu: 22 }),
     params: { ...nodeGraphDefaultParamsForType("audioPlayer"), speed: 1, transport: 4 },
   },
   {
     ...createNodeGraphPatchNode("output", { id: "output", gx: 2, gy: -5 }),
-    params: { ...nodeGraphDefaultParamsForType("output"), volume: 0.8 },
+    params: { ...nodeGraphDefaultParamsForType("output"), volume: -2 },
   },
 ]);
 

@@ -219,15 +219,15 @@ function createNodeGraphPluginSliderFace(node, type) {
   face.setAttribute("role", "slider");
   face.setAttribute("aria-label", `${nodeGraphNodeDisplayName(node)} slider display`);
 
-  // Visual fader chrome on the face (display only — not the control surface).
+  // Visual fader chrome on the face (display only — not a params-band row).
   const row = document.createElement("div");
-  row.className = "node-parameter-row node-plugin-slider-face-row";
+  row.className = "node-plugin-slider-face-row";
   row.dataset.param = "value";
   row.dataset.pluginSliderDisplay = "true";
 
   const label = document.createElement("label");
-  label.className = "node-parameter-control";
-  label.dataset.paramLabel = "→";
+  label.className = "node-plugin-slider-face-control";
+  label.dataset.paramLabel = "";
 
   const input = document.createElement("input");
   input.type = "range";
@@ -243,8 +243,6 @@ function createNodeGraphPluginSliderFace(node, type) {
   input.dataset.kind = "decimal";
   input.dataset.nonlinearSlider = "false";
   input.dataset.showSign = "true";
-  // Display-only: do not write params from this input. Face drag / body row
-  // own the control path (same split as Knob face vs offset param).
   input.tabIndex = -1;
   input.setAttribute("aria-hidden", "true");
 
@@ -272,7 +270,6 @@ function createNodeGraphPluginSliderFace(node, type) {
   row.append(label);
   face.append(row);
 
-  // Full-face drag onto the real parameter slider (control path).
   if (typeof beginNodeSliderDrag === "function") {
     face.addEventListener("pointerdown", beginNodeSliderDrag);
     face.addEventListener("mousedown", beginNodeSliderDrag);
@@ -286,10 +283,12 @@ function createNodeGraphPluginSliderFace(node, type) {
 
   face.syncFromParameters = paintDisplay;
   requestAnimationFrame(() => {
-    if (typeof ensureNodeSliderReadout === "function") {
-      ensureNodeSliderReadout(input);
-    } else if (typeof attachNodeSliderReadout === "function") {
-      attachNodeSliderReadout(input);
+    if (typeof createNodeSliderReadout === "function") {
+      createNodeSliderReadout(input);
+    }
+    const readout = face.querySelector(".node-slider-readout");
+    if (readout) {
+      readout.dataset.sliderTarget = `node-${node}-value`;
     }
     paintDisplay();
   });

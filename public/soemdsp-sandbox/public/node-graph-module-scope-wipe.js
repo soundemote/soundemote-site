@@ -94,6 +94,7 @@ function wipeNodeGraphModuleScopeScreensToColdBoot() {
       || canvas.classList?.contains("node-module-scope-light-canvas")
       || canvas.classList?.contains("node-room-dimmer-canvas")
       || canvas.classList?.contains("node-number-readout-canvas")
+      || canvas.classList?.contains("node-raster-rgb-canvas")
     ) {
       continue;
     }
@@ -414,6 +415,26 @@ function clearNodeGraphDisplaySettingsPhosphor(nodeIdOrIds = null, options = {})
       }
     }
 
+    if (typeof clearNodeGraphSpectrogramHistoryForNode === "function") {
+      try {
+        clearNodeGraphSpectrogramHistoryForNode(id);
+      } catch (_error) {
+        // Best-effort.
+      }
+    }
+    if (typeof invalidateNodeGraphNumberReadoutPaintCache === "function") {
+      try {
+        invalidateNodeGraphNumberReadoutPaintCache(id);
+      } catch (_error) {
+        // Best-effort.
+      }
+    } else {
+      for (const canvas of canvases) {
+        canvas._nodeGraphNumberReadoutFrozenHoldSig = null;
+        canvas._nodeGraphNumberReadoutText = null;
+      }
+    }
+
     // XY Pad has its own residual path.
     if (typeof nodeGraphXyPadResetCanvas === "function") {
       try {
@@ -526,9 +547,10 @@ function clearNodeGraphRenderedModuleScopeBuffers() {
     scheduleNodeGraphModuleScopeDraw();
     return;
   }
-  // Offline reset while paused: drop rings, keep painted residual until Stop.
+  // Offline reset while paused: keep painted residual. Also keep rings —
+  // move/resize used to hit this via render-pending and blank LCD/trace.
   if (typeof nodeGraphModuleScopePaused === "function" && nodeGraphModuleScopePaused()) {
-    clearNodeGraphModuleScopeBuffers({ preserveDisplay: true });
+    clearNodeGraphModuleScopeBuffers({ preserveDisplay: true, preserveBuffers: true });
     return;
   }
   clearNodeGraphModuleScopeBuffers();

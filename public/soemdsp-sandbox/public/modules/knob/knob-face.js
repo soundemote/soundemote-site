@@ -1,7 +1,7 @@
 // Knob face = shared macro-knob dial renderer (arc + label + value).
 // Colors / readout options live in per-node Display Settings (not the global
-// Macro Controls bank, and not UI Dev macro thickness — those stay global look
-// tools for the 8-knob bank). Drag still drives Bias via the offset slider.
+// Macro Controls bank). Bank look (thickness, span, size) is the Macro
+// Controls display-settings face. Drag still drives Bias via the offset slider.
 //
 // Legacy image-layer APIs remain for old Module Settings / patches; the live
 // face no longer paints stacked images.
@@ -15,6 +15,154 @@ const nodeGraphKnobFaceAcceptedTypes = Object.freeze([
 ]);
 
 /** Layer count / keys (image1 = back, image6 = front). Max 6 for now. */
+const NODE_GRAPH_KNOB_FACE_LABEL_TEXT_MAX = 48;
+
+function nodeGraphKnobFaceNormalizeLabelText(value) {
+  return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, NODE_GRAPH_KNOB_FACE_LABEL_TEXT_MAX);
+}
+
+function nodeGraphKnobFaceLabelTextForNode(node) {
+  const settings = typeof nodeGraphKnobFaceDisplaySettingsForNode === "function"
+    ? nodeGraphKnobFaceDisplaySettingsForNode(node)
+    : node?.traceDisplaySettings;
+  const text = nodeGraphKnobFaceNormalizeLabelText(settings?.labelText);
+  if (text) {
+    return text;
+  }
+  return String(nodeGraphNodeLabels?.knob || "Knob");
+}
+
+function nodeGraphKnobFaceApplyLabelTextToDom(nodeId, text) {
+  const shown = nodeGraphKnobFaceNormalizeLabelText(text) || String(nodeGraphNodeLabels?.knob || "Knob");
+  const face = document.querySelector(`.node-knob-face[data-node="${CSS.escape(String(nodeId || ""))}"]`);
+  const label = face?.querySelector?.("[data-knob-face-label]");
+  if (label && label.dataset.editing !== "true") {
+    label.textContent = shown;
+  }
+  const settingsInput = document.getElementById("nodeSceneKnobTextInput");
+  if (settingsInput && document.activeElement !== settingsInput) {
+    const targetId = typeof nodeGraphModuleActionTargetNodeId === "function"
+      ? nodeGraphModuleActionTargetNodeId()
+      : "";
+    if (String(targetId) === String(nodeId || "")) {
+      settingsInput.value = shown;
+    }
+  }
+}
+
+function nodeGraphKnobFaceWriteLabelText(nodeId, rawText, { record = true } = {}) {
+  const id = String(nodeId || "").trim();
+  if (!id) {
+    return;
+  }
+  const text = nodeGraphKnobFaceNormalizeLabelText(rawText);
+  const stored = text || "Knob";
+  if (!record) {
+    const live = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(id) : null;
+    if (!live) {
+      return;
+    }
+    const current = typeof nodeGraphKnobFaceDisplaySettingsForNode === "function"
+      ? nodeGraphKnobFaceDisplaySettingsForNode(live)
+      : {};
+    live.traceDisplaySettings = typeof normalizeNodeGraphKnobFaceDisplaySettings === "function"
+      ? normalizeNodeGraphKnobFaceDisplaySettings({ ...current, labelText: stored })
+      : { ...(live.traceDisplaySettings || {}), labelText: stored };
+    if (nodeGraphMvp) {
+      nodeGraphMvp.patchDirtyState = "edited";
+    }
+    nodeGraphKnobFaceApplyLabelTextToDom(id, stored);
+    return;
+  }
+  if (typeof cloneNodeGraphPatch !== "function" || typeof commitNodeGraphPatch !== "function") {
+    return;
+  }
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const target = patch.nodes.find((node) => node.id === id);
+  if (!target) {
+    return;
+  }
+  const current = typeof nodeGraphKnobFaceDisplaySettingsForNode === "function"
+    ? nodeGraphKnobFaceDisplaySettingsForNode(target)
+    : {};
+  const next = typeof normalizeNodeGraphKnobFaceDisplaySettings === "function"
+    ? normalizeNodeGraphKnobFaceDisplaySettings({ ...current, labelText: stored })
+    : { ...(target.traceDisplaySettings || {}), labelText: stored };
+  if (nodeGraphKnobFaceNormalizeLabelText(current.labelText) === next.labelText) {
+    nodeGraphKnobFaceApplyLabelTextToDom(id, next.labelText);
+    return;
+  }
+  target.traceDisplaySettings = next;
+  commitNodeGraphPatch(patch, { status: "knob text changed" });
+}
+
+function beginNodeGraphKnobFaceLabelEdit(label, nodeId) {
+  if (!label || label.dataset.editing === "true") {
+    return;
+  }
+  label.dataset.editing = "true";
+  label.contentEditable = "true";
+  label.spellcheck = false;
+  label.focus({ preventScroll: true });
+  const selection = window.getSelection?.();
+  if (selection && document.createRange) {
+    const range = document.createRange();
+    range.selectNodeContents(label);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+  const finish = (commit) => {
+    if (label.dataset.editing !== "true") {
+      return;
+    }
+    label.dataset.editing = "false";
+    label.contentEditable = "false";
+    const next = commit ? label.textContent : nodeGraphKnobFaceLabelTextForNode(
+      typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null,
+    );
+    nodeGraphKnobFaceWriteLabelText(nodeId, next, { record: true });
+  };
+  const onKey = (event) => {
+    event.stopPropagation();
+    if (event.key === "Enter") {
+      event.preventDefault();
+      label.removeEventListener("keydown", onKey);
+      label.removeEventListener("blur", onBlur);
+      finish(true);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      label.removeEventListener("keydown", onKey);
+      label.removeEventListener("blur", onBlur);
+      finish(false);
+    }
+  };
+  const onBlur = () => {
+    label.removeEventListener("keydown", onKey);
+    label.removeEventListener("blur", onBlur);
+    finish(true);
+  };
+  label.addEventListener("keydown", onKey);
+  label.addEventListener("blur", onBlur);
+}
+
+function attachNodeGraphKnobFaceLabelEdit(label, nodeId) {
+  if (!label || label.dataset.labelEditBound === "true") {
+    return;
+  }
+  label.dataset.labelEditBound = "true";
+  label.title = "Click to edit knob text (separate from module title)";
+  const stopDrag = (event) => {
+    event.stopPropagation();
+  };
+  label.addEventListener("pointerdown", stopDrag);
+  label.addEventListener("mousedown", stopDrag);
+  label.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    beginNodeGraphKnobFaceLabelEdit(label, nodeId);
+  });
+}
+
 const nodeGraphKnobFaceLayerCount = 6;
 const nodeGraphKnobFaceLayerIds = Object.freeze(
   Array.from({ length: nodeGraphKnobFaceLayerCount }, (_, i) => `image${i + 1}`),
@@ -30,8 +178,6 @@ const nodeGraphKnobFaceDefaults = Object.freeze({
   ),
   // Centered span (degrees). Start is always −span/2 — no separate offset.
   rotationDegrees: 270,
-  showReadout: true,
-  showLabel: true,
 });
 
 function normalizeNodeGraphKnobFaceLayer(source = {}) {
@@ -94,8 +240,6 @@ function normalizeNodeGraphKnobFace(source = {}) {
     rotationDegrees: Number.isFinite(rotationDegrees)
       ? Math.max(0, Math.min(1440, rotationDegrees))
       : nodeGraphKnobFaceDefaults.rotationDegrees,
-    showReadout: raw.showReadout !== false && raw.showReadout !== "false",
-    showLabel: raw.showLabel !== false && raw.showLabel !== "false",
   };
 }
 
@@ -113,9 +257,7 @@ function nodeGraphKnobFaceIsNonDefault(face) {
   if (f.layers.some((layer) => layer.rotate)) {
     return true;
   }
-  return !f.showReadout
-    || !f.showLabel
-    || f.rotationDegrees !== defaults.rotationDegrees;
+  return f.rotationDegrees !== defaults.rotationDegrees;
 }
 
 /**
@@ -285,8 +427,13 @@ function nodeGraphKnobFaceFitReadout(readout, face = null) {
         high = mid;
       }
     }
-    style.fontSize = `${best.toFixed(2)}px`;
   }
+  const valueScale = Number.parseFloat(
+    host.style?.getPropertyValue?.("--knob-value-size")
+    || getComputedStyle(host).getPropertyValue("--knob-value-size"),
+  );
+  const scale = Number.isFinite(valueScale) ? Math.max(0, Math.min(1, valueScale)) : 0.45;
+  style.fontSize = `${(best * scale).toFixed(2)}px`;
 
   // Very long strings only: nudge tracking after we already took the largest fit size.
   if (readout.scrollWidth > maxW + 1) {
@@ -581,6 +728,24 @@ function nodeGraphKnobFaceApplyMacroStyle(face, settings) {
     : 1;
   face.style.setProperty("--knob-dial-size", String(dialSize));
 
+  const labelSize = Number.isFinite(Number(s.labelSize))
+    ? Math.max(0, Math.min(1, Number(s.labelSize)))
+    : 0.45;
+  const valueSize = Number.isFinite(Number(s.valueSize))
+    ? Math.max(0, Math.min(1, Number(s.valueSize)))
+    : 0.45;
+  face.style.setProperty("--knob-label-size", String(labelSize));
+  face.style.setProperty("--knob-value-size", String(valueSize));
+
+  const labelPos = typeof normalizeNodeGraphKnobFaceTextPosition === "function"
+    ? normalizeNodeGraphKnobFaceTextPosition(s.labelPosition, "above")
+    : (s.labelPosition || "above");
+  const valuePos = typeof normalizeNodeGraphKnobFaceTextPosition === "function"
+    ? normalizeNodeGraphKnobFaceTextPosition(s.valuePosition, "mid")
+    : (s.valuePosition || "mid");
+  face.dataset.knobLabelPosition = labelPos;
+  face.dataset.knobValuePosition = valuePos;
+
   // Inner radius 0…1 → hole size; thickness fraction of radius = 1 − inner.
   const inner = Number.isFinite(Number(s.innerRadius))
     ? Math.max(0, Math.min(0.95, Number(s.innerRadius)))
@@ -607,8 +772,6 @@ function paintNodeGraphKnobFaceLive(face, nodeId, buffer = null) {
   const display = typeof nodeGraphKnobFaceDisplaySettingsForNode === "function"
     ? nodeGraphKnobFaceDisplaySettingsForNode(patchNode)
     : null;
-  const showReadout = display ? display.showReadout !== false : true;
-  const showLabel = display ? display.showLabel !== false : true;
 
   let value = null;
   if (buffer?.length) {
@@ -656,13 +819,14 @@ function paintNodeGraphKnobFaceLive(face, nodeId, buffer = null) {
   }
 
   nodeGraphKnobFaceApplyMacroStyle(face, display);
+  const showLabel = face.dataset.knobLabelPosition !== "off";
+  const showReadout = face.dataset.knobValuePosition !== "off";
 
   const label = face.querySelector("[data-knob-face-label]");
   if (label) {
-    const alias = typeof normalizeNodeGraphPatchNodeAlias === "function"
-      ? normalizeNodeGraphPatchNodeAlias(patchNode?.alias)
-      : String(patchNode?.alias || "").trim();
-    label.textContent = alias || (nodeGraphNodeLabels?.knob || "Knob");
+    if (label.dataset.editing !== "true") {
+      label.textContent = nodeGraphKnobFaceLabelTextForNode(patchNode);
+    }
     label.hidden = !showLabel;
     label.style.display = showLabel ? "" : "none";
   }
@@ -793,6 +957,8 @@ function createNodeGraphKnobFace(node, type) {
   face.className = "node-knob-face node-module-scope-window node-knob-module-macro node-macro-knob";
   face.dataset.node = node;
   face.dataset.nodeType = type || "knob";
+  face.dataset.knobLabelPosition = "above";
+  face.dataset.knobValuePosition = "mid";
   face.dataset.sliderTarget = `node-${node}-offset`;
   face.dataset.lightStrength = "1";
   face.dataset.lightSource = "screen";
@@ -818,7 +984,10 @@ function createNodeGraphKnobFace(node, type) {
   label.className = "node-macro-knob-label";
   label.dataset.knobFaceLabel = "true";
   label.dataset.macroKnobLabel = "true";
-  label.textContent = nodeGraphNodeLabels?.[type || "knob"] || "Knob";
+  label.textContent = nodeGraphKnobFaceLabelTextForNode(
+    typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(node) : null,
+  );
+  attachNodeGraphKnobFaceLabelEdit(label, node);
 
   const dial = document.createElement("span");
   dial.className = "node-macro-knob-dial";
@@ -1062,8 +1231,6 @@ function nodeGraphKnobFaceToPatch(face) {
       rotate: Boolean(layer.rotate),
     })),
     rotationDegrees: f.rotationDegrees,
-    showReadout: f.showReadout,
-    showLabel: f.showLabel,
   };
 }
 
@@ -1091,37 +1258,50 @@ function pickNodeGraphKnobFaceImage(layerId = "image1") {
   if (!sourceNode || sourceNode.type !== "knob") {
     return;
   }
-  // Keep action target in sync so Module Settings paths still resolve.
   if (nodeGraphMvp) {
     nodeGraphMvp.sceneContextTargetNode = nodeId;
     nodeGraphMvp.lastModuleActionTargetNode = nodeId;
   }
   const layer = nodeGraphKnobFaceNormalizeLayerId(layerId);
-  let input = document.getElementById("nodeKnobFaceFileInput");
-  if (!input) {
-    input = document.createElement("input");
-    input.type = "file";
-    input.id = "nodeKnobFaceFileInput";
-    input.accept = "image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.png,.jpg,.jpeg,.webp,.gif,.svg";
-    input.hidden = true;
-    input.addEventListener("change", handleNodeGraphKnobFaceFileInputChange);
-    document.body.append(input);
+  const layerIndex = nodeGraphKnobFaceLayerIndex(layer);
+  if (typeof nodeGraphPickImageFile !== "function") {
+    return;
   }
-  input.value = "";
-  input.dataset.targetNode = nodeId;
-  input.dataset.layer = layer;
-  input.click();
+  nodeGraphPickImageFile((asset) => {
+    const live = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : sourceNode;
+    if (!live || live.type !== "knob") {
+      return;
+    }
+    const apply = (finalUrl) => {
+      const prev = nodeGraphKnobFaceForNode(live);
+      const nextLayers = prev.layers.map((entry, index) => (
+        index === layerIndex
+          ? {
+            dataUrl: finalUrl,
+            fileName: asset.fileName || `${layer}-image`,
+            rotate: Boolean(entry.rotate),
+          }
+          : { ...entry }
+      ));
+      commitNodeGraphKnobFace({
+        ...prev,
+        layers: nextLayers,
+      }, {
+        status: `value slider ${layer} image loaded`,
+      });
+    };
+    if (typeof nodeGraphKnobFaceMaybeStripSilverEdge === "function") {
+      nodeGraphKnobFaceMaybeStripSilverEdge(asset.dataUrl).then(apply);
+    } else {
+      apply(asset.dataUrl);
+    }
+  });
 }
 
 function nodeGraphKnobFaceFileLooksSupported(file) {
-  if (!file) {
-    return false;
-  }
-  if (file.type && nodeGraphKnobFaceAcceptedTypes.includes(file.type)) {
-    return true;
-  }
-  const name = String(file.name || "").toLowerCase();
-  return /\.(png|jpe?g|webp|gif|svg)$/i.test(name);
+  return typeof nodeGraphImageFileLooksSupported === "function"
+    ? nodeGraphImageFileLooksSupported(file)
+    : false;
 }
 
 /**
@@ -1222,99 +1402,6 @@ function nodeGraphKnobFaceMaybeStripSilverEdge(dataUrl) {
   });
 }
 
-function handleNodeGraphKnobFaceFileInputChange(event) {
-  const input = event.currentTarget;
-  const targetNodeId = input.dataset.targetNode || nodeGraphModuleActionTargetNodeId?.();
-  const layer = nodeGraphKnobFaceNormalizeLayerId(input.dataset.layer || "image1");
-  const layerIndex = nodeGraphKnobFaceLayerIndex(layer);
-  const sourceNode = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(targetNodeId) : null;
-  const file = input.files?.[0];
-  nodeGraphKnobFaceLog("INFO", "face file pick", {
-    nodeId: targetNodeId,
-    layer,
-    hasNode: Boolean(sourceNode),
-    type: sourceNode?.type,
-    fileName: file?.name || null,
-    fileType: file?.type || "(empty)",
-    fileSize: file?.size ?? null,
-  });
-  if (!sourceNode || sourceNode.type !== "knob" || !file) {
-    nodeGraphKnobFaceLog("WARN", "face file pick aborted — need knob node + file");
-    return;
-  }
-  if (!nodeGraphKnobFaceFileLooksSupported(file)) {
-    nodeGraphKnobFaceLog("FAIL", "unsupported face image type", {
-      fileType: file.type,
-      fileName: file.name,
-      layer,
-    });
-    if (typeof setNodeInteractionHelp === "function") {
-      setNodeInteractionHelp("Image type not supported (use PNG, JPEG, WebP, GIF, or SVG).");
-    }
-    return;
-  }
-  const reader = new FileReader();
-  reader.onerror = () => {
-    nodeGraphKnobFaceLog("FAIL", "FileReader error loading face image", {
-      fileName: file.name,
-      layer,
-      error: String(reader.error || "unknown"),
-    });
-  };
-  reader.onload = () => {
-    const raw = String(reader.result || "");
-    const header = raw.slice(0, Math.min(80, raw.indexOf(",") >= 0 ? raw.indexOf(",") : 80));
-    const dataUrl = normalizeNodeGraphKnobFaceDataUrl(raw);
-    if (!dataUrl) {
-      nodeGraphKnobFaceLog("FAIL", "face data URL rejected by normalizer", {
-        fileName: file.name,
-        layer,
-        fileType: file.type,
-        resultLength: raw.length,
-        header,
-      });
-      if (typeof setNodeInteractionHelp === "function") {
-        setNodeInteractionHelp("Image is too large or invalid (check debug log).");
-      }
-      return;
-    }
-    nodeGraphKnobFaceLog("INFO", "face data URL accepted", {
-      fileName: file.name,
-      layer,
-      header: dataUrl.slice(0, dataUrl.indexOf(",") + 1),
-      length: dataUrl.length,
-    });
-    nodeGraphKnobFaceMaybeStripSilverEdge(dataUrl).then((finalUrl) => {
-      const prev = nodeGraphKnobFaceForNode(sourceNode);
-      const nextLayers = prev.layers.map((entry, index) => (
-        index === layerIndex
-          ? {
-            dataUrl: finalUrl,
-            fileName: file.name || `${layer}-image`,
-            rotate: Boolean(entry.rotate),
-          }
-          : { ...entry }
-      ));
-      const ok = commitNodeGraphKnobFace({
-        ...prev,
-        layers: nextLayers,
-      }, {
-        status: `value slider ${layer} image loaded`,
-      });
-      const after = typeof nodeGraphPatchNode === "function"
-        ? nodeGraphKnobFaceForNode(nodeGraphPatchNode(targetNodeId))
-        : null;
-      nodeGraphKnobFaceLog(ok && after?.layers?.[layerIndex]?.dataUrl ? "INFO" : "FAIL", "face commit result", {
-        commitOk: ok,
-        layer,
-        hasDataUrlAfterValidate: Boolean(after?.layers?.[layerIndex]?.dataUrl),
-        fileNameAfter: after?.layers?.[layerIndex]?.fileName || "",
-      });
-    });
-  };
-  reader.readAsDataURL(file);
-}
-
 function clearNodeGraphKnobFaceImage(layerId = "image1") {
   const sourceNode = typeof nodeGraphPatchNode === "function"
     ? nodeGraphPatchNode(nodeGraphKnobFaceTargetNodeId())
@@ -1392,21 +1479,6 @@ function setNodeGraphKnobFaceRotationDegreesFromContext({ record = true } = {}) 
 /** @deprecated Offset removed — span is always centered (−span/2 … +span/2). */
 function setNodeGraphKnobFaceRotationOffsetFromContext() {
   // no-op (kept so old bindings do not throw)
-}
-
-function setNodeGraphKnobFaceShowReadoutFromContext({ record = true } = {}) {
-  const sourceNode = typeof nodeGraphPatchNode === "function"
-    ? nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId?.())
-    : null;
-  if (!sourceNode || sourceNode.type !== "knob") {
-    return;
-  }
-  const input = document.getElementById("nodeSceneKnobFaceShowReadout");
-  const prev = nodeGraphKnobFaceForNode(sourceNode);
-  commitNodeGraphKnobFace({
-    ...prev,
-    showReadout: Boolean(input?.checked),
-  }, { record, status: "value slider readout visibility updated" });
 }
 
 /**
@@ -1539,12 +1611,6 @@ function openNodeKnobFaceContextMenu(event) {
   event.preventDefault();
   event.stopPropagation();
   event.stopImmediatePropagation?.();
-  // Preserve multi-select for same-display multi-adjust when this knob is already selected.
-  const alreadySelected = typeof nodeGraphSelectedNodeIds === "function"
-    && nodeGraphSelectedNodeIds().has(nodeId);
-  if (!alreadySelected && typeof setNodeGraphSelection === "function") {
-    setNodeGraphSelection({ type: "node", id: nodeId });
-  }
   if (nodeGraphMvp) {
     nodeGraphMvp.sceneContextTargetNode = nodeId;
     nodeGraphMvp.lastModuleActionTargetNode = nodeId;

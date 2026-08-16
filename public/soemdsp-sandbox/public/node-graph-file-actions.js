@@ -13,26 +13,34 @@ function nodeGraphPatchFileName() {
 
 function nodeGraphPatchWithLiveHeaderInfo(patch = nodeGraphMvp.patch) {
   const nextPatch = cloneNodeGraphPatch(patch);
-  const pageName = document.getElementById("patchNameValue");
-  const pageDescription = document.getElementById("patchDescriptionValue");
+  const field = (key, ...ids) => (
+    typeof nodeGraphPatchInfoFieldValue === "function"
+      ? nodeGraphPatchInfoFieldValue(key, ...ids)
+      : (document.getElementById(ids[0])?.value ?? document.getElementById(ids[1])?.value)
+  );
+  const rawBank = field("bank", "nodePatchDefaultsBank", "patchBankValue");
+  const rawProgram = field("program", "nodePatchDefaultsProgram", "patchProgramValue");
   const bank = normalizeNodeGraphSavedPatchBankIndex(
-    document.getElementById("patchBankValue")?.value ?? nodeGraphMvp.savedPatchBankIndex,
+    rawBank === "" || rawBank == null ? nodeGraphMvp.savedPatchBankIndex : rawBank,
   );
   const program = normalizeNodeGraphSavedPatchProgramIndex(
-    document.getElementById("patchProgramValue")?.value ?? nodeGraphMvp.selectedSavedPatchProgram,
+    rawProgram === "" || rawProgram == null
+      ? nodeGraphMvp.selectedSavedPatchProgram
+      : rawProgram,
   );
-  const bankName = document.getElementById("patchBankNameValue")?.value
-    ?? nodeGraphMvp.savedPatchBankName
-    ?? nextPatch.info?.bankName;
   nextPatch.info = normalizeNodeGraphPatchInfo({
     ...nextPatch.info,
     bank,
-    bankName,
-    description: pageDescription ? pageDescription.value : nextPatch.info?.description,
-    name: pageName ? pageName.value : nextPatch.info?.name,
+    bankName: field("bankName", "nodePatchDefaultsBankName", "patchBankNameValue")
+      || nodeGraphMvp.savedPatchBankName
+      || nextPatch.info?.bankName,
+    description: field("description", "nodePatchDefaultsDescription", "patchDescriptionValue")
+      || nextPatch.info?.description,
+    name: field("name", "nodePatchDefaultsName", "patchNameValue") || nextPatch.info?.name,
     program,
-    tags: document.getElementById("patchTagsValue")?.value ?? nextPatch.info?.tags,
-    author: document.getElementById("patchAuthorValue")?.value ?? nextPatch.info?.author,
+    tags: field("tags", "nodePatchDefaultsTags", "patchTagsValue") || nextPatch.info?.tags,
+    author: field("author", "nodePatchDefaultsAuthor", "patchAuthorValue") || nextPatch.info?.author,
+    category: field("category", "nodePatchDefaultsCategory", "patchCategoryValue") || nextPatch.info?.category,
   });
   return nextPatch;
 }
@@ -84,33 +92,15 @@ function setNodeGraphPatchDirtyState(state = "edited") {
 let nodeGraphWorkingPatchFileAutosaveTimer = 0;
 
 function scheduleNodeGraphWorkingPatchFileAutosave(text, options = {}) {
-  if (typeof postNodeUiDevSettingsPreset !== "function") {
-    return Promise.resolve(false);
-  }
-  if (nodeGraphWorkingPatchFileAutosaveTimer) {
-    window.clearTimeout(nodeGraphWorkingPatchFileAutosaveTimer);
-  }
-  if (options.immediate) {
-    nodeGraphWorkingPatchFileAutosaveTimer = 0;
-    return postNodeUiDevSettingsPreset(text).then(() => true).catch(() => {
-      // Local settings already saved when possible; file sync is a best-effort fallback.
-      return false;
-    });
-  }
-  nodeGraphWorkingPatchFileAutosaveTimer = window.setTimeout(() => {
-    nodeGraphWorkingPatchFileAutosaveTimer = 0;
-    postNodeUiDevSettingsPreset(text).catch(() => {
-      // Local settings already saved; file sync is best-effort while dragging.
-    });
-  }, 350);
-  return Promise.resolve(true);
+  void text;
+  void options;
+  // Working-patch restore is the session blob in localStorage, not the
+  // shipped useruisettings.json preset.
+  return Promise.resolve(false);
 }
 
 function saveNodeGraphWorkingPatchToUserSettings(options = {}) {
-  if (
-    typeof serializeNodeUiDevSettings !== "function" ||
-    typeof saveNodeUiDevLocalDefaultSettings !== "function"
-  ) {
+  if (typeof persistNodeGraphUserSession !== "function") {
     return false;
   }
   // Prefer live graph; fall back to last known working patch if patch is empty
@@ -130,11 +120,9 @@ function saveNodeGraphWorkingPatchToUserSettings(options = {}) {
   }
   nodeGraphMvp.workingPatch = cloneNodeGraphPatch(live);
   syncNodeGraphCurrentSavedPatchHeader();
-  const text = serializeNodeUiDevSettings();
-  const saved = saveNodeUiDevLocalDefaultSettings(text);
-  const fileSave = scheduleNodeGraphWorkingPatchFileAutosave(text, { immediate: Boolean(options.immediateFile) });
+  const saved = persistNodeGraphUserSession();
   if (options.returnFileSave) {
-    return Promise.resolve(fileSave).then((fileSaved) => ({ local: saved, file: Boolean(fileSaved) }));
+    return Promise.resolve({ local: saved, file: false });
   }
   return saved;
 }
@@ -157,16 +145,13 @@ if (typeof window !== "undefined" && !window.__nodeGraphWorkingPatchUnloadBound)
 }
 
 function clearNodeGraphWorkingPatchFromUserSettings() {
-  if (
-    typeof serializeNodeUiDevSettings !== "function" ||
-    typeof saveNodeUiDevLocalDefaultSettings !== "function"
-  ) {
+  if (typeof persistNodeGraphUserSession !== "function") {
     return false;
   }
   nodeGraphMvp.workingPatch = null;
   nodeGraphMvp.currentSavedPatchFilename = "";
   nodeGraphMvp.patchDirtyState = "untouched";
-  return saveNodeUiDevLocalDefaultSettings(serializeNodeUiDevSettings());
+  return persistNodeGraphUserSession();
 }
 
 function initNodeGraphPatchFromDefault() {
@@ -511,16 +496,112 @@ function nodeGraphPatchExportPayload() {
   return { text: patchText, filename, patch: patchToSave };
 }
 
-/**
- * Fallback when File System Access API is unavailable: browser download dialog
- * (location is usually Downloads; path cannot be forced to Desktop).
- */
-function nodeGraphDownloadPatchTextFile(text, filename) {
-  const blob = new Blob([text], { type: "application/json;charset=utf-8" });
+const nodeGraphFilePickerWellKnown = Object.freeze(["desktop", "documents", "downloads"]);
+
+function normalizeNodeGraphFilePickerState(raw = null) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const startIn = String(source.startIn || "desktop").toLowerCase();
+  return {
+    startIn: nodeGraphFilePickerWellKnown.includes(startIn) ? startIn : "desktop",
+    lastSettingsName: String(source.lastSettingsName || "useruisettings.json").slice(0, 180) || "useruisettings.json",
+    lastPatchName: String(source.lastPatchName || "").slice(0, 180),
+  };
+}
+
+function nodeGraphFilePickerState() {
+  const next = normalizeNodeGraphFilePickerState(nodeGraphMvp?.filePicker);
+  if (nodeGraphMvp) {
+    nodeGraphMvp.filePicker = next;
+  }
+  return next;
+}
+
+function rememberNodeGraphFilePickerMeta(patch = {}) {
+  const next = {
+    ...nodeGraphFilePickerState(),
+    ...(patch.lastSettingsName ? { lastSettingsName: String(patch.lastSettingsName).slice(0, 180) } : {}),
+    ...(patch.lastPatchName ? { lastPatchName: String(patch.lastPatchName).slice(0, 180) } : {}),
+    startIn: "desktop",
+  };
+  if (nodeGraphMvp) {
+    nodeGraphMvp.filePicker = next;
+  }
+  if (typeof scheduleNodeUiDevSettingsAutosave === "function") {
+    scheduleNodeUiDevSettingsAutosave();
+  }
+  return next;
+}
+
+function nodeGraphFilePickerOpenDb() {
+  return new Promise((resolve, reject) => {
+    const request = window.indexedDB.open("soemdsp-sandbox-file-picker", 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains("handles")) {
+        db.createObjectStore("handles");
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("file picker db failed"));
+  });
+}
+
+async function nodeGraphFilePickerGetHandle() {
+  try {
+    const db = await nodeGraphFilePickerOpenDb();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction("handles", "readonly");
+      const req = tx.objectStore("handles").get("last");
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function nodeGraphFilePickerPutHandle(handle) {
+  if (!handle) {
+    return;
+  }
+  try {
+    const db = await nodeGraphFilePickerOpenDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction("handles", "readwrite");
+      tx.objectStore("handles").put(handle, "last");
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch {
+    // Handle persistence is best-effort (private mode / quota).
+  }
+}
+
+async function nodeGraphFilePickerStartIn({ allowHandle = true } = {}) {
+  if (allowHandle) {
+    const handle = await nodeGraphFilePickerGetHandle();
+    if (handle && typeof handle.queryPermission === "function") {
+      try {
+        const permission = await handle.queryPermission({ mode: "readwrite" });
+        if (permission === "granted") {
+          return handle;
+        }
+      } catch {
+        // Fall through to Desktop.
+      }
+    } else if (handle) {
+      return handle;
+    }
+  }
+  return nodeGraphFilePickerState().startIn || "desktop";
+}
+
+function nodeGraphDownloadTextFile(text, filename) {
+  const blob = new Blob([`${text}`], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = filename || "soemdsp-patch.json";
+  anchor.download = filename || "soemdsp.json";
   anchor.rel = "noopener";
   document.body.appendChild(anchor);
   anchor.click();
@@ -528,10 +609,109 @@ function nodeGraphDownloadPatchTextFile(text, filename) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
+async function nodeGraphSaveTextFileWithNativeDialog({
+  text,
+  suggestedName,
+  description = "JSON",
+  accept = { "application/json": [".json"] },
+  folderOnly = false,
+} = {}) {
+  const name = String(suggestedName || "soemdsp.json");
+  if (typeof window.showSaveFilePicker === "function") {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: name,
+        startIn: await nodeGraphFilePickerStartIn({ allowHandle: !folderOnly }),
+        types: [{ description, accept }],
+        excludeAcceptAllOption: false,
+      });
+      const writable = await handle.createWritable();
+      await writable.write(text);
+      await writable.close();
+      if (!folderOnly) {
+        await nodeGraphFilePickerPutHandle(handle);
+      }
+      return { ok: true, name: handle.name || name, cancelled: false };
+    } catch (error) {
+      if (error && (error.name === "AbortError" || error.name === "NotAllowedError")) {
+        return { ok: false, cancelled: true };
+      }
+      throw error;
+    }
+  }
+  nodeGraphDownloadTextFile(text, name);
+  return { ok: true, name, cancelled: false, downloaded: true };
+}
+
+async function nodeGraphOpenTextFileWithNativeDialog({
+  description = "JSON",
+  accept = { "application/json": [".json"] },
+  fallbackInputId = "",
+} = {}) {
+  if (typeof window.showOpenFilePicker === "function") {
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        multiple: false,
+        startIn: await nodeGraphFilePickerStartIn(),
+        types: [{ description, accept }],
+        excludeAcceptAllOption: false,
+      });
+      const file = await handle.getFile();
+      const text = await file.text();
+      await nodeGraphFilePickerPutHandle(handle);
+      return { ok: true, name: handle.name || file.name, text, cancelled: false };
+    } catch (error) {
+      if (error && (error.name === "AbortError" || error.name === "NotAllowedError")) {
+        return { ok: false, cancelled: true };
+      }
+      throw error;
+    }
+  }
+  const input = fallbackInputId ? document.getElementById(fallbackInputId) : null;
+  if (!input) {
+    throw new Error("file picker unavailable");
+  }
+  return new Promise((resolve) => {
+    const onChange = () => {
+      input.removeEventListener("change", onChange);
+      const [file] = input.files || [];
+      if (!file) {
+        resolve({ ok: false, cancelled: true });
+        return;
+      }
+      const reader = new FileReader();
+      reader.addEventListener("load", () => {
+        resolve({
+          ok: true,
+          name: file.name,
+          text: String(reader.result || ""),
+          cancelled: false,
+        });
+        input.value = "";
+      });
+      reader.addEventListener("error", () => {
+        resolve({ ok: false, cancelled: false, error: "file read failed" });
+        input.value = "";
+      });
+      reader.readAsText(file);
+    };
+    input.addEventListener("change", onChange);
+    input.click();
+  });
+}
+
 /**
- * Native save dialog for the current patch (Ctrl+S).
- * Uses showSaveFilePicker with startIn: "desktop" when supported; otherwise
- * falls back to a download. Marks the patch saved on success.
+ * Fallback when File System Access API is unavailable: browser download dialog
+ * (location is usually Downloads; path cannot be forced to Desktop).
+ */
+function nodeGraphDownloadPatchTextFile(text, filename) {
+  nodeGraphDownloadTextFile(text, filename || "soemdsp-patch.json");
+}
+
+/**
+ * Native save dialog for the current patch (Save Patch / Ctrl+S).
+ * Always opens the folder picker (never writes a remembered session file).
+ * The OS overwrite prompt is allowed if the user picks an existing name.
  */
 async function saveNodeGraphPatchWithNativeDialog() {
   const payload = nodeGraphPatchExportPayload();
@@ -540,35 +720,22 @@ async function saveNodeGraphPatchWithNativeDialog() {
   }
   const { text, filename, patch } = payload;
   try {
-    if (typeof window.showSaveFilePicker === "function") {
-      let handle;
-      try {
-        handle = await window.showSaveFilePicker({
-          suggestedName: filename,
-          // Well-known directory — Chrome/Edge open the Desktop when allowed.
-          startIn: "desktop",
-          types: [
-            {
-              description: "soemdsp patch JSON",
-              accept: { "application/json": [".json"] },
-            },
-          ],
-          excludeAcceptAllOption: false,
-        });
-      } catch (error) {
-        // User cancelled the picker.
-        if (error && (error.name === "AbortError" || error.name === "NotAllowedError")) {
-          if (typeof setNodeGraphScriptStatus === "function") {
-            setNodeGraphScriptStatus("save cancelled", true);
-          }
-          return false;
+    if (typeof nodeGraphSaveTextFileWithNativeDialog === "function") {
+      const result = await nodeGraphSaveTextFileWithNativeDialog({
+        text,
+        suggestedName: filename,
+        description: "soemdsp patch JSON",
+        accept: { "application/json": [".json"] },
+        folderOnly: true,
+      });
+      if (result.cancelled) {
+        if (typeof setNodeGraphScriptStatus === "function") {
+          setNodeGraphScriptStatus("save cancelled", true);
         }
-        throw error;
+        return false;
       }
-      const writable = await handle.createWritable();
-      await writable.write(text);
-      await writable.close();
-      const savedName = handle.name || filename;
+      const savedName = result.name || filename;
+      rememberNodeGraphFilePickerMeta({ lastPatchName: savedName });
       if (typeof commitNodeGraphPatch === "function") {
         commitNodeGraphPatch(patch, {
           markPending: false,
@@ -676,11 +843,43 @@ async function confirmAndSaveNodeGraphScript(event) {
   }
 }
 
-function loadNodeGraphScript() {
+async function loadNodeGraphScript() {
   if (!nodeGraphScriptReadyForGraphAction("load")) {
     return;
   }
-  document.getElementById("nodePatchScriptFileInput")?.click();
+  try {
+    const result = await nodeGraphOpenTextFileWithNativeDialog({
+      description: "soemdsp patch JSON",
+      accept: { "application/json": [".json"] },
+      fallbackInputId: "nodePatchScriptFileInput",
+    });
+    if (result.cancelled) {
+      setNodeGraphScriptStatus("load cancelled", true);
+      return;
+    }
+    if (!result.ok) {
+      setNodeGraphScriptStatus(result.error || "load failed", false);
+      return;
+    }
+    rememberNodeGraphFilePickerMeta({ lastPatchName: result.name });
+    commitNodeGraphPatch(loadNodeGraphPatchFromScript(result.text), {
+      patchDirtyState: "saved",
+      status: "script loaded",
+    });
+    setNodeGraphCurrentSavedPatch(result.name || "");
+    setNodeGraphScriptStatus(`patch loaded: ${result.name || "file"}`, true);
+  } catch (error) {
+    const message = String(error?.message || error || "failed to load patch");
+    if (typeof nodeGraphShowPatchLoadFault === "function") {
+      nodeGraphShowPatchLoadFault({
+        message,
+        script: error?.patchScript || "",
+        title: "Failed to load patch file",
+      });
+    } else {
+      setNodeGraphScriptStatus(message, false);
+    }
+  }
 }
 
 async function loadSelectedNodeGraphSavedPatch() {
@@ -740,7 +939,15 @@ function saveNodeGraphScriptEditor() {
   }
 }
 
-async function copyNodeGraphScriptToClipboard() {
+async function copyNodeGraphScriptToClipboard(event) {
+  const button = event?.currentTarget;
+  if (typeof confirmNodeGraphDefaultButtonClick === "function" && button) {
+    if (!confirmNodeGraphDefaultButtonClick(button, () => {
+      setNodeGraphScriptStatus("click Confirm Copy to copy this patch", true);
+    }, { confirmText: "Confirm Copy" })) {
+      return;
+    }
+  }
   if (typeof nodeGraphScriptReadyForGraphAction === "function"
     && !nodeGraphScriptReadyForGraphAction("copy")) {
     return;
@@ -751,6 +958,9 @@ async function copyNodeGraphScriptToClipboard() {
   try {
     await navigator.clipboard.writeText(text);
     setNodeGraphScriptStatus("patch copied", true);
+    if (typeof flashNodeGraphDefaultButtonSaved === "function" && button) {
+      flashNodeGraphDefaultButtonSaved(button, "Copied");
+    }
   } catch {
     setNodeGraphScriptStatus("copy blocked: clipboard permission denied", false);
   }
@@ -783,18 +993,77 @@ function nodeGraphDownloadTextFile(filename, text, type = "application/json") {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function pasteNodeGraphScriptFromClipboard() {
-  try {
-    const text = await navigator.clipboard.readText();
-    if (!text || !String(text).trim()) {
-      setNodeGraphScriptStatus("paste empty: clipboard has no text", false);
+function nodeGraphPreviewClipboardPatchText(text) {
+  const source = String(text ?? "").trim();
+  if (!source) {
+    throw new Error("paste empty: clipboard has no text");
+  }
+  if (typeof loadNodeGraphPatchFromScript === "function") {
+    return loadNodeGraphPatchFromScript(source);
+  }
+  const data = JSON.parse(source);
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("paste rejected: clipboard is not a patch object");
+  }
+  if (typeof validateNodeGraphPatch === "function") {
+    return validateNodeGraphPatch(data);
+  }
+  return data;
+}
+
+async function pasteNodeGraphScriptFromClipboard(event) {
+  const button = event?.currentTarget;
+  const confirming = Boolean(
+    button
+    && typeof nodeGraphMvp !== "undefined"
+    && nodeGraphMvp.confirmDefaultButton === button
+    && button.classList.contains("confirming-default"),
+  );
+  if (confirming) {
+    const cached = nodeGraphMvp._pendingPastePatchText;
+    if (typeof clearNodeGraphConfirmDefaultButton === "function") {
+      clearNodeGraphConfirmDefaultButton(button);
+    }
+    delete nodeGraphMvp._pendingPastePatchText;
+    if (!cached) {
+      setNodeGraphScriptStatus("paste expired: copy the patch again", false);
       return;
     }
     if (typeof commitNodeGraphScript === "function") {
-      commitNodeGraphScript(text);
+      commitNodeGraphScript(cached);
     }
+    if (typeof flashNodeGraphDefaultButtonSaved === "function" && button) {
+      flashNodeGraphDefaultButtonSaved(button, "Pasted");
+    }
+    return;
+  }
+  let text;
+  try {
+    text = await navigator.clipboard.readText();
   } catch {
     setNodeGraphScriptStatus("paste blocked: clipboard permission denied", false);
+    return;
+  }
+  try {
+    nodeGraphPreviewClipboardPatchText(text);
+  } catch (error) {
+    if (typeof nodeGraphMvp !== "undefined") {
+      delete nodeGraphMvp._pendingPastePatchText;
+    }
+    setNodeGraphScriptStatus(error?.message || "paste rejected: not a valid patch", false);
+    return;
+  }
+  if (typeof nodeGraphMvp !== "undefined") {
+    nodeGraphMvp._pendingPastePatchText = String(text);
+  }
+  if (typeof confirmNodeGraphDefaultButtonClick === "function" && button) {
+    confirmNodeGraphDefaultButtonClick(button, () => {
+      setNodeGraphScriptStatus("click Confirm Paste to replace this patch", true);
+    }, { confirmText: "Confirm Paste" });
+    return;
+  }
+  if (typeof commitNodeGraphScript === "function") {
+    commitNodeGraphScript(text);
   }
 }
 

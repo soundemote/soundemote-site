@@ -127,9 +127,18 @@ function matrixResolveDensityGrid(density, stageAspect = 1.2) {
 /** Stage width/height from the face canvas parent (letterbox-free fill target). */
 function matrixStageAspectFromCanvas(canvas) {
   const stage = canvas?.parentElement;
-  const w = Math.max(1, stage?.clientWidth || canvas?.clientWidth || 1);
-  const h = Math.max(1, stage?.clientHeight || canvas?.clientHeight || 1);
-  return w / h;
+  const box = typeof nodeGraphElementClientSize === "function"
+    ? nodeGraphElementClientSize(stage || canvas, 1, 1)
+    : (
+      typeof nodeGraphElementInSkippedContentVisibility === "function"
+      && nodeGraphElementInSkippedContentVisibility(stage || canvas)
+        ? { width: 1, height: 1, skipped: true }
+        : {
+          width: Math.max(1, stage?.clientWidth || canvas?.clientWidth || 1),
+          height: Math.max(1, stage?.clientHeight || canvas?.clientHeight || 1),
+        }
+    );
+  return Math.max(1, box.width) / Math.max(1, box.height);
 }
 
 /** Clamp density for soft engine floors (metaparam may expand past 1). */
@@ -142,14 +151,15 @@ function matrixClampDensity(n, fallback = 0.5) {
 /**
  * Phosphor persistence (CRT-style) — shared by Matrix rain, plate residual, Asciiscope XY.
  *
- * Model (matches soundemote phosphor / PrettyScope notes + energy-GL fade):
- *   energy' = energy * keep(e)
- *   keep = exp(-dt / τ(trail)) with a dim-afterglow boost so fade slows near black
- *   trail 0 → τ ~ 40ms (almost no trail)
- *   trail 1 → τ ~ 12s (long burn that still reaches black)
+ * Residual axes match phosphor drawers (PhosphorResidual):
+ *   Bright      → live tip / present gain
+ *   Ghost       → super-exp analog hang (long dim residual)
+ *   Trail       → 0 Ghost only · 0.5 half Ghost / half linear · 0.75 linear · 1 freeze
+ *   Burn        → sticky residual floor (0 = off)
+ *   Burn Amount → residual deposit peak = Bright × this (live tip stays Bright)
  *
- * Brightness is NOT part of this — only final present multiplies by brightness.
- * Burn/deposit is how hard new hits write energy (0..1), also separate.
+ * Decay is applyResidual once per display frame (same as energy-GL drawers).
+ * Do not add a kill floor — that wipes the dim hang Ghost is for.
  */
 
 /** Persistence time constant (seconds) from trail 0..1. */
@@ -186,8 +196,9 @@ function matrixPhosphorBaseKeep(trail, dtSec = 1 / 60) {
 function matrixPhosphorApplyGhostHang(energy01, baseKeep, ghost = 0, burn = 0, trail = null) {
   const e = Math.max(0, Number(energy01) || 0);
   const Residual = typeof PhosphorResidual !== "undefined" ? PhosphorResidual : null;
-  if (Residual && typeof Residual.applyResidual === "function" && trail != null) {
-    return Residual.applyResidual(e, trail, ghost, burn);
+  if (Residual && typeof Residual.applyResidual === "function") {
+    const t = trail == null ? (Residual.DEFAULT_TRAIL ?? 0.5) : trail;
+    return Residual.applyResidual(e, t, ghost, burn);
   }
   const bk = Math.max(0, Math.min(1, Number(baseKeep) || 0));
   const g = Math.max(0, Math.min(1, Number(ghost) || 0));
@@ -196,12 +207,9 @@ function matrixPhosphorApplyGhostHang(energy01, baseKeep, ghost = 0, burn = 0, t
   if (g <= 0.001) {
     faded = e * bk;
   } else {
-    // Super-exp hang blended with trail base keep (legacy dual-path).
     const fade = Math.pow(1 - g, 2.8) * 0.012;
     const keepSlow = Math.min(0.99975, Math.max(bk, 1 - Math.max(0.00025, fade)));
-    const eFast = e * bk;
-    const eGhost = e * keepSlow;
-    faded = Math.max(eFast, eGhost);
+    faded = Math.max(e * bk, e * keepSlow);
   }
   if (Residual && typeof Residual.applyBurnFloor === "function") {
     return Residual.applyBurnFloor(e, faded, b);
@@ -209,6 +217,41 @@ function matrixPhosphorApplyGhostHang(energy01, baseKeep, ghost = 0, burn = 0, t
   if (b >= 0.999) return e;
   if (b > 0.001 && e >= b) return Math.max(faded, b);
   return faded;
+}
+
+/** Residual deposit peak = Bright × Burn Amount (same as phosphor drawers). */
+function matrixPhosphorDepositPeak(params = {}) {
+  const Residual = typeof PhosphorResidual !== "undefined" ? PhosphorResidual : null;
+  const brightRaw = Number(params.brightness);
+  const bright = Number.isFinite(brightRaw) ? Math.max(0, brightRaw) : 1;
+  const amountRaw = Number(params.burnAmount);
+  const amount = Number.isFinite(amountRaw) ? amountRaw : (Residual?.DEFAULT_BURN_AMOUNT ?? 1);
+  if (Residual && typeof Residual.depositBrightness === "function") {
+    return Math.max(0, Residual.depositBrightness(bright, amount));
+  }
+  return Math.max(0, bright * Math.max(0, Math.min(4, amount)));
+}
+
+function matrixPhosphorResidualFromParams(p = {}, num) {
+  const Residual = typeof PhosphorResidual !== "undefined" ? PhosphorResidual : null;
+  const trailFb = Residual?.DEFAULT_TRAIL ?? 0.5;
+  const ghostFb = Residual?.DEFAULT_GHOST ?? 0.45;
+  const burnFb = Residual?.DEFAULT_BURN ?? 0;
+  const amountFb = Residual?.DEFAULT_BURN_AMOUNT ?? 1;
+  const read = typeof num === "function"
+    ? num
+    : (key, fallback) => {
+      const v = Number(p[key]);
+      return Number.isFinite(v) ? v : fallback;
+    };
+  return {
+    trail: Math.max(0, Math.min(1, read("trail", trailFb))),
+    ghost: Math.max(0, Math.min(1, read("ghost", ghostFb))),
+    burn: Math.max(0, Math.min(1, read("burn", burnFb))),
+    burnAmount: Residual?.clampBurnAmount
+      ? Residual.clampBurnAmount(read("burnAmount", amountFb), amountFb)
+      : Math.max(0, Math.min(4, read("burnAmount", amountFb))),
+  };
 }
 
 /**
@@ -576,7 +619,7 @@ function matrixWaterfallParamsFromNode(node) {
   // ~0.4 mid-field; actual cols/rows re-resolved with face aspect at tick time.
   if (density == null) density = 0.4;
   const grid = matrixResolveDensityGrid(density);
-  // Spawn: new key. Legacy: when columns existed, density was spawn rate.
+  // Spawn: 0 off, 0.5 original rain, 1 fast fill. Legacy columns patches used density.
   const spawn = p.spawn != null
     ? Math.max(0, num("spawn", 0.5))
     : (p.columns != null ? Math.max(0, num("density", 0.5)) : 0.5);
@@ -593,18 +636,12 @@ function matrixWaterfallParamsFromNode(node) {
     bufColumns: grid.bufColumns,
     bufRows: grid.bufRows,
     // Signed: +fall, −rise, 0 idle. Magnitude is rate.
-    speed: num("speed", 1.35),
+    speed: num("speed", 1),
     // Glyph flips per bin of travel (1 = once per bin; 0 = fixed for stream).
     charSpeed: Math.max(0, num("charSpeed", 1)),
-    // Trail 0 = pure Ghost path weight; 1 ≈ freeze (linear/freeze blend).
-    trail: Math.max(0, num("trail", 0.82)),
-    // Ghost = extreme analog (super-exp) hang (not peak brightness).
-    ghost: Math.max(0, Math.min(1, num("ghost", 0.35))),
-    // Burn = sticky residual floor (0 = off). Not previously a face param (ghost was hang).
-    burn: Math.max(0, Math.min(1, num("burn", "burnAmount", 0))),
+    ...matrixPhosphorResidualFromParams(p, num),
     spawn,
     streamDeath,
-    // Present + deposit light axis — not residual lifetime.
     brightness: Math.max(0, num("brightness", 1)),
     freeze: Math.round(num("freeze", 0)) > 0 ? 1 : 0,
   };
@@ -621,7 +658,6 @@ function matrixPlateParamsFromNode(node) {
   }
   if (density == null) density = 0.55;
   const grid = matrixResolveDensityGrid(density);
-  const trailRaw = Number(p.trail);
   return {
     // 0 Info, 1 Serial
     mode: Math.max(0, Math.min(1, Math.round(Number(p.mode) || 0))),
@@ -633,11 +669,7 @@ function matrixPlateParamsFromNode(node) {
     stampY: grid.stampY,
     bufColumns: grid.bufColumns,
     bufRows: grid.bufRows,
-    // No hard max 0.98 — high trail is real multi-second persistence.
-    trail: Number.isFinite(trailRaw) ? Math.max(0, trailRaw) : 0.82,
-    ghost: Math.max(0, Math.min(1, Number(p.ghost) || 0.35)),
-    // Burn sticky floor (new face param; default off).
-    burn: Math.max(0, Math.min(1, Number.isFinite(Number(p.burn)) ? Number(p.burn) : 0)),
+    ...matrixPhosphorResidualFromParams(p),
     brightness: (() => {
       const b = Number(p.brightness);
       return Number.isFinite(b) ? Math.max(0, b) : 1;
@@ -663,10 +695,16 @@ function normalizeNodeGraphMatrixWaterfall(raw = null) {
     gradientStops: source.gradientStops ?? source.gradient,
     message: MATRIX_DEFAULT_MESSAGE,
   });
+  const pad = Number(source.screenPadding ?? source.padding);
+  const rounding = Number(source.rounding ?? source.cornerRadius);
+  const shapeRaw = String(source.screenShape ?? source.cornerShape ?? "").toLowerCase();
   return {
     glyphTable: base.glyphTable,
     renderStyle: base.renderStyle,
     gradientStops: base.gradientStops,
+    screenPadding: Number.isFinite(pad) ? Math.max(0, Math.min(1, pad)) : 0,
+    rounding: Number.isFinite(rounding) ? Math.max(0, Math.min(100, rounding)) : 0,
+    screenShape: shapeRaw === "squircle" ? "squircle" : "pill",
   };
 }
 

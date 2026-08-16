@@ -75,7 +75,6 @@ const nodeGraphVisibilityOnMarks = Object.freeze({
   positionSlider: "⬜",
   debug: "🐞",
   tooltipsOff: "⬛",
-  tooltipsFloating: "💬",
   tooltipsEmbedded: "📌",
 });
 
@@ -121,6 +120,9 @@ function renderNodeGraphGridToggle() {
   const button = document.getElementById("nodeGridToggleButton");
   const visible = Boolean(nodeGraphMvp.gridVisible);
   workspace?.classList.toggle("grid-visible", visible);
+  if (typeof updateNodeGraphGridHeatmap === "function") {
+    updateNodeGraphGridHeatmap({ force: true });
+  }
   setNodeGraphVisibilityToggleLabel(button, visible, "Grid", {
     onMark: nodeGraphVisibilityOnMarks.grid,
   });
@@ -138,19 +140,8 @@ function renderNodeGraphGridLightToggle() {
   setNodeGraphVisibilityToggleLabel(button, visible, "Grid Light", {
     onMark: nodeGraphVisibilityOnMarks.gridLight,
   });
-  if (visible) {
-    if (typeof updateNodeGraphGridHeatmap === "function") {
-      updateNodeGraphGridHeatmap({ force: true });
-    }
-  } else {
-    const heatmap = document.getElementById("nodeGridHeatmap");
-    if (heatmap) {
-      heatmap.style.setProperty("--node-grid-heatmap", "none");
-      heatmap.style.setProperty(
-        "--node-grid-heatmap-mask",
-        "linear-gradient(transparent, transparent)",
-      );
-    }
+  if (typeof updateNodeGraphGridHeatmap === "function") {
+    updateNodeGraphGridHeatmap({ force: true });
   }
   renderNodeGraphVisibilityMenuButton();
   if (typeof syncNodeUserUiSettingsViewControls === "function") {
@@ -160,6 +151,7 @@ function renderNodeGraphGridLightToggle() {
 
 function toggleNodeGraphGridLightVisibility() {
   nodeGraphMvp.gridLightVisible = !(nodeGraphMvp.gridLightVisible !== false);
+  persistNodeGraphPatchVisibilityView();
   renderNodeGraphGridLightToggle();
   if (typeof setNodeInteractionHelp === "function") {
     setNodeInteractionHelp(
@@ -192,8 +184,75 @@ function renderNodeGraphWireLengthsToggle() {
   }
 }
 
+function persistNodeGraphPatchVisibilityView() {
+  if (!nodeGraphMvp?.patch) {
+    return;
+  }
+  const view = typeof normalizeNodeGraphPatchView === "function"
+    ? normalizeNodeGraphPatchView(nodeGraphMvp.patch.view)
+    : { ...(nodeGraphMvp.patch.view || {}) };
+  view.gridVisible = nodeGraphMvp.gridVisible !== false;
+  view.gridLightVisible = nodeGraphMvp.gridLightVisible !== false;
+  view.wireLengthsVisible = nodeGraphMvp.wireLengthsVisible !== false;
+  view.wiresAboveModules = Boolean(nodeGraphMvp.wiresAboveModules);
+  view.moduleButtonsVisible = nodeGraphMvp.moduleButtonsVisible !== false;
+  view.moduleOscilloscopesVisible = nodeGraphMvp.moduleOscilloscopesVisible !== false;
+  view.moduleInterfaceControlsVisible = nodeGraphMvp.moduleInterfaceControlsVisible !== false;
+  view.moduleSlidersVisible = nodeGraphMvp.moduleSlidersVisible !== false;
+  view.sliderAmountVisible = nodeGraphMvp.sliderAmountVisible === true;
+  view.sliderPositionVisible = nodeGraphMvp.sliderPositionVisible !== false;
+  nodeGraphMvp.patch.view = view;
+  if (nodeGraphMvp.workingPatch) {
+    nodeGraphMvp.workingPatch.view = {
+      ...(typeof normalizeNodeGraphPatchView === "function"
+        ? normalizeNodeGraphPatchView(nodeGraphMvp.workingPatch.view)
+        : (nodeGraphMvp.workingPatch.view || {})),
+      ...view,
+    };
+  }
+  if (typeof scheduleNodeGraphWorkspaceViewPersist === "function") {
+    scheduleNodeGraphWorkspaceViewPersist();
+  }
+}
+
+function applyNodeGraphPatchVisibilityView() {
+  const view = nodeGraphMvp?.patch?.view;
+  if (!view || typeof view !== "object") {
+    return;
+  }
+  const prevModuleButtons = nodeGraphMvp.moduleButtonsVisible;
+  const prevModuleScopes = nodeGraphMvp.moduleOscilloscopesVisible;
+  const prevModuleInterface = nodeGraphMvp.moduleInterfaceControlsVisible;
+  const prevModuleSliders = nodeGraphMvp.moduleSlidersVisible;
+  if (Object.hasOwn(view, "gridVisible")) nodeGraphMvp.gridVisible = Boolean(view.gridVisible);
+  if (Object.hasOwn(view, "gridLightVisible")) nodeGraphMvp.gridLightVisible = view.gridLightVisible !== false;
+  if (Object.hasOwn(view, "wireLengthsVisible")) nodeGraphMvp.wireLengthsVisible = view.wireLengthsVisible !== false;
+  if (Object.hasOwn(view, "wiresAboveModules")) nodeGraphMvp.wiresAboveModules = Boolean(view.wiresAboveModules);
+  if (Object.hasOwn(view, "moduleButtonsVisible")) nodeGraphMvp.moduleButtonsVisible = view.moduleButtonsVisible !== false;
+  if (Object.hasOwn(view, "moduleOscilloscopesVisible")) nodeGraphMvp.moduleOscilloscopesVisible = view.moduleOscilloscopesVisible !== false;
+  if (Object.hasOwn(view, "moduleInterfaceControlsVisible")) nodeGraphMvp.moduleInterfaceControlsVisible = view.moduleInterfaceControlsVisible !== false;
+  if (Object.hasOwn(view, "moduleSlidersVisible")) nodeGraphMvp.moduleSlidersVisible = view.moduleSlidersVisible !== false;
+  if (Object.hasOwn(view, "sliderAmountVisible")) nodeGraphMvp.sliderAmountVisible = view.sliderAmountVisible === true;
+  if (Object.hasOwn(view, "sliderPositionVisible")) nodeGraphMvp.sliderPositionVisible = view.sliderPositionVisible !== false;
+  if (typeof renderNodeGraphWireLengthsToggle === "function") renderNodeGraphWireLengthsToggle();
+  if (typeof renderNodeGraphWiresAboveModulesToggle === "function") renderNodeGraphWiresAboveModulesToggle();
+  if (typeof renderNodeGraphGridToggle === "function") renderNodeGraphGridToggle();
+  if (typeof renderNodeGraphGridLightToggle === "function") renderNodeGraphGridLightToggle();
+  const moduleVisChanged = prevModuleButtons !== nodeGraphMvp.moduleButtonsVisible
+    || prevModuleScopes !== nodeGraphMvp.moduleOscilloscopesVisible
+    || prevModuleInterface !== nodeGraphMvp.moduleInterfaceControlsVisible
+    || prevModuleSliders !== nodeGraphMvp.moduleSlidersVisible;
+  if (typeof renderNodeGraphModuleVisibilityToggles === "function") {
+    renderNodeGraphModuleVisibilityToggles(moduleVisChanged ? {} : { skipModuleSync: true });
+  }
+  if (typeof renderNodeGraphSliderVisibilityToggles === "function") {
+    renderNodeGraphSliderVisibilityToggles();
+  }
+}
+
 function toggleNodeGraphWireLengthsVisibility() {
   nodeGraphMvp.wireLengthsVisible = !(nodeGraphMvp.wireLengthsVisible !== false);
+  persistNodeGraphPatchVisibilityView();
   renderNodeGraphWireLengthsToggle();
   if (typeof setNodeInteractionHelp === "function") {
     setNodeInteractionHelp(
@@ -224,6 +283,7 @@ function renderNodeGraphWiresAboveModulesToggle() {
 
 function toggleNodeGraphWiresAboveModules() {
   nodeGraphMvp.wiresAboveModules = !nodeGraphMvp.wiresAboveModules;
+  persistNodeGraphPatchVisibilityView();
   renderNodeGraphWiresAboveModulesToggle();
   if (typeof setNodeInteractionHelp === "function") {
     setNodeInteractionHelp(
@@ -270,7 +330,7 @@ function syncNodeGraphVisibleModuleGridHeights() {
   }
 }
 
-function renderNodeGraphModuleVisibilityToggles() {
+function renderNodeGraphModuleVisibilityToggles(options = {}) {
   const workspace = document.getElementById("nodeGraphWorkspace");
   const buttonsButton = document.getElementById("nodeModuleButtonsToggleButton");
   const scopesButton = document.getElementById("nodeOscilloscopeToggleButton");
@@ -284,6 +344,25 @@ function renderNodeGraphModuleVisibilityToggles() {
   workspace?.classList.toggle("module-oscilloscopes-hidden", !scopesVisible);
   workspace?.classList.toggle("module-interface-controls-hidden", !interfaceControlsVisible);
   workspace?.classList.toggle("module-sliders-hidden", !slidersVisible);
+  if (options.skipModuleSync) {
+    setNodeGraphVisibilityToggleLabel(buttonsButton, buttonsVisible, "Module Buttons", {
+      onMark: nodeGraphVisibilityOnMarks.moduleButtons,
+    });
+    setNodeGraphVisibilityToggleLabel(scopesButton, scopesVisible, "Displays", {
+      onMark: nodeGraphVisibilityOnMarks.displays,
+    });
+    setNodeGraphVisibilityToggleLabel(interfaceControlsButton, interfaceControlsVisible, "Control Surfaces", {
+      onMark: nodeGraphVisibilityOnMarks.controlSurfaces,
+    });
+    setNodeGraphVisibilityToggleLabel(slidersButton, slidersVisible, "Sliders", {
+      onMark: nodeGraphVisibilityOnMarks.sliders,
+    });
+    renderNodeGraphVisibilityMenuButton();
+    if (typeof syncNodeUserUiSettingsViewControls === "function") {
+      syncNodeUserUiSettingsViewControls();
+    }
+    return;
+  }
   syncNodeGraphVisibleModuleGridHeights();
   // Refresh per-node visibility classes so unhiding works immediately
   // without needing a full patch commit.
@@ -304,6 +383,9 @@ function renderNodeGraphModuleVisibilityToggles() {
     element.classList.toggle("interface-controls-forced-visible", Boolean(effectiveUi.interfaceControlsForceShow));
     element.classList.toggle("sliders-hidden", effectiveUi.slidersHidden);
     element.classList.toggle("sliders-forced-visible", Boolean(effectiveUi.slidersForceShow));
+    if (typeof applyNodeGraphModuleLayout === "function") {
+      applyNodeGraphModuleLayout(element, patchNode);
+    }
     if (typeof syncNodeGraphLayoutBNoParamsClass === "function") {
       syncNodeGraphLayoutBNoParamsClass(element, patchNode.type, effectiveUi);
     }
@@ -488,54 +570,133 @@ function renderNodeGraphModuleScopeBrightnessControl() {
   syncNodeUserUiSettingsViewControls();
 }
 
-function setNodeGraphModuleButtonsVisibility(visible, options = {}) {
-  nodeGraphMvp.moduleButtonsVisible = Boolean(visible);
-  // Drop overrides that match the new global default (keep opposite overrides).
-  // Global shown → clear force-show. Global hidden → clear force-hide.
-  if (options.clearNodeOverrides !== false && nodeGraphMvp.patch) {
-    const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
-    let changed = false;
-    for (const node of patch.nodes) {
-      const ui = normalizeNodeGraphPatchNodeUi(node.ui, node.type);
-      let dirty = false;
-      if (visible && ui.buttonsForceShow) {
-        ui.buttonsForceShow = false;
+/**
+ * Global module chrome sections (Visibility menu + H for buttons).
+ * Shown = forceShow OR (!localHidden AND globalOn).
+ * Setting global ON clears local hides so unhide actually shows everything.
+ * Setting global OFF keeps force-show (e.g. Patch spawn policy).
+ */
+const NODE_GRAPH_MODULE_VISIBILITY_SECTIONS = Object.freeze({
+  buttons: {
+    force: "buttonsForceShow",
+    global: "moduleButtonsVisible",
+    hidden: "buttonsHidden",
+    helpHide: "Module buttons hidden (H).",
+    helpShow: "Module buttons shown (H).",
+    statusHide: "module buttons hidden",
+    statusShow: "module buttons shown",
+  },
+  oscilloscope: {
+    force: "oscilloscopeForceShow",
+    global: "moduleOscilloscopesVisible",
+    hidden: "oscilloscopeHidden",
+    helpHide: "Displays hidden.",
+    helpShow: "Displays shown.",
+    statusHide: "displays hidden",
+    statusShow: "displays shown",
+  },
+  interfaceControls: {
+    force: "interfaceControlsForceShow",
+    global: "moduleInterfaceControlsVisible",
+    hidden: "interfaceControlsHidden",
+    helpHide: "Module control surfaces hidden.",
+    helpShow: "Module control surfaces shown.",
+    statusHide: "control surfaces hidden",
+    statusShow: "control surfaces shown",
+  },
+  sliders: {
+    force: "slidersForceShow",
+    global: "moduleSlidersVisible",
+    hidden: "slidersHidden",
+    helpHide: "Module sliders hidden.",
+    helpShow: "Module sliders shown.",
+    statusHide: "module sliders hidden",
+    statusShow: "module sliders shown",
+  },
+});
+
+function nodeGraphClearModuleSectionOverrides(patch, spec, globalOn) {
+  let changed = false;
+  if (!patch?.nodes || !spec) {
+    return false;
+  }
+  for (const node of patch.nodes) {
+    const ui = typeof normalizeNodeGraphPatchNodeUi === "function"
+      ? normalizeNodeGraphPatchNodeUi(node.ui, node.type)
+      : { ...(node.ui || {}) };
+    let dirty = false;
+    if (globalOn) {
+      if (ui[spec.hidden]) {
+        ui[spec.hidden] = false;
         dirty = true;
       }
-      if (!visible && ui.buttonsHidden) {
-        ui.buttonsHidden = false;
+      if (ui[spec.force]) {
+        ui[spec.force] = false;
         dirty = true;
       }
-      if (!dirty) {
-        continue;
-      }
-      applyNodeGraphPatchNodeUi(node, ui);
-      changed = true;
+    } else if (ui[spec.hidden]) {
+      ui[spec.hidden] = false;
+      dirty = true;
     }
-    if (changed) {
+    if (!dirty) {
+      continue;
+    }
+    if (typeof applyNodeGraphPatchNodeUi === "function") {
+      applyNodeGraphPatchNodeUi(node, ui);
+    } else {
+      node.ui = ui;
+    }
+    changed = true;
+  }
+  return changed;
+}
+
+function nodeGraphSetModuleSectionGlobalVisible(sectionId, visible, options = {}) {
+  const spec = NODE_GRAPH_MODULE_VISIBILITY_SECTIONS[sectionId];
+  if (!spec) {
+    return;
+  }
+  const on = Boolean(visible);
+  nodeGraphMvp[spec.global] = on;
+  if (typeof persistNodeGraphPatchVisibilityView === "function") {
+    persistNodeGraphPatchVisibilityView();
+  }
+  if (options.clearNodeOverrides !== false && nodeGraphMvp.patch) {
+    const patch = typeof cloneNodeGraphPatch === "function"
+      ? cloneNodeGraphPatch(nodeGraphMvp.patch)
+      : nodeGraphMvp.patch;
+    if (nodeGraphClearModuleSectionOverrides(patch, spec, on) && typeof commitNodeGraphPatch === "function") {
       commitNodeGraphPatch(patch, {
         markPending: false,
-        status: visible ? "module buttons shown" : "module buttons hidden",
+        status: on ? spec.statusShow : spec.statusHide,
       });
     }
   }
   renderNodeGraphModuleVisibilityToggles();
-  if (options.help !== false) {
-    setNodeInteractionHelp(nodeGraphMvp.moduleButtonsVisible ? "Module buttons shown." : "Module buttons hidden.");
+  if (sectionId === "oscilloscope" && typeof scheduleNodeGraphLivePlanSync === "function") {
+    scheduleNodeGraphLivePlanSync();
+  }
+  if (sectionId === "oscilloscope" && on && typeof scheduleNodeGraphModuleScopeDraw === "function") {
+    scheduleNodeGraphModuleScopeDraw();
+  }
+  if (options.help !== false && typeof setNodeInteractionHelp === "function") {
+    setNodeInteractionHelp(on ? spec.helpShow : spec.helpHide);
   }
 }
 
+function setNodeGraphModuleButtonsVisibility(visible, options = {}) {
+  nodeGraphSetModuleSectionGlobalVisible("buttons", visible, options);
+}
+
 /**
- * Modular chrome SSOT (two independent toggles)
- * ─────────────────────────────────────────────
- *  💻 / V  — hide top toolbar + bottom transport (bigger canvas; always same
- *            modular workspace, just bars off). State: appChromeBarsVisible.
- *  📱 / M  — condensed modular frame with back + resize drag widget.
- *            State: modular-only-view class / modularWindowedActive.
+ * Modular chrome SSOT
+ * ───────────────────
+ *  💻      — computer view: infinite canvas (toolbar button, not a hotkey).
+ *  📱      — phone / condensed frame (toolbar button or touch, not a hotkey).
+ *  V       — view: hide/show top + bottom app bars (appChromeBarsVisible).
+ *  T       — transport: stick bottom app buttons over V hide.
  *
- * These stack: V then M → condensed frame with bars still hidden; V again
- * restores bars while M stays on; M again leaves condensed mode.
- * Legacy name "modular-only" = windowed (M on).
+ * Laptop and phone are mutually exclusive canvas modes.
  */
 
 function nodeGraphIsModularWindowedView() {
@@ -588,13 +749,40 @@ function toggleNodeGraphModularOnlyControlsVisible() {
 }
 
 /**
- * 💻 / V — toggle top + bottom app bars (not a separate canvas mode).
- * Bars hidden = more workspace (the "infinite" look on normal modular).
+ * Top + bottom app bars (scene menu). V toggles this.
  */
+function syncNodeGraphTransportChromeStuckClass() {
+  const panel = document.getElementById("nodeWiringPanel");
+  panel?.classList.toggle("transport-chrome-stuck", nodeGraphMvp.transportChromeStuck === true);
+}
+
+function setNodeGraphTransportChromeStuck(stuck, options = {}) {
+  nodeGraphMvp.transportChromeStuck = stuck === true;
+  syncNodeGraphTransportChromeStuckClass();
+  if (typeof applyNodeGraphWorkspaceView === "function") {
+    applyNodeGraphWorkspaceView();
+  }
+  if (typeof notifyNodeGraphChromeLayoutChanged === "function") {
+    notifyNodeGraphChromeLayoutChanged();
+  }
+  if (options.help !== false && typeof setNodeInteractionHelp === "function") {
+    setNodeInteractionHelp(
+      nodeGraphMvp.transportChromeStuck
+        ? "Transport stuck on. Bottom buttons stay if V hides bars."
+        : "Transport unstuck. V hides top and bottom bars.",
+    );
+  }
+}
+
+function toggleNodeGraphTransportChromeStuck() {
+  setNodeGraphTransportChromeStuck(nodeGraphMvp.transportChromeStuck !== true);
+}
+
 function setNodeGraphAppChromeBarsVisible(visible, options = {}) {
   nodeGraphMvp.appChromeBarsVisible = visible !== false;
   const panel = document.getElementById("nodeWiringPanel");
   panel?.classList.toggle("app-chrome-bars-hidden", nodeGraphMvp.appChromeBarsVisible === false);
+  syncNodeGraphTransportChromeStuckClass();
   if (typeof renderNodeGraphModularViewModeButtons === "function") {
     renderNodeGraphModularViewModeButtons();
   }
@@ -619,12 +807,12 @@ function toggleNodeGraphAppChromeBarsVisibility() {
   setNodeGraphAppChromeBarsVisible(nodeGraphMvp.appChromeBarsVisible === false);
 }
 
-/** 💻 / V */
+/** 💻 — computer / infinite canvas (legacy name). */
 function toggleNodeGraphModularInfiniteView() {
-  toggleNodeGraphAppChromeBarsVisibility();
+  setNodeGraphModularWindowedActive(false);
 }
 
-/** 📱 / M — condensed modular frame with resize + back. Independent of V. */
+/** 📱 — phone / condensed frame with resize + back. */
 function setNodeGraphModularWindowedActive(active, options = {}) {
   const on = Boolean(active);
   if (on) {
@@ -641,8 +829,8 @@ function setNodeGraphModularWindowedActive(active, options = {}) {
   if (options.help !== false && typeof setNodeInteractionHelp === "function") {
     setNodeInteractionHelp(
       on
-        ? "Windowed modular view (M / 📱) — drag the corner to resize."
-        : "Windowed modular view off.",
+        ? "Phone view — condensed frame, drag the corner to resize."
+        : "Computer view — infinite canvas.",
     );
   }
 }
@@ -662,18 +850,16 @@ function toggleNodeGraphViewButtonsVisibility() {
 }
 
 function renderNodeGraphModularViewModeButtons() {
-  const barsHidden = nodeGraphMvp.appChromeBarsVisible === false;
   const windowed = nodeGraphIsModularWindowedView();
   const vBtn = document.getElementById("nodeModularInfiniteViewButton");
   const mBtn = document.getElementById("nodeModularWindowedViewButton");
-  // V pressed (active) when bars are hidden.
-  vBtn?.classList.toggle("active", barsHidden);
-  vBtn?.setAttribute("aria-pressed", String(barsHidden));
+  vBtn?.classList.toggle("active", !windowed);
+  vBtn?.setAttribute("aria-pressed", String(!windowed));
   mBtn?.classList.toggle("active", windowed);
   mBtn?.setAttribute("aria-pressed", String(windowed));
   const sceneV = document.getElementById("nodeSceneToggleModularInfiniteView");
-  sceneV?.classList.toggle("active", barsHidden);
-  sceneV?.setAttribute("aria-pressed", String(barsHidden));
+  sceneV?.classList.toggle("active", !windowed);
+  sceneV?.setAttribute("aria-pressed", String(!windowed));
   const sceneM = document.getElementById("nodeSceneToggleModularWindowedView")
     || document.getElementById("nodeSceneToggleModularOnlyView");
   sceneM?.classList.toggle("active", windowed);
@@ -926,14 +1112,22 @@ function renderNodeGraphKeyboardDebugToggle() {
     onMark: nodeGraphVisibilityOnMarks.debug,
   });
   renderNodeGraphVisibilityMenuButton();
+  document.querySelectorAll(".node-phosphor-waveform-display[data-music-player-enhanced='1']").forEach((section) => {
+    const nodeId = section.dataset.node;
+    if (nodeId && typeof nodeGraphAudioPlayerPlaylistRefreshRamDebug === "function") {
+      nodeGraphAudioPlayerPlaylistRefreshRamDebug(nodeId);
+    }
+  });
 }
 
 /** Force diagnostics off (startup, Clear Startup, UI-settings apply). */
 function hideNodeGraphDebugChrome() {
   if (typeof nodeGraphMvp === "object" && nodeGraphMvp) {
     nodeGraphMvp.keyboardDebugInfoVisible = false;
+    nodeGraphMvp.constraintGuideVisible = false;
   }
   document.body.classList.add("keyboard-debug-hidden");
+  document.body.classList.remove("constraint-guide-visible");
   document.body.classList.add("debug-collapsed");
   if (typeof renderNodeGraphKeyboardDebugToggle === "function") {
     renderNodeGraphKeyboardDebugToggle();
@@ -953,47 +1147,59 @@ function hideNodeGraphDebugChrome() {
 
 function setNodeGraphVisibilityMenuOpen(open) {
   const menu = document.getElementById("nodeVisibilityMenu");
-  if (menu) {
-    // Already open: activation only — raise + glow. Never re-home.
-    if (open && !menu.hidden) {
-      if (typeof pulseNodeGraphFloatingWindowAttention === "function") {
-        pulseNodeGraphFloatingWindowAttention(menu);
-      } else if (typeof raiseNodeGraphFloatingWindow === "function") {
-        raiseNodeGraphFloatingWindow(menu);
-      }
-      renderNodeGraphVisibilityMenuButton();
+  if (!menu) {
+    return;
+  }
+  const switching = Boolean(nodeGraphMvp?._unifiedWindowSwitching);
+  // Already showing: pulse only. Independent callers go through the
+  // unified switcher so we never re-home onto a leftover Visibility seat.
+  if (open && !menu.hidden) {
+    if (!switching && typeof openNodeGraphUnifiedWindowPage === "function") {
+      openNodeGraphUnifiedWindowPage("visibilityMenu");
       return;
     }
-    menu.hidden = !open;
-    if (open) {
-      // Standalone window: own workspaceWindowStates.visibilityMenu seat/size.
-      // Do not share unified Command Center / Module Browser geometry.
-      applyNodeGraphVisibilityMenuSize(nodeGraphMvp.workspaceWindowStates?.visibilityMenu?.size);
-      openNodeGraphFloatingWindowAtPosition("visibilityMenu", menu);
-      // Strip any leftover unified-nav host (Visibility is not a unified page).
-      menu.querySelectorAll?.(".node-unified-window-nav-host, .node-unified-window-nav")
-        ?.forEach?.((el) => el.remove());
+    if (typeof pulseNodeGraphFloatingWindowAttention === "function") {
+      pulseNodeGraphFloatingWindowAttention(menu);
+    } else if (typeof raiseNodeGraphFloatingWindow === "function") {
+      raiseNodeGraphFloatingWindow(menu);
+    }
+    renderNodeGraphVisibilityMenuButton();
+    return;
+  }
+  if (open && !switching && typeof openNodeGraphUnifiedWindowPage === "function") {
+    openNodeGraphUnifiedWindowPage("visibilityMenu");
+    return;
+  }
+  menu.hidden = !open;
+  if (open) {
+    menu.classList.add("node-unified-window");
+    // Shared seat is applied once by openNodeGraphUnifiedWindowPage.
+    // Do not restore workspaceWindowStates.visibilityMenu.position/size.
+    if (typeof markNodeGraphFloatingWindowSurface === "function") {
+      markNodeGraphFloatingWindowSurface(menu);
+    }
+    if (typeof noteNodeGraphUnifiedWindowOpened === "function") {
+      noteNodeGraphUnifiedWindowOpened("visibilityMenu", menu);
     }
   }
   if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
-    rememberNodeGraphWorkspaceWindowState("visibilityMenu", menu, { open: Boolean(open) }, { status: false });
+    rememberNodeGraphWorkspaceWindowState(
+      "visibilityMenu",
+      menu,
+      { open: Boolean(open) },
+      { status: false, persist: false, capturePosition: false },
+    );
   }
   renderNodeGraphVisibilityMenuButton();
 }
 
-function nodeGraphVisibilityMenuMinimumSize(menu = document.getElementById("nodeVisibilityMenu")) {
-  const readableWindowMinWidth = 180;
-  const rootStyle = window.getComputedStyle(document.documentElement);
-  const sharedHeaderHeight = Number.parseFloat(
-    rootStyle.getPropertyValue("--node-floating-window-header-height"),
-  ) || 30;
-  const sharedButtonHeight = Number.parseFloat(
-    rootStyle.getPropertyValue("--node-floating-window-button-height"),
-  ) || 30;
-  const buttonCount = menu?.querySelectorAll?.(".node-visibility-menu-list button").length || 7;
+function nodeGraphVisibilityMenuMinimumSize(_menu = document.getElementById("nodeVisibilityMenu")) {
+  const mins = typeof nodeGraphUnifiedWindowMinBox === "function"
+    ? nodeGraphUnifiedWindowMinBox()
+    : { minWidth: 24, minHeight: 120 };
   return {
-    width: readableWindowMinWidth,
-    height: Math.ceil(sharedHeaderHeight + (buttonCount * sharedButtonHeight)),
+    width: mins.minWidth,
+    height: mins.minHeight,
   };
 }
 
@@ -1004,31 +1210,46 @@ function nodeGraphVisibilityMenuSizeFromElement(menu = document.getElementById("
   const rect = menu.getBoundingClientRect();
   return {
     width: Math.round(rect.width),
+    height: Math.round(rect.height),
   };
 }
 
-function applyNodeGraphVisibilityMenuSize(size = {}) {
-  const menu = document.getElementById("nodeVisibilityMenu");
+function applyNodeGraphVisibilityMenuSize(size = {}, menuArg = null) {
+  const menu = menuArg || document.getElementById("nodeVisibilityMenu");
   if (!menu) {
     return null;
   }
+  if (typeof applyNodeGraphUnifiedWindowShellSize === "function") {
+    return applyNodeGraphUnifiedWindowShellSize(menu, size);
+  }
   const rect = menu.getBoundingClientRect();
   const minimum = nodeGraphVisibilityMenuMinimumSize(menu);
+  const shared = nodeGraphMvp?.unifiedWindowSize || {};
+  const wantHeight = Number(size.height) >= minimum.height || Number(shared.height) >= minimum.height;
+  const height = Number(size.height) >= minimum.height
+    ? Number(size.height)
+    : (Number(shared.height) >= minimum.height ? Number(shared.height) : rect.height);
   const normalized = normalizeNodeGraphFloatingWindowSize(
     {
-      width: Number(size.width) || rect.width,
+      width: Number(size.width) || rect.width || shared.width,
+      ...(wantHeight ? { height } : {}),
     },
     {
       minWidth: minimum.width,
-      maxWidth: 420,
       minHeight: minimum.height,
-      maxHeight: 520,
-      width: 185,
+      width: Number(shared.width) || 185,
+      height: wantHeight ? height : minimum.height,
     },
   );
-  menu.style.width = `${normalized.width}px`;
+  menu.style.minWidth = `${minimum.width}px`;
   menu.style.minHeight = `${minimum.height}px`;
-  menu.style.removeProperty("height");
+  menu.style.width = `${normalized.width}px`;
+  if (wantHeight) {
+    menu.style.height = `${normalized.height}px`;
+    menu.style.maxHeight = "none";
+  } else {
+    menu.style.removeProperty("height");
+  }
   return normalized;
 }
 
@@ -1064,13 +1285,9 @@ function dragNodeGraphVisibilityMenuResize(event) {
 
 function endNodeGraphVisibilityMenuResize(event) {
   endNodeGraphFloatingWindowResize(event, "visibilityMenuResizing", () => {
-    if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
-      rememberNodeGraphWorkspaceWindowState(
-        "visibilityMenu",
-        document.getElementById("nodeVisibilityMenu"),
-        { size: nodeGraphVisibilityMenuSizeFromElement() },
-        { status: false },
-      );
+    const menu = document.getElementById("nodeVisibilityMenu");
+    if (typeof rememberNodeGraphUnifiedWindowSizeFromElement === "function") {
+      rememberNodeGraphUnifiedWindowSizeFromElement(menu);
     }
   });
 }
@@ -1086,23 +1303,93 @@ function beginNodeGraphVisibilityMenuDrag(event) {
 function dragNodeGraphVisibilityMenu(event) {
   const menu = document.getElementById("nodeVisibilityMenu");
   dragNodeGraphFloatingWindow(event, "visibilityMenuDragging", menu, (next) => {
-    if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
-      rememberNodeGraphWorkspaceWindowState("visibilityMenu", menu, { open: true, position: next }, { persist: false });
+    if (typeof storeNodeGraphUnifiedWindowSeat === "function") {
+      storeNodeGraphUnifiedWindowSeat({
+        left: next.left,
+        top: next.top,
+        width: nodeGraphMvp?.unifiedWindowSize?.width,
+        height: nodeGraphMvp?.unifiedWindowSize?.height,
+      });
     }
   });
 }
 
 function endNodeGraphVisibilityMenuDrag(event) {
   endNodeGraphFloatingWindowDrag(event, "visibilityMenuDragging", () => {
-    if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
-      rememberNodeGraphWorkspaceWindowState("visibilityMenu", document.getElementById("nodeVisibilityMenu"), {}, { status: false });
+    const menu = document.getElementById("nodeVisibilityMenu");
+    if (typeof rememberNodeGraphUnifiedWindowSizeFromElement === "function") {
+      rememberNodeGraphUnifiedWindowSizeFromElement(menu);
+    } else if (typeof storeNodeGraphUnifiedWindowSeat === "function") {
+      storeNodeGraphUnifiedWindowSeat(typeof nodeGraphUnifiedWindowSeatFromElement === "function"
+        ? nodeGraphUnifiedWindowSeatFromElement(menu)
+        : null);
     }
   });
 }
 
+function applyNodeGraphHotkeysPageSize(size = {}, panelArg = null) {
+  const panel = panelArg || document.getElementById("nodeHotkeysPage");
+  if (!panel) {
+    return null;
+  }
+  if (typeof applyNodeGraphUnifiedWindowShellSize === "function") {
+    return applyNodeGraphUnifiedWindowShellSize(panel, size);
+  }
+  const width = Math.round(Number(size.width) || panel.getBoundingClientRect().width);
+  const height = Math.round(Number(size.height) || panel.getBoundingClientRect().height);
+  if (width >= 24) {
+    panel.style.width = `${width}px`;
+  }
+  if (height >= 120) {
+    panel.style.height = `${height}px`;
+  }
+  return { width, height };
+}
+
+function setNodeGraphHotkeysPageOpen(open) {
+  const panel = document.getElementById("nodeHotkeysPage");
+  if (!panel) {
+    return;
+  }
+  const switching = Boolean(nodeGraphMvp?._unifiedWindowSwitching);
+  if (open && !panel.hidden) {
+    if (!switching && typeof openNodeGraphUnifiedWindowPage === "function") {
+      openNodeGraphUnifiedWindowPage("hotkeys");
+      return;
+    }
+    if (typeof pulseNodeGraphFloatingWindowAttention === "function") {
+      pulseNodeGraphFloatingWindowAttention(panel);
+    }
+    return;
+  }
+  if (open && !switching && typeof openNodeGraphUnifiedWindowPage === "function") {
+    openNodeGraphUnifiedWindowPage("hotkeys");
+    return;
+  }
+  panel.hidden = !open;
+  if (open) {
+    panel.classList.add("node-unified-window");
+    if (typeof markNodeGraphFloatingWindowSurface === "function") {
+      markNodeGraphFloatingWindowSurface(panel);
+    }
+    if (typeof noteNodeGraphUnifiedWindowOpened === "function") {
+      noteNodeGraphUnifiedWindowOpened("hotkeys", panel);
+    }
+  }
+}
+
 function toggleNodeGraphVisibilityMenu() {
   const menu = document.getElementById("nodeVisibilityMenu");
-  setNodeGraphVisibilityMenuOpen(!(menu && !menu.hidden));
+  const open = Boolean(menu && !menu.hidden);
+  if (open && typeof closeNodeGraphUnifiedWindowPage === "function") {
+    closeNodeGraphUnifiedWindowPage("visibilityMenu");
+    return;
+  }
+  if (!open && typeof openNodeGraphUnifiedWindowPage === "function") {
+    openNodeGraphUnifiedWindowPage("visibilityMenu");
+    return;
+  }
+  setNodeGraphVisibilityMenuOpen(!open);
 }
 
 function nodeGraphStartupViewModeFromUrl() {
@@ -1123,14 +1410,25 @@ function nodeGraphStartupViewModeFromUrl() {
   ) {
     return "modular-windowed";
   }
-  return "modular";
+  if (value === "settings" || value === "script") {
+    return "settings";
+  }
+  if (value === "code" || value === "mapping" || value === "modular") {
+    return value;
+  }
+  return "";
 }
 
 function resetNodeGraphStartupView() {
-  nodeGraphMvp.moduleStoreDepartment = "";
-  nodeGraphMvp.moduleStoreDepartmentAnchor = "";
   nodeGraphMvp.sceneContextPoint = null;
-  setNodeGraphViewMode(nodeGraphStartupViewModeFromUrl());
+  const urlMode = nodeGraphStartupViewModeFromUrl();
+  const savedMode = typeof normalizeNodeGraphPersistedViewMode === "function"
+    ? normalizeNodeGraphPersistedViewMode(nodeGraphMvp.viewMode)
+    : nodeGraphMvp.viewMode;
+  setNodeGraphViewMode(urlMode || savedMode || "modular");
+  if (typeof renderNodeGraphBookScriptPage === "function") {
+    renderNodeGraphBookScriptPage();
+  }
   if (nodeGraphMvp._startupHideAppChromeBars) {
     nodeGraphMvp._startupHideAppChromeBars = false;
     setNodeGraphAppChromeBarsVisible(false, { help: false });
@@ -1139,15 +1437,114 @@ function resetNodeGraphStartupView() {
   }
 }
 
-// Docked (not floating/draggable) performance surface, toggled on/off,
-// sitting below the modular workspace -- second instances of the exact
-// same keyboardController/pitchModWheel/macroControls module bodies, not
-// a separate implementation. Every one of these already keeps its state
-// in shared nodeGraphMvp fields (midiKeyboardSignal, performance wheel
-// values, macroControls array) and re-renders every matching DOM surface
-// in the whole document on change, so a second instance of each mirrors
-// its node counterpart for free. Populated once at bootstrap; only
-// visibility changes after that.
+// In-flow strip glued to the transport bar. Height is the gap from the
+// top seam (the split handle / pointer) down to the transport — never a
+// startHeight ± dy sign that flips when layout is confused.
+const nodeGraphControllerDockHeightMin = 72;
+const nodeGraphControllerDockHeightMax = 620;
+const nodeGraphControllerDockHeightDefault = 240;
+
+function nodeGraphControllerDockHeightLimits() {
+  const panel = document.getElementById("nodeWiringPanel");
+  const max = Math.max(
+    nodeGraphControllerDockHeightMin,
+    Math.round((panel?.clientHeight || window.innerHeight || 800) * 0.55),
+  );
+  return {
+    min: nodeGraphControllerDockHeightMin,
+    max: Math.min(nodeGraphControllerDockHeightMax, max),
+  };
+}
+
+function normalizeNodeGraphControllerDockHeight(value) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n) || n <= 0) {
+    return 0;
+  }
+  const limits = nodeGraphControllerDockHeightLimits();
+  return Math.max(limits.min, Math.min(limits.max, n));
+}
+
+function nodeGraphControllerDockBottomEdge(dock) {
+  const transport = document.querySelector("#nodeWiringPanel > .node-graph-controls");
+  if (transport) {
+    const style = getComputedStyle(transport);
+    if (style.display !== "none" && style.visibility !== "hidden") {
+      return transport.getBoundingClientRect().top;
+    }
+  }
+  return dock?.getBoundingClientRect?.().bottom || 0;
+}
+
+function applyNodeGraphControllerDockHeight(height = nodeGraphMvp?.controllerDockHeight, options = {}) {
+  const dock = document.getElementById("nodeStandaloneMidiKeyboardDock");
+  const px = normalizeNodeGraphControllerDockHeight(
+    height ?? nodeGraphMvp?.controllerDockHeight ?? 0,
+  );
+  if (nodeGraphMvp) {
+    nodeGraphMvp.controllerDockHeight = px;
+  }
+  if (!dock) {
+    return px;
+  }
+  dock.classList.toggle("has-controller-height", px > 0);
+  dock.style.setProperty(
+    "--node-controller-dock-height",
+    `${px > 0 ? px : nodeGraphControllerDockHeightDefault}px`,
+  );
+  const layout = options.layout !== false && !nodeGraphMvp?.chromeSectionResizing;
+  if (layout && typeof applyNodeGraphMidiKeyboardLayout === "function") {
+    applyNodeGraphMidiKeyboardLayout();
+  }
+  if (layout && typeof notifyNodeGraphChromeLayoutChanged === "function") {
+    notifyNodeGraphChromeLayoutChanged();
+  }
+  return px;
+}
+
+function beginNodeGraphControllerDockResize(event) {
+  if (event.button > 0) {
+    return false;
+  }
+  const dock = document.getElementById("nodeStandaloneMidiKeyboardDock");
+  const handle = event.currentTarget;
+  if (!dock || dock.hidden || !handle || typeof watchNodeGraphSectionResizeDrag !== "function") {
+    return false;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  const startBottom = nodeGraphControllerDockBottomEdge(dock);
+  document.body.classList.add("is-resizing-controller-dock");
+  watchNodeGraphSectionResizeDrag(event, {
+    handle,
+    onMove: (point) => {
+      applyNodeGraphControllerDockHeight(startBottom - point.y, { layout: false });
+    },
+    onEnd: () => {
+      document.body.classList.remove("is-resizing-controller-dock");
+      if (typeof applyNodeGraphMidiKeyboardLayout === "function") {
+        applyNodeGraphMidiKeyboardLayout();
+      }
+      if (typeof notifyNodeGraphChromeLayoutChanged === "function") {
+        notifyNodeGraphChromeLayoutChanged();
+      }
+      if (typeof saveNodeGraphWorkingPatchToUserSettings === "function") {
+        saveNodeGraphWorkingPatchToUserSettings({ immediateFile: false });
+      }
+    },
+  });
+  return true;
+}
+
+function bindNodeGraphControllerDockSplit() {
+  const handle = document.getElementById("nodeControllerDockSplit");
+  if (!handle || handle.dataset.dockSplitBound === "true") {
+    return;
+  }
+  handle.dataset.dockSplitBound = "true";
+  handle.addEventListener("pointerdown", beginNodeGraphControllerDockResize);
+}
+
 function initNodeGraphStandaloneMidiKeyboard() {
   const dock = document.getElementById("nodeStandaloneMidiKeyboardDock");
   const body = document.getElementById("nodeStandaloneMidiKeyboardBody");
@@ -1155,137 +1552,13 @@ function initNodeGraphStandaloneMidiKeyboard() {
     return;
   }
   dock.dataset.populated = "true";
-  const performanceRow = document.createElement("div");
-  performanceRow.className = "node-standalone-performance-row";
-  performanceRow.append(createNodeGraphPitchModWheelBody(), createNodeGraphKeyboardControllerBody());
-  body.append(createNodeGraphMacroControlsBody(), performanceRow);
+  if (typeof mountNodeGraphControllerRows === "function") {
+    mountNodeGraphControllerRows(body);
+  }
   renderNodeGraphKeyboardControllerModules();
   bindNodeGraphMacroControlModuleEvents();
-}
-
-// Free-floating window, same generic drag/resize/lock/keyboard-nudge
-// subsystem as Command Center et al (node-graph-floating-windows.js) --
-// not a workspace-docked panel synced to #nodeGraphWorkspace's width
-// anymore. workspaceWindowStates.standaloneMidiKeyboard is the single
-// source of truth for open/closed, matching every other floating window
-// (no separate ad-hoc visibility flag).
-const nodeStandaloneMidiKeyboardDockDefaultSize = Object.freeze({
-  width: 860,
-  minWidth: 420,
-  // No real ceiling on drag-resize width -- normalizeNodeGraphFloatingWindowSize
-  // falls back to 720 if maxWidth isn't finite, so this can't just be
-  // omitted/Infinity; a large-but-finite number here means the resize is
-  // bounded only by the actual screen (viewportWidth, via viewportMargin: 0
-  // below -- this dock should be draggable all the way to the true edge,
-  // unlike most floating windows which keep the default small margin).
-  maxWidth: 8000,
-  viewportMargin: 0,
-  height: 260,
-  minHeight: 160,
-  maxHeight: 640,
-});
-
-function normalizeNodeGraphStandaloneMidiKeyboardDockSize(size = {}) {
-  return normalizeNodeGraphFloatingWindowSize(size, nodeStandaloneMidiKeyboardDockDefaultSize);
-}
-
-function applyNodeGraphStandaloneMidiKeyboardDockSize(size = nodeGraphMvp.standaloneMidiKeyboardWindowSize) {
-  const dock = document.getElementById("nodeStandaloneMidiKeyboardDock");
-  const normalized = normalizeNodeGraphStandaloneMidiKeyboardDockSize(size || nodeStandaloneMidiKeyboardDockDefaultSize);
-  nodeGraphMvp.standaloneMidiKeyboardWindowSize = normalized;
-  if (!dock) {
-    return normalized;
-  }
-  applyNodeGraphFloatingWindowSizeVars(dock, "node-standalone-keyboard", nodeStandaloneMidiKeyboardDockDefaultSize, normalized);
-  return normalized;
-}
-
-function positionNodeGraphStandaloneMidiKeyboardDockAtSavedOr(x, y) {
-  const dock = document.getElementById("nodeStandaloneMidiKeyboardDock");
-  if (!dock) {
-    return;
-  }
-  dock.hidden = false;
-  applyNodeGraphStandaloneMidiKeyboardDockSize();
-  const savedPosition = nodeGraphMvp.workspaceWindowStates?.standaloneMidiKeyboard?.position;
-  const hasSavedPosition =
-    Number.isFinite(Number(savedPosition?.left)) &&
-    Number.isFinite(Number(savedPosition?.top));
-  const { left, top } = nodeGraphFloatingWindowPosition(
-    dock,
-    hasSavedPosition ? savedPosition.left : x,
-    hasSavedPosition ? savedPosition.top : y,
-  );
-  setNodeGraphFloatingWindowViewportPosition(dock, left, top);
-  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
-    rememberNodeGraphWorkspaceWindowState(
-      "standaloneMidiKeyboard",
-      dock,
-      { open: true, position: { left, top } },
-      { persist: false },
-    );
-  }
-}
-
-function beginNodeGraphStandaloneMidiKeyboardDrag(event) {
-  const dock = document.getElementById("nodeStandaloneMidiKeyboardDock");
-  if (!dock || dock.hidden) {
-    return;
-  }
-  beginNodeGraphFloatingWindowDrag(event, dock, "standaloneMidiKeyboardDragging");
-}
-
-function dragNodeGraphStandaloneMidiKeyboard(event) {
-  dragNodeGraphFloatingWindow(
-    event,
-    "standaloneMidiKeyboardDragging",
-    document.getElementById("nodeStandaloneMidiKeyboardDock"),
-    (next) => {
-      if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
-        rememberNodeGraphWorkspaceWindowState(
-          "standaloneMidiKeyboard",
-          document.getElementById("nodeStandaloneMidiKeyboardDock"),
-          { open: true, position: next },
-          { persist: false },
-        );
-      }
-    },
-  );
-}
-
-function endNodeGraphStandaloneMidiKeyboardDrag(event) {
-  endNodeGraphFloatingWindowDrag(event, "standaloneMidiKeyboardDragging", () => {
-    if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
-      rememberNodeGraphWorkspaceWindowState(
-        "standaloneMidiKeyboard",
-        document.getElementById("nodeStandaloneMidiKeyboardDock"),
-        { open: true },
-        { status: false },
-      );
-    }
-  });
-}
-
-function beginNodeGraphStandaloneMidiKeyboardResize(event) {
-  const dock = document.getElementById("nodeStandaloneMidiKeyboardDock");
-  beginNodeGraphFloatingWindowResize(event, dock, "standaloneMidiKeyboardResizing");
-}
-
-function dragNodeGraphStandaloneMidiKeyboardResize(event) {
-  dragNodeGraphFloatingWindowResize(event, "standaloneMidiKeyboardResizing", applyNodeGraphStandaloneMidiKeyboardDockSize);
-}
-
-function endNodeGraphStandaloneMidiKeyboardResize(event) {
-  endNodeGraphFloatingWindowResize(event, "standaloneMidiKeyboardResizing", () => {
-    if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
-      rememberNodeGraphWorkspaceWindowState(
-        "standaloneMidiKeyboard",
-        document.getElementById("nodeStandaloneMidiKeyboardDock"),
-        { open: true, size: normalizeNodeGraphStandaloneMidiKeyboardDockSize(nodeGraphMvp.standaloneMidiKeyboardWindowSize) },
-        { status: false },
-      );
-    }
-  });
+  bindNodeGraphControllerDockSplit();
+  applyNodeGraphControllerDockHeight();
 }
 
 function renderNodeGraphStandaloneMidiKeyboardToggle() {
@@ -1306,19 +1579,14 @@ function closeNodeGraphStandaloneMidiKeyboard() {
   if (dock) {
     dock.hidden = true;
   }
-  if (nodeGraphMvp.standaloneMidiKeyboardDragging?.handle) {
-    nodeGraphMvp.standaloneMidiKeyboardDragging.handle.classList.remove("dragging");
-  }
-  if (nodeGraphMvp.standaloneMidiKeyboardResizing?.handle) {
-    nodeGraphMvp.standaloneMidiKeyboardResizing.handle.classList.remove("dragging");
-  }
-  nodeGraphMvp.standaloneMidiKeyboardDragging = null;
-  nodeGraphMvp.standaloneMidiKeyboardResizing = null;
   if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
     rememberNodeGraphWorkspaceWindowState("standaloneMidiKeyboard", dock, { open: false }, { status: false });
   }
   renderNodeGraphStandaloneMidiKeyboardToggle();
-  setNodeInteractionHelp("MIDI keyboard hidden.");
+  setNodeInteractionHelp("Controller hidden.");
+  if (typeof notifyNodeGraphChromeLayoutChanged === "function") {
+    notifyNodeGraphChromeLayoutChanged();
+  }
 }
 
 function toggleNodeGraphStandaloneMidiKeyboard() {
@@ -1329,158 +1597,25 @@ function toggleNodeGraphStandaloneMidiKeyboard() {
     return;
   }
   initNodeGraphStandaloneMidiKeyboard();
-  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 900;
-  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 700;
-  const defaultWidth = nodeStandaloneMidiKeyboardDockDefaultSize.width;
-  const defaultHeight = nodeStandaloneMidiKeyboardDockDefaultSize.height;
-  positionNodeGraphStandaloneMidiKeyboardDockAtSavedOr(
-    Math.max(12, (viewportWidth - defaultWidth) / 2),
-    Math.max(12, viewportHeight - defaultHeight - 24),
-  );
-  renderNodeGraphStandaloneMidiKeyboardToggle();
-  setNodeInteractionHelp("MIDI keyboard shown.");
-}
-
-// Free-floating, draggable, resizable window hosting #nodeInteractionHelp,
-// same generic drag/resize/lock/keyboard-nudge subsystem as Command
-// Center et al (node-graph-floating-windows.js). Exists so tips stay
-// reachable in modular-only view, where the old in-flow .node-help-stack
-// row (and everything else outside a floating window) gets hidden.
-const nodeTooltipWindowDefaultSize = Object.freeze({
-  width: 420,
-  minWidth: 260,
-  maxWidth: 900,
-  height: 90,
-  minHeight: 90,
-  maxHeight: 480,
-});
-
-function normalizeNodeGraphTooltipWindowSize(size = {}) {
-  return normalizeNodeGraphFloatingWindowSize(size, nodeTooltipWindowDefaultSize);
-}
-
-function applyNodeGraphTooltipWindowSize(size = nodeGraphMvp.tooltipWindowSize) {
-  const win = document.getElementById("nodeTooltipWindow");
-  const normalized = normalizeNodeGraphTooltipWindowSize(size || nodeTooltipWindowDefaultSize);
-  nodeGraphMvp.tooltipWindowSize = normalized;
-  if (!win) {
-    return normalized;
+  if (dock) {
+    dock.hidden = false;
   }
-  applyNodeGraphFloatingWindowSizeVars(win, "node-tooltip-window", nodeTooltipWindowDefaultSize, normalized);
-  // Window size is the box the tip text fills — re-fit after every resize.
-  if (typeof fitNodeInteractionHelpText === "function") {
-    fitNodeInteractionHelpText(document.getElementById("nodeInteractionHelp"));
-  }
-  return normalized;
-}
-
-function positionNodeGraphTooltipWindowAtSavedOr(x, y) {
-  const win = document.getElementById("nodeTooltipWindow");
-  if (!win) {
-    return;
-  }
-  win.hidden = false;
-  applyNodeGraphTooltipWindowSize();
-  const savedPosition = nodeGraphMvp.workspaceWindowStates?.tooltipWindow?.position;
-  const hasSavedPosition =
-    Number.isFinite(Number(savedPosition?.left)) &&
-    Number.isFinite(Number(savedPosition?.top));
-  const { left, top } = nodeGraphFloatingWindowPosition(
-    win,
-    hasSavedPosition ? savedPosition.left : x,
-    hasSavedPosition ? savedPosition.top : y,
-  );
-  setNodeGraphFloatingWindowViewportPosition(win, left, top);
   if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
-    rememberNodeGraphWorkspaceWindowState(
-      "tooltipWindow",
-      win,
-      { open: true, position: { left, top } },
-      { persist: false },
-    );
+    rememberNodeGraphWorkspaceWindowState("standaloneMidiKeyboard", dock, { open: true }, { persist: false });
   }
+  bindNodeGraphControllerDockSplit();
+  applyNodeGraphControllerDockHeight();
+  renderNodeGraphStandaloneMidiKeyboardToggle();
+  setNodeInteractionHelp("Controller shown.");
 }
 
-function beginNodeGraphTooltipWindowDrag(event) {
-  const win = document.getElementById("nodeTooltipWindow");
-  if (!win || win.hidden) {
-    return;
-  }
-  beginNodeGraphFloatingWindowDrag(event, win, "tooltipWindowDragging");
-}
-
-function beginNodeGraphTooltipWindowResize(event) {
-  const win = document.getElementById("nodeTooltipWindow");
-  beginNodeGraphFloatingWindowResize(event, win, "tooltipWindowResizing");
-}
-
-function dragNodeGraphTooltipWindowResize(event) {
-  dragNodeGraphFloatingWindowResize(event, "tooltipWindowResizing", applyNodeGraphTooltipWindowSize);
-}
-
-function endNodeGraphTooltipWindowResize(event) {
-  endNodeGraphFloatingWindowResize(event, "tooltipWindowResizing", () => {
-    if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
-      rememberNodeGraphWorkspaceWindowState(
-        "tooltipWindow",
-        document.getElementById("nodeTooltipWindow"),
-        { open: true, size: normalizeNodeGraphTooltipWindowSize(nodeGraphMvp.tooltipWindowSize) },
-        { status: false },
-      );
-    }
-  });
-}
-
-function dragNodeGraphTooltipWindow(event) {
-  dragNodeGraphFloatingWindow(
-    event,
-    "tooltipWindowDragging",
-    document.getElementById("nodeTooltipWindow"),
-    (next) => {
-      if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
-        rememberNodeGraphWorkspaceWindowState(
-          "tooltipWindow",
-          document.getElementById("nodeTooltipWindow"),
-          { open: true, position: next },
-          { persist: false },
-        );
-      }
-    },
-  );
-}
-
-function endNodeGraphTooltipWindowDrag(event) {
-  endNodeGraphFloatingWindowDrag(event, "tooltipWindowDragging", () => {
-    if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
-      rememberNodeGraphWorkspaceWindowState(
-        "tooltipWindow",
-        document.getElementById("nodeTooltipWindow"),
-        { open: true },
-        { status: false },
-      );
-    }
-  });
-}
-
-// ── Tips: one 3-state control ─────────────────────────────────────────────
-// Visibility menu button (and T) cycles:
-//   embedded → float → off → embedded → …
-//
-// Shown-ness has no state variable of its own; it is read off whichever host
-// is currently in use, so the button label cannot disagree with the screen.
 function nodeGraphTooltipsShown() {
-  if (nodeGraphMvp.tooltipEmbedded === true) {
-    return document.getElementById("nodeInteractionHelpEmbedSlot")?.hidden === false;
-  }
-  return document.getElementById("nodeTooltipWindow")?.hidden === false;
+  return document.getElementById("nodeInteractionHelpEmbedSlot")?.hidden === false;
 }
 
-/** @returns {"embedded"|"float"|"off"} */
+/** @returns {"embedded"|"off"} */
 function nodeGraphTooltipMode() {
-  if (!nodeGraphTooltipsShown()) {
-    return "off";
-  }
-  return nodeGraphMvp.tooltipEmbedded === true ? "embedded" : "float";
+  return nodeGraphTooltipsShown() ? "embedded" : "off";
 }
 
 function renderNodeGraphTooltipWindowToggle() {
@@ -1489,14 +1624,8 @@ function renderNodeGraphTooltipWindowToggle() {
   if (button) {
     const mark = mode === "embedded"
       ? nodeGraphVisibilityOnMarks.tooltipsEmbedded
-      : mode === "float"
-        ? nodeGraphVisibilityOnMarks.tooltipsFloating
-        : nodeGraphVisibilityOnMarks.tooltipsOff;
-    const name = mode === "embedded"
-      ? "Tooltips embedded"
-      : mode === "float"
-        ? "Tooltips floating"
-        : "Tooltips off";
+      : nodeGraphVisibilityOnMarks.tooltipsOff;
+    const name = mode === "embedded" ? "Tooltips docked" : "Tooltips off";
     const text = `${mark} ${name}`;
     const label =
       button.querySelector(".node-tooltip-mode-label") ||
@@ -1565,22 +1694,45 @@ function beginNodeGraphTooltipEmbedResize(event) {
   if (!handle || !help?.classList.contains("is-embedded")) {
     return;
   }
+  if (typeof watchNodeGraphSectionResizeDrag !== "function") {
+    return;
+  }
   event.preventDefault();
   event.stopPropagation();
   handle.classList.add("dragging");
+  const startY = event.clientY;
+  const startHeight = normalizeNodeGraphTooltipEmbedHeight(
+    nodeGraphMvp.tooltipEmbedHeight ?? nodeTooltipEmbedHeightDefault,
+  );
   nodeGraphMvp.tooltipEmbedResizing = {
     handle,
-    startY: event.clientY,
-    startHeight: normalizeNodeGraphTooltipEmbedHeight(
-      nodeGraphMvp.tooltipEmbedHeight ?? nodeTooltipEmbedHeightDefault,
-    ),
+    startY,
+    startHeight,
     pointerId: event.pointerId,
   };
-  try {
-    handle.setPointerCapture?.(event.pointerId);
-  } catch {
-    // ignore
-  }
+  watchNodeGraphSectionResizeDrag(event, {
+    handle,
+    onMove: (point) => {
+      applyNodeGraphTooltipEmbedHeight(startHeight + (point.y - startY));
+      if (typeof fitNodeInteractionHelpText === "function") {
+        fitNodeInteractionHelpText(help);
+      }
+    },
+    onEnd: () => {
+      handle.classList.remove("dragging");
+      nodeGraphMvp.tooltipEmbedResizing = null;
+      applyNodeGraphTooltipEmbedHeight();
+      if (typeof fitNodeInteractionHelpText === "function") {
+        fitNodeInteractionHelpText(help);
+      }
+      if (typeof notifyNodeGraphChromeLayoutChanged === "function") {
+        notifyNodeGraphChromeLayoutChanged();
+      }
+      if (typeof saveNodeGraphWorkingPatchToUserSettings === "function") {
+        saveNodeGraphWorkingPatchToUserSettings({ immediateFile: false });
+      }
+    },
+  });
 }
 
 function dragNodeGraphTooltipEmbedResize(event) {
@@ -1588,9 +1740,17 @@ function dragNodeGraphTooltipEmbedResize(event) {
   if (!state) {
     return;
   }
-  // Drag down = taller tips (toward modular workspace); drag up = shorter.
-  const delta = event.clientY - state.startY;
-  const next = applyNodeGraphTooltipEmbedHeight(state.startHeight + delta);
+  const last = state.lastPoint || { x: state.startY, y: state.startY };
+  const point = typeof nodeGraphSectionResizeAcceptPoint === "function"
+    ? nodeGraphSectionResizeAcceptPoint(event, { x: last.x ?? state.startY, y: last.y ?? state.startY })
+    : (event.type === "pointercancel" || event.type === "lostpointercapture"
+      ? null
+      : { x: event.clientX, y: event.clientY });
+  if (!point) {
+    return;
+  }
+  state.lastPoint = point;
+  const next = applyNodeGraphTooltipEmbedHeight(state.startHeight + (point.y - state.startY));
   const help = document.getElementById("nodeInteractionHelp");
   if (typeof fitNodeInteractionHelpText === "function") {
     fitNodeInteractionHelpText(help);
@@ -1617,160 +1777,65 @@ function endNodeGraphTooltipEmbedResize(event) {
   if (typeof fitNodeInteractionHelpText === "function") {
     fitNodeInteractionHelpText(help);
   }
+  if (typeof notifyNodeGraphChromeLayoutChanged === "function") {
+    notifyNodeGraphChromeLayoutChanged();
+  }
   if (typeof saveNodeGraphWorkingPatchToUserSettings === "function") {
     saveNodeGraphWorkingPatchToUserSettings({ immediateFile: false });
   }
 }
 
-// Physically relocates #nodeInteractionHelp between the floating window and
-// the in-flow slot, carrying its shown-ness across so flipping the mode never
-// silently hides the tips you were reading.
 function applyNodeGraphTooltipEmbed({ shown } = {}) {
   const help = document.getElementById("nodeInteractionHelp");
   const slot = document.getElementById("nodeInteractionHelpEmbedSlot");
-  const win = document.getElementById("nodeTooltipWindow");
   const resize = document.getElementById("nodeInteractionHelpEmbedResize");
-  if (!help || !slot || !win) {
+  if (!help || !slot) {
     return;
   }
-  const embedded = nodeGraphMvp.tooltipEmbedded === true;
   const wantShown = shown === undefined ? nodeGraphTooltipsShown() : Boolean(shown);
-  help.classList.toggle("is-embedded", embedded);
-  if (embedded) {
-    // Help first, then resize grip (stay under the tip, above modular view).
-    if (help.parentElement !== slot) {
-      if (resize && resize.parentElement === slot) {
-        slot.insertBefore(help, resize);
-      } else {
-        slot.append(help);
-      }
-    }
-    if (resize && resize.parentElement !== slot) {
-      slot.append(resize);
-    }
-    // The window is empty in this mode - there is nothing left in it to show.
-    win.hidden = true;
-    slot.hidden = !wantShown;
-    if (resize) {
-      resize.hidden = !wantShown;
-    }
-    applyNodeGraphTooltipEmbedHeight();
-  } else {
-    if (help.parentElement !== win) {
-      // Before the resize handle, so the handle stays the last child and keeps
-      // its corner placement.
-      win.insertBefore(help, document.getElementById("nodeTooltipWindowResizeHandle"));
-    }
-    slot.hidden = true;
-    if (resize) {
-      resize.hidden = true;
-    }
-    if (wantShown && win.hidden) {
-      openNodeGraphTooltipWindow();
-      if (typeof notifyNodeGraphChromeLayoutChanged === "function") {
-        notifyNodeGraphChromeLayoutChanged();
-      }
-      return;
-    }
-    if (!wantShown) {
-      win.hidden = true;
-    }
+  nodeGraphMvp.tooltipEmbedded = wantShown;
+  help.classList.add("is-embedded");
+  slot.hidden = !wantShown;
+  if (resize) {
+    resize.hidden = !wantShown;
   }
-  // Switching between the floating window and the embedded band changes which
-  // box the text has to fit, so re-fit whatever tip is already showing.
+  if (wantShown) {
+    applyNodeGraphTooltipEmbedHeight();
+  }
   if (typeof fitNodeInteractionHelpText === "function") {
     fitNodeInteractionHelpText(help);
   }
   renderNodeGraphTooltipWindowToggle();
-  // Embedded tips take in-flow space above the workspace; wire SVG viewBox must
-  // remeasure after that reflow or cables stretch off their jacks.
   if (typeof notifyNodeGraphChromeLayoutChanged === "function") {
     notifyNodeGraphChromeLayoutChanged();
+  }
+  if (typeof scheduleNodeGraphWorkspaceViewPersist === "function") {
+    scheduleNodeGraphWorkspaceViewPersist();
   }
 }
 
 function toggleNodeGraphTooltipEmbed() {
-  // Kept for callers that only want to flip host without cycling off.
-  const wasShown = nodeGraphTooltipsShown();
-  nodeGraphMvp.tooltipEmbedded = !(nodeGraphMvp.tooltipEmbedded === true);
-  applyNodeGraphTooltipEmbed({ shown: wasShown });
-  setNodeInteractionHelp(
-    nodeGraphMvp.tooltipEmbedded
-      ? "Tooltips embedded beside the resource meters."
-      : "Tooltips floating in their own window.",
-  );
+  applyNodeGraphTooltipEmbed({ shown: !nodeGraphTooltipsShown() });
 }
 
 function hideNodeGraphTooltips() {
-  if (nodeGraphMvp.tooltipEmbedded === true) {
-    const slot = document.getElementById("nodeInteractionHelpEmbedSlot");
-    const resize = document.getElementById("nodeInteractionHelpEmbedResize");
-    if (slot) {
-      slot.hidden = true;
-    }
-    if (resize) {
-      resize.hidden = true;
-    }
-    renderNodeGraphTooltipWindowToggle();
-    if (typeof notifyNodeGraphChromeLayoutChanged === "function") {
-      notifyNodeGraphChromeLayoutChanged();
-    }
-    return;
-  }
-  closeNodeGraphTooltipWindow();
+  applyNodeGraphTooltipEmbed({ shown: false });
 }
 
-/** Apply one of the three tips modes: embedded | float | off. */
 function setNodeGraphTooltipMode(mode) {
-  const next = mode === "embedded" || mode === "float" || mode === "off" ? mode : "off";
-  if (next === "off") {
-    hideNodeGraphTooltips();
-    return;
-  }
-  nodeGraphMvp.tooltipEmbedded = next === "embedded";
-  applyNodeGraphTooltipEmbed({ shown: true });
-  setNodeInteractionHelp(
-    next === "embedded"
-      ? "Tooltips embedded beside the resource meters."
-      : "Tooltips floating in their own window.",
-  );
+  applyNodeGraphTooltipEmbed({ shown: mode !== "off" });
 }
 
 function closeNodeGraphTooltipWindow() {
-  const win = document.getElementById("nodeTooltipWindow");
-  if (win) {
-    win.hidden = true;
-  }
-  if (nodeGraphMvp.tooltipWindowDragging?.handle) {
-    nodeGraphMvp.tooltipWindowDragging.handle.classList.remove("dragging");
-  }
-  if (nodeGraphMvp.tooltipWindowResizing?.handle) {
-    nodeGraphMvp.tooltipWindowResizing.handle.classList.remove("dragging");
-  }
-  nodeGraphMvp.tooltipWindowDragging = null;
-  nodeGraphMvp.tooltipWindowResizing = null;
-  if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
-    rememberNodeGraphWorkspaceWindowState("tooltipWindow", win, { open: false }, { status: false });
-  }
-  renderNodeGraphTooltipWindowToggle();
+  applyNodeGraphTooltipEmbed({ shown: false });
 }
 
 function openNodeGraphTooltipWindow() {
-  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 900;
-  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 700;
-  positionNodeGraphTooltipWindowAtSavedOr(
-    Math.max(12, (viewportWidth - 420) / 2),
-    Math.max(12, viewportHeight - 220),
-  );
-  renderNodeGraphTooltipWindowToggle();
+  applyNodeGraphTooltipEmbed({ shown: true });
 }
 
-// Bound to the visibility menu button and the T key.
-// Cycles: embedded → float → off → embedded → …
 function toggleNodeGraphTooltipWindow() {
-  const mode = nodeGraphTooltipMode();
-  const next = mode === "embedded" ? "float" : mode === "float" ? "off" : "embedded";
-  setNodeGraphTooltipMode(next);
+  applyNodeGraphTooltipEmbed({ shown: !nodeGraphTooltipsShown() });
 }
 
 function renderNodeGraphVideoViewToggle() {
@@ -1855,6 +1920,13 @@ function applyNodeGraphMacroKnobArcThickness() {
 }
 
 function setNodeGraphMacroKnobArcThickness(value) {
+  if (typeof setNodeGraphMacroControlsFaceSettings === "function") {
+    setNodeGraphMacroControlsFaceSettings({
+      ...nodeGraphMacroControlsFaceSettings(),
+      arcThickness: value,
+    });
+    return;
+  }
   nodeGraphMvp.macroKnobArcThickness = normalizeNodeGraphMacroKnobArcThickness(value);
   applyNodeGraphMacroKnobArcThickness();
 }
@@ -1878,17 +1950,20 @@ function applyNodeGraphMacroKnobArcGapBrightness() {
 }
 
 function setNodeGraphMacroKnobArcGapBrightness(value) {
+  if (typeof setNodeGraphMacroControlsFaceSettings === "function") {
+    setNodeGraphMacroControlsFaceSettings({
+      ...nodeGraphMacroControlsFaceSettings(),
+      arcGapBrightness: value,
+    });
+    return;
+  }
   nodeGraphMvp.macroKnobArcGapBrightness = normalizeNodeGraphMacroKnobArcGapBrightness(value);
   applyNodeGraphMacroKnobArcGapBrightness();
 }
 
-// A plain transform: scale() on the whole .node-macro-knob button (dial,
-// label, and value readout together, scaled and re-centered as one unit --
-// "zooming in" on the widget itself) rather than resizing any one part in
-// isolation. Transform doesn't reflow layout, so this deliberately doesn't
-// grow the knob's grid cell -- past ~100% it just overflows/clips against
-// the panel's own overflow:hidden, which is the accepted tradeoff for
-// letting this go arbitrarily large without fighting the grid.
+// Bank / dock knob size is a layout scale (--macro-knob-size-scale). Cells
+// grow with that scale and --macro-knob-gap sits between them, so neighbors
+// do not overlap. The Knob module plate uses --knob-dial-size instead.
 const nodeGraphMacroKnobSizeScaleMin = 0.25;
 const nodeGraphMacroKnobSizeScaleMax = 4;
 
@@ -1905,28 +1980,19 @@ function applyNodeGraphMacroKnobSizeScale() {
 }
 
 function setNodeGraphMacroKnobSizeScale(value) {
+  if (typeof setNodeGraphMacroControlsFaceSettings === "function") {
+    setNodeGraphMacroControlsFaceSettings({
+      ...nodeGraphMacroControlsFaceSettings(),
+      sizeScale: value,
+    });
+    return;
+  }
   nodeGraphMvp.macroKnobSizeScale = normalizeNodeGraphMacroKnobSizeScale(value);
   applyNodeGraphMacroKnobSizeScale();
 }
 
-// The knob's actual interactive hit region is the whole rectangular
-// button (.node-macro-knob), not just the visible circular dial inside
-// it -- dragging/clicking works anywhere in that rectangle, including the
-// corners well outside the arc. This just makes that real hit region
-// visible with a one-pixel stroke so it stops being a surprise; it
-// doesn't change the hit region itself.
-function applyNodeGraphMacroKnobHitboxOutlineVisible() {
-  // Toggled on body rather than #nodeGraphWorkspace -- macro knobs also
-  // render inside the standalone MIDI keyboard dock, which isn't a
-  // descendant of the workspace, so this needs to reach both.
-  document.body.classList.toggle("macro-knob-hitbox-outline", Boolean(nodeGraphMvp.macroKnobHitboxOutlineVisible));
-}
-
-function setNodeGraphMacroKnobHitboxOutlineVisible(visible) {
-  nodeGraphMvp.macroKnobHitboxOutlineVisible = Boolean(visible);
-  applyNodeGraphMacroKnobHitboxOutlineVisible();
-}
-
+// Hit region is the circular dial (not the rectangular cell). Outline
+// draws on the dial so the visible stroke matches the real hit.
 // Where the label and value readout sit (top/mid/bottom). These are
 // absolutely positioned within the knob button, entirely independent of
 // the dial's own layout -- an earlier version put label/value/dial in a
@@ -1950,6 +2016,13 @@ function applyNodeGraphMacroKnobLabelPosition() {
 }
 
 function setNodeGraphMacroKnobLabelPosition(value) {
+  if (typeof setNodeGraphMacroControlsFaceSettings === "function") {
+    setNodeGraphMacroControlsFaceSettings({
+      ...nodeGraphMacroControlsFaceSettings(),
+      labelPosition: value,
+    });
+    return;
+  }
   nodeGraphMvp.macroKnobLabelPosition = normalizeNodeGraphMacroKnobLabelPosition(value);
   applyNodeGraphMacroKnobLabelPosition();
 }
@@ -1965,6 +2038,13 @@ function applyNodeGraphMacroKnobValuePosition() {
 }
 
 function setNodeGraphMacroKnobValuePosition(value) {
+  if (typeof setNodeGraphMacroControlsFaceSettings === "function") {
+    setNodeGraphMacroControlsFaceSettings({
+      ...nodeGraphMacroControlsFaceSettings(),
+      valuePosition: value,
+    });
+    return;
+  }
   nodeGraphMvp.macroKnobValuePosition = normalizeNodeGraphMacroKnobValuePosition(value);
   applyNodeGraphMacroKnobValuePosition();
 }
@@ -2045,6 +2125,12 @@ function beginNodeGraphMacroControlDrag(event) {
     return;
   }
   const knob = event.currentTarget;
+  if (
+    typeof nodeGraphPointInCircularKnob === "function"
+    && !nodeGraphPointInCircularKnob(knob, event.clientX, event.clientY)
+  ) {
+    return;
+  }
   const index = Math.max(0, Math.min(7, Math.round(Number(knob.dataset.macroIndex) || 0)));
   event.preventDefault();
   knob.setPointerCapture?.(event.pointerId);
@@ -2215,7 +2301,7 @@ function nodeGraphMidiKeyboardKeyCount(value = nodeGraphMvp.midiKeyboardKeyCount
   const count = Math.round(Number(value));
   return Number.isFinite(count)
     ? Math.max(nodeGraphMidiKeyboardMinKeyCount, Math.min(nodeGraphMidiKeyboardMaxKeyCount, count))
-    : 25;
+    : 88;
 }
 
 // Walks startMidi..startMidi+keyCount-1, classifying each MIDI note as a
@@ -2254,7 +2340,6 @@ function nodeGraphMidiKeyboardGenerateKeys(startMidi = nodeGraphMidiKeyboardStar
 function renderNodeGraphMidiKeyboardKeys() {
   const { whiteKeys, blackKeys, totalWhite } = nodeGraphMidiKeyboardGenerateKeys();
   const octave = nodeGraphMidiKeyboardOctaveOffset();
-  const blackWidthPercent = totalWhite > 0 ? (0.63 / totalWhite) * 100 : 4.2;
   document.querySelectorAll(".node-midi-keyboard-module .node-midi-keyboard-surface").forEach((surface) => {
     const whiteRow = surface.querySelector(".node-midi-keyboard-white-row");
     const blackRow = surface.querySelector(".node-midi-keyboard-black-row");
@@ -2266,19 +2351,20 @@ function renderNodeGraphMidiKeyboardKeys() {
       const span = document.createElement("span");
       span.dataset.midi = String(key.midi);
       span.dataset.keyIndex = String(key.index);
-      span.textContent = nodeGraphMidiKeyboardPitchLabel(nodeGraphMidiKeyboardShiftMidi(key.midi, octave));
+      span.textContent = nodeGraphMidiKeyboardKeyCapText(nodeGraphMidiKeyboardShiftMidi(key.midi, octave));
       return span;
     }));
     blackRow.replaceChildren(...blackKeys.map((key) => {
       const span = document.createElement("span");
       span.dataset.midi = String(key.midi);
       span.dataset.keyIndex = String(key.index);
-      span.style.setProperty("--key-left", `${key.leftPercent}%`);
-      span.style.width = `${blackWidthPercent}%`;
-      span.textContent = nodeGraphMidiKeyboardPitchLabel(nodeGraphMidiKeyboardShiftMidi(key.midi, octave));
+      span.textContent = nodeGraphMidiKeyboardKeyCapText(nodeGraphMidiKeyboardShiftMidi(key.midi, octave));
       return span;
     }));
   });
+  if (typeof applyNodeGraphMidiKeyboardLayout === "function") {
+    applyNodeGraphMidiKeyboardLayout();
+  }
   renderNodeGraphMidiKeyboardSignal(null);
   renderNodeGraphMidiKeyboardHeldKeys();
 }
@@ -2489,7 +2575,15 @@ function changeNodeGraphMidiKeyboardKeyCount(delta) {
 const nodeGraphMidiKeyboardMinOctave = -4;
 const nodeGraphMidiKeyboardMaxOctave = 4;
 const nodeGraphMidiKeyboardNoteNames = Object.freeze(["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]);
-const nodeGraphMidiKeyboardMemoryStorageKey = "soemdsp-sandbox-midi-keyboard-memory-v1";
+const nodeGraphMidiKeyboardMemoryStorageKey = "soemdsp-sandbox-midi-keyboard-memory-v2";
+
+function nodeGraphMidiListenChannel(value = nodeGraphMvp.midiListenChannel) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n) || n <= 0) {
+    return 0;
+  }
+  return Math.min(16, n);
+}
 
 function nodeGraphMidiKeyboardClamp01(value) {
   return clampNodeSliderValue(Number(value) || 0, 0, 1);
@@ -2540,7 +2634,11 @@ function nodeGraphMidiKeyboardMemoryPayload() {
     heldKeysLowBitmask: nodeGraphMidiKeyboardHeldKeysBitmaskValue(nodeGraphMvp.midiKeyboardHeldKeysLowBitmask),
     heldKeysHighBitmask: nodeGraphMidiKeyboardHeldKeysBitmaskValue(nodeGraphMvp.midiKeyboardHeldKeysHighBitmask),
     inputId: nodeGraphMvp.midiKeyboardInputId || "",
+    listenChannel: nodeGraphMidiListenChannel(),
     keyCount: nodeGraphMidiKeyboardKeyCount(),
+    layout: typeof nodeGraphMidiKeyboardLayoutSettings === "function"
+      ? nodeGraphMidiKeyboardLayoutSettings()
+      : (nodeGraphMvp.midiKeyboardLayout || null),
     mode: nodeGraphMidiKeyboardMode(),
     modWheel: nodeGraphPerformanceModWheelValue(),
     octave: nodeGraphMidiKeyboardOctaveOffset(),
@@ -2575,7 +2673,11 @@ function loadNodeGraphMidiKeyboardMemory() {
       heldKeysLowBitmask: nodeGraphMidiKeyboardHeldKeysBitmaskValue(payload.heldKeysLowBitmask),
       heldKeysHighBitmask: nodeGraphMidiKeyboardHeldKeysBitmaskValue(payload.heldKeysHighBitmask),
       inputId: String(payload.inputId || ""),
+      listenChannel: nodeGraphMidiListenChannel(payload.listenChannel),
       keyCount: nodeGraphMidiKeyboardKeyCount(payload.keyCount),
+      layout: typeof normalizeNodeGraphMidiKeyboardLayout === "function"
+        ? normalizeNodeGraphMidiKeyboardLayout(payload.layout)
+        : payload.layout,
       mode: nodeGraphMidiKeyboardMode(payload.mode),
       modWheel: nodeGraphPerformanceModWheelValue(payload.modWheel),
       octave: nodeGraphMidiKeyboardOctaveOffset(payload.octave),
@@ -2596,7 +2698,11 @@ function applyNodeGraphMidiKeyboardMemory() {
   nodeGraphMvp.midiKeyboardHeldKeysLowBitmask = memory.heldKeysLowBitmask;
   nodeGraphMvp.midiKeyboardHeldKeysHighBitmask = memory.heldKeysHighBitmask;
   nodeGraphMvp.midiKeyboardInputId = memory.inputId;
+  nodeGraphMvp.midiListenChannel = memory.listenChannel;
   nodeGraphMvp.midiKeyboardKeyCount = memory.keyCount;
+  if (memory.layout) {
+    nodeGraphMvp.midiKeyboardLayout = memory.layout;
+  }
   nodeGraphMvp.midiKeyboardMode = memory.mode;
   nodeGraphMvp.modWheelSignal = memory.modWheel;
   nodeGraphMvp.midiKeyboardOctave = memory.octave;
@@ -2714,6 +2820,20 @@ function nodeGraphMidiKeyboardPitchLabel(midi) {
   return `${note}${Math.floor(rounded / 12) - 2}`;
 }
 
+function nodeGraphMidiKeyboardKeyCapText(midi) {
+  const mode = typeof nodeGraphMidiKeyboardLayoutSettings === "function"
+    ? nodeGraphMidiKeyboardLayoutSettings().keyLabels
+    : "name";
+  if (mode === "off") {
+    return "";
+  }
+  const rounded = Math.max(0, Math.min(127, Math.round(Number(midi) || 0)));
+  if (mode === "number") {
+    return String(rounded);
+  }
+  return nodeGraphMidiKeyboardPitchLabel(rounded);
+}
+
 function nodeGraphMidiKeyboardOctaveOffset(value = nodeGraphMvp.midiKeyboardOctave) {
   return Math.max(
     nodeGraphMidiKeyboardMinOctave,
@@ -2756,8 +2876,9 @@ function renderNodeGraphMidiKeyboardKeyLabels() {
   const octave = nodeGraphMidiKeyboardOctaveOffset();
   document.querySelectorAll(".node-midi-keyboard-module [data-midi]").forEach((key) => {
     const rawMidi = Math.round(Number(key.dataset.midi) || 0);
-    key.textContent = nodeGraphMidiKeyboardPitchLabel(nodeGraphMidiKeyboardShiftMidi(rawMidi, octave));
-    key.setAttribute("aria-label", `${key.textContent} / MIDI ${nodeGraphMidiKeyboardShiftMidi(rawMidi, octave)}`);
+    const sounding = nodeGraphMidiKeyboardShiftMidi(rawMidi, octave);
+    key.textContent = nodeGraphMidiKeyboardKeyCapText(sounding);
+    key.setAttribute("aria-label", `${nodeGraphMidiKeyboardPitchLabel(sounding)} / MIDI ${sounding}`);
   });
 }
 
@@ -2803,9 +2924,12 @@ function nodeGraphMidiKeyboardFallbackSignal() {
 function nodeGraphMidiKeyboardSignalFromPointer(event, surface) {
   const rect = surface.getBoundingClientRect();
   const x = nodeGraphMidiKeyboardClamp01((event.clientX - rect.left) / Math.max(1, rect.width));
-  const y = nodeGraphMidiKeyboardClamp01(1 - (event.clientY - rect.top) / Math.max(1, rect.height));
   const target = event.target?.closest?.("[data-midi]");
-  const targetMidi = target && surface.contains(target) ? Number(target.dataset.midi) : NaN;
+  const key = target && surface.contains(target) ? target : null;
+  const keyRect = key?.getBoundingClientRect?.();
+  const yRect = keyRect && keyRect.height > 0 ? keyRect : rect;
+  const y = nodeGraphMidiKeyboardClamp01(1 - (event.clientY - yRect.top) / Math.max(1, yRect.height));
+  const targetMidi = key ? Number(key.dataset.midi) : NaN;
   const fallbackKeyIndex = Math.min(
     nodeGraphMidiKeyboardKeyCount() - 1,
     Math.max(0, Math.floor(x * nodeGraphMidiKeyboardKeyCount())),
@@ -2956,6 +3080,9 @@ function renderNodeGraphMidiKeyboardSignal(signal = null) {
     y: nextSignal
       ? nodeGraphMidiKeyboardFixedDecimal(nextSignal.y, { decimalPlaces: 3, maxDigits: 4, width: 5 })
       : nodeGraphMidiKeyboardFixedDecimal(0, { decimalPlaces: 3, maxDigits: 4, width: 5 }),
+    velocity: nextSignal
+      ? nodeGraphMidiKeyboardFixedInteger(Math.round(nodeGraphMidiKeyboardClamp01(nextSignal.y) * 127), 3, "0")
+      : nodeGraphMidiKeyboardFixedText("-", 3),
   };
   document.querySelectorAll(".node-midi-keyboard-module [data-keyboard-signal]").forEach((field) => {
     const key = field.dataset.keyboardSignal;
@@ -3106,6 +3233,9 @@ function bindNodeGraphMidiKeyboardScrubControls() {
   document.querySelectorAll("[data-midi-keyboard-key-count-value]").forEach((element) => {
     bindNodeGraphMidiKeyboardScrubControl(element, changeNodeGraphMidiKeyboardKeyCount);
   });
+  document.querySelectorAll("[data-midi-listen-channel-value]").forEach((element) => {
+    bindNodeGraphMidiKeyboardScrubControl(element, changeNodeGraphMidiListenChannel);
+  });
 }
 
 function changeNodeGraphMidiKeyboardOctave(delta) {
@@ -3232,20 +3362,37 @@ function handleNodeGraphMidiKeyboardPointerLeave() {
 
 function renderNodeGraphMidiKeyboardInputControls() {
   const inputs = Array.isArray(nodeGraphMvp.midiKeyboardInputs) ? nodeGraphMvp.midiKeyboardInputs : [];
-  document.querySelectorAll("[data-midi-keyboard-midi-button]").forEach((button) => {
-    button.textContent = nodeGraphMvp.midiKeyboardAccess ? "Refresh MIDI" : "Enable MIDI";
-  });
   document.querySelectorAll("[data-midi-keyboard-midi-input]").forEach((select) => {
     const selected = nodeGraphMvp.midiKeyboardInputId || "";
-    select.replaceChildren(new Option(inputs.length ? "all midi inputs" : "no midi input", ""));
+    select.replaceChildren(new Option("Off", ""));
     for (const input of inputs) {
-      select.append(new Option(input.name || input.id || "midi input", input.id));
+      select.append(new Option(input.name || input.id || "MIDI input", input.id));
     }
-    select.disabled = !inputs.length;
+    select.disabled = false;
     select.value = inputs.some((input) => input.id === selected) ? selected : "";
   });
+  renderNodeGraphMidiListenChannelControl();
   renderNodeGraphMidiKeyboardModeControl();
   renderNodeGraphMidiToggleButton();
+}
+
+function renderNodeGraphMidiListenChannelControl() {
+  const channel = nodeGraphMidiListenChannel();
+  document.querySelectorAll("[data-midi-listen-channel-value]").forEach((value) => {
+    value.textContent = String(channel);
+  });
+  document.querySelectorAll("[data-midi-listen-channel-down]").forEach((down) => {
+    down.disabled = channel <= 0;
+  });
+  document.querySelectorAll("[data-midi-listen-channel-up]").forEach((up) => {
+    up.disabled = channel >= 16;
+  });
+}
+
+function changeNodeGraphMidiListenChannel(delta) {
+  nodeGraphMvp.midiListenChannel = nodeGraphMidiListenChannel(nodeGraphMidiListenChannel() + delta);
+  saveNodeGraphMidiKeyboardMemory();
+  renderNodeGraphMidiListenChannelControl();
 }
 
 function refreshNodeGraphMidiKeyboardInputs() {
@@ -3349,16 +3496,23 @@ function handleNodeGraphMidiKeyboardInputChange(event) {
   nodeGraphMvp.midiKeyboardInputId = event.currentTarget.value || "";
   saveNodeGraphMidiKeyboardMemory();
   renderNodeGraphMidiKeyboardInputControls();
+  if (nodeGraphMvp.midiKeyboardInputId && !nodeGraphMvp.midiInputEnabled) {
+    toggleNodeGraphMidiInput();
+  }
 }
 
 function handleNodeGraphMidiKeyboardMessage(event) {
   const input = event.currentTarget;
-  if (nodeGraphMvp.midiKeyboardInputId && input?.id !== nodeGraphMvp.midiKeyboardInputId) {
+  if (!nodeGraphMvp.midiKeyboardInputId || input?.id !== nodeGraphMvp.midiKeyboardInputId) {
     return;
   }
   const [status = 0, data1 = 0, data2 = 0] = Array.from(event.data || []);
   const command = status & 0xf0;
   const channel = (status & 0x0f) + 1;
+  const listen = nodeGraphMidiListenChannel();
+  if (listen && channel !== listen) {
+    return;
+  }
   if (command === 0xb0 && data1 === 1) {
     const value = Math.max(0, Math.min(127, Math.round(data2))) / 127;
     setNodeGraphPerformanceWheel("modWheel", value, `ch ${channel} mod wheel ${value.toFixed(3)}`);
@@ -3418,19 +3572,26 @@ function bindNodeGraphKeyboardControllerModuleEvents() {
     wheel.addEventListener("pointerup", endNodeGraphPerformanceWheelDrag);
     wheel.addEventListener("pointercancel", endNodeGraphPerformanceWheelDrag);
   });
-  document.querySelectorAll("[data-midi-keyboard-midi-button]").forEach((button) => {
-    if (button.dataset.midiKeyboardButtonBound === "true") {
-      return;
-    }
-    button.dataset.midiKeyboardButtonBound = "true";
-    button.addEventListener("click", enableNodeGraphMidiKeyboardInput);
-  });
   document.querySelectorAll("[data-midi-keyboard-midi-input]").forEach((select) => {
     if (select.dataset.midiKeyboardInputBound === "true") {
       return;
     }
     select.dataset.midiKeyboardInputBound = "true";
     select.addEventListener("change", handleNodeGraphMidiKeyboardInputChange);
+  });
+  document.querySelectorAll("[data-midi-listen-channel-down]").forEach((button) => {
+    if (button.dataset.midiListenChannelBound === "true") {
+      return;
+    }
+    button.dataset.midiListenChannelBound = "true";
+    button.addEventListener("click", () => changeNodeGraphMidiListenChannel(-1));
+  });
+  document.querySelectorAll("[data-midi-listen-channel-up]").forEach((button) => {
+    if (button.dataset.midiListenChannelBound === "true") {
+      return;
+    }
+    button.dataset.midiListenChannelBound = "true";
+    button.addEventListener("click", () => changeNodeGraphMidiListenChannel(1));
   });
   document.querySelectorAll("[data-midi-keyboard-mode-select]").forEach((select) => {
     if (select.dataset.midiKeyboardModeBound === "true") {
@@ -3493,6 +3654,7 @@ function toggleNodeGraphVideoView() {
 
 function toggleNodeGraphGridVisibility() {
   nodeGraphMvp.gridVisible = !nodeGraphMvp.gridVisible;
+  persistNodeGraphPatchVisibilityView();
   renderNodeGraphGridToggle();
 }
 
@@ -3501,31 +3663,47 @@ function toggleNodeGraphModuleButtonsVisibility() {
 }
 
 function toggleNodeGraphOscilloscopeVisibility() {
-  nodeGraphMvp.moduleOscilloscopesVisible = nodeGraphMvp.moduleOscilloscopesVisible === false;
-  renderNodeGraphModuleVisibilityToggles();
-  if (typeof scheduleNodeGraphLivePlanSync === "function") {
-    scheduleNodeGraphLivePlanSync();
+  nodeGraphSetModuleSectionGlobalVisible(
+    "oscilloscope",
+    nodeGraphMvp.moduleOscilloscopesVisible === false,
+  );
+  if (nodeGraphMvp.moduleOscilloscopesVisible === false && typeof closeNodeScopeContextMenu === "function") {
+    closeNodeScopeContextMenu();
   }
-  if (nodeGraphMvp.moduleOscilloscopesVisible) {
-    scheduleNodeGraphModuleScopeDraw();
-  } else {
-    if (typeof closeNodeScopeContextMenu === "function") {
-      closeNodeScopeContextMenu();
-    }
-  }
-  setNodeInteractionHelp(nodeGraphMvp.moduleOscilloscopesVisible ? "Displays shown." : "Displays hidden.");
 }
 
 function toggleNodeGraphModuleSlidersVisibility() {
-  nodeGraphMvp.moduleSlidersVisible = nodeGraphMvp.moduleSlidersVisible === false;
-  renderNodeGraphModuleVisibilityToggles();
-  setNodeInteractionHelp(nodeGraphMvp.moduleSlidersVisible ? "Module sliders shown." : "Module sliders hidden.");
+  nodeGraphSetModuleSectionGlobalVisible(
+    "sliders",
+    nodeGraphMvp.moduleSlidersVisible === false,
+  );
 }
 
 function toggleNodeGraphModuleInterfaceControlsVisibility() {
-  nodeGraphMvp.moduleInterfaceControlsVisible = nodeGraphMvp.moduleInterfaceControlsVisible === false;
-  renderNodeGraphModuleVisibilityToggles();
-  setNodeInteractionHelp(nodeGraphMvp.moduleInterfaceControlsVisible ? "Module control surfaces shown." : "Module control surfaces hidden.");
+  nodeGraphSetModuleSectionGlobalVisible(
+    "interfaceControls",
+    nodeGraphMvp.moduleInterfaceControlsVisible === false,
+  );
+}
+
+function renderNodeGraphConstraintGuide() {
+  const visible = nodeGraphMvp?.constraintGuideVisible === true;
+  document.body.classList.toggle("constraint-guide-visible", visible);
+}
+
+/** D: CPU / RAM / GPU checkboxes only. Session-only. Does not open Evidence. */
+function toggleNodeGraphConstraintGuideVisibility() {
+  if (typeof nodeGraphMvp === "object" && nodeGraphMvp) {
+    nodeGraphMvp.constraintGuideVisible = !(nodeGraphMvp.constraintGuideVisible === true);
+  }
+  renderNodeGraphConstraintGuide();
+  if (typeof setNodeInteractionHelp === "function") {
+    setNodeInteractionHelp(
+      nodeGraphMvp?.constraintGuideVisible
+        ? "CPU / RAM / GPU filters."
+        : "CPU / RAM / GPU filters hidden.",
+    );
+  }
 }
 
 function toggleNodeGraphKeyboardDebugVisibility() {
@@ -3543,11 +3721,13 @@ function toggleNodeGraphKeyboardDebugVisibility() {
 
 function toggleNodeGraphSliderAmount() {
   nodeGraphMvp.sliderAmountVisible = !nodeGraphMvp.sliderAmountVisible;
+  persistNodeGraphPatchVisibilityView();
   renderNodeGraphSliderVisibilityToggles();
 }
 
 function toggleNodeGraphSliderPosition() {
   nodeGraphMvp.sliderPositionVisible = !nodeGraphMvp.sliderPositionVisible;
+  persistNodeGraphPatchVisibilityView();
   renderNodeGraphSliderVisibilityToggles();
 }
 
@@ -3657,18 +3837,28 @@ function setNodeGraphViewMode(mode) {
 
   const wiringPanel = document.getElementById("nodeWiringPanel");
   wiringPanel?.classList.toggle("modular-only-view", modularWindowed);
-  // Windowed always shows back + resize; never use controls-hidden for V.
-  wiringPanel?.classList.remove("modular-only-controls-hidden");
+  // Phone view owns the crop + resize widget. Computer view must not keep them.
+  wiringPanel?.classList.toggle("modular-only-controls-hidden", !modularWindowed);
+  const resizeHandle = document.getElementById("nodeGraphResizeHandle");
+  if (resizeHandle) {
+    resizeHandle.hidden = !modularWindowed;
+  }
   if (modularWindowed) {
     nodeGraphMvp.modularOnlyControlsVisible = true;
     if (nodeGraphMvp.patch) {
       nodeGraphMvp.patch.modularOnlyControlsVisible = true;
+    }
+  } else if (typeof applyNodeGraphWorkspaceSizeCss === "function") {
+    const workspace = document.getElementById("nodeGraphWorkspace");
+    if (workspace) {
+      applyNodeGraphWorkspaceSizeCss(workspace, null, null);
     }
   }
 
   document.getElementById("nodeGraphWorkspace").hidden = !workspaceMode;
   const backBtn = document.getElementById("nodeModularOnlyBackButton");
   if (backBtn) {
+    backBtn.hidden = !modularWindowed;
     backBtn.textContent = "←";
     backBtn.setAttribute("aria-label", "Return to full modular view");
   }
@@ -3678,7 +3868,14 @@ function setNodeGraphViewMode(mode) {
   }
   document.getElementById("nodeCodeScreenView").hidden = !codeMode;
   document.getElementById("nodeMappingView").hidden = !mappingMode;
-  document.getElementById("nodeSettingsView").hidden = !settingsMode;
+  const settingsView = document.getElementById("nodeSettingsView");
+  const openingSettings = settingsMode && Boolean(settingsView?.hidden);
+  if (settingsView) {
+    settingsView.hidden = !settingsMode;
+  }
+  if (openingSettings && typeof noteNodeGraphScriptPageOpen === "function") {
+    noteNodeGraphScriptPageOpen();
+  }
   renderNodeGraphKeyboardControllerModules();
   renderNodeGraphMacroControls();
   renderNodeGraphVideoViewToggle();
@@ -3712,5 +3909,8 @@ function setNodeGraphViewMode(mode) {
   }
   if (typeof applyNodeGraphWorkspaceView === "function") {
     applyNodeGraphWorkspaceView();
+  }
+  if (typeof persistNodeGraphUserSession === "function") {
+    persistNodeGraphUserSession();
   }
 }

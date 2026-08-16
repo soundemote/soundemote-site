@@ -193,6 +193,20 @@ function nodeGraphModuleScopeOfflineSignalSample(context, nodeId, localTime, sam
       depth + 1,
     ), 0);
   if (node.type === "gain" || node.type === "gainBias") {
+    if (typeof nodeGraphGainFrameDb === "function") {
+      const amount = nodeGraphModuleScopeNodeParam(node, "amount", 1);
+      const gainDb = nodeGraphModuleScopeNodeParam(node, "gainDb", 0);
+      const frame = nodeGraphGainFrameDb(input, 0, 0, {
+        masterDb: typeof nodeGraphGainResolveMasterDb === "function"
+          ? nodeGraphGainResolveMasterDb(node?.params, amount, gainDb)
+          : gainDb,
+        leftDb: nodeGraphModuleScopeNodeParam(node, "leftDb", 0),
+        rightDb: nodeGraphModuleScopeNodeParam(node, "rightDb", 0),
+        monoSum: nodeGraphModuleScopeNodeParam(node, "monoSum", 0),
+        offset: nodeGraphModuleScopeNodeParam(node, "offset", 0),
+      });
+      return frame.Out;
+    }
     return input * nodeGraphModuleScopeNodeParam(node, "amount", 1) +
       nodeGraphModuleScopeNodeParam(node, "offset", 0);
   }
@@ -458,7 +472,7 @@ function nodeGraphTraceDisplayRenderPointBudget() {
 // nodeGraphGlobalTraceSettings → node-graph-module-scope-normalize.js
 // nodeGraphTraceDisplaySettingsEditingGlobal → node-graph-module-scope-normalize.js
 // nodeGraphTraceDisplaySettingsEditingTraceDefaults → node-graph-module-scope-normalize.js
-const nodeGraphDisplayModeRenderers = Object.freeze(["trace", "clock", "dot", "value", "lineBurn", "hypersawBurn", "oscilloscopeBankBurn", "videoscopeBurn", "spectrogramBurn", "transportBpm", "scope2d", "scope2dTrace", "phosphorLight", "numberReadout", "xyPad", "customDisplay", "spectrum", "ledLamp", "selfPaintFace", "matrixFace", "matrixWaterfallFace", "matrixDisplayFace", "knobFace", "pluginSliderFace", "toggleButtonFace", "momentaryButtonFace", "rgbShapeFace", "rgbPictureFace", "rgbFractalFace", "evolveFieldFace", "fbmFieldFace", "speedColorInertiaFace", "macroControlsFace"]);
+const nodeGraphDisplayModeRenderers = Object.freeze(["trace", "clock", "dot", "value", "lineBurn", "hypersawBurn", "oscilloscopeBankBurn", "videoscopeBurn", "spectrogramBurn", "transportBpm", "scope2d", "scope2dTrace", "phosphorLight", "numberReadout", "xyPad", "customDisplay", "spectrum", "ledLamp", "selfPaintFace", "matrixFace", "matrixWaterfallFace", "matrixDisplayFace", "knobFace", "pluginSliderFace", "toggleButtonFace", "momentaryButtonFace", "rgbShapeFace", "rgbPictureFace", "rgbFractalFace", "evolveFieldFace", "fbmFieldFace", "speedColorInertiaFace", "macroControlsFace", "patchFace", "keypadFace", "textBoxFace", "phoneToneFace", "vectorRgbFace", "rasterRgbFace", "gradientVectorscopeFace", "traceXyz", "portalFace", "roundShapeFace", "limiterGainFace"]);
 const nodeGraphDisplayModeSignalKinds = Object.freeze(["scalar", "xy", "buffer"]);
 
 // nodeGraphDisplayModeSettingsSchemaForRenderer → node-graph-module-scope-display-mode.js
@@ -519,7 +533,7 @@ function nodeGraphModuleDisplayTypeForSlot(slot) {
 }
 
 function nodeGraphModuleScopeSlotUsesWiredInputs(slot) {
-  return ["traceDisplay", "dotOscilloscope", "valueOscilloscope", "lineBurnOscilloscope", "scope2d", "scope2dTrace", "phosphorLight", "visualOscilloscope", "numberReadout", "valueLcd"].includes(slot?.type);
+  return ["traceDisplay", "traceDisplayStereo", "dotOscilloscope", "valueOscilloscope", "lineBurnOscilloscope", "scope2d", "scope2dTrace", "phosphorLight", "visualOscilloscope", "numberReadout", "valueLcd", "led", "vectorRgb", "rasterRgb", "gradientVectorscope", "traceXyz"].includes(slot?.type);
 }
 
 function nodeGraphModuleDisplaySourceForSlot(slot) {

@@ -12,7 +12,8 @@ const nodeGraphModuleScopeDefaultSettings = Object.freeze({
   offset: 0,
   oscillatorTraceMode: "frequencyReset",
   pan: 0,
-  sync: true,
+  // App-wide: oscilloscope trigger sync is off unless the user turns it on.
+  sync: false,
   timeMs: 20,
 });
 
@@ -43,6 +44,8 @@ const nodeGraphModuleScopeUnipolarTypes = new Set([
   "bode",
   "stftBlur",
   "sinepulse",
+  "kickEnvelope",
+  "sineKick",
   "linearEnvelope",
   "midiNotePitch",
   "midiOut",
@@ -93,7 +96,7 @@ const nodeGraphScopePhosphorLookDefaults = Object.freeze({
   blur: 0.35,
   // Max phosphor stamps / frame (economy spreads when over).
   dotBudget: 2048,
-  // Face buffer scale (1 = native layout×dpr; <1 pixelated; 2–4 supersample).
+  // Face buffer scale (1 = native layout×dpr; <1 pixelated).
   pixelDensity: 1,
   // Amplitude zoom.
   scale: 1,
@@ -109,8 +112,8 @@ const nodeGraphTraceDisplaySettingsDefaults = Object.freeze({
   background: "#000000",
   // Full-ish ink so Left/Right colors read as chosen (Brightness still 0…1).
   brightness: 0.95,
-  // Mono / primary stroke (Output Left).
-  color: "#ff3333",
+  // Mono / primary stroke (Output Left). Pure red so Meet (red+blue) is green.
+  color: "#ff0000",
   dot1Enabled: true,
   // ~2–3 CSS px on typical faces (size 0 still floors at 1 device px).
   dot1Size: 0.035,
@@ -119,13 +122,15 @@ const nodeGraphTraceDisplaySettingsDefaults = Object.freeze({
   // Meet always auto from Left/Right (complement + soft screen lift).
   meetColor: "auto",
   secondaryBrightness: 0.95,
-  secondaryColor: "#3366ff",
+  secondaryColor: "#0000ff",
   secondaryEnabled: true,
   secondarySize: 0.035,
   secondaryLineThickness: 0,
   cycles: 2,
-  // Instant Trace: hard stroke (blur ignored on canvas path).
-  lineThickness: 0,
+  // Stroke softness 0…1 (hard → soft skirt). History plot, not phosphor burn.
+  lineThickness: 0.15,
+  // Max verts before the drawer switches to sparse dots.
+  dotBudget: 2048,
   // Vector stroke into a density-scaled face buffer (lo-fi look when < 1).
   // Not a phosphor energy grid — still one polyline; density only sets buffer size.
   pixelDensity: 1,
@@ -138,6 +143,11 @@ const nodeGraphTraceDisplaySettingsDefaults = Object.freeze({
   sourceSync: false,
   syncChannel: "off",
   zoomSeconds: 0.05,
+  historySeconds: 0.05,
+  // Lengthwise history fade: 0 = even ink, 1 = oldest gone / newest full.
+  fade: 0,
+  // XYZ Trace: stack all three on one plot, or split the face into three bands.
+  xyzLayout: "stack",
 });
 
 
@@ -200,6 +210,7 @@ const nodeGraphZeroDBurnSettingsDefaults = Object.freeze({
   pixelDensity: nodeGraphScopePhosphorLookDefaults.pixelDensity,
   dotBudget: nodeGraphScopePhosphorLookDefaults.dotBudget,
   fullDotEconomy: nodeGraphScopePhosphorLookDefaults.fullDotEconomy,
+  sourceSync: false,
   gradientStops: nodeGraphScopePhosphorLookDefaults.gradientStops,
 });
 
@@ -263,13 +274,18 @@ const nodeGraphNumberReadoutSettingsDefaults = Object.freeze({
   decimals: 2,
   // When true: lock digit size to fixed Digits+Decimals bins (stable width).
   // When false (GROW): resize digits to fill available space for the live value.
-  // Default OFF for Value LED/LCD; Pitch Detector defaults OFF via DefaultsForNode.
-  decimalBudget: false,
+  // Default OFF (GROW off) so Digit bins can hold a realistic meter.
+  decimalBudget: true,
+  // Digit bins: Digits slider is the slot count. Unused bins stay put (ghosts).
+  digitBins: true,
   // How live Light composites over residual gradient (canvas blend / occlude).
   // lighten: live segments brighten residual ink (default for Value LED / Pitch).
   lightBlend: "lighten",
   // Digit inset 0…1 linear vs face square min side (0 = flush fill, 1 = one pin pixel).
-  facePadding: 0,
+  facePadding: 0.1,
+  // bipolar: reserve/show minus. unipolar: no sign, centered.
+  polarity: "bipolar",
+  removeTrailingZeros: false,
   // Energy → color LUT for decaying deposits (live digits use solid Light).
   gradientStops: nodeGraphScopePhosphorLookDefaults.gradientStops,
 });
@@ -293,11 +309,14 @@ const nodeGraphValueLcdSettingsDefaults = Object.freeze({
   // Total digit budget (whole + fractional). Default 9 ≈ 6 int + 3 decimals.
   digits: 9,
   decimals: 3,
-  // Same budget policy as Value LED (OFF by default = GROW on).
-  decimalBudget: false,
+  // Same budget policy as Value LED (GROW off / digit bins on).
+  decimalBudget: true,
+  digitBins: true,
   lightBlend: "source-over",
   // Digit inset 0…1 vs each axis half (0 = flush, 1 = pin).
-  facePadding: 0.268,
+  facePadding: 0.1,
+  polarity: "bipolar",
+  removeTrailingZeros: false,
   // LCD Ghost: permanent “8” skeleton amount 0…1 (soft fade from 0).
   unlitSegments: 0.01,
   // Inner shadow (screen glass): Gaussian soft inset + CSS-like offset.
@@ -317,12 +336,18 @@ const nodeGraphKnobFaceDisplaySettingsDefaults = Object.freeze({
   background: "#000000",
   arcFill: "#f1b84b",
   arcTrack: "#3a3428",
-  showLabel: true,
-  showReadout: true,
   // Centered arc span (degrees Bias 0→1). Start is always −span/2 (no Offset).
   rotationDegrees: 270,
   // Dial ring size 0…1 (1 = fill available dial cell; label/value unchanged).
   dialSize: 1,
+  // Title / value size 0…1 (independent of knob size).
+  labelSize: 0.45,
+  valueSize: 0.45,
+  // Title / value vs the dial: above | mid | below.
+  labelPosition: "above",
+  valuePosition: "mid",
+  // Face name — independent of module alias / header title.
+  labelText: "Knob",
   // Hole size 0…1 (0 = solid disk, ~0.7 default, 1 = thin outer ring).
   innerRadius: 0.7,
 });
@@ -533,7 +558,9 @@ const nodeGraphScope2dTraceSettingsDefaults = Object.freeze({
   // Closed X/Y orbits (RoundShape, attractors) need ≥1 period on screen.
   // 0.05s only drew a sliver of a 1 Hz Lissajous and looked “broken up”.
   historySeconds: 1,
-  lineThickness: nodeGraphScopePhosphorLookDefaults.blur,
+  fade: 0,
+  // Instant Trace Blur: 0 hard (current look) … 1 soft skirt inside Size.
+  lineThickness: 0,
   // Vector stroke; density scales face buffer for lo-fi/chunky look (default 1).
   pixelDensity: nodeGraphScopePhosphorLookDefaults.pixelDensity,
   scale: nodeGraphScopePhosphorLookDefaults.scale,

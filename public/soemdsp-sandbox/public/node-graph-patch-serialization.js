@@ -1,40 +1,41 @@
-function serializeNodeGraphPatch(patch = nodeGraphMvp.patch) {
+function serializeNodeGraphPatch(patch = nodeGraphMvp.patch, options = {}) {
   const cameraState = normalizeNodeGraphPatchCameras(patch.cameras, patch.activeCameraId);
-  return JSON.stringify(
-    {
-      activeCameraId: cameraState.activeCameraId,
-      audio: normalizeNodeGraphPatchAudio(patch.audio),
-      bypassedNodes: patch.bypassedNodes || [],
-      cameras: cameraState.cameras,
-      codeScreen: typeof normalizeNodeGraphCodeScreen === "function"
-        ? normalizeNodeGraphCodeScreen(patch.codeScreen)
-        : patch.codeScreen,
-      connections: patch.connections,
-      format: { ...nodeGraphPatchFormat },
-      graphConnections: patch.graphConnections || [],
-      grid: patch.grid,
-      info: normalizeNodeGraphPatchInfo(patch.info),
-      modularOnlyControlsVisible: Boolean(patch.modularOnlyControlsVisible),
-      modulations: patch.modulations || [],
-      monitors: normalizeNodeGraphPatchMonitors(patch.monitors, patch),
-      nodes: patch.nodes,
-      requiredAssets: typeof nodeGraphRequiredAssetsForPatch === "function"
-        ? nodeGraphRequiredAssetsForPatch(patch)
-        : [],
-      samples: typeof normalizeNodeGraphPatchSamples === "function"
+  const payload = {
+    activeCameraId: cameraState.activeCameraId,
+    audio: normalizeNodeGraphPatchAudio(patch.audio),
+    bypassedNodes: patch.bypassedNodes || [],
+    cameras: cameraState.cameras,
+    codeScreen: typeof normalizeNodeGraphCodeScreen === "function"
+      ? normalizeNodeGraphCodeScreen(patch.codeScreen)
+      : patch.codeScreen,
+    connections: patch.connections,
+    format: { ...nodeGraphPatchFormat },
+    graphConnections: patch.graphConnections || [],
+    grid: patch.grid,
+    info: normalizeNodeGraphPatchInfo(patch.info),
+    modularOnlyControlsVisible: Boolean(patch.modularOnlyControlsVisible),
+    modulations: patch.modulations || [],
+    monitors: normalizeNodeGraphPatchMonitors(patch.monitors, patch),
+    nodes: patch.nodes,
+    requiredAssets: typeof nodeGraphRequiredAssetsForPatch === "function"
+      ? nodeGraphRequiredAssetsForPatch(patch)
+      : [],
+    samples: typeof nodeGraphPatchSamplesWithoutEmbeddedAudio === "function"
+      ? nodeGraphPatchSamplesWithoutEmbeddedAudio(patch.samples)
+      : (typeof normalizeNodeGraphPatchSamples === "function"
         ? normalizeNodeGraphPatchSamples(patch.samples)
-        : [],
-      timing: normalizeNodeGraphPatchTiming(patch.timing),
-      uiItems: normalizeNodeGraphPatchUiItems(patch.uiItems),
-      view: normalizeNodeGraphPatchView(patch.view),
-      visual: normalizeNodeGraphPatchVisual(patch.visual),
-      windows: typeof normalizeNodeGraphPatchWindows === "function"
-        ? normalizeNodeGraphPatchWindows(patch.windows)
-        : patch.windows,
-    },
-    null,
-    2,
-  );
+        : []),
+    timing: normalizeNodeGraphPatchTiming(patch.timing),
+    uiItems: normalizeNodeGraphPatchUiItems(patch.uiItems),
+    view: normalizeNodeGraphPatchView(patch.view),
+    visual: normalizeNodeGraphPatchVisual(patch.visual),
+    windows: typeof normalizeNodeGraphPatchWindows === "function"
+      ? normalizeNodeGraphPatchWindows(patch.windows)
+      : patch.windows,
+  };
+  return options.pretty === false
+    ? JSON.stringify(payload)
+    : JSON.stringify(payload, null, 2);
 }
 
 function nodeGraphShareProjectData(patch = nodeGraphMvp.patch) {

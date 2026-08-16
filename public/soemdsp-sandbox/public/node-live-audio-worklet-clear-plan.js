@@ -135,6 +135,8 @@ NodeLiveAudioProcessor.prototype.clearPlan = function clearPlan() {
     this.stftBlurStates = new Map();
     this.softpopOscillatorStates = new Map();
     this.sinepulseStates = new Map();
+    this.kickEnvelopeStates = new Map();
+    this.sineKickStates = new Map();
     for (const state of this.yellowjacketFilterStates.values()) {
       this.destroyStereoFilterNativeState(state, (s) => this.destroyYellowjacketFilterNativeState(s));
     }
@@ -163,6 +165,7 @@ NodeLiveAudioProcessor.prototype.clearPlan = function clearPlan() {
       this.destroyComparatorNativeState(state);
     }
     this.comparatorStates = new Map();
+    this.noiseDetectorStates = new Map();
     this.speedColorInertiaStates = new Map();
     this.inertialFilterStates = new Map();
     this.tiltFilterStates = new Map();
@@ -176,6 +179,7 @@ NodeLiveAudioProcessor.prototype.clearPlan = function clearPlan() {
     }
     this.minMaxStates = new Map();
     this.robinSinusoidStates = new Map();
+    this.phoneToneStates = new Map();
     for (const state of this.aliasSineStates.values()) {
       this.destroyAliasSineNativeState(state);
     }
@@ -290,6 +294,7 @@ NodeLiveAudioProcessor.prototype.clearPlan = function clearPlan() {
     this.vactrolEnvelopeStates = new Map();
     this.impulseButtonStates = new Map();
     this.bugButtonStates = new Map();
+    this.keypadStates = new Map();
     this.polyBlepStates = new Map();
     this.visualSinks = [];
     this.resetVisualControls();

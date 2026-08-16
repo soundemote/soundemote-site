@@ -307,13 +307,16 @@
   window.addEventListener("unhandledrejection", (ev) => {
     push("ERROR", `unhandled rejection: ${ev?.reason?.message || ev?.reason || "?"}`, "");
   });
-  ["warn", "error"].forEach((k) => {
+  ["log", "info", "warn", "error"].forEach((k) => {
     const orig = console[k].bind(console);
     console[k] = (...args) => {
       try {
         const text = args.map((a) => (typeof a === "string" ? a : safeStringify(a))).join(" ");
         // Skip our own re-logging noise.
-        if (!text.includes("[se-debug]")) push(k === "error" ? "ERROR" : "WARN", text, "console");
+        if (!text.includes("[se-debug]")) {
+          const level = k === "error" ? "ERROR" : k === "warn" ? "WARN" : k === "info" ? "INFO" : "LOG";
+          push(level, text, "console");
+        }
       } catch (_) {}
       return orig(...args);
     };
@@ -397,7 +400,7 @@
     s.id = "seDebugStyles";
     s.textContent = `
       #seDebugButton{width:40px;height:auto;align-self:stretch;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
-        font-size:17px;line-height:1;border:1px solid #c0392b;border-radius:7px;cursor:pointer;
+        font-size:17px;line-height:1;border:1px solid #c0392b;border-radius:7px;cursor: var(--node-dot-cursor);
         background:linear-gradient(#e74c3c,#c0392b);color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.4);position:relative;padding:0;}
       #seDebugButton:hover{filter:brightness(1.12);}
       #seDebugButton[aria-pressed="true"]{outline:2px solid #fff3;}
@@ -412,14 +415,14 @@
       #seDebugPanel.se-open{display:flex;}
       #seDebugPanel .se-head{display:flex;align-items:center;gap:6px;padding:6px 8px;background:#171b22;border-bottom:1px solid #2a2f3a;cursor:move;user-select:none;flex:0 0 auto;}
       #seDebugPanel .se-title{font-weight:700;color:#fff;margin-right:auto;font-size:17px;}
-      #seDebugPanel button.se-bug{background:none;border:1px solid #c0392b;border-radius:7px;cursor:pointer;
+      #seDebugPanel button.se-bug{background:none;border:1px solid #c0392b;border-radius:7px;cursor: var(--node-dot-cursor);
         font-size:24px;line-height:1.15;padding:1px 5px;}
       #seDebugPanel button.se-bug:hover{background:#2a1518;filter:brightness(1.2);}
       #seDebugPanel button.se-bug:active{transform:scale(0.92);}
-      #seDebugPanel button.se-tool{background:#232936;color:#cdd6e4;border:1px solid #313a4a;border-radius:5px;padding:2px 8px;cursor:pointer;font:inherit;}
+      #seDebugPanel button.se-tool{background:#232936;color:#cdd6e4;border:1px solid #313a4a;border-radius:5px;padding:2px 8px;cursor: var(--node-dot-cursor);font:inherit;}
       #seDebugPanel button.se-tool:hover{background:#2c3444;}
       #seDebugPanel .se-filters{display:flex;gap:4px;align-items:center;padding:5px 8px;background:#141821;border-bottom:1px solid #222834;flex-wrap:wrap;flex:0 0 auto;}
-      #seDebugPanel .se-chip{cursor:pointer;padding:1px 8px;border-radius:10px;border:1px solid #2c3444;color:#9aa4b2;background:#191e28;font-size:11px;}
+      #seDebugPanel .se-chip{cursor: var(--node-dot-cursor);padding:1px 8px;border-radius:10px;border:1px solid #2c3444;color:#9aa4b2;background:#191e28;font-size:11px;}
       #seDebugPanel .se-chip.on{color:#fff;border-color:#4b6;background:#1c2a22;}
       #seDebugPanel input.se-search{flex:1;min-width:80px;background:#0d1016;border:1px solid #2c3444;color:#cdd6e4;border-radius:5px;padding:2px 7px;font:inherit;}
       /* body { user-select:none } is global — force selectable text in the log. */
@@ -505,7 +508,7 @@
         <button class="se-tool" data-se-close>✕</button>
       </div>
       <div class="se-filters">
-        ${["all","LOG","WARN","FAIL","SMOOTH","ERROR"].map((f)=>`<span class="se-chip${f==="all"?" on":""}" data-se-filter="${f}">${f}</span>`).join("")}
+        ${["all","LOG","INFO","WARN","FAIL","SMOOTH","ERROR"].map((f)=>`<span class="se-chip${f==="all"?" on":""}" data-se-filter="${f}">${f}</span>`).join("")}
         <input class="se-search" data-se-search placeholder="filter text…">
       </div>
       <div class="se-log node-text-selectable" data-se-list tabindex="0"><div class="se-empty">No log entries yet.</div></div>
@@ -822,7 +825,12 @@
     if (!els.panel) return;
     els.panel.classList.toggle("se-open", open);
     els.btn?.setAttribute("aria-pressed", open ? "true" : "false");
-    if (open) { rebuild(); }
+    if (open) {
+      if (typeof logNodeGraphSampleRateInfo === "function") {
+        logNodeGraphSampleRateInfo("debug panel");
+      }
+      rebuild();
+    }
   }
 
   // Always show the 🐞 button (localhost, release site, iframe deploy). Release
@@ -856,6 +864,9 @@
       SE.INFO(
         `debug console ready — build ${(document.querySelector("[data-build-number-value]")?.textContent || "?")} (${seBuildMode()}) · log cleared on load`,
       );
+      if (typeof logNodeGraphSampleRateInfo === "function") {
+        logNodeGraphSampleRateInfo("startup");
+      }
       rebuild();
     } catch (err) {
       try { console.error("[se-debug] init failed", err); } catch (_) {}

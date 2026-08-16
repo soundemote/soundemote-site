@@ -417,7 +417,7 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
   const outputNode = "output";
   const reachableNodes = new Set();
   const bypassedNodes = new Set(graph.bypassedNodes || []);
-  const passthroughTypes = new Set(["asciiscope", "matrixDisplay", "matrixWaterfall", "activeFilter", "allpass", "badvalMonitor", "bandpass", "crossover2", "crossover3", "crossover4", "crossover5", "crossover6", "modeResonator", "combResonator", "waveguide", "phaser", "flanger", "chorus", "bode", "phaseDisperse", "stftBlur", "bessel", "bias", "butterworth", "chaoticPhaseLockingFilter", "chebyshev", "cookbookFilter", "elliptic", "eqFilter", "flowerChildFilter", "formantFilter", "gain", "humanFilter", "inertialFilter", "ladderFilter", "linkwitzRiley", "papoulisFilter", "passiveFilter", "pll", "resonatorFilter", "reverbEffect", "sampleDelay", "sampleHold", "slewLimiter", "softClipper", "airClipper", "speakerProtection", "spectrogram", "speedColorInertia", "superloveFilter", "tb303Filter", "tiltFilter", "wallDelay", "yellowjacketFilter", "midSideEncode", "quadrature", "lookaheadLimiter"]);
+  const passthroughTypes = new Set(["asciiscope", "matrixDisplay", "matrixWaterfall", "activeFilter", "allpass", "badvalMonitor", "bandpass", "crossover2", "crossover3", "crossover4", "crossover5", "crossover6", "modeResonator", "combResonator", "waveguide", "phaser", "flanger", "chorus", "bode", "phaseDisperse", "stftBlur", "bessel", "bias", "butterworth", "chaoticPhaseLockingFilter", "chebyshev", "cookbookFilter", "elliptic", "eqFilter", "flowerChildFilter", "formantFilter", "besselThomson", "massSpringDamper", "gain", "humanFilter", "inertialFilter", "ladderFilter", "linkwitzRiley", "papoulisFilter", "passiveFilter", "pll", "resonatorFilter", "reverbEffect", "sampleDelay", "sampleHold", "slewLimiter", "softClipper", "clipperLimiter", "airClipper", "speakerProtection", "speakerProtector2", "spectrogram", "speedColorInertia", "superloveFilter", "tb303Filter", "tiltFilter", "wallDelay", "yellowjacketFilter", "midSideEncode", "quadrature", "hilbert", "lookaheadLimiter"]);
 
   function markReachable(nodeId) {
     if (reachableNodes.has(nodeId) || !graph.nodeMap.has(nodeId)) {
@@ -435,7 +435,10 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
   }
   // Plugin Output nodes are audio sinks; keep them reachable so upstream evaluates.
   for (const node of graph.nodes) {
-    if (node?.type === "pluginOutput" && !bypassedNodes.has(node.id)) {
+    if (
+      (node?.type === "pluginOutput" || node?.type === "portalOutlet")
+      && !bypassedNodes.has(node.id)
+    ) {
       markReachable(node.id);
     }
   }
@@ -628,7 +631,7 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
   // that leaves a node like this (e.g. a reverb's only input) gets silently
   // rejected and the previous, still-connected live audio plan keeps
   // running instead, making the disconnect appear to do nothing.
-  const softMissingInputIssue = /^missing .+ (input|gate|trigger|light|clock)$/;
+  const softMissingInputIssue = /^missing .+ (input|gate|trigger|light|clock|signal)$/;
   const blockingIssues = uniqueIssues.filter((issue) => (
     issue !== "output node missing" &&
     issue !== "missing Output speaker input" &&

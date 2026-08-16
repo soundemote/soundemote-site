@@ -8,56 +8,54 @@ function bindNodeGraphHeaderControlEvents() {
   } else if (typeof bindNodeGraphShaderScriptEvents === "function") {
     bindNodeGraphShaderScriptEvents();
   }
+  if (typeof bindNodeGraphMagnifierZoomControl === "function") {
+    bindNodeGraphMagnifierZoomControl();
+  }
+  if (typeof bindNodeGraphSnakeMouseSmoothControl === "function") {
+    bindNodeGraphSnakeMouseSmoothControl();
+  }
   bindNodeGraphCanvasScriptEvents();
   bindNodeGraphCodeScreenEvents();
   renderNodeGraphPatchTimingControls();
-  document.getElementById("nodeDeleteButton").addEventListener("click", deleteSelectedNodeGraphItem);
+  document.getElementById("nodeDeleteButton")?.addEventListener("click", deleteSelectedNodeGraphItem);
   document.getElementById("nodeUndoButton").addEventListener("click", undoNodeGraphPatch);
   document.getElementById("nodeRedoButton").addEventListener("click", redoNodeGraphPatch);
   document.getElementById("nodeFullUiButton")?.addEventListener("click", toggleNodeGraphFullUiView);
-  document.getElementById("nodeVisibilityMenuClose").addEventListener("click", () => setNodeGraphVisibilityMenuOpen(false));
+  document.getElementById("nodeVisibilityMenuClose")?.addEventListener("click", () => {
+    if (typeof closeNodeGraphUnifiedWindowPage === "function") {
+      closeNodeGraphUnifiedWindowPage("visibilityMenu");
+      return;
+    }
+    setNodeGraphVisibilityMenuOpen(false);
+  });
   document
     .querySelector("#nodeVisibilityMenu .scene-context-heading")
     ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "visibilityMenu"));
   document
     .getElementById("nodeVisibilityMenuResizeHandle")
     ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowResize(event, "visibilityMenu"));
-  // Move/up: nodeGraphFloatingWindowRegistryPointerBridge (floating-windows.js)
-  document.getElementById("nodeVisibilityMenuButton").addEventListener("click", toggleNodeGraphVisibilityMenu);
+  // Visibility lives on the Command Center 👁️ nav — no top-bar button.
+  document.getElementById("nodeHotkeysPageClose")?.addEventListener("click", () => {
+    if (typeof closeNodeGraphUnifiedWindowPage === "function") {
+      closeNodeGraphUnifiedWindowPage("hotkeys");
+      return;
+    }
+    setNodeGraphHotkeysPageOpen(false);
+  });
+  document
+    .querySelector("#nodeHotkeysPage .scene-context-heading")
+    ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "hotkeys"));
+  document
+    .getElementById("nodeHotkeysPageResizeHandle")
+    ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowResize(event, "hotkeys"));
   document.getElementById("nodeStandaloneMidiKeyboardButton")?.addEventListener("click", toggleNodeGraphStandaloneMidiKeyboard);
-  document.getElementById("nodeStandaloneMidiKeyboardCloseButton")?.addEventListener("click", closeNodeGraphStandaloneMidiKeyboard);
-  document
-    .getElementById("nodeStandaloneMidiKeyboardDragHandle")
-    ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "standaloneMidiKeyboard"));
-  document
-    .getElementById("nodeStandaloneMidiKeyboardHeading")
-    ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "standaloneMidiKeyboard"));
-  document
-    .getElementById("nodeStandaloneMidiKeyboardResizeHandle")
-    ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowResize(event, "standaloneMidiKeyboard"));
-  // Move/up: registry pointer bridge
-  document.getElementById("nodeTooltipWindowCloseButton")?.addEventListener("click", closeNodeGraphTooltipWindow);
-  document
-    .getElementById("nodeTooltipWindowDragHandle")
-    ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "tooltipWindow"));
-  document
-    .getElementById("nodeTooltipWindowHeading")
-    ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "tooltipWindow"));
-  document
-    .getElementById("nodeTooltipWindowResizeHandle")
-    ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowResize(event, "tooltipWindow"));
-  // Embedded tips height: drag strip between tips band and modular workspace.
+  if (typeof bindNodeGraphControllerDockSplit === "function") {
+    bindNodeGraphControllerDockSplit();
+  }
+  // Docked tips height: drag strip between tips band and modular workspace.
   const embedResize = document.getElementById("nodeInteractionHelpEmbedResize");
   if (embedResize && typeof beginNodeGraphTooltipEmbedResize === "function") {
     embedResize.addEventListener("pointerdown", beginNodeGraphTooltipEmbedResize);
-    embedResize.addEventListener("pointermove", (event) => {
-      if (nodeGraphMvp?.tooltipEmbedResizing) {
-        dragNodeGraphTooltipEmbedResize(event);
-      }
-    });
-    embedResize.addEventListener("pointerup", endNodeGraphTooltipEmbedResize);
-    embedResize.addEventListener("pointercancel", endNodeGraphTooltipEmbedResize);
-    embedResize.addEventListener("lostpointercapture", endNodeGraphTooltipEmbedResize);
   }
   // Move/up: registry pointer bridge
   document.getElementById("nodePhosphorWaveformSettingsClose")?.addEventListener("click", closeNodeGraphPhosphorWaveformSettings);
@@ -140,6 +138,7 @@ function bindNodeGraphHeaderControlEvents() {
   document.getElementById("nodeGridToggleButton").addEventListener("click", toggleNodeGraphGridVisibility);
   document.getElementById("nodeGridLightToggleButton")
     ?.addEventListener("click", toggleNodeGraphGridLightVisibility);
+
   document.getElementById("nodeWireLengthsToggleButton")
     ?.addEventListener("click", toggleNodeGraphWireLengthsVisibility);
   document.getElementById("nodeWiresAboveModulesToggleButton")
@@ -231,10 +230,13 @@ function bindNodeGraphHeaderControlEvents() {
   document.getElementById("nodeTooltipToggleButton")?.addEventListener("click", toggleNodeGraphTooltipWindow);
   document
     .getElementById("nodeUserUiSettingsSaveDefault")
-    .addEventListener("click", handleSaveNodeUserUiSettingsDefaultClick);
+    ?.addEventListener("click", handleSaveNodeUserUiSettingsDefaultClick);
   document
     .getElementById("nodeUserUiSettingsClearStartup")
-    .addEventListener("click", handleClearNodeUserStartupStateClick);
+    ?.addEventListener("click", handleClearNodeUserStartupStateClick);
+  document
+    .getElementById("clearNodeUiDevStartupButton")
+    ?.addEventListener("click", handleClearNodeUserStartupStateClick);
   // Shortcut from the user-facing panel to the full UI Dev panel, where every
   // setting lives (including the ones not exposed here).
   document
@@ -244,13 +246,30 @@ function bindNodeGraphHeaderControlEvents() {
         setNodeUiDevHelperVisible(true);
       }
     });
-  document.getElementById("nodeUserUiSettingsClose").addEventListener("click", () => setNodeUserUiSettingsVisible(false));
+  const uiSettingsClose = document.getElementById("nodeUserUiSettingsClose");
+  uiSettingsClose?.addEventListener("pointerdown", (event) => {
+    event.stopPropagation();
+  });
+  uiSettingsClose?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (typeof closeNodeGraphUnifiedWindowPage === "function") {
+      closeNodeGraphUnifiedWindowPage("uiSettings");
+    } else if (typeof setNodeUserUiSettingsVisible === "function") {
+      setNodeUserUiSettingsVisible(false);
+    }
+  });
   document
     .getElementById("nodeUserUiSettingsDragHandle")
     ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "uiSettings"));
   document
     .getElementById("nodeUserUiSettingsHeading")
-    ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "uiSettings"));
+    ?.addEventListener("pointerdown", (event) => {
+      if (event.target?.closest?.("#nodeUserUiSettingsClose, .panel-close-button")) {
+        return;
+      }
+      beginNodeGraphRegisteredFloatingWindowDrag(event, "uiSettings");
+    });
   if (typeof bindNodeGraphFloatingWindowResizeHandle === "function") {
     bindNodeGraphFloatingWindowResizeHandle("uiSettings");
   }
@@ -283,7 +302,13 @@ function bindNodeGraphHeaderControlEvents() {
     .addEventListener("click", toggleNodeUserUiSettings);
   document
     .getElementById("nodeCodeScreenViewButton")
-    .addEventListener("click", () => openNodeGraphCodeBoxWindowFromHeader());
+    ?.addEventListener("click", () => {
+      const button = document.getElementById("nodeCodeScreenViewButton");
+      if (button?.disabled || button?.getAttribute("aria-disabled") === "true") {
+        return;
+      }
+      openNodeGraphCodeBoxWindowFromHeader();
+    });
   document
     .getElementById("nodeUiViewButton")
     ?.addEventListener("click", () => setNodeGraphViewMode("ui"));
@@ -312,7 +337,12 @@ function bindNodeGraphHeaderControlEvents() {
       // pointer -- every later open restores the remembered position, same
       // as every other floating window. Unified open closes Modules / etc.
       const rect = event.currentTarget.getBoundingClientRect();
-      if (typeof openNodeGraphUnifiedWindowPage === "function") {
+      if (typeof cycleNodeGraphCommandCenterPresentation === "function") {
+        cycleNodeGraphCommandCenterPresentation({
+          x: rect.left,
+          y: rect.bottom,
+        });
+      } else if (typeof openNodeGraphUnifiedWindowPage === "function") {
         openNodeGraphUnifiedWindowPage("commandCenter", {
           x: rect.left,
           y: rect.bottom,
@@ -330,20 +360,20 @@ function bindNodeGraphHeaderControlEvents() {
         openNodeGraphModuleShop(null);
       }
     });
-  // 💻 / V — hide/show top + bottom bars (not a canvas mode switch).
+  // 💻 — computer / infinite canvas (no crop, no resize widget).
   document
     .getElementById("nodeModularInfiniteViewButton")
     ?.addEventListener("click", () => {
-      if (typeof toggleNodeGraphAppChromeBarsVisibility === "function") {
-        toggleNodeGraphAppChromeBarsVisibility();
+      if (typeof setNodeGraphModularWindowedActive === "function") {
+        setNodeGraphModularWindowedActive(false);
       }
     });
-  // 📱 / M — condensed modular frame (resize + back), independent of V.
+  // 📱 — phone / condensed frame with resize widget.
   document
     .getElementById("nodeModularWindowedViewButton")
     ?.addEventListener("click", () => {
-      if (typeof toggleNodeGraphModularWindowedView === "function") {
-        toggleNodeGraphModularWindowedView();
+      if (typeof setNodeGraphModularWindowedActive === "function") {
+        setNodeGraphModularWindowedActive(true);
       }
     });
   document

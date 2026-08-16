@@ -3,6 +3,9 @@ function applyNodeGraphPan(options = {}) {
   if (!workspace) {
     return;
   }
+  if (!nodeGraphMvp?.workspaceCameraBox && typeof rememberNodeGraphWorkspaceCameraBox === "function") {
+    rememberNodeGraphWorkspaceCameraBox(workspace);
+  }
   // Light CSS pan every sample; heavy chrome coalesced during gestures.
   if (typeof applyNodeGraphViewportCssLight === "function") {
     applyNodeGraphViewportCssLight({ zoom: false, pan: true, zoomButtons: false });
@@ -182,11 +185,30 @@ function recenterNodeGraphViewAtWorldOrigin(event) {
   event?.preventDefault?.();
 }
 
+function nodeGraphLogModularViewPan(reason = "pan") {
+  if (typeof window.SE?.INFO !== "function") {
+    return;
+  }
+  const pan = nodeGraphMvp?.pan || { x: 0, y: 0 };
+  const zoom = typeof nodeGraphZoom === "function" ? nodeGraphZoom() : 1;
+  const gx = typeof nodeGraphGridWidth === "function" ? nodeGraphGridWidth() : 28;
+  const gy = typeof nodeGraphGridHeight === "function" ? nodeGraphGridHeight() : 28;
+  const worldX = -((Number(pan.x) || 0) / Math.max(0.0001, Number(zoom) || 1)) / Math.max(1e-9, gx);
+  const worldY = -((Number(pan.y) || 0) / Math.max(0.0001, Number(zoom) || 1)) / Math.max(1e-9, gy);
+  const label = typeof nodeGraphWorldPositionLabel === "function"
+    ? nodeGraphWorldPositionLabel
+    : (value) => String(Math.round(Number(value) || 0));
+  window.SE.INFO(`modular view ${reason} X ${label(worldX)} Y ${label(worldY)}`);
+}
+
 function setNodeGraphPan(x, y, options = {}) {
   nodeGraphMvp.pan = {
     x: Number.isFinite(Number(x)) ? Number(x) : 0,
     y: Number.isFinite(Number(y)) ? Number(y) : 0,
   };
+  if (options.gesture !== true && options.log !== false) {
+    nodeGraphLogModularViewPan("pan");
+  }
   // Gesture lite path only when explicitly requested (workspace pan drag).
   // Programmatic pan (recenter, load, snap) flushes full chrome immediately.
   const isGesture = options.gesture === true && options.immediate !== true;
@@ -433,11 +455,14 @@ function snapNodeGraphWorkspaceEdgesToGrid(zoom = nodeGraphZoom()) {
     renderedGridHeight,
     nodeGraphWorkspaceViewLimits.minHeightGu,
   );
-  withNodeGraphWorkspaceContentAnchored(workspace, () => {
-    const widthCss = nodeGraphWorkspaceWidthCss(snappedContentWidth);
-    const heightCss = nodeGraphWorkspaceHeightCss(snappedContentHeight);
-    applyNodeGraphWorkspaceSizeCss(workspace, widthCss, heightCss);
-  });
+  applyNodeGraphWorkspaceSizeCss(
+    workspace,
+    nodeGraphWorkspaceWidthCss(snappedContentWidth),
+    nodeGraphWorkspaceHeightCss(snappedContentHeight),
+  );
+  if (typeof applyNodeGraphPan === "function") {
+    applyNodeGraphPan({ persist: false, skipHeavy: true });
+  }
   drawNodeGraphWires();
 }
 
@@ -571,15 +596,18 @@ function nodeGraphWorkspaceResizeDeltaGu(pixelDelta, gridSize, stepGu = 1) {
 function setNodeGraphWorkspacePreviewSize(widthGu, heightGu) {
   const workspace = document.getElementById("nodeGraphWorkspace");
   const visibleSize = clampNodeGraphWorkspaceGridSizeToViewport({ widthGu, heightGu }, workspace);
-  withNodeGraphWorkspaceContentAnchored(workspace, () => {
-    applyNodeGraphWorkspaceSizeCss(
-      workspace,
-      nodeGraphWorkspaceWidthCss(visibleSize.widthGu * nodeGraphGridWidth()),
-      nodeGraphWorkspaceHeightCss(visibleSize.heightGu * nodeGraphGridHeight()),
-    );
-  });
+  // Size only. Do not rewrite pan or module positions — origin stays the
+  // workspace center, so a centered frame clips both sides in place.
+  applyNodeGraphWorkspaceSizeCss(
+    workspace,
+    nodeGraphWorkspaceWidthCss(visibleSize.widthGu * nodeGraphGridWidth()),
+    nodeGraphWorkspaceHeightCss(visibleSize.heightGu * nodeGraphGridHeight()),
+  );
   workspace.dataset.widthGu = String(visibleSize.widthGu);
   workspace.dataset.heightGu = String(visibleSize.heightGu);
+  if (typeof applyNodeGraphPan === "function") {
+    applyNodeGraphPan({ persist: false, skipHeavy: true });
+  }
   syncNodeGraphModularViewSizeReadout(visibleSize);
   drawNodeGraphWires();
   syncNodeGraphWorkspaceResizeHandlePosition();
@@ -691,7 +719,13 @@ function beginNodeGraphWorkspacePanFrom(pointerId, clientX, clientY) {
     startPanX: pan.x,
     startPanY: pan.y,
   };
+  if (typeof invalidateNodeGraphWorkspaceLayoutMetrics === "function") {
+    invalidateNodeGraphWorkspaceLayoutMetrics();
+  }
   workspace?.classList.add("panning");
+  if (typeof nodeGraphLogModularViewPan === "function") {
+    nodeGraphLogModularViewPan("pan start");
+  }
   if (typeof markNodeGraphViewportGesture === "function") {
     markNodeGraphViewportGesture("pan");
   }
@@ -916,6 +950,9 @@ function endNodeGraphWorkspacePan(event) {
   }
   workspace?.classList.remove("panning");
   nodeGraphMvp.workspacePanning = null;
+  if (typeof nodeGraphLogModularViewPan === "function") {
+    nodeGraphLogModularViewPan("pan");
+  }
   // Lights + wires once on mouse-up — not a settle timer mid/after drag.
   if (typeof flushNodeGraphViewportOnPointerUp === "function") {
     flushNodeGraphViewportOnPointerUp({ pan: true, zoom: true });
@@ -944,10 +981,13 @@ const nodeGraphFloatingWindowSelector = [
   "#nodeCodeBoxWindow",
   "#nodeModuleShopView",
   "#nodeVisibilityMenu",
+  "#nodeHotkeysPage",
+  "#nodeEmojiPage",
   "#nodeParameterMetadataPopover",
   "#nodeTraceDisplaySettingsPopover",
   "#nodeUiDevHelper",
   "#nodeUserUiSettingsPanel",
+  "#nodePatchDefaultsPanel",
   "#nodeGlobalScopeMenu",
 ].join(",");
 

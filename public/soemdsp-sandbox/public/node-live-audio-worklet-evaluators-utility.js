@@ -198,18 +198,31 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_utility = function bu
         nodeGraphDspBinaryOut(this.readEffectiveParameter(node, "value", 0, frame, frames, frameValues)),
       momentaryButton: (node, nodeId, frame, frames, frameValues) =>
         nodeGraphDspBinaryOut(this.readEffectiveParameter(node, "value", 0, frame, frames, frameValues)),
-      pluginInput: (node, nodeId, frame, frames, frameValues) =>
-        nodeGraphDspExternalStereoFrame(
+      pluginInput: (node, nodeId, frame, frames, frameValues, mixInput) => {
+        const live = nodeGraphDspExternalStereoFrame(
           this.externalInput,
           frame,
-          this.readEffectiveParameter(node, "level", 1, frame, frames, frameValues),
-        ),
-      pluginOutput: (node, nodeId, frame, frames, frameValues, mixInput) =>
-        nodeGraphDspStereoMix(
+          this.readEffectiveParameter(node, "amplitude", 1, frame, frames, frameValues),
+        );
+        return typeof nodeGraphDspSandboxIoFrame === "function"
+          ? nodeGraphDspSandboxIoFrame(
+            live,
+            mixInput(nodeId, "Mono"),
+            mixInput(nodeId, "Left"),
+            mixInput(nodeId, "Right"),
+          )
+          : live;
+      },
+      pluginOutput: (node, nodeId, frame, frames, frameValues, mixInput) => {
+        const mix = nodeGraphDspStereoMix(
           mixInput(nodeId, "Mono"),
           mixInput(nodeId, "Left"),
           mixInput(nodeId, "Right"),
-        ),
+        );
+        return typeof nodeGraphDspSandboxIoTrio === "function"
+          ? nodeGraphDspSandboxIoTrio(mix)
+          : { Left: mix.Left, Mono: mix.Out, Out: mix.Out, Right: mix.Right };
+      },
       pluginMidiIn: (node, nodeId, frame, frames, frameValues) =>
         nodeGraphDspMidiKeyboardPorts(
           this.midiKeyboardSignal || {},
@@ -430,9 +443,54 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_utility = function bu
       groupInput: (node, nodeId) => ({
         Out: Number(this.externalGroupInputs?.get(nodeId)) || 0,
       }),
+      portalInlet: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput, inputFrame) => {
+        const live = typeof nodeGraphDspExternalStereoFrame === "function"
+          ? nodeGraphDspExternalStereoFrame(this.externalInput, inputFrame ?? frame, 1)
+          : { Left: 0, Out: 0, Right: 0 };
+        return typeof nodeGraphDspSandboxIoFrame === "function"
+          ? nodeGraphDspSandboxIoFrame(
+            live,
+            mixInput(nodeId, "Mono"),
+            mixInput(nodeId, "Left"),
+            mixInput(nodeId, "Right"),
+          )
+          : live;
+      },
+      portalOutlet: (node, nodeId, frame, frames, frameValues, mixInput) => {
+        const mix = typeof nodeGraphPortalMixTrio === "function"
+          ? nodeGraphPortalMixTrio(mixInput, nodeId)
+          : nodeGraphDspStereoMix(
+            mixInput(nodeId, "Mono"),
+            mixInput(nodeId, "Left"),
+            mixInput(nodeId, "Right"),
+          );
+        return typeof nodeGraphPortalTrioOut === "function"
+          ? nodeGraphPortalTrioOut(mix)
+          : { Left: mix.Left, Mono: mix.Out, Out: mix.Out, Right: mix.Right };
+      },
       audioPlayer: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
         const readParam = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
         return this.audioPlayerSample(
+          node,
+          nodeId,
+          (port) => mixInput(nodeId, port),
+          readParam,
+          safeRate,
+        );
+      },
+      samplePlayer: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
+        const readParam = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
+        return this.sampleLibrarySample(
+          node,
+          nodeId,
+          (port) => mixInput(nodeId, port),
+          readParam,
+          safeRate,
+        );
+      },
+      sampleLooper: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
+        const readParam = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
+        return this.sampleLooperSample(
           node,
           nodeId,
           (port) => mixInput(nodeId, port),

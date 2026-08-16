@@ -9,13 +9,10 @@ const WebringPage = () => (
     <section className="container mx-auto max-w-2xl px-6 py-12">
       <p className="mono text-xs uppercase tracking-[0.22em] text-scope">webring</p>
       <p className="mt-3 text-sm text-muted-foreground">
-        Want to join?{" "}
-        <a
-          href="mailto:soundemote@gmail.com"
-          className="text-scope hover:underline"
-        >
-          Email soundemote@gmail.com
-        </a>
+        Want to join? Email{" "}
+        <span className="select-text cursor-text text-scope">
+          soundemote@gmail.com
+        </span>
         .
       </p>
       <div className="mt-7 grid gap-3">
