@@ -25,6 +25,7 @@ export type BankAudius = {
 export type BankItem = BankPatch | BankVideo | BankAudius;
 
 export const SOUNDEMOTE_BANK: BankItem[] = [
+  { kind: "video", slug: "hero-video", label: "Soundemote", youtubeId: "KSPypZKIRVE" },
   { slug: "lcd", label: "lcd", url: "/patches/lcd.json" },
   { kind: "video", slug: "intro-video", label: "Hydrus - Retro Fusion", youtubeId: "PpcdN-DXYdc" },
   {
