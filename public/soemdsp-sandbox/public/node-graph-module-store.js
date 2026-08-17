@@ -3756,11 +3756,16 @@ function renderNodeGraphModuleStoreCatalog() {
     return;
   }
 
+  const departmentSearch = nodeGraphMvp.moduleStoreDepartmentSearch || "";
+  if (available.childElementCount && nodeGraphMvp._moduleStoreCatalogKey === departmentSearch) {
+    renderNodeGraphModuleGroupCatalog();
+    return;
+  }
+
   available.innerHTML = "";
   homeShelf.innerHTML = "";
   const entries = nodeGraphModuleStoreEntries();
   nodeGraphMvp.moduleStoreDepartment = "";
-  const departmentSearch = nodeGraphMvp.moduleStoreDepartmentSearch || "";
   const searchingAllModules = Boolean(nodeGraphNormalizeModuleDepartmentSearch(departmentSearch));
   const departmentSearchField = document.getElementById("nodeModuleDepartmentSearch");
   if (departmentSearchField && departmentSearchField.value !== departmentSearch) {
@@ -3799,6 +3804,7 @@ function renderNodeGraphModuleStoreCatalog() {
       : "No categories are available.";
     available.append(empty);
   }
+  nodeGraphMvp._moduleStoreCatalogKey = departmentSearch;
   renderNodeGraphModuleGroupCatalog();
   bindNodeGraphModuleStoreScrollAffordance();
   requestAnimationFrame(updateNodeGraphModuleStoreScrollAffordance);

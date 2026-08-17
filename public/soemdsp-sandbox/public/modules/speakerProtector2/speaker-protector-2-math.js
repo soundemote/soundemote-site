@@ -1,12 +1,14 @@
 // Speaker Protector 2.0 — stereo-linked VCA only. Never clips or knees.
-// High load (raw |peak| > 1 + NODE_GRAPH_NUMERIC_PRECISION or 1 kHz HP ≥ +6 dB)
+// High load (raw |peak| ≥ 1 + NODE_GRAPH_NUMERIC_PRECISION or 1 kHz HP ≥ +6 dB)
 // → fast slew gain to 0 → hold 0.333 s → slow slew back to 1.
 // While peak is over that ceiling, gain is also capped at 1/peak so the
 // waveform is scaled, not flattened. Shared by the patch module and Output.
 
-// Named amplitude floor for "same as this level" checks. The app has no other
-// universal precision SSOT; 1e-7 is the value used here and by ear-trip helpers.
-var NODE_GRAPH_NUMERIC_PRECISION = 1e-7;
+// Planck lives in node-graph-semath.js (NODE_GRAPH_PLANCK). Alias kept so
+// older callers / tests that only load this file still resolve a number.
+var NODE_GRAPH_NUMERIC_PRECISION = typeof NODE_GRAPH_PLANCK === "number"
+  ? NODE_GRAPH_PLANCK
+  : 1e-7;
 
 var NODE_GRAPH_SPEAKER_PROTECTOR2_HP_HZ = 1000;
 var NODE_GRAPH_SPEAKER_PROTECTOR2_THRESHOLD = 10 ** (6 / 20);
@@ -59,17 +61,29 @@ function nodeGraphSpeakerProtector2Prepare(state, sampleRate) {
 }
 
 function nodeGraphSpeakerProtector2NumericPrecision() {
+  if (typeof nodeGraphPlanck === "function") {
+    return nodeGraphPlanck();
+  }
   const eps = Number(NODE_GRAPH_NUMERIC_PRECISION);
   return Number.isFinite(eps) && eps >= 0 ? eps : 1e-7;
 }
 
 function nodeGraphSpeakerProtector2PeakDanger(peak) {
-  return Number(peak) > 1 + nodeGraphSpeakerProtector2NumericPrecision();
+  if (typeof nodeGraphAboveUnity === "function") {
+    return nodeGraphAboveUnity(peak);
+  }
+  return Number(peak) >= 1 + nodeGraphSpeakerProtector2NumericPrecision();
 }
 
 function nodeGraphSpeakerProtector2SampleTrips(value) {
   const number = Number(value);
-  return !Number.isFinite(number) || nodeGraphSpeakerProtector2PeakDanger(Math.abs(number));
+  if (!Number.isFinite(number)) {
+    return true;
+  }
+  if (typeof nodeGraphOutsideUnity === "function") {
+    return nodeGraphOutsideUnity(number);
+  }
+  return nodeGraphSpeakerProtector2PeakDanger(Math.abs(number));
 }
 
 function nodeGraphSpeakerProtector2SlewToward(gain, target, seconds, sampleRate) {

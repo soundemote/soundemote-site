@@ -2848,6 +2848,7 @@ async function stopNodeGraphLiveAudio() {
 const nodeGraphLiveWorkletSourceFiles = [
   // Pure stdlib first so per-module worklet chunks can call nodeGraphWrap01 /
   // nodeGraphTrisaw / nodeGraphPitchedFrequency / nodeGraphAdvancePhase01.
+  "./public/node-graph-semath.js?v=planck-1",
   "./public/node-graph-stdlib/node-graph-phasor-helpers.js?v=phasor-helpers-1",
   "./public/node-graph-stdlib/node-graph-control-bus-helpers.js?v=input-amp-1",
   "./public/modules/portal/portal-math.js?v=io3-1",
@@ -2864,7 +2865,7 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/node-live-audio-worklet-destroy.js?v=plan-d-split-6",
   "./public/node-live-audio-worklet-analog.js?v=plan-d-split-7",
   "./public/lib/sample-interpolate.js?v=hermite-1",
-  "./public/node-live-audio-worklet-dsp-state.js?v=peak-eps-1e7-1",
+  "./public/node-live-audio-worklet-dsp-state.js?v=planck-1",
   "./public/node-live-audio-worklet-events.js?v=domain-mod-1",
   "./public/node-live-audio-worklet-visual.js?v=plan-d-split-7",
   "./public/node-live-audio-worklet-scope-io.js?v=visual-rate-meta-1",
@@ -3026,7 +3027,7 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/rasterRgb/raster-rgb-math.js?v=bipolar-grade-1",
   "./public/modules/rasterRgb/raster-rgb-worklet-evaluator.js?v=bipolar-grade-1",
   "./public/modules/rgbDisplays/rgb-display-worklet-evaluator.js?v=trace-xyz-1",
-  "./public/modules/phoneTone/phone-tone-math.js?v=phone-tone-layout-a-1",
+  "./public/modules/phoneTone/phone-tone-math.js?v=tone-lr-1",
   "./public/modules/phoneTone/phone-tone-worklet-evaluator.js?v=phone-tone-layout-a-1",
   "./public/modules/xyPad/xy-pad-dsp.js?v=xy-amp-xy-1",
   "./public/modules/xyPad/xy-pad-worklet-evaluator.js?v=xy-amp-xy-1",
@@ -3054,7 +3055,7 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/nextPatch/next-patch-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/softClipper/soft-clipper-math.js?v=soft-clipper-os-1",
   "./public/modules/softClipper/soft-clipper-worklet-evaluator.js?v=soft-clipper-os-1",
-  "./public/modules/speakerProtector2/speaker-protector-2-math.js?v=peak-eps-1e7-1",
+  "./public/modules/speakerProtector2/speaker-protector-2-math.js?v=planck-1",
   "./public/modules/speakerProtector2/speaker-protector-2-worklet-evaluator.js?v=speaker-protector-noclip-1",
   "./public/modules/clipperLimiter/clipper-limiter-math.js?v=clipper-order-1",
   "./public/modules/clipperLimiter/clipper-limiter-worklet-evaluator.js?v=clipper-order-1",

@@ -18026,37 +18026,72 @@ input[data-global-scope-number-drag="true"]:not([readonly]):focus,
   white-space: nowrap;
 }
 
-/* Output / stereo Trace: title + Swap L/R share one row (do not stack/clip). */
+/* Output / stereo Trace: Swap in the label column; L | R over the steppers. */
 .node-trace-display-settings-popover .metadata-section-title.node-trace-display-stereo-title {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: var(--ds-label-col) minmax(0, 1fr);
   place-items: center stretch;
   overflow: hidden;
-  padding: 0 0 0 8px;
+  padding: 0;
 }
 
 .node-trace-display-settings-popover .node-trace-display-stereo-title > span {
-  justify-self: start;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* Stereo Instant Trace: Size L|R, Blur L|R, Bright L|R on one row. */
+.node-trace-display-settings-popover .node-trace-display-lr-title-spacer {
+  display: block;
+}
+
+.node-trace-display-settings-popover .node-trace-display-lr-col-head {
+  justify-self: center;
+  text-align: center;
+  font: 700 0.62rem/1 inherit;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--accent) 88%, white 12%);
+}
+
+/* Stereo Instant Trace: one Size/Blur/Bright label, two steppers under L | R. */
 .node-trace-display-lr-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: var(--ds-label-col) minmax(0, 1fr);
   align-items: stretch;
-  gap: 0;
+  column-gap: 6px;
   width: 100%;
   min-width: 0;
 }
 
-.node-trace-display-settings-popover .node-trace-display-lr-row > .node-trace-display-line-burn-row {
+.node-trace-display-lr-shared-label {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0 6px 0 8px;
+  color: var(--muted);
+  font-size: 0.62rem;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.node-trace-display-lr-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: stretch;
+  min-width: 0;
+}
+
+.node-trace-display-settings-popover .node-trace-display-lr-heads {
+  align-items: center;
+}
+
+.node-trace-display-settings-popover .node-trace-display-lr-row .node-trace-display-stepper-only,
+.node-trace-display-settings-popover .metadata-popover-grid .node-trace-display-lr-row .node-trace-display-stepper-only {
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   padding-right: 4px;
 }
 
-.node-trace-display-settings-popover .node-trace-display-lr-row > .node-trace-display-line-burn-row + .node-trace-display-line-burn-row {
+.node-trace-display-settings-popover .node-trace-display-lr-pair > .node-trace-display-stepper-only + .node-trace-display-stepper-only {
   padding-right: 0;
   padding-left: 4px;
   border-left: 1px solid var(--ds-hairline, color-mix(in srgb, var(--accent) 14%, transparent));
@@ -18064,7 +18099,6 @@ input[data-global-scope-number-drag="true"]:not([readonly]):focus,
 
 .node-trace-display-lr-color-row {
   align-items: start;
-  gap: 6px;
   padding: 4px 0;
 }
 
@@ -18076,16 +18110,17 @@ input[data-global-scope-number-drag="true"]:not([readonly]):focus,
   appearance: none;
   box-sizing: border-box;
   align-self: stretch;
+  justify-self: stretch;
   width: auto !important;
   max-width: 100%;
   height: var(--ds-row-h) !important;
   min-height: 0 !important;
   min-width: 0;
   margin: 0;
-  padding: 0 10px !important;
+  padding: 0 6px !important;
   border: 0 !important;
-  border-left: 1px solid var(--ds-split, color-mix(in srgb, var(--accent) 18%, transparent)) !important;
-  border-radius: 0 5px 5px 0 !important;
+  border-right: 1px solid var(--ds-split, color-mix(in srgb, var(--accent) 18%, transparent)) !important;
+  border-radius: 5px 0 0 5px !important;
   background: color-mix(in srgb, var(--accent) 14%, transparent) !important;
   color: color-mix(in srgb, var(--accent) 92%, white 8%) !important;
   box-shadow: none !important;

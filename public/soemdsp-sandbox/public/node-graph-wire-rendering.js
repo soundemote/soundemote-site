@@ -805,6 +805,13 @@ function ensureNodeGraphWorkspaceWireLayoutObserver() {
 }
 
 function renderNodeGraphConnectionList() {
+  const list = document.getElementById("nodeConnectionList");
+  if (!list) {
+    return;
+  }
+  if (document.body?.classList?.contains("keyboard-debug-hidden")) {
+    return;
+  }
   const plan = compileNodeGraphExecutionPlan();
   const validation = {
     issues: plan.issues,
@@ -817,7 +824,6 @@ function renderNodeGraphConnectionList() {
     sourceNodes: plan.sourceNodes,
     valid: plan.valid,
   };
-  const list = document.getElementById("nodeConnectionList");
   const status = document.getElementById("nodeGraphStatus");
   const source = document.getElementById("nodeGraphSource");
   const validationPill = document.getElementById("nodeGraphValidation");
