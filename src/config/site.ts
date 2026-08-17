@@ -84,7 +84,7 @@ export const siteConfig = {
   } as Record<string, string>,
 
   /** Version text shown next to the sandbox link in the hero. */
-  sandboxVersion: "0.5.1 GHOST",
+  sandboxVersion: "0.5.6 RGB",
 
   /**
    * Legacy bare-root slugs that were named page-patches. They now redirect to
