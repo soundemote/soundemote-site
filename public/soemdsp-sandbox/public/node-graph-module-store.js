@@ -170,7 +170,7 @@ const nodeGraphModuleStoreDepartments = Object.freeze([
   // Samples / Grains / Media shelves stay offline until file storage exists.
   { id: "sample",       emoji: "🎶", label: "Sample Player", symbol: "▣", title: "Sample Player", pitch: "Sample and music-file playback: one-shots, loops, and scrubbable players that turn stored audio into patch signal." },
   { id: "object",       emoji: "🧊", label: "Object",       symbol: "●",   title: "Object",    pitch: "Things you place in the world rather than wire into the signal path -- indicator lights, label plates, and other in-world props." },
-  { id: "rgb",          emoji: "🌈", label: "RGB",          symbol: "◍",   title: "RGB",       pitch: "RGB analog picture and vector faces — Raster RGB, Vector RGB, and other color-path scopes." },
+  { id: "rgb",          emoji: "🌈", label: "RGB",          symbol: "◍",   title: "RGB",       pitch: "RGB analog picture and vector faces — Pixel Grid, Vector RGB, and other color-path scopes." },
   { id: "rgba",         emoji: "🖼️", label: "RGBA",         symbol: "▣",   title: "RGBA",      pitch: "Color-space, image, and screen-wash modules — RGBA/HSLA, chroma, stills, and screen-space shaders." },
   { id: "oscilloscope", emoji: "📺", label: "Oscilloscope", symbol: "OSC", title: "Oscilloscope", pitch: "Dedicated display testbeds for trace, line burn, 2D scope, videoscope, and canvas-style waveform inspection." },
   { id: "multimeter",   emoji: "📟", label: "Multimeter",   symbol: "0D",  title: "Multimeter", pitch: "Readouts that are not waveforms: numbers, character grids, and other value/message faces for what the signal is saying right now." },
@@ -799,7 +799,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   clipperLimiter: {
     category: "dynamics",
-    description: "Soft-clip limiter: below Min dB is dry; Min→Max is the shared Soft Clipper tanh knee (wider span = more gradual).",
+    description: "Drive with Gain, then Soft Clip last: below Min dB is dry; Min→Max is the shared Soft Clipper tanh knee (wider span = more gradual).",
     label: "Clipper Limiter",
     notes: ["soft clip", "limiter", "dB", "tanh", "ADAA", "dynamics"],
   },
@@ -1866,8 +1866,8 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   rasterRgb: {
     category: "rgb",
     description: "Analog RGB color-corrector and rolling framebuffer. Invert, contrast, brightness, and hue land on R/G/B/📺 outs.",
-    label: "Raster RGB",
-    notes: ["raster", "framebuffer", "rgb", "hue", "color correct", "tv"],
+    label: "Pixel Grid",
+    notes: ["pixel grid", "raster", "framebuffer", "rgb", "hue", "color correct", "tv"],
   },
   gradientVectorscope: {
     category: "rgb",
@@ -3567,12 +3567,7 @@ function createNodeGraphModuleDepartmentButton(departmentId, entries) {
   title.className = "scene-context-store-department-title";
   title.textContent = titleText;
 
-  const count = document.createElement("span");
-  count.className = "scene-context-store-department-count";
-  const workingCount = entries.filter((entry) => entry.visible && entry.implemented).length;
-  count.textContent = String(workingCount);
-
-  button.append(count, symbol, title);
+  button.append(symbol, title);
   return button;
 }
 

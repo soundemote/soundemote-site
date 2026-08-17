@@ -1367,6 +1367,14 @@ function asciiscopeSchedulePump() {
         if (face.closest?.(".dsp-node")?.classList.contains("viewport-asleep")) {
           continue;
         }
+        if (typeof nodeGraphScreenSoloAllowsNode === "function"
+          && !nodeGraphScreenSoloAllowsNode(
+            typeof nodeGraphDisplayNodeIdFromElement === "function"
+              ? nodeGraphDisplayNodeIdFromElement(face)
+              : face.closest?.(".dsp-node")?.dataset?.node,
+          )) {
+          continue;
+        }
         matrixTickFace(face);
       }
     }

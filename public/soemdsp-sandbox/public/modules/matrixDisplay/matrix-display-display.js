@@ -322,6 +322,14 @@ function matrixDisplaySchedulePump() {
       : true;
     if (frameReady) {
       for (const face of faces) {
+        if (typeof nodeGraphScreenSoloAllowsNode === "function"
+          && !nodeGraphScreenSoloAllowsNode(
+            typeof nodeGraphDisplayNodeIdFromElement === "function"
+              ? nodeGraphDisplayNodeIdFromElement(face)
+              : face.closest?.(".dsp-node")?.dataset?.node,
+          )) {
+          continue;
+        }
         matrixDisplayTickFace(face);
       }
     }

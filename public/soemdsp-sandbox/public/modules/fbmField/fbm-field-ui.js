@@ -155,6 +155,10 @@ function nodeGraphFbmFieldStartLoop(face, nodeId) {
       nodeGraphFbmFieldStopLoop(face);
       return;
     }
+    if (typeof nodeGraphScreenSoloAllowsNode === "function" && !nodeGraphScreenSoloAllowsNode(nodeId)) {
+      nodeGraphFbmFieldStopLoop(face);
+      return;
+    }
     // Engine went off mid-loop — black + halt (paint also stops the loop).
     if (typeof nodeGraphFbmFieldCircuitRunning === "function" && !nodeGraphFbmFieldCircuitRunning()) {
       if (typeof paintNodeGraphFbmFieldFaceForNode === "function") {
@@ -163,9 +167,23 @@ function nodeGraphFbmFieldStartLoop(face, nodeId) {
       nodeGraphFbmFieldStopLoop(face);
       return;
     }
-    // Respect Simulation FPS (force paints on param scrub still bypass this).
+    // Live compositor owns the Simulation FPS tick (same as spectrogram /
+    // Pixel Grid). This loop only covers traces-off / no compositor.
+    const live = typeof scopePaintShouldFullDraw === "function"
+      ? scopePaintShouldFullDraw(false)
+      : (typeof nodeGraphModuleScopeLivePaintActive === "function"
+        ? nodeGraphModuleScopeLivePaintActive()
+        : true);
+    const tracesOff = typeof nodeGraphModuleScopeTracesOff === "function"
+      && nodeGraphModuleScopeTracesOff();
+    if (live && !tracesOff) {
+      if (face._fbmFieldRunning) {
+        face._fbmFieldRaf = requestAnimationFrame(tick);
+      }
+      return;
+    }
     const frameReady = typeof nodeGraphDisplayFrameReady === "function"
-      ? nodeGraphDisplayFrameReady(`fbmField:${nodeId}`)
+      ? nodeGraphDisplayFrameReady("fbmField")
       : true;
     if (frameReady) {
       const last = face._fbmFieldLastTs || ts;
