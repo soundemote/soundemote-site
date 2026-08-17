@@ -16,11 +16,14 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
           this.readEffectiveParameter(node, "highFrequency", 1000, frame, frames, frameValues),
           passiveSweep,
         );
+        const passiveSlope = this.readEffectiveParameter(node, "slope", 0, frame, frames, frameValues);
+        const passiveStagger = this.readEffectiveParameter(node, "stagger", 1, frame, frames, frameValues);
+        const passiveGainComp = this.readEffectiveParameter(node, "gainCompensation", 1, frame, frames, frameValues);
         const passiveMono = mixInput(nodeId);
         return {
-          Out: this.passiveFilterSample(state.mono, passiveMono, passiveMode, passiveLowFrequency, passiveHighFrequency, safeRate),
-          Left: this.passiveFilterSample(state.left, mixInput(nodeId, "Left") + passiveMono, passiveMode, passiveLowFrequency, passiveHighFrequency, safeRate),
-          Right: this.passiveFilterSample(state.right, mixInput(nodeId, "Right") + passiveMono, passiveMode, passiveLowFrequency, passiveHighFrequency, safeRate),
+          Out: this.passiveFilterSample(state.mono, passiveMono, passiveMode, passiveLowFrequency, passiveHighFrequency, safeRate, passiveSlope, passiveStagger, passiveGainComp),
+          Left: this.passiveFilterSample(state.left, mixInput(nodeId, "Left") + passiveMono, passiveMode, passiveLowFrequency, passiveHighFrequency, safeRate, passiveSlope, passiveStagger, passiveGainComp),
+          Right: this.passiveFilterSample(state.right, mixInput(nodeId, "Right") + passiveMono, passiveMode, passiveLowFrequency, passiveHighFrequency, safeRate, passiveSlope, passiveStagger, passiveGainComp),
         };
       },
       papoulisFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
@@ -1448,6 +1451,33 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
       valueLcd: (node, nodeId, frame, frames, frameValues, mixInput) => ({
         Thru: this.safeFilterNumber(mixInput(nodeId, "In"), null),
       }),
+      mixStereo: (node, nodeId, frame, frames, frameValues, mixInput) => {
+        const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
+        return this.mixStereoFrame(
+          {
+            Mono: mixInput(nodeId, "Mono"),
+            L1: mixInput(nodeId, "L1"),
+            R1: mixInput(nodeId, "R1"),
+            L2: mixInput(nodeId, "L2"),
+            R2: mixInput(nodeId, "R2"),
+            L3: mixInput(nodeId, "L3"),
+            R3: mixInput(nodeId, "R3"),
+            L4: mixInput(nodeId, "L4"),
+            R4: mixInput(nodeId, "R4"),
+          },
+          {
+            volume1: read("volume1", 0),
+            pan1: read("pan1", 0),
+            volume2: read("volume2", 0),
+            pan2: read("pan2", 0),
+            volume3: read("volume3", 0),
+            pan3: read("pan3", 0),
+            volume4: read("volume4", 0),
+            pan4: read("pan4", 0),
+            amplitude: read("amplitude", 0),
+          },
+        );
+      },
       mix: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
         if (!this.mixStates) this.mixStates = this.gainBiasMixStates || new Map();
         const state = this.mixStates.get(nodeId) || this.createGainBiasMixState();
