@@ -157,7 +157,7 @@ function nodeGraphPassiveFilterCompAlpha(kind, freqs, fc) {
   const target = Math.SQRT1_2;
   let lo = 1e-6;
   let hi = 1e6;
-  for (let i = 0; i < 48; i += 1) {
+  for (let i = 0; i < 20; i += 1) {
     const mid = Math.sqrt(lo * hi);
     const mag = nodeGraphPassiveFilterAnalogMagAtFc(kind, freqs, c, mid);
     if (kind === "lp") {
@@ -170,6 +170,25 @@ function nodeGraphPassiveFilterCompAlpha(kind, freqs, fc) {
     }
   }
   return Math.sqrt(lo * hi);
+}
+
+// Geometric stagger: alpha depends on (kind, N, k), not fc. Search once, not per sample.
+const nodeGraphPassiveFilterAlphaMemo = new Map();
+
+function nodeGraphPassiveFilterMemoizedCompAlpha(kind, freqs, fc, stagger) {
+  const n = freqs.length;
+  const k = nodeGraphPassiveFilterStaggerRatio(stagger);
+  const key = `${kind}\0${n}\0${Math.round(k * 1000)}`;
+  const hit = nodeGraphPassiveFilterAlphaMemo.get(key);
+  if (hit != null) {
+    return hit;
+  }
+  const alpha = nodeGraphPassiveFilterCompAlpha(kind, freqs, fc);
+  if (nodeGraphPassiveFilterAlphaMemo.size > 4096) {
+    nodeGraphPassiveFilterAlphaMemo.clear();
+  }
+  nodeGraphPassiveFilterAlphaMemo.set(key, alpha);
+  return alpha;
 }
 
 /**
@@ -189,7 +208,12 @@ function nodeGraphPassiveFilterStackFrequencies(fc, stageCount, stagger, gainCom
   if (!compOn || !(center > 0)) {
     return freqs;
   }
-  const alpha = nodeGraphPassiveFilterCompAlpha(kind === "hp" ? "hp" : "lp", freqs, center);
+  const alpha = nodeGraphPassiveFilterMemoizedCompAlpha(
+    kind === "hp" ? "hp" : "lp",
+    freqs,
+    center,
+    k,
+  );
   for (let i = 0; i < freqs.length; i += 1) {
     freqs[i] *= alpha;
   }
@@ -209,6 +233,60 @@ function nodeGraphPassiveFilterCascade(poles, input, freqs, kind, sampleRate, ru
   return x;
 }
 
+function nodeGraphPassiveFilterPrepare(
+  pack,
+  mode,
+  lowFrequency,
+  highFrequency,
+  slope,
+  stagger,
+  gainCompensation,
+) {
+  const host = pack && typeof pack === "object" ? pack : {};
+  const safeMode = Math.round(Number(mode)) || 0;
+  const stages = nodeGraphPassiveFilterStageCount(slope);
+  const k = nodeGraphPassiveFilterStaggerRatio(stagger);
+  const comp = Number(gainCompensation) > 0.5 ? 1 : 0;
+  const lo = Math.max(0, Number(lowFrequency) || 0);
+  const hi = Math.max(0, Number(highFrequency) || 0);
+  const key = `${safeMode}|${stages}|${k}|${comp}|${lo}|${hi}`;
+  if (host._pfKey === key && host._pfCoeff) {
+    return host._pfCoeff;
+  }
+  let hpHz = null;
+  let lpHz = null;
+  if (safeMode === 1) {
+    const low = Math.min(lo, hi);
+    const high = Math.max(lo, hi);
+    hpHz = nodeGraphPassiveFilterStackFrequencies(low, stages, k, comp, "hp");
+    lpHz = nodeGraphPassiveFilterStackFrequencies(high, stages, k, comp, "lp");
+  } else if (safeMode === 2) {
+    hpHz = nodeGraphPassiveFilterStackFrequencies(lo, stages, k, comp, "hp");
+  } else {
+    lpHz = nodeGraphPassiveFilterStackFrequencies(hi, stages, k, comp, "lp");
+  }
+  const coeff = { safeMode, hpHz, lpHz };
+  host._pfKey = key;
+  host._pfCoeff = coeff;
+  return coeff;
+}
+
+function nodeGraphPassiveFilterProcess(state, input, coeff, sampleRate, runtime, nodeId) {
+  const next = nodeGraphEnsurePassiveFilterState(state);
+  const spec = coeff || {};
+  if (spec.safeMode === 1 && spec.hpHz && spec.lpHz) {
+    const hp = nodeGraphPassiveFilterCascade(next.hp, input, spec.hpHz, "hp", sampleRate, runtime, nodeId);
+    return nodeGraphPassiveFilterCascade(next.lp, hp, spec.lpHz, "lp", sampleRate, runtime, nodeId);
+  }
+  if (spec.safeMode === 2 && spec.hpHz) {
+    return nodeGraphPassiveFilterCascade(next.hp, input, spec.hpHz, "hp", sampleRate, runtime, nodeId);
+  }
+  if (spec.lpHz) {
+    return nodeGraphPassiveFilterCascade(next.lp, input, spec.lpHz, "lp", sampleRate, runtime, nodeId);
+  }
+  return input;
+}
+
 function nodeGraphPassiveFilterSample(
   state,
   input,
@@ -222,25 +300,14 @@ function nodeGraphPassiveFilterSample(
   stagger,
   gainCompensation,
 ) {
-  const next = nodeGraphEnsurePassiveFilterState(state);
-  const safeMode = Math.round(Number(mode)) || 0;
-  const stages = nodeGraphPassiveFilterStageCount(slope);
-  const k = nodeGraphPassiveFilterStaggerRatio(stagger);
-  const comp = Number(gainCompensation) > 0.5 ? 1 : 0;
-  if (safeMode === 1) {
-    const lowCut = Math.max(0, Number(lowFrequency) || 0);
-    const highCut = Math.max(0, Number(highFrequency) || 0);
-    const low = Math.min(lowCut, highCut);
-    const high = Math.max(lowCut, highCut);
-    const hpHz = nodeGraphPassiveFilterStackFrequencies(low, stages, k, comp, "hp");
-    const lpHz = nodeGraphPassiveFilterStackFrequencies(high, stages, k, comp, "lp");
-    const hp = nodeGraphPassiveFilterCascade(next.hp, input, hpHz, "hp", sampleRate, runtime, nodeId);
-    return nodeGraphPassiveFilterCascade(next.lp, hp, lpHz, "lp", sampleRate, runtime, nodeId);
-  }
-  if (safeMode === 2) {
-    const hpHz = nodeGraphPassiveFilterStackFrequencies(lowFrequency, stages, k, comp, "hp");
-    return nodeGraphPassiveFilterCascade(next.hp, input, hpHz, "hp", sampleRate, runtime, nodeId);
-  }
-  const lpHz = nodeGraphPassiveFilterStackFrequencies(highFrequency, stages, k, comp, "lp");
-  return nodeGraphPassiveFilterCascade(next.lp, input, lpHz, "lp", sampleRate, runtime, nodeId);
+  const coeff = nodeGraphPassiveFilterPrepare(
+    state,
+    mode,
+    lowFrequency,
+    highFrequency,
+    slope,
+    stagger,
+    gainCompensation,
+  );
+  return nodeGraphPassiveFilterProcess(state, input, coeff, sampleRate, runtime, nodeId);
 }

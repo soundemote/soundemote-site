@@ -41,7 +41,7 @@ function markNodeGraphViewportGesture(kind = "gesture") {
     return;
   }
   workspace.classList.add("viewport-gesturing");
-  // Hide inlet/outlet dots + wires only while zooming (not pan) for FPS/clarity.
+  // Hide modules + wires while zooming (not pan) for FPS/clarity.
   if (
     nodeGraphViewportGestureIsZoom(kind)
     || nodeGraphMvp?.smoothZoomDragging

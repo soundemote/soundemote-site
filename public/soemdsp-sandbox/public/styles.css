@@ -6365,8 +6365,6 @@ body.node-graph-magnifying-active * {
   height: 0;
   pointer-events: none;
   --magnifier-size: 220px;
-  --node-graph-magnifier-color: rgb(0 208 255);
-  --node-graph-magnifier-alpha: 0.95;
 }
 
 .node-graph-magnifier[hidden] {
@@ -6382,15 +6380,38 @@ body.node-graph-magnifying-active * {
   height: var(--magnifier-size);
   overflow: hidden;
   border-radius: 50%;
-  box-shadow:
-    0 0 0 2px color-mix(
-      in srgb,
-      var(--node-graph-magnifier-color) calc(var(--node-graph-magnifier-alpha) * 100%),
-      transparent
-    ),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
-    0 10px 28px rgba(0, 0, 0, 0.45);
   background: var(--node-workspace-bg, #1d1b1b);
+}
+
+/* Soft ~5px black ring. Glow = same stroke, Gaussian-blurred, source-over (not additive). */
+.node-graph-magnifier-rim,
+.node-graph-magnifier-rim::before {
+  position: absolute;
+  box-sizing: border-box;
+  width: var(--magnifier-size);
+  height: var(--magnifier-size);
+  border: 5px solid rgb(0 0 0);
+  border-radius: 50%;
+  background: transparent;
+  pointer-events: none;
+}
+
+.node-graph-magnifier-rim {
+  left: calc(var(--magnifier-size) / -2);
+  top: calc(var(--magnifier-size) / -2);
+  z-index: 2;
+  border-color: rgb(0 0 0 / 0.55);
+}
+
+.node-graph-magnifier-rim::before {
+  content: "";
+  left: -5px;
+  top: -5px;
+  width: 100%;
+  height: 100%;
+  border-color: rgb(0 0 0 / 0.5);
+  filter: blur(4px);
+  mix-blend-mode: normal;
 }
 
 .node-graph-magnifier-world {
@@ -6403,24 +6424,6 @@ body.node-graph-magnifying-active * {
   pointer-events: none;
 }
 
-.node-graph-magnifier-handle {
-  position: absolute;
-  left: calc(var(--magnifier-size) * 0.34);
-  top: calc(var(--magnifier-size) * 0.34);
-  z-index: 0;
-  width: calc(var(--magnifier-size) * 0.4);
-  height: calc(10px + var(--magnifier-size) * 0.02);
-  border-radius: 999px;
-  background: color-mix(
-    in srgb,
-    var(--node-graph-magnifier-color) calc(var(--node-graph-magnifier-alpha) * 100%),
-    transparent
-  );
-  transform: rotate(45deg);
-  transform-origin: 0 50%;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
-}
-
 .node-graph-workspace.viewport-gesturing {
   cursor: var(--node-dot-cursor);
 }
@@ -6429,11 +6432,12 @@ body.node-graph-magnifying-active * {
   cursor: var(--node-dot-cursor);
 }
 
-/* Hide cable strokes while zooming (wheel / pinch / smooth-zoom).
-   Jacks stay painted — hiding .node-port here stuck them invisible when
-   settle never ran (load / persist / mis-tagged zoom). */
+/* Hide cables + modules while zooming (wheel / pinch / smooth-zoom).
+   visibility (not display) so settle just unhides — no remount.
+   Do not hide .node-port alone; that stuck jacks when settle missed. */
 .node-graph-workspace.viewport-zooming #nodeWireSvg,
-.node-graph-workspace.viewport-zooming #nodeWireEndpointSvg {
+.node-graph-workspace.viewport-zooming #nodeWireEndpointSvg,
+.node-graph-workspace.viewport-zooming #nodeGraphNodes {
   visibility: hidden !important;
   pointer-events: none !important;
 }
@@ -20202,53 +20206,72 @@ button#nodeScenePasteModuleSettings.settings-paste-mismatch {
   width: 100%;
 }
 
-.scene-context-timing-controls .node-command-center-timing-row {
+.scene-context-timing-controls .node-header-timing-field {
   display: grid;
-  width: 100%;
+  grid-template-columns: 5.4em 0.7em minmax(0, 1fr);
+  grid-template-rows: auto;
+  align-items: center;
+  column-gap: 0;
+  min-width: 0;
   height: var(--scene-context-timing-row-height);
+  padding: 0 6px;
+  border-radius: 0;
+  text-transform: none;
 }
 
-.scene-context-timing-controls .node-command-center-timing-row-tempo {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.scene-context-timing-controls .node-command-center-timing-row-pitch {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.scene-context-timing-controls .node-command-center-timing-row + .node-command-center-timing-row {
+.scene-context-timing-controls .node-header-timing-field + .node-header-timing-field {
   border-top: 1px solid rgba(226, 168, 109, 0.24);
 }
 
-/* Thin Command Center: BPM / Beats / Unit stack as a column. */
-@container command-center (max-width: 300px) {
-  .scene-context-timing-controls .node-command-center-timing-row-tempo {
-    grid-template-columns: minmax(0, 1fr);
-    height: auto;
-  }
-
-  .scene-context-timing-controls .node-command-center-timing-row-tempo > .node-header-timing-field {
-    width: 100%;
-    height: var(--scene-context-timing-row-height);
-  }
-
-  .scene-context-timing-controls
-    .node-command-center-timing-row-tempo
-    > .node-header-timing-field
-    + .node-header-timing-field {
-    border-top: 1px solid rgba(226, 168, 109, 0.24);
-  }
+.scene-context-timing-controls .node-header-timing-field span {
+  display: flex;
+  place-items: center;
+  width: auto;
+  height: auto;
+  justify-content: flex-start;
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  text-align: left;
 }
 
-.scene-context-timing-controls .node-header-timing-field {
-  min-width: 0;
-  height: var(--scene-context-timing-row-height);
-  padding-block: 0;
-  border-radius: 0;
+.scene-context-timing-controls .node-header-timing-colon {
+  justify-content: center;
+  opacity: 0.55;
 }
 
-.scene-context-timing-controls .node-header-timing-field span:first-child {
-  line-height: 1;
+.scene-context-timing-controls .node-header-timing-input {
+  height: calc(var(--scene-context-timing-row-height) - 6px);
+  min-height: 0;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  font-size: 0.78rem;
+  font-weight: 650;
+  text-align: left;
+}
+
+.scene-context-timing-controls .node-header-planck-readout {
+  cursor: default;
+  user-select: none;
+  background: #000;
+  color: #8a8a8a;
+}
+
+.scene-context-timing-controls .node-header-planck-readout .node-header-timing-caption,
+.scene-context-timing-controls .node-header-planck-readout .node-header-timing-colon,
+.scene-context-timing-controls .node-header-planck-value {
+  color: #8a8a8a;
+  cursor: default;
+}
+
+.scene-context-timing-controls .node-header-planck-value {
+  font-family: "Cascadia Mono", "Cascadia Code", Consolas, "Courier New", monospace;
+  font-size: 0.78rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
 }
 
 .scene-context-history-controls {

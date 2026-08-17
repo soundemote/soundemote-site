@@ -20,6 +20,33 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
         const passiveStagger = this.readEffectiveParameter(node, "stagger", 1, frame, frames, frameValues);
         const passiveGainComp = this.readEffectiveParameter(node, "gainCompensation", 1, frame, frames, frameValues);
         const passiveMono = mixInput(nodeId);
+        const passiveCoeff = typeof nodeGraphPassiveFilterPrepare === "function"
+          ? nodeGraphPassiveFilterPrepare(
+            state,
+            passiveMode,
+            passiveLowFrequency,
+            passiveHighFrequency,
+            passiveSlope,
+            passiveStagger,
+            passiveGainComp,
+          )
+          : null;
+        if (passiveCoeff && typeof nodeGraphPassiveFilterProcess === "function") {
+          return {
+            Out: this.safeFilterNumber(
+              nodeGraphPassiveFilterProcess(state.mono, passiveMono, passiveCoeff, safeRate, null, ""),
+              state.mono,
+            ),
+            Left: this.safeFilterNumber(
+              nodeGraphPassiveFilterProcess(state.left, mixInput(nodeId, "Left") + passiveMono, passiveCoeff, safeRate, null, ""),
+              state.left,
+            ),
+            Right: this.safeFilterNumber(
+              nodeGraphPassiveFilterProcess(state.right, mixInput(nodeId, "Right") + passiveMono, passiveCoeff, safeRate, null, ""),
+              state.right,
+            ),
+          };
+        }
         return {
           Out: this.passiveFilterSample(state.mono, passiveMono, passiveMode, passiveLowFrequency, passiveHighFrequency, safeRate, passiveSlope, passiveStagger, passiveGainComp),
           Left: this.passiveFilterSample(state.left, mixInput(nodeId, "Left") + passiveMono, passiveMode, passiveLowFrequency, passiveHighFrequency, safeRate, passiveSlope, passiveStagger, passiveGainComp),

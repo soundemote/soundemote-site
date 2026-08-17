@@ -2871,7 +2871,7 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/node-live-audio-worklet-scope-io.js?v=visual-rate-meta-1",
   "./public/node-live-audio-worklet-native-load.js?v=plan-d-split-7",
   "./public/node-live-audio-worklet-evaluators-sources.js?v=fbf-amp-1",
-  "./public/node-live-audio-worklet-evaluators-processors.js?v=mix-stereo-mono-1",
+  "./public/node-live-audio-worklet-evaluators-processors.js?v=stagger-cache-1",
   "./public/node-live-audio-worklet-evaluators-utility.js?v=input-amp-1",
   "./public/node-live-audio-worklet-evaluators.js?v=evaluators-split-1",
   "./public/node-live-audio-worklet-native-exports.js?v=soft-clipper-gain-1",
@@ -2933,7 +2933,7 @@ const nodeGraphLiveWorkletSourceFiles = [
   // Musical engines last among musical/chord chunks so JS spruces override native-only stubs.
   "./public/modules/musicalEngines/musical-engines-worklet-evaluator.js?v=musical-engines-1",
   "./public/modules/lutCell/lut-cell-worklet-evaluator.js?v=native-strip-1",
-  "./public/modules/passiveFilter/passive-filter-math.js?v=passive-slope-1",
+  "./public/modules/passiveFilter/passive-filter-math.js?v=stagger-cache-1",
   "./public/modules/passiveFilter/passive-filter-worklet-evaluator.js?v=passive-slope-1",
   "./public/modules/papoulisFilter/papoulis-filter-worklet-evaluator.js?v=xy-pad-native-1",
   "./public/modules/phosphillator/phosphillator-worklet-evaluator.js?v=drawnpath-fix-1",
