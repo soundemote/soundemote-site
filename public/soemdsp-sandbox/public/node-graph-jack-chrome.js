@@ -201,7 +201,7 @@ function nodeGraphJackStereoChannel(value) {
   const tokens = raw.split(/[\s/_-]+/).filter(Boolean);
   const first = tokens[0] || raw;
   const last = tokens[tokens.length - 1] || raw;
-  if (raw === "l" || raw === "left" || first === "left" || last === "left") {
+  if (raw === "l" || /^l\d+$/.test(raw) || raw === "left" || first === "left" || last === "left") {
     return "red";
   }
   if (raw === "m" || raw === "mono" || first === "mono" || last === "mono") {
@@ -210,7 +210,7 @@ function nodeGraphJackStereoChannel(value) {
   if (raw === "in" || raw === "input" || raw === "out" || raw === "output") {
     return "green";
   }
-  if (raw === "right" || first === "right" || last === "right") {
+  if (/^r\d+$/.test(raw) || raw === "right" || first === "right" || last === "right") {
     return "blue";
   }
   return "";

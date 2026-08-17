@@ -152,6 +152,13 @@ function showNodeGraphModule(node, point = null, options = {}) {
     }
     return "";
   }
+  if (typeof nodeGraphModuleTypeIsInvisible === "function"
+    && nodeGraphModuleTypeIsInvisible(type)) {
+    if (typeof setNodeInteractionHelp === "function") {
+      setNodeInteractionHelp("This module is not listed.");
+    }
+    return "";
+  }
   if (typeof nodeGraphModuleTypeIsUnderConstruction === "function"
     && nodeGraphModuleTypeIsUnderConstruction(type)) {
     if (typeof setNodeInteractionHelp === "function") {
