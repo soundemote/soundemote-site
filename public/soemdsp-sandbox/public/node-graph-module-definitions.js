@@ -172,6 +172,7 @@ const nodeGraphNodeLabels = Object.freeze({
   pixelGrid: "PixelGrid",
   flexGrid: "Flex Grid",
   chaosfly: "Chaosfly",
+  gravity: "Gravity",
   drummer: "Drummer",
   arp: "Arp",
   // GM program 5 = Electric Piano 1; GM channel 10 = percussion kit.
@@ -2861,29 +2862,59 @@ const nodeGraphModuleDefinitions = (
   },
   piSpigotNoise: {
     planRole: "source",
-    outputs: ["Left Out", "Right Out"],
+    planFreeRun: true,
+    displayType: "scope2d",
+    defaultDisplayMode: "xyBurn",
+    displaySignals: [
+      { key: "Left Out", label: "Sum", kind: "scalar" },
+      { key: "Right Out", label: "Term", kind: "scalar" },
+      { key: "Hex", kind: "scalar" },
+      { key: "N", kind: "scalar" },
+    ],
+    displayModes: [
+      { key: "xyBurn", label: "Sum/Term", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "Left Out", y: "Right Out" } },
+    ],
+    outputs: ["Left Out", "Right Out", "Hex", "N", "T", "B3", "B2", "B1", "B0"],
+    outputLabels: {
+      "Left Out": "Sum",
+      "Right Out": "Term",
+    },
+    outputTooltips: {
+      "Left Out": "Running BBP fractional sum {S} as bipolar audio.",
+      "Right Out": "This sample’s BBP term (one of the four series).",
+      Hex: "Last finished hex digit of π (0…15 as 0…1).",
+      N: "Current hex-digit index into π.",
+      T: "Pulse when a hex digit finishes.",
+      B3: "Latched hex bit 8 (first 16th of the beat).",
+      B2: "Latched hex bit 4.",
+      B1: "Latched hex bit 2.",
+      B0: "Latched hex bit 1.",
+    },
+    digitalOutputs: ["T", "B3", "B2", "B1", "B0"],
     parameters: [
       {
         defaultValue: "0",
-        key: "seedLeft",
-        label: "Seed L",
+        key: "start",
+        label: "Start",
         linearSmoothing: false,
         max: "1",
         mid: "0.5",
         min: "0",
         nonlinearSlider: false,
-        step: "any"
+        step: "any",
+        tooltip: "Where in π the four-phase BBP walk begins (0 = first hex digits)."
       },
       {
-        defaultValue: "0.5",
-        key: "seedRight",
-        label: "Seed R",
+        defaultValue: "1",
+        key: "stride",
+        label: "Stride",
         linearSmoothing: false,
-        max: "1",
-        mid: "0.5",
-        min: "0",
+        max: "16",
+        mid: "4",
+        min: "1",
         nonlinearSlider: false,
-        step: "any"
+        step: "1",
+        tooltip: "How many hex places to skip after each finished digit."
       },
       {
         choices: ["White", "Pink", "Brown", "Blue", "Violet"],
@@ -3014,8 +3045,8 @@ const nodeGraphModuleDefinitions = (
   },
   clock: {
     planRole: "source",
-    displayType: "dot",
-    displayRenderer: "pulseDot",
+    displayType: "vectorDot",
+    displayRenderer: "vectorDot",
     inputs: ["Reset"],
     outputAliases: {
       Out: "Digital Out",
@@ -6874,6 +6905,73 @@ const nodeGraphModuleDefinitions = (
       },
     ]
   },
+  // Under construction: few-body gravity (Chaos shelf). First Doppler piece.
+  gravity: {
+    planRole: "source",
+    planFreeRun: true,
+    displayType: "lineBurn",
+    displayModes: [
+      { key: "lineBurn", renderer: "lineBurn", source: { x: "X", y: "Y" } },
+    ],
+    displaySignals: [
+      { key: "X", kind: "scalar" },
+      { key: "Y", kind: "scalar" },
+      { key: "Radial", kind: "scalar" },
+      { key: "Out", kind: "scalar" },
+    ],
+    inputs: ["Reset"],
+    outputs: ["Out", "X", "Y", "Radial"],
+    outputTooltips: {
+      Radial: "Planned signed radial velocity toward the listener — first Doppler puzzle piece.",
+    },
+    parameters: [
+      {
+        defaultValue: "8",
+        key: "bodies",
+        label: "Bodies",
+        max: "64",
+        mid: "8",
+        min: "2",
+        nonlinearSlider: false,
+        step: "1",
+        tooltip: "Under construction — planned particle count (few bodies, phosphor orbits)."
+      },
+      {
+        defaultValue: "1",
+        key: "g",
+        label: "G",
+        max: "8",
+        mid: "1",
+        min: "0",
+        nonlinearSlider: false,
+        step: "any",
+        tooltip: "Under construction — planned gravitational strength."
+      },
+      {
+        defaultValue: "0.05",
+        key: "soften",
+        label: "Soften",
+        max: "1",
+        mid: "0.05",
+        min: "0",
+        nonlinearSlider: false,
+        step: "any",
+        tooltip: "Under construction — planned Plummer softening to avoid 1/r² blowups."
+      },
+      {
+        defaultValue: "1",
+        key: "amplitude",
+        label: "Amplitude",
+        max: "1",
+        mid: "1",
+        min: "0",
+        nonlinearSlider: false,
+        step: "any",
+        modClamp: false,
+        tooltip: "Under construction — output scale."
+      },
+    ]
+  },
   // Under construction: Drummer (Sequence shelf).
   drummer: {
     planRole: "source",
@@ -8801,14 +8899,14 @@ const nodeGraphModuleDefinitions = (
   lookaheadLimiter: {
     planRole: "processor",
     displayHeightGu: 3,
-    displayType: "limiterGainFace",
+    displayType: "trace",
     defaultDisplayMode: "gain",
     displayModes: [
       {
         key: "gain",
         label: "Gain",
-        renderer: "limiterGainFace",
-        settingsSchema: "limiterGainFace",
+        renderer: "trace",
+        settingsSchema: "trace",
         source: { value: "Gain" },
       },
     ],
