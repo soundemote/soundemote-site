@@ -1,7 +1,8 @@
 // Room light — full-UI screenspace dim veil with rect light punches.
 //
-// Lightbulb control drag = room dim (0 = full light / no veil, 1 = pure black
-// outside holes). Button icons crossfade lightbulb-on → lightbulb-off with dim.
+// Lightbulb control drag = room light (up brighter / down darker).
+// Internal dim is 0 = full light / no veil, 1 = pure black outside holes.
+// Button icons crossfade lightbulb-on → lightbulb-off with dim.
 // Covers the whole app chrome (top toolbar + bottom resource bar + workspace).
 // At 100% the room is blacked out; painted displays stay lit (rect punches) and
 // the dimmer button stays punched/stacked above the veil so you can drag back.
@@ -750,21 +751,22 @@ void main() {
     workspace()?.style.setProperty("--room-dim-deep", String(deep));
     veilHost()?.style?.setProperty?.("--room-dim", String(dim));
     veilHost()?.style?.setProperty?.("--room-dim-deep", String(deep));
+    const lightPct = 100 - pct;
     btn.setAttribute("aria-pressed", on ? "true" : "false");
-    btn.setAttribute("aria-valuenow", String(pct));
+    btn.setAttribute("aria-valuenow", String(lightPct));
     btn.setAttribute("aria-valuemin", "0");
     btn.setAttribute("aria-valuemax", "100");
     btn.setAttribute(
       "aria-valuetext",
-      pct <= 0
+      lightPct >= 100
         ? "Room light full on"
-        : pct >= 100
+        : lightPct <= 0
           ? "Room dark; displays stay lit"
-          : `Room ${pct} percent dark; displays stay lit`,
+          : `Room ${lightPct} percent light; displays stay lit`,
     );
     btn.title = on
-      ? `Room ${pct}% dark · drag (displays stay lit)`
-      : "Room light · drag up to darken the room (displays stay lit)";
+      ? `Room ${lightPct}% light · drag up brighter, down darker (displays stay lit)`
+      : "Room light · drag up to brighten, down to darken (displays stay lit)";
   }
 
   function setDim(value, options = {}) {
@@ -820,7 +822,7 @@ void main() {
     btn.addEventListener("pointermove", (event) => {
       if (!state.drag || state.drag.id !== event.pointerId) return;
       const dy = state.drag.y0 - event.clientY;
-      setDim(state.drag.d0 + dy / 140, { persist: false });
+      setDim(state.drag.d0 - dy / 140, { persist: false });
     });
     btn.addEventListener("pointerup", end);
     btn.addEventListener("pointercancel", end);
@@ -828,16 +830,16 @@ void main() {
       const d = clampDim(state.dim);
       if (event.key === "ArrowUp" || event.key === "ArrowRight") {
         event.preventDefault();
-        setDim(d + 0.05);
+        setDim(d - 0.05);
       } else if (event.key === "ArrowDown" || event.key === "ArrowLeft") {
         event.preventDefault();
-        setDim(d - 0.05);
+        setDim(d + 0.05);
       } else if (event.key === "Home") {
         event.preventDefault();
-        setDim(0);
+        setDim(1);
       } else if (event.key === "End") {
         event.preventDefault();
-        setDim(1);
+        setDim(0);
       }
     });
   }
@@ -1004,3 +1006,107 @@ void main() {
     bind();
   }
 })();
+
+/**
+ * Light-button-style vertical fill slider (magnifier zoom, mouse smoother).
+ * Drag 140px = full range. options: { min, max, get, set, format }.
+ */
+function bindNodeGraphToolbarFillSlider(button, options = {}) {
+  if (!(button instanceof HTMLElement) || button.dataset.toolbarFillSliderBound === "true") {
+    return;
+  }
+  const min = Number.isFinite(Number(options.min)) ? Number(options.min) : 0;
+  const max = Number.isFinite(Number(options.max)) ? Number(options.max) : 1;
+  const span = max - min || 1;
+  const get = typeof options.get === "function" ? options.get : () => min;
+  const set = typeof options.set === "function" ? options.set : () => {};
+  const format = typeof options.format === "function"
+    ? options.format
+    : (value) => String(value);
+  const toUnit = (value) => Math.max(0, Math.min(1, (Number(value) - min) / span));
+  const fromUnit = (unit) => min + Math.max(0, Math.min(1, Number(unit) || 0)) * span;
+
+  const sync = () => {
+    const value = get();
+    const unit = toUnit(value);
+    const label = format(value);
+    button.style.setProperty("--toolbar-fill", String(unit));
+    button.style.setProperty("--room-dim", String(unit));
+    button.setAttribute("aria-valuenow", String(value));
+    button.setAttribute("aria-valuetext", label);
+    button.setAttribute("aria-pressed", unit > 0.001 ? "true" : "false");
+    const readout = button.querySelector("[data-toolbar-fill-value]");
+    if (readout) {
+      readout.textContent = label;
+    }
+    const tip = String(button.getAttribute("data-toolbar-fill-tip") || button.getAttribute("aria-label") || "").trim();
+    button.title = tip ? `${tip} · ${label} · drag up/down` : `${label} · drag up/down`;
+  };
+
+  button.dataset.toolbarFillSliderBound = "true";
+  button.setAttribute("role", "slider");
+  button.setAttribute("aria-orientation", "vertical");
+  button.setAttribute("aria-valuemin", String(min));
+  button.setAttribute("aria-valuemax", String(max));
+
+  let drag = null;
+  const end = (event) => {
+    if (!drag) {
+      return;
+    }
+    drag = null;
+    button.classList.remove("room-dimmer-dragging");
+    try {
+      button.releasePointerCapture?.(event.pointerId);
+    } catch (_error) {
+      /* ignore */
+    }
+    set(get(), { persist: true });
+  };
+
+  button.addEventListener("pointerdown", (event) => {
+    if (event.button != null && event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    drag = {
+      id: event.pointerId,
+      y0: event.clientY,
+      u0: toUnit(get()),
+    };
+    button.classList.add("room-dimmer-dragging");
+    try {
+      button.setPointerCapture?.(event.pointerId);
+    } catch (_error) {
+      /* ignore */
+    }
+  });
+  button.addEventListener("pointermove", (event) => {
+    if (!drag || drag.id !== event.pointerId) {
+      return;
+    }
+    const dy = drag.y0 - event.clientY;
+    set(fromUnit(drag.u0 + dy / 140), { persist: false });
+  });
+  button.addEventListener("pointerup", end);
+  button.addEventListener("pointercancel", end);
+  button.addEventListener("keydown", (event) => {
+    const unit = toUnit(get());
+    const step = event.shiftKey ? 0.02 : 0.05;
+    if (event.key === "ArrowUp" || event.key === "ArrowRight") {
+      event.preventDefault();
+      set(fromUnit(unit + step), { persist: true });
+    } else if (event.key === "ArrowDown" || event.key === "ArrowLeft") {
+      event.preventDefault();
+      set(fromUnit(unit - step), { persist: true });
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      set(min, { persist: true });
+    } else if (event.key === "End") {
+      event.preventDefault();
+      set(max, { persist: true });
+    }
+  });
+  button._syncToolbarFill = sync;
+  sync();
+}

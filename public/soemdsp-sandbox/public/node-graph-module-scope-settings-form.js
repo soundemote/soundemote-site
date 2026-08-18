@@ -94,7 +94,11 @@ function nodeGraphDisplaySettingsBuildStepperRowHtml(key, formType = null, optio
   }
   if (formType === "roundShapeFace" && key === "lineThickness") {
     label = "Line thickness";
-    title = "Stroke width in CSS pixels (0.25–16).";
+    title = "Orbit stroke width in CSS pixels (0.25–16).";
+  }
+  if (formType === "roundShapeFace" && key === "dotThickness") {
+    label = "Dot thickness";
+    title = "Cursor dot diameter in CSS pixels (0.25–32).";
   }
   if (formType === "roundShapeFace" && key === "lineBlur") {
     label = "Line blur";
@@ -880,6 +884,9 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
     if (type === "numberReadout" && section === "dot1") {
       continue;
     }
+    if (type === "roundShapeFace" && section === "dot1") {
+      continue;
+    }
 
     const sectionControls = nodeGraphTraceDisplaySectionControls[section];
     if (!sectionControls) {
@@ -888,12 +895,26 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
     let fieldKeys = (sectionControls.fields || []).filter(
       (key) => activeFields.has(key) && allowKey("fields", key),
     );
+    if (type === "roundShapeFace" && section === "trace") {
+      fieldKeys = [
+        "lineThickness",
+        "lineBrightness",
+        "dotThickness",
+        "dotBrightness",
+        "backgroundBrightness",
+        "lineBlur",
+        "pixelDensity",
+      ].filter((key) => activeFields.has(key) && allowKey("fields", key));
+    }
     if (isVectorTraceForm && typeof nodeGraphDisplaySettingsOrderTraceInkFields === "function") {
       fieldKeys = nodeGraphDisplaySettingsOrderTraceInkFields(fieldKeys);
     }
     let colorKeys = (sectionControls.colors || []).filter(
       (key) => activeColors.has(key) && allowKey("colors", key),
     );
+    if (type === "roundShapeFace") {
+      colorKeys = [];
+    }
     if (type === "trace" && isStereoTraceNode) {
       colorKeys = colorKeys.filter((key) => !NODE_GRAPH_TRACE_STEREO_COLOR_ORDER.includes(key));
     }
@@ -1055,6 +1076,39 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
           stepField: "dot1Brightness",
           colorField: "dot1Color",
           formType: type,
+        }));
+        continue;
+      }
+      if (type === "roundShapeFace" && key === "lineBrightness") {
+        rows.push(nodeGraphDisplaySettingsBuildHueTitleStepperRowHtml({
+          title: "Line",
+          stepField: "lineBrightness",
+          colorField: "strokeColor",
+          formType: type,
+          defaultHueHex: "#00ffd0",
+          titleAttr: "Line brightness 0…1 (black → full hue at 0.5 → white). Drag the title to change hue.",
+        }));
+        continue;
+      }
+      if (type === "roundShapeFace" && key === "dotBrightness") {
+        rows.push(nodeGraphDisplaySettingsBuildHueTitleStepperRowHtml({
+          title: "Dot",
+          stepField: "dotBrightness",
+          colorField: "dotColor",
+          formType: type,
+          defaultHueHex: "#00ffd0",
+          titleAttr: "Dot brightness 0…1 (black → full hue at 0.5 → white). Drag the title to change hue.",
+        }));
+        continue;
+      }
+      if (type === "roundShapeFace" && key === "backgroundBrightness") {
+        rows.push(nodeGraphDisplaySettingsBuildHueTitleStepperRowHtml({
+          title: "Background",
+          stepField: "backgroundBrightness",
+          colorField: "backgroundColor",
+          formType: type,
+          defaultHueHex: "#00aaff",
+          titleAttr: "Background brightness 0…1 (black → full hue at 0.5 → white). Drag the title to change hue.",
         }));
         continue;
       }

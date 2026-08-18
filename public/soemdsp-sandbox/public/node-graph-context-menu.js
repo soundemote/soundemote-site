@@ -2102,6 +2102,21 @@ function configureNodeSceneContextMenu(mode) {
       attenuvertButton.title = nodeGraphTooltipText("actions.wireAttenuvert")
         || "Insert a bipolar attenuverter (−1…+1 amplitude and offset) on each selected wire.";
     }
+    const u2bButton = document.getElementById("nodeSceneWireU2b");
+    if (u2bButton) {
+      u2bButton.disabled = !canAttenuateWires;
+      u2bButton.title = "Insert U2B (0…1 → −1…1) on each selected wire.";
+    }
+    const b2uButton = document.getElementById("nodeSceneWireB2u");
+    if (b2uButton) {
+      b2uButton.disabled = !canAttenuateWires;
+      b2uButton.title = "Insert B2U (−1…1 → 0…1) on each selected wire.";
+    }
+    const invButton = document.getElementById("nodeSceneWireInv");
+    if (invButton) {
+      invButton.disabled = !canAttenuateWires;
+      invButton.title = "Insert Inv (out = −in) on each selected wire.";
+    }
     deleteButton.disabled = !canDelete;
     deleteButton.title = canDelete
       ? nodeGraphTooltipText("actions.deleteWire")
@@ -2290,6 +2305,9 @@ function openNodeModuleActionMenu(event) {
     event.stopPropagation?.();
     return;
   }
+  if (typeof nodeGraphEventTargetIsPortalShell === "function" && nodeGraphEventTargetIsPortalShell(event)) {
+    return;
+  }
   if (event?.type === "dblclick" && event.altKey) {
     event.preventDefault?.();
     event.stopPropagation?.();
@@ -2308,6 +2326,9 @@ function openNodeModuleActionMenu(event) {
     return;
   }
   if (typeof openNodeKeypadDisplaySettings === "function" && openNodeKeypadDisplaySettings(event)) {
+    return;
+  }
+  if (typeof openNodeRoundShapeContextMenu === "function" && openNodeRoundShapeContextMenu(event)) {
     return;
   }
   if (typeof openNodeScopeContextMenu === "function" && openNodeScopeContextMenu(event)) {
@@ -2360,9 +2381,47 @@ function openNodeXyPadContextMenu(event) {
   return openNodeGraphModuleSettingsFromContextEvent(event, nodeEl);
 }
 
+function openNodeRoundShapeContextMenu(event) {
+  const target = event?.target;
+  if (!(target instanceof Element)) {
+    return false;
+  }
+  const face = target.closest?.(".node-round-shape-display, .node-round-shape-canvas");
+  if (!face) {
+    return false;
+  }
+  const display = face.classList?.contains("node-round-shape-display")
+    ? face
+    : face.closest?.(".node-round-shape-display");
+  const nodeId = String(
+    display?.dataset?.node
+    || face.dataset?.node
+    || face.closest?.(".dsp-node")?.dataset?.node
+    || "",
+  ).trim();
+  if (!nodeId || !nodeGraphPatchNode(nodeId)) {
+    return false;
+  }
+  event.preventDefault?.();
+  event.stopPropagation?.();
+  event.stopImmediatePropagation?.();
+  if (typeof closeNodeSceneContextMenu === "function") {
+    closeNodeSceneContextMenu();
+  }
+  nodeGraphMvp.sceneContextPoint = null;
+  nodeGraphMvp.sceneContextTargetNode = nodeId;
+  nodeGraphMvp.lastModuleActionTargetNode = nodeId;
+  nodeGraphMvp.scopeContextTargetNode = nodeId;
+  if (typeof openNodeGraphTraceDisplaySettings === "function"
+    && openNodeGraphTraceDisplaySettings(nodeId, event)) {
+    return true;
+  }
+  return false;
+}
+
 function openNodeScopeContextMenu(event) {
   const contextScope = event.target.closest?.(
-    ".node-module-scope-window, .node-led-face, .node-number-readout-face, .node-value-lcd-face, .node-ray-bouncer-face, .node-asciiscope-face, .node-matrix-face",
+    ".node-module-scope-window, .node-led-face, .node-number-readout-face, .node-value-lcd-face, .node-ray-bouncer-face, .node-asciiscope-face, .node-matrix-face, .node-round-shape-display",
   );
   const nodeId = contextScope?.dataset?.node || "";
   if (!nodeId || !nodeGraphPatchNode(nodeId)) {
@@ -2426,6 +2485,27 @@ const nodeGraphWorkspaceOccupiedElementSelector =
 // Shared by the right-click scene menu and double-click-to-spawn: true only when
 // the event lands on empty modular background (inside #nodeGraphWorkspace),
 // not the top/bottom bars, a floating window, a wire, a node, or a port/readout.
+function nodeGraphEventTargetIsPortalShell(event) {
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target) {
+    return false;
+  }
+  // Wires stay wire-menu. The whole portal plate — title/text, I/O ports,
+  // and parameter ports — is empty workspace for the magnifier.
+  if (target.closest?.(".node-wire-hit-path, .node-wire-path")) {
+    return false;
+  }
+  const nodeEl = target.closest?.(".dsp-node");
+  if (!nodeEl) {
+    return false;
+  }
+  const type = nodeEl.dataset?.nodeType || "";
+  if (typeof nodeGraphPortalKindFromType === "function") {
+    return Boolean(nodeGraphPortalKindFromType(type));
+  }
+  return type === "portalInlet" || type === "portalOutlet" || String(type).startsWith("portalInlet") || String(type).startsWith("portalOutlet");
+}
+
 function nodeGraphEventTargetIsEmptyWorkspaceArea(event) {
   const target = event.target instanceof Element ? event.target : null;
   if (!target?.closest?.("#nodeGraphWorkspace")) {
@@ -2436,6 +2516,10 @@ function nodeGraphEventTargetIsEmptyWorkspaceArea(event) {
   }
   if (target.closest?.(nodeGraphWorkspaceInteractiveDialogSelector)) {
     return false;
+  }
+  // In/Out portal plates are jacks in the world — right-click is the magnifier.
+  if (nodeGraphEventTargetIsPortalShell(event)) {
+    return true;
   }
   if (target.closest?.(nodeGraphWorkspaceOccupiedElementSelector)) {
     return false;
@@ -2489,6 +2573,10 @@ function openNodeSceneContextMenu(event) {
   if (typeof openNodeXyPadContextMenu === "function" && openNodeXyPadContextMenu(event)) {
     return;
   }
+  // In/Out text, jacks, and param ports yield to the magnifier.
+  if (typeof nodeGraphEventTargetIsPortalShell === "function" && nodeGraphEventTargetIsPortalShell(event)) {
+    return;
+  }
   // Parameter rows / readouts → Parameter Settings (unified window page).
   if (typeof openNodeGraphParameterSettingsFromContextEvent === "function"
     && openNodeGraphParameterSettingsFromContextEvent(event, onModule)) {
@@ -2531,6 +2619,11 @@ function openNodeSceneContextMenu(event) {
         noteNodeGraphUnifiedWindowOpened("moduleActions", wireMenu);
       }
     }
+    return;
+  }
+
+  // In/Out portal plates yield to the magnifier instead of Module Settings.
+  if (typeof nodeGraphEventTargetIsPortalShell === "function" && nodeGraphEventTargetIsPortalShell(event)) {
     return;
   }
 

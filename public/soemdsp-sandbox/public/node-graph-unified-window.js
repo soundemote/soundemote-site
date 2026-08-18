@@ -1347,26 +1347,6 @@ function buildNodeGraphUnifiedWindowNav(activePage = "") {
     button.addEventListener("click", handleNodeGraphUnifiedWindowNavClick);
     nav.append(button);
   }
-  const speaker = document.createElement("button");
-  speaker.type = "button";
-  speaker.className = "node-unified-window-nav-button node-unified-window-speaker-mark-button";
-  speaker.textContent = "🔈";
-  speaker.title = "Show speaker marks on modules and categories";
-  speaker.setAttribute("aria-label", "Show speaker marks on modules and categories");
-  const speakerOn = Boolean(nodeGraphMvp?.shopSpeakerMarks);
-  speaker.setAttribute("aria-pressed", speakerOn ? "true" : "false");
-  speaker.classList.toggle("is-active", speakerOn);
-  speaker.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (typeof nodeGraphMvp === "object" && nodeGraphMvp) {
-      nodeGraphMvp.shopSpeakerMarks = !nodeGraphMvp.shopSpeakerMarks;
-    }
-    if (typeof syncNodeGraphUnifiedWindowNavBars === "function") {
-      syncNodeGraphUnifiedWindowNavBars();
-    }
-  });
-  nav.append(speaker);
   if (!nav.children.length) {
     return null;
   }
@@ -1583,7 +1563,7 @@ function openNodeGraphParameterSettingsFromContextEvent(event, nodeElement = nul
     return false;
   }
   if (target.closest?.(
-    ".node-module-scope-window, .node-led-face, .node-number-readout-face, .node-ray-bouncer-face, .node-phosphor-waveform-display, .node-xy-pad, .node-xy-pad-canvas",
+    ".node-module-scope-window, .node-led-face, .node-number-readout-face, .node-ray-bouncer-face, .node-phosphor-waveform-display, .node-xy-pad, .node-xy-pad-canvas, .node-round-shape-display, .node-round-shape-canvas",
   )) {
     return false;
   }

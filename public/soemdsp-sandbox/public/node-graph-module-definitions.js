@@ -24,7 +24,7 @@ const nodeGraphNodeLabels = Object.freeze({
   ellipsoid: "RoundShape",
   ellipsoidOsc: "Ellipsoid",
   clock: "Clock",
-  transport: "Transport",
+  transport: "Master Clock",
   clockDivider: "Clock Divider",
   delayedTrigger: "Delayed Trigger",
   buttonEvents: "Button Events",
@@ -102,6 +102,9 @@ const nodeGraphNodeLabels = Object.freeze({
   gainBiasMix: "Mix",
   bias: "Bias",
   attenuverter: "Attenuverter",
+  u2b: "U2B",
+  b2u: "B2U",
+  inv: "Inv",
   softClipper: "Soft Clipper",
   clipperLimiter: "Clipper Limiter",
   airClipper: "AirClipper",
@@ -1064,6 +1067,7 @@ const nodeGraphModuleDefinitions = (
   // RS-MET rosic::SineOscillator — free-running 2nd-order recursive sine (no sin() per sample).
   robinSinusoid: {
     planRole: "source",
+    defaultAlias: "Osc",
     displayType: "trace",
     inputs: ["Reset", "f"],
     inputLabels: {Reset: "Reset",
@@ -1364,7 +1368,32 @@ const nodeGraphModuleDefinitions = (
     // Uni 0..1, Bi −1..1 (quadrature pair). No Mono.
     outputs: ["Uni X", "Uni Y", "Bi X", "Bi Y"],
     parameters: [
-      { defaultValue: "1", key: "frequency", kind: "frequency", label: "Frequency", max: "20000", mid: "20", min: "0", step: "any", unit: "Hz" },
+      {
+        choices: ["Clock(Ph)", "CounterClock(Ph)", "Clock(T)", "CounterClock(T)"],
+        defaultValue: "1",
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        key: "motion",
+        label: "Motion",
+        linearSmoothing: false,
+        max: "3",
+        mid: "1",
+        min: "0",
+        step: "1",
+        tooltip: "Ph = running phasor (CounterClock(Ph) is the original orbit). T = simulation time (sample count / sample rate), no stored phasor. Clock vs CounterClock flips direction.",
+      },
+      {
+        defaultValue: "1",
+        key: "frequency",
+        kind: "frequency",
+        label: "Clock",
+        max: "20000",
+        mid: "20",
+        min: "0",
+        step: "any",
+        unit: "Hz",
+        tooltip: "Orbit rate in Hz. Slider 0…20 kHz. Negative values reverse the orbit.",
+      },
       { defaultValue: "0", key: "phase", kind: "phase", label: "Phase", max: "1", mid: "0.5", min: "0", step: "0.01", unit: "cycle", wraparound: true },
       {
         defaultValue: "0",
@@ -2989,13 +3018,16 @@ const nodeGraphModuleDefinitions = (
     displayRenderer: "pulseDot",
     inputs: ["Reset"],
     outputAliases: {
-      Out: "Digital Out"
+      Out: "Digital Out",
+      Pulse: "T",
+      Trigger: "T",
     },
     outputLabels: {
       "Analog Out": "\u223F",
-      "Digital Out": "\u25AE"
+      "Digital Out": "\u25AE",
+      T: "T",
     },
-    outputs: ["Digital Out", "Analog Out", "Pulse"],
+    outputs: ["Digital Out", "Analog Out", "T"],
     parameters: [
       {
         defaultValue: "2",
@@ -3032,7 +3064,8 @@ const nodeGraphModuleDefinitions = (
         nonlinearSlider: true,
         sliderCurve: "edges",
         curveAmount: "0.3",
-        step: "any"
+        step: "any",
+        tooltip: "High time as a fraction of the period. Quantized to whole samples at the current rate.",
       },
       {
         defaultValue: "1",
@@ -3736,6 +3769,45 @@ const nodeGraphModuleDefinitions = (
       },
     ]
   },
+  u2b: {
+    planRole: "processor",
+    defaultWidthGu: 3,
+    defaultUi: {
+      buttonsHidden: true,
+      oscilloscopeHidden: true,
+    },
+    inputLabels: { In: "in" },
+    outputLabels: { Out: "out" },
+    inputs: ["In"],
+    outputs: ["Out"],
+    parameters: [],
+  },
+  b2u: {
+    planRole: "processor",
+    defaultWidthGu: 3,
+    defaultUi: {
+      buttonsHidden: true,
+      oscilloscopeHidden: true,
+    },
+    inputLabels: { In: "in" },
+    outputLabels: { Out: "out" },
+    inputs: ["In"],
+    outputs: ["Out"],
+    parameters: [],
+  },
+  inv: {
+    planRole: "processor",
+    defaultWidthGu: 3,
+    defaultUi: {
+      buttonsHidden: true,
+      oscilloscopeHidden: true,
+    },
+    inputLabels: { In: "in" },
+    outputLabels: { Out: "out" },
+    inputs: ["In"],
+    outputs: ["Out"],
+    parameters: [],
+  },
   attenuverter: {
     planRole: "processor",
     inputAliases: { Mono: "In", Left: "In", Right: "In" },
@@ -4298,7 +4370,11 @@ const nodeGraphModuleDefinitions = (
     defaultDisplayMode: "trace",
     inputs: ["Mono", "Left", "Right"],
     outputAliases: { Out: "Mono", M: "Mono", L: "Left", R: "Right" },
-    outputLabels: { Mono: "M", Left: "L", Right: "R" },
+    outputLabels: {
+      Mono: typeof NODE_GRAPH_THRU_SYMBOL === "string" ? NODE_GRAPH_THRU_SYMBOL : "\u2190",
+      Left: typeof NODE_GRAPH_THRU_SYMBOL === "string" ? NODE_GRAPH_THRU_SYMBOL : "\u2190",
+      Right: typeof NODE_GRAPH_THRU_SYMBOL === "string" ? NODE_GRAPH_THRU_SYMBOL : "\u2190",
+    },
     outputs: ["Mono", "Left", "Right"],
     output: true,
     parameters: [
@@ -8007,19 +8083,19 @@ const nodeGraphModuleDefinitions = (
       { defaultValue: "0", key: "modVariation", label: "Variation", max: "1", mid: "0", min: "0", nonlinearSlider: false, step: "any" },
       {
         choices: ["Linear", "Hermite"],
-        defaultValue: "1",
+        defaultValue: "0",
         displayChoices: true,
         divideChoicesVisibly: true,
         key: "interpolation",
         label: "Interp",
         linearSmoothing: false,
         max: "1",
-        mid: "1",
+        mid: "0",
         min: "0",
         nonlinearSlider: false,
         step: "1",
         tooltip:
-          "Delay-line fractional read. Linear is cheapest; Hermite (Catmull-Rom) is smoother under modulation / pitch bend."
+          "Delay-line fractional read. Linear only for now (Hermite parked — CPU experiment)."
       },
       {
         defaultValue: "1",
@@ -8236,19 +8312,19 @@ const nodeGraphModuleDefinitions = (
       { defaultValue: "1", key: "level", label: "Level", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any" },
       {
         choices: ["Linear", "Hermite"],
-        defaultValue: "1",
+        defaultValue: "0",
         displayChoices: true,
         divideChoicesVisibly: true,
         key: "interpolation",
         label: "Interp",
         linearSmoothing: false,
         max: "1",
-        mid: "1",
+        mid: "0",
         min: "0",
         nonlinearSlider: false,
         step: "1",
         tooltip:
-          "Delay-line fractional read. Linear is cheapest; Hermite (Catmull-Rom) is smoother under LFO drift / pitch bend."
+          "Delay-line fractional read. Linear only for now (Hermite parked — CPU experiment)."
       },
     ]
   },
@@ -10758,7 +10834,11 @@ const nodeGraphModuleDefinitions = (
     defaultDisplayMode: "trace",
     inputs: ["Mono", "Left", "Right"],
     outputAliases: { Out: "Mono", M: "Mono", L: "Left", R: "Right" },
-    outputLabels: { Mono: "M", Left: "L", Right: "R" },
+    outputLabels: {
+      Mono: typeof NODE_GRAPH_THRU_SYMBOL === "string" ? NODE_GRAPH_THRU_SYMBOL : "\u2190",
+      Left: typeof NODE_GRAPH_THRU_SYMBOL === "string" ? NODE_GRAPH_THRU_SYMBOL : "\u2190",
+      Right: typeof NODE_GRAPH_THRU_SYMBOL === "string" ? NODE_GRAPH_THRU_SYMBOL : "\u2190",
+    },
     outputs: ["Mono", "Left", "Right"],
     output: true,
     parameters: [

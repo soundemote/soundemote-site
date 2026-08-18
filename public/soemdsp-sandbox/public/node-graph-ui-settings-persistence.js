@@ -363,9 +363,6 @@ function rememberNodeGraphWorkspaceWindowState(key, element, patch = {}, options
 
 function saveNodeGraphWorkspaceWindowStatesToUserSettings(options = {}) {
   persistNodeGraphUserSession();
-  if (options.status !== false && typeof setNodeUiDevSettingsStatus === "function") {
-    setNodeUiDevSettingsStatus("workspace ui settings saved", true);
-  }
 }
 
 // App-wide floating-window open policy, in one place.
@@ -530,6 +527,19 @@ function applyNodeGraphWorkspaceWindowStateToElement(key) {
   }
   if (key === "oscilloscopeSettings") {
     element.hidden = true;
+    return;
+  }
+  if (key === "uiDev") {
+    // UIDEV is a page inside UI Settings, not its own window.
+    if (state.open && nodeGraphMvp) {
+      nodeGraphMvp.uiSettingsPage = "uidev";
+    }
+    if (typeof mountNodeUiDevHelperAsUiSettingsPage === "function") {
+      mountNodeUiDevHelperAsUiSettingsPage();
+    }
+    if (typeof syncNodeUserUiSettingsPageChrome === "function") {
+      syncNodeUserUiSettingsPageChrome();
+    }
     return;
   }
   if (typeof nodeGraphWorkspaceKeyIsUnifiedPage === "function"
@@ -1211,6 +1221,9 @@ function normalizeNodeGraphUserSession(payload = {}) {
     bookScriptPage: payload.bookScriptPage === "ui-settings" || view.bookScriptPage === "ui-settings"
       ? "ui-settings"
       : "patch",
+    uiSettingsPage: (payload.uiSettingsPage ?? view.uiSettingsPage) === "uidev"
+      ? "uidev"
+      : "settings",
     unifiedWindowPage: typeof nodeGraphUnifiedWindowPageConfig === "function"
       && nodeGraphUnifiedWindowPageConfig(payload.unifiedWindowPage ?? view.unifiedWindowPage)
       ? String(payload.unifiedWindowPage ?? view.unifiedWindowPage)
@@ -1292,6 +1305,7 @@ function readNodeGraphUserSessionFromState() {
       : nodeGraphMvp.filePicker,
     viewMode: normalizeNodeGraphPersistedViewMode(nodeGraphMvp.viewMode),
     bookScriptPage: nodeGraphMvp.bookScriptPage === "ui-settings" ? "ui-settings" : "patch",
+    uiSettingsPage: nodeGraphMvp.uiSettingsPage === "uidev" ? "uidev" : "settings",
     unifiedWindowPage: String(nodeGraphMvp.unifiedWindowPage || ""),
     unifiedWindowPresentation: String(nodeGraphMvp.unifiedWindowPresentation || "closed"),
     unifiedWindowPosition: nodeGraphMvp.unifiedWindowPosition
@@ -1398,6 +1412,10 @@ function applyNodeGraphUserSession(session, options = {}) {
       : "untouched";
   nodeGraphMvp.viewMode = normalizeNodeGraphPersistedViewMode(normalized.viewMode);
   nodeGraphMvp.bookScriptPage = normalized.bookScriptPage === "ui-settings" ? "ui-settings" : "patch";
+  nodeGraphMvp.uiSettingsPage = normalized.uiSettingsPage === "uidev" ? "uidev" : "settings";
+  if (typeof syncNodeUserUiSettingsPageChrome === "function") {
+    syncNodeUserUiSettingsPageChrome();
+  }
   nodeGraphMvp.unifiedWindowPage = String(normalized.unifiedWindowPage || "");
   nodeGraphMvp.unifiedWindowPresentation = String(normalized.unifiedWindowPresentation || "closed");
   nodeGraphMvp.unifiedWindowPosition = normalized.unifiedWindowPosition || null;
@@ -1612,20 +1630,6 @@ function applyNodeUiDevSettings(settings) {
   }
   if (typeof syncNodeUiDevSettingsScriptView === "function") {
     syncNodeUiDevSettingsScriptView();
-  }
-  setNodeUiDevSettingsStatus("ui settings applied", true);
-}
-
-function setNodeUiDevSettingsStatus(message, ok = true) {
-  for (const status of [
-    document.getElementById("nodeUiDevSettingsStatus"),
-    document.getElementById("nodeUserUiSettingsStatus"),
-  ]) {
-    if (!status) {
-      continue;
-    }
-    status.textContent = message;
-    status.className = `pill ${ok ? "good" : "warn"}`;
   }
 }
 
@@ -1943,7 +1947,6 @@ function clearNodeUserStartupState() {
   if (text && typeof postNodeUiDevSettingsPreset === "function") {
     postNodeUiDevSettingsPreset(text).catch(() => {});
   }
-  setNodeUiDevSettingsStatus(`startup cleared (${removed} local keys)`, true);
   window.setTimeout(() => {
     window.location.reload();
   }, 120);
@@ -1991,9 +1994,6 @@ function reportNodeGraphSessionLoadFault(error) {
   } else {
     if (typeof setNodeGraphScriptStatus === "function") {
       setNodeGraphScriptStatus(message, false);
-    }
-    if (typeof setNodeUiDevSettingsStatus === "function") {
-      setNodeUiDevSettingsStatus(message, false);
     }
     console.error(message);
   }
@@ -2095,9 +2095,8 @@ async function loadNodeUiDevDefaultSettings() {
 async function copyNodeUiDevSettingsToClipboard() {
   try {
     await copyTextToClipboard(serializeNodeUiDevSettings());
-    setNodeUiDevSettingsStatus("ui settings copied", true);
-  } catch (error) {
-    setNodeUiDevSettingsStatus(`copy failed: ${error.message}`, false);
+  } catch (_error) {
+    // Clipboard errors stay silent; Copy already flashes on success.
   }
 }
 
@@ -2106,7 +2105,7 @@ async function pasteNodeUiDevSettingsFromClipboard(event) {
   if (typeof confirmNodeGraphDefaultButtonClick === "function" && button) {
     if (!confirmNodeGraphDefaultButtonClick(
       button,
-      () => setNodeUiDevSettingsStatus("click Confirm Paste to apply clipboard UI settings", true),
+      null,
       { confirmText: "Confirm Paste" },
     )) {
       return;
@@ -2115,18 +2114,16 @@ async function pasteNodeUiDevSettingsFromClipboard(event) {
   let text = "";
   try {
     text = await navigator.clipboard.readText();
-  } catch (error) {
-    setNodeUiDevSettingsStatus("paste blocked: clipboard permission denied", false);
+  } catch (_error) {
     return;
   }
   try {
     applyNodeUiDevSettings(loadNodeUiDevSettingsFromScript(text));
-    setNodeUiDevSettingsStatus("ui settings pasted", true);
     if (typeof flashNodeGraphDefaultButtonSaved === "function" && button) {
       flashNodeGraphDefaultButtonSaved(button, "Pasted");
     }
-  } catch (error) {
-    setNodeUiDevSettingsStatus(error?.message || "paste failed: not valid UI settings", false);
+  } catch (_error) {
+    // Invalid clipboard payload: leave current settings unchanged.
   }
 }
 
@@ -2144,23 +2141,14 @@ async function saveNodeUiDevSettingsFile() {
         accept: { "application/json": [".json"] },
       })
       : { ok: false };
-    if (result.cancelled) {
-      setNodeUiDevSettingsStatus("file save cancelled", true);
-      return;
-    }
-    if (!result.ok) {
-      setNodeUiDevSettingsStatus("file save failed", false);
+    if (result.cancelled || !result.ok) {
       return;
     }
     if (typeof rememberNodeGraphFilePickerMeta === "function") {
       rememberNodeGraphFilePickerMeta({ lastSettingsName: result.name || suggested });
     }
-    setNodeUiDevSettingsStatus(
-      result.downloaded ? `ui settings file downloaded: ${result.name}` : `ui settings file written: ${result.name}`,
-      true,
-    );
-  } catch (error) {
-    setNodeUiDevSettingsStatus(`file save failed: ${error?.message || error}`, false);
+  } catch (_error) {
+    // File picker / write failures stay silent; the dialog already closed.
   }
 }
 
@@ -2173,12 +2161,7 @@ async function loadNodeUiDevSettingsFile() {
         fallbackInputId: "nodeUiDevSettingsFileInput",
       })
       : { ok: false };
-    if (result.cancelled) {
-      setNodeUiDevSettingsStatus("file load cancelled", true);
-      return;
-    }
-    if (!result.ok) {
-      setNodeUiDevSettingsStatus(result.error || "file load failed", false);
+    if (result.cancelled || !result.ok) {
       return;
     }
     applyNodeUiDevSettings(loadNodeUiDevSettingsFromScript(result.text));
@@ -2188,9 +2171,8 @@ async function loadNodeUiDevSettingsFile() {
     if (typeof scheduleNodeUiDevSettingsAutosave === "function") {
       scheduleNodeUiDevSettingsAutosave();
     }
-    setNodeUiDevSettingsStatus(`ui settings loaded: ${result.name || "file"}`, true);
-  } catch (error) {
-    setNodeUiDevSettingsStatus(error?.message || "file load failed", false);
+  } catch (_error) {
+    // Invalid file: leave current settings unchanged.
   }
 }
 
@@ -2203,15 +2185,13 @@ function handleNodeUiDevSettingsFileLoad(event) {
   reader.addEventListener("load", () => {
     try {
       applyNodeUiDevSettings(loadNodeUiDevSettingsFromScript(String(reader.result || "")));
-      setNodeUiDevSettingsStatus("ui settings loaded", true);
-    } catch (error) {
-      setNodeUiDevSettingsStatus(error.message, false);
+    } catch (_error) {
+      // Invalid file: leave current settings unchanged.
     } finally {
       event.currentTarget.value = "";
     }
   });
   reader.addEventListener("error", () => {
-    setNodeUiDevSettingsStatus("ui settings file read failed", false);
     event.currentTarget.value = "";
   });
   reader.readAsText(file);
@@ -2222,14 +2202,11 @@ async function updateDefaultNodeUiDevSettingsPreset() {
   try {
     await postNodeUiDevSettingsPreset(text);
     saveNodeUiDevLocalDefaultSettings(text);
-    setNodeUiDevSettingsStatus("default ui settings updated", true);
     return true;
-  } catch (error) {
+  } catch (_error) {
     if (saveNodeUiDevLocalDefaultSettings(text)) {
-      setNodeUiDevSettingsStatus("local ui settings updated", true);
       return true;
     }
-    setNodeUiDevSettingsStatus(`default update failed: ${error.message}`, false);
     return false;
   }
 }
@@ -2253,35 +2230,24 @@ async function saveNodeUserUiSettingsDefaultPreset() {
   const text = serializeNodeUiDevSettings();
   const localSaved = saveNodeUiDevLocalDefaultSettings(text);
   if (localSaved) {
-    setNodeUiDevSettingsStatus("ui settings saved", true);
     postNodeUiDevSettingsPreset(text)
       .then(() => {
         saveNodeUiDevLocalDefaultSettings(text);
-        setNodeUiDevSettingsStatus("default ui settings updated", true);
       })
-      .catch(() => {
-        setNodeUiDevSettingsStatus("ui settings saved", true);
-      });
+      .catch(() => {});
     return true;
   }
   try {
     await postNodeUiDevSettingsPreset(text);
     saveNodeUiDevLocalDefaultSettings(text);
-    setNodeUiDevSettingsStatus("default ui settings updated", true);
     return true;
-  } catch (error) {
-    if (localSaved) {
-      return true;
-    }
-    setNodeUiDevSettingsStatus(`ui settings save failed: ${error.message}`, false);
-    return false;
+  } catch (_error) {
+    return Boolean(localSaved);
   }
 }
 
 async function handleUpdateDefaultNodeUiDevSettingsPresetClick(event) {
-  if (!confirmNodeGraphDefaultButtonClick(event.currentTarget, () => {
-    setNodeUiDevSettingsStatus("click Confirm Default to update default ui settings", true);
-  })) {
+  if (!confirmNodeGraphDefaultButtonClick(event.currentTarget)) {
     return;
   }
   flashNodeGraphDefaultButtonSaved(event.currentTarget);
@@ -2297,10 +2263,7 @@ async function handleSaveNodeUserUiSettingsDefaultClick(event) {
 }
 
 function handleClearNodeUserStartupStateClick(event) {
-  if (!confirmNodeGraphDefaultButtonClick(
-    event.currentTarget,
-    () => setNodeUiDevSettingsStatus("click Confirm Clear Startup for new-user startup", true),
-  )) {
+  if (!confirmNodeGraphDefaultButtonClick(event.currentTarget)) {
     return;
   }
   clearNodeUserStartupState();

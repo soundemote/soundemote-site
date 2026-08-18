@@ -405,6 +405,13 @@ function handleNodeGraphKeydown(event) {
     }
     return;
   }
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "f") {
+    event.preventDefault();
+    if (typeof toggleNodeGraphSelectedScreensFullscreen === "function") {
+      toggleNodeGraphSelectedScreensFullscreen();
+    }
+    return;
+  }
   // T → docked tooltips on/off.
   if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "t") {
     event.preventDefault();

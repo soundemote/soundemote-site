@@ -2,6 +2,11 @@
 // Load after core class, before registerProcessor.
 
 NodeLiveAudioProcessor.prototype.destroySabrinaReverbState = function destroySabrinaReverbState(state) {
+    if (state) {
+      this.resetSabrinaBlockCache?.(state);
+      state.nativeBoundParams = null;
+      state.cachedParams = null;
+    }
     if (!state?.nativeHandle || !this.nativeSabrinaReverb?.soemdsp_sabrina_reverb_destroy) {
       return;
     }
@@ -503,6 +508,14 @@ NodeLiveAudioProcessor.prototype.destroyLorenzAttractorNativeState = function de
 };
 
 NodeLiveAudioProcessor.prototype.destroyRobinSupersawNativeState = function destroyRobinSupersawNativeState(state) {
+    if (state?.blockCache) {
+      state.blockCache.cursor = 0;
+      state.blockCache.size = 0;
+      state.blockCache.left = null;
+      state.blockCache.right = null;
+      state.blockCache.mono = null;
+      state.blockCache.memory = null;
+    }
     if (state?.nativeHandle && this.nativeRobinSupersaw?.soemdsp_robin_supersaw_destroy) {
       this.nativeRobinSupersaw.soemdsp_robin_supersaw_destroy(state.nativeHandle);
       state.nativeHandle = 0;

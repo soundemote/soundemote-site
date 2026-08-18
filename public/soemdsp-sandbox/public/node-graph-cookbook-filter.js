@@ -878,6 +878,15 @@ function nodeGraphFilterCurveMeasureBox(section) {
   let rawW = Number(section.clientWidth || section.offsetWidth) || 0;
   let rawH = Number(section.clientHeight || section.offsetHeight) || 0;
   if (rawW < 8 || rawH < 8) {
+    const stage = section.closest?.("#nodeScreenSoloStage") || section.parentElement;
+    if (stage?.id === "nodeScreenSoloStage") {
+      const cols = Math.max(1, Number(stage.style.getPropertyValue("--node-screen-solo-cols")) || 1);
+      const rows = Math.max(1, Number(stage.style.getPropertyValue("--node-screen-solo-rows")) || 1);
+      rawW = Math.max(rawW, Math.floor((stage.clientWidth || window.innerWidth || 0) / cols));
+      rawH = Math.max(rawH, Math.floor((stage.clientHeight || window.innerHeight || 0) / rows));
+    }
+  }
+  if (rawW < 8 || rawH < 8) {
     const host = section.closest?.(".dsp-node");
     if (host) {
       rawW = Math.max(rawW, Number(host.clientWidth || host.offsetWidth) || 0);
@@ -904,7 +913,11 @@ function drawNodeGraphFilterCurveDisplayInner(section) {
   if (section) {
     section.hidden = false;
   }
-  const node = nodeGraphPatchNode(section?.dataset?.node || "");
+  const node = nodeGraphPatchNode(
+    section?.dataset?.node
+    || section?.closest?.(".dsp-node")?.dataset?.node
+    || "",
+  );
   const canvas = section?.querySelector?.(".node-filter-curve-canvas");
   if (!node || !canvas) {
     return;

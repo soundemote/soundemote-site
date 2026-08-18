@@ -511,7 +511,7 @@ async function sendNodeGraphLiveNativeModule(liveNode, entry) {
 // Chrome caps wasm memories per process (~100); many standalone instances
 // hit that cap. Slim is for small used-sets when per-module files exist;
 // huge patches / site deploys should use combined.
-const nodeGraphLiveCombinedNativeModuleUrl = "native_modules/combined/soemdsp_combined.wasm?v=raster-rgb-1";
+const nodeGraphLiveCombinedNativeModuleUrl = "native_modules/combined/soemdsp_combined.wasm?v=inv-1";
 
 /** @type {null|"slim"|"combined"} */
 let nodeGraphLiveNativeWasmLoadModeResolved = null;
@@ -1966,6 +1966,9 @@ function handleNodeGraphLiveWorkletMessage(event) {
     if (typeof updateNodeGraphPitchDetectorFacesFromScopeValues === "function") {
       updateNodeGraphPitchDetectorFacesFromScopeValues(scopeValues);
     }
+    if (typeof drawNodeGraphRoundShapeDisplays === "function") {
+      drawNodeGraphRoundShapeDisplays();
+    }
     if (Array.isArray(message.dataPorts) && message.dataPorts.length) {
       for (const [nodeId, port, value] of message.dataPorts) {
         writeNodeGraphDataOutput(String(nodeId), port, value);
@@ -2124,9 +2127,11 @@ function nodeGraphLivePlanShapeSignature(plan = {}) {
     outputNode: plan.outputNode || "output",
     samples: (Array.isArray(plan.samples) ? plan.samples : []).map((sample) => sample?.id || ""),
     scopeCaptureNodeIds: Array.isArray(plan.scopeCaptureNodeIds) ? plan.scopeCaptureNodeIds : [],
+    scopeCaptureRates: plan.scopeCaptureRates || {},
     visualSinks: (Array.isArray(plan.visualSinks) ? plan.visualSinks : []).map((sink) => [
       sink.nodeId,
       sink.displayType,
+      sink.visualWriteHz,
       (Array.isArray(sink.bufferedInputs) ? sink.bufferedInputs : []).join(","),
     ]),
   });
@@ -2159,6 +2164,9 @@ function nodeGraphLiveConnectionUpdatePayload(plan = {}, audio = {}) {
     planSerial: nodeGraphMvp.live.planSerial,
     sampleRate: nodeGraphMvp.live.context?.sampleRate || nodeGraphMvp.sampleRate,
     scopeCaptureNodeIds: Array.isArray(plan.scopeCaptureNodeIds) ? plan.scopeCaptureNodeIds : [],
+    scopeCaptureRates: plan.scopeCaptureRates && typeof plan.scopeCaptureRates === "object"
+      ? plan.scopeCaptureRates
+      : {},
     sessionId: nodeGraphMvp.live.sessionId,
     timing: plan.timing || null,
     type: "setConnections",
@@ -2851,31 +2859,32 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/node-graph-semath.js?v=planck-1",
   "./public/node-graph-stdlib/node-graph-phasor-helpers.js?v=phasor-helpers-1",
   "./public/node-graph-stdlib/node-graph-control-bus-helpers.js?v=input-amp-1",
-  "./public/modules/portal/portal-math.js?v=io3-1",
+  "./public/modules/portal/portal-lanes.js?v=portal-rename-4x2-1",
+  "./public/modules/portal/portal-math.js?v=portal-lanes-1",
   "./public/node-graph-stdlib/node-graph-param-surface-helpers.js?v=unit-mod-linear-1",
   "./public/node-graph-stdlib/node-graph-seeded-rng-helpers.js?v=softpop-1",
-  "./public/node-graph-parameter-smoother-filters.js?v=module-smooth-0333-1",
+  "./public/node-graph-parameter-smoother-filters.js?v=planck-eps-1",
   // Bypass passthrough maps + frame eval (shared with main thread).
   "./public/node-graph-module-bypass.js?v=t-series-1",
-  "./public/node-live-audio-worklet-core.js?v=player-speed-readout-1",
+  "./public/node-live-audio-worklet-core.js?v=block-scope-1",
   // Phase D: class methods extracted from core (must follow class definition).
   "./public/node-live-audio-worklet-graph.js?v=plan-d-split-5",
-  "./public/node-live-audio-worklet-smoother.js?v=module-smooth-0333-1",
+  "./public/node-live-audio-worklet-smoother.js?v=planck-eps-1",
   "./public/node-live-audio-worklet-param-map.js?v=domain-mod-1",
-  "./public/node-live-audio-worklet-destroy.js?v=plan-d-split-6",
+  "./public/node-live-audio-worklet-destroy.js?v=block-scope-1",
   "./public/node-live-audio-worklet-analog.js?v=plan-d-split-7",
   "./public/lib/sample-interpolate.js?v=hermite-1",
   "./public/node-live-audio-worklet-dsp-state.js?v=planck-1",
-  "./public/node-live-audio-worklet-events.js?v=domain-mod-1",
-  "./public/node-live-audio-worklet-visual.js?v=plan-d-split-7",
-  "./public/node-live-audio-worklet-scope-io.js?v=visual-rate-meta-1",
+  "./public/node-live-audio-worklet-events.js?v=block-scope-1",
+  "./public/node-live-audio-worklet-visual.js?v=planck-eps-1",
+  "./public/node-live-audio-worklet-scope-io.js?v=block-scope-1",
   "./public/node-live-audio-worklet-native-load.js?v=plan-d-split-7",
-  "./public/node-live-audio-worklet-evaluators-sources.js?v=fbf-amp-1",
-  "./public/node-live-audio-worklet-evaluators-processors.js?v=stagger-cache-1",
-  "./public/node-live-audio-worklet-evaluators-utility.js?v=input-amp-1",
+  "./public/node-live-audio-worklet-evaluators-sources.js?v=block-scope-1",
+  "./public/node-live-audio-worklet-evaluators-processors.js?v=sim-time-1",
+  "./public/node-live-audio-worklet-evaluators-utility.js?v=portal-lanes-1",
   "./public/node-live-audio-worklet-evaluators.js?v=evaluators-split-1",
-  "./public/node-live-audio-worklet-native-exports.js?v=soft-clipper-gain-1",
-  "./public/node-live-audio-worklet-set-plan.js?v=kick-split-1",
+  "./public/node-live-audio-worklet-native-exports.js?v=block-scope-1",
+  "./public/node-live-audio-worklet-set-plan.js?v=block-scope-1",
   "./public/node-live-audio-worklet-clear-plan.js?v=kick-split-1",
   "./public/node-live-audio-worklet-handle-message.js?v=keypad-1",
   "./public/node-live-audio-worklet-scope-snapshot.js?v=visual-rate-meta-1",
@@ -2883,8 +2892,8 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/node-live-audio-worklet-evaluate-frame.js?v=out-vol-m3-1",
   "./public/node-live-audio-worklet-process.js?v=input-amp-1",
   "./public/modules/codeblock/codeblock-worklet-evaluator.js?v=native-strip-1",
-  "./public/modules/moduleGroup/module-group-worklet-evaluator.js?v=xy-pad-dsp-path-1",
-  "./public/modules/ellipsoid/ellipsoid-worklet-evaluator.js?v=uni-bi-outs-1",
+  "./public/modules/moduleGroup/module-group-worklet-evaluator.js?v=robin-native-1",
+  "./public/modules/ellipsoid/ellipsoid-worklet-evaluator.js?v=motion-1",
   "./public/modules/sineWavetable/sine-wavetable-worklet-evaluator.js?v=sincos-no-amp-in-1",
   "./public/modules/additiveOsc/additive-osc-worklet-evaluator.js?v=native-core-1",
   "./public/modules/polyBlep/poly-blep-worklet-evaluator.js?v=one-core-native-20260803",
@@ -2926,7 +2935,7 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/snowflake/snowflake-worklet-evaluator.js?v=snowflake-direction-1",
   "./public/modules/textStream/text-stream-worklet-evaluator.js?v=text-stream-1",
   "./public/modules/dsfOscillator/dsf-oscillator-worklet-evaluator.js?v=native-core-1",
-  "./public/modules/robinSupersaw/robin-supersaw-worklet-evaluator.js?v=native-no-fallback-1",
+  "./public/modules/robinSupersaw/robin-supersaw-worklet-evaluator.js?v=process-block-1",
   "./public/modules/hypersaw/hypersaw-worklet-evaluator.js?v=phasor-stdlib-1",
   "./public/modules/chordSequencer/chord-sequencer-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/chordPad/chord-pad-worklet-evaluator.js?v=chord-pad-1",
@@ -2956,12 +2965,12 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/minMax/min-max-worklet-evaluator.js?v=min-max-1",
   "./public/modules/aliasSine/alias-sine-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/robinSinusoid/robin-sinusoid-math.js?v=robin-sin-fm-1",
-  "./public/modules/robinSinusoid/robin-sinusoid-worklet-evaluator.js?v=robin-sin-fm-1",
+  "./public/modules/robinSinusoid/robin-sinusoid-worklet-evaluator.js?v=robin-native-1",
   "./public/modules/tb303Filter/tb303-filter-worklet-evaluator.js?v=native-no-fallback-1",
-  "./public/modules/delayEffect/delay-effect-worklet-evaluator.js?v=delay-mixm-1",
-  "./public/modules/pingPongDelay/ping-pong-delay-worklet-evaluator.js?v=tape-lfo-1",
+  "./public/modules/delayEffect/delay-effect-worklet-evaluator.js?v=linear-smooth-only-1",
+  "./public/modules/pingPongDelay/ping-pong-delay-worklet-evaluator.js?v=linear-smooth-only-1",
   "./public/modules/wallDelay/wall-delay-worklet-evaluator.js?v=native-strip-1",
-  "./public/modules/reverbEffect/reverb-effect-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/reverbEffect/reverb-effect-worklet-evaluator.js?v=planck-eps-1",
   "./public/modules/soemReverb/soem-reverb-worklet-evaluator.js?v=5-ping-pong",
   "./public/modules/pll/pll-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/helmholtzPitch/helmholtz-pitch-worklet-evaluator.js?v=pitch-display-1",
@@ -3011,11 +3020,11 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/sineKick/sine-kick-worklet-evaluator.js?v=kick-split-1",
   "./public/modules/sampleHold/sample-hold-math.js?v=sample-hold-1",
   "./public/modules/sampleHold/sample-hold-worklet-evaluator.js?v=native-strip-1",
-  "./public/modules/expAdsr/exp-adsr-math.js?v=exp-adsr-1",
+  "./public/modules/expAdsr/exp-adsr-math.js?v=planck-eps-1",
   "./public/modules/expAdsr/exp-adsr-worklet-evaluator.js?v=exp-adsr-1",
   "./public/modules/attackDecay/attack-decay-math.js?v=attack-decay-1",
   "./public/modules/attackDecay/attack-decay-worklet-evaluator.js?v=attack-decay-1",
-  "./public/modules/linearEnvelope/linear-envelope-math.js?v=linear-envelope-1",
+  "./public/modules/linearEnvelope/linear-envelope-math.js?v=planck-eps-1",
   "./public/modules/linearEnvelope/linear-envelope-worklet-evaluator.js?v=linear-envelope-1",
   "./public/modules/pluckEnvelope/pluck-envelope-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/vactrolEnvelopeSeries/vactrol-envelope-series-worklet-evaluator.js?v=native-strip-1",
@@ -3037,8 +3046,10 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/logSpiral/log-spiral-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/lorenzAttractor/lorenz-attractor-math.js?v=lorenz-1",
   "./public/modules/lorenzAttractor/lorenz-attractor-worklet-evaluator.js?v=lorenz-1",
-  "./public/modules/clock/clock-math.js?v=clock-1",
-  "./public/modules/clock/clock-worklet-evaluator.js?v=clock-1",
+  "./public/modules/clock/clock-math.js?v=master-clock-t-1",
+  "./public/modules/clock/clock-worklet-evaluator.js?v=master-clock-t-1",
+  "./public/modules/simulationTime/simulation-time-math.js?v=sim-time-1",
+  "./public/modules/simulationTime/simulation-time-worklet-evaluator.js?v=sim-time-1",
   "./public/modules/transport/transport-math.js?v=transport-1",
   "./public/modules/transport/transport-worklet-evaluator.js?v=transport-1",
   "./public/modules/randomClock/random-clock-math.js?v=random-clock-range-1",
@@ -3079,6 +3090,9 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/bias/bias-worklet-evaluator.js?v=bias-io-1",
   "./public/modules/attenuverter/attenuverter-math.js?v=attenuverter-1",
   "./public/modules/attenuverter/attenuverter-worklet-evaluator.js?v=attenuverter-1",
+  "./public/modules/u2b/u2b-worklet-evaluator.js?v=u2b-1",
+  "./public/modules/b2u/b2u-worklet-evaluator.js?v=b2u-1",
+  "./public/modules/inv/inv-worklet-evaluator.js?v=inv-1",
 
   "./public/modules/rotate3dTo2d/rotate-3d-to-2d-math.js?v=rotate-3d-to-2d-1",
   "./public/modules/rotate3dTo2d/rotate-3d-to-2d-worklet-evaluator.js?v=rotate-3d-to-2d-1",

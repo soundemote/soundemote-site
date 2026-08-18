@@ -1,4 +1,10 @@
 async function bindNodeGraphUiDevSettingsEvents() {
+  if (typeof mountNodeUiDevHelperAsUiSettingsPage === "function") {
+    mountNodeUiDevHelperAsUiSettingsPage();
+  }
+  if (typeof syncNodeUserUiSettingsPageChrome === "function") {
+    syncNodeUserUiSettingsPageChrome();
+  }
   document.getElementById("saveNodeUiDevSettingsButton")?.addEventListener("click", saveNodeUiDevSettingsFile);
   document.getElementById("nodeUserUiSettingsCopy")?.addEventListener("click", copyNodeUiDevSettingsToClipboard);
   document.getElementById("nodeUserUiSettingsPaste")?.addEventListener("click", pasteNodeUiDevSettingsFromClipboard);
@@ -31,6 +37,8 @@ async function bindNodeGraphUiDevSettingsEvents() {
     "nodeUiDevDimmerMouseSize",
     "nodeUiDevDimmerMouseSoftness",
     "nodeUiDevDimmerMouseShape",
+    "nodeUiDevMagnifierBorderThickness",
+    "nodeUiDevMagnifierBorderSoftness",
   ]) {
     document.getElementById(id)?.addEventListener("input", syncNodeUiDevSettingsHeaderControls);
     document.getElementById(id)?.addEventListener("change", syncNodeUiDevSettingsHeaderControls);

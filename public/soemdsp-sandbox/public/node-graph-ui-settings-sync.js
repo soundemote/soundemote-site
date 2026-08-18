@@ -287,59 +287,25 @@ function syncNodeUiDevModuleIdleStroke() {
   );
 }
 
-function syncNodeUiDevModuleRoundness() {
-  const roundEl = document.getElementById("nodeUiDevModuleRoundness");
-  const roundOut = document.getElementById("nodeUiDevModuleRoundnessValue");
-  const shapeEl = document.getElementById("nodeUiDevModuleCornerShape");
+const NODE_MODULE_PLATE_ROUNDNESS_RATIO = 0.11;
+const NODE_MODULE_PLATE_CORNER_SHAPE = "squircle";
+
+function applyNodeModulePlateLook() {
   const workspace = document.getElementById("nodeGraphWorkspace");
-  const percent = Math.max(0, Math.min(100, Number(roundEl?.value) || 0));
-  const shape = String(shapeEl?.value || "pill").toLowerCase() === "squircle" ? "squircle" : "pill";
-  if (roundEl && !roundEl.matches(":active")) {
-    roundEl.value = String(percent);
-  }
-  if (shapeEl) {
-    shapeEl.value = shape;
-  }
-  if (roundOut) {
-    roundOut.textContent = `${percent}%`;
-  }
-  for (const btn of document.querySelectorAll("[data-module-corner-shape]")) {
-    const active = btn.getAttribute("data-module-corner-shape") === shape;
-    btn.classList.toggle("active", active);
-    btn.setAttribute("aria-pressed", String(active));
-  }
-  workspace?.style.setProperty("--node-module-roundness-ratio", String(percent / 100));
-  workspace?.style.setProperty("--node-module-corner-shape", shape === "squircle" ? "squircle" : "round");
+  const ratio = String(NODE_MODULE_PLATE_ROUNDNESS_RATIO);
+  const shape = NODE_MODULE_PLATE_CORNER_SHAPE;
+  workspace?.style.setProperty("--node-module-roundness-ratio", ratio);
+  workspace?.style.setProperty("--node-module-corner-shape", shape);
+  document.documentElement.style.setProperty("--node-module-roundness-ratio", ratio);
+  document.documentElement.style.setProperty("--node-module-corner-shape", shape);
+}
+
+function syncNodeUiDevModuleRoundness() {
+  applyNodeModulePlateLook();
 }
 
 function bindNodeUiDevModuleRoundness() {
-  const roundEl = document.getElementById("nodeUiDevModuleRoundness");
-  if (roundEl && roundEl.dataset.moduleRoundnessBound !== "true") {
-    roundEl.dataset.moduleRoundnessBound = "true";
-    roundEl.addEventListener("input", syncNodeUiDevModuleRoundness);
-    roundEl.addEventListener("change", syncNodeUiDevModuleRoundness);
-  }
-  const host = document.getElementById("nodeUiDevHelper");
-  if (host && host.dataset.moduleCornerShapeBound !== "true") {
-    host.dataset.moduleCornerShapeBound = "true";
-    host.addEventListener("click", (event) => {
-      const btn = event.target?.closest?.("[data-module-corner-shape]");
-      if (!btn || !host.contains(btn)) {
-        return;
-      }
-      event.preventDefault();
-      const shape = btn.getAttribute("data-module-corner-shape") === "squircle" ? "squircle" : "pill";
-      const input = document.getElementById("nodeUiDevModuleCornerShape");
-      if (input) {
-        input.value = shape;
-      }
-      syncNodeUiDevModuleRoundness();
-      if (typeof scheduleNodeUiDevSettingsAutosave === "function") {
-        scheduleNodeUiDevSettingsAutosave();
-      }
-    });
-  }
-  syncNodeUiDevModuleRoundness();
+  applyNodeModulePlateLook();
 }
 
 function bindNodeUiDevModuleIdleStroke() {
@@ -419,6 +385,59 @@ function syncNodeUiDevDimmerCutoutControls() {
       mouseSoftness: soft,
       mouseShape: shape,
     });
+  }
+}
+
+function applyNodeGraphMagnifierRimLook(thicknessPx = 5, softnessPx = 4) {
+  const thickness = Math.max(0, Math.min(24, Number(thicknessPx) || 0));
+  const softness = Math.max(0, Math.min(32, Number(softnessPx) || 0));
+  const thickCss = `${thickness}px`;
+  const softCss = `${softness}px`;
+  const workspace = document.getElementById("nodeGraphWorkspace");
+  workspace?.style.setProperty("--magnifier-rim-width", thickCss);
+  workspace?.style.setProperty("--magnifier-rim-softness", softCss);
+  document.documentElement.style.setProperty("--magnifier-rim-width", thickCss);
+  document.documentElement.style.setProperty("--magnifier-rim-softness", softCss);
+  document.getElementById("nodeGraphMagnifier")?.style.setProperty("--magnifier-rim-width", thickCss);
+  document.getElementById("nodeGraphMagnifier")?.style.setProperty("--magnifier-rim-softness", softCss);
+  if (typeof nodeGraphMvp !== "undefined" && nodeGraphMvp) {
+    nodeGraphMvp.magnifierBorderThickness = thickness;
+    nodeGraphMvp.magnifierBorderSoftness = softness;
+  }
+}
+
+function syncNodeUiDevMagnifierRimControls() {
+  const thickEl = document.getElementById("nodeUiDevMagnifierBorderThickness");
+  const thickOut = document.getElementById("nodeUiDevMagnifierBorderThicknessValue");
+  const softEl = document.getElementById("nodeUiDevMagnifierBorderSoftness");
+  const softOut = document.getElementById("nodeUiDevMagnifierBorderSoftnessValue");
+  let thickness = 5;
+  let softness = 4;
+  if (thickEl) {
+    thickness = Math.max(0, Math.min(24, Number(thickEl.value) || 0));
+    if (!thickEl.matches(":active")) {
+      thickEl.value = String(thickness);
+    }
+  } else if (typeof nodeGraphMvp !== "undefined" && Number.isFinite(Number(nodeGraphMvp?.magnifierBorderThickness))) {
+    thickness = Number(nodeGraphMvp.magnifierBorderThickness);
+  }
+  if (softEl) {
+    softness = Math.max(0, Math.min(32, Number(softEl.value) || 0));
+    if (!softEl.matches(":active")) {
+      softEl.value = String(softness);
+    }
+  } else if (typeof nodeGraphMvp !== "undefined" && Number.isFinite(Number(nodeGraphMvp?.magnifierBorderSoftness))) {
+    softness = Number(nodeGraphMvp.magnifierBorderSoftness);
+  }
+  if (thickOut) {
+    thickOut.textContent = `${thickness}px`;
+  }
+  if (softOut) {
+    softOut.textContent = `${softness}px`;
+  }
+  applyNodeGraphMagnifierRimLook(thickness, softness);
+  if (typeof applyNodeGraphMagnifierLayout === "function") {
+    applyNodeGraphMagnifierLayout();
   }
 }
 
@@ -687,6 +706,7 @@ function syncNodeUiDevSettingsHeaderControls() {
   }
   syncNodeUiDevModuleIdleStroke();
   syncNodeUiDevDimmerCutoutControls();
+  syncNodeUiDevMagnifierRimControls();
   syncNodeUiDevPortSize();
   syncNodeUiDevIoSectionPadding();
   syncNodeUiDevPortBrightness();

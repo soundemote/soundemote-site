@@ -234,6 +234,8 @@ var nodeGraphMvp = {
   dimmerMouseSize: 56,
   dimmerMouseSoftness: 25,
   dimmerMouseShape: 0,
+  magnifierBorderThickness: 5,
+  magnifierBorderSoftness: 4,
   moduleStoreDepartment: "",
   // The last category the user actually CLICKED, as opposed to whatever page
   // the browser happens to be showing (a search shows results across every
@@ -383,6 +385,7 @@ var nodeGraphMvp = {
   uiSettingsScriptDirty: false,
   uiSettingsScriptCommitTimer: 0,
   selected: null,
+  selectionOrder: [],
   sampleRate: 44100,
   seconds: 2,
   renderStartSeconds: 0,
@@ -393,6 +396,7 @@ var nodeGraphMvp = {
   userUiSettingsDragging: null,
   userUiSettingsResizing: null,
   userUiSettingsWindowSize: null,
+  uiSettingsPage: "settings",
   uiDevHelperDragging: null,
   uiDevHelperResizing: null,
   uiDevHelperWindowSize: null,
