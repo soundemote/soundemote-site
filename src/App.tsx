@@ -50,7 +50,9 @@ const App = () => (
         <Route path="/oscilloscope" element={<OscilloscopePage />} />
         <Route path="/scope-scratch" element={<ScopeScratchPage />} />
         <Route path="/gradient-curve" element={<GradientCurvePage />} />
-        <Route path="/sandbox" element={<SandboxPage />} />
+        {/* /sandbox always boots the shared init patch (/patch/init). */}
+        <Route path="/sandbox" element={<SandboxPage pagePatch="init" view="sandbox" />} />
+
         <Route path="/self" element={<SelfPage />} />
         <Route path="/embed" element={<EmbedPage />} />
 
