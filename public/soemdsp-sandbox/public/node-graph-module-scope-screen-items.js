@@ -135,6 +135,21 @@ function nodeGraphModuleScopeEmissiveShaderRgb(rgb, brightness) {
 // drawNodeGraphModuleScopeLightDisplays → node-graph-module-scope-draw-basic.js
 function nodeGraphModuleScopeScreenItems(workspace, canvas, pixelRatio) {
   const workspaceRect = workspace.getBoundingClientRect();
+  const layoutKey = [
+    Math.round(workspaceRect.width),
+    Math.round(workspaceRect.height),
+    Math.round(Number(nodeGraphMvp?.zoom) * 1000) || 0,
+    Math.round(Number(nodeGraphMvp?.pan?.x) || 0),
+    Math.round(Number(nodeGraphMvp?.pan?.y) || 0),
+    Math.round(Number(pixelRatio) * 100) || 100,
+  ].join("|");
+  const layoutCache = nodeGraphModuleScopeState.screenItemLayoutCache || { key: "", rects: new Map() };
+  const reuseRects = layoutCache.key === layoutKey;
+  if (!reuseRects) {
+    layoutCache.key = layoutKey;
+    layoutCache.rects = new Map();
+    nodeGraphModuleScopeState.screenItemLayoutCache = layoutCache;
+  }
   const viewportRect = {
     height: workspaceRect.height,
     left: 0,
@@ -160,7 +175,7 @@ function nodeGraphModuleScopeScreenItems(workspace, canvas, pixelRatio) {
         rectWidth: 0,
         type: slot.type,
       };
-      if (!buffer) {
+      if (!buffer || !buffer.length) {
         entry.skip = "no-buffer";
         slotDebug.push(entry);
         renderNodeGraphModuleScopeAnalyzer(slot, null);
@@ -197,6 +212,9 @@ function nodeGraphModuleScopeScreenItems(workspace, canvas, pixelRatio) {
             if (typeof paintNodeGraphTraceDisplayColdPlate === "function") {
               paintNodeGraphTraceDisplayColdPlate(slot, pixelRatio);
             }
+          } else if (selfPaint === "scope2dTrace") {
+            // Vector 2D Trace has no energy FBO. Between Simulation FPS posts
+            // (e.g. FPS 1) capture is empty — hold last pixels, do not wipe.
           } else {
             // Do NOT wipe phosphor/local faces every no-buffer frame — that
             // blanked scopes until a zoom/layout event re-drew them.
@@ -204,7 +222,11 @@ function nodeGraphModuleScopeScreenItems(workspace, canvas, pixelRatio) {
             const faceCanvas = slot?.scopeElement?.querySelector?.(
               ":scope > .node-module-scope-local-fallback-canvas",
             );
-            if (faceCanvas && !faceCanvas._phosphorEnergyGl) {
+            if (
+              faceCanvas
+              && !faceCanvas._phosphorEnergyGl
+              && !faceCanvas.classList?.contains("node-module-scope-vector-trace")
+            ) {
               clearNodeGraphModuleScopeLocalFallback(slot);
             }
           }
@@ -232,18 +254,9 @@ function nodeGraphModuleScopeScreenItems(workspace, canvas, pixelRatio) {
             );
           }
           // frozen: leave canvas + burn plate pixels as-is (no kill).
-        } else if (
-          nodeGraphModuleDisplayRendererForSlot(slot) === "ledLamp"
-          || nodeGraphModuleDisplayRendererForSlot(slot) === "vectorDot"
-        ) {
+        } else if (["vectorDot", "pulseDot", "lcdDot"].includes(nodeGraphModuleDisplayRendererForSlot(slot))) {
           if (typeof drawNodeGraphVectorDotItem === "function") {
             drawNodeGraphVectorDotItem(null, {
-              buffer: null,
-              screenElement: slot.scopeElement,
-              slot,
-            }, pixelRatio);
-          } else if (typeof drawNodeGraphLedLampItem === "function") {
-            drawNodeGraphLedLampItem(null, {
               buffer: null,
               screenElement: slot.scopeElement,
               slot,
@@ -256,7 +269,11 @@ function nodeGraphModuleScopeScreenItems(workspace, canvas, pixelRatio) {
         }
         return null;
       }
-      const rect = slot.scopeElement.getBoundingClientRect();
+      let rect = reuseRects ? layoutCache.rects.get(slot.nodeId) : null;
+      if (!rect) {
+        rect = slot.scopeElement.getBoundingClientRect();
+        layoutCache.rects.set(slot.nodeId, rect);
+      }
       entry.rectHeight = rect.height;
       entry.rectWidth = rect.width;
       const screenRect = {
@@ -422,9 +439,7 @@ function nodeGraphScope2dEnergyBurnDepositGain(a, b, c) {
     return 0;
   }
   const s = clampNodeSliderValue(Number(size01) || 0, 0, 1);
-  const sizeFactor = 1.12 - s * 0.32;
-  const shape = Math.pow(Math.min(br, 2), 0.88);
-  return Math.max(0, shape * 0.48 * sizeFactor);
+  return Math.max(0, br * 0.1 * (1.12 - s * 0.42));
 }
 
 /** Soft present exposure — Bright opens the film (Ghost does not). */

@@ -622,8 +622,12 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_sources = function bu
           : (hasAmp ? levelKnob * ampCv : levelKnob);
         let direction = read("direction");
         if (direction == null || !Number.isFinite(Number(direction))) {
-          const legacyReverse = read("reverse", 0);
-          direction = Number(legacyReverse) > 0.5 ? 0 : 1;
+          const legacyReverse = read("reverse", null);
+          if (legacyReverse != null && Number.isFinite(Number(legacyReverse))) {
+            direction = Number(legacyReverse) > 0.5 ? 0 : 1;
+          } else {
+            direction = 0;
+          }
         }
         return this.snowflakeSample(state, {
           frequencyHz: effectiveFrequency,
@@ -632,6 +636,7 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_sources = function bu
           iterations: read("iterations", 3),
           angle: read("angle", 60),
           direction,
+          phase: read("phase", 0),
           spin: read("spin", 0),
           level,
           reset,
@@ -832,8 +837,14 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_sources = function bu
         this.ellipsoidWorkletEvaluate(node, nodeId, frame, frames, frameValues, mixInput, safeRate),
       ellipsoidOsc: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) =>
         this.ellipsoidWorkletEvaluate(node, nodeId, frame, frames, frameValues, mixInput, safeRate),
+      basicShape: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) =>
+        this.basicShapeWorkletEvaluate(node, nodeId, frame, frames, frameValues, mixInput, safeRate),
+      rgbShape: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) =>
+        this.rgbShapeWorkletEvaluate(node, nodeId, frame, frames, frameValues, mixInput, safeRate),
       sineWavetable: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) =>
         this.sineWavetableWorkletEvaluate(node, nodeId, frame, frames, frameValues, mixInput, safeRate),
+      sinCos: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) =>
+        this.sinCosWorkletEvaluate(node, nodeId, frame, frames, frameValues, mixInput, safeRate),
       metallicRatio: (node, nodeId, frame, frames, frameValues) => ({
         Ratio: this.metallicRatioSample(
           this.readEffectiveParameter(node, "index", 1, frame, frames, frameValues),

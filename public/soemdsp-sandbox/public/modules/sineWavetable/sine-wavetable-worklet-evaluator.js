@@ -1,11 +1,4 @@
-// Realtime worklet evaluator for sineWavetable, split out of
-// node-live-audio-worklet-core.js. Loaded as part of the Blob-assembled
-// AudioWorklet module (see nodeGraphLiveWorkletSourceFiles in
-// node-graph-live-runtime.js) after core.js defines the class and before
-// register.js calls registerProcessor -- no call-site changes needed
-// since the dispatch registry calls this.sineWavetableWorkletEvaluate(...)
-// via a thin arrow function still declared in core.js's
-// buildLiveModuleEvaluators().
+// Worklet evaluator for SinCos4 (sineWavetable) and SinCos (sinCos).
 const nodeLiveSineWavetableSize = 2048;
 const nodeLiveSineWavetable = new Float32Array(nodeLiveSineWavetableSize + 1);
 for (let index = 0; index <= nodeLiveSineWavetableSize; index += 1) {
@@ -58,13 +51,45 @@ function nodeLiveSineCosWavetableSample(phaseRadians, frequency, amplitude, samp
   };
 }
 
+function nodeLiveSinCos4FromPair(sin, cos, mode) {
+  const s = Number(sin) || 0;
+  const c = Number(cos) || 0;
+  const m = Math.max(0, Math.min(5, Math.round(Number(mode) || 0)));
+  const z = 0;
+  if (m === 0) {
+    return { A: s, B: z, C: z, D: z };
+  }
+  if (m === 1) {
+    return { A: c, B: z, C: z, D: z };
+  }
+  if (m === 2) {
+    return { A: s, B: c, C: z, D: z };
+  }
+  if (m === 3) {
+    return { A: s, B: -s, C: z, D: z };
+  }
+  if (m === 4) {
+    const k = Math.sqrt(3) * 0.5;
+    const b = s * -0.5 + c * k;
+    const d = s * -0.5 - c * k;
+    return { A: s, B: b, C: d, D: z };
+  }
+  return { A: s, B: c, C: -s, D: -c };
+}
+
 NodeLiveAudioProcessor.prototype.createSineWavetableState = function createSineWavetableState() {
   return {
     nativeHandle: 0,
   };
 };
 
-NodeLiveAudioProcessor.prototype.sineWavetableWorkletEvaluate = function sineWavetableWorkletEvaluate(node, nodeId, frame, frames, frameValues, mixInput, safeRate) {
+NodeLiveAudioProcessor.prototype.sineWavetableAdvancePair = function sineWavetableAdvancePair(node, nodeId, frame, frames, frameValues, mixInput, safeRate) {
+  const resetState = this.oscResetStates.get(nodeId) || this.createOscResetState();
+  this.oscResetStates.set(nodeId, resetState);
+  const resetValue = this.safeFilterNumber(mixInput(nodeId, "Reset"), resetState);
+  const resetEdge = resetState.lastReset <= 0 && resetValue > 0;
+  resetState.lastReset = resetValue;
+  const freePhase = resetEdge ? 0 : this.phases.get(nodeId) || 0;
   const phaseOffset = this.phaseRadians(
     this.readEffectiveParameter(node, "phase", 0, frame, frames, frameValues),
   );
@@ -76,8 +101,8 @@ NodeLiveAudioProcessor.prototype.sineWavetableWorkletEvaluate = function sineWav
     frames,
     frameValues,
   );
-  const freqInput = this.safeFilterNumber(mixInput(nodeId, "Freq"), null);
-  // Amp parameter only (Amplitude CV jack removed).
+  const freqInput = this.safeFilterNumber(mixInput(nodeId, "f"), null);
+  const incrementInput = this.safeFilterNumber(mixInput(nodeId, "Increment"), null);
   const amplitude = Math.max(
     0,
     this.readEffectiveParameter(node, "amp", 1, frame, frames, frameValues),
@@ -88,13 +113,13 @@ NodeLiveAudioProcessor.prototype.sineWavetableWorkletEvaluate = function sineWav
   const pitchCv = hasPitchInput
     ? this.safeFilterNumber(mixInput(nodeId, "0.1V/Oct"), null)
     : referenceVoltage;
-  const baseWithFreqJack = baseFrequency + freqInput;
+  const baseWithFreqJack = baseFrequency + (Number(freqInput) || 0);
   const effectiveFrequency = typeof nodeGraphParamResolveOscPitchHz === "function"
     ? nodeGraphParamResolveOscPitchHz({baseHz: baseWithFreqJack,
       hasPitchCv: hasPitchInput,
       pitchCv,
       referenceVoltage,
-      hasInput: typeof hasInput === "function" ? hasInput : (id, port) => this.inputConnections.has(this.inputKey(id, port)),
+      hasInput: (id, port) => this.inputConnections.has(this.inputKey(id, port)),
       mixInput,
       nodeId,
     })
@@ -103,7 +128,8 @@ NodeLiveAudioProcessor.prototype.sineWavetableWorkletEvaluate = function sineWav
         ? nodeGraphPitchedFrequency(baseWithFreqJack, pitchCv, referenceVoltage)
         : Math.max(0, baseWithFreqJack * (2 ** ((pitchCv - referenceVoltage) / 0.1)))),
     );
-  let value;
+  const phaseIncrement = (effectiveFrequency / safeRate) + (Number(incrementInput) || 0);
+  let pair;
   if (
     this.nativeSineWavetableReady &&
     this.nativeSineWavetable?.soemdsp_sine_wavetable_create &&
@@ -123,12 +149,12 @@ NodeLiveAudioProcessor.prototype.sineWavetableWorkletEvaluate = function sineWav
           amplitude,
           safeRate,
         );
-        value = {
+        pair = {
           sin: this.nativeSineWavetable.soemdsp_sine_wavetable_sin(nativeState.nativeHandle),
           cos: this.nativeSineWavetable.soemdsp_sine_wavetable_cos(nativeState.nativeHandle),
         };
       } else {
-        throw new Error("native SinCos handle pool exhausted");
+        throw new Error("native sine wavetable handle pool exhausted");
       }
     } catch (error) {
       this.nativeSineWavetableReady = false;
@@ -136,18 +162,26 @@ NodeLiveAudioProcessor.prototype.sineWavetableWorkletEvaluate = function sineWav
         type: "nativeModuleStatus",
         name: "sine_wavetable",
         status: "disabled",
-        message: String(error?.message || error || "native SinCos failed"),
+        message: String(error?.message || error || "native sine wavetable failed"),
       });
     }
   }
-  if (!this.nativeSineWavetableReady) {
-    const phase = this.phases.get(nodeId) || 0;
-    const phaseIncrement = effectiveFrequency / safeRate;
-    value = nodeLiveSineCosWavetableSample(phase + phaseOffset, effectiveFrequency, amplitude, safeRate);
-    this.phases.set(
-      nodeId,
-      this.wrapValue(phase + Math.PI * 2 * phaseIncrement, 0, Math.PI * 2),
-    );
+  if (!pair) {
+    pair = nodeLiveSineCosWavetableSample(freePhase + phaseOffset, effectiveFrequency, amplitude, safeRate);
   }
-  return value;
+  this.phases.set(
+    nodeId,
+    this.wrapValue(freePhase + Math.PI * 2 * phaseIncrement, 0, Math.PI * 2),
+  );
+  return pair;
+};
+
+NodeLiveAudioProcessor.prototype.sineWavetableWorkletEvaluate = function sineWavetableWorkletEvaluate(node, nodeId, frame, frames, frameValues, mixInput, safeRate) {
+  const pair = this.sineWavetableAdvancePair(node, nodeId, frame, frames, frameValues, mixInput, safeRate);
+  const mode = this.readEffectiveParameter(node, "mode", 2, frame, frames, frameValues);
+  return nodeLiveSinCos4FromPair(pair.sin, pair.cos, mode);
+};
+
+NodeLiveAudioProcessor.prototype.sinCosWorkletEvaluate = function sinCosWorkletEvaluate(node, nodeId, frame, frames, frameValues, mixInput, safeRate) {
+  return this.sineWavetableAdvancePair(node, nodeId, frame, frames, frameValues, mixInput, safeRate);
 };

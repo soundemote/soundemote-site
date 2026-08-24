@@ -868,7 +868,7 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
         const midIn = mixInput(nodeId, "Mid");
         return this.quadratureFrame(state, sideIn, midIn);
       },
-      // Mono Hilbert (+90 / −90). Math: hilbert-math.js.
+      // Mono Hilbert (+90 / −90 / 0°). Math: hilbert-math.js.
       hilbert: (node, nodeId, frame, frames, frameValues, mixInput) => {
         if (!this.hilbertStates) {
           this.hilbertStates = new Map();
@@ -876,8 +876,7 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
         const state = this.hilbertStates.get(nodeId) || this.createHilbertState();
         this.hilbertStates.set(nodeId, state);
         const shift = this.readEffectiveParameter(node, "shift", 0, frame, frames, frameValues);
-        const sign = Number(shift) >= 1 ? -1 : 1;
-        return this.hilbertFrame(state, mixInput(nodeId), sign);
+        return this.hilbertFrame(state, mixInput(nodeId), shift);
       },
       // Look-ahead brickwall limiter (delay = LA, no host PDC). Math: lookahead-limiter-math.js.
       lookaheadLimiter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
@@ -1290,6 +1289,8 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
         this.gradientVectorscopeSample(mixInput, nodeId),
       traceXyz: (node, nodeId, frame, frames, frameValues, mixInput) =>
         this.traceXyzSample(mixInput, nodeId),
+      traceRgb: (node, nodeId, frame, frames, frameValues, mixInput) =>
+        this.traceRgbSample(mixInput, nodeId),
       stepGrid: (node, nodeId, frame, frames, frameValues, mixInput) => {
         const state = this.stepGridStates.get(nodeId) || this.createStepGridState();
         this.stepGridStates.set(nodeId, state);
@@ -1469,8 +1470,22 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
         Left: this.safeFilterNumber(mixInput(nodeId, "Left"), null),
         Right: this.safeFilterNumber(mixInput(nodeId, "Right"), null),
       }),
+      traceDisplayXyz: (node, nodeId, frame, frames, frameValues, mixInput) => ({
+        X: this.safeFilterNumber(mixInput(nodeId, "X"), null),
+        Y: this.safeFilterNumber(mixInput(nodeId, "Y"), null),
+        Z: this.safeFilterNumber(mixInput(nodeId, "Z"), null),
+      }),
       dotOscilloscope: (node, nodeId, frame, frames, frameValues, mixInput) => ({
         Thru: this.safeFilterNumber(mixInput(nodeId, "In"), null),
+      }),
+      vectorDot: (node, nodeId, frame, frames, frameValues, mixInput) => ({
+        Thru: this.safeFilterNumber(mixInput(nodeId, "In"), null),
+      }),
+      lcdDot: (node, nodeId, frame, frames, frameValues, mixInput) => ({
+        Thru: this.safeFilterNumber(mixInput(nodeId, "In"), null),
+      }),
+      led: (node, nodeId, frame, frames, frameValues, mixInput) => ({
+        Out: this.safeFilterNumber(mixInput(nodeId, "In"), null),
       }),
       videoscope: (node, nodeId, frame, frames, frameValues, mixInput) => ({
         Thru: this.safeFilterNumber(mixInput(nodeId, "A"), null),

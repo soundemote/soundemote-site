@@ -4,6 +4,8 @@
 
 const NODE_GRAPH_TEXT_BOX_DISPLAY_SLIDER_FIELDS = Object.freeze([
   "textSizePercent",
+  "textWeight",
+  "lineHeight",
   "verticalAlignPercent",
 ]);
 
@@ -18,7 +20,13 @@ function nodeGraphTextBoxDisplaySliderDefaults() {
     ? normalizeNodeGraphTextBoxLayout()
     : {
       textSizePercent: 100,
-      verticalAlignPercent: 0,
+      textWeight: typeof NODE_GRAPH_TEXT_BOX_DEFAULT_TEXT_WEIGHT === "number"
+        ? NODE_GRAPH_TEXT_BOX_DEFAULT_TEXT_WEIGHT
+        : 400,
+      lineHeight: typeof NODE_GRAPH_TEXT_BOX_DEFAULT_LINE_HEIGHT === "number"
+        ? NODE_GRAPH_TEXT_BOX_DEFAULT_LINE_HEIGHT
+        : 1.2,
+      verticalAlignPercent: 50,
     };
 }
 
@@ -26,6 +34,9 @@ function buildNodeGraphTextBoxDisplaySettingsBodyHtml() {
   const colorRow = typeof nodeGraphDisplaySettingsBuildColorRowHtml === "function"
     ? nodeGraphDisplaySettingsBuildColorRowHtml
     : () => "";
+  const fontOptions = typeof nodeGraphAppFontOptionsHtml === "function"
+    ? nodeGraphAppFontOptionsHtml()
+    : "";
   return `
     <div class="node-led-display-settings-panel" data-textbox-display-settings-panel>
       <div class="node-led-settings-row" role="group" aria-label="Text mode">
@@ -39,15 +50,31 @@ function buildNodeGraphTextBoxDisplaySettingsBodyHtml() {
         <button type="button" data-textbox-align="center" aria-pressed="true">Center</button>
         <button type="button" data-textbox-align="right" aria-pressed="false">Right</button>
       </div>
+      <label class="node-led-settings-row" data-trace-display-choice-row="font">
+        <span>Font</span>
+        <select data-trace-display-choice="font" data-textbox-font aria-label="Text box font">
+          ${fontOptions}
+        </select>
+      </label>
       <label class="node-led-settings-row">
         <span>Vertical</span>
-        <input type="range" min="-100" max="100" step="1" data-textbox-field="verticalAlignPercent" aria-label="Vertical position −100–100">
+        <input type="range" min="0" max="100" step="1" data-textbox-field="verticalAlignPercent" aria-label="Vertical position: 0 up, 50 natural, 100 down (±2 face heights)">
         <span>%</span>
       </label>
       <label class="node-led-settings-row">
         <span>Size</span>
         <input type="range" min="50" max="1000" step="10" data-textbox-field="textSizePercent" aria-label="Text size 50–1000 percent">
         <span>%</span>
+      </label>
+      ${typeof nodeGraphAppFontWeightSettingsRowHtml === "function"
+        ? nodeGraphAppFontWeightSettingsRowHtml("data-textbox-field")
+        : `<label class="node-led-settings-row">
+        <span>Boldness</span>
+        <input type="range" min="100" max="900" step="100" data-textbox-field="textWeight" aria-label="Font weight 100–900">
+      </label>`}
+      <label class="node-led-settings-row">
+        <span>Line height</span>
+        <input type="range" min="0.5" max="3" step="0.05" data-textbox-field="lineHeight" aria-label="Newline vertical spacing 0.5–3">
       </label>
       ${colorRow("backgroundColor", "textBoxFace")}
       ${colorRow("textColor", "textBoxFace")}
@@ -78,6 +105,13 @@ function syncNodeGraphTextBoxDisplaySettingsControls(root, settings) {
     button.classList.toggle("active", on);
     button.setAttribute("aria-pressed", String(on));
   }
+  const font = root.querySelector?.(`[data-trace-display-choice="font"], [data-textbox-font]`);
+  if (font) {
+    const fallback = typeof NODE_GRAPH_TEXT_BOX_DEFAULT_FONT === "string"
+      ? NODE_GRAPH_TEXT_BOX_DEFAULT_FONT
+      : "cascadia-mono";
+    font.value = String(settings.font || fallback);
+  }
 }
 
 function bindNodeGraphTextBoxDisplaySettingsBody(host) {
@@ -99,7 +133,10 @@ function bindNodeGraphTextBoxDisplaySettingsBody(host) {
     }
   });
   host.addEventListener("change", (event) => {
-    if (event.target?.closest?.("[data-textbox-field]")) {
+    if (
+      event.target?.closest?.("[data-textbox-field]")
+      || event.target?.closest?.(`[data-trace-display-choice="font"], [data-textbox-font]`)
+    ) {
       apply("immediate", true);
     }
   });

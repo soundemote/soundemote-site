@@ -84,23 +84,30 @@ async function initNodeGraphMvp() {
   scheduleNodeMetadataScriptParserSelfTestStatus();
   renderNodeGraphModuleScopeBrightnessControl();
   renderNodeGraphSnapGridButton();
-  // Refresh / cold boot: diagnostics always start hidden (never restored).
-  // Same in debug and release builds — UX must not default to developer chrome.
-  if (typeof hideNodeGraphDebugChrome === "function") {
-    hideNodeGraphDebugChrome();
-  } else {
-    nodeGraphMvp.keyboardDebugInfoVisible = false;
+  if (typeof renderNodeGraphKeyboardDebugToggle === "function") {
     renderNodeGraphKeyboardDebugToggle();
+  }
+  if (typeof renderNodeGraphConstraintGuide === "function") {
+    renderNodeGraphConstraintGuide();
+  }
+  if (typeof applyNodeGraphConstraintToggles === "function") {
+    applyNodeGraphConstraintToggles(nodeGraphMvp?.constraintToggles, { persist: false });
   }
   renderNodeGraphSliderVisibilityToggles();
   renderNodeGraphSliderLayout();
   ensureNodeGraphStartupModulesVisible();
+  if (typeof applyNodeGraphSessionSelection === "function") {
+    applyNodeGraphSessionSelection();
+  }
   if (typeof applyNodeGraphWorkspaceWindowStates === "function") {
     applyNodeGraphWorkspaceWindowStates();
   }
   renderNodeGraphStandaloneMidiKeyboardToggle();
   if (typeof applyNodeGraphTooltipEmbed === "function") {
-    applyNodeGraphTooltipEmbed();
+    applyNodeGraphTooltipEmbed({
+      shown: nodeGraphMvp.tooltipEmbedded !== false,
+      persist: false,
+    });
   }
   renderNodeGraphTooltipWindowToggle();
   if (typeof ensureNodeGraphWorkspaceWireLayoutObserver === "function") {

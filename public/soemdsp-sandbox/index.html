@@ -4,11 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>soemdsp-sandbox</title>
+  <link rel="icon" href="./public/favicon.svg?v=ico-1" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders:wght@100..900&family=Poiret+One&family=Tenor+Sans&family=Thasadith:ital,wght@0,400;0,700;1,400;1,700&family=Zen+Loop&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./public/styles.css?v=waveplay-skip-1">
-  <link rel="stylesheet" href="./public/modules/portal/portal-ui.css?v=portal-io-1">
+  <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders:wght@100..900&family=JetBrains+Mono:wght@400;500;600;700&family=Poiret+One&family=Tenor+Sans&family=Thasadith:ital,wght@0,400;0,700;1,400;1,700&family=Zen+Loop&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./public/styles.css?v=wire-endpoint-1">
+  <link rel="stylesheet" href="./public/modules/portal/portal-ui.css?v=input-outlet-1">
   <link rel="stylesheet" href="./public/modules/keypad/keypad-ui.css?v=keypad-press-once-1">
   <link rel="stylesheet" href="./public/modules/patch/patch-ui.css?v=patch-face-1">
   <link rel="stylesheet" href="./public/modules/stepGrid/step-grid.css?v=module-bottom-inset-half-1">
@@ -373,6 +374,10 @@
               <span class="node-tooltip-mode-label">📌 Tooltips docked</span>
               <kbd>T</kbd>
             </button>
+            <button id="nodeAppChromeBarsToggleButton" type="button" role="menuitem" aria-pressed="true">
+              <span>🪟 App Bars</span>
+              <kbd>V</kbd>
+            </button>
             <button id="nodeGridToggleButton" type="button" role="menuitem" aria-pressed="false">⬛ Grid</button>
             <button id="nodeGridLightToggleButton" type="button" role="menuitem" aria-pressed="true">💡 Grid Light</button>
             <button id="nodeWireLengthsToggleButton" type="button" role="menuitem" aria-pressed="true">🧬 Wire Lengths</button>
@@ -423,6 +428,7 @@
           <div class="node-hotkeys-row"><kbd>D</kbd><span>Debug</span></div>
           <div class="node-hotkeys-row"><kbd>K</kbd><span>Controllers</span></div>
           <div class="node-hotkeys-row"><kbd>F</kbd><span>Fullscreen selected screens (fit / stretch / off)</span></div>
+          <div class="node-hotkeys-row"><kbd>Z</kbd><span>Center view on modules (selection, else all) at current zoom</span></div>
           <div class="node-hotkeys-row"><kbd>?</kbd><span>Command Center</span></div>
           <div class="node-hotkeys-row"><kbd>Space</kbd><span>Pause / play</span></div>
           <div class="node-hotkeys-row"><kbd>Alt</kbd><span>+ click enables or disables a module</span></div>
@@ -473,12 +479,9 @@
         aria-hidden="true"></div>
 
       <div class="node-help-stack">
-        <!-- Embedded tips land here: same in-flow band as the CPU/RAM/GPU
-             guide below, so they take real layout space instead of floating
-             over the patch. #nodeInteractionHelp is MOVED into this slot and
-             back out again - there is only ever one of it, which is what lets
-             setNodeInteractionHelp keep working by id regardless of mode.
-             Resize handle between this tips band and the modular workspace. -->
+        <!-- Tips + CPU/RAM/GPU meters overlay the workspace. They must not
+             change #nodeGraphWorkspace size (that used to pin-camera / pan /
+             remesh wires / heatmap / scopes). One #nodeInteractionHelp by id. -->
         <div id="nodeInteractionHelpEmbedSlot" class="node-interaction-help-embed-slot">
           <div id="nodeInteractionHelp" class="node-interaction-help is-embedded" role="status" aria-live="polite"></div>
           <button
@@ -495,9 +498,8 @@
               <strong>CPU</strong>
             </label>
             <span id="nodeScopeCpuMetrics" class="node-constraint-metrics node-scope-cpu-metrics" aria-live="polite">
-              <span>main fps <strong data-scope-cpu-metric="fps">--.-</strong></span>
-              <span>lag <strong data-scope-cpu-metric="lag">--.-</strong>ms</span>
-              <span class="node-scope-resource-debug" data-scope-cpu-debug="summary">cpu debug --</span>
+              <span data-tooltip-key="constraints.cpuBusy">CPU <strong data-scope-cpu-metric="busy">--</strong>%</span>
+              <span data-tooltip-key="constraints.cpuFps"><strong data-scope-cpu-metric="fps">--</strong> fps</span>
             </span>
           </span>
           <span class="node-constraint-stack" data-constraint-stack="ram">
@@ -506,9 +508,7 @@
               <strong>RAM</strong>
             </label>
             <span id="nodeScopeRamMetrics" class="node-constraint-metrics node-scope-ram-metrics" aria-live="polite">
-              <span>heap <strong data-scope-ram-metric="used">----</strong>mb</span>
-              <span>limit <strong data-scope-ram-metric="limit">----</strong>mb</span>
-              <span class="node-scope-resource-debug" data-scope-ram-debug="summary">ram debug --</span>
+              <span data-tooltip-key="constraints.ramUsed">RAM <strong data-scope-ram-metric="used">--</strong> MB</span>
             </span>
           </span>
           <span class="node-constraint-stack" data-constraint-stack="gpu">
@@ -517,9 +517,9 @@
               <strong>GPU</strong>
             </label>
             <span id="nodeScopeGpuMetrics" class="node-constraint-metrics node-scope-gpu-metrics" aria-live="polite">
-              <span>display fps <strong data-scope-gpu-metric="fps">--</strong></span>
-              <span>points <strong data-scope-gpu-metric="points">--</strong></span>
-              <span class="node-scope-resource-debug node-scope-gpu-debug" data-scope-gpu-debug="summary">debug --</span>
+              <span data-tooltip-key="constraints.gpuFps">GPU <strong data-scope-gpu-metric="fps">--</strong> fps</span>
+              <span data-tooltip-key="constraints.gpuSurfaces"><strong data-scope-gpu-metric="contexts">--</strong> surfaces</span>
+              <span data-tooltip-key="constraints.gpuPoints"><strong data-scope-gpu-metric="points">--</strong> stamps</span>
             </span>
           </span>
         </div>
@@ -1225,6 +1225,14 @@
               <output id="nodeUiDevModuleStrokeThicknessValue" for="nodeUiDevModuleStrokeThickness">3px</output>
             </div>
           </label>
+          <label class="node-ui-dev-check">
+            <input
+              id="nodeUiDevModuleStrokesFixed"
+              type="checkbox"
+              checked
+              title="On: idle + selected module strokes stay constant screen pixels at every zoom (1px = 1 CSS px). Off: strokes scale with workspace zoom.">
+            <span>module strokes fixed</span>
+          </label>
           <label class="node-ui-dev-color-control">
             <span>module stroke rgba</span>
             <input id="nodeUiDevModuleStrokeColor" type="color" value="#a19b9b">
@@ -1281,10 +1289,38 @@
                 id="nodeUiDevInletOutletSize"
                 type="range"
                 min="20"
-                max="100"
+                max="90"
                 step="1"
                 value="52">
               <output id="nodeUiDevInletOutletSizeValue" for="nodeUiDevInletOutletSize">52%</output>
+            </div>
+          </label>
+          <label class="node-ui-dev-control">
+            <span>inlet outlet stroke thickness</span>
+            <div class="node-ui-dev-control-row">
+              <input
+                id="nodeUiDevInletOutletStrokeThickness"
+                type="range"
+                min="0"
+                max="8"
+                step="0.05"
+                value="1.25"
+                title="Crescent stroke width in world px — scales with zoom (not screen-fixed)">
+              <output id="nodeUiDevInletOutletStrokeThicknessValue" for="nodeUiDevInletOutletStrokeThickness">1.25px</output>
+            </div>
+          </label>
+          <label class="node-ui-dev-control">
+            <span>inlet outlet gap</span>
+            <div class="node-ui-dev-control-row">
+              <input
+                id="nodeUiDevInletOutletGap"
+                type="range"
+                min="0"
+                max="32"
+                step="1"
+                value="0"
+                title="Vertical space between stacked jacks in the I/O section">
+              <output id="nodeUiDevInletOutletGapValue" for="nodeUiDevInletOutletGap">0px</output>
             </div>
           </label>
           <label class="node-ui-dev-control">
@@ -1337,8 +1373,8 @@
                 min="0"
                 max="1"
                 step="0.01"
-                value="0.40">
-              <output id="nodeUiDevUnusedPortBrightnessValue" for="nodeUiDevUnusedPortBrightness">0.40</output>
+                value="0.68">
+              <output id="nodeUiDevUnusedPortBrightnessValue" for="nodeUiDevUnusedPortBrightness">0.68</output>
             </div>
           </label>
           <label class="node-ui-dev-color-control">
@@ -1380,6 +1416,34 @@
               type="checkbox"
               title="Skip the mid-cable opacity dip so strokes stay solid.">
             <span>fully opaque wires</span>
+          </label>
+          <label class="node-ui-dev-control">
+            <span>wire thickness</span>
+            <div class="node-ui-dev-control-row">
+              <input
+                id="nodeUiDevWireThickness"
+                type="range"
+                min="0.25"
+                max="12"
+                step="0.05"
+                value="3.5"
+                title="Cable stroke width in world px — independent of inlet/outlet size">
+              <output id="nodeUiDevWireThicknessValue" for="nodeUiDevWireThickness">3.5px</output>
+            </div>
+          </label>
+          <label class="node-ui-dev-control">
+            <span>wire endpoint size</span>
+            <div class="node-ui-dev-control-row">
+              <input
+                id="nodeUiDevWirePatchPointSize"
+                type="range"
+                min="0"
+                max="200"
+                step="1"
+                value="54"
+                title="Connection dot diameter as % of inlet/outlet size">
+              <output id="nodeUiDevWirePatchPointSizeValue" for="nodeUiDevWirePatchPointSize">54%</output>
+            </div>
           </label>
           <label class="node-ui-dev-control">
             <span>trace wire thickness</span>
@@ -2194,14 +2258,15 @@
           </div>
         </div>
         <label id="nodeSceneTextBoxVerticalAlignControls" class="scene-context-range-control" hidden>
-          <span>vertical position <output id="nodeSceneTextBoxVerticalAlignValue">0%</output></span>
+          <span>vertical position <output id="nodeSceneTextBoxVerticalAlignValue">50%</output></span>
           <input
             id="nodeSceneTextBoxVerticalAlign"
             type="range"
-            min="-100"
+            min="0"
             max="100"
             step="1"
-            value="0">
+            value="50"
+            title="0 = text center at top edge, 50 = centered, 100 = text center at bottom edge">
         </label>
         <div id="nodeSceneCodeGroup" class="scene-context-button-group" role="group" hidden>
           <button id="nodeSceneOpenNativeCode" type="button" role="menuitem">
@@ -2603,6 +2668,7 @@
 
       <h2 id="audioTitle" hidden></h2>
 
+      <div id="nodeBottomStack" class="node-bottom-stack">
       <div
         id="nodeStandaloneMidiKeyboardDock"
         class="node-standalone-midi-keyboard-dock node-controller-dock"
@@ -2698,7 +2764,7 @@
         </div>
         <div class="node-render-duration-control" id="nodeRenderDurationControl">
           <button id="nodeRenderButton" type="button"><span>Render</span><span>Sample</span></button>
-          <button id="nodeDownloadSampleButton" type="button" draggable="true" title="Download rendered sample. Drag onto the modular area to spawn a stereo Sample Player."><span>Download</span><span>Sample</span></button>
+          <button id="nodeDownloadSampleButton" type="button" draggable="true" title="Download rendered sample. Drag onto the modular area to spawn a stereo Sample Player." aria-label="Download rendered sample"><span class="node-modular-view-icon" aria-hidden="true">⬇️</span></button>
         </div>
         <div class="node-patch-audio-player-row">
           <!-- Hidden playback engine: everything that used to feed the native
@@ -2751,6 +2817,7 @@
         <button id="nodeDeleteButton" class="node-debug-only" type="button" disabled>Delete Selection</button>
         <button id="toggleDebugButton" class="node-debug-only" type="button" aria-pressed="false">Show Evidence</button>
       </div>
+      </div>
 
       <div
         id="nodeParameterMetadataPopover"
@@ -2795,6 +2862,14 @@
           </label>
           <div class="metadata-section-title">Range</div>
           <div class="metadata-field-section metadata-range-section">
+            <label data-tooltip-key="parameterSettings.default">
+              <span>DEFAULT</span>
+              <span class="metadata-stepper-control">
+                <button type="button" data-metadata-step-target="metadataDefaultValue" data-metadata-step-direction="-1">-</button>
+                <input id="metadataDefaultValue" type="text" inputmode="decimal">
+                <button type="button" data-metadata-step-target="metadataDefaultValue" data-metadata-step-direction="1">+</button>
+              </span>
+            </label>
             <label>
               <span>MAX</span>
               <span class="metadata-stepper-control">
@@ -2819,14 +2894,6 @@
                 <button type="button" data-metadata-step-target="metadataMinValue" data-metadata-step-direction="1">+</button>
               </span>
             </label>
-            <label data-tooltip-key="parameterSettings.default">
-              <span>DEFAULT</span>
-              <span class="metadata-stepper-control">
-                <button type="button" data-metadata-step-target="metadataDefaultValue" data-metadata-step-direction="-1">-</button>
-                <input id="metadataDefaultValue" type="text" inputmode="decimal">
-                <button type="button" data-metadata-step-target="metadataDefaultValue" data-metadata-step-direction="1">+</button>
-              </span>
-            </label>
             <label data-tooltip-key="parameterSettings.step">
               <span>STEP</span>
               <span class="metadata-stepper-control">
@@ -2836,7 +2903,7 @@
               </span>
             </label>
             <label class="metadata-curve-label" data-tooltip-key="parameterSettings.skew">
-              <span>SKEW</span>
+              <span>CURVE</span>
               <select id="metadataSliderCurveValue">
                 <option value="linear">off</option>
                 <option value="skew">mid skew</option>
@@ -2847,13 +2914,13 @@
               <input id="metadataNonlinearSliderValue" type="checkbox" hidden tabindex="-1" aria-hidden="true">
             </label>
             <label id="metadataCurveSensitivityLabel" class="metadata-curve-sensitivity-label" data-tooltip-key="parameterSettings.skewSensitivity" title="Used by custom skew and edge skew. Hidden for off and mid skew.">
-              <span class="metadata-curve-sensitivity-heading">SENSITIVITY</span>
+              <span class="metadata-curve-sensitivity-heading">SKEW</span>
               <span class="metadata-stepper-control">
                 <button type="button" data-metadata-step-target="metadataCurveSensitivityValue" data-metadata-step-direction="-1" data-tooltip-key="parameterSettings.skewSensitivity">-</button>
                 <input id="metadataCurveSensitivityValue" type="text" inputmode="decimal" data-tooltip-key="parameterSettings.skewSensitivity" data-metadata-clamp-min="-1" data-metadata-clamp-max="1" aria-valuemin="-1" aria-valuemax="1">
                 <button type="button" data-metadata-step-target="metadataCurveSensitivityValue" data-metadata-step-direction="1" data-tooltip-key="parameterSettings.skewSensitivity">+</button>
               </span>
-              <span id="metadataCurveSensitivityHint" class="metadata-curve-sensitivity-hint">0:linear, +1:fine near min, -1:fine near max</span>
+              <span id="metadataCurveSensitivityHint" class="metadata-curve-sensitivity-hint">0 is linear | +1 fine near MIN | −1 fine near MAX</span>
             </label>
           </div>
           <div class="metadata-section-title">Fields</div>
@@ -2869,11 +2936,11 @@
                 <button type="button" data-metadata-step-target="metadataMaxDigitsValue" data-metadata-step-direction="1">+</button>
               </span>
             </label>
-            <label class="metadata-full-row" data-tooltip-key="parameterSettings.smoothingSeconds">
-              <span>SMOOTHING TIME (s)</span>
+            <label data-tooltip-key="parameterSettings.smoothingSeconds">
+              <span>SMOOTH (S)</span>
               <span class="metadata-stepper-control">
                 <button type="button" data-metadata-step-target="metadataSmoothingSecondsValue" data-metadata-step-direction="-1">-</button>
-                <input id="metadataSmoothingSecondsValue" type="text" inputmode="decimal" placeholder="0.000">
+                <input id="metadataSmoothingSecondsValue" type="text" inputmode="decimal" placeholder="0.000" data-metadata-clamp-min="0">
                 <button type="button" data-metadata-step-target="metadataSmoothingSecondsValue" data-metadata-step-direction="1">+</button>
               </span>
             </label>
@@ -3510,14 +3577,15 @@
   <script src="./public/node-graph-emoji-page.js?v=emoji-glow-1"></script>
   <script src="./public/node-graph-file-actions.js?v=copy-no-confirm-1"></script>
   <script src="./public/node-graph-default-buttons.js?v=patch-save-refresh-1"></script>
-  <script src="./public/node-graph-cookbook-filter.js?v=screen-f-2"></script>
+  <script src="./public/node-graph-cookbook-filter.js?v=basic-face-1"></script>
   <script src="./public/node-graph-papoulis-filter.js?v=mouse-smooth-1"></script>
   <script src="./public/node-graph-phosphor-draw-sample.js?v=phosphor-draw-sample-1"></script>
   <script src="./public/node-graph-color-standards.js?v=color-standards-1"></script>
   <script src="./public/node-graph-chromeless-module-registry.js?v=unique-in-patch-1"></script>
   <script src="./public/node-graph-module-chrome.js?v=height-ssot-2"></script>
-  <script src="./public/modules/led/led-register.js?v=led-lamp-1"></script>
-  <script src="./public/modules/rgbShape/rgb-shape-register.js?v=rgb-shape-1"></script>
+  <script src="./public/modules/led/led-register.js?v=led-lcd-update-1"></script>
+  <script src="./public/modules/lcdDot/lcd-dot-register.js?v=led-lcd-update-1"></script>
+  <script src="./public/modules/rgbShape/rgb-shape-register.js?v=clock-range-1"></script>
   <script src="./public/modules/rgbPicture/rgb-picture-register.js?v=rgb-picture-1"></script>
   <script src="./public/modules/rgbFractal/rgb-fractal-register.js?v=soft-structure-1"></script>
   <script src="./public/modules/evolveField/evolve-field-register.js?v=evolve-field-uc-1"></script>
@@ -3525,123 +3593,129 @@
   <script src="./public/modules/bugButton/bug-button-register.js?v=bug-button-io-order-20260724"></script>
   <script src="./public/modules/xyPad/xy-pad-dsp.js?v=xy-amp-xy-1"></script>
   <script src="./public/modules/xyPad/xy-pad-register.js?v=xy-amp-xy-1"></script>
-  <script src="./public/modules/numberReadout/number-readout-register.js?v=arrow-io-1"></script>
-    <script src="./public/modules/valueLcd/value-lcd-register.js?v=arrow-io-1"></script>
+  <script src="./public/modules/numberReadout/number-readout-register.js?v=led-lcd-update-1"></script>
+    <script src="./public/modules/valueLcd/value-lcd-register.js?v=led-lcd-update-1"></script>
 <script src="./public/modules/rayBouncer/ray-bouncer-register.js?v=ray-bouncer-solid-1"></script>
   <script src="./public/modules/stepGrid/step-grid-register.js?v=stepgrid-variable-steps-20260715"></script>
   <script src="./public/modules/keypad/keypad-register.js?v=keypad-index-hover-2"></script>
   <script src="./public/modules/groupInput/group-input-register.js?v=chromeless-portals-1"></script>
   <script src="./public/modules/groupOutput/group-output-register.js?v=chromeless-portals-1"></script>
-  <script src="./public/modules/portal/portal-lanes.js?v=thru-1"></script>
-  <script src="./public/modules/portal/portal-inlet-register.js?v=portal-lanes-1"></script>
-  <script src="./public/modules/portal/portal-outlet-register.js?v=portal-lanes-1"></script>
+  <script src="./public/modules/portal/portal-lanes.js?v=input-outlet-1"></script>
+  <script src="./public/modules/portal/portal-inlet-register.js?v=input-outlet-1"></script>
+  <script src="./public/modules/portal/portal-outlet-register.js?v=input-outlet-1"></script>
   <script src="./public/modules/simulationTime/simulation-time-register.js?v=sim-time-1"></script>
   <script src="./public/modules/patch/patch-register.js?v=patch-buttons-on-1"></script>
-  <script src="./public/node-graph-module-definitions.js?v=transport-master-1"></script>
+  <script src="./public/node-graph-module-definitions.js?v=io-gap0-clip-bleed-1"></script>
   <script src="./public/node-graph-plan-roles.js?v=plan-roles-b0"></script>
   <script src="./public/node-graph-module-controls.js?v=speed-limit-runtime-only-1"></script>
   <script src="./public/node-graph-data-bus.js?v=data-plane-merge-20260711"></script>
-  <script src="./public/node-graph-module-store.js?v=uc-plans-shader-1"></script>
-  <script src="./public/node-graph-module-sizing.js?v=eq-curve-3"></script>
-  <script src="./public/node-graph-metadata-kinds.js?v=param-meta-ui-1"></script>
-  <script src="./public/node-graph-parameter-smoother-filters.js?v=planck-eps-1"></script>
-  <script src="./public/node-graph-parameter-metadata.js?v=pixel-grid-wh-1"></script>
+  <script src="./public/node-graph-module-store.js?v=oms-rename-1"></script>
+  <script src="./public/node-graph-module-sizing.js?v=basic-shape-lip-1"></script>
+  <script src="./public/node-graph-metadata-kinds.js?v=param-sens-hint-1"></script>
+  <script src="./public/node-graph-parameter-smoother-filters.js?v=unpark-types-1"></script>
+  <script src="./public/node-graph-parameter-metadata.js?v=constraints-1"></script>
   <script src="./public/node-graph-metadata-defaults.js?v=decimal-template-1"></script>
-  <script src="./public/node-graph-text-box-utils.js?v=textbox-vert-neg-2"></script>
+  <script src="./public/node-graph-app-fonts.js?v=font-weight-shared-1"></script>
+  <script src="./public/node-graph-text-box-utils.js?v=textbox-vertical-simple-1"></script>
   <script src="./public/node-graph-port-script.js?v=nuke-scriptbox-20260719"></script>
   <script src="./public/node-graph-image-utils.js?v=keypad-bgi-1"></script>
   <script src="./public/node-graph-graph-utils.js?v=graph-settings-list-1"></script>
-  <script src="./public/node-graph-samples.js?v=mp-lib-100-1"></script>
-  <script src="./public/modules/audioPlayer/audio-player-library.js?v=waveplay-skip-1"></script>
-  <script src="./public/modules/audioPlayer/audio-player-playlist.js?v=waveplay-skip-1"></script>
-  <script src="./public/node-graph-phosphor-waveform.js?v=wave-zoom-2"></script>
+  <script src="./public/node-graph-samples.js?v=mp-stutter-1"></script>
+  <script src="./public/modules/audioPlayer/audio-player-library.js?v=mp-stutter-1"></script>
+  <script src="./public/modules/audioPlayer/audio-player-playlist.js?v=mp-ignore-info-1"></script>
+  <script src="./public/node-graph-phosphor-waveform.js?v=mp-ui-trim-1"></script>
   <script src="./public/node-graph-stdlib/node-graph-phasor-helpers.js?v=phasor-helpers-1"></script>
   <script src="./public/node-graph-stdlib/node-graph-param-surface-helpers.js?v=curve-min-1"></script>
   <script src="./public/node-graph-musical-engines.js?v=musical-engines-1"></script>
   <script src="./public/node-graph-phosphillator.js?v=phasor-stdlib-1"></script>
   <script src="./public/node-graph-embed-config.js?v=embed-config-20260701"></script>
   <script src="./public/node-graph-resources.js?v=embed-config-20260701"></script>
-  <script src="./public/modules/textBox/text-box-widget.js?v=textbox-caret-click-1"></script>
+  <script src="./public/modules/textBox/text-box-widget.js?v=textbox-vertical-simple-1"></script>
   <script src="./public/modules/textBox/text-box-animated.js?v=title-label-1"></script>
-  <script src="./public/modules/textBox/text-box-host.js?v=rclick-keep-sel-1"></script>
-  <script src="./public/modules/textBox/text-box-settings.js?v=textbox-vert-neg-2"></script>
+  <script src="./public/modules/textBox/text-box-host.js?v=textbox-lineheight-fix-1"></script>
+  <script src="./public/modules/textBox/text-box-settings.js?v=textbox-vertical-simple-1"></script>
   <script src="./public/node-graph-text-box-rendering.js?v=textbox-light-50-1"></script>
-  <script src="./public/node-graph-patch-normalizers.js?v=ready-lock-hide-1"></script>
+  <script src="./public/node-graph-patch-normalizers.js?v=tooltip-persist-1"></script>
   <script src="./public/node-graph-audio-derivation.js?v=sr-info-1"></script>
   <script src="./public/node-graph-grid-utils.js?v=center-origin-view-1"></script>
   <script src="./public/node-graph-patch-runtime.js?v=speed-limit-project-1"></script>
   <script src="./public/node-graph-code-screen-model.js?v=code-screen-1"></script>
   <!-- Code Screen UI is a satellite (CORE_REDUCTION_PLAN.md); loaded on demand. -->
   <script src="./public/node-graph-code-screen-loader.js?v=no-script-hl-1"></script>
-  <script src="./public/node-graph-patch-serialization.js?v=no-audio-dataurl-1"></script>
+  <script src="./public/node-graph-patch-serialization.js?v=pl-persist-slim-1"></script>
   <script src="./public/node-graph-settings-fields.js?v=slider-unit-color-1780307400000"></script>
   <script src="./public/node-graph-settings-view.js?v=eff-pass-1"></script>
   <script src="./public/node-graph-settings-text-fit.js?v=title-label-1"></script>
   <script src="./public/node-graph-default-preset.js?v=embed-config-20260701"></script>
   <script src="./public/node-graph-script-status.js?v=book-ui-script-1"></script>
-  <script src="./public/node-graph-view-controls.js?v=controller-grow-up-1"></script>
-  <script src="./public/node-graph-workspace-geometry.js?v=pan-transform-1"></script>
-  <script src="./public/node-graph-viewport-perf.js?v=zoom-hide-jacks-1"></script>
-  <script src="./public/node-graph-workspace-zoom.js?v=smooth-zoom-pin-1"></script>
+  <script src="./public/node-graph-view-controls.js?v=sim-fps-lcd-1"></script>
+  <script src="./public/node-graph-workspace-geometry.js?v=wf-gl-1"></script>
+  <script src="./public/node-graph-viewport-perf.js?v=wf-gl-1"></script>
+  <script src="./public/node-graph-workspace-zoom.js?v=center-z-1"></script>
   <script src="./public/node-graph-workspace-view.js?v=pan-log-1"></script>
-  <script src="./public/node-graph-camera-view.js?v=hitpoint-select-1"></script>
-  <script src="./public/node-graph-marquee-selection.js?v=toolbar-fill-1"></script>
-  <script src="./public/node-graph-node-dragging.js?v=ready-lock-hide-1"></script>
-  <script src="./public/node-graph-context-menu.js?v=portal-mag-ports-1"></script>
-  <script src="./public/node-graph-magnifier.js?v=wheel-zoom-size-1"></script>
+  <script src="./public/node-graph-camera-view.js?v=mag-trace-2"></script>
+  <script src="./public/node-graph-marquee-selection.js?v=snake-shift-ink-1"></script>
+  <script src="./public/node-graph-node-dragging.js?v=plugin-btn-hit-1"></script>
+  <script src="./public/node-graph-context-menu.js?v=basic-face-1"></script>
+  <script src="./public/node-graph-magnifier.js?v=mag-trace-2"></script>
   <script src="./public/node-graph-module-actions.js?v=eff-pass-1"></script>
   <!-- node-graph-code-screen.js loaded by node-graph-code-screen-loader.js on demand -->
-  <script src="./public/lib/phosphor/phosphor-residual.js?v=trail-0-ghost-1"></script>
-  <script src="./public/lib/phosphor/phosphor-energy-gl.js?v=burn-amount-1"></script>
-  <script src="./public/lib/phosphor/phosphor-drawer.js?v=burn-sticky-1"></script>
+  <script src="./public/lib/phosphor/phosphor-residual.js?v=c1091b4"></script>
+  <script src="./public/lib/phosphor/phosphor-energy-gl.js?v=ui-improvements-1"></script>
+  <script src="./public/lib/phosphor/phosphor-drawer.js?v=tape-rgb-1"></script>
   <script src="./public/node-graph-phosphor-energy-gl.js?v=burn-sticky-1"></script>
-  <script src="./public/lib/trace/trace-stroke.js?v=trace-fade-1"></script>
-  <script src="./public/lib/trace/trace-waveform.js?v=trace-time-axis-1"></script>
-  <script src="./public/lib/trace/trace-history-draw.js?v=trace-fade-1"></script>
+  <script src="./public/lib/trace/trace-stroke.js?v=wf-meet-hard-1"></script>
+  <script src="./public/lib/trace/trace-woscope.js?v=woscope-persist-1"></script>
+  <script src="./public/lib/trace/trace-waveform.js?v=trace-line-1"></script>
+  <script src="./public/lib/trace/trace-history-draw.js?v=rbg-meet-1"></script>
+  <script src="./public/lib/trace/trace-tape.js?v=wf-gl-9"></script>
+  <script src="./public/lib/trace/trace-shape.js?v=heart-ssot-1"></script>
+  <script src="./public/lib/trace/trace-dot-sprite.js?v=heart-ssot-1"></script>
   <script src="./public/node-graph-phosphor-gaussian-drawer.js?v=gaussian-beam-continuous-1"></script>
   <script type="module" src="./public/color-widget-boot.js?v=hue-reset-red-1"></script>
   <script src="./public/modules/spectrogram/spectrogram-gradient-editor.js?v=grad-no-highlight-1"></script>
-  <script src="./public/node-graph-module-scope-defaults.js?v=polyblep-scope-2"></script>
-  <script src="./public/node-graph-module-scope-normalize.js?v=trace-fade-1"></script>
-  <script src="./public/node-graph-module-scope-display-mode.js?v=limiter-gain-face-1"></script>
-  <script src="./public/node-graph-module-scope-phosphor.js?v=paint-gate-1"></script>
-  <script src="./public/latch-button.js?v=latch-1"></script>
-  <script src="./public/node-graph-module-scope-settings-form.js?v=round-look-1"></script>
-  <script src="./public/node-graph-module-scope-settings-controls.js?v=round-bright-1"></script>
+  <script src="./public/node-graph-module-scope-defaults.js?v=dotbudget-1024-1"></script>
+  <script src="./public/node-graph-module-scope-normalize.js?v=dotbudget-1024-1"></script>
+  <script src="./public/node-graph-module-scope-display-mode.js?v=wf-rgb-1"></script>
+  <script src="./public/node-graph-module-scope-phosphor.js?v=fps-clock-1"></script>
+  <script src="./public/latch-button.js?v=ui-improvements-1"></script>
+  <script src="./public/node-graph-module-scope-settings-form.js?v=ui-improvements-1"></script>
+  <script src="./public/node-graph-module-scope-settings-controls.js?v=dotbudget-1024-1"></script>
   <!-- Display Settings peel: form-io → field-edit → apply → window → thin ui anchor -->
-  <script src="./public/node-graph-module-scope-settings-form-io.js?v=round-look-1"></script>
+  <script src="./public/node-graph-module-scope-settings-form-io.js?v=native-range-drag-mod-1"></script>
   <script src="./public/node-graph-module-scope-settings-field-edit.js?v=mp-fix-2"></script>
-  <script src="./public/node-graph-module-scope-settings-apply.js?v=eff-pass-1"></script>
+  <script src="./public/node-graph-module-scope-settings-apply.js?v=wf-rgb-1"></script>
   <script src="./public/node-graph-module-scope-settings-window.js?v=cc-seat-ssot-1"></script>
   <script src="./public/node-graph-module-scope-settings-ui.js?v=one-face-1"></script>
-  <script src="./public/node-graph-module-scope-capture.js?v=clock-t-1"></script>
-  <script src="./public/node-graph-module-scope-number-readout.js?v=lcd-ghost-hang-1"></script>
-  <script src="./public/node-graph-module-scope-draw-basic.js?v=burn-amount-1"></script>
-  <script src="./public/node-graph-module-scope-draw-burn.js?v=trace-fade-1"></script>
+  <script src="./public/node-graph-module-scope-capture.js?v=wf-rgb-2"></script>
+  <script src="./public/node-graph-module-scope-number-readout.js?v=lcd-dot-1"></script>
+  <script src="./public/node-graph-module-scope-draw-basic.js?v=stamp-shape-3"></script>
+  <script src="./public/node-graph-module-scope-draw-burn.js?v=ui-improvements-1"></script>
   <script src="./public/node-graph-module-scopes.js?v=clear-pause-bright-1"></script>
-  <script src="./public/node-graph-module-scope-spectrum.js?v=cc-shrink-ssot-1"></script>
-  <script src="./public/node-graph-module-scope-buffer-io.js?v=visual-rate-meta-1"></script>
-  <script src="./public/node-graph-module-scope-sync.js?v=1d-sync-1"></script>
-  <script src="./public/node-graph-module-scope-metrics.js?v=trace-fade-1"></script>
+  <script src="./public/node-graph-module-scope-spectrum.js?v=wf-rgb-1"></script>
+  <script src="./public/node-graph-module-scope-buffer-io.js?v=pause-hold-1"></script>
+  <script src="./public/node-graph-module-scope-sync.js?v=engine-ring-1"></script>
+  <script src="./public/node-graph-module-scope-metrics.js?v=gpu-stamps-2"></script>
   <script src="./public/node-graph-module-scope-geometry.js?v=scope-paint-loop-1"></script>
-  <script src="./public/node-graph-module-scope-webgl.js?v=0d-soft-edge-1"></script>
-  <script src="./public/node-graph-module-scope-vertices.js?v=trace-time-axis-1"></script>
-  <script src="./public/node-graph-module-scope-offline.js?v=clock-t-1"></script>
-  <script src="./public/node-graph-module-scope-screen-items.js?v=pg-fps-1"></script>
-  <script src="./public/node-graph-module-scope-slots.js?v=wave-zoom-2"></script>
-  <script src="./public/node-graph-module-scope-buffer-view.js?v=1d-sync-1"></script>
+  <script src="./public/node-graph-module-scope-webgl.js?v=trace-line-1"></script>
+  <script src="./public/node-graph-module-scope-vertices.js?v=trace-hold-3"></script>
+  <script src="./public/node-graph-module-scope-offline.js?v=wf-rgb-1"></script>
+  <script src="./public/node-graph-module-scope-screen-items.js?v=lcd-dot-1"></script>
+  <script src="./public/node-graph-module-scope-slots.js?v=constraints-1"></script>
+  <script src="./public/node-graph-module-scope-buffer-view.js?v=waterfall-1"></script>
   <script src="./public/node-graph-module-scope-monitors.js?v=scope-monitors-1"></script>
   <script src="./public/node-graph-module-scope-scene-controls.js?v=screen-solo-1"></script>
   <script src="./public/node-graph-module-scope-shader-settings.js?v=scope-shader-settings-1"></script>
-  <script src="./public/node-graph-module-scope-trace-controls.js?v=round-look-1"></script>
-  <script src="./public/node-graph-module-scope-wipe.js?v=eq-curve-2"></script>
+  <script src="./public/node-graph-module-scope-trace-controls.js?v=textbox-lineheight-1"></script>
+  <script src="./public/node-graph-module-scope-wipe.js?v=ui-improvements-1"></script>
   <script src="./public/node-graph-module-scope-graph-query.js?v=fps-1-no-double-1"></script>
   <script src="./public/node-graph-module-scope-settings.js?v=scope-sync-off-1"></script>
-  <script src="./public/node-graph-module-scope-lifecycle.js?v=paint-gate-1"></script>
+  <script src="./public/node-graph-module-scope-lifecycle.js?v=pause-hold-3"></script>
   <script src="./public/node-graph-module-scope-paint-gate.js?v=stop-unfreeze-1"></script>
   <script src="./public/node-graph-module-scope-canvas.js?v=paint-gate-1"></script>
-  <script src="./public/node-graph-module-scope-paint-helpers.js?v=ds-1d-no-fade-1"></script>
-  <script src="./public/node-graph-module-scope-draw-orchestrator.js?v=fbf-fps-1"></script>
+  <script src="./public/node-graph-module-scope-waterfall.js?v=wf-gl-7"></script>
+  <script src="./public/node-graph-module-scope-paint-helpers.js?v=dotbudget-1024-1"></script>
+  <script src="./public/node-graph-module-scope-draw-orchestrator.js?v=rgb-shape-3"></script>
   <script src="./public/modules/lookaheadLimiter/lookahead-limiter-display.js?v=limiter-gain-face-1"></script>
   <script src="./public/modules/phosphorLight/phosphor-light-display.js?v=alias-only-1"></script>
   <script src="./public/modules/oscilloscopeBank/oscilloscope-bank-display.js?v=burn-sticky-1"></script>
@@ -3650,17 +3724,17 @@
   <script src="./public/modules/transport/transport-display.js?v=transport-bpm-20260714"></script>
   <script src="./public/modules/vectorRgb/vector-rgb-display.js?v=blank-1"></script>
   <script src="./public/modules/rasterRgb/raster-rgb-math.js?v=bipolar-grade-1"></script>
-  <script src="./public/modules/rasterRgb/raster-rgb-display.js?v=title-keep-1"></script>
-  <script src="./public/modules/gradientVectorscope/gradient-vectorscope-display.js?v=trace-fade-1"></script>
-  <script src="./public/modules/traceXyz/trace-xyz-display.js?v=trace-fade-1"></script>
+  <script src="./public/modules/rasterRgb/raster-rgb-display.js?v=quiet-log-2"></script>
+  <script src="./public/modules/gradientVectorscope/gradient-vectorscope-display.js?v=woscope-persist-1"></script>
+
   <script src="./public/node-graph-room-dimmer.js?v=light-up-1"></script>
   <script src="./public/node-graph-canvas-script.js?v=floating-chrome-unify-1"></script>
-  <script src="./public/node-graph-module-factories.js?v=uc-io-above-1"></script>
-  <script src="./public/modules/led/led-ui.js?v=led-lamp-1"></script>
-  <script src="./public/modules/led/led-settings.js?v=keypad-bgi-1"></script>
-  <script src="./public/modules/led/led-display.js?v=dimmer-punch-fix-2"></script>
-  <script src="./public/modules/rgbShape/rgb-shape-ui.js?v=rgb-shape-1"></script>
-  <script src="./public/modules/rgbShape/rgb-shape-display.js?v=rgb-shape-1"></script>
+  <script src="./public/node-graph-module-factories.js?v=vector-dot-1"></script>
+  <script src="./public/modules/led/led-ui.js?v=led-lcd-update-1"></script>
+  <script src="./public/modules/lcdDot/lcd-dot-display.js?v=lcd-dot-2"></script>
+  <script src="./public/modules/rgbShape/rgb-shape-math.js?v=heart-ssot-1"></script>
+  <script src="./public/modules/rgbShape/rgb-shape-display.js?v=heart-ssot-1"></script>
+  <script src="./public/modules/rgbShape/rgb-shape-ui.js?v=heart-ssot-1"></script>
   <script src="./public/modules/rgbPicture/rgb-picture-ui.js?v=rgb-picture-1"></script>
   <script src="./public/modules/rgbPicture/rgb-picture-display.js?v=keypad-bgi-1"></script>
   <script src="./public/modules/rgbFractal/rgb-fractal-gl.js?v=soft-structure-1"></script>
@@ -3674,71 +3748,72 @@
   <script src="./public/modules/fbmField/fbm-field-ui.js?v=fbf-fps-1"></script>
   <script src="./public/modules/fbmField/fbm-field-display.js?v=fbf-fps-1"></script>
   <script src="./public/modules/bugButton/bug-button-ui.js?v=bug-button-settings-edit-20260723"></script>
-  <script src="./public/modules/xyPad/xy-pad-ui.js?v=xy-amp-xy-1"></script>
-  <script src="./public/modules/numberReadout/number-readout-ui.js?v=value-led-lcd-1"></script>
+  <script src="./public/modules/xyPad/xy-pad-ui.js?v=xy-domain-hold-1"></script>
+  <script src="./public/modules/numberReadout/number-readout-ui.js?v=led-lcd-update-1"></script>
   <script src="./public/modules/rayBouncer/ray-bouncer-ui.js?v=ray-bouncer-solid-1"></script>
   <script src="./public/modules/stepGrid/step-grid-ui.js?v=stepgrid-variable-steps-20260715"></script>
-  <script src="./public/modules/keypad/keypad-math.js?v=keypad-offset-hover-1"></script>
-  <script src="./public/modules/keypad/keypad-settings.js?v=keypad-keys-1"></script>
+  <script src="./public/modules/keypad/keypad-math.js?v=font-weight-shared-1"></script>
+  <script src="./public/modules/keypad/keypad-settings.js?v=font-weight-shared-1"></script>
   <script src="./public/modules/keypad/keypad-ui.js?v=keypad-glow-50-1"></script>
   <script src="./public/modules/groupInput/group-input-ui.js?v=chromeless-portals-1"></script>
   <script src="./public/modules/patch/patch-ui.js?v=patch-face-1"></script>
   <script src="./public/modules/groupOutput/group-output-ui.js?v=chromeless-portals-1"></script>
   <script src="./public/modules/portal/portal-math.js?v=portal-lanes-1"></script>
   <script src="./public/modules/portal/portal-settings.js?v=portal-lanes-1"></script>
-  <script src="./public/modules/portal/portal-ui.js?v=portal-lanes-1"></script>
+  <script src="./public/modules/portal/portal-ui.js?v=input-outlet-1"></script>
   <script src="./public/node-graph-module-header-rendering.js?v=cc-name-value-1"></script>
-  <script src="./public/node-graph-module-rendering.js?v=screen-f-1"></script>
-  <script src="./public/node-graph-module-frame.js?v=plate-11-1"></script>
+  <script src="./public/node-graph-module-rendering.js?v=basic-face-1"></script>
+  <script src="./public/node-graph-module-frame.js?v=port-io-half-slot-1"></script>
   <script src="./public/node-graph-history.js?v=book-ui-script-1"></script>
   <script src="./public/node-graph-visual-utils.js?v=eq-curve-4"></script>
-  <script src="./public/node-graph-patch-clone.js?v=player-cc-display-1"></script>
+  <script src="./public/node-graph-patch-clone.js?v=wf-rgb-1"></script>
   <script src="./public/node-graph-slider-metadata.js?v=pixel-grid-wh-1"></script>
-  <script src="./public/node-graph-slider-values.js?v=cv-skip-3"></script>
-  <script src="./public/node-graph-slider-dragging.js?v=input-amp-1"></script>
+  <script src="./public/node-graph-slider-values.js?v=world-smooth-0333-1"></script>
+  <script src="./public/node-graph-slider-dragging.js?v=native-range-drag-mod-1"></script>
   <script src="./public/node-graph-node-accessors.js?v=cleanup-20260725-smoothing-time-20260701"></script>
   <script src="./public/node-graph-selection.js?v=screen-order-1"></script>
   <script src="./public/node-graph-port-geometry.js?v=wire-follow-1"></script>
-  <script src="./public/node-graph-jack-chrome.js?v=tone-lr-1"></script>
+  <script src="./public/node-graph-jack-chrome.js?v=sincos4-abc-1"></script>
   <script src="./public/node-graph-slider-readout.js?v=cv-skip-3"></script>
-  <script src="./public/modules/knob/knob-face.js?v=rclick-keep-sel-1"></script>
-  <script src="./public/modules/plugin/plugin-controls-ui.js?v=jacks-slider-3"></script>
+  <script src="./public/modules/knob/knob-face.js?v=display-mouse-1"></script>
+  <script src="./public/modules/plugin/plugin-button-settings.js?v=btn-on-1"></script>
+  <script src="./public/modules/plugin/plugin-controls-ui.js?v=toggle-live-1"></script>
   <script src="./public/node-graph-slider-readout-controls.js?v=jacks-slider-2"></script>
-  <script src="./public/node-graph-ghost-sliders.js?v=cv-skip-3"></script>
+  <script src="./public/node-graph-ghost-sliders.js?v=toggle-ghost-1"></script>
   <script src="./public/node-code-settings-editor.js?v=json-highlight-1"></script>
-  <script src="./public/node-graph-metadata-editor.js?v=pixel-grid-wh-1"></script>
+  <script src="./public/node-graph-metadata-editor.js?v=smooth-min-0"></script>
   <script src="./public/node-graph-render-settings.js?v=cleanup-20260725-slider-unit-color-1780307400000"></script>
   <script src="./public/node-graph-semath.js?v=planck-1"></script>
   <script src="./public/modules/speakerProtector2/speaker-protector-2-math.js?v=planck-1"></script>
   <script src="./public/node-graph-ear-protection.js?v=protect-banner-1"></script>
   <script src="./public/node-graph-patch-load-fault.js?v=patch-load-fault-1"></script>
-  <script src="./public/node-graph-debug-console.js?v=invisible-1"></script>
+  <script src="./public/node-graph-debug-console.js?v=pause-info-1"></script>
   <script src="./public/node-graph-module-diagnostics.js?v=uc-silence-1"></script>
   <script src="./public/node-graph-rendered-audio.js?v=custom-player-20260723"></script>
   <script src="./public/node-graph-rendered-player.js?v=transport-play-palette-1"></script>
   <script src="./public/node-graph-rendered-visual-output.js?v=beta-polish-1"></script>
   <script src="./public/node-graph-rendered-output-canvases.js?v=beta-polish-1"></script>
   <script src="./public/node-graph-execution-wires.js?v=external-graph-inputs-1780816800000"></script>
-  <script src="./public/node-graph-module-bypass.js?v=mix-stereo-1"></script>
-  <script src="./public/node-graph-execution-plan.js?v=portal-lanes-1"></script>
+  <script src="./public/node-graph-module-bypass.js?v=wf-rgb-1"></script>
+  <script src="./public/node-graph-execution-plan.js?v=wf-buf-1"></script>
   <script src="./public/node-graph-execution-summary.js?v=slider-unit-color-1780307400000"></script>
-  <script src="./public/node-graph-wire-actions.js?v=qc-io-show-1"></script>
+  <script src="./public/node-graph-wire-actions.js?v=wf-rgb-4"></script>
   <script src="./public/node-graph-trace-router.js?v=no-self-burst-1780321400000"></script>
   <script src="./public/node-graph-wire-rendering.js?v=eff-pass-1"></script>
   <script src="./public/node-graph-render-output.js?v=planck-1"></script>
   <script src="./public/node-graph-debug-copy.js?v=slider-unit-color-1780307400000"></script>
   <script src="./public/node-graph-execution-debug-api.js?v=noise-generator-stereo-20260630"></script>
   <script src="./public/node-graph-execution-debug-view.js?v=slider-unit-color-1780307400000"></script>
-  <script src="./public/node-graph-tooltips.js?v=script-page-name-1"></script>
-  <script src="./public/node-graph-interaction-help.js?v=script-page-name-1"></script>
-  <script src="./public/presets/useruisettings.js?v=plate-11-1"></script>
-  <script src="./public/node-graph-ui-settings-definitions.js?v=mag-rim-1"></script>
+  <script src="./public/node-graph-tooltips.js?v=gpu-stamps-1"></script>
+  <script src="./public/node-graph-interaction-help.js?v=v-cycle-1"></script>
+  <script src="./public/presets/useruisettings.js?v=wire-endpoint-1"></script>
+  <script src="./public/node-graph-ui-settings-definitions.js?v=wire-endpoint-1"></script>
   <script src="./public/node-graph-ui-settings-utils.js?v=slider-unit-color-1780307400000"></script>
   <script src="./public/node-graph-user-ui-settings-controls.js?v=macro-cleanup-2"></script>
   <script src="./public/node-graph-ui-settings-panels.js?v=uidev-page-1"></script>
-  <script src="./public/node-graph-ui-settings-persistence.js?v=no-status-1"></script>
-  <script src="./public/node-graph-ui-settings-sync.js?v=mag-rim-1"></script>
-  <script src="./public/node-graph-keyboard-shortcuts.js?v=screen-f-1"></script>
+  <script src="./public/node-graph-ui-settings-persistence.js?v=v-cycle-1"></script>
+  <script src="./public/node-graph-ui-settings-sync.js?v=wire-endpoint-1"></script>
+  <script src="./public/node-graph-keyboard-shortcuts.js?v=keyboard-nav-focus-1"></script>
   <script src="./public/node-graph-live-status-text.js?v=live-plan-preserve-20260634"></script>
   <script src="./public/node-graph-live-status-controls.js?v=slider-unit-color-1780307400000"></script>
   <script src="./public/node-graph-live-meter-controls.js?v=audio-overrun-meter-2"></script>
@@ -3746,13 +3821,13 @@
   <script src="./public/node-graph-live-evidence.js?v=badval-face-1"></script>
   <script src="./public/node-graph-live-control-rendering.js?v=out-vol-m3-1"></script>
   <script src="./public/node-graph-default-patch.js?v=sim-time-1"></script>
-  <script src="./public/node-graph-state.js?v=screen-order-1"></script>
+  <script src="./public/node-graph-state.js?v=v-cycle-1"></script>
   <script src="./public/node-graph-external-ui-events.js?v=xy-pad-impulse-1"></script>
-  <script src="./public/node-graph-patch-migrations.js?v=dip-ms-db-1"></script>
-  <script src="./public/node-graph-patch-core.js?v=screen-f-1"></script>
-  <script src="./public/node-graph-live-plan-runtime.js?v=block-scope-1"></script>
-  <script src="./public/node-graph-live-parameter-runtime.js?v=unit-mod-linear-1"></script>
-  <script src="./public/node-graph-oscillator-runtime.js?v=0150-native-core"></script>
+  <script src="./public/node-graph-patch-migrations.js?v=sincos4-1"></script>
+  <script src="./public/node-graph-patch-core.js?v=input-outlet-1"></script>
+  <script src="./public/node-graph-live-plan-runtime.js?v=controller-smooth-1"></script>
+  <script src="./public/node-graph-live-parameter-runtime.js?v=rgb-shape-3"></script>
+  <script src="./public/node-graph-oscillator-runtime.js?v=sincos4-1"></script>
   <script src="./public/node-graph-gpu-additive-backend.js?v=external-graph-inputs-1780816800000"></script>
   <script src="./public/node-graph-jerobeam-spiral.js?v=node-graph-jerobeam-spiral-refactor-1780371000000"></script>
   <script src="./public/node-graph-fractal-spiral.js?v=fractal-spiral-1-20260703"></script>
@@ -3780,7 +3855,7 @@
   <script src="./public/modules/chordPad/chord-pad-ui.js?v=chord-pad-1"></script>
   <script src="./public/node-graph-softwave-oscillator.js?v=native-core-1"></script>
   <script src="./public/modules/curveOsc/curve-osc-math.js?v=curve-osc-1"></script>
-  <script src="./public/modules/snowflake/snowflake-math.js?v=snowflake-direction-1"></script>
+  <script src="./public/modules/snowflake/snowflake-math.js?v=snowflake-iter-bufs-1"></script>
   <script src="./public/modules/asciiscope/asciiscope-core.js?v=cv-skip-2"></script>
   <script src="./public/modules/asciiscope/asciiscope-gl.js?v=cv-skip-2"></script>
   <script src="./public/modules/asciiscope/asciiscope-display.js?v=screen-solo-3"></script>
@@ -3803,13 +3878,13 @@
   <script src="./public/node-graph-stdlib/node-graph-visual-control-helpers.js?v=planck-eps-1"></script>
   <script src="./public/node-graph-stdlib/node-graph-seeded-rng-helpers.js?v=stdlib-batch3-20260715"></script>
   <script src="./public/node-graph-stdlib/node-graph-shared-dsp-helpers.js?v=linear-smooth-only-1"></script>
-  <script src="./public/node-graph-stdlib/node-graph-control-bus-helpers.js?v=input-amp-1"></script>
+  <script src="./public/node-graph-stdlib/node-graph-control-bus-helpers.js?v=toggle-range-1"></script>
   <script src="./public/node-graph-stdlib/node-graph-shared-app-helpers.js?v=stdlib-app-helpers-20260725"></script>
   <script src="./public/node-graph-stdlib/node-graph-sinc-kernel.js?v=sinc-bandlimit-20260725"></script>
   <script src="./public/modules/_shared/output-amplitude.js?v=bt-msd-uc-1"></script>
   <script src="./public/node-graph-live-frame-evaluator.js?v=output-amp-1"></script>
   <script src="./public/modules/spectrogram/spectrogram-live-evaluator.js?v=spec-tv-1"></script>
-  <script src="./public/modules/_shared/display-thru-live-evaluators.js?v=trace-history-1"></script>
+  <script src="./public/modules/_shared/display-thru-live-evaluators.js?v=wf-rgb-1"></script>
   <script src="./public/modules/rasterRgb/raster-rgb-live-evaluator.js?v=bipolar-grade-1"></script>
   <script src="./public/modules/logisticMap/logistic-map-math.js?v=logistic-map-1"></script>
   <script src="./public/modules/logisticMap/logistic-map-live-evaluator.js?v=logistic-map-1"></script>
@@ -3824,7 +3899,7 @@
   <script src="./public/modules/chordPad/chord-pad-live-evaluator.js?v=chord-pad-1"></script>
   <script src="./public/modules/softwaveOsc/softwave-osc-live-evaluator.js?v=native-core-1"></script>
   <script src="./public/modules/curveOsc/curve-osc-live-evaluator.js?v=curve-osc-1"></script>
-  <script src="./public/modules/snowflake/snowflake-live-evaluator.js?v=snowflake-direction-1"></script>
+  <script src="./public/modules/snowflake/snowflake-live-evaluator.js?v=snowflake-phase-1"></script>
   <script src="./public/modules/asciiscope/asciiscope-live-evaluator.js?v=mw-jacks-1"></script>
   <script src="./public/modules/matrixDisplay/matrix-display-live-evaluator.js?v=display-thru-1"></script>
   <script src="./public/modules/textStream/text-stream-live-evaluator.js?v=text-stream-1"></script>
@@ -3893,8 +3968,8 @@
   <script src="./public/modules/midSideEncode/mid-side-encode-live-evaluator.js?v=dip-ms-db-1"></script>
   <script src="./public/modules/quadrature/quadrature-math.js?v=ms-quad-lim-1"></script>
   <script src="./public/modules/quadrature/quadrature-live-evaluator.js?v=ms-quad-lim-1"></script>
-  <script src="./public/modules/hilbert/hilbert-math.js?v=hilbert-1"></script>
-  <script src="./public/modules/hilbert/hilbert-live-evaluator.js?v=hilbert-1"></script>
+  <script src="./public/modules/hilbert/hilbert-math.js?v=hilbert-0-1"></script>
+  <script src="./public/modules/hilbert/hilbert-live-evaluator.js?v=hilbert-0-1"></script>
   <script src="./public/modules/lookaheadLimiter/lookahead-limiter-math.js?v=dip-no-clamp-1"></script>
   <script src="./public/modules/lookaheadLimiter/lookahead-limiter-live-evaluator.js?v=dip-no-clamp-1"></script>
   <script src="./public/modules/inertialFilter/inertial-filter-math.js?v=inertial-hz-1"></script>
@@ -3975,7 +4050,7 @@
   <script src="./public/modules/midiOut/midi-out-live-evaluator.js?v=per-module-dispatch-20260711"></script>
   <script src="./public/modules/midiNotePitch/midi-note-pitch-live-evaluator.js?v=per-module-dispatch-20260711"></script>
   <script src="./public/modules/keyboardController/keyboard-controller-live-evaluator.js?v=per-module-dispatch-20260711"></script>
-  <script src="./public/modules/keyboardController/keyboard-layout-settings.js?v=controller-lanes-1"></script>
+  <script src="./public/modules/keyboardController/keyboard-layout-settings.js?v=keyboard-center-1"></script>
   <script src="./public/modules/buttonEvents/button-events-live-evaluator.js?v=per-module-dispatch-20260711"></script>
   <script src="./public/modules/wireEvents/wire-events-live-evaluator.js?v=per-module-dispatch-20260711"></script>
   <script src="./public/modules/shootingStarExplosion/shooting-star-explosion-live-evaluator.js?v=per-module-dispatch-20260711"></script>
@@ -3989,7 +4064,8 @@
   <script src="./public/modules/mixStereo/mix-stereo-live-evaluator.js?v=mix-stereo-mono-1"></script>
   <script src="./public/modules/sinc/sinc-live-evaluator.js?v=native-core-1"></script>
   <script src="./public/modules/led/led-live-evaluator.js?v=per-module-dispatch-20260711"></script>
-  <script src="./public/modules/rgbShape/rgb-shape-live-evaluator.js?v=rgb-shape-1"></script>
+  <script src="./public/modules/lcdDot/lcd-dot-live-evaluator.js?v=lcd-dot-1"></script>
+  <script src="./public/modules/rgbShape/rgb-shape-live-evaluator.js?v=rgb-shape-2"></script>
   <script src="./public/modules/rgbPicture/rgb-picture-live-evaluator.js?v=rgb-picture-1"></script>
   <script src="./public/modules/rgbFractal/rgb-fractal-math.js?v=orbit-speed-1"></script>
   <script src="./public/modules/rgbFractal/rgb-fractal-live-evaluator.js?v=orbit-speed-1"></script>
@@ -4016,8 +4092,8 @@
   <script src="./public/modules/vectorscopeTransform/vectorscope-transform-live-evaluator.js?v=vs-rotate-param-1"></script>
   <script src="./public/modules/speedColorInertia/speed-color-inertia-math.js?v=speed-color-inertia-2"></script>
   <script src="./public/modules/speedColorInertia/speed-color-inertia-live-evaluator.js?v=speed-color-inertia-2"></script>
-  <script src="./public/modules/knob/knob-live-evaluator.js?v=domain-mod-1"></script>
-  <script src="./public/modules/plugin/plugin-controls-live-evaluator.js?v=input-amp-1"></script>
+  <script src="./public/modules/knob/knob-live-evaluator.js?v=controller-smooth-1"></script>
+  <script src="./public/modules/plugin/plugin-controls-live-evaluator.js?v=controller-smooth-1"></script>
   <script src="./public/modules/sandboxVisuals/sandbox-visuals-live-evaluator.js?v=per-module-dispatch-20260711"></script>
   <script src="./public/modules/screenSpaceShader/screen-space-shader-live-evaluator.js?v=per-module-dispatch-20260711"></script>
   <script src="./public/modules/bloomGlow/bloom-glow-live-evaluator.js?v=per-module-dispatch-20260711"></script>
@@ -4033,32 +4109,34 @@
   <script src="./public/modules/groupInput/group-input-live-evaluator.js?v=per-module-dispatch-20260711"></script>
   <script src="./public/modules/portal/portal-live-evaluator.js?v=portal-lanes-1"></script>
   <script src="./public/modules/audioInput/audio-input-live-evaluator.js?v=input-amp-1"></script>
-  <script src="./public/lib/sample-interpolate.js?v=hermite-1"></script>
+  <script src="./public/lib/sample-interpolate.js?v=mp-aa-1"></script>
   <script src="./public/modules/audioPlayer/audio-player-math.js?v=mp-time-io-1"></script>
-  <script src="./public/modules/audioPlayer/audio-player-live-evaluator.js?v=mp-time-io-1"></script>
+  <script src="./public/modules/audioPlayer/audio-player-live-evaluator.js?v=mp-aa-1"></script>
   <script src="./public/modules/moduleGroup/module-group-live-evaluator.js?v=per-module-dispatch-20260711"></script>
   <script src="./public/modules/codeblock/codeblock-live-evaluator.js?v=per-module-dispatch-20260711"></script>
-  <script src="./public/modules/sineWavetable/sine-wavetable-live-evaluator.js?v=sincos-no-amp-in-1"></script>
+  <script src="./public/modules/sineWavetable/sine-wavetable-live-evaluator.js?v=sincos4-1"></script>
   <script src="./public/modules/ellipsoid/ellipsoid-live-evaluator.js?v=motion-1"></script>
+  <script src="./public/modules/basicShape/basic-shape-live-evaluator.js?v=center-square-pwm-1"></script>
+  <script src="./public/modules/basicShape/basic-shape-display.js?v=center-square-pwm-1"></script>
   <script src="./public/modules/ellipsoid/ellipsoid-settings.js?v=round-look-1"></script>
-  <script src="./public/modules/ellipsoid/ellipsoid-display.js?v=round-fps-1"></script>
+  <script src="./public/modules/ellipsoid/ellipsoid-display.js?v=round-raf-1"></script>
   <script src="./public/modules/additiveOsc/additive-osc-live-evaluator.js?v=native-core-1"></script>
   <script src="./public/modules/graph/graph-live-evaluator.js?v=retire-graph-type-20260724"></script>
-  <script src="./public/modules/polyBlep/poly-blep-live-evaluator.js?v=one-core-native-20260803"></script>
+  <script src="./public/modules/polyBlep/poly-blep-live-evaluator.js?v=center-square-pwm-1"></script>
   <script src="./public/node-graph-pulse-explosion-display.js?v=shared-canvas-sizing-20260725"></script>
-  <script src="./public/node-graph-live-runtime.js?v=sim-time-1"></script>
+  <script src="./public/node-graph-live-runtime.js?v=snowflake-phase-1"></script>
   <script src="./public/node-graph-wire-controller-bootstrap.js?v=wire-break-trigger-0129"></script>
-  <script src="./public/node-graph-screen-solo.js?v=mp-f-fill-1"></script>
-  <script src="./public/node-graph-workspace-event-bindings.js?v=screen-solo-1"></script>
+  <script src="./public/node-graph-screen-solo.js?v=f-grid-layout-1"></script>
+  <script src="./public/node-graph-workspace-event-bindings.js?v=cpu-ui-stall-1"></script>
   <script src="./public/node-graph-render-live-event-bindings.js?v=midi-toggle-20260725"></script>
-  <script src="./public/node-graph-header-event-bindings.js?v=mag-size-1"></script>
+  <script src="./public/node-graph-header-event-bindings.js?v=vis-bars-1"></script>
   <script src="./public/node-graph-help-event-bindings.js?v=remove-workspace-view-0002"></script>
   <script src="./public/node-graph-scene-menu-event-bindings.js?v=inv-1"></script>
-  <script src="./public/node-graph-uidev-event-bindings.js?v=mag-rim-1"></script>
+  <script src="./public/node-graph-uidev-event-bindings.js?v=wire-endpoint-1"></script>
   <script src="./public/node-graph-settings-event-bindings.js?v=book-ui-script-1"></script>
   <script src="./public/node-graph-slider-event-bindings.js?v=node-graph-slider-event-bindings-refactor-1780369200000"></script>
   <script src="./public/node-graph-event-bindings.js?v=remove-dead-uiview-bind-20260724"></script>
-  <script src="./public/node-graph-bootstrap.js?v=jacks-slider-2"></script>
+  <script src="./public/node-graph-bootstrap.js?v=tooltip-persist-1"></script>
   <script src="./public/app-event-bindings.js?v=app-event-bindings-refactor-1780361400000"></script>
   <script src="./public/app.js?v=loading-steps-1"></script>
 </body>

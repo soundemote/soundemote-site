@@ -268,6 +268,16 @@ function commitNodeGraphModuleScopeRenderMetricsFrame(nowSeconds = (performance.
     metrics.fps = metrics.fpsFrames / Math.max(0.001, now - last);
     metrics.fpsFrames = 0;
     metrics.fpsLastTime = now;
+    const samples = Math.max(1, Number(metrics.pointsSamples) || 0);
+    const sum = Math.max(0, Number(metrics.pointsSum) || 0);
+    metrics.pointsAvg = Math.round(sum / samples);
+    metrics.pointsSum = 0;
+    metrics.pointsSamples = 0;
+  }
+  // FPS-gate / empty ticks would otherwise flash 0. Average only real draws.
+  if ((Number(metrics.drawCalls) || 0) > 0 || (Number(metrics.points) || 0) > 0) {
+    metrics.pointsSum = (Number(metrics.pointsSum) || 0) + Math.max(0, Number(metrics.points) || 0);
+    metrics.pointsSamples = (Number(metrics.pointsSamples) || 0) + 1;
   }
   pushNodeGraphModuleScopeDebugHistory("commit");
   syncNodeGraphScopeGpuMetricsDisplay();
@@ -294,21 +304,33 @@ function syncNodeGraphScopeGpuMetricsDisplay() {
     return;
   }
   const metrics = nodeGraphModuleScopeState.renderMetrics || {};
-  const fps = Number(metrics.fps);
-  const points = Math.max(0, Math.floor(Number(metrics.points) || 0));
+  const constraint = typeof nodeGraphMvp !== "undefined" ? nodeGraphMvp?.constraintResourceMetrics : null;
+  const fps = Number(metrics.fps) || Number(constraint?.mainFrameRate) || 0;
+  const points = Math.max(
+    0,
+    Math.floor(Number(metrics.pointsAvg) || Number(metrics.points) || 0),
+  );
   const vertices = Math.max(0, Math.floor(Number(metrics.vertices) || 0));
+  const contexts = document.querySelectorAll(
+    "#nodeGraphWorkspace canvas, #nodeGraphWorkspace .node-module-scope-webgl",
+  ).length;
   const fpsElement = root.querySelector("[data-scope-gpu-metric='fps']");
   const pointsElement = root.querySelector("[data-scope-gpu-metric='points']");
+  const ctxElement = root.querySelector("[data-scope-gpu-metric='contexts']");
   if (fpsElement) {
-    fpsElement.textContent = formatNodeGraphScopeGpuMetricFps(fps);
+    fpsElement.textContent = Number.isFinite(fps) && fps > 0 ? String(Math.round(Math.min(999, fps))) : "--";
   }
   if (pointsElement) {
-    pointsElement.textContent = formatNodeGraphScopeGpuMetricFixedNumber(points, 6);
+    pointsElement.textContent = points > 9999
+      ? `${Math.round(points / 1000)}k`
+      : String(points);
+  }
+  if (ctxElement) {
+    ctxElement.textContent = String(contexts);
   }
   root.dataset.scopePoints = String(points);
   root.dataset.scopeVertices = String(vertices);
-  root.title = `scope vertices ${formatNodeGraphScopeGpuMetricFixedNumber(vertices, 6)}`;
-  syncNodeGraphScopeGpuDebugDisplay();
+  root.title = `Surfaces: ${contexts} canvas/WebGL faces. Stamps: ~${points} phosphor dabs or trace points per draw (½ s average).`;
 }
 
 function nodeGraphScopeGpuMetricsVisible(root = document.getElementById("nodeScopeGpuMetrics")) {

@@ -70,7 +70,7 @@ function nodeGraphTraceDisplayStepperQuantum(input, currentValue = null, directi
     return 100;
   }
   if (key === "dotBudget") {
-    return 64;
+    return 1;
   }
   if (key === "bins") {
     return 8;
@@ -83,7 +83,7 @@ function nodeGraphTraceDisplayStepperQuantum(input, currentValue = null, directi
     return 0.025;
   }
   // Fixed sub-unit fields that are not magnitude-stepped.
-  if (key === "pixelDensity") {
+  if (key === "pixelDensity" || key === "stampDensity") {
     return 0.05;
   }
   if (key === "sweepSeconds" || key === "sweepHz") {
@@ -110,6 +110,11 @@ function nodeGraphTraceDisplayStepperQuantum(input, currentValue = null, directi
   }
   const value = currentValue != null ? currentValue : Number(input.value);
   return nodeGraphMagnitudeStepperQuantum(value, direction);
+}
+
+/** Integer fields: 1 screen pixel of drag → 1 quantum (Dot Budget = 1). */
+function nodeGraphTraceDisplayIntegerPixelDragField(key) {
+  return key === "dotBudget";
 }
 
 function nodeGraphTraceDisplaySizeControlField(key) {
@@ -169,7 +174,14 @@ function nodeGraphTraceDisplayUnitDragField(key) {
     "lineBrightness",
     "dotBrightness",
     "backgroundBrightness",
-  ].includes(key);
+    "textBrightness",
+    "buttonBrightness",
+    "buttonStrokeBrightness",
+    "hoverBrightness",
+    "onBrightness",
+    "stampDensity",
+    "pixelDensity",
+  ].includes(key) || /Brightness$/i.test(String(key || ""));
 }
 
 /** Drag/clamp range for unit-style fields (most are 0…1; shadow offset bipolar). */
@@ -361,11 +373,11 @@ function nodeGraphTraceDisplayClampStampBlur(value) {
 }
 
 function nodeGraphTraceDisplayClampDotBudget(value) {
-  const n = Math.round(Number(value) || 0);
+  const n = Math.round(Number(value));
   if (!Number.isFinite(n)) {
-    return 2048;
+    return 1024;
   }
-  return Math.max(64, Math.min(8192, n));
+  return Math.max(1, Math.min(8192, n));
 }
 
 // Clamp rules shared by every display-settings form type, keyed by field name.
@@ -424,6 +436,8 @@ const nodeGraphTraceDisplaySharedValueClamps = Object.freeze({
   lineLength: nodeGraphTraceDisplayClampUnit,
   lineThickness: nodeGraphTraceDisplayClampNonNegative,
   lineBlur: (value) => clampNodeSliderValue(Number(value) || 0, 0, 8),
+  stampDensity: nodeGraphTraceDisplayClampUnit,
+  shapeParam: nodeGraphTraceDisplayClampUnit,
   pixelDensity: nodeGraphTraceDisplayClampPixelDensity,
   puckSize: (value) => clampNodeSliderValue(Number(value) || 0, 0.005, 0.25),
   scale: nodeGraphTraceDisplayClampNonNegative,
@@ -449,6 +463,13 @@ const nodeGraphTraceDisplaySharedValueClamps = Object.freeze({
   },
   zoomSeconds: nodeGraphTraceDisplayClampHistorySeconds,
   backgroundBrightness: nodeGraphTraceDisplayClampUnit,
+  textBrightness: nodeGraphTraceDisplayClampUnit,
+  buttonBrightness: nodeGraphTraceDisplayClampUnit,
+  buttonStrokeBrightness: nodeGraphTraceDisplayClampUnit,
+  hoverBrightness: nodeGraphTraceDisplayClampUnit,
+  onBrightness: nodeGraphTraceDisplayClampUnit,
+  hoverAlpha: nodeGraphTraceDisplayClampUnit,
+  onAlpha: nodeGraphTraceDisplayClampUnit,
   backgroundHue: (value) => {
     const n = Number(value);
     if (!Number.isFinite(n)) return 0;
@@ -495,18 +516,6 @@ const nodeGraphTraceDisplayFormTypeValueClampOverrides = Object.freeze({
       return clampNodeSliderValue(n, 1, 24000);
     },
   }),
-  // LED lamp: hue degrees, blur 0–1, rounding %, brightness 0–1.
-  ledLamp: Object.freeze({
-    hue: (value) => {
-      const n = Number(value);
-      if (!Number.isFinite(n)) return 0;
-      // App-wide hue policy: no wrap — clamp to red edges (0…360).
-      return clampNodeSliderValue(n, 0, 360);
-    },
-    lineThickness: nodeGraphTraceDisplayClampUnit,
-    rounding: (value) => clampNodeSliderValue(Number(value) || 0, 0, 100),
-    dot1Brightness: nodeGraphTraceDisplayClampBrightness,
-  }),
   // Phosphor Dot: same blur continuum as 2D Phosphor stamps.
   dot: Object.freeze({
     lineThickness: nodeGraphTraceDisplayClampStampBlur,
@@ -514,12 +523,21 @@ const nodeGraphTraceDisplayFormTypeValueClampOverrides = Object.freeze({
   vectorDot: Object.freeze({
     lineThickness: nodeGraphTraceDisplayClampUnit,
     dot1Size: nodeGraphTraceDisplayClampUnit,
+    shapeParam: nodeGraphTraceDisplayClampUnit,
     dot1Brightness: nodeGraphTraceDisplayClampBrightness,
     backgroundBrightness: nodeGraphTraceDisplayClampUnit,
   }),
   pulseDot: Object.freeze({
     lineThickness: nodeGraphTraceDisplayClampUnit,
     dot1Size: nodeGraphTraceDisplayClampUnit,
+    shapeParam: nodeGraphTraceDisplayClampUnit,
+    dot1Brightness: nodeGraphTraceDisplayClampBrightness,
+    backgroundBrightness: nodeGraphTraceDisplayClampUnit,
+  }),
+  lcdDot: Object.freeze({
+    lineThickness: nodeGraphTraceDisplayClampUnit,
+    dot1Size: nodeGraphTraceDisplayClampUnit,
+    shapeParam: nodeGraphTraceDisplayClampUnit,
     dot1Brightness: nodeGraphTraceDisplayClampBrightness,
     backgroundBrightness: nodeGraphTraceDisplayClampUnit,
   }),
@@ -558,7 +576,16 @@ const nodeGraphTraceDisplayFormTypeValueClampOverrides = Object.freeze({
     backgroundBrightness: (value) => clampNodeSliderValue(Number(value) || 0, 0, 1),
     pixelDensity: nodeGraphTraceDisplayClampPixelDensity,
   }),
-  // 1D Trace / Output: blur 0 hard … 1 soft skirt (instant, no persistence).
+  basicShapeFace: Object.freeze({
+    lineThickness: (value) => clampNodeSliderValue(Number(value) || 2, 0.25, 16),
+    lineBlur: (value) => clampNodeSliderValue(Number(value) || 0, 0, 8),
+    lineBrightness: (value) => clampNodeSliderValue(Number(value) || 0, 0, 1),
+    dotThickness: (value) => clampNodeSliderValue(Number(value) || 5, 0.25, 32),
+    dotBrightness: (value) => clampNodeSliderValue(Number(value) || 0, 0, 1),
+    backgroundBrightness: (value) => clampNodeSliderValue(Number(value) || 0, 0, 1),
+    pixelDensity: nodeGraphTraceDisplayClampPixelDensity,
+  }),
+  // 1D Waterfall / Output: blur 0 hard … 1 soft skirt (instant, no persistence).
   trace: Object.freeze({
     lineThickness: nodeGraphTraceDisplayClampStampBlur,
     secondaryLineThickness: nodeGraphTraceDisplayClampStampBlur,
@@ -569,5 +596,11 @@ function normalizeNodeGraphTraceDisplaySettingValueForKey(key, value) {
   const formType = nodeGraphTraceDisplaySettingsFormType();
   const clamp = nodeGraphTraceDisplayFormTypeValueClampOverrides[formType]?.[key] ||
     nodeGraphTraceDisplaySharedValueClamps[key];
-  return clamp ? clamp(value) : value;
+  if (clamp) {
+    return clamp(value);
+  }
+  if (/Brightness$/i.test(String(key || "")) || /Alpha$/i.test(String(key || ""))) {
+    return nodeGraphTraceDisplayClampUnit(value);
+  }
+  return value;
 }

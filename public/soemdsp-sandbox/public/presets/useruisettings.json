@@ -15,14 +15,17 @@
     "tooltipTextSize": 64,
     "moduleLightBrightness": 100,
     "minimumGridBrightness": 20,
-    "gridSpread": 78,
+    "gridSpread": 121,
     "gridDivisionMultiply": 5,
     "moduleLightSpread": 78,
-    "moduleGridInset": 6,
-    "moduleRoundness": 11,
-    "moduleCornerShape": "squircle",
+    "moduleGridInset": 8,
+    "inletOutletSize": 52,
+    "inletOutletStrokeThickness": 1.25,
+    "inletOutletGap": 0,
+    "ioSectionPaddingTop": 0,
+    "ioSectionPaddingBottom": 0,
     "usedPortBrightness": 0.85,
-    "unusedPortBrightness": 0.4,
+    "unusedPortBrightness": 0.68,
     "jackRgbRed": "#f25d5d",
     "jackRgbGreen": "#3ddc84",
     "jackRgbBlue": "#4d8dff",
@@ -31,10 +34,10 @@
     "gridColor": "#ffffff",
     "workspaceBackgroundColor": "#1d1b1b",
     "moduleFillColor": "#171a1f",
-    "moduleFillAlpha": 0,
-    "moduleStrokeThickness": 4,
-    "moduleStrokeColor": "#ffffff",
-    "moduleStrokeAlpha": 16,
+    "moduleFillAlpha": 100,
+    "moduleStrokeThickness": 3,
+    "moduleStrokeColor": "#a19b9b",
+    "moduleStrokeAlpha": 46,
     "moduleSelectedStrokeColor": "#e2a86d",
     "moduleSelectedStrokeAlpha": 100,
     "sliderLabelColor": "#cfdde5",
@@ -51,14 +54,16 @@
     "sliderGhostFillSaturation": 100,
     "sliderGhostFillLightness": 76,
     "sliderGhostFillAlpha": 38,
-    "snakeSelectHue": 191,
-    "snakeSelectBrightness": 50,
+    "snakeSelectHue": 360,
+    "snakeSelectBrightness": 100,
     "snakeSelectAlpha": 95,
+    "wireThickness": 3.5,
+    "wirePatchPointSize": 54,
     "traceWireThickness": 1,
     "choiceSlideEmptyBorder": 2,
     "choiceSlideDebugBoxes": false,
     "wiresFollowPortColors": true,
-    "fullyOpaqueWires": true,
+    "fullyOpaqueWires": false,
     "bypassIconSize": 36,
     "bypassIconGlowSpread": 40,
     "bypassIconGlowColor": "#f25d5d",
@@ -82,15 +87,18 @@
     "gridDivisionMultiply": true,
     "moduleLightSpread": false,
     "moduleGridInset": false,
-    "moduleRoundness": false,
-    "moduleCornerShape": false,
+    "inletOutletSize": true,
+    "inletOutletStrokeThickness": true,
+    "inletOutletGap": true,
+    "ioSectionPaddingTop": true,
+    "ioSectionPaddingBottom": true,
     "usedPortBrightness": true,
     "unusedPortBrightness": true,
-    "jackRgbRed": false,
-    "jackRgbGreen": false,
-    "jackRgbBlue": false,
-    "jackAnalog": false,
-    "jackDigital": false,
+    "jackRgbRed": true,
+    "jackRgbGreen": true,
+    "jackRgbBlue": true,
+    "jackAnalog": true,
+    "jackDigital": true,
     "gridColor": false,
     "workspaceBackgroundColor": false,
     "moduleFillColor": false,
@@ -117,6 +125,8 @@
     "snakeSelectHue": false,
     "snakeSelectBrightness": false,
     "snakeSelectAlpha": false,
+    "wireThickness": true,
+    "wirePatchPointSize": true,
     "traceWireThickness": false,
     "choiceSlideEmptyBorder": false,
     "choiceSlideDebugBoxes": false,
@@ -138,11 +148,17 @@
     "wireCurve": 1,
     "wiresAboveModules": false,
     "keyboardDebugInfoVisible": false,
+    "constraintGuideVisible": false,
+    "constraintToggles": {
+      "cpu": false,
+      "ram": false,
+      "gpu": false
+    },
     "tooltipEmbedded": true,
     "tooltipEmbedHeight": 46,
-    "controllerDockHeight": 170,
     "moduleButtonsVisible": false,
     "appChromeBarsVisible": true,
+    "appChromeBarsMode": "all",
     "transportChromeStuck": false,
     "moduleInterfaceControlsVisible": true,
     "moduleOscilloscopesVisible": true,
@@ -150,6 +166,7 @@
     "moduleScopeBackgroundColor": "#000000",
     "globalSmoothingSeconds": 0.03,
     "globalSmoothingManual": true,
+    "snakeMouseSmooth": 0,
     "moduleScopeDotCore1Enabled": false,
     "moduleScopeDotCore1Size": 2,
     "moduleScopeDotCore1Brightness": 0.23,
@@ -172,20 +189,23 @@
         "M7",
         "M8"
       ],
-      "arcThickness": 6.5,
+      "arcThickness": 7,
       "arcGapBrightness": 0,
-      "sizeScale": 1.1,
-      "knobSpacing": 4,
+      "sizeScale": 0.55,
+      "knobSpacing": 0,
       "labelPosition": "bottom",
       "valuePosition": "mid",
-      "rotationDegrees": 246,
+      "rotationDegrees": 258,
       "showLabels": true,
-      "showValues": false
+      "showValues": true
     },
     "traceSettings": {
-      "background": "#000004",
-      "brightness": 0.3591,
-      "color": "#fcfdbf",
+      "backgroundHue": 240,
+      "backgroundBrightness": 0.5,
+      "background": "#0000ff",
+      "backgroundColor": "#0000ff",
+      "brightness": 0.95,
+      "color": "#ff0000",
       "dot1Enabled": true,
       "dot1Size": 0.035,
       "secondaryBrightness": 0.95,
@@ -193,127 +213,75 @@
       "secondaryEnabled": true,
       "secondarySize": 0.035,
       "secondaryLineThickness": 0,
+      "tertiaryColor": "#00ff00",
       "cycles": 2,
       "lineThickness": 0.15,
+      "stampDensity": 0.5,
       "dotBudget": 2048,
       "pixelDensity": 1,
       "padding": 0,
       "scale": 1,
-      "skipDiscontinuities": true,
+      "skipDiscontinuities": false,
+      "cmyMode": false,
       "sourceSync": false,
       "stereoBlend": "combine",
       "meetColor": "auto",
       "syncChannel": "off",
-      "zoomSeconds": 0.05,
-      "historySeconds": 0.05,
+      "zoomSeconds": 2,
+      "historySeconds": 2,
       "fade": 0,
       "xyzLayout": "stack"
     },
     "sliderLayout": "text-inside",
     "sliderAmountVisible": false,
     "sliderPositionVisible": true,
-    "moduleCatalogVisibility": {},
-    "sceneContextWindowSize": {
-      "width": 360,
-      "height": 520,
-      "_maxWidth": 980,
-      "_maxHeight": 951
-    },
-    "moduleActionWindowSize": {
-      "width": 299,
-      "height": 534,
-      "_maxWidth": 980,
-      "_maxHeight": 951
-    },
-    "workspaceWindowStatesVersion": 1,
-    "workspaceWindowStates": {
-      "commandCenter": {
-        "open": false,
-        "position": {
-          "left": 48,
-          "top": 171
-        },
-        "size": {
-          "width": 261,
-          "height": 552
-        }
-      },
-      "codeBox": {
-        "open": false
-      },
-      "moduleActions": {
-        "open": false
-      },
-      "metaparameters": {
-        "open": false
-      },
-      "oscilloscopeSettings": {
-        "open": false
-      },
-      "moduleBrowser": {
-        "open": false,
-        "position": {
-          "left": 65,
-          "top": 163
-        }
-      },
-      "visibilityMenu": {
-        "open": false
-      },
-      "uiSettings": {
-        "open": false,
-        "position": {
-          "left": 61,
-          "top": 133
-        }
-      },
-      "uiDev": {
-        "open": false,
-        "position": {
-          "left": 1530,
-          "top": 208
-        }
-      },
-      "traceDisplaySettings": {
-        "open": false,
-        "targetNode": "midSideEncode-1"
-      },
-      "standaloneMidiKeyboard": {
-        "open": false,
-        "position": {
-          "left": 0,
-          "top": 733
-        }
-      },
-      "tooltipWindow": {
-        "open": false
-      },
-      "phosphorWaveformSettings": {
-        "open": false
-      }
-    },
-    "sharedInspectorActive": "",
-    "sharedInspectorWindowState": {},
-    "workspaceView": {
-      "pan": {
-        "x": 910.0799999999999,
-        "y": 555.2521875
-      },
-      "zoom": 1.5735193599999993
-    },
-    "moduleStoreDepartment": "",
-    "savedPatchBankIndex": 0,
-    "savedPatchBankName": "",
-    "savedPatchFactoryPath": "",
-    "savedPatchUserPath": "",
-    "savedPatchGridColumns": 3,
-    "workingPatch": null,
-    "currentSavedPatchFilename": "",
-    "patchDirtyState": "untouched",
-    "filePicker": {
-      "startIn": "desktop",
-      "lastSettingsName": "useruisettings2.json",
-      "lastPatchName": "useruisettings2.json"
+    "moduleCatalogVisibility": {
+      "underconstructionsort": [
+        "canvas",
+        "humanFilter",
+        "oscilloscopeBank",
+        "shootingStarTail",
+        "wallDelay",
+        "pluginInput",
+        "pluginOutput",
+        "pluginMidiIn",
+        "pluginMidiOut",
+        "groupInput",
+        "groupOutput",
+        "evolveField",
+        "asciiscope",
+        "formantFilter",
+        "besselThomson",
+        "massSpringDamper",
+        "binaryClock",
+        "theremin",
+        "wavetable2d",
+        "wavetable3d",
+        "pixelGrid",
+        "chromaColor",
+        "image",
+        "rgbaHsla",
+        "screenSpaceShader",
+        "waveguide",
+        "phaser",
+        "flanger",
+        "chorus",
+        "electroKick",
+        "electroSnare",
+        "electroHat",
+        "flexGrid",
+        "chaosfly",
+        "drummer",
+        "arp",
+        "ePiano",
+        "percussion",
+        "phosphillator",
+        "hypersaw",
+        "moduleGroup",
+        "gravity",
+        "bloomGlow",
+        "gradientVectorscope"
+      ]
     }
   }
 }

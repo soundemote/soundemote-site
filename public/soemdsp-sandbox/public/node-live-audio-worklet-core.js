@@ -14,7 +14,7 @@ const nodeLiveRaptEllipticQuarterbandSos = Object.freeze([
 ]);
 
 function nodeLiveIsPolyBlepOscillatorType(type) {
-  return type === "osc" || type === "polyBlep" || type === "sineWavetable" || type === "blit";
+  return type === "osc" || type === "polyBlep" || type === "sineWavetable" || type === "sinCos" || type === "blit";
 }
 
 class NodeLiveAudioProcessor extends AudioWorkletProcessor {
@@ -66,6 +66,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.audioPlayerMeterSpeed = 0;
     this.audioPlayerMeterSpeeds = Object.create(null);
     this.audioPlayerMeterReason = "";
+    this.audioPlayerMeterSampleId = "";
     this.audioPlayerNodeIds = [];
     this.inputMeterPeak = 0;
     this.inputMeterSamples = 0;
@@ -108,7 +109,10 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.engineSampleRate = sampleRate;
     this.hostSampleRate = sampleRate;
     this.oversamplingRatio = 1;
-    this.speedMultiplier = 1;
+    // Stay paused until the host posts setSpeed after setPlan + native preload.
+    // Starting at 1 let LFOs into 0.1V/Oct advance during WASM load so PolyBLEP
+    // pitch sounded randomly phased on every Stop→Play.
+    this.speedMultiplier = 0;
     this.speedLimit = 20000;
     this.raptEllipticDecimatorLeft = this.createRaptEllipticDecimatorState();
     this.raptEllipticDecimatorRight = this.createRaptEllipticDecimatorState();
@@ -387,7 +391,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.scopeCaptureNodeIds = [];
     this.scopeCaptureRates = Object.create(null);
     this.scopeCounter = 0;
+    this.scopeSnapshotCounter = 0;
     this.scopeSampleStride = 1;
+    this.displayFps = 60;
     // Continuous engine-sample counter for free-running graph LFO phase
     // (Rate mode). Advanced once per evaluateFrame call.
     this.absoluteFrame = 0;

@@ -5,32 +5,34 @@ function wipeNodeGraphModuleScopeScreensToColdBoot() {
   if (typeof document === "undefined") {
     return;
   }
+  // 1D Phosphor / lineBurn keeps a free-running pen phasor on the canvas.
+  // Clear it on Stop so the next Play does not resume mid-sweep.
+  for (const canvas of document.querySelectorAll("canvas")) {
+    if (!canvas || typeof canvas !== "object") {
+      continue;
+    }
+    if ("_lineBurnPhasor" in canvas) {
+      canvas._lineBurnPhasor = 0;
+    }
+    if ("_lineBurnResetWasHigh" in canvas) {
+      canvas._lineBurnResetWasHigh = false;
+    }
+    if ("_lineBurnSignalWasHigh" in canvas) {
+      canvas._lineBurnSignalWasHigh = false;
+    }
+    if ("_lineBurnSweepOriginFrame" in canvas) {
+      delete canvas._lineBurnSweepOriginFrame;
+    }
+    if ("_nodeGraphOneDimensionalBurnLastDrawnFrame" in canvas) {
+      delete canvas._nodeGraphOneDimensionalBurnLastDrawnFrame;
+    }
+  }
   // Off-screen spectrogram history bitmaps (if the display registered a wipe).
   if (typeof clearNodeGraphSpectrogramHistory === "function") {
     try {
       clearNodeGraphSpectrogramHistory();
     } catch (_error) {
       // Best-effort.
-    }
-  }
-  // LEDs are CSS lamps (no canvas) — force unlit + no glow.
-  for (const face of document.querySelectorAll(".node-led-face")) {
-    const shell = face.closest(".dsp-node") || face;
-    const lamp = face.querySelector?.(".node-led-lamp") || face;
-    shell.style?.setProperty?.("--node-led-face-color", "rgb(0, 0, 0)");
-    shell.style?.setProperty?.("--node-led-face-glow", "none");
-    if (face.dataset) {
-      face.dataset.lightStrength = "0";
-      face.dataset.ledLevel = "0";
-      delete face.dataset.ledAppearance;
-    }
-    if (lamp?.dataset) {
-      lamp.dataset.lightStrength = "0";
-      lamp.dataset.ledLevel = "0";
-    }
-    if (lamp?.style) {
-      lamp.style.background = "rgb(0, 0, 0)";
-      lamp.style.boxShadow = "none";
     }
   }
   // Room-light emitters go dark with the simulation. Number Readout / Value LCD
@@ -387,8 +389,17 @@ function clearNodeGraphDisplaySettingsPhosphor(nodeIdOrIds = null, options = {})
       }
       // Drop last-point bridge only (not the frame cursor — see absorb below).
       delete canvas._nodeGraphScope2dLastDrawnPoint;
-      // Do NOT dispose legacy WebGL-on-face burn here — that permanently poisons
-      // the canvas so getContext("2d") fails and the face never draws again.
+      canvas._phosphorLiveOverlayPoints = null;
+      canvas._phosphorLiveScratchInk = false;
+      canvas._phosphorLiveScratch = null;
+      delete canvas._scope2dTraceLastPoints;
+      canvas._scope2dTraceHold = null;
+      if (typeof nodeGraphScope2dTraceHoldByNodeId?.delete === "function") {
+        nodeGraphScope2dTraceHoldByNodeId.delete(id);
+      }
+      // Energy phosphor faces already own WebGL on this canvas — getContext("2d")
+      // is null. Never drop the canvas (that killed drawing until sim restart).
+      const hasEnergyFace = phosphorKeys.some((key) => Boolean(canvas[key]));
       let context = null;
       try {
         context = canvas.getContext?.("2d") || null;
@@ -396,6 +407,14 @@ function clearNodeGraphDisplaySettingsPhosphor(nodeIdOrIds = null, options = {})
         context = null;
       }
       if (!context) {
+        if (hasEnergyFace) {
+          // FBO wipe above is enough; clear bridge/cursor metadata and continue.
+          canvas._outputPauseBannerStamped = false;
+          canvas._traceScroll = null;
+          canvas._waterfall = null;
+          continue;
+        }
+        // Non-energy face with no 2d context is genuinely dead — remove it.
         nodeGraphDropScopeFaceCanvas(canvas, id);
         continue;
       }
@@ -413,6 +432,19 @@ function clearNodeGraphDisplaySettingsPhosphor(nodeIdOrIds = null, options = {})
           context.fillRect(0, 0, canvas.width, canvas.height);
           context.restore();
         }
+        canvas._outputPauseBannerStamped = false;
+        canvas._traceScroll = null;
+        canvas._waterfall = null;
+        delete canvas._waterfallLastY;
+        delete canvas._waterfallLastLeftY;
+        delete canvas._waterfallLastRightY;
+        delete canvas._waterfallLastDrawnFrame;
+        delete canvas._waterfallPendingEndFrame;
+        delete canvas._traceWaterfallLastPoint;
+        delete canvas._traceWaterfallLastLeft;
+        delete canvas._traceWaterfallLastRight;
+        delete canvas._traceWaterfallLastDrawnFrame;
+        delete canvas._traceWaterfallPendingEndFrame;
       }
     }
 
@@ -481,6 +513,9 @@ function clearNodeGraphDisplaySettingsPhosphor(nodeIdOrIds = null, options = {})
     }
   }
 
+  if (typeof stampNodeGraphOutputPauseBanners === "function") {
+    stampNodeGraphOutputPauseBanners();
+  }
   // Force a draw even while paused so energy re-binds and the plate stays black.
   // Without this, pause early-outs only absorb cursors and never re-ensure GL.
   // One schedule for the whole multi-select batch.
@@ -512,6 +547,9 @@ function clearNodeGraphModuleScopeBuffers(options = {}) {
   if (nodeGraphModuleScopeState.drawFrameWatchdog) {
     window.clearTimeout(nodeGraphModuleScopeState.drawFrameWatchdog);
     nodeGraphModuleScopeState.drawFrameWatchdog = 0;
+  }
+  if (typeof clearNodeGraphModuleScopeDrawWait === "function") {
+    clearNodeGraphModuleScopeDrawWait();
   }
   if (nodeGraphModuleScopeState.drawFrameHeartbeat) {
     window.clearInterval(nodeGraphModuleScopeState.drawFrameHeartbeat);

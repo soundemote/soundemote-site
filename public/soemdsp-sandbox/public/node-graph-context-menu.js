@@ -1499,15 +1499,13 @@ function configureNodeSceneContextMenu(mode) {
       selectedLabel.textContent = "";
       selectedLabel.hidden = true;
     }
-    // Selected module title under Command Center (alias when set, else type name).
+    // Catalog type name (never alias) above the alias field.
     selectedModule.querySelector("strong").textContent = multiModuleMode
       ? `${selectedNodeIds.size} modules`
       : targetNode
-        ? (typeof nodeGraphPatchNodeTitle === "function"
-          ? nodeGraphPatchNodeTitle(targetNode)
-          : (typeof nodeGraphModuleChromeTitle === "function"
-            ? nodeGraphModuleChromeTitle(targetNode)
-            : (nodeGraphNodeLabels?.[targetNode.type] || targetNode.type)))
+        ? (typeof nodeGraphDefaultNodeTitle === "function"
+          ? nodeGraphDefaultNodeTitle(targetNode.type, targetNode.id)
+          : (nodeGraphNodeLabels?.[targetNode.type] || targetNode.type))
         : "none";
     aliasControl.hidden = multiModuleMode;
     aliasInput.disabled = !targetNode || multiModuleMode;
@@ -1943,13 +1941,15 @@ function configureNodeSceneContextMenu(mode) {
       canvasScript.title = "Open this canvas module's layer and compositor script.";
     }
     if (targetNode?.type === "led") {
-      const led = normalizeNodeGraphLedLayout(targetNode.led);
+      const vd = typeof nodeGraphVectorDotSettingsForNode === "function"
+        ? nodeGraphVectorDotSettingsForNode(targetNode)
+        : (targetNode.vectorDotSettings || {});
       ledColor.disabled = false;
-      ledColor.value = led.color;
-      ledColor.title = "Set this LED's outer rim color. The center uses the bright white dot layer.";
+      ledColor.value = vd.dot1Color || vd.color || "#ff0000";
+      ledColor.title = "LED Vector Dot hue (legacy swatch). Prefer Display Settings.";
     } else {
       ledColor.disabled = true;
-      ledColor.value = nodeGraphLedDefaultColor;
+      ledColor.value = typeof nodeGraphLedDefaultColor === "string" ? nodeGraphLedDefaultColor : "#ff0000";
     }
     if (targetNode?.type === "keypad" && typeof normalizeNodeGraphKeypadLayout === "function") {
       const pad = normalizeNodeGraphKeypadLayout(targetNode.layout);
@@ -2227,15 +2227,14 @@ function configureNodeSceneContextMenu(mode) {
 }
 
 /**
- * Shared: open Module Settings for a .dsp-node from any right-click/dblclick
+ * Shared: open Module Settings for a .dsp-node from right-click
  * on that module (header, body, ports, parameter inputs, …).
- * Never opens the Module Browser.
+ * Never opens the Module Browser. Double-click does not open settings
+ * (knobs / buttons / faces use click-drag; right-click is the menu).
  * @returns {boolean} true if handled
  */
 function openNodeGraphModuleSettingsFromContextEvent(event, nodeElement = null) {
-  if (event?.type === "dblclick" && event.altKey) {
-    event.preventDefault?.();
-    event.stopPropagation?.();
+  if (event?.type === "dblclick") {
     return false;
   }
   ensureNodeGraphModuleActionsWindowBody();
@@ -2308,9 +2307,7 @@ function openNodeModuleActionMenu(event) {
   if (typeof nodeGraphEventTargetIsPortalShell === "function" && nodeGraphEventTargetIsPortalShell(event)) {
     return;
   }
-  if (event?.type === "dblclick" && event.altKey) {
-    event.preventDefault?.();
-    event.stopPropagation?.();
+  if (event?.type === "dblclick") {
     return;
   }
   // Module shell binds contextmenu on the whole .dsp-node, which runs before
@@ -2386,13 +2383,16 @@ function openNodeRoundShapeContextMenu(event) {
   if (!(target instanceof Element)) {
     return false;
   }
-  const face = target.closest?.(".node-round-shape-display, .node-round-shape-canvas");
+  const face = target.closest?.(
+    ".node-round-shape-display, .node-round-shape-canvas, .node-basic-shape-display, .node-basic-shape-canvas",
+  );
   if (!face) {
     return false;
   }
   const display = face.classList?.contains("node-round-shape-display")
+    || face.classList?.contains("node-basic-shape-display")
     ? face
-    : face.closest?.(".node-round-shape-display");
+    : (face.closest?.(".node-round-shape-display") || face.closest?.(".node-basic-shape-display"));
   const nodeId = String(
     display?.dataset?.node
     || face.dataset?.node
@@ -2421,7 +2421,7 @@ function openNodeRoundShapeContextMenu(event) {
 
 function openNodeScopeContextMenu(event) {
   const contextScope = event.target.closest?.(
-    ".node-module-scope-window, .node-led-face, .node-number-readout-face, .node-value-lcd-face, .node-ray-bouncer-face, .node-asciiscope-face, .node-matrix-face, .node-round-shape-display",
+    ".node-module-scope-window, .node-led-face, .node-number-readout-face, .node-value-lcd-face, .node-ray-bouncer-face, .node-asciiscope-face, .node-matrix-face, .node-round-shape-display, .node-basic-shape-display",
   );
   const nodeId = contextScope?.dataset?.node || "";
   if (!nodeId || !nodeGraphPatchNode(nodeId)) {
@@ -2435,7 +2435,7 @@ function openNodeScopeContextMenu(event) {
   nodeGraphMvp.sceneContextTargetNode = null;
   nodeGraphMvp.sceneContextTargetWire = null;
   nodeGraphMvp.scopeContextTargetNode = nodeId;
-  // LED and other faces share the display settings popover (ledLamp schema).
+  // LED uses Vector Dot Display Settings.
   if (typeof openNodeGraphTraceDisplaySettings === "function" && openNodeGraphTraceDisplaySettings(nodeId, event)) {
     return true;
   }
@@ -2482,7 +2482,7 @@ const nodeGraphWorkspaceInteractiveDialogSelector =
 const nodeGraphWorkspaceOccupiedElementSelector =
   ".node-wire-hit-path, .node-wire-path, .dsp-node, .node-port, .node-param-port, .node-slider-readout";
 
-// Shared by the right-click scene menu and double-click-to-spawn: true only when
+// Shared by the right-click scene menu: true only when
 // the event lands on empty modular background (inside #nodeGraphWorkspace),
 // not the top/bottom bars, a floating window, a wire, a node, or a port/readout.
 function nodeGraphEventTargetIsPortalShell(event) {

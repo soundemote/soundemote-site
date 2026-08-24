@@ -648,15 +648,19 @@ function syncNodeGraphModuleScopeLocalFallbackCanvas(canvas, screenElement, pixe
     : Math.max(0, Math.min(1, Number(pixelDensity) || 0));
   let width = Math.max(1, Math.round(size.width * density));
   let height = Math.max(1, Math.round(size.height * density));
-  // Subpixel hops while paused must not assign canvas.width (browser wipe).
+  // Subpixel hops must not assign canvas.width (browser wipe). That destroyed
+  // Instant Trace pixel history (1px layout jitter → empty dest → live edge only).
   const frozen = typeof scopePaintIsFrozen === "function"
     ? scopePaintIsFrozen()
     : (typeof nodeGraphModuleScopePhosphorFrozen === "function"
       && nodeGraphModuleScopePhosphorFrozen());
-  if (frozen && canvas.width >= 2 && canvas.height >= 2) {
+  const holdWaterfall = Boolean(canvas._waterfall?.started || canvas._traceScroll?.started);
+  const holdVectorTrace = Boolean(canvas.classList?.contains("node-module-scope-vector-trace"));
+  if ((frozen || holdWaterfall || holdVectorTrace) && canvas.width >= 2 && canvas.height >= 2) {
     const dw = Math.abs(width - canvas.width);
     const dh = Math.abs(height - canvas.height);
-    if (dw <= 1 && dh <= 1) {
+    const slop = (holdWaterfall || holdVectorTrace) ? 2 : 1;
+    if (dw <= slop && dh <= slop) {
       width = canvas.width;
       height = canvas.height;
     }

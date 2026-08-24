@@ -54,6 +54,9 @@ function nodeGraphRoundShapeReadScopePort(nodeId, port) {
 }
 
 function nodeGraphRoundShapeLivePlaying() {
+  if (typeof nodeGraphDisplaysFrozen === "function" && nodeGraphDisplaysFrozen()) {
+    return false;
+  }
   if (typeof nodeGraphMvp === "undefined" || !nodeGraphMvp?.live?.node) {
     return false;
   }
@@ -136,6 +139,31 @@ function drawNodeGraphRoundShapeDisplay(section) {
   }
 }
 
+function nodeGraphRoundShapeEllipsoidOscPoint(phase01, node) {
+  const phase = (Number(phase01) || 0) * Math.PI * 2;
+  const params = {
+    amplitude: nodeGraphRoundShapeLiveParam(node, "amplitude", 1),
+    frequencyHz: 0,
+    offsetX: nodeGraphRoundShapeLiveParam(node, "offsetX", 0),
+    offsetY: nodeGraphRoundShapeLiveParam(node, "offsetY", 0),
+    sampleRate: 44100,
+    scaleX: nodeGraphRoundShapeLiveParam(node, "scaleX", 1),
+    scaleY: nodeGraphRoundShapeLiveParam(node, "scaleY", 1),
+    shapeX: nodeGraphRoundShapeLiveParam(node, "shapeX", 0),
+    shapeY: nodeGraphRoundShapeLiveParam(node, "shapeY", 0),
+  };
+  if (typeof nodeGraphEllipsoidVectorSample === "function") {
+    const v = nodeGraphEllipsoidVectorSample(phase, params);
+    const x = Number(v.X);
+    const y = Number(v.Y);
+    return {
+      x: Number.isFinite(x) ? x : 0,
+      y: Number.isFinite(y) ? y : 0,
+    };
+  }
+  return { x: Math.cos(phase), y: Math.sin(phase) };
+}
+
 function nodeGraphRoundShapeEllipsoidPoint(phase, shape) {
   if (typeof nodeGraphEllipsoidSineToSquareVector === "function") {
     const v = nodeGraphEllipsoidSineToSquareVector(phase, {
@@ -166,6 +194,7 @@ function drawNodeGraphRoundShapeDisplayInner(section) {
     return;
   }
   const isKick = node.type === "kickEnvelope" || node.type === "sineKick";
+  const isEllipsoidOsc = node.type === "ellipsoidOsc";
   let shape = Number(nodeGraphRoundShapeLiveParam(node, isKick ? "sharpness" : "shape", 0));
   if (isKick && !(shape > 0)) {
     const legacy = Number(nodeGraphRoundShapeLiveParam(node, "roundness", 0));
@@ -194,10 +223,17 @@ function drawNodeGraphRoundShapeDisplayInner(section) {
     }
   }
   const signature = [
-    isKick ? "kick" : "orbit",
+    isKick ? "kick" : (isEllipsoidOsc ? "ellipsoidOsc" : "orbit"),
     shape.toFixed(4),
     low.toFixed(4),
     high.toFixed(4),
+    isEllipsoidOsc ? nodeGraphRoundShapeLiveParam(node, "offsetX", 0).toFixed(4) : "",
+    isEllipsoidOsc ? nodeGraphRoundShapeLiveParam(node, "offsetY", 0).toFixed(4) : "",
+    isEllipsoidOsc ? nodeGraphRoundShapeLiveParam(node, "shapeX", 0).toFixed(4) : "",
+    isEllipsoidOsc ? nodeGraphRoundShapeLiveParam(node, "shapeY", 0).toFixed(4) : "",
+    isEllipsoidOsc ? nodeGraphRoundShapeLiveParam(node, "scaleX", 1).toFixed(4) : "",
+    isEllipsoidOsc ? nodeGraphRoundShapeLiveParam(node, "scaleY", 1).toFixed(4) : "",
+    isEllipsoidOsc ? nodeGraphRoundShapeLiveParam(node, "amplitude", 1).toFixed(4) : "",
     strokeColor,
     plateBg,
     dotColor,
@@ -322,6 +358,21 @@ function drawNodeGraphRoundShapeDisplayInner(section) {
           context.lineTo(p.x, p.y);
         }
       }
+    } else if (isEllipsoidOsc) {
+      const eps = 0.5 / samples;
+      for (let i = 0; i < samples; i += 1) {
+        let phase = i / samples + eps;
+        phase -= Math.floor(phase);
+        const pt = nodeGraphRoundShapeEllipsoidOscPoint(phase, node);
+        const x = cx + pt.x * viewScale;
+        const y = cy - pt.y * viewScale;
+        if (i === 0) {
+          context.moveTo(x, y);
+        } else {
+          context.lineTo(x, y);
+        }
+      }
+      context.closePath();
     } else if (typeof nodeGraphEllipsoidSineToSquareVector === "function") {
       // Phase 0/1 is the mid-point of the +X side at shape=1. Starting
       // and ending there drops that whole side (open path + clip). Walk
@@ -413,6 +464,25 @@ function drawNodeGraphRoundShapeDisplayInner(section) {
       px = p.x;
       py = p.y;
     }
+  } else if (isEllipsoidOsc) {
+    const liveX = liveOut && Number.isFinite(Number(liveOut.X))
+      ? Number(liveOut.X)
+      : (typeof nodeGraphModuleScopeLatestOutputValue === "function"
+        ? nodeGraphModuleScopeLatestOutputValue(nodeId, "X", Number.NaN)
+        : Number.NaN);
+    const liveY = liveOut && Number.isFinite(Number(liveOut.Y))
+      ? Number(liveOut.Y)
+      : (typeof nodeGraphModuleScopeLatestOutputValue === "function"
+        ? nodeGraphModuleScopeLatestOutputValue(nodeId, "Y", Number.NaN)
+        : Number.NaN);
+    if (Number.isFinite(liveX) && Number.isFinite(liveY)) {
+      px = cx + liveX * viewScale;
+      py = cy - liveY * viewScale;
+    } else {
+      const start = nodeGraphRoundShapeEllipsoidOscPoint(0, node);
+      px = cx + start.x * viewScale;
+      py = cy - start.y * viewScale;
+    }
   } else {
     const cursor = nodeGraphRoundShapeLiveCursor(nodeId, node, section);
     if (cursor && Number.isFinite(cursor.x) && Number.isFinite(cursor.y)) {
@@ -455,29 +525,6 @@ function nodeGraphRoundShapeScopeFps() {
   return Number.isFinite(n) ? Math.max(0, Math.min(240, n)) : 60;
 }
 
-function nodeGraphRoundShapeFpsReady(section) {
-  if (section?._roundShapeForceDraw) {
-    return true;
-  }
-  const fps = nodeGraphRoundShapeScopeFps();
-  if (!(fps > 0)) {
-    return false;
-  }
-  const nodeId = section?.dataset?.node || "round-shape";
-  if (typeof nodeGraphDisplayFrameReady === "function") {
-    return nodeGraphDisplayFrameReady(`round-shape:${nodeId}`);
-  }
-  const now = typeof performance !== "undefined" && performance.now
-    ? performance.now()
-    : Date.now();
-  const last = Number(section._roundShapeLastPaintTs) || 0;
-  if (last && (now - last) < (1000 / fps) - 0.5) {
-    return false;
-  }
-  section._roundShapeLastPaintTs = now;
-  return true;
-}
-
 function scheduleNodeGraphRoundShapePlayhead(section) {
   if (!section || section._roundShapePlayheadRaf) {
     return;
@@ -496,16 +543,9 @@ function scheduleNodeGraphRoundShapePlayhead(section) {
     && !nodeGraphScreenSoloAllowsNode(nodeId)) {
     return;
   }
-  if (!(nodeGraphRoundShapeScopeFps() > 0)) {
-    return;
-  }
   section._roundShapePlayheadRaf = requestAnimationFrame(() => {
     section._roundShapePlayheadRaf = 0;
-    if (nodeGraphRoundShapeFpsReady(section)) {
-      drawNodeGraphRoundShapeDisplay(section);
-      return;
-    }
-    scheduleNodeGraphRoundShapePlayhead(section);
+    drawNodeGraphRoundShapeDisplay(section);
   });
 }
 

@@ -10,21 +10,16 @@ function assignNodeGraphTypedDisplaySettingsToNode(node, displayType, settings) 
     node.zeroDBurnSettings = normalizeNodeGraphZeroDBurnSettings(settings);
     return node.zeroDBurnSettings;
   }
+  if (displayType === "lcdDot") {
+    node.vectorDotSettings = typeof normalizeNodeGraphLcdDotSettings === "function"
+      ? normalizeNodeGraphLcdDotSettings(settings)
+      : (settings || {});
+    return node.vectorDotSettings;
+  }
   if (displayType === "vectorDot" || displayType === "pulseDot") {
     node.vectorDotSettings = typeof normalizeNodeGraphVectorDotSettings === "function"
       ? normalizeNodeGraphVectorDotSettings(settings)
       : (settings || {});
-    if (node.type === "led") {
-      node.led = typeof normalizeNodeGraphLedLayout === "function"
-        ? normalizeNodeGraphLedLayout({
-          ...(node.led || {}),
-          hue: node.vectorDotSettings.hue,
-          brightness: node.vectorDotSettings.dot1Brightness,
-          blur: node.vectorDotSettings.lineThickness,
-          dot1Size: node.vectorDotSettings.dot1Size,
-        })
-        : node.led;
-    }
     return node.vectorDotSettings;
   }
   if (displayType === "lineBurn") {
@@ -74,12 +69,24 @@ function assignNodeGraphTypedDisplaySettingsToNode(node, displayType, settings) 
     }
     return { channel };
   }
-  if (displayType === "roundShapeFace") {
+  if (displayType === "roundShapeFace" || displayType === "basicShapeFace") {
     node.traceDisplaySettings = typeof normalizeNodeGraphRoundShapeFaceSettings === "function"
       ? normalizeNodeGraphRoundShapeFaceSettings(settings)
       : (settings || {});
-    if (typeof applyNodeGraphRoundShapeDisplaySettingsToFace === "function") {
+    if (displayType === "basicShapeFace"
+      && typeof applyNodeGraphBasicShapeDisplaySettingsToFace === "function") {
+      applyNodeGraphBasicShapeDisplaySettingsToFace(node);
+    } else if (typeof applyNodeGraphRoundShapeDisplaySettingsToFace === "function") {
       applyNodeGraphRoundShapeDisplaySettingsToFace(node);
+    }
+    return node.traceDisplaySettings;
+  }
+  if (displayType === "toggleButtonFace" || displayType === "momentaryButtonFace") {
+    node.traceDisplaySettings = typeof normalizeNodeGraphPluginButtonDisplaySettings === "function"
+      ? normalizeNodeGraphPluginButtonDisplaySettings(settings)
+      : (settings || {});
+    if (typeof applyNodeGraphPluginButtonDisplaySettingsToFace === "function") {
+      applyNodeGraphPluginButtonDisplaySettingsToFace(node);
     }
     return node.traceDisplaySettings;
   }
@@ -151,17 +158,6 @@ function assignNodeGraphTypedDisplaySettingsToNode(node, displayType, settings) 
       applyNodeGraphPatchFaceDisplay(el, node);
     }
     return node.traceDisplaySettings;
-  }
-  if (displayType === "ledLamp") {
-    node.led = typeof normalizeNodeGraphLedLayout === "function"
-      ? normalizeNodeGraphLedLayout({
-        ...(settings || {}),
-        brightness: settings?.brightness ?? settings?.dot1Brightness,
-        blur: settings?.blur ?? settings?.lineThickness,
-        gradientStops: settings?.gradientStops ?? settings?.gradient,
-      })
-      : (settings || {});
-    return node.led;
   }
   if (displayType === "rgbShapeFace") {
     node.traceDisplaySettings = typeof normalizeNodeGraphRgbShapeSettings === "function"
@@ -374,8 +370,8 @@ function swapNodeGraphOutputTraceLook() {
   if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
     scheduleNodeGraphModuleScopeDraw({ force: true });
   }
-  if (typeof syncNodeGraphInstantTracePreview === "function") {
-    syncNodeGraphInstantTracePreview(
+  if (typeof syncNodeGraphStampPreview === "function") {
+    syncNodeGraphStampPreview(
       document.getElementById("nodeTraceDisplaySettingsPopover"),
       s,
     );
@@ -393,13 +389,16 @@ function persistNodeGraphTraceDisplaySettingsSoon(persistMode = "debounce") {
     nodeGraphTraceDisplaySettingsPersistTimer = 0;
   }
   const persist = () => {
+    // Global traceSettings SSOT is the session blob (workingPatch clone).
+    if (typeof persistSession === "function") {
+      persistSession({
+        reason: "workingPatch",
+        immediateFile: persistMode === "immediate",
+      });
+      return;
+    }
     if (typeof saveNodeGraphWorkingPatchToUserSettings === "function") {
       saveNodeGraphWorkingPatchToUserSettings({ immediateFile: persistMode === "immediate" });
-    } else if (
-      typeof serializeNodeUiDevSettings === "function" &&
-      typeof saveNodeUiDevLocalDefaultSettings === "function"
-    ) {
-      saveNodeUiDevLocalDefaultSettings(serializeNodeUiDevSettings());
     }
   };
   if (persistMode === "immediate") {
@@ -517,10 +516,13 @@ function nodeGraphTraceDisplayExistingSettingsForNode(node, settingsSchema) {
     // Temporarily not available per-node — read typed bags.
   }
   if (settingsSchema === "lineBurn" || settingsSchema === "value" || settingsSchema === "trace"
+    || settingsSchema === "traceRgb"
     || settingsSchema === "scope2d" || settingsSchema === "scope2dTrace"
     || settingsSchema === "numberReadout" || settingsSchema === "knobFace"
     || settingsSchema === "phosphorLight" || settingsSchema === "roundShapeFace"
-    || settingsSchema === "limiterGainFace") {
+    || settingsSchema === "basicShapeFace"
+    || settingsSchema === "limiterGainFace"
+    || settingsSchema === "toggleButtonFace" || settingsSchema === "momentaryButtonFace") {
     return node.traceDisplaySettings && typeof node.traceDisplaySettings === "object"
       ? { ...node.traceDisplaySettings }
       : {};
@@ -529,9 +531,6 @@ function nodeGraphTraceDisplayExistingSettingsForNode(node, settingsSchema) {
     return node.zeroDBurnSettings && typeof node.zeroDBurnSettings === "object"
       ? { ...node.zeroDBurnSettings }
       : {};
-  }
-  if (settingsSchema === "ledLamp") {
-    return node.led && typeof node.led === "object" ? { ...node.led } : {};
   }
   if (settingsSchema === "portalFace") {
     return typeof nodeGraphPortalDisplaySettingsForNode === "function"
@@ -626,19 +625,28 @@ function applyNodeGraphTraceDisplaySettingsForm(options = {}) {
   // otherwise skip the full path; cold plates still run, but force refreshes
   // energy faces too after Clear-while-paused style freezes).
   scheduleNodeGraphModuleScopeDraw({ force: true });
-  if (typeof nodeGraphDisplaySettingsIsVectorTraceFormType === "function"
-    && nodeGraphDisplaySettingsIsVectorTraceFormType(
-      typeof nodeGraphTraceDisplaySettingsFormType === "function"
-        ? nodeGraphTraceDisplaySettingsFormType()
-        : "",
-    )
-    && typeof syncNodeGraphInstantTracePreview === "function") {
-    syncNodeGraphInstantTracePreview(
+  if (typeof syncNodeGraphStampPreview === "function") {
+    syncNodeGraphStampPreview(
       document.getElementById("nodeTraceDisplaySettingsPopover"),
       settings,
     );
   }
-  if (typeof paintNodeGraphModuleScopeColdPlatesOnly === "function") {
+  const dirty = nodeGraphMvp.traceDisplaySettingsDirtyKeys;
+  const inkOnly = dirty
+    && dirty.size > 0
+    && ![...dirty].some((key) => {
+      const k = String(key || "");
+      return k === "*"
+        || k === "background"
+        || k === "backgroundColor"
+        || k === "backgroundHue"
+        || k === "backgroundBrightness"
+        || k === "historySeconds"
+        || k === "zoomSeconds"
+        || k === "pixelDensity"
+        || k === "scale";
+    });
+  if (typeof paintNodeGraphModuleScopeColdPlatesOnly === "function" && !inkOnly) {
     paintNodeGraphModuleScopeColdPlatesOnly(undefined, { force: true });
   }
   // XY Pad face is not a scope slot — repaint pads when display settings change.
@@ -670,13 +678,6 @@ function applyNodeGraphTraceDisplaySettingsForm(options = {}) {
             ? nodeGraphNodeElement(faceNodeId)
             : null;
           if (el) syncNodeGraphKeypadElement(el, faceNode);
-        }
-      }
-      if (faceNode.type === "led") {
-        if (typeof scheduleNodeGraphLedFaceRefresh === "function") {
-          scheduleNodeGraphLedFaceRefresh(faceNodeId);
-        } else if (typeof refreshNodeGraphLedFaceForNode === "function") {
-          refreshNodeGraphLedFaceForNode(faceNodeId);
         }
       }
       if (faceNode.type === "rgbShape" && typeof paintNodeGraphRgbShapeFaceForNode === "function") {
@@ -729,6 +730,7 @@ const NODE_GRAPH_DISPLAY_SETTINGS_PRESERVE_LOOK_KEYS = Object.freeze([
   "peakColor",
   "dot1Color",
   "secondaryColor",
+  "tertiaryColor",
   "meetColor",
   "ghostColor",
   "arcFill",
@@ -737,6 +739,122 @@ const NODE_GRAPH_DISPLAY_SETTINGS_PRESERVE_LOOK_KEYS = Object.freeze([
   "textColor",
   "strokeColor",
 ]);
+
+function cloneNodeGraphDisplaySettingsClipboardBag(settings) {
+  const source = settings && typeof settings === "object" ? settings : {};
+  try {
+    return JSON.parse(JSON.stringify(source));
+  } catch (_error) {
+    return { ...source };
+  }
+}
+
+function nodeGraphDisplaySettingsClipboardFamilyForOpenForm() {
+  const formType = typeof nodeGraphTraceDisplaySettingsFormType === "function"
+    ? nodeGraphTraceDisplaySettingsFormType()
+    : "";
+  return typeof nodeGraphDisplaySettingsClipboardFamily === "function"
+    ? nodeGraphDisplaySettingsClipboardFamily(formType)
+    : "";
+}
+
+function syncNodeGraphTraceDisplaySettingsClipboardButtons() {
+  const family = nodeGraphDisplaySettingsClipboardFamilyForOpenForm();
+  const copyBtn = document.getElementById("nodeTraceDisplaySettingsCopy");
+  const pasteBtn = document.getElementById("nodeTraceDisplaySettingsPaste");
+  const clip = nodeGraphMvp?.displaySettingsClipboard;
+  const clipFamily = String(clip?.family || "");
+  const row = copyBtn?.parentElement || pasteBtn?.parentElement;
+  if (row?.classList) {
+    row.classList.toggle("is-clipboard-row", Boolean(family));
+  }
+  if (copyBtn) {
+    copyBtn.hidden = !family;
+    copyBtn.disabled = !family;
+    copyBtn.title = family
+      ? `Copy ${nodeGraphDisplaySettingsClipboardFamilyLabel?.(family) || family} display settings`
+      : "";
+  }
+  if (pasteBtn) {
+    pasteBtn.hidden = !family;
+    pasteBtn.disabled = !family || !clipFamily || clipFamily !== family;
+    pasteBtn.title = !family
+      ? ""
+      : (!clipFamily
+        ? "Paste display settings"
+        : (clipFamily === family
+          ? `Paste ${nodeGraphDisplaySettingsClipboardFamilyLabel?.(clipFamily) || clipFamily} display settings`
+          : `Clipboard is ${nodeGraphDisplaySettingsClipboardFamilyLabel?.(clipFamily) || clipFamily}`));
+  }
+}
+
+function copyNodeGraphTraceDisplaySettings() {
+  const family = nodeGraphDisplaySettingsClipboardFamilyForOpenForm();
+  if (!family) {
+    if (typeof setNodeInteractionHelp === "function") {
+      setNodeInteractionHelp("This face cannot copy display settings.");
+    }
+    return;
+  }
+  const settings = typeof readNodeGraphTraceDisplaySettingsForm === "function"
+    ? readNodeGraphTraceDisplaySettingsForm()
+    : null;
+  if (!settings || typeof settings !== "object") {
+    return;
+  }
+  nodeGraphMvp.displaySettingsClipboard = {
+    family,
+    settings: cloneNodeGraphDisplaySettingsClipboardBag(settings),
+  };
+  syncNodeGraphTraceDisplaySettingsClipboardButtons();
+  const label = typeof nodeGraphDisplaySettingsClipboardFamilyLabel === "function"
+    ? nodeGraphDisplaySettingsClipboardFamilyLabel(family)
+    : family;
+  if (typeof setNodeInteractionHelp === "function") {
+    setNodeInteractionHelp(`Copied ${label} display settings.`);
+  }
+}
+
+function pasteNodeGraphTraceDisplaySettings() {
+  const family = nodeGraphDisplaySettingsClipboardFamilyForOpenForm();
+  const clip = nodeGraphMvp?.displaySettingsClipboard;
+  const clipFamily = String(clip?.family || "");
+  if (!family) {
+    if (typeof setNodeInteractionHelp === "function") {
+      setNodeInteractionHelp("This face cannot paste display settings.");
+    }
+    return;
+  }
+  if (!clipFamily || !clip.settings) {
+    if (typeof setNodeInteractionHelp === "function") {
+      setNodeInteractionHelp("Nothing to paste. Copy display settings first.");
+    }
+    return;
+  }
+  if (clipFamily !== family) {
+    const from = typeof nodeGraphDisplaySettingsClipboardFamilyLabel === "function"
+      ? nodeGraphDisplaySettingsClipboardFamilyLabel(clipFamily)
+      : clipFamily;
+    const to = typeof nodeGraphDisplaySettingsClipboardFamilyLabel === "function"
+      ? nodeGraphDisplaySettingsClipboardFamilyLabel(family)
+      : family;
+    if (typeof setNodeInteractionHelp === "function") {
+      setNodeInteractionHelp(`Can't paste: clipboard is ${from}, this face is ${to}.`);
+    }
+    return;
+  }
+  const bag = cloneNodeGraphDisplaySettingsClipboardBag(clip.settings);
+  writeNodeGraphTraceDisplaySettingsForm(bag);
+  markNodeGraphTraceDisplaySettingsDirty("*");
+  applyNodeGraphTraceDisplaySettingsForm({ persist: "immediate", record: true, forceAll: true });
+  clearNodeGraphTraceDisplaySettingsDirty();
+  const label = typeof nodeGraphDisplaySettingsClipboardFamilyLabel === "function"
+    ? nodeGraphDisplaySettingsClipboardFamilyLabel(family)
+    : family;
+  if (typeof setNodeInteractionHelp === "function") {
+    setNodeInteractionHelp(`Pasted ${label} display settings.`);
+  }
+}
 
 function setNodeGraphTraceDisplaySettingsDefaults() {
   const formType = typeof nodeGraphTraceDisplaySettingsFormType === "function"

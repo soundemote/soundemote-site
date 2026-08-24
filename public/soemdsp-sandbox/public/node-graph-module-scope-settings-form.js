@@ -16,8 +16,12 @@ function nodeGraphDisplaySettingsBuildStepperRowHtml(key, formType = null, optio
   }
   if ((key === "zoomSeconds" || key === "historySeconds") && (
     formType === "trace"
-    || formType === "traceXyz"
-    || formType === "scope2dTrace"
+    || formType === "traceRgb"
+  )) {
+    label = "History";
+    title = "Seconds of tape across the face. 0 = now (a full-width line). Off: scroll speed. Sync: time for the pen to walk left→right.";
+  } else if ((key === "zoomSeconds" || key === "historySeconds") && (
+    formType === "traceXyz"
     || formType === "gradientVectorscopeFace"
   )) {
     label = "History";
@@ -25,16 +29,25 @@ function nodeGraphDisplaySettingsBuildStepperRowHtml(key, formType = null, optio
   }
   if (key === "lineThickness" && (
     formType === "trace"
+    || formType === "traceRgb"
     || formType === "traceXyz"
-    || formType === "scope2dTrace"
-    || formType === "gradientVectorscopeFace"
-    || formType === "value"
   )) {
+    label = "Blur";
+    title = "0 = hard pixel disc at Size (no AA). 1 = smoothstep from center to that same edge (Size does not grow).";
+  } else if (key === "stampDensity" && (
+    formType === "trace"
+    || formType === "traceRgb"
+    || formType === "traceXyz"
+  )) {
+    label = "Dot density";
+    title = "0 = extremely sparse (~200× default gap); 0.5 = recommended; 1 = 2× recommended density.";
+  } else if (key === "lineThickness" && formType === "value") {
     label = "Blur";
     title = "0 = Size as a hard line. Raise to fatten a soft halo outward. Lower returns to the thin sharp line.";
   }
   if ((key === "dot1Size" || key === "secondarySize") && (
     formType === "trace"
+    || formType === "traceRgb"
     || formType === "traceXyz"
     || formType === "scope2dTrace"
     || formType === "gradientVectorscopeFace"
@@ -45,33 +58,43 @@ function nodeGraphDisplaySettingsBuildStepperRowHtml(key, formType = null, optio
   }
   if ((key === "dot1Brightness" || key === "secondaryBrightness") && (
     formType === "trace"
+    || formType === "traceRgb"
     || formType === "traceXyz"
     || formType === "scope2dTrace"
     || formType === "gradientVectorscopeFace"
     || formType === "value"
+    || formType === "scope2d"
+    || formType === "lineBurn"
+    || formType === "phosphorLight"
   )) {
     label = "\uD83D\uDCA1 Bright";
-    title = "Ink light 0…1 (1 = full). Does not change the Display Settings preview dot.";
+    title = formType === "scope2dTrace"
+      ? "Beam brightness 0…1 (black → full hue at 0.5 → white). Drag the Trace title to change hue."
+      : formType === "trace" || formType === "traceRgb" || formType === "traceXyz" || formType === "gradientVectorscopeFace" || formType === "value"
+      ? "Ink light 0…1 (1 = full)."
+      : "Stamp brightness 0…1 (single source of truth). 1 = full ink. Preview matches the face.";
   }
   if (key === "pixelDensity" && (
     formType === "trace"
+    || formType === "traceRgb"
     || formType === "traceXyz"
     || formType === "scope2dTrace"
     || formType === "gradientVectorscopeFace"
+    || formType === "scope2d"
+    || formType === "lineBurn"
+    || formType === "phosphorLight"
+    || formType === "xyPad"
   )) {
     label = "Pixel density";
-    title = "1 = CSS \u00d7 devicePixelRatio. Below 1 = chunky lo-fi face buffer.";
+    title = "1 = native face buffer. Below 1 = chunky lo-fi grid (nearest-neighbor).";
   }
-  if (key === "fade" && (
-    formType === "traceXyz"
-    || formType === "scope2dTrace"
-    || formType === "gradientVectorscopeFace"
-  )) {
+  if (key === "fade" && formType === "traceXyz") {
     label = "Fade";
     title = "Fade the stroke along history. 0 = even ink. 1 = oldest gone, newest full. Does not change the preview dot.";
   }
   if (key === "scale" && (
     formType === "trace"
+    || formType === "traceRgb"
     || formType === "traceXyz"
     || formType === "scope2dTrace"
     || formType === "gradientVectorscopeFace"
@@ -92,19 +115,21 @@ function nodeGraphDisplaySettingsBuildStepperRowHtml(key, formType = null, optio
     label = "Value size";
     title = "Readout size 0…1. Independent of knob size.";
   }
-  if (formType === "roundShapeFace" && key === "lineThickness") {
+  if ((formType === "roundShapeFace" || formType === "basicShapeFace") && key === "lineThickness") {
     label = "Line thickness";
-    title = "Orbit stroke width in CSS pixels (0.25–16).";
+    title = formType === "basicShapeFace"
+      ? "Wave stroke width in CSS pixels (0.25–16)."
+      : "Orbit stroke width in CSS pixels (0.25–16).";
   }
-  if (formType === "roundShapeFace" && key === "dotThickness") {
+  if ((formType === "roundShapeFace" || formType === "basicShapeFace") && key === "dotThickness") {
     label = "Dot thickness";
-    title = "Cursor dot diameter in CSS pixels (0.25–32).";
+    title = "Phase-dot diameter in CSS pixels (0.25–32).";
   }
-  if (formType === "roundShapeFace" && key === "lineBlur") {
+  if ((formType === "roundShapeFace" || formType === "basicShapeFace") && key === "lineBlur") {
     label = "Line blur";
     title = "Diamond restroke blur in CSS pixels (0 = hard). Path is redrawn at 9 tent-weighted offsets — cheap, no extra canvas.";
   }
-  if (formType === "roundShapeFace" && key === "pixelDensity") {
+  if ((formType === "roundShapeFace" || formType === "basicShapeFace") && key === "pixelDensity") {
     label = "Pixel density";
     title = "1.0 = CSS × devicePixelRatio. Below 1 = chunky lo-fi.";
   }
@@ -112,13 +137,26 @@ function nodeGraphDisplaySettingsBuildStepperRowHtml(key, formType = null, optio
     label = "Inner radius";
     title = "Arc hole size 0…1 (0 = solid, ~0.7 default ring, higher = thinner ring).";
   }
-  if ((formType === "vectorDot" || formType === "pulseDot") && key === "lineThickness") {
+  if ((formType === "vectorDot" || formType === "pulseDot" || formType === "lcdDot") && key === "lineThickness") {
     label = "Blur";
-    title = "Smoothstep edge softness 0…1 (0 = hard disc, 1 = soft skirt). Cheap vector rings — not a gradient.";
+    title = "Smoothstep edge softness 0…1 (0 = hard edge, 1 = soft skirt). Baked into the stamp bitmap.";
   }
-  if ((formType === "vectorDot" || formType === "pulseDot") && key === "dot1Size") {
+  if ((formType === "vectorDot" || formType === "pulseDot" || formType === "lcdDot") && key === "dot1Size") {
     label = "Size";
     title = "Dot diameter as a fraction of the face min side.";
+  }
+  if ((formType === "vectorDot" || formType === "pulseDot" || formType === "lcdDot") && key === "shapeParam") {
+    const live = document.getElementById("nodeTraceDisplaySettingsPopover")
+      ?.querySelector?.(`[data-trace-display-choice="shape"]`)?.value;
+    const shape = typeof normalizeTraceStampShape === "function"
+      ? normalizeTraceStampShape(live || "circle")
+      : String(live || "circle");
+    const meta = typeof traceStampShapeParamMeta === "function"
+      ? traceStampShapeParamMeta(shape)
+      : null;
+    label = meta?.label || "Shape";
+    title = meta?.title
+      || "Shape parameter 0…1. Meaning depends on Shape.";
   }
   if (formType === "numberReadout" && key === "dot1Brightness") {
     const nodeType = typeof nodeGraphPatchNode === "function"
@@ -373,9 +411,12 @@ function nodeGraphDisplaySettingsBuildPackingToggleRowHtml(keys) {
       + `</button>`
     );
   }).join("");
+  const cols = Math.max(1, buttons.length);
   return (
     `<div class="app-latch-button-row node-trace-display-packing-toggles"`
-    + ` data-latch-button-row data-trace-display-control-row>${cells}</div>`
+    + ` data-latch-button-row data-trace-display-control-row`
+    + ` style="--latch-cols:${cols};grid-template-columns:repeat(${cols},minmax(0,1fr))">`
+    + `${cells}</div>`
   );
 }
 
@@ -415,8 +456,8 @@ function nodeGraphDisplaySettingsColorRowMeta(key, formType = null, options = {}
       ? nodeGraphPatchNode(nodeGraphTraceDisplaySettingsTargetNodeId())?.type
       : null;
     aria = nodeType === "valueLcd"
-      ? "Value LCD foreground (digit ink) color"
-      : "LED digit hue; LED amount maps grey → full hue → white";
+      ? "LCD Value foreground (digit ink) color"
+      : "LED Value digit hue; LED amount maps grey → full hue → white";
   } else if (formType === "numberReadout" && key === "backgroundColor") {
     aria = "Value face background color";
   } else if (formType === "knobFace" && key === "backgroundColor") {
@@ -441,13 +482,13 @@ function nodeGraphDisplaySettingsColorRowMeta(key, formType = null, options = {}
     aria = "Keypad text color";
   } else if (formType === "keypadFace" && key === "strokeColor") {
     aria = "Keypad stroke color";
-  } else if (formType === "roundShapeFace" && key === "backgroundColor") {
+  } else if ((formType === "roundShapeFace" || formType === "basicShapeFace") && key === "backgroundColor") {
     aria = "RoundShape background color";
     base = { ...base, defaultValue: "#020609" };
-  } else if (formType === "roundShapeFace" && key === "strokeColor") {
+  } else if ((formType === "roundShapeFace" || formType === "basicShapeFace") && key === "strokeColor") {
     aria = "RoundShape foreground / stroke color";
     base = { ...base, defaultValue: "#78dcc8" };
-  } else if (formType === "roundShapeFace" && key === "dotColor") {
+  } else if ((formType === "roundShapeFace" || formType === "basicShapeFace") && key === "dotColor") {
     aria = "RoundShape cursor dot color";
     base = { ...base, defaultValue: "#ffffff" };
   } else if (formType === "limiterGainFace" && key === "backgroundColor") {
@@ -456,13 +497,22 @@ function nodeGraphDisplaySettingsColorRowMeta(key, formType = null, options = {}
   } else if (formType === "textBoxFace" && key === "backgroundColor") {
     aria = "Text Box background color";
     base = { ...base, defaultValue: "#020407" };
+  } else if (formType === "trace" && options.xyz && key === "dot1Color") {
+    aria = "X";
+    base = { ...base, defaultValue: "#ff0000" };
+  } else if (formType === "trace" && options.xyz && key === "secondaryColor") {
+    aria = "Y";
+    base = { ...base, defaultValue: "#0000ff" };
+  } else if (formType === "trace" && options.xyz && key === "tertiaryColor") {
+    aria = "Z";
+    base = { ...base, defaultValue: "#00ff00" };
   } else if (formType === "trace" && options.stereo && key === "dot1Color") {
     aria = "Left";
     base = { ...base, defaultValue: "#ff0000" };
   } else if (formType === "trace" && options.stereo && key === "secondaryColor") {
     aria = "Right";
     base = { ...base, defaultValue: "#0000ff" };
-  } else if (formType === "trace" && options.stereo && key === "backgroundColor") {
+  } else if (formType === "trace" && (options.stereo || options.xyz) && key === "backgroundColor") {
     aria = "Background";
   } else if (formType === "textBoxFace" && key === "textColor") {
     aria = "Text Box text color";
@@ -483,119 +533,545 @@ const NODE_GRAPH_TRACE_STEREO_COLOR_ORDER = Object.freeze([
   "backgroundColor",
 ]);
 
-function nodeGraphInstantTracePreviewHtml(stereo = false) {
+function nodeGraphDisplaySettingsShowsStampPreview(type) {
+  return type === "vectorDot"
+    || type === "pulseDot"
+    || type === "lcdDot"
+    || type === "dot"
+    || (typeof nodeGraphDisplaySettingsIsVectorTraceFormType === "function"
+      && nodeGraphDisplaySettingsIsVectorTraceFormType(type))
+    || (typeof nodeGraphDisplaySettingsIsPhosphorFormType === "function"
+      && nodeGraphDisplaySettingsIsPhosphorFormType(type));
+}
+
+function nodeGraphStampPreviewHtml(stereo = false, kind = "trace", xyz = false, rgb = false) {
   const canvas = (side, label) => `
       <div class="node-trace-display-preview-cell">
         ${side ? `<span class="node-trace-display-preview-side-label" data-preview-side-label="${side}">${label}</span>` : ""}
         <canvas
           class="node-trace-display-dot-preview"
-          data-instant-trace-preview-canvas
+          data-stamp-preview-canvas
           ${side ? `data-preview-side="${side}"` : ""}
           width="96"
           height="96"
-          aria-label="${side ? `${label} size, blur, and pixel density preview` : "Trace size, blur, and pixel density preview"}"></canvas>
+          aria-label="${side ? `${label} size, blur, and pixel density preview` : "Stamp size, blur, and pixel density preview"}"></canvas>
       </div>`;
+  if (rgb) {
+    // Labels follow CMY checkbox when the form has already loaded settings;
+    // paint path also remaps gun colors from settings.cmyMode.
+    return `
+    <div class="node-trace-display-preview-shell is-rgb" data-stamp-preview="${kind}" data-preview-rgb="1">
+      ${canvas("GunR", "R/C")}
+      ${canvas("GunG", "G/M")}
+      ${canvas("GunB", "B/Y")}
+    </div>`;
+  }
+  if (xyz) {
+    return `
+    <div class="node-trace-display-preview-shell is-xyz" data-stamp-preview="${kind}" data-preview-xyz="1">
+      ${canvas("X", "X")}
+      ${canvas("Y", "Y")}
+      ${canvas("Z", "Z")}
+    </div>`;
+  }
   if (stereo) {
     return `
-    <div class="node-trace-display-preview-shell is-stereo" data-instant-trace-preview data-preview-stereo="1">
+    <div class="node-trace-display-preview-shell is-stereo" data-stamp-preview="${kind}" data-preview-stereo="1">
       ${canvas("L", "L")}
       ${canvas("R", "R")}
     </div>`;
   }
   return `
-    <div class="node-trace-display-preview-shell" data-instant-trace-preview>
+    <div class="node-trace-display-preview-shell" data-stamp-preview="${kind}">
       ${canvas("", "")}
     </div>`;
 }
 
-function paintNodeGraphInstantTracePreviewCanvas(canvas, settings = {}, side = "") {
+function nodeGraphStampPreviewUnit(value, fallback = 0) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    const fb = Number(fallback);
+    return Math.max(0, Math.min(1, Number.isFinite(fb) ? fb : 0));
+  }
+  return Math.max(0, Math.min(1, n));
+}
+
+function nodeGraphStampPreviewParseHex(hex, fallback = [255, 255, 255]) {
+  const s = String(hex || "").replace("#", "");
+  if (s.length < 6) {
+    return fallback;
+  }
+  const r = Number.parseInt(s.slice(0, 2), 16);
+  const g = Number.parseInt(s.slice(2, 4), 16);
+  const b = Number.parseInt(s.slice(4, 6), 16);
+  if (![r, g, b].every(Number.isFinite)) {
+    return fallback;
+  }
+  return [r, g, b];
+}
+
+/** Live module face buffer min-side. Never the preview plate. */
+function nodeGraphStampPreviewFaceMinSide(settings) {
+  const nodeId = String(nodeGraphMvp?.traceDisplaySettingsTargetNode || "").trim();
+  if (nodeId && typeof nodeGraphModuleScopePersistentCanvases !== "undefined") {
+    const face = nodeGraphModuleScopePersistentCanvases.get?.(nodeId);
+    const w = Number(face?.width);
+    const h = Number(face?.height);
+    if (w > 0 && h > 0) {
+      return Math.min(w, h);
+    }
+  }
+  const density = typeof nodeGraphFacePlateDensity === "function"
+    ? nodeGraphFacePlateDensity(settings, 1)
+    : nodeGraphStampPreviewUnit(settings?.pixelDensity, 1);
+  const dpr = Math.max(1, Number(window.devicePixelRatio) || 1);
+  return Math.max(1, Math.round(128 * dpr * Math.max(0, density)));
+}
+
+/** Halo extent in face-buffer px so the full stamp (core + Blur) fits. */
+function nodeGraphStampPreviewExtent(radius, blur01, phosphor) {
+  const r = Math.max(0, Number(radius) || 0);
+  const blur = nodeGraphStampPreviewUnit(blur01, 0);
+  if (phosphor) {
+    return r * (1.2 + 5.3 * blur) + 1.5 * (1 - blur);
+  }
+  return r * (1 + 2 * blur);
+}
+
+/**
+ * Preview plate size — FIXED square.
+ * Stereo L/R and XYZ X/Y/Z must not shrink with column count (that made XYZ
+ * previews look like a different design than stereo).
+ */
+function nodeGraphStampPreviewPlateSize(_canvas) {
+  const side = 96;
+  return { width: side, height: side };
+}
+
+/** Channel color for Instant Trace stamp preview (same mapping as waterfall ink). */
+function nodeGraphStampPreviewTraceColor(settings, side, kind = "trace") {
+  // RGB waterfall: fixed guns (never reuse stereo "R" → blue mapping).
+  if (kind === "traceRgb" || side === "GunR" || side === "GunG" || side === "GunB") {
+    const cmy = settings?.cmyMode === true;
+    if (side === "GunG" || side === "G") return cmy ? "#ff00ff" : "#00ff00";
+    if (side === "GunB" || side === "B") return cmy ? "#ffff00" : "#0000ff";
+    return cmy ? "#00ffff" : "#ff0000";
+  }
+  if (side === "R" || side === "Y") {
+    return settings.secondaryColor || "#0000ff";
+  }
+  if (side === "Z") {
+    return settings.tertiaryColor || "#00ff00";
+  }
+  if (side === "L" || side === "X") {
+    return settings.dot1Color || settings.color || "#ff0000";
+  }
+  return settings.dot1Color || settings.color || "#ffffff";
+}
+
+/** Size + color + blur (+ bright for RGB guns) for Instant Trace stamp preview. */
+function nodeGraphStampPreviewTraceInk(settings, side, kind = "trace") {
+  const right = side === "R";
+  const rgb = kind === "traceRgb" || String(side || "").startsWith("Gun");
+  const instant = kind === "trace" || kind === "traceRgb" || kind === "traceXyz"
+    || rgb || side === "L" || side === "X" || side === "Y" || side === "Z";
+  return {
+    size: nodeGraphStampPreviewUnit(
+      right ? (settings.secondarySize ?? settings.dot1Size ?? settings.size) : (settings.dot1Size ?? settings.size),
+      0,
+    ),
+    color: nodeGraphStampPreviewTraceColor(settings, side, kind),
+    blur: instant ? nodeGraphStampPreviewUnit(settings.lineThickness, 0) : 0,
+    bright: rgb
+      ? nodeGraphStampPreviewUnit(settings.dot1Brightness ?? settings.brightness, 1)
+      : 1,
+  };
+}
+
+function nodeGraphStampPreviewScratch(owner, size) {
+  let scratch = owner._stampPreviewScratch;
+  if (!(scratch instanceof HTMLCanvasElement)) {
+    scratch = document.createElement("canvas");
+    owner._stampPreviewScratch = scratch;
+  }
+  const n = Math.max(1, Math.round(Number(size) || 1));
+  if (scratch.width !== n) {
+    scratch.width = n;
+  }
+  if (scratch.height !== n) {
+    scratch.height = n;
+  }
+  return scratch;
+}
+
+function nodeGraphStampPreviewBlit(plateCtx, plateW, plateH, scratch, bgHex = "#020405", smooth = false) {
+  plateCtx.setTransform(1, 0, 0, 1, 0, 0);
+  plateCtx.imageSmoothingEnabled = Boolean(smooth);
+  plateCtx.globalCompositeOperation = "source-over";
+  plateCtx.fillStyle = bgHex || "#020405";
+  plateCtx.fillRect(0, 0, plateW, plateH);
+  if (scratch && scratch.width > 0 && scratch.height > 0) {
+    plateCtx.drawImage(scratch, 0, 0, scratch.width, scratch.height, 0, 0, plateW, plateH);
+  }
+}
+
+function paintNodeGraphStampPreviewCanvas(canvas, settings = {}, side = "", kind = "trace") {
   if (!canvas) {
     return;
   }
-  const cssW = Math.max(48, Math.round(canvas.clientWidth || 96));
-  const cssH = Math.max(48, Math.round(canvas.clientHeight || 96));
-  const dpr = Math.max(1, Number(window.devicePixelRatio) || 1);
-  const density = typeof nodeGraphFacePlateDensity === "function"
-    ? nodeGraphFacePlateDensity(settings, 1)
-    : Math.max(0, Math.min(1, Number(settings?.pixelDensity) || 1));
-  const bw = Math.max(1, Math.round(cssW * dpr * density));
-  const bh = Math.max(1, Math.round(cssH * dpr * density));
-  if (canvas.width !== bw) {
-    canvas.width = bw;
+  const plate = nodeGraphStampPreviewPlateSize(canvas);
+  if (canvas.width !== plate.width) {
+    canvas.width = plate.width;
   }
-  if (canvas.height !== bh) {
-    canvas.height = bh;
+  if (canvas.height !== plate.height) {
+    canvas.height = plate.height;
   }
-  canvas.style.imageRendering = density < 0.999 ? "pixelated" : "auto";
   const context = canvas.getContext("2d");
   if (!context) {
     return;
   }
-  context.setTransform(1, 0, 0, 1, 0, 0);
-  context.globalCompositeOperation = "source-over";
-  context.clearRect(0, 0, bw, bh);
-  context.fillStyle = "#020405";
-  context.fillRect(0, 0, bw, bh);
+  const bgHex = typeof nodeGraphFacePlateBackground === "function"
+    ? nodeGraphFacePlateBackground(settings, "#020405")
+    : "#020405";
+  const density = typeof nodeGraphFacePlateDensity === "function"
+    ? nodeGraphFacePlateDensity(settings, 1)
+    : 1;
+  const fillEmpty = () => {
+    nodeGraphStampPreviewBlit(context, plate.width, plate.height, null, bgHex);
+  };
+  // Instant Trace / RGB waterfall: same dab path as the face (hard or soft).
+  // Draw in plate space, scaled so the full stamp (core + blur) fits — never
+  // ClampPoint-shift into the right edge of a too-small scratch.
+  if (kind === "trace" || kind === "traceRgb") {
+    const ink = nodeGraphStampPreviewTraceInk(settings, side, kind);
+    if (!(ink.size > 0)) {
+      fillEmpty();
+      return;
+    }
+    const faceMin = nodeGraphStampPreviewFaceMinSide(settings);
+    const faceRadius = typeof nodeGraphWaterfallGlRadius === "function"
+      ? nodeGraphWaterfallGlRadius(faceMin, ink.size)
+      : (typeof TraceStroke !== "undefined" && typeof TraceStroke.radiusPx === "function"
+        ? TraceStroke.radiusPx(faceMin, ink.size)
+        : faceMin * ink.size * 0.5);
+    if (!(faceRadius > 0)) {
+      fillEmpty();
+      return;
+    }
+    const blur = Number(ink.blur) || 0;
+    const facePad = typeof nodeGraphWaterfallSoftPad === "function"
+      ? nodeGraphWaterfallSoftPad(faceRadius, blur)
+      : faceRadius * (1 + blur * 1.65) + 1;
+    const plateSide = Math.min(plate.width, plate.height);
+    const fit = Math.max(0.001, (plateSide * 0.5 - 1.5) / Math.max(facePad, faceRadius, 0.5));
+    const radius = Math.max(0.5, faceRadius * fit);
+    const cx = plate.width * 0.5;
+    const cy = plate.height * 0.5;
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.globalCompositeOperation = "source-over";
+    context.globalAlpha = 1;
+    context.fillStyle = bgHex;
+    context.fillRect(0, 0, plate.width, plate.height);
+    let rgb = nodeGraphStampPreviewParseHex(ink.color);
+    if (typeof nodeGraphWaterfallScaleRgb === "function") {
+      rgb = nodeGraphWaterfallScaleRgb(rgb, ink.bright);
+    }
+    // Same dab as the face (smoothstep blur, no size growth). Scratch avoids clamp nudge.
+    if (typeof nodeGraphWaterfallDab === "function") {
+      const pad = typeof nodeGraphWaterfallSoftPad === "function"
+        ? nodeGraphWaterfallSoftPad(radius, blur)
+        : radius;
+      const buf = Math.max(plateSide, Math.ceil(pad * 2 + 4));
+      const scratch = nodeGraphStampPreviewScratch(canvas, buf);
+      const scratchCtx = scratch.getContext("2d");
+      if (!scratchCtx) {
+        fillEmpty();
+        return;
+      }
+      scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
+      scratchCtx.clearRect(0, 0, buf, buf);
+      nodeGraphWaterfallDab(scratchCtx, buf * 0.5, buf * 0.5, radius, rgb, "source-over", blur);
+      context.imageSmoothingEnabled = blur >= 0.02 && density >= 0.999;
+      context.drawImage(
+        scratch,
+        buf * 0.5 - plate.width * 0.5,
+        buf * 0.5 - plate.height * 0.5,
+        plate.width,
+        plate.height,
+        0,
+        0,
+        plate.width,
+        plate.height,
+      );
+    } else {
+      context.imageSmoothingEnabled = false;
+      context.fillStyle = "rgb(" + rgb[0] + "," + rgb[1] + "," + rgb[2] + ")";
+      context.beginPath();
+      context.arc(cx, cy, radius, 0, Math.PI * 2);
+      context.fill();
+    }
+    canvas.style.imageRendering = density < 0.999 || blur < 0.02 ? "pixelated" : "";
+    return;
+  }
+
   const right = side === "R";
-  const size = Number(right ? settings.secondarySize : settings.dot1Size);
+  const size = nodeGraphStampPreviewUnit(
+    right ? settings.secondarySize : (settings.dot1Size ?? settings.size),
+    0,
+  );
   if (!(size > 0)) {
+    fillEmpty();
     return;
   }
   const blur = Number(right ? settings.secondaryLineThickness : settings.lineThickness);
-  const color = right
-    ? (settings.secondaryColor || "#0000ff")
-    : (side === "L"
-      ? (settings.dot1Color || settings.color || "#ff0000")
-      : "#ffffff");
-  const face = Math.min(bw, bh);
-  if (typeof TraceStroke !== "undefined" && typeof TraceStroke.draw === "function") {
-    TraceStroke.draw(context, [{ x: bw * 0.5, y: bh * 0.5 }], {
+  const blur01 = kind === "scope2dTrace"
+    ? 0
+    : (Number.isFinite(blur) ? Math.max(0, Math.min(1, blur)) : 0);
+  let color = nodeGraphStampPreviewTraceColor(settings, side);
+  if (kind === "scope2dTrace" && typeof nodeGraphScope2dTraceInkHex === "function") {
+    color = nodeGraphScope2dTraceInkHex(settings);
+  }
+  const faceMin = nodeGraphStampPreviewFaceMinSide(settings);
+  const phosphor = typeof nodeGraphDisplaySettingsIsPhosphorFormType === "function"
+    && nodeGraphDisplaySettingsIsPhosphorFormType(kind);
+  const radius = phosphor && typeof PhosphorDrawer !== "undefined"
+    && typeof PhosphorDrawer.radiusFromSize === "function"
+    ? PhosphorDrawer.radiusFromSize(faceMin, size)
+    : (typeof TraceStroke !== "undefined" && typeof TraceStroke.radiusPx === "function"
+      ? TraceStroke.radiusPx(faceMin, size)
+      : faceMin * size * 0.5);
+  if (!(radius > 0)) {
+    fillEmpty();
+    return;
+  }
+  const extent = nodeGraphStampPreviewExtent(radius, blur01, phosphor);
+  const buf = Math.max(1, Math.min(2048, Math.ceil(extent * 2 + 2)));
+  const scratch = nodeGraphStampPreviewScratch(canvas, buf);
+  const scratchCtx = scratch.getContext("2d");
+  if (!scratchCtx) {
+    fillEmpty();
+    return;
+  }
+  scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
+  scratchCtx.imageSmoothingEnabled = false;
+  scratchCtx.globalCompositeOperation = "source-over";
+  scratchCtx.fillStyle = bgHex;
+  scratchCtx.fillRect(0, 0, buf, buf);
+  const cx = buf * 0.5;
+  const cy = buf * 0.5;
+  const bright = Number(settings.dot1Brightness ?? settings.brightness);
+  const bright01 = kind === "scope2dTrace"
+    ? 1
+    : (Number.isFinite(bright) ? Math.max(0, bright) : 1);
+  let painted = false;
+  const spriteKind = kind === "vectorDot" || kind === "pulseDot" || kind === "lcdDot" || kind === "dot" || phosphor;
+  if (spriteKind && typeof TraceDotSprite !== "undefined" && typeof TraceDotSprite.draw === "function") {
+    const amt = Number.isFinite(bright01) ? Math.max(0, Math.min(1, bright01)) : 0.5;
+    if (kind === "vectorDot" || kind === "pulseDot" || kind === "lcdDot") {
+      const stampShape = typeof normalizeTraceStampShape === "function"
+        ? normalizeTraceStampShape(settings.shape)
+        : String(settings.shape || "circle");
+      const shapeParam = Math.max(0, Math.min(1, Number(
+        settings.shapeParam ?? (stampShape === "oval" ? settings.pill : settings.squircle),
+      ) || 0));
+      const stretch = stampShape === "oval" ? shapeParam : 0;
+      const ext = typeof nodeGraphVectorDotStampExtents === "function"
+        ? nodeGraphVectorDotStampExtents(buf, buf, size, stretch)
+        : { rx: radius * (1 + stretch * 2), ry: radius };
+      if (kind === "lcdDot") {
+        TraceDotSprite.draw(scratchCtx, cx, cy, radius, blur01, {
+          color,
+          amount: 1,
+          rx: ext.rx,
+          ry: ext.ry,
+          shape: stampShape,
+          shapeParam,
+        }, amt);
+      } else {
+        const hue = typeof nodeGraphHueDegFromHex === "function"
+          ? nodeGraphHueDegFromHex(color)
+          : 25;
+        TraceDotSprite.draw(scratchCtx, cx, cy, radius, blur01, {
+          hue,
+          amount: amt,
+          rx: ext.rx,
+          ry: ext.ry,
+          shape: stampShape,
+          shapeParam,
+        }, 1);
+      }
+    } else if (kind === "dot" && typeof nodeGraphPhosphorDotLutCss === "function") {
+      TraceDotSprite.draw(scratchCtx, cx, cy, radius, blur01, {
+        amount: amt,
+        colorAt: (b) => nodeGraphPhosphorDotLutCss(settings, b),
+      }, 1);
+    } else {
+      TraceDotSprite.draw(scratchCtx, cx, cy, radius, blur01, {
+        amount: amt,
+        color,
+      }, 1);
+    }
+    painted = true;
+  }
+  if (!painted && phosphor && typeof PhosphorDrawer !== "undefined" && PhosphorDrawer.ensure && PhosphorDrawer.stepDots) {
+    const splat = PhosphorDrawer.ensure(scratch, buf, buf, "_stampPreview");
+    if (splat) {
+      if (typeof nodeGraphPhosphorEnergyGlClear === "function") {
+        nodeGraphPhosphorEnergyGlClear(splat);
+      } else if (typeof PhosphorDrawer.stepFade === "function") {
+        PhosphorDrawer.stepFade(splat, { decay: 1, trail: 1, ghost: 1, bleed: 0 });
+      }
+      const stops = Array.isArray(settings.gradientStops) ? settings.gradientStops : null;
+      if (stops && stops.length >= 2 && typeof PhosphorDrawer.setLutStops === "function") {
+        PhosphorDrawer.setLutStops(splat, stops);
+      } else if (typeof PhosphorDrawer.setLut === "function") {
+        PhosphorDrawer.setLut(splat, nodeGraphStampPreviewParseHex(color), bgHex);
+      }
+      PhosphorDrawer.stepDots(splat, {
+        pathPoints: [{ x: cx, y: cy }],
+        size01: size,
+        faceMinSide: faceMin,
+        radius,
+        brightness: bright01,
+        useDepositGain: false,
+        blur: blur01,
+        maxDots: 1,
+        dotsOnly: true,
+        trail: 0,
+        ghost: 0,
+        burnAmount: 1,
+        decay: 0,
+        bleed: 0,
+      });
+      if (typeof PhosphorDrawer.presentTo === "function") {
+        PhosphorDrawer.presentTo(splat, scratchCtx, {
+          width: buf,
+          height: buf,
+          smooth: density >= 0.999,
+          exposure: typeof PhosphorDrawer.exposure === "function"
+            ? PhosphorDrawer.exposure(bright01)
+            : undefined,
+        });
+      }
+      painted = true;
+    }
+  }
+  if (!painted && typeof TraceStroke !== "undefined" && typeof TraceStroke.draw === "function") {
+    TraceStroke.draw(scratchCtx, [{ x: cx, y: cy }], {
       size,
-      blur: Number.isFinite(blur) ? blur : 0,
-      brightness: 1,
+      blur: blur01,
+      brightness: bright01,
       color,
-      faceMinSide: face,
+      faceMinSide: faceMin,
       composite: "source-over",
     });
-    return;
+    painted = true;
   }
-  const diameter = face * Math.max(0, Math.min(1, size));
-  if (!(diameter > 0)) {
-    return;
+  if (!painted) {
+    scratchCtx.fillStyle = color;
+    scratchCtx.beginPath();
+    scratchCtx.arc(cx, cy, radius, 0, Math.PI * 2);
+    scratchCtx.fill();
   }
-  context.fillStyle = color;
-  context.beginPath();
-  context.arc(bw * 0.5, bh * 0.5, diameter * 0.5, 0, Math.PI * 2);
-  context.fill();
+  context.imageSmoothingEnabled = density >= 0.999;
+  canvas.style.imageRendering = density < 0.999 ? "pixelated" : "";
+  nodeGraphStampPreviewBlit(context, plate.width, plate.height, scratch, bgHex);
 }
 
-function paintNodeGraphInstantTracePreview(root, settings = {}) {
-  const canvases = root?.querySelectorAll?.("[data-instant-trace-preview-canvas]");
+function paintNodeGraphStampPreview(root, settings = {}) {
+  const shell = root?.querySelector?.("[data-stamp-preview]");
+  const kind = shell?.getAttribute?.("data-stamp-preview") || "trace";
+  const canvases = root?.querySelectorAll?.("[data-stamp-preview-canvas]");
   if (!canvases?.length) {
     return;
   }
   for (const canvas of canvases) {
-    paintNodeGraphInstantTracePreviewCanvas(
+    paintNodeGraphStampPreviewCanvas(
       canvas,
       settings,
       canvas.getAttribute("data-preview-side") || "",
+      kind,
     );
   }
 }
 
-function syncNodeGraphInstantTracePreview(root, settings) {
-  const host = root?.querySelector?.("[data-instant-trace-preview]")
+/** Hide Shape param for Circle; retitle Stretch/Corners/Sides/… from live Shape. */
+function syncNodeGraphStampShapeControls(root, settings = {}) {
+  const host = root?.querySelector?.(`[data-trace-display-choice="shape"]`)
     ? root
     : document.getElementById("nodeTraceDisplaySettingsPopover");
-  if (!host?.querySelector?.("[data-instant-trace-preview-canvas]")) {
+  if (!host) {
     return;
   }
-  const paint = () => paintNodeGraphInstantTracePreview(host, settings || {});
+  const shapeSelect = host.querySelector(`[data-trace-display-choice="shape"]`);
+  if (!shapeSelect) {
+    return;
+  }
+  const shape = typeof normalizeTraceStampShape === "function"
+    ? normalizeTraceStampShape(shapeSelect.value || settings.shape || "circle")
+    : String(shapeSelect.value || settings.shape || "circle");
+  const usesParam = typeof traceStampShapeUsesParam === "function"
+    ? traceStampShapeUsesParam(shape)
+    : shape !== "circle";
+  const meta = typeof traceStampShapeParamMeta === "function"
+    ? traceStampShapeParamMeta(shape)
+    : { label: "Shape", title: "" };
+  const field = host.querySelector(`[data-trace-display-field="shapeParam"]`);
+  const row = field?.closest?.("[data-trace-display-control-row]") || null;
+  if (row) {
+    row.hidden = !usesParam;
+    row.style.display = usesParam ? "" : "none";
+  }
+  if (!usesParam) {
+    return;
+  }
+  // Stepper rows: first child <span> is the field title.
+  const titleSpan = row?.querySelector?.(":scope > span:not(.metadata-stepper-control)");
+  if (titleSpan) {
+    titleSpan.textContent = meta.label;
+  }
+  if (row && meta.title) {
+    row.title = meta.title;
+  }
+  if (field) {
+    if (meta.title) {
+      field.title = meta.title;
+    }
+    field.setAttribute("aria-label", meta.label);
+  }
+}
+
+function syncNodeGraphStampPreview(root, settings) {
+  const host = root?.querySelector?.("[data-stamp-preview]")
+    ? root
+    : document.getElementById("nodeTraceDisplaySettingsPopover");
+  if (typeof syncNodeGraphStampShapeControls === "function") {
+    syncNodeGraphStampShapeControls(host || root, settings);
+  }
+  if (!host?.querySelector?.("[data-stamp-preview-canvas]")) {
+    return;
+  }
+  host._stampPreviewSettings = settings || {};
+  const paint = () => paintNodeGraphStampPreview(host, host._stampPreviewSettings || {});
+  const shell = host.querySelector("[data-stamp-preview]");
+  if (typeof ResizeObserver === "function" && shell && host._stampPreviewResizeTarget !== shell) {
+    host._stampPreviewResize?.disconnect?.();
+    host._stampPreviewResize = new ResizeObserver(() => {
+      paint();
+    });
+    host._stampPreviewResize.observe(shell);
+    host._stampPreviewResizeTarget = shell;
+  }
   if (typeof requestAnimationFrame === "function") {
     requestAnimationFrame(paint);
   } else {
     paint();
   }
+}
+
+/** @deprecated Use syncNodeGraphStampPreview. */
+function syncNodeGraphInstantTracePreview(root, settings) {
+  return syncNodeGraphStampPreview(root, settings);
 }
 
 function nodeGraphDisplaySettingsPushBackgroundHueRow(rows, type) {
@@ -619,6 +1095,9 @@ function buildNodeGraphInstantTraceDisplaySettingsBodyHtml(type, node, allowKey)
   const isStereoTraceNode = typeof nodeGraphModuleUsesStereoTraceDisplay === "function"
     ? nodeGraphModuleUsesStereoTraceDisplay(node?.type)
     : node?.type === "output";
+  const isXyzTraceNode = typeof nodeGraphModuleUsesXyzTraceDisplay === "function"
+    ? nodeGraphModuleUsesXyzTraceDisplay(node?.type)
+    : false;
   const allow = typeof allowKey === "function" ? allowKey : () => true;
   const fieldList = [...activeFields].filter((key) => allow("fields", key));
   const primaryOrder = typeof nodeGraphInstantTraceDisplayFieldOrder !== "undefined"
@@ -638,20 +1117,28 @@ function buildNodeGraphInstantTraceDisplaySettingsBodyHtml(type, node, allowKey)
   const capKeys = ["capSize", "capLength", "capPadding"].filter((key) => fieldList.includes(key));
   const choiceKeys = [...activeChoices].filter((key) => allow("choices", key));
   const toggleKeys = [...activeToggles].filter((key) => allow("toggles", key));
-  const inkColors = (isStereoTraceNode && type === "trace"
-    ? ["dot1Color", "secondaryColor"]
-    : ["dot1Color"]
+  const inkColors = (isXyzTraceNode && type === "trace"
+    ? ["dot1Color", "secondaryColor", "tertiaryColor"]
+    : (isStereoTraceNode && type === "trace"
+      ? ["dot1Color", "secondaryColor"]
+      : ["dot1Color"])
   ).filter((key) => activeColors.has(key) && allow("colors", key));
   const parts = [];
   const rows = [];
-  const stereoInk = isStereoTraceNode && type === "trace";
-  const previewAfter = "dot1Brightness";
+  const xyzInk = isXyzTraceNode && type === "trace";
+  const rgbInk = type === "traceRgb";
+  const stereoInk = isStereoTraceNode && type === "trace" && !xyzInk;
+  const inkHueTitle = type === "scope2dTrace";
+  // Preview sits after Bright when present (RGB); otherwise after Size.
+  const previewAfter = orderedPrimary.includes("dot1Brightness")
+    ? "dot1Brightness"
+    : "dot1Size";
   let previewPlaced = false;
   const pushPreview = () => {
     if (previewPlaced) {
       return;
     }
-    rows.push(nodeGraphInstantTracePreviewHtml(stereoInk));
+    rows.push(nodeGraphStampPreviewHtml(stereoInk, type, xyzInk, rgbInk));
     previewPlaced = true;
   };
   const usedChoices = new Set();
@@ -703,12 +1190,29 @@ function buildNodeGraphInstantTraceDisplaySettingsBodyHtml(type, node, allowKey)
         </span>
       </div>`);
   }
+
   const pairedSecondary = new Set();
   for (const key of inkPrimary) {
     const rightKey = stereoInk ? nodeGraphDisplaySettingsStereoPairKey(key) : "";
     if (rightKey && orderedSecondary.includes(rightKey)) {
       rows.push(nodeGraphDisplaySettingsBuildStereoPairRowHtml(key, rightKey, type));
       pairedSecondary.add(rightKey);
+    } else if (inkHueTitle && key === "dot1Brightness") {
+      rows.push(nodeGraphDisplaySettingsBuildHueTitleStepperRowHtml({
+        title: "Trace",
+        stepField: "dot1Brightness",
+        colorField: "dot1Color",
+        formType: type,
+        defaultHueHex: typeof nodeGraphHueUnitHex === "function"
+          ? nodeGraphHueUnitHex(
+            typeof nodeGraphHueDegFromHex === "function"
+              && typeof nodeGraphScopePhosphorLookDefaults !== "undefined"
+              ? nodeGraphHueDegFromHex(nodeGraphScopePhosphorLookDefaults.peakColor)
+              : 60,
+          )
+          : "#fcfdbf",
+        titleAttr: "Beam brightness 0…1 (black → full hue at 0.5 → white). Drag the title to change hue.",
+      }));
     } else {
       rows.push(nodeGraphDisplaySettingsBuildStepperRowHtml(key, type));
     }
@@ -763,10 +1267,22 @@ function buildNodeGraphInstantTraceDisplaySettingsBodyHtml(type, node, allowKey)
   const stereoColorPair = stereoInk
     && inkColors.includes("dot1Color")
     && inkColors.includes("secondaryColor");
-  if (stereoColorPair) {
+  const xyzColorTriple = xyzInk
+    && inkColors.includes("dot1Color")
+    && inkColors.includes("secondaryColor")
+    && inkColors.includes("tertiaryColor");
+  if (xyzColorTriple) {
     rows.push(`
       <div class="node-trace-display-lr-row node-trace-display-lr-color-row" data-trace-display-lr-row>
-        <span class="node-trace-display-lr-shared-label"></span>
+        <div class="node-trace-display-lr-pair is-xyz">
+          ${nodeGraphDisplaySettingsBuildColorRowHtml("dot1Color", type, { xyz: true })}
+          ${nodeGraphDisplaySettingsBuildColorRowHtml("secondaryColor", type, { xyz: true })}
+          ${nodeGraphDisplaySettingsBuildColorRowHtml("tertiaryColor", type, { xyz: true })}
+        </div>
+      </div>`);
+  } else if (stereoColorPair) {
+    rows.push(`
+      <div class="node-trace-display-lr-row node-trace-display-lr-color-row" data-trace-display-lr-row>
         <div class="node-trace-display-lr-pair">
           ${nodeGraphDisplaySettingsBuildColorRowHtml("dot1Color", type, { stereo: true })}
           ${nodeGraphDisplaySettingsBuildColorRowHtml("secondaryColor", type, { stereo: true })}
@@ -774,7 +1290,13 @@ function buildNodeGraphInstantTraceDisplaySettingsBodyHtml(type, node, allowKey)
       </div>`);
   }
   for (const key of inkColors) {
+    if (xyzColorTriple && (key === "dot1Color" || key === "secondaryColor" || key === "tertiaryColor")) {
+      continue;
+    }
     if (stereoColorPair && (key === "dot1Color" || key === "secondaryColor")) {
+      continue;
+    }
+    if (inkHueTitle && key === "dot1Color") {
       continue;
     }
     rows.push(nodeGraphDisplaySettingsBuildColorRowHtml(key, type, {
@@ -843,6 +1365,14 @@ function buildNodeGraphPhosphorDisplaySettingsBodyHtml(type, node, allowKey) {
   const usedToggles = new Set();
   const usedChoices = new Set();
   const rows = [];
+  let previewPlaced = false;
+  const pushPreview = () => {
+    if (previewPlaced) {
+      return;
+    }
+    rows.push(nodeGraphStampPreviewHtml(false, type));
+    previewPlaced = true;
+  };
   if (toggleKeys.includes("skipDiscontinuities")) {
     rows.push(nodeGraphDisplaySettingsBuildToggleRowHtml("skipDiscontinuities"));
     usedToggles.add("skipDiscontinuities");
@@ -857,6 +1387,12 @@ function buildNodeGraphPhosphorDisplaySettingsBodyHtml(type, node, allowKey) {
   }
   for (const key of ordered) {
     rows.push(nodeGraphDisplaySettingsBuildStepperRowHtml(key, type));
+    if (key === "dot1Brightness") {
+      pushPreview();
+    }
+  }
+  if (!previewPlaced) {
+    pushPreview();
   }
   for (const key of leftover) {
     rows.push(nodeGraphDisplaySettingsBuildStepperRowHtml(key, type));
@@ -892,13 +1428,14 @@ function buildNodeGraphPhosphorDisplaySettingsBodyHtml(type, node, allowKey) {
 
 function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
   const type = formType || "trace";
-  // LED keeps its range-slider control scheme (preview + Color/Brightness/
-  // Blur/Corners/Rounding) — better than the generic stepper form.
-  if (type === "ledLamp" && typeof buildNodeGraphLedDisplaySettingsBodyHtml === "function") {
-    return buildNodeGraphLedDisplaySettingsBodyHtml();
-  }
   if (type === "keypadFace" && typeof buildNodeGraphKeypadDisplaySettingsBodyHtml === "function") {
     return buildNodeGraphKeypadDisplaySettingsBodyHtml();
+  }
+  if (
+    (type === "toggleButtonFace" || type === "momentaryButtonFace")
+    && typeof buildNodeGraphPluginButtonDisplaySettingsBodyHtml === "function"
+  ) {
+    return buildNodeGraphPluginButtonDisplaySettingsBodyHtml();
   }
   if (type === "phosphorWaveform" && typeof buildNodeGraphPhosphorWaveformDisplaySettingsBodyHtml === "function") {
     return buildNodeGraphPhosphorWaveformDisplaySettingsBodyHtml();
@@ -935,11 +1472,31 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
   const isStereoTraceNode = typeof nodeGraphModuleUsesStereoTraceDisplay === "function"
     ? nodeGraphModuleUsesStereoTraceDisplay(node?.type)
     : node?.type === "output";
+  const isXyzTraceNode = typeof nodeGraphModuleUsesXyzTraceDisplay === "function"
+    ? nodeGraphModuleUsesXyzTraceDisplay(node?.type)
+    : false;
   const parts = [];
 
   // Filter keys that only apply on stereo Trace faces (Output / SoEmReverb / …).
   const allowKey = (kind, key) => {
     if (type !== "trace") {
+      return true;
+    }
+    if (isXyzTraceNode) {
+      if (
+        key === "secondarySize"
+        || key === "secondaryBrightness"
+        || key === "secondaryLineThickness"
+        || key === "secondaryEnabled"
+        || key === "syncChannel"
+        // Waterfall XYZ ignores Bright — hard ink only.
+        || key === "dot1Brightness"
+      ) {
+        return false;
+      }
+      if (key === "sourceSync") {
+        return true;
+      }
       return true;
     }
     if (!isStereoTraceNode) {
@@ -949,6 +1506,7 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
         key === "secondaryLineThickness" ||
         key === "secondaryEnabled" ||
         key === "secondaryColor" ||
+        key === "tertiaryColor" ||
         key === "syncChannel" ||
         key === "stereoBlend"
       ) {
@@ -956,6 +1514,8 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
       }
     } else if (key === "sourceSync") {
       // Stereo Trace uses syncChannel select, not the legacy Sync checkbox.
+      return false;
+    } else if (key === "tertiaryColor") {
       return false;
     }
     return true;
@@ -1003,7 +1563,7 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
     if (type === "numberReadout" && section === "dot1") {
       continue;
     }
-    if (type === "roundShapeFace" && section === "dot1") {
+    if ((type === "roundShapeFace" || type === "basicShapeFace") && section === "dot1") {
       continue;
     }
 
@@ -1014,7 +1574,7 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
     let fieldKeys = (sectionControls.fields || []).filter(
       (key) => activeFields.has(key) && allowKey("fields", key),
     );
-    if (type === "roundShapeFace" && section === "trace") {
+    if ((type === "roundShapeFace" || type === "basicShapeFace") && section === "trace") {
       fieldKeys = [
         "lineThickness",
         "lineBrightness",
@@ -1031,7 +1591,7 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
     let colorKeys = (sectionControls.colors || []).filter(
       (key) => activeColors.has(key) && allowKey("colors", key),
     );
-    if (type === "roundShapeFace" || type === "vectorDot" || type === "pulseDot") {
+    if ((type === "roundShapeFace" || type === "basicShapeFace") || type === "vectorDot" || type === "pulseDot" || type === "lcdDot") {
       colorKeys = [];
     }
     if (type === "trace" && isStereoTraceNode) {
@@ -1043,6 +1603,26 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
     let choiceKeys = (sectionControls.choices || []).filter(
       (key) => activeChoices.has(key) && allowKey("choices", key),
     );
+    // Dot family: Shape lives in activeChoices; ensure it appears in the Dot section
+    // even if an older section map omitted it.
+    if (section === "dot1"
+      && (type === "vectorDot" || type === "pulseDot" || type === "lcdDot")
+      && activeChoices.has("shape")
+      && !choiceKeys.includes("shape")) {
+      choiceKeys = ["shape", ...choiceKeys];
+    }
+    if (section === "dot1"
+      && (type === "vectorDot" || type === "pulseDot" || type === "lcdDot")
+      && activeFields.has("shapeParam")
+      && !fieldKeys.includes("shapeParam")) {
+      // After Size/Blur so silhouette tweaks sit with stamp geometry.
+      const blurIdx = fieldKeys.indexOf("lineThickness");
+      if (blurIdx >= 0) {
+        fieldKeys.splice(blurIdx + 1, 0, "shapeParam");
+      } else {
+        fieldKeys.push("shapeParam");
+      }
+    }
     if (type === "numberReadout" && section === "trace") {
       const nrNodeType = node?.type
         || (typeof nodeGraphPatchNode === "function"
@@ -1226,33 +1806,40 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
         }));
         continue;
       }
-      if ((type === "vectorDot" || type === "pulseDot") && key === "backgroundBrightness") {
+      if ((type === "vectorDot" || type === "pulseDot" || type === "lcdDot") && key === "backgroundBrightness") {
         rows.push(nodeGraphDisplaySettingsBuildHueTitleStepperRowHtml({
-          title: "Background",
+          title: "BG",
           stepField: "backgroundBrightness",
           colorField: "backgroundColor",
           formType: type,
           defaultHueHex: typeof nodeGraphHueUnitHex === "function"
-            ? nodeGraphHueUnitHex(220)
-            : "#0055ff",
+            ? nodeGraphHueUnitHex(type === "lcdDot"
+              ? (typeof nodeGraphValueLcdDefaultHueDeg === "number" ? nodeGraphValueLcdDefaultHueDeg : 82)
+              : 220)
+            : (type === "lcdDot" ? "#a2ff00" : "#0055ff"),
           titleAttr: "Plate brightness 0…1 (black → full hue at 0.5 → white). Drag the title to change hue.",
         }));
         continue;
       }
-      if ((type === "vectorDot" || type === "pulseDot") && key === "dot1Brightness") {
+      if ((type === "vectorDot" || type === "pulseDot" || type === "lcdDot") && key === "dot1Brightness") {
         rows.push(nodeGraphDisplaySettingsBuildHueTitleStepperRowHtml({
-          title: "Dot",
+          title: type === "lcdDot" ? "Ink" : "Dot",
           stepField: "dot1Brightness",
           colorField: "dot1Color",
           formType: type,
           defaultHueHex: typeof nodeGraphHueUnitHex === "function"
-            ? nodeGraphHueUnitHex(25)
-            : "#ff6a00",
-          titleAttr: "Dot brightness gain 0…1 (black → full hue at 0.5 → white). Signal energy scales this. Drag the title to change hue.",
+            ? nodeGraphHueUnitHex(type === "lcdDot"
+              ? (typeof nodeGraphValueLcdDefaultHueDeg === "number" ? nodeGraphValueLcdDefaultHueDeg : 82)
+              : 25)
+            : (type === "lcdDot" ? "#a2ff00" : "#ff6a00"),
+          titleAttr: type === "lcdDot"
+            ? "LCD ink brightness 0…1 (black → full hue at 0.5 → white). Drag the title to change hue."
+            : "Dot brightness gain 0…1 (black → full hue at 0.5 → white). Signal energy scales this. Drag the title to change hue.",
         }));
+        rows.push(nodeGraphStampPreviewHtml(false, type));
         continue;
       }
-      if (type === "roundShapeFace" && key === "lineBrightness") {
+      if ((type === "roundShapeFace" || type === "basicShapeFace") && key === "lineBrightness") {
         rows.push(nodeGraphDisplaySettingsBuildHueTitleStepperRowHtml({
           title: "Line",
           stepField: "lineBrightness",
@@ -1263,7 +1850,7 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
         }));
         continue;
       }
-      if (type === "roundShapeFace" && key === "dotBrightness") {
+      if ((type === "roundShapeFace" || type === "basicShapeFace") && key === "dotBrightness") {
         rows.push(nodeGraphDisplaySettingsBuildHueTitleStepperRowHtml({
           title: "Dot",
           stepField: "dotBrightness",
@@ -1274,7 +1861,7 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
         }));
         continue;
       }
-      if (type === "roundShapeFace" && key === "backgroundBrightness") {
+      if ((type === "roundShapeFace" || type === "basicShapeFace") && key === "backgroundBrightness") {
         rows.push(nodeGraphDisplaySettingsBuildHueTitleStepperRowHtml({
           title: "Background",
           stepField: "backgroundBrightness",

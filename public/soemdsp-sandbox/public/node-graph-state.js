@@ -193,6 +193,7 @@ var nodeGraphMvp = {
   keyboardDebugInfoVisible: false,
   // D hotkey: CPU / RAM / GPU chips only (not the rest of debug chrome).
   constraintGuideVisible: false,
+  constraintToggles: { cpu: false, ram: false, gpu: false },
   // Docked tips band (on/off). No floating tips window.
   filePicker: { startIn: "desktop", lastSettingsName: "useruisettings.json", lastPatchName: "" },
   tooltipEmbedded: true,
@@ -204,7 +205,9 @@ var nodeGraphMvp = {
   // Windowed frame always keeps back + resize when phone view is on.
   modularOnlyControlsVisible: true,
   // Top toolbar + bottom transport (V).
+  // all → topHidden → none → all
   appChromeBarsVisible: true,
+  appChromeBarsMode: "all",
   // T — keep bottom transport even when V hides bars.
   transportChromeStuck: false,
   moduleButtonsVisible: false,

@@ -29,12 +29,35 @@ function textBoxWidgetNormalizeVertical(value) {
   }
   const numeric = Math.round(Number(value));
   if (Number.isFinite(numeric)) {
-    return Math.max(-100, Math.min(100, numeric));
+    return Math.max(0, Math.min(100, numeric));
   }
   const align = String(value || "").toLowerCase();
-  if (align === "top") return -100;
+  if (align === "top") return 0;
   if (align === "bottom") return 100;
-  return 0;
+  return 50;
+}
+
+function textBoxWidgetNormalizeFont(value) {
+  if (typeof nodeGraphAppNormalizeFont === "function") {
+    return nodeGraphAppNormalizeFont(
+      value,
+      typeof NODE_GRAPH_TEXT_BOX_DEFAULT_FONT === "string"
+        ? NODE_GRAPH_TEXT_BOX_DEFAULT_FONT
+        : "cascadia-mono",
+    );
+  }
+  const id = String(value || "").trim().toLowerCase();
+  return id || "cascadia-mono";
+}
+
+function textBoxWidgetFontFamily(value) {
+  if (typeof nodeGraphTextBoxFontFamily === "function") {
+    return nodeGraphTextBoxFontFamily(value);
+  }
+  if (typeof nodeGraphAppFontFamily === "function") {
+    return nodeGraphAppFontFamily(value, "cascadia-mono");
+  }
+  return "\"Cascadia Mono\", \"Cascadia Code\", Consolas, \"Courier New\", monospace";
 }
 
 function textBoxWidgetReadText(field) {
@@ -50,24 +73,31 @@ function textBoxWidgetWriteText(field, value) {
   field.textContent = next;
 }
 
+/** Vertical slider range in face-heights: 0% = −N, 50% = 0, 100% = +N. */
+const TEXT_BOX_VERTICAL_RANGE = 2;
+
 function textBoxWidgetApplyAlign(field, layout) {
-  if (!field) return;
-  field.style.setProperty("--node-text-box-content-offset", "0px");
-  void field.offsetHeight;
-  const box = Math.max(0, field.clientHeight);
-  const contentHeight = Math.max(0, field.scrollHeight);
-  const slack = box - contentHeight;
-  const bipolar = textBoxWidgetNormalizeVertical(layout.verticalAlignPercent);
-  const offset = slack * 0.5 + (slack * bipolar) / 200;
+  if (!field) return false;
+  const face = field.parentElement;
+  const box = Math.max(0, face?.clientHeight || 0);
+  // Boot race: face may be 0 until chrome lays out — retry via scheduleVisual.
+  if (!(box > 0)) {
+    return false;
+  }
+  const percent = textBoxWidgetNormalizeVertical(layout.verticalAlignPercent);
+  // Plain translate — no content-height math. 50 = natural top; slide freely.
+  const t = (percent - 50) / 50;
+  const offset = t * box * TEXT_BOX_VERTICAL_RANGE;
   field.style.setProperty("--node-text-box-content-offset", `${offset.toFixed(2)}px`);
+  return true;
 }
 
 function textBoxWidgetApplyVisual(field, layout) {
-  if (!field) return;
+  if (!field) return false;
   field.scrollLeft = 0;
   field.scrollTop = 0;
   field.style.setProperty("--node-text-box-font-fit-scale", "1");
-  textBoxWidgetApplyAlign(field, layout);
+  return textBoxWidgetApplyAlign(field, layout);
 }
 
 function textBoxWidgetRangeFromPoint(x, y) {
@@ -124,6 +154,15 @@ function createTextBoxWidget(body, options = {}) {
     textSizePercent: Number.isFinite(Number(options.textSizePercent))
       ? Math.max(50, Math.min(1000, Math.round(Number(options.textSizePercent))))
       : 100,
+    textWeight: typeof normalizeNodeGraphTextBoxTextWeight === "function"
+      ? normalizeNodeGraphTextBoxTextWeight(options.textWeight ?? options.boldness ?? options.fontWeight)
+      : (typeof nodeGraphAppClampFontWeight === "function"
+        ? nodeGraphAppClampFontWeight(options.textWeight ?? options.boldness ?? options.fontWeight, 400)
+        : 400),
+    lineHeight: typeof normalizeNodeGraphTextBoxLineHeight === "function"
+      ? normalizeNodeGraphTextBoxLineHeight(options.lineHeight ?? options.lineSpacing ?? options.newlineSpacing)
+      : 1.2,
+    font: textBoxWidgetNormalizeFont(options.font),
     backgroundColor: String(options.backgroundColor || ""),
     textColor: String(options.textColor || ""),
   };
@@ -136,6 +175,8 @@ function createTextBoxWidget(body, options = {}) {
   let commitTimer = 0;
   let applying = false;
   let observer = null;
+  let settleTimers = [];
+  let visualGen = 0;
 
   // Div, not textarea: CSS `zoom` on the workspace surface does not paint
   // textarea glyphs. Face is the live editor (settings field mirrors it).
@@ -235,8 +276,12 @@ function createTextBoxWidget(body, options = {}) {
     field.dataset.textAlign = layout.horizontalAlign;
     field.dataset.textBoxMode = layout.textMode;
     field.dataset.textBoxModeCss = layout.textMode === "singleLine" ? "singleLine" : "multiline";
+    field.dataset.textBoxFont = layout.font;
     field.style.textAlign = layout.horizontalAlign;
     field.style.setProperty("--node-text-box-font-scale", String(layout.textSizePercent / 100));
+    field.style.setProperty("--node-text-box-font", textBoxWidgetFontFamily(layout.font));
+    field.style.setProperty("--node-text-box-font-weight", String(layout.textWeight || 400));
+    field.style.setProperty("--node-text-box-line-height", String(layout.lineHeight || 1.2));
     if (layout.backgroundColor) {
       body.style.setProperty("--node-text-box-bg", layout.backgroundColor);
       field.style.setProperty("--node-text-box-bg", layout.backgroundColor);
@@ -247,14 +292,33 @@ function createTextBoxWidget(body, options = {}) {
     field.setAttribute("aria-multiline", layout.textMode === "singleLine" ? "false" : "true");
     body.dataset.textHorizontalAlign = layout.horizontalAlign;
     body.dataset.textVerticalAlignPercent = String(layout.verticalAlignPercent);
+    body.dataset.textBoxFont = layout.font;
+    void field.offsetHeight;
   }
 
   function scheduleVisual() {
+    visualGen += 1;
+    const gen = visualGen;
+    for (const timer of settleTimers) {
+      window.clearTimeout(timer);
+    }
+    settleTimers = [];
+
     const run = () => {
-      if (field.isConnected) textBoxWidgetApplyVisual(field, layout);
+      if (gen !== visualGen || !field.isConnected) {
+        return;
+      }
+      const ok = textBoxWidgetApplyVisual(field, layout);
+      // Face still 0 at boot — one short retry after chrome sizes.
+      if (!ok) {
+        settleTimers.push(window.setTimeout(() => {
+          if (gen !== visualGen) return;
+          requestAnimationFrame(run);
+        }, 50));
+      }
     };
+
     requestAnimationFrame(run);
-    document.fonts?.ready?.then(() => requestAnimationFrame(run));
   }
 
   function flushCommit() {
@@ -284,6 +348,11 @@ function createTextBoxWidget(body, options = {}) {
   if (window.ResizeObserver) {
     observer = new ResizeObserver(() => scheduleVisual());
     observer.observe(field);
+    observer.observe(body);
+    const host = body.closest?.(".dsp-node");
+    if (host) {
+      observer.observe(host);
+    }
   }
   scheduleVisual();
 
@@ -315,6 +384,19 @@ function createTextBoxWidget(body, options = {}) {
         const n = Math.round(Number(next.textSizePercent));
         if (Number.isFinite(n)) layout.textSizePercent = Math.max(50, Math.min(1000, n));
       }
+      if (next.textWeight != null || next.boldness != null || next.fontWeight != null) {
+        layout.textWeight = typeof normalizeNodeGraphTextBoxTextWeight === "function"
+          ? normalizeNodeGraphTextBoxTextWeight(next.textWeight ?? next.boldness ?? next.fontWeight)
+          : (typeof nodeGraphAppClampFontWeight === "function"
+            ? nodeGraphAppClampFontWeight(next.textWeight ?? next.boldness ?? next.fontWeight, 400)
+            : 400);
+      }
+      if (next.lineHeight != null || next.lineSpacing != null || next.newlineSpacing != null) {
+        layout.lineHeight = typeof normalizeNodeGraphTextBoxLineHeight === "function"
+          ? normalizeNodeGraphTextBoxLineHeight(next.lineHeight ?? next.lineSpacing ?? next.newlineSpacing)
+          : 1.2;
+      }
+      if (next.font != null) layout.font = textBoxWidgetNormalizeFont(next.font);
       if (next.backgroundColor != null) layout.backgroundColor = String(next.backgroundColor || "");
       if (next.textColor != null) layout.textColor = String(next.textColor || "");
       if (next.text != null) this.setText(next.text);
@@ -335,7 +417,12 @@ function createTextBoxWidget(body, options = {}) {
       commitFn = typeof fn === "function" ? fn : null;
     },
     destroy() {
+      visualGen += 1;
       if (commitTimer) window.clearTimeout(commitTimer);
+      for (const timer of settleTimers) {
+        window.clearTimeout(timer);
+      }
+      settleTimers = [];
       observer?.disconnect();
       field.remove();
     },

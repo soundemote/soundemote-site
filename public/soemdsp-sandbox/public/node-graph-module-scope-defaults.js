@@ -83,21 +83,22 @@ const nodeGraphScopePhosphorLookDefaults = Object.freeze({
     Object.freeze({ t: 0.8, color: "#fe9f6d" }),
     Object.freeze({ t: 1, color: "#fcfdbf" }),
   ]),
-  // Bright 0…1 (deposit / tip).
-  brightness: 0.08,
-  // Ghost = extreme analog (super-exp) hang; Trail = linear blend; Burn = sticky floor (off).
-  // Burn Amount = residual deposit gain vs Bright (1 = deposit at Bright).
+  // Bright 0…1 (1 = full deposit / tip). c1091b4 scope2d used ~0.92.
+  brightness: 0.92,
+  // Ghost/Trail match c1091b4 burn/decay after rename:
+  //   decay 0.12 → trail = 1 - 0.12 = 0.88
+  //   burn 0.45  → ghost = 0.45
   ghost: 0.45,
-  trail: 0,
+  trail: 0.88,
   burn: 0,
   burnAmount: 1,
   residualSchema: 3,
-  // Size 0…1 diameter map (0 → 1px floor, 1 → full face min side).
-  size: 0.02,
+  // Size 0…1 linear diameter map (c1091b4 scope2d default 0.08).
+  size: 0.08,
   // Stamp blur 0 hard … 1 soft.
   blur: 0.35,
   // Max phosphor stamps / frame (economy spreads when over).
-  dotBudget: 2048,
+  dotBudget: 1024,
   // Face buffer scale (1 = native layout×dpr; <1 pixelated).
   pixelDensity: 1,
   // Amplitude zoom.
@@ -130,11 +131,14 @@ const nodeGraphTraceDisplaySettingsDefaults = Object.freeze({
   secondaryEnabled: true,
   secondarySize: 0.035,
   secondaryLineThickness: 0,
+  tertiaryColor: "#00ff00",
   cycles: 2,
   // Stroke softness 0…1 (hard → soft skirt). History plot, not phosphor burn.
   lineThickness: 0.15,
+  // Stamp packing along the path 0…1 (sparse → dense). Diagnoses soft-blur washout.
+  stampDensity: 0.5,
   // Max verts before the drawer switches to sparse dots.
-  dotBudget: 2048,
+  dotBudget: 1024,
   // Vector stroke into a density-scaled face buffer (lo-fi look when < 1).
   // Not a phosphor energy grid — still one polyline; density only sets buffer size.
   pixelDensity: 1,
@@ -146,8 +150,8 @@ const nodeGraphTraceDisplaySettingsDefaults = Object.freeze({
   // Non-output single traces treat any non-off as "sync on" for that buffer.
   sourceSync: false,
   syncChannel: "off",
-  zoomSeconds: 0.05,
-  historySeconds: 0.05,
+  zoomSeconds: 2,
+  historySeconds: 2,
   // Lengthwise history fade: 0 = even ink, 1 = oldest gone / newest full.
   fade: 0,
   // XYZ Trace: stack all three on one plot, or split the face into three bands.
@@ -178,13 +182,14 @@ const nodeGraphLineBurnSettingsDefaults = Object.freeze({
   dot1Size: 0.0325,
   lineThickness: 0,
   pixelDensity: 1,
-  dotBudget: 3944,
+  dotBudget: 1024,
   fullDotEconomy: false,
   dotsOnly: false,
-  // Rising-edge auto-trigger on In (snaps pen left). On so PolyBLEP / 1D
-  // phosphor faces lock to the period instead of crawling.
-  sourceSync: true,
-  skipDiscontinuities: false,
+  // Rising-edge auto-trigger on In (snaps pen left). Off unless the user
+  // turns Sync on — same default as Instant Trace / other 1D faces.
+  sourceSync: false,
+  // Saw / square / pulse wrap jumps look like ink spikes without this.
+  skipDiscontinuities: true,
   sweepSeconds: 0.01,
   gradientStops: Object.freeze([
     Object.freeze({ t: 0, color: "#000000" }),
@@ -364,6 +369,54 @@ const nodeGraphVectorDotSettingsDefaults = Object.freeze({
   dot1Size: 0.85,
   lineThickness: 0.35,
   blur: 0.35,
+  stereoBlend: "combine",
+  shape: "circle",
+  shapeParam: 0.5,
+  // Legacy axes (derived on normalize for old readers).
+  pill: 0,
+  squircle: 0,
+});
+
+// LCD Dot — Vector Dot shape + LCD Value plate/ink/glass.
+const nodeGraphLcdDotSettingsDefaults = Object.freeze({
+  faceStyle: "lcd",
+  background: typeof nodeGraphHueUnitHex === "function"
+    ? nodeGraphHueUnitHex(typeof nodeGraphValueLcdDefaultHueDeg === "number"
+      ? nodeGraphValueLcdDefaultHueDeg
+      : 82)
+    : "#a2ff00",
+  backgroundBrightness: 0.88,
+  backgroundColor: typeof nodeGraphHueUnitHex === "function"
+    ? nodeGraphHueUnitHex(typeof nodeGraphValueLcdDefaultHueDeg === "number"
+      ? nodeGraphValueLcdDefaultHueDeg
+      : 82)
+    : "#a2ff00",
+  dot1Color: typeof nodeGraphHueUnitHex === "function"
+    ? nodeGraphHueUnitHex(typeof nodeGraphValueLcdDefaultHueDeg === "number"
+      ? nodeGraphValueLcdDefaultHueDeg
+      : 82)
+    : "#a2ff00",
+  color: typeof nodeGraphHueUnitHex === "function"
+    ? nodeGraphHueUnitHex(typeof nodeGraphValueLcdDefaultHueDeg === "number"
+      ? nodeGraphValueLcdDefaultHueDeg
+      : 82)
+    : "#a2ff00",
+  hue: typeof nodeGraphValueLcdDefaultHueDeg === "number" ? nodeGraphValueLcdDefaultHueDeg : 82,
+  dot1Brightness: 0.18,
+  brightness: 0.18,
+  dot1Size: 0.72,
+  lineThickness: 0.12,
+  blur: 0.12,
+  stereoBlend: "source-over",
+  shape: "circle",
+  shapeParam: 0.5,
+  pill: 0,
+  squircle: 0,
+  unlitSegments: 0.22,
+  innerShadowDistance: 1,
+  innerShadowSharpness: 0.732,
+  innerShadowOffsetX: 0,
+  innerShadowOffsetY: 0.135,
 });
 
 
@@ -441,6 +494,7 @@ const nodeGraphScope2dSettingsDefaults = Object.freeze({
   fullDotEconomy: false,
   dotsOnly: false,
   sourceSync: false,
+  skipDiscontinuities: false,
   gradientStops: nodeGraphScope2dInitGradientStops,
   lineThickness: nodeGraphScopePhosphorLookDefaults.blur,
   pixelDensity: 1,
@@ -592,31 +646,27 @@ const nodeGraphScope2dTraceSettingsDefaults = Object.freeze({
   background: nodeGraphScopePhosphorLookDefaults.background,
   backgroundHue: nodeGraphScopePhosphorLookDefaults.backgroundHue,
   backgroundBrightness: 0,
-  dot1Brightness: nodeGraphScopePhosphorLookDefaults.brightness,
-  dot1Color: nodeGraphScopePhosphorLookDefaults.peakColor,
+  // Beam ink: unit hue hex + plausible brightness (black → hue @ 0.5 → white).
+  dot1Brightness: 0.5,
+  dot1Color: typeof nodeGraphHueUnitHex === "function"
+    ? nodeGraphHueUnitHex(
+      typeof nodeGraphHueDegFromHex === "function"
+        ? nodeGraphHueDegFromHex(nodeGraphScopePhosphorLookDefaults.peakColor)
+        : 60,
+    )
+    : nodeGraphScopePhosphorLookDefaults.peakColor,
   dot1Enabled: true,
   dot1Size: nodeGraphScopePhosphorLookDefaults.size,
-  // Closed X/Y orbits (RoundShape, attractors) need ≥1 period on screen.
-  // 0.05s only drew a sliver of a 1 Hz Lissajous and looked “broken up”.
-  historySeconds: 1,
-  fade: 0,
-  // Instant Trace Blur: 0 hard (current look) … 1 soft skirt inside Size.
-  lineThickness: 0,
+  ghost: typeof PhosphorResidual !== "undefined" ? PhosphorResidual.DEFAULT_GHOST : 0.45,
+  trail: typeof PhosphorResidual !== "undefined" ? PhosphorResidual.DEFAULT_TRAIL : 0.88,
   // Vector stroke; density scales face buffer for lo-fi/chunky look (default 1).
   pixelDensity: nodeGraphScopePhosphorLookDefaults.pixelDensity,
   scale: nodeGraphScopePhosphorLookDefaults.scale,
+  skipDiscontinuities: false,
 });
 
-/** Optional per-type 2D Trace defaults (e.g. longer history for closed shapes). */
-const nodeGraphModuleScope2dTraceDisplayDefaultOverrides = Object.freeze({
-  // RoundShape: full closed sine→square orbit; keep a couple of cycles.
-  ellipsoid: Object.freeze({
-    historySeconds: 2,
-  }),
-  ellipsoidOsc: Object.freeze({
-    historySeconds: 2,
-  }),
-});
+/** Optional per-type 2D Trace defaults. */
+const nodeGraphModuleScope2dTraceDisplayDefaultOverrides = Object.freeze({});
 
 function nodeGraphScope2dTraceSettingsDefaultsForModuleType(type) {
   const overrides = type

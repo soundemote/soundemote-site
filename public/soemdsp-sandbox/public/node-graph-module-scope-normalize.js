@@ -51,6 +51,9 @@ function nodeGraphDisplaySettingsNormalizePlateLook(source = {}, defaults = {}) 
       0,
       1,
     );
+  } else if (src.background == null && src.backgroundColor == null) {
+    // Hue hex is storage, not a painted plate. Missing amount → default 0 (black).
+    brightness = fallbackBright;
   } else if (typeof hex === "string" && /^#00000[0-9a-f]$/i.test(hex)) {
     brightness = 0;
   } else {
@@ -317,7 +320,6 @@ function nodeGraphDisplaySettingsFormTypeUsesGradient(type) {
     "videoscopeBurn",
     "oscilloscopeBankBurn",
     "hypersawBurn",
-    "ledLamp",
     "rgbShapeFace",
     "rgbFractalFace",
     "evolveFieldFace",
@@ -483,12 +485,9 @@ function normalizeNodeGraphXyPadDisplaySettings(settings = {}) {
     dot1Color: normalizeNodeGraphTraceDisplayColor(peak, defaults.dot1Color),
     dot1Enabled: true,
     dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
-    dotBudget: Math.max(
-      64,
-      Math.min(8192, Math.round(
-        Number(source.dotBudget ?? defaults.dotBudget) || defaults.dotBudget,
-      )),
-    ),
+    dotBudget: typeof nodeGraphTraceDisplayClampDotBudget === "function"
+      ? nodeGraphTraceDisplayClampDotBudget(source.dotBudget ?? defaults.dotBudget)
+      : Math.max(1, Math.min(8192, Math.round(Number(source.dotBudget ?? defaults.dotBudget) || 1024))),
     // Default ON when missing (devilish solid trails). Explicit false stays off.
     fullDotEconomy: source.fullDotEconomy !== false
       && source.useFullDotEconomy !== false,
@@ -582,18 +581,21 @@ function normalizeNodeGraphTraceDisplayZoomSeconds(value, fallback) {
 
 function nodeGraphTraceDisplayClampSweepSeconds(value) {
   const n = Number(value);
-  // Non-finite only → default. 0 / negative → fastest legal sweep (0.01 s),
-  // NOT snap back to default 2 s (that felt broken when dragging Sweep to 0).
+  // Non-finite → default. 0 = collapsed sweep (solid full-width horizontal
+  // per sample at fuse density). Negative → 0. Do not snap 0 to default.
   if (!Number.isFinite(n)) {
     return nodeGraphLineBurnSettingsDefaults.sweepSeconds;
   }
-  return clampNodeSliderValue(n, 0.01, 10);
+  if (n <= 0) {
+    return 0;
+  }
+  return clampNodeSliderValue(n, 0, 10);
 }
 
 
 function normalizeNodeGraphLineBurnSweepSeconds(source, defaults) {
   const explicit = Number(source?.sweepSeconds);
-  if (Number.isFinite(explicit) && explicit > 0) {
+  if (Number.isFinite(explicit) && explicit >= 0) {
     return nodeGraphTraceDisplayClampSweepSeconds(explicit);
   }
   // Legacy: sweepHz = full left→right crossings per second.
@@ -641,12 +643,9 @@ function normalizeNodeGraphLineBurnSettings(settings = {}) {
     dot1Enabled: true,
     dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
     // Dot Budget + Full Dot Economy persist (toggle was dropped before).
-    dotBudget: Math.max(
-      64,
-      Math.min(8192, Math.round(
-        Number(source.dotBudget ?? defaults.dotBudget) || defaults.dotBudget || 2048,
-      )),
-    ),
+    dotBudget: typeof nodeGraphTraceDisplayClampDotBudget === "function"
+      ? nodeGraphTraceDisplayClampDotBudget(source.dotBudget ?? defaults.dotBudget)
+      : Math.max(1, Math.min(8192, Math.round(Number(source.dotBudget ?? defaults.dotBudget) || 1024))),
     // Shared packing toggles (same SSOT as scope2d / 2D Phosphor).
     fullDotEconomy: nodeGraphDisplaySettingsToggleIsOn(
       source.fullDotEconomy ?? source.useFullDotEconomy,
@@ -759,6 +758,10 @@ function normalizeNodeGraphTraceDisplaySettings(settings = {}) {
         0,
         1,
       ),
+    tertiaryColor: normalizeNodeGraphTraceDisplayColor(
+      source.tertiaryColor,
+      defaults.tertiaryColor ?? "#00ff00",
+    ),
     cycles: normalizeNodeGraphTraceDisplayNumber(source.cycles, defaults.cycles, -Infinity, Infinity),
     lineThickness: typeof nodeGraphTraceDisplayClampStampBlur === "function"
       ? nodeGraphTraceDisplayClampStampBlur(source.lineThickness ?? source.blur ?? defaults.lineThickness)
@@ -768,12 +771,15 @@ function normalizeNodeGraphTraceDisplaySettings(settings = {}) {
         0,
         1,
       ),
-    dotBudget: Math.max(
-      64,
-      Math.min(8192, Math.round(
-        Number(source.dotBudget ?? defaults.dotBudget) || defaults.dotBudget || 2048,
-      )),
+    stampDensity: normalizeNodeGraphTraceDisplayNumber(
+      source.stampDensity ?? source.dotDensity,
+      defaults.stampDensity ?? 0.5,
+      0,
+      1,
     ),
+    dotBudget: typeof nodeGraphTraceDisplayClampDotBudget === "function"
+      ? nodeGraphTraceDisplayClampDotBudget(source.dotBudget ?? defaults.dotBudget)
+      : Math.max(1, Math.min(8192, Math.round(Number(source.dotBudget ?? defaults.dotBudget) || 1024))),
     pixelDensity: normalizeNodeGraphTraceDisplayNumber(
       source.pixelDensity,
       defaults.pixelDensity,
@@ -792,6 +798,17 @@ function normalizeNodeGraphTraceDisplaySettings(settings = {}) {
         return false;
       }
       return defaults.skipDiscontinuities === true;
+    })(),
+    // RGB waterfall: CMY multiply darken mode (default off = RGB additive).
+    cmyMode: (() => {
+      const raw = source.cmyMode;
+      if (raw === true || raw === 1 || raw === "1" || raw === "true") {
+        return true;
+      }
+      if (raw === false || raw === 0 || raw === "0" || raw === "false") {
+        return false;
+      }
+      return false;
     })(),
     // Default OFF (matches defaults.sourceSync). Never use `!== false` here —
     // that treated missing settings as Sync-on and let multi-scope locks thrash.
@@ -1373,12 +1390,9 @@ function normalizeNodeGraphScope2dSettings(settings = {}, defaultsOverride = nul
     dot1Color: normalizeNodeGraphTraceDisplayColor(peak, defaults.dot1Color),
     dot1Enabled: true,
     dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
-    dotBudget: Math.max(
-      64,
-      Math.min(8192, Math.round(
-        Number(source.dotBudget ?? defaults.dotBudget) || defaults.dotBudget,
-      )),
-    ),
+    dotBudget: typeof nodeGraphTraceDisplayClampDotBudget === "function"
+      ? nodeGraphTraceDisplayClampDotBudget(source.dotBudget ?? defaults.dotBudget)
+      : Math.max(1, Math.min(8192, Math.round(Number(source.dotBudget ?? defaults.dotBudget) || 1024))),
     // Full Dots / Dots only — shared phosphor packing (scope2d SSOT).
     // Accept bool true and common form/patch coercions (1 / "1" / "true" / "on").
     fullDotEconomy: nodeGraphDisplaySettingsToggleIsOn(
@@ -1390,6 +1404,9 @@ function normalizeNodeGraphScope2dSettings(settings = {}, defaultsOverride = nul
     // Latch present for packing-row UI consistency; 2D deposit path freeruns.
     sourceSync: nodeGraphDisplaySettingsToggleIsOn(
       source.sourceSync ?? source.sync,
+    ),
+    skipDiscontinuities: nodeGraphDisplaySettingsToggleIsOn(
+      source.skipDiscontinuities ?? defaults.skipDiscontinuities,
     ),
     gradientStops,
     lineThickness: nodeGraphTraceDisplayClampStampBlur(
@@ -1411,27 +1428,42 @@ function normalizeNodeGraphScope2dTraceSettings(settings = {}, typeDefaults = nu
   const defaults = typeDefaults && typeof typeDefaults === "object"
     ? { ...nodeGraphScope2dTraceSettingsDefaults, ...typeDefaults }
     : nodeGraphScope2dTraceSettingsDefaults;
+  const rawInk = source.dot1Color ?? source.color ?? defaults.dot1Color;
+  const inkHex = typeof normalizeNodeGraphTraceDisplayColor === "function"
+    ? normalizeNodeGraphTraceDisplayColor(rawInk, defaults.dot1Color)
+    : String(rawInk || "#fcfdbf");
+  const mappedInk = typeof nodeGraphHueBrightnessFromHex === "function"
+    ? nodeGraphHueBrightnessFromHex(inkHex, 60, defaults.dot1Brightness)
+    : { hue: 60, brightness: defaults.dot1Brightness };
+  const hueRaw = Number(source.dot1Hue);
+  const inkHue = Number.isFinite(hueRaw)
+    ? Math.max(0, Math.min(360, hueRaw))
+    : mappedInk.hue;
+  const inkHueHex = typeof nodeGraphHueUnitHex === "function"
+    ? nodeGraphHueUnitHex(inkHue)
+    : inkHex;
+  const inkBright = source.dot1Brightness != null || source.brightness != null
+    ? normalizeNodeGraphTraceDisplayBrightness(
+      source.dot1Brightness ?? source.brightness,
+      defaults.dot1Brightness,
+    )
+    : mappedInk.brightness;
   return {
     ...nodeGraphDisplaySettingsNormalizePlateLook(source, {
       ...defaults,
       backgroundBrightness: defaults.backgroundBrightness ?? 0,
       backgroundHue: defaults.backgroundHue ?? 0,
     }),
-    dot1Brightness: normalizeNodeGraphTraceDisplayBrightness(
-      source.dot1Brightness ?? source.brightness,
-      defaults.dot1Brightness,
-    ),
-    dot1Color: normalizeNodeGraphTraceDisplayColor(source.dot1Color ?? source.color, defaults.dot1Color),
+    dot1Brightness: inkBright,
+    dot1Color: inkHueHex,
     dot1Enabled: true,
     dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
-    historySeconds: normalizeNodeGraphTraceDisplayZoomSeconds(
-      source.historySeconds ?? source.history,
-      defaults.historySeconds,
-    ),
-    fade: normalizeNodeGraphTraceDisplayNumber(source.fade, defaults.fade ?? 0, 0, 1),
-    lineThickness: nodeGraphTraceDisplayClampStampBlur(
-      source.lineThickness ?? source.dot1Blur ?? defaults.lineThickness,
-    ),
+    ghost: typeof PhosphorResidual !== "undefined" && PhosphorResidual.migrateGhost
+      ? PhosphorResidual.migrateGhost(source, defaults.ghost)
+      : normalizeNodeGraphTraceDisplayNumber(source.ghost, defaults.ghost, 0, 1),
+    trail: typeof PhosphorResidual !== "undefined" && PhosphorResidual.migrateTrail
+      ? PhosphorResidual.migrateTrail(source, defaults.trail)
+      : normalizeNodeGraphTraceDisplayNumber(source.trail, defaults.trail, 0, 1),
     pixelDensity: normalizeNodeGraphTraceDisplayNumber(
       source.pixelDensity,
       defaults.pixelDensity,
@@ -1439,6 +1471,9 @@ function normalizeNodeGraphScope2dTraceSettings(settings = {}, typeDefaults = nu
       1,
     ),
     scale: normalizeNodeGraphTraceDisplayNumber(source.scale, defaults.scale, 0, Infinity),
+    skipDiscontinuities: nodeGraphDisplaySettingsToggleIsOn(
+      source.skipDiscontinuities ?? defaults.skipDiscontinuities,
+    ),
   };
 }
 
@@ -1460,11 +1495,16 @@ function normalizeNodeGraphVectorDotSettings(settings = {}) {
     source.dot1Color ?? source.color,
     defaults.dot1Color ?? "#ff6a00",
   );
-  const hue = Number.isFinite(hueRaw)
-    ? ((hueRaw % 360) + 360) % 360
-    : (typeof nodeGraphHueDegFromHex === "function"
-      ? nodeGraphHueDegFromHex(colorHex)
-      : 25);
+  const hasColor = source.dot1Color != null || source.color != null;
+  // Title-strip hue writes the hidden color field; spread `{...current}` still
+  // has a finite stale `hue`. Prefer the hex the user just dragged.
+  const hue = hasColor && typeof nodeGraphHueDegFromHex === "function"
+    ? nodeGraphHueDegFromHex(colorHex)
+    : (Number.isFinite(hueRaw)
+      ? ((hueRaw % 360) + 360) % 360
+      : (typeof nodeGraphHueDegFromHex === "function"
+        ? nodeGraphHueDegFromHex(colorHex)
+        : 25));
   const hueHex = typeof nodeGraphHueUnitHex === "function"
     ? nodeGraphHueUnitHex(hue)
     : colorHex;
@@ -1517,26 +1557,122 @@ function normalizeNodeGraphVectorDotSettings(settings = {}) {
       0,
       1,
     ),
+    stereoBlend: typeof nodeGraphScopeStereoBlendMode === "function"
+      ? nodeGraphScopeStereoBlendMode(source.stereoBlend ?? defaults.stereoBlend)
+      : (function () {
+        const raw = String(source.stereoBlend || defaults.stereoBlend || "combine").toLowerCase().trim();
+        const ok = typeof TraceStroke !== "undefined" && Array.isArray(TraceStroke.STEREO_BLEND_MODES)
+          ? TraceStroke.STEREO_BLEND_MODES
+          : ["combine", "lighter", "screen", "source-over", "multiply", "difference", "exclusion", "xor"];
+        return ok.includes(raw) ? raw : "combine";
+      })(),
+    ...(function () {
+      const pill = normalizeNodeGraphTraceDisplayNumber(source.pill, defaults.pill ?? 0, 0, 1);
+      const squircle = normalizeNodeGraphTraceDisplayNumber(source.squircle, defaults.squircle ?? 0, 0, 1);
+      const hasShape = source.shape != null && String(source.shape).trim() !== "";
+      let shape;
+      let shapeParam;
+      if (hasShape && typeof normalizeTraceStampShape === "function") {
+        shape = normalizeTraceStampShape(source.shape, defaults.shape || "circle");
+        shapeParam = normalizeNodeGraphTraceDisplayNumber(
+          source.shapeParam,
+          defaults.shapeParam ?? 0.5,
+          0,
+          1,
+        );
+      } else if (typeof migratePillSquircleToShape === "function") {
+        const migrated = migratePillSquircleToShape(pill, squircle);
+        shape = migrated.shape;
+        shapeParam = migrated.shapeParam;
+      } else {
+        shape = "circle";
+        shapeParam = 0.5;
+      }
+      const legacy = typeof deriveLegacyPillSquircle === "function"
+        ? deriveLegacyPillSquircle(shape, shapeParam)
+        : { pill: shape === "pill" ? shapeParam : 0, squircle: shape === "squircle" ? shapeParam : 0 };
+      return {
+        shape,
+        shapeParam,
+        pill: legacy.pill,
+        squircle: legacy.squircle,
+      };
+    })(),
+  };
+}
+
+function normalizeNodeGraphLcdDotSettings(settings = {}) {
+  const source = settings && typeof settings === "object" ? settings : {};
+  const lcdDefaults = typeof nodeGraphLcdDotSettingsDefaults !== "undefined"
+    ? nodeGraphLcdDotSettingsDefaults
+    : {};
+  const merged = normalizeNodeGraphVectorDotSettings({
+    ...lcdDefaults,
+    ...source,
+    stereoBlend: source.stereoBlend ?? lcdDefaults.stereoBlend ?? "source-over",
+  });
+  return {
+    ...merged,
+    faceStyle: "lcd",
+    unlitSegments: normalizeNodeGraphTraceDisplayNumber(
+      source.unlitSegments,
+      lcdDefaults.unlitSegments ?? 0.22,
+      0,
+      1,
+    ),
+    innerShadowDistance: normalizeNodeGraphTraceDisplayNumber(
+      source.innerShadowDistance,
+      lcdDefaults.innerShadowDistance ?? 1,
+      0,
+      1,
+    ),
+    innerShadowSharpness: normalizeNodeGraphTraceDisplayNumber(
+      source.innerShadowSharpness,
+      lcdDefaults.innerShadowSharpness ?? 0.732,
+      0,
+      1,
+    ),
+    innerShadowOffsetX: normalizeNodeGraphTraceDisplayNumber(
+      source.innerShadowOffsetX,
+      lcdDefaults.innerShadowOffsetX ?? 0,
+      -1,
+      1,
+    ),
+    innerShadowOffsetY: normalizeNodeGraphTraceDisplayNumber(
+      source.innerShadowOffsetY,
+      lcdDefaults.innerShadowOffsetY ?? 0.135,
+      -1,
+      1,
+    ),
+  };
+}
+
+function nodeGraphMigrateLegacyLedToVectorDot(led) {
+  if (!led || typeof led !== "object") {
+    return null;
+  }
+  const fill = Number(led.fillPercent ?? led.fill);
+  return {
+    hue: led.hue,
+    color: led.color,
+    brightness: led.brightness ?? led.dot1Brightness,
+    blur: led.blur ?? led.lineThickness,
+    dot1Size: led.dot1Size ?? (Number.isFinite(fill) && fill > 0 ? fill / 100 : undefined),
+    backgroundBrightness: led.backgroundBrightness,
+    backgroundColor: led.backgroundColor ?? led.background,
   };
 }
 
 function nodeGraphVectorDotSettingsForNode(node) {
-  if (node?.type === "led") {
-    const led = typeof normalizeNodeGraphLedLayout === "function"
-      ? normalizeNodeGraphLedLayout(node.led)
-      : (node.led || {});
-    return normalizeNodeGraphVectorDotSettings({
-      hue: led.hue,
-      brightness: led.brightness,
-      blur: led.blur,
-      dot1Size: led.dot1Size ?? (Number(led.fillPercent) > 0 ? Number(led.fillPercent) / 100 : 0.85),
-      backgroundBrightness: led.backgroundBrightness ?? 0,
-      backgroundColor: led.backgroundColor ?? led.background,
-    });
+  const bag = node?.vectorDotSettings
+    || (node?.type === "led" ? nodeGraphMigrateLegacyLedToVectorDot(node.led) : null)
+    || node?.lcdDotSettings
+    || node?.zeroDBurnSettings
+    || node?.traceDisplaySettings;
+  if (node?.type === "lcdDot" && typeof normalizeNodeGraphLcdDotSettings === "function") {
+    return normalizeNodeGraphLcdDotSettings(bag);
   }
-  return normalizeNodeGraphVectorDotSettings(
-    node?.vectorDotSettings || node?.zeroDBurnSettings || node?.traceDisplaySettings,
-  );
+  return normalizeNodeGraphVectorDotSettings(bag);
 }
 
 
@@ -1575,13 +1711,25 @@ function nodeGraphTraceDisplaySettingsForNode(node) {
     return normalizeNodeGraphValueOscilloscopeSettings(node.traceDisplaySettings);
   }
   // Instant Trace: seed from the global bucket until this module is edited.
-  if (settingsSchema === "trace") {
+  if (settingsSchema === "trace" || settingsSchema === "traceRgb") {
     const local = node.type === "lookaheadLimiter"
       ? nodeGraphMigrateLimiterGainFaceToTraceSettings(node.traceDisplaySettings)
       : node.traceDisplaySettings;
     const hasLocal = Boolean(local && typeof local === "object" && Object.keys(local).length);
     if (!hasLocal) {
-      return nodeGraphGlobalTraceSettings();
+      const seeded = nodeGraphGlobalTraceSettings();
+      // RGB waterfall defaults: hard pixels, full bright, additive guns.
+      if (settingsSchema === "traceRgb") {
+        return normalizeNodeGraphTraceDisplaySettings({
+          ...seeded,
+          lineThickness: 0,
+          brightness: 0.95,
+          dot1Brightness: 0.95,
+          stereoBlend: "lighter",
+          cmyMode: false,
+        });
+      }
+      return seeded;
     }
     return normalizeNodeGraphTraceDisplaySettings(local);
   }

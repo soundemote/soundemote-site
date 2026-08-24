@@ -48,6 +48,10 @@ function syncNodeGraphModuleScopeHeartbeat() {
       if (nodeGraphModuleScopeState.buffers?.size) {
         absorbNodeGraphModuleScopePhosphorDrawCursors();
       }
+      if (typeof scopePaintIsFrozen === "function" && scopePaintIsFrozen()
+        && typeof holdNodeGraphScope2dTraceFaces === "function") {
+        holdNodeGraphScope2dTraceFaces();
+      }
       return;
     }
     const pendingFrame = Number(nodeGraphModuleScopeState.drawFrame) || 0;
@@ -64,6 +68,9 @@ function syncNodeGraphModuleScopeHeartbeat() {
     if (nodeGraphModuleScopeState.drawFrameWatchdog) {
       window.clearTimeout(nodeGraphModuleScopeState.drawFrameWatchdog);
       nodeGraphModuleScopeState.drawFrameWatchdog = 0;
+    }
+    if (nodeGraphModuleScopeState.drawBusy) {
+      return;
     }
     scheduleNodeGraphModuleScopeDraw();
   }, 100);

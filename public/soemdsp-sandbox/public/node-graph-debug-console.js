@@ -12,14 +12,17 @@
   if (window.__seDebugConsole) return;
 
   const CAP = 4000;
+  const VISIBLE_CAP = 200;
   // Survives F5 in the same tab. localStorage keeps a "last unload" dump so a
   // hard crash / new tab can still recover the previous session's log.
   const STORAGE_SESSION = "seDebugLog.session.v1";
   const STORAGE_LAST_UNLOAD = "seDebugLog.lastUnload.v1";
+  // Survives F5 / new tab. Missing key = paused (first-run default).
+  const STORAGE_PAUSED = "seDebugPaused.v1";
   const entries = [];
   let seq = 0;
   let errorCount = 0;
-  let paused = false;
+  let paused = readPausedPreference();
   let filter = "all";
   let search = "";
   let persistTimer = 0;
@@ -83,13 +86,69 @@
     WARN: { tag: "WARN", color: "#ffcf6b", err: false },
     FAIL: { tag: "FAIL", color: "#ff6b6b", err: true },
     SMOOTH: { tag: "SMTH", color: "#b184ff", err: false },
+    LIVE: { tag: "LIVE", color: "#6ee7b7", err: false },
     ERROR: { tag: "ERR", color: "#ff5555", err: true },
   };
 
+  function seVerboseLog() {
+    try {
+      return localStorage.getItem("seDebug") === "1";
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /** Pause/resume of the live log UI. Default paused when nothing is stored. */
+  function readPausedPreference() {
+    try {
+      const raw = localStorage.getItem(STORAGE_PAUSED);
+      if (raw === "0") return false;
+      if (raw === "1") return true;
+    } catch (_) {}
+    return true;
+  }
+
+  function writePausedPreference(value) {
+    try {
+      localStorage.setItem(STORAGE_PAUSED, value ? "1" : "0");
+    } catch (_) {}
+  }
+
+  function syncPauseButton() {
+    const btn = els.pauseBtn || els.panel?.querySelector("[data-se-pause]");
+    if (!btn) return;
+    btn.textContent = paused ? "Resume" : "Pause";
+    btn.setAttribute("aria-pressed", paused ? "true" : "false");
+    btn.title = paused
+      ? "Paused — INFO/LIVE not recorded. ERROR/FAIL still land. Click to resume."
+      : "Recording live entries — click to pause INFO/LIVE posts";
+  }
+
+  function setPaused(next) {
+    paused = !!next;
+    writePausedPreference(paused);
+    syncPauseButton();
+    if (!paused) rebuild();
+  }
+
+  function sePanelOpen() {
+    return Boolean(els.panel?.classList.contains("se-open"));
+  }
+
+  /** ERROR/FAIL/LIVE always. INFO/LOG/WARN only with panel open or seDebug=1. */
+  function seShouldRecord(level) {
+    if (level === "ERROR" || level === "FAIL" || level === "LIVE") {
+      return true;
+    }
+    return seVerboseLog() || sePanelOpen();
+  }
+
   function push(level, msg, loc) {
+    if (!seShouldRecord(level)) {
+      return null;
+    }
     if (paused && level !== "ERROR" && level !== "FAIL") {
-      // Still persist critical failures even while paused? Keep old pause
-      // semantics: push always records; pause only freezes live UI follow.
+      return null;
     }
     const lv = LEVELS[level] || LEVELS.LOG;
     const ts = Date.now();
@@ -255,12 +314,13 @@
 
   // ---- sehelper.hpp-style API ----------------------------------------------
   const SE = {
-    LOG: (msg) => push("LOG", msg || "FAILURE: no error message provided", callerLoc()),
-    INFO: (msg) => push("INFO", msg, callerLoc()),
-    WARN: (cond, msg) => { if (!cond) push("WARN", msg, callerLoc()); return cond; },
+    LOG: (msg) => push("LOG", msg || "FAILURE: no error message provided", ""),
+    INFO: (msg) => push("INFO", msg, ""),
+    WARN: (cond, msg) => { if (!cond) push("WARN", msg, ""); return cond; },
     CHECK: (cond, msg) => { if (!cond) { push("FAIL", msg || "CHECK failed", callerLoc()); try { console.assert(false, msg); } catch (_) {} } return cond; },
     ERROR: (msg, loc = callerLoc()) => push("ERROR", msg || "ERROR", loc),
     FAIL: (msg) => push("FAIL", msg || "FAIL", callerLoc()),
+    LIVE: (msg) => push("LIVE", msg || "", ""),
     STOP: (msg) => push("FAIL", msg || "DEBUG BREAK", callerLoc()),
     WITHINSIZE: (value, container, msg) => {
       const n = container && container.length != null ? container.length : container && container.size;
@@ -291,6 +351,7 @@
     storageKeys: () => ({ session: STORAGE_SESSION, lastUnload: STORAGE_LAST_UNLOAD }),
     buildMode: () => seBuildMode(),
     smoothingWatch: (on) => setSmoothingWatch(on),
+    liveDisplay: () => dumpLiveDisplay(),
     devMode: (on) => {
       try { localStorage.setItem("seDebug", on ? "1" : "0"); } catch (_) {}
       if (on) { injectStyles(); buildButton(); buildPanel(); showPanel(true); }
@@ -307,21 +368,54 @@
   window.addEventListener("unhandledrejection", (ev) => {
     push("ERROR", `unhandled rejection: ${ev?.reason?.message || ev?.reason || "?"}`, "");
   });
-  ["log", "info", "warn", "error"].forEach((k) => {
+  ["warn", "error"].forEach((k) => {
     const orig = console[k].bind(console);
     console[k] = (...args) => {
       try {
         const text = args.map((a) => (typeof a === "string" ? a : safeStringify(a))).join(" ");
-        // Skip our own re-logging noise.
         if (!text.includes("[se-debug]")) {
-          const level = k === "error" ? "ERROR" : k === "warn" ? "WARN" : k === "info" ? "INFO" : "LOG";
-          push(level, text, "console");
+          push(k === "error" ? "ERROR" : "WARN", text, "console");
         }
       } catch (_) {}
       return orig(...args);
     };
   });
   function safeStringify(v) { try { return JSON.stringify(v); } catch (_) { return String(v); } }
+
+  function dumpLiveDisplay() {
+    const mvp = window.nodeGraphMvp;
+    const live = mvp?.live || {};
+    const slots = typeof nodeGraphVisibleModuleScopeSlots === "function"
+      ? nodeGraphVisibleModuleScopeSlots()
+      : [];
+    const slotLines = slots.map((slot) => {
+      const buf = typeof nodeGraphModuleScopeCapturedBufferForSlot === "function"
+        ? nodeGraphModuleScopeCapturedBufferForSlot(slot)
+        : null;
+      const renderer = typeof nodeGraphModuleDisplayRendererForSlot === "function"
+        ? nodeGraphModuleDisplayRendererForSlot(slot)
+        : "";
+      const lr = typeof nodeGraphStereoTraceLrWired === "function"
+        ? nodeGraphStereoTraceLrWired(slot.nodeId, slot.type)
+        : false;
+      return `${slot.type} ${slot.nodeId} ${renderer} n=${buf?.length || 0} lr=${lr ? "1" : "0"}`;
+    });
+    const snap = {
+      speed: live.speedMultiplier,
+      paused: !(Number(live.speedMultiplier) > 0) && Boolean(live.node),
+      outputMuted: live.outputMuted,
+      hostGain: live.outputGain?.gain?.value,
+      engine: Boolean(live.node),
+      phosphorRaf: [...document.querySelectorAll("[data-phosphor-raf='1']")].map((el) => el.dataset.node),
+      slots: slotLines,
+    };
+    push("LIVE", JSON.stringify(snap), "live-display");
+    if (typeof window.SE?.INFO === "function") {
+      // keep a second readable line
+    }
+    showPanel(true);
+    return snap;
+  }
 
   // ---- live-audio smoothing watch ------------------------------------------
   let smoothingWatch = false;
@@ -438,7 +532,10 @@
       #seDebugPanel.se-resizing .se-log{overflow:hidden;pointer-events:none;}
       #seDebugPanel .se-resize-grip{position:absolute;right:0;bottom:0;width:18px;height:18px;cursor:nwse-resize;z-index:3;
         background:linear-gradient(135deg,transparent 0 48%,#3a4558 48% 52%,transparent 52% 68%,#3a4558 68% 72%,transparent 72%);
-        touch-action:none;}
+        touch-action:none;opacity:0;transition:opacity 120ms ease;}
+      #seDebugPanel:hover > .se-resize-grip,
+      #seDebugPanel .se-resize-grip:hover,
+      #seDebugPanel.se-resizing .se-resize-grip{opacity:1;}
       #seDebugPanel .se-row{white-space:pre-wrap;word-break:break-word;padding:2px 0;
         border-bottom:1px solid #12151a;}
       /* ch4os-style: [#n 2:09:25 AM] [+12ms] LEVEL loc: msg */
@@ -501,14 +598,15 @@
         <button class="se-bug" data-se-fake-err type="button" title="Click: generate a fake ERR entry (tests the log pipeline end to end)" aria-label="Generate a fake error">🐞</button>
         <span class="se-title">Debug Log</span>
         <button class="se-tool" data-se-watch aria-pressed="false">○ smoothing</button>
+        <button class="se-tool" data-se-live title="Dump Output/pause/Music Player live-display snapshot">LIVE</button>
         <button class="se-tool" data-se-cats title="Copy module category list (emoji + name, one per line)" aria-label="Copy module category list">📋🎛️</button>
-        <button class="se-tool" data-se-pause>Pause</button>
+        <button class="se-tool" data-se-pause aria-pressed="true">Resume</button>
         <button class="se-tool" data-se-copy>Copy</button>
         <button class="se-tool" data-se-clear>Clear</button>
         <button class="se-tool" data-se-close>✕</button>
       </div>
       <div class="se-filters">
-        ${["all","LOG","INFO","WARN","FAIL","SMOOTH","ERROR"].map((f)=>`<span class="se-chip${f==="all"?" on":""}" data-se-filter="${f}">${f}</span>`).join("")}
+        ${["all","LOG","INFO","WARN","FAIL","SMOOTH","LIVE","ERROR"].map((f)=>`<span class="se-chip${f==="all"?" on":""}" data-se-filter="${f}">${f}</span>`).join("")}
         <input class="se-search" data-se-search placeholder="filter text…">
       </div>
       <div class="se-log node-text-selectable" data-se-list tabindex="0"><div class="se-empty">No log entries yet.</div></div>
@@ -528,8 +626,11 @@
     p.querySelector("[data-se-copy]").addEventListener("click", copyLog);
     p.querySelector("[data-se-cats]")?.addEventListener("click", dumpModuleCategories);
     const pauseBtn = p.querySelector("[data-se-pause]");
-    pauseBtn.addEventListener("click", () => { paused = !paused; pauseBtn.textContent = paused ? "Resume" : "Pause"; if (!paused) rebuild(); });
+    els.pauseBtn = pauseBtn;
+    syncPauseButton();
+    pauseBtn.addEventListener("click", () => setPaused(!paused));
     els.watchBtn.addEventListener("click", () => setSmoothingWatch(!smoothingWatch));
+    p.querySelector("[data-se-live]")?.addEventListener("click", () => dumpLiveDisplay());
     p.querySelectorAll("[data-se-filter]").forEach((c) => c.addEventListener("click", () => {
       filter = c.dataset.seFilter;
       p.querySelectorAll("[data-se-filter]").forEach((x) => x.classList.toggle("on", x === c));
@@ -694,12 +795,18 @@
     // Newest at top: stick to top when already near the top (following live feed).
     const atTop = els.list.scrollTop < 30;
     els.list.insertAdjacentHTML("afterbegin", rowHtml(e));
+    while (els.list.querySelectorAll(".se-row").length > VISIBLE_CAP) {
+      const last = els.list.lastElementChild;
+      if (!last || last.classList.contains("se-empty")) {
+        break;
+      }
+      last.remove();
+    }
     if (atTop) els.list.scrollTop = 0;
   }
   function rebuild() {
     if (!els.list) return;
-    // entries is already newest-first.
-    const rows = entries.filter(matches);
+    const rows = entries.filter(matches).slice(0, VISIBLE_CAP);
     els.list.innerHTML = rows.length ? rows.map(rowHtml).join("") : `<div class="se-empty">No matching entries.</div>`;
     els.list.scrollTop = 0;
   }
@@ -839,13 +946,8 @@
   // button. SE.devMode(false) can still tear the UI down on demand; logging
   // and error capture stay active regardless.
   function seDevEnabled() {
-    try {
-      // Explicit opt-out only (not the default on public/release pages).
-      if (localStorage.getItem("seDebug") === "0") return false;
-      return true;
-    } catch (_) {
-      return true;
-    }
+    // 🐞 button always ships. Verbose recording is seDebug=1 or an open panel.
+    return true;
   }
   function init() {
     try {
@@ -855,19 +957,11 @@
       // Drop any leftover dump from older builds that auto-persisted on hide.
       wipePersistedLogStorage();
       if (!seDevEnabled()) {
-        // Keep logging without the panel.
-        SE.INFO(`debug console (headless) — build ${seBuildMode()}`);
         return;
       }
       injectStyles();
       buildButton();
       buildPanel();
-      SE.INFO(
-        `debug console ready — build ${(document.querySelector("[data-build-number-value]")?.textContent || "?")} (${seBuildMode()}) · log cleared on load`,
-      );
-      if (typeof logNodeGraphSampleRateInfo === "function") {
-        logNodeGraphSampleRateInfo("startup");
-      }
       rebuild();
     } catch (err) {
       try { console.error("[se-debug] init failed", err); } catch (_) {}

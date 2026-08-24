@@ -46,6 +46,26 @@ function nodeGraphModuleHasQuadraturePorts(type) {
   return has;
 }
 
+function nodeGraphJackAxisToken(port, label) {
+  const tryOne = (value) => {
+    const raw = String(value || "").trim();
+    const low = raw.toLowerCase();
+    // Combined X/Y (or XY) is not a single axis — do not steal "Y" from "X/Y".
+    if (!low || low === "x/y" || low === "xy" || low.includes("/")) {
+      return "";
+    }
+    if (low === "x" || low === "y" || low === "z") {
+      return low;
+    }
+    const token = nodeGraphJackLastToken(raw);
+    if (token === "x" || token === "y" || token === "z") {
+      return token;
+    }
+    return "";
+  };
+  return tryOne(port) || tryOne(label);
+}
+
 function nodeGraphModuleUsesChaosOutletRgb(type) {
   const key = String(type || "");
   if (nodeGraphJackChaosTypeCache.has(key)) {
@@ -61,15 +81,13 @@ function nodeGraphModuleUsesChaosOutletRgb(type) {
   const ports = nodeGraphJackTypePortList(type);
   const axes = new Set();
   for (const port of ports) {
-    const name = String(port || "").trim();
-    const axis = name.toLowerCase() === "x" || name.toLowerCase() === "y" || name.toLowerCase() === "z"
-      ? name.toLowerCase()
-      : nodeGraphJackLastToken(name);
-    if (axis === "x" || axis === "y" || axis === "z") {
+    const axis = nodeGraphJackAxisToken(port);
+    if (axis) {
       axes.add(axis);
     }
   }
-  const has = axes.has("x") && axes.has("y") && axes.has("z");
+  // X/Y pair is enough (2D phosphor / XY faces). Z is optional (green).
+  const has = axes.has("x") && axes.has("y");
   nodeGraphJackChaosTypeCache.set(key, has);
   return has;
 }
@@ -175,7 +193,7 @@ function nodeGraphJackChaosChannel(type, port, label) {
   if (!nodeGraphModuleUsesChaosOutletRgb(type)) {
     return "";
   }
-  const axis = nodeGraphJackLastToken(port) || nodeGraphJackLastToken(label);
+  const axis = nodeGraphJackAxisToken(port, label);
   if (axis === "x") {
     return "red";
   }
@@ -197,6 +215,24 @@ function nodeGraphJackQuadratureChannel(type, port) {
     return "red";
   }
   if (key === "cos" || key === "cosine") {
+    return "blue";
+  }
+  return "";
+}
+
+/** SinCos4 A/B/C taps — RGB like XYZ chaos, D stays uncolored. */
+function nodeGraphJackSinCos4Channel(type, port) {
+  if (String(type || "") !== "sineWavetable") {
+    return "";
+  }
+  const key = String(port || "").trim().toUpperCase();
+  if (key === "A") {
+    return "red";
+  }
+  if (key === "B") {
+    return "green";
+  }
+  if (key === "C") {
     return "blue";
   }
   return "";
@@ -256,6 +292,10 @@ function nodeGraphJackChannel(type, port, io = "output") {
   const fromQuad = nodeGraphJackQuadratureChannel(type, key);
   if (fromQuad) {
     return fromQuad;
+  }
+  const fromSinCos4 = nodeGraphJackSinCos4Channel(type, key);
+  if (fromSinCos4) {
+    return fromSinCos4;
   }
   const fromName = nodeGraphJackStereoChannel(key);
   if (fromName) {
@@ -448,34 +488,11 @@ function nodeGraphLogJackVisibility(reason = "census") {
     workspace.dataset.jackOutlets = String(report.outletCount);
     workspace.dataset.jackOk = report.ok ? "1" : "0";
   }
-  const line = [
-    `JACKS ${reason}:`,
-    `modules=${report.moduleCount}`,
-    `ports=${report.portCount}`,
-    `painted=${report.paintedCount}`,
-    `in=${report.inletCount}`,
-    `out=${report.outletCount}`,
-    `rgb=${report.rgbCount}`,
-    `ioHidden=${report.ioHiddenModules}`,
-    `unusedHidden=${report.unusedHiddenModules}`,
-    `workspaceHideUnused=${report.workspaceUnusedHidden}`,
-    `applyFn=${report.applyFn}`,
-    `ok=${report.ok}`,
-  ].join(" ");
-  try {
-    console.info(line);
-    if (report.hidden.length) {
-      console.info("JACKS hidden sample", report.hidden);
-    }
-  } catch (_) {
-    /* ignore */
-  }
   const se = typeof window !== "undefined" ? window.SE : null;
-  if (se?.INFO) {
-    se.INFO(line);
-  }
-  if (!report.ok && se?.WARN) {
-    se.WARN(`JACKS not visible (${reason}) hidden=${JSON.stringify(report.hidden)}`);
+  if (!report.ok && typeof se?.FAIL === "function") {
+    se.FAIL(
+      `JACKS not visible (${reason}) painted=${report.paintedCount} hidden=${JSON.stringify(report.hidden)}`,
+    );
   }
   return report;
 }

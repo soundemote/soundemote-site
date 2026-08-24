@@ -285,6 +285,17 @@ function syncNodeUiDevModuleIdleStroke() {
     "--node-module-selected-stroke",
     `rgb(${nodeUiDevHexColorToRgbTriplet(selectedColor)} / ${selectedAlphaPercent / 100})`,
   );
+  // Fixed (default): compensate zoom so idle + selected strokes stay screen-constant.
+  // Off: compensate = 1 → strokes scale with workspace zoom.
+  const strokesFixedInput = document.getElementById("nodeUiDevModuleStrokesFixed");
+  const strokesFixed = strokesFixedInput ? Boolean(strokesFixedInput.checked) : true;
+  if (strokesFixed) {
+    workspace?.style.removeProperty("--node-module-stroke-zoom-compensate");
+    document.documentElement.style.removeProperty("--node-module-stroke-zoom-compensate");
+  } else {
+    workspace?.style.setProperty("--node-module-stroke-zoom-compensate", "1");
+    document.documentElement.style.setProperty("--node-module-stroke-zoom-compensate", "1");
+  }
 }
 
 const NODE_MODULE_PLATE_ROUNDNESS_RATIO = 0.11;
@@ -311,6 +322,7 @@ function bindNodeUiDevModuleRoundness() {
 function bindNodeUiDevModuleIdleStroke() {
   for (const id of [
     "nodeUiDevModuleStrokeThickness",
+    "nodeUiDevModuleStrokesFixed",
     "nodeUiDevModuleStrokeColor",
     "nodeUiDevModuleStrokeAlpha",
     "nodeUiDevModuleSelectedStrokeColor",
@@ -521,14 +533,79 @@ function syncNodeUiDevIoSectionPadding() {
   }
 }
 
+/** Vertical gap between stacked I/O jacks (--node-io-gap). */
+const NODE_UI_DEV_INLET_OUTLET_GAP_DEFAULT = 0;
+const NODE_UI_DEV_INLET_OUTLET_GAP_MIN = 0;
+const NODE_UI_DEV_INLET_OUTLET_GAP_MAX = 32;
+
+function syncNodeUiDevInletOutletGap() {
+  const input = document.getElementById("nodeUiDevInletOutletGap");
+  const raw = Number(input?.value);
+  const px = Number.isFinite(raw)
+    ? Math.max(
+      NODE_UI_DEV_INLET_OUTLET_GAP_MIN,
+      Math.min(NODE_UI_DEV_INLET_OUTLET_GAP_MAX, raw),
+    )
+    : NODE_UI_DEV_INLET_OUTLET_GAP_DEFAULT;
+  if (input && !input.matches(":active") && input.value !== String(px)) {
+    input.value = String(px);
+  }
+  const output = document.getElementById("nodeUiDevInletOutletGapValue");
+  if (output) {
+    output.textContent = `${Math.round(px)}px`;
+  }
+  const css = `${Math.round(px)}px`;
+  const workspace = document.getElementById("nodeGraphWorkspace");
+  workspace?.style.setProperty("--node-io-gap", css);
+  document.documentElement.style.setProperty("--node-io-gap", css);
+  if (typeof scheduleNodeUiDevPortGeometryFollowup === "function") {
+    scheduleNodeUiDevPortGeometryFollowup();
+  } else if (typeof scheduleNodeGraphModuleFramesUpdate === "function") {
+    scheduleNodeGraphModuleFramesUpdate();
+  }
+}
+
+/** Max inlet/outlet size % — leaves room for crescent stroke inside the 1gu slot. */
+const NODE_UI_DEV_PORT_SIZE_PERCENT_MAX = 90;
+const NODE_UI_DEV_PORT_SIZE_PERCENT_MIN = 20;
+const NODE_UI_DEV_PORT_SIZE_PERCENT_DEFAULT = 52;
+
+/** Crescent stroke in world px — scales with workspace zoom. */
+const NODE_UI_DEV_PORT_STROKE_THICKNESS_DEFAULT = 1.25;
+const NODE_UI_DEV_PORT_STROKE_THICKNESS_MIN = 0;
+const NODE_UI_DEV_PORT_STROKE_THICKNESS_MAX = 8;
+
+/**
+ * Size / stroke change jack row heights and contact radius. Remeasure plate
+ * gaps and redraw wires after layout settles (same double-rAF as other layout).
+ */
+function scheduleNodeUiDevPortGeometryFollowup() {
+  if (typeof scheduleNodeGraphModuleFramesUpdate === "function") {
+    scheduleNodeGraphModuleFramesUpdate();
+  }
+  if (typeof scheduleNodeGraphWireRedrawAfterLayout === "function") {
+    scheduleNodeGraphWireRedrawAfterLayout();
+  } else if (typeof drawNodeGraphWires === "function") {
+    window.requestAnimationFrame(() => drawNodeGraphWires());
+  }
+}
+
 function syncNodeUiDevPortSize() {
   const input = document.getElementById("nodeUiDevInletOutletSize");
   const raw = Number(input?.value);
   const percent = Number.isFinite(raw)
-    ? Math.max(20, Math.min(100, raw))
-    : 52;
-  if (input && input.value !== String(percent)) {
-    input.value = String(percent);
+    ? Math.max(
+      NODE_UI_DEV_PORT_SIZE_PERCENT_MIN,
+      Math.min(NODE_UI_DEV_PORT_SIZE_PERCENT_MAX, raw),
+    )
+    : NODE_UI_DEV_PORT_SIZE_PERCENT_DEFAULT;
+  if (input) {
+    if (Number(input.max) !== NODE_UI_DEV_PORT_SIZE_PERCENT_MAX) {
+      input.max = String(NODE_UI_DEV_PORT_SIZE_PERCENT_MAX);
+    }
+    if (input.value !== String(percent)) {
+      input.value = String(percent);
+    }
   }
   const output = document.getElementById("nodeUiDevInletOutletSizeValue");
   if (output) {
@@ -538,9 +615,31 @@ function syncNodeUiDevPortSize() {
   const workspace = document.getElementById("nodeGraphWorkspace");
   workspace?.style.setProperty("--node-port-size-ratio", css);
   document.documentElement.style.setProperty("--node-port-size-ratio", css);
-  if (typeof scheduleNodeGraphModuleFramesUpdate === "function") {
-    scheduleNodeGraphModuleFramesUpdate();
+  scheduleNodeUiDevPortGeometryFollowup();
+}
+
+function syncNodeUiDevPortStrokeThickness() {
+  const input = document.getElementById("nodeUiDevInletOutletStrokeThickness");
+  const raw = Number(input?.value);
+  const px = Number.isFinite(raw)
+    ? Math.max(
+      NODE_UI_DEV_PORT_STROKE_THICKNESS_MIN,
+      Math.min(NODE_UI_DEV_PORT_STROKE_THICKNESS_MAX, raw),
+    )
+    : NODE_UI_DEV_PORT_STROKE_THICKNESS_DEFAULT;
+  if (input && !input.matches(":active") && input.value !== String(px)) {
+    input.value = String(px);
   }
+  const output = document.getElementById("nodeUiDevInletOutletStrokeThicknessValue");
+  if (output) {
+    const rounded = Math.round(px * 100) / 100;
+    output.textContent = `${rounded}px`;
+  }
+  const css = `${px}px`;
+  const workspace = document.getElementById("nodeGraphWorkspace");
+  workspace?.style.setProperty("--node-port-crescent-stroke-thickness", css);
+  document.documentElement.style.setProperty("--node-port-crescent-stroke-thickness", css);
+  scheduleNodeUiDevPortGeometryFollowup();
 }
 
 function syncNodeUiDevPortBrightness() {
@@ -554,7 +653,7 @@ function syncNodeUiDevPortBrightness() {
     "nodeUiDevUnusedPortBrightness",
     "nodeUiDevUnusedPortBrightnessValue",
     "--node-port-unused-brightness",
-    0.4,
+    0.68,
   );
 }
 
@@ -708,6 +807,8 @@ function syncNodeUiDevSettingsHeaderControls() {
   syncNodeUiDevDimmerCutoutControls();
   syncNodeUiDevMagnifierRimControls();
   syncNodeUiDevPortSize();
+  syncNodeUiDevPortStrokeThickness();
+  syncNodeUiDevInletOutletGap();
   syncNodeUiDevIoSectionPadding();
   syncNodeUiDevPortBrightness();
   syncNodeUiDevJackColors();
@@ -741,6 +842,10 @@ function syncNodeUiDevSettingsHeaderControls() {
   const sliderValueColorValue = document.getElementById("nodeUiDevSliderValueColorValue");
   const sliderUnitColorInput = document.getElementById("nodeUiDevSliderUnitColor");
   const sliderUnitColorValue = document.getElementById("nodeUiDevSliderUnitColorValue");
+  const wireThicknessInput = document.getElementById("nodeUiDevWireThickness");
+  const wireThicknessValue = document.getElementById("nodeUiDevWireThicknessValue");
+  const wirePatchPointSizeInput = document.getElementById("nodeUiDevWirePatchPointSize");
+  const wirePatchPointSizeValue = document.getElementById("nodeUiDevWirePatchPointSizeValue");
   const traceWireThicknessInput = document.getElementById("nodeUiDevTraceWireThickness");
   const traceWireThicknessValue = document.getElementById("nodeUiDevTraceWireThicknessValue");
   const choiceSlideEmptyBorderInput = document.getElementById("nodeUiDevChoiceSlideEmptyBorder");
@@ -791,6 +896,10 @@ function syncNodeUiDevSettingsHeaderControls() {
     !sliderValueColorValue ||
     !sliderUnitColorInput ||
     !sliderUnitColorValue ||
+    !wireThicknessInput ||
+    !wireThicknessValue ||
+    !wirePatchPointSizeInput ||
+    !wirePatchPointSizeValue ||
     !traceWireThicknessInput ||
     !traceWireThicknessValue ||
     !choiceSlideEmptyBorderInput ||
@@ -834,6 +943,17 @@ function syncNodeUiDevSettingsHeaderControls() {
   const sliderLabelColor = normalizeNodeUiDevColor(sliderLabelColorInput.value, "#cfdde5");
   const sliderValueColor = normalizeNodeUiDevColor(sliderValueColorInput.value, "#ffffff");
   const sliderUnitColor = normalizeNodeUiDevColor(sliderUnitColorInput.value, "#7fc7d9");
+  // Cable stroke is independent of inlet/outlet size (was 0.25 × port diameter).
+  const wireThicknessRaw = Number(wireThicknessInput.value);
+  const wireThicknessPx = Math.max(
+    0.25,
+    Math.min(12, Number.isFinite(wireThicknessRaw) ? wireThicknessRaw : 3.5),
+  );
+  const wirePatchPointSizeRaw = Number(wirePatchPointSizeInput.value);
+  const wirePatchPointSizePercent = Math.max(
+    0,
+    Math.min(200, Number.isFinite(wirePatchPointSizeRaw) ? wirePatchPointSizeRaw : 54),
+  );
   const traceWireThicknessPx = Math.max(1, Math.min(12, Number(traceWireThicknessInput.value) || 1));
   const choiceSlideEmptyBorderPx = Math.max(0, Math.min(8, Number(choiceSlideEmptyBorderInput.value) || 0));
   const bypassIconSizePercent = Math.max(0, Math.min(100, Number(bypassIconSizeInput.value) || 0));
@@ -900,6 +1020,12 @@ function syncNodeUiDevSettingsHeaderControls() {
     ?.style.setProperty("--node-slider-unit-color", sliderUnitColor);
   document
     .getElementById("nodeGraphWorkspace")
+    ?.style.setProperty("--node-wire-thickness", `${wireThicknessPx}px`);
+  document
+    .getElementById("nodeGraphWorkspace")
+    ?.style.setProperty("--node-wire-patch-point-size-ratio", String(wirePatchPointSizePercent / 100));
+  document
+    .getElementById("nodeGraphWorkspace")
     ?.style.setProperty("--node-trace-wire-thickness", `${traceWireThicknessPx}px`);
   document
     .getElementById("nodeGraphWorkspace")
@@ -936,6 +1062,17 @@ function syncNodeUiDevSettingsHeaderControls() {
   sliderLabelColorValue.textContent = sliderLabelColor;
   sliderValueColorValue.textContent = sliderValueColor;
   sliderUnitColorValue.textContent = sliderUnitColor;
+  if (!wireThicknessInput.matches(":active") && wireThicknessInput.value !== String(wireThicknessPx)) {
+    wireThicknessInput.value = String(wireThicknessPx);
+  }
+  wireThicknessValue.textContent = `${Math.round(wireThicknessPx * 100) / 100}px`;
+  if (
+    !wirePatchPointSizeInput.matches(":active")
+    && wirePatchPointSizeInput.value !== String(wirePatchPointSizePercent)
+  ) {
+    wirePatchPointSizeInput.value = String(wirePatchPointSizePercent);
+  }
+  wirePatchPointSizeValue.textContent = `${Math.round(wirePatchPointSizePercent)}%`;
   traceWireThicknessValue.textContent = `${traceWireThicknessPx}px`;
   choiceSlideEmptyBorderValue.textContent = `${choiceSlideEmptyBorderPx}px`;
   bypassIconSizeValue.textContent = `${bypassIconSizePercent}%`;

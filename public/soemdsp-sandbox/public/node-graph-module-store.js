@@ -101,7 +101,6 @@ const nodeGraphModuleCatalogUnderConstructionSort = Object.freeze([
   "oscilloscopeBank",
   "shootingStarTail",
   "wallDelay",
-  "audioInput",
   "pluginInput",
   "pluginOutput",
   "pluginMidiIn",
@@ -140,6 +139,7 @@ const nodeGraphModuleCatalogUnderConstructionSort = Object.freeze([
   "phosphillator",
   "hypersaw",
   "bloomGlow",
+  "gradientVectorscope",
 ]);
 
 // Types that used to be on the UC shelf and are now shipped. Always strip
@@ -147,12 +147,14 @@ const nodeGraphModuleCatalogUnderConstructionSort = Object.freeze([
 // construction plate over a working face (Output meter/trace).
 const nodeGraphModuleCatalogRetiredFromUnderConstruction = Object.freeze([
   "output",
+  "audioInput",
   "airClipper",
 ]);
 
 /** Short shop-card reminder for under-construction modules (title tooltip). */
 const nodeGraphModuleConstructionPlans = Object.freeze({
   bloomGlow: "Screen bloom/glow/dim from CV. Parked until the shader wash stack is live.",
+  gradientVectorscope: "Woscope XY beam with gradient-along-length and dest persist. Parked until that face is finished.",
   canvas: "Composite images, scopes, and shaders. Parked until the shader stack ships.",
   screenSpaceShader: "Scripted screen FX from declared inputs. Parked until shader host lands.",
   rgbaHsla: "RGB/HSL screen wash. Parked until shader color controls land.",
@@ -210,7 +212,7 @@ const nodeGraphModuleStoreDepartments = Object.freeze([
   { id: "modulator",    emoji: "♾️", label: "Modulator",    symbol: "⇄",   title: "Modulator", pitch: "Motion sources for pitch, amplitude, time, and texture. Small control engines that make patches move." },
   { id: "additive",     emoji: "📊", label: "Additive",     symbol: "∑",   title: "Additive",   pitch: "Harmonic-stack voices: build timbre from partials, not a single waveform." },
   { id: "chaos",        emoji: "🌌", label: "Chaos",        symbol: "∞",   title: "Chaos",     pitch: "All the various attractors and strange motion systems. The wild shelf where math starts looking back." },
-  { id: "jerobeam",     emoji: "♻️", label: "Jerobeam",     symbol: "JRB", title: "Jerobeam",  pitch: "Jerobeam spiral and orbit motion systems. Spiral Generator lives here." },
+  { id: "oms",          emoji: "♻️", label: "OMS",          symbol: "OMS", title: "OMS",       pitch: "Spiral and orbit motion systems. Spiral Generator lives here." },
   { id: "noise",        emoji: "🌧️", label: "Noise",        symbol: "✦",   title: "Noise",     pitch: "Noise, dust, instability, sparks, and all the useful mess a clean machine secretly needs." },
   { id: "drum",         emoji: "🥁", label: "Drum",         symbol: "▥",   title: "Drum",      pitch: "Rhythm machines, drum voices, pattern engines, and percussion control surfaces." },
   { id: "dynamics",     emoji: "⚡", label: "Dynamics",     symbol: "⚡",   title: "Dynamics",  pitch: "Power routing, level control, offsets, and response shaping for keeping a circuit alive under pressure." },
@@ -276,7 +278,10 @@ const nodeGraphModuleStoreDepartmentAliasToId = Object.freeze({
   Harmony:           "musical",
   Media:             "sample",
   media:             "sample",
-  Jerobeam:          "jerobeam",
+  // Legacy shelf name; catalog id is now oms.
+  Jerobeam:          "oms",
+  jerobeam:          "oms",
+  OMS:               "oms",
   // "LED" was this department's own name before it widened to Object; keep the
   // alias so stored settings and old patches still resolve.
   LED:               "object",
@@ -354,9 +359,15 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   sineWavetable: {
     category: "oscillator",
-    description: "Straightforward pitchable sin/cos voice when you need a clean table sine with amplitude control.",
+    description: "Pitchable sine with 1–4 evenly spaced phase taps (sine, cosine, sincos, antiphase, 3-phase, 4-phase).",
+    label: "SinCos4",
+    notes: ["implemented", "wavetable", "sincos4", "native"],
+  },
+  sinCos: {
+    category: "oscillator",
+    description: "Pitchable sine and cosine pair (quadrature).",
     label: "SinCos",
-    notes: ["implemented", "wavetable", "sin/cos", "native"],
+    notes: ["implemented", "wavetable", "sincos", "native"],
   },
   wavetable2d: {
     category: "oscillator",
@@ -418,11 +429,23 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "Ellipsoid",
     notes: ["ellipsoid", "offset", "shape", "scale", "Limit AA", "X/Y", "native"],
   },
+  basicShape: {
+    category: "modulator",
+    description: "Naive sine / tri / saw / square (no anti-aliasing) with PWM, a cheap 1D cycle+dot face, and RoundShape-style motion.",
+    label: "BasicShape",
+    notes: ["BasicShape", "naive", "no anti-aliasing", "PWM", "LFO", "sine", "triangle", "saw", "square"],
+  },
   clock: {
     category: "clock",
     label: "Clock",
     description: "Free-running pulse clock to drive sequencers, envelopes, and rhythmic events.",
     notes: ["clock", "rate and phase control", "duty cycle", "reset input", "T"],
+  },
+  vectorDot: {
+    category: "oscilloscope",
+    label: "Vector Dot",
+    description: "Per-frame energy disc. Mean of this frame's samples lights the dot (duty 50% = half bright).",
+    notes: ["vector dot", "energy", "brightness", "smoothstep", "clock lamp"],
   },
   simulationTime: {
     category: "clock",
@@ -673,70 +696,70 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["oscillator", "supersaw", "polyblep", "anti-aliasing", "native", "phosphor display", "under construction"],
   },
   spiral: {
-    category: "jerobeam",
-    description: "Jerobeam spiral X/Y/Z motion for scopes, lasers, and audiovisual flight paths.",
-    label: "Jerobeam Spiral",
-    notes: ["attractor motion", "rotation", "density and morph controls", "native"],
+    category: "oms",
+    description: "Spiral X/Y/Z motion for scopes, lasers, and audiovisual flight paths.",
+    label: "Spiral",
+    notes: ["attractor motion", "rotation", "density and morph controls", "native", "oms"],
   },
   fractalSpiral: {
-    category: "jerobeam",
+    category: "oms",
     description: "Self-similar fractal spiral motion when plain spirals feel too simple.",
     label: "Fractal Spiral",
-    notes: ["fractal", "self-similar", "logarithmic spiral", "Weierstrass function", "native"],
+    notes: ["fractal", "self-similar", "logarithmic spiral", "Weierstrass function", "native", "oms"],
   },
   logSpiral: {
-    category: "jerobeam",
+    category: "oms",
     description: "Perfect equiangular spiral—constant growth look for clean geometric motion.",
     label: "Logarithmic Spiral",
-    notes: ["logarithmic spiral", "equiangular spiral", "self-similar", "native"],
+    notes: ["logarithmic spiral", "equiangular spiral", "self-similar", "native", "oms"],
   },
   blubb: {
-    category: "jerobeam",
-    description: "Placeholder Jerobeam Blubb motion—reserved for future path engine.",
-    label: "Jerobeam Blubb",
-    notes: ["placeholder", "jerobeam"],
+    category: "oms",
+    description: "Placeholder Blubb motion—reserved for future path engine.",
+    label: "Blubb",
+    notes: ["placeholder", "oms"],
   },
   boing: {
-    category: "jerobeam",
-    description: "Placeholder Jerobeam Boing motion—reserved for future bounce/path engine.",
-    label: "Jerobeam Boing",
-    notes: ["placeholder", "jerobeam"],
+    category: "oms",
+    description: "Placeholder Boing motion—reserved for future bounce/path engine.",
+    label: "Boing",
+    notes: ["placeholder", "oms"],
   },
   keplerBouwkamp: {
-    category: "jerobeam",
+    category: "oms",
     description: "Nested polygon spiral for structured X/Y geometric patterns.",
-    label: "Jerobeam Kepler-Bouwkamp",
-    notes: ["nested polygons", "spiral", "jerobeam"],
+    label: "Kepler-Bouwkamp",
+    notes: ["nested polygons", "spiral", "oms"],
   },
   mushroom: {
-    category: "jerobeam",
-    description: "Placeholder Jerobeam Mushroom motion—reserved for future path engine.",
-    label: "Jerobeam Mushroom",
-    notes: ["placeholder", "jerobeam"],
+    category: "oms",
+    description: "Placeholder Mushroom motion—reserved for future path engine.",
+    label: "Mushroom",
+    notes: ["placeholder", "oms"],
   },
   nyquistShannon: {
-    category: "jerobeam",
-    description: "Placeholder Jerobeam Nyquist-Shannon motion—reserved for future path engine.",
-    label: "Jerobeam NyquistShannon",
-    notes: ["placeholder", "jerobeam"],
+    category: "oms",
+    description: "Placeholder Nyquist-Shannon motion—reserved for future path engine.",
+    label: "NyquistShannon",
+    notes: ["placeholder", "oms"],
   },
   radar: {
-    category: "jerobeam",
-    description: "Placeholder Jerobeam Radar motion—reserved for future sweep/path engine.",
-    label: "Jerobeam Radar",
-    notes: ["placeholder", "jerobeam"],
+    category: "oms",
+    description: "Placeholder Radar motion—reserved for future sweep/path engine.",
+    label: "Radar",
+    notes: ["placeholder", "oms"],
   },
   torus: {
-    category: "jerobeam",
-    description: "Placeholder Jerobeam Torus motion—reserved for future 3D-path engine.",
-    label: "Jerobeam Torus",
-    notes: ["placeholder", "jerobeam"],
+    category: "oms",
+    description: "Placeholder Torus motion—reserved for future 3D-path engine.",
+    label: "Torus",
+    notes: ["placeholder", "oms"],
   },
   wirdoSpiral: {
-    category: "jerobeam",
-    description: "Placeholder Jerobeam WirdoSpiral—reserved for future wild spiral engine.",
-    label: "Jerobeam WirdoSpiral",
-    notes: ["placeholder", "jerobeam"],
+    category: "oms",
+    description: "Placeholder WirdoSpiral—reserved for future wild spiral engine.",
+    label: "WirdoSpiral",
+    notes: ["placeholder", "oms"],
   },
   lorenzAttractor: {
     category: "chaos",
@@ -940,7 +963,17 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     category: "portal",
     description: "Bring the live mic/line into the patch as Mono, Left, Right.",
     label: "Input",
-    notes: ["audio source", "mono left right", "live input"],
+    notes: [
+      "audio source",
+      "mono left right",
+      "live input",
+      "input",
+      "in",
+      "in left",
+      "in right",
+      "in mono",
+      "mic",
+    ],
   },
   moduleGroup: {
     category: "portal",
@@ -1561,8 +1594,8 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   quadrature: {
     category: "scientificFilter",
     description:
-      "IIR quadrature pair (I / +90° Q). Low-latency Hilbert-class phase tool — no host delay compensation.",
-    label: "Quadrature",
+      "IIR Hilbert pair (I / +90° Q). Low-latency phase tool — no host delay compensation.",
+    label: "Hilbert Pair",
     notes: [
       "quadrature",
       "hilbert",
@@ -1819,20 +1852,20 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     category: "oscilloscope",
     description: "One multi-mode display face (1D/2D trace or phosphor) for quick inspection.",
     label: "Display",
-    notes: ["multi-mode", "2D Trace", "2D Phosphor", "1D Trace", "1D Phosphor", "Phosphor Dot", "visual sink"],
+    notes: ["multi-mode", "2D Trace", "2D Phosphor", "1D Waterfall", "1D Phosphor", "visual sink"],
   },
   traceDisplay: {
     category: "oscilloscope",
-    description: "Clean 1D vector waveform—see the signal shape without phosphor hang.",
-    label: "1D Trace",
-    notes: ["1D Trace", "waveform", "display testbed", "input trace"],
+    description: "1D waterfall tape—pen on the right, history scrolls left.",
+    label: "1D Waterfall Mono",
+    notes: ["1D Waterfall", "waterfall", "waveform", "display testbed"],
   },
   traceDisplayStereo: {
     category: "oscilloscope",
-    description: "Output-style stereo 1D Trace—Left/Right colors, Meet blend, and sync on their own face.",
-    label: "1D Trace Stereo",
+    description: "Stereo 1D waterfall—Left/Right colors, same dest tape as Mono.",
+    label: "1D Waterfall Stereo",
     notes: [
-      "1D Trace",
+      "1D Waterfall",
       "stereo",
       "left",
       "right",
@@ -1842,11 +1875,19 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
       "display testbed",
     ],
   },
-  dotOscilloscope: {
+  traceDisplayXyz: {
+    hidden: true,
     category: "oscilloscope",
-    description: "Single soft phosphor dot for sparse, efficient level/position light.",
+    description: "Retired alias. Use 1D Waterfall XYZ (traceXyz).",
+    label: "1D Waterfall XYZ",
+    notes: ["retired"],
+  },
+  dotOscilloscope: {
+    hidden: true,
+    category: "oscilloscope",
+    description: "Retired. Use Vector Dot.",
     label: "Phosphor Dot",
-    notes: ["phosphor", "single dot", "sub-frame brightness", "energy drawer"],
+    notes: ["retired"],
   },
   oscilloscopeBank: {
     category: "oscilloscope",
@@ -1899,13 +1940,11 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   numberReadout: {
     category: "multimeter",
     description: "Lit LED digits for the latest value—meters with phosphor residual hang.",
-    label: "Value LED",
+    label: "LED Value",
     notes: [
-      "value",
-      "value led",
-      "value readout",
+      "led value",
+      "led readout",
       "number readout",
-      "value display",
       "latest value",
       "numeric display",
       "numeric value",
@@ -1917,18 +1956,17 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
       "trail",
       "burn",
       "burnAmount",
-      "LED",
+      "multimeter",
     ],
   },
   valueLcd: {
     category: "multimeter",
     description: "Reflective LCD-style digits—cheap multimeter look for numbers.",
-    label: "Value LCD",
+    label: "LCD Value",
     notes: [
-      "value",
-      "value lcd",
+      "lcd value",
       "lcd",
-      "value display",
+      "lcd readout",
       "numeric display",
       "digital readout",
       "DSEG7",
@@ -1985,9 +2023,15 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   traceXyz: {
     category: "oscilloscope",
-    description: "Three history traces: X red, Y blue, Z green. Stack on one plot or split the face into three bands.",
-    label: "XYZ Trace",
-    notes: ["xyz", "rgb", "trace", "history", "stack", "separate", "x red", "y blue", "z green"],
+    description: "XYZ 1D waterfall—X red, Y blue, Z green on the same dest tape as Mono.",
+    label: "1D Waterfall XYZ",
+    notes: ["1D Waterfall", "xyz", "X", "Y", "Z", "waveform", "display testbed"],
+  },
+  traceRgb: {
+    category: "rgb",
+    description: "1D waterfall with fixed R/G/B guns. Blur 0 = hard pixels; 1 = soft smoothstep. Bright scales ink.",
+    label: "1D Waterfall RGB",
+    notes: ["1D Waterfall", "rgb", "R", "G", "B", "blur", "waveform", "display testbed"],
   },
   badvalMonitor: {
     category: "debug",
@@ -2508,6 +2552,10 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
     source: "public/modules/ellipsoid/ellipsoid-worklet-evaluator.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/ellipsoid/ellipsoid-worklet-evaluator.js",
   },
+  basicShape: {
+    source: "public/modules/basicShape/basic-shape-live-evaluator.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/basicShape/basic-shape-live-evaluator.js",
+  },
   elliptic: {
     source: "public/modules/scientificIir/scientific-iir-math.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/scientificIir/scientific-iir-math.js",
@@ -2867,6 +2915,10 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
     source: "public/node-graph-oscillator-runtime.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/node-graph-oscillator-runtime.js",
   },
+  sinCos: {
+    source: "public/node-graph-oscillator-runtime.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/node-graph-oscillator-runtime.js",
+  },
   kickEnvelope: {
     source: "public/modules/kickEnvelope/kick-envelope-math.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/kickEnvelope/kick-envelope-math.js",
@@ -3129,7 +3181,7 @@ function nodeGraphModuleTypeIsInvisible(type) {
 function setNodeGraphModuleStoreDepartment(department = "") {
   const id = normalizeNodeGraphModuleStoreDepartment(department);
   const dep = nodeGraphModuleStoreDepartmentById[id];
-  const query = String(dep?.label || id || "").trim();
+  const query = String(dep?.emoji || dep?.label || id || "").trim();
   nodeGraphMvp.moduleStoreDepartment = "";
   nodeGraphMvp.moduleStoreDepartmentSearch = query;
   const field = document.getElementById("nodeModuleDepartmentSearch");
@@ -3146,7 +3198,9 @@ function setNodeGraphModuleStoreDepartment(department = "") {
 }
 
 function saveNodeGraphModuleStoreStateToUserSettings() {
-  if (typeof persistNodeGraphUserSession === "function") {
+  if (typeof persistSession === "function") {
+    persistSession({ reason: "session" });
+  } else if (typeof persistNodeGraphUserSession === "function") {
     persistNodeGraphUserSession();
   }
 }
@@ -3162,14 +3216,14 @@ function nodeGraphModuleStoreEntryMatchesSearch(entry, query) {
   }
   // Include department display name (e.g. "Scientific Filter") so shelf labels match.
   const depId = String(entry.category || "");
-  const depLabel = nodeGraphModuleStoreDepartmentById[depId]?.label
-    || nodeGraphModuleStoreDepartmentById[depId]?.title
-    || "";
+  const dep = nodeGraphModuleStoreDepartmentById[depId] || {};
+  const depLabel = dep.label || dep.title || "";
   const haystack = [
     entry.label,
     entry.type,
     entry.category,
     depLabel,
+    dep.emoji,
     entry.description,
     ...(entry.notes || []),
   ]
@@ -3208,6 +3262,10 @@ function nodeGraphModuleStoreSearchRank(entry, query) {
   if (tokens.every((t) => notes.some((n) => n === t))) {
     return -90;
   }
+  const depEmoji = String(nodeGraphModuleStoreDepartmentById[entry?.category]?.emoji || "");
+  if (depEmoji && tokens.every((t) => t === depEmoji || t === depEmoji.toLowerCase())) {
+    return -90;
+  }
   // Label starts with full query ("eq" → "eq filter")
   if (label.startsWith(needle) || type.startsWith(needle)) {
     return -80;
@@ -3240,8 +3298,13 @@ function nodeGraphModuleStoreDepartmentMatchesSearch(department, entries, query)
   if (!needle) {
     return true;
   }
+  const dep = nodeGraphModuleStoreDepartmentById[
+    normalizeNodeGraphModuleStoreDepartment(department)
+  ] || {};
   const haystack = [
     department,
+    dep.emoji,
+    dep.label,
     ...(entries || []).flatMap((entry) => [
       entry.label,
       entry.type,

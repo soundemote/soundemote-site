@@ -86,6 +86,15 @@ function finishNodeGraphRenderedScopeCapture(capture) {
 
 
 function beginNodeGraphLiveModuleScopeCapture(plan = {}, options = {}) {
+  const frozen = typeof scopePaintIsFrozen === "function"
+    ? scopePaintIsFrozen()
+    : (typeof nodeGraphModuleScopePhosphorFrozen === "function"
+      && nodeGraphModuleScopePhosphorFrozen());
+  if (frozen && nodeGraphModuleScopeState.buffers?.size > 0) {
+    // Pause must not rebuild/replace rings (empty order from a control
+    // re-render dropped X/Y history and 2D Trace went blank).
+    return;
+  }
   if (!nodeGraphModuleScopeHasDrawableSlots() || nodeGraphModuleScopeTracesOff()) {
     // Transient re-arm / no slots must never cold-boot wipe residual faces
     // (pause + wire connect was killing Pitch Detector / Value LED ghosts).
@@ -277,6 +286,31 @@ function nodeGraphModuleScopeCapturedBufferForSlot(slot) {
     return null;
   }
   const renderer = nodeGraphModuleDisplayRendererForSlot(slot);
+  if (
+    typeof nodeGraphModuleUsesStereoTraceDisplay === "function"
+    && nodeGraphModuleUsesStereoTraceDisplay(slot?.type)
+  ) {
+    const ports = typeof nodeGraphModuleStereoTracePorts === "function"
+      ? nodeGraphModuleStereoTracePorts(slot.type)
+      : { left: "Left", right: "Right" };
+    const pick = (key) => {
+      const buf = nodeGraphModuleScopeState.buffers.get(key);
+      return buf && buf.length > 0 ? buf : null;
+    };
+    const lrWired = typeof nodeGraphStereoTraceLrWired === "function"
+      ? nodeGraphStereoTraceLrWired(nodeId, slot.type)
+      : true;
+    if (lrWired) {
+      return pick(`${nodeId}:${ports?.left}`)
+        || pick(`${nodeId}:${ports?.right}`)
+        || pick(`${nodeId}:Mono`)
+        || pick(nodeId);
+    }
+    return pick(`${nodeId}:Mono`)
+      || pick(nodeId)
+      || pick(`${nodeId}:${ports?.left}`)
+      || pick(`${nodeId}:${ports?.right}`);
+  }
   if (["scope2d", "scope2dTrace", "phosphorLight"].includes(renderer)) {
     const source = nodeGraphModuleScopeSlotUsesWiredInputs(slot)
       ? null
@@ -284,25 +318,27 @@ function nodeGraphModuleScopeCapturedBufferForSlot(slot) {
     const captureOpts = source
       ? { xPort: source.x, yPort: source.y }
       : {};
-    // Vector 2D Trace redraws the whole window each frame (no energy FBO).
-    // Without historySeconds it only pulled “new samples since last draw”
-    // (phosphor deposit style) → incomplete / dashed Lissajous. Phosphor
-    // burn keeps the short window intentionally.
-    if (renderer === "scope2dTrace") {
-      const node = typeof nodeGraphModuleScopeNodeForSlot === "function"
-        ? nodeGraphModuleScopeNodeForSlot(slot)
-        : null;
-      const settings = typeof nodeGraphScope2dTraceSettingsForNode === "function"
-        ? nodeGraphScope2dTraceSettingsForNode(node)
-        : null;
-      const history = Number(settings?.historySeconds);
-      if (Number.isFinite(history) && history > 0) {
-        captureOpts.historySeconds = history;
-      }
-    }
+    // 2D Trace stamps live samples onto a dest buffer (woscope). No History
+    // window — Ghost/Trail fade the face. Phosphor burn also uses new samples.
     return nodeGraphModuleScopeCapturedScope2dBuffer(slot, captureOpts);
   }
-  if (["traceDisplay", "dotOscilloscope", "valueOscilloscope", "numberReadout", "valueLcd", "lineBurnOscilloscope", "led"].includes(slot?.type)) {
+  if (typeof nodeGraphModuleUsesXyzTraceDisplay === "function"
+    && nodeGraphModuleUsesXyzTraceDisplay(slot?.type)) {
+    const pick = (key) => {
+      const buf = nodeGraphModuleScopeState.buffers.get(key);
+      return buf && buf.length > 0 ? buf : null;
+    };
+    return pick(`${nodeId}:X`) || pick(`${nodeId}:Y`) || pick(`${nodeId}:Z`) || pick(nodeId);
+  }
+  if (typeof nodeGraphModuleUsesRgbTraceDisplay === "function"
+    && nodeGraphModuleUsesRgbTraceDisplay(slot?.type)) {
+    const pick = (key) => {
+      const buf = nodeGraphModuleScopeState.buffers.get(key);
+      return buf && buf.length > 0 ? buf : null;
+    };
+    return pick(`${nodeId}:R`) || pick(`${nodeId}:G`) || pick(`${nodeId}:B`) || pick(nodeId);
+  }
+  if (["traceDisplay", "dotOscilloscope", "valueOscilloscope", "numberReadout", "valueLcd", "lineBurnOscilloscope", "led", "vectorDot", "lcdDot"].includes(slot?.type)) {
     return nodeGraphModuleScopeState.buffers.get(`${nodeId}:In`) ||
       nodeGraphModuleScopeConnectedSourceBuffer(nodeId, "In") ||
       null;
@@ -473,7 +509,16 @@ function nodeGraphModuleScopeCapturedScope2dBuffer(slot, options = {}) {
   const xRecentSamples = nodeGraphScopeBufferRecentSampleCount(xBuffer);
   const yRecentSamples = nodeGraphScopeBufferRecentSampleCount(yBuffer);
   const hasRecentSampleMetadata = xRecentSamples !== null || yRecentSamples !== null;
-  if (hasRecentSampleMetadata && !(xRecentSamples > 0 && yRecentSamples > 0)) {
+  const historySeconds = Number(options.historySeconds);
+  const historyWindow = Number.isFinite(historySeconds);
+  // Phosphor: skip when this visual post has no new samples (energy FBO holds).
+  // Vector 2D Trace passes historySeconds and must still copy the retained
+  // window — otherwise FPS 1 returns null and the face is wiped blank.
+  if (
+    !historyWindow
+    && hasRecentSampleMetadata
+    && !(xRecentSamples > 0 && yRecentSamples > 0)
+  ) {
     return null;
   }
   // Match soundemote.io / site sandbox capture: end-aligned X/Y pairs, continuous
@@ -491,17 +536,25 @@ function nodeGraphModuleScopeCapturedScope2dBuffer(slot, options = {}) {
   const newSinceLastDraw = Number.isFinite(lastDrawnFrame) && absoluteFrame > lastDrawnFrame
     ? absoluteFrame - lastDrawnFrame
     : 0;
-  const historySeconds = Number(options.historySeconds);
   const minWindowFrames = nodeGraphScope2dSourceFrameCount(sampleRate, fps, validLength);
   // Capture only what we need to deposit this frame (new samples + a small
   // pad). The energy FBO holds the trail via decay — re-capturing ~1s and
   // re-stamping it every frame painted a lagging "second path" behind the beam.
-  // Vector 2D Trace passes historySeconds and needs a real contiguous window.
+  // History window is opt-in (other faces). 2D Trace / phosphor use new samples.
+  // Use the buffer's own sample rate (visual hop), not engine 44100, so a
+  // 1 s window is 1 s of ring data. Missing samples stay NaN (path break),
+  // never 0,0 — that drew chords through the origin.
+  const bufferRate = typeof nodeGraphScopeSampleRate === "function"
+    ? nodeGraphScopeSampleRate(xBuffer)
+    : 0;
+  const windowRate = bufferRate > 0 ? bufferRate : sampleRate;
   const frames = Number.isFinite(historySeconds)
-    ? Math.min(
-      validLength,
-      Math.max(1, Math.ceil(Math.max(0, historySeconds) * sampleRate)),
-    )
+    ? (historySeconds <= 0
+      ? 1
+      : Math.min(
+        validLength,
+        Math.max(1, Math.ceil(historySeconds * windowRate)),
+      ))
     : Math.min(
       validLength,
       Math.max(minWindowFrames, newSinceLastDraw, 1),
@@ -511,8 +564,10 @@ function nodeGraphModuleScopeCapturedScope2dBuffer(slot, options = {}) {
   const x = new Float32Array(frames);
   const y = new Float32Array(frames);
   for (let index = 0; index < frames; index += 1) {
-    x[index] = Number(xBuffer[start + index]) || 0;
-    y[index] = Number(yBuffer[start + index]) || 0;
+    const xv = Number(xBuffer[start + index]);
+    const yv = Number(yBuffer[start + index]);
+    x[index] = Number.isFinite(xv) ? xv : Number.NaN;
+    y[index] = Number.isFinite(yv) ? yv : Number.NaN;
   }
   return {
     length: frames,
@@ -533,9 +588,15 @@ function captureNodeGraphLiveModuleScopeOutput(runtime, nodeId, output) {
   if (!id) {
     return;
   }
-  const samples = runtime.scopeBuffers.get(id) || [];
-  samples.push(nodeGraphModuleScopeScalarValue(output));
-  runtime.scopeBuffers.set(id, samples);
+  const visualKeys = runtime.visualInputBuffers;
+  const hasVisualPorts = visualKeys
+    && typeof visualKeys.keys === "function"
+    && [...visualKeys.keys()].some((key) => String(key).startsWith(`${id}:`));
+  if (!hasVisualPorts) {
+    const samples = runtime.scopeBuffers.get(id) || [];
+    samples.push(nodeGraphModuleScopeScalarValue(output));
+    runtime.scopeBuffers.set(id, samples);
+  }
   if (!output || typeof output !== "object") {
     return;
   }
@@ -544,6 +605,9 @@ function captureNodeGraphLiveModuleScopeOutput(runtime, nodeId, output) {
       continue;
     }
     const portId = `${id}:${port}`;
+    if (visualKeys?.has?.(portId)) {
+      continue;
+    }
     const portSamples = runtime.scopeBuffers.get(portId) || [];
     portSamples.push(nodeGraphModuleScopeScalarValue(value));
     runtime.scopeBuffers.set(portId, portSamples);
@@ -555,7 +619,15 @@ function captureNodeGraphLiveModuleScopeFrame(runtime, sampleRate) {
   if (!runtime?.nodeOutputs?.size || !nodeGraphModuleScopeHasDrawableSlots() || nodeGraphModuleScopeTracesOff()) {
     return;
   }
-  const interval = Math.max(1, Math.floor((Number(sampleRate) || nodeGraphMvp.sampleRate || 44100) / 30));
+  const fps = typeof nodeGraphSimulationDisplayFps === "function"
+    ? nodeGraphSimulationDisplayFps()
+    : (typeof normalizeNodeGraphModuleScopeFramesPerSecond === "function"
+      ? normalizeNodeGraphModuleScopeFramesPerSecond(nodeGraphMvp?.moduleScopeFramesPerSecond ?? 60)
+      : 60);
+  if (!(fps > 0)) {
+    return;
+  }
+  const interval = Math.max(1, Math.floor((Number(sampleRate) || nodeGraphMvp.sampleRate || 44100) / fps));
   runtime.scopeBuffers ||= new Map();
   const visibleScopeNodeIds = Array.isArray(runtime.scopeCaptureNodeIds) && runtime.scopeCaptureNodeIds.length
     ? new Set(runtime.scopeCaptureNodeIds.map((nodeId) => String(nodeId || "")).filter(Boolean))

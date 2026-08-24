@@ -372,6 +372,12 @@ function drawNodeGraphModuleScopeLightDisplays(items, pixelRatio) {
   }
   context.clearRect(0, 0, canvas.width, canvas.height);
   for (const item of items || []) {
+    const renderer = typeof nodeGraphModuleDisplayRendererForSlot === "function"
+      ? nodeGraphModuleDisplayRendererForSlot(item?.slot)
+      : "";
+    if (renderer === "vectorDot" || renderer === "pulseDot" || renderer === "lcdDot" || renderer === "dot") {
+      continue;
+    }
     drawNodeGraphModuleScopeLightDisplay(context, item.scopeRect, item.buffer, pixelRatio, item.slot);
   }
 }
@@ -380,11 +386,20 @@ function drawNodeGraphModuleScopeLightDisplays(items, pixelRatio) {
 function drawNodeGraphTraceDisplayItem(renderer, item, pixelRatio) {
   const slot = item?.slot;
   const buffer = item?.buffer;
-  if (!slot || !buffer?.length) {
+  if (!slot) {
+    return;
+  }
+  if (!buffer?.length) {
+    if (typeof paintNodeGraphTraceDisplayColdPlate === "function") {
+      paintNodeGraphTraceDisplayColdPlate(slot, pixelRatio);
+    }
     return;
   }
   renderNodeGraphModuleScopeAnalyzer(slot, buffer);
-  drawNodeGraphTraceDisplayCanvasItem(item, pixelRatio);
+  const painted = drawNodeGraphTraceDisplayCanvasItem(item, pixelRatio);
+  if (painted === false && typeof paintNodeGraphTraceDisplayColdPlate === "function") {
+    paintNodeGraphTraceDisplayColdPlate(slot, pixelRatio);
+  }
 }
 
 
@@ -432,15 +447,46 @@ function drawNodeGraphOscilloscopeBeam(renderer, item, pixelRatio, x1, y1, x2, y
 }
 
 
-function drawNodeGraphDotOscilloscopeItem(renderer, item, pixelRatio) {
-  // Phosphor Dot: one efficient soft stamp on the mono energy drawer.
-  // Brightness is pre-averaged over the latest capture window (sub-frame /
-  // multi-sample intensity), not a single sample snap.
-  const buffer = item?.buffer;
-  if (!buffer) {
-    return;
+function nodeGraphPhosphorDotLutCss(settings, amount01) {
+  const t = Math.max(0, Math.min(0.999, Number(amount01) || 0));
+  const stops = Array.isArray(settings?.gradientStops) ? settings.gradientStops : null;
+  if (stops?.length >= 2) {
+    let a = stops[0];
+    let b = stops[stops.length - 1];
+    for (let i = 1; i < stops.length; i += 1) {
+      if (t <= Number(stops[i].t)) {
+        a = stops[i - 1];
+        b = stops[i];
+        break;
+      }
+    }
+    const span = Math.max(1e-6, Number(b.t) - Number(a.t));
+    const u = (t - Number(a.t)) / span;
+    const mixHex = (ha, hb) => {
+      const pa = /^#?([0-9a-f]{6})$/i.exec(String(ha || ""));
+      const pb = /^#?([0-9a-f]{6})$/i.exec(String(hb || ""));
+      if (!pa || !pb) {
+        return hb || ha || "#75ebff";
+      }
+      const na = Number.parseInt(pa[1], 16);
+      const nb = Number.parseInt(pb[1], 16);
+      const ch = (shift) => {
+        const ca = (na >> shift) & 255;
+        const cb = (nb >> shift) & 255;
+        return Math.round(ca + (cb - ca) * u);
+      };
+      return `rgb(${ch(16)} ${ch(8)} ${ch(0)})`;
+    };
+    return mixHex(a.color, b.color);
   }
-  renderNodeGraphModuleScopeAnalyzer(item.slot, buffer);
+  return settings?.dot1Color || "#75ebff";
+}
+
+function drawNodeGraphDotOscilloscopeItem(renderer, item, pixelRatio) {
+  // Phosphor Dot: cached smoothstep sprite (same kernel as Vector Dot).
+  // Bright 1 × |sample| 1 = full LUT peak — no 2D-stamp depositGain (that
+  // scaled a single dab to ~8% and looked dead at Bright 1).
+  const buffer = item?.buffer;
   const settings = nodeGraphZeroDBurnSettingsForNode(nodeGraphModuleScopeNodeForSlot(item.slot));
   const canvas = nodeGraphModuleScopeLocalFallbackCanvas(item?.slot);
   const screenElement = item?.screenElement || item?.slot?.scopeElement;
@@ -456,110 +502,78 @@ function drawNodeGraphDotOscilloscopeItem(renderer, item, pixelRatio) {
   if (!context) {
     return;
   }
-  const brightness01 = clampNodeSliderValue(
-    Number(settings.bipolarBrightness ? buffer.nodeGraphScopeBipolarLightTarget : buffer.nodeGraphScopeLightTarget) || 0,
-    0,
-    1,
-  );
+  if (buffer && typeof renderNodeGraphModuleScopeAnalyzer === "function") {
+    renderNodeGraphModuleScopeAnalyzer(item.slot, buffer);
+  }
   const bg = nodeGraphFacePlateBackground(settings);
   nodeGraphFacePlateApplyCss(screenElement, bg);
+  canvas.style.mixBlendMode = "normal";
   const width = canvas.width;
   const height = canvas.height;
   const minSide = Math.max(1, Math.min(width, height));
   const size01 = clampNodeSliderValue(settings.dot1Size, 0, 1);
-  const radius = typeof nodeGraphScopeSize01ToRadiusPx === "function"
-    ? nodeGraphScopeSize01ToRadiusPx(minSide, size01)
-    : (typeof PhosphorDrawer !== "undefined" && PhosphorDrawer.size01ToRadiusPx
-      ? PhosphorDrawer.size01ToRadiusPx(minSide, size01)
-      : Math.max(0.5, Math.pow(minSide, size01) * 0.5));
+  const radius = minSide * 0.5 * size01;
   const blur = nodeGraphTraceDisplayClampStampBlur(settings.lineThickness);
   const trail = typeof PhosphorResidual !== "undefined" && PhosphorResidual.migrateTrail
     ? PhosphorResidual.migrateTrail(settings, 0.78)
-    : clampNodeSliderValue(Number(settings.trail ?? (Number.isFinite(Number(settings.decay)) ? 1 - Number(settings.decay) : 0.78)), 0, 1);
+    : clampNodeSliderValue(Number(settings.trail ?? 0.78), 0, 1);
   const ghost = typeof PhosphorResidual !== "undefined" && PhosphorResidual.migrateGhost
     ? PhosphorResidual.migrateGhost(settings, 0.4)
     : clampNodeSliderValue(Number(settings.ghost) || 0, 0, 1);
-  const burn = typeof PhosphorResidual !== "undefined" && PhosphorResidual.migrateBurn
-    ? PhosphorResidual.migrateBurn(settings, 0)
-    : (
-      Number(settings.residualSchema) >= 2
-        ? clampNodeSliderValue(Number(settings.burn) || 0, 0, 1)
-        : 0
-    );
-  const burnAmount = typeof PhosphorResidual !== "undefined" && PhosphorResidual.migrateBurnAmount
-    ? PhosphorResidual.migrateBurnAmount(settings, 1)
-    : Math.max(0, Math.min(4, Number(settings.burnAmount) || 1));
-  const residualSchema = (typeof PhosphorResidual !== "undefined" && PhosphorResidual.RESIDUAL_SCHEMA) || 3;
-
-  // Opaque face plate (CSS mix-blend is normal; never screen-tint the module chrome).
-  canvas.style.mixBlendMode = "normal";
-  // Prefer shared energy phosphor path (same stamps as 2D Phosphor).
-  // Burn Amount multiplies residual deposit vs Bright.
-  const deposit = brightness01 > 0.001 && settings.dot1Brightness > 0
-    ? (typeof PhosphorDrawer !== "undefined" && PhosphorDrawer.depositGain
-      ? PhosphorDrawer.depositGain(settings.dot1Brightness * brightness01 * burnAmount, size01)
-      : settings.dot1Brightness * brightness01 * burnAmount * 0.1)
-    : 0;
-  const existingEnergy = canvas._phosphorEnergyGl;
-  const energyIdle = !existingEnergy || existingEnergy.energyActive === false;
+  const lampBright = clampNodeSliderValue(Number(settings.dot1Brightness) || 0, 0, 1);
+  const energy = nodeGraphVectorDotFrameEnergy01(buffer, canvas);
+  const amount = Math.max(0, Math.min(1, energy * lampBright));
   const frozen0d = typeof nodeGraphModuleScopePhosphorFrozen === "function"
     && nodeGraphModuleScopePhosphorFrozen();
-  // Idle dark 0D face: no deposit and no residual → plate only (no GL).
-  if (!frozen0d && deposit <= 1e-8 && energyIdle) {
-    nodeGraphFacePlateFillCanvas(context, canvas, bg);
-    recordNodeGraphModuleScopeRenderMetrics(1, 0);
-    return;
-  }
-  const energyGl = typeof nodeGraphPhosphorEnergyGlEnsure === "function"
-    ? nodeGraphPhosphorEnergyGlEnsure(canvas, width, height, "_phosphorEnergyGl")
-    : null;
-  if (energyGl && typeof nodeGraphPhosphorEnergyGlStepBeams === "function") {
-    nodeGraphPhosphorApplyGradientLut(energyGl, settings, "#75ebff");
-    const cx = width * 0.5;
-    const cy = height * 0.5;
-    // Freeze = hold energy FBO: no deposit, no residual step, no bleed. Still present.
-    if (!frozen0d) {
-      nodeGraphPhosphorEnergyGlStepBeams(energyGl, {
-        trail,
-        ghost,
-        burn,
-        burnAmount,
-        residualSchema,
-        pathPoints: deposit > 1e-8 ? [{ x: cx, y: cy }] : [],
-        radius,
-        brightness: deposit,
-        blur,
-        mode: "dots",
-        maxDots: 8,
-      });
-    }
-    const exposure = typeof PhosphorDrawer !== "undefined" && PhosphorDrawer.exposure
-      ? PhosphorDrawer.exposure()
-      : 2.9;
-    nodeGraphFacePlateFillCanvas(context, canvas, bg);
-    if (typeof nodeGraphPhosphorEnergyGlPresent === "function"
-      && nodeGraphPhosphorEnergyGlPresent(energyGl, 1, { exposure })) {
-      context.save();
-      // Energy is already additive mono; LUT paints color (incl. dark peaks).
-      context.globalCompositeOperation = "source-over";
-      context.imageSmoothingEnabled = true;
-      context.drawImage(energyGl.canvas, 0, 0, width, height);
-      context.restore();
-    }
-    recordNodeGraphModuleScopeRenderMetrics(1, 1);
-    return;
-  }
 
-  // Fallback: instant TraceStroke disc (no persistence).
+  // Plate is a solid fill every frame (BG hue/bright is not residual).
+  // Ghost/Trail live on a separate ink bitmap so semi-transparent skirts
+  // cannot pile up into the background.
   nodeGraphFacePlateFillCanvas(context, canvas, bg);
-  if (brightness01 > 0.001 && typeof TraceStroke !== "undefined" && TraceStroke.draw) {
-    TraceStroke.draw(context, [{ x: width * 0.5, y: height * 0.5 }], {
-      size: size01,
-      blur,
-      brightness: settings.dot1Brightness * brightness01,
-      color: settings.dot1Color,
-      faceMinSide: minSide,
-    });
+  let ink = canvas._phosphorDotInk;
+  if (!ink || ink.width !== width || ink.height !== height) {
+    ink = document.createElement("canvas");
+    ink.width = width;
+    ink.height = height;
+    canvas._phosphorDotInk = ink;
+  }
+  const inkCtx = ink.getContext("2d");
+  if (inkCtx && !frozen0d) {
+    const Residual = typeof PhosphorResidual !== "undefined" ? PhosphorResidual : null;
+    const keeps = Residual?.residualKeeps
+      ? Residual.residualKeeps(trail, ghost)
+      : { fade: 0.25 };
+    const fade = Math.max(0.04, Math.min(1, Number(keeps.fade)));
+    inkCtx.save();
+    inkCtx.setTransform(1, 0, 0, 1, 0, 0);
+    inkCtx.globalCompositeOperation = "destination-out";
+    inkCtx.globalAlpha = fade;
+    inkCtx.fillStyle = "#000000";
+    inkCtx.fillRect(0, 0, width, height);
+    inkCtx.restore();
+    if (amount > 0.001 && radius > 0.05) {
+      if (typeof TraceDotSprite !== "undefined" && typeof TraceDotSprite.draw === "function") {
+        TraceDotSprite.draw(inkCtx, width * 0.5, height * 0.5, radius, blur, {
+          amount,
+          colorAt: (b) => nodeGraphPhosphorDotLutCss(settings, b),
+        }, 1);
+      } else {
+        nodeGraphDrawVectorDotDisc(
+          inkCtx,
+          width * 0.5,
+          height * 0.5,
+          radius,
+          blur,
+          nodeGraphPhosphorDotLutCss(settings, amount),
+        );
+      }
+    }
+  }
+  if (ink) {
+    context.save();
+    context.globalCompositeOperation = "source-over";
+    context.drawImage(ink, 0, 0);
+    context.restore();
   }
   recordNodeGraphModuleScopeRenderMetrics(1, 1);
 }
@@ -746,62 +760,81 @@ function drawNodeGraphValueOscilloscopeItem(renderer, item, pixelRatio) {
 }
 
 
-function nodeGraphVectorDotFrameEnergy01(buffer) {
+function nodeGraphVectorDotFrameEnergy01(buffer, canvas) {
   if (!buffer || !buffer.length) {
     return 0;
   }
-  let peak = Number(buffer.nodeGraphScopeLightTarget);
-  if (!Number.isFinite(peak)) {
-    peak = 0;
-    for (let i = 0; i < buffer.length; i += 1) {
-      const s = Math.abs(Number(buffer[i]) || 0);
-      if (s > peak) {
-        peak = s;
-      }
+  const abs = Math.max(
+    0,
+    Math.floor(Number(buffer.nodeGraphScopeTotalSampleCount || buffer.nodeGraphScopeAbsoluteFrame) || 0),
+  );
+  const prevAbs = Number(canvas?._vectorDotEnergyAbs || 0);
+  let n = 0;
+  if (prevAbs > 0 && abs > prevAbs) {
+    n = Math.min(buffer.length, abs - prevAbs);
+  } else if (typeof nodeGraphScopeBufferRecentSampleCount === "function") {
+    const recent = nodeGraphScopeBufferRecentSampleCount(buffer);
+    if (recent != null && recent > 0) {
+      n = Math.min(buffer.length, recent);
     }
-    buffer.nodeGraphScopeLightTarget = peak;
   }
-  return Math.max(0, Math.min(1, peak));
+  if (!(n > 0)) {
+    const sr = typeof nodeGraphScopeSampleRate === "function"
+      ? nodeGraphScopeSampleRate(buffer)
+      : 44100;
+    n = Math.min(buffer.length, Math.max(1, Math.ceil(Math.max(1, sr) / 60)));
+  }
+  if (canvas) {
+    canvas._vectorDotEnergyAbs = abs || prevAbs;
+  }
+  let sum = 0;
+  let count = 0;
+  const start = Math.max(0, buffer.length - n);
+  for (let i = start; i < buffer.length; i += 1) {
+    const sample = Number(buffer[i]);
+    if (!Number.isFinite(sample)) {
+      continue;
+    }
+    sum += Math.max(0, Math.min(1, Math.abs(sample)));
+    count += 1;
+  }
+  return count > 0 ? sum / count : 0;
 }
 
-function nodeGraphDrawVectorDotDisc(context, cx, cy, radius, blur01, cssColor) {
+function nodeGraphVectorDotStampExtents(width, height, size01, pill01) {
+  const w = Math.max(1, Number(width) || 1);
+  const h = Math.max(1, Number(height) || 1);
+  const size = Math.max(0, Math.min(1, Number(size01) || 0));
+  const pill = Math.max(0, Math.min(1, Number(pill01) || 0));
+  const minSide = Math.min(w, h);
+  const maxSide = Math.max(w, h);
+  const r = minSide * 0.5 * size;
+  const rLong = r + (maxSide * 0.5 * size - r) * pill;
+  if (w >= h) {
+    return { rx: rLong, ry: r, radius: r };
+  }
+  return { rx: r, ry: rLong, radius: r };
+}
+
+function nodeGraphDrawVectorDotDisc(context, cx, cy, radius, blur01, style) {
   if (!context || !(radius > 0.05)) {
     return;
   }
-  const blur = Math.max(0, Math.min(1, Number(blur01) || 0));
-  const outer = Math.max(0.35, Number(radius) || 0);
-  context.save();
-  context.globalCompositeOperation = "source-over";
-  if (blur < 0.02) {
-    context.beginPath();
-    context.arc(cx, cy, outer, 0, Math.PI * 2);
-    context.fillStyle = cssColor;
-    context.fill();
-    context.restore();
+  if (typeof TraceDotSprite !== "undefined" && typeof TraceDotSprite.draw === "function") {
+    TraceDotSprite.draw(context, cx, cy, radius, blur01, style, 1);
     return;
   }
-  const inner = outer * (1 - blur * 0.85);
+  const color = typeof style === "string"
+    ? style
+    : (typeof nodeGraphHueBrightnessCss === "function" && Number.isFinite(Number(style?.hue))
+      ? nodeGraphHueBrightnessCss(style.hue, style.amount)
+      : style?.color);
+  context.save();
+  context.globalCompositeOperation = "source-over";
   context.beginPath();
-  context.arc(cx, cy, Math.max(0.25, inner), 0, Math.PI * 2);
-  context.fillStyle = cssColor;
+  context.arc(cx, cy, radius, 0, Math.PI * 2);
+  context.fillStyle = color || "#ffffff";
   context.fill();
-  const rings = Math.max(5, Math.min(12, Math.round(5 + blur * 7)));
-  const band = Math.max(0.75, (outer - inner) / rings);
-  context.lineCap = "butt";
-  context.lineWidth = band;
-  for (let i = 1; i <= rings; i += 1) {
-    const u = i / rings;
-    const rad = inner + (outer - inner) * u;
-    const a = 1 - (u * u * (3 - 2 * u));
-    if (a <= 0.004) {
-      continue;
-    }
-    context.beginPath();
-    context.arc(cx, cy, rad, 0, Math.PI * 2);
-    context.strokeStyle = cssColor;
-    context.globalAlpha = a;
-    context.stroke();
-  }
   context.restore();
 }
 
@@ -838,46 +871,133 @@ function drawNodeGraphVectorDotItem(renderer, item, pixelRatio) {
   const settings = typeof nodeGraphVectorDotSettingsForNode === "function"
     ? nodeGraphVectorDotSettingsForNode(node)
     : {};
-  const energy = nodeGraphVectorDotFrameEnergy01(buffer);
-  const gain = clampNodeSliderValue(
+  const energy = nodeGraphVectorDotFrameEnergy01(buffer, canvas);
+  const lcd = node?.type === "lcdDot"
+    || settings.faceStyle === "lcd"
+    || renderer === "lcdDot";
+  const lampBright = clampNodeSliderValue(
     Number(settings.dot1Brightness ?? settings.brightness) || 0,
     0,
     1,
   );
-  const amount = clampNodeSliderValue(energy * gain, 0, 1);
-  const hue = Number.isFinite(Number(settings.hue))
-    ? Number(settings.hue)
-    : (typeof nodeGraphHueDegFromHex === "function"
-      ? nodeGraphHueDegFromHex(settings.dot1Color || settings.color)
-      : 25);
-  const bgHue = typeof nodeGraphHueDegFromHex === "function"
-    ? nodeGraphHueDegFromHex(settings.backgroundColor || settings.background)
-    : 220;
-  const bgAmt = clampNodeSliderValue(Number(settings.backgroundBrightness) || 0, 0, 1);
-  const bg = typeof nodeGraphHueBrightnessCss === "function"
-    ? nodeGraphHueBrightnessCss(bgHue, bgAmt)
-    : "#000000";
+  const hue = typeof nodeGraphHueDegFromHex === "function"
+    ? nodeGraphHueDegFromHex(settings.dot1Color || settings.color || "")
+    : (Number.isFinite(Number(settings.hue)) ? Number(settings.hue) : 25);
+  let bg;
+  if (lcd && typeof nodeGraphNumberReadoutLcdBgCss === "function") {
+    bg = nodeGraphNumberReadoutLcdBgCss(settings);
+  } else {
+    const bgHue = typeof nodeGraphHueDegFromHex === "function"
+      ? nodeGraphHueDegFromHex(settings.backgroundColor || settings.background)
+      : 220;
+    const bgAmt = clampNodeSliderValue(Number(settings.backgroundBrightness) || 0, 0, 1);
+    bg = typeof nodeGraphHueBrightnessCss === "function"
+      ? nodeGraphHueBrightnessCss(bgHue, bgAmt)
+      : "#000000";
+  }
   if (typeof nodeGraphFacePlateApplyCss === "function" && screenElement) {
     nodeGraphFacePlateApplyCss(screenElement, bg);
   }
   nodeGraphFacePlateFillCanvas(context, canvas, bg);
   const width = canvas.width;
   const height = canvas.height;
-  const minSide = Math.max(1, Math.min(width, height));
   const size01 = clampNodeSliderValue(Number(settings.dot1Size) || 0, 0, 1);
-  const radius = minSide * 0.5 * size01;
+  const stampShape = typeof normalizeTraceStampShape === "function"
+    ? normalizeTraceStampShape(settings.shape)
+    : String(settings.shape || "circle");
+  const shapeParam = clampNodeSliderValue(
+    Number(settings.shapeParam ?? (stampShape === "oval" ? settings.pill : settings.squircle)) || 0,
+    0,
+    1,
+  );
+  const stretch = stampShape === "oval" ? shapeParam : 0;
+  const extents = nodeGraphVectorDotStampExtents(width, height, size01, stretch);
+  const radius = extents.radius;
   const blur = clampNodeSliderValue(
     Number(settings.lineThickness ?? settings.blur) || 0,
     0,
     1,
   );
-  const color = typeof nodeGraphHueBrightnessCss === "function"
-    ? nodeGraphHueBrightnessCss(hue, amount)
-    : "#ff6a00";
-  if (amount > 0.001 && radius > 0.05) {
-    nodeGraphDrawVectorDotDisc(context, width * 0.5, height * 0.5, radius, blur, color);
+  const blend = typeof nodeGraphScopeStereoBlendMode === "function"
+    ? nodeGraphScopeStereoBlendMode(settings.stereoBlend)
+    : (settings.stereoBlend || (lcd ? "source-over" : "combine"));
+  const composite = lcd
+    ? "source-over"
+    : (typeof nodeGraphScopeStereoBlendComposite === "function"
+      ? nodeGraphScopeStereoBlendComposite(blend)
+      : (blend === "combine" ? "lighter" : blend));
+  const e = Math.max(0, Math.min(1, energy));
+  const amount = Math.max(0, Math.min(1, e * lampBright));
+  const shape = {
+    rx: extents.rx,
+    ry: extents.ry,
+    shape: stampShape,
+    shapeParam,
+  };
+  const cx = width * 0.5;
+  const cy = height * 0.5;
+  if (lcd) {
+    const ghostAmt = clampNodeSliderValue(Number(settings.unlitSegments) || 0, 0, 1);
+    let inkCss = settings.dot1Color || settings.color || "#1a2216";
+    let ghostCss = inkCss;
+    if (typeof nodeGraphNumberReadoutLcdInkRgb === "function") {
+      const rgb = nodeGraphNumberReadoutLcdInkRgb(settings);
+      inkCss = `rgb(${rgb[0]} ${rgb[1]} ${rgb[2]})`;
+      if (typeof nodeGraphNumberReadoutLcdGhostRgb === "function") {
+        const g = nodeGraphNumberReadoutLcdGhostRgb(rgb, settings);
+        ghostCss = `rgb(${g[0]} ${g[1]} ${g[2]})`;
+      }
+    }
+    if (ghostAmt > 0.001 && radius > 0.05) {
+      context.save();
+      context.globalAlpha = ghostAmt;
+      nodeGraphDrawVectorDotDisc(context, cx, cy, radius, blur, {
+        ...shape,
+        color: ghostCss,
+        amount: 1,
+      });
+      context.restore();
+    }
+    if (e > 0.001 && radius > 0.05) {
+      context.save();
+      context.globalCompositeOperation = "source-over";
+      context.globalAlpha = e;
+      nodeGraphDrawVectorDotDisc(context, cx, cy, radius, blur, {
+        ...shape,
+        color: inkCss,
+        amount: 1,
+      });
+      context.restore();
+    }
+    if (typeof nodeGraphNumberReadoutDrawLcdInnerShadow === "function") {
+      nodeGraphNumberReadoutDrawLcdInnerShadow(
+        context,
+        0,
+        0,
+        width,
+        height,
+        settings.innerShadowDistance,
+        settings.innerShadowSharpness,
+        settings.innerShadowOffsetX,
+        settings.innerShadowOffsetY,
+      );
+    }
+    if (typeof nodeGraphNumberReadoutApplyLcdLightCutout === "function") {
+      nodeGraphNumberReadoutApplyLcdLightCutout(screenElement, canvas);
+    }
+  } else if (amount > 0 && radius > 0.05) {
+    context.save();
+    context.globalCompositeOperation = composite;
+    nodeGraphDrawVectorDotDisc(context, cx, cy, radius, blur, {
+      ...shape,
+      hue,
+      amount,
+    });
+    context.restore();
   }
-  const punch = amount > 0.001 ? 1 : 0;
+  const punch = lcd
+    ? (typeof nodeGraphLcdDisplayLightStrength === "number" ? nodeGraphLcdDisplayLightStrength : 2 / 3)
+    : amount;
   if (screenElement?.dataset) {
     screenElement.dataset.lightSource = "screen";
     screenElement.dataset.lightStrength = String(punch);
@@ -895,6 +1015,11 @@ function drawNodeGraphCustomDisplayItem(renderer, item, pixelRatio) {
   const node = nodeGraphModuleScopeNodeForSlot(slot);
   const screenElement = item?.screenElement || slot?.scopeElement;
   if (!node || !screenElement) {
+    return;
+  }
+  // Music Player paints its own phosphor face. Running the custom-display
+  // compiler here every RAF is why spawning a player pegged CPU.
+  if (slot?.type === "audioPlayer" || node?.type === "audioPlayer") {
     return;
   }
   renderNodeGraphModuleScopeAnalyzer(slot, item?.buffer || null);

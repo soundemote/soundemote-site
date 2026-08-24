@@ -37,40 +37,50 @@ function normalizeNodeGraphTextBoxHorizontalAlign(value) {
   return ["left", "center", "right"].includes(align) ? align : "center";
 }
 
+/**
+ * Vertical % is a plain face-relative translate (no content-height math):
+ *   0   → shift up by 2× face height
+ *   50  → no shift (natural top)
+ *   100 → shift down by 2× face height
+ */
 const nodeGraphTextBoxVerticalAlignLimits = Object.freeze({
   maxPercent: 100,
-  minPercent: -100,
+  minPercent: 0,
+  defaultPercent: 50,
 });
 
-function nodeGraphTextBoxMigrateLegacyVerticalPercent(value) {
-  const numeric = Math.round(Number(value));
-  if (!Number.isFinite(numeric)) {
-    return 0;
+/** Old bipolar −100…+100 (0 = center) → new 0…100 center-point. */
+function nodeGraphTextBoxMigrateBipolarVerticalPercent(value) {
+  const bipolar = Math.round(Number(value));
+  if (!Number.isFinite(bipolar)) {
+    return nodeGraphTextBoxVerticalAlignLimits.defaultPercent;
   }
-  // Legacy 0=top / 50=center / 100=bottom → bipolar 0=center.
   return Math.max(
     nodeGraphTextBoxVerticalAlignLimits.minPercent,
-    Math.min(nodeGraphTextBoxVerticalAlignLimits.maxPercent, (numeric - 50) * 2),
+    Math.min(
+      nodeGraphTextBoxVerticalAlignLimits.maxPercent,
+      Math.round((bipolar + 100) / 2),
+    ),
   );
 }
 
 function normalizeNodeGraphTextBoxVerticalAlignPercent(value, options = {}) {
   const align = String(value || "").toLowerCase();
   if (align === "top") {
-    return -100;
+    return 0;
   }
   if (align === "bottom") {
     return 100;
   }
   if (align === "center" || align === "middle") {
-    return 0;
+    return nodeGraphTextBoxVerticalAlignLimits.defaultPercent;
   }
   const numeric = Math.round(Number(value));
   if (!Number.isFinite(numeric)) {
-    return 0;
+    return nodeGraphTextBoxVerticalAlignLimits.defaultPercent;
   }
-  if (options.legacy) {
-    return nodeGraphTextBoxMigrateLegacyVerticalPercent(numeric);
+  if (options.fromBipolar) {
+    return nodeGraphTextBoxMigrateBipolarVerticalPercent(numeric);
   }
   return Math.max(
     nodeGraphTextBoxVerticalAlignLimits.minPercent,
@@ -96,6 +106,44 @@ function normalizeNodeGraphTextBoxTextSizePercent(value) {
 
 const NODE_GRAPH_TEXT_BOX_DEFAULT_BACKGROUND = "#020407";
 const NODE_GRAPH_TEXT_BOX_DEFAULT_TEXT_COLOR = "#f3f1ec";
+/** Match the previous hardcoded Cascadia Mono face (app font catalog id). */
+const NODE_GRAPH_TEXT_BOX_DEFAULT_FONT = "cascadia-mono";
+/** Same 100–900 step scale as Keypad Boldness (shared clamp). */
+const NODE_GRAPH_TEXT_BOX_DEFAULT_TEXT_WEIGHT = typeof NODE_GRAPH_APP_FONT_WEIGHT_DEFAULT === "number"
+  ? NODE_GRAPH_APP_FONT_WEIGHT_DEFAULT
+  : 400;
+
+function normalizeNodeGraphTextBoxTextWeight(value) {
+  if (typeof nodeGraphAppClampFontWeight === "function") {
+    return nodeGraphAppClampFontWeight(value, NODE_GRAPH_TEXT_BOX_DEFAULT_TEXT_WEIGHT);
+  }
+  const n = Math.round(Number(value) / 100) * 100;
+  if (!Number.isFinite(n)) {
+    return NODE_GRAPH_TEXT_BOX_DEFAULT_TEXT_WEIGHT;
+  }
+  return Math.max(100, Math.min(900, n));
+}
+
+/** CSS line-height multiplier for Multi / newlines (matches prior face default 1.2). */
+const NODE_GRAPH_TEXT_BOX_DEFAULT_LINE_HEIGHT = 1.2;
+const nodeGraphTextBoxLineHeightLimits = Object.freeze({
+  max: 3,
+  min: 0.5,
+  step: 0.05,
+});
+
+function normalizeNodeGraphTextBoxLineHeight(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return NODE_GRAPH_TEXT_BOX_DEFAULT_LINE_HEIGHT;
+  }
+  const stepped = Math.round(n / nodeGraphTextBoxLineHeightLimits.step)
+    * nodeGraphTextBoxLineHeightLimits.step;
+  return Math.max(
+    nodeGraphTextBoxLineHeightLimits.min,
+    Math.min(nodeGraphTextBoxLineHeightLimits.max, Number(stepped.toFixed(2))),
+  );
+}
 
 function nodeGraphTextBoxNormalizeHex(value, fallback) {
   const text = String(value || "").trim();
@@ -115,12 +163,18 @@ function normalizeNodeGraphTextBoxLayout(layout = {}) {
   const text = textMode === "singleLine"
     ? nodeGraphTextBoxOneLineText(source.text)
     : String(source.text ?? "");
-  const bipolarVertical = source.verticalBipolar === true;
+  // Schema 2 = center-point 0…100. Older saves used bipolar −100…+100 with verticalBipolar.
+  const verticalSchema = Number(source.verticalAlignSchema);
+  const fromBipolar = source.verticalBipolar === true && verticalSchema !== 2;
+  const font = typeof nodeGraphAppNormalizeFont === "function"
+    ? nodeGraphAppNormalizeFont(source.font, NODE_GRAPH_TEXT_BOX_DEFAULT_FONT)
+    : String(source.font || NODE_GRAPH_TEXT_BOX_DEFAULT_FONT).trim().toLowerCase() || NODE_GRAPH_TEXT_BOX_DEFAULT_FONT;
   return {
     backgroundColor: nodeGraphTextBoxNormalizeHex(
       source.backgroundColor,
       NODE_GRAPH_TEXT_BOX_DEFAULT_BACKGROUND,
     ),
+    font,
     horizontalAlign: normalizeNodeGraphTextBoxHorizontalAlign(source.horizontalAlign || source.textAlign),
     kind: "textBox",
     text,
@@ -129,11 +183,24 @@ function normalizeNodeGraphTextBoxLayout(layout = {}) {
       NODE_GRAPH_TEXT_BOX_DEFAULT_TEXT_COLOR,
     ),
     textSizePercent: normalizeNodeGraphTextBoxTextSizePercent(source.textSizePercent),
+    textWeight: normalizeNodeGraphTextBoxTextWeight(
+      source.textWeight ?? source.boldness ?? source.fontWeight,
+    ),
+    lineHeight: normalizeNodeGraphTextBoxLineHeight(
+      source.lineHeight ?? source.lineSpacing ?? source.newlineSpacing,
+    ),
     textMode,
-    verticalBipolar: true,
+    verticalAlignSchema: 2,
     verticalAlignPercent: normalizeNodeGraphTextBoxVerticalAlignPercent(
       source.verticalAlignPercent ?? source.verticalAlign,
-      { legacy: !bipolarVertical },
+      { fromBipolar },
     ),
   };
+}
+
+function nodeGraphTextBoxFontFamily(value) {
+  if (typeof nodeGraphAppFontFamily === "function") {
+    return nodeGraphAppFontFamily(value, NODE_GRAPH_TEXT_BOX_DEFAULT_FONT);
+  }
+  return "\"Cascadia Mono\", \"Cascadia Code\", Consolas, \"Courier New\", monospace";
 }

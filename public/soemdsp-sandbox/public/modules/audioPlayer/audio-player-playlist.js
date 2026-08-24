@@ -1,41 +1,237 @@
-// Music Player faces — dock: wave / waveplay / playlist / playinfo / XY / LR.
+// Music Player faces — wave / waveplay / playlist / playinfo / XY / LR.
 // waveplay is the wave page plus one playlist-row song name (opens playlist).
 // playinfo is the decoded-buffer table. List UI + phase scrubber.
 
+function nodeGraphAudioPlayerPlaylistNormalizeCardList(raw, startIndex = 0) {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .map((item, offset) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const index = startIndex + offset;
+      const card = typeof nodeGraphAudioPlayerLibraryNormalizeCard === "function"
+        ? nodeGraphAudioPlayerLibraryNormalizeCard(item, index)
+        : null;
+      if (!card) {
+        return null;
+      }
+      const listNumber = Math.max(0, Math.round(Number(item.listNumber) || 0));
+      if (listNumber) {
+        card.listNumber = listNumber;
+      }
+      return card;
+    })
+    .filter(Boolean);
+}
+
+function nodeGraphAudioPlayerPlaylistItemKey(item) {
+  return String(item?.path || item?.fileKey || item?.id || "").trim();
+}
+
+function nodeGraphAudioPlayerPlaylistFileName(item) {
+  const raw = String(item?.name || item?.path || item?.fileKey || "").trim().replace(/\\/g, "/");
+  const base = raw.split("/").pop() || raw;
+  return base.split(":").shift() || base;
+}
+
+function nodeGraphAudioPlayerPlaylistSid(value) {
+  return typeof normalizeNodeGraphSampleId === "function"
+    ? normalizeNodeGraphSampleId(value)
+    : String(value || "").trim();
+}
+
+function nodeGraphAudioPlayerPlaylistItemMatchesSample(item, sid) {
+  const want = nodeGraphAudioPlayerPlaylistSid(sid);
+  if (!item || !want) {
+    return false;
+  }
+  if (nodeGraphAudioPlayerPlaylistSid(item.sampleId) === want) {
+    return true;
+  }
+  if (item.path && nodeGraphAudioPlayerPlaylistSid(item.path) === want) {
+    return true;
+  }
+  if (item.fileKey && nodeGraphAudioPlayerPlaylistSid(item.fileKey) === want) {
+    return true;
+  }
+  if (item.sourcePath && nodeGraphAudioPlayerPlaylistSid(item.sourcePath) === want) {
+    return true;
+  }
+  return false;
+}
+
+function nodeGraphAudioPlayerPlaylistFindItemForSample(pl, sid) {
+  const want = nodeGraphAudioPlayerPlaylistSid(sid);
+  if (!want || !pl) {
+    return null;
+  }
+  const items = Array.isArray(pl.items) ? pl.items : [];
+  if (pl.playing && nodeGraphAudioPlayerPlaylistItemMatchesSample(pl.playing, want)) {
+    return pl.playing;
+  }
+  const withPath = items.find((item) => (
+    (item.path || item.fileKey) && nodeGraphAudioPlayerPlaylistItemMatchesSample(item, want)
+  ));
+  if (withPath) {
+    return withPath;
+  }
+  return items.find((item) => nodeGraphAudioPlayerPlaylistItemMatchesSample(item, want)) || null;
+}
+
+function nodeGraphAudioPlayerPlaylistRebuildItems(pl) {
+  if (!pl || typeof pl !== "object") {
+    return pl;
+  }
+  if (!Array.isArray(pl.items)) {
+    pl.items = [];
+  }
+  const playingKey = nodeGraphAudioPlayerPlaylistItemKey(pl.playing);
+  if (playingKey) {
+    const found = pl.items.findIndex((item) => nodeGraphAudioPlayerPlaylistItemKey(item) === playingKey);
+    if (found >= 0) {
+      pl.index = found;
+    }
+  } else if (!pl.items.length) {
+    pl.index = 0;
+  } else {
+    pl.index = Math.max(0, Math.min(pl.items.length - 1, Math.round(Number(pl.index) || 0)));
+  }
+  pl.selectedIndex = pl.index;
+  return pl;
+}
+
+function nodeGraphAudioPlayerPlaylistPlayedKeySet(pl) {
+  return new Set(
+    (Array.isArray(pl?.played) ? pl.played : [])
+      .map((item) => nodeGraphAudioPlayerPlaylistItemKey(item))
+      .filter(Boolean),
+  );
+}
+
+function nodeGraphAudioPlayerPlaylistMarkPlayed(pl, item) {
+  if (!pl || typeof pl !== "object" || !item) {
+    return pl;
+  }
+  const key = nodeGraphAudioPlayerPlaylistItemKey(item);
+  if (!key) {
+    return pl;
+  }
+  if (!nodeGraphAudioPlayerPlaylistPlayedKeySet(pl).has(key)) {
+    pl.played = [...(pl.played || []), item];
+  }
+  if (nodeGraphAudioPlayerPlaylistItemKey(pl.playing) === key) {
+    pl.playing = null;
+  }
+  // Never splice out of `items`. Played = strikeout in the same list.
+  return typeof nodeGraphAudioPlayerPlaylistSyncQueues === "function"
+    ? nodeGraphAudioPlayerPlaylistSyncQueues(pl)
+    : pl;
+}
+
+function nodeGraphAudioPlayerPlaylistRetirePlaying(pl) {
+  if (!pl || typeof pl !== "object") {
+    return pl;
+  }
+  return nodeGraphAudioPlayerPlaylistMarkPlayed(pl, pl.playing);
+}
+
+function nodeGraphAudioPlayerPlaylistMarkPlayedBySample(pl, sid) {
+  const item = nodeGraphAudioPlayerPlaylistFindItemForSample(pl, sid) || pl?.playing || null;
+  return nodeGraphAudioPlayerPlaylistMarkPlayed(pl, item);
+}
+
+/** Keep played / unplayed in list order. Never restack `items` when a track is played. */
+function nodeGraphAudioPlayerPlaylistSyncQueues(pl) {
+  if (!pl || typeof pl !== "object") {
+    return pl;
+  }
+  const items = Array.isArray(pl.items) ? pl.items : [];
+  const pathKeys = new Set(
+    items
+      .filter((item) => item?.path || item?.fileKey)
+      .map((item) => nodeGraphAudioPlayerPlaylistSid(item.sampleId) || nodeGraphAudioPlayerPlaylistSid(item.path))
+      .filter(Boolean),
+  );
+  if (pathKeys.size) {
+    pl.items = items.filter((item) => {
+      if (item?.path || item?.fileKey) {
+        return true;
+      }
+      const sid = nodeGraphAudioPlayerPlaylistSid(item?.sampleId);
+      return !sid || !pathKeys.has(sid);
+    });
+  }
+  const list = Array.isArray(pl.items) ? pl.items : items;
+  const playedKeys = nodeGraphAudioPlayerPlaylistPlayedKeySet(pl);
+  const playingKey = nodeGraphAudioPlayerPlaylistItemKey(pl.playing);
+  pl.played = list.filter((item) => {
+    const key = nodeGraphAudioPlayerPlaylistItemKey(item);
+    return key && playedKeys.has(key) && key !== playingKey;
+  });
+  pl.unplayed = list.filter((item) => {
+    const key = nodeGraphAudioPlayerPlaylistItemKey(item);
+    return key && key !== playingKey && !playedKeys.has(key);
+  });
+  if (playingKey) {
+    const found = list.find((item) => nodeGraphAudioPlayerPlaylistItemKey(item) === playingKey);
+    if (found) {
+      pl.playing = found;
+    }
+  }
+  const nextKey = nodeGraphAudioPlayerPlaylistItemKey(pl.playNext);
+  if (nextKey && nextKey !== playingKey) {
+    const found = list.find((item) => nodeGraphAudioPlayerPlaylistItemKey(item) === nextKey);
+    pl.playNext = found || null;
+  } else {
+    pl.playNext = null;
+  }
+  return nodeGraphAudioPlayerPlaylistRebuildItems(pl);
+}
+
+function nodeGraphAudioPlayerPlaylistEnsureQueues(pl) {
+  if (!pl || typeof pl !== "object") {
+    return pl;
+  }
+  const hasQueues = Array.isArray(pl.played)
+    && Array.isArray(pl.unplayed)
+    && Object.prototype.hasOwnProperty.call(pl, "playing");
+  if (hasQueues && Array.isArray(pl.items) && pl.items.length) {
+    return nodeGraphAudioPlayerPlaylistSyncQueues(pl);
+  }
+  if (hasQueues) {
+    const playing = pl.playing ? [pl.playing] : [];
+    pl.items = [...pl.played, ...playing, ...pl.unplayed];
+    return nodeGraphAudioPlayerPlaylistSyncQueues(pl);
+  }
+  const items = Array.isArray(pl.items) ? pl.items : [];
+  const i = Math.max(0, Math.min(items.length ? items.length - 1 : 0, Math.round(Number(pl.index) || 0)));
+  pl.played = items.slice(0, i);
+  pl.playing = items[i] || null;
+  pl.unplayed = items.slice(i + 1);
+  return nodeGraphAudioPlayerPlaylistRebuildItems(pl);
+}
+
 function nodeGraphAudioPlayerPlaylistNormalize(raw = null) {
   const source = raw && typeof raw === "object" ? raw : {};
-  const items = Array.isArray(source.items)
-    ? source.items
-      .map((item, index) => {
-        if (!item || typeof item !== "object") {
-          return null;
-        }
-        const card = typeof nodeGraphAudioPlayerLibraryNormalizeCard === "function"
-          ? nodeGraphAudioPlayerLibraryNormalizeCard(item, index)
-          : null;
-        if (card) {
-          return card;
-        }
-        const sampleId = String(item.sampleId || item.id || "").trim();
-        if (!sampleId) {
-          return null;
-        }
-        return {
-          id: String(item.id || `pl-${index}-${sampleId}`).slice(0, 80),
-          name: String(item.name || sampleId).trim().slice(0, 160) || sampleId,
-          path: String(item.path || "").trim(),
-          fileKey: String(item.fileKey || "").trim(),
-          sampleId: normalizeNodeGraphSampleId
-            ? normalizeNodeGraphSampleId(sampleId)
-            : sampleId,
-          bytes: Math.max(0, Math.round(Number(item.bytes) || 0)),
-          frames: Math.max(0, Math.round(Number(item.frames) || 0)),
-          sampleRate: Math.max(0, Math.round(Number(item.sampleRate) || 0)),
-          channels: Math.max(0, Math.round(Number(item.channels) || 0)),
-        };
-      })
-      .filter(Boolean)
+  const hasQueues = Array.isArray(source.played) || Array.isArray(source.unplayed) || source.playing;
+  const played = nodeGraphAudioPlayerPlaylistNormalizeCardList(source.played, 0);
+  const playingList = source.playing
+    ? nodeGraphAudioPlayerPlaylistNormalizeCardList([source.playing], played.length)
     : [];
+  const unplayed = nodeGraphAudioPlayerPlaylistNormalizeCardList(
+    source.unplayed,
+    played.length + playingList.length,
+  );
+  const playNextList = source.playNext
+    ? nodeGraphAudioPlayerPlaylistNormalizeCardList([source.playNext], 0)
+    : [];
+  let items = nodeGraphAudioPlayerPlaylistNormalizeCardList(source.items, 0);
+  if (!items.length && hasQueues) {
+    items = [...played, ...playingList, ...unplayed];
+  }
   const index = Math.max(0, Math.min(items.length ? items.length - 1 : 0, Math.round(Number(source.index) || 0)));
   const selectedIndex = Math.max(
     0,
@@ -47,12 +243,38 @@ function nodeGraphAudioPlayerPlaylistNormalize(raw = null) {
   if (loopMode !== "off" && loopMode !== "one" && loopMode !== "all") {
     loopMode = "off";
   }
-  const folderPath = String(source.folderPath || "").trim();
-  const folderDive = source.folderDive === true || source.folderDive === "true" || source.folderDive === 1;
+  const folderPathRaw = String(source.folderPath || "").trim();
+  const folderPath = typeof nodeGraphAudioPlayerLibraryStoredFolderPath === "function"
+    ? nodeGraphAudioPlayerLibraryStoredFolderPath(folderPathRaw)
+    : ((/^[a-zA-Z]:[\\/]/.test(folderPathRaw) || folderPathRaw.startsWith("/") || folderPathRaw.startsWith("\\\\"))
+      ? folderPathRaw
+      : "");
+  const folderDive = source.folderDive !== false && source.folderDive !== "false" && source.folderDive !== 0;
+  const removeAfterPlay = source.removeAfterPlay === true || source.removeAfterPlay === "true" || source.removeAfterPlay === 1;
+  const formats = typeof nodeGraphAudioPlayerLibraryNormalizeFormats === "function"
+    ? nodeGraphAudioPlayerLibraryNormalizeFormats(source.formats)
+    : (source.formats && typeof source.formats === "object" ? source.formats : {});
   const used = Array.isArray(source.used)
     ? source.used.map((path) => String(path || "").trim()).filter(Boolean).slice(0, 10000)
     : [];
-  return { face, folderDive, folderPath, index, items, selectedIndex, shuffle, loopMode, used };
+  const next = {
+    face,
+    folderDive,
+    folderPath,
+    formats,
+    index,
+    items,
+    loopMode,
+    played: hasQueues ? played : items.slice(0, index),
+    playing: hasQueues ? (playingList[0] || null) : (items[index] || null),
+    playNext: playNextList[0] || null,
+    removeAfterPlay,
+    selectedIndex,
+    shuffle,
+    unplayed: hasQueues ? unplayed : items.slice(index + 1),
+    used,
+  };
+  return nodeGraphAudioPlayerPlaylistRebuildItems(next);
 }
 
 const nodeGraphAudioPlayerPlaylistFaces = Object.freeze(["wave", "waveplay", "pl", "playinfo", "vsxy", "vslr"]);
@@ -100,18 +322,24 @@ function nodeGraphAudioPlayerFaceShowsPlayinfo(sectionOrFace) {
   return nodeGraphAudioPlayerPlaylistNormalizeFace(face) === "playinfo";
 }
 
+const nodeGraphAudioPlayerPlaylistReady = new WeakSet();
+
 function nodeGraphAudioPlayerPlaylistForNode(nodeId) {
   const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
   if (!node || node.type !== "audioPlayer") {
     return nodeGraphAudioPlayerPlaylistNormalize(null);
   }
-  const normalized = nodeGraphAudioPlayerPlaylistNormalize(node.playlist);
+  const existing = node.playlist;
+  if (existing && nodeGraphAudioPlayerPlaylistReady.has(existing) && Array.isArray(existing.items)) {
+    return nodeGraphAudioPlayerPlaylistEnsureQueues(existing);
+  }
+  const normalized = nodeGraphAudioPlayerPlaylistNormalize(existing);
   node.playlist = normalized;
+  nodeGraphAudioPlayerPlaylistReady.add(normalized);
   if (
     typeof nodeGraphAudioPlayerLibraryCatalog === "function"
     && !nodeGraphAudioPlayerLibraryCatalog(node.id).length
     && normalized.items.length
-    && !normalized.folderPath
     && typeof nodeGraphAudioPlayerLibrarySetCatalog === "function"
   ) {
     nodeGraphAudioPlayerLibrarySetCatalog(node.id, normalized.items);
@@ -195,12 +423,101 @@ function nodeGraphAudioPlayerPlaylistRamSummary(nodeId) {
   };
 }
 
+function nodeGraphAudioPlayerPlaylistCardForPersist(item) {
+  if (!item) {
+    return null;
+  }
+  return {
+    bytes: item.bytes || 0,
+    fileKey: item.fileKey || "",
+    id: item.id,
+    listNumber: item.listNumber || 0,
+    name: item.name,
+    path: item.path || "",
+  };
+}
+
+/** Play history queues + folder location. No decoded audio. */
+function nodeGraphAudioPlayerPlaylistForPersist(raw = null) {
+  const n = nodeGraphAudioPlayerPlaylistEnsureQueues(nodeGraphAudioPlayerPlaylistNormalize(raw));
+  return {
+    face: n.face,
+    folderDive: n.folderDive,
+    folderPath: n.folderPath,
+    formats: n.formats,
+    index: n.index,
+    items: (n.items || []).map(nodeGraphAudioPlayerPlaylistCardForPersist).filter(Boolean),
+    loopMode: n.loopMode,
+    played: (n.played || []).map(nodeGraphAudioPlayerPlaylistCardForPersist).filter(Boolean),
+    playing: nodeGraphAudioPlayerPlaylistCardForPersist(n.playing),
+    playNext: nodeGraphAudioPlayerPlaylistCardForPersist(n.playNext),
+    removeAfterPlay: n.removeAfterPlay,
+    selectedIndex: n.selectedIndex,
+    shuffle: n.shuffle,
+    unplayed: (n.unplayed || []).map(nodeGraphAudioPlayerPlaylistCardForPersist).filter(Boolean),
+  };
+}
+
+function nodeGraphAudioPlayerPlaylistShuffleArray(list) {
+  const items = Array.isArray(list) ? list.slice() : [];
+  for (let i = items.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const swap = items[i];
+    items[i] = items[j];
+    items[j] = swap;
+  }
+  return items;
+}
+
+function nodeGraphAudioPlayerPlaylistPullItem(pl, item) {
+  const key = nodeGraphAudioPlayerPlaylistItemKey(item);
+  if (!key || !pl) {
+    return;
+  }
+  pl.played = (pl.played || []).filter((entry) => nodeGraphAudioPlayerPlaylistItemKey(entry) !== key);
+  pl.unplayed = (pl.unplayed || []).filter((entry) => nodeGraphAudioPlayerPlaylistItemKey(entry) !== key);
+  if (pl.playing && nodeGraphAudioPlayerPlaylistItemKey(pl.playing) === key) {
+    pl.playing = null;
+  }
+}
+
+function nodeGraphAudioPlayerPlaylistAdoptPlaying(pl, item, { retireCurrent = true } = {}) {
+  if (!pl || !item) {
+    return pl;
+  }
+  const key = nodeGraphAudioPlayerPlaylistItemKey(item);
+  if (pl.playing && nodeGraphAudioPlayerPlaylistItemKey(pl.playing) === key) {
+    return nodeGraphAudioPlayerPlaylistSyncQueues(pl);
+  }
+  nodeGraphAudioPlayerPlaylistPullItem(pl, item);
+  if (retireCurrent && pl.playing) {
+    pl.played = [...(pl.played || []), pl.playing];
+  }
+  pl.playing = item;
+  return nodeGraphAudioPlayerPlaylistSyncQueues(pl);
+}
+
+function nodeGraphAudioPlayerPlaylistResetHistory(nodeId) {
+  const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  if (!node || node.type !== "audioPlayer") {
+    return;
+  }
+  const pl = nodeGraphAudioPlayerPlaylistEnsureQueues(nodeGraphAudioPlayerPlaylistForNode(nodeId));
+  pl.played = [];
+  nodeGraphAudioPlayerPlaylistSyncQueues(pl);
+  node.playlist = pl;
+  if (typeof setNodeGraphSampleStatus === "function") {
+    setNodeGraphSampleStatus(nodeId, "play history reset");
+  }
+  nodeGraphAudioPlayerPlaylistRefreshUi(nodeId);
+  nodeGraphAudioPlayerPlaylistPersist(nodeId);
+}
+
 function nodeGraphAudioPlayerPlaylistPersist(nodeId) {
   const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
   if (!node || node.type !== "audioPlayer") {
     return;
   }
-  node.playlist = nodeGraphAudioPlayerPlaylistNormalize(node.playlist);
   if (typeof saveNodeGraphWorkingPatchToUserSettings === "function") {
     saveNodeGraphWorkingPatchToUserSettings();
   } else if (typeof markNodeGraphRenderPending === "function") {
@@ -236,6 +553,14 @@ function nodeGraphAudioPlayerWriteTransport(nodeId, mode, { record = false } = {
     saveNodeGraphWorkingPatchToUserSettings();
   }
   nodeGraphAudioPlayerPlaylistSyncTransport(nodeId);
+  if (next >= 3) {
+    const section = document.querySelector(
+      `.node-phosphor-waveform-display[data-node="${CSS.escape(String(nodeId))}"]`,
+    );
+    if (section && typeof nodeGraphPhosphorWaveformEnsureLoop === "function") {
+      nodeGraphPhosphorWaveformEnsureLoop(section);
+    }
+  }
 }
 
 function nodeGraphAudioPlayerTransportBase(nodeId) {
@@ -270,9 +595,6 @@ function nodeGraphAudioPlayerPlaylistUnbindCurrentSample(nodeId) {
   if (typeof syncNodeGraphSampleDisplayForNode === "function") {
     syncNodeGraphSampleDisplayForNode(nodeId);
   }
-  if (typeof renderNodeGraphMissingSampleAssetsDialog === "function") {
-    renderNodeGraphMissingSampleAssetsDialog(nodeGraphMvp?.patch);
-  }
   if (typeof scheduleNodeGraphLivePlanSync === "function") {
     scheduleNodeGraphLivePlanSync("plan");
   }
@@ -285,10 +607,13 @@ function nodeGraphAudioPlayerPlaylistClear(nodeId) {
   }
   const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
   pl.items = [];
+  pl.played = [];
+  pl.playing = null;
+  pl.playNext = null;
+  pl.unplayed = [];
   pl.index = 0;
   pl.selectedIndex = 0;
   pl.used = [];
-  pl.folderPath = "";
   node.playlist = pl;
   if (typeof nodeGraphAudioPlayerLibraryCatalogs === "function") {
     nodeGraphAudioPlayerLibraryCatalogs().delete(String(nodeId));
@@ -311,6 +636,9 @@ function nodeGraphAudioPlayerPlaylistRemoveSelected(nodeId) {
   const i = Math.max(0, Math.min(pl.items.length - 1, selected));
   const removed = pl.items[i];
   pl.items.splice(i, 1);
+  if (removed && nodeGraphAudioPlayerPlaylistItemKey(pl.playNext) === nodeGraphAudioPlayerPlaylistItemKey(removed)) {
+    pl.playNext = null;
+  }
   pl.index = Math.max(0, Math.min(pl.items.length ? pl.items.length - 1 : 0, i));
   pl.selectedIndex = pl.index;
   node.playlist = pl;
@@ -332,6 +660,9 @@ function nodeGraphAudioPlayerPlaylistToggleShuffle(nodeId) {
   const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
   if (node) {
     node.playlist = pl;
+  }
+  if (typeof setNodeGraphSampleStatus === "function") {
+    setNodeGraphSampleStatus(nodeId, pl.shuffle ? "shuffle on — next track is random from unplayed" : "shuffle off — next track is the next unplayed");
   }
   nodeGraphAudioPlayerPlaylistPersist(nodeId);
   nodeGraphAudioPlayerPlaylistSyncTransport(nodeId);
@@ -355,18 +686,104 @@ function nodeGraphAudioPlayerPlaylistCycleLoop(nodeId) {
   nodeGraphAudioPlayerPlaylistSyncTransport(nodeId);
 }
 
+function nodeGraphAudioPlayerPlaylistIsAudible(nodeId) {
+  return nodeGraphAudioPlayerTransportBase(nodeId) >= 3;
+}
+
+function nodeGraphAudioPlayerPlaylistStop(nodeId) {
+  const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  if (!node || node.type !== "audioPlayer") {
+    return;
+  }
+  nodeGraphAudioPlayerWriteTransport(nodeId, 1);
+  node.samplePhase = 0;
+  if (!node.params || typeof node.params !== "object") {
+    node.params = {};
+  }
+  node.params.playlistScrub = "0";
+  node.samplePhaseSeek = (Math.round(Number(node.samplePhaseSeek) || 0) + 1) || 1;
+  if (typeof rememberNodeGraphAudioPlayerSamplePhase === "function") {
+    rememberNodeGraphAudioPlayerSamplePhase(nodeId, 0);
+  }
+  if (typeof nodeGraphAudioPlayerPlaylistApplyScrub === "function") {
+    nodeGraphAudioPlayerPlaylistApplyScrub(nodeId, 0, { record: false, commit: true });
+  }
+  if (typeof scheduleNodeGraphLiveParameterSync === "function") {
+    scheduleNodeGraphLiveParameterSync();
+  }
+  if (typeof flushNodeGraphLivePlanSync === "function") {
+    flushNodeGraphLivePlanSync();
+  }
+}
+
+function nodeGraphAudioPlayerPlaylistSelectDelta(nodeId, dir) {
+  const pl = nodeGraphAudioPlayerPlaylistEnsureQueues(nodeGraphAudioPlayerPlaylistForNode(nodeId));
+  const n = pl.items.length;
+  if (!n) {
+    return;
+  }
+  const from = Number.isInteger(pl.selectedIndex) ? pl.selectedIndex : pl.index;
+  let next = from + dir;
+  if (pl.loopMode === "all") {
+    next = ((next % n) + n) % n;
+  } else {
+    next = Math.max(0, Math.min(n - 1, next));
+  }
+  pl.selectedIndex = next;
+  const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  if (node) {
+    node.playlist = pl;
+  }
+  nodeGraphAudioPlayerPlaylistRefreshUi(nodeId);
+  nodeGraphAudioPlayerPlaylistPersist(nodeId);
+}
+
 function nodeGraphAudioPlayerPlaylistPlay(nodeId) {
   const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
-  const item = pl.items[pl.index] || pl.items[0];
-  if (item && typeof nodeGraphAudioPlayerLibraryItemLoaded === "function" && !nodeGraphAudioPlayerLibraryItemLoaded(item)) {
-    nodeGraphAudioPlayerPlaylistPlayIndex(nodeId, pl.items[pl.index] ? pl.index : 0, { autoplay: true });
+  const i = Number.isInteger(pl.selectedIndex) ? pl.selectedIndex : pl.index;
+  const item = pl.items[i] || pl.items[pl.index] || pl.items[0];
+  if (!item) {
+    if (typeof nodeGraphAudioPlayerLog === "function") {
+      nodeGraphAudioPlayerLog("FAIL", "Play: playlist empty", { nodeId });
+    }
+    if (typeof setNodeInteractionHelp === "function") {
+      setNodeInteractionHelp("Load a folder first, then Play.");
+    }
     return;
   }
+  const reason = String(nodeGraphMvp?.sampleRuntimeStatus?.get?.(nodeId)?.reason || "").trim().toLowerCase();
   const transport = nodeGraphAudioPlayerTransportBase(nodeId);
-  if (transport >= 3) {
-    return;
+  if (typeof nodeGraphAudioPlayerPlaylistDebug === "function") {
+    nodeGraphAudioPlayerPlaylistDebug(nodeId, "play-button", {
+      index: pl.items[i] ? i : 0,
+      name: item.name || "",
+      transport,
+      reason,
+    });
   }
-  nodeGraphAudioPlayerWriteTransport(nodeId, nodeGraphAudioPlayerPlaylistPlayModeForLoop(pl.loopMode));
+  // After a file ends the engine stays on Play (4) with completed=true.
+  // Writing 4 again does not clear completed — Stop then Play does.
+  if (reason === "engine complete" || reason === "engine stopped" || transport <= 1) {
+    const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+    if (node) {
+      node.samplePhase = 0;
+      node.samplePhaseSeek = (Math.round(Number(node.samplePhaseSeek) || 0) + 1) || 1;
+    }
+    if (transport !== 1 && typeof nodeGraphAudioPlayerWriteTransport === "function") {
+      nodeGraphAudioPlayerWriteTransport(nodeId, 1);
+    }
+  }
+  const result = nodeGraphAudioPlayerPlaylistPlayIndex(nodeId, pl.items[i] ? i : 0, { autoplay: true });
+  if (result && typeof result.catch === "function") {
+    result.catch((error) => {
+      if (typeof nodeGraphAudioPlayerLog === "function") {
+        nodeGraphAudioPlayerLog("FAIL", String(error?.message || error || "play failed"), {
+          nodeId,
+          name: item.name || "",
+        });
+      }
+    });
+  }
 }
 
 function nodeGraphAudioPlayerPlaylistPause(nodeId) {
@@ -429,16 +846,19 @@ function nodeGraphAudioPlayerPlaylistEnsureCurrentSample(nodeId, options = {}) {
     return null;
   }
   const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
-  const existing = pl.items.find((item) => item.sampleId === ref.id);
+  let existing = nodeGraphAudioPlayerPlaylistFindItemForSample(pl, ref.id);
+  if (!existing) {
+    const refName = nodeGraphAudioPlayerPlaylistFileName({ name: ref.name });
+    existing = pl.items.find((item) => (
+      !item.sampleId && nodeGraphAudioPlayerPlaylistFileName(item) === refName
+    ));
+  }
   if (existing) {
+    existing.sampleId = ref.id;
+    node.playlist = pl;
     return existing;
   }
-  const byName = pl.items.find((item) => !item.sampleId && item.name === ref.name);
-  if (byName) {
-    byName.sampleId = ref.id;
-    return byName;
-  }
-  if (pl.folderPath || pl.items.length) {
+  if ((pl.items || []).some((item) => item.path || item.fileKey)) {
     return null;
   }
   return nodeGraphAudioPlayerPlaylistAppendSample(nodeId, ref, options);
@@ -457,10 +877,31 @@ function nodeGraphAudioPlayerPlaylistAppendSample(nodeId, sampleRef = {}, option
     return null;
   }
   const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
-  const existing = pl.items.findIndex((item) => item.sampleId === sampleId);
+  const existingItem = nodeGraphAudioPlayerPlaylistFindItemForSample(pl, sampleId);
+  const existing = existingItem ? pl.items.indexOf(existingItem) : -1;
   const est = nodeGraphAudioPlayerPlaylistEstimateBytes(sampleId);
+  if (existing >= 0) {
+    const cur = pl.items[existing];
+    cur.sampleId = sampleId;
+    cur.bytes = est.bytes || cur.bytes;
+    cur.frames = est.frames || cur.frames;
+    cur.sampleRate = est.sampleRate || cur.sampleRate;
+    cur.channels = est.channels || cur.channels;
+    if (!cur.name) {
+      cur.name = String(sampleRef.name || sampleRef.sourceName || sampleId).trim().slice(0, 160) || sampleId;
+    }
+    pl.index = existing;
+    node.playlist = pl;
+    if (options.persist !== false) {
+      nodeGraphAudioPlayerPlaylistPersist(nodeId);
+    }
+    if (options.refresh !== false) {
+      nodeGraphAudioPlayerPlaylistRefreshUi(nodeId);
+    }
+    return cur;
+  }
   const entry = {
-    id: existing >= 0 ? pl.items[existing].id : `pl-${Date.now().toString(36)}-${sampleId.slice(-8)}`,
+    id: `pl-${Date.now().toString(36)}-${sampleId.slice(-8)}`,
     name: String(sampleRef.name || sampleRef.sourceName || sampleId).trim().slice(0, 160) || sampleId,
     sampleId,
     bytes: est.bytes,
@@ -468,13 +909,8 @@ function nodeGraphAudioPlayerPlaylistAppendSample(nodeId, sampleRef = {}, option
     sampleRate: est.sampleRate,
     channels: est.channels,
   };
-  if (existing >= 0) {
-    pl.items[existing] = entry;
-    pl.index = existing;
-  } else {
-    pl.items.push(entry);
-    pl.index = pl.items.length - 1;
-  }
+  pl.items.push(entry);
+  pl.index = pl.items.length - 1;
   node.playlist = pl;
   if (options.persist !== false) {
     nodeGraphAudioPlayerPlaylistPersist(nodeId);
@@ -529,14 +965,13 @@ function nodeGraphAudioPlayerPlaylistCreateTransport(nodeId) {
   bar.setAttribute("role", "toolbar");
   bar.setAttribute("aria-label", "Playlist transport");
   const specs = [
-    ["prev", "◁", "Previous"],
-    ["next", "▷", "Next"],
-    ["stop", "⏹️", "Stop"],
-    ["play", "▶️", "Play"],
-    ["pause", "⏸️", "Pause"],
-    ["loop", "↪️", "Loop"],
-    ["shuffle", "🔀", "Shuffle next 100"],
-    ["dive", "📂+", "Folder dive"],
+    ["prev", "◁", "Previous track"],
+    ["next", "▷", "Next track"],
+    ["stop", "⏹", "Stop"],
+    ["play", "▶", "Play"],
+    ["pause", "⏸", "Pause"],
+    ["loop", "↪️", "Loop off"],
+    ["shuffle", "🔀", "Shuffle off"],
   ];
   for (const [action, label, title] of specs) {
     const btn = document.createElement("button");
@@ -559,15 +994,23 @@ function nodeGraphAudioPlayerPlaylistCreateTransport(nodeId) {
 
 function nodeGraphAudioPlayerPlaylistTransportAction(nodeId, action) {
   if (action === "prev") {
-    nodeGraphAudioPlayerPlaylistPlayPrev(nodeId);
+    if (nodeGraphAudioPlayerPlaylistIsAudible(nodeId)) {
+      nodeGraphAudioPlayerPlaylistPlayPrev(nodeId);
+    } else {
+      nodeGraphAudioPlayerPlaylistSelectDelta(nodeId, -1);
+    }
     return;
   }
   if (action === "next") {
-    nodeGraphAudioPlayerPlaylistPlayNext(nodeId);
+    if (nodeGraphAudioPlayerPlaylistIsAudible(nodeId)) {
+      nodeGraphAudioPlayerPlaylistPlayNext(nodeId);
+    } else {
+      nodeGraphAudioPlayerPlaylistSelectDelta(nodeId, 1);
+    }
     return;
   }
   if (action === "stop") {
-    nodeGraphAudioPlayerWriteTransport(nodeId, 1);
+    nodeGraphAudioPlayerPlaylistStop(nodeId);
     return;
   }
   if (action === "play") {
@@ -611,26 +1054,12 @@ function nodeGraphAudioPlayerPlaylistSyncTransport(nodeId) {
     loopBtn.setAttribute("aria-label", loopBtn.title);
     loopBtn.classList.toggle("is-active", loop !== "off");
   }
-  const prevBtn = bar.querySelector("[data-music-player-transport='prev']");
-  if (prevBtn) {
-    prevBtn.textContent = "◁";
-  }
-  const nextBtn = bar.querySelector("[data-music-player-transport='next']");
-  if (nextBtn) {
-    nextBtn.textContent = "▷";
-  }
   const playBtn = bar.querySelector("[data-music-player-transport='play']");
   if (playBtn) {
-    playBtn.textContent = "▶️";
-    playBtn.title = "Play";
-    playBtn.setAttribute("aria-label", "Play");
     playBtn.classList.toggle("is-active", transport >= 3);
   }
   const pauseBtn = bar.querySelector("[data-music-player-transport='pause']");
   if (pauseBtn) {
-    pauseBtn.textContent = "⏸️";
-    pauseBtn.title = "Pause";
-    pauseBtn.setAttribute("aria-label", "Pause");
     pauseBtn.classList.toggle("is-active", transport === 2);
   }
   const stopBtn = bar.querySelector("[data-music-player-transport='stop']");
@@ -639,47 +1068,15 @@ function nodeGraphAudioPlayerPlaylistSyncTransport(nodeId) {
   }
   const shuffleBtn = bar.querySelector("[data-music-player-transport='shuffle']");
   if (shuffleBtn) {
-    shuffleBtn.classList.toggle("is-active", Boolean(pl.shuffle));
-    shuffleBtn.setAttribute("aria-pressed", pl.shuffle ? "true" : "false");
-  }
-  const diveBtn = bar.querySelector("[data-music-player-transport='dive']");
-  if (diveBtn) {
-    diveBtn.classList.toggle("is-active", Boolean(pl.folderDive));
-    diveBtn.setAttribute("aria-pressed", pl.folderDive ? "true" : "false");
-    diveBtn.title = pl.folderDive ? "Folder dive on — next 100 can come from subfolders" : "Folder dive off — this folder only";
+    const on = Boolean(pl.shuffle);
+    shuffleBtn.classList.toggle("is-active", on);
+    shuffleBtn.setAttribute("aria-pressed", on ? "true" : "false");
+    shuffleBtn.title = on ? "Shuffle on" : "Shuffle off";
+    shuffleBtn.setAttribute("aria-label", shuffleBtn.title);
   }
 }
 
-function nodeGraphAudioPlayerPlaylistEnsureFaceBar(section, nodeId) {
-  if (!section) {
-    return;
-  }
-  let bar = section.querySelector(":scope > .node-music-player-face-bar");
-  if (bar) {
-    return bar;
-  }
-  bar = document.createElement("div");
-  bar.className = "node-music-player-face-bar";
-  const plBtn = document.createElement("button");
-  plBtn.type = "button";
-  plBtn.className = "node-music-player-face-btn";
-  plBtn.dataset.musicPlayerFace = "pl";
-  plBtn.textContent = "playlist";
-  plBtn.title = "Open playlist";
-  plBtn.setAttribute("aria-label", "Open playlist");
-  plBtn.setAttribute("aria-pressed", "false");
-  plBtn.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    nodeGraphAudioPlayerPlaylistSetFace(nodeId, "pl");
-  });
-  plBtn.addEventListener("pointerdown", (event) => event.stopPropagation());
-  bar.append(plBtn);
-  section.append(bar);
-  return bar;
-}
-
-const nodeGraphAudioPlayerPlaylistDockFaces = Object.freeze([
+const nodeGraphAudioPlayerPlaylistFacesSpec = Object.freeze([
   ["wave", "wave", "Wave"],
   ["waveplay", "waveplay", "Waveplay"],
   ["pl", "playlist", "Playlist"],
@@ -687,6 +1084,41 @@ const nodeGraphAudioPlayerPlaylistDockFaces = Object.freeze([
   ["vsxy", "XY", "XY"],
   ["vslr", "LR", "LR"],
 ]);
+
+function nodeGraphAudioPlayerPlaylistEnsureFaceBar(section, nodeId) {
+  if (!section) {
+    return;
+  }
+  let bar = section.querySelector(":scope > .node-music-player-face-bar");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.className = "node-music-player-face-bar";
+    section.append(bar);
+  }
+  const existing = [...bar.querySelectorAll("[data-music-player-face]")]
+    .map((btn) => `${btn.dataset.musicPlayerFace}:${btn.textContent}`)
+    .join(",");
+  if (existing === "pl:playlist") {
+    return bar;
+  }
+  bar.replaceChildren();
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "node-music-player-face-btn";
+  btn.dataset.musicPlayerFace = "pl";
+  btn.textContent = "playlist";
+  btn.title = "Open playlist";
+  btn.setAttribute("aria-label", "Open playlist");
+  btn.setAttribute("aria-pressed", "false");
+  btn.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    nodeGraphAudioPlayerPlaylistSetFace(nodeId, "pl");
+  });
+  btn.addEventListener("pointerdown", (event) => event.stopPropagation());
+  bar.append(btn);
+  return bar;
+}
 
 function nodeGraphAudioPlayerPlaylistEnsurePlayinfoPage(section) {
   if (!section) {
@@ -698,12 +1130,7 @@ function nodeGraphAudioPlayerPlaylistEnsurePlayinfoPage(section) {
     page.className = "node-music-player-page node-music-player-page-playinfo";
     page.dataset.musicPlayerPage = "playinfo";
     page.hidden = true;
-    const dock = section.querySelector(":scope > .node-music-player-dock");
-    if (dock) {
-      section.insertBefore(page, dock);
-    } else {
-      section.append(page);
-    }
+    section.append(page);
   }
   if (!page.querySelector("[data-music-player-ram-panel]")) {
     let panel = section.querySelector("[data-music-player-ram-panel]");
@@ -737,12 +1164,10 @@ function nodeGraphAudioPlayerPlaylistEnsureWaveplayPage(section) {
       page.prepend(host);
     }
     let nowSong = page.querySelector("[data-music-player-now-song]");
-    if (!nowSong?.querySelector?.("[data-music-player-transport='prev']")) {
-      nowSong?.replaceWith?.(nodeGraphAudioPlayerPlaylistCreateNowSong(section.dataset?.node || ""));
-      if (!page.querySelector("[data-music-player-now-song]")) {
-        page.append(nodeGraphAudioPlayerPlaylistCreateNowSong(section.dataset?.node || ""));
-      }
+    if (!nowSong) {
+      page.append(nodeGraphAudioPlayerPlaylistCreateNowSong(section.dataset?.node || ""));
     }
+    nodeGraphAudioPlayerPlaylistBindWaveplayDblClick(page, section.dataset?.node || "");
     return page;
   }
   page = document.createElement("div");
@@ -754,13 +1179,24 @@ function nodeGraphAudioPlayerPlaylistEnsureWaveplayPage(section) {
   host.dataset.musicPlayerWaveHost = "true";
   page.append(host);
   page.append(nodeGraphAudioPlayerPlaylistCreateNowSong(section.dataset?.node || ""));
-  const dock = section.querySelector(":scope > .node-music-player-dock");
-  if (dock) {
-    section.insertBefore(page, dock);
-  } else {
-    section.append(page);
-  }
+  nodeGraphAudioPlayerPlaylistBindWaveplayDblClick(page, section.dataset?.node || "");
+  section.append(page);
   return page;
+}
+
+function nodeGraphAudioPlayerPlaylistBindWaveplayDblClick(page, nodeId) {
+  if (!page || page.dataset.waveplayDblBound === "1") {
+    return;
+  }
+  page.dataset.waveplayDblBound = "1";
+  page.addEventListener("dblclick", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const id = String(nodeId || page.closest?.("[data-node]")?.dataset?.node || "");
+    if (id) {
+      nodeGraphAudioPlayerPlaylistSetFace(id, "wave");
+    }
+  });
 }
 
 function nodeGraphAudioPlayerPlaylistEnsureWavplayPage(section) {
@@ -771,25 +1207,6 @@ function nodeGraphAudioPlayerPlaylistCreateNowSong(nodeId) {
   const row = document.createElement("div");
   row.className = "node-music-player-waveplay-song";
   row.dataset.musicPlayerNowSong = "true";
-  const makeSkip = (action, glyph, title) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "node-music-player-waveplay-skip";
-    btn.dataset.musicPlayerTransport = action;
-    btn.textContent = glyph;
-    btn.title = title;
-    btn.setAttribute("aria-label", title);
-    btn.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const id = String(nodeId || row.closest?.("[data-node]")?.dataset?.node || "");
-      if (id) {
-        nodeGraphAudioPlayerPlaylistTransportAction(id, action);
-      }
-    });
-    btn.addEventListener("pointerdown", (event) => event.stopPropagation());
-    return btn;
-  };
   const name = document.createElement("button");
   name.type = "button";
   name.className = "node-music-player-pl-name";
@@ -797,20 +1214,20 @@ function nodeGraphAudioPlayerPlaylistCreateNowSong(nodeId) {
   name.textContent = "No sample loaded";
   name.title = "Open playlist";
   name.setAttribute("aria-label", "Open playlist");
-  name.addEventListener("click", (event) => {
+  name.addEventListener("dblclick", (event) => {
     event.preventDefault();
     event.stopPropagation();
     const id = String(nodeId || row.closest?.("[data-node]")?.dataset?.node || "");
     if (id) {
-      nodeGraphAudioPlayerPlaylistSetFace(id, "pl");
+      nodeGraphAudioPlayerPlaylistSetFace(id, "wave");
     }
   });
+  name.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  });
   name.addEventListener("pointerdown", (event) => event.stopPropagation());
-  row.append(
-    makeSkip("prev", "◁", "Previous track"),
-    name,
-    makeSkip("next", "▷", "Next track"),
-  );
+  row.append(name);
   return row;
 }
 
@@ -825,38 +1242,39 @@ function nodeGraphAudioPlayerPlaylistSyncNowSong(nodeId) {
   const ref = nodeGraphAudioPlayerPlaylistCurrentSampleRef(
     typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null,
   );
-  const text = String(ref?.name || "No sample loaded");
+  const text = ref ? nodeGraphAudioPlayerPlaylistFileName(ref) : "No sample loaded";
   if (label.textContent !== text) {
     label.textContent = text;
   }
 }
 
-function nodeGraphAudioPlayerPlaylistEnsureDock(section, nodeId) {
+function nodeGraphAudioPlayerPlaylistEnsurePageBar(section, nodeId) {
   if (!section) {
     return null;
   }
-  let dock = section.querySelector(":scope > .node-music-player-dock");
-  if (!dock) {
-    dock = document.createElement("div");
-    dock.className = "node-music-player-dock";
-    dock.setAttribute("role", "tablist");
-    dock.setAttribute("aria-label", "Music player views");
-    section.append(dock);
+  section.querySelectorAll(":scope > .node-music-player-dock").forEach((el) => el.remove());
+  let bar = section.querySelector(":scope > .node-music-player-page-bar");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.className = "node-music-player-page-bar";
+    bar.setAttribute("role", "tablist");
+    bar.setAttribute("aria-label", "Music player pages");
+    section.append(bar);
   }
-  const existing = [...dock.querySelectorAll("[data-music-player-face]")]
+  const existing = [...bar.querySelectorAll("[data-music-player-face]")]
     .map((btn) => `${btn.dataset.musicPlayerFace}:${btn.textContent}`)
     .join(",");
-  const wanted = nodeGraphAudioPlayerPlaylistDockFaces
+  const wanted = nodeGraphAudioPlayerPlaylistFacesSpec
     .map((entry) => `${entry[0]}:${entry[1]}`)
     .join(",");
   if (existing === wanted) {
-    return dock;
+    return bar;
   }
-  dock.replaceChildren();
-  for (const [face, label, title] of nodeGraphAudioPlayerPlaylistDockFaces) {
+  bar.replaceChildren();
+  for (const [face, label, title] of nodeGraphAudioPlayerPlaylistFacesSpec) {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "node-music-player-dock-btn";
+    btn.className = "node-music-player-page-btn";
     btn.dataset.musicPlayerFace = face;
     btn.textContent = label;
     btn.title = title;
@@ -868,9 +1286,9 @@ function nodeGraphAudioPlayerPlaylistEnsureDock(section, nodeId) {
       nodeGraphAudioPlayerPlaylistSetFace(nodeId, face);
     });
     btn.addEventListener("pointerdown", (event) => event.stopPropagation());
-    dock.append(btn);
+    bar.append(btn);
   }
-  return dock;
+  return bar;
 }
 
 function nodeGraphAudioPlayerPlaylistPlaceShared(section, nodeId, face) {
@@ -908,6 +1326,7 @@ function nodeGraphAudioPlayerPlaylistPlaceShared(section, nodeId, face) {
   if (transport && plPage && transport.parentElement !== plPage) {
     plPage.append(transport);
   }
+  section.querySelectorAll("[data-music-player-debug]").forEach((el) => el.remove());
 }
 
 function nodeGraphAudioPlayerPlaylistEnsureLayout(section, nodeId) {
@@ -933,14 +1352,22 @@ function nodeGraphAudioPlayerPlaylistEnsureLayout(section, nodeId) {
   }
   nodeGraphAudioPlayerPlaylistEnsureWaveplayPage(section);
   nodeGraphAudioPlayerPlaylistEnsurePlayinfoPage(section);
-  nodeGraphAudioPlayerPlaylistEnsureDock(section, nodeId);
+  nodeGraphAudioPlayerPlaylistEnsurePageBar(section, nodeId);
   const list = section.querySelector("[data-music-player-list]");
   if (list && nodeId) {
     nodeGraphAudioPlayerPlaylistBindListResize(list, nodeId);
   }
   if (nodeId) {
     const existing = section.querySelector("[data-music-player-transport]");
-    if (existing && !existing.querySelector("[data-music-player-transport='pause']")) {
+    if (
+      existing
+      && (
+        !existing.querySelector("[data-music-player-transport='pause']")
+        || existing.querySelector("[data-music-player-transport='dive']")
+        || !existing.querySelector("[data-music-player-transport='shuffle']")
+        || existing.querySelector("[data-music-player-transport='prev']")?.textContent === "prev"
+      )
+    ) {
       existing.remove();
     }
     if (!section.querySelector("[data-music-player-transport]")) {
@@ -980,17 +1407,16 @@ function nodeGraphAudioPlayerPlaylistApplyFace(nodeId) {
   nodeGraphAudioPlayerPlaylistSyncNowSong(nodeId);
   if (nodeGraphAudioPlayerFaceShowsPlaylist(face)) {
     nodeGraphAudioPlayerPlaylistRefreshUi(nodeId);
-    nodeGraphAudioPlayerPlaylistStartScrubLoop(nodeId);
-    window.requestAnimationFrame(() => {
-      nodeGraphAudioPlayerPlaylistPaintWaves(nodeId);
-    });
+    nodeGraphAudioPlayerPlaylistStopScrubLoop(nodeId);
   } else if (nodeGraphAudioPlayerFaceShowsPlayinfo(face)) {
     nodeGraphAudioPlayerPlaylistStopScrubLoop(nodeId);
     nodeGraphAudioPlayerPlaylistRefreshRamDebug(nodeId);
   } else {
     nodeGraphAudioPlayerPlaylistStopScrubLoop(nodeId);
   }
-  if (typeof scheduleNodeGraphPhosphorWaveformFrame === "function") {
+  if (typeof nodeGraphPhosphorWaveformEnsureLoop === "function") {
+    nodeGraphPhosphorWaveformEnsureLoop(section);
+  } else if (typeof scheduleNodeGraphPhosphorWaveformFrame === "function") {
     scheduleNodeGraphPhosphorWaveformFrame(section);
   }
 }
@@ -1097,9 +1523,9 @@ function nodeGraphAudioPlayerPlaylistPlayingFrom(nodeId, pl) {
   return playing >= 0 ? playing : pl.index;
 }
 
-function nodeGraphAudioPlayerPlaylistPlayNext(nodeId) {
+function nodeGraphAudioPlayerPlaylistPlayNext(nodeId, options = {}) {
   if (typeof nodeGraphAudioPlayerLibraryPlayNext === "function") {
-    nodeGraphAudioPlayerLibraryPlayNext(nodeId);
+    nodeGraphAudioPlayerLibraryPlayNext(nodeId, options);
   }
 }
 
@@ -1109,42 +1535,312 @@ function nodeGraphAudioPlayerPlaylistPlayPrev(nodeId) {
   }
 }
 
-// Debounce auto-advance so a held "complete" reason does not skip tracks.
+// Auto-advance: ignore leftover complete/playing from a *different* file
+// than the one we asked to load. Completing the requested file must
+// advance even if we never saw "engine playing" (short file / missed snapshot).
 const nodeGraphAudioPlayerPlaylistAdvanceArmed = new Map();
+const nodeGraphAudioPlayerPlaylistLoadBusy = new Map();
+const nodeGraphAudioPlayerPlaylistLoadTarget = new Map();
+const nodeGraphAudioPlayerPlaylistAdvancePending = new Map();
+const nodeGraphAudioPlayerPlaylistAdvanceTimer = new Map();
+const nodeGraphAudioPlayerPlaylistLastCompletedSid = new Map();
 const nodeGraphAudioPlayerPlaylistScrubLoops = new Map();
+const nodeGraphAudioPlayerPlaylistDebugLastSig = new Map();
 
-function nodeGraphAudioPlayerPlaylistOnRuntimeStatus(nodeId, reason = "") {
+function nodeGraphAudioPlayerPlaylistDebugState(nodeId, extra = {}) {
+  const id = String(nodeId || "");
+  const pl = typeof nodeGraphAudioPlayerPlaylistForNode === "function"
+    ? nodeGraphAudioPlayerPlaylistForNode(id)
+    : null;
+  return {
+    nodeId: id,
+    armed: Boolean(nodeGraphAudioPlayerPlaylistAdvanceArmed.get(id)),
+    busy: Boolean(nodeGraphAudioPlayerPlaylistLoadBusy.get(id)),
+    pending: Boolean(nodeGraphAudioPlayerPlaylistAdvancePending.get(id)),
+    want: nodeGraphAudioPlayerPlaylistLoadTarget.get(id) || "",
+    playing: nodeGraphAudioPlayerPlaylistItemKey(pl?.playing),
+    playNext: nodeGraphAudioPlayerPlaylistItemKey(pl?.playNext),
+    played: Array.isArray(pl?.played) ? pl.played.length : 0,
+    unplayed: Array.isArray(pl?.unplayed) ? pl.unplayed.length : 0,
+    shuffle: Boolean(pl?.shuffle),
+    loop: pl?.loopMode || "",
+    ...extra,
+  };
+}
+
+function nodeGraphAudioPlayerPlaylistDebug(nodeId, event, extra = {}) {
+  const snap = nodeGraphAudioPlayerPlaylistDebugState(nodeId, { event, ...extra });
+  const ring = (typeof window !== "undefined" && (window.__musicPlayerDebug || (window.__musicPlayerDebug = { events: [] })))
+    || { events: [] };
+  ring.events.push({ t: Date.now(), ...snap });
+  if (ring.events.length > 60) {
+    ring.events.shift();
+  }
+  ring.last = snap;
+  if (typeof window !== "undefined") {
+    window.dumpMusicPlayer = function dumpMusicPlayer() {
+      console.table(window.__musicPlayerDebug?.events || []);
+      return window.__musicPlayerDebug;
+    };
+  }
+  const sig = `${event}|${snap.reason || ""}|${snap.armed}|${snap.busy}|${snap.want}|${snap.bound || ""}|${snap.why || ""}`;
+  const throttle = String(event).includes("ignored")
+    || event === "engine-playing-leftover"
+    || event === "engine-playing-armed"
+    || event === "engine-stopped"
+    || event === "engine-paused";
+  if (throttle && nodeGraphAudioPlayerPlaylistDebugLastSig.get(snap.nodeId) === sig) {
+    return snap;
+  }
+  nodeGraphAudioPlayerPlaylistDebugLastSig.set(snap.nodeId, sig);
+  if (typeof nodeGraphAudioPlayerLog === "function") {
+    nodeGraphAudioPlayerLog("INFO", event, snap);
+  }
+  return snap;
+}
+
+function nodeGraphAudioPlayerPlaylistCancelAdvanceTimer(nodeId) {
+  const id = String(nodeId || "");
+  const timer = nodeGraphAudioPlayerPlaylistAdvanceTimer.get(id);
+  if (timer) {
+    window.clearTimeout(timer);
+    nodeGraphAudioPlayerPlaylistAdvanceTimer.delete(id);
+  }
+}
+
+function nodeGraphAudioPlayerPlaylistBeginLoad(nodeId) {
+  const id = String(nodeId || "");
+  nodeGraphAudioPlayerPlaylistCancelAdvanceTimer(id);
+  nodeGraphAudioPlayerPlaylistAdvanceArmed.set(id, false);
+  nodeGraphAudioPlayerPlaylistLoadBusy.set(id, true);
+  nodeGraphAudioPlayerPlaylistAdvancePending.set(id, false);
+  nodeGraphAudioPlayerPlaylistDebug(id, "begin-load");
+}
+
+function nodeGraphAudioPlayerPlaylistSetLoadTarget(nodeId, item) {
+  const id = String(nodeId || "");
+  const key = nodeGraphAudioPlayerPlaylistItemKey(item);
+  if (key) {
+    nodeGraphAudioPlayerPlaylistLoadTarget.set(id, key);
+  } else {
+    nodeGraphAudioPlayerPlaylistLoadTarget.delete(id);
+  }
+  nodeGraphAudioPlayerPlaylistDebug(id, "load-target", {
+    name: item?.name || "",
+    sampleId: item?.sampleId || "",
+  });
+}
+
+function nodeGraphAudioPlayerPlaylistEndLoad(nodeId) {
+  const id = String(nodeId || "");
+  nodeGraphAudioPlayerPlaylistLoadBusy.set(id, false);
+  nodeGraphAudioPlayerPlaylistLoadTarget.delete(id);
+  nodeGraphAudioPlayerPlaylistAdvancePending.set(id, false);
+  nodeGraphAudioPlayerPlaylistDebug(id, "end-load");
+}
+
+function nodeGraphAudioPlayerPlaylistAutoAdvanceBlocked(nodeId) {
+  const id = String(nodeId || "");
+  if (nodeGraphAudioPlayerPlaylistAdvancePending.get(id)) {
+    nodeGraphAudioPlayerPlaylistAdvancePending.set(id, false);
+    return false;
+  }
+  const blocked = Boolean(nodeGraphAudioPlayerPlaylistLoadBusy.get(id));
+  if (blocked) {
+    nodeGraphAudioPlayerPlaylistDebug(id, "play-next-blocked", { why: "load busy" });
+  }
+  return blocked;
+}
+
+function nodeGraphAudioPlayerPlaylistBoundItemKey(nodeId, pl) {
+  const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  const sid = nodeGraphAudioPlayerPlaylistSid(node?.sample?.id);
+  if (!sid) {
+    return "";
+  }
+  const bound = nodeGraphAudioPlayerPlaylistFindItemForSample(pl, sid);
+  return nodeGraphAudioPlayerPlaylistItemKey(bound);
+}
+
+function nodeGraphAudioPlayerPlaylistEngineSampleId(nodeId, workletSampleId = "") {
+  const fromWorklet = nodeGraphAudioPlayerPlaylistSid(workletSampleId);
+  if (fromWorklet) {
+    return fromWorklet;
+  }
+  const statusId = nodeGraphAudioPlayerPlaylistSid(
+    nodeGraphMvp?.sampleRuntimeStatus?.get?.(nodeId)?.sampleId,
+  );
+  return statusId;
+}
+
+function nodeGraphAudioPlayerPlaylistOnRuntimeStatus(nodeId, reason = "", workletSampleId = "") {
   const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
   if (!node || node.type !== "audioPlayer") {
     return;
   }
-  const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
-  const catalogCount = typeof nodeGraphAudioPlayerLibraryCatalog === "function"
-    ? nodeGraphAudioPlayerLibraryCatalog(nodeId).length
-    : 0;
-  if (pl.items.length < 2 && catalogCount <= pl.items.length) {
+  const pl = (node.playlist && Array.isArray(node.playlist.items))
+    ? node.playlist
+    : nodeGraphAudioPlayerPlaylistForNode(nodeId);
+  if (!pl?.items?.length) {
     nodeGraphAudioPlayerPlaylistSyncScrubber(nodeId);
     return;
   }
-  const text = String(reason || "").toLowerCase();
-  const completed = text.includes("complete") || text.includes("finished");
-  if (!completed) {
-    nodeGraphAudioPlayerPlaylistAdvanceArmed.set(nodeId, true);
-    nodeGraphAudioPlayerPlaylistSyncScrubber(nodeId);
-    return;
-  }
-  if (!nodeGraphAudioPlayerPlaylistAdvanceArmed.get(nodeId)) {
-    return;
-  }
-  // Auto-advance on Play (4) and Loop All (5), not Loop single (3).
+  const id = String(nodeId || "");
+  const text = String(reason || "").trim().toLowerCase();
+  const playing = text === "engine playing" || text === "engine looping";
+  const completed = text === "engine complete";
   const transport = Math.round(Number(node.params?.transport) || 0);
-  if (transport !== 4 && transport !== 5) {
+  const wantKey = nodeGraphAudioPlayerPlaylistLoadTarget.get(id)
+    || nodeGraphAudioPlayerPlaylistItemKey(pl.playing);
+  const engineSid = nodeGraphAudioPlayerPlaylistEngineSampleId(nodeId, workletSampleId);
+  const wantItem = (pl.items || []).find((item) => nodeGraphAudioPlayerPlaylistItemKey(item) === wantKey)
+    || pl.playing
+    || null;
+  const boundKey = nodeGraphAudioPlayerPlaylistBoundItemKey(nodeId, pl);
+  // Leftover = engine is still the previous file. Do not compare playlist
+  // keys: a ghost card (pl-xxx) can share the sample id with the real path
+  // row, which used to look like "still on previous file" forever.
+  const leftoverOther = Boolean(
+    engineSid
+    && wantItem
+    && !nodeGraphAudioPlayerPlaylistItemMatchesSample(wantItem, engineSid),
+  );
+  const finishedRequested = Boolean(
+    engineSid
+    && wantItem
+    && nodeGraphAudioPlayerPlaylistItemMatchesSample(wantItem, engineSid),
+  );
+  if (playing) {
+    if (nodeGraphAudioPlayerPlaylistLoadBusy.get(id) && leftoverOther) {
+      nodeGraphAudioPlayerPlaylistDebug(id, "engine-playing-leftover", {
+        reason: text,
+        bound: boundKey,
+        engineSid,
+        transport,
+        why: "engine still on previous file",
+      });
+      nodeGraphAudioPlayerPlaylistSyncScrubber(nodeId);
+      return;
+    }
+    if (engineSid && nodeGraphAudioPlayerPlaylistLastCompletedSid.get(id) === engineSid) {
+      nodeGraphAudioPlayerPlaylistLastCompletedSid.delete(id);
+    }
+    nodeGraphAudioPlayerPlaylistLoadBusy.set(id, false);
+    nodeGraphAudioPlayerPlaylistLoadTarget.delete(id);
+    nodeGraphAudioPlayerPlaylistAdvancePending.set(id, false);
+    nodeGraphAudioPlayerPlaylistAdvanceArmed.set(id, true);
+    nodeGraphAudioPlayerPlaylistDebug(id, "engine-playing-armed", {
+      reason: text,
+      bound: boundKey,
+      engineSid,
+      transport,
+    });
+    nodeGraphAudioPlayerPlaylistSyncScrubber(nodeId);
     return;
   }
-  nodeGraphAudioPlayerPlaylistAdvanceArmed.set(nodeId, false);
-  window.setTimeout(() => {
-    nodeGraphAudioPlayerPlaylistPlayNext(nodeId);
-  }, 40);
+  if (!completed) {
+    if (text === "engine stopped" || text === "engine paused") {
+      nodeGraphAudioPlayerPlaylistDebug(id, text.replace(" ", "-"), {
+        reason: text,
+        bound: boundKey,
+        transport,
+      });
+    }
+    nodeGraphAudioPlayerPlaylistSyncScrubber(nodeId);
+    return;
+  }
+  if (engineSid && nodeGraphAudioPlayerPlaylistLastCompletedSid.get(id) === engineSid) {
+    nodeGraphAudioPlayerPlaylistDebug(id, "complete-ignored", {
+      reason: text,
+      bound: boundKey,
+      engineSid,
+      transport,
+      why: "already advanced this sample",
+    });
+    return;
+  }
+  if (leftoverOther) {
+    nodeGraphAudioPlayerPlaylistDebug(id, "complete-ignored", {
+      reason: text,
+      bound: boundKey,
+      engineSid,
+      transport,
+      why: "leftover complete from previous file",
+    });
+    return;
+  }
+  if (nodeGraphAudioPlayerPlaylistLoadBusy.get(id) && !engineSid) {
+    nodeGraphAudioPlayerPlaylistDebug(id, "complete-ignored", {
+      reason: text,
+      bound: boundKey,
+      engineSid,
+      transport,
+      why: "still loading, no sample bound",
+    });
+    return;
+  }
+  const armed = Boolean(nodeGraphAudioPlayerPlaylistAdvanceArmed.get(id));
+  const busy = Boolean(nodeGraphAudioPlayerPlaylistLoadBusy.get(id));
+  const loadingKey = nodeGraphAudioPlayerPlaylistLoadTarget.get(id) || "";
+  const loadingItem = loadingKey
+    ? (pl.items || []).find((item) => nodeGraphAudioPlayerPlaylistItemKey(item) === loadingKey)
+    : null;
+  if (busy && loadingItem && engineSid && !nodeGraphAudioPlayerPlaylistItemMatchesSample(loadingItem, engineSid)) {
+    nodeGraphAudioPlayerPlaylistDebug(id, "complete-ignored", {
+      reason: text,
+      bound: boundKey,
+      engineSid,
+      transport,
+      why: "already loading the next file",
+    });
+    return;
+  }
+  // Without a worklet sample id, node.sample.id is already the NEXT file
+  // after bind — leftover "engine complete" looked like the new file ended.
+  // Only treat unarmed complete as real if the worklet itself is on that file.
+  if (!armed && !(busy && finishedRequested && workletSampleId)) {
+    nodeGraphAudioPlayerPlaylistDebug(id, "complete-ignored", {
+      reason: text,
+      bound: boundKey,
+      engineSid,
+      workletSampleId: String(workletSampleId || ""),
+      transport,
+      why: !workletSampleId && busy
+        ? "complete during load, no worklet sample id"
+        : (busy ? "busy but bound is not the requested file" : "not armed (never saw engine playing)"),
+    });
+    return;
+  }
+  if (transport !== 4 && transport !== 5) {
+    nodeGraphAudioPlayerPlaylistDebug(id, "complete-ignored", {
+      reason: text,
+      bound: boundKey,
+      engineSid,
+      transport,
+      why: `transport ${transport} is not play-once/loop-all`,
+    });
+    return;
+  }
+  const retired = nodeGraphAudioPlayerPlaylistFindItemForSample(pl, engineSid) || pl.playing;
+  const fromKey = nodeGraphAudioPlayerPlaylistItemKey(retired);
+  nodeGraphAudioPlayerPlaylistLastCompletedSid.set(id, engineSid);
+  nodeGraphAudioPlayerPlaylistMarkPlayedBySample(pl, engineSid);
+  node.playlist = pl;
+  nodeGraphAudioPlayerPlaylistRefreshUi(nodeId);
+  nodeGraphAudioPlayerPlaylistAdvanceArmed.set(id, false);
+  nodeGraphAudioPlayerPlaylistLoadBusy.set(id, true);
+  nodeGraphAudioPlayerPlaylistAdvancePending.set(id, true);
+  nodeGraphAudioPlayerPlaylistLoadTarget.delete(id);
+  nodeGraphAudioPlayerPlaylistCancelAdvanceTimer(id);
+  nodeGraphAudioPlayerPlaylistDebug(id, "complete-advance", {
+    reason: text,
+    bound: boundKey,
+    engineSid,
+    fromKey,
+    transport,
+    why: armed ? "armed complete" : "requested file completed before playing snapshot",
+  });
+  nodeGraphAudioPlayerPlaylistPlayNext(nodeId, { fromAuto: true, fromKey });
 }
 
 function nodeGraphAudioPlayerPlaylistSyncScrubber(nodeId) {
@@ -1169,9 +1865,6 @@ function nodeGraphAudioPlayerPlaylistSyncScrubber(nodeId) {
   }
   if (valueEl) {
     valueEl.textContent = live.toFixed(4);
-  }
-  if (typeof nodeGraphAudioPlayerPlaylistPaintWaves === "function") {
-    nodeGraphAudioPlayerPlaylistPaintWaves(nodeId, { liveOnly: true });
   }
 }
 
@@ -1440,12 +2133,10 @@ function nodeGraphAudioPlayerPlaylistPaintWaves(nodeId, { liveOnly = false } = {
     view.startFrame = next.viewStart;
     view.endFrame = next.viewEnd;
   }
-  for (const row of section.querySelectorAll(".node-music-player-pl-row")) {
-    const sampleId = row.dataset.sampleId || "";
-    const live = Boolean(playingId && sampleId && sampleId === playingId);
-    row.dataset.playing = live ? "true" : "false";
+  const list = section.querySelector("[data-music-player-list]");
+  if (list) {
+    nodeGraphAudioPlayerPlaylistPaintSlots(nodeId, list, { followPlaying: false });
   }
-  nodeGraphAudioPlayerPlaylistApplyRowFade(section, nodeId, playingId);
 }
 
 function nodeGraphAudioPlayerPlaylistSmoothstep(t) {
@@ -1454,50 +2145,50 @@ function nodeGraphAudioPlayerPlaylistSmoothstep(t) {
 }
 
 function nodeGraphAudioPlayerPlaylistPlayingIndex(nodeId, playingId = "") {
-  const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
+  const pl = nodeGraphAudioPlayerPlaylistEnsureQueues(nodeGraphAudioPlayerPlaylistForNode(nodeId));
+  if (pl.playing) {
+    const key = nodeGraphAudioPlayerPlaylistItemKey(pl.playing);
+    const found = (pl.items || []).findIndex((item) => nodeGraphAudioPlayerPlaylistItemKey(item) === key);
+    if (found >= 0) {
+      return found;
+    }
+  }
+  const hinted = Math.max(0, Math.round(Number(pl.index) || 0));
   const sid = normalizeNodeGraphSampleId
     ? normalizeNodeGraphSampleId(playingId)
     : String(playingId || "").trim();
+  if (sid && pl.items[hinted]?.sampleId === sid) {
+    return hinted;
+  }
   if (sid) {
     const found = pl.items.findIndex((item) => item.sampleId === sid);
     if (found >= 0) {
       return found;
     }
   }
-  return Math.max(0, Math.round(Number(pl.index) || 0));
+  return hinted;
 }
 
-/** Fade only downward from the playing row. Rows above stay full. */
-function nodeGraphAudioPlayerPlaylistRowFade(index, playingIndex, itemCount, playlistFade = 1) {
-  const n = Math.max(1, Number(itemCount) || 1);
-  const fade = Math.max(0, Math.min(1, Number(playlistFade)));
-  const span = Math.max(1, 1 + (n - 1) * fade);
-  const i = Math.round(Number(index) || 0);
-  const p = Math.max(0, Math.round(Number(playingIndex) || 0));
-  if (i <= p) {
+/**
+ * 0 = no fade. Slider up: fade over ~100 items, then tighten.
+ * 1 = only the playing row is visible; everything else is fully faded.
+ */
+function nodeGraphAudioPlayerPlaylistSlotFade(index, playingIndex, slotCount, playlistFade = 0.1) {
+  const amount = Math.max(0, Math.min(1, Number(playlistFade) || 0));
+  if (amount <= 0) {
     return 1;
   }
-  return 1 - nodeGraphAudioPlayerPlaylistSmoothstep((i - p) / span);
+  const dist = Math.abs((Number(index) || 0) - (Number(playingIndex) || 0));
+  const span = 100 + (1 - 100) * amount;
+  return 1 - nodeGraphAudioPlayerPlaylistSmoothstep(Math.min(1, dist / Math.max(1, span)));
 }
 
-function nodeGraphAudioPlayerPlaylistApplyRowFade(section, nodeId, playingId = "") {
+function nodeGraphAudioPlayerPlaylistApplyRowFade(section, nodeId) {
   const list = section?.querySelector?.("[data-music-player-list]");
   if (!list) {
     return;
   }
-  const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
-  const rows = list.querySelectorAll(".node-music-player-pl-row");
-  const itemCount = pl.items.length || Math.max(1, rows.length);
-  const playingIndex = nodeGraphAudioPlayerPlaylistPlayingIndex(nodeId, playingId);
-  const settings = typeof nodeGraphPhosphorWaveformSettingsForNode === "function"
-    ? nodeGraphPhosphorWaveformSettingsForNode(nodeId)
-    : null;
-  const playlistFade = settings?.playlistFade;
-  rows.forEach((row) => {
-    const index = Number(row.dataset.playlistIndex);
-    const fade = nodeGraphAudioPlayerPlaylistRowFade(index, playingIndex, itemCount, playlistFade);
-    row.style.setProperty("--node-music-player-pl-fade", String(fade));
-  });
+  nodeGraphAudioPlayerPlaylistPaintSlots(nodeId, list, { followPlaying: false });
 }
 
 function nodeGraphAudioPlayerPlaylistRowHeightPx(list) {
@@ -1520,15 +2211,205 @@ function nodeGraphAudioPlayerPlaylistVisibleSlotCount(list) {
   return Math.max(1, Math.floor(height / rowH) || 1);
 }
 
+function nodeGraphAudioPlayerPlaylistSlotCount(list, nodeId) {
+  const id = nodeId || list?.closest?.("[data-node]")?.dataset?.node;
+  const settings = typeof nodeGraphPhosphorWaveformSettingsForNode === "function"
+    ? nodeGraphPhosphorWaveformSettingsForNode(id)
+    : null;
+  const want = Math.round(Number(settings?.playlistVisibleCount));
+  const items = typeof nodeGraphAudioPlayerPlaylistForNode === "function"
+    ? (nodeGraphAudioPlayerPlaylistForNode(id)?.items?.length || 0)
+    : 0;
+  const fitted = nodeGraphAudioPlayerPlaylistVisibleSlotCount(list);
+  // 2…10 = fixed slot count. 1 / unset = fill the face; never collapse a
+  // multi-track list to a single oversized row.
+  if (Number.isFinite(want) && want >= 2) {
+    return Math.max(2, Math.min(10, want));
+  }
+  if (fitted > 1) {
+    return Math.max(1, Math.min(10, fitted));
+  }
+  return Math.max(1, Math.min(10, items > 1 ? items : 8));
+}
+
+function nodeGraphAudioPlayerPlaylistClampViewStart(start, itemCount, slotCount) {
+  const maxStart = Math.max(0, (Number(itemCount) || 0) - Math.max(1, Number(slotCount) || 1));
+  return Math.max(0, Math.min(maxStart, Math.round(Number(start) || 0)));
+}
+
 function nodeGraphAudioPlayerPlaylistBindListResize(list, nodeId) {
-  if (!list || list.dataset.slotResizeBound === "1" || typeof ResizeObserver === "undefined") {
+  if (!list || list.dataset.slotResizeBound === "1") {
     return;
   }
   list.dataset.slotResizeBound = "1";
-  const observer = new ResizeObserver(() => {
-    nodeGraphAudioPlayerPlaylistRefreshUi(nodeId);
+  if (typeof ResizeObserver !== "undefined") {
+    const observer = new ResizeObserver((entries) => {
+      const height = Math.round(entries[0]?.contentRect?.height || list.clientHeight || 0);
+      if (list.dataset.plObsH === String(height)) {
+        return;
+      }
+      list.dataset.plObsH = String(height);
+      nodeGraphAudioPlayerPlaylistPaintSlots(nodeId, list, { followPlaying: false });
+    });
+    observer.observe(list);
+  }
+  list.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
+    const slots = nodeGraphAudioPlayerPlaylistSlotCount(list, nodeId);
+    const step = event.deltaY > 0 || event.deltaX > 0 ? 1 : -1;
+    const next = nodeGraphAudioPlayerPlaylistClampViewStart(
+      (Number(list.dataset.plViewStart) || 0) + step,
+      pl.items.length,
+      slots,
+    );
+    list.dataset.plViewStart = String(next);
+    nodeGraphAudioPlayerPlaylistPaintSlots(nodeId, list, { followPlaying: false });
+  }, { passive: false });
+  list.addEventListener("pointerdown", (event) => {
+    if (event.target.closest(".node-music-player-pl-row")) {
+      event.stopPropagation();
+    }
   });
-  observer.observe(list);
+  list.addEventListener("click", (event) => {
+    const row = event.target.closest(".node-music-player-pl-row");
+    if (!row || row.dataset.slot === "empty") {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    if (list.__playNextClickTimer) {
+      window.clearTimeout(list.__playNextClickTimer);
+    }
+    const index = Number(row.dataset.playlistIndex);
+    list.__playNextClickTimer = window.setTimeout(() => {
+      list.__playNextClickTimer = 0;
+      nodeGraphAudioPlayerPlaylistTogglePlayNext(nodeId, index);
+    }, 250);
+  });
+  list.addEventListener("dblclick", (event) => {
+    const row = event.target.closest(".node-music-player-pl-row");
+    if (!row || row.dataset.slot === "empty") {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    if (list.__playNextClickTimer) {
+      window.clearTimeout(list.__playNextClickTimer);
+      list.__playNextClickTimer = 0;
+    }
+    nodeGraphAudioPlayerPlaylistActivateRow(nodeId, Number(row.dataset.playlistIndex), { play: true });
+  });
+}
+
+// Face buttons are a fixed slot pool (how many rows fit). The file list is
+// separate data. Wheel only changes which list index each slot shows.
+function nodeGraphAudioPlayerPlaylistEnsureSlotButtons(list, slotCount) {
+  const want = Math.max(1, Math.round(Number(slotCount) || 1));
+  list.querySelectorAll(".node-music-player-pl-virtual-rail").forEach((el) => el.remove());
+  const rows = [...list.querySelectorAll(":scope > .node-music-player-pl-row")];
+  if (rows.length === want) {
+    return want;
+  }
+  if (rows.length > want) {
+    for (let i = want; i < rows.length; i += 1) {
+      rows[i].remove();
+    }
+    return want;
+  }
+  for (let i = rows.length; i < want; i += 1) {
+    list.append(nodeGraphAudioPlayerPlaylistMakeRowShell(i, { empty: true }));
+  }
+  return want;
+}
+
+function nodeGraphAudioPlayerPlaylistPaintSlots(nodeId, list, { followPlaying = false } = {}) {
+  if (!list) {
+    return;
+  }
+  const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
+  const items = pl.items;
+  const slotCount = nodeGraphAudioPlayerPlaylistEnsureSlotButtons(
+    list,
+    nodeGraphAudioPlayerPlaylistSlotCount(list, nodeId),
+  );
+  list.classList.toggle("is-single", slotCount <= 1 && items.length <= 1);
+  const playingId = normalizeNodeGraphSampleId
+    ? normalizeNodeGraphSampleId(nodeGraphPatchNode(nodeId)?.sample?.id)
+    : String(nodeGraphPatchNode(nodeId)?.sample?.id || "").trim();
+  const playingIndex = nodeGraphAudioPlayerPlaylistPlayingIndex(nodeId, playingId);
+  let start = Number(list.dataset.plViewStart) || 0;
+  if (items.length <= slotCount) {
+    start = 0;
+  } else if (followPlaying && (playingIndex < start || playingIndex >= start + slotCount)) {
+    start = playingIndex;
+  }
+  start = nodeGraphAudioPlayerPlaylistClampViewStart(start, items.length, slotCount);
+  list.dataset.plViewStart = String(start);
+  const selected = Number.isInteger(pl.selectedIndex) ? pl.selectedIndex : pl.index;
+  const settings = typeof nodeGraphPhosphorWaveformSettingsForNode === "function"
+    ? nodeGraphPhosphorWaveformSettingsForNode(nodeId)
+    : null;
+  const fadeAmt = settings?.playlistFade;
+  const rows = list.querySelectorAll(":scope > .node-music-player-pl-row");
+  for (let slot = 0; slot < rows.length; slot += 1) {
+    const row = rows[slot];
+    const index = start + slot;
+    const item = items[index];
+    row.dataset.playlistIndex = String(index);
+    row.style.setProperty(
+      "--node-music-player-pl-fade",
+      String(nodeGraphAudioPlayerPlaylistSlotFade(index, playingIndex, slotCount, fadeAmt)),
+    );
+    if (!item) {
+      row.classList.add("is-empty");
+      row.classList.remove("is-played", "is-play-next");
+      row.dataset.slot = "empty";
+      row.tabIndex = -1;
+      row.setAttribute("aria-hidden", "true");
+      row.dataset.active = "false";
+      row.dataset.playing = "false";
+      row.dataset.queue = "";
+      row.dataset.sampleId = "";
+      row.title = "";
+      const nameEmpty = row.querySelector(".node-music-player-pl-name");
+      const numEmpty = row.querySelector(".node-music-player-pl-num");
+      if (nameEmpty) nameEmpty.textContent = "";
+      if (numEmpty) numEmpty.textContent = "";
+      continue;
+    }
+    row.classList.remove("is-empty");
+    delete row.dataset.slot;
+    row.tabIndex = 0;
+    row.removeAttribute("aria-hidden");
+    row.dataset.sampleId = item.sampleId;
+    row.dataset.active = index === selected ? "true" : "false";
+    const playedKeys = nodeGraphAudioPlayerPlaylistPlayedKeySet(pl);
+    const playingKey = nodeGraphAudioPlayerPlaylistItemKey(pl.playing);
+    const playNextKey = nodeGraphAudioPlayerPlaylistItemKey(pl.playNext);
+    const itemKey = nodeGraphAudioPlayerPlaylistItemKey(item);
+    const isPlaying = Boolean(itemKey) && itemKey === playingKey;
+    const isPlayNext = Boolean(itemKey) && itemKey === playNextKey && !isPlaying;
+    const isPlayed = Boolean(itemKey) && playedKeys.has(itemKey) && !isPlaying;
+    row.dataset.playing = isPlaying ? "true" : "false";
+    row.dataset.queue = isPlaying ? "playing" : (isPlayNext ? "next" : (isPlayed ? "played" : "unplayed"));
+    row.classList.toggle("is-played", isPlayed);
+    row.classList.toggle("is-play-next", isPlayNext);
+    const num = row.querySelector(".node-music-player-pl-num");
+    const name = row.querySelector(".node-music-player-pl-name");
+    if (num) {
+      const listNumber = Math.max(1, Math.round(Number(item.listNumber) || index + 1));
+      num.textContent = String(listNumber).padStart(2, "0");
+    }
+    if (name) {
+      name.textContent = nodeGraphAudioPlayerPlaylistFileName(item);
+    }
+    row.title = isPlayNext
+      ? "Play next (click to cancel)"
+      : (item.path || item.name || "Click to play next, double-click to play now");
+  }
+  return slotCount;
 }
 
 function nodeGraphAudioPlayerPlaylistMakeRowShell(index, { empty = false } = {}) {
@@ -1551,123 +2432,85 @@ function nodeGraphAudioPlayerPlaylistMakeRowShell(index, { empty = false } = {})
   return row;
 }
 
-function nodeGraphAudioPlayerPlaylistBindTrackRow(row, nodeId, item, index) {
-  row.dataset.sampleId = item.sampleId;
-  row.title = "Double-click to play";
-  row.addEventListener("dblclick", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
-    const sid = normalizeNodeGraphSampleId
-      ? normalizeNodeGraphSampleId(node?.sample?.id)
-      : String(node?.sample?.id || "").trim();
-    const already = Boolean(item.sampleId && sid && item.sampleId === sid);
-    const transport = Number(node?.params?.transport);
-    const playing = Number.isFinite(transport) ? transport >= 3 : false;
-    if (already && playing) {
-      nodeGraphAudioPlayerPlaylistSetFace(nodeId, "waveplay");
-      return;
+function nodeGraphAudioPlayerPlaylistTogglePlayNext(nodeId, index) {
+  const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  if (!node || node.type !== "audioPlayer") {
+    return;
+  }
+  const pl = nodeGraphAudioPlayerPlaylistEnsureQueues(nodeGraphAudioPlayerPlaylistForNode(nodeId));
+  const item = pl.items[index];
+  if (!item) {
+    return;
+  }
+  pl.selectedIndex = Math.max(0, Math.min(pl.items.length - 1, Math.round(Number(index) || 0)));
+  const key = nodeGraphAudioPlayerPlaylistItemKey(item);
+  const playingKey = nodeGraphAudioPlayerPlaylistItemKey(pl.playing);
+  if (!key || key === playingKey) {
+    node.playlist = pl;
+    nodeGraphAudioPlayerPlaylistRefreshUi(nodeId);
+    nodeGraphAudioPlayerPlaylistPersist(nodeId);
+    return;
+  }
+  if (nodeGraphAudioPlayerPlaylistItemKey(pl.playNext) === key) {
+    pl.playNext = null;
+    if (typeof setNodeGraphSampleStatus === "function") {
+      setNodeGraphSampleStatus(nodeId, "play next cleared");
     }
-    nodeGraphAudioPlayerPlaylistPlayIndex(nodeId, index, { autoplay: true });
-  });
-  row.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
-    if (!node) {
-      return;
+  } else {
+    pl.playNext = item;
+    if (typeof setNodeGraphSampleStatus === "function") {
+      setNodeGraphSampleStatus(nodeId, `play next: ${nodeGraphAudioPlayerPlaylistFileName(item)}`);
     }
-    const sid = normalizeNodeGraphSampleId
-      ? normalizeNodeGraphSampleId(node?.sample?.id)
-      : String(node?.sample?.id || "").trim();
-    if (item.sampleId && sid && item.sampleId === sid) {
-      nodeGraphAudioPlayerPlaylistSetFace(nodeId, "waveplay");
-      return;
-    }
-    const cur = nodeGraphAudioPlayerPlaylistForNode(nodeId);
-    cur.selectedIndex = index;
-    node.playlist = cur;
-    const listEl = row.closest("[data-music-player-list]");
-    if (listEl) {
-      listEl.querySelectorAll(".node-music-player-pl-row").forEach((el) => {
-        el.dataset.active = el.dataset.playlistIndex === String(index) ? "true" : "false";
-      });
-    }
-  });
-  row.addEventListener("pointerdown", (event) => {
-    event.stopPropagation();
-  });
+  }
+  node.playlist = pl;
+  nodeGraphAudioPlayerPlaylistRefreshUi(nodeId);
+  nodeGraphAudioPlayerPlaylistPersist(nodeId);
+}
+
+function nodeGraphAudioPlayerPlaylistActivateRow(nodeId, index, { play = false } = {}) {
+  if (!play) {
+    return;
+  }
+  const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  if (!node) {
+    return;
+  }
+  const pl = nodeGraphAudioPlayerPlaylistEnsureQueues(nodeGraphAudioPlayerPlaylistForNode(nodeId));
+  const item = pl.items[index];
+  if (!item) {
+    return;
+  }
+  const same = pl.playing && nodeGraphAudioPlayerPlaylistItemKey(item) === nodeGraphAudioPlayerPlaylistItemKey(pl.playing);
+  if (same && nodeGraphAudioPlayerPlaylistIsAudible(nodeId)) {
+    nodeGraphAudioPlayerPlaylistSetFace(nodeId, "waveplay");
+    return;
+  }
+  nodeGraphAudioPlayerPlaylistPlayIndex(nodeId, index, { autoplay: true });
 }
 
 function nodeGraphAudioPlayerPlaylistRefreshUi(nodeId) {
+  if (typeof nodeGraphAudioPlayerPlaylistEnsureCurrentSample === "function") {
+    nodeGraphAudioPlayerPlaylistEnsureCurrentSample(nodeId, { persist: false, refresh: false });
+  }
   const section = document.querySelector(
     `.node-phosphor-waveform-display[data-node="${CSS.escape(String(nodeId || ""))}"]`,
   );
   if (!section) {
     return;
   }
-  const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
   const list = section.querySelector("[data-music-player-list]");
   if (list) {
     nodeGraphAudioPlayerPlaylistBindListResize(list, nodeId);
-    const visibleSlots = nodeGraphAudioPlayerPlaylistVisibleSlotCount(list);
-    const rowCount = Math.max(pl.items.length, visibleSlots);
-    const signature = `${pl.items.map((item) => item.sampleId).join("|")}#${rowCount}`;
-    const reuse = list.dataset.itemSignature === signature
-      && list.querySelectorAll(".node-music-player-pl-row").length === rowCount;
-    if (!reuse) {
-      list.dataset.itemSignature = signature;
-      list.replaceChildren();
-      const selected = Number.isInteger(pl.selectedIndex) ? pl.selectedIndex : pl.index;
-      const playingId = normalizeNodeGraphSampleId
-        ? normalizeNodeGraphSampleId(nodeGraphPatchNode(nodeId)?.sample?.id)
-        : String(nodeGraphPatchNode(nodeId)?.sample?.id || "").trim();
-      for (let index = 0; index < rowCount; index += 1) {
-        const item = pl.items[index];
-        if (item) {
-          const row = nodeGraphAudioPlayerPlaylistMakeRowShell(index);
-          const name = row.querySelector(".node-music-player-pl-name");
-          if (name) {
-            name.textContent = item.name;
-          }
-          row.dataset.active = index === selected ? "true" : "false";
-          row.dataset.playing = playingId && item.sampleId === playingId ? "true" : "false";
-          nodeGraphAudioPlayerPlaylistBindTrackRow(row, nodeId, item, index);
-          list.append(row);
-          continue;
-        }
-        list.append(nodeGraphAudioPlayerPlaylistMakeRowShell(index, { empty: true }));
-      }
-      nodeGraphAudioPlayerPlaylistApplyRowFade(section, nodeId);
-    } else {
-      const selected = Number.isInteger(pl.selectedIndex) ? pl.selectedIndex : pl.index;
-      const playingId = normalizeNodeGraphSampleId
-        ? normalizeNodeGraphSampleId(nodeGraphPatchNode(nodeId)?.sample?.id)
-        : String(nodeGraphPatchNode(nodeId)?.sample?.id || "").trim();
-      list.querySelectorAll(".node-music-player-pl-row").forEach((row) => {
-        if (row.dataset.slot === "empty") {
-          return;
-        }
-        const index = Number(row.dataset.playlistIndex);
-        const item = pl.items[index];
-        row.dataset.active = index === selected ? "true" : "false";
-        row.dataset.playing = playingId && item?.sampleId === playingId ? "true" : "false";
-        const name = row.querySelector(".node-music-player-pl-name");
-        if (name && item) {
-          name.textContent = item.name;
-        }
-      });
-      nodeGraphAudioPlayerPlaylistApplyRowFade(section, nodeId);
-    }
+    nodeGraphAudioPlayerPlaylistPaintSlots(nodeId, list, { followPlaying: true });
+    window.requestAnimationFrame(() => {
+      nodeGraphAudioPlayerPlaylistPaintSlots(nodeId, list, { followPlaying: false });
+    });
   }
   nodeGraphAudioPlayerPlaylistSyncNowSong(nodeId);
-  nodeGraphAudioPlayerPlaylistRefreshRamDebug(nodeId);
+  if (nodeGraphAudioPlayerFaceShowsPlayinfo(section)) {
+    nodeGraphAudioPlayerPlaylistRefreshRamDebug(nodeId);
+  }
   nodeGraphAudioPlayerPlaylistSyncTransport(nodeId);
-  nodeGraphAudioPlayerPlaylistSyncScrubber(nodeId);
-  nodeGraphAudioPlayerPlaylistPaintWaves(nodeId);
-  window.requestAnimationFrame(() => {
-    nodeGraphAudioPlayerPlaylistPaintWaves(nodeId);
-  });
 }
 
 function nodeGraphAudioPlayerPlaylistRefreshRamDebug(nodeId) {
@@ -1941,28 +2784,14 @@ function nodeGraphAudioPlayerVideoscopePaint(section) {
   context.fillStyle = bg;
   context.fillRect(0, 0, width, height);
   const channels = nodeGraphAudioPlayerVideoscopeChannels(nodeId);
-  if (!channels) {
-    if (typeof drawNodeGraphPhosphorWaveformPlaceholder === "function") {
-      drawNodeGraphPhosphorWaveformPlaceholder(
-        context,
-        width,
-        height,
-        "No sample loaded",
-        pixelRatio,
-        settings,
-      );
-    }
-    return;
-  }
-  const win = nodeGraphAudioPlayerVideoscopeWindow(nodeId, channels.frames, channels.sampleRate);
   if (face === "vsxy") {
-    nodeGraphAudioPlayerVideoscopePaintXy(context, width, height, channels, win, settings);
+    nodeGraphAudioPlayerVideoscopePaintXy(context, width, height, channels, settings, nodeId);
   } else {
-    nodeGraphAudioPlayerVideoscopePaintLr(context, width, height, channels, win, settings);
+    nodeGraphAudioPlayerVideoscopePaintLr(context, width, height, channels, settings, nodeId);
   }
 }
 
-function nodeGraphAudioPlayerVideoscopePaintXy(context, width, height, channels, win, settings) {
+function nodeGraphAudioPlayerVideoscopePaintXy(context, width, height, channels, settings, nodeId) {
   const axis = typeof nodeGraphPhosphorWaveformLineColor === "function"
     ? nodeGraphPhosphorWaveformLineColor(settings, 57, 0.28)
     : "rgba(80, 160, 130, 0.28)";
@@ -1977,6 +2806,19 @@ function nodeGraphAudioPlayerVideoscopePaintXy(context, width, height, channels,
   context.moveTo(0, height * 0.5);
   context.lineTo(width, height * 0.5);
   context.stroke();
+  if (!channels) {
+    const cx = width * 0.5;
+    const cy = height * 0.5;
+    context.strokeStyle = axis;
+    context.beginPath();
+    context.moveTo(cx - 4, cy);
+    context.lineTo(cx + 4, cy);
+    context.moveTo(cx, cy - 4);
+    context.lineTo(cx, cy + 4);
+    context.stroke();
+    return;
+  }
+  const win = nodeGraphAudioPlayerVideoscopeWindow(nodeId, channels.frames, channels.sampleRate);
   const count = Math.max(1, win.end - win.start);
   const step = Math.max(1, Math.floor(count / Math.max(width, 256)));
   context.strokeStyle = ink;
@@ -2009,13 +2851,21 @@ function nodeGraphAudioPlayerVideoscopePaintXy(context, width, height, channels,
   context.stroke();
 }
 
-function nodeGraphAudioPlayerVideoscopePaintLr(context, width, height, channels, win, settings) {
+function nodeGraphAudioPlayerVideoscopePaintLr(context, width, height, channels, settings, nodeId) {
   const mid = Math.round(height * 0.5);
   const line = typeof nodeGraphPhosphorWaveformLineColor === "function"
     ? nodeGraphPhosphorWaveformLineColor(settings, 57, 0.28)
     : "rgba(80, 160, 130, 0.28)";
   context.fillStyle = line;
   context.fillRect(0, mid, width, 1);
+  const leftZero = Math.round(mid * 0.5);
+  const rightZero = mid + Math.round((height - mid) * 0.5);
+  context.fillRect(0, leftZero, width, 1);
+  context.fillRect(0, rightZero, width, 1);
+  if (!channels) {
+    return;
+  }
+  const win = nodeGraphAudioPlayerVideoscopeWindow(nodeId, channels.frames, channels.sampleRate);
   const paintPane = (channel, top, paneH, color) => {
     const center = top + paneH * 0.5;
     const amp = paneH * 0.42;
@@ -2065,10 +2915,6 @@ function nodeGraphAudioPlayerVideoscopePaintLr(context, width, height, channels,
     const original = syncNodeGraphAudioPlayerRuntimeStatus;
     function wrapped(message = {}) {
       original(message);
-      const nodeId = String(message.nodeId || (message.nodeIds && message.nodeIds[0]) || "");
-      if (nodeId) {
-        nodeGraphAudioPlayerPlaylistOnRuntimeStatus(nodeId, message.reason || "");
-      }
     }
     wrapped.__playlistWrapped = true;
     // Global function reassignment

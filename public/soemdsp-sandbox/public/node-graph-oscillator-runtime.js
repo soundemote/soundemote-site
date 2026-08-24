@@ -46,6 +46,33 @@ function nodeGraphSineCosWavetableSample(phaseRadians, frequency, amplitude, sam
   };
 }
 
+/** Expand a sin/cos pair into SinCos4 jacks A–D. Unused taps are 0. */
+function nodeGraphSinCos4FromPair(sin, cos, mode) {
+  const s = Number(sin) || 0;
+  const c = Number(cos) || 0;
+  const m = Math.max(0, Math.min(5, Math.round(Number(mode) || 0)));
+  const z = 0;
+  if (m === 0) {
+    return { A: s, B: z, C: z, D: z };
+  }
+  if (m === 1) {
+    return { A: c, B: z, C: z, D: z };
+  }
+  if (m === 2) {
+    return { A: s, B: c, C: z, D: z };
+  }
+  if (m === 3) {
+    return { A: s, B: -s, C: z, D: z };
+  }
+  if (m === 4) {
+    const k = Math.sqrt(3) * 0.5;
+    const b = s * -0.5 + c * k;
+    const d = s * -0.5 - c * k;
+    return { A: s, B: b, C: d, D: z };
+  }
+  return { A: s, B: c, C: -s, D: -c };
+}
+
 function nextNodeGraphNoiseSample(runtime, nodeId) {
   const seed = (Math.imul(1664525, runtime.noiseSeeds.get(nodeId) || 0x12345678) + 1013904223) >>> 0;
   runtime.noiseSeeds.set(nodeId, seed);
@@ -148,10 +175,6 @@ function nodeGraphPolyBlepSquareDirectional(phaseCycle, phaseIncrement) {
 function nodeGraphOscillatorWaveformSample(runtime, nodeId, phase, phaseIncrement, waveform) {
   const phaseDelta = Number(phaseIncrement) || 0;
   const phaseStopped = Math.abs(phaseDelta) <= 1e-12;
-  runtime.oscillatorStoppedSamples ||= new Map();
-  if (phaseStopped && runtime.oscillatorStoppedSamples.has(nodeId)) {
-    return runtime.oscillatorStoppedSamples.get(nodeId) || 0;
-  }
   const phaseCycle = wrapNodeSliderValue(phase / (Math.PI * 2), 0, 1);
   let sample = 0;
   switch (Math.round(Number(waveform) || 0)) {
@@ -174,11 +197,6 @@ function nodeGraphOscillatorWaveformSample(runtime, nodeId, phase, phaseIncremen
     default:
       sample = 1 - phaseCycle * 2;
       break;
-  }
-  if (phaseStopped) {
-    runtime.oscillatorStoppedSamples.set(nodeId, sample);
-  } else {
-    runtime.oscillatorStoppedSamples.delete(nodeId);
   }
   return sample;
 }

@@ -15,7 +15,8 @@ const nodeGraphNodeLabels = Object.freeze({
   polyBlep: "PolyBLEP",
   blit: "BLIT",
   archimedes: "Archimedes",
-  sineWavetable: "SinCos",
+  sineWavetable: "SinCos4",
+  sinCos: "SinCos",
   aliasSine: "Alias Sine",
   robinSinusoid: "RobinSinusoid",
   phoneTone: "Phone Tone",
@@ -23,6 +24,7 @@ const nodeGraphNodeLabels = Object.freeze({
   gpuAdditiveOsc: "GPU Additive",
   ellipsoid: "RoundShape",
   ellipsoidOsc: "Ellipsoid",
+  basicShape: "BasicShape",
   clock: "Clock",
   transport: "Master Clock",
   clockDivider: "Clock Divider",
@@ -191,7 +193,7 @@ const nodeGraphNodeLabels = Object.freeze({
   slewLimiter: "Slew",
   inertialFilter: "Inertial Filter",
   midSideEncode: "Mid/Side",
-  quadrature: "Quadrature",
+  quadrature: "Hilbert Pair",
   hilbert: "Hilbert",
   lookaheadLimiter: "Limiter",
   sampleHold: "Sample & Hold",
@@ -218,9 +220,9 @@ const nodeGraphNodeLabels = Object.freeze({
   image: "Image",
   canvas: "Canvas",
   visualOscilloscope: "Display",
-  traceDisplay: "1D Trace",
-  traceDisplayStereo: "1D Trace Stereo",
-  dotOscilloscope: "Phosphor Dot",
+  traceDisplay: "1D Waterfall Mono",
+  traceDisplayStereo: "1D Waterfall Stereo",
+  traceDisplayXyz: "1D Waterfall XYZ",
   oscilloscopeBank: "Oscilloscope Bank",
   videoscope: "Videoscope",
   asciiscope: "Asciiscope",
@@ -232,10 +234,12 @@ const nodeGraphNodeLabels = Object.freeze({
   lineBurnOscilloscope: "1D Phosphor",
   scope2d: "2D Phosphor",
   scope2dTrace: "2D Trace",
+  vectorDot: "Vector Dot",
   vectorRgb: "Vector RGB",
   rasterRgb: "Pixel Grid",
   gradientVectorscope: "Gradient Vectorscope",
-  traceXyz: "XYZ Trace",
+  traceXyz: "1D Waterfall XYZ",
+  traceRgb: "1D Waterfall RGB",
   phosphorLight: "2D Phosphor",
   speakerProtection: "Speaker Protection",
   speakerProtector2: "Speaker Protector 2.0",
@@ -534,6 +538,79 @@ function nodeGraphTSeriesSingleModuleDefinition() {
   };
 }
 
+/** Knob / Toggle / Momentary: Min/Max, Smooth time/algo, Mouse vs Smoothed face. */
+function nodeGraphControllerRangeSmoothingParameters() {
+  return [
+    {
+      defaultValue: "0",
+      key: "rangeMin",
+      label: "Min",
+      max: "10",
+      mid: "0",
+      min: "-10",
+      nonlinearSlider: true,
+      step: "any",
+      linearSmoothing: false,
+      tooltip: "Output range low. Default 0.",
+    },
+    {
+      defaultValue: "1",
+      key: "rangeMax",
+      label: "Max",
+      max: "10",
+      mid: "1",
+      min: "-10",
+      nonlinearSlider: true,
+      step: "any",
+      linearSmoothing: false,
+      tooltip: "Output range high. Default 1.",
+    },
+    {
+      defaultValue: "0.0333",
+      key: "smoothingSeconds",
+      label: "Smooth",
+      max: "10",
+      mid: "0.1",
+      min: "0",
+      step: "any",
+      unit: "s",
+      // Time-constant params must not be smoothed (app-wide). Type L + source off.
+      linearSmoothing: false,
+      smoothingMode: "off",
+      smoothingType: "linear",
+      tooltip: "Time the output takes to reach the mouse target. 0 = snap.",
+    },
+    {
+      choices: ["Lin", "1P", "2P", "Papoulis"],
+      defaultValue: "0",
+      displayChoices: true,
+      divideChoicesVisibly: true,
+      key: "smoothingType",
+      label: "Algo",
+      linearSmoothing: false,
+      max: "3",
+      mid: "0",
+      min: "0",
+      step: "1",
+      tooltip: "Lin = constant-time ramp. 1P / 2P = exponential. Papoulis = 3rd-order settle.",
+    },
+    {
+      choices: ["Mouse", "Smoothed"],
+      defaultValue: "0",
+      displayChoices: true,
+      divideChoicesVisibly: true,
+      key: "displaySource",
+      label: "Display",
+      linearSmoothing: false,
+      max: "1",
+      mid: "0",
+      min: "0",
+      step: "1",
+      tooltip: "Mouse = target the pointer set. Smoothed = actual output chasing that target.",
+    },
+  ];
+}
+
 const nodeGraphModuleDefinitions = (
   typeof finalizeNodeGraphModuleDefinitionsChrome === "function"
     ? finalizeNodeGraphModuleDefinitionsChrome
@@ -541,11 +618,11 @@ const nodeGraphModuleDefinitions = (
 )({
   audioInput: {
     planRole: "source",
-    inputAliases: { In: "Mono", M: "Mono", L: "Left", R: "Right" },
-    inputLabels: { Mono: "M", Left: "L", Right: "R" },
-    inputs: ["Mono", "Left", "Right"],
+    chrome: NodeGraphModuleChromeLayout.LayoutA,
+    customDisplayArea: true,
+    displayHeightGu: 2,
     outputAliases: { Out: "Mono", M: "Mono", L: "Left", R: "Right" },
-    outputLabels: { Mono: "M", Left: "L", Right: "R" },
+    outputLabels: { Mono: "Mono", Left: "Left", Right: "Right" },
     outputs: ["Mono", "Left", "Right"],
     parameters: [
       {
@@ -561,17 +638,6 @@ const nodeGraphModuleDefinitions = (
         smoothingMode: "internal",
         smoothingSeconds: 0.0333,
         modClamp: false
-      },
-      {
-        defaultValue: "1",
-        key: "seed",
-        label: "Seed",
-        max: "99999",
-        maxDigits: 5,
-        mid: "1",
-        min: "0",
-        nonlinearSlider: false,
-        step: "1"
       },
     ]
   },
@@ -795,6 +861,10 @@ const nodeGraphModuleDefinitions = (
   polyBlep: {
     planRole: "source",
     displayType: "lineBurn",
+    // New PolyBLEP faces start with Sync on (one cycle stretched full-width).
+    defaultDisplaySettings: {
+      sourceSync: true,
+    },
     displayModes: [
       { key: "lineBurn", renderer: "lineBurn", source: { value: "Wave Out" } },
     ],
@@ -815,7 +885,7 @@ const nodeGraphModuleDefinitions = (
     outputs: ["Saw", "Ramp", "Square", "Tri", "Sine", "Wave Out"],
     parameters: [
       {
-        choices: ["Saw", "Ramp", "Square", "Triangle", "Sine", "Noise"],
+        choices: ["Trisaw", "Saw", "Ramp", "Square", "Triangle", "Sine", "Center Square", "Pulse", "Noise"],
         defaultValue: "0",
         displayChoices: true,
         divideChoicesVisibly: true,
@@ -823,8 +893,8 @@ const nodeGraphModuleDefinitions = (
         kind: "waveform",
         label: "Waveform",
         linearSmoothing: false,
-        max: "5",
-        mid: "2",
+        max: "8",
+        mid: "3",
         min: "0",
         step: "1"
       },
@@ -836,6 +906,10 @@ const nodeGraphModuleDefinitions = (
         max: "20000",
         mid: "440",
         min: "0",
+        // World time by default; self stash 0.0333 s + 1P when switched to Self.
+        smoothingMode: "global",
+        smoothingSeconds: 0.0333,
+        smoothingType: "onePole",
         step: "any",
         unit: "Hz",
         tooltip:
@@ -852,6 +926,20 @@ const nodeGraphModuleDefinitions = (
         step: "0.01",
         unit: "cycle",
         wraparound: true
+      },
+      {
+        curveAmount: "-0.9",
+        defaultValue: "0.5",
+        key: "shape",
+        label: "PWM",
+        max: "1",
+        maxDigits: 5,
+        mid: "0.5",
+        min: "0",
+        nonlinearSlider: true,
+        sliderCurve: "bipolarRational",
+        step: "0",
+        tooltip: "Pulse width / morph for Trisaw, Center Square, and Pulse. Ignored by Saw / Ramp / Square / Tri / Sine / Noise. Bipolar rational skew −0.9 (finer near center)."
       },
       {
         defaultValue: "1",
@@ -946,22 +1034,82 @@ const nodeGraphModuleDefinitions = (
   sineWavetable: {
     planRole: "source",
     displayType: "trace",
-    // Amp is the parameter slider only (no Amplitude CV jack).
-    inputs: ["0.1V/Oct", "Freq"],
-    inputAliases: {"0.1V": "0.1V/Oct",
-      "0.1v": "0.1V/Oct",
-      freq: "Freq",
-      Freq: "f", Frequency: "f", F: "f", "ƒ": "f",
-      Freq: "f", Frequency: "f", F: "f", "ƒ": "f",
-      Freq: "f", Frequency: "f", F: "f", "ƒ": "f"},
+    // Same left-column jacks as PolyBLEP / BLIT (Phase + Amp are knobs only).
+    inputs: ["Reset", "0.1V/Oct", "Increment", "f"],
     inputLabels: {
-      "0.1V/Oct": "0.1V"
+      "0.1V/Oct": "0.1V",
+      Increment: "Inc.",
+      f: "ƒ",
     },
-    outputAliases: {
-      Cos: "cos",
-      Sin: "sin"
+    outputs: ["A", "B", "C", "D"],
+    parameters: [
+      {
+        choices: ["sine", "cosine", "sincos", "antiphase", "3-phase", "4-phase"],
+        defaultValue: "2",
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        key: "mode",
+        label: "Mode",
+        linearSmoothing: false,
+        max: "5",
+        mid: "2",
+        min: "0",
+        step: "1",
+        tooltip:
+          "How many phase taps. sine / cosine: A only. sincos: A=sin B=cos. antiphase: A and −A. 3-phase: 0°/120°/240°. 4-phase: 0°/90°/180°/270°. Unused A–D sit at 0.",
+      },
+      {
+        defaultValue: "0",
+        key: "phase",
+        kind: "phase",
+        label: "Phase",
+        max: "1",
+        mid: "0.5",
+        min: "0",
+        step: "0.01",
+        unit: "cycle",
+        wraparound: true
+      },
+      {
+        bipolar: false,
+        defaultValue: "100",
+        key: "freq",
+        kind: "frequency",
+        label: "Freq",
+        max: "20000",
+        mid: "440",
+        min: "0",
+        step: "any",
+        tooltip:
+          "Hz. Parameter MOD is domain-add (base + CV). Set base 0 and wire Pitch Detector / Knob Bias for absolute Hz. Enable Bipolar in param settings for thru-zero FM (negative Hz = reverse phase).",
+        unit: "Hz",
+      },
+      {
+        defaultValue: "1",
+        key: "amp",
+        label: "Amplitude",
+        max: "1",
+        mid: "0.5",
+        min: "0",
+        nonlinearSlider: false,
+        step: "any"
+      },
+    ]
+  },
+  sinCos: {
+    planRole: "source",
+    displayType: "trace",
+    inputs: ["Reset", "0.1V/Oct", "Increment", "f"],
+    inputLabels: {
+      "0.1V/Oct": "0.1V",
+      Increment: "Inc.",
+      f: "ƒ",
     },
     outputs: ["sin", "cos"],
+    outputLabels: {
+      sin: "Sin",
+      cos: "Cos",
+    },
     parameters: [
       {
         defaultValue: "0",
@@ -976,8 +1124,6 @@ const nodeGraphModuleDefinitions = (
         wraparound: true
       },
       {
-        // Domain-add MOD: effective = base + Σ(CV). Base 0 + Pitch Detector Hz tracks exactly.
-        // Bipolar (param settings): signed MOD for thru-zero FM.
         bipolar: false,
         defaultValue: "100",
         key: "freq",
@@ -1388,12 +1534,12 @@ const nodeGraphModuleDefinitions = (
         key: "frequency",
         kind: "frequency",
         label: "Clock",
-        max: "20000",
+        max: "5000",
         mid: "20",
         min: "0",
         step: "any",
         unit: "Hz",
-        tooltip: "Orbit rate in Hz. Slider 0…20 kHz. Negative values reverse the orbit.",
+        tooltip: "Orbit rate in Hz. Slider 0…5000 Hz. Negative values reverse the orbit.",
       },
       { defaultValue: "0", key: "phase", kind: "phase", label: "Phase", max: "1", mid: "0.5", min: "0", step: "0.01", unit: "cycle", wraparound: true },
       {
@@ -1422,18 +1568,21 @@ const nodeGraphModuleDefinitions = (
   // Full multi-param ellipsoid oscillator (offset/shape/scale per axis).
   ellipsoidOsc: {
     planRole: "source",
-    displayType: "scope2d",
-    displaySignals: [
-      { key: "Mono", kind: "scalar" },
-      { key: "X", kind: "scalar" },
-      { key: "Y", kind: "scalar" },
-      { key: "X/Y", kind: "xy" },
-    ],
+    layout: "roundShape",
+    chrome: "LayoutA",
+    customDisplayArea: true,
+    displayType: "roundShapeFace",
+    displayHeightGu: 4,
+    spectrumCompanion: false,
     displayModes: [
-      { key: "xyBurn", label: "X/Y Phosphor", renderer: "scope2d", settingsSchema: "scope2d", source: { x: "X", y: "Y" } },
-      { key: "xyTrace", label: "X/Y Trace", renderer: "scope2dTrace", settingsSchema: "scope2dTrace", source: { x: "X", y: "Y" } },
+      {
+        key: "face",
+        label: "Face",
+        renderer: "roundShapeFace",
+        settingsSchema: "roundShapeFace",
+      },
     ],
-    defaultDisplayMode: "xyBurn",
+    defaultDisplayMode: "face",
     inputs: ["Reset", "0.1V/Oct", "Increment", "f"],
     inputLabels: {"0.1V/Oct": "0.1V",
       Increment: "Inc.",
@@ -1465,6 +1614,120 @@ const nodeGraphModuleDefinitions = (
         step: "any"
       },
     ]
+  },
+  // Naive sine/tri/saw/square modulator (no anti-aliasing). Type is basicShape
+  // because `osc` is already the Open Sound Control module.
+  // Face: cheap 1D one-cycle + phase dot (RoundShape family, not phosphor).
+  basicShape: {
+    planRole: "source",
+    layout: "basicShape",
+    chrome: "LayoutA",
+    customDisplayArea: true,
+    displayType: "basicShapeFace",
+    displayHeightGu: 4,
+    spectrumCompanion: false,
+    displayModes: [
+      {
+        key: "face",
+        label: "Face",
+        renderer: "basicShapeFace",
+        settingsSchema: "basicShapeFace",
+      },
+    ],
+    defaultDisplayMode: "face",
+    inputs: ["Reset", "0.1V/Oct", "Increment", "f"],
+    inputLabels: {
+      "0.1V/Oct": "0.1V",
+      Increment: "Inc.",
+      f: "ƒ",
+    },
+    outputAliases: {
+      Out: "Wave Out",
+      Wave: "Wave Out",
+    },
+    outputLabels: {
+      "Wave Out": "Wave",
+    },
+    outputs: ["Sine", "Tri", "Saw", "Square", "Ramp", "Trisaw", "Center Square", "Wave Out"],
+    parameters: [
+      {
+        choices: ["Sine", "Triangle", "Saw", "Square", "Ramp", "Trisaw", "Center Square"],
+        defaultValue: "0",
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        key: "waveform",
+        kind: "waveform",
+        label: "Waveform",
+        linearSmoothing: false,
+        max: "6",
+        mid: "0",
+        min: "0",
+        step: "1",
+      },
+      {
+        choices: ["Clock(Ph)", "CounterClock(Ph)", "Clock(T)", "CounterClock(T)"],
+        defaultValue: "1",
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        key: "motion",
+        label: "Motion",
+        linearSmoothing: false,
+        max: "3",
+        mid: "1",
+        min: "0",
+        step: "1",
+        tooltip: "Ph = running phasor. T = simulation time. Clock vs CounterClock flips direction.",
+      },
+      {
+        defaultValue: "1",
+        key: "frequency",
+        kind: "frequency",
+        label: "Clock",
+        max: "5000",
+        mid: "20",
+        min: "0",
+        step: "any",
+        unit: "Hz",
+        tooltip: "Rate in Hz. Slider 0…5000 Hz. Negative values reverse.",
+      },
+      {
+        defaultValue: "0",
+        key: "phase",
+        kind: "phase",
+        label: "Phase",
+        max: "1",
+        mid: "0.5",
+        min: "0",
+        step: "0.01",
+        unit: "cycle",
+        wraparound: true,
+      },
+      {
+        curveAmount: "-0.9",
+        defaultValue: "0.5",
+        key: "shape",
+        label: "PWM",
+        max: "1",
+        maxDigits: 5,
+        mid: "0.5",
+        min: "0",
+        nonlinearSlider: true,
+        sliderCurve: "bipolarRational",
+        step: "0",
+        tooltip: "Pulse width / morph for Square, Center Square, and Trisaw. 0.5 = centered / 50%. Other waves ignore this. Bipolar rational skew −0.9 (finer near center).",
+      },
+      {
+        defaultValue: "1",
+        key: "amplitude",
+        label: "Amplitude",
+        max: "1",
+        mid: "1",
+        min: "0",
+        nonlinearSlider: true,
+        step: "any",
+        tooltip: "Output scale.",
+      },
+    ],
   },
   spiral: {
     planRole: "source",
@@ -1584,7 +1847,7 @@ const nodeGraphModuleDefinitions = (
       { key: "Out", kind: "scalar" },
     ],
     displayModes: [
-      { key: "trace", label: "Trace", renderer: "trace", settingsSchema: "trace", source: { value: "Out" } },
+      { key: "trace", label: "Waterfall", renderer: "trace", settingsSchema: "trace", source: { value: "Out" } },
     ],
     defaultDisplayMode: "trace",
     inputs: ["Reset"],
@@ -1978,7 +2241,7 @@ const nodeGraphModuleDefinitions = (
       { key: "Pitch", kind: "scalar" },
     ],
     displayModes: [
-      { key: "trace", label: "Trace", renderer: "trace", settingsSchema: "trace", source: { value: "CV" } },
+      { key: "trace", label: "Waterfall", renderer: "trace", settingsSchema: "trace", source: { value: "CV" } },
       { key: "pitchTrace", label: "Pitch", renderer: "trace", settingsSchema: "trace", source: { value: "Pitch" } },
     ],
     defaultDisplayMode: "trace",
@@ -2494,9 +2757,9 @@ const nodeGraphModuleDefinitions = (
         defaultValue: "3",
         min: "0",
         mid: "3",
-        max: "7",
+        max: "10",
         step: "1",
-        tooltip: "L-system rewrite depth (0–7). Higher = denser self-similar path; cost grows fast."
+        tooltip: "L-system rewrite depth (0–10 on the slider; engine hard-caps at 100). Higher = denser self-similar path; cost grows fast."
       },
       {
         key: "angle",
@@ -2512,13 +2775,27 @@ const nodeGraphModuleDefinitions = (
       {
         key: "direction",
         label: "Direction",
-        defaultValue: "1",
+        defaultValue: "0",
         min: "-1",
         mid: "0",
         max: "1",
         step: "0.01",
         tooltip:
           "Path walk morph (−1…1) via basic trisaw: −1 reverse at 1×, 0 bidirectional (triangle ping-pong), +1 forward loop. Continuous between those shapes."
+      },
+      {
+        defaultValue: "0",
+        key: "phase",
+        kind: "phase",
+        label: "Phase",
+        max: "1",
+        mid: "0.5",
+        min: "0",
+        step: "0.01",
+        unit: "cycle",
+        wraparound: true,
+        tooltip:
+          "Path-walk phase offset in cycles (0…1). Added to the free-running Frequency phasor each sample before Direction morph.",
       },
       {
         key: "spin",
@@ -3047,6 +3324,9 @@ const nodeGraphModuleDefinitions = (
     planRole: "source",
     displayType: "vectorDot",
     displayRenderer: "vectorDot",
+    displayModes: [
+      { key: "vectorDot", label: "Vector Dot", renderer: "vectorDot", source: { value: "Digital Out" } },
+    ],
     inputs: ["Reset"],
     outputAliases: {
       Out: "Digital Out",
@@ -3065,7 +3345,7 @@ const nodeGraphModuleDefinitions = (
         key: "rate",
         kind: "frequency",
         label: "Rate",
-        max: "40",
+        max: "100",
         maxDigits: 5,
         mid: "2",
         min: "0",
@@ -3440,6 +3720,13 @@ const nodeGraphModuleDefinitions = (
   t10: nodeGraphTSeriesModuleDefinition(10),
   gain: {
     planRole: "processor",
+    displayType: "trace",
+    spectrumCompanion: false,
+    displayModes: [
+      { key: "trace", label: "Waterfall", renderer: "trace", settingsSchema: "trace" },
+    ],
+    defaultDisplayMode: "trace",
+    stereoTracePorts: { left: "Left", right: "Right" },
     inputAliases: { Mono: "In" },
     inputLabels: { In: "Mono" },
     inputs: ["In", "Left", "Right"],
@@ -3520,6 +3807,13 @@ const nodeGraphModuleDefinitions = (
   // Shop-hidden legacy alias of gain (same surface).
   gainBias: {
     planRole: "processor",
+    displayType: "trace",
+    spectrumCompanion: false,
+    displayModes: [
+      { key: "trace", label: "Waterfall", renderer: "trace", settingsSchema: "trace" },
+    ],
+    defaultDisplayMode: "trace",
+    stereoTracePorts: { left: "Left", right: "Right" },
     inputAliases: { Mono: "In" },
     inputLabels: { In: "Mono" },
     inputs: ["In", "Left", "Right"],
@@ -4219,7 +4513,7 @@ const nodeGraphModuleDefinitions = (
         bipolar: false,
         defaultValue: "0",
         // Hidden control state — face is the only UI; no param-out twin of Bias.
-        // Domain range follows Max + Polarity (synced at runtime).
+        // Domain range follows Min/Max (synced at runtime).
         hidden: true,
         parameterOutput: false,
         key: "offset",
@@ -4229,24 +4523,16 @@ const nodeGraphModuleDefinitions = (
         min: "0",
         nonlinearSlider: false,
         step: "any",
+        linearSmoothing: true,
+        smoothingMode: "internal",
+        smoothingSeconds: 0.0333,
+        smoothingType: "linear",
       },
-      {
-        defaultValue: "1",
-        key: "rangeMax",
-        label: "Max",
-        max: "1000000",
-        mid: "1",
-        min: "0",
-        nonlinearSlider: true,
-        step: "any",
-        tooltip:
-          "Bias range extent in domain units. Unipolar: 0…Max. Bipolar: −Max…+Max. Wire Bias into Freq (base 0) for absolute control.",
-      },
+      ...nodeGraphControllerRangeSmoothingParameters(),
       {
         choices: ["Unipolar", "Bipolar"],
         defaultValue: "0",
-        displayChoices: true,
-        divideChoicesVisibly: true,
+        hidden: true,
         key: "polarity",
         label: "Polarity",
         linearSmoothing: false,
@@ -4254,7 +4540,7 @@ const nodeGraphModuleDefinitions = (
         mid: "0",
         min: "0",
         step: "1",
-        tooltip: "Unipolar Bias 0…Max. Bipolar Bias −Max…+Max (thru-zero capable sources).",
+        tooltip: "Legacy. Bipolar with Min at 0 maps Bias to −Max…+Max.",
       },
     ],
   },
@@ -4328,15 +4614,20 @@ const nodeGraphModuleDefinitions = (
         nonlinearSlider: false,
         step: "1",
         choices: ["Off", "On"],
-        displayChoices: true
+        displayChoices: true,
+        linearSmoothing: true,
+        smoothingMode: "internal",
+        smoothingSeconds: 0.0333,
+        smoothingType: "linear",
       },
+      ...nodeGraphControllerRangeSmoothingParameters(),
     ]
   },
   momentaryButton: {
     planRole: "source",
     chrome: NodeGraphModuleChromeLayout.LayoutB,
-    defaultWidthGu: 4,
-    // Face 2gu + title row (22/28) ceils to 3gu outer — spawn 4×3.
+    defaultWidthGu: 5,
+    // Face 2gu + title row (22/28) ceils to 3gu outer — spawn 5×3.
     displayHeightGu: 2,
     displayType: "momentaryButtonFace",
     displayModes: [
@@ -4362,15 +4653,19 @@ const nodeGraphModuleDefinitions = (
         min: "0",
         nonlinearSlider: false,
         step: "1",
-        hidden: true
+        hidden: true,
+        choices: ["Off", "On"],
+        displayChoices: true,
+        linearSmoothing: true,
+        smoothingMode: "internal",
+        smoothingSeconds: 0.0333,
+        smoothingType: "linear",
       },
+      ...nodeGraphControllerRangeSmoothingParameters(),
     ]
   },
   pluginInput: {
     planRole: "source",
-    inputAliases: { In: "Mono", M: "Mono", L: "Left", R: "Right" },
-    inputLabels: { Mono: "M", Left: "L", Right: "R" },
-    inputs: ["Mono", "Left", "Right"],
     outputAliases: { Out: "Mono", M: "Mono", L: "Left", R: "Right" },
     outputLabels: { Mono: "M", Left: "L", Right: "R" },
     outputs: ["Mono", "Left", "Right"],
@@ -4396,10 +4691,13 @@ const nodeGraphModuleDefinitions = (
     displayType: "trace",
     spectrumCompanion: false,
     displayModes: [
-      { key: "trace", label: "Trace", renderer: "trace", settingsSchema: "trace" },
+      { key: "trace", label: "Waterfall", renderer: "trace", settingsSchema: "trace" },
     ],
     defaultDisplayMode: "trace",
+    bufferedInputs: ["Mono", "Left", "Right"],
+    stereoTracePorts: { left: "Left", right: "Right" },
     inputs: ["Mono", "Left", "Right"],
+    inputLabels: { Mono: "\u2192", Left: "\u2192", Right: "\u2192" },
     outputAliases: { Out: "Mono", M: "Mono", L: "Left", R: "Right" },
     outputLabels: {
       Mono: typeof NODE_GRAPH_THRU_SYMBOL === "string" ? NODE_GRAPH_THRU_SYMBOL : "\u2190",
@@ -8226,7 +8524,7 @@ const nodeGraphModuleDefinitions = (
     displayType: "trace",
     spectrumCompanion: false,
     displayModes: [
-      { key: "trace", label: "Trace", renderer: "trace", settingsSchema: "trace" },
+      { key: "trace", label: "Waterfall", renderer: "trace", settingsSchema: "trace" },
     ],
     defaultDisplayMode: "trace",
     stereoTracePorts: { left: "Mod L", right: "Mod R" },
@@ -8485,7 +8783,7 @@ const nodeGraphModuleDefinitions = (
     displayType: "trace",
     spectrumCompanion: false,
     displayModes: [
-      { key: "trace", label: "Trace", renderer: "trace", settingsSchema: "trace" },
+      { key: "trace", label: "Waterfall", renderer: "trace", settingsSchema: "trace" },
     ],
     defaultDisplayMode: "trace",
     stereoTracePorts: { left: "Mix L", right: "Mix R" },
@@ -8844,30 +9142,30 @@ const nodeGraphModuleDefinitions = (
       },
     ]
   },
-  // IIR quadrature: I reference, Q ≈ +90°. Dual bus Mid → MidI, Side/In → SideQ / I / Q.
-  // ~1 sample delay — not host-compensated.
+  // IIR Hilbert pair. In+Side → I (allpass, 1-sample align) + Q (~+90°).
+  // Mid → MidI (allpass align only). SideQ is a copy of Q.
   quadrature: {
     planRole: "processor",
     inputLabels: { In: "In", Mid: "Mid", Side: "Side" },
     inputTooltips: {
-      In: "Into I and Q. Added to Side.",
-      Side: "Into I and Q. Added to In.",
-      Mid: "Into MidI only.",
+      In: "Mixed with Side, then into I+S Allpass and I+S Hilbert.",
+      Side: "Mixed with In, then into I+S Allpass and I+S Hilbert.",
+      Mid: "Into MidI only (allpass + 1 sample). Not mixed with In or Side.",
     },
     inputs: ["In", "Mid", "Side"],
-    outputLabels: { I: "I", Q: "Q", MidI: "MidI", SideQ: "SideQ" },
+    outputLabels: { I: "I+S Allpass", Q: "I+S Hilbert", MidI: "M Allpass", SideQ: "I+S Hilbert (copy)" },
     outputTooltips: {
-      I: "In+Side. 1 sample to align with Q.",
-      Q: "+90° of In+Side.",
-      SideQ: "+90° of In+Side.",
-      MidI: "Mid. 1 sample to align with Q.",
+      I: "In+Side through the reference allpass. 1 sample delay so it lines up with I+S Hilbert.",
+      Q: "In+Side through the Hilbert allpass. ~90° shift relative to I+S Allpass.",
+      SideQ: "Copy of I+S Hilbert (same In+Side +90°). Extra jack for Mid/Side wiring.",
+      MidI: "Mid only through the reference allpass. 1 sample delay. Not mixed with In or Side.",
     },
     outputs: ["I", "Q", "MidI", "SideQ"],
     parameters: [
       nodeGraphOutputAmplitudeParam,
     ]
   },
-  // Mono Hilbert: +90° or −90° (Q of the IIR quadrature pair). One in, one out.
+  // Mono Hilbert: +90°, −90°, or 0° (I of the IIR quadrature pair). One in, one out.
   hilbert: {
     planRole: "processor",
     inputAliases: { Mono: "In" },
@@ -8878,19 +9176,20 @@ const nodeGraphModuleDefinitions = (
     outputs: ["Out"],
     parameters: [
       {
-        choices: ["+90", "-90"],
+        choices: ["+90°", "-90°", "0°"],
         defaultValue: "0",
         displayChoices: true,
         divideChoicesVisibly: true,
         key: "shift",
         label: "Shift",
         linearSmoothing: false,
-        max: "1",
+        max: "2",
         mid: "0",
         min: "0",
         nonlinearSlider: false,
         step: "1",
-        tooltip: "+90° = Hilbert Q. −90° = inverted Q. Use on Mid/Side Out Side, then add to Out Mid.",
+        tooltip:
+          "+90° = Hilbert Q. −90° = inverted Q. 0° = I (same delay as Q, not a raw dry bypass). Use on Mid/Side Out Side, then add to Out Mid.",
       },
       nodeGraphOutputAmplitudeParam,
     ]
@@ -9147,7 +9446,7 @@ const nodeGraphModuleDefinitions = (
     displayType: "trace",
     spectrumCompanion: false,
     displayModes: [
-      { key: "trace", label: "Trace", renderer: "trace", settingsSchema: "trace" },
+      { key: "trace", label: "Waterfall", renderer: "trace", settingsSchema: "trace" },
     ],
     defaultDisplayMode: "trace",
     stereoTracePorts: { left: "Left", right: "Right" },
@@ -9171,7 +9470,7 @@ const nodeGraphModuleDefinitions = (
     displayType: "trace",
     spectrumCompanion: false,
     displayModes: [
-      { key: "trace", label: "Trace", renderer: "trace", settingsSchema: "trace" },
+      { key: "trace", label: "Waterfall", renderer: "trace", settingsSchema: "trace" },
     ],
     defaultDisplayMode: "trace",
     stereoTracePorts: { left: "Left", right: "Right" },
@@ -9238,6 +9537,22 @@ const nodeGraphModuleDefinitions = (
     inputs: ["Reset", "Start Time", "End Time", "Speed", "Phase"],
     outputs: ["Mono", "Left", "Right", "Phase", "Trigger"],
     parameters: [
+      {
+        choices: ["Off", "Hermite"],
+        defaultValue: "0",
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        hidden: true,
+        key: "antialias",
+        label: "Antialias",
+        linearSmoothing: false,
+        max: "1",
+        mid: "0",
+        min: "0",
+        nonlinearSlider: false,
+        step: "1",
+        tooltip: "Fractional sample read. Off = linear. Hermite = 4-point cubic (smoother varispeed, more CPU).",
+      },
       { choices: ["Off (reset)", "Stop", "Pause", "Loop", "Play", "Loop All"], defaultValue: "4", displayChoices: true, divideChoicesVisibly: true, key: "transport", label: "Playmode", linearSmoothing: false, max: "5", mid: "2", min: "0", nonlinearSlider: false, step: "1" },
       { defaultValue: "1", key: "speed", label: "Speed", linearSmoothing: false, max: "8", maxDigits: 4, mid: "1", min: "0", step: "any", unit: "x" },
       // Slow reverse/forward nudge. No wrap. Internal 5 s linear (220500 samples @ 44.1 kHz).
@@ -9853,16 +10168,9 @@ const nodeGraphModuleDefinitions = (
       },
       {
         key: "monoTrace",
-        label: "1D Trace",
+        label: "1D Waterfall",
         renderer: "trace",
         settingsSchema: "trace",
-        source: { value: "In" }
-      },
-      {
-        key: "monoDot",
-        label: "Phosphor Dot",
-        renderer: "dot",
-        settingsSchema: "dot",
         source: { value: "In" }
       },
     ],
@@ -9896,14 +10204,14 @@ const nodeGraphModuleDefinitions = (
     ],
     visualSink: true
   },
-  // Same stereo Instant Trace face as Output (L/R colors, Meet blend, sync).
+  // Same stereo waterfall face as Output (L/R colors, Meet in the pen, sync).
   traceDisplayStereo: {
     planRole: "monitor",
     bufferedInputs: ["Left", "Right"],
     displayType: "trace",
     spectrumCompanion: false,
     displayModes: [
-      { key: "trace", label: "Trace", renderer: "trace", settingsSchema: "trace" },
+      { key: "trace", label: "Waterfall", renderer: "trace", settingsSchema: "trace" },
     ],
     defaultDisplayMode: "trace",
     stereoTracePorts: { left: "Left", right: "Right" },
@@ -9919,10 +10227,50 @@ const nodeGraphModuleDefinitions = (
     ],
     visualSink: true
   },
+  traceDisplayXyz: {
+    planRole: "monitor",
+    bufferedInputs: ["X", "Y", "Z"],
+    displayType: "trace",
+    spectrumCompanion: false,
+    displayModes: [
+      { key: "trace", label: "Waterfall", renderer: "trace", settingsSchema: "trace" },
+    ],
+    defaultDisplayMode: "trace",
+    xyzTracePorts: { X: "X", Y: "Y", Z: "Z" },
+    inputs: ["X", "Y", "Z"],
+    layout: "traceDisplay",
+    outputs: ["X", "Y", "Z"],
+    parameters: [],
+    visualInputs: [
+      { key: "traceDisplayXyzX", label: "X", port: "X" },
+      { key: "traceDisplayXyzY", label: "Y", port: "Y" },
+      { key: "traceDisplayXyzZ", label: "Z", port: "Z" },
+    ],
+    visualSink: true
+  },
+  vectorDot: {
+    planRole: "monitor",
+    bufferedInputs: ["In"],
+    displayType: "vectorDot",
+    displayRenderer: "vectorDot",
+    displayModes: [
+      { key: "vectorDot", label: "Vector Dot", renderer: "vectorDot", source: { value: "In" } },
+    ],
+    inputs: ["In"],
+    layout: "traceDisplay",
+    outputs: ["Thru"],
+    outputLabels: { Thru: "←" },
+    parameters: [],
+    visualInputs: [
+      { key: "vectorDot", label: "In", port: "In" },
+    ],
+    visualSink: true,
+  },
   dotOscilloscope: {
     planRole: "monitor",
     bufferedInputs: ["In"],
-    displayType: "dot",
+    displayType: "vectorDot",
+    displayRenderer: "vectorDot",
     inputs: ["In"],
     layout: "traceDisplay",
     // Dry passthrough so the face can sit in-line (In → face + Thru).
@@ -10756,18 +11104,13 @@ const nodeGraphModuleDefinitions = (
   traceXyz: {
     planRole: "monitor",
     bufferedInputs: ["X", "Y", "Z"],
-    displayHeightGu: 5,
-    displayType: "traceXyz",
+    displayType: "trace",
+    spectrumCompanion: false,
     displayModes: [
-      {
-        key: "traceXyz",
-        label: "XYZ Trace",
-        renderer: "traceXyz",
-        settingsSchema: "traceXyz",
-        source: { x: "X", y: "Y" },
-      },
+      { key: "trace", label: "Waterfall", renderer: "trace", settingsSchema: "trace" },
     ],
-    defaultDisplayMode: "traceXyz",
+    defaultDisplayMode: "trace",
+    xyzTracePorts: { X: "X", Y: "Y", Z: "Z" },
     inputs: ["X", "Y", "Z"],
     inputLabels: { X: "X", Y: "Y", Z: "Z" },
     layout: "traceDisplay",
@@ -10778,6 +11121,30 @@ const nodeGraphModuleDefinitions = (
       { key: "traceXyzX", label: "X", port: "X" },
       { key: "traceXyzY", label: "Y", port: "Y" },
       { key: "traceXyzZ", label: "Z", port: "Z" },
+    ],
+    visualSink: true,
+  },
+  // 1D Waterfall RGB — fixed R/G/B guns, blur 0…1 + Bright. RGB category.
+  traceRgb: {
+    planRole: "monitor",
+    bufferedInputs: ["R", "G", "B"],
+    displayType: "trace",
+    spectrumCompanion: false,
+    displayModes: [
+      { key: "trace", label: "Waterfall", renderer: "trace", settingsSchema: "traceRgb" },
+    ],
+    defaultDisplayMode: "trace",
+    rgbTracePorts: { R: "R", G: "G", B: "B" },
+    inputs: ["R", "G", "B"],
+    inputLabels: { R: "R", G: "G", B: "B" },
+    layout: "traceDisplay",
+    outputs: ["R", "G", "B"],
+    outputLabels: { R: "R", G: "G", B: "B" },
+    parameters: [],
+    visualInputs: [
+      { key: "traceRgbR", label: "R", port: "R" },
+      { key: "traceRgbG", label: "G", port: "G" },
+      { key: "traceRgbB", label: "B", port: "B" },
     ],
     visualSink: true,
   },
@@ -10927,16 +11294,15 @@ const nodeGraphModuleDefinitions = (
     // Single fixed face — no Trace/Spectrum Mode dropdown in Display Settings.
     spectrumCompanion: false,
     displayModes: [
-      { key: "trace", label: "Trace", renderer: "trace", settingsSchema: "trace" },
+      { key: "trace", label: "Waterfall", renderer: "trace", settingsSchema: "trace" },
     ],
     defaultDisplayMode: "trace",
+    bufferedInputs: ["Mono", "Left", "Right"],
+    stereoTracePorts: { left: "Left", right: "Right" },
     inputs: ["Mono", "Left", "Right"],
+    inputLabels: { Mono: "Mono", Left: "Left", Right: "Right" },
     outputAliases: { Out: "Mono", M: "Mono", L: "Left", R: "Right" },
-    outputLabels: {
-      Mono: typeof NODE_GRAPH_THRU_SYMBOL === "string" ? NODE_GRAPH_THRU_SYMBOL : "\u2190",
-      Left: typeof NODE_GRAPH_THRU_SYMBOL === "string" ? NODE_GRAPH_THRU_SYMBOL : "\u2190",
-      Right: typeof NODE_GRAPH_THRU_SYMBOL === "string" ? NODE_GRAPH_THRU_SYMBOL : "\u2190",
-    },
+    outputLabels: { Mono: "Mono", Left: "Left", Right: "Right" },
     outputs: ["Mono", "Left", "Right"],
     output: true,
     parameters: [
@@ -11070,7 +11436,7 @@ const nodeGraphModuleLayout = Object.freeze({
   /* IO strip hugs jack rows. Extra air is only UIDEV io-to-screen / io-to-sliders. */
   ioPaddingYGu: 0,
   ioRowGapGu: 0,
-  /* Match --node-signal-port-height at default --node-port-size-ratio (0.52). */
+  /* Match --node-signal-port-height = --node-port-diameter at size ratio 0.52. */
   ioRowHeightGu: 0.52,
   ioSectionMinHeightGu: 0.52,
   /* Side/top plate air vs grid (CSS --node-module-grid-inset). Bottom is half. */
@@ -11118,7 +11484,23 @@ function nodeGraphPatchNodeBufferedInputs(node) {
     : node?.type === "screenSpaceShader"
       ? normalizeNodeGraphScreenSpaceShader(node.screenSpaceShader).bufferedInputs
     : [];
-  return normalizeNodeGraphBufferedInputList([...metadataInputs, ...scriptInputs], nodeGraphPatchNodeInputPorts(node));
+  const extra = [];
+  const stereo = typeof nodeGraphModuleStereoTracePorts === "function"
+    ? nodeGraphModuleStereoTracePorts(node?.type)
+    : null;
+  if (stereo) {
+    extra.push(stereo.left, stereo.right);
+  }
+  const xyz = typeof nodeGraphModuleXyzTracePorts === "function"
+    ? nodeGraphModuleXyzTracePorts(node?.type)
+    : null;
+  if (xyz) {
+    extra.push(xyz.X, xyz.Y, xyz.Z);
+  }
+  return normalizeNodeGraphBufferedInputList(
+    [...metadataInputs, ...scriptInputs, ...extra],
+    nodeGraphPatchNodeInputPorts(node),
+  );
 }
 
 function nodeGraphModuleGraphInputs(type) {
@@ -11133,7 +11515,7 @@ function nodeGraphModuleIsGraphType(type) {
 }
 
 function nodeGraphModuleIsRealtimeOscillatorType(type) {
-  return type === "osc" || type === "polyBlep" || type === "sineWavetable" || type === "blit";
+  return type === "osc" || type === "polyBlep" || type === "sineWavetable" || type === "sinCos" || type === "blit";
 }
 
 /**

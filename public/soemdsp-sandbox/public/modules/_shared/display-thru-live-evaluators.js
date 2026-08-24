@@ -33,7 +33,13 @@
     "traceDisplayStereo left",
     "traceDisplayStereo right",
   );
-  nodeGraphLiveModuleEvaluators.dotOscilloscope = thruFrom("In", "dotOscilloscope in");
+  nodeGraphLiveModuleEvaluators.traceDisplayXyz = ({ runtime, nodeId, mixInput }) => ({
+    X: nodeGraphSafeFilterNumber(mixInput(nodeId, "X"), runtime, nodeId, null, "traceDisplayXyz X"),
+    Y: nodeGraphSafeFilterNumber(mixInput(nodeId, "Y"), runtime, nodeId, null, "traceDisplayXyz Y"),
+    Z: nodeGraphSafeFilterNumber(mixInput(nodeId, "Z"), runtime, nodeId, null, "traceDisplayXyz Z"),
+  });
+  nodeGraphLiveModuleEvaluators.vectorDot = thruFrom("In", "vectorDot in");
+  nodeGraphLiveModuleEvaluators.lcdDot = thruFrom("In", "lcdDot in");
   nodeGraphLiveModuleEvaluators.valueOscilloscope = thruFrom("In", "valueOscilloscope in");
   nodeGraphLiveModuleEvaluators.lineBurnOscilloscope = thruFrom("In", "lineBurnOscilloscope in");
   nodeGraphLiveModuleEvaluators.matrixDisplay = thruFrom("In", "matrixDisplay in");
@@ -51,6 +57,11 @@
     X: nodeGraphSafeFilterNumber(mixInput(nodeId, "X"), runtime, nodeId, null, "traceXyz X"),
     Y: nodeGraphSafeFilterNumber(mixInput(nodeId, "Y"), runtime, nodeId, null, "traceXyz Y"),
     Z: nodeGraphSafeFilterNumber(mixInput(nodeId, "Z"), runtime, nodeId, null, "traceXyz Z"),
+  });
+  nodeGraphLiveModuleEvaluators.traceRgb = ({ runtime, nodeId, mixInput }) => ({
+    R: nodeGraphSafeFilterNumber(mixInput(nodeId, "R"), runtime, nodeId, null, "traceRgb R"),
+    G: nodeGraphSafeFilterNumber(mixInput(nodeId, "G"), runtime, nodeId, null, "traceRgb G"),
+    B: nodeGraphSafeFilterNumber(mixInput(nodeId, "B"), runtime, nodeId, null, "traceRgb B"),
   });
   nodeGraphLiveModuleEvaluators.vectorRgb = ({ runtime, nodeId, mixInput }) => ({
     X: nodeGraphSafeFilterNumber(mixInput(nodeId, "X"), runtime, nodeId, null, "vectorRgb X"),

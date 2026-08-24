@@ -29,10 +29,17 @@ function normalizeNodeGraphVolume(value, fallback = 1) {
 }
 
 // Host Web Audio gain is MUTE ONLY. Loudness is the Output module's `volume`
-// param (applied inside the graph). Toolbar ðŸ”Š is a mirror of that param â€”
+// param (applied inside the graph). Toolbar 🔊 is a mirror of that param —
 // not a second volume stage (would double-attenuate).
 function nodeGraphLiveOutputTargetGain() {
-  return nodeGraphMvp.live.outputMuted ? 0 : 1;
+  if (nodeGraphMvp.live.outputMuted) {
+    return 0;
+  }
+  // Pause (speed 0) must not leak the last worklet block through the host.
+  if (nodeGraphMvp.live.node && !(Number(nodeGraphMvp.live.speedMultiplier) > 0)) {
+    return 0;
+  }
+  return 1;
 }
 
 function applyNodeGraphLiveOutputGain() {
@@ -56,7 +63,7 @@ function setNodeGraphLiveOutputMuted(muted) {
   applyNodeGraphLiveOutputGain();
 }
 
-// â”€â”€ Module level mirrors (toolbar ðŸ”Š â†” Input/Output module params) â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Module level mirrors (toolbar 🔊 ↔ Input/Output module params) ────────
 // Loudness lives in the graph (audioInput.amplitude, output.volume). Host gain is
 // mute-only for output and unity for input so we never double-apply.
 
@@ -108,7 +115,7 @@ function nodeGraphReadModuleParamLevel(node, paramKey, fallback) {
 
 /**
  * Write a 0..1 level onto a module param + its slider, keep a toolbar mirror.
- * lockKey: e.g. "_outputVolumeMirrorLock" â€” blocks recursive toolbar sync.
+ * lockKey: e.g. "_outputVolumeMirrorLock" — blocks recursive toolbar sync.
  */
 function nodeGraphWriteModuleParamLevel(node, paramKey, value, options = {}) {
   const level = normalizeNodeGraphVolume(value);
@@ -264,7 +271,7 @@ function setNodeGraphAudioInputModuleLevel(value, options = {}) {
   if (nodeGraphMvp?.live) {
     nodeGraphMvp.live.inputVolume = level;
   }
-  // Host mic gain is unity â€” level is applied on the audioInput module only.
+  // Host mic gain is unity — level is applied on the audioInput module only.
   applyNodeGraphLiveInputHostGain();
   if (!options.fromToolbar && typeof syncNodeGraphVolumeSlider === "function") {
     syncNodeGraphVolumeSlider("nodeLiveInputVolume", "nodeLiveInputVolumeValue", level);
@@ -282,7 +289,7 @@ function setNodeGraphLiveInputVolume(value) {
   return setNodeGraphAudioInputModuleLevel(value, { fromToolbar: true, interaction: "drag" });
 }
 
-/** Pull toolbar ðŸ”Š from the Output module (after patch load / module drag). */
+/** Pull toolbar 🔊 from the Output module (after patch load / module drag). */
 function syncNodeGraphLiveOutputVolumeFromOutputModule() {
   if (nodeGraphMvp?._outputVolumeMirrorLock) {
     return getNodeGraphOutputModuleVolume();
@@ -301,7 +308,7 @@ function syncNodeGraphLiveOutputVolumeFromOutputModule() {
   return level;
 }
 
-/** Pull toolbar ðŸ”Š from the Input module Amplitude (after patch load / drag). */
+/** Pull toolbar 🔊 from the Input module Amplitude (after patch load / drag). */
 function syncNodeGraphLiveInputVolumeFromInputModule() {
   if (nodeGraphMvp?._inputVolumeMirrorLock) {
     return getNodeGraphAudioInputModuleLevel();
@@ -347,7 +354,7 @@ let nodeGraphLiveNativeModuleBytes = {};
 
 // On static hosts with no server behind the page (e.g. the sandbox embedded
 // as a static export), "/api/native-modules" doesn't exist. Fall back to a
-// pre-generated catalog shipped alongside index.html â€” same shape server.py
+// pre-generated catalog shipped alongside index.html — same shape server.py
 // returns, so nothing downstream needs to know which path was used.
 async function fetchNodeGraphLiveNativeModuleCatalogFallback() {
   try {
@@ -497,10 +504,10 @@ async function sendNodeGraphLiveNativeModule(liveNode, entry) {
 
 // Hands native-module wasm to the worklet.
 //
-// Load modes (Phase E â€” see docs/WASM_SLIM_LOAD.md):
-//   combined â€” one soemdsp_combined.wasm (all modules, one memory). Default
+// Load modes (Phase E — see docs/WASM_SLIM_LOAD.md):
+//   combined — one soemdsp_combined.wasm (all modules, one memory). Default
 //              for authoring so any module can be added without a re-fetch.
-//   slim     â€” only wasm for types on the current plan. Prefer for player /
+//   slim     — only wasm for types on the current plan. Prefer for player /
 //              embed / clapplayer (?wasmLoad=slim or embed-config).
 //
 // Site sync (scripts/sync_soundemote_site.ps1) ships ONLY the combined
@@ -511,7 +518,7 @@ async function sendNodeGraphLiveNativeModule(liveNode, entry) {
 // Chrome caps wasm memories per process (~100); many standalone instances
 // hit that cap. Slim is for small used-sets when per-module files exist;
 // huge patches / site deploys should use combined.
-const nodeGraphLiveCombinedNativeModuleUrl = "native_modules/combined/soemdsp_combined.wasm?v=inv-1";
+const nodeGraphLiveCombinedNativeModuleUrl = "native_modules/combined/soemdsp_combined.wasm?v=phase-reset-1";
 
 /** @type {null|"slim"|"combined"} */
 let nodeGraphLiveNativeWasmLoadModeResolved = null;
@@ -1017,7 +1024,7 @@ async function setNodeGraphLiveOutputEnabled(enabled) {
   const outputEnabled = Boolean(enabled);
 
   // Idempotent enable: re-arming while already live/starting used to bump
-  // outputToggleSerial, cancel the in-flight start, and flash green â†’ red stop
+  // outputToggleSerial, cancel the in-flight start, and flash green → red stop
   // even though audio came up (or a cancelled start tore the winner down).
   if (outputEnabled) {
     if (nodeGraphMvp.live.outputEnabled && nodeGraphMvp.live.node) {
@@ -1075,11 +1082,11 @@ async function setNodeGraphLiveOutputEnabled(enabled) {
 
 /**
  * Full simulation restart: cold stop (wipe screens / tear down audio) then
- * start again. Does not require the user to stop first â€” transport â® uses this.
+ * start again. Does not require the user to stop first — transport ⏮ uses this.
  *
  * Important: do NOT route through setNodeGraphLiveOutputEnabled(false) then
  * (true). That bumps outputToggleSerial twice and can leave a start mid-flight
- * cancelled with status still "starting" and no worklet â€” Play then only
+ * cancelled with status still "starting" and no worklet — Play then only
  * toggles pause and the engine never comes back.
  */
 async function restartNodeGraphLiveSimulation() {
@@ -1229,6 +1236,9 @@ function setNodeGraphLiveSpeed(speed, options = {}) {
   }
   nodeGraphMvp.live.speedMultiplier = clamped;
   sendNodeGraphLiveSpeed();
+  if (typeof applyNodeGraphLiveOutputGain === "function") {
+    applyNodeGraphLiveOutputGain();
+  }
   // Every pause/play path funnels through here (transport button, spacebar,
   // external host messages), so refresh the header Speed readout and the
   // play/pause glyph from one place rather than at each call site.
@@ -1240,20 +1250,44 @@ function setNodeGraphLiveSpeed(speed, options = {}) {
   }
   // Speed 0 = simulation pause: stop phosphor energy steps immediately so
   // trails do not keep decaying on the main-thread draw loop.
-  if (clamped <= 0 && typeof absorbNodeGraphModuleScopePhosphorDrawCursors === "function") {
-    if (typeof nodeGraphModuleScopeState === "object" && nodeGraphModuleScopeState) {
-      if (nodeGraphModuleScopeState.drawFrame) {
-        window.cancelAnimationFrame(nodeGraphModuleScopeState.drawFrame);
-        nodeGraphModuleScopeState.drawFrame = 0;
-        nodeGraphModuleScopeState.drawFrameRequestedAt = 0;
-      }
-      if (nodeGraphModuleScopeState.drawFrameWatchdog) {
-        window.clearTimeout(nodeGraphModuleScopeState.drawFrameWatchdog);
-        nodeGraphModuleScopeState.drawFrameWatchdog = 0;
-      }
+  if (clamped <= 0) {
+    // Copy live 2D Trace bitmaps before pause teardown (RAF cancel / absorb /
+    // control re-render) can wipe or cover the face.
+    if (typeof snapshotAllNodeGraphScope2dTraceFaces === "function") {
+      snapshotAllNodeGraphScope2dTraceFaces();
     }
-    absorbNodeGraphModuleScopePhosphorDrawCursors();
+    if (typeof absorbNodeGraphModuleScopePhosphorDrawCursors === "function") {
+      if (typeof nodeGraphModuleScopeState === "object" && nodeGraphModuleScopeState) {
+        if (nodeGraphModuleScopeState.drawFrame) {
+          window.cancelAnimationFrame(nodeGraphModuleScopeState.drawFrame);
+          nodeGraphModuleScopeState.drawFrame = 0;
+          nodeGraphModuleScopeState.drawFrameRequestedAt = 0;
+        }
+        if (nodeGraphModuleScopeState.drawFrameWatchdog) {
+          window.clearTimeout(nodeGraphModuleScopeState.drawFrameWatchdog);
+          nodeGraphModuleScopeState.drawFrameWatchdog = 0;
+        }
+      }
+      absorbNodeGraphModuleScopePhosphorDrawCursors();
+    }
+    // Freeze Instant Trace wall-clock so resume does not jump History.
+    // Stamp pause bars into Output dest now; they waterfall away after play.
+    if (typeof nodeGraphTraceDisplayPinWaterfallClocks === "function") {
+      nodeGraphTraceDisplayPinWaterfallClocks();
+    }
+    if (typeof stampNodeGraphOutputPauseBanners === "function") {
+      stampNodeGraphOutputPauseBanners();
+    }
+    if (typeof holdNodeGraphScope2dTraceFaces === "function") {
+      holdNodeGraphScope2dTraceFaces();
+    }
   } else if (clamped > 0) {
+    if (typeof nodeGraphTraceDisplayPinWaterfallClocks === "function") {
+      nodeGraphTraceDisplayPinWaterfallClocks();
+    }
+    if (typeof nodeGraphOutputPauseBannerClearStampFlags === "function") {
+      nodeGraphOutputPauseBannerClearStampFlags();
+    }
     // Unpause / force rearm: Instant Trace can early-out on a stale draw
     // signature (black face, unchanged sample count). Force a full paint.
     if (typeof nodeGraphNumberReadoutRearmAllFacesAfterLiveStart === "function") {
@@ -1269,6 +1303,25 @@ function setNodeGraphLiveSpeed(speed, options = {}) {
     if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
       scheduleNodeGraphModuleScopeDraw({ force: true });
     }
+  }
+}
+
+function sendNodeGraphLiveDisplayFps() {
+  if (!nodeGraphMvp.live.node || !nodeGraphMvp.live.usesWorklet) {
+    return;
+  }
+  const fps = typeof nodeGraphSimulationDisplayFps === "function"
+    ? nodeGraphSimulationDisplayFps()
+    : (typeof normalizeNodeGraphModuleScopeFramesPerSecond === "function"
+      ? normalizeNodeGraphModuleScopeFramesPerSecond(nodeGraphMvp?.moduleScopeFramesPerSecond ?? 60)
+      : 60);
+  try {
+    nodeGraphMvp.live.node.port.postMessage({
+      type: "setDisplayFps",
+      displayFps: fps,
+    });
+  } catch (_error) {
+    // Worklet may be disconnected.
   }
 }
 
@@ -1861,6 +1914,7 @@ function handleNodeGraphLiveWorkletMessage(event) {
         speed: Number(message.audioPlayerSpeed),
         speeds: message.audioPlayerSpeeds || null,
         reason: message.audioPlayerReason || "",
+        sampleId: message.audioPlayerSampleId || "",
       });
     }
     if (Number(message.badNumberCount) > 0) {
@@ -2168,6 +2222,9 @@ function nodeGraphLiveConnectionUpdatePayload(plan = {}, audio = {}) {
       ? plan.scopeCaptureRates
       : {},
     sessionId: nodeGraphMvp.live.sessionId,
+    displayFps: typeof nodeGraphSimulationDisplayFps === "function"
+      ? nodeGraphSimulationDisplayFps()
+      : 60,
     timing: plan.timing || null,
     type: "setConnections",
     visualSinks: Array.isArray(plan.visualSinks) ? plan.visualSinks : [],
@@ -2242,9 +2299,13 @@ async function sendNodeGraphLivePlan() {
             planSerial: nodeGraphMvp.live.planSerial,
             sampleRate: nodeGraphMvp.live.context?.sampleRate || nodeGraphMvp.sampleRate,
             sessionId: nodeGraphMvp.live.sessionId,
+            displayFps: typeof nodeGraphSimulationDisplayFps === "function"
+              ? nodeGraphSimulationDisplayFps()
+              : 60,
             type: "setPlan",
           });
           sendNodeGraphLiveSpeed();
+          sendNodeGraphLiveDisplayFps();
           sendNodeGraphLiveSpeedLimit();
         }
         // Lazily send wasm for any native module type this plan introduced
@@ -2274,7 +2335,7 @@ async function sendNodeGraphLivePlan() {
       nodeGraphSetLivePlanRunningStatus(plan);
     }
     nodeGraphMvp.live.planShapeSignature = planShapeSignature;
-    // Plan applied â€” never leave host gain muted from a prior error.
+    // Plan applied — never leave host gain muted from a prior error.
     setNodeGraphLiveOutputMuted(false);
     return true;
   } catch (error) {
@@ -2559,7 +2620,7 @@ function setNodeGraphGlobalSmoothingSeconds(seconds, options = {}) {
 
 // Log-space drag for Smooth Time: much finer near 0 (sample / sub-ms), still
 // reaches multi-second values without endless linear scrubbing.
-// Value â‰ˆ exp(log(start + Îµ) + pixels Â· rate) âˆ’ Îµ
+// Value ≈ exp(log(start + ε) + pixels · rate) − ε
 const nodeGraphGlobalSmoothingDragLogEps = 1e-4; // ~0.1 ms floor for log map
 const nodeGraphGlobalSmoothingDragLogRate = 0.012; // ~1 decade per ~192 px
 
@@ -2570,7 +2631,7 @@ function nodeGraphGlobalSmoothingDragMultiplier(event) {
   return Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1;
 }
 
-/** @deprecated linear step â€” kept for any external callers; drag uses log map. */
+/** @deprecated linear step — kept for any external callers; drag uses log map. */
 function nodeGraphGlobalSmoothingDragStep(event) {
   const multiplier = nodeGraphGlobalSmoothingDragMultiplier(event);
   // Scale with current value so near-0 stays fine even if something still calls this.
@@ -2583,7 +2644,7 @@ function nodeGraphGlobalSmoothingSecondsFromDragDelta(startSeconds, pixelDelta, 
   const rate = nodeGraphGlobalSmoothingDragLogRate * nodeGraphGlobalSmoothingDragMultiplier(event);
   const start = Math.max(0, Number(startSeconds) || 0);
   const next = Math.exp(Math.log(start + eps) + pixelDelta * rate) - eps;
-  // Snap tiny values to exact 0 so â€œoffâ€ is reachable without hunting.
+  // Snap tiny values to exact 0 so “off” is reachable without hunting.
   if (next < eps * 0.25) {
     return 0;
   }
@@ -2858,45 +2919,49 @@ const nodeGraphLiveWorkletSourceFiles = [
   // nodeGraphTrisaw / nodeGraphPitchedFrequency / nodeGraphAdvancePhase01.
   "./public/node-graph-semath.js?v=planck-1",
   "./public/node-graph-stdlib/node-graph-phasor-helpers.js?v=phasor-helpers-1",
-  "./public/node-graph-stdlib/node-graph-control-bus-helpers.js?v=input-amp-1",
+  "./public/node-graph-stdlib/node-graph-control-bus-helpers.js?v=toggle-range-1",
   "./public/modules/portal/portal-lanes.js?v=portal-rename-4x2-1",
   "./public/modules/portal/portal-math.js?v=portal-lanes-1",
   "./public/node-graph-stdlib/node-graph-param-surface-helpers.js?v=unit-mod-linear-1",
   "./public/node-graph-stdlib/node-graph-seeded-rng-helpers.js?v=softpop-1",
-  "./public/node-graph-parameter-smoother-filters.js?v=planck-eps-1",
+  "./public/node-graph-parameter-smoother-filters.js?v=unpark-types-1",
   // Bypass passthrough maps + frame eval (shared with main thread).
   "./public/node-graph-module-bypass.js?v=t-series-1",
-  "./public/node-live-audio-worklet-core.js?v=block-scope-1",
+  "./public/node-live-audio-worklet-core.js?v=phase-arm-1",
   // Phase D: class methods extracted from core (must follow class definition).
   "./public/node-live-audio-worklet-graph.js?v=plan-d-split-5",
-  "./public/node-live-audio-worklet-smoother.js?v=planck-eps-1",
+  "./public/node-live-audio-worklet-smoother.js?v=smooth-time-live-1",
   "./public/node-live-audio-worklet-param-map.js?v=domain-mod-1",
   "./public/node-live-audio-worklet-destroy.js?v=block-scope-1",
   "./public/node-live-audio-worklet-analog.js?v=plan-d-split-7",
-  "./public/lib/sample-interpolate.js?v=hermite-1",
-  "./public/node-live-audio-worklet-dsp-state.js?v=planck-1",
-  "./public/node-live-audio-worklet-events.js?v=block-scope-1",
+  "./public/lib/sample-interpolate.js?v=mp-aa-1",
+  "./public/node-live-audio-worklet-dsp-state.js?v=mp-aa-1",
+  "./public/node-live-audio-worklet-events.js?v=phase-arm-1",
   "./public/node-live-audio-worklet-visual.js?v=planck-eps-1",
-  "./public/node-live-audio-worklet-scope-io.js?v=block-scope-1",
+  "./public/node-live-audio-worklet-scope-io.js?v=wf-rate-1",
   "./public/node-live-audio-worklet-native-load.js?v=plan-d-split-7",
-  "./public/node-live-audio-worklet-evaluators-sources.js?v=block-scope-1",
-  "./public/node-live-audio-worklet-evaluators-processors.js?v=sim-time-1",
-  "./public/node-live-audio-worklet-evaluators-utility.js?v=portal-lanes-1",
+  "./public/node-live-audio-worklet-evaluators-sources.js?v=snowflake-phase-1",
+  "./public/node-live-audio-worklet-evaluators-processors.js?v=lcd-dot-1",
+  "./public/node-live-audio-worklet-evaluators-utility.js?v=controller-smooth-1",
   "./public/node-live-audio-worklet-evaluators.js?v=evaluators-split-1",
   "./public/node-live-audio-worklet-native-exports.js?v=block-scope-1",
-  "./public/node-live-audio-worklet-set-plan.js?v=block-scope-1",
-  "./public/node-live-audio-worklet-clear-plan.js?v=kick-split-1",
-  "./public/node-live-audio-worklet-handle-message.js?v=keypad-1",
-  "./public/node-live-audio-worklet-scope-snapshot.js?v=visual-rate-meta-1",
+  "./public/node-live-audio-worklet-set-plan.js?v=phase-arm-1",
+  "./public/node-live-audio-worklet-clear-plan.js?v=engine-ring-1",
+  "./public/node-live-audio-worklet-handle-message.js?v=sim-fps-lcd-1",
+  "./public/node-live-audio-worklet-scope-snapshot.js?v=engine-ring-1",
   "./public/modules/_shared/output-amplitude.js?v=output-amp-1",
   "./public/node-live-audio-worklet-evaluate-frame.js?v=out-vol-m3-1",
-  "./public/node-live-audio-worklet-process.js?v=input-amp-1",
+  "./public/node-live-audio-worklet-process.js?v=mp-worklet-sid-1",
   "./public/modules/codeblock/codeblock-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/moduleGroup/module-group-worklet-evaluator.js?v=robin-native-1",
   "./public/modules/ellipsoid/ellipsoid-worklet-evaluator.js?v=motion-1",
-  "./public/modules/sineWavetable/sine-wavetable-worklet-evaluator.js?v=sincos-no-amp-in-1",
+  "./public/modules/basicShape/basic-shape-worklet-evaluator.js?v=center-square-pwm-1",
+  "./public/lib/trace/trace-shape.js?v=heart-ssot-1",
+  "./public/modules/rgbShape/rgb-shape-math.js?v=heart-ssot-1",
+  "./public/modules/rgbShape/rgb-shape-worklet-evaluator.js?v=heart-ssot-1",
+  "./public/modules/sineWavetable/sine-wavetable-worklet-evaluator.js?v=sincos4-1",
   "./public/modules/additiveOsc/additive-osc-worklet-evaluator.js?v=native-core-1",
-  "./public/modules/polyBlep/poly-blep-worklet-evaluator.js?v=one-core-native-20260803",
+  "./public/modules/polyBlep/poly-blep-worklet-evaluator.js?v=center-square-pwm-1",
   "./public/modules/noiseGenerator/noise-generator-worklet-evaluator.js?v=native-strip-1",
   // noise channel math lives in worklet methods; main-thread uses noise-generator-math.js
   "./public/modules/randomWalk/random-walk-math.js?v=random-walk-1",
@@ -2931,8 +2996,8 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/curveOsc/curve-osc-math.js?v=curve-osc-1",
   "./public/modules/curveOsc/curve-osc-worklet-evaluator.js?v=curve-osc-1",
   // RS-MET-style L-system turtle oscillator (pure JS).
-  "./public/modules/snowflake/snowflake-math.js?v=snowflake-direction-1",
-  "./public/modules/snowflake/snowflake-worklet-evaluator.js?v=snowflake-direction-1",
+  "./public/modules/snowflake/snowflake-math.js?v=snowflake-iter-bufs-1",
+  "./public/modules/snowflake/snowflake-worklet-evaluator.js?v=snowflake-iter-bufs-1",
   "./public/modules/textStream/text-stream-worklet-evaluator.js?v=text-stream-1",
   "./public/modules/dsfOscillator/dsf-oscillator-worklet-evaluator.js?v=native-core-1",
   "./public/modules/robinSupersaw/robin-supersaw-worklet-evaluator.js?v=process-block-1",
@@ -2982,8 +3047,8 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/midSideEncode/mid-side-encode-worklet-evaluator.js?v=dip-ms-db-1",
   "./public/modules/quadrature/quadrature-math.js?v=ms-quad-lim-1",
   "./public/modules/quadrature/quadrature-worklet-evaluator.js?v=ms-quad-lim-1",
-  "./public/modules/hilbert/hilbert-math.js?v=hilbert-1",
-  "./public/modules/hilbert/hilbert-worklet-evaluator.js?v=hilbert-1",
+  "./public/modules/hilbert/hilbert-math.js?v=hilbert-0-1",
+  "./public/modules/hilbert/hilbert-worklet-evaluator.js?v=hilbert-0-1",
   "./public/modules/lookaheadLimiter/lookahead-limiter-math.js?v=dip-no-clamp-1",
   "./public/modules/lookaheadLimiter/lookahead-limiter-worklet-evaluator.js?v=dip-no-clamp-1",
   "./public/modules/inertialFilter/inertial-filter-math.js?v=inertial-hz-1",
@@ -3029,13 +3094,13 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/pluckEnvelope/pluck-envelope-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/vactrolEnvelopeSeries/vactrol-envelope-series-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/bugButton/bug-button-worklet-evaluator.js?v=native-strip-1",
-  "./public/modules/keypad/keypad-math.js?v=keypad-latch-1",
+  "./public/modules/keypad/keypad-math.js?v=fonts-globalthis-1",
   "./public/modules/keypad/keypad-worklet-evaluator.js?v=keypad-latch-1",
   "./public/modules/tSeries/t-series-math.js?v=t-series-1",
   "./public/modules/tSeries/t-series-worklet-evaluator.js?v=t-series-1",
   "./public/modules/rasterRgb/raster-rgb-math.js?v=bipolar-grade-1",
   "./public/modules/rasterRgb/raster-rgb-worklet-evaluator.js?v=bipolar-grade-1",
-  "./public/modules/rgbDisplays/rgb-display-worklet-evaluator.js?v=trace-xyz-1",
+  "./public/modules/rgbDisplays/rgb-display-worklet-evaluator.js?v=trace-rgb-1",
   "./public/modules/phoneTone/phone-tone-math.js?v=tone-lr-1",
   "./public/modules/phoneTone/phone-tone-worklet-evaluator.js?v=phone-tone-layout-a-1",
   "./public/modules/xyPad/xy-pad-dsp.js?v=xy-amp-xy-1",
@@ -3080,7 +3145,7 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/badvalMonitor/badval-monitor-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/radar/radar-worklet-evaluator.js?v=phasor-stdlib-1",
   "./public/modules/audioPlayer/audio-player-math.js?v=mp-time-io-1",
-  "./public/modules/audioPlayer/audio-player-worklet-evaluator.js?v=mp-idle-speed-1",
+  "./public/modules/audioPlayer/audio-player-worklet-evaluator.js?v=mp-aa-1",
   "./public/modules/gainBiasMix/gain-bias-mix-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/gain/gain-math.js?v=output-db-1",
   "./public/modules/gain/gain-worklet-evaluator.js?v=gain-db-1",
@@ -3114,7 +3179,8 @@ async function buildNodeGraphLiveWorkletBlobUrl(sourceFiles) {
     }
     return response.text();
   }));
-  const combined = sources.join("\n;\n");
+  const prelude = "globalThis.NODE_GRAPH_APP_FONTS = globalThis.NODE_GRAPH_APP_FONTS || [];\n";
+  const combined = prelude + sources.join("\n;\n");
   const blob = new Blob([combined], { type: "text/javascript" });
   return URL.createObjectURL(blob);
 }
@@ -3282,7 +3348,7 @@ async function syncNodeGraphLiveInputSource() {
 
 /** Abort an in-flight start cleanly so UI does not stick on "starting". */
 function nodeGraphLiveOutputAbortStart(reason = "stopped") {
-  // Never paint "stopped" over a live/newer session â€” a superseded start
+  // Never paint "stopped" over a live/newer session — a superseded start
   // used to re-render red stop after the winner had already gone green.
   if (nodeGraphMvp.live.node) {
     if (typeof renderNodeGraphLiveControls === "function") {
@@ -3296,7 +3362,7 @@ function nodeGraphLiveOutputAbortStart(reason = "stopped") {
   if (typeof setNodeGraphLiveStatus === "function") {
     setNodeGraphLiveStatus(reason === "error" ? "error" : "stopped");
   }
-  // Only disarm output when we truly have no engine â€” a superseding start
+  // Only disarm output when we truly have no engine — a superseding start
   // keeps outputEnabled true with a new serial.
   if (!nodeGraphMvp.live.node && !nodeGraphMvp.live.context) {
     // Leave outputEnabled alone if a newer serial still owns a start request;
@@ -3321,7 +3387,7 @@ async function nodeGraphLiveOutputDisposeCancelledStart(outputSerial, localConte
   const ownsLiveContext = localContext && nodeGraphMvp.live.context === localContext;
 
   if (superseded && !ownsLiveNode && !ownsLiveContext) {
-    // Newer start owns the world â€” only free our orphan locals.
+    // Newer start owns the world — only free our orphan locals.
     try {
       localNode?.disconnect?.();
     } catch (_error) {
@@ -3337,7 +3403,7 @@ async function nodeGraphLiveOutputDisposeCancelledStart(outputSerial, localConte
     return false;
   }
 
-  // We still own the live refs (or nothing is live) â€” full cold stop.
+  // We still own the live refs (or nothing is live) — full cold stop.
   if (typeof stopNodeGraphLiveAudio === "function") {
     await stopNodeGraphLiveAudio();
   }
@@ -3406,9 +3472,15 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
       liveNode = await createNodeGraphLiveWorkletNode(context, plan);
       usesWorklet = true;
     } catch (error) {
+      const message = String(error?.message || error || "AudioWorklet failed");
+      if (typeof window.SE?.ERROR === "function") {
+        window.SE.ERROR(`AudioWorklet failed → ScriptProcessor fallback: ${message}`);
+      } else {
+        console.error("[live] AudioWorklet failed", error);
+      }
       liveNode = createNodeGraphLiveScriptProcessorNode(context, plan);
       setNodeGraphLiveEngineStatus("engine fallback", "warn");
-      setNodeGraphLiveEngineTitle(error.message);
+      setNodeGraphLiveEngineTitle(message);
     }
     if (nodeGraphLiveOutputStartCancelled(outputSerial)) {
       await nodeGraphLiveOutputDisposeCancelledStart(outputSerial, context, liveNode);
@@ -3422,7 +3494,7 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
     nodeGraphMvp.live.usesWorklet = usesWorklet;
     liveNode.connect(outputGain);
     outputGain.connect(context.destination);
-    // Fresh session is never muted â€” clear any sticky mute from a prior error.
+    // Fresh session is never muted — clear any sticky mute from a prior error.
     setNodeGraphLiveOutputMuted(false);
     await syncNodeGraphLiveInputSource();
     if (nodeGraphLiveOutputStartCancelled(outputSerial)) {
@@ -3493,9 +3565,6 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
     clearNodeGraphLiveStatusTitle();
     if (typeof setNodeGraphLiveStatus === "function") {
       setNodeGraphLiveStatus("running", "good");
-    }
-    if (typeof logNodeGraphSampleRateInfo === "function") {
-      logNodeGraphSampleRateInfo("live start");
     }
     // Keep the arming flag honest once the worklet is up.
     nodeGraphMvp.live.outputEnabled = true;

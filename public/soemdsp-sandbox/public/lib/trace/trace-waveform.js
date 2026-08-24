@@ -93,7 +93,10 @@
     const mapX = (sampleIndex) => ((sampleIndex - start) / span) * width;
     const mapY = (raw) => midY - clampUnit(raw * gain + offset) * halfHeight;
 
-    const first = Math.max(0, Math.floor(start));
+    const validStart = Number.isFinite(Number(options.validStart))
+      ? Math.max(0, Number(options.validStart))
+      : 0;
+    const first = Math.max(validStart, Math.max(0, Math.floor(start)));
     const last = Math.min(buffer.length - 1, Math.ceil(end) - 1);
     if (last < first) {
       return [];
@@ -108,20 +111,24 @@
     };
 
     const sampleCount = last - first + 1;
-    // ~3 verts/pixel: enough for min+max plus a join, cheap enough live.
-    const maxVertices = Math.max(2, Math.floor(width) * 3);
+    // ~3 verts/pixel of the FACE, not a 1–2px scroll strip. Using strip
+    // width here min/max-bucketed every column (0↔peak blobs on stereo 1D).
+    const budgetWidth = Math.max(width, Number(options.vertexWidth) || 0);
+    const maxVertices = Math.max(2, Math.floor(budgetWidth) * 3);
 
     if (sampleCount <= maxVertices) {
-      if (start < first) {
+      // Only interpolate a fractional start that lands inside valid samples.
+      // A start left of validStart is empty History (right-aligned fill) —
+      // a vertex there stretched a line across the blank left.
+      if (start < first && start >= validStart) {
         push(mapX(start), mapY(interpolatedSample(buffer, start)), false);
       }
       let prev = first;
       for (let i = first; i <= last; i += 1) {
-        push(
-          mapX(i),
-          mapY(Number(buffer[i]) || 0),
-          skipDisc && i > prev && bucketHasDiscontinuity(buffer, prev, i, discThreshold),
-        );
+        const value = Number(buffer[i]) || 0;
+        const broke = skipDisc && i > prev
+          && Math.abs(value - (Number(buffer[prev]) || 0)) > discThreshold;
+        push(mapX(i), mapY(value), broke);
         prev = i;
       }
       if (end - 1 > last) {
@@ -132,7 +139,7 @@
     }
 
     const buckets = Math.max(1, Math.floor(maxVertices / 2));
-    let prevIndex = first;
+    let prevValue = Number(buffer[first]) || 0;
     for (let b = 0; b < buckets; b += 1) {
       const t0 = start + (b / buckets) * span;
       const t1 = start + ((b + 1) / buckets) * span;
@@ -173,23 +180,18 @@
         minI = rangeStart;
         maxI = rangeStart;
       }
-      const broke = skipDisc && bucketHasDiscontinuity(
-        buffer,
-        prevIndex,
-        Math.min(minI, maxI),
-        discThreshold,
-      );
+      const broke = skipDisc && Math.abs(minV - prevValue) > discThreshold;
       if (minI === maxI) {
         push(mapX(minI), mapY(minV), broke);
-        prevIndex = minI;
+        prevValue = minV;
       } else if (minI < maxI) {
         push(mapX(minI), mapY(minV), broke);
         push(mapX(maxI), mapY(maxV), false);
-        prevIndex = maxI;
+        prevValue = maxV;
       } else {
         push(mapX(maxI), mapY(maxV), broke);
         push(mapX(minI), mapY(minV), false);
-        prevIndex = minI;
+        prevValue = minV;
       }
     }
     return points;

@@ -356,8 +356,19 @@ function validateNodeGraphPatch(patch) {
       normalizedNode.layout = normalizeNodeGraphKeypadLayout(node.layout);
     } else if (nodeGraphModuleDefinitions[type].layout === "image") {
       normalizedNode.layout = normalizeNodeGraphImageLayout(node.layout);
-    } else if (nodeGraphModuleDefinitions[type].layout === "led") {
-      normalizedNode.led = normalizeNodeGraphLedLayout(node.led);
+    } else if (type === "led") {
+      normalizedNode.vectorDotSettings = typeof normalizeNodeGraphVectorDotSettings === "function"
+        ? normalizeNodeGraphVectorDotSettings(
+          node.vectorDotSettings
+          || (typeof nodeGraphMigrateLegacyLedToVectorDot === "function"
+            ? nodeGraphMigrateLegacyLedToVectorDot(node.led)
+            : node.led),
+        )
+        : (node.vectorDotSettings || {});
+    } else if (type === "lcdDot") {
+      normalizedNode.vectorDotSettings = typeof normalizeNodeGraphLcdDotSettings === "function"
+        ? normalizeNodeGraphLcdDotSettings(node.vectorDotSettings)
+        : (node.vectorDotSettings || {});
     }
     if (nodeGraphModuleIsGraphType(type)) {
       const phaseLinkedGraph = nodeGraphGraphWithPhaseCursor(normalizedNode, node.graph);
@@ -437,9 +448,14 @@ function validateNodeGraphPatch(patch) {
     }
     if (
       (type === "samplePlayer" || type === "sampleLooper" || type === "audioPlayer") &&
-      normalizeNodeGraphSampleId(node.sample?.id)
+      node.sample
     ) {
-      normalizedNode.sample = { id: normalizeNodeGraphSampleId(node.sample?.id) };
+      const pointer = typeof normalizeNodeGraphNodeSamplePointer === "function"
+        ? normalizeNodeGraphNodeSamplePointer(node.sample)
+        : (normalizeNodeGraphSampleId(node.sample?.id) ? { id: normalizeNodeGraphSampleId(node.sample.id) } : null);
+      if (pointer) {
+        normalizedNode.sample = pointer;
+      }
     }
     if (type === "audioPlayer" && Object.hasOwn(node, "phosphorWaveformSettings")) {
       normalizedNode.phosphorWaveformSettings = normalizeNodeGraphPhosphorWaveformSettings(node.phosphorWaveformSettings);
@@ -873,8 +889,10 @@ function loadNodeGraphPatchFromObject(patch) {
 }
 
 function nodeGraphModuleShouldBeVisible(node) {
-  const type = typeof node === "string" ? nodeGraphPatchNodeType(node) : node?.type;
-  return type !== "audioInput" || Boolean(nodeGraphMvp.live.inputActive);
+  void node;
+  // Input modules stay on the graph even when the bottom Input button is Off.
+  // Live capture is still gated by inputActive (runtime bypass / host stream).
+  return true;
 }
 
 function nodeGraphPatchNodeIsVisible(nodeId) {

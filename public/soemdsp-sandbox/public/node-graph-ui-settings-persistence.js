@@ -165,9 +165,13 @@ function nodeGraphWorkspaceStatesWithSharedInspectorGeometry(states = {}) {
   return states;
 }
 
+function nodeGraphWorkspaceKeyIsControllerDock(key) {
+  return key === "standaloneMidiKeyboard";
+}
+
 function normalizeNodeGraphWorkspaceWindowStateEntry(entry = {}, key = "") {
   const source = entry && typeof entry === "object" ? entry : {};
-  if (key === "visibilityMenu") {
+  if (key === "visibilityMenu" || nodeGraphWorkspaceKeyIsControllerDock(key)) {
     return { open: Boolean(source.open) };
   }
   const isSharedInspector = nodeGraphSharedInspectorWindowKeys.includes(key);
@@ -330,6 +334,14 @@ function rememberNodeGraphWorkspaceWindowState(key, element, patch = {}, options
     nodeGraphMvp.workspaceWindowStates = states;
     return states[key];
   }
+  if (nodeGraphWorkspaceKeyIsControllerDock(key)) {
+    states[key] = { open: Boolean(patch.open ?? (element ? !element.hidden : states[key]?.open)) };
+    nodeGraphMvp.workspaceWindowStates = states;
+    if (options.persist !== false) {
+      saveNodeGraphWorkspaceWindowStatesToUserSettings(options);
+    }
+    return states[key];
+  }
   const shouldCapturePosition = options.capturePosition !== false;
   const position = patch.position || (shouldCapturePosition ? nodeGraphWorkspaceWindowPositionFromElement(element) : null);
   if (nodeGraphSharedInspectorWindowKeys.includes(key)) {
@@ -362,7 +374,7 @@ function rememberNodeGraphWorkspaceWindowState(key, element, patch = {}, options
 }
 
 function saveNodeGraphWorkspaceWindowStatesToUserSettings(options = {}) {
-  persistNodeGraphUserSession();
+  persistSession({ ...options, reason: "session" });
 }
 
 // App-wide floating-window open policy, in one place.
@@ -522,7 +534,15 @@ function applyNodeGraphWorkspaceWindowStateToElement(key) {
   if (!element) {
     return;
   }
-  if (key !== "standaloneMidiKeyboard" && typeof markNodeGraphFloatingWindowSurface === "function") {
+  if (key === "standaloneMidiKeyboard") {
+    if (typeof setNodeGraphControllerDockVisible === "function") {
+      setNodeGraphControllerDockVisible(state.open, { persist: false, help: false });
+    } else {
+      element.hidden = !state.open;
+    }
+    return;
+  }
+  if (typeof markNodeGraphFloatingWindowSurface === "function") {
     markNodeGraphFloatingWindowSurface(element);
   }
   if (key === "oscilloscopeSettings") {
@@ -550,11 +570,8 @@ function applyNodeGraphWorkspaceWindowStateToElement(key) {
     element.hidden = true;
     return;
   }
-  if (key === "standaloneMidiKeyboard" && state.open && typeof initNodeGraphStandaloneMidiKeyboard === "function") {
-    initNodeGraphStandaloneMidiKeyboard();
-  }
   element.hidden = !state.open;
-  if (key !== "standaloneMidiKeyboard" && state.open && typeof raiseNodeGraphFloatingWindow === "function") {
+  if (state.open && typeof raiseNodeGraphFloatingWindow === "function") {
     raiseNodeGraphFloatingWindow(element);
   }
   if (key === "uiSettings" && typeof applyNodeUserUiSettingsWindowSize === "function") {
@@ -746,8 +763,15 @@ function normalizeNodeUiDevSettings(settings = {}) {
       return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 1;
     })();
   const wiresAboveModules = Boolean(view.wiresAboveModules ?? nodeGraphMvp.wiresAboveModules);
-  // Debug chrome is session-only — never default on, never restore from UI settings.
-  const keyboardDebugInfoVisible = false;
+  const keyboardDebugInfoVisible = Boolean(view.keyboardDebugInfoVisible ?? nodeGraphMvp.keyboardDebugInfoVisible);
+  const constraintGuideVisible = Boolean(view.constraintGuideVisible ?? nodeGraphMvp.constraintGuideVisible);
+  const constraintToggles = typeof normalizeNodeGraphConstraintToggles === "function"
+    ? normalizeNodeGraphConstraintToggles(view.constraintToggles ?? nodeGraphMvp.constraintToggles)
+    : {
+      cpu: Boolean((view.constraintToggles ?? nodeGraphMvp.constraintToggles)?.cpu),
+      ram: Boolean((view.constraintToggles ?? nodeGraphMvp.constraintToggles)?.ram),
+      gpu: Boolean((view.constraintToggles ?? nodeGraphMvp.constraintToggles)?.gpu),
+    };
   const tooltipEmbedded = view.tooltipEmbedded !== undefined
     ? Boolean(view.tooltipEmbedded)
     : (nodeGraphMvp.tooltipEmbedded !== false);
@@ -761,6 +785,12 @@ function normalizeNodeUiDevSettings(settings = {}) {
   const appChromeBarsVisible = view.appChromeBarsVisible === undefined
     ? (nodeGraphMvp.appChromeBarsVisible !== false)
     : Boolean(view.appChromeBarsVisible);
+  const appChromeBarsMode = typeof normalizeNodeGraphAppChromeBarsMode === "function"
+    ? normalizeNodeGraphAppChromeBarsMode(
+      view.appChromeBarsMode ?? nodeGraphMvp.appChromeBarsMode,
+      appChromeBarsVisible,
+    )
+    : (appChromeBarsVisible ? "all" : "none");
   const transportChromeStuck = Boolean(view.transportChromeStuck ?? nodeGraphMvp.transportChromeStuck);
   const moduleInterfaceControlsVisible = Boolean(view.moduleInterfaceControlsVisible ?? nodeGraphMvp.moduleInterfaceControlsVisible);
   const moduleOscilloscopesVisible = Boolean(view.moduleOscilloscopesVisible ?? nodeGraphMvp.moduleOscilloscopesVisible);
@@ -929,10 +959,13 @@ function normalizeNodeUiDevSettings(settings = {}) {
       wireCurve,
       wiresAboveModules,
       keyboardDebugInfoVisible,
+      constraintGuideVisible,
+      constraintToggles,
       tooltipEmbedded,
       tooltipEmbedHeight,
       moduleButtonsVisible,
       appChromeBarsVisible,
+      appChromeBarsMode,
       transportChromeStuck,
       moduleInterfaceControlsVisible,
       moduleOscilloscopesVisible,
@@ -997,14 +1030,24 @@ function readNodeUiDevSettingsFromControls(options = {}) {
         ? normalizeNodeGraphWireCurve(nodeGraphMvp.wireCurve)
         : Number(nodeGraphMvp.wireCurve ?? 1),
       wiresAboveModules: Boolean(nodeGraphMvp.wiresAboveModules),
-      // Never persist "show debug" — refresh / defaults always hide diagnostics.
-      keyboardDebugInfoVisible: false,
+      keyboardDebugInfoVisible: Boolean(nodeGraphMvp.keyboardDebugInfoVisible),
+      constraintGuideVisible: Boolean(nodeGraphMvp.constraintGuideVisible),
+      constraintToggles: typeof normalizeNodeGraphConstraintToggles === "function"
+        ? normalizeNodeGraphConstraintToggles(nodeGraphMvp.constraintToggles)
+        : {
+          cpu: Boolean(nodeGraphMvp.constraintToggles?.cpu),
+          ram: Boolean(nodeGraphMvp.constraintToggles?.ram),
+          gpu: Boolean(nodeGraphMvp.constraintToggles?.gpu),
+        },
       tooltipEmbedded: Boolean(nodeGraphMvp.tooltipEmbedded),
       tooltipEmbedHeight: typeof normalizeNodeGraphTooltipEmbedHeight === "function"
         ? normalizeNodeGraphTooltipEmbedHeight(nodeGraphMvp.tooltipEmbedHeight ?? 46)
         : Math.max(32, Math.min(320, Math.round(Number(nodeGraphMvp.tooltipEmbedHeight) || 46))),
       moduleButtonsVisible: Boolean(nodeGraphMvp.moduleButtonsVisible),
       appChromeBarsVisible: nodeGraphMvp.appChromeBarsVisible !== false,
+      appChromeBarsMode: typeof nodeGraphAppChromeBarsMode === "function"
+        ? nodeGraphAppChromeBarsMode()
+        : (nodeGraphMvp.appChromeBarsVisible === false ? "none" : "all"),
       transportChromeStuck: Boolean(nodeGraphMvp.transportChromeStuck),
       moduleInterfaceControlsVisible: Boolean(nodeGraphMvp.moduleInterfaceControlsVisible),
       moduleOscilloscopesVisible: Boolean(nodeGraphMvp.moduleOscilloscopesVisible),
@@ -1030,9 +1073,6 @@ function readNodeUiDevSettingsFromControls(options = {}) {
       macroControlsFace: typeof normalizeNodeGraphMacroControlsFaceSettings === "function"
         ? normalizeNodeGraphMacroControlsFaceSettings(nodeGraphMvp.macroControlsFace)
         : nodeGraphMvp.macroControlsFace,
-      traceSettings: typeof normalizeNodeGraphTraceDisplaySettings === "function"
-        ? normalizeNodeGraphTraceDisplaySettings(nodeGraphMvp.traceSettings)
-        : nodeGraphMvp.traceSettings,
       sliderLayout: normalizeNodeGraphSliderLayout(nodeGraphMvp.sliderLayout),
       sliderAmountVisible: Boolean(nodeGraphMvp.sliderAmountVisible),
       sliderPositionVisible: Boolean(nodeGraphMvp.sliderPositionVisible),
@@ -1084,11 +1124,109 @@ function nodeGraphUserSessionFormat() {
   };
 }
 
+function readNodeGraphSessionSelectionFromState() {
+  const ids = typeof nodeGraphSelectedNodeIdsInOrder === "function"
+    ? nodeGraphSelectedNodeIdsInOrder()
+    : (typeof nodeGraphSelectedNodeIds === "function"
+      ? [...nodeGraphSelectedNodeIds()]
+      : []);
+  const live = {
+    selectedNodeIds: ids.map((id) => String(id || "").trim()).filter(Boolean),
+    lastModuleActionTargetNode: String(nodeGraphMvp?.lastModuleActionTargetNode || "").trim(),
+  };
+  const pending = nodeGraphMvp?.sessionSelection;
+  const liveNodeCount = Array.isArray(nodeGraphMvp?.patch?.nodes) ? nodeGraphMvp.patch.nodes.length : 0;
+  // Pending bag is only for hydrate-before-commit. After nodes exist, persist live
+  // (including empty selection).
+  if (
+    liveNodeCount === 0
+    && !live.selectedNodeIds.length
+    && Array.isArray(pending?.selectedNodeIds)
+    && pending.selectedNodeIds.length
+  ) {
+    return {
+      selectedNodeIds: pending.selectedNodeIds.map((id) => String(id || "").trim()).filter(Boolean),
+      lastModuleActionTargetNode: String(
+        pending.lastModuleActionTargetNode || live.lastModuleActionTargetNode,
+      ).trim(),
+    };
+  }
+  return live;
+}
+
+function normalizeNodeGraphSessionSelection(source = {}) {
+  const raw = source && typeof source === "object" ? source : {};
+  const list = Array.isArray(raw.selectedNodeIds)
+    ? raw.selectedNodeIds
+    : (raw.selected?.type === "node" && raw.selected.id
+      ? [raw.selected.id]
+      : (Array.isArray(raw.selected?.ids) ? raw.selected.ids : []));
+  const selectedNodeIds = [];
+  const seen = new Set();
+  for (const id of list) {
+    const next = String(id || "").trim();
+    if (!next || seen.has(next)) {
+      continue;
+    }
+    seen.add(next);
+    selectedNodeIds.push(next);
+  }
+  return {
+    selectedNodeIds,
+    lastModuleActionTargetNode: String(raw.lastModuleActionTargetNode || "").trim(),
+  };
+}
+
+function applyNodeGraphSessionSelection(snapshot = nodeGraphMvp?.sessionSelection) {
+  if (!snapshot || typeof snapshot !== "object") {
+    return false;
+  }
+  const wanted = snapshot.selectedNodeIds || [];
+  const ids = wanted.filter((id) => (
+    typeof nodeGraphPatchNode === "function" ? Boolean(nodeGraphPatchNode(id)) : true
+  ));
+  // Saved IDs exist, but not on this live graph yet (default patch at hydrate).
+  // Keep the bag for bootstrap after working-patch commit.
+  if (wanted.length && !ids.length) {
+    return false;
+  }
+  nodeGraphMvp._applyingSessionSelection = true;
+  try {
+    const last = String(snapshot.lastModuleActionTargetNode || "").trim();
+    if (last && typeof nodeGraphPatchNode === "function" && nodeGraphPatchNode(last)) {
+      nodeGraphMvp.lastModuleActionTargetNode = last;
+    }
+    if (typeof setNodeGraphNodeSelection === "function") {
+      setNodeGraphNodeSelection(ids);
+    }
+    nodeGraphMvp.sessionSelection = null;
+    return ids.length > 0;
+  } finally {
+    nodeGraphMvp._applyingSessionSelection = false;
+  }
+}
+
+function nodeGraphPatchSourceForUserSession() {
+  const live = nodeGraphMvp?.patch;
+  const working = nodeGraphMvp?.workingPatch;
+  const liveCount = Array.isArray(live?.nodes) ? live.nodes.length : 0;
+  const workingCount = Array.isArray(working?.nodes) ? working.nodes.length : 0;
+  // Display Settings (and every other live node bag) live on the graph.
+  // Window/pan persist used to serialize a stale workingPatch snapshot, so
+  // knobs shown in Display Settings vanished on refresh. Prefer live when it
+  // has modules; never serialize an empty live graph over a non-empty autosave.
+  if (liveCount === 0 && workingCount > 0) {
+    return working;
+  }
+  return liveCount > 0 ? live : working;
+}
+
 function cloneNodeGraphWorkingPatchForSession(patch) {
-  if (!patch || typeof patch !== "object") {
+  const source = nodeGraphPatchSourceForUserSession() || patch;
+  if (!source || typeof source !== "object") {
     return null;
   }
-  const workingPatchForSession = cloneNodeGraphPatch(patch);
+  const workingPatchForSession = cloneNodeGraphPatch(source);
   if (typeof nodeGraphPatchSamplesWithoutEmbeddedAudio === "function") {
     workingPatchForSession.samples = nodeGraphPatchSamplesWithoutEmbeddedAudio(
       workingPatchForSession.samples,
@@ -1258,6 +1396,16 @@ function normalizeNodeGraphUserSession(payload = {}) {
           ?? nodeGraphMvp.moduleScopeFramesPerSecond
           ?? 60,
       ) || 60))),
+    traceSettings: typeof normalizeNodeGraphTraceDisplaySettings === "function"
+      ? normalizeNodeGraphTraceDisplaySettings(
+        payload.traceSettings ?? view.traceSettings ?? nodeGraphMvp.traceSettings,
+      )
+      : (payload.traceSettings ?? view.traceSettings ?? nodeGraphMvp.traceSettings ?? null),
+    ...normalizeNodeGraphSessionSelection({
+      selectedNodeIds: payload.selectedNodeIds ?? view.selectedNodeIds,
+      lastModuleActionTargetNode: payload.lastModuleActionTargetNode ?? view.lastModuleActionTargetNode,
+      selected: payload.selected ?? view.selected,
+    }),
   };
 }
 
@@ -1274,7 +1422,7 @@ function nodeGraphUserSessionFromLegacySettings(settings = {}) {
 }
 
 function readNodeGraphUserSessionFromState() {
-  const workingPatchForSession = cloneNodeGraphWorkingPatchForSession(nodeGraphMvp.workingPatch);
+  const workingPatchForSession = cloneNodeGraphWorkingPatchForSession(nodeGraphPatchSourceForUserSession());
   return {
     format: nodeGraphUserSessionFormat(),
     workingPatch: workingPatchForSession,
@@ -1338,11 +1486,15 @@ function readNodeGraphUserSessionFromState() {
     moduleScopeFramesPerSecond: typeof normalizeNodeGraphModuleScopeFramesPerSecond === "function"
       ? normalizeNodeGraphModuleScopeFramesPerSecond(nodeGraphMvp.moduleScopeFramesPerSecond ?? 60)
       : Math.max(0, Math.min(240, Math.round(Number(nodeGraphMvp.moduleScopeFramesPerSecond) || 60))),
+    traceSettings: typeof normalizeNodeGraphTraceDisplaySettings === "function"
+      ? normalizeNodeGraphTraceDisplaySettings(nodeGraphMvp.traceSettings)
+      : nodeGraphMvp.traceSettings,
+    ...readNodeGraphSessionSelectionFromState(),
   };
 }
 
 function serializeNodeGraphUserSession() {
-  return JSON.stringify(readNodeGraphUserSessionFromState(), null, 2);
+  return JSON.stringify(readNodeGraphUserSessionFromState());
 }
 
 function loadNodeGraphUserSessionFromScript(text) {
@@ -1444,7 +1596,21 @@ function applyNodeGraphUserSession(session, options = {}) {
       renderNodeGraphModuleScopeBrightnessControl();
     }
   }
-  if (typeof applyNodeGraphWorkspaceWindowStates === "function") {
+  if (normalized.traceSettings != null) {
+    nodeGraphMvp.traceSettings = typeof normalizeNodeGraphTraceDisplaySettings === "function"
+      ? normalizeNodeGraphTraceDisplaySettings(normalized.traceSettings)
+      : normalized.traceSettings;
+  }
+  nodeGraphMvp.sessionSelection = {
+    selectedNodeIds: Array.isArray(normalized.selectedNodeIds) ? normalized.selectedNodeIds : [],
+    lastModuleActionTargetNode: String(normalized.lastModuleActionTargetNode || "").trim(),
+  };
+  // Do not apply here: live patch is still the default graph. Bootstrap
+  // restores selection after workingPatch commit.
+  // Window restore after patch commit (bootstrap). Applying here while
+  // live patch is empty remembers Display Settings targetNode: "".
+  const liveNodeCount = Array.isArray(nodeGraphMvp.patch?.nodes) ? nodeGraphMvp.patch.nodes.length : 0;
+  if (liveNodeCount > 0 && typeof applyNodeGraphWorkspaceWindowStates === "function") {
     applyNodeGraphWorkspaceWindowStates();
   }
   if (typeof applyNodeGraphZoom === "function") {
@@ -1477,6 +1643,29 @@ function saveNodeGraphUserSessionLocal(text) {
 }
 
 function persistNodeGraphUserSession() {
+  return persistSession({ reason: "session" });
+}
+
+/**
+ * One persist door. `reason` picks the blob so callers do not dual-write:
+ *   session (default) — seats, selection, FPS, global traceSettings, workingPatch field
+ *   workingPatch — clone live graph onto workingPatch, then session
+ *   uiSettings — chrome look only (not global traceSettings)
+ */
+function persistSession(options = {}) {
+  const reason = String(options.reason || "session");
+  if (reason === "uiSettings") {
+    if (typeof scheduleNodeUiDevSettingsAutosave === "function") {
+      scheduleNodeUiDevSettingsAutosave();
+    }
+    return true;
+  }
+  if (reason === "workingPatch") {
+    if (typeof saveNodeGraphWorkingPatchToUserSettings === "function") {
+      return saveNodeGraphWorkingPatchToUserSettings(options);
+    }
+    return false;
+  }
   if (typeof serializeNodeGraphUserSession !== "function") {
     return false;
   }
@@ -1552,20 +1741,19 @@ function applyNodeUiDevSettings(settings) {
     syncNodeGraphWireCurveControl();
   }
   nodeGraphMvp.wiresAboveModules = Boolean(normalized.view.wiresAboveModules);
-  // Force-hide debug on every UI-settings apply / page load (not a saved
-  // preference). Same for debug and release builds — Clear Startup / Save /
-  // cold boot must never leave developer chrome visible by default.
-  if (typeof hideNodeGraphDebugChrome === "function") {
-    hideNodeGraphDebugChrome();
+  nodeGraphMvp.keyboardDebugInfoVisible = Boolean(normalized.view.keyboardDebugInfoVisible);
+  nodeGraphMvp.constraintGuideVisible = Boolean(normalized.view.constraintGuideVisible);
+  if (typeof applyNodeGraphConstraintToggles === "function") {
+    applyNodeGraphConstraintToggles(normalized.view.constraintToggles, { persist: false });
   } else {
-    nodeGraphMvp.keyboardDebugInfoVisible = false;
+    nodeGraphMvp.constraintToggles = normalized.view.constraintToggles || { cpu: false, ram: false, gpu: false };
   }
   nodeGraphMvp.tooltipEmbedded = normalized.view.tooltipEmbedded !== false;
   nodeGraphMvp.tooltipEmbedHeight = typeof normalizeNodeGraphTooltipEmbedHeight === "function"
     ? normalizeNodeGraphTooltipEmbedHeight(normalized.view.tooltipEmbedHeight ?? 46)
     : Math.max(32, Math.min(320, Math.round(Number(normalized.view.tooltipEmbedHeight) || 46)));
   if (typeof applyNodeGraphTooltipEmbed === "function") {
-    applyNodeGraphTooltipEmbed({ shown: nodeGraphMvp.tooltipEmbedded });
+    applyNodeGraphTooltipEmbed({ shown: nodeGraphMvp.tooltipEmbedded, persist: false });
   } else if (typeof applyNodeGraphTooltipEmbedHeight === "function") {
     applyNodeGraphTooltipEmbedHeight(nodeGraphMvp.tooltipEmbedHeight);
   }
@@ -1573,8 +1761,16 @@ function applyNodeUiDevSettings(settings) {
   nodeGraphMvp.appChromeBarsVisible = normalized.view.appChromeBarsVisible === undefined
     ? true
     : Boolean(normalized.view.appChromeBarsVisible);
-  if (typeof setNodeGraphAppChromeBarsVisible === "function") {
-    setNodeGraphAppChromeBarsVisible(nodeGraphMvp.appChromeBarsVisible, { help: false });
+  nodeGraphMvp.appChromeBarsMode = typeof normalizeNodeGraphAppChromeBarsMode === "function"
+    ? normalizeNodeGraphAppChromeBarsMode(
+      normalized.view.appChromeBarsMode,
+      nodeGraphMvp.appChromeBarsVisible,
+    )
+    : (nodeGraphMvp.appChromeBarsVisible ? "all" : "none");
+  if (typeof setNodeGraphAppChromeBarsMode === "function") {
+    setNodeGraphAppChromeBarsMode(nodeGraphMvp.appChromeBarsMode, { help: false, persist: false });
+  } else if (typeof setNodeGraphAppChromeBarsVisible === "function") {
+    setNodeGraphAppChromeBarsVisible(nodeGraphMvp.appChromeBarsVisible, { help: false, persist: false });
   }
   nodeGraphMvp.transportChromeStuck = Boolean(normalized.view.transportChromeStuck);
   if (typeof setNodeGraphTransportChromeStuck === "function") {
@@ -1635,11 +1831,11 @@ function applyNodeUiDevSettings(settings) {
   if (typeof renderNodeGraphWiresAboveModulesToggle === "function") {
     renderNodeGraphWiresAboveModulesToggle();
   }
-  // Debug hide already applied above; re-render so body classes + buttons match.
-  if (typeof hideNodeGraphDebugChrome === "function") {
-    hideNodeGraphDebugChrome();
-  } else if (typeof renderNodeGraphKeyboardDebugToggle === "function") {
+  if (typeof renderNodeGraphKeyboardDebugToggle === "function") {
     renderNodeGraphKeyboardDebugToggle();
+  }
+  if (typeof renderNodeGraphConstraintGuide === "function") {
+    renderNodeGraphConstraintGuide();
   }
   renderNodeGraphModuleVisibilityToggles();
   renderNodeGraphModuleScopeBrightnessControl();
@@ -1886,12 +2082,13 @@ function clearNodeUserStartupRuntimeState() {
   // sliders come back on.
   nodeGraphMvp.moduleButtonsVisible = false;
   nodeGraphMvp.appChromeBarsVisible = true;
+  nodeGraphMvp.appChromeBarsMode = "all";
   nodeGraphMvp.transportChromeStuck = false;
   if (typeof setNodeGraphTransportChromeStuck === "function") {
     setNodeGraphTransportChromeStuck(false, { help: false });
   }
   if (typeof setNodeGraphAppChromeBarsVisible === "function") {
-    setNodeGraphAppChromeBarsVisible(true, { help: false });
+    setNodeGraphAppChromeBarsVisible(true, { help: false, persist: false });
   }
   nodeGraphMvp.moduleInterfaceControlsVisible = true;
   nodeGraphMvp.moduleOscilloscopesVisible = true;
@@ -1920,6 +2117,11 @@ function clearNodeUserStartupRuntimeState() {
     if (typeof renderNodeGraphKeyboardDebugToggle === "function") {
       renderNodeGraphKeyboardDebugToggle();
     }
+  }
+  if (typeof applyNodeGraphConstraintToggles === "function") {
+    applyNodeGraphConstraintToggles({ cpu: false, ram: false, gpu: false }, { persist: false });
+  } else {
+    nodeGraphMvp.constraintToggles = { cpu: false, ram: false, gpu: false };
   }
   if (typeof renderNodeGraphGridToggle === "function") {
     renderNodeGraphGridToggle();
@@ -1983,7 +2185,7 @@ function saveNodeGraphWorkspaceViewToUserSettings(options = {}) {
   // Ambient autosave (pan/zoom/smoothing-drag/etc.) only persists to this
   // browser's session blob so a refresh doesn't lose progress. It must never
   // silently overwrite the shipped default UI settings preset on the server.
-  return persistNodeGraphUserSession();
+  return persistSession({ reason: "session" });
 }
 
 function finishNodeUiDevSettingsHydration() {
@@ -2077,7 +2279,7 @@ async function loadNodeUiDevDefaultSettings() {
     document.documentElement.dataset.nodeUiDevSettingsSource = "local";
     finishNodeUiDevSettingsHydration();
     if (!sessionLoadFailed && storedSession) {
-      persistNodeGraphUserSession();
+      persistSession({ reason: "session" });
     }
     return;
   }

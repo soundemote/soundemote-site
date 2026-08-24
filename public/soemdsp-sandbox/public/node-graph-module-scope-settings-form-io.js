@@ -25,22 +25,10 @@ function mountNodeGraphDisplaySettingsBody(popover, formType, node = null) {
     nodeGraphMvp.gradientSelector = null;
   }
   host.innerHTML = buildNodeGraphDisplaySettingsBodyHtml(type, node);
-  if (typeof nodeGraphDisplaySettingsIsVectorTraceFormType === "function"
-    && nodeGraphDisplaySettingsIsVectorTraceFormType(type)
-    && typeof syncNodeGraphInstantTracePreview === "function") {
-    syncNodeGraphInstantTracePreview(host, node?.traceDisplaySettings || {});
-  }
-  // LED: bind range-slider panel (same control scheme as the old LED window).
-  if (type === "ledLamp") {
-    if (node?.id) {
-      nodeGraphMvp.ledSettingsTargetNode = String(node.id);
-    }
-    if (typeof bindNodeGraphLedDisplaySettingsBody === "function") {
-      bindNodeGraphLedDisplaySettingsBody(host);
-    }
-    if (typeof renderNodeGraphLedSettingsWindow === "function") {
-      renderNodeGraphLedSettingsWindow();
-    }
+  if (typeof nodeGraphDisplaySettingsShowsStampPreview === "function"
+    && nodeGraphDisplaySettingsShowsStampPreview(type)
+    && typeof syncNodeGraphStampPreview === "function") {
+    syncNodeGraphStampPreview(host, node?.traceDisplaySettings || {});
   }
   if (type === "keypadFace") {
     if (typeof bindNodeGraphKeypadDisplaySettingsBody === "function") {
@@ -52,6 +40,19 @@ function mountNodeGraphDisplaySettingsBody(popover, formType, node = null) {
         typeof normalizeNodeGraphKeypadLayout === "function"
           ? normalizeNodeGraphKeypadLayout(node?.layout)
           : (node?.layout || {}),
+      );
+    }
+  }
+  if (type === "toggleButtonFace" || type === "momentaryButtonFace") {
+    if (typeof bindNodeGraphPluginButtonDisplaySettingsBody === "function") {
+      bindNodeGraphPluginButtonDisplaySettingsBody(host);
+    }
+    if (typeof syncNodeGraphPluginButtonDisplaySettingsControls === "function") {
+      syncNodeGraphPluginButtonDisplaySettingsControls(
+        host,
+        typeof nodeGraphPluginButtonDisplaySettingsForNode === "function"
+          ? nodeGraphPluginButtonDisplaySettingsForNode(node)
+          : (node?.traceDisplaySettings || {}),
       );
     }
   }
@@ -180,7 +181,23 @@ function mountNodeGraphDisplaySettingsBody(popover, formType, node = null) {
   const isStereoTraceNode = typeof nodeGraphModuleUsesStereoTraceDisplay === "function"
     ? nodeGraphModuleUsesStereoTraceDisplay(node?.type)
     : node?.type === "output";
-  if (isStereoTraceNode && type === "trace") {
+  const isXyzTraceNode = typeof nodeGraphModuleUsesXyzTraceDisplay === "function"
+    ? nodeGraphModuleUsesXyzTraceDisplay(node?.type)
+    : false;
+  if (isXyzTraceNode && type === "trace") {
+    const xHost = host.querySelector(`[data-trace-display-color-widget="dot1Color"]`);
+    if (xHost) {
+      xHost.setAttribute("aria-label", "X color");
+    }
+    const yHost = host.querySelector(`[data-trace-display-color-widget="secondaryColor"]`);
+    if (yHost) {
+      yHost.setAttribute("aria-label", "Y color");
+    }
+    const zHost = host.querySelector(`[data-trace-display-color-widget="tertiaryColor"]`);
+    if (zHost) {
+      zHost.setAttribute("aria-label", "Z color");
+    }
+  } else if (isStereoTraceNode && type === "trace") {
     const leftColorHost = host.querySelector(`[data-trace-display-color-widget="dot1Color"]`);
     if (leftColorHost) {
       leftColorHost.setAttribute("aria-label", "Left color");
@@ -197,6 +214,12 @@ function mountNodeGraphDisplaySettingsBody(popover, formType, node = null) {
   syncNodeGraphTraceDisplayColorWidgets(popover);
   bindNodeGraphHueTitleSteppers(host);
   syncNodeGraphHueTitleSteppers(host);
+  // App-wide: Display Settings ranges share parameter-slider modifier drag
+  // (nodeGraphNumericDragMultiplier). Per-panel binds may already have run;
+  // this catches anything that forgot (idempotent via dataset flag).
+  if (typeof bindNodeGraphNativeSliderModifiersIn === "function") {
+    bindNodeGraphNativeSliderModifiersIn(host);
+  }
   // Packing latches (Full Dot Economy | Dots only | Clear): fit labels to cells.
   if (typeof AppLatchButton !== "undefined") {
     AppLatchButton.observeAll(host);
@@ -252,6 +275,11 @@ function nodeGraphDisplaySettingsDefaultsForFormType(type = nodeGraphTraceDispla
   if (type === "dot") {
     return normalizeNodeGraphZeroDBurnSettings(nodeGraphZeroDBurnSettingsDefaults);
   }
+  if (type === "lcdDot") {
+    return typeof normalizeNodeGraphLcdDotSettings === "function"
+      ? normalizeNodeGraphLcdDotSettings(nodeGraphLcdDotSettingsDefaults)
+      : { ...nodeGraphLcdDotSettingsDefaults };
+  }
   if (type === "vectorDot" || type === "pulseDot") {
     return typeof normalizeNodeGraphVectorDotSettings === "function"
       ? normalizeNodeGraphVectorDotSettings(nodeGraphVectorDotSettingsDefaults)
@@ -294,7 +322,7 @@ function nodeGraphDisplaySettingsDefaultsForFormType(type = nodeGraphTraceDispla
   if (type === "portalFace") {
     return { channel: 0 };
   }
-  if (type === "roundShapeFace") {
+  if (type === "roundShapeFace" || type === "basicShapeFace") {
     return typeof normalizeNodeGraphRoundShapeFaceSettings === "function"
       ? normalizeNodeGraphRoundShapeFaceSettings()
       : {
@@ -312,6 +340,11 @@ function nodeGraphDisplaySettingsDefaultsForFormType(type = nodeGraphTraceDispla
         dotColor: "#00ffd0",
         backgroundColor: "#00aaff",
       };
+  }
+  if (type === "toggleButtonFace" || type === "momentaryButtonFace") {
+    return typeof normalizeNodeGraphPluginButtonDisplaySettings === "function"
+      ? normalizeNodeGraphPluginButtonDisplaySettings()
+      : { ...(typeof NODE_GRAPH_PLUGIN_BUTTON_DISPLAY_DEFAULTS !== "undefined" ? NODE_GRAPH_PLUGIN_BUTTON_DISPLAY_DEFAULTS : {}) };
   }
   if (type === "keypadFace") {
     return typeof normalizeNodeGraphKeypadLayout === "function"
@@ -355,13 +388,14 @@ function nodeGraphDisplaySettingsDefaultsForFormType(type = nodeGraphTraceDispla
       ? normalizeNodeGraphTextBoxLayout()
       : {
         backgroundColor: "#020407",
+        font: "cascadia-mono",
         horizontalAlign: "center",
         kind: "textBox",
         text: "",
         textColor: "#f3f1ec",
         textMode: "singleLine",
         textSizePercent: 100,
-        verticalAlignPercent: 0,
+        verticalAlignPercent: 50,
       };
   }
   if (type === "patchFace") {
@@ -387,11 +421,6 @@ function nodeGraphDisplaySettingsDefaultsForFormType(type = nodeGraphTraceDispla
   }
   if (type === "spectrogramBurn") {
     return normalizeNodeGraphSpectrogramSettings(nodeGraphSpectrogramSettingsDefaults);
-  }
-  if (type === "ledLamp") {
-    return typeof normalizeNodeGraphLedLayout === "function"
-      ? normalizeNodeGraphLedLayout()
-      : { hue: 0, brightness: 1, blur: 0, rounding: 100, cornerShape: "squircle" };
   }
   if (type === "rgbShapeFace") {
     return typeof normalizeNodeGraphRgbShapeSettings === "function"
@@ -455,6 +484,11 @@ function normalizeNodeGraphDisplaySettingsForFormType(settings, type = nodeGraph
   if (type === "dot") {
     return normalizeNodeGraphZeroDBurnSettings(settings);
   }
+  if (type === "lcdDot") {
+    return typeof normalizeNodeGraphLcdDotSettings === "function"
+      ? normalizeNodeGraphLcdDotSettings(settings)
+      : (settings || {});
+  }
   if (type === "vectorDot" || type === "pulseDot") {
     return typeof normalizeNodeGraphVectorDotSettings === "function"
       ? normalizeNodeGraphVectorDotSettings(settings)
@@ -502,9 +536,14 @@ function normalizeNodeGraphDisplaySettingsForFormType(settings, type = nodeGraph
         : Math.max(0, Math.round(Number(settings?.channel) || 0)),
     };
   }
-  if (type === "roundShapeFace") {
+  if (type === "roundShapeFace" || type === "basicShapeFace") {
     return typeof normalizeNodeGraphRoundShapeFaceSettings === "function"
       ? normalizeNodeGraphRoundShapeFaceSettings(settings)
+      : (settings || {});
+  }
+  if (type === "toggleButtonFace" || type === "momentaryButtonFace") {
+    return typeof normalizeNodeGraphPluginButtonDisplaySettings === "function"
+      ? normalizeNodeGraphPluginButtonDisplaySettings(settings)
       : (settings || {});
   }
   if (type === "keypadFace") {
@@ -559,21 +598,6 @@ function normalizeNodeGraphDisplaySettingsForFormType(settings, type = nodeGraph
   ) {
     return normalizeNodeGraphScope2dSettings(settings);
   }
-  if (type === "ledLamp") {
-    // Map shared form field names → LED model keys (incl. gradientStops).
-    const raw = settings && typeof settings === "object" ? settings : {};
-    return typeof normalizeNodeGraphLedLayout === "function"
-      ? normalizeNodeGraphLedLayout({
-        ...raw,
-        brightness: raw.brightness ?? raw.dot1Brightness,
-        blur: raw.blur ?? raw.lineThickness,
-        gradientStops: raw.gradientStops ?? raw.gradient,
-        hue: raw.hue,
-        rounding: raw.rounding,
-        cornerShape: raw.cornerShape,
-      })
-      : raw;
-  }
   if (type === "rgbShapeFace") {
     return typeof normalizeNodeGraphRgbShapeSettings === "function"
       ? normalizeNodeGraphRgbShapeSettings(settings)
@@ -617,6 +641,7 @@ function nodeGraphTraceDisplayCurrentSettingsForFormType(formType = nodeGraphTra
   if (!nodeGraphNodeCanOpenDisplaySettings(node)) {
     return nodeGraphDisplaySettingsDefaultsForFormType(formType);
   }
+  // Keep this schema list in lockstep with assign + cloneNodeGraphTypedDisplaySettings.
   const settingsSchema = nodeGraphModuleDisplaySettingsSchemaForNode(node);
   if (settingsSchema === "dot") {
     return normalizeNodeGraphZeroDBurnSettings(node.zeroDBurnSettings);
@@ -667,11 +692,18 @@ function nodeGraphTraceDisplayCurrentSettingsForFormType(formType = nodeGraphTra
       ? nodeGraphPortalDisplaySettingsForNode(node)
       : { channel: 0 };
   }
-  if (settingsSchema === "roundShapeFace") {
+  if (settingsSchema === "roundShapeFace" || settingsSchema === "basicShapeFace") {
     return typeof nodeGraphRoundShapeFaceSettingsForNode === "function"
       ? nodeGraphRoundShapeFaceSettingsForNode(node)
       : (typeof normalizeNodeGraphRoundShapeFaceSettings === "function"
         ? normalizeNodeGraphRoundShapeFaceSettings(node?.traceDisplaySettings)
+        : (node?.traceDisplaySettings || {}));
+  }
+  if (settingsSchema === "toggleButtonFace" || settingsSchema === "momentaryButtonFace") {
+    return typeof nodeGraphPluginButtonDisplaySettingsForNode === "function"
+      ? nodeGraphPluginButtonDisplaySettingsForNode(node)
+      : (typeof normalizeNodeGraphPluginButtonDisplaySettings === "function"
+        ? normalizeNodeGraphPluginButtonDisplaySettings(node?.traceDisplaySettings)
         : (node?.traceDisplaySettings || {}));
   }
   if (settingsSchema === "keypadFace") {
@@ -710,17 +742,14 @@ function nodeGraphTraceDisplayCurrentSettingsForFormType(formType = nodeGraphTra
   if (settingsSchema === "xyPad") {
     return normalizeNodeGraphXyPadDisplaySettings(node.traceDisplaySettings);
   }
-  if (settingsSchema === "vectorDot" || settingsSchema === "pulseDot") {
+  if (settingsSchema === "vectorDot" || settingsSchema === "pulseDot" || settingsSchema === "lcdDot") {
     return typeof nodeGraphVectorDotSettingsForNode === "function"
       ? nodeGraphVectorDotSettingsForNode(node)
-      : normalizeNodeGraphVectorDotSettings(
-        node?.vectorDotSettings || node?.zeroDBurnSettings || node?.traceDisplaySettings,
-      );
-  }
-  if (settingsSchema === "ledLamp") {
-    return typeof normalizeNodeGraphLedLayout === "function"
-      ? normalizeNodeGraphLedLayout(node.led)
-      : (node.led || {});
+      : (settingsSchema === "lcdDot" && typeof normalizeNodeGraphLcdDotSettings === "function"
+        ? normalizeNodeGraphLcdDotSettings(node?.vectorDotSettings)
+        : normalizeNodeGraphVectorDotSettings(
+          node?.vectorDotSettings || node?.zeroDBurnSettings || node?.traceDisplaySettings,
+        ));
   }
   if (settingsSchema === "rgbShapeFace") {
     return typeof nodeGraphRgbShapeSettingsForNode === "function"
@@ -776,7 +805,7 @@ function nodeGraphTraceDisplayCurrentSettingsForFormType(formType = nodeGraphTra
   ) {
     return normalizeNodeGraphScope2dSettings(node.traceDisplaySettings);
   }
-  if (settingsSchema === "trace" || settingsSchema === "traceXyz") {
+  if (settingsSchema === "trace" || settingsSchema === "traceXyz" || settingsSchema === "traceRgb") {
     return nodeGraphTraceDisplaySettingsForNode(node);
   }
   if (settingsSchema === "gradientVectorscopeFace") {
@@ -789,6 +818,11 @@ function nodeGraphTraceDisplayCurrentSettingsForFormType(formType = nodeGraphTra
       ? normalizeNodeGraphVectorRgbSettings(node.traceDisplaySettings)
       : (node.traceDisplaySettings || {});
   }
+  if (settingsSchema === "rasterRgbFace") {
+    return typeof normalizeNodeGraphRasterRgbSettings === "function"
+      ? normalizeNodeGraphRasterRgbSettings(node.traceDisplaySettings)
+      : (node.traceDisplaySettings || {});
+  }
   return nodeGraphGlobalTraceSettings();
 }
 
@@ -799,36 +833,6 @@ function readNodeGraphTraceDisplaySettingsForm() {
     nodeGraphTraceDisplayCurrentSettingsForFormType(formType),
     formType,
   );
-  // LED uses its own range / corner controls (data-led-*), not the stepper form.
-  if (formType === "ledLamp") {
-    const panel = root?.querySelector?.("[data-led-display-settings-panel]") || root;
-    const next = { ...current };
-    for (const key of ["brightness", "blur", "rounding", "fillPercent"]) {
-      const input = panel?.querySelector?.(`[data-led-field="${key}"]`);
-      if (input) {
-        next[key] = Number(input.value);
-      }
-    }
-    const activeCorner = panel?.querySelector?.("[data-led-corner].active, [data-led-corner][aria-pressed='true']");
-    if (activeCorner) {
-      next.cornerShape = activeCorner.getAttribute("data-led-corner") === "square"
-        ? "square"
-        : "squircle";
-    }
-    // Gradient editor writes via applyNodeGraphTraceDisplaySettingsForm — must
-    // not early-return before pulling stops (was the bright→dim failure mode).
-    if (nodeGraphDisplaySettingsFormTypeUsesGradient(formType)) {
-      const editor = typeof NodeGraphGradientSelector !== "undefined"
-        ? NodeGraphGradientSelector.getActive?.()
-        : (nodeGraphMvp?.gradientSelector
-          || nodeGraphMvp?.spectrogramGradientEditor
-          || nodeGraphMvp?.sharedGradientEditor);
-      if (editor && typeof editor.getStops === "function") {
-        next.gradientStops = editor.getStops();
-      }
-    }
-    return normalizeNodeGraphDisplaySettingsForFormType(next, formType);
-  }
   if (formType === "portalFace") {
     const panel = root?.querySelector?.("[data-portal-display-settings-panel]") || root;
     const next = { ...current };
@@ -853,6 +857,7 @@ function readNodeGraphTraceDisplaySettingsForm() {
       ["nodePhosphorWaveformEdgeSpacingInput", "edgeSpacing"],
       ["nodePhosphorWaveformLabelInsetInput", "labelInsetPx"],
       ["nodePhosphorWaveformPlaylistFadeInput", "playlistFade"],
+      ["nodePhosphorWaveformPlaylistVisibleCountInput", "playlistVisibleCount"],
     ];
     for (const [id, key] of numberIds) {
       const input = document.getElementById(id);
@@ -891,6 +896,12 @@ function readNodeGraphTraceDisplaySettingsForm() {
       next.backgroundColor = color.value;
     }
     return normalizeNodeGraphDisplaySettingsForFormType(next, formType);
+  }
+  if (formType === "toggleButtonFace" || formType === "momentaryButtonFace") {
+    if (typeof readNodeGraphPluginButtonDisplaySettingsForm === "function") {
+      return readNodeGraphPluginButtonDisplaySettingsForm(root, current);
+    }
+    return normalizeNodeGraphDisplaySettingsForFormType(current, formType);
   }
   if (formType === "keypadFace") {
     const panel = root?.querySelector?.("[data-keypad-display-settings-panel]") || root;
@@ -934,7 +945,7 @@ function readNodeGraphTraceDisplaySettingsForm() {
   if (formType === "textBoxFace") {
     const panel = root?.querySelector?.("[data-textbox-display-settings-panel]") || root;
     const next = { ...current };
-    for (const key of ["textSizePercent", "verticalAlignPercent"]) {
+    for (const key of ["textSizePercent", "textWeight", "lineHeight", "verticalAlignPercent"]) {
       const input = panel?.querySelector?.(`[data-textbox-field="${key}"]`);
       if (input) {
         next[key] = Number(input.value);
@@ -947,6 +958,10 @@ function readNodeGraphTraceDisplaySettingsForm() {
     const align = panel?.querySelector?.("[data-textbox-align].active, [data-textbox-align][aria-pressed='true']");
     if (align) {
       next.horizontalAlign = align.getAttribute("data-textbox-align");
+    }
+    const font = panel?.querySelector?.(`[data-trace-display-choice="font"], [data-textbox-font]`);
+    if (font) {
+      next.font = font.value;
     }
     for (const key of ["backgroundColor", "textColor"]) {
       const input = panel?.querySelector?.(`[data-trace-display-color="${key}"]`);
@@ -1033,6 +1048,9 @@ function readNodeGraphTraceDisplaySettingsForm() {
       next[key] = input.value;
       if (key === "dot1Color") {
         next.color = input.value;
+        if (typeof nodeGraphHueDegFromHex === "function") {
+          next.hue = nodeGraphHueDegFromHex(input.value);
+        }
       }
       if (key === "backgroundColor") {
         next.background = input.value;
@@ -1123,10 +1141,6 @@ function nodeGraphDisplaySettingsFormValue(settings, key) {
   if (key === "ghostBrightness") {
     return settings.ghostBrightness ?? settings.ghost;
   }
-  // LED blur reuses the Blur field key.
-  if (key === "lineThickness" && nodeGraphTraceDisplaySettingsFormType() === "ledLamp") {
-    return settings.blur ?? settings.lineThickness;
-  }
   if (key === "dot1Color") {
     return settings.dot1Color ?? settings.color;
   }
@@ -1171,24 +1185,6 @@ function writeNodeGraphTraceDisplaySettingsForm(settings) {
   const formType = nodeGraphTraceDisplaySettingsFormType();
   const root = nodeGraphTraceDisplaySettingsRoot();
   const normalized = normalizeNodeGraphDisplaySettingsForFormType(settings, formType);
-  // LED uses dedicated range controls — not the generic stepper writers.
-  if (formType === "ledLamp") {
-    if (typeof syncNodeGraphLedDisplaySettingsControls === "function") {
-      const panel = root?.querySelector?.("[data-led-display-settings-panel]") || root;
-      syncNodeGraphLedDisplaySettingsControls(panel, normalized);
-    }
-    if (nodeGraphDisplaySettingsFormTypeUsesGradient(formType)) {
-      const editor = typeof NodeGraphGradientSelector !== "undefined"
-        ? NodeGraphGradientSelector.getActive?.()
-        : (nodeGraphMvp?.gradientSelector
-          || nodeGraphMvp?.spectrogramGradientEditor
-          || nodeGraphMvp?.sharedGradientEditor);
-      if (editor && typeof editor.setStops === "function" && normalized.gradientStops) {
-        editor.setStops(normalized.gradientStops);
-      }
-    }
-    return;
-  }
   if (formType === "portalFace") {
     const panel = root?.querySelector?.("[data-portal-display-settings-panel]") || root;
     if (typeof syncNodeGraphPortalDisplaySettingsControls === "function") {
@@ -1210,6 +1206,19 @@ function writeNodeGraphTraceDisplaySettingsForm(settings) {
     syncNodeGraphTraceDisplayColorWidgets(
       document.getElementById("nodeTraceDisplaySettingsPopover"),
     );
+    return;
+  }
+  if (formType === "toggleButtonFace" || formType === "momentaryButtonFace") {
+    const panel = root?.querySelector?.("[data-plugin-button-display-settings-panel]") || root;
+    if (typeof syncNodeGraphPluginButtonDisplaySettingsControls === "function") {
+      syncNodeGraphPluginButtonDisplaySettingsControls(panel, normalized);
+    }
+    syncNodeGraphTraceDisplayColorWidgets(
+      document.getElementById("nodeTraceDisplaySettingsPopover"),
+    );
+    if (typeof syncNodeGraphHueTitleSteppers === "function") {
+      syncNodeGraphHueTitleSteppers(panel);
+    }
     return;
   }
   if (formType === "keypadFace") {
@@ -1328,10 +1337,14 @@ function writeNodeGraphTraceDisplaySettingsForm(settings) {
   if (formType === "knobFace" && typeof syncNodeGraphKnobFaceDisplaySettingsControls === "function") {
     syncNodeGraphKnobFaceDisplaySettingsControls(root);
   }
-  if (typeof nodeGraphDisplaySettingsIsVectorTraceFormType === "function"
-    && nodeGraphDisplaySettingsIsVectorTraceFormType(formType)
-    && typeof syncNodeGraphInstantTracePreview === "function") {
-    syncNodeGraphInstantTracePreview(root, normalized);
+  if ((formType === "vectorDot" || formType === "pulseDot" || formType === "lcdDot")
+    && typeof syncNodeGraphStampShapeControls === "function") {
+    syncNodeGraphStampShapeControls(root, normalized);
+  }
+  if (typeof nodeGraphDisplaySettingsShowsStampPreview === "function"
+    && nodeGraphDisplaySettingsShowsStampPreview(formType)
+    && typeof syncNodeGraphStampPreview === "function") {
+    syncNodeGraphStampPreview(root, normalized);
   }
 }
 
@@ -1442,6 +1455,7 @@ function bindNodeGraphHueTitleSteppers(host) {
       row,
       colorInput,
       startX: event.clientX,
+      startY: event.clientY,
       startHue: Number(hsl.h) || 0,
     };
     swatch.setPointerCapture?.(event.pointerId);
@@ -1455,10 +1469,12 @@ function bindNodeGraphHueTitleSteppers(host) {
         && drag.pointerId !== event.pointerId)) {
       return;
     }
-    // ~1.2° per screen px; Shift = fine.
+    // Right / up = increase, left / down = decrease. ~1.2° per screen px.
     // App-wide hue policy: no wrap — clamp to red edges (0…360).
     const fine = event.shiftKey ? 0.15 : 1;
-    const delta = (event.clientX - drag.startX) * 1.2 * fine;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    const delta = (dx - dy) * 1.2 * fine;
     const nextH = Math.max(0, Math.min(360, drag.startHue + delta));
     const pure = typeof nodeGraphTraceDisplayPureHueHex === "function"
       ? nodeGraphTraceDisplayPureHueHex({ h: nextH }, "#ff0000")
@@ -1664,8 +1680,16 @@ function destroyNodeGraphTraceDisplayColorWidgets() {
 
 function nodeGraphTraceDisplayColorWidgetLabel(field) {
   // Title lives inside the widget (swatch). Never a side "Color" heading.
+  const nodeType = typeof nodeGraphPatchNode === "function"
+    ? nodeGraphPatchNode(nodeGraphTraceDisplaySettingsTargetNodeId())?.type
+    : null;
+  const isXyz = typeof nodeGraphModuleUsesXyzTraceDisplay === "function"
+    && nodeGraphModuleUsesXyzTraceDisplay(nodeType);
+  if (field === "tertiaryColor") {
+    return "Z";
+  }
   if (field === "secondaryColor") {
-    return "Right";
+    return isXyz ? "Y" : "Right";
   }
   if (field === "backgroundColor") {
     if (nodeGraphTraceDisplaySettingsFormType() === "numberReadout") {
@@ -1709,12 +1733,17 @@ function nodeGraphTraceDisplayColorWidgetLabel(field) {
         : null;
       return nodeType === "valueLcd" ? "Foreground" : "";
     }
-    const nodeType = typeof nodeGraphPatchNode === "function"
+    const nodeTypeInner = typeof nodeGraphPatchNode === "function"
       ? nodeGraphPatchNode(nodeGraphTraceDisplaySettingsTargetNodeId())?.type
       : null;
+    const isXyzDot = typeof nodeGraphModuleUsesXyzTraceDisplay === "function"
+      && nodeGraphModuleUsesXyzTraceDisplay(nodeTypeInner);
+    if (isXyzDot) {
+      return "X";
+    }
     const isStereo = typeof nodeGraphModuleUsesStereoTraceDisplay === "function"
-      ? nodeGraphModuleUsesStereoTraceDisplay(nodeType)
-      : nodeType === "output";
+      ? nodeGraphModuleUsesStereoTraceDisplay(nodeTypeInner)
+      : nodeTypeInner === "output";
     return isStereo ? "Left" : "";
   }
   return "";

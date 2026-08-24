@@ -22,6 +22,7 @@ function nodeGraphMagnifierSession() {
       contextGuardTimer: 0,
       wheelBound: false,
       world: null,
+      freezeDisplays: false,
       x: 0,
       y: 0,
     };
@@ -31,6 +32,11 @@ function nodeGraphMagnifierSession() {
 
 function nodeGraphMagnifierIsActive() {
   return Boolean(nodeGraphMvp.magnifier?.active);
+}
+
+/** Displays freeze after the lens snapshot, so the clone still has trails. */
+function nodeGraphMagnifierDisplaysFrozen() {
+  return Boolean(nodeGraphMvp.magnifier?.active && nodeGraphMvp.magnifier?.freezeDisplays);
 }
 
 function clampNodeGraphMagnifierMag(value) {
@@ -184,6 +190,9 @@ function nodeGraphMagnifierPaintRim(_workspace) {
 }
 
 function nodeGraphMagnifierCloneWorkspace(workspace) {
+  if (typeof stampNodeGraphCanvasCopyKeys === "function") {
+    stampNodeGraphCanvasCopyKeys(workspace);
+  }
   const clone = workspace.cloneNode(true);
   clone.removeAttribute("id");
   clone.classList.add("node-graph-magnifier-world");
@@ -209,7 +218,11 @@ function nodeGraphMagnifierCloneWorkspace(workspace) {
   clone.style.border = "none";
   clone.style.borderRadius = "0";
   if (typeof copyNodeGraphCameraWorldCanvases === "function") {
-    copyNodeGraphCameraWorldCanvases(workspace, clone);
+    // Glass is a still frame: copy every canvas once (including 2D Trace / phosphor).
+    copyNodeGraphCameraWorldCanvases(workspace, clone, { skipExpensive: false });
+  }
+  if (typeof clearNodeGraphCanvasCopyKeys === "function") {
+    clearNodeGraphCanvasCopyKeys(workspace);
   }
   return clone;
 }
@@ -338,6 +351,7 @@ function endNodeGraphMagnifier() {
   session?.world?.remove();
   if (session) {
     session.active = false;
+    session.freezeDisplays = false;
     session.pointerId = null;
     session.world = null;
     if (session.host) {
@@ -369,6 +383,7 @@ function beginNodeGraphMagnifier(event) {
   endNodeGraphMagnifier();
   const host = ensureNodeGraphMagnifierHost();
   session.active = true;
+  session.freezeDisplays = false;
   session.mag = clampNodeGraphMagnifierMag(session.mag || nodeGraphMagnifierLimits.mag);
   session.pointerId = event.pointerId;
   session.size = clampNodeGraphMagnifierSize(session.size || nodeGraphMagnifierLimits.defaultSize);
@@ -400,6 +415,7 @@ function beginNodeGraphMagnifier(event) {
     }
     session.world = world;
     session.lens?.replaceChildren(world);
+    session.freezeDisplays = true;
     applyNodeGraphMagnifierLayout();
   });
 }

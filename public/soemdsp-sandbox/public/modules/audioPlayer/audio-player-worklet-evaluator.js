@@ -5,6 +5,7 @@ NodeLiveAudioProcessor.prototype.audioPlayerSample = function audioPlayerSample(
     const sample = this.samples.get(sampleId);
     const frames = Math.max(0, Number(sample?.frames) || sample?.samples?.length || sample?.channelData?.[0]?.length || 0);
     this.audioPlayerMeterNodeId = nodeId;
+    this.audioPlayerMeterSampleId = sampleId;
     if (!this.audioPlayerMeterSpeeds) {
       this.audioPlayerMeterSpeeds = Object.create(null);
     }
@@ -96,8 +97,9 @@ NodeLiveAudioProcessor.prototype.audioPlayerSample = function audioPlayerSample(
     const playlistScrub = Number(readParam("playlistScrub", 0)) || 0;
     const phaseWithOffset = basePhase + phaseOffset + phaseSkip + playlistScrub;
     const boundedPhase = startPhase + this.wrapValue((phaseWithOffset - startPhase) / span, 0, 1) * span;
-    const stereo = this.sampleStereoAt(sample, boundedPhase * (frames - 1));
-    const level = readParam("level", 1);
+    const interpolation = Math.round(Number(readParam("antialias", 0)) || 0) >= 1 ? "hermite" : "linear";
+    const stereo = this.sampleStereoAt(sample, boundedPhase * (frames - 1), interpolation);
+    const level = readParam("amplitude", readParam("level", 1));
     const outputActive = state.playing;
     const left = outputActive ? stereo.Left * level : 0;
     const mono = outputActive ? stereo.Mono * level : 0;

@@ -145,6 +145,8 @@ function syncNodeGraphScope2dBurnCanvas(canvas, screenElement, pixelRatio, pixel
     // chord from the stale location to the new path — “lines out of place”
     // on X/Y phosphor faces.
     canvas._nodeGraphScope2dLastDrawnPoint = null;
+    canvas._phosphorLiveOverlayPoints = null;
+    canvas._phosphorLiveScratchInk = false;
   }
   // Below 1: intentional chunky CSS upscale. At/above 1: smooth scale.
   if (density < 0.999) {
@@ -662,6 +664,95 @@ function compositeNodeGraphScope2dBurn(renderer, settings, options = {}) {
 }
 
 
+/** Live phosphor stamp (Bright). Residual hang is a separate energy-FBO deposit. */
+function paintNodeGraphPhosphorLiveStampOverlay(context, points, radius, blur, bright, rgbBytes, maxDots) {
+  if (!context || !(bright > 0.001) || !Array.isArray(points) || !points.length) {
+    return false;
+  }
+  const rPx = Math.max(1, Number(radius) || 0);
+  const blur01 = Math.max(0, Math.min(1, Number(blur) || 0));
+  const rgb = Array.isArray(rgbBytes) && rgbBytes.length >= 3 ? rgbBytes : [0.46, 0.92, 1];
+  let r;
+  let g;
+  let b;
+  if (typeof nodeGraphScopeRgbFloatsToCanvasRgb === "function" && !(Number(rgb[0]) > 1)) {
+    const bytes = nodeGraphScopeRgbFloatsToCanvasRgb(rgb);
+    r = bytes[0];
+    g = bytes[1];
+    b = bytes[2];
+  } else {
+    r = Math.max(0, Math.min(255, Math.round(Number(rgb[0]) > 1 ? rgb[0] : rgb[0] * 255)));
+    g = Math.max(0, Math.min(255, Math.round(Number(rgb[1]) > 1 ? rgb[1] : rgb[1] * 255)));
+    b = Math.max(0, Math.min(255, Math.round(Number(rgb[2]) > 1 ? rgb[2] : rgb[2] * 255)));
+  }
+  const cap = Math.max(1, Math.min(8192, Math.floor(Number(maxDots) || 1024)));
+  let drawn = 0;
+  context.save();
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.globalCompositeOperation = "source-over";
+  context.globalAlpha = Math.max(0, Math.min(1, bright));
+  context.fillStyle = `rgb(${r},${g},${b})`;
+  context.shadowColor = `rgba(${r},${g},${b},${Math.min(1, bright)})`;
+  context.shadowBlur = rPx * blur01 * 6;
+  for (let i = 0; i < points.length && drawn < cap; i += 1) {
+    const p = points[i];
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+      continue;
+    }
+    context.beginPath();
+    context.arc(p.x, p.y, rPx, 0, Math.PI * 2);
+    context.fill();
+    drawn += 1;
+  }
+  context.restore();
+  return drawn > 0;
+}
+
+function nodeGraphPhosphorLiveScratchCanvas(canvas, width, height) {
+  if (!canvas || !(width > 0) || !(height > 0)) {
+    return null;
+  }
+  let scratch = canvas._phosphorLiveScratch;
+  if (!scratch) {
+    scratch = document.createElement("canvas");
+    canvas._phosphorLiveScratch = scratch;
+  }
+  if (scratch.width !== width || scratch.height !== height) {
+    scratch.width = width;
+    scratch.height = height;
+    canvas._phosphorLiveScratchInk = false;
+  }
+  return scratch;
+}
+
+/** Idle beam: all samples at origin (0 amp) or no motion (0 Hz). */
+function nodeGraphScope2dPointsAreIdleBeam(points, square) {
+  const cx = (Number(square?.left) || 0) + (Number(square?.width) || 0) * 0.5;
+  const cy = (Number(square?.top) || 0) + (Number(square?.height) || 0) * 0.5;
+  let n = 0;
+  let maxFromCenter = 0;
+  let maxStep = 0;
+  let px = 0;
+  let py = 0;
+  for (let i = 0; i < (points?.length || 0); i += 1) {
+    const p = points[i];
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+      continue;
+    }
+    maxFromCenter = Math.max(maxFromCenter, Math.hypot(p.x - cx, p.y - cy));
+    if (n > 0) {
+      maxStep = Math.max(maxStep, Math.hypot(p.x - px, p.y - py));
+    }
+    px = p.x;
+    py = p.y;
+    n += 1;
+  }
+  return {
+    silent: n === 0 || maxFromCenter < 0.75,
+    parked: n > 0 && maxStep < 0.5,
+  };
+}
+
 function drawNodeGraphScope2dEnergyBurnPath(item, pixelRatio, pathPoints, settings, options = {}) {
   if (typeof nodeGraphPhosphorEnergyGlEnsure !== "function"
     || typeof nodeGraphPhosphorEnergyGlStepBeams !== "function"
@@ -697,119 +788,50 @@ function drawNodeGraphScope2dEnergyBurnPath(item, pixelRatio, pathPoints, settin
   const height = canvas.height;
   const points = Array.isArray(pathPoints) ? pathPoints : [];
   const endFrame = Number(options.endFrame);
-  const bgHex = nodeGraphFacePlateBackground(settings);
-  nodeGraphFacePlateApplyCss(screenElement, bgHex);
-  const frozen = typeof nodeGraphModuleScopePhosphorFrozen === "function"
-    && nodeGraphModuleScopePhosphorFrozen();
-  const hasPoints = points.length > 0;
-  // Absorb cursor only after a successful paint (or when truly idle / frozen).
-  // Absorbing *before* deposit used to burn undrawn samples when GL ensure or
-  // present failed — faces stayed black until Stop+Play rebuilt the path.
-  const absorbCursor = () => {
-    if (Number.isFinite(endFrame)) {
-      absorbNodeGraphPhosphorDrawCursorOnCanvas(canvas, endFrame);
-    }
-  };
-  // No new stamps this frame: do NOT wipe the face. Filling the plate here
-  // erased 1D Phosphor residual between scope posts (~30Hz), so the trail
-  // looked frozen/dead until a Settings change force-painted. Hold pixels when
-  // energy is idle; fall through to present-only when residual is still live.
-  const existingEnergy = canvas._phosphorEnergyGl;
-  const energyIdle = !existingEnergy || existingEnergy.energyActive === false;
-  if (!frozen && !hasPoints && energyIdle) {
-    // Still advance the sample cursor so we do not re-deposit a backlog later.
-    absorbCursor();
-    return true;
-  }
-  // Freeze still advances the sample cursor so unpause does not dump a backlog.
-  if (frozen) {
-    absorbCursor();
+  // Always absorb sample cursor when an endFrame is known (including freeze)
+  // so pause does not bank up stamps for a resume dump.
+  if (Number.isFinite(endFrame)) {
+    absorbNodeGraphPhosphorDrawCursorOnCanvas(canvas, endFrame);
   }
 
   const energyGl = nodeGraphPhosphorEnergyGlEnsure(canvas, width, height, "_phosphorEnergyGl");
   if (!energyGl) {
-    // Do not absorb — retry these samples next frame when GL is ready.
     return false;
   }
 
-  // Residual model (phosphor-residual.js / Display Settings):
-  //   Bright → peak deposit + present light
-  //   Ghost  → extreme analog (super-exp) hang (NOT deposit ink)
-  //   Trail  → linear residual blend (1 ≈ freeze, no erase)
-  //   Burn   → sticky residual floor (0 = off)
-  //   Burn Amount → multiplies Bright for residual deposits (default 1)
   const trail = typeof PhosphorResidual !== "undefined" && PhosphorResidual.migrateTrail
     ? PhosphorResidual.migrateTrail(settings || {}, 0.88)
     : clampNodeSliderValue(Number(settings?.trail ?? (Number.isFinite(Number(settings?.decay)) ? 1 - Number(settings.decay) : 0.88)), 0, 1);
   const ghost = typeof PhosphorResidual !== "undefined" && PhosphorResidual.migrateGhost
     ? PhosphorResidual.migrateGhost(settings || {}, 0.45)
-    : clampNodeSliderValue(Number(settings?.ghost) || 0, 0, 1);
-  const burn = typeof PhosphorResidual !== "undefined" && PhosphorResidual.migrateBurn
-    ? PhosphorResidual.migrateBurn(settings || {}, 0)
-    : (
-      Number(settings?.residualSchema) >= 2
-        ? clampNodeSliderValue(Number(settings?.burn) || 0, 0, 1)
-        : 0
-    );
-  const burnAmount = typeof PhosphorResidual !== "undefined" && PhosphorResidual.migrateBurnAmount
-    ? PhosphorResidual.migrateBurnAmount(settings || {}, 1)
-    : Math.max(0, Math.min(4, Number(settings?.burnAmount) || 1));
-  const residualSchema = (typeof PhosphorResidual !== "undefined" && PhosphorResidual.RESIDUAL_SCHEMA) || 3;
-  // Trail high → low decay (erase). Ghost must not be remapped into deposit.
-  const decay = clampNodeSliderValue(1 - trail, 0, 1);
-  const bright = clampNodeSliderValue(
-    Number(settings?.dot1Brightness ?? settings?.brightness) || 0,
-    0,
-    1,
-  );
+    : clampNodeSliderValue(Number(settings?.ghost ?? settings?.burn) || 0, 0, 1);
   const dotSpace = nodeGraphScope2dStrokeSpace(canvas);
   const layers = nodeGraphScope2dBurnLayers(settings, dotSpace);
   const layer = layers[0] || null;
   // Multi-stop energy→color LUT from shared gradient editor.
+  const bgHex = nodeGraphFacePlateBackground(settings);
+  nodeGraphFacePlateApplyCss(screenElement, bgHex);
   nodeGraphPhosphorApplyGradientLut(energyGl, settings, "#75ebff");
 
   // Engine speed 0 (and other pause paths): never step energy — hold FBO as-is.
+  const frozen = nodeGraphModuleScopePhosphorFrozen();
   if (frozen) {
-    // Present only (below). No decay, no bleed, no deposit.
+    // Present only (below). No residual step, no bleed, no deposit.
   } else if (layer) {
-    // Soft circular hits only (dots). Pack so soft discs fuse under budget;
-    // Full Dot Economy densifies further toward Dot Budget.
-    // Deposit = Bright only (Ghost is residual hang, not stamp gain).
+    // c1091b4 energy burn deposit: dots only, maxDots ceiling, no fullEconomy flag
+    // (thrifty ideal spacing; under load skip evenly across the path).
     const size01 = clampNodeSliderValue(settings?.dot1Size, 0, 1);
-    const stampBlur = nodeGraphTraceDisplayClampStampBlur(layer.blur);
     const beamBrightness = nodeGraphScope2dEnergyBurnDepositGain(
-      layer.brightness > 0 ? layer.brightness : bright,
+      layer.brightness,
       size01,
     );
-    // Packing flags from shared scope2d normalize (Snowflake / Lorenz / …).
-    const fullDotEconomy = typeof nodeGraphDisplaySettingsToggleIsOn === "function"
-      ? nodeGraphDisplaySettingsToggleIsOn(settings?.fullDotEconomy ?? settings?.useFullDotEconomy)
-      : (settings?.fullDotEconomy === true || settings?.useFullDotEconomy === true);
-    const dotsOnly = typeof nodeGraphDisplaySettingsToggleIsOn === "function"
-      ? nodeGraphDisplaySettingsToggleIsOn(settings?.dotsOnly ?? settings?.verticesOnly)
-      : (settings?.dotsOnly === true || settings?.verticesOnly === true);
-    // Hard stamps (Blur 0) must freeze crisp — never force thrifty seepage.
-    // Soft stamps may use gentle bleed (energy-gl default from blur when undefined).
-    let bleed;
-    if (stampBlur <= 0.001) {
-      bleed = 0;
-    } else if (fullDotEconomy && !dotsOnly) {
-      bleed = undefined; // soft default from blur
-    } else {
-      // Thrifty soft: tiny seep so gaps stay dots, not dim threads.
-      bleed = Math.min(0.035, 0.01 + stampBlur * 0.05);
-    }
-    nodeGraphPhosphorEnergyGlStepBeams(energyGl, {
-      decay,
+    const stepped = nodeGraphPhosphorEnergyGlStepBeams(energyGl, {
       trail,
       ghost,
-      burn,
-      burnAmount,
-      residualSchema,
       pathPoints: points,
       radius: Math.max(0.35, layer.radius),
       brightness: beamBrightness,
-      blur: stampBlur,
+      blur: nodeGraphTraceDisplayClampStampBlur(layer.blur),
       mode: "dots",
       // User / face ceiling. Under load: even skips across full path (not head-only).
       maxDots: Math.max(
@@ -819,25 +841,23 @@ function drawNodeGraphScope2dEnergyBurnPath(item, pixelRatio, pathPoints, settin
           Math.round(Number(settings?.dotBudget) || nodeGraphScope2dMaxSamplesPerFrame(canvas)),
         ),
       ),
-      fullEconomy: fullDotEconomy,
-      fullDotEconomy,
-      // Sample hits only — no chord packing (no connective lines).
-      dotsOnly,
-      verticesOnly: dotsOnly,
-      bleed,
+      // Only pass fullEconomy when explicitly true (c1091b4 default: off).
+      fullEconomy: settings?.fullDotEconomy === true,
+      fullDotEconomy: settings?.fullDotEconomy === true,
+      // Dots only: sample hits only — no fuse packing between points.
+      dotsOnly: settings?.dotsOnly === true || settings?.verticesOnly === true,
     });
+    void stepped;
+    const stamps = Math.max(
+      0,
+      Math.floor(Number(energyGl.lastDepositCount) || 0),
+    );
+    if (typeof recordNodeGraphModuleScopeRenderMetrics === "function" && stamps > 0) {
+      recordNodeGraphModuleScopeRenderMetrics(stamps, stamps);
+    }
   } else if (typeof nodeGraphPhosphorEnergyGlStep === "function") {
     // Fade + bleed when no drawable layer (trail still softens outward).
-    nodeGraphPhosphorEnergyGlStep(energyGl, {
-      decay,
-      trail,
-      ghost,
-      burn,
-      burnAmount,
-      residualSchema,
-      depositGain: 0,
-      bleed: ghost > 0.001 || burn > 0.001 ? 0.06 : 0,
-    });
+    nodeGraphPhosphorEnergyGlStep(energyGl, { trail, ghost, depositGain: 0, bleed: 0.1 });
   }
 
   if (!frozen) {
@@ -847,34 +867,22 @@ function drawNodeGraphScope2dEnergyBurnPath(item, pixelRatio, pathPoints, settin
     }
   }
 
-  // Present film from Bright (peak light). Ghost does not open exposure.
-  // Re-present while frozen so the face stays visible if something cleared the 2D canvas.
-  const exposure = nodeGraphScope2dEnergyBurnExposure(bright);
+  // Fixed film exposure (not a second brightness).
+  const exposure = nodeGraphScope2dEnergyBurnExposure();
   context.setTransform(1, 0, 0, 1, 0, 0);
   nodeGraphFacePlateFillCanvas(context, canvas, bgHex);
-  let presented = false;
   if (nodeGraphPhosphorEnergyGlPresent(energyGl, 1, { exposure })) {
     context.save();
-    // Energy is already additive mono; LUT paints color (incl. dark peaks).
-    context.globalCompositeOperation = "source-over";
-    // Smooth at native density; nearest when intentionally chunky.
-    const dens = Number(sync.density);
-    context.imageSmoothingEnabled = Number.isFinite(dens) ? dens >= 0.999 : true;
+    context.globalCompositeOperation = "lighter";
+    // Always bilinear when compositing energy → face. Nearest upscale of a
+    // sub-1 density FBO made continuous beams look stair-stepped / jagged.
+    // (Pixel-density 0 1×1 “chunky” still soft-fills the plate.)
+    context.imageSmoothingEnabled = true;
+    if ("imageSmoothingQuality" in context) {
+      context.imageSmoothingQuality = "high";
+    }
     context.drawImage(energyGl.canvas, 0, 0, width, height);
     context.restore();
-    presented = true;
-  }
-  // Only consume the undrawn window after a real paint attempt completed
-  // (present hit, freeze hold, or idle plate). Failed present keeps samples.
-  if (presented || frozen || (!hasPoints && energyIdle)) {
-    absorbCursor();
-  } else if (hasPoints && !frozen) {
-    // Deposit ran but present skipped (energyActive false): still advance
-    // cursor when the GL face is live — residual will show next present.
-    // Prefer retry if energy is completely idle so the next RAF can re-stamp.
-    if (energyGl.energyActive !== false) {
-      absorbCursor();
-    }
   }
   return true;
 }
@@ -908,13 +916,20 @@ function drawNodeGraphScope2dRetainedBurn(item, pixelRatio, square, buffer, sett
   const count = Math.min(buffer?.x?.length || 0, buffer?.y?.length || 0);
   const budget = nodeGraphScope2dMaxSamplesPerFrame(canvas);
   const rawStart = nodeGraphScope2dDrawStartIndex(canvas, buffer, count);
-  const drawStartIndex = nodeGraphScope2dClampDrawStartIndex(rawStart, count, budget);
-  let pathPoints = drawStartIndex < count
-    ? buildNodeGraphScope2dPathPoints(canvasSquare, buffer, drawStartIndex, {
+  // Cover the whole undrawn window. Clamping to the newest `budget` samples
+  // dropped the middle of the orbit (random gaps on sincos circles).
+  const undrawn = Math.max(0, count - rawStart);
+  let pathPoints = [];
+  if (undrawn > 0 && rawStart < count) {
+    const even = undrawn > budget && typeof nodeGraphScope2dEvenSampleIndices === "function"
+      ? nodeGraphScope2dEvenSampleIndices(undrawn, budget).map((i) => rawStart + i)
+      : null;
+    pathPoints = buildNodeGraphScope2dPathPoints(canvasSquare, buffer, rawStart, {
       interpolate: false,
       settings,
-    })
-    : [];
+      indices: even,
+    });
+  }
   // Adjacent-frame bridge (soundemote.io): short residual gap only; one vertex.
   pathPoints = bridgeNodeGraphScope2dAdjacentFramePath(
     canvas,
@@ -927,6 +942,7 @@ function drawNodeGraphScope2dRetainedBurn(item, pixelRatio, square, buffer, sett
   );
   drawNodeGraphRetainedBurnPath(item, pixelRatio, pathPoints, settings, {
     endFrame: Number(buffer.nodeGraphScopeAbsoluteFrame),
+    parkedBeamHold: true,
   });
 }
 
@@ -1108,7 +1124,7 @@ function drawNodeGraphHypersawBurnItem(renderer, item, pixelRatio) {
     ),
     lineThickness: look?.blur ?? 0.35,
     pixelDensity: look?.pixelDensity ?? 1,
-    dotBudget: look?.dotBudget ?? 2048,
+    dotBudget: look?.dotBudget ?? 1024,
   };
   drawNodeGraphScope2dEnergyBurnPath(item, pixelRatio, pathPoints, settings, {
     endFrame: Number(item?.buffer?.nodeGraphScopeAbsoluteFrame),
@@ -1136,19 +1152,33 @@ function drawNodeGraphScope2dTraceLayer(context, points, dotSpace, settings) {
   if (settings.dot1Enabled === false) {
     return;
   }
-  // VECTOR polyline (same philosophy as 1D Trace — not energy stamps).
+  // XY beam: m1el/woscope Gaussian-integral quads (additive). Not 1D Trace
+  // polylines and not phosphor energy stamps.
+  const inkRgb = typeof nodeGraphScope2dTraceInkRgb01 === "function"
+    ? nodeGraphScope2dTraceInkRgb01(settings)
+    : null;
+  if (typeof TraceWoscope !== "undefined" && typeof TraceWoscope.draw === "function") {
+    const count = TraceWoscope.draw(context, points, {
+      size: settings.dot1Size,
+      color: inkRgb || settings.dot1Color,
+      faceMinSide: Math.max(1, Number(dotSpace) || 1),
+    });
+    if (count > 0) {
+      recordNodeGraphModuleScopeRenderMetrics(count, count);
+      return;
+    }
+  }
   if (typeof TraceStroke !== "undefined" && TraceStroke.draw) {
-    const blur = Number.isFinite(Number(settings.lineThickness))
-      ? Number(settings.lineThickness)
-      : 0;
+    const inkHex = typeof nodeGraphScope2dTraceInkHex === "function"
+      ? nodeGraphScope2dTraceInkHex(settings)
+      : settings.dot1Color;
     const count = TraceStroke.draw(context, points, {
       size: settings.dot1Size,
-      blur,
-      brightness: settings.dot1Brightness,
-      fade: Number.isFinite(Number(settings.fade)) ? Number(settings.fade) : 0,
-      color: settings.dot1Color,
+      blur: 0,
+      brightness: 1,
+      color: inkHex,
       faceMinSide: Math.max(1, Number(dotSpace) || 1),
-      composite: "source-over",
+      composite: "lighter",
     });
     if (count > 0) {
       recordNodeGraphModuleScopeRenderMetrics(count, count);
@@ -1156,12 +1186,15 @@ function drawNodeGraphScope2dTraceLayer(context, points, dotSpace, settings) {
     return;
   }
   const size = clampNodeSliderValue(settings.dot1Size, 0, 1);
-  // Bright 0…1 exact — no 0…2 UI with a later half/clamp.
-  const brightness = Math.max(0, Math.min(1, Number(settings.dot1Brightness) || 0));
-  if (brightness <= 0) {
+  const rgb01 = inkRgb || [1, 1, 1];
+  if (!(rgb01[0] > 0 || rgb01[1] > 0 || rgb01[2] > 0)) {
     return;
   }
-  const rgb = nodeGraphScopeRgbFloatsToCanvasRgb(nodeGraphScopeHexColorToRgb(settings.dot1Color));
+  const rgb = [
+    Math.round(rgb01[0] * 255),
+    Math.round(rgb01[1] * 255),
+    Math.round(rgb01[2] * 255),
+  ];
   const side = Math.max(1, Number(dotSpace) || 1);
   const radius = typeof nodeGraphScopeSize01ToRadiusPx === "function"
     ? nodeGraphScopeSize01ToRadiusPx(side, size)
@@ -1169,7 +1202,7 @@ function drawNodeGraphScope2dTraceLayer(context, points, dotSpace, settings) {
   // Canvas fallback: soft dots only (match energy-GL dots path; no polyline joins).
   context.save();
   context.globalCompositeOperation = "lighter";
-  context.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${brightness})`;
+  context.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 1)`;
   context.shadowBlur = 0;
   const r = Math.max(0.5, radius);
   for (let i = 0; i < points.length; i += 1) {
@@ -1183,18 +1216,161 @@ function drawNodeGraphScope2dTraceLayer(context, points, dotSpace, settings) {
 }
 
 
+const nodeGraphScope2dTraceHoldByNodeId = new Map();
+
+function nodeGraphScope2dTraceIsSlot(slot) {
+  const renderer = typeof nodeGraphModuleDisplayRendererForSlot === "function"
+    ? nodeGraphModuleDisplayRendererForSlot(slot)
+    : "";
+  return renderer === "scope2dTrace" || slot?.type === "scope2dTrace";
+}
+
+function nodeGraphScope2dTraceFaceCanvas(slot) {
+  const screen = slot?.scopeElement;
+  const fromDom = screen?.querySelector?.(
+    ":scope > canvas.node-module-scope-vector-trace, :scope > canvas.node-module-scope-local-fallback-canvas, canvas.node-module-scope-vector-trace",
+  );
+  if (fromDom) {
+    return fromDom;
+  }
+  const nodeId = slot?.nodeId;
+  if (nodeId && typeof nodeGraphModuleScopePersistentCanvases !== "undefined") {
+    return nodeGraphModuleScopePersistentCanvases.get?.(nodeId) || null;
+  }
+  return null;
+}
+
+function snapshotNodeGraphScope2dTraceHold(canvas, nodeId = "") {
+  if (!canvas || !(canvas.width > 0) || !(canvas.height > 0)) {
+    return null;
+  }
+  let hold = canvas._scope2dTraceHold;
+  if (!hold) {
+    hold = document.createElement("canvas");
+    canvas._scope2dTraceHold = hold;
+  }
+  if (hold.width !== canvas.width) {
+    hold.width = canvas.width;
+  }
+  if (hold.height !== canvas.height) {
+    hold.height = canvas.height;
+  }
+  const context = hold.getContext("2d");
+  if (!context) {
+    return null;
+  }
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.imageSmoothingEnabled = false;
+  context.globalCompositeOperation = "copy";
+  context.drawImage(canvas, 0, 0);
+  const id = String(nodeId || "");
+  if (id) {
+    nodeGraphScope2dTraceHoldByNodeId.set(id, hold);
+  }
+  return hold;
+}
+
+function snapshotAllNodeGraphScope2dTraceFaces() {
+  const slots = typeof nodeGraphModuleScopeSlots === "function"
+    ? nodeGraphModuleScopeSlots()
+    : [];
+  for (const slot of slots || []) {
+    if (!nodeGraphScope2dTraceIsSlot(slot)) {
+      continue;
+    }
+    snapshotNodeGraphScope2dTraceHold(nodeGraphScope2dTraceFaceCanvas(slot), slot?.nodeId);
+  }
+}
+
+function blitNodeGraphScope2dTraceHold(slot) {
+  const screenElement = slot?.scopeElement;
+  const canvas = nodeGraphScope2dTraceFaceCanvas(slot);
+  if (!canvas || !screenElement) {
+    return false;
+  }
+  const hold = canvas._scope2dTraceHold
+    || nodeGraphScope2dTraceHoldByNodeId.get(String(slot?.nodeId || ""));
+  const context = canvas.getContext?.("2d");
+  if (!context) {
+    return false;
+  }
+  if (hold && hold.width > 0 && hold.height > 0) {
+    if (canvas.width !== hold.width) {
+      canvas.width = hold.width;
+    }
+    if (canvas.height !== hold.height) {
+      canvas.height = hold.height;
+    }
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.imageSmoothingEnabled = false;
+    context.globalCompositeOperation = "copy";
+    context.drawImage(hold, 0, 0);
+  } else {
+    const last = canvas._scope2dTraceLastPoints;
+    if (!(Array.isArray(last) && last.length >= 2)) {
+      return false;
+    }
+    const settings = typeof nodeGraphScope2dTraceSettingsForNode === "function"
+      ? nodeGraphScope2dTraceSettingsForNode(nodeGraphModuleScopeNodeForSlot(slot))
+      : {};
+    const bg = typeof nodeGraphFacePlateBackground === "function"
+      ? nodeGraphFacePlateBackground(settings, nodeGraphScope2dTraceSettingsDefaults?.background)
+      : "#000000";
+    if (typeof nodeGraphFacePlateFillCanvas === "function") {
+      nodeGraphFacePlateFillCanvas(context, canvas, bg);
+    }
+    drawNodeGraphScope2dTraceLayer(context, last, Math.min(canvas.width, canvas.height), settings);
+  }
+  canvas.classList.add("node-module-scope-vector-trace");
+  canvas.style.visibility = "visible";
+  canvas.style.opacity = "1";
+  if (typeof nodeGraphModuleScopeMarkScreenLit === "function") {
+    nodeGraphModuleScopeMarkScreenLit(screenElement, 1);
+    nodeGraphModuleScopeMarkScreenLit(canvas, 1);
+  }
+  return true;
+}
+
+function restrokeNodeGraphScope2dTraceHold(slot, _pixelRatio) {
+  return blitNodeGraphScope2dTraceHold(slot);
+}
+
+function holdNodeGraphScope2dTraceFaces() {
+  const slots = typeof nodeGraphModuleScopeSlots === "function"
+    ? nodeGraphModuleScopeSlots()
+    : [];
+  let any = false;
+  for (const slot of slots || []) {
+    if (!nodeGraphScope2dTraceIsSlot(slot)) {
+      continue;
+    }
+    if (blitNodeGraphScope2dTraceHold(slot)) {
+      any = true;
+    }
+  }
+  return any;
+}
+
 function drawNodeGraphScope2dTraceItem(renderer, item, pixelRatio) {
+  // Pause: restroke the last polyline / blit the hold bitmap. Returning
+  // without paint left a blank face when pause had already wiped or covered
+  // the live canvas.
+  if (typeof scopePaintIsFrozen === "function"
+    ? scopePaintIsFrozen()
+    : (typeof nodeGraphModuleScopePhosphorFrozen === "function"
+      && nodeGraphModuleScopePhosphorFrozen())) {
+    restrokeNodeGraphScope2dTraceHold(item?.slot, pixelRatio);
+    return;
+  }
   const buffer = item?.buffer;
   if (!buffer?.nodeGraphScopeXy || !buffer.x?.length || !buffer.y?.length) {
     return;
   }
-  // Pause freeze: hold face pixels. Do not re-stroke history after Clear-while-paused.
-  if (typeof nodeGraphModuleScopePhosphorFrozen === "function"
-    && nodeGraphModuleScopePhosphorFrozen()) {
-    return;
-  }
   renderNodeGraphModuleScopeAnalyzer(item.slot, buffer);
   const canvas = nodeGraphModuleScopeLocalFallbackCanvas(item?.slot);
+  if (typeof nodeGraphWaterfallAbandonTape === "function") {
+    nodeGraphWaterfallAbandonTape(canvas);
+  }
   const screenElement = item?.screenElement || item?.slot?.scopeElement;
   const settings = nodeGraphScope2dTraceSettingsForNode(nodeGraphModuleScopeNodeForSlot(item.slot));
   // VECTOR polyline; density scales face buffer for lo-fi (default 1).
@@ -1231,15 +1407,87 @@ function drawNodeGraphScope2dTraceItem(renderer, item, pixelRatio) {
   // those are workspace screen coords and grow with zoom, so the stroke would
   // walk out of the face and clip into the module chrome.
   const canvasSquare = nodeGraphScope2dTraceCanvasSquare(canvas);
-  const points = buildNodeGraphScope2dTraceCanvasPoints(canvasSquare, buffer, settings);
   const bg = nodeGraphFacePlateBackground(settings, nodeGraphScope2dTraceSettingsDefaults.background);
   nodeGraphFacePlateApplyCss(screenElement, bg);
-  nodeGraphFacePlateFillCanvas(context, canvas, bg);
-  if (!points.some(Boolean)) {
+  const sizeKey = `${canvas.width}x${canvas.height}`;
+  if (canvas._s2dSizeKey !== sizeKey) {
+    canvas._s2dSizeKey = sizeKey;
+    canvas._s2dPrimed = false;
+    canvas._s2dAbs = 0;
+    canvas._s2dLastPoint = null;
+  }
+  if (!canvas._s2dPrimed) {
+    nodeGraphFacePlateFillCanvas(context, canvas, bg);
+    canvas._s2dPrimed = true;
+  }
+  if (typeof nodeGraphScopeDestFadeTowardPlate === "function") {
+    nodeGraphScopeDestFadeTowardPlate(context, canvas, bg, settings.trail, settings.ghost);
+  }
+  const count = Math.min(buffer?.x?.length || 0, buffer?.y?.length || 0);
+  const sampleRate = typeof nodeGraphScopeSampleRate === "function"
+    ? nodeGraphScopeSampleRate(buffer)
+    : (Number(buffer?.nodeGraphScopeSampleRate) || 44100);
+  const abs = Math.max(0, Math.floor(Number(buffer?.nodeGraphScopeTotalSampleCount) || 0));
+  const prevAbs = Number(canvas._s2dAbs || 0);
+  let newCount;
+  if (prevAbs > 0 && abs > prevAbs) {
+    newCount = Math.min(count, Math.max(1, abs - prevAbs));
+  } else {
+    newCount = Math.min(count, Math.max(1, Math.ceil(0.05 * Math.max(1, sampleRate))));
+  }
+  const startIndex = Math.max(0, count - newCount);
+  if (abs) {
+    canvas._s2dAbs = abs;
+  }
+  const points = buildNodeGraphScope2dTraceCanvasPoints(canvasSquare, buffer, settings, startIndex);
+  if (canvas._s2dLastPoint && points.length) {
+    points.unshift(canvas._s2dLastPoint);
+  }
+  let lastPoint = canvas._s2dLastPoint || null;
+  for (let i = points.length - 1; i >= 0; i -= 1) {
+    const p = points[i];
+    if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+      lastPoint = p;
+      break;
+    }
+  }
+  canvas._s2dLastPoint = lastPoint;
+  // Need two consecutive finite verts or the stroke is invisible.
+  let strokeable = false;
+  let run = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    const p = points[i];
+    if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+      run += 1;
+      if (run >= 2) {
+        strokeable = true;
+        break;
+      }
+    } else {
+      run = 0;
+    }
+  }
+  const lastPoints = canvas._scope2dTraceLastPoints;
+  const inkPoints = strokeable
+    ? points
+    : (Array.isArray(lastPoints) && lastPoints.length >= 2 ? lastPoints : null);
+  const dotSpace = Math.min(canvas.width, canvas.height);
+  if (!inkPoints) {
+    let single = lastPoint;
+    if (!single) {
+      snapshotNodeGraphScope2dTraceHold(canvas, item?.slot?.nodeId);
+      return;
+    }
+    drawNodeGraphScope2dTraceLayer(context, [single, { x: single.x, y: single.y }], dotSpace, settings);
+    canvas._scope2dTraceLastPoints = [single, { x: single.x, y: single.y }];
+    snapshotNodeGraphScope2dTraceHold(canvas, item?.slot?.nodeId);
     return;
   }
-  const dotSpace = Math.min(canvas.width, canvas.height);
-  drawNodeGraphScope2dTraceLayer(context, points, dotSpace, settings);
+  drawNodeGraphScope2dTraceLayer(context, inkPoints, dotSpace, settings);
+  if (strokeable) {
+    canvas._scope2dTraceLastPoints = points;
+  }
+  snapshotNodeGraphScope2dTraceHold(canvas, item?.slot?.nodeId);
 }
 
 

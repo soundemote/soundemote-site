@@ -357,18 +357,8 @@ function nodeGraphGraphRect() {
   };
 }
 
-// Long-standing bug: wires jittered and didn't quite land on their ports,
-// worse the further you zoomed in. This used to measure the client<->surface
-// scale as getBoundingClientRect().width / offsetWidth -- but CSS `zoom`
-// (unlike transform: scale) affects layout, and offsetWidth/offsetHeight are
-// spec-mandated to round to integer CSS pixels. Dividing a sub-pixel-precise
-// rect by that rounded integer produced a scale that drifted from the true
-// zoom by an amount that grew as the surface's own offsetWidth (the
-// denominator) shrank at higher zoom -- e.g. measured drift of -0.42 out of
-// 8 at zoom 8x. The zoom surface only ever has the one
-// `zoom: var(--node-graph-zoom)` applied (verified no compounding ancestor
-// zoom/transform), so the true scale is always exactly nodeGraphZoom() --
-// no need to reverse-engineer it from an already-rounded DOM measurement.
+// Camera scale is nodeGraphZoom() (compositor transform scale). Do not
+// reverse-engineer from getBoundingClientRect / offsetWidth.
 function nodeGraphZoomSurfaceClientScale(surface = nodeGraphZoomSurface()) {
   const zoom = Math.max(0.0001, nodeGraphZoom());
   return { x: zoom, y: zoom };
@@ -522,8 +512,10 @@ function updateNodeGraphGridHeatmap(options = {}) {
   // Phase-wrap into one cell. A raw origin of e.g. -3500 with a 4000px tile
   // puts the 1px line off-screen; Chrome then often skips the next tile, so
   // the line you zoomed in on vanishes once the cell exceeds the workspace.
-  const cell = applyNodeGraphGridVisualCellSize(workspace, heatmap, zoom)
-    || nodeGraphGridScreenCellPx(workspace, zoom);
+  const cell = options?.phaseOnly === true
+    ? nodeGraphGridScreenCellPx(workspace, zoom)
+    : (applyNodeGraphGridVisualCellSize(workspace, heatmap, zoom)
+      || nodeGraphGridScreenCellPx(workspace, zoom));
   const phaseX = nodeGraphGridBackgroundPhase(origin.x, cell.width);
   const phaseY = nodeGraphGridBackgroundPhase(origin.y, cell.height);
   heatmap.style.setProperty("--node-grid-heatmap-grid-position", `${phaseX}px ${phaseY}px`);
@@ -533,6 +525,7 @@ function updateNodeGraphGridHeatmap(options = {}) {
   // Pause only the O(modules) light/mask rebuild. Grid position already updated.
   if (
     options?.lite === true
+    || options?.phaseOnly === true
     || (gesturing && options?.force !== true)
   ) {
     return;

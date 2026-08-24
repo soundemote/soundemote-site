@@ -5,6 +5,10 @@ function nodeGraphDisplayModeSettingsSchemaForRenderer(renderer) {
   if (renderer === "phosphorWaveform") {
     return "phosphorWaveform";
   }
+  // Alias schemas used with renderer "trace" (Instant Trace family).
+  if (renderer === "traceRgb" || renderer === "traceXyz") {
+    return renderer;
+  }
   return nodeGraphDisplayModeRenderers.includes(renderer) ? renderer : "trace";
 }
 
@@ -61,8 +65,11 @@ function nodeGraphModuleDefaultXyDisplaySource(type) {
 
 function normalizeNodeGraphDisplayMode(mode, type = "", index = 0) {
   const raw = mode && typeof mode === "object" ? mode : {};
-  const renderer = nodeGraphDisplayModeRenderers.includes(raw.renderer)
-    ? raw.renderer
+  const rawRenderer = raw.renderer === "ledLamp"
+    ? "vectorDot"
+    : (raw.renderer === "traceXyz" ? "trace" : raw.renderer);
+  const renderer = nodeGraphDisplayModeRenderers.includes(rawRenderer)
+    ? rawRenderer
     : nodeGraphModuleDeclaredDisplayTypeForType(type);
   if (renderer === "legacy") {
     return null;
@@ -167,9 +174,11 @@ function nodeGraphModuleDisplaySettingsSchemaForSlot(slot) {
 function nodeGraphModuleDisplayTypeHasLocalSettings(displayType) {
   return [
     "trace",
+    "traceRgb",
     "dot",
     "vectorDot",
     "pulseDot",
+    "lcdDot",
     "value",
     "lineBurn",
     "scope2d",
@@ -177,7 +186,6 @@ function nodeGraphModuleDisplayTypeHasLocalSettings(displayType) {
     "phosphorLight",
     "numberReadout",
     "xyPad",
-    "ledLamp",
     "spectrogramBurn",
     "videoscopeBurn",
     "oscilloscopeBankBurn",
@@ -202,13 +210,13 @@ function nodeGraphModuleDisplayTypeHasLocalSettings(displayType) {
     "textBoxFace",
     "portalFace",
     "roundShapeFace",
+    "basicShapeFace",
     "limiterGainFace",
     // Patch identity plate — not Trace.
     "patchFace",
     "vectorRgbFace",
     "rasterRgbFace",
     "gradientVectorscopeFace",
-    "traceXyz",
   ].includes(displayType);
 }
 

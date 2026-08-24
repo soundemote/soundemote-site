@@ -35,6 +35,8 @@ function nodeGraphTraceDisplaySettingsElement() {
     <div class="metadata-popover-grid node-trace-display-settings-grid">
       <div id="nodeTraceDisplaySettingsTarget" class="node-trace-display-settings-target">No module</div>
       <div class="metadata-field-actions" aria-label="Trace Display drawing actions">
+        <button id="nodeTraceDisplaySettingsCopy" type="button">Copy</button>
+        <button id="nodeTraceDisplaySettingsPaste" type="button">Paste</button>
         <button id="nodeTraceDisplaySettingsDefaults" type="button">Defaults</button>
       </div>
       <div data-display-settings-body class="node-trace-display-settings-body"></div>
@@ -377,6 +379,9 @@ function setNodeGraphTraceDisplaySettingsFormType(node = null) {
     popover.dataset.displaySettingsType = formType;
     popover.dataset.displaySettingsTargetNode = nodeId;
   }
+  if (typeof syncNodeGraphTraceDisplaySettingsClipboardButtons === "function") {
+    syncNodeGraphTraceDisplaySettingsClipboardButtons();
+  }
   popover.dataset.displaySettingsTargetNodes = multiKey;
 }
 
@@ -434,10 +439,19 @@ function rememberNodeGraphTraceDisplaySettingsWindowState(patch = {}, options = 
   if (typeof rememberNodeGraphWorkspaceWindowState !== "function") {
     return null;
   }
+  const nextPatch = { ...patch };
+  const liveCount = Array.isArray(nodeGraphMvp?.patch?.nodes) ? nodeGraphMvp.patch.nodes.length : 0;
+  const workingCount = Array.isArray(nodeGraphMvp?.workingPatch?.nodes)
+    ? nodeGraphMvp.workingPatch.nodes.length
+    : 0;
+  // Boot can restore Display Settings before nodes exist. Do not persist "".
+  if (nextPatch.targetNode === "" && liveCount === 0 && workingCount > 0) {
+    delete nextPatch.targetNode;
+  }
   return rememberNodeGraphWorkspaceWindowState(
     "traceDisplaySettings",
     popover,
-    patch,
+    nextPatch,
     { status: false, ...options },
   );
 }
@@ -550,6 +564,11 @@ function restoreNodeGraphTraceDisplaySettingsWindowFromState(state = {}) {
     return;
   }
   if (!nodeGraphNodeCanOpenDisplaySettings(node)) {
+    const liveCount = Array.isArray(nodeGraphMvp?.patch?.nodes) ? nodeGraphMvp.patch.nodes.length : 0;
+    if (liveCount === 0 && nodeId && nodeId !== "__globalTraceSettings") {
+      nodeGraphMvp.traceDisplaySettingsTargetNode = nodeId;
+      return;
+    }
     showBlankNodeGraphTraceDisplaySettingsContent();
     return;
   }
@@ -589,6 +608,10 @@ function syncOpenNodeGraphTraceDisplaySettingsToNode(nodeId) {
   }
   const node = nodeGraphPatchNode(nodeId);
   if (!nodeGraphNodeCanOpenDisplaySettings(node)) {
+    const liveCount = Array.isArray(nodeGraphMvp?.patch?.nodes) ? nodeGraphMvp.patch.nodes.length : 0;
+    if (liveCount === 0) {
+      return false;
+    }
     // No module / no display face: empty page stays open.
     showBlankNodeGraphTraceDisplaySettingsContent();
     rememberNodeGraphTraceDisplaySettingsWindowState(
@@ -799,6 +822,8 @@ function bindNodeGraphTraceDisplaySettingsEvents(popover) {
   // Capture-phase drag: text-input protection stopPropagates before the <input>
   // itself sees pointerdown, so unit steppers + display fields must bind here.
   popover.addEventListener("pointerdown", beginNodeGraphTraceDisplayFieldDrag, true);
+  document.getElementById("nodeTraceDisplaySettingsCopy")?.addEventListener("click", copyNodeGraphTraceDisplaySettings);
+  document.getElementById("nodeTraceDisplaySettingsPaste")?.addEventListener("click", pasteNodeGraphTraceDisplaySettings);
   document.getElementById("nodeTraceDisplaySettingsDefaults")?.addEventListener("click", setNodeGraphTraceDisplaySettingsDefaults);
   document.getElementById("nodeTraceDisplaySettingsClose")?.addEventListener("click", closeNodeGraphTraceDisplaySettings);
   document.getElementById("nodeTraceDisplaySettingsDragHandle")?.addEventListener("pointerdown", (event) => {
@@ -852,8 +877,7 @@ function openNodeGraphTraceDisplaySettings(nodeId, event = {}) {
   if (node.type === "macroControls" && typeof openNodeGraphMacroControlsDisplaySettings === "function") {
     return openNodeGraphMacroControlsDisplaySettings(event);
   }
-  // LED uses the shared display inspector (formType ledLamp) — same popover
-  // as Number Readout / XY Pad / scopes.
+  // LED uses Vector Dot Display Settings — same popover as other faces.
   if (!nodeGraphNodeCanOpenDisplaySettings(node)) {
     return false;
   }

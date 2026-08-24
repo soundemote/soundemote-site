@@ -8,7 +8,28 @@ NodeLiveAudioProcessor.prototype.setInputWireBreakTrigger = function setInputWir
 
 NodeLiveAudioProcessor.prototype.setSpeed = function setSpeed(speed) {
     const value = Number(speed);
-    this.speedMultiplier = Number.isFinite(value) ? Math.max(0, value) : 1;
+    const next = Number.isFinite(value) ? Math.max(0, value) : 1;
+    const wasStopped = !(Number(this.speedMultiplier) > 0);
+    this.speedMultiplier = next;
+    // Pause→Play (speed 0→>0) without tearing down the worklet: snap osc phases
+    // to 0 so PolyBLEP does not resume at a leftover phase.
+    if (wasStopped && next > 0 && this.phases instanceof Map) {
+      for (const id of this.phases.keys()) {
+        this.phases.set(id, 0);
+      }
+      if (this.triangleStates instanceof Map) {
+        for (const id of this.triangleStates.keys()) {
+          this.triangleStates.set(id, 0);
+        }
+      }
+      if (this.polyBlepStates instanceof Map) {
+        for (const state of this.polyBlepStates.values()) {
+          if (state?.nativeHandle && this.nativePolyBlep?.soemdsp_polyblep_reset) {
+            try { this.nativePolyBlep.soemdsp_polyblep_reset(state.nativeHandle); } catch (_e) { /* ignore */ }
+          }
+        }
+      }
+    }
 };
 
 NodeLiveAudioProcessor.prototype.setSpeedLimit = function setSpeedLimit(limit) {
@@ -117,11 +138,20 @@ NodeLiveAudioProcessor.prototype.setConnections = function setConnections(plan, 
     if (Number.isFinite(Number(message.pitchReferenceHz))) {
       this.pitchReferenceHz = Number(message.pitchReferenceHz);
     }
+    if (Number.isFinite(Number(message.displayFps))) {
+      this.displayFps = Math.max(0, Math.min(240, Math.round(Number(message.displayFps))));
+    }
     if (Number.isFinite(Number(message.autoSmoothingSeconds)) && typeof this.clampAutoSmoothingSeconds === "function") {
       this.autoSmoothingSeconds = this.clampAutoSmoothingSeconds(message.autoSmoothingSeconds);
     }
     const bypassed = new Set(Array.isArray(plan?.bypassedNodes) ? plan.bypassedNodes : []);
     if (Array.isArray(plan?.nodes)) {
+      // Connection-only plan posts still carry runtime nodes. Apply params /
+      // samplePhase here or Stop/Pause never reach the worklet when the graph
+      // shape is unchanged (setPlan is skipped, setParams was coalesced away).
+      if (typeof this.setParams === "function" && plan.nodes.length) {
+        this.setParams(plan.nodes, message);
+      }
       for (const node of plan.nodes) {
         const current = this.nodes.get(node.id);
         if (!current) {

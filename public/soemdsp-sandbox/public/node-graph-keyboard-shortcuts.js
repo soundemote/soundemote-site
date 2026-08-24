@@ -382,7 +382,7 @@ function handleNodeGraphKeydown(event) {
     }
     return;
   }
-  // V → view: hide/show top + bottom app bars (not per-module header buttons).
+  // V → view cycle: hide top bar → also hide bottom bar → show both.
   // Phone / condensed modular frame is click/touch only (no M hotkey).
   if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "v") {
     event.preventDefault();
@@ -417,6 +417,14 @@ function handleNodeGraphKeydown(event) {
     event.preventDefault();
     if (typeof toggleNodeGraphTooltipWindow === "function") {
       toggleNodeGraphTooltipWindow();
+    }
+    return;
+  }
+  // Z → center view on selection (else all modules) at current zoom. Ctrl+Z stays Undo.
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "z") {
+    event.preventDefault();
+    if (typeof nodeGraphCenterViewOnModules === "function") {
+      nodeGraphCenterViewOnModules({ preferSelection: true });
     }
     return;
   }
@@ -489,5 +497,54 @@ function handleNodeGraphKeydown(event) {
   if (nodeGraphSelectionCanDelete()) {
     event.preventDefault();
     deleteSelectedNodeGraphItem();
+  }
+}
+
+/**
+ * Tab shows the app-wide focus ring (`body.keyboard-nav`); any pointer down
+ * clears it so the ring does not stick after you go back to the mouse.
+ * Escape also clears the cue (and blurs non-text focus targets).
+ */
+function installNodeGraphKeyboardNavFocusCue() {
+  if (typeof document === "undefined") {
+    return;
+  }
+  const body = document.body;
+  if (!body || body.dataset.keyboardNavFocusBound === "true") {
+    return;
+  }
+  body.dataset.keyboardNavFocusBound = "true";
+  const enable = () => body.classList.add("keyboard-nav");
+  const disable = () => body.classList.remove("keyboard-nav");
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Tab") {
+      enable();
+      return;
+    }
+    if (event.key !== "Escape" || !body.classList.contains("keyboard-nav")) {
+      return;
+    }
+    disable();
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || active === body || active === document.documentElement) {
+      return;
+    }
+    if (typeof nodeGraphEventTargetIsTextEditable === "function" && nodeGraphEventTargetIsTextEditable(active)) {
+      return;
+    }
+    try {
+      active.blur();
+    } catch {
+      // ignore
+    }
+  }, true);
+  document.addEventListener("pointerdown", disable, true);
+}
+
+if (typeof document !== "undefined") {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", installNodeGraphKeyboardNavFocusCue, { once: true });
+  } else {
+    installNodeGraphKeyboardNavFocusCue();
   }
 }

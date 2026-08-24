@@ -134,21 +134,10 @@ function nodeGraphModuleScopeDisplayBuffer(slot, capturedBuffer = null) {
     // Value LCD / Value LED must only ever show real captured input — never an
     // offline model guess. No fallback chain here on purpose.
     buffer = capturedBuffer;
-  } else if (renderer === "ledLamp") {
-    // Legacy CSS lamp: derive light target from the capture ring when metadata is absent.
+  } else if (renderer === "vectorDot" || renderer === "pulseDot") {
     buffer = capturedBuffer;
-    if (buffer?.length && !Number.isFinite(Number(buffer.nodeGraphScopeLightTarget))) {
-      let peak = 0;
-      const n = Math.min(buffer.length, 64);
-      for (let i = Math.max(0, buffer.length - n); i < buffer.length; i += 1) {
-        const s = Math.abs(Number(buffer[i]) || 0);
-        if (s > peak) peak = s;
-      }
-      buffer.nodeGraphScopeLightTarget = Math.max(0, Math.min(1, peak));
-    }
   } else if (slot?.type === "clock") {
-    buffer = nodeGraphModuleScopeDotOscilloscopeLightBuffer(capturedBuffer) ||
-      nodeGraphModuleScopeOfflineClockBlinkBuffer(slot, capturedBuffer);
+    buffer = capturedBuffer;
   } else if (renderer === "transportBpm") {
     buffer = nodeGraphModuleScopeTransportBpmBuffer(slot);
   } else if (renderer === "phoneToneFace" || slot?.type === "phoneTone") {
@@ -162,6 +151,7 @@ function nodeGraphModuleScopeDisplayBuffer(slot, capturedBuffer = null) {
     || slot?.type === "rasterRgb"
     || slot?.type === "gradientVectorscope"
     || slot?.type === "traceXyz"
+    || slot?.type === "traceRgb"
   ) {
     buffer = { length: 1 };
   } else if (renderer === "dot") {
@@ -246,7 +236,7 @@ const nodeGraphTraceDisplaySettingFields = Object.freeze([
  * Shared phosphor Display Settings order (app-wide, including Lorenz).
  * Faces pick a subset; builders keep this relative order.
  * Shared stack: Scale → Sweep → Brightness → Hue → Size → Blur → Bright
- * → Dot Budget → Pixel density → Ghost → Trail → Burn → Burn ⨉.
+ * → Ghost → Trail → Burn → Burn ⨉ → Dot Budget → Pixel density.
  * Skip / Sync sit above (toggles).
  */
 const nodeGraphPhosphorDisplayFieldOrder = Object.freeze([
@@ -257,11 +247,11 @@ const nodeGraphPhosphorDisplayFieldOrder = Object.freeze([
   "dot1Size",
   "lineThickness",
   "dot1Brightness",
-  "dotBudget",
-  "pixelDensity",
   "ghost",
   "trail",
   "burn",
   "burnAmount",
+  "dotBudget",
+  "pixelDensity",
 ]);
 

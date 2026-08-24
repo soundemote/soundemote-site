@@ -71,15 +71,39 @@ function normalizeNodeGraphAssetFile(file = {}, fallback = {}) {
   };
 }
 
+function nodeGraphSampleFileStore() {
+  if (!(nodeGraphMvp?.sampleFiles instanceof Map)) {
+    if (typeof nodeGraphMvp === "object" && nodeGraphMvp) {
+      nodeGraphMvp.sampleFiles = new Map();
+    }
+  }
+  return nodeGraphMvp?.sampleFiles || new Map();
+}
+
+function nodeGraphSampleFileKeyFromFile(file) {
+  if (!file) {
+    return "";
+  }
+  if (typeof nodeGraphAudioPlayerLibraryFileKey === "function") {
+    return nodeGraphAudioPlayerLibraryFileKey(file);
+  }
+  const name = String(file.name || "").trim();
+  const size = Math.max(0, Math.round(Number(file.size) || 0));
+  const stamp = Math.max(0, Math.round(Number(file.lastModified) || 0));
+  return name ? `${name}:${size}:${stamp}` : "";
+}
+
 function normalizeNodeGraphSampleReference(sample = {}) {
   const source = sample && typeof sample === "object" ? sample : {};
-  const pathId = String(source.path || source.sourcePath || source.file?.sourcePath || source.file?.path || "").trim();
-  const id = normalizeNodeGraphSampleId(source.id || source.resourceId || pathId);
-  const name = String(source.name || id || "Sample").trim().slice(0, 128);
-  const dataUrl = String(source.dataUrl || "").trim();
-  const resourceId = normalizeNodeGraphSampleId(source.resourceId || source.assetId || pathId || id);
-  const sourceName = String(source.sourceName || source.fileName || source.file?.name || name || "").trim().slice(0, 160);
   const sourcePath = String(source.sourcePath || source.path || source.file?.sourcePath || source.file?.path || "").trim().slice(0, 512);
+  const fileKey = String(source.fileKey || source.file?.fileKey || "").trim().slice(0, 220);
+  // Keep an already-assigned id. Path/fileKey only mint an id for a new
+  // reference — otherwise clone/bind from a playlist path retargets the
+  // node onto a key the decoder never wrote (No sample loaded).
+  const id = normalizeNodeGraphSampleId(source.id || source.resourceId || sourcePath || fileKey);
+  const name = String(source.name || id || "Sample").trim().slice(0, 128);
+  const resourceId = normalizeNodeGraphSampleId(source.resourceId || source.assetId || sourcePath || id);
+  const sourceName = String(source.sourceName || source.fileName || source.file?.name || name || "").trim().slice(0, 160);
   const file = normalizeNodeGraphAssetFile(source.file, { ...source, name, sourceName, sourcePath });
   const metadata = normalizeNodeGraphAssetMetadata(source.metadata);
   const sampleRate = Math.max(0, Math.round(Number(source.sampleRate) || 0));
@@ -88,7 +112,7 @@ function normalizeNodeGraphSampleReference(sample = {}) {
   return {
     acceptedTypes: ["audio/*"],
     ...(channels ? { channels } : {}),
-    ...(dataUrl ? { dataUrl } : {}),
+    ...(fileKey ? { fileKey } : {}),
     ...(frames ? { frames } : {}),
     id,
     kind: "audio",
@@ -99,6 +123,20 @@ function normalizeNodeGraphSampleReference(sample = {}) {
     ...(sampleRate ? { sampleRate } : {}),
     ...(sourceName ? { sourceName } : {}),
     ...(sourcePath ? { sourcePath } : {}),
+  };
+}
+
+/** Patch/node pointer: location only. Never audio bytes. */
+function normalizeNodeGraphNodeSamplePointer(sample = {}) {
+  const ref = normalizeNodeGraphSampleReference(sample);
+  if (!ref.id) {
+    return null;
+  }
+  return {
+    id: ref.id,
+    ...(ref.fileKey ? { fileKey: ref.fileKey } : {}),
+    ...(ref.name ? { name: ref.name } : {}),
+    ...(ref.sourcePath ? { sourcePath: ref.sourcePath } : {}),
   };
 }
 
@@ -119,15 +157,9 @@ function normalizeNodeGraphPatchSamples(samples = []) {
   return normalized.slice(0, 128);
 }
 
-/** Drop embedded audio payloads. Reload uses source path / Missing Samples. */
+/** Patch sample bank is location metadata only. Never embed audio. */
 function nodeGraphPatchSamplesWithoutEmbeddedAudio(samples = []) {
-  return normalizeNodeGraphPatchSamples(samples).map((sample) => {
-    if (!sample?.dataUrl) {
-      return sample;
-    }
-    const { dataUrl, ...rest } = sample;
-    return rest;
-  });
+  return normalizeNodeGraphPatchSamples(samples);
 }
 
 function nodeGraphPatchSampleById(sampleId, patch = nodeGraphMvp.patch) {
@@ -221,10 +253,12 @@ function nodeGraphRequiredAssetsForPatch(patch = {}) {
         ? nodeGraphResourceById(sample.resourceId || sampleId)
         : null;
       const explicit = explicitAssets.get(sampleId) || {};
+      const pointerPath = String(node.sample?.sourcePath || node.sample?.path || "").trim();
+      const pointerKey = String(node.sample?.fileKey || "").trim();
       const file = normalizeNodeGraphAssetFile(explicit.file || sample.file, {
         name: sample.name || resource?.name || explicit.name || explicit.sourceName || sampleId,
         sourceName: sample.sourceName || resource?.sourceName || explicit.sourceName,
-        sourcePath: sample.sourcePath || resource?.sourcePath || explicit.sourcePath,
+        sourcePath: sample.sourcePath || resource?.sourcePath || explicit.sourcePath || pointerPath,
       });
       const metadata = {
         ...normalizeNodeGraphAssetMetadata(sample.metadata),
@@ -241,7 +275,10 @@ function nodeGraphRequiredAssetsForPatch(patch = {}) {
         requiredBy: [],
         ...(sample.resourceId || resource?.id ? { resourceId: sample.resourceId || resource.id } : {}),
         ...(sample.sourceName || resource?.sourceName || explicit.sourceName ? { sourceName: sample.sourceName || resource?.sourceName || explicit.sourceName } : {}),
-        ...(sample.sourcePath || resource?.sourcePath || explicit.sourcePath ? { sourcePath: sample.sourcePath || resource?.sourcePath || explicit.sourcePath } : {}),
+        ...(sample.sourcePath || resource?.sourcePath || explicit.sourcePath || pointerPath
+          ? { sourcePath: sample.sourcePath || resource?.sourcePath || explicit.sourcePath || pointerPath }
+          : {}),
+        ...(sample.fileKey || pointerKey ? { fileKey: sample.fileKey || pointerKey } : {}),
       };
       const label = nodeGraphSampleRequiredByLabel(node);
       if (label && !current.requiredBy.includes(label)) {
@@ -544,7 +581,9 @@ function nodeGraphMissingSampleAssets(patch = nodeGraphMvp.patch) {
       ? nodeGraphResourceById(sample?.resourceId || asset.resourceId || asset.id)
       : null;
     const cached = nodeGraphMvp.sampleBuffers?.get?.(asset.id);
-    return !cached && !resource && !sample?.dataUrl && !sample?.sourcePath && !sample?.file?.sourcePath;
+    const fileKey = sample?.fileKey || asset.fileKey || "";
+    const held = Boolean(fileKey && nodeGraphSampleFileStore().get(fileKey));
+    return !cached && !resource && !held && !sample?.sourcePath && !sample?.file?.sourcePath && !asset.sourcePath;
   });
 }
 
@@ -570,35 +609,12 @@ function dismissNodeGraphMissingSampleAssetsDialog() {
   document.body.classList.remove("node-missing-samples-open");
 }
 
-function renderNodeGraphMissingSampleAssetsDialog(patch = nodeGraphMvp.patch) {
+function renderNodeGraphMissingSampleAssetsDialog(_patch = nodeGraphMvp.patch) {
   const dialog = document.getElementById("nodeMissingSampleAssetsDialog");
-  const list = document.getElementById("nodeMissingSampleAssetsList");
-  if (!dialog || !list) {
-    return;
+  if (dialog) {
+    dialog.hidden = true;
   }
-  const missing = nodeGraphMissingSampleAssets(patch);
-  const fingerprint = nodeGraphMissingSampleAssetsFingerprint(missing);
-  if (!missing.length) {
-    nodeGraphMvp.dismissedMissingSampleAssetsFingerprint = "";
-  }
-  const dismissed = Boolean(fingerprint && fingerprint === nodeGraphMvp.dismissedMissingSampleAssetsFingerprint);
-  list.replaceChildren();
-  for (const asset of missing) {
-    const item = document.createElement("li");
-    const source = document.createElement("span");
-    source.textContent = asset.sourcePath
-      ? `missing: ${asset.sourcePath}`
-      : `missing: ${asset.sourceName || asset.id}`;
-    const usedBy = document.createElement("small");
-    usedBy.textContent = asset.requiredBy?.length
-      ? `required by: ${asset.requiredBy.join(", ")}`
-      : "required by: this patch";
-    item.append(source, usedBy);
-    list.append(item);
-  }
-  bindNodeGraphMissingSampleFolderLink();
-  dialog.hidden = missing.length === 0 || dismissed;
-  document.body.classList.toggle("node-missing-samples-open", missing.length > 0 && !dismissed);
+  document.body.classList.remove("node-missing-samples-open");
 }
 
 function nodeGraphSampleNameForNode(nodeId) {
@@ -706,9 +722,6 @@ function flushNodeGraphAudioPlayerSamplePhase(nodeId) {
   if (Number.isFinite(statusPhase)) {
     live.samplePhase = Math.max(0, Math.min(1, statusPhase));
   }
-  if (typeof saveNodeGraphWorkingPatchToUserSettings === "function") {
-    saveNodeGraphWorkingPatchToUserSettings({ immediateFile: true });
-  }
 }
 
 function flushAllNodeGraphAudioPlayerSamplePhases() {
@@ -729,9 +742,16 @@ function flushAllNodeGraphAudioPlayerSamplePhases() {
   }
 }
 
-function rememberNodeGraphAudioPlayerSamplePhase(nodeId, phase) {
+function rememberNodeGraphAudioPlayerSamplePhase(nodeId, phase, reason = "") {
   const node = nodeGraphPatchNode(nodeId);
   if (!node || node.type !== "audioPlayer") {
+    return;
+  }
+  const why = String(reason || "").trim().toLowerCase();
+  // End-of-file complete snapshots were overwriting samplePhase with 1, so the
+  // next Play/plan rebuild restored the playhead at the end and instantly
+  // completed again (Play looked dead until Stop then Play).
+  if (why === "engine complete" || why === "engine stopped") {
     return;
   }
   const clamped = Math.max(0, Math.min(1, Number(phase) || 0));
@@ -778,6 +798,8 @@ function setNodeGraphSampleStatus(nodeId, message) {
   return message;
 }
 
+const nodeGraphAudioPlayerLastEngineReason = new Map();
+
 function syncNodeGraphAudioPlayerRuntimeStatus(message = {}) {
   const nodeIds = Array.isArray(message.nodeIds)
     ? message.nodeIds.map((id) => String(id || "")).filter(Boolean)
@@ -785,6 +807,7 @@ function syncNodeGraphAudioPlayerRuntimeStatus(message = {}) {
   const primaryNodeId = String(message.nodeId || nodeIds[0] || "");
   const phase = Number(message.phase) || 0;
   const reason = String(message.reason || "").trim();
+  const workletSampleId = String(message.sampleId || "").trim();
   const speeds = message.speeds && typeof message.speeds === "object" ? message.speeds : null;
   const primarySpeed = Number(message.speed);
   const activeIds = new Set(primaryNodeId ? [primaryNodeId] : nodeIds);
@@ -796,6 +819,7 @@ function syncNodeGraphAudioPlayerRuntimeStatus(message = {}) {
     nodeGraphMvp.sampleRuntimeStatus?.set?.(nodeId, {
       phase: activeIds.has(nodeId) ? phase : 0,
       reason: activeIds.has(nodeId) ? reason : "engine not in live path",
+      sampleId: activeIds.has(nodeId) ? workletSampleId : "",
       speed,
     });
   }
@@ -803,16 +827,41 @@ function syncNodeGraphAudioPlayerRuntimeStatus(message = {}) {
     nodeGraphMvp.sampleRuntimeStatus?.set?.(primaryNodeId, {
       phase,
       reason,
+      sampleId: workletSampleId,
       speed: Number.isFinite(primarySpeed) ? primarySpeed : undefined,
     });
   }
   // Persist playhead on the active Music Player(s) for refresh restore.
   if (primaryNodeId && activeIds.has(primaryNodeId)) {
-    rememberNodeGraphAudioPlayerSamplePhase(primaryNodeId, phase);
+    rememberNodeGraphAudioPlayerSamplePhase(primaryNodeId, phase, reason);
   }
   for (const nodeId of nodeIds) {
     if (activeIds.has(nodeId) && nodeId !== primaryNodeId) {
-      rememberNodeGraphAudioPlayerSamplePhase(nodeId, phase);
+      rememberNodeGraphAudioPlayerSamplePhase(nodeId, phase, reason);
+    }
+  }
+  if (primaryNodeId && reason && typeof nodeGraphAudioPlayerLog === "function") {
+    const interesting = reason.includes("sample")
+      || reason === "engine playing"
+      || reason === "engine looping"
+      || reason === "engine complete"
+      || reason === "engine stopped"
+      || reason === "engine paused";
+    const prev = nodeGraphAudioPlayerLastEngineReason.get(primaryNodeId) || "";
+    if (interesting && prev !== reason) {
+      nodeGraphAudioPlayerLastEngineReason.set(primaryNodeId, reason);
+      const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(primaryNodeId) : null;
+      const sampleId = workletSampleId || String(node?.sample?.id || "");
+      const frames = sampleId ? (nodeGraphMvp?.sampleBuffers?.get?.(sampleId)?.frames || 0) : 0;
+      const missing = reason.includes("sample");
+      nodeGraphAudioPlayerLog(missing ? "FAIL" : "INFO", "engine", {
+        nodeId: primaryNodeId,
+        reason,
+        sampleId,
+        workletSampleId,
+        nodeSampleId: String(node?.sample?.id || ""),
+        frames,
+      });
     }
   }
   for (const nodeId of new Set([...nodeIds, primaryNodeId].filter(Boolean))) {
@@ -823,7 +872,7 @@ function syncNodeGraphAudioPlayerRuntimeStatus(message = {}) {
   }
   // Music Player playlist: auto-advance on complete + live scrubber value.
   if (primaryNodeId && typeof nodeGraphAudioPlayerPlaylistOnRuntimeStatus === "function") {
-    nodeGraphAudioPlayerPlaylistOnRuntimeStatus(primaryNodeId, reason);
+    nodeGraphAudioPlayerPlaylistOnRuntimeStatus(primaryNodeId, reason, workletSampleId);
   }
 }
 
@@ -1208,16 +1257,24 @@ async function loadNodeGraphSampleForNode(nodeId, file, options = {}) {
   const arrayBuffer = await file.arrayBuffer();
   try {
     const decoded = await decodeNodeGraphSampleArrayBuffer(arrayBuffer, file.name || "Sample");
+    const rel = String(file.webkitRelativePath || "").replace(/\\/g, "/");
     return attachNodeGraphDecodedSampleToNode(nodeId, decoded, {
+      file,
+      fileKey: nodeGraphSampleFileKeyFromFile(file),
       sourceName: file.name || "Sample",
+      sourcePath: String(options.sourcePath || rel || file.name || "").trim(),
     }, options);
   } catch (error) {
     setNodeGraphSampleStatus(nodeId, "browser decode failed; transcoding...");
     const dataUrl = await nodeGraphSampleFileToDataUrl(file);
     try {
       const transcoded = await transcodeNodeGraphSampleDataUrl(file.name || "Sample", dataUrl);
+      const rel = String(file.webkitRelativePath || "").replace(/\\/g, "/");
       return loadNodeGraphSampleDataUrlForNode(nodeId, transcoded.dataUrl, transcoded.name || file.name || "Sample", {
+        file,
+        fileKey: nodeGraphSampleFileKeyFromFile(file),
         sourceName: file.name || "Sample",
+        sourcePath: String(options.sourcePath || rel || file.name || "").trim(),
         ...options,
       });
     } finally {
@@ -1253,34 +1310,37 @@ async function loadNodeGraphSamplePathForNode(nodeId, path, options = {}) {
     }
   }
 
-  const response = await fetch("/api/audio-file/data-url", {
+  const response = await fetch("/api/audio-file/bytes", {
     body: JSON.stringify({ path: sourcePath }),
     headers: { "Content-Type": "application/json" },
     method: "POST",
   });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || !payload?.ok || !payload?.dataUrl) {
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
     throw new Error(payload?.error || `local path load failed (${response.status})`);
   }
-  await loadNodeGraphSampleDataUrlForNode(
-    nodeId,
-    payload.dataUrl,
-    payload.name || sourcePath.split(/[\\/]/).pop() || "Sample",
-    {
-      sourceName: payload.name || sourcePath.split(/[\\/]/).pop() || "Sample",
-      sourcePath,
-      commit: options.commit,
-      persist: options.persist,
-      livePlan: options.livePlan,
-      record: options.record,
-      syncDisplay: options.syncDisplay,
-    },
-  );
+  const name = response.headers.get("X-Audio-File-Name")
+    || sourcePath.split(/[\\/]/).pop()
+    || "Sample";
+  const arrayBuffer = await response.arrayBuffer();
+  const decoded = await decodeNodeGraphSampleArrayBuffer(arrayBuffer, name);
+  return attachNodeGraphDecodedSampleToNode(nodeId, decoded, {
+    sourceName: name,
+    sourcePath,
+  }, {
+    commit: options.commit,
+    persist: options.persist,
+    livePlan: options.livePlan,
+    record: options.record,
+    syncDisplay: options.syncDisplay,
+  });
 }
 
 async function nodeGraphDataUrlForSampleReference(reference = {}) {
-  if (reference.dataUrl) {
-    return reference.dataUrl;
+  const fileKey = String(reference.fileKey || "").trim();
+  const held = fileKey ? nodeGraphSampleFileStore().get(fileKey) : null;
+  if (held) {
+    return nodeGraphBlobToDataUrl(held);
   }
   const resource = typeof nodeGraphResourceById === "function"
     ? nodeGraphResourceById(reference.resourceId || reference.id) ||
@@ -1354,17 +1414,24 @@ function attachNodeGraphDecodedSampleToNode(nodeId, decoded, sourceInfo = {}, op
     );
   }
   const name = decoded?.name || sourceInfo.sourceName || "Sample";
-  const id = normalizeNodeGraphSampleId(`sample-${Date.now()}-${name || "clip"}`);
   const sourcePath = String(sourceInfo.sourcePath || "").trim();
+  const fileKey = String(sourceInfo.fileKey || nodeGraphSampleFileKeyFromFile(sourceInfo.file) || "").trim();
+  if (sourceInfo.file && fileKey) {
+    nodeGraphSampleFileStore().set(fileKey, sourceInfo.file);
+  }
   const sample = normalizeNodeGraphSampleReference({
     channels: decoded.channels,
+    fileKey,
     frames: decoded.frames,
-    id,
     name: name || "Sample",
     sampleRate: decoded.sampleRate,
     sourceName: sourceInfo.sourceName || name || "Sample",
     sourcePath,
   });
+  const id = sample.id;
+  if (!id) {
+    throw new Error("sample has no file location");
+  }
   if (!nodeGraphMvp.sampleBuffers) {
     nodeGraphMvp.sampleBuffers = new Map();
   }
@@ -1378,12 +1445,12 @@ function attachNodeGraphDecodedSampleToNode(nodeId, decoded, sourceInfo = {}, op
   });
   const livePatch = nodeGraphMvp.patch;
   if (livePatch && options.commit === false) {
-    const samples = normalizeNodeGraphPatchSamples(livePatch.samples);
+    const samples = normalizeNodeGraphPatchSamples(livePatch.samples).filter((entry) => entry.id !== id);
     samples.push(sample);
     livePatch.samples = samples;
     const node = livePatch.nodes?.find?.((candidate) => candidate.id === nodeId);
     if (node) {
-      node.sample = { id };
+      node.sample = normalizeNodeGraphNodeSamplePointer(sample);
       node.params = { ...(node.params || {}), sample: samples.length };
       if (node.type === "audioPlayer") {
         node.samplePhase = 0;
@@ -1391,12 +1458,12 @@ function attachNodeGraphDecodedSampleToNode(nodeId, decoded, sourceInfo = {}, op
     }
   } else {
     const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
-    const samples = normalizeNodeGraphPatchSamples(patch.samples);
+    const samples = normalizeNodeGraphPatchSamples(patch.samples).filter((entry) => entry.id !== id);
     samples.push(sample);
     patch.samples = samples;
     const node = patch.nodes.find((candidate) => candidate.id === nodeId);
     if (node) {
-      node.sample = { id };
+      node.sample = normalizeNodeGraphNodeSamplePointer(sample);
       node.params = { ...(node.params || {}), sample: samples.length };
       if (node.type === "audioPlayer") {
         node.samplePhase = 0;
@@ -1412,6 +1479,19 @@ function attachNodeGraphDecodedSampleToNode(nodeId, decoded, sourceInfo = {}, op
   nodeGraphMvp.sampleLoadErrors?.delete?.(nodeId);
   nodeGraphMvp.sampleRuntimeStatus?.delete?.(nodeId);
   nodeGraphMvp.audioPlayerActualSpeeds?.delete?.(nodeId);
+  if (typeof nodeGraphAudioPlayerLog === "function") {
+    const liveType = nodeGraphPatchNode(nodeId)?.type || "";
+    if (liveType === "audioPlayer") {
+      nodeGraphAudioPlayerLog("INFO", "attached", {
+        nodeId,
+        sampleId: id,
+        frames: decoded?.frames || 0,
+        channels: decoded?.channels || 0,
+        fileKey,
+        sourcePath,
+      });
+    }
+  }
   const liveNode = nodeGraphPatchNode(nodeId);
   if (liveNode?.type === "audioPlayer" && typeof nodeGraphAudioPlayerPlaylistEnsureCurrentSample === "function") {
     nodeGraphAudioPlayerPlaylistEnsureCurrentSample(nodeId, {
@@ -1428,6 +1508,8 @@ function attachNodeGraphDecodedSampleToNode(nodeId, decoded, sourceInfo = {}, op
 async function loadNodeGraphSampleDataUrlForNode(nodeId, dataUrl, name = "Sample", sourceInfo = {}) {
   const decoded = await decodeNodeGraphSampleDataUrl(dataUrl, name || "Sample");
   return attachNodeGraphDecodedSampleToNode(nodeId, decoded, {
+    file: sourceInfo.file,
+    fileKey: sourceInfo.fileKey || "",
     sourceName: sourceInfo.sourceName || name || "Sample",
     sourcePath: sourceInfo.sourcePath || "",
   }, {
@@ -1499,38 +1581,26 @@ function createNodeGraphSamplePhaseReadout(nodeId) {
   return { phase, phaseValue, copyPhaseButton };
 }
 
-// The 📂-button-plus-path-box loader, built once here so every place that
-// offers "load a sample into this node" is the same widget with the same
-// gestures (double-click the box to type, Enter loads, empty box + button
-// opens the file picker). Used by the module body below and by the Waveform
-// display options window (node-graph-phosphor-waveform.js).
+// Path loader: sample modules get 📂 + path box; Music Player is paste-only
+// (the browser folder picker cannot give a C:\ path). Used by the module
+// body below and by Music Player Display Settings.
 // `instance` namespaces the hidden file input's id so a second copy of the
 // loader for the same node cannot collide with the module's own.
 function createNodeGraphSamplePathLoader(nodeId, { instance = "" } = {}) {
   const patchNode = nodeGraphPatchNode(nodeId);
   const isMusicPlayer = patchNode?.type === "audioPlayer";
   const inputId = `node-sample-file-input-${normalizeNodeGraphSampleId(nodeId)}${instance ? `-${instance}` : ""}`;
-  const input = document.createElement("input");
-  input.id = inputId;
-  input.className = "node-sample-file-input";
-  input.type = "file";
-  input.accept = "audio/*,.wav,.wave,.mp3,.ogg,.oga,.opus,.flac,.m4a,.aac";
-  if (isMusicPlayer) {
-    // Multi-select builds the playlist in one gesture.
-    input.multiple = true;
-  }
-  input.title = isMusicPlayer ? "Load music file(s) into playlist" : "Load sample file";
-  protectNodeGraphSampleControl(input);
-  input.addEventListener("change", () => {
+  const input = isMusicPlayer ? null : document.createElement("input");
+  if (input) {
+    input.id = inputId;
+    input.className = "node-sample-file-input";
+    input.type = "file";
+    input.accept = "audio/*,.wav,.wave,.mp3,.ogg,.oga,.opus,.flac,.m4a,.aac";
+    input.title = "Load sample file";
+    protectNodeGraphSampleControl(input);
+    input.addEventListener("change", () => {
     const files = [...(input.files || [])];
     if (!files.length) {
-      return;
-    }
-    if (isMusicPlayer && typeof nodeGraphAudioPlayerLibraryBindBrowserFiles === "function") {
-      nodeGraphAudioPlayerLibraryBindBrowserFiles(nodeId, files);
-      if (typeof nodeGraphAudioPlayerPlaylistSetFace === "function") {
-        nodeGraphAudioPlayerPlaylistSetFace(nodeId, "pl");
-      }
       return;
     }
     (async () => {
@@ -1579,7 +1649,8 @@ function createNodeGraphSamplePathLoader(nodeId, { instance = "" } = {}) {
         error: batchError,
       });
     })();
-  });
+    });
+  }
 
   const pathShell = document.createElement("div");
   pathShell.className = "node-sample-path-loader";
@@ -1587,11 +1658,63 @@ function createNodeGraphSamplePathLoader(nodeId, { instance = "" } = {}) {
   const pathInput = document.createElement("input");
   pathInput.className = "node-sample-path-input";
   pathInput.type = "text";
-  pathInput.placeholder = isMusicPlayer ? "C:\\path\\to\\music\\folder" : "C:\\path\\music.mp3";
   pathInput.spellcheck = false;
-  // Read-only until double-clicked, same gesture as the render range Start/End
-  // fields -- a single stray click on a module should never put you in a text
-  // field you did not mean to edit.
+  protectNodeGraphSampleControl(pathInput);
+  if (isMusicPlayer) {
+    pathShell.classList.add("path-only");
+    pathInput.dataset.samplePathForNode = nodeId;
+    pathInput.placeholder = "paste C:\\full\\path\\to\\folder";
+    pathInput.title = "Paste a full folder path, then Load";
+    const stored = typeof nodeGraphAudioPlayerLibraryStoredFolderPath === "function"
+      ? nodeGraphAudioPlayerLibraryStoredFolderPath(
+        typeof nodeGraphAudioPlayerPlaylistForNode === "function"
+          ? nodeGraphAudioPlayerPlaylistForNode(nodeId)?.folderPath
+          : "",
+      )
+      : "";
+    pathInput.value = stored;
+    pathInput.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        pathInput.blur();
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        if (typeof nodeGraphAudioPlayerLibraryLoadPlaylist === "function") {
+          nodeGraphAudioPlayerLibraryLoadPlaylist(nodeId);
+        }
+        pathInput.blur();
+      }
+    });
+    pathInput.addEventListener("blur", () => {
+      const node = nodeGraphPatchNode(nodeId);
+      if (!node || node.type !== "audioPlayer") {
+        return;
+      }
+      const pl = typeof nodeGraphAudioPlayerPlaylistForNode === "function"
+        ? nodeGraphAudioPlayerPlaylistForNode(nodeId)
+        : null;
+      if (!pl) {
+        return;
+      }
+      const next = typeof nodeGraphAudioPlayerLibraryStoredFolderPath === "function"
+        ? nodeGraphAudioPlayerLibraryStoredFolderPath(pathInput.value)
+        : "";
+      if (pl.folderPath === next) {
+        pathInput.value = next;
+        return;
+      }
+      pl.folderPath = next;
+      pathInput.value = next;
+      node.playlist = pl;
+      if (typeof nodeGraphAudioPlayerPlaylistPersist === "function") {
+        nodeGraphAudioPlayerPlaylistPersist(nodeId);
+      }
+    });
+    pathShell.append(pathInput);
+    return { fileInput: null, pathButton: null, pathInput, pathShell };
+  }
+  pathInput.placeholder = "C:\\path\\music.mp3";
   pathInput.readOnly = true;
   pathInput.title = "Double-click to type a path";
   pathInput.addEventListener("dblclick", () => {
@@ -1604,15 +1727,12 @@ function createNodeGraphSamplePathLoader(nodeId, { instance = "" } = {}) {
     pathInput.readOnly = true;
     pathInput.classList.remove("editing");
   });
-  protectNodeGraphSampleControl(pathInput);
   const pathButton = document.createElement("button");
   pathButton.className = "node-sample-path-button";
   pathButton.type = "button";
   pathButton.textContent = "📂";
-  pathButton.setAttribute("aria-label", isMusicPlayer ? "Load music from path" : "Load sample from path");
-  pathButton.title = isMusicPlayer
-    ? "Load a path, or choose a music file when the path box is empty"
-    : "Load a path, or choose a sample file when the path box is empty";
+  pathButton.setAttribute("aria-label", "Load sample from path");
+  pathButton.title = "Load a path, or choose a sample file when the path box is empty";
   protectNodeGraphSampleControl(pathButton);
   pathButton.addEventListener("click", () => {
     if (!pathInput.value.trim()) {
@@ -1675,6 +1795,23 @@ function createNodeGraphSampleModuleBody(nodeOrId) {
 }
 
 async function nodeGraphDecodedSampleForReference(reference) {
+  const fileKey = String(reference.fileKey || "").trim();
+  const held = fileKey ? nodeGraphSampleFileStore().get(fileKey) : null;
+  if (held) {
+    const decoded = await decodeNodeGraphSampleArrayBuffer(await held.arrayBuffer(), reference.name || held.name || "Sample");
+    return {
+      channelData: decoded.channelData,
+      channels: decoded.channels,
+      frames: decoded.frames,
+      id: reference.id,
+      name: reference.name || decoded.name,
+      sampleRate: decoded.sampleRate,
+    };
+  }
+  const sourcePath = String(reference.sourcePath || reference.file?.sourcePath || "").trim();
+  if (!sourcePath) {
+    return null;
+  }
   const dataUrl = await nodeGraphDataUrlForSampleReference(reference);
   if (!dataUrl) {
     return null;
@@ -1781,11 +1918,7 @@ async function nodeGraphEnsureLiveSamplesForPlan(plan, patch = nodeGraphMvp.patc
       continue;
     }
     try {
-      const dataUrl = await nodeGraphDataUrlForSampleReference(reference);
-      if (!dataUrl) {
-        continue;
-      }
-      const decoded = await nodeGraphDecodedSampleForReference({ ...reference, dataUrl });
+      const decoded = await nodeGraphDecodedSampleForReference(reference);
       if (!decoded?.samples?.length && !decoded?.channelData?.length) {
         continue;
       }

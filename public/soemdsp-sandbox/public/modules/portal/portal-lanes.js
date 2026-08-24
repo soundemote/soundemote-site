@@ -110,25 +110,31 @@ function nodeGraphPortalAllTypes() {
   return nodeGraphPortalInletTypes().concat(nodeGraphPortalOutletTypes());
 }
 
+function nodeGraphPortalLaneLetters(spec) {
+  const labels = {};
+  if (spec?.hasMono) {
+    labels.Mono = "M";
+  }
+  if (spec?.hasLeft) {
+    labels.Left = "L";
+  }
+  if (spec?.hasRight) {
+    labels.Right = "R";
+  }
+  return labels;
+}
+
 function nodeGraphPortalLaneDefinition(kind, spec) {
   const ports = spec.ports.slice();
-  const labels = {};
-  if (spec.hasMono) {
-    labels.Mono = NODE_GRAPH_THRU_SYMBOL;
-  }
-  if (spec.hasLeft) {
-    labels.Left = NODE_GRAPH_THRU_SYMBOL;
-  }
-  if (spec.hasRight) {
-    labels.Right = NODE_GRAPH_THRU_SYMBOL;
-  }
+  const letters = nodeGraphPortalLaneLetters(spec);
   const aliases = {};
   if (spec.hasMono) {
     aliases.In = "Mono";
     aliases.M = "Mono";
     aliases.Out = "Mono";
-    aliases[NODE_GRAPH_THRU_SYMBOL] = "Mono";
     aliases.Thru = "Mono";
+    aliases[NODE_GRAPH_THRU_SYMBOL] = "Mono";
+    aliases["\u2192"] = "Mono";
   }
   if (spec.hasLeft) {
     aliases.L = "Left";
@@ -136,18 +142,25 @@ function nodeGraphPortalLaneDefinition(kind, spec) {
   if (spec.hasRight) {
     aliases.R = "Right";
   }
+  const isInlet = kind !== "outlet";
+  const single = ports.length === 1;
   return {
-    chrome: "LayoutC",
-    planRole: kind === "outlet" ? "sink" : "source",
+    chrome: single ? "LayoutA" : "LayoutC",
+    planRole: isInlet ? "source" : "sink",
     planFreeRun: true,
-    defaultWidthGu: 4,
-    defaultHeightGu: 2,
-    defaultUi: { buttonsHidden: true, titleHidden: true },
-    inputAliases: aliases,
-    inputLabels: labels,
-    inputs: ports.slice(),
+    defaultWidthGu: single ? 2 : 4,
+    defaultHeightGu: spec.heightGu || (single ? 2 : 4),
+    defaultUi: {
+      buttonsHidden: true,
+      titleHidden: true,
+      ...(single ? { ioHidden: true } : {}),
+    },
+    hasFace: single,
+    inputAliases: isInlet ? {} : aliases,
+    inputLabels: isInlet ? {} : letters,
+    inputs: isInlet ? [] : ports.slice(),
     outputAliases: aliases,
-    outputLabels: labels,
+    outputLabels: isInlet ? letters : letters,
     outputs: ports.slice(),
     parameters: [],
   };
@@ -159,17 +172,32 @@ function registerNodeGraphPortalLaneFamily(kind) {
   }
   const isOutlet = kind === "outlet";
   const noun = isOutlet ? "Out" : "In";
-  const role = isOutlet
-    ? "Patch into the speaker bus."
-    : "Live input into the patch.";
   for (const spec of NODE_GRAPH_PORTAL_LANE_SPECS) {
     registerNodeGraphChromelessModule(nodeGraphPortalTypeName(kind, spec), {
       label: `${noun} ${spec.label}`,
+      compactTile: spec.ports.length === 1,
+      customDisplayArea: spec.ports.length === 1,
       definition: nodeGraphPortalLaneDefinition(kind, spec),
       catalog: {
         category: "portal",
-        description: `${role} ${spec.label}.`,
-        notes: ["portal", isOutlet ? "outlet" : "inlet", spec.key, "mono", "left", "right"],
+        description: isOutlet
+          ? `Patch ${spec.label} out of the graph.`
+          : `Live input ${spec.label} into the patch.`,
+        notes: [
+          "portal",
+          isOutlet ? "outlet" : "inlet",
+          "input",
+          "in",
+          spec.key,
+          spec.label,
+          `in ${spec.label}`,
+          "mono",
+          "left",
+          "right",
+          "m",
+          "l",
+          "r",
+        ],
       },
     });
   }

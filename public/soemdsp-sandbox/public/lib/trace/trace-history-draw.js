@@ -106,6 +106,7 @@
         color,
         faceMinSide: face,
         composite: blend === "combine" ? "source-over" : blend,
+        lineCap: options.lineCap,
       });
     }
     context.save();
@@ -119,8 +120,8 @@
       context.restore();
       return 0;
     }
-    context.lineCap = "round";
-    context.lineJoin = "round";
+    context.lineCap = options.lineCap === "butt" ? "butt" : "round";
+    context.lineJoin = options.lineCap === "butt" ? "miter" : "round";
     if (asDots || thinned.length < 2) {
       const r = context.lineWidth * 0.5;
       for (const p of thinned) {
@@ -137,6 +138,7 @@
         color,
         faceMinSide: face,
         composite: context.globalCompositeOperation,
+        lineCap: options.lineCap,
       });
     } else {
       context.beginPath();
@@ -244,6 +246,7 @@
           leftColor: left.color,
           rightColor: right.color,
           meetColor: stereo.meetColor || "auto",
+          lineCap: stereo.lineCap,
         },
       );
     }
@@ -254,8 +257,8 @@
   }
 
   /**
-   * N colored history strokes. Two-layer Meet uses strokeStereo.
-   * Three-or-more + combine uses additive (lighter) so R+G+B can mix to white.
+   * N colored history strokes. Two-layer R+B=G uses strokeStereo.
+   * Three-layer + combine uses TraceStroke.drawMeet (pairwise meet + triple screen).
    */
   function strokeLayers(context, layers, options = {}) {
     if (!context || !Array.isArray(layers) || !layers.length) {
@@ -266,6 +269,26 @@
       return 0;
     }
     const blend = normalizeBlend(options.blend, "source-over");
+    if (enabled.length >= 2 && typeof global.TraceStroke !== "undefined"
+      && typeof global.TraceStroke.drawMeet === "function") {
+      return global.TraceStroke.drawMeet(
+        context,
+        enabled.map((layer) => ({
+          points: layer.points,
+          size: layer.size ?? options.size,
+          blur: 0,
+          brightness: layer.brightness ?? options.brightness,
+          color: layer.color,
+          enabled: layer.enabled,
+          faceMinSide: options.faceMinSide,
+        })),
+        {
+          blend,
+          meetColor: options.meetColor || "auto",
+          faceMinSide: options.faceMinSide,
+        },
+      );
+    }
     if (enabled.length === 2) {
       return strokeStereo(
         context,

@@ -35,8 +35,13 @@ function scopePaintIsVisualPaused() {
 
 /**
  * Full live paint loop should run (RAF + sample force paints).
- * True when engine is playing and visual scope-pause is off.
+ * Live graph never freezes for the magnifier. The lens is a snapshot clone;
+ * scopes on the patch keep drawing.
  */
+function nodeGraphDisplaysFrozen() {
+  return false;
+}
+
 function scopePaintIsLive() {
   if (scopePaintIsVisualPaused()) {
     return false;
@@ -83,6 +88,9 @@ function scopePaintShouldFullDraw(force = false) {
   if (force === true) {
     return true;
   }
+  if (typeof nodeGraphOutputInkWantsFrames === "function" && nodeGraphOutputInkWantsFrames()) {
+    return true;
+  }
   return scopePaintIsLive();
 }
 
@@ -90,7 +98,16 @@ function scopePaintShouldFullDraw(force = false) {
  * After a successful full draw, should we request another RAF?
  */
 function scopePaintShouldKeepLoop() {
+  if (typeof nodeGraphOutputInkWantsFrames === "function" && nodeGraphOutputInkWantsFrames()) {
+    if (typeof nodeGraphModuleScopeHasDrawableSlots === "function") {
+      return nodeGraphModuleScopeHasDrawableSlots();
+    }
+    return true;
+  }
   if (!scopePaintIsLive()) {
+    return false;
+  }
+  if (typeof nodeGraphModuleScopeState !== "undefined" && nodeGraphModuleScopeState?.idleHold) {
     return false;
   }
   if (typeof nodeGraphModuleScopeHasDrawableSlots === "function") {
@@ -116,9 +133,53 @@ function scopePaintShouldSkipUnchangedTrace() {
  * Clear / Settings / wipe still pass force when an immediate paint is required.
  * The live RAF loop is kept alive by scopePaintKeepLoopAlive after each frame.
  */
+const nodeGraphScopeIdleHoldEpsilon = 1e-4;
+
+function nodeGraphScopeSamplesIdleSilent(samples) {
+  if (!samples) {
+    return true;
+  }
+  const n = Number(samples.length) || 0;
+  if (!n) {
+    return true;
+  }
+  const step = Math.max(1, Math.floor(n / 64));
+  for (let i = 0; i < n; i += step) {
+    if (Math.abs(Number(samples[i]) || 0) > nodeGraphScopeIdleHoldEpsilon) {
+      return false;
+    }
+  }
+  return Math.abs(Number(samples[n - 1]) || 0) <= nodeGraphScopeIdleHoldEpsilon;
+}
+
+function nodeGraphModuleScopeBuffersIdleSilent() {
+  const buffers = typeof nodeGraphModuleScopeState !== "undefined"
+    ? nodeGraphModuleScopeState?.buffers
+    : null;
+  if (!buffers || typeof buffers.values !== "function") {
+    return false;
+  }
+  let any = false;
+  for (const buffer of buffers.values()) {
+    any = true;
+    if (!nodeGraphScopeSamplesIdleSilent(buffer)) {
+      return false;
+    }
+  }
+  return any;
+}
+
 function scopePaintOnSampleSnapshot() {
   if (typeof scheduleNodeGraphModuleScopeDraw !== "function") {
     return;
+  }
+  const silent = typeof nodeGraphModuleScopeBuffersIdleSilent === "function"
+    && nodeGraphModuleScopeBuffersIdleSilent();
+  if (silent && nodeGraphModuleScopeState?.idleHold) {
+    return;
+  }
+  if (!silent && nodeGraphModuleScopeState) {
+    nodeGraphModuleScopeState.idleHold = false;
   }
   scheduleNodeGraphModuleScopeDraw();
 }
