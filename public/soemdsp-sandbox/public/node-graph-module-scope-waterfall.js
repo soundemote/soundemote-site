@@ -1,6 +1,8 @@
 // 1D Waterfall — strip chart (mono / stereo / XYZ / RGB).
-// Sync Off: scroll left, pen on the right. Sync On: pen sweeps L→R. History 0: now-line.
-// Ink: TraceTape WebGL discs (hard or smoothstep blur). Meet/Add on GPU. Canvas2D plate only.
+// Sync Off: scroll left, pen on the right; History is the face width in seconds.
+// Sync On: phase-lock to a rising zero-crossing; History is cycles in view
+// (smooth — e.g. 1.5 = 1½ periods), always stretched across the full face width.
+// History 0: now-line. Ink: TraceTape WebGL discs. Meet/Add on GPU. Canvas2D plate only.
 
 function nodeGraphWaterfallNowMs() {
   return (typeof performance !== "undefined" && typeof performance.now === "function")
@@ -17,8 +19,149 @@ function nodeGraphWaterfallIsNowLine(settings) {
   return nodeGraphWaterfallHistorySeconds(settings) <= 0;
 }
 
-function nodeGraphWaterfallY(raw, gain, offset, midY, halfHeight) {
-  const v = Math.max(-1, Math.min(1, (Number.isFinite(Number(raw)) ? Number(raw) : 0) * gain + offset));
+function nodeGraphWaterfallSyncIsOn(settings) {
+  return typeof nodeGraphTraceDisplaySyncChannel === "function"
+    ? nodeGraphTraceDisplaySyncChannel(settings) !== "off"
+    : false;
+}
+
+/** Trimmed-mean period from rising-edge gaps (rejects octave jumps). */
+function nodeGraphWaterfallRefinePeriodSamples(edges) {
+  if (!Array.isArray(edges) || edges.length < 2) {
+    return 0;
+  }
+  const gaps = [];
+  for (let i = 1; i < edges.length; i += 1) {
+    const gap = edges[i] - edges[i - 1];
+    if (gap >= 2) {
+      gaps.push(gap);
+    }
+  }
+  if (!gaps.length) {
+    return 0;
+  }
+  gaps.sort((a, b) => a - b);
+  const median = gaps[Math.floor(gaps.length / 2)];
+  let sum = 0;
+  let count = 0;
+  for (const gap of gaps) {
+    if (gap > median * 0.82 && gap < median * 1.18) {
+      sum += gap;
+      count += 1;
+    }
+  }
+  const period = count > 0 ? sum / count : median;
+  return period > 1 ? period : 0;
+}
+
+/**
+ * Measure period from the buffer (rising ZCs only — no module frequency hints).
+ * History (when Sync On) is cycles-in-view (smooth), not a time budget that
+ * packs more cycles as frequency rises — zoom stretches that window full-width.
+ */
+function nodeGraphWaterfallMeasureSync(syncBuffer, state, historyCycles = 0, sampleRate = 0) {
+  const empty = { periodSamples: 0, edge: Number.NaN, cycles: 0, visibleSamples: 0 };
+  if (!syncBuffer?.length || typeof nodeGraphModuleScopeCollectSyncTriggers !== "function") {
+    return empty;
+  }
+  const source = typeof nodeGraphModuleScopeSyncBuffer === "function"
+    ? (nodeGraphModuleScopeSyncBuffer(syncBuffer) || syncBuffer)
+    : syncBuffer;
+  if (!source?.length) {
+    return empty;
+  }
+  const hz = sampleRate > 0 ? sampleRate : nodeGraphWaterfallVisualHz(source);
+  const cyclesRaw = Number(historyCycles);
+  const cycles = Number.isFinite(cyclesRaw) && cyclesRaw > 0
+    ? Math.max(0.05, Math.min(100, cyclesRaw))
+    : 2;
+  // Search enough ring for several periods of the current cycle zoom.
+  const searchSpan = Math.min(
+    source.length,
+    Math.max(8192, Math.ceil(cycles * 512) + 4096),
+  );
+  const searchStart = Math.max(0, source.length - searchSpan);
+  const triggers = nodeGraphModuleScopeCollectSyncTriggers(
+    source,
+    searchStart,
+    source.length,
+    0,
+    null,
+  );
+  const edges = Array.isArray(triggers?.edges) ? triggers.edges : [];
+  let periodSamples = nodeGraphWaterfallRefinePeriodSamples(edges);
+  if (!(periodSamples > 1)) {
+    periodSamples = Number(triggers?.periodSamples) || 0;
+  }
+  if (periodSamples > 1 && state) {
+    const prev = Number(state.periodEma);
+    if (Number.isFinite(prev) && prev > 1) {
+      const ratio = periodSamples / prev;
+      state.periodEma = (ratio < 0.7 || ratio > 1.4)
+        ? periodSamples
+        : (prev * 0.55 + periodSamples * 0.45);
+    } else {
+      state.periodEma = periodSamples;
+    }
+    periodSamples = state.periodEma;
+  } else if (!(periodSamples > 1)) {
+    const prev = Number(state?.periodEma);
+    if (Number.isFinite(prev) && prev > 1) {
+      periodSamples = prev;
+    } else {
+      return empty;
+    }
+  }
+  // Fixed cycle zoom × measured period → sample window (stretched to full face).
+  const visible = Math.max(8, Math.min(source.length, Math.round(cycles * periodSamples)));
+  let edge = Number.NaN;
+  for (let i = edges.length - 1; i >= 0; i -= 1) {
+    const at = Number(edges[i]);
+    if (Number.isFinite(at) && at >= 0 && at + visible <= source.length) {
+      edge = at;
+      break;
+    }
+  }
+  if (!Number.isFinite(edge) && edges.length) {
+    const idealStart = Math.max(0, source.length - visible);
+    let best = Number.NaN;
+    let bestDist = Infinity;
+    for (let i = edges.length - 1; i >= 0; i -= 1) {
+      const at = Number(edges[i]);
+      if (!Number.isFinite(at) || at > idealStart) {
+        continue;
+      }
+      const dist = idealStart - at;
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = at;
+      }
+      if (dist <= periodSamples) {
+        break;
+      }
+    }
+    edge = Number.isFinite(best) ? best : Number(edges[edges.length - 1]);
+  }
+  if (!Number.isFinite(edge)) {
+    edge = Math.max(0, source.length - visible);
+  }
+  return { periodSamples, edge, cycles, visibleSamples: visible };
+}
+
+function nodeGraphWaterfallY(raw, gain, offset, midY, halfHeight, amp = null) {
+  let bipolar;
+  if (amp && typeof amp === "object" && amp.mode === "rmsDb") {
+    const useLut = amp.useLogLut !== false;
+    const db = typeof nodeGraphRmsLinearToDb === "function"
+      ? nodeGraphRmsLinearToDb(raw, useLut)
+      : (Number(raw) > 0 ? 20 * Math.log10(Math.max(Number(raw), 1e-10)) : -120);
+    bipolar = typeof nodeGraphRmsDbToFaceBipolar === "function"
+      ? nodeGraphRmsDbToFaceBipolar(db, amp.minDb, amp.maxDb)
+      : 0;
+  } else {
+    bipolar = (Number.isFinite(Number(raw)) ? Number(raw) : 0) * (Number(gain) || 1) + (Number(offset) || 0);
+  }
+  const v = Math.max(-1, Math.min(1, bipolar));
   return midY - v * halfHeight;
 }
 
@@ -39,6 +182,22 @@ function nodeGraphWaterfallVisualHz(buffer) {
 }
 
 function nodeGraphWaterfallAmp(buffer, slot) {
+  // RMS meter face: dB-linear, Min dB → bottom, Max dB → top (defaults −48…0).
+  const def = typeof nodeGraphModuleDefinitions === "object"
+    ? nodeGraphModuleDefinitions[slot?.type]
+    : null;
+  if (def?.rmsDbGuides) {
+    if (typeof nodeGraphRmsFaceRangeFromSlot === "function") {
+      return nodeGraphRmsFaceRangeFromSlot(slot);
+    }
+    return {
+      mode: "rmsDb",
+      gain: 1,
+      offset: 0,
+      minDb: typeof NODE_GRAPH_RMS_DB_DEFAULT_MIN === "number" ? NODE_GRAPH_RMS_DB_DEFAULT_MIN : -48,
+      maxDb: typeof NODE_GRAPH_RMS_DB_CEIL === "number" ? NODE_GRAPH_RMS_DB_CEIL : 0,
+    };
+  }
   const view = typeof nodeGraphTraceDisplayBufferView === "function"
     ? nodeGraphTraceDisplayBufferView(buffer, slot, { forceSyncOff: true })
     : null;
@@ -74,7 +233,14 @@ function nodeGraphWaterfallLatestY(buffer, slot, settings, height) {
   const live = nodeGraphWaterfallPrepare(buffer, settings);
   if (!live?.length) return Number.NaN;
   const amp = nodeGraphWaterfallAmp(live, slot);
-  return nodeGraphWaterfallY(Number(live[live.length - 1]), amp.gain, amp.offset, height * 0.5, height * 0.42);
+  return nodeGraphWaterfallY(
+    Number(live[live.length - 1]),
+    amp.gain,
+    amp.offset,
+    height * 0.5,
+    height * 0.42,
+    amp,
+  );
 }
 
 /** Min/max envelope per new pixel column. */
@@ -109,8 +275,8 @@ function nodeGraphWaterfallColumnPath(buffer, slot, columns, height, prevY, sett
     }
     if (!(minV <= maxV)) continue;
     const x = c + 0.5;
-    const yMin = nodeGraphWaterfallY(minV, amp.gain, amp.offset, midY, halfHeight);
-    const yMax = nodeGraphWaterfallY(maxV, amp.gain, amp.offset, midY, halfHeight);
+    const yMin = nodeGraphWaterfallY(minV, amp.gain, amp.offset, midY, halfHeight, amp);
+    const yMax = nodeGraphWaterfallY(maxV, amp.gain, amp.offset, midY, halfHeight, amp);
     if (minI === maxI || Math.abs(yMin - yMax) < 0.5) points.push({ x, y: yMin });
     else if (minI < maxI) { points.push({ x, y: yMin }); points.push({ x, y: yMax }); }
     else { points.push({ x, y: yMax }); points.push({ x, y: yMin }); }
@@ -442,18 +608,103 @@ function nodeGraphWaterfallColor01(color) {
   return [rgb[0] / 255, rgb[1] / 255, rgb[2] / 255];
 }
 
+/**
+ * Persistent 2D plate that scrolls with the waterfall. New columns on the
+ * right are filled with the *current* background so bg color changes travel
+ * left with the ink (old canvas drawImage hold path).
+ */
+function nodeGraphWaterfallEnsureHold(canvas, width, height, bg) {
+  if (!canvas) {
+    return null;
+  }
+  let hold = canvas._waterfallHold;
+  if (!hold) {
+    hold = document.createElement("canvas");
+    canvas._waterfallHold = hold;
+  }
+  const w = Math.max(1, Math.floor(Number(width) || 1));
+  const h = Math.max(1, Math.floor(Number(height) || 1));
+  if (hold.width === w && hold.height === h) {
+    return hold;
+  }
+  const prevW = hold.width;
+  const prevH = hold.height;
+  let prev = null;
+  if (prevW > 0 && prevH > 0) {
+    prev = document.createElement("canvas");
+    prev.width = prevW;
+    prev.height = prevH;
+    prev.getContext("2d").drawImage(hold, 0, 0);
+  }
+  hold.width = w;
+  hold.height = h;
+  const ctx = hold.getContext("2d");
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (prev) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(prev, 0, 0, w, h);
+  } else {
+    ctx.fillStyle = bg || "#000000";
+    ctx.fillRect(0, 0, w, h);
+  }
+  return hold;
+}
+
+function nodeGraphWaterfallResetHold(canvas, bg) {
+  const hold = canvas?._waterfallHold;
+  if (!hold || hold.width <= 0 || hold.height <= 0) {
+    return;
+  }
+  const ctx = hold.getContext("2d");
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = bg || "#000000";
+  ctx.fillRect(0, 0, hold.width, hold.height);
+}
+
+function nodeGraphWaterfallScrollHold(hold, scrollPx, bg) {
+  const n = Math.max(0, Math.round(Number(scrollPx) || 0));
+  if (!hold || n <= 0 || hold.width <= 0 || hold.height <= 0) {
+    return;
+  }
+  const ctx = hold.getContext("2d");
+  const w = hold.width;
+  const h = hold.height;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = "source-over";
+  ctx.imageSmoothingEnabled = false;
+  // Content moves left; print current bg into the newly revealed right edge.
+  ctx.drawImage(hold, -n, 0);
+  ctx.fillStyle = bg || "#000000";
+  ctx.fillRect(Math.max(0, w - n), 0, n, h);
+}
+
 /** Present channel tapes onto the face plate. */
-function nodeGraphWaterfallPresentTapes(destCtx, destCanvas, tapes, meta, mode, bg) {
+function nodeGraphWaterfallPresentTapes(destCtx, destCanvas, tapes, meta, mode, bg, options = {}) {
   const w = destCanvas.width;
   const h = destCanvas.height;
   const meet = (mode === "combine" || mode === "meet") && tapes.length >= 2;
+  const plateBg = mode === "multiply" ? "#ffffff" : (bg || "#000000");
+  const scrollPx = Math.max(0, Math.round(Number(options.scrollPx) || 0));
+  const resetHold = options.resetHold === true;
+  const hold = nodeGraphWaterfallEnsureHold(destCanvas, w, h, plateBg);
+  if (hold) {
+    if (resetHold) {
+      nodeGraphWaterfallResetHold(destCanvas, plateBg);
+    } else if (scrollPx > 0) {
+      nodeGraphWaterfallScrollHold(hold, scrollPx, plateBg);
+    }
+    destCtx.save();
+    destCtx.setTransform(1, 0, 0, 1, 0, 0);
+    destCtx.globalCompositeOperation = "source-over";
+    destCtx.imageSmoothingEnabled = false;
+    destCtx.drawImage(hold, 0, 0);
+    destCtx.restore();
+  }
+
   // Mono defaults to stereoBlend "combine", but Meet needs ≥2 tapes. One tape
   // must source-over present or the face stays blank.
   if (meet) {
-    destCtx.save();
-    destCtx.setTransform(1, 0, 0, 1, 0, 0);
-    destCtx.clearRect(0, 0, w, h);
-    destCtx.restore();
     if (tapes.length >= 3 && typeof TraceTape.presentMeet3 === "function") {
       TraceTape.presentMeet3(tapes[0], tapes[1], tapes[2], destCtx, {
         width: w,
@@ -475,22 +726,8 @@ function nodeGraphWaterfallPresentTapes(destCtx, destCanvas, tapes, meta, mode, 
         rightRgb: nodeGraphWaterfallColor01(meta[1]?.color),
       });
     }
-    if (typeof nodeGraphFacePlateFillUnder === "function") {
-      nodeGraphFacePlateFillUnder(destCtx, destCanvas, bg);
-    }
+    // Hold stays bg-only — ink lives on TraceTape (already scrolled).
     return;
-  }
-
-  // Multiply/CMY needs a white underlay so overlaps go black (not invisible on black plate).
-  const plateBg = mode === "multiply" ? "#ffffff" : (bg || "#000000");
-  if (typeof nodeGraphFacePlateFillCanvas === "function") {
-    nodeGraphFacePlateFillCanvas(destCtx, destCanvas, plateBg);
-  } else {
-    destCtx.save();
-    destCtx.setTransform(1, 0, 0, 1, 0, 0);
-    destCtx.fillStyle = plateBg;
-    destCtx.fillRect(0, 0, w, h);
-    destCtx.restore();
   }
 
   let composite = "source-over";
@@ -500,7 +737,8 @@ function nodeGraphWaterfallPresentTapes(destCtx, destCanvas, tapes, meta, mode, 
   }
 
   for (let i = 0; i < tapes.length; i += 1) {
-    // Multiply: every layer multiplies into the white plate. Add: first source-over then lighter.
+    // Multiply: every layer multiplies into the (scrolled) plate. Add: first
+    // source-over then lighter — plate already carries scrolled bg history.
     const layerComposite = composite === "multiply"
       ? "multiply"
       : (i === 0 ? "source-over" : composite);
@@ -511,6 +749,8 @@ function nodeGraphWaterfallPresentTapes(destCtx, destCanvas, tapes, meta, mode, 
       smooth: false,
     });
   }
+  // Do not copy dest→hold: that would bake ink into the bg plate and
+  // double-scroll it next frame. Hold is background history only.
 }
 
 /**
@@ -561,10 +801,19 @@ function nodeGraphWaterfallInk(destCtx, destCanvas, spec, x0, columns, bg, sampl
     // the old canvas drawImage(hold, -n, 0) path.
     if (scrollPx > 0) TraceTape.scroll(tape, scrollPx);
     const buf = nodeGraphWaterfallPrepare(ch.buffer, settings);
-    const end = buf?.length || 0;
-    const start = Math.max(0, end - count);
+    const bufLen = buf?.length || 0;
+    // Honor caller window when valid (Sync phase-align). Freerun passes the
+    // undrawn tail; older callers that only set count still work via fallback.
+    const argStart = Math.floor(Number(sampleStart));
+    const argEnd = Math.floor(Number(sampleEnd));
+    const useArgs = Number.isFinite(argStart) && Number.isFinite(argEnd) && argEnd > argStart;
+    const end = useArgs ? Math.min(bufLen, argEnd) : bufLen;
+    const start = useArgs
+      ? Math.max(0, Math.min(end - 1, argStart))
+      : Math.max(0, end - count);
+    const prevY = options?.resetPath ? Number.NaN : destCanvas[ch.lastYKey];
     const raw = nodeGraphWaterfallColumnPath(
-      ch.buffer, spec.slot, n, height, destCanvas[ch.lastYKey], settings, start, end,
+      ch.buffer, spec.slot, n, height, prevY, settings, start, end,
     );
     const last = raw[raw.length - 1];
     if (Number.isFinite(last?.y)) destCanvas[ch.lastYKey] = last.y;
@@ -586,7 +835,10 @@ function nodeGraphWaterfallInk(destCtx, destCanvas, spec, x0, columns, bg, sampl
     meta.push({ color: ch.color, blur: ch.blur || 0, bright: ch.bright ?? 1 });
   }
 
-  nodeGraphWaterfallPresentTapes(destCtx, destCanvas, tapes, meta, mode, bg);
+  nodeGraphWaterfallPresentTapes(destCtx, destCanvas, tapes, meta, mode, bg, {
+    scrollPx,
+    resetHold: Boolean(options?.resetPath) && scrollPx <= 0,
+  });
   return n;
 }
 
@@ -604,22 +856,11 @@ function nodeGraphWaterfallSyncSource(spec) {
   return stereo.left || stereo.right;
 }
 
-function nodeGraphWaterfallArmPen(state, spec) {
-  if (!state.waiting) return;
-  const edge = typeof nodeGraphWaterfallNewestEdgeAbs === "function"
-    ? nodeGraphWaterfallNewestEdgeAbs(nodeGraphWaterfallSyncSource(spec))
-    : null;
-  if (!Number.isFinite(edge)) return;
-  if (Number.isFinite(state.lastEdgeAbs) && edge <= state.lastEdgeAbs) return;
-  state.lastEdgeAbs = edge;
-  state.waiting = false;
-  state.penX = 0;
-}
-
 function nodeGraphWaterfallAbandonTape(canvas) {
   if (!canvas) return;
   canvas._waterfall = null;
   canvas._traceScroll = null;
+  canvas._waterfallHold = null;
   delete canvas._waterfallLastY;
   delete canvas._waterfallLastLeftY;
   delete canvas._waterfallLastRightY;
@@ -638,25 +879,23 @@ function nodeGraphWaterfallAbandonTape(canvas) {
   }
 }
 
-function nodeGraphWaterfallState(canvas, width, height, sweep, nowLine, bg, context, blendMode) {
+function nodeGraphWaterfallState(canvas, width, height, syncOn, nowLine, bg, context, blendMode) {
   const st = canvas._waterfall || (canvas._waterfall = {
     started: false,
     lastMs: Number.NaN,
     frac: 0,
     lastAbs: Number.NaN,
-    sweep: false,
+    syncOn: false,
     nowLine: false,
     blend: "",
-    penX: 0,
-    waiting: false,
-    lastEdgeAbs: Number.NaN,
+    periodEma: Number.NaN,
     lastW: 0,
     lastH: 0,
   });
   canvas._traceScroll = st;
   const blend = String(blendMode || "");
   const resized = Math.abs((st.lastW || 0) - width) > 2 || Math.abs((st.lastH || 0) - height) > 2;
-  const modeChanged = st.sweep !== sweep || st.nowLine !== nowLine || st.blend !== blend;
+  const modeChanged = st.syncOn !== syncOn || st.nowLine !== nowLine || st.blend !== blend;
   if (!st.started || modeChanged) {
     if (typeof nodeGraphFacePlateFillCanvas === "function") {
       nodeGraphFacePlateFillCanvas(context, canvas, bg);
@@ -667,11 +906,10 @@ function nodeGraphWaterfallState(canvas, width, height, sweep, nowLine, bg, cont
     st.lastAbs = Number.NaN;
     st.lastW = width;
     st.lastH = height;
-    st.sweep = sweep;
+    st.syncOn = Boolean(syncOn);
     st.nowLine = nowLine;
     st.blend = blend;
-    st.waiting = sweep && !nowLine;
-    st.penX = sweep && !nowLine ? width : 0;
+    st.periodEma = Number.NaN;
     delete canvas._waterfallLastY;
     delete canvas._waterfallLastLeftY;
     delete canvas._waterfallLastRightY;
@@ -682,9 +920,14 @@ function nodeGraphWaterfallState(canvas, width, height, sweep, nowLine, bg, cont
     delete canvas._waterfallLastGY;
     delete canvas._waterfallLastBY;
     nodeGraphWaterfallClearTapes(canvas);
+    // Fresh mode → fresh scrolled bg plate (filled with current bg).
+    nodeGraphWaterfallEnsureHold(canvas, width, height, bg);
+    nodeGraphWaterfallResetHold(canvas, bg);
   } else if (resized) {
     st.lastW = width;
     st.lastH = height;
+    // Scale-preserve hold + tapes (ensure recreates with stretch blit).
+    nodeGraphWaterfallEnsureHold(canvas, width, height, bg);
   }
   return st;
 }
@@ -754,7 +997,8 @@ function nodeGraphWaterfallPaintNowLine(spec, context, canvas, settings, width, 
     tapes.push(tape);
     meta.push({ color: ch.color });
   }
-  nodeGraphWaterfallPresentTapes(context, canvas, tapes, meta, mode, bg);
+  // Now-line replaces the plate; reset scrolled bg to current color.
+  nodeGraphWaterfallPresentTapes(context, canvas, tapes, meta, mode, bg, { resetHold: true });
   return true;
 }
 
@@ -781,12 +1025,10 @@ function nodeGraphWaterfallPaint(spec) {
   if (!live?.length) return false;
 
   const nowLine = nodeGraphWaterfallIsNowLine(settings);
-  const sweep = !nowLine && (typeof nodeGraphTraceDisplaySyncChannel === "function"
-    ? nodeGraphTraceDisplaySyncChannel(settings) !== "off"
-    : false);
+  const syncOn = !nowLine && nodeGraphWaterfallSyncIsOn(settings);
   const blendMode = nodeGraphWaterfallBlendMode(settings, { rgbGuns: Boolean(spec?.rgbBuffers) });
   const st = nodeGraphWaterfallState(
-    canvas, width, height, sweep, nowLine, spec.bg, context, blendMode,
+    canvas, width, height, syncOn, nowLine, spec.bg, context, blendMode,
   );
   const writeSpec = {
     slot: spec.slot,
@@ -820,22 +1062,53 @@ function nodeGraphWaterfallPaint(spec) {
     return true;
   }
 
-  if (sweep) {
-    nodeGraphWaterfallArmPen(st, writeSpec);
-    if (st.waiting) {
-      if (Number.isFinite(window.absEnd)) st.lastAbs = window.absEnd;
-      st.frac = 0;
-      nodeGraphWaterfallFinishOutputInk(spec, context, canvas, 0);
-      return true;
-    }
-  }
-
-  const history = nodeGraphWaterfallHistorySeconds(settings);
-  const hz = nodeGraphWaterfallVisualHz(live);
   const inkPad = nodeGraphWaterfallMargin(nodeGraphWaterfallInkRadius(writeSpec, width, height));
   const penMin = inkPad;
   const penMax = Math.max(penMin + 1, width - inkPad);
   const usableWidth = Math.max(1, penMax - penMin);
+
+  const history = nodeGraphWaterfallHistorySeconds(settings);
+  const hz = nodeGraphWaterfallVisualHz(live);
+
+  // Sync On: History = cycles in view (smooth). Stretch that window across the
+  // full face width (zoom only — do not pack more cycles as frequency rises).
+  if (syncOn) {
+    const syncBuffer = nodeGraphWaterfallSyncSource(writeSpec) || live;
+    const measure = nodeGraphWaterfallMeasureSync(syncBuffer, st, history, hz);
+    if (measure.periodSamples > 1 && measure.visibleSamples > 0) {
+      const visible = Math.min(live.length, Math.max(8, Math.round(measure.visibleSamples)));
+      let sampleStart = Number(measure.edge);
+      if (!Number.isFinite(sampleStart) || sampleStart < 0) {
+        sampleStart = Math.max(0, live.length - visible);
+      }
+      if (sampleStart + visible > live.length) {
+        const periodsBack = Math.ceil(
+          (sampleStart + visible - live.length) / measure.periodSamples,
+        );
+        sampleStart = Math.max(0, sampleStart - periodsBack * measure.periodSamples);
+      }
+      if (sampleStart + visible > live.length) {
+        sampleStart = Math.max(0, live.length - visible);
+      }
+      const sampleEnd = Math.min(live.length, sampleStart + visible);
+      // Always map the lock window across the full usable width (no partial face).
+      nodeGraphWaterfallClearTapes(canvas);
+      nodeGraphWaterfallInk(
+        context, canvas, writeSpec, penMin, usableWidth, spec.bg, sampleStart, sampleEnd,
+        { scrollPx: 0, resetPath: true },
+      );
+      if (Number.isFinite(window.absEnd)) {
+        st.lastAbs = window.absEnd;
+      }
+      st.frac = 0;
+      nodeGraphWaterfallFinishOutputInk(spec, context, canvas, 0);
+      if (typeof paintNodeGraphOutputProtectOverlay === "function") {
+        paintNodeGraphOutputProtectOverlay(context, canvas, spec.density);
+      }
+      remember();
+      return true;
+    }
+  }
   const samplesPerColumn = Math.max(1e-9, (hz * history) / usableWidth);
   const columnsFloat = window.count / samplesPerColumn + (Number(st.frac) || 0);
   let columns = Math.floor(columnsFloat);
@@ -846,29 +1119,7 @@ function nodeGraphWaterfallPaint(spec) {
 
   let sampleStart = window.start;
   let sampleEnd = window.end;
-  if (sweep) {
-    if (!Number.isFinite(st.penX) || st.penX < penMin) st.penX = penMin;
-    const remain = Math.max(0, penMax - Math.max(penMin, Math.floor(st.penX)));
-    if (remain < 1) {
-      st.waiting = true;
-      st.penX = penMax;
-      if (Number.isFinite(window.absEnd)) st.lastAbs = window.absEnd;
-      st.frac = 0;
-      nodeGraphWaterfallFinishOutputInk(spec, context, canvas, 0);
-      return true;
-    }
-    if (columns > remain) {
-      columns = remain;
-      const consume = Math.min(window.count, Math.max(1, Math.round(columns * samplesPerColumn)));
-      sampleStart = window.start;
-      sampleEnd = window.start + consume;
-      st.lastAbs = (Number.isFinite(st.lastAbs) ? st.lastAbs : 0) + consume;
-      st.frac = 0;
-    } else if (Number.isFinite(window.absEnd)) {
-      st.lastAbs = window.absEnd;
-      st.frac = columnsFloat - columns;
-    }
-  } else if (columns >= usableWidth) {
+  if (columns >= usableWidth) {
     columns = Math.max(1, usableWidth - 1);
     const consume = Math.min(live.length, Math.max(1, Math.round(columns * samplesPerColumn)));
     sampleEnd = live.length;
@@ -885,30 +1136,13 @@ function nodeGraphWaterfallPaint(spec) {
     return true;
   }
 
-  if (sweep) {
-    const fromX = Math.max(penMin, Math.floor(st.penX));
-    st.penX = Math.min(penMax, fromX + columns);
-    const n = Math.max(0, Math.floor(st.penX) - fromX);
-    if (n > 0) {
-      nodeGraphWaterfallInk(
-        context, canvas, writeSpec, fromX, n, spec.bg, sampleStart, sampleEnd, { scrollPx: 0 },
-      );
-    }
-    if (st.penX >= penMax) {
-      st.waiting = true;
-      st.penX = penMax;
-      st.frac = 0;
-    }
-    nodeGraphWaterfallFinishOutputInk(spec, context, canvas, 0);
-  } else {
-    nodeGraphWaterfallInk(
-      context, canvas, writeSpec, penMax - columns, columns, spec.bg, sampleStart, sampleEnd,
-      { scrollPx: columns },
-    );
-    nodeGraphWaterfallFinishOutputInk(spec, context, canvas, columns);
-    if (typeof paintNodeGraphOutputProtectOverlay === "function") {
-      paintNodeGraphOutputProtectOverlay(context, canvas, spec.density);
-    }
+  nodeGraphWaterfallInk(
+    context, canvas, writeSpec, penMax - columns, columns, spec.bg, sampleStart, sampleEnd,
+    { scrollPx: columns },
+  );
+  nodeGraphWaterfallFinishOutputInk(spec, context, canvas, columns);
+  if (typeof paintNodeGraphOutputProtectOverlay === "function") {
+    paintNodeGraphOutputProtectOverlay(context, canvas, spec.density);
   }
   remember();
   return true;

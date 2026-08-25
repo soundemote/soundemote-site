@@ -39,6 +39,7 @@
     "moduleFillColor": "#171a1f",
     "moduleFillAlpha": 100,
     "moduleStrokeThickness": 3,
+    "moduleStrokesFixed": true,
     "moduleStrokeColor": "#a19b9b",
     "moduleStrokeAlpha": 46,
     "moduleSelectedStrokeColor": "#e2a86d",
@@ -107,6 +108,7 @@
     "moduleFillColor": false,
     "moduleFillAlpha": false,
     "moduleStrokeThickness": false,
+    "moduleStrokesFixed": false,
     "moduleStrokeColor": false,
     "moduleStrokeAlpha": false,
     "moduleSelectedStrokeColor": false,
@@ -203,10 +205,10 @@
       "showValues": true
     },
     "traceSettings": {
-      "backgroundHue": 240,
-      "backgroundBrightness": 0.5,
-      "background": "#0000ff",
-      "backgroundColor": "#0000ff",
+      "backgroundHue": 0,
+      "backgroundBrightness": 0,
+      "background": "#ff0000",
+      "backgroundColor": "#ff0000",
       "brightness": 0.95,
       "color": "#ff0000",
       "dot1Enabled": true,
@@ -220,7 +222,7 @@
       "cycles": 2,
       "lineThickness": 0.15,
       "stampDensity": 0.5,
-      "dotBudget": 2048,
+      "dotBudget": 1024,
       "pixelDensity": 1,
       "padding": 0,
       "scale": 1,
@@ -230,8 +232,8 @@
       "stereoBlend": "combine",
       "meetColor": "auto",
       "syncChannel": "off",
-      "zoomSeconds": 2,
-      "historySeconds": 2,
+      "zoomSeconds": 3.8737,
+      "historySeconds": 3.8737,
       "fade": 0,
       "xyzLayout": "stack"
     },
@@ -283,7 +285,9 @@
         "moduleGroup",
         "gravity",
         "bloomGlow",
-        "gradientVectorscope"
+        "gradientVectorscope",
+        "lufs",
+        "osc"
       ]
     }
   }

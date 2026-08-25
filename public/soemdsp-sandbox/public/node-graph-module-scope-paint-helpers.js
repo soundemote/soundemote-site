@@ -106,8 +106,10 @@ const nodeGraphLineBurnResetThreshold = 0.5;
  * Sweep 0 = collapsed sweep: each sample burns one solid full-width horizontal
  * at its Y (limit of Sweep→0). Fuse spacing is preserved; under Dot Budget we
  * skip samples, never thin a line into dots. Reset (≥ 0.5) still snaps state.
- * Sync on: stretch one In rising-edge period across the full face width
- * (measured trigger→trigger), so the cycle is not squished to the left.
+ * Sync on: Sweep is cycles-in-view (smooth — 1.5 = one and a half periods
+ * across the face). Mid-sweep rising edges only retune period. When the pen
+ * finishes that window it parks and restarts on the next rising zero-crossing.
+ * Reset jack still snaps to the left immediately. Sync Off: Sweep is seconds.
  */
 function nodeGraphOneDimensionalBurnBufferFrameInfo(buffer, count) {
   const endFrame = Number(buffer?.nodeGraphScopeAbsoluteFrame);
@@ -310,7 +312,7 @@ function nodeGraphOneDimensionalBurnFramePoints(canvas, buffer, settings, resetB
     phasor = 0;
   }
   let resetWasHigh = canvas._lineBurnResetWasHigh === true;
-  // Auto-sync: In rising edge starts a sweep; period stretches to full width.
+  // Auto-sync: measure period from In rising edges; Sweep budgets N cycles.
   const autoSync = typeof nodeGraphDisplaySettingsToggleIsOn === "function"
     ? nodeGraphDisplaySettingsToggleIsOn(settings?.sourceSync ?? settings?.sync)
     : Boolean(settings?.sourceSync);
@@ -325,8 +327,9 @@ function nodeGraphOneDimensionalBurnFramePoints(canvas, buffer, settings, resetB
     ? Number(nodeGraphLineBurnResetThreshold)
     : 0.5;
 
-  // Sync stretch: last measured In rising-edge period (samples), and counter
-  // since the previous edge. phaseInc = 1/period so one cycle fills left→right.
+  // Sync: Sweep value = cycles in view (smooth). phaseInc = 1/(period×cycles).
+  // Restart only on a rising ZC after the window finishes; mid-window edges
+  // retune period without snapping X.
   let syncPeriodSamples = Number(canvas._lineBurnSyncPeriodSamples);
   if (!Number.isFinite(syncPeriodSamples) || syncPeriodSamples < 2) {
     syncPeriodSamples = 0;
@@ -335,55 +338,89 @@ function nodeGraphOneDimensionalBurnFramePoints(canvas, buffer, settings, resetB
   if (!Number.isFinite(samplesSinceSync) || samplesSinceSync < 0) {
     samplesSinceSync = 0;
   }
+  let syncAwaitingRestart = canvas._lineBurnSyncAwaitingRestart === true;
+  // Sync reuses the Sweep control as a cycle count (not seconds).
+  const syncCyclesInView = (() => {
+    if (horizontalBurn) {
+      return 1;
+    }
+    const raw = Number(sweepSeconds);
+    if (!Number.isFinite(raw) || raw <= 0) {
+      return 1;
+    }
+    return Math.max(0.05, Math.min(100, raw));
+  })();
+  const syncPhaseIncForPeriod = (periodSamples) => {
+    if (!(periodSamples >= 2)) {
+      return sweepPhaseInc;
+    }
+    return 1 / (periodSamples * syncCyclesInView);
+  };
   let phaseInc = horizontalBurn
     ? 0
-    : (autoSync && syncPeriodSamples >= 2 ? 1 / syncPeriodSamples : sweepPhaseInc);
+    : (autoSync && syncPeriodSamples >= 2
+      ? syncPhaseIncForPeriod(syncPeriodSamples)
+      : sweepPhaseInc);
 
-  const applySyncSnap = (fromSyncEdge) => {
-    if (fromSyncEdge && samplesSinceSync >= 2) {
+  /** Update measured period from the last edge gap. */
+  const retuneSyncPeriodFromGap = () => {
+    if (samplesSinceSync >= 2) {
       syncPeriodSamples = samplesSinceSync;
-      if (!horizontalBurn) {
-        phaseInc = 1 / syncPeriodSamples;
+      if (!horizontalBurn && autoSync) {
+        phaseInc = syncPhaseIncForPeriod(syncPeriodSamples);
       }
     }
     samplesSinceSync = 0;
-    phasor = 0;
   };
 
   const stepPhasorAndReset = (resetSample, signalSample) => {
     const resetHigh = Number(resetSample) >= syncThreshold;
-    let snapped = resetHigh && !resetWasHigh;
-    let fromSyncEdge = false;
+    const resetEdge = resetHigh && !resetWasHigh;
+    let syncEdge = false;
     if (autoSync) {
       const signalHigh = Number(signalSample) >= 0;
       if (signalHigh && !signalWasHigh) {
-        snapped = true;
-        fromSyncEdge = true;
+        syncEdge = true;
       }
       signalWasHigh = signalHigh;
     }
-    if (snapped) {
-      applySyncSnap(fromSyncEdge);
+    if (resetEdge) {
+      retuneSyncPeriodFromGap();
+      phasor = 0;
+      syncAwaitingRestart = false;
+    } else if (syncEdge) {
+      const hadPeriod = syncPeriodSamples >= 2;
+      retuneSyncPeriodFromGap();
+      // Phase lock: start/restart a multi-cycle pass only on ZC.
+      if (syncAwaitingRestart || !hadPeriod) {
+        phasor = 0;
+        syncAwaitingRestart = false;
+      }
     }
     resetWasHigh = resetHigh;
     if (autoSync) {
       samplesSinceSync += 1;
     }
     if (!horizontalBurn) {
-      phasor += phaseInc;
-      if (phasor >= 1) {
-        if (autoSync && syncPeriodSamples >= 2) {
-          // Finished the stretched pass early — park at right until next edge.
-          phasor = 1;
-        } else {
-          phasor -= Math.floor(phasor);
-          if (phasor < 0 || phasor >= 1) {
-            phasor = 0;
+      if (autoSync && syncAwaitingRestart) {
+        phasor = 1;
+      } else {
+        phasor += phaseInc;
+        if (phasor >= 1) {
+          if (autoSync && syncPeriodSamples >= 2) {
+            // Finished N cycles — wait for next rising ZC to restart in phase.
+            phasor = 1;
+            syncAwaitingRestart = true;
+          } else {
+            phasor -= Math.floor(phasor);
+            if (phasor < 0 || phasor >= 1) {
+              phasor = 0;
+            }
           }
         }
       }
     }
-    return snapped;
+    return resetEdge;
   };
 
   // Samples already consumed still update phasor + Reset so edges are not missed.
@@ -438,23 +475,36 @@ function nodeGraphOneDimensionalBurnFramePoints(canvas, buffer, settings, resetB
     const sample = buffer[start + index];
     const resetSample = nodeGraphOneDimensionalBurnResetSample(resetBuffer, index, count);
     const resetHigh = Number(resetSample) >= syncThreshold;
-    let snapped = resetHigh && !resetWasHigh;
-    let fromSyncEdge = false;
+    const resetEdge = resetHigh && !resetWasHigh;
+    let syncEdge = false;
     if (autoSync) {
       const signalHigh = Number(sample) >= 0;
       if (signalHigh && !signalWasHigh) {
-        snapped = true;
-        fromSyncEdge = true;
+        syncEdge = true;
       }
       signalWasHigh = signalHigh;
     }
-    if (snapped) {
-      // Rising edge Reset and/or Sync: snap to left; Sync also retunes stretch.
+    if (resetEdge) {
+      // Hard Reset: retune + snap pen to left.
       if (hadPoint) {
         nodeGraphOneDimensionalBurnBreakPath(points);
       }
-      applySyncSnap(fromSyncEdge);
+      retuneSyncPeriodFromGap();
+      phasor = 0;
+      syncAwaitingRestart = false;
       hadPoint = false;
+    } else if (syncEdge) {
+      const hadPeriod = syncPeriodSamples >= 2;
+      retuneSyncPeriodFromGap();
+      // Restart pass on ZC after window end (or first lock) — keeps phase.
+      if (autoSync && (syncAwaitingRestart || !hadPeriod)) {
+        if (hadPoint) {
+          nodeGraphOneDimensionalBurnBreakPath(points);
+        }
+        phasor = 0;
+        syncAwaitingRestart = false;
+        hadPoint = false;
+      }
     }
     resetWasHigh = resetHigh;
     if (autoSync) {
@@ -488,9 +538,8 @@ function nodeGraphOneDimensionalBurnFramePoints(canvas, buffer, settings, resetB
       continue;
     }
 
-    // Sync stretch: after finishing a pass early, blank until the next edge
-    // instead of wrapping (wrapping re-piles energy on the left).
-    if (autoSync && syncPeriodSamples >= 2 && phasor >= 1) {
+    // Finished N cycles — blank until the next rising ZC (phase-aligned restart).
+    if (autoSync && syncAwaitingRestart) {
       phasor = 1;
       prevSample = Number(sample);
       continue;
@@ -506,20 +555,20 @@ function nodeGraphOneDimensionalBurnFramePoints(canvas, buffer, settings, resetB
 
     phasor += phaseInc;
     if (phasor >= 1) {
-      if (autoSync && syncPeriodSamples >= 2) {
-        phasor = 1;
-        if (hadPoint) {
-          nodeGraphOneDimensionalBurnBreakPath(points);
-        }
-        hadPoint = false;
-      } else {
-        // Freerun: completed a pass — break; residual continues from left.
+      if (hadPoint) {
         nodeGraphOneDimensionalBurnBreakPath(points);
+      }
+      hadPoint = false;
+      if (autoSync && syncPeriodSamples >= 2) {
+        // End of Sweep budget — wait for rising ZC to start the next pass.
+        phasor = 1;
+        syncAwaitingRestart = true;
+      } else {
+        // Freerun: wrap immediately.
         phasor -= Math.floor(phasor);
         if (phasor < 0 || phasor >= 1) {
           phasor = 0;
         }
-        hadPoint = false;
       }
     }
   }
@@ -529,6 +578,7 @@ function nodeGraphOneDimensionalBurnFramePoints(canvas, buffer, settings, resetB
   canvas._lineBurnSignalWasHigh = signalWasHigh;
   canvas._lineBurnSyncPeriodSamples = syncPeriodSamples;
   canvas._lineBurnSamplesSinceSync = samplesSinceSync;
+  canvas._lineBurnSyncAwaitingRestart = syncAwaitingRestart;
   delete canvas._lineBurnSweepOriginFrame;
   return points;
 }
@@ -2120,6 +2170,93 @@ function nodeGraphTraceDisplayPaintWaterfall(spec) {
     : false;
 }
 
+/** Format a dB guide label (keep sign on non-zero). */
+function nodeGraphRmsDbGuideLabel(db) {
+  const value = Number(db);
+  if (!Number.isFinite(value)) {
+    return "";
+  }
+  if (Math.abs(value) < 1e-9) {
+    return "0";
+  }
+  const rounded = Math.round(value * 10) / 10;
+  const text = Number.isInteger(rounded) ? String(rounded) : String(rounded);
+  return `${rounded > 0 ? "+" : ""}${text}`;
+}
+
+/** Horizontal dB guide lines + left-edge labels for RMS faces. */
+function nodeGraphPaintRmsDbGuideOverlay(context, canvas, slot = null) {
+  if (!context || !canvas) {
+    return;
+  }
+  const face = typeof nodeGraphRmsFaceRangeFromSlot === "function"
+    ? nodeGraphRmsFaceRangeFromSlot(slot)
+    : (typeof nodeGraphRmsFaceGainOffset === "function"
+      ? nodeGraphRmsFaceGainOffset(-48, 0)
+      : { mode: "rmsDb", minDb: -48, maxDb: 0, gain: 1, offset: 0 });
+  const levels = typeof nodeGraphRmsGuideLevels === "function"
+    ? nodeGraphRmsGuideLevels(face.minDb, face.maxDb)
+    : [{ db: face.maxDb, role: "max" }, { db: face.minDb, role: "min" }];
+  const width = Math.max(1, canvas.width);
+  const height = Math.max(1, canvas.height);
+  const midY = height * 0.5;
+  const halfHeight = height * 0.42;
+  const labelPad = Math.max(4, Math.round(width * 0.02));
+  const fontPx = Math.max(9, Math.min(13, Math.round(height * 0.045)));
+  const minLabelGap = fontPx * 1.15;
+  // Draw lines first, then labels with Y collision so dense guides don't stack.
+  const drawn = [];
+  context.save();
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.globalCompositeOperation = "source-over";
+  context.lineWidth = 1;
+  context.font = `${fontPx}px "Cascadia Mono", "Cascadia Code", Consolas, "Courier New", monospace`;
+  context.textAlign = "left";
+  context.textBaseline = "middle";
+  for (const entry of levels) {
+    const db = Number(entry?.db);
+    const bipolar = typeof nodeGraphRmsDbToFaceBipolar === "function"
+      ? nodeGraphRmsDbToFaceBipolar(db, face.minDb, face.maxDb)
+      : 0;
+    const y = midY - Math.max(-1, Math.min(1, bipolar)) * halfHeight;
+    if (!Number.isFinite(y)) {
+      continue;
+    }
+    const isZero = Math.abs(db) < 1e-9;
+    const isExtreme = entry?.role === "min" || entry?.role === "max";
+    context.strokeStyle = isZero
+      ? "rgba(255,255,255,0.55)"
+      : (isExtreme ? "rgba(255,255,255,0.38)" : "rgba(255,255,255,0.22)");
+    context.beginPath();
+    context.moveTo(0, y + 0.5);
+    context.lineTo(width, y + 0.5);
+    context.stroke();
+    drawn.push({ db, y, isZero, isExtreme });
+  }
+  // Prefer extremes and 0 dB when labels would collide.
+  drawn.sort((a, b) => {
+    const rank = (entry) => (entry.isExtreme ? 0 : (entry.isZero ? 1 : 2));
+    const d = rank(a) - rank(b);
+    return d !== 0 ? d : a.y - b.y;
+  });
+  const labeledYs = [];
+  for (const entry of drawn) {
+    const label = nodeGraphRmsDbGuideLabel(entry.db);
+    if (!label) {
+      continue;
+    }
+    if (labeledYs.some((prior) => Math.abs(prior - entry.y) < minLabelGap)) {
+      continue;
+    }
+    labeledYs.push(entry.y);
+    context.fillStyle = entry.isZero || entry.isExtreme
+      ? "rgba(255,255,255,0.82)"
+      : "rgba(255,255,255,0.55)";
+    context.fillText(label, labelPad, entry.y);
+  }
+  context.restore();
+}
+
 function drawNodeGraphTraceDisplayCanvasItem(item, pixelRatio) {
   const slot = item?.slot;
   const buffer = item?.buffer;
@@ -2162,7 +2299,7 @@ function drawNodeGraphTraceDisplayCanvasItem(item, pixelRatio) {
   const xyzBuffers = (!stereoBuffers && !rgbBuffers && nodeGraphModuleUsesXyzTraceDisplay(slot?.type))
     ? nodeGraphXyzTraceBuffers(slot.nodeId, slot.type)
     : null;
-  return nodeGraphWaterfallPaint({
+  const painted = nodeGraphWaterfallPaint({
     item,
     slot,
     buffer,
@@ -2175,6 +2312,13 @@ function drawNodeGraphTraceDisplayCanvasItem(item, pixelRatio) {
     rgbBuffers,
     density,
   });
+  const def = typeof nodeGraphModuleDefinitions === "object"
+    ? nodeGraphModuleDefinitions[slot?.type]
+    : null;
+  if (painted && def?.rmsDbGuides) {
+    nodeGraphPaintRmsDbGuideOverlay(context, canvas, slot);
+  }
+  return painted;
 }
 
 function appendNodeGraphScope2dInterpolatedPoint(points, point, spacingPx = 0.5) {

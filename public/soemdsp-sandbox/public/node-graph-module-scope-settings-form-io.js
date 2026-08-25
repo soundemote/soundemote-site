@@ -1346,6 +1346,12 @@ function writeNodeGraphTraceDisplaySettingsForm(settings) {
     && typeof syncNodeGraphStampPreview === "function") {
     syncNodeGraphStampPreview(root, normalized);
   }
+  if (typeof syncNodeGraphLineBurnSweepLabel === "function") {
+    syncNodeGraphLineBurnSweepLabel(root, normalized);
+  }
+  if (typeof syncNodeGraphWaterfallHistoryLabel === "function") {
+    syncNodeGraphWaterfallHistoryLabel(root, normalized);
+  }
 }
 
 /** Smart title ink for pure-hue title cells (Rec. 709 luminance). */

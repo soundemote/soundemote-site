@@ -14,7 +14,8 @@ const nodeLiveRaptEllipticQuarterbandSos = Object.freeze([
 ]);
 
 function nodeLiveIsPolyBlepOscillatorType(type) {
-  return type === "osc" || type === "polyBlep" || type === "sineWavetable" || type === "sinCos" || type === "blit";
+  // `osc` is Open Sound Control (controller), not a wave oscillator.
+  return type === "polyBlep" || type === "sineWavetable" || type === "sinCos" || type === "blit";
 }
 
 class NodeLiveAudioProcessor extends AudioWorkletProcessor {
@@ -314,6 +315,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.pulseExplosionStates = new Map();
     this.comparatorStates = new Map();
     this.noiseDetectorStates = new Map();
+    this.rmsStates = new Map();
     this.speedColorInertiaStates = new Map();
     this.inertialFilterStates = new Map();
     this.tiltFilterStates = new Map();

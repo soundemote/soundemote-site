@@ -54,6 +54,38 @@ function nodeGraphAudioPlayerLibraryStoredFolderPath(path) {
   return nodeGraphAudioPlayerLibraryLooksLikeOsPath(p) ? p : "";
 }
 
+function nodeGraphAudioPlayerLibraryLooksLikeAudioFilePath(path) {
+  const p = nodeGraphAudioPlayerLibraryStoredFolderPath(path);
+  if (!p) {
+    return false;
+  }
+  const lower = p.toLowerCase();
+  const formats = typeof NODE_GRAPH_AUDIO_PLAYER_FORMATS !== "undefined"
+    ? NODE_GRAPH_AUDIO_PLAYER_FORMATS
+    : [];
+  for (const fmt of formats) {
+    for (const ext of fmt.exts || []) {
+      if (lower.endsWith(String(ext).toLowerCase())) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function nodeGraphAudioPlayerLibraryParentDir(path) {
+  const p = String(path || "").replace(/[\\/]+$/, "");
+  const slash = Math.max(p.lastIndexOf("\\"), p.lastIndexOf("/"));
+  if (slash <= 0) {
+    return "";
+  }
+  // Keep Windows drive root like C:\
+  if (/^[a-zA-Z]:$/.test(p.slice(0, slash))) {
+    return `${p.slice(0, slash)}\\`;
+  }
+  return p.slice(0, slash);
+}
+
 function nodeGraphAudioPlayerLog(level, message, extra) {
   const text = extra !== undefined
     ? `[music-player] ${message} ${JSON.stringify(extra)}`
@@ -285,16 +317,262 @@ function nodeGraphAudioPlayerLibraryReleaseOrphans(nodeId, keepId = "") {
 }
 
 async function nodeGraphAudioPlayerLibraryListFolder(folderPath, { dive = false } = {}) {
-  const response = await fetch("/api/audio-file/list", {
-    body: JSON.stringify({ dive: Boolean(dive), path: folderPath, recursive: Boolean(dive) }),
-    headers: { "Content-Type": "application/json" },
-    method: "POST",
-  });
-  const payload = await response.json().catch(() => ({}));
+  let response;
+  try {
+    response = await fetch("/api/audio-file/list", {
+      body: JSON.stringify({ dive: Boolean(dive), path: folderPath, recursive: Boolean(dive) }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+  } catch (error) {
+    throw new Error(
+      `local folder API unreachable (${String(error?.message || error || "network")}). `
+      + "On soundemote.io use Browse (📂), or run python server.py locally for pasted C:\\ paths.",
+    );
+  }
+  const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+  const raw = await response.text();
+  let payload = {};
+  if (contentType.includes("json") || /^\s*[{[]/.test(raw)) {
+    try {
+      payload = JSON.parse(raw);
+    } catch (_error) {
+      payload = {};
+    }
+  }
+  if (!contentType.includes("json") || typeof payload?.ok !== "boolean") {
+    throw new Error(
+      "folder list needs local python server.py (pasted paths). "
+      + "On soundemote.io/sandbox use Browse (📂) instead.",
+    );
+  }
   if (!response.ok || !payload?.ok) {
     throw new Error(payload?.error || `folder list failed (${response.status})`);
   }
   return payload;
+}
+
+async function nodeGraphAudioPlayerLibraryCollectDirectoryHandle(dirHandle, {
+  dive = false,
+  prefix = "",
+} = {}) {
+  const out = [];
+  if (!dirHandle?.entries) {
+    return out;
+  }
+  for await (const [name, handle] of dirHandle.entries()) {
+    const rel = prefix ? `${prefix}/${name}` : name;
+    if (handle.kind === "file") {
+      try {
+        const file = await handle.getFile();
+        out.push(file);
+      } catch (_error) {
+        // skip unreadable entries
+      }
+      continue;
+    }
+    if (handle.kind === "directory" && dive) {
+      const nested = await nodeGraphAudioPlayerLibraryCollectDirectoryHandle(handle, {
+        dive: true,
+        prefix: rel,
+      });
+      out.push(...nested);
+    }
+  }
+  return out;
+}
+
+function nodeGraphAudioPlayerLibraryPickFolderViaInput({ dive = false } = {}) {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.accept = "audio/*,.wav,.wave,.mp3,.ogg,.oga,.opus,.flac,.m4a,.aac";
+    try {
+      input.setAttribute("webkitdirectory", "");
+      input.setAttribute("directory", "");
+    } catch (_error) {
+      // ignore
+    }
+    input.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none";
+    const finish = (files, error) => {
+      try {
+        input.remove();
+      } catch (_error) {
+        // ignore
+      }
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(files);
+    };
+    input.addEventListener("change", () => {
+      const picked = [...(input.files || [])];
+      if (!picked.length) {
+        finish([], null);
+        return;
+      }
+      if (dive) {
+        finish(picked, null);
+        return;
+      }
+      // webkitdirectory always walks the tree; keep top-level files only when Recursive is off.
+      finish(picked.filter((file) => {
+        const rel = String(file.webkitRelativePath || file.name || "").replace(/\\/g, "/");
+        return rel.split("/").filter(Boolean).length <= 2;
+      }), null);
+    }, { once: true });
+    input.addEventListener("cancel", () => finish([], null), { once: true });
+    document.body.appendChild(input);
+    try {
+      input.click();
+    } catch (error) {
+      finish([], error);
+    }
+  });
+}
+
+async function nodeGraphAudioPlayerLibraryPickFolderFiles({ dive = false } = {}) {
+  if (typeof window !== "undefined" && typeof window.showDirectoryPicker === "function") {
+    try {
+      const dirHandle = await window.showDirectoryPicker({ mode: "read" });
+      const files = await nodeGraphAudioPlayerLibraryCollectDirectoryHandle(dirHandle, {
+        dive: Boolean(dive),
+        prefix: "",
+      });
+      return {
+        files,
+        folderName: String(dirHandle?.name || "folder").trim() || "folder",
+      };
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        return { files: [], folderName: "", cancelled: true };
+      }
+      // Fall through to the legacy directory input.
+    }
+  }
+  const files = await nodeGraphAudioPlayerLibraryPickFolderViaInput({ dive: Boolean(dive) });
+  if (!files.length) {
+    return { files: [], folderName: "", cancelled: true };
+  }
+  const firstRel = String(files[0]?.webkitRelativePath || "").replace(/\\/g, "/");
+  const folderName = firstRel.split("/").filter(Boolean)[0] || "folder";
+  return { files, folderName };
+}
+
+function nodeGraphAudioPlayerLibraryRememberPickedFiles(nodeId, files) {
+  const store = nodeGraphAudioPlayerLibraryFiles();
+  const list = [];
+  const cards = [];
+  for (const file of files || []) {
+    if (!file) {
+      continue;
+    }
+    const fileKey = nodeGraphAudioPlayerLibraryFileKey(file)
+      || (typeof nodeGraphSampleFileKeyFromFile === "function"
+        ? nodeGraphSampleFileKeyFromFile(file)
+        : "");
+    if (!fileKey) {
+      continue;
+    }
+    store.set(fileKey, file);
+    const rel = String(file.webkitRelativePath || file.name || "").replace(/\\/g, "/");
+    const path = rel || file.name || fileKey;
+    list.push(file);
+    cards.push({
+      bytes: Math.max(0, Math.round(Number(file.size) || 0)),
+      fileKey,
+      name: file.name || path.split("/").pop() || fileKey,
+      path: `browser:${path}`,
+      rel,
+    });
+  }
+  nodeGraphAudioPlayerLibraryFolderFileLists().set(String(nodeId), list);
+  return cards;
+}
+
+async function nodeGraphAudioPlayerLibraryBindPickedFolder(nodeId, { dive = null, persist = true } = {}) {
+  const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  if (!node || node.type !== "audioPlayer") {
+    return null;
+  }
+  const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
+  const recursive = dive == null ? Boolean(pl.folderDive) : Boolean(dive);
+  const picked = await nodeGraphAudioPlayerLibraryPickFolderFiles({ dive: recursive });
+  if (picked.cancelled) {
+    nodeGraphAudioPlayerLibraryReport(nodeId, "Browse cancelled");
+    return null;
+  }
+  const matched = (picked.files || []).filter((file) =>
+    nodeGraphAudioPlayerLibraryFileMatchesFormats(file.name || file.webkitRelativePath, pl.formats),
+  );
+  if (!matched.length) {
+    throw new Error(
+      recursive
+        ? "folder has no matching audio"
+        : "folder has no matching audio (try Recursive search)",
+    );
+  }
+  const cards = nodeGraphAudioPlayerLibraryRememberPickedFiles(nodeId, matched);
+  // Browser picks cannot rehydrate from a pasted OS path later.
+  pl.folderPath = "";
+  nodeGraphAudioPlayerLibraryBindCards(nodeId, cards, {
+    folderDive: recursive,
+    folderPath: "",
+    persist,
+  });
+  const pathBox = document.querySelector(
+    `.node-sample-path-input[data-sample-path-for-node="${CSS.escape(String(nodeId))}"]`,
+  );
+  if (pathBox && document.activeElement !== pathBox) {
+    pathBox.value = picked.folderName ? `${picked.folderName} (browser)` : "";
+    pathBox.title = "Loaded from Browse — use Browse again to change folders online";
+  }
+  if (typeof setNodeGraphSampleStatus === "function") {
+    setNodeGraphSampleStatus(
+      nodeId,
+      `${Math.min(cards.length, nodeGraphAudioPlayerLibraryWindowSize())} of ${cards.length} listed`,
+    );
+  }
+  nodeGraphAudioPlayerLog("INFO", "listed via browse", {
+    nodeId,
+    tracks: cards.length,
+    folder: picked.folderName || "",
+  });
+  return { files: cards, folderName: picked.folderName || "" };
+}
+
+async function nodeGraphAudioPlayerLibraryBrowseFolder(nodeId) {
+  const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  if (!node || node.type !== "audioPlayer") {
+    nodeGraphAudioPlayerLibraryReport(nodeId, "Browse: no Music Player selected");
+    return null;
+  }
+  try {
+    const result = await nodeGraphAudioPlayerLibraryBindPickedFolder(nodeId);
+    if (!result) {
+      return null;
+    }
+    if (typeof nodeGraphAudioPlayerPlaylistSetFace === "function") {
+      nodeGraphAudioPlayerPlaylistSetFace(nodeId, "pl");
+    }
+    const loaded = nodeGraphAudioPlayerPlaylistForNode(nodeId);
+    const transport = typeof nodeGraphAudioPlayerTransportBase === "function"
+      ? nodeGraphAudioPlayerTransportBase(nodeId)
+      : 0;
+    if ((loaded?.items?.length || 0) > 0 && transport >= 3) {
+      nodeGraphAudioPlayerLibraryPlayIndex(nodeId, loaded.index || 0, { autoplay: true }).catch((error) => {
+        nodeGraphAudioPlayerLog("FAIL", String(error?.message || error || "autostart failed"));
+      });
+    }
+    return loaded;
+  } catch (error) {
+    const message = String(error?.message || error || "browse failed");
+    nodeGraphAudioPlayerLog("FAIL", message, { nodeId });
+    nodeGraphAudioPlayerLibraryReport(nodeId, message);
+    return null;
+  }
 }
 
 function nodeGraphAudioPlayerLibraryBindCards(nodeId, files, extras = {}) {
@@ -345,7 +623,7 @@ async function nodeGraphAudioPlayerLibraryBindFolder(nodeId, folderPath, { dive 
   }
   const sourcePath = nodeGraphAudioPlayerLibraryStoredFolderPath(folderPath);
   if (!sourcePath) {
-    throw new Error("paste a full folder path, then Load");
+    throw new Error("paste a full folder path, then Load Folder");
   }
   const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
   const recursive = dive == null ? Boolean(pl.folderDive) : Boolean(dive);
@@ -378,7 +656,7 @@ async function nodeGraphAudioPlayerLibraryBindFolder(nodeId, folderPath, { dive 
 async function nodeGraphAudioPlayerLibraryLoadPlaylist(nodeId) {
   const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
   if (!node || node.type !== "audioPlayer") {
-    nodeGraphAudioPlayerLibraryReport(nodeId, "Load: no Music Player selected");
+    nodeGraphAudioPlayerLibraryReport(nodeId, "Load Folder: no Music Player selected");
     return null;
   }
   const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
@@ -386,16 +664,19 @@ async function nodeGraphAudioPlayerLibraryLoadPlaylist(nodeId) {
     `.node-sample-path-input[data-sample-path-for-node="${CSS.escape(String(nodeId))}"]`,
   );
   const typed = nodeGraphAudioPlayerLibraryStoredFolderPath(pathBox?.value);
-  const folder = typed || nodeGraphAudioPlayerLibraryStoredFolderPath(pl.folderPath);
+  let folder = typed || nodeGraphAudioPlayerLibraryStoredFolderPath(pl.folderPath);
   if (!folder) {
-    pl.folderPath = "";
-    node.playlist = pl;
-    if (pathBox && document.activeElement !== pathBox) {
-      pathBox.value = "";
+    // Online / no pasted OS path: Browse is the supported way to list files.
+    return nodeGraphAudioPlayerLibraryBrowseFolder(nodeId);
+  }
+  // Pasted file path → catalog the parent folder (Load File is for one track).
+  if (nodeGraphAudioPlayerLibraryLooksLikeAudioFilePath(folder)) {
+    const parent = nodeGraphAudioPlayerLibraryParentDir(folder);
+    if (!parent) {
+      nodeGraphAudioPlayerLibraryReport(nodeId, "Load Folder: could not resolve parent folder");
+      return pl;
     }
-    nodeGraphAudioPlayerLog("FAIL", "Load: paste a full folder path", { nodeId });
-    nodeGraphAudioPlayerLibraryReport(nodeId, "Paste a full C:\\ path, then Load.");
-    return pl;
+    folder = parent;
   }
   pl.folderPath = folder;
   node.playlist = pl;
@@ -425,6 +706,124 @@ async function nodeGraphAudioPlayerLibraryLoadPlaylist(nodeId) {
   });
   if ((loaded?.items?.length || 0) > 0 && transport >= 3) {
     nodeGraphAudioPlayerLog("INFO", "autostart after load (Playmode already on)");
+    nodeGraphAudioPlayerLibraryPlayIndex(nodeId, loaded.index || 0, { autoplay: true }).catch((error) => {
+      nodeGraphAudioPlayerLog("FAIL", String(error?.message || error || "autostart failed"));
+    });
+  }
+  return loaded;
+}
+
+function nodeGraphAudioPlayerLibraryPickAudioFileViaInput() {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = false;
+    input.accept = "audio/*,.wav,.wave,.mp3,.ogg,.oga,.opus,.flac,.m4a,.aac";
+    input.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none";
+    const finish = (file, error, cancelled = false) => {
+      try {
+        input.remove();
+      } catch (_error) {
+        // ignore
+      }
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve({ cancelled, file: file || null });
+    };
+    input.addEventListener("change", () => {
+      const picked = input.files?.[0] || null;
+      finish(picked, null, !picked);
+    }, { once: true });
+    input.addEventListener("cancel", () => finish(null, null, true), { once: true });
+    document.body.appendChild(input);
+    try {
+      input.click();
+    } catch (error) {
+      finish(null, error, false);
+    }
+  });
+}
+
+async function nodeGraphAudioPlayerLibraryLoadFile(nodeId) {
+  const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  if (!node || node.type !== "audioPlayer") {
+    nodeGraphAudioPlayerLibraryReport(nodeId, "Load File: no Music Player selected");
+    return null;
+  }
+  const pl = nodeGraphAudioPlayerPlaylistForNode(nodeId);
+  const pathBox = document.querySelector(
+    `.node-sample-path-input[data-sample-path-for-node="${CSS.escape(String(nodeId))}"]`,
+  );
+  const typed = nodeGraphAudioPlayerLibraryStoredFolderPath(pathBox?.value);
+  // Pasted OS audio path → load that file. Otherwise open the native picker.
+  if (typed && nodeGraphAudioPlayerLibraryLooksLikeAudioFilePath(typed)) {
+    let files = [];
+    try {
+      const payload = await nodeGraphAudioPlayerLibraryListFolder(typed, { dive: false });
+      files = Array.isArray(payload.files) ? payload.files : [];
+    } catch (error) {
+      files = [{
+        bytes: 0,
+        name: typed.split(/[\\/]/).pop() || typed,
+        path: typed,
+        rel: typed.split(/[\\/]/).pop() || typed,
+      }];
+      nodeGraphAudioPlayerLog("INFO", "Load File list fallback", {
+        nodeId,
+        path: typed,
+        error: String(error?.message || error || ""),
+      });
+    }
+    const matched = files.filter((file) =>
+      nodeGraphAudioPlayerLibraryFileMatchesFormats(file.name || file.path || file.rel, pl.formats),
+    );
+    if (!matched.length) {
+      throw new Error("unsupported or filtered audio file");
+    }
+    const parent = nodeGraphAudioPlayerLibraryParentDir(typed);
+    nodeGraphAudioPlayerLibraryBindCards(nodeId, matched.slice(0, 1), {
+      folderDive: false,
+      folderPath: parent || typed,
+      persist: true,
+    });
+    if (pathBox && document.activeElement !== pathBox) {
+      pathBox.value = typed;
+    }
+  } else {
+    const picked = await nodeGraphAudioPlayerLibraryPickAudioFileViaInput();
+    if (picked.cancelled || !picked.file) {
+      nodeGraphAudioPlayerLibraryReport(nodeId, "Load File cancelled");
+      return null;
+    }
+    if (!nodeGraphAudioPlayerLibraryFileMatchesFormats(picked.file.name, pl.formats)) {
+      throw new Error("unsupported or filtered audio file");
+    }
+    const cards = nodeGraphAudioPlayerLibraryRememberPickedFiles(nodeId, [picked.file]);
+    if (!cards.length) {
+      throw new Error("could not register picked file");
+    }
+    nodeGraphAudioPlayerLibraryBindCards(nodeId, cards, {
+      folderDive: false,
+      folderPath: "",
+      persist: true,
+    });
+    if (pathBox && document.activeElement !== pathBox) {
+      pathBox.value = `${picked.file.name} (browser)`;
+      pathBox.title = "Loaded from Browse — use Load File again to pick another";
+    }
+  }
+  const loaded = nodeGraphAudioPlayerPlaylistForNode(nodeId);
+  if (typeof nodeGraphAudioPlayerPlaylistSetFace === "function") {
+    nodeGraphAudioPlayerPlaylistSetFace(nodeId, "pl");
+  }
+  const name = loaded?.items?.[0]?.name || "audio";
+  nodeGraphAudioPlayerLibraryReport(nodeId, `1 file loaded (${name})`);
+  const transport = typeof nodeGraphAudioPlayerTransportBase === "function"
+    ? nodeGraphAudioPlayerTransportBase(nodeId)
+    : 0;
+  if ((loaded?.items?.length || 0) > 0 && transport >= 3) {
     nodeGraphAudioPlayerLibraryPlayIndex(nodeId, loaded.index || 0, { autoplay: true }).catch((error) => {
       nodeGraphAudioPlayerLog("FAIL", String(error?.message || error || "autostart failed"));
     });

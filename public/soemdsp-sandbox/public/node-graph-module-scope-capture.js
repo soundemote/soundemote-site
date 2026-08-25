@@ -324,11 +324,23 @@ function nodeGraphModuleScopeCapturedBufferForSlot(slot) {
   }
   if (typeof nodeGraphModuleUsesXyzTraceDisplay === "function"
     && nodeGraphModuleUsesXyzTraceDisplay(slot?.type)) {
+    const ports = typeof nodeGraphModuleXyzTracePorts === "function"
+      ? nodeGraphModuleXyzTracePorts(slot.type)
+      : { X: "X", Y: "Y", Z: "Z" };
     const pick = (key) => {
       const buf = nodeGraphModuleScopeState.buffers.get(key);
       return buf && buf.length > 0 ? buf : null;
     };
-    return pick(`${nodeId}:X`) || pick(`${nodeId}:Y`) || pick(`${nodeId}:Z`) || pick(nodeId);
+    // Prefer def xyz ports when present; mono meters (e.g. RMS A) use nodeId.
+    return pick(`${nodeId}:${ports?.X}`)
+      || pick(`${nodeId}:${ports?.Y}`)
+      || pick(`${nodeId}:${ports?.Z}`)
+      || pick(`${nodeId}:X`)
+      || pick(`${nodeId}:Y`)
+      || pick(`${nodeId}:Z`)
+      || pick(`${nodeId}:RMS A`)
+      || pick(`${nodeId}:RMS Avg A`)
+      || pick(nodeId);
   }
   if (typeof nodeGraphModuleUsesRgbTraceDisplay === "function"
     && nodeGraphModuleUsesRgbTraceDisplay(slot?.type)) {

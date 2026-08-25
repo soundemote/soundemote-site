@@ -18,14 +18,24 @@ function nodeGraphDisplaySettingsBuildStepperRowHtml(key, formType = null, optio
     formType === "trace"
     || formType === "traceRgb"
   )) {
-    label = "History";
-    title = "Seconds of tape across the face. 0 = now (a full-width line). Off: scroll speed. Sync: time for the pen to walk left→right.";
+    const syncOn = options.syncOn === true;
+    label = syncOn ? "History (c)" : "History (s)";
+    title = syncOn
+      ? "Cycles in view (smooth — e.g. 1.5 = 1½ periods), stretched across the full face. Rising zero-crossing locks phase."
+      : "Seconds of tape across the face. 0 = now (a full-width line). Longer = slower waterfall scroll.";
   } else if ((key === "zoomSeconds" || key === "historySeconds") && (
     formType === "traceXyz"
     || formType === "gradientVectorscopeFace"
   )) {
     label = "History";
     title = "Seconds of live history drawn on the face.";
+  }
+  if (key === "sweepSeconds") {
+    const syncOn = options.syncOn === true;
+    label = syncOn ? "Sweep (c)" : "Sweep (s)";
+    title = syncOn
+      ? "Cycles in view (smooth — e.g. 1.5 = 1½ periods). Pass restarts on the next rising zero-crossing."
+      : "Seconds for one left→right pass (0–10). 0 = collapsed full-width burn.";
   }
   if (key === "lineThickness" && (
     formType === "trace"
@@ -223,7 +233,11 @@ function nodeGraphDisplaySettingsBuildStepperRowHtml(key, formType = null, optio
     : "";
   const labelHtml = options.hideLabel
     ? ""
-    : `<span>${nodeGraphDisplaySettingsEscapeHtml(label)}</span>`;
+    : (key === "sweepSeconds"
+      ? `<span data-trace-display-sweep-label>${nodeGraphDisplaySettingsEscapeHtml(label)}</span>`
+      : (key === "historySeconds" || key === "zoomSeconds")
+        ? `<span data-trace-display-history-label>${nodeGraphDisplaySettingsEscapeHtml(label)}</span>`
+        : `<span>${nodeGraphDisplaySettingsEscapeHtml(label)}</span>`);
   const rowClass = options.hideLabel
     ? "node-trace-display-line-burn-row node-trace-display-stepper-only"
     : "node-trace-display-line-burn-row";
@@ -996,6 +1010,77 @@ function paintNodeGraphStampPreview(root, settings = {}) {
 }
 
 /** Hide Shape param for Circle; retitle Stretch/Corners/Sides/… from live Shape. */
+/** Sweep (s) ↔ Sweep (c) when 1D Burn Sync is toggled. */
+function syncNodeGraphLineBurnSweepLabel(root, settings = {}) {
+  const host = root?.querySelector?.("[data-trace-display-sweep-label], [data-trace-display-field=\"sweepSeconds\"]")
+    ? root
+    : document.getElementById("nodeTraceDisplaySettingsPopover");
+  if (!host) {
+    return;
+  }
+  const titleSpan = host.querySelector("[data-trace-display-sweep-label]");
+  const field = host.querySelector(`[data-trace-display-field="sweepSeconds"]`);
+  if (!titleSpan && !field) {
+    return;
+  }
+  const syncOn = typeof nodeGraphDisplaySettingsToggleIsOn === "function"
+    ? nodeGraphDisplaySettingsToggleIsOn(settings?.sourceSync ?? settings?.sync)
+    : Boolean(settings?.sourceSync);
+  const label = syncOn ? "Sweep (c)" : "Sweep (s)";
+  const title = syncOn
+    ? "Cycles in view (smooth — e.g. 1.5 = 1½ periods). Pass restarts on the next rising zero-crossing."
+    : "Seconds for one left→right pass (0–10). 0 = collapsed full-width burn.";
+  if (titleSpan) {
+    titleSpan.textContent = label;
+  }
+  const row = field?.closest?.("[data-trace-display-control-row]");
+  if (row) {
+    row.title = title;
+  }
+  if (field) {
+    field.title = title;
+    field.setAttribute("aria-label", `${label} amount`);
+  }
+}
+
+/** History (s) ↔ History (c) when Waterfall Sync is toggled. */
+function syncNodeGraphWaterfallHistoryLabel(root, settings = {}) {
+  const host = root?.querySelector?.(
+    "[data-trace-display-history-label], [data-trace-display-field=\"historySeconds\"], [data-trace-display-field=\"zoomSeconds\"]",
+  )
+    ? root
+    : document.getElementById("nodeTraceDisplaySettingsPopover");
+  if (!host) {
+    return;
+  }
+  const titleSpan = host.querySelector("[data-trace-display-history-label]");
+  const field = host.querySelector(`[data-trace-display-field="historySeconds"]`)
+    || host.querySelector(`[data-trace-display-field="zoomSeconds"]`);
+  if (!titleSpan && !field) {
+    return;
+  }
+  const syncOn = typeof nodeGraphTraceDisplaySyncChannel === "function"
+    ? nodeGraphTraceDisplaySyncChannel(settings) !== "off"
+    : (typeof nodeGraphDisplaySettingsToggleIsOn === "function"
+      ? nodeGraphDisplaySettingsToggleIsOn(settings?.sourceSync ?? settings?.sync)
+      : Boolean(settings?.sourceSync));
+  const label = syncOn ? "History (c)" : "History (s)";
+  const title = syncOn
+    ? "Cycles in view (smooth — e.g. 1.5 = 1½ periods), stretched across the full face. Rising zero-crossing locks phase."
+    : "Seconds of tape across the face. 0 = now (a full-width line). Longer = slower waterfall scroll.";
+  if (titleSpan) {
+    titleSpan.textContent = label;
+  }
+  const row = field?.closest?.("[data-trace-display-control-row]");
+  if (row) {
+    row.title = title;
+  }
+  if (field) {
+    field.title = title;
+    field.setAttribute("aria-label", `${label} amount`);
+  }
+}
+
 function syncNodeGraphStampShapeControls(root, settings = {}) {
   const host = root?.querySelector?.(`[data-trace-display-choice="shape"]`)
     ? root

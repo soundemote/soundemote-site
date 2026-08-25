@@ -68,14 +68,25 @@ function applyNodeMetadataPopoverPosition(popover, x, y, remember = false) {
 }
 
 const nodeMetadataPopoverDefaultSize = Object.freeze({
-  width: 680,
-  height: 620,
-  minWidth: typeof nodeGraphUnifiedWindowMinSize !== "undefined"
-    ? nodeGraphUnifiedWindowMinSize.minWidth
-    : 24,
-  minHeight: typeof nodeGraphUnifiedWindowMinSize !== "undefined"
-    ? nodeGraphUnifiedWindowMinSize.minHeight
-    : 120,
+  width: typeof nodeGraphUnifiedWindowDefaultSize !== "undefined"
+    ? nodeGraphUnifiedWindowDefaultSize.width
+    : 380,
+  height: typeof nodeGraphUnifiedWindowDefaultSize !== "undefined"
+    ? nodeGraphUnifiedWindowDefaultSize.height
+    : 620,
+  minWidth: typeof nodeGraphUnifiedWindowDefaultSize !== "undefined"
+    ? nodeGraphUnifiedWindowDefaultSize.minWidth
+    : (typeof nodeGraphUnifiedWindowMinSize !== "undefined"
+      ? nodeGraphUnifiedWindowMinSize.minWidth
+      : 24),
+  maxWidth: typeof nodeGraphUnifiedWindowDefaultSize !== "undefined"
+    ? nodeGraphUnifiedWindowDefaultSize.maxWidth
+    : 980,
+  minHeight: typeof nodeGraphUnifiedWindowDefaultSize !== "undefined"
+    ? nodeGraphUnifiedWindowDefaultSize.minHeight
+    : (typeof nodeGraphUnifiedWindowMinSize !== "undefined"
+      ? nodeGraphUnifiedWindowMinSize.minHeight
+      : 120),
 });
 
 function normalizeNodeMetadataPopoverSize(size = {}) {
@@ -348,6 +359,45 @@ const nodeMetadataScriptSupportedKeys = new Set([
   "visible",
   "wraparound",
 ]);
+
+/** Soft safety cap for Parameter Settings tip text (box grows; window scrolls). */
+const NODE_GRAPH_METADATA_TOOLTIP_MAX_CHARS = 2000;
+
+function nodeGraphMetadataClampTooltipText(value) {
+  return String(value ?? "").trim().slice(0, NODE_GRAPH_METADATA_TOOLTIP_MAX_CHARS);
+}
+
+/** Grow the tip textarea with content — no inner scrollbar; body scrolls. */
+function syncNodeMetadataTooltipTextareaSize(
+  textarea = document.getElementById("metadataTooltipValue"),
+) {
+  if (!textarea) {
+    return;
+  }
+  const grid = textarea.closest(".metadata-popover-grid");
+  const priorScroll = grid ? grid.scrollTop : 0;
+  // Collapse first so scrollHeight reflects full content (not the prior box).
+  // Measuring while the popover is display:none yields a useless min height —
+  // callers re-run after show via requestAnimationFrame.
+  textarea.style.height = "0px";
+  const next = Math.max(textarea.scrollHeight, 72);
+  textarea.style.height = `${next}px`;
+  if (grid) {
+    grid.scrollTop = priorScroll;
+  }
+}
+
+function scheduleNodeMetadataTooltipTextareaSize(
+  textarea = document.getElementById("metadataTooltipValue"),
+) {
+  syncNodeMetadataTooltipTextareaSize(textarea);
+  if (typeof requestAnimationFrame !== "function") {
+    return;
+  }
+  requestAnimationFrame(() => {
+    syncNodeMetadataTooltipTextareaSize(textarea);
+  });
+}
 
 const nodeMetadataScriptBooleanKeys = new Set([
   "bipolar",
@@ -720,7 +770,7 @@ function nodeMetadataScriptValue(value, key = "") {
     return JSON.stringify(normalizeNodeGraphPatchMetadataAlias(value));
   }
   if (key === "tooltip") {
-    return JSON.stringify(String(value ?? "").slice(0, 240));
+    return JSON.stringify(nodeGraphMetadataClampTooltipText(value));
   }
   if (Array.isArray(value)) {
     return `[${value.map((entry) => String(entry || "").trim()).filter(Boolean).join(", ")}]`;
@@ -1261,12 +1311,12 @@ function parseNodeMetadataScriptValue(rawValue, key, current) {
     const raw = String(value ?? "").trim();
     if (raw.startsWith("\"") && raw.endsWith("\"")) {
       try {
-        return String(JSON.parse(raw) ?? "").slice(0, 240);
+        return nodeGraphMetadataClampTooltipText(JSON.parse(raw) ?? "");
       } catch {
         // Fall through to quote-strip.
       }
     }
-    return raw.replace(/^["']|["']$/g, "").slice(0, 240);
+    return nodeGraphMetadataClampTooltipText(raw.replace(/^["']|["']$/g, ""));
   }
   if (key === "unit") {
     return value.replace(/^["']|["']$/g, "");
@@ -1391,7 +1441,11 @@ function syncNodeMetadataChoiceToggleAvailability() {
 
 function writeNodeMetadataEditorValues(metadata) {
   document.getElementById("metadataAliasValue").value = metadata.alias || "";
-  document.getElementById("metadataTooltipValue").value = metadata.tooltip || "";
+  const tipBox = document.getElementById("metadataTooltipValue");
+  if (tipBox) {
+    tipBox.value = metadata.tooltip || "";
+    scheduleNodeMetadataTooltipTextareaSize(tipBox);
+  }
   document.getElementById("metadataMinValue").value = formatNodeSliderCompactNumber(metadata.min);
   document.getElementById("metadataMidValue").value = formatNodeSliderCompactNumber(metadata.mid);
   document.getElementById("metadataMaxValue").value = formatNodeSliderCompactNumber(metadata.max);
@@ -1567,6 +1621,9 @@ function openNodeMetadataPopover(event, readout) {
   if (typeof noteNodeGraphUnifiedWindowOpened === "function") {
     noteNodeGraphUnifiedWindowOpened("metaparameters", popover);
   }
+  // Tip height was measured during fill while this page may still have been
+  // hidden — remeasure now that layout is live so the body scrollbar grows.
+  scheduleNodeMetadataTooltipTextareaSize();
 }
 
 function nodeGraphNodeCanOpenParameterSettings(node) {
@@ -1786,6 +1843,7 @@ function openBlankNodeMetadataPopover(event = {}) {
   if (typeof noteNodeGraphUnifiedWindowOpened === "function") {
     noteNodeGraphUnifiedWindowOpened("metaparameters", popover);
   }
+  scheduleNodeMetadataTooltipTextareaSize();
 }
 
 function finishCloseNodeMetadataPopover() {
@@ -2165,6 +2223,23 @@ function bindNodeGraphMetadataPopoverEvents() {
     popover.addEventListener("pointerdown", beginNodeMetadataPopoverDrag);
     // Move/resize end: registry pointer bridge (empty-body drag still uses metadataDragging key)
   }
+  const tipBox = document.getElementById("metadataTooltipValue");
+  if (tipBox && tipBox.dataset.metadataTooltipResizeBound !== "true") {
+    tipBox.dataset.metadataTooltipResizeBound = "true";
+    if (typeof ResizeObserver === "function") {
+      // Width-only: height changes from sync must not re-enter the sizer.
+      let tipWidth = tipBox.clientWidth;
+      const tipResize = new ResizeObserver(() => {
+        const nextWidth = tipBox.clientWidth;
+        if (Math.abs(nextWidth - tipWidth) < 0.5) {
+          return;
+        }
+        tipWidth = nextWidth;
+        scheduleNodeMetadataTooltipTextareaSize(tipBox);
+      });
+      tipResize.observe(tipBox);
+    }
+  }
   const defaultButton = document.getElementById("metadataRestoreDefaultButton");
   if (defaultButton && defaultButton.dataset.metadataDefaultBound !== "true") {
     defaultButton.dataset.metadataDefaultBound = "true";
@@ -2389,7 +2464,9 @@ function readNodeMetadataEditorValues(slider) {
   );
   return {
     alias: normalizeNodeGraphPatchMetadataAlias(document.getElementById("metadataAliasValue").value),
-    tooltip: String(document.getElementById("metadataTooltipValue").value || "").trim().slice(0, 240),
+    tooltip: nodeGraphMetadataClampTooltipText(
+      document.getElementById("metadataTooltipValue").value || "",
+    ),
     curveAmount: normalizeNodeSliderCurveAmount(
       // Already −1…+1 in normalizeNodeSliderCurveAmount (standard bipolar curve range).
       sanitizeMetadataNumberInput("metadataCurveSensitivityValue"),
@@ -2563,7 +2640,11 @@ function setNodeMetadataDefaultsFromKind() {
     document.getElementById("metadataMaxValue").value = String(template.max);
   }
   document.getElementById("metadataUnitValue").value = template.unit;
-  document.getElementById("metadataTooltipValue").value = template.tooltip || "";
+  const tipBox = document.getElementById("metadataTooltipValue");
+  if (tipBox) {
+    tipBox.value = template.tooltip || "";
+    scheduleNodeMetadataTooltipTextareaSize(tipBox);
+  }
   document.getElementById("metadataMaxDigitsValue").value =
     String(normalizeNodeGraphMetadataMaxDigits(template.maxDigits, kind));
   document.getElementById("metadataChoicesValue").value = formatNodeMetadataChoices(choices);
@@ -2748,6 +2829,9 @@ function handleNodeMetadataEditorInput(event) {
     && event.type === "input"
   ) {
     return;
+  }
+  if (target?.id === "metadataTooltipValue") {
+    scheduleNodeMetadataTooltipTextareaSize(target);
   }
   syncNodeMetadataMidVisibility();
   syncNodeMetadataChoiceToggleAvailability();

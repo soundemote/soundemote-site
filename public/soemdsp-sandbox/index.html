@@ -33,7 +33,7 @@
         <span id="nodeBootLoadingBarFill" style="width: 4%;"></span>
       </div>
       <div class="node-boot-loading-meta">
-        <span class="node-boot-build-number">v0.5.9 &nbsp;·&nbsp; build 2026.8.17.3 &nbsp;·&nbsp; 059</span>
+        <span class="node-boot-build-number">v0.6.0 WATERFALL &nbsp;·&nbsp; build 2026.8.24.1 &nbsp;·&nbsp; 060W</span>
         <span id="nodeBootSysinfo" class="node-boot-sysinfo"></span>
       </div>
       <div id="nodeBootLoadingMessages" class="node-boot-loading-messages" aria-live="polite"></div>
@@ -341,66 +341,68 @@
           <span
             id="nodeBuildNumberReadout"
             class="node-build-number-readout"
-            aria-label="Version v0.5.9, build 2026.8.17.3, stamp 059"
-            title="Version v0.5.9 · build 2026.8.17.3 · 059"
+            aria-label="Version v0.6.0 WATERFALL, build 2026.8.24.1, stamp 060W"
+            title="Version v0.6.0 WATERFALL · build 2026.8.24.1 · 060W"
             data-build-mode-value="release">
-            <span data-sandbox-version>v0.5.9</span>
-            <span data-build-number-value>2026.8.17.3</span>
-            <span data-build-token-value>059</span>
+            <span data-sandbox-version>v0.6.0 WATERFALL</span>
+            <span data-build-number-value>2026.8.24.1</span>
+            <span data-build-token-value>060W</span>
           </span>
         </div>
-        <div
-          id="nodeVisibilityMenu"
-          class="node-visibility-menu node-unified-window"
-          role="menu"
-          aria-label="Workspace visibility"
-          hidden>
-          <div class="scene-context-heading">
-            <button
-              id="nodeVisibilityMenuDragHandle"
-              class="scene-context-drag-handle node-drag-handle"
-              type="button"
-              aria-label="Move visibility menu">&#x2725;</button>
-            <div class="scene-context-title">
-              <span>Visibility</span>
-            </div>
-            <button id="nodeVisibilityMenuClose" class="panel-close-button" type="button" aria-label="Close visibility menu">
-              <span class="panel-close-glyph" aria-hidden="true"></span>
-            </button>
-          </div>
-          <div id="nodeVisibilityUnifiedNavHost" class="node-unified-window-nav-host" aria-label="Floating window pages"></div>
-          <div class="node-visibility-menu-list">
-            <button id="nodeTooltipToggleButton" type="button" role="menuitem" aria-pressed="true" data-tooltip-mode="embedded">
-              <span class="node-tooltip-mode-label">📌 Tooltips docked</span>
-              <kbd>T</kbd>
-            </button>
-            <button id="nodeAppChromeBarsToggleButton" type="button" role="menuitem" aria-pressed="true">
-              <span>🪟 App Bars</span>
-              <kbd>V</kbd>
-            </button>
-            <button id="nodeGridToggleButton" type="button" role="menuitem" aria-pressed="false">⬛ Grid</button>
-            <button id="nodeGridLightToggleButton" type="button" role="menuitem" aria-pressed="true">💡 Grid Light</button>
-            <button id="nodeWireLengthsToggleButton" type="button" role="menuitem" aria-pressed="true">🧬 Wire Lengths</button>
-            <button id="nodeWiresAboveModulesToggleButton" type="button" role="menuitem" aria-pressed="false">⬛ Wires Above Modules</button>
-            <button id="nodeModuleButtonsToggleButton" type="button" role="menuitem" aria-pressed="false">⬛ Module Buttons</button>
-            <button id="nodeOscilloscopeToggleButton" type="button" role="menuitem" aria-pressed="false">⬛ Displays</button>
-            <button id="nodeModuleInterfaceControlsToggleButton" type="button" role="menuitem" aria-pressed="true">🔢 Control Surfaces</button>
-            <button id="nodeModuleSlidersToggleButton" type="button" role="menuitem" aria-pressed="true">📊 Sliders</button>
-            <button id="nodeSliderAmountToggleButton" type="button" role="menuitem" aria-pressed="false">⬛ Amount Slider</button>
-            <button id="nodeSliderPositionToggleButton" type="button" role="menuitem" aria-pressed="true">⬜ Position Slider</button>
-            <button id="nodeKeyboardDebugToggleButton" type="button" role="menuitem" aria-pressed="false"><span>⬛ Debug</span></button>
-          </div>
+      </div>
+
+      <!-- Floating windows live outside the hideable toolbar (V / phone chrome). -->
+      <div
+        id="nodeVisibilityMenu"
+        class="node-visibility-menu node-unified-window node-floating-window-surface"
+        role="menu"
+        aria-label="Workspace visibility"
+        hidden>
+        <div class="scene-context-heading">
           <button
-            id="nodeVisibilityMenuResizeHandle"
-            class="scene-context-resize-handle"
+            id="nodeVisibilityMenuDragHandle"
+            class="scene-context-drag-handle node-drag-handle"
             type="button"
-            aria-label="Resize visibility menu"></button>
+            aria-label="Move visibility menu">&#x2725;</button>
+          <div class="scene-context-title">
+            <span>Visibility</span>
+          </div>
+          <button id="nodeVisibilityMenuClose" class="panel-close-button" type="button" aria-label="Close visibility menu">
+            <span class="panel-close-glyph" aria-hidden="true"></span>
+          </button>
         </div>
+        <div id="nodeVisibilityUnifiedNavHost" class="node-unified-window-nav-host" aria-label="Floating window pages"></div>
+        <div class="node-visibility-menu-list">
+          <button id="nodeTooltipToggleButton" type="button" role="menuitem" aria-pressed="true" data-tooltip-mode="embedded">
+            <span class="node-tooltip-mode-label">📌 Tooltips docked</span>
+            <kbd>T</kbd>
+          </button>
+          <button id="nodeAppChromeBarsToggleButton" type="button" role="menuitem" aria-pressed="true">
+            <span>🪟 App Bars</span>
+            <kbd>V</kbd>
+          </button>
+          <button id="nodeGridToggleButton" type="button" role="menuitem" aria-pressed="false">⬛ Grid</button>
+          <button id="nodeGridLightToggleButton" type="button" role="menuitem" aria-pressed="true">💡 Grid Light</button>
+          <button id="nodeWireLengthsToggleButton" type="button" role="menuitem" aria-pressed="true">🧬 Wire Lengths</button>
+          <button id="nodeWiresAboveModulesToggleButton" type="button" role="menuitem" aria-pressed="false">⬛ Wires Above Modules</button>
+          <button id="nodeModuleButtonsToggleButton" type="button" role="menuitem" aria-pressed="false">⬛ Module Buttons</button>
+          <button id="nodeOscilloscopeToggleButton" type="button" role="menuitem" aria-pressed="false">⬛ Displays</button>
+          <button id="nodeModuleInterfaceControlsToggleButton" type="button" role="menuitem" aria-pressed="true">🔢 Control Surfaces</button>
+          <button id="nodeModuleSlidersToggleButton" type="button" role="menuitem" aria-pressed="true">📊 Sliders</button>
+          <button id="nodeSliderAmountToggleButton" type="button" role="menuitem" aria-pressed="false">⬛ Amount Slider</button>
+          <button id="nodeSliderPositionToggleButton" type="button" role="menuitem" aria-pressed="true">⬜ Position Slider</button>
+          <button id="nodeKeyboardDebugToggleButton" type="button" role="menuitem" aria-pressed="false"><span>⬛ Debug</span></button>
+        </div>
+        <button
+          id="nodeVisibilityMenuResizeHandle"
+          class="scene-context-resize-handle"
+          type="button"
+          aria-label="Resize visibility menu"></button>
       </div>
 
       <div
         id="nodeHotkeysPage"
-        class="node-hotkeys-page node-unified-window"
+        class="node-hotkeys-page node-unified-window node-floating-window-surface"
         role="dialog"
         aria-label="Hotkeys"
         hidden>
@@ -445,7 +447,7 @@
 
       <div
         id="nodeEmojiPage"
-        class="node-emoji-page node-unified-window"
+        class="node-emoji-page node-unified-window node-floating-window-surface"
         role="dialog"
         aria-label="Emojis"
         hidden>
@@ -3048,8 +3050,9 @@
             <span>TOOLTIP</span>
             <textarea
               id="metadataTooltipValue"
-              rows="4"
+              rows="3"
               spellcheck="false"
+              maxlength="2000"
               placeholder="Shown in docked tips when this parameter is hovered."></textarea>
           </label>
           <button
@@ -3679,22 +3682,22 @@
   <script src="./public/node-graph-module-scope-display-mode.js?v=wf-rgb-1"></script>
   <script src="./public/node-graph-module-scope-phosphor.js?v=fps-clock-1"></script>
   <script src="./public/latch-button.js?v=ui-improvements-1"></script>
-  <script src="./public/node-graph-module-scope-settings-form.js?v=ui-improvements-1"></script>
+  <script src="./public/node-graph-module-scope-settings-form.js?v=wf-hist-c-1"></script>
   <script src="./public/node-graph-module-scope-settings-controls.js?v=dotbudget-1024-1"></script>
   <!-- Display Settings peel: form-io → field-edit → apply → window → thin ui anchor -->
-  <script src="./public/node-graph-module-scope-settings-form-io.js?v=native-range-drag-mod-1"></script>
+  <script src="./public/node-graph-module-scope-settings-form-io.js?v=wf-hist-c-1"></script>
   <script src="./public/node-graph-module-scope-settings-field-edit.js?v=mp-fix-2"></script>
-  <script src="./public/node-graph-module-scope-settings-apply.js?v=wf-rgb-1"></script>
+  <script src="./public/node-graph-module-scope-settings-apply.js?v=wf-hist-c-1"></script>
   <script src="./public/node-graph-module-scope-settings-window.js?v=cc-seat-ssot-1"></script>
   <script src="./public/node-graph-module-scope-settings-ui.js?v=one-face-1"></script>
-  <script src="./public/node-graph-module-scope-capture.js?v=wf-rgb-2"></script>
+  <script src="./public/node-graph-module-scope-capture.js?v=rms-4"></script>
   <script src="./public/node-graph-module-scope-number-readout.js?v=lcd-dot-1"></script>
   <script src="./public/node-graph-module-scope-draw-basic.js?v=stamp-shape-3"></script>
   <script src="./public/node-graph-module-scope-draw-burn.js?v=ui-improvements-1"></script>
   <script src="./public/node-graph-module-scopes.js?v=clear-pause-bright-1"></script>
   <script src="./public/node-graph-module-scope-spectrum.js?v=wf-rgb-1"></script>
   <script src="./public/node-graph-module-scope-buffer-io.js?v=pause-hold-1"></script>
-  <script src="./public/node-graph-module-scope-sync.js?v=engine-ring-1"></script>
+  <script src="./public/node-graph-module-scope-sync.js?v=wf-sync-cycles-5"></script>
   <script src="./public/node-graph-module-scope-metrics.js?v=gpu-stamps-2"></script>
   <script src="./public/node-graph-module-scope-geometry.js?v=scope-paint-loop-1"></script>
   <script src="./public/node-graph-module-scope-webgl.js?v=trace-line-1"></script>
@@ -3706,15 +3709,15 @@
   <script src="./public/node-graph-module-scope-monitors.js?v=scope-monitors-1"></script>
   <script src="./public/node-graph-module-scope-scene-controls.js?v=screen-solo-1"></script>
   <script src="./public/node-graph-module-scope-shader-settings.js?v=scope-shader-settings-1"></script>
-  <script src="./public/node-graph-module-scope-trace-controls.js?v=textbox-lineheight-1"></script>
+  <script src="./public/node-graph-module-scope-trace-controls.js?v=wf-hist-c-1"></script>
   <script src="./public/node-graph-module-scope-wipe.js?v=ui-improvements-1"></script>
   <script src="./public/node-graph-module-scope-graph-query.js?v=fps-1-no-double-1"></script>
   <script src="./public/node-graph-module-scope-settings.js?v=scope-sync-off-1"></script>
   <script src="./public/node-graph-module-scope-lifecycle.js?v=pause-hold-3"></script>
   <script src="./public/node-graph-module-scope-paint-gate.js?v=stop-unfreeze-1"></script>
   <script src="./public/node-graph-module-scope-canvas.js?v=paint-gate-1"></script>
-  <script src="./public/node-graph-module-scope-waterfall.js?v=wf-gl-7"></script>
-  <script src="./public/node-graph-module-scope-paint-helpers.js?v=dotbudget-1024-1"></script>
+  <script src="./public/node-graph-module-scope-waterfall.js?v=rms-4"></script>
+  <script src="./public/node-graph-module-scope-paint-helpers.js?v=rms-4"></script>
   <script src="./public/node-graph-module-scope-draw-orchestrator.js?v=rgb-shape-3"></script>
   <script src="./public/modules/lookaheadLimiter/lookahead-limiter-display.js?v=limiter-gain-face-1"></script>
   <script src="./public/modules/phosphorLight/phosphor-light-display.js?v=alias-only-1"></script>
@@ -3962,6 +3965,8 @@
   <script src="./public/modules/keypad/keypad-live-evaluator.js?v=keypad-latch-1"></script>
   <script src="./public/modules/noiseDetector/noise-detector-math.js?v=noise-detector-1"></script>
   <script src="./public/modules/noiseDetector/noise-detector-live-evaluator.js?v=noise-detector-1"></script>
+  <script src="./public/modules/rms/rms-math.js?v=rms-9"></script>
+  <script src="./public/modules/rms/rms-live-evaluator.js?v=rms-9"></script>
   <script src="./public/modules/slewLimiter/slew-limiter-math.js?v=slew-shape-1"></script>
   <script src="./public/modules/slewLimiter/slew-limiter-live-evaluator.js?v=slew-bias-1"></script>
   <script src="./public/modules/midSideEncode/mid-side-encode-math.js?v=dip-ms-db-1"></script>

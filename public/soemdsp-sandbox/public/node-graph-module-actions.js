@@ -988,19 +988,34 @@ function addNodeGraphModuleGroupFromBrowser(name) {
   commitNodeGraphPatch(patch, { status: "group added" });
 }
 
+function nodeGraphDeepCloneModuleField(value) {
+  if (value == null || typeof value !== "object") {
+    return value;
+  }
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch (_error) {
+    return value;
+  }
+}
+
 function nodeGraphCopiedModuleSizeOptions(sourceNode) {
   const options = {};
   if (!sourceNode) {
     return options;
   }
-  if (Object.hasOwn(sourceNode, "widthGu")) {
-    options.widthGu = sourceNode.widthGu;
-  } else if (typeof nodeGraphPatchNodeGridWidthUnits === "function") {
+  // Always pin effective width so copies match the on-screen box even when
+  // widthGu was omitted because it matched the type default.
+  if (typeof nodeGraphPatchNodeGridWidthUnits === "function") {
     options.widthGu = nodeGraphPatchNodeGridWidthUnits(sourceNode);
+  } else if (Object.hasOwn(sourceNode, "widthGu")) {
+    options.widthGu = sourceNode.widthGu;
   }
   const heightCapability = typeof nodeGraphModuleSizingCapabilities === "function"
     ? nodeGraphModuleSizingCapabilities(sourceNode.type)?.moduleHeight
     : "";
+  // Face modules store height as ui.displayHeightOffsetGu — do not invent a
+  // heightGu that fights that offset. Freehand-height modules always pin heightGu.
   if (Object.hasOwn(sourceNode, "heightGu")) {
     options.heightGu = sourceNode.heightGu;
   } else if (heightCapability === "textBox" || heightCapability === "custom") {
@@ -1021,68 +1036,43 @@ function copyNodeGraphModule(sourceNode) {
   counts[sourceNode.type] = (counts[sourceNode.type] || 0) + 1;
   const id = `${sourceNode.type}-${counts[sourceNode.type]}`;
   const gridPoint = nodeGraphFindCopiedModuleGridPoint(sourceNode, patch.nodes);
-  patch.nodes.push({
-    ...createNodeGraphPatchNode(sourceNode.type, {
-      alias: sourceNode.alias,
-      gx: gridPoint.gx,
-      gy: gridPoint.gy,
-      id,
-      layout: sourceNode.layout,
-      led: sourceNode.led,
-      graph: sourceNode.graph,
-      codeblock: sourceNode.codeblock,
-      ui: sourceNode.ui,
-      ...nodeGraphCopiedModuleSizeOptions(sourceNode),
-    }),
-    ...(nodeGraphNodeTypeHasTextBoxLayout(sourceNode.type)
-      ? { layout: normalizeNodeGraphTextBoxLayout(sourceNode.layout) }
-      : {}),
-    ...(sourceNode.type === "image"
-      ? { layout: normalizeNodeGraphImageLayout(sourceNode.layout) }
-      : {}),
-    ...(sourceNode.type === "knob" && typeof normalizeNodeGraphKnobFace === "function"
-      ? {
-        knobFace: typeof nodeGraphKnobFaceToPatch === "function"
-          ? nodeGraphKnobFaceToPatch(sourceNode.knobFace)
-          : normalizeNodeGraphKnobFace(sourceNode.knobFace),
-      }
-      : {}),
-    ...(sourceNode.type === "led"
-      ? {
-        vectorDotSettings: typeof normalizeNodeGraphVectorDotSettings === "function"
-          ? normalizeNodeGraphVectorDotSettings(
-            sourceNode.vectorDotSettings
-            || (typeof nodeGraphMigrateLegacyLedToVectorDot === "function"
-              ? nodeGraphMigrateLegacyLedToVectorDot(sourceNode.led)
-              : sourceNode.led),
-          )
-          : (sourceNode.vectorDotSettings || {}),
-      }
-      : {}),
-    ...(sourceNode.type === "lcdDot"
-      ? {
-        vectorDotSettings: typeof normalizeNodeGraphLcdDotSettings === "function"
-          ? normalizeNodeGraphLcdDotSettings(sourceNode.vectorDotSettings)
-          : (sourceNode.vectorDotSettings || {}),
-      }
-      : {}),
-    ...(nodeGraphModuleIsGraphType(sourceNode.type)
-      ? { graph: nodeGraphGraphForNode(sourceNode) }
-      : {}),
-    ...(sourceNode.type === "codeblock"
-      ? { codeblock: normalizeNodeGraphCodeblock(sourceNode.codeblock) }
-      : {}),
-    ...(sourceNode.type === "customDisplay"
-      ? { customDisplay: normalizeNodeGraphCustomDisplay(sourceNode.customDisplay) }
-      : {}),
-    paramMeta: cloneNodeGraphParamMeta(sourceNode.paramMeta),
-    params: { ...(sourceNode.params || {}) },
-    ...(typeof cloneNodeGraphTypedDisplaySettings === "function"
-      ? cloneNodeGraphTypedDisplaySettings(sourceNode)
-      : (sourceNode.traceDisplaySettings
-        ? { traceDisplaySettings: { ...sourceNode.traceDisplaySettings } }
-        : {})),
+  const sizingOptions = nodeGraphCopiedModuleSizeOptions(sourceNode);
+  // Seed through createNodeGraphPatchNode for normalization, then overlay every
+  // own property from the source so nothing (ui offsets, display settings,
+  // playlists, …) is dropped by the old per-type allowlist.
+  const created = createNodeGraphPatchNode(sourceNode.type, {
+    alias: sourceNode.alias,
+    gx: gridPoint.gx,
+    gy: gridPoint.gy,
+    id,
+    layout: sourceNode.layout,
+    led: sourceNode.led,
+    graph: sourceNode.graph,
+    codeblock: sourceNode.codeblock,
+    ui: nodeGraphDeepCloneModuleField(sourceNode.ui),
+    ...sizingOptions,
   });
+  const skip = new Set(["id", "gx", "gy", "type"]);
+  for (const key of Object.keys(sourceNode)) {
+    if (skip.has(key)) {
+      continue;
+    }
+    created[key] = nodeGraphDeepCloneModuleField(sourceNode[key]);
+  }
+  created.id = id;
+  created.gx = gridPoint.gx;
+  created.gy = gridPoint.gy;
+  created.type = sourceNode.type;
+  if (Number.isFinite(Number(sizingOptions.widthGu))) {
+    created.widthGu = sizingOptions.widthGu;
+  }
+  if (Number.isFinite(Number(sizingOptions.heightGu))) {
+    created.heightGu = sizingOptions.heightGu;
+  }
+  if (typeof cloneNodeGraphTypedDisplaySettings === "function") {
+    Object.assign(created, cloneNodeGraphTypedDisplaySettings(sourceNode));
+  }
+  patch.nodes.push(created);
   commitNodeGraphPatch(patch, { status: "module copied" });
   return id;
 }
@@ -1157,14 +1147,25 @@ function applyNodeGraphModuleSettingsSnapshot(targetNode, snapshot) {
  * snapshot use those values.
  */
 const nodeGraphPatchDefaultsWindowDefaultSize = Object.freeze({
-  width: 280,
-  height: 280,
-  minWidth: typeof nodeGraphUnifiedWindowMinSize !== "undefined"
-    ? nodeGraphUnifiedWindowMinSize.minWidth
-    : 24,
-  minHeight: typeof nodeGraphUnifiedWindowMinSize !== "undefined"
-    ? nodeGraphUnifiedWindowMinSize.minHeight
-    : 120,
+  width: typeof nodeGraphUnifiedWindowDefaultSize !== "undefined"
+    ? nodeGraphUnifiedWindowDefaultSize.width
+    : 380,
+  height: typeof nodeGraphUnifiedWindowDefaultSize !== "undefined"
+    ? nodeGraphUnifiedWindowDefaultSize.height
+    : 620,
+  minWidth: typeof nodeGraphUnifiedWindowDefaultSize !== "undefined"
+    ? nodeGraphUnifiedWindowDefaultSize.minWidth
+    : (typeof nodeGraphUnifiedWindowMinSize !== "undefined"
+      ? nodeGraphUnifiedWindowMinSize.minWidth
+      : 24),
+  maxWidth: typeof nodeGraphUnifiedWindowDefaultSize !== "undefined"
+    ? nodeGraphUnifiedWindowDefaultSize.maxWidth
+    : 980,
+  minHeight: typeof nodeGraphUnifiedWindowDefaultSize !== "undefined"
+    ? nodeGraphUnifiedWindowDefaultSize.minHeight
+    : (typeof nodeGraphUnifiedWindowMinSize !== "undefined"
+      ? nodeGraphUnifiedWindowMinSize.minHeight
+      : 120),
 });
 
 function applyNodeGraphPatchDefaultsWindowSize(size = {}, element = null) {
