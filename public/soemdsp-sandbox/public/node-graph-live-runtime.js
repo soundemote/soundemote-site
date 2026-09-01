@@ -455,7 +455,6 @@ async function fetchNodeGraphLiveNativeModuleBytes(entry) {
 // per entry, so a patch using the aliased type would otherwise miss the
 // priority boost below.
 const nodeGraphLiveNativeModuleTypeAliases = Object.freeze({
-  vactrolEnvelopeSeries: ["vactrolEnvelopeCustom"],
   triggerDivider: ["clockDivider"],
   // One native module serves crossover2…6 (bandCount at create).
   crossover2: ["crossover3", "crossover4", "crossover5", "crossover6"],
@@ -518,7 +517,7 @@ async function sendNodeGraphLiveNativeModule(liveNode, entry) {
 // Chrome caps wasm memories per process (~100); many standalone instances
 // hit that cap. Slim is for small used-sets when per-module files exist;
 // huge patches / site deploys should use combined.
-const nodeGraphLiveCombinedNativeModuleUrl = "native_modules/combined/soemdsp_combined.wasm?v=phase-reset-1";
+const nodeGraphLiveCombinedNativeModuleUrl = "native_modules/combined/soemdsp_combined.wasm?v=poly-morph-bipolar-1";
 
 /** @type {null|"slim"|"combined"} */
 let nodeGraphLiveNativeWasmLoadModeResolved = null;
@@ -942,6 +941,14 @@ function stopNodeGraphMockInput() {
 }
 
 async function startNodeGraphMockInput(options = {}) {
+  if (typeof nodeGraphEfficientProductEnabled === "function" && nodeGraphEfficientProductEnabled()) {
+    nodeGraphMvp.live.inputActive = false;
+    if (typeof ensureNodeGraphLiveInputModule === "function") {
+      ensureNodeGraphLiveInputModule();
+    }
+    renderNodeGraphLiveControls();
+    return nodeGraphLiveDebug();
+  }
   setNodeGraphMockInputFactory(options);
   nodeGraphMvp.live.inputActive = true;
   ensureNodeGraphLiveInputModule();
@@ -989,7 +996,20 @@ function nodeGraphLiveInputIsUnderConstruction() {
 }
 
 function toggleNodeGraphLiveInput() {
-  nodeGraphMvp.live.inputActive = !nodeGraphMvp.live.inputActive;
+  const enabling = !nodeGraphMvp.live.inputActive;
+  if (
+    enabling
+    && typeof nodeGraphEfficientProductEnabled === "function"
+    && nodeGraphEfficientProductEnabled()
+  ) {
+    nodeGraphMvp.live.inputActive = false;
+    if (typeof ensureNodeGraphLiveInputModule === "function") {
+      ensureNodeGraphLiveInputModule();
+    }
+    renderNodeGraphLiveControls();
+    return;
+  }
+  nodeGraphMvp.live.inputActive = enabling;
   const addedInputModule = nodeGraphMvp.live.inputActive
     ? ensureNodeGraphLiveInputModule()
     : false;
@@ -1234,7 +1254,15 @@ function setNodeGraphLiveSpeed(speed, options = {}) {
   const value = Number(speed);
   const clamped = Number.isFinite(value) ? Math.max(0, value) : 1;
   const force = options?.force === true;
-  if (nodeGraphMvp.live.speedMultiplier === clamped && !force) {
+  const unchanged = nodeGraphMvp.live.speedMultiplier === clamped;
+  // Main defaults to 1; a fresh worklet always boots at 0. Even when the host
+  // value is unchanged we must still post setSpeed + refresh host gain, or the
+  // UI can read Live/Play while process() stays paused (silence + stuck pause bars).
+  if (unchanged && !force) {
+    sendNodeGraphLiveSpeed();
+    if (typeof applyNodeGraphLiveOutputGain === "function") {
+      applyNodeGraphLiveOutputGain();
+    }
     return;
   }
   if (clamped > 0) {
@@ -1522,7 +1550,7 @@ function nodeGraphGpuAdditiveNodeVersion(node, sampleRate) {
     "harmonics",
     "level",
     "waveform",
-    "modA",
+    "morph",
     "harmonicPhaseAdd",
     "harmonicPhaseMultiply",
     "dampingFilterFrequency",
@@ -1570,7 +1598,7 @@ function nodeGraphGpuAdditiveParams(node) {
     harmonicPhaseMultiply: nodeGraphGpuAdditiveNodeParam(node, "harmonicPhaseMultiply", 0),
     harmonics: nodeGraphGpuAdditiveNodeParam(node, "harmonics", 256),
     level: nodeGraphGpuAdditiveNodeParam(node, "level", 0.35),
-    modA: nodeGraphGpuAdditiveNodeParam(node, "modA", 0.5),
+    morph: nodeGraphGpuAdditiveNodeParam(node, "morph", 0.5),
     phase: nodeGraphPhaseRadians(nodeGraphGpuAdditiveNodeParam(node, "phase", 0)),
     waveform: nodeGraphGpuAdditiveNodeParam(node, "waveform", 1),
   };
@@ -1912,6 +1940,53 @@ function handleNodeGraphLiveWorkletMessage(event) {
       Number(message.maxBlockProcessMs) || 0,
       Number(message.maxBlockBudgetRatio) || 0,
     );
+    // Feed the constraint CPU chip with real audio-thread load (not UI rAF).
+    if (!nodeGraphMvp.constraintResourceMetrics) {
+      nodeGraphMvp.constraintResourceMetrics = {};
+    }
+    // Prefer window-average load for "how heavy is this circuit"; keep peak for stress.
+    const avgRatio = Math.max(0, Number(message.avgBlockBudgetRatio) || 0);
+    const peakRatio = Math.max(0, Number(message.maxBlockBudgetRatio) || 0);
+    const audioRatio = avgRatio > 0 ? avgRatio : peakRatio;
+    const timedOut = Boolean(message.meterTimedOut);
+    nodeGraphMvp.constraintResourceMetrics.audioLoadPct = audioRatio * 100;
+    nodeGraphMvp.constraintResourceMetrics.audioLoadPeakPct = peakRatio * 100;
+    nodeGraphMvp.constraintResourceMetrics.audioMeterTimedOut = timedOut;
+    nodeGraphMvp.constraintResourceMetrics.audioModuleCount = Math.max(
+      0,
+      Math.floor(Number(message.moduleCount) || 0),
+    );
+    nodeGraphMvp.constraintResourceMetrics.audioTimerResMs = Math.max(
+      0,
+      Number(message.timerResMs) || 0,
+    );
+    nodeGraphMvp.constraintResourceMetrics.audioUpperBoundPct = Math.max(
+      0,
+      (Number(message.upperBoundBudgetRatio) || 0) * 100,
+    );
+    nodeGraphMvp.constraintResourceMetrics.audioEstimatedPct = Math.max(
+      0,
+      (Number(message.estimatedBudgetRatio) || 0) * 100,
+    );
+    nodeGraphMvp.constraintResourceMetrics.audioCostUnits = Math.max(
+      0,
+      Number(message.dspCostUnits) || 0,
+    );
+    nodeGraphMvp.constraintResourceMetrics.audioOverrunCount = Math.max(
+      0,
+      (Number(message.overrunCount) || 0) + (Number(message.missedQuantumCount) || 0),
+    );
+    nodeGraphMvp.constraintResourceMetrics.audioBlockMs = Math.max(
+      0,
+      Number(message.avgBlockProcessMs) || Number(message.maxBlockProcessMs) || 0,
+    );
+    nodeGraphMvp.constraintResourceMetrics.audioBlockPeakMs = Math.max(
+      0,
+      Number(message.maxBlockProcessMs) || 0,
+    );
+    if (typeof syncNodeGraphCpuConstraintMetrics === "function") {
+      syncNodeGraphCpuConstraintMetrics();
+    }
     if (typeof syncNodeGraphAudioPlayerRuntimeStatus === "function") {
       syncNodeGraphAudioPlayerRuntimeStatus({
         nodeId: message.audioPlayerNodeId || "",
@@ -1949,6 +2024,15 @@ function handleNodeGraphLiveWorkletMessage(event) {
           protectionMuteCount: Number(message.protectionMuteCount) || 0,
         },
       );
+    }
+  } else if (message.type === "nativeGraphStatus") {
+    setNodeGraphLiveEvidence("native-graph", message);
+    const status = String(message.status || "");
+    const detail = String(message.message || status || "native graph");
+    if (status === "compiled") {
+      setNodeGraphLivePlanStatus(`native graph ${detail}`, "good");
+    } else if (status === "missing" || status === "error" || status === "idle") {
+      setNodeGraphLivePlanStatus(`native graph: ${detail}`, "warn");
     }
   } else if (message.type === "nativeModuleStatus") {
     setNodeGraphLiveEvidence("native-module", message);
@@ -1990,6 +2074,18 @@ function handleNodeGraphLiveWorkletMessage(event) {
     setNodeGraphLiveEvidence("plan-applied", message);
     setNodeGraphLivePlanStatus(nodeGraphLivePlanAppliedStatusText(message), "good");
     setNodeGraphLivePlanTitle(nodeGraphLivePlanScheduleTitle(message.order));
+  } else if (message.type === "planRejected") {
+    if (
+      message.sessionId !== nodeGraphMvp.live.sessionId ||
+      !nodeGraphMvp.live.node
+    ) {
+      return;
+    }
+    const rejectError = new Error(message.status || message.message || "not in efficient build");
+    rejectError.issues = Array.isArray(message.issues) && message.issues.length
+      ? message.issues
+      : [rejectError.message];
+    setNodeGraphLiveBlockedError("plan", rejectError, { preservePreviousPlan: false });
   } else if (message.type === "scope") {
     if (message.sessionId !== nodeGraphMvp.live.sessionId || !nodeGraphMvp.live.node) {
       return;
@@ -2181,8 +2277,17 @@ function nodeGraphShouldPreservePreviousLivePlanAfterError(error) {
 }
 
 function nodeGraphLivePlanShapeSignature(plan = {}) {
+  const connections = (Array.isArray(plan.connections) ? plan.connections : []).map((c) => [
+    String(c?.sourceNode || ""),
+    String(c?.sourcePort || ""),
+    String(c?.destinationNode || ""),
+    String(c?.destinationPort || ""),
+  ]);
+  connections.sort((a, b) => a.join("\0").localeCompare(b.join("\0")));
   return JSON.stringify({
     nodes: (Array.isArray(plan.nodes) ? plan.nodes : []).map((node) => [node.id, node.type]),
+    // Wires change native topology — must invalidate connection-only shortcut.
+    connections,
     order: Array.isArray(plan.order) ? plan.order : [],
     outputNode: plan.outputNode || "output",
     samples: (Array.isArray(plan.samples) ? plan.samples : []).map((sample) => sample?.id || ""),
@@ -2296,6 +2401,9 @@ async function sendNodeGraphLivePlan() {
             autoSmoothingSeconds: Number(nodeGraphMvp.live?.autoSmoothingSeconds)
               || Number(nodeGraphMvp.patch?.audio?.smoothingSeconds)
               || undefined,
+            efficientProduct: typeof nodeGraphEfficientProductEnabled === "function"
+              ? nodeGraphEfficientProductEnabled()
+              : true,
             engineSampleRate: audio.clampedEngineSampleRate,
             oversamplingRatio: audio.oversamplingRatio,
             plan,
@@ -2920,7 +3028,8 @@ async function stopNodeGraphLiveAudio() {
 // call), then per-module chunks would go here as they migrate out of core,
 // then register.js calls registerProcessor last, once everything above it
 // has finished defining/registering.
-const nodeGraphLiveWorkletSourceFiles = [
+// Efficient AudioWorklet blob: host + native graph only (no JS DSP evaluators).
+const nodeGraphLiveWorkletSourceFilesEfficient = [
   // Pure stdlib first so per-module worklet chunks can call nodeGraphWrap01 /
   // nodeGraphTrisaw / nodeGraphPitchedFrequency / nodeGraphAdvancePhase01.
   "./public/node-graph-semath.js?v=planck-1",
@@ -2928,36 +3037,52 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/node-graph-stdlib/node-graph-control-bus-helpers.js?v=toggle-range-1",
   "./public/modules/portal/portal-lanes.js?v=portal-rename-4x2-1",
   "./public/modules/portal/portal-math.js?v=portal-lanes-1",
-  "./public/node-graph-stdlib/node-graph-param-surface-helpers.js?v=unit-mod-linear-1",
+  "./public/node-graph-stdlib/node-graph-param-surface-helpers.js?v=domain-out-1",
   "./public/node-graph-stdlib/node-graph-seeded-rng-helpers.js?v=softpop-1",
-  "./public/node-graph-parameter-smoother-filters.js?v=unpark-types-1",
+  "./public/node-graph-parameter-smoother-filters.js?v=smooth-gpu-3p-1",
   // Bypass passthrough maps + frame eval (shared with main thread).
   "./public/node-graph-module-bypass.js?v=t-series-1",
-  "./public/node-live-audio-worklet-core.js?v=phase-arm-1",
+  "./public/node-graph-efficient-product.js?v=mp-eff-1",
+  "./public/node-live-audio-worklet-core.js?v=rip-legacy-1",
   // Phase D: class methods extracted from core (must follow class definition).
   "./public/node-live-audio-worklet-graph.js?v=plan-d-split-5",
-  "./public/node-live-audio-worklet-smoother.js?v=smooth-time-live-1",
+  "./public/node-live-audio-worklet-smoother.js?v=smooth-3p-1",
   "./public/node-live-audio-worklet-param-map.js?v=domain-mod-1",
   "./public/node-live-audio-worklet-destroy.js?v=block-scope-1",
   "./public/node-live-audio-worklet-analog.js?v=plan-d-split-7",
   "./public/lib/sample-interpolate.js?v=mp-aa-1",
-  "./public/node-live-audio-worklet-dsp-state.js?v=mp-aa-1",
-  "./public/node-live-audio-worklet-events.js?v=phase-arm-1",
+  "./public/node-live-audio-worklet-dsp-state.js?v=interrupt-1",
+  "./public/node-live-audio-worklet-events.js?v=graph-engine-16",
   "./public/node-live-audio-worklet-visual.js?v=planck-eps-1",
-  "./public/node-live-audio-worklet-scope-io.js?v=wf-rate-1",
+  "./public/node-live-audio-worklet-scope-io.js?v=interrupt-1",
   "./public/node-live-audio-worklet-native-load.js?v=plan-d-split-7",
-  "./public/node-live-audio-worklet-evaluators-sources.js?v=snowflake-phase-1",
-  "./public/node-live-audio-worklet-evaluators-processors.js?v=lcd-dot-1",
+  "./public/node-live-audio-worklet-native-exports.js?v=wasm-plan-race-1",
+  "./public/node-live-audio-worklet-native-graph.js?v=space-ports-1",
+  "./public/node-live-audio-worklet-set-plan.js?v=fix-normalizeCodeblock-1",
+  "./public/node-live-audio-worklet-clear-plan.js?v=graph-engine-6",
+  "./public/node-live-audio-worklet-handle-message.js?v=wasm-plan-race-1",
+  "./public/node-live-audio-worklet-scope-snapshot.js?v=interrupt-1",
+  "./public/modules/_shared/output-amplitude.js?v=output-amp-1",
+  // Yellow Graph: DOMAIN param chase for MOD (DSP is native opcodes 111–124).
+  "./public/modules/additiveGraph/additive-param-smooth.js?v=gen-int-harm-1",
+
+  // CurveEnvelopeMod + sample-accurate mod packets (Bubble Cutoff proof).
+  "./public/modules/expAdsr/exp-adsr-math.js?v=env-uot-1",
+  "./public/modules/additiveGraph/additive-mod-control.js?v=mod-proof-4",
+  // Do NOT load pluck-envelope-live-evaluator.js here — it registers into
+  // nodeGraphLiveModuleEvaluators (main-thread / full only). PluckEnvelopeMod
+  // bakes strips via native soemdsp_pluck_envelope_* (C++), not JS DSP.
+  "./public/modules/_shared/controller-efficient-sidecar.js?v=mod-proof-4",
+  "./public/node-live-audio-worklet-process.js?v=mp-eff-1",
+];
+
+// Legacy JS DSP evaluators + evaluateFrame — loaded only for ?product=full.
+const nodeGraphLiveWorkletSourceFilesLegacy = [
+  "./public/node-live-audio-worklet-evaluators-sources.js?v=freq-skew-math-1",
+  "./public/node-live-audio-worklet-evaluators-processors.js?v=env-uot-1",
   "./public/node-live-audio-worklet-evaluators-utility.js?v=controller-smooth-1",
   "./public/node-live-audio-worklet-evaluators.js?v=evaluators-split-1",
-  "./public/node-live-audio-worklet-native-exports.js?v=block-scope-1",
-  "./public/node-live-audio-worklet-set-plan.js?v=phase-arm-1",
-  "./public/node-live-audio-worklet-clear-plan.js?v=engine-ring-1",
-  "./public/node-live-audio-worklet-handle-message.js?v=sim-fps-lcd-1",
-  "./public/node-live-audio-worklet-scope-snapshot.js?v=engine-ring-1",
-  "./public/modules/_shared/output-amplitude.js?v=output-amp-1",
-  "./public/node-live-audio-worklet-evaluate-frame.js?v=out-vol-m3-1",
-  "./public/node-live-audio-worklet-process.js?v=mp-worklet-sid-1",
+  "./public/node-live-audio-worklet-evaluate-frame.js?v=interrupt-patch-1",
   "./public/modules/codeblock/codeblock-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/moduleGroup/module-group-worklet-evaluator.js?v=robin-native-1",
   "./public/modules/ellipsoid/ellipsoid-worklet-evaluator.js?v=motion-1",
@@ -2967,11 +3092,28 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/rgbShape/rgb-shape-worklet-evaluator.js?v=heart-ssot-1",
   "./public/modules/sineWavetable/sine-wavetable-worklet-evaluator.js?v=sincos4-1",
   "./public/modules/additiveOsc/additive-osc-worklet-evaluator.js?v=native-core-1",
-  "./public/modules/polyBlep/poly-blep-worklet-evaluator.js?v=center-square-pwm-1",
+  "./public/modules/additiveGraph/additive-graph-math.js?v=opt-80db-1",
+  "./public/modules/additiveGenerator/additive-generator-worklet-evaluator.js?v=gen-int-harm-1",
+  "./public/modules/additiveLinearFilter/additive-linear-filter-worklet-evaluator.js?v=noisy-hz-1",
+  "./public/modules/additiveAnalogFilter/additive-analog-filter-worklet-evaluator.js?v=filter-hp-fix-1",
+  "./public/modules/additiveLadderFilter/additive-ladder-filter-worklet-evaluator.js?v=filter-hp-fix-1",
+  "./public/modules/additiveGrowl/additive-growl-worklet-evaluator.js?v=bubble-unskew-2",
+  "./public/modules/additiveFrequencySkew/additive-frequency-skew-worklet-evaluator.js?v=freq-skew-math-1",
+  "./public/modules/additiveQuantizeFreq/additive-quantize-freq-worklet-evaluator.js?v=qfreq-hard-1",
+  "./public/modules/additiveQuantizePhase/additive-quantize-phase-worklet-evaluator.js?v=quantize-fp-1",
+  "./public/modules/additiveNoisyFreq/additive-noisy-freq-worklet-evaluator.js?v=noisy-add-1",
+  "./public/modules/additiveNoisyPhase/additive-noisy-phase-worklet-evaluator.js?v=noisy-add-1",
+  "./public/modules/additivePan/additive-pan-worklet-evaluator.js?v=autopan-2",
+  "./public/modules/additiveNoisyPan/additive-noisy-pan-worklet-evaluator.js?v=noisy-add-1",
+  "./public/modules/additiveNoisyAmp/additive-noisy-amp-worklet-evaluator.js?v=noisy-add-1",
+  "./public/modules/additiveOut/additive-out-worklet-evaluator.js?v=gen-h-phase-reset-1",
+  "./public/modules/polyBlep/poly-blep-worklet-evaluator.js?v=poly-morph-bipolar-1",
   "./public/modules/noiseGenerator/noise-generator-worklet-evaluator.js?v=native-strip-1",
   // noise channel math lives in worklet methods; main-thread uses noise-generator-math.js
   "./public/modules/randomWalk/random-walk-math.js?v=random-walk-1",
   "./public/modules/randomWalk/random-walk-worklet-evaluator.js?v=random-walk-1",
+  "./public/modules/cheapWalk/cheap-walk-math.js?v=cheap-walk-1",
+  "./public/modules/cheapWalk/cheap-walk-worklet-evaluator.js?v=cheap-walk-1",
   "./public/modules/piSpigotNoise/pi-spigot-noise-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/bradley2a/bradley-2a-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/antisaw/antisaw-worklet-evaluator.js?v=native-strip-1",
@@ -3018,7 +3160,7 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/papoulisFilter/papoulis-filter-worklet-evaluator.js?v=xy-pad-native-1",
   "./public/modules/phosphillator/phosphillator-worklet-evaluator.js?v=drawnpath-fix-1",
   "./public/modules/cookbookFilter/cookbook-filter-worklet-evaluator.js?v=native-strip-1",
-  "./public/modules/ladderFilter/ladder-filter-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/ladderFilter/ladder-filter-worklet-evaluator.js?v=ladder-block-1",
   "./public/modules/flowerChildFilter/flower-child-filter-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/activeFilter/active-filter-math.js?v=active-no-freq-1",
   "./public/modules/activeFilter/active-filter-worklet-evaluator.js?v=bp-two-in-one-1",
@@ -3039,9 +3181,9 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/robinSinusoid/robin-sinusoid-worklet-evaluator.js?v=robin-native-1",
   "./public/modules/tb303Filter/tb303-filter-worklet-evaluator.js?v=native-no-fallback-1",
   "./public/modules/delayEffect/delay-effect-worklet-evaluator.js?v=linear-smooth-only-1",
-  "./public/modules/pingPongDelay/ping-pong-delay-worklet-evaluator.js?v=linear-smooth-only-1",
+  "./public/modules/pingPongDelay/ping-pong-delay-worklet-evaluator.js?v=softclip-block-1",
   "./public/modules/wallDelay/wall-delay-worklet-evaluator.js?v=native-strip-1",
-  "./public/modules/reverbEffect/reverb-effect-worklet-evaluator.js?v=planck-eps-1",
+  "./public/modules/reverbEffect/reverb-effect-worklet-evaluator.js?v=click-rhythm-1",
   "./public/modules/soemReverb/soem-reverb-worklet-evaluator.js?v=5-ping-pong",
   "./public/modules/pll/pll-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/helmholtzPitch/helmholtz-pitch-worklet-evaluator.js?v=pitch-display-1",
@@ -3057,8 +3199,8 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/quadrature/quadrature-worklet-evaluator.js?v=ms-quad-lim-1",
   "./public/modules/hilbert/hilbert-math.js?v=hilbert-0-1",
   "./public/modules/hilbert/hilbert-worklet-evaluator.js?v=hilbert-0-1",
-  "./public/modules/lookaheadLimiter/lookahead-limiter-math.js?v=dip-no-clamp-1",
-  "./public/modules/lookaheadLimiter/lookahead-limiter-worklet-evaluator.js?v=dip-no-clamp-1",
+  "./public/modules/lookaheadLimiter/lookahead-limiter-math.js?v=coeff-cache-1",
+  "./public/modules/lookaheadLimiter/lookahead-limiter-worklet-evaluator.js?v=coeff-cache-1",
   "./public/modules/inertialFilter/inertial-filter-math.js?v=inertial-hz-1",
   "./public/modules/inertialFilter/inertial-filter-worklet-evaluator.js?v=inertial-hz-1",
   "./public/modules/tiltFilter/tilt-filter-math.js?v=tilt-eq-1",
@@ -3091,16 +3233,15 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/kickEnvelope/kick-envelope-worklet-evaluator.js?v=kick-split-1",
   "./public/modules/sineKick/sine-kick-math.js?v=kick-split-1",
   "./public/modules/sineKick/sine-kick-worklet-evaluator.js?v=kick-split-1",
-  "./public/modules/sampleHold/sample-hold-math.js?v=sample-hold-1",
-  "./public/modules/sampleHold/sample-hold-worklet-evaluator.js?v=native-strip-1",
-  "./public/modules/expAdsr/exp-adsr-math.js?v=planck-eps-1",
-  "./public/modules/expAdsr/exp-adsr-worklet-evaluator.js?v=exp-adsr-1",
+  "./public/modules/sampleHold/sample-hold-math.js?v=sample-hold-ext-3",
+  "./public/modules/sampleHold/sample-hold-worklet-evaluator.js?v=sample-hold-ext-3",
+  "./public/modules/expAdsr/exp-adsr-math.js?v=env-uot-1",
+  "./public/modules/expAdsr/exp-adsr-worklet-evaluator.js?v=env-uot-1",
   "./public/modules/attackDecay/attack-decay-math.js?v=attack-decay-1",
   "./public/modules/attackDecay/attack-decay-worklet-evaluator.js?v=attack-decay-1",
   "./public/modules/linearEnvelope/linear-envelope-math.js?v=planck-eps-1",
   "./public/modules/linearEnvelope/linear-envelope-worklet-evaluator.js?v=linear-envelope-1",
   "./public/modules/pluckEnvelope/pluck-envelope-worklet-evaluator.js?v=native-strip-1",
-  "./public/modules/vactrolEnvelopeSeries/vactrol-envelope-series-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/bugButton/bug-button-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/keypad/keypad-math.js?v=fonts-globalthis-1",
   "./public/modules/keypad/keypad-worklet-evaluator.js?v=keypad-latch-1",
@@ -3123,8 +3264,8 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/clock/clock-worklet-evaluator.js?v=master-clock-t-1",
   "./public/modules/simulationTime/simulation-time-math.js?v=sim-time-1",
   "./public/modules/simulationTime/simulation-time-worklet-evaluator.js?v=sim-time-1",
-  "./public/modules/transport/transport-math.js?v=transport-1",
-  "./public/modules/transport/transport-worklet-evaluator.js?v=transport-1",
+  "./public/modules/transport/transport-math.js?v=transport-f-1",
+  "./public/modules/transport/transport-worklet-evaluator.js?v=transport-f-1",
   "./public/modules/randomClock/random-clock-math.js?v=random-clock-range-1",
   "./public/modules/randomClock/random-clock-worklet-evaluator.js?v=random-clock-range-1",
   "./public/modules/triggerDivider/trigger-divider-math.js?v=trigger-divider-1",
@@ -3138,13 +3279,11 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/stepGrid/step-grid-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/nextPatch/next-patch-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/softClipper/soft-clipper-math.js?v=soft-clipper-os-1",
-  "./public/modules/softClipper/soft-clipper-worklet-evaluator.js?v=soft-clipper-os-1",
+  "./public/modules/softClipper/soft-clipper-worklet-evaluator.js?v=softclip-block-1",
   "./public/modules/speakerProtector2/speaker-protector-2-math.js?v=planck-1",
   "./public/modules/speakerProtector2/speaker-protector-2-worklet-evaluator.js?v=speaker-protector-noclip-1",
   "./public/modules/clipperLimiter/clipper-limiter-math.js?v=clipper-order-1",
   "./public/modules/clipperLimiter/clipper-limiter-worklet-evaluator.js?v=clipper-order-1",
-  "./public/modules/airClipper/air-clipper-math.js?v=air-clipper-1",
-  "./public/modules/airClipper/air-clipper-worklet-evaluator.js?v=air-clipper-1",
   "./public/modules/rgbaHsla/rgba-hsla-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/screenSpaceShader/screen-space-shader-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/metallicRatio/metallic-ratio-math.js?v=metallic-ratio-1",
@@ -3163,6 +3302,8 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/bias/bias-worklet-evaluator.js?v=bias-io-1",
   "./public/modules/attenuverter/attenuverter-math.js?v=attenuverter-1",
   "./public/modules/attenuverter/attenuverter-worklet-evaluator.js?v=attenuverter-1",
+  "./public/modules/range/range-math.js?v=range-1",
+  "./public/modules/range/range-worklet-evaluator.js?v=range-1",
   "./public/modules/u2b/u2b-worklet-evaluator.js?v=u2b-1",
   "./public/modules/b2u/b2u-worklet-evaluator.js?v=b2u-1",
   "./public/modules/inv/inv-worklet-evaluator.js?v=inv-1",
@@ -3176,8 +3317,16 @@ const nodeGraphLiveWorkletSourceFiles = [
   "./public/modules/sinc/sinc-worklet-evaluator.js?v=native-core-1",
   "./public/modules/videoscope/videoscope-worklet-evaluator.js?v=videoscope-buffer-hold-1",
   "./public/modules/spectrogram/spectrogram-worklet-evaluator.js?v=spec-overlap-batch-1",
+];
+
+const nodeGraphLiveWorkletSourceFilesRegister = [
   "./public/node-live-audio-worklet-register.js?v=blob-loader-20260711",
 ];
+
+// Full product = efficient core + legacy evaluators + register (register always last).
+const nodeGraphLiveWorkletSourceFiles = nodeGraphLiveWorkletSourceFilesEfficient
+  .concat(nodeGraphLiveWorkletSourceFilesLegacy)
+  .concat(nodeGraphLiveWorkletSourceFilesRegister);
 
 async function buildNodeGraphLiveWorkletBlobUrl(sourceFiles) {
   const sources = await Promise.all(sourceFiles.map(async (url) => {
@@ -3197,7 +3346,15 @@ async function createNodeGraphLiveWorkletNode(context, plan = null) {
   if (!context.audioWorklet || typeof AudioWorkletNode === "undefined") {
     throw new Error("AudioWorklet unavailable");
   }
-  const blobUrl = await buildNodeGraphLiveWorkletBlobUrl(nodeGraphLiveWorkletSourceFiles);
+  const efficient = typeof nodeGraphEfficientProductEnabled === "function"
+    ? nodeGraphEfficientProductEnabled()
+    : Boolean(nodeGraphMvp?.efficientProduct);
+  const files = efficient
+    ? nodeGraphLiveWorkletSourceFilesEfficient.concat(nodeGraphLiveWorkletSourceFilesRegister)
+    : nodeGraphLiveWorkletSourceFilesEfficient
+      .concat(nodeGraphLiveWorkletSourceFilesLegacy)
+      .concat(nodeGraphLiveWorkletSourceFilesRegister);
+  const blobUrl = await buildNodeGraphLiveWorkletBlobUrl(files);
   try {
     await nodeGraphLiveAwaitStartup(
       context.audioWorklet.addModule(blobUrl),
@@ -3543,19 +3700,24 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
     sendNodeGraphLiveMacroControls();
     sendNodeGraphLivePitchModWheelSignal();
     // Play must never hand the worklet speed 0. Stop leaves pause (0) alone;
-    // starting live audio is always "run" — unpause on main before the first
-    // setSpeed post so process() produces scope samples for Value LCD/LED.
-    if ((Number(nodeGraphMvp.live.speedMultiplier) || 0) <= 0) {
+    // starting live audio is always "run". Always go through setNodeGraphLiveSpeed
+    // (force) so a fresh worklet (boots at 0) receives setSpeed even when main
+    // already held lastPlaySpeed > 0 — never assign speedMultiplier directly.
+    {
       const resume = typeof nodeGraphLiveResumePlaySpeed === "function"
         ? nodeGraphLiveResumePlaySpeed()
         : 1;
-      nodeGraphMvp.live.speedMultiplier = resume;
-      if (!(Number(nodeGraphMvp.live.lastPlaySpeed) > 0)) {
-        nodeGraphMvp.live.lastPlaySpeed = resume;
+      if (typeof setNodeGraphLiveSpeed === "function") {
+        setNodeGraphLiveSpeed(resume, { force: true });
+      } else {
+        nodeGraphMvp.live.speedMultiplier = resume;
+        if (!(Number(nodeGraphMvp.live.lastPlaySpeed) > 0)) {
+          nodeGraphMvp.live.lastPlaySpeed = resume;
+        }
+        if (typeof sendNodeGraphLiveSpeed === "function") {
+          sendNodeGraphLiveSpeed();
+        }
       }
-    }
-    if (typeof sendNodeGraphLiveSpeed === "function") {
-      sendNodeGraphLiveSpeed();
     }
     if (typeof sendNodeGraphLiveSpeedLimit === "function") {
       sendNodeGraphLiveSpeedLimit();

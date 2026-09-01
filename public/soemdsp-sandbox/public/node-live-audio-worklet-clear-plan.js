@@ -2,6 +2,8 @@
 // Method: clearPlan — load after core class, before registerProcessor.
 
 NodeLiveAudioProcessor.prototype.clearPlan = function clearPlan() {
+    this.destroyNativeGraphHandle?.();
+    this._planConnections = [];
     this.inputConnections = new Map();
     this.graphInputConnections = new Map();
     this.badNumberCount = 0;
@@ -254,7 +256,18 @@ NodeLiveAudioProcessor.prototype.clearPlan = function clearPlan() {
       this.destroyHelmholtzState(state);
     }
     this.helmholtzStates = new Map();
+    if (this.randomWalkStates) {
+      for (const state of this.randomWalkStates.values()) {
+        this.destroyRandomWalkNativeState?.(state);
+      }
+    }
     this.randomWalkStates = new Map();
+    if (this.cheapWalkStates) {
+      for (const state of this.cheapWalkStates.values()) {
+        this.destroyCheapWalkNativeState?.(state);
+      }
+    }
+    this.cheapWalkStates = new Map();
     this.piSpigotNoiseStates = new Map();
     this.bradley2AStates = new Map();
     this.antisawStates = new Map();
@@ -268,7 +281,6 @@ NodeLiveAudioProcessor.prototype.clearPlan = function clearPlan() {
       this.destroyStereoFilterNativeState(bundle, (s) => this.destroySlewLimiterNativeState(s));
     }
     this.slewLimiterStates = new Map();
-    this.airClipperStates = new Map();
     this.scopeBuffers = new Map();
     this.scopeCounter = 0;
     this.scopeSnapshotCounter = 0;
@@ -293,7 +305,6 @@ NodeLiveAudioProcessor.prototype.clearPlan = function clearPlan() {
     }
     this.triggerDividerStates = new Map();
     this.triangleStates = new Map();
-    this.vactrolEnvelopeStates = new Map();
     this.impulseButtonStates = new Map();
     this.bugButtonStates = new Map();
     this.keypadStates = new Map();

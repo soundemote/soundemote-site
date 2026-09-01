@@ -7,6 +7,9 @@ let nodeMetadataKindTemplates = Object.freeze(Object.fromEntries(
 
 var nodeGraphMvp = {
   activeNodes: new Set(nodeGraphDefaultPatch.nodes.map((node) => node.id)),
+  // MVEP hard cutover (PR-E0). Default ON; ?product=full disables catalog/plan gate.
+  efficientProduct: !(typeof location !== "undefined"
+    && /(?:^|[?&])product=full(?:&|$)/.test(String(location.search || ""))),
   audioContext: null,
   badValueMonitor: {
     enabled: false,
@@ -340,8 +343,6 @@ var nodeGraphMvp = {
     triggerCounter: 0,
     triggerDivider: 0,
     knob: 0,
-    vactrolEnvelopeSeries: 0,
-    vactrolEnvelopeCustom: 0,
   },
   patch: cloneNodeGraphPatch(nodeGraphDefaultPatch),
   patchDirtyState: "untouched",

@@ -141,7 +141,7 @@ function nodeGraphModuleDisplayHeightLimitsForType(_type = null) {
  * Policy is opt-out (same as pre–DISPLAY HIDE SSOT HasHideableOscilloscope):
  * any defined LayoutA processor gets a default scope face even with no
  * displayType/layout field. Requiring displayType/layout only stripped faces
- * from Vactrols, linear envelopes, pluck, and other plain defs.
+ * from linear envelopes, pluck, and other plain defs.
  * Hide still applies via nodeGraphModuleDisplayVisibleForUi when HasFace.
  */
 function nodeGraphModuleHasFace(type) {
@@ -630,7 +630,15 @@ function nodeGraphModuleIoRowCount(type) {
 
 function nodeGraphModuleTypeHasIoPorts(type) {
   const definition = nodeGraphModuleDefinitions[type];
-  return Boolean((definition?.inputs?.length || 0) || (definition?.outputs?.length || 0));
+  // Include data-plane ports (Yellow Graph, Hypersaw Phases, …) — otherwise
+  // modules with only dataInputs/dataOutputs get no IO band and the jack strip
+  // shares a grid row with params (face left / params right).
+  return Boolean(
+    (definition?.inputs?.length || 0)
+    || (definition?.outputs?.length || 0)
+    || (definition?.dataInputs?.length || 0)
+    || (definition?.dataOutputs?.length || 0),
+  );
 }
 
 function nodeGraphModuleIoSectionHeightGu(type) {

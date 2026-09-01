@@ -169,11 +169,21 @@ NodeLiveAudioProcessor.prototype.setConnections = function setConnections(plan, 
     }
     const ids = new Set([...this.nodes.keys()]);
     this.inputConnections = this.buildInputConnectionMap(plan?.connections, ids);
+    this._planConnections = Array.isArray(plan?.connections) ? plan.connections.slice() : [];
     this.graphInputConnections = this.buildGraphInputConnectionMap(plan?.graphConnections, ids);
     this.modulationConnections = this.buildModulationConnectionMap(plan?.modulations, ids);
     const graphData = message.graphData || plan?.graphData;
     if (graphData) {
       this.setGraphData(graphData);
+    }
+    // Efficient mode: recompile only if wires/nodes changed. Bypass is a flag —
+    // never clear/recreate natives (that wiped reverb/delay tails).
+    if (this.efficientProduct) {
+      if (typeof this.syncNativeGraphFromPlan === "function") {
+        this.syncNativeGraphFromPlan();
+      } else if (typeof this.compileNativeGraphFromPlan === "function") {
+        this.compileNativeGraphFromPlan();
+      }
     }
 };
 
@@ -215,14 +225,26 @@ NodeLiveAudioProcessor.prototype.setParams = function setParams(nodes, message =
         current.samplePhaseSeek = Math.max(0, Math.round(Number(node.samplePhaseSeek)) || 0);
       }
       parameterCount += Object.keys(current.params || {}).length;
-      for (const [key, value] of Object.entries(current.params || {})) {
-        const smootherKey = this.parameterKey(node.id, key);
-        const metadata = current.paramMeta?.[key];
-        if (!this.smoothers.has(smootherKey)) {
-          this.smoothers.set(smootherKey, this.createSmoother(value, metadata));
+      // Legacy JS chase only for ?product=full — efficient path is write-only.
+      if (!this.efficientProduct) {
+        for (const [key, value] of Object.entries(current.params || {})) {
+          const smootherKey = this.parameterKey(node.id, key);
+          const metadata = current.paramMeta?.[key];
+          if (!this.smoothers.has(smootherKey)) {
+            this.smoothers.set(smootherKey, this.createSmoother(value, metadata));
+          }
+          this.updateSmoother(this.smoothers.get(smootherKey), value, metadata, smootherKey);
         }
-        this.updateSmoother(this.smoothers.get(smootherKey), value, metadata, smootherKey);
       }
+    }
+    if (this.efficientProduct && this.smoothers?.size) {
+      this.smoothers.clear();
+      this.activeSmoothers = [];
+      this.activeSmootherKeys?.clear?.();
+    }
+    // Efficient mode: push Control targets into native graph (no recompile).
+    if (this.efficientProduct && typeof this.syncNativeGraphParams === "function") {
+      this.syncNativeGraphParams();
     }
     this.port.postMessage({
       nodeCount: this.nodes.size,

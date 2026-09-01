@@ -2,23 +2,59 @@
 // Behavior must match the prior monolith bit-for-bit.
 
 NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function buildLiveModuleEvaluators_processors() {
+  const pluckEnvelopeEvaluate = (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
+    const state = this.pluckEnvelopeStates.get(nodeId) || this.createPluckEnvelopeState();
+    this.pluckEnvelopeStates.set(nodeId, state);
+    const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
+    return this.pluckEnvelopeSample(
+      state,
+      mixInput(nodeId, "Trigger"),
+      mixInput(nodeId, "Release"),
+      {
+        attackFeedback: read("attackFeedback", 0.002),
+        autoReleaseTime: read("autoReleaseTime", 0.08),
+        decay: read("decay", 0.35),
+        decayModCurve: read("decayModCurve", 0),
+        decayModEnd: read("decayModEnd", 0.55),
+        decayModFrequency: read("decayModFrequency", 1.5),
+        decayModStart: read("decayModStart", 0.08),
+        delayTime: read("delayTime", 0),
+        endingDecay: read("endingDecay", 0.8),
+        level: read("level", 1),
+        releaseFeedback: read("releaseFeedback", 0.35),
+        velocity: read("velocity", 1),
+        velocitySensitivity: read("velocitySensitivity", 0),
+      },
+      safeRate,
+    );
+  };
   return {
-      passiveFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
+      passiveFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         const state = this.passiveFilterStates.get(nodeId) || this.createStereoFilterState(() => this.createPassiveFilterState());
         this.passiveFilterStates.set(nodeId, state);
-        const passiveMode = this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues);
-        const passiveSweep = this.readEffectiveParameter(node, "sweep", 0, frame, frames, frameValues);
-        const passiveLowFrequency = this.sweepFrequencyHz(
-          this.readEffectiveParameter(node, "lowFrequency", 200, frame, frames, frameValues),
-          passiveSweep,
+        const { params: p } = this.resolveModuleControlParams(
+          node,
+          state,
+          {
+            mode: 0,
+            sweep: 0,
+            lowFrequency: 200,
+            highFrequency: 1000,
+            slope: 0,
+            stagger: 1,
+            gainCompensation: 1,
+          },
+          frame,
+          frames,
+          frameValues,
         );
-        const passiveHighFrequency = this.sweepFrequencyHz(
-          this.readEffectiveParameter(node, "highFrequency", 1000, frame, frames, frameValues),
-          passiveSweep,
-        );
-        const passiveSlope = this.readEffectiveParameter(node, "slope", 0, frame, frames, frameValues);
-        const passiveStagger = this.readEffectiveParameter(node, "stagger", 1, frame, frames, frameValues);
-        const passiveGainComp = this.readEffectiveParameter(node, "gainCompensation", 1, frame, frames, frameValues);
+        const passiveMode = p.mode;
+        const passiveSweep = p.sweep;
+        const passiveLowFrequency = this.sweepFrequencyHz(p.lowFrequency, passiveSweep);
+        const passiveHighFrequency = this.sweepFrequencyHz(p.highFrequency, passiveSweep);
+        const passiveSlope = p.slope;
+        const passiveStagger = p.stagger;
+        const passiveGainComp = p.gainCompensation;
         const passiveMono = mixInput(nodeId);
         const passiveCoeff = typeof nodeGraphPassiveFilterPrepare === "function"
           ? nodeGraphPassiveFilterPrepare(
@@ -32,34 +68,34 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
           )
           : null;
         if (passiveCoeff && typeof nodeGraphPassiveFilterProcess === "function") {
-          return {
-            Out: this.safeFilterNumber(
-              nodeGraphPassiveFilterProcess(state.mono, passiveMono, passiveCoeff, safeRate, null, ""),
-              state.mono,
-            ),
-            Left: this.safeFilterNumber(
+          const outM = this.safeFilterNumber(
+            nodeGraphPassiveFilterProcess(state.mono, passiveMono, passiveCoeff, safeRate, null, ""),
+            state.mono,
+          );
+          return this.stereoProcessPorts(nodeId, hasInput, outM,
+            () => this.safeFilterNumber(
               nodeGraphPassiveFilterProcess(state.left, mixInput(nodeId, "Left") + passiveMono, passiveCoeff, safeRate, null, ""),
               state.left,
             ),
-            Right: this.safeFilterNumber(
+            () => this.safeFilterNumber(
               nodeGraphPassiveFilterProcess(state.right, mixInput(nodeId, "Right") + passiveMono, passiveCoeff, safeRate, null, ""),
               state.right,
-            ),
-          };
+            ));
         }
-        return {
-          Out: this.passiveFilterSample(state.mono, passiveMono, passiveMode, passiveLowFrequency, passiveHighFrequency, safeRate, passiveSlope, passiveStagger, passiveGainComp),
-          Left: this.passiveFilterSample(state.left, mixInput(nodeId, "Left") + passiveMono, passiveMode, passiveLowFrequency, passiveHighFrequency, safeRate, passiveSlope, passiveStagger, passiveGainComp),
-          Right: this.passiveFilterSample(state.right, mixInput(nodeId, "Right") + passiveMono, passiveMode, passiveLowFrequency, passiveHighFrequency, safeRate, passiveSlope, passiveStagger, passiveGainComp),
-        };
+        const outM = this.passiveFilterSample(state.mono, passiveMono, passiveMode, passiveLowFrequency, passiveHighFrequency, safeRate, passiveSlope, passiveStagger, passiveGainComp);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => this.passiveFilterSample(state.left, mixInput(nodeId, "Left") + passiveMono, passiveMode, passiveLowFrequency, passiveHighFrequency, safeRate, passiveSlope, passiveStagger, passiveGainComp),
+          () => this.passiveFilterSample(state.right, mixInput(nodeId, "Right") + passiveMono, passiveMode, passiveLowFrequency, passiveHighFrequency, safeRate, passiveSlope, passiveStagger, passiveGainComp));
       },
       papoulisFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         const state = this.papoulisFilterStates.get(nodeId) || this.createPapoulisFilterState();
         this.papoulisFilterStates.set(nodeId, state);
-        const knobHz = this.readEffectiveParameter(node, "cutoff", 1000, frame, frames, frameValues);
+        const { params } = this.resolveModuleControlParams(
+          node, state, { cutoff: 1000 }, frame, frames, frameValues,
+        );
         const cutoff = (typeof hasInput === "function" && hasInput(nodeId, "f"))
           ? mixInput(nodeId, "f")
-          : knobHz;
+          : params.cutoff;
         return this.papoulisFilterSample(
           state,
           mixInput(nodeId),
@@ -89,54 +125,72 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
       cookbookFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         const state = this.cookbookFilterStates.get(nodeId) || this.createStereoFilterState(() => this.createCookbookFilterState());
         this.cookbookFilterStates.set(nodeId, state);
-        const cookbookMode = this.readEffectiveParameter(node, "mode", 1, frame, frames, frameValues);
-        const cookbookKnobHz = this.readEffectiveParameter(node, "frequency", 1000, frame, frames, frameValues);
+        const { params } = this.resolveModuleControlParams(
+          node,
+          state,
+          { mode: 1, frequency: 1000, q: 1, gain: 0, stages: 2 },
+          frame,
+          frames,
+          frameValues,
+        );
+        const cookbookMode = params.mode;
         const cookbookFrequency = (typeof hasInput === "function" && hasInput(nodeId, "f"))
           ? mixInput(nodeId, "f")
-          : cookbookKnobHz;
-        const cookbookQ = this.readEffectiveParameter(node, "q", 1, frame, frames, frameValues);
-        const cookbookGain = this.readEffectiveParameter(node, "gain", 0, frame, frames, frameValues);
-        const cookbookStages = this.readEffectiveParameter(node, "stages", 2, frame, frames, frameValues);
+          : params.frequency;
+        const cookbookQ = params.q;
+        const cookbookGain = params.gain;
+        const cookbookStages = params.stages;
         const cookbookMono = mixInput(nodeId);
-        return {
-          Out: this.cookbookFilterSample(state.mono, cookbookMono, cookbookMode, cookbookFrequency, cookbookQ, cookbookGain, cookbookStages, safeRate),
-          Left: this.cookbookFilterSample(state.left, mixInput(nodeId, "Left") + cookbookMono, cookbookMode, cookbookFrequency, cookbookQ, cookbookGain, cookbookStages, safeRate),
-          Right: this.cookbookFilterSample(state.right, mixInput(nodeId, "Right") + cookbookMono, cookbookMode, cookbookFrequency, cookbookQ, cookbookGain, cookbookStages, safeRate),
-        };
+        const outM = this.cookbookFilterSample(state.mono, cookbookMono, cookbookMode, cookbookFrequency, cookbookQ, cookbookGain, cookbookStages, safeRate);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => this.cookbookFilterSample(state.left, mixInput(nodeId, "Left") + cookbookMono, cookbookMode, cookbookFrequency, cookbookQ, cookbookGain, cookbookStages, safeRate),
+          () => this.cookbookFilterSample(state.right, mixInput(nodeId, "Right") + cookbookMono, cookbookMode, cookbookFrequency, cookbookQ, cookbookGain, cookbookStages, safeRate));
       },
       ladderFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         const state = this.ladderFilterStates.get(nodeId) || this.createStereoFilterState(() => this.createLadderFilterState());
         this.ladderFilterStates.set(nodeId, state);
+        // Control knobs: only re-resolve when smoother/mod hasChanged.
+        const controls = this.resolveModuleControlParams(
+          node,
+          state,
+          { mode: 1, resonance: 0.2, stages: 4, frequency: 1000 },
+          frame,
+          frames,
+          frameValues,
+        );
+        // LIVE: audio-rate `f` jack overrides frequency every sample.
         const ladderParams = {
+          ...controls.params,
           frequency: (typeof hasInput === "function" && hasInput(nodeId, "f"))
             ? mixInput(nodeId, "f")
-            : this.readEffectiveParameter(node, "frequency", 1000, frame, frames, frameValues),
-          mode: this.readEffectiveParameter(node, "mode", 1, frame, frames, frameValues),
-          resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
-          stages: this.readEffectiveParameter(node, "stages", 4, frame, frames, frameValues),
+            : controls.params.frequency,
         };
         const ladderMono = mixInput(nodeId);
-        return {
-          Out: this.ladderFilterSample(state.mono, ladderMono, ladderParams, safeRate),
-          Left: this.ladderFilterSample(state.left, mixInput(nodeId, "Left") + ladderMono, ladderParams, safeRate),
-          Right: this.ladderFilterSample(state.right, mixInput(nodeId, "Right") + ladderMono, ladderParams, safeRate),
-        };
+        const outM = this.ladderFilterSample(state.mono, ladderMono, ladderParams, safeRate);
+        return this.stereoProcessPorts(
+          nodeId,
+          hasInput,
+          outM,
+          () => this.ladderFilterSample(state.left, mixInput(nodeId, "Left") + ladderMono, ladderParams, safeRate),
+          () => this.ladderFilterSample(state.right, mixInput(nodeId, "Right") + ladderMono, ladderParams, safeRate),
+        );
       },
-      flowerChildFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
+      flowerChildFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         const state = this.flowerChildFilterStates.get(nodeId) || this.createStereoFilterState(() => this.createFlowerChildFilterState());
         this.flowerChildFilterStates.set(nodeId, state);
-        const flowerChildParams = {
-          chaos: this.readEffectiveParameter(node, "chaos", 0, frame, frames, frameValues),
-          frequency: this.readEffectiveParameter(node, "frequency", 0.5, frame, frames, frameValues),
-          mode: this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues),
-          resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
-        };
+        const { params: flowerChildParams } = this.resolveModuleControlParams(
+          node,
+          state,
+          { chaos: 0, frequency: 0.5, mode: 0, resonance: 0.2 },
+          frame,
+          frames,
+          frameValues,
+        );
         const flowerChildMono = mixInput(nodeId);
-        return {
-          Out: this.flowerChildFilterSample(state.mono, flowerChildMono, flowerChildParams, safeRate),
-          Left: this.flowerChildFilterSample(state.left, mixInput(nodeId, "Left") + flowerChildMono, flowerChildParams, safeRate),
-          Right: this.flowerChildFilterSample(state.right, mixInput(nodeId, "Right") + flowerChildMono, flowerChildParams, safeRate),
-        };
+        const outM = this.flowerChildFilterSample(state.mono, flowerChildMono, flowerChildParams, safeRate);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => this.flowerChildFilterSample(state.left, mixInput(nodeId, "Left") + flowerChildMono, flowerChildParams, safeRate),
+          () => this.flowerChildFilterSample(state.right, mixInput(nodeId, "Right") + flowerChildMono, flowerChildParams, safeRate));
       },
       activeFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         if (!this.activeFilterStates) {
@@ -144,7 +198,25 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
         }
         const state = this.activeFilterStates.get(nodeId) || this.createStereoActiveFilterState();
         this.activeFilterStates.set(nodeId, state);
-        const activeMode = this.readEffectiveParameter(node, "mode", 3, frame, frames, frameValues);
+        const { params } = this.resolveModuleControlParams(
+          node,
+          state,
+          {
+            mode: 3,
+            feedbackCircuit: 3,
+            gainCompensation: 1,
+            highFrequency: 1000,
+            hpSlope: 1,
+            lowFrequency: 200,
+            lpSlope: 1,
+            resonance: 0.2,
+            sweep: 0,
+          },
+          frame,
+          frames,
+          frameValues,
+        );
+        const activeMode = params.mode;
         const activeFreqWired = typeof hasInput === "function" && hasInput(nodeId, "f");
         const activeFreqJack = activeFreqWired ? mixInput(nodeId, "f") : null;
         const activeBandpass = typeof nodeGraphActiveFilterIsBandpass === "function"
@@ -153,127 +225,179 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
         const activeHp = !activeBandpass && Math.round(Number(activeMode) || 0) >= 4;
         const activeLp = !activeBandpass && !activeHp;
         const activeParams = {
-          feedbackCircuit: this.readEffectiveParameter(node, "feedbackCircuit", 3, frame, frames, frameValues),
+          feedbackCircuit: params.feedbackCircuit,
           centerFrequency: activeFreqWired && activeBandpass ? activeFreqJack : undefined,
-          gainCompensation: this.readEffectiveParameter(node, "gainCompensation", 1, frame, frames, frameValues),
-          highFrequency: activeFreqWired && activeLp
-            ? activeFreqJack
-            : this.readEffectiveParameter(node, "highFrequency", 1000, frame, frames, frameValues),
-          hpSlope: this.readEffectiveParameter(node, "hpSlope", 1, frame, frames, frameValues),
-          lowFrequency: activeFreqWired && activeHp
-            ? activeFreqJack
-            : this.readEffectiveParameter(node, "lowFrequency", 200, frame, frames, frameValues),
-          lpSlope: this.readEffectiveParameter(node, "lpSlope", 1, frame, frames, frameValues),
+          gainCompensation: params.gainCompensation,
+          highFrequency: activeFreqWired && activeLp ? activeFreqJack : params.highFrequency,
+          hpSlope: params.hpSlope,
+          lowFrequency: activeFreqWired && activeHp ? activeFreqJack : params.lowFrequency,
+          lpSlope: params.lpSlope,
           mode: activeMode,
-          resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
-          sweep: this.readEffectiveParameter(node, "sweep", 0, frame, frames, frameValues),
+          resonance: params.resonance,
+          sweep: params.sweep,
         };
         const activeMono = mixInput(nodeId);
-        return {
-          Out: this.activeFilterProcess(state.mono, activeMono, activeParams, safeRate),
-          Left: this.activeFilterProcess(state.left, mixInput(nodeId, "Left") + activeMono, activeParams, safeRate),
-          Right: this.activeFilterProcess(state.right, mixInput(nodeId, "Right") + activeMono, activeParams, safeRate),
-        };
+        const outM = this.activeFilterProcess(state.mono, activeMono, activeParams, safeRate);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => this.activeFilterProcess(state.left, mixInput(nodeId, "Left") + activeMono, activeParams, safeRate),
+          () => this.activeFilterProcess(state.right, mixInput(nodeId, "Right") + activeMono, activeParams, safeRate));
       },
       butterworth: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         if (!this.butterworthStates) this.butterworthStates = new Map();
         const state = this.butterworthStates.get(nodeId) || this.createStereoScientificIirState();
         this.butterworthStates.set(nodeId, state);
-        const mode = this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues);
+        const { params } = this.resolveModuleControlParams(
+          node,
+          state,
+          { mode: 0, frequency: 1000, order: 4, bandwidth: 1 },
+          frame,
+          frames,
+          frameValues,
+        );
+        const mode = params.mode;
         const frequency = (typeof hasInput === "function" && hasInput(nodeId, "f"))
           ? mixInput(nodeId, "f")
-          : this.readEffectiveParameter(node, "frequency", 1000, frame, frames, frameValues);
-        const order = this.readEffectiveParameter(node, "order", 4, frame, frames, frameValues);
-        const bandwidth = this.readEffectiveParameter(node, "bandwidth", 1, frame, frames, frameValues);
+          : params.frequency;
+        const order = params.order;
+        const bandwidth = params.bandwidth;
         const mono = mixInput(nodeId);
         const run = (ch, x) => this.scientificIirSample("butterworth", 0, ch, x, mode, frequency, order, bandwidth, 1, safeRate);
-        return { Out: run(state.mono, mono), Left: run(state.left, mixInput(nodeId, "Left") + mono), Right: run(state.right, mixInput(nodeId, "Right") + mono) };
+        const outM = run(state.mono, mono);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => run(state.left, mixInput(nodeId, "Left") + mono),
+          () => run(state.right, mixInput(nodeId, "Right") + mono));
       },
       linkwitzRiley: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         if (!this.linkwitzRileyStates) this.linkwitzRileyStates = new Map();
         const state = this.linkwitzRileyStates.get(nodeId) || this.createStereoScientificIirState();
         this.linkwitzRileyStates.set(nodeId, state);
-        const mode = this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues);
+        const { params } = this.resolveModuleControlParams(
+          node,
+          state,
+          { mode: 0, frequency: 1000, order: 4, bandwidth: 1 },
+          frame,
+          frames,
+          frameValues,
+        );
+        const mode = params.mode;
         const frequency = (typeof hasInput === "function" && hasInput(nodeId, "f"))
           ? mixInput(nodeId, "f")
-          : this.readEffectiveParameter(node, "frequency", 1000, frame, frames, frameValues);
-        const order = this.readEffectiveParameter(node, "order", 4, frame, frames, frameValues);
-        const bandwidth = this.readEffectiveParameter(node, "bandwidth", 1, frame, frames, frameValues);
+          : params.frequency;
+        const order = params.order;
+        const bandwidth = params.bandwidth;
         const mono = mixInput(nodeId);
         const run = (ch, x) => this.scientificIirSample("linkwitzRiley", 1, ch, x, mode, frequency, order, bandwidth, 1, safeRate);
-        return { Out: run(state.mono, mono), Left: run(state.left, mixInput(nodeId, "Left") + mono), Right: run(state.right, mixInput(nodeId, "Right") + mono) };
+        const outM = run(state.mono, mono);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => run(state.left, mixInput(nodeId, "Left") + mono),
+          () => run(state.right, mixInput(nodeId, "Right") + mono));
       },
       bessel: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         if (!this.besselStates) this.besselStates = new Map();
         const state = this.besselStates.get(nodeId) || this.createStereoScientificIirState();
         this.besselStates.set(nodeId, state);
-        const mode = this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues);
+        const { params } = this.resolveModuleControlParams(
+          node,
+          state,
+          { mode: 0, frequency: 1000, order: 4, bandwidth: 1 },
+          frame,
+          frames,
+          frameValues,
+        );
+        const mode = params.mode;
         const frequency = (typeof hasInput === "function" && hasInput(nodeId, "f"))
           ? mixInput(nodeId, "f")
-          : this.readEffectiveParameter(node, "frequency", 1000, frame, frames, frameValues);
-        const order = this.readEffectiveParameter(node, "order", 4, frame, frames, frameValues);
-        const bandwidth = this.readEffectiveParameter(node, "bandwidth", 1, frame, frames, frameValues);
+          : params.frequency;
+        const order = params.order;
+        const bandwidth = params.bandwidth;
         const mono = mixInput(nodeId);
         const run = (ch, x) => this.scientificIirSample("bessel", 2, ch, x, mode, frequency, order, bandwidth, 1, safeRate);
-        return { Out: run(state.mono, mono), Left: run(state.left, mixInput(nodeId, "Left") + mono), Right: run(state.right, mixInput(nodeId, "Right") + mono) };
+        const outM = run(state.mono, mono);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => run(state.left, mixInput(nodeId, "Left") + mono),
+          () => run(state.right, mixInput(nodeId, "Right") + mono));
       },
       chebyshev: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         if (!this.chebyshevStates) this.chebyshevStates = new Map();
         const state = this.chebyshevStates.get(nodeId) || this.createStereoScientificIirState();
         this.chebyshevStates.set(nodeId, state);
-        const mode = this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues);
+        const { params } = this.resolveModuleControlParams(
+          node,
+          state,
+          { mode: 0, frequency: 1000, order: 4, bandwidth: 1, ripple: 1 },
+          frame,
+          frames,
+          frameValues,
+        );
+        const mode = params.mode;
         const frequency = (typeof hasInput === "function" && hasInput(nodeId, "f"))
           ? mixInput(nodeId, "f")
-          : this.readEffectiveParameter(node, "frequency", 1000, frame, frames, frameValues);
-        const order = this.readEffectiveParameter(node, "order", 4, frame, frames, frameValues);
-        const bandwidth = this.readEffectiveParameter(node, "bandwidth", 1, frame, frames, frameValues);
-        const ripple = this.readEffectiveParameter(node, "ripple", 1, frame, frames, frameValues);
+          : params.frequency;
+        const order = params.order;
+        const bandwidth = params.bandwidth;
+        const ripple = params.ripple;
         const mono = mixInput(nodeId);
         const run = (ch, x) => this.scientificIirSample("chebyshev", 3, ch, x, mode, frequency, order, bandwidth, ripple, safeRate);
-        return { Out: run(state.mono, mono), Left: run(state.left, mixInput(nodeId, "Left") + mono), Right: run(state.right, mixInput(nodeId, "Right") + mono) };
+        const outM = run(state.mono, mono);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => run(state.left, mixInput(nodeId, "Left") + mono),
+          () => run(state.right, mixInput(nodeId, "Right") + mono));
       },
       elliptic: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         if (!this.ellipticStates) this.ellipticStates = new Map();
         const state = this.ellipticStates.get(nodeId) || this.createStereoScientificIirState();
         this.ellipticStates.set(nodeId, state);
-        const mode = this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues);
+        const { params } = this.resolveModuleControlParams(
+          node,
+          state,
+          { mode: 0, frequency: 1000, order: 4, bandwidth: 1, ripple: 1 },
+          frame,
+          frames,
+          frameValues,
+        );
+        const mode = params.mode;
         const frequency = (typeof hasInput === "function" && hasInput(nodeId, "f"))
           ? mixInput(nodeId, "f")
-          : this.readEffectiveParameter(node, "frequency", 1000, frame, frames, frameValues);
-        const order = this.readEffectiveParameter(node, "order", 4, frame, frames, frameValues);
-        const bandwidth = this.readEffectiveParameter(node, "bandwidth", 1, frame, frames, frameValues);
-        const ripple = this.readEffectiveParameter(node, "ripple", 1, frame, frames, frameValues);
+          : params.frequency;
+        const order = params.order;
+        const bandwidth = params.bandwidth;
+        const ripple = params.ripple;
         const mono = mixInput(nodeId);
         const run = (ch, x) => this.scientificIirSample("elliptic", 4, ch, x, mode, frequency, order, bandwidth, ripple, safeRate);
-        return { Out: run(state.mono, mono), Left: run(state.left, mixInput(nodeId, "Left") + mono), Right: run(state.right, mixInput(nodeId, "Right") + mono) };
+        const outM = run(state.mono, mono);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => run(state.left, mixInput(nodeId, "Left") + mono),
+          () => run(state.right, mixInput(nodeId, "Right") + mono));
       },
-      bandpass: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
+      bandpass: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         if (!this.bandpassStates) this.bandpassStates = new Map();
         const state = this.bandpassStates.get(nodeId) || this.createStereoBandpassState();
         this.bandpassStates.set(nodeId, state);
-        const baseFreq = this.readEffectiveParameter(node, "frequency", 1000, frame, frames, frameValues);
-        const frequency = this.resolveSoftpopOrBandpassHz(node, nodeId, baseFreq, frame, frames, frameValues, mixInput);
-        const q = this.readEffectiveParameter(node, "q", 1, frame, frames, frameValues);
+        const { params } = this.resolveModuleControlParams(
+          node, state, { frequency: 1000, q: 1 }, frame, frames, frameValues,
+        );
+        const frequency = this.resolveSoftpopOrBandpassHz(node, nodeId, params.frequency, frame, frames, frameValues, mixInput);
+        const q = params.q;
         const mono = mixInput(nodeId);
-        return {
-          Out: this.bandpassSample(state.mono, mono, frequency, q, safeRate),
-          Left: this.bandpassSample(state.left, mixInput(nodeId, "Left") + mono, frequency, q, safeRate),
-          Right: this.bandpassSample(state.right, mixInput(nodeId, "Right") + mono, frequency, q, safeRate),
-        };
+        const outM = this.bandpassSample(state.mono, mono, frequency, q, safeRate);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => this.bandpassSample(state.left, mixInput(nodeId, "Left") + mono, frequency, q, safeRate),
+          () => this.bandpassSample(state.right, mixInput(nodeId, "Right") + mono, frequency, q, safeRate));
       },
-      allpass: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
+      allpass: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         if (!this.allpassStates) this.allpassStates = new Map();
         const state = this.allpassStates.get(nodeId) || this.createStereoAllpassState();
         this.allpassStates.set(nodeId, state);
-        const baseFreq = this.readEffectiveParameter(node, "frequency", 1000, frame, frames, frameValues);
-        const frequency = this.resolveSoftpopOrBandpassHz(node, nodeId, baseFreq, frame, frames, frameValues, mixInput);
-        const q = this.readEffectiveParameter(node, "q", 0.707, frame, frames, frameValues);
+        const { params } = this.resolveModuleControlParams(
+          node, state, { frequency: 1000, q: 0.707 }, frame, frames, frameValues,
+        );
+        const frequency = this.resolveSoftpopOrBandpassHz(node, nodeId, params.frequency, frame, frames, frameValues, mixInput);
+        const q = params.q;
         const mono = mixInput(nodeId);
-        return {
-          Out: this.allpassSample(state.mono, mono, frequency, q, safeRate),
-          Left: this.allpassSample(state.left, mixInput(nodeId, "Left") + mono, frequency, q, safeRate),
-          Right: this.allpassSample(state.right, mixInput(nodeId, "Right") + mono, frequency, q, safeRate),
-        };
+        const outM = this.allpassSample(state.mono, mono, frequency, q, safeRate);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => this.allpassSample(state.left, mixInput(nodeId, "Left") + mono, frequency, q, safeRate),
+          () => this.allpassSample(state.right, mixInput(nodeId, "Right") + mono, frequency, q, safeRate));
       },
       crossover2: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         return this.crossoverEvaluator(2, node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput);
@@ -420,29 +544,26 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
         const audioIn = this.safeFilterNumber(mixInput(nodeId), null) ?? 0;
         return this.bodeSample(state, audioIn, shift, fine, feedback, mix, safeRate);
       },
-      formantFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
+      formantFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         const mono = mixInput(nodeId);
-        return {
-          Out: this.formantFilterSample(null, mono),
-          Left: this.formantFilterSample(null, mixInput(nodeId, "Left") + mono),
-          Right: this.formantFilterSample(null, mixInput(nodeId, "Right") + mono),
-        };
+        const outM = this.formantFilterSample(null, mono);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => this.formantFilterSample(null, mixInput(nodeId, "Left") + mono),
+          () => this.formantFilterSample(null, mixInput(nodeId, "Right") + mono));
       },
-      besselThomson: (node, nodeId, frame, frames, frameValues, mixInput) => {
+      besselThomson: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         const mono = mixInput(nodeId);
-        return {
-          Out: this.besselThomsonSample(null, mono),
-          Left: this.besselThomsonSample(null, mixInput(nodeId, "Left") + mono),
-          Right: this.besselThomsonSample(null, mixInput(nodeId, "Right") + mono),
-        };
+        const outM = this.besselThomsonSample(null, mono);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => this.besselThomsonSample(null, mixInput(nodeId, "Left") + mono),
+          () => this.besselThomsonSample(null, mixInput(nodeId, "Right") + mono));
       },
-      massSpringDamper: (node, nodeId, frame, frames, frameValues, mixInput) => {
+      massSpringDamper: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         const mono = mixInput(nodeId);
-        return {
-          Out: this.massSpringDamperSample(null, mono),
-          Left: this.massSpringDamperSample(null, mixInput(nodeId, "Left") + mono),
-          Right: this.massSpringDamperSample(null, mixInput(nodeId, "Right") + mono),
-        };
+        const outM = this.massSpringDamperSample(null, mono);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => this.massSpringDamperSample(null, mixInput(nodeId, "Left") + mono),
+          () => this.massSpringDamperSample(null, mixInput(nodeId, "Right") + mono));
       },
       binaryClock: () => this.binaryClockSample(),
       theremin: () => this.thereminSample(),
@@ -453,102 +574,87 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
       wavetable2d: () => this.wavetable2dSample(),
       wavetable3d: () => this.wavetable3dSample(),
       pixelGrid: () => this.pixelGridSample(),
-      yellowjacketFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
+      yellowjacketFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         const state = this.yellowjacketFilterStates.get(nodeId) || this.createStereoFilterState(() => this.createYellowjacketFilterState());
         this.yellowjacketFilterStates.set(nodeId, state);
-        const yellowjacketParams = {
-          chaos: this.readEffectiveParameter(node, "chaos", 0, frame, frames, frameValues),
-          frequency: this.readEffectiveParameter(node, "frequency", 0.5, frame, frames, frameValues),
-          resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
-        };
+        const { params: yellowjacketParams } = this.resolveModuleControlParams(
+          node, state, { chaos: 0, frequency: 0.5, resonance: 0.2 }, frame, frames, frameValues,
+        );
         const yellowjacketMono = mixInput(nodeId);
-        return {
-          Out: this.yellowjacketFilterSample(state.mono, yellowjacketMono, yellowjacketParams, safeRate),
-          Left: this.yellowjacketFilterSample(state.left, mixInput(nodeId, "Left") + yellowjacketMono, yellowjacketParams, safeRate),
-          Right: this.yellowjacketFilterSample(state.right, mixInput(nodeId, "Right") + yellowjacketMono, yellowjacketParams, safeRate),
-        };
+        const outM = this.yellowjacketFilterSample(state.mono, yellowjacketMono, yellowjacketParams, safeRate);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => this.yellowjacketFilterSample(state.left, mixInput(nodeId, "Left") + yellowjacketMono, yellowjacketParams, safeRate),
+          () => this.yellowjacketFilterSample(state.right, mixInput(nodeId, "Right") + yellowjacketMono, yellowjacketParams, safeRate));
       },
-      superloveFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
+      superloveFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         const state = this.superloveFilterStates.get(nodeId) || this.createStereoFilterState(() => this.createSuperloveFilterState());
         this.superloveFilterStates.set(nodeId, state);
-        const superloveParams = {
-          chaos: this.readEffectiveParameter(node, "chaos", 0.5, frame, frames, frameValues),
-          frequency: this.readEffectiveParameter(node, "frequency", 0.5, frame, frames, frameValues),
-          mode: this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues),
-          resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
-        };
+        const { params: superloveParams } = this.resolveModuleControlParams(
+          node, state, { chaos: 0.5, frequency: 0.5, mode: 0, resonance: 0.2 }, frame, frames, frameValues,
+        );
         const superloveMono = mixInput(nodeId);
-        return {
-          Out: this.superloveFilterSample(state.mono, superloveMono, superloveParams, safeRate),
-          Left: this.superloveFilterSample(state.left, mixInput(nodeId, "Left") + superloveMono, superloveParams, safeRate),
-          Right: this.superloveFilterSample(state.right, mixInput(nodeId, "Right") + superloveMono, superloveParams, safeRate),
-        };
+        const outM = this.superloveFilterSample(state.mono, superloveMono, superloveParams, safeRate);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => this.superloveFilterSample(state.left, mixInput(nodeId, "Left") + superloveMono, superloveParams, safeRate),
+          () => this.superloveFilterSample(state.right, mixInput(nodeId, "Right") + superloveMono, superloveParams, safeRate));
       },
-      chaoticPhaseLockingFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
+      chaoticPhaseLockingFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         const state = this.chaoticPhaseLockingFilterStates.get(nodeId) || this.createStereoFilterState(() => this.createChaoticPhaseLockingFilterState());
         this.chaoticPhaseLockingFilterStates.set(nodeId, state);
-        const chaoticPhaseLockingParams = {
-          chaos: this.readEffectiveParameter(node, "chaos", 1, frame, frames, frameValues),
-          frequency: this.readEffectiveParameter(node, "frequency", 0.5, frame, frames, frameValues),
-          resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
-        };
-        const chaoticPhaseLockingMono = mixInput(nodeId);
-        return {
-          Out: this.chaoticPhaseLockingFilterSample(state.mono, chaoticPhaseLockingMono, chaoticPhaseLockingParams, safeRate),
-          Left: this.chaoticPhaseLockingFilterSample(state.left, mixInput(nodeId, "Left") + chaoticPhaseLockingMono, chaoticPhaseLockingParams, safeRate),
-          Right: this.chaoticPhaseLockingFilterSample(state.right, mixInput(nodeId, "Right") + chaoticPhaseLockingMono, chaoticPhaseLockingParams, safeRate),
-        };
+        const { params: chaoticPhaseLockingParams } = this.resolveModuleControlParams(
+          node, state, { chaos: 1, frequency: 0.5, resonance: 0.2 }, frame, frames, frameValues,
+        );
+        // Always two independent engines; Mono In folds into both; Out = (L+R)/2.
+        const monoIn = (hasInput?.(nodeId, "In") ? mixInput(nodeId, "In") : mixInput(nodeId)) || 0;
+        const leftIn = (hasInput?.(nodeId, "Left") ? mixInput(nodeId, "Left") : 0) + monoIn;
+        const rightIn = (hasInput?.(nodeId, "Right") ? mixInput(nodeId, "Right") : 0) + monoIn;
+        const left = this.chaoticPhaseLockingFilterSample(state.left, leftIn, chaoticPhaseLockingParams, safeRate);
+        const right = this.chaoticPhaseLockingFilterSample(state.right, rightIn, chaoticPhaseLockingParams, safeRate);
+        return { Out: 0.5 * (left + right), Left: left, Right: right };
       },
-      resonatorFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
+      resonatorFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         const state = this.resonatorFilterStates.get(nodeId) || this.createStereoFilterState(() => this.createResonatorFilterState());
         this.resonatorFilterStates.set(nodeId, state);
-        const resonatorParams = {
-          chaos: this.readEffectiveParameter(node, "chaos", 0, frame, frames, frameValues),
-          frequency: this.readEffectiveParameter(node, "frequency", 0.5, frame, frames, frameValues),
-          mode: this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues),
-          resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
-        };
+        const { params: resonatorParams } = this.resolveModuleControlParams(
+          node, state, { chaos: 0, frequency: 0.5, mode: 0, resonance: 0.2 }, frame, frames, frameValues,
+        );
         const resonatorMono = mixInput(nodeId);
-        return {
-          Out: this.resonatorFilterSample(state.mono, resonatorMono, resonatorParams, safeRate),
-          Left: this.resonatorFilterSample(state.left, mixInput(nodeId, "Left") + resonatorMono, resonatorParams, safeRate),
-          Right: this.resonatorFilterSample(state.right, mixInput(nodeId, "Right") + resonatorMono, resonatorParams, safeRate),
-        };
+        const outM = this.resonatorFilterSample(state.mono, resonatorMono, resonatorParams, safeRate);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => this.resonatorFilterSample(state.left, mixInput(nodeId, "Left") + resonatorMono, resonatorParams, safeRate),
+          () => this.resonatorFilterSample(state.right, mixInput(nodeId, "Right") + resonatorMono, resonatorParams, safeRate));
       },
-      humanFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
+      humanFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         const state = this.humanFilterStates.get(nodeId) || this.createStereoFilterState(() => this.createHumanFilterState());
         this.humanFilterStates.set(nodeId, state);
-        const humanFilterParams = {
-          chaos: this.readEffectiveParameter(node, "chaos", 0, frame, frames, frameValues),
-          frequency: this.readEffectiveParameter(node, "frequency", 0.5, frame, frames, frameValues),
-          mode: this.readEffectiveParameter(node, "mode", 0, frame, frames, frameValues),
-          resonance: this.readEffectiveParameter(node, "resonance", 0.2, frame, frames, frameValues),
-        };
+        const { params: humanFilterParams } = this.resolveModuleControlParams(
+          node, state, { chaos: 0, frequency: 0.5, mode: 0, resonance: 0.2 }, frame, frames, frameValues,
+        );
         const humanFilterMono = mixInput(nodeId);
-        return {
-          Out: this.humanFilterSample(state.mono, humanFilterMono, humanFilterParams, safeRate),
-          Left: this.humanFilterSample(state.left, mixInput(nodeId, "Left") + humanFilterMono, humanFilterParams, safeRate),
-          Right: this.humanFilterSample(state.right, mixInput(nodeId, "Right") + humanFilterMono, humanFilterParams, safeRate),
-        };
+        const outM = this.humanFilterSample(state.mono, humanFilterMono, humanFilterParams, safeRate);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => this.humanFilterSample(state.left, mixInput(nodeId, "Left") + humanFilterMono, humanFilterParams, safeRate),
+          () => this.humanFilterSample(state.right, mixInput(nodeId, "Right") + humanFilterMono, humanFilterParams, safeRate));
       },
       tb303Filter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         const state = this.tb303FilterStates.get(nodeId) || this.createStereoFilterState(() => this.createTb303FilterState());
         this.tb303FilterStates.set(nodeId, state);
-        const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
+        const { params } = this.resolveModuleControlParams(
+          node, state, { cutoff: 1000, drive: 0, mode: 4, resonance: 0 }, frame, frames, frameValues,
+        );
         const tb303Params = {
           cutoff: (typeof hasInput === "function" && hasInput(nodeId, "f"))
             ? mixInput(nodeId, "f")
-            : read("cutoff", 1000),
-          drive: read("drive", 0),
-          mode: read("mode", 4),
-          resonance: read("resonance", 0),
+            : params.cutoff,
+          drive: params.drive,
+          mode: params.mode,
+          resonance: params.resonance,
         };
         const tb303Mono = mixInput(nodeId);
-        return {
-          Out: this.tb303FilterSample(state.mono, tb303Mono, tb303Params, safeRate),
-          Left: this.tb303FilterSample(state.left, mixInput(nodeId, "Left") + tb303Mono, tb303Params, safeRate),
-          Right: this.tb303FilterSample(state.right, mixInput(nodeId, "Right") + tb303Mono, tb303Params, safeRate),
-        };
+        const outM = this.tb303FilterSample(state.mono, tb303Mono, tb303Params, safeRate);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => this.tb303FilterSample(state.left, mixInput(nodeId, "Left") + tb303Mono, tb303Params, safeRate),
+          () => this.tb303FilterSample(state.right, mixInput(nodeId, "Right") + tb303Mono, tb303Params, safeRate));
       },
       comparator: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
         const state = this.comparatorStates.get(nodeId) || this.createComparatorState();
@@ -704,27 +810,34 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
       pingPongDelay: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
         const state = this.pingPongDelayStates.get(nodeId) || this.createPingPongDelayState();
         this.pingPongDelayStates.set(nodeId, state);
-        const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
+        // hasChanged: only re-resolve while smoothing/modulated; idle knobs stay off the list.
+        const { params } = this.resolveModuleControlParams(
+          node,
+          state,
+          {
+            feedback: 0.35,
+            hpfFrequency: 20,
+            interpolation: 0,
+            level: 1,
+            lfoRate: 0.35,
+            lfoStyle: 0,
+            lfoVariation: 0.25,
+            lpfFrequency: 8000,
+            mix: 0.35,
+            offsetMs: 0,
+            saturate: 1,
+            timeDenominator: 4,
+            timeNumerator: 1,
+            timingMode: 0,
+          },
+          frame,
+          frames,
+          frameValues,
+        );
         return this.pingPongDelaySample(
           state,
           mixInput(nodeId) + mixInput(nodeId, "Left") + mixInput(nodeId, "Right"),
-          {
-            feedback: read("feedback", 0.35),
-            hpfFrequency: read("hpfFrequency", 20),
-            // 0 = linear, 1 = hermite (default hermite).
-            interpolation: read("interpolation", 0),
-            level: read("level", 1),
-            lfoRate: read("lfoRate", 0.35),
-            lfoStyle: read("lfoStyle", 0),
-            lfoVariation: read("lfoVariation", 0.25),
-            lpfFrequency: read("lpfFrequency", 8000),
-            mix: read("mix", 0.35),
-            offsetMs: read("offsetMs", 0),
-            saturate: read("saturate", 1),
-            timeDenominator: read("timeDenominator", 4),
-            timeNumerator: read("timeNumerator", 1),
-            timingMode: read("timingMode", 0),
-          },
+          params,
           safeRate,
         );
       },
@@ -757,23 +870,25 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
       reverbEffect: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
         const state = this.reverbEffectStates.get(nodeId) || this.createSabrinaReverbState();
         this.reverbEffectStates.set(nodeId, state);
-        // Resolve the 8 Sabrina knobs once per worklet quantum. Unmodulated
-        // they barely move; reading them every sample (plus object alloc +
-        // set_params) was enough to miss the audio deadline.
-        if (frame === 0 || !state.cachedParams) {
-          const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
-          state.cachedParams = {
-            delaySize: read("delaySize", 0.02),
-            diffusionAmount: read("diffusionAmount", 0.70),
-            diffusionSize: read("diffusionSize", 0.35),
-            lfoAmplitude: read("lfoAmplitude", 0.07),
-            lfoBaseSpeed: read("lfoBaseSpeed", 0.83),
-            lfoVariation: read("lfoVariation", 0.001),
-            mix: read("mix", 0.43),
-            recycle: read("recycle", 0.70),
-            seed: read("seed", 0),
-          };
-        }
+        // hasChanged: idle unmodulated knobs stay cached (not re-read every sample/quantum).
+        const { params } = this.resolveModuleControlParams(
+          node,
+          state,
+          {
+            delaySize: 0.02,
+            diffusionAmount: 0.70,
+            diffusionSize: 0.35,
+            lfoAmplitude: 0.07,
+            lfoBaseSpeed: 0.83,
+            lfoVariation: 0.001,
+            mix: 0.43,
+            recycle: 0.70,
+            seed: 0,
+          },
+          frame,
+          frames,
+          frameValues,
+        );
         const monoInput = mixInput(nodeId, "In");
         const leftInput = mixInput(nodeId, "Left") + monoInput;
         const rightInput = mixInput(nodeId, "Right") + monoInput;
@@ -781,7 +896,7 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
           state,
           leftInput,
           rightInput,
-          state.cachedParams,
+          params,
           safeRate,
           frame,
         );
@@ -859,19 +974,21 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
           safeRate,
         );
       },
-      slewLimiter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
+      slewLimiter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         const state = this.slewLimiterStates.get(nodeId) || this.createStereoSlewLimiterState();
         this.slewLimiterStates.set(nodeId, state);
-        const slewUpTime = this.readEffectiveParameter(node, "upTime", 0.05, frame, frames, frameValues);
-        const slewDownTime = this.readEffectiveParameter(node, "downTime", 0.20, frame, frames, frameValues);
-        const slewShape = this.readEffectiveParameter(node, "shape", 0, frame, frames, frameValues);
-        const slewBias = this.readEffectiveParameter(node, "bias", 0, frame, frames, frameValues);
+        const { params } = this.resolveModuleControlParams(
+          node, state, { upTime: 0.05, downTime: 0.20, shape: 0, bias: 0 }, frame, frames, frameValues,
+        );
+        const slewUpTime = params.upTime;
+        const slewDownTime = params.downTime;
+        const slewShape = params.shape;
+        const slewBias = params.bias;
         const slewMono = mixInput(nodeId) + slewBias;
-        return {
-          Out: this.slewLimiterSample(state.mono, slewMono, slewUpTime, slewDownTime, safeRate, slewShape),
-          Left: this.slewLimiterSample(state.left, mixInput(nodeId, "Left") + slewMono, slewUpTime, slewDownTime, safeRate, slewShape),
-          Right: this.slewLimiterSample(state.right, mixInput(nodeId, "Right") + slewMono, slewUpTime, slewDownTime, safeRate, slewShape),
-        };
+        const outM = this.slewLimiterSample(state.mono, slewMono, slewUpTime, slewDownTime, safeRate, slewShape);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => this.slewLimiterSample(state.left, mixInput(nodeId, "Left") + slewMono, slewUpTime, slewDownTime, safeRate, slewShape),
+          () => this.slewLimiterSample(state.right, mixInput(nodeId, "Right") + slewMono, slewUpTime, slewDownTime, safeRate, slewShape));
       },
       // Stereo → Mid/Side (0.5 matrix). Math: mid-side-encode-math.js.
       midSideEncode: (node, nodeId, frame, frames, frameValues, mixInput) =>
@@ -902,7 +1019,7 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
         const shift = this.readEffectiveParameter(node, "shift", 0, frame, frames, frameValues);
         return this.hilbertFrame(state, mixInput(nodeId), shift);
       },
-      // Look-ahead Brickwall (protective). Math: lookahead-limiter-math.js.
+      // Brickwall Limiter (protective). Math: lookahead-limiter-math.js.
       lookaheadLimiter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
         if (!this.lookaheadLimiterStates) {
           this.lookaheadLimiterStates = new Map();
@@ -910,22 +1027,39 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
         const state = this.lookaheadLimiterStates.get(nodeId) || this.createLookaheadLimiterState();
         this.lookaheadLimiterStates.set(nodeId, state);
         const mono = mixInput(nodeId);
+        const { params } = this.resolveModuleControlParams(
+          node,
+          state,
+          {
+            ceiling: -1,
+            lookaheadMs: 5,
+            lookaheadSamples: 0,
+            attack: 0.2,
+            release: 100,
+            lookaheadEnabled: 1,
+            gainCompensation: 0,
+            dipGain: 1,
+          },
+          frame,
+          frames,
+          frameValues,
+        );
         return this.lookaheadLimiterFrame(
           state,
           mixInput(nodeId, "Left") + mono,
           mixInput(nodeId, "Right") + mono,
-          this.readEffectiveParameter(node, "ceiling", -1, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "lookaheadMs", 5, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "lookaheadSamples", 0, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "attack", 0.2, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "release", 100, frame, frames, frameValues),
+          params.ceiling,
+          params.lookaheadMs,
+          params.lookaheadSamples,
+          params.attack,
+          params.release,
           safeRate,
-          this.readEffectiveParameter(node, "lookaheadEnabled", 1, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "gainCompensation", 0, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "dipGain", 1, frame, frames, frameValues),
+          params.lookaheadEnabled,
+          params.gainCompensation,
+          params.dipGain,
         );
       },
-      // Musical Limiter (input gain / threshold / ratio, sidechain, Env). Same math file.
+      // Pump Limiter (input gain / threshold / ratio, sidechain, Env). Same math file.
       limiter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         if (!this.pumpingLimiterStates) {
           this.pumpingLimiterStates = new Map();
@@ -934,38 +1068,58 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
         this.pumpingLimiterStates.set(nodeId, state);
         const mono = mixInput(nodeId);
         const scWired = typeof hasInput === "function" ? hasInput(nodeId, "Sidechain") : false;
+        const { params } = this.resolveModuleControlParams(
+          node,
+          state,
+          {
+            inputGain: 0,
+            threshold: -18,
+            ratio: 8,
+            lookaheadMs: 5,
+            lookaheadSamples: 0,
+            attack: 5,
+            release: 250,
+            lookaheadEnabled: 1,
+            amplitude: 1,
+          },
+          frame,
+          frames,
+          frameValues,
+        );
         return this.pumpingLimiterFrame(
           state,
           mixInput(nodeId, "Left") + mono,
           mixInput(nodeId, "Right") + mono,
           scWired ? mixInput(nodeId, "Sidechain") : 0,
           scWired,
-          this.readEffectiveParameter(node, "inputGain", 0, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "threshold", -18, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "ratio", 8, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "lookaheadMs", 5, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "lookaheadSamples", 0, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "attack", 5, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "release", 250, frame, frames, frameValues),
+          params.inputGain,
+          params.threshold,
+          params.ratio,
+          params.lookaheadMs,
+          params.lookaheadSamples,
+          params.attack,
+          params.release,
           safeRate,
-          this.readEffectiveParameter(node, "lookaheadEnabled", 1, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "amplitude", 1, frame, frames, frameValues),
+          params.lookaheadEnabled,
+          params.amplitude,
         );
       },
-      inertialFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
+      inertialFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         if (!this.inertialFilterStates) {
           this.inertialFilterStates = new Map();
         }
         const state = this.inertialFilterStates.get(nodeId) || this.createStereoInertialFilterState();
         this.inertialFilterStates.set(nodeId, state);
-        const attackHz = this.readEffectiveParameter(node, "attack", 20000, frame, frames, frameValues);
-        const releaseHz = this.readEffectiveParameter(node, "release", 20, frame, frames, frameValues);
+        const { params } = this.resolveModuleControlParams(
+          node, state, { attack: 20000, release: 20 }, frame, frames, frameValues,
+        );
+        const attackHz = params.attack;
+        const releaseHz = params.release;
         const mono = mixInput(nodeId);
-        return {
-          Out: this.inertialFilterSample(state.mono, mono, attackHz, releaseHz, safeRate),
-          Left: this.inertialFilterSample(state.left, mixInput(nodeId, "Left") + mono, attackHz, releaseHz, safeRate),
-          Right: this.inertialFilterSample(state.right, mixInput(nodeId, "Right") + mono, attackHz, releaseHz, safeRate),
-        };
+        const outM = this.inertialFilterSample(state.mono, mono, attackHz, releaseHz, safeRate);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => this.inertialFilterSample(state.left, mixInput(nodeId, "Left") + mono, attackHz, releaseHz, safeRate),
+          () => this.inertialFilterSample(state.right, mixInput(nodeId, "Right") + mono, attackHz, releaseHz, safeRate));
       },
       tiltFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         if (!this.tiltFilterStates) {
@@ -973,17 +1127,18 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
         }
         const state = this.tiltFilterStates.get(nodeId) || this.createStereoTiltFilterState();
         this.tiltFilterStates.set(nodeId, state);
-        const amount = this.readEffectiveParameter(node, "amount", 0, frame, frames, frameValues);
-        const knobHz = this.readEffectiveParameter(node, "pivot", 1000, frame, frames, frameValues);
+        const { params } = this.resolveModuleControlParams(
+          node, state, { amount: 0, pivot: 1000 }, frame, frames, frameValues,
+        );
+        const amount = params.amount;
         const pivot = (typeof hasInput === "function" && hasInput(nodeId, "f"))
           ? mixInput(nodeId, "f")
-          : knobHz;
+          : params.pivot;
         const mono = mixInput(nodeId);
-        return {
-          Out: this.tiltFilterSample(state.mono, mono, amount, pivot, safeRate),
-          Left: this.tiltFilterSample(state.left, mixInput(nodeId, "Left") + mono, amount, pivot, safeRate),
-          Right: this.tiltFilterSample(state.right, mixInput(nodeId, "Right") + mono, amount, pivot, safeRate),
-        };
+        const outM = this.tiltFilterSample(state.mono, mono, amount, pivot, safeRate);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => this.tiltFilterSample(state.left, mixInput(nodeId, "Left") + mono, amount, pivot, safeRate),
+          () => this.tiltFilterSample(state.right, mixInput(nodeId, "Right") + mono, amount, pivot, safeRate));
       },
       eqFilter: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         if (!this.eqFilterStates) {
@@ -991,33 +1146,45 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
         }
         const state = this.eqFilterStates.get(nodeId) || this.createStereoEqFilterState();
         this.eqFilterStates.set(nodeId, state);
-        const mode = this.readEffectiveParameter(node, "mode", 1, frame, frames, frameValues);
-        const knobHz = this.readEffectiveParameter(node, "frequency", 1000, frame, frames, frameValues);
+        const { params } = this.resolveModuleControlParams(
+          node, state, { mode: 1, frequency: 1000, q: 0.707, gain: 0 }, frame, frames, frameValues,
+        );
+        const mode = params.mode;
         const frequency = (typeof hasInput === "function" && hasInput(nodeId, "f"))
           ? mixInput(nodeId, "f")
-          : knobHz;
-        const q = this.readEffectiveParameter(node, "q", 0.707, frame, frames, frameValues);
-        const gain = this.readEffectiveParameter(node, "gain", 0, frame, frames, frameValues);
+          : params.frequency;
+        const q = params.q;
+        const gain = params.gain;
         const mono = mixInput(nodeId);
-        return {
-          Out: this.eqFilterSample(state.mono, mono, mode, frequency, q, gain, safeRate),
-          Left: this.eqFilterSample(state.left, mixInput(nodeId, "Left") + mono, mode, frequency, q, gain, safeRate),
-          Right: this.eqFilterSample(state.right, mixInput(nodeId, "Right") + mono, mode, frequency, q, gain, safeRate),
-        };
+        const outM = this.eqFilterSample(state.mono, mono, mode, frequency, q, gain, safeRate);
+        return this.stereoProcessPorts(nodeId, hasInput, outM,
+          () => this.eqFilterSample(state.left, mixInput(nodeId, "Left") + mono, mode, frequency, q, gain, safeRate),
+          () => this.eqFilterSample(state.right, mixInput(nodeId, "Right") + mono, mode, frequency, q, gain, safeRate));
       },
       sampleHold: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         const state = this.sampleHoldStates.get(nodeId) || this.createStereoSampleHoldState();
         this.sampleHoldStates.set(nodeId, state);
-        const sampleHoldTrigger = mixInput(nodeId, "Trigger");
-        const sampleHoldThreshold = this.readEffectiveParameter(node, "threshold", 0, frame, frames, frameValues);
-        const sampleHoldFrequency = this.readEffectiveParameter(node, "sampleFrequency", 0, frame, frames, frameValues);
-        const sampleHoldMonoHasIn = hasInput(nodeId, "In");
-        const sampleHoldMono = mixInput(nodeId, "In");
-        return {
-          Out: this.sampleHoldSample(state.mono, sampleHoldMono, sampleHoldTrigger, sampleHoldThreshold, sampleHoldFrequency, safeRate, sampleHoldMonoHasIn, `${nodeId}:mono`),
-          Left: this.sampleHoldSample(state.left, mixInput(nodeId, "Left") + sampleHoldMono, sampleHoldTrigger, sampleHoldThreshold, sampleHoldFrequency, safeRate, sampleHoldMonoHasIn || hasInput(nodeId, "Left"), `${nodeId}:left`),
-          Right: this.sampleHoldSample(state.right, mixInput(nodeId, "Right") + sampleHoldMono, sampleHoldTrigger, sampleHoldThreshold, sampleHoldFrequency, safeRate, sampleHoldMonoHasIn || hasInput(nodeId, "Right"), `${nodeId}:right`),
-        };
+        const clock = mixInput(nodeId, "Clock");
+        const threshold = this.readEffectiveParameter(node, "threshold", 0, frame, frames, frameValues);
+        const sampleFrequency = this.readEffectiveParameter(node, "sampleFrequency", 0, frame, frames, frameValues);
+        const interpolate = this.readEffectiveParameter(node, "interpolate", 0, frame, frames, frameValues);
+        const hasExt = typeof hasInput === "function" && hasInput(nodeId, "Ext In");
+        // Ext In → Ext Out. Left/Right = internal noise. Same Clock / Sample Freq for all.
+        // Always advance Ext (hasIn=true) so phases stay locked; unwired Ext holds 0.
+        const extOut = this.sampleHoldSample(
+          state.ext,
+          hasExt ? mixInput(nodeId, "Ext In") : 0,
+          clock,
+          threshold,
+          sampleFrequency,
+          safeRate,
+          true,
+          `${nodeId}:ext`,
+          interpolate,
+        );
+        const left = this.sampleHoldSample(state.left, 0, clock, threshold, sampleFrequency, safeRate, false, `${nodeId}:left`, interpolate);
+        const right = this.sampleHoldSample(state.right, 0, clock, threshold, sampleFrequency, safeRate, false, `${nodeId}:right`, interpolate);
+        return { "Ext Out": extOut, Left: left, Right: right, Out: extOut };
       },
       expAdsr: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
         const state = this.expAdsrStates.get(nodeId) || this.createExpAdsrState();
@@ -1036,6 +1203,7 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
             release: read("release", 0.45),
             releaseShape: read("releaseShape", 0.0001),
             sustain: read("sustain", 0.55),
+            updateOnTrigger: read("updateOnTrigger", 0),
           },
           safeRate,
         );
@@ -1078,52 +1246,9 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
           safeRate,
         );
       },
-      pluckEnvelope: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
-        const state = this.pluckEnvelopeStates.get(nodeId) || this.createPluckEnvelopeState();
-        this.pluckEnvelopeStates.set(nodeId, state);
-        const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
-        return this.pluckEnvelopeSample(
-          state,
-          mixInput(nodeId, "Trigger"),
-          mixInput(nodeId, "Release"),
-          {
-            attackFeedback: read("attackFeedback", 0.002),
-            autoReleaseTime: read("autoReleaseTime", 0.08),
-            decay: read("decay", 0.35),
-            decayModCurve: read("decayModCurve", 0),
-            decayModEnd: read("decayModEnd", 0.55),
-            decayModFrequency: read("decayModFrequency", 1.5),
-            decayModStart: read("decayModStart", 0.08),
-            delayTime: read("delayTime", 0),
-            endingDecay: read("endingDecay", 0.8),
-            level: read("level", 1),
-            releaseFeedback: read("releaseFeedback", 0.35),
-            velocity: read("velocity", 1),
-            velocitySensitivity: read("velocitySensitivity", 0),
-          },
-          safeRate,
-        );
-      },
-      vactrolEnvelopeSeries: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
-        const state = this.vactrolEnvelopeStates.get(nodeId) || this.createVactrolEnvelopeState();
-        this.vactrolEnvelopeStates.set(nodeId, state);
-        const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
-        const isSeries = node?.type === "vactrolEnvelopeSeries";
-        const seriesSpec = isSeries ? nodeGraphVactrolSeriesSpec(read("part", 2)) : null;
-        return this.vactrolEnvelopeSample(
-          state,
-          mixInput(nodeId, "Light"),
-          {
-            attack: isSeries ? seriesSpec.attack : read("attack", 0.01),
-            curve: read("curve", 1),
-            darkCurrent: read("darkCurrent", 0),
-            lightOffset: read("lightOffset", 0),
-            release: isSeries ? seriesSpec.release : read("release", 0.1),
-            sensitivity: read("sensitivity", 1),
-          },
-          safeRate,
-        );
-      },
+      pluckEnvelope: pluckEnvelopeEvaluate,
+      // Same DSP as pluckEnvelope; sample-accurate strip on efficient path.
+      pluckEnvelopeMod: pluckEnvelopeEvaluate,
       flowerChildEnvelopeFollower: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
         const state = this.flowerChildEnvelopeFollowerStates.get(nodeId) ||
           this.createFlowerChildEnvelopeFollowerState();
@@ -1395,6 +1520,14 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
           this.readEffectiveParameter(node, "amplitude", 0.5, frame, frames, frameValues),
           this.readEffectiveParameter(node, "offset", 0, frame, frames, frameValues),
         ),
+      range: (node, nodeId, frame, frames, frameValues, mixInput) =>
+        this.rangeFrame(
+          mixInput(nodeId),
+          this.readEffectiveParameter(node, "inLow", -1, frame, frames, frameValues),
+          this.readEffectiveParameter(node, "inHigh", 1, frame, frames, frameValues),
+          this.readEffectiveParameter(node, "outLow", 0, frame, frames, frameValues),
+          this.readEffectiveParameter(node, "outHigh", 1000, frame, frames, frameValues),
+        ),
       u2b: (node, nodeId, frame, frames, frameValues, mixInput) => ({
         Out: this.u2bSample(mixInput(nodeId)),
       }),
@@ -1404,23 +1537,34 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
       inv: (node, nodeId, frame, frames, frameValues, mixInput) => ({
         Out: this.invSample(mixInput(nodeId)),
       }),
-      softClipper: (node, nodeId, frame, frames, frameValues, mixInput) => {
+      softClipper: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         if (!this.softClipperStates) this.softClipperStates = new Map();
         const state = this.softClipperStates.get(nodeId) || this.createSoftClipperState();
         this.softClipperStates.set(nodeId, state);
-        const softClipperOs = this.readEffectiveParameter(node, "oversample", 2, frame, frames, frameValues);
-        const softClipperGainDb = this.readEffectiveParameter(node, "gainDb", 0, frame, frames, frameValues);
-        const softClipperCenter = this.readEffectiveParameter(node, "center", 0, frame, frames, frameValues);
-        const softClipperWidth = this.readEffectiveParameter(node, "width", 2, frame, frames, frameValues);
+        const controls = this.resolveModuleControlParams(
+          node,
+          state,
+          { oversample: 2, gainDb: 0, center: 0, width: 2 },
+          frame,
+          frames,
+          frameValues,
+        );
+        const softClipperOs = controls.params.oversample;
+        const softClipperGainDb = controls.params.gainDb;
+        const softClipperCenter = controls.params.center;
+        const softClipperWidth = controls.params.width;
         const drive = typeof nodeGraphClipperDbToLin === "function"
           ? nodeGraphClipperDbToLin(softClipperGainDb)
           : 10 ** ((Number(softClipperGainDb) || 0) / 20);
         const softClipperMono = mixInput(nodeId) * drive;
-        return {
-          Out: this.nativeSoftClipperSample(softClipperMono, softClipperCenter, softClipperWidth, state, softClipperOs, 0),
-          Left: this.nativeSoftClipperSample(mixInput(nodeId, "Left") * drive + softClipperMono, softClipperCenter, softClipperWidth, state, softClipperOs, 1),
-          Right: this.nativeSoftClipperSample(mixInput(nodeId, "Right") * drive + softClipperMono, softClipperCenter, softClipperWidth, state, softClipperOs, 2),
-        };
+        const outM = this.nativeSoftClipperSample(softClipperMono, softClipperCenter, softClipperWidth, state, softClipperOs, 0);
+        return this.stereoProcessPorts(
+          nodeId,
+          hasInput,
+          outM,
+          () => this.nativeSoftClipperSample(mixInput(nodeId, "Left") * drive + softClipperMono, softClipperCenter, softClipperWidth, state, softClipperOs, 1),
+          () => this.nativeSoftClipperSample(mixInput(nodeId, "Right") * drive + softClipperMono, softClipperCenter, softClipperWidth, state, softClipperOs, 2),
+        );
       },
       speakerProtector2: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
         if (!this.speakerProtector2States) this.speakerProtector2States = new Map();
@@ -1452,25 +1596,6 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_processors = function
           this.readEffectiveParameter(node, "gainDb", 0, frame, frames, frameValues),
           state,
           this.readEffectiveParameter(node, "oversample", 2, frame, frames, frameValues),
-        );
-      },
-      // Airwindows Density3. Math: air-clipper-math.js.
-      airClipper: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
-        if (!this.airClipperStates) {
-          this.airClipperStates = new Map();
-        }
-        const state = this.airClipperStates.get(nodeId) || this.createAirClipperState();
-        this.airClipperStates.set(nodeId, state);
-        return this.airClipperFrame(
-          state,
-          mixInput(nodeId),
-          mixInput(nodeId, "Left"),
-          mixInput(nodeId, "Right"),
-          this.readEffectiveParameter(node, "density", 0, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "highpass", 0, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "output", 1, frame, frames, frameValues),
-          this.readEffectiveParameter(node, "wet", 1, frame, frames, frameValues),
-          safeRate,
         );
       },
       // 3D rotation → XY. Math: rotate-3d-to-2d-math.js.,

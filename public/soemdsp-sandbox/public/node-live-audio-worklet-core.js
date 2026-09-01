@@ -51,13 +51,16 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     super();
     this.liveModuleEvaluators = this.buildLiveModuleEvaluators();
     this.liveModuleEvaluators.previousPatch = this.liveModuleEvaluators.nextPatch;
-    // vactrolEnvelopeSeries and vactrolEnvelopeCustom share one implementation
-    // (see the isSeries branch inside it) -- the offline/render evaluator
-    // registers this same alias in vactrol-envelope-live-evaluator.js; this
-    // real-time path was missing it, so vactrolEnvelopeCustom nodes silently
-    // produced a flat 0 in Live Audio instead of running the envelope.
-    this.liveModuleEvaluators.vactrolEnvelopeCustom = this.liveModuleEvaluators.vactrolEnvelopeSeries;
     this.inputConnections = new Map();
+    // Reused every sample in evaluateFrame (clear, don't alloc).
+    this.frameValues = new Map();
+    this.compiledOrder = [];
+    // Bound once — evaluators receive these instead of per-sample closures.
+    this.boundMixInput = (nodeId, port) => this.mixInputPort(nodeId, port);
+    this.boundHasInput = (nodeId, port) => this.hasInputPort(nodeId, port);
+    this.boundGraphInputValue = (nodeId, graphInput, x, fallback) =>
+      this.graphInputValueAt(nodeId, graphInput, x, fallback);
+    this.boundGraphOutputValue = (node, nodeId) => this.graphOutputValueAt(node, nodeId);
     this.badNumberCount = 0;
     this.lastBadValueReason = "";
     this.lastBadValueNodeId = "";
@@ -74,6 +77,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.inputMeterSquareSum = 0;
     this.maxBlockProcessMs = 0;
     this.maxBlockBudgetRatio = 0;
+    this.audioThreadStressed = false;
     this.meterClipCount = 0;
     this.meterCounter = 0;
     this.meterOverrunCount = 0;
@@ -135,6 +139,16 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.expAdsrStates = new Map();
     this.attackDecayStates = new Map();
     this.ellipsoidOutputFrames = new Map();
+    // MVEP GraphEngine (PR-E1): efficientProduct → native process_block path.
+    this.efficientProduct = true;
+    this.nativeGraph = null;
+    this.nativeGraphReady = false;
+    this.nativeGraphHandle = 0;
+    this.nativeGraphCompiled = false;
+    this.nativeGraphStatus = "";
+    this.nativeGraphStatusMessage = "";
+    this.nativeGraphBlockViews = null;
+    this._planConnections = [];
     this.nativeEllipsoid = null;
     this.nativeEllipsoidReady = false;
     this.nativeU2b = null;
@@ -149,6 +163,8 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.nativeBiasReady = false;
     this.nativeAttenuverter = null;
     this.nativeAttenuverterReady = false;
+    this.nativeRange = null;
+    this.nativeRangeReady = false;
     this.nativeMix = null;
     this.nativeMixReady = false;
     this.nativeMixStereo = null;
@@ -214,8 +230,6 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.nativeTb303FilterReady = false;
     this.nativePassiveFilter = null;
     this.nativePassiveFilterReady = false;
-    this.nativeVactrolEnvelope = null;
-    this.nativeVactrolEnvelopeReady = false;
     this.nativeSoftClipper = null;
     this.nativeSoftClipperReady = false;
     this.nativePolyBlep = null;
@@ -385,6 +399,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.samplePlaybackStates = new Map();
     this.samples = new Map();
     this.randomWalkStates = new Map();
+    this.cheapWalkStates = new Map();
     this.piSpigotNoiseStates = new Map();
     this.bradley2AStates = new Map();
     this.antisawStates = new Map();
@@ -401,7 +416,6 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.absoluteFrame = 0;
     this.slewLimiterStates = new Map();
     this.speakerProtector2States = new Map();
-    this.airClipperStates = new Map();
     this.smoothers = new Map();
     // Dirty list (soemdsp SmootherManager::toSmooth_): only moving chases run.
     this.activeSmoothers = [];
@@ -415,7 +429,6 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.triggerCounterStates = new Map();
     this.triggerDividerStates = new Map();
     this.triangleStates = new Map();
-    this.vactrolEnvelopeStates = new Map();
     this.impulseButtonStates = new Map();
     this.bugButtonStates = new Map();
     this.keypadStates = new Map();
@@ -431,3 +444,9 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   // worklet Blob (graph, smoother, events, dsp-state, evaluators, process, …).
 
 }
+
+// Efficient blob omits evaluator clusters; constructor still calls this.
+// ?product=full overrides via node-live-audio-worklet-evaluators.js.
+NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators = function buildLiveModuleEvaluators() {
+  return {};
+};

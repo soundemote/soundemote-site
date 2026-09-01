@@ -7,6 +7,25 @@ function defaultNodeGraphModuleGridPoint(type) {
 }
 
 function ensureNodeGraphLiveInputModule() {
+  // audioInput is not on the MVEP allowlist — do not inject it in efficient product.
+  if (typeof nodeGraphEfficientProductEnabled === "function" && nodeGraphEfficientProductEnabled()) {
+    if (typeof setNodeInteractionHelp === "function") {
+      setNodeInteractionHelp(NODE_GRAPH_EFFICIENT_PRODUCT_FOREIGN_STATUS || "not in efficient build");
+    }
+    if (typeof setNodeGraphLiveInputStatus === "function") {
+      setNodeGraphLiveInputStatus(
+        "blocked",
+        NODE_GRAPH_EFFICIENT_PRODUCT_FOREIGN_STATUS || "not in efficient build",
+      );
+    }
+    if (typeof setNodeGraphScriptStatus === "function") {
+      setNodeGraphScriptStatus(
+        NODE_GRAPH_EFFICIENT_PRODUCT_FOREIGN_STATUS || "not in efficient build",
+        false,
+      );
+    }
+    return false;
+  }
   if (nodeGraphMvp.patch.nodes.some((node) => node.type === "audioInput")) {
     return false;
   }
@@ -151,6 +170,19 @@ function showNodeGraphModule(node, point = null, options = {}) {
       setNodeInteractionHelp("Patch is locked.");
     }
     return "";
+  }
+  if (typeof nodeGraphEfficientProductEnabled === "function"
+    && nodeGraphEfficientProductEnabled()) {
+    const shopOk = typeof nodeGraphModuleIsEfficientProductShopType === "function"
+      && nodeGraphModuleIsEfficientProductShopType(type);
+    const chromeOk = typeof nodeGraphModuleIsEfficientProductChromeType === "function"
+      && nodeGraphModuleIsEfficientProductChromeType(type);
+    if (!shopOk && !chromeOk) {
+      if (typeof setNodeInteractionHelp === "function") {
+        setNodeInteractionHelp("not in efficient build");
+      }
+      return "";
+    }
   }
   if (typeof nodeGraphModuleTypeIsInvisible === "function"
     && nodeGraphModuleTypeIsInvisible(type)) {
@@ -909,6 +941,24 @@ function addNodeGraphModuleGroupFromBrowser(name) {
   if (!group?.nodes?.length && !group?.sourcePatch?.nodes?.length) {
     return;
   }
+  const efficientOn = typeof nodeGraphEfficientProductEnabled === "function"
+    && nodeGraphEfficientProductEnabled();
+  const refuseEfficient = (detail = "") => {
+    const status = detail
+      ? `${NODE_GRAPH_EFFICIENT_PRODUCT_FOREIGN_STATUS || "not in efficient build"}: ${detail}`
+      : (NODE_GRAPH_EFFICIENT_PRODUCT_FOREIGN_STATUS || "not in efficient build");
+    if (typeof setNodeInteractionHelp === "function") {
+      setNodeInteractionHelp(status);
+    }
+    if (typeof setNodeGraphScriptStatus === "function") {
+      setNodeGraphScriptStatus(status, false);
+    }
+  };
+  // moduleGroup itself is not on the efficient allowlist / chrome set.
+  if (efficientOn && group.kind === "moduleGroup" && group.sourcePatch) {
+    refuseEfficient("moduleGroup");
+    return;
+  }
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
   const counts = nextNodeGraphTypeCounts(patch.nodes);
   if (group.kind === "moduleGroup" && group.sourcePatch) {
@@ -931,6 +981,17 @@ function addNodeGraphModuleGroupFromBrowser(name) {
   const sourceNodes = group.nodes.filter((node) => Object.hasOwn(nodeGraphModuleDefinitions, node.type));
   if (!sourceNodes.length) {
     return;
+  }
+  if (efficientOn && typeof nodeGraphModuleIsEfficientProductPlanType === "function") {
+    const foreign = [...new Set(
+      sourceNodes
+        .map((node) => String(node.type || "").trim())
+        .filter((type) => type && !nodeGraphModuleIsEfficientProductPlanType(type)),
+    )];
+    if (foreign.length) {
+      refuseEfficient(foreign.join(", "));
+      return;
+    }
   }
   const minGx = Math.min(...sourceNodes.map((node) => Number(node.gx) || 0));
   const minGy = Math.min(...sourceNodes.map((node) => Number(node.gy) || 0));
@@ -1029,6 +1090,15 @@ function nodeGraphCopiedModuleSizeOptions(sourceNode) {
 function copyNodeGraphModule(sourceNode) {
   if (typeof nodeGraphModuleTypeIsUniqueInPatch === "function"
     && nodeGraphModuleTypeIsUniqueInPatch(sourceNode?.type)) {
+    return;
+  }
+  if (typeof nodeGraphEfficientProductEnabled === "function"
+    && nodeGraphEfficientProductEnabled()
+    && typeof nodeGraphModuleIsEfficientProductPlanType === "function"
+    && !nodeGraphModuleIsEfficientProductPlanType(sourceNode?.type)) {
+    if (typeof setNodeInteractionHelp === "function") {
+      setNodeInteractionHelp("not in efficient build");
+    }
     return;
   }
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
@@ -2650,23 +2720,24 @@ function toggleNodeGraphModuleButtonsFromContext() {
   configureNodeSceneContextMenu("module");
 }
 
-function toggleNodeGraphModuleEnabledFromContext() {
-  const targetNodeIds = nodeGraphModuleActionTargetNodeIds();
-  if (!targetNodeIds.length) {
-    return;
+/** If any selected/target module is enabled → disable all; if all disabled → enable. */
+function toggleNodeGraphModulesEnabledForIds(targetNodeIds, options = {}) {
+  const ids = [...new Set((targetNodeIds || []).map((id) => String(id || "")).filter(Boolean))];
+  if (!ids.length) {
+    return false;
   }
-  const sources = targetNodeIds
-    .map((id) => nodeGraphPatchNode(id))
-    .filter(Boolean);
+  const sources = ids.map((id) => nodeGraphPatchNode(id)).filter(Boolean);
   if (!sources.length) {
-    return;
+    return false;
   }
 
   // Single Output selection keeps the dedicated live-output toggle.
   if (sources.length === 1 && sources[0].id === "output") {
     toggleNodeGraphLiveOutput();
-    configureNodeSceneContextMenu("module");
-    return;
+    if (options.configureMenu !== false) {
+      configureNodeSceneContextMenu("module");
+    }
+    return true;
   }
 
   const isEnabled = (node) => {
@@ -2691,10 +2762,10 @@ function toggleNodeGraphModuleEnabledFromContext() {
     .filter((node) => node.id !== "output")
     .map((node) => node.id);
   if (!nonOutputIds.length) {
-    if (outputToggled) {
+    if (outputToggled && options.configureMenu !== false) {
       configureNodeSceneContextMenu("module");
     }
-    return;
+    return outputToggled;
   }
 
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
@@ -2712,7 +2783,25 @@ function toggleNodeGraphModuleEnabledFromContext() {
       ? (nonOutputIds.length > 1 ? "modules enabled" : "module enabled")
       : (nonOutputIds.length > 1 ? "modules disabled" : "module disabled"),
   });
-  configureNodeSceneContextMenu("module");
+  if (options.configureMenu !== false) {
+    configureNodeSceneContextMenu("module");
+  }
+  return true;
+}
+
+function toggleNodeGraphModuleEnabledFromContext() {
+  toggleNodeGraphModulesEnabledForIds(nodeGraphModuleActionTargetNodeIds());
+}
+
+/** Command-center Disable: selection only (no-op if nothing selected, like Delete). */
+function toggleNodeGraphSelectedModulesEnabled() {
+  const selectedIds = typeof nodeGraphSelectedNodeIds === "function"
+    ? [...nodeGraphSelectedNodeIds()]
+    : [];
+  if (!selectedIds.length) {
+    return;
+  }
+  toggleNodeGraphModulesEnabledForIds(selectedIds);
 }
 
 function toggleNodeGraphModuleTitleFromContext() {
@@ -3087,8 +3176,7 @@ function copySelectedNodeGraphModule() {
   if (!sourceNode || sourceNode.type === "output") {
     return false;
   }
-  copyNodeGraphModule(sourceNode);
-  return true;
+  return Boolean(copyNodeGraphModule(sourceNode));
 }
 
 function nodeGraphNativeModuleCodeEntryForNode(node) {

@@ -43,6 +43,7 @@ function bindNodeGraphSceneMenuEvents() {
   document.addEventListener("pointercancel", endNodeGraphGraphNodeDrag);
   bindNodeGraphSceneElementEvent("nodeSceneDeleteModule", "click", deleteNodeGraphSelectionFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneHistoryDeleteButton", "click", deleteSelectedNodeGraphItem);
+  bindNodeGraphSceneElementEvent("nodeSceneHistoryDisableButton", "click", toggleNodeGraphSelectedModulesEnabled);
   document
     .querySelectorAll("#nodeSceneWireTypeControl [data-wire-type]")
     .forEach((button) => {
@@ -66,6 +67,16 @@ function bindNodeGraphSceneMenuEvents() {
   bindNodeGraphSceneElementEvent("nodeSceneWireAttenuvert", "click", () => {
     if (typeof attenuateSelectedNodeGraphWires === "function") {
       attenuateSelectedNodeGraphWires("attenuvert");
+    }
+  });
+  bindNodeGraphSceneElementEvent("nodeSceneWireRangeUnipolar", "click", () => {
+    if (typeof rangeSelectedNodeGraphWires === "function") {
+      rangeSelectedNodeGraphWires("unipolar");
+    }
+  });
+  bindNodeGraphSceneElementEvent("nodeSceneWireRangeBipolar", "click", () => {
+    if (typeof rangeSelectedNodeGraphWires === "function") {
+      rangeSelectedNodeGraphWires("bipolar");
     }
   });
   bindNodeGraphSceneElementEvent("nodeSceneWireU2b", "click", () => {

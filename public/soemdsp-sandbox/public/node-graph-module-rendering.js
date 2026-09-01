@@ -816,7 +816,7 @@ function createNodeGraphModuleElement(type, node) {
     article.append(graphShell);
   } else if (definition.layout === "sliderWidget") {
     // LayoutB (XY Pad contract): slim I/O beside a large face; Bias/control under.
-    // Plugin shelf: Knob (knob), Slider, Toggle, Momentary each pick a face.
+    // Controller shelf: Knob, Slider, Toggle, Momentary each pick a face.
     let face = null;
     if (type === "pluginSlider" && typeof createNodeGraphPluginSliderFace === "function") {
       face = createNodeGraphPluginSliderFace(node, type);
@@ -970,6 +970,114 @@ function createNodeGraphModuleElement(type, node) {
       : !patchNodeUi.oscilloscopeHidden)
       && typeof createNodeGraphRoundShapeDisplay === "function") {
       article.append(createNodeGraphRoundShapeDisplay(node, type));
+    }
+    appendNodeGraphModuleIoSection(
+      article,
+      createNodeGraphLayoutAIoSection(node, type, inputPorts, outputPorts),
+      node,
+      inputPorts,
+      outputPorts,
+    );
+  } else if (definition.displayType === "additiveWaveform") {
+    if ((typeof nodeGraphModuleShouldMountDisplayFace === "function"
+      ? nodeGraphModuleShouldMountDisplayFace(type, patchNode.ui)
+      : !patchNodeUi.oscilloscopeHidden)
+      && typeof createNodeGraphAdditiveWaveformDisplay === "function") {
+      const face = createNodeGraphAdditiveWaveformDisplay(node, type);
+      if (typeof tagNodeGraphModuleBand === "function") {
+        tagNodeGraphModuleBand(face, "face");
+      }
+      article.append(face);
+    }
+    appendNodeGraphModuleIoSection(
+      article,
+      createNodeGraphLayoutAIoSection(node, type, inputPorts, outputPorts),
+      node,
+      inputPorts,
+      outputPorts,
+    );
+  } else if (definition.displayType === "harmonicCount") {
+    if ((typeof nodeGraphModuleShouldMountDisplayFace === "function"
+      ? nodeGraphModuleShouldMountDisplayFace(type, patchNode.ui)
+      : !patchNodeUi.oscilloscopeHidden)
+      && typeof createNodeGraphHarmonicCountDisplay === "function") {
+      const face = createNodeGraphHarmonicCountDisplay(node, type);
+      if (typeof tagNodeGraphModuleBand === "function") {
+        tagNodeGraphModuleBand(face, "face");
+      }
+      article.append(face);
+    }
+    appendNodeGraphModuleIoSection(
+      article,
+      createNodeGraphLayoutAIoSection(node, type, inputPorts, outputPorts),
+      node,
+      inputPorts,
+      outputPorts,
+    );
+  } else if (definition.displayType === "additiveBlasterBlocks") {
+    if ((typeof nodeGraphModuleShouldMountDisplayFace === "function"
+      ? nodeGraphModuleShouldMountDisplayFace(type, patchNode.ui)
+      : !patchNodeUi.oscilloscopeHidden)
+      && typeof createNodeGraphAdditiveBlasterDisplay === "function") {
+      const face = createNodeGraphAdditiveBlasterDisplay(node, type);
+      if (typeof tagNodeGraphModuleBand === "function") {
+        tagNodeGraphModuleBand(face, "face");
+      }
+      article.append(face);
+    }
+    appendNodeGraphModuleIoSection(
+      article,
+      createNodeGraphLayoutAIoSection(node, type, inputPorts, outputPorts),
+      node,
+      inputPorts,
+      outputPorts,
+    );
+  } else if (definition.displayType === "additiveBubbleCascade") {
+    if ((typeof nodeGraphModuleShouldMountDisplayFace === "function"
+      ? nodeGraphModuleShouldMountDisplayFace(type, patchNode.ui)
+      : !patchNodeUi.oscilloscopeHidden)
+      && typeof createNodeGraphAdditiveBubbleDisplay === "function") {
+      const face = createNodeGraphAdditiveBubbleDisplay(node, type);
+      if (typeof tagNodeGraphModuleBand === "function") {
+        tagNodeGraphModuleBand(face, "face");
+      }
+      article.append(face);
+    }
+    appendNodeGraphModuleIoSection(
+      article,
+      createNodeGraphLayoutAIoSection(node, type, inputPorts, outputPorts),
+      node,
+      inputPorts,
+      outputPorts,
+    );
+  } else if (definition.displayType === "additiveFilterCurve") {
+    if ((typeof nodeGraphModuleShouldMountDisplayFace === "function"
+      ? nodeGraphModuleShouldMountDisplayFace(type, patchNode.ui)
+      : !patchNodeUi.oscilloscopeHidden)
+      && typeof createNodeGraphAdditiveFilterCurveDisplay === "function") {
+      const face = createNodeGraphAdditiveFilterCurveDisplay(node, type);
+      if (typeof tagNodeGraphModuleBand === "function") {
+        tagNodeGraphModuleBand(face, "face");
+      }
+      article.append(face);
+    }
+    appendNodeGraphModuleIoSection(
+      article,
+      createNodeGraphLayoutAIoSection(node, type, inputPorts, outputPorts),
+      node,
+      inputPorts,
+      outputPorts,
+    );
+  } else if (definition.displayType === "harmonicLines") {
+    if ((typeof nodeGraphModuleShouldMountDisplayFace === "function"
+      ? nodeGraphModuleShouldMountDisplayFace(type, patchNode.ui)
+      : !patchNodeUi.oscilloscopeHidden)
+      && typeof createNodeGraphHarmonicLinesDisplay === "function") {
+      const face = createNodeGraphHarmonicLinesDisplay(node, type);
+      if (typeof tagNodeGraphModuleBand === "function") {
+        tagNodeGraphModuleBand(face, "face");
+      }
+      article.append(face);
     }
     appendNodeGraphModuleIoSection(
       article,

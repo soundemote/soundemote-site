@@ -1,5 +1,6 @@
-// Jack chrome SSOT — analog/digital + red/green/blue channel.
-// Cables never use this. Pairing (L↔R) stays in node-graph-wire-actions.js.
+// Jack chrome SSOT — analog/digital + red/green/blue channel (+ CMYK yellow/cyan).
+// Generic analog In/Out stay uncolored (gold). Explicit Mono = green; L/R = red/blue.
+// APP_POLICY §13. Cables never use this. Pairing (L↔R) stays in node-graph-wire-actions.js.
 
 const nodeGraphJackRgbTypeCache = new Map();
 const nodeGraphJackQuadTypeCache = new Map();
@@ -134,6 +135,40 @@ function nodeGraphJackChannelCssColor(channel) {
       ? nodeGraphCssColor("--node-jack-blue", "#4d8dff")
       : "#4d8dff";
   }
+  if (channel === "purple") {
+    return typeof nodeGraphCssColor === "function"
+      ? nodeGraphCssColor("--node-jack-purple", "#c44dff")
+      : "#c44dff";
+  }
+  // CMYK additive plane: C=cyan Parameter, Y=yellow Graph. M/K reserved unused.
+  if (channel === "cyan") {
+    return typeof nodeGraphCssColor === "function"
+      ? nodeGraphCssColor("--node-jack-cyan", "#00e5ff")
+      : "#00e5ff";
+  }
+  if (channel === "yellow") {
+    return typeof nodeGraphCssColor === "function"
+      ? nodeGraphCssColor("--node-jack-yellow", "#ffe600")
+      : "#ffe600";
+  }
+  if (channel === "turquoise") {
+    // Legacy alias → cyan (block-rate Parameter). Prefer "cyan".
+    return typeof nodeGraphCssColor === "function"
+      ? nodeGraphCssColor("--node-jack-cyan", "#00e5ff")
+      : "#00e5ff";
+  }
+  if (channel === "magenta") {
+    // Reserved (CMYK M) — unused for live jack assignment.
+    return typeof nodeGraphCssColor === "function"
+      ? nodeGraphCssColor("--node-jack-magenta", "#e040fb")
+      : "#e040fb";
+  }
+  if (channel === "black" || channel === "k") {
+    // Reserved (CMYK K) — unused for live jack assignment.
+    return typeof nodeGraphCssColor === "function"
+      ? nodeGraphCssColor("--node-jack-black", "#111111")
+      : "#111111";
+  }
   return "";
 }
 
@@ -253,9 +288,8 @@ function nodeGraphJackStereoChannel(value) {
   if (raw === "m" || raw === "mono" || first === "mono" || last === "mono") {
     return "green";
   }
-  if (raw === "in" || raw === "input" || raw === "out" || raw === "output") {
-    return "green";
-  }
+  // Bare In/Out/Input/Output = generic analog → uncolored (gold). Not purple.
+  // Explicit Mono (name or label) is green above; Left/Right are red/blue.
   if (/^r\d+$/.test(raw) || raw === "right" || first === "right" || last === "right" || raw === "toner") {
     return "blue";
   }
@@ -263,7 +297,13 @@ function nodeGraphJackStereoChannel(value) {
 }
 
 /**
- * "" | "red" | "green" | "blue"
+ * "" | "red" | "green" | "blue" | "purple" | "cyan" | "yellow"
+ * (+ reserved "magenta" / "black" unused)
+ *
+ * CMYK additive non-realtime plane (Yellow Graph):
+ *   Yellow → Graph chunk in/out (data-plane, once per quantum)
+ *   Cyan   → Parameter / block-rate ZOH in/out (once per quantum, held)
+ *   Magenta / K → reserved unused
  * Digital ports have no channel.
  */
 function nodeGraphJackChannel(type, port, io = "output") {
@@ -273,6 +313,12 @@ function nodeGraphJackChannel(type, port, io = "output") {
   }
   if (nodeGraphJackSignalKind(type, key, io) === "digital") {
     return "";
+  }
+  if (typeof nodeGraphPortIsGraphChunkSignal === "function" && nodeGraphPortIsGraphChunkSignal(type, key, io)) {
+    return "yellow";
+  }
+  if (typeof nodeGraphPortIsBlockRateSignal === "function" && nodeGraphPortIsBlockRateSignal(type, key, io)) {
+    return "cyan";
   }
   const fromRgb = nodeGraphJackRgbLetterChannel(type, key);
   if (fromRgb) {
@@ -320,6 +366,18 @@ function nodeGraphJackChannel(type, port, io = "output") {
         return fromAliasChaos;
       }
       const fromAlias = nodeGraphJackStereoChannel(alias);
+      // Legacy Out/In/Mono aliases must not recolor a renamed jack
+      // (e.g. polyBlep Out → Wave Out stays gold, not green-via-Mono).
+      if (fromAlias === "green" || fromAlias === "red" || fromAlias === "blue") {
+        const aliasKey = String(alias || "").trim().toLowerCase();
+        if (
+          aliasKey === "out" || aliasKey === "output"
+          || aliasKey === "in" || aliasKey === "input"
+          || aliasKey === "mono" || aliasKey === "m"
+        ) {
+          continue;
+        }
+      }
       if (fromAlias) {
         return fromAlias;
       }
@@ -380,6 +438,32 @@ function nodeGraphJackElementVisibility(element) {
       reasons: ["missing-element"],
     };
   }
+  // Off-screen cull uses display:none on the whole .dsp-node — ports are 0×0
+  // by design there. Do not treat them as a jack-chrome failure.
+  const viewportAsleep = Boolean(element.closest?.(".dsp-node.viewport-asleep"));
+  if (viewportAsleep) {
+    return {
+      node: element.dataset?.node || "",
+      port: element.dataset?.port || "",
+      io: element.dataset?.io || "",
+      channel: element.dataset?.jackChannel
+        || element.closest?.(".node-io-row")?.dataset?.jackChannel
+        || "",
+      width: 0,
+      height: 0,
+      display: "none",
+      visibility: "hidden",
+      opacity: 0,
+      painted: false,
+      skipped: true,
+      viewportAsleep: true,
+      ioHidden: false,
+      unusedHidden: false,
+      connected: Boolean(element.classList?.contains("connected-port")),
+      stroke: "",
+      reasons: ["viewport-asleep"],
+    };
+  }
   const cs = typeof getComputedStyle === "function" ? getComputedStyle(element) : null;
   const rect = typeof element.getBoundingClientRect === "function"
     ? element.getBoundingClientRect()
@@ -420,6 +504,8 @@ function nodeGraphJackElementVisibility(element) {
     visibility,
     opacity: Number.isFinite(opacity) ? opacity : 1,
     painted,
+    skipped: false,
+    viewportAsleep: false,
     ioHidden,
     unusedHidden: unusedHost && !connected,
     connected,
@@ -449,27 +535,38 @@ function nodeGraphJackVisibilityCensus(root) {
   const modules = [...scope.querySelectorAll(".dsp-node")];
   const ports = [...scope.querySelectorAll(".node-port")].filter(nodeGraphJackIsSignalPort);
   const rows = ports.map(nodeGraphJackElementVisibility);
-  const painted = rows.filter((row) => row.painted);
+  // Only awake modules must show jacks. Asleep (display:none) ports are skipped.
+  const considered = rows.filter((row) => !row.skipped && !row.viewportAsleep);
+  const painted = considered.filter((row) => row.painted);
   const inlets = painted.filter((row) => row.io === "input");
   const outlets = painted.filter((row) => row.io === "output");
   const rgb = painted.filter((row) => row.channel === "red" || row.channel === "green" || row.channel === "blue");
+  const awakeModules = modules.filter((node) => !node.classList.contains("viewport-asleep"));
   const workspace = typeof document !== "undefined" && typeof document.getElementById === "function"
     ? document.getElementById("nodeGraphWorkspace")
     : scope.querySelector?.(".node-graph-workspace");
+  // ok when awake jacks paint, or when there are no awake signal ports to judge
+  // (empty patch / everything culled off-screen).
+  const ok = considered.length === 0
+    ? true
+    : (painted.length > 0 && (inlets.length > 0 || outlets.length > 0));
   return {
-    ok: painted.length > 0 && (inlets.length > 0 || outlets.length > 0),
+    ok,
     moduleCount: modules.length,
+    awakeModuleCount: awakeModules.length,
     portCount: ports.length,
+    consideredCount: considered.length,
     paintedCount: painted.length,
     inletCount: inlets.length,
     outletCount: outlets.length,
     rgbCount: rgb.length,
+    asleepSkipped: rows.filter((row) => row.viewportAsleep || row.skipped).length,
     ioHiddenModules: modules.filter((node) => node.classList.contains("io-hidden")).length,
     unusedHiddenModules: modules.filter((node) => node.classList.contains("unused-hidden")).length,
     workspaceUnusedHidden: Boolean(workspace?.classList.contains("patch-unused-ports-hidden")),
     applyFn: typeof nodeGraphApplyJackChrome === "function",
     sample: painted.slice(0, 24),
-    hidden: rows.filter((row) => !row.painted).slice(0, 16),
+    hidden: considered.filter((row) => !row.painted).slice(0, 16),
   };
 }
 
@@ -508,11 +605,25 @@ function nodeGraphScheduleJackVisibilityLog(reason = "census") {
   }
   nodeGraphJackVisibilityLogTimer = setTimeout(() => {
     nodeGraphJackVisibilityLogTimer = 0;
-    const run = () => nodeGraphLogJackVisibility(reason);
+    const run = (attempt = 0) => {
+      const report = nodeGraphLogJackVisibility(reason);
+      // patch-dom can fire before zoom/layout settles — awake ports briefly 0×0.
+      // Retry once after another frame instead of a hard false FAIL.
+      if (
+        report
+        && !report.ok
+        && attempt < 1
+        && (report.consideredCount || 0) > 0
+        && (report.paintedCount || 0) === 0
+        && typeof requestAnimationFrame === "function"
+      ) {
+        requestAnimationFrame(() => requestAnimationFrame(() => run(attempt + 1)));
+      }
+    };
     if (typeof requestAnimationFrame === "function") {
-      requestAnimationFrame(() => requestAnimationFrame(run));
+      requestAnimationFrame(() => requestAnimationFrame(() => run(0)));
     } else {
-      run();
+      run(0);
     }
   }, 60);
 }

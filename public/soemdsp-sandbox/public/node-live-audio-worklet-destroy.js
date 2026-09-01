@@ -7,15 +7,21 @@ NodeLiveAudioProcessor.prototype.destroySabrinaReverbState = function destroySab
       state.nativeBoundParams = null;
       state.cachedParams = null;
     }
-    if (!state?.nativeHandle || !this.nativeSabrinaReverb?.soemdsp_sabrina_reverb_destroy) {
+    if (!state?.nativeHandle) {
       return;
     }
-    this.nativeSabrinaReverb.soemdsp_sabrina_reverb_destroy(state.nativeHandle);
+    const destroy =
+      this.nativeSabrinaReverb?.soemdsp_sabrina_reverb_destroy
+      || this.nativeGraph?.soemdsp_sabrina_reverb_destroy;
+    if (!destroy) {
+      return;
+    }
+    destroy(state.nativeHandle);
     state.nativeHandle = 0;
 };
 
 NodeLiveAudioProcessor.prototype.destroyStereoFilterNativeState = function destroyStereoFilterNativeState(bundle, destroyFn) {
-    for (const channelState of [bundle?.mono, bundle?.left, bundle?.right]) {
+    for (const channelState of [bundle?.mono, bundle?.ext, bundle?.left, bundle?.right]) {
       if (channelState) {
         destroyFn(channelState);
       }
@@ -200,10 +206,17 @@ NodeLiveAudioProcessor.prototype.destroyRandomClockNativeState = function destro
 };
 
 NodeLiveAudioProcessor.prototype.destroyPingPongDelayNativeState = function destroyPingPongDelayNativeState(state) {
-    if (state.nativeHandle && this.nativePingPongDelay?.soemdsp_ping_pong_delay_destroy) {
-      this.nativePingPongDelay.soemdsp_ping_pong_delay_destroy(state.nativeHandle);
-      state.nativeHandle = 0;
+    if (!state?.nativeHandle) {
+      return;
     }
+    const destroy =
+      this.nativePingPongDelay?.soemdsp_ping_pong_delay_destroy
+      || this.nativeGraph?.soemdsp_ping_pong_delay_destroy;
+    if (!destroy) {
+      return;
+    }
+    destroy(state.nativeHandle);
+    state.nativeHandle = 0;
 };
 
 NodeLiveAudioProcessor.prototype.destroyPapoulisFilterNativeState = function destroyPapoulisFilterNativeState(state) {
@@ -263,13 +276,6 @@ NodeLiveAudioProcessor.prototype.destroyTb303FilterNativeState = function destro
 NodeLiveAudioProcessor.prototype.destroyPassiveFilterNativeState = function destroyPassiveFilterNativeState(state) {
     if (state?.nativeHandle && this.nativePassiveFilter?.soemdsp_passive_filter_destroy) {
       this.nativePassiveFilter.soemdsp_passive_filter_destroy(state.nativeHandle);
-      state.nativeHandle = 0;
-    }
-};
-
-NodeLiveAudioProcessor.prototype.destroyVactrolEnvelopeNativeState = function destroyVactrolEnvelopeNativeState(state) {
-    if (state?.nativeHandle && this.nativeVactrolEnvelope?.soemdsp_vactrol_envelope_destroy) {
-      this.nativeVactrolEnvelope.soemdsp_vactrol_envelope_destroy(state.nativeHandle);
       state.nativeHandle = 0;
     }
 };
@@ -475,6 +481,13 @@ NodeLiveAudioProcessor.prototype.destroyExpAdsrNativeState = function destroyExp
 NodeLiveAudioProcessor.prototype.destroyRandomWalkNativeState = function destroyRandomWalkNativeState(state) {
     if (state?.nativeHandle && this.nativeRandomWalk?.soemdsp_random_walk_destroy) {
       this.nativeRandomWalk.soemdsp_random_walk_destroy(state.nativeHandle);
+      state.nativeHandle = 0;
+    }
+};
+
+NodeLiveAudioProcessor.prototype.destroyCheapWalkNativeState = function destroyCheapWalkNativeState(state) {
+    if (state?.nativeHandle && this.nativeCheapWalk?.soemdsp_cheap_walk_destroy) {
+      this.nativeCheapWalk.soemdsp_cheap_walk_destroy(state.nativeHandle);
       state.nativeHandle = 0;
     }
 };

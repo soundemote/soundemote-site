@@ -98,6 +98,8 @@ const nodeGraphModuleCatalogShelfIdSet = Object.freeze(new Set(nodeGraphModuleCa
 const nodeGraphModuleCatalogUnderConstructionSort = Object.freeze([
   "canvas",
   "humanFilter",
+  "chaoticPhaseLockingFilter",
+  "metallicRatio",
   "oscilloscopeBank",
   "shootingStarTail",
   "wallDelay",
@@ -142,6 +144,7 @@ const nodeGraphModuleCatalogUnderConstructionSort = Object.freeze([
   "gradientVectorscope",
   "lufs",
   "osc",
+  "additiveImage",
 ]);
 
 // Types that used to be on the UC shelf and are now shipped. Always strip
@@ -150,8 +153,8 @@ const nodeGraphModuleCatalogUnderConstructionSort = Object.freeze([
 const nodeGraphModuleCatalogRetiredFromUnderConstruction = Object.freeze([
   "output",
   "audioInput",
-  "airClipper",
   "rms",
+  "additiveLinearFilter",
 ]);
 
 /** Short shop-card reminder for under-construction modules (title tooltip). */
@@ -192,6 +195,7 @@ const nodeGraphModuleConstructionPlans = Object.freeze({
   ePiano: "GM electric piano. Parked until sample/MIDI voices exist.",
   percussion: "GM channel-10 kit. Parked until sample/MIDI voices exist.",
   theremin: "Proximity pitch/volume. Parked until that controller lands.",
+  additiveImage: "Image→partials. Parked until image analysis ships.",
   audioInput: "Live mic/line in. Parked until host capture is wired.",
   pluginInput: "Plugin stereo in. Parked until plugin I/O ships.",
   pluginOutput: "Plugin stereo out. Parked until plugin I/O ships.",
@@ -203,6 +207,8 @@ const nodeGraphModuleConstructionPlans = Object.freeze({
   shootingStarTail: "Shooting-star trail events. Parked until that game trigger lands.",
   lufs: "Integrated / short-term / momentary loudness (LUFS). Parked on Multimeter until loudness metering lands.",
   osc: "Open Sound Control (UDP ↔ CV). Parked on Controller until network send/receive lands.",
+  metallicRatio: "Metallic-mean Ratio CV (golden/silver/…). Useful for detune, delay ratios, and spacing — parked until the modulator shelf polish pass.",
+  additiveImage: "Image → Yellow Graph harmonics. Parked until the Additive image analysis pass.",
 });
 
 // Unified module department definitions — single source of truth for
@@ -212,7 +218,7 @@ const nodeGraphModuleConstructionPlans = Object.freeze({
 // strings and mismatched keys between them.
 const nodeGraphModuleStoreDepartments = Object.freeze([
   { id: "portal",       emoji: "🌐", label: "Portal",       symbol: "IO",  title: "Portals",   pitch: "Patch boundary portals for moving left, right, and mono signal lanes between rooms, templates, and larger circuits." },
-  { id: "controller",   emoji: "🕹️", label: "Controller",   symbol: "⌘",   title: "Controllers", pitch: "Input devices and control bridges for keyboards, MIDI, gamepads, and external gestures." },
+  { id: "controller",   emoji: "🕹️", label: "Controller",   symbol: "⌘",   title: "Controllers", pitch: "Face controls and input bridges: knobs, sliders, buttons, XY pads, MIDI, macros, and external gestures." },
   { id: "oscillator",   emoji: "〰️", label: "Oscillator",   symbol: "∿",   title: "Oscillator", pitch: "Voices and raw tones: classic waves, tables, sync, supersaws, and other things that start a sound." },
   { id: "modulator",    emoji: "♾️", label: "Modulator",    symbol: "⇄",   title: "Modulator", pitch: "Motion sources for pitch, amplitude, time, and texture. Small control engines that make patches move." },
   { id: "additive",     emoji: "📊", label: "Additive",     symbol: "∑",   title: "Additive",   pitch: "Harmonic-stack voices: build timbre from partials, not a single waveform." },
@@ -410,17 +416,126 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "RobinSinusoid",
     notes: ["RS-MET", "rosic", "recursive sine", "self-oscillating", "sinusoid"],
   },
-  additiveOsc: {
+  // additiveOsc / gpuAdditiveOsc retired — Yellow Graph chain replaces them.
+  additiveGenerator: {
     category: "additive",
-    description: "Build timbres from harmonics—use for organ-ish, bell-ish, or carefully voiced spectra.",
-    label: "Additive Osc",
-    notes: ["additive synthesis", "harmonics", "native"],
+    description: "Saw / Square / Pulse* / Tri / RectSine + PWM + Phase Rotation + Harmonics (Instant/Smoothed/Decimal fade) → Yellow Graph.",
+    label: "Additive Generator",
+    notes: ["additive", "yellow graph", "harmonics", "morph", "decimal"],
   },
-  gpuAdditiveOsc: {
+  additiveLinearFilter: {
     category: "additive",
-    description: "GPU additive voice when you want heavy harmonic stacks without maxing the audio thread.",
-    label: "GPU Additive",
-    notes: ["additive synthesis", "gpu"],
+    description: "Rational-curve spectral filter (LP/BP/HP). Cutoff Hz; Slope brickwall→gradual; Skew bends the skirt.",
+    label: "Linear Filter",
+    notes: ["additive", "yellow graph", "filter", "rational", "skew", "LP", "BP", "HP"],
+  },
+  additiveAnalogFilter: {
+    category: "additive",
+    description: "Butterworth spectral filter (LP/BP/HP). Cutoff Hz; Slope in dB/oct; Skew warps log(f/fc).",
+    label: "Butterworth Filter",
+    notes: ["additive", "yellow graph", "filter", "butterworth", "dB/oct", "LP", "BP", "HP"],
+  },
+  additiveLadderFilter: {
+    category: "additive",
+    description: "Warm ladder-style spectral filter (LP/BP/HP). Cutoff, Slope dB/oct, Resonance peak — easy resonant tone without loading Butterworth.",
+    label: "Ladder Filter",
+    notes: ["additive", "yellow graph", "ladder", "resonance", "filter", "LP", "BP", "HP"],
+  },
+  curveEnvelopeMod: {
+    category: "additive",
+    description: "Block-rate Curve Envelope for Additive CV: Gate → cyan Out (once per quantum). Drive Bubble/Butterworth cutoff mods.",
+    label: "CurveEnvelopeMod",
+    notes: ["additive", "envelope", "adsr", "block-rate", "cyan", "cv"],
+  },
+  pluckEnvelopeMod: {
+    category: "additive",
+    description: "Pluck envelope mod publisher: Trigger → sample-accurate mod strip for Bubble Cutoff (no quantum staircase).",
+    label: "PluckEnvelopeMod",
+    notes: ["additive", "pluck", "envelope", "sample-accurate", "cyan", "cv", "bubble"],
+  },
+  additiveBubble: {
+    category: "additive",
+    description: "Phase cascade bubble: Skew depth + Exp/Log curve bend (no amp cutoff / rotation).",
+    label: "Bubble",
+    notes: ["additive", "yellow graph", "phase", "bubble", "growl"],
+  },
+  additiveFrequencySkew: {
+    category: "additive",
+    description: "Low/High Stretch expand the ratio span; Skew+Curve compress middles toward fund or last (endpoints fixed).",
+    label: "FrequencySkew",
+    notes: ["additive", "yellow graph", "ratio", "frequency", "skew", "stretch"],
+  },
+  additiveQuantizeFreq: {
+    category: "additive",
+    description: "Quantize overtone ratios to the fund (multiples/divisions), then optional random ratio offset.",
+    label: "QuantizeFreq",
+    notes: ["additive", "yellow graph", "ratio", "quantize", "random"],
+  },
+  additiveQuantizePhase: {
+    category: "additive",
+    description: "Quantize Graph phases to quarter-cycles, then optional random phase offset.",
+    label: "QuantizePhase",
+    notes: ["additive", "yellow graph", "phase", "quantize", "random"],
+  },
+  additiveNoisyFreq: {
+    category: "additive",
+    description: "Per-harmonic CheapWalk on Yellow Graph ratios (frequency / partial index).",
+    label: "NoisyFreq",
+    notes: ["additive", "yellow graph", "cheap walk", "noisy", "frequency"],
+  },
+  additiveNoisyPhase: {
+    category: "additive",
+    description: "Per-harmonic CheapWalk on Yellow Graph phase.",
+    label: "NoisyPhase",
+    notes: ["additive", "yellow graph", "cheap walk", "phase"],
+  },
+  additivePan: {
+    category: "additive",
+    description: "AutoPan: Width fans odd/even hard L↔R (wraps past ±1); Rate/Depth/Spread/Orbit swirl; Shimmer jumps highs between speakers.",
+    label: "AutoPan",
+    notes: ["additive", "yellow graph", "pan", "autopan", "width", "wrap", "shimmer", "orbit", "stereo", "swirl"],
+  },
+  additiveNoisyPan: {
+    category: "additive",
+    description: "Per-harmonic CheapWalk on Yellow Graph pan (−1…+1). Heard on Additive Out Left/Right.",
+    label: "NoisyPan",
+    notes: ["additive", "yellow graph", "cheap walk", "pan", "stereo"],
+  },
+  additiveNoisyAmp: {
+    category: "additive",
+    description: "Per-harmonic CheapWalk on Yellow Graph amplitude (clamped 0…1).",
+    label: "NoisyAmp",
+    notes: ["additive", "yellow graph", "cheap walk", "amplitude"],
+  },
+  additivePhaseEntry: {
+    category: "additive",
+    description: "How new harmonics enter phase at Additive Out: Lock (in-phase), Free (phase 0 shimmer), or Random.",
+    label: "Phase Entry",
+    notes: ["additive", "yellow graph", "phase", "harmonics", "lock", "free", "random"],
+  },
+  additiveDiffusor: {
+    category: "additive",
+    description: "Hard random phase scramble + CheapWalk Speed animation.",
+    label: "Diffusor",
+    notes: ["additive", "yellow graph", "phase", "diffuse", "cheapwalk", "speed"],
+  },
+  additiveBlaster: {
+    category: "additive",
+    description: "Index bins with Stagger (Bubble-like phase jumps) or Random cohort phases. Depth / Log Curve / Jump / Bias / Invert.",
+    label: "Blaster",
+    notes: ["additive", "yellow graph", "phase", "stagger", "bubble", "bins", "log curve", "jump"],
+  },
+  additiveImage: {
+    category: "additive",
+    description: "Under construction. Image → Yellow Graph harmonics (parked).",
+    label: "AdditiveImage",
+    notes: ["additive", "yellow graph", "image", "under construction"],
+  },
+  additiveOut: {
+    category: "additive",
+    description: "Renders Yellow Graph to Mono / Left / Right (pan[]). Frequency, Amplitude + harmonic lines face.",
+    label: "Additive Out",
+    notes: ["additive", "yellow graph", "harmonic lines", "stereo", "pan"],
   },
   ellipsoid: {
     category: "modulator",
@@ -606,9 +721,15 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   metallicRatio: {
     category: "modulator",
-    description: "Golden/silver/bronze ratios for detune spreads, delay lengths, or harmonic spacing.",
+    description: "Closed-form metallic means (golden/silver/…) as a Ratio CV — (n+√(n²+4))/2. Detune, delays, spacing. Under construction.",
     label: "Metallic Ratio",
-    notes: ["RS-MET tribute", "metallic mean", "golden ratio", "Robin Schmidt"],
+    notes: ["RS-MET tribute", "metallic mean", "golden ratio", "Robin Schmidt", "under construction"],
+  },
+  cheapWalk: {
+    category: "noise",
+    description: "Tiny reflecting bipolar walk — LCG step + bounce at ±1. Cheaper than Random Walk.",
+    label: "Cheap Walk",
+    notes: ["reflecting walk", "LCG", "noise", "modulation"],
   },
   chordMemory: {
     category: "musical",
@@ -809,9 +930,10 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["stereo output", "uniform to gaussian", "seed control", "native"],
   },
   randomWalk: {
-    category: "modulator",
+    category: "noise",
     description: "Controlled wander CV—smooth drift, steps, or filtered noise motion for parameters.",
-    notes: ["bounded walk", "jitter walk", "one-pole smoothing", "native"],
+    label: "Random Walk",
+    notes: ["bounded walk", "jitter walk", "one-pole smoothing", "native", "noise"],
   },
   fractalBrownianNoise: {
     category: "noise",
@@ -898,6 +1020,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "Attenuverter",
     notes: ["attenuverter", "scale", "invert", "offset", "utility", "native"],
   },
+  range: {
+    category: "utility",
+    description: "Linear map from [In Low, In High] to [Out Low, Out High]. Default −1…+1 → 0…1000.",
+    label: "Range",
+    notes: ["range", "map", "scale", "remap", "utility", "dynamics", "native"],
+  },
   u2b: {
     category: "dynamics",
     description: "Unipolar 0…1 to bipolar −1…1 (out = 2·in − 1).",
@@ -927,12 +1055,6 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Drive with Gain, then Soft Clip last: below Min dB is dry; Min→Max is the shared Soft Clipper tanh knee (wider span = more gradual).",
     label: "Clipper Limiter",
     notes: ["soft clip", "limiter", "dB", "tanh", "ADAA", "dynamics", "native"],
-  },
-  airClipper: {
-    category: "invisible",
-    description: "Not listed. Holding pen — unsure about this module.",
-    label: "AirClipper",
-    notes: ["invisible", "airwindows", "Density3", "density", "soft clip"],
   },
   rotate3dTo2d: {
     category: "dynamics",
@@ -1456,7 +1578,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   chaoticPhaseLockingFilter: {
     category: "analogFilter",
     description: "Phase-locked chaotic feedback textures through LP/HP stages.",
-    label: "Chaotic Phase Locking Filter",
+    label: "Chaotic Phaselocking Filter",
     notes: ["ellipse waveshaper", "direct feedback", "phase locking", "analog"],
   },
   modeResonator: {
@@ -1633,9 +1755,10 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     category: "dynamics",
     description:
       "Protective brickwall ceiling with optional look-ahead and gain compensation. Peak safety — not musical squash.",
-    label: "Brickwall",
+    label: "Brickwall Limiter",
     notes: [
       "brickwall",
+      "brickwall limiter",
       "look-ahead",
       "lookahead",
       "ceiling",
@@ -1650,11 +1773,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   limiter: {
     category: "dynamics",
     description:
-      "Musical limiter: input gain / threshold / ratio GR, sidechain key, Env out, amplitude trim. Look-ahead pump — not a hard ceiling.",
-    label: "Limiter",
+      "Pump limiter: input gain / threshold / ratio GR, sidechain key, Env out, amplitude trim. Musical squash — not a hard ceiling.",
+    label: "Pump Limiter",
     notes: [
       "limiter",
       "pump",
+      "pump limiter",
       "pumping",
       "sidechain",
       "threshold",
@@ -1664,6 +1788,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
       "dynamics",
       "musical",
       "gain reduction",
+      "native",
     ],
   },
   inertialFilter: {
@@ -1809,8 +1934,8 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   sampleHold: {
     category: "modulator",
-    description: "Grab a value on trigger and freeze it—stepped random, stepped automation.",
-    notes: ["triggered capture", "held output", "stepped motion"],
+    description: "Grab on Clock: Ext In→Ext Out plus internal noise on Left/Right, same clock. Interpolate Off/Linear/Smoothstep.",
+    notes: ["clock capture", "ext in out", "internal noise", "left right", "interpolate"],
   },
   expAdsr: {
     category: "envelope",
@@ -1833,7 +1958,6 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
       "lfo",
       "easy envelope",
       "default envelope",
-      "vactrol style",
       "one-pole",
       "exponential",
       "RC",
@@ -1856,16 +1980,6 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Fast pluck contour for picks, pings, and percussive decays.",
     label: "Pluck Envelope",
     notes: ["trigger input", "decay energy", "auto release", "native"],
-  },
-  vactrolEnvelopeSeries: {
-    category: "envelope",
-    description: "Named vactrol timings—optical lag character from real VTL parts.",
-    notes: ["light input", "part switch", "dark current", "native"],
-  },
-  vactrolEnvelopeCustom: {
-    category: "envelope",
-    description: "Roll-your-own optical lag envelope when no stock vactrol fits.",
-    notes: ["light input", "custom vactrol", "dark current", "native"],
   },
   sandboxVisuals: {
     category: "rgb",
@@ -2331,15 +2445,11 @@ function normalizeNodeGraphNativeModuleEntry(entry = {}) {
   });
 }
 
-const nodeGraphNativeModuleTargetAliases = Object.freeze({
-  vactrolEnvelope: Object.freeze(["vactrolEnvelopeSeries", "vactrolEnvelopeCustom"]),
-});
+const nodeGraphNativeModuleTargetAliases = Object.freeze({});
 
 const nodeGraphModuleStoreNativeLabelTypes = Object.freeze(new Set([
   "kickEnvelope",
   "attackDecay",
-  "vactrolEnvelopeSeries",
-  "vactrolEnvelopeCustom",
   "sineKick",
 ]));
 
@@ -2410,9 +2520,61 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
     source: "public/modules/activeFilter/active-filter-math.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/activeFilter/active-filter-math.js",
   },
-  additiveOsc: {
-    source: "public/modules/additiveOsc/additive-osc-worklet-evaluator.js",
-    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/additiveOsc/additive-osc-worklet-evaluator.js",
+  additiveGenerator: {
+    source: "public/modules/additiveGenerator/additive-generator-worklet-evaluator.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/additiveGenerator/additive-generator-worklet-evaluator.js",
+  },
+  additiveLinearFilter: {
+    source: "public/modules/additiveGraph/additive-graph-math.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/additiveGraph/additive-graph-math.js",
+  },
+  additiveAnalogFilter: {
+    source: "public/modules/additiveGraph/additive-graph-math.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/additiveGraph/additive-graph-math.js",
+  },
+  additiveBubble: {
+    source: "public/modules/additiveGraph/additive-graph-math.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/additiveGraph/additive-graph-math.js",
+  },
+  additiveFrequencySkew: {
+    source: "public/modules/additiveGraph/additive-graph-math.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/additiveGraph/additive-graph-math.js",
+  },
+  additiveQuantizeFreq: {
+    source: "public/modules/additiveGraph/additive-graph-math.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/additiveGraph/additive-graph-math.js",
+  },
+  additiveQuantizePhase: {
+    source: "public/modules/additiveGraph/additive-graph-math.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/additiveGraph/additive-graph-math.js",
+  },
+  additiveNoisyFreq: {
+    source: "public/modules/additiveGraph/additive-graph-math.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/additiveGraph/additive-graph-math.js",
+  },
+  additiveNoisyPhase: {
+    source: "public/modules/additiveGraph/additive-graph-math.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/additiveGraph/additive-graph-math.js",
+  },
+  additivePan: {
+    source: "public/modules/additivePan/additive-pan-live-evaluator.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/additivePan/additive-pan-live-evaluator.js",
+  },
+  additiveNoisyPan: {
+    source: "public/modules/additiveGraph/additive-graph-math.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/additiveGraph/additive-graph-math.js",
+  },
+  additiveNoisyAmp: {
+    source: "public/modules/additiveGraph/additive-graph-math.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/additiveGraph/additive-graph-math.js",
+  },
+  additiveImage: {
+    source: "public/modules/additiveImage/additive-image-live-evaluator.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/additiveImage/additive-image-live-evaluator.js",
+  },
+  additiveOut: {
+    source: "public/modules/additiveOut/additive-out-worklet-evaluator.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/additiveOut/additive-out-worklet-evaluator.js",
   },
   aliasSine: {
     source: "public/modules/aliasSine/alias-sine-worklet-evaluator.js",
@@ -2465,6 +2627,10 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
   attenuverter: {
     source: "public/modules/attenuverter/attenuverter-math.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/attenuverter/attenuverter-math.js",
+  },
+  range: {
+    source: "native_modules/range/range.cpp",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/range/range.cpp",
   },
   u2b: {
     source: "native_modules/u2b/u2b.cpp",
@@ -2758,8 +2924,8 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/lookaheadLimiter/lookahead-limiter-math.js",
   },
   limiter: {
-    source: "public/modules/lookaheadLimiter/lookahead-limiter-math.js",
-    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/lookaheadLimiter/lookahead-limiter-math.js",
+    source: "native_modules/pumping_limiter/pumping_limiter.cpp",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/pumping_limiter/pumping_limiter.cpp",
   },
   logSpiral: {
     source: "public/modules/logSpiral/log-spiral-worklet-evaluator.js",
@@ -2933,6 +3099,10 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
     source: "public/modules/randomWalk/random-walk-math.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/randomWalk/random-walk-math.js",
   },
+  cheapWalk: {
+    source: "public/modules/cheapWalk/cheap-walk-math.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/cheapWalk/cheap-walk-math.js",
+  },
   rayBouncer: {
     source: "public/modules/rayBouncer/ray-bouncer-worklet-evaluator.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/rayBouncer/ray-bouncer-worklet-evaluator.js",
@@ -3037,10 +3207,6 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
     source: "public/modules/clipperLimiter/clipper-limiter-math.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/clipperLimiter/clipper-limiter-math.js",
   },
-  airClipper: {
-    source: "public/modules/airClipper/air-clipper-math.js",
-    sourceUrl: "https://github.com/airwindows/airwindows/blob/master/plugins/WinVST/Density3/Density3Proc.cpp",
-  },
   softpopOscillator: {
     source: "public/modules/softpopOscillator/softpop-oscillator-math.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/softpopOscillator/softpop-oscillator-math.js",
@@ -3121,14 +3287,6 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
     source: "public/modules/turingMachine/turing-machine-worklet-evaluator.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/turingMachine/turing-machine-worklet-evaluator.js",
   },
-  vactrolEnvelope: {
-    source: "public/modules/vactrolEnvelope/vactrol-envelope-live-evaluator.js",
-    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/vactrolEnvelope/vactrol-envelope-live-evaluator.js",
-  },
-  vactrolEnvelopeSeries: {
-    source: "public/modules/vactrolEnvelopeSeries/vactrol-envelope-series-worklet-evaluator.js",
-    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/vactrolEnvelopeSeries/vactrol-envelope-series-worklet-evaluator.js",
-  },
   vectorscopeTransform: {
     source: "public/modules/vectorscopeTransform/vectorscope-transform-math.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/vectorscopeTransform/vectorscope-transform-math.js",
@@ -3177,6 +3335,9 @@ function nodeGraphLibEntryForType(type) {
 }
 
 function nodeGraphModuleStoreEntries() {
+  const efficientOn = typeof nodeGraphEfficientProductEnabled === "function"
+    ? nodeGraphEfficientProductEnabled()
+    : true;
   return nodeGraphModuleStoreTypesList()
     .map((type) => {
       const nativeModules = nodeGraphNativeModulesForType(type);
@@ -3186,7 +3347,11 @@ function nodeGraphModuleStoreEntries() {
       const developerOnly = nodeGraphModuleStoreCatalog[type]?.developerOnly === true;
       const catalogHidden = nodeGraphModuleStoreCatalog[type]?.hidden === true
         || nodeGraphModuleStoreCategoryIsInvisible(nodeGraphModuleStoreCatalog[type]?.category);
-      const publicVisible = !developerOnly && !catalogHidden;
+      const efficientAllowed = !efficientOn
+        || (typeof nodeGraphModuleIsEfficientProductShopType === "function"
+          ? nodeGraphModuleIsEfficientProductShopType(type)
+          : true);
+      const publicVisible = !developerOnly && !catalogHidden && efficientAllowed;
       return {
         ...(nodeGraphModuleStoreCatalog[type] || {}),
         category: normalizeNodeGraphModuleStoreDepartment(nodeGraphModuleStoreCatalog[type]?.category || ""),
@@ -3194,8 +3359,9 @@ function nodeGraphModuleStoreEntries() {
         demoPatch: nodeGraphModuleStoreDemoPatchAvailable(type),
         demoListen: nodeGraphModuleStoreDemoListenAvailable(type),
         developerOnly,
-        developerVisible: !catalogHidden,
-        homeVisible: nodeGraphModuleIsStoreVisible(type, "home") && implemented && !catalogHidden,
+        developerVisible: !catalogHidden && efficientAllowed,
+        homeVisible: nodeGraphModuleIsStoreVisible(type, "home") && implemented && !catalogHidden
+          && efficientAllowed,
         implemented,
         label: nodeGraphModuleStoreCatalog[type]?.label || nodeGraphNodeLabels[type] || type,
         nativeAvailable: nativeModules.some((entry) => entry.wasmAvailable)

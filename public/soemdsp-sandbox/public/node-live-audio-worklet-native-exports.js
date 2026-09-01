@@ -2,6 +2,41 @@
 // Method: applyNativeModuleExports — load after core class, before registerProcessor.
 
 NodeLiveAudioProcessor.prototype.applyNativeModuleExports = function applyNativeModuleExports(name, targetType, exports) {
+      if (name === "graph_engine" || targetType === "graphEngine") {
+        this.destroyNativeGraphHandle?.();
+        this.nativeGraph = exports;
+        this.nativeGraphReady = Boolean(
+          this.nativeGraph?.soemdsp_graph_create
+          && this.nativeGraph?.soemdsp_graph_compile
+          && this.nativeGraph?.soemdsp_graph_process_block
+          && this.nativeGraph?.soemdsp_graph_block_output_left_ptr
+          && this.nativeGraph?.soemdsp_graph_block_output_right_ptr
+          && this.nativeGraph?.soemdsp_graph_node_port_ptr,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "graph_engine",
+          status: this.nativeGraphReady ? "ready" : "missing exports",
+        });
+        // Flush plan/connections that arrived during async wasm instantiate.
+        if (this._pendingSetPlan) {
+          const pending = this._pendingSetPlan;
+          this._pendingSetPlan = null;
+          try {
+            this.setPlan?.(pending.plan, pending.message);
+          } catch (_e) { /* planRejected posted by setPlan wrapper */ }
+        } else if (this.nativeGraphReady && this.efficientProduct && this.nodes?.size) {
+          this.compileNativeGraphFromPlan?.();
+        }
+        if (this._pendingSetConnections) {
+          const pendingConn = this._pendingSetConnections;
+          this._pendingSetConnections = null;
+          try {
+            this.setConnections?.(pendingConn.plan, pendingConn.message);
+          } catch (_e) { /* ignore */ }
+        }
+        return;
+      }
       if (name === "ellipsoid" || targetType === "ellipsoid") {
         this.nativeEllipsoid = exports;
         this.nativeEllipsoidReady = Boolean(
@@ -124,8 +159,11 @@ NodeLiveAudioProcessor.prototype.applyNativeModuleExports = function applyNative
         }
         this.nativeSoftClipper = exports;
         this.nativeSoftClipperReady = Boolean(
-          this.nativeSoftClipper?.soemdsp_soft_clipper_sample
-          || this.nativeSoftClipper?.soemdsp_soft_clipper_sample_aa,
+          this.nativeSoftClipper?.soemdsp_soft_clipper_create &&
+          this.nativeSoftClipper?.soemdsp_soft_clipper_set_params &&
+          this.nativeSoftClipper?.soemdsp_soft_clipper_process_block &&
+          (this.nativeSoftClipper?.soemdsp_soft_clipper_sample
+            || this.nativeSoftClipper?.soemdsp_soft_clipper_sample_aa),
         );
         this.port.postMessage({
           type: "nativeModuleStatus",
@@ -181,6 +219,8 @@ NodeLiveAudioProcessor.prototype.applyNativeModuleExports = function applyNative
         this.nativeLadderFilter = exports;
         this.nativeLadderFilterReady = Boolean(
           this.nativeLadderFilter?.soemdsp_ladder_filter_create &&
+          this.nativeLadderFilter?.soemdsp_ladder_filter_set_params &&
+          this.nativeLadderFilter?.soemdsp_ladder_filter_process_block &&
           this.nativeLadderFilter?.soemdsp_ladder_filter_sample,
         );
         this.port.postMessage({
@@ -710,6 +750,8 @@ NodeLiveAudioProcessor.prototype.applyNativeModuleExports = function applyNative
         this.nativePingPongDelay = exports;
         this.nativePingPongDelayReady = Boolean(
           this.nativePingPongDelay?.soemdsp_ping_pong_delay_create &&
+          this.nativePingPongDelay?.soemdsp_ping_pong_delay_set_params &&
+          this.nativePingPongDelay?.soemdsp_ping_pong_delay_process_block &&
           this.nativePingPongDelay?.soemdsp_ping_pong_delay_sample,
         );
         this.port.postMessage({
@@ -784,22 +826,6 @@ NodeLiveAudioProcessor.prototype.applyNativeModuleExports = function applyNative
           type: "nativeModuleStatus",
           name: "passive_filter",
           status: this.nativePassiveFilterReady ? "ready" : "missing exports",
-        });
-        return;
-      }
-      if (name === "vactrol_envelope" || targetType === "vactrolEnvelopeSeries" || targetType === "vactrolEnvelopeCustom") {
-        for (const state of this.vactrolEnvelopeStates.values()) {
-          this.destroyVactrolEnvelopeNativeState(state);
-        }
-        this.nativeVactrolEnvelope = exports;
-        this.nativeVactrolEnvelopeReady = Boolean(
-          this.nativeVactrolEnvelope?.soemdsp_vactrol_envelope_create &&
-          this.nativeVactrolEnvelope?.soemdsp_vactrol_envelope_sample,
-        );
-        this.port.postMessage({
-          type: "nativeModuleStatus",
-          name: "vactrol_envelope",
-          status: this.nativeVactrolEnvelopeReady ? "ready" : "missing exports",
         });
         return;
       }
@@ -1227,6 +1253,11 @@ NodeLiveAudioProcessor.prototype.applyNativeModuleExports = function applyNative
         for (const state of this.pluckEnvelopeStates.values()) {
           this.destroyPluckEnvelopeNativeState(state);
         }
+        if (this.pluckEnvelopeModStates) {
+          for (const state of this.pluckEnvelopeModStates.values()) {
+            this.destroyPluckEnvelopeNativeState(state);
+          }
+        }
         this.nativePluckEnvelope = exports;
         this.nativePluckEnvelopeReady = Boolean(
           this.nativePluckEnvelope?.soemdsp_pluck_envelope_create &&
@@ -1257,7 +1288,12 @@ NodeLiveAudioProcessor.prototype.applyNativeModuleExports = function applyNative
       }
       if (name === "random_walk" || targetType === "randomWalk") {
         for (const state of this.randomWalkStates.values()) {
-          this.destroyRandomWalkNativeState(state);
+          if (state?.left || state?.right) {
+            this.destroyRandomWalkNativeState(state.left);
+            this.destroyRandomWalkNativeState(state.right);
+          } else {
+            this.destroyRandomWalkNativeState(state);
+          }
         }
         this.nativeRandomWalk = exports;
         this.nativeRandomWalkReady = Boolean(
@@ -1268,6 +1304,24 @@ NodeLiveAudioProcessor.prototype.applyNativeModuleExports = function applyNative
           type: "nativeModuleStatus",
           name: "random_walk",
           status: this.nativeRandomWalkReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "cheap_walk" || targetType === "cheapWalk") {
+        if (this.cheapWalkStates) {
+          for (const state of this.cheapWalkStates.values()) {
+            this.destroyCheapWalkNativeState(state);
+          }
+        }
+        this.nativeCheapWalk = exports;
+        this.nativeCheapWalkReady = Boolean(
+          this.nativeCheapWalk?.soemdsp_cheap_walk_create &&
+          this.nativeCheapWalk?.soemdsp_cheap_walk_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "cheap_walk",
+          status: this.nativeCheapWalkReady ? "ready" : "missing exports",
         });
         return;
       }
@@ -1549,6 +1603,7 @@ NodeLiveAudioProcessor.prototype.applyNativeModuleExports = function applyNative
           this.nativePolyBlep?.soemdsp_polyblep_sample &&
           this.nativePolyBlep?.soemdsp_polyblep_out,
         );
+        // process_block / sample_masked are optional upgrades (v5+).
         this.port.postMessage({
           type: "nativeModuleStatus",
           name: "polyblep",
@@ -1600,6 +1655,16 @@ NodeLiveAudioProcessor.prototype.applyNativeModuleExports = function applyNative
           type: "nativeModuleStatus",
           name: "attenuverter",
           status: this.nativeAttenuverterReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "range" || targetType === "range") {
+        this.nativeRange = exports;
+        this.nativeRangeReady = Boolean(this.nativeRange?.soemdsp_range_sample);
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "range",
+          status: this.nativeRangeReady ? "ready" : "missing exports",
         });
         return;
       }

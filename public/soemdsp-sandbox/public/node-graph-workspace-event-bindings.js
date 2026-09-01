@@ -235,6 +235,8 @@ function syncNodeGraphCpuConstraintMetrics() {
   if (!document.body.classList.contains("node-constraint-cpu-active")) {
     setNodeGraphConstraintMetricText(root, "[data-scope-cpu-metric='fps']", "--");
     setNodeGraphConstraintMetricText(root, "[data-scope-cpu-metric='busy']", "--");
+    setNodeGraphConstraintMetricText(root, "[data-scope-cpu-metric='audio']", "--");
+    setNodeGraphConstraintMetricText(root, "[data-scope-cpu-metric='overruns']", "--");
     return;
   }
   const metrics = nodeGraphMvp.constraintResourceMetrics || {};
@@ -242,8 +244,62 @@ function syncNodeGraphCpuConstraintMetrics() {
   const busyPct = frameRate > 0
     ? Math.min(100, Math.max(0, Math.round((1 - Math.min(frameRate, 60) / 60) * 100)))
     : Math.min(100, Math.max(0, Math.round((Number(metrics.mainThreadLagMs) || 0) / 10)));
+  // DSP load: worklet block wall time / quantum budget.
+  // If the timer never advances inside process(), show upper-bound + module count
+  // — do NOT imply the patch is free / 100× headroom.
+  const audioPctRaw = Number(metrics.audioLoadPct);
+  const audioMsRaw = Number(metrics.audioBlockMs);
+  const audioPct = Number.isFinite(audioPctRaw) ? Math.max(0, audioPctRaw) : null;
+  const timedOutFlag = Boolean(metrics.audioMeterTimedOut);
+  const moduleCount = Math.max(0, Math.floor(Number(metrics.audioModuleCount) || 0));
+  const estimatedPct = Math.max(0, Number(metrics.audioEstimatedPct) || 0);
+  const overruns = Math.max(0, Math.floor(Number(metrics.audioOverrunCount) || 0));
+  // UI-side belt-and-suspenders: a displayed 0.0% 0ms is the timer floor.
+  const belowTimerFloor = timedOutFlag
+    || (audioPct !== null && audioPct < 0.05 && !(audioMsRaw > 0));
+  const formatDspLoad = (pct) => {
+    if (!Number.isFinite(pct)) {
+      return "--";
+    }
+    if (pct < 0.05) {
+      return "0.0";
+    }
+    if (pct < 10) {
+      return pct.toFixed(1);
+    }
+    return String(Math.round(pct));
+  };
+  const formatDspMs = (ms) => {
+    if (!Number.isFinite(ms) || ms <= 0) {
+      return "0ms";
+    }
+    if (ms < 0.1) {
+      return `${ms.toFixed(2)}ms`;
+    }
+    if (ms < 10) {
+      return `${ms.toFixed(1)}ms`;
+    }
+    return `${Math.round(ms)}ms`;
+  };
+  const moduleLabel = moduleCount === 1 ? "1 module" : `${moduleCount} modules`;
+  let dspText = "--";
+  if (audioPct !== null && belowTimerFloor) {
+    // Browser timer blind inside process() — show weighted estimate from the graph.
+    const est = estimatedPct > 0.5 ? estimatedPct : Math.max(moduleCount * 4, 1);
+    dspText = `est. ${formatDspLoad(est)}% · ${moduleLabel}`;
+  } else if (audioPct !== null) {
+    dspText = `${formatDspLoad(audioPct)}% ${formatDspMs(audioMsRaw)} · ${moduleLabel}`;
+  }
   setNodeGraphConstraintMetricText(root, "[data-scope-cpu-metric='fps']", formatNodeGraphConstraintMetricFps(frameRate));
   setNodeGraphConstraintMetricText(root, "[data-scope-cpu-metric='busy']", String(busyPct));
+  setNodeGraphConstraintMetricText(root, "[data-scope-cpu-metric='audio']", dspText);
+  setNodeGraphConstraintMetricText(
+    root,
+    "[data-scope-cpu-metric='overruns']",
+    audioPct === null ? "--" : String(overruns),
+  );
+  root.dataset.audioStressed = audioPct !== null && (audioPct >= 85 || overruns > 0) ? "1" : "0";
+  root.dataset.audioTimedOut = belowTimerFloor ? "1" : "0";
 }
 
 function syncNodeGraphRamConstraintMetrics() {

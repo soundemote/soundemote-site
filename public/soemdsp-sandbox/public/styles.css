@@ -6687,6 +6687,14 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   --node-jack-red: #f25d5d;
   --node-jack-green: #3ddc84;
   --node-jack-blue: #4d8dff;
+  --node-jack-purple: #c44dff;
+  /* CMYK additive non-realtime plane (distinct from gold analog #e2a86d). */
+  --node-jack-cyan: #00e5ff;     /* C — Parameter / block-rate ZOH in/out */
+  --node-jack-yellow: #ffe600;   /* Y — Graph chunk in/out */
+  --node-jack-magenta: #e040fb;  /* M — reserved unused */
+  --node-jack-black: #111111;    /* K — reserved unused */
+  /* Legacy turquoise → same ink as cyan (prefer data-jack-channel="cyan"). */
+  --node-jack-turquoise: var(--node-jack-cyan);
   --node-port-used-brightness: 85%;
   /* Match former hover stroke strength so unused jacks look “lit” permanently. */
   --node-port-unused-brightness: 68%;
@@ -6697,8 +6705,9 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar > span:not(:has([data-
   --node-outlet-right-stroke: var(--node-jack-blue);
   --node-mod-input-fill: #b184ff;
   --node-mod-input-stroke: #b184ff;
-  --node-param-output-fill: #66e0a3;
-  --node-param-output-stroke: #66e0a3;
+  /* Parameter slider outs match parameter/mod inlet purple (not mono green). */
+  --node-param-output-fill: var(--node-mod-input-fill);
+  --node-param-output-stroke: var(--node-mod-input-stroke);
   --node-bypass-icon-size-ratio: 0.36;
   --node-bypass-icon-glow-spread-ratio: 0.4;
   --node-bypass-icon-glow-color: #f25d5d;
@@ -16310,6 +16319,59 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   );
 }
 
+.dsp-node .node-port.output[data-jack-channel="purple"],
+.dsp-node .node-io-row.output[data-jack-channel="purple"] .node-port.output {
+  --node-output-stroke: var(--node-jack-purple);
+  --node-port-crescent-stroke: color-mix(
+    in srgb,
+    var(--node-jack-purple) var(--node-port-paint-brightness),
+    transparent
+  );
+}
+
+.dsp-node .node-port.output[data-jack-channel="cyan"],
+.dsp-node .node-io-row.output[data-jack-channel="cyan"] .node-port.output,
+.dsp-node .node-port.output[data-jack-channel="turquoise"],
+.dsp-node .node-io-row.output[data-jack-channel="turquoise"] .node-port.output {
+  --node-output-stroke: var(--node-jack-cyan);
+  --node-port-crescent-stroke: color-mix(
+    in srgb,
+    var(--node-jack-cyan) var(--node-port-paint-brightness),
+    transparent
+  );
+}
+
+.dsp-node .node-port.output[data-jack-channel="yellow"],
+.dsp-node .node-io-row.output[data-jack-channel="yellow"] .node-port.output {
+  --node-output-stroke: var(--node-jack-yellow);
+  --node-port-crescent-stroke: color-mix(
+    in srgb,
+    var(--node-jack-yellow) var(--node-port-paint-brightness),
+    transparent
+  );
+}
+
+/* Magenta / black reserved (CMYK M/K) — unused in live assignment. */
+.dsp-node .node-port.output[data-jack-channel="magenta"],
+.dsp-node .node-io-row.output[data-jack-channel="magenta"] .node-port.output {
+  --node-output-stroke: var(--node-jack-magenta);
+  --node-port-crescent-stroke: color-mix(
+    in srgb,
+    var(--node-jack-magenta) var(--node-port-paint-brightness),
+    transparent
+  );
+}
+
+.dsp-node .node-port.output[data-jack-channel="black"],
+.dsp-node .node-io-row.output[data-jack-channel="black"] .node-port.output {
+  --node-output-stroke: var(--node-jack-black);
+  --node-port-crescent-stroke: color-mix(
+    in srgb,
+    var(--node-jack-black) var(--node-port-paint-brightness),
+    transparent
+  );
+}
+
 /* Analog inlet — same gold as analog outlets. RGB inlets override. */
 .dsp-node .node-port.input:not(.node-param-port):not([data-jack-channel]),
 .dsp-node .node-io-row.input:not([data-digital-signal]) .node-port.input:not(.node-param-port):not([data-jack-channel]) {
@@ -16346,6 +16408,58 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   --node-port-crescent-stroke: color-mix(
     in srgb,
     var(--node-jack-blue) var(--node-port-paint-brightness),
+    transparent
+  );
+}
+
+.dsp-node .node-port.input[data-jack-channel="purple"]:not(.node-param-port),
+.dsp-node .node-io-row.input[data-jack-channel="purple"]:not([data-digital-signal]) .node-port.input:not(.node-param-port) {
+  --node-input-stroke: var(--node-jack-purple);
+  --node-port-crescent-stroke: color-mix(
+    in srgb,
+    var(--node-jack-purple) var(--node-port-paint-brightness),
+    transparent
+  );
+}
+
+.dsp-node .node-port.input[data-jack-channel="cyan"]:not(.node-param-port),
+.dsp-node .node-io-row.input[data-jack-channel="cyan"]:not([data-digital-signal]) .node-port.input:not(.node-param-port),
+.dsp-node .node-port.input[data-jack-channel="turquoise"]:not(.node-param-port),
+.dsp-node .node-io-row.input[data-jack-channel="turquoise"]:not([data-digital-signal]) .node-port.input:not(.node-param-port) {
+  --node-input-stroke: var(--node-jack-cyan);
+  --node-port-crescent-stroke: color-mix(
+    in srgb,
+    var(--node-jack-cyan) var(--node-port-paint-brightness),
+    transparent
+  );
+}
+
+.dsp-node .node-port.input[data-jack-channel="yellow"]:not(.node-param-port),
+.dsp-node .node-io-row.input[data-jack-channel="yellow"]:not([data-digital-signal]) .node-port.input:not(.node-param-port) {
+  --node-input-stroke: var(--node-jack-yellow);
+  --node-port-crescent-stroke: color-mix(
+    in srgb,
+    var(--node-jack-yellow) var(--node-port-paint-brightness),
+    transparent
+  );
+}
+
+.dsp-node .node-port.input[data-jack-channel="magenta"]:not(.node-param-port),
+.dsp-node .node-io-row.input[data-jack-channel="magenta"]:not([data-digital-signal]) .node-port.input:not(.node-param-port) {
+  --node-input-stroke: var(--node-jack-magenta);
+  --node-port-crescent-stroke: color-mix(
+    in srgb,
+    var(--node-jack-magenta) var(--node-port-paint-brightness),
+    transparent
+  );
+}
+
+.dsp-node .node-port.input[data-jack-channel="black"]:not(.node-param-port),
+.dsp-node .node-io-row.input[data-jack-channel="black"]:not([data-digital-signal]) .node-port.input:not(.node-param-port) {
+  --node-input-stroke: var(--node-jack-black);
+  --node-port-crescent-stroke: color-mix(
+    in srgb,
+    var(--node-jack-black) var(--node-port-paint-brightness),
     transparent
   );
 }
@@ -16969,11 +17083,12 @@ body.node-slider-dragging * {
   z-index: 1;
   grid-column: 1;
   min-width: 0;
+  max-width: 100%;
   color: var(--node-slider-value-color, #ffffff);
   overflow: hidden;
   text-align: left;
-  text-overflow: clip;
-  white-space: pre;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .node-slider-readout-unit {
@@ -21051,8 +21166,13 @@ button#nodeScenePasteModuleSettings.settings-paste-mismatch {
   text-align: center;
 }
 
-.scene-context-history-controls .scene-context-window-button + .scene-context-window-button {
+/* 2×2: Undo|Disable / Redo|Delete — column seam on even cells, row seam on bottom row. */
+.scene-context-history-controls .scene-context-window-button:nth-child(2n) {
   border-left: 1px solid rgba(127, 199, 217, 0.16);
+}
+
+.scene-context-history-controls .scene-context-window-button:nth-child(n + 3) {
+  border-top: 1px solid rgba(127, 199, 217, 0.16);
 }
 
 #nodeSceneContextMenu .scene-context-history-controls .scene-context-window-button-label,
@@ -22097,6 +22217,17 @@ body.node-slider-dragging .node-param-port {
   );
 }
 
+/* Additive CMYK C — Parameter-row mod / slider-out jacks. */
+.dsp-node .node-param-port.modulation-input[data-jack-channel="cyan"],
+.dsp-node .node-param-port.parameter-output[data-jack-channel="cyan"] {
+  --node-mod-input-fill: var(--node-jack-cyan);
+  --node-mod-input-stroke: var(--node-jack-cyan);
+  --node-param-output-fill: var(--node-jack-cyan);
+  --node-param-output-stroke: var(--node-jack-cyan);
+  --node-param-hover-color: var(--node-jack-cyan);
+  --node-param-hover-stroke: var(--node-jack-cyan);
+}
+
 .node-param-port.graph-input {
   --node-patch-point-x: 0%;
   --node-param-hover-color: var(--node-mod-input-fill);
@@ -23120,15 +23251,6 @@ button[data-transport-action="stop"]:disabled {
   appearance: textfield;
   -moz-appearance: textfield;
   text-align: center;
-  /* Read-only until double-clicked -- see bindNodeGraphRenderRangeDoubleClick
-     in node-graph-render-settings.js, which adds .editing. */
-  cursor: var(--node-dot-cursor);
-  user-select: none;
-  caret-color: transparent;
-  pointer-events: none;
-}
-
-.node-render-duration-control .node-header-render-range-field.editing input {
   cursor: text;
   user-select: auto;
   caret-color: auto;
@@ -24504,4 +24626,47 @@ code {
 }
 .node-plugin-slider-face .node-slider-readout-label {
   display: none;
+}
+
+/* LayoutA face row: fixed display-height track (not height:100% of module). */
+.node-harmonic-count-display,
+.node-harmonic-lines-display,
+.node-additive-filter-curve-display {
+  position: relative;
+  z-index: 2;
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  height: calc(var(--node-grid-height) * var(--node-module-display-height-units, 2));
+  min-height: calc(var(--node-grid-height) * 2);
+  align-self: stretch;
+  overflow: hidden;
+  background: #050508;
+  pointer-events: none;
+}
+.node-harmonic-count-canvas,
+.node-harmonic-lines-canvas,
+.node-additive-filter-curve-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: inherit;
+}
+
+/* Choice names (Waveform / Filter) must not widen the module. */
+.dsp-node[data-node-type="additiveGenerator"] .node-slider-readout-value,
+.dsp-node[data-node-type="additiveLinearFilter"] .node-slider-readout-value,
+.dsp-node[data-node-type="additiveAnalogFilter"] .node-slider-readout-value,
+.dsp-node[data-node-type="additiveGrowl"] .node-slider-readout-value,
+.dsp-node[data-node-type="additiveNoisyFreq"] .node-slider-readout-value,
+.dsp-node[data-node-type="additiveNoisyPhase"] .node-slider-readout-value,
+.dsp-node[data-node-type="additiveNoisyPan"] .node-slider-readout-value,
+.dsp-node[data-node-type="additiveNoisyAmp"] .node-slider-readout-value,
+.dsp-node[data-node-type="additiveOut"] .node-slider-readout-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }

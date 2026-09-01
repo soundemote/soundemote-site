@@ -28,23 +28,34 @@ function syncNodeGraphRenderSecondsFromInput(options = {}) {
   return seconds;
 }
 
+/** Canonical Start/End hosts — prefer Render Sample row, else document. */
+function nodeGraphRenderRangeInputRoot() {
+  return document.getElementById("nodeRenderDurationControl")
+    || document.querySelector(".node-render-duration-control")
+    || document;
+}
+
 function syncNodeGraphRenderRangeFromInputs() {
   if (nodeGraphMvp.renderStartSeconds == null) nodeGraphMvp.renderStartSeconds = 0;
   if (nodeGraphMvp.renderEndSeconds == null) nodeGraphMvp.renderEndSeconds = nodeGraphMvp.seconds ?? 2;
-  for (const el of document.querySelectorAll(".node-header-render-start-input")) {
-    const v = clampNodeGraphRenderStartSeconds(el.value);
+  const root = nodeGraphRenderRangeInputRoot();
+  // One canonical field each — avoid duplicate toolbar leftovers overwriting edits.
+  const startEl = root.querySelector(".node-header-render-start-input");
+  const endEl = root.querySelector(".node-header-render-end-input");
+  if (startEl) {
+    const v = clampNodeGraphRenderStartSeconds(startEl.value);
     nodeGraphMvp.renderStartSeconds = v;
-    el.value = formatNodeSliderCompactNumber(v);
+    startEl.value = formatNodeSliderCompactNumber(v);
   }
-  for (const el of document.querySelectorAll(".node-header-render-end-input")) {
-    const v = clampNodeGraphRenderEndSeconds(el.value);
+  if (endEl) {
+    const v = clampNodeGraphRenderEndSeconds(endEl.value);
     nodeGraphMvp.renderEndSeconds = v;
-    el.value = formatNodeSliderCompactNumber(v);
+    endEl.value = formatNodeSliderCompactNumber(v);
   }
   if (nodeGraphMvp.renderEndSeconds <= nodeGraphMvp.renderStartSeconds) {
     nodeGraphMvp.renderEndSeconds = nodeGraphMvp.renderStartSeconds + 0.05;
-    for (const el of document.querySelectorAll(".node-header-render-end-input")) {
-      el.value = formatNodeSliderCompactNumber(nodeGraphMvp.renderEndSeconds);
+    if (endEl) {
+      endEl.value = formatNodeSliderCompactNumber(nodeGraphMvp.renderEndSeconds);
     }
   }
 }
@@ -52,11 +63,14 @@ function syncNodeGraphRenderRangeFromInputs() {
 function syncNodeGraphRenderRangeToUI() {
   if (nodeGraphMvp.renderStartSeconds == null) nodeGraphMvp.renderStartSeconds = 0;
   if (nodeGraphMvp.renderEndSeconds == null) nodeGraphMvp.renderEndSeconds = nodeGraphMvp.seconds ?? 2;
-  for (const el of document.querySelectorAll(".node-header-render-start-input")) {
-    el.value = formatNodeSliderCompactNumber(nodeGraphMvp.renderStartSeconds);
+  const root = nodeGraphRenderRangeInputRoot();
+  const startEl = root.querySelector(".node-header-render-start-input");
+  const endEl = root.querySelector(".node-header-render-end-input");
+  if (startEl) {
+    startEl.value = formatNodeSliderCompactNumber(nodeGraphMvp.renderStartSeconds);
   }
-  for (const el of document.querySelectorAll(".node-header-render-end-input")) {
-    el.value = formatNodeSliderCompactNumber(nodeGraphMvp.renderEndSeconds);
+  if (endEl) {
+    endEl.value = formatNodeSliderCompactNumber(nodeGraphMvp.renderEndSeconds);
   }
 }
 
@@ -75,6 +89,10 @@ function handleNodeGraphRenderRangeInput(event) {
   event?.stopPropagation?.();
 }
 
+/**
+ * Start/End render range fields: always clickable/typeable (no dblclick gate).
+ * Select-all on focus so a click replaces the value quickly; Enter commits.
+ */
 function bindNodeGraphRenderRangeDoubleClick() {
   for (const field of document.querySelectorAll(".node-header-render-range-field")) {
     if (field.dataset.dblClickBound) continue;
@@ -83,18 +101,26 @@ function bindNodeGraphRenderRangeDoubleClick() {
     const input = field.querySelector("input");
     if (!input) continue;
 
-    field.addEventListener("dblclick", () => {
-      field.classList.add("editing");
-      input.focus();
-      input.select();
-    });
+    // Drop legacy editing class if present from older CSS.
+    field.classList.remove("editing");
 
-    const finish = () => {
-      field.classList.remove("editing");
-    };
-    input.addEventListener("blur", finish);
+    input.addEventListener("focus", () => {
+      // Defer so the browser finishes focusing before select().
+      window.requestAnimationFrame(() => {
+        try {
+          input.select();
+        } catch (_error) {
+          // ignore
+        }
+      });
+    });
+    input.addEventListener("pointerdown", (event) => {
+      event.stopPropagation();
+    });
     input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { input.blur(); }
+      if (e.key === "Enter") {
+        input.blur();
+      }
       e.stopPropagation();
     });
   }

@@ -828,10 +828,40 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_sources = function bu
         graphOutputValue(node, nodeId),
       graphCopy: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput, inputFrame, graphInputValue, graphOutputValue) =>
         graphOutputValue(node, nodeId),
-      additiveOsc: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput, inputFrame, graphInputValue) =>
-        this.additiveOscWorkletEvaluate(node, nodeId, frame, frames, frameValues, mixInput, safeRate, graphInputValue),
-      gpuAdditiveOsc: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput, inputFrame, graphInputValue) =>
-        this.additiveOscWorkletEvaluate(node, nodeId, frame, frames, frameValues, mixInput, safeRate, graphInputValue),
+      additiveGenerator: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) =>
+        this.additiveGeneratorWorkletEvaluate(node, nodeId, frame, frames),
+      additiveLinearFilter: (node, nodeId, frame, frames) =>
+        this.additiveLinearFilterWorkletEvaluate(node, nodeId, frame, frames),
+      additiveAnalogFilter: (node, nodeId, frame, frames) =>
+        this.additiveAnalogFilterWorkletEvaluate(node, nodeId, frame, frames),
+      additiveLadderFilter: (node, nodeId, frame, frames) =>
+        this.additiveLadderFilterWorkletEvaluate(node, nodeId, frame, frames),
+      additiveBubble: (node, nodeId, frame, frames) =>
+        this.additiveBubbleWorkletEvaluate(node, nodeId, frame, frames),
+      additiveFrequencySkew: (node, nodeId, frame, frames) =>
+        this.additiveFrequencySkewWorkletEvaluate(node, nodeId, frame, frames),
+      additiveQuantizeFreq: (node, nodeId, frame, frames) =>
+        this.additiveQuantizeFreqWorkletEvaluate(node, nodeId, frame, frames),
+      additiveQuantizePhase: (node, nodeId, frame, frames) =>
+        this.additiveQuantizePhaseWorkletEvaluate(node, nodeId, frame, frames),
+      additiveHarmonicMath: (node, nodeId, frame, frames) =>
+        this.additiveQuantizeFreqWorkletEvaluate(node, nodeId, frame, frames),
+      additiveFrequencyMath: (node, nodeId, frame, frames) =>
+        this.additiveQuantizeFreqWorkletEvaluate(node, nodeId, frame, frames),
+      additiveFrequencySlope: (node, nodeId, frame, frames) =>
+        this.additiveFrequencySkewWorkletEvaluate(node, nodeId, frame, frames),
+      additiveNoisyFreq: (node, nodeId, frame, frames) =>
+        this.additiveNoisyFreqWorkletEvaluate(node, nodeId, frame, frames),
+      additiveNoisyPhase: (node, nodeId, frame, frames) =>
+        this.additiveNoisyPhaseWorkletEvaluate(node, nodeId, frame, frames),
+      additivePan: (node, nodeId, frame, frames) =>
+        this.additivePanWorkletEvaluate(node, nodeId, frame, frames),
+      additiveNoisyPan: (node, nodeId, frame, frames) =>
+        this.additiveNoisyPanWorkletEvaluate(node, nodeId, frame, frames),
+      additiveNoisyAmp: (node, nodeId, frame, frames) =>
+        this.additiveNoisyAmpWorkletEvaluate(node, nodeId, frame, frames),
+      additiveOut: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) =>
+        this.additiveOutWorkletEvaluate(node, nodeId, frame, frames, frameValues, mixInput, safeRate),
       ellipsoid: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) =>
         this.ellipsoidWorkletEvaluate(node, nodeId, frame, frames, frameValues, mixInput, safeRate),
       ellipsoidOsc: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) =>
@@ -1085,20 +1115,46 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_sources = function bu
         );
       },
       randomWalk: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
-        const state = this.randomWalkStates.get(nodeId) || this.createRandomWalkState();
-        this.randomWalkStates.set(nodeId, state);
+        let bundle = this.randomWalkStates.get(nodeId);
+        if (!bundle || !bundle.left || !bundle.right) {
+          bundle = {
+            left: this.createRandomWalkState(),
+            right: this.createRandomWalkState(),
+          };
+          this.randomWalkStates.set(nodeId, bundle);
+        }
         const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
-        return this.randomWalkSample(
+        const seed = read("seed", 1);
+        const params = {
+          frequency: read("frequency", 2),
+          jitter: read("jitter", 0.25),
+          level: read("amplitude", 1),
+          method: read("method", 3),
+          seed,
+        };
+        const left = this.randomWalkSample(bundle.left, params, safeRate, `${nodeId}:L`);
+        const rightSeed = ((Number(seed) >>> 0) ^ 0x9E3779B9) >>> 0 || 1;
+        const right = this.randomWalkSample(
+          bundle.right,
+          { ...params, seed: rightSeed },
+          safeRate,
+          `${nodeId}:R`,
+        );
+        return { Left: left, Right: right };
+      },
+      cheapWalk: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
+        if (!this.cheapWalkStates) this.cheapWalkStates = new Map();
+        const state = this.cheapWalkStates.get(nodeId) || this.createCheapWalkState(1);
+        this.cheapWalkStates.set(nodeId, state);
+        const read = (key, fallback) => this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
+        return this.cheapWalkSampleStereo(
           state,
           {
-            frequency: read("frequency", 2),
-            jitter: read("jitter", 0.25),
-            level: read("amplitude", 1),
-            method: read("method", 3),
+            rate: read("rate", 8),
+            amplitude: read("amplitude", 1),
             seed: read("seed", 1),
           },
           safeRate,
-          nodeId,
         );
       },
       piSpigotNoise: (node, nodeId, frame, frames, frameValues) => {

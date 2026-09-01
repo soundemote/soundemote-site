@@ -376,6 +376,147 @@ function nodeGraphPortIsDigitalSignal(typeOrNode, port, io = null) {
   return false;
 }
 
+/**
+ * Data plane (non-realtime): whole values published once (arrays, Graph
+ * chunks, strings, …). Declared on dataInputs / dataOutputs, or
+ * graphChunkInputs / graphChunkOutputs. Not sample-accurate CV/audio.
+ */
+function nodeGraphPortIsDataPlane(typeOrNode, port, io = null) {
+  const type = typeof typeOrNode === "string" && nodeGraphModuleDefinitions[typeOrNode]
+    ? typeOrNode
+    : nodeGraphPatchNodeType(typeOrNode);
+  const definition = nodeGraphModuleDefinitions[type];
+  if (!definition || !port) {
+    return false;
+  }
+  const name = String(port || "").trim();
+  if (!name) {
+    return false;
+  }
+  if (io !== "output") {
+    if (Array.isArray(definition.dataInputs) && definition.dataInputs.includes(name)) {
+      return true;
+    }
+    if (Array.isArray(definition.graphChunkInputs) && definition.graphChunkInputs.includes(name)) {
+      return true;
+    }
+  }
+  if (io !== "input") {
+    if (Array.isArray(definition.dataOutputs) && definition.dataOutputs.includes(name)) {
+      return true;
+    }
+    if (Array.isArray(definition.graphChunkOutputs) && definition.graphChunkOutputs.includes(name)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Yellow Graph chunk ports (CMYK Y).
+ * Data-plane once-per-quantum payload (e.g. harmonic {phase,ratio,amp}),
+ * not audio-rate samples. Listed in dataInputs / dataOutputs as "Graph",
+ * or graphChunkInputs/Outputs.
+ */
+function nodeGraphPortIsGraphChunkSignal(typeOrNode, port, io = null) {
+  if (!nodeGraphPortIsDataPlane(typeOrNode, port, io)) {
+    return false;
+  }
+  const name = String(port || "").trim();
+  if (name === "Graph") {
+    return true;
+  }
+  const type = typeof typeOrNode === "string" && nodeGraphModuleDefinitions[typeOrNode]
+    ? typeOrNode
+    : nodeGraphPatchNodeType(typeOrNode);
+  const definition = nodeGraphModuleDefinitions[type];
+  if (!definition) {
+    return false;
+  }
+  if (io !== "output" && Array.isArray(definition.graphChunkInputs) && definition.graphChunkInputs.includes(name)) {
+    return true;
+  }
+  if (io !== "input" && Array.isArray(definition.graphChunkOutputs) && definition.graphChunkOutputs.includes(name)) {
+    return true;
+  }
+  return false;
+}
+
+/** Wire endpoint on the data plane (Graph jack io, or data I/O port). */
+function nodeGraphWireEndpointIsDataPlane(endpoint) {
+  if (!endpoint) {
+    return false;
+  }
+  if (endpoint.io === "graph") {
+    return true;
+  }
+  if (endpoint.io === "modulation") {
+    return false;
+  }
+  if (endpoint.io === "input" || endpoint.io === "output") {
+    return nodeGraphPortIsDataPlane(endpoint.node, endpoint.port, endpoint.io);
+  }
+  return false;
+}
+
+/**
+ * Explicit cross-dimension: data plane ↔ realtime (signal / MOD).
+ * Same-plane (Graph→Graph, Mono→MOD) is fine; mismatch should wire-break.
+ */
+function nodeGraphWireEndpointsDimensionMismatch(a, b) {
+  if (!a || !b) {
+    return false;
+  }
+  return nodeGraphWireEndpointIsDataPlane(a) !== nodeGraphWireEndpointIsDataPlane(b);
+}
+
+/**
+ * Cyan Parameter / block-rate ZOH ports (CMYK C — not turquoise).
+ * One value per quantum; module holds it for the block.
+ * Listed in blockRateInputs / blockRateOutputs.
+ * Parameter smoothers may still emit sample packs into Controls; these jacks
+ * do not.
+ */
+function nodeGraphPortIsBlockRateSignal(typeOrNode, port, io = null) {
+  const type = typeof typeOrNode === "string" && nodeGraphModuleDefinitions[typeOrNode]
+    ? typeOrNode
+    : nodeGraphPatchNodeType(typeOrNode);
+  const definition = nodeGraphModuleDefinitions[type];
+  if (!definition || !port) {
+    return false;
+  }
+  const name = String(port || "").trim();
+  if (io !== "output" && Array.isArray(definition.blockRateInputs) && definition.blockRateInputs.includes(name)) {
+    return true;
+  }
+  if (io !== "input" && Array.isArray(definition.blockRateOutputs) && definition.blockRateOutputs.includes(name)) {
+    return true;
+  }
+  return false;
+}
+
+/** Additive CMYK Parameter chrome (mod jacks → cyan). */
+function nodeGraphModuleUsesCmykParameterChrome(type) {
+  const key = String(type || "");
+  return key === "additiveGenerator"
+    || key === "additiveLinearFilter"
+    || key === "additiveAnalogFilter"
+    || key === "additiveLadderFilter"
+    || key === "additiveBubble"
+    || key === "additiveFrequencySkew"
+    || key === "additiveQuantizeFreq"
+    || key === "additiveQuantizePhase"
+    || key === "additiveHarmonicMath"
+    || key === "additiveFrequencyMath"
+    || key === "additiveFrequencySlope"
+    || key === "additiveNoisyFreq"
+    || key === "additiveNoisyPhase"
+    || key === "additiveNoisyPan"
+    || key === "additiveNoisyAmp"
+    || key === "additiveImage"
+    || key === "additiveOut";
+}
+
 function nodeGraphPortWireColor(node, port, io) {
   const canonicalPort = nodeGraphCanonicalPortForNode(node, port, io);
   const type = nodeGraphPatchNodeType(node);
@@ -384,6 +525,24 @@ function nodeGraphPortWireColor(node, port, io) {
   // port tap color, and nodeGraphPortIsDigitalSignal for what qualifies.
   if (nodeGraphPortIsDigitalSignal(type, canonicalPort, io)) {
     return "#ffffff";
+  }
+  // CMYK Y — Graph chunk cables (was hardcoded magenta).
+  if (typeof nodeGraphPortIsGraphChunkSignal === "function"
+    && nodeGraphPortIsGraphChunkSignal(type, canonicalPort, io)
+    && typeof nodeGraphJackChannelCssColor === "function") {
+    const chunk = nodeGraphJackChannelCssColor("yellow");
+    if (chunk) {
+      return chunk;
+    }
+  }
+  // CMYK C — block-rate Parameter ports (listed blockRateInputs/Outputs).
+  if (typeof nodeGraphPortIsBlockRateSignal === "function"
+    && nodeGraphPortIsBlockRateSignal(type, canonicalPort, io)
+    && typeof nodeGraphJackChannelCssColor === "function") {
+    const zoh = nodeGraphJackChannelCssColor("cyan");
+    if (zoh) {
+      return zoh;
+    }
   }
   // UIDEV "wires follow port colors": RGB / stereo / chaos / quad jacks
   // paint that end of the cable. Dual-color gradient still matches both ends.
@@ -396,14 +555,21 @@ function nodeGraphPortWireColor(node, port, io) {
   if (io === "input") {
     return nodeGraphCssColor("--node-input-fill", "#e2a86d");
   }
+  // Additive series: parameter-row mod jacks + their cables are CMYK cyan.
   if (io === "modulation") {
+    if (nodeGraphModuleUsesCmykParameterChrome(type) && typeof nodeGraphJackChannelCssColor === "function") {
+      return nodeGraphJackChannelCssColor("cyan") || "#00e5ff";
+    }
     return nodeGraphCssColor("--node-mod-input-fill", "#b184ff");
   }
   if (io === "graph") {
     return nodeGraphCssColor("--node-mod-input-fill", "#b184ff");
   }
   if (nodeGraphParameterOutputPort(nodeGraphPatchNode(node) || nodeGraphPatchNodeType(node), canonicalPort)) {
-    return nodeGraphCssColor("--node-param-output-fill", "#66e0a3");
+    if (nodeGraphModuleUsesCmykParameterChrome(type) && typeof nodeGraphJackChannelCssColor === "function") {
+      return nodeGraphJackChannelCssColor("cyan") || "#00e5ff";
+    }
+    return nodeGraphCssColor("--node-param-output-fill", "#b184ff");
   }
   return nodeGraphCssColor("--node-output-fill", "#e2a86d");
 }

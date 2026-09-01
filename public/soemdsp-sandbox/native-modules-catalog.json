@@ -74,6 +74,18 @@
       "wasmAvailable": true
     },
     {
+      "name": "audio_player",
+      "label": "Music Player",
+      "targetType": "audioPlayer",
+      "kind": "player",
+      "source": "native_modules/audio_player/audio_player.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/audio_player/audio_player.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/audio_player/audio_player.wasm",
+      "wasmUrl": "native_modules/audio_player/audio_player.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "b2u",
       "label": "B2U",
       "targetType": "b2u",
@@ -159,7 +171,7 @@
     },
     {
       "name": "chaotic_phase_locking_filter",
-      "label": "Chaotic Phase Locking Filter",
+      "label": "Chaotic Phaselocking Filter",
       "targetType": "chaoticPhaseLockingFilter",
       "kind": "filter",
       "source": "native_modules/chaotic_phase_locking_filter/chaotic_phase_locking_filter.cpp",
@@ -167,6 +179,18 @@
       "libUrl": "",
       "wasm": "native_modules/chaotic_phase_locking_filter/chaotic_phase_locking_filter.wasm",
       "wasmUrl": "native_modules/chaotic_phase_locking_filter/chaotic_phase_locking_filter.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "cheap_walk",
+      "label": "Cheap Walk",
+      "targetType": "cheapWalk",
+      "kind": "noise",
+      "source": "native_modules/cheap_walk/cheap_walk.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/cheap_walk/cheap_walk.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/cheap_walk/cheap_walk.wasm",
+      "wasmUrl": "native_modules/cheap_walk/cheap_walk.wasm",
       "wasmAvailable": true
     },
     {
@@ -434,6 +458,18 @@
       "wasmAvailable": true
     },
     {
+      "name": "graph_engine",
+      "label": "Graph Engine",
+      "targetType": "graphEngine",
+      "kind": "engine",
+      "source": "native_modules/graph_engine/graph_engine.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/graph_engine/graph_engine.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/graph_engine/graph_engine.wasm",
+      "wasmUrl": "native_modules/graph_engine/graph_engine.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "helmholtz",
       "label": "Helmholtz Pitch",
       "targetType": "helmholtzPitch",
@@ -675,7 +711,7 @@
     },
     {
       "name": "lookahead_limiter",
-      "label": "Limiter",
+      "label": "Brickwall Limiter",
       "targetType": "lookaheadLimiter",
       "kind": "dynamics",
       "source": "native_modules/lookahead_limiter/lookahead_limiter.cpp",
@@ -914,6 +950,18 @@
       "wasmAvailable": true
     },
     {
+      "name": "pumping_limiter",
+      "label": "Pump Limiter",
+      "targetType": "limiter",
+      "kind": "dynamics",
+      "source": "native_modules/pumping_limiter/pumping_limiter.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/pumping_limiter/pumping_limiter.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/pumping_limiter/pumping_limiter.wasm",
+      "wasmUrl": "native_modules/pumping_limiter/pumping_limiter.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "random_clock",
       "label": "Random Clock",
       "targetType": "randomClock",
@@ -935,6 +983,18 @@
       "libUrl": "",
       "wasm": "native_modules/random_walk/random_walk.wasm",
       "wasmUrl": "native_modules/random_walk/random_walk.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "range",
+      "label": "Range",
+      "targetType": "range",
+      "kind": "utility",
+      "source": "native_modules/range/range.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/range/range.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/range/range.wasm",
+      "wasmUrl": "native_modules/range/range.wasm",
       "wasmAvailable": true
     },
     {
@@ -1247,18 +1307,6 @@
       "libUrl": "",
       "wasm": "native_modules/u2b/u2b.wasm",
       "wasmUrl": "native_modules/u2b/u2b.wasm",
-      "wasmAvailable": true
-    },
-    {
-      "name": "vactrol_envelope",
-      "label": "Vactrol Envelope",
-      "targetType": "vactrolEnvelope",
-      "kind": "envelope",
-      "source": "native_modules/vactrol_envelope/vactrol_envelope.cpp",
-      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/vactrol_envelope/vactrol_envelope.cpp",
-      "libUrl": "",
-      "wasm": "native_modules/vactrol_envelope/vactrol_envelope.wasm",
-      "wasmUrl": "native_modules/vactrol_envelope/vactrol_envelope.wasm",
       "wasmAvailable": true
     },
     {

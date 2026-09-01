@@ -2,10 +2,85 @@
 // Method: setPlan — load after core class, before registerProcessor.
 
 NodeLiveAudioProcessor.prototype.setPlan = function setPlan(plan, message = {}) {
+  try {
+    this._setPlanImpl(plan, message);
+  } catch (error) {
+    try {
+      this.port.postMessage({
+        type: "planRejected",
+        status: "setPlan threw",
+        message: String(error?.message || error || "setPlan threw"),
+        issues: [String(error?.message || error || "setPlan threw")],
+        planSerial: message?.planSerial || this.planSerial || 0,
+        sessionId: message?.sessionId || this.sessionId || 0,
+        patchFingerprint: message?.patchFingerprint || this.patchFingerprint || "",
+      });
+    } catch (_e) { /* ignore */ }
+  }
+};
+
+NodeLiveAudioProcessor.prototype._setPlanImpl = function _setPlanImpl(plan, message = {}) {
     const patchFingerprint = message.patchFingerprint || plan?.patchFingerprint || "";
-    this.patchFingerprint = patchFingerprint;
     this.planSerial = message.planSerial || 0;
     const nextSessionId = message.sessionId || 0;
+    // MVEP: refuse foreign types — no JS DSP fallback (docs/APP_POLICY.md §0b).
+    const efficientProduct = message.efficientProduct !== false;
+    this.efficientProduct = efficientProduct;
+    // Strip foreign DSP (e.g. audioPlayer) instead of rejecting the whole plan —
+    // allowlisted modules must still run. Host usually strips first; this is the
+    // worklet backstop.
+    if (efficientProduct && typeof nodeGraphEfficientProductStripForeignFromLivePlan === "function") {
+      const stripped = nodeGraphEfficientProductStripForeignFromLivePlan(plan || {});
+      if (stripped.foreignTypes.length) {
+        plan = stripped.plan;
+        this.port.postMessage({
+          foreignTypes: stripped.foreignTypes,
+          message: typeof nodeGraphEfficientProductRefuseMessage === "function"
+            ? nodeGraphEfficientProductRefuseMessage(stripped.foreignTypes)
+            : `skipped: ${stripped.foreignTypes.join(", ")}`,
+          patchFingerprint,
+          planSerial: this.planSerial,
+          sessionId: nextSessionId,
+          status: "stripped",
+          type: "planForeignStripped",
+        });
+      }
+    } else if (efficientProduct && typeof nodeGraphEfficientProductForeignTypesFromNodes === "function") {
+      const foreign = nodeGraphEfficientProductForeignTypesFromNodes(
+        Array.isArray(plan?.nodes) ? plan.nodes : [],
+      );
+      if (foreign.length) {
+        const status = typeof nodeGraphEfficientProductRefuseMessage === "function"
+          ? nodeGraphEfficientProductRefuseMessage(foreign)
+          : (typeof NODE_GRAPH_EFFICIENT_PRODUCT_FOREIGN_STATUS !== "undefined"
+            ? NODE_GRAPH_EFFICIENT_PRODUCT_FOREIGN_STATUS
+            : "not in efficient build");
+        const issues = typeof nodeGraphEfficientProductRefuseIssues === "function"
+          ? nodeGraphEfficientProductRefuseIssues(foreign)
+          : foreign.map((type) => `${type}: ${
+            typeof NODE_GRAPH_EFFICIENT_PRODUCT_FOREIGN_STATUS !== "undefined"
+              ? NODE_GRAPH_EFFICIENT_PRODUCT_FOREIGN_STATUS
+              : "not in efficient build"
+          }`);
+        if (typeof this.clearPlan === "function") {
+          this.clearPlan();
+        }
+        this.patchFingerprint = patchFingerprint;
+        this.sessionId = nextSessionId;
+        this.port.postMessage({
+          foreignTypes: foreign,
+          issues,
+          message: status,
+          patchFingerprint,
+          planSerial: this.planSerial,
+          sessionId: this.sessionId,
+          status,
+          type: "planRejected",
+        });
+        return;
+      }
+    }
+    this.patchFingerprint = patchFingerprint;
     // Engine Stop/Play bumps sessionId. Force oscillator phases to 0 so PolyBLEP
     // (and siblings) do not resume mid-cycle and sound randomly phased.
     const sessionRestarted = nextSessionId !== this.sessionId;
@@ -43,7 +118,10 @@ NodeLiveAudioProcessor.prototype.setPlan = function setPlan(plan, message = {}) 
       // Bypassed modules keep wiring but evaluate via bypassSpec (pass / avg / silence).
       bypassSpec: node.bypassSpec && typeof node.bypassSpec === "object" ? node.bypassSpec : null,
       bypassed: Boolean(node.bypassed),
-      codeblock: this.normalizeCodeblock(node.codeblock),
+      // Efficient blob omits codeblock helpers — only normalize when present.
+      codeblock: typeof this.normalizeCodeblock === "function"
+        ? this.normalizeCodeblock(node.codeblock)
+        : (node.codeblock || null),
       // Phosphillator open-path samples (packed float64 XY). Plan builder puts
       // drawnPath on runtime nodes; without this copy the worklet always saw
       // an empty path and output silence (engine still ran).
@@ -85,6 +163,7 @@ NodeLiveAudioProcessor.prototype.setPlan = function setPlan(plan, message = {}) 
     this.syncVisualInputBuffers();
     const newInputConnections = this.buildInputConnectionMap(plan?.connections, ids);
     this.inputConnections = newInputConnections;
+    this._planConnections = Array.isArray(plan?.connections) ? plan.connections.slice() : [];
     this.graphInputConnections = this.buildGraphInputConnectionMap(plan?.graphConnections, ids);
     this.modulationConnections = this.buildModulationConnectionMap(plan?.modulations, ids);
     this.resetVisualControls();
@@ -128,6 +207,10 @@ NodeLiveAudioProcessor.prototype.setPlan = function setPlan(plan, message = {}) 
     for (const id of ids) {
       if (!this.nodeOutputs.has(id)) {
         this.nodeOutputs.set(id, 0);
+      }
+      // Efficient: native GraphEngine owns DSP state — skip JS evaluator state maps.
+      if (efficientProduct) {
+        continue;
       }
       const node = this.nodes.get(id);
       if (nodeLiveIsPolyBlepOscillatorType(node?.type) && (sessionRestarted || !this.phases.has(id))) {
@@ -438,7 +521,14 @@ NodeLiveAudioProcessor.prototype.setPlan = function setPlan(plan, message = {}) 
         this.noiseGeneratorStates.set(id, this.createNoiseGeneratorState());
       }
       if (node?.type === "randomWalk" && !this.randomWalkStates.has(id)) {
-        this.randomWalkStates.set(id, this.createRandomWalkState());
+        this.randomWalkStates.set(id, {
+          left: this.createRandomWalkState(),
+          right: this.createRandomWalkState(),
+        });
+      }
+      if (node?.type === "cheapWalk" && !this.cheapWalkStates.has(id)) {
+        if (!this.cheapWalkStates) this.cheapWalkStates = new Map();
+        this.cheapWalkStates.set(id, this.createCheapWalkState(1));
       }
       if (node?.type === "piSpigotNoise" && !this.piSpigotNoiseStates.has(id)) {
         this.piSpigotNoiseStates.set(id, this.createPiSpigotNoiseState());
@@ -479,9 +569,6 @@ NodeLiveAudioProcessor.prototype.setPlan = function setPlan(plan, message = {}) 
       if (node?.type === "triggerDivider" && !this.triggerDividerStates.has(id)) {
         this.triggerDividerStates.set(id, this.createTriggerDividerState());
       }
-      if ((node?.type === "vactrolEnvelopeSeries" || node?.type === "vactrolEnvelopeCustom") && !this.vactrolEnvelopeStates.has(id)) {
-        this.vactrolEnvelopeStates.set(id, this.createVactrolEnvelopeState());
-      }
       if (node?.type === "bugButton" && !this.bugButtonStates.has(id)) {
         this.bugButtonStates.set(id, this.createBugButtonState());
       }
@@ -503,14 +590,23 @@ NodeLiveAudioProcessor.prototype.setPlan = function setPlan(plan, message = {}) 
       if (node?.type === "moduleGroup" && node.moduleGroupPlan && !this.moduleGroupRuntimes.has(id)) {
         this.moduleGroupRuntimes.set(id, this.createNestedRuntime(node.moduleGroupPlan));
       }
-      for (const [key, value] of Object.entries(node?.params || {})) {
-        const smootherKey = this.parameterKey(id, key);
-        const metadata = node.paramMeta?.[key];
-        if (!this.smoothers.has(smootherKey)) {
-          this.smoothers.set(smootherKey, this.createSmoother(value, metadata));
+      // Legacy JS chase only for ?product=full — efficient path is write-only.
+      if (!efficientProduct) {
+        for (const [key, value] of Object.entries(node?.params || {})) {
+          const smootherKey = this.parameterKey(id, key);
+          const metadata = node.paramMeta?.[key];
+          if (!this.smoothers.has(smootherKey)) {
+            this.smoothers.set(smootherKey, this.createSmoother(value, metadata));
+          }
+          this.updateSmoother(this.smoothers.get(smootherKey), value, metadata, smootherKey);
         }
-        this.updateSmoother(this.smoothers.get(smootherKey), value, metadata, smootherKey);
       }
+    }
+    // Efficient: drop any leftover JS smoother state (C++ owns the chase).
+    if (efficientProduct && this.smoothers?.size) {
+      this.smoothers.clear();
+      this.activeSmoothers = [];
+      this.activeSmootherKeys?.clear?.();
     }
 
     for (const id of [...this.phases.keys()]) {
@@ -1130,8 +1226,22 @@ NodeLiveAudioProcessor.prototype.setPlan = function setPlan(plan, message = {}) 
     }
     for (const id of [...this.randomWalkStates.keys()]) {
       if (!ids.has(id)) {
-        this.destroyRandomWalkNativeState(this.randomWalkStates.get(id));
+        const bundle = this.randomWalkStates.get(id);
+        if (bundle?.left || bundle?.right) {
+          this.destroyRandomWalkNativeState(bundle.left);
+          this.destroyRandomWalkNativeState(bundle.right);
+        } else {
+          this.destroyRandomWalkNativeState(bundle);
+        }
         this.randomWalkStates.delete(id);
+      }
+    }
+    if (this.cheapWalkStates) {
+      for (const id of [...this.cheapWalkStates.keys()]) {
+        if (!ids.has(id)) {
+          this.destroyCheapWalkNativeState?.(this.cheapWalkStates.get(id));
+          this.cheapWalkStates.delete(id);
+        }
       }
     }
     for (const id of [...this.piSpigotNoiseStates.keys()]) {
@@ -1189,6 +1299,15 @@ NodeLiveAudioProcessor.prototype.setPlan = function setPlan(plan, message = {}) 
         this.pluckEnvelopeStates.delete(id);
       }
     }
+    if (this.pluckEnvelopeModStates) {
+      for (const id of [...this.pluckEnvelopeModStates.keys()]) {
+        if (!ids.has(id)) {
+          this.destroyPluckEnvelopeNativeState(this.pluckEnvelopeModStates.get(id));
+          this.pluckEnvelopeModStates.delete(id);
+          this.additiveModStrips?.delete?.(id);
+        }
+      }
+    }
     for (const id of [...this.stepSequencerStates.keys()]) {
       if (!ids.has(id)) {
         this.destroyStepSequencerNativeState(this.stepSequencerStates.get(id));
@@ -1210,12 +1329,6 @@ NodeLiveAudioProcessor.prototype.setPlan = function setPlan(plan, message = {}) 
       if (!ids.has(id)) {
         this.destroyTriggerDividerNativeState(this.triggerDividerStates.get(id));
         this.triggerDividerStates.delete(id);
-      }
-    }
-    for (const id of [...this.vactrolEnvelopeStates.keys()]) {
-      if (!ids.has(id)) {
-        this.destroyVactrolEnvelopeNativeState(this.vactrolEnvelopeStates.get(id));
-        this.vactrolEnvelopeStates.delete(id);
       }
     }
     for (const id of [...this.impulseButtonStates.keys()]) {
@@ -1282,6 +1395,36 @@ NodeLiveAudioProcessor.prototype.setPlan = function setPlan(plan, message = {}) 
         this.smoothers.delete(key);
       }
     }
+    // Legacy sample-loop bake only — efficient blob omits evaluate-frame.js.
+    if (!efficientProduct) {
+      this.compileExecutionOrder?.();
+      this.compileScopeCapture?.();
+      this.compileGraphLiveness?.();
+    } else {
+      // Scope rings still needed for native-tap observers.
+      this.compileScopeCapture?.();
+    }
+    // Port-object reuse bucket is plan-scoped.
+    if (this._stereoPortBucket) {
+      this._stereoPortBucket.clear();
+    }
+    this._lastProcessFrame = undefined;
+    this._prevProcessWall = undefined;
+
+    // MVEP: efficient mode uses native GraphEngine (no JS DSP walk).
+    // Prefer topology-aware sync — bypass-only setPlan must NOT clear/rebuild
+    // natives (that wiped reverb/delay tails and sounded like an engine restart).
+    // Leaving efficient destroys graph-owned natives (sabrina pool=2).
+    if (this.efficientProduct) {
+      if (typeof this.syncNativeGraphFromPlan === "function") {
+        this.syncNativeGraphFromPlan();
+      } else {
+        this.compileNativeGraphFromPlan?.();
+      }
+    } else {
+      this.destroyNativeGraphHandle?.();
+    }
+
     this.port.postMessage({
       connectionCount: Array.isArray(plan?.connections) ? plan.connections.length : 0,
       feedbackConnectionCount: Array.isArray(plan?.feedbackConnections) ? plan.feedbackConnections.length : 0,
@@ -1309,6 +1452,9 @@ NodeLiveAudioProcessor.prototype.setPlan = function setPlan(plan, message = {}) 
         (Array.isArray(plan?.feedbackModulations) ? plan.feedbackModulations.length : 0)
       ),
       type: "planApplied",
+      efficientProduct: Boolean(this.efficientProduct),
+      nativeGraphCompiled: Boolean(this.nativeGraphCompiled),
+      nativeGraphStatus: this.nativeGraphStatus || "",
       visualSinkCount: Array.isArray(plan?.visualSinks) ? plan.visualSinks.length : 0,
       visualSinks: Array.isArray(plan?.visualSinks) ? plan.visualSinks : [],
     });

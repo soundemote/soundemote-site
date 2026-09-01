@@ -34,6 +34,9 @@ NodeLiveAudioProcessor.prototype.smoothingTypeFromMetadata = function smoothingT
       if (key === "twoPole" || key === "2P" || key === "2p" || key === "two-pole" || key === "2pole") {
         return "twoPole";
       }
+      if (key === "threePole" || key === "3P" || key === "3p" || key === "three-pole" || key === "3pole") {
+        return "threePole";
+      }
       return key === "papoulis" ? "papoulis" : "onePole";
     }
     // Legacy: linearSmoothing=false → instant snaps (not linear ramps).
@@ -425,5 +428,62 @@ NodeLiveAudioProcessor.prototype.readEffectiveParameter = function readEffective
       return nodeGraphParamFoldModSources(base, sources, metadata);
     }
     return this.applyParameterModulation(base, sources.reduce((a, b) => a + b, 0), metadata);
+};
+
+// Dual dirty lists (soemdsp):
+//   1) activeSmoothers — only chases still moving; empty ⇒ no smoother CPU
+//   2) control hasChanged — Control knobs only re-resolve / *Changed when the
+//      effective value moved (smoother active, audio-rate mod, or first bind).
+// Idle unmodulated params are on NEITHER list and must not be recalculated.
+NodeLiveAudioProcessor.prototype.moduleControlNeedsRefresh = function moduleControlNeedsRefresh(node, state, keys) {
+    if (!state?.cachedParams || state.cachedParamsPlanSerial !== this.planSerial) {
+      return true;
+    }
+    const list = keys || Object.keys(state.cachedParams);
+    for (let i = 0; i < list.length; i += 1) {
+      const key = list[i];
+      const smootherKey = this.parameterKey(node?.id, key);
+      if (this.activeSmootherKeys.has(smootherKey)) {
+        return true;
+      }
+      const mods = this.modulationConnections.get(smootherKey);
+      if (mods && mods.length) {
+        return true;
+      }
+    }
+    return false;
+};
+
+/**
+ * Resolve Control knobs only when hasChanged (smoother moving / modulated / unbound).
+ * Returns { params, changed }. Live audio-rate wires should NOT use this — read those every sample.
+ */
+NodeLiveAudioProcessor.prototype.resolveModuleControlParams = function resolveModuleControlParams(
+  node,
+  state,
+  spec,
+  frame,
+  frames,
+  frameValues,
+) {
+    const keys = Object.keys(spec || {});
+    if (!this.moduleControlNeedsRefresh(node, state, keys)) {
+      return { params: state.cachedParams, changed: false };
+    }
+    const params = Object.create(null);
+    let changed = !state.cachedParams;
+    const prev = state.cachedParams;
+    for (let i = 0; i < keys.length; i += 1) {
+      const key = keys[i];
+      const fallback = spec[key];
+      const value = this.readEffectiveParameter(node, key, fallback, frame, frames, frameValues);
+      params[key] = value;
+      if (!changed && prev && prev[key] !== value) {
+        changed = true;
+      }
+    }
+    state.cachedParams = params;
+    state.cachedParamsPlanSerial = this.planSerial;
+    return { params, changed };
 };
 

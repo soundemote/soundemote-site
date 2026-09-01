@@ -261,6 +261,15 @@ function nodeGraphParamNormalizeModInput(value, _metadata = {}) {
 }
 
 /**
+ * Coerce to number; use fallback ONLY when non-finite.
+ * 0 is a real value — never write `Number(x) || default` for knobs/CV.
+ */
+function nodeGraphFiniteNumber(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/**
  * |mod| ≤ this → treat as unit CV across [min,max] (linear, no skew).
  * |mod| above → domain-add absolute (Pitch Detector Hz, large Knob Bias, …).
  */
@@ -328,10 +337,16 @@ function nodeGraphParamFoldModSources(base, sources, metadata = {}) {
 }
 
 /**
- * Parameter port as MOD source: emit linear unit 0…1 of its domain (no skew)
- * so chaining stays unit-compatible with Uni/Bi style CVs.
+ * Parameter port as MOD/bus source.
+ * Default: linear unit 0…1 of its domain (no skew) for Uni/Bi CV chaining.
+ * `outputDomain: true` (Yellow Graph modules): emit raw DOMAIN (Hz, cycles, …)
+ * — never normalize for display or Graph-module communication.
  */
 function nodeGraphParamDomainToModOutput(value, metadata = {}) {
+  if (metadata && metadata.outputDomain === true) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+  }
   return nodeGraphParamDomainToUnitLinear(value, metadata);
 }
 

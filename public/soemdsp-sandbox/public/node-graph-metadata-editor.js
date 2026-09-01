@@ -2057,9 +2057,11 @@ function nodeGraphSmoothingTypeStatusText(type) {
       // Discrete / legacy instant. User-facing “no smooth” is SOURCE ❌.
       return "Instant (no filter). For continuous params use SOURCE ❌ Off.";
     case "twoPole":
-      return "2P Two-pole - cascaded one poles (more smooth and less expensive than papoulis)";
+      return "2P Two-pole — cascaded one poles (more smooth, no overshoot).";
+    case "threePole":
+      return "3P Three-pole — cascaded one poles ×3 (steeper than 2P, no overshoot).";
     case "papoulis":
-      return "Π Papoulis - 3rd-order Optimum-L lowpass (most smooth but higher cpu usage)";
+      return "Π Papoulis — 3rd-order Optimum-L (steep; can overshoot / wiggle on steps).";
     case "onePole":
     default:
       return "1P One-pole — classic exponential parameter chase.";
@@ -2462,6 +2464,9 @@ function readNodeMetadataEditorValues(slider) {
   const smoothingType = normalizeNodeGraphMetadataSmoothingType(
     document.getElementById("metadataSmoothingTypeGroup")?.dataset.type,
   );
+  const smoothingMode = normalizeNodeGraphMetadataSmoothingMode(
+    document.getElementById("metadataSmoothingModeGroup")?.dataset.mode,
+  );
   return {
     alias: normalizeNodeGraphPatchMetadataAlias(document.getElementById("metadataAliasValue").value),
     tooltip: nodeGraphMetadataClampTooltipText(
@@ -2490,9 +2495,7 @@ function readNodeMetadataEditorValues(slider) {
       ? nodeGraphMetadataLinearSmoothingFromType(smoothingType)
       : smoothingType !== "none",
     nonlinearSlider: document.getElementById("metadataSliderCurveValue").value !== "linear",
-    smoothingMode: normalizeNodeGraphMetadataSmoothingMode(
-      document.getElementById("metadataSmoothingModeGroup")?.dataset.mode,
-    ),
+    smoothingMode,
     smoothingType,
     smoothingSeconds,
     sliderCurve: normalizeNodeSliderCurve(document.getElementById("metadataSliderCurveValue").value),
@@ -2832,6 +2835,20 @@ function handleNodeMetadataEditorInput(event) {
   }
   if (target?.id === "metadataTooltipValue") {
     scheduleNodeMetadataTooltipTextareaSize(target);
+  }
+  // Only when the user edits SMOOTH time: Global ignores that field, so switch
+  // SOURCE to Internal. Do not do this on mode-button apply (field is always filled).
+  if (target?.id === "metadataSmoothingSecondsValue") {
+    const modeGroup = document.getElementById("metadataSmoothingModeGroup");
+    if (modeGroup && normalizeNodeGraphMetadataSmoothingMode(modeGroup.dataset.mode) === "global") {
+      modeGroup.dataset.mode = "internal";
+      syncMetadataSmoothingModeButtons({
+        smoothingMode: "internal",
+        smoothingSeconds: nodeGraphMetadataSmoothingSecondsToSamples(
+          parseNodeMetadataNumber(target.value, 0),
+        ),
+      });
+    }
   }
   syncNodeMetadataMidVisibility();
   syncNodeMetadataChoiceToggleAvailability();

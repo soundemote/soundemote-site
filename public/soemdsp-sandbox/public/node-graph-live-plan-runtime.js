@@ -6,6 +6,22 @@ function nodeGraphBuildLivePlan() {
     throw error;
   }
 
+  // Efficient product: do not hard-block Live when a foreign module (e.g. audioPlayer)
+  // sits in the patch. Strip those types from the live schedule so allowlisted
+  // DSP still runs; surface the skip on the plan status pill.
+  let efficientForeignStripped = [];
+  if (typeof nodeGraphEfficientProductEnabled === "function"
+    && nodeGraphEfficientProductEnabled()
+    && typeof nodeGraphEfficientProductForeignTypesFromNodes === "function") {
+    const planNodes = (compiled.order || [])
+      .map((nodeId) => nodeGraphMvp.patch?.nodes?.find((node) => node.id === nodeId))
+      .filter(Boolean);
+    const fallbackNodes = planNodes.length
+      ? planNodes
+      : (Array.isArray(nodeGraphMvp.patch?.nodes) ? nodeGraphMvp.patch.nodes : []);
+    efficientForeignStripped = nodeGraphEfficientProductForeignTypesFromNodes(fallbackNodes);
+  }
+
   const activeNodeIds = nodeGraphActiveNodeIds(compiled);
   const activeSignalConnections = nodeGraphActiveSignalConnections(compiled)
     .map((connection) => ({ ...connection }));
@@ -44,6 +60,20 @@ function nodeGraphBuildLivePlan() {
   plan.samples = typeof nodeGraphLiveSamplesForPlan === "function"
     ? nodeGraphLiveSamplesForPlan(plan, nodeGraphMvp.patch)
     : [];
+  if (efficientForeignStripped.length
+    && typeof nodeGraphEfficientProductStripForeignFromLivePlan === "function") {
+    const stripped = nodeGraphEfficientProductStripForeignFromLivePlan(plan);
+    if (stripped.foreignTypes.length && typeof setNodeGraphLivePlanStatus === "function") {
+      const msg = typeof nodeGraphEfficientProductRefuseMessage === "function"
+        ? nodeGraphEfficientProductRefuseMessage(stripped.foreignTypes)
+        : `skipped: ${stripped.foreignTypes.join(", ")}`;
+      setNodeGraphLivePlanStatus(`live skips ${stripped.foreignTypes.join(", ")}`, "warn");
+      if (typeof setNodeGraphLivePlanTitle === "function") {
+        setNodeGraphLivePlanTitle(msg);
+      }
+    }
+    return stripped.plan;
+  }
   return plan;
 }
 
@@ -80,6 +110,9 @@ function nodeGraphBuildLivePlanForPatch(patch) {
   plan.samples = typeof nodeGraphLiveSamplesForPlan === "function"
     ? nodeGraphLiveSamplesForPlan(plan, normalizedPatch)
     : [];
+  if (typeof nodeGraphEfficientProductStripForeignFromLivePlan === "function") {
+    return nodeGraphEfficientProductStripForeignFromLivePlan(plan).plan;
+  }
   return plan;
 }
 
@@ -354,7 +387,6 @@ function createNodeGraphLiveRuntime(plan, previousRuntime = null) {
   const rmsStates = new Map();
   const speedColorInertiaStates = new Map();
   const inertialFilterStates = new Map();
-  const airClipperStates = new Map();
   const softClipperStates = new Map();
   const clipperLimiterStates = new Map();
   const speakerProtector2States = new Map();
@@ -426,7 +458,6 @@ function createNodeGraphLiveRuntime(plan, previousRuntime = null) {
   const triggerCounterStates = new Map();
   const triggerDividerStates = new Map();
   const triangleStates = new Map();
-  const vactrolEnvelopeStates = new Map();
   const impulseButtonStates = new Map();
   const bugButtonStates = new Map();
   const keypadStates = new Map();
@@ -637,9 +668,6 @@ function createNodeGraphLiveRuntime(plan, previousRuntime = null) {
     if (node.type === "inertialFilter") {
       inertialFilterStates.set(node.id, createNodeGraphStereoInertialFilterState());
     }
-    if (node.type === "airClipper" && typeof createNodeGraphAirClipperState === "function") {
-      airClipperStates.set(node.id, createNodeGraphAirClipperState());
-    }
     if (node.type === "softClipper" && typeof createNodeGraphSoftClipperState === "function") {
       softClipperStates.set(node.id, createNodeGraphSoftClipperState());
     }
@@ -709,7 +737,7 @@ function createNodeGraphLiveRuntime(plan, previousRuntime = null) {
       randomClockStates.set(node.id, createNodeGraphRandomClockState());
     }
     if (node.type === "sampleHold") {
-      sampleHoldStates.set(node.id, createNodeGraphSampleHoldState());
+      sampleHoldStates.set(node.id, createNodeGraphStereoSampleHoldState());
     }
     if (node.type === "samplePlayer" || node.type === "sampleLooper" || node.type === "audioPlayer") {
       samplePlaybackStates.set(node.id, createNodeGraphSamplePlaybackState());
@@ -782,9 +810,6 @@ function createNodeGraphLiveRuntime(plan, previousRuntime = null) {
     if (node.type === "triggerDivider") {
       triggerDividerStates.set(node.id, createNodeGraphTriggerDividerState());
     }
-    if (node.type === "vactrolEnvelopeSeries" || node.type === "vactrolEnvelopeCustom") {
-      vactrolEnvelopeStates.set(node.id, createNodeGraphVactrolEnvelopeState());
-    }
     if (node.type === "moduleGroup" && node.moduleGroup?.sourcePatch) {
       try {
         moduleGroupRuntimes.set(node.id, createNodeGraphLiveRuntime(nodeGraphBuildLivePlanForPatch(node.moduleGroup.sourcePatch)));
@@ -856,7 +881,6 @@ function createNodeGraphLiveRuntime(plan, previousRuntime = null) {
     rmsStates,
     speedColorInertiaStates,
     inertialFilterStates,
-    airClipperStates,
     softClipperStates,
     clipperLimiterStates,
     speakerProtector2States,
@@ -966,7 +990,6 @@ function createNodeGraphLiveRuntime(plan, previousRuntime = null) {
     triggerCounterStates,
     triggerDividerStates,
     triangleStates,
-    vactrolEnvelopeStates,
     impulseButtonStates,
     bugButtonStates,
     keypadStates,
@@ -985,6 +1008,9 @@ function createNodeGraphLiveRuntime(plan, previousRuntime = null) {
 }
 
 function updateNodeGraphLiveRuntimePlan(runtime, plan) {
+  if (typeof nodeGraphEfficientProductAssertPlanAllowed === "function") {
+    nodeGraphEfficientProductAssertPlanAllowed(Array.isArray(plan?.nodes) ? plan.nodes : []);
+  }
   runtime.nodes = new Map((plan.nodes || []).map((node) => [node.id, node]));
   runtime.samples = new Map((plan.samples || []).map((sample) => [sample.id, sample]));
   runtime.inputConnections = nodeGraphLiveInputConnectionMap(plan);
@@ -1093,9 +1119,6 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   }
   if (!runtime.inertialFilterStates) {
     runtime.inertialFilterStates = new Map();
-  }
-  if (!runtime.airClipperStates) {
-    runtime.airClipperStates = new Map();
   }
   if (!runtime.softClipperStates) {
     runtime.softClipperStates = new Map();
@@ -1308,9 +1331,6 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   }
   if (!runtime.triangleStates) {
     runtime.triangleStates = new Map();
-  }
-  if (!runtime.vactrolEnvelopeStates) {
-    runtime.vactrolEnvelopeStates = new Map();
   }
   if (!runtime.impulseButtonStates) {
     runtime.impulseButtonStates = new Map();
@@ -1551,13 +1571,6 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
       runtime.inertialFilterStates.set(node.id, createNodeGraphStereoInertialFilterState());
     }
     if (
-      node.type === "airClipper"
-      && typeof createNodeGraphAirClipperState === "function"
-      && !runtime.airClipperStates.has(node.id)
-    ) {
-      runtime.airClipperStates.set(node.id, createNodeGraphAirClipperState());
-    }
-    if (
       node.type === "softClipper"
       && typeof createNodeGraphSoftClipperState === "function"
       && !runtime.softClipperStates.has(node.id)
@@ -1646,7 +1659,7 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
       runtime.randomClockStates.set(node.id, createNodeGraphRandomClockState());
     }
     if (node.type === "sampleHold" && !runtime.sampleHoldStates.has(node.id)) {
-      runtime.sampleHoldStates.set(node.id, createNodeGraphSampleHoldState());
+      runtime.sampleHoldStates.set(node.id, createNodeGraphStereoSampleHoldState());
     }
     if ((node.type === "samplePlayer" || node.type === "sampleLooper" || node.type === "audioPlayer") && !runtime.samplePlaybackStates.has(node.id)) {
       runtime.samplePlaybackStates.set(node.id, createNodeGraphSamplePlaybackState());
@@ -1722,9 +1735,6 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     }
     if (node.type === "triggerCounter" && !runtime.triggerCounterStates.has(node.id)) {
       runtime.triggerCounterStates.set(node.id, createNodeGraphTriggerCounterState());
-    }
-    if ((node.type === "vactrolEnvelopeSeries" || node.type === "vactrolEnvelopeCustom") && !runtime.vactrolEnvelopeStates.has(node.id)) {
-      runtime.vactrolEnvelopeStates.set(node.id, createNodeGraphVactrolEnvelopeState());
     }
     if (node.type === "moduleGroup" && node.moduleGroup?.sourcePatch && !runtime.moduleGroupRuntimes.has(node.id)) {
       try {
@@ -2088,13 +2098,6 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
       }
     }
   }
-  if (runtime.airClipperStates) {
-    for (const id of [...runtime.airClipperStates.keys()]) {
-      if (!nodeIds.has(id)) {
-        runtime.airClipperStates.delete(id);
-      }
-    }
-  }
   if (runtime.softClipperStates) {
     for (const id of [...runtime.softClipperStates.keys()]) {
       if (!nodeIds.has(id)) {
@@ -2308,11 +2311,6 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   for (const id of [...runtime.triggerDividerStates.keys()]) {
     if (!nodeIds.has(id)) {
       runtime.triggerDividerStates.delete(id);
-    }
-  }
-  for (const id of [...runtime.vactrolEnvelopeStates.keys()]) {
-    if (!nodeIds.has(id)) {
-      runtime.vactrolEnvelopeStates.delete(id);
     }
   }
   for (const id of [...runtime.impulseButtonStates.keys()]) {
