@@ -4,14 +4,61 @@ function syncNodeGraphInputModuleLiveState() {
     if (!badge) {
       continue;
     }
-    const state = nodeGraphMvp.live.inputActive ? nodeGraphMvp.live.micStatus : "off";
-    badge.textContent = nodeGraphLiveMicStatusText(state);
-    badge.dataset.micState = state;
+    const micStatus = nodeGraphMvp.live.inputActive ? nodeGraphMvp.live.micStatus : "off";
+    const displayState = typeof nodeGraphLiveMicIsPausedDisplay === "function"
+      && nodeGraphLiveMicIsPausedDisplay(micStatus)
+      ? "paused"
+      : micStatus;
+    const label = nodeGraphLiveMicStatusText(micStatus);
     const peak = Math.max(0, Math.min(1, Number(nodeGraphMvp.live.inputMeterPeak) || 0));
-    badge.dataset.inputPeak = peak.toFixed(3);
-    badge.style.setProperty("--node-live-input-peak", `${Math.round(peak * 100)}%`);
-    badge.setAttribute("title", document.getElementById("nodeLiveMicStatus")?.title || "");
+    const peakText = peak.toFixed(3);
+    const peakPct = `${Math.round(peak * 100)}%`;
+    const title = document.getElementById("nodeLiveMicStatus")?.title || "";
+    if (badge.textContent !== label) {
+      badge.textContent = label;
+    }
+    if (badge.dataset.micState !== displayState) {
+      badge.dataset.micState = displayState;
+    }
+    if (badge.dataset.inputPeak !== peakText) {
+      badge.dataset.inputPeak = peakText;
+      badge.style.setProperty("--node-live-input-peak", peakPct);
+    }
+    if ((badge.getAttribute("title") || "") !== title) {
+      if (title) {
+        badge.setAttribute("title", title);
+      } else {
+        badge.removeAttribute("title");
+      }
+    }
   }
+}
+
+/** Update chrome mic pill text/class only (live ↔ paused) without resetting status. */
+function refreshNodeGraphLiveMicStatusDisplay() {
+  const status = document.getElementById("nodeLiveMicStatus");
+  if (!status) {
+    return;
+  }
+  const state = nodeGraphMvp.live.micStatus || "off";
+  const permissionText = state === "armed" || state === "off"
+    ? nodeGraphLivePermissionStatusText()
+    : "";
+  const label = typeof nodeGraphLiveMicStatusText === "function"
+    ? nodeGraphLiveMicStatusText(state)
+    : "mic off";
+  const pillClass = typeof nodeGraphLiveMicStatusPillClass === "function"
+    ? nodeGraphLiveMicStatusPillClass(state)
+    : "";
+  const nextText = permissionText || label || "mic off";
+  const nextClass = `pill ${pillClass}`.trim();
+  if (status.textContent !== nextText) {
+    status.textContent = nextText;
+  }
+  if (status.className !== nextClass) {
+    status.className = nextClass;
+  }
+  syncNodeGraphInputModuleLiveState();
 }
 
 function setNodeGraphLiveMicStatus(state, message = "") {
@@ -20,31 +67,12 @@ function setNodeGraphLiveMicStatus(state, message = "") {
   if (!status) {
     return;
   }
-  const textByState = {
-    armed: "mic waits output",
-    blocked: "mic blocked",
-    connected: "mic live",
-    off: "mic off",
-    requesting: "mic asking",
-  };
-  const classByState = {
-    armed: "warn",
-    blocked: "error",
-    connected: "good",
-    off: "",
-    requesting: "warn",
-  };
-  const permissionText = state === "armed" || state === "off"
-    ? nodeGraphLivePermissionStatusText()
-    : "";
-  status.textContent = permissionText || textByState[state] || "mic off";
-  status.className = `pill ${classByState[state] || ""}`.trim();
   if (message) {
     status.title = message;
   } else {
     status.removeAttribute("title");
   }
-  syncNodeGraphInputModuleLiveState();
+  refreshNodeGraphLiveMicStatusDisplay();
   updateNodeGraphLiveInputTestStatus();
 }
 
@@ -55,7 +83,6 @@ function updateNodeGraphLiveInputTestStatus() {
   }
   const inputActive = Boolean(nodeGraphMvp.live.inputActive);
   const inputRouteState = nodeGraphLiveInputRouteState();
-  const outputEnabled = Boolean(nodeGraphMvp.live.outputEnabled);
   const micStatus = nodeGraphMvp.live.micStatus || "off";
   const permissionStatus = nodeGraphMvp.live.inputPermissionStatus || "unknown";
   const peak = Number(nodeGraphMvp.live.inputMeterPeak) || 0;
@@ -71,14 +98,6 @@ function updateNodeGraphLiveInputTestStatus() {
     state = "error";
     title = document.getElementById("nodeLiveMicStatus")?.title ||
       "Microphone permission is blocked in the browser.";
-  } else if (inputActive && !outputEnabled) {
-    text = permissionStatus === "granted"
-      ? "start output"
-      : nodeGraphLivePermissionStatusText(permissionStatus);
-    state = permissionStatus === "granted" ? "good" : "warn";
-    title = permissionStatus === "granted"
-      ? "Microphone permission is already allowed. Press Output to start live input."
-      : "Press Output to start live audio and request microphone permission.";
   } else if (micStatus === "requesting") {
     text = "allow mic";
     state = "warn";
@@ -94,11 +113,18 @@ function updateNodeGraphLiveInputTestStatus() {
   } else if (inputActive) {
     text = "ready";
     state = "warn";
-    title = inputRouteState.message || "Input is visible. Start Output to request microphone permission.";
+    title = inputRouteState.message || "Input is armed. Allow microphone access when prompted.";
   }
-  status.textContent = text;
-  status.className = `pill ${state}`.trim();
-  status.title = title;
+  const nextClass = `pill ${state}`.trim();
+  if (status.textContent !== text) {
+    status.textContent = text;
+  }
+  if (status.className !== nextClass) {
+    status.className = nextClass;
+  }
+  if (status.title !== title) {
+    status.title = title;
+  }
 }
 
 function nodeGraphLiveInputRouteState() {

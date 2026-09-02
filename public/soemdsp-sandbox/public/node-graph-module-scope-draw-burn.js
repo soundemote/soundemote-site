@@ -34,132 +34,10 @@ function disposeNodeGraphScope2dBurnRendererForCanvas(canvas) {
 }
 
 
-/** True when the face can still take a 2D context (not WebGL-poisoned). */
-function nodeGraphScope2dFaceCanvasIsUsable(canvas) {
-  if (!(canvas instanceof HTMLCanvasElement)) {
-    return false;
-  }
-  try {
-    return Boolean(canvas.getContext("2d"));
-  } catch (_error) {
-    return false;
-  }
-}
-
-function nodeGraphScope2dBurnCanvasForSlot(slot) {
-  const screenElement = slot?.scopeElement;
-  const nodeId = slot?.nodeId;
-  if (!screenElement) {
-    return null;
-  }
-  let canvas = screenElement.querySelector(":scope > .node-module-scope-local-fallback-canvas");
-  // DOM rebuild may have detached the face — re-attach the persistent canvas
-  // so phosphor residual (_phosphorEnergyGl) survives add-module / re-render.
-  if (!canvas && nodeId && nodeGraphModuleScopePersistentCanvases.has(nodeId)) {
-    canvas = nodeGraphModuleScopePersistentCanvases.get(nodeId);
-    // Never reattach a canvas that lost 2D (e.g. after legacy WebGL dispose).
-    if (canvas && !nodeGraphScope2dFaceCanvasIsUsable(canvas)) {
-      try {
-        canvas.remove();
-      } catch (_error) { /* ignore */ }
-      nodeGraphModuleScopePersistentCanvases.delete(nodeId);
-      canvas = null;
-    } else if (canvas && canvas.parentNode !== screenElement) {
-      screenElement.appendChild(canvas);
-    }
-  }
-  if (canvas && canvas.dataset.scope2dRenderer !== nodeGraphScope2dBurnRendererVersion) {
-    disposeNodeGraphScope2dBurnRendererForCanvas(canvas);
-    if (typeof nodeGraphPhosphorEnergyGlDestroy === "function" && canvas._phosphorEnergyGl) {
-      try {
-        nodeGraphPhosphorEnergyGlDestroy(canvas._phosphorEnergyGl);
-      } catch (_) { /* ignore */ }
-      canvas._phosphorEnergyGl = null;
-    }
-    canvas.remove();
-    if (nodeId) {
-      nodeGraphModuleScopePersistentCanvases.delete(nodeId);
-    }
-    canvas = null;
-  }
-  // Live face also poisoned? Drop and recreate.
-  if (canvas && !nodeGraphScope2dFaceCanvasIsUsable(canvas)) {
-    disposeNodeGraphScope2dBurnRendererForCanvas(canvas);
-    if (canvas._phosphorEnergyGl && typeof nodeGraphPhosphorEnergyGlDestroy === "function") {
-      try {
-        nodeGraphPhosphorEnergyGlDestroy(canvas._phosphorEnergyGl);
-      } catch (_error) { /* ignore */ }
-      canvas._phosphorEnergyGl = null;
-    }
-    try {
-      canvas.remove();
-    } catch (_error) { /* ignore */ }
-    if (nodeId) {
-      nodeGraphModuleScopePersistentCanvases.delete(nodeId);
-    }
-    canvas = null;
-  }
-  if (!canvas) {
-    canvas = document.createElement("canvas");
-    canvas.className = "node-module-scope-local-fallback-canvas";
-    canvas.style.mixBlendMode = "normal";
-    canvas.dataset.scope2dRenderer = nodeGraphScope2dBurnRendererVersion;
-    canvas.setAttribute("aria-hidden", "true");
-    screenElement.appendChild(canvas);
-    if (nodeId) {
-      nodeGraphModuleScopePersistentCanvases.set(nodeId, canvas);
-    }
-  } else {
-    if (canvas.style.mixBlendMode !== "normal") {
-      canvas.style.mixBlendMode = "normal";
-    }
-    if (nodeId && !nodeGraphModuleScopePersistentCanvases.has(nodeId)) {
-      nodeGraphModuleScopePersistentCanvases.set(nodeId, canvas);
-    }
-  }
-  return canvas;
-}
-
-
-function syncNodeGraphScope2dBurnCanvas(canvas, screenElement, pixelRatio, pixelDensity = 1) {
-  if (!canvas || !screenElement) {
-    return { resized: false, synced: false };
-  }
-  // Layout pixel grid × density — not screen-space getBoundingClientRect.
-  // Workspace zoom must not reallocate burn FBOs (that was the FPS cliff).
-  const size = nodeGraphModuleScopeFaceBackingSize(screenElement, pixelRatio);
-  if (!size) {
-    return { resized: false, synced: false };
-  }
-  const density = typeof nodeGraphFacePlateDensity === "function"
-    ? nodeGraphFacePlateDensity({ pixelDensity }, 1)
-    : Math.max(0, Math.min(1, Number(pixelDensity) || 0));
-  const width = Math.max(1, Math.round(size.width * density));
-  const height = Math.max(1, Math.round(size.height * density));
-  const resized = canvas.width !== width || canvas.height !== height;
-  if (resized) {
-    canvas.width = width;
-    canvas.height = height;
-    // Pixel-space bridge point is invalid after a buffer resize (density /
-    // layout change). Leaving it in the old coordinate space draws a bright
-    // chord from the stale location to the new path — “lines out of place”
-    // on X/Y phosphor faces.
-    canvas._nodeGraphScope2dLastDrawnPoint = null;
-    canvas._phosphorLiveOverlayPoints = null;
-    canvas._phosphorLiveScratchInk = false;
-  }
-  // Below 1: intentional chunky CSS upscale. At/above 1: smooth scale.
-  if (density < 0.999) {
-    canvas.style.imageRendering = "pixelated";
-  } else if (canvas.style.imageRendering) {
-    canvas.style.imageRendering = "";
-  }
-  if (canvas.style.width || canvas.style.height) {
-    canvas.style.width = "";
-    canvas.style.height = "";
-  }
-  return { resized, synced: true, density };
-}
+// Face ensure/sync SSOT: node-graph-module-scope-face-canvas.js
+// (ensureNodeGraphModuleScopeFaceCanvas mode tape|burn, sync … policy).
+// Shims: nodeGraphScope2dBurnCanvasForSlot / syncNodeGraphScope2dBurnCanvas /
+// nodeGraphScope2dFaceCanvasIsUsable — defined there until call sites migrate.
 
 
 function nodeGraphScope2dBurnTextureFormats(gl) {
@@ -800,10 +678,10 @@ function drawNodeGraphScope2dEnergyBurnPath(item, pixelRatio, pathPoints, settin
   }
 
   const trail = typeof PhosphorResidual !== "undefined" && PhosphorResidual.migrateTrail
-    ? PhosphorResidual.migrateTrail(settings || {}, 0.88)
-    : clampNodeSliderValue(Number(settings?.trail ?? (Number.isFinite(Number(settings?.decay)) ? 1 - Number(settings.decay) : 0.88)), 0, 1);
+    ? PhosphorResidual.migrateTrail(settings || {}, PhosphorResidual.DEFAULT_TRAIL ?? 0.3)
+    : clampNodeSliderValue(Number(settings?.trail ?? (Number.isFinite(Number(settings?.decay)) ? 1 - Number(settings.decay) : 0.3)), 0, 1);
   const ghost = typeof PhosphorResidual !== "undefined" && PhosphorResidual.migrateGhost
-    ? PhosphorResidual.migrateGhost(settings || {}, 0.45)
+    ? PhosphorResidual.migrateGhost(settings || {}, PhosphorResidual.DEFAULT_GHOST ?? 0.25)
     : clampNodeSliderValue(Number(settings?.ghost ?? settings?.burn) || 0, 0, 1);
   const dotSpace = nodeGraphScope2dStrokeSpace(canvas);
   const layers = nodeGraphScope2dBurnLayers(settings, dotSpace);
@@ -818,8 +696,9 @@ function drawNodeGraphScope2dEnergyBurnPath(item, pixelRatio, pathPoints, settin
   if (frozen) {
     // Present only (below). No residual step, no bleed, no deposit.
   } else if (layer) {
-    // c1091b4 energy burn deposit: dots only, maxDots ceiling, no fullEconomy flag
-    // (thrifty ideal spacing; under load skip evenly across the path).
+    // Continuous CRT trail only: always pack stamps along chords between
+    // samples (c1091b4 / 8bc05d90). Dots Only / Full Dot Economy are retired —
+    // they produced beads or over-fat solid mush; ignore sticky patch flags.
     const size01 = clampNodeSliderValue(settings?.dot1Size, 0, 1);
     const beamBrightness = nodeGraphScope2dEnergyBurnDepositGain(
       layer.brightness,
@@ -833,19 +712,22 @@ function drawNodeGraphScope2dEnergyBurnPath(item, pixelRatio, pathPoints, settin
       brightness: beamBrightness,
       blur: nodeGraphTraceDisplayClampStampBlur(layer.blur),
       mode: "dots",
-      // User / face ceiling. Under load: even skips across full path (not head-only).
       maxDots: Math.max(
         64,
         Math.min(
           8192,
-          Math.round(Number(settings?.dotBudget) || nodeGraphScope2dMaxSamplesPerFrame(canvas)),
+          Math.round(
+            Number(settings?.dotBudget)
+            || nodeGraphScope2dMaxSamplesPerFrame(canvas)
+            || 2048,
+          ),
         ),
       ),
-      // Only pass fullEconomy when explicitly true (c1091b4 default: off).
-      fullEconomy: settings?.fullDotEconomy === true,
-      fullDotEconomy: settings?.fullDotEconomy === true,
-      // Dots only: sample hits only — no fuse packing between points.
-      dotsOnly: settings?.dotsOnly === true || settings?.verticesOnly === true,
+      fullEconomy: false,
+      fullDotEconomy: false,
+      dotsOnly: false,
+      samplesOnly: false,
+      verticesOnly: false,
     });
     void stepped;
     const stamps = Math.max(
@@ -913,23 +795,21 @@ function drawNodeGraphScope2dRetainedBurn(item, pixelRatio, square, buffer, sett
   }
   // Deposit only samples since last draw (+ bridge). Phosphor residual is the
   // lagging trail — do not re-stamp the full history every frame.
+  // c1091b4 / 8bc05d90: keep the newest consecutive window (clamp), do NOT
+  // even-subsample across a long undrawn gap — that made high-speed Lorenz
+  // look like a downsampled polyline of sparse chords.
   const count = Math.min(buffer?.x?.length || 0, buffer?.y?.length || 0);
   const budget = nodeGraphScope2dMaxSamplesPerFrame(canvas);
   const rawStart = nodeGraphScope2dDrawStartIndex(canvas, buffer, count);
-  // Cover the whole undrawn window. Clamping to the newest `budget` samples
-  // dropped the middle of the orbit (random gaps on sincos circles).
-  const undrawn = Math.max(0, count - rawStart);
-  let pathPoints = [];
-  if (undrawn > 0 && rawStart < count) {
-    const even = undrawn > budget && typeof nodeGraphScope2dEvenSampleIndices === "function"
-      ? nodeGraphScope2dEvenSampleIndices(undrawn, budget).map((i) => rawStart + i)
-      : null;
-    pathPoints = buildNodeGraphScope2dPathPoints(canvasSquare, buffer, rawStart, {
+  const drawStartIndex = typeof nodeGraphScope2dClampDrawStartIndex === "function"
+    ? nodeGraphScope2dClampDrawStartIndex(rawStart, count, budget)
+    : rawStart;
+  let pathPoints = drawStartIndex < count
+    ? buildNodeGraphScope2dPathPoints(canvasSquare, buffer, drawStartIndex, {
       interpolate: false,
       settings,
-      indices: even,
-    });
-  }
+    })
+    : [];
   // Adjacent-frame bridge (soundemote.io): short residual gap only; one vertex.
   pathPoints = bridgeNodeGraphScope2dAdjacentFramePath(
     canvas,
@@ -1065,9 +945,14 @@ function drawNodeGraphLineBurnOscilloscopeItem(renderer, item, pixelRatio) {
   // Undrawn-window path draws every sample since lastDrawn (not just the
   // latest post) so skipped RAF / multi-post gaps no longer Y-jump the pen.
   // Match online: no spatial bridge (that glued stale lastPoint across gaps).
-  const pathPoints = reduceNodeGraphOneDimensionalBurnPoints(
-    nodeGraphOneDimensionalBurnFramePoints(canvas, buffer, settings, resetBuffer),
-    nodeGraphOneDimensionalBurnPointBudget(canvas),
+  // Do NOT thin then chord-pack: that is the low-freq faceted stroke with
+  // brightness dips at joints (Full Dot Economy cannot fix it — it only packs
+  // denser along the same straight chords). Pass every undrawn sample.
+  const pathPoints = nodeGraphOneDimensionalBurnFramePoints(
+    canvas,
+    buffer,
+    settings,
+    resetBuffer,
   );
   // Prefer buffer absolute frame; fall back to undrawn-window end so the
   // cursor still advances when metadata is partial.
@@ -1078,7 +963,11 @@ function drawNodeGraphLineBurnOscilloscopeItem(renderer, item, pixelRatio) {
       cursorEnd = Number(w.endFrame);
     }
   }
-  drawNodeGraphRetainedBurnPath(item, pixelRatio, pathPoints, settings, { endFrame: cursorEnd });
+  drawNodeGraphRetainedBurnPath(item, pixelRatio, pathPoints, settings, {
+    endFrame: cursorEnd,
+    // Continuity from chord packing between samples (c1091b4 / 8bc05d90).
+    // Do not force samplesOnly — that left sparse beads / stacked discs.
+  });
 }
 
 
@@ -1367,7 +1256,9 @@ function drawNodeGraphScope2dTraceItem(renderer, item, pixelRatio) {
     return;
   }
   renderNodeGraphModuleScopeAnalyzer(item.slot, buffer);
-  const canvas = nodeGraphModuleScopeLocalFallbackCanvas(item?.slot);
+  const canvas = typeof ensureNodeGraphModuleScopeFaceCanvas === "function"
+    ? ensureNodeGraphModuleScopeFaceCanvas(item?.slot, { mode: "tape" })
+    : nodeGraphModuleScopeLocalFallbackCanvas(item?.slot);
   if (typeof nodeGraphWaterfallAbandonTape === "function") {
     nodeGraphWaterfallAbandonTape(canvas);
   }
@@ -1375,13 +1266,16 @@ function drawNodeGraphScope2dTraceItem(renderer, item, pixelRatio) {
   const settings = nodeGraphScope2dTraceSettingsForNode(nodeGraphModuleScopeNodeForSlot(item.slot));
   // VECTOR polyline; density scales face buffer for lo-fi (default 1).
   const density = nodeGraphFacePlateDensity(settings, 1);
-  if (!canvas || !syncNodeGraphModuleScopeLocalFallbackCanvas(
-    canvas,
-    screenElement,
-    pixelRatio,
-    density,
-  )) {
+  const syncOk = typeof syncNodeGraphModuleScopeFaceCanvas === "function"
+    ? Boolean(syncNodeGraphModuleScopeFaceCanvas(
+      canvas, screenElement, pixelRatio, density, { policy: "tape" },
+    )?.synced)
+    : syncNodeGraphModuleScopeLocalFallbackCanvas(canvas, screenElement, pixelRatio, density);
+  if (!canvas || !syncOk) {
     return;
+  }
+  if (typeof tagNodeGraphModuleScopeFaceCanvas === "function") {
+    tagNodeGraphModuleScopeFaceCanvas(canvas, "tape");
   }
   // Vector class: normal blend. Density < 1 stays pixelated (sync); density ≥ 1
   // clears inline image-rendering so workspace.pixelated-canvas-zoom can crisp
@@ -1400,9 +1294,7 @@ function drawNodeGraphScope2dTraceItem(renderer, item, pixelRatio) {
   if ("imageSmoothingQuality" in context && density >= 0.999) {
     context.imageSmoothingQuality = "high";
   }
-  if (canvas.dataset.scope2dRenderer !== "sample-history-trace-1") {
-    canvas.dataset.scope2dRenderer = "sample-history-trace-1";
-  }
+  canvas.dataset.scope2dRenderer = "sample-history-trace-1";
   // Buffer-local square (layout×dpr). Never use item.scopeRect/screenRect —
   // those are workspace screen coords and grow with zoom, so the stroke would
   // walk out of the face and clip into the module chrome.

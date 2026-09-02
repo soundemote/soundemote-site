@@ -47,6 +47,10 @@ function sandboxIframeSrc(
     iframeParams.set("autostart", "1");
   }
 
+  // Cache-bust so Chrome does not keep a stale black iframe document.
+  if (!iframeParams.has("v")) {
+    iframeParams.set("v", "20260901-autoframe-view");
+  }
   const query = iframeParams.toString();
   return `/soemdsp-sandbox/index.html${query ? `?${query}` : ""}`;
 }
@@ -123,9 +127,21 @@ type SandboxPageProps = {
   view?: "showcase" | "sandbox";
   /** "user" scopes the route to /@<handle>/patch/<slug> (a user-owned patch). */
   scope?: "user";
+  /**
+   * Leave the sandbox's built-in default patch alone (do not push Supabase init /
+   * page_patches / static JSON). Use for home when DB init is empty or off-frame.
+   */
+  builtinDefault?: boolean;
 };
 
-const SandboxPage = ({ staticPatchUrl, autostart = false, pagePatch: pagePatchProp, view, scope }: SandboxPageProps = {}) => {
+const SandboxPage = ({
+  staticPatchUrl,
+  autostart = false,
+  pagePatch: pagePatchProp,
+  view,
+  scope,
+  builtinDefault = false,
+}: SandboxPageProps = {}) => {
   const location = useLocation();
   const rawParams = useParams<SandboxRouteParams>();
   // For /@<handle>/patch/<slug> map the user-scoped route onto the standard
@@ -163,6 +179,11 @@ const SandboxPage = ({ staticPatchUrl, autostart = false, pagePatch: pagePatchPr
     let cancelled = false;
     setProjectData(null);
     setProjectError(null);
+    if (builtinDefault) {
+      return () => {
+        cancelled = true;
+      };
+    }
     if (staticPatchUrl) {
       fetch(staticPatchUrl)
         .then((res) => res.json())
@@ -235,7 +256,7 @@ const SandboxPage = ({ staticPatchUrl, autostart = false, pagePatch: pagePatchPr
     return () => {
       cancelled = true;
     };
-  }, [hasPatchRoute, location.search, params.user, params.bank, params.patch, wikiSlug, isPlainSandbox, session?.user?.id, staticPatchUrl, pagePatch]);
+  }, [hasPatchRoute, location.search, params.user, params.bank, params.patch, wikiSlug, isPlainSandbox, session?.user?.id, staticPatchUrl, pagePatch, builtinDefault]);
 
   const postProjectData = () => {
     // Fire autoframe on load regardless of whether we push project data — the

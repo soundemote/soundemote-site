@@ -21,11 +21,12 @@ const NODE_GRAPH_EFFICIENT_PRODUCT_AUDIO_TYPES = Object.freeze([
   "momentaryButton",
   "xyPad",
   "keypad",
+  "phoneTone",
+  // Singleton live Input — unique, undeleteable, shop-visible (APP_POLICY).
+  "audioInput",
   "macroControls",
   "keyboardController",
   "pitchModWheel",
-  "midiOut",
-  "midiNotePitch",
   "gain",
   "noiseGenerator",
   "robinSinusoid",
@@ -47,6 +48,7 @@ const NODE_GRAPH_EFFICIENT_PRODUCT_AUDIO_TYPES = Object.freeze([
   "randomClock",
   "triggerCounter",
   "metallicRatio",
+  "harmonicSeries",
   "lutCell",
   "lookaheadLimiter",
   "limiter",
@@ -89,6 +91,19 @@ const NODE_GRAPH_EFFICIENT_PRODUCT_AUDIO_TYPES = Object.freeze([
   "butterworth",
   "linkwitzRiley",
   "bessel",
+  "papoulisFilter",
+  "speakerProtection",
+  "speakerProtector2",
+  "attackDecay",
+  "bandpass",
+  "allpass",
+  "basicShape",
+  "chordPad",
+  "noteGlide",
+  "noteTranspose",
+  "degreeTuring",
+  "degreePhrase",
+  "gravityWalker",
   "chebyshev",
   "elliptic",
   "eqFilter",
@@ -200,6 +215,17 @@ const NODE_GRAPH_EFFICIENT_PRODUCT_OBSERVER_TYPE_SET = new Set(
 const NODE_GRAPH_EFFICIENT_PRODUCT_CHROME_TYPES = Object.freeze([
   "animatedTextBox",
   "textBox",
+  // Slim repeatable Portal I/O (native thru / inlet silence until mic bus).
+  "portalInlet",
+  "portalInletMono",
+  "portalInletLeft",
+  "portalInletRight",
+  "portalInletLeftRight",
+  "portalOutlet",
+  "portalOutletMono",
+  "portalOutletLeft",
+  "portalOutletRight",
+  "portalOutletLeftRight",
 ]);
 
 const NODE_GRAPH_EFFICIENT_PRODUCT_CHROME_TYPE_SET = new Set(
@@ -229,14 +255,15 @@ function nodeGraphModuleIsEfficientProductChromeType(type) {
   return NODE_GRAPH_EFFICIENT_PRODUCT_CHROME_TYPE_SET.has(String(type || "").trim());
 }
 
-/** Shop / Add Module: allowlisted live audio + frozen observers only. */
+/** Shop / Add Module: allowlisted live audio + observers + layout chrome. */
 function nodeGraphModuleIsEfficientProductShopType(type) {
   const t = String(type || "").trim();
   if (!t) {
     return false;
   }
   return nodeGraphEfficientProductAudioTypeAllowed(t)
-    || nodeGraphModuleIsEfficientProductObserverType(t);
+    || nodeGraphModuleIsEfficientProductObserverType(t)
+    || nodeGraphModuleIsEfficientProductChromeType(t);
 }
 
 /** Plan apply: allowlist + observers + layout chrome. Everything else is foreign. */

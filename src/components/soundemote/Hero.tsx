@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import patchImage from "@/assets/soemdsp-patch.png";
 import { siteConfig } from "@/config/site";
-import { SOUNDEMOTE_BANK } from "@/data/patchBank";
+import { SOUNDEMOTE_BANK, SOUNDEMOTE_BANK_DEFAULT_SLUG } from "@/data/patchBank";
 import { SandboxNavLink } from "@/components/soundemote/Nav";
 
 type TransportButtonProps = {
@@ -40,17 +40,23 @@ const ICON_DOWNLOAD = <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidd
 
 
 export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
-  // The first bank entry (lcd) is a live patch that should start immediately.
+  // Mount the modular preview immediately (display-only). Audio stays cold
+  // until the user hits Play — no ?autostart, no delayed set-live-output.
   const [sandboxLoaded, setSandboxLoaded] = useState(true);
   // Live engine state synced from the sandbox via postMessage.
   const [liveEnabled, setLiveEnabled] = useState(false);
   const [liveSpeed, setLiveSpeed] = useState(1);
+  // If Play is pressed before the iframe exists, arm after load.
+  const pendingPlayRef = useRef(false);
   // The route (e.g. /reverb, /shootingstar) selects which patch the single hero
-  // sandbox loads. Unknown/absent slugs fall back to the first bank patch.
-  // This is the *initial* index; prev/next cycle the sandbox without changing
-  // the URL, so we track the active bank position in local state.
+  // sandbox loads. Unknown/absent slugs fall back to Additive beta (not bank[0]
+  // video), so home opens on a silent modular Yellow Graph preview.
   const routePatchIndex = SOUNDEMOTE_BANK.findIndex((p) => p.slug === patchSlug);
-  const initialPatchIndex = routePatchIndex >= 0 ? routePatchIndex : 0;
+  const defaultBankIndex = Math.max(
+    0,
+    SOUNDEMOTE_BANK.findIndex((p) => p.slug === SOUNDEMOTE_BANK_DEFAULT_SLUG),
+  );
+  const initialPatchIndex = routePatchIndex >= 0 ? routePatchIndex : defaultBankIndex;
   const [currentBankIndex, setCurrentBankIndex] = useState(initialPatchIndex);
 
   // Sync local state when the route changes (someone navigated to a different URL).
@@ -70,11 +76,10 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
   const postRetryTimers = useRef<number[]>([]);
   const [noDiff, setNoDiff] = useState(false);
   const sandboxViewportHeight = "560px";
-  // autoframe=1: the sandbox zoom+pans to fit the whole patch after every
-  // project-data commit (nodeGraphExternalAutoFrameAfterLoad), so the embed
-  // frames itself correctly no matter which patch loads.
+  // autoframe=1: zoom+pan to fit after each project-data commit.
+  // No autostart: init/home stays silent until Play (showcase/*-live keep their own URLs).
   const sandboxEmbedSrc =
-    "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autostart=1&autoframe=1&v=20260703-autoframe";
+    "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autoframe=1&v=20260901-hideui-cc";
   const currentPatch = SOUNDEMOTE_BANK[currentBankIndex];
   const isVideo = currentPatch.kind === "video";
   const isAudius = currentPatch.kind === "audius";
@@ -117,9 +122,20 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
   }, [sandboxLoaded]);
 
   // Transport: Play/resume — start the engine or resume from pause.
-  // If the sandbox hasn't been loaded yet, load it first (like clicking the hero image).
+  // If the current bank entry is video/Audius, jump to Additive beta first.
+  // If the sandbox hasn't been loaded yet, load it first then arm on load.
   const handlePlay = useCallback(() => {
+    const entry = SOUNDEMOTE_BANK[currentBankIndex];
+    const needsModular =
+      entry?.kind === "video" || entry?.kind === "audius";
+    if (needsModular) {
+      pendingPlayRef.current = true;
+      setCurrentBankIndex(defaultBankIndex);
+      setSandboxLoaded(true);
+      return;
+    }
     if (!sandboxLoaded) {
+      pendingPlayRef.current = true;
       setSandboxLoaded(true);
       return;
     }
@@ -129,7 +145,7 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
       postToSandbox({ type: "soundemote:set-live-output", enabled: true });
       postToSandbox({ type: "soundemote:set-live-speed", speed: 1 });
     }
-  }, [isPaused, postToSandbox, sandboxLoaded]);
+  }, [currentBankIndex, defaultBankIndex, isPaused, postToSandbox, sandboxLoaded]);
 
   // Transport: Pause — freeze the engine (speed → 0).
   const handlePause = useCallback(() => {
@@ -212,13 +228,16 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
       postRetryTimers.current = [250, 700, 1400, 2600, 4200].map((delay) =>
         window.setTimeout(sendProjectData, delay),
       );
-      // Autoplay: arm the live engine once the patch is in.
-      postRetryTimers.current.push(
-        window.setTimeout(() => {
-          postToSandbox({ type: "soundemote:set-live-output", enabled: true });
-          postToSandbox({ type: "soundemote:set-live-speed", speed: 1 });
-        }, 900),
-      );
+      // Arm only if Play was pressed before the iframe finished loading.
+      if (pendingPlayRef.current) {
+        pendingPlayRef.current = false;
+        postRetryTimers.current.push(
+          window.setTimeout(() => {
+            postToSandbox({ type: "soundemote:set-live-output", enabled: true });
+            postToSandbox({ type: "soundemote:set-live-speed", speed: 1 });
+          }, 400),
+        );
+      }
     } catch {
       /* ignore fetch/post errors */
     }
@@ -334,6 +353,12 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
             className="inline-flex items-center gap-1 rounded-sm border border-scope/20 bg-[#0a0c14] p-1"
           >
             <TransportButton label="Previous patch" onClick={() => gotoBank(-1)}>{ICON_PREV}</TransportButton>
+            <TransportButton label="Stop" onClick={handleStop} pressed={!liveEnabled}>{ICON_STOP}</TransportButton>
+            {isPlaying ? (
+              <TransportButton label="Pause" onClick={handlePause} pressed>{ICON_PAUSE}</TransportButton>
+            ) : (
+              <TransportButton label="Play" onClick={handlePlay} pressed={false}>{ICON_PLAY}</TransportButton>
+            )}
             <TransportButton label="Next patch" onClick={() => gotoBank(1)}>{ICON_NEXT}</TransportButton>
 
             {/* Download button */}
@@ -377,7 +402,7 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
               <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
               <path d="M14 2v4a2 2 0 0 0 2 2h4" />
             </svg>
-            <span>under construction</span>
+            <span>additive beta</span>
             <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
               <polyline points="15 3 21 3 21 9" />

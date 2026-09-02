@@ -44,14 +44,16 @@ const App = () => (
       {/* BrowserRouter is in main.tsx */}
       <ShorthandHashCatcher />
       <Routes>
-        <Route path="/" element={<Index />} />
+        {/* Home is the full sandbox with the built-in default patch (not Hero, not DB init). */}
+        <Route path="/" element={<SandboxPage view="sandbox" builtinDefault />} />
+        <Route path="/home" element={<Index />} />
         <Route path="/learning-lab" element={<LearningLab />} />
         <Route path="/circle-test" element={<CircleTestPage />} />
         <Route path="/oscilloscope" element={<OscilloscopePage />} />
         <Route path="/scope-scratch" element={<ScopeScratchPage />} />
         <Route path="/gradient-curve" element={<GradientCurvePage />} />
-        {/* /sandbox always boots the shared init patch (/patch/init). */}
-        <Route path="/sandbox" element={<SandboxPage pagePatch="init" view="sandbox" />} />
+        {/* /sandbox — same full tool entry as home. */}
+        <Route path="/sandbox" element={<SandboxPage view="sandbox" builtinDefault />} />
 
         <Route path="/self" element={<SelfPage />} />
         <Route path="/embed" element={<EmbedPage />} />

@@ -8,7 +8,6 @@ const nodeGraphNodeLabels = Object.freeze({
   graph2: "Smooth Graph",
   graphCopy: "Step Graph",
   animatedTextBox: "Animated Text Box",
-  moduleGroup: "Module Group",
   nextPatch: "Next Patch",
   previousPatch: "Previous Patch",
   polyBlep: "PolyBLEP",
@@ -108,6 +107,7 @@ const nodeGraphNodeLabels = Object.freeze({
   chordSequencer: "Chord Sequencer",
   lutCell: "LUT Cell",
   metallicRatio: "Metallic Ratio",
+  harmonicSeries: "Harmonic Series",
   noiseGenerator: "Noise Generator",
   randomWalk: "Random Walk",
   cheapWalk: "Cheap Walk",
@@ -134,10 +134,6 @@ const nodeGraphNodeLabels = Object.freeze({
   pluginSlider: "Slider",
   toggleButton: "Toggle",
   momentaryButton: "Momentary",
-  pluginInput: "Plugin Input",
-  pluginOutput: "Plugin Output",
-  pluginMidiIn: "Plugin MIDI In",
-  pluginMidiOut: "Plugin MIDI Out",
   passiveFilter: "Passive Filter",
   tiltFilter: "Tilt Filter",
   eqFilter: "EQ Filter",
@@ -211,7 +207,7 @@ const nodeGraphNodeLabels = Object.freeze({
   rmsStereo: "RMS Stereo",
   lufs: "LUFS",
   speedColorInertia: "Speed Color Inertia",
-  slewLimiter: "Slew",
+  slewLimiter: "Up/Down Slew",
   inertialFilter: "Inertial Filter",
   midSideEncode: "Mid/Side",
   quadrature: "Hilbert Pair",
@@ -219,8 +215,6 @@ const nodeGraphNodeLabels = Object.freeze({
   lookaheadLimiter: "Brickwall Limiter",
   limiter: "Pump Limiter",
   sampleHold: "Sample & Hold",
-  midiOut: "Midi Out",
-  midiNotePitch: "Midi Note Pitch",
   keyboardController: "MIDI",
   samplePlayer: "Sample Player",
   sampleLooper: "Sample Looper",
@@ -702,6 +696,7 @@ const nodeGraphModuleDefinitions = (
     chrome: NodeGraphModuleChromeLayout.LayoutA,
     customDisplayArea: true,
     displayHeightGu: 2,
+    uniqueInPatch: true,
     outputAliases: { Out: "Mono", M: "Mono", L: "Left", R: "Right" },
     outputLabels: { Mono: "Mono", Left: "Left", Right: "Right" },
     outputs: ["Mono", "Left", "Right"],
@@ -853,12 +848,6 @@ const nodeGraphModuleDefinitions = (
       { defaultValue: "1", key: "outputMax", label: "Out Max", max: "1", mid: "0", min: "-1", nonlinearSlider: false, step: "any" },
     ]
   },
-  moduleGroup: {
-    planRole: "source",
-    inputs: [],
-    outputs: [],
-    parameters: []
-  },
   // Reference oscillator for port layout:
   //   inputs[]     = left jacks only (Reset / 0.1V / Increment)
   //   parameters[] = sliders (Waveform / Frequency / Phase / Amplitude)
@@ -868,16 +857,15 @@ const nodeGraphModuleDefinitions = (
   polyBlep: {
     planRole: "source",
     displayType: "lineBurn",
-    // New PolyBLEP faces start with Sync on + Sweep (c) = 1 (one cycle in view).
+    // Sync off by default — at Hz=0 Phase scrubbing must stay visible (no ZC → Sync freezes).
     defaultDisplaySettings: {
-      sourceSync: true,
-      sweepSeconds: 1,
+      sourceSync: false,
     },
     displayModes: [
-      { key: "lineBurn", renderer: "lineBurn", source: { value: "Wave Out" } },
+      { key: "lineBurn", renderer: "lineBurn", source: { value: "Wave" } },
     ],
     displaySignals: [
-      { key: "Wave Out", kind: "scalar" },
+      { key: "Wave", kind: "scalar" },
     ],
     // ƒ absolute-Hz last among signal inlets (Morph / CV above it).
     inputs: ["Reset", "0.1V/Oct", "Increment", "Morph", "f"],
@@ -885,14 +873,17 @@ const nodeGraphModuleDefinitions = (
       Increment: "Inc.",
       f: "ƒ"},
     // Morph is sample-accurate gold analog (not CMYK cyan Parameter).
+    // Legacy Wave Out / Out / Noise → Wave (outlet list already implies "out").
     outputAliases: {
-      Out: "Wave Out",
-      Noise: "Wave Out"
+      Out: "Wave",
+      "Wave Out": "Wave",
+      Noise: "Wave",
     },
-    outputLabels: {
-      "Wave Out": "Wave"
+    // Main Wave jack first + green (not RGB/XYZ — those keep natural axis order).
+    outputChannels: {
+      Wave: "green",
     },
-    outputs: ["Saw", "Ramp", "Square", "Tri", "Sine", "Wave Out"],
+    outputs: ["Wave", "Saw", "Ramp", "Square", "Tri", "Sine"],
     parameters: [
       {
         choices: ["Trisaw", "Saw", "Ramp", "Square", "Triangle", "Sine", "Center Square", "Pulse", "Noise"],
@@ -972,22 +963,23 @@ const nodeGraphModuleDefinitions = (
     planRole: "source",
     displayType: "lineBurn",
     displayModes: [
-      { key: "lineBurn", renderer: "lineBurn", source: { value: "Wave Out" } },
+      { key: "lineBurn", renderer: "lineBurn", source: { value: "Wave" } },
     ],
     displaySignals: [
-      { key: "Wave Out", kind: "scalar" },
+      { key: "Wave", kind: "scalar" },
     ],
     inputs: ["Reset", "0.1V/Oct", "Increment", "f"],
     inputLabels: {"0.1V/Oct": "0.1V",
       Increment: "Inc.",
       f: "ƒ"},
     outputAliases: {
-      Out: "Wave Out"
+      Out: "Wave",
+      "Wave Out": "Wave",
     },
-    outputLabels: {
-      "Wave Out": "Wave"
+    outputChannels: {
+      Wave: "green",
     },
-    outputs: ["Saw", "Ramp", "Square", "Tri", "Sine", "Wave Out"],
+    outputs: ["Wave", "Saw", "Ramp", "Square", "Tri", "Sine"],
     parameters: [
       {
         choices: ["Saw", "Ramp", "Square", "Triangle", "Sine"],
@@ -1215,6 +1207,7 @@ const nodeGraphModuleDefinitions = (
     planRole: "source",
     inputs: [],
     inputLabels: { },
+    outputChannels: { Out: "green" },
     outputs: ["Out"],
     parameters: [
       { defaultValue: "0.1", key: "normFreq", label: "Norm Freq", max: "1.5", mid: "0.5", min: "0", nonlinearSlider: false, step: "any" },
@@ -1224,11 +1217,11 @@ const nodeGraphModuleDefinitions = (
   // RS-MET rosic::SineOscillator — free-running 2nd-order recursive sine (no sin() per sample).
   robinSinusoid: {
     planRole: "source",
-    defaultAlias: "Osc",
     displayType: "trace",
     inputs: ["Reset", "f"],
     inputLabels: {Reset: "Reset",
       f: "ƒ"},
+    outputChannels: { Out: "green" },
     outputs: ["Out"],
     parameters: [
       {
@@ -1317,6 +1310,9 @@ const nodeGraphModuleDefinitions = (
       Df1: "ƒ1",
       f2: "ƒ2",
       Df2: "ƒ2",
+    },
+    outputChannels: {
+      Tone: "green",
     },
     inputs: ["Analog", "Digital", "Gate", "0.1V/Oct"],
     outputs: ["Tone", "ToneL", "ToneR", "ƒ1", "ƒ2", "Analog Thru", "Digital Thru"],
@@ -2976,13 +2972,13 @@ const nodeGraphModuleDefinitions = (
       f: "ƒ",
     },
     outputAliases: {
-      Out: "Wave Out",
-      Wave: "Wave Out",
-    },
-    outputLabels: {
+      Out: "Wave",
       "Wave Out": "Wave",
     },
-    outputs: ["Sine", "Tri", "Saw", "Square", "Ramp", "Trisaw", "Center Square", "Wave Out"],
+    outputChannels: {
+      Wave: "green",
+    },
+    outputs: ["Wave", "Sine", "Tri", "Saw", "Square", "Ramp", "Trisaw", "Center Square"],
     parameters: [
       {
         choices: ["Sine", "Triangle", "Saw", "Square", "Ramp", "Trisaw", "Center Square"],
@@ -3199,6 +3195,7 @@ const nodeGraphModuleDefinitions = (
     inputAliases: { Freq: "f", Frequency: "f", F: "f", "ƒ": "f" },
     inputLabels: { f: "ƒ" },
     inputs: ["f"],
+    outputChannels: { Out: "green" },
     outputs: ["Out"],
     parameters: [
       { key: "fundamental", label: "Fundamental", kind: "frequency", defaultValue: "110", min: "0", mid: "1000", max: "20000", step: "any", unit: "Hz" },
@@ -3828,9 +3825,16 @@ const nodeGraphModuleDefinitions = (
     planRole: "source",
     inputs: ["0.1V/Oct", "Sync", "f"],
     inputLabels: {"0.1V/Oct": "0.1V",
-      f: "ƒ",
       f: "ƒ"},
-    outputs: ["Out", "Saw", "Square", "Tri", "Sine", "Synced", "Internal Sync"],
+    // Multi-wave taps → selected bus is Wave (not bare Out).
+    outputAliases: {
+      Out: "Wave",
+      "Wave Out": "Wave",
+    },
+    outputChannels: {
+      Wave: "green",
+    },
+    outputs: ["Wave", "Saw", "Square", "Tri", "Sine", "Synced", "Internal Sync"],
     parameters: [
       {
         choices: ["Saw", "Square", "Tri", "Sine"],
@@ -3861,6 +3865,7 @@ const nodeGraphModuleDefinitions = (
       Amplitude: "Amp",
       f: "ƒ"},
     // Morph is sample-accurate gold analog (not CMYK cyan Parameter).
+    outputChannels: { Out: "green" },
     outputs: ["Out"],
     parameters: [
       {
@@ -4163,6 +4168,7 @@ const nodeGraphModuleDefinitions = (
       Amplitude: "Amp",
       f: "ƒ"},
     // Morph is sample-accurate gold analog (not CMYK cyan Parameter).
+    outputChannels: { Out: "green" },
     outputs: ["Out"],
     parameters: [
       {
@@ -4332,6 +4338,72 @@ const nodeGraphModuleDefinitions = (
     parameters: [
       { key: "index", label: "Index", defaultValue: "1", min: "0", mid: "4", max: "8", step: "any" },
     ]
+  },
+  harmonicSeries: {
+    planRole: "source",
+    chrome: NodeGraphModuleChromeLayout.LayoutA,
+    customDisplayArea: true,
+    displayType: "harmonicSeriesFace",
+    displayHeightGu: 2,
+    defaultWidthGu: 5,
+    spectrumCompanion: false,
+    displayModes: [
+      {
+        key: "harmonicSeriesFace",
+        label: "Harmonic",
+        renderer: "harmonicSeriesFace",
+        source: { value: "f" },
+      },
+    ],
+    defaultDisplayMode: "harmonicSeriesFace",
+    displaySignals: [
+      { key: "f", kind: "scalar" },
+      { key: "f0", kind: "scalar" },
+    ],
+    inputs: ["f"],
+    inputAliases: { Freq: "f", Frequency: "f", F: "f", "ƒ": "f" },
+    inputLabels: { f: "ƒ" },
+    outputs: ["f", "f0"],
+    outputAliases: { Out: "f", Mono: "f", Frequency: "f", Freq: "f", "ƒ": "f" },
+    outputLabels: { f: "ƒ", f0: "ƒ0" },
+    parameters: [
+      {
+        defaultValue: "0",
+        key: "harmonic",
+        label: "Harmonic",
+        max: "64",
+        mid: "0",
+        min: "-4",
+        nonlinearSlider: false,
+        showSign: true,
+        step: "any",
+        tooltip: "0 = first harmonic (×1). Each step multiplies to the next harmonic; negatives divide.",
+      },
+      {
+        defaultValue: "0",
+        key: "offset",
+        label: "Offset",
+        max: "1",
+        mid: "0",
+        min: "-1",
+        nonlinearSlider: false,
+        showSign: true,
+        step: "any",
+        tooltip: "−1 = next harmonic down, +1 = next harmonic up from Harmonic.",
+      },
+      {
+        defaultValue: "100",
+        key: "frequency",
+        kind: "frequency",
+        label: "Frequency",
+        max: "10000",
+        mid: "100",
+        min: "0",
+        step: "any",
+        unit: "Hz",
+        tooltip: "Base Hz when ƒ is unwired. Wired ƒ cancels this knob. Also available unchanged on ƒ0.",
+      },
+    ],
   },
   noiseGenerator: {
     planRole: "source",
@@ -6093,118 +6165,6 @@ const nodeGraphModuleDefinitions = (
         smoothingType: "linear",
       },
       ...nodeGraphControllerRangeSmoothingParameters(),
-    ]
-  },
-  pluginInput: {
-    planRole: "source",
-    outputAliases: { Out: "Mono", M: "Mono", L: "Left", R: "Right" },
-    outputLabels: { Mono: "M", Left: "L", Right: "R" },
-    outputs: ["Mono", "Left", "Right"],
-    parameters: [
-      {
-        defaultValue: "1",
-        key: "amplitude",
-        label: "Amplitude",
-        max: "1",
-        mid: "1",
-        min: "0",
-        step: "0.01",
-        linearSmoothing: true,
-        smoothingType: "linear",
-        smoothingMode: "internal",
-        smoothingSeconds: 0.0333,
-        modClamp: false
-      },
-    ]
-  },
-  pluginOutput: {
-    planRole: "sink",
-    displayType: "trace",
-    spectrumCompanion: false,
-    displayModes: [
-      { key: "trace", label: "Waterfall", renderer: "trace", settingsSchema: "trace" },
-    ],
-    defaultDisplayMode: "trace",
-    bufferedInputs: ["Mono", "Left", "Right"],
-    stereoTracePorts: { left: "Left", right: "Right" },
-    inputs: ["Mono", "Left", "Right"],
-    inputLabels: { Mono: "\u2192", Left: "\u2192", Right: "\u2192" },
-    outputAliases: { Out: "Mono", M: "Mono", L: "Left", R: "Right" },
-    outputLabels: {
-      Mono: typeof NODE_GRAPH_THRU_SYMBOL === "string" ? NODE_GRAPH_THRU_SYMBOL : "\u2190",
-      Left: typeof NODE_GRAPH_THRU_SYMBOL === "string" ? NODE_GRAPH_THRU_SYMBOL : "\u2190",
-      Right: typeof NODE_GRAPH_THRU_SYMBOL === "string" ? NODE_GRAPH_THRU_SYMBOL : "\u2190",
-    },
-    outputs: ["Mono", "Left", "Right"],
-    output: true,
-    parameters: [
-      {
-        defaultValue: "-20",
-        key: "volume",
-        kind: "decibels",
-        label: "Volume",
-        max: "12",
-        mid: "-20",
-        min: "-140",
-        minusInf: true,
-        nonlinearSlider: true,
-        linearSmoothing: true,
-        smoothingType: "linear",
-        smoothingMode: "internal",
-        smoothingSeconds: 0.0333,
-        step: "any",
-        unit: "dB",
-        tooltip: "Speaker level (−∞…+12 dB). 0 dB is unity. Old patches that stored 0…1 linear Volume are converted on load."
-      },
-      {
-        defaultValue: "0",
-        key: "pan",
-        label: "Pan",
-        max: "1",
-        mid: "0",
-        min: "-1",
-        nonlinearSlider: false,
-        step: "any",
-        tooltip: "Stereo balance after Mono is summed in. 0 = unchanged. −1 = left only. +1 = right only."
-      },
-    ]
-  },
-  pluginMidiIn: {
-    planRole: "source",
-    outputs: ["Gate", "MIDI", "Velocity", "0.1V/Oct", "Frequency"],
-    outputLabels: {
-      "0.1V/Oct": "0.1V"
-    },
-    parameters: [
-      {
-        defaultValue: "60",
-        key: "defaultNote",
-        label: "Default Note",
-        max: "127",
-        maxDigits: 3,
-        mid: "60",
-        min: "0",
-        step: "1",
-        tooltip: "Note used when no live MIDI is active (sandbox preview)."
-      },
-    ]
-  },
-  pluginMidiOut: {
-    planRole: "source",
-    inputs: ["MIDI Number", "Gate"],
-    outputs: ["Normalized", "Full Value", "Gate"],
-    parameters: [
-      {
-        defaultValue: "60",
-        key: "midiNumber",
-        label: "MIDI Number",
-        max: "127",
-        maxDigits: 3,
-        mid: "64",
-        min: "0",
-        nonlinearSlider: false,
-        step: "1"
-      },
     ]
   },
   passiveFilter: {
@@ -9739,6 +9699,7 @@ const nodeGraphModuleDefinitions = (
     inputLabels: { In: "Mono", f: "ƒ" },
     inputs: ["In", "Left", "Right", "f"],
     layout: "filterCurve",
+    displayHeightGu: 5,
     outputAliases: { Mono: "Out" },
     outputLabels: { Out: "Mono" },
     outputs: ["Out", "Left", "Right"],
@@ -9773,7 +9734,7 @@ const nodeGraphModuleDefinitions = (
         defaultValue: "0.2",
         key: "resonance",
         label: "Resonance",
-        max: "0.999",
+        max: "1",
         maxDigits: 5,
         mid: "0.2",
         min: "0",
@@ -10685,14 +10646,17 @@ const nodeGraphModuleDefinitions = (
   },
   // Hard rate limit: max |Δ| per sample from up/down times in seconds.
   // Shape: Lin (constant rate) / Log (fast start) / Exp (slow start) / Smooth (ease both ends).
+  // Mono gold CV utility (In → Out) — not a stereo audio processor.
   slewLimiter: {
     planRole: "processor",
-    inputAliases: { Mono: "In" },
-    inputLabels: { In: "Mono" },
-    inputs: ["In", "Left", "Right"],
-    outputAliases: { Mono: "Out" },
-    outputLabels: { Out: "Mono" },
-    outputs: ["Out", "Left", "Right"],
+    inputAliases: { Mono: "In", Left: "In", Right: "In" },
+    inputs: ["In"],
+    outputAliases: { Mono: "Out", Left: "Out", Right: "Out" },
+    outputs: ["Out"],
+    defaultUi: {
+      buttonsHidden: true,
+      oscilloscopeHidden: true,
+    },
     parameters: [
       {
         defaultValue: "0.05",
@@ -10705,20 +10669,20 @@ const nodeGraphModuleDefinitions = (
         min: "0",
         step: "any",
         unit: "s",
-        tooltip: "Seconds to climb full scale (+1). 0 = unlimited rise rate."
+        tooltip: "Seconds to reach a higher target from the current value (any amplitude — Hz, CV, audio). 0 = instant."
       },
       {
-        defaultValue: "0.20",
+        defaultValue: "0.05",
         key: "downTime",
         kind: "time",
         label: "Down Time",
         max: "5",
         maxDigits: 5,
-        mid: "0.20",
+        mid: "0.05",
         min: "0",
         step: "any",
         unit: "s",
-        tooltip: "Seconds to fall full scale (−1). 0 = unlimited fall rate."
+        tooltip: "Seconds to reach a lower target from the current value (any amplitude). 0 = instant."
       },
       {
         choices: ["Lin", "Log", "Exp", "Smooth"],
@@ -11213,45 +11177,48 @@ const nodeGraphModuleDefinitions = (
       },
     ],
   },
-  midiOut: {
-    planRole: "source",
-    inputs: ["MIDI Number"],
-    outputs: ["Normalized", "Full Value"],
-    parameters: [
-      {
-        defaultValue: "60",
-        key: "midiNumber",
-        label: "MIDI Number",
-        max: "127",
-        maxDigits: 3,
-        mid: "64",
-        min: "0",
-        nonlinearSlider: false,
-        step: "1"
-      },
-    ]
-  },
-  midiNotePitch: {
-    planRole: "processor",
-    inputs: ["MIDI Note", "Octave Offset", "Pitch Offset"],
-    inputAliases: {
-      Note: "MIDI Note",
-      "Midi Note": "MIDI Note",
-      "Semitone Offset": "Pitch Offset"
-    },
-    outputs: ["Pitch 0-1", "Pitch 0-127", "Frequency"],
-    parameters: []
-  },
   keyboardController: {
     planRole: "source",
     digitalOutputs: ["Held Keys"],
-    inputs: ["MIDI Note", "Gate", "Velocity", "Octave", "Reset", "Hold", "X", "Y"],
+    // Inputs hidden for now (face + MIDI/device drive pitch/gate). Evaluator
+    // still accepts the old jack names if a patch somehow feeds them.
+    inputs: [],
     layout: "keyboardController",
-    outputLabels: {
-      "0.1V/Oct": "0.1V",
-      Increment: "Inc."
+    outputAliases: {
+      NoteNumber: "Note#",
+      MIDI: "Note#",
+      Pitch: "Note#",
+      // Legacy lowercase-v pitch CV label (matches PolyBLEP / osc 0.1V/Oct).
+      "0.1v/Oct": "0.1V/Oct",
+      Increment: "Inc.",
+      Inc: "Inc.",
     },
-    outputs: ["Gate", "1 Sample Gate", "Key", "Q", "MIDI", "Double", "0.1V/Oct", "Increment", "Frequency", "Pitch", "X", "Y", "Held Keys"],
+    outputLabels: {
+      KeyboardKey: "KeyboardKey",
+      KeyboardNorm: "KeyboardNorm",
+      "Note#": "Note#",
+      "Note#/127": "Note#/127",
+      "0.1V/Oct": "0.1V/Oct",
+      "Inc.": "Inc.",
+      "Velocity#": "Velocity#",
+      "Velocity#/127": "Velocity#/127",
+    },
+    outputs: [
+      "Gate",
+      "Trigger",
+      "KeyboardKey",
+      "KeyboardNorm",
+      "Note#",
+      "Note#/127",
+      "0.1V/Oct",
+      "Inc.",
+      "Frequency",
+      "Velocity#",
+      "Velocity#/127",
+      "X",
+      "Y",
+      "Held Keys",
+    ],
     parameters: []
   },
   samplePlayer: {
@@ -11445,7 +11412,7 @@ const nodeGraphModuleDefinitions = (
       },
     ],
     defaultDisplayMode: "face",
-    inputs: ["M1 In", "M2 In", "M3 In", "M4 In", "M5 In", "M6 In", "M7 In", "M8 In", "Reset"],
+    inputs: ["M1 In", "M2 In", "M3 In", "M4 In", "M5 In", "M6 In", "M7 In", "M8 In"],
     layout: "macroControls",
     outputs: ["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8"],
     parameters: []
@@ -13020,6 +12987,7 @@ const nodeGraphModuleDefinitions = (
   output: {
     planRole: "sink",
     displayType: "trace",
+    uniqueInPatch: true,
     // Capture Mono/Left/Right for stereo Trace (scope rings). Without this the
     // worklet only stored a scalar 0 for the speaker sink and the face stayed blank.
     visualSink: true,
@@ -13088,6 +13056,7 @@ const nodeGraphModuleDefinitions = (
       "ƒ": "Freq",
     },
     inputLabels: { "0.1V/Oct": "0.1V", Freq: "ƒ" },
+    outputChannels: { Out: "green" },
     outputs: ["Out"],
     parameters: [
       {

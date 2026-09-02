@@ -3,33 +3,6 @@
 
 NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_utility = function buildLiveModuleEvaluators_utility() {
   const map = {
-      midiOut: (node, nodeId, frame, frames, frameValues, mixInput) => {
-        const hasMidiInput = this.inputConnections.has(this.inputKey(nodeId, "MIDI Number"));
-        const midiNumber = this.readEffectiveParameter(node, "midiNumber", 60, frame, frames, frameValues);
-        const resolved = typeof nodeGraphDspResolveMidiNumber === "function"
-          ? nodeGraphDspResolveMidiNumber(midiNumber, mixInput(nodeId, "MIDI Number"), hasMidiInput)
-          : (hasMidiInput
-            ? this.clampValue(Math.round(Number(mixInput(nodeId, "MIDI Number")) || 0), 0, 127)
-            : this.clampValue(Math.round(midiNumber), 0, 127));
-        return typeof nodeGraphDspMidiNumberPorts === "function"
-          ? nodeGraphDspMidiNumberPorts(resolved)
-          : { "Full Value": resolved, Normalized: resolved / 127 };
-      },
-      midiNotePitch: (node, nodeId, frame, frames, frameValues, mixInput) => {
-        const pitch = this.clampValue((
-          Number(mixInput(nodeId, "MIDI Note")) +
-          Number(mixInput(nodeId, "Octave Offset")) * 12 +
-          Number(mixInput(nodeId, "Pitch Offset"))
-        ) || 0, 0, 127);
-        const hz = typeof nodeGraphDspMidiNoteToHz === "function"
-          ? nodeGraphDspMidiNoteToHz(pitch)
-          : 440 * (2 ** ((pitch - 69) / 12));
-        return {
-          Frequency: hz,
-          "Pitch 0-1": pitch / 127,
-          "Pitch 0-127": pitch,
-        };
-      },
       keyboardController: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
         const signal = this.midiKeyboardSignal || {};
         const resetActive = hasInput(nodeId, "Reset") && Number(mixInput(nodeId, "Reset")) > 0;
@@ -57,6 +30,7 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_utility = function bu
         const x = resetActive ? 0.5 : (hasInput(nodeId, "X")
           ? this.clampValue(Number(mixInput(nodeId, "X")) || 0, 0, 1)
           : this.clampValue(Number(signal.x) || q, 0, 1));
+        // Y is mouse/pointer vertical position only — not MIDI velocity.
         const y = resetActive ? 0 : (hasInput(nodeId, "Y")
           ? this.clampValue(Number(mixInput(nodeId, "Y")) || 0, 0, 1)
           : this.clampValue(Number(signal.y) || 0, 0, 1));
@@ -64,9 +38,10 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_utility = function bu
           ? (Number(mixInput(nodeId, "Gate")) > 0 ? 1 : 0)
           : (Number(signal.gate) > 0 ? 1 : 0));
         const hold = hasInput(nodeId, "Hold") && Number(mixInput(nodeId, "Hold")) > 0 ? 1 : 0;
-        const velocity = hasInput(nodeId, "Velocity")
+        const velocity01 = hasInput(nodeId, "Velocity")
           ? this.clampValue(Number(mixInput(nodeId, "Velocity")) || 0, 0, 1)
-          : y;
+          : this.clampValue(Number(signal.velocity) || 0, 0, 1);
+        const velocityNumber = Math.round(velocity01 * 127);
         const gatePulse = this.midiKeyboardGatePulseSamples > 0 ? 1 : 0;
         this.midiKeyboardGatePulseSamples = Math.max(0, this.midiKeyboardGatePulseSamples - 1);
         // Held Keys phase-bit multiplexing -- see the design note on
@@ -85,18 +60,21 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_utility = function bu
           }
         }
         return {
-          "1 Sample Gate": hasInput(nodeId, "Gate") ? gate : gatePulse,
+          Trigger: hasInput(nodeId, "Gate") ? gate : gatePulse,
           "0.1V/Oct": this.clampValue(midi / 120, 0, 1),
-          Double: this.clampValue(midi / 127, 0, 1),
+          "0.1v/Oct": this.clampValue(midi / 120, 0, 1),
+          "Note#/127": this.clampValue(midi / 127, 0, 1),
           Frequency: outputFrequency,
           Gate: Math.max(gate, hold),
+          "Inc.": increment,
           Increment: increment,
-          Key: key,
-          MIDI: midi,
-          Pitch: midi,
-          Q: q,
+          KeyboardKey: key,
+          "Note#": midi,
+          KeyboardNorm: q,
+          "Velocity#": velocityNumber,
+          "Velocity#/127": velocity01,
           X: x,
-          Y: velocity,
+          Y: y,
           "Held Keys": heldKeysTransmitValue,
         };
       },
@@ -124,15 +102,12 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_utility = function bu
         );
       },
       macroControls: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput) => {
-        const resetActive = hasInput(nodeId, "Reset") && Number(mixInput(nodeId, "Reset")) > 0;
         const value = {};
         for (let index = 0; index < 8; index += 1) {
           const port = `M${index + 1} In`;
-          value[`M${index + 1}`] = resetActive
-            ? 0
-            : this.clampValue(hasInput(nodeId, port)
-              ? Number(mixInput(nodeId, port)) || 0
-              : Number(this.macroControls?.[index]) || 0, 0, 1);
+          value[`M${index + 1}`] = this.clampValue(hasInput(nodeId, port)
+            ? Number(mixInput(nodeId, port)) || 0
+            : Number(this.macroControls?.[index]) || 0, 0, 1);
         }
         return value;
       },
@@ -242,55 +217,6 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_utility = function bu
             mixInput(nodeId, "Right"),
           )
           : live;
-      },
-      pluginInput: (node, nodeId, frame, frames, frameValues, mixInput, _safeRate, _hasInput, inputFrame) => {
-        const amplitude = this.readEffectiveParameter(node, "amplitude", NaN, frame, frames, frameValues);
-        const level = Number.isFinite(amplitude)
-          ? amplitude
-          : this.readEffectiveParameter(node, "level", 1, frame, frames, frameValues);
-        const live = nodeGraphDspExternalStereoFrame(
-          this.externalInput,
-          inputFrame ?? frame,
-          level,
-        );
-        return typeof nodeGraphDspSandboxIoFrame === "function"
-          ? nodeGraphDspSandboxIoFrame(
-            live,
-            mixInput(nodeId, "Mono"),
-            mixInput(nodeId, "Left"),
-            mixInput(nodeId, "Right"),
-          )
-          : live;
-      },
-      pluginOutput: (node, nodeId, frame, frames, frameValues, mixInput) => {
-        const mix = nodeGraphDspStereoMix(
-          mixInput(nodeId, "Mono"),
-          mixInput(nodeId, "Left"),
-          mixInput(nodeId, "Right"),
-        );
-        return typeof nodeGraphDspSandboxIoTrio === "function"
-          ? nodeGraphDspSandboxIoTrio(mix)
-          : { Left: mix.Left, Mono: mix.Out, Out: mix.Out, Right: mix.Right };
-      },
-      pluginMidiIn: (node, nodeId, frame, frames, frameValues) =>
-        nodeGraphDspMidiKeyboardPorts(
-          this.midiKeyboardSignal || {},
-          this.readEffectiveParameter(node, "defaultNote", 60, frame, frames, frameValues),
-        ),
-      pluginMidiOut: (node, nodeId, frame, frames, frameValues, mixInput) => {
-        const hasMidiInput = this.inputConnections.has(this.inputKey(nodeId, "MIDI Number"));
-        const midiNumber = this.readEffectiveParameter(node, "midiNumber", 60, frame, frames, frameValues);
-        const midi = nodeGraphDspResolveMidiNumber(
-          midiNumber,
-          mixInput(nodeId, "MIDI Number"),
-          hasMidiInput,
-        );
-        const hasGate = this.inputConnections.has(this.inputKey(nodeId, "Gate"));
-        return nodeGraphDspMidiNumberPorts(midi, {
-          includeGate: true,
-          hasGate,
-          gate: mixInput(nodeId, "Gate"),
-        });
       },
       sandboxVisuals: (node, nodeId, frame, frames, frameValues, mixInput, safeRate) => {
         const screenShake = this.smoothVisualControl(
@@ -526,7 +452,6 @@ NodeLiveAudioProcessor.prototype.buildLiveModuleEvaluators_utility = function bu
           safeRate,
         );
       },
-      moduleGroup: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput, inputFrame) => this.evaluateModuleGroup(node, mixInput, frame, frames, safeRate, inputFrame),
       codeblock: (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput, inputFrame) => this.evaluateCodeblock(node, mixInput, frame, frames, safeRate, inputFrame),
   };
   const inletEval = (node, nodeId, frame, frames, frameValues, mixInput, safeRate, hasInput, inputFrame) =>

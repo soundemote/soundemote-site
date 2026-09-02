@@ -14,8 +14,8 @@
 
 (function initPhosphorDrawer(global) {
   const DEFAULT_BLUR = 0.35;
-  const DEFAULT_TRAIL = global.PhosphorResidual?.DEFAULT_TRAIL ?? 0.88;
-  const DEFAULT_GHOST = global.PhosphorResidual?.DEFAULT_GHOST ?? 0.45;
+  const DEFAULT_TRAIL = global.PhosphorResidual?.DEFAULT_TRAIL ?? 0.3;
+  const DEFAULT_GHOST = global.PhosphorResidual?.DEFAULT_GHOST ?? 0.25;
   const DEFAULT_EXPOSURE = 2.9;
   const DEPOSIT_SCALE = 0.1;
 
@@ -130,7 +130,7 @@
     if (!Number.isFinite(brightness) || options.useDepositGain) {
       const raw = Number.isFinite(Number(options.dotBrightness))
         ? Number(options.dotBrightness)
-        : Number(options.brightness) || 0.92;
+        : Number(options.brightness) || 1;
       brightness = depositGain(raw, size01);
     }
     return global.nodeGraphPhosphorEnergyGlStepBeams(face, {

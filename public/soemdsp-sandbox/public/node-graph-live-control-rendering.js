@@ -29,16 +29,21 @@ function nodeGraphLiveEngineIsPaused() {
 function nodeGraphLiveTransportUiState() {
   const statusText = String(document.getElementById("nodeLiveStatus")?.textContent || "").trim();
   const outputOn = Boolean(nodeGraphMvp?.live?.outputEnabled);
+  const inputOn = Boolean(nodeGraphMvp?.live?.inputActive);
+  const engineWanted = typeof nodeGraphLiveEngineWanted === "function"
+    ? nodeGraphLiveEngineWanted()
+    : (inputOn || outputOn);
   const engineUp = nodeGraphLiveEngineIsUp();
   const contextUp = Boolean(nodeGraphMvp?.live?.context);
   const speed = Number(nodeGraphMvp?.live?.speedMultiplier ?? 1);
   const paused = Number.isFinite(speed) && speed <= 0;
 
   // Live graph present always wins for transport chrome. Status pill may still
-  // say "error" (plan/processor issue) but we must not paint red-stop / Output
-  // (Off) while a worklet is connected — that was the green-flash → red-stop
-  // + silence bug when plan errors muted host gain without tearing down.
-  if (engineUp || (contextUp && outputOn)) {
+  // say "error" (plan/processor issue) but we must not paint red-stop while a
+  // worklet is connected — that was the green-flash → red-stop + silence bug
+  // when plan errors muted host gain without tearing down.
+  // Engine may be Input-only (outputOn false) — still "playing"/"paused".
+  if (engineUp || (contextUp && engineWanted)) {
     return paused ? "paused" : "playing";
   }
 
@@ -46,9 +51,9 @@ function nodeGraphLiveTransportUiState() {
     return "stopped";
   }
 
-  // Mid-start: output requested (or status says so) but worklet not mounted yet.
+  // Mid-start: Input and/or Output requested but worklet not mounted yet.
   if (
-    outputOn
+    engineWanted
     || statusText === "starting"
     || statusText === "priming"
   ) {
@@ -94,15 +99,67 @@ function syncNodeGraphOutputBypassButton(outputEnabled = Boolean(nodeGraphMvp.li
     return;
   }
   const bypassed = !outputEnabled;
+  const pressed = bypassed ? "true" : "false";
+  const glyph = nodeGraphBypassGlyph(bypassed);
+  if (
+    outputNode.classList.contains("bypassed") === bypassed
+    && bypassButton.getAttribute("aria-pressed") === pressed
+    && bypassButton.textContent === glyph
+  ) {
+    return;
+  }
   outputNode.classList.toggle("bypassed", bypassed);
-  bypassButton.setAttribute("aria-pressed", bypassed ? "true" : "false");
-  bypassButton.textContent = nodeGraphBypassGlyph(bypassed);
+  bypassButton.setAttribute("aria-pressed", pressed);
+  bypassButton.textContent = glyph;
   nodeGraphApplyTooltip(bypassButton, bypassed ? "module.outputOn" : "module.outputOff", {}, { title: false });
 }
 
-function renderNodeGraphLiveControls(running = Boolean(nodeGraphMvp.live.node)) {
+/** Chrome signature for skipping no-op live-control paints (delete/commit spam). */
+let nodeGraphLiveControlsPaintSignature = "";
+let nodeGraphLiveControlsTransportSideSignature = "";
+let nodeGraphLiveTransportButtonsSignature = "";
+
+function invalidateNodeGraphLiveControlsPaintCache() {
+  nodeGraphLiveControlsPaintSignature = "";
+  nodeGraphLiveControlsTransportSideSignature = "";
+  nodeGraphLiveTransportButtonsSignature = "";
+}
+
+function nodeGraphLiveControlsChromeSignature() {
+  const live = nodeGraphMvp?.live || {};
+  const transport = typeof nodeGraphLiveTransportUiState === "function"
+    ? nodeGraphLiveTransportUiState()
+    : "";
+  const speedLimit = typeof nodeGraphLiveSpeedLimitHz === "function"
+    ? nodeGraphLiveSpeedLimitHz()
+    : Number(live.speedLimit) || 0;
+  const paused = typeof nodeGraphLiveEngineIsPaused === "function" && nodeGraphLiveEngineIsPaused();
+  return [
+    transport,
+    Number(live.speedMultiplier) || 0,
+    speedLimit,
+    Boolean(live.outputEnabled) | 0,
+    Boolean(live.inputActive) | 0,
+    Boolean(live.inputStream) | 0,
+    Boolean(live.node) | 0,
+    Boolean(live.context) | 0,
+    String(live.inputStatus || ""),
+    String(live.micStatus || ""),
+    String(live.inputPermissionStatus || ""),
+    paused | 0,
+  ].join("|");
+}
+
+function renderNodeGraphLiveControls(running = Boolean(nodeGraphMvp?.live?.node), options = {}) {
+  const force = Boolean(options?.force);
+  const signature = nodeGraphLiveControlsChromeSignature();
+  if (!force && signature === nodeGraphLiveControlsPaintSignature) {
+    return;
+  }
+  const prevSignature = nodeGraphLiveControlsPaintSignature;
+  nodeGraphLiveControlsPaintSignature = signature;
+
   const statusText = document.getElementById("nodeLiveStatus")?.textContent || "";
-  const starting = statusText === "starting";
   const outputEnabled = Boolean(nodeGraphMvp.live.outputEnabled);
   const transportState = nodeGraphLiveTransportUiState();
   const inputButton = document.getElementById("nodeLiveInputButton");
@@ -123,14 +180,25 @@ function renderNodeGraphLiveControls(running = Boolean(nodeGraphMvp.live.node)) 
       line.textContent = text;
       button.append(line);
     }
+    // Refit only when a chrome toggle label actually changes.
+    if (typeof scheduleNodeLiveToggleTextFit === "function") {
+      scheduleNodeLiveToggleTextFit();
+    }
   };
   if (inputButton) {
     const deviceSelect = document.getElementById("nodeLiveInputDeviceSelect");
-    if (deviceSelect) {
+    if (deviceSelect && deviceSelect.disabled) {
       deviceSelect.disabled = false;
     }
     const inputActive = Boolean(nodeGraphMvp.live.inputActive);
     const inputStreaming = Boolean(nodeGraphMvp.live.inputStream);
+    // Prefer speed+engine for pause so a transient transport string cannot
+    // drop both .active and .paused (grey flash) while Input stays armed.
+    const enginePaused = typeof nodeGraphLiveEngineIsPaused === "function"
+      ? nodeGraphLiveEngineIsPaused()
+      : transportState === "paused";
+    const inputPaused = inputActive && (enginePaused || transportState === "paused");
+    const inputStarting = inputActive && transportState === "starting" && !inputPaused;
     if (!inputActive && !["blocked", "off"].includes(nodeGraphMvp.live.inputStatus)) {
       setNodeGraphLiveInputStatus("off");
     } else if (
@@ -154,50 +222,94 @@ function renderNodeGraphLiveControls(running = Boolean(nodeGraphMvp.live.node)) 
       !nodeGraphMvp.live.node &&
       !["blocked", "requesting"].includes(nodeGraphMvp.live.micStatus)
     ) {
-      setNodeGraphLiveMicStatus("armed", "Start OUTPUT to request browser microphone permission.");
+      setNodeGraphLiveMicStatus("armed", "Allow microphone access when the browser prompts.");
     }
-    inputButton.classList.toggle("active", inputActive);
-    inputButton.setAttribute("aria-pressed", inputActive ? "true" : "false");
-    inputButton.disabled = false;
-    inputButton.setAttribute("aria-disabled", "false");
-    labelLiveToggle(inputButton, "Input", inputActive);
-    inputButton.title = inputStreaming
+    // Armed Input is always red (.active or .paused). Never leave an armed
+    // control with neither class (reads as grey Off).
+    const inputLiveClass = inputActive && !inputPaused;
+    if (inputButton.classList.contains("active") !== inputLiveClass) {
+      inputButton.classList.toggle("active", inputLiveClass);
+    }
+    if (inputButton.classList.contains("paused") !== inputPaused) {
+      inputButton.classList.toggle("paused", inputPaused);
+    }
+    const inputPressed = inputActive ? "true" : "false";
+    if (inputButton.getAttribute("aria-pressed") !== inputPressed) {
+      inputButton.setAttribute("aria-pressed", inputPressed);
+    }
+    if (inputButton.disabled) {
+      inputButton.disabled = false;
+    }
+    if (inputButton.getAttribute("aria-disabled") !== "false") {
+      inputButton.setAttribute("aria-disabled", "false");
+    }
+    labelLiveToggle(
+      inputButton,
+      "Input",
+      inputActive,
+      inputPaused ? "Paused"
+        : inputStarting ? "Starting"
+        : inputActive ? "Live"
+        : null,
+    );
+    const nextInputTitle = inputStreaming
       ? nodeGraphTooltipText("audio.liveInputConnected")
       : inputActive
         ? nodeGraphTooltipText("audio.liveInputVisible")
         : nodeGraphTooltipText("audio.liveInputShow");
+    if (inputButton.title !== nextInputTitle) {
+      inputButton.title = nextInputTitle;
+    }
+    // Refresh mic pill text (mic live ↔ mic paused) without rewriting micStatus.
+    if (typeof refreshNodeGraphLiveMicStatusDisplay === "function" && nodeGraphMvp.live.micStatus) {
+      refreshNodeGraphLiveMicStatusDisplay();
+    }
   }
   if (outputButton) {
-    // Engine on = live worklet up with output requested (playing or paused).
-    const engineOn = (
-      transportState === "playing"
-      || transportState === "paused"
-      || transportState === "starting"
-    );
-    const isPaused = transportState === "paused";
-    const isLive = transportState === "playing" || transportState === "starting";
-    outputButton.disabled = starting || transportState === "starting";
-    outputButton.classList.toggle("active", engineOn && !isPaused);
-    outputButton.classList.toggle("paused", isPaused);
+    // Output chrome follows outputEnabled, not bare engine presence (Input-only
+    // must leave Output grey/off while the worklet stays up).
+    const outputArmed = outputEnabled;
+    const isPaused = outputArmed && transportState === "paused";
+    const isStarting = outputArmed && transportState === "starting";
+    const isLive = outputArmed && (transportState === "playing" || isStarting);
+    const outputLiveClass = isLive && !isPaused;
+    if (outputButton.disabled) {
+      outputButton.disabled = false;
+    }
+    if (outputButton.classList.contains("active") !== outputLiveClass) {
+      outputButton.classList.toggle("active", outputLiveClass);
+    }
+    if (outputButton.classList.contains("paused") !== isPaused) {
+      outputButton.classList.toggle("paused", isPaused);
+    }
     outputButton.classList.remove("node-under-construction-control");
-    outputButton.setAttribute("aria-pressed", engineOn ? "true" : "false");
-    outputButton.setAttribute("aria-disabled", "false");
-    // Labels must match transport: Live / Paused / Off — never "Paused" when stopped.
+    const outputPressed = outputArmed ? "true" : "false";
+    if (outputButton.getAttribute("aria-pressed") !== outputPressed) {
+      outputButton.setAttribute("aria-pressed", outputPressed);
+    }
+    if (outputButton.getAttribute("aria-disabled") !== "false") {
+      outputButton.setAttribute("aria-disabled", "false");
+    }
     labelLiveToggle(
       outputButton,
       "Output",
-      engineOn,
+      outputArmed,
       isPaused ? "Paused"
-        : transportState === "starting" ? "Starting"
+        : isStarting ? "Starting"
         : isLive ? "Live"
         : null,
     );
-    outputButton.title = nodeGraphLiveOutputButtonTitle(transportState, outputEnabled);
+    const nextOutputTitle = nodeGraphLiveOutputButtonTitle(transportState, outputEnabled);
+    if (outputButton.title !== nextOutputTitle) {
+      outputButton.title = nextOutputTitle;
+    }
   }
   syncNodeGraphOutputBypassButton(outputEnabled);
   syncNodeGraphInputModuleLiveState();
   updateNodeGraphLiveInputTestStatus();
-  scheduleNodeLiveToggleTextFit();
+  // Do not scheduleNodeLiveToggleTextFit here — commit/delete/patch paints
+  // call this constantly. Label changes schedule fit; ResizeObserver covers
+  // real palette size changes.
   if (typeof nodeGraphExternalNotifyLiveOutputChanged === "function") {
     nodeGraphExternalNotifyLiveOutputChanged();
   }
@@ -218,20 +330,33 @@ function renderNodeGraphLiveControls(running = Boolean(nodeGraphMvp.live.node)) 
     starting: transportStarting,
   });
   renderNodeGraphSpeedReadout();
-  // Fractal Brownian Field: no rAF / face paint while engine stopped.
-  // Start loops when live; wipe black when stopped.
-  if (typeof syncNodeGraphFbmFieldFacesToLiveState === "function") {
-    try {
-      syncNodeGraphFbmFieldFacesToLiveState();
-    } catch (_error) {
-      // Best-effort — face sync must never break transport UI.
+
+  // Side effects that only care about engine/transport edges — not every chrome paint.
+  const transportSide = [
+    transportState,
+    Boolean(nodeGraphMvp.live.node) | 0,
+    Number(nodeGraphMvp.live.speedMultiplier) || 0,
+  ].join("|");
+  const transportSideChanged = force
+    || !prevSignature
+    || transportSide !== nodeGraphLiveControlsTransportSideSignature;
+  nodeGraphLiveControlsTransportSideSignature = transportSide;
+  if (transportSideChanged) {
+    // Fractal Brownian Field: no rAF / face paint while engine stopped.
+    // Start loops when live; wipe black when stopped.
+    if (typeof syncNodeGraphFbmFieldFacesToLiveState === "function") {
+      try {
+        syncNodeGraphFbmFieldFacesToLiveState();
+      } catch (_error) {
+        // Best-effort — face sync must never break transport UI.
+      }
     }
-  }
-  if (typeof scheduleNodeGraphGridHeatmapUpdate === "function") {
-    scheduleNodeGraphGridHeatmapUpdate();
-  }
-  if (typeof scheduleNodeGraphRoomDimmerDraw === "function") {
-    scheduleNodeGraphRoomDimmerDraw();
+    if (typeof scheduleNodeGraphGridHeatmapUpdate === "function") {
+      scheduleNodeGraphGridHeatmapUpdate();
+    }
+    if (typeof scheduleNodeGraphRoomDimmerDraw === "function") {
+      scheduleNodeGraphRoomDimmerDraw();
+    }
   }
 }
 
@@ -247,6 +372,11 @@ function syncNodeGraphTransportPlayButtons({ playing = false, paused = false, st
   const isStarting = Boolean(starting) && isPlaying;
   // Red stop ONLY when fully cold — not while arming/starting the engine.
   const isStopped = !isPlaying && !isPaused;
+  const signature = `${isPlaying ? 1 : 0}|${isPaused ? 1 : 0}|${isStarting ? 1 : 0}|${isStopped ? 1 : 0}`;
+  if (signature === nodeGraphLiveTransportButtonsSignature) {
+    return;
+  }
+  nodeGraphLiveTransportButtonsSignature = signature;
 
   for (const tp of document.querySelectorAll("[data-transport-play], #nodeTransportPlay, button.node-transport-play")) {
     if (!(tp instanceof HTMLElement)) continue;
@@ -544,18 +674,22 @@ function nodeGraphTransportHandleAction(action) {
     return;
   }
   if (key === "stop") {
-    // Always full stop (never toggle). Same path as red Output when on.
-    if (typeof setNodeGraphLiveOutputEnabled === "function") {
+    // Always full stop: clear both Input and Output arms, tear down engine.
+    // Pause must not use this path — pause only zeros speed.
+    if (typeof stopNodeGraphLiveEngineFully === "function") {
+      Promise.resolve(stopNodeGraphLiveEngineFully()).then(() => {
+        renderNodeGraphLiveControls(false);
+      });
+    } else if (typeof setNodeGraphLiveOutputEnabled === "function") {
+      if (nodeGraphMvp?.live) {
+        nodeGraphMvp.live.inputActive = false;
+      }
       setNodeGraphLiveOutputEnabled(false);
+      renderNodeGraphLiveControls();
     } else if (typeof soemdspSandboxSetLiveOutput === "function") {
       soemdspSandboxSetLiveOutput(false);
-    } else if (typeof soemdspSandboxToggleLiveOutput === "function") {
-      const outputActive = nodeGraphLiveOutputIsActive(Boolean(nodeGraphMvp.live.node));
-      if (outputActive) {
-        soemdspSandboxToggleLiveOutput();
-      }
+      renderNodeGraphLiveControls();
     }
-    renderNodeGraphLiveControls();
     return;
   }
   if (key === "restart") {

@@ -14,7 +14,6 @@ const NODE_GRAPH_PORTAL_LANE_SPECS = Object.freeze([
     hasMono: true,
     hasLeft: false,
     hasRight: false,
-    heightGu: 2,
   }),
   Object.freeze({
     key: "left",
@@ -24,7 +23,6 @@ const NODE_GRAPH_PORTAL_LANE_SPECS = Object.freeze([
     hasMono: false,
     hasLeft: true,
     hasRight: false,
-    heightGu: 2,
   }),
   Object.freeze({
     key: "right",
@@ -34,7 +32,6 @@ const NODE_GRAPH_PORTAL_LANE_SPECS = Object.freeze([
     hasMono: false,
     hasLeft: false,
     hasRight: true,
-    heightGu: 2,
   }),
   Object.freeze({
     key: "leftRight",
@@ -44,7 +41,6 @@ const NODE_GRAPH_PORTAL_LANE_SPECS = Object.freeze([
     hasMono: false,
     hasLeft: true,
     hasRight: true,
-    heightGu: 3,
   }),
   Object.freeze({
     key: "trio",
@@ -54,7 +50,6 @@ const NODE_GRAPH_PORTAL_LANE_SPECS = Object.freeze([
     hasMono: true,
     hasLeft: true,
     hasRight: true,
-    heightGu: 4,
   }),
 ]);
 
@@ -127,6 +122,22 @@ function nodeGraphPortalLaneLetters(spec) {
 function nodeGraphPortalLaneDefinition(kind, spec) {
   const ports = spec.ports.slice();
   const letters = nodeGraphPortalLaneLetters(spec);
+  // Convenience thru jacks use arrows; primary lane jacks stay M / L / R.
+  // In portal: outs = MLR (into patch), ins = → (convenience mix-in).
+  // Out portal: ins = MLR (from patch), outs = ← (convenience thru / feedback).
+  const inArrow = "\u2192";
+  const isInlet = kind !== "outlet";
+  const inputLabels = {};
+  const outputLabels = {};
+  for (const port of ports) {
+    if (isInlet) {
+      inputLabels[port] = inArrow;
+      outputLabels[port] = letters[port] || port;
+    } else {
+      inputLabels[port] = letters[port] || port;
+      outputLabels[port] = NODE_GRAPH_THRU_SYMBOL;
+    }
+  }
   const aliases = {};
   if (spec.hasMono) {
     aliases.In = "Mono";
@@ -134,7 +145,7 @@ function nodeGraphPortalLaneDefinition(kind, spec) {
     aliases.Out = "Mono";
     aliases.Thru = "Mono";
     aliases[NODE_GRAPH_THRU_SYMBOL] = "Mono";
-    aliases["\u2192"] = "Mono";
+    aliases[inArrow] = "Mono";
   }
   if (spec.hasLeft) {
     aliases.L = "Left";
@@ -142,25 +153,19 @@ function nodeGraphPortalLaneDefinition(kind, spec) {
   if (spec.hasRight) {
     aliases.R = "Right";
   }
-  const isInlet = kind !== "outlet";
-  const single = ports.length === 1;
   return {
-    chrome: single ? "LayoutA" : "LayoutC",
+    // LayoutC: title + I/O. Height comes from content calc (no hand defaultHeightGu).
+    chrome: "LayoutC",
     planRole: isInlet ? "source" : "sink",
     planFreeRun: true,
-    defaultWidthGu: single ? 2 : 4,
-    defaultHeightGu: spec.heightGu || (single ? 2 : 4),
-    defaultUi: {
-      buttonsHidden: true,
-      titleHidden: true,
-      ...(single ? { ioHidden: true } : {}),
-    },
-    hasFace: single,
-    inputAliases: isInlet ? {} : aliases,
-    inputLabels: isInlet ? {} : letters,
-    inputs: isInlet ? [] : ports.slice(),
+    defaultWidthGu: 4,
+    defaultUi: { buttonsHidden: true, titleHidden: true },
+    hasFace: false,
+    inputAliases: aliases,
+    inputLabels,
+    inputs: ports.slice(),
     outputAliases: aliases,
-    outputLabels: isInlet ? letters : letters,
+    outputLabels,
     outputs: ports.slice(),
     parameters: [],
   };
@@ -173,32 +178,38 @@ function registerNodeGraphPortalLaneFamily(kind) {
   const isOutlet = kind === "outlet";
   const noun = isOutlet ? "Out" : "In";
   for (const spec of NODE_GRAPH_PORTAL_LANE_SPECS) {
-    registerNodeGraphChromelessModule(nodeGraphPortalTypeName(kind, spec), {
-      label: `${noun} ${spec.label}`,
-      compactTile: spec.ports.length === 1,
-      customDisplayArea: spec.ports.length === 1,
-      definition: nodeGraphPortalLaneDefinition(kind, spec),
-      catalog: {
-        category: "portal",
-        description: isOutlet
-          ? `Patch ${spec.label} out of the graph.`
-          : `Live input ${spec.label} into the patch.`,
-        notes: [
-          "portal",
-          isOutlet ? "outlet" : "inlet",
-          "input",
-          "in",
-          spec.key,
-          spec.label,
-          `in ${spec.label}`,
-          "mono",
-          "left",
-          "right",
-          "m",
-          "l",
-          "r",
-        ],
-      },
-    });
+    registerNodeGraphPortalLaneFamilyEntry(kind, noun, spec);
   }
+}
+
+function registerNodeGraphPortalLaneFamilyEntry(kind, noun, spec) {
+  const isOutlet = kind === "outlet";
+  registerNodeGraphChromelessModule(nodeGraphPortalTypeName(kind, spec), {
+    label: `${noun} ${spec.label}`,
+    compactTile: false,
+    customDisplayArea: false,
+    definition: nodeGraphPortalLaneDefinition(kind, spec),
+    catalog: {
+      category: "portal",
+      description: isOutlet
+        ? `Patch ${spec.label} out of the graph (→ in, ← thru to speakers).`
+        : `Live input ${spec.label} into the patch (→ in, ← thru).`,
+      notes: [
+        "portal",
+        isOutlet ? "outlet" : "inlet",
+        "input",
+        "in",
+        "thru",
+        spec.key,
+        spec.label,
+        `in ${spec.label}`,
+        "mono",
+        "left",
+        "right",
+        "m",
+        "l",
+        "r",
+      ],
+    },
+  });
 }

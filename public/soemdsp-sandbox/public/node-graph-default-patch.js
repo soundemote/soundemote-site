@@ -177,9 +177,6 @@ function createNodeGraphPatchNode(type, options = {}) {
   if (Object.hasOwn(opts, "scopeShader")) {
     node.scopeShader = normalizeNodeGraphScopeShader(opts.scopeShader);
   }
-  if (resolvedType === "moduleGroup") {
-    node.moduleGroup = normalizeNodeGraphModuleGroup(options.moduleGroup);
-  }
   if (resolvedType === "knob" && typeof normalizeNodeGraphKnobFace === "function") {
     const face = normalizeNodeGraphKnobFace(opts.knobFace);
     if (typeof nodeGraphKnobFaceIsNonDefault === "function"
@@ -198,6 +195,10 @@ function createNodeGraphPatchNode(type, options = {}) {
 // Efficient-product init: allowlisted C++ graph chain (no audioPlayer).
 // polyBlep → ladderFilter → softClipper → reverbEffect → pingPongDelay → output
 const nodeGraphDefaultNodeConfigs = Object.freeze([
+  {
+    ...createNodeGraphPatchNode("audioInput", { id: "audioInput", gx: -26, gy: -4 }),
+    params: { ...nodeGraphDefaultParamsForType("audioInput") },
+  },
   {
     ...createNodeGraphPatchNode("polyBlep", { id: "polyBlep-1", gx: -18, gy: -4 }),
     params: {
@@ -242,7 +243,7 @@ const nodeGraphDefaultNodeConfigs = Object.freeze([
 ]);
 
 const nodeGraphDefaultConnections = Object.freeze([
-  { sourceNode: "polyBlep-1", sourcePort: "Wave Out", destinationNode: "ladderFilter-1", destinationPort: "In" },
+  { sourceNode: "polyBlep-1", sourcePort: "Wave", destinationNode: "ladderFilter-1", destinationPort: "In" },
   { sourceNode: "ladderFilter-1", sourcePort: "Out", destinationNode: "softClipper-1", destinationPort: "In" },
   { sourceNode: "softClipper-1", sourcePort: "Out", destinationNode: "reverbEffect-1", destinationPort: "In" },
   { sourceNode: "reverbEffect-1", sourcePort: "Mix L", destinationNode: "pingPongDelay-1", destinationPort: "Left" },

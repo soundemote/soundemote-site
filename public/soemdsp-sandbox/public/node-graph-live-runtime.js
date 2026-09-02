@@ -35,11 +35,20 @@ function nodeGraphLiveOutputTargetGain() {
   if (nodeGraphMvp.live.outputMuted) {
     return 0;
   }
+  // Input-only: keep the worklet for mic/portals, but mute the speaker.
+  if (!nodeGraphMvp.live.outputEnabled) {
+    return 0;
+  }
   // Pause (speed 0) must not leak the last worklet block through the host.
   if (nodeGraphMvp.live.node && !(Number(nodeGraphMvp.live.speedMultiplier) > 0)) {
     return 0;
   }
   return 1;
+}
+
+/** Engine should stay up while Input and/or Output is armed. */
+function nodeGraphLiveEngineWanted() {
+  return Boolean(nodeGraphMvp.live.inputActive || nodeGraphMvp.live.outputEnabled);
 }
 
 function applyNodeGraphLiveOutputGain() {
@@ -517,7 +526,7 @@ async function sendNodeGraphLiveNativeModule(liveNode, entry) {
 // Chrome caps wasm memories per process (~100); many standalone instances
 // hit that cap. Slim is for small used-sets when per-module files exist;
 // huge patches / site deploys should use combined.
-const nodeGraphLiveCombinedNativeModuleUrl = "native_modules/combined/soemdsp_combined.wasm?v=poly-morph-bipolar-1";
+const nodeGraphLiveCombinedNativeModuleUrl = "native_modules/combined/soemdsp_combined.wasm?v=slew-defaults-005";
 
 /** @type {null|"slim"|"combined"} */
 let nodeGraphLiveNativeWasmLoadModeResolved = null;
@@ -798,8 +807,8 @@ async function refreshNodeGraphLiveMicrophonePermissionState() {
         setNodeGraphLiveMicStatus(
           "armed",
           permission.state === "granted"
-            ? "Microphone permission is allowed. Start OUTPUT to connect it."
-            : "Start OUTPUT to request browser microphone permission.",
+            ? "Microphone permission is allowed. Connecting live input."
+            : "Allow microphone access when the browser prompts.",
         );
       } else {
         updateNodeGraphLiveInputTestStatus();
@@ -866,7 +875,7 @@ async function handleNodeGraphLiveInputDeviceChange(event) {
 function nodeGraphLiveInputErrorMessage(error) {
   const name = error?.name || "";
   if (name === "NotAllowedError" || name === "SecurityError") {
-    return "Microphone permission was blocked. Allow microphone access in the browser, then press Output again.";
+    return "Microphone permission was blocked. Allow microphone access in the browser, then press Input again.";
   }
   if (name === "NotFoundError" || name === "DevicesNotFoundError") {
     return "No browser audio input device was found.";
@@ -941,20 +950,13 @@ function stopNodeGraphMockInput() {
 }
 
 async function startNodeGraphMockInput(options = {}) {
-  if (typeof nodeGraphEfficientProductEnabled === "function" && nodeGraphEfficientProductEnabled()) {
-    nodeGraphMvp.live.inputActive = false;
-    if (typeof ensureNodeGraphLiveInputModule === "function") {
-      ensureNodeGraphLiveInputModule();
-    }
-    renderNodeGraphLiveControls();
-    return nodeGraphLiveDebug();
-  }
   setNodeGraphMockInputFactory(options);
   nodeGraphMvp.live.inputActive = true;
   ensureNodeGraphLiveInputModule();
   if (!nodeGraphMvp.live.node || !nodeGraphMvp.live.context) {
-    nodeGraphMvp.live.outputEnabled = true;
-    await startNodeGraphLiveAudio();
+    const serial = nodeGraphMvp.live.outputToggleSerial + 1;
+    nodeGraphMvp.live.outputToggleSerial = serial;
+    await startNodeGraphLiveAudio(serial);
   } else {
     await syncNodeGraphLiveInputSource();
   }
@@ -987,8 +989,8 @@ async function requestNodeGraphLiveInputStream(deviceId = nodeGraphMvp.live.inpu
   });
 }
 
-function nodeGraphLiveOutputStartCancelled(serial) {
-  return serial !== nodeGraphMvp.live.outputToggleSerial || !nodeGraphMvp.live.outputEnabled;
+function nodeGraphLiveEngineStartCancelled(serial) {
+  return serial !== nodeGraphMvp.live.outputToggleSerial || !nodeGraphLiveEngineWanted();
 }
 
 function nodeGraphLiveInputIsUnderConstruction() {
@@ -997,18 +999,6 @@ function nodeGraphLiveInputIsUnderConstruction() {
 
 function toggleNodeGraphLiveInput() {
   const enabling = !nodeGraphMvp.live.inputActive;
-  if (
-    enabling
-    && typeof nodeGraphEfficientProductEnabled === "function"
-    && nodeGraphEfficientProductEnabled()
-  ) {
-    nodeGraphMvp.live.inputActive = false;
-    if (typeof ensureNodeGraphLiveInputModule === "function") {
-      ensureNodeGraphLiveInputModule();
-    }
-    renderNodeGraphLiveControls();
-    return;
-  }
   nodeGraphMvp.live.inputActive = enabling;
   const addedInputModule = nodeGraphMvp.live.inputActive
     ? ensureNodeGraphLiveInputModule()
@@ -1018,6 +1008,7 @@ function toggleNodeGraphLiveInput() {
     setNodeGraphLiveInputStatus(routeState.state, routeState.message);
     refreshNodeGraphLiveMicrophonePermissionState();
   } else {
+    stopNodeGraphLiveInputSource();
     setNodeGraphLiveInputStatus("off");
     setNodeGraphLiveMicStatus("off");
   }
@@ -1027,17 +1018,49 @@ function toggleNodeGraphLiveInput() {
     scheduleNodeGraphLivePlanSync();
   }
   renderNodeGraphLiveControls();
-  if (nodeGraphMvp.live.context && nodeGraphMvp.live.node) {
-    syncNodeGraphLiveInputSource().catch((error) => {
-      nodeGraphMvp.live.inputActive = false;
-      stopNodeGraphLiveInputSource();
-      setNodeGraphLiveInputStatus("blocked", error.message);
-      applyNodeGraphPatchToDom();
-      drawNodeGraphWires();
-      renderNodeGraphLiveControls();
-      setNodeGraphLiveBlockedError("input", error, { schedule: false });
-    });
+
+  if (!enabling) {
+    // Input off: tear down only when Output is also off.
+    if (!nodeGraphMvp.live.outputEnabled) {
+      const serial = nodeGraphMvp.live.outputToggleSerial + 1;
+      nodeGraphMvp.live.outputToggleSerial = serial;
+      stopNodeGraphLiveAudio().then(() => {
+        renderNodeGraphLiveControls(false);
+        renderNodeGraphExecutionPlanDebug();
+      }).catch(() => {
+        renderNodeGraphLiveControls(false);
+      });
+    }
+    return;
   }
+
+  const startOrSync = (!nodeGraphMvp.live.context || !nodeGraphMvp.live.node)
+    ? (() => {
+      const serial = nodeGraphMvp.live.outputToggleSerial + 1;
+      nodeGraphMvp.live.outputToggleSerial = serial;
+      return startNodeGraphLiveAudio(serial);
+    })()
+    : syncNodeGraphLiveInputSource();
+
+  Promise.resolve(startOrSync).catch((error) => {
+    // Mic/permission failures leave Input armed (blocked badge); only clear the
+    // arm when the engine itself failed to start and nothing else wants it.
+    const inputOnly = Boolean(error?.nodeGraphInputError);
+    if (inputOnly) {
+      setNodeGraphLiveInputStatus("blocked", error?.message || String(error));
+      setNodeGraphLiveMicStatus("blocked", error?.message || String(error));
+      setNodeGraphLiveBlockedError("input", error, { schedule: false });
+      renderNodeGraphLiveControls(Boolean(nodeGraphMvp.live.node));
+      return;
+    }
+    nodeGraphMvp.live.inputActive = false;
+    stopNodeGraphLiveInputSource();
+    setNodeGraphLiveInputStatus("blocked", error?.message || String(error));
+    applyNodeGraphPatchToDom();
+    drawNodeGraphWires();
+    renderNodeGraphLiveControls();
+    setNodeGraphLiveBlockedError("input", error, { schedule: false });
+  });
 }
 
 async function setNodeGraphLiveOutputEnabled(enabled) {
@@ -1048,6 +1071,7 @@ async function setNodeGraphLiveOutputEnabled(enabled) {
   // even though audio came up (or a cancelled start tore the winner down).
   if (outputEnabled) {
     if (nodeGraphMvp.live.outputEnabled && nodeGraphMvp.live.node) {
+      applyNodeGraphLiveOutputGain();
       renderNodeGraphLiveControls(true);
       renderNodeGraphExecutionPlanDebug();
       return;
@@ -1060,33 +1084,51 @@ async function setNodeGraphLiveOutputEnabled(enabled) {
         return;
       }
     }
-  } else if (!nodeGraphMvp.live.outputEnabled && !nodeGraphMvp.live.node && !nodeGraphMvp.live.context) {
+  } else if (
+    !nodeGraphMvp.live.outputEnabled
+    && !nodeGraphMvp.live.node
+    && !nodeGraphMvp.live.context
+  ) {
     renderNodeGraphLiveControls(false);
+    renderNodeGraphExecutionPlanDebug();
+    return;
+  }
+
+  nodeGraphMvp.live.outputEnabled = outputEnabled;
+  renderNodeGraphLiveControls(Boolean(nodeGraphMvp.live.node));
+  renderNodeGraphExecutionPlanDebug();
+
+  if (!outputEnabled) {
+    // Output off does not clear Input. Tear down only when both are off.
+    applyNodeGraphLiveOutputGain();
+    if (nodeGraphMvp.live.inputActive && (nodeGraphMvp.live.node || nodeGraphMvp.live.context)) {
+      renderNodeGraphExecutionPlanDebug();
+      return;
+    }
+    const serial = nodeGraphMvp.live.outputToggleSerial + 1;
+    nodeGraphMvp.live.outputToggleSerial = serial;
+    await stopNodeGraphLiveAudio();
+    renderNodeGraphExecutionPlanDebug();
+    return;
+  }
+
+  // Enabling Output while engine already up (e.g. Input-only): unmute speaker.
+  if (nodeGraphMvp.live.node && nodeGraphMvp.live.context) {
+    applyNodeGraphLiveOutputGain();
+    renderNodeGraphLiveControls(true);
     renderNodeGraphExecutionPlanDebug();
     return;
   }
 
   const serial = nodeGraphMvp.live.outputToggleSerial + 1;
   nodeGraphMvp.live.outputToggleSerial = serial;
-  nodeGraphMvp.live.outputEnabled = outputEnabled;
-  renderNodeGraphLiveControls(Boolean(nodeGraphMvp.live.node));
-  renderNodeGraphExecutionPlanDebug();
-
-  if (!outputEnabled) {
-    // Full stop (same as transport ⏹): tear down audio, wipe screens.
-    // Do NOT touch simulation speed — pause leaves speed at 0; Play unpauses.
-    await stopNodeGraphLiveAudio();
-    renderNodeGraphExecutionPlanDebug();
-    return;
-  }
-
   // Stop does not change speed. Play always rearms: unpause if speed is 0 and
   // force Value LCD/LED paint even when speed is already non-zero (user may
   // have unpaused before stop — pause→play→stop still poisons hold state).
   if (nodeGraphMvp.live.node || nodeGraphMvp.live.context) {
     await stopNodeGraphLiveAudio();
   }
-  if (serial !== nodeGraphMvp.live.outputToggleSerial || !nodeGraphMvp.live.outputEnabled) {
+  if (nodeGraphLiveEngineStartCancelled(serial)) {
     return;
   }
   renderNodeGraphLiveControls();
@@ -1096,8 +1138,28 @@ async function setNodeGraphLiveOutputEnabled(enabled) {
     if (typeof nodeGraphLiveRearmDisplaysAfterEngineStart === "function") {
       nodeGraphLiveRearmDisplaysAfterEngineStart();
     }
+    if (typeof scopePaintNotifyFaceLoops === "function") {
+      scopePaintNotifyFaceLoops();
+    }
     renderNodeGraphExecutionPlanDebug();
   }
+}
+
+/**
+ * Transport Stop (⏹): clear both Input and Output arms and tear down the engine.
+ * Pause must not call this — pause only zeros speed.
+ */
+async function stopNodeGraphLiveEngineFully() {
+  const serial = nodeGraphMvp.live.outputToggleSerial + 1;
+  nodeGraphMvp.live.outputToggleSerial = serial;
+  nodeGraphMvp.live.inputActive = false;
+  nodeGraphMvp.live.outputEnabled = false;
+  stopNodeGraphLiveInputSource();
+  setNodeGraphLiveInputStatus("off");
+  setNodeGraphLiveMicStatus("off");
+  await stopNodeGraphLiveAudio();
+  renderNodeGraphLiveControls(false);
+  renderNodeGraphExecutionPlanDebug();
 }
 
 /**
@@ -1163,17 +1225,11 @@ async function restartNodeGraphLiveSimulation() {
 }
 
 /**
- * Red Output button / bypass: if the engine is on (running or paused), always
- * full stop. If off, start. Pause is transport-only until we have a timeline.
+ * Output chrome toggle: arm/disarm speaker independently of Input.
+ * Engine stays up while either Input or Output remains armed.
  */
 function toggleNodeGraphLiveOutput() {
-  const engineUp = Boolean(nodeGraphMvp.live.node || nodeGraphMvp.live.context);
-  const outputOn = Boolean(nodeGraphMvp.live.outputEnabled);
-  if (outputOn || engineUp) {
-    setNodeGraphLiveOutputEnabled(false);
-    return;
-  }
-  setNodeGraphLiveOutputEnabled(true);
+  setNodeGraphLiveOutputEnabled(!nodeGraphMvp.live.outputEnabled);
 }
 
 /**
@@ -1281,6 +1337,9 @@ function setNodeGraphLiveSpeed(speed, options = {}) {
   }
   if (typeof nodeGraphExternalNotifyLiveOutputChanged === "function") {
     nodeGraphExternalNotifyLiveOutputChanged();
+  }
+  if (clamped > 0 && typeof scopePaintNotifyFaceLoops === "function") {
+    scopePaintNotifyFaceLoops();
   }
   // Speed 0 = simulation pause: stop phosphor energy steps immediately so
   // trails do not keep decaying on the main-thread draw loop.
@@ -3037,7 +3096,7 @@ const nodeGraphLiveWorkletSourceFilesEfficient = [
   "./public/node-graph-stdlib/node-graph-control-bus-helpers.js?v=toggle-range-1",
   "./public/modules/portal/portal-lanes.js?v=portal-rename-4x2-1",
   "./public/modules/portal/portal-math.js?v=portal-lanes-1",
-  "./public/node-graph-stdlib/node-graph-param-surface-helpers.js?v=domain-out-1",
+  "./public/node-graph-stdlib/node-graph-param-surface-helpers.js?v=f-cancel-ssot-1",
   "./public/node-graph-stdlib/node-graph-seeded-rng-helpers.js?v=softpop-1",
   "./public/node-graph-parameter-smoother-filters.js?v=smooth-gpu-3p-1",
   // Bypass passthrough maps + frame eval (shared with main thread).
@@ -3052,19 +3111,19 @@ const nodeGraphLiveWorkletSourceFilesEfficient = [
   "./public/node-live-audio-worklet-analog.js?v=plan-d-split-7",
   "./public/lib/sample-interpolate.js?v=mp-aa-1",
   "./public/node-live-audio-worklet-dsp-state.js?v=interrupt-1",
-  "./public/node-live-audio-worklet-events.js?v=graph-engine-16",
+  "./public/node-live-audio-worklet-events.js?v=midi-freq-host-1",
   "./public/node-live-audio-worklet-visual.js?v=planck-eps-1",
-  "./public/node-live-audio-worklet-scope-io.js?v=interrupt-1",
+  "./public/node-live-audio-worklet-scope-io.js?v=face-full-quantum-1",
   "./public/node-live-audio-worklet-native-load.js?v=plan-d-split-7",
-  "./public/node-live-audio-worklet-native-exports.js?v=wasm-plan-race-1",
-  "./public/node-live-audio-worklet-native-graph.js?v=space-ports-1",
+  "./public/node-live-audio-worklet-native-exports.js?v=audio-pump-ready-1",
+  "./public/node-live-audio-worklet-native-graph.js?v=host-cv-feeder-1",
   "./public/node-live-audio-worklet-set-plan.js?v=fix-normalizeCodeblock-1",
   "./public/node-live-audio-worklet-clear-plan.js?v=graph-engine-6",
   "./public/node-live-audio-worklet-handle-message.js?v=wasm-plan-race-1",
   "./public/node-live-audio-worklet-scope-snapshot.js?v=interrupt-1",
   "./public/modules/_shared/output-amplitude.js?v=output-amp-1",
   // Yellow Graph: DOMAIN param chase for MOD (DSP is native opcodes 111–124).
-  "./public/modules/additiveGraph/additive-param-smooth.js?v=gen-int-harm-1",
+  "./public/modules/additiveGraph/additive-param-smooth.js?v=main-guard-1",
 
   // CurveEnvelopeMod + sample-accurate mod packets (Bubble Cutoff proof).
   "./public/modules/expAdsr/exp-adsr-math.js?v=env-uot-1",
@@ -3072,21 +3131,20 @@ const nodeGraphLiveWorkletSourceFilesEfficient = [
   // Do NOT load pluck-envelope-live-evaluator.js here — it registers into
   // nodeGraphLiveModuleEvaluators (main-thread / full only). PluckEnvelopeMod
   // bakes strips via native soemdsp_pluck_envelope_* (C++), not JS DSP.
-  "./public/modules/_shared/controller-efficient-sidecar.js?v=mod-proof-4",
+  "./public/modules/_shared/controller-efficient-sidecar.js?v=slew-native-1",
   "./public/node-live-audio-worklet-process.js?v=mp-eff-1",
 ];
 
 // Legacy JS DSP evaluators + evaluateFrame — loaded only for ?product=full.
 const nodeGraphLiveWorkletSourceFilesLegacy = [
   "./public/node-live-audio-worklet-evaluators-sources.js?v=freq-skew-math-1",
-  "./public/node-live-audio-worklet-evaluators-processors.js?v=env-uot-1",
-  "./public/node-live-audio-worklet-evaluators-utility.js?v=controller-smooth-1",
+  "./public/node-live-audio-worklet-evaluators-processors.js?v=slew-mono-1",
+  "./public/node-live-audio-worklet-evaluators-utility.js?v=midi-freq-host-1",
   "./public/node-live-audio-worklet-evaluators.js?v=evaluators-split-1",
   "./public/node-live-audio-worklet-evaluate-frame.js?v=interrupt-patch-1",
   "./public/modules/codeblock/codeblock-worklet-evaluator.js?v=native-strip-1",
-  "./public/modules/moduleGroup/module-group-worklet-evaluator.js?v=robin-native-1",
   "./public/modules/ellipsoid/ellipsoid-worklet-evaluator.js?v=motion-1",
-  "./public/modules/basicShape/basic-shape-worklet-evaluator.js?v=center-square-pwm-1",
+  "./public/modules/basicShape/basic-shape-worklet-evaluator.js?v=wave-port-1",
   "./public/lib/trace/trace-shape.js?v=heart-ssot-1",
   "./public/modules/rgbShape/rgb-shape-math.js?v=heart-ssot-1",
   "./public/modules/rgbShape/rgb-shape-worklet-evaluator.js?v=heart-ssot-1",
@@ -3107,7 +3165,7 @@ const nodeGraphLiveWorkletSourceFilesLegacy = [
   "./public/modules/additiveNoisyPan/additive-noisy-pan-worklet-evaluator.js?v=noisy-add-1",
   "./public/modules/additiveNoisyAmp/additive-noisy-amp-worklet-evaluator.js?v=noisy-add-1",
   "./public/modules/additiveOut/additive-out-worklet-evaluator.js?v=gen-h-phase-reset-1",
-  "./public/modules/polyBlep/poly-blep-worklet-evaluator.js?v=poly-morph-bipolar-1",
+  "./public/modules/polyBlep/poly-blep-worklet-evaluator.js?v=wave-port-1",
   "./public/modules/noiseGenerator/noise-generator-worklet-evaluator.js?v=native-strip-1",
   // noise channel math lives in worklet methods; main-thread uses noise-generator-math.js
   "./public/modules/randomWalk/random-walk-math.js?v=random-walk-1",
@@ -3138,7 +3196,7 @@ const nodeGraphLiveWorkletSourceFilesLegacy = [
   "./public/modules/torus/torus-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/keplerBouwkamp/kepler-bouwkamp-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/nyquistShannon/nyquist-shannon-worklet-evaluator.js?v=native-strip-1",
-  "./public/modules/surgeOscillator/surge-oscillator-worklet-evaluator.js?v=native-strip-1",
+  "./public/modules/surgeOscillator/surge-oscillator-worklet-evaluator.js?v=wave-green-1",
   "./public/modules/softwaveOsc/softwave-osc-worklet-evaluator.js?v=native-core-1",
   // Pure curve math before worklet glue (createNodeGraphCurveOscState / sample).
   "./public/modules/curveOsc/curve-osc-math.js?v=curve-osc-1",
@@ -3160,7 +3218,7 @@ const nodeGraphLiveWorkletSourceFilesLegacy = [
   "./public/modules/papoulisFilter/papoulis-filter-worklet-evaluator.js?v=xy-pad-native-1",
   "./public/modules/phosphillator/phosphillator-worklet-evaluator.js?v=drawnpath-fix-1",
   "./public/modules/cookbookFilter/cookbook-filter-worklet-evaluator.js?v=native-strip-1",
-  "./public/modules/ladderFilter/ladder-filter-worklet-evaluator.js?v=ladder-block-1",
+  "./public/modules/ladderFilter/ladder-filter-worklet-evaluator.js?v=res-max-1",
   "./public/modules/flowerChildFilter/flower-child-filter-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/activeFilter/active-filter-math.js?v=active-no-freq-1",
   "./public/modules/activeFilter/active-filter-worklet-evaluator.js?v=bp-two-in-one-1",
@@ -3191,8 +3249,8 @@ const nodeGraphLiveWorkletSourceFilesLegacy = [
   "./public/modules/noiseDetector/noise-detector-worklet-evaluator.js?v=noise-detector-1",
   "./public/modules/rms/rms-math.js?v=rms-9",
   "./public/modules/rms/rms-worklet-evaluator.js?v=rms-9",
-  "./public/modules/slewLimiter/slew-limiter-math.js?v=slew-shape-1",
-  "./public/modules/slewLimiter/slew-limiter-worklet-evaluator.js?v=slew-shape-1",
+  "./public/modules/slewLimiter/slew-limiter-math.js?v=slew-abs-time-1",
+  "./public/modules/slewLimiter/slew-limiter-worklet-evaluator.js?v=slew-abs-time-1",
   "./public/modules/midSideEncode/mid-side-encode-math.js?v=dip-ms-db-1",
   "./public/modules/midSideEncode/mid-side-encode-worklet-evaluator.js?v=dip-ms-db-1",
   "./public/modules/quadrature/quadrature-math.js?v=ms-quad-lim-1",
@@ -3288,6 +3346,8 @@ const nodeGraphLiveWorkletSourceFilesLegacy = [
   "./public/modules/screenSpaceShader/screen-space-shader-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/metallicRatio/metallic-ratio-math.js?v=metallic-ratio-1",
   "./public/modules/metallicRatio/metallic-ratio-worklet-evaluator.js?v=metallic-ratio-1",
+  "./public/modules/harmonicSeries/harmonic-series-math.js?v=harmonic-series-f0-1",
+  "./public/modules/harmonicSeries/harmonic-series-worklet-evaluator.js?v=harmonic-series-f0-1",
   "./public/modules/speakerProtection/speaker-protection-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/badvalMonitor/badval-monitor-worklet-evaluator.js?v=native-strip-1",
   "./public/modules/radar/radar-worklet-evaluator.js?v=phasor-stdlib-1",
@@ -3437,7 +3497,7 @@ function stopNodeGraphLiveInputSource() {
   setNodeGraphLiveMicStatus(
     nodeGraphMvp.live.inputActive ? "armed" : "off",
     nodeGraphMvp.live.inputActive
-      ? "Start OUTPUT to request browser microphone permission."
+      ? "Allow microphone access when the browser prompts."
       : ""
   );
 }
@@ -3576,7 +3636,7 @@ async function nodeGraphLiveOutputDisposeCancelledStart(outputSerial, localConte
 }
 
 async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputToggleSerial) {
-  if (nodeGraphLiveOutputStartCancelled(outputSerial)) {
+  if (nodeGraphLiveEngineStartCancelled(outputSerial)) {
     nodeGraphLiveOutputAbortStart("stopped");
     return;
   }
@@ -3584,6 +3644,7 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
     if (!nodeGraphScriptReadyForGraphAction("live audio")) {
       markNodeGraphLiveScriptBlocked();
       nodeGraphMvp.live.outputEnabled = false;
+      nodeGraphMvp.live.inputActive = false;
       renderNodeGraphLiveControls(false);
       return;
     }
@@ -3596,7 +3657,7 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
     }
     if (nodeGraphMvp.live.node || nodeGraphMvp.live.context) {
       await stopNodeGraphLiveAudio();
-      if (nodeGraphLiveOutputStartCancelled(outputSerial)) {
+      if (nodeGraphLiveEngineStartCancelled(outputSerial)) {
         nodeGraphLiveOutputAbortStart("stopped");
         return;
       }
@@ -3615,7 +3676,7 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
     if (context.state === "suspended") {
       await context.resume();
     }
-    if (nodeGraphLiveOutputStartCancelled(outputSerial)) {
+    if (nodeGraphLiveEngineStartCancelled(outputSerial)) {
       try {
         await context.close();
       } catch (_error) {
@@ -3647,7 +3708,7 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
       setNodeGraphLiveEngineStatus("engine fallback", "warn");
       setNodeGraphLiveEngineTitle(message);
     }
-    if (nodeGraphLiveOutputStartCancelled(outputSerial)) {
+    if (nodeGraphLiveEngineStartCancelled(outputSerial)) {
       await nodeGraphLiveOutputDisposeCancelledStart(outputSerial, context, liveNode);
       nodeGraphLiveOutputAbortStart("stopped");
       return;
@@ -3661,15 +3722,25 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
     outputGain.connect(context.destination);
     // Fresh session is never muted — clear any sticky mute from a prior error.
     setNodeGraphLiveOutputMuted(false);
-    await syncNodeGraphLiveInputSource();
-    if (nodeGraphLiveOutputStartCancelled(outputSerial)) {
+    // Mic is best-effort: a blocked/unavailable microphone must not abort the
+    // engine. Input can stay armed with mic blocked; Output can still speak.
+    try {
+      await syncNodeGraphLiveInputSource();
+    } catch (inputError) {
+      if (inputError?.nodeGraphInputError) {
+        setNodeGraphLiveBlockedError("input", inputError, { schedule: false });
+      } else {
+        throw inputError;
+      }
+    }
+    if (nodeGraphLiveEngineStartCancelled(outputSerial)) {
       // Superseded: dispose only if we still own live (never kill the winner).
       await nodeGraphLiveOutputDisposeCancelledStart(outputSerial, context, liveNode);
       nodeGraphLiveOutputAbortStart("stopped");
       return;
     }
     const planOk = await sendNodeGraphLivePlan();
-    if (nodeGraphLiveOutputStartCancelled(outputSerial)) {
+    if (nodeGraphLiveEngineStartCancelled(outputSerial)) {
       await nodeGraphLiveOutputDisposeCancelledStart(outputSerial, context, liveNode);
       nodeGraphLiveOutputAbortStart("stopped");
       return;
@@ -3681,6 +3752,7 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
       const errPlan = document.getElementById("nodeLivePlanStatus")?.textContent || "";
       const errPlanTitle = document.getElementById("nodeLivePlanStatus")?.title || "";
       nodeGraphMvp.live.outputEnabled = false;
+      nodeGraphMvp.live.inputActive = false;
       await stopNodeGraphLiveAudio();
       if (typeof setNodeGraphLiveStatus === "function") {
         setNodeGraphLiveStatus("error", "warn");
@@ -3727,7 +3799,7 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
       setNodeGraphLiveEngineTitle();
     }
     await context.resume();
-    if (nodeGraphLiveOutputStartCancelled(outputSerial)) {
+    if (nodeGraphLiveEngineStartCancelled(outputSerial)) {
       await nodeGraphLiveOutputDisposeCancelledStart(outputSerial, context, liveNode);
       nodeGraphLiveOutputAbortStart("stopped");
       return;
@@ -3736,9 +3808,9 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
     if (typeof setNodeGraphLiveStatus === "function") {
       setNodeGraphLiveStatus("running", "good");
     }
-    // Keep the arming flag honest once the worklet is up.
-    nodeGraphMvp.live.outputEnabled = true;
+    // Do not force outputEnabled — Input-only starts must leave Output grey/off.
     setNodeGraphLiveOutputMuted(false);
+    applyNodeGraphLiveOutputGain();
     // Pause→stop wipes faces and kills RAF; pause also freezes hold state.
     // Always rearm LCD/LED paint after a successful cold start.
     if (typeof nodeGraphLiveRearmDisplaysAfterEngineStart === "function") {
@@ -3746,9 +3818,9 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
     } else {
       renderNodeGraphLiveControls(true);
     }
-    // One more frame after layout/status pills settle — guarantee green Live.
+    // One more frame after layout/status pills settle — guarantee Live chrome.
     window.requestAnimationFrame(() => {
-      if (nodeGraphMvp.live.node && nodeGraphMvp.live.outputEnabled) {
+      if (nodeGraphMvp.live.node && nodeGraphLiveEngineWanted()) {
         if (typeof nodeGraphLiveRearmDisplaysAfterEngineStart === "function") {
           nodeGraphLiveRearmDisplaysAfterEngineStart();
         } else {
@@ -3759,17 +3831,21 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
   } catch (error) {
     const inputError = Boolean(error.nodeGraphInputError);
     const inputErrorMessage = inputError ? nodeGraphLiveInputErrorMessage(error) : "";
-    // Do not tear down a newer successful start from this failed serial.
+    // Mic errors are handled at the sync call site and must not reach here.
+    // Plan/engine failures: tear down and clear both arms.
     if (outputSerial === nodeGraphMvp.live.outputToggleSerial) {
-      await stopNodeGraphLiveAudio();
-      nodeGraphMvp.live.outputEnabled = false;
       if (inputError) {
         setNodeGraphLiveInputStatus("blocked", inputErrorMessage);
         setNodeGraphLiveMicStatus("blocked", inputErrorMessage);
         setNodeGraphLiveBlockedError("input", error, { schedule: false });
-      } else {
-        setNodeGraphLiveBlockedError("plan", error);
+        // Keep whatever engine state we already mounted; do not clear arms.
+        renderNodeGraphLiveControls(Boolean(nodeGraphMvp.live.node));
+        return;
       }
+      await stopNodeGraphLiveAudio();
+      nodeGraphMvp.live.outputEnabled = false;
+      nodeGraphMvp.live.inputActive = false;
+      setNodeGraphLiveBlockedError("plan", error);
       renderNodeGraphLiveControls(false);
     }
   }

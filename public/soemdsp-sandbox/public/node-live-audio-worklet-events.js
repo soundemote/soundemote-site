@@ -43,15 +43,47 @@ NodeLiveAudioProcessor.prototype.speedLimitHz = function speedLimitHz() {
 };
 
 /**
- * @deprecated Absolute-Hz f jack retired — use domain-add MOD on Frequency.
- * Still returns null (unwired) so any leftover call sites stay silent.
+ * Absolute-Hz ƒ jack when wired; null if unwired.
+ * Mirrors nodeGraphResolveAbsHzJack / nodeGraphReadFInputHz.
  */
-NodeLiveAudioProcessor.prototype.readFInputHz = function readFInputHz(_mixInput, _nodeId, _port = "f") {
+NodeLiveAudioProcessor.prototype.readFInputHz = function readFInputHz(mixInput, nodeId, _port = "f") {
+    const hasInput = this.boundHasInput
+      || ((id, port) => this.hasInputPort(id, port));
+    if (typeof nodeGraphResolveAbsHzJack === "function") {
+      return nodeGraphResolveAbsHzJack(hasInput, mixInput, nodeId);
+    }
+    if (typeof hasInput === "function" && typeof mixInput === "function" && nodeId && hasInput(nodeId, "f")) {
+      return mixInput(nodeId, "f");
+    }
     return null;
 };
 
 /**
- * Clamp signed Hz to ±Speed Limit. Second arg ignored (legacy f mult removed).
+ * Wired ƒ cancels the Frequency / cutoff knob. Worklet twin of
+ * nodeGraphFrequencyHzFromKnobOrF.
+ */
+NodeLiveAudioProcessor.prototype.frequencyHzFromKnobOrF = function frequencyHzFromKnobOrF(
+  knobHz,
+  mixInput,
+  nodeId,
+) {
+    if (typeof nodeGraphFrequencyHzFromKnobOrF === "function") {
+      const hasInput = this.boundHasInput
+        || ((id, port) => this.hasInputPort(id, port));
+      return nodeGraphFrequencyHzFromKnobOrF(knobHz, hasInput, mixInput, nodeId);
+    }
+    const jack = this.readFInputHz(mixInput, nodeId);
+    if (jack != null) {
+      const n = Number(jack);
+      return Number.isFinite(n) ? n : 0;
+    }
+    const k = Number(knobHz);
+    return Number.isFinite(k) ? k : 0;
+};
+
+/**
+ * Clamp signed Hz to ±Speed Limit.
+ * Second arg ignored (legacy ƒ×Frequency multiply removed — wired ƒ cancels the knob).
  */
 NodeLiveAudioProcessor.prototype.resolveFrequencyHz = function resolveFrequencyHz(baseHz, _fHzOrNull) {
     const maxHz = this.speedLimitHz();
@@ -260,6 +292,10 @@ NodeLiveAudioProcessor.prototype.setParams = function setParams(nodes, message =
 NodeLiveAudioProcessor.prototype.setMidiKeyboardSignal = function setMidiKeyboardSignal(signal) {
     const source = signal && typeof signal === "object" ? signal : {};
     const midi = this.clampValue(Math.round(Number(source.midi) || 60), 0, 127);
+    const rawMidi = Number.isFinite(Number(source.rawMidi))
+      ? this.clampValue(Math.round(Number(source.rawMidi)), 0, 127)
+      : midi;
+    const octave = this.clampValue(Math.round(Number(source.octave) || 0), -6, 6);
     const keyIndex = this.clampValue(Number(source.keyIndex) || 0, 0, 24);
     const keyQuantized = this.clampValue(Number(source.keyQuantized) || keyIndex / 24, 0, 1);
     const frequency = Math.max(0, Number(source.frequency) || 440 * (2 ** ((midi - 69) / 12)));
@@ -271,8 +307,11 @@ NodeLiveAudioProcessor.prototype.setMidiKeyboardSignal = function setMidiKeyboar
       gatePulse: Number(source.gatePulse) > 0 ? 1 : 0,
       x: this.clampValue(Number(source.x) || keyQuantized, 0, 1),
       y: this.clampValue(Number(source.y) || 0, 0, 1),
+      velocity: this.clampValue(Number(source.velocity) || 0, 0, 1),
       keyIndex,
       keyQuantized,
+      rawMidi,
+      octave,
       midi,
       pitchValue: this.clampValue(Number(source.pitchValue) || midi, 0, 127),
       midiNormalized: this.clampValue(Number(source.midiNormalized) || midi / 127, 0, 1),

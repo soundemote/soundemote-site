@@ -9,6 +9,17 @@ type Release = {
 
 const releases: Release[] = [
   {
+    version: "0.7.0",
+    date: "2026-09-01",
+    tag: "additive beta",
+    changes: [
+      "Additive / Yellow Graph beta: Generator → filters / Bubble / Noisy* / Quantize / AutoPan → Additive Out (native circuit).",
+      "Home Hero stays silent until Play — no AudioContext or combined.wasm on first paint; Play / Pause / Stop wired in the transport.",
+      "Stereo Additive Out (Mono / Left / Right), Sabrina reverb stereo wiring, Optimize Inaudible Harmonics (−80 dBFS floor).",
+      "Sandbox labeled 0.7.0 ADDITIVE BETA.",
+    ],
+  },
+  {
     version: "0.2.1",
     date: "2026-07-05",
     tag: "alpha",

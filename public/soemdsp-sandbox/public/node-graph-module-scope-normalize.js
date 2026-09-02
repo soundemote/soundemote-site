@@ -24,9 +24,10 @@ function nodeGraphDisplaySettingsNormalizePlateLook(source = {}, defaults = {}) 
     ? Number(defs.backgroundBrightness)
     : 0;
   const rawHex = src.background ?? src.backgroundColor ?? defs.background;
+  // Plate fallback is black — Instant Trace red must not leak into phosphor faces.
   const hex = typeof normalizeNodeGraphTraceDisplayColor === "function"
-    ? normalizeNodeGraphTraceDisplayColor(rawHex, defs.background || "#ff0000")
-    : String(rawHex || "#ff0000");
+    ? normalizeNodeGraphTraceDisplayColor(rawHex, defs.background || "#000000")
+    : String(rawHex || "#000000");
   const mapped = typeof nodeGraphHueBrightnessFromHex === "function"
     ? nodeGraphHueBrightnessFromHex(hex, fallbackHue, fallbackBright)
     : { hue: fallbackHue, brightness: fallbackBright };
@@ -581,10 +582,10 @@ function normalizeNodeGraphTraceDisplayZoomSeconds(value, fallback) {
 
 function nodeGraphTraceDisplayClampSweepSeconds(value) {
   const n = Number(value);
-  // Non-finite → default. 0 = collapsed sweep (solid full-width horizontal
-  // per sample at fuse density). Negative → 0. Do not snap 0 to default.
+  // Legacy seconds clamp (migration / older callers). Prefer sweepHz.
   if (!Number.isFinite(n)) {
-    return nodeGraphLineBurnSettingsDefaults.sweepSeconds;
+    const hz = Number(nodeGraphLineBurnSettingsDefaults.sweepHz);
+    return Number.isFinite(hz) && hz > 0 ? 1 / hz : 0.25;
   }
   if (n <= 0) {
     return 0;
@@ -592,24 +593,118 @@ function nodeGraphTraceDisplayClampSweepSeconds(value) {
   return clampNodeSliderValue(n, 0, 10);
 }
 
+/** Sync-off Sweep: left→right passes per second. 0 = collapsed full-width burn. */
+function nodeGraphTraceDisplayClampSweepHz(value, fallback = 4) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    const fb = Number(fallback);
+    return Number.isFinite(fb) ? Math.max(0, fb) : 4;
+  }
+  if (n <= 0) {
+    return 0;
+  }
+  return clampNodeSliderValue(n, 0.01, 100);
+}
 
+/** Sync-on Sweep: cycles in view (smooth — e.g. 1.5 = 1½ periods). */
+function nodeGraphTraceDisplayClampSweepCycles(value, fallback = 4) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) {
+    const fb = Number(fallback);
+    return Number.isFinite(fb) && fb > 0 ? fb : 4;
+  }
+  return clampNodeSliderValue(n, 0.05, 100);
+}
+
+/**
+ * Resolve Sweep Hz + Cycles as separate dials.
+ * Legacy sweepSeconds: free-run meant seconds → Hz = 1/s; sync meant cycles → copy.
+ */
+function normalizeNodeGraphLineBurnSweepPair(source, defaults = nodeGraphLineBurnSettingsDefaults) {
+  const defHz = Number(defaults?.sweepHz);
+  const defCycles = Number(defaults?.sweepCycles);
+  const legacySec = Number(source?.sweepSeconds);
+  let hz = Number(source?.sweepHz);
+  let cycles = Number(source?.sweepCycles);
+  if (!Number.isFinite(hz)) {
+    if (Number.isFinite(legacySec) && legacySec > 0) {
+      hz = 1 / legacySec;
+    } else {
+      const legacyHz = Number(source?.legacySweepHz);
+      hz = Number.isFinite(legacyHz) ? legacyHz : (Number.isFinite(defHz) ? defHz : 4);
+    }
+  }
+  if (!Number.isFinite(cycles)) {
+    // Old dual-use field: when Sync was on, the number was already cycles.
+    if (Number.isFinite(legacySec) && legacySec > 0) {
+      cycles = legacySec;
+    } else {
+      cycles = Number.isFinite(defCycles) ? defCycles : 4;
+    }
+  }
+  return {
+    sweepHz: nodeGraphTraceDisplayClampSweepHz(hz, defHz),
+    sweepCycles: nodeGraphTraceDisplayClampSweepCycles(cycles, defCycles),
+  };
+}
+
+/** @deprecated Prefer normalizeNodeGraphLineBurnSweepPair / sweepHz. */
 function normalizeNodeGraphLineBurnSweepSeconds(source, defaults) {
-  const explicit = Number(source?.sweepSeconds);
-  if (Number.isFinite(explicit) && explicit >= 0) {
-    return nodeGraphTraceDisplayClampSweepSeconds(explicit);
+  const pair = normalizeNodeGraphLineBurnSweepPair(source, defaults);
+  return pair.sweepHz > 0 ? 1 / pair.sweepHz : 0;
+}
+
+/** Sync-off History: window rate in Hz (seconds = 1/Hz). */
+function nodeGraphTraceDisplayClampHistoryHz(value, fallback = 4) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    const fb = Number(fallback);
+    return Number.isFinite(fb) ? Math.max(0.01, fb) : 4;
   }
-  // Legacy: sweepHz = full left→right crossings per second.
-  const legacyHz = Number(source?.sweepHz);
-  if (Number.isFinite(legacyHz) && legacyHz > 0) {
-    return nodeGraphTraceDisplayClampSweepSeconds(1 / legacyHz);
+  if (n <= 0) {
+    return 0.01;
   }
-  // Legacy window fields already meant "seconds per sweep".
-  const legacyWindowMs = source?.windowMs === undefined ? undefined : Number(source.windowMs) / 1000;
-  const zoomSeconds = Number(source?.zoomSeconds ?? source?.windowSeconds ?? legacyWindowMs);
-  if (Number.isFinite(zoomSeconds) && zoomSeconds > 0) {
-    return nodeGraphTraceDisplayClampSweepSeconds(zoomSeconds);
+  return clampNodeSliderValue(n, 0.01, 100);
+}
+
+/** Sync-on History: cycles in view. */
+function nodeGraphTraceDisplayClampHistoryCycles(value, fallback = 4) {
+  return nodeGraphTraceDisplayClampSweepCycles(value, fallback);
+}
+
+/**
+ * Resolve History Hz + Cycles as separate dials.
+ * Legacy historySeconds / zoomSeconds → Hz = 1/s; cycles seeded from the same number.
+ */
+function normalizeNodeGraphTraceHistoryPair(source, defaults = {}) {
+  const defHz = Number(defaults?.historyHz);
+  const defCycles = Number(defaults?.historyCycles);
+  const legacySec = Number(source?.historySeconds ?? source?.zoomSeconds);
+  let hz = Number(source?.historyHz);
+  let cycles = Number(source?.historyCycles);
+  if (!Number.isFinite(hz)) {
+    if (Number.isFinite(legacySec) && legacySec > 0) {
+      hz = 1 / legacySec;
+    } else {
+      hz = Number.isFinite(defHz) ? defHz : 4;
+    }
   }
-  return defaults.sweepSeconds;
+  if (!Number.isFinite(cycles)) {
+    if (Number.isFinite(legacySec) && legacySec > 0) {
+      cycles = legacySec;
+    } else {
+      cycles = Number.isFinite(defCycles) ? defCycles : 4;
+    }
+  }
+  const sweepHz = nodeGraphTraceDisplayClampHistoryHz(hz, defHz);
+  const sweepCycles = nodeGraphTraceDisplayClampHistoryCycles(cycles, defCycles);
+  return {
+    historyHz: sweepHz,
+    historyCycles: sweepCycles,
+    // Derived for capture / older callers that still read seconds.
+    historySeconds: sweepHz > 0 ? 1 / sweepHz : 0.25,
+    zoomSeconds: sweepHz > 0 ? 1 / sweepHz : 0.25,
+  };
 }
 
 
@@ -646,13 +741,11 @@ function normalizeNodeGraphLineBurnSettings(settings = {}) {
     dotBudget: typeof nodeGraphTraceDisplayClampDotBudget === "function"
       ? nodeGraphTraceDisplayClampDotBudget(source.dotBudget ?? defaults.dotBudget)
       : Math.max(1, Math.min(8192, Math.round(Number(source.dotBudget ?? defaults.dotBudget) || 1024))),
-    // Shared packing toggles (same SSOT as scope2d / 2D Phosphor).
-    fullDotEconomy: nodeGraphDisplaySettingsToggleIsOn(
-      source.fullDotEconomy ?? source.useFullDotEconomy,
-    ),
-    dotsOnly: nodeGraphDisplaySettingsToggleIsOn(
-      source.dotsOnly ?? source.verticesOnly,
-    ),
+    // Shared packing toggles. Fall back to lineBurn defaults (Full Dot Economy ON
+    // for c1091b42 fused CRT look). Explicit false stays off.
+    // Packing toggles retired — always chord-pack continuous trails.
+    fullDotEconomy: false,
+    dotsOnly: false,
     // Auto-trigger: rising edge of In snaps pen left (Reset jack still works).
     sourceSync: nodeGraphDisplaySettingsToggleIsOn(
       source.sourceSync ?? source.sync ?? defaults.sourceSync,
@@ -671,7 +764,14 @@ function normalizeNodeGraphLineBurnSettings(settings = {}) {
       1,
     ),
     scale: normalizeNodeGraphTraceDisplayNumber(source.scale, defaults.scale, 0.01, 100),
-    sweepSeconds: normalizeNodeGraphLineBurnSweepSeconds(source, defaults),
+    ...(() => {
+      const pair = normalizeNodeGraphLineBurnSweepPair(source, defaults);
+      return {
+        ...pair,
+        // Legacy derived seconds for any leftover callers.
+        sweepSeconds: pair.sweepHz > 0 ? 1 / pair.sweepHz : 0,
+      };
+    })(),
   };
 }
 
@@ -851,14 +951,7 @@ function normalizeNodeGraphTraceDisplaySettings(settings = {}) {
       }
       return defaults.syncChannel || "off";
     })(),
-    zoomSeconds: normalizeNodeGraphTraceDisplayZoomSeconds(
-      source.historySeconds ?? zoomSeconds,
-      defaults.historySeconds ?? defaults.zoomSeconds,
-    ),
-    historySeconds: normalizeNodeGraphTraceDisplayZoomSeconds(
-      source.historySeconds ?? zoomSeconds,
-      defaults.historySeconds ?? defaults.zoomSeconds,
-    ),
+    ...normalizeNodeGraphTraceHistoryPair(source, defaults),
     fade: normalizeNodeGraphTraceDisplayNumber(source.fade, defaults.fade ?? 0, 0, 1),
     xyzLayout: String(source.xyzLayout || defaults.xyzLayout || "stack").toLowerCase() === "separate"
       ? "separate"
@@ -1395,12 +1488,9 @@ function normalizeNodeGraphScope2dSettings(settings = {}, defaultsOverride = nul
       : Math.max(1, Math.min(8192, Math.round(Number(source.dotBudget ?? defaults.dotBudget) || 1024))),
     // Full Dots / Dots only — shared phosphor packing (scope2d SSOT).
     // Accept bool true and common form/patch coercions (1 / "1" / "true" / "on").
-    fullDotEconomy: nodeGraphDisplaySettingsToggleIsOn(
-      source.fullDotEconomy ?? source.useFullDotEconomy,
-    ),
-    dotsOnly: nodeGraphDisplaySettingsToggleIsOn(
-      source.dotsOnly ?? source.verticesOnly,
-    ),
+    // Packing toggles retired — always chord-pack continuous trails.
+    fullDotEconomy: false,
+    dotsOnly: false,
     // Latch present for packing-row UI consistency; 2D deposit path freeruns.
     sourceSync: nodeGraphDisplaySettingsToggleIsOn(
       source.sourceSync ?? source.sync,

@@ -62,6 +62,18 @@
       "wasmAvailable": true
     },
     {
+      "name": "attack_decay",
+      "label": "Attack Decay",
+      "targetType": "attackDecay",
+      "kind": "envelope",
+      "source": "native_modules/attack_decay/attack_decay.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/attack_decay/attack_decay.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/attack_decay/attack_decay.wasm",
+      "wasmUrl": "native_modules/attack_decay/attack_decay.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "attenuverter",
       "label": "Attenuverter",
       "targetType": "attenuverter",
@@ -107,6 +119,18 @@
       "libUrl": "",
       "wasm": "native_modules/basic_oscillator/basic_oscillator.wasm",
       "wasmUrl": "native_modules/basic_oscillator/basic_oscillator.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "basic_shape",
+      "label": "BasicShape",
+      "targetType": "basicShape",
+      "kind": "oscillator",
+      "source": "native_modules/basic_shape/basic_shape.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/basic_shape/basic_shape.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/basic_shape/basic_shape.wasm",
+      "wasmUrl": "native_modules/basic_shape/basic_shape.wasm",
       "wasmAvailable": true
     },
     {
@@ -218,6 +242,18 @@
       "wasmAvailable": true
     },
     {
+      "name": "chord_pad",
+      "label": "Chord Pad",
+      "targetType": "chordPad",
+      "kind": "pitch",
+      "source": "native_modules/chord_pad/chord_pad.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/chord_pad/chord_pad.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/chord_pad/chord_pad.wasm",
+      "wasmUrl": "native_modules/chord_pad/chord_pad.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "chord_sequencer",
       "label": "Chord Sequencer",
       "targetType": "chordSequencer",
@@ -299,6 +335,30 @@
       "libUrl": "https://github.com/RobinSchmidt/RS-MET",
       "wasm": "native_modules/crossover/crossover.wasm",
       "wasmUrl": "native_modules/crossover/crossover.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "degree_phrase",
+      "label": "Degree Phrase",
+      "targetType": "degreePhrase",
+      "kind": "pitch",
+      "source": "native_modules/degree_phrase/degree_phrase.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/degree_phrase/degree_phrase.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/degree_phrase/degree_phrase.wasm",
+      "wasmUrl": "native_modules/degree_phrase/degree_phrase.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "degree_turing",
+      "label": "Degree Turing",
+      "targetType": "degreeTuring",
+      "kind": "pitch",
+      "source": "native_modules/degree_turing/degree_turing.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/degree_turing/degree_turing.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/degree_turing/degree_turing.wasm",
+      "wasmUrl": "native_modules/degree_turing/degree_turing.wasm",
       "wasmAvailable": true
     },
     {
@@ -467,6 +527,30 @@
       "libUrl": "",
       "wasm": "native_modules/graph_engine/graph_engine.wasm",
       "wasmUrl": "native_modules/graph_engine/graph_engine.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "gravity_walker",
+      "label": "Gravity Walker",
+      "targetType": "gravityWalker",
+      "kind": "pitch",
+      "source": "native_modules/gravity_walker/gravity_walker.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/gravity_walker/gravity_walker.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/gravity_walker/gravity_walker.wasm",
+      "wasmUrl": "native_modules/gravity_walker/gravity_walker.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "harmonic_series",
+      "label": "Harmonic Series",
+      "targetType": "harmonicSeries",
+      "kind": "math",
+      "source": "native_modules/harmonic_series/harmonic_series.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/harmonic_series/harmonic_series.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/harmonic_series/harmonic_series.wasm",
+      "wasmUrl": "native_modules/harmonic_series/harmonic_series.wasm",
       "wasmAvailable": true
     },
     {
@@ -830,6 +914,30 @@
       "wasmAvailable": true
     },
     {
+      "name": "note_glide",
+      "label": "Note Glide",
+      "targetType": "noteGlide",
+      "kind": "pitch",
+      "source": "native_modules/note_glide/note_glide.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/note_glide/note_glide.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/note_glide/note_glide.wasm",
+      "wasmUrl": "native_modules/note_glide/note_glide.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "note_transpose",
+      "label": "Note Transpose",
+      "targetType": "noteTranspose",
+      "kind": "pitch",
+      "source": "native_modules/note_transpose/note_transpose.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/note_transpose/note_transpose.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/note_transpose/note_transpose.wasm",
+      "wasmUrl": "native_modules/note_transpose/note_transpose.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "papoulis_filter",
       "label": "Papoulis Filter",
       "targetType": "papoulisFilter",
@@ -851,6 +959,18 @@
       "libUrl": "https://github.com/RobinSchmidt/RS-MET",
       "wasm": "native_modules/passive_filter/passive_filter.wasm",
       "wasmUrl": "native_modules/passive_filter/passive_filter.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "phone_tone",
+      "label": "Phone Tone",
+      "targetType": "phoneTone",
+      "kind": "oscillator",
+      "source": "native_modules/phone_tone/phone_tone.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/phone_tone/phone_tone.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/phone_tone/phone_tone.wasm",
+      "wasmUrl": "native_modules/phone_tone/phone_tone.wasm",
       "wasmAvailable": true
     },
     {
@@ -1199,6 +1319,30 @@
       "libUrl": "",
       "wasm": "native_modules/softwave/softwave.wasm",
       "wasmUrl": "native_modules/softwave/softwave.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "speaker_protection",
+      "label": "Speaker Protection",
+      "targetType": "speakerProtection",
+      "kind": "dynamics",
+      "source": "native_modules/speaker_protection/speaker_protection.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/speaker_protection/speaker_protection.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/speaker_protection/speaker_protection.wasm",
+      "wasmUrl": "native_modules/speaker_protection/speaker_protection.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "speaker_protector2",
+      "label": "Speaker Protector 2.0",
+      "targetType": "speakerProtector2",
+      "kind": "dynamics",
+      "source": "native_modules/speaker_protector2/speaker_protector2.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/speaker_protector2/speaker_protector2.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/speaker_protector2/speaker_protector2.wasm",
+      "wasmUrl": "native_modules/speaker_protector2/speaker_protector2.wasm",
       "wasmAvailable": true
     },
     {

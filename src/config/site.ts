@@ -46,6 +46,8 @@ export const siteConfig = {
    * Key = path (no leading slash), value = patch slug in patchBank.ts.
    */
   patchRoutes: {
+    additive: "additive-beta",
+    "additive-beta": "additive-beta",
     reverb: "reverb",
     silentlydreaming: "silently-dreaming",
     shootingstar: "shootingstar",
@@ -84,7 +86,7 @@ export const siteConfig = {
   } as Record<string, string>,
 
   /** Version text shown next to the sandbox link in the hero. */
-  sandboxVersion: "0.5.6 RGB",
+  sandboxVersion: "0.7.0 ADDITIVE BETA",
 
   /**
    * Legacy bare-root slugs that were named page-patches. They now redirect to

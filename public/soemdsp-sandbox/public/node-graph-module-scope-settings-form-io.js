@@ -264,13 +264,11 @@ function nodeGraphDisplaySettingsWriteToggleElement(el, on) {
 }
 
 function nodeGraphDisplaySettingsDefaultsForFormType(type = nodeGraphTraceDisplaySettingsFormType()) {
-  // When editing a specific module, apply per-type scope2d overrides (e.g. Lorenz size).
-  const targetNode = !nodeGraphTraceDisplaySettingsEditingTraceDefaults()
-    && !nodeGraphTraceDisplaySettingsEditingGlobal()
-    ? nodeGraphPatchNode(nodeGraphTraceDisplaySettingsTargetNodeId())
-    : null;
+  // scope2d / phosphorLight Defaults: one schema SSOT for every module that
+  // shares that face type (Lorenz, snowflake, Jerobeam, standalone scope2d…).
+  // Stamp look comes from nodeGraphScopePhosphorLookDefaults via scope2d bag.
   const scope2dDefaults = typeof nodeGraphScope2dSettingsDefaultsForModuleType === "function"
-    ? nodeGraphScope2dSettingsDefaultsForModuleType(targetNode?.type)
+    ? nodeGraphScope2dSettingsDefaultsForModuleType(null)
     : nodeGraphScope2dSettingsDefaults;
   if (type === "dot") {
     return normalizeNodeGraphZeroDBurnSettings(nodeGraphZeroDBurnSettingsDefaults);
@@ -377,7 +375,9 @@ function nodeGraphDisplaySettingsDefaultsForFormType(type = nodeGraphTraceDispla
       ? normalizeNodeGraphLimiterGainFaceSettings()
       : {
         backgroundColor: "#020407",
-        historySeconds: 2,
+        historyHz: 4,
+        historyCycles: 4,
+        historySeconds: 0.25,
         hue: 42,
         lineBrightness: 0.5,
         lineThickness: 2,
@@ -1014,6 +1014,21 @@ function readNodeGraphTraceDisplaySettingsForm() {
       if (key === "historySeconds") {
         next.zoomSeconds = sanitizedValue;
       }
+      if (key === "historyHz") {
+        const hz = Number(sanitizedValue);
+        if (Number.isFinite(hz) && hz > 0) {
+          next.historySeconds = String(1 / hz);
+          next.zoomSeconds = String(1 / hz);
+        }
+      }
+      if (key === "sweepHz") {
+        const hz = Number(sanitizedValue);
+        if (Number.isFinite(hz) && hz > 0) {
+          next.sweepSeconds = String(1 / hz);
+        } else if (hz === 0) {
+          next.sweepSeconds = "0";
+        }
+      }
       // Value LED/LCD: app-wide Trail/Ghost map onto hang + 8-floor aliases.
       if (key === "trail") {
         next.residual = sanitizedValue;
@@ -1169,10 +1184,35 @@ function nodeGraphDisplaySettingsFormValue(settings, key) {
     return nodeGraphTraceDisplaySyncChannel(settings);
   }
   if (key === "zoomSeconds") {
-    return settings.zoomSeconds ?? settings.historySeconds;
+    return settings.zoomSeconds ?? settings.historySeconds ?? (
+      Number(settings.historyHz) > 0 ? 1 / Number(settings.historyHz) : undefined
+    );
   }
   if (key === "historySeconds") {
-    return settings.historySeconds ?? settings.zoomSeconds;
+    return settings.historySeconds ?? settings.zoomSeconds ?? (
+      Number(settings.historyHz) > 0 ? 1 / Number(settings.historyHz) : undefined
+    );
+  }
+  if (key === "historyHz") {
+    return settings.historyHz ?? (
+      Number(settings.historySeconds) > 0 ? 1 / Number(settings.historySeconds) : 4
+    );
+  }
+  if (key === "historyCycles") {
+    return settings.historyCycles ?? 4;
+  }
+  if (key === "sweepHz") {
+    return settings.sweepHz ?? (
+      Number(settings.sweepSeconds) > 0 ? 1 / Number(settings.sweepSeconds) : 4
+    );
+  }
+  if (key === "sweepCycles") {
+    return settings.sweepCycles ?? 4;
+  }
+  if (key === "sweepSeconds") {
+    return settings.sweepSeconds ?? (
+      Number(settings.sweepHz) > 0 ? 1 / Number(settings.sweepHz) : 0.25
+    );
   }
   return settings[key];
 }

@@ -2370,6 +2370,22 @@ html.soemdsp-hide-ui .status-strip {
   display: none;
 }
 
+/* Embed: never show Command Center / floating chrome even if UI settings restore them. */
+html.soemdsp-hide-ui #nodeSceneContextMenu,
+html.soemdsp-hide-ui .node-floating-window-surface,
+html.soemdsp-hide-ui .node-command-center-dock,
+html.soemdsp-hide-ui #nodeModuleShopView,
+html.soemdsp-hide-ui #nodeUserUiSettingsPanel,
+html.soemdsp-hide-ui #nodeVisibilityMenu,
+html.soemdsp-hide-ui #nodeModuleActionsWindow,
+html.soemdsp-hide-ui #nodeGlobalScopeMenu,
+html.soemdsp-hide-ui #nodePatchLoadFault,
+html.soemdsp-hide-ui.body.node-patch-load-fault-open #nodePatchLoadFault {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 .node-wiring-panel.modular-only-view > :not(.node-graph-workspace):not(.node-graph-main-row):not(.node-view-toolbar):not(.node-floating-window-surface):not(.node-command-center-dock):not(.node-bottom-stack) {
   display: none;
 }
@@ -3672,12 +3688,10 @@ body[data-macro-knob-value-position="mid"] .node-macro-knob-edit-input {
   text-shadow: 0 0 7px rgba(234, 248, 255, 0.84);
 }
 
-/* Ctrl+click "held keys" bitmask toggle -- distinct from .active (the
-   transient pointer-press/currently-sounding state) since a key can be
-   both at once: amber instead of .active's blue, so the two states
-   stay visually distinguishable. Placed after .active so a key that's
-   both shows the held look, since held is the more persistent/
-   intentional state of the two. */
+/* Ctrl+click GOLD Held Keys bitmask (poly / digital mask cable) —
+   distinct from .active BLUE (pointer press, MIDI note-on, or
+   Shift+click mono sustain latch). A key can be both: amber wins so
+   the mask state stays visible over transient/mono blue. */
 .node-midi-keyboard-white-row span.held {
   color: #1a1200;
   background:
@@ -9989,9 +10003,6 @@ body.node-graph-magnifying-active .node-graph-workspace * {
   grid-row: 3;
 }
 
-.node-module-shop-column > #nodeModuleGroups {
-  grid-row: 4;
-}
 
 /*
  * Unified window chrome SSOT.
@@ -16572,6 +16583,10 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   color: var(--good);
 }
 
+.node-live-input-state-badge[data-mic-state="paused"] {
+  color: var(--transport-pause-fg);
+}
+
 .node-live-input-state-badge[data-mic-state="blocked"] {
   color: #ff9b9b;
 }
@@ -20229,41 +20244,6 @@ button#nodeScenePasteModuleSettings.settings-paste-mismatch {
   font-size: 0.76em;
 }
 
-/* Saved module group cards (createNodeGraphModuleGroupButton) are the
-   only .scene-context-store-card with a delete affordance -- a plain
-   card button can't nest another button, so a wrapping div holds the
-   spawn button and a small corner delete button as siblings instead. */
-.scene-context-store-card-wrap {
-  position: relative;
-  min-width: 0;
-}
-
-.scene-context-store-card-wrap .scene-context-store-card {
-  width: 100%;
-  padding-left: 28px;
-}
-
-.scene-context-store-card-delete {
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  background: rgba(17, 21, 24, 0.9);
-  color: var(--muted);
-  font: 700 0.9rem/1 var(--mono);
-  line-height: 1;
-}
-
-.scene-context-store-card-delete:hover,
-.scene-context-store-card-delete:focus-visible {
-  border-color: rgba(255, 122, 122, 0.6);
-  color: rgb(255 148 148);
-}
-
 .scene-context-store-empty {
   align-self: start;
   min-height: 42px;
@@ -23817,6 +23797,11 @@ body.keyboard-debug-hidden .status-strip {
 
 .pill.warn {
   color: var(--warn);
+}
+
+/* Same gold as transport ⏸ (.is-paused / --transport-pause-fg). */
+.pill.paused {
+  color: var(--transport-pause-fg);
 }
 
 .pill.inspection-source.none {

@@ -1135,6 +1135,18 @@ NodeLiveAudioProcessor.prototype.applyNativeModuleExports = function applyNative
         });
         return;
       }
+      if (name === "harmonic_series" || targetType === "harmonicSeries") {
+        this.nativeHarmonicSeries = exports;
+        this.nativeHarmonicSeriesReady = Boolean(
+          this.nativeHarmonicSeries?.soemdsp_harmonic_series_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "harmonic_series",
+          status: this.nativeHarmonicSeriesReady ? "ready" : "missing exports",
+        });
+        return;
+      }
       if (name === "surge_oscillator" || targetType === "surgeOscillator") {
         for (const state of this.surgeOscillatorStates.values()) {
           this.destroySurgeOscillatorNativeState(state);
@@ -1810,6 +1822,36 @@ NodeLiveAudioProcessor.prototype.applyNativeModuleExports = function applyNative
           type: "nativeModuleStatus",
           name: "archimedes",
           status: this.nativeArchimedesReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      // Graph-engine-hosted: process via graph opcodes; combined exports still
+      // need a ready ack so catalog apply does not spam "unsupported".
+      if (name === "audio_player" || targetType === "audioPlayer") {
+        this.nativeAudioPlayer = exports;
+        this.nativeAudioPlayerReady = Boolean(
+          this.nativeAudioPlayer?.soemdsp_audio_player_create &&
+          this.nativeAudioPlayer?.soemdsp_audio_player_sample &&
+          this.nativeAudioPlayer?.soemdsp_audio_player_set_pcm &&
+          this.nativeAudioPlayer?.soemdsp_audio_player_l_ptr,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "audio_player",
+          status: this.nativeAudioPlayerReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "pumping_limiter" || targetType === "limiter") {
+        this.nativePumpingLimiter = exports;
+        this.nativePumpingLimiterReady = Boolean(
+          this.nativePumpingLimiter?.soemdsp_pumping_limiter_create &&
+          this.nativePumpingLimiter?.soemdsp_pumping_limiter_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "pumping_limiter",
+          status: this.nativePumpingLimiterReady ? "ready" : "missing exports",
         });
         return;
       }

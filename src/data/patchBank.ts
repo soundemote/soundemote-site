@@ -26,6 +26,8 @@ export type BankItem = BankPatch | BankVideo | BankAudius;
 
 export const SOUNDEMOTE_BANK: BankItem[] = [
   { kind: "video", slug: "hero-video", label: "Soundemote", youtubeId: "KSPypZKIRVE" },
+  // First live modular entry — Additive Yellow Graph beta showcase (silent until Play).
+  { slug: "additive-beta", label: "additive beta", url: "/patches/additive-beta.json" },
   { slug: "lcd", label: "lcd", url: "/patches/lcd.json" },
   { kind: "video", slug: "intro-video", label: "Hydrus - Retro Fusion", youtubeId: "PpcdN-DXYdc" },
   {
@@ -39,3 +41,7 @@ export const SOUNDEMOTE_BANK: BankItem[] = [
   { slug: "silently-dreaming", label: "silently dreaming", url: "/patches/silently-dreaming.json" },
   { slug: "reverb", label: "reverb", url: "/patches/reverb.json" },
 ];
+
+/** Default Hero bank index when the route has no patch slug — prefer Additive beta. */
+export const SOUNDEMOTE_BANK_DEFAULT_SLUG = "additive-beta";
+

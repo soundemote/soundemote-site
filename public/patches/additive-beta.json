@@ -1,0 +1,148 @@
+{
+  "activeCameraId": "camera-1",
+  "audio": {
+    "targetSampleRate": 44100
+  },
+  "bypassedNodes": [],
+  "cameras": [
+    {
+      "color": "#ff3333",
+      "enabled": true,
+      "height": 488,
+      "id": "camera-1",
+      "midiTrigger": null,
+      "name": "Camera 1",
+      "resolutionHeight": 1080,
+      "resolutionWidth": 1920,
+      "width": 868,
+      "x": 0,
+      "y": 0
+    }
+  ],
+  "codeScreen": {
+    "helpers": [],
+    "patchTools": [],
+    "samples": [],
+    "script": "",
+    "scriptLanguage": "javascript",
+    "slots": [],
+    "ui": []
+  },
+  "connections": [
+    {
+      "destinationNode": "additiveOut-1",
+      "destinationPort": "Graph",
+      "sourceNode": "additiveGenerator-1",
+      "sourcePort": "Graph",
+      "tracePoints": []
+    },
+    {
+      "destinationNode": "output",
+      "destinationPort": "Left",
+      "sourceNode": "additiveOut-1",
+      "sourcePort": "Left",
+      "tracePoints": []
+    },
+    {
+      "destinationNode": "output",
+      "destinationPort": "Right",
+      "sourceNode": "additiveOut-1",
+      "sourcePort": "Right",
+      "tracePoints": []
+    }
+  ],
+  "format": {
+    "kind": "soemdsp-sandbox-node-patch",
+    "version": 2
+  },
+  "graphConnections": [],
+  "grid": {
+    "heightPx": 28,
+    "sizePx": 28,
+    "widthPx": 28
+  },
+  "info": {
+    "author": "Soundemote",
+    "bank": 0,
+    "bankName": "",
+    "description": "Additive beta showcase: Yellow Graph Generator â†’ Additive Out (stereo).",
+    "name": "additive beta",
+    "program": 0,
+    "tags": "additive,yellow-graph,beta"
+  },
+  "modulations": [],
+  "monitors": [],
+  "nodes": [
+    {
+      "gx": 14,
+      "gy": -4,
+      "id": "output",
+      "paramMeta": {},
+      "params": {
+        "volume": 0.22
+      },
+      "type": "output"
+    },
+    {
+      "gx": -10,
+      "gy": -4,
+      "id": "additiveGenerator-1",
+      "paramMeta": {},
+      "params": {
+        "harmonics": 32,
+        "harmonicFade": 1,
+        "waveform": 0,
+        "pwm": 0,
+        "phaseRotation": 0
+      },
+      "type": "additiveGenerator"
+    },
+    {
+      "gx": 2,
+      "gy": -4,
+      "id": "additiveOut-1",
+      "paramMeta": {},
+      "params": {
+        "optimize": 1,
+        "frequency": 110,
+        "amplitude": 0.35
+      },
+      "type": "additiveOut"
+    }
+  ],
+  "requiredAssets": [],
+  "samples": [],
+  "timing": {
+    "tempoBpm": 120,
+    "timeSignatureDenominator": 4,
+    "timeSignatureNumerator": 4
+  },
+  "uiItems": [],
+  "view": {
+    "heightGu": 24,
+    "widthGu": 48,
+    "zoom": 1
+  },
+  "visual": {
+    "background": {
+      "h": 210,
+      "l": 5,
+      "s": 0
+    },
+    "mode": "auto",
+    "scale": 1,
+    "style": "glow",
+    "theme": "cyan-violet",
+    "trail": 0.35
+  },
+  "windows": {
+    "metadata": {
+      "left": null,
+      "top": null
+    },
+    "moduleActions": {
+      "left": null,
+      "top": null
+    }
+  }
+}

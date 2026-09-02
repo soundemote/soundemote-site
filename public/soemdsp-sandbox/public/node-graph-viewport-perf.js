@@ -1,6 +1,9 @@
 // Viewport (zoom/pan) performance: light CSS every event, heavy chrome
 // (wires / heatmap / scopes) coalesced to rAF; full fidelity + settings
 // persist after the gesture settles.
+// Camera is compositor translate3d+scale (not CSS zoom). Mid-gesture cull
+// keeps off-screen modules asleep so zoomed pan does not composite a
+// growing trail of awake nodes. Scopes on visible modules keep drawing.
 
 const nodeGraphViewportPerf = {
   heavyRaf: 0,
@@ -188,12 +191,17 @@ function applyNodeGraphViewportCssLight(options = {}) {
   if (!gesturing && typeof updateNodeGraphGridHeatmap === "function") {
     updateNodeGraphGridHeatmap({ lite: true });
   } else if (gesturing && typeof updateNodeGraphGridHeatmap === "function") {
-    // Grid phase only — no cell-size / module light work.
-    updateNodeGraphGridHeatmap({ lite: true, phaseOnly: true });
+    // Coalesce grid phase to one rAF — sync style writes every pointermove
+    // were keeping the zoomed layer dirty while panning.
+    scheduleNodeGraphViewportGestureHeatmapPhase();
   }
-  if (!gesturing) {
-    scheduleNodeGraphViewportCullRefresh();
-  }
+  // Cull must keep running while zoomed-in pan: otherwise modules that leave
+  // the view stay awake (display:block) and the composited layer keeps growing
+  // → "I'm zoomed in and pan is laggy for no reason." Use cached sizes only.
+  scheduleNodeGraphViewportCullRefresh({
+    cacheSizesOnly: gesturing,
+    minIntervalMs: gesturing ? 48 : 0,
+  });
 }
 
 function nodeGraphWirePlanCacheKey() {
@@ -381,6 +389,13 @@ function nodeGraphViewportCullWakePainters(element) {
       nodeGraphFbmFieldStartLoop(face, nodeId || face.dataset?.node);
     }
   }
+  for (const face of element.querySelectorAll(
+    ".node-harmonic-lines-display, .node-harmonic-count-display",
+  )) {
+    if (typeof face._startFaceLoop === "function") {
+      face._startFaceLoop();
+    }
+  }
   element.dispatchEvent(new CustomEvent("nodegraphviewport", {
     bubbles: false,
     detail: { asleep: false },
@@ -396,18 +411,60 @@ function nodeGraphViewportCullSleepPainters(element) {
       nodeGraphFbmFieldStopLoop(face);
     }
   }
+  for (const face of element.querySelectorAll(
+    ".node-harmonic-lines-display, .node-harmonic-count-display",
+  )) {
+    if (face._raf) {
+      window.cancelAnimationFrame(face._raf);
+      face._raf = 0;
+    }
+  }
   element.dispatchEvent(new CustomEvent("nodegraphviewport", {
     bubbles: false,
     detail: { asleep: true },
   }));
 }
 
-function nodeGraphViewportCullRefresh() {
+function nodeGraphViewportCullBootOrLayoutUnsafe() {
+  // During boot the shell is visibility:hidden. IntersectionObserver and a
+  // zero-sized workspace cull then mark every module viewport-asleep
+  // (display:none). After the loading screen fades, K still works (controller
+  // dock) but the graph stays black with no nodes. Never sleep while booting
+  // or when the workspace has no real layout box yet.
+  const body = document.body;
+  if (
+    body?.classList?.contains("node-boot-loading")
+    || body?.classList?.contains("node-boot-fading")
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function nodeGraphViewportCullWakeAll(surface) {
+  const root = surface
+    || (typeof nodeGraphZoomSurface === "function"
+      ? nodeGraphZoomSurface()
+      : document.getElementById("nodeGraphZoomSurface"))
+    || document.getElementById("nodeGraphWorkspace");
+  if (!root) {
+    return;
+  }
+  for (const element of root.querySelectorAll(".dsp-node.viewport-asleep, .dsp-node:not(.removed)")) {
+    nodeGraphViewportCullApply(element, true);
+  }
+}
+
+function nodeGraphViewportCullRefresh(options = {}) {
   const workspace = document.getElementById("nodeGraphWorkspace");
   const surface = typeof nodeGraphZoomSurface === "function"
     ? nodeGraphZoomSurface()
     : document.getElementById("nodeGraphZoomSurface");
   if (!workspace || !surface) {
+    return;
+  }
+  if (nodeGraphViewportCullBootOrLayoutUnsafe()) {
+    nodeGraphViewportCullWakeAll(surface);
     return;
   }
   const zoom = Math.max(
@@ -420,18 +477,30 @@ function nodeGraphViewportCullRefresh() {
   const box = typeof nodeGraphWorkspaceLayoutMetrics === "function"
     ? nodeGraphWorkspaceLayoutMetrics(workspace)
     : { width: workspace.clientWidth, height: workspace.clientHeight };
+  const boxW = Number(box.width) || 0;
+  const boxH = Number(box.height) || 0;
+  // Zero/tiny workspace (iframe not laid out yet) would cull the whole patch.
+  if (boxW < 32 || boxH < 32) {
+    nodeGraphViewportCullWakeAll(surface);
+    return;
+  }
   const margin = 96;
   const worldLeft = (0 - margin - (Number(origin.x) || 0)) / zoom;
   const worldTop = (0 - margin - (Number(origin.y) || 0)) / zoom;
-  const worldRight = ((Number(box.width) || 0) + margin - (Number(origin.x) || 0)) / zoom;
-  const worldBottom = ((Number(box.height) || 0) + margin - (Number(origin.y) || 0)) / zoom;
+  const worldRight = (boxW + margin - (Number(origin.x) || 0)) / zoom;
+  const worldBottom = (boxH + margin - (Number(origin.y) || 0)) / zoom;
   const selected = typeof nodeGraphSelectedNodeIds === "function"
     ? nodeGraphSelectedNodeIds()
     : new Set();
+  const cacheSizesOnly = Boolean(options.cacheSizesOnly);
   for (const element of surface.querySelectorAll(".dsp-node:not(.removed)")) {
     const id = String(element.dataset?.node || "");
-    let width = Number(element.offsetWidth) || 0;
-    let height = Number(element.offsetHeight) || 0;
+    let width = 0;
+    let height = 0;
+    if (!cacheSizesOnly) {
+      width = Number(element.offsetWidth) || 0;
+      height = Number(element.offsetHeight) || 0;
+    }
     if (width > 1 && height > 1) {
       element._viewportCullW = width;
       element._viewportCullH = height;
@@ -449,13 +518,54 @@ function nodeGraphViewportCullRefresh() {
   }
 }
 
-function scheduleNodeGraphViewportCullRefresh() {
-  if (nodeGraphViewportPerf.cullRaf) {
+function scheduleNodeGraphViewportGestureHeatmapPhase() {
+  if (nodeGraphViewportPerf.gestureHeatmapRaf) {
     return;
   }
+  nodeGraphViewportPerf.gestureHeatmapRaf = window.requestAnimationFrame(() => {
+    nodeGraphViewportPerf.gestureHeatmapRaf = 0;
+    if (typeof updateNodeGraphGridHeatmap === "function") {
+      updateNodeGraphGridHeatmap({ lite: true, phaseOnly: true });
+    }
+  });
+}
+
+function scheduleNodeGraphViewportCullRefresh(options = {}) {
+  const cacheSizesOnly = Boolean(options.cacheSizesOnly);
+  const minIntervalMs = Math.max(0, Number(options.minIntervalMs) || 0);
+  const now = performance.now?.() || Date.now();
+  if (
+    minIntervalMs > 0
+    && nodeGraphViewportPerf.cullLastAt
+    && (now - nodeGraphViewportPerf.cullLastAt) < minIntervalMs
+  ) {
+    // Still coalesce a trailing refresh so the last pan sample gets culled.
+    if (!nodeGraphViewportPerf.cullTrailingTimer) {
+      const wait = Math.max(0, minIntervalMs - (now - nodeGraphViewportPerf.cullLastAt));
+      nodeGraphViewportPerf.cullTrailingTimer = window.setTimeout(() => {
+        nodeGraphViewportPerf.cullTrailingTimer = 0;
+        scheduleNodeGraphViewportCullRefresh({
+          cacheSizesOnly,
+          minIntervalMs: 0,
+        });
+      }, wait);
+    }
+    return;
+  }
+  if (nodeGraphViewportPerf.cullRaf) {
+    nodeGraphViewportPerf.cullPendingOptions = {
+      cacheSizesOnly: cacheSizesOnly
+        || Boolean(nodeGraphViewportPerf.cullPendingOptions?.cacheSizesOnly),
+    };
+    return;
+  }
+  const pending = { cacheSizesOnly };
   nodeGraphViewportPerf.cullRaf = window.requestAnimationFrame(() => {
     nodeGraphViewportPerf.cullRaf = 0;
-    nodeGraphViewportCullRefresh();
+    const opts = nodeGraphViewportPerf.cullPendingOptions || pending;
+    nodeGraphViewportPerf.cullPendingOptions = null;
+    nodeGraphViewportPerf.cullLastAt = performance.now?.() || Date.now();
+    nodeGraphViewportCullRefresh(opts);
   });
 }
 
@@ -491,6 +601,17 @@ function ensureNodeGraphViewportModuleCull() {
     return nodeGraphViewportCull.observer;
   }
   nodeGraphViewportCull.observer = new IntersectionObserver((entries) => {
+    if (nodeGraphViewportCullBootOrLayoutUnsafe()) {
+      for (const entry of entries) {
+        const node = entry.target?.classList?.contains("dsp-node")
+          ? entry.target
+          : entry.target?.closest?.(".dsp-node");
+        if (node) {
+          nodeGraphViewportCullApply(node, true);
+        }
+      }
+      return;
+    }
     for (const entry of entries) {
       const node = entry.target?.classList?.contains("dsp-node")
         ? entry.target
