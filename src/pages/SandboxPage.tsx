@@ -48,8 +48,10 @@ function sandboxIframeSrc(
   }
 
   // Cache-bust so Chrome does not keep a stale black iframe document.
+  // Also force a one-shot viewport recover path when a prior Chrome session
+  // restored pan/zoom off-screen (UI chrome visible, empty black workspace).
   if (!iframeParams.has("v")) {
-    iframeParams.set("v", "20260901-autoframe-view");
+    iframeParams.set("v", "20260902-chrome-workspace-recover");
   }
   const query = iframeParams.toString();
   return `/soemdsp-sandbox/index.html${query ? `?${query}` : ""}`;
@@ -415,6 +417,7 @@ const SandboxPage = ({
       )}
       <section className="h-screen w-full overflow-hidden">
         <iframe
+          key={iframeSrc}
           ref={iframeRef}
           title={targetLabel}
           src={iframeSrc}
