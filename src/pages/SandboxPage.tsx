@@ -51,7 +51,7 @@ function sandboxIframeSrc(
   // Also force a one-shot viewport recover path when a prior Chrome session
   // restored pan/zoom off-screen (UI chrome visible, empty black workspace).
   if (!iframeParams.has("v")) {
-    iframeParams.set("v", "20260902-morph-plain");
+    iframeParams.set("v", "20260902-history-hz");
   }
   const query = iframeParams.toString();
   return `/soemdsp-sandbox/index.html${query ? `?${query}` : ""}`;
