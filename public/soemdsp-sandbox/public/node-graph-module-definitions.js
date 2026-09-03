@@ -2,11 +2,10 @@ const nodeGraphNodeLabels = Object.freeze({
   audioInput: "Input",
   codeblock: "Codeblock",
   customDisplay: "Custom Display",
-  // graph2: point-to-point segments (shape + contour per control point).
-  // graphCopy: same as graph2 (kept as an alias-style twin).
-  // (The old "graph" type was retired -- see nodeGraphRetiredNodeTypes.)
-  graph2: "Smooth Graph",
-  graphCopy: "Step Graph",
+  // smoothGraph: one global curve through free dots (Curve + Tension).
+  // stepGraph: stepped/segment path (Shape + optional step grid + per-node contour).
+  smoothGraph: "Smooth Graph",
+  stepGraph: "Step Graph",
   animatedTextBox: "Animated Text Box",
   nextPatch: "Next Patch",
   previousPatch: "Previous Patch",
@@ -740,7 +739,7 @@ const nodeGraphModuleDefinitions = (
     ],
     visualSink: true
   },
-  graph2: {
+  smoothGraph: {
     planRole: "processor",
     chrome: NodeGraphModuleChromeLayout.LayoutB,
     // Default face height (was hardcoded 4×moduleScopeHeightGu = 8). Min is 1gu app-wide.
@@ -789,9 +788,9 @@ const nodeGraphModuleDefinitions = (
       { defaultValue: "1", key: "outputMax", label: "Out Max", max: "1", mid: "0", min: "-1", nonlinearSlider: false, step: "any" },
     ]
   },
-  // Point-to-point segments + step grid. Shape is global; per-node curve (`c`)
-  // is still individual, with curveOffset added as a global bias.
-  graphCopy: {
+  // Step Graph: segment path + optional X grid. Global Shape + Curve Offset;
+  // per-node contour `c` still local (effective = c + curveOffset).
+  stepGraph: {
     planRole: "processor",
     chrome: NodeGraphModuleChromeLayout.LayoutB,
     displayHeightGu: 8,
@@ -867,12 +866,11 @@ const nodeGraphModuleDefinitions = (
     displaySignals: [
       { key: "Wave", kind: "scalar" },
     ],
-    // ƒ absolute-Hz last among signal inlets (Morph / CV above it).
-    inputs: ["Reset", "0.1V/Oct", "Increment", "Morph", "f"],
+    // ƒ absolute-Hz last among signal inlets. Morph is the parameter (+ MOD), not a jack.
+    inputs: ["Reset", "0.1V/Oct", "Increment", "f"],
     inputLabels: {"0.1V/Oct": "0.1V",
       Increment: "Inc.",
       f: "ƒ"},
-    // Morph is sample-accurate gold analog (not CMYK cyan Parameter).
     // Legacy Wave Out / Out / Noise → Wave (outlet list already implies "out").
     outputAliases: {
       Out: "Wave",
@@ -940,7 +938,7 @@ const nodeGraphModuleDefinitions = (
         nonlinearSlider: true,
         sliderCurve: "bipolarRational",
         step: "0",
-        tooltip: "0…1 width/duty. 0.5 = center (triangle / 50% PWM). Trisaw & Pulse / Center Square only."
+        tooltip: "0…1 width/duty. 0.5 = center (triangle / 50% PWM). Trisaw & Pulse / Center Square only. Modulate via the Morph param-row MOD jack."
       },
       {
         defaultValue: "1",
@@ -8242,6 +8240,9 @@ const nodeGraphModuleDefinitions = (
   },
   binaryClock: {
     planRole: "source",
+    planFreeRun: true,
+    digitalOutputs: ["Bit0", "Bit1", "Bit2", "Bit3", "Gate"],
+    inputs: ["Clock", "Reset"],
     outputs: ["Out", "Bit0", "Bit1", "Bit2", "Bit3", "Gate"],
     parameters: [
       {
@@ -8254,7 +8255,8 @@ const nodeGraphModuleDefinitions = (
         nonlinearSlider: false,
         step: "any",
         unit: "Hz",
-        tooltip: "Under construction — binary counter clock rate."
+        tooltip:
+          "Free-run rate when Clock is unconnected. Ignored while Clock is wired (external rising edges advance).",
       },
       {
         defaultValue: "4",
@@ -8265,7 +8267,7 @@ const nodeGraphModuleDefinitions = (
         min: "1",
         nonlinearSlider: false,
         step: "1",
-        tooltip: "Under construction — number of bit outputs."
+        tooltip: "Active bit width (1–4). Count wraps at 2^bits.",
       },
     ]
   },
@@ -8715,24 +8717,29 @@ const nodeGraphModuleDefinitions = (
       },
     ]
   },
-  // Under construction: Arp (Musical shelf).
+  // Held-keys arpeggiator. Free-run Internal Clock when Trigger unconnected.
   arp: {
-    planRole: "source",
+    planRole: "processor",
     planFreeRun: true,
     displayType: "trace",
-    displayModes: [
-      { key: "trace", renderer: "trace", source: { value: "Pitch" } },
-    ],
     displaySignals: [
-      { key: "Pitch", kind: "scalar" },
-      { key: "Gate", kind: "scalar" },
-      { key: "Out", kind: "scalar" },
+      { key: "0.1V/Oct", kind: "scalar" },
+      { key: "f", kind: "scalar" },
     ],
-    inputs: ["Pitch", "Gate", "Clock", "Reset"],
-    outputs: ["Out", "Pitch", "Gate"],
+    displayModes: [
+      { key: "trace", label: "Pitch", renderer: "trace", settingsSchema: "trace", source: { value: "0.1V/Oct" } },
+    ],
+    defaultDisplayMode: "trace",
+    digitalInputs: ["Held Keys"],
+    inputs: ["Held Keys", "Trigger", "Reset", "f"],
+    inputLabels: { f: "ƒ", Trigger: "Trig" },
+    inputAliases: { Clock: "Trigger", Trig: "Trigger", Frequency: "f", Freq: "f", "ƒ": "f" },
+    outputs: ["0.1V/Oct", "f", "Gate", "Trigger", "Step"],
+    outputLabels: { "0.1V/Oct": "0.1V", f: "ƒ", Trigger: "Trig" },
+    outputAliases: { Pitch: "0.1V/Oct", Frequency: "f", Freq: "f", "ƒ": "f", Trig: "Trigger" },
     parameters: [
       {
-        choices: ["Up", "Down", "Up/Down", "Order", "Random"],
+        choices: ["up", "dn", "up/dn", "dn/up", "random"],
         defaultValue: "0",
         displayChoices: true,
         divideChoicesVisibly: true,
@@ -8744,29 +8751,46 @@ const nodeGraphModuleDefinitions = (
         min: "0",
         nonlinearSlider: false,
         step: "1",
-        tooltip: "Under construction — planned arpeggiator pattern mode."
+        tooltip: "Pattern: up, dn, up/dn, dn/up, or random over Held Keys."
       },
       {
         defaultValue: "8",
         key: "rate",
-        label: "Rate",
+        kind: "frequency",
+        label: "Internal Clock",
         max: "64",
+        maxDigits: 5,
         mid: "8",
-        min: "0.25",
+        min: "0",
         step: "any",
         unit: "Hz",
-        tooltip: "Under construction — planned arp step rate (or clock divide)."
+        tooltip: "Free-run step rate when Trigger is unconnected. 0 = external Trigger only."
+      },
+      {
+        defaultValue: "8",
+        key: "steps",
+        label: "Steps",
+        max: "128",
+        maxDigits: 0,
+        mid: "8",
+        min: "0",
+        nonlinearSlider: false,
+        step: "1",
+        tooltip: "Steps before pattern restart (esp. Random). 0 = natural wrap / free-run RNG."
       },
       {
         defaultValue: "1",
-        key: "octaves",
-        label: "Octaves",
-        max: "4",
+        key: "seed",
+        kind: "seed",
+        label: "Seed",
+        linearSmoothing: false,
+        smoothingType: "none",
+        max: "2147483647",
+        maxDigits: 0,
         mid: "1",
-        min: "1",
-        nonlinearSlider: false,
+        min: "0",
         step: "1",
-        tooltip: "Under construction — planned octave range of the arpeggio."
+        tooltip: "RNG seed for Random. Reset re-seeds from this value."
       },
     ]
   },

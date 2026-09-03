@@ -60,7 +60,7 @@ NodeLiveAudioProcessor.prototype.normalizeGraph = function normalizeGraph(value 
 };
 
 NodeLiveAudioProcessor.prototype.graphEndpointYLockEnabledForNode = function graphEndpointYLockEnabledForNode(node) {
-    return (node?.type === "graph2" || node?.type === "graphCopy") &&
+    return (node?.type === "smoothGraph" || node?.type === "stepGraph") &&
       Number(node?.params?.lockEndpointY) >= 0.5;
 };
 
@@ -85,77 +85,69 @@ NodeLiveAudioProcessor.prototype.graphForNode = function graphForNode(node) {
       : this.normalizeGraph(node?.graph);
 };
 
-NodeLiveAudioProcessor.prototype.graphHardStepShape = function graphHardStepShape(position, contourSign) {
-    const p = this.normalizeGraphNumber(position, 0, 0, 1);
-    if (contourSign >= 0) {
-      return p <= 0 ? 0 : 1;
-    }
-    return p >= 1 ? 1 : 0;
+// Contour domain −1…+1; continuous kernels soft-cap at ±(1 − Planck).
+NodeLiveAudioProcessor.prototype.graphContourPlanck = function graphContourPlanck() {
+    return 1e-7;
 };
 
-NodeLiveAudioProcessor.prototype.graphBlendContourTowardHardStep = function graphBlendContourTowardHardStep(position, contour, continuousValue) {
-    const p = this.normalizeGraphNumber(position, 0, 0, 1);
+NodeLiveAudioProcessor.prototype.graphContourSoftCap = function graphContourSoftCap(contour) {
     const c = this.normalizeGraphNumber(contour, 0, -1, 1);
-    const a = Math.abs(c);
-    if (a < 1e-9) {
-      return continuousValue;
-    }
-    if (a >= 1 - 1e-12) {
-      return this.graphHardStepShape(p, c);
-    }
-    const hard = this.graphHardStepShape(p, c);
-    const cont = Number.isFinite(continuousValue) ? continuousValue : p;
-    return cont * (1 - a) + hard * a;
+    const softMax = 1 - this.graphContourPlanck();
+    if (c > softMax) return softMax;
+    if (c < -softMax) return -softMax;
+    return c;
 };
 
 NodeLiveAudioProcessor.prototype.graphRationalCurve = function graphRationalCurve(position, contour = 0) {
     const p = this.normalizeGraphNumber(position, 0, 0, 1);
-    const c = this.normalizeGraphNumber(contour, 0, -1, 1);
-    let continuous = p;
-    if (Math.abs(c) >= 0.000001) {
-      const cSafe = Math.max(-0.999999, Math.min(0.999999, c));
-      continuous = cSafe < 0
-        ? (p * (1 + cSafe)) / (1 + cSafe * p)
-        : p / (1 - cSafe + cSafe * p);
+    const c = this.graphContourSoftCap(contour);
+    if (Math.abs(c) < this.graphContourPlanck()) {
+      return p;
     }
-    return this.graphBlendContourTowardHardStep(p, c, continuous);
+    return c < 0
+      ? (p * (1 + c)) / (1 + c * p)
+      : p / (1 - c + c * p);
 };
 
 NodeLiveAudioProcessor.prototype.graphExponentialCurve = function graphExponentialCurve(position, contour = 0) {
     const p = this.normalizeGraphNumber(position, 0, 0, 1);
-    const t = this.normalizeGraphNumber(contour, 0, -1, 1);
-    let continuous = p;
-    if (Math.abs(t) >= 0.000001) {
-      const a = Math.min(0.999999, Math.abs(t));
-      const mag = 1.2 + 6.8 * (a / (1 - a * 0.85));
-      const k = t < 0 ? -mag : mag;
-      if (Math.abs(k) >= 0.05) {
-        const denom = Math.exp(k) - 1;
-        if (Math.abs(denom) >= 1e-9) {
-          continuous = (Math.exp(k * p) - 1) / denom;
-        }
-      }
+    const t = this.graphContourSoftCap(contour);
+    const planck = this.graphContourPlanck();
+    if (Math.abs(t) < planck) {
+      return p;
     }
-    return this.graphBlendContourTowardHardStep(p, t, continuous);
+    const a = Math.abs(t);
+    const mag = 1.2 + 6.8 * (a / (1 - a * 0.85));
+    const k = t < 0 ? -mag : mag;
+    if (Math.abs(k) < 0.05) {
+      return p;
+    }
+    const denom = Math.exp(k) - 1;
+    if (Math.abs(denom) < planck) {
+      return p;
+    }
+    return (Math.exp(k * p) - 1) / denom;
 };
 
 NodeLiveAudioProcessor.prototype.graphLogarithmicCurve = function graphLogarithmicCurve(position, contour = 0) {
     const p = this.normalizeGraphNumber(position, 0, 0, 1);
-    const t = this.normalizeGraphNumber(contour, 0, -1, 1);
-    let continuous = p;
-    if (Math.abs(t) >= 0.000001) {
-      const a = Math.min(0.999999, Math.abs(t));
-      const b = Math.exp(1.2 + 5.5 * (a / (1 - a * 0.85)));
-      if (Number.isFinite(b) && b > 1.000001) {
-        const denom = Math.log(b);
-        if (Number.isFinite(denom) && Math.abs(denom) >= 1e-9) {
-          continuous = t < 0
-            ? 1 - Math.log(1 + (1 - p) * (b - 1)) / denom
-            : Math.log(1 + p * (b - 1)) / denom;
-        }
-      }
+    const t = this.graphContourSoftCap(contour);
+    const planck = this.graphContourPlanck();
+    if (Math.abs(t) < planck) {
+      return p;
     }
-    return this.graphBlendContourTowardHardStep(p, t, continuous);
+    const a = Math.abs(t);
+    const b = Math.exp(1.2 + 5.5 * (a / (1 - a * 0.85)));
+    if (!Number.isFinite(b) || b <= 1 + planck) {
+      return p;
+    }
+    const denom = Math.log(b);
+    if (!Number.isFinite(denom) || Math.abs(denom) < planck) {
+      return p;
+    }
+    return t < 0
+      ? 1 - Math.log(1 + (1 - p) * (b - 1)) / denom
+      : Math.log(1 + p * (b - 1)) / denom;
 };
 
 NodeLiveAudioProcessor.prototype.graphSmoothCurve = function graphSmoothCurve(position) {
@@ -163,9 +155,9 @@ NodeLiveAudioProcessor.prototype.graphSmoothCurve = function graphSmoothCurve(po
     return p * p * (3 - 2 * p);
 };
 
-NodeLiveAudioProcessor.prototype.normalizeGraph2SmoothingMode = function normalizeGraph2SmoothingMode(value) {
-    if (value === "legacy") {
-      return "legacy";
+NodeLiveAudioProcessor.prototype.normalizeSmoothGraphSmoothingMode = function normalizeSmoothGraphSmoothingMode(value) {
+    if (value === "segment") {
+      return "segment";
     }
     const modes = ["linear", "catmull", "quadratic", "cubic"];
     const raw = String(value ?? "").trim().toLowerCase();
@@ -190,7 +182,7 @@ NodeLiveAudioProcessor.prototype.normalizeGraph2SmoothingMode = function normali
 };
 
 NodeLiveAudioProcessor.prototype.graphModeCurve = function graphModeCurve(position, mode, index = 0) {
-    const normalizedMode = this.normalizeGraph2SmoothingMode(mode);
+    const normalizedMode = this.normalizeSmoothGraphSmoothingMode(mode);
     if (normalizedMode === "linear") {
       return this.normalizeGraphNumber(position, 0, 0, 1);
     }
@@ -442,12 +434,12 @@ NodeLiveAudioProcessor.prototype.graphCatmullRomValueAt = function graphCatmullR
 };
 
 NodeLiveAudioProcessor.prototype.graphSmoothingModeForNode = function graphSmoothingModeForNode(node) {
-    // Step Graph / legacy graph: segment evaluation path.
-    if (node?.type === "graphCopy" || node?.type === "graph") {
-      return "legacy";
+    // Step Graph: per-segment evaluation path.
+    if (node?.type === "stepGraph") {
+      return "segment";
     }
-    // Smooth Graph (graph2): one global smoothing algorithm through the dots.
-    return this.normalizeGraph2SmoothingMode(node?.params?.smoothingMode);
+    // Smooth Graph: one global smoothing algorithm through the dots.
+    return this.normalizeSmoothGraphSmoothingMode(node?.params?.smoothingMode);
 };
 
 NodeLiveAudioProcessor.prototype.graphSegmentShapeFromParam = function graphSegmentShapeFromParam(value) {
@@ -459,7 +451,7 @@ NodeLiveAudioProcessor.prototype.graphSegmentShapeFromParam = function graphSegm
 };
 
 NodeLiveAudioProcessor.prototype.graphSegmentOptionsForNode = function graphSegmentOptionsForNode(node) {
-    if (node?.type !== "graphCopy" && node?.type !== "graph") {
+    if (node?.type !== "stepGraph") {
       return {};
     }
     const params = node?.params || {};
@@ -473,7 +465,7 @@ NodeLiveAudioProcessor.prototype.graphSegmentOptionsForNode = function graphSegm
     };
 };
 
-NodeLiveAudioProcessor.prototype.graphSegmentValue = function graphSegmentValue(graph, x, index, smoothingMode = "legacy", segmentOptions = {}) {
+NodeLiveAudioProcessor.prototype.graphSegmentValue = function graphSegmentValue(graph, x, index, smoothingMode = "segment", segmentOptions = {}) {
     const left = graph.nodes[index];
     const right = graph.nodes[index + 1];
     const dx = right.x - left.x;
@@ -481,7 +473,7 @@ NodeLiveAudioProcessor.prototype.graphSegmentValue = function graphSegmentValue(
       return 0.5 * (left.y + right.y);
     }
     const p = this.normalizeGraphNumber((x - left.x) / dx, 0, 0, 1);
-    if (smoothingMode !== "legacy") {
+    if (smoothingMode !== "segment") {
       const shaped = this.graphModeCurve(p, smoothingMode, index);
       return left.y + (right.y - left.y) * shaped;
     }
@@ -490,7 +482,7 @@ NodeLiveAudioProcessor.prototype.graphSegmentValue = function graphSegmentValue(
     const contour = this.normalizeGraphNumber((Number(right.c) || 0) + offset, 0, -1, 1);
     const shape = segmentOptions.segmentShape != null && segmentOptions.segmentShape !== ""
       ? this.normalizeGraphShape(segmentOptions.segmentShape)
-      : this.normalizeGraphShape(right.shape || "rational");
+      : this.normalizeGraphShape(right.shape || "linear");
     let shaped = p;
     if (shape === "exponential") {
       shaped = this.graphExponentialCurve(p, contour);
@@ -508,13 +500,13 @@ NodeLiveAudioProcessor.prototype.graphSegmentValue = function graphSegmentValue(
     return left.y + (right.y - left.y) * shaped;
 };
 
-NodeLiveAudioProcessor.prototype.graphValueAt = function graphValueAt(graphValue, xValue, smoothingMode = "legacy", tension = 1, segmentOptions = {}) {
+NodeLiveAudioProcessor.prototype.graphValueAt = function graphValueAt(graphValue, xValue, smoothingMode = "segment", tension = 1, segmentOptions = {}) {
     const graph = this.normalizeGraph(graphValue);
     const x = this.normalizeGraphNumber(xValue, 0, -Infinity, Infinity);
     if (!graph.nodes.length) {
       return 0;
     }
-    const normalizedMode = this.normalizeGraph2SmoothingMode(smoothingMode);
+    const normalizedMode = this.normalizeSmoothGraphSmoothingMode(smoothingMode);
     // Catmull = guide-tension curve (old smooth/bezier aliases map here).
     if (normalizedMode === "catmull") {
       return this.graphGuideBezierValueAt(graph, x, tension);

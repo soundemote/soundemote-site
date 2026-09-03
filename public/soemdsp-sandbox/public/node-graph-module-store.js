@@ -109,7 +109,6 @@ const nodeGraphModuleCatalogUnderConstructionSort = Object.freeze([
   "formantFilter",
   "besselThomson",
   "massSpringDamper",
-  "binaryClock",
   "theremin",
   "wavetable2d",
   "wavetable3d",
@@ -129,7 +128,6 @@ const nodeGraphModuleCatalogUnderConstructionSort = Object.freeze([
   "chaosfly",
   "gravity",
   "drummer",
-  "arp",
   "ePiano",
   "percussion",
   "phosphillator",
@@ -150,14 +148,9 @@ const nodeGraphModuleCatalogUnderConstructionSort = Object.freeze([
   "cookbookFilter",
   "curveOsc",
   "ellipsoidOsc",
-  "graph2",
-  "graphCopy",
-  "hilbert",
   "kickEnvelope",
   "nextPatch",
-  "phaseDisperse",
   "previousPatch",
-  "quadrature",
   "sampleLooper",
   "samplePlayer",
   "shootingStarExplosion",
@@ -194,6 +187,13 @@ const nodeGraphModuleCatalogRetiredFromUnderConstruction = Object.freeze([
   "degreeTuring",
   "degreePhrase",
   "gravityWalker",
+  "smoothGraph",
+  "stepGraph",
+  "phaseDisperse",
+  "quadrature",
+  "arp",
+  "hilbert",
+  "binaryClock",
 ]);
 
 /** Short shop-card reminder for under-construction modules (title tooltip). */
@@ -226,8 +226,7 @@ const nodeGraphModuleConstructionPlans = Object.freeze({
   electroSnare: "Electro snare voice. Parked until the drum shelf ships.",
   electroHat: "Electro hat voice. Parked until the drum shelf ships.",
   drummer: "Pattern/rhythm engine. Parked until Sequence drummer lands.",
-  arp: "Held-chord arpeggiator. Parked until Musical arp lands.",
-  binaryClock: "Binary bit counter. Parked until Sequence bits land.",
+
   flexGrid: "Multi-point CV morph grid. Parked until the modulator surface lands.",
   chaosfly: "Fly-like X/Y/Z chaos. Parked until that attractor lands.",
   gravity: "Few-body Newtonian orbits on phosphor. First Doppler puzzle piece. Parked — write pairwise + leapfrog ourselves.",
@@ -1000,17 +999,17 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Draw a custom face with JS for patch-specific meters, art, or debug visuals.",
     notes: ["custom draw", "JavaScript display", "visual sink"],
   },
-  graph2: {
+  smoothGraph: {
     category: "modulator",
-    description: "Shape a control curve by points—map phasors/LFOs into custom response shapes.",
+    description: "Draw free dots; one global Curve (Linear/Catmull/Quadratic/Cubic) maps Input · LFO · Phasor.",
     label: "Smooth Graph",
-    notes: ["curve", "per-point shape", "contour", "Input · LFO · Phasor", "rate without jumps in Phasor"],
+    notes: ["smoothGraph", "global curve", "tension", "Input · LFO · Phasor"],
   },
-  graphCopy: {
+  stepGraph: {
     category: "modulator",
-    description: "Stepped or free control graph when you want quantized X and shared curve tools.",
+    description: "Segment path with Shape + optional step grid; per-node contour bends each span.",
     label: "Step Graph",
-    notes: ["curve", "step grid (0 = free)", "global shape", "per-node curve", "Input · LFO · Phasor"],
+    notes: ["stepGraph", "step grid (0 = free)", "segment shape", "per-node contour", "Input · LFO · Phasor"],
   },
   flexGrid: {
     category: "modulator",
@@ -1531,9 +1530,10 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   binaryClock: {
     category: "clock",
-    description: "Placeholder binary counter with bit outs.",
+    description:
+      "Free-run or clocked binary counter (1–4 bits). Bit outs, Gate (half-period free-run / 1-sample pulse when clocked), Out = count/2^bits.",
     label: "Binary Clock",
-    notes: ["under construction", "binary", "counter", "clock", "sequence", "bits"],
+    notes: ["binary", "counter", "clock", "sequence", "bits", "gate", "native"],
   },
   drummer: {
     category: "clock",
@@ -1543,9 +1543,9 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   arp: {
     category: "musical",
-    description: "Placeholder Arp — classic note arpeggiator for held chords / pitch CV (under construction).",
+    description: "Clocked arpeggiator over the MIDI keyboard Held Keys bitmask (up / dn / bounce / random).",
     label: "Arp",
-    notes: ["under construction", "arp", "arpeggiator", "musical", "sequence", "pitch", "hold"],
+    notes: ["arp", "arpeggiator", "musical", "sequence", "held keys", "pitch", "clock"],
   },
   ePiano: {
     category: "sample",

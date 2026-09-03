@@ -1,18 +1,14 @@
-// Segment curve styles (Step Graph global Shape param; stored on nodes for legacy).
-//   linear      — straight; contour ignored
-//   rational    — contour bends the chord (0 = straight)
-//   exponential — always curved; contour sets amount / direction
-//   log         — always curved (complement family); contour sets amount
-//   smoothstep  — hermite S-curve (p²(3−2p)); contour ignored
-//   hold        — step until next point; contour ignored
-// Legacy "smooth" still normalizes → smoothstep.
+// Step Graph segment Shape keys (global Shape param + per-node `shape`).
+//   linear / rational / exponential / log / smoothstep / hold
 //
-// Step Graph (graphCopy) vs Smooth Graph (graph2):
-//   Smooth: one global curve through free dots (smoothingMode + tension params).
-//   Step:   global Shape + Curve Offset params; per-node curve `c` still local
-//           (effective contour = c + curveOffset). Empty circle: normal drag =
-//           curve bend; Shift+drag = raise/lower prev+next bar points.
-//           Normal node drag snaps X; Ctrl = free point.
+// Contour / Curve Offset domain is always −1…+1. Rational / exp / log evaluate
+// continuous with a Planck soft-cap (±(1 − 1e−7)) so kernels never see exact ±1.
+//
+// smoothGraph vs stepGraph:
+//   Smooth: one global curve through free dots (smoothingMode + tension).
+//   Step:   global Shape + Curve Offset; per-node contour `c` still local
+//           (effective contour = c + curveOffset). Empty-circle handles edit bend;
+//           node drag snaps X to the step grid (Ctrl = free X).
 const nodeGraphGraphShapes = Object.freeze([
   "linear",
   "rational",
@@ -21,13 +17,11 @@ const nodeGraphGraphShapes = Object.freeze([
   "smoothstep",
   "hold",
 ]);
-// Smooth Graph global curve modes (canonical keys).
-// "catmull" = guide-tension curve through the free dots (start/end on-curve;
-// interior points pull the path; tension scales the pull).
-// Legacy labels smooth / bezier / catmullRom all map → "catmull".
-const nodeGraphGraph2SmoothingModes = Object.freeze(["linear", "catmull", "quadratic", "cubic"]);
-// Pre-collapse Curve param indices: Linear, Smooth, Bezier, Quadratic, Cubic, Catmull.
-const nodeGraphGraph2SmoothingModeLegacySix = Object.freeze([
+// Smooth Graph Curve modes.
+// catmull = guide-tension curve (ends on-curve; interiors pull; tension scales).
+const nodeGraphSmoothGraphSmoothingModes = Object.freeze(["linear", "catmull", "quadratic", "cubic"]);
+// Older six-choice Curve indices collapse onto the four modes above.
+const nodeGraphSmoothGraphSmoothingModeLegacySix = Object.freeze([
   "linear",
   "catmull",
   "catmull",
@@ -42,7 +36,8 @@ const nodeGraphDefaultGraphData = Object.freeze({
   cursorX: 0.5,
   nodes: Object.freeze([
     Object.freeze({ c: 0, shape: "linear", x: 0, y: 1 }),
-    Object.freeze({ c: 0, shape: "rational", x: 1, y: 0 }),
+    // Shape is global on Step Graph; keep node shape linear so face matches Shape=Linear.
+    Object.freeze({ c: 0, shape: "linear", x: 1, y: 0 }),
   ]),
 });
 
@@ -334,28 +329,26 @@ function nodeGraphGraphSmoothCurve(position) {
   return p * p * (3 - 2 * p);
 }
 
-// Step Graph (and legacy "graph"): legacy segment evaluation path.
-// Smooth Graph (graph2): one global curve through dots — no per-node UI.
+/** Step Graph: per-segment shape evaluation path. */
 function nodeGraphGraphUsesPerNodeShapes(type) {
-  return type === "graphCopy" || type === "graph";
+  return type === "stepGraph";
 }
 
-/** Per-node contour (`c`) UI — Step Graph (and legacy graph). */
+/** Step Graph: per-node contour (`c`) handles. */
 function nodeGraphGraphUsesPerNodeContour(type) {
-  return type === "graphCopy" || type === "graph";
+  return type === "stepGraph";
 }
 
 /**
- * Per-node shape select in the node list (same row as curve).
- * Step Graph + legacy graph. Smooth Graph uses a global Curve param instead.
- * Module Shape param still seeds new nodes / acts as eval fallback.
+ * Per-node shape select in the node list.
+ * Step Graph Shape is global (matches native / worklet); Smooth Graph uses Curve.
  */
-function nodeGraphGraphUsesPerNodeShapeSelect(type) {
-  return type === "graphCopy" || type === "graph";
+function nodeGraphGraphUsesPerNodeShapeSelect(_type) {
+  return false;
 }
 
 function nodeGraphGraphUsesGlobalSmoothing(type) {
-  return type === "graph2" || (nodeGraphModuleIsGraphType(type) && !nodeGraphGraphUsesPerNodeShapes(type));
+  return type === "smoothGraph";
 }
 
 /** Resolve Step Graph global Shape param (choice index or name) → shape key. */
@@ -386,82 +379,54 @@ function nodeGraphGraphSegmentOptionsForNode(patchNode) {
   };
 }
 
-/**
- * Full-scale contour |c| = 1 → perfect step (square edge).
- * Polarity matches the continuous rational map as |c|→1:
- *   +1: jump to right immediately (mid rides high on a rising segment)
- *   −1: hold left until end (mid stays low on a rising segment)
- */
-function nodeGraphGraphHardStepShape(position, contourSign) {
-  const p = normalizeNodeGraphGraphNumber(position, 0, 0, 1);
-  if (contourSign >= 0) {
-    // Jump to right as soon as the segment starts.
-    return p <= 0 ? 0 : 1;
-  }
-  // Hold left until the segment end.
-  return p >= 1 ? 1 : 0;
-}
-
-/** Contour domain for segment shapes: −1..1 inclusive (extremes = hard step). */
+/** Contour / skew domain for all segment shapes: hard clamp −1…+1. */
 function nodeGraphGraphNormalizeContour(value, fallback = 0) {
   return normalizeNodeGraphGraphNumber(value, fallback, -1, 1);
 }
 
-/**
- * Blend continuous curve → shared hard square by |contour|.
- * So rational / exp / log all hit full square at the same |c| (and same Curve Offset).
- * Weight is linear in |c|: 0 = pure continuous, 1 = pure hard step.
- */
-function nodeGraphGraphBlendContourTowardHardStep(position, contour, continuousValue) {
-  const p = normalizeNodeGraphGraphNumber(position, 0, 0, 1);
+/** Planck soft-cap for continuous kernels (±1 would div0 / explode). Same as kPlanck. */
+const NODE_GRAPH_GRAPH_CONTOUR_PLANCK = (
+  typeof NODE_GRAPH_PLANCK === "number" && Number.isFinite(NODE_GRAPH_PLANCK)
+)
+  ? NODE_GRAPH_PLANCK
+  : 1e-7;
+const NODE_GRAPH_GRAPH_CONTOUR_SOFT_MAX = 1 - NODE_GRAPH_GRAPH_CONTOUR_PLANCK; // 0.9999999
+
+/** Soft-cap |c| for continuous eval; domain stays −1…+1, kernels never see exact ±1. */
+function nodeGraphGraphContourSoftCap(contour) {
   const c = nodeGraphGraphNormalizeContour(contour, 0);
-  const a = Math.abs(c);
-  if (a < 1e-9) {
-    return continuousValue;
-  }
-  if (a >= 1 - 1e-12) {
-    return nodeGraphGraphHardStepShape(p, c);
-  }
-  const hard = nodeGraphGraphHardStepShape(p, c);
-  const cont = Number.isFinite(continuousValue) ? continuousValue : p;
-  return cont * (1 - a) + hard * a;
+  if (c > NODE_GRAPH_GRAPH_CONTOUR_SOFT_MAX) return NODE_GRAPH_GRAPH_CONTOUR_SOFT_MAX;
+  if (c < -NODE_GRAPH_GRAPH_CONTOUR_SOFT_MAX) return -NODE_GRAPH_GRAPH_CONTOUR_SOFT_MAX;
+  return c;
 }
 
 function nodeGraphGraphRationalCurveContinuous(position, contour = 0) {
   const p = normalizeNodeGraphGraphNumber(position, 0, 0, 1);
-  const c = nodeGraphGraphNormalizeContour(contour, 0);
-  if (Math.abs(c) < 0.000001) {
+  const c = nodeGraphGraphContourSoftCap(contour);
+  if (Math.abs(c) < NODE_GRAPH_GRAPH_CONTOUR_PLANCK) {
     return p;
   }
-  // Avoid singularity at ±1 — continuous form used only for |c| < 1.
-  const cSafe = Math.max(-0.999999, Math.min(0.999999, c));
-  return cSafe < 0
-    ? (p * (1 + cSafe)) / (1 + cSafe * p)
-    : p / (1 - cSafe + cSafe * p);
+  return c < 0
+    ? (p * (1 + c)) / (1 + c * p)
+    : p / (1 - c + c * p);
 }
 
 function nodeGraphGraphRationalCurve(position, contour = 0) {
-  const p = normalizeNodeGraphGraphNumber(position, 0, 0, 1);
-  const c = nodeGraphGraphNormalizeContour(contour, 0);
-  return nodeGraphGraphBlendContourTowardHardStep(
-    p,
-    c,
-    nodeGraphGraphRationalCurveContinuous(p, c),
-  );
+  return nodeGraphGraphRationalCurveContinuous(position, contour);
 }
 
 /**
  * Exponential ease: (e^{k p} − 1) / (e^k − 1).
- * Contour 0 → line. |contour| → 1 blends to the same hard square as rational/log.
+ * Contour domain −1…+1; soft-capped for the kernel.
  */
 function nodeGraphGraphExponentialCurveContinuous(position, contour = 0) {
   const p = normalizeNodeGraphGraphNumber(position, 0, 0, 1);
-  const t = nodeGraphGraphNormalizeContour(contour, 0);
-  if (Math.abs(t) < 0.000001) {
+  const t = nodeGraphGraphContourSoftCap(contour);
+  if (Math.abs(t) < NODE_GRAPH_GRAPH_CONTOUR_PLANCK) {
     return p;
   }
-  // |k| from ~1.2 (mild) → large as |t|→1 so the continuous form also tightens.
-  const a = Math.min(0.999999, Math.abs(t));
+  // |k| from ~1.2 (mild) → large as |t|→soft-max.
+  const a = Math.abs(t);
   const mag = 1.2 + 6.8 * (a / (1 - a * 0.85));
   const k = t < 0 ? -mag : mag;
   if (Math.abs(k) < 0.05) {
@@ -469,40 +434,33 @@ function nodeGraphGraphExponentialCurveContinuous(position, contour = 0) {
   }
   const ek = Math.exp(k);
   const denom = ek - 1;
-  if (Math.abs(denom) < 1e-9) {
+  if (Math.abs(denom) < NODE_GRAPH_GRAPH_CONTOUR_PLANCK) {
     return p;
   }
   return (Math.exp(k * p) - 1) / denom;
 }
 
 function nodeGraphGraphExponentialCurve(position, contour = 0) {
-  const p = normalizeNodeGraphGraphNumber(position, 0, 0, 1);
-  const t = nodeGraphGraphNormalizeContour(contour, 0);
-  return nodeGraphGraphBlendContourTowardHardStep(
-    p,
-    t,
-    nodeGraphGraphExponentialCurveContinuous(p, t),
-  );
+  return nodeGraphGraphExponentialCurveContinuous(position, contour);
 }
 
 /**
  * Log ease: log(1 + p (b − 1)) / log(b) — complement family to exponential.
- * Contour 0 → line. |contour| → 1 blends to the same hard square as rational/exp.
+ * Contour domain −1…+1; soft-capped for the kernel.
  */
 function nodeGraphGraphLogarithmicCurveContinuous(position, contour = 0) {
   const p = normalizeNodeGraphGraphNumber(position, 0, 0, 1);
-  const t = nodeGraphGraphNormalizeContour(contour, 0);
-  if (Math.abs(t) < 0.000001) {
+  const t = nodeGraphGraphContourSoftCap(contour);
+  if (Math.abs(t) < NODE_GRAPH_GRAPH_CONTOUR_PLANCK) {
     return p;
   }
-  const a = Math.min(0.999999, Math.abs(t));
-  // Stronger log as |t|→1.
+  const a = Math.abs(t);
   const b = Math.exp(1.2 + 5.5 * (a / (1 - a * 0.85)));
-  if (!Number.isFinite(b) || b <= 1.000001) {
+  if (!Number.isFinite(b) || b <= 1 + NODE_GRAPH_GRAPH_CONTOUR_PLANCK) {
     return p;
   }
   const denom = Math.log(b);
-  if (!Number.isFinite(denom) || Math.abs(denom) < 1e-9) {
+  if (!Number.isFinite(denom) || Math.abs(denom) < NODE_GRAPH_GRAPH_CONTOUR_PLANCK) {
     return p;
   }
   const y = Math.log(1 + p * (b - 1)) / denom;
@@ -510,25 +468,19 @@ function nodeGraphGraphLogarithmicCurveContinuous(position, contour = 0) {
 }
 
 function nodeGraphGraphLogarithmicCurve(position, contour = 0) {
-  const p = normalizeNodeGraphGraphNumber(position, 0, 0, 1);
-  const t = nodeGraphGraphNormalizeContour(contour, 0);
-  return nodeGraphGraphBlendContourTowardHardStep(
-    p,
-    t,
-    nodeGraphGraphLogarithmicCurveContinuous(p, t),
-  );
+  return nodeGraphGraphLogarithmicCurveContinuous(position, contour);
 }
 
-function normalizeNodeGraphGraph2SmoothingMode(value) {
-  if (value === "legacy") {
-    return "legacy";
+function normalizeNodeGraphSmoothGraphSmoothingMode(value) {
+  if (value === "segment") {
+    return "segment";
   }
   const raw = String(value ?? "").trim().toLowerCase();
   // Old Curve labels that all used the same guide-tension path.
   if (raw === "smooth" || raw === "bezier" || raw === "catmullrom" || raw === "catmull") {
     return "catmull";
   }
-  if (nodeGraphGraph2SmoothingModes.includes(raw)) {
+  if (nodeGraphSmoothGraphSmoothingModes.includes(raw)) {
     return raw;
   }
   if (Number.isFinite(Number(value))) {
@@ -540,8 +492,8 @@ function normalizeNodeGraphGraph2SmoothingMode(value) {
     if (n === 5) {
       return "catmull";
     }
-    return nodeGraphGraph2SmoothingModes[Math.max(0, Math.min(
-      nodeGraphGraph2SmoothingModes.length - 1,
+    return nodeGraphSmoothGraphSmoothingModes[Math.max(0, Math.min(
+      nodeGraphSmoothGraphSmoothingModes.length - 1,
       n,
     ))];
   }
@@ -549,19 +501,19 @@ function normalizeNodeGraphGraph2SmoothingMode(value) {
 }
 
 /** Map old 6-choice Curve index → current 4-choice index (Linear/Catmull/Quadratic/Cubic). */
-function nodeGraphGraph2SmoothingModeFourIndexFromLegacy(value) {
+function nodeGraphSmoothGraphSmoothingModeFourIndexFromLegacy(value) {
   const raw = String(value ?? "").trim().toLowerCase();
   if (raw === "smooth" || raw === "bezier" || raw === "catmullrom" || raw === "catmull") {
     return 1;
   }
-  if (nodeGraphGraph2SmoothingModes.includes(raw)) {
-    return nodeGraphGraph2SmoothingModes.indexOf(raw);
+  if (nodeGraphSmoothGraphSmoothingModes.includes(raw)) {
+    return nodeGraphSmoothGraphSmoothingModes.indexOf(raw);
   }
   if (Number.isFinite(Number(value))) {
     const n = Math.round(Number(value));
-    if (n >= 0 && n < nodeGraphGraph2SmoothingModeLegacySix.length) {
-      const legacyMode = nodeGraphGraph2SmoothingModeLegacySix[n];
-      return Math.max(0, nodeGraphGraph2SmoothingModes.indexOf(legacyMode));
+    if (n >= 0 && n < nodeGraphSmoothGraphSmoothingModeLegacySix.length) {
+      const legacyMode = nodeGraphSmoothGraphSmoothingModeLegacySix[n];
+      return Math.max(0, nodeGraphSmoothGraphSmoothingModes.indexOf(legacyMode));
     }
   }
   return 1;
@@ -860,7 +812,7 @@ function nodeGraphGraphControlPolygonPath(graphValue) {
 }
 
 function nodeGraphGraphIsStepGraphType(type) {
-  return String(type || "").trim() === "graphCopy";
+  return String(type || "").trim() === "stepGraph";
 }
 
 /** Step Graph only: empty-circle handles that edit per-segment curvature (`c`). */
@@ -935,7 +887,7 @@ function nodeGraphGraphApplyStepBarHeight(graphValue, rightIndex, yValue) {
  * Contour is stored on the RIGHT node of a segment (outgoing from left → right).
  * Handle sits at the segment mid-x on the actual curve so it tracks the bow.
  */
-function nodeGraphGraphContourHandlePoint(graph, rightIndex, smoothingMode = "legacy", segmentOptions = {}) {
+function nodeGraphGraphContourHandlePoint(graph, rightIndex, smoothingMode = "segment", segmentOptions = {}) {
   const left = graph.nodes[rightIndex - 1];
   const right = graph.nodes[rightIndex];
   if (!left || !right) {
@@ -963,7 +915,7 @@ function nodeGraphGraphSegmentChordMidpoint(graph, rightIndex) {
  * Vertical offset from the chord midpoint drives amount; sign follows segment slope
  * so dragging the handle UP always increases contour the same visual way the
  * continuous rational curve bows (handle follows the pointer).
- * Extremes (±1) are hard steps for rational / exponential / log.
+ * Extremes (±1) are full skew (Planck soft-cap in continuous kernels).
  */
 function nodeGraphGraphContourFromPoint(graph, rightIndex, point) {
   const midpoint = nodeGraphGraphSegmentChordMidpoint(graph, rightIndex);
@@ -991,7 +943,7 @@ function nodeGraphGraphContourEditableShape(value) {
 }
 
 function nodeGraphGraphModeCurve(position, mode, index = 0) {
-  const normalizedMode = normalizeNodeGraphGraph2SmoothingMode(mode);
+  const normalizedMode = normalizeNodeGraphSmoothGraphSmoothingMode(mode);
   if (normalizedMode === "linear") {
     return normalizeNodeGraphGraphNumber(position, 0, 0, 1);
   }
@@ -1006,13 +958,13 @@ function nodeGraphGraphModeCurve(position, mode, index = 0) {
  */
 function nodeGraphGraphLegacySegmentShape(p, right, options = {}) {
   const offset = normalizeNodeGraphGraphNumber(options.curveOffset, 0, -1, 1);
-  // Per-node c + global Curve Offset, clamped to ±1 (extremes = hard step).
+  // Per-node c + global Curve Offset, clamped to ±1 (Planck soft-cap in kernels).
   const contour = nodeGraphGraphNormalizeContour((Number(right?.c) || 0) + offset, 0);
-  // Prefer per-node shape (list UI); fall back to global Shape module param.
-  const shape = right?.shape != null && String(right.shape).trim() !== ""
-    ? normalizeNodeGraphGraphShape(right.shape)
-    : (options.segmentShape != null && options.segmentShape !== ""
-      ? normalizeNodeGraphGraphShape(options.segmentShape)
+  // Global Shape wins (same as worklet + native step_graph). Per-node shape is legacy only.
+  const shape = options.segmentShape != null && String(options.segmentShape).trim() !== ""
+    ? normalizeNodeGraphGraphShape(options.segmentShape)
+    : (right?.shape != null && String(right.shape).trim() !== ""
+      ? normalizeNodeGraphGraphShape(right.shape)
       : "linear");
   if (shape === "exponential") {
     return nodeGraphGraphExponentialCurve(p, contour);
@@ -1040,7 +992,7 @@ function nodeGraphGraphSegmentValue(graph, x, index, smoothingMode, segmentOptio
     return 0.5 * (left.y + right.y);
   }
   const p = normalizeNodeGraphGraphNumber((x - left.x) / dx, 0, 0, 1);
-  if (smoothingMode === "legacy") {
+  if (smoothingMode === "segment") {
     return left.y + (right.y - left.y) * nodeGraphGraphLegacySegmentShape(p, right, segmentOptions);
   }
   const shaped = nodeGraphGraphModeCurve(p, smoothingMode, index);
@@ -1053,8 +1005,8 @@ function nodeGraphGraphValueAt(graphValue, xValue, smoothingMode, tension = 1, s
   if (!graph.nodes.length) {
     return 0;
   }
-  const normalizedMode = normalizeNodeGraphGraph2SmoothingMode(smoothingMode);
-  if (normalizedMode === "legacy") {
+  const normalizedMode = normalizeNodeGraphSmoothGraphSmoothingMode(smoothingMode);
+  if (normalizedMode === "segment") {
     if (x < graph.nodes[0].x) {
       return graph.nodes[0].y;
     }
@@ -1064,7 +1016,7 @@ function nodeGraphGraphValueAt(graphValue, xValue, smoothingMode, tension = 1, s
     for (let index = 0; index < graph.nodes.length - 1; index += 1) {
       if (x <= graph.nodes[index + 1].x) {
         return normalizeNodeGraphGraphNumber(
-          nodeGraphGraphSegmentValue(graph, x, index, "legacy", segmentOptions),
+          nodeGraphGraphSegmentValue(graph, x, index, "segment", segmentOptions),
           0,
           -Infinity,
           Infinity,
@@ -1229,8 +1181,8 @@ function normalizeNodeGraphStepCount(value) {
 }
 
 function nodeGraphGraphStepCountForNode(patchNode) {
-  // Step grid is Step Graph (graphCopy) only.
-  if (String(patchNode?.type || "").trim() !== "graphCopy") {
+  // Step grid is Step Graph (stepGraph) only.
+  if (String(patchNode?.type || "").trim() !== "stepGraph") {
     return 0;
   }
   const raw = Number(patchNode?.params?.steps);
@@ -1286,10 +1238,9 @@ function renderNodeGraphGraphDisplay(element, graphValue, selectedIndex = null, 
     return;
   }
   const graph = normalizeNodeGraphGraph(graphValue);
-  // Prefer the owning module's type for curve mode. Point-to-point graphs
-  // (Smooth Graph / Step Graph) must use "legacy" segment shapes. Falling
-  // through to the default global catmull guide curve makes hold/step
-  // curves look like a flat line through the endpoints (often y=0 → y=0).
+  // Prefer the owning module's type for curve mode. Step Graph must use
+  // "segment" shapes. Falling through to the default global catmull guide
+  // curve makes hold/step curves look flat through the endpoints.
   const nodeId = String(
     element.dataset.graphNode
     || element.closest?.(".dsp-node")?.dataset?.node
@@ -1307,7 +1258,7 @@ function renderNodeGraphGraphDisplay(element, graphValue, selectedIndex = null, 
   let segmentOptions = options.segmentOptions;
   if (ownerNode && typeof nodeGraphModuleIsGraphType === "function" && nodeGraphModuleIsGraphType(ownerNode.type)) {
     if (typeof nodeGraphGraphUsesPerNodeShapes === "function" && nodeGraphGraphUsesPerNodeShapes(ownerNode.type)) {
-      smoothingMode = "legacy";
+      smoothingMode = "segment";
     } else if (smoothingMode == null || smoothingMode === "") {
       smoothingMode = nodeGraphGraphSmoothingModeForNode(ownerNode);
     }
@@ -1321,7 +1272,7 @@ function renderNodeGraphGraphDisplay(element, graphValue, selectedIndex = null, 
       segmentOptions = nodeGraphGraphSegmentOptionsForNode(ownerNode);
     }
   }
-  smoothingMode = normalizeNodeGraphGraph2SmoothingMode(smoothingMode);
+  smoothingMode = normalizeNodeGraphSmoothGraphSmoothingMode(smoothingMode);
   stepCount = normalizeNodeGraphStepCount(stepCount);
   tension = Number.isFinite(Number(tension)) ? Number(tension) : 1;
   segmentOptions = segmentOptions && typeof segmentOptions === "object" ? segmentOptions : {};
@@ -1641,12 +1592,12 @@ function bindNodeGraphGraphFaceHover(display) {
 }
 
 function nodeGraphGraphSmoothingModeForNode(patchNode) {
-  // Step Graph / legacy graph: per-segment hold/shape path.
+  // Step Graph: per-segment hold/shape path.
   if (nodeGraphGraphUsesPerNodeShapes(patchNode?.type)) {
-    return "legacy";
+    return "segment";
   }
   // Smooth Graph: one global smoothing algorithm through the dots.
-  return normalizeNodeGraphGraph2SmoothingMode(patchNode?.params?.smoothingMode);
+  return normalizeNodeGraphSmoothGraphSmoothingMode(patchNode?.params?.smoothingMode);
 }
 
 function syncNodeGraphGraphElement(moduleElement, patchNode) {
@@ -2426,10 +2377,18 @@ function dragNodeGraphGraphNode(event) {
     const point = nodeGraphGraphSvgToGraphPoint(drag.svg, event.clientX, event.clientY);
     const nodes = [...(drag.graph.nodes || [])];
     const current = nodes[drag.index] || normalizeNodeGraphGraphNode({}, drag.index);
-    // Shape is global on Step Graph — only edit per-node contour.
+    // Handle is drawn at effective contour (c + curveOffset). Store residual c
+    // so nonzero Curve Offset does not double-apply / slam to hard step.
+    const curveOffset = normalizeNodeGraphGraphNumber(
+      faceRenderOptions?.segmentOptions?.curveOffset,
+      0,
+      -1,
+      1,
+    );
+    const effective = nodeGraphGraphContourFromPoint(drag.graph, drag.index, point);
     nodes[drag.index] = normalizeNodeGraphGraphNode({
       ...current,
-      c: nodeGraphGraphContourFromPoint(drag.graph, drag.index, point),
+      c: nodeGraphGraphNormalizeContour(effective - curveOffset, 0),
     }, drag.index);
     drag.graph = normalizeNodeGraphGraph({ ...drag.graph, nodes });
     drag.lastClientX = event.clientX;
