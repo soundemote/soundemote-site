@@ -51,7 +51,7 @@ function sandboxIframeSrc(
   // Also force a one-shot viewport recover path when a prior Chrome session
   // restored pan/zoom off-screen (UI chrome visible, empty black workspace).
   if (!iframeParams.has("v")) {
-    iframeParams.set("v", "20260902-flower-child-stereo");
+    iframeParams.set("v", "20260902-morph-plain");
   }
   const query = iframeParams.toString();
   return `/soemdsp-sandbox/index.html${query ? `?${query}` : ""}`;
