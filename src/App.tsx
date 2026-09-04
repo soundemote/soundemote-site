@@ -51,9 +51,9 @@ const App = () => (
       {/* BrowserRouter is in main.tsx */}
       <ShorthandHashCatcher />
       <Routes>
-        {/* Home, /init, and /sandbox all load the SAME page_patches row ("init").
-            Share Patch on any of these upserts that row. Do not use builtinDefault
-            (skips DB). Explicit /init beats SitePageResolver so view matches /. */}
+        {/* Home, /init, and /sandbox all load public/patches/init.json.
+            Edit that file (or Share Patch → download) and deploy — no login.
+            Explicit /init beats SitePageResolver so view matches /. */}
         <Route path="/" element={<SandboxPage view="sandbox" pagePatch="init" />} />
         <Route path="/init" element={<SandboxPage view="sandbox" pagePatch="init" />} />
         <Route path="/sandbox" element={<SandboxPage view="sandbox" pagePatch="init" />} />
@@ -74,9 +74,8 @@ const App = () => (
         <Route path="/silentlydreaming-live" element={<SandboxPage staticPatchUrl="/patches/silently-dreaming.json" autostart />} />
         <Route path="/shootingstar-live" element={<SandboxPage staticPatchUrl="/patches/shootingstar.json" autostart />} />
 
-        {/* Registered page patches are bare URLs:
-            /<slug>          -> showcase (armed + framed) via RootSlugResolver /
-                               SitePageResolver when page_patches / site_pages say so
+        {/* Registered page patches are bare URLs backed by public/patches/{slug}.json:
+            /<slug>          -> showcase when the static file (or site_pages) exists
             /<slug>/sandbox  -> plain sandbox-only entry
             Legacy /patch/<slug> redirects to the bare path. */}
         <Route

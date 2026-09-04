@@ -18,12 +18,13 @@ type SitePageRow = {
 };
 
 /**
- * Resolves a bare root slug (e.g. `/init`, `/supersaw`) via `site_pages` and
- * `page_patches`.
- *  - site_pages wiki      -> /wiki/<slug>
- *  - site_pages homepage  -> Index
- *  - site_pages sandbox OR a page_patches row -> showcase at /<slug>
- *  - missing              -> trusted user sees a creator picker, else 404
+ * Resolves a bare root slug (e.g. `/init`, `/supersaw`) via static patch files
+ * in `public/patches/{slug}.json` and optional `site_pages` rows.
+ *  - /patches/{slug}.json exists -> sandbox showcase at /<slug>
+ *  - site_pages wiki             -> /wiki/<slug>
+ *  - site_pages homepage         -> Index
+ *  - site_pages sandbox          -> sandbox showcase (expects the JSON file)
+ *  - missing                     -> trusted user sees a creator picker, else 404
  */
 export default function SitePageResolver({ slug: slugProp }: { slug?: string } = {}) {
   const params = useParams<{ handle?: string; slug?: string }>();
@@ -32,26 +33,34 @@ export default function SitePageResolver({ slug: slugProp }: { slug?: string } =
   const { loading: roleLoading, session, isTrusted } = useWikiRole();
   const [loading, setLoading] = useState(true);
   const [row, setRow] = useState<SitePageRow | null>(null);
-  const [hasPagePatch, setHasPagePatch] = useState(false);
+  const [hasStaticPatch, setHasStaticPatch] = useState(false);
 
   useEffect(() => {
     let cancel = false;
-    if (!slug || supabaseConfigError) {
+    if (!slug) {
       setLoading(false);
       return;
     }
     setLoading(true);
-    Promise.all([
-      supabase
-        .from("site_pages")
-        .select("slug, style, target_slug")
-        .eq("slug", slug)
-        .maybeSingle(),
-      supabase.from("page_patches").select("slug").eq("slug", slug).maybeSingle(),
-    ]).then(([pageResult, patchResult]) => {
+    const staticCheck = fetch(`/patches/${encodeURIComponent(slug)}.json`, {
+      cache: "no-store",
+    })
+      .then((res) => res.ok)
+      .catch(() => false);
+
+    const pageCheck = supabaseConfigError
+      ? Promise.resolve(null)
+      : supabase
+          .from("site_pages")
+          .select("slug, style, target_slug")
+          .eq("slug", slug)
+          .maybeSingle()
+          .then(({ data }) => (data as SitePageRow | null) ?? null);
+
+    Promise.all([staticCheck, pageCheck]).then(([staticOk, pageRow]) => {
       if (cancel) return;
-      setRow((pageResult.data as SitePageRow | null) ?? null);
-      setHasPagePatch(Boolean(patchResult.data));
+      setHasStaticPatch(Boolean(staticOk));
+      setRow(pageRow);
       setLoading(false);
     });
     return () => {
@@ -67,6 +76,11 @@ export default function SitePageResolver({ slug: slugProp }: { slug?: string } =
     );
   }
 
+  // Static file wins: drop public/patches/{slug}.json → live at /{slug}.
+  if (hasStaticPatch) {
+    return <SandboxPage view="showcase" pagePatch={slug} />;
+  }
+
   if (row) {
     if (row.style === "wiki") return <Navigate to={`/wiki/${slug}`} replace />;
     if (row.style === "sandbox") {
@@ -74,11 +88,6 @@ export default function SitePageResolver({ slug: slugProp }: { slug?: string } =
     }
     // homepage
     return <Index featuredSlug={row.target_slug || undefined} />;
-  }
-
-  // Registered page patch with no site_pages row — still live at /<slug>.
-  if (hasPagePatch) {
-    return <SandboxPage view="showcase" pagePatch={slug} />;
   }
 
   if (!session || !isTrusted) {
@@ -203,7 +212,7 @@ function ClaimSitePagePicker({
           <StyleCard
             active={style === "sandbox"}
             title="Sandbox"
-            desc="Playable page-patch showcase at this URL (e.g. /init)."
+            desc="Playable sandbox — also drop public/patches/{slug}.json to go live."
             onClick={() => setStyle("sandbox")}
           />
         </div>

@@ -3,8 +3,6 @@ import { Link, useLocation, useParams } from "react-router-dom";
 import { supabase, supabaseConfigError } from "@/lib/supabase";
 import { ClaimUrlDialog } from "@/components/soundemote/ClaimUrlDialog";
 import { useAuth } from "@/hooks/useAuth";
-import { useWikiRole } from "@/hooks/useWikiRole";
-import { toast } from "@/hooks/use-toast";
 
 type SandboxRouteParams = {
   user?: string;
@@ -159,12 +157,9 @@ const SandboxPage = ({
   // Showcase view arms audio + frames automatically; sandbox view stays plain.
   const effectiveAutostart = autostart || view === "showcase";
   const { session } = useAuth();
-  const { isTrusted, isAdmin, loading: roleLoading } = useWikiRole();
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [projectData, setProjectData] = useState<unknown>(null);
   const [projectError, setProjectError] = useState<string | null>(null);
-  const [savingInit, setSavingInit] = useState(false);
-  const [savingPage, setSavingPage] = useState(false);
   const hasPatchRoute = Boolean(params.patch);
   const claimSlug = new URLSearchParams(location.search).get("claim");
   const wikiSlug = new URLSearchParams(location.search).get("wiki");
@@ -213,14 +208,34 @@ const SandboxPage = ({
         cancelled = true;
       };
     }
-    if (pagePatch && !supabaseConfigError) {
-      supabase
-        .from("page_patches")
-        .select("project_data")
-        .eq("slug", pagePatch)
-        .maybeSingle()
-        .then(({ data }) => {
-          if (!cancelled) setProjectData((data as SharedProjectRow | null)?.project_data ?? null);
+    // Registered page URLs (/init, /reverb, …) load from static files in
+    // public/patches/{slug}.json — no login / Supabase. Drop a JSON file in
+    // that folder and deploy to publish.
+    if (pagePatch) {
+      const staticUrl = `/patches/${encodeURIComponent(pagePatch)}.json`;
+      fetch(staticUrl, { cache: "no-store" })
+        .then(async (res) => {
+          if (!res.ok) {
+            throw new Error(`No static patch at ${staticUrl} (${res.status})`);
+          }
+          return res.json();
+        })
+        .then((data) => {
+          if (cancelled) return;
+          const projectData =
+            data?.kind === "sandbox_patch"
+              ? data
+              : {
+                  kind: "sandbox_patch",
+                  version: 1,
+                  title: pagePatch,
+                  bank_name: "soundemote",
+                  patch_data: data,
+                };
+          setProjectData(projectData);
+        })
+        .catch((error) => {
+          if (!cancelled) setProjectError(error?.message || String(error));
         });
       return () => {
         cancelled = true;
@@ -317,96 +332,6 @@ const SandboxPage = ({
       );
     });
 
-  const saveInitPatch = async () => {
-    if (!session?.user?.id) return;
-    setSavingInit(true);
-    try {
-      const current = await requestCurrentPatch();
-      if (!current) {
-        toast({ title: "Could not read the current patch", variant: "destructive" });
-        return;
-      }
-      const { error } = await supabase
-        .from("user_init_patches")
-        .upsert(
-          { owner_id: session.user.id, project_data: current, updated_at: new Date().toISOString() },
-          { onConflict: "owner_id" },
-        );
-      if (error) throw error;
-      toast({ title: "Saved as your init patch" });
-    } catch (error) {
-      toast({ title: "Save failed", description: String((error as Error)?.message || error), variant: "destructive" });
-    } finally {
-      setSavingInit(false);
-    }
-  };
-
-  const savePagePatch = async () => {
-    if (!session?.user?.id || !pagePatch) return;
-    if (!isTrusted) {
-      toast({
-        title: "Not allowed",
-        description: "Only trusted accounts can publish page patches.",
-        variant: "destructive",
-      });
-      return;
-    }
-    setSavingPage(true);
-    try {
-      const current = await requestCurrentPatch();
-      if (!current) {
-        toast({ title: "Could not read the current patch", variant: "destructive" });
-        return;
-      }
-      const updatedAt = new Date().toISOString();
-      const { data: existing, error: lookupError } = await supabase
-        .from("page_patches")
-        .select("owner_id")
-        .eq("slug", pagePatch)
-        .maybeSingle();
-      if (lookupError) throw lookupError;
-
-      if (existing) {
-        const ownerId = (existing as { owner_id: string }).owner_id;
-        if (ownerId !== session.user.id && !isAdmin) {
-          toast({
-            title: "Not allowed",
-            description: `Only the owner (or an admin) can overwrite /${pagePatch}.`,
-            variant: "destructive",
-          });
-          return;
-        }
-        // Do not steal ownership on overwrite — update payload only.
-        const { error } = await supabase
-          .from("page_patches")
-          .update({ project_data: current, updated_at: updatedAt })
-          .eq("slug", pagePatch);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("page_patches").insert({
-          slug: pagePatch,
-          owner_id: session.user.id,
-          project_data: current,
-          updated_at: updatedAt,
-        });
-        if (error) throw error;
-      }
-      toast({
-        title: "Shared",
-        description: `This patch is now live at /${pagePatch}`,
-      });
-    } catch (error) {
-      toast({ title: "Save failed", description: String((error as Error)?.message || error), variant: "destructive" });
-    } finally {
-      setSavingPage(false);
-    }
-  };
-
-  // Always show Share Patch on page-patch URLs; only trusted/admin can use it.
-  // Everyone else gets an under-construction stub so the control stays visible.
-  const showSharePagePatch = Boolean(pagePatch) && !isEmbed;
-  const canSharePagePatch = showSharePagePatch && !roleLoading && Boolean(session?.user?.id) && isTrusted;
-
   return (
     <main className="min-h-screen bg-background text-foreground">
       {hasPatchRoute && !isEmbed && (
@@ -418,46 +343,6 @@ const SandboxPage = ({
           &lt; full sandbox
         </Link>
       )}
-      {false && isPlainSandbox && !isEmbed && session?.user?.id && (
-        <button
-          type="button"
-          onClick={saveInitPatch}
-          disabled={savingInit}
-          className="mono fixed right-3 top-3 z-50 rounded border border-cyan-300/35 bg-black/75 px-3 py-2 text-xs text-cyan-100 shadow-[0_0_18px_rgba(103,232,249,0.22)] backdrop-blur hover:bg-cyan-950/80 disabled:opacity-50"
-          aria-label="Save current patch as my init patch"
-        >
-          {savingInit ? "saving…" : "set as my init patch"}
-        </button>
-      )}
-      {showSharePagePatch && (
-        <button
-          type="button"
-          onClick={canSharePagePatch ? savePagePatch : undefined}
-          disabled={!canSharePagePatch || savingPage || roleLoading}
-          aria-disabled={!canSharePagePatch}
-          className={
-            canSharePagePatch
-              ? "mono fixed right-3 top-3 z-50 rounded border border-cyan-300/35 bg-black/75 px-3 py-2 text-xs text-cyan-100 shadow-[0_0_18px_rgba(103,232,249,0.22)] backdrop-blur hover:bg-cyan-950/80 disabled:opacity-50"
-              : "mono fixed right-3 top-3 z-50 cursor-not-allowed rounded border border-amber-300/40 bg-black/75 px-3 py-2 text-xs text-amber-200/80 shadow-[0_0_18px_rgba(251,191,36,0.18)] backdrop-blur"
-          }
-          aria-label={
-            canSharePagePatch
-              ? `Share Patch — publish current graph to /${pagePatch}`
-              : "Share Patch — under construction (sign in as trusted/admin)"
-          }
-          title={
-            canSharePagePatch
-              ? `Publish to soundemote.io/${pagePatch}`
-              : "Under construction — sign in with a trusted or admin account to publish"
-          }
-        >
-          {savingPage
-            ? "Sharing…"
-            : canSharePagePatch
-              ? "Share Patch"
-              : "Share Patch · under construction"}
-        </button>
-      )}
       {claimSlug && (
         <div className="mono fixed left-1/2 top-3 z-50 flex -translate-x-1/2 items-center gap-3 rounded-full border border-amber-300/40 bg-black/80 px-4 py-2 text-xs text-amber-200 shadow-[0_0_18px_rgba(251,191,36,0.22)] backdrop-blur">
           <span>⌁ {claimSlug} · unclaimed</span>
@@ -465,7 +350,7 @@ const SandboxPage = ({
         </div>
       )}
       {projectError && (
-        <div className="mono fixed right-3 top-14 z-50 max-w-sm rounded border border-red-300/35 bg-black/75 px-3 py-2 text-xs text-red-100">
+        <div className="mono fixed right-3 top-3 z-50 max-w-sm rounded border border-red-300/35 bg-black/75 px-3 py-2 text-xs text-red-100">
           Patch lookup failed: {projectError}
         </div>
       )}

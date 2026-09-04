@@ -90,7 +90,7 @@ export const siteConfig = {
 
   /**
    * Legacy bare-root slugs that were named page-patches. They resolve via
-   * SitePageResolver / page_patches at /<slug> (no /patch/ prefix).
+   * SitePageResolver / public/patches/{slug}.json at /<slug>.
    */
   legacyPatchSlugs: ["robinsupersaw"] as string[],
 

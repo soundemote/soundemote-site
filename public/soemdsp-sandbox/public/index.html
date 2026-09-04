@@ -19,8 +19,8 @@
   <link rel="stylesheet" href="./public/modules/matrixDisplay/matrix-display-ui.css?v=matrix-lcd-zoom-1">
   <link rel="stylesheet" href="./public/modules/textStream/text-stream-ui.css?v=text-stream-1">
 </head>
-<body class="debug-collapsed keyboard-debug-hidden node-boot-waiting node-boot-loading" data-build-mode-value="release">
-  <div class="node-boot-loading-screen" role="status" aria-live="polite" aria-label="Sandbox" data-build-mode-value="release">
+<body class="debug-collapsed keyboard-debug-hidden node-boot-waiting node-boot-loading" data-build-mode-value="{{BUILD_MODE}}">
+  <div class="node-boot-loading-screen" role="status" aria-live="polite" aria-label="Sandbox" data-build-mode-value="{{BUILD_MODE}}">
     <div class="node-boot-loading-panel">
       <button
         id="nodeBootStartButton"
@@ -41,7 +41,7 @@
         <span id="nodeBootLoadingBarFill" style="width: 0%;"></span>
       </div>
       <div class="node-boot-loading-meta">
-        <span class="node-boot-build-number">v0.7.0 ADDITIVE BETA &nbsp;·&nbsp; build 2026.9.1.1 &nbsp;·&nbsp; 070A</span>
+        <span class="node-boot-build-number">v{{SANDBOX_VERSION}} &nbsp;·&nbsp; build {{BUILD_NUMBER}} &nbsp;·&nbsp; {{BUILD_TOKEN}}</span>
         <span id="nodeBootSysinfo" class="node-boot-sysinfo" hidden></span>
       </div>
       <div id="nodeBootLoadingMessages" class="node-boot-loading-messages" aria-live="polite" hidden></div>
@@ -349,12 +349,12 @@
           <span
             id="nodeBuildNumberReadout"
             class="node-build-number-readout"
-            aria-label="Version v0.7.0 ADDITIVE BETA, build 2026.9.1.1, stamp 070A"
-            title="Version v0.7.0 ADDITIVE BETA · build 2026.9.1.1 · 070A"
-            data-build-mode-value="release">
-            <span data-sandbox-version>v0.7.0 ADDITIVE BETA</span>
-            <span data-build-number-value>2026.9.1.1</span>
-            <span data-build-token-value>070A</span>
+            aria-label="Version v{{SANDBOX_VERSION}}, build {{BUILD_NUMBER}}, stamp {{BUILD_TOKEN}}"
+            title="Version v{{SANDBOX_VERSION}} · build {{BUILD_NUMBER}} · {{BUILD_TOKEN}}"
+            data-build-mode-value="{{BUILD_MODE}}">
+            <span data-sandbox-version>v{{SANDBOX_VERSION}}</span>
+            <span data-build-number-value>{{BUILD_NUMBER}}</span>
+            <span data-build-token-value>{{BUILD_TOKEN}}</span>
           </span>
         </div>
       </div>
@@ -3555,6 +3555,11 @@
   <script data-boot-defer type="text/plain" src="./public/signal-plot-probes.js?v=signal-plot-probes-refactor-1780377600000"></script>
   <script data-boot-defer type="text/plain" src="./public/signal-plot-readouts.js?v=signal-plot-readouts-refactor-1780392600000"></script>
   <script data-boot-defer type="text/plain" src="./public/signal-plot-controls.js?v=signal-plot-controls-refactor-1780377000000"></script>
+  <script data-boot-defer type="text/plain" src="./public/artifact-report-utils.js?v=artifact-report-utils-refactor-1780383600000"></script>
+  <script data-boot-defer type="text/plain" src="./public/artifact-report-reports.js?v=artifact-report-reports-refactor-1780384200000"></script>
+  <script data-boot-defer type="text/plain" src="./public/artifact-list-view.js?v=artifact-list-view-refactor-1780384800000"></script>
+  <script data-boot-defer type="text/plain" src="./public/artifact-coverage-view.js?v=artifact-coverage-view-refactor-1780385400000"></script>
+  <script data-boot-defer type="text/plain" src="./public/manifest-source-view.js?v=manifest-source-view-refactor-1780385400000"></script>
   <script data-boot-defer type="text/plain" src="./public/parameter-summary-view.js?v=parameter-summary-view-refactor-1780383000000"></script>
   <script data-boot-defer type="text/plain" src="./public/parameter-timeline-probe.js?v=parameter-timeline-probe-refactor-1780388400000"></script>
   <script data-boot-defer type="text/plain" src="./public/parameter-views.js?v=parameter-views-refactor-1780383000000"></script>
@@ -3563,7 +3568,17 @@
   <script data-boot-defer type="text/plain" src="./public/manifest-contracts.js?v=manifest-contracts-refactor-1780386000000"></script>
   <!-- Release/debug: no-ops for evidence/debug APIs omitted from soundemote sync. Real scripts below overwrite these in debug builds. -->
   <script data-boot-defer type="text/plain" src="./public/release-debug-stubs.js?v=release-stubs-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/legacy-evidence-checklist-view.js?v=legacy-evidence-checklist-refactor-1780386600000"></script>
+  <script data-boot-defer type="text/plain" src="./public/legacy-evidence-proof-view.js?v=legacy-evidence-proof-refactor-1780387200000"></script>
+  <script data-boot-defer type="text/plain" src="./public/legacy-evidence-views.js?v=legacy-evidence-views-refactor-1780359000000"></script>
   <script data-boot-defer type="text/plain" src="./public/phase-list-view.js?v=phase-list-view-refactor-1780359600000"></script>
+  <script data-boot-defer type="text/plain" src="./public/hands-on-readiness-waveform-labels.js?v=hands-on-readiness-waveform-labels-refactor-1780390800000"></script>
+  <script data-boot-defer type="text/plain" src="./public/hands-on-readiness-primary-labels.js?v=hands-on-readiness-primary-labels-refactor-1780381200000"></script>
+  <script data-boot-defer type="text/plain" src="./public/hands-on-readiness-artifact-labels.js?v=hands-on-readiness-artifact-labels-refactor-1780381800000"></script>
+  <script data-boot-defer type="text/plain" src="./public/hands-on-readiness-signal-inspection-labels.js?v=hands-on-readiness-signal-inspection-refactor-1780391400000"></script>
+  <script data-boot-defer type="text/plain" src="./public/hands-on-readiness-phase-parameter-labels.js?v=hands-on-readiness-phase-parameter-refactor-1780392000000"></script>
+  <script data-boot-defer type="text/plain" src="./public/hands-on-readiness-probe-labels.js?v=hands-on-readiness-probe-labels-refactor-1780382400000"></script>
+  <script data-boot-defer type="text/plain" src="./public/hands-on-readiness.js?v=hands-on-readiness-refactor-1780382400000"></script>
   <script data-boot-defer type="text/plain" src="./public/waveform-canvas.js?v=waveform-canvas-refactor-1780379400000"></script>
   <script data-boot-defer type="text/plain" src="./public/waveform-current-parameters.js?v=waveform-current-parameters-refactor-1780380000000"></script>
   <script data-boot-defer type="text/plain" src="./public/waveform-position-view.js?v=waveform-position-view-refactor-1780380600000"></script>
@@ -3805,6 +3820,9 @@
   <script data-boot-defer type="text/plain" src="./public/node-graph-trace-router.js?v=no-self-burst-1780321400000"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-wire-rendering.js?v=eff-pass-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-render-output.js?v=no-js-audio-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-debug-copy.js?v=slider-unit-color-1780307400000"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-execution-debug-api.js?v=noise-generator-stereo-20260630"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-execution-debug-view.js?v=slider-unit-color-1780307400000"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-tooltips.js?v=gpu-stamps-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-interaction-help.js?v=v-cycle-1"></script>
   <script data-boot-defer type="text/plain" src="./public/presets/useruisettings.js?v=wire-endpoint-1"></script>
