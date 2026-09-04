@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from "react-router-dom";
 import { supabase, supabaseConfigError } from "@/lib/supabase";
 import { ClaimUrlDialog } from "@/components/soundemote/ClaimUrlDialog";
 import { useAuth } from "@/hooks/useAuth";
+import { useWikiRole } from "@/hooks/useWikiRole";
 import { toast } from "@/hooks/use-toast";
 
 type SandboxRouteParams = {
@@ -152,12 +153,13 @@ const SandboxPage = ({
     scope === "user"
       ? { user: (rawParams.handle || "").replace(/^@/, ""), bank: "main", patch: rawParams.slug }
       : rawParams;
-  // /patch/:slug and /patch/:slug/sandbox pass the slug via the route param.
-  // User-scoped patches are not global page-patches, so no pagePatch there.
+  // /:slug and /:slug/sandbox (and legacy /patch/:slug) pass the slug via the
+  // route param. User-scoped patches are not global page-patches.
   const pagePatch = scope === "user" ? undefined : (pagePatchProp ?? rawParams.slug);
   // Showcase view arms audio + frames automatically; sandbox view stays plain.
   const effectiveAutostart = autostart || view === "showcase";
   const { session } = useAuth();
+  const { isTrusted, isAdmin, loading: roleLoading } = useWikiRole();
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [projectData, setProjectData] = useState<unknown>(null);
   const [projectError, setProjectError] = useState<string | null>(null);
@@ -341,6 +343,14 @@ const SandboxPage = ({
 
   const savePagePatch = async () => {
     if (!session?.user?.id || !pagePatch) return;
+    if (!isTrusted) {
+      toast({
+        title: "Not allowed",
+        description: "Only trusted accounts can publish page patches.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSavingPage(true);
     try {
       const current = await requestCurrentPatch();
@@ -348,18 +358,39 @@ const SandboxPage = ({
         toast({ title: "Could not read the current patch", variant: "destructive" });
         return;
       }
-      const { error } = await supabase
+      const updatedAt = new Date().toISOString();
+      const { data: existing, error: lookupError } = await supabase
         .from("page_patches")
-        .upsert(
-          {
-            slug: pagePatch,
-            owner_id: session.user.id,
-            project_data: current,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "slug" },
-        );
-      if (error) throw error;
+        .select("owner_id")
+        .eq("slug", pagePatch)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
+
+      if (existing) {
+        const ownerId = (existing as { owner_id: string }).owner_id;
+        if (ownerId !== session.user.id && !isAdmin) {
+          toast({
+            title: "Not allowed",
+            description: `Only the owner (or an admin) can overwrite /${pagePatch}.`,
+            variant: "destructive",
+          });
+          return;
+        }
+        // Do not steal ownership on overwrite — update payload only.
+        const { error } = await supabase
+          .from("page_patches")
+          .update({ project_data: current, updated_at: updatedAt })
+          .eq("slug", pagePatch);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("page_patches").insert({
+          slug: pagePatch,
+          owner_id: session.user.id,
+          project_data: current,
+          updated_at: updatedAt,
+        });
+        if (error) throw error;
+      }
       toast({
         title: "Shared",
         description: `This patch is now live at /${pagePatch}`,
@@ -370,6 +401,11 @@ const SandboxPage = ({
       setSavingPage(false);
     }
   };
+
+  // Always show Share Patch on page-patch URLs; only trusted/admin can use it.
+  // Everyone else gets an under-construction stub so the control stays visible.
+  const showSharePagePatch = Boolean(pagePatch) && !isEmbed;
+  const canSharePagePatch = showSharePagePatch && !roleLoading && Boolean(session?.user?.id) && isTrusted;
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -393,15 +429,33 @@ const SandboxPage = ({
           {savingInit ? "saving…" : "set as my init patch"}
         </button>
       )}
-      {pagePatch && !isEmbed && session?.user?.id && (
+      {showSharePagePatch && (
         <button
           type="button"
-          onClick={savePagePatch}
-          disabled={savingPage}
-          className="mono fixed right-3 top-3 z-50 rounded border border-cyan-300/35 bg-black/75 px-3 py-2 text-xs text-cyan-100 shadow-[0_0_18px_rgba(103,232,249,0.22)] backdrop-blur hover:bg-cyan-950/80 disabled:opacity-50"
-          aria-label={`Share current patch to /${pagePatch}`}
+          onClick={canSharePagePatch ? savePagePatch : undefined}
+          disabled={!canSharePagePatch || savingPage || roleLoading}
+          aria-disabled={!canSharePagePatch}
+          className={
+            canSharePagePatch
+              ? "mono fixed right-3 top-3 z-50 rounded border border-cyan-300/35 bg-black/75 px-3 py-2 text-xs text-cyan-100 shadow-[0_0_18px_rgba(103,232,249,0.22)] backdrop-blur hover:bg-cyan-950/80 disabled:opacity-50"
+              : "mono fixed right-3 top-3 z-50 cursor-not-allowed rounded border border-amber-300/40 bg-black/75 px-3 py-2 text-xs text-amber-200/80 shadow-[0_0_18px_rgba(251,191,36,0.18)] backdrop-blur"
+          }
+          aria-label={
+            canSharePagePatch
+              ? `Share Patch — publish current graph to /${pagePatch}`
+              : "Share Patch — under construction (sign in as trusted/admin)"
+          }
+          title={
+            canSharePagePatch
+              ? `Publish to soundemote.io/${pagePatch}`
+              : "Under construction — sign in with a trusted or admin account to publish"
+          }
         >
-          {savingPage ? "sharing…" : `share to /${pagePatch}`}
+          {savingPage
+            ? "Sharing…"
+            : canSharePagePatch
+              ? "Share Patch"
+              : "Share Patch · under construction"}
         </button>
       )}
       {claimSlug && (
@@ -411,7 +465,7 @@ const SandboxPage = ({
         </div>
       )}
       {projectError && (
-        <div className="mono fixed right-3 top-3 z-50 max-w-sm rounded border border-red-300/35 bg-black/75 px-3 py-2 text-xs text-red-100">
+        <div className="mono fixed right-3 top-14 z-50 max-w-sm rounded border border-red-300/35 bg-black/75 px-3 py-2 text-xs text-red-100">
           Patch lookup failed: {projectError}
         </div>
       )}

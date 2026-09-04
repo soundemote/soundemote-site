@@ -25,8 +25,9 @@ export const UserScopedRoute = ({
 // -----------------------------------------------------------------------------
 // Forgiving link layer.
 //
-// Canonical namespaces:  /@<user>   /patch/<slug>   /wiki/<slug>
+// Canonical namespaces:  /@<user>   /<slug> (page patch)   /wiki/<slug>
 // Shorthand sigils:      @<user>    ~<slug>         #<slug>
+// Legacy /patch/<slug> redirects to /<slug>.
 //
 // A link's type is decided by which sigil appears ANYWHERE in it:
 //   `~` anywhere -> patch      `@` anywhere -> user      `#` anywhere -> wiki
@@ -70,9 +71,9 @@ export const RootSlugResolver = () => {
     return <Navigate to={`/@${owner}`} replace />;
   }
 
-  // `~` anywhere -> global patch.
+  // `~` anywhere -> global page patch at /<slug>.
   if (normalized.includes("~")) {
-    return <Navigate to={`/patch/${afterSigil(normalized, "~")}`} replace />;
+    return <Navigate to={`/${afterSigil(normalized, "~")}`} replace />;
   }
 
   // `#` anywhere -> global wiki (only reaches here if percent-encoded as %23).
@@ -80,10 +81,8 @@ export const RootSlugResolver = () => {
     return <Navigate to={`/wiki/${afterSigil(normalized, "#")}`} replace />;
   }
 
-  // Legacy bare named-patch slugs -> /patch/slug
-  if (siteConfig.legacyPatchSlugs.includes(decoded.toLowerCase())) {
-    return <Navigate to={`/patch/${decoded.toLowerCase()}`} replace />;
-  }
+  // Legacy bare named-patch slugs stay on the bare path (SitePageResolver /
+  // page_patches load the showcase).
 
   // A user handle is ONLY the `@handle` form. A bare slug with no sigil is
   // not a user. Hand off to the site_pages resolver, which either renders a
@@ -116,7 +115,7 @@ export const ShorthandHashCatcher = () => {
       // in-page anchor links (TOC `#heading` on articles/wiki) are untouched.
       if (path !== "/") return;
       if (raw.startsWith("~")) {
-        navigate(`/patch/${raw.slice(1)}`, { replace: true });
+        navigate(`/${raw.slice(1)}`, { replace: true });
       } else if (raw.startsWith("@")) {
         navigate(`/@${raw.slice(1)}`, { replace: true });
       } else if (/^[a-z0-9][a-z0-9-]*$/i.test(raw)) {
@@ -129,4 +128,32 @@ export const ShorthandHashCatcher = () => {
     return () => window.removeEventListener("hashchange", resolve);
   }, [navigate]);
   return null;
+};
+
+/** Legacy `/patch/:slug` → `/:slug`. */
+export const LegacyPatchRedirect = () => {
+  const { slug = "" } = useParams<{ slug: string }>();
+  return <Navigate to={`/${slug}`} replace />;
+};
+
+/** Legacy `/patch/:slug/sandbox` → `/:slug/sandbox`. */
+export const LegacyPatchSandboxRedirect = () => {
+  const { slug = "" } = useParams<{ slug: string }>();
+  return <Navigate to={`/${slug}/sandbox`} replace />;
+};
+
+/**
+ * `/:slug/sandbox` for registered page patches. Ignore `/@user/sandbox` so it
+ * does not steal user-scoped URLs (those use `/@user/patch|wiki/...`).
+ */
+export const PagePatchSandboxRoute = ({
+  children,
+}: {
+  children: React.ReactNode;
+}) => {
+  const { slug = "" } = useParams<{ slug: string }>();
+  if (slug.startsWith("@")) {
+    return <Navigate to={`/${slug}`} replace />;
+  }
+  return <>{children}</>;
 };

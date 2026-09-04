@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import Index from "@/pages/Index";
+import SandboxPage from "@/pages/SandboxPage";
 import { supabase, supabaseConfigError } from "@/lib/supabase";
 import { useWikiRole } from "@/hooks/useWikiRole";
 import { Button } from "@/components/ui/button";
@@ -17,9 +18,12 @@ type SitePageRow = {
 };
 
 /**
- * Resolves a bare root slug (e.g. `/supersaw`) via the `site_pages` table.
- *  - Row exists  -> render / redirect to its style.
- *  - Row missing -> trusted user sees a creator picker, everyone else 404s.
+ * Resolves a bare root slug (e.g. `/init`, `/supersaw`) via `site_pages` and
+ * `page_patches`.
+ *  - site_pages wiki      -> /wiki/<slug>
+ *  - site_pages homepage  -> Index
+ *  - site_pages sandbox OR a page_patches row -> showcase at /<slug>
+ *  - missing              -> trusted user sees a creator picker, else 404
  */
 export default function SitePageResolver({ slug: slugProp }: { slug?: string } = {}) {
   const params = useParams<{ handle?: string; slug?: string }>();
@@ -28,6 +32,7 @@ export default function SitePageResolver({ slug: slugProp }: { slug?: string } =
   const { loading: roleLoading, session, isTrusted } = useWikiRole();
   const [loading, setLoading] = useState(true);
   const [row, setRow] = useState<SitePageRow | null>(null);
+  const [hasPagePatch, setHasPagePatch] = useState(false);
 
   useEffect(() => {
     let cancel = false;
@@ -36,16 +41,19 @@ export default function SitePageResolver({ slug: slugProp }: { slug?: string } =
       return;
     }
     setLoading(true);
-    supabase
-      .from("site_pages")
-      .select("slug, style, target_slug")
-      .eq("slug", slug)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (cancel) return;
-        setRow((data as SitePageRow | null) ?? null);
-        setLoading(false);
-      });
+    Promise.all([
+      supabase
+        .from("site_pages")
+        .select("slug, style, target_slug")
+        .eq("slug", slug)
+        .maybeSingle(),
+      supabase.from("page_patches").select("slug").eq("slug", slug).maybeSingle(),
+    ]).then(([pageResult, patchResult]) => {
+      if (cancel) return;
+      setRow((pageResult.data as SitePageRow | null) ?? null);
+      setHasPagePatch(Boolean(patchResult.data));
+      setLoading(false);
+    });
     return () => {
       cancel = true;
     };
@@ -61,9 +69,16 @@ export default function SitePageResolver({ slug: slugProp }: { slug?: string } =
 
   if (row) {
     if (row.style === "wiki") return <Navigate to={`/wiki/${slug}`} replace />;
-    if (row.style === "sandbox") return <Navigate to={`/patch/${slug}`} replace />;
+    if (row.style === "sandbox") {
+      return <SandboxPage view="showcase" pagePatch={slug} />;
+    }
     // homepage
     return <Index featuredSlug={row.target_slug || undefined} />;
+  }
+
+  // Registered page patch with no site_pages row — still live at /<slug>.
+  if (hasPagePatch) {
+    return <SandboxPage view="showcase" pagePatch={slug} />;
   }
 
   if (!session || !isTrusted) {
@@ -135,7 +150,12 @@ function ClaimSitePagePicker({
     if (chosen === "wiki") {
       navigate(`/wiki/${slug}`, { replace: true });
     } else if (chosen === "sandbox") {
-      navigate(`/patch/${slug}`, { replace: true });
+      // Stay on /<slug> — parent hydrates and renders the showcase in place.
+      onCreated({
+        slug,
+        style: "sandbox",
+        target_slug: null,
+      });
     } else {
       // Already at `/${slug}` — navigating there is a no-op and would leave
       // the picker mounted. Tell the parent to hydrate the row so the
@@ -183,7 +203,7 @@ function ClaimSitePagePicker({
           <StyleCard
             active={style === "sandbox"}
             title="Sandbox"
-            desc="Playable page-patch showcase (like /patch/…)."
+            desc="Playable page-patch showcase at this URL (e.g. /init)."
             onClick={() => setStyle("sandbox")}
           />
         </div>

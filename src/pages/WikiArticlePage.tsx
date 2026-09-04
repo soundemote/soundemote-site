@@ -54,7 +54,7 @@ const WikiArticlePage = () => {
     load();
   }, [load]);
 
-  // A /wiki/<slug> and /patch/<slug> are two views of the same subject: if a
+  // A /wiki/<slug> and /<slug> (page patch) are two views of the same subject: if a
   // global page-patch shares this slug, surface a cross-link to it.
   useEffect(() => {
     let cancelled = false;
@@ -210,7 +210,7 @@ const WikiArticlePage = () => {
           </nav>
           {hasGlobalPatch && (
             <Link
-              to={`/patch/${slug}`}
+              to={`/${slug}`}
               className="mono text-xs text-foreground underline underline-offset-4 hover:text-muted-foreground"
             >
               open patch →

@@ -3938,13 +3938,10 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
 
 .node-patch-community-control {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
-  align-items: stretch;
-  justify-items: stretch;
+  place-items: center;
   min-width: 0;
   min-height: 44px;
-  padding: 0;
-  padding-right: 10px;
+  padding: 0 12px;
   border-color: rgba(127, 199, 217, 0.12);
   border-radius: 4px;
   border-right: 1px solid var(--line);
@@ -3959,15 +3956,6 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   font-size: clamp(0.68rem, 1vw, 0.86rem);
   line-height: 1;
   text-align: center;
-}
-
-.node-patch-community-control span {
-  display: grid;
-  place-items: center;
-  min-width: 0;
-  padding: 0 8px;
-  overflow: hidden;
-  text-overflow: clip;
   white-space: nowrap;
 }
 

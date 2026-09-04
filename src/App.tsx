@@ -31,7 +31,14 @@ import AdminUsers from "./pages/AdminUsers.tsx";
 import SelfPage from "./pages/SelfPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import { siteConfig } from "./config/site.ts";
-import { RootSlugResolver, ShorthandHashCatcher, UserScopedRoute } from "./lib/routeResolver.tsx";
+import {
+  LegacyPatchRedirect,
+  LegacyPatchSandboxRedirect,
+  PagePatchSandboxRoute,
+  RootSlugResolver,
+  ShorthandHashCatcher,
+  UserScopedRoute,
+} from "./lib/routeResolver.tsx";
 
 const queryClient = new QueryClient();
 
@@ -44,17 +51,18 @@ const App = () => (
       {/* BrowserRouter is in main.tsx */}
       <ShorthandHashCatcher />
       <Routes>
-        {/* Home /sandbox load page_patches slug "init" — same row the upper-right
-            Share button writes from /patch/init. Do not use builtinDefault (skips DB). */}
+        {/* Home, /init, and /sandbox all load the SAME page_patches row ("init").
+            Share Patch on any of these upserts that row. Do not use builtinDefault
+            (skips DB). Explicit /init beats SitePageResolver so view matches /. */}
         <Route path="/" element={<SandboxPage view="sandbox" pagePatch="init" />} />
+        <Route path="/init" element={<SandboxPage view="sandbox" pagePatch="init" />} />
+        <Route path="/sandbox" element={<SandboxPage view="sandbox" pagePatch="init" />} />
         <Route path="/home" element={<Index />} />
         <Route path="/learning-lab" element={<LearningLab />} />
         <Route path="/circle-test" element={<CircleTestPage />} />
         <Route path="/oscilloscope" element={<OscilloscopePage />} />
         <Route path="/scope-scratch" element={<ScopeScratchPage />} />
         <Route path="/gradient-curve" element={<GradientCurvePage />} />
-        {/* /sandbox — same init page-patch as home. */}
-        <Route path="/sandbox" element={<SandboxPage view="sandbox" pagePatch="init" />} />
 
         <Route path="/self" element={<SelfPage />} />
         <Route path="/embed" element={<EmbedPage />} />
@@ -66,12 +74,21 @@ const App = () => (
         <Route path="/silentlydreaming-live" element={<SandboxPage staticPatchUrl="/patches/silently-dreaming.json" autostart />} />
         <Route path="/shootingstar-live" element={<SandboxPage staticPatchUrl="/patches/shootingstar.json" autostart />} />
 
-        {/* Named page patches live under the /patch namespace. A live sandbox
-            bound to a URL; the owner can overwrite it from the toolbar.
-            /patch/<slug>          -> showcase view (armed + framed)
-            /patch/<slug>/sandbox  -> plain sandbox-only entry */}
-        <Route path="/patch/:slug" element={<SandboxPage view="showcase" />} />
-        <Route path="/patch/:slug/sandbox" element={<SandboxPage view="sandbox" />} />
+        {/* Registered page patches are bare URLs:
+            /<slug>          -> showcase (armed + framed) via RootSlugResolver /
+                               SitePageResolver when page_patches / site_pages say so
+            /<slug>/sandbox  -> plain sandbox-only entry
+            Legacy /patch/<slug> redirects to the bare path. */}
+        <Route
+          path="/:slug/sandbox"
+          element={
+            <PagePatchSandboxRoute>
+              <SandboxPage view="sandbox" />
+            </PagePatchSandboxRoute>
+          }
+        />
+        <Route path="/patch/:slug/sandbox" element={<LegacyPatchSandboxRedirect />} />
+        <Route path="/patch/:slug" element={<LegacyPatchRedirect />} />
 
         {/* User-owned namespace. Canonical forms carry a static `patch`/`wiki`
             segment so they rank above the generic /:handle/:bank routes.

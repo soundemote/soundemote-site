@@ -89,8 +89,8 @@ export const siteConfig = {
   sandboxVersion: "0.7.0 ADDITIVE BETA",
 
   /**
-   * Legacy bare-root slugs that were named page-patches. They now redirect to
-   * the canonical /patch/<slug>. Add old named-patch links here.
+   * Legacy bare-root slugs that were named page-patches. They resolve via
+   * SitePageResolver / page_patches at /<slug> (no /patch/ prefix).
    */
   legacyPatchSlugs: ["robinsupersaw"] as string[],
 

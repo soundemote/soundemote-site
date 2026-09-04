@@ -1,7 +1,9 @@
 -- ============================================================
 -- Named page patches
--- A patch bound to a public URL (e.g. /robinsupersaw). Anyone can
--- view it; only the account that saved it can overwrite it.
+-- A patch bound to a public URL (e.g. /init). Anyone can view it.
+-- Only trusted/admin accounts may create a new slug. Only the
+-- owner (or an admin) may overwrite / delete it.
+-- Depends on public.is_trusted / public.is_admin from wiki.sql.
 -- Run this on your Supabase project (SQL editor).
 -- ============================================================
 
@@ -24,22 +26,36 @@ create policy "page_patches read"
   on public.page_patches for select
   using (true);
 
--- Only the owner can create/overwrite/remove their page patch.
+-- Trusted/admin may claim a new slug (must set themselves as owner).
 drop policy if exists "page_patches insert own" on public.page_patches;
-create policy "page_patches insert own"
+drop policy if exists "page_patches trusted insert" on public.page_patches;
+create policy "page_patches trusted insert"
   on public.page_patches for insert
   to authenticated
-  with check (owner_id = auth.uid());
+  with check (public.is_trusted(auth.uid()) and owner_id = auth.uid());
 
+-- Owner or admin may overwrite. Admin may keep or reassign owner_id.
 drop policy if exists "page_patches update own" on public.page_patches;
-create policy "page_patches update own"
+drop policy if exists "page_patches trusted update" on public.page_patches;
+create policy "page_patches trusted update"
   on public.page_patches for update
   to authenticated
-  using (owner_id = auth.uid())
-  with check (owner_id = auth.uid());
+  using (
+    public.is_trusted(auth.uid())
+    and (owner_id = auth.uid() or public.is_admin(auth.uid()))
+  )
+  with check (
+    public.is_trusted(auth.uid())
+    and (owner_id = auth.uid() or public.is_admin(auth.uid()))
+  );
 
+-- Owner or admin may delete.
 drop policy if exists "page_patches delete own" on public.page_patches;
-create policy "page_patches delete own"
+drop policy if exists "page_patches trusted delete" on public.page_patches;
+create policy "page_patches trusted delete"
   on public.page_patches for delete
   to authenticated
-  using (owner_id = auth.uid());
+  using (
+    public.is_trusted(auth.uid())
+    and (owner_id = auth.uid() or public.is_admin(auth.uid()))
+  );
