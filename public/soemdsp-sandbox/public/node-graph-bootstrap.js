@@ -1,6 +1,8 @@
 async function initNodeGraphMvp() {
   setNodeSandboxStartupProgress(10, "loading tooltips");
-  installNodeGraphDebugApi();
+  if (typeof installNodeGraphDebugApi === "function") {
+    installNodeGraphDebugApi();
+  }
   configureNodeGraphDefaultPresetButton();
   await loadNodeGraphTooltips();
   setNodeSandboxStartupProgress(25, "binding events");
