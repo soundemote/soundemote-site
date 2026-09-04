@@ -474,7 +474,7 @@ function handleNodeGraphPatchPresetSelectChange(event) {
 /**
  * Filename for a static site page patch download.
  * When embedded on soundemote.io/{slug}, use `{slug}.json` so it drops straight
- * into public/patches/. Otherwise fall back to the normal patch file name.
+ * into soemdsp-sandbox/patches/. Otherwise fall back to the normal patch file name.
  */
 function nodeGraphStaticPagePatchFileName() {
   try {
@@ -497,8 +497,8 @@ function nodeGraphStaticPagePatchFileName() {
 }
 
 /**
- * Download the current graph as JSON for public/patches/{name}.json publishing.
- * No login — drop the file in the site repo and deploy.
+ * Download the current graph as JSON for soemdsp-sandbox/patches/{name}.json.
+ * No login — drop the file next to the sandbox embed and deploy.
  */
 function downloadNodeGraphStaticPagePatch() {
   const payload = nodeGraphPatchExportPayload();
@@ -520,7 +520,7 @@ function downloadNodeGraphStaticPagePatch() {
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
   if (typeof setNodeGraphScriptStatus === "function") {
     setNodeGraphScriptStatus(
-      `Share Patch: downloaded ${filename} — put it in public/patches/ and deploy`,
+      `Share Patch: downloaded ${filename} — put it in soemdsp-sandbox/patches/ and deploy`,
       true,
     );
   }

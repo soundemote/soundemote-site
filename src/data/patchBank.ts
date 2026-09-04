@@ -27,8 +27,8 @@ export type BankItem = BankPatch | BankVideo | BankAudius;
 export const SOUNDEMOTE_BANK: BankItem[] = [
   { kind: "video", slug: "hero-video", label: "Soundemote", youtubeId: "KSPypZKIRVE" },
   // First live modular entry — Additive Yellow Graph beta showcase (silent until Play).
-  { slug: "additive-beta", label: "additive beta", url: "/patches/additive-beta.json" },
-  { slug: "lcd", label: "lcd", url: "/patches/lcd.json" },
+  { slug: "additive-beta", label: "additive beta", url: "/soemdsp-sandbox/patches/additive-beta.json" },
+  { slug: "lcd", label: "lcd", url: "/soemdsp-sandbox/patches/lcd.json" },
   { kind: "video", slug: "intro-video", label: "Hydrus - Retro Fusion", youtubeId: "PpcdN-DXYdc" },
   {
     kind: "audius",
@@ -37,9 +37,9 @@ export const SOUNDEMOTE_BANK: BankItem[] = [
     audiusId: "Q4xp1vv",
   },
   { kind: "video", slug: "sandbox-demo-2", label: "Soundemote Sandbox", youtubeId: "FHT0u1GDvw0" },
-  { slug: "shootingstar", label: "shooting star", url: "/patches/shootingstar.json" },
-  { slug: "silently-dreaming", label: "silently dreaming", url: "/patches/silently-dreaming.json" },
-  { slug: "reverb", label: "reverb", url: "/patches/reverb.json" },
+  { slug: "shootingstar", label: "shooting star", url: "/soemdsp-sandbox/patches/shootingstar.json" },
+  { slug: "silently-dreaming", label: "silently dreaming", url: "/soemdsp-sandbox/patches/silently-dreaming.json" },
+  { slug: "reverb", label: "reverb", url: "/soemdsp-sandbox/patches/reverb.json" },
 ];
 
 /** Default Hero bank index when the route has no patch slug — prefer Additive beta. */

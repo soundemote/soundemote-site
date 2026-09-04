@@ -51,9 +51,9 @@ const App = () => (
       {/* BrowserRouter is in main.tsx */}
       <ShorthandHashCatcher />
       <Routes>
-        {/* Home, /init, and /sandbox all load public/patches/init.json.
-            Edit that file (or Share Patch → download) and deploy — no login.
-            Explicit /init beats SitePageResolver so view matches /. */}
+        {/* Home, /init, and /sandbox all load
+            /soemdsp-sandbox/patches/init.json. Edit that file (or Share Patch →
+            download) and deploy — no login. Explicit /init beats SitePageResolver. */}
         <Route path="/" element={<SandboxPage view="sandbox" pagePatch="init" />} />
         <Route path="/init" element={<SandboxPage view="sandbox" pagePatch="init" />} />
         <Route path="/sandbox" element={<SandboxPage view="sandbox" pagePatch="init" />} />
@@ -70,11 +70,11 @@ const App = () => (
         {/* Embed-safe playable sandboxes: bare SandboxPage loading a static
             patch with audio armed. These back the snippets on /embed and must
             stay distinct from the article/patch routes in site.ts. */}
-        <Route path="/reverb-live" element={<SandboxPage staticPatchUrl="/patches/reverb.json" autostart />} />
-        <Route path="/silentlydreaming-live" element={<SandboxPage staticPatchUrl="/patches/silently-dreaming.json" autostart />} />
-        <Route path="/shootingstar-live" element={<SandboxPage staticPatchUrl="/patches/shootingstar.json" autostart />} />
+        <Route path="/reverb-live" element={<SandboxPage staticPatchUrl="/soemdsp-sandbox/patches/reverb.json" autostart />} />
+        <Route path="/silentlydreaming-live" element={<SandboxPage staticPatchUrl="/soemdsp-sandbox/patches/silently-dreaming.json" autostart />} />
+        <Route path="/shootingstar-live" element={<SandboxPage staticPatchUrl="/soemdsp-sandbox/patches/shootingstar.json" autostart />} />
 
-        {/* Registered page patches are bare URLs backed by public/patches/{slug}.json:
+        {/* Registered page patches are bare URLs backed by soemdsp-sandbox/patches/{slug}.json:
             /<slug>          -> showcase when the static file (or site_pages) exists
             /<slug>/sandbox  -> plain sandbox-only entry
             Legacy /patch/<slug> redirects to the bare path. */}

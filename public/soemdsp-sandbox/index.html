@@ -175,6 +175,11 @@
       <div class="node-view-toolbar" aria-label="Modular view mode">
         <div class="node-view-tabs" role="group" aria-label="Node graph view">
           <button
+            id="nodeCommandCenterButton"
+            type="button"
+            aria-label="Launch / Command Center"
+            title="Launch Command Center"><span class="node-modular-view-icon" aria-hidden="true">🚀</span></button>
+          <button
             id="nodeSettingsViewButton"
             type="button"
             aria-label="Script page"
@@ -201,19 +206,16 @@
             title="Copy patch JSON to clipboard"><span>Copy</span><span>Patch</span></button>
           <button
             id="nodeToolbarPastePatchButton"
+            class="node-toolbar-stack-label"
             type="button"
-            aria-label="Paste patch"
+            aria-label="Paste Patch"
             data-tooltip-key="actions.pastePatch"
-            title="Paste patch JSON from clipboard"><span class="node-modular-view-icon" aria-hidden="true">📋</span></button>
+            title="Paste patch JSON from clipboard"><span>Paste</span><span>Patch</span></button>
           <button
             id="nodeUserUiSettingsButton"
             class="node-toolbar-stack-label"
             type="button"
             aria-pressed="false"><span>UI</span><span>Settings</span></button>
-          <button
-            id="nodeCommandCenterButton"
-            type="button"
-            aria-label="Command Center"><span class="node-modular-view-icon" aria-hidden="true">🚀</span></button>
           <button
             id="nodeModuleShopButton"
             type="button"
@@ -451,6 +453,39 @@
           class="scene-context-resize-handle"
           type="button"
           aria-label="Resize hotkeys"></button>
+      </div>
+
+      <div
+        id="nodePagesPage"
+        class="node-pages-page node-unified-window node-floating-window-surface"
+        role="dialog"
+        aria-label="Pages"
+        hidden>
+        <div class="scene-context-heading">
+          <button
+            id="nodePagesPageDragHandle"
+            class="scene-context-drag-handle node-drag-handle"
+            type="button"
+            aria-label="Move pages">&#x2725;</button>
+          <div class="scene-context-title">
+            <span>Pages</span>
+            <small>static patches</small>
+          </div>
+          <button id="nodePagesPageClose" class="panel-close-button" type="button" aria-label="Close pages">
+            <span class="panel-close-glyph" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div id="nodePagesUnifiedNavHost" class="node-unified-window-nav-host" aria-label="Floating window pages"></div>
+        <div
+          id="nodePagesPageBody"
+          class="node-pages-page-body scene-context-store-list node-module-store-list"
+          role="listbox"
+          aria-label="Page patches"></div>
+        <button
+          id="nodePagesPageResizeHandle"
+          class="scene-context-resize-handle"
+          type="button"
+          aria-label="Resize pages"></button>
       </div>
 
       <div
@@ -3577,6 +3612,7 @@
   <script data-boot-defer type="text/plain" src="./public/node-graph-floating-windows.js?v=cc-shrink-ssot-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-unified-window.js?v=hideui-no-cc-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-emoji-page.js?v=emoji-glow-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-pages.js?v=pages-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-file-actions.js?v=copy-no-confirm-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-default-buttons.js?v=patch-save-refresh-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-cookbook-filter.js?v=ladder-res-curve-1"></script>

@@ -208,11 +208,10 @@ const SandboxPage = ({
         cancelled = true;
       };
     }
-    // Registered page URLs (/init, /reverb, …) load from static files in
-    // public/patches/{slug}.json — no login / Supabase. Drop a JSON file in
-    // that folder and deploy to publish.
+    // Registered page URLs (/init, /reverb, …) load from static files next to
+    // the sandbox embed: /soemdsp-sandbox/patches/{slug}.json
     if (pagePatch) {
-      const staticUrl = `/patches/${encodeURIComponent(pagePatch)}.json`;
+      const staticUrl = `/soemdsp-sandbox/patches/${encodeURIComponent(pagePatch)}.json`;
       fetch(staticUrl, { cache: "no-store" })
         .then(async (res) => {
           if (!res.ok) {

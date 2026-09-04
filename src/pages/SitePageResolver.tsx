@@ -19,8 +19,8 @@ type SitePageRow = {
 
 /**
  * Resolves a bare root slug (e.g. `/init`, `/supersaw`) via static patch files
- * in `public/patches/{slug}.json` and optional `site_pages` rows.
- *  - /patches/{slug}.json exists -> sandbox showcase at /<slug>
+ * in `public/soemdsp-sandbox/patches/{slug}.json` and optional `site_pages` rows.
+ *  - /soemdsp-sandbox/patches/{slug}.json exists -> sandbox showcase at /<slug>
  *  - site_pages wiki             -> /wiki/<slug>
  *  - site_pages homepage         -> Index
  *  - site_pages sandbox          -> sandbox showcase (expects the JSON file)
@@ -42,7 +42,7 @@ export default function SitePageResolver({ slug: slugProp }: { slug?: string } =
       return;
     }
     setLoading(true);
-    const staticCheck = fetch(`/patches/${encodeURIComponent(slug)}.json`, {
+    const staticCheck = fetch(`/soemdsp-sandbox/patches/${encodeURIComponent(slug)}.json`, {
       cache: "no-store",
     })
       .then((res) => res.ok)
@@ -76,7 +76,7 @@ export default function SitePageResolver({ slug: slugProp }: { slug?: string } =
     );
   }
 
-  // Static file wins: drop public/patches/{slug}.json → live at /{slug}.
+  // Static file wins: drop soemdsp-sandbox/patches/{slug}.json → live at /{slug}.
   if (hasStaticPatch) {
     return <SandboxPage view="showcase" pagePatch={slug} />;
   }
@@ -212,7 +212,7 @@ function ClaimSitePagePicker({
           <StyleCard
             active={style === "sandbox"}
             title="Sandbox"
-            desc="Playable sandbox — also drop public/patches/{slug}.json to go live."
+            desc="Playable sandbox — drop soemdsp-sandbox/patches/{slug}.json to go live."
             onClick={() => setStyle("sandbox")}
           />
         </div>
