@@ -101,6 +101,18 @@ async function initNodeGraphMvp() {
     });
   }
   resetNodeGraphStartupView();
+  // Page-patch embeds often restore a stale pan from session storage; force
+  // fit-to-patch after the page graph is committed so / and /init are not a
+  // black empty viewport.
+  if (pagePatchLoaded && typeof nodeGraphExternalAutoFrameAfterLoad === "function") {
+    nodeGraphExternalAutoFrameAfterLoad({ force: true });
+  } else if (pagePatchLoaded && typeof window.nodeGraphAutoFrame === "function") {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        window.nodeGraphAutoFrame({ force: true });
+      });
+    });
+  }
   recordNodeGraphHistory();
   markNodeGraphRenderPending();
   applyNodeGraphZoom({ immediate: true, persist: false });

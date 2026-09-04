@@ -2181,9 +2181,7 @@ function handleNodeGraphLiveWorkletMessage(event) {
     if (typeof updateNodeGraphPitchDetectorFacesFromScopeValues === "function") {
       updateNodeGraphPitchDetectorFacesFromScopeValues(scopeValues);
     }
-    if (typeof drawNodeGraphRoundShapeDisplays === "function") {
-      drawNodeGraphRoundShapeDisplays();
-    }
+    // RoundShape / BasicShape paint from their own Simulation FPS face pumps.
     if (Array.isArray(message.dataPorts) && message.dataPorts.length) {
       for (const [nodeId, port, value] of message.dataPorts) {
         writeNodeGraphDataOutput(String(nodeId), port, value);

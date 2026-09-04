@@ -52,11 +52,11 @@ const App = () => (
       <ShorthandHashCatcher />
       <Routes>
         {/* Home, /init, and /sandbox all load
-            /soemdsp-sandbox/patches/init.json. Edit that file (or Share Patch →
-            download) and deploy — no login. Explicit /init beats SitePageResolver. */}
-        <Route path="/" element={<SandboxPage view="sandbox" pagePatch="init" />} />
-        <Route path="/init" element={<SandboxPage view="sandbox" pagePatch="init" />} />
-        <Route path="/sandbox" element={<SandboxPage view="sandbox" pagePatch="init" />} />
+            /soemdsp-sandbox/patches/init.json. Autostart Live Output so realtime
+            faces (phosphor / trace / FBM) are not stuck black on first paint. */}
+        <Route path="/" element={<SandboxPage view="sandbox" pagePatch="init" autostart />} />
+        <Route path="/init" element={<SandboxPage view="sandbox" pagePatch="init" autostart />} />
+        <Route path="/sandbox" element={<SandboxPage view="sandbox" pagePatch="init" autostart />} />
         <Route path="/home" element={<Index />} />
         <Route path="/learning-lab" element={<LearningLab />} />
         <Route path="/circle-test" element={<CircleTestPage />} />

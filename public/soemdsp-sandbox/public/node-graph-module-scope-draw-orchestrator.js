@@ -534,6 +534,9 @@ function drawNodeGraphModuleScopes(options = {}) {
 }
 
 function nodeGraphModuleScopeSimFps() {
+  if (typeof nodeGraphSimFpsRate === "function") {
+    return nodeGraphSimFpsRate();
+  }
   return typeof normalizeNodeGraphModuleScopeFramesPerSecond === "function"
     ? normalizeNodeGraphModuleScopeFramesPerSecond(nodeGraphMvp?.moduleScopeFramesPerSecond ?? 60)
     : Math.max(0, Math.round(Number(nodeGraphMvp?.moduleScopeFramesPerSecond) || 60));
@@ -570,9 +573,14 @@ function scheduleNodeGraphModuleScopeDrawAfterSimClock() {
     remainingMs = 0;
   }
   remainingMs = Math.min(remainingMs, frameDur * 1000);
-  // Stay vsync-aligned when the next sim tick is due within one refresh.
-  // setTimeout mid-refresh was a common source of "60 feels like 30" online.
-  if (remainingMs <= 1000 / 60) {
+  // Prefer vsync whenever the wait is about one display refresh (or shorter).
+  // At Simulation FPS 60, remainingMs is exactly ~16.67ms — the old
+  // `remainingMs <= 1000/60` test was equality-fragile, so online tabs often
+  // fell through to setTimeout, desynced from refresh, and felt like ~30fps.
+  // Setting FPS to 120 forced remainingMs ~8.3ms into the rAF path (smooth).
+  // For fps >= 60, never use setTimeout: it cannot beat the display cadence.
+  const vsyncMs = 1000 / 60;
+  if (fps >= 60 || remainingMs <= vsyncMs + 1) {
     nodeGraphModuleScopeState.drawWaitRaf = window.requestAnimationFrame(() => {
       nodeGraphModuleScopeState.drawWaitRaf = 0;
       scheduleNodeGraphModuleScopeDraw();

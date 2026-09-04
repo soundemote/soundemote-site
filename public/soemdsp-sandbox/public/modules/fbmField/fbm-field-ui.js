@@ -170,9 +170,11 @@ function nodeGraphFbmFieldStartLoop(face, nodeId) {
     // Paint on the shared Simulation FPS clock. Do not defer to the compositor
     // alone — compositor early-outs (fps-gate wait, trace-unchanged, etc.) left
     // FBM faces blank while this loop only rAF-spun.
-    const frameReady = typeof nodeGraphDisplayFrameReady === "function"
-      ? nodeGraphDisplayFrameReady(`fbmField:${nodeId}`)
-      : true;
+    const frameReady = typeof nodeGraphSimFpsShouldPaint === "function"
+      ? nodeGraphSimFpsShouldPaint(`fbmField:${nodeId}`, false)
+      : (typeof nodeGraphDisplayFrameReady === "function"
+        ? nodeGraphDisplayFrameReady(`fbmField:${nodeId}`)
+        : true);
     if (frameReady) {
       const last = face._fbmFieldLastTs || ts;
       let dt = Math.min(0.05, Math.max(0, (ts - last) / 1000));

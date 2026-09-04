@@ -3734,8 +3734,7 @@ body[data-macro-knob-value-position="mid"] .node-macro-knob-edit-input {
 
 /* Ctrl+click GOLD Held Keys bitmask (poly / digital mask cable) —
    distinct from .active BLUE (pointer press, MIDI note-on, or
-   Shift+click mono sustain latch). A key can be both: amber wins so
-   the mask state stays visible over transient/mono blue. */
+   Shift+click mono sustain latch). Both classes can be set at once. */
 .node-midi-keyboard-white-row span.held {
   color: #1a1200;
   background:
@@ -3747,6 +3746,21 @@ body[data-macro-knob-value-position="mid"] .node-macro-knob-edit-input {
     0 0 14px rgba(241, 184, 75, 0.68),
     0 0 34px rgba(224, 138, 30, 0.38);
   text-shadow: 0 0 7px rgba(255, 236, 200, 0.84);
+}
+
+/* Plain press on a gold-held key: show blue while down; .held stays set. */
+.node-midi-keyboard-white-row span.held.active {
+  color: #eaf8ff;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(213, 247, 255, 0.92), transparent 28%),
+    linear-gradient(180deg, #7edcff 0%, #1e85ff 74%, #0a3f9a 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(207, 246, 255, 0.82),
+    inset 0 0 22px rgba(17, 102, 255, 0.48),
+    0 0 14px rgba(35, 162, 255, 0.68),
+    0 0 34px rgba(35, 112, 255, 0.38),
+    0 0 0 2px rgba(241, 184, 75, 0.55);
+  text-shadow: 0 0 7px rgba(234, 248, 255, 0.84);
 }
 
 .node-midi-keyboard-white-row span:last-child {
@@ -3834,6 +3848,27 @@ body[data-macro-knob-value-position="mid"] .node-macro-knob-edit-input {
   .node-midi-keyboard-black-row span.held {
     color: #1a1200;
     text-shadow: 0 0 7px rgba(255, 236, 200, 0.84);
+  }
+}
+
+.node-midi-keyboard-black-row span.held.active {
+  border-color: rgba(118, 215, 255, 0.96);
+  background:
+    radial-gradient(circle at 50% 20%, rgba(151, 230, 255, 0.7), transparent 30%),
+    linear-gradient(180deg, #236ec9 0%, #081a43 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(184, 239, 255, 0.72),
+    inset 0 0 18px rgba(35, 139, 255, 0.48),
+    0 8px 18px rgba(0, 0, 0, 0.45),
+    0 0 18px rgba(35, 162, 255, 0.72),
+    0 0 36px rgba(35, 112, 255, 0.42),
+    0 0 0 2px rgba(241, 184, 75, 0.55);
+}
+
+@container midi-keys (min-width: 520px) {
+  .node-midi-keyboard-black-row span.held.active {
+    color: #eaf8ff;
+    text-shadow: 0 0 7px rgba(234, 248, 255, 0.84);
   }
 }
 

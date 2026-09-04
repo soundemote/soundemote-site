@@ -1241,6 +1241,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "MIDI",
     notes: ["midi input", "midi channel", "note", "gate", "velocity", "portal"],
   },
+  keyboard: {
+    category: "controller",
+    description: "On-screen piano shared with the K Controllers dock — held gold keys, press blue, gate/note/Held Keys CV.",
+    label: "Keyboard",
+    notes: ["keyboard", "piano", "held keys", "controller", "performance", "gate", "note"],
+  },
   macroControls: {
     category: "controller",
     description: "Eight always-on macros (M1–M8) for performance control of a whole patch.",
@@ -1251,7 +1257,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     category: "controller",
     description: "Read pitch bend and mod wheel next to the keyboard for expression.",
     label: "Pitch Mod Wheel",
-    notes: ["pitch wheel", "mod wheel", "performance control"],
+    notes: ["pitch wheel", "mod wheel", "performance control", "pitch", "mod"],
   },
   samplePlayer: {
     category: "sample",
@@ -2899,6 +2905,10 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/keplerBouwkamp/kepler-bouwkamp-worklet-evaluator.js",
   },
   keyboardController: {
+    source: "public/modules/keyboardController/keyboard-controller-live-evaluator.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/keyboardController/keyboard-controller-live-evaluator.js",
+  },
+  keyboard: {
     source: "public/modules/keyboardController/keyboard-controller-live-evaluator.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/keyboardController/keyboard-controller-live-evaluator.js",
   },

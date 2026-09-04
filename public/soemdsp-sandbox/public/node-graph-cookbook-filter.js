@@ -849,10 +849,6 @@ function createNodeGraphFilterCurveDisplay(nodeId, type) {
   // Hook into the shared parameter-visual contract so mid-drag flush redraws
   // the curve every frame (same path as bug button / XY pad).
   section.dataset.parameterVisual = "true";
-  section.syncFromParameters = () => {
-    section._filterCurveForceDraw = true;
-    drawNodeGraphFilterCurveDisplay(section);
-  };
   const canvas = document.createElement("canvas");
   canvas.className = "node-filter-curve-canvas";
   canvas.dataset.lightSource = "screen";
@@ -861,30 +857,22 @@ function createNodeGraphFilterCurveDisplay(nodeId, type) {
   section.append(canvas);
   // Crossovers: room-dimmer cutout at 2/3 (not as bright as full displays).
   nodeGraphFilterCurveApplyCrossoverLightCutout(section, canvas, type);
-  // Resize only: params bail via signature. Force redraw when the face gets a
-  // real layout size (first paint often runs at 0×0 and used to stick blank).
-  if (typeof ResizeObserver === "function") {
-    const ro = new ResizeObserver(() => {
-      section._filterCurveForceDraw = true;
-      section._filterCurveLaidOut = false;
-      if (typeof scheduleNodeGraphFilterCurveDraw === "function") {
-        scheduleNodeGraphFilterCurveDraw();
-      } else {
-        drawNodeGraphFilterCurveDisplay(section);
-      }
-    });
-    ro.observe(section);
-    section._filterCurveResizeObserver = ro;
-  }
+  // Continuous pump at Simulation FPS so modulated cutoff/Q animate. Slider
+  // drag / syncFromParameters still paint immediately (force).
+  nodeGraphInstallDrawingFacePump(section, {
+    clockKey: (el) => `filterCurve:${el.dataset?.node || ""}`,
+    forceKey: "_filterCurveForceDraw",
+    paint: drawNodeGraphFilterCurveDisplay,
+    onResize: (el) => { el._filterCurveLaidOut = false; },
+    paintOnCreate: false,
+  });
   // Layout may land after the first rAF (article not in the workspace yet).
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       section._filterCurveForceDraw = true;
       section._filterCurveLaidOut = false;
       drawNodeGraphFilterCurveDisplay(section);
-      if (typeof scheduleNodeGraphFilterCurveDraw === "function") {
-        scheduleNodeGraphFilterCurveDraw();
-      }
+      section._startFaceLoop?.();
     });
   });
   return section;
@@ -1185,6 +1173,23 @@ function scheduleNodeGraphFilterCurveDraw() {
   }
   nodeGraphMvp.filterCurveDrawFrame = window.requestAnimationFrame(() => {
     nodeGraphMvp.filterCurveDrawFrame = 0;
+    // UI event path (slider drag, layout, wipe): paint this frame, ungated.
+    // Live modulation keeps moving via per-face Simulation FPS loops.
+    for (const section of document.querySelectorAll(".node-filter-curve-display")) {
+      if (
+        section.classList.contains("node-round-shape-display")
+        || section.classList.contains("node-envelope-curve-display")
+        || section.classList.contains("node-phone-tone-display")
+        || section.classList.contains("node-harmonic-series-display")
+        || section.classList.contains("node-basic-shape-display")
+      ) {
+        continue;
+      }
+      section._filterCurveForceDraw = true;
+      if (typeof section._startFaceLoop === "function") {
+        section._startFaceLoop();
+      }
+    }
     drawNodeGraphFilterCurveDisplays();
   });
 }

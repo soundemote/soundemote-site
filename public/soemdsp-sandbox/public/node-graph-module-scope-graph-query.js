@@ -12,22 +12,47 @@ function nodeGraphModuleScopeNodeParam(node, key, fallback) {
 }
 
 /**
- * Shared display FPS gate for independent face pumps (matrix, asciiscope, …)
- * that do not go through the scope compositor. Uses the same fixed-frame clock
- * as phosphor / scopes so all animated displays share Simulation FPS.
- * Returns true when a paint step should run; advances the clock only then.
- * FPS ≤ 0 freezes (matches AdvanceFixedFrameClock).
+ * Shared display FPS gate for independent face pumps (matrix, asciiscope,
+ * RoundShape, slider ghosts, …) that do not go through the scope compositor.
+ * Uses the same fixed-frame clock as phosphor / scopes so animated displays
+ * share Simulation FPS. Returns true when a paint step should run; advances
+ * the clock only then. FPS ≤ 0 freezes (matches AdvanceFixedFrameClock).
  */
 const nodeGraphDisplayFrameClockStates = new Map();
+
+function nodeGraphSimFpsRate() {
+  if (typeof normalizeNodeGraphModuleScopeFramesPerSecond === "function") {
+    return normalizeNodeGraphModuleScopeFramesPerSecond(
+      nodeGraphMvp?.moduleScopeFramesPerSecond ?? 60,
+    );
+  }
+  return Math.max(0, Math.round(Number(nodeGraphMvp?.moduleScopeFramesPerSecond) || 60));
+}
+
+/**
+ * Paint gate for drawing faces / live ghosts.
+ * force=true bypasses (param sync, resize, mouse slider drag).
+ * FPS ≤ 0 → false (frozen); caller must not spin rAF waiting.
+ */
+function nodeGraphSimFpsShouldPaint(clockKey, force = false) {
+  if (force === true) {
+    return true;
+  }
+  if (!(nodeGraphSimFpsRate() > 0)) {
+    return false;
+  }
+  if (typeof nodeGraphDisplayFrameReady !== "function") {
+    return true;
+  }
+  return nodeGraphDisplayFrameReady(clockKey);
+}
 
 function nodeGraphDisplayFrameReady(clockKey = "__default") {
   if (typeof nodeGraphScreenSoloAllowsClock === "function"
     && !nodeGraphScreenSoloAllowsClock(clockKey)) {
     return false;
   }
-  const fps = typeof normalizeNodeGraphModuleScopeFramesPerSecond === "function"
-    ? normalizeNodeGraphModuleScopeFramesPerSecond(nodeGraphMvp?.moduleScopeFramesPerSecond ?? 60)
-    : Math.max(0, Math.round(Number(nodeGraphMvp?.moduleScopeFramesPerSecond) || 60));
+  const fps = nodeGraphSimFpsRate();
   if (!(fps > 0) || typeof nodeGraphModuleScopeAdvanceFixedFrameClock !== "function") {
     return false;
   }
