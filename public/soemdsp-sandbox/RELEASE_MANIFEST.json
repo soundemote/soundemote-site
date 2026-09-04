@@ -1,0 +1,11 @@
+{
+    "sandboxVersion":  "0.7.0 ADDITIVE BETA",
+    "syncedUtc":  "2026-09-04T00:57:54.9421139Z",
+    "buildNumber":  "2026.9.1.1",
+    "kind":  "soemdsp-sandbox-release-tree",
+    "buildToken":  "070A",
+    "version":  1,
+    "buildMode":  "release",
+    "combinedWasmSha256":  "5df4482a655a9cebdbd0973d4e4c4c56617864fb69a1368fc8db677add4e8fe2",
+    "combinedWasmBytes":  933255
+}

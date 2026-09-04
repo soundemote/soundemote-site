@@ -154,7 +154,6 @@ const nodeGraphModuleCatalogUnderConstructionSort = Object.freeze([
   "sampleLooper",
   "samplePlayer",
   "shootingStarExplosion",
-  "sinCos",
   "sineKick",
   "sinepulse",
   "softpopOscillator",
@@ -194,6 +193,7 @@ const nodeGraphModuleCatalogRetiredFromUnderConstruction = Object.freeze([
   "arp",
   "hilbert",
   "binaryClock",
+  "sinCos",
 ]);
 
 /** Short shop-card reminder for under-construction modules (title tooltip). */
@@ -406,15 +406,15 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   sineWavetable: {
     category: "oscillator",
-    description: "Pitchable sine with 1–4 evenly spaced phase taps (sine, cosine, sincos, antiphase, 3-phase, 4-phase).",
+    description: "Pitchable sine with 1–4 evenly spaced phase taps (sine, cosine, sincos, antiphase, 3-phase, 4-phase). Method: Polynomial or additive half-sine wavetable (CPU).",
     label: "SinCos4",
-    notes: ["implemented", "wavetable", "sincos4", "native"],
+    notes: ["implemented", "sincos4", "native", "wavetable-switch"],
   },
   sinCos: {
     category: "oscillator",
-    description: "Pitchable sine and cosine pair (quadrature).",
+    description: "Pitchable sine and cosine pair (quadrature). Method: Polynomial or additive half-sine wavetable (CPU).",
     label: "SinCos",
-    notes: ["implemented", "wavetable", "sincos", "native"],
+    notes: ["implemented", "sincos", "native", "wavetable-switch"],
   },
   wavetable2d: {
     category: "oscillator",
@@ -3051,8 +3051,8 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/piSpigotNoise/pi-spigot-noise-worklet-evaluator.js",
   },
   pingPongDelay: {
-    source: "public/modules/pingPongDelay/ping-pong-delay-worklet-evaluator.js",
-    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/pingPongDelay/ping-pong-delay-worklet-evaluator.js",
+    source: "native_modules/ping_pong_delay/ping_pong_delay.cpp",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/ping_pong_delay/ping_pong_delay.cpp",
   },
   pitchModWheel: {
     source: "public/modules/pitchModWheel/pitch-mod-wheel-live-evaluator.js",

@@ -1,7 +1,81 @@
+// Stub before the bulk of classic scripts. node-graph-state.js replaces this
+// with the real object; without a stub, any early rAF/handler that touches
+// zoom/patch/rendered/live throws and aborts sandbox startup.
+// Must stay in an external file — smoke_test shell contract forbids inline <script>.
+window.nodeGraphMvp = window.nodeGraphMvp || {
+  zoom: 1,
+  pan: { x: 0, y: 0 },
+  rendered: null,
+  live: {},
+  patch: { nodes: [], connections: [], modulations: [], graphConnections: [] },
+  connections: [],
+  graphConnections: [],
+  activeNodes: new Set(),
+  sliderDragging: null,
+  tooltips: {},
+  macroKnobArcThickness: 7,
+  midiKeyboardKeyCount: 25,
+  efficientProduct: true,
+};
+
+/** "debug" | "release" — stamped by server.py (--release / SOEMDSP_BUILD_MODE). */
+function nodeGraphBootBuildMode() {
+  const raw = String(
+    document.body?.dataset?.buildModeValue
+      || document.querySelector(".node-boot-loading-screen")?.dataset?.buildModeValue
+      || document.getElementById("nodeBuildNumberReadout")?.dataset?.buildModeValue
+      || "",
+  ).trim().toLowerCase();
+  return raw === "release" ? "release" : "debug";
+}
+
+function nodeGraphBootIsRelease() {
+  return nodeGraphBootBuildMode() === "release";
+}
+
+/** AudioWorklet / Live need HTTPS or localhost — not http://169.254.* / LAN IPs. */
+function nodeGraphBootSecureContextOk() {
+  try {
+    if (window.isSecureContext) return true;
+  } catch (_e) { /* ignore */ }
+  const host = String(window.location?.hostname || "").toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1";
+}
+
+function nodeGraphBootSecureContextMessage() {
+  const host = String(window.location?.hostname || "");
+  const port = String(window.location?.port || "");
+  const portPart = port ? `:${port}` : "";
+  return `Live audio needs HTTPS or localhost. This page is http://${host}${portPart} — open http://127.0.0.1${portPart}/ (or https) instead of a LAN / link-local address.`;
+}
+
+function ensureNodeBootSecureContextBanner() {
+  if (nodeGraphBootSecureContextOk()) return;
+  let banner = document.getElementById("nodeBootSecureContextBanner");
+  if (!banner) {
+    banner = document.createElement("div");
+    banner.id = "nodeBootSecureContextBanner";
+    banner.className = "node-boot-secure-context-banner";
+    banner.setAttribute("role", "alert");
+    const panel = document.querySelector(".node-boot-loading-panel");
+    const startBtn = document.getElementById("nodeBootStartButton");
+    if (panel && startBtn) {
+      panel.insertBefore(banner, startBtn);
+    } else if (panel) {
+      panel.prepend(banner);
+    } else {
+      document.body.prepend(banner);
+    }
+  }
+  banner.textContent = nodeGraphBootSecureContextMessage();
+  banner.hidden = false;
+}
+
 function renderNodeBootSysinfo(parts) {
   const el = document.getElementById("nodeBootSysinfo");
   if (!el) return;
   el.textContent = parts.filter(Boolean).join("  |  ");
+  el.hidden = !el.textContent;
 }
 
 function probeWebGLVRAM(gl) {
@@ -22,16 +96,21 @@ function probeWebGLVRAM(gl) {
 async function populateNodeBootSysinfo() {
   const el = document.getElementById("nodeBootSysinfo");
   if (!el) return;
+  // Release builds: never show OS / GPU / RAM / browser fingerprint line.
+  if (nodeGraphBootIsRelease()) {
+    el.textContent = "";
+    el.hidden = true;
+    return;
+  }
+  el.hidden = false;
 
   // CPU core count is hidden for now -- feels too close to a fingerprinting
   // detail for users to be comfortable seeing on a loading screen.
   const cpuStr = null;
 
-  // RAM
   const ramGB = navigator.deviceMemory;
   const ramStr = ramGB ? `RAM: ${ramGB} GB` : null;
 
-  // GPU from WebGL
   let gpuName = "";
   let vramMB = null;
   try {
@@ -41,14 +120,12 @@ async function populateNodeBootSysinfo() {
       const ext = gl.getExtension("WEBGL_debug_renderer_info");
       if (ext) {
         gpuName = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || "";
-        // Strip boilerplate suffixes Chrome/D3D append
         gpuName = gpuName.replace(/\s*(Direct3D\S*|vs_\S+|ps_\S+|OpenGL\S*|Metal\s*\S*)/gi, "").trim();
       }
       vramMB = probeWebGLVRAM(gl);
     }
   } catch (_) {}
 
-  // Try WebGPU for better GPU name and description
   let gpuStr = null;
   try {
     if (navigator.gpu) {
@@ -76,13 +153,11 @@ async function populateNodeBootSysinfo() {
     gpuStr = gpuParts.length ? `GPU: ${gpuParts.join(", ")}` : null;
   }
 
-  // OS
   const platform = navigator.userAgentData?.platform || navigator.platform || "";
   const arch = navigator.userAgentData?.architecture || "";
   const osParts = [platform, arch].filter(Boolean);
   const osStr = osParts.length ? `OS: ${osParts.join(" ")}` : null;
 
-  // Browser
   let browserStr = null;
   const brands = navigator.userAgentData?.brands;
   if (brands && brands.length) {
@@ -99,18 +174,19 @@ async function populateNodeBootSysinfo() {
     }
   }
 
-  // Screen
   const dpr = Math.round(window.devicePixelRatio * 100) / 100;
   const screenStr = `Screen: ${screen.width}×${screen.height}${dpr !== 1 ? ` @${dpr}x` : ""}`;
 
   renderNodeBootSysinfo([cpuStr, gpuStr, ramStr, osStr, browserStr, screenStr]);
 }
 
-populateNodeBootSysinfo();
-
 function setNodeBootLoadingProgress(value, label = "") {
+  if (document.body.classList.contains("node-boot-waiting")) {
+    return;
+  }
   const fill = document.getElementById("nodeBootLoadingBarFill");
-  const bar = document.querySelector(".node-boot-loading-bar");
+  const bar = document.getElementById("nodeBootLoadingBar")
+    || document.querySelector(".node-boot-loading-bar");
   const labelElement = document.getElementById("nodeBootLoadingLabel");
   if (value != null) {
     const progress = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
@@ -118,9 +194,11 @@ function setNodeBootLoadingProgress(value, label = "") {
     if (fill) fill.style.width = `${progress}%`;
   }
   if (label && labelElement) {
+    labelElement.hidden = false;
     labelElement.textContent = label;
     const messages = document.getElementById("nodeBootLoadingMessages");
     if (messages) {
+      messages.hidden = false;
       const line = document.createElement("div");
       line.className = "node-boot-loading-message";
       line.textContent = label;
@@ -129,8 +207,65 @@ function setNodeBootLoadingProgress(value, label = "") {
   }
 }
 
+/** Activate deferred <script data-boot-defer> tags (type=text/plain until start). */
+function nodeGraphBootActivateDeferredScripts() {
+  const deferred = Array.from(document.querySelectorAll("script[data-boot-defer][src]"));
+  for (const old of deferred) {
+    const src = old.getAttribute("src");
+    if (!src) continue;
+    const next = document.createElement("script");
+    next.src = src;
+    if (old.getAttribute("data-boot-module") === "1") {
+      next.type = "module";
+    } else {
+      // Preserve classic execution order across dynamically inserted scripts.
+      next.async = false;
+    }
+    old.replaceWith(next);
+  }
+}
+
+function beginNodeBootLoadSequence() {
+  if (document.body.dataset.nodeBootStarted === "1") {
+    return;
+  }
+  document.body.dataset.nodeBootStarted = "1";
+  document.body.classList.remove("node-boot-waiting");
+
+  const startBtn = document.getElementById("nodeBootStartButton");
+  if (startBtn) {
+    startBtn.hidden = true;
+    startBtn.disabled = true;
+  }
+  const label = document.getElementById("nodeBootLoadingLabel");
+  if (label) {
+    label.hidden = false;
+    label.textContent = "loading";
+  }
+  const bar = document.getElementById("nodeBootLoadingBar");
+  if (bar) bar.hidden = false;
+  const messages = document.getElementById("nodeBootLoadingMessages");
+  if (messages) messages.hidden = false;
+
+  setNodeBootLoadingProgress(2, "starting");
+  nodeGraphBootActivateDeferredScripts();
+
+  // Failsafe if interface-ready never fires after the user starts load.
+  window.setTimeout(() => {
+    if (!document.body.classList.contains("node-boot-loading")) {
+      return;
+    }
+    setNodeBootLoadingProgress(100, "ready");
+    document.body.dataset.nodeBootFinished = "watchdog";
+    finishNodeBootLoading();
+  }, 10000);
+}
+
 function finishNodeBootLoading() {
   if (!document.body.classList.contains("node-boot-loading")) {
+    return;
+  }
+  if (document.body.classList.contains("node-boot-waiting")) {
     return;
   }
   if (typeof resetNodeGraphStartupView === "function") {
@@ -161,11 +296,6 @@ function finishNodeBootLoading() {
   window.setTimeout(() => {
     document.body.classList.remove("node-boot-fading");
     document.body.classList.add("node-boot-ready");
-    // Boot kept .shell visibility:hidden; cull may have put every module to
-    // sleep (display:none). Also a restored session can leave viewMode on
-    // settings/code/mapping (content-view-mode hides the graph) while K still
-    // toggles the controller dock — black workspace, keyboard works. Force a
-    // visible modular graph after reveal.
     try {
       recoverNodeGraphAfterBoot();
     } catch (error) {
@@ -210,8 +340,6 @@ function nodeGraphBootReframeWorkspace(reason = "boot") {
   if (force && typeof window.nodeGraphAutoFrame === "function") {
     framed = Boolean(window.nodeGraphAutoFrame({ padding: 0.08 }));
   }
-  // Chrome can restore a pan/zoom that leaves modules in the DOM but off-screen
-  // while the top chrome still paints — empty black workspace. Always recover.
   if (!framed && typeof window.nodeGraphRecoverViewportIfModulesOffscreen === "function") {
     window.nodeGraphRecoverViewportIfModulesOffscreen();
   } else if (!framed && typeof window.nodeGraphAutoFrame === "function") {
@@ -241,7 +369,6 @@ function recoverNodeGraphAfterBoot() {
     }
   }
 
-  // Prefer modular workspace so the graph is not stuck behind Script/Code/UI.
   if (typeof setNodeGraphViewMode === "function") {
     const mode = String(window.nodeGraphMvp?.viewMode || "");
     if (mode === "settings" || mode === "code" || mode === "mapping" || mode === "script") {
@@ -267,8 +394,6 @@ function recoverNodeGraphAfterBoot() {
     }
   };
 
-  // Immediate + delayed passes: first paint / session apply / cull can race,
-  // especially in Chrome with a restored localStorage view.
   reframe(nodeGraphBootWantsResetView() ? "resetview" : "boot");
   for (const delay of [120, 450, 1100, 2200]) {
     window.setTimeout(() => reframe("retry"), delay);
@@ -280,15 +405,24 @@ window.addEventListener("nodeSandboxStartupProgress", (event) => {
 });
 window.addEventListener("nodeSandboxInterfaceReady", finishNodeBootLoading, { once: true });
 
-window.setTimeout(() => {
-  if (!document.body.classList.contains("node-boot-loading")) {
-    return;
-  }
-  setNodeBootLoadingProgress(100, "ready");
-  document.body.dataset.nodeBootFinished = "watchdog";
-  finishNodeBootLoading();
-}, 10000);
+document.getElementById("nodeBootStartButton")?.addEventListener("click", () => {
+  ensureNodeBootSecureContextBanner();
+  beginNodeBootLoadSequence();
+});
 
-if (window.nodeSandboxInterfaceReady) {
+ensureNodeBootSecureContextBanner();
+
+// Sysinfo only in debug builds (hidden entirely for --release).
+if (!nodeGraphBootIsRelease()) {
+  populateNodeBootSysinfo();
+} else {
+  const sys = document.getElementById("nodeBootSysinfo");
+  if (sys) {
+    sys.textContent = "";
+    sys.hidden = true;
+  }
+}
+
+if (window.nodeSandboxInterfaceReady && document.body.dataset.nodeBootStarted === "1") {
   finishNodeBootLoading();
 }

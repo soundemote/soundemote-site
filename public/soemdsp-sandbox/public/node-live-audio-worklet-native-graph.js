@@ -103,6 +103,7 @@ NodeLiveAudioProcessor.NATIVE_GRAPH_TYPE_IDS = Object.freeze({
   aliasSine: 38,
   blit: 39,
   sineWavetable: 40,
+  sinCos: 153,
   antisaw: 41,
   archimedes: 42,
   additiveOsc: 43,
@@ -133,8 +134,11 @@ NodeLiveAudioProcessor.NATIVE_GRAPH_TYPE_IDS = Object.freeze({
   chaoticPhaseLockingFilter: 68,
   inertialFilter: 69,
   expAdsr: 70,
+  // Mod twin aliases → same native opcodes; strips harvested from Mono.
+  curveEnvelopeMod: 70,
   linearEnvelope: 71,
   pluckEnvelope: 72,
+  pluckEnvelopeMod: 72,
   flowerChildEnvelopeFollower: 73,
   // removed: vactrol (was 74)
   delayEffect: 75,
@@ -209,6 +213,7 @@ NodeLiveAudioProcessor.NATIVE_GRAPH_PARAM_SATURATE = 58;
 NodeLiveAudioProcessor.NATIVE_GRAPH_PARAM_LPF_FREQUENCY = 59;
 NodeLiveAudioProcessor.NATIVE_GRAPH_PARAM_HPF_FREQUENCY = 60;
 NodeLiveAudioProcessor.NATIVE_GRAPH_PARAM_TEMPO_BPM = 61;
+NodeLiveAudioProcessor.NATIVE_GRAPH_PARAM_TAP_OFFSET_MS = 62;
 NodeLiveAudioProcessor.NATIVE_GRAPH_PARAM_ATT_AMPLITUDE = 70;
 NodeLiveAudioProcessor.NATIVE_GRAPH_PARAM_ATT_OFFSET = 71;
 NodeLiveAudioProcessor.NATIVE_GRAPH_PARAM_IN_LOW = 80;
@@ -316,8 +321,12 @@ NodeLiveAudioProcessor.prototype.mapNativeGraphSrcPortId = function mapNativeGra
     if (p === "analog thru") return NodeLiveAudioProcessor.NATIVE_GRAPH_PORT_SQUARE;
     if (p === "digital thru") return NodeLiveAudioProcessor.NATIVE_GRAPH_PORT_TRI;
   }
-  if (p === "saw" || p === "mod l") return NodeLiveAudioProcessor.NATIVE_GRAPH_PORT_SAW;
-  if (p === "ramp" || p === "mod r") return NodeLiveAudioProcessor.NATIVE_GRAPH_PORT_RAMP;
+  if (p === "saw" || p === "mod l" || p === "lfo l" || p === "mod left" || p === "lfo left") {
+    return NodeLiveAudioProcessor.NATIVE_GRAPH_PORT_SAW;
+  }
+  if (p === "ramp" || p === "mod r" || p === "lfo r" || p === "mod right" || p === "lfo right") {
+    return NodeLiveAudioProcessor.NATIVE_GRAPH_PORT_RAMP;
+  }
   if (p === "square") return NodeLiveAudioProcessor.NATIVE_GRAPH_PORT_SQUARE;
   if (p === "tri" || p === "triangle") return NodeLiveAudioProcessor.NATIVE_GRAPH_PORT_TRI;
   if (p === "sine" || p === "sin") {
@@ -516,7 +525,7 @@ NodeLiveAudioProcessor.prototype.mapNativeGraphSrcPortId = function mapNativeGra
     if (p === "scale") return NodeLiveAudioProcessor.NATIVE_GRAPH_PORT_LEFT;
     if (p === "gate") return NodeLiveAudioProcessor.NATIVE_GRAPH_PORT_RIGHT;
   }
-  if (t === "degreeTuring" || t === "degreePhrase" || t === "gravityWalker" || t === "arp") {
+  if (t === "degreeTuring" || t === "degreePhrase" || t === "gravityWalker") {
     if (p === "0.1v/oct" || p === "0.1v" || p === "v/oct" || p === "pitch") {
       return NodeLiveAudioProcessor.NATIVE_GRAPH_PORT_MONO;
     }
@@ -524,6 +533,19 @@ NodeLiveAudioProcessor.prototype.mapNativeGraphSrcPortId = function mapNativeGra
     if (p === "trigger" || p === "t") return NodeLiveAudioProcessor.NATIVE_GRAPH_PORT_RIGHT;
     if (p === "degree" || p === "phase" || p === "step") return NodeLiveAudioProcessor.NATIVE_GRAPH_PORT_SAW;
     if (p === "cv") return NodeLiveAudioProcessor.NATIVE_GRAPH_PORT_RAMP;
+  }
+  if (t === "arp") {
+    if (p === "0.1v/oct" || p === "0.1v" || p === "v/oct" || p === "pitch") {
+      return NodeLiveAudioProcessor.NATIVE_GRAPH_PORT_MONO;
+    }
+    if (p === "f" || p === "ƒ" || p === "freq" || p === "frequency") {
+      return NodeLiveAudioProcessor.NATIVE_GRAPH_PORT_RAMP;
+    }
+    if (p === "gate") return NodeLiveAudioProcessor.NATIVE_GRAPH_PORT_LEFT;
+    if (p === "trigger" || p === "t" || p === "trig") {
+      return NodeLiveAudioProcessor.NATIVE_GRAPH_PORT_RIGHT;
+    }
+    if (p === "step") return NodeLiveAudioProcessor.NATIVE_GRAPH_PORT_SAW;
   }
   if (t === "fractalBrownianNoise") {
     if (p === "out x" || p === "x") return NodeLiveAudioProcessor.NATIVE_GRAPH_PORT_MONO;
@@ -630,7 +652,7 @@ NodeLiveAudioProcessor.prototype.mapNativeGraphDstPortId = function mapNativeGra
   if ((p === "sidechain" || p === "sc" || p === "key") && type === "limiter") {
     return NodeLiveAudioProcessor.NATIVE_GRAPH_PORT_MORPH;
   }
-  if (p === "clock") {
+  if (p === "clock" || (p === "trig" && type === "arp")) {
     return NodeLiveAudioProcessor.NATIVE_GRAPH_PORT_TRIGGER;
   }
   if (p === "advance" && type === "chordMemory") {
@@ -1012,12 +1034,6 @@ NodeLiveAudioProcessor.prototype.releaseEfficientLegacyNativeHandles =
       }
       this.reverbEffectStates.clear();
     }
-    if (this.pingPongDelayStates instanceof Map) {
-      for (const state of this.pingPongDelayStates.values()) {
-        this.destroyPingPongDelayNativeState?.(state);
-      }
-      this.pingPongDelayStates.clear();
-    }
   };
 
 NodeLiveAudioProcessor.prototype.destroyNativeGraphHandle = function destroyNativeGraphHandle() {
@@ -1033,7 +1049,8 @@ NodeLiveAudioProcessor.prototype.destroyNativeGraphHandle = function destroyNati
   this.nativeGraphBlockViews = null;
   this.nativeGraphPortViewCache = null;
   this._nativeGraphParamCache = null;
-  this._nativeGraphParamCachePlanSerial = undefined;
+  // Next syncNativeGraphParams must re-push every Control after a destroy/clear.
+  this._nativeGraphParamCacheCold = true;
 };
 
 NodeLiveAudioProcessor.prototype.postNativeGraphStatus = function postNativeGraphStatus(status, message = "") {
@@ -1148,8 +1165,12 @@ NodeLiveAudioProcessor.prototype.syncNativeGraphParams = function syncNativeGrap
   }
   const P = NodeLiveAudioProcessor;
   const cacheById = this._nativeGraphParamCache || (this._nativeGraphParamCache = new Map());
-  const forceAll = this._nativeGraphParamCachePlanSerial !== this.planSerial;
-  this._nativeGraphParamCachePlanSerial = this.planSerial;
+  // APP_POLICY stickiness: cold push ONLY after compile/destroy.
+  // Never key this off planSerial — setParams bumps serial every gesture frame;
+  // wiping the dirty cache then re-pushing every target/smooth/domain cell
+  // fights Control chase ("moves while dragging, won't stay").
+  const forceAll = this._nativeGraphParamCacheCold === true;
+  this._nativeGraphParamCacheCold = false;
 
   // Optional global time cell from worklet autoSmoothingSeconds.
   if (native.soemdsp_graph_set_global_smooth_time) {
@@ -1205,6 +1226,9 @@ NodeLiveAudioProcessor.prototype.syncNativeGraphParams = function syncNativeGrap
       cache[modKey] = modToken;
       this.pushNativeGraphParamMod(native, hash, paramId, unitAdd, domainAdd);
     }
+    // Domain guides for unit-band MOD. Skip when meta has no real range —
+    // pushing 0…0 used to look like a valid domain and broke unit-band MOD
+    // mapping for any continuous param whose paramMeta had not arrived yet.
     const min = Number(meta.min);
     const max = Number(meta.max);
     let flags = 0;
@@ -1215,17 +1239,12 @@ NodeLiveAudioProcessor.prototype.syncNativeGraphParams = function syncNativeGrap
       const c = String(meta.constraint || "").trim().toLowerCase();
       if (c === "cpu" || c === "gpu" || c === "ram" || c === "memory") flags |= 2;
     }
-    const domainToken = `${Number.isFinite(min) ? min : 0}\0${Number.isFinite(max) ? max : 0}\0${flags}`;
-    if (forceAll || cache[domainKey] !== domainToken) {
-      cache[domainKey] = domainToken;
-      this.pushNativeGraphParamDomain(
-        native,
-        hash,
-        paramId,
-        Number.isFinite(min) ? min : 0,
-        Number.isFinite(max) ? max : 0,
-        flags,
-      );
+    if (Number.isFinite(min) && Number.isFinite(max) && max > min) {
+      const domainToken = `${min}\0${max}\0${flags}`;
+      if (forceAll || cache[domainKey] !== domainToken) {
+        cache[domainKey] = domainToken;
+        this.pushNativeGraphParamDomain(native, hash, paramId, min, max, flags);
+      }
     }
     if (P.NATIVE_GRAPH_DISCRETE_PARAMS[key]) return;
     const timeKey = `${key}__smoothTime`;
@@ -1302,15 +1321,22 @@ NodeLiveAudioProcessor.prototype.syncNativeGraphParams = function syncNativeGrap
       continue;
     }
     if (type === "pingPongDelay") {
+      // Control slots match Delay (Amp→45, Rate→57); depth units differ:
+      // Delay modAmount = fraction of delay time; Ping Pong lfoAmp = absolute ms.
+      const ppAmp = Number(node?.params?.amplitude);
+      const ppOffset = Number(node?.params?.offset);
+      const ppLfoAmp = Number(node?.params?.lfoAmp);
+      const ppLfoRate = Number(node?.params?.lfoRate);
       push("feedback", P.NATIVE_GRAPH_PARAM_FEEDBACK, cont("feedback", 0.35));
       push("mix", P.NATIVE_GRAPH_PARAM_MIX, cont("mix", 0.35));
-      push("level", P.NATIVE_GRAPH_PARAM_LEVEL, cont("level", 1));
+      push("amplitude", P.NATIVE_GRAPH_PARAM_LEVEL, Number.isFinite(ppAmp) ? ppAmp : 1);
       push("timeNumerator", P.NATIVE_GRAPH_PARAM_TIME_NUMERATOR, cont("timeNumerator", 1));
       push("timeDenominator", P.NATIVE_GRAPH_PARAM_TIME_DENOMINATOR, cont("timeDenominator", 4));
       push("timingMode", P.NATIVE_GRAPH_PARAM_TIMING_MODE, disc("timingMode", 0));
-      push("offsetMs", P.NATIVE_GRAPH_PARAM_OFFSET_MS, cont("offsetMs", 0));
+      push("offset", P.NATIVE_GRAPH_PARAM_OFFSET_MS, Number.isFinite(ppOffset) ? ppOffset : 0);
+      push("lfoAmp", P.NATIVE_GRAPH_PARAM_LFO_AMPLITUDE, Number.isFinite(ppLfoAmp) ? Math.max(0, ppLfoAmp) : 25);
       push("lfoStyle", P.NATIVE_GRAPH_PARAM_LFO_STYLE, disc("lfoStyle", 0));
-      push("lfoRate", P.NATIVE_GRAPH_PARAM_LFO_RATE, cont("lfoRate", 0.35));
+      push("lfoRate", P.NATIVE_GRAPH_PARAM_LFO_RATE, Number.isFinite(ppLfoRate) ? Math.max(0, Math.min(20, ppLfoRate)) : 0.35);
       push("lfoVariation", P.NATIVE_GRAPH_PARAM_LFO_VARIATION, cont("lfoVariation", 0.25));
       push("saturate", P.NATIVE_GRAPH_PARAM_SATURATE, cont("saturate", 1));
       push("lpfFrequency", P.NATIVE_GRAPH_PARAM_LPF_FREQUENCY, cont("lpfFrequency", 8000));
@@ -1379,10 +1405,19 @@ NodeLiveAudioProcessor.prototype.syncNativeGraphParams = function syncNativeGrap
     }
     if (type === "sineWavetable") {
       // freq/amp/phase keys match module defs; mode → A/B/C/D layout from sin/cos.
+      // method → shape: 0=poly, 1=additive half-sine LUT.
       push("freq", P.NATIVE_GRAPH_PARAM_FREQUENCY, cont("freq", 100));
       push("amp", P.NATIVE_GRAPH_PARAM_AMPLITUDE, cont("amp", 1));
       push("phase", P.NATIVE_GRAPH_PARAM_PHASE, cont("phase", 0));
       push("mode", P.NATIVE_GRAPH_PARAM_MODE, disc("mode", 2));
+      push("method", P.NATIVE_GRAPH_PARAM_SHAPE, disc("method", 0));
+      continue;
+    }
+    if (type === "sinCos") {
+      push("freq", P.NATIVE_GRAPH_PARAM_FREQUENCY, cont("freq", 100));
+      push("amp", P.NATIVE_GRAPH_PARAM_AMPLITUDE, cont("amp", 1));
+      push("phase", P.NATIVE_GRAPH_PARAM_PHASE, cont("phase", 0));
+      push("method", P.NATIVE_GRAPH_PARAM_SHAPE, disc("method", 0));
       continue;
     }
     if (type === "antisaw") {
@@ -1626,7 +1661,8 @@ NodeLiveAudioProcessor.prototype.syncNativeGraphParams = function syncNativeGrap
       continue;
     }
     if (type === "arp") {
-      // mode→MODE, steps→STAGES, seed→SEED.
+      // rate→FREQUENCY (Internal Clock), mode→MODE, steps→STAGES, seed→SEED.
+      push("rate", P.NATIVE_GRAPH_PARAM_FREQUENCY, cont("rate", 8));
       push("mode", P.NATIVE_GRAPH_PARAM_MODE, disc("mode", 0));
       push("steps", P.NATIVE_GRAPH_PARAM_STAGES, disc("steps", 8));
       push("seed", P.NATIVE_GRAPH_PARAM_SEED, disc("seed", 1));
@@ -1827,7 +1863,7 @@ NodeLiveAudioProcessor.prototype.syncNativeGraphParams = function syncNativeGrap
       push("release", P.NATIVE_GRAPH_PARAM_LPF_FREQUENCY, cont("release", 20));
       continue;
     }
-    if (type === "expAdsr") {
+    if (type === "expAdsr" || type === "curveEnvelopeMod") {
       // timeNum=delay, timeDen=attack, feedback=decay, mix=sustain,
       // offsetMs=release s, shape=attackShape, center=releaseShape,
       // mode=loop, level=level.
@@ -1852,7 +1888,7 @@ NodeLiveAudioProcessor.prototype.syncNativeGraphParams = function syncNativeGrap
       push("level", P.NATIVE_GRAPH_PARAM_LEVEL, cont("level", 1));
       continue;
     }
-    if (type === "pluckEnvelope") {
+    if (type === "pluckEnvelope" || type === "pluckEnvelopeMod") {
       push("delayTime", P.NATIVE_GRAPH_PARAM_TIME_NUMERATOR, cont("delayTime", 0));
       push("attackFeedback", P.NATIVE_GRAPH_PARAM_TIME_DENOMINATOR, cont("attackFeedback", 0.002));
       push("decay", P.NATIVE_GRAPH_PARAM_FEEDBACK, cont("decay", 0.35));
@@ -2587,9 +2623,19 @@ NodeLiveAudioProcessor.prototype.resolveAdditiveBubbleCutoffStrip =
       const srcId = String(m.sourceNode || "");
       const src = this.nodes?.get?.(srcId);
       if (!src) continue;
+      const srcType = String(src.type || "");
       const ok = typeof additiveModControlIsPacketSourceType === "function"
-        ? additiveModControlIsPacketSourceType(src.type)
-        : false;
+        ? additiveModControlIsPacketSourceType(srcType)
+        : (
+          srcType === "curveEnvelopeMod"
+          || srcType === "pluckEnvelopeMod"
+          || srcType === "pluckEnvelope"
+          || srcType === "expAdsr"
+          || srcType === "additiveCurveEnvelope"
+          || srcType === "additivePluckEnvelope"
+          || srcType === "additiveSinMod"
+          || srcType === "additiveKnob"
+        );
       if (!ok) continue;
       const fromMap = this.additiveModStrips?.get?.(srcId);
       const fromOut = this.nodeOutputs?.get?.(srcId)?.modStrip;
@@ -3127,7 +3173,8 @@ NodeLiveAudioProcessor.prototype.compileNativeGraphFromPlan = function compileNa
   this.nativeGraphBlockViews = null;
   this.nativeGraphPortViewCache = null;
   this._nativeGraphParamCache = null;
-  this._nativeGraphParamCachePlanSerial = undefined;
+  // Compile rebuilds native Controls at C++ defaults — next param sync is cold.
+  this._nativeGraphParamCacheCold = true;
 
   if (!this.efficientProduct) {
     return false;
@@ -3320,6 +3367,7 @@ NodeLiveAudioProcessor.prototype.nativeGraphPortNames = function nativeGraphPort
     if (type === "surgeOscillator") return ["Wave", "Out"];
     if (type === "phoneTone") return ["Tone", "Out", "Mono"];
     if (type === "sineWavetable") return ["A", "Out", "sin", "Sin"];
+    if (type === "sinCos") return ["sin", "Sin", "Out", "Mono"];
     if (type === "archimedes") return ["Sine", "Out"];
     if (type === "comparator") return ["Thru"];
     if (type === "sampleDelay") return ["Delayed", "Out", "Mono"];
@@ -3362,6 +3410,7 @@ NodeLiveAudioProcessor.prototype.nativeGraphPortNames = function nativeGraphPort
     if (type === "phoneTone") return ["ToneL", "X"];
     if (type === "harmonicSeries") return ["f0", "ƒ0"];
     if (type === "sineWavetable") return ["B", "cos", "Cos"];
+    if (type === "sinCos") return ["cos", "Cos", "Left"];
     if (type === "archimedes") return ["Cosine"];
     if (type === "minMax") return ["Min"];
     if (type === "mix") return ["Out2"];
@@ -3395,7 +3444,7 @@ NodeLiveAudioProcessor.prototype.nativeGraphPortNames = function nativeGraphPort
       return ["Left", "Mix Left", "Mix L", "Wet L", "Wet Left"];
     }
     if (type === "pingPongDelay") {
-      return ["Left", "Mix L", "Mix Left", "Mod Left", "Mod L"];
+      return ["Left", "Mix L", "Mix Left"];
     }
     if (type === "noiseGenerator" || type === "cheapWalk" || type === "randomWalk") {
       return ["Left", "Left Out"];
@@ -3431,7 +3480,7 @@ NodeLiveAudioProcessor.prototype.nativeGraphPortNames = function nativeGraphPort
       return ["Right", "Mix Right", "Mix R", "Wet R", "Wet Right"];
     }
     if (type === "pingPongDelay") {
-      return ["Right", "Mix R", "Mix Right", "Mod Right", "Mod R"];
+      return ["Right", "Mix R", "Mix Right"];
     }
     if (type === "noiseGenerator" || type === "cheapWalk" || type === "randomWalk") {
       return ["Right", "Right Out"];
@@ -3458,7 +3507,7 @@ NodeLiveAudioProcessor.prototype.nativeGraphPortNames = function nativeGraphPort
     if (type === "reverbEffect" || type === "soemReverb") {
       return ["Dry L", "Dry Left"];
     }
-    if (type === "pingPongDelay") return ["Mod L", "Mod Left", "Saw"];
+    if (type === "pingPongDelay") return ["LFO L", "Mod L", "Mod Left", "Saw"];
     return ["Saw"];
   }
   if (portId === P.NATIVE_GRAPH_PORT_RAMP) {
@@ -3470,10 +3519,11 @@ NodeLiveAudioProcessor.prototype.nativeGraphPortNames = function nativeGraphPort
     if (type === "mixStereo") return ["R2"];
     if (type === "audioPlayer") return ["Trigger"];
     if (type === "binaryClock") return ["Bit3", "Ramp"];
+    if (type === "arp") return ["f", "ƒ", "Frequency", "Freq", "Ramp"];
     if (type === "reverbEffect" || type === "soemReverb") {
       return ["Dry R", "Dry Right"];
     }
-    if (type === "pingPongDelay") return ["Mod R", "Mod Right", "Ramp"];
+    if (type === "pingPongDelay") return ["LFO R", "Mod R", "Mod Right", "Ramp"];
     return ["Ramp"];
   }
   if (portId === P.NATIVE_GRAPH_PORT_SQUARE) {
@@ -3575,6 +3625,38 @@ NodeLiveAudioProcessor.prototype.publishNativeGraphScopeTaps = function publishN
     }
     if (any) {
       this.nodeOutputs.set(id, out);
+    }
+    // Envelope *Mod twins: publish full-quantum Mono as Additive mod strip
+    // (native DSP only — no JS BakeStrip).
+    if (
+      type === "curveEnvelopeMod"
+      || type === "pluckEnvelopeMod"
+      || type === "pluckEnvelope"
+      || type === "expAdsr"
+    ) {
+      const monoView = this.bindNativeGraphNodePortView(
+        hash,
+        P.NATIVE_GRAPH_PORT_MONO,
+        frames,
+      );
+      if (monoView && monoView.length) {
+        if (!this.additiveModStrips) this.additiveModStrips = new Map();
+        const strip = new Float32Array(frames);
+        for (let i = 0; i < frames; i += 1) {
+          const v = Number(monoView[i]);
+          strip[i] = Number.isFinite(v) ? v : 0;
+        }
+        this.additiveModStrips.set(id, strip);
+        const last = strip[frames - 1] || 0;
+        const prev = this.nodeOutputs.get(id) || out;
+        this.nodeOutputs.set(id, {
+          ...prev,
+          Out: last,
+          Bias: last,
+          value: last,
+          modStrip: strip,
+        });
+      }
     }
   }
 
