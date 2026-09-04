@@ -232,20 +232,9 @@ function nodeGraphActiveFilterSlopeMagnitudeAt(kind, cutoff, frequency, slope, s
   return mag;
 }
 
-// nodeGraphLadderFilterStageCount / nodeGraphLadderFilterMix now live in
-// node-graph-stdlib/node-graph-shared-dsp-helpers.js and
-// public/modules/ladderFilter/ladder-filter-live-evaluator.js (this file's
-// copies were byte-for-byte identical).
-
-// nodeGraphLadderFilterFeedbackFactor / nodeGraphLadderFilterCoefficients
-// used to be defined here too, but public/modules/ladderFilter/
-// ladder-filter-live-evaluator.js's script tag loads after this file and
-// redeclares both under the same global names -- meaning this file's own
-// copies were already dead/shadowed code (the call below has actually been
-// resolving to ladderFilter's richer version, with its extra runtime/
-// nodeId/state sanitization params defaulting harmlessly, ever since that
-// module file was added). Removed rather than left as confusing unreachable
-// code; no behavior change, since the shadowing was already in effect.
+// Ladder stage/mix/coefficients: node-graph-shared-dsp-helpers.js (always
+// loaded). Do not depend on ladder-filter-live-evaluator.js — release shells
+// omit that twin for native ladder.
 
 function nodeGraphComplexMultiply(a, b) {
   return {

@@ -12,12 +12,22 @@ async function initNodeGraphMvp() {
     await loadNodeGraphResourceManifest();
   }
   setNodeSandboxStartupProgress(58, "loading patch");
+  // Factory default is always Init (patches/init.json). Working/autosaved
+  // session patch wins only when present and usable — never a divergent
+  // localStorage "defaultPatch.live.*" blob.
   nodeGraphMvp.defaultPatch = await loadNodeGraphDefaultPresetPatch();
   setNodeSandboxStartupProgress(72, "building interface");
-  let startupPatch = nodeGraphMvp.workingPatch || nodeGraphMvp.defaultPatch;
-  let startupPatchDirtyState = nodeGraphMvp.workingPatch && ["saved", "edited", "untouched"].includes(nodeGraphMvp.patchDirtyState)
+  const workingStartup = nodeGraphMvp.workingPatch;
+  const workingUsable = typeof nodeGraphWorkingPatchShouldRestore === "function"
+    ? nodeGraphWorkingPatchShouldRestore(workingStartup)
+    : Boolean(workingStartup && Array.isArray(workingStartup.nodes) && workingStartup.nodes.length > 0);
+  let startupPatch = workingUsable ? workingStartup : nodeGraphMvp.defaultPatch;
+  let startupPatchDirtyState = workingUsable && ["saved", "edited", "untouched"].includes(nodeGraphMvp.patchDirtyState)
     ? nodeGraphMvp.patchDirtyState
     : "untouched";
+  if (!workingUsable) {
+    nodeGraphMvp.workingPatch = null;
+  }
   // URL ?pagePatch=slug loads /soemdsp-sandbox/patches/{slug}.json and wins
   // over workingPatch so page routes never stick on a stale session graph.
   const pagePatchSlug = String(

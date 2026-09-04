@@ -3846,7 +3846,12 @@ function nodeGraphModuleStoreDemoListenAvailable(type) {
   if (!nodeGraphModuleStoreDemoPatchAvailable(type)) {
     return false;
   }
-  return nodeGraphPatchNodeOutputPorts(createNodeGraphPatchNode(type, { id: "demo" })).length > 0;
+  // Prefer definition outputs — createNodeGraphPatchNode loads later in boot.
+  if (typeof createNodeGraphPatchNode === "function") {
+    return nodeGraphPatchNodeOutputPorts(createNodeGraphPatchNode(type, { id: "demo" })).length > 0;
+  }
+  const outs = nodeGraphModuleDefinitions?.[type]?.outputs;
+  return Array.isArray(outs) && outs.length > 0;
 }
 
 function nodeGraphModuleStoreDemoPatch(type) {

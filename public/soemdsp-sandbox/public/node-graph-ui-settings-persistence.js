@@ -2107,10 +2107,24 @@ function resetNodeUiDevControlsToDeclaredDefaults() {
   }
 }
 
-function clearNodeUserStartupRuntimeState() {
+async function clearNodeUserStartupRuntimeState() {
   resetNodeUiDevControlsToDeclaredDefaults();
-  if (typeof cloneNodeGraphPatch === "function" && typeof nodeGraphDefaultPatch !== "undefined") {
-    nodeGraphMvp.patch = cloneNodeGraphPatch(nodeGraphDefaultPatch);
+  // Load Init from disk (patches/init.json → presets/default.json → hardcoded).
+  // Do not trust an in-memory defaultPatch that may predate the user's edit.
+  let initPatch = null;
+  if (typeof loadNodeGraphDefaultPresetPatch === "function") {
+    try {
+      initPatch = await loadNodeGraphDefaultPresetPatch();
+    } catch (_error) {
+      initPatch = null;
+    }
+  }
+  if (!initPatch && typeof cloneNodeGraphPatch === "function" && typeof nodeGraphDefaultPatch !== "undefined") {
+    initPatch = cloneNodeGraphPatch(nodeGraphDefaultPatch);
+  }
+  if (initPatch && typeof cloneNodeGraphPatch === "function") {
+    nodeGraphMvp.defaultPatch = cloneNodeGraphPatch(initPatch);
+    nodeGraphMvp.patch = cloneNodeGraphPatch(initPatch);
   }
   nodeGraphMvp.workingPatch = null;
   nodeGraphMvp.currentSavedPatchFilename = "";
@@ -2210,9 +2224,9 @@ function clearNodeUserStartupRuntimeState() {
   }
 }
 
-function clearNodeUserStartupState() {
+async function clearNodeUserStartupState() {
   const removed = clearNodeUserStartupLocalStorage();
-  clearNodeUserStartupRuntimeState();
+  await clearNodeUserStartupRuntimeState();
   const text = typeof serializeNodeUiDevSettings === "function"
     ? serializeNodeUiDevSettings()
     : "";
@@ -2540,9 +2554,9 @@ async function handleSaveNodeUserUiSettingsDefaultClick(event) {
   }
 }
 
-function handleClearNodeUserStartupStateClick(event) {
+async function handleClearNodeUserStartupStateClick(event) {
   if (!confirmNodeGraphDefaultButtonClick(event.currentTarget)) {
     return;
   }
-  clearNodeUserStartupState();
+  await clearNodeUserStartupState();
 }
