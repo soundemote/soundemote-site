@@ -18,6 +18,53 @@ async function initNodeGraphMvp() {
   let startupPatchDirtyState = nodeGraphMvp.workingPatch && ["saved", "edited", "untouched"].includes(nodeGraphMvp.patchDirtyState)
     ? nodeGraphMvp.patchDirtyState
     : "untouched";
+  // URL ?pagePatch=slug loads /soemdsp-sandbox/patches/{slug}.json and wins
+  // over workingPatch so page routes never stick on a stale session graph.
+  const pagePatchSlug = String(
+    new URLSearchParams(window.location.search).get("pagePatch") || "",
+  ).trim().toLowerCase();
+  let pagePatchLoaded = false;
+  if (pagePatchSlug) {
+    try {
+      const pagePatchUrls = [
+        `/soemdsp-sandbox/patches/${encodeURIComponent(pagePatchSlug)}.json`,
+        `./patches/${encodeURIComponent(pagePatchSlug)}.json`,
+      ];
+      let loaded = null;
+      for (const url of pagePatchUrls) {
+        const response = await fetch(`${url}?v=${Date.now()}`, { cache: "no-store" });
+        if (!response.ok) continue;
+        const data = await response.json();
+        loaded = typeof nodeGraphPatchFromShareProjectData === "function"
+          ? nodeGraphPatchFromShareProjectData(
+            data?.kind === "sandbox_patch"
+              ? data
+              : {
+                kind: "sandbox_patch",
+                version: 1,
+                title: pagePatchSlug,
+                bank_name: "soundemote",
+                patch_data: data,
+              },
+          )
+          : (data?.patch_data || data);
+        break;
+      }
+      if (loaded) {
+        startupPatch = loaded;
+        startupPatchDirtyState = "untouched";
+        pagePatchLoaded = true;
+        nodeGraphMvp.externalStartupPatchApplied = true;
+        nodeGraphMvp.workingPatch = null;
+      } else if (typeof setNodeGraphScriptStatus === "function") {
+        setNodeGraphScriptStatus(`page patch missing: ${pagePatchSlug}`, false);
+      }
+    } catch (error) {
+      if (typeof setNodeGraphScriptStatus === "function") {
+        setNodeGraphScriptStatus(`page patch failed: ${error?.message || error}`, false);
+      }
+    }
+  }
   try {
     const sharePayload = typeof nodeGraphSharePayloadFromUrl === "function"
       ? nodeGraphSharePayloadFromUrl()
@@ -36,7 +83,15 @@ async function initNodeGraphMvp() {
   // An embedding page can push a patch (e.g. "soundemote:sandbox-project-data")
   // before this async boot sequence reaches here -- don't clobber it with the
   // internal default/working patch in that case.
-  if (!nodeGraphMvp.externalStartupPatchApplied) {
+  if (pagePatchLoaded) {
+    commitNodeGraphPatch(cloneNodeGraphPatch(startupPatch), {
+      autosaveWorkingPatch: false,
+      markPending: false,
+      patchDirtyState: "untouched",
+      record: false,
+      status: `page /${pagePatchSlug} loaded`,
+    });
+  } else if (!nodeGraphMvp.externalStartupPatchApplied) {
     commitNodeGraphPatch(cloneNodeGraphPatch(startupPatch), {
       autosaveWorkingPatch: false,
       markPending: false,

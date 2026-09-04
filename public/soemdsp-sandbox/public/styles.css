@@ -4859,28 +4859,51 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   display: none !important;
 }
 
+.node-pages-page > .scene-context-heading,
+.node-pages-page > .node-unified-window-nav-host {
+  flex: 0 0 auto;
+}
+
 .node-pages-page-body {
+  position: relative;
+  z-index: 0;
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
-  padding: 8px 10px 14px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  /* Clear the SE resize grip so rows do not stack under / clip into it. */
+  padding: 8px 10px 28px;
   display: flex;
   flex-direction: column;
+  align-content: start;
   gap: 6px;
 }
 
+.node-command-center-dock > .node-pages-page > .node-pages-page-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .node-pages-status {
+  flex: 0 0 auto;
   color: rgba(160, 167, 176, 0.78);
   font-size: 0.78rem;
   padding: 8px 4px;
 }
 
 .node-pages-entry {
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  flex: 0 0 auto;
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  margin: 0;
   text-align: left;
   padding: 8px 10px;
   border: 1px solid rgba(127, 199, 217, 0.22);
@@ -4888,6 +4911,7 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   background: rgba(17, 20, 24, 0.72);
   color: rgba(243, 241, 236, 0.92);
   cursor: pointer;
+  font: inherit;
 }
 
 .node-pages-entry:hover,

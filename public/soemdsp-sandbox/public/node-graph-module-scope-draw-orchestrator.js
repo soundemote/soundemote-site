@@ -418,13 +418,9 @@ function drawNodeGraphModuleScopes(options = {}) {
       // Best-effort — typed item may still present.
     }
   }
-  if (typeof paintNodeGraphFbmFieldFacesNow === "function") {
-    try {
-      paintNodeGraphFbmFieldFacesNow();
-    } catch (_error) {
-      // Best-effort — RAF covers traces-off only.
-    }
-  }
+  // FBM faces paint from their own rAF + Simulation FPS clock
+  // (fbm-field-ui.js). Avoid a second fill_grid here — it raced the face
+  // loop and doubled main-thread WASM cost when both paths ran.
   setNodeGraphModuleScopeDebugPhase("clear-current-frame");
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.viewport(0, 0, canvas.width, canvas.height);
@@ -544,6 +540,10 @@ function nodeGraphModuleScopeSimFps() {
 }
 
 function clearNodeGraphModuleScopeDrawWait() {
+  if (nodeGraphModuleScopeState.drawWaitRaf) {
+    window.cancelAnimationFrame(nodeGraphModuleScopeState.drawWaitRaf);
+    nodeGraphModuleScopeState.drawWaitRaf = 0;
+  }
   if (nodeGraphModuleScopeState.drawWaitTimer) {
     window.clearTimeout(nodeGraphModuleScopeState.drawWaitTimer);
     nodeGraphModuleScopeState.drawWaitTimer = 0;
@@ -551,7 +551,11 @@ function clearNodeGraphModuleScopeDrawWait() {
 }
 
 function scheduleNodeGraphModuleScopeDrawAfterSimClock() {
-  if (nodeGraphModuleScopeState.drawWaitTimer || nodeGraphModuleScopeState.drawFrame) {
+  if (
+    nodeGraphModuleScopeState.drawWaitTimer
+    || nodeGraphModuleScopeState.drawWaitRaf
+    || nodeGraphModuleScopeState.drawFrame
+  ) {
     return;
   }
   const fps = nodeGraphModuleScopeSimFps();
@@ -562,10 +566,19 @@ function scheduleNodeGraphModuleScopeDrawAfterSimClock() {
   const last = Number(nodeGraphModuleScopeState.phosphorFrame?.lastUpdate) || 0;
   const frameDur = 1 / fps;
   let remainingMs = (last + frameDur - now) * 1000;
-  if (!Number.isFinite(remainingMs) || remainingMs < 8) {
-    remainingMs = 8;
+  if (!Number.isFinite(remainingMs) || remainingMs < 0) {
+    remainingMs = 0;
   }
   remainingMs = Math.min(remainingMs, frameDur * 1000);
+  // Stay vsync-aligned when the next sim tick is due within one refresh.
+  // setTimeout mid-refresh was a common source of "60 feels like 30" online.
+  if (remainingMs <= 1000 / 60) {
+    nodeGraphModuleScopeState.drawWaitRaf = window.requestAnimationFrame(() => {
+      nodeGraphModuleScopeState.drawWaitRaf = 0;
+      scheduleNodeGraphModuleScopeDraw();
+    });
+    return;
+  }
   nodeGraphModuleScopeState.drawWaitTimer = window.setTimeout(() => {
     nodeGraphModuleScopeState.drawWaitTimer = 0;
     scheduleNodeGraphModuleScopeDraw();
@@ -577,7 +590,7 @@ function scheduleNodeGraphModuleScopeDraw(options = {}) {
   if (!nodeGraphModuleScopeHasDrawableSlots()) {
     return;
   }
-  if (!force && nodeGraphModuleScopeState.drawWaitTimer) {
+  if (!force && (nodeGraphModuleScopeState.drawWaitTimer || nodeGraphModuleScopeState.drawWaitRaf)) {
     return;
   }
   if (force) {

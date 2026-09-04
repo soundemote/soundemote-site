@@ -167,23 +167,11 @@ function nodeGraphFbmFieldStartLoop(face, nodeId) {
       nodeGraphFbmFieldStopLoop(face);
       return;
     }
-    // Live compositor owns the Simulation FPS tick (same as spectrogram /
-    // Pixel Grid). This loop only covers traces-off / no compositor.
-    const live = typeof scopePaintShouldFullDraw === "function"
-      ? scopePaintShouldFullDraw(false)
-      : (typeof nodeGraphModuleScopeLivePaintActive === "function"
-        ? nodeGraphModuleScopeLivePaintActive()
-        : true);
-    const tracesOff = typeof nodeGraphModuleScopeTracesOff === "function"
-      && nodeGraphModuleScopeTracesOff();
-    if (live && !tracesOff) {
-      if (face._fbmFieldRunning) {
-        face._fbmFieldRaf = requestAnimationFrame(tick);
-      }
-      return;
-    }
+    // Paint on the shared Simulation FPS clock. Do not defer to the compositor
+    // alone — compositor early-outs (fps-gate wait, trace-unchanged, etc.) left
+    // FBM faces blank while this loop only rAF-spun.
     const frameReady = typeof nodeGraphDisplayFrameReady === "function"
-      ? nodeGraphDisplayFrameReady("fbmField")
+      ? nodeGraphDisplayFrameReady(`fbmField:${nodeId}`)
       : true;
     if (frameReady) {
       const last = face._fbmFieldLastTs || ts;

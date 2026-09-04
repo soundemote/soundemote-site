@@ -21,6 +21,7 @@ function sandboxIframeSrc(
   params: SandboxRouteParams,
   wantsAutoframe: boolean,
   wantsAutostart: boolean,
+  pagePatchSlug?: string,
 ) {
   const iframeParams = new URLSearchParams(search);
   const hasPatchRoute = Boolean(params.patch);
@@ -30,6 +31,12 @@ function sandboxIframeSrc(
     iframeParams.set("sandboxUser", params.user || "soundemote");
     iframeParams.set("sandboxBank", params.bank || "main");
     iframeParams.set("sandboxPatch", params.patch || "");
+  }
+
+  // Static page patches: iframe loads the JSON itself during boot so a stale
+  // workingPatch / postMessage race cannot keep showing an old graph.
+  if (pagePatchSlug) {
+    iframeParams.set("pagePatch", pagePatchSlug);
   }
 
   // Autoframe is on by default; propagate it into the iframe so the sandbox
@@ -50,7 +57,7 @@ function sandboxIframeSrc(
   // Also force a one-shot viewport recover path when a prior Chrome session
   // restored pan/zoom off-screen (UI chrome visible, empty black workspace).
   if (!iframeParams.has("v")) {
-    iframeParams.set("v", "20260902-history-hz");
+    iframeParams.set("v", "20260904-pagepatch");
   }
   const query = iframeParams.toString();
   return `/soemdsp-sandbox/index.html${query ? `?${query}` : ""}`;
@@ -172,7 +179,13 @@ const SandboxPage = ({
   const targetLabel = hasPatchRoute
     ? `${params.user || "soundemote"} / ${params.bank || "main"} / ${params.patch}`
     : "soemdsp sandbox";
-  const iframeSrc = sandboxIframeSrc(location.search, params, wantsAutoframe, effectiveAutostart);
+  const iframeSrc = sandboxIframeSrc(
+    location.search,
+    params,
+    wantsAutoframe,
+    effectiveAutostart,
+    pagePatch || undefined,
+  );
 
   useEffect(() => {
     let cancelled = false;

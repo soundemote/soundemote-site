@@ -10,7 +10,7 @@
 
 /**
  * Engine transport is playing (speed > 0) and a live audio node exists.
- * Does not require AudioContext.state === "running" — suspended can lag resume.
+ * Does not require Live Output or AudioContext.state === "running".
  */
 function scopePaintIsEnginePlaying() {
   const live = typeof nodeGraphMvp !== "undefined" ? nodeGraphMvp?.live : null;
@@ -23,6 +23,12 @@ function scopePaintIsEnginePlaying() {
     return speed > 0;
   }
   return true;
+}
+
+/** Live Output is on (sample stream / speaker path). */
+function scopePaintIsLiveOutputOn() {
+  const live = typeof nodeGraphMvp !== "undefined" ? nodeGraphMvp?.live : null;
+  return Boolean(live?.outputEnabled);
 }
 
 /** Display Settings / patch overlay: scopes frozen without stopping audio. */
@@ -42,7 +48,12 @@ function nodeGraphDisplaysFrozen() {
   return false;
 }
 
-function scopePaintIsLive() {
+/**
+ * Drawing faces (basicShape, roundShape, filter curves, …) may animate from
+ * transport alone — Live Output is not required. Not for realtime field
+ * drawers (FBM field) or phosphor / Instant Trace.
+ */
+function scopePaintIsDrawingLive() {
   if (scopePaintIsVisualPaused()) {
     return false;
   }
@@ -50,12 +61,30 @@ function scopePaintIsLive() {
 }
 
 /**
- * Per-module face RAF: animate only while engine is live and the host node
- * is on-screen. When false, faces should paint at most once (idle plate) and
- * not reschedule requestAnimationFrame.
+ * Heavy realtime screens (phosphor, Instant Trace / strip traces, FBM field).
+ * Need Live Output so the sample / domain stream is actually pumping.
+ */
+function scopePaintIsRealtimeSampleLive() {
+  if (scopePaintIsVisualPaused()) {
+    return false;
+  }
+  return scopePaintIsEnginePlaying() && scopePaintIsLiveOutputOn();
+}
+
+/**
+ * @deprecated Prefer scopePaintIsDrawingLive / scopePaintIsRealtimeSampleLive.
+ * Kept as drawing-live (no Live Output) for shape / curve face RAF helpers.
+ */
+function scopePaintIsLive() {
+  return scopePaintIsDrawingLive();
+}
+
+/**
+ * Per-module face RAF for drawing faces (shapes / curves). Live Output not
+ * required. Realtime drawers (FBM field) use scopePaintIsRealtimeSampleLive.
  */
 function scopePaintFaceShouldAnimate(faceOrNode) {
-  if (!scopePaintIsLive()) {
+  if (!scopePaintIsDrawingLive()) {
     return false;
   }
   if (
@@ -108,9 +137,8 @@ function scopePaintIsPaused() {
 }
 
 /**
- * Should this draw entry run the full collect + face paint path?
- * force=true (Clear, Settings, sample snapshot) always allowed for cold plate /
- * rebound even while paused.
+ * Full compositor draw (phosphor deposits + Instant Trace / sample faces).
+ * Requires Live Output. force=true still allowed for Clear / Settings plates.
  */
 function scopePaintShouldFullDraw(force = false) {
   if (force === true) {
@@ -119,7 +147,7 @@ function scopePaintShouldFullDraw(force = false) {
   if (typeof nodeGraphOutputInkWantsFrames === "function" && nodeGraphOutputInkWantsFrames()) {
     return true;
   }
-  return scopePaintIsLive();
+  return scopePaintIsRealtimeSampleLive();
 }
 
 /**
@@ -132,7 +160,7 @@ function scopePaintShouldKeepLoop() {
     }
     return true;
   }
-  if (!scopePaintIsLive()) {
+  if (!scopePaintIsRealtimeSampleLive()) {
     return false;
   }
   if (typeof nodeGraphModuleScopeState !== "undefined" && nodeGraphModuleScopeState?.idleHold) {
@@ -145,11 +173,11 @@ function scopePaintShouldKeepLoop() {
 }
 
 /**
- * Instant Trace signature skip: never while live (strip chart must repaint).
- * When idle, callers may still use signature caching for static frames.
+ * Instant Trace signature skip: never while realtime sample stream is live.
+ * When idle / Live Output off, callers may cache static frames.
  */
 function scopePaintShouldSkipUnchangedTrace() {
-  return !scopePaintIsLive();
+  return !scopePaintIsRealtimeSampleLive();
 }
 
 /**
@@ -230,7 +258,7 @@ function scopePaintKeepLoopAlive() {
 // --- Compatibility shims (existing names) ---------------------------------
 
 function nodeGraphModuleScopeLivePaintActive() {
-  return scopePaintIsLive();
+  return scopePaintIsRealtimeSampleLive();
 }
 
 function nodeGraphModuleScopeEnginePaused() {

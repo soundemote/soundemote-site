@@ -95,8 +95,11 @@ function nodeGraphModuleScopeAdvanceFixedFrameClock(state, now, fps) {
       time: now,
     };
   }
-  // Cap slop at ~1 display refresh so 1 FPS does not accept 50ms early.
-  const slop = Math.min(frameDuration * 0.05, 1 / 120);
+  // Generous slop: tight 5% early-accept parked lastUpdate a hair in the
+  // future, so the next display refresh was rejected (felt like ~half rate
+  // online when the main thread was busier than local). Cap at one 60 Hz
+  // quantum so 1 FPS still cannot fire twice in one refresh.
+  const slop = Math.min(frameDuration * 0.2, 1 / 60);
   if (elapsed + slop < frameDuration) {
     return {
       ready: false,
@@ -106,13 +109,16 @@ function nodeGraphModuleScopeAdvanceFixedFrameClock(state, now, fps) {
     };
   }
   const steps = Math.max(1, Math.floor((elapsed + slop) / frameDuration));
-  const nextLastUpdate = lastUpdate + steps * frameDuration;
+  // Never park lastUpdate in the future — that skips the next vsync and is
+  // why Simulation FPS 60 needed to be cranked to 120 on a loaded tab.
+  const scheduled = lastUpdate + steps * frameDuration;
+  const nextLastUpdate = scheduled > now ? now : scheduled;
   const nextTime = (Number.isFinite(stateTime) ? stateTime : lastUpdate) + steps * frameDuration;
   return {
     ready: true,
     steps,
     lastUpdate: nextLastUpdate,
-    time: nextTime,
+    time: nextTime > now ? now : nextTime,
   };
 }
 
