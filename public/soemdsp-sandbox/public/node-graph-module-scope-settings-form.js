@@ -155,6 +155,7 @@ function nodeGraphDisplaySettingsBuildStepperRowHtml(key, formType = null, optio
     label = "Size";
     title = "Dot diameter as a fraction of the face min side.";
   }
+
   if ((formType === "vectorDot" || formType === "pulseDot" || formType === "lcdDot") && key === "shapeParam") {
     const live = document.getElementById("nodeTraceDisplaySettingsPopover")
       ?.querySelector?.(`[data-trace-display-choice="shape"]`)?.value;
@@ -1268,7 +1269,7 @@ function buildNodeGraphInstantTraceDisplaySettingsBodyHtml(type, node, allowKey)
   const usedChoices = new Set();
   const usedToggles = new Set();
   if (toggleKeys.includes("skipDiscontinuities")) {
-    rows.push(nodeGraphDisplaySettingsBuildToggleRowHtml("skipDiscontinuities"));
+    // Always break discontinuity edges in the drawer — no UI toggle.
     usedToggles.add("skipDiscontinuities");
   }
   if (stereoInk && choiceKeys.includes("syncChannel")) {
@@ -1527,7 +1528,7 @@ function buildNodeGraphPhosphorDisplaySettingsBodyHtml(type, node, allowKey) {
     previewPlaced = true;
   };
   if (toggleKeys.includes("skipDiscontinuities")) {
-    rows.push(nodeGraphDisplaySettingsBuildToggleRowHtml("skipDiscontinuities"));
+    // Always break discontinuity edges in the drawer — no UI toggle.
     usedToggles.add("skipDiscontinuities");
   }
   if (toggleKeys.includes("sourceSync")) {
@@ -1618,6 +1619,9 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
   }
   if (type === "rgbPictureFace" && typeof buildNodeGraphRgbPictureDisplaySettingsBodyHtml === "function") {
     return buildNodeGraphRgbPictureDisplaySettingsBodyHtml();
+  }
+  if (type === "imageBurnFace" && typeof buildNodeGraphImageBurnDisplaySettingsBodyHtml === "function") {
+    return buildNodeGraphImageBurnDisplaySettingsBodyHtml();
   }
   // Matrix Waterfall / Matrix Display custom bodies.
   if (
