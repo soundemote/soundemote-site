@@ -23,6 +23,8 @@ function nodeGraphResolveModuleTypeAlias(type) {
   // Pre-rename graph modules (keep patches; do not retire-drop).
   if (t === "graph2" || t === "graph") return "smoothGraph";
   if (t === "graphCopy") return "stepGraph";
+  // Catalog rename: Ping Envelope (type id stays pluckEnvelope3 for patches).
+  if (t === "pingEnvelope") return "pluckEnvelope3";
   return t;
 }
 
@@ -224,6 +226,7 @@ const nodeGraphDefaultPatch = Object.freeze({
     targetSampleRate: 44100,
     pitchReferenceMidiNote: 48,
     pitchReferenceHz: 100,
+    pitchOffsetOctaves: 0,
   },
   bypassedNodes: [],
   cameras: [

@@ -104,8 +104,11 @@ function nodeGraphDisplaySettingsClipboardFamily(formType) {
   if (key === "scope2dTrace" || key === "gradientVectorscopeFace" || key === "traceXyz") {
     return "trace2d";
   }
-  if (key === "lineBurn" || key === "hypersawBurn" || key === "oscilloscopeBankBurn") {
+  if (key === "lineBurn" || key === "oscilloscopeBankBurn") {
     return "phosphor1d";
+  }
+  if (key === "hypersawBurn") {
+    return "";
   }
   if (typeof nodeGraphDisplaySettingsIsPhosphorFormType === "function"
     && nodeGraphDisplaySettingsIsPhosphorFormType(key)
@@ -133,8 +136,8 @@ function nodeGraphDisplaySettingsClipboardFamilyLabel(family) {
 
 function nodeGraphDisplaySettingsIsPhosphorFormType(type) {
   const key = String(type || "").trim();
-  // Spectrogram is *Burn by name only — not the stamp/residual phosphor stack.
-  if (key === "spectrogramBurn") {
+  // Spectrogram / Hypersaw are *Burn by name only — not the stamp/residual phosphor stack.
+  if (key === "spectrogramBurn" || key === "hypersawBurn") {
     return false;
   }
   return key === "scope2d"
@@ -144,7 +147,6 @@ function nodeGraphDisplaySettingsIsPhosphorFormType(type) {
     || key === "xyPad"
     || key === "videoscopeBurn"
     || key === "oscilloscopeBankBurn"
-    || key === "hypersawBurn"
     || key.endsWith("Burn");
 }
 
@@ -747,6 +749,31 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
     toggles: Object.freeze([]),
     choices: Object.freeze([]),
   }),
+  basicShapeFace: Object.freeze({
+    fields: Object.freeze([
+      "lineThickness",
+      "lineBrightness",
+      "dotThickness",
+      "dotBrightness",
+      "backgroundBrightness",
+      "lineBlur",
+      "pixelDensity",
+    ]),
+    colors: Object.freeze(["strokeColor", "dotColor", "backgroundColor"]),
+    toggles: Object.freeze([]),
+    choices: Object.freeze([]),
+  }),
+  softwaveOscFace: Object.freeze({
+    fields: Object.freeze([
+      "lineThickness",
+      "lineBrightness",
+      "dotThickness",
+      "backgroundBrightness",
+    ]),
+    colors: Object.freeze(["strokeColor", "dotColor", "backgroundColor"]),
+    toggles: Object.freeze(["showDot"]),
+    choices: Object.freeze([]),
+  }),
   // Size (dot1Size) is 0…1 of the centered face square — F-fullscreen scales with it.
   sinCos4Face: Object.freeze({
     fields: Object.freeze(["dot1Size", "pixelDensity"]),
@@ -906,6 +933,7 @@ const nodeGraphTraceDisplaySectionControls = Object.freeze({
     toggles: Object.freeze([
       "sourceSync",
       "skipDiscontinuities",
+      "showDot",
       "digitBins",
       "decimalBudget",
       "removeTrailingZeros",
@@ -1406,6 +1434,11 @@ const nodeGraphDisplaySettingsToggleMeta = Object.freeze({
     id: "nodeTraceDisplaySourceSync",
     title:
       "1D Waterfall: Off = History (Hz) scroll window. On = Cycles in view (smooth), stretched full-width to a rising zero-crossing. 1D Phosphor: Sync Off = Sweep (Hz); Sync On = Sweep (c) cycles in view, restart each pass on a rising zero-crossing; Reset jack still snaps.",
+  }),
+  showDot: Object.freeze({
+    label: "Show Dot",
+    id: "nodeTraceDisplayShowDot",
+    title: "Softwave face: show the phase playhead dot on the waveshape. Off by default (static shape only).",
   }),
   cmyMode: Object.freeze({
     label: "CMY",

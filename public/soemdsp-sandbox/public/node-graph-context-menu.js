@@ -823,6 +823,7 @@ const nodeGraphModuleActionControlIds = [
   "nodeSceneTextBoxVerticalAlignControls",
   // Disable lives inside Visibility (under Hide unused) — not a top-level control.
   "nodeSceneCodeGroup",
+  "nodeSceneGroupMetamodule",
   "nodeSceneDeleteModule",
 ];
 
@@ -1117,6 +1118,7 @@ function configureNodeSceneContextMenu(mode) {
   const moduleActionsWindowButton = document.getElementById("nodeSceneOpenModuleActions");
   const metaparametersWindowButton = document.getElementById("nodeSceneOpenMetaparameters");
   const deleteButton = document.getElementById("nodeSceneDeleteModule");
+  const groupMetamoduleButton = document.getElementById("nodeSceneGroupMetamodule");
   const closeButton = document.getElementById(actionMode ? "nodeModuleActionsClose" : "nodeSceneCloseMenu");
   const selectedModule = document.getElementById("nodeSceneSelectedModule");
   const wireTypeControl = document.getElementById("nodeSceneWireTypeControl");
@@ -1389,6 +1391,25 @@ function configureNodeSceneContextMenu(mode) {
   }
   const targetIsGraphType = nodeGraphModuleIsGraphType(targetNode?.type);
   deleteButton.hidden = !(moduleMode || wireMode);
+  if (groupMetamoduleButton) {
+    // Single or multi selection on Root (not already inside a metamodule).
+    const canGroup = Boolean(
+      moduleMode
+      && typeof nodeGraphSelectionCanGroupIntoMetamodule === "function"
+      && nodeGraphSelectionCanGroupIntoMetamodule(),
+    );
+    groupMetamoduleButton.hidden = !canGroup;
+    groupMetamoduleButton.disabled = !canGroup;
+    const n = typeof nodeGraphSelectedNodeIds === "function"
+      ? nodeGraphSelectedNodeIds().size
+      : 0;
+    const label = groupMetamoduleButton.querySelector("span");
+    if (label) {
+      label.textContent = n <= 1
+        ? "Group into Metamodule"
+        : `Group ${n} into Metamodule`;
+    }
+  }
   selectedModule.hidden = !(moduleMode || wireMode);
   if (homeModules) {
     if (homeMode) {
@@ -1765,8 +1786,13 @@ function configureNodeSceneContextMenu(mode) {
     if (nativeCodeButton) {
       nativeCodeButton.disabled = !nativeCodeEntry;
       nativeCodeButton.querySelector("span").textContent = "Code";
+      const localHref = nativeCodeEntry && typeof nodeGraphLocalSourceHrefForEntry === "function"
+        ? nodeGraphLocalSourceHrefForEntry(nativeCodeEntry)
+        : "";
       nativeCodeButton.title = nativeCodeEntry
-        ? `Open ${nativeCodeEntry.source || "source"}.`
+        ? (localHref
+          ? `Open local ${nativeCodeEntry.source || localHref} (same-origin; works before GitHub push).`
+          : `Open ${nativeCodeEntry.source || nativeCodeEntry.sourceUrl || "source"}.`)
         : "Source unavailable.";
     }
     if (nativeLibButton) {
@@ -2096,12 +2122,12 @@ function configureNodeSceneContextMenu(mode) {
     const rangeUnipolarButton = document.getElementById("nodeSceneWireRangeUnipolar");
     if (rangeUnipolarButton) {
       rangeUnipolarButton.disabled = !canAttenuateWires;
-      rangeUnipolarButton.title = "Range Unipolar: map 0…1 → 0…1000 on each selected wire.";
+      rangeUnipolarButton.title = "Range Unipolar: map 0…1 → −10…+10 on each selected wire.";
     }
     const rangeBipolarButton = document.getElementById("nodeSceneWireRangeBipolar");
     if (rangeBipolarButton) {
       rangeBipolarButton.disabled = !canAttenuateWires;
-      rangeBipolarButton.title = "Range Bipolar: map −1…+1 → 0…1000 on each selected wire.";
+      rangeBipolarButton.title = "Range Bipolar: map −1…+1 → −10…+10 on each selected wire.";
     }
     const u2bButton = document.getElementById("nodeSceneWireU2b");
     if (u2bButton) {
@@ -2406,15 +2432,18 @@ function openNodeRoundShapeContextMenu(event) {
     return false;
   }
   const face = target.closest?.(
-    ".node-round-shape-display, .node-round-shape-canvas, .node-basic-shape-display, .node-basic-shape-canvas",
+    ".node-round-shape-display, .node-round-shape-canvas, .node-basic-shape-display, .node-basic-shape-canvas, .node-softwave-osc-display, .node-softwave-osc-canvas",
   );
   if (!face) {
     return false;
   }
   const display = face.classList?.contains("node-round-shape-display")
     || face.classList?.contains("node-basic-shape-display")
+    || face.classList?.contains("node-softwave-osc-display")
     ? face
-    : (face.closest?.(".node-round-shape-display") || face.closest?.(".node-basic-shape-display"));
+    : (face.closest?.(".node-round-shape-display")
+      || face.closest?.(".node-basic-shape-display")
+      || face.closest?.(".node-softwave-osc-display"));
   const nodeId = String(
     display?.dataset?.node
     || face.dataset?.node
@@ -2443,7 +2472,7 @@ function openNodeRoundShapeContextMenu(event) {
 
 function openNodeScopeContextMenu(event) {
   const contextScope = event.target.closest?.(
-    ".node-module-scope-window, .node-led-face, .node-number-readout-face, .node-value-lcd-face, .node-ray-bouncer-face, .node-asciiscope-face, .node-matrix-face, .node-round-shape-display, .node-basic-shape-display",
+    ".node-module-scope-window, .node-led-face, .node-number-readout-face, .node-value-lcd-face, .node-ray-bouncer-face, .node-asciiscope-face, .node-matrix-face, .node-round-shape-display, .node-basic-shape-display, .node-softwave-osc-display",
   );
   const nodeId = contextScope?.dataset?.node || "";
   const patchNode = nodeId ? nodeGraphPatchNode(nodeId) : null;

@@ -127,6 +127,16 @@ function nodeGraphPatchNodeParameterDefinitions(node) {
       ? { ...parameter, defaultLabel: parameter.label, label: alias }
       : { ...parameter, defaultLabel: parameter.label };
   });
+  // Metamodule shell: append child params marked "Show metaparameter".
+  if (
+    patchNode?.type === "metamodule"
+    && typeof nodeGraphMetamoduleExposedParameterDefinitions === "function"
+  ) {
+    const exposed = nodeGraphMetamoduleExposedParameterDefinitions(patchNode);
+    if (exposed.length) {
+      return parameters.concat(exposed);
+    }
+  }
   return parameters;
 }
 const nodeGraphCodeblockDefaultCode = "Out1 = In1;";
@@ -255,6 +265,13 @@ function nodeGraphPatchNodeInputPorts(node) {
   if (patchNode?.type === "screenSpaceShader") {
     return normalizeNodeGraphScreenSpaceShader(patchNode.screenSpaceShader).inputs;
   }
+  // Metamodule shell: Poly + boundary-derived Root jacks (portals stay for DSP).
+  if (
+    patchNode?.type === "metamodule"
+    && typeof nodeGraphMetamoduleShellPorts === "function"
+  ) {
+    return nodeGraphMetamoduleShellPorts(patchNode).inputs;
+  }
   const definition = typeof nodeGraphModuleDefinition === "function"
     ? nodeGraphModuleDefinition(patchNode?.type)
     : nodeGraphModuleDefinitions[patchNode?.type];
@@ -272,6 +289,12 @@ function nodeGraphPatchNodeOutputPorts(node) {
   }
   if (patchNode?.type === "customDisplay") {
     return [];
+  }
+  if (
+    patchNode?.type === "metamodule"
+    && typeof nodeGraphMetamoduleShellPorts === "function"
+  ) {
+    return nodeGraphMetamoduleShellPorts(patchNode).outputs;
   }
   return nodeGraphModuleOutputPorts(patchNode?.type);
 }
@@ -455,12 +478,19 @@ function nodeGraphParameterDefinitionMetadata(parameter) {
         ? NODE_GRAPH_METADATA_TOOLTIP_MAX_CHARS
         : 2000,
     ),
-    // After MOD: hard re-clamp only when requested (default false).
+    // After MOD: clip to DOMAIN min…max (default true). Opt out with modClamp:false.
     // Resource params use constraint cpu|gpu|ram; wraparound always wraps.
     modClamp: Object.hasOwn(parameter, "modClamp")
       ? Boolean(parameter.modClamp)
-      : false,
+      : true,
     hardClamp: Boolean(parameter.hardClamp),
+    // VCA multiply opt-in/out for native Control flags (Softwave Amp opts out).
+    modMultiply: Object.hasOwn(parameter, "modMultiply")
+      ? Boolean(parameter.modMultiply)
+      : undefined,
+    vca: Object.hasOwn(parameter, "vca")
+      ? Boolean(parameter.vca)
+      : undefined,
     constraint: Array.isArray(parameter.constraint)
       ? parameter.constraint.join(" ")
       : (parameter.constraint ? String(parameter.constraint) : ""),
@@ -592,9 +622,30 @@ function nodeGraphModuleUsesYellowGraphDomainParamOut(type) {
 }
 
 function normalizeNodeGraphPatchParameterMetadata(type, key, metadata = {}) {
-  const parameter = nodeGraphModuleDefinitions[type]?.parameters?.find(
+  let parameter = nodeGraphModuleDefinitions[type]?.parameters?.find(
     (candidate) => candidate.key === key,
   );
+  // Metamodule exposed mx_* rows: normalize against the child parameter def.
+  if (
+    !parameter
+    && type === "metamodule"
+    && String(key || "").startsWith("mx_")
+    && typeof nodeGraphMetamoduleResolveExposeTarget === "function"
+  ) {
+    const patch = typeof nodeGraphMvp !== "undefined" ? nodeGraphMvp?.patch : null;
+    const metas = (patch?.nodes || []).filter((n) => n?.type === "metamodule");
+    for (const meta of metas) {
+      const target = nodeGraphMetamoduleResolveExposeTarget(meta, key, patch);
+      if (!target?.child) continue;
+      parameter = nodeGraphModuleDefinitions[target.child.type]?.parameters?.find(
+        (candidate) => candidate.key === target.paramKey,
+      );
+      if (parameter && (!metadata || typeof metadata !== "object" || !Object.keys(metadata).length)) {
+        metadata = target.child.paramMeta?.[target.paramKey] || metadata;
+      }
+      break;
+    }
+  }
   const fallback = parameter
     ? nodeGraphParameterDefinitionMetadata(parameter)
     : null;
@@ -643,10 +694,82 @@ function normalizeNodeGraphPatchParameterMetadata(type, key, metadata = {}) {
       def = Number.isFinite(fallback.def) ? fallback.def : mid;
     }
   }
-  const choices = normalizeNodeGraphMetadataChoices(
-    Object.hasOwn(source, "choices") ? source.choices : fallback.choices,
-    fallback.choices,
-  );
+  // Chaosfly Pitch / LP / HP: octave offsets (−10…+10). Stale patch paramMeta
+  // from the old 0…1 “amount” era must not keep the slider locked to 0…1.
+  let forceChaosflyOctUnit = false;
+  if (
+    type === "chaosfly"
+    && (key === "lowpass" || key === "highpass" || key === "pitch")
+    && Number.isFinite(fallback.min)
+    && Number.isFinite(fallback.max)
+    && fallback.min <= -10
+    && fallback.max >= 10
+    && max <= 1
+    && min >= 0
+  ) {
+    min = fallback.min;
+    max = fallback.max;
+    mid = Number.isFinite(fallback.mid) ? fallback.mid : 0;
+    def = Number.isFinite(fallback.def) ? fallback.def : 0;
+    forceChaosflyOctUnit = true;
+  }
+  // Chaosfly LP Taps: old 0…6 power-of-two index → direct 1…64 pole count.
+  let forceChaosflyTaps = false;
+  if (
+    type === "chaosfly"
+    && key === "taps"
+    && Number.isFinite(fallback.min)
+    && Number.isFinite(fallback.max)
+    && fallback.min <= 1
+    && fallback.max >= 64
+    && max <= 6
+    && min >= 0
+  ) {
+    min = fallback.min;
+    max = fallback.max;
+    mid = Number.isFinite(fallback.mid) ? fallback.mid : 8;
+    def = Number.isFinite(fallback.def) ? fallback.def : 4;
+    forceChaosflyTaps = true;
+  }
+  // Thump Envelope Decay Body: was 0…10 (patch atten); now 0…1 inverted UI.
+  if (
+    type === "thumpEnvelope"
+    && key === "decayBody"
+    && Number.isFinite(fallback.max)
+    && fallback.max <= 1
+    && max > 1
+  ) {
+    min = 0;
+    max = 1;
+    mid = Number.isFinite(fallback.mid) ? fallback.mid : 0.5;
+    // Old atten-style def 10 → new UI 0 (short / patch-equivalent).
+    if (Number.isFinite(def) && def > 1) {
+      def = Math.max(0, Math.min(1, 1 - def / 10));
+    } else if (!Number.isFinite(def) || def > 1) {
+      def = Number.isFinite(fallback.def) ? fallback.def : 0;
+    }
+  }
+  // Range: knob domain was ±1000 / ±10000; sane defaults are −10…+10.
+  if (
+    type === "range"
+    && (key === "inLow" || key === "inHigh" || key === "outLow" || key === "outHigh")
+    && Number.isFinite(fallback.min)
+    && Number.isFinite(fallback.max)
+    && fallback.min === -10
+    && fallback.max === 10
+    && (min < -10 || max > 10)
+  ) {
+    min = -10;
+    max = 10;
+    mid = Number.isFinite(fallback.mid) ? fallback.mid : 0;
+    if (Number.isFinite(fallback.def)) def = fallback.def;
+  }
+  const choices = forceChaosflyTaps
+    ? []
+    : normalizeNodeGraphMetadataChoices(
+      Object.hasOwn(source, "choices") ? source.choices : fallback.choices,
+      fallback.choices,
+    );
   const normalized = {
     alias: normalizeNodeGraphPatchMetadataAlias(
       Object.hasOwn(metadata || {}, "alias") ? metadata.alias : fallback.alias,
@@ -659,16 +782,22 @@ function normalizeNodeGraphPatchParameterMetadata(type, key, metadata = {}) {
     def: clampNodeSliderValue(Number.isFinite(def) ? def : fallback.def, min, max),
     // Independent flags: display = choice labels; divide = visible separators.
     // Never derive one from the other (that coupled the two checkboxes in UI).
-    displayChoices: Object.hasOwn(source, "displayChoices")
-      ? Boolean(source.displayChoices)
-      : Boolean(fallback.displayChoices),
-    divideChoicesVisibly: Object.hasOwn(source, "divideChoicesVisibly")
-      ? Boolean(source.divideChoicesVisibly)
-      : Boolean(fallback.divideChoicesVisibly),
+    displayChoices: forceChaosflyTaps
+      ? false
+      : (Object.hasOwn(source, "displayChoices")
+        ? Boolean(source.displayChoices)
+        : Boolean(fallback.displayChoices)),
+    divideChoicesVisibly: forceChaosflyTaps
+      ? false
+      : (Object.hasOwn(source, "divideChoicesVisibly")
+        ? Boolean(source.divideChoicesVisibly)
+        : Boolean(fallback.divideChoicesVisibly)),
     kind,
-    bipolar: Object.hasOwn(source, "bipolar")
-      ? Boolean(source.bipolar)
-      : Boolean(fallback.bipolar),
+    bipolar: forceChaosflyOctUnit
+      ? true
+      : (Object.hasOwn(source, "bipolar")
+        ? Boolean(source.bipolar)
+        : Boolean(fallback.bipolar)),
     max,
     maxDigits: normalizeNodeGraphMetadataMaxDigits(
       Object.hasOwn(source, "maxDigits") ? source.maxDigits : fallback.maxDigits,
@@ -727,10 +856,22 @@ function normalizeNodeGraphPatchParameterMetadata(type, key, metadata = {}) {
     hardClamp: Object.hasOwn(source, "hardClamp")
       ? Boolean(source.hardClamp)
       : Boolean(fallback.hardClamp),
+    modMultiply: (() => {
+      if (Object.hasOwn(source, "modMultiply")) return Boolean(source.modMultiply);
+      if (Object.hasOwn(fallback, "modMultiply")) return Boolean(fallback.modMultiply);
+      return undefined;
+    })(),
+    vca: (() => {
+      if (Object.hasOwn(source, "vca")) return Boolean(source.vca);
+      if (Object.hasOwn(fallback, "vca")) return Boolean(fallback.vca);
+      return undefined;
+    })(),
     constraint: Object.hasOwn(source, "constraint")
       ? String(source.constraint ?? "")
       : String(fallback.constraint || ""),
-    unit: String(Object.hasOwn(source, "unit") ? source.unit ?? "" : fallback.unit),
+    unit: forceChaosflyOctUnit
+      ? String(fallback.unit || "oct")
+      : String(Object.hasOwn(source, "unit") ? source.unit ?? "" : fallback.unit),
     wraparound: fallback.wraparound && Object.hasOwn(source, "wraparound")
       ? Boolean(source.wraparound)
       : fallback.wraparound,

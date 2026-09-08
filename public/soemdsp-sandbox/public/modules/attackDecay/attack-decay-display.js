@@ -1,11 +1,14 @@
 // Envelope face: Canvas 2D path of the expected contour
 // (filterCurve / pulseCurve family — not phosphor, not WebGL).
-// Used by Curve Envelope (expAdsr), Linear Envelope, and legacy Attack Decay.
+// Used by Curve ADSR / Curve AR / Linear ADSR / Linear AR / Pluck Envelope faces.
 
 function createNodeGraphEnvelopeCurveDisplay(nodeId, type) {
+  const id = nodeId && typeof nodeId === "object"
+    ? String(nodeId.dataset?.node || nodeId.id || "")
+    : String(nodeId || "");
   const section = document.createElement("section");
   section.className = "node-filter-curve-display node-envelope-curve-display";
-  section.dataset.node = nodeId;
+  section.dataset.node = id;
   section.dataset.nodeType = type;
   section.dataset.parameterVisual = "true";
   section.syncFromParameters = () => {
@@ -103,6 +106,101 @@ function nodeGraphEnvelopeCurveBuildPreview(node, type, width) {
     };
   }
 
+  if (type === "linearAttackRelease" && typeof nodeGraphLinearAttackReleasePreviewCurve === "function") {
+    const attack = Math.max(0, nodeGraphEnvelopeCurveLiveParam(node, "attack", 0.01));
+    const release = Math.max(0, nodeGraphEnvelopeCurveLiveParam(node, "release", 0.25));
+    const amplitude = Math.max(0, nodeGraphEnvelopeCurveLiveParam(node, "amplitude", 1));
+    const preview = nodeGraphLinearAttackReleasePreviewCurve({ attack, release }, pts);
+    return {
+      points: preview.points,
+      total: preview.total,
+      guideT: preview.gateHigh / Math.max(1e-9, preview.total),
+      ampView: Math.min(1, amplitude),
+      leftLabel: "A",
+      rightLabel: "R",
+      signature: {
+        type,
+        attack,
+        release,
+        amplitude,
+        inputMode: nodeGraphEnvelopeCurveLiveParam(node, "inputMode", 0),
+      },
+    };
+  }
+
+  if (type === "curveAttackRelease" && typeof nodeGraphCurveAttackReleasePreviewCurve === "function") {
+    const attack = Math.max(0, nodeGraphEnvelopeCurveLiveParam(node, "attack", 0.01));
+    const release = Math.max(0, nodeGraphEnvelopeCurveLiveParam(node, "release", 0.25));
+    const attackShape = nodeGraphEnvelopeCurveLiveParam(node, "attackShape", 0);
+    const releaseShape = nodeGraphEnvelopeCurveLiveParam(node, "releaseShape", 0);
+    const amplitude = Math.max(0, nodeGraphEnvelopeCurveLiveParam(node, "amplitude", 1));
+    const preview = nodeGraphCurveAttackReleasePreviewCurve({
+      attack, release, attackShape, releaseShape, amplitude,
+    }, pts);
+    return {
+      points: preview.points,
+      total: preview.total,
+      guideT: preview.gateHigh / Math.max(1e-9, preview.total),
+      ampView: preview.ampView,
+      leftLabel: "A",
+      rightLabel: "R",
+      signature: {
+        type,
+        attack,
+        release,
+        attackShape,
+        releaseShape,
+        amplitude,
+        inputMode: nodeGraphEnvelopeCurveLiveParam(node, "inputMode", 0),
+        updateOnTrigger: nodeGraphEnvelopeCurveLiveParam(node, "updateOnTrigger", 0),
+      },
+    };
+  }
+
+  if (type === "thumpEnvelope" && typeof nodeGraphThumpEnvelopePreviewCurve === "function") {
+    const attack = Math.max(0, nodeGraphEnvelopeCurveLiveParam(node, "attack", 0));
+    const release = Math.max(0, nodeGraphEnvelopeCurveLiveParam(node, "release", 12.824772066678985));
+    const decaySnap = Math.max(0, Math.min(1, nodeGraphEnvelopeCurveLiveParam(node, "decaySnap", 0)));
+    const decayBody = Math.max(0, Math.min(1, nodeGraphEnvelopeCurveLiveParam(node, "decayBody", 0)));
+    const fallCurve = Math.max(-1, Math.min(1, nodeGraphEnvelopeCurveLiveParam(node, "fallCurve", 0.8062943900342834)));
+    const amplitude = Math.max(0, nodeGraphEnvelopeCurveLiveParam(node, "amplitude", 0.980691228326368));
+    const preview = nodeGraphThumpEnvelopePreviewCurve({
+      attack, release, decaySnap, decayBody, fallCurve, amplitude,
+    }, pts);
+    return {
+      points: preview.points,
+      total: preview.total,
+      guideT: preview.guideT,
+      ampView: preview.ampView,
+      leftLabel: "A",
+      rightLabel: "R",
+      signature: { type, attack, release, decaySnap, decayBody, fallCurve, amplitude },
+    };
+  }
+
+  if (type === "pluckEnvelope3" && typeof nodeGraphPluckEnvelope3PreviewCurve === "function") {
+    const attack = Math.max(0, nodeGraphEnvelopeCurveLiveParam(node, "attack", 0));
+    let decay = Number(nodeGraphEnvelopeCurveLiveParam(node, "decay", NaN));
+    if (!Number.isFinite(decay)) {
+      const legacyDamp = Number(nodeGraphEnvelopeCurveLiveParam(node, "dampen", 0.5));
+      decay = Math.max(0, Math.min(1, 1 - (Number.isFinite(legacyDamp) ? legacyDamp : 0.5)));
+    } else {
+      decay = Math.max(0, Math.min(1, decay));
+    }
+    const amplitude = Math.max(0, nodeGraphEnvelopeCurveLiveParam(node, "amplitude", 1));
+    const recalculateOnTrigger = nodeGraphEnvelopeCurveLiveParam(node, "recalculateOnTrigger", 1);
+    const preview = nodeGraphPluckEnvelope3PreviewCurve({ attack, decay, amplitude }, pts);
+    return {
+      points: preview.points,
+      total: preview.total,
+      guideT: preview.guideT,
+      ampView: preview.ampView,
+      leftLabel: "A",
+      rightLabel: "D",
+      signature: { type, attack, decay, amplitude, recalculateOnTrigger },
+    };
+  }
+
   // Legacy Attack Decay (hidden from catalog; still draws if present in a patch)
   const attack = Math.max(0, nodeGraphEnvelopeCurveLiveParam(node, "attack", 0.01));
   const decay = Math.max(0, nodeGraphEnvelopeCurveLiveParam(node, "decay", 0.25));
@@ -165,15 +263,6 @@ function drawNodeGraphEnvelopeCurveDisplayInner(section) {
   context.clearRect(0, 0, width, height);
   context.fillStyle = "rgba(2, 6, 9, 0.88)";
   context.fillRect(0, 0, width, height);
-  context.strokeStyle = "rgba(127, 199, 217, 0.18)";
-  context.lineWidth = 1;
-  for (let line = 0; line <= 4; line += 1) {
-    const y = (line / 4) * height;
-    context.beginPath();
-    context.moveTo(0, y);
-    context.lineTo(width, y);
-    context.stroke();
-  }
 
   if (built.guideT > 0 && built.guideT < 1) {
     const gx = built.guideT * width;

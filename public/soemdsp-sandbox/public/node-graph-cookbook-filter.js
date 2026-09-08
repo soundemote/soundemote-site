@@ -1024,15 +1024,6 @@ function drawNodeGraphFilterCurveDisplayInner(section) {
   // Crossover faces: split lines + Hz only (no magnitude curves / band titles).
   // Keeps 1gu display height readable and cheap to paint.
   if (!isCrossover) {
-    context.strokeStyle = "rgba(127, 199, 217, 0.18)";
-    context.lineWidth = 1;
-    for (let line = 0; line <= 4; line += 1) {
-      const y = (line / 4) * height;
-      context.beginPath();
-      context.moveTo(0, y);
-      context.lineTo(width, y);
-      context.stroke();
-    }
     // Cap sample density for filter magnitude paths.
     const maxSamples = 220;
     const step = Math.max(1, Math.ceil(width / maxSamples));
@@ -1146,6 +1137,24 @@ function drawNodeGraphFilterCurveDisplays() {
       }
       return;
     }
+    if (section.classList.contains("node-softwave-osc-display")) {
+      if (typeof drawNodeGraphSoftwaveOscDisplay === "function") {
+        drawNodeGraphSoftwaveOscDisplay(section);
+      }
+      return;
+    }
+    if (section.classList.contains("node-expo-pluck-display")) {
+      if (typeof drawNodeGraphExpoPluckEnvelopeDisplay === "function") {
+        drawNodeGraphExpoPluckEnvelopeDisplay(section);
+      }
+      return;
+    }
+    if (section.classList.contains("node-expo-pluck2-display")) {
+      if (typeof drawNodeGraphExpoPluckEnvelope2Display === "function") {
+        drawNodeGraphExpoPluckEnvelope2Display(section);
+      }
+      return;
+    }
     if (section.classList.contains("node-sincos4-display")) {
       if (typeof drawNodeGraphSinCos4Display === "function") {
         drawNodeGraphSinCos4Display(section);
@@ -1192,9 +1201,12 @@ function scheduleNodeGraphFilterCurveDraw() {
       if (
         section.classList.contains("node-round-shape-display")
         || section.classList.contains("node-envelope-curve-display")
+        || section.classList.contains("node-expo-pluck-display")
+        || section.classList.contains("node-expo-pluck2-display")
         || section.classList.contains("node-phone-tone-display")
         || section.classList.contains("node-harmonic-series-display")
         || section.classList.contains("node-basic-shape-display")
+        || section.classList.contains("node-softwave-osc-display")
         || section.classList.contains("node-sincos4-display")
       ) {
         continue;

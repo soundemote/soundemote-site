@@ -526,7 +526,7 @@ async function sendNodeGraphLiveNativeModule(liveNode, entry) {
 // Chrome caps wasm memories per process (~100); many standalone instances
 // hit that cap. Slim is for small used-sets when per-module files exist;
 // huge patches / site deploys should use combined.
-const nodeGraphLiveCombinedNativeModuleUrl = "native_modules/combined/soemdsp_combined.wasm?v=phase-cv-live-1";
+const nodeGraphLiveCombinedNativeModuleUrl = "native_modules/combined/soemdsp_combined.wasm?v=slew-up-down-shape-1";
 
 /** @type {null|"slim"|"combined"} */
 let nodeGraphLiveNativeWasmLoadModeResolved = null;
@@ -1340,6 +1340,11 @@ function setNodeGraphLiveSpeed(speed, options = {}) {
   }
   if (clamped > 0 && typeof scopePaintNotifyFaceLoops === "function") {
     scopePaintNotifyFaceLoops();
+  }
+  if (clamped > 0 && typeof nodeGraphMetamoduleRefreshAllMirrors === "function") {
+    try { nodeGraphMetamoduleRefreshAllMirrors(); } catch (_e) { /* ignore */ }
+  } else if (clamped <= 0 && typeof nodeGraphMetamoduleStopAllMirrorLoops === "function") {
+    try { nodeGraphMetamoduleStopAllMirrorLoops(); } catch (_e) { /* ignore */ }
   }
   // Speed 0 = simulation pause: stop phosphor energy steps immediately so
   // trails do not keep decaying on the main-thread draw loop.
@@ -2383,6 +2388,7 @@ function nodeGraphLiveConnectionUpdatePayload(plan = {}, audio = {}) {
     patchFingerprint: plan.patchFingerprint,
     pitchReferenceHz: pitchReference.pitchReferenceHz,
     pitchReferenceMidiNote: pitchReference.pitchReferenceMidiNote,
+    pitchOffsetOctaves: pitchReference.pitchOffsetOctaves,
     planSerial: nodeGraphMvp.live.planSerial,
     sampleRate: nodeGraphMvp.live.context?.sampleRate || nodeGraphMvp.sampleRate,
     scopeCaptureNodeIds: Array.isArray(plan.scopeCaptureNodeIds) ? plan.scopeCaptureNodeIds : [],
@@ -2467,6 +2473,7 @@ async function sendNodeGraphLivePlan() {
             patchFingerprint: plan.patchFingerprint,
             pitchReferenceHz: pitchReference.pitchReferenceHz,
             pitchReferenceMidiNote: pitchReference.pitchReferenceMidiNote,
+            pitchOffsetOctaves: pitchReference.pitchOffsetOctaves,
             planSerial: nodeGraphMvp.live.planSerial,
             sampleRate: nodeGraphMvp.live.context?.sampleRate || nodeGraphMvp.sampleRate,
             sessionId: nodeGraphMvp.live.sessionId,
@@ -2672,6 +2679,20 @@ function sendNodeGraphLiveMidiKeyboardSignal(signal = nodeGraphMvp.midiKeyboardS
     nodeGraphMvp.live.node.port.postMessage({
       signal: payload,
       type: "setMidiKeyboardSignal",
+    });
+  }
+}
+
+/** Local Keyboard face / dock pointer signal (not hardware MIDI). */
+function sendNodeGraphLiveKeyboardModuleSignal(signal = nodeGraphMvp.keyboardModuleSignal) {
+  const payload = signal && typeof signal === "object" ? { ...signal } : null;
+  if (nodeGraphMvp.live.runtime) {
+    nodeGraphMvp.live.runtime.keyboardModuleSignal = payload;
+  }
+  if (nodeGraphMvp.live.usesWorklet && nodeGraphMvp.live.node?.port) {
+    nodeGraphMvp.live.node.port.postMessage({
+      signal: payload,
+      type: "setKeyboardModuleSignal",
     });
   }
 }
@@ -3106,12 +3127,12 @@ const nodeGraphLiveWorkletSourceFilesEfficient = [
   "./public/node-graph-stdlib/node-graph-control-bus-helpers.js?v=toggle-range-1",
   "./public/modules/portal/portal-lanes.js?v=portal-rename-4x2-1",
   "./public/modules/portal/portal-math.js?v=portal-lanes-1",
-  "./public/node-graph-stdlib/node-graph-param-surface-helpers.js?v=f-cancel-ssot-1",
+  "./public/node-graph-stdlib/node-graph-param-surface-helpers.js?v=patch-pitch-1",
   "./public/node-graph-stdlib/node-graph-seeded-rng-helpers.js?v=softpop-1",
   "./public/node-graph-parameter-smoother-filters.js?v=smooth-gpu-3p-1",
   // Bypass passthrough maps + frame eval (shared with main thread).
   "./public/node-graph-module-bypass.js?v=t-series-1",
-  "./public/node-graph-efficient-product.js?v=pixelgrid-grade-wasm-1",
+  "./public/node-graph-efficient-product.js?v=thump-1",
   "./public/node-live-audio-worklet-core.js?v=transistor-back-1",
   // Phase D: class methods extracted from core (must follow class definition).
   "./public/node-live-audio-worklet-graph.js?v=plan-d-split-5",
@@ -3121,13 +3142,13 @@ const nodeGraphLiveWorkletSourceFilesEfficient = [
   "./public/node-live-audio-worklet-analog.js?v=plan-d-split-7",
   "./public/lib/sample-interpolate.js?v=mp-aa-1",
   "./public/node-live-audio-worklet-dsp-state.js?v=protect-worklet-1",
-  "./public/node-live-audio-worklet-events.js?v=midi-freq-host-1",
+  "./public/node-live-audio-worklet-events.js?v=keyboard-hold-freq-1",
   "./public/node-live-audio-worklet-visual.js?v=planck-eps-1",
   "./public/node-live-audio-worklet-scope-io.js?v=output-vol-face-1",
   "./public/node-live-audio-worklet-native-load.js?v=plan-d-split-7",
   "./public/node-live-audio-worklet-native-exports.js?v=hypersaw2-smooth-1",
-  "./public/node-live-audio-worklet-native-graph.js?v=phase-cv-live-1",
-  "./public/node-live-audio-worklet-set-plan.js?v=hypersaw2-smooth-1",
+  "./public/node-live-audio-worklet-native-graph.js?v=center-side-bright-1",
+  "./public/node-live-audio-worklet-set-plan.js?v=patch-pitch-1",
   "./public/node-live-audio-worklet-clear-plan.js?v=hypersaw2-smooth-1",
   "./public/node-live-audio-worklet-handle-message.js?v=wasm-plan-race-1",
   "./public/node-live-audio-worklet-scope-snapshot.js?v=hypersaw2-smooth-1",
@@ -3136,8 +3157,7 @@ const nodeGraphLiveWorkletSourceFilesEfficient = [
   "./public/modules/additiveGraph/additive-param-smooth.js?v=main-guard-1",
 
   // Envelope *Mod strips: native opcodes 70/72 (no JS ADSR / BakeStrip).
-  "./public/modules/_shared/controller-efficient-sidecar.js?v=phase-cv-live-1",
-  "./public/modules/vactrol/vactrol-worklet-evaluator.js?v=vactrol-arp-1",
+  "./public/modules/_shared/controller-efficient-sidecar.js?v=keyboard-hold-freq-1",
   "./public/node-live-audio-worklet-process.js?v=protect-worklet-1",
 ];
 
@@ -3616,5 +3636,95 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
       setNodeGraphLiveBlockedError("plan", error);
       renderNodeGraphLiveControls(false);
     }
+  }
+}
+
+// --- Page visibility: pause audio + sim when the tab is hidden ----------------
+// Cold visitors leave the tab open (forum, etc.); without this the worklet +
+// face RAF keep burning CPU and can keep making sound until Chrome complains.
+
+function nodeGraphPageHiddenPauseState() {
+  if (!nodeGraphMvp?.live) return null;
+  if (!nodeGraphMvp.live.pageHiddenPause || typeof nodeGraphMvp.live.pageHiddenPause !== "object") {
+    nodeGraphMvp.live.pageHiddenPause = {
+      active: false,
+      savedSpeed: 0,
+      hadEngine: false,
+    };
+  }
+  return nodeGraphMvp.live.pageHiddenPause;
+}
+
+function nodeGraphApplyPageVisibilityAudioPolicy() {
+  const live = nodeGraphMvp?.live;
+  const pause = nodeGraphPageHiddenPauseState();
+  if (!live || !pause) return;
+
+  if (typeof document !== "undefined" && document.hidden) {
+    if (pause.active) return;
+    const speed = Number(live.speedMultiplier);
+    const playing = Boolean(live.node) && (!Number.isFinite(speed) || speed > 0);
+    pause.active = true;
+    pause.hadEngine = Boolean(live.node);
+    pause.savedSpeed = playing
+      ? (Number.isFinite(speed) && speed > 0
+        ? speed
+        : (Number(live.lastPlaySpeed) > 0 ? Number(live.lastPlaySpeed) : 1))
+      : 0;
+    if (playing && typeof setNodeGraphLiveSpeed === "function") {
+      setNodeGraphLiveSpeed(0, { force: true });
+    }
+    try {
+      if (live.context && typeof live.context.suspend === "function" && live.context.state === "running") {
+        live.context.suspend();
+      }
+    } catch (_error) {
+      // Ignore suspend races during teardown.
+    }
+    if (typeof nodeGraphMetamoduleStopAllMirrorLoops === "function") {
+      try { nodeGraphMetamoduleStopAllMirrorLoops(); } catch (_e) { /* ignore */ }
+    }
+    return;
+  }
+
+  // Visible again.
+  if (!pause.active) return;
+  const restoreSpeed = Number(pause.savedSpeed) || 0;
+  const hadEngine = Boolean(pause.hadEngine);
+  pause.active = false;
+  pause.savedSpeed = 0;
+  pause.hadEngine = false;
+  try {
+    if (live.context && typeof live.context.resume === "function" && live.context.state === "suspended") {
+      live.context.resume();
+    }
+  } catch (_error) {
+    // Ignore resume races.
+  }
+  if (hadEngine && restoreSpeed > 0 && typeof setNodeGraphLiveSpeed === "function") {
+    setNodeGraphLiveSpeed(restoreSpeed, { force: true });
+  }
+  if (typeof nodeGraphMetamoduleRefreshAllMirrors === "function") {
+    try { nodeGraphMetamoduleRefreshAllMirrors(); } catch (_e) { /* ignore */ }
+  }
+}
+
+function bindNodeGraphPageVisibilityAudioPolicy() {
+  if (typeof document === "undefined" || document.documentElement?.dataset?.pageVisibilityAudioBound === "1") {
+    return;
+  }
+  document.documentElement.dataset.pageVisibilityAudioBound = "1";
+  document.addEventListener("visibilitychange", () => {
+    nodeGraphApplyPageVisibilityAudioPolicy();
+  });
+  // visibilitychange is the authoritative "tab in background" signal.
+  nodeGraphApplyPageVisibilityAudioPolicy();
+}
+
+if (typeof document !== "undefined") {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bindNodeGraphPageVisibilityAudioPolicy, { once: true });
+  } else {
+    bindNodeGraphPageVisibilityAudioPolicy();
   }
 }

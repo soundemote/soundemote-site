@@ -650,7 +650,11 @@ const nodeGraphTraceDisplayFormTypeValueClampOverrides = Object.freeze({
     lineThickness: nodeGraphTraceDisplayClampStampBlur,
   }),
   hypersawBurn: Object.freeze({
-    lineThickness: nodeGraphTraceDisplayClampStampBlur,
+    // Stem width as 0…1 of face width (1 = full screen). Allow true 0.
+    lineThickness: (value) => {
+      const n = Number(value);
+      return clampNodeSliderValue(Number.isFinite(n) ? n : 0.01, 0, 1);
+    },
   }),
   xyPad: Object.freeze({
     lineThickness: nodeGraphTraceDisplayClampStampBlur,
@@ -675,6 +679,12 @@ const nodeGraphTraceDisplayFormTypeValueClampOverrides = Object.freeze({
     dotBrightness: (value) => clampNodeSliderValue(Number(value) || 0, 0, 1),
     backgroundBrightness: (value) => clampNodeSliderValue(Number(value) || 0, 0, 1),
     pixelDensity: nodeGraphTraceDisplayClampPixelDensity,
+  }),
+  softwaveOscFace: Object.freeze({
+    lineThickness: (value) => clampNodeSliderValue(Number(value) || 3, 0.25, 16),
+    lineBrightness: (value) => clampNodeSliderValue(Number(value) || 0, 0, 1),
+    dotThickness: (value) => clampNodeSliderValue(Number(value) || 5, 0.25, 32),
+    backgroundBrightness: (value) => clampNodeSliderValue(Number(value) || 0, 0, 1),
   }),
   sinCos4Face: Object.freeze({
     backgroundBrightness: (value) => clampNodeSliderValue(Number(value) || 0, 0, 1),
