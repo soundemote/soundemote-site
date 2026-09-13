@@ -25,6 +25,12 @@ function closeNodeSceneContextMenu(options = {}) {
   if (typeof rememberNodeGraphWorkspaceWindowState === "function") {
     rememberNodeGraphWorkspaceWindowState("commandCenter", menu, { open: false }, { status: false });
   }
+  // Persist closed unified seat (page + presentation) so refresh does not reopen.
+  if (typeof persistSession === "function") {
+    persistSession({ reason: "session", status: false });
+  } else if (typeof saveNodeGraphWorkspaceWindowStatesToUserSettings === "function") {
+    saveNodeGraphWorkspaceWindowStatesToUserSettings({ status: false });
+  }
   return true;
 }
 
@@ -83,7 +89,7 @@ function syncNodeModuleActionsWindowHeightLimit() {
     nodeGraphMvp.moduleActionWindowSize || nodeModuleActionsWindowDefaultSize,
     menu,
   );
-  const height = Number(normalized.height) || nodeModuleActionsWindowDefaultSize.height;
+  const height = nodeGraphFiniteNumber(normalized.height, nodeModuleActionsWindowDefaultSize.height);
   menu.style.setProperty("--node-module-actions-height", `${Math.round(height)}px`);
   return height;
 }
@@ -350,8 +356,8 @@ function setNodeSceneContextMenuViewportPosition(menu, left, top) {
     setNodeGraphFloatingWindowViewportPosition(menu, left, top);
     return;
   }
-  menu.style.left = `${Math.round(Number(left) || 0)}px`;
-  menu.style.top = `${Math.round(Number(top) || 0)}px`;
+  menu.style.left = `${Math.round(nodeGraphFiniteNumber(left))}px`;
+  menu.style.top = `${Math.round(nodeGraphFiniteNumber(top))}px`;
   menu.style.right = "auto";
 }
 
@@ -364,8 +370,8 @@ function positionNodeSceneContextMenuHeaderAtPoint(menu, x, y, remember = false)
   const headingRect = menu.querySelector(".scene-context-heading")?.getBoundingClientRect();
   positionNodeSceneContextMenu(
     menu,
-    (Number(x) || 0) - (menuRect.width * 0.5),
-    (Number(y) || 0) - ((headingRect?.height || 42) * 0.5),
+    (nodeGraphFiniteNumber(x)) - (menuRect.width * 0.5),
+    (nodeGraphFiniteNumber(y)) - ((headingRect?.height || 42) * 0.5),
     remember,
   );
 }
@@ -811,6 +817,7 @@ const nodeGraphModuleActionControlIds = [
   "nodeSceneTextBoxHeightControls",
   "nodeSceneTextBoxTextControls",
   "nodeSceneCodeblockControls",
+  "nodeSceneMetamoduleVoiceControls",
   "nodeSceneGraphControls",
   "nodeSceneImageControls",
   "nodeSceneKnobFaceControls",
@@ -823,6 +830,7 @@ const nodeGraphModuleActionControlIds = [
   "nodeSceneTextBoxVerticalAlignControls",
   // Disable lives inside Visibility (under Hide unused) — not a top-level control.
   "nodeSceneCodeGroup",
+  "nodeSceneGroupIntoGroup",
   "nodeSceneGroupMetamodule",
   "nodeSceneDeleteModule",
 ];
@@ -926,7 +934,7 @@ function showNodeModuleActionsWindow(anchorRect = null) {
         ? replacementRect.top
         : Number.isFinite(Number(rect.top))
         ? rect.top
-        : Number(rect.bottom) || window.innerHeight * 0.25,
+        : nodeGraphFiniteNumber(rect.bottom, window.innerHeight) * 0.25,
     );
     menu.hidden = false;
   }
@@ -1118,6 +1126,7 @@ function configureNodeSceneContextMenu(mode) {
   const moduleActionsWindowButton = document.getElementById("nodeSceneOpenModuleActions");
   const metaparametersWindowButton = document.getElementById("nodeSceneOpenMetaparameters");
   const deleteButton = document.getElementById("nodeSceneDeleteModule");
+  const groupIntoGroupButton = document.getElementById("nodeSceneGroupIntoGroup");
   const groupMetamoduleButton = document.getElementById("nodeSceneGroupMetamodule");
   const closeButton = document.getElementById(actionMode ? "nodeModuleActionsClose" : "nodeSceneCloseMenu");
   const selectedModule = document.getElementById("nodeSceneSelectedModule");
@@ -1162,6 +1171,9 @@ function configureNodeSceneContextMenu(mode) {
   const textBoxTitleScriptStatus = document.getElementById("nodeSceneTextBoxTitleScriptStatus");
   const textBoxTextScript = document.getElementById("nodeSceneTextBoxTextScript");
   const textBoxTextScriptStatus = document.getElementById("nodeSceneTextBoxTextScriptStatus");
+  const metamoduleVoiceControls = document.getElementById("nodeSceneMetamoduleVoiceControls");
+  const metamodulePlaymode = document.getElementById("nodeSceneMetamodulePlaymode");
+  const metamoduleVoiceCount = document.getElementById("nodeSceneMetamoduleVoiceCount");
   const graphControls = document.getElementById("nodeSceneGraphControls");
   const graphCursorX = document.getElementById("nodeSceneGraphCursorX");
   const graphNodeList = document.getElementById("nodeSceneGraphNodeList");
@@ -1391,23 +1403,35 @@ function configureNodeSceneContextMenu(mode) {
   }
   const targetIsGraphType = nodeGraphModuleIsGraphType(targetNode?.type);
   deleteButton.hidden = !(moduleMode || wireMode);
-  if (groupMetamoduleButton) {
-    // Single or multi selection on Root (not already inside a metamodule).
+  {
+    // Single or multi selection on Root (not already inside a container).
     const canGroup = Boolean(
       moduleMode
       && typeof nodeGraphSelectionCanGroupIntoMetamodule === "function"
       && nodeGraphSelectionCanGroupIntoMetamodule(),
     );
-    groupMetamoduleButton.hidden = !canGroup;
-    groupMetamoduleButton.disabled = !canGroup;
     const n = typeof nodeGraphSelectedNodeIds === "function"
       ? nodeGraphSelectedNodeIds().size
       : 0;
-    const label = groupMetamoduleButton.querySelector("span");
-    if (label) {
-      label.textContent = n <= 1
-        ? "Group into Metamodule"
-        : `Group ${n} into Metamodule`;
+    if (groupIntoGroupButton) {
+      groupIntoGroupButton.hidden = !canGroup;
+      groupIntoGroupButton.disabled = !canGroup;
+      const label = groupIntoGroupButton.querySelector("span");
+      if (label) {
+        label.textContent = n <= 1
+          ? "Group into Group"
+          : `Group ${n} into Group`;
+      }
+    }
+    if (groupMetamoduleButton) {
+      groupMetamoduleButton.hidden = !canGroup;
+      groupMetamoduleButton.disabled = !canGroup;
+      const label = groupMetamoduleButton.querySelector("span");
+      if (label) {
+        label.textContent = n <= 1
+          ? "Group into Metamodule"
+          : `Group ${n} into Metamodule`;
+      }
     }
   }
   selectedModule.hidden = !(moduleMode || wireMode);
@@ -1423,6 +1447,17 @@ function configureNodeSceneContextMenu(mode) {
   codeblockControls.hidden = !(moduleMode && !multiModuleMode && targetNode?.type === "codeblock");
   textBoxPortScriptControls.hidden = !(moduleMode && !multiModuleMode && targetNode?.type === "animatedTextBox");
   graphControls.hidden = !(moduleMode && !multiModuleMode && targetIsGraphType);
+  // Playmode / Voice Count: Module Settings only — never Wire Settings.
+  if (metamoduleVoiceControls) {
+    const showMetaVoice = Boolean(
+      moduleMode
+      && !multiModuleMode
+      && targetNode
+      && typeof nodeGraphIsMetamoduleType === "function"
+      && nodeGraphIsMetamoduleType(targetNode.type),
+    );
+    metamoduleVoiceControls.hidden = !showMetaVoice;
+  }
   // Disable lives under Visibility → Hide unused (multi-select aware).
   if (toggleModuleEnabledButton) {
     toggleModuleEnabledButton.hidden = !moduleMode;
@@ -2062,6 +2097,35 @@ function configureNodeSceneContextMenu(mode) {
       }
       graphNodeList?.replaceChildren();
     }
+    const targetIsMetamodule = Boolean(
+      targetNode
+      && typeof nodeGraphIsMetamoduleType === "function"
+      && nodeGraphIsMetamoduleType(targetNode.type),
+    );
+    if (targetIsMetamodule) {
+      if (typeof nodeGraphEnsureMetamodulePayload === "function") {
+        nodeGraphEnsureMetamodulePayload(targetNode);
+      }
+      if (metamodulePlaymode) {
+        metamodulePlaymode.disabled = false;
+        metamodulePlaymode.value = String(
+          typeof nodeGraphMetamodulePlaymode === "function"
+            ? nodeGraphMetamodulePlaymode(targetNode)
+            : (targetNode.metamodule?.playmode ?? 0),
+        );
+      }
+      if (metamoduleVoiceCount) {
+        metamoduleVoiceCount.disabled = false;
+        metamoduleVoiceCount.value = String(
+          typeof nodeGraphMetamoduleVoiceCount === "function"
+            ? nodeGraphMetamoduleVoiceCount(targetNode)
+            : (targetNode.metamodule?.voices ?? 10),
+        );
+      }
+    } else {
+      if (metamodulePlaymode) metamodulePlaymode.disabled = true;
+      if (metamoduleVoiceCount) metamoduleVoiceCount.disabled = true;
+    }
     textBoxAlignLeft.setAttribute("aria-pressed", textBoxLayout.horizontalAlign === "left" ? "true" : "false");
     textBoxAlignCenter.setAttribute("aria-pressed", textBoxLayout.horizontalAlign === "center" ? "true" : "false");
     textBoxAlignRight.setAttribute("aria-pressed", textBoxLayout.horizontalAlign === "right" ? "true" : "false");
@@ -2470,11 +2534,61 @@ function openNodeRoundShapeContextMenu(event) {
   return false;
 }
 
+/**
+ * Right-click on a module display face → Display Settings (not Module Settings).
+ * Includes envelope / filter curves (Ping Envelope) and other screen faces.
+ * Hits on header, params, or ports are ignored so those keep Module/Parameter Settings.
+ */
 function openNodeScopeContextMenu(event) {
-  const contextScope = event.target.closest?.(
-    ".node-module-scope-window, .node-led-face, .node-number-readout-face, .node-value-lcd-face, .node-ray-bouncer-face, .node-asciiscope-face, .node-matrix-face, .node-round-shape-display, .node-basic-shape-display, .node-softwave-osc-display",
+  const target = event.target;
+  if (!(target instanceof Element)) {
+    return false;
+  }
+  if (target.closest?.(
+    ".dsp-node-header, .node-parameter-row, .node-port, .node-param-port, .node-io-row, .node-slider-readout",
+  )) {
+    return false;
+  }
+  const contextScope = target.closest?.(
+    [
+      ".node-module-scope-window",
+      ".node-led-face",
+      ".node-number-readout-face",
+      ".node-value-lcd-face",
+      ".node-ray-bouncer-face",
+      ".node-asciiscope-face",
+      ".node-matrix-face",
+      ".node-matrix-display-face",
+      ".node-round-shape-display",
+      ".node-basic-shape-display",
+      ".node-softwave-osc-display",
+      ".node-envelope-curve-display",
+      ".node-filter-curve-display",
+      ".node-phone-tone-display",
+      ".node-pulse-curve-display",
+      ".node-harmonic-series-display",
+      ".node-wall-room-display",
+      ".node-fbm-field-face",
+      ".node-raster-rgb-face",
+      ".node-module-graph-display",
+      ".node-additive-filter-curve-display",
+      ".node-text-box-body",
+      ".node-keypad-face",
+      ".node-xy-pad",
+      ".node-phosphor-waveform-display",
+      "[data-light-source='screen']",
+      ".node-module-face",
+    ].join(", "),
   );
-  const nodeId = contextScope?.dataset?.node || "";
+  if (!contextScope) {
+    return false;
+  }
+  // Prefer explicit data-node on the face; else climb to the module shell.
+  const nodeId = String(
+    contextScope.dataset?.node
+    || contextScope.closest?.(".dsp-node")?.dataset?.node
+    || "",
+  ).trim();
   const patchNode = nodeId ? nodeGraphPatchNode(nodeId) : null;
   if (!nodeId || !patchNode) {
     return false;
@@ -2482,14 +2596,17 @@ function openNodeScopeContextMenu(event) {
 
   event.preventDefault();
   event.stopPropagation();
-  closeNodeSceneContextMenu();
+  event.stopImmediatePropagation?.();
+  if (typeof closeNodeSceneContextMenu === "function") {
+    closeNodeSceneContextMenu();
+  }
   nodeGraphMvp.sceneContextPoint = null;
-  nodeGraphMvp.sceneContextTargetNode = null;
+  nodeGraphMvp.sceneContextTargetNode = nodeId;
   nodeGraphMvp.sceneContextTargetWire = null;
   nodeGraphMvp.scopeContextTargetNode = nodeId;
+  nodeGraphMvp.lastModuleActionTargetNode = nodeId;
 
-  // Hypersaw / RobinSupersaw: open Hypersaw Display Settings (line thickness).
-  // LED uses Vector Dot Display Settings.
+  // Display Settings for every module (blank + Show in canvas if no face schema).
   if (typeof openNodeGraphTraceDisplaySettings === "function" && openNodeGraphTraceDisplaySettings(nodeId, event)) {
     return true;
   }
@@ -2526,7 +2643,7 @@ const nodeGraphWorkspaceFloatingUiSelector =
   "#nodeModuleActionsWindow, #nodeCodeBoxWindow, #nodeCanvasScriptDialog, " +
   "#nodePhosphorWaveformSettingsWindow, #nodeModuleShopView, " +
   "#nodeTraceDisplaySettingsPopover, #nodeUserUiSettingsPanel, #nodeUiDevHelper, " +
-  "#nodeVisibilityMenu, #nodePatchDefaultsPanel, #nodeStandaloneMidiKeyboardDock, " +
+  "#nodeVisibilityMenu, #nodePatchDefaultsPanel, " +
   "#nodeHotkeysPage, #nodeEmojiPage, " +
   ".node-floating-window-surface";
 // Legacy alias: includes form fields for empty-canvas / marquee checks only.

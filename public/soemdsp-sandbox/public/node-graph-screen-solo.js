@@ -27,6 +27,10 @@ const NODE_GRAPH_SCREEN_SOLO_FACE_SEL = [
   ".node-module-graph-display",
   ".node-additive-filter-curve-display",
   ".node-text-box-body",
+  ".node-midi-keyboard-module",
+  ".node-grid-keyboard-module",
+  ".node-arp-keys-face",
+  ".node-metamodule-face",
   ".node-module-face",
 ].join(", ");
 
@@ -118,8 +122,8 @@ function nodeGraphScreenSoloAllowsNode(nodeId) {
   if (nodeGraphScreenSoloNodeIds().includes(id)) {
     return true;
   }
-  // Metamodule face is a blit target: keep mirrored child painters alive when
-  // their owning shell is solo'd (otherwise Root F shows a black/empty mirror).
+  // Metamodule face hosts pinned child faces: keep those painters alive when
+  // the owning shell is on the root canvas.
   if (
     typeof nodeGraphMetamoduleChildIsMirrorSubscribed === "function"
     && nodeGraphMetamoduleChildIsMirrorSubscribed(id)
@@ -196,10 +200,13 @@ function nodeGraphScreenSoloFaceScore(face) {
   if (face.classList.contains("node-round-shape-display")) score += 35;
   if (face.classList.contains("node-basic-shape-display")) score += 35;
   if (face.classList.contains("node-module-scope-window")) score += 25;
+  if (face.classList.contains("node-midi-keyboard-module")) score += 40;
+  if (face.classList.contains("node-grid-keyboard-module")) score += 40;
+  if (face.classList.contains("node-arp-keys-face")) score += 35;
   if (face.classList.contains("node-module-face")) score += 10;
   if (face.classList.contains("node-text-box-body")) score += 30;
-  const w = Number(face.clientWidth || face.offsetWidth) || 0;
-  const h = Number(face.clientHeight || face.offsetHeight) || 0;
+  const w = nodeGraphFiniteNumber(face.clientWidth || face.offsetWidth);
+  const h = nodeGraphFiniteNumber(face.clientHeight || face.offsetHeight);
   if (w >= 8 && h >= 8) score += 20;
   return score;
 }
@@ -237,7 +244,9 @@ function nodeGraphScreenSoloFindFace(nodeId) {
     return { id, host, face: fromHost };
   }
   const loose = document.querySelector(
-    `[data-node="${escaped}"].node-filter-curve-display, `
+    `[data-node="${escaped}"].node-midi-keyboard-module, `
+    + `[data-node="${escaped}"].node-grid-keyboard-module, `
+    + `[data-node="${escaped}"].node-filter-curve-display, `
     + `[data-node="${escaped}"].node-round-shape-display, `
     + `[data-node="${escaped}"].node-basic-shape-display, `
     + `[data-node="${escaped}"].node-module-scope-window, `
@@ -326,6 +335,31 @@ function nodeGraphScreenSoloWakeFace(face) {
     && face.classList.contains("node-filter-curve-display")) {
     scheduleNodeGraphFilterCurveDraw();
   }
+  if (face.classList.contains("node-midi-keyboard-module")
+    || face.querySelector?.(".node-midi-keyboard-surface")) {
+    if (typeof applyNodeGraphMidiKeyboardLayout === "function") {
+      applyNodeGraphMidiKeyboardLayout();
+    }
+    if (typeof renderNodeGraphMidiKeyboardKeys === "function") {
+      renderNodeGraphMidiKeyboardKeys();
+    }
+    if (typeof installNodeGraphMidiKeyboardLayoutResizeObserver === "function") {
+      installNodeGraphMidiKeyboardLayoutResizeObserver();
+    }
+  }
+  if (face.classList.contains("node-phosphor-waveform-display")
+    || face.querySelector?.(".node-phosphor-waveform-display")) {
+    const phosphor = face.classList.contains("node-phosphor-waveform-display")
+      ? face
+      : face.querySelector(".node-phosphor-waveform-display");
+    if (phosphor && typeof nodeGraphPhosphorWaveformEnsureLoop === "function") {
+      nodeGraphPhosphorWaveformEnsureLoop(phosphor);
+    }
+  }
+  if (typeof requestNodeGraphModuleScopeRepaint === "function") {
+    const nid = face.dataset?.node;
+    if (nid) requestNodeGraphModuleScopeRepaint(nid);
+  }
 }
 
 function nodeGraphScreenSoloRefreshPaint() {
@@ -410,7 +444,7 @@ function nodeGraphScreenSoloLcm(a, b) {
  *   else → two rows floor(n/2) / ceil(n/2)
  */
 function nodeGraphScreenSoloRowPlan(count) {
-  const n = Math.max(1, Math.round(Number(count) || 1));
+  const n = Math.max(1, Math.round(nodeGraphFiniteNumber(count, 1)));
   if (n === 1) {
     return { rows: [1], cols: 1 };
   }
@@ -495,8 +529,8 @@ function applyNodeGraphScreenSoloFit(mode) {
       const item = items[itemIndex];
       itemIndex += 1;
       if (fit === "contain") {
-        const srcW = Math.max(1, Number(item.sourceWidth) || 1);
-        const srcH = Math.max(1, Number(item.sourceHeight) || 1);
+        const srcW = Math.max(1, nodeGraphFiniteNumber(item.sourceWidth, 1));
+        const srcH = Math.max(1, nodeGraphFiniteNumber(item.sourceHeight, 1));
         const scale = Math.min(cellW / srcW, cellH / srcH);
         const w = Math.max(1, Math.round(srcW * scale));
         const h = Math.max(1, Math.round(srcH * scale));
@@ -637,6 +671,9 @@ function nodeGraphScreenSoloCollectFaces(nodeIds) {
   const seen = new Set();
   const collected = [];
   for (const rawId of nodeIds || []) {
+    if (typeof nodeGraphViewportCullWakePresentedFace === "function") {
+      nodeGraphViewportCullWakePresentedFace(rawId);
+    }
     const found = nodeGraphScreenSoloFindFace(rawId);
     if (!found || seen.has(found.id)) {
       continue;
@@ -666,7 +703,7 @@ function nodeGraphScreenSoloMirrorSourceNodeIds(soloNodeIds) {
   for (const rawId of ids) {
     const metaId = String(rawId || "");
     const meta = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(metaId) : null;
-    if (!meta || typeof nodeGraphIsMetamoduleType !== "function" || !nodeGraphIsMetamoduleType(meta.type)) {
+    if (!meta || typeof nodeGraphIsContainerShellType !== "function" || !nodeGraphIsContainerShellType(meta.type)) {
       continue;
     }
     const enabled = typeof nodeGraphMetamoduleEnabledDisplayEntries === "function"
@@ -752,26 +789,15 @@ function beginNodeGraphScreenSoloGrid(nodeIds) {
   for (const childId of mirrorSources) {
     keep.add(childId);
   }
-  for (const node of document.querySelectorAll(".dsp-node")) {
-    if (keep.has(node.dataset?.node)) {
-      continue;
-    }
-    if (typeof nodeGraphViewportCullSleepPainters === "function") {
-      nodeGraphViewportCullSleepPainters(node);
-    }
-  }
   // Wake mirror sources + arm shell blit loops for solo'd Metamodules.
   for (const childId of mirrorSources) {
-    const host = typeof nodeGraphNodeElement === "function"
-      ? nodeGraphNodeElement(childId)
-      : document.querySelector(`.dsp-node[data-node="${CSS.escape(childId)}"]`);
-    if (host && typeof nodeGraphViewportCullWakePainters === "function") {
-      nodeGraphViewportCullWakePainters(host);
+    if (typeof nodeGraphViewportCullWakePresentedFace === "function") {
+      nodeGraphViewportCullWakePresentedFace(childId);
     }
   }
   for (const metaId of items.map((item) => item.nodeId)) {
     const meta = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(metaId) : null;
-    if (!meta || typeof nodeGraphIsMetamoduleType !== "function" || !nodeGraphIsMetamoduleType(meta.type)) {
+    if (!meta || typeof nodeGraphIsContainerShellType !== "function" || !nodeGraphIsContainerShellType(meta.type)) {
       continue;
     }
     if (typeof nodeGraphMetamodulePaintMirror === "function") {
@@ -802,10 +828,25 @@ function endNodeGraphScreenSolo(options = {}) {
   const session = nodeGraphScreenSoloSession();
   const items = nodeGraphScreenSoloItems();
   if (!items.length && !session.face) {
-    document.body.classList.remove("node-screen-solo-active");
+    document.body.classList.remove(
+      "node-screen-solo-active",
+      "node-layout-canvas-active",
+      "node-layout-canvas-edit",
+    );
+    nodeGraphMvp.layoutCanvasActive = false;
+    nodeGraphMvp.layoutCanvasMode = "off";
+    if (session) {
+      session.layoutCanvas = false;
+      session.layoutCanvasTiles = null;
+    }
     return false;
   }
   nodeGraphMvp.screenSoloNodeId = "";
+  nodeGraphMvp.layoutCanvasActive = false;
+  nodeGraphMvp.layoutCanvasMode = "off";
+  session.layoutCanvas = false;
+  session.layoutCanvasTiles = null;
+  document.body.classList.remove("node-layout-canvas-active", "node-layout-canvas-edit");
   session.nodeId = "";
   session.fit = "";
   session.sourceWidth = 0;
@@ -832,20 +873,28 @@ function endNodeGraphScreenSolo(options = {}) {
     stage.hidden = true;
   }
   document.body.classList.remove("node-screen-solo-active");
-  // Re-seal LayoutA band rows / plate clip after solo cleared inline grid.
+  if (typeof nodeGraphSyncMetamoduleVisibilityToDom === "function") {
+    nodeGraphSyncMetamoduleVisibilityToDom();
+  }
   for (const entry of hostsToRelayout) {
-    nodeGraphScreenSoloRelayoutHost(entry.host, entry.nodeId);
-  }
-  if (!options.silent) {
-    for (const node of document.querySelectorAll(".dsp-node")) {
-      if (typeof nodeGraphViewportCullWakePainters === "function") {
-        nodeGraphViewportCullWakePainters(node);
-      }
+    const patchNode = typeof nodeGraphPatchNode === "function"
+      ? nodeGraphPatchNode(entry.nodeId)
+      : null;
+    const show = typeof nodeGraphModuleShouldBeVisible === "function"
+      ? nodeGraphModuleShouldBeVisible(patchNode)
+      : !entry.host.hidden;
+    if (!show) {
+      entry.host.hidden = true;
+      continue;
     }
-    window.requestAnimationFrame(() => {
-      nodeGraphScreenSoloRefreshPaint();
-    });
+    nodeGraphScreenSoloRelayoutHost(entry.host, entry.nodeId);
+    if (typeof nodeGraphViewportCullApply === "function") {
+      nodeGraphViewportCullApply(entry.host, true);
+    }
   }
+  window.requestAnimationFrame(() => {
+    nodeGraphScreenSoloRefreshPaint();
+  });
   return true;
 }
 

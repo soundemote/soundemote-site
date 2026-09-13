@@ -429,7 +429,7 @@ function nodeGraphPortIsReset(port) {
 }
 
 // App-wide policy: white wire == digital cable.
-//   • bitmasks (Scale, Held Keys, …)
+//   • bitmasks (Scale, Play Keys, Arp Keys, …)
 //   • ƒ real-value jacks (Hz reports: Frequency, Df1/Df2, ƒ1/ƒ2) on inlets and outlets
 //   • Gate / Trigger / Reset (all modules — inlets and outlets)
 //   • anything listed in digitalInputs / digitalOutputs
@@ -609,9 +609,6 @@ function nodeGraphModuleUsesCmykParameterChrome(type) {
     || key === "additiveFrequencySkew"
     || key === "additiveQuantizeFreq"
     || key === "additiveQuantizePhase"
-    || key === "additiveHarmonicMath"
-    || key === "additiveFrequencyMath"
-    || key === "additiveFrequencySlope"
     || key === "additiveNoisyFreq"
     || key === "additiveNoisyPhase"
     || key === "additiveNoisyPan"
@@ -630,9 +627,13 @@ function nodeGraphPortWireColor(node, port, io) {
   }
   const canonicalPort = nodeGraphCanonicalPortForNode(node, port, io);
   const type = nodeGraphPatchNodeType(node);
-  // Digital signal ports get a solid white wire instead of the usual role
-  // color -- see the .node-io-row[data-digital-signal] CSS for the matching
-  // port tap color, and nodeGraphPortIsDigitalSignal for what qualifies.
+  // Jack channel color first (Polyphony/black, Play/blue, Arp/gold, RGB, …).
+  if (typeof nodeGraphJackWireColor === "function") {
+    const channelColor = nodeGraphJackWireColor(type, canonicalPort, io);
+    if (channelColor) {
+      return channelColor;
+    }
+  }
   if (nodeGraphPortIsDigitalSignal(type, canonicalPort, io)) {
     return "#ffffff";
   }
@@ -652,14 +653,6 @@ function nodeGraphPortWireColor(node, port, io) {
     const zoh = nodeGraphJackChannelCssColor("cyan");
     if (zoh) {
       return zoh;
-    }
-  }
-  // UIDEV "wires follow port colors": RGB / stereo / chaos / quad jacks
-  // paint that end of the cable. Dual-color gradient still matches both ends.
-  if (typeof nodeGraphJackWireColor === "function") {
-    const follow = nodeGraphJackWireColor(type, canonicalPort, io);
-    if (follow) {
-      return follow;
     }
   }
   if (io === "input") {

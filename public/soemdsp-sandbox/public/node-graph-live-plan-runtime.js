@@ -144,13 +144,13 @@ function nodeGraphInjectSpectrogramWorkletParams(node, params) {
   }
   const rawFft = node.traceDisplaySettings?.fftSize ?? p.fftSize ?? 1024;
   params.fftSize = Number.isFinite(Number(rawFft)) ? Number(rawFft) : 1024;
-  params.window = Number(node.traceDisplaySettings?.window ?? p.window ?? 1) || 1;
-  params.overlap = Number(node.traceDisplaySettings?.overlap ?? p.overlap ?? 2) || 2;
-  params.freqOverlap = Number(node.traceDisplaySettings?.freqOverlap ?? p.freqOverlap ?? 0) || 0;
-  params.freqScale = Number(node.traceDisplaySettings?.freqScale ?? p.freqScale ?? 1) || 1;
-  params.historySeconds = Number(p.historySeconds ?? node.traceDisplaySettings?.historySeconds ?? 2) || 2;
-  params.minFreq = Number(p.minFreq ?? 20) || 20;
-  params.maxFreq = Number(p.maxFreq ?? 20000) || 20000;
+  params.window = nodeGraphFiniteNumber(node.traceDisplaySettings?.window ?? p.window ?? 1, 1);
+  params.overlap = nodeGraphFiniteNumber(node.traceDisplaySettings?.overlap ?? p.overlap ?? 2, 2);
+  params.freqOverlap = nodeGraphFiniteNumber(node.traceDisplaySettings?.freqOverlap ?? p.freqOverlap ?? 0);
+  params.freqScale = nodeGraphFiniteNumber(node.traceDisplaySettings?.freqScale ?? p.freqScale ?? 1, 1);
+  params.historySeconds = nodeGraphFiniteNumber(p.historySeconds ?? node.traceDisplaySettings?.historySeconds ?? 2, 2);
+  params.minFreq = nodeGraphFiniteNumber(p.minFreq ?? 20, 20);
+  params.maxFreq = nodeGraphFiniteNumber(p.maxFreq ?? 20000, 20000);
 }
 
 function nodeGraphBuildLiveParameterNodes(activeNodeIds = null, bypassedNodes = null) {
@@ -178,6 +178,24 @@ function nodeGraphBuildLiveParameterNodes(activeNodeIds = null, bypassedNodes = 
         params,
         type: node.type,
       };
+      // Metamodule / Group ownership — required for Polyphony voice lanes.
+      if (node.ownerMetamoduleId) {
+        runtimeNode.ownerMetamoduleId = String(node.ownerMetamoduleId);
+      }
+      // Playmode + Voice Count (Module Settings) must reach the worklet.
+      if (node.metamodule && typeof node.metamodule === "object") {
+        runtimeNode.metamodule = typeof cloneNodeGraphMetamodulePayload === "function"
+          ? cloneNodeGraphMetamodulePayload(node.metamodule)
+          : {
+            playmode: Math.max(1, Math.min(4, Math.round(Number(node.metamodule.playmode) || 4))),
+            voices: Math.max(1, Math.min(32, Math.round(Number(node.metamodule.voices) || 10))),
+            boundary: Array.isArray(node.metamodule.boundary) ? node.metamodule.boundary : [],
+            displays: Array.isArray(node.metamodule.displays) ? node.metamodule.displays : [],
+            paramVisibility: node.metamodule.paramVisibility && typeof node.metamodule.paramVisibility === "object"
+              ? { ...node.metamodule.paramVisibility }
+              : {},
+          };
+      }
       if (typeof nodeGraphDspApplyControllerLiveSmoothing === "function") {
         nodeGraphDspApplyControllerLiveSmoothing(runtimeNode);
       }
@@ -204,6 +222,16 @@ function nodeGraphBuildLiveParameterNodes(activeNodeIds = null, bypassedNodes = 
       }
       if (nodeGraphModuleIsGraphType(node.type) && node.graph) {
         runtimeNode.graph = node.graph;
+      }
+      if (node.type === "sequencer") {
+        runtimeNode.sequencer = typeof sequencerCloneClip === "function"
+          ? sequencerCloneClip(node.sequencer)
+          : (node.sequencer || null);
+      }
+      if ((node.type === "keyboard" || node.type === "gridKeyboard") && node.chordMemory) {
+        runtimeNode.chordMemory = typeof nodeGraphChordMemoryNormalizeSlots === "function"
+          ? { slots: nodeGraphChordMemoryNormalizeSlots(node.chordMemory) }
+          : node.chordMemory;
       }
       return runtimeNode;
     });
@@ -238,6 +266,22 @@ function nodeGraphBuildLiveParameterNodesForPatch(patch, activeNodeIds = null, b
         params,
         type: node.type,
       };
+      if (node.ownerMetamoduleId) {
+        runtimeNode.ownerMetamoduleId = String(node.ownerMetamoduleId);
+      }
+      if (node.metamodule && typeof node.metamodule === "object") {
+        runtimeNode.metamodule = typeof cloneNodeGraphMetamodulePayload === "function"
+          ? cloneNodeGraphMetamodulePayload(node.metamodule)
+          : {
+            playmode: Math.max(1, Math.min(4, Math.round(Number(node.metamodule.playmode) || 4))),
+            voices: Math.max(1, Math.min(32, Math.round(Number(node.metamodule.voices) || 10))),
+            boundary: Array.isArray(node.metamodule.boundary) ? node.metamodule.boundary : [],
+            displays: Array.isArray(node.metamodule.displays) ? node.metamodule.displays : [],
+            paramVisibility: node.metamodule.paramVisibility && typeof node.metamodule.paramVisibility === "object"
+              ? { ...node.metamodule.paramVisibility }
+              : {},
+          };
+      }
       if (typeof nodeGraphDspApplyControllerLiveSmoothing === "function") {
         nodeGraphDspApplyControllerLiveSmoothing(runtimeNode);
       }
@@ -264,6 +308,16 @@ function nodeGraphBuildLiveParameterNodesForPatch(patch, activeNodeIds = null, b
       }
       if (nodeGraphModuleIsGraphType(node.type) && node.graph) {
         runtimeNode.graph = node.graph;
+      }
+      if (node.type === "sequencer") {
+        runtimeNode.sequencer = typeof sequencerCloneClip === "function"
+          ? sequencerCloneClip(node.sequencer)
+          : (node.sequencer || null);
+      }
+      if ((node.type === "keyboard" || node.type === "gridKeyboard") && node.chordMemory) {
+        runtimeNode.chordMemory = typeof nodeGraphChordMemoryNormalizeSlots === "function"
+          ? { slots: nodeGraphChordMemoryNormalizeSlots(node.chordMemory) }
+          : node.chordMemory;
       }
       return runtimeNode;
     });
@@ -407,7 +461,6 @@ function createNodeGraphLiveRuntime(plan, previousRuntime = null) {
   const noteGlideStates = new Map();
   const dsfOscillatorStates = new Map();
   const robinSupersawStates = new Map();
-  const hypersawStates = new Map();
   const hypersaw2States = new Map();
   const chordSequencerStates = new Map();
   const lutCellStates = new Map();
@@ -434,7 +487,6 @@ function createNodeGraphLiveRuntime(plan, previousRuntime = null) {
   const samplePlaybackStates = new Map();
   const samples = new Map((plan.samples || []).map((sample) => [sample.id, sample]));
   const slewLimiterStates = new Map();
-  const stepSequencerStates = new Map();
   const spiralStates = new Map();
   const fractalSpiralStates = new Map();
   const logSpiralStates = new Map();
@@ -546,9 +598,6 @@ function createNodeGraphLiveRuntime(plan, previousRuntime = null) {
     }
     if (node.type === "robinSupersaw") {
       robinSupersawStates.set(node.id, createNodeGraphRobinSupersawState());
-    }
-    if (node.type === "hypersaw") {
-      hypersawStates.set(node.id, createNodeGraphHypersawState());
     }
     if (node.type === "hypersaw2") {
       hypersaw2States.set(node.id, createNodeGraphHypersaw2State());
@@ -863,9 +912,7 @@ function createNodeGraphLiveRuntime(plan, previousRuntime = null) {
           : { out: 0, raw: 0 },
       );
     }
-    if (node.type === "stepSequencer") {
-      stepSequencerStates.set(node.id, createNodeGraphStepSequencerState());
-    }
+
     if (node.type === "triggerCounter") {
       triggerCounterStates.set(node.id, createNodeGraphTriggerCounterState());
     }
@@ -978,7 +1025,6 @@ function createNodeGraphLiveRuntime(plan, previousRuntime = null) {
     noteGlideStates,
     dsfOscillatorStates,
     robinSupersawStates,
-    hypersawStates,
     hypersaw2States,
     chordSequencerStates,
     lutCellStates,
@@ -1002,8 +1048,8 @@ function createNodeGraphLiveRuntime(plan, previousRuntime = null) {
     // when their signal supply is cut, instead of just dropping to silence.
     inputWireBreakTriggers: new Map(),
     pitchModWheelSignal: {
-      mod: Math.max(0, Math.min(1, Number(nodeGraphMvp?.modWheelSignal) || 0)),
-      pitch: Math.max(-1, Math.min(1, Number(nodeGraphMvp?.pitchWheelSignal) || 0)),
+      mod: Math.max(0, Math.min(1, nodeGraphFiniteNumber(nodeGraphMvp?.modWheelSignal))),
+      pitch: nodeGraphFiniteNumber(nodeGraphMvp?.pitchWheelSignal),
     },
     midiKeyboardSignal: null,
     nodeOutputs: new Map((plan.nodes || []).map((node) => [node.id, 0])),
@@ -1046,7 +1092,6 @@ function createNodeGraphLiveRuntime(plan, previousRuntime = null) {
     spiralStates,
     fractalSpiralStates,
     logSpiralStates,
-    stepSequencerStates,
     timing: normalizeNodeGraphPatchTiming(plan.timing),
     triggerCounterStates,
     triggerDividerStates,
@@ -1297,9 +1342,6 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   if (!runtime.robinSupersawStates) {
     runtime.robinSupersawStates = new Map();
   }
-  if (!runtime.hypersawStates) {
-    runtime.hypersawStates = new Map();
-  }
   if (!runtime.hypersaw2States) {
     runtime.hypersaw2States = new Map();
   }
@@ -1402,9 +1444,7 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   if (!runtime.patchCommandStates) {
     runtime.patchCommandStates = new Map();
   }
-  if (!runtime.stepSequencerStates) {
-    runtime.stepSequencerStates = new Map();
-  }
+
   if (!runtime.triggerDividerStates) {
     runtime.triggerDividerStates = new Map();
   }
@@ -1529,9 +1569,6 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     }
     if (node.type === "robinSupersaw" && !runtime.robinSupersawStates.has(node.id)) {
       runtime.robinSupersawStates.set(node.id, createNodeGraphRobinSupersawState());
-    }
-    if (node.type === "hypersaw" && !runtime.hypersawStates.has(node.id)) {
-      runtime.hypersawStates.set(node.id, createNodeGraphHypersawState());
     }
     if (node.type === "hypersaw2" && !runtime.hypersaw2States.has(node.id)) {
       runtime.hypersaw2States.set(node.id, createNodeGraphHypersaw2State());
@@ -1887,9 +1924,7 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     if (node.type === "triggerDivider" && !runtime.triggerDividerStates.has(node.id)) {
       runtime.triggerDividerStates.set(node.id, createNodeGraphTriggerDividerState());
     }
-    if (node.type === "stepSequencer" && !runtime.stepSequencerStates.has(node.id)) {
-      runtime.stepSequencerStates.set(node.id, createNodeGraphStepSequencerState());
-    }
+
     if (node.type === "triggerCounter" && !runtime.triggerCounterStates.has(node.id)) {
       runtime.triggerCounterStates.set(node.id, createNodeGraphTriggerCounterState());
     }
@@ -2096,11 +2131,6 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   for (const id of [...runtime.robinSupersawStates.keys()]) {
     if (!nodeIds.has(id)) {
       runtime.robinSupersawStates.delete(id);
-    }
-  }
-  for (const id of [...runtime.hypersawStates.keys()]) {
-    if (!nodeIds.has(id)) {
-      runtime.hypersawStates.delete(id);
     }
   }
   for (const id of [...runtime.hypersaw2States.keys()]) {
@@ -2490,11 +2520,6 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
       if (!nodeIds.has(id)) {
         runtime.vactrolEnvelopeStates.delete(id);
       }
-    }
-  }
-  for (const id of [...runtime.stepSequencerStates.keys()]) {
-    if (!nodeIds.has(id)) {
-      runtime.stepSequencerStates.delete(id);
     }
   }
   for (const id of [...runtime.triggerCounterStates.keys()]) {

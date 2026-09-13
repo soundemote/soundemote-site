@@ -61,17 +61,22 @@ function nodeGraphPatchMigratePhosphorLightNodes(patch) {
     return {
       ...node,
       type: "scope2d",
-      traceDisplaySettings: {
-        ...src,
-        background: src.background ?? src.backgroundColor,
-        decay: src.decay,
-        scale: src.scale,
-        dot1Size: src.dot1Size,
-        lineThickness: src.lineThickness ?? src.dot1Blur,
-        pixelDensity: src.pixelDensity,
-        dot1Color: src.dot1Color ?? src.color,
-        dot1Brightness: src.dot1Brightness ?? src.brightness,
-      },
+      traceDisplaySettings: (() => {
+        const next = {
+          ...src,
+          background: src.background ?? src.backgroundColor,
+          trail: src.trail,
+          ghost: src.ghost,
+          scale: src.scale,
+          dot1Size: src.dot1Size,
+          lineThickness: src.lineThickness ?? src.dot1Blur,
+          pixelDensity: src.pixelDensity,
+          dot1Color: src.dot1Color ?? src.color,
+          dot1Brightness: src.dot1Brightness ?? src.brightness,
+        };
+        delete next.decay;
+        return next;
+      })(),
     };
   });
   return changed ? { ...patch, nodes } : patch;
@@ -128,7 +133,7 @@ function nodeGraphPatchMigrateAdditiveFilterSlopeToDbOct(patch) {
     }
     const bump = (bag) => {
       if (!bag) return bag;
-      if ((Number(bag._slopeUnit) || 0) >= 1) return bag;
+      if ((nodeGraphFiniteNumber(bag._slopeUnit)) >= 1) return bag;
       if (bag.slope == null) {
         changed = true;
         return { ...bag, _slopeUnit: 1 };
@@ -237,7 +242,7 @@ function nodeGraphPatchMigrateAdditiveGeneratorWaveformsBasic(patch) {
     const parameters = node.parameters && typeof node.parameters === "object"
       ? { ...node.parameters }
       : null;
-    const stamp = Number(params._wfBasic ?? parameters?._wfBasic) || 0;
+    const stamp = nodeGraphFiniteNumber(params._wfBasic ?? parameters?._wfBasic);
     if (stamp >= 4) return node;
     // Already on v4 (Saw/Square/Pulse*/Tri/RectSine + PWM) — just stamp.
     if (
@@ -301,14 +306,14 @@ function nodeGraphPatchMigrateAdditiveGeneratorWaveformsPwm(patch) {
     const parameters = node.parameters && typeof node.parameters === "object"
       ? { ...node.parameters }
       : null;
-    const stamp = Number(params._wfBasic ?? parameters?._wfBasic) || 0;
+    const stamp = nodeGraphFiniteNumber(params._wfBasic ?? parameters?._wfBasic);
     if (stamp >= 4) return node;
     if (stamp < 3) return node; // WaveformsBasic runs first
 
     const apply = (obj) => {
       if (!obj) return null;
       const out = { ...obj, _wfBasic: 4 };
-      const wf = Math.round(Number(out.waveform) || 0);
+      const wf = Math.round(nodeGraphFiniteNumber(out.waveform));
       const morphRaw = out.pwm != null ? out.pwm : out.morph;
       const morph = Number(morphRaw);
       const m = Number.isFinite(morph) ? morph : 0;
@@ -447,14 +452,14 @@ function nodeGraphPatchMigrateFrequencyMathBipolar(patch) {
     const parameters = node.parameters && typeof node.parameters === "object"
       ? { ...node.parameters }
       : null;
-    const stamp = Number(params._freqMathBipolar ?? parameters?._freqMathBipolar) || 0;
+    const stamp = nodeGraphFiniteNumber(params._freqMathBipolar ?? parameters?._freqMathBipolar);
     if (stamp >= 1) return node;
     const apply = (obj) => {
       if (!obj) return null;
       const out = { ...obj, _freqMathBipolar: 1 };
       const factor = Number(out.multiplyDivide);
-      const divide = Math.round(Number(out.mulDiv) || 0) === 1;
-      const subtract = Math.round(Number(out.addSub) || 0) === 1;
+      const divide = Math.round(nodeGraphFiniteNumber(out.mulDiv)) === 1;
+      const subtract = Math.round(nodeGraphFiniteNumber(out.addSub)) === 1;
       if (Number.isFinite(factor) && factor > 0) {
         // Legacy unipolar factor 1…24 (or already bipolar −1…1).
         if (factor > 1 + 1e-9 || (divide && factor >= 1 - 1e-9)) {
@@ -528,7 +533,7 @@ function nodeGraphPatchMigrateFrequencySkewCurveExpRational(patch) {
     const parameters = node.parameters && typeof node.parameters === "object"
       ? { ...node.parameters }
       : null;
-    const stamp = Number(params._freqSkewCurve ?? parameters?._freqSkewCurve) || 0;
+    const stamp = nodeGraphFiniteNumber(params._freqSkewCurve ?? parameters?._freqSkewCurve);
     if (stamp >= 1) return node;
     const apply = (obj) => {
       if (!obj) return null;
@@ -652,13 +657,13 @@ function nodeGraphPatchMigrateBubbleSlimParams(patch) {
     const parameters = node.parameters && typeof node.parameters === "object"
       ? { ...node.parameters }
       : null;
-    const stamp = Number(params._bubbleSlim ?? parameters?._bubbleSlim) || 0;
+    const stamp = nodeGraphFiniteNumber(params._bubbleSlim ?? parameters?._bubbleSlim);
     if (stamp >= 2) return node;
     const apply = (obj) => {
       if (!obj) return null;
       const next = { ...obj, _bubbleSlim: 2 };
       if (stamp < 1) {
-        const old = Math.round(Number(next.skewCurveMode) || 0);
+        const old = Math.round(nodeGraphFiniteNumber(next.skewCurveMode));
         // Old: 0 Rat, 1 Exp, 2 Log, 3 Lin → New: 0 Exp, 1 Log
         if (old === 1) next.skewCurveMode = 0;
         else if (old === 2) next.skewCurveMode = 1;
@@ -854,7 +859,7 @@ function nodeGraphPatchMigrateAdditiveFilterCutoffToHz(patch) {
     const parameters = node.parameters && typeof node.parameters === "object"
       ? { ...node.parameters }
       : null;
-    if ((Number(params._cutoffHz) || 0) >= 1 || (Number(parameters?._cutoffHz) || 0) >= 1) {
+    if ((nodeGraphFiniteNumber(params._cutoffHz)) >= 1 || (nodeGraphFiniteNumber(parameters?._cutoffHz)) >= 1) {
       return node;
     }
     const src = params.cutoff != null ? params : parameters;
@@ -979,6 +984,62 @@ function nodeGraphPatchMigrateMidSideGainLinearToDb(patch) {
     return { ...node, params: nextParams, paramMeta: nextMeta };
   });
   return changed ? { ...patch, nodes } : patch;
+}
+
+/**
+ * Meta Polyphony inlet → Voices. Play Keys / Arp Keys → Meta Polyphony become
+ * source Polyphony → Meta Voices. Drop obsolete Meta shell Gate cables
+ * (Voices velocity already tracks on/off).
+ */
+function nodeGraphPatchMigrateMetaPolyphonyToVoices(patch) {
+  if (!patch || typeof patch !== "object") return patch;
+  const nodeTypeById = new Map();
+  if (Array.isArray(patch.nodes)) {
+    for (const node of patch.nodes) {
+      if (node && node.id != null) nodeTypeById.set(String(node.id), String(node.type || ""));
+    }
+  }
+  const rewriteConn = (conn) => {
+    if (!conn || typeof conn !== "object") return { conn, changed: false, drop: false };
+    let next = conn;
+    let changed = false;
+    const dstType = nodeTypeById.get(String(conn.destinationNode || ""));
+    const srcType = nodeTypeById.get(String(conn.sourceNode || ""));
+    const dstPort = String(conn.destinationPort || "");
+    const srcPort = String(conn.sourcePort || "");
+    // Shell Gate removed — Voices owns hold state.
+    if (dstType === "metamodule" && dstPort === "Gate") {
+      return { conn: next, changed: true, drop: true };
+    }
+    if (dstType === "metamodule" && dstPort === "Polyphony") {
+      next = { ...next, destinationPort: "Voices" };
+      changed = true;
+    }
+    const dstIsVoices = (changed ? next.destinationPort : dstPort) === "Voices"
+      && (dstType === "metamodule");
+    if (dstIsVoices && (srcPort === "Play Keys" || srcPort === "Arp Keys")) {
+      if (srcType === "keyboard" || srcType === "keyboardController") {
+        next = { ...next, sourcePort: "Polyphony" };
+        changed = true;
+      }
+    }
+    return { conn: next, changed, drop: false };
+  };
+  let changed = false;
+  const mapList = (list) => {
+    if (!Array.isArray(list)) return list;
+    const out = [];
+    for (const c of list) {
+      const r = rewriteConn(c);
+      if (r.changed) changed = true;
+      if (r.drop) continue;
+      out.push(r.conn);
+    }
+    return out;
+  };
+  const connections = mapList(patch.connections);
+  const graphConnections = mapList(patch.graphConnections);
+  return changed ? { ...patch, connections, graphConnections } : patch;
 }
 
 /**
@@ -1138,6 +1199,7 @@ function migrateNodeGraphPatchToCurrent(patch) {
     next = nodeGraphPatchMigrateToQuantizeFreq(next);
     next = nodeGraphPatchMigrateOutputVolumeLinearToDb(next);
     next = nodeGraphPatchMigrateMidSideGainLinearToDb(next);
+    next = nodeGraphPatchMigrateMetaPolyphonyToVoices(next);
   }
 
   return next;

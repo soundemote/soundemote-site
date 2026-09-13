@@ -97,9 +97,9 @@ NodeLiveAudioProcessor.prototype._setPlanImpl = function _setPlanImpl(plan, mess
       this.pitchReferenceHz = Number(message.pitchReferenceHz);
     }
     if (Number.isFinite(Number(message.pitchOffsetOctaves))) {
-      this.pitchOffsetOctaves = Math.max(-10, Math.min(10, Number(message.pitchOffsetOctaves)));
+      this.pitchOffsetOctaves = Number(message.pitchOffsetOctaves);
     }
-    this.hostSampleRate = Math.max(1, Number(message.sampleRate) || sampleRate || 44100);
+    this.hostSampleRate = Math.max(1, nodeGraphFiniteNumber(message.sampleRate, nodeGraphFiniteNumber(sampleRate, 44100)));
     if (Number.isFinite(Number(message.displayFps))) {
       this.displayFps = Math.max(0, Math.min(240, Math.round(Number(message.displayFps))));
     }
@@ -130,8 +130,18 @@ NodeLiveAudioProcessor.prototype._setPlanImpl = function _setPlanImpl(plan, mess
       // an empty path and output silence (engine still ran).
       drawnPath: node.drawnPath || null,
       graph: node.graph || null,
+      // Metamodule / Group ownership — Polyphony voice lanes need this.
+      ownerMetamoduleId: node.ownerMetamoduleId
+        ? String(node.ownerMetamoduleId)
+        : undefined,
+      // Playmode + Voice Count live on metamodule (Module Settings), not params.
+      metamodule: node.metamodule && typeof node.metamodule === "object"
+        ? node.metamodule
+        : undefined,
       paramMeta: node.paramMeta || {},
       params: node.params || {},
+      sequencer: node.sequencer && typeof node.sequencer === "object" ? node.sequencer : null,
+      chordMemory: node.chordMemory && typeof node.chordMemory === "object" ? node.chordMemory : null,
       sample: node.sample || null,
       samplePhase: Number.isFinite(Number(node.samplePhase)) ? Number(node.samplePhase) : null,
       samplePhaseSeek: Number.isFinite(Number(node.samplePhaseSeek))
@@ -314,9 +324,6 @@ NodeLiveAudioProcessor.prototype._setPlanImpl = function _setPlanImpl(plan, mess
       }
       if (node?.type === "robinSupersaw" && !this.robinSupersawStates.has(id)) {
         this.robinSupersawStates.set(id, this.createRobinSupersawState());
-      }
-      if (node?.type === "hypersaw" && !this.hypersawStates.has(id)) {
-        this.hypersawStates.set(id, this.createHypersawState());
       }
       if (node?.type === "hypersaw2") {
         if (!this.hypersaw2States) this.hypersaw2States = new Map();
@@ -573,9 +580,7 @@ NodeLiveAudioProcessor.prototype._setPlanImpl = function _setPlanImpl(plan, mess
       if (node?.type === "pluckEnvelope" && !this.pluckEnvelopeStates.has(id)) {
         this.pluckEnvelopeStates.set(id, this.createPluckEnvelopeState());
       }
-      if (node?.type === "stepSequencer" && !this.stepSequencerStates.has(id)) {
-        this.stepSequencerStates.set(id, this.createStepSequencerState());
-      }
+
       if (node?.type === "stepGrid" && !this.stepGridStates.has(id)) {
         this.stepGridStates.set(id, this.createStepGridState());
       }
@@ -852,12 +857,6 @@ NodeLiveAudioProcessor.prototype._setPlanImpl = function _setPlanImpl(plan, mess
       if (!ids.has(id)) {
         this.destroyRobinSupersawNativeState(this.robinSupersawStates.get(id));
         this.robinSupersawStates.delete(id);
-      }
-    }
-    for (const id of [...this.hypersawStates.keys()]) {
-      if (!ids.has(id)) {
-        this.destroyHypersawNativeState(this.hypersawStates.get(id));
-        this.hypersawStates.delete(id);
       }
     }
     if (this.hypersaw2States) {
@@ -1327,12 +1326,7 @@ NodeLiveAudioProcessor.prototype._setPlanImpl = function _setPlanImpl(plan, mess
         }
       }
     }
-    for (const id of [...this.stepSequencerStates.keys()]) {
-      if (!ids.has(id)) {
-        this.destroyStepSequencerNativeState(this.stepSequencerStates.get(id));
-        this.stepSequencerStates.delete(id);
-      }
-    }
+
     for (const id of [...this.stepGridStates.keys()]) {
       if (!ids.has(id)) {
         this.stepGridStates.delete(id);

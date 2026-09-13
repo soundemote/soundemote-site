@@ -30,6 +30,8 @@ NodeLiveAudioProcessor.prototype.clearPlan = function clearPlan() {
     this.midiKeyboardGatePulseVelocity = 0;
     this.midiKeyboardSignal = null;
     this.midiKeyboardHeldKeysLowBitmask = 0;
+    this.midiKeyboardArpMask = typeof noteMaskCreate === "function" ? noteMaskCreate() : new Uint8Array(128);
+    this.midiKeyboardPlayMask = typeof noteMaskCreate === "function" ? noteMaskCreate() : new Uint8Array(128);
     this.midiKeyboardHeldKeysHighBitmask = 0;
     this.midiKeyboardHeldKeysPhase = 0;
     this.modulationConnections = new Map();
@@ -221,7 +223,6 @@ NodeLiveAudioProcessor.prototype.clearPlan = function clearPlan() {
     this.snowflakeStates = new Map();
     this.dsfOscillatorStates = new Map();
     this.robinSupersawStates = new Map();
-    this.hypersawStates = new Map();
     this.hypersaw2States = new Map();
     this.videoscopeStates = new Map();
     this.spectrogramStates = new Map();
@@ -288,10 +289,7 @@ NodeLiveAudioProcessor.prototype.clearPlan = function clearPlan() {
     this.spiralStates = new Map();
     this.fractalSpiralStates = new Map();
     this.logSpiralStates = new Map();
-    for (const state of this.stepSequencerStates.values()) {
-      this.destroyStepSequencerNativeState(state);
-    }
-    this.stepSequencerStates = new Map();
+
     this.stepGridStates = new Map();
     for (const state of this.triggerCounterStates.values()) {
       this.destroyTriggerCounterNativeState(state);

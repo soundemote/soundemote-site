@@ -73,19 +73,19 @@ function nodeGraphDisplaySettingsNormalizePlateLook(source = {}, defaults = {}) 
 
 /**
  * App-wide phosphor residual axes (Ghost / Trail / Burn / Burn Amount).
- * residualSchema ≥ 2: burn is sticky floor (default 0). Legacy burn≡ghost → Burn off.
+ * residualSchema ≥ 2: burn is sticky floor (default 0).
  * residualSchema ≥ 3: burnAmount multiplies Bright for residual deposits (default 1).
- * decay remains a legacy mirror of 1 − trail only.
+ * SSOT keys only: trail, ghost, burn, burnAmount — no decay / burn-as-ghost aliases.
  *
  * @param {object} source
  * @param {object} defaults
- * @returns {{ ghost: number, trail: number, burn: number, burnAmount: number, decay: number, residualSchema: number }}
+ * @returns {{ ghost: number, trail: number, burn: number, burnAmount: number, residualSchema: number }}
  */
 function normalizeNodeGraphPhosphorResidualAxes(source = {}, defaults = {}) {
   const src = source && typeof source === "object" ? source : {};
   const defaultTrail = Number.isFinite(Number(defaults.trail))
     ? Number(defaults.trail)
-    : (Number.isFinite(Number(defaults.decay)) ? 1 - Number(defaults.decay) : 0.88);
+    : 0.88;
   const defaultGhost = Number.isFinite(Number(defaults.ghost))
     ? Number(defaults.ghost)
     : 0.45;
@@ -99,25 +99,10 @@ function normalizeNodeGraphPhosphorResidualAxes(source = {}, defaults = {}) {
   const Residual = typeof PhosphorResidual !== "undefined" ? PhosphorResidual : null;
   const trail = Residual && typeof Residual.migrateTrail === "function"
     ? Residual.migrateTrail(src, defaultTrail)
-    : normalizeNodeGraphTraceDisplayNumber(
-      src.trail != null
-        ? src.trail
-        : (Number.isFinite(Number(src.decay)) ? 1 - Number(src.decay) : defaultTrail),
-      defaultTrail,
-      0,
-      1,
-    );
+    : normalizeNodeGraphTraceDisplayNumber(src.trail, defaultTrail, 0, 1);
   const ghost = Residual && typeof Residual.migrateGhost === "function"
     ? Residual.migrateGhost(src, defaultGhost)
-    : normalizeNodeGraphTraceDisplayNumber(
-      src.ghost != null ? src.ghost : (
-        // Pre-schema only: burn mirrored ghost.
-        (Number(src.residualSchema) >= 2) ? defaultGhost : src.burn
-      ),
-      defaultGhost,
-      0,
-      1,
-    );
+    : normalizeNodeGraphTraceDisplayNumber(src.ghost, defaultGhost, 0, 1);
   const burn = Residual && typeof Residual.migrateBurn === "function"
     ? Residual.migrateBurn(src, defaultBurn)
     : (
@@ -128,25 +113,15 @@ function normalizeNodeGraphPhosphorResidualAxes(source = {}, defaults = {}) {
   const burnAmountMax = Residual?.BURN_AMOUNT_MAX || 4;
   const burnAmount = Residual && typeof Residual.migrateBurnAmount === "function"
     ? Residual.migrateBurnAmount(src, defaultBurnAmount)
-    : normalizeNodeGraphTraceDisplayNumber(
-      src.burnAmount ?? src.depositGain ?? src.burnGain,
-      defaultBurnAmount,
-      0,
-      burnAmountMax,
-    );
-  const decay = normalizeNodeGraphTraceDisplayNumber(1 - trail, 0.12, 0, 1);
+    : normalizeNodeGraphTraceDisplayNumber(src.burnAmount, defaultBurnAmount, 0, burnAmountMax);
   const residualSchema = Residual?.RESIDUAL_SCHEMA || 3;
-  return { ghost, trail, burn, burnAmount, decay, residualSchema };
+  return { ghost, trail, burn, burnAmount, residualSchema };
 }
 
 function nodeGraphSpectrogramSnapFftSize(value) {
   const raw = Number(value);
   if (!Number.isFinite(raw)) {
     return nodeGraphSpectrogramSettingsDefaults.fftSize;
-  }
-  // Legacy module choice index.
-  if (raw >= 0 && raw <= 3 && Math.abs(raw - Math.round(raw)) < 1e-6) {
-    return nodeGraphSpectrogramFftSizes[Math.round(raw)] || nodeGraphSpectrogramSettingsDefaults.fftSize;
   }
   let best = nodeGraphSpectrogramFftSizes[0];
   let bestDist = Math.abs(raw - best);
@@ -349,19 +324,11 @@ function normalizeNodeGraphSpectrogramSettings(settings = {}, node = null) {
     4,
     defaults.window,
   );
-  // Time overlap grew from 3 choices (2×/4×/8× @ 0–2) to 4 (none/2×/4×/8× @ 0–3).
-  // Patches without freqOverlap still use the old index map — shift +1 so hop
-  // settings keep their previous meaning.
-  let overlapRaw = source.overlap ?? node?.params?.overlap ?? defaults.overlap;
-  const legacyNoFreqOverlap = !Object.hasOwn(source, "freqOverlap")
-    && !(node?.params && Object.hasOwn(node.params, "freqOverlap"));
-  if (legacyNoFreqOverlap) {
-    const n = Math.round(Number(overlapRaw));
-    if (Number.isFinite(n) && n >= 0 && n <= 2) {
-      overlapRaw = n + 1;
-    }
-  }
-  const overlap = snapChoice(overlapRaw, 5, defaults.overlap);
+  const overlap = snapChoice(
+    source.overlap ?? node?.params?.overlap ?? defaults.overlap,
+    5,
+    defaults.overlap,
+  );
   const freqOverlap = snapChoice(
     source.freqOverlap ?? node?.params?.freqOverlap ?? defaults.freqOverlap,
     2,
@@ -478,7 +445,6 @@ function normalizeNodeGraphXyPadDisplaySettings(settings = {}) {
     burn: residual.burn,
     burnAmount: residual.burnAmount,
     residualSchema: residual.residualSchema,
-    decay: residual.decay,
     dot1Brightness: normalizeNodeGraphTraceDisplayBrightness(
       source.dot1Brightness ?? source.brightness,
       defaults.dot1Brightness,
@@ -488,7 +454,7 @@ function normalizeNodeGraphXyPadDisplaySettings(settings = {}) {
     dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
     dotBudget: typeof nodeGraphTraceDisplayClampDotBudget === "function"
       ? nodeGraphTraceDisplayClampDotBudget(source.dotBudget ?? defaults.dotBudget)
-      : Math.max(1, Math.min(8192, Math.round(Number(source.dotBudget ?? defaults.dotBudget) || 1024))),
+      : Math.max(1, Math.min(8192, Math.round(nodeGraphFiniteNumber(source.dotBudget ?? defaults.dotBudget, 1024)))),
     // Default ON when missing (devilish solid trails). Explicit false stays off.
     fullDotEconomy: source.fullDotEconomy !== false
       && source.useFullDotEconomy !== false,
@@ -504,11 +470,8 @@ function normalizeNodeGraphXyPadDisplaySettings(settings = {}) {
       0,
       1,
     ),
-    // Ignore legacy scale for layout; keep puckSize (migrate old scale→puck if missing).
     puckSize: normalizeNodeGraphTraceDisplayNumber(
-      source.puckSize ?? (Number.isFinite(Number(source.scale)) && Number(source.scale) > 0
-        ? defaults.puckSize * Math.min(2, Number(source.scale))
-        : defaults.puckSize),
+      source.puckSize,
       defaults.puckSize,
       0.005,
       0.25,
@@ -588,19 +551,6 @@ function normalizeNodeGraphTraceDisplayZoomSeconds(value, fallback) {
 }
 
 
-function nodeGraphTraceDisplayClampSweepSeconds(value) {
-  const n = Number(value);
-  // Legacy seconds clamp (migration / older callers). Prefer sweepHz.
-  if (!Number.isFinite(n)) {
-    const hz = Number(nodeGraphLineBurnSettingsDefaults.sweepHz);
-    return Number.isFinite(hz) && hz > 0 ? 1 / hz : 0.25;
-  }
-  if (n <= 0) {
-    return 0;
-  }
-  return clampNodeSliderValue(n, 0, 10);
-}
-
 /** Sync-off Sweep: left→right passes per second. 0 = collapsed full-width burn. */
 function nodeGraphTraceDisplayClampSweepHz(value, fallback = 4) {
   const n = Number(value);
@@ -624,42 +574,22 @@ function nodeGraphTraceDisplayClampSweepCycles(value, fallback = 4) {
   return clampNodeSliderValue(n, 0.05, 100);
 }
 
-/**
- * Resolve Sweep Hz + Cycles as separate dials.
- * Legacy sweepSeconds: free-run meant seconds → Hz = 1/s; sync meant cycles → copy.
- */
+/** Resolve Sweep Hz + Cycles as separate dials (sweepHz / sweepCycles only). */
 function normalizeNodeGraphLineBurnSweepPair(source, defaults = nodeGraphLineBurnSettingsDefaults) {
   const defHz = Number(defaults?.sweepHz);
   const defCycles = Number(defaults?.sweepCycles);
-  const legacySec = Number(source?.sweepSeconds);
-  let hz = Number(source?.sweepHz);
-  let cycles = Number(source?.sweepCycles);
-  if (!Number.isFinite(hz)) {
-    if (Number.isFinite(legacySec) && legacySec > 0) {
-      hz = 1 / legacySec;
-    } else {
-      const legacyHz = Number(source?.legacySweepHz);
-      hz = Number.isFinite(legacyHz) ? legacyHz : (Number.isFinite(defHz) ? defHz : 4);
-    }
-  }
-  if (!Number.isFinite(cycles)) {
-    // Old dual-use field: when Sync was on, the number was already cycles.
-    if (Number.isFinite(legacySec) && legacySec > 0) {
-      cycles = legacySec;
-    } else {
-      cycles = Number.isFinite(defCycles) ? defCycles : 4;
-    }
-  }
+  const hz = Number(source?.sweepHz);
+  const cycles = Number(source?.sweepCycles);
   return {
-    sweepHz: nodeGraphTraceDisplayClampSweepHz(hz, defHz),
-    sweepCycles: nodeGraphTraceDisplayClampSweepCycles(cycles, defCycles),
+    sweepHz: nodeGraphTraceDisplayClampSweepHz(
+      Number.isFinite(hz) ? hz : (Number.isFinite(defHz) ? defHz : 4),
+      defHz,
+    ),
+    sweepCycles: nodeGraphTraceDisplayClampSweepCycles(
+      Number.isFinite(cycles) ? cycles : (Number.isFinite(defCycles) ? defCycles : 4),
+      defCycles,
+    ),
   };
-}
-
-/** @deprecated Prefer normalizeNodeGraphLineBurnSweepPair / sweepHz. */
-function normalizeNodeGraphLineBurnSweepSeconds(source, defaults) {
-  const pair = normalizeNodeGraphLineBurnSweepPair(source, defaults);
-  return pair.sweepHz > 0 ? 1 / pair.sweepHz : 0;
 }
 
 /** Sync-off History: window rate in Hz (seconds = 1/Hz). 0 = freeze / now-line. */
@@ -724,7 +654,7 @@ function normalizeNodeGraphLineBurnSettings(settings = {}) {
   const gradientStops = nodeGraphPhosphorGradientStopsFromSettings(source, defaults.dot1Color);
   const floor = gradientStops[0]?.color || defaults.background;
   const peak = gradientStops[gradientStops.length - 1]?.color || defaults.dot1Color;
-  // Ghost / Trail / Burn are UI truth (same as scope2d). decay = 1 − trail only.
+  // Ghost / Trail / Burn are UI truth (same as scope2d).
   const residual = normalizeNodeGraphPhosphorResidualAxes(source, defaults);
   return {
     ...nodeGraphDisplaySettingsNormalizePlateLook(source, {
@@ -735,7 +665,6 @@ function normalizeNodeGraphLineBurnSettings(settings = {}) {
     burn: residual.burn,
     burnAmount: residual.burnAmount,
     residualSchema: residual.residualSchema,
-    decay: residual.decay,
     ghost: residual.ghost,
     trail: residual.trail,
     // Bright 0…1 exact (legacy 0…2 values halved once on load).
@@ -750,7 +679,7 @@ function normalizeNodeGraphLineBurnSettings(settings = {}) {
     // Dot Budget + Full Dot Economy persist (toggle was dropped before).
     dotBudget: typeof nodeGraphTraceDisplayClampDotBudget === "function"
       ? nodeGraphTraceDisplayClampDotBudget(source.dotBudget ?? defaults.dotBudget)
-      : Math.max(1, Math.min(8192, Math.round(Number(source.dotBudget ?? defaults.dotBudget) || 1024))),
+      : Math.max(1, Math.min(8192, Math.round(nodeGraphFiniteNumber(source.dotBudget ?? defaults.dotBudget, 1024)))),
     // Shared packing toggles. Fall back to lineBurn defaults (Full Dot Economy ON
     // for c1091b42 fused CRT look). Explicit false stays off.
     // Packing toggles retired — always chord-pack continuous trails.
@@ -774,14 +703,7 @@ function normalizeNodeGraphLineBurnSettings(settings = {}) {
       1,
     ),
     scale: normalizeNodeGraphTraceDisplayNumber(source.scale, defaults.scale, 0.01, 100),
-    ...(() => {
-      const pair = normalizeNodeGraphLineBurnSweepPair(source, defaults);
-      return {
-        ...pair,
-        // Legacy derived seconds for any leftover callers.
-        sweepSeconds: pair.sweepHz > 0 ? 1 / pair.sweepHz : 0,
-      };
-    })(),
+    ...normalizeNodeGraphLineBurnSweepPair(source, defaults),
   };
 }
 
@@ -805,7 +727,6 @@ function normalizeNodeGraphZeroDBurnSettings(settings = {}) {
     burn: residual.burn,
     burnAmount: residual.burnAmount,
     residualSchema: residual.residualSchema,
-    decay: residual.decay,
     dot1Brightness: normalizeNodeGraphTraceDisplayBrightness(
       source.dot1Brightness ?? source.brightness,
       defaults.dot1Brightness,
@@ -889,7 +810,7 @@ function normalizeNodeGraphTraceDisplaySettings(settings = {}) {
     ),
     dotBudget: typeof nodeGraphTraceDisplayClampDotBudget === "function"
       ? nodeGraphTraceDisplayClampDotBudget(source.dotBudget ?? defaults.dotBudget)
-      : Math.max(1, Math.min(8192, Math.round(Number(source.dotBudget ?? defaults.dotBudget) || 1024))),
+      : Math.max(1, Math.min(8192, Math.round(nodeGraphFiniteNumber(source.dotBudget ?? defaults.dotBudget, 1024)))),
     pixelDensity: normalizeNodeGraphTraceDisplayNumber(
       source.pixelDensity,
       defaults.pixelDensity,
@@ -992,7 +913,6 @@ function normalizeNodeGraphValueOscilloscopeSettings(settings = {}) {
     burn: residual.burn,
     burnAmount: residual.burnAmount,
     residualSchema: residual.residualSchema,
-    decay: residual.decay,
     capEnabled: source.capEnabled !== false,
     capLength: normalizeNodeGraphTraceDisplayNumber(source.capLength, defaults.capLength, 0, 1),
     capPadding: normalizeNodeGraphTraceDisplayNumber(source.capPadding, defaults.capPadding ?? 0, 0, 1),
@@ -1020,7 +940,7 @@ function nodeGraphSampleGradientStopsRgb(stops, energyT, peakFallback = "#75ebff
   const list = Array.isArray(stops) && stops.length >= 2
     ? stops
     : nodeGraphPhosphorDefaultGradientStops(peakFallback);
-  const t = Math.max(0, Math.min(1, Number(energyT) || 0));
+  const t = Math.max(0, Math.min(1, nodeGraphFiniteNumber(energyT)));
   const hexToRgb = (hex, fb = "#808080") => {
     const color = normalizeNodeGraphTraceDisplayColor(hex, fb);
     const match = /^#?([0-9a-f]{6})$/i.exec(String(color).trim());
@@ -1032,17 +952,17 @@ function nodeGraphSampleGradientStopsRgb(stops, energyT, peakFallback = "#75ebff
   };
   const first = list[0];
   const last = list[list.length - 1];
-  if (t <= (Number(first.t) || 0)) {
+  if (t <= (nodeGraphFiniteNumber(first.t))) {
     return hexToRgb(first.color, peakFallback);
   }
-  if (t >= (Number(last.t) || 1)) {
+  if (t >= (nodeGraphFiniteNumber(last.t, 1))) {
     return hexToRgb(last.color, peakFallback);
   }
   for (let i = 1; i < list.length; i += 1) {
     const a = list[i - 1];
     const b = list[i];
-    const at = Number(a.t) || 0;
-    const bt = Number(b.t) || 1;
+    const at = nodeGraphFiniteNumber(a.t);
+    const bt = nodeGraphFiniteNumber(b.t, 1);
     if (t <= bt) {
       const u = (t - at) / Math.max(1e-6, bt - at);
       const ar = hexToRgb(a.color, peakFallback);
@@ -1477,7 +1397,7 @@ function normalizeNodeGraphScope2dSettings(settings = {}, defaultsOverride = nul
   const gradientStops = nodeGraphPhosphorGradientStopsFromSettings(source, defaults.dot1Color);
   const floor = gradientStops[0]?.color || defaults.background;
   const peak = gradientStops[gradientStops.length - 1]?.color || defaults.dot1Color;
-  // Display Settings truth is Ghost + Trail + Burn. decay = 1 − trail only.
+  // Display Settings truth is Ghost + Trail + Burn.
   const residual = normalizeNodeGraphPhosphorResidualAxes(source, defaults);
   return {
     ...nodeGraphDisplaySettingsNormalizePlateLook(source, {
@@ -1488,7 +1408,6 @@ function normalizeNodeGraphScope2dSettings(settings = {}, defaultsOverride = nul
     burn: residual.burn,
     burnAmount: residual.burnAmount,
     residualSchema: residual.residualSchema,
-    decay: residual.decay,
     ghost: residual.ghost,
     trail: residual.trail,
     // Bright 0…1 exact (legacy 0…2 halved once).
@@ -1501,7 +1420,7 @@ function normalizeNodeGraphScope2dSettings(settings = {}, defaultsOverride = nul
     dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
     dotBudget: typeof nodeGraphTraceDisplayClampDotBudget === "function"
       ? nodeGraphTraceDisplayClampDotBudget(source.dotBudget ?? defaults.dotBudget)
-      : Math.max(1, Math.min(8192, Math.round(Number(source.dotBudget ?? defaults.dotBudget) || 1024))),
+      : Math.max(1, Math.min(8192, Math.round(nodeGraphFiniteNumber(source.dotBudget ?? defaults.dotBudget, 1024)))),
     // Full Dots / Dots only — shared phosphor packing (scope2d SSOT).
     // Accept bool true and common form/patch coercions (1 / "1" / "true" / "on").
     // Packing toggles retired — always chord-pack continuous trails.

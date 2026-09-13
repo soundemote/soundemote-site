@@ -12,11 +12,33 @@ function createNodeGraphEnvelopeCurveDisplay(nodeId, type) {
   section.dataset.nodeType = type;
   section.dataset.parameterVisual = "true";
   section.syncFromParameters = () => {
+    section._envelopeCurveForceDraw = true;
+    if (typeof syncFaceMetrics === "function") {
+      syncFaceMetrics(section);
+    }
     drawNodeGraphEnvelopeCurveDisplay(section);
   };
   const canvas = document.createElement("canvas");
   canvas.className = "node-filter-curve-canvas node-envelope-curve-canvas";
   section.append(canvas);
+  if (typeof ResizeObserver === "function" && !section._envelopeCurveResizeObs) {
+    const ro = new ResizeObserver(() => {
+      if (!section.isConnected) {
+        return;
+      }
+      if (typeof syncFaceMetrics === "function") {
+        syncFaceMetrics(section);
+      }
+      section._envelopeCurveForceDraw = true;
+      drawNodeGraphEnvelopeCurveDisplay(section);
+    });
+    try {
+      ro.observe(section);
+      section._envelopeCurveResizeObs = ro;
+    } catch (_error) {
+      // Ignore.
+    }
+  }
   requestAnimationFrame(() => drawNodeGraphEnvelopeCurveDisplay(section));
   return section;
 }
@@ -41,7 +63,7 @@ function drawNodeGraphEnvelopeCurveDisplay(section) {
 }
 
 function nodeGraphEnvelopeCurveBuildPreview(node, type, width) {
-  const pts = Math.max(64, Math.floor(Number(width) || 128));
+  const pts = Math.max(64, Math.floor(nodeGraphFiniteNumber(width, 128)));
   if (
     (type === "expAdsr" || type === "curveEnvelopeMod")
     && typeof nodeGraphExpAdsrPreviewCurve === "function"
@@ -162,7 +184,7 @@ function nodeGraphEnvelopeCurveBuildPreview(node, type, width) {
     const release = Math.max(0, nodeGraphEnvelopeCurveLiveParam(node, "release", 12.824772066678985));
     const decaySnap = Math.max(0, Math.min(1, nodeGraphEnvelopeCurveLiveParam(node, "decaySnap", 0)));
     const decayBody = Math.max(0, Math.min(1, nodeGraphEnvelopeCurveLiveParam(node, "decayBody", 0)));
-    const fallCurve = Math.max(-1, Math.min(1, nodeGraphEnvelopeCurveLiveParam(node, "fallCurve", 0.8062943900342834)));
+    const fallCurve = nodeGraphEnvelopeCurveLiveParam(node, "fallCurve", 0.8062943900342834);
     const amplitude = Math.max(0, nodeGraphEnvelopeCurveLiveParam(node, "amplitude", 0.980691228326368));
     const preview = nodeGraphThumpEnvelopePreviewCurve({
       attack, release, decaySnap, decayBody, fallCurve, amplitude,
@@ -237,8 +259,15 @@ function drawNodeGraphEnvelopeCurveDisplayInner(section) {
     return;
   }
   const type = section.dataset.nodeType || node.type || "expAdsr";
-  const cssW = Math.max(1, Number(section.clientWidth || section.offsetWidth) || 1);
-  const cssH = Math.max(1, Number(section.clientHeight || section.offsetHeight) || 1);
+  const faceMetrics = typeof ensureFaceMetrics === "function"
+    ? ensureFaceMetrics(section, { observe: true })
+    : null;
+  const cssW = Math.max(1, faceMetrics
+    ? faceMetrics.cssW
+    : nodeGraphFiniteNumber(section.clientWidth || section.offsetWidth, 1));
+  const cssH = Math.max(1, faceMetrics
+    ? faceMetrics.cssH
+    : nodeGraphFiniteNumber(section.clientHeight || section.offsetHeight, 1));
   const built = nodeGraphEnvelopeCurveBuildPreview(node, type, cssW);
   const signature = JSON.stringify(built.signature);
   if (
@@ -256,8 +285,8 @@ function drawNodeGraphEnvelopeCurveDisplayInner(section) {
   const { context, cssHeight: height, cssWidth: width, pixelRatio } = metrics;
   context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   section._envelopeCurveSignature = signature;
-  section._envelopeCurveCssW = cssW;
-  section._envelopeCurveCssH = cssH;
+  section._envelopeCurveCssW = width;
+  section._envelopeCurveCssH = height;
   section._envelopeCurveForceDraw = false;
 
   context.clearRect(0, 0, width, height);

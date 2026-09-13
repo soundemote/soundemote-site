@@ -116,9 +116,6 @@ const NODE_GRAPH_BYPASS_TYPE_OVERRIDES = Object.freeze({
   additiveFrequencySkew: "pass",
   additiveQuantizeFreq: "pass",
   additiveQuantizePhase: "pass",
-  additiveHarmonicMath: "pass",
-  additiveFrequencyMath: "pass",
-  additiveFrequencySlope: "pass",
   additiveNoisyFreq: "pass",
   additiveNoisyPhase: "pass",
   additivePan: "pass",
@@ -138,7 +135,7 @@ const NODE_GRAPH_BYPASS_TYPE_OVERRIDES = Object.freeze({
   curveOsc: "silence",
   dsfOscillator: "silence",
   robinSupersaw: "silence",
-  hypersaw: "silence",
+  hypersaw2: "silence",
   vibratoGenerator: "silence",
   wowAndFlutter: "silence",
   softpopOscillator: "silence",
@@ -173,13 +170,9 @@ const NODE_GRAPH_BYPASS_TYPE_OVERRIDES = Object.freeze({
   delayedTrigger: "silence",
   triggerCounter: "silence",
   triggerDivider: "silence",
-  stepSequencer: "silence",
+  sequencer: "silence",
   turingMachine: "silence",
-  degreeTuring: "silence",
-  gravityWalker: "silence",
-  degreePhrase: "silence",
-  chordSequencer: "silence",
-  chordMemory: "silence",
+
   chordPad: "silence",
   lutCell: "silence",
   t: "silence",
@@ -197,6 +190,7 @@ const NODE_GRAPH_BYPASS_TYPE_OVERRIDES = Object.freeze({
   theremin: "silence",
   keyboardController: "silence",
   keyboard: "silence",
+  gridKeyboard: "silence",
   // Crossovers: average In/L/R onto every band out
   crossover2: "crossover-avg",
   crossover3: "crossover-avg",
@@ -216,8 +210,7 @@ const NODE_GRAPH_BYPASS_TYPE_OVERRIDES = Object.freeze({
   mixStereo2: "pass",
   mixStereo: "pass",
   // Pitch utilities
-  noteGlide: "pass",
-  noteTranspose: "pass",
+
   pitchQuantizer: "pass",
   // Analyzer Thru
   spectrogram: "pass",
@@ -446,7 +439,7 @@ function nodeGraphEvaluateBypassFrame(bypassSpec, nodeId, mixInput) {
       if (!entry?.out) {
         continue;
       }
-      result[entry.out] = Number(mixInput(nodeId, entry.in || "In")) || 0;
+      result[entry.out] = nodeGraphFiniteNumber(mixInput(nodeId, entry.in || "In"));
     }
     return result;
   }
@@ -463,7 +456,7 @@ function nodeGraphEvaluateBypassFrame(bypassSpec, nodeId, mixInput) {
       : ["In", "L", "R"];
     let sum = 0;
     for (const port of ports) {
-      sum += Number(mixInput(nodeId, port)) || 0;
+      sum += nodeGraphFiniteNumber(mixInput(nodeId, port));
     }
     const avg = sum / ports.length;
     const result = {};
@@ -475,14 +468,14 @@ function nodeGraphEvaluateBypassFrame(bypassSpec, nodeId, mixInput) {
   }
   if (mode === "minmax") {
     return {
-      Max: Number(mixInput(nodeId, "In 1")) || 0,
-      Min: Number(mixInput(nodeId, "In 2")) || 0,
+      Max: nodeGraphFiniteNumber(mixInput(nodeId, "In 1")),
+      Min: nodeGraphFiniteNumber(mixInput(nodeId, "In 2")),
     };
   }
   if (mode === "reverb") {
-    const mono = bypassSpec.monoIn ? (Number(mixInput(nodeId, bypassSpec.monoIn)) || 0) : 0;
-    const dryL = (Number(mixInput(nodeId, bypassSpec.dryLIn || "In")) || 0) + mono;
-    const dryR = (Number(mixInput(nodeId, bypassSpec.dryRIn || "In")) || 0) + mono;
+    const mono = bypassSpec.monoIn ? (nodeGraphFiniteNumber(mixInput(nodeId, bypassSpec.monoIn))) : 0;
+    const dryL = (nodeGraphFiniteNumber(mixInput(nodeId, bypassSpec.dryLIn || "In"))) + mono;
+    const dryR = (nodeGraphFiniteNumber(mixInput(nodeId, bypassSpec.dryRIn || "In"))) + mono;
     const result = {};
     if (bypassSpec.dryLOut) {
       result[bypassSpec.dryLOut] = dryL;
@@ -512,7 +505,7 @@ function nodeGraphEvaluateBypassFrame(bypassSpec, nodeId, mixInput) {
     if (entry.out === "Graph" || entry.in === "Graph") {
       continue;
     }
-    result[entry.out] = Number(mixInput(nodeId, entry.in || "In")) || 0;
+    result[entry.out] = nodeGraphFiniteNumber(mixInput(nodeId, entry.in || "In"));
     wrote = true;
   }
   return wrote ? result : 0;

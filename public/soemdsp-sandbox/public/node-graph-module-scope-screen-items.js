@@ -21,7 +21,7 @@ function applyNodeGraphModuleScopeCanvasAnalogFade(context, canvas, settings) {
   if (!canvas?.width || !canvas?.height || !context) {
     return;
   }
-  const fadeAlpha = clampNodeSliderValue(Number(settings?.fadeAlpha) || 0.08, 0.006, 0.18);
+  const fadeAlpha = clampNodeSliderValue(nodeGraphFiniteNumber(settings?.fadeAlpha, 0.08), 0.006, 0.18);
   context.save();
   context.globalCompositeOperation = "destination-out";
   context.fillStyle = `rgba(0, 0, 0, ${fadeAlpha.toFixed(4)})`;
@@ -33,26 +33,26 @@ function nodeGraphModuleScopeFallbackBufferView(buffer, limit = 2048) {
   if (!buffer) {
     return buffer;
   }
-  const safeLimit = Math.max(16, Math.min(1024, Math.floor(Number(limit) || 384)));
+  const safeLimit = Math.max(16, Math.min(1024, Math.floor(nodeGraphFiniteNumber(limit, 384))));
   if (buffer.nodeGraphScopeXy) {
     return {
       ...buffer,
       nodeGraphScopeVisualPointLimit: Math.min(
         safeLimit,
-        Math.max(2, Math.floor(Number(buffer.nodeGraphScopeVisualPointLimit) || safeLimit)),
+        Math.max(2, Math.floor(nodeGraphFiniteNumber(buffer.nodeGraphScopeVisualPointLimit, safeLimit))),
       ),
     };
   }
   buffer.nodeGraphScopeVisualPointLimit = Math.min(
     safeLimit,
-    Math.max(2, Math.floor(Number(buffer.nodeGraphScopeVisualPointLimit) || safeLimit)),
+    Math.max(2, Math.floor(nodeGraphFiniteNumber(buffer.nodeGraphScopeVisualPointLimit, safeLimit))),
   );
   return buffer;
 }
 
 function nodeGraphModuleScopeCanvasRgba(rgb, alpha) {
   const color = Array.isArray(rgb) ? rgb : [1, 1, 1];
-  const opacity = clampNodeSliderValue(Number(alpha) || 0, 0, 1);
+  const opacity = clampNodeSliderValue(nodeGraphFiniteNumber(alpha), 0, 1);
   return `rgba(${Math.round(color[0] * 255)}, ${Math.round(color[1] * 255)}, ${Math.round(color[2] * 255)}, ${opacity})`;
 }
 
@@ -81,7 +81,7 @@ function nodeGraphModuleScopeTrimLightSpriteCache() {
 }
 
 function nodeGraphModuleScopeLightSpriteTexture(options) {
-  const radius = Math.max(0.5, Number(options.radius) || 0.5);
+  const radius = Math.max(0.5, nodeGraphFiniteNumber(options.radius, 0.5));
   const size = Math.max(2, Math.ceil(radius * 2));
   const key = nodeGraphModuleScopeLightSpriteKey({ ...options, radius });
   const cached = nodeGraphModuleScopeState.lightSpriteTextures.get(key);
@@ -126,41 +126,182 @@ function nodeGraphModuleScopeEmissiveShaderRgb(rgb, brightness) {
   if (maxChannel <= 0) {
     return values;
   }
-  const targetMax = clampNodeSliderValue(72 + Math.max(0, Number(brightness) || 0) * 144, 72, 255);
+  const targetMax = clampNodeSliderValue(72 + Math.max(0, nodeGraphFiniteNumber(brightness)) * 144, 72, 255);
   const scale = Math.max(1, targetMax / maxChannel);
   return values.map((component) => Math.round(clampNodeSliderValue(component * scale, 0, 255)));
 }
 
 // drawNodeGraphModuleScopeLightDisplay → node-graph-module-scope-draw-basic.js
 // drawNodeGraphModuleScopeLightDisplays → node-graph-module-scope-draw-basic.js
-function nodeGraphModuleScopeScreenItems(workspace, canvas, pixelRatio) {
-  const workspaceRect = workspace.getBoundingClientRect();
-  const layoutKey = [
-    Math.round(workspaceRect.width),
-    Math.round(workspaceRect.height),
-    Math.round(Number(nodeGraphMvp?.zoom) * 1000) || 0,
-    Math.round(Number(nodeGraphMvp?.pan?.x) || 0),
-    Math.round(Number(nodeGraphMvp?.pan?.y) || 0),
-    Math.round(Number(pixelRatio) * 100) || 100,
-  ].join("|");
-  const layoutCache = nodeGraphModuleScopeState.screenItemLayoutCache || { key: "", rects: new Map() };
-  const reuseRects = layoutCache.key === layoutKey;
-  if (!reuseRects) {
-    layoutCache.key = layoutKey;
-    layoutCache.rects = new Map();
-    nodeGraphModuleScopeState.screenItemLayoutCache = layoutCache;
+
+/** Camera origin already written to CSS by the light viewport path (no layout). */
+function nodeGraphModuleScopeCameraScreenOrigin(workspace) {
+  const cached = nodeGraphMvp?._cameraScreenOrigin;
+  if (cached && Number.isFinite(cached.x) && Number.isFinite(cached.y)) {
+    return { x: cached.x, y: cached.y };
   }
+  const style = workspace?.style;
+  if (style) {
+    const x = Number.parseFloat(style.getPropertyValue("--node-graph-pan-x"));
+    const y = Number.parseFloat(style.getPropertyValue("--node-graph-pan-y"));
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      return { x, y };
+    }
+  }
+  if (typeof nodeGraphRenderedOriginOffset === "function") {
+    const origin = nodeGraphRenderedOriginOffset(nodeGraphMvp?.pan || { x: 0, y: 0 }, workspace);
+    return {
+      x: nodeGraphFiniteNumber(origin?.x),
+      y: nodeGraphFiniteNumber(origin?.y),
+    };
+  }
+  return { x: 0, y: 0 };
+}
+
+/**
+ * Face box in zoom-surface layout px (not screen). Host --node-x/y are live;
+ * in-host offset/size is cached until ResizeObserver / register invalidates.
+ */
+function invalidateNodeGraphModuleScopeFaceLayout(slot) {
+  if (!slot) {
+    return;
+  }
+  slot._faceLayoutInHost = null;
+  slot._faceLayoutGen = (nodeGraphFiniteNumber(slot._faceLayoutGen) + 1) | 0;
+}
+
+function ensureNodeGraphModuleScopeFaceLayoutObserver(slot) {
+  if (!slot?.scopeElement || typeof ResizeObserver !== "function") {
+    return;
+  }
+  if (slot._faceLayoutObserver) {
+    return;
+  }
+  const ro = new ResizeObserver(() => {
+    invalidateNodeGraphModuleScopeFaceLayout(slot);
+  });
+  try {
+    ro.observe(slot.scopeElement);
+    if (slot.element && slot.element !== slot.scopeElement) {
+      ro.observe(slot.element);
+    }
+    slot._faceLayoutObserver = ro;
+  } catch (_error) {
+    // Detached.
+  }
+}
+
+function nodeGraphModuleScopeFaceLayoutInHost(slot) {
+  const face = slot?.scopeElement;
+  const host = slot?.element;
+  if (!face || !host) {
+    return null;
+  }
+  ensureNodeGraphModuleScopeFaceLayoutObserver(slot);
+  const cached = slot._faceLayoutInHost;
+  if (cached && cached.w > 0.5 && cached.h > 0.5) {
+    return cached;
+  }
+  let box = null;
+  if (typeof nodeGraphModuleFrameLayoutBoxInNode === "function") {
+    box = nodeGraphModuleFrameLayoutBoxInNode(face, host);
+  }
+  if (!box) {
+    // Cold seed: offset chain under host (no gBCR).
+    let x = 0;
+    let y = 0;
+    let cur = face;
+    while (cur && cur !== host) {
+      x += cur.offsetLeft || 0;
+      y += cur.offsetTop || 0;
+      const parent = cur.offsetParent;
+      if (!parent || parent === cur) {
+        break;
+      }
+      if (parent !== host && !host.contains(parent)) {
+        break;
+      }
+      cur = parent;
+    }
+    const w = face.offsetWidth || face.clientWidth || 0;
+    const h = face.offsetHeight || face.clientHeight || 0;
+    if (w > 0.5 && h > 0.5) {
+      box = { x, y, w, h };
+    }
+  }
+  if (!box || !(box.w > 0.5) || !(box.h > 0.5)) {
+    return null;
+  }
+  const next = {
+    h: box.h,
+    w: box.w,
+    x: box.x,
+    y: box.y,
+  };
+  slot._faceLayoutInHost = next;
+  return next;
+}
+
+/** Layout-space face box on the zoom surface (host world pos + in-host box). */
+function nodeGraphModuleScopeFaceLayoutInSurface(slot) {
+  const host = slot?.element;
+  const inHost = nodeGraphModuleScopeFaceLayoutInHost(slot);
+  if (!host || !inHost) {
+    return null;
+  }
+  const nodeX = Number.parseFloat(host.style?.getPropertyValue?.("--node-x")) || 0;
+  const nodeY = Number.parseFloat(host.style?.getPropertyValue?.("--node-y")) || 0;
+  return {
+    h: inHost.h,
+    w: inHost.w,
+    x: nodeX + inHost.x,
+    y: nodeY + inHost.y,
+  };
+}
+
+/** translate3d(origin) scale(zoom) with transform-origin 0 0 → workspace px. */
+function nodeGraphModuleScopeLayoutToScreenRect(layout, origin, zoom) {
+  const z = Math.max(0.0001, nodeGraphFiniteNumber(zoom, 1));
+  const ox = nodeGraphFiniteNumber(origin?.x);
+  const oy = nodeGraphFiniteNumber(origin?.y);
+  return {
+    height: layout.h * z,
+    left: ox + layout.x * z,
+    top: oy + layout.y * z,
+    width: layout.w * z,
+  };
+}
+
+function nodeGraphModuleScopeScreenItems(workspace, canvas, pixelRatio) {
+  const workspaceSize = typeof nodeGraphWorkspaceCssSize === "function"
+    ? nodeGraphWorkspaceCssSize(workspace)
+    : {
+      height: workspace?.clientHeight || 0,
+      width: workspace?.clientWidth || 0,
+    };
+  const zoomScale = nodeGraphModuleScopeZoomScale();
+  const origin = nodeGraphModuleScopeCameraScreenOrigin(workspace);
   const viewportRect = {
-    height: workspaceRect.height,
+    height: workspaceSize.height,
     left: 0,
     top: 0,
-    width: workspaceRect.width,
+    width: workspaceSize.width,
   };
   const slotDebug = [];
   const items = nodeGraphVisibleModuleScopeSlots()
     .map((slot) => {
-      const host = slot?.scopeElement?.closest?.(".dsp-node");
-      if (host?.classList.contains("viewport-asleep")) {
+      const host = slot?.element || slot?.scopeElement?.closest?.(".dsp-node");
+      const presented = Boolean(
+        slot?.scopeElement?.closest?.(
+          ".node-layout-canvas-tile, .node-screen-solo-stage, .node-metamodule-canvas-stage",
+        ),
+      );
+      if (
+        host?.classList.contains("viewport-asleep")
+        && !presented
+        && (typeof nodeGraphViewportCullMustStayAwake !== "function"
+          || !nodeGraphViewportCullMustStayAwake(host))
+      ) {
         return null;
       }
       const buffer = nodeGraphModuleScopeDisplayBuffer(
@@ -262,6 +403,17 @@ function nodeGraphModuleScopeScreenItems(workspace, canvas, pixelRatio) {
               slot,
             }, pixelRatio);
           }
+        } else if (nodeGraphModuleDisplayRendererForSlot(slot) === "hypersawBurn") {
+          // Stems are data-bus Phases — no sample monitor buffer required.
+          // Oscillator sources often have no capture ring; without this the
+          // face never entered the paint path and stayed blank while audio ran.
+          if (typeof drawNodeGraphHypersawBurnItem === "function") {
+            drawNodeGraphHypersawBurnItem(null, {
+              buffer: null,
+              screenElement: slot.scopeElement,
+              slot,
+            }, pixelRatio);
+          }
         } else if (
           nodeGraphModuleDisplayRendererForSlot(slot) === "imageBurnFace"
           || slot?.type === "imageBurn"
@@ -280,21 +432,16 @@ function nodeGraphModuleScopeScreenItems(workspace, canvas, pixelRatio) {
         }
         return null;
       }
-      let rect = reuseRects ? layoutCache.rects.get(slot.nodeId) : null;
-      if (!rect) {
-        rect = slot.scopeElement.getBoundingClientRect();
-        layoutCache.rects.set(slot.nodeId, rect);
+      const layout = nodeGraphModuleScopeFaceLayoutInSurface(slot);
+      if (!layout) {
+        entry.skip = "no-layout";
+        slotDebug.push(entry);
+        return null;
       }
-      entry.rectHeight = rect.height;
-      entry.rectWidth = rect.width;
-      const screenRect = {
-        height: rect.height,
-        left: rect.left - workspaceRect.left,
-        top: rect.top - workspaceRect.top,
-        width: rect.width,
-      };
+      const screenRect = nodeGraphModuleScopeLayoutToScreenRect(layout, origin, zoomScale);
+      entry.rectHeight = screenRect.height;
+      entry.rectWidth = screenRect.width;
       const drawRect = nodeGraphModuleScopeDrawingRect(screenRect, buffer, slot);
-      const zoomScale = nodeGraphModuleScopeZoomScale();
       const visibleGeometry = nodeGraphModuleScopeVisibleDrawGeometry(screenRect, drawRect, viewportRect, zoomScale);
       if (!visibleGeometry) {
         entry.skip = "offscreen";
@@ -445,11 +592,11 @@ function nodeGraphScope2dEnergyBurnDepositGain(a, b, c) {
     brightness = a;
     size01 = b;
   }
-  const br = Math.max(0, Number(brightness) || 0);
+  const br = Math.max(0, nodeGraphFiniteNumber(brightness));
   if (br <= 1e-8) {
     return 0;
   }
-  const s = clampNodeSliderValue(Number(size01) || 0, 0, 1);
+  const s = clampNodeSliderValue(nodeGraphFiniteNumber(size01), 0, 1);
   return Math.max(0, br * 0.1 * (1.12 - s * 0.42));
 }
 
@@ -458,7 +605,7 @@ function nodeGraphScope2dEnergyBurnExposure(bright01) {
   if (typeof PhosphorDrawer !== "undefined" && PhosphorDrawer.exposure) {
     return PhosphorDrawer.exposure(bright01);
   }
-  const b = clampNodeSliderValue(Number(bright01) || 0, 0, 1);
+  const b = clampNodeSliderValue(nodeGraphFiniteNumber(bright01), 0, 1);
   return 1.55 + b * 2.55;
 }
 
@@ -557,15 +704,17 @@ function syncNodeGraphCustomDisplayCanvas(canvas, screenElement, pixelRatio) {
   if (!canvas || !screenElement) {
     return false;
   }
-  const rect = screenElement.getBoundingClientRect();
-  const width = Math.max(1, Math.floor(rect.width * pixelRatio));
-  const height = Math.max(1, Math.floor(rect.height * pixelRatio));
+  // Layout CSS size — not getBoundingClientRect (zoom would balloon the buffer).
+  const cssWidth = Math.max(1, screenElement.clientWidth || screenElement.offsetWidth || 1);
+  const cssHeight = Math.max(1, screenElement.clientHeight || screenElement.offsetHeight || 1);
+  const width = Math.max(1, Math.floor(cssWidth * pixelRatio));
+  const height = Math.max(1, Math.floor(cssHeight * pixelRatio));
   if (canvas.width !== width || canvas.height !== height) {
     canvas.width = width;
     canvas.height = height;
   }
-  canvas.style.width = `${rect.width}px`;
-  canvas.style.height = `${rect.height}px`;
+  canvas.style.width = `${cssWidth}px`;
+  canvas.style.height = `${cssHeight}px`;
   return true;
 }
 
@@ -577,7 +726,7 @@ function nodeGraphCustomDisplayInputApi(node, displayScript, primaryBuffer) {
       (port === displayScript.inputs[0] ? primaryBuffer : null);
     inputs[port] = {
       buffer: buffer || new Float32Array(0),
-      latest: buffer?.length ? Number(buffer[buffer.length - 1]) || 0 : 0,
+      latest: buffer?.length ? nodeGraphFiniteNumber(buffer[buffer.length - 1]) : 0,
       length: buffer?.length || 0,
     };
   }

@@ -42,6 +42,11 @@ function bindNodeGraphSceneMenuEvents() {
   document.addEventListener("pointerup", endNodeGraphGraphNodeDrag);
   document.addEventListener("pointercancel", endNodeGraphGraphNodeDrag);
   bindNodeGraphSceneElementEvent("nodeSceneDeleteModule", "click", deleteNodeGraphSelectionFromContext);
+  bindNodeGraphSceneElementEvent("nodeSceneGroupIntoGroup", "click", () => {
+    if (typeof groupNodeGraphSelectionIntoGroup === "function") {
+      groupNodeGraphSelectionIntoGroup();
+    }
+  });
   bindNodeGraphSceneElementEvent("nodeSceneGroupMetamodule", "click", () => {
     if (typeof groupNodeGraphSelectionIntoMetamodule === "function") {
       groupNodeGraphSelectionIntoMetamodule();
@@ -127,17 +132,36 @@ function bindNodeGraphSceneMenuEvents() {
   bindNodeGraphSceneElementEvent("nodePatchDefaultsDragHandle", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowDrag(event, "patchDefaults"));
   bindNodeGraphSceneElementEvent("nodePatchDefaultsResizeHandle", "pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowResize(event, "patchDefaults"));
   bindNodeGraphSceneElementEvent("nodeSceneToggleModularInfiniteView", "click", () => {
+    if (typeof nodeGraphLayoutCanvasClose === "function") {
+      nodeGraphLayoutCanvasClose({ silent: true });
+    }
     if (typeof setNodeGraphModularWindowedActive === "function") {
       setNodeGraphModularWindowedActive(false);
     }
   });
   bindNodeGraphSceneElementEvent("nodeSceneToggleModularWindowedView", "click", () => {
-    if (typeof setNodeGraphModularWindowedActive === "function") {
-      setNodeGraphModularWindowedActive(true);
+    if (
+      typeof nodeGraphMetamoduleToggleDisplaysForSelection === "function"
+      && nodeGraphMetamoduleToggleDisplaysForSelection()
+    ) {
+      return;
+    }
+    if (typeof toggleNodeGraphLayoutCanvasView === "function") {
+      toggleNodeGraphLayoutCanvasView();
     }
   });
   // Legacy ids (hidden).
-  bindNodeGraphSceneElementEvent("nodeSceneToggleModularOnlyView", "click", toggleNodeGraphModularWindowedView);
+  bindNodeGraphSceneElementEvent("nodeSceneToggleModularOnlyView", "click", () => {
+    if (
+      typeof nodeGraphMetamoduleToggleDisplaysForSelection === "function"
+      && nodeGraphMetamoduleToggleDisplaysForSelection()
+    ) {
+      return;
+    }
+    if (typeof toggleNodeGraphLayoutCanvasView === "function") {
+      toggleNodeGraphLayoutCanvasView();
+    }
+  });
   bindNodeGraphSceneElementEvent("nodeSceneToggleModularOnlyControls", "click", toggleNodeGraphAppChromeBarsVisibility);
   bindNodeGraphSceneElementEvent("nodeSceneOpenModuleBrowser", "click", () => {
     if (typeof openNodeGraphUnifiedWindowPage === "function") {
@@ -180,7 +204,6 @@ function bindNodeGraphSceneMenuEvents() {
   bindNodeGraphSceneElementEvent("nodeCodeBoxSource", "scroll", updateNodeGraphCodeBoxWindowEditorChrome);
   bindNodeGraphSceneElementEvent("nodeSceneUndoButton", "click", undoNodeGraphPatch);
   bindNodeGraphSceneElementEvent("nodeSceneRedoButton", "click", redoNodeGraphPatch);
-  bindNodeGraphSceneElementEvent("nodeSceneToggleStandaloneMidiKeyboard", "click", toggleNodeGraphStandaloneMidiKeyboard);
   bindNodeGraphSceneElementEvent("nodeSceneOpenUiSettings", "click", () => {
     if (typeof openNodeGraphUnifiedWindowPage === "function") {
       openNodeGraphUnifiedWindowPage("uiSettings");
@@ -328,6 +351,16 @@ function bindNodeGraphSceneMenuEvents() {
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxTextScript", "change", () => setNodeGraphTextBoxPortScriptFromContext("Text", { record: true }));
   bindNodeGraphSceneElementEvent("nodeSceneGraphCursorX", "input", () => setNodeGraphGraphCursorFromContext({ record: false }));
   bindNodeGraphSceneElementEvent("nodeSceneGraphCursorX", "change", () => setNodeGraphGraphCursorFromContext({ record: true }));
+  bindNodeGraphSceneElementEvent("nodeSceneMetamodulePlaymode", "change", () => {
+    if (typeof nodeGraphMetamoduleApplyVoiceSettingsFromContext === "function") {
+      nodeGraphMetamoduleApplyVoiceSettingsFromContext();
+    }
+  });
+  bindNodeGraphSceneElementEvent("nodeSceneMetamoduleVoiceCount", "change", () => {
+    if (typeof nodeGraphMetamoduleApplyVoiceSettingsFromContext === "function") {
+      nodeGraphMetamoduleApplyVoiceSettingsFromContext();
+    }
+  });
   // List owns node edit / select / remove / add ([+] under last row, ✕ per row).
   bindNodeGraphSceneElementEvent("nodeSceneGraphNodeList", "click", handleNodeGraphGraphNodeListClick);
   bindNodeGraphSceneElementEvent("nodeSceneGraphNodeList", "input", handleNodeGraphGraphNodeListInput);

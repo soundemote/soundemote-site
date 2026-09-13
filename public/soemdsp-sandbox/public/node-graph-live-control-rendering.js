@@ -65,6 +65,7 @@ function nodeGraphLiveTransportUiState() {
 
 // Monochrome text-style glyphs (VS15) so OS emoji does not force red stop / ignore CSS color.
 const NODE_GRAPH_TRANSPORT_GLYPH_PLAY = "▶\uFE0E";
+const NODE_GRAPH_TRANSPORT_GLYPH_KEEP_PLAY = "▶▶\uFE0E";
 const NODE_GRAPH_TRANSPORT_GLYPH_PAUSE = "⏸\uFE0E";
 const NODE_GRAPH_TRANSPORT_GLYPH_STOP = "⏹\uFE0E";
 
@@ -132,11 +133,11 @@ function nodeGraphLiveControlsChromeSignature() {
     : "";
   const speedLimit = typeof nodeGraphLiveSpeedLimitHz === "function"
     ? nodeGraphLiveSpeedLimitHz()
-    : Number(live.speedLimit) || 0;
+    : nodeGraphFiniteNumber(live.speedLimit);
   const paused = typeof nodeGraphLiveEngineIsPaused === "function" && nodeGraphLiveEngineIsPaused();
   return [
     transport,
-    Number(live.speedMultiplier) || 0,
+    nodeGraphFiniteNumber(live.speedMultiplier),
     speedLimit,
     Boolean(live.outputEnabled) | 0,
     Boolean(live.inputActive) | 0,
@@ -335,7 +336,7 @@ function renderNodeGraphLiveControls(running = Boolean(nodeGraphMvp?.live?.node)
   const transportSide = [
     transportState,
     Boolean(nodeGraphMvp.live.node) | 0,
-    Number(nodeGraphMvp.live.speedMultiplier) || 0,
+    nodeGraphFiniteNumber(nodeGraphMvp.live.speedMultiplier),
   ].join("|");
   const transportSideChanged = force
     || !prevSignature
@@ -372,7 +373,8 @@ function syncNodeGraphTransportPlayButtons({ playing = false, paused = false, st
   const isStarting = Boolean(starting) && isPlaying;
   // Red stop ONLY when fully cold — not while arming/starting the engine.
   const isStopped = !isPlaying && !isPaused;
-  const signature = `${isPlaying ? 1 : 0}|${isPaused ? 1 : 0}|${isStarting ? 1 : 0}|${isStopped ? 1 : 0}`;
+  const keepPlaying = Boolean(nodeGraphMvp?.live?.keepPlayingWhenUnfocused);
+  const signature = `${isPlaying ? 1 : 0}|${isPaused ? 1 : 0}|${isStarting ? 1 : 0}|${isStopped ? 1 : 0}|${keepPlaying ? 1 : 0}`;
   if (signature === nodeGraphLiveTransportButtonsSignature) {
     return;
   }
@@ -383,18 +385,28 @@ function syncNodeGraphTransportPlayButtons({ playing = false, paused = false, st
     if (tp.id === "nodeRenderedPlayerPlay") continue;
 
     tp.classList.add("node-transport-play");
-    tp.classList.remove("is-playing", "is-paused");
-    tp.textContent = NODE_GRAPH_TRANSPORT_GLYPH_PLAY;
+    tp.classList.remove("is-playing", "is-paused", "is-keep-playing");
+    tp.textContent = keepPlaying
+      ? NODE_GRAPH_TRANSPORT_GLYPH_KEEP_PLAY
+      : NODE_GRAPH_TRANSPORT_GLYPH_PLAY;
     if (isPlaying) {
-      tp.setAttribute("aria-label", isStarting ? "Starting" : "Play");
-      tp.title = isStarting ? "Starting engine…" : "Playing";
+      tp.setAttribute("aria-label", keepPlaying
+        ? "Keep playing when unfocused"
+        : (isStarting ? "Starting" : "Play"));
+      tp.title = keepPlaying
+        ? "Keep playing when unfocused (Ctrl+click to turn off)"
+        : (isStarting ? "Starting engine…" : "Playing");
       tp.setAttribute("aria-pressed", "true");
       tp.classList.add("is-playing");
+      if (keepPlaying) tp.classList.add("is-keep-playing");
       tp.dataset.transportState = isStarting ? "starting" : "playing";
     } else {
-      tp.setAttribute("aria-label", "Play");
-      tp.title = "Play";
+      tp.setAttribute("aria-label", keepPlaying ? "Keep playing when unfocused" : "Play");
+      tp.title = keepPlaying
+        ? "Keep playing when unfocused (Ctrl+click to turn off)"
+        : "Play";
       tp.setAttribute("aria-pressed", "false");
+      if (keepPlaying) tp.classList.add("is-keep-playing");
       tp.dataset.transportState = isPaused ? "paused" : "stopped";
     }
   }
@@ -451,7 +463,7 @@ function renderNodeGraphSpeedReadout() {
 function renderNodeGraphSpeedLimitReadout() {
   const limit = typeof nodeGraphLiveSpeedLimitHz === "function"
     ? nodeGraphLiveSpeedLimitHz()
-    : Math.max(1, Number(nodeGraphMvp?.live?.speedLimit) || 20000);
+    : Math.max(1, nodeGraphFiniteNumber(nodeGraphMvp?.live?.speedLimit, 20000));
   const text = String(limit);
   for (const input of document.querySelectorAll("[data-speed-limit]")) {
     if (document.activeElement === input) {
@@ -481,7 +493,7 @@ function bindNodeGraphVolumeSlider(sliderId, readoutId, apply, initialValue = 1)
     }
   };
   const handle = () => {
-    const value = Math.max(0, Math.min(1, Number(slider.value) || 0));
+    const value = Math.max(0, Math.min(1, nodeGraphFiniteNumber(slider.value)));
     apply(value);
     render(value);
   };
@@ -494,7 +506,7 @@ function bindNodeGraphVolumeSlider(sliderId, readoutId, apply, initialValue = 1)
 function syncNodeGraphVolumeSlider(sliderId, readoutId, value) {
   const slider = document.getElementById(sliderId);
   const readout = document.getElementById(readoutId);
-  const level = Math.max(0, Math.min(1, Number(value) || 0));
+  const level = Math.max(0, Math.min(1, nodeGraphFiniteNumber(value)));
   if (slider && document.activeElement !== slider) {
     slider.value = String(level);
   }
@@ -544,7 +556,7 @@ function bindNodeGraphLiveVolumeControls() {
     outSlider.dataset.volumeBound = "true";
     const readout = document.getElementById("nodeLiveOutputVolumeValue");
     const handle = () => {
-      const value = Math.max(0, Math.min(1, Number(outSlider.value) || 0));
+      const value = Math.max(0, Math.min(1, nodeGraphFiniteNumber(outSlider.value)));
       if (typeof setNodeGraphOutputModuleVolume === "function") {
         setNodeGraphOutputModuleVolume(value, { fromToolbar: true, interaction: "drag" });
       } else if (typeof setNodeGraphLiveOutputVolume === "function") {
@@ -674,6 +686,9 @@ function nodeGraphTransportHandleAction(action) {
     return;
   }
   if (key === "stop") {
+    if (typeof nodeGraphLiveSetKeepPlayingWhenUnfocused === "function") {
+      nodeGraphLiveSetKeepPlayingWhenUnfocused(false);
+    }
     // Always full stop: clear both Input and Output arms, tear down engine.
     // Pause must not use this path — pause only zeros speed.
     if (typeof stopNodeGraphLiveEngineFully === "function") {
@@ -753,6 +768,12 @@ function bindNodeGraphTransportButtons() {
         return;
       }
       event.preventDefault();
+      if (action === "play" && (event.ctrlKey || event.metaKey)) {
+        if (typeof nodeGraphLiveToggleKeepPlayingWhenUnfocused === "function") {
+          nodeGraphLiveToggleKeepPlayingWhenUnfocused();
+        }
+        return;
+      }
       nodeGraphTransportHandleAction(action);
     });
   }

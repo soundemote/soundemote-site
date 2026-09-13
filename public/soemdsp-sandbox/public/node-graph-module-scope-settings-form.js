@@ -30,7 +30,7 @@ function nodeGraphDisplaySettingsBuildStepperRowHtml(key, formType = null, optio
     label = key === "historyCycles" ? "Cycles" : "History (Hz)";
     title = "Live history window (Hz when free-run; Cycles when synced).";
   }
-  if (key === "sweepHz" || key === "sweepCycles" || key === "sweepSeconds") {
+  if (key === "sweepHz" || key === "sweepCycles") {
     const syncOn = options.syncOn === true || key === "sweepCycles";
     label = syncOn ? "Sweep (c)" : "Sweep (Hz)";
     title = syncOn
@@ -237,7 +237,7 @@ function nodeGraphDisplaySettingsBuildStepperRowHtml(key, formType = null, optio
     : "";
   const labelHtml = options.hideLabel
     ? ""
-    : (key === "sweepSeconds" || key === "sweepHz" || key === "sweepCycles"
+    : (key === "sweepHz" || key === "sweepCycles"
       ? `<span data-trace-display-sweep-label>${nodeGraphDisplaySettingsEscapeHtml(label)}</span>`
       : (key === "historySeconds" || key === "zoomSeconds" || key === "historyHz" || key === "historyCycles")
         ? `<span data-trace-display-history-label>${nodeGraphDisplaySettingsEscapeHtml(label)}</span>`
@@ -642,13 +642,13 @@ function nodeGraphStampPreviewFaceMinSide(settings) {
   const density = typeof nodeGraphFacePlateDensity === "function"
     ? nodeGraphFacePlateDensity(settings, 1)
     : nodeGraphStampPreviewUnit(settings?.pixelDensity, 1);
-  const dpr = Math.max(1, Number(window.devicePixelRatio) || 1);
+  const dpr = Math.max(1, nodeGraphFiniteNumber(window.devicePixelRatio, 1));
   return Math.max(1, Math.round(128 * dpr * Math.max(0, density)));
 }
 
 /** Halo extent in face-buffer px so the full stamp (core + Blur) fits. */
 function nodeGraphStampPreviewExtent(radius, blur01, phosphor) {
-  const r = Math.max(0, Number(radius) || 0);
+  const r = Math.max(0, nodeGraphFiniteNumber(radius));
   const blur = nodeGraphStampPreviewUnit(blur01, 0);
   if (phosphor) {
     return r * (1.2 + 5.3 * blur) + 1.5 * (1 - blur);
@@ -712,7 +712,7 @@ function nodeGraphStampPreviewScratch(owner, size) {
     scratch = document.createElement("canvas");
     owner._stampPreviewScratch = scratch;
   }
-  const n = Math.max(1, Math.round(Number(size) || 1));
+  const n = Math.max(1, Math.round(nodeGraphFiniteNumber(size, 1)));
   if (scratch.width !== n) {
     scratch.width = n;
   }
@@ -776,7 +776,7 @@ function paintNodeGraphStampPreviewCanvas(canvas, settings = {}, side = "", kind
       fillEmpty();
       return;
     }
-    const blur = Number(ink.blur) || 0;
+    const blur = nodeGraphFiniteNumber(ink.blur);
     const facePad = typeof nodeGraphWaterfallSoftPad === "function"
       ? nodeGraphWaterfallSoftPad(faceRadius, blur)
       : faceRadius * (1 + blur * 1.65) + 1;
@@ -889,9 +889,9 @@ function paintNodeGraphStampPreviewCanvas(canvas, settings = {}, side = "", kind
       const stampShape = typeof normalizeTraceStampShape === "function"
         ? normalizeTraceStampShape(settings.shape)
         : String(settings.shape || "circle");
-      const shapeParam = Math.max(0, Math.min(1, Number(
+      const shapeParam = Math.max(0, Math.min(1, nodeGraphFiniteNumber(
         settings.shapeParam ?? (stampShape === "oval" ? settings.pill : settings.squircle),
-      ) || 0));
+      )));
       const stretch = stampShape === "oval" ? shapeParam : 0;
       const ext = typeof nodeGraphVectorDotStampExtents === "function"
         ? nodeGraphVectorDotStampExtents(buf, buf, size, stretch)
@@ -937,7 +937,7 @@ function paintNodeGraphStampPreviewCanvas(canvas, settings = {}, side = "", kind
       if (typeof nodeGraphPhosphorEnergyGlClear === "function") {
         nodeGraphPhosphorEnergyGlClear(splat);
       } else if (typeof PhosphorDrawer.stepFade === "function") {
-        PhosphorDrawer.stepFade(splat, { decay: 1, trail: 1, ghost: 1, bleed: 0 });
+        PhosphorDrawer.stepFade(splat, { trail: 1, ghost: 1, bleed: 0 });
       }
       const stops = Array.isArray(settings.gradientStops) ? settings.gradientStops : null;
       if (stops && stops.length >= 2 && typeof PhosphorDrawer.setLutStops === "function") {
@@ -1020,7 +1020,7 @@ function paintNodeGraphStampPreview(root, settings = {}) {
  */
 function syncNodeGraphLineBurnSweepLabel(root, settings = {}) {
   const host = root?.querySelector?.(
-    "[data-trace-display-sweep-label], [data-trace-display-field=\"sweepSeconds\"], [data-trace-display-field=\"sweepHz\"], [data-trace-display-field=\"sweepCycles\"]",
+    "[data-trace-display-sweep-label], [data-trace-display-field=\"sweepHz\"], [data-trace-display-field=\"sweepCycles\"]",
   )
     ? root
     : document.getElementById("nodeTraceDisplaySettingsPopover");
@@ -1029,8 +1029,7 @@ function syncNodeGraphLineBurnSweepLabel(root, settings = {}) {
   }
   const titleSpan = host.querySelector("[data-trace-display-sweep-label]");
   const field = host.querySelector(`[data-trace-display-field="sweepHz"]`)
-    || host.querySelector(`[data-trace-display-field="sweepCycles"]`)
-    || host.querySelector(`[data-trace-display-field="sweepSeconds"]`);
+    || host.querySelector(`[data-trace-display-field="sweepCycles"]`);
   if (!titleSpan && !field) {
     return;
   }
@@ -1309,7 +1308,6 @@ function buildNodeGraphInstantTraceDisplaySettingsBodyHtml(type, node, allowKey)
     "zoomSeconds",
     "sweepHz",
     "sweepCycles",
-    "sweepSeconds",
     "backgroundBrightness",
     "backgroundHue",
   ]);
@@ -1572,7 +1570,7 @@ function buildNodeGraphPhosphorDisplaySettingsBodyHtml(type, node, allowKey) {
     usedChoices.add(key);
   }
   for (const key of ordered) {
-    if (key === "sweepCycles" || key === "sweepSeconds") {
+    if (key === "sweepCycles") {
       continue;
     }
     const rowKey = key === "sweepHz"
@@ -1617,7 +1615,17 @@ function buildNodeGraphPhosphorDisplaySettingsBodyHtml(type, node, allowKey) {
 }
 
 function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
-  const type = formType || "trace";
+  const type = formType || "blank";
+  // Modules with no face-specific schema — canvas pin lives in the chrome above.
+  // Hint text is on tooltips (Show in canvas + blank body), not inline copy.
+  if (type === "blank" || type === "none") {
+    return `
+      <div
+        class="node-display-settings-blank"
+        data-display-settings-blank="true"
+        data-tooltip-key="displaySettings.blankBody"
+        aria-label="No display-specific controls"></div>`;
+  }
   if (type === "keypadFace" && typeof buildNodeGraphKeypadDisplaySettingsBodyHtml === "function") {
     return buildNodeGraphKeypadDisplaySettingsBodyHtml();
   }
@@ -1629,6 +1637,12 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
   }
   if (type === "phosphorWaveform" && typeof buildNodeGraphPhosphorWaveformDisplaySettingsBodyHtml === "function") {
     return buildNodeGraphPhosphorWaveformDisplaySettingsBodyHtml();
+  }
+  if (type === "arpKeysFace" && typeof buildNodeGraphArpKeysDisplaySettingsBodyHtml === "function") {
+    return buildNodeGraphArpKeysDisplaySettingsBodyHtml();
+  }
+  if (type === "transportBpm" && typeof buildNodeGraphTransportDisplaySettingsBodyHtml === "function") {
+    return buildNodeGraphTransportDisplaySettingsBodyHtml();
   }
   if (type === "limiterGainFace" && typeof buildNodeGraphLimiterGainDisplaySettingsBodyHtml === "function") {
     return buildNodeGraphLimiterGainDisplaySettingsBodyHtml();

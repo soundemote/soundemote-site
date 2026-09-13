@@ -174,15 +174,23 @@ function showNodeGraphModule(node, point = null, options = {}) {
     }
     return "";
   }
-  // Meta In/Out only exist inside a Metamodule view (always hidden on Root).
+  // Meta In/Out / Voice* only exist inside a Metamodule view (always hidden on Root).
   if (
-    typeof nodeGraphIsMetamoduleBoundaryType === "function"
-    && nodeGraphIsMetamoduleBoundaryType(type)
-    && typeof nodeGraphMetamoduleIsRootView === "function"
+    typeof nodeGraphMetamoduleIsRootView === "function"
     && nodeGraphMetamoduleIsRootView()
+    && (
+      (typeof nodeGraphIsMetamoduleBoundaryType === "function"
+        && nodeGraphIsMetamoduleBoundaryType(type))
+      || (typeof nodeGraphIsMetamoduleVoicePortalType === "function"
+        && nodeGraphIsMetamoduleVoicePortalType(type))
+    )
   ) {
     if (typeof setNodeInteractionHelp === "function") {
-      setNodeInteractionHelp("Open a Metamodule (double-click) to place Meta In / Meta Out.");
+      setNodeInteractionHelp(
+        nodeGraphIsMetamoduleVoicePortalType?.(type)
+          ? "Open a Metamodule (double-click) to use Voice Frequency / Gate / Trigger."
+          : "Open a Metamodule (double-click) to place Meta In / Meta Out.",
+      );
     }
     return "";
   }
@@ -256,6 +264,14 @@ function showNodeGraphModule(node, point = null, options = {}) {
       newNode,
     ],
   };
+  // Fresh Metamodule shell on Root: seed Voice* + default Left/Right outs.
+  if (
+    typeof nodeGraphIsMetamoduleType === "function"
+    && nodeGraphIsMetamoduleType(type)
+    && typeof nodeGraphMetamoduleEnsureInterior === "function"
+  ) {
+    nodeGraphMetamoduleEnsureInterior(newNode.id, patch);
+  }
   const commitAdd = () => {
     commitNodeGraphPatch(patch, {
       status: options.status || "module added",
@@ -881,12 +897,15 @@ function copyNodeGraphModule(sourceNode) {
   }
   // Shell/boundary copy would share children/portals (same ids) — not supported yet.
   if (
-    typeof nodeGraphIsMetamoduleType === "function"
-    && nodeGraphIsMetamoduleType(sourceNode?.type)
+    typeof nodeGraphIsContainerShellType === "function"
+    && nodeGraphIsContainerShellType(sourceNode?.type)
   ) {
     if (typeof setNodeInteractionHelp === "function") {
+      const kind = typeof nodeGraphIsGroupType === "function" && nodeGraphIsGroupType(sourceNode?.type)
+        ? "Group"
+        : "Metamodule";
       setNodeInteractionHelp(
-        "Duplicate Metamodule is not supported yet (would share children). Group a new selection instead.",
+        `Duplicate ${kind} is not supported yet (would share children). Group a new selection instead.`,
       );
     }
     return;
@@ -1052,8 +1071,8 @@ function applyNodeGraphPatchDefaultsWindowSize(size = {}, element = null) {
   const normalized = typeof normalizeNodeGraphFloatingWindowSize === "function"
     ? normalizeNodeGraphFloatingWindowSize(size, nodeGraphPatchDefaultsWindowDefaultSize, { element: panel })
     : {
-      width: Number(size?.width) || nodeGraphPatchDefaultsWindowDefaultSize.width,
-      height: Number(size?.height) || nodeGraphPatchDefaultsWindowDefaultSize.height,
+      width: nodeGraphFiniteNumber(size?.width, nodeGraphPatchDefaultsWindowDefaultSize.width),
+      height: nodeGraphFiniteNumber(size?.height, nodeGraphPatchDefaultsWindowDefaultSize.height),
     };
   if (typeof applyNodeGraphFloatingWindowSizeVars === "function") {
     applyNodeGraphFloatingWindowSizeVars(panel, "--node-patch-defaults", nodeGraphPatchDefaultsWindowDefaultSize, normalized);
@@ -1281,12 +1300,9 @@ function adjustNodeGraphModuleWidthFromContext(delta) {
     if (nextWidthGu === currentWidthGu) {
       continue;
     }
-    const defaultWidthGu = nodeGraphDefaultModuleGridWidthUnits(targetNode.type);
-    if (nextWidthGu === defaultWidthGu) {
-      delete targetNode.widthGu;
-    } else {
-      targetNode.widthGu = nextWidthGu;
-    }
+    // Always persist width — omitting “equal to type default” re-binds old
+    // modules when spawn defaults change later.
+    targetNode.widthGu = nextWidthGu;
     changedCount += 1;
   }
   if (changedCount) {
@@ -1378,12 +1394,8 @@ function adjustNodeGraphModuleHeightFromContext(delta) {
     if (nextHeightGu === currentHeightGu) {
       continue;
     }
-    const defaultHeightGu = nodeGraphModuleGridHeightUnitsForUi(targetNode.type, targetNode.ui);
-    if (nextHeightGu === defaultHeightGu) {
-      delete targetNode.heightGu;
-    } else {
-      targetNode.heightGu = nextHeightGu;
-    }
+    // Always persist height (same reason as widthGu).
+    targetNode.heightGu = nextHeightGu;
     changedCount += 1;
   }
   if (changedCount) {
@@ -2140,10 +2152,10 @@ function nodeGraphCodeblockBuildFunctionBody(codeblock) {
   const context = [
     "const state = __state;",
     "const __ctx = __context || {};",
-    "const sampleRate = Number(__ctx.sampleRate) || 44100;",
-    "const frame = Number(__ctx.frame) || 0;",
-    "const frames = Number(__ctx.frames) || 1;",
-    "const time = Number(__ctx.time) || 0;",
+    "const sampleRate = nodeGraphFiniteNumber(__ctx.sampleRate, 44100);",
+    "const frame = nodeGraphFiniteNumber(__ctx.frame);",
+    "const frames = nodeGraphFiniteNumber(__ctx.frames, 1);",
+    "const time = nodeGraphFiniteNumber(__ctx.time);",
     "const dt = 1 / sampleRate;",
   ].join("\n");
   const inputs = codeblock.inputs
@@ -2751,8 +2763,10 @@ function toggleNodeGraphModuleOscilloscopeFromContext() {
 
 function applyNodeGraphPatchNodeUi(targetNode, ui) {
   const normalizedUi = normalizeNodeGraphPatchNodeUi(ui, targetNode?.type);
-  // Persist ui only when a non-default flag is set. LayoutB titles default on
-  // (titleHidden:false); Hide title persists via titleHidden:true.
+  // Persist ui when any non-default chrome flag OR stored face size is set.
+  // displayHeightGu must persist — dropping ui here made Height +/- a no-op.
+  const hasFaceSize = Number.isFinite(Number(normalizedUi.displayHeightGu))
+    || Number(normalizedUi.displayHeightOffsetGu) !== 0;
   if (
     normalizedUi.buttonsHidden
     || normalizedUi.buttonsForceShow
@@ -2765,7 +2779,7 @@ function applyNodeGraphPatchNodeUi(targetNode, ui) {
     || normalizedUi.oscilloscopeForceShow
     || normalizedUi.slidersHidden
     || normalizedUi.slidersForceShow
-    || normalizedUi.displayHeightOffsetGu
+    || hasFaceSize
   ) {
     targetNode.ui = normalizedUi;
   } else {

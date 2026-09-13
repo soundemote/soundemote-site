@@ -182,14 +182,9 @@ function setSelectedNodeGraphWirePixel(enabled) {
   return changed > 0;
 }
 
-function nodeGraphConnectionOptionsWithSelfTrace(sourceNode, destinationNode, options = {}) {
-  if (sourceNode !== destinationNode || options.wireType || options.tracePoints?.length) {
-    return options;
-  }
-  return {
-    ...options,
-    wireType: nodeGraphWireTypes.trace,
-  };
+/** Formerly auto-forced Trace on self/feedback patches. Wire system not ready — keep normal cable. */
+function nodeGraphConnectionOptionsWithSelfTrace(_sourceNode, _destinationNode, options = {}) {
+  return options;
 }
 
 function setSelectedNodeGraphWireType(wireType) {
@@ -208,10 +203,10 @@ function setSelectedNodeGraphWireType(wireType) {
 function nodeGraphAttenuateInsertGridPoint(patch, sourceId, destinationId, slot) {
   const source = patch.nodes.find((node) => node.id === sourceId);
   const destination = patch.nodes.find((node) => node.id === destinationId);
-  const sgx = Number(source?.gx) || 0;
-  const sgy = Number(source?.gy) || 0;
-  const dgx = Number(destination?.gx) || 0;
-  const dgy = Number(destination?.gy) || 0;
+  const sgx = nodeGraphFiniteNumber(source?.gx);
+  const sgy = nodeGraphFiniteNumber(source?.gy);
+  const dgx = nodeGraphFiniteNumber(destination?.gx);
+  const dgy = nodeGraphFiniteNumber(destination?.gy);
   return {
     gx: Math.round((sgx + dgx) / 2),
     gy: Math.round((sgy + dgy) / 2) + Number(slot || 0),
@@ -253,6 +248,15 @@ function nodeGraphAttenuateWireAlias(patch, entry) {
   return `${from} → ${to}`;
 }
 
+/** Stamp ownerMetamoduleId when inserting on a wire inside a Meta view. */
+function nodeGraphWireInsertClaimOwnership(node, patch) {
+  if (!node || typeof nodeGraphMetamoduleClaimPlacedNode !== "function") {
+    return node;
+  }
+  nodeGraphMetamoduleClaimPlacedNode(node, patch);
+  return node;
+}
+
 function attenuateSelectedNodeGraphWires(mode = "attenuate") {
   const bipolar = mode === "attenuvert";
   const snapshots = nodeGraphSelectedWireSnapshots().filter((entry) => entry.kind !== "graph");
@@ -290,7 +294,7 @@ function attenuateSelectedNodeGraphWires(mode = "attenuate") {
     const id = `attenuverter-${counts.attenuverter}`;
     const point = nodeGraphAttenuateInsertGridPoint(patch, wire.sourceNode, wire.destinationNode, slot);
     const alias = nodeGraphAttenuateWireAlias(patch, entry);
-    patch.nodes.push(createNodeGraphPatchNode("attenuverter", {
+    const attenNode = createNodeGraphPatchNode("attenuverter", {
       id,
       gx: point.gx,
       gy: point.gy,
@@ -341,7 +345,9 @@ function attenuateSelectedNodeGraphWires(mode = "attenuate") {
           },
           offset: { visible: false },
         },
-    }));
+    });
+    nodeGraphWireInsertClaimOwnership(attenNode, patch);
+    patch.nodes.push(attenNode);
     newIds.push(id);
     const extras = nodeGraphWireOptionalPatchFields(wire);
     patch.connections.push({
@@ -406,10 +412,12 @@ function rangeSelectedNodeGraphWires(mode = "bipolar") {
     : {};
   const pairSlots = new Map();
   const newIds = [];
+  // Spawn (wire insert): In is unit CV. Out values stay unit; Out slider
+  // domain is −10…+10 (same as browser Range spawn).
   const params = unipolar
-    // Unit CV 0…1 — Morph-safe. Old −10…+10 pegged |v|>1 domain-add MOD.
     ? { inLow: 0, inHigh: 1, outLow: 0, outHigh: 1 }
-    : { inLow: 0, inHigh: 1, outLow: 0, outHigh: 1 };
+    : { inLow: -1, inHigh: 1, outLow: -1, outHigh: 1 };
+  const outMeta = { min: -10, max: 10, mid: 0, bipolar: true, showSign: true, visible: true };
   for (const entry of snapshots) {
     const wire = entry.wire;
     if (!wire?.sourceNode || !wire?.destinationNode) {
@@ -426,7 +434,7 @@ function rangeSelectedNodeGraphWires(mode = "bipolar") {
     const id = `range-${counts.range}`;
     const point = nodeGraphAttenuateInsertGridPoint(patch, wire.sourceNode, wire.destinationNode, slot);
     const alias = nodeGraphAttenuateWireAlias(patch, entry);
-    patch.nodes.push(createNodeGraphPatchNode("range", {
+    const rangeNode = createNodeGraphPatchNode("range", {
       id,
       gx: point.gx,
       gy: point.gy,
@@ -437,7 +445,13 @@ function rangeSelectedNodeGraphWires(mode = "bipolar") {
         ioHidden: false,
       },
       params,
-    }));
+      paramMeta: {
+        outLow: { ...outMeta, def: params.outLow },
+        outHigh: { ...outMeta, def: params.outHigh },
+      },
+    });
+    nodeGraphWireInsertClaimOwnership(rangeNode, patch);
+    patch.nodes.push(rangeNode);
     newIds.push(id);
     const extras = nodeGraphWireOptionalPatchFields(wire);
     patch.connections.push({
@@ -468,7 +482,7 @@ function rangeSelectedNodeGraphWires(mode = "bipolar") {
   if (!newIds.length) {
     return 0;
   }
-  const noun = unipolar ? "range (0…1)" : "range (−1…1)";
+  const noun = unipolar ? "range (0…1 → 0…1)" : "range (−1…1 → −1…1)";
   commitNodeGraphPatch(patch, {
     status: newIds.length === 1 ? `${noun} inserted` : `${newIds.length} ${noun} inserted`,
   });
@@ -518,7 +532,7 @@ function convertPolarityOnSelectedNodeGraphWires(type) {
     counts[kind] = (counts[kind] || 0) + 1;
     const id = `${kind}-${counts[kind]}`;
     const point = nodeGraphAttenuateInsertGridPoint(patch, wire.sourceNode, wire.destinationNode, slot);
-    patch.nodes.push(createNodeGraphPatchNode(kind, {
+    const polarityNode = createNodeGraphPatchNode(kind, {
       id,
       gx: point.gx,
       gy: point.gy,
@@ -528,7 +542,9 @@ function convertPolarityOnSelectedNodeGraphWires(type) {
         oscilloscopeHidden: true,
         ioHidden: false,
       },
-    }));
+    });
+    nodeGraphWireInsertClaimOwnership(polarityNode, patch);
+    patch.nodes.push(polarityNode);
     newIds.push(id);
     const extras = nodeGraphWireOptionalPatchFields(wire);
     patch.connections.push({
@@ -610,7 +626,7 @@ function slewSelectedNodeGraphWires() {
     const alias = typeof nodeGraphAttenuateWireAlias === "function"
       ? nodeGraphAttenuateWireAlias(patch, entry)
       : "Up/Down Slew";
-    patch.nodes.push(createNodeGraphPatchNode("slewLimiter", {
+    const slewNode = createNodeGraphPatchNode("slewLimiter", {
       id,
       gx: point.gx,
       gy: point.gy,
@@ -620,7 +636,9 @@ function slewSelectedNodeGraphWires() {
         oscilloscopeHidden: true,
         ioHidden: false,
       },
-    }));
+    });
+    nodeGraphWireInsertClaimOwnership(slewNode, patch);
+    patch.nodes.push(slewNode);
     newIds.push(id);
     const extras = nodeGraphWireOptionalPatchFields(wire);
     patch.connections.push({
@@ -702,7 +720,7 @@ function ampCurveSelectedNodeGraphWires() {
     const alias = typeof nodeGraphAttenuateWireAlias === "function"
       ? nodeGraphAttenuateWireAlias(patch, entry)
       : "Amp Curve";
-    patch.nodes.push(createNodeGraphPatchNode("ampCurve", {
+    const ampCurveNode = createNodeGraphPatchNode("ampCurve", {
       id,
       gx: point.gx,
       gy: point.gy,
@@ -712,7 +730,9 @@ function ampCurveSelectedNodeGraphWires() {
         oscilloscopeHidden: true,
         ioHidden: false,
       },
-    }));
+    });
+    nodeGraphWireInsertClaimOwnership(ampCurveNode, patch);
+    patch.nodes.push(ampCurveNode);
     newIds.push(id);
     const extras = nodeGraphWireOptionalPatchFields(wire);
     patch.connections.push({
@@ -1098,6 +1118,19 @@ function nodeGraphAutoPairAvailablePorts(nodeId, side = "output") {
     ? nodeGraphPatchNode(nodeId)
     : null;
   const type = patchNode?.type;
+  // Metamodule / Group: shell Left/Right (and Voices) live on dynamic
+  // shell ports — definition.outputs alone can miss reserved chrome.
+  if (
+    typeof nodeGraphIsContainerShellType === "function"
+    && nodeGraphIsContainerShellType(type)
+    && typeof nodeGraphMetamoduleShellPorts === "function"
+  ) {
+    const shell = nodeGraphMetamoduleShellPorts(patchNode);
+    if (side === "input") {
+      return Array.isArray(shell?.inputs) ? shell.inputs.slice() : [];
+    }
+    return Array.isArray(shell?.outputs) ? shell.outputs.slice() : [];
+  }
   const definition = typeof nodeGraphModuleDefinition === "function"
     ? nodeGraphModuleDefinition(type)
     : (typeof nodeGraphModuleDefinitions !== "undefined" ? nodeGraphModuleDefinitions[type] : null);
@@ -1471,14 +1504,69 @@ function nodeGraphAutoPairPortConnections(patch, sourceNode, sourcePort, destina
 }
 
 function connectNodeGraphPorts(sourceNode, sourcePort, destinationNode, destinationPort, options = {}) {
-  // Metamodule shell jacks on Root are visual proxies — DSP wires go to Meta In/Out.
-  if (typeof nodeGraphMetamoduleRewriteShellConnection === "function") {
-    const rewritten = nodeGraphMetamoduleRewriteShellConnection(
-      sourceNode,
-      sourcePort,
-      destinationNode,
-      destinationPort,
+  // Stereo/RGB auto-pair must use SHELL port names (Left/Right). Meta rewrite
+  // collapses shell Left → portal Out, which has no pair meta — only one wire
+  // would land. Discover siblings first, then rewrite every candidate.
+  const shellSourceNode = sourceNode;
+  const shellSourcePort = sourcePort;
+  const shellDestinationNode = destinationNode;
+  const shellDestinationPort = destinationPort;
+
+  const pairExtras = [];
+  if (options.autoPair !== false) {
+    const probe = { connections: [] };
+    nodeGraphAutoPairRgbConnections(
+      probe,
+      shellSourceNode,
+      shellSourcePort,
+      shellDestinationNode,
+      shellDestinationPort,
+      {},
     );
+    nodeGraphAutoPairPortConnections(
+      probe,
+      shellSourceNode,
+      shellSourcePort,
+      shellDestinationNode,
+      shellDestinationPort,
+      {},
+    );
+    nodeGraphAutoPairVideoscopeAbConnections(
+      probe,
+      shellSourceNode,
+      shellSourcePort,
+      shellDestinationNode,
+      shellDestinationPort,
+      {},
+    );
+    nodeGraphAutoPairVectorscopeRotationConnections(
+      probe,
+      shellSourceNode,
+      shellSourcePort,
+      shellDestinationNode,
+      shellDestinationPort,
+      {},
+    );
+    for (const extra of probe.connections) {
+      pairExtras.push({
+        sourceNode: extra.sourceNode,
+        sourcePort: extra.sourcePort,
+        destinationNode: extra.destinationNode,
+        destinationPort: extra.destinationPort,
+      });
+    }
+  }
+
+  const rewriteOne = (src, srcPort, dst, dstPort) => {
+    if (typeof nodeGraphMetamoduleRewriteShellConnection === "function") {
+      return nodeGraphMetamoduleRewriteShellConnection(src, srcPort, dst, dstPort);
+    }
+    return { sourceNode: src, sourcePort: srcPort, destinationNode: dst, destinationPort: dstPort };
+  };
+
+  // Metamodule shell jacks on Root are visual proxies — DSP wires go to Meta In/Out.
+  {
+    const rewritten = rewriteOne(sourceNode, sourcePort, destinationNode, destinationPort);
     sourceNode = rewritten.sourceNode;
     sourcePort = rewritten.sourcePort;
     destinationNode = rewritten.destinationNode;
@@ -1532,39 +1620,42 @@ function connectNodeGraphPorts(sourceNode, sourcePort, destinationNode, destinat
     ...nextWireData,
   });
   let autoConnected = 0;
-  if (options.autoPair !== false) {
-    autoConnected += nodeGraphAutoPairRgbConnections(
-      patch,
-      sourceNode,
-      sourcePort,
-      destinationNode,
-      destinationPort,
-      nextWireData,
+  // Apply stereo/RGB siblings discovered on shell names, rewritten to portals.
+  for (const extra of pairExtras) {
+    const rewritten = rewriteOne(
+      extra.sourceNode,
+      extra.sourcePort,
+      extra.destinationNode,
+      extra.destinationPort,
     );
-    autoConnected += nodeGraphAutoPairPortConnections(
-      patch,
-      sourceNode,
-      sourcePort,
-      destinationNode,
-      destinationPort,
-      nextWireData,
+    const srcN = rewritten.sourceNode;
+    const srcP = rewritten.sourcePort;
+    const dstN = rewritten.destinationNode;
+    const dstP = rewritten.destinationPort;
+    if (!nodeGraphInputKey(dstN, dstP)) {
+      continue;
+    }
+    if (!nodeGraphMvp.activeNodes.has(srcN) || !nodeGraphMvp.activeNodes.has(dstN)) {
+      continue;
+    }
+    const duplicate = patch.connections.some(
+      (connection) =>
+        connection.sourceNode === srcN
+        && connection.sourcePort === srcP
+        && connection.destinationNode === dstN
+        && connection.destinationPort === dstP,
     );
-    autoConnected += nodeGraphAutoPairVideoscopeAbConnections(
-      patch,
-      sourceNode,
-      sourcePort,
-      destinationNode,
-      destinationPort,
-      nextWireData,
-    );
-    autoConnected += nodeGraphAutoPairVectorscopeRotationConnections(
-      patch,
-      sourceNode,
-      sourcePort,
-      destinationNode,
-      destinationPort,
-      nextWireData,
-    );
+    if (duplicate) {
+      continue;
+    }
+    patch.connections.push({
+      sourceNode: srcN,
+      sourcePort: srcP,
+      destinationNode: dstN,
+      destinationPort: dstP,
+      ...nextWireData,
+    });
+    autoConnected += 1;
   }
   // Meta Out.Out → owned child inlet ⇒ treat as Meta In (shell inlet, e.g. ƒ).
   const flippedOwners = new Set();
@@ -1632,7 +1723,8 @@ function connectNodeGraphModulation(sourceNode, sourcePort, destinationNode, des
     ? nodeGraphPatchNode(destNode)
     : null;
   if (
-    destPatchNode?.type === "metamodule"
+    typeof nodeGraphIsContainerShellType === "function"
+    && nodeGraphIsContainerShellType(destPatchNode?.type)
     && destParam.startsWith("mx_")
     && typeof nodeGraphMetamoduleResolveExposeTarget === "function"
   ) {

@@ -1,3 +1,46 @@
+/** Drop canvas pins / meta buckets for node ids that are no longer in the patch. */
+function nodeGraphPruneViewCanvasesToExistingNodes(view, nodes) {
+  if (!view || typeof view !== "object") return view;
+  const nodeList = Array.isArray(nodes) ? nodes : [];
+  const aliveIds = new Set(
+    nodeList.map((n) => String(n?.id || "").trim()).filter(Boolean),
+  );
+  const aliveMetaIds = new Set(
+    nodeList
+      .filter((n) => {
+        const t = String(n?.type || "");
+        return typeof nodeGraphIsContainerShellType === "function"
+          ? nodeGraphIsContainerShellType(t)
+          : t === "metamodule" || t === "voices";
+      })
+      .map((n) => String(n.id || "").trim())
+      .filter(Boolean),
+  );
+  const canvases = view.canvases;
+  if (!canvases || typeof canvases !== "object") return view;
+  const pruneBucket = (bucket) => {
+    const els = Array.isArray(bucket?.elements) ? bucket.elements : [];
+    return {
+      elements: els.filter((el) => aliveIds.has(String(el?.nodeId || "").trim())),
+    };
+  };
+  const root = pruneBucket(canvases.root);
+  const byMetamodule = {};
+  const src = canvases.byMetamodule && typeof canvases.byMetamodule === "object"
+    ? canvases.byMetamodule
+    : {};
+  for (const [metaIdRaw, bucket] of Object.entries(src)) {
+    const metaId = String(metaIdRaw || "").trim();
+    if (!metaId || !aliveMetaIds.has(metaId)) continue;
+    const next = pruneBucket(bucket);
+    if (next.elements.length) byMetamodule[metaId] = next;
+  }
+  return {
+    ...view,
+    canvases: { root, byMetamodule },
+  };
+}
+
 function serializeNodeGraphPatch(patch = nodeGraphMvp.patch, options = {}) {
   const cameraState = normalizeNodeGraphPatchCameras(patch.cameras, patch.activeCameraId);
   // Prefer live header FPS when serializing the active patch so save/share
@@ -9,10 +52,26 @@ function serializeNodeGraphPatch(patch = nodeGraphMvp.patch, options = {}) {
       moduleScopeFramesPerSecond: nodeGraphMvp.moduleScopeFramesPerSecond,
     }
     : patch.view;
+  const nodesOut = Array.isArray(patch.nodes)
+    ? patch.nodes.map((node) => {
+      if (node?.type === "audioPlayer" && node.playlist && typeof nodeGraphAudioPlayerPlaylistForPersist === "function") {
+        return { ...node, playlist: nodeGraphAudioPlayerPlaylistForPersist(node.playlist) };
+      }
+      return node;
+    })
+    : patch.nodes;
+  const viewPruned = nodeGraphPruneViewCanvasesToExistingNodes(
+    typeof normalizeNodeGraphPatchView === "function"
+      ? normalizeNodeGraphPatchView(viewSource)
+      : viewSource,
+    nodesOut,
+  );
   const payload = {
     activeCameraId: cameraState.activeCameraId,
     audio: normalizeNodeGraphPatchAudio(patch.audio),
-    bypassedNodes: patch.bypassedNodes || [],
+    bypassedNodes: (patch.bypassedNodes || []).filter((id) =>
+      (nodesOut || []).some((n) => String(n?.id) === String(id)),
+    ),
     cameras: cameraState.cameras,
     codeScreen: typeof normalizeNodeGraphCodeScreen === "function"
       ? normalizeNodeGraphCodeScreen(patch.codeScreen)
@@ -25,14 +84,7 @@ function serializeNodeGraphPatch(patch = nodeGraphMvp.patch, options = {}) {
     modularOnlyControlsVisible: Boolean(patch.modularOnlyControlsVisible),
     modulations: patch.modulations || [],
     monitors: normalizeNodeGraphPatchMonitors(patch.monitors, patch),
-    nodes: Array.isArray(patch.nodes)
-      ? patch.nodes.map((node) => {
-        if (node?.type === "audioPlayer" && node.playlist && typeof nodeGraphAudioPlayerPlaylistForPersist === "function") {
-          return { ...node, playlist: nodeGraphAudioPlayerPlaylistForPersist(node.playlist) };
-        }
-        return node;
-      })
-      : patch.nodes,
+    nodes: nodesOut,
     requiredAssets: typeof nodeGraphRequiredAssetsForPatch === "function"
       ? nodeGraphRequiredAssetsForPatch(patch)
       : [],
@@ -42,13 +94,52 @@ function serializeNodeGraphPatch(patch = nodeGraphMvp.patch, options = {}) {
         ? normalizeNodeGraphPatchSamples(patch.samples)
         : []),
     timing: normalizeNodeGraphPatchTiming(patch.timing),
-    uiItems: normalizeNodeGraphPatchUiItems(patch.uiItems),
-    view: normalizeNodeGraphPatchView(viewSource),
+    uiItems: normalizeNodeGraphPatchUiItems(patch.uiItems, {
+      nodeIds: new Set((nodesOut || []).map((n) => String(n?.id || "")).filter(Boolean)),
+    }),
+    view: viewPruned,
     visual: normalizeNodeGraphPatchVisual(patch.visual),
     windows: typeof normalizeNodeGraphPatchWindows === "function"
       ? normalizeNodeGraphPatchWindows(patch.windows)
       : patch.windows,
+    // Gold Arp latch (ctrl+click) — patch-owned, not localStorage-only.
+    keyboardLatch: (typeof nodeGraphMvp !== "undefined" && patch === nodeGraphMvp?.patch)
+      ? {
+        lowBitmask: Math.max(0, Math.floor(Number(nodeGraphMvp.midiKeyboardHeldKeysLowBitmask)) || 0),
+        highBitmask: Math.max(0, Math.floor(Number(nodeGraphMvp.midiKeyboardHeldKeysHighBitmask)) || 0),
+        velocities: nodeGraphMvp.midiKeyboardHeldKeyVelocities instanceof Uint8Array
+          ? Array.from(nodeGraphMvp.midiKeyboardHeldKeyVelocities)
+          : undefined,
+        arpMask: nodeGraphMvp.midiKeyboardArpMask instanceof Uint8Array
+          ? Array.from(nodeGraphMvp.midiKeyboardArpMask)
+          : undefined,
+      }
+      : (patch.keyboardLatch && typeof patch.keyboardLatch === "object"
+        ? {
+          lowBitmask: Math.max(0, Math.floor(Number(patch.keyboardLatch.lowBitmask)) || 0),
+          highBitmask: Math.max(0, Math.floor(Number(patch.keyboardLatch.highBitmask)) || 0),
+          velocities: Array.isArray(patch.keyboardLatch.velocities)
+            ? patch.keyboardLatch.velocities
+            : undefined,
+          arpMask: Array.isArray(patch.keyboardLatch.arpMask)
+            ? patch.keyboardLatch.arpMask
+            : undefined,
+        }
+        : undefined),
   };
+  if (payload.keyboardLatch) {
+    const vels = payload.keyboardLatch.velocities;
+    if (Array.isArray(vels) && !vels.some((v) => (Number(v) || 0) > 0)) {
+      delete payload.keyboardLatch.velocities;
+    }
+    const arpBits = Array.isArray(payload.keyboardLatch.arpMask)
+      && payload.keyboardLatch.arpMask.some((v) => Number(v) > 0);
+    if (!payload.keyboardLatch.lowBitmask
+      && !payload.keyboardLatch.highBitmask
+      && !arpBits) {
+      delete payload.keyboardLatch;
+    }
+  }
   return options.pretty === false
     ? JSON.stringify(payload)
     : JSON.stringify(payload, null, 2);

@@ -110,7 +110,6 @@ function nodeGraphEventTargetIsFloatingWindow(target) {
     "#nodeUiDevHelper",
     "#nodePhosphorWaveformSettingsWindow",
     "#nodeCodeBoxWindow",
-    "#nodeStandaloneMidiKeyboardDock",
 
     ".node-canvas-script-dialog",
     ".node-scene-context-menu",
@@ -571,6 +570,11 @@ function nodeGraphNodeCanBeDeleted(node) {
   if (node.type === "output" || node.type === "audioInput" || node.id === "home") {
     return false;
   }
+  // Metamodule Voice* bus + default Left/Right Meta Outs.
+  if (typeof nodeGraphMetamoduleNodeIsProtected === "function"
+    && nodeGraphMetamoduleNodeIsProtected(node)) {
+    return false;
+  }
   return true;
 }
 
@@ -615,15 +619,22 @@ function nodeGraphDeleteTitle(selection = nodeGraphMvp.selected) {
   if ([...selectedNodeIds].every((id) => id === "output")) {
     return nodeGraphTooltipText("actions.deleteUnavailableOutput");
   }
-  // Delete Metamodule shell → ungroup (preserve children).
+  // Delete container shell → delete shell + owned children.
   if (
-    typeof nodeGraphIsMetamoduleType === "function"
+    typeof nodeGraphIsContainerShellType === "function"
     && [...selectedNodeIds].every((id) => {
       const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(id) : null;
-      return nodeGraphIsMetamoduleType(node?.type);
+      return nodeGraphIsContainerShellType(node?.type);
     })
   ) {
-    return selectedNodeIds.size === 1 ? "Ungroup Metamodule" : "Ungroup Metamodules";
+    const onlyGroups = [...selectedNodeIds].every((id) => {
+      const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(id) : null;
+      return typeof nodeGraphIsGroupType === "function" && nodeGraphIsGroupType(node?.type);
+    });
+    if (onlyGroups) {
+      return selectedNodeIds.size === 1 ? "Delete Group" : "Delete Groups";
+    }
+    return selectedNodeIds.size === 1 ? "Delete Metamodule" : "Delete containers";
   }
   return selectedNodeIds.size === 1
     ? nodeGraphTooltipText("actions.deleteModuleShort")

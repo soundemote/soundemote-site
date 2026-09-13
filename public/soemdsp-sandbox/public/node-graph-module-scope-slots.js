@@ -6,6 +6,15 @@ function registerNodeGraphModuleScopeSlot(moduleElement, options = {}) {
   if (!nodeId) {
     return null;
   }
+  const prior = nodeGraphModuleScopeState.slots.get(nodeId);
+  if (prior?._faceLayoutObserver) {
+    try {
+      prior._faceLayoutObserver.disconnect();
+    } catch (_error) {
+      // Best-effort.
+    }
+    prior._faceLayoutObserver = null;
+  }
   const scopeElement = options.scopeElement
     || moduleElement?.querySelector?.(".node-module-scope-window")
     || null;
@@ -27,6 +36,12 @@ function registerNodeGraphModuleScopeSlot(moduleElement, options = {}) {
     );
   }
   nodeGraphModuleScopeState.slots.set(nodeId, slot);
+  if (typeof invalidateNodeGraphModuleScopeFaceLayout === "function") {
+    invalidateNodeGraphModuleScopeFaceLayout(slot);
+  }
+  if (typeof ensureNodeGraphModuleScopeFaceLayoutObserver === "function") {
+    ensureNodeGraphModuleScopeFaceLayoutObserver(slot);
+  }
   if (slot.type === "rasterRgb" && typeof scheduleNodeGraphRasterRgbPump === "function") {
     scheduleNodeGraphRasterRgbPump();
   }
@@ -46,6 +61,15 @@ function unregisterNodeGraphModuleScopeSlot(nodeId) {
   if (burnCanvas && typeof disposeNodeGraphScope2dBurnRendererForCanvas === "function") {
     disposeNodeGraphScope2dBurnRendererForCanvas(burnCanvas);
   }
+  if (slot?._faceLayoutObserver) {
+    try {
+      slot._faceLayoutObserver.disconnect();
+    } catch (_error) {
+      // Best-effort.
+    }
+    slot._faceLayoutObserver = null;
+  }
+  slot && (slot._faceLayoutInHost = null);
   nodeGraphModuleScopeState.slots.delete(nodeId);
   nodeGraphModuleScopeState.lightDisplayStates.delete(nodeId);
   nodeGraphModuleScopeState.modelFrameTimes.delete(nodeId);
@@ -179,15 +203,52 @@ function nodeGraphDefaultModuleScopeMonitors(patch = nodeGraphMvp?.patch) {
     .filter(Boolean);
 }
 
+/** Outgoing jack names from this node (patch cables only). */
+function nodeGraphModuleOutgoingOutputPorts(nodeId) {
+  const id = String(nodeId || "");
+  const connected = new Set();
+  if (!id) {
+    return connected;
+  }
+  const connections = Array.isArray(nodeGraphMvp?.patch?.connections)
+    ? nodeGraphMvp.patch.connections
+    : [];
+  for (let i = 0; i < connections.length; i += 1) {
+    const connection = connections[i];
+    if (String(connection?.sourceNode || "") !== id) {
+      continue;
+    }
+    const port = String(connection?.sourcePort || "").trim();
+    if (port) {
+      connected.add(port);
+    }
+  }
+  return connected;
+}
+
+/**
+ * Oscillator face source port: prefer Wave when that outlet is cabled (or when
+ * nothing is cabled — native tap mask defaults to Wave). Otherwise the first
+ * connected shape tap (Saw/Ramp/Square/Tri/Sine) so unused taps stay unevaluated.
+ */
 function nodeGraphOscillatorSelectedOutputPort(node) {
   const outputs = nodeGraphPatchNodeOutputPorts(node);
-  if (outputs.includes("Wave")) {
-    return "Wave";
+  const connected = nodeGraphModuleOutgoingOutputPorts(node?.id);
+  const wavePort = outputs.includes("Wave")
+    ? "Wave"
+    : (outputs.includes("Wave Out") ? "Wave Out" : "");
+  if (wavePort) {
+    if (connected.size === 0 || connected.has(wavePort) || connected.has("Out")) {
+      return wavePort;
+    }
   }
-  if (outputs.includes("Wave Out")) {
-    return "Wave Out";
+  for (let i = 0; i < outputs.length; i += 1) {
+    const port = outputs[i];
+    if (connected.has(port)) {
+      return port;
+    }
   }
-  return outputs[0] || "Out";
+  return wavePort || outputs[0] || "Out";
 }
 
 // nodeGraphModuleScopeCaptureMonitors → node-graph-module-scope-capture.js
@@ -197,6 +258,8 @@ function nodeGraphModuleScopeHasModelDisplay() {
     const outputs = nodeGraphPatchNodeOutputPorts(nodeGraphModuleScopeNodeForSlot(slot));
     return slot.type === "clock" ||
       slot.type === "transport" ||
+      // Hypersaw face paints from data-bus Phases (no sample buffer).
+      renderer === "hypersawBurn" ||
       nodeGraphModuleScopeIsOscillatorType(slot.type) ||
       (["traceDisplay", "dotOscilloscope", "valueOscilloscope", "lineBurnOscilloscope", "led"].includes(slot.type) &&
         nodeGraphModuleScopeConnectionsTo(slot.nodeId, "In").length > 0) ||

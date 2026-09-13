@@ -68,9 +68,6 @@ NodeLiveAudioProcessor.prototype.processAdditiveYellowGraphSidecar = function pr
     "additiveFrequencySkew",
     "additiveQuantizeFreq",
     "additiveQuantizePhase",
-    "additiveHarmonicMath", // legacy → QuantizeFreq
-    "additiveFrequencyMath", // legacy → QuantizeFreq
-    "additiveFrequencySlope", // legacy → Skew
     "additiveNoisyFreq",
     "additiveNoisyPhase",
     "additivePan",
@@ -79,8 +76,8 @@ NodeLiveAudioProcessor.prototype.processAdditiveYellowGraphSidecar = function pr
     "additiveImage", // UC — Graph passthrough until image analysis ships
   ]);
 
-  const sr = Number(this.engineSampleRate) || Number(sampleRate) || 44100;
-  const blockFrames = Math.max(1, Number(frames) || 128);
+  const sr = nodeGraphFiniteNumber(this.engineSampleRate, nodeGraphFiniteNumber(sampleRate, 44100));
+  const blockFrames = Math.max(1, nodeGraphFiniteNumber(frames, 128));
 
   /** DOMAIN effective after quantum chase (existing smoother kernels). */
   const eff = (node, key, fallback) => {
@@ -98,36 +95,19 @@ NodeLiveAudioProcessor.prototype.processAdditiveYellowGraphSidecar = function pr
     if (type === "additiveNoisyFreq") {
       map = this.additiveNoisyFreqStates;
       apply = additiveGraphApplyNoisyFreq;
-      // Prefer Add. Legacy Amount was 0…1 with hidden ×0.5.
-      if (node?.params?.add != null && Number.isFinite(Number(node.params.add))) {
-        depth = eff(node, "add", 0.5);
-      } else {
-        depth = eff(node, "amount", 0.25) * 0.5;
-      }
+      depth = eff(node, "add", 0.5);
     } else if (type === "additiveNoisyPhase") {
       map = this.additiveNoisyPhaseStates;
       apply = additiveGraphApplyNoisyPhase;
-      if (node?.params?.add != null && Number.isFinite(Number(node.params.add))) {
-        depth = eff(node, "add", 0.25);
-      } else {
-        depth = eff(node, "amount", 0.25) * 0.5; // legacy Amount had hidden ×0.5
-      }
+      depth = eff(node, "add", 0.25);
     } else if (type === "additiveNoisyPan") {
       map = this.additiveNoisyPanStates;
       apply = additiveGraphApplyNoisyPan;
-      if (node?.params?.add != null && Number.isFinite(Number(node.params.add))) {
-        depth = eff(node, "add", 0.25);
-      } else {
-        depth = eff(node, "amount", 0.25);
-      }
+      depth = eff(node, "add", 0.25);
     } else {
       map = this.additiveNoisyAmpStates;
       apply = additiveGraphApplyNoisyAmp;
-      if (node?.params?.add != null && Number.isFinite(Number(node.params.add))) {
-        depth = eff(node, "add", 0.25);
-      } else {
-        depth = eff(node, "amount", 0.25) * 0.5; // legacy Amount had hidden ×0.5
-      }
+      depth = eff(node, "add", 0.25);
     }
     let state = map.get(String(id)) || {};
     const noiseMode = num(node?.params?.noise, 0);
@@ -167,9 +147,7 @@ NodeLiveAudioProcessor.prototype.processAdditiveYellowGraphSidecar = function pr
     const p = node.params || {};
     // Ensure id is set for additive smoother keying (Map key is authoritative).
     if (!node.id) node.id = id;
-    const pwm = (p.pwm != null && Number.isFinite(Number(p.pwm)))
-      ? eff(node, "pwm", 0)
-      : eff(node, "morph", 0); // legacy Morph → PWM
+    const pwm = eff(node, "pwm", 0);
     const fade = typeof additiveGraphNormalizeHarmonicFade === "function"
       ? additiveGraphNormalizeHarmonicFade(num(p.harmonicFade, 1))
       : 1;
@@ -203,10 +181,10 @@ NodeLiveAudioProcessor.prototype.processAdditiveYellowGraphSidecar = function pr
     genState.prevPhase = new Float32Array(storeH);
     for (let i = 0; i < storeH; i += 1) {
       genState.prevAmp[i] = graph.ampLerp?.to
-        ? Number(graph.ampLerp.to[i]) || 0
-        : Number(graph.amplitude?.[i]) || 0;
-      genState.prevRatio[i] = Number(graph.ratio?.[i]) || 0;
-      genState.prevPhase[i] = Number(graph.phase?.[i]) || 0;
+        ? nodeGraphFiniteNumber(graph.ampLerp.to[i])
+        : nodeGraphFiniteNumber(graph.amplitude?.[i]);
+      genState.prevRatio[i] = nodeGraphFiniteNumber(graph.ratio?.[i]);
+      genState.prevPhase[i] = nodeGraphFiniteNumber(graph.phase?.[i]);
     }
     this.additiveGraphBus.set(gid, graph);
     this.additiveGraphPublish.set(gid, graph);
@@ -305,7 +283,7 @@ NodeLiveAudioProcessor.prototype.processAdditiveYellowGraphSidecar = function pr
           eff(node, "unskew", 481.53),
           cutoff,
         );
-        let bubble = Math.max(0, Math.min(1, Number(eff(node, "bubble", 0)) || 0));
+        let bubble = Math.max(0, Math.min(1, nodeGraphFiniteNumber(eff(node, "bubble", 0))));
         const invert = num(p.invertBubble, 0) >= 0.5;
         let curveAmt = invert ? -bubble : bubble;
         if (curveAmt > 0.9999) curveAmt = 0.9999;
@@ -384,21 +362,12 @@ NodeLiveAudioProcessor.prototype.processAdditiveYellowGraphSidecar = function pr
         if (out && typeof out === "object") {
           out.phaseEntryMode = Math.max(0, Math.min(2, Math.round(num(p.mode, 0))));
         }
-      } else if (type === "additiveFrequencySkew" || type === "additiveFrequencySlope") {
+      } else if (type === "additiveFrequencySkew") {
         let skewState = this.additiveFrequencySkewStates.get(eid) || {};
-        // Legacy Slope used scale — map into stretch if low/high missing.
-        let lowStretch = eff(node, "lowStretch", NaN);
-        let highStretch = eff(node, "highStretch", NaN);
-        if (!(lowStretch === lowStretch) || !(highStretch === highStretch)) {
-          const scale = eff(node, "scale", 0);
-          const s = Number(scale) || 0;
-          if (!(lowStretch === lowStretch)) lowStretch = s < 0 ? 1 + Math.abs(s) * 23 : 1;
-          if (!(highStretch === highStretch)) highStretch = s > 0 ? 1 + Math.abs(s) * 23 : 1;
-        }
         const appliedSkew = additiveGraphApplyFrequencySkew(
           out,
-          lowStretch,
-          highStretch,
+          eff(node, "lowStretch", 1),
+          eff(node, "highStretch", 1),
           eff(node, "skew", 0),
           num(p.curve, 0),
           skewState.lerpFrom || null,
@@ -406,16 +375,11 @@ NodeLiveAudioProcessor.prototype.processAdditiveYellowGraphSidecar = function pr
         this.additiveFrequencySkewStates.set(eid, {
           lerpFrom: appliedSkew?.lerpFrom || null,
         });
-      } else if (
-        type === "additiveQuantizeFreq"
-        || type === "additiveHarmonicMath"
-        || type === "additiveFrequencyMath"
-      ) {
+      } else if (type === "additiveQuantizeFreq") {
         let freqState = this.additiveQuantizeFreqStates.get(eid) || {};
-        const qOn = p.quantizeFreq != null ? num(p.quantizeFreq, 0) : num(p.quantize, 0);
         const appliedFreq = additiveGraphApplyQuantizeFreq(
           out,
-          qOn,
+          num(p.quantizeFreq, 0),
           eff(node, "randomFreqAmount", 0),
           num(p.seed, 1),
           freqState.lerpFrom || null,
@@ -473,7 +437,7 @@ NodeLiveAudioProcessor.prototype.processAdditiveYellowGraphSidecar = function pr
   }
 
   // 3) Outs → per-node Mono (scopes) + speaker scratch when wired to Output
-  const nFrames = Math.max(0, Number(frames) || 0);
+  const nFrames = Math.max(0, nodeGraphFiniteNumber(frames));
   if (nFrames < 1) return;
   if (!this._additiveScratchL || this._additiveScratchL.length < nFrames) {
     this._additiveScratchL = new Float32Array(nFrames);
@@ -589,9 +553,9 @@ NodeLiveAudioProcessor.prototype.processAdditiveYellowGraphSidecar = function pr
           masterPhase,
         });
       }
-      const mono = Number(summed.mono) || 0;
-      const left = Number(summed.left) || 0;
-      const right = Number(summed.right) || 0;
+      const mono = nodeGraphFiniteNumber(summed.mono);
+      const left = nodeGraphFiniteNumber(summed.left);
+      const right = nodeGraphFiniteNumber(summed.right);
       lastMono = mono;
       lastLeft = left;
       lastRight = right;
@@ -604,12 +568,12 @@ NodeLiveAudioProcessor.prototype.processAdditiveYellowGraphSidecar = function pr
         const route = speakerRoutes[r];
         const sample = route.src === "left" ? left : route.src === "right" ? right : mono;
         if (route.dst === "left") {
-          leftBus[f] = (Number(leftBus[f]) || 0) + sample;
+          leftBus[f] = (nodeGraphFiniteNumber(leftBus[f])) + sample;
         } else if (route.dst === "right") {
-          rightBus[f] = (Number(rightBus[f]) || 0) + sample;
+          rightBus[f] = (nodeGraphFiniteNumber(rightBus[f])) + sample;
         } else {
-          leftBus[f] = (Number(leftBus[f]) || 0) + sample;
-          rightBus[f] = (Number(rightBus[f]) || 0) + sample;
+          leftBus[f] = (nodeGraphFiniteNumber(leftBus[f])) + sample;
+          rightBus[f] = (nodeGraphFiniteNumber(rightBus[f])) + sample;
         }
       }
     }

@@ -42,7 +42,8 @@ function normalizeNodeGraphPatchNodeUi(ui = {}, type = "") {
   const titleHidden = Object.prototype.hasOwnProperty.call(source, "titleHidden")
     ? Boolean(source.titleHidden)
     : false;
-  return {
+  const absoluteFace = Number(source.displayHeightGu);
+  const normalized = {
     buttonsHidden: Boolean(source.buttonsHidden),
     // Force-show override when Visibility has the section globally hidden.
     buttonsForceShow: Boolean(source.buttonsForceShow || source.buttonsShown),
@@ -68,6 +69,13 @@ function normalizeNodeGraphPatchNodeUi(ui = {}, type = "") {
       : Boolean(source.slidersForceShow || source.slidersShown),
     titleHidden,
   };
+  // Absolute face height (spawn/resize). Preferred over offset-from-type-default.
+  if (Number.isFinite(absoluteFace) && absoluteFace > 0) {
+    normalized.displayHeightGu = type
+      ? normalizeNodeGraphModuleDisplayHeightUnits(absoluteFace, type)
+      : Math.max(1, Math.round(absoluteFace));
+  }
+  return normalized;
 }
 
 /** @deprecated Multi-mode faces removed — always empty (one face per module). */
@@ -284,7 +292,7 @@ function cloneNodeGraphTypedDisplaySettings(node) {
       return {
         traceDisplaySettings: typeof normalizeNodeGraphHypersawBurnSettings === "function"
           ? normalizeNodeGraphHypersawBurnSettings(bag)
-          : { lineThickness: Number(bag?.lineThickness) || 1 },
+          : { lineThickness: nodeGraphFiniteNumber(bag?.lineThickness, 1) },
       };
     }
     case "scope2d":
@@ -337,6 +345,18 @@ function cloneNodeGraphTypedDisplaySettings(node) {
           ? normalizeNodeGraphPhosphorWaveformSettings(node.phosphorWaveformSettings)
           : (node.phosphorWaveformSettings || {}),
       };
+    case "arpKeysFace":
+      return {
+        arpKeysSettings: typeof normalizeNodeGraphArpKeysSettings === "function"
+          ? normalizeNodeGraphArpKeysSettings(node.arpKeysSettings)
+          : (node.arpKeysSettings || {}),
+      };
+    case "transportBpm":
+      return {
+        transportSettings: typeof normalizeNodeGraphTransportSettings === "function"
+          ? normalizeNodeGraphTransportSettings(node.transportSettings)
+          : (node.transportSettings || { gateBlink: false }),
+      };
     case "knobFace":
       return {
         traceDisplaySettings: typeof normalizeNodeGraphKnobFaceDisplaySettings === "function"
@@ -346,7 +366,7 @@ function cloneNodeGraphTypedDisplaySettings(node) {
     case "portalFace": {
       const channel = typeof nodeGraphPortalClampChannel === "function"
         ? nodeGraphPortalClampChannel(node?.params?.channel)
-        : Math.max(0, Math.round(Number(node?.params?.channel) || 0));
+        : Math.max(0, Math.round(nodeGraphFiniteNumber(node?.params?.channel)));
       return { params: { ...(node.params || {}), channel } };
     }
     case "roundShapeFace":
@@ -533,6 +553,13 @@ function cloneNodeGraphPatch(patch) {
               : nodeGraphGraphWithPhaseCursor(node),
           }
           : {}),
+        ...(node.type === "sequencer"
+          ? {
+            sequencer: typeof sequencerCloneClip === "function"
+              ? sequencerCloneClip(node.sequencer)
+              : (node.sequencer && typeof node.sequencer === "object" ? { ...node.sequencer } : undefined),
+          }
+          : {}),
         ...(node.type === "codeblock"
           ? { codeblock: normalizeNodeGraphCodeblock(node.codeblock) }
           : {}),
@@ -586,6 +613,13 @@ function cloneNodeGraphPatch(patch) {
         ...(node.type === "audioPlayer" && Object.hasOwn(node, "phosphorWaveformSettings")
           ? { phosphorWaveformSettings: normalizeNodeGraphPhosphorWaveformSettings(node.phosphorWaveformSettings) }
           : {}),
+        ...(node.type === "arp" && Object.hasOwn(node, "arpKeysSettings")
+          ? {
+            arpKeysSettings: typeof normalizeNodeGraphArpKeysSettings === "function"
+              ? normalizeNodeGraphArpKeysSettings(node.arpKeysSettings)
+              : node.arpKeysSettings,
+          }
+          : {}),
         ...(node.type === "audioPlayer" && Number.isFinite(Number(node.samplePhase))
           ? { samplePhase: Math.max(0, Math.min(1, Number(node.samplePhase))) }
           : {}),
@@ -619,10 +653,12 @@ function cloneNodeGraphPatch(patch) {
                   && typeof node.metamodule.paramVisibility === "object"
                   ? { ...node.metamodule.paramVisibility }
                   : {},
+                playmode: Math.max(1, Math.min(4, Math.round(Number(node.metamodule.playmode) || 4))),
+                voices: Math.max(1, Math.min(32, Math.round(Number(node.metamodule.voices) || 10))),
               },
           }
           : {}),
-        ...(ui.buttonsHidden || ui.buttonsForceShow || ui.ioHidden || ui.hideUnused || ui.interfaceControlsHidden || ui.interfaceControlsForceShow || ui.movementLocked || ui.titleHidden || ui.oscilloscopeHidden || ui.oscilloscopeForceShow || ui.slidersHidden || ui.slidersForceShow || ui.displayHeightOffsetGu ? { ui } : {}),
+        ...(ui.buttonsHidden || ui.buttonsForceShow || ui.ioHidden || ui.hideUnused || ui.interfaceControlsHidden || ui.interfaceControlsForceShow || ui.movementLocked || ui.titleHidden || ui.oscilloscopeHidden || ui.oscilloscopeForceShow || ui.slidersHidden || ui.slidersForceShow || ui.displayHeightOffsetGu || ui.displayHeightGu ? { ui } : {}),
       };
     }),
     requiredAssets: typeof nodeGraphRequiredAssetsForPatch === "function"

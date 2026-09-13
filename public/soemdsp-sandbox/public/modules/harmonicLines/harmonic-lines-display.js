@@ -81,18 +81,16 @@ function drawNodeGraphHarmonicLinesDisplay(section) {
     h = metrics.cssHeight;
     pixelRatio = metrics.pixelRatio || 1;
   } else {
-    const rawW = Number(section.clientWidth || section.offsetWidth) || 0;
-    const rawH = Number(section.clientHeight || section.offsetHeight) || 0;
-    if (rawW < 8 || rawH < 8) return;
-    const dpr = window.devicePixelRatio || 1;
-    w = Math.max(1, Math.floor(rawW));
-    h = Math.max(1, Math.floor(rawH));
-    canvas.width = Math.max(1, Math.round(w * dpr));
-    canvas.height = Math.max(1, Math.round(h * dpr));
-    canvas.style.width = `${w}px`;
-    canvas.style.height = `${h}px`;
+    const face = typeof ensureFaceMetrics === "function"
+      ? ensureFaceMetrics(section, { observe: true })
+      : null;
+    if (!face || face.cssW < 8 || face.cssH < 8) return;
+    w = face.cssW;
+    h = face.cssH;
+    pixelRatio = face.dpr;
+    canvas.width = face.width;
+    canvas.height = face.height;
     ctx = canvas.getContext("2d");
-    pixelRatio = dpr;
   }
   if (!ctx || w < 8 || h < 8) return;
 
@@ -116,7 +114,7 @@ function drawNodeGraphHarmonicLinesDisplay(section) {
   const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
   let freqHz = Number(graph.frequencyHz ?? node?.params?.frequency ?? node?.parameters?.frequency);
   if (!Number.isFinite(freqHz)) freqHz = 100;
-  const sr = Number(nodeGraphMvp?.sampleRate) || Number(nodeGraphMvp?.live?.sampleRate) || 44100;
+  const sr = nodeGraphFiniteNumber(nodeGraphMvp?.sampleRate, nodeGraphFiniteNumber(nodeGraphMvp?.live?.sampleRate, 44100));
 
   const axis = typeof additiveGraphDisplayFreqAxis === "function"
     ? additiveGraphDisplayFreqAxis(sr)
@@ -162,10 +160,10 @@ function drawNodeGraphHarmonicLinesDisplay(section) {
   const hasPan = (graph.pan && graph.pan.length >= H) || Boolean(panNoise);
 
   for (let i = 0; i < H; i += 1) {
-    let ratio = Number(graph.ratio[i]) || 0;
+    let ratio = nodeGraphFiniteNumber(graph.ratio[i]);
     if (ratioWalks && typeof cheapWhiteNoiseStep === "function") {
       const w = cheapWhiteNoiseStep(ratioWalks[i]);
-      const add = Number(ratioNoise.amount) || 0;
+      const add = nodeGraphFiniteNumber(ratioNoise.amount);
       ratio = Math.max(0, ratio + w * add);
     }
     const hz = ratio * freqHz;
@@ -174,7 +172,7 @@ function drawNodeGraphHarmonicLinesDisplay(section) {
     let amp = Math.abs(graph.amplitude[i] || 0);
     if (ampWalks && typeof cheapWhiteNoiseStep === "function") {
       const w = cheapWhiteNoiseStep(ampWalks[i]);
-      const add = Number(ampNoise.amount) || 0;
+      const add = nodeGraphFiniteNumber(ampNoise.amount);
       amp = Math.max(0, Math.min(1, amp + w * add));
     }
     const nyqGain = typeof additiveGraphNyquistAmpGain === "function"
@@ -186,10 +184,10 @@ function drawNodeGraphHarmonicLinesDisplay(section) {
     // Color = Graph phase offsets (+ NoisyPhase WhiteNoise preview), not free-running phaseAcc.
     let phase = typeof additiveGraphEffectivePhase === "function"
       ? additiveGraphEffectivePhase(graph, i, 0, 1)
-      : (Number(graph.phase[i]) || 0);
+      : (nodeGraphFiniteNumber(graph.phase[i]));
     if (phaseWalks && typeof cheapWhiteNoiseStep === "function") {
       const w = cheapWhiteNoiseStep(phaseWalks[i]);
-      const add = Number(phaseNoise.amount) || 0;
+      const add = nodeGraphFiniteNumber(phaseNoise.amount);
       phase = typeof additiveGraphWrap01 === "function"
         ? additiveGraphWrap01(phase + w * add)
         : phase + w * add;
@@ -201,14 +199,14 @@ function drawNodeGraphHarmonicLinesDisplay(section) {
     let pan = hasPan
       ? (typeof additiveGraphEffectivePan === "function"
         ? additiveGraphEffectivePan(graph, i, 0, 1)
-        : (Number(graph.pan?.[i]) || 0))
+        : (nodeGraphFiniteNumber(graph.pan?.[i])))
       : 0;
     if (panWalks && typeof cheapWhiteNoiseStep === "function") {
       const w = cheapWhiteNoiseStep(panWalks[i]);
-      const add = Number(panNoise.amount) || 0;
-      pan = Math.max(-1, Math.min(1, pan + w * add));
+      const add = nodeGraphFiniteNumber(panNoise.amount);
+      pan = pan + w * add;
     }
-    pan = Math.max(-1, Math.min(1, pan));
+    pan = pan;
     const gains = typeof additiveGraphPanGains === "function"
       ? additiveGraphPanGains(pan)
       : { left: 0.5 * (1 - pan), right: 0.5 * (1 + pan) };

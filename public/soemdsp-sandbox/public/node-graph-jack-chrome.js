@@ -98,6 +98,16 @@ function nodeGraphJackLastToken(value) {
   return tokens[tokens.length - 1] || "";
 }
 
+function nodeGraphPortIsNoteBus(port) {
+  const key = String(port || "").trim();
+  return key === "Play Keys"
+    || key === "Arp Keys"
+    || key === "Chord Memory"
+    || key === "Polyphony"
+    || key === "Monophony"
+    || key === "Voices";
+}
+
 function nodeGraphJackSignalKind(type, port, io = null) {
   if (typeof nodeGraphPortIsDigitalSignal === "function" && nodeGraphPortIsDigitalSignal(type, port, io)) {
     return "digital";
@@ -135,6 +145,12 @@ function nodeGraphJackChannelCssColor(channel) {
       ? nodeGraphCssColor("--node-jack-blue", "#4d8dff")
       : "#4d8dff";
   }
+  // Keyboard Arp Keys — same gold as piano `.held` / default analog fill.
+  if (channel === "gold") {
+    return typeof nodeGraphCssColor === "function"
+      ? nodeGraphCssColor("--node-output-fill", "#e2a86d")
+      : "#e2a86d";
+  }
   if (channel === "purple") {
     return typeof nodeGraphCssColor === "function"
       ? nodeGraphCssColor("--node-jack-purple", "#c44dff")
@@ -164,10 +180,10 @@ function nodeGraphJackChannelCssColor(channel) {
       : "#e040fb";
   }
   if (channel === "black" || channel === "k") {
-    // Reserved (CMYK K) — unused for live jack assignment.
+    // Polyphony / Voices / CMYK K — charcoal on #000 workspace.
     return typeof nodeGraphCssColor === "function"
-      ? nodeGraphCssColor("--node-jack-black", "#111111")
-      : "#111111";
+      ? nodeGraphCssColor("--node-jack-black", "#6a6a6a")
+      : "#6a6a6a";
   }
   return "";
 }
@@ -178,13 +194,19 @@ function nodeGraphJackChannelCssColor(channel) {
  * Uncolored analog returns "" so the caller keeps gold/cyan.
  */
 function nodeGraphJackWireColor(type, port, io = "output") {
+  const channel = nodeGraphJackChannel(type, port, io);
+  // Colored digital buses (Play Keys blue, Arp Keys gold, Chord Memory green)
+  // + Polyphony/Voices black.
+  if (channel === "blue" || channel === "gold" || channel === "green" || channel === "black") {
+    return nodeGraphJackChannelCssColor(channel) || "";
+  }
   if (nodeGraphJackSignalKind(type, port, io) === "digital") {
     return "#ffffff";
   }
   if (!nodeGraphWiresFollowPortColors()) {
     return "";
   }
-  return nodeGraphJackChannelCssColor(nodeGraphJackChannel(type, port, io));
+  return nodeGraphJackChannelCssColor(channel);
 }
 
 function nodeGraphJackRgbLetterChannel(type, value) {
@@ -317,7 +339,7 @@ function nodeGraphJackExplicitChannel(def, port, io = "output") {
   }
   const raw = String(map[port] || "").trim().toLowerCase();
   if (
-    raw === "red" || raw === "green" || raw === "blue"
+    raw === "red" || raw === "green" || raw === "blue" || raw === "gold"
     || raw === "purple" || raw === "cyan" || raw === "yellow"
     || raw === "magenta" || raw === "black"
   ) {
@@ -331,6 +353,30 @@ function nodeGraphJackChannel(type, port, io = "output") {
   if (!key.trim()) {
     return "";
   }
+  // Port-name SSOT for voice buses (works even if def lookup misses).
+  if (key === "Polyphony" || key === "Monophony" || key === "Voices") {
+    return "black";
+  }
+  if (key === "Play Keys") {
+    return "blue";
+  }
+  if (key === "Arp Keys") {
+    return "gold";
+  }
+  if (key === "Chord Memory") {
+    return "green";
+  }
+  const def = nodeGraphJackTypeDefinition(type);
+  // Explicit module channels win before digital→white.
+  const fromExplicit = nodeGraphJackExplicitChannel(def, key, io);
+  if (
+    fromExplicit === "blue"
+    || fromExplicit === "gold"
+    || fromExplicit === "green"
+    || fromExplicit === "black"
+  ) {
+    return fromExplicit;
+  }
   if (nodeGraphJackSignalKind(type, key, io) === "digital") {
     return "";
   }
@@ -340,10 +386,8 @@ function nodeGraphJackChannel(type, port, io = "output") {
   if (typeof nodeGraphPortIsBlockRateSignal === "function" && nodeGraphPortIsBlockRateSignal(type, key, io)) {
     return "cyan";
   }
-  const def = nodeGraphJackTypeDefinition(type);
   // Module-declared channel (e.g. polyBlep Wave → green). Wins over name heuristics.
   // RGB/XYZ stacks still use letter/axis rules — do not put green first there.
-  const fromExplicit = nodeGraphJackExplicitChannel(def, key, io);
   if (fromExplicit) {
     return fromExplicit;
   }
@@ -443,8 +487,21 @@ function nodeGraphApplyJackChrome(element, type, port, io = "output") {
   delete element.dataset.outletChannel;
   if (channel) {
     element.dataset.jackChannel = channel;
+    // Keep channel on the jack itself so CSS/port paint don't miss row-only marks.
+    const jack = element.classList?.contains("node-port")
+      ? element
+      : element.querySelector?.(".node-port:not(.node-param-port)");
+    if (jack) {
+      jack.dataset.jackChannel = channel;
+    }
   } else {
     delete element.dataset.jackChannel;
+  }
+  const jackEl = element.classList?.contains("node-port")
+    ? element
+    : element.querySelector?.(".node-port:not(.node-param-port)");
+  if (jackEl && typeof nodeGraphPortIsNoteBus === "function") {
+    jackEl.classList.toggle("node-port-square", nodeGraphPortIsNoteBus(port));
   }
   return channel;
 }
@@ -472,8 +529,9 @@ function nodeGraphJackElementVisibility(element) {
   }
   // Off-screen cull uses display:none on the whole .dsp-node — ports are 0×0
   // by design there. Do not treat them as a jack-chrome failure.
-  const viewportAsleep = Boolean(element.closest?.(".dsp-node.viewport-asleep"));
-  if (viewportAsleep) {
+  const hostNode = element.closest?.(".dsp-node");
+  const viewportAsleep = Boolean(hostNode?.classList.contains("viewport-asleep"));
+  if (viewportAsleep || hostNode?.hidden) {
     return {
       node: element.dataset?.node || "",
       port: element.dataset?.port || "",
@@ -503,8 +561,8 @@ function nodeGraphJackElementVisibility(element) {
   const display = cs?.display || "";
   const visibility = cs?.visibility || "";
   const opacity = cs ? Number(cs.opacity) : 1;
-  const width = Number(rect.width) || 0;
-  const height = Number(rect.height) || 0;
+  const width = nodeGraphFiniteNumber(rect.width);
+  const height = nodeGraphFiniteNumber(rect.height);
   const hiddenHost = Boolean(element.hidden || element.closest?.("[hidden]"));
   const ioHidden = Boolean(element.closest?.(".io-hidden"));
   const unusedHost = Boolean(element.closest?.(".unused-hidden, .patch-unused-ports-hidden"));
@@ -573,7 +631,7 @@ function nodeGraphJackVisibilityCensus(root) {
   const inlets = painted.filter((row) => row.io === "input");
   const outlets = painted.filter((row) => row.io === "output");
   const rgb = painted.filter((row) => row.channel === "red" || row.channel === "green" || row.channel === "blue");
-  const awakeModules = modules.filter((node) => !node.classList.contains("viewport-asleep"));
+  const awakeModules = modules.filter((node) => !node.classList.contains("viewport-asleep") && !node.hidden);
   const workspace = typeof document !== "undefined" && typeof document.getElementById === "function"
     ? document.getElementById("nodeGraphWorkspace")
     : scope.querySelector?.(".node-graph-workspace");

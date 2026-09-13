@@ -150,6 +150,13 @@ function applyNodeGraphViewportCssLight(options = {}) {
     workspace.style.setProperty("--node-graph-pan-y", `${originOffset.y}px`);
     workspace.dataset.panX = String(pan.x);
     workspace.dataset.panY = String(pan.y);
+    // Scope screen-items convert layout→screen from this (no gBCR on paint).
+    if (typeof nodeGraphMvp === "object" && nodeGraphMvp) {
+      nodeGraphMvp._cameraScreenOrigin = {
+        x: nodeGraphFiniteNumber(originOffset.x),
+        y: nodeGraphFiniteNumber(originOffset.y),
+      };
+    }
   }
   if (options.zoomButtons !== false && options.zoom !== false) {
     const zoomOutButton = document.getElementById("nodeZoomOutButton");
@@ -326,6 +333,23 @@ const nodeGraphViewportCull = {
   observer: null,
 };
 
+function nodeGraphPresentedDisplayFace(nodeId) {
+  const id = String(nodeId || "").trim();
+  if (!id || typeof document === "undefined") {
+    return null;
+  }
+  const escaped = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(id) : id.replace(/"/g, "");
+  return document.querySelector(
+    `.node-layout-canvas-face[data-node="${escaped}"], `
+    + `.node-screen-solo-face[data-node="${escaped}"], `
+    + `.node-metamodule-canvas-face[data-node="${escaped}"]`,
+  );
+}
+
+function nodeGraphDisplayIsPresented(nodeId) {
+  return Boolean(nodeGraphPresentedDisplayFace(nodeId));
+}
+
 function nodeGraphModuleIsViewportAsleep(nodeOrElement) {
   const element = nodeOrElement instanceof Element
     ? (nodeOrElement.classList.contains("dsp-node")
@@ -334,6 +358,10 @@ function nodeGraphModuleIsViewportAsleep(nodeOrElement) {
     : (typeof nodeGraphNodeElement === "function"
       ? nodeGraphNodeElement(nodeOrElement)
       : null);
+  const nodeId = String(element?.dataset?.node || nodeOrElement || "").trim();
+  if (nodeId && nodeGraphDisplayIsPresented(nodeId)) {
+    return false;
+  }
   return Boolean(element?.classList.contains("viewport-asleep"));
 }
 
@@ -365,8 +393,8 @@ function nodeGraphElementInSkippedContentVisibility(element) {
  * Asleep faces reuse the last awake size (or fallback).
  */
 function nodeGraphElementClientSize(element, fallbackW = 1, fallbackH = 1) {
-  const fw = Math.max(1, Number(fallbackW) || 1);
-  const fh = Math.max(1, Number(fallbackH) || 1);
+  const fw = Math.max(1, nodeGraphFiniteNumber(fallbackW, 1));
+  const fh = Math.max(1, nodeGraphFiniteNumber(fallbackH, 1));
   if (!element) {
     return { width: fw, height: fh, skipped: true };
   }
@@ -379,11 +407,24 @@ function nodeGraphElementClientSize(element, fallbackW = 1, fallbackH = 1) {
       skipped: true,
     };
   }
-  const width = Math.max(1, Math.floor(Number(element.clientWidth) || fw));
-  const height = Math.max(1, Math.floor(Number(element.clientHeight) || fh));
+  const width = Math.max(1, Math.floor(nodeGraphFiniteNumber(element.clientWidth, fw)));
+  const height = Math.max(1, Math.floor(nodeGraphFiniteNumber(element.clientHeight, fh)));
   element._awakeClientWidth = width;
   element._awakeClientHeight = height;
   return { width, height, skipped: false };
+}
+
+function nodeGraphViewportCullPainterRoots(element) {
+  const roots = [];
+  if (element) {
+    roots.push(element);
+  }
+  const nodeId = String(element?.dataset?.node || "");
+  const presented = nodeId ? nodeGraphPresentedDisplayFace(nodeId) : null;
+  if (presented && !roots.some((root) => root === presented || root.contains?.(presented))) {
+    roots.push(presented);
+  }
+  return roots;
 }
 
 function nodeGraphViewportCullWakePainters(element) {
@@ -391,17 +432,41 @@ function nodeGraphViewportCullWakePainters(element) {
     return;
   }
   const nodeId = String(element.dataset?.node || "");
-  for (const face of element.querySelectorAll(".node-fbm-field-face")) {
-    if (typeof nodeGraphFbmFieldStartLoop === "function") {
-      nodeGraphFbmFieldStartLoop(face, nodeId || face.dataset?.node);
+  const roots = nodeGraphViewportCullPainterRoots(element);
+  for (const root of roots) {
+    for (const face of root.querySelectorAll?.(".node-fbm-field-face") || []) {
+      if (typeof nodeGraphFbmFieldStartLoop === "function") {
+        nodeGraphFbmFieldStartLoop(face, nodeId || face.dataset?.node);
+      }
+    }
+    if (root.matches?.(".node-fbm-field-face") && typeof nodeGraphFbmFieldStartLoop === "function") {
+      nodeGraphFbmFieldStartLoop(root, nodeId);
+    }
+    for (const face of root.querySelectorAll?.(
+      ".node-harmonic-lines-display, .node-harmonic-count-display",
+    ) || []) {
+      face._startFaceLoop?.();
+    }
+    for (const face of root.querySelectorAll?.(".node-phosphor-waveform-display") || []) {
+      if (typeof nodeGraphPhosphorWaveformEnsureLoop === "function") {
+        nodeGraphPhosphorWaveformEnsureLoop(face);
+      }
+    }
+    if (root.matches?.(".node-phosphor-waveform-display")
+      && typeof nodeGraphPhosphorWaveformEnsureLoop === "function") {
+      nodeGraphPhosphorWaveformEnsureLoop(root);
+    }
+    if (typeof nodeGraphScreenSoloWakeFace === "function") {
+      nodeGraphScreenSoloWakeFace(root.matches?.(".node-module-face, .node-module-scope-window, .node-midi-keyboard-module, .node-arp-keys-face")
+        ? root
+        : (root.querySelector?.(".node-module-face, .node-module-scope-window, .node-midi-keyboard-module, .node-arp-keys-face") || root));
     }
   }
-  for (const face of element.querySelectorAll(
-    ".node-harmonic-lines-display, .node-harmonic-count-display",
-  )) {
-    if (typeof face._startFaceLoop === "function") {
-      face._startFaceLoop();
-    }
+  if (nodeId && typeof requestNodeGraphModuleScopeRepaint === "function") {
+    requestNodeGraphModuleScopeRepaint(nodeId);
+  }
+  if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
+    scheduleNodeGraphModuleScopeDraw({ force: true });
   }
   element.dispatchEvent(new CustomEvent("nodegraphviewport", {
     bubbles: false,
@@ -411,6 +476,10 @@ function nodeGraphViewportCullWakePainters(element) {
 
 function nodeGraphViewportCullSleepPainters(element) {
   if (!element) {
+    return;
+  }
+  if (typeof nodeGraphViewportCullMustStayAwake === "function"
+    && nodeGraphViewportCullMustStayAwake(element)) {
     return;
   }
   for (const face of element.querySelectorAll(".node-fbm-field-face")) {
@@ -424,6 +493,11 @@ function nodeGraphViewportCullSleepPainters(element) {
     if (face._raf) {
       window.cancelAnimationFrame(face._raf);
       face._raf = 0;
+    }
+  }
+  for (const face of element.querySelectorAll(".node-phosphor-waveform-display")) {
+    if (typeof nodeGraphPhosphorWaveformStopLoop === "function") {
+      nodeGraphPhosphorWaveformStopLoop(face);
     }
   }
   element.dispatchEvent(new CustomEvent("nodegraphviewport", {
@@ -476,7 +550,7 @@ function nodeGraphViewportCullRefresh(options = {}) {
   }
   const zoom = Math.max(
     0.0001,
-    typeof nodeGraphZoom === "function" ? nodeGraphZoom() : (Number(nodeGraphMvp?.zoom) || 1),
+    typeof nodeGraphZoom === "function" ? nodeGraphZoom() : (nodeGraphFiniteNumber(nodeGraphMvp?.zoom, 1)),
   );
   const origin = typeof nodeGraphRenderedOriginOffset === "function"
     ? nodeGraphRenderedOriginOffset()
@@ -484,18 +558,18 @@ function nodeGraphViewportCullRefresh(options = {}) {
   const box = typeof nodeGraphWorkspaceLayoutMetrics === "function"
     ? nodeGraphWorkspaceLayoutMetrics(workspace)
     : { width: workspace.clientWidth, height: workspace.clientHeight };
-  const boxW = Number(box.width) || 0;
-  const boxH = Number(box.height) || 0;
+  const boxW = nodeGraphFiniteNumber(box.width);
+  const boxH = nodeGraphFiniteNumber(box.height);
   // Zero/tiny workspace (iframe not laid out yet) would cull the whole patch.
   if (boxW < 32 || boxH < 32) {
     nodeGraphViewportCullWakeAll(surface);
     return;
   }
   const margin = 96;
-  const worldLeft = (0 - margin - (Number(origin.x) || 0)) / zoom;
-  const worldTop = (0 - margin - (Number(origin.y) || 0)) / zoom;
-  const worldRight = (boxW + margin - (Number(origin.x) || 0)) / zoom;
-  const worldBottom = (boxH + margin - (Number(origin.y) || 0)) / zoom;
+  const worldLeft = (0 - margin - (nodeGraphFiniteNumber(origin.x))) / zoom;
+  const worldTop = (0 - margin - (nodeGraphFiniteNumber(origin.y))) / zoom;
+  const worldRight = (boxW + margin - (nodeGraphFiniteNumber(origin.x))) / zoom;
+  const worldBottom = (boxH + margin - (nodeGraphFiniteNumber(origin.y))) / zoom;
   const selected = typeof nodeGraphSelectedNodeIds === "function"
     ? nodeGraphSelectedNodeIds()
     : new Set();
@@ -505,15 +579,15 @@ function nodeGraphViewportCullRefresh(options = {}) {
     let width = 0;
     let height = 0;
     if (!cacheSizesOnly) {
-      width = Number(element.offsetWidth) || 0;
-      height = Number(element.offsetHeight) || 0;
+      width = nodeGraphFiniteNumber(element.offsetWidth);
+      height = nodeGraphFiniteNumber(element.offsetHeight);
     }
     if (width > 1 && height > 1) {
       element._viewportCullW = width;
       element._viewportCullH = height;
     } else {
-      width = Number(element._viewportCullW) || 220;
-      height = Number(element._viewportCullH) || 140;
+      width = nodeGraphFiniteNumber(element._viewportCullW, 220);
+      height = nodeGraphFiniteNumber(element._viewportCullH, 140);
     }
     const x = Number.parseFloat(element.style.getPropertyValue("--node-x")) || 0;
     const y = Number.parseFloat(element.style.getPropertyValue("--node-y")) || 0;
@@ -539,7 +613,7 @@ function scheduleNodeGraphViewportGestureHeatmapPhase() {
 
 function scheduleNodeGraphViewportCullRefresh(options = {}) {
   const cacheSizesOnly = Boolean(options.cacheSizesOnly);
-  const minIntervalMs = Math.max(0, Number(options.minIntervalMs) || 0);
+  const minIntervalMs = Math.max(0, nodeGraphFiniteNumber(options.minIntervalMs));
   const now = performance.now?.() || Date.now();
   if (
     minIntervalMs > 0
@@ -576,22 +650,108 @@ function scheduleNodeGraphViewportCullRefresh(options = {}) {
   });
 }
 
+/**
+ * Keep the *face* painting when it is teleported. Never unhide a graph
+ * module that does not belong in the current view (Voice* / Meta Out / interiors).
+ */
+function nodeGraphViewportCullMustStayAwake(elementOrNodeId) {
+  const element = elementOrNodeId instanceof Element
+    ? (elementOrNodeId.classList.contains("dsp-node")
+      ? elementOrNodeId
+      : elementOrNodeId.closest?.(".dsp-node"))
+    : (typeof nodeGraphNodeElement === "function"
+      ? nodeGraphNodeElement(elementOrNodeId)
+      : null);
+  if (element?.hidden) {
+    return false;
+  }
+  const nodeId = String(
+    (element?.dataset?.node || elementOrNodeId || ""),
+  ).trim();
+  if (!nodeId) {
+    return false;
+  }
+  const patchNode = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  if (
+    patchNode
+    && typeof nodeGraphMetamoduleNodeVisibleInCurrentView === "function"
+    && !nodeGraphMetamoduleNodeVisibleInCurrentView(patchNode)
+  ) {
+    return false;
+  }
+  if (element?.querySelector?.(":scope > .node-screen-solo-placeholder, .node-screen-solo-placeholder")) {
+    return true;
+  }
+  if (nodeGraphDisplayIsPresented(nodeId)) {
+    return true;
+  }
+  if (typeof nodeGraphLayoutCanvasIsActive === "function" && nodeGraphLayoutCanvasIsActive()) {
+    if (typeof nodeGraphLayoutCanvasIsPinned === "function" && nodeGraphLayoutCanvasIsPinned(nodeId)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function nodeGraphViewportCullWakePresentedFace(nodeId) {
+  const id = String(nodeId || "").trim();
+  if (!id) {
+    return;
+  }
+  const face = typeof nodeGraphPresentedDisplayFace === "function"
+    ? nodeGraphPresentedDisplayFace(id)
+    : null;
+  if (face && typeof nodeGraphScreenSoloWakeFace === "function") {
+    nodeGraphScreenSoloWakeFace(face);
+  }
+  if (id && typeof requestNodeGraphModuleScopeRepaint === "function") {
+    requestNodeGraphModuleScopeRepaint(id);
+  }
+}
+
+function nodeGraphViewportCullWakeNodeById(nodeId) {
+  const id = String(nodeId || "").trim();
+  if (!id) {
+    return;
+  }
+  nodeGraphViewportCullWakePresentedFace(id);
+  const escaped = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(id) : id.replace(/"/g, "");
+  const host = document.querySelector(`.dsp-node[data-node="${escaped}"]`);
+  if (!host || host.hidden) {
+    return;
+  }
+  const patchNode = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(id) : null;
+  if (
+    patchNode
+    && typeof nodeGraphMetamoduleNodeVisibleInCurrentView === "function"
+    && !nodeGraphMetamoduleNodeVisibleInCurrentView(patchNode)
+  ) {
+    return;
+  }
+  nodeGraphViewportCullApply(host, true);
+}
+
 function nodeGraphViewportCullApply(element, intersecting) {
   if (!element?.classList?.contains("dsp-node")) {
     return;
   }
   const nodeId = String(element.dataset?.node || "");
+  if (element.hidden) {
+    const wasAsleep = element.classList.contains("viewport-asleep");
+    element.classList.add("viewport-asleep");
+    if (!wasAsleep) {
+      nodeGraphViewportCullSleepPainters(element);
+    }
+    nodeGraphViewportCullWakePresentedFace(nodeId);
+    return;
+  }
   const selected = Boolean(
     nodeId
     && typeof nodeGraphSelectedNodeIds === "function"
     && nodeGraphSelectedNodeIds().has(nodeId),
   );
-  const mirrored = Boolean(
-    nodeId
-    && typeof nodeGraphMetamoduleChildIsMirrorSubscribed === "function"
-    && nodeGraphMetamoduleChildIsMirrorSubscribed(nodeId),
-  );
-  const awake = intersecting || selected || mirrored;
+  const stay = nodeGraphViewportCullMustStayAwake(element);
+  const awake = intersecting || selected || stay;
   const wasAsleep = element.classList.contains("viewport-asleep");
   element.classList.toggle("viewport-asleep", !awake);
   if (wasAsleep === !awake) {

@@ -129,7 +129,8 @@ function nodeGraphPatchNodeParameterDefinitions(node) {
   });
   // Metamodule shell: append child params marked "Show metaparameter".
   if (
-    patchNode?.type === "metamodule"
+    typeof nodeGraphIsContainerShellType === "function"
+    && nodeGraphIsContainerShellType(patchNode?.type)
     && typeof nodeGraphMetamoduleExposedParameterDefinitions === "function"
   ) {
     const exposed = nodeGraphMetamoduleExposedParameterDefinitions(patchNode);
@@ -267,7 +268,8 @@ function nodeGraphPatchNodeInputPorts(node) {
   }
   // Metamodule shell: Poly + boundary-derived Root jacks (portals stay for DSP).
   if (
-    patchNode?.type === "metamodule"
+    typeof nodeGraphIsContainerShellType === "function"
+    && nodeGraphIsContainerShellType(patchNode?.type)
     && typeof nodeGraphMetamoduleShellPorts === "function"
   ) {
     return nodeGraphMetamoduleShellPorts(patchNode).inputs;
@@ -291,7 +293,8 @@ function nodeGraphPatchNodeOutputPorts(node) {
     return [];
   }
   if (
-    patchNode?.type === "metamodule"
+    typeof nodeGraphIsContainerShellType === "function"
+    && nodeGraphIsContainerShellType(patchNode?.type)
     && typeof nodeGraphMetamoduleShellPorts === "function"
   ) {
     return nodeGraphMetamoduleShellPorts(patchNode).outputs;
@@ -511,7 +514,8 @@ function nodeGraphParameterDefinitionMetadata(parameter) {
 
 /**
  * Continuous params with no time (or 0) get the shared 0.0333 s linear
- * *internal* stash. Source stays Global so they follow the header time.
+ * *internal* default. Mode must be Internal — Global ignores per-param seconds
+ * (only header time), so Global + header 0 was always snapping.
  * Discrete / off / already-timed params are left alone.
  */
 function nodeGraphParameterNeedsDefaultModuleSmoothing(meta, source = {}) {
@@ -546,7 +550,8 @@ function nodeGraphApplyDefaultModuleSmoothing(meta) {
     : 0.0333;
   meta.smoothingType = "linear";
   meta.linearSmoothing = true;
-  meta.smoothingMode = "global";
+  // Internal so smoothingSeconds is actually used. Global ignores it.
+  meta.smoothingMode = "internal";
   meta.smoothingSeconds = seconds;
   return meta;
 }
@@ -598,9 +603,6 @@ function nodeGraphModuleUsesYellowGraphDomainParamOut(type) {
     || t === "additiveFrequencySkew"
     || t === "additiveQuantizeFreq"
     || t === "additiveQuantizePhase"
-    || t === "additiveHarmonicMath"
-    || t === "additiveFrequencyMath"
-    || t === "additiveFrequencySlope"
     || t === "additiveNoisyFreq"
     || t === "additiveNoisyPhase"
     || t === "additiveNoisyPan"
@@ -628,12 +630,16 @@ function normalizeNodeGraphPatchParameterMetadata(type, key, metadata = {}) {
   // Metamodule exposed mx_* rows: normalize against the child parameter def.
   if (
     !parameter
-    && type === "metamodule"
+    && typeof nodeGraphIsContainerShellType === "function"
+    && nodeGraphIsContainerShellType(type)
     && String(key || "").startsWith("mx_")
     && typeof nodeGraphMetamoduleResolveExposeTarget === "function"
   ) {
     const patch = typeof nodeGraphMvp !== "undefined" ? nodeGraphMvp?.patch : null;
-    const metas = (patch?.nodes || []).filter((n) => n?.type === "metamodule");
+    const metas = (patch?.nodes || []).filter((n) =>
+      typeof nodeGraphIsContainerShellType === "function"
+      && nodeGraphIsContainerShellType(n?.type)
+    );
     for (const meta of metas) {
       const target = nodeGraphMetamoduleResolveExposeTarget(meta, key, patch);
       if (!target?.child) continue;
@@ -749,10 +755,10 @@ function normalizeNodeGraphPatchParameterMetadata(type, key, metadata = {}) {
       def = Number.isFinite(fallback.def) ? fallback.def : 0;
     }
   }
-  // Range: knob domain was ±1000 / ±10000; sane defaults are −10…+10.
+  // Range Out: spawn domain is −10…+10 (was ±20000 / ±10000 / ±1000).
   if (
     type === "range"
-    && (key === "inLow" || key === "inHigh" || key === "outLow" || key === "outHigh")
+    && (key === "outLow" || key === "outHigh")
     && Number.isFinite(fallback.min)
     && Number.isFinite(fallback.max)
     && fallback.min === -10

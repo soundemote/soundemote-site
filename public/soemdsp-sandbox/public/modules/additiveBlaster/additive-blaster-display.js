@@ -39,7 +39,7 @@ function nodeGraphAdditiveBlasterReadGraph(nodeId) {
 }
 
 function nodeGraphAdditiveBlasterPhaseColor(phase01, binIndex = 0) {
-  const p = ((Number(phase01) || 0) % 1 + 1) % 1;
+  const p = ((nodeGraphFiniteNumber(phase01)) % 1 + 1) % 1;
   // Prefer true phase hue; fall back to bin index so empty/identical still read.
   const hue = Math.floor((((p > 1e-6 ? p : (binIndex * 0.17)) % 1) + 1) % 1 * 360);
   return `hsl(${hue} 80% 55%)`;
@@ -62,18 +62,16 @@ function drawNodeGraphAdditiveBlasterDisplay(section) {
     h = metrics.cssHeight;
     pixelRatio = metrics.pixelRatio || 1;
   } else {
-    const rawW = Number(section.clientWidth || section.offsetWidth) || 0;
-    const rawH = Number(section.clientHeight || section.offsetHeight) || 0;
-    if (rawW < 8 || rawH < 8) return;
-    const dpr = window.devicePixelRatio || 1;
-    w = Math.max(1, Math.floor(rawW));
-    h = Math.max(1, Math.floor(rawH));
-    canvas.width = Math.max(1, Math.round(w * dpr));
-    canvas.height = Math.max(1, Math.round(h * dpr));
-    canvas.style.width = `${w}px`;
-    canvas.style.height = `${h}px`;
+    const face = typeof ensureFaceMetrics === "function"
+      ? ensureFaceMetrics(section, { observe: true })
+      : null;
+    if (!face || face.cssW < 8 || face.cssH < 8) return;
+    w = face.cssW;
+    h = face.cssH;
+    pixelRatio = face.dpr;
+    canvas.width = face.width;
+    canvas.height = face.height;
     ctx = canvas.getContext("2d");
-    pixelRatio = dpr;
   }
   if (!ctx || w < 8 || h < 8) return;
 
@@ -103,7 +101,7 @@ function drawNodeGraphAdditiveBlasterDisplay(section) {
   const H = Math.max(1, graph.ratio.length | 0);
   let freqHz = Number(graph.frequencyHz ?? node?.params?.frequency ?? 100);
   if (!Number.isFinite(freqHz) || !(freqHz > 0)) freqHz = 100;
-  const sr = Number(nodeGraphMvp?.sampleRate) || Number(nodeGraphMvp?.live?.sampleRate) || 44100;
+  const sr = nodeGraphFiniteNumber(nodeGraphMvp?.sampleRate, nodeGraphFiniteNumber(nodeGraphMvp?.live?.sampleRate, 44100));
 
   const bins = typeof additiveGraphBlasterBins === "function"
     ? additiveGraphBlasterBins(H, quantization, layout, graph, freqHz, sr)
@@ -124,7 +122,7 @@ function drawNodeGraphAdditiveBlasterDisplay(section) {
     const bw = Math.max(2, right - left - gap);
     const phase = Number.isFinite(bin.phase)
       ? bin.phase
-      : (bin.start >= 0 ? Number(graph.phase?.[bin.start]) || 0 : 0);
+      : (bin.start >= 0 ? nodeGraphFiniteNumber(graph.phase?.[bin.start]) : 0);
     ctx.fillStyle = nodeGraphAdditiveBlasterPhaseColor(phase, b);
     ctx.globalAlpha = bin.start >= 0 ? 0.9 : 0.25;
     ctx.fillRect(left, padY, bw, barH);

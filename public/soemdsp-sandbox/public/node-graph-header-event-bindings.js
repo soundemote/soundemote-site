@@ -61,10 +61,6 @@ function bindNodeGraphHeaderControlEvents() {
   document
     .getElementById("nodeHotkeysPageResizeHandle")
     ?.addEventListener("pointerdown", (event) => beginNodeGraphRegisteredFloatingWindowResize(event, "hotkeys"));
-  document.getElementById("nodeStandaloneMidiKeyboardButton")?.addEventListener("click", toggleNodeGraphStandaloneMidiKeyboard);
-  if (typeof bindNodeGraphControllerDockSplit === "function") {
-    bindNodeGraphControllerDockSplit();
-  }
   // Docked tips height: drag strip between tips band and modular workspace.
   const embedResize = document.getElementById("nodeInteractionHelpEmbedResize");
   if (embedResize && typeof beginNodeGraphTooltipEmbedResize === "function") {
@@ -81,8 +77,8 @@ function bindNodeGraphHeaderControlEvents() {
   if (typeof bindNodeGraphPhosphorWaveformTimeWindowEditing === "function") {
     bindNodeGraphPhosphorWaveformTimeWindowEditing();
   }
-  if (typeof bindNodeGraphPhosphorWaveformPxFields === "function") {
-    bindNodeGraphPhosphorWaveformPxFields();
+  if (typeof bindNodeGraphPhosphorWaveformTimeWindowEditing === "function") {
+    bindNodeGraphPhosphorWaveformTimeWindowEditing();
   }
   if (typeof bindNodeGraphPhosphorWaveformSettingModifiers === "function") {
     bindNodeGraphPhosphorWaveformSettingModifiers();
@@ -392,16 +388,26 @@ function bindNodeGraphHeaderControlEvents() {
   document
     .getElementById("nodeModularInfiniteViewButton")
     ?.addEventListener("click", () => {
+      // 💻 — exit layout canvas if open; stay on infinite modular workspace.
+      if (typeof nodeGraphLayoutCanvasClose === "function") {
+        nodeGraphLayoutCanvasClose({ silent: true });
+      }
       if (typeof setNodeGraphModularWindowedActive === "function") {
         setNodeGraphModularWindowedActive(false);
       }
     });
-  // 📱 — phone / condensed frame with resize widget.
+  // 📱 — same as F: Meta canvas pin when a child is selected, else layout canvas.
   document
     .getElementById("nodeModularWindowedViewButton")
     ?.addEventListener("click", () => {
-      if (typeof setNodeGraphModularWindowedActive === "function") {
-        setNodeGraphModularWindowedActive(true);
+      if (
+        typeof nodeGraphMetamoduleToggleDisplaysForSelection === "function"
+        && nodeGraphMetamoduleToggleDisplaysForSelection()
+      ) {
+        return;
+      }
+      if (typeof toggleNodeGraphLayoutCanvasView === "function") {
+        toggleNodeGraphLayoutCanvasView();
       }
     });
   document
@@ -409,7 +415,14 @@ function bindNodeGraphHeaderControlEvents() {
     .addEventListener("click", handleNodeGraphSnapGridButtonClick);
   document
     .getElementById("nodeModularOnlyBackButton")
-    .addEventListener("click", () => setNodeGraphViewMode("modular"));
+    ?.addEventListener("click", () => {
+      if (typeof nodeGraphLayoutCanvasClose === "function") {
+        nodeGraphLayoutCanvasClose({ silent: true });
+      }
+      if (typeof setNodeGraphViewMode === "function") {
+        setNodeGraphViewMode("modular");
+      }
+    });
   document.getElementById("updateDefaultPresetButton")?.addEventListener("click", handleUpdateDefaultNodeGraphPresetClick);
   document.getElementById("loadNodeGraphScriptButton").addEventListener("click", loadNodeGraphScript);
   // Native save dialog (File System Access API) — same as Ctrl+S.

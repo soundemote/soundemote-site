@@ -1,15 +1,24 @@
 // Display-mode selection helpers extracted from node-graph-module-scopes.js
 // (Phase D). Load after normalize.js, before scopes.js.
 
+/**
+ * Settings schema for a display renderer.
+ * Only faces that actually have Display Settings fields get a schema.
+ * Unknown renderers (clock, transportBpm, …) return "" —
+ * NEVER Instant Trace / phosphor.
+ */
 function nodeGraphDisplayModeSettingsSchemaForRenderer(renderer) {
-  if (renderer === "phosphorWaveform") {
-    return "phosphorWaveform";
+  const r = String(renderer || "").trim();
+  if (!r || r === "layoutOwned" || r === "blank" || r === "none") {
+    return "";
   }
-  // Alias schemas used with renderer "trace" (Instant Trace family).
-  if (renderer === "traceRgb" || renderer === "traceXyz") {
-    return renderer;
+  if (r === "traceRgb" || r === "traceXyz") {
+    return r;
   }
-  return nodeGraphDisplayModeRenderers.includes(renderer) ? renderer : "trace";
+  if (typeof nodeGraphModuleDisplayTypeHasLocalSettings === "function") {
+    return nodeGraphModuleDisplayTypeHasLocalSettings(r) ? r : "";
+  }
+  return "";
 }
 
 
@@ -38,7 +47,8 @@ function nodeGraphModuleOutputPortsForType(type) {
 
 function nodeGraphModuleDefaultScalarDisplayPort(type) {
   const outputs = nodeGraphModuleOutputPortsForType(type);
-  // Prefer the selected-waveform main jack (Wave) before fixed shape taps.
+  // Default face jack for osc defs: Wave first. Live cable priority is resolved
+  // in nodeGraphOscillatorSelectedOutputPort / nodeGraphModuleDisplaySourceForSlot.
   return outputs.find((port) => port === "Wave") ||
     outputs.find((port) => port === "Out") ||
     outputs.find((port) => port === "Wave Out") ||
@@ -70,7 +80,7 @@ function normalizeNodeGraphDisplayMode(mode, type = "", index = 0) {
   const renderer = nodeGraphDisplayModeRenderers.includes(rawRenderer)
     ? rawRenderer
     : nodeGraphModuleDeclaredDisplayTypeForType(type);
-  if (renderer === "legacy") {
+  if (renderer === "layoutOwned") {
     return null;
   }
   const key = String(raw.key || raw.name || `${renderer}${index + 1}`).trim();
@@ -80,11 +90,19 @@ function normalizeNodeGraphDisplayMode(mode, type = "", index = 0) {
   const source = raw.source && typeof raw.source === "object"
     ? { ...raw.source }
     : nodeGraphModuleImplicitDisplayModeSource(type, renderer);
+  // Explicit settingsSchema (including "") wins. Only invent from renderer when
+  // the field was omitted — never treat "" as missing (that re-poisoned trace).
+  let settingsSchema;
+  if (Object.prototype.hasOwnProperty.call(raw, "settingsSchema")) {
+    settingsSchema = nodeGraphDisplayModeSettingsSchemaForRenderer(raw.settingsSchema);
+  } else {
+    settingsSchema = nodeGraphDisplayModeSettingsSchemaForRenderer(renderer);
+  }
   return {
     key,
     label: String(raw.label || key).trim() || key,
     renderer,
-    settingsSchema: nodeGraphDisplayModeSettingsSchemaForRenderer(raw.settingsSchema || renderer),
+    settingsSchema,
     source,
   };
 }
@@ -100,12 +118,14 @@ function nodeGraphModuleImplicitDisplayModeSource(type, renderer) {
 
 function nodeGraphModuleImplicitDisplayModeForType(type) {
   const renderer = nodeGraphModuleDeclaredDisplayTypeForType(type);
-  if (renderer === "legacy") {
+  if (renderer === "layoutOwned") {
     return null;
   }
+  // Instant Trace face (explicit or LayoutA invent-trace) → Instant Trace settings.
+  // Custom layouts (envelopeCurve / filterCurve) never reach here (layoutOwned).
   return normalizeNodeGraphDisplayMode({
     key: renderer,
-    label: nodeGraphDisplayModeSettingsSchemaForRenderer(renderer),
+    label: nodeGraphDisplayModeSettingsSchemaForRenderer(renderer) || renderer,
     renderer,
     settingsSchema: nodeGraphDisplayModeSettingsSchemaForRenderer(renderer),
     source: nodeGraphModuleImplicitDisplayModeSource(type, renderer),
@@ -157,8 +177,22 @@ function nodeGraphModuleDisplayRendererForNode(node) {
 }
 
 
+/**
+ * Display Settings form schema for a node.
+ * Mode.settingsSchema wins (including ""). Instant Trace faces (explicit or
+ * LayoutA invent-trace) use Instant Trace settings. Custom layout faces
+ * (envelopeCurve / filterCurve → layoutOwned) have no mode → blank settings.
+ */
 function nodeGraphModuleDisplaySettingsSchemaForNode(node) {
-  return nodeGraphModuleSelectedDisplayMode(node)?.settingsSchema || nodeGraphDisplayModeSettingsSchemaForRenderer(nodeGraphModuleDisplayRendererForNode(node));
+  const mode = nodeGraphModuleSelectedDisplayMode(node);
+  if (mode && Object.prototype.hasOwnProperty.call(mode, "settingsSchema")) {
+    return String(mode.settingsSchema || "");
+  }
+  const renderer = nodeGraphModuleDisplayRendererForNode(node);
+  if (!renderer || renderer === "layoutOwned") {
+    return "";
+  }
+  return nodeGraphDisplayModeSettingsSchemaForRenderer(renderer);
 }
 
 
@@ -207,6 +241,10 @@ function nodeGraphModuleDisplayTypeHasLocalSettings(displayType) {
     "knobFace",
     // Keypad look: fonts, weight, button size, Sound Color Widgets.
     "keypadFace",
+    // Arp Keys: stroke/font hue + Music Player corners / padding.
+    "arpKeysFace",
+    // Master Clock BPM face: optional beat lamp.
+    "transportBpm",
     // Music Player waveform / playlist look.
     "phosphorWaveform",
     // Text Box look: mode, align, size, Sound Color Widgets.
@@ -234,11 +272,9 @@ function nodeGraphNodeHasLocalDisplaySettings(node) {
 }
 
 
+/** Every module can open Display Settings (blank body if no face schema). */
 function nodeGraphNodeCanOpenDisplaySettings(node) {
-  return Boolean(
-    nodeGraphNodeHasLocalDisplaySettings(node) ||
-    (typeof nodeGraphPatchNodeHasHideableOscilloscope === "function" && nodeGraphPatchNodeHasHideableOscilloscope(node)),
-  );
+  return Boolean(node && String(node.id || "").trim());
 }
 
 

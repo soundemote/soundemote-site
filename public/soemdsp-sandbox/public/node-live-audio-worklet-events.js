@@ -28,11 +28,26 @@ NodeLiveAudioProcessor.prototype.setInputWireBreakTrigger = function setInputWir
     }
 };
 
-NodeLiveAudioProcessor.prototype.setSpeed = function setSpeed(speed) {
+NodeLiveAudioProcessor.prototype.setSpeed = function setSpeed(speed, options) {
     const value = Number(speed);
     const next = Number.isFinite(value) ? Math.max(0, value) : 1;
     const wasStopped = !(Number(this.speedMultiplier) > 0);
     this.speedMultiplier = next;
+    if (options?.restartSequencer === true || (wasStopped && next > 0)) {
+      this._seqTickFrac = 0;
+      this._sequencerEngineSec = 0;
+      this._sequencerNeedsRewind = true;
+      this._vmReconcileFp = undefined;
+      if (
+        this.nativeGraphCompiled
+        && this.nativeGraphHandle
+        && this.nativeGraph?.soemdsp_graph_rewind_master
+      ) {
+        try {
+          this.nativeGraph.soemdsp_graph_rewind_master(this.nativeGraphHandle);
+        } catch (_e) { /* keep play */ }
+      }
+    }
     // Pause→Play (speed 0→>0) without tearing down the worklet: snap osc phases
     // to 0 so PolyBLEP does not resume at a leftover phase.
     if (wasStopped && next > 0 && this.phases instanceof Map) {
@@ -136,7 +151,7 @@ NodeLiveAudioProcessor.prototype.setImpulseButtonTrigger = function setImpulseBu
     const pulse = typeof this.gameTriggerPulseSamples === "function"
       ? this.gameTriggerPulseSamples()
       : Math.max(1, Math.round((this.engineSampleRate || sampleRate || 44100) * 0.02));
-    state.pulseSamples = Math.max(0, Number(state.pulseSamples) || 0) + pulse;
+    state.pulseSamples = Math.max(0, nodeGraphFiniteNumber(state.pulseSamples)) + pulse;
     const normalized = Number(amplitude);
     state.amplitude = Number.isFinite(normalized) ? Math.max(0, Math.min(1, normalized)) : 1;
     this.impulseButtonStates.set(nodeId, state);
@@ -159,8 +174,8 @@ NodeLiveAudioProcessor.prototype.setBugButtonInteraction = function setBugButton
     const state = this.bugButtonStates.get(nodeId) || this.createBugButtonState();
     if (message.down !== undefined) state.down = message.down ? 1 : 0;
     if (message.hover !== undefined) state.hover = message.hover ? 1 : 0;
-    if (Number.isFinite(Number(message.x))) state.x = Math.max(-1, Math.min(1, Number(message.x)));
-    if (Number.isFinite(Number(message.y))) state.y = Math.max(-1, Math.min(1, Number(message.y)));
+    if (Number.isFinite(Number(message.x))) state.x = Number(message.x);
+    if (Number.isFinite(Number(message.y))) state.y = Number(message.y);
     if (message.downPulse) state.downPulseSamples += 1;
     if (message.upPulse) state.upPulseSamples += 1;
     this.bugButtonStates.set(nodeId, state);
@@ -193,7 +208,7 @@ NodeLiveAudioProcessor.prototype.setConnections = function setConnections(plan, 
       this.pitchReferenceHz = Number(message.pitchReferenceHz);
     }
     if (Number.isFinite(Number(message.pitchOffsetOctaves))) {
-      this.pitchOffsetOctaves = Math.max(-10, Math.min(10, Number(message.pitchOffsetOctaves)));
+      this.pitchOffsetOctaves = Number(message.pitchOffsetOctaves);
       if (typeof this.applyNativeGraphPitchOffset === "function") {
         this.applyNativeGraphPitchOffset();
       }
@@ -220,6 +235,17 @@ NodeLiveAudioProcessor.prototype.setConnections = function setConnections(plan, 
         current.bypassed = Boolean(node.bypassed) || bypassed.has(node.id);
         if (node.bypassSpec && typeof node.bypassSpec === "object") {
           current.bypassSpec = node.bypassSpec;
+        }
+        if (Object.hasOwn(node, "sequencer")) {
+          current.sequencer = node.sequencer && typeof node.sequencer === "object"
+            ? node.sequencer
+            : null;
+          this._sequencerPrevMasks?.delete?.(node.id);
+        }
+        if (Object.hasOwn(node, "chordMemory")) {
+          current.chordMemory = node.chordMemory && typeof node.chordMemory === "object"
+            ? node.chordMemory
+            : null;
         }
       }
     } else {
@@ -274,9 +300,26 @@ NodeLiveAudioProcessor.prototype.setParams = function setParams(nodes, message =
       }
       current.params = { ...(node.params || {}) };
       current.paramMeta = { ...(node.paramMeta || {}) };
+      // Module Settings voice host fields (not face params).
+      if (Object.hasOwn(node, "metamodule")) {
+        current.metamodule = node.metamodule && typeof node.metamodule === "object"
+          ? node.metamodule
+          : undefined;
+      }
       // Keep drawn path in sync when params push also carries node extras.
       if (Object.hasOwn(node, "drawnPath")) {
         current.drawnPath = node.drawnPath || null;
+      }
+      if (Object.hasOwn(node, "sequencer")) {
+        current.sequencer = node.sequencer && typeof node.sequencer === "object"
+          ? node.sequencer
+          : null;
+        this._sequencerPrevMasks?.delete?.(node.id);
+      }
+      if (Object.hasOwn(node, "chordMemory")) {
+        current.chordMemory = node.chordMemory && typeof node.chordMemory === "object"
+          ? node.chordMemory
+          : null;
       }
       if (Object.hasOwn(node, "samplePhase") && Number.isFinite(Number(node.samplePhase))) {
         current.samplePhase = Number(node.samplePhase);
@@ -343,14 +386,14 @@ NodeLiveAudioProcessor.prototype._normalizeKeyboardSignalPayload = function _nor
         ? this.clampValue(Math.round(Number(prev.rawMidi)), 0, 127)
         : midi);
     const octave = this.clampValue(
-      Math.round(Number.isFinite(Number(source.octave)) ? Number(source.octave) : (Number(prev.octave) || 0)),
+      Math.round(Number.isFinite(Number(source.octave)) ? Number(source.octave) : (nodeGraphFiniteNumber(prev.octave))),
       -6,
       6,
     );
     const keyIndex = this.clampValue(
       Number.isFinite(Number(source.keyIndex))
         ? Number(source.keyIndex)
-        : (Number(prev.keyIndex) || 0),
+        : (nodeGraphFiniteNumber(prev.keyIndex)),
       0,
       24,
     );
@@ -374,7 +417,7 @@ NodeLiveAudioProcessor.prototype._normalizeKeyboardSignalPayload = function _nor
     const velocity = this.clampValue(
       Number.isFinite(Number(source.velocity))
         ? Number(source.velocity)
-        : (Number(prev.velocity) || 0),
+        : (nodeGraphFiniteNumber(prev.velocity)),
       0,
       1,
     );
@@ -386,12 +429,12 @@ NodeLiveAudioProcessor.prototype._normalizeKeyboardSignalPayload = function _nor
       gate: Number(source.gate) > 0 ? 1 : 0,
       gatePulse: Number(source.gatePulse) > 0 ? 1 : 0,
       x: this.clampValue(
-        Number.isFinite(Number(source.x)) ? Number(source.x) : (Number(prev.x) || keyQuantized),
+        Number.isFinite(Number(source.x)) ? Number(source.x) : (nodeGraphFiniteNumber(prev.x, keyQuantized)),
         0,
         1,
       ),
       y: this.clampValue(
-        Number.isFinite(Number(source.y)) ? Number(source.y) : (Number(prev.y) || 0),
+        Number.isFinite(Number(source.y)) ? Number(source.y) : (nodeGraphFiniteNumber(prev.y)),
         0,
         1,
       ),
@@ -448,23 +491,84 @@ NodeLiveAudioProcessor.prototype.setKeyboardModuleSignal = function setKeyboardM
 
 NodeLiveAudioProcessor.prototype.setMacroControls = function setMacroControls(values) {
     this.macroControls = Array.from({ length: 8 }, (_, index) => (
-      this.clampValue(Number(values?.[index]) || 0, 0, 1)
+      this.clampValue(nodeGraphFiniteNumber(values?.[index]), 0, 1)
     ));
 };
 
-NodeLiveAudioProcessor.prototype.setMidiKeyboardHeldKeysBitmask = function setMidiKeyboardHeldKeysBitmask(low, high) {
-    const safeLow = Math.floor(Number(low));
-    const safeHigh = Math.floor(Number(high));
-    this.midiKeyboardHeldKeysLowBitmask = Number.isFinite(safeLow) && safeLow >= 0 ? safeLow : 0;
-    this.midiKeyboardHeldKeysHighBitmask = Number.isFinite(safeHigh) && safeHigh >= 0 ? safeHigh : 0;
+NodeLiveAudioProcessor.prototype.setMidiKeyboardPlayKeysBitmask = function setMidiKeyboardPlayKeysBitmask(mask) {
+  this.midiKeyboardPlayMask = typeof noteMaskEnsure === "function"
+    ? noteMaskEnsure(mask)
+    : (mask instanceof Uint8Array ? mask : new Uint8Array(128));
+};
+
+NodeLiveAudioProcessor.prototype.setMidiKeyboardHeldKeysBitmask = function setMidiKeyboardHeldKeysBitmask(mask, velocities, octave) {
+    const oct = Math.round(Number(octave));
+    this.midiKeyboardOctave = Number.isFinite(oct) ? oct : 0;
+    this.midiKeyboardArpMask = typeof noteMaskEnsure === "function"
+      ? noteMaskEnsure(mask)
+      : (mask instanceof Uint8Array ? new Uint8Array(mask) : new Uint8Array(128));
+    if (velocities instanceof Uint8Array) {
+      const copy = new Uint8Array(128);
+      copy.set(velocities.subarray(0, 128));
+      this.midiKeyboardHeldKeyVelocities = copy;
+    }
+};
+
+/** Polyphony Midi Note + Velocity table (128 bytes). source: midi | keyboard */
+NodeLiveAudioProcessor.prototype.setPolyphonyVelocities = function setPolyphonyVelocities(source, velocities) {
+  const key = String(source || "");
+  const n = typeof POLYPHONY_NOTE_COUNT === "number" ? POLYPHONY_NOTE_COUNT : 128;
+  const table = velocities instanceof Uint8Array
+    ? new Uint8Array(velocities)
+    : new Uint8Array(n);
+  if (table.length < n) {
+    const full = new Uint8Array(n);
+    full.set(table);
+    if (key === "keyboard") this.keyboardPolyphonyVelocities = full;
+    else this.midiPolyphonyVelocities = full;
+    return;
+  }
+  if (key === "keyboard") this.keyboardPolyphonyVelocities = table.subarray(0, n);
+  else this.midiPolyphonyVelocities = table.subarray(0, n);
+};
+
+/** Ensure combined-wasm VoiceManager handle exists. */
+NodeLiveAudioProcessor.prototype.ensureVoiceManager = function ensureVoiceManager() {
+  const native = this.nativeGraph;
+  if (!native?.soemdsp_voice_manager_create) return 0;
+  if (this._voiceManagerHandle > 0) return this._voiceManagerHandle;
+  const h = native.soemdsp_voice_manager_create() | 0;
+  this._voiceManagerHandle = h > 0 ? h : 0;
+  return this._voiceManagerHandle;
+};
+
+NodeLiveAudioProcessor.prototype.vmNoteOn = function vmNoteOn(note, velocity01) {
+  const native = this.nativeGraph;
+  const h = this.ensureVoiceManager();
+  if (!(h > 0) || !native?.soemdsp_voice_manager_note_on) return;
+  native.soemdsp_voice_manager_note_on(h, Math.round(Number(note)) | 0, Number(velocity01) || 0);
+};
+
+NodeLiveAudioProcessor.prototype.vmNoteOff = function vmNoteOff(note) {
+  const native = this.nativeGraph;
+  const h = this.ensureVoiceManager();
+  if (!(h > 0) || !native?.soemdsp_voice_manager_note_off) return;
+  native.soemdsp_voice_manager_note_off(h, Math.round(Number(note)) | 0);
+};
+
+NodeLiveAudioProcessor.prototype.vmAllNotesOff = function vmAllNotesOff() {
+  const native = this.nativeGraph;
+  const h = this._voiceManagerHandle | 0;
+  if (!(h > 0) || !native?.soemdsp_voice_manager_all_notes_off) return;
+  native.soemdsp_voice_manager_all_notes_off(h);
 };
 
 NodeLiveAudioProcessor.prototype.setPitchModWheelSignal = function setPitchModWheelSignal(signal) {
     const source = signal && typeof signal === "object" ? signal : {};
     const pitch = Number(source.pitch);
     this.pitchModWheelSignal = {
-      mod: this.clampValue(Number(source.mod) || 0, 0, 1),
-      pitch: this.clampValue(Number.isFinite(pitch) ? pitch : 0, -1, 1),
+      mod: this.clampValue(nodeGraphFiniteNumber(source.mod), 0, 1),
+      pitch: Number.isFinite(pitch) ? pitch : 0,
     };
 };
 
@@ -481,11 +585,11 @@ NodeLiveAudioProcessor.prototype.setExternalButtonEvent = function setExternalBu
     const key = this.normalizeExternalButtonEventName(name);
     if (!key) return;
     const samples = Math.max(1, Math.round(Math.max(1, this.engineSampleRate || sampleRate) * 0.02));
-    this.externalButtonEvents.set(key, Math.max(Number(this.externalButtonEvents.get(key)) || 0, samples));
+    this.externalButtonEvents.set(key, Math.max(nodeGraphFiniteNumber(this.externalButtonEvents.get(key)), samples));
 };
 
 NodeLiveAudioProcessor.prototype.externalButtonEventPulse = function externalButtonEventPulse(name) {
-    const remaining = Number(this.externalButtonEvents.get(name)) || 0;
+    const remaining = nodeGraphFiniteNumber(this.externalButtonEvents.get(name));
     if (remaining <= 0) {
       this.externalButtonEvents.delete(name);
       return 0;
@@ -506,8 +610,8 @@ NodeLiveAudioProcessor.prototype.setWireBreakEvent = function setWireBreakEvent(
     const event = this.wireBreakEvent && typeof this.wireBreakEvent === "object"
       ? this.wireBreakEvent
       : { pulseSamples: 0, gateSamples: 0 };
-    event.pulseSamples = Math.max(Number(event.pulseSamples) || 0, this.gameTriggerPulseSamples());
-    event.gateSamples = Math.max(Number(event.gateSamples) || 0, this.wireBreakGateSamples());
+    event.pulseSamples = Math.max(nodeGraphFiniteNumber(event.pulseSamples), this.gameTriggerPulseSamples());
+    event.gateSamples = Math.max(nodeGraphFiniteNumber(event.gateSamples), this.wireBreakGateSamples());
     this.wireBreakEvent = event;
 };
 
@@ -515,8 +619,8 @@ NodeLiveAudioProcessor.prototype.wireBreakEventSample = function wireBreakEventS
     const event = this.wireBreakEvent && typeof this.wireBreakEvent === "object"
       ? this.wireBreakEvent
       : { pulseSamples: 0, gateSamples: 0 };
-    const pulseSamples = Math.max(0, Number(event.pulseSamples) || 0);
-    const gateSamples = Math.max(0, Number(event.gateSamples) || 0);
+    const pulseSamples = Math.max(0, nodeGraphFiniteNumber(event.pulseSamples));
+    const gateSamples = Math.max(0, nodeGraphFiniteNumber(event.gateSamples));
     event.pulseSamples = Math.max(0, pulseSamples - 1);
     event.gateSamples = Math.max(0, gateSamples - 1);
     this.wireBreakEvent = event;
@@ -530,7 +634,7 @@ NodeLiveAudioProcessor.prototype.setWireConnectEvent = function setWireConnectEv
     const event = this.wireConnectEvent && typeof this.wireConnectEvent === "object"
       ? this.wireConnectEvent
       : { pulseSamples: 0 };
-    event.pulseSamples = Math.max(Number(event.pulseSamples) || 0, this.gameTriggerPulseSamples());
+    event.pulseSamples = Math.max(nodeGraphFiniteNumber(event.pulseSamples), this.gameTriggerPulseSamples());
     this.wireConnectEvent = event;
 };
 
@@ -538,7 +642,7 @@ NodeLiveAudioProcessor.prototype.wireConnectEventSample = function wireConnectEv
     const event = this.wireConnectEvent && typeof this.wireConnectEvent === "object"
       ? this.wireConnectEvent
       : { pulseSamples: 0 };
-    const pulseSamples = Math.max(0, Number(event.pulseSamples) || 0);
+    const pulseSamples = Math.max(0, nodeGraphFiniteNumber(event.pulseSamples));
     event.pulseSamples = Math.max(0, pulseSamples - 1);
     this.wireConnectEvent = event;
     return { Pulse: pulseSamples > 0 ? 1 : 0 };
@@ -548,7 +652,7 @@ NodeLiveAudioProcessor.prototype.setWireDisconnectEvent = function setWireDiscon
     const event = this.wireDisconnectEvent && typeof this.wireDisconnectEvent === "object"
       ? this.wireDisconnectEvent
       : { pulseSamples: 0 };
-    event.pulseSamples = Math.max(Number(event.pulseSamples) || 0, this.gameTriggerPulseSamples());
+    event.pulseSamples = Math.max(nodeGraphFiniteNumber(event.pulseSamples), this.gameTriggerPulseSamples());
     this.wireDisconnectEvent = event;
 };
 
@@ -556,7 +660,7 @@ NodeLiveAudioProcessor.prototype.wireDisconnectEventSample = function wireDiscon
     const event = this.wireDisconnectEvent && typeof this.wireDisconnectEvent === "object"
       ? this.wireDisconnectEvent
       : { pulseSamples: 0 };
-    const pulseSamples = Math.max(0, Number(event.pulseSamples) || 0);
+    const pulseSamples = Math.max(0, nodeGraphFiniteNumber(event.pulseSamples));
     event.pulseSamples = Math.max(0, pulseSamples - 1);
     this.wireDisconnectEvent = event;
     return { Pulse: pulseSamples > 0 ? 1 : 0 };
@@ -566,7 +670,7 @@ NodeLiveAudioProcessor.prototype.setShootingStarExplosionEvent = function setSho
     const event = this.shootingStarExplosionEvent && typeof this.shootingStarExplosionEvent === "object"
       ? this.shootingStarExplosionEvent
       : { pulseSamples: 0, speed: null };
-    event.pulseSamples = Math.max(0, Number(event.pulseSamples) || 0) + 1;
+    event.pulseSamples = Math.max(0, nodeGraphFiniteNumber(event.pulseSamples)) + 1;
     const normalizedSpeed = Number(speed);
     event.speed = Number.isFinite(normalizedSpeed) ? normalizedSpeed : null;
     this.shootingStarExplosionEvent = event;
@@ -579,8 +683,8 @@ NodeLiveAudioProcessor.prototype.nativeShootingStarExplosionPower = function nat
     ) {
       throw new Error("native Shooting Star Explosion not ready");
     }
-    const low = Number(lowRange) || 0;
-    const high = Number(highRange) || 0;
+    const low = nodeGraphFiniteNumber(lowRange);
+    const high = nodeGraphFiniteNumber(highRange);
     return this.safeFilterNumber(
       this.nativeShootingStarExplosion.soemdsp_shooting_star_explosion_power(
         Number.isFinite(speed) ? speed : -1,
@@ -595,7 +699,7 @@ NodeLiveAudioProcessor.prototype.shootingStarExplosionEventSample = function sho
     const event = this.shootingStarExplosionEvent && typeof this.shootingStarExplosionEvent === "object"
       ? this.shootingStarExplosionEvent
       : { pulseSamples: 0 };
-    const pulseSamples = Math.max(0, Number(event.pulseSamples) || 0);
+    const pulseSamples = Math.max(0, nodeGraphFiniteNumber(event.pulseSamples));
     const speed = Number(event.speed);
     const power = this.nativeShootingStarExplosionPower(speed, lowRange, highRange);
     event.pulseSamples = Math.max(0, pulseSamples - 1);
@@ -620,9 +724,9 @@ NodeLiveAudioProcessor.prototype.windowReopenEventSample = function windowReopen
     const event = this.windowReopenEvent && typeof this.windowReopenEvent === "object"
       ? this.windowReopenEvent
       : { pulseSamples: 0, gateSamples: 0, totalSamples: 0 };
-    const pulseSamples = Math.max(0, Number(event.pulseSamples) || 0);
-    const gateSamples = Math.max(0, Number(event.gateSamples) || 0);
-    const totalSamples = Math.max(1, Number(event.totalSamples) || gateSamples || 1);
+    const pulseSamples = Math.max(0, nodeGraphFiniteNumber(event.pulseSamples));
+    const gateSamples = Math.max(0, nodeGraphFiniteNumber(event.gateSamples));
+    const totalSamples = Math.max(1, nodeGraphFiniteNumber(event.totalSamples, nodeGraphFiniteNumber(gateSamples, 1)));
     const progress = gateSamples > 0 ? 1 - gateSamples / totalSamples : 1;
     const sine = gateSamples > 0 ? Math.sin(Math.PI * Math.max(0, Math.min(1, progress))) : 0;
     event.pulseSamples = Math.max(0, pulseSamples - 1);

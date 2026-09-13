@@ -134,20 +134,7 @@ function nodeGraphWireEndpointsAreRenderable(wire) {
 }
 
 function nodeGraphSignalWireDestinationIsRenderable(wire) {
-  // Either end may be layout-hidden (sliders-hidden / io-hidden). Still draw
-  // caps-only when we can resolve a point — never a path to (0,0).
-  if (!nodeGraphWireEndpointsAreRenderable(wire)) {
-    return false;
-  }
-  const fromLayout = typeof nodeGraphPortHasLayoutJack === "function"
-    && nodeGraphPortHasLayoutJack(wire.sourceNode, wire.sourcePort, "output");
-  const toLayout = typeof nodeGraphPortHasLayoutJack === "function"
-    && nodeGraphPortHasLayoutJack(wire.destinationNode, wire.destinationPort, "input");
-  const fromIoHidden = typeof nodeGraphNodeSignalIoCollapsed === "function"
-    && nodeGraphNodeSignalIoCollapsed(wire.sourceNode);
-  const toIoHidden = typeof nodeGraphNodeSignalIoCollapsed === "function"
-    && nodeGraphNodeSignalIoCollapsed(wire.destinationNode);
-  return Boolean(fromLayout || toLayout || fromIoHidden || toIoHidden);
+  return nodeGraphWireEndpointsAreRenderable(wire);
 }
 
 function nodeGraphModulationWireDestinationIsRenderable(wire) {
@@ -224,6 +211,10 @@ function nodeGraphDrawWireWithOptionalPath(svg, options) {
       to,
       skipHitPath,
       wireColors: [fromColor, toColor],
+      squareFrom: typeof nodeGraphPortIsNoteBus === "function"
+        && nodeGraphPortIsNoteBus(pathOptions.sourcePort),
+      squareTo: typeof nodeGraphPortIsNoteBus === "function"
+        && nodeGraphPortIsNoteBus(pathOptions.destinationPort),
     });
     return true;
   }
@@ -308,8 +299,22 @@ function nodeGraphDrawSignalWire(svg, connection, index, context) {
   if (!nodeGraphSignalWireDestinationIsRenderable(connection)) {
     return;
   }
+  markNodeGraphWireEndpointsConnected(connection);
   const from = nodeGraphPortCenter(connection.sourceNode, connection.sourcePort, "output");
   const to = nodeGraphPortCenter(connection.destinationNode, connection.destinationPort, "input");
+  const both = nodeGraphWirePointIsFinite(from) && nodeGraphWirePointIsFinite(to);
+  if (!both && !nodeGraphWirePointIsFinite(from) && !nodeGraphWirePointIsFinite(to)) {
+    return;
+  }
+  // Hide In/Out → caps only. Otherwise connected + finite ends → full cable.
+  const ioHidden = (
+    typeof nodeGraphNodeSignalIoCollapsed === "function"
+    && (
+      nodeGraphNodeSignalIoCollapsed(connection.sourceNode)
+      || nodeGraphNodeSignalIoCollapsed(connection.destinationNode)
+    )
+  );
+  const allowPath = both && !ioHidden;
   const isInactive = !nodeGraphSignalConnectionIsActive(connection, context.activeNodeIds);
   const mode = nodeGraphWireInteractionMode(
     connection,
@@ -327,14 +332,9 @@ function nodeGraphDrawSignalWire(svg, connection, index, context) {
     : to;
   const fromColor = nodeGraphPortWireColor(connection.sourceNode, connection.sourcePort, "output");
   const toColor = nodeGraphPortWireColor(connection.destinationNode, connection.destinationPort, "input");
-  const both = nodeGraphWirePointIsFinite(from) && nodeGraphWirePointIsFinite(to);
-  // Path only when both signal jacks are real on-screen layout (not io-hidden edge).
-  const fromJack = typeof nodeGraphPortHasLayoutJack === "function"
-    && nodeGraphPortHasLayoutJack(connection.sourceNode, connection.sourcePort, "output");
-  const toJack = typeof nodeGraphPortHasLayoutJack === "function"
-    && nodeGraphPortHasLayoutJack(connection.destinationNode, connection.destinationPort, "input");
-  const allowPath = both && fromJack && toJack;
   nodeGraphDrawWireWithOptionalPath(svg, {
+    sourcePort: connection.sourcePort,
+    destinationPort: connection.destinationPort,
     alias: `${nodeGraphLabel(connection.sourceNode, connection.sourcePort)} -> ${nodeGraphLabel(
       connection.destinationNode,
       connection.destinationPort,
@@ -359,9 +359,6 @@ function nodeGraphDrawSignalWire(svg, connection, index, context) {
     pixelWire: Boolean(connection.pixelWire),
     ...(allowPath ? nodeGraphManualTracePathOptions(connection, fromCap, toCap) : {}),
   });
-  if (!context.skipHitPath) {
-    markNodeGraphWireEndpointsConnected(connection);
-  }
 }
 
 function nodeGraphDrawModulationWire(svg, modulation, index, context) {
@@ -658,6 +655,25 @@ function drawNodeGraphWires(options = {}) {
 
   const interactColor = moveMode?.interactColor || null;
   const context = { activeNodeIds, feedbackSets, plan, skipHitPath: lite };
+  // Connected wires claim their jacks first (hide-unused shows them), then draw.
+  // Rules: connected → solid path; connecting (temp) → dotted; deleted → gone.
+  if (!lite) {
+    for (const connection of nodeGraphMvp.connections) {
+      markNodeGraphWireEndpointsConnected(connection);
+    }
+    for (const modulation of nodeGraphMvp.modulations) {
+      markNodeGraphWireEndpointsConnected(modulation, "modulation");
+    }
+    for (const graphConnection of nodeGraphMvp.graphConnections) {
+      markNodeGraphWireEndpointsConnected(graphConnection, "graph");
+    }
+    void workspace.offsetWidth;
+    // Zoom settle republishes before draw while jacks may still be hidden;
+    // refresh attaches now that connected jacks are visible again.
+    if (typeof nodeGraphModuleGeometryPublishVisible === "function") {
+      nodeGraphModuleGeometryPublishVisible();
+    }
+  }
   for (const [index, connection] of nodeGraphMvp.connections.entries()) {
     if (hideWireKeys?.has(`signal:${index}`)) {
       // Caps only at the fixed end(s) — path is replaced by temp ghosts.

@@ -102,6 +102,8 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.midiKeyboardGatePulseVelocity = 0;
     this.midiKeyboardSignal = null;
     this.midiKeyboardHeldKeysLowBitmask = 0;
+    this.midiKeyboardArpMask = new Uint8Array(128);
+    this.midiKeyboardPlayMask = new Uint8Array(128);
     this.midiKeyboardHeldKeysHighBitmask = 0;
     this.midiKeyboardHeldKeysPhase = 0;
     this.modulationConnections = new Map();
@@ -376,7 +378,6 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.snowflakeStates = new Map();
     this.dsfOscillatorStates = new Map();
     this.robinSupersawStates = new Map();
-    this.hypersawStates = new Map();
     this.hypersaw2States = new Map();
     this.videoscopeStates = new Map();
     this.spectrogramStates = new Map();
@@ -424,7 +425,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.spiralStates = new Map();
     this.fractalSpiralStates = new Map();
     this.logSpiralStates = new Map();
-    this.stepSequencerStates = new Map();
+
     this.stepGridStates = new Map();
     this.timing = this.normalizePatchTiming();
     this.triggerCounterStates = new Map();

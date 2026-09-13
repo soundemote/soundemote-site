@@ -10,7 +10,8 @@ function nodeGraphPaintRgbaPortLabel(label) {
 
 function createNodeGraphPort(node, type, port, io) {
   const button = document.createElement("button");
-  button.className = `node-port ${io}`;
+  const noteBus = typeof nodeGraphPortIsNoteBus === "function" && nodeGraphPortIsNoteBus(port);
+  button.className = `node-port ${io}${noteBus ? " node-port-square" : ""}`;
   button.type = "button";
   button.dataset.node = node;
   button.dataset.port = port;
@@ -88,8 +89,8 @@ function nodeGraphPatchNodePortDisplayLabel(node, type, port, io) {
   // Metamodule shell: dynamic boundary names are the label (Left / ƒ / Poly).
   // Keep full Left/Right words — LayoutB stereo compaction would shrink to L/R.
   if (
-    typeof nodeGraphIsMetamoduleType === "function"
-    && nodeGraphIsMetamoduleType(type || patchNode?.type)
+    typeof nodeGraphIsContainerShellType === "function"
+    && nodeGraphIsContainerShellType(type || patchNode?.type)
   ) {
     const raw = String(port || "").trim();
     return typeof nodeGraphFrequencyValuePortDisplayLabel === "function"
@@ -145,18 +146,6 @@ function createNodeGraphIoColumn(node, type, ports, io) {
     row.dataset.port = port;
     row.dataset.io = io;
     row.dataset.alias = nodeGraphLabel(node, port);
-    if (io === "output" || io === "input") {
-      if (typeof nodeGraphApplyJackChrome === "function") {
-        nodeGraphApplyJackChrome(row, type, port, io);
-      } else if (typeof nodeGraphApplyOutletChannelMark === "function") {
-        nodeGraphApplyOutletChannelMark(row, type, port);
-      }
-    }
-    if (nodeGraphPortIsDigitalSignal(type, port, io)) {
-      // White digital cable: Scale bitmasks, ƒ Hz-value jacks, Gate/Trigger
-      // (app-wide), and digitalInputs/digitalOutputs. 0.1V/Oct stays analog.
-      row.dataset.digitalSignal = io;
-    }
     const portLabel = nodeGraphPatchNodePortDisplayLabel(node, type, port, io);
     maxLabelChars = Math.max(maxLabelChars, String(portLabel || "").length);
     row.setAttribute(
@@ -175,10 +164,25 @@ function createNodeGraphIoColumn(node, type, ports, io) {
     } else {
       label.textContent = portLabel;
     }
+    // Create the jack before chrome so channel marks land on row + port.
     if (io === "input") {
       row.append(createNodeGraphPort(node, type, port, io), label);
     } else {
       row.append(label, createNodeGraphPort(node, type, port, io));
+    }
+    if (io === "output" || io === "input") {
+      if (typeof nodeGraphApplyJackChrome === "function") {
+        nodeGraphApplyJackChrome(row, type, port, io);
+      } else if (typeof nodeGraphApplyOutletChannelMark === "function") {
+        nodeGraphApplyOutletChannelMark(row, type, port);
+      }
+    }
+    // Colored buses (Polyphony/black, Play/blue, Arp/gold) are not digital-white.
+    const jackCh = row.dataset.jackChannel || "";
+    const coloredBus = jackCh === "black" || jackCh === "blue" || jackCh === "gold";
+    if (!coloredBus && nodeGraphPortIsDigitalSignal(type, port, io)) {
+      // White digital: Scale bitmasks, ƒ, Gate/Trigger, digitalInputs/Outputs.
+      row.dataset.digitalSignal = io;
     }
     column.append(row);
   }
@@ -596,46 +600,6 @@ function createNodeGraphPerformanceWheel(spec) {
   return wheel;
 }
 
-function createNodeGraphControllerRow(kind, children = [], options = {}) {
-  const row = document.createElement("div");
-  row.className = "node-controller-row";
-  row.dataset.controllerRow = String(kind || "");
-  if (options.grow) {
-    row.dataset.controllerGrow = "1";
-  }
-  if (options.split) {
-    const split = document.createElement("div");
-    split.className = "node-controller-row-split";
-    split.append(...children);
-    row.append(split);
-  } else {
-    row.append(...children);
-  }
-  return row;
-}
-
-/**
- * K Controllers dock — controller faces (shared global state), not module faces.
- * Each widget factory is also used by the matching patch module:
- *   macros → macroControls, wheels → pitchModWheel, piano → keyboard.
- * Portal MIDI listen UI is separate (keyboardController / createNodeGraphMidiModuleBody).
- */
-function mountNodeGraphControllerRows(host) {
-  if (!host) {
-    return host;
-  }
-  host.classList.add("node-controller-rows");
-  host.replaceChildren(
-    createNodeGraphControllerRow("macros", [createNodeGraphMacroControlsBody()]),
-    createNodeGraphControllerRow(
-      "keyboard",
-      [createNodeGraphPitchModWheelBody(), createNodeGraphKeyboardControllerBody()],
-      { split: true },
-    ),
-  );
-  return host;
-}
-
 function createNodeGraphPitchModWheelBody(node = null) {
   const section = document.createElement("section");
   section.className = "node-performance-wheels-panel node-performance-wheels-module node-module-face";
@@ -661,15 +625,16 @@ function createNodeGraphMidiModeControl() {
   const modeSelect = document.createElement("select");
   modeSelect.dataset.midiKeyboardModeSelect = "true";
   modeSelect.setAttribute("aria-label", "Keyboard mode");
-  for (const [value, label] of [
-    ["slide", "Slide"],
-    ["press", "Press"],
-    ["hold", "Hold"],
-    ["toggle", "Toggle"],
-  ]) {
+  const modes = typeof nodeGraphMidiKeyboardModes !== "undefined"
+    && Array.isArray(nodeGraphMidiKeyboardModes)
+    ? nodeGraphMidiKeyboardModes
+    : ["slide", "press", "hold", "toggle", "chordMemory"];
+  for (const value of modes) {
     const option = document.createElement("option");
     option.value = value;
-    option.textContent = label;
+    option.textContent = typeof nodeGraphMidiKeyboardModeLabel === "function"
+      ? nodeGraphMidiKeyboardModeLabel(value)
+      : String(value);
     modeSelect.append(option);
   }
   modeLabel.append(modeText, modeSelect);
@@ -739,12 +704,10 @@ function createNodeGraphMidiModuleBody(node = null) {
   return section;
 }
 
-// Controller-face piano (K dock + Keyboard module). Shared global state on
-// nodeGraphMvp — not the Portal MIDI listen module (createNodeGraphMidiModuleBody).
+// Keyboard module piano face. Shared global state on nodeGraphMvp —
+// not the Portal MIDI listen module (createNodeGraphMidiModuleBody).
 function createNodeGraphKeyboardControllerBody(node = null) {
   const section = document.createElement("section");
-  // Module face + dock share this widget. Face band lets the piano fill
-  // remaining height (controls above), matching the K Controllers dock.
   section.className = "node-midi-keyboard-panel node-midi-keyboard-module node-module-face";
   section.dataset.moduleBand = "face";
   if (node) {
@@ -857,7 +820,6 @@ function createNodeGraphKeyboardControllerBody(node = null) {
     ["velocity01", "Velocity#/127", "-"],
     ["tenthVoltPerOctave", "0.1V/Oct", "-"],
     ["frequency", "Frequency", "-"],
-    ["increment", "Inc.", "-"],
   ];
   for (const [key, labelText, valueText] of signals) {
     const item = document.createElement("span");
@@ -873,7 +835,7 @@ function createNodeGraphKeyboardControllerBody(node = null) {
   bitmaskBar.dataset.midiKeyboardBitmaskRow = "true";
   bitmaskBar.setAttribute("aria-live", "polite");
   const bitmaskLabel = document.createElement("span");
-  bitmaskLabel.textContent = "held ";
+  bitmaskLabel.textContent = "arp ";
   const bitmaskValue = document.createElement("strong");
   bitmaskValue.dataset.midiKeyboardBitmaskValue = "true";
   bitmaskBar.append(bitmaskLabel, bitmaskValue);

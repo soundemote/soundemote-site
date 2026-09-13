@@ -14,8 +14,8 @@ NodeLiveAudioProcessor.prototype.process = function process(inputs, outputs) {
       if (delta > frames) {
         const missed = Math.floor(delta / frames) - 1;
         if (missed > 0) {
-          this.meterOverrunCount = (Number(this.meterOverrunCount) || 0) + missed;
-          this.meterMissedQuantumCount = (Number(this.meterMissedQuantumCount) || 0) + missed;
+          this.meterOverrunCount = (nodeGraphFiniteNumber(this.meterOverrunCount)) + missed;
+          this.meterMissedQuantumCount = (nodeGraphFiniteNumber(this.meterMissedQuantumCount)) + missed;
           this.audioThreadStressed = true;
         }
       }
@@ -31,8 +31,8 @@ NodeLiveAudioProcessor.prototype.process = function process(inputs, outputs) {
       const gap = callbackWall - this._prevProcessWall;
       if (gap > blockBudgetMsEarly * 1.6) {
         const lateUnits = Math.max(1, Math.round(gap / Math.max(1e-6, blockBudgetMsEarly)) - 1);
-        this.meterOverrunCount = (Number(this.meterOverrunCount) || 0) + lateUnits;
-        this.meterMissedQuantumCount = (Number(this.meterMissedQuantumCount) || 0) + lateUnits;
+        this.meterOverrunCount = (nodeGraphFiniteNumber(this.meterOverrunCount)) + lateUnits;
+        this.meterMissedQuantumCount = (nodeGraphFiniteNumber(this.meterMissedQuantumCount)) + lateUnits;
         this.audioThreadStressed = true;
       }
     }
@@ -41,8 +41,8 @@ NodeLiveAudioProcessor.prototype.process = function process(inputs, outputs) {
     }
     // Same buffer the Input / Plugin Input evaluators scale by Amplitude.
     this.externalInput = {
-      left: input[0] || input[1] || null,
-      right: input[1] || input[0] || null,
+      left: input[0] ?? input[1] ?? null,
+      right: input[1] ?? input[0] ?? null,
     };
     // App-wide: oversampling under construction — never multi-rate in process.
     const oversamplingRatio = 1;
@@ -91,10 +91,10 @@ NodeLiveAudioProcessor.prototype.process = function process(inputs, outputs) {
     // Efficient path: rings already filled from native taps in processNativeGraphQuantum.
     // Throttled snapshot/visual posts only (never evaluateFrame).
     if (usedNativeGraph) {
-      this.scopeCounter = (Number(this.scopeCounter) || 0) + frames;
+      this.scopeCounter = (nodeGraphFiniteNumber(this.scopeCounter)) + frames;
       const displayFps = Number(this.displayFps);
       if (displayFps > 0) {
-        this.scopeSnapshotCounter = (Number(this.scopeSnapshotCounter) || 0) + frames;
+        this.scopeSnapshotCounter = (nodeGraphFiniteNumber(this.scopeSnapshotCounter)) + frames;
         // Never fully starve scope posts when stressed — that freezes every face
         // until the budget recovers (often never, with stereo supersaw + sinks).
         // Stressed: post at ~1/4 display rate instead of skipping entirely.
@@ -107,7 +107,7 @@ NodeLiveAudioProcessor.prototype.process = function process(inputs, outputs) {
           this.postModuleScopeSnapshot?.();
         }
       }
-      this.visualControlCounter = (Number(this.visualControlCounter) || 0) + frames;
+      this.visualControlCounter = (nodeGraphFiniteNumber(this.visualControlCounter)) + frames;
       const visualEvery = Math.max(1, Math.floor(effectiveRate / 30) * (audioStressed ? 4 : 1));
       if (this.visualControlCounter >= visualEvery) {
         this.visualControlCounter = 0;
@@ -133,12 +133,12 @@ NodeLiveAudioProcessor.prototype.process = function process(inputs, outputs) {
         const elapsedMs = Math.max(0, (globalThis.performance?.now?.() || blockStartedAt) - blockStartedAt);
         const blockBudgetMs = (frames / Math.max(1, sampleRate || this.hostSampleRate || 44100)) * 1000;
         const budgetRatio = blockBudgetMs > 0 ? elapsedMs / blockBudgetMs : 0;
-        this.maxBlockProcessMs = Math.max(Number(this.maxBlockProcessMs) || 0, elapsedMs);
-        this.maxBlockBudgetRatio = Math.max(Number(this.maxBlockBudgetRatio) || 0, budgetRatio);
-        this.sumBlockProcessMs = (Number(this.sumBlockProcessMs) || 0) + elapsedMs;
-        this.blockProcessCount = (Number(this.blockProcessCount) || 0) + 1;
+        this.maxBlockProcessMs = Math.max(nodeGraphFiniteNumber(this.maxBlockProcessMs), elapsedMs);
+        this.maxBlockBudgetRatio = Math.max(nodeGraphFiniteNumber(this.maxBlockBudgetRatio), budgetRatio);
+        this.sumBlockProcessMs = (nodeGraphFiniteNumber(this.sumBlockProcessMs)) + elapsedMs;
+        this.blockProcessCount = (nodeGraphFiniteNumber(this.blockProcessCount)) + 1;
         if (!(elapsedMs > 0)) {
-          this.zeroElapsedQuanta = (Number(this.zeroElapsedQuanta) || 0) + 1;
+          this.zeroElapsedQuanta = (nodeGraphFiniteNumber(this.zeroElapsedQuanta)) + 1;
         }
         this.meterBlockBudgetMs = blockBudgetMs;
         this.audioThreadStressed = budgetRatio >= 0.85;
@@ -148,18 +148,18 @@ NodeLiveAudioProcessor.prototype.process = function process(inputs, outputs) {
       }
       this.meterCounter += frames;
       if (this.meterCounter >= sampleRate / 60) {
-        const realCount = Number(this.blockProcessCount) || 0;
+        const realCount = nodeGraphFiniteNumber(this.blockProcessCount);
         const count = Math.max(1, realCount);
         const budgetMs = Math.max(1e-6, Number(this.meterBlockBudgetMs) || ((frames / Math.max(1, sampleRate || 44100)) * 1000));
-        const sumMs = Number(this.sumBlockProcessMs) || 0;
+        const sumMs = nodeGraphFiniteNumber(this.sumBlockProcessMs);
         const avgMs = sumMs / count;
         const avgRatio = avgMs / budgetMs;
-        const timerResMs = Number(this._timerResMs) || 0;
+        const timerResMs = nodeGraphFiniteNumber(this._timerResMs);
         const timedOut = realCount > 0 && !(sumMs > 0);
         const moduleCount = Number.isFinite(this.dspLiveModuleCount)
           ? this.dspLiveModuleCount
           : (Array.isArray(this.order) ? this.order.length : (this.nodes?.size || 0));
-        const costUnits = Number(this.dspCostUnits) || 0;
+        const costUnits = nodeGraphFiniteNumber(this.dspCostUnits);
         const estimatedBudgetRatio = Math.max(0, Math.min(4, costUnits * 0.004));
         this.port.postMessage({
           audioPlayerNodeId: this.audioPlayerMeterNodeId || this.audioPlayerNodeIds[0] || "",
@@ -190,7 +190,7 @@ NodeLiveAudioProcessor.prototype.process = function process(inputs, outputs) {
           overrunCount: this.meterOverrunCount,
           peak: this.meterPeak,
           protectionNodeId: this.speakerProtectionNodeId || "",
-          protectionPeak: Number(this.speakerProtectionPeak) || 0,
+          protectionPeak: nodeGraphFiniteNumber(this.speakerProtectionPeak),
           protectionMuteCount: this.meterProtectionMuteCount,
           protectionEngaged: Boolean(this.protectionEngaged),
           protectionGain: Number.isFinite(Number(this.protectionGain)) ? Number(this.protectionGain) : 1,
@@ -220,7 +220,7 @@ NodeLiveAudioProcessor.prototype.process = function process(inputs, outputs) {
         this.speakerProtectionPeak = 0;
         this.meterSamples = 0;
         this.meterSquareSum = 0;
-        this.dspMeterFrames = (Number(this.dspMeterFrames) || 0) + (sampleRate / 60);
+        this.dspMeterFrames = (nodeGraphFiniteNumber(this.dspMeterFrames)) + (sampleRate / 60);
         if (this.dspMeterFrames >= sampleRate) {
           this.dspMeterFrames = 0;
           this.maxBlockProcessMs = 0;
@@ -237,97 +237,19 @@ NodeLiveAudioProcessor.prototype.process = function process(inputs, outputs) {
       return true;
     }
 
-    // Legacy ?product=full sample loop (evaluateFrame). Unreachable when efficientProduct.
-    {
-      for (let frame = 0; frame < frames; frame += 1) {
-        const rawLeft = Number(input[0]?.[frame]);
-        const rawRight = Number(input[1]?.[frame]);
-        const inputLeft = Number.isFinite(rawLeft) ? rawLeft : 0;
-        const inputRight = Number.isFinite(rawRight) ? rawRight : inputLeft;
-        this.inputMeterPeak = Math.max(this.inputMeterPeak, Math.abs(inputLeft), Math.abs(inputRight));
-        this.inputMeterSquareSum += (inputLeft * inputLeft + inputRight * inputRight) * 0.5;
-        this.inputMeterSamples += 1;
-        let leftSum = 0;
-        let rightSum = 0;
-        let decimatedLeft = 0;
-        let decimatedRight = 0;
-        const useRaptEllipticDecimator = oversamplingRatio === 4;
-        for (let subframe = 0; subframe < oversamplingRatio; subframe += 1) {
-          const engineFrame = frame * oversamplingRatio + subframe;
-          const subframeOutput = this.evaluateFrame(engineFrame, engineFrames, inputs, effectiveRate, frame);
-          if (useRaptEllipticDecimator) {
-            decimatedLeft = this.processRaptEllipticDecimatorSample(
-              subframeOutput.left,
-              this.raptEllipticDecimatorLeft,
-            );
-            decimatedRight = this.processRaptEllipticDecimatorSample(
-              subframeOutput.right,
-              this.raptEllipticDecimatorRight,
-            );
-          } else {
-            leftSum += subframeOutput.left;
-            rightSum += subframeOutput.right;
-          }
-          // Scope capture every sample is expensive; when audio is late, keep DSP
-          // and only refresh rings every 8th sample so the quantum can recover.
-          if (!audioStressed || (engineFrame & 7) === 0) {
-            this.captureModuleScopeFrame(this.currentFrameValues, engineFrame, engineFrames);
-          }
-          this.scopeCounter += 1;
-          const displayFps = Number(this.displayFps);
-          if (displayFps > 0) {
-            this.scopeSnapshotCounter = (Number(this.scopeSnapshotCounter) || 0) + 1;
-            if (this.scopeSnapshotCounter >= Math.max(1, Math.floor(effectiveRate / displayFps))) {
-              this.scopeSnapshotCounter = 0;
-              if (!audioStressed) {
-                this.postModuleScopeSnapshot();
-              }
-            }
-          }
-          this.visualControlCounter += 1;
-          if (this.visualControlCounter >= Math.max(1, Math.floor(effectiveRate / 30))) {
-            this.visualControlCounter = 0;
-            if (!audioStressed) {
-              this.postVisualControls();
-            }
-          }
-        }
-        const frameOutput = this._frameOutput || (this._frameOutput = { left: 0, right: 0 });
-        frameOutput.left = useRaptEllipticDecimator ? decimatedLeft : leftSum / oversamplingRatio;
-        frameOutput.right = useRaptEllipticDecimator ? decimatedRight : rightSum / oversamplingRatio;
-        if (this.outputSampleClipped(frameOutput.left)) {
-          this.meterClipCount += 1;
-        }
-        if (this.outputSampleClipped(frameOutput.right)) {
-          this.meterClipCount += 1;
-        }
-        if (
-          this.outputSampleTripsEarProtection(frameOutput.left) ||
-          this.outputSampleTripsEarProtection(frameOutput.right)
-        ) {
-          this.speakerProtectionPeak = Math.max(
-            Number(this.speakerProtectionPeak) || 0,
-            Number.isFinite(Number(frameOutput.left)) ? Math.abs(Number(frameOutput.left)) : Infinity,
-            Number.isFinite(Number(frameOutput.right)) ? Math.abs(Number(frameOutput.right)) : Infinity,
-          );
-          this.speakerProtectionNodeId = "output";
-        }
-        const protectedFrame = this.earProtector.protect(frameOutput.left, frameOutput.right);
-        if (protectedFrame.engaged || protectedFrame.muted) {
-          this.meterProtectionMuteCount += 1;
-        }
-        this.protectionEngaged = Boolean(protectedFrame.engaged);
-        this.protectionGain = Number(protectedFrame.gain);
-        const left = Number.isFinite(Number(protectedFrame.left)) ? Number(protectedFrame.left) : 0;
-        const right = Number.isFinite(Number(protectedFrame.right)) ? Number(protectedFrame.right) : 0;
-        this.meterPeak = Math.max(this.meterPeak, Math.abs(left), Math.abs(right));
-        this.meterSquareSum += (left * left + right * right) * 0.5;
-        this.meterSamples += 1;
-        this.gpuAdditiveStatusCounter += 1;
-        for (let channelIndex = 0; channelIndex < output.length; channelIndex += 1) {
-          output[channelIndex][frame] = channelIndex === 0 ? left : right;
-        }
-      }
+    // APP_POLICY: JS evaluateFrame path removed. Silence if somehow reached.
+    for (const channel of output) {
+      if (channel) channel.fill(0);
+    }
+    if (!this._jsEvaluateFramePathWarned) {
+      this._jsEvaluateFramePathWarned = true;
+      try {
+        this.port.postMessage({
+          type: "status",
+          status: "error",
+          message: "JS evaluateFrame audio path removed — native graph only",
+        });
+      } catch (_e) { /* ignore */ }
     }
 
     this.finishSmoothing();
@@ -347,12 +269,12 @@ NodeLiveAudioProcessor.prototype.process = function process(inputs, outputs) {
       const elapsedMs = Math.max(0, (globalThis.performance?.now?.() || blockStartedAt) - blockStartedAt);
       const blockBudgetMs = (frames / Math.max(1, sampleRate || this.hostSampleRate || 44100)) * 1000;
       const budgetRatio = blockBudgetMs > 0 ? elapsedMs / blockBudgetMs : 0;
-      this.maxBlockProcessMs = Math.max(Number(this.maxBlockProcessMs) || 0, elapsedMs);
-      this.maxBlockBudgetRatio = Math.max(Number(this.maxBlockBudgetRatio) || 0, budgetRatio);
-      this.sumBlockProcessMs = (Number(this.sumBlockProcessMs) || 0) + elapsedMs;
-      this.blockProcessCount = (Number(this.blockProcessCount) || 0) + 1;
+      this.maxBlockProcessMs = Math.max(nodeGraphFiniteNumber(this.maxBlockProcessMs), elapsedMs);
+      this.maxBlockBudgetRatio = Math.max(nodeGraphFiniteNumber(this.maxBlockBudgetRatio), budgetRatio);
+      this.sumBlockProcessMs = (nodeGraphFiniteNumber(this.sumBlockProcessMs)) + elapsedMs;
+      this.blockProcessCount = (nodeGraphFiniteNumber(this.blockProcessCount)) + 1;
       if (!(elapsedMs > 0)) {
-        this.zeroElapsedQuanta = (Number(this.zeroElapsedQuanta) || 0) + 1;
+        this.zeroElapsedQuanta = (nodeGraphFiniteNumber(this.zeroElapsedQuanta)) + 1;
       }
       this.meterBlockBudgetMs = blockBudgetMs;
       // Latch stress for the *next* quantum's shedding policy.
@@ -364,13 +286,13 @@ NodeLiveAudioProcessor.prototype.process = function process(inputs, outputs) {
     this.meterCounter += frames;
     // Level meters ~60Hz; DSP load averages over ~1s so sub-tick work can show.
     if (this.meterCounter >= sampleRate / 60) {
-      const realCount = Number(this.blockProcessCount) || 0;
+      const realCount = nodeGraphFiniteNumber(this.blockProcessCount);
       const count = Math.max(1, realCount);
       const budgetMs = Math.max(1e-6, Number(this.meterBlockBudgetMs) || ((frames / Math.max(1, sampleRate || 44100)) * 1000));
-      const sumMs = Number(this.sumBlockProcessMs) || 0;
+      const sumMs = nodeGraphFiniteNumber(this.sumBlockProcessMs);
       const avgMs = sumMs / count;
       const avgRatio = avgMs / budgetMs;
-      const timerResMs = Number(this._timerResMs) || 0;
+      const timerResMs = nodeGraphFiniteNumber(this._timerResMs);
       // Any completed quanta with a 0ms sum ⇒ timer did not resolve the callback.
       // That is NOT "0% load" / free headroom.
       const timedOut = realCount > 0 && !(sumMs > 0);
@@ -378,7 +300,7 @@ NodeLiveAudioProcessor.prototype.process = function process(inputs, outputs) {
         ? this.dspLiveModuleCount
         : (Array.isArray(this.order) ? this.order.length : (this.nodes?.size || 0));
       // Relative cost when the timer is blind (weights from compileGraphLiveness).
-      const costUnits = Number(this.dspCostUnits) || 0;
+      const costUnits = nodeGraphFiniteNumber(this.dspCostUnits);
       const estimatedBudgetRatio = Math.max(0, Math.min(4, costUnits * 0.004));
       this.port.postMessage({
         audioPlayerNodeId: this.audioPlayerMeterNodeId || this.audioPlayerNodeIds[0] || "",
@@ -409,7 +331,7 @@ NodeLiveAudioProcessor.prototype.process = function process(inputs, outputs) {
         overrunCount: this.meterOverrunCount,
         peak: this.meterPeak,
         protectionNodeId: this.speakerProtectionNodeId || "",
-        protectionPeak: Number(this.speakerProtectionPeak) || 0,
+        protectionPeak: nodeGraphFiniteNumber(this.speakerProtectionPeak),
         protectionMuteCount: this.meterProtectionMuteCount,
         protectionEngaged: Boolean(this.protectionEngaged),
         protectionGain: Number.isFinite(Number(this.protectionGain)) ? Number(this.protectionGain) : 1,
@@ -440,7 +362,7 @@ NodeLiveAudioProcessor.prototype.process = function process(inputs, outputs) {
       this.meterSamples = 0;
       this.meterSquareSum = 0;
       // Hold DSP timing averages ~1s (don't reset every level-meter tick).
-      this.dspMeterFrames = (Number(this.dspMeterFrames) || 0) + (sampleRate / 60);
+      this.dspMeterFrames = (nodeGraphFiniteNumber(this.dspMeterFrames)) + (sampleRate / 60);
       if (this.dspMeterFrames >= sampleRate) {
         this.dspMeterFrames = 0;
         this.maxBlockProcessMs = 0;

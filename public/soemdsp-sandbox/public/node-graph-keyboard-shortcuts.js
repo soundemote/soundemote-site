@@ -167,11 +167,8 @@ function resizeNodeGraphWidthAdjustableModuleOnGrid(patchNode, delta) {
   if (nextWidthGu === currentWidthGu) {
     return false;
   }
-  if (nextWidthGu === nodeGraphDefaultModuleGridWidthUnits(patchNode.type)) {
-    delete patchNode.widthGu;
-  } else {
-    patchNode.widthGu = nextWidthGu;
-  }
+  // Always store width on the node (spawn default must not re-bind later).
+  patchNode.widthGu = nextWidthGu;
   return true;
 }
 
@@ -280,6 +277,39 @@ function handleNodeGraphKeydown(event) {
   ) {
     event.preventDefault();
     setNodeGraphAppChromeBarsMode("all");
+    return;
+  }
+  // F = layout canvas cycle (phone button). Global view hotkey — handle before
+  // the typing gate so leftover focus on Music Player rows / Display Settings
+  // number fields cannot swallow F after canvas interaction.
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "f") {
+    event.preventDefault();
+    const active = document.activeElement;
+    if (
+      active instanceof HTMLElement
+      && active !== document.body
+      && active !== document.documentElement
+      && active.closest?.(
+        "#nodeScreenSoloStage, .node-phosphor-waveform-display, .node-music-player-pl-row, .node-music-player-pl-transport, [data-display-settings-body]",
+      )
+    ) {
+      try {
+        active.blur();
+      } catch {
+        // ignore
+      }
+    }
+    // Inside a Metamodule: F with a child selection toggles Show in canvas.
+    // No selection: same layout-canvas cycle as Root (perform → edit → off).
+    if (
+      typeof nodeGraphMetamoduleToggleDisplaysForSelection === "function"
+      && nodeGraphMetamoduleToggleDisplaysForSelection()
+    ) {
+      return;
+    }
+    if (typeof toggleNodeGraphLayoutCanvasView === "function") {
+      toggleNodeGraphLayoutCanvasView();
+    }
     return;
   }
   // While typing in a text/search field (module search, name boxes, code
@@ -440,28 +470,7 @@ function handleNodeGraphKeydown(event) {
     }
     return;
   }
-  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "k") {
-    event.preventDefault();
-    if (typeof toggleNodeGraphStandaloneMidiKeyboard === "function") {
-      toggleNodeGraphStandaloneMidiKeyboard();
-    }
-    return;
-  }
-  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "f") {
-    event.preventDefault();
-    // Inside a Metamodule: F pins selected child faces onto the shell display
-    // stack (additive). Root keeps fullscreen screen-solo.
-    if (typeof nodeGraphMetamoduleToggleDisplaysForSelection === "function"
-      && typeof nodeGraphMetamoduleViewId === "function"
-      && nodeGraphMetamoduleViewId()) {
-      nodeGraphMetamoduleToggleDisplaysForSelection();
-      return;
-    }
-    if (typeof toggleNodeGraphSelectedScreensFullscreen === "function") {
-      toggleNodeGraphSelectedScreensFullscreen();
-    }
-    return;
-  }
+  // F handled above (before typing gate).
   // T → docked tooltips on/off.
   if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "t") {
     event.preventDefault();

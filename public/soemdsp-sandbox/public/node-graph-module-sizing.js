@@ -60,9 +60,9 @@ const nodeGraphModuleHeightLimits = nodeGraphModuleGuPolicy;
 // ---------------------------------------------------------------------------
 // Grid unit = nodeGraphGrid.heightPx (28px). Three numbers matter:
 //
-// FACE  (display)  Integer 1…60. Stored as ui.displayHeightOffsetGu vs default.
+// FACE  (display)  Integer 1…60. Stored as ui.displayHeightGu (absolute).
 //                  Floor is ALWAYS 1gu app-wide (LayoutA scopes, LayoutB shells,
-//                  graph, XY Pad, …). LayoutC has no face.
+//                  graph, XY Pad, Keyboard, …). LayoutC has no face.
 //
 // SHELL (LayoutB)  = FACE. Side jacks share the face height (CSS 1fr rows).
 //                  Jacks must never inflate shell above face (that made Smooth
@@ -221,16 +221,14 @@ function nodeGraphModuleUiWithFaceHeightGu(ui, type, faceGu) {
   const base = typeof normalizeNodeGraphPatchNodeUi === "function"
     ? normalizeNodeGraphPatchNodeUi(ui, type)
     : { ...(ui || {}) };
-  const defaultFace = nodeGraphModuleDefaultDisplayHeightUnits(type);
   const limits = nodeGraphModuleDisplayHeightLimitsForType(type);
   const face = Math.max(
     limits.minGu,
-    Math.min(limits.maxGu, Math.round(Number(faceGu) || limits.minGu)),
+    Math.min(limits.maxGu, Math.round(nodeGraphFiniteNumber(faceGu, limits.minGu))),
   );
-  return {
-    ...base,
-    displayHeightOffsetGu: face - defaultFace,
-  };
+  const next = { ...base, displayHeightGu: face };
+  delete next.displayHeightOffsetGu;
+  return next;
 }
 
 const nodeGraphTextBoxHeightLimits = nodeGraphModuleGuPolicy;
@@ -355,9 +353,11 @@ function nodeGraphModuleDisplayVisibleForUi(type, ui = {}) {
   return !nodeGraphEffectivePatchNodeUi(ui, type).oscilloscopeHidden;
 }
 
-/** Mount-time gate: only create/attach display faces when visible. */
+/** Always mount a face if the module has one. Hide is CSS + layout tracks, not unmount. */
 function nodeGraphModuleShouldMountDisplayFace(type, ui = {}) {
-  return nodeGraphModuleDisplayVisibleForUi(type, ui);
+  return typeof nodeGraphModuleHasFace === "function"
+    ? nodeGraphModuleHasFace(type)
+    : nodeGraphModuleDisplayVisibleForUi(type, ui);
 }
 
 function normalizeNodeGraphModuleDisplayHeightUnits(heightGu, type = null) {
@@ -383,7 +383,7 @@ function normalizeNodeGraphModuleDisplayHeightOffsetUnits(typeOrOffsetGu, offset
   const type = hasType ? typeOrOffsetGu : null;
   const offset = hasType ? offsetGu : typeOrOffsetGu;
   const defaultHeightGu = type ? nodeGraphModuleDefaultDisplayHeightUnits(type) : nodeGraphModuleLayout.moduleScopeHeightGu;
-  const targetHeightGu = defaultHeightGu + Math.round(Number(offset) || 0);
+  const targetHeightGu = defaultHeightGu + Math.round(nodeGraphFiniteNumber(offset));
   return normalizeNodeGraphModuleDisplayHeightUnits(targetHeightGu, type) - defaultHeightGu;
 }
 
@@ -396,6 +396,11 @@ function nodeGraphModuleConfiguredDisplayHeightUnits(type, ui = {}) {
     return 0;
   }
   const normalizedUi = normalizeNodeGraphPatchNodeUi(ui, type);
+  // Absolute face height wins (spawn/resize always store this so type-default
+  // changes cannot resize existing modules).
+  if (Number.isFinite(Number(normalizedUi.displayHeightGu))) {
+    return normalizeNodeGraphModuleDisplayHeightUnits(normalizedUi.displayHeightGu, type);
+  }
   const defaultHeightGu = nodeGraphModuleDefaultDisplayHeightUnits(type);
   return normalizeNodeGraphModuleDisplayHeightUnits(
     defaultHeightGu + Number(normalizedUi.displayHeightOffsetGu || 0),
@@ -546,9 +551,9 @@ function normalizeNodeGraphModuleHeightUnits(type, heightGu, ui = {}) {
  * minmax(2px, 1fr) track (see --node-module-bottom-gap-track).
  */
 function nodeGraphModuleHeightWithBottomClearance(contentGu) {
-  const required = Math.max(0, Number(contentGu) || 0);
+  const required = Math.max(0, nodeGraphFiniteNumber(contentGu));
   let heightGu = Math.ceil(required);
-  const gridPx = Math.max(1, Number(nodeGraphGrid?.heightPx) || 28);
+  const gridPx = Math.max(1, nodeGraphFiniteNumber(nodeGraphGrid?.heightPx, 28));
   const slackPx = (heightGu - required) * gridPx;
   if (slackPx < 2) {
     heightGu += 1;
@@ -646,7 +651,8 @@ function nodeGraphModuleSliderBodyHeightGu(type, ui = null, node = null) {
 function nodeGraphModuleIoRowCount(type, node = null) {
   // Metamodule shell jacks are dynamic (Poly/Amp + boundary) — count live ports.
   if (
-    String(type || "") === "metamodule"
+    typeof nodeGraphIsContainerShellType === "function"
+    && nodeGraphIsContainerShellType(type)
     && node
     && typeof nodeGraphMetamoduleShellPorts === "function"
   ) {
@@ -760,7 +766,7 @@ function nodeGraphApplyModuleShellHeightCssVars(element, patchNode) {
       ? nodeGraphPatchNodeGridHeightUnits(patchNode)
       : nodeGraphModuleGridHeightUnitsForUi(type, ui);
     const headerGu = nodeGraphModuleHeaderHeightUnits(ui, type);
-    faceGu = Math.max(1, Math.round(Number(outerGu) || 0) - Math.ceil(Number(headerGu) || 0));
+    faceGu = Math.max(1, Math.round(nodeGraphFiniteNumber(outerGu)) - Math.ceil(nodeGraphFiniteNumber(headerGu)));
   }
   // Face units drive LayoutA --node-module-scope-height / Metamodule face track.
   element.style.setProperty("--node-module-display-height-units", String(faceGu));
@@ -805,6 +811,7 @@ const NODE_GRAPH_MODULE_WIDGET_BAND_ID = Object.freeze({
   canvas: "face",
   text: "face",
   keyboard: "face",
+  gridKeyboard: "face",
   wheels: "face",
   midi: "controls",
   interfaceControls: "controls",
@@ -913,7 +920,7 @@ function nodeGraphModuleLayoutBands(type, ui = {}, node = null) {
     }
     bands.push({
       id: "shell",
-      heightGu: Math.max(1, Number(shellGu) || 1),
+      heightGu: Math.max(1, nodeGraphFiniteNumber(shellGu, 1)),
       visible: true,
       grow: paramsGu <= 0,
     });
@@ -935,11 +942,11 @@ function nodeGraphModuleLayoutBands(type, ui = {}, node = null) {
     }
     if (id === "lip") {
       if (widget.visible !== false) {
-        lipFloorGu = Math.max(lipFloorGu, Math.max(0, Number(widget.heightGu) || 0));
+        lipFloorGu = Math.max(lipFloorGu, Math.max(0, nodeGraphFiniteNumber(widget.heightGu)));
       }
       continue;
     }
-    const heightGu = Math.max(0, Number(widget.heightGu) || 0);
+    const heightGu = Math.max(0, nodeGraphFiniteNumber(widget.heightGu));
     const visible = widget.visible !== false && (heightGu > 0 || id === "io");
     const existing = byId.get(id);
     if (!existing) {
@@ -1228,6 +1235,12 @@ function applyNodeGraphModuleLayout(article, patchNodeOrBands) {
       const faceIndex = visible.findIndex((band) => band.id === "face");
       child.style.gridRow = String(faceIndex >= 0 ? faceIndex + 1 : Math.max(2, visible.length));
       child.hidden = false;
+    } else if (id === "face") {
+      // Keep the face mounted. .oscilloscope-hidden CSS hides paint; a track
+      // is omitted so layout does not leave a hole. Never HTML-hidden — that
+      // stuck Keyboard/Sequencer faces until a full remount (Hide unused).
+      child.style.gridRow = "auto";
+      child.hidden = false;
     } else {
       child.style.gridRow = "auto";
       child.hidden = true;
@@ -1280,6 +1293,8 @@ function applyNodeGraphModulePlateClip(article) {
     return;
   }
   const faces = article.querySelectorAll(NODE_GRAPH_PLATE_CLIP_SEL);
+  const parts = [`${plateW}|${plateH}`];
+  const writes = [];
   for (const face of faces) {
     if (!(face instanceof HTMLElement)) {
       continue;
@@ -1316,10 +1331,23 @@ function applyNodeGraphModulePlateClip(article) {
     if (top + bottom >= height - 1 || left + right >= width - 1) {
       continue;
     }
-    face.style.setProperty("--node-plate-clip-top", `${Math.max(0, top).toFixed(2)}px`);
-    face.style.setProperty("--node-plate-clip-right", `${right.toFixed(2)}px`);
-    face.style.setProperty("--node-plate-clip-bottom", `${bottom.toFixed(2)}px`);
-    face.style.setProperty("--node-plate-clip-left", `${Math.max(0, left).toFixed(2)}px`);
+    const topPx = Math.max(0, top).toFixed(2);
+    const rightPx = right.toFixed(2);
+    const bottomPx = bottom.toFixed(2);
+    const leftPx = Math.max(0, left).toFixed(2);
+    parts.push(`${topPx},${rightPx},${bottomPx},${leftPx}`);
+    writes.push({ face, topPx, rightPx, bottomPx, leftPx });
+  }
+  const fp = parts.join(";");
+  if (article.dataset.plateClipFp === fp) {
+    return;
+  }
+  article.dataset.plateClipFp = fp;
+  for (const write of writes) {
+    write.face.style.setProperty("--node-plate-clip-top", `${write.topPx}px`);
+    write.face.style.setProperty("--node-plate-clip-right", `${write.rightPx}px`);
+    write.face.style.setProperty("--node-plate-clip-bottom", `${write.bottomPx}px`);
+    write.face.style.setProperty("--node-plate-clip-left", `${write.leftPx}px`);
   }
 }
 
@@ -1496,8 +1524,10 @@ function nodeGraphModuleHeightWidgetUnits(type, ui = {}, node = null) {
       { id: "inset", heightGu: nodeGraphModuleLayout.moduleGridInsetGu * 1.5, visible: true },
     ];
   }
-  if (nodeGraphModuleDefinitions[type]?.layout === "keyboard") {
-    // Same stack as dock keyboard: header | face (controls + piano) | I/O.
+  if (nodeGraphModuleDefinitions[type]?.layout === "keyboard"
+    || nodeGraphModuleDefinitions[type]?.layout === "gridKeyboard"
+    || nodeGraphModuleDefinitions[type]?.layout === "sequencer") {
+    // Header | face (controls + piano/grid) | I/O.
     // Face height is freehand display gu so the piano can stretch vertically.
     return [
       { id: "header", heightGu: nodeGraphModuleHeaderHeightUnits(ui), visible: true },
@@ -1609,7 +1639,7 @@ function nodeGraphModuleHeightWidgetUnits(type, ui = {}, node = null) {
 function nodeGraphModuleRequiredHeightUnitsForUi(type, ui = {}, node = null) {
   return nodeGraphModuleHeightWidgetUnits(type, ui, node)
     .filter((widget) => widget.visible !== false)
-    .reduce((total, widget) => total + Math.max(0, Number(widget.heightGu) || 0), 0);
+    .reduce((total, widget) => total + Math.max(0, nodeGraphFiniteNumber(widget.heightGu)), 0);
 }
 
 function nodeGraphModuleGridHeightUnits(type) {
@@ -1773,69 +1803,35 @@ function nodeGraphModuleMinOuterHeightGu(type, ui = {}) {
 }
 
 /**
- * Height ± for any module: app-wide 1gu floor.
- * Face modules shrink the screen first, then the outer box (content clips).
+ * Height ± for Module Settings and Shift+Up/Down.
+ *
+ * Display modules (Keyboard, scopes, …): step FACE height (ui.displayHeightGu).
+ *   Min face 1gu. Outer height follows from header + face + I/O + …
+ * Freehand modules (text box / LayoutC): step OUTER heightGu (min 1gu).
  */
 function nodeGraphApplyModuleHeightDelta(patchNode, delta) {
   if (!patchNode?.type) {
     return false;
   }
   const type = patchNode.type;
-  const step = Math.sign(Number(delta) || 0) * (nodeGraphModuleGuPolicy.stepGu || 1);
+  const step = Math.sign(nodeGraphFiniteNumber(delta)) * (nodeGraphModuleGuPolicy.stepGu || 1);
   if (!step) {
     return false;
   }
   const ui = typeof normalizeNodeGraphPatchNodeUi === "function"
     ? normalizeNodeGraphPatchNodeUi(patchNode.ui, type)
     : { ...(patchNode.ui || {}) };
-  const currentOuter = nodeGraphPatchNodeGridHeightUnits(patchNode);
-  const contentGu = nodeGraphModuleGridHeightUnitsForUi(type, ui, patchNode);
-  const hasFace = nodeGraphModuleHasFace(type)
+  const faceMode = nodeGraphModuleHasFace(type)
     && nodeGraphModuleSizingCapabilities(type).displayHeight;
 
-  if (hasFace) {
+  if (faceMode) {
     const face = nodeGraphModuleConfiguredDisplayHeightUnits(type, ui);
-    if (step < 0 && face > nodeGraphModuleGuPolicy.minGu) {
-      const nextOffset = normalizeNodeGraphModuleDisplayHeightOffsetUnits(
-        type,
-        Number(ui.displayHeightOffsetGu || 0) + step,
-      );
-      if (nextOffset === ui.displayHeightOffsetGu) {
-        return false;
-      }
-      ui.displayHeightOffsetGu = nextOffset;
-      if (typeof applyNodeGraphPatchNodeUi === "function") {
-        applyNodeGraphPatchNodeUi(patchNode, ui);
-      } else {
-        patchNode.ui = ui;
-      }
-      return true;
-    }
-    if (step < 0) {
-      const nextOuter = Math.max(nodeGraphModuleGuPolicy.minGu, currentOuter + step);
-      if (nextOuter === currentOuter) {
-        return false;
-      }
-      patchNode.heightGu = nextOuter;
-      return true;
-    }
-    if (Number.isFinite(Number(patchNode.heightGu)) && currentOuter < contentGu) {
-      const nextOuter = Math.min(nodeGraphModuleGuPolicy.maxGu, currentOuter + step);
-      if (nextOuter >= contentGu) {
-        delete patchNode.heightGu;
-      } else {
-        patchNode.heightGu = nextOuter;
-      }
-      return true;
-    }
-    const nextOffset = normalizeNodeGraphModuleDisplayHeightOffsetUnits(
-      type,
-      Number(ui.displayHeightOffsetGu || 0) + step,
-    );
-    if (nextOffset === ui.displayHeightOffsetGu) {
+    const nextFace = normalizeNodeGraphModuleDisplayHeightUnits(face + step, type);
+    if (nextFace === face) {
       return false;
     }
-    ui.displayHeightOffsetGu = nextOffset;
+    ui.displayHeightGu = nextFace;
+    delete ui.displayHeightOffsetGu;
     if (typeof applyNodeGraphPatchNodeUi === "function") {
       applyNodeGraphPatchNodeUi(patchNode, ui);
     } else {
@@ -1844,6 +1840,7 @@ function nodeGraphApplyModuleHeightDelta(patchNode, delta) {
     return true;
   }
 
+  const currentOuter = nodeGraphPatchNodeGridHeightUnits(patchNode);
   const capability = nodeGraphModuleSizingCapabilities(type).moduleHeight;
   const nextOuter = capability === "textBox"
     ? normalizeNodeGraphTextBoxHeightUnits(currentOuter + step, ui)
@@ -1851,12 +1848,7 @@ function nodeGraphApplyModuleHeightDelta(patchNode, delta) {
   if (nextOuter === currentOuter) {
     return false;
   }
-  const defaultHeightGu = nodeGraphModuleGridHeightUnitsForUi(type, ui, patchNode);
-  if (nextOuter === defaultHeightGu) {
-    delete patchNode.heightGu;
-  } else {
-    patchNode.heightGu = nextOuter;
-  }
+  patchNode.heightGu = nextOuter;
   return true;
 }
 

@@ -52,7 +52,35 @@ NodeLiveAudioProcessor.prototype.handleMessage = function handleMessage(message)
       return;
     }
     if (message.type === "setMidiKeyboardHeldKeysBitmask") {
-      this.setMidiKeyboardHeldKeysBitmask(message.low, message.high);
+      this.setMidiKeyboardHeldKeysBitmask(message.mask, message.velocities, message.octave);
+      return;
+    }
+    if (message.type === "setMidiKeyboardPlayKeysBitmask") {
+      this.setMidiKeyboardPlayKeysBitmask(message.mask);
+      return;
+    }
+    if (message.type === "setPolyphonyVelocities") {
+      this.setPolyphonyVelocities(message.source, message.velocities);
+      return;
+    }
+    if (message.type === "setMetaView") {
+      if (typeof this.applyMetaViewPreview === "function") {
+        this.applyMetaViewPreview(message.metaId);
+      } else {
+        this._metaViewId = String(message.metaId || "");
+      }
+      return;
+    }
+    if (message.type === "vmNoteOn") {
+      this.vmNoteOn?.(message.note, message.velocity);
+      return;
+    }
+    if (message.type === "vmNoteOff") {
+      this.vmNoteOff?.(message.note);
+      return;
+    }
+    if (message.type === "vmAllNotesOff") {
+      this.vmAllNotesOff?.();
       return;
     }
     if (message.type === "setMacroControls") {
@@ -103,6 +131,31 @@ NodeLiveAudioProcessor.prototype.handleMessage = function handleMessage(message)
       this.setInputWireBreakTrigger(message.nodeId, message.port);
       return;
     }
+    if (message.type === "arpOverride") {
+      const nid = String(message.nodeId || "");
+      const midi = Number(message.midi);
+      if (!this._arpOverrideByNode) this._arpOverrideByNode = new Map();
+      if (!nid) return;
+      if (Number.isFinite(midi) && midi >= 0) {
+        this._arpOverrideByNode.set(nid, Math.max(0, Math.min(127, midi | 0)));
+      } else {
+        this._arpOverrideByNode.set(nid, -1);
+      }
+      const native = this.nativeGraph;
+      if (native?.soemdsp_arp_set_override_midi && this.nativeGraphHandle) {
+        const hash = this.fnv1aHash32?.(nid) || 0;
+        let handle = 0;
+        try {
+          handle = native.soemdsp_graph_node_native_handle?.(this.nativeGraphHandle, hash) | 0;
+        } catch (_e) {
+          handle = 0;
+        }
+        if (handle > 0) {
+          native.soemdsp_arp_set_override_midi(handle, this._arpOverrideByNode.get(nid));
+        }
+      }
+      return;
+    }
     if (message.type === "setDisplayFps") {
       const fps = Number(message.displayFps);
       this.displayFps = Number.isFinite(fps)
@@ -111,7 +164,7 @@ NodeLiveAudioProcessor.prototype.handleMessage = function handleMessage(message)
       return;
     }
     if (message.type === "setSpeed") {
-      this.setSpeed(message.speed);
+      this.setSpeed(message.speed, { restartSequencer: message.restartSequencer === true });
       return;
     }
     if (message.type === "setSpeedLimit") {

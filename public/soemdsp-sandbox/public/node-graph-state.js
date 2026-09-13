@@ -108,7 +108,18 @@ var nodeGraphMvp = {
   midiKeyboardAccess: null,
   midiKeyboardHeldKeysLowBitmask: 0,
   midiKeyboardHeldKeysHighBitmask: 0,
+  midiKeyboardArpMask: new Uint8Array(128),
+  midiKeyboardPlayMask: new Uint8Array(128),
+  midiKeyboardHeldKeyVelocities: new Uint8Array(128),
+  midiKeyboardArpLatchPointerId: null,
   midiKeyboardHeldNotes: new Map(),
+  // Local piano held notes (midi → velocity 1..127) for Keyboard Polyphony out.
+  keyboardModuleHeldNotes: new Map(),
+  // Authoritative Polyphony tables (Uint8Array[128]); status = velocity > 0.
+  midiPolyphonyVelocities: null,
+  keyboardPolyphonyVelocities: null,
+  midiKeyboardPlayKeysLowBitmask: 0,
+  midiKeyboardPlayKeysHighBitmask: 0,
   midiKeyboardInputId: "",
   midiKeyboardInputs: [],
   midiListenChannel: 0,
@@ -201,8 +212,6 @@ var nodeGraphMvp = {
   // closed | open | embedLeft | embedRight | float
   unifiedWindowPresentation: "closed",
   commandCenterDockWidth: 320,
-  // 0 = hug controller content. After the user drags the seam, stored px.
-  controllerDockHeight: 0,
   _unifiedWindowSwitching: false,
   _unifiedWindowPendingPosition: null,
   moduleActionDragging: null,
@@ -362,7 +371,7 @@ var nodeGraphMvp = {
     screenSpaceShader: 0,
     slewLimiter: 0,
     spiral: 0,
-    stepSequencer: 0,
+    sequencer: 0,
     textBox: 0,
     triggerCounter: 0,
     triggerDivider: 0,

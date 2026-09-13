@@ -7,7 +7,12 @@ function normalizeNodeGraphPatchParameter(type, key, value, metadata = null) {
     (candidate) => candidate.key === key,
   );
   // Metamodule exposed child params (mx_*__*) — accept numeric store; clamp via metadata.
-  if (!parameter && type === "metamodule" && String(key || "").startsWith("mx_")) {
+  if (
+    !parameter
+    && typeof nodeGraphIsContainerShellType === "function"
+    && nodeGraphIsContainerShellType(type)
+    && String(key || "").startsWith("mx_")
+  ) {
     const number = Number(value);
     const fallback = Number(metadata?.def);
     const candidate = Number.isFinite(number)
@@ -104,7 +109,8 @@ function migrateNodeGraphPhosphorLightToScope2d(node) {
   const migratedSettings = {
     ...src,
     background: src.background ?? src.backgroundColor,
-    decay: src.decay,
+    trail: src.trail,
+    ghost: src.ghost,
     scale: src.scale,
     dot1Size: src.dot1Size,
     lineThickness: src.lineThickness ?? src.dot1Blur,
@@ -112,6 +118,7 @@ function migrateNodeGraphPhosphorLightToScope2d(node) {
     dot1Color: src.dot1Color ?? src.color,
     dot1Brightness: src.dot1Brightness ?? src.brightness,
   };
+  delete migratedSettings.decay;
   return {
     ...node,
     type: "scope2d",
@@ -304,7 +311,7 @@ function validateNodeGraphPatch(patch) {
             && Object.hasOwn(rawParams, "amount")
             ? (typeof nodeGraphPhaseDisperseAmountToStages === "function"
               ? nodeGraphPhaseDisperseAmountToStages(rawParams.amount)
-              : 1 + Math.max(0, Math.min(1, Number(rawParams.amount) || 0)) * 63)
+              : 1 + Math.max(0, Math.min(1, nodeGraphFiniteNumber(rawParams.amount))) * 63)
             : ((parameter.key === "upShape" || parameter.key === "downShape")
               && type === "slewLimiter"
               && Object.hasOwn(rawParams, "shape")
@@ -357,14 +364,14 @@ function validateNodeGraphPatch(patch) {
         && (parameter.key === "width" || parameter.key === "height")
         && Object.hasOwn(rawParams, "squares")
       ) {
-        const squares = Number(rawParams.squares) || 0;
+        const squares = nodeGraphFiniteNumber(rawParams.squares);
         const offset = Number(value);
         value = Math.max(0, Math.round((Number.isFinite(offset) ? offset : 0) + squares));
       }
       // Hypersaw / Hypersaw2 waveform: Pulse Center moved to sit after Saw.
       // Old: 0 Trisaw, 1 Saw, 2 Ramp, 3 Pulse, 4 Pulse Center, 5 RectSin, 6 Trap
       // New: 0 Trisaw, 1 Saw, 2 Pulse Center, 3 Ramp, 4 Pulse, 5 RectSin, 6 Trap
-      if ((type === "hypersaw" || type === "hypersaw2") && parameter.key === "waveform") {
+      if (type === "hypersaw2" && parameter.key === "waveform") {
         if (Number(rawParams._hypersawWaveOrder) !== 2) {
           if (Object.hasOwn(rawParams, "waveform")) {
             const n = Math.round(Number(value));
@@ -542,6 +549,11 @@ function validateNodeGraphPatch(patch) {
     if (type === "codeblock") {
       normalizedNode.codeblock = normalizeNodeGraphCodeblock(node.codeblock);
     }
+    if (type === "sequencer") {
+      normalizedNode.sequencer = typeof sequencerCloneClip === "function"
+        ? sequencerCloneClip(node.sequencer)
+        : (node.sequencer && typeof node.sequencer === "object" ? node.sequencer : undefined);
+    }
     if (type === "customDisplay") {
       normalizedNode.customDisplay = normalizeNodeGraphCustomDisplay(node.customDisplay);
     }
@@ -620,6 +632,11 @@ function validateNodeGraphPatch(patch) {
     if (type === "audioPlayer" && Object.hasOwn(node, "phosphorWaveformSettings")) {
       normalizedNode.phosphorWaveformSettings = normalizeNodeGraphPhosphorWaveformSettings(node.phosphorWaveformSettings);
     }
+    if (type === "arp" && Object.hasOwn(node, "arpKeysSettings")) {
+      normalizedNode.arpKeysSettings = typeof normalizeNodeGraphArpKeysSettings === "function"
+        ? normalizeNodeGraphArpKeysSettings(node.arpKeysSettings)
+        : node.arpKeysSettings;
+    }
     // Remembered playhead (0..1) so Music Player restores position after refresh.
     if (type === "audioPlayer" && Object.hasOwn(node, "samplePhase")) {
       const samplePhase = Number(node.samplePhase);
@@ -657,8 +674,23 @@ function validateNodeGraphPatch(patch) {
       || ui.slidersHidden
       || ui.slidersForceShow
       || ui.displayHeightOffsetGu
+      || ui.displayHeightGu
     ) {
       normalizedNode.ui = ui;
+    }
+    // Keyboard / Grid Chord Memory slots (MIDI 0..127 → note lists).
+    if (
+      (type === "keyboard" || type === "gridKeyboard")
+      && node.chordMemory
+      && typeof node.chordMemory === "object"
+    ) {
+      normalizedNode.chordMemory = typeof nodeGraphChordMemoryNormalizeSlots === "function"
+        ? { slots: nodeGraphChordMemoryNormalizeSlots(node.chordMemory) }
+        : {
+          slots: (node.chordMemory.slots && typeof node.chordMemory.slots === "object")
+            ? { ...node.chordMemory.slots }
+            : {},
+        };
     }
     // Metamodule ownership + shell payload must survive normalize/save/load.
     const ownerMeta = String(node.ownerMetamoduleId || "").trim();
@@ -666,21 +698,29 @@ function validateNodeGraphPatch(patch) {
       normalizedNode.ownerMetamoduleId = ownerMeta;
     }
     if (node.metamodule && typeof node.metamodule === "object") {
-      const boundary = Array.isArray(node.metamodule.boundary)
-        ? node.metamodule.boundary.map((entry) => (
-          entry && typeof entry === "object" ? { ...entry } : entry
-        )).filter(Boolean)
-        : [];
-      const displays = Array.isArray(node.metamodule.displays)
-        ? node.metamodule.displays.map((entry) => (
-          entry && typeof entry === "object" ? { ...entry } : entry
-        )).filter(Boolean)
-        : [];
-      const paramVisibility = node.metamodule.paramVisibility
-        && typeof node.metamodule.paramVisibility === "object"
-        ? { ...node.metamodule.paramVisibility }
-        : {};
-      normalizedNode.metamodule = { boundary, displays, paramVisibility };
+      // Must keep playmode + voices (Module Settings). Older normalize only
+      // kept boundary/displays and wiped voice settings back to defaults.
+      if (typeof cloneNodeGraphMetamodulePayload === "function") {
+        normalizedNode.metamodule = cloneNodeGraphMetamodulePayload(node.metamodule);
+      } else {
+        const boundary = Array.isArray(node.metamodule.boundary)
+          ? node.metamodule.boundary.map((entry) => (
+            entry && typeof entry === "object" ? { ...entry } : entry
+          )).filter(Boolean)
+          : [];
+        const displays = Array.isArray(node.metamodule.displays)
+          ? node.metamodule.displays.map((entry) => (
+            entry && typeof entry === "object" ? { ...entry } : entry
+          )).filter(Boolean)
+          : [];
+        const paramVisibility = node.metamodule.paramVisibility
+          && typeof node.metamodule.paramVisibility === "object"
+          ? { ...node.metamodule.paramVisibility }
+          : {};
+        const playmode = Math.max(1, Math.min(4, Math.round(Number(node.metamodule.playmode) || 4)));
+        const voices = Math.max(1, Math.min(32, Math.round(Number(node.metamodule.voices) || 10)));
+        normalizedNode.metamodule = { boundary, displays, paramVisibility, playmode, voices };
+      }
     }
     return normalizedNode;
   });
@@ -959,7 +999,7 @@ function nodeGraphPatchErrorLineNumber(sourceText, error) {
 
   const posMatch = msg.match(/position\s+(\d+)/i);
   if (posMatch) {
-    const pos = Math.max(0, Number(posMatch[1]) || 0);
+    const pos = Math.max(0, nodeGraphFiniteNumber(posMatch[1]));
     let line = 1;
     const limit = Math.min(pos, source.length);
     for (let i = 0; i < limit; i += 1) {
@@ -972,7 +1012,7 @@ function nodeGraphPatchErrorLineNumber(sourceText, error) {
 
   const lineMatch = msg.match(/\bline\s+(\d+)\b/i);
   if (lineMatch) {
-    return Math.max(1, Number(lineMatch[1]) || 1);
+    return Math.max(1, nodeGraphFiniteNumber(lineMatch[1], 1));
   }
 
   // Validation messages often name a type or id — land on that line of JSON.
@@ -1175,7 +1215,8 @@ function nodeGraphModuleStructuralUiSignature(patchNode) {
   // Metamodule exposed params must force remount when Show metaparameter flips.
   let exposeSig = "";
   if (
-    patchNode?.type === "metamodule"
+    typeof nodeGraphIsContainerShellType === "function"
+    && nodeGraphIsContainerShellType(patchNode?.type)
     && patchNode.metamodule?.paramVisibility
     && typeof patchNode.metamodule.paramVisibility === "object"
   ) {
@@ -1185,7 +1226,6 @@ function nodeGraphModuleStructuralUiSignature(patchNode) {
       .join(",");
   }
   return [
-    patchNodeUi.oscilloscopeHidden ? "scope-hidden" : "scope-visible",
     patchNodeUi.titleHidden ? "title-hidden" : "title-visible",
     exposeSig ? `expose:${exposeSig}` : "expose:",
   ].join("|");
@@ -1314,7 +1354,8 @@ function syncNodeGraphModuleParamElement(element, patchNode) {
     // Exposed shell rows: prefer child paramMeta for ranges / alias chrome.
     if (
       (!metaEntry || typeof metaEntry !== "object")
-      && patchNode.type === "metamodule"
+      && typeof nodeGraphIsContainerShellType === "function"
+      && nodeGraphIsContainerShellType(patchNode.type)
       && String(parameter.key || "").startsWith("mx_")
       && typeof nodeGraphMetamoduleResolveExposeTarget === "function"
     ) {
@@ -1333,7 +1374,8 @@ function syncNodeGraphModuleParamElement(element, patchNode) {
     let value = patchNode.params?.[parameter.key];
     if (
       (value == null || !Number.isFinite(Number(value)))
-      && patchNode.type === "metamodule"
+      && typeof nodeGraphIsContainerShellType === "function"
+      && nodeGraphIsContainerShellType(patchNode.type)
       && String(parameter.key || "").startsWith("mx_")
       && typeof nodeGraphMetamoduleResolveExposeTarget === "function"
     ) {
@@ -1524,10 +1566,16 @@ function applyNodeGraphPatchToDom(options = {}) {
     }
   }
 
+  // Drop Show-metaparameter rows whose child was deleted (stale patches / undo gaps).
+  if (typeof nodeGraphMetamodulePruneOrphanExposedParams === "function") {
+    nodeGraphMetamodulePruneOrphanExposedParams(nodeGraphMvp.patch, null);
+  }
+
   for (const patchNode of nodeGraphMvp.patch.nodes) {
     // Seed Metamodule exposed param mirrors from children before DOM sync.
     if (
-      patchNode?.type === "metamodule"
+      typeof nodeGraphIsContainerShellType === "function"
+      && nodeGraphIsContainerShellType(patchNode?.type)
       && typeof nodeGraphMetamoduleSeedExposedParamsFromChildren === "function"
     ) {
       nodeGraphMetamoduleSeedExposedParamsFromChildren(patchNode);
@@ -1880,13 +1928,41 @@ function performNodeGraphDeleteSelection(selection = nodeGraphMvp.selected) {
 
   if (removableNodeIds.size) {
     const live = nodeGraphMvp.patch;
-    // Metamodule delete = ungroup (preserve children, stitch portals out).
-    const metaIdsToUngroup = [...removableNodeIds].filter((nodeId) => {
+    // Container shell delete = delete shell + all owned children (recursive).
+    // Ungroup remains available separately via ungroupNodeGraphMetamodulesInPatch.
+    const containerIdsToDelete = [...removableNodeIds].filter((nodeId) => {
       const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
-      return typeof nodeGraphIsMetamoduleType === "function" && nodeGraphIsMetamoduleType(node?.type);
+      return typeof nodeGraphIsContainerShellType === "function"
+        && nodeGraphIsContainerShellType(node?.type);
     });
-    // Meta In/Out: prune from parent boundary (allowed inside the meta view).
+    if (containerIdsToDelete.length) {
+      const ownedByContainer = new Set(containerIdsToDelete);
+      let grew = true;
+      while (grew) {
+        grew = false;
+        for (const node of live.nodes || []) {
+          const id = String(node?.id || "");
+          if (!id || ownedByContainer.has(id)) continue;
+          const owner = String(node?.ownerMetamoduleId || "").trim();
+          if (owner && ownedByContainer.has(owner)) {
+            ownedByContainer.add(id);
+            grew = true;
+          }
+        }
+      }
+      for (const id of ownedByContainer) {
+        removableNodeIds.add(id);
+      }
+    }
+    // Meta In/Out deleted alone (inside meta view): prune from parent boundary.
     const boundaryIdsToRemove = [...removableNodeIds].filter((nodeId) => {
+      if (containerIdsToDelete.length && removableNodeIds.has(nodeId)) {
+        // When deleting a whole container, portals go with removableNodeIds — no
+        // separate boundary refresh needed (shell is gone).
+        const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+        const owner = String(node?.ownerMetamoduleId || "").trim();
+        if (owner && removableNodeIds.has(owner)) return false;
+      }
       const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
       return typeof nodeGraphIsMetamoduleBoundaryType === "function"
         && nodeGraphIsMetamoduleBoundaryType(node?.type);
@@ -1895,36 +1971,9 @@ function performNodeGraphDeleteSelection(selection = nodeGraphMvp.selected) {
       removableNodeIds.delete(nodeId);
     }
 
-    let patch;
-    let ungrouped = false;
-    const shellOwnersToRefresh = new Set();
-    if (metaIdsToUngroup.length && typeof ungroupNodeGraphMetamodulesInPatch === "function") {
-      patch = typeof cloneNodeGraphPatch === "function"
-        ? cloneNodeGraphPatch(live)
-        : {
-          ...live,
-          nodes: [...(live.nodes || [])],
-          bypassedNodes: [...(live.bypassedNodes || [])],
-          connections: [...(live.connections || [])],
-          modulations: [...(live.modulations || [])],
-          graphConnections: [...(live.graphConnections || [])],
-        };
-      ungrouped = ungroupNodeGraphMetamodulesInPatch(metaIdsToUngroup, patch);
-      for (const metaId of metaIdsToUngroup) {
-        removableNodeIds.delete(metaId);
-      }
-      // Drop any selected nodes that ungroup already removed (portals / shell).
-      const stillPresent = new Set((patch.nodes || []).map((node) => node?.id));
-      for (const nodeId of [...removableNodeIds]) {
-        if (!stillPresent.has(nodeId)) removableNodeIds.delete(nodeId);
-      }
-      for (let i = boundaryIdsToRemove.length - 1; i >= 0; i -= 1) {
-        if (!stillPresent.has(boundaryIdsToRemove[i])) {
-          boundaryIdsToRemove.splice(i, 1);
-        }
-      }
-    } else {
-      patch = {
+    let patch = typeof cloneNodeGraphPatch === "function"
+      ? cloneNodeGraphPatch(live)
+      : {
         ...live,
         nodes: [...(live.nodes || [])],
         bypassedNodes: [...(live.bypassedNodes || [])],
@@ -1932,7 +1981,7 @@ function performNodeGraphDeleteSelection(selection = nodeGraphMvp.selected) {
         modulations: [...(live.modulations || [])],
         graphConnections: [...(live.graphConnections || [])],
       };
-    }
+    const shellOwnersToRefresh = new Set();
 
     if (boundaryIdsToRemove.length && typeof nodeGraphMetamoduleRemoveBoundaryPortalInPlace === "function") {
       for (const portalId of boundaryIdsToRemove) {
@@ -1942,6 +1991,14 @@ function performNodeGraphDeleteSelection(selection = nodeGraphMvp.selected) {
     }
 
     if (removableNodeIds.size) {
+      // Owners whose Show-metaparameter rows pointed at deleted children.
+      for (const node of patch.nodes || []) {
+        if (!removableNodeIds.has(node?.id)) continue;
+        const owner = String(node?.ownerMetamoduleId || "").trim();
+        if (owner && !removableNodeIds.has(owner)) {
+          shellOwnersToRefresh.add(owner);
+        }
+      }
       patch = {
         ...patch,
         nodes: (patch.nodes || []).filter((node) => !removableNodeIds.has(node.id)),
@@ -1962,37 +2019,87 @@ function performNodeGraphDeleteSelection(selection = nodeGraphMvp.selected) {
             !removableNodeIds.has(connection.destinationNode),
         ),
       };
+      // Clear Show metaparameter → deleted child (and shell mx_* params / MOD).
+      if (typeof nodeGraphMetamodulePruneOrphanExposedParams === "function") {
+        const pruned = nodeGraphMetamodulePruneOrphanExposedParams(patch, removableNodeIds);
+        for (const metaId of pruned) {
+          shellOwnersToRefresh.add(metaId);
+        }
+      }
     }
 
     const removedBoundary = shellOwnersToRefresh.size > 0;
-    if (!ungrouped && !removableNodeIds.size && !removedBoundary) {
+    if (!removableNodeIds.size && !removedBoundary) {
       return;
     }
 
     setNodeGraphSelection(null);
     let status = "modules deleted";
-    if (ungrouped && !removableNodeIds.size && !removedBoundary) {
-      status = metaIdsToUngroup.length === 1 ? "metamodule ungrouped" : "metamodules ungrouped";
-    } else if (ungrouped && (removableNodeIds.size || removedBoundary)) {
-      status = "metamodule ungrouped; modules deleted";
-    } else if (removedBoundary && !removableNodeIds.size) {
+    if (removedBoundary && !removableNodeIds.size) {
       status = shellOwnersToRefresh.size === 1 && boundaryIdsToRemove.length === 1
         ? "meta portal deleted"
         : "meta portals deleted";
+    } else if (containerIdsToDelete.length && removableNodeIds.size) {
+      status = containerIdsToDelete.length === 1
+        ? "metamodule deleted"
+        : "containers deleted";
     } else if (removableNodeIds.size === 1) {
       status = "module deleted";
     }
+    // Drop canvas pins / meta layout buckets for deleted shells so saves
+    // never keep ghost UI for modules that are already gone.
+    if (patch.view?.canvases && typeof patch.view.canvases === "object") {
+      const canvases = patch.view.canvases;
+      if (Array.isArray(canvases.root?.elements)) {
+        canvases.root.elements = canvases.root.elements.filter(
+          (el) => !removableNodeIds.has(String(el?.nodeId || "")),
+        );
+      }
+      if (canvases.byMetamodule && typeof canvases.byMetamodule === "object") {
+        for (const metaId of removableNodeIds) {
+          if (Object.prototype.hasOwnProperty.call(canvases.byMetamodule, metaId)) {
+            delete canvases.byMetamodule[metaId];
+          }
+        }
+        for (const [metaId, bucket] of Object.entries(canvases.byMetamodule)) {
+          if (!Array.isArray(bucket?.elements)) continue;
+          bucket.elements = bucket.elements.filter(
+            (el) => !removableNodeIds.has(String(el?.nodeId || "")),
+          );
+          if (!bucket.elements.length) delete canvases.byMetamodule[metaId];
+        }
+      }
+    }
+
     commitNodeGraphPatch(patch, {
       topologyEdit: true,
       deferUiPanels: true,
       status,
     });
-    if (ungrouped && typeof nodeGraphSyncMetamoduleVisibilityToDom === "function") {
+    // Leave inner view if we deleted an open container.
+    if (containerIdsToDelete.length && Array.isArray(nodeGraphMvp?.metamoduleViewStack)) {
+      const before = nodeGraphMvp.metamoduleViewStack.length;
+      nodeGraphMvp.metamoduleViewStack = nodeGraphMvp.metamoduleViewStack.filter(
+        (entry) => !removableNodeIds.has(String(entry)),
+      );
+      if (nodeGraphMvp.metamoduleViewStack.length !== before
+        && typeof updateNodeGraphMetamoduleBreadcrumb === "function") {
+        updateNodeGraphMetamoduleBreadcrumb();
+      }
+    }
+    if (typeof nodeGraphSyncMetamoduleVisibilityToDom === "function") {
       nodeGraphSyncMetamoduleVisibilityToDom();
     }
     if (typeof nodeGraphMetamoduleRefreshShellFromBoundary === "function") {
       for (const metaId of shellOwnersToRefresh) {
         nodeGraphMetamoduleRefreshShellFromBoundary(metaId);
+      }
+    }
+    // Remount Meta face so Show-metaparameter rows for deleted children disappear.
+    if (typeof nodeGraphMetamoduleRemountShellParameters === "function") {
+      for (const metaId of shellOwnersToRefresh) {
+        if (removableNodeIds.has(metaId)) continue;
+        nodeGraphMetamoduleRemountShellParameters(metaId);
       }
     }
     renderNodeGraphLiveControls();

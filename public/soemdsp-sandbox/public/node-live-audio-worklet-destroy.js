@@ -177,13 +177,6 @@ NodeLiveAudioProcessor.prototype.destroyTriggerDividerNativeState = function des
     }
 };
 
-NodeLiveAudioProcessor.prototype.destroyStepSequencerNativeState = function destroyStepSequencerNativeState(state) {
-    if (state.nativeHandle && this.nativeStepSequencer?.soemdsp_step_sequencer_destroy) {
-      this.nativeStepSequencer.soemdsp_step_sequencer_destroy(state.nativeHandle);
-      state.nativeHandle = 0;
-    }
-};
-
 NodeLiveAudioProcessor.prototype.destroyTriggerCounterNativeState = function destroyTriggerCounterNativeState(state) {
     if (state.nativeHandle && this.nativeTriggerCounter?.soemdsp_trigger_counter_destroy) {
       this.nativeTriggerCounter.soemdsp_trigger_counter_destroy(state.nativeHandle);
@@ -524,13 +517,6 @@ NodeLiveAudioProcessor.prototype.destroyRobinSupersawNativeState = function dest
     }
     if (state?.nativeHandle && this.nativeRobinSupersaw?.soemdsp_robin_supersaw_destroy) {
       this.nativeRobinSupersaw.soemdsp_robin_supersaw_destroy(state.nativeHandle);
-      state.nativeHandle = 0;
-    }
-};
-
-NodeLiveAudioProcessor.prototype.destroyHypersawNativeState = function destroyHypersawNativeState(state) {
-    if (state?.nativeHandle && this.nativeHypersaw?.soemdsp_hypersaw_destroy) {
-      this.nativeHypersaw.soemdsp_hypersaw_destroy(state.nativeHandle);
       state.nativeHandle = 0;
     }
 };

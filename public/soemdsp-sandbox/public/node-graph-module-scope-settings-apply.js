@@ -62,7 +62,7 @@ function assignNodeGraphTypedDisplaySettingsToNode(node, displayType, settings) 
   if (displayType === "portalFace") {
     const channel = typeof nodeGraphPortalClampChannel === "function"
       ? nodeGraphPortalClampChannel(settings?.channel)
-      : Math.max(0, Math.round(Number(settings?.channel) || 0));
+      : Math.max(0, Math.round(nodeGraphFiniteNumber(settings?.channel)));
     node.params = { ...(node.params || {}), channel };
     if (typeof applyNodeGraphPortalDisplaySettingsToFace === "function") {
       applyNodeGraphPortalDisplaySettingsToFace(node);
@@ -119,6 +119,18 @@ function assignNodeGraphTypedDisplaySettingsToNode(node, displayType, settings) 
       applyNodeGraphPhosphorWaveformDisplaySettingsToFace(node);
     }
     return node.phosphorWaveformSettings;
+  }
+  if (displayType === "arpKeysFace") {
+    node.arpKeysSettings = typeof normalizeNodeGraphArpKeysSettings === "function"
+      ? normalizeNodeGraphArpKeysSettings(settings)
+      : (settings || {});
+    return node.arpKeysSettings;
+  }
+  if (displayType === "transportBpm") {
+    node.transportSettings = typeof normalizeNodeGraphTransportSettings === "function"
+      ? normalizeNodeGraphTransportSettings(settings)
+      : (settings || { gateBlink: false });
+    return node.transportSettings;
   }
   if (displayType === "limiterGainFace") {
     node.traceDisplaySettings = typeof normalizeNodeGraphLimiterGainFaceSettings === "function"
@@ -590,7 +602,7 @@ function nodeGraphTraceDisplayExistingSettingsForNode(node, settingsSchema) {
   if (settingsSchema === "portalFace") {
     return typeof nodeGraphPortalDisplaySettingsForNode === "function"
       ? nodeGraphPortalDisplaySettingsForNode(node)
-      : { channel: Number(node?.params?.channel) || 0 };
+      : { channel: nodeGraphFiniteNumber(node?.params?.channel) };
   }
   if (settingsSchema === "keypadFace") {
     return node.layout && typeof node.layout === "object" ? { ...node.layout } : {};
@@ -600,12 +612,26 @@ function nodeGraphTraceDisplayExistingSettingsForNode(node, settingsSchema) {
       ? { ...node.phosphorWaveformSettings }
       : {};
   }
+  if (settingsSchema === "arpKeysFace") {
+    return node.arpKeysSettings && typeof node.arpKeysSettings === "object"
+      ? { ...node.arpKeysSettings }
+      : {};
+  }
+  if (settingsSchema === "transportBpm") {
+    return node.transportSettings && typeof node.transportSettings === "object"
+      ? { ...node.transportSettings }
+      : { gateBlink: false };
+  }
   if (settingsSchema === "textBoxFace") {
     return node.layout && typeof node.layout === "object" ? { ...node.layout } : {};
   }
-  return node.traceDisplaySettings && typeof node.traceDisplaySettings === "object"
-    ? { ...node.traceDisplaySettings }
-    : {};
+  if (settingsSchema === "trace" || settingsSchema === "traceRgb" || settingsSchema === "traceXyz"
+    || settingsSchema === "lineBurn" || settingsSchema === "value") {
+    return node.traceDisplaySettings && typeof node.traceDisplaySettings === "object"
+      ? { ...node.traceDisplaySettings }
+      : {};
+  }
+  return {};
 }
 
 function applyNodeGraphTraceDisplaySettingsForm(options = {}) {
@@ -723,7 +749,6 @@ function applyNodeGraphTraceDisplaySettingsForm(options = {}) {
         || k === "historyCycles"
         || k === "sweepHz"
         || k === "sweepCycles"
-        || k === "sweepSeconds"
         || k === "pixelDensity"
         || k === "scale";
     });

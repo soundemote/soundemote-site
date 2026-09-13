@@ -333,8 +333,8 @@ function resizeNodeGraphScope2dBurnRenderer(renderer, width, height) {
   if (!renderer?.gl) {
     return false;
   }
-  const safeWidth = Math.max(1, Math.floor(Number(width) || 1));
-  const safeHeight = Math.max(1, Math.floor(Number(height) || 1));
+  const safeWidth = Math.max(1, Math.floor(nodeGraphFiniteNumber(width, 1)));
+  const safeHeight = Math.max(1, Math.floor(nodeGraphFiniteNumber(height, 1)));
   if (renderer.width === safeWidth && renderer.height === safeHeight && renderer.readSurface && renderer.writeSurface) {
     return false;
   }
@@ -387,10 +387,15 @@ function copyNodeGraphScope2dBurnSurface(renderer, sourceSurface, targetSurface,
 
 
 function nodeGraphScope2dBurnDecayValues(settings) {
-  const decay = clampNodeSliderValue(Number(settings?.decay) || 0, 0, 1);
+  const trail = clampNodeSliderValue(
+    Number.isFinite(Number(settings?.trail)) ? Number(settings.trail) : 0.3,
+    0,
+    1,
+  );
+  const erase = 1 - trail;
   return {
-    decayFast: decay > 0 ? 1 - decay * 0.38 : 1,
-    decaySlow: decay > 0 ? 1 - decay * 0.1 : 1,
+    decayFast: erase > 0 ? 1 - erase * 0.38 : 1,
+    decaySlow: erase > 0 ? 1 - erase * 0.1 : 1,
     exposure: nodeGraphScope2dEnergyBurnExposure(),
     floor: erase > 0 ? erase * 0.0035 : 0,
   };
@@ -422,7 +427,7 @@ function nodeGraphScope2dBurnLayers(settings, dotSpace) {
   if (settings?.dot1Enabled !== false) {
     // Linear diameter map: size * minSide, radius = half; size 0 → 1px (radius 0.5).
     const size01 = clampNodeSliderValue(settings.dot1Size, 0, 1);
-    const side = Math.max(1, Number(dotSpace) || 1);
+    const side = Math.max(1, nodeGraphFiniteNumber(dotSpace, 1));
     const radius = typeof nodeGraphScopeSize01ToRadiusPx === "function"
       ? nodeGraphScopeSize01ToRadiusPx(side, size01)
       : (typeof PhosphorDrawer !== "undefined" && PhosphorDrawer.size01ToRadiusPx
@@ -431,7 +436,7 @@ function nodeGraphScope2dBurnLayers(settings, dotSpace) {
     layers.push({
       // Blur 0 hard disc … 1 full soft gaussian.
       blur: nodeGraphTraceDisplayClampStampBlur(settings.lineThickness),
-      brightness: Math.max(0, Number(settings.dot1Brightness) || 0),
+      brightness: Math.max(0, nodeGraphFiniteNumber(settings.dot1Brightness)),
       color: nodeGraphScopeHexColorToRgb(settings.dot1Color),
       radius,
     });
@@ -547,8 +552,8 @@ function paintNodeGraphPhosphorLiveStampOverlay(context, points, radius, blur, b
   if (!context || !(bright > 0.001) || !Array.isArray(points) || !points.length) {
     return false;
   }
-  const rPx = Math.max(1, Number(radius) || 0);
-  const blur01 = Math.max(0, Math.min(1, Number(blur) || 0));
+  const rPx = Math.max(1, nodeGraphFiniteNumber(radius));
+  const blur01 = Math.max(0, Math.min(1, nodeGraphFiniteNumber(blur)));
   const rgb = Array.isArray(rgbBytes) && rgbBytes.length >= 3 ? rgbBytes : [0.46, 0.92, 1];
   let r;
   let g;
@@ -563,7 +568,7 @@ function paintNodeGraphPhosphorLiveStampOverlay(context, points, radius, blur, b
     g = Math.max(0, Math.min(255, Math.round(Number(rgb[1]) > 1 ? rgb[1] : rgb[1] * 255)));
     b = Math.max(0, Math.min(255, Math.round(Number(rgb[2]) > 1 ? rgb[2] : rgb[2] * 255)));
   }
-  const cap = Math.max(1, Math.min(8192, Math.floor(Number(maxDots) || 1024)));
+  const cap = Math.max(1, Math.min(8192, Math.floor(nodeGraphFiniteNumber(maxDots, 1024))));
   let drawn = 0;
   context.save();
   context.setTransform(1, 0, 0, 1, 0, 0);
@@ -605,8 +610,8 @@ function nodeGraphPhosphorLiveScratchCanvas(canvas, width, height) {
 
 /** Idle beam: all samples at origin (0 amp) or no motion (0 Hz). */
 function nodeGraphScope2dPointsAreIdleBeam(points, square) {
-  const cx = (Number(square?.left) || 0) + (Number(square?.width) || 0) * 0.5;
-  const cy = (Number(square?.top) || 0) + (Number(square?.height) || 0) * 0.5;
+  const cx = (nodeGraphFiniteNumber(square?.left)) + (nodeGraphFiniteNumber(square?.width)) * 0.5;
+  const cy = (nodeGraphFiniteNumber(square?.top)) + (nodeGraphFiniteNumber(square?.height)) * 0.5;
   let n = 0;
   let maxFromCenter = 0;
   let maxStep = 0;
@@ -679,10 +684,10 @@ function drawNodeGraphScope2dEnergyBurnPath(item, pixelRatio, pathPoints, settin
 
   const trail = typeof PhosphorResidual !== "undefined" && PhosphorResidual.migrateTrail
     ? PhosphorResidual.migrateTrail(settings || {}, PhosphorResidual.DEFAULT_TRAIL ?? 0.3)
-    : clampNodeSliderValue(Number(settings?.trail ?? (Number.isFinite(Number(settings?.decay)) ? 1 - Number(settings.decay) : 0.3)), 0, 1);
+    : clampNodeSliderValue(Number.isFinite(Number(settings?.trail)) ? Number(settings.trail) : 0.3, 0, 1);
   const ghost = typeof PhosphorResidual !== "undefined" && PhosphorResidual.migrateGhost
     ? PhosphorResidual.migrateGhost(settings || {}, PhosphorResidual.DEFAULT_GHOST ?? 0.25)
-    : clampNodeSliderValue(Number(settings?.ghost ?? settings?.burn) || 0, 0, 1);
+    : clampNodeSliderValue(nodeGraphFiniteNumber(settings?.ghost), 0, 1);
   const dotSpace = nodeGraphScope2dStrokeSpace(canvas);
   const layers = nodeGraphScope2dBurnLayers(settings, dotSpace);
   const layer = layers[0] || null;
@@ -732,7 +737,7 @@ function drawNodeGraphScope2dEnergyBurnPath(item, pixelRatio, pathPoints, settin
     void stepped;
     const stamps = Math.max(
       0,
-      Math.floor(Number(energyGl.lastDepositCount) || 0),
+      Math.floor(nodeGraphFiniteNumber(energyGl.lastDepositCount)),
     );
     if (typeof recordNodeGraphModuleScopeRenderMetrics === "function" && stamps > 0) {
       recordNodeGraphModuleScopeRenderMetrics(stamps, stamps);
@@ -930,12 +935,12 @@ function drawNodeGraphLineBurnOscilloscopeItem(renderer, item, pixelRatio) {
   let resetBuffer = null;
   if (nodeId) {
     const own = nodeGraphModuleScopeState.buffers.get(`${nodeId}:Reset`);
-    const ownRecent = Math.floor(Number(own?.nodeGraphScopeRecentSampleCount) || 0);
+    const ownRecent = Math.floor(nodeGraphFiniteNumber(own?.nodeGraphScopeRecentSampleCount));
     if (own && ownRecent > 0) {
       resetBuffer = own;
     } else if (typeof nodeGraphModuleScopeConnectedSourceBuffer === "function") {
       const wired = nodeGraphModuleScopeConnectedSourceBuffer(nodeId, "Reset");
-      const wiredRecent = Math.floor(Number(wired?.nodeGraphScopeRecentSampleCount) || 0);
+      const wiredRecent = Math.floor(nodeGraphFiniteNumber(wired?.nodeGraphScopeRecentSampleCount));
       if (wired && wiredRecent > 0) {
         resetBuffer = wired;
       }
@@ -972,8 +977,9 @@ function drawNodeGraphLineBurnOscilloscopeItem(renderer, item, pixelRatio) {
 
 
 function drawNodeGraphHypersawBurnItem(renderer, item, pixelRatio) {
-  // Vertical stems: x = phase (incl. Frequency→Phase), color = pan
-  // (red left / green center / blue right), alpha = amplitude 1:1.
+  // Vertical stems: free (non-pixel-quantized) x = phase∈[0,1] × width.
+  // Width = lineThickness∈[0,1] × face width. Additive: left=red, right=blue,
+  // center = red+blue (both channels) by amplitude.
   const nodeId = item?.slot?.nodeId;
   if (!nodeId) {
     return;
@@ -1010,7 +1016,11 @@ function drawNodeGraphHypersawBurnItem(renderer, item, pixelRatio) {
     nodeGraphFacePlateApplyCss(screenElement, bgHex);
   }
 
-  // Phosphor residual: fade toward plate (same keep model as energy burn).
+  // No voice data → freeze last frame (do not fade/clear).
+  if (!Array.isArray(phases) || !phases.length) {
+    return;
+  }
+
   const keep = Math.max(0, Math.min(0.995, trail * 0.97 + ghost * 0.02));
   const fade = 1 - keep;
   context.save();
@@ -1022,20 +1032,9 @@ function drawNodeGraphHypersawBurnItem(renderer, item, pixelRatio) {
     context.globalAlpha = fade;
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.globalAlpha = 1;
-  } else if (!Array.isArray(phases) || !phases.length) {
-    context.fillStyle = bgHex;
-    context.fillRect(0, 0, canvas.width, canvas.height);
   }
 
-  if (!Array.isArray(phases) || !phases.length) {
-    context.restore();
-    return;
-  }
-
-  // Crisp stems: fillRect on integer pixel columns only (no sub-pixel / AA).
-  // Phase picks a discrete start column; thickness stays a fixed whole-pixel
-  // width across phase changes (a 2px stem stays exactly 2px — no fringing).
-  context.imageSmoothingEnabled = false;
+  context.imageSmoothingEnabled = true;
   context.globalCompositeOperation = "lighter";
 
   const patchNode = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
@@ -1044,49 +1043,50 @@ function drawNodeGraphHypersawBurnItem(renderer, item, pixelRatio) {
     : (typeof normalizeNodeGraphHypersawBurnSettings === "function"
       ? normalizeNodeGraphHypersawBurnSettings(patchNode?.traceDisplaySettings)
       : { lineThickness: 0.01 });
-  // 0…1 of face width (1 = full screen). Round to nearest whole-pixel thickness.
-  const thickness01 = clampNodeSliderValue(Number(faceSettings?.lineThickness) || 0, 0, 1);
-  const thicknessPx = thickness01 <= 0
-    ? 0
-    : Math.max(1, Math.min(canvas.width, Math.round(thickness01 * canvas.width)));
-  // Discrete slots: phase ∈ [0,1] → start column in [0, width - thickness].
-  const maxStart = Math.max(0, canvas.width - thicknessPx);
+  // 0…1 of face width — continuous, not snapped to whole pixels.
+  const thickness01 = clampNodeSliderValue(nodeGraphFiniteNumber(faceSettings?.lineThickness), 0, 1);
+  const widthPx = canvas.width;
+  const heightPx = canvas.height;
+  const thicknessPx = thickness01 * widthPx;
 
   const count = phases.length;
   for (let i = 0; i < count; i += 1) {
     const p = Number(phases[i]);
     if (!Number.isFinite(p)) continue;
     const phase01 = clampNodeSliderValue(p, 0, 1);
-    // floor((maxStart+1) * phase) then clamp — uniform bins, always integer x0.
-    const x0 = maxStart <= 0
-      ? 0
-      : Math.min(maxStart, Math.floor(phase01 * (maxStart + 1)));
+    const w = thicknessPx;
+    if (!(w > 0)) continue;
+    // Free position: phase maps across the face; stem centered on that x.
+    const xCenter = phase01 * widthPx;
+    const x0 = xCenter - w * 0.5;
     const pan = Array.isArray(pans) && i < pans.length ? Number(pans[i]) : 0;
     const ampRaw = Array.isArray(amps) && i < amps.length ? Number(amps[i]) : 1;
-    // Amplitude → alpha 1:1 (full scale = opaque).
     const alpha = clampNodeSliderValue(Math.abs(Number.isFinite(ampRaw) ? ampRaw : 0), 0, 1);
-    if (!(alpha > 0) || !(thicknessPx > 0)) continue;
-    let r = 0;
-    let g = 0;
-    let b = 0;
+    if (!(alpha > 0)) continue;
+    // Additive off-red / off-blue (whitening in the other channels) so
+    // left+right / center combine toward white instead of pure magenta.
+    const leftRgba = `rgba(255,130,110,${alpha})`;
+    const rightRgba = `rgba(110,130,255,${alpha})`;
     if (pan < -0.25) {
-      r = 255; // left
+      context.fillStyle = leftRgba;
+      context.fillRect(x0, 0, w, heightPx);
     } else if (pan > 0.25) {
-      b = 255; // right
+      context.fillStyle = rightRgba;
+      context.fillRect(x0, 0, w, heightPx);
     } else {
-      g = 255; // center
+      context.fillStyle = leftRgba;
+      context.fillRect(x0, 0, w, heightPx);
+      context.fillStyle = rightRgba;
+      context.fillRect(x0, 0, w, heightPx);
     }
-    context.fillStyle = `rgba(${r},${g},${b},${alpha})`;
-    // Always exactly thicknessPx columns (never shrink mid-travel).
-    context.fillRect(x0 | 0, 0, thicknessPx | 0, canvas.height);
   }
   context.restore();
 }
 
 
 function nodeGraphScope2dBurnCanvasSquare(canvas) {
-  const width = Math.max(1, Number(canvas?.width) || 1);
-  const height = Math.max(1, Number(canvas?.height) || 1);
+  const width = Math.max(1, nodeGraphFiniteNumber(canvas?.width, 1));
+  const height = Math.max(1, nodeGraphFiniteNumber(canvas?.height, 1));
   const size = Math.max(1, Math.min(width, height));
   return {
     height: size,
@@ -1113,7 +1113,7 @@ function drawNodeGraphScope2dTraceLayer(context, points, dotSpace, settings) {
     const count = TraceWoscope.draw(context, points, {
       size: settings.dot1Size,
       color: inkRgb || settings.dot1Color,
-      faceMinSide: Math.max(1, Number(dotSpace) || 1),
+      faceMinSide: Math.max(1, nodeGraphFiniteNumber(dotSpace, 1)),
     });
     if (count > 0) {
       recordNodeGraphModuleScopeRenderMetrics(count, count);
@@ -1129,7 +1129,7 @@ function drawNodeGraphScope2dTraceLayer(context, points, dotSpace, settings) {
       blur: 0,
       brightness: 1,
       color: inkHex,
-      faceMinSide: Math.max(1, Number(dotSpace) || 1),
+      faceMinSide: Math.max(1, nodeGraphFiniteNumber(dotSpace, 1)),
       composite: "lighter",
     });
     if (count > 0) {
@@ -1147,7 +1147,7 @@ function drawNodeGraphScope2dTraceLayer(context, points, dotSpace, settings) {
     Math.round(rgb01[1] * 255),
     Math.round(rgb01[2] * 255),
   ];
-  const side = Math.max(1, Number(dotSpace) || 1);
+  const side = Math.max(1, nodeGraphFiniteNumber(dotSpace, 1));
   const radius = typeof nodeGraphScopeSize01ToRadiusPx === "function"
     ? nodeGraphScopeSize01ToRadiusPx(side, size)
     : Math.max(0.5, side * size * 0.5);
@@ -1382,8 +1382,8 @@ function drawNodeGraphScope2dTraceItem(renderer, item, pixelRatio) {
     const count = Math.min(buffer?.x?.length || 0, buffer?.y?.length || 0);
     const sampleRate = typeof nodeGraphScopeSampleRate === "function"
       ? nodeGraphScopeSampleRate(buffer)
-      : (Number(buffer?.nodeGraphScopeSampleRate) || 44100);
-    const abs = Math.max(0, Math.floor(Number(buffer?.nodeGraphScopeTotalSampleCount) || 0));
+      : (nodeGraphFiniteNumber(buffer?.nodeGraphScopeSampleRate, 44100));
+    const abs = Math.max(0, Math.floor(nodeGraphFiniteNumber(buffer?.nodeGraphScopeTotalSampleCount)));
     const prevAbs = Number(canvas._s2dAbs || 0);
     let newCount;
     if (prevAbs > 0 && abs > prevAbs) {

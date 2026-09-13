@@ -78,12 +78,8 @@ function matrixDisplayParamsFromNode(node) {
     stampY: stamp,
     bufColumns,
     bufRows,
-    // trail: linear residual blend (0 = pure Ghost path; 1 ≈ freeze). Legacy decay inverted.
-    trail: (() => {
-      if (p.trail != null) return matrixDisplayClamp01(p.trail, 0.78);
-      if (p.decay != null) return matrixDisplayClamp01(1 - Number(p.decay), 0.78);
-      return 0.78;
-    })(),
+    // trail: linear residual blend (0 = pure Ghost path; 1 ≈ freeze).
+    trail: matrixDisplayClamp01(p.trail, 0.78),
     // ghost: extreme analog (super-exp) hang
     ghost: matrixDisplayClamp01(p.ghost ?? 0.35, 0.35),
     // burn: sticky residual floor (0 = off). New face param (not legacy ghost alias).
@@ -94,14 +90,14 @@ function matrixDisplayParamsFromNode(node) {
       return Number.isFinite(b) ? Math.max(0, b) : 1;
     })(),
     // blackFloor: ages at or below this draw as blank (asciiscope blackFloor)
-    blackFloor: Math.max(0, Math.min(8, Math.round(Number(p.blackFloor) || 0))),
-    freeze: Math.round(Number(p.freeze) || 0) >= 1,
+    blackFloor: Math.max(0, Math.min(8, Math.round(nodeGraphFiniteNumber(p.blackFloor)))),
+    freeze: Math.round(nodeGraphFiniteNumber(p.freeze)) >= 1,
   };
 }
 
 function matrixDisplayGlyphForAge(ramp, age, maxAge) {
   const r = ramp && ramp.length ? ramp : MATRIX_DISPLAY_DEFAULT_GLYPH_RAMP;
-  const a = Math.max(0, Math.min(maxAge, Math.round(Number(age) || 0)));
+  const a = Math.max(0, Math.min(maxAge, Math.round(nodeGraphFiniteNumber(age))));
   if (a <= 0) return " ";
   const scaled = Math.max(0, Math.min(r.length - 1, Math.round((a * (r.length - 1)) / maxAge)));
   return r.charAt(scaled) || " ";

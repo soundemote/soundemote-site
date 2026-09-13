@@ -222,8 +222,7 @@ function nodeGraphNodeOrderIndexes(nodes) {
 }
 
 function nodeGraphCompareSchedulingEdges(a, b) {
-  return Number(a.isBackward) - Number(b.isBackward) ||
-    a.sourceOrder - b.sourceOrder ||
+  return Number(a.isBackward) - nodeGraphFiniteNumber(b.isBackward, a.sourceOrder) - b.sourceOrder ||
     a.destinationOrder - b.destinationOrder ||
     a.kindOrder - b.kindOrder ||
     a.index - b.index;
@@ -421,7 +420,7 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
   const outputNode = "output";
   const reachableNodes = new Set();
   const bypassedNodes = new Set(graph.bypassedNodes || []);
-  const passthroughTypes = new Set(["asciiscope", "matrixDisplay", "matrixWaterfall", "activeFilter", "allpass", "badvalMonitor", "bandpass", "crossover2", "crossover3", "crossover4", "crossover5", "crossover6", "modeResonator", "combResonator", "waveguide", "phaser", "flanger", "chorus", "bode", "phaseDisperse", "stftBlur", "bessel", "bias", "u2b", "b2u", "inv", "butterworth", "chaoticPhaseLockingFilter", "chebyshev", "cookbookFilter", "elliptic", "eqFilter", "flowerChildFilter", "formantFilter", "besselThomson", "massSpringDamper", "gain", "mix4", "mixStereo4", "mixStereo2", "mixStereo", "humanFilter", "inertialFilter", "ladderFilter", "linkwitzRiley", "papoulisFilter", "passiveFilter", "pll", "resonatorFilter", "reverbEffect", "sampleDelay", "sampleHold", "slewLimiter", "softClipper", "clipperLimiter", "speakerProtection", "speakerProtector2", "spectrogram", "speedColorInertia", "superloveFilter", "tb303Filter", "tiltFilter", "wallDelay", "yellowjacketFilter", "midSideEncode", "quadrature", "hilbert", "lookaheadLimiter", "limiter", "metamoduleIn", "metamoduleOut"]);
+  const passthroughTypes = new Set(["asciiscope", "matrixDisplay", "matrixWaterfall", "activeFilter", "allpass", "badvalMonitor", "bandpass", "crossover2", "crossover3", "crossover4", "crossover5", "crossover6", "modeResonator", "combResonator", "waveguide", "phaser", "flanger", "chorus", "bode", "phaseDisperse", "stftBlur", "bessel", "bias", "u2b", "b2u", "inv", "butterworth", "chaoticPhaseLockingFilter", "chebyshev", "cookbookFilter", "elliptic", "eqFilter", "flowerChildFilter", "formantFilter", "besselThomson", "massSpringDamper", "gain", "mix4", "mixStereo4", "mixStereo2", "mixStereo", "humanFilter", "inertialFilter", "ladderFilter", "linkwitzRiley", "papoulisFilter", "passiveFilter", "pll", "resonatorFilter", "reverbEffect", "sampleDelay", "sampleHold", "slewLimiter", "softClipper", "clipperLimiter", "speakerProtection", "speakerProtector2", "spectrogram", "speedColorInertia", "superloveFilter", "tb303Filter", "tiltFilter", "wallDelay", "yellowjacketFilter", "midSideEncode", "quadrature", "hilbert", "lookaheadLimiter", "limiter", "metamoduleIn", "metamoduleOut", "voiceFrequency", "voiceGate", "voiceTrigger"]);
 
   function markReachable(nodeId) {
     if (reachableNodes.has(nodeId) || !graph.nodeMap.has(nodeId)) {
@@ -469,7 +468,7 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
     if (
       !bypassedNodes.has(node.id)
       && typeof nodeGraphModuleDisplayRendererForNode === "function"
-      && nodeGraphModuleDisplayRendererForNode(node) !== "legacy"
+      && nodeGraphModuleDisplayRendererForNode(node) !== "layoutOwned"
       && nodeGraphPatchNodeDisplayVisibleInPlan(node, { bypassedNodes })
     ) {
       markReachable(node.id);
@@ -484,6 +483,26 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
       );
       if (hasMonitorInput) {
         markReachable(node.id);
+      }
+    }
+  }
+  // Metamodule voice bag: if any owned child is reachable (e.g. Hypersaw→Out),
+  // keep the Meta shell + every owned sibling reachable. Voice Gate→ADSR must
+  // stay in the native graph even when ADSR Out isn't wired to Meta Out yet.
+  {
+    const metasToExpand = new Set();
+    for (const nodeId of [...reachableNodes]) {
+      const n = graph.nodeMap.get(nodeId);
+      const owner = String(n?.ownerMetamoduleId || "").trim();
+      if (owner) metasToExpand.add(owner);
+      if (String(n?.type || "") === "metamodule") metasToExpand.add(String(nodeId));
+    }
+    for (const metaId of metasToExpand) {
+      markReachable(metaId);
+      for (const node of graph.nodes) {
+        if (String(node?.ownerMetamoduleId || "") === metaId) {
+          markReachable(node.id);
+        }
       }
     }
   }
@@ -551,11 +570,6 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
         issues.push(`missing ${nodeGraphNodeDisplayName(nodeId)} trigger`);
       }
     } else if (type === "pulseExplosion") {
-      const triggerCount = (graph.inputConnections.get(nodeGraphInputKey(nodeId, "Trigger")) || []).length;
-      if (!triggerCount && nodeGraphNodeSignalOutputRequired(graph, nodeId)) {
-        issues.push(`missing ${nodeGraphNodeDisplayName(nodeId)} trigger`);
-      }
-    } else if (type === "stepSequencer") {
       const triggerCount = (graph.inputConnections.get(nodeGraphInputKey(nodeId, "Trigger")) || []).length;
       if (!triggerCount && nodeGraphNodeSignalOutputRequired(graph, nodeId)) {
         issues.push(`missing ${nodeGraphNodeDisplayName(nodeId)} trigger`);
@@ -774,7 +788,7 @@ function nodeGraphCompiledScopeCaptureNodeIds(graph, reachableNodes) {
           && nodeGraphPatchNodeDisplayVisibleInPlan(node, { bypassedNodes })
         ) ||
         (
-          nodeGraphModuleDisplayRendererForNode(node) !== "legacy" &&
+          nodeGraphModuleDisplayRendererForNode(node) !== "layoutOwned" &&
           nodeGraphPatchNodeDisplayVisibleInPlan(node, { bypassedNodes })
         )
       )
@@ -841,8 +855,8 @@ function nodeGraphScopeCaptureWriteHz(node) {
 }
 
 function nodeGraphVisualSinkBufferSampleLimit(node) {
-  const seconds = Math.max(1, Number(nodeGraphVisualSinkHistorySeconds) || 1);
-  const fallback = Math.max(1, Math.round(Number(nodeGraphBufferedInputSampleLimit) || 262144));
+  const seconds = Math.max(1, nodeGraphFiniteNumber(nodeGraphVisualSinkHistorySeconds, 1));
+  const fallback = Math.max(1, Math.round(nodeGraphFiniteNumber(nodeGraphBufferedInputSampleLimit, 262144)));
   if (nodeGraphVisualDisplayNeedsWaveformRing(node)) {
     // 1 s at up to 96 kHz. Worklet writes engine samples; draw buckets to px.
     return Math.min(fallback, Math.max(4096, Math.ceil(96000 * seconds)));

@@ -6,8 +6,8 @@ function nodeGraphSliderForParameter(node, key) {
 
 function nodeGraphNormalizedParameterSignalBounds(signal, metadata = {}) {
   return metadata.wraparound
-    ? wrapNodeSliderValue(Number(signal) || 0, 0, 1)
-    : clampNodeSliderValue(Number(signal) || 0, 0, 1);
+    ? wrapNodeSliderValue(nodeGraphFiniteNumber(signal), 0, 1)
+    : clampNodeSliderValue(nodeGraphFiniteNumber(signal), 0, 1);
 }
 
 /** Last posted scope sample for `nodeId:port` only — never fall back to Out. */
@@ -90,7 +90,7 @@ function nodeGraphGhostSliderControllerOutSample(nodeId, port) {
   return rangeMin + (rangeMax - rangeMin) * t;
 }
 
-function nodeGraphGhostSliderModSample(sourceNode, sourcePort) {
+function nodeGraphGhostSliderModSample(sourceNode, sourcePort, depth = 0) {
   const port = String(sourcePort || "").trim();
   const scoped = nodeGraphGhostSliderScopeSample(sourceNode, port);
   if (scoped != null) {
@@ -99,6 +99,34 @@ function nodeGraphGhostSliderModSample(sourceNode, sourcePort) {
   const nodeId = String(sourceNode || "").trim();
   if (!nodeId || !port) {
     return null;
+  }
+  // 1D Phosphor Thru (and other monitor thrus): no scope on Thru — sample In's upstream.
+  if (depth < 6 && (port === "Thru" || port === "←")) {
+    const sourceType = typeof nodeGraphPatchNodeType === "function"
+      ? nodeGraphPatchNodeType(nodeId)
+      : "";
+    let inPort = "In";
+    if (sourceType === "customDisplay") inPort = "In1";
+    if (typeof nodeGraphModuleBypassPortMap === "function" && sourceType) {
+      const map = nodeGraphModuleBypassPortMap(sourceType) || [];
+      for (let i = 0; i < map.length; i += 1) {
+        if (String(map[i]?.out || "") === port && map[i]?.in) {
+          inPort = String(map[i].in);
+          break;
+        }
+      }
+    }
+    const conns = nodeGraphMvp?.patch?.connections || [];
+    for (let i = 0; i < conns.length; i += 1) {
+      const c = conns[i];
+      if (String(c?.destinationNode || "") !== nodeId) continue;
+      if (String(c?.destinationPort || "") !== inPort) continue;
+      const up = nodeGraphGhostSliderModSample(c.sourceNode, c.sourcePort, depth + 1);
+      if (up != null && Number.isFinite(Number(up))) return up;
+    }
+    // Face may still have In scope even with no Thru buffer.
+    const inScoped = nodeGraphGhostSliderScopeSample(nodeId, inPort);
+    if (inScoped != null) return inScoped;
   }
   const fromController = nodeGraphGhostSliderControllerOutSample(nodeId, port);
   if (fromController != null && Number.isFinite(fromController)) {
@@ -138,6 +166,36 @@ function nodeGraphGhostSliderModSample(sourceNode, sourcePort) {
   return nodeGraphParameterValueToNormalizedSignal(domain, sourceMeta);
 }
 
+function nodeGraphParameterGhostModulationMatches(modulation, patchNode, key) {
+  const destNode = String(modulation?.destinationNode || "");
+  const destParam = String(modulation?.destinationParam || "");
+  const id = String(patchNode?.id || "");
+  const param = String(key || "");
+  if (!destNode || !destParam || !id || !param) {
+    return false;
+  }
+  if (destNode === id && destParam === param) {
+    return true;
+  }
+  // Root face: cables into an owned child still ghost on the exposed mx_* row.
+  if (
+    param.startsWith("mx_")
+    && typeof nodeGraphMetamoduleResolveExposeTarget === "function"
+    && typeof nodeGraphIsContainerShellType === "function"
+    && nodeGraphIsContainerShellType(patchNode?.type)
+  ) {
+    const resolved = nodeGraphMetamoduleResolveExposeTarget(patchNode, param);
+    if (
+      resolved
+      && destNode === String(resolved.childId || "")
+      && destParam === String(resolved.paramKey || "")
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function nodeGraphParameterGhostSignal(node, key) {
   const patchNode = nodeGraphPatchNode(node);
   if (!patchNode) {
@@ -150,7 +208,7 @@ function nodeGraphParameterGhostSignal(node, key) {
     : nodeGraphReadPatchParameterValue(patchNode, key);
   const sources = [];
   for (const modulation of nodeGraphMvp.patch.modulations || []) {
-    if (modulation.destinationNode !== node || modulation.destinationParam !== key) {
+    if (!nodeGraphParameterGhostModulationMatches(modulation, patchNode, key)) {
       continue;
     }
     const sample = nodeGraphGhostSliderModSample(
@@ -170,7 +228,7 @@ function nodeGraphParameterGhostSignal(node, key) {
   if (!sources.length) {
     return null;
   }
-  let effective = Number(baseDomain) || 0;
+  let effective = nodeGraphFiniteNumber(baseDomain);
   if (typeof nodeGraphParamFoldModSources === "function") {
     effective = nodeGraphParamFoldModSources(effective, sources, metadata);
   } else if (typeof nodeGraphApplyParameterModulation === "function") {

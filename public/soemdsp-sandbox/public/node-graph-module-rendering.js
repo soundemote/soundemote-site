@@ -221,24 +221,13 @@ function openNodeModuleDisplaySettings(event) {
   event.preventDefault();
   event.stopPropagation();
   const nodeId = event.currentTarget?.dataset?.node;
-  const patchNode = nodeId ? nodeGraphPatchNode(nodeId) : null;
-  const type = String(patchNode?.type || "");
-  // Hypersaw family phase-stem faces have no phosphor Display Settings —
-  // TV button / right-click both open Module Settings instead.
-  if (type === "hypersaw" || type === "hypersaw2" || type === "robinSupersaw") {
-    const nodeEl = event.currentTarget?.closest?.(".dsp-node") || null;
-    if (typeof openNodeGraphModuleSettingsFromContextEvent === "function"
-      && openNodeGraphModuleSettingsFromContextEvent(event, nodeEl)) {
-      return;
-    }
-  }
   if (nodeId && typeof openNodeKeypadDisplaySettings === "function") {
     const nodeEl = event.currentTarget?.closest?.(".dsp-node");
     if (openNodeKeypadDisplaySettings(event, nodeEl)) {
       return;
     }
   }
-  // Shared display inspector (Music Player waveform included).
+  // Shared Display Settings for every module (blank + Show in canvas if no face schema).
   if (nodeId && typeof openNodeGraphTraceDisplaySettings === "function" && openNodeGraphTraceDisplaySettings(nodeId, event)) {
     return;
   }
@@ -457,6 +446,7 @@ function nodeGraphModuleLayoutClassNames(type, definition, layout) {
     image: "image-node-layout",
     keyboardController: "keyboard-controller-layout",
     keyboard: "keyboard-layout",
+    gridKeyboard: "grid-keyboard-layout",
     pitchQuantizer: "pitch-quantizer-layout",
     chordPad: "chord-pad-layout",
     asciiscope: "asciiscope-layout",
@@ -590,8 +580,8 @@ function createNodeGraphLayoutAIoSection(node, type, inputPorts, outputPorts, op
   const outputColumn = createNodeGraphIoColumn(node, type, outputPorts, "output");
   // Drive section track widths from each column's longest label (LayoutA
   // used to hard-cap sides at 2gu and clip Frequency / Fidelity / etc.).
-  const inCh = Number(inputColumn?.dataset?.maxLabelChars) || 0;
-  const outCh = Number(outputColumn?.dataset?.maxLabelChars) || 0;
+  const inCh = nodeGraphFiniteNumber(inputColumn?.dataset?.maxLabelChars);
+  const outCh = nodeGraphFiniteNumber(outputColumn?.dataset?.maxLabelChars);
   if (inCh > 0) {
     ioSection.style.setProperty("--node-io-input-label-ch", String(inCh));
   }
@@ -969,15 +959,19 @@ function createNodeGraphModuleElement(type, node) {
   } else if (
     definition.layout === "keyboardController"
     || definition.layout === "keyboard"
+    || definition.layout === "gridKeyboard"
+    || definition.layout === "sequencer"
     || definition.layout === "macroControls"
     || definition.layout === "pitchModWheel"
   ) {
-    // Controller faces: embed the same widgets as the K Controllers dock.
-    // State is global on nodeGraphMvp; dock + modules mirror each other.
     if (definition.layout === "keyboardController") {
       article.append(createNodeGraphMidiModuleBody(node));
     } else if (definition.layout === "keyboard") {
       article.append(createNodeGraphKeyboardControllerBody(node));
+    } else if (definition.layout === "gridKeyboard") {
+      article.append(createNodeGraphGridKeyboardBody(node));
+    } else if (definition.layout === "sequencer") {
+      article.append(createNodeGraphSequencerBody(node));
     } else if (definition.layout === "macroControls") {
       article.append(createNodeGraphMacroControlsBody(node));
     } else {

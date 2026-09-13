@@ -393,7 +393,7 @@ const nodeGraphLiveNativeWasmFetchStats = {
 
 function nodeGraphLiveRecordNativeWasmFetch(wasmUrl, byteLength) {
   const url = String(wasmUrl || "");
-  const n = Number(byteLength) || 0;
+  const n = nodeGraphFiniteNumber(byteLength);
   if (!url || n <= 0) {
     return;
   }
@@ -526,7 +526,7 @@ async function sendNodeGraphLiveNativeModule(liveNode, entry) {
 // Chrome caps wasm memories per process (~100); many standalone instances
 // hit that cap. Slim is for small used-sets when per-module files exist;
 // huge patches / site deploys should use combined.
-const nodeGraphLiveCombinedNativeModuleUrl = "native_modules/combined/soemdsp_combined.wasm?v=slew-up-down-shape-1";
+const nodeGraphLiveCombinedNativeModuleUrl = "native_modules/combined/soemdsp_combined.wasm?v=ear-cpp-1";
 
 /** @type {null|"slim"|"combined"} */
 let nodeGraphLiveNativeWasmLoadModeResolved = null;
@@ -1324,7 +1324,15 @@ function setNodeGraphLiveSpeed(speed, options = {}) {
   if (clamped > 0) {
     nodeGraphMvp.live.lastPlaySpeed = clamped;
   }
+  const wasStopped = !(Number(nodeGraphMvp.live.speedMultiplier) > 0);
   nodeGraphMvp.live.speedMultiplier = clamped;
+  if (options?.restartSequencer === true || (wasStopped && clamped > 0)) {
+    nodeGraphMvp.live._restartSequencerOnce = true;
+    nodeGraphMvp._seqEngineSec = 0;
+    nodeGraphMvp._seqLastMs = (typeof performance !== "undefined" && performance.now)
+      ? performance.now()
+      : Date.now();
+  }
   sendNodeGraphLiveSpeed();
   if (typeof applyNodeGraphLiveOutputGain === "function") {
     applyNodeGraphLiveOutputGain();
@@ -1431,7 +1439,9 @@ function sendNodeGraphLiveSpeed() {
     nodeGraphMvp.live.node.port.postMessage({
       type: "setSpeed",
       speed: nodeGraphMvp.live.speedMultiplier,
+      restartSequencer: Boolean(nodeGraphMvp.live._restartSequencerOnce),
     });
+    nodeGraphMvp.live._restartSequencerOnce = false;
   } catch (_error) {
     // Worklet may be disconnected.
   }
@@ -1446,7 +1456,7 @@ function sendNodeGraphLiveSpeedLimit() {
       type: "setSpeedLimit",
       speedLimit: typeof nodeGraphLiveSpeedLimitHz === "function"
         ? nodeGraphLiveSpeedLimitHz()
-        : (Number(nodeGraphMvp.live.speedLimit) || 20000),
+        : (nodeGraphFiniteNumber(nodeGraphMvp.live.speedLimit, 20000)),
     });
   } catch (_error) {
     // Worklet may be disconnected.
@@ -1454,141 +1464,14 @@ function sendNodeGraphLiveSpeedLimit() {
 }
 
 function renderNodeGraphLiveScriptBlock(event) {
-  const output = event.outputBuffer;
-  const frames = output.length;
-  const runtime = nodeGraphMvp.live.runtime;
-  if (!runtime) {
-    for (let channel = 0; channel < output.numberOfChannels; channel += 1) {
-      output.getChannelData(channel).fill(0);
-    }
-    return;
-  }
-  const sampleRate = event.playbackTime !== undefined
-    ? output.sampleRate
-    : nodeGraphMvp.live.context?.sampleRate || nodeGraphMvp.sampleRate;
-  runtime.externalInput = {
-    left: event.inputBuffer?.numberOfChannels > 0
-      ? event.inputBuffer.getChannelData(0)
-      : null,
-    right: event.inputBuffer?.numberOfChannels > 1
-      ? event.inputBuffer.getChannelData(1)
-      : null,
-  };
-  const blockStartFrame = Number.isFinite(runtime.absoluteFrameCursor)
-    ? runtime.absoluteFrameCursor
-    : 0;
-  let lastProtect = { engaged: false, gain: 1 };
-  for (let frame = 0; frame < frames; frame += 1) {
-    runtime.absoluteFrame = blockStartFrame + frame;
-    const inputLeft = Number(runtime.externalInput.left?.[frame]) || 0;
-    const inputRight = Number(runtime.externalInput.right?.[frame]) || inputLeft;
-    nodeGraphMvp.live.inputMeterPeak = Math.max(
-      nodeGraphMvp.live.inputMeterPeak,
-      Math.abs(inputLeft),
-      Math.abs(inputRight),
-    );
-    nodeGraphMvp.live.inputMeterSquareSum += (inputLeft * inputLeft + inputRight * inputRight) * 0.5;
-    nodeGraphMvp.live.inputMeterSamples += 1;
-    const frameOutput = evaluateNodeGraphPlanFrame(runtime, sampleRate, frame, frames);
-    captureNodeGraphLiveModuleScopeFrame(runtime, sampleRate);
-    if (nodeGraphOutputSampleClipped(frameOutput.left)) {
-      runtime.meterClipCount += 1;
-    }
-    if (nodeGraphOutputSampleClipped(frameOutput.right)) {
-      runtime.meterClipCount += 1;
-    }
-    if (
-      nodeGraphOutputSampleTripsEarProtection(frameOutput.left) ||
-      nodeGraphOutputSampleTripsEarProtection(frameOutput.right)
-    ) {
-      runtime.speakerProtectionPeak = Math.max(
-        Number(runtime.speakerProtectionPeak) || 0,
-        Number.isFinite(Number(frameOutput.left)) ? Math.abs(Number(frameOutput.left)) : Infinity,
-        Number.isFinite(Number(frameOutput.right)) ? Math.abs(Number(frameOutput.right)) : Infinity,
-      );
-    }
-    const protectedFrame = runtime.earProtector?.protect(frameOutput.left, frameOutput.right) || {
-      left: frameOutput.left,
-      muted: false,
-      engaged: false,
-      gain: 1,
-      right: frameOutput.right,
-    };
-    if (protectedFrame.engaged || protectedFrame.muted) {
-      runtime.meterProtectionMuteCount = (runtime.meterProtectionMuteCount || 0) + 1;
-    }
-    lastProtect = protectedFrame;
-    const left = nodeGraphClampOutputSample(protectedFrame.left);
-    const right = nodeGraphClampOutputSample(protectedFrame.right);
-    const value = Math.max(Math.abs(left), Math.abs(right));
-    runtime.meterPeak = Math.max(runtime.meterPeak, Math.abs(value));
-    runtime.meterSquareSum += (left * left + right * right) * 0.5;
-    runtime.meterSamples += 1;
-    for (let channel = 0; channel < output.numberOfChannels; channel += 1) {
-      output.getChannelData(channel)[frame] = channel === 0 ? left : right;
-    }
-  }
-  runtime.absoluteFrameCursor = blockStartFrame + frames;
-  if (typeof nodeGraphSetEarProtectionEngaged === "function") {
-    nodeGraphSetEarProtectionEngaged(Boolean(lastProtect.engaged), {
-      source: "live",
-      protectionGain: lastProtect.gain,
-    });
-  }
-  runtime.externalInput = null;
-  nodeGraphSetVisualControls(runtime.visualControls || { screenShake: 0 });
-  if (nodeGraphMvp.live.lastEvidence) {
-    nodeGraphMvp.live.lastEvidence.visualControls = {
-      ...(nodeGraphMvp.live.lastEvidence.visualControls || {}),
-      blue: Number(runtime.visualControls?.blue) || 0,
-      chromaAlpha: Number(runtime.visualControls?.chromaAlpha) || 0,
-      chromaDrift: Number(runtime.visualControls?.chromaDrift) || 0,
-      chromaHue: Number(runtime.visualControls?.chromaHue) || 0,
-      chromaLightness: Number(runtime.visualControls?.chromaLightness) || 0,
-      chromaSaturation: Number(runtime.visualControls?.chromaSaturation) || 0,
-      chromaSpread: Number(runtime.visualControls?.chromaSpread) || 0,
-      green: Number(runtime.visualControls?.green) || 0,
-      red: Number(runtime.visualControls?.red) || 0,
-      scopePaused: Number(runtime.visualControls?.scopePaused) || 0,
-      scopeTracesOff: Number(runtime.visualControls?.scopeTracesOff) || 0,
-      screenDim: Number(runtime.visualControls?.screenDim) || 0,
-      screenShake: Number(runtime.visualControls?.screenShake) || 0,
-      visualBloom: Number(runtime.visualControls?.visualBloom) || 0,
-      visualBrightness: Number(runtime.visualControls?.visualBrightness) || 0,
-      visualGlow: Number(runtime.visualControls?.visualGlow) || 0,
-      x: Number(runtime.visualControls?.x) || 0,
-      y: Number(runtime.visualControls?.y) || 0,
-    };
-  }
-  finishNodeGraphParameterSmoothing(runtime.smoothers, runtime);
-  runtime.meterCounter += frames;
-  if (runtime.meterCounter >= sampleRate / 10) {
-    setNodeGraphLiveInputMeter(
-      nodeGraphMvp.live.inputMeterPeak,
-      Math.sqrt(nodeGraphMvp.live.inputMeterSquareSum / Math.max(1, nodeGraphMvp.live.inputMeterSamples)),
-    );
-    setNodeGraphLiveMeter(
-      runtime.meterPeak,
-      Math.sqrt(runtime.meterSquareSum / Math.max(1, runtime.meterSamples)),
-      runtime.meterClipCount,
-      runtime.meterProtectionMuteCount || 0,
-      runtime.badNumberCount || 0,
-      0,
-      0,
-      0,
-    );
-    runtime.meterCounter = 0;
-    nodeGraphMvp.live.inputMeterPeak = 0;
-    nodeGraphMvp.live.inputMeterSamples = 0;
-    nodeGraphMvp.live.inputMeterSquareSum = 0;
-    runtime.meterClipCount = 0;
-    runtime.meterProtectionMuteCount = 0;
-    runtime.badNumberCount = 0;
-    runtime.meterPeak = 0;
-    runtime.meterSamples = 0;
-    runtime.meterSquareSum = 0;
+  // APP_POLICY: JS per-sample audio path retired (native worklet only).
+  const output = event?.outputBuffer;
+  if (!output) return;
+  for (let channel = 0; channel < output.numberOfChannels; channel += 1) {
+    output.getChannelData(channel).fill(0);
   }
 }
+
 
 function nodeGraphStopGpuAdditiveProducer() {
   nodeGraphClearGpuAdditivePrime();
@@ -1621,7 +1504,7 @@ function nodeGraphGpuAdditiveNodeVersion(node, sampleRate) {
   ];
   return [
     node?.id || "",
-    Math.round(Number(sampleRate) || 0),
+    Math.round(nodeGraphFiniteNumber(sampleRate)),
     ...keys.map((key) => `${key}:${nodeGraphGpuAdditiveNodeParam(node, key, "")}`),
   ].join("|");
 }
@@ -1759,7 +1642,7 @@ function nodeGraphStartGpuAdditiveProducer(plan, audio) {
   if (!nodeGraphMvp.live.usesWorklet || !nodeGraphMvp.live.node?.port) {
     return;
   }
-  const sampleRate = Math.max(1, Number(audio?.clampedEngineSampleRate) || nodeGraphMvp.sampleRate || 44100);
+  const sampleRate = Math.max(1, nodeGraphFiniteNumber(audio?.clampedEngineSampleRate, nodeGraphFiniteNumber(nodeGraphMvp.sampleRate, 44100)));
   const nodes = (plan.nodes || [])
     .filter((node) => node?.type === "gpuAdditiveOsc" && nodeGraphGpuAdditiveChunkSafe(plan, node));
   if (!nodes.length || typeof nodeGraphGpuAdditiveCpuRender !== "function") {
@@ -1825,7 +1708,7 @@ function nodeGraphStartGpuAdditiveProducer(plan, audio) {
       return;
     }
     state.inFlightSlots.delete(slot);
-    state.pendingChunks = Math.max(0, (Number(state.pendingChunks) || 0) - 1);
+    state.pendingChunks = Math.max(0, (nodeGraphFiniteNumber(state.pendingChunks)) - 1);
   };
 
   const produce = () => {
@@ -1842,7 +1725,7 @@ function nodeGraphStartGpuAdditiveProducer(plan, audio) {
       if (state.version !== version) {
         state.version = version;
         state.completedChunks.clear();
-        state.generation = (Number(state.generation) || 0) + 1;
+        state.generation = (nodeGraphFiniteNumber(state.generation)) + 1;
         state.inFlightSlots.clear();
         state.nextChunkSequence = 0;
         state.pendingChunks = 0;
@@ -1851,7 +1734,7 @@ function nodeGraphStartGpuAdditiveProducer(plan, audio) {
         state.sendChunkSequence = 0;
         state.targetChunks = defaultTargetChunks;
       }
-      const targetChunks = Math.max(1, Math.min(maxTargetChunks, Number(state.targetChunks) || defaultTargetChunks));
+      const targetChunks = Math.max(1, Math.min(maxTargetChunks, nodeGraphFiniteNumber(state.targetChunks, defaultTargetChunks)));
       while (
         state.queueChunks + state.pendingChunks + state.completedChunks.size < targetChunks &&
         state.pendingChunks < nodeGraphGpuAdditiveMaxInFlightChunks
@@ -1860,7 +1743,7 @@ function nodeGraphStartGpuAdditiveProducer(plan, audio) {
         if (renderSlot < 0) {
           break;
         }
-        const renderGeneration = Number(state.generation) || 0;
+        const renderGeneration = nodeGraphFiniteNumber(state.generation);
         const renderSequence = state.nextChunkSequence;
         state.nextChunkSequence += 1;
         const renderPhase = state.phase;
@@ -1952,7 +1835,7 @@ function nodeGraphStartGpuAdditiveProducer(plan, audio) {
             nodeGraphMvp.live.node?.port &&
             nodeGraphMvp.live.sessionId > 0 &&
             producer.nodes.get(node.id) === state &&
-            state.queueChunks < Math.max(1, Math.min(maxTargetChunks, Number(state.targetChunks) || defaultTargetChunks))
+            state.queueChunks < Math.max(1, Math.min(maxTargetChunks, nodeGraphFiniteNumber(state.targetChunks, defaultTargetChunks)))
           ) {
             window.setTimeout(produce, 0);
           }
@@ -1984,33 +1867,74 @@ function queueNodeGraphLivePatchCommand(command, nodeId = "") {
   }, 0);
 }
 
+function sendNodeGraphArpOverride(nodeId, midi) {
+  if (!nodeGraphMvp?.live?.node?.port) return;
+  try {
+    nodeGraphMvp.live.node.port.postMessage({
+      type: "arpOverride",
+      nodeId: String(nodeId || ""),
+      midi: Number.isFinite(Number(midi)) ? (Number(midi) | 0) : -1,
+    });
+  } catch (_e) { /* worklet disconnected */ }
+}
+
 function handleNodeGraphLiveWorkletMessage(event) {
   const message = event.data || {};
+  if (message.type === "arpFace") {
+    if (typeof nodeGraphMvp === "object" && nodeGraphMvp) {
+      if (!nodeGraphMvp._arpFaceByNode) nodeGraphMvp._arpFaceByNode = {};
+      nodeGraphMvp._arpFaceByNode[String(message.nodeId || "")] = {
+        notes: Array.isArray(message.notes) ? message.notes : [],
+        play: Number(message.play),
+      };
+    }
+    return;
+  }
+  if (message.type === "seqPlayhead") {
+    if (typeof nodeGraphMvp === "object" && nodeGraphMvp) {
+      nodeGraphMvp._seqPlayheadTick = Math.floor(Number(message.tick) || 0);
+    }
+    return;
+  }
+  if (message.type === "chordMemorySlots") {
+    if (typeof nodeGraphMvp === "object" && nodeGraphMvp) {
+      nodeGraphMvp._chordMemorySlotBitsByNode = message.slotBitsByNode && typeof message.slotBitsByNode === "object"
+        ? message.slotBitsByNode
+        : {};
+      nodeGraphMvp._chordMemorySoundingByNode = message.soundingByNode && typeof message.soundingByNode === "object"
+        ? message.soundingByNode
+        : {};
+      if (typeof nodeGraphChordMemoryPaintKeys === "function") {
+        nodeGraphChordMemoryPaintKeys();
+      }
+    }
+    return;
+  }
   if (message.type === "meter") {
     if (message.sessionId !== nodeGraphMvp.live.sessionId || !nodeGraphMvp.live.node) {
       return;
     }
     setNodeGraphLiveInputMeter(
-      Number(message.inputPeak) || 0,
-      Number(message.inputRms) || 0,
+      nodeGraphFiniteNumber(message.inputPeak),
+      nodeGraphFiniteNumber(message.inputRms),
     );
     setNodeGraphLiveMeter(
-      Number(message.peak) || 0,
-      Number(message.rms) || 0,
-      Number(message.clipCount) || 0,
-      Number(message.protectionMuteCount) || 0,
-      Number(message.badNumberCount) || 0,
-      Number(message.overrunCount) || 0,
-      Number(message.maxBlockProcessMs) || 0,
-      Number(message.maxBlockBudgetRatio) || 0,
+      nodeGraphFiniteNumber(message.peak),
+      nodeGraphFiniteNumber(message.rms),
+      nodeGraphFiniteNumber(message.clipCount),
+      nodeGraphFiniteNumber(message.protectionMuteCount),
+      nodeGraphFiniteNumber(message.badNumberCount),
+      nodeGraphFiniteNumber(message.overrunCount),
+      nodeGraphFiniteNumber(message.maxBlockProcessMs),
+      nodeGraphFiniteNumber(message.maxBlockBudgetRatio),
     );
     // Feed the constraint CPU chip with real audio-thread load (not UI rAF).
     if (!nodeGraphMvp.constraintResourceMetrics) {
       nodeGraphMvp.constraintResourceMetrics = {};
     }
     // Prefer window-average load for "how heavy is this circuit"; keep peak for stress.
-    const avgRatio = Math.max(0, Number(message.avgBlockBudgetRatio) || 0);
-    const peakRatio = Math.max(0, Number(message.maxBlockBudgetRatio) || 0);
+    const avgRatio = Math.max(0, nodeGraphFiniteNumber(message.avgBlockBudgetRatio));
+    const peakRatio = Math.max(0, nodeGraphFiniteNumber(message.maxBlockBudgetRatio));
     const audioRatio = avgRatio > 0 ? avgRatio : peakRatio;
     const timedOut = Boolean(message.meterTimedOut);
     nodeGraphMvp.constraintResourceMetrics.audioLoadPct = audioRatio * 100;
@@ -2018,35 +1942,35 @@ function handleNodeGraphLiveWorkletMessage(event) {
     nodeGraphMvp.constraintResourceMetrics.audioMeterTimedOut = timedOut;
     nodeGraphMvp.constraintResourceMetrics.audioModuleCount = Math.max(
       0,
-      Math.floor(Number(message.moduleCount) || 0),
+      Math.floor(nodeGraphFiniteNumber(message.moduleCount)),
     );
     nodeGraphMvp.constraintResourceMetrics.audioTimerResMs = Math.max(
       0,
-      Number(message.timerResMs) || 0,
+      nodeGraphFiniteNumber(message.timerResMs),
     );
     nodeGraphMvp.constraintResourceMetrics.audioUpperBoundPct = Math.max(
       0,
-      (Number(message.upperBoundBudgetRatio) || 0) * 100,
+      (nodeGraphFiniteNumber(message.upperBoundBudgetRatio)) * 100,
     );
     nodeGraphMvp.constraintResourceMetrics.audioEstimatedPct = Math.max(
       0,
-      (Number(message.estimatedBudgetRatio) || 0) * 100,
+      (nodeGraphFiniteNumber(message.estimatedBudgetRatio)) * 100,
     );
     nodeGraphMvp.constraintResourceMetrics.audioCostUnits = Math.max(
       0,
-      Number(message.dspCostUnits) || 0,
+      nodeGraphFiniteNumber(message.dspCostUnits),
     );
     nodeGraphMvp.constraintResourceMetrics.audioOverrunCount = Math.max(
       0,
-      (Number(message.overrunCount) || 0) + (Number(message.missedQuantumCount) || 0),
+      (nodeGraphFiniteNumber(message.overrunCount)) + (nodeGraphFiniteNumber(message.missedQuantumCount)),
     );
     nodeGraphMvp.constraintResourceMetrics.audioBlockMs = Math.max(
       0,
-      Number(message.avgBlockProcessMs) || Number(message.maxBlockProcessMs) || 0,
+      nodeGraphFiniteNumber(message.avgBlockProcessMs, nodeGraphFiniteNumber(message.maxBlockProcessMs)),
     );
     nodeGraphMvp.constraintResourceMetrics.audioBlockPeakMs = Math.max(
       0,
-      Number(message.maxBlockProcessMs) || 0,
+      nodeGraphFiniteNumber(message.maxBlockProcessMs),
     );
     if (typeof syncNodeGraphCpuConstraintMetrics === "function") {
       syncNodeGraphCpuConstraintMetrics();
@@ -2055,7 +1979,7 @@ function handleNodeGraphLiveWorkletMessage(event) {
       syncNodeGraphAudioPlayerRuntimeStatus({
         nodeId: message.audioPlayerNodeId || "",
         nodeIds: message.audioPlayerNodeIds || [],
-        phase: Number(message.audioPlayerPhase) || 0,
+        phase: nodeGraphFiniteNumber(message.audioPlayerPhase),
         speed: Number(message.audioPlayerSpeed),
         speeds: message.audioPlayerSpeeds || null,
         reason: message.audioPlayerReason || "",
@@ -2064,7 +1988,7 @@ function handleNodeGraphLiveWorkletMessage(event) {
     }
     if (Number(message.badNumberCount) > 0) {
       nodeGraphRecordBadValueEvent({
-        count: Number(message.badNumberCount) || 1,
+        count: nodeGraphFiniteNumber(message.badNumberCount, 1),
         engine: "worklet",
         force: Boolean(message.lastBadValueNodeId),
         nodeId: message.lastBadValueNodeId || "",
@@ -2082,10 +2006,10 @@ function handleNodeGraphLiveWorkletMessage(event) {
         Boolean(message.protectionEngaged) || Number(message.protectionMuteCount) > 0,
         {
           nodeId: message.protectionNodeId || "",
-          protectionPeak: Number(message.protectionPeak) || 0,
+          protectionPeak: nodeGraphFiniteNumber(message.protectionPeak),
           protectionGain: Number(message.protectionGain),
           source: "Worklet",
-          protectionMuteCount: Number(message.protectionMuteCount) || 0,
+          protectionMuteCount: nodeGraphFiniteNumber(message.protectionMuteCount),
         },
       );
     }
@@ -2160,7 +2084,7 @@ function handleNodeGraphLiveWorkletMessage(event) {
       sampleRate: message.sampleRate || nodeGraphMvp.live.context?.sampleRate || nodeGraphMvp.sampleRate,
     });
     // After pause→stop→play, force-paint Value LCD/LED until rings + RAF catch up.
-    const rearmUntil = Number(nodeGraphMvp.live.valueFaceRearmUntil) || 0;
+    const rearmUntil = nodeGraphFiniteNumber(nodeGraphMvp.live.valueFaceRearmUntil);
     const nowMs = performance.now?.() || Date.now();
     if (
       nodeGraphMvp.live.needsValueFaceRearm
@@ -2197,46 +2121,46 @@ function handleNodeGraphLiveWorkletMessage(event) {
       return;
     }
     nodeGraphSetVisualControls({
-      blue: Number(message.blue) || 0,
-      chromaAlpha: Number(message.chromaAlpha) || 0,
-      chromaDrift: Number(message.chromaDrift) || 0,
-      chromaHue: Number(message.chromaHue) || 0,
-      chromaLightness: Number(message.chromaLightness) || 0,
-      chromaSaturation: Number(message.chromaSaturation) || 0,
-      chromaSpread: Number(message.chromaSpread) || 0,
-      green: Number(message.green) || 0,
-      red: Number(message.red) || 0,
-      scopePaused: Number(message.scopePaused) || 0,
-      scopeTracesOff: Number(message.scopeTracesOff) || 0,
-      screenDim: Number(message.screenDim) || 0,
-      screenShake: Number(message.screenShake) || 0,
-      visualBloom: Number(message.visualBloom) || 0,
-      visualBrightness: Number(message.visualBrightness) || 0,
-      visualGlow: Number(message.visualGlow) || 0,
-      x: Number(message.x) || 0,
-      y: Number(message.y) || 0,
+      blue: nodeGraphFiniteNumber(message.blue),
+      chromaAlpha: nodeGraphFiniteNumber(message.chromaAlpha),
+      chromaDrift: nodeGraphFiniteNumber(message.chromaDrift),
+      chromaHue: nodeGraphFiniteNumber(message.chromaHue),
+      chromaLightness: nodeGraphFiniteNumber(message.chromaLightness),
+      chromaSaturation: nodeGraphFiniteNumber(message.chromaSaturation),
+      chromaSpread: nodeGraphFiniteNumber(message.chromaSpread),
+      green: nodeGraphFiniteNumber(message.green),
+      red: nodeGraphFiniteNumber(message.red),
+      scopePaused: nodeGraphFiniteNumber(message.scopePaused),
+      scopeTracesOff: nodeGraphFiniteNumber(message.scopeTracesOff),
+      screenDim: nodeGraphFiniteNumber(message.screenDim),
+      screenShake: nodeGraphFiniteNumber(message.screenShake),
+      visualBloom: nodeGraphFiniteNumber(message.visualBloom),
+      visualBrightness: nodeGraphFiniteNumber(message.visualBrightness),
+      visualGlow: nodeGraphFiniteNumber(message.visualGlow),
+      x: nodeGraphFiniteNumber(message.x),
+      y: nodeGraphFiniteNumber(message.y),
     });
     if (nodeGraphMvp.live.lastEvidence) {
       nodeGraphMvp.live.lastEvidence.visualControls = {
         ...(nodeGraphMvp.live.lastEvidence.visualControls || {}),
-        blue: Number(message.blue) || 0,
-        chromaAlpha: Number(message.chromaAlpha) || 0,
-        chromaDrift: Number(message.chromaDrift) || 0,
-        chromaHue: Number(message.chromaHue) || 0,
-        chromaLightness: Number(message.chromaLightness) || 0,
-        chromaSaturation: Number(message.chromaSaturation) || 0,
-        chromaSpread: Number(message.chromaSpread) || 0,
-        green: Number(message.green) || 0,
-        red: Number(message.red) || 0,
-        scopePaused: Number(message.scopePaused) || 0,
-        scopeTracesOff: Number(message.scopeTracesOff) || 0,
-        screenDim: Number(message.screenDim) || 0,
-        screenShake: Number(message.screenShake) || 0,
-        visualBloom: Number(message.visualBloom) || 0,
-        visualBrightness: Number(message.visualBrightness) || 0,
-        visualGlow: Number(message.visualGlow) || 0,
-        x: Number(message.x) || 0,
-        y: Number(message.y) || 0,
+        blue: nodeGraphFiniteNumber(message.blue),
+        chromaAlpha: nodeGraphFiniteNumber(message.chromaAlpha),
+        chromaDrift: nodeGraphFiniteNumber(message.chromaDrift),
+        chromaHue: nodeGraphFiniteNumber(message.chromaHue),
+        chromaLightness: nodeGraphFiniteNumber(message.chromaLightness),
+        chromaSaturation: nodeGraphFiniteNumber(message.chromaSaturation),
+        chromaSpread: nodeGraphFiniteNumber(message.chromaSpread),
+        green: nodeGraphFiniteNumber(message.green),
+        red: nodeGraphFiniteNumber(message.red),
+        scopePaused: nodeGraphFiniteNumber(message.scopePaused),
+        scopeTracesOff: nodeGraphFiniteNumber(message.scopeTracesOff),
+        screenDim: nodeGraphFiniteNumber(message.screenDim),
+        screenShake: nodeGraphFiniteNumber(message.screenShake),
+        visualBloom: nodeGraphFiniteNumber(message.visualBloom),
+        visualBrightness: nodeGraphFiniteNumber(message.visualBrightness),
+        visualGlow: nodeGraphFiniteNumber(message.visualGlow),
+        x: nodeGraphFiniteNumber(message.x),
+        y: nodeGraphFiniteNumber(message.y),
       };
     }
   } else if (message.type === "gpuAdditiveStatus") {
@@ -2247,13 +2171,13 @@ function handleNodeGraphLiveWorkletMessage(event) {
     const enhancedQueues = (message.queues || []).map((queue) => {
       const state = producer?.nodes?.get?.(queue.nodeId);
       if (state) {
-        state.queueChunks = Math.max(0, Number(queue.chunks) || 0);
-        const underruns = Math.max(0, Number(message.underruns) || 0);
-        const droppedChunks = Math.max(0, Number(queue.droppedChunks) || 0);
+        state.queueChunks = Math.max(0, nodeGraphFiniteNumber(queue.chunks));
+        const underruns = Math.max(0, nodeGraphFiniteNumber(message.underruns));
+        const droppedChunks = Math.max(0, nodeGraphFiniteNumber(queue.droppedChunks));
         if (underruns > 0 || droppedChunks > 0) {
           state.targetChunks = Math.min(
             nodeGraphGpuAdditiveMaxTargetChunks,
-            (Number(state.targetChunks) || nodeGraphGpuAdditiveDefaultTargetChunks) + 1,
+            (nodeGraphFiniteNumber(state.targetChunks, nodeGraphGpuAdditiveDefaultTargetChunks)) + 1,
           );
         } else if (
           state.queueChunks > nodeGraphGpuAdditiveDefaultTargetChunks + 2 &&
@@ -2261,7 +2185,7 @@ function handleNodeGraphLiveWorkletMessage(event) {
         ) {
           state.targetChunks = Math.max(
             nodeGraphGpuAdditiveDefaultTargetChunks,
-            (Number(state.targetChunks) || nodeGraphGpuAdditiveDefaultTargetChunks) - 1,
+            (nodeGraphFiniteNumber(state.targetChunks, nodeGraphGpuAdditiveDefaultTargetChunks)) - 1,
           );
         }
       }
@@ -2269,16 +2193,16 @@ function handleNodeGraphLiveWorkletMessage(event) {
         ...queue,
         diagnostics: {
           ...(state?.diagnostics || {}),
-          droppedChunks: Math.max(0, Number(queue.droppedChunks) || 0),
-          expectedSequence: Math.max(0, Number(queue.expectedSequence) || 0),
+          droppedChunks: Math.max(0, nodeGraphFiniteNumber(queue.droppedChunks)),
+          expectedSequence: Math.max(0, nodeGraphFiniteNumber(queue.expectedSequence)),
           heldGain: Number.isFinite(Number(queue.heldGain)) ? Number(queue.heldGain) : 1,
-          heldSamples: Math.max(0, Number(queue.heldSamples) || 0),
-          resetCount: Math.max(0, Number(queue.resetCount) || 0),
+          heldSamples: Math.max(0, nodeGraphFiniteNumber(queue.heldSamples)),
+          resetCount: Math.max(0, nodeGraphFiniteNumber(queue.resetCount)),
           targetChunks: Math.max(
             1,
             Math.min(
               nodeGraphGpuAdditiveMaxTargetChunks,
-              Number(state?.targetChunks) || nodeGraphGpuAdditiveDefaultTargetChunks,
+              nodeGraphFiniteNumber(state?.targetChunks, nodeGraphGpuAdditiveDefaultTargetChunks),
             ),
           ),
         },
@@ -2287,12 +2211,12 @@ function handleNodeGraphLiveWorkletMessage(event) {
     if (nodeGraphMvp.live.lastEvidence) {
       nodeGraphMvp.live.lastEvidence.gpuAdditive = {
         queues: enhancedQueues,
-        underruns: Number(message.underruns) || 0,
+        underruns: nodeGraphFiniteNumber(message.underruns),
       };
     }
     setNodeGraphGpuAdditiveStatus({
       queues: enhancedQueues,
-      underruns: Number(message.underruns) || 0,
+      underruns: nodeGraphFiniteNumber(message.underruns),
     });
     if (enhancedQueues.some((queue) => Number(queue.samples) > 0 || Number(queue.chunks) > 0)) {
       nodeGraphFinishGpuAdditivePrime("ready");
@@ -2346,10 +2270,21 @@ function nodeGraphLivePlanShapeSignature(plan = {}) {
     String(c?.destinationPort || ""),
   ]);
   connections.sort((a, b) => a.join("\0").localeCompare(b.join("\0")));
+  // Meta playmode / voice count change native voice-lane clones — must force
+  // setPlan (setConnections/setParams alone never updated metamodule on worklet).
+  const metaVoice = (Array.isArray(plan.nodes) ? plan.nodes : [])
+    .filter((node) => String(node?.type || "") === "metamodule")
+    .map((node) => [
+      String(node.id || ""),
+      Math.max(1, Math.min(4, Math.round(Number(node?.metamodule?.playmode) || 4))),
+      Math.max(1, Math.min(32, Math.round(Number(node?.metamodule?.voices) || 10))),
+    ]);
+  metaVoice.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
   return JSON.stringify({
     nodes: (Array.isArray(plan.nodes) ? plan.nodes : []).map((node) => [node.id, node.type]),
     // Wires change native topology — must invalidate connection-only shortcut.
     connections,
+    metaVoice,
     order: Array.isArray(plan.order) ? plan.order : [],
     outputNode: plan.outputNode || "output",
     samples: (Array.isArray(plan.samples) ? plan.samples : []).map((sample) => sample?.id || ""),
@@ -2423,7 +2358,7 @@ async function sendNodeGraphLivePlan() {
 
   try {
     const plan = nodeGraphBuildLivePlan();
-    nodeGraphMvp.live.planSendGen = (Number(nodeGraphMvp.live.planSendGen) || 0) + 1;
+    nodeGraphMvp.live.planSendGen = (nodeGraphFiniteNumber(nodeGraphMvp.live.planSendGen)) + 1;
     const planSendGen = nodeGraphMvp.live.planSendGen;
     if (typeof nodeGraphEnsureLiveSamplesForPlan === "function") {
       await nodeGraphEnsureLiveSamplesForPlan(plan, nodeGraphMvp.patch);
@@ -2515,6 +2450,10 @@ async function sendNodeGraphLivePlan() {
     nodeGraphMvp.live.planShapeSignature = planShapeSignature;
     // Plan applied — never leave host gain muted from a prior error.
     setNodeGraphLiveOutputMuted(false);
+    // Worklet may have been recreated; re-assert inside-Meta voice-0 preview.
+    if (typeof nodeGraphFlushLiveMetaView === "function") {
+      nodeGraphFlushLiveMetaView();
+    }
     return true;
   } catch (error) {
     const issues = nodeGraphLivePlanErrorIssues(error);
@@ -2699,7 +2638,7 @@ function sendNodeGraphLiveKeyboardModuleSignal(signal = nodeGraphMvp.keyboardMod
 
 function sendNodeGraphLiveMacroControls(values = nodeGraphMvp.macroControls) {
   const payload = Array.from({ length: 8 }, (_, index) => (
-    Math.max(0, Math.min(1, Number(values?.[index]) || 0))
+    Math.max(0, Math.min(1, nodeGraphFiniteNumber(values?.[index])))
   ));
   if (nodeGraphMvp.live.runtime) {
     nodeGraphMvp.live.runtime.macroControls = payload;
@@ -2712,31 +2651,113 @@ function sendNodeGraphLiveMacroControls(values = nodeGraphMvp.macroControls) {
   }
 }
 
-function sendNodeGraphLiveMidiKeyboardHeldKeysBitmask(
-  low = nodeGraphMvp.midiKeyboardHeldKeysLowBitmask,
-  high = nodeGraphMvp.midiKeyboardHeldKeysHighBitmask,
-) {
-  const safeLow = Math.floor(Number(low));
-  const safeHigh = Math.floor(Number(high));
-  const lowPayload = Number.isFinite(safeLow) && safeLow >= 0 ? safeLow : 0;
-  const highPayload = Number.isFinite(safeHigh) && safeHigh >= 0 ? safeHigh : 0;
+function sendNodeGraphLiveMidiKeyboardHeldKeysBitmask() {
+  const mask = nodeGraphMvp.midiKeyboardArpMask instanceof Uint8Array
+    ? new Uint8Array(nodeGraphMvp.midiKeyboardArpMask)
+    : (typeof noteMaskCreate === "function" ? noteMaskCreate() : new Uint8Array(128));
+  const vels = nodeGraphMvp.midiKeyboardHeldKeyVelocities instanceof Uint8Array
+    ? new Uint8Array(nodeGraphMvp.midiKeyboardHeldKeyVelocities)
+    : null;
+  const octave = typeof nodeGraphMidiKeyboardOctaveOffset === "function"
+    ? nodeGraphMidiKeyboardOctaveOffset()
+    : 0;
   if (nodeGraphMvp.live.runtime) {
-    nodeGraphMvp.live.runtime.midiKeyboardHeldKeysLowBitmask = lowPayload;
-    nodeGraphMvp.live.runtime.midiKeyboardHeldKeysHighBitmask = highPayload;
+    nodeGraphMvp.live.runtime.midiKeyboardArpMask = mask;
+    if (vels) nodeGraphMvp.live.runtime.midiKeyboardHeldKeyVelocities = vels;
+    nodeGraphMvp.live.runtime.midiKeyboardOctave = octave;
   }
   if (nodeGraphMvp.live.usesWorklet && nodeGraphMvp.live.node?.port) {
     nodeGraphMvp.live.node.port.postMessage({
-      high: highPayload,
-      low: lowPayload,
       type: "setMidiKeyboardHeldKeysBitmask",
+      mask,
+      velocities: vels,
+      octave,
     });
+  }
+}
+
+/** Blue Play Keys bitmask (live MIDI notes) → worklet. */
+function sendNodeGraphLiveMidiPlayKeysBitmask() {
+  const mask = nodeGraphMvp.midiKeyboardPlayMask instanceof Uint8Array
+    ? new Uint8Array(nodeGraphMvp.midiKeyboardPlayMask)
+    : (typeof noteMaskCreate === "function" ? noteMaskCreate() : new Uint8Array(128));
+  if (nodeGraphMvp.live.runtime) {
+    nodeGraphMvp.live.runtime.midiKeyboardPlayMask = mask;
+  }
+  if (nodeGraphMvp.live.usesWorklet && nodeGraphMvp.live.node?.port) {
+    nodeGraphMvp.live.node.port.postMessage({
+      type: "setMidiKeyboardPlayKeysBitmask",
+      mask,
+    });
+  }
+}
+
+/**
+ * Polyphony velocity table (Uint8Array[128]) → worklet.
+ * source: "midi" | "keyboard"
+ * Legacy display path — Voices SSOT is VoiceManager note_on/off events.
+ */
+function sendNodeGraphLivePolyphonyVelocities(source, velocities) {
+  const key = String(source || "");
+  if (key !== "midi" && key !== "keyboard") return;
+  const table = velocities instanceof Uint8Array
+    ? velocities
+    : (typeof polyphonyCreateTable === "function" ? polyphonyCreateTable() : new Uint8Array(128));
+  if (key === "midi") {
+    nodeGraphMvp.midiPolyphonyVelocities = table;
+  } else {
+    nodeGraphMvp.keyboardPolyphonyVelocities = table;
+  }
+  if (nodeGraphMvp.live.runtime) {
+    if (key === "midi") nodeGraphMvp.live.runtime.midiPolyphonyVelocities = table;
+    else nodeGraphMvp.live.runtime.keyboardPolyphonyVelocities = table;
+  }
+  if (nodeGraphMvp.live.usesWorklet && nodeGraphMvp.live.node?.port) {
+    const copy = new Uint8Array(table);
+    nodeGraphMvp.live.node.port.postMessage({
+      source: key,
+      type: "setPolyphonyVelocities",
+      velocities: copy,
+    });
+  }
+}
+
+/** VoiceManager note_on — Midi Note + Velocity (0..1). */
+function sendNodeGraphLiveVmNoteOn(note, velocity01 = 100 / 127) {
+  const n = Math.max(0, Math.min(127, Math.round(Number(note))));
+  let v = Number(velocity01);
+  if (!Number.isFinite(v) || !(v > 0)) v = 100 / 127;
+  if (v > 1) v = Math.min(1, v / 127);
+  if (nodeGraphMvp.live.usesWorklet && nodeGraphMvp.live.node?.port) {
+    nodeGraphMvp.live.node.port.postMessage({
+      type: "vmNoteOn",
+      note: n,
+      velocity: v,
+    });
+  }
+}
+
+/** VoiceManager note_off. */
+function sendNodeGraphLiveVmNoteOff(note) {
+  const n = Math.max(0, Math.min(127, Math.round(Number(note))));
+  if (nodeGraphMvp.live.usesWorklet && nodeGraphMvp.live.node?.port) {
+    nodeGraphMvp.live.node.port.postMessage({
+      type: "vmNoteOff",
+      note: n,
+    });
+  }
+}
+
+function sendNodeGraphLiveVmAllNotesOff() {
+  if (nodeGraphMvp.live.usesWorklet && nodeGraphMvp.live.node?.port) {
+    nodeGraphMvp.live.node.port.postMessage({ type: "vmAllNotesOff" });
   }
 }
 
 function nodeGraphPitchModWheelPayload() {
   return {
-    mod: Math.max(0, Math.min(1, Number(nodeGraphMvp.modWheelSignal) || 0)),
-    pitch: Math.max(-1, Math.min(1, Number(nodeGraphMvp.pitchWheelSignal) || 0)),
+    mod: Math.max(0, Math.min(1, nodeGraphFiniteNumber(nodeGraphMvp.modWheelSignal))),
+    pitch: nodeGraphFiniteNumber(nodeGraphMvp.pitchWheelSignal),
   };
 }
 
@@ -2744,8 +2765,8 @@ function sendNodeGraphLivePitchModWheelSignal(signal = nodeGraphPitchModWheelPay
   const source = signal && typeof signal === "object" ? signal : {};
   const pitch = Number(source.pitch);
   const payload = {
-    mod: Math.max(0, Math.min(1, Number(source.mod) || 0)),
-    pitch: Math.max(-1, Math.min(1, Number.isFinite(pitch) ? pitch : 0)),
+    mod: Math.max(0, Math.min(1, nodeGraphFiniteNumber(source.mod))),
+    pitch: Number.isFinite(pitch) ? pitch : 0,
   };
   if (nodeGraphMvp.live.runtime) {
     nodeGraphMvp.live.runtime.pitchModWheelSignal = payload;
@@ -2834,7 +2855,7 @@ function nodeGraphGlobalSmoothingDragStep(event) {
 function nodeGraphGlobalSmoothingSecondsFromDragDelta(startSeconds, pixelDelta, event) {
   const eps = nodeGraphGlobalSmoothingDragLogEps;
   const rate = nodeGraphGlobalSmoothingDragLogRate * nodeGraphGlobalSmoothingDragMultiplier(event);
-  const start = Math.max(0, Number(startSeconds) || 0);
+  const start = Math.max(0, nodeGraphFiniteNumber(startSeconds));
   const next = Math.exp(Math.log(start + eps) + pixelDelta * rate) - eps;
   // Snap tiny values to exact 0 so “off” is reachable without hunting.
   if (next < eps * 0.25) {
@@ -3142,22 +3163,27 @@ const nodeGraphLiveWorkletSourceFilesEfficient = [
   "./public/node-live-audio-worklet-analog.js?v=plan-d-split-7",
   "./public/lib/sample-interpolate.js?v=mp-aa-1",
   "./public/node-live-audio-worklet-dsp-state.js?v=protect-worklet-1",
-  "./public/node-live-audio-worklet-events.js?v=keyboard-hold-freq-1",
+  "./public/lib/polyphony-voices.js?v=gold-oct-1",
+  "./public/lib/note-mask-128.js?v=arp-mask-1",
+  "./public/node-graph-keyboard-chord-memory.js?v=cm-ghost-1",
+  "./public/modules/sequencer/sequencer-math.js?v=seq-23",
+  "./public/node-live-audio-worklet-events.js?v=master-clock-1",
   "./public/node-live-audio-worklet-visual.js?v=planck-eps-1",
-  "./public/node-live-audio-worklet-scope-io.js?v=output-vol-face-1",
+  "./public/node-live-audio-worklet-scope-io.js?v=scope-gc-1",
   "./public/node-live-audio-worklet-native-load.js?v=plan-d-split-7",
   "./public/node-live-audio-worklet-native-exports.js?v=hypersaw2-smooth-1",
-  "./public/node-live-audio-worklet-native-graph.js?v=center-side-bright-1",
-  "./public/node-live-audio-worklet-set-plan.js?v=patch-pitch-1",
+  "./public/node-live-audio-worklet-native-graph.js?v=ear-cpp-1",
+  "./public/node-live-audio-worklet-meta-view.js?v=canvas-face-1",
+  "./public/node-live-audio-worklet-set-plan.js?v=chord-seq-1",
   "./public/node-live-audio-worklet-clear-plan.js?v=hypersaw2-smooth-1",
-  "./public/node-live-audio-worklet-handle-message.js?v=wasm-plan-race-1",
-  "./public/node-live-audio-worklet-scope-snapshot.js?v=hypersaw2-smooth-1",
+  "./public/node-live-audio-worklet-handle-message.js?v=arp-slide-1",
+  "./public/node-live-audio-worklet-scope-snapshot.js?v=meta-view-rewrite-1",
   "./public/modules/_shared/output-amplitude.js?v=output-amp-1",
   // Yellow Graph: DOMAIN param chase for MOD (DSP is native opcodes 111–124).
   "./public/modules/additiveGraph/additive-param-smooth.js?v=main-guard-1",
 
   // Envelope *Mod strips: native opcodes 70/72 (no JS ADSR / BakeStrip).
-  "./public/modules/_shared/controller-efficient-sidecar.js?v=keyboard-hold-freq-1",
+  "./public/modules/_shared/controller-efficient-sidecar.js?v=cm-ghost-1",
   "./public/node-live-audio-worklet-process.js?v=protect-worklet-1",
 ];
 
@@ -3244,13 +3270,9 @@ function nodeGraphLiveAwaitStartup(promise, message = "live audio startup timed 
   ]);
 }
 
-function createNodeGraphLiveScriptProcessorNode(context, plan) {
-  const scriptNode = context.createScriptProcessor(nodeGraphAudioBlockSize, 2, 2);
-  scriptNode.onaudioprocess = renderNodeGraphLiveScriptBlock;
-  nodeGraphMvp.live.runtime = createNodeGraphLiveRuntime(plan, nodeGraphMvp.live.runtime);
-  nodeGraphMvp.live.runtime.earProtector = createNodeGraphEarProtector(context.sampleRate);
-  nodeGraphMvp.live.scriptNode = scriptNode;
-  return scriptNode;
+function createNodeGraphLiveScriptProcessorNode(_context, _plan) {
+  // APP_POLICY §0b / §2: JS ScriptProcessor audio path is retired. Native worklet only.
+  throw new Error("ScriptProcessor JS audio path removed — AudioWorklet + native graph required");
 }
 
 function stopNodeGraphLiveInputSource() {
@@ -3557,6 +3579,10 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
       renderNodeGraphLiveControls(false);
       return;
     }
+    // Inside Meta before Play (or after worklet restart): re-apply voice-0 preview.
+    if (typeof nodeGraphFlushLiveMetaView === "function") {
+      nodeGraphFlushLiveMetaView();
+    }
     sendNodeGraphLiveMacroControls();
     sendNodeGraphLivePitchModWheelSignal();
     // Play must never hand the worklet speed 0. Stop leaves pause (0) alone;
@@ -3568,7 +3594,7 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
         ? nodeGraphLiveResumePlaySpeed()
         : 1;
       if (typeof setNodeGraphLiveSpeed === "function") {
-        setNodeGraphLiveSpeed(resume, { force: true });
+        setNodeGraphLiveSpeed(resume, { force: true, restartSequencer: true });
       } else {
         nodeGraphMvp.live.speedMultiplier = resume;
         if (!(Number(nodeGraphMvp.live.lastPlaySpeed) > 0)) {
@@ -3599,6 +3625,14 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
     // Do not force outputEnabled — Input-only starts must leave Output grey/off.
     setNodeGraphLiveOutputMuted(false);
     applyNodeGraphLiveOutputGain();
+    // Arp latch must hit the worklet as soon as the port exists (patch load
+    // may have restored bitmasks before the AudioWorklet was up).
+    if (typeof sendNodeGraphLiveMidiKeyboardHeldKeysBitmask === "function") {
+      sendNodeGraphLiveMidiKeyboardHeldKeysBitmask();
+    }
+    if (typeof sendNodeGraphLiveMidiPlayKeysBitmask === "function") {
+      sendNodeGraphLiveMidiPlayKeysBitmask();
+    }
     // Pause→stop wipes faces and kills RAF; pause also freezes hold state.
     // Always rearm LCD/LED paint after a successful cold start.
     if (typeof nodeGraphLiveRearmDisplaysAfterEngineStart === "function") {
@@ -3655,12 +3689,42 @@ function nodeGraphPageHiddenPauseState() {
   return nodeGraphMvp.live.pageHiddenPause;
 }
 
+function nodeGraphLiveKeepPlayingWhenUnfocused() {
+  return Boolean(nodeGraphMvp?.live?.keepPlayingWhenUnfocused);
+}
+
+function nodeGraphLiveSetKeepPlayingWhenUnfocused(on) {
+  if (!nodeGraphMvp?.live) return;
+  nodeGraphMvp.live.keepPlayingWhenUnfocused = Boolean(on);
+  if (typeof renderNodeGraphLiveControls === "function") {
+    renderNodeGraphLiveControls(true);
+  }
+}
+
+function nodeGraphLiveToggleKeepPlayingWhenUnfocused() {
+  const next = !nodeGraphLiveKeepPlayingWhenUnfocused();
+  nodeGraphLiveSetKeepPlayingWhenUnfocused(next);
+  if (next && typeof nodeGraphTransportHandleAction === "function") {
+    nodeGraphTransportHandleAction("play");
+  }
+  if (typeof setNodeInteractionHelp === "function") {
+    setNodeInteractionHelp(
+      next
+        ? "Keep playing when unfocused (▶▶)."
+        : "Pause when leaving tab.",
+    );
+  }
+}
+
 function nodeGraphApplyPageVisibilityAudioPolicy() {
   const live = nodeGraphMvp?.live;
   const pause = nodeGraphPageHiddenPauseState();
   if (!live || !pause) return;
 
   if (typeof document !== "undefined" && document.hidden) {
+    if (nodeGraphLiveKeepPlayingWhenUnfocused()) {
+      return;
+    }
     if (pause.active) return;
     const speed = Number(live.speedMultiplier);
     const playing = Boolean(live.node) && (!Number.isFinite(speed) || speed > 0);
@@ -3671,25 +3735,16 @@ function nodeGraphApplyPageVisibilityAudioPolicy() {
         ? speed
         : (Number(live.lastPlaySpeed) > 0 ? Number(live.lastPlaySpeed) : 1))
       : 0;
+    // Pause transport only — do not suspend/tear down the AudioContext.
     if (playing && typeof setNodeGraphLiveSpeed === "function") {
       setNodeGraphLiveSpeed(0, { force: true });
-    }
-    try {
-      if (live.context && typeof live.context.suspend === "function" && live.context.state === "running") {
-        live.context.suspend();
-      }
-    } catch (_error) {
-      // Ignore suspend races during teardown.
-    }
-    if (typeof nodeGraphMetamoduleStopAllMirrorLoops === "function") {
-      try { nodeGraphMetamoduleStopAllMirrorLoops(); } catch (_e) { /* ignore */ }
     }
     return;
   }
 
   // Visible again.
   if (!pause.active) return;
-  const restoreSpeed = Number(pause.savedSpeed) || 0;
+  const restoreSpeed = nodeGraphFiniteNumber(pause.savedSpeed);
   const hadEngine = Boolean(pause.hadEngine);
   pause.active = false;
   pause.savedSpeed = 0;

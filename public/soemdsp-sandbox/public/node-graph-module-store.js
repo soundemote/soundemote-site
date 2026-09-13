@@ -175,13 +175,7 @@ const nodeGraphModuleCatalogRetiredFromUnderConstruction = Object.freeze([
   "allpass",
   "basicShape",
   "chordPad",
-  "noteGlide",
-  "hypersaw",
   "hypersaw2",
-  "noteTranspose",
-  "degreeTuring",
-  "degreePhrase",
-  "gravityWalker",
   "smoothGraph",
   "stepGraph",
   "phaseDisperse",
@@ -261,7 +255,7 @@ const nodeGraphModuleStoreDepartments = Object.freeze([
   { id: "musical",      emoji: "🎼", label: "Musical",      symbol: "𝄞",  title: "Musical",  pitch: "Pitch, scale, and harmony tools: quantizers, chord pickers, progressions, and other note-theory building blocks." },
   { id: "space",        emoji: "⛪", label: "Space",        symbol: "FX",  title: "Space",     pitch: "Delay, reverb, distortion, and performance processors for shaping finished sound." },
   // Id stays clock (saved settings / catalog). Shelf label is Time.
-  { id: "clock",        emoji: "⌚", label: "Time",         symbol: "♪",   title: "Time",      pitch: "Clocks, sequencers, dividers, counters, and trigger timing — everything that decides WHEN the rest of the patch fires." },
+  { id: "clock",        emoji: "⌚", label: "Clock",        symbol: "♪",   title: "Clock",     pitch: "Clocks, sequencers, dividers, counters, and trigger timing — everything that decides WHEN the rest of the patch fires." },
   { id: "digital",      emoji: "🔬", label: "Digital",      symbol: "{ }", title: "Digital",   pitch: "Patch-local code surfaces, exact value conversion, and digital/visual programming tools inside the sandbox." },
   { id: "sample",       emoji: "🎶", label: "Sample Player", symbol: "▣", title: "Sample Player", pitch: "Sample and music-file playback: one-shots, loops, and scrubbable players that turn stored audio into patch signal." },
   { id: "object",       emoji: "🧊", label: "Object",       symbol: "●",   title: "Object",    pitch: "Things you place in the world rather than wire into the signal path -- indicator lights, label plates, and other in-world props." },
@@ -606,9 +600,9 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   transport: {
     category: "clock",
-    description: "BPM-locked square clocks so everything stays in time with the project tempo.",
+    description: "On-the-beat gates locked to Live playhead. Lamp and beat f follow project tempo (one beat). Numer/Denom/Sync re-grid the clock outs; never free-runs.",
     label: "Master Clock",
-    notes: ["master clock", "transport", "project BPM", "Numer/Denom", "Normal/Dotted/Triplet", "engine-start phase"],
+    notes: ["master clock", "transport", "project BPM", "Numer/Denom", "Normal/Dotted/Triplet", "master time", "beat f"],
   },
   clockDivider: {
     category: "clock",
@@ -661,7 +655,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   t: {
     category: "digital",
-    description: "One transistor. Digital 0 sends In (open In = 1); analog 0–1 is conduction.",
+    description: "One transistor. Digital any>0 sends In (open In = 1); Analog 0–1 conduction. Face shows openness, not In.",
     label: "t",
     notes: ["transistor", "t"],
   },
@@ -725,10 +719,11 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "10t",
     notes: ["transistor", "10t"],
   },
-  stepSequencer: {
-    category: "clock",
-    description: "Classic stepped values under clock—melodies, parameter automation, and rhythmic CV.",
-    notes: ["trigger input", "reset input", "stepped modulation"],
+  sequencer: {
+    category: "musical",
+    description: "Transport-locked piano roll. Click in notes; Play Keys / Polyphony / Gate out. Not a modulation source.",
+    label: "Sequencer",
+    notes: ["piano roll", "play keys", "polyphony", "master clock", "project"],
   },
   // stepGrid registers its own catalog entry from public/modules/stepGrid/
   // step-grid-register.js -- see node-graph-chromeless-module-registry.js.
@@ -737,12 +732,6 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Pick diatonic chords fast and feed Scale/Root/Gate into quantizers and musical engines.",
     label: "Chord Pad",
     notes: ["chord", "diatonic", "scale mask", "root", "pitch quantizer", "pads"],
-  },
-  chordSequencer: {
-    category: "musical",
-    description: "Clock through progressions for automatic harmony that drives the rest of the pitch chain.",
-    label: "Chord Sequencer",
-    notes: ["chord progression", "scale mask", "root", "ping-pong", "key"],
   },
   lutCell: {
     category: "digital",
@@ -768,12 +757,6 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "Cheap Walk",
     notes: ["reflecting walk", "LCG", "noise", "modulation"],
   },
-  chordMemory: {
-    category: "musical",
-    description: "Capture a chord stack from monophonic pitch and walk or mutate the latched notes.",
-    label: "Chord Memory",
-    notes: ["latch", "mono to chord", "shuffle bag", "mutate walk", "trigger"],
-  },
   turingMachine: {
     category: "digital",
     description: "Evolving CV/melody register—semi-random sequences that slowly corrode over time.",
@@ -785,36 +768,6 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Snap free pitch CV to a scale so walkers and LFOs land on musical notes.",
     label: "Pitch Quantizer",
     notes: ["quantizer", "scale keyboard", "0.1v/oct", "pitch class mask", "melody from chaos"],
-  },
-  degreeTuring: {
-    category: "musical",
-    description: "Scale-degree Turing melody—mutate within a key instead of raw voltage.",
-    label: "Degree Turing",
-    notes: ["generative melody", "scale degrees", "mutating loop", "mono"],
-  },
-  gravityWalker: {
-    category: "musical",
-    description: "Stepwise scale walker with occasional leaps—melodies that prefer neighbors but escape ruts.",
-    label: "Gravity Walker",
-    notes: ["melodic walker", "gravity", "leap", "mono", "scale"],
-  },
-  degreePhrase: {
-    category: "musical",
-    description: "Loop an 8-step degree phrase that can slowly mutate—aging riffs, not classic arps.",
-    label: "Degree Phrase",
-    notes: ["phrase", "degrees", "rests", "mutate", "mono"],
-  },
-  noteGlide: {
-    category: "musical",
-    description: "Portamento/slew on 0.1V/oct so pitch moves slide instead of jump.",
-    label: "Note Glide",
-    notes: ["portamento", "slew", "0.1v/oct"],
-  },
-  noteTranspose: {
-    category: "musical",
-    description: "Shift pitch by semitones/octaves after quantizers or before oscillators.",
-    label: "Note Transpose",
-    notes: ["transpose", "octave", "semitone"],
   },
   surgeOscillator: {
     category: "oscillator",
@@ -851,13 +804,6 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Pitch-dithered supersaw (frequency detune, not phase mod). Fractional voices, Reset, Random Phase, Portamento Min/Max/Style, detune-face lines (±0.5 oct).",
     label: "RobinSupersaw",
     notes: ["oscillator", "supersaw", "pitch dithering", "frequency detune", "portamento", "native", "phosphor display"],
-  },
-  hypersaw: {
-    category: "oscillator",
-    description: "Retired — use Hypersaw (former Hypersaw2).",
-    label: "Hypersaw (retired)",
-    hidden: true,
-    notes: ["retired", "replaced-by-hypersaw2"],
   },
   hypersaw2: {
     category: "oscillator",
@@ -1069,7 +1015,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   mixStereo2: {
     category: "dynamics",
-    description: "Two stereo pairs into Left/Right, each pair with Volume and Pan, plus master Amplitude.",
+    description: "Two stereo pairs into Left/Right, each pair with Volume and Pan, plus master Gain.",
     label: "MixStereo2",
     notes: ["mixer", "stereo", "pan", "volume", "2-channel", "utility", "native"],
   },
@@ -1281,15 +1227,21 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   keyboardController: {
     category: "portal",
-    description: "Hardware MIDI in (Portal): pick a device and listen channel. Gate/Trigger amplitudes follow velocity; note and pitch CV.",
+    description: "Hardware MIDI in (Portal): Play Keys (blue) bitmask + Polyphony (black Midi Note+Velocity table for Meta Voices). Does not auto-drive Keyboard — wire Play Keys for face lights.",
     label: "MIDI",
-    notes: ["midi input", "midi channel", "note", "gate", "trigger", "velocity", "portal"],
+    notes: ["midi input", "midi channel", "play keys", "polyphony", "note", "gate", "trigger", "velocity", "portal"],
   },
   keyboard: {
     category: "controller",
-    description: "Local piano (dock + face). Wire Polyphony/Held Keys/Gate/Trigger in to mix; does not auto-follow hardware MIDI — use the MIDI module for that.",
+    description: "Local piano (dock + face). Play Keys (blue) / Arp Keys (gold) / Chord Memory (green in=slots, out=chord tones) / Polyphony (black → Meta Voices).",
     label: "Keyboard",
-    notes: ["keyboard", "piano", "held keys", "polyphony", "controller", "performance", "gate", "trigger", "velocity", "note"],
+    notes: ["keyboard", "piano", "play keys", "arp keys", "polyphony", "controller", "performance", "gate", "trigger", "velocity", "note"],
+  },
+  gridKeyboard: {
+    category: "controller",
+    description: "Array-mbira grid: fifths left-to-right from F, octaves bottom-to-top, MIDI 0–127. Same blue Play / gold Arp latch as Keyboard.",
+    label: "Grid Keyboard",
+    notes: ["grid", "array mbira", "circle of fifths", "keyboard", "play keys", "arp keys", "polyphony", "controller"],
   },
   macroControls: {
     category: "controller",
@@ -1595,9 +1547,9 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   arp: {
     category: "musical",
-    description: "Clocked arpeggiator over the MIDI keyboard Held Keys bitmask (up / dn / bounce / random).",
+    description: "Clocked arpeggiator over Arp Keys. Neon key face, Monophony out, sequence offset.",
     label: "Arp",
-    notes: ["arp", "arpeggiator", "musical", "sequence", "held keys", "pitch", "clock"],
+    notes: ["arp", "arpeggiator", "musical", "sequence", "arp keys", "pitch", "clock", "monophony"],
   },
   ePiano: {
     category: "sample",
@@ -1998,6 +1950,26 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Full DADSR with bipolar Attack/Fall curves (0=linear, +=exp, −=log).",
     label: "Curve ADSR",
     notes: ["gate input", "bipolar curves", "loopable envelope", "curve shape", "native", "DADSR", "log", "exp"],
+  },
+  wavetableAdsr: {
+    category: "envelope",
+    description:
+      "Cheap poly ADSR: Analog / Linear / Smoothstep. Velocity from Gate level. "
+      + "No restart on Gate↑. Reset→idle. A/D/S/R/Level modulatable.",
+    label: "Wavetable ADSR",
+    notes: [
+      "gate velocity",
+      "analog",
+      "linear",
+      "smoothstep",
+      "reset",
+      "isIdle",
+      "polyphony",
+      "cheap",
+      "native",
+      "ADSR",
+      "no retrigger",
+    ],
   },
   attackDecay: {
     category: "envelope",
@@ -2843,17 +2815,9 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
     source: "public/modules/scientificIir/scientific-iir-math.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/scientificIir/scientific-iir-math.js",
   },
-  chordMemory: {
-    source: "public/modules/chordMemory/chord-memory-worklet-evaluator.js",
-    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/chordMemory/chord-memory-worklet-evaluator.js",
-  },
   chordPad: {
     source: "public/modules/chordPad/chord-pad-worklet-evaluator.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/chordPad/chord-pad-worklet-evaluator.js",
-  },
-  chordSequencer: {
-    source: "public/modules/chordSequencer/chord-sequencer-worklet-evaluator.js",
-    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/chordSequencer/chord-sequencer-worklet-evaluator.js",
   },
   chromaColor: {
     source: "public/modules/chromaColor/chroma-color-live-evaluator.js",
@@ -3046,10 +3010,6 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
     source: "public/modules/humanFilter/human-filter-worklet-evaluator.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/humanFilter/human-filter-worklet-evaluator.js",
   },
-  hypersaw: {
-    source: "public/modules/hypersaw/hypersaw-worklet-evaluator.js",
-    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/hypersaw/hypersaw-worklet-evaluator.js",
-  },
   hypersaw2: {
     source: "public/modules/hypersaw2/hypersaw2-live-evaluator.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/hypersaw2/hypersaw2-live-evaluator.js",
@@ -3075,6 +3035,10 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/keyboardController/keyboard-controller-live-evaluator.js",
   },
   keyboard: {
+    source: "public/modules/keyboardController/keyboard-controller-live-evaluator.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/keyboardController/keyboard-controller-live-evaluator.js",
+  },
+  gridKeyboard: {
     source: "public/modules/keyboardController/keyboard-controller-live-evaluator.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/keyboardController/keyboard-controller-live-evaluator.js",
   },
@@ -3438,9 +3402,9 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
     source: "public/modules/stepGrid/step-grid-worklet-evaluator.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/stepGrid/step-grid-worklet-evaluator.js",
   },
-  stepSequencer: {
-    source: "public/modules/stepSequencer/step-sequencer-math.js",
-    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/stepSequencer/step-sequencer-math.js",
+  sequencer: {
+    source: "public/modules/sequencer/sequencer-math.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/sequencer/sequencer-math.js",
   },
   stftBlur: {
     source: "public/modules/stftBlur/stft-blur-math.js",
@@ -3900,12 +3864,12 @@ function normalizeNodeGraphModuleShopWindowSize(size = {}, element = null) {
       nodeGraphModuleShopWindowDefaultSize.minWidth,
       Math.min(
         nodeGraphModuleShopWindowDefaultSize.maxWidth,
-        Math.round(Number(source.width) || nodeGraphModuleShopWindowDefaultSize.width),
+        Math.round(nodeGraphFiniteNumber(source.width, nodeGraphModuleShopWindowDefaultSize.width)),
       ),
     ),
     height: Math.max(
       nodeGraphModuleShopWindowDefaultSize.minHeight,
-      Math.round(Number(source.height) || nodeGraphModuleShopWindowDefaultSize.height),
+      Math.round(nodeGraphFiniteNumber(source.height, nodeGraphModuleShopWindowDefaultSize.height)),
     ),
   };
 }
