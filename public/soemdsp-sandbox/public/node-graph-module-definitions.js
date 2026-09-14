@@ -4319,22 +4319,6 @@ const nodeGraphModuleDefinitions = (
     outputs: ["Left", "Right"],
         parameters: [
       {
-        key: "seed",
-        label: "Seed",
-        kind: "seed",
-        defaultValue: "1",
-        min: "0",
-        mid: "1",
-        max: "99999",
-        step: "1",
-        maxDigits: 0,
-        nonlinearSlider: true,
-        sliderCurve: "skew",
-        linearSmoothing: false,
-        smoothingType: "none",
-        tooltip: "Master seed for Random Phase and per-voice Random Steps jitter.",
-      },
-      {
         constraint: "cpu",
         key: "voices",
         label: "Oscillators",
@@ -4346,6 +4330,18 @@ const nodeGraphModuleDefinitions = (
         nonlinearSlider: true,
         sliderCurve: "skew",
         tooltip: "Number of PolyBLEP oscillators (max 64). Decimal like Additive: 12.5 → 13 oscillators with the last at half amplitude.",
+      },
+      {
+        key: "centerSide",
+        label: "Center/Side",
+        defaultValue: "1",
+        min: "0",
+        mid: "0.5",
+        max: "1",
+        step: "0.01",
+        nonlinearSlider: false,
+        sliderCurve: "linear",
+        tooltip: "0 = center voices only, 1 = side voices only. Face: additive off-red=left, off-blue=right, center=both→white.",
       },
       {
         key: "waveform",
@@ -4409,33 +4405,6 @@ const nodeGraphModuleDefinitions = (
         tooltip: "Global phase add on every voice (cycles). Also slides the face phase lines.",
       },
       {
-        key: "randomizePhase",
-        label: "Random Phase",
-        defaultValue: "0.1",
-        min: "0",
-        mid: "0.5",
-        max: "1",
-        step: "any",
-        modClamp: false,
-        nonlinearSlider: false,
-        sliderCurve: "linear",
-        tooltip:
-          "Permanent random starting phase offset per saw (after Distance). "
-          + "0 = no extra random offset.",
-      },
-      {
-        key: "centerSide",
-        label: "Center/Side",
-        defaultValue: "1",
-        min: "0",
-        mid: "0.5",
-        max: "1",
-        step: "0.01",
-        nonlinearSlider: false,
-        sliderCurve: "linear",
-        tooltip: "0 = center voices only, 1 = side voices only. Face: additive off-red=left, off-blue=right, center=both→white.",
-      },
-      {
         key: "phaseCollapse",
         label: "Phase Collapse",
         defaultValue: "0",
@@ -4451,6 +4420,21 @@ const nodeGraphModuleDefinitions = (
         tooltip:
           "Where Distance 0 settles. Merge (0): all phases stack together. "
           + "Distribute (1): walk collapses onto even centers (i/N).",
+      },
+      {
+        key: "randomizePhase",
+        label: "Random Phase",
+        defaultValue: "0.1",
+        min: "0",
+        mid: "0.5",
+        max: "1",
+        step: "any",
+        modClamp: false,
+        nonlinearSlider: false,
+        sliderCurve: "linear",
+        tooltip:
+          "Permanent random starting phase offset per saw (after Distance). "
+          + "0 = no extra random offset.",
       },
       {
         key: "jitterDistance",
@@ -4469,49 +4453,6 @@ const nodeGraphModuleDefinitions = (
           + "Uses normal parameter smoothing (param menu).",
       },
       {
-        key: "jitterSpeed",
-        label: "Jitter Speed",
-        kind: "frequency",
-        defaultValue: "3.6",
-        min: "0",
-        mid: "10",
-        max: "50",
-        step: "any",
-        unit: "Hz",
-        nonlinearSlider: true,
-        sliderCurve: "skew",
-        tooltip: "Walk step rate when Distance > 0. Pitch-tilted with Modulation Tilt.",
-      },
-      {
-        key: "jitterSpeedRef",
-        label: "Modulation Speed Ref",
-        kind: "frequency",
-        defaultValue: "200",
-        min: "20",
-        mid: "100",
-        max: "2000",
-        step: "any",
-        unit: "Hz",
-        nonlinearSlider: true,
-        sliderCurve: "skew",
-        tooltip:
-          "Anchor pitch where Modulation Tilt is 1×: Jitter Speed and Vibrato Distance equal their knobs.",
-      },
-      {
-        key: "jitterTilt",
-        label: "Modulation Tilt",
-        defaultValue: "-0.3",
-        min: "-1",
-        mid: "0",
-        max: "1",
-        step: "any",
-        hidden: true,
-        tooltip:
-          "Pitch curve (f / Speed Ref)^(tilt+1). Jitter: scales Speed. Vibrato: scales Distance "
-          + "(sine stays at Vibrato Speed Hz). −1 = same at all pitches. 0 = ∝ f. "
-          + "+1 = highs harder (∝ f²). Hidden by default — show via metaparam.",
-      },
-      {
         key: "vibratoDistance",
         label: "Vibrato Distance",
         defaultValue: "0",
@@ -4524,8 +4465,23 @@ const nodeGraphModuleDefinitions = (
         nonlinearSlider: true,
         sliderCurve: "custom",
         tooltip:
-          "Sine phase room around centers — same units as Jitter Distance. "
-          + "(1/N)×Distance × Modulation Tilt × wavetable sine. Speed is constant Hz.",
+          "Scales each saw's phase spread by the shared vibrato LFO "
+          + "(phaseOffset = spread × (LFO×Distance + 1) + walk). Not pitch FM. "
+          + "Center saw is unmodulated. 0 = rest.",
+      },
+      {
+        key: "jitterSpeed",
+        label: "Jitter Speed",
+        kind: "frequency",
+        defaultValue: "3.6",
+        min: "0",
+        mid: "10",
+        max: "50",
+        step: "any",
+        unit: "Hz",
+        nonlinearSlider: true,
+        sliderCurve: "skew",
+        tooltip: "Walk step rate in Hz when Distance > 0. Same at every pitch.",
       },
       {
         key: "vibratoSpeed",
@@ -4539,7 +4495,72 @@ const nodeGraphModuleDefinitions = (
         unit: "Hz",
         nonlinearSlider: true,
         sliderCurve: "skew",
-        tooltip: "Sine LFO rate in Hz. Not pitch-tilted — Modulation Tilt hits Distance, not this.",
+        tooltip: "Shared vibrato LFO rate in Hz. Same at every pitch.",
+      },
+      {
+        key: "jitterSteps",
+        label: "Jitter Steps",
+        defaultValue: "0",
+        min: "0",
+        mid: "0",
+        max: "1",
+        step: "1",
+        choices: ["Fixed", "Random"],
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        linearSmoothing: false,
+        nonlinearSlider: false,
+        tooltip:
+          "Fixed: drunk ±step (original Hypersaw). Random: noise×step (noisier grain).",
+      },
+      {
+        key: "jitterFilter",
+        label: "Jitter Filter",
+        kind: "frequency",
+        defaultValue: "20",
+        min: "0.1",
+        mid: "20",
+        max: "2000",
+        step: "any",
+        unit: "Hz",
+        nonlinearSlider: true,
+        sliderCurve: "skew",
+        tooltip:
+          "Walk LPF cutoff in Hz. Same at every pitch. Low = smooth. High = rawer steps.",
+      },
+      {
+        key: "jitterDistanceTiltSource",
+        label: "Jitter Distance Source",
+        defaultValue: "0",
+        min: "0",
+        mid: "0",
+        max: "1",
+        step: "1",
+        choices: ["Wavelength", "Division"],
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        linearSmoothing: false,
+        nonlinearSlider: false,
+        tooltip:
+          "Wavelength: higher pitches move more so phase travel matches. "
+          + "Division: allotted 1/N slot space (legacy).",
+      },
+      {
+        key: "vibratoDistanceTiltSource",
+        label: "Vibrato Distance Source",
+        defaultValue: "1",
+        min: "0",
+        mid: "0",
+        max: "1",
+        step: "1",
+        choices: ["Wavelength", "Division"],
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        linearSmoothing: false,
+        nonlinearSlider: false,
+        tooltip:
+          "Wavelength: higher pitches move more so phase travel matches. "
+          + "Division: allotted 1/N slot space.",
       },
       {
         key: "vibratoPhaseVary",
@@ -4554,6 +4575,22 @@ const nodeGraphModuleDefinitions = (
         tooltip:
           "Per-voice sine start phase (Master Seed). "
           + "0 = all in phase; 1 = full random 0…1 offset.",
+      },
+      {
+        key: "seed",
+        label: "Seed",
+        kind: "seed",
+        defaultValue: "1",
+        min: "0",
+        mid: "1",
+        max: "99999",
+        step: "1",
+        maxDigits: 0,
+        nonlinearSlider: true,
+        sliderCurve: "skew",
+        linearSmoothing: false,
+        smoothingType: "none",
+        tooltip: "Master seed for Random Phase and per-voice Random Steps jitter.",
       },
       {
         key: "amplitude",
@@ -5598,23 +5635,21 @@ const nodeGraphModuleDefinitions = (
   },
   sequencer: {
     planRole: "source",
-    digitalOutputs: ["Polyphony", "Play Keys"],
+    digitalOutputs: ["Play Keys"],
     inputs: [],
     layout: "sequencer",
     customDisplayArea: true,
     defaultWidthGu: 36,
     displayHeightGu: 14,
     outputChannels: {
-      Polyphony: "black",
       "Play Keys": "blue",
     },
     outputLabels: {
-      Polyphony: "Polyphony",
       "Play Keys": "Play Keys",
       f: "ƒ",
     },
+    outputAliases: { Polyphony: "Play Keys" },
     outputs: [
-      "Polyphony",
       "Play Keys",
       "Gate",
       "Trigger",
@@ -9614,21 +9649,22 @@ const nodeGraphModuleDefinitions = (
       { key: "f", kind: "scalar" },
     ],
     digitalInputs: ["Arp Keys"],
-    digitalOutputs: ["Monophony", "Step"],
+    digitalOutputs: ["Play Keys", "Step"],
     inputs: ["Arp Keys", "Trigger", "Reset", "f"],
     inputChannels: { "Arp Keys": "gold" },
     inputLabels: { "Arp Keys": "Arp Keys", f: "ƒ", Trigger: "Trig" },
     inputAliases: { Clock: "Trigger", Trig: "Trigger", Frequency: "f", Freq: "f", "ƒ": "f" },
-    outputChannels: { Monophony: "black" },
-    outputs: ["Monophony", "0.1V/Oct", "f", "Gate", "Trigger", "Step"],
-    outputLabels: { Monophony: "Monophony", "0.1V/Oct": "0.1V", f: "ƒ", Trigger: "Trig" },
+    outputChannels: { "Play Keys": "blue" },
+    outputs: ["Play Keys", "0.1V/Oct", "f", "Gate", "Trigger", "Step"],
+    outputLabels: { "Play Keys": "Play Keys", "0.1V/Oct": "0.1V", f: "ƒ", Trigger: "Trig" },
     outputAliases: {
       Pitch: "0.1V/Oct",
       Frequency: "f",
       Freq: "f",
       "ƒ": "f",
       Trig: "Trigger",
-      Polyphony: "Monophony",
+      Polyphony: "Play Keys",
+      Monophony: "Play Keys",
     },
     parameters: [
       {
@@ -12210,17 +12246,19 @@ const nodeGraphModuleDefinitions = (
     ],
   },
   // Portal MIDI — hardware device listen only. Does not drive Keyboard face/outs.
-  // Play Keys = live MIDI note bitmask (blue). Polyphony = Midi Note + Velocity table (black).
+  // Play Keys = live MIDI note bitmask (blue). Wire to Meta Voices to mix into voices.
+  // Unique in patch like Output — one hardware MIDI inlet.
   keyboardController: {
     planRole: "source",
-    digitalOutputs: ["Polyphony", "Play Keys"],
+    uniqueInPatch: true,
+    digitalOutputs: ["Play Keys"],
     inputs: [],
     layout: "keyboardController",
     outputChannels: {
-      Polyphony: "black",
       "Play Keys": "blue",
     },
     outputAliases: {
+      Polyphony: "Play Keys",
       NoteNumber: "Note#/127",
       MIDI: "Note#/127",
       Pitch: "Note#/127",
@@ -12233,7 +12271,6 @@ const nodeGraphModuleDefinitions = (
       f: "Frequency",
     },
     outputLabels: {
-      Polyphony: "Polyphony",
       "Play Keys": "Play Keys",
       "Note#/127": "Note#/127",
       "Velocity#/127": "Velocity#/127",
@@ -12241,7 +12278,6 @@ const nodeGraphModuleDefinitions = (
       Frequency: "ƒ",
     },
     outputs: [
-      "Polyphony",
       "Play Keys",
       "Gate",
       "Trigger",
@@ -12256,13 +12292,13 @@ const nodeGraphModuleDefinitions = (
   },
   // Local piano face + explicit INs (wire MIDI→Keyboard Play Keys for device blue).
   // Play Keys = blue sounding mask. Arp Keys = gold ctrl+click latch.
-  // Chord Memory IN = green mask: bit n activates saved chord slot n as Play Keys.
+  // Chord Memory IN = green mask: bit n activates saved chord slot n.
   // Chord Memory OUT = expanded chord tones (patch to Arp Keys).
-  // Polyphony = Midi Note + Velocity (local piano) — wire to Meta Voices.
+  // Mix Play Keys / Arp Keys / Chord Memory into Meta Voices.
   keyboard: {
     planRole: "source",
     digitalInputs: ["Play Keys", "Arp Keys", "Chord Memory"],
-    digitalOutputs: ["Polyphony", "Play Keys", "Arp Keys", "Chord Memory"],
+    digitalOutputs: ["Play Keys", "Arp Keys", "Chord Memory"],
     inputs: ["Play Keys", "Arp Keys", "Chord Memory", "Gate", "Trigger"],
     inputChannels: {
       "Play Keys": "blue",
@@ -12270,7 +12306,6 @@ const nodeGraphModuleDefinitions = (
       "Chord Memory": "green",
     },
     outputChannels: {
-      Polyphony: "black",
       "Play Keys": "blue",
       "Arp Keys": "gold",
       "Chord Memory": "green",
@@ -12288,6 +12323,7 @@ const nodeGraphModuleDefinitions = (
     // Face 7 ⇒ outer ~18gu (header + face + 13 jack rows + lip).
     displayHeightGu: 7,
     outputAliases: {
+      Polyphony: "Play Keys",
       NoteNumber: "Note#/127",
       MIDI: "Note#/127",
       Pitch: "Note#/127",
@@ -12300,7 +12336,6 @@ const nodeGraphModuleDefinitions = (
       ƒ: "f",
     },
     outputLabels: {
-      Polyphony: "Polyphony",
       "Play Keys": "Play Keys",
       "Arp Keys": "Arp Keys",
       "Chord Memory": "Chord Memory",
@@ -12319,7 +12354,6 @@ const nodeGraphModuleDefinitions = (
       Trigger: "Trigger",
     },
     outputs: [
-      "Polyphony",
       "Play Keys",
       "Arp Keys",
       "Chord Memory",
@@ -12339,7 +12373,7 @@ const nodeGraphModuleDefinitions = (
   gridKeyboard: {
     planRole: "source",
     digitalInputs: ["Play Keys", "Arp Keys", "Chord Memory"],
-    digitalOutputs: ["Polyphony", "Play Keys", "Arp Keys", "Chord Memory"],
+    digitalOutputs: ["Play Keys", "Arp Keys", "Chord Memory"],
     inputs: ["Play Keys", "Arp Keys", "Chord Memory"],
     inputChannels: {
       "Play Keys": "blue",
@@ -12347,7 +12381,6 @@ const nodeGraphModuleDefinitions = (
       "Chord Memory": "green",
     },
     outputChannels: {
-      Polyphony: "black",
       "Play Keys": "blue",
       "Arp Keys": "gold",
       "Chord Memory": "green",
@@ -12355,8 +12388,8 @@ const nodeGraphModuleDefinitions = (
     layout: "gridKeyboard",
     defaultWidthGu: 40,
     displayHeightGu: 24,
+    outputAliases: { Polyphony: "Play Keys" },
     outputLabels: {
-      Polyphony: "Polyphony",
       "Play Keys": "Play Keys",
       "Arp Keys": "Arp Keys",
       "Chord Memory": "Chord Memory",
@@ -12368,7 +12401,6 @@ const nodeGraphModuleDefinitions = (
       "Chord Memory": "Chord Memory",
     },
     outputs: [
-      "Polyphony",
       "Play Keys",
       "Arp Keys",
       "Chord Memory",
