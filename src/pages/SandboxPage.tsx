@@ -55,17 +55,20 @@ function sandboxIframeSrc(
   }
 
   // Showcase / deep-linked page patches skip the start menu and load straight
-  // into the modular workspace (circuit builder). Do NOT set view=perform --
-  // that opens layout-canvas perform mode; F still cycles canvas as usual.
+  // into the modular workspace, already in layout-canvas mode (same as F once).
+  // Do NOT set view=perform -- that path locks perform-only chrome via
+  // perform-boot.js; layoutCanvas=1 only calls nodeGraphLayoutCanvasOpen so F
+  // still cycles off -> perform -> edit.
   if (wantsBoot) {
     iframeParams.set("boot", "1");
+    iframeParams.set("layoutCanvas", "1");
   }
 
   // Cache-bust so Chrome does not keep a stale black iframe document.
   // Also force a one-shot viewport recover path when a prior Chrome session
   // restored pan/zoom off-screen (UI chrome visible, empty black workspace).
   if (!iframeParams.has("v")) {
-    iframeParams.set("v", "20260928-showcase-boot");
+    iframeParams.set("v", "20260928-showcase-canvas");
   }
   const query = iframeParams.toString();
   return `/soemdsp-sandbox/index.html${query ? `?${query}` : ""}`;
@@ -171,7 +174,7 @@ const SandboxPage = ({
   const pagePatch = scope === "user" ? undefined : (pagePatchProp ?? rawParams.slug);
   // Showcase view arms audio + frames automatically; sandbox view stays plain.
   const effectiveAutostart = autostart || view === "showcase";
-  // Showcase also skips the sandbox start menu (boot=1 -> modular workspace).
+  // Showcase: skip start menu + open layout-canvas (boot=1&layoutCanvas=1).
   const wantsBoot = view === "showcase";
   const { session } = useAuth();
   const iframeRef = useRef<HTMLIFrameElement | null>(null);

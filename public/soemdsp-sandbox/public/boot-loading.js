@@ -496,14 +496,41 @@ if (window.nodeSandboxInterfaceReady && document.body.dataset.nodeBootStarted ==
   finishNodeBootLoading();
 }
 
+/** Query flag helper for boot / layoutCanvas deep-links. */
+function nodeBootQueryFlag(name) {
+  try {
+    const raw = String(new URLSearchParams(window.location.search || "").get(name) || "")
+      .trim()
+      .toLowerCase();
+    return raw === "1" || raw === "true" || raw === "yes";
+  } catch (_error) {
+    return false;
+  }
+}
+
+/** Showcase: open layout-canvas perform mode (same as pressing F once). */
+function nodeBootWantsLayoutCanvas() {
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    if (nodeBootQueryFlag("layoutCanvas") || nodeBootQueryFlag("canvas")) return true;
+    const raw = String(params.get("layoutCanvas") || params.get("canvas") || "")
+      .trim()
+      .toLowerCase();
+    // Allow layoutCanvas=perform as an alias for the F-cycle "perform" stage.
+    return raw === "perform";
+  } catch (_error) {
+    return false;
+  }
+}
+
 /** Showcase / deep-link: skip start menu and load into modular workspace. */
 function nodeBootWantsAutoStart() {
   try {
-    const params = new URLSearchParams(window.location.search || "");
-    const boot = String(params.get("boot") || "").trim().toLowerCase();
-    if (boot === "1" || boot === "true" || boot === "yes") return true;
+    if (nodeBootQueryFlag("boot") || nodeBootWantsLayoutCanvas()) return true;
     // Fallback for direct iframe embeds that only set pagePatch (not home init).
-    const pagePatch = String(params.get("pagePatch") || "").trim().toLowerCase();
+    const pagePatch = String(
+      new URLSearchParams(window.location.search || "").get("pagePatch") || "",
+    ).trim().toLowerCase();
     if (pagePatch && pagePatch !== "init") return true;
     return false;
   } catch (_error) {
@@ -519,7 +546,7 @@ function nodeBootMaybeAutoStart() {
     beginNodeBootLoadSequence();
   };
   // Defer so perform-boot.js (loaded next) can wrap beginNodeBootLoadSequence
-  // on phones before we fire. Does not open view=perform / layout-canvas.
+  // on phones before we fire. Does not set view=perform.
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => window.setTimeout(start, 0), { once: true });
   } else {
@@ -527,4 +554,41 @@ function nodeBootMaybeAutoStart() {
   }
 }
 
+/**
+ * After interface-ready, open layout-canvas perform mode via the normal F API
+ * (nodeGraphLayoutCanvasOpen). Does not enable perform-boot's view=perform
+ * lock / mobile-only wrappers, so F still cycles off -> perform -> edit.
+ */
+function nodeBootOpenLayoutCanvas() {
+  if (typeof window.nodeGraphLayoutCanvasOpen !== "function") {
+    return false;
+  }
+  try {
+    return Boolean(window.nodeGraphLayoutCanvasOpen("perform", { silent: true }));
+  } catch (error) {
+    console.warn("Unable to open layout canvas after boot", error);
+    return false;
+  }
+}
+
+function nodeBootMaybeOpenLayoutCanvas() {
+  if (!nodeBootWantsLayoutCanvas()) return;
+  const open = () => {
+    nodeBootOpenLayoutCanvas();
+    // Pins / faces can settle after first paint (same retry cadence as perform-boot).
+    for (const ms of [120, 450, 1100]) {
+      window.setTimeout(nodeBootOpenLayoutCanvas, ms);
+    }
+  };
+  if (
+    document.documentElement.dataset.nodeSandboxInterfaceReady === "true"
+    || window.nodeSandboxInterfaceReady === true
+  ) {
+    open();
+  } else {
+    window.addEventListener("nodeSandboxInterfaceReady", open, { once: true });
+  }
+}
+
 nodeBootMaybeAutoStart();
+nodeBootMaybeOpenLayoutCanvas();
