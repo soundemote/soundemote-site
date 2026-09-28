@@ -7,6 +7,9 @@
  * Phone canvas (soundemote.io): same start menu, then canvas-only after START.
  *   Live audio stays enabled. Detection: touch + coarse pointer / phone UA.
  *   Desktop preview: ?mobile=1 or ?phone=1. Force full workspace: ?desktop=1.
+ *
+ * Patch perform deep-link: ?view=perform (often with ?pagePatch=slug)
+ *   Auto-starts, opens layout-canvas perform view, live audio stays enabled.
  */
 (function soemdspPerformBoot(global) {
   "use strict";
@@ -14,7 +17,7 @@
   var PROTOCOL_TYPE = "soemdsp-perform";
   var PROTOCOL_V = 1;
   var BODY_CLASS = "node-perform-mode";
-  var CACHE_TAG = "mobile-canvas-1";
+  var CACHE_TAG = "mobile-canvas-view-perform-1";
   var CONTROLLER_TYPES = {
     knob: true,
     pluginSlider: true,
@@ -41,6 +44,18 @@
         .trim()
         .toLowerCase();
       return mode === "perform";
+    } catch (_e) {
+      return false;
+    }
+  }
+
+  /** Desktop/patch deep-link: open perform canvas with live audio (not plugin host). */
+  function isForcedPerformView() {
+    try {
+      var view = String(new URLSearchParams(global.location.search).get("view") || "")
+        .trim()
+        .toLowerCase();
+      return view === "perform" || view === "canvas" || queryFlag("view");
     } catch (_e) {
       return false;
     }
@@ -107,12 +122,15 @@
    * Phone path: keep identical start menu; after START show patch canvas only.
    * Does not set soemdspPerformMode (that path disables AudioWorklet for the plugin host).
    */
-  function bootMobileCanvas() {
+  function bootMobileCanvas(options) {
+    var opts = options || {};
+    var autoStart = Boolean(opts.autoStart);
     global.soemdspPerformMode = false;
     global.soemdspMobileCanvasMode = true;
 
     function onUserStart() {
-      // Apply perform chrome only after START so the start menu stays identical.
+      // Apply perform chrome only after START so the start menu stays identical
+      // (forced ?view=perform applies it immediately via autoStart).
       ensureBodyClassEarly();
       ensurePerformCssEarly();
     }
@@ -167,24 +185,43 @@
       || global.nodeSandboxInterfaceReady === true
     ) {
       afterInterfaceReady();
-      return;
+    } else {
+      global.addEventListener("nodeSandboxInterfaceReady", afterInterfaceReady, {
+        once: true,
+      });
     }
-    global.addEventListener("nodeSandboxInterfaceReady", afterInterfaceReady, {
-      once: true,
-    });
+
+    if (autoStart) {
+      function autoStartBoot() {
+        onUserStart();
+        if (typeof global.beginNodeBootLoadSequence === "function") {
+          global.beginNodeBootLoadSequence();
+          return;
+        }
+        var btn = document.getElementById("nodeBootStartButton");
+        if (btn) btn.click();
+      }
+      if (document.body && document.body.dataset.nodeBootStarted === "1") return;
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", autoStartBoot, { once: true });
+      } else {
+        autoStartBoot();
+      }
+    }
   }
 
   var pluginPerform = isPerformPath();
-  var mobileCanvas = !pluginPerform && isMobilePhoneClient();
+  var forcedPerformView = !pluginPerform && isForcedPerformView();
+  var mobileCanvas = !pluginPerform && !forcedPerformView && isMobilePhoneClient();
 
-  if (!pluginPerform && !mobileCanvas) {
+  if (!pluginPerform && !mobileCanvas && !forcedPerformView) {
     global.soemdspPerformMode = false;
     global.soemdspMobileCanvasMode = false;
     return;
   }
 
-  if (mobileCanvas) {
-    bootMobileCanvas();
+  if (mobileCanvas || forcedPerformView) {
+    bootMobileCanvas({ autoStart: forcedPerformView });
     return;
   }
 
