@@ -16,13 +16,16 @@ type SharedProjectRow = {
   project_data: unknown;
 };
 
+type SandboxIframeMode = "perform" | "circuitbuilder" | "canvas" | "";
+
 function sandboxIframeSrc(
   search: string,
   params: SandboxRouteParams,
   wantsAutoframe: boolean,
   wantsAutostart: boolean,
   pagePatchSlug?: string,
-  wantsBoot?: boolean,
+  /** Locked scheme: perform | circuitbuilder | canvas (empty = leave query alone). */
+  lockedMode?: SandboxIframeMode,
 ) {
   const iframeParams = new URLSearchParams(search);
   const hasPatchRoute = Boolean(params.patch);
@@ -54,21 +57,40 @@ function sandboxIframeSrc(
     iframeParams.set("autostart", "1");
   }
 
-  // Showcase / deep-linked page patches skip the start menu and load straight
-  // into the modular workspace, already in layout-canvas mode (same as F once).
-  // Do NOT set view=perform -- that path locks perform-only chrome via
-  // perform-boot.js; layoutCanvas=1 only calls nodeGraphLayoutCanvasOpen so F
-  // still cycles off -> perform -> edit.
-  if (wantsBoot) {
+  // Locked mode scheme (sandbox boot-loading / perform-boot):
+  //   perform        -> light perform.css path (also sets view=perform)
+  //   circuitbuilder -> modular workspace, skip start menu
+  //   canvas         -> modular + layout-canvas (F once; not light perform)
+  // Query `mode=` already on the URL wins when lockedMode is empty.
+  const existingMode = String(iframeParams.get("mode") || "").trim().toLowerCase();
+  const mode =
+    lockedMode
+    || (existingMode === "perform" || existingMode === "circuitbuilder" || existingMode === "canvas"
+      ? existingMode
+      : "");
+
+  if (mode === "perform") {
+    iframeParams.set("mode", "perform");
+    iframeParams.set("view", "perform");
+    iframeParams.delete("layoutCanvas");
+    iframeParams.delete("boot");
+  } else if (mode === "canvas") {
+    iframeParams.set("mode", "canvas");
     iframeParams.set("boot", "1");
     iframeParams.set("layoutCanvas", "1");
+    iframeParams.delete("view");
+  } else if (mode === "circuitbuilder") {
+    iframeParams.set("mode", "circuitbuilder");
+    iframeParams.set("boot", "1");
+    iframeParams.delete("layoutCanvas");
+    if (iframeParams.get("view") === "perform" || iframeParams.get("view") === "canvas") {
+      iframeParams.delete("view");
+    }
   }
 
   // Cache-bust so Chrome does not keep a stale black iframe document.
-  // Also force a one-shot viewport recover path when a prior Chrome session
-  // restored pan/zoom off-screen (UI chrome visible, empty black workspace).
   if (!iframeParams.has("v")) {
-    iframeParams.set("v", "20260928-showcase-canvas");
+    iframeParams.set("v", "20260928-mode-scheme");
   }
   const query = iframeParams.toString();
   return `/soemdsp-sandbox/index.html${query ? `?${query}` : ""}`;
@@ -142,8 +164,12 @@ type SandboxPageProps = {
   staticPatchUrl?: string;
   autostart?: boolean;
   pagePatch?: string;
-  /** "showcase" opens the patch armed/framed; "sandbox" is a plain tool entry. */
-  view?: "showcase" | "sandbox";
+  /**
+   * showcase -> /<patch> circuitbuilder (boot into modular workspace)
+   * perform  -> /perform/<patch> light perform path
+   * sandbox  -> plain tool entry (start menu / home)
+   */
+  view?: "showcase" | "perform" | "sandbox";
   /** "user" scopes the route to /@<handle>/patch/<slug> (a user-owned patch). */
   scope?: "user";
   /**
@@ -172,10 +198,20 @@ const SandboxPage = ({
   // /:slug and /:slug/sandbox (and legacy /patch/:slug) pass the slug via the
   // route param. User-scoped patches are not global page-patches.
   const pagePatch = scope === "user" ? undefined : (pagePatchProp ?? rawParams.slug);
-  // Showcase view arms audio + frames automatically; sandbox view stays plain.
-  const effectiveAutostart = autostart || view === "showcase";
-  // Showcase: skip start menu + open layout-canvas (boot=1&layoutCanvas=1).
-  const wantsBoot = view === "showcase";
+  // Showcase / perform arm audio; sandbox view stays plain unless autostart prop.
+  const effectiveAutostart = autostart || view === "showcase" || view === "perform";
+  // Resolve locked iframe mode. URL ?mode= wins over route default.
+  const urlMode = String(new URLSearchParams(location.search).get("mode") || "")
+    .trim()
+    .toLowerCase();
+  const lockedMode: SandboxIframeMode =
+    urlMode === "perform" || urlMode === "circuitbuilder" || urlMode === "canvas"
+      ? (urlMode as SandboxIframeMode)
+      : view === "perform"
+        ? "perform"
+        : view === "showcase"
+          ? "circuitbuilder"
+          : "";
   const { session } = useAuth();
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [projectData, setProjectData] = useState<unknown>(null);
@@ -198,7 +234,7 @@ const SandboxPage = ({
     wantsAutoframe,
     effectiveAutostart,
     pagePatch || undefined,
-    wantsBoot,
+    lockedMode,
   );
 
   useEffect(() => {

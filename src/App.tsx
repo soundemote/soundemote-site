@@ -80,9 +80,15 @@ const ProductRoutes = ({ homeIsArticles }: { homeIsArticles: boolean }) => (
       <Route path="/shootingstar-live" element={<SandboxPage staticPatchUrl="/soemdsp-sandbox/patches/shootingstar.json" autostart />} />
 
       {/* Registered page patches are bare URLs backed by soemdsp-sandbox/patches/{slug}.json:
-          /<slug>          -> showcase when the static file (or site_pages) exists
-          /<slug>/sandbox  -> plain sandbox-only entry
-          Legacy /patch/<slug> redirects to the bare path. */}
+          /<slug>           -> circuitbuilder (modular workspace, skip start menu)
+          /perform/<slug>   -> light perform path (mode=perform / view=perform)
+          /<slug>/sandbox   -> plain sandbox-only entry
+          Legacy /patch/<slug> redirects to the bare path.
+          Iframe ?mode=perform|circuitbuilder|canvas overrides when present. */}
+      <Route
+        path="/perform/:slug"
+        element={<SandboxPage view="perform" />}
+      />
       <Route
         path="/:slug/sandbox"
         element={
