@@ -495,3 +495,36 @@ if (!nodeGraphBootIsRelease()) {
 if (window.nodeSandboxInterfaceReady && document.body.dataset.nodeBootStarted === "1") {
   finishNodeBootLoading();
 }
+
+/** Showcase / deep-link: skip start menu and load into modular workspace. */
+function nodeBootWantsAutoStart() {
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    const boot = String(params.get("boot") || "").trim().toLowerCase();
+    if (boot === "1" || boot === "true" || boot === "yes") return true;
+    // Fallback for direct iframe embeds that only set pagePatch (not home init).
+    const pagePatch = String(params.get("pagePatch") || "").trim().toLowerCase();
+    if (pagePatch && pagePatch !== "init") return true;
+    return false;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function nodeBootMaybeAutoStart() {
+  if (!nodeBootWantsAutoStart()) return;
+  if (document.body?.dataset?.nodeBootStarted === "1") return;
+  const start = () => {
+    ensureNodeBootSecureContextBanner();
+    beginNodeBootLoadSequence();
+  };
+  // Defer so perform-boot.js (loaded next) can wrap beginNodeBootLoadSequence
+  // on phones before we fire. Does not open view=perform / layout-canvas.
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => window.setTimeout(start, 0), { once: true });
+  } else {
+    window.setTimeout(start, 0);
+  }
+}
+
+nodeBootMaybeAutoStart();
