@@ -141,12 +141,10 @@ function attachNodeGraphNodeEvents(node) {
       continue;
     }
     port.addEventListener("pointerdown", nodeGraphWireInteractions.handlePortPointerDown);
-    port.addEventListener("pointerdown", toggleNodeGraphMonitorFromPortEvent, true);
     port.addEventListener("click", nodeGraphWireInteractions.handlePortClick);
   }
   for (const port of node.querySelectorAll(".node-param-port.modulation-input")) {
     port.addEventListener("pointerdown", nodeGraphWireInteractions.handlePortPointerDown);
-    port.addEventListener("pointerdown", toggleNodeGraphMonitorFromPortEvent, true);
     port.addEventListener("click", nodeGraphWireInteractions.handlePortClick);
   }
   for (const port of node.querySelectorAll(".node-param-port.graph-input")) {
@@ -155,7 +153,6 @@ function attachNodeGraphNodeEvents(node) {
   }
   for (const row of node.querySelectorAll(".node-io-row")) {
     row.addEventListener("pointerdown", nodeGraphWireInteractions.handlePortPointerDown);
-    row.addEventListener("pointerdown", toggleNodeGraphMonitorFromPortEvent, true);
     row.addEventListener("click", nodeGraphWireInteractions.handlePortClick);
   }
   for (const slider of node.querySelectorAll('input[type="range"]')) {
@@ -454,10 +451,9 @@ function nodeGraphModuleLayoutClassNames(type, definition, layout) {
     matrixWaterfall: "matrix-waterfall-layout",
     matrixPlate: "matrix-plate-layout",
     textStream: "text-stream-layout",
-    macroControls: "macro-controls-layout",
     patchCommand: "patch-command-layout",
     phosphillatorDraw: "phosphillator-draw-layout",
-    phosphorWaveform: "phosphor-waveform-layout",
+    sampleWaveform: "sample-waveform-layout",
     pitchModWheel: "pitch-mod-wheel-layout",
     screenSpaceShader: "screen-space-shader-layout",
     sliderWidget: "slider-widget-layout",
@@ -465,7 +461,7 @@ function nodeGraphModuleLayoutClassNames(type, definition, layout) {
     pitchDetector: "pitch-detector-layout",
     speakerProtection: "speaker-protection-layout",
     textBox: "text-box-layout",
-    traceDisplay: "trace-display-layout",
+    scopeFace: "scope-face-layout",
     visualScope: "visual-scope-layout",
     wallRoomDisplay: "wall-room-display-layout",
     ...nodeGraphChromelessModuleLayoutClassEntries(),
@@ -569,7 +565,7 @@ function syncNodeGraphLayoutBNoParamsClass(element, type, ui = null) {
   element.classList.toggle("layout-b-no-params", rows <= 0);
 }
 
-/** LayoutA I/O strip: ports under the face. */
+/** LayoutA I/O strip: ports above the face (.dsp-node-io-section). */
 function createNodeGraphLayoutAIoSection(node, type, inputPorts, outputPorts, options = {}) {
   const ioSection = document.createElement("div");
   ioSection.className = options.className || "dsp-node-io-section";
@@ -659,12 +655,15 @@ function createNodeGraphModuleElement(type, node) {
       cssLayoutClass: "chrome-layout-a",
     };
   article.dataset.chromeLayout = chrome.layout;
-  const isTitleBarAndPorts = Boolean(chrome.titleIoOnly)
+  const isInletOutletLayout = Boolean(chrome.titleIoOnly)
+    || chrome.layout === "InletOutletLayout"
     || chrome.layout === "TitleBarAndPorts"
     || chrome.layout === "LayoutC"
+    || chrome.layout === (NodeGraphModuleChromeLayout?.InletOutletLayout)
     || chrome.layout === (NodeGraphModuleChromeLayout?.TitleBarAndPorts)
     || chrome.layout === (NodeGraphModuleChromeLayout?.LayoutC);
-  const isLayoutC = isTitleBarAndPorts; // deprecated alias for local branches
+  const isTitleBarAndPorts = isInletOutletLayout; // deprecated alias for local branches
+  const isLayoutC = isInletOutletLayout; // deprecated alias for local branches
   const isMetamoduleLayout = Boolean(chrome.portsAboveFace)
     || chrome.layout === "MetamoduleLayout"
     || chrome.layout === (NodeGraphModuleChromeLayout?.MetamoduleLayout);
@@ -674,8 +673,9 @@ function createNodeGraphModuleElement(type, node) {
   );
   article.classList.toggle("chrome-layout-b", Boolean(chrome.portsBeside && !isMetamoduleLayout));
   article.classList.toggle("chrome-layout-metamodule", isMetamoduleLayout);
-  article.classList.toggle("chrome-layout-title-bar-and-ports", isTitleBarAndPorts);
-  article.classList.toggle("chrome-layout-c", isTitleBarAndPorts); // deprecated CSS alias
+  article.classList.toggle("chrome-layout-inlet-outlet", isInletOutletLayout);
+  article.classList.toggle("chrome-layout-title-bar-and-ports", isInletOutletLayout); // deprecated CSS alias
+  article.classList.toggle("chrome-layout-c", isInletOutletLayout); // deprecated CSS alias
   // Headerless LayoutB: shell + params + 1gu bottom clearance.
   // MetamoduleLayout uses chrome-layout-metamodule (not LayoutB solid shell).
   article.classList.toggle(
@@ -724,12 +724,17 @@ function createNodeGraphModuleElement(type, node) {
   if (typeof syncNodeGraphLayoutBNoParamsClass === "function") {
     syncNodeGraphLayoutBNoParamsClass(article, type, patchNodeUi);
   }
+  article.classList.toggle(
+    "layout-b-display-only",
+    typeof nodeGraphModuleIsLayoutBDisplayOnly === "function"
+      && nodeGraphModuleIsLayoutBDisplayOnly(type, patchNode.ui, patchNode),
+  );
 
   const chromelessRegistration = nodeGraphChromelessModuleLayouts.has(layout)
     ? nodeGraphChromelessModuleRegistrations.get(layout)
     : null;
   if (chromelessRegistration) {
-    // TitleBarAndPorts: title + standard IO section only — never a face / compactTile ports.
+    // InletOutletLayout: title + standard IO section only — never a face / compactTile ports.
     if (isTitleBarAndPorts) {
       if (!patchNodeUi.titleHidden) {
         article.append(createNodeGraphModuleHeader(type, node, definition));
@@ -773,9 +778,9 @@ function createNodeGraphModuleElement(type, node) {
       chromelessBody.hidden = true;
       chromelessBody.setAttribute("aria-hidden", "true");
     }
-    // MetamoduleLayout → shared LayoutA IO chrome ABOVE a dedicated face band.
-    // Do not invent a third jack/label dialect (flush + app-wide label type).
-    // LayoutB → beside. LayoutA → face then ports under.
+    // MetamoduleLayout and LayoutA share one jack dialect (.dsp-node-io-section).
+    // LayoutA band order is header → io → face (apply places the strip).
+    // LayoutB → ports beside the face. Do not invent a second IO path.
     if (chrome.portsAboveFace) {
       appendNodeGraphModuleIoSection(
         article,
@@ -839,7 +844,14 @@ function createNodeGraphModuleElement(type, node) {
     // Body (and any afterMount setup) already appended above -- chromeless
     // modules carry their own inline ports, no separate IO section.
   } else if (layout === "textBox") {
-    article.append(createNodeGraphTextBoxBody(node));
+    const textBoxUnderConstruction = type === "animatedTextBox"
+      && typeof nodeGraphModuleTypeIsUnderConstruction === "function"
+      && nodeGraphModuleTypeIsUnderConstruction(type);
+    article.append(
+      textBoxUnderConstruction && typeof createNodeGraphUnderConstructionFace === "function"
+        ? createNodeGraphUnderConstructionFace(node, type)
+        : createNodeGraphTextBoxBody(node),
+    );
   } else if (layout === "image") {
     article.append(createNodeGraphImageBody(node));
     appendNodeGraphModuleIoSection(
@@ -883,7 +895,7 @@ function createNodeGraphModuleElement(type, node) {
       inputPorts,
       outputPorts,
     );
-  } else if (layout === "traceDisplay") {
+  } else if (layout === "scopeFace") {
     const scopeSection = createNodeGraphModuleScopeSection(node, type);
     scopeSection.classList.add("node-module-trace-display-window");
     article.append(scopeSection);
@@ -904,7 +916,9 @@ function createNodeGraphModuleElement(type, node) {
       outputPorts,
     );
   } else if (definition.layout === "graph") {
-    // LayoutB: ports beside graph face.
+    // LayoutB: ports beside graph face (+ numeric point strip under the SVG).
+    const graphFace = document.createElement("div");
+    graphFace.className = "node-module-graph-face";
     const graphSection = document.createElement("div");
     graphSection.className = "node-module-graph-display";
     graphSection.dataset.graphNode = node;
@@ -916,19 +930,26 @@ function createNodeGraphModuleElement(type, node) {
         ? nodeGraphGraphStepCountForNode(patchNode)
         : 0,
       tension: Number(patchNode?.params?.tension) ?? 1,
+      zoomSettings: typeof nodeGraphGraphFaceDisplaySettingsForNode === "function"
+        ? nodeGraphGraphFaceDisplaySettingsForNode(patchNode)
+        : null,
     });
-    const graphShell = createNodeGraphLayoutBShell(node, type, graphSection, null, inputPorts, outputPorts);
+    graphFace.append(graphSection);
+    if (typeof mountNodeGraphGraphPointStrip === "function") {
+      mountNodeGraphGraphPointStrip(graphFace, patchNode);
+    }
+    const graphShell = createNodeGraphLayoutBShell(node, type, graphFace, null, inputPorts, outputPorts);
     article.append(graphShell);
   } else if (definition.layout === "sliderWidget") {
     // LayoutB (XY Pad contract): slim I/O beside a large face; Bias/control under.
-    // Controller shelf: Knob, Slider, Toggle, Momentary each pick a face.
+    // Controller shelf: Knob (dial or slider look), Toggle, Momentary.
     let face = null;
-    if (type === "pluginSlider" && typeof createNodeGraphPluginSliderFace === "function") {
-      face = createNodeGraphPluginSliderFace(node, type);
-    } else if (type === "toggleButton" && typeof createNodeGraphToggleButtonFace === "function") {
+    if (type === "toggleButton" && typeof createNodeGraphToggleButtonFace === "function") {
       face = createNodeGraphToggleButtonFace(node, type);
     } else if (type === "momentaryButton" && typeof createNodeGraphMomentaryButtonFace === "function") {
       face = createNodeGraphMomentaryButtonFace(node, type);
+    } else if (type === "pluginSlider" && typeof createNodeGraphPluginSliderFace === "function") {
+      face = createNodeGraphPluginSliderFace(node, type);
     } else if (typeof createNodeGraphKnobFace === "function") {
       face = createNodeGraphKnobFace(node, type);
     } else {
@@ -940,7 +961,6 @@ function createNodeGraphModuleElement(type, node) {
     }
     const shell = createNodeGraphLayoutBShell(node, type, face, null, inputPorts, outputPorts);
     shell.classList.add("node-knob-shell");
-    if (type === "pluginSlider") shell.classList.add("node-plugin-slider-shell");
     if (type === "toggleButton" || type === "momentaryButton") {
       shell.classList.add("node-plugin-button-shell");
     }
@@ -961,7 +981,6 @@ function createNodeGraphModuleElement(type, node) {
     || definition.layout === "keyboard"
     || definition.layout === "gridKeyboard"
     || definition.layout === "sequencer"
-    || definition.layout === "macroControls"
     || definition.layout === "pitchModWheel"
   ) {
     if (definition.layout === "keyboardController") {
@@ -972,8 +991,6 @@ function createNodeGraphModuleElement(type, node) {
       article.append(createNodeGraphGridKeyboardBody(node));
     } else if (definition.layout === "sequencer") {
       article.append(createNodeGraphSequencerBody(node));
-    } else if (definition.layout === "macroControls") {
-      article.append(createNodeGraphMacroControlsBody(node));
     } else {
       article.append(createNodeGraphPitchModWheelBody(node));
     }
@@ -1226,6 +1243,20 @@ function createNodeGraphModuleElement(type, node) {
       inputPorts,
       outputPorts,
     );
+  } else if (definition.layout === "softClipperCurve") {
+    if ((typeof nodeGraphModuleShouldMountDisplayFace === "function"
+      ? nodeGraphModuleShouldMountDisplayFace(type, patchNode.ui)
+      : !patchNodeUi.oscilloscopeHidden)
+      && typeof createNodeGraphSoftClipperCurveDisplay === "function") {
+      article.append(createNodeGraphSoftClipperCurveDisplay(node, type));
+    }
+    appendNodeGraphModuleIoSection(
+      article,
+      createNodeGraphLayoutAIoSection(node, type, inputPorts, outputPorts),
+      node,
+      inputPorts,
+      outputPorts,
+    );
   } else if (definition.layout === "envelopeCurve") {
     if ((typeof nodeGraphModuleShouldMountDisplayFace === "function"
       ? nodeGraphModuleShouldMountDisplayFace(type, patchNode.ui)
@@ -1258,6 +1289,13 @@ function createNodeGraphModuleElement(type, node) {
       && typeof createNodeGraphPitchQuantizerFace === "function") {
       article.append(createNodeGraphPitchQuantizerFace(node));
     }
+    appendNodeGraphModuleIoSection(
+      article,
+      createNodeGraphLayoutAIoSection(node, type, inputPorts, outputPorts),
+      node,
+      inputPorts,
+      outputPorts,
+    );
   } else if (definition.layout === "chordPad") {
     if ((typeof nodeGraphModuleShouldMountDisplayFace === "function"
       ? nodeGraphModuleShouldMountDisplayFace(type, patchNode.ui)
@@ -1335,6 +1373,23 @@ function createNodeGraphModuleElement(type, node) {
       inputPorts,
       outputPorts,
     );
+  } else if (definition.layout === "codeBox") {
+    if ((typeof nodeGraphModuleShouldMountDisplayFace === "function"
+      ? nodeGraphModuleShouldMountDisplayFace(type, patchNode.ui)
+      : !patchNodeUi.oscilloscopeHidden)
+      && typeof createNodeGraphCodeBoxFace === "function") {
+      const codeFace = createNodeGraphCodeBoxFace(node);
+      if (codeFace) {
+        article.append(codeFace);
+      }
+    }
+    appendNodeGraphModuleIoSection(
+      article,
+      createNodeGraphLayoutAIoSection(node, type, inputPorts, outputPorts),
+      node,
+      inputPorts,
+      outputPorts,
+    );
   } else if (definition.layout === "textStream") {
     if ((typeof nodeGraphModuleShouldMountDisplayFace === "function"
       ? nodeGraphModuleShouldMountDisplayFace(type, patchNode.ui)
@@ -1380,26 +1435,40 @@ function createNodeGraphModuleElement(type, node) {
       inputPorts,
       outputPorts,
     );
-  } else if (definition.layout === "phosphorWaveform") {
+  } else if (definition.layout === "sampleWaveform") {
     if (typeof createNodeGraphSampleModuleBody === "function") {
       const sampleBody = createNodeGraphSampleModuleBody(node);
       if (sampleBody) {
         article.append(sampleBody);
       }
     }
-    if ((typeof nodeGraphModuleShouldMountDisplayFace === "function"
+    const mountWave = (typeof nodeGraphModuleShouldMountDisplayFace === "function"
       ? nodeGraphModuleShouldMountDisplayFace(type, patchNode.ui)
       : !patchNodeUi.oscilloscopeHidden)
-      && typeof createNodeGraphPhosphorWaveformDisplay === "function") {
-      article.append(createNodeGraphPhosphorWaveformDisplay(node, type));
+      && typeof createNodeGraphSampleWaveformDisplay === "function";
+    const waveFace = mountWave
+      ? createNodeGraphSampleWaveformDisplay(node, type)
+      : null;
+    if (chrome.portsBeside) {
+      const wrap = waveFace || document.createElement("div");
+      if (!waveFace) {
+        wrap.className = "node-module-display-placeholder node-module-face";
+        wrap.hidden = true;
+        wrap.setAttribute("aria-hidden", "true");
+      }
+      article.append(createNodeGraphLayoutBShell(node, type, wrap, null, inputPorts, outputPorts));
+    } else {
+      if (waveFace) {
+        article.append(waveFace);
+      }
+      appendNodeGraphModuleIoSection(
+        article,
+        createNodeGraphLayoutAIoSection(node, type, inputPorts, outputPorts),
+        node,
+        inputPorts,
+        outputPorts,
+      );
     }
-    appendNodeGraphModuleIoSection(
-      article,
-      createNodeGraphLayoutAIoSection(node, type, inputPorts, outputPorts),
-      node,
-      inputPorts,
-      outputPorts,
-    );
   } else if (definition.layout === "pulseCurve") {
     if ((typeof nodeGraphModuleShouldMountDisplayFace === "function"
       ? nodeGraphModuleShouldMountDisplayFace(type, patchNode.ui)
@@ -1415,7 +1484,7 @@ function createNodeGraphModuleElement(type, node) {
       outputPorts,
     );
   } else if (isTitleBarAndPorts) {
-    // TitleBarAndPorts (ex-LayoutC): title + I/O only. No face, no param rows.
+    // InletOutletLayout: title + I/O only. No face, no param rows.
     // UC: jacks + labels sit above the construction plate.
     appendNodeGraphModuleIoSection(
       article,
@@ -1488,7 +1557,7 @@ function createNodeGraphModuleElement(type, node) {
       scopeSection = createNodeGraphModuleScopeSection(node, type);
       article.append(scopeSection);
     }
-    if ((type === "samplePlayer" || type === "sampleLooper" || type === "audioPlayer") && typeof createNodeGraphSampleModuleBody === "function") {
+    if ((type === "samplePlayer" || type === "sampleLooper" || type === "audioPlayer" || type === "wavetable2d") && typeof createNodeGraphSampleModuleBody === "function") {
       const sampleBody = createNodeGraphSampleModuleBody(node);
       if (sampleBody) {
         article.append(sampleBody);

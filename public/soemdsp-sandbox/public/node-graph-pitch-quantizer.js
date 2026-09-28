@@ -1,7 +1,7 @@
-// Pitch Quantizer helpers: 12-bit pitch-class masks + quantization math.
+// Pitch Quantizer helpers: pitch-class masks + quantization math.
 //
-// Bit i = pitch class i (0=C … 11=B) is in the scale. Applied across every
-// octave: the keyboard face edits this mask; the Scale jack can override it.
+// Face keyboard edits a 12-bit class mask (bit i = class i). Scale jack is the
+// shared noteMask128 bus (Play/Arp/Chord Keys); DSP folds lit notes via n%12.
 
 // Preset scale masks. Index matches the "scale" parameter choice order
 // (0…5 presets; 6 = Custom when the face keyboard has been edited).
@@ -43,58 +43,101 @@ function nodeGraphPitchQuantizerMaskFromChoice(choiceIndex) {
 }
 
 function nodeGraphPitchQuantizerNormalizeMask(raw) {
+  if (raw == null || raw === "") {
+    return nodeGraphPitchQuantizerScaleMasks[1];
+  }
+  if (typeof noteMaskResolveScaleBits === "function") {
+    return noteMaskResolveScaleBits(raw);
+  }
   const n = Math.round(Number(raw));
   if (!Number.isFinite(n)) {
-    return nodeGraphPitchQuantizerScaleMasks[1]; // Major
+    return nodeGraphPitchQuantizerScaleMasks[1];
   }
   return n & 0xFFF;
 }
 
-/**
- * If Scale is patched from a Chord Pad, return that pad's mask for face paint.
- * (Select CV on the pad is not mirrored here — face uses pad params only.)
- */
-function nodeGraphPitchQuantizerScaleJackDisplayMask(node) {
-  if (!node?.id || typeof nodeGraphModuleScopeConnectionsTo !== "function") {
-    return null;
-  }
-  const connections = nodeGraphModuleScopeConnectionsTo(node.id, "Scale");
-  const connection = connections?.[0];
-  if (!connection?.sourceNode) {
-    return null;
-  }
-  const source = typeof nodeGraphPatchNode === "function"
-    ? nodeGraphPatchNode(connection.sourceNode)
-    : null;
-  if (source?.type === "chordPad" && typeof nodeGraphChordPadScaleForNode === "function") {
-    return nodeGraphPitchQuantizerNormalizeMask(nodeGraphChordPadScaleForNode(source));
-  }
-  return null;
-}
-
-/** Active 12-bit mask for a patch node (Scale jack handled by the evaluators). */
-function nodeGraphPitchQuantizerMaskForNode(node) {
-  if (!node || typeof node !== "object") {
-    return nodeGraphPitchQuantizerScaleMasks[1];
-  }
-  // Face display: when Scale is driven by Chord Pad, show that chord's tones.
-  const jackMask = nodeGraphPitchQuantizerScaleJackDisplayMask(node);
-  if (jackMask != null) {
-    return jackMask;
-  }
-  const params = node.params || {};
+/** Keyboard / saved mask. Scale jack never writes this. */
+function nodeGraphPitchQuantizerKeyboardMask(node) {
+  const params = node?.params || {};
   if (params.scaleMask != null && String(params.scaleMask).trim() !== "") {
     return nodeGraphPitchQuantizerNormalizeMask(params.scaleMask);
   }
-  return nodeGraphPitchQuantizerMaskFromChoice(params.scale);
+  if (params.scale != null && String(params.scale).trim() !== "") {
+    return nodeGraphPitchQuantizerMaskFromChoice(params.scale);
+  }
+  return nodeGraphPitchQuantizerScaleMasks[1];
 }
 
-/** True when Scale jack is connected (keyboard becomes display-only for mask). */
+/** True when a cable is on Scale in. DSP uses that cable; keyboard is display-only. */
 function nodeGraphPitchQuantizerScaleJackConnected(nodeId) {
   if (typeof nodeGraphModuleScopeConnectionsTo !== "function") {
     return false;
   }
-  return (nodeGraphModuleScopeConnectionsTo(nodeId, "Scale") || []).length > 0;
+  const scale = nodeGraphModuleScopeConnectionsTo(nodeId, "Scale") || [];
+  const arp = nodeGraphModuleScopeConnectionsTo(nodeId, "Arp Keys") || [];
+  return scale.length + arp.length > 0;
+}
+
+
+/** OR Scale-jack cables into one 12-bit mask (noteMask128 fold / pad params). */
+function nodeGraphResolveScaleBitsFromConnections(nodeId) {
+  if (typeof nodeGraphModuleScopeConnectionsTo !== "function") return 0;
+  const connections = (nodeGraphModuleScopeConnectionsTo(nodeId, "Scale") || [])
+    .concat(nodeGraphModuleScopeConnectionsTo(nodeId, "Arp Keys") || []);
+  let bits = 0;
+  const fold = (mask) => (typeof noteMaskPitchClassBits === "function" && mask instanceof Uint8Array
+    ? noteMaskPitchClassBits(mask) : 0);
+  for (let i = 0; i < connections.length; i += 1) {
+    const sp = String(connections[i]?.sourcePort || "");
+    const srcId = connections[i]?.sourceNode;
+    const source = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(srcId) : null;
+    if (source?.type === "chordPad" && typeof nodeGraphChordPadScaleForNode === "function") {
+      bits |= nodeGraphChordPadScaleForNode(source) & 0xFFF;
+    } else if (source?.type === "pitchQuantizer") {
+      bits |= nodeGraphPitchQuantizerKeyboardMask(source) & 0xFFF;
+    }
+    const live = typeof nodeGraphMvp !== "undefined"
+      ? nodeGraphMvp?.live?.nodeOutputs?.get?.(String(srcId))
+      : null;
+    if (!live || typeof live !== "object") continue;
+    if (sp === "Play Keys") bits |= fold(live.playMask);
+    else if (sp === "Arp Keys") bits |= fold(live.arpMask || live.scaleMask);
+    else if (sp === "Chord Memory") bits |= fold(live.chordMask || live.chordPlayMask);
+    else if (sp === "Scale" || sp === "Keys") {
+      bits |= fold(live.scaleMask || live.arpMask);
+      if (!live.scaleMask && !live.arpMask && typeof noteMaskResolveScaleBits === "function") {
+        bits |= noteMaskResolveScaleBits(live.Scale ?? live.Mono);
+      }
+    }
+  }
+  return bits & 0xFFF;
+}
+
+/** Face paint: Scale jack (noteMask128 / legacy bits) overrides keyboard when patched. */
+function nodeGraphPitchQuantizerMaskForNode(node) {
+  if (!node || typeof node !== "object") {
+    return nodeGraphPitchQuantizerScaleMasks[1];
+  }
+  if (nodeGraphPitchQuantizerScaleJackConnected(node.id)) {
+    const bits = typeof nodeGraphResolveScaleBitsFromConnections === "function"
+      ? nodeGraphResolveScaleBitsFromConnections(node.id)
+      : 0;
+    return nodeGraphPitchQuantizerNormalizeMask(bits);
+  }
+  return nodeGraphPitchQuantizerKeyboardMask(node);
+}
+
+/** Wire connect/disconnect does not rebuild module DOM — refresh jacked/keys. */
+function syncNodeGraphAllPitchQuantizerFaces() {
+  const nodes = nodeGraphMvp?.patch?.nodes;
+  if (!Array.isArray(nodes) || typeof syncNodeGraphPitchQuantizerFace !== "function") {
+    return;
+  }
+  for (const node of nodes) {
+    if (node?.type === "pitchQuantizer") {
+      syncNodeGraphPitchQuantizerFace(node.id);
+    }
+  }
 }
 
 /** After a Chord Pad changes, repaint any Quantizers fed by its Scale. */
@@ -105,9 +148,9 @@ function syncNodeGraphPitchQuantizersFedByChordPad(chordPadNodeId) {
   }
   const connections = nodeGraphMvp.patch?.connections || [];
   for (const connection of connections) {
-    if (connection.sourceNode !== id || connection.sourcePort !== "Scale") {
-      continue;
-    }
+    if (connection.sourceNode !== id) continue;
+    const sp = String(connection.sourcePort || "");
+    if (sp !== "Scale" && sp !== "Arp Keys") continue;
     if (typeof syncNodeGraphPitchQuantizerFace === "function") {
       syncNodeGraphPitchQuantizerFace(connection.destinationNode);
     }
@@ -130,24 +173,24 @@ function nodeGraphPitchQuantizerChoiceForMask(mask) {
   return preset >= 0 ? preset : nodeGraphPitchQuantizerCustomScaleChoice;
 }
 
-// Snaps a 0.1V/Oct pitch signal (semitone = pitch * 120) to the nearest
+// Snaps a pitch cable (MIDI note) to the nearest
 // active pitch class in a 12-bit scale mask. Empty mask holds the last
 // quantized output (hardware quantizer behavior).
 function nodeGraphPitchQuantizerSample(state, options = {}) {
   const pitch = nodeGraphFiniteNumber(options.pitch);
-  const mask = options.hasScaleInput
-    ? Math.round(nodeGraphFiniteNumber(options.scaleInput)) & 0xFFF
-    : (
-      options.scaleMask != null
-        ? nodeGraphPitchQuantizerNormalizeMask(options.scaleMask)
-        : nodeGraphPitchQuantizerMaskFromChoice(options.scaleChoice)
-    );
+  const keyboard = options.scaleMask != null
+    ? nodeGraphPitchQuantizerNormalizeMask(options.scaleMask)
+    : nodeGraphPitchQuantizerMaskFromChoice(options.scaleChoice);
+  const jack = typeof noteMaskResolveScaleBits === "function"
+    ? noteMaskResolveScaleBits(options.scaleInput)
+    : (Math.round(nodeGraphFiniteNumber(options.scaleInput)) & 0xFFF);
+  const mask = options.hasScaleInput ? jack : keyboard;
 
   if (mask === 0) {
     return state.hasOutput ? state.lastOutput : pitch;
   }
 
-  const semitoneFloat = pitch * 120;
+  const semitoneFloat = pitch;
   const rounded = Math.round(semitoneFloat);
   let bestSemitone = rounded;
   let bestDistance = Infinity;
@@ -166,7 +209,7 @@ function nodeGraphPitchQuantizerSample(state, options = {}) {
     }
   }
 
-  const output = found ? bestSemitone / 120 : pitch;
+  const output = found ? bestSemitone : pitch;
   state.hasOutput = true;
   state.lastOutput = output;
   return output;

@@ -9,12 +9,12 @@
 // 3) Project Speed Limit: ONE runtime ceiling for pitch/f resolution and DSP
 //    Hz clamps. Not written into parameter min/max (those stay definition /
 //    user metaparam). No project minimum frequency (0 is allowed). Header +
-//    patch audio field; default 20000 (user-adjustable).
+//    patch audio field; default 22050 (user-adjustable).
 
 const nodeGraphModuleDefinitionCache = new Map();
 
 /** Default project speed limit (Hz). Live clamp default; not a knob-domain bake. */
-const NODE_GRAPH_PROJECT_SPEED_LIMIT_DEFAULT_HZ = 20000;
+const NODE_GRAPH_PROJECT_SPEED_LIMIT_DEFAULT_HZ = 22050;
 /** Upper bound for the Speed Limit control itself (not signal Hz floor). */
 const NODE_GRAPH_PROJECT_SPEED_LIMIT_CONTROL_MAX_HZ = 192000;
 

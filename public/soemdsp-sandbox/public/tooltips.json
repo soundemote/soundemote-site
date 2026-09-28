@@ -67,7 +67,7 @@
   "timing": {
     "globalSmoothing": "global smoothing time in seconds | controls how quickly smoothed parameters glide to new values | drag to tune | double-click to type | Ctrl-click to reset to one audio block",
     "speedUnderConstruction": "speed control is under construction | shown as a future global timing multiplier, not active yet",
-    "pitchReferenceHz": "Pitch Reference Frequency in Hz | frequency sounded at the Pitch Reference Note under this patch's 0.1V/Oct convention | drag to tune | double-click to type | Ctrl-click to reset to default (100Hz)"
+    "pitchReferenceHz": "Freq Ref (Hz) | Hz at the patch Pitch Reference Note (default A4 / MIDI 69) when a 0.1V/Oct cable is converted to Hz. 0.1V/Oct is MIDI/120 (+0.1 = +1 octave); Keyboard ƒ is already A440. | drag to tune | double-click to type | Ctrl-click to reset to 440"
   },
   "parameterSettings": {
     "alias": "display name for this parameter",
@@ -86,7 +86,9 @@
     "linearSmoothing": "legacy: use Smoothing Type L instead of unchecking this",
     "parameter": "choose which parameter of this module these metaparameters apply to | includes parameters hidden by default",
     "showParameter": "show this parameter as a slider row on the module | on by default | parameters marked hidden in the module definition stay off until you turn this on",
+    "showMetaparameter": "show this parameter as a slider on the parent Metamodule",
     "bipolar": "center the amount fill on MID (usually 0) so negative and positive values grow outward from the middle",
+    "outputDomain": "When checked, MOD uses real engineering units (Hz, etc.) and replaces the absolute knob. The slider becomes a bipolar domain offset (default 0, span +/- param max) added after replace — works even with no MOD wire. PARAM OUT emits real units instead of 0…1.",
     "smoothingSeconds": "how long this parameter's glide takes, in seconds | 0 snaps instantly | only used when smoothing source is Internal or Internal + Global",
     "smoothingModeGlobal": "🌍 Global: ignore this parameter's own smoothing time, use the app-wide global time",
     "smoothingModeInternal": "🙂 Internal: use only this parameter's own smoothing time | 0 is instant",
@@ -171,9 +173,9 @@
     "metamoduleVoiceCount": "how many parallel voice copies of the Meta's owned subgraph (1–32) | Module Settings only | changing recompiles the Meta voice graph | default 10"
   },
   "traceDisplaySettings": {
-    "save": "save these Trace Display drawing settings to this module",
-    "restore": "restore the last saved Trace Display drawing settings",
-    "defaults": "reset the Trace Display drawing settings to factory defaults",
+    "save": "save these Waterfall drawing settings to this module",
+    "restore": "restore the last saved Waterfall drawing settings",
+    "defaults": "reset the Waterfall drawing settings to factory defaults",
     "closeSave": "save changes and close Trace Display settings",
     "closeDiscard": "discard changes and close Trace Display settings",
     "cycles": "legacy Trace Display cycle setting",

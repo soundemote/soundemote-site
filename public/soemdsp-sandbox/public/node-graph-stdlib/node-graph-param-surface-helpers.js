@@ -1,27 +1,27 @@
-// Explicit parameter surfaces (Phase F — metaparam MOD SSOT).
+// Parameter surfaces - MOD / domain SSOT (pure helpers; main + worklet).
 //
-// Three different ways a control is driven — three different contracts:
+// Three drive paths (do not mix contracts):
 //
-//   DOMAIN   — the knob/slider value in real units (Hz, −1…1, …).
-//              Source of truth for the parameter store / readout.
-//              min/max define the *slider* range (and DOMAIN↔unit for UI).
-//              UI domain↔unit may use mid/custom skew; MOD never uses skew.
+//   DOMAIN  - absolute knob value in params[key] (Hz, -1..1, ...).
+//             min/max = slider range + DOMAIN<->unit map. UI may skew; MOD never does.
 //
-//   MOD      — param-row modulation CV. One SSOT in nodeGraphParamApplyMod:
-//              • |Σmod| ≤ 1  → linear unit map across [min, max] (NO skew):
-//                  unit = linearDomainToUnit(base) + mod
-//                  effective = min + unit * (max − min)
-//                Unipolar Uni X 0…1 + base at min → full range sweep.
-//              • |Σmod| > 1  → domain-add absolute (Pitch Detector Hz, etc.):
-//                  effective = base + mod
-//              Unipolar: clip mod contribution ≥ 0. Bipolar: signed (TZFM).
-//              Pitch exponential is NOT on MOD — use 0.1V/Oct jack.
+//   MOD     - param-row CV. Fold SSOT: nodeGraphParamFoldModSources /
+//             nodeGraphParamApplyMod.
+//             * Normal dest: |mod|<=1 -> linear unit add across [min,max] (no skew);
+//               domain-tagged / |mod|>1 / engineering-unit -> ADD to Control/knob:
+//               effective = paramValue + sum(domainMods)  (knob is an offset).
+//             * outputDomain ("Use real mod values"): same ADD rule.
+//               effective = paramValue + sum(domainMods) + domainOffset
+//               domainOffset (paramMeta, default 0) always applies, even with no
+//               MOD wires. Slider edits offset on +/-|max|, linear (no curve yet).
+//             * Slider is always an offset: MOD always ADDs. Never multiply,
+//               never replace. Unipolar clip when metadata.unipolarMod.
 //
-//   SIGNAL IN — named input jacks (In, 0.1V/Oct, Phase, Amplitude, …).
-//              NOT the same as MOD. Handled by module evaluators.
+//   SIGNAL IN - named jacks (In, pitch/♯/♭, ...). Not MOD. Module evaluators.
 //
-// Pure: no DOM, no nodeGraphMvp. Safe for main thread + AudioWorklet Blob.
-
+// Native stamp: bit4 = real values (domain ADD, no clamp). Unit-band 0…1
+// ADDs then clamps to min/max. No multiply. No replace.
+//
 /** @typedef {"domain"|"mod"|"signalIn"} NodeGraphParamSurface */
 
 const NODE_GRAPH_PARAM_SURFACES = Object.freeze({
@@ -64,7 +64,7 @@ function nodeGraphParamIsBipolar(metadata = {}) {
   return Number.isFinite(min) && min < 0 && Number.isFinite(max) && max > 0;
 }
 
-/** @deprecated Pitch exponential is 0.1V/Oct jack only — never param MOD. */
+/** @deprecated Pitch exponential is pitch (♯/♭) jack only — never param MOD. */
 function nodeGraphParamUsesPitchMod(_metadata = {}) {
   return false;
 }
@@ -172,7 +172,83 @@ function nodeGraphParamSkewExponent(metadata = {}) {
 }
 
 /**
+ * Throw 0…1 → normalized domain 0…1.
+ * Bipolar rational is symmetric about the center (more travel around 0 on a
+ * −1…1 range). Other curves keep the power-law skew.
+ */
+function nodeGraphParamNormalizedFromThrow(throw01, metadata = {}) {
+  const t = nodeGraphParamClamp(nodeGraphFiniteNumber(throw01), 0, 1);
+  const curve = typeof normalizeNodeSliderCurve === "function"
+    ? normalizeNodeSliderCurve(metadata.sliderCurve, metadata.nonlinearSlider)
+    : "";
+  if (
+    curve === "bipolarRational"
+    && typeof nodeSliderBipolarRationalValueFromTravel === "function"
+  ) {
+    return nodeSliderBipolarRationalValueFromTravel(t, metadata.curveAmount);
+  }
+  const exp = nodeGraphParamSkewExponent(metadata);
+  return nodeGraphParamClamp(t ** exp, 0, 1);
+}
+
+/** Inverse of nodeGraphParamNormalizedFromThrow. */
+function nodeGraphParamThrowFromNormalized(normalized01, metadata = {}) {
+  const n = nodeGraphParamClamp(nodeGraphFiniteNumber(normalized01), 0, 1);
+  const curve = typeof normalizeNodeSliderCurve === "function"
+    ? normalizeNodeSliderCurve(metadata.sliderCurve, metadata.nonlinearSlider)
+    : "";
+  if (
+    curve === "bipolarRational"
+    && typeof nodeSliderBipolarRationalTravelFromValue === "function"
+  ) {
+    return nodeSliderBipolarRationalTravelFromValue(n, metadata.curveAmount);
+  }
+  const exp = nodeGraphParamSkewExponent(metadata);
+  const inv = exp === 0 ? 1 : 1 / exp;
+  return nodeGraphParamClamp(n ** inv, 0, 1);
+}
+
+/**
+ * Widget throw: 0 = bottom/left of the control, 1 = top/right.
+ * Reverse swaps which domain end sits at the bottom. Skew is included.
+ * Ghosts and jacks must NOT use this — they follow the stored value.
+ */
+function nodeGraphParamControlPosition(value, metadata = {}) {
+  const min = Number(metadata.min);
+  const max = Number(metadata.max);
+  const range = max - min;
+  if (!Number.isFinite(range) || range <= 0) {
+    return 0;
+  }
+  const bounded = metadata.wraparound
+    ? nodeGraphParamWrap(nodeGraphFiniteNumber(value), min, max)
+    : nodeGraphParamClamp(nodeGraphFiniteNumber(value), min, max);
+  const normalizedValue = nodeGraphParamClamp((bounded - min) / range, 0, 1);
+  const unit = nodeGraphParamThrowFromNormalized(normalizedValue, metadata);
+  return metadata.reverse === true ? (1 - unit) : unit;
+}
+
+/** Inverse of nodeGraphParamControlPosition. */
+function nodeGraphParamDomainFromControlPosition(position, metadata = {}) {
+  const meta = metadata && typeof metadata === "object" ? metadata : {};
+  const min = Number(meta.min);
+  const max = Number(meta.max);
+  const range = max - min;
+  if (!Number.isFinite(range) || range <= 0) {
+    return Number.isFinite(min) ? min : 0;
+  }
+  let unitIn = nodeGraphFiniteNumber(position);
+  if (meta.reverse === true) unitIn = 1 - unitIn;
+  const normalizedSignal = meta.wraparound
+    ? nodeGraphParamWrap(unitIn, 0, 1)
+    : nodeGraphParamClamp(unitIn, 0, 1);
+  const normalizedValue = nodeGraphParamNormalizedFromThrow(normalizedSignal, meta);
+  return nodeGraphParamApplyDomainBounds(min + range * normalizedValue, meta);
+}
+
+/**
  * DOMAIN → unit [0, 1] for UI / display (may apply mid/custom skew).
+ * Straight map of the stored value. Reverse is not applied.
  */
 function nodeGraphParamDomainToUnit(value, metadata = {}) {
   const min = Number(metadata.min);
@@ -185,8 +261,7 @@ function nodeGraphParamDomainToUnit(value, metadata = {}) {
     ? nodeGraphParamWrap(nodeGraphFiniteNumber(value), min, max)
     : nodeGraphParamClamp(nodeGraphFiniteNumber(value), min, max);
   const normalizedValue = nodeGraphParamClamp((bounded - min) / range, 0, 1);
-  const exp = nodeGraphParamSkewExponent(metadata);
-  return nodeGraphParamClamp(normalizedValue ** (1 / exp), 0, 1);
+  return nodeGraphParamThrowFromNormalized(normalizedValue, metadata);
 }
 
 /**
@@ -203,8 +278,7 @@ function nodeGraphParamUnitToDomain(unit, metadata = {}) {
   const normalizedSignal = meta.wraparound
     ? nodeGraphParamWrap(nodeGraphFiniteNumber(unit), 0, 1)
     : nodeGraphParamClamp(nodeGraphFiniteNumber(unit), 0, 1);
-  const exp = nodeGraphParamSkewExponent(meta);
-  const normalizedValue = normalizedSignal ** exp;
+  const normalizedValue = nodeGraphParamNormalizedFromThrow(normalizedSignal, meta);
   return nodeGraphParamApplyDomainBounds(min + range * normalizedValue, meta);
 }
 
@@ -271,22 +345,141 @@ function nodeGraphFiniteNumber(value, fallback = 0) {
 }
 
 /**
- * |mod| ≤ this → treat as unit CV across [min,max] (linear, no skew).
- * |mod| above → domain-add absolute (Pitch Detector Hz, large Knob Bias, …).
+ * Unit mods are offsets inside the parameter range (clamped).
+ * Domain / real units only when the parameter or source is tagged
+ * (Use real mod values). Magnitude never switches the mode.
  */
-const NODE_GRAPH_PARAM_MOD_UNIT_BAND = 1 + 1e-9;
 
 /**
- * Apply summed MOD onto DOMAIN base. Single SSOT for live + worklet.
- *
- * Unit-band (|mod| ≤ 1): linear map across param min…max, bypassing skew.
- *   Uni 0…1 + base at min → full range (e.g. Freq 1…20000).
- * Absolute (|mod| > 1): domain-add base + mod (exact Hz sources).
- *
- * Signed MOD on every dest (negative LFO moves toward min). Only clip
- * negatives when metadata.unipolarMod === true (explicit).
- * Callers that have several sources should fold unit vs absolute per source
- * via nodeGraphParamFoldModSources, not by summing first (avoids the |Σ| > 1 cliff).
+ * Character filters (Superlove / Yellowjacket / …) map Frequency 0…1 → MIDI pitch
+ * −12…135 → Hz inside native. PitchHz (and retired absolute ƒ) send real Hz.
+ * Convert Hz → that 0…1 norm so domain REPLACE actually tracks the knob.
+ */
+const NODE_GRAPH_NORM_PITCH_FREQ_TYPES = new Set([
+  "superloveFilter",
+  "superloveRev2",
+  "vcvrackSuperloveFilter",
+  "yellowjacketFilter",
+  "flowerChildFilter",
+  "humanFilter",
+  "resonatorFilter",
+  "chaoticPhaseLockingFilter",
+]);
+
+function nodeGraphIsNormPitchFrequencyParam(nodeType, paramKey) {
+  return NODE_GRAPH_NORM_PITCH_FREQ_TYPES.has(String(nodeType || ""))
+    && String(paramKey || "") === "frequency";
+}
+
+/** Inverse of pitchToFreq(jmap01(n, −12, 135)). */
+function nodeGraphHzToNormPitchFrequency(hz) {
+  const h = Number(hz);
+  if (!(h > 1e-12) || !Number.isFinite(h)) return 0;
+  const pitch = 69 + 12 * (Math.log(h / 440) / Math.LN2);
+  let n = (pitch + 12) / 147;
+  if (n < 0) n = 0;
+  if (n > 1) n = 1;
+  return n;
+}
+
+/** PitchHz Out → Superlove-style Frequency: Pitch→Hz is Hz; Hz→Pitch is MIDI pitch. */
+function nodeGraphPitchHzSampleToNormPitchFrequency(srcNode, sample) {
+  const mode = Number(
+    srcNode?.params?.mode ?? srcNode?.parameters?.mode ?? 0,
+  );
+  const v = Number(sample);
+  if (!Number.isFinite(v)) return 0;
+  // mode >= 0.5 → Hz→Pitch (Out is MIDI-ish pitch)
+  if (mode >= 0.5) {
+    let n = (v + 12) / 147;
+    if (n < 0) n = 0;
+    if (n > 1) n = 1;
+    return n;
+  }
+  return nodeGraphHzToNormPitchFrequency(v);
+}
+
+function nodeGraphIsControllerModSourceType(type) {
+  const t = String(type || "");
+  return t === "knob"
+    || t === "pluginSlider"
+    || t === "bias"
+    || t === "toggleButton"
+    || t === "momentaryButton";
+}
+
+/**
+ * Knob/Bias/PitchHz/Hz → Superlove Frequency 0…1 (domain REPLACE payload).
+ * Returns null when this source should use the normal unit/domain path.
+ */
+function nodeGraphNormPitchFrequencyModFromSource(dstType, paramKey, srcType, srcNode, sample) {
+  if (!nodeGraphIsNormPitchFrequencyParam(dstType, paramKey)) {
+    return null;
+  }
+  const v = Number(sample);
+  if (!Number.isFinite(v)) {
+    return { value: 0, domain: true };
+  }
+  if (srcType === "pitchHz") {
+    return {
+      value: nodeGraphPitchHzSampleToNormPitchFrequency(srcNode, v),
+      domain: true,
+    };
+  }
+  if (nodeGraphIsControllerModSourceType(srcType)) {
+    const n = v < 0 ? 0 : (v > 1 ? 1 : v);
+    return { value: n, domain: true };
+  }
+  return null;
+}
+
+/**
+ * Normalize one MOD source entry to { value, domain }.
+ * Accepts a bare number or { value|mod|sample, domain|isDomain|outputDomain }.
+ * Domain only when the source is tagged (Use real mod values / outputDomain).
+ * A bare number is a unit offset. Crossing ±1 does not retag it.
+ */
+function nodeGraphParamNormalizeModSource(raw) {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const value = Number(
+      raw.value != null ? raw.value
+        : raw.mod != null ? raw.mod
+          : raw.sample != null ? raw.sample
+            : raw,
+    );
+    const tagged = raw.domain === true
+      || raw.isDomain === true
+      || raw.outputDomain === true;
+    const v = Number.isFinite(value) ? value : 0;
+    return { value: v, domain: tagged };
+  }
+  const v = Number(raw);
+  const n = Number.isFinite(v) ? v : 0;
+  return { value: n, domain: false };
+}
+
+/** Domain-mode offset (Use real mod values). Default 0. */
+function nodeGraphParamDomainOffset(metadata = {}) {
+  const n = Number(metadata && metadata.domainOffset);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Offset slider span half-width: |param max| (fallback |min|, else 1). */
+function nodeGraphParamDomainOffsetExtent(metadata = {}) {
+  const max = Number(metadata && metadata.max);
+  if (Number.isFinite(max) && Math.abs(max) > 0) {
+    return Math.abs(max);
+  }
+  const min = Number(metadata && metadata.min);
+  if (Number.isFinite(min) && Math.abs(min) > 0) {
+    return Math.abs(min);
+  }
+  return 1;
+}
+
+/**
+ * Apply one MOD sample onto DOMAIN base. SSOT: nodeGraphParamFoldModSources.
+ * See file header for unit vs domain vs outputDomain+domainOffset rules.
  */
 function nodeGraphParamApplyMod(base, modSum, metadata = {}) {
   const folded = nodeGraphParamFoldModSources(base, [modSum], metadata);
@@ -294,13 +487,17 @@ function nodeGraphParamApplyMod(base, modSum, metadata = {}) {
 }
 
 /**
- * Combine one or more MOD samples onto DOMAIN base.
- * Each source: |mod| ≤ 1 → unit-map contribution; |mod| > 1 → domain-add.
+ * Slider is always an offset. MOD always ADDs — never replace.
  */
+function nodeGraphParamDomainModReplacesBase(_metadata = {}) {
+  return false;
+}
+
 /**
- * Classify MOD sources into unit-band vs domain-add accumulators.
+ * Classify MOD sources into unit-band vs domain accumulators.
+ * Domain mods ADD to the Control/knob (offset). Never replace.
  * Same per-source rules as fold — used by efficient native set_param_mod.
- * @returns {{ unitAdd: number, domainAdd: number }}
+ * @returns {{ unitAdd: number, domainAdd: number, domainReplace: boolean }}
  */
 function nodeGraphParamModAccumulators(sources, metadata = {}) {
   const min = Number(metadata.min);
@@ -310,43 +507,91 @@ function nodeGraphParamModAccumulators(sources, metadata = {}) {
   let unitAdd = 0;
   let domainAdd = 0;
   const list = Array.isArray(sources) ? sources : [sources];
+  // Dest "Use real mod values" / outputDomain: every MOD is domain-valued ADD.
+  const destDomain = metadata && metadata.outputDomain === true;
   for (const raw of list) {
-    let mod = Number(raw);
-    if (!Number.isFinite(mod)) {
-      mod = 0;
-    }
+    const src = nodeGraphParamNormalizeModSource(raw);
+    let mod = src.value;
+    let domain = src.domain;
+    if (destDomain) domain = true;
     if (clipNeg) {
       mod = Math.max(0, mod);
     }
-    if (Number.isFinite(range) && range > 0 && Math.abs(mod) <= NODE_GRAPH_PARAM_MOD_UNIT_BAND) {
+    if (domain) {
+      domainAdd += mod;
+    } else if (Number.isFinite(range) && range > 0) {
       unitAdd += mod;
     } else {
       domainAdd += mod;
     }
   }
-  return { unitAdd, domainAdd };
+  return { unitAdd, domainAdd, domainReplace: false };
+}
+
+/**
+ * Effective-param early-out + fold. SSOT for live + worklet call sites.
+ * - No mod sources AND not outputDomain → return base (skip fold work).
+ * - outputDomain (mods optional / empty OK) → nodeGraphParamFoldModSources.
+ * - Else fold mapped sources via nodeGraphParamFoldModSources.
+ * Source tagging stays at the call site; this only gates + folds.
+ */
+function nodeGraphParamFoldOrBase(base, sources, metadata = {}) {
+  const list = Array.isArray(sources) ? sources : (sources == null ? [] : [sources]);
+  if (!list.length && !(metadata && metadata.outputDomain === true)) {
+    return base;
+  }
+  return nodeGraphParamFoldModSources(base, list, metadata);
 }
 
 function nodeGraphParamFoldModSources(base, sources, metadata = {}) {
+  // "Use real mod values": Control/knob (+ domainOffset) is an OFFSET added to
+  // domain MOD sources. Offset applies even with no mod wires. No slider curve.
+  if (metadata && metadata.outputDomain === true) {
+    let domainAdd = 0;
+    const list = Array.isArray(sources) ? sources : (sources == null ? [] : [sources]);
+    if (list.length) {
+      const acc = nodeGraphParamModAccumulators(list, metadata);
+      domainAdd = Number(acc.domainAdd);
+      if (!Number.isFinite(domainAdd)) domainAdd = 0;
+    }
+    const baseN = Number(base);
+    const b = Number.isFinite(baseN) ? baseN : 0;
+    // Knob is the parameter. outputDomain only means cables add in real units.
+    let result = b + domainAdd;
+    if (!Number.isFinite(result)) {
+      return 0;
+    }
+    if (metadata.wraparound) {
+      return nodeGraphParamApplyDomainBounds(result, metadata);
+    }
+    // min/max are display zoom only — do not hard-clip.
+    return result;
+  }
+
   const baseN = Number(base);
   const b = Number.isFinite(baseN) ? baseN : 0;
   const { unitAdd, domainAdd } = nodeGraphParamModAccumulators(sources, metadata);
   const min = Number(metadata.min);
   const max = Number(metadata.max);
   const range = max - min;
-  let result = b + domainAdd;
+  const dAdd = Number(domainAdd);
+  const domainSum = Number.isFinite(dAdd) ? dAdd : 0;
+  let result = b;
   if (Number.isFinite(range) && range > 0 && unitAdd !== 0) {
     const baseUnit = nodeGraphParamDomainToUnitLinear(b, metadata);
-    result = nodeGraphParamUnitToDomainLinear(baseUnit + unitAdd, metadata) + domainAdd;
+    result = nodeGraphParamUnitToDomainLinear(baseUnit + unitAdd, metadata);
   }
+  result = result + domainSum;
   if (!Number.isFinite(result)) {
     return 0;
   }
   if (metadata.wraparound) {
     return nodeGraphParamApplyDomainBounds(result, metadata);
   }
-  // Post-MOD clip to DOMAIN (default on). Do not use ApplyDomainBounds alone —
-  // that only hard-clamps wrap/constraint/hardClamp, not ordinary modClamp.
+  // Real values: no clamp. Unit-band 0…1: clamp to min/max.
+  if (domainSum !== 0 || (metadata && metadata.outputDomain === true)) {
+    return result;
+  }
   if (nodeGraphParamModClamp(metadata)) {
     const lo = Number(metadata.min);
     const hi = Number(metadata.max);
@@ -357,11 +602,12 @@ function nodeGraphParamFoldModSources(base, sources, metadata = {}) {
   return result;
 }
 
+
 /**
  * Parameter port as MOD/bus source.
  * Default: linear unit 0…1 of its domain (no skew) for Uni/Bi CV chaining.
- * `outputDomain: true` (Yellow Graph modules): emit raw DOMAIN (Hz, cycles, …)
- * — never normalize for display or Graph-module communication.
+ * `outputDomain: true` (per-param opt-in): emit raw DOMAIN (Hz, cycles, …)
+ * — never normalize. Choice sliders are never tagged.
  */
 function nodeGraphParamDomainToModOutput(value, metadata = {}) {
   if (metadata && metadata.outputDomain === true) {
@@ -410,19 +656,10 @@ function nodeGraphParamSignalInAmplitude(domainLevel, ampSample, hasAmp) {
 }
 
 /**
- * Absolute-Hz jack (ƒ / Freq) when wired. Returns null if unwired.
- * SSOT for “is ƒ patched?” — prefer this over ad-hoc hasInput("f") checks.
+ * Retired absolute-Hz jack resolver (always null). Domain MOD replaces ƒ.
  */
-function nodeGraphResolveAbsHzJack(hasInput, mixInput, nodeId) {
-  if (typeof hasInput !== "function" || typeof mixInput !== "function" || !nodeId) {
-    return null;
-  }
-  if (hasInput(nodeId, "f")) {
-    return mixInput(nodeId, "f");
-  }
-  if (hasInput(nodeId, "Freq")) {
-    return mixInput(nodeId, "Freq");
-  }
+function nodeGraphResolveAbsHzJack(/* hasInput, mixInput, nodeId */) {
+  // Absolute ƒ jack retired — domain MOD on Frequency replaces it.
   return null;
 }
 
@@ -438,9 +675,10 @@ function nodeGraphPatchPitchOffsetRatio() {
 }
 
 /**
- * Wired ƒ / Freq = absolute Hz (cancels Frequency knob + 0.1V/Oct).
- * Else wired 0.1V/Oct pitches the Frequency knob vs patch pitch reference.
- * Else returns knobHz. Then × patch Pitch (−10…+10 oct). Same as WASM.
+ * Wired ƒ / Freq = absolute Hz (cancels Frequency knob + pitch).
+ * Else wired pitch (♯/♭ MIDI note) pitches the Frequency knob vs patch
+ * pitchReferenceMidiNote (default 69). Else knobHz.
+ * Then × patch Pitch (−10…+10 oct). Same as WASM.
  */
 function nodeGraphFrequencyHzFromKnobOrF(knobHz, hasInput, mixInput, nodeId) {
   let hz;
@@ -449,26 +687,30 @@ function nodeGraphFrequencyHzFromKnobOrF(knobHz, hasInput, mixInput, nodeId) {
     const n = Number(jack);
     hz = Number.isFinite(n) ? n : 0;
   } else {
-    const hasPitch = typeof hasInput === "function" && hasInput(nodeId, "0.1V/Oct");
+    const hasPitch = typeof hasInput === "function" && (
+      hasInput(nodeId, "pitch") || hasInput(nodeId, "0.1V/Oct")
+    );
     if (hasPitch && typeof mixInput === "function") {
-      const referenceVoltage =
+      const referenceMidi =
         typeof normalizeNodeGraphPatchAudio === "function" && nodeGraphMvp?.patch?.audio
-          ? normalizeNodeGraphPatchAudio(nodeGraphMvp.patch.audio).pitchReferenceMidiNote / 120
-          : 0.4;
-      const pitchCv = nodeGraphFiniteNumber(mixInput(nodeId, "0.1V/Oct"));
+          ? normalizeNodeGraphPatchAudio(nodeGraphMvp.patch.audio).pitchReferenceMidiNote
+          : 69;
+      const pitchCv = nodeGraphFiniteNumber(
+        mixInput(nodeId, "pitch") ?? mixInput(nodeId, "0.1V/Oct"),
+      );
       if (typeof nodeGraphParamResolveOscPitchHz === "function") {
         hz = nodeGraphParamResolveOscPitchHz({
           baseHz: knobHz,
           hasPitchCv: true,
           pitchCv,
-          referenceVoltage,
+          referenceVoltage: referenceMidi,
           skipPatchPitchOffset: true,
         });
       } else if (typeof nodeGraphPitchedFrequency === "function") {
-        hz = nodeGraphPitchedFrequency(knobHz, pitchCv, referenceVoltage);
+        hz = nodeGraphPitchedFrequency(knobHz, pitchCv, referenceMidi);
       } else {
         const base = Number(knobHz);
-        hz = (Number.isFinite(base) ? base : 0) * (2 ** ((pitchCv - referenceVoltage) / 0.1));
+        hz = (Number.isFinite(base) ? base : 0) * (2 ** ((pitchCv - referenceMidi) / 12));
       }
     } else {
       const k = Number(knobHz);
@@ -480,9 +722,10 @@ function nodeGraphFrequencyHzFromKnobOrF(knobHz, hasInput, mixInput, nodeId) {
 }
 
 /**
- * Resolve osc pitch from domain frequency + optional 0.1V/Oct jack.
- * Wired ƒ / Freq is absolute Hz and wins over the Frequency knob + 0.1V/Oct.
+ * Resolve osc pitch from domain frequency + optional pitch (♯/♭) jack.
+ * Wired ƒ / Freq is absolute Hz and wins over the Frequency knob + pitch.
  * Through-zero: signed base Hz (negative reverses phase via bipolar Freq).
+ * referenceVoltage option is MIDI note (legacy name kept).
  */
 function nodeGraphParamResolveOscPitchHz(options = {}) {
   let hz;
@@ -499,7 +742,7 @@ function nodeGraphParamResolveOscPitchHz(options = {}) {
       const baseHz = Number.isFinite(rawBase) ? rawBase : 0;
       const pitchCv = options.pitchCv;
       const referenceVoltage = Number(options.referenceVoltage);
-      const ref = Number.isFinite(referenceVoltage) ? referenceVoltage : 0;
+      const ref = Number.isFinite(referenceVoltage) ? referenceVoltage : 69;
       const hasPitch = options.hasPitchCv === true;
       const cv = hasPitch ? pitchCv : ref;
       if (typeof nodeGraphPitchedFrequency === "function") {
@@ -509,7 +752,7 @@ function nodeGraphParamResolveOscPitchHz(options = {}) {
       } else {
         const c = Number(cv);
         const pitch = Number.isFinite(c) ? c : 0;
-        hz = baseHz * (2 ** ((pitch - ref) / 0.1));
+        hz = baseHz * (2 ** ((pitch - ref) / 12));
       }
     }
   }

@@ -1,4 +1,4 @@
-﻿function setNodeGraphLiveProcessorError(message = "AudioWorklet processor error") {
+function setNodeGraphLiveProcessorError(message = "AudioWorklet processor error") {
   nodeGraphClearGpuAdditivePrime();
   setNodeGraphLiveOutputMuted(true);
   nodeGraphMvp.live.runtime = null;
@@ -526,7 +526,7 @@ async function sendNodeGraphLiveNativeModule(liveNode, entry) {
 // Chrome caps wasm memories per process (~100); many standalone instances
 // hit that cap. Slim is for small used-sets when per-module files exist;
 // huge patches / site deploys should use combined.
-const nodeGraphLiveCombinedNativeModuleUrl = "native_modules/combined/soemdsp_combined.wasm?v=phase-mod-pf-cross-1";
+const nodeGraphLiveCombinedNativeModuleUrl = "native_modules/combined/soemdsp_combined.wasm?v=send-gone-1";
 
 /** @type {null|"slim"|"combined"} */
 let nodeGraphLiveNativeWasmLoadModeResolved = null;
@@ -1250,22 +1250,17 @@ function nodeGraphLiveRearmDisplaysAfterEngineStart() {
   } else if (typeof sendNodeGraphLiveSpeed === "function") {
     sendNodeGraphLiveSpeed();
   }
-  // Cold start often already has speed > 0 (lastPlaySpeed / direct assign),
-  // so the 0â†’positive edge in setNodeGraphLiveSpeed never runs and Output
-  // keeps a stamped pause banner. Always clear on rearm.
-  if (typeof nodeGraphOutputPauseBannerClearStampFlags === "function") {
-    nodeGraphOutputPauseBannerClearStampFlags();
-  }
   // Mark so the next few scope snapshots also force-paint value faces (rings
   // may still be empty on this call).
   nodeGraphMvp.live.needsValueFaceRearm = true;
   nodeGraphMvp.live.valueFaceRearmUntil = (performance.now?.() || Date.now()) + 2500;
   if (typeof nodeGraphNumberReadoutRearmAllFacesAfterLiveStart === "function") {
-    nodeGraphNumberReadoutRearmAllFacesAfterLiveStart();
+    // hard: drop held reading after Stop wipe; soft unpause keeps it.
+    nodeGraphNumberReadoutRearmAllFacesAfterLiveStart({ hard: true });
   }
   if (typeof nodeGraphModuleScopeState === "object" && nodeGraphModuleScopeState) {
     try {
-      nodeGraphModuleScopeState.traceDisplayDrawCache?.clear?.();
+      nodeGraphModuleScopeState.waterfallDrawCache?.clear?.();
     } catch (_error) {
       // Best-effort.
     }
@@ -1281,8 +1276,24 @@ function nodeGraphLiveRearmDisplaysAfterEngineStart() {
       // Best-effort.
     }
   }
+  // Stop wipe zeros Trace/Output lightStrength; Value-face rearm alone left
+  // those screens veiled until the first full buffer draw. Re-open punches now.
+  if (typeof nodeGraphModuleScopeRearmScreenLightsAfterLiveStart === "function") {
+    try {
+      nodeGraphModuleScopeRearmScreenLightsAfterLiveStart();
+    } catch (_error) {
+      // Best-effort.
+    }
+  }
   if (typeof scheduleNodeGraphModuleScopeDraw === "function") {
     scheduleNodeGraphModuleScopeDraw({ force: true });
+  }
+  if (typeof scheduleNodeGraphRoomDimmerDraw === "function") {
+    try {
+      scheduleNodeGraphRoomDimmerDraw();
+    } catch (_error) {
+      // Best-effort.
+    }
   }
   if (typeof renderNodeGraphLiveControls === "function") {
     renderNodeGraphLiveControls(true);
@@ -1360,10 +1371,10 @@ function setNodeGraphLiveSpeed(speed, options = {}) {
       }
       absorbNodeGraphModuleScopePhosphorDrawCursors();
     }
-    // Freeze Instant Trace wall-clock so resume does not jump History.
+    // Freeze Instant Waterfall wall-clock so resume does not jump History.
     // Stamp pause bars into Output dest now; they waterfall away after play.
-    if (typeof nodeGraphTraceDisplayPinWaterfallClocks === "function") {
-      nodeGraphTraceDisplayPinWaterfallClocks();
+    if (typeof nodeGraphWaterfallPinClocks === "function") {
+      nodeGraphWaterfallPinClocks();
     }
     if (typeof stampNodeGraphOutputPauseBanners === "function") {
       stampNodeGraphOutputPauseBanners();
@@ -1372,20 +1383,28 @@ function setNodeGraphLiveSpeed(speed, options = {}) {
       holdNodeGraphScope2dTraceFaces();
     }
   } else if (clamped > 0) {
-    if (typeof nodeGraphTraceDisplayPinWaterfallClocks === "function") {
-      nodeGraphTraceDisplayPinWaterfallClocks();
+    if (typeof nodeGraphWaterfallPinClocks === "function") {
+      nodeGraphWaterfallPinClocks();
     }
-    if (typeof nodeGraphOutputPauseBannerClearStampFlags === "function") {
-      nodeGraphOutputPauseBannerClearStampFlags();
-    }
-    // Unpause / force rearm: Instant Trace can early-out on a stale draw
+    // Unpause / force rearm: Instant Waterfall can early-out on a stale draw
     // signature (black face, unchanged sample count). Force a full paint.
     if (typeof nodeGraphNumberReadoutRearmAllFacesAfterLiveStart === "function") {
-      nodeGraphNumberReadoutRearmAllFacesAfterLiveStart();
+      // After Stop wipe, needsValueFaceRearm is sticky — hard-drop held digits.
+      // Plain pause→play keeps soft rearm so residual hold survives.
+      const hardAfterStop = nodeGraphMvp?.live?.needsValueFaceRearm === true;
+      nodeGraphNumberReadoutRearmAllFacesAfterLiveStart(hardAfterStop ? { hard: true } : undefined);
+    }
+    if (nodeGraphMvp?.live?.needsValueFaceRearm === true
+      && typeof nodeGraphModuleScopeRearmScreenLightsAfterLiveStart === "function") {
+      try {
+        nodeGraphModuleScopeRearmScreenLightsAfterLiveStart();
+      } catch (_error) {
+        // Best-effort.
+      }
     }
     if (typeof nodeGraphModuleScopeState === "object" && nodeGraphModuleScopeState) {
       try {
-        nodeGraphModuleScopeState.traceDisplayDrawCache?.clear?.();
+        nodeGraphModuleScopeState.waterfallDrawCache?.clear?.();
       } catch (_error) {
         // Best-effort.
       }
@@ -1440,7 +1459,7 @@ function sendNodeGraphLiveSpeedLimit() {
       type: "setSpeedLimit",
       speedLimit: typeof nodeGraphLiveSpeedLimitHz === "function"
         ? nodeGraphLiveSpeedLimitHz()
-        : (nodeGraphFiniteNumber(nodeGraphMvp.live.speedLimit, 20000)),
+        : (nodeGraphFiniteNumber(nodeGraphMvp.live.speedLimit, 22050)),
     });
   } catch (_error) {
     // Worklet may be disconnected.
@@ -1861,6 +1880,9 @@ function sendNodeGraphArpOverride(nodeId, midi) {
     });
   } catch (_e) { /* worklet disconnected */ }
 }
+if (typeof globalThis !== "undefined") {
+  globalThis.sendNodeGraphArpOverride = sendNodeGraphArpOverride;
+}
 
 function handleNodeGraphLiveWorkletMessage(event) {
   const message = event.data || {};
@@ -2011,6 +2033,7 @@ function handleNodeGraphLiveWorkletMessage(event) {
         phase: nodeGraphFiniteNumber(message.audioPlayerPhase),
         speed: Number(message.audioPlayerSpeed),
         speeds: message.audioPlayerSpeeds || null,
+        phases: message.audioPlayerPhases || null,
         reason: message.audioPlayerReason || "",
         sampleId: message.audioPlayerSampleId || "",
       });
@@ -2041,6 +2064,13 @@ function handleNodeGraphLiveWorkletMessage(event) {
           protectionMuteCount: nodeGraphFiniteNumber(message.protectionMuteCount),
         },
       );
+    }
+  } else if (message.type === "portalDebug") {
+    const text = JSON.stringify(message.report || {}, null, 2);
+    globalThis.nodeGraphPortalDebug = text;
+    console.log("PORTAL_DEBUG\n" + text);
+    if (typeof setNodeGraphLivePlanStatus === "function") {
+      setNodeGraphLivePlanStatus("PORTAL_DEBUG is in the console â€” copy that", "warn");
     }
   } else if (message.type === "nativeGraphStatus") {
     setNodeGraphLiveEvidence("native-graph", message);
@@ -2317,14 +2347,8 @@ function nodeGraphLivePlanShapeSignature(plan = {}) {
     order: Array.isArray(plan.order) ? plan.order : [],
     outputNode: plan.outputNode || "output",
     samples: (Array.isArray(plan.samples) ? plan.samples : []).map((sample) => sample?.id || ""),
-    scopeCaptureNodeIds: Array.isArray(plan.scopeCaptureNodeIds) ? plan.scopeCaptureNodeIds : [],
-    scopeCaptureRates: plan.scopeCaptureRates || {},
-    visualSinks: (Array.isArray(plan.visualSinks) ? plan.visualSinks : []).map((sink) => [
-      sink.nodeId,
-      sink.displayType,
-      sink.visualWriteHz,
-      (Array.isArray(sink.bufferedInputs) ? sink.bufferedInputs : []).join(","),
-    ]),
+    // Face show/hide only changes scope capture and visual sinks. Those must
+    // not force setPlan (native graph clear restarts Music Player).
   });
 }
 
@@ -2348,6 +2372,7 @@ function nodeGraphLiveConnectionUpdatePayload(plan = {}, audio = {}) {
     bypassedNodes: Array.isArray(plan.bypassedNodes) ? plan.bypassedNodes : [],
     nodes: Array.isArray(plan.nodes) ? plan.nodes : [],
     outputNode: plan.outputNode || "output",
+    oversamplingFactor: audio.oversamplingFactor ?? audio.oversamplingRatio,
     oversamplingRatio: audio.oversamplingRatio,
     patchFingerprint: plan.patchFingerprint,
     pitchReferenceHz: pitchReference.pitchReferenceHz,
@@ -2395,7 +2420,10 @@ async function sendNodeGraphLivePlan() {
     if (planSendGen !== nodeGraphMvp.live.planSendGen) {
       return true;
     }
-    const audio = nodeGraphAudioDerivation(nodeGraphMvp.patch);
+    const audio = nodeGraphAudioDerivation(
+      nodeGraphMvp.patch,
+      nodeGraphMvp.live.context?.sampleRate || nodeGraphBaseSampleRate(),
+    );
     const planShapeSignature = nodeGraphLivePlanShapeSignature(plan);
     const canSendConnectionUpdate = Boolean(
       hadLivePlan &&
@@ -2411,6 +2439,7 @@ async function sendNodeGraphLivePlan() {
     nodeGraphMvp.live.planSerial += 1;
     nodeGraphMvp.live.planEvidence = nodeGraphLivePlanEvidenceDetails(plan, {
       engineSampleRate: audio.clampedEngineSampleRate,
+      oversamplingFactor: audio.oversamplingFactor ?? audio.oversamplingRatio,
       oversamplingRatio: audio.oversamplingRatio,
       planSerial: nodeGraphMvp.live.planSerial,
       sampleRate: nodeGraphMvp.live.context?.sampleRate || nodeGraphMvp.sampleRate,
@@ -2432,6 +2461,7 @@ async function sendNodeGraphLivePlan() {
               ? nodeGraphEfficientProductEnabled()
               : true,
             engineSampleRate: audio.clampedEngineSampleRate,
+            oversamplingFactor: audio.oversamplingFactor ?? audio.oversamplingRatio,
             oversamplingRatio: audio.oversamplingRatio,
             plan,
             patchFingerprint: plan.patchFingerprint,
@@ -2663,20 +2693,11 @@ function sendNodeGraphLiveKeyboardModuleSignal(signal = nodeGraphMvp.keyboardMod
       type: "setKeyboardModuleSignal",
     });
   }
-}
-
-function sendNodeGraphLiveMacroControls(values = nodeGraphMvp.macroControls) {
-  const payload = Array.from({ length: 8 }, (_, index) => (
-    Math.max(0, Math.min(1, nodeGraphFiniteNumber(values?.[index])))
-  ));
-  if (nodeGraphMvp.live.runtime) {
-    nodeGraphMvp.live.runtime.macroControls = payload;
-  }
-  if (nodeGraphMvp.live.usesWorklet && nodeGraphMvp.live.node?.port) {
-    nodeGraphMvp.live.node.port.postMessage({
-      values: payload,
-      type: "setMacroControls",
-    });
+  if (typeof globalThis.soemdspPerformEmitNoteMask === "function") {
+    const held = nodeGraphMvp.midiKeyboardArpMask instanceof Uint8Array
+      ? nodeGraphMvp.midiKeyboardArpMask
+      : null;
+    if (held) globalThis.soemdspPerformEmitNoteMask(held);
   }
 }
 
@@ -2694,6 +2715,9 @@ function sendNodeGraphLiveMidiKeyboardHeldKeysBitmask() {
     nodeGraphMvp.live.runtime.midiKeyboardArpMask = mask;
     if (vels) nodeGraphMvp.live.runtime.midiKeyboardHeldKeyVelocities = vels;
     nodeGraphMvp.live.runtime.midiKeyboardOctave = octave;
+  }
+  if (typeof globalThis.soemdspPerformEmitNoteMask === "function") {
+    globalThis.soemdspPerformEmitNoteMask(mask);
   }
   if (nodeGraphMvp.live.usesWorklet && nodeGraphMvp.live.node?.port) {
     nodeGraphMvp.live.node.port.postMessage({
@@ -3140,8 +3164,8 @@ async function stopNodeGraphLiveAudio() {
       preserveDisplay: false,
     });
   }
-  if (typeof nodeGraphPhosphorWaveformViewStates !== "undefined" && nodeGraphPhosphorWaveformViewStates?.clear) {
-    nodeGraphPhosphorWaveformViewStates.clear();
+  if (typeof nodeGraphSampleWaveformViewStates !== "undefined" && nodeGraphSampleWaveformViewStates?.clear) {
+    nodeGraphSampleWaveformViewStates.clear();
   }
   nodeGraphClearVisualControls();
 
@@ -3191,46 +3215,50 @@ const nodeGraphLiveWorkletSourceFilesEfficient = [
   // Output-bus ear protector (must be in the worklet blob â€” main-thread only = passthrough clip).
   "./public/modules/speakerProtector2/speaker-protector-2-math.js?v=worklet-protect-1",
   "./public/node-graph-stdlib/node-graph-phasor-helpers.js?v=phasor-helpers-1",
-  "./public/node-graph-stdlib/node-graph-control-bus-helpers.js?v=toggle-range-1",
+  "./public/node-graph-stdlib/node-graph-control-bus-helpers.js?v=make-controller-5",
   "./public/modules/portal/portal-lanes.js?v=portal-rename-4x2-1",
   "./public/modules/portal/portal-math.js?v=portal-lanes-1",
-  "./public/node-graph-stdlib/node-graph-param-surface-helpers.js?v=patch-pitch-1",
+  "./public/modules/portal/portal-named.js?v=portal-rewrite-1",
+  "./public/node-graph-stdlib/node-graph-param-surface-helpers.js?v=slope-range-1",
   "./public/node-graph-stdlib/node-graph-seeded-rng-helpers.js?v=softpop-1",
   "./public/node-graph-parameter-smoother-filters.js?v=smooth-gpu-3p-1",
   // Bypass passthrough maps + frame eval (shared with main thread).
-  "./public/node-graph-module-bypass.js?v=t-series-1",
-  "./public/node-graph-efficient-product.js?v=thump-1",
-  "./public/node-live-audio-worklet-core.js?v=transistor-back-1",
+  "./public/node-graph-module-bypass.js?v=named-portal-1",
+  "./public/node-graph-efficient-product.js?v=arp-inc-2",
+  "./public/node-live-audio-worklet-core.js?v=speed-22050-1",
   // Phase D: class methods extracted from core (must follow class definition).
   "./public/node-live-audio-worklet-graph.js?v=plan-d-split-5",
-  "./public/node-live-audio-worklet-smoother.js?v=smooth-3p-1",
+  "./public/node-live-audio-worklet-smoother.js?v=hostcv-parammod-off-2",
   "./public/node-live-audio-worklet-param-map.js?v=domain-mod-1",
   "./public/node-live-audio-worklet-destroy.js?v=block-scope-1",
   "./public/node-live-audio-worklet-analog.js?v=plan-d-split-7",
   "./public/lib/sample-interpolate.js?v=mp-aa-1",
-  "./public/node-live-audio-worklet-dsp-state.js?v=protect-worklet-1",
+  "./public/node-live-audio-worklet-dsp-state.js?v=pd-inc-1",
   "./public/lib/polyphony-voices.js?v=gold-oct-1",
-  "./public/lib/note-mask-128.js?v=mask128-1",
+  "./public/lib/note-mask-128.js?v=scale-octaves-1",
   "./public/node-graph-keyboard-chord-memory.js?v=mask128-2",
   "./public/modules/sequencer/sequencer-math.js?v=seq-23",
-  "./public/node-live-audio-worklet-events.js?v=vm-log-2",
+  "./public/node-live-audio-worklet-events.js?v=speed-22050-1",
   "./public/node-live-audio-worklet-visual.js?v=planck-eps-1",
   "./public/node-live-audio-worklet-scope-io.js?v=scope-gc-1",
   "./public/node-live-audio-worklet-native-load.js?v=plan-d-split-7",
-  "./public/node-live-audio-worklet-native-exports.js?v=hypersaw2-smooth-1",
-  "./public/node-live-audio-worklet-native-graph.js?v=fm-passive-1",
+  "./public/node-live-audio-worklet-native-exports.js?v=sample-hold-uni-display-1",
+  "./public/node-live-audio-worklet-native-graph.js?v=send-gone-1",
   "./public/node-live-audio-worklet-meta-view.js?v=voice-preview-1",
-  "./public/node-live-audio-worklet-set-plan.js?v=chord-seq-1",
-  "./public/node-live-audio-worklet-clear-plan.js?v=hypersaw2-smooth-1",
-  "./public/node-live-audio-worklet-handle-message.js?v=circuit-6",
-  "./public/node-live-audio-worklet-scope-snapshot.js?v=meta-view-rewrite-1",
+  "./public/node-live-audio-worklet-set-plan.js?v=live-os-1",
+  "./public/node-live-audio-worklet-clear-plan.js?v=no-macro-1",
+  "./public/node-live-audio-worklet-handle-message.js?v=arp-override-1",
+  "./public/node-live-audio-worklet-scope-snapshot.js?v=ensemble-cloud-1",
+  "./public/modules/spectrogram/spectrogram-worklet-evaluator.js?v=restore-fft-1",
   "./public/modules/_shared/output-amplitude.js?v=output-amp-1",
   // Yellow Graph: DOMAIN param chase for MOD (DSP is native opcodes 111â€“124).
   "./public/modules/additiveGraph/additive-param-smooth.js?v=main-guard-1",
 
   // Envelope *Mod strips: native opcodes 70/72 (no JS ADSR / BakeStrip).
-  "./public/modules/_shared/controller-efficient-sidecar.js?v=mom-only-1",
-  "./public/node-live-audio-worklet-process.js?v=protect-worklet-1",
+  // Keypad slot math (host CV controller — used by sidecar publish + setKeypadInteraction).
+  "./public/modules/keypad/keypad-math.js?v=keypad-hostcv-1",
+  "./public/modules/_shared/controller-efficient-sidecar.js?v=keypad-hostcv-1",
+  "./public/node-live-audio-worklet-process.js?v=host-rate-display-2",
 ];
 
 // Legacy JS DSP evaluators + evaluateFrame â€” RETIRED. Never load on any product.
@@ -3317,8 +3345,7 @@ function nodeGraphLiveAwaitStartup(promise, message = "live audio startup timed 
 }
 
 function createNodeGraphLiveScriptProcessorNode(_context, _plan) {
-  // APP_POLICY Â§0b / Â§2: JS ScriptProcessor audio path is retired. Native worklet only.
-  throw new Error("ScriptProcessor JS audio path removed â€” AudioWorklet + native graph required");
+  throw new Error("Live audio is AudioWorklet + native graph only");
 }
 
 function stopNodeGraphLiveInputSource() {
@@ -3525,7 +3552,13 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
     if (!AudioContextConstructor) {
       throw new Error("Web Audio API unavailable");
     }
-    const context = new AudioContextConstructor();
+    const wantRate = nodeGraphBaseSampleRate();
+    let context;
+    try {
+      context = new AudioContextConstructor({ sampleRate: wantRate });
+    } catch (_e) {
+      context = new AudioContextConstructor();
+    }
     nodeGraphMvp.live.sessionId += 1;
     nodeGraphMvp.live.planSerial = 0;
     if (context.state === "suspended") {
@@ -3554,11 +3587,10 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
       usesWorklet = true;
     } catch (error) {
       const message = String(error?.message || error || "AudioWorklet failed");
-      // APP_POLICY Â§0b / Â§2: never ScriptProcessor â†’ evaluateNodeGraphPlanFrame.
       if (typeof window.SE?.ERROR === "function") {
-        window.SE.ERROR(`AudioWorklet required (no JS audio fallback): ${message}`);
+        window.SE.ERROR(`AudioWorklet failed: ${message}`);
       } else {
-        console.error("[live] AudioWorklet required â€” no JS audio fallback", error);
+        console.error("[live] AudioWorklet failed", error);
       }
       setNodeGraphLiveEngineStatus("worklet required", "error");
       setNodeGraphLiveEngineTitle(message);
@@ -3629,7 +3661,6 @@ async function startNodeGraphLiveAudio(outputSerial = nodeGraphMvp.live.outputTo
     if (typeof nodeGraphFlushLiveMetaView === "function") {
       nodeGraphFlushLiveMetaView();
     }
-    sendNodeGraphLiveMacroControls();
     sendNodeGraphLivePitchModWheelSignal();
     // Play must never hand the worklet speed 0. Stop leaves pause (0) alone;
     // starting live audio is always "run". Always go through setNodeGraphLiveSpeed
@@ -3832,4 +3863,3 @@ if (typeof document !== "undefined") {
     bindNodeGraphPageVisibilityAudioPolicy();
   }
 }
-

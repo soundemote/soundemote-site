@@ -41,8 +41,7 @@
    * Phosphor stamps keep their own 1px floor; do not share that helper.
    */
   function diameterPx(faceMinSide, size01) {
-    const side = Math.max(1, nodeGraphFiniteNumber(faceMinSide, 1));
-    return side * clamp01(size01, 0);
+    return faceInkPx(clampAuthoredInkPx(size01, 0), faceMinSide);
   }
 
   function radiusPx(faceMinSide, size01) {
@@ -81,7 +80,7 @@
       return 0;
     }
     let pieces = 0;
-    // Instant Trace is a polyline. Quadratic smoothing bows low-frequency
+    // Instant Waterfall is a polyline. Quadratic smoothing bows low-frequency
     // 1D/stereo traces into blobs; never use the phosphor smooth-path helper.
     let drawing = false;
     let segmentStart = -1;
@@ -431,7 +430,7 @@
       return 0;
     }
     const face = Math.max(1, nodeGraphFiniteNumber(options.faceMinSide, 1));
-    const size01 = clamp01(options.size, 0);
+    const size01 = clampAuthoredInkPx(options.size, 0);
     const blur = normalizeBlur(options.blur, 0.2);
     const brightness = Math.max(0, nodeGraphFiniteNumber(options.brightness));
     const fade = clamp01(options.fade, 0);

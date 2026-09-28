@@ -1,347 +1,339 @@
-// Toggle / Momentary face look — Display Settings popover.
-// Hue + physically plausible brightness (black → full hue @ 0.5 → white).
+// Toggle and Momentary share one Display Settings set.
+// Button and label each have padding + nine-way alignment (slider-style).
+// Off / On text is Display Settings, not Parameter Settings.
+// Corner shape (Pill / Squircle) + rounding 0…1 of half min-edge (APP_POLICY §15).
 
-const NODE_GRAPH_PLUGIN_BUTTON_HUE_PAIRS = Object.freeze([
-  ["textBrightness", "textColor"],
-  ["buttonBrightness", "buttonColor"],
-  ["buttonStrokeBrightness", "buttonStrokeColor"],
-  ["hoverBrightness", "hoverColor"],
-  ["onBrightness", "onColor"],
-]);
+const NODE_GRAPH_PLUGIN_BUTTON_TEXT_MAX = 48;
 
 const NODE_GRAPH_PLUGIN_BUTTON_SLIDER_FIELDS = Object.freeze([
-  "textSize",
+  "strokeScale",
+  "buttonPadLeft",
+  "buttonPadRight",
+  "buttonPadTop",
+  "buttonPadBottom",
+  "fontSize",
+  "labelPadding",
+  "labelSize",
   "rounding",
-  "buttonStrokeThickness",
-  "padPx",
-  "hoverAlpha",
-  "onAlpha",
 ]);
 
-function nodeGraphPluginButtonHueHex(hueDeg, fallback = 200) {
-  if (typeof nodeGraphHueUnitHex === "function") {
-    return nodeGraphHueUnitHex(Number.isFinite(Number(hueDeg)) ? Number(hueDeg) : fallback);
-  }
-  return "#4d8dff";
-}
+const NODE_GRAPH_PLUGIN_BUTTON_COLOR_FIELDS = Object.freeze([
+  "strokeColor",
+  "inactiveColor",
+  "activeColor",
+  "hoverColor",
+  "textColor",
+]);
+
+const NODE_GRAPH_PLUGIN_BUTTON_CHOICE_FIELDS = Object.freeze([
+  "labelAlign",
+]);
+
+const NODE_GRAPH_PLUGIN_BUTTON_TEXT_FIELDS = Object.freeze([
+  "labelText",
+  "offText",
+  "onText",
+]);
 
 const NODE_GRAPH_PLUGIN_BUTTON_DISPLAY_DEFAULTS = Object.freeze({
-  font: "thasadith",
-  textColor: nodeGraphPluginButtonHueHex(200),
-  textBrightness: 0.82,
-  textSize: 0.45,
+  strokeScale: 0.06,
+  buttonPadLeft: 0,
+  buttonPadRight: 0,
+  buttonPadTop: 0,
+  buttonPadBottom: 0,
+  fontSize: 72,
+  labelText: "",
+  labelPadding: 0.035,
+  labelSize: 16,
+  labelAlign: "topleft",
+  buttonShowLabel: true,
+  offText: "Off",
+  onText: "On",
+  strokeColor: "#5c5071",
+  inactiveColor: "#1a2228",
+  activeColor: "#2f8f86",
+  hoverColor: "#89bfc2",
+  textColor: "#f4f7f8",
   cornerShape: "squircle",
-  rounding: 18,
-  buttonColor: nodeGraphPluginButtonHueHex(210),
-  buttonBrightness: 0.22,
-  buttonStrokeColor: nodeGraphPluginButtonHueHex(200),
-  buttonStrokeBrightness: 0.38,
-  buttonStrokeThickness: 1,
-  padPx: 4,
-  hoverColor: nodeGraphPluginButtonHueHex(145),
-  hoverBrightness: 0.42,
-  hoverAlpha: 0.45,
-  onColor: nodeGraphPluginButtonHueHex(145),
-  onBrightness: 0.48,
-  onAlpha: 0.7,
+  // 0…1 of half min-edge; ~0.18 matches pre-rewrite default rounding 18%.
+  rounding: 0.18,
 });
+
+function nodeGraphPluginButtonIsMomentaryType(type) {
+  const key = String(type || "").trim();
+  return key === "momentaryButton" || key === "momentaryButtonFace";
+}
 
 function nodeGraphPluginButtonClamp01(value, fallback) {
   const n = Number(value);
-  if (!Number.isFinite(n)) {
-    return fallback;
-  }
+  if (!Number.isFinite(n)) return fallback;
   return Math.max(0, Math.min(1, n));
 }
 
-function nodeGraphPluginButtonClamp(value, min, max, fallback) {
+function nodeGraphPluginButtonClampInkPx(value, fallback) {
+  const n = typeof clampAuthoredInkPx === "function"
+    ? clampAuthoredInkPx(value, fallback)
+    : (Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : fallback);
+  return Math.max(0, Math.min(256, n));
+}
+
+function nodeGraphPluginButtonNormalizeRounding(value, fallback) {
   const n = Number(value);
-  if (!Number.isFinite(n)) {
-    return fallback;
-  }
-  return Math.max(min, Math.min(max, n));
+  if (!Number.isFinite(n)) return fallback;
+  // Legacy patches stored percent 0…100 (pre-rewrite / keypad-style).
+  const unit = n > 1 ? n / 100 : n;
+  return Math.max(0, Math.min(1, unit));
 }
 
-function nodeGraphPluginButtonNormalizeFont(value) {
-  if (typeof nodeGraphKeypadNormalizeFont === "function") {
-    return nodeGraphKeypadNormalizeFont(value);
-  }
-  return String(value || NODE_GRAPH_PLUGIN_BUTTON_DISPLAY_DEFAULTS.font);
+function nodeGraphPluginButtonNormalizeCornerShape(value, fallback) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "pill") return "pill";
+  if (raw === "squircle") return "squircle";
+  const fb = String(fallback || "squircle").trim().toLowerCase();
+  return fb === "pill" ? "pill" : "squircle";
 }
 
-function nodeGraphPluginButtonFontFamily(value) {
-  if (typeof nodeGraphKeypadFontFamily === "function") {
-    return nodeGraphKeypadFontFamily(value);
+function nodeGraphPluginButtonNormalizeHex(value, fallback) {
+  const text = String(value || "").trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(text)) return text.toLowerCase();
+  if (/^#[0-9a-fA-F]{3}$/.test(text)) {
+    return `#${text[1]}${text[1]}${text[2]}${text[2]}${text[3]}${text[3]}`.toLowerCase();
   }
-  return "\"Thasadith\", sans-serif";
+  return fallback;
 }
 
-function nodeGraphPluginButtonNormalizeColor(value, fallbackHex) {
-  const raw = String(value || "").trim();
-  if (/^#[0-9a-fA-F]{6}$/.test(raw) || /^#[0-9a-fA-F]{3}$/.test(raw)) {
-    return raw;
-  }
-  return fallbackHex;
+function nodeGraphPluginButtonNormalizeText(value, fallback) {
+  if (value == null) return fallback;
+  return String(value).replace(/\s+/g, " ").trim().slice(0, NODE_GRAPH_PLUGIN_BUTTON_TEXT_MAX);
 }
 
-function normalizeNodeGraphPluginButtonDisplaySettings(settings) {
+function nodeGraphPluginButtonNormalizeAlign(value, fallback) {
+  if (typeof normalizeNodeGraphKnobPinAlign === "function") {
+    return normalizeNodeGraphKnobPinAlign(value, fallback);
+  }
+  const raw = String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+  const known = [
+    "topleft", "top", "topright",
+    "midleft", "mid", "midright",
+    "bottomleft", "bottom", "bottomright",
+  ];
+  if (known.includes(raw)) return raw;
+  const fb = String(fallback || "mid").trim().toLowerCase();
+  return known.includes(fb) ? fb : "mid";
+}
+
+function normalizeNodeGraphPluginButtonDisplaySettings(settings, type) {
   const d = NODE_GRAPH_PLUGIN_BUTTON_DISPLAY_DEFAULTS;
   const src = settings && typeof settings === "object" ? settings : {};
-  const corner = String(src.cornerShape || "").trim().toLowerCase();
+  const momentary = nodeGraphPluginButtonIsMomentaryType(type);
+  const fallbackOff = momentary ? "Gate" : d.offText;
+  const fallbackOn = momentary ? "Gate" : d.onText;
   return {
-    font: nodeGraphPluginButtonNormalizeFont(src.font),
-    textColor: nodeGraphPluginButtonNormalizeColor(src.textColor, d.textColor),
-    textBrightness: nodeGraphPluginButtonClamp01(src.textBrightness, d.textBrightness),
-    textSize: nodeGraphPluginButtonClamp01(src.textSize, d.textSize),
-    cornerShape: corner === "pill" ? "pill" : "squircle",
-    rounding: nodeGraphPluginButtonClamp(src.rounding, 0, 100, d.rounding),
-    buttonColor: nodeGraphPluginButtonNormalizeColor(src.buttonColor, d.buttonColor),
-    buttonBrightness: nodeGraphPluginButtonClamp01(src.buttonBrightness, d.buttonBrightness),
-    buttonStrokeColor: nodeGraphPluginButtonNormalizeColor(src.buttonStrokeColor, d.buttonStrokeColor),
-    buttonStrokeBrightness: nodeGraphPluginButtonClamp01(src.buttonStrokeBrightness, d.buttonStrokeBrightness),
-    buttonStrokeThickness: nodeGraphPluginButtonClamp(src.buttonStrokeThickness, 0, 16, d.buttonStrokeThickness),
-    padPx: nodeGraphPluginButtonClamp(src.padPx, 0, 64, d.padPx),
-    hoverColor: nodeGraphPluginButtonNormalizeColor(src.hoverColor, d.hoverColor),
-    hoverBrightness: nodeGraphPluginButtonClamp01(src.hoverBrightness, d.hoverBrightness),
-    hoverAlpha: nodeGraphPluginButtonClamp01(src.hoverAlpha, d.hoverAlpha),
-    onColor: nodeGraphPluginButtonNormalizeColor(src.onColor, d.onColor),
-    onBrightness: nodeGraphPluginButtonClamp01(src.onBrightness, d.onBrightness),
-    onAlpha: nodeGraphPluginButtonClamp01(src.onAlpha, d.onAlpha),
+    strokeScale: nodeGraphPluginButtonClamp01(src.strokeScale, d.strokeScale),
+    buttonPadLeft: nodeGraphPluginButtonClamp01(src.buttonPadLeft, d.buttonPadLeft),
+    buttonPadRight: nodeGraphPluginButtonClamp01(src.buttonPadRight, d.buttonPadRight),
+    buttonPadTop: nodeGraphPluginButtonClamp01(src.buttonPadTop, d.buttonPadTop),
+    buttonPadBottom: nodeGraphPluginButtonClamp01(src.buttonPadBottom, d.buttonPadBottom),
+    fontSize: nodeGraphPluginButtonClampInkPx(src.fontSize, d.fontSize),
+    labelText: nodeGraphPluginButtonNormalizeText(src.labelText, d.labelText),
+    labelPadding: nodeGraphPluginButtonClamp01(src.labelPadding, d.labelPadding),
+    labelSize: nodeGraphPluginButtonClampInkPx(src.labelSize, d.labelSize),
+    labelAlign: nodeGraphPluginButtonNormalizeAlign(src.labelAlign, d.labelAlign),
+    buttonShowLabel: src.buttonShowLabel !== false,
+    offText: nodeGraphPluginButtonNormalizeText(src.offText, fallbackOff),
+    onText: nodeGraphPluginButtonNormalizeText(src.onText, fallbackOn),
+    strokeColor: nodeGraphPluginButtonNormalizeHex(src.strokeColor, d.strokeColor),
+    inactiveColor: nodeGraphPluginButtonNormalizeHex(src.inactiveColor, d.inactiveColor),
+    activeColor: nodeGraphPluginButtonNormalizeHex(src.activeColor, d.activeColor),
+    hoverColor: nodeGraphPluginButtonNormalizeHex(src.hoverColor, d.hoverColor),
+    textColor: nodeGraphPluginButtonNormalizeHex(src.textColor, d.textColor),
+    cornerShape: nodeGraphPluginButtonNormalizeCornerShape(src.cornerShape, d.cornerShape),
+    rounding: nodeGraphPluginButtonNormalizeRounding(src.rounding, d.rounding),
   };
 }
 
 function nodeGraphPluginButtonDisplaySettingsForNode(node) {
-  return normalizeNodeGraphPluginButtonDisplaySettings(node?.traceDisplaySettings);
-}
-
-function nodeGraphPluginButtonHueCss(colorHex, brightness, alpha = 1, fallbackHue = 200) {
-  const hue = typeof nodeGraphHueDegFromHex === "function"
-    ? nodeGraphHueDegFromHex(colorHex)
-    : fallbackHue;
-  if (typeof nodeGraphHueBrightnessCss === "function") {
-    return nodeGraphHueBrightnessCss(hue, brightness, alpha);
-  }
-  return colorHex || "#d8e6ef";
+  return normalizeNodeGraphPluginButtonDisplaySettings(node?.traceDisplaySettings, node?.type);
 }
 
 function nodeGraphPluginButtonFaceLabels(node) {
   const patchNode = typeof node === "string" && typeof nodeGraphPatchNode === "function"
     ? nodeGraphPatchNode(node)
     : node;
-  const type = patchNode?.type || "";
-  let choices = [];
-  if (typeof nodeGraphReadPatchParameterMetadata === "function" && patchNode) {
-    const meta = nodeGraphReadPatchParameterMetadata(patchNode, "value");
-    if (Array.isArray(meta?.choices) && meta.choices.length) {
-      choices = meta.choices.map((c) => String(c ?? "").trim()).filter((c) => c.length);
-    }
+  const s = nodeGraphPluginButtonDisplaySettingsForNode(patchNode);
+  return { off: s.offText || "", on: s.onText || "" };
+}
+
+function nodeGraphPluginButtonFaceLabelText(node) {
+  const patchNode = typeof node === "string" && typeof nodeGraphPatchNode === "function"
+    ? nodeGraphPatchNode(node)
+    : node;
+  const s = nodeGraphPluginButtonDisplaySettingsForNode(patchNode);
+  if (s.buttonShowLabel === false) return "";
+  if (typeof nodeGraphKnobResolvedDisplayNameForNode === "function") {
+    return nodeGraphKnobResolvedDisplayNameForNode(patchNode) || "";
   }
-  if (!choices.length) {
-    const def = typeof nodeGraphModuleDefinitions === "object"
-      ? nodeGraphModuleDefinitions[type]?.parameters?.find((p) => p.key === "value")
-      : null;
-    if (Array.isArray(def?.choices)) {
-      choices = def.choices.map((c) => String(c ?? "").trim()).filter((c) => c.length);
-    }
+  return s.labelText || "";
+}
+
+function nodeGraphPluginButtonClearPin(el) {
+  if (!el?.style) return;
+  for (const prop of [
+    "position", "top", "left", "right", "bottom", "margin", "transform",
+    "width", "height", "font-size", "line-height",
+  ]) {
+    el.style.removeProperty(prop);
   }
-  const fallbackOff = type === "momentaryButton" ? "GATE" : "Off";
-  const fallbackOn = type === "momentaryButton" ? "GATE" : "On";
-  return {
-    off: choices[0] || fallbackOff,
-    on: choices[1] || choices[0] || fallbackOn,
-  };
 }
 
 function applyNodeGraphPluginButtonDisplaySettingsToFace(node) {
   const id = String(node?.id || "").trim();
-  if (!id) {
-    return;
-  }
+  if (!id) return;
   const face = document.querySelector(
     `.node-plugin-toggle-face[data-node="${CSS.escape(id)}"], .node-plugin-momentary-face[data-node="${CSS.escape(id)}"]`,
   );
-  if (!face) {
-    return;
-  }
-  nodeGraphPluginButtonPaintFace(face, normalizeNodeGraphPluginButtonDisplaySettings(node.traceDisplaySettings));
+  if (!face) return;
+  nodeGraphPluginButtonPaintFace(face, nodeGraphPluginButtonDisplaySettingsForNode(node));
+}
+
+function nodeGraphPluginButtonSyncCaptionChars(btn) {
+  const fit = btn?.querySelector?.(":scope > .btn-fit");
+  const face = btn?.closest?.(".node-plugin-toggle-face, .node-plugin-momentary-face");
+  if (fit?.style) fit.style.removeProperty("font-size");
+  if (!face) return;
+  const text = String(fit?.textContent || "").replace(/\s+/g, " ").trim();
+  face.style.setProperty("--plugin-btn-chars", String(Math.max(1, text.length)));
 }
 
 function nodeGraphPluginButtonPaintFace(face, settings) {
-  if (!face) {
-    return;
-  }
-  const s = normalizeNodeGraphPluginButtonDisplaySettings(settings);
+  if (!face) return;
+  const type = face.dataset.nodeType || "";
+  const s = normalizeNodeGraphPluginButtonDisplaySettings(settings, type);
   const btn = face.querySelector(".node-plugin-toggle-button, .node-plugin-momentary-button");
-  face.style.setProperty("--plugin-btn-pad", `${s.padPx}px`);
+  const label = face.querySelector("[data-plugin-btn-label]");
+  face.dataset.labelAlign = s.labelAlign;
   face.dataset.pluginBtnCorner = s.cornerShape;
-  if (!btn) {
-    return;
+  face.style.setProperty("--plugin-btn-pad-left", String(s.buttonPadLeft));
+  face.style.setProperty("--plugin-btn-pad-right", String(s.buttonPadRight));
+  face.style.setProperty("--plugin-btn-pad-top", String(s.buttonPadTop));
+  face.style.setProperty("--plugin-btn-pad-bottom", String(s.buttonPadBottom));
+  face.style.setProperty("--plugin-btn-font-px", String(s.fontSize));
+  face.style.setProperty("--plugin-label-font-px", String(s.labelSize));
+  face.style.setProperty("--plugin-label-pad", String(s.labelPadding));
+  face.style.setProperty("--plugin-btn-stroke-scale", String(s.strokeScale));
+  face.style.setProperty("--plugin-btn-rounding", String(s.rounding));
+  face.style.setProperty("--plugin-btn-text", s.textColor);
+  face.style.padding = "0";
+  nodeGraphPluginButtonClearPin(btn);
+  nodeGraphPluginButtonClearPin(label);
+  if (btn) {
+    btn.style.setProperty("--plugin-btn-stroke", s.strokeColor);
+    nodeGraphPluginButtonSyncCaptionChars(btn);
+    btn.style.setProperty("--plugin-btn-inactive", s.inactiveColor);
+    btn.style.setProperty("--plugin-btn-active", s.activeColor);
+    btn.style.setProperty("--plugin-btn-hover", s.hoverColor);
+    btn.style.setProperty("--plugin-btn-text", s.textColor);
+    btn.style.removeProperty("--plugin-btn-radius");
+    btn.style.setProperty(
+      "--plugin-btn-corner-shape",
+      s.cornerShape === "pill" ? "round" : "squircle",
+    );
   }
-  const fill = nodeGraphPluginButtonHueCss(s.buttonColor, s.buttonBrightness, 1, 210);
-  const stroke = nodeGraphPluginButtonHueCss(s.buttonStrokeColor, s.buttonStrokeBrightness, 1, 200);
-  const text = nodeGraphPluginButtonHueCss(s.textColor, s.textBrightness, 1, 200);
-  const hover = nodeGraphPluginButtonHueCss(s.hoverColor, s.hoverBrightness, 1, 145);
-  const onFill = nodeGraphPluginButtonHueCss(s.onColor, s.onBrightness, 1, 145);
-  btn.style.setProperty("--plugin-btn-fill", fill);
-  btn.style.setProperty("--plugin-btn-stroke", stroke);
-  btn.style.setProperty("--plugin-btn-text", text);
-  btn.style.setProperty("--plugin-btn-stroke-w", `${s.buttonStrokeThickness}px`);
-  btn.style.setProperty("--plugin-btn-hover", hover);
-  btn.style.setProperty("--plugin-btn-hover-alpha", String(s.hoverAlpha));
-  btn.style.setProperty("--plugin-btn-on", onFill);
-  btn.style.setProperty("--plugin-btn-on-alpha", String(s.onAlpha));
-  const family = nodeGraphPluginButtonFontFamily(s.font);
-  btn.style.fontFamily = family;
-  const w = Math.max(1, btn.clientWidth || 0);
-  const h = Math.max(1, btn.clientHeight || 0);
-  const maxRadius = Math.max(0, Math.min(w, h) * 0.5);
-  const radius = Math.round((Math.max(0, Math.min(100, s.rounding)) / 100) * maxRadius);
-  btn.style.setProperty("--plugin-btn-radius", `${radius}px`);
-  btn.style.setProperty("--plugin-btn-corner-shape", s.cornerShape === "pill" ? "round" : "squircle");
-  btn.style.fontSize = `${nodeGraphPluginButtonFitFontPx(btn, family, s.textSize)}px`;
+  if (label) {
+    const patchNode = typeof nodeGraphPatchNode === "function"
+      ? nodeGraphPatchNode(face.dataset.node)
+      : null;
+    const title = s.buttonShowLabel === false
+      ? ""
+      : (typeof nodeGraphKnobResolvedDisplayNameForNode === "function"
+        ? nodeGraphKnobResolvedDisplayNameForNode(patchNode)
+        : (s.labelText || ""));
+    if (label.dataset.editing !== "true") {
+      label.textContent = title;
+    }
+    label.hidden = !title;
+    label.style.color = s.textColor;
+  }
 }
 
-function nodeGraphPluginButtonMeasureScratch() {
-  if (!nodeGraphPluginButtonFitFontPx._ctx) {
-    const canvas = document.createElement("canvas");
-    nodeGraphPluginButtonFitFontPx._ctx = canvas.getContext("2d");
-  }
-  return nodeGraphPluginButtonFitFontPx._ctx;
-}
-
-/** Size 0 = 1px. Size 1 = glyph box touching the inner button walls. */
-function nodeGraphPluginButtonFitFontPx(btn, family, textSize) {
-  const t = Math.max(0, Math.min(1, nodeGraphFiniteNumber(textSize)));
-  const minPx = 1;
-  const text = String(btn?.textContent || "").replace(/\s+/g, " ").trim();
-  const availW = Math.max(1, btn.clientWidth || 1);
-  const availH = Math.max(1, btn.clientHeight || 1);
-  if (!text || t <= 0) {
-    return minPx;
-  }
-  const ctx = nodeGraphPluginButtonMeasureScratch();
-  if (!ctx) {
-    return minPx + t * Math.max(0, Math.min(availW, availH) - minPx);
-  }
-  const probe = 100;
-  ctx.font = `700 ${probe}px ${family}`;
-  const m = ctx.measureText(text);
-  const glyphW = Math.max(
-    1,
-    (Number.isFinite(m.actualBoundingBoxLeft) && Number.isFinite(m.actualBoundingBoxRight)
-      ? Math.abs(m.actualBoundingBoxLeft) + Math.abs(m.actualBoundingBoxRight)
-      : m.width) || 1,
-  );
-  const glyphH = Math.max(
-    1,
-    (Number.isFinite(m.actualBoundingBoxAscent) ? m.actualBoundingBoxAscent : probe * 0.8)
-    + (Number.isFinite(m.actualBoundingBoxDescent) ? m.actualBoundingBoxDescent : probe * 0.2),
-  );
-  const fit = Math.min(availW / glyphW, availH / glyphH) * probe;
-  return minPx + t * Math.max(0, fit - minPx);
-}
-
-function buildNodeGraphPluginButtonDisplaySettingsBodyHtml() {
-  const fontOptions = typeof nodeGraphAppFontOptionsHtml === "function"
-    ? nodeGraphAppFontOptionsHtml()
-    : ((typeof NODE_GRAPH_KEYPAD_FONTS !== "undefined" ? NODE_GRAPH_KEYPAD_FONTS : []).map((font) => {
-      const escape = typeof nodeGraphDisplaySettingsEscapeHtml === "function"
-        ? nodeGraphDisplaySettingsEscapeHtml
-        : (value) => String(value ?? "");
-      return `<option value="${escape(font.id)}">${escape(font.label)}</option>`;
-    }).join(""));
+function nodeGraphPluginButtonTextRowHtml(key, label, placeholder) {
   const escape = typeof nodeGraphDisplaySettingsEscapeHtml === "function"
     ? nodeGraphDisplaySettingsEscapeHtml
     : (value) => String(value ?? "");
-  const hueRow = (title, stepField, colorField, fallbackHue) => (
-    typeof nodeGraphDisplaySettingsBuildHueTitleStepperRowHtml === "function"
-      ? nodeGraphDisplaySettingsBuildHueTitleStepperRowHtml({
-        title,
-        stepField,
-        colorField,
-        formType: "toggleButtonFace",
-        defaultHueHex: nodeGraphPluginButtonHueHex(fallbackHue, fallbackHue),
-        titleAttr: `${title} brightness 0…1 (black → full hue at 0.5 → white). Drag the title to change hue.`,
-      })
-      : ""
-  );
   return `
-    <div class="node-led-display-settings-panel" data-plugin-button-display-settings-panel>
-      <div class="metadata-section-title">Text</div>
-      <label class="node-led-settings-row" data-trace-display-choice-row="font">
-        <span>Font</span>
-        <select data-trace-display-choice="font" aria-label="Button font">
-          ${fontOptions}
-        </select>
-      </label>
-      ${hueRow("Text", "textBrightness", "textColor", 200)}
-      <label class="node-led-settings-row">
-        <span>Size</span>
-        <input type="range" min="0" max="1" step="0.01" data-plugin-btn-field="textSize" aria-label="Text size 0–1">
-      </label>
+    <label class="node-trace-display-line-burn-row" data-trace-display-control-row>
+      <span>${escape(label)}</span>
+      <input type="text" spellcheck="false" autocomplete="off" maxlength="${NODE_GRAPH_PLUGIN_BUTTON_TEXT_MAX}"
+        data-plugin-btn-text="${escape(key)}" aria-label="${escape(label)}" placeholder="${escape(placeholder || "")}">
+    </label>`;
+}
+
+function buildNodeGraphPluginButtonDisplaySettingsBodyHtml(formType) {
+  const colorRow = typeof nodeGraphDisplaySettingsBuildColorRowHtml === "function"
+    ? (key) => nodeGraphDisplaySettingsBuildColorRowHtml(key, formType || "toggleButtonFace")
+    : () => "";
+  const fieldRow = typeof nodeGraphDisplaySettingsBuildStepperRowHtml === "function"
+    ? (key) => nodeGraphDisplaySettingsBuildStepperRowHtml(key, formType || "toggleButtonFace")
+    : () => "";
+  const choiceRow = typeof nodeGraphDisplaySettingsBuildChoiceRowHtml === "function"
+    ? (key) => nodeGraphDisplaySettingsBuildChoiceRowHtml(key)
+    : () => "";
+  const toggleRow = typeof nodeGraphDisplaySettingsBuildToggleRowHtml === "function"
+    ? (key) => nodeGraphDisplaySettingsBuildToggleRowHtml(key)
+    : () => "";
+  const momentary = nodeGraphPluginButtonIsMomentaryType(formType);
+  const offPh = momentary ? "Gate" : "Off";
+  const onPh = momentary ? "Gate" : "On";
+  return `
+    <div data-plugin-button-display-settings-panel>
+      <div class="metadata-section-title">Label</div>
+      <div class="metadata-field-section">${toggleRow("buttonShowLabel")}${choiceRow("labelAlign")}${["labelPadding", "labelSize"].map(fieldRow).join("")}${nodeGraphPluginButtonTextRowHtml("labelText", "Label", "")}</div>
       <div class="metadata-section-title">Button</div>
-      <div class="node-led-settings-row" role="group" aria-label="Button corner shape">
-        <span>Shape</span>
-        <button type="button" data-plugin-btn-corner="pill" aria-pressed="false">Pill</button>
-        <button type="button" data-plugin-btn-corner="squircle" aria-pressed="true">Squircle</button>
+      <div class="metadata-field-section">
+        <div class="node-led-settings-row" role="group" aria-label="Button corner shape">
+          <span>Shape</span>
+          <button type="button" data-plugin-btn-corner="pill" aria-pressed="false">Pill</button>
+          <button type="button" data-plugin-btn-corner="squircle" aria-pressed="true">Squircle</button>
+        </div>
+        ${fieldRow("rounding")}
+        ${["buttonPadLeft", "buttonPadRight", "buttonPadTop", "buttonPadBottom", "strokeScale", "fontSize"].map(fieldRow).join("")}
       </div>
-      <label class="node-led-settings-row">
-        <span>Rounding</span>
-        <input type="range" min="0" max="100" step="1" data-plugin-btn-field="rounding" aria-label="Button rounding">
-        <span>%</span>
-      </label>
-      ${hueRow("Button", "buttonBrightness", "buttonColor", 210)}
-      <div class="metadata-section-title">Button stroke</div>
-      ${hueRow("Stroke", "buttonStrokeBrightness", "buttonStrokeColor", 200)}
-      <label class="node-led-settings-row">
-        <span>Stroke</span>
-        <input type="range" min="0" max="16" step="0.25" data-plugin-btn-field="buttonStrokeThickness" aria-label="Button stroke thickness in pixels">
-        <span>px</span>
-      </label>
-      <label class="node-led-settings-row">
-        <span>Pad</span>
-        <input type="range" min="0" max="64" step="1" data-plugin-btn-field="padPx" aria-label="Padding from module walls in pixels">
-        <span>px</span>
-      </label>
-      <div class="metadata-section-title">Hover</div>
-      ${hueRow("Hover", "hoverBrightness", "hoverColor", 145)}
-      <label class="node-led-settings-row">
-        <span>Alpha</span>
-        <input type="range" min="0" max="1" step="0.01" data-plugin-btn-field="hoverAlpha" aria-label="Hover overlay alpha 0–1">
-      </label>
-      <div class="metadata-section-title">On</div>
-      ${hueRow("On", "onBrightness", "onColor", 145)}
-      <label class="node-led-settings-row">
-        <span>Alpha</span>
-        <input type="range" min="0" max="1" step="0.01" data-plugin-btn-field="onAlpha" aria-label="On overlay alpha 0–1">
-      </label>
+      <div class="metadata-field-section">${nodeGraphPluginButtonTextRowHtml("offText", "Off", offPh)}${nodeGraphPluginButtonTextRowHtml("onText", "On", onPh)}</div>
+      <div class="metadata-section-title">Colors</div>
+      <div class="metadata-field-section">${["strokeColor", "activeColor", "inactiveColor", "hoverColor", "textColor"].map(colorRow).join("")}</div>
     </div>`;
 }
 
 function syncNodeGraphPluginButtonDisplaySettingsControls(root, settings) {
-  if (!root || !settings) {
-    return;
-  }
-  const s = normalizeNodeGraphPluginButtonDisplaySettings(settings);
+  if (!root || !settings) return;
+  const type = typeof nodeGraphTraceDisplaySettingsFormType === "function"
+    ? nodeGraphTraceDisplaySettingsFormType()
+    : "";
+  const s = normalizeNodeGraphPluginButtonDisplaySettings(settings, type);
+  const format = typeof formatNodeGraphTraceDisplaySetting === "function"
+    ? formatNodeGraphTraceDisplaySetting
+    : (value) => String(value);
   for (const key of NODE_GRAPH_PLUGIN_BUTTON_SLIDER_FIELDS) {
-    const el = root.querySelector?.(`[data-plugin-btn-field="${key}"]`);
+    const el = root.querySelector?.(`[data-trace-display-field="${key}"]`)
+      || root.querySelector?.(`[data-plugin-btn-field="${key}"]`);
     if (el && document.activeElement !== el) {
-      el.value = String(s[key]);
+      el.value = format(s[key]);
+      if (el.dataset?.waterfallField) el.readOnly = true;
     }
   }
-  const font = root.querySelector?.(`[data-trace-display-choice="font"]`);
-  if (font) {
-    font.value = s.font;
+  for (const key of NODE_GRAPH_PLUGIN_BUTTON_CHOICE_FIELDS) {
+    const el = root.querySelector?.(`[data-trace-display-choice="${key}"]`);
+    if (el && document.activeElement !== el) el.value = String(s[key]);
   }
-  for (const [brightKey, colorKey] of NODE_GRAPH_PLUGIN_BUTTON_HUE_PAIRS) {
-    const bright = root.querySelector?.(`[data-trace-display-field="${brightKey}"]`);
-    if (bright && document.activeElement !== bright) {
-      bright.value = String(s[brightKey]);
-    }
-    const color = root.querySelector?.(`[data-trace-display-color="${colorKey}"]`);
-    if (color) {
-      color.value = s[colorKey];
-    }
+  const show = root.querySelector?.(`[data-trace-display-toggle="buttonShowLabel"]`);
+  if (show) show.checked = s.buttonShowLabel !== false;
+  for (const key of NODE_GRAPH_PLUGIN_BUTTON_TEXT_FIELDS) {
+    const el = root.querySelector?.(`[data-plugin-btn-text="${key}"]`);
+    if (el && document.activeElement !== el) el.value = String(s[key] || "");
+  }
+  for (const key of NODE_GRAPH_PLUGIN_BUTTON_COLOR_FIELDS) {
+    const input = root.querySelector?.(`[data-trace-display-color="${key}"]`);
+    if (input) input.value = s[key];
   }
   for (const button of root.querySelectorAll?.("[data-plugin-btn-corner]") || []) {
     const on = button.getAttribute("data-plugin-btn-corner") === s.cornerShape;
@@ -351,9 +343,7 @@ function syncNodeGraphPluginButtonDisplaySettingsControls(root, settings) {
 }
 
 function bindNodeGraphPluginButtonDisplaySettingsBody(host) {
-  if (!host || host.dataset.pluginBtnSettingsBound === "true") {
-    return;
-  }
+  if (!host || host.dataset.pluginBtnSettingsBound === "true") return;
   host.dataset.pluginBtnSettingsBound = "true";
   const apply = (persist, record) => {
     if (typeof markNodeGraphTraceDisplaySettingsDirty === "function") {
@@ -363,21 +353,18 @@ function bindNodeGraphPluginButtonDisplaySettingsBody(host) {
       applyNodeGraphTraceDisplaySettingsForm({ persist, record, commit: record });
     }
   };
+  const isOurs = (target) => target?.closest?.(
+    "[data-plugin-btn-field], [data-plugin-btn-text], [data-trace-display-field], [data-trace-display-choice], [data-trace-display-toggle]",
+  );
   host.addEventListener("input", (event) => {
-    if (event.target?.closest?.("[data-plugin-btn-field], [data-trace-display-field]")) {
-      apply("none", false);
-    }
+    if (isOurs(event.target)) apply("none", false);
   });
   host.addEventListener("change", (event) => {
-    if (event.target?.closest?.("[data-plugin-btn-field], [data-trace-display-choice], [data-trace-display-field]")) {
-      apply("immediate", true);
-    }
+    if (isOurs(event.target)) apply("immediate", true);
   });
   host.addEventListener("click", (event) => {
     const corner = event.target?.closest?.("[data-plugin-btn-corner]");
-    if (!corner || !host.contains(corner)) {
-      return;
-    }
+    if (!corner || !host.contains(corner)) return;
     event.preventDefault();
     const next = corner.getAttribute("data-plugin-btn-corner") === "pill" ? "pill" : "squircle";
     for (const button of host.querySelectorAll("[data-plugin-btn-corner]")) {
@@ -391,32 +378,51 @@ function bindNodeGraphPluginButtonDisplaySettingsBody(host) {
 
 function readNodeGraphPluginButtonDisplaySettingsForm(root, current) {
   const panel = root?.querySelector?.("[data-plugin-button-display-settings-panel]") || root;
-  const next = { ...current };
+  const type = typeof nodeGraphTraceDisplaySettingsFormType === "function"
+    ? nodeGraphTraceDisplaySettingsFormType()
+    : "";
+  const next = { ...(current && typeof current === "object" ? current : {}) };
   for (const key of NODE_GRAPH_PLUGIN_BUTTON_SLIDER_FIELDS) {
-    const input = panel?.querySelector?.(`[data-plugin-btn-field="${key}"]`);
-    if (input) {
-      next[key] = Number(input.value);
-    }
+    const input = panel?.querySelector?.(`[data-trace-display-field="${key}"]`)
+      || panel?.querySelector?.(`[data-plugin-btn-field="${key}"]`);
+    if (input) next[key] = Number(input.value);
   }
-  const font = panel?.querySelector?.(`[data-trace-display-choice="font"]`);
-  if (font) {
-    next.font = font.value;
+  for (const key of NODE_GRAPH_PLUGIN_BUTTON_CHOICE_FIELDS) {
+    const input = panel?.querySelector?.(`[data-trace-display-choice="${key}"]`);
+    if (input) next[key] = input.value;
   }
-  for (const [brightKey, colorKey] of NODE_GRAPH_PLUGIN_BUTTON_HUE_PAIRS) {
-    const bright = panel?.querySelector?.(`[data-trace-display-field="${brightKey}"]`);
-    if (bright) {
-      next[brightKey] = Number(bright.value);
-    }
-    const color = panel?.querySelector?.(`[data-trace-display-color="${colorKey}"]`);
-    if (color) {
-      next[colorKey] = color.value;
-    }
+  const show = panel?.querySelector?.(`[data-trace-display-toggle="buttonShowLabel"]`);
+  if (show) next.buttonShowLabel = Boolean(show.checked);
+  for (const key of NODE_GRAPH_PLUGIN_BUTTON_TEXT_FIELDS) {
+    const input = panel?.querySelector?.(`[data-plugin-btn-text="${key}"]`);
+    if (input) next[key] = input.value;
   }
-  const activeCorner = panel?.querySelector?.("[data-plugin-btn-corner].active, [data-plugin-btn-corner][aria-pressed='true']");
+  for (const key of NODE_GRAPH_PLUGIN_BUTTON_COLOR_FIELDS) {
+    const input = panel?.querySelector?.(`[data-trace-display-color="${key}"]`);
+    if (input && input.value) next[key] = input.value;
+  }
+  const activeCorner = panel?.querySelector?.(
+    "[data-plugin-btn-corner].active, [data-plugin-btn-corner][aria-pressed='true']",
+  );
   if (activeCorner) {
     next.cornerShape = activeCorner.getAttribute("data-plugin-btn-corner") === "pill"
       ? "pill"
       : "squircle";
   }
-  return normalizeNodeGraphPluginButtonDisplaySettings(next);
+  return normalizeNodeGraphPluginButtonDisplaySettings(next, type);
+}
+
+function nodeGraphPluginButtonBindLook(face, nodeId) {
+  if (!face) return;
+  const paint = () => {
+    const node = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+    nodeGraphPluginButtonPaintFace(face, nodeGraphPluginButtonDisplaySettingsForNode(node));
+  };
+  face._pluginBtnPaintLook = paint;
+  if (typeof ResizeObserver === "function" && !face._pluginBtnRo) {
+    const ro = new ResizeObserver(() => paint());
+    ro.observe(face);
+    face._pluginBtnRo = ro;
+  }
+  paint();
 }

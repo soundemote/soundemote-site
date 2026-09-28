@@ -10,7 +10,10 @@ function nodeGraphNormalizedParameterSignalBounds(signal, metadata = {}) {
     : clampNodeSliderValue(nodeGraphFiniteNumber(signal), 0, 1);
 }
 
-/** Last posted scope sample for `nodeId:port` only — never fall back to Out. */
+/** Last posted scope sample for exact `nodeId:port` only.
+ *  Cable ghosts must use the jack name (Left/Right/Out) — never a face Raw
+ *  probe sibling and never Out/face aggregate remaps.
+ */
 function nodeGraphGhostSliderScopeSample(nodeId, port) {
   const id = String(nodeId || "").trim();
   const name = String(port || "").trim();
@@ -21,8 +24,14 @@ function nodeGraphGhostSliderScopeSample(nodeId, port) {
   if (!buffer?.length) {
     return null;
   }
-  const sample = Number(buffer[buffer.length - 1]);
-  return Number.isFinite(sample) ? sample : null;
+  // Prefer the newest finite sample (same spirit as LatestOutputValue).
+  for (let index = buffer.length - 1; index >= 0; index -= 1) {
+    const sample = Number(buffer[index]);
+    if (Number.isFinite(sample)) {
+      return sample;
+    }
+  }
+  return null;
 }
 
 /**
@@ -63,15 +72,17 @@ function nodeGraphGhostSliderControllerOutSample(nodeId, port) {
       : Number.NaN;
     return Number.isFinite(n) ? n : fallback;
   };
-  // Knob: hidden control is `offset` (domain). Plugin slider: `value`.
-  // Toggle/momentary: unit `value` mapped through Min/Max.
+  const patchNode = typeof nodeGraphPatchNode === "function"
+    ? nodeGraphPatchNode(nodeId)
+    : null;
+  const domain = typeof nodeGraphDspControllerBiasTarget === "function"
+    ? nodeGraphDspControllerBiasTarget(patchNode, "offset", read("offset", 0))
+    : read("offset", 0);
   if (type === "knob" || type === "pluginSlider") {
-    const domain = type === "knob" ? read("offset", 0) : read("value", 0);
-    const rangeMin = read("rangeMin", type === "pluginSlider" ? -1 : 0);
-    const rangeMax = read("rangeMax", 1);
-    const polarity = read("polarity", 0);
-    if (typeof nodeGraphDspControllerRange === "function") {
-      const range = nodeGraphDspControllerRange(rangeMin, rangeMax, polarity);
+    const range = typeof nodeGraphDspKnobOffsetDomain === "function"
+      ? nodeGraphDspKnobOffsetDomain(patchNode)
+      : null;
+    if (range) {
       const lo = Number(range.min);
       const hi = Number(range.max);
       if (Number.isFinite(lo) && Number.isFinite(hi)) {
@@ -80,14 +91,17 @@ function nodeGraphGhostSliderControllerOutSample(nodeId, port) {
     }
     return domain;
   }
-  const unit = read("value", 0);
-  const rangeMin = read("rangeMin", 0);
-  const rangeMax = read("rangeMax", 1);
-  if (typeof nodeGraphDspControllerUnitToRange === "function") {
-    return nodeGraphDspControllerUnitToRange(unit, rangeMin, rangeMax);
+  const ends = typeof nodeGraphDspControllerBiasEnds === "function"
+    ? nodeGraphDspControllerBiasEnds(patchNode, "offset")
+    : null;
+  if (ends) {
+    const lo = Number(ends.min);
+    const hi = Number(ends.max);
+    if (Number.isFinite(lo) && Number.isFinite(hi)) {
+      return domain < lo ? lo : (domain > hi ? hi : domain);
+    }
   }
-  const t = unit < 0 ? 0 : (unit > 1 ? 1 : unit);
-  return rangeMin + (rangeMax - rangeMin) * t;
+  return domain;
 }
 
 function nodeGraphGhostSliderModSample(sourceNode, sourcePort, depth = 0) {
@@ -106,7 +120,6 @@ function nodeGraphGhostSliderModSample(sourceNode, sourcePort, depth = 0) {
       ? nodeGraphPatchNodeType(nodeId)
       : "";
     let inPort = "In";
-    if (sourceType === "customDisplay") inPort = "In1";
     if (typeof nodeGraphModuleBypassPortMap === "function" && sourceType) {
       const map = nodeGraphModuleBypassPortMap(sourceType) || [];
       for (let i = 0; i < map.length; i += 1) {
@@ -140,13 +153,8 @@ function nodeGraphGhostSliderModSample(sourceNode, sourcePort, depth = 0) {
   }
   if (!nodeGraphParameterOutputPort(sourceType, port)) {
     // Audio/CV with no posted frame yet — skip rather than invent a value.
-    const loose = nodeGraphModuleScopeState?.buffers?.get?.(nodeId);
-    if (loose?.length) {
-      const sample = Number(loose[loose.length - 1]);
-      if (Number.isFinite(sample)) {
-        return sample;
-      }
-    }
+    // Do not fall back to nodeId / face aggregate (would sample Ext Out or a
+    // Raw face probe when Left/Right rings are briefly empty).
     return null;
   }
   const sourceSlider = nodeGraphSliderForParameter(nodeId, port);
@@ -218,12 +226,37 @@ function nodeGraphParameterGhostSignal(node, key) {
     if (sample == null) {
       continue;
     }
+    let normalized;
     if (typeof nodeGraphParamNormalizeModInput === "function") {
-      sources.push(nodeGraphParamNormalizeModInput(sample, metadata));
+      normalized = nodeGraphParamNormalizeModInput(sample, metadata);
     } else {
       const n = Number(sample);
-      sources.push(Number.isFinite(n) ? n : 0);
+      normalized = Number.isFinite(n) ? n : 0;
     }
+    const srcNode = nodeGraphPatchNode(modulation.sourceNode);
+    const srcType = String(srcNode?.type || "");
+    const srcPort = String(modulation.sourcePort || "");
+    const srcParamMeta = (typeof nodeGraphReadPatchParameterMetadata === "function"
+      ? nodeGraphReadPatchParameterMetadata(srcNode, srcPort)
+      : null) || {};
+    if (typeof nodeGraphNormPitchFrequencyModFromSource === "function") {
+      const converted = nodeGraphNormPitchFrequencyModFromSource(
+        String(patchNode?.type || ""),
+        key,
+        srcType,
+        srcNode,
+        normalized,
+      );
+      if (converted) {
+        sources.push(converted);
+        continue;
+      }
+    }
+    const taggedDomain = srcParamMeta.outputDomain === true
+      || srcType === "range"
+      || srcType === "Range"
+      || metadata.outputDomain === true;
+    sources.push(taggedDomain ? { value: Number(normalized), domain: true } : normalized);
   }
   if (!sources.length) {
     return null;
@@ -232,26 +265,37 @@ function nodeGraphParameterGhostSignal(node, key) {
   if (typeof nodeGraphParamFoldModSources === "function") {
     effective = nodeGraphParamFoldModSources(effective, sources, metadata);
   } else if (typeof nodeGraphApplyParameterModulation === "function") {
-    effective = nodeGraphApplyParameterModulation(
-      effective,
-      sources.reduce((sum, value) => sum + value, 0),
-      metadata,
-    );
+    const modSum = sources.reduce((sum, value) => {
+      const n = Number(value && typeof value === "object" ? value.value : value);
+      return sum + (Number.isFinite(n) ? n : 0);
+    }, 0);
+    effective = nodeGraphApplyParameterModulation(effective, modSum, metadata);
   } else {
     const baseUnit = nodeGraphParameterValueToNormalizedSignal(effective, metadata);
-    const contrib = sources.reduce((sum, value) => sum + value, 0);
-    return nodeGraphNormalizedParameterSignalBounds(baseUnit + contrib, metadata);
+    const contrib = sources.reduce((sum, value) => {
+      const n = Number(value && typeof value === "object" ? value.value : value);
+      return sum + (Number.isFinite(n) ? n : 0);
+    }, 0);
+    return {
+      signal: nodeGraphNormalizedParameterSignalBounds(baseUnit + contrib, metadata),
+      effectiveDomain: effective,
+    };
   }
+  // Ghost position uses unit mapped into min/max zoom window (may clip visually).
+  // effectiveDomain is the value actually sent (unclipped under domain REPLACE).
+  let signal;
   if (typeof nodeGraphParamDomainToUnit === "function") {
-    return nodeGraphNormalizedParameterSignalBounds(
+    signal = nodeGraphNormalizedParameterSignalBounds(
       nodeGraphParamDomainToUnit(effective, metadata),
       metadata,
     );
+  } else {
+    signal = nodeGraphNormalizedParameterSignalBounds(
+      nodeGraphParameterValueToNormalizedSignal(effective, metadata),
+      metadata,
+    );
   }
-  return nodeGraphNormalizedParameterSignalBounds(
-    nodeGraphParameterValueToNormalizedSignal(effective, metadata),
-    metadata,
-  );
+  return { signal, effectiveDomain: effective };
 }
 
 let nodeGraphGhostSliderLiveFrame = 0;
@@ -267,6 +311,14 @@ function syncNodeGraphGhostSliders() {
       readout.classList.remove("has-ghost-slider");
       readout.style.removeProperty("--ghost-start");
       readout.style.removeProperty("--ghost-end");
+      const slider = document.getElementById(readout.dataset.sliderTarget)
+        || readout.closest("label")?.querySelector("input[data-param]");
+      if (slider) {
+        delete slider.dataset.sentDomainValue;
+        if (typeof syncNodeSliderReadout === "function") {
+          syncNodeSliderReadout(slider);
+        }
+      }
     }
     nodeGraphGhostSliderHadAny = false;
     return;
@@ -285,14 +337,29 @@ function syncNodeGraphGhostSliders() {
     if (!node || !key || !readout) {
       continue;
     }
-    const ghostSignal = nodeGraphParameterGhostSignal(node, key);
+    const ghost = nodeGraphParameterGhostSignal(node, key);
+    const ghostSignal = ghost && typeof ghost === "object" && "signal" in ghost
+      ? ghost.signal
+      : ghost;
     readout.classList.toggle("has-ghost-slider", ghostSignal !== null);
     if (ghostSignal === null) {
       readout.style.removeProperty("--ghost-start");
       readout.style.removeProperty("--ghost-end");
+      if (Object.hasOwn(slider.dataset, "sentDomainValue")) {
+        delete slider.dataset.sentDomainValue;
+        // Restore in-slider number to editable base (no ghost target).
+        if (typeof syncNodeSliderReadout === "function") {
+          syncNodeSliderReadout(slider);
+        }
+      }
       continue;
     }
     any = true;
+    // Thumb stays on editable domainValue; ghost CSS + in-slider number show
+    // the modulated *target* (effectiveDomain). Do not model smoothing.
+    if (ghost && typeof ghost === "object" && Number.isFinite(Number(ghost.effectiveDomain))) {
+      slider.dataset.sentDomainValue = String(ghost.effectiveDomain);
+    }
     const range = nodeSliderHandleRangeFromTravel(
       slider,
       readout,
@@ -300,6 +367,11 @@ function syncNodeGraphGhostSliders() {
     );
     readout.style.setProperty("--ghost-start", `${range.start}px`);
     readout.style.setProperty("--ghost-end", `${range.end}px`);
+    // Refresh numeric readout to sent/target (syncNodeSliderReadout prefers
+    // sentDomainValue for the number; thumb still uses base domainValue).
+    if (typeof syncNodeSliderReadout === "function") {
+      syncNodeSliderReadout(slider);
+    }
   }
   nodeGraphGhostSliderHadAny = any;
 }

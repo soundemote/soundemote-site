@@ -2,6 +2,7 @@ import Nav from "@/components/soundemote/Nav";
 import StarField from "@/components/soundemote/StarField";
 import Footer from "@/components/soundemote/Footer";
 import patchImage from "@/assets/soemdsp-patch.png";
+import { getSiteRole } from "@/lib/siteHost";
 
 const notThis = [
   "Not a DAW with video bolted on.",
@@ -93,9 +94,11 @@ const AVWResearch = () => (
           <a className="mono rounded-full border border-scope/50 bg-scope px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-background transition hover:bg-scope/85" href="/sandbox">
             Open Sandbox
           </a>
-          <a className="mono rounded-full border border-border/70 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-warm-white transition hover:border-scope/70" href="https://github.com/soundemote/soemdsp-sandbox">
-            View GitHub
-          </a>
+          {getSiteRole() !== "dev" && (
+            <a className="mono rounded-full border border-border/70 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-warm-white transition hover:border-scope/70" href="https://github.com/soundemote/soemdsp-sandbox">
+              View GitHub
+            </a>
+          )}
           <a className="mono rounded-full border border-border/70 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-warm-white transition hover:border-scope/70" href="https://discord.gg/hjpBC8kZ3s">
             Join Discord
           </a>

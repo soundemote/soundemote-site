@@ -15,8 +15,8 @@ function nodeGraphDisplaySettingsBuildStepperRowHtml(key, formType = null, optio
     title = "Centered arc sweep across Bias 0…1 (degrees). Opens left and right together; gap stays opposite center.";
   }
   if ((key === "historyHz" || key === "historyCycles" || key === "zoomSeconds" || key === "historySeconds") && (
-    formType === "trace"
-    || formType === "traceRgb"
+    formType === "waterfall"
+    || formType === "waterfallRgb"
   )) {
     const syncOn = options.syncOn === true || key === "historyCycles";
     label = syncOn ? "Cycles" : "History (Hz)";
@@ -24,7 +24,7 @@ function nodeGraphDisplaySettingsBuildStepperRowHtml(key, formType = null, optio
       ? "Cycles in view (smooth — e.g. 1.5 = 1½ periods), stretched across the full face. Rising zero-crossing locks phase."
       : "History window rate in Hz (seconds = 1/Hz). Higher = shorter / faster scroll. 0 = freeze / now-line.";
   } else if ((key === "historyHz" || key === "historyCycles" || key === "zoomSeconds" || key === "historySeconds") && (
-    formType === "traceXyz"
+    formType === "waterfallXyz"
     || formType === "gradientVectorscopeFace"
   )) {
     label = key === "historyCycles" ? "Cycles" : "History (Hz)";
@@ -37,20 +37,24 @@ function nodeGraphDisplaySettingsBuildStepperRowHtml(key, formType = null, optio
       ? "Cycles in view (smooth — e.g. 1.5 = 1½ periods). Pass restarts on the next rising zero-crossing."
       : "Left→right passes per second (0.01–100). 0 = collapsed full-width burn.";
   }
+  if (key === "cloudSpeed" && formType === "ensembleCloud") {
+    label = "Speed";
+    title = "Waterfall scroll. 0 = freeze. 1 = default. Higher = faster.";
+  }
   if (key === "lineThickness" && formType === "hypersawBurn") {
     label = "Line thickness";
     title = "Phase-stem width as a fraction of face width: 0 = none, 1 = full screen. Sensitive near 0.";
   } else if (key === "lineThickness" && (
-    formType === "trace"
-    || formType === "traceRgb"
-    || formType === "traceXyz"
+    formType === "waterfall"
+    || formType === "waterfallRgb"
+    || formType === "waterfallXyz"
   )) {
     label = "Blur";
     title = "0 = hard pixel disc at Size (no AA). 1 = smoothstep from center to that same edge (Size does not grow).";
   } else if (key === "stampDensity" && (
-    formType === "trace"
-    || formType === "traceRgb"
-    || formType === "traceXyz"
+    formType === "waterfall"
+    || formType === "waterfallRgb"
+    || formType === "waterfallXyz"
   )) {
     label = "Dot density";
     title = "0 = extremely sparse (~200× default gap); 0.5 = recommended; 1 = 2× recommended density.";
@@ -58,39 +62,49 @@ function nodeGraphDisplaySettingsBuildStepperRowHtml(key, formType = null, optio
     label = "Blur";
     title = "0 = Size as a hard line. Raise to fatten a soft halo outward. Lower returns to the thin sharp line.";
   }
+  if (key === "dot1Size" && formType === "xyPad") {
+    label = "Size";
+    title = "Beam diameter in CSS pixels at a 96px face. Grows with the module and the canvas tile. Zoom scales the bitmap; it does not change this number.";
+  }
   if ((key === "dot1Size" || key === "secondarySize") && (
-    formType === "trace"
-    || formType === "traceRgb"
-    || formType === "traceXyz"
+    formType === "waterfall"
+    || formType === "waterfallRgb"
+    || formType === "waterfallXyz"
     || formType === "scope2dTrace"
     || formType === "gradientVectorscopeFace"
     || formType === "value"
+    || formType === "lineBurn"
+    || formType === "scope2d"
+    || formType === "phosphorLight"
+    || formType === "xyPad"
+    || formType === "dot"
   )) {
     label = "\u26AA Size";
-    title = "Stroke diameter vs face min side. 0 = gone; 1 = full square. Goes sub-pixel as you approach 0.";
+    title = "Phosphor / stroke diameter in CSS pixels at a 96px face (zoom 1). 0 = gone.";
   }
   if ((key === "dot1Brightness" || key === "secondaryBrightness") && (
-    formType === "trace"
-    || formType === "traceRgb"
-    || formType === "traceXyz"
+    formType === "waterfall"
+    || formType === "waterfallRgb"
+    || formType === "waterfallXyz"
     || formType === "scope2dTrace"
     || formType === "gradientVectorscopeFace"
     || formType === "value"
     || formType === "scope2d"
     || formType === "lineBurn"
     || formType === "phosphorLight"
+    || formType === "xyPad"
   )) {
     label = "\uD83D\uDCA1 Bright";
     title = formType === "scope2dTrace"
       ? "Beam brightness 0…1 (black → full hue at 0.5 → white). Drag the Trace title to change hue."
-      : formType === "trace" || formType === "traceRgb" || formType === "traceXyz" || formType === "gradientVectorscopeFace" || formType === "value"
+      : formType === "waterfall" || formType === "waterfallRgb" || formType === "waterfallXyz" || formType === "gradientVectorscopeFace" || formType === "value"
       ? "Ink light 0…1 (1 = full)."
       : "Stamp brightness 0…1 (single source of truth). 1 = full ink. Preview matches the face.";
   }
   if (key === "pixelDensity" && (
-    formType === "trace"
-    || formType === "traceRgb"
-    || formType === "traceXyz"
+    formType === "waterfall"
+    || formType === "waterfallRgb"
+    || formType === "waterfallXyz"
     || formType === "scope2dTrace"
     || formType === "gradientVectorscopeFace"
     || formType === "scope2d"
@@ -101,14 +115,14 @@ function nodeGraphDisplaySettingsBuildStepperRowHtml(key, formType = null, optio
     label = "Pixel density";
     title = "1 = native face buffer. Below 1 = chunky lo-fi grid (nearest-neighbor).";
   }
-  if (key === "fade" && formType === "traceXyz") {
+  if (key === "fade" && formType === "waterfallXyz") {
     label = "Fade";
     title = "Fade the stroke along history. 0 = even ink. 1 = oldest gone, newest full. Does not change the preview dot.";
   }
   if (key === "scale" && (
-    formType === "trace"
-    || formType === "traceRgb"
-    || formType === "traceXyz"
+    formType === "waterfall"
+    || formType === "waterfallRgb"
+    || formType === "waterfallXyz"
     || formType === "scope2dTrace"
     || formType === "gradientVectorscopeFace"
     || formType === "value"
@@ -118,15 +132,23 @@ function nodeGraphDisplaySettingsBuildStepperRowHtml(key, formType = null, optio
   }
   if (key === "dialSize" && formType === "knobFace") {
     label = "Knob size";
-    title = "Dial ring size 0…1. 1 = fill available space. Only scales the arc — label and value stay put.";
+    title = "Knob graphic size 0…1. 1 = fill the entire display; 0 = disappear. Scales only the arc.";
+  }
+  if (key === "dialOffsetY" && formType === "knobFace") {
+    label = "Knob Y offset";
+    title = "Knob graphic vertical offset −1…1 face heights. Positive moves the graphic lower; label and value stay put.";
   }
   if (key === "labelSize" && formType === "knobFace") {
     label = "Label size";
-    title = "Title size 0…1 as a fraction of the knob square (min side of the dial × Knob size). 1 = one square. Independent of value size.";
+    title = "Label size 0…1 of the display min-edge. Independent of knob size, position, and value size.";
   }
   if (key === "valueSize" && formType === "knobFace") {
     label = "Value size";
-    title = "Readout size 0…1. Independent of knob size.";
+    title = "Number / unit size 0…1 of the display min-edge. Independent of knob size and position.";
+  }
+  if (key === "valueOffsetY" && formType === "knobFace") {
+    label = "Value Y offset";
+    title = "Value vertical offset −1…1 face heights. Top: positive moves down. Bottom: positive lifts off the edge. Mid / Mid knob: positive moves down from face mid or dial center.";
   }
   if ((formType === "roundShapeFace" || formType === "basicShapeFace" || formType === "softwaveOscFace") && key === "lineThickness") {
     label = "Line thickness";
@@ -145,6 +167,20 @@ function nodeGraphDisplaySettingsBuildStepperRowHtml(key, formType = null, optio
   if ((formType === "roundShapeFace" || formType === "basicShapeFace") && key === "pixelDensity") {
     label = "Pixel density";
     title = "1.0 = CSS × devicePixelRatio. Below 1 = chunky lo-fi.";
+  }
+  if (formType === "phaserFace" && key === "barThickness") {
+    label = "Bar thickness";
+    title = "Peak bar width 0…1 of the face min side. Scales with the canvas.";
+  }
+  if (formType === "phaserFace" && key === "curveThickness") {
+    label = "Curve thickness";
+    title = "Analytic curve stroke 0…1 of the face min side. Scales with the canvas.";
+  }
+  if ((key === "zoomMin" || key === "zoomMax") && formType === "graphFace") {
+    label = key === "zoomMin" ? "Zoom Min" : "Zoom Max";
+    title = key === "zoomMin"
+      ? "Bottom of the graph face Y view (display only; point data stays 0..1)."
+      : "Top of the graph face Y view (display only; point data stays 0..1).";
   }
   if (key === "innerRadius" && formType === "knobFace") {
     label = "Inner radius";
@@ -172,20 +208,22 @@ function nodeGraphDisplaySettingsBuildStepperRowHtml(key, formType = null, optio
     title = meta?.title
       || "Shape parameter 0…1. Meaning depends on Shape.";
   }
-  if (formType === "numberReadout" && key === "backgroundSaturation") {
+  if ((formType === "numberReadout" || formType === "lcdDot") && key === "backgroundSaturation") {
     label = "Sat";
     title = "LCD plate saturation 0…1. 0 = grey at the same brightness; 1 = full selected color.";
   }
-  if (formType === "numberReadout" && key === "dot1Saturation") {
+  if ((formType === "numberReadout" || formType === "lcdDot") && key === "dot1Saturation") {
     const nodeType = typeof nodeGraphPatchNode === "function"
       && typeof nodeGraphTraceDisplaySettingsTargetNodeId === "function"
       ? nodeGraphPatchNode(nodeGraphTraceDisplaySettingsTargetNodeId())?.type
       : null;
-    const lcdInk = nodeType === "valueLcd" || nodeType === "helmholtzPitch";
+    const lcdInk = formType === "lcdDot"
+      || nodeType === "valueLcd"
+      || nodeType === "helmholtzPitch";
     label = "Sat";
     title = lcdInk
       ? "LCD ink saturation 0…1. 0 = grey; 1 = full selected color."
-      : "LED color saturation 0…1. 0 = grey; 1 = full selected hue (then Bright maps grey → hue → white).";
+      : "LED color saturation 0…1. 0 = grey at this brightness; 1 = the hue×brightness color (black→hue→white).";
   }
   if (formType === "numberReadout" && key === "dot1Brightness") {
     const nodeType = typeof nodeGraphPatchNode === "function"
@@ -197,7 +235,7 @@ function nodeGraphDisplaySettingsBuildStepperRowHtml(key, formType = null, optio
       title = "LCD ink strength 0…1 (how hard the dark digits print on the plate). Also scales deposit energy on digit change.";
     } else {
       label = "LED";
-      title = "Live light grey→hue→white (0 = mid grey, 0.5 = full Hue, 1 = white; never black). Also scales deposit energy on digit change.";
+      title = "Live light black→hue→white (0 = black, 0.5 = full Hue, 1 = white). Ghost/Trail stay on the gradient. Also scales deposit energy on digit change.";
     }
   }
   if (formType === "numberReadout" && (key === "ghost" || key === "ghostBrightness")) {
@@ -333,7 +371,7 @@ function nodeGraphDisplaySettingsBuildHueTitleStepperRowHtml(options = {}) {
   const meta = nodeGraphDisplaySettingsFieldMeta[stepField] || { inputmode: "decimal" };
   let titleTip = options.titleAttr || "";
   if (!titleTip && formType === "numberReadout" && stepField === "dot1Brightness") {
-    titleTip = "LED amount 0…1 (0 grey, 0.5 full Hue, 1 white). Drag title strip to change hue.";
+    titleTip = "LED amount 0…1 (0 black, 0.5 full Hue, 1 white). Drag title strip to change hue.";
   }
   const tipAttr = titleTip
     ? ` title="${nodeGraphDisplaySettingsEscapeHtml(titleTip)}"`
@@ -508,6 +546,9 @@ function nodeGraphDisplaySettingsColorRowMeta(key, formType = null, options = {}
   } else if (formType === "keypadFace" && key === "downColor") {
     aria = "Keypad mouse down color";
     base = { ...base, defaultValue: "#c4bdb3" };
+  } else if ((formType === "toggleButtonFace" || formType === "momentaryButtonFace") && key === "textColor") {
+    aria = "Button text color";
+    base = { ...base, defaultValue: "#f4f7f8" };
   } else if (formType === "keypadFace" && key === "textColor") {
     aria = "Keypad text color";
   } else if (formType === "keypadFace" && key === "strokeColor") {
@@ -530,22 +571,22 @@ function nodeGraphDisplaySettingsColorRowMeta(key, formType = null, options = {}
   } else if (formType === "rasterRgbFace" && key === "backgroundColor") {
     aria = "Pixel Grid background color";
     base = { ...base, defaultValue: "#000000" };
-  } else if (formType === "trace" && options.xyz && key === "dot1Color") {
+  } else if (formType === "waterfall" && options.xyz && key === "dot1Color") {
     aria = "X";
     base = { ...base, defaultValue: "#ff0000" };
-  } else if (formType === "trace" && options.xyz && key === "secondaryColor") {
+  } else if (formType === "waterfall" && options.xyz && key === "secondaryColor") {
     aria = "Y";
     base = { ...base, defaultValue: "#0000ff" };
-  } else if (formType === "trace" && options.xyz && key === "tertiaryColor") {
+  } else if (formType === "waterfall" && options.xyz && key === "tertiaryColor") {
     aria = "Z";
     base = { ...base, defaultValue: "#00ff00" };
-  } else if (formType === "trace" && options.stereo && key === "dot1Color") {
+  } else if (formType === "waterfall" && options.stereo && key === "dot1Color") {
     aria = "Left";
     base = { ...base, defaultValue: "#ff0000" };
-  } else if (formType === "trace" && options.stereo && key === "secondaryColor") {
+  } else if (formType === "waterfall" && options.stereo && key === "secondaryColor") {
     aria = "Right";
     base = { ...base, defaultValue: "#0000ff" };
-  } else if (formType === "trace" && (options.stereo || options.xyz) && key === "backgroundColor") {
+  } else if (formType === "waterfall" && (options.stereo || options.xyz) && key === "backgroundColor") {
     aria = "Background";
   } else if (formType === "textBoxFace" && key === "textColor") {
     aria = "Text Box text color";
@@ -577,7 +618,7 @@ function nodeGraphDisplaySettingsShowsStampPreview(type) {
       && nodeGraphDisplaySettingsIsPhosphorFormType(type));
 }
 
-function nodeGraphStampPreviewHtml(stereo = false, kind = "trace", xyz = false, rgb = false) {
+function nodeGraphStampPreviewHtml(stereo = false, kind = "waterfall", xyz = false, rgb = false) {
   const canvas = (side, label) => `
       <div class="node-trace-display-preview-cell">
         ${side ? `<span class="node-trace-display-preview-side-label" data-preview-side-label="${side}">${label}</span>` : ""}
@@ -681,10 +722,10 @@ function nodeGraphStampPreviewPlateSize(_canvas) {
   return { width: side, height: side };
 }
 
-/** Channel color for Instant Trace stamp preview (same mapping as waterfall ink). */
-function nodeGraphStampPreviewTraceColor(settings, side, kind = "trace") {
+/** Channel color for Instant Waterfall stamp preview (same mapping as waterfall ink). */
+function nodeGraphStampPreviewTraceColor(settings, side, kind = "waterfall") {
   // RGB waterfall: fixed guns (never reuse stereo "R" → blue mapping).
-  if (kind === "traceRgb" || side === "GunR" || side === "GunG" || side === "GunB") {
+  if (kind === "waterfallRgb" || side === "GunR" || side === "GunG" || side === "GunB") {
     const cmy = settings?.cmyMode === true;
     if (side === "GunG" || side === "G") return cmy ? "#ff00ff" : "#00ff00";
     if (side === "GunB" || side === "B") return cmy ? "#ffff00" : "#0000ff";
@@ -702,17 +743,22 @@ function nodeGraphStampPreviewTraceColor(settings, side, kind = "trace") {
   return settings.dot1Color || settings.color || "#ffffff";
 }
 
-/** Size + color + blur (+ bright for RGB guns) for Instant Trace stamp preview. */
-function nodeGraphStampPreviewTraceInk(settings, side, kind = "trace") {
+/** Size + color + blur (+ bright for RGB guns) for Instant Waterfall stamp preview. */
+function nodeGraphStampPreviewTraceInk(settings, side, kind = "waterfall") {
   const right = side === "R";
-  const rgb = kind === "traceRgb" || String(side || "").startsWith("Gun");
-  const instant = kind === "trace" || kind === "traceRgb" || kind === "traceXyz"
+  const rgb = kind === "waterfallRgb" || String(side || "").startsWith("Gun");
+  const instant = kind === "waterfall" || kind === "waterfallRgb" || kind === "waterfallXyz"
     || rgb || side === "L" || side === "X" || side === "Y" || side === "Z";
+  const sizeRaw = right
+    ? (settings.secondarySize ?? settings.dot1Size ?? settings.size)
+    : (settings.dot1Size ?? settings.size);
+  const size = instant && typeof nodeGraphTraceDisplayNormalizeInkPx === "function"
+    ? nodeGraphTraceDisplayNormalizeInkPx(sizeRaw, 2)
+    : (instant && typeof nodeGraphTraceDisplayClampInkPx === "function"
+      ? nodeGraphTraceDisplayClampInkPx(sizeRaw)
+      : nodeGraphStampPreviewUnit(sizeRaw, 0));
   return {
-    size: nodeGraphStampPreviewUnit(
-      right ? (settings.secondarySize ?? settings.dot1Size ?? settings.size) : (settings.dot1Size ?? settings.size),
-      0,
-    ),
+    size,
     color: nodeGraphStampPreviewTraceColor(settings, side, kind),
     blur: instant ? nodeGraphStampPreviewUnit(settings.lineThickness, 0) : 0,
     bright: rgb
@@ -748,7 +794,7 @@ function nodeGraphStampPreviewBlit(plateCtx, plateW, plateH, scratch, bgHex = "#
   }
 }
 
-function paintNodeGraphStampPreviewCanvas(canvas, settings = {}, side = "", kind = "trace") {
+function paintNodeGraphStampPreviewCanvas(canvas, settings = {}, side = "", kind = "waterfall") {
   if (!canvas) {
     return;
   }
@@ -772,10 +818,10 @@ function paintNodeGraphStampPreviewCanvas(canvas, settings = {}, side = "", kind
   const fillEmpty = () => {
     nodeGraphStampPreviewBlit(context, plate.width, plate.height, null, bgHex);
   };
-  // Instant Trace / RGB waterfall: same dab path as the face (hard or soft).
+  // Instant Waterfall / RGB waterfall: same dab path as the face (hard or soft).
   // Draw in plate space, scaled so the full stamp (core + blur) fits — never
   // ClampPoint-shift into the right edge of a too-small scratch.
-  if (kind === "trace" || kind === "traceRgb") {
+  if (kind === "waterfall" || kind === "waterfallRgb") {
     const ink = nodeGraphStampPreviewTraceInk(settings, side, kind);
     if (!(ink.size > 0)) {
       fillEmpty();
@@ -1013,7 +1059,7 @@ function paintNodeGraphStampPreviewCanvas(canvas, settings = {}, side = "", kind
 
 function paintNodeGraphStampPreview(root, settings = {}) {
   const shell = root?.querySelector?.("[data-stamp-preview]");
-  const kind = shell?.getAttribute?.("data-stamp-preview") || "trace";
+  const kind = shell?.getAttribute?.("data-stamp-preview") || "waterfall";
   const canvases = root?.querySelectorAll?.("[data-stamp-preview-canvas]");
   if (!canvases?.length) {
     return;
@@ -1253,11 +1299,11 @@ function buildNodeGraphInstantTraceDisplaySettingsBodyHtml(type, node, allowKey)
   const activeColors = nodeGraphTraceDisplayActiveControlSet("colors", type);
   const activeToggles = nodeGraphTraceDisplayActiveControlSet("toggles", type);
   const activeChoices = nodeGraphTraceDisplayActiveControlSet("choices", type);
-  const isStereoTraceNode = typeof nodeGraphModuleUsesStereoTraceDisplay === "function"
-    ? nodeGraphModuleUsesStereoTraceDisplay(node?.type)
+  const isStereoWaterfallNode = typeof nodeGraphModuleUsesStereoWaterfall === "function"
+    ? nodeGraphModuleUsesStereoWaterfall(node?.type)
     : node?.type === "output";
-  const isXyzTraceNode = typeof nodeGraphModuleUsesXyzTraceDisplay === "function"
-    ? nodeGraphModuleUsesXyzTraceDisplay(node?.type)
+  const isXyzWaterfallNode = typeof nodeGraphModuleUsesXyzWaterfall === "function"
+    ? nodeGraphModuleUsesXyzWaterfall(node?.type)
     : false;
   const allow = typeof allowKey === "function" ? allowKey : () => true;
   const fieldList = [...activeFields].filter((key) => allow("fields", key));
@@ -1278,17 +1324,17 @@ function buildNodeGraphInstantTraceDisplaySettingsBodyHtml(type, node, allowKey)
   const capKeys = ["capSize", "capLength", "capPadding"].filter((key) => fieldList.includes(key));
   const choiceKeys = [...activeChoices].filter((key) => allow("choices", key));
   const toggleKeys = [...activeToggles].filter((key) => allow("toggles", key));
-  const inkColors = (isXyzTraceNode && type === "trace"
+  const inkColors = (isXyzWaterfallNode && type === "waterfall"
     ? ["dot1Color", "secondaryColor", "tertiaryColor"]
-    : (isStereoTraceNode && type === "trace"
+    : (isStereoWaterfallNode && type === "waterfall"
       ? ["dot1Color", "secondaryColor"]
       : ["dot1Color"])
   ).filter((key) => activeColors.has(key) && allow("colors", key));
   const parts = [];
   const rows = [];
-  const xyzInk = isXyzTraceNode && type === "trace";
-  const rgbInk = type === "traceRgb";
-  const stereoInk = isStereoTraceNode && type === "trace" && !xyzInk;
+  const xyzInk = isXyzWaterfallNode && type === "waterfall";
+  const rgbInk = type === "waterfallRgb";
+  const stereoInk = isStereoWaterfallNode && type === "waterfall" && !xyzInk;
   const inkHueTitle = type === "scope2dTrace";
   // Preview sits after Bright when present (RGB); otherwise after Size.
   const previewAfter = orderedPrimary.includes("dot1Brightness")
@@ -1644,14 +1690,17 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
   if (type === "keypadFace" && typeof buildNodeGraphKeypadDisplaySettingsBodyHtml === "function") {
     return buildNodeGraphKeypadDisplaySettingsBodyHtml();
   }
+  if (type === "pluginSliderFace" && typeof buildNodeGraphSliderFaceDisplaySettingsHtml === "function") {
+    return buildNodeGraphSliderFaceDisplaySettingsHtml();
+  }
   if (
     (type === "toggleButtonFace" || type === "momentaryButtonFace")
     && typeof buildNodeGraphPluginButtonDisplaySettingsBodyHtml === "function"
   ) {
-    return buildNodeGraphPluginButtonDisplaySettingsBodyHtml();
+    return buildNodeGraphPluginButtonDisplaySettingsBodyHtml(type);
   }
-  if (type === "phosphorWaveform" && typeof buildNodeGraphPhosphorWaveformDisplaySettingsBodyHtml === "function") {
-    return buildNodeGraphPhosphorWaveformDisplaySettingsBodyHtml();
+  if (type === "sampleWaveform" && typeof buildNodeGraphSampleWaveformDisplaySettingsBodyHtml === "function") {
+    return buildNodeGraphSampleWaveformDisplaySettingsBodyHtml();
   }
   if (type === "arpKeysFace" && typeof buildNodeGraphArpKeysDisplaySettingsBodyHtml === "function") {
     return buildNodeGraphArpKeysDisplaySettingsBodyHtml();
@@ -1659,8 +1708,16 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
   if (type === "transportBpm" && typeof buildNodeGraphTransportDisplaySettingsBodyHtml === "function") {
     return buildNodeGraphTransportDisplaySettingsBodyHtml();
   }
+  if (type === "ensembleCloud") {
+    return `<div class="metadata-field-section node-trace-display-trace-section">${
+      nodeGraphDisplaySettingsBuildStepperRowHtml("cloudSpeed", "ensembleCloud")
+    }</div>`;
+  }
   if (type === "limiterGainFace" && typeof buildNodeGraphLimiterGainDisplaySettingsBodyHtml === "function") {
     return buildNodeGraphLimiterGainDisplaySettingsBodyHtml();
+  }
+  if (type === "harmonicLines" && typeof buildNodeGraphHarmonicLinesDisplaySettingsBodyHtml === "function") {
+    return buildNodeGraphHarmonicLinesDisplaySettingsBodyHtml();
   }
   if (type === "portalFace" && typeof buildNodeGraphPortalDisplaySettingsBodyHtml === "function") {
     return buildNodeGraphPortalDisplaySettingsBodyHtml();
@@ -1681,9 +1738,6 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
   ) {
     return buildNodeGraphMatrixFaceDisplaySettingsBodyHtml(type);
   }
-  if (type === "macroControlsFace" && typeof buildNodeGraphMacroControlsFaceDisplaySettingsBodyHtml === "function") {
-    return buildNodeGraphMacroControlsFaceDisplaySettingsBodyHtml();
-  }
   if (type === "keyboardControllerFace" && typeof buildNodeGraphKeyboardControllerFaceDisplaySettingsBodyHtml === "function") {
     return buildNodeGraphKeyboardControllerFaceDisplaySettingsBodyHtml();
   }
@@ -1691,20 +1745,20 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
   const activeColors = nodeGraphTraceDisplayActiveControlSet("colors", type);
   const activeToggles = nodeGraphTraceDisplayActiveControlSet("toggles", type);
   const activeChoices = nodeGraphTraceDisplayActiveControlSet("choices", type);
-  const isStereoTraceNode = typeof nodeGraphModuleUsesStereoTraceDisplay === "function"
-    ? nodeGraphModuleUsesStereoTraceDisplay(node?.type)
+  const isStereoWaterfallNode = typeof nodeGraphModuleUsesStereoWaterfall === "function"
+    ? nodeGraphModuleUsesStereoWaterfall(node?.type)
     : node?.type === "output";
-  const isXyzTraceNode = typeof nodeGraphModuleUsesXyzTraceDisplay === "function"
-    ? nodeGraphModuleUsesXyzTraceDisplay(node?.type)
+  const isXyzWaterfallNode = typeof nodeGraphModuleUsesXyzWaterfall === "function"
+    ? nodeGraphModuleUsesXyzWaterfall(node?.type)
     : false;
   const parts = [];
 
   // Filter keys that only apply on stereo Trace faces (Output / SoEmReverb / …).
   const allowKey = (kind, key) => {
-    if (type !== "trace") {
+    if (type !== "waterfall") {
       return true;
     }
-    if (isXyzTraceNode) {
+    if (isXyzWaterfallNode) {
       if (
         key === "secondarySize"
         || key === "secondaryBrightness"
@@ -1721,7 +1775,7 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
       }
       return true;
     }
-    if (!isStereoTraceNode) {
+    if (!isStereoWaterfallNode) {
       if (
         key === "secondarySize" ||
         key === "secondaryBrightness" ||
@@ -1796,7 +1850,7 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
     let fieldKeys = (sectionControls.fields || []).filter(
       (key) => activeFields.has(key) && allowKey("fields", key),
     );
-    if ((type === "roundShapeFace" || type === "basicShapeFace") && section === "trace") {
+    if ((type === "roundShapeFace" || type === "basicShapeFace") && section === "waterfall") {
       fieldKeys = [
         "lineThickness",
         "lineBrightness",
@@ -1807,7 +1861,7 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
         "pixelDensity",
       ].filter((key) => activeFields.has(key) && allowKey("fields", key));
     }
-    if (type === "softwaveOscFace" && section === "trace") {
+    if (type === "softwaveOscFace" && section === "waterfall") {
       fieldKeys = [
         "lineThickness",
         "lineBrightness",
@@ -1824,7 +1878,7 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
     if ((type === "roundShapeFace" || type === "basicShapeFace" || type === "softwaveOscFace") || type === "vectorDot" || type === "pulseDot" || type === "lcdDot") {
       colorKeys = [];
     }
-    if (type === "trace" && isStereoTraceNode) {
+    if (type === "waterfall" && isStereoWaterfallNode) {
       colorKeys = colorKeys.filter((key) => !NODE_GRAPH_TRACE_STEREO_COLOR_ORDER.includes(key));
     }
     const toggleKeys = (sectionControls.toggles || []).filter(
@@ -1853,7 +1907,25 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
         fieldKeys.push("shapeParam");
       }
     }
-    if (type === "numberReadout" && section === "trace") {
+    if (type === "lcdDot" && section === "waterfall") {
+      fieldKeys = [
+        "dot1Size",
+        "lineThickness",
+        "shapeParam",
+        "backgroundBrightness",
+        "backgroundSaturation",
+        "dot1Brightness",
+        "dot1Saturation",
+        "unlitSegments",
+        "innerShadowDistance",
+        "innerShadowSharpness",
+        "innerShadowOffsetX",
+        "innerShadowOffsetY",
+      ].filter((key) => activeFields.has(key));
+      colorKeys = [];
+      choiceKeys = ["shape"].filter((key) => activeChoices.has(key));
+    }
+    if (type === "numberReadout" && section === "waterfall") {
       const nrNodeType = node?.type
         || (typeof nodeGraphPatchNode === "function"
           && typeof nodeGraphTraceDisplaySettingsTargetNodeId === "function"
@@ -1898,16 +1970,16 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
       }
     }
     // syncChannel / stereoBlend live in activeChoices but are listed under
-    // "trace" sectionChoices only for spectrogram historically — include
+    // "waterfall" sectionChoices only for spectrogram historically — include
     // Output sync choices from active set even if not in section map.
-    if (section === "trace" && type === "trace" && isStereoTraceNode) {
+    if (section === "waterfall" && type === "waterfall" && isStereoWaterfallNode) {
       for (const key of ["syncChannel", "stereoBlend"]) {
         if (activeChoices.has(key) && !choiceKeys.includes(key)) {
           choiceKeys.push(key);
         }
       }
     }
-    if (section === "trace" && type === "traceXyz") {
+    if (section === "waterfall" && type === "waterfallXyz") {
       for (const key of ["stereoBlend", "xyzLayout"]) {
         if (activeChoices.has(key) && !choiceKeys.includes(key)) {
           choiceKeys.push(key);
@@ -1916,19 +1988,19 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
     }
     if (!fieldKeys.length && !colorKeys.length && !toggleKeys.length && !choiceKeys.length) {
       // secondaryEnabled is only in section title for secondary; handle below.
-      if (!(section === "secondary" && activeToggles.has("secondaryEnabled") && isStereoTraceNode && type === "trace")) {
+      if (!(section === "secondary" && activeToggles.has("secondaryEnabled") && isStereoWaterfallNode && type === "waterfall")) {
         continue;
       }
     }
 
-    let titleText = section === "trace"
+    let titleText = section === "waterfall"
       ? (nodeGraphDisplaySettingsFormTypeTitles[type] || "Trace")
       : section === "value"
         ? "Line"
         : section === "dot1"
-          ? (isStereoTraceNode && type === "trace" ? "Left" : "Dot")
+          ? (isStereoWaterfallNode && type === "waterfall" ? "Left" : "Dot")
           : section === "secondary"
-            ? (isStereoTraceNode && type === "trace" ? "Right" : "Secondary")
+            ? (isStereoWaterfallNode && type === "waterfall" ? "Right" : "Secondary")
             : section === "caps"
               ? "Caps"
               : section;
@@ -1936,16 +2008,17 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
     const isPhosphorForm = typeof nodeGraphDisplaySettingsIsPhosphorFormType === "function"
       && nodeGraphDisplaySettingsIsPhosphorFormType(type);
     const skipSectionTitle =
-      (type === "numberReadout" && section === "trace")
-      || (isPhosphorForm && (section === "trace" || section === "dot1"))
-      || (isVectorTraceForm && section === "dot1" && !(isStereoTraceNode && type === "trace"));
+      (type === "numberReadout" && section === "waterfall")
+      || (type === "lcdDot" && section === "waterfall")
+      || (isPhosphorForm && (section === "waterfall" || section === "dot1"))
+      || (isVectorTraceForm && section === "dot1" && !(isStereoWaterfallNode && type === "waterfall"));
     if (skipSectionTitle) {
       // no title row
-    } else if (section === "trace" && isStereoTraceNode && type === "trace") {
+    } else if (section === "waterfall" && isStereoWaterfallNode && type === "waterfall") {
       parts.push(`<div class="metadata-section-title node-trace-display-${section}-title">${nodeGraphDisplaySettingsEscapeHtml(titleText)}</div>`);
     } else if (section === "secondary") {
-      const enabledToggle = isStereoTraceNode && type === "trace" && activeToggles.has("secondaryEnabled")
-        ? `<input id="nodeTraceDisplaySecondaryEnabled" type="checkbox" aria-label="${isStereoTraceNode ? "Right on" : "Secondary on"}" data-trace-display-toggle="secondaryEnabled">`
+      const enabledToggle = isStereoWaterfallNode && type === "waterfall" && activeToggles.has("secondaryEnabled")
+        ? `<input id="nodeTraceDisplaySecondaryEnabled" type="checkbox" aria-label="${isStereoWaterfallNode ? "Right on" : "Secondary on"}" data-trace-display-toggle="secondaryEnabled">`
         : "";
       parts.push(`
         <div class="metadata-section-title node-trace-display-secondary-title">
@@ -1954,7 +2027,7 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
         </div>`);
     } else if (section === "dot1") {
       const dotTitle = type === "xyPad" ? "Beam & puck" : titleText;
-      const swapHtml = isStereoTraceNode && type === "trace"
+      const swapHtml = isStereoWaterfallNode && type === "waterfall"
         ? `<button type="button" id="nodeTraceDisplaySwapStereoLook" class="node-trace-display-swap-lr">Swap L/R</button>`
         : "";
       parts.push(`
@@ -2034,7 +2107,7 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
       }
       if ((type === "vectorDot" || type === "pulseDot" || type === "lcdDot") && key === "backgroundBrightness") {
         rows.push(nodeGraphDisplaySettingsBuildHueTitleStepperRowHtml({
-          title: "BG",
+          title: type === "lcdDot" ? "Background" : "BG",
           stepField: "backgroundBrightness",
           colorField: "backgroundColor",
           formType: type,
@@ -2043,21 +2116,21 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
               ? (typeof nodeGraphValueLcdDefaultHueDeg === "number" ? nodeGraphValueLcdDefaultHueDeg : 82)
               : 220)
             : (type === "lcdDot" ? "#a2ff00" : "#0055ff"),
-          titleAttr: "Plate brightness 0…1 (black → full hue at 0.5 → white). Drag the title to change hue.",
+          titleAttr: type === "lcdDot"
+            ? "LCD plate brightness 0…1 (black → full hue at 0.5 → white). Drag the title to change hue."
+            : "Plate brightness 0…1 (black → full hue at 0.5 → white). Drag the title to change hue.",
         }));
         continue;
       }
       if ((type === "vectorDot" || type === "pulseDot" || type === "lcdDot") && key === "dot1Brightness") {
         rows.push(nodeGraphDisplaySettingsBuildHueTitleStepperRowHtml({
-          title: type === "lcdDot" ? "Ink" : "Dot",
+          title: type === "lcdDot" ? "Foreground" : "Dot",
           stepField: "dot1Brightness",
           colorField: "dot1Color",
           formType: type,
           defaultHueHex: typeof nodeGraphHueUnitHex === "function"
-            ? nodeGraphHueUnitHex(type === "lcdDot"
-              ? (typeof nodeGraphValueLcdDefaultHueDeg === "number" ? nodeGraphValueLcdDefaultHueDeg : 82)
-              : 25)
-            : (type === "lcdDot" ? "#a2ff00" : "#ff6a00"),
+            ? nodeGraphHueUnitHex(type === "lcdDot" ? 210 : 30)
+            : (type === "lcdDot" ? "#00aaff" : "#ff8000"),
           titleAttr: type === "lcdDot"
             ? "LCD ink brightness 0…1 (black → full hue at 0.5 → white). Drag the title to change hue."
             : "Dot brightness gain 0…1 (black → full hue at 0.5 → white). Signal energy scales this. Drag the title to change hue.",
@@ -2108,7 +2181,7 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
       rows.push(nodeGraphDisplaySettingsBuildColorRowHtml(key, type));
     }
     // Value LED: Ghost Gradient under Background. Value LCD skips (reflective ink model).
-    if (type === "numberReadout" && section === "trace"
+    if (type === "numberReadout" && section === "waterfall"
       && typeof nodeGraphDisplaySettingsFormTypeUsesGradient === "function"
       && nodeGraphDisplaySettingsFormTypeUsesGradient(type)) {
       const nrNodeType = typeof nodeGraphPatchNode === "function"
@@ -2129,7 +2202,7 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
     parts.push(`<div class="metadata-field-section node-trace-display-${section}-section">${rows.join("")}</div>`);
   }
 
-  if (type === "trace" && isStereoTraceNode) {
+  if (type === "waterfall" && isStereoWaterfallNode) {
     const stereoColors = NODE_GRAPH_TRACE_STEREO_COLOR_ORDER.filter(
       (key) => activeColors.has(key) && allowKey("colors", key),
     );
@@ -2142,7 +2215,6 @@ function buildNodeGraphDisplaySettingsBodyHtml(formType, node = null) {
     }
   }
 
-  // Knob image layers + rotate flags live only in Display Settings.
   if (type === "knobFace" && typeof buildNodeGraphKnobFaceLayersDisplaySettingsHtml === "function") {
     parts.push(buildNodeGraphKnobFaceLayersDisplaySettingsHtml());
   }

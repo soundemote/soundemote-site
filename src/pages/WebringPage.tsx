@@ -1,9 +1,13 @@
 import { Link } from "react-router-dom";
 import Nav from "@/components/soundemote/Nav";
 import { webringLinks } from "@/config/site";
+import { getSiteRole } from "@/lib/siteHost";
+import { isGithubUrl } from "@/lib/externalLinks";
 
+const WebringPage = () => {
+  const links = getSiteRole() === "dev" ? webringLinks.filter((link) => !isGithubUrl(link.href)) : webringLinks;
 
-const WebringPage = () => (
+  return (
   <main className="min-h-screen bg-background text-foreground">
     <Nav />
     <section className="container mx-auto max-w-2xl px-6 py-12">
@@ -17,7 +21,7 @@ const WebringPage = () => (
       </p>
       <div className="mt-7 grid gap-3">
 
-        {webringLinks.map((link) => (
+        {links.map((link) => (
           <a
             key={link.href}
             href={link.href}
@@ -51,6 +55,7 @@ const WebringPage = () => (
       </div>
     </section>
   </main>
-);
+  );
+};
 
 export default WebringPage;

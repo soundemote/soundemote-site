@@ -133,7 +133,6 @@ body.node-boot-fading .shell {
   font-weight: 400;
   letter-spacing: 0;
   opacity: 1;
-  transition: opacity 333ms ease;
 }
 
 .node-boot-loading-panel {
@@ -142,7 +141,8 @@ body.node-boot-fading .shell {
   align-items: center;
   justify-content: center;
   gap: 1.6rem;
-  padding: 5vh 5vw;
+  /* Slim side padding so soundemote.io/{patch} can use near-full viewport width. */
+  padding: 5vh clamp(0.4rem, 1vw, 1rem);
   width: 100%;
   height: 100%;
   box-sizing: border-box;
@@ -162,34 +162,7 @@ body.node-boot-fading .shell {
   text-align: center;
 }
 
-.node-boot-start-button {
-  appearance: none;
-  border: 1px solid rgba(127, 199, 217, 0.45);
-  border-radius: 0.85rem;
-  background: linear-gradient(180deg, rgba(127, 199, 217, 0.22), rgba(127, 199, 217, 0.08));
-  color: rgba(243, 241, 236, 0.96);
-  font-family: inherit;
-  font-size: clamp(1.65rem, 4.5vw, 3.1rem);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  line-height: 1.1;
-  padding: 1.15rem 2.4rem;
-  min-width: min(90vw, 28rem);
-  cursor: pointer;
-  box-shadow: 0 0 28px rgba(127, 199, 217, 0.18);
-  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
-}
 
-.node-boot-start-button:hover,
-.node-boot-start-button:focus-visible {
-  border-color: rgba(243, 241, 236, 0.7);
-  background: linear-gradient(180deg, rgba(127, 199, 217, 0.34), rgba(127, 199, 217, 0.14));
-  outline: none;
-}
-
-.node-boot-start-button:active {
-  transform: translateY(1px);
-}
 
 body.node-boot-waiting .node-boot-loading-label,
 body.node-boot-waiting .node-boot-loading-bar,
@@ -199,6 +172,204 @@ body.node-boot-waiting .node-boot-loading-messages {
 
 body:not(.node-boot-waiting) .node-boot-start-button {
   display: none;
+}
+/* Start page only: treat the overlay as normal text. Body is user-select:none
+ * for the graph UI, which leaves a selected hero title stuck when you click
+ * empty chrome. */
+body.node-boot-waiting .node-boot-loading-screen {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+
+
+.node-boot-hero-title {
+  margin: 0 0 0.35rem;
+  padding: 0;
+  /* Stretch across the panel (not max-content): leftover constraint after
+   * max-width:100% was glyph size (~4.6rem) + 5vw side padding eating ~10%
+   * of the viewport. Prefer one line on typical desktop. */
+  align-self: stretch;
+  max-width: none;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  color: rgba(243, 241, 236, 0.98);
+  font-family: var(
+    --node-header-title-font-family,
+    "Cascadia Mono", "Cascadia Code", Consolas, "Courier New", monospace
+  );
+  font-size: clamp(1.55rem, 3.6vw, 2.95rem);
+  font-weight: 700;
+  letter-spacing: 0.008em;
+  line-height: 1.05;
+  text-align: center;
+  text-shadow: 0 0 28px rgba(127, 199, 217, 0.35);
+  overflow-wrap: break-word;
+  word-break: normal;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+body:not(.node-boot-waiting) .node-boot-hero-title {
+  display: none;
+}
+
+/* Boot menu links: same chrome as START SANDBOX */
+.node-boot-menu-links {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.85rem;
+  width: min(90vw, 28rem);
+}
+
+body:not(.node-boot-waiting) .node-boot-menu-links {
+  display: none;
+}
+
+.node-boot-start-button,
+.node-boot-discord-button,
+.node-boot-menu-rect {
+  appearance: none;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  width: 100%;
+  min-width: min(90vw, 28rem);
+  padding: 1.15rem 2.4rem;
+  border: 1px solid rgba(127, 199, 217, 0.45);
+  border-radius: 0.85rem;
+  background: linear-gradient(180deg, rgba(127, 199, 217, 0.22), rgba(127, 199, 217, 0.08));
+  color: rgba(243, 241, 236, 0.96);
+  font-family: inherit;
+  font-size: clamp(1.15rem, 3.2vw, 1.85rem);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  text-decoration: none;
+  cursor: default;
+  box-shadow: 0 0 28px rgba(127, 199, 217, 0.18);
+}
+
+.node-boot-start-button:hover,
+.node-boot-start-button:focus-visible,
+.node-boot-discord-button:hover,
+.node-boot-discord-button:focus-visible,
+.node-boot-menu-rect:hover,
+.node-boot-menu-rect:focus-visible {
+  border-color: rgba(243, 241, 236, 0.7);
+  background: linear-gradient(180deg, rgba(127, 199, 217, 0.34), rgba(127, 199, 217, 0.14));
+  outline: none;
+}
+
+.node-boot-start-button:active,
+.node-boot-discord-button:active,
+.node-boot-menu-rect:active {
+  transform: translateY(1px);
+}
+
+.node-boot-discord-icon,
+.node-boot-youtube-icon {
+  width: 1.2em;
+  height: 1.2em;
+  flex: 0 0 auto;
+}
+
+
+/* Bottom row: middle pair = full menu/rect column width; squares sit outside. */
+.node-boot-menu-bottom-row {
+  position: relative;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+/* Two half-rects together match one full rect above (100% of menu column). */
+.node-boot-menu-half-pair {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 1.5rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.node-boot-menu-rect.node-boot-menu-rect-half {
+  width: auto;
+  min-width: 0;
+  flex: 1 1 0;
+  height: 4.25rem;
+  padding: 0 0.7rem;
+  font-size: clamp(0.78rem, 2.1vw, 1.05rem);
+  letter-spacing: 0.02em;
+}
+
+/* Squares flank the half-pair outside the full-rect column edges. */
+.node-boot-menu-squares {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+}
+
+.node-boot-menu-squares-left {
+  right: calc(100% + 1.5rem);
+}
+
+.node-boot-menu-squares-right {
+  left: calc(100% + 1.5rem);
+}
+
+.node-boot-email-button,
+.node-boot-youtube-button {
+  appearance: none;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  width: 4.25rem;
+  height: 4.25rem;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(127, 199, 217, 0.45);
+  border-radius: 0.85rem;
+  background: linear-gradient(180deg, rgba(127, 199, 217, 0.22), rgba(127, 199, 217, 0.08));
+  color: rgba(243, 241, 236, 0.96);
+  text-decoration: none;
+  cursor: default;
+  box-shadow: 0 0 28px rgba(127, 199, 217, 0.18);
+}
+
+.node-boot-email-button:hover,
+.node-boot-email-button:focus-visible,
+.node-boot-youtube-button:hover,
+.node-boot-youtube-button:focus-visible {
+  border-color: rgba(243, 241, 236, 0.7);
+  background: linear-gradient(180deg, rgba(127, 199, 217, 0.34), rgba(127, 199, 217, 0.14));
+  outline: none;
+}
+
+.node-boot-email-button:active,
+.node-boot-youtube-button:active {
+  transform: translateY(1px);
+}
+
+.node-boot-email-emoji {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.node-boot-youtube-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+  color: #FF0000;
 }
 
 .node-boot-loading-label {
@@ -228,7 +399,6 @@ body:not(.node-boot-waiting) .node-boot-start-button {
   border-radius: inherit;
   background: linear-gradient(90deg, rgba(127, 199, 217, 0.42), rgba(243, 241, 236, 0.92));
   box-shadow: 0 0 18px rgba(127, 199, 217, 0.34);
-  transition: width 200ms ease;
 }
 
 .node-boot-loading-meta {
@@ -1381,29 +1551,118 @@ button.scw-label:hover,
    absolute overlays of that cell (not flex siblings that re-split height).
    Author `display:flex` must NOT beat the HTML hidden attribute or both
    pages stay visible and slowly steal space from the waveform. */
-.node-phosphor-waveform-display {
+.node-sample-waveform-display {
   position: relative;
   display: block;
   min-height: 0;
   overflow: hidden;
-  --phosphor-hud-font: 600 11px/1 system-ui, sans-serif;
-  --phosphor-hud-font-sm: 600 10px/1 system-ui, sans-serif;
-  --phosphor-hud-color: hsla(140, 90%, 57%, 0.55);
-  --phosphor-hud-color-hot: hsla(140, 90%, 85%, 0.7);
-  --phosphor-hud-color-dim: hsla(140, 90%, 57%, 0.28);
+  --sample-waveform-hud-font: 600 11px/1 system-ui, sans-serif;
+  --sample-waveform-hud-font-sm: 600 10px/1 system-ui, sans-serif;
+  --sample-waveform-hud-color: hsla(140, 90%, 57%, 0.55);
+  --sample-waveform-hud-color-hot: hsla(140, 90%, 85%, 0.7);
+  --sample-waveform-hud-color-dim: hsla(140, 90%, 57%, 0.28);
   --node-music-player-pl-row-height: 1.35rem;
+}
+/* Music Player faces are often only a few hundred pixels wide. Keep the HUD
+   type inside its cells as the display shrinks, without changing the shared
+   sample/wavetable displays. */
+.node-sample-waveform-display[data-node-type="audioPlayer"] {
+  container-type: inline-size;
+  --sample-waveform-hud-font: 600 clamp(8px, 2.6cqi, 10px)/1 system-ui, sans-serif;
+  --sample-waveform-hud-font-sm: 600 clamp(7px, 2.3cqi, 9px)/1 system-ui, sans-serif;
+}
+/* Playlist rows get a small additional reduction so file names and numbers
+   have breathing room in the fixed row slots. */
+.node-sample-waveform-display[data-node-type="audioPlayer"] .node-music-player-pl-list .node-music-player-pl-row {
+  font-size: 0.9em;
+  /* Keep the reduced row text's descenders inside the flex slot. */
+  line-height: 1.2;
+}
+.node-sample-waveform-display[data-node-type="audioPlayer"] .node-music-player-pl-list.is-single .node-music-player-pl-row {
+  font-size: 1.1em;
+}
+/* Keep the now-playing label and face tabs clipped to their cells too. */
+.node-sample-waveform-display[data-node-type="audioPlayer"] .node-music-player-face-btn,
+.node-sample-waveform-display[data-node-type="audioPlayer"] .node-music-player-waveplay-song .node-music-player-pl-name,
+.node-sample-waveform-display[data-node-type="audioPlayer"] .node-music-player-page-btn {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Wavetable 2D: result / Morph preview (one cycle) / Warp boxes. */
+.node-sample-waveform-display.has-wavetable-morph-strip {
+  display: flex;
+  flex-direction: column;
+}
+.node-sample-waveform-display.has-wavetable-morph-strip .node-sample-waveform-canvas {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  width: 100%;
+  height: auto;
+}
+.node-wavetable-morph-preview {
+  flex: 0 0 56px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  border-top: 1px solid hsla(140, 40%, 40%, 0.25);
+  overflow: hidden;
+  cursor: ew-resize;
+}
+.node-wavetable-morph-preview-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.node-wavetable-warp-strip {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: row;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  gap: 3px;
+  padding: 3px 4px 4px;
+  border-top: 1px solid hsla(140, 40%, 40%, 0.25);
+  overflow: hidden;
+}
+.node-wavetable-warp-slot {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  height: 30px;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  border: 1px solid hsla(140, 50%, 45%, 0.35);
+  border-radius: 3px;
+  background: hsla(140, 30%, 12%, 0.55);
+  cursor: pointer;
+  overflow: hidden;
+}
+.node-wavetable-warp-slot.is-selected {
+  border-color: hsla(140, 80%, 62%, 0.95);
+  box-shadow: 0 0 0 1px hsla(140, 80%, 62%, 0.35);
+}
+.node-wavetable-warp-slot-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 .node-music-player-face-bar {
   position: absolute;
   top: calc(
-    var(--phosphor-waveform-inset, 2px)
+    var(--sample-waveform-inset, 2px)
     + 1px
-    + var(--phosphor-waveform-label-inset, 0px)
+    + var(--sample-waveform-label-inset, 0px)
   );
   left: calc(
-    var(--phosphor-waveform-inset, 2px)
+    var(--sample-waveform-inset, 2px)
     + 1px
-    + var(--phosphor-waveform-label-inset, 0px)
+    + var(--sample-waveform-label-inset, 0px)
   );
   z-index: 6;
   display: flex;
@@ -1413,12 +1672,12 @@ button.scw-label:hover,
 .node-music-player-face-bar > * {
   pointer-events: auto;
 }
-.node-phosphor-waveform-display:not([data-music-player-face="wave"]) .node-music-player-face-bar {
+.node-sample-waveform-display:not([data-music-player-face="wave"]) .node-music-player-face-bar {
   display: none;
 }
 /* Zoom % is a drag control but must look like the canvas HUD ("No sample loaded"
    / speed label): 600 system-ui, phosphor line color, no button chrome. */
-.node-phosphor-waveform-zoom,
+.node-sample-waveform-zoom,
 .node-music-player-face-btn,
 .node-music-player-pl-row,
 .node-music-player-pl-ram {
@@ -1431,69 +1690,70 @@ button.scw-label:hover,
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-  color: var(--phosphor-hud-color);
-  font: var(--phosphor-hud-font);
+  color: var(--sample-waveform-hud-color);
+  font: var(--sample-waveform-hud-font);
   letter-spacing: 0;
   text-transform: none;
   text-shadow: none;
   outline: none;
 }
-.node-phosphor-waveform-zoom {
+.node-sample-waveform-zoom {
   position: absolute;
   z-index: 6;
   top: calc(
-    var(--phosphor-waveform-inset, 2px)
+    var(--sample-waveform-inset, 2px)
     + 1px
-    + var(--phosphor-waveform-label-inset, 0px)
+    + var(--sample-waveform-label-inset, 0px)
   );
   right: calc(
-    var(--phosphor-waveform-inset, 2px)
+    var(--sample-waveform-inset, 2px)
     + 1px
-    + var(--phosphor-waveform-label-inset, 0px)
+    + var(--sample-waveform-label-inset, 0px)
   );
   left: auto;
   height: auto;
-  font: var(--phosphor-hud-font-sm);
-  color: var(--phosphor-hud-color);
+  font: var(--sample-waveform-hud-font-sm);
+  color: var(--sample-waveform-hud-color);
   cursor: ew-resize;
   user-select: none;
   -webkit-user-select: none;
 }
-.node-phosphor-waveform-zoom:hover,
-.node-phosphor-waveform-zoom:focus-visible,
-.node-phosphor-waveform-zoom.is-dragging {
+.node-sample-waveform-zoom:hover,
+.node-sample-waveform-zoom:focus-visible,
+.node-sample-waveform-zoom.is-dragging {
   outline: none;
   background: transparent;
-  color: var(--phosphor-hud-color-hot);
+  color: var(--sample-waveform-hud-color-hot);
 }
-.node-phosphor-waveform-display:not([data-music-player-face="wave"]):not([data-music-player-face="waveplay"]) .node-phosphor-waveform-zoom {
+.node-sample-waveform-display:not([data-music-player-face="wave"]):not([data-music-player-face="waveplay"]) .node-sample-waveform-zoom {
   display: none;
 }
 .node-music-player-face-btn {
   height: auto;
-  font: var(--phosphor-hud-font-sm);
-  color: var(--phosphor-hud-color);
+  font: var(--sample-waveform-hud-font-sm);
+  line-height: 1.2;
+  color: var(--sample-waveform-hud-color);
   cursor: var(--node-dot-cursor);
 }
 .node-music-player-face-btn:hover,
 .node-music-player-face-btn:focus-visible,
 .node-music-player-face-btn.is-active {
-  color: var(--phosphor-hud-color-hot);
+  color: var(--sample-waveform-hud-color-hot);
   background: transparent;
   outline: none;
 }
-/* Fill the display content box (inside --phosphor-waveform-inset padding).
+/* Fill the display content box (inside --sample-waveform-inset padding).
    Absolute children ignore parent padding, so match the inset explicitly —
    same box the canvas used when it was a flow child. */
 .node-music-player-page {
   position: absolute;
-  top: var(--phosphor-waveform-inset, 2px);
-  right: var(--phosphor-waveform-inset, 2px);
+  top: var(--sample-waveform-inset, 2px);
+  right: var(--sample-waveform-inset, 2px);
   bottom: calc(
-    var(--phosphor-waveform-inset, 2px)
+    var(--sample-waveform-inset, 2px)
     + var(--node-music-player-pl-row-height, 1.35rem)
   );
-  left: var(--phosphor-waveform-inset, 2px);
+  left: var(--sample-waveform-inset, 2px);
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -1503,16 +1763,16 @@ button.scw-label:hover,
 .node-music-player-page[hidden] {
   display: none !important;
 }
-.node-phosphor-waveform-display[data-music-player-face="wave"] .node-music-player-page-bar {
+.node-sample-waveform-display[data-music-player-face="wave"] .node-music-player-page-bar {
   display: none;
 }
-.node-phosphor-waveform-display[data-music-player-face="wave"] .node-music-player-page-wave {
-  bottom: var(--phosphor-waveform-inset, 2px);
+.node-sample-waveform-display[data-music-player-face="wave"] .node-music-player-page-wave {
+  bottom: var(--sample-waveform-inset, 2px);
 }
 .node-music-player-page-wave {
   z-index: 1;
 }
-.node-music-player-page-wave .node-phosphor-waveform-canvas {
+.node-music-player-page-wave .node-sample-waveform-canvas {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -1537,8 +1797,8 @@ button.scw-label:hover,
   outline: none;
   box-shadow: none;
   background: #050805;
-  color: var(--phosphor-hud-color);
-  font: var(--phosphor-hud-font);
+  color: var(--sample-waveform-hud-color);
+  font: var(--sample-waveform-hud-font);
   overflow: hidden;
 }
 .node-music-player-page-waveplay {
@@ -1556,7 +1816,7 @@ button.scw-label:hover,
   min-height: 0;
   overflow: hidden;
 }
-.node-music-player-waveplay-wave .node-phosphor-waveform-canvas {
+.node-music-player-waveplay-wave .node-sample-waveform-canvas {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -1579,11 +1839,11 @@ button.scw-label:hover,
   border: 0 !important;
   border-radius: 0;
   box-sizing: border-box;
-  box-shadow: inset 0 1px 0 var(--phosphor-hud-color-dim);
+  box-shadow: inset 0 1px 0 var(--sample-waveform-hud-color-dim);
   background: #050805;
-  color: var(--phosphor-hud-color);
-  font: var(--phosphor-hud-font);
-  line-height: 1;
+  color: var(--sample-waveform-hud-color);
+  font: var(--sample-waveform-hud-font);
+  line-height: 1.2;
   overflow: hidden;
 }
 .node-music-player-waveplay-song .node-music-player-pl-name {
@@ -1601,7 +1861,7 @@ button.scw-label:hover,
   background: transparent;
   color: inherit;
   font: inherit;
-  line-height: 1;
+  line-height: 1.2;
   text-align: left;
   cursor: var(--node-dot-cursor);
   overflow: hidden;
@@ -1610,7 +1870,7 @@ button.scw-label:hover,
 }
 .node-music-player-waveplay-song:hover,
 .node-music-player-waveplay-song:focus-visible {
-  color: var(--phosphor-hud-color-hot);
+  color: var(--sample-waveform-hud-color-hot);
   background: #050805;
   outline: none;
 }
@@ -1638,7 +1898,7 @@ button.scw-label:hover,
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  border-top: 1px solid var(--phosphor-hud-color-dim);
+  border-top: 1px solid var(--sample-waveform-hud-color-dim);
   background: #050805;
 }
 .node-music-player-page-btn {
@@ -1650,12 +1910,13 @@ button.scw-label:hover,
   margin: 0;
   padding: 0;
   border: 0 !important;
-  border-right: 1px solid var(--phosphor-hud-color-dim) !important;
+  border-right: 1px solid var(--sample-waveform-hud-color-dim) !important;
   border-radius: 0;
   background: transparent;
-  color: var(--phosphor-hud-color);
-  font: var(--phosphor-hud-font-sm);
-  line-height: 1;
+  color: var(--sample-waveform-hud-color);
+  font: var(--sample-waveform-hud-font-sm);
+  /* A unit line-height clips the lowercase p descender at small sizes. */
+  line-height: 1.2;
   outline: none;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1668,7 +1929,7 @@ button.scw-label:hover,
 .node-music-player-page-btn:hover,
 .node-music-player-page-btn:focus-visible,
 .node-music-player-page-btn.is-active {
-  color: var(--phosphor-hud-color-hot);
+  color: var(--sample-waveform-hud-color-hot);
   background: transparent;
   outline: none;
 }
@@ -1684,7 +1945,7 @@ button.scw-label:hover,
 .node-music-player-pl-transport-btn:hover,
 .node-music-player-pl-transport-btn:focus-visible,
 .node-music-player-pl-transport-btn.is-active {
-  color: var(--phosphor-hud-color-hot);
+  color: var(--sample-waveform-hud-color-hot);
   background: transparent;
   outline: none;
 }
@@ -1698,7 +1959,7 @@ button.scw-label:hover,
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  border-top: 1px solid var(--phosphor-hud-color-dim);
+  border-top: 1px solid var(--sample-waveform-hud-color-dim);
   background: #050805;
 }
 .node-music-player-pl-transport-btn {
@@ -1710,11 +1971,11 @@ button.scw-label:hover,
   margin: 0;
   padding: 0;
   border: 0 !important;
-  border-right: 1px solid var(--phosphor-hud-color-dim) !important;
+  border-right: 1px solid var(--sample-waveform-hud-color-dim) !important;
   border-radius: 0;
   background: transparent;
-  color: var(--phosphor-hud-color);
-  font: var(--phosphor-hud-font);
+  color: var(--sample-waveform-hud-color);
+  font: var(--sample-waveform-hud-font);
   line-height: 1;
   outline: none;
   cursor: var(--node-dot-cursor);
@@ -1725,7 +1986,7 @@ button.scw-label:hover,
 .node-music-player-pl-debug {
   display: none;
 }
-.node-phosphor-waveform-playlist-actions {
+.node-sample-waveform-playlist-actions {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: stretch;
@@ -1733,7 +1994,7 @@ button.scw-label:hover,
   padding: 0;
   margin: 0;
 }
-.node-phosphor-waveform-playlist-actions > button {
+.node-sample-waveform-playlist-actions > button {
   box-sizing: border-box;
   flex: 1 1 0;
   min-width: 0;
@@ -1781,12 +2042,12 @@ button.scw-label:hover,
 .node-music-player-pl-ram:hover,
 .node-music-player-pl-ram:focus-visible,
 .node-music-player-pl-ram[aria-pressed="true"] {
-  color: var(--phosphor-hud-color-hot);
+  color: var(--sample-waveform-hud-color-hot);
   background: transparent;
   outline: none;
 }
 .node-music-player-pl-ram.is-hog {
-  color: var(--phosphor-hud-color-hot);
+  color: var(--sample-waveform-hud-color-hot);
   background: transparent;
 }
 .node-music-player-page-playinfo .node-music-player-pl-ram-panel {
@@ -1804,8 +2065,8 @@ button.scw-label:hover,
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--phosphor-hud-color);
-  font: var(--phosphor-hud-font);
+  color: var(--sample-waveform-hud-color);
+  font: var(--sample-waveform-hud-font);
   overflow: hidden;
 }
 .node-music-player-pl-ram-panel[hidden] {
@@ -1816,18 +2077,18 @@ button.scw-label:hover,
   display: flex;
   align-items: center;
   gap: 6px;
-  font: var(--phosphor-hud-font-sm);
+  font: var(--sample-waveform-hud-font-sm);
   letter-spacing: 0;
   text-transform: none;
   opacity: 1;
-  color: var(--phosphor-hud-color);
+  color: var(--sample-waveform-hud-color);
 }
 .node-music-player-pl-ram-body {
   min-height: 0;
   overflow: auto;
-  font: var(--phosphor-hud-font-sm);
+  font: var(--sample-waveform-hud-font-sm);
   scrollbar-width: thin;
-  scrollbar-color: var(--phosphor-hud-color-dim) transparent;
+  scrollbar-color: var(--sample-waveform-hud-color-dim) transparent;
 }
 .node-music-player-pl-ram-body::-webkit-scrollbar {
   width: 6px;
@@ -1836,7 +2097,7 @@ button.scw-label:hover,
   background: transparent;
 }
 .node-music-player-pl-ram-body::-webkit-scrollbar-thumb {
-  background: var(--phosphor-hud-color-dim);
+  background: var(--sample-waveform-hud-color-dim);
   border-radius: 0;
 }
 .node-music-player-pl-ram-summary {
@@ -1844,7 +2105,7 @@ button.scw-label:hover,
   opacity: 1;
 }
 .node-music-player-pl-ram-summary .is-hog {
-  color: var(--phosphor-hud-color-hot);
+  color: var(--sample-waveform-hud-color-hot);
   font-weight: 600;
 }
 .node-music-player-pl-ram-table {
@@ -1855,7 +2116,7 @@ button.scw-label:hover,
 .node-music-player-pl-ram-table th,
 .node-music-player-pl-ram-table td {
   padding: 2px 4px;
-  border-bottom: 1px solid var(--phosphor-hud-color-dim);
+  border-bottom: 1px solid var(--sample-waveform-hud-color-dim);
   text-align: left;
   white-space: nowrap;
 }
@@ -1870,13 +2131,13 @@ button.scw-label:hover,
 }
 .node-music-player-pl-ram-table tr[data-active="true"] {
   background: transparent;
-  color: var(--phosphor-hud-color-hot);
+  color: var(--sample-waveform-hud-color-hot);
 }
 .node-music-player-pl-ram-table tr[data-playing="true"] {
-  background: var(--phosphor-hud-color-dim);
+  background: var(--sample-waveform-hud-color-dim);
 }
 .node-music-player-pl-ram-table tr.is-heavy {
-  color: var(--phosphor-hud-color-hot);
+  color: var(--sample-waveform-hud-color-hot);
 }
 .node-music-player-pl-ram-empty {
   opacity: 0.6;
@@ -1934,8 +2195,8 @@ button.scw-label:hover,
   align-items: center;
   justify-content: center;
   padding: 8px;
-  color: var(--phosphor-hud-color);
-  font: var(--phosphor-hud-font);
+  color: var(--sample-waveform-hud-color);
+  font: var(--sample-waveform-hud-font);
   text-align: center;
 }
 .node-music-player-pl-row.is-empty {
@@ -1944,26 +2205,26 @@ button.scw-label:hover,
   pointer-events: none;
 }
 .node-music-player-pl-row.is-back {
-  color: var(--phosphor-hud-color-hot);
+  color: var(--sample-waveform-hud-color-hot);
 }
 .node-music-player-pl-row:hover,
 .node-music-player-pl-row:focus-visible {
-  color: var(--phosphor-hud-color-hot);
+  color: var(--sample-waveform-hud-color-hot);
   border: 0 !important;
   outline: none;
   box-shadow: none;
 }
 .node-music-player-pl-row[data-active="true"] {
   background: transparent;
-  color: var(--phosphor-hud-color-hot);
+  color: var(--sample-waveform-hud-color-hot);
 }
 .node-music-player-pl-row[data-playing="true"] {
-  background: var(--phosphor-hud-color-dim);
+  background: var(--sample-waveform-hud-color-dim);
 }
 .node-music-player-pl-row.is-play-next,
 .node-music-player-pl-row[data-queue="next"] {
   background: hsla(140, 90%, 57%, 0.14);
-  color: var(--phosphor-hud-color-hot);
+  color: var(--sample-waveform-hud-color-hot);
 }
 .node-music-player-pl-row.is-played .node-music-player-pl-name,
 .node-music-player-pl-row[data-queue="played"] .node-music-player-pl-name {
@@ -2720,6 +2981,12 @@ html.soemdsp-hide-ui.body.node-patch-load-fault-open #nodePatchLoadFault {
   box-shadow: none;
 }
 
+/* Graph module wall: header controls may spill left into the chrome instead of wrapping. */
+.dsp-node.keyboard-layout > .node-midi-keyboard-module.node-module-face {
+  overflow-x: visible;
+  overflow-y: hidden;
+}
+
 /* Solo-stage rules set position:relative on every face; keyboard on a canvas
    tile must still fill the tile and keep a real piano row. */
 body.node-screen-solo-active .node-layout-canvas-tile > .node-screen-solo-face.node-midi-keyboard-module,
@@ -2732,6 +2999,18 @@ body.node-screen-solo-active .node-layout-canvas-tile > .node-screen-solo-face.n
   width: 100% !important;
   height: 100% !important;
   min-height: 0 !important;
+}
+
+/* Hide-info (default): heading is display:none, so a two-row auto+1fr grid puts the
+   only piano child in the auto track. With height:100%/min-height:0 the piano collapses
+   to 0 while the empty 1fr track eats the tile. Force a single fr row instead. */
+body.node-screen-solo-active .node-layout-canvas-tile > .node-screen-solo-face.node-midi-keyboard-module:not(.show-keyboard-info),
+.node-layout-canvas-tile > .node-midi-keyboard-module.node-module-face:not(.show-keyboard-info),
+.node-metamodule-canvas-stage .node-layout-canvas-tile > .node-midi-keyboard-module:not(.show-keyboard-info),
+.dsp-node.keyboard-layout > .node-midi-keyboard-module.node-module-face:not(.show-keyboard-info),
+.node-screen-solo-stage .node-midi-keyboard-module.node-module-face:not(.show-keyboard-info),
+.node-metamodule-canvas-stage .node-midi-keyboard-module.node-module-face:not(.show-keyboard-info) {
+  grid-template-rows: minmax(48px, 1fr) !important;
 }
 
 body.node-screen-solo-active .node-layout-canvas-tile .node-midi-keyboard-heading,
@@ -2772,19 +3051,23 @@ body.node-screen-solo-active .node-layout-canvas-tile .node-midi-keyboard-surfac
 .node-screen-solo-stage .node-midi-keyboard-module .node-midi-keyboard-heading,
 .node-metamodule-canvas-stage .node-midi-keyboard-module .node-midi-keyboard-heading {
   display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
   min-width: 0;
-  max-width: 100%;
+  max-width: none;
   padding: 2px 2px 0;
   gap: 4px;
+  overflow: visible;
 }
 
 .dsp-node.keyboard-layout > .node-midi-keyboard-module .node-midi-keyboard-heading > .node-midi-keyboard-midi-controls,
 .node-layout-canvas-tile .node-midi-keyboard-module .node-midi-keyboard-heading > .node-midi-keyboard-midi-controls,
 .node-screen-solo-stage .node-midi-keyboard-module .node-midi-keyboard-heading > .node-midi-keyboard-midi-controls,
 .node-metamodule-canvas-stage .node-midi-keyboard-module .node-midi-keyboard-heading > .node-midi-keyboard-midi-controls {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-start;
   gap: 4px;
+  overflow: visible;
 }
 
 .dsp-node.keyboard-layout > .node-midi-keyboard-module .node-midi-keyboard-performance,
@@ -2880,12 +3163,12 @@ body.node-screen-solo-active .node-layout-canvas-tile .node-midi-keyboard-surfac
 .node-midi-keyboard-heading {
   display: flex;
   flex: 0 0 auto;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-start;
   gap: 8px 12px;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .node-midi-keyboard-heading > div {
@@ -2908,20 +3191,47 @@ body.node-screen-solo-active .node-layout-canvas-tile .node-midi-keyboard-surfac
 .node-midi-keyboard-heading > .node-midi-keyboard-midi-controls {
   display: flex;
   flex: 1 1 auto;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-start;
   gap: 4px;
   min-width: 0;
+  overflow: visible;
 }
 
+.node-midi-keyboard-heading > .node-midi-keyboard-vel-range,
 .node-midi-keyboard-vel-range {
   display: inline-flex;
   flex: 0 0 auto;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 8px 12px;
   min-width: 0;
+}
+
+.node-midi-keyboard-midi-controls > .node-midi-keyboard-vel-field {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.node-midi-keyboard-module:not(.show-keyboard-info) > .node-midi-keyboard-heading,
+.node-grid-keyboard-module:not(.show-keyboard-info) > .node-midi-keyboard-heading,
+.dsp-node.keyboard-layout > .node-midi-keyboard-module:not(.show-keyboard-info) > .node-midi-keyboard-heading,
+.node-layout-canvas-tile .node-midi-keyboard-module:not(.show-keyboard-info) > .node-midi-keyboard-heading {
+  display: none !important;
+}
+
+.node-midi-keyboard-module:not(.show-keyboard-info),
+.node-grid-keyboard-module:not(.show-keyboard-info) {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+/* Face hosts (graph + canvas): hide-info must win over the shared auto+1fr face grid. */
+.dsp-node.keyboard-layout > .node-midi-keyboard-module.node-module-face:not(.show-keyboard-info),
+.node-layout-canvas-tile > .node-midi-keyboard-module.node-module-face:not(.show-keyboard-info),
+.node-screen-solo-stage .node-midi-keyboard-module.node-module-face:not(.show-keyboard-info),
+.node-metamodule-canvas-stage .node-midi-keyboard-module.node-module-face:not(.show-keyboard-info) {
+  grid-template-rows: minmax(48px, 1fr) !important;
 }
 
 .node-midi-keyboard-vel-field {
@@ -3196,72 +3506,8 @@ body.node-screen-solo-active .node-layout-canvas-tile .node-midi-keyboard-surfac
     0 0 14px rgba(226, 58, 58, 0.55);
 }
 
-/* Macro knob bank is the module display — no title/status chrome. */
-.node-macro-controls-panel {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr);
-  gap: 0;
-  width: calc(100% - 6px);
-  margin: 3px auto 0;
-  padding: 6px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  /* Solid black plate by default; Display Settings can override via CSS var. */
-  background: var(--macro-controls-bg, #000000);
-  box-sizing: border-box;
-}
-
-.node-macro-controls-module {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  margin: 0;
-  border-radius: 0;
-  /* Fill the module body / display slot. */
-  flex: 1 1 auto;
-}
-
-.node-macro-controls-panel[hidden] {
-  display: none;
-}
-
-/* Legacy class kept so old dock CSS does not throw; heading no longer built. */
-.node-macro-controls-heading {
-  display: none;
-}
-
-.node-macro-controls-row {
-  display: grid;
-  grid-template-columns: repeat(8, minmax(54px, 1fr));
-  gap: var(--macro-knob-gap, 6px);
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  width: 100%;
-  align-content: center;
-  justify-content: center;
-  justify-items: stretch;
-}
-
-/* Module face: 2×4. Cell size = remaining space after gaps, times knob size.
-   Spacing is the gap between cells, so growing size does not overlap neighbors. */
-.node-macro-controls-module .node-macro-controls-row {
-  container-type: size;
-  --macro-knob-fit: min(
-    calc((100cqi - 3 * var(--macro-knob-gap, 4px)) / 4),
-    calc((100cqb - var(--macro-knob-gap, 4px)) / 2)
-  );
-  --macro-knob-cell: calc(var(--macro-knob-fit) * var(--macro-knob-size-scale, 1));
-  grid-template-columns: repeat(4, var(--macro-knob-cell));
-  grid-template-rows: repeat(2, var(--macro-knob-cell));
-  gap: var(--macro-knob-gap, 4px);
-}
-
-/* Shared macro dial (bank, keyboard dock, Knob module):
-   title above the dial · value in the center of the circle · arc centered in dial.
-   Angle drag uses the circle center, not the full button (see view-controls).
-   Size scale applies ONLY to the arc widget — not label or value. */
+/* Knob dial (class names shared with the old 8-knob plate CSS):
+   title above the dial · value in the center of the circle · arc centered in dial. */
 .node-macro-knob {
   position: relative;
   display: flex;
@@ -3283,28 +3529,6 @@ body.node-screen-solo-active .node-layout-canvas-tile .node-midi-keyboard-surfac
   cursor: var(--node-dot-cursor);
   user-select: none;
   transform: none;
-}
-
-.node-macro-controls-module .node-macro-knob {
-  min-height: 0;
-  height: 100%;
-  width: 100%;
-  padding: 0;
-  box-sizing: border-box;
-  overflow: hidden;
-}
-
-/* Title sits above the dial widget (not over the circle). */
-.node-macro-controls-panel.macro-labels-hidden .node-macro-knob-label,
-.node-macro-controls-panel.macro-labels-hidden .node-macro-knob > span:not(.node-macro-knob-dial):not(.node-macro-knob-edit-input),
-[data-macro-controls-display].macro-labels-hidden .node-macro-knob-label {
-  display: none;
-}
-
-.node-macro-controls-panel.macro-values-hidden .node-macro-knob-value,
-.node-macro-controls-panel.macro-values-hidden .node-macro-knob-dial > strong,
-[data-macro-controls-display].macro-values-hidden .node-macro-knob-value {
-  display: none;
 }
 
 .node-macro-knob-label,
@@ -3471,12 +3695,6 @@ body[data-macro-knob-value-position="mid"] .node-macro-knob-edit-input {
   box-shadow: none;
   border: none;
   pointer-events: none;
-}
-
-@media (max-width: 880px) {
-  .node-macro-controls-row {
-    grid-template-columns: repeat(5, minmax(54px, 1fr));
-  }
 }
 
 .node-midi-keyboard-performance {
@@ -4655,10 +4873,6 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   line-height: 1;
   text-align: center;
   text-transform: none;
-  transition:
-    background-color 2s ease-out,
-    box-shadow 2s ease-out,
-    color 2s ease-out;
 }
 
 #nodeUndoButton,
@@ -4666,10 +4880,6 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
 #nodeSceneUndoButton,
 #nodeSceneRedoButton {
   box-shadow: none;
-  transition:
-    background-color 2s ease-out,
-    box-shadow 2s ease-out,
-    color 2s ease-out;
 }
 
 #nodeUndoButton.is-history-glow-undo,
@@ -4784,7 +4994,6 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
     linear-gradient(180deg, rgba(255, 210, 90, 0.08), rgba(255, 200, 80, 0.42));
   pointer-events: none;
   z-index: 0;
-  transition: height 40ms linear;
 }
 
 /* Lightbulb fill tracks room light (up = brighter), not veil amount. */
@@ -4815,7 +5024,6 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   display: block;
   user-select: none;
   -webkit-user-drag: none;
-  transition: opacity 40ms linear;
 }
 
 .node-room-dimmer-button.room-dimmer-dragging .node-room-dimmer-icon {
@@ -4865,8 +5073,8 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
 }
 
 #nodePatchTimingControls {
-  flex: 6.5 1 0;
-  min-inline-size: clamp(300px, 39vw, 620px);
+  flex: 10 1 0;
+  min-inline-size: 0;
 }
 
 .node-scope-master-brightness-control {
@@ -4923,27 +5131,33 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   padding: 0;
 }
 
+/* Toolbar emoji buttons: one CSS size from the button box (not JS). */
 #nodeCommandCenterButton,
+#nodeSettingsViewButton,
+#nodeSettingsSaveScriptButton,
 #nodeModuleShopButton,
 #nodeModularInfiniteViewButton,
 #nodeModularWindowedViewButton,
-#nodeSettingsSaveScriptButton,
 #nodeToolbarPastePatchButton {
   padding: 6px;
+  container-type: size;
 }
 
-.node-modular-view-icon {
+#nodeCommandCenterButton > .node-modular-view-icon,
+#nodeSettingsViewButton > .node-modular-view-icon,
+#nodeSettingsSaveScriptButton > .node-modular-view-icon,
+#nodeModuleShopButton > .node-modular-view-icon,
+#nodeModularInfiniteViewButton > .node-modular-view-icon,
+#nodeModularWindowedViewButton > .node-modular-view-icon,
+#nodeToolbarPastePatchButton > .node-modular-view-icon {
   display: grid;
   place-items: center;
-  align-self: stretch;
-  justify-self: stretch;
   width: 100%;
   height: 100%;
-  min-width: 0;
-  min-height: 0;
-  font-size: clamp(1rem, 70%, 2.35rem);
+  margin: 0;
+  padding: 0;
+  font-size: min(100cqw, 100cqh);
   line-height: 1;
-  overflow: hidden;
 }
 
 #nodeDonateFiveButton,
@@ -5110,6 +5324,52 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   padding: 8px 4px;
 }
 
+
+
+.node-pages-folder-card {
+  width: 100%;
+  cursor: var(--node-dot-cursor);
+}
+
+.node-pages-folder-card:hover,
+.node-pages-folder-card:focus-visible {
+  border-color: rgba(127, 199, 217, 0.55);
+  background: rgba(24, 32, 38, 0.92);
+}
+
+.node-pages-folder-count {
+  color: rgba(127, 199, 217, 0.78);
+  font-size: 0.72rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+
+.node-pages-back {
+  width: 100%;
+  margin-bottom: 0.35rem;
+  justify-content: flex-start;
+  font-weight: 600;
+  opacity: 0.92;
+}
+
+.node-pages-folder {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0.85rem 0 0.35rem;
+  padding: 0.35rem 0.55rem;
+  color: rgba(127, 199, 217, 0.92);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(127, 199, 217, 0.28);
+}
+
+.node-pages-folder:first-child {
+  margin-top: 0.15rem;
+}
+
 .node-pages-entry {
   appearance: none;
   -webkit-appearance: none;
@@ -5129,7 +5389,7 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   border-radius: 6px;
   background: rgba(17, 20, 24, 0.72);
   color: rgba(243, 241, 236, 0.92);
-  cursor: pointer;
+  cursor: var(--node-dot-cursor);
   font: inherit;
 }
 
@@ -5144,9 +5404,45 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   color: rgba(253, 230, 138, 0.95);
 }
 
+.node-pages-entry-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .node-pages-entry-title {
   font-size: 0.82rem;
   font-weight: 650;
+}
+
+.node-pages-entry-title.is-custom-name {
+  color: rgba(166, 227, 161, 0.95);
+}
+
+.node-pages-entry-meta {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  min-width: 0;
+  color: rgba(243, 241, 236, 0.52);
+  font-size: 0.68rem;
+  font-weight: 450;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-pages-entry-author,
+.node-pages-entry-tags {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-pages-entry-tags {
+  opacity: 0.92;
 }
 
 .node-pages-entry-path {
@@ -6002,12 +6298,12 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   display: none;
 }
 
-.node-phosphor-waveform-settings-window {
+.node-sample-waveform-settings-window {
   display: none !important;
 }
 
 .node-settings-range-row,
-.node-phosphor-waveform-settings-row,
+.node-sample-waveform-settings-row,
 .node-led-settings-row {
   display: flex;
   align-items: center;
@@ -6017,7 +6313,7 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
 }
 
 .node-settings-range-row > span:first-child,
-.node-phosphor-waveform-settings-row > span:first-child,
+.node-sample-waveform-settings-row > span:first-child,
 .node-led-settings-row > span:first-child {
   flex: 1 1 auto;
   color: var(--muted);
@@ -6025,8 +6321,8 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
 
 /* Waveform settings hosts the Music Player path box and the sample-module
    📂 loader. Keep path box + folder button on one shared control height. */
-.node-phosphor-waveform-loader-slot,
-.node-phosphor-waveform-phase-slot {
+.node-sample-waveform-loader-slot,
+.node-sample-waveform-phase-slot {
   --node-sample-control-height: var(--ds-row-h, var(--metadata-control-row-height, 22px));
   --node-sample-control-line: rgba(0, 2, 4, 0.82);
   flex: 1 1 auto;
@@ -6036,20 +6332,20 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   align-items: center;
 }
 
-.node-phosphor-waveform-load-row {
+.node-sample-waveform-load-row {
   align-items: center;
   min-height: var(--ds-row-h, var(--metadata-control-row-height, 22px));
   padding-top: 0;
   padding-bottom: 0;
 }
 
-.node-phosphor-waveform-loader-slot .node-sample-path-loader {
+.node-sample-waveform-loader-slot .node-sample-path-loader {
   width: 100%;
   height: var(--node-sample-control-height);
   align-self: center;
 }
 
-.node-phosphor-waveform-settings-row.node-phosphor-waveform-playlist-actions {
+.node-sample-waveform-settings-row.node-sample-waveform-playlist-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: stretch;
@@ -6058,11 +6354,11 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   margin: 0;
 }
 
-.node-phosphor-waveform-settings-row.node-phosphor-waveform-load-actions {
+.node-sample-waveform-settings-row.node-sample-waveform-load-actions {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.node-phosphor-waveform-settings-row.node-phosphor-waveform-playlist-actions > button {
+.node-sample-waveform-settings-row.node-sample-waveform-playlist-actions > button {
   box-sizing: border-box;
   min-width: 0;
   width: 100%;
@@ -6072,23 +6368,23 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   border-radius: 0;
 }
 
-.node-phosphor-waveform-history-reset {
+.node-sample-waveform-history-reset {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.node-phosphor-waveform-tune-row {
+.node-sample-waveform-tune-row {
   display: grid;
   grid-template-columns: minmax(7rem, 0.38fr) minmax(0, 1fr);
   align-items: center;
   gap: 8px;
 }
 
-.node-phosphor-waveform-tune-row > span:first-child {
+.node-sample-waveform-tune-row > span:first-child {
   flex: 0 0 auto;
   min-width: 0;
 }
 
-.node-phosphor-waveform-control-widgets {
+.node-sample-waveform-control-widgets {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -6096,13 +6392,13 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   width: 100%;
 }
 
-.node-phosphor-waveform-control-widgets input[type="range"] {
+.node-sample-waveform-control-widgets input[type="range"] {
   flex: 1 1 auto;
   min-width: 0;
   width: auto;
 }
 
-.node-phosphor-waveform-control-widgets input[type="number"] {
+.node-sample-waveform-control-widgets input[type="number"] {
   flex: 0 0 auto;
   width: auto;
   min-width: 2.25em;
@@ -6111,15 +6407,15 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   text-align: left;
 }
 
-.node-phosphor-waveform-formats-row {
+.node-sample-waveform-formats-row {
   align-items: stretch;
 }
 
-.node-phosphor-waveform-formats-row .node-phosphor-waveform-format-checks {
+.node-sample-waveform-formats-row .node-sample-waveform-format-checks {
   flex: 1 1 auto;
 }
 
-.node-phosphor-waveform-format-checks {
+.node-sample-waveform-format-checks {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 2px 10px;
@@ -6128,7 +6424,7 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   min-width: 0;
 }
 
-.node-phosphor-waveform-format-check {
+.node-sample-waveform-format-check {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -6137,13 +6433,13 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   letter-spacing: 0.04em;
 }
 
-.node-phosphor-waveform-loader-slot .node-sample-path-loader {
+.node-sample-waveform-loader-slot .node-sample-path-loader {
   width: 100%;
   min-width: 0;
 }
 
-.node-phosphor-waveform-loader-slot .node-sample-path-button,
-.node-phosphor-waveform-phase-slot .node-sample-copy-phase-button {
+.node-sample-waveform-loader-slot .node-sample-path-button,
+.node-sample-waveform-phase-slot .node-sample-copy-phase-button {
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -6151,30 +6447,30 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   font-size: calc(var(--node-sample-control-height) * 0.82);
 }
 
-.node-phosphor-waveform-phase-row > span:first-child {
+.node-sample-waveform-phase-row > span:first-child {
   flex: 0 0 auto;
 }
 
 /* Read-only until double-clicked (time window + px fields). */
-#nodePhosphorWaveformTimeWindowInput[readonly],
-#nodePhosphorWaveformLineWidthInput[readonly],
-#nodePhosphorWaveformTraceWidthInput[readonly],
-#nodePhosphorWaveformPlaylistVisibleCountInput[readonly] {
+#nodeSampleWaveformTimeWindowInput[readonly],
+#nodeSampleWaveformLineWidthInput[readonly],
+#nodeSampleWaveformTraceWidthInput[readonly],
+#nodeSampleWaveformPlaylistVisibleCountInput[readonly] {
   cursor: var(--node-dot-cursor);
   user-select: none;
   caret-color: transparent;
 }
 
-#nodePhosphorWaveformTimeWindowInput.editing,
-#nodePhosphorWaveformLineWidthInput.editing,
-#nodePhosphorWaveformTraceWidthInput.editing,
-#nodePhosphorWaveformPlaylistVisibleCountInput.editing {
+#nodeSampleWaveformTimeWindowInput.editing,
+#nodeSampleWaveformLineWidthInput.editing,
+#nodeSampleWaveformTraceWidthInput.editing,
+#nodeSampleWaveformPlaylistVisibleCountInput.editing {
   border-color: rgba(127, 199, 217, 0.52);
   cursor: text;
   caret-color: currentColor;
 }
 
-.node-phosphor-waveform-settings-row input[type="number"],
+.node-sample-waveform-settings-row input[type="number"],
 .node-led-settings-row input[type="number"] {
   width: 56px;
   padding: 3px 4px;
@@ -6191,8 +6487,8 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   appearance: textfield;
 }
 
-.node-phosphor-waveform-settings-row input[type="number"]:focus,
-.node-phosphor-waveform-settings-row input[type="number"]:focus-visible,
+.node-sample-waveform-settings-row input[type="number"]:focus,
+.node-sample-waveform-settings-row input[type="number"]:focus-visible,
 .node-led-settings-row input[type="number"]:focus,
 .node-led-settings-row input[type="number"]:focus-visible {
   outline: none;
@@ -6200,37 +6496,51 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   border-color: rgba(127, 199, 217, 0.52);
 }
 
-.node-phosphor-waveform-settings-row input[type="number"]::-webkit-outer-spin-button,
-.node-phosphor-waveform-settings-row input[type="number"]::-webkit-inner-spin-button,
+.node-sample-waveform-settings-row input[type="number"]::-webkit-outer-spin-button,
+.node-sample-waveform-settings-row input[type="number"]::-webkit-inner-spin-button,
 .node-led-settings-row input[type="number"]::-webkit-outer-spin-button,
 .node-led-settings-row input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
 
-.node-phosphor-waveform-settings-row input[data-phosphor-number-drag] {
+.node-sample-waveform-settings-row input[data-phosphor-number-drag] {
   width: auto;
   min-width: 2.25em;
   padding: 3px 4px 3px 2px;
   text-align: left;
-  cursor: ew-resize;
+  cursor: var(--node-dot-cursor);
   user-select: none;
   -webkit-user-select: none;
 }
-.node-phosphor-waveform-settings-row input[data-phosphor-number-drag].editing {
+.node-led-settings-row input[data-unit-stepper-drag][readonly],
+.node-led-settings-row input[data-textbox-field][data-unit-stepper-drag][readonly] {
+  cursor: var(--node-dot-cursor);
+  user-select: none;
+  -webkit-user-select: none;
+  caret-color: transparent;
+}
+.node-led-settings-row input[data-unit-stepper-drag]:not([readonly]):focus,
+.node-led-settings-row input[data-unit-stepper-drag].editing {
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+  caret-color: currentColor;
+}
+.node-sample-waveform-settings-row input[data-phosphor-number-drag].editing {
   cursor: text;
   user-select: text;
   -webkit-user-select: text;
 }
-.node-phosphor-waveform-settings-row input[type="number"].value-dragging,
+.node-sample-waveform-settings-row input[type="number"].value-dragging,
 .node-led-settings-row input[type="number"].value-dragging {
   border-color: rgba(127, 199, 217, 0.42);
   background: rgba(127, 199, 217, 0.08);
   cursor: var(--node-dot-cursor);
 }
 
-.node-phosphor-waveform-control-widgets > button,
-.node-phosphor-waveform-settings-row button,
+.node-sample-waveform-control-widgets > button,
+.node-sample-waveform-settings-row button,
 .node-led-settings-row button {
   padding: 3px 8px;
   border: 1px solid var(--line);
@@ -6240,7 +6550,7 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   font: inherit;
 }
 
-.node-phosphor-waveform-settings-row button.active,
+.node-sample-waveform-settings-row button.active,
 .node-led-settings-row button.active {
   border-color: rgba(90, 255, 150, 0.62);
   background: rgba(90, 255, 150, 0.16);
@@ -6259,7 +6569,7 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
 }
 
 .node-settings-range-row input[type="range"],
-.node-phosphor-waveform-settings-row input[type="range"],
+.node-sample-waveform-settings-row input[type="range"],
 .node-led-settings-row input[type="range"] {
   flex: 1 1 auto;
   min-width: 0;
@@ -6267,7 +6577,7 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   cursor: var(--node-slider-dot-cursor);
 }
 
-.node-phosphor-waveform-settings-row select,
+.node-sample-waveform-settings-row select,
 .node-led-settings-row select {
   flex: 1 1 auto;
   min-width: 0;
@@ -6360,8 +6670,8 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   border-top: 0;
 }
 
-.node-trace-display-settings-popover .node-led-display-settings-panel .node-led-settings-row.node-phosphor-waveform-tune-row,
-.node-trace-display-settings-popover .metadata-popover-grid .node-led-display-settings-panel label.node-led-settings-row.node-phosphor-waveform-tune-row {
+.node-trace-display-settings-popover .node-led-display-settings-panel .node-led-settings-row.node-sample-waveform-tune-row,
+.node-trace-display-settings-popover .metadata-popover-grid .node-led-display-settings-panel label.node-led-settings-row.node-sample-waveform-tune-row {
   display: grid !important;
   grid-template-columns: minmax(6.25rem, 0.34fr) minmax(0, 1fr) !important;
   grid-template-rows: auto !important;
@@ -6415,8 +6725,8 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
  * Square / Squircle: content-sized only (padding 3px 8px, font:inherit).
  * Defeat metadata button min-height:30px / padding:0 / font-size:0.72rem.
  */
-.node-trace-display-settings-popover .node-led-display-settings-panel .node-phosphor-waveform-control-widgets > button,
-.node-trace-display-settings-popover .metadata-popover-grid .node-led-display-settings-panel .node-phosphor-waveform-control-widgets > button,
+.node-trace-display-settings-popover .node-led-display-settings-panel .node-sample-waveform-control-widgets > button,
+.node-trace-display-settings-popover .metadata-popover-grid .node-led-display-settings-panel .node-sample-waveform-control-widgets > button,
 .node-trace-display-settings-popover .node-led-display-settings-panel .node-led-settings-row > button,
 .node-trace-display-settings-popover .metadata-popover-grid .node-led-display-settings-panel .node-led-settings-row > button {
   box-sizing: border-box;
@@ -6448,8 +6758,8 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   color: rgba(180, 255, 210, 0.95);
 }
 
-.node-trace-display-settings-popover .node-phosphor-waveform-load-row,
-.node-trace-display-settings-popover .metadata-popover-grid .node-phosphor-waveform-load-row {
+.node-trace-display-settings-popover .node-sample-waveform-load-row,
+.node-trace-display-settings-popover .metadata-popover-grid .node-sample-waveform-load-row {
   display: flex !important;
   align-items: center !important;
   gap: 0;
@@ -6458,8 +6768,8 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   min-height: var(--ds-row-h, var(--metadata-control-row-height, 22px));
 }
 
-.node-trace-display-settings-popover .node-phosphor-waveform-playlist-actions,
-.node-trace-display-settings-popover .metadata-popover-grid .node-phosphor-waveform-playlist-actions {
+.node-trace-display-settings-popover .node-sample-waveform-playlist-actions,
+.node-trace-display-settings-popover .metadata-popover-grid .node-sample-waveform-playlist-actions {
   display: grid !important;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: stretch;
@@ -6468,18 +6778,18 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   margin: 0;
 }
 
-.node-trace-display-settings-popover .node-phosphor-waveform-load-actions,
-.node-trace-display-settings-popover .metadata-popover-grid .node-phosphor-waveform-load-actions {
+.node-trace-display-settings-popover .node-sample-waveform-load-actions,
+.node-trace-display-settings-popover .metadata-popover-grid .node-sample-waveform-load-actions {
   grid-template-columns: minmax(0, 1fr) !important;
 }
 
-.node-trace-display-settings-popover .node-phosphor-waveform-history-reset,
-.node-trace-display-settings-popover .metadata-popover-grid .node-phosphor-waveform-history-reset {
+.node-trace-display-settings-popover .node-sample-waveform-history-reset,
+.node-trace-display-settings-popover .metadata-popover-grid .node-sample-waveform-history-reset {
   grid-template-columns: minmax(0, 1fr) !important;
 }
 
-.node-trace-display-settings-popover .node-phosphor-waveform-playlist-actions > button,
-.node-trace-display-settings-popover .metadata-popover-grid .node-phosphor-waveform-playlist-actions > button {
+.node-trace-display-settings-popover .node-sample-waveform-playlist-actions > button,
+.node-trace-display-settings-popover .metadata-popover-grid .node-sample-waveform-playlist-actions > button {
   flex: 1 1 0 !important;
   width: 100% !important;
   max-width: none !important;
@@ -6491,14 +6801,14 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   border-radius: 0 !important;
 }
 
-.node-trace-display-settings-popover .node-phosphor-waveform-loader-slot,
-.node-trace-display-settings-popover .node-phosphor-waveform-loader-slot .node-sample-path-loader,
-.node-trace-display-settings-popover .node-phosphor-waveform-loader-slot .node-sample-path-input {
+.node-trace-display-settings-popover .node-sample-waveform-loader-slot,
+.node-trace-display-settings-popover .node-sample-waveform-loader-slot .node-sample-path-loader,
+.node-trace-display-settings-popover .node-sample-waveform-loader-slot .node-sample-path-input {
   min-width: 0 !important;
   min-inline-size: 0 !important;
 }
 
-.node-trace-display-settings-popover .node-phosphor-waveform-loader-slot .node-sample-path-button {
+.node-trace-display-settings-popover .node-sample-waveform-loader-slot .node-sample-path-button {
   flex: 0 0 auto !important;
   width: var(--node-sample-control-height) !important;
   min-width: var(--node-sample-control-height) !important;
@@ -6536,6 +6846,103 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
 .node-trace-display-settings-popover[data-display-settings-type="keypadFace"] .node-led-display-settings-panel {
   background: transparent;
   color: inherit;
+}
+
+/* Text Box Display Settings: label | controls two-column grid.
+   Scoped to [data-textbox-display-settings-panel] only - does not change LED/keypad rows. */
+.node-trace-display-settings-popover [data-textbox-display-settings-panel] .node-led-settings-row.textbox-display-settings-row,
+.node-trace-display-settings-popover .metadata-popover-grid [data-textbox-display-settings-panel] label.node-led-settings-row.textbox-display-settings-row {
+  display: grid !important;
+  grid-template-columns: 8.75rem minmax(0, 1fr) !important;
+  grid-template-rows: auto !important;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 0;
+  justify-items: stretch;
+}
+
+.node-trace-display-settings-popover [data-textbox-display-settings-panel] .textbox-display-settings-row > span:first-child,
+.node-trace-display-settings-popover .metadata-popover-grid [data-textbox-display-settings-panel] label.textbox-display-settings-row > span:first-child {
+  flex: 0 0 auto;
+  grid-column: 1;
+  justify-self: start;
+  width: auto;
+  max-width: 100%;
+  min-width: 0 !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-trace-display-settings-popover [data-textbox-display-settings-panel] .textbox-display-controls {
+  grid-column: 2;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  min-width: 0;
+  width: 100%;
+}
+
+/* Mode / Align buttons sit in the controls column (not direct row children). */
+.node-trace-display-settings-popover [data-textbox-display-settings-panel] .textbox-display-controls > button,
+.node-trace-display-settings-popover .metadata-popover-grid [data-textbox-display-settings-panel] .textbox-display-controls > button {
+  box-sizing: border-box;
+  flex: 0 0 auto !important;
+  width: auto !important;
+  max-width: none;
+  min-width: min-content !important;
+  min-height: 0 !important;
+  height: auto !important;
+  margin: 0;
+  padding: 2px 6px !important;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font: inherit !important;
+  font-family: inherit !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  letter-spacing: inherit;
+  line-height: inherit;
+  white-space: nowrap;
+}
+
+.node-trace-display-settings-popover [data-textbox-display-settings-panel] .textbox-display-controls > button.active,
+.node-trace-display-settings-popover .metadata-popover-grid [data-textbox-display-settings-panel] .textbox-display-controls > button.active {
+  border-color: rgba(90, 255, 150, 0.62);
+  background: rgba(90, 255, 150, 0.16);
+  color: rgba(180, 255, 210, 0.95);
+}
+
+.node-trace-display-settings-popover [data-textbox-display-settings-panel] .textbox-display-controls input[type="range"] {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+}
+
+.node-trace-display-settings-popover [data-textbox-display-settings-panel] .textbox-display-controls select {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+}
+
+.node-trace-display-settings-popover [data-textbox-display-settings-panel] .textbox-display-controls input[type="number"] {
+  flex: 0 0 auto;
+  width: 56px;
+  margin: 0;
+}
+
+.node-trace-display-settings-popover [data-textbox-display-settings-panel] .textbox-display-controls > span {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 /* Tips window uses shared .scene-context-resize-handle (SE corner). */
@@ -6751,7 +7158,6 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   z-index: 0;
   border-radius: 5px;
   opacity: 0;
-  transition: opacity 120ms ease;
   box-shadow:
     inset 0 0 0 1px var(--node-constraint-ring-cpu),
     inset 0 0 0 2px var(--node-constraint-ring-ram),
@@ -6947,7 +7353,7 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
    * Module stroke zoom compensate (UIDEV “module strokes fixed”, default on):
    *   1/zoom → 1px stays 1 *screen* CSS px under workspace camera scale
    *   1      → stroke scales with zoom
-   * Applies to idle outline, selected inset stroke, and frame path width.
+   * Applies to idle and selected plate outline.
    * Do NOT also use vector-effect:non-scaling-stroke — that double-handles
    * scale and walks the ring off the edge under zoom.
    */
@@ -7031,6 +7437,7 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   --node-module-idle-stroke-width: 1px;
   --node-module-idle-stroke: rgb(255 255 255 / 0.5);
   --node-module-selected-stroke: rgb(226 168 109 / 1);
+  --node-module-title-padding: 0px;
   --node-module-drag-stroke: #e2a86d;
   --node-port-idle-fill: transparent;
   --node-port-idle-stroke: var(--node-port-idle-crescent-stroke);
@@ -7051,6 +7458,8 @@ body.keyboard-debug-hidden .node-midi-keyboard-signal-bar {
   --node-jack-red: #f25d5d;
   --node-jack-green: #3ddc84;
   --node-jack-blue: #4d8dff;
+  /* Arp Keys / digital gold — brighter than analog #e2a86d (piano .held). */
+  --node-jack-gold: #f0b84a;
   --node-jack-purple: #c44dff;
   /* CMYK additive non-realtime plane (distinct from gold analog #e2a86d). */
   --node-jack-cyan: #00e5ff;     /* C — Parameter / block-rate ZOH in/out */
@@ -7246,6 +7655,14 @@ body.node-graph-magnifying-active .node-graph-workspace * {
   cursor: var(--node-dot-cursor);
 }
 
+/* Mid-zoom: use frozen stroke compensate (JS sets --node-module-stroke-
+   zoom-compensate-frozen at gesture start). Live --node-graph-zoom ticks
+   must not restyle every module outline (costly at 10-20x). Settle drops
+   viewport-zooming + the frozen var so the live 1/zoom calc resumes. */
+.node-graph-workspace.viewport-zooming {
+  --node-module-stroke-zoom-compensate: var(--node-module-stroke-zoom-compensate-frozen, 1);
+}
+
 /* Hide cables, jack inlets/outlets, and connection dots while zooming.
    Modules stay. visibility so settle unhides (class drop). */
 .node-graph-workspace.viewport-zooming #nodeWireSvg,
@@ -7322,7 +7739,6 @@ body.node-graph-magnifying-active .node-graph-workspace * {
   touch-action: none;
   /* APP_POLICY §14: idle-hidden; panel/handle hover or drag reveals. */
   opacity: 0;
-  transition: opacity 120ms ease;
 }
 
 .node-wiring-panel.modular-only-view .node-graph-resize-handle {
@@ -9406,7 +9822,6 @@ body.node-graph-magnifying-active .node-graph-workspace * {
   font-size: 0.9rem;
   font-weight: 600;
   cursor: var(--node-dot-cursor);
-  transition: background 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
 }
 
 .node-code-screen-landing-cta:hover {
@@ -9872,7 +10287,6 @@ body.node-graph-magnifying-active .node-graph-workspace * {
   pointer-events: auto;
   cursor: se-resize;
   opacity: 0;
-  transition: opacity 120ms ease;
 }
 
 .scene-context-resize-handle:is(:hover, :focus-visible, :active, .dragging) {
@@ -10704,7 +11118,6 @@ body.node-graph-magnifying-active .node-graph-workspace * {
   text-shadow:
     0 0 8px rgba(127, 199, 217, 0.55),
     0 0 18px rgba(127, 199, 217, 0.22);
-  transition: opacity 140ms ease;
   z-index: 4;
 }
 
@@ -11047,6 +11460,7 @@ body.node-graph-magnifying-active .node-graph-workspace * {
   text-align: center;
   text-overflow: clip;
   white-space: nowrap;
+  font-size: clamp(0.62rem, 16cqi, 0.95rem);
 }
 
 .node-settings-actions button > span:last-child,
@@ -11063,6 +11477,7 @@ body.node-graph-magnifying-active .node-graph-workspace * {
   text-align: center;
   text-overflow: clip;
   white-space: nowrap;
+  font-size: clamp(0.62rem, 16cqi, 0.95rem);
 }
 
 #nodeUiDevButton {
@@ -11284,12 +11699,6 @@ body.node-graph-magnifying-active .node-graph-workspace * {
   line-height: 1.05;
   text-align: center;
   text-decoration: none;
-  transition:
-    border-color 150ms linear,
-    background 150ms linear,
-    color 150ms linear,
-    box-shadow 150ms linear,
-    transform 150ms linear;
 }
 
 .node-settings-link-action span:first-child {
@@ -12086,9 +12495,20 @@ body.node-graph-magnifying-active .node-graph-workspace * {
   width: 100%;
   height: 100%;
   background: transparent;
-  /* 1× layout + GPU scale. Off-screen modules are display:none so the
-     layer AABB is only what's on screen — CSS zoom rasterized those at
-     zoom× pixels and pan died. */
+  /* Host stays scale(1). Camera pan/zoom lives on .node-graph-world-layer
+     so full-bleed wire SVGs (workspace siblings) are never CSS-scaled. */
+  transform: none;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Modules + origin + selection chrome: world coords under compositor camera. */
+.node-graph-world-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
   transform-origin: 0 0;
   transform: translate3d(
     var(--node-graph-pan-x),
@@ -12097,6 +12517,19 @@ body.node-graph-magnifying-active .node-graph-workspace * {
   ) scale(var(--node-graph-zoom));
   pointer-events: none;
 }
+
+/* B-055: Text Box host under #nodeWireSvg. Shares .node-graph-world-layer transform. */
+.node-graph-annotation-world-layer {
+  z-index: 0;
+  /* Sit in the workspace stacking context with #nodeWireSvg (later sibling paints above). */
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
 
 .node-graph-origin-marker {
   position: absolute;
@@ -12314,7 +12747,8 @@ body.node-graph-magnifying-active .node-graph-workspace * {
 .node-graph-workspace.module-oscilloscopes-hidden
   .dsp-node:not(.oscilloscope-forced-visible)
   .node-module-face:not(.node-text-box-body),
-.dsp-node.oscilloscope-hidden .node-module-face:not(.node-text-box-body) {
+.dsp-node.oscilloscope-hidden .node-module-face:not(.node-text-box-body),
+.dsp-node.face-track-omitted .node-module-face:not(.node-text-box-body) {
   display: none !important;
 }
 
@@ -12340,11 +12774,15 @@ body.room-dimmer-on .node-room-dimmer-canvas,
 .node-wire-svg {
   position: absolute;
   inset: 0;
-  z-index: 1;
+  /* Behind .node-graph-zoom-surface (z:1) so cables sit under modules.
+     Screen-space: viewBox is the camera frustum; clip to the viewport. */
+  z-index: 0;
   width: 100%;
   height: 100%;
-  overflow: visible;
-  pointer-events: auto;
+  overflow: hidden;
+  /* Above annotation Text Boxes (sibling layer before this SVG). Full-bleed
+     must not steal clicks — hit targets stay on .node-wire-hit-path. */
+  pointer-events: none;
 }
 
 /* Contact discs always on the overlay. Visual cable follows Visibility →
@@ -12352,10 +12790,11 @@ body.room-dimmer-on .node-room-dimmer-canvas,
 .node-wire-endpoint-svg {
   position: absolute;
   inset: 0;
+  /* Above zoom-surface modules; screen-space camera viewBox like #nodeWireSvg. */
   z-index: 3;
   width: 100%;
   height: 100%;
-  overflow: visible;
+  overflow: hidden;
   pointer-events: none;
 }
 
@@ -12640,6 +13079,30 @@ body.node-layout-canvas-active .node-layout-canvas-stage.node-layout-canvas-edit
   opacity: 0.95;
 }
 
+/* Arrange-mode phone guides: thin white portrait/landscape frame (one at a time). */
+.node-layout-canvas-phone-guides {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 100000;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.node-layout-canvas-stage.node-layout-canvas-edit > .node-layout-canvas-phone-guides,
+body.node-layout-canvas-active.node-layout-canvas-edit .node-layout-canvas-phone-guides {
+  display: block;
+}
+
+.node-layout-canvas-phone-guide-frame {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: transparent;
+  box-shadow: none;
+  pointer-events: none;
+}
+
 .node-screen-solo-stage[hidden] {
   display: none !important;
 }
@@ -12727,7 +13190,7 @@ body.node-screen-solo-active .node-screen-solo-face .node-music-player-waveplay-
 
 /* Music Player: pages are inset for the module dock. In F they must fill
    the stage (minus the one-row dock) or the wave sits in a short band. */
-body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-display .node-music-player-page {
+body.node-screen-solo-active .node-screen-solo-face.node-sample-waveform-display .node-music-player-page {
   top: 0 !important;
   right: 0 !important;
   left: 0 !important;
@@ -12759,8 +13222,9 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
      the real plate. */
   grid-template-columns: minmax(0, 1fr);
   justify-items: stretch;
-  /* LayoutA: reserve I/O strip height from --node-module-io-height-units so
-     multi-out modules (crossovers) never crush outlets into the param track. */
+  /* LayoutA: I/O band sits above the face. Reserve strip height from
+     --node-module-io-height-units so multi-out modules (crossovers) never
+     crush outlets into the face or param track. */
   --node-module-io-track-min: max(
     var(--node-io-section-min-height),
     calc(
@@ -12922,7 +13386,7 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
 .node-module-graph-display,
 .node-module-filter-curve-display,
 .node-filter-curve-display,
-.node-phosphor-waveform-display,
+.node-sample-waveform-display,
 .node-phosphillator-draw-display,
 .node-wall-room-display {
   pointer-events: auto;
@@ -12959,21 +13423,8 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
 }
 
 .dsp-node.selected::before {
-  outline-color: transparent;
+  outline-color: var(--node-module-selected-stroke);
   filter: drop-shadow(0 14px 30px rgba(0, 0, 0, 0.32));
-}
-
-.dsp-node.selected::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  /* Above faces (z:2) and the bypass wallpaper (z:40). Still inside the
-     isolated module so workspace overlay wires (z:3) stay above the plate. */
-  z-index: 45;
-  pointer-events: none;
-  border-radius: inherit;
-  corner-shape: inherit;
-  box-shadow: inset 0 0 0 calc(var(--node-module-idle-stroke-width, 1px) * var(--node-module-stroke-zoom-compensate, 1)) var(--node-module-selected-stroke);
 }
 
 .dsp-node.slider-widget-layout.knob-face-has-image,
@@ -12984,10 +13435,7 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
 
 .dsp-node.slider-widget-layout.knob-face-has-image::before,
 .dsp-node.slider-widget-layout:has(.node-knob-face.has-image)::before,
-.dsp-node.slider-widget-layout[data-hide-module-frame="1"]::before,
-.dsp-node.slider-widget-layout.knob-face-has-image::after,
-.dsp-node.slider-widget-layout:has(.node-knob-face.has-image)::after,
-.dsp-node.slider-widget-layout[data-hide-module-frame="1"]::after {
+.dsp-node.slider-widget-layout[data-hide-module-frame="1"]::before {
   content: none;
 }
 
@@ -13002,14 +13450,6 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   /* Contain the OFF veil (z:40) so it cannot cover the workspace. */
   isolation: isolate;
   z-index: 2;
-}
-
-.dsp-node.bypassed:not(.selected)::after {
-  content: none;
-}
-
-.dsp-node.bypassed.selected::after {
-  z-index: 45;
 }
 
 /* Construction fill only. Selection ring + I/O sit above this wallpaper. */
@@ -13070,7 +13510,7 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
 .dsp-node.bypassed .node-pitch-detector-face,
 .dsp-node.bypassed .node-filter-curve-display,
 .dsp-node.bypassed .node-envelope-curve-display,
-.dsp-node.bypassed .node-phosphor-waveform-display,
+.dsp-node.bypassed .node-sample-waveform-display,
 .dsp-node.bypassed .node-phosphillator-draw-display,
 .dsp-node.bypassed .node-pulse-curve-display,
 .dsp-node.bypassed .node-wall-room-display,
@@ -13115,23 +13555,15 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   opacity: 1;
 }
 
-/* Hide unused: unconnected signal jacks (rows) + mute unused param ports. */
-.dsp-node.unused-hidden .node-io-row:not(:has(.connected-port)),
-.dsp-node.unused-hidden .node-io-row:not(:has(.node-port.connected-port)),
-.node-graph-workspace.patch-unused-ports-hidden .dsp-node .node-io-row:not(:has(.connected-port)),
-.node-graph-workspace.patch-unused-ports-hidden .dsp-node .node-io-row:not(:has(.node-port.connected-port)) {
+/* Hide unused: per-module .unused-hidden only (unconnected signal jacks). Parameter I/O stays visible.
+   Global .patch-unused-ports-hidden overlay retired — toolbar batches ui.hideUnused per module. */
+.dsp-node.unused-hidden .node-io-row:not(:has(.connected-port)):not(:has(.node-param-port)),
+.dsp-node.unused-hidden .node-io-row:not(:has(.node-port.connected-port)):not(:has(.node-param-port)) {
   display: none !important;
 }
 
-.dsp-node.unused-hidden .node-port:not(.connected-port),
-.node-graph-workspace.patch-unused-ports-hidden .dsp-node .node-port:not(.connected-port) {
+.dsp-node.unused-hidden .node-port:not(.node-param-port):not(.connected-port) {
   display: none !important;
-}
-
-.dsp-node.unused-hidden .node-param-port:not(.connected-port),
-.node-graph-workspace.patch-unused-ports-hidden .dsp-node .node-param-port:not(.connected-port) {
-  visibility: hidden;
-  pointer-events: none;
 }
 
 .node-graph-workspace.patch-locked .node-port,
@@ -13199,10 +13631,11 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   align-self: stretch;
   box-sizing: border-box;
   width: 100%;
-  /* Exact face track — never grow with jack min-content. */
-  height: var(--node-module-layout-b-shell-track);
+  /* Fill the article track. Do not also set height to raw face-gu pixels —
+     that ignores plate insets and hangs the display off the module. */
+  height: 100%;
   min-height: 0;
-  max-height: var(--node-module-layout-b-shell-track);
+  max-height: 100%;
   /* visible so half-crescents are not clipped by the shell box */
   overflow: visible;
 }
@@ -13231,13 +13664,14 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
 
 .dsp-node.chrome-layout-b.layout-b-no-params > .node-solid-module-shell,
 .dsp-node.chrome-layout-b.layout-b-no-params > .node-module-chrome-layout-b-shell,
-.dsp-node.solid-module-layout.layout-b-no-params > .node-solid-module-shell {
+.dsp-node.solid-module-layout.layout-b-no-params > .node-solid-module-shell,
+.dsp-node.layout-b-display-only > .node-solid-module-shell,
+.dsp-node.layout-b-display-only > .node-module-chrome-layout-b-shell {
   height: 100%;
   min-height: 0;
   max-height: 100%;
   overflow: visible;
-  border-end-start-radius: inherit;
-  border-end-end-radius: inherit;
+  border-radius: inherit;
   corner-shape: inherit;
 }
 
@@ -13246,7 +13680,79 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
    writes the real plate insets (avoid rounding the screen's own box). */
 .dsp-node .node-module-scope-window,
 .dsp-node .node-module-face:not(.node-text-box-body):not(.node-filter-curve-display),
-.dsp-node .node-phosphor-waveform-display,
+.dsp-node .node-sample-waveform-display,
+
+/* Graph face wrapper: SVG plot + compact numeric strip underneath. */
+.node-module-graph-face {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.node-module-graph-face > .node-module-graph-display {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.node-module-graph-point-strip {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.35rem;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.2rem 0.35rem 0.28rem;
+  border-top: 1px solid rgba(128, 224, 224, 0.16);
+  background: rgba(2, 8, 12, 0.92);
+  color: rgba(210, 236, 236, 0.88);
+  font-size: 0.68rem;
+  line-height: 1.1;
+}
+
+.node-module-graph-point-strip-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.node-module-graph-point-strip-label {
+  flex: 0 0 auto;
+  opacity: 0.72;
+  letter-spacing: 0.02em;
+}
+
+.node-module-graph-point-strip-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0.12rem 0.22rem;
+  border: 1px solid rgba(128, 224, 224, 0.22);
+  border-radius: 3px;
+  background: #040a0e;
+  color: rgba(230, 248, 248, 0.95);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.node-module-graph-point-strip-input:focus {
+  outline: 1px solid rgba(255, 236, 181, 0.55);
+  outline-offset: 0;
+  border-color: rgba(255, 236, 181, 0.45);
+}
+
+.node-module-graph-point-strip-input:read-only {
+  opacity: 0.55;
+}
+
 .dsp-node .node-module-graph-display {
   --node-plate-clip-top: 999px;
   --node-plate-clip-right: 999px;
@@ -13271,9 +13777,14 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
 
 .dsp-node.layout-b-no-params
   > :is(.node-solid-module-shell, .node-module-chrome-layout-b-shell)
+  > :is(.node-module-face, .node-module-scope-window, .node-solid-module-custom-ui),
+.dsp-node.layout-b-display-only
+  > :is(.node-solid-module-shell, .node-module-chrome-layout-b-shell)
   > :is(.node-module-face, .node-module-scope-window, .node-solid-module-custom-ui) {
   overflow: hidden;
   clip-path: none;
+  height: 100%;
+  max-height: 100%;
   border-radius: var(--node-module-frame-radius);
   corner-shape: inherit;
 }
@@ -13303,7 +13814,10 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   display: none !important;
 }
 
-/* LayoutA filter-curve article rows come from applyNodeGraphModuleLayout. */
+/* LayoutA article rows come from applyNodeGraphModuleLayout:
+   header → io → face → params → lip. Sample load controls stay under the face.
+   Display off / Display Height 0 omits the face track (face-track-omitted).
+   LayoutB (ports beside the face) and InletOutletLayout are not this stack. */
 
 /*
  * LayoutC — compact convenience thrus (Vectorscope Rotation, …):
@@ -13311,7 +13825,8 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
  * No display face, no param stack. Port rows 1fr so small modules still have
  * tall hit bands for L/R / X/Y.
  */
-/* TitleBarAndPorts (canonical) + chrome-layout-c (deprecated alias for LayoutC). */
+/* InletOutletLayout (canonical) + title-bar-and-ports / layout-c deprecated aliases. */
+.dsp-node.chrome-layout-inlet-outlet > .dsp-node-io-section,
 .dsp-node.chrome-layout-title-bar-and-ports > .dsp-node-io-section,
 .dsp-node.chrome-layout-c > .dsp-node-io-section {
   min-height: 0;
@@ -13326,6 +13841,7 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   overflow: hidden;
 }
 
+.dsp-node.chrome-layout-inlet-outlet > .dsp-node-io-section .node-io-column,
 .dsp-node.chrome-layout-title-bar-and-ports > .dsp-node-io-section .node-io-column,
 .dsp-node.chrome-layout-c > .dsp-node-io-section .node-io-column {
   height: 100%;
@@ -13338,6 +13854,7 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   overflow: hidden;
 }
 
+.dsp-node.chrome-layout-inlet-outlet > .dsp-node-io-section .node-io-row,
 .dsp-node.chrome-layout-title-bar-and-ports > .dsp-node-io-section .node-io-row,
 .dsp-node.chrome-layout-c > .dsp-node-io-section .node-io-row {
   min-height: var(--node-signal-port-height);
@@ -13347,6 +13864,7 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   overflow: hidden;
 }
 
+.dsp-node.chrome-layout-inlet-outlet > .dsp-node-body,
 .dsp-node.chrome-layout-title-bar-and-ports > .dsp-node-body,
 .dsp-node.chrome-layout-c > .dsp-node-body {
   display: none !important;
@@ -13403,9 +13921,8 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   fill: none !important;
 }
 
-/* Knob module face = macro dial renderer, sized to the LayoutB display plate.
-   Colors via per-face --macro-arc-* / background (Display Settings), not the
-   global Macro Controls bank. Do not apply --macro-knob-size-scale here. */
+/* Knob module face, sized to the LayoutB display plate.
+   Colors via per-face --macro-arc-* / background (Display Settings). */
 .node-knob-face {
   position: relative;
   box-sizing: border-box;
@@ -13427,128 +13944,198 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   user-select: none;
 }
 
-/* Knob module: same shared macro layout, fill plate; no global size-scale.
-   Must reassert display:flex — plain .node-knob-face { display:block } wins
-   over .node-macro-knob later in the sheet (same specificity), which collapses
-   the dial (min-height:0 + absolutely positioned arc/value). */
+/* Knob module: dial fills the display; label + value are independent pins
+   (top / mid / bottom). Knob size scales only the arc graphic. No flex coupling. */
 .dsp-node.slider-widget-layout .node-knob-face.node-knob-module-macro.node-macro-knob,
 .node-knob-face.node-knob-module-macro.node-macro-knob {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 1px;
+  display: block;
+  position: relative;
   min-height: 0;
   height: 100%;
   width: 100%;
   padding: 0;
   box-sizing: border-box;
   transform: none;
-  transform-origin: center center;
   font: 700 0.68rem/1 "Cascadia Mono", Consolas, monospace;
   color: var(--muted);
   overflow: hidden;
+  /* cqmin for label/value/arc uses this face box — not JS px. */
+  container-type: size;
 }
 
-.dsp-node.slider-widget-layout .node-knob-face.node-knob-module-macro .node-macro-knob-label,
-.node-knob-face.node-knob-module-macro .node-macro-knob-label {
-  flex: 0 0 auto;
-  line-height: 1.05;
-  max-height: none;
-  /* Size is JS-fit to the knob square (Label size 0…1). Rem is first-paint only. */
-  font-size: calc(var(--knob-label-size, 0.45) * 1em);
+/* Label: display-relative size; absolute pin (does not shrink the dial). */
+.dsp-node.slider-widget-layout .node-knob-face.node-knob-module-macro:not(.is-slider-look) .node-macro-knob-label,
+.node-knob-face.node-knob-module-macro:not(.is-slider-look) .node-macro-knob-label,
+.dsp-node .node-knob-face:not([data-knob-look="slider"]):not(.is-slider-look) > .node-macro-knob-label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  margin: 0;
+  padding: 0 2px;
+  width: auto;
+  max-width: 100%;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  font-size: calc(var(--knob-label-size, 0.2) * 100cqmin);
+  text-fit: none;
+  transform: none;
   pointer-events: auto;
   cursor: text;
   user-select: text;
 }
 
-/* Per-knob title/value placement — must beat body[data-macro-knob-*] on the same classes. */
-.dsp-node .node-knob-face[data-knob-label-position="above"] .node-macro-knob-label,
-.dsp-node .node-knob-face[data-knob-label-position="above"] > span:not(.node-macro-knob-dial) {
-  position: relative;
-  left: auto;
-  top: auto;
-  bottom: auto;
-  transform: none;
-  order: 0;
-}
-
-.dsp-node .node-knob-face[data-knob-label-position="mid"] .node-macro-knob-label,
-.dsp-node .node-knob-face[data-knob-label-position="mid"] > span:not(.node-macro-knob-dial) {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  bottom: auto;
-  z-index: 3;
-  transform: translate(-50%, -50%);
-}
-
-.dsp-node .node-knob-face[data-knob-label-position="below"] .node-macro-knob-label,
-.dsp-node .node-knob-face[data-knob-label-position="below"] > span:not(.node-macro-knob-dial) {
-  position: absolute;
-  left: 50%;
-  top: auto;
-  bottom: 2px;
-  z-index: 3;
-  transform: translateX(-50%);
-}
-
-.dsp-node .node-knob-face .node-macro-knob-dial > [data-knob-face-readout],
-.dsp-node .node-knob-face .node-macro-knob-dial > .node-macro-knob-value,
-.node-layout-canvas-tile .node-knob-face .node-macro-knob-dial > [data-knob-face-readout],
-.node-layout-canvas-tile .node-knob-face .node-macro-knob-dial > .node-macro-knob-value,
-.node-screen-solo-stage .node-knob-face .node-macro-knob-dial > [data-knob-face-readout],
-.node-metamodule-canvas-stage .node-knob-face .node-macro-knob-dial > [data-knob-face-readout] {
-  font-size: calc(0.28rem + var(--knob-value-size, 0.45) * 1.55rem);
-}
-
-.dsp-node .node-knob-face[data-knob-value-position="above"] .node-macro-knob-dial > [data-knob-face-readout],
-.dsp-node .node-knob-face[data-knob-value-position="above"] .node-macro-knob-dial > .node-macro-knob-value {
+.dsp-node .node-knob-face[data-knob-label-position="top"] .node-macro-knob-label,
+.dsp-node .node-knob-face[data-knob-label-position="above"] .node-macro-knob-label {
   top: 2px;
   bottom: auto;
-  transform: translateX(-50%);
+  transform: none;
 }
 
-.dsp-node .node-knob-face[data-knob-value-position="mid"] .node-macro-knob-dial > [data-knob-face-readout],
-.dsp-node .node-knob-face[data-knob-value-position="mid"] .node-macro-knob-dial > .node-macro-knob-value {
+.dsp-node .node-knob-face[data-knob-label-position="mid"] .node-macro-knob-label {
   top: 50%;
   bottom: auto;
-  transform: translate(-50%, -50%);
+  transform: translateY(-50%);
 }
 
-.dsp-node .node-knob-face[data-knob-value-position="below"] .node-macro-knob-dial > [data-knob-face-readout],
-.dsp-node .node-knob-face[data-knob-value-position="below"] .node-macro-knob-dial > .node-macro-knob-value {
+.dsp-node .node-knob-face[data-knob-label-position="bottom"] .node-macro-knob-label,
+.dsp-node .node-knob-face[data-knob-label-position="below"] .node-macro-knob-label {
   top: auto;
   bottom: 2px;
-  transform: translateX(-50%);
+  transform: none;
 }
 
-.dsp-node .node-knob-face[data-knob-label-position="off"] .node-macro-knob-label,
-.dsp-node .node-knob-face[data-knob-label-position="off"] > span:not(.node-macro-knob-dial) {
+.dsp-node .node-knob-face[data-knob-label-position="off"] .node-macro-knob-label {
   display: none !important;
 }
 
-.dsp-node .node-knob-face[data-knob-value-position="off"] .node-macro-knob-dial > [data-knob-face-readout],
-.dsp-node .node-knob-face[data-knob-value-position="off"] .node-macro-knob-dial > .node-macro-knob-value {
+/* Value / number: same pin model as label (face child; may overlap). */
+.dsp-node .node-knob-face:not([data-knob-look="slider"]) > .node-macro-knob-value,
+.dsp-node .node-knob-face:not([data-knob-look="slider"]) > [data-knob-face-readout],
+.node-layout-canvas-tile .node-knob-face:not([data-knob-look="slider"]) > [data-knob-face-readout],
+.node-screen-solo-stage .node-knob-face:not([data-knob-look="slider"]) > [data-knob-face-readout],
+.node-metamodule-canvas-stage .node-knob-face:not([data-knob-look="slider"]) > [data-knob-face-readout] {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  margin: 0;
+  padding: 0 2px;
+  width: auto;
+  max-width: 100%;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  color: var(--text);
+  font-size: calc(var(--knob-value-size, 0.2) * 100cqmin);
+  text-fit: none;
+  transform: none;
+  pointer-events: none;
+}
+
+/* Layout-canvas / solo faces are reparented outside .dsp-node; keep the same pin positions. */
+.dsp-node .node-knob-face[data-knob-value-position="top"] > .node-macro-knob-value,
+.dsp-node .node-knob-face[data-knob-value-position="top"] > [data-knob-face-readout],
+.dsp-node .node-knob-face[data-knob-value-position="above"] > .node-macro-knob-value,
+.dsp-node .node-knob-face[data-knob-value-position="above"] > [data-knob-face-readout],
+.node-layout-canvas-tile .node-knob-face[data-knob-value-position="top"] > .node-macro-knob-value,
+.node-layout-canvas-tile .node-knob-face[data-knob-value-position="top"] > [data-knob-face-readout],
+.node-layout-canvas-tile .node-knob-face[data-knob-value-position="above"] > .node-macro-knob-value,
+.node-layout-canvas-tile .node-knob-face[data-knob-value-position="above"] > [data-knob-face-readout],
+.node-screen-solo-stage .node-knob-face[data-knob-value-position="top"] > .node-macro-knob-value,
+.node-screen-solo-stage .node-knob-face[data-knob-value-position="top"] > [data-knob-face-readout],
+.node-screen-solo-stage .node-knob-face[data-knob-value-position="above"] > .node-macro-knob-value,
+.node-screen-solo-stage .node-knob-face[data-knob-value-position="above"] > [data-knob-face-readout],
+.node-metamodule-canvas-stage .node-knob-face[data-knob-value-position="top"] > .node-macro-knob-value,
+.node-metamodule-canvas-stage .node-knob-face[data-knob-value-position="top"] > [data-knob-face-readout],
+.node-metamodule-canvas-stage .node-knob-face[data-knob-value-position="above"] > .node-macro-knob-value,
+.node-metamodule-canvas-stage .node-knob-face[data-knob-value-position="above"] > [data-knob-face-readout] {
+  /* Value Y offset: positive moves down from the top edge. */
+  top: calc(2px + var(--knob-value-offset-y, 0) * 100%);
+  bottom: auto;
+  transform: none;
+}
+
+.dsp-node .node-knob-face[data-knob-value-position="mid"] > .node-macro-knob-value,
+.dsp-node .node-knob-face[data-knob-value-position="mid"] > [data-knob-face-readout],
+.node-layout-canvas-tile .node-knob-face[data-knob-value-position="mid"] > .node-macro-knob-value,
+.node-layout-canvas-tile .node-knob-face[data-knob-value-position="mid"] > [data-knob-face-readout],
+.node-screen-solo-stage .node-knob-face[data-knob-value-position="mid"] > .node-macro-knob-value,
+.node-screen-solo-stage .node-knob-face[data-knob-value-position="mid"] > [data-knob-face-readout],
+.node-metamodule-canvas-stage .node-knob-face[data-knob-value-position="mid"] > .node-macro-knob-value,
+.node-metamodule-canvas-stage .node-knob-face[data-knob-value-position="mid"] > [data-knob-face-readout] {
+  /* Face mid + Value Y offset (positive = down). Distinct from midknob (dial center). */
+  top: calc(50% + var(--knob-value-offset-y, 0) * 100%);
+  bottom: auto;
+  transform: translateY(-50%);
+}
+
+/* Mid knob: center of the dial/arc circle (tracks dialOffsetY), plus Value Y offset. */
+.dsp-node .node-knob-face[data-knob-value-position="midknob"] > .node-macro-knob-value,
+.dsp-node .node-knob-face[data-knob-value-position="midknob"] > [data-knob-face-readout],
+.node-layout-canvas-tile .node-knob-face[data-knob-value-position="midknob"] > .node-macro-knob-value,
+.node-layout-canvas-tile .node-knob-face[data-knob-value-position="midknob"] > [data-knob-face-readout],
+.node-screen-solo-stage .node-knob-face[data-knob-value-position="midknob"] > .node-macro-knob-value,
+.node-screen-solo-stage .node-knob-face[data-knob-value-position="midknob"] > [data-knob-face-readout],
+.node-metamodule-canvas-stage .node-knob-face[data-knob-value-position="midknob"] > .node-macro-knob-value,
+.node-metamodule-canvas-stage .node-knob-face[data-knob-value-position="midknob"] > [data-knob-face-readout] {
+  top: calc(50% + var(--knob-dial-offset-y, 0) * 100cqmin + var(--knob-value-offset-y, 0) * 100%);
+  bottom: auto;
+  transform: translateY(-50%);
+}
+
+.dsp-node .node-knob-face[data-knob-value-position="bottom"] > .node-macro-knob-value,
+.dsp-node .node-knob-face[data-knob-value-position="bottom"] > [data-knob-face-readout],
+.dsp-node .node-knob-face[data-knob-value-position="below"] > .node-macro-knob-value,
+.dsp-node .node-knob-face[data-knob-value-position="below"] > [data-knob-face-readout],
+.node-layout-canvas-tile .node-knob-face[data-knob-value-position="bottom"] > .node-macro-knob-value,
+.node-layout-canvas-tile .node-knob-face[data-knob-value-position="bottom"] > [data-knob-face-readout],
+.node-layout-canvas-tile .node-knob-face[data-knob-value-position="below"] > .node-macro-knob-value,
+.node-layout-canvas-tile .node-knob-face[data-knob-value-position="below"] > [data-knob-face-readout],
+.node-screen-solo-stage .node-knob-face[data-knob-value-position="bottom"] > .node-macro-knob-value,
+.node-screen-solo-stage .node-knob-face[data-knob-value-position="bottom"] > [data-knob-face-readout],
+.node-screen-solo-stage .node-knob-face[data-knob-value-position="below"] > .node-macro-knob-value,
+.node-screen-solo-stage .node-knob-face[data-knob-value-position="below"] > [data-knob-face-readout],
+.node-metamodule-canvas-stage .node-knob-face[data-knob-value-position="bottom"] > .node-macro-knob-value,
+.node-metamodule-canvas-stage .node-knob-face[data-knob-value-position="bottom"] > [data-knob-face-readout],
+.node-metamodule-canvas-stage .node-knob-face[data-knob-value-position="below"] > .node-macro-knob-value,
+.node-metamodule-canvas-stage .node-knob-face[data-knob-value-position="below"] > [data-knob-face-readout] {
+  /* Value Y offset: positive lifts the readout off the bottom edge. */
+  top: auto;
+  bottom: calc(2px + var(--knob-value-offset-y, 0) * 100%);
+  transform: none;
+}
+
+.dsp-node .node-knob-face[data-knob-value-position="off"] > .node-macro-knob-value,
+.dsp-node .node-knob-face[data-knob-value-position="off"] > [data-knob-face-readout],
+.node-layout-canvas-tile .node-knob-face[data-knob-value-position="off"] > .node-macro-knob-value,
+.node-layout-canvas-tile .node-knob-face[data-knob-value-position="off"] > [data-knob-face-readout],
+.node-screen-solo-stage .node-knob-face[data-knob-value-position="off"] > .node-macro-knob-value,
+.node-screen-solo-stage .node-knob-face[data-knob-value-position="off"] > [data-knob-face-readout],
+.node-metamodule-canvas-stage .node-knob-face[data-knob-value-position="off"] > .node-macro-knob-value,
+.node-metamodule-canvas-stage .node-knob-face[data-knob-value-position="off"] > [data-knob-face-readout] {
   display: none !important;
 }
 
-.dsp-node.slider-widget-layout .node-knob-face.node-knob-module-macro .node-macro-knob-dial,
-.node-knob-face.node-knob-module-macro .node-macro-knob-dial {
-  flex: 1 1 auto;
-  align-self: stretch;
+/* Dial cell fills the entire display; knob size scales only the arc inside. */
+.dsp-node.slider-widget-layout .node-knob-face.node-knob-module-macro:not(.is-slider-look) .node-macro-knob-dial,
+.node-knob-face.node-knob-module-macro:not(.is-slider-look) .node-macro-knob-dial {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
   min-height: 0;
-  position: relative;
-  /* Size arc from dial cell so width-tall faces don't overflow height. */
+  flex: none;
   container-type: size;
   overflow: hidden;
 }
 
-/* Dial scales with face (not fixed 42px bank size).
-   Use container min side so the circle fits inside the dial (was width-only
-   and clipped the top on wide 5×3 faces). Soften drop-shadow bleed. */
-/* Knob module plate: dial Size 0…1 (--knob-dial-size) scales only the arc.
-   1 = fill available dial cell; label/value unscaled. No glow ring. */
+/* Knob size 0…1 (--knob-dial-size): arc only. Label/value ignore this. */
 .dsp-node.slider-widget-layout .node-knob-face.node-knob-module-macro i,
 .node-knob-face.node-knob-module-macro i {
   width: min(100cqmin, 100%);
@@ -13556,7 +14143,9 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   max-height: 100%;
   height: auto;
   aspect-ratio: 1 / 1;
-  transform: translate(-50%, -50%) scale(var(--knob-dial-size, 1));
+  /* Keep the arc centered, then translate it independently of its size. */
+  top: 50%;
+  transform: translate(-50%, calc(-50% + var(--knob-dial-offset-y, 0) * 100%)) scale(var(--knob-dial-size, 1));
   transform-origin: center center;
   filter: none;
   outline: none;
@@ -13564,384 +14153,169 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   border: none;
 }
 
-/* Value readout a bit larger on the module plate. */
-.dsp-node.slider-widget-layout .node-knob-face.node-knob-module-macro .node-macro-knob-dial strong,
-.node-knob-face.node-knob-module-macro .node-macro-knob-dial strong {
-  color: var(--text);
-}
-
-/* Image art loaded: hide shared macro dial chrome; layers take the face. */
-.node-knob-face.has-image .node-macro-knob-dial,
-.node-knob-face.has-image [data-knob-face-dial] {
-  display: none !important;
-}
-
-.node-knob-face.has-image .node-macro-knob-label,
-.node-knob-face.has-image [data-knob-face-label] {
-  display: none !important;
-}
-
-/*
- * Empty face plate: dim chrome stroke (legacy non-macro plate). Macro dial
- * uses solid background from Display Settings instead.
- */
-.node-knob-face:not(.node-knob-module-macro):not(.has-image) {
-  --knob-empty-stroke-inset: 4px;
-  justify-content: flex-start;
-  padding-top: calc(var(--node-grid-size) * 0.28);
-  gap: 2px;
-  border: none;
-  outline: 1px solid rgba(243, 241, 236, 0.26);
-  outline-offset: calc(-1 * var(--knob-empty-stroke-inset, 4px));
-  box-shadow: none;
-}
-
-.node-knob-face.node-knob-module-macro {
-  outline: none !important;
-  box-shadow: none !important;
-  border: none !important;
-}
-
-/* With face art: no plate stroke. */
-.node-knob-face.has-image {
-  border: none !important;
-  outline: none !important;
-  box-shadow: none !important;
-}
-
-/* Focus / active / drag: never show a plate stroke on knob faces. */
-.node-knob-face:focus,
-.node-knob-face:focus-visible,
-.node-knob-face:active,
-.node-knob-face.value-dragging,
-.node-knob-face.has-image:focus,
-.node-knob-face.has-image:focus-visible,
-.node-knob-face.has-image:active {
-  border: none !important;
-  box-shadow: none !important;
-  outline: none !important;
-}
-
-/* Empty Knob: frame kept for hit layout only — never paint a stroke. */
-.dsp-node.slider-widget-layout:not(.knob-face-has-image) > .node-module-frame {
+/* Slider look: bar + pins are absolute on the face (module, canvas, solo, metamodule). */
+.node-knob-face.is-slider-look {
   display: block !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-  pointer-events: none !important;
-}
-
-.dsp-node.slider-widget-layout:not(.knob-face-has-image) > .node-module-frame .node-module-frame-path {
-  stroke: transparent !important;
-  stroke-width: 0 !important;
-  stroke-opacity: 0 !important;
-  fill: none !important;
-}
-
-.dsp-node.slider-widget-layout:not(.knob-face-has-image).selected > .node-module-frame .node-module-frame-path {
-  stroke: transparent !important;
-  stroke-width: 0 !important;
-}
-
-.node-knob-face.value-dragging {
-  cursor: var(--node-dot-cursor);
-  outline: none !important;
-  box-shadow: none !important;
-}
-
-/*
- * Face art: keep module plate; no nested face plate.
- * Critical: empty <img> layers must stay display:none. Author `display:block`
- * was overriding the [hidden] attribute, so cleared/empty layers showed the
- * browser broken-image icon (classic ~#C0C0C0 silver frame) that flickered
- * with zoom.
- */
-.dsp-node.slider-widget-layout.knob-face-has-image .node-solid-module-custom-ui,
-.dsp-node.slider-widget-layout[data-hide-module-frame="1"] .node-solid-module-custom-ui {
-  overflow: hidden;
-}
-
-.node-knob-face.has-image {
-  --knob-face-image-inset: 0%;
-  padding: 0;
-  background: transparent;
-  border: none;
-  outline: none;
-  box-shadow: none;
-  overflow: hidden;
-}
-
-.node-knob-face.has-image .node-knob-face-layer {
-  overflow: hidden;
-  border: none;
-  outline: none;
-  box-shadow: none;
-  background: transparent;
-}
-
-.node-knob-face.has-image .node-knob-face-layer.is-empty {
-  display: none !important;
-}
-
-/* Image layers: image1 (back) … image6 (front). Each may rotate with Bias. */
-.node-knob-face-layer {
-  position: absolute;
-  inset: var(--knob-face-image-inset, 6%);
-  display: grid;
-  place-items: center;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  pointer-events: none;
-  transform-origin: 50% 50%;
-  transition: transform 40ms linear;
-  border: none;
-  outline: none;
-  background: transparent;
-}
-
-.node-knob-face-layer.is-empty {
-  display: none !important;
-}
-
-.node-knob-face-layer.is-rotating {
-  /* keep transition for live Bias drag */
-}
-
-.node-knob-face-image {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  border: none !important;
-  outline: none !important;
-  box-shadow: none !important;
-  background: transparent;
-  user-select: none;
-  -webkit-user-drag: none;
-  pointer-events: none;
-}
-
-/* Author display:block must not defeat [hidden] — broken-image chrome is silver. */
-.node-knob-face-image[hidden],
-.node-knob-face-image.is-empty,
-.node-knob-face-image:not([src]) {
-  display: none !important;
-  width: 0 !important;
-  height: 0 !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-  visibility: hidden !important;
-}
-
-.node-knob-face-label {
   position: relative;
-  z-index: 5;
-  box-sizing: border-box;
-  flex: 0 0 auto;
-  width: 100%;
-  max-width: 100%;
-  margin: 0;
-  padding: 0 4px;
-  overflow: hidden;
-  color: rgba(217, 236, 240, 0.72);
-  /* Normal case (not ALL CAPS). Up to two rows inside the face; then ellipsis. */
-  font: 600 clamp(0.55rem, calc(var(--node-grid-size) * 0.38), 0.78rem) / 1.15 var(--node-mono-font);
-  letter-spacing: 0.02em;
-  text-align: center;
-  text-transform: none;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  max-height: calc(1.15em * 2);
-  pointer-events: none;
+  container-type: size;
+  overflow: visible !important;
 }
 
-.node-knob-face.has-image .node-knob-face-label {
-  display: none;
-}
-
-/* Knob image layers: Display Settings (and legacy Module Settings markup). */
-.node-knob-face-controls .node-knob-face-layer-stack,
-.node-knob-face-display-layers .node-knob-face-layer-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.node-knob-face-controls .node-knob-face-layer-row,
-.node-knob-face-display-layers .node-knob-face-layer-row {
-  display: grid;
-  grid-template-columns: auto auto auto minmax(0, 1fr);
-  align-items: center;
-  gap: 4px 5px;
-  margin: 0;
-  padding: 3px 0;
-  min-width: 0;
-  border-bottom: 1px solid rgba(128, 224, 224, 0.1);
-}
-
-.node-knob-face-controls .node-knob-face-layer-row:last-of-type,
-.node-knob-face-display-layers .node-knob-face-layer-row:last-of-type {
-  border-bottom: 0;
-}
-
-.node-knob-face-controls .node-knob-face-layer-label {
-  display: none;
-}
-
-.node-knob-face-controls .node-knob-face-layer-row button,
-.node-knob-face-display-layers .node-knob-face-layer-row button {
-  margin: 0;
-  padding: 2px 7px;
-  font: 600 0.66rem/1.2 var(--node-mono-font);
-  min-height: 0;
-}
-
-.node-knob-face-controls .node-knob-face-filename,
-.node-knob-face-display-layers .node-knob-face-filename {
-  margin: 0;
-  min-width: 0;
-  color: var(--muted);
-  font: 600 0.64rem/1.2 var(--node-mono-font);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.node-knob-face-controls .node-knob-face-check,
-.node-knob-face-display-layers .node-knob-face-check {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin: 0;
-  white-space: nowrap;
-  font: 600 0.64rem/1.2 var(--node-mono-font);
-  color: var(--muted);
-}
-
-.node-knob-face-display-hint {
-  margin: 0 0 6px;
-  color: var(--muted);
-  font: 0.66rem/1.3 var(--mono);
-}
-
-.node-knob-face-controls .node-knob-face-rotate-inline {
-  margin: 0;
-  padding: 1px 5px;
-  border: 1px solid rgba(127, 199, 217, 0.2);
-  border-radius: 4px;
-  background: rgba(8, 14, 18, 0.55);
-  color: rgba(220, 234, 238, 0.88);
-  font: 600 0.64rem/1 var(--node-mono-font);
-  text-transform: lowercase;
-}
-
-.node-knob-face-controls .node-knob-face-rotate-inline input {
-  margin: 0;
-}
-
-.node-knob-face-controls .node-knob-face-shared-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 8px 10px;
-  margin-top: 4px;
-  padding-top: 6px;
-  border-top: 1px solid rgba(128, 224, 224, 0.1);
+.node-knob-face.is-slider-look .node-macro-knob-dial {
+  position: absolute !important;
+  left: 50% !important;
+  width: calc(var(--knob-slider-length, 1) * 100%) !important;
+  height: calc(var(--knob-slider-height, 0.22) * 100%) !important;
+  transform: translateX(-50%) !important;
+  container-type: size;
   overflow: visible;
-  min-width: 0;
 }
 
-.node-knob-face-controls .node-knob-face-shared-row .node-knob-face-num-field {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 0;
-  flex: 0 0 auto;
-  min-width: 0;
+.node-knob-face.is-slider-look[data-slider-align="top"] .node-macro-knob-dial {
+  top: calc(var(--knob-slider-padding, 0) * 100%) !important;
+  bottom: auto !important;
+  transform: translateX(-50%) !important;
 }
 
-.node-knob-face-controls .node-knob-face-shared-row .node-knob-face-num-field > span {
-  font: 600 0.62rem/1 var(--node-mono-font);
-  color: var(--muted);
-  letter-spacing: 0.03em;
-  text-transform: lowercase;
+.node-knob-face.is-slider-look[data-slider-align="mid"] .node-macro-knob-dial {
+  top: 50% !important;
+  bottom: auto !important;
+  transform: translate(-50%, -50%) !important;
 }
 
-.node-knob-face-controls .node-knob-face-shared-row input[type="number"] {
-  width: 4.5em;
-  min-width: 0;
-  padding: 2px 4px;
-  font: 600 0.72rem/1.2 var(--node-mono-font);
+.node-knob-face.is-slider-look[data-slider-align="bottom"] .node-macro-knob-dial {
+  top: auto !important;
+  bottom: calc(var(--knob-slider-padding, 0) * 100%) !important;
+  transform: translateX(-50%) !important;
 }
 
-.node-patch-command-body {
-  display: grid;
-  place-items: center;
-  align-content: center;
-  min-width: 0;
-  min-height: 0;
-  background:
-    radial-gradient(circle at 50% 36%, rgba(127, 199, 217, 0.12), transparent 54%),
-    linear-gradient(180deg, rgba(17, 23, 27, 0.96), rgba(7, 10, 13, 0.96));
-  color: var(--text);
-  text-align: center;
+.node-knob-face.is-slider-look.slider-bar-gone .node-macro-knob-dial {
+  display: none !important;
 }
 
-.node-patch-command-body strong {
-  color: rgba(127, 199, 217, 0.94);
-  font: 900 0.82rem/1 var(--mono);
+.node-knob-face.is-slider-look i,
+.node-knob-face.is-slider-look .node-macro-knob-arc {
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  aspect-ratio: auto !important;
+  transform: none !important;
+  background: linear-gradient(
+    to right,
+    var(--macro-arc-fill, #4a6a78) 0%,
+    var(--macro-arc-fill, #4a6a78) calc(var(--macro-value, 0) * 100%),
+    var(--macro-arc-track, #1a2226) calc(var(--macro-value, 0) * 100%),
+    var(--macro-arc-track, #1a2226) 100%
+  ) !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+  filter: none !important;
+  border-radius: calc(var(--knob-slider-rounding, 0) * min(50cqw, 50cqh));
+  corner-shape: var(--knob-slider-corner-shape, squircle);
 }
 
-.node-patch-command-body span {
-  color: var(--muted);
-  font: 650 0.58rem/1 var(--mono);
-}
-
-.dsp-node.macro-controls-layout > .node-macro-controls-module {
-  align-self: stretch;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  margin: 0;
-  padding: 4px;
-  border: none;
-  background: var(--macro-controls-bg, #000000);
-}
-
-.dsp-node.badval-monitor-layout > .node-badval-monitor-body {
-  align-self: stretch;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  pointer-events: auto;
-}
-
-/* Pitch Detector: one continuous LED plate; tight Hz/Fid labels at bottom (no bar). */
-.dsp-node.pitch-detector-layout > .node-pitch-detector-face {
-  position: relative;
-  z-index: 2; /* above plate mask */
-  align-self: stretch;
+.node-knob-face.is-slider-look .node-macro-knob-label,
+.node-knob-face.is-slider-look .node-macro-knob-value,
+.node-knob-face.is-slider-look .node-knob-face-unit {
+  position: absolute !important;
+  z-index: 3;
   box-sizing: border-box;
-  /* LED flex-fills; Hz/Fid is content-height (text px + tiny pad). */
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  /* Square corners — bottom rounding was clipping the Hz/8ve/M meta row. */
-  border-radius: 0 !important;
-  corner-shape: square;
-  overflow: hidden;
-  pointer-events: auto;
-  background: #000004;
-  border: 1px solid rgba(127, 199, 217, 0.16);
+  max-width: none;
+  overflow: visible !important;
+  line-height: 1;
+  white-space: nowrap;
+  transform: none !important;
+}
+
+.node-knob-face.is-slider-look .node-macro-knob-label {
+  color: var(--knob-slider-text-color, #cfdde5);
+}
+
+.node-knob-face.is-slider-look .node-macro-knob-value {
+  color: var(--knob-slider-number-color, #ffffff);
+}
+
+.node-knob-face.is-slider-look .node-knob-face-unit {
+  color: var(--knob-slider-unit-color, #7fc7d9);
+}
+
+.node-knob-face.is-slider-look [data-pin-anchor="topleft"] {
+  top: calc(var(--knob-pin-pad, 0) * 100%);
+  left: calc(var(--knob-pin-pad, 0) * 100%);
+  right: auto;
+  bottom: auto;
+}
+
+.node-knob-face.is-slider-look [data-pin-anchor="top"] {
+  top: calc(var(--knob-pin-pad, 0) * 100%);
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  margin-left: -0.5em;
+}
+
+.node-knob-face.is-slider-look [data-pin-anchor="topright"] {
+  top: calc(var(--knob-pin-pad, 0) * 100%);
+  right: calc(var(--knob-pin-pad, 0) * 100%);
+  left: auto;
+  bottom: auto;
+}
+
+.node-knob-face.is-slider-look [data-pin-anchor="midleft"] {
+  top: 50%;
+  left: calc(var(--knob-pin-pad, 0) * 100%);
+  right: auto;
+  bottom: auto;
+  margin-top: -0.5em;
+}
+
+.node-knob-face.is-slider-look [data-pin-anchor="mid"] {
+  top: 50%;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  margin-top: -0.5em;
+  margin-left: -0.5em;
+}
+
+.node-knob-face.is-slider-look [data-pin-anchor="midright"] {
+  top: 50%;
+  right: calc(var(--knob-pin-pad, 0) * 100%);
+  left: auto;
+  bottom: auto;
+  margin-top: -0.5em;
+}
+
+.node-knob-face.is-slider-look [data-pin-anchor="bottomleft"] {
+  bottom: calc(var(--knob-pin-pad, 0) * 100%);
+  top: auto;
+  left: calc(var(--knob-pin-pad, 0) * 100%);
+  right: auto;
+}
+
+.node-knob-face.is-slider-look [data-pin-anchor="bottom"] {
+  bottom: calc(var(--knob-pin-pad, 0) * 100%);
+  top: auto;
+  left: 50%;
+  right: auto;
+  margin-left: -0.5em;
+}
+
+.node-knob-face.is-slider-look [data-pin-anchor="bottomright"] {
+  bottom: calc(var(--knob-pin-pad, 0) * 100%);
+  top: auto;
+  right: calc(var(--knob-pin-pad, 0) * 100%);
+  left: auto;
+}
+
+.node-knob-face.is-slider-look.hide-slider-label .node-macro-knob-label,
+.node-knob-face.is-slider-look.hide-slider-number .node-macro-knob-value,
+.node-knob-face.is-slider-look.hide-slider-unit .node-knob-face-unit,
+.node-knob-face.is-slider-look .node-knob-face-unit[hidden] {
+  display: none !important;
 }
 
 /* Phosphor LED plate — all remaining space above the content-sized meta row. */
@@ -14443,7 +14817,6 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   line-height: 1;
   pointer-events: none;
   transform: translate(-50%, -50%) scale(var(--node-bug-button-pressed-scale, 1));
-  transition: transform 80ms ease-out;
 }
 
 .node-bug-button-emoji.editing {
@@ -14895,7 +15268,7 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
 
 /* The waveform reads as its own sleek panel inset in the module: its own 1px
    phosphor-green border, then a pure-black gap out to the module edge.
-   --phosphor-waveform-inset is written per node from the draw path
+   --sample-waveform-inset is written per node from the draw path
    (applyNodeGraphPhosphorWaveformPanelShape) so the "Edge Spacing" setting
    resolves against the live cell size and is quantized to whole pixels.
    The gap used to be a box-shadow ring on a margin-inset panel, which meant
@@ -14906,14 +15279,14 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
    padding, and the border/radius/corner-shape live on the canvas inside it.
    Same measurements (inset on each side + a 1px border), but the revealed
    background is black at every corner shape. */
-.node-phosphor-waveform-display {
-  --phosphor-waveform-inset: 0px;
-  --phosphor-waveform-label-inset: 0px;
-  --phosphor-waveform-radius: 0px;
-  --phosphor-waveform-corner-shape: round;
-  /* Written per node from applyNodeGraphPhosphorWaveformPanelShape, tracking
+.node-sample-waveform-display {
+  --sample-waveform-inset: 0px;
+  --sample-waveform-label-inset: 0px;
+  --sample-waveform-radius: 0px;
+  --sample-waveform-corner-shape: round;
+  /* Written per node from applyNodeGraphSampleWaveformPanelShape, tracking
      the BG Hue setting. The fallback is the hue-140 default. */
-  --phosphor-waveform-border-color: hsl(140 100% 68% / 0.16);
+  --sample-waveform-border-color: hsl(140 100% 68% / 0.16);
   position: relative;
   /* Above .dsp-node::after plate mask (same contract as .node-module-scope-window). */
   z-index: 1;
@@ -14922,25 +15295,25 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   min-width: 0;
   height: 100%;
   min-height: 0;
-  padding: var(--phosphor-waveform-inset);
+  padding: var(--sample-waveform-inset);
   overflow: hidden;
   background: #000;
 }
 
-.node-phosphor-waveform-canvas {
+.node-sample-waveform-canvas {
   display: block;
   box-sizing: border-box;
   width: 100%;
   height: 100%;
-  border: 1px solid var(--phosphor-waveform-border-color);
-  border-radius: var(--phosphor-waveform-radius);
-  corner-shape: var(--phosphor-waveform-corner-shape);
+  border: 1px solid var(--sample-waveform-border-color);
+  border-radius: var(--sample-waveform-radius);
+  corner-shape: var(--sample-waveform-corner-shape);
   background: #000;
   cursor: var(--node-dot-cursor);
   touch-action: none;
 }
 
-.node-phosphor-waveform-canvas.dragging {
+.node-sample-waveform-canvas.dragging {
   cursor: var(--node-dot-cursor);
 }
 
@@ -14972,7 +15345,7 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
  * fixed GPU buffer, CSS pixelate on zoom. Asciiscope Sharp keeps auto inline.
  */
 .node-graph-workspace.pixelated-canvas-zoom .node-filter-curve-canvas,
-.node-graph-workspace.pixelated-canvas-zoom .node-phosphor-waveform-canvas,
+.node-graph-workspace.pixelated-canvas-zoom .node-sample-waveform-canvas,
 .node-graph-workspace.pixelated-canvas-zoom .node-phosphillator-draw-canvas,
 .node-graph-workspace.pixelated-canvas-zoom .node-xy-pad-canvas,
 .node-graph-workspace.pixelated-canvas-zoom .node-module-scope-local-fallback-canvas,
@@ -15424,7 +15797,6 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   stroke-width: 0.9;
   opacity: 0.42;
   pointer-events: none;
-  transition: opacity 80ms ease;
 }
 
 .node-module-graph-cursor.is-phase-hot {
@@ -15444,7 +15816,6 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   stroke-width: 0.7;
   opacity: 0.42;
   pointer-events: none;
-  transition: opacity 80ms ease;
 }
 
 .node-module-graph-cursor-value-guide.is-phase-hot {
@@ -15463,7 +15834,6 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   stroke-dasharray: 2.4 2.6;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 120ms ease;
 }
 
 .node-module-graph-playhead.live,
@@ -15514,11 +15884,19 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   stroke-width: 0.7;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 80ms ease;
 }
 
 .node-module-graph-node.is-hot {
   opacity: 0.42;
+}
+
+/* Face hover: show every value point + contour handle (edit chrome). */
+.node-module-graph-display.is-hover-reveal .node-module-graph-node {
+  opacity: 0.34;
+}
+
+.node-module-graph-display.is-hover-reveal .node-module-graph-node.is-hot {
+  opacity: 0.72;
 }
 
 /* Step Graph: empty-circle curvature ring (paired with its filled node). */
@@ -15529,11 +15907,18 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   pointer-events: all;
   touch-action: none;
   opacity: 0;
-  transition: opacity 80ms ease;
 }
 
 .node-module-graph-contour-handle.is-hot {
   opacity: 0.48;
+}
+
+.node-module-graph-display.is-hover-reveal .node-module-graph-contour-handle {
+  opacity: 0.36;
+}
+
+.node-module-graph-display.is-hover-reveal .node-module-graph-contour-handle.is-hot {
+  opacity: 0.78;
 }
 
 /* Invisible hit targets always receive pointer events so hover can resolve. */
@@ -15573,194 +15958,7 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   white-space: nowrap;
 }
 
-.scene-context-graph-node-list {
-  display: grid;
-  gap: 4px;
-  max-height: 220px;
-  overflow: auto;
-  padding: 5px;
-  border: 1px solid rgba(137, 220, 220, 0.16);
-  background: rgba(1, 4, 7, 0.38);
-}
-
-/* Step Graph: # | x | y | curve | shape | ✕  (curve + shape same row) */
-.scene-context-graph-node-row {
-  display: grid;
-  grid-template-columns:
-    minmax(28px, 0.4fr)
-    minmax(0, 1fr)
-    minmax(0, 1fr)
-    minmax(0, 1fr)
-    minmax(72px, 1.2fr)
-    28px;
-  gap: 4px;
-  align-items: center;
-}
-
-/* Step Graph without shape select (legacy path): # x y curve ✕ */
-.scene-context-graph-node-list[data-graph-list-mode="curve"] .scene-context-graph-node-row {
-  grid-template-columns:
-    minmax(28px, 0.4fr)
-    minmax(0, 1fr)
-    minmax(0, 1fr)
-    minmax(0, 1fr)
-    28px;
-}
-
-/* Smooth Graph: # | x | y | ✕ */
-.scene-context-graph-node-list[data-graph-list-mode="points"] .scene-context-graph-node-row {
-  grid-template-columns:
-    minmax(28px, 0.4fr)
-    minmax(0, 1fr)
-    minmax(0, 1fr)
-    28px;
-}
-
-.scene-context-graph-node-row-header {
-  color: rgba(198, 230, 224, 0.56);
-  font-size: 0.66rem;
-  text-transform: uppercase;
-  letter-spacing: 0;
-}
-
-.scene-context-graph-node-row button {
-  min-width: 0;
-  min-height: 28px;
-  padding: 0 6px;
-  border: 1px solid rgba(133, 223, 217, 0.18);
-  background: rgba(7, 16, 20, 0.86);
-  color: rgba(222, 244, 238, 0.82);
-}
-
-.scene-context-graph-node-row[data-selected="true"] button[data-graph-node-select] {
-  border-color: rgba(255, 236, 181, 0.54);
-  color: rgba(255, 247, 198, 0.96);
-}
-
-.scene-context-graph-node-row .scene-context-graph-node-remove {
-  width: 28px;
-  min-width: 28px;
-  max-width: 28px;
-  height: 28px;
-  min-height: 28px;
-  padding: 0;
-  line-height: 1;
-  font-size: 0.85rem;
-  border-color: rgba(220, 120, 120, 0.28);
-  color: rgba(255, 180, 180, 0.88);
-  background: rgba(28, 10, 12, 0.72);
-}
-
-.scene-context-graph-node-row .scene-context-graph-node-remove:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.scene-context-graph-node-row .scene-context-graph-node-remove:not(:disabled):hover {
-  border-color: rgba(255, 140, 140, 0.55);
-  color: rgba(255, 210, 210, 0.98);
-}
-
-.scene-context-graph-node-row input,
-.scene-context-graph-node-row select {
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-}
-
-/* [+] under last node */
-.scene-context-graph-node-add-row {
-  display: flex;
-  justify-content: center;
-  padding-top: 2px;
-}
-
-.scene-context-graph-node-add {
-  box-sizing: border-box;
-  width: 28px;
-  height: 28px;
-  min-width: 28px;
-  min-height: 28px;
-  padding: 0;
-  line-height: 1;
-  font-size: 1.15rem;
-  font-weight: 700;
-  border: 1px solid rgba(133, 223, 217, 0.28);
-  border-radius: 2px;
-  background: rgba(7, 16, 20, 0.9);
-  color: rgba(222, 244, 238, 0.9);
-  cursor: var(--node-dot-cursor);
-}
-
-.scene-context-graph-node-add:hover {
-  border-color: rgba(180, 240, 230, 0.55);
-  color: rgba(255, 255, 255, 0.98);
-}
-
-.scene-context-graph-node-actions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
-}
-
-.scene-context-graph-node-actions button {
-  min-width: 0;
-  min-height: 30px;
-  padding: 0 6px;
-}
-
-.scene-context-graph-preset-controls {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.scene-context-graph-preset-controls button {
-  min-width: 0;
-  min-height: 30px;
-  padding: 0 6px;
-  border: 1px solid rgba(133, 223, 217, 0.18);
-  background: rgba(7, 16, 20, 0.82);
-  color: rgba(222, 244, 238, 0.78);
-}
-
-.scene-context-graph-transform-controls {
-  display: grid;
-  grid-template-columns: minmax(62px, 0.8fr) repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  align-items: center;
-}
-
-.scene-context-graph-transform-controls span {
-  color: rgba(198, 230, 224, 0.62);
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0;
-}
-
-.scene-context-graph-transform-controls button {
-  min-width: 0;
-  min-height: 30px;
-  padding: 0 6px;
-  border: 1px solid rgba(133, 223, 217, 0.18);
-  background: rgba(7, 16, 20, 0.82);
-  color: rgba(222, 244, 238, 0.78);
-}
-
-.scene-context-graph-clipboard-controls {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.scene-context-graph-clipboard-controls button {
-  min-width: 0;
-  min-height: 30px;
-  padding: 0 6px;
-  border: 1px solid rgba(133, 223, 217, 0.18);
-  background: rgba(7, 16, 20, 0.82);
-  color: rgba(222, 244, 238, 0.78);
-}
+/* Smooth/Step Graph Module Settings editor removed (face-only). */
 
 .node-image-body {
   box-sizing: border-box;
@@ -15960,8 +16158,13 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   bottom: 0;
 }
 
-.dsp-node:has(> .node-text-box-body) {
-  overflow: hidden;
+.dsp-node:has(> .node-text-box-body),
+.dsp-node:has(> .node-module-under-construction) {
+  /* Mounted in #nodeGraphAnnotationNodes under #nodeWireSvg (B-055).
+     Do not set overflow:hidden — that clips the plate outline on ::before.
+     Text clipping stays on .node-text-box-body. */
+  overflow: visible;
+  z-index: 2;
 }
 
 .node-text-box-body {
@@ -15975,11 +16178,38 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   overflow: hidden;
   contain: paint;
   padding: 0;
+  /* Keep the rgba fallback for browsers without color-mix; the widget also
+     writes --node-text-box-bg directly for the same paint path. */
   background: var(--node-text-box-bg, rgba(2, 4, 7, 0.78));
+  background-color: color-mix(
+    in srgb,
+    var(--node-text-box-bg-color, #020407)
+      calc(var(--node-text-box-bg-alpha, 0.78) * 100%),
+    transparent
+  );
 }
 
 .node-text-box-body[hidden] {
   display: grid !important;
+}
+
+/* Alpha zero must reveal the workspace, not the module plate underneath. */
+/* The plate is a separate paint layer behind the face. Use the same continuous
+   alpha there so values close to zero cannot expose an opaque grey plate. */
+.dsp-node:has(> .node-text-box-body)::before {
+  /* Fallback uses the stock plate color; color-mix below preserves themed fills. */
+  background: rgba(23, 26, 31, var(--node-text-box-bg-alpha, 0.78));
+  background: color-mix(
+    in srgb,
+    var(--node-module-fill, #171a1f)
+      calc(var(--node-text-box-bg-alpha, 0.78) * 100%),
+    transparent
+  );
+}
+
+.node-text-box-body[data-text-box-background-alpha="0"] {
+  background: transparent !important;
+  background-color: transparent !important;
 }
 
 .node-text-box-input {
@@ -16043,6 +16273,26 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   border-color: color-mix(in srgb, var(--node-input-stroke) 56%, transparent);
 }
 
+/* B-071: layout-canvas / screen-solo / metamodule — type follows face min-edge.
+   Plate keeps --node-grid-size * 0.36; canvas publishes source-min + source-font-px
+   at reparent so glyphs scale with the tile (same cqmin family as knobs). */
+.node-layout-canvas-tile > .node-text-box-body,
+.node-metamodule-canvas-stage .node-layout-canvas-tile > .node-text-box-body,
+body.node-screen-solo-active .node-screen-solo-face.node-text-box-body {
+  container-type: size;
+  container-name: textbox;
+}
+
+.node-layout-canvas-tile > .node-text-box-body > .node-text-box-input,
+.node-metamodule-canvas-stage .node-layout-canvas-tile > .node-text-box-body > .node-text-box-input,
+body.node-screen-solo-active .node-screen-solo-face.node-text-box-body > .node-text-box-input {
+  font-size: calc(
+    var(--node-text-box-source-font-px, 10.08px)
+    * var(--node-text-box-font-scale, 1)
+    * 100cqmin / var(--node-text-box-source-min, 100)
+  );
+}
+
 .node-header-actions,
 .node-header-title-row {
   align-items: center;
@@ -16070,12 +16320,110 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
 .node-header-timing-widgets {
   box-sizing: border-box;
   display: grid;
-  /* Tap | BPM | Beats | Unit | FPS | Speed | Speed Limit | Smooth Time (+ Start/End moved out) */
-  grid-template-columns: minmax(0, 0.74fr) repeat(7, minmax(0, 1fr));
+  /* Tap | BPM | Beats | Unit | FPS | Speed | Patch title | Smooth Time (+ Start/End moved out) */
+  /* Patch title takes the former Speed Limit column and a bit more for readable names. */
+  grid-template-columns: minmax(0, 0.74fr) repeat(5, minmax(0, 1fr)) minmax(10rem, 2fr) minmax(0, 1fr);
   min-width: 0;
   width: 100%;
   height: 100%;
   border-inline: 1px solid rgba(127, 199, 217, 0.08);
+}
+
+
+.node-header-patch-title {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0 0.65rem;
+  border: 0;
+  border-inline: 1px solid rgba(127, 199, 217, 0.12);
+  background: rgba(2, 4, 7, 0.92);
+  color: rgba(243, 251, 251, 0.94);
+  font-family: var(--node-header-title-font-family, "Cascadia Mono", "Cascadia Code", Consolas, "Courier New", monospace);
+  font-size: clamp(0.72rem, calc(var(--node-toolbar-row-height) * 0.3), 1.02rem);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.15;
+  text-align: center;
+  text-transform: none;
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  cursor: text;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.node-header-patch-title.is-fallback {
+  color: rgba(243, 251, 251, 0.55);
+  font-weight: 600;
+}
+.node-header-patch-title-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0.1rem 0.2rem;
+  border: 1px solid rgba(127, 199, 217, 0.45);
+  border-radius: 3px;
+  background: rgba(8, 12, 16, 0.96);
+  color: inherit;
+  font: inherit;
+  text-align: center;
+}
+.node-patch-name-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.node-patch-name-dialog-card {
+  box-sizing: border-box;
+  width: min(28rem, calc(100vw - 2rem));
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(127, 199, 217, 0.28);
+  border-radius: 8px;
+  background: #14181c;
+  color: rgba(243, 251, 251, 0.94);
+  font: 0.95rem/1.35 system-ui, sans-serif;
+}
+.node-patch-name-dialog-card p {
+  margin: 0;
+}
+.node-patch-name-dialog-card label {
+  display: grid;
+  gap: 0.3rem;
+}
+.node-patch-name-dialog-card input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid rgba(127, 199, 217, 0.35);
+  border-radius: 4px;
+  background: #0c1014;
+  color: inherit;
+  font: inherit;
+}
+.node-patch-name-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.node-patch-name-dialog-actions button {
+  padding: 0.35rem 0.75rem;
+  border: 1px solid rgba(127, 199, 217, 0.35);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
 }
 
 .node-header-timing-row {
@@ -16094,7 +16442,7 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
 
 .node-patch-timing-controls {
   display: inline-flex;
-  flex: 1 1 46%;
+  flex: 10 1 46%;
   align-items: stretch;
   min-width: min(620px, 100%);
   min-height: 0;
@@ -16106,6 +16454,10 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   border: 0;
   border-radius: 0;
   overflow: hidden;
+}
+
+.node-header-timing-widgets > .node-header-timing-field {
+  min-inline-size: 3.4rem;
 }
 
 .node-header-timing-field {
@@ -16135,7 +16487,8 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
 .node-header-timing-field[data-header-number-drag="true"]:not(.node-header-render-range-field),
 .node-header-smoothing-field,
 .node-header-speed-placeholder {
-  cursor: ew-resize;
+  /* Same app + cursor as Command Center scrub numbers -- no L/R / ew-resize icon. */
+  cursor: var(--node-dot-cursor);
   user-select: none;
 }
 
@@ -16145,7 +16498,7 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
 .node-header-smoothing-field .node-header-timing-input,
 .node-header-speed-placeholder .node-header-timing-caption,
 .node-header-speed-placeholder .node-header-timing-input {
-  cursor: ew-resize;
+  cursor: var(--node-dot-cursor);
 }
 
 .node-header-timing-field.value-dragging {
@@ -16248,7 +16601,7 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
 .node-header-timing-input[data-global-smoothing-seconds][readonly],
 .node-header-timing-input[data-speed-readout][readonly],
 .node-header-timing-input[data-global-scope-input][readonly] {
-  cursor: ew-resize;
+  cursor: var(--node-dot-cursor);
   user-select: none;
   -webkit-user-select: none;
   caret-color: transparent;
@@ -16268,6 +16621,32 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   appearance: none;
   -webkit-appearance: none;
   margin: 0;
+}
+
+.node-header-oversampling-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  cursor: var(--node-dot-cursor);
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(45deg, transparent 50%, #ffffff 50%),
+    linear-gradient(135deg, #ffffff 50%, transparent 50%);
+  background-position: calc(100% - 0.85em) 50%, calc(100% - 0.55em) 50%;
+  background-size: 0.32em 0.32em, 0.32em 0.32em;
+  background-repeat: no-repeat;
+  color: #ffffff;
+  padding-inline: 0.35em 1.2em;
+}
+
+.node-header-oversampling-select:focus {
+  background-color: var(--bg);
+  color: #ffffff;
+}
+
+.node-header-oversampling-select option {
+  background-color: var(--bg);
+  color: #ffffff;
 }
 
 .dsp-node.buttons-hidden .node-header-actions {
@@ -16294,6 +16673,7 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
 }
 
 /* Display hide is applyNodeGraphModuleLayout omitting the face band.
+   Sample / phosphor faces use the same LayoutA order: header → io → face.
    Do not zero --node-module-scope-height or rematch grid-row here. */
 
 .sample-module-layout .node-sample-module-body {
@@ -16404,6 +16784,7 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   height: 100%;
   margin: 0;
   padding: 0 calc(var(--node-grid-size) * 0.1428571);
+  container-type: size;
   background:
     linear-gradient(180deg, rgba(2, 4, 7, 0.98), rgba(8, 10, 13, 0.92));
   border-start-start-radius: inherit;
@@ -16412,7 +16793,6 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
 }
 
 .node-header-title {
-  display: block;
   box-sizing: border-box;
   min-width: 0;
   max-width: 100%;
@@ -16420,20 +16800,27 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   width: 100%;
   flex: 1 1 auto;
   margin: 0;
-  padding: 0;
+  padding: var(--node-module-title-padding, 0px);
   overflow: hidden;
   overflow-wrap: normal;
   border: none;
   background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-family: var(
     --node-header-title-font-family,
     "Cascadia Mono", "Cascadia Code", Consolas, "Courier New", monospace
   );
-  font-size: calc(var(--node-header-title-row-height) * 0.62);
+  font-size: min(
+    calc(100cqh * 0.62),
+    calc(100cqw / max(var(--node-header-title-chars, 1), 1) / 0.62)
+  );
+  text-fit: none;
   font-weight: 400;
   color: var(--node-module-primary-text-color);
   letter-spacing: 0;
-  line-height: var(--node-header-title-row-height);
+  line-height: 1;
   text-align: center;
   text-overflow: clip;
   text-transform: none;
@@ -16446,6 +16833,11 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
 .node-header-title[data-title-editing="1"],
 .node-header-title[data-title-editing="1"]:focus,
 .node-header-title[data-title-editing="1"]:focus-visible {
+  font-size: min(
+    calc(100cqh * 0.62),
+    calc(100cqw / max(var(--node-header-title-chars, 1), 1) / 0.62)
+  );
+  text-fit: none;
   user-select: text;
   -webkit-user-select: text;
   outline: none;
@@ -16571,7 +16963,9 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   justify-self: start;
 }
 
+.dsp-node.chrome-layout-inlet-outlet > .dsp-node-io-section.io-outputs-only,
 .dsp-node.chrome-layout-title-bar-and-ports > .dsp-node-io-section.io-outputs-only,
+.dsp-node.chrome-layout-inlet-outlet > .dsp-node-io-section.io-inputs-only,
 .dsp-node.chrome-layout-title-bar-and-ports > .dsp-node-io-section.io-inputs-only,
 .dsp-node.chrome-layout-c > .dsp-node-io-section.io-outputs-only,
 .dsp-node.chrome-layout-c > .dsp-node-io-section.io-inputs-only {
@@ -16715,14 +17109,14 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
 .node-io-row[data-digital-signal][data-jack-channel="gold"] .node-port,
 .dsp-node .node-port[data-jack-channel="gold"],
 .dsp-node .node-io-row[data-jack-channel="gold"] .node-port {
-  --node-digital-fill: var(--node-output-fill, #e2a86d);
-  --node-output-fill: var(--node-output-fill, #e2a86d);
-  --node-output-stroke: var(--node-output-fill, #e2a86d);
-  --node-input-fill: var(--node-output-fill, #e2a86d);
-  --node-input-stroke: var(--node-output-fill, #e2a86d);
+  --node-digital-fill: var(--node-jack-gold, #f0b84a);
+  --node-output-fill: var(--node-jack-gold, #f0b84a);
+  --node-output-stroke: var(--node-jack-gold, #f0b84a);
+  --node-input-fill: var(--node-jack-gold, #f0b84a);
+  --node-input-stroke: var(--node-jack-gold, #f0b84a);
   --node-port-crescent-stroke: color-mix(
     in srgb,
-    var(--node-output-fill, #e2a86d) var(--node-port-paint-brightness),
+    var(--node-jack-gold, #f0b84a) var(--node-port-paint-brightness),
     transparent
   );
 }
@@ -17076,11 +17470,16 @@ body.node-screen-solo-active .node-screen-solo-face.node-phosphor-waveform-displ
   border-radius: 0;
   background: transparent;
   color: color-mix(in srgb, var(--accent) 58%, rgba(160, 167, 176, 0.5));
-  font-size: clamp(1.18rem, calc(var(--node-header-height) * 0.28), 1.7rem);
+  /* Size emoji to the button cell (cqh), not the full title+actions header. */
+  container-type: size;
+  font-size: clamp(1.25rem, 62cqh, 1.9rem);
   line-height: 1;
 }
 
 .node-drag-handle {
+  /* Move glyph: slightly smaller than action emoji, still fills the cell. */
+  font-size: clamp(1.1rem, 52cqh, 1.7rem);
+
   /* Module header move glyph — independent of floating-window 100% size. */
   font-size: calc(var(--node-header-height) * 0.6 * 0.47);
 }
@@ -17418,7 +17817,6 @@ body.node-slider-dragging * {
   right: calc(100% - var(--ghost-end, 0));
   opacity: 0;
   background: var(--node-slider-ghost-color);
-  transition: opacity 120ms ease;
 }
 
 .node-slider-readout.has-ghost-slider::after {
@@ -17556,9 +17954,9 @@ body.node-slider-dragging * {
   white-space: nowrap;
 }
 
-.node-slider-readout.reserves-sign-column .node-slider-readout-label {
-  padding-left: 1ch;
-}
+/* B-073: do not pad labels for the value sign column. Values already reserve
+   space in the formatted string (reserveSignSpace / leading + or minus); extra
+   label padding-left: 1ch shifted names right of the number. */
 
 .node-slider-readout-value {
   position: relative;
@@ -18169,7 +18567,7 @@ body.node-slider-dragging * {
   background: rgba(5, 9, 11, 0.62);
 }
 
-/* Metaparameter row: Save / Restore / Set Default / Restore Default. */
+/* Metaparameter row: Set Default / Restore Default / Make / Pin to canvas. */
 .metadata-field-actions {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -18179,6 +18577,49 @@ body.node-slider-dragging * {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   overflow: visible;
+}
+
+.metadata-make-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.metadata-make-wrap > button {
+  width: 100%;
+}
+
+.metadata-make-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 8;
+  display: grid;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  background: rgba(8, 12, 16, 0.98);
+}
+
+.metadata-make-menu[hidden] {
+  display: none;
+}
+
+.metadata-make-menu button {
+  width: 100%;
+  border-right: 0;
+  text-align: left;
+  padding: 0 0.55rem;
+}
+
+.metadata-pin-canvas-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: var(--metadata-control-row-height, 32px);
+  margin: 0;
+  padding: 0 0.35rem;
+  font-size: var(--metadata-button-size, 0.72rem);
+  white-space: nowrap;
 }
 
 /* Single action (Display Settings "Defaults") fills the full row width. */
@@ -18509,7 +18950,6 @@ body.node-slider-dragging * {
   font-size: 1.02rem;
   line-height: 1;
   cursor: var(--node-dot-cursor);
-  transition: background-color 0.12s ease, color 0.12s ease;
 }
 
 .metadata-smoothing-mode-button:last-child {
@@ -19356,7 +19796,7 @@ input[data-global-scope-number-drag="true"]:not([readonly]):focus,
   color: color-mix(in srgb, var(--accent) 88%, white 12%);
 }
 
-/* Stereo Instant Trace: one Size/Blur/Bright label, two steppers under L | R. */
+/* Stereo Instant Waterfall: one Size/Blur/Bright label, two steppers under L | R. */
 .node-trace-display-lr-row {
   display: grid;
   grid-template-columns: var(--ds-label-col) minmax(0, 1fr);
@@ -19530,20 +19970,21 @@ input[data-global-scope-number-drag="true"]:not([readonly]):focus,
   min-width: 0;
   min-height: var(--ds-latch-h, var(--metadata-control-row-height, 22px));
   margin: 0;
-  padding: var(--metadata-row-pad-y, 3px) 0;
+  padding: 3px 4px;
   border: 1px solid var(--line);
   border-radius: 0;
   background: rgba(5, 9, 11, 0.55);
   color: color-mix(in srgb, var(--text) 48%, transparent);
   font-family: Consolas, "Courier New", monospace;
   font-weight: 600;
-  font-size: 0.72rem; /* floor; AppLatchButton.fitLabel sets size */
+  /* Size once via label + container; no JS fitLabel. */
+  font-size: inherit;
   line-height: 1;
+  container-type: size;
   cursor: var(--node-dot-cursor);
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
-  transition: background 80ms ease, color 80ms ease, box-shadow 80ms ease, opacity 80ms ease;
 }
 
 /* Segmented strip: outer corners only; collapse shared edges between cells. */
@@ -19602,12 +20043,16 @@ input[data-global-scope-number-drag="true"]:not([readonly]):focus,
 .app-latch-button-label {
   display: block;
   max-width: 100%;
+  margin: 0;
+  padding: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: clip;
   line-height: 1;
   pointer-events: none;
   text-align: center;
+  /* One size from the button content box (height-capped; width clips). */
+  font-size: min(70cqh, 100cqw);
 }
 
 .node-parameter-metadata-popover :is(input, textarea, select),
@@ -19921,10 +20366,6 @@ input[data-global-scope-number-drag="true"]:not([readonly]):focus,
   background: rgba(8, 18, 22, 0.82);
   color: rgba(205, 214, 216, 0.78);
   font-size: 0.72rem;
-  transition:
-    border-color 120ms ease,
-    background 120ms ease,
-    color 120ms ease;
 }
 
 .metadata-script-actions button:last-child {
@@ -20084,15 +20525,6 @@ input[data-global-scope-number-drag="true"]:not([readonly]):focus,
   .node-parameter-metadata-popover {
     grid-template-columns: minmax(0, 1fr);
   }
-}
-
-button.confirming-default,
-button.saved-default {
-  transition:
-    border-color 140ms ease,
-    background 140ms ease,
-    color 140ms ease,
-    box-shadow 140ms ease;
 }
 
 button.confirming-default,
@@ -20472,14 +20904,18 @@ button#nodeScenePasteModuleSettings.settings-paste-mismatch {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
-  gap: 4px;
-  min-height: 32px;
+  gap: 2px;
+  min-height: 0;
   min-width: 0;
   margin: 0;
-  padding: 6px 8px 6px;
+  padding: 2px 4px;
   overflow: hidden;
   border-radius: 0;
   border-inline: 0;
+}
+
+.node-module-actions-window .scene-context-selected-module.is-knob-settings > strong {
+  display: none;
 }
 
 .node-module-actions-window .scene-context-selected-module span[hidden],
@@ -21225,6 +21661,71 @@ button#nodeScenePasteModuleSettings.settings-paste-mismatch {
   display: none;
 }
 
+.node-knob-plugin-identity {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.node-knob-plugin-identity[hidden] {
+  display: none;
+}
+
+.node-knob-look-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin: 0 0 8px;
+}
+
+.node-knob-look-tabs button {
+  min-height: 28px;
+  border: 1px solid var(--line, #3a444c);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted, #9aa7b0);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.node-knob-look-tabs button.is-on {
+  background: rgba(127, 199, 217, 0.16);
+  color: var(--text, #e8eef2);
+  border-color: rgba(127, 199, 217, 0.45);
+}
+
+.node-module-actions-window .node-knob-settings-field {
+  display: grid;
+  grid-template-columns: 55px minmax(0, 1fr);
+  grid-auto-rows: auto;
+  align-items: center;
+  column-gap: 6px;
+  row-gap: 0;
+  min-height: 0;
+  padding: 0;
+}
+
+.node-module-actions-window .node-knob-settings-field span {
+  min-height: 0;
+  padding: 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.node-module-actions-window .node-knob-settings-field input {
+  min-height: 26px;
+  height: 26px;
+  padding: 0 6px;
+}
+
 .scene-context-alias-control span {
   color: var(--muted);
   font-size: 0.62rem;
@@ -21460,7 +21961,7 @@ button#nodeScenePasteModuleSettings.settings-paste-mismatch {
 .scene-context-global-smoothing-unit {
   padding-inline: 0;
   color: rgba(127, 199, 217, 0.78);
-  font-size: 0.62rem;
+  font-size: 0.92rem;
 }
 
 .scene-context-global-smoothing-input {
@@ -21477,7 +21978,7 @@ button#nodeScenePasteModuleSettings.settings-paste-mismatch {
   background: rgba(4, 8, 10, 0.95);
   color: #b7f2ff;
   font-family: inherit;
-  font-size: 0.7rem;
+  font-size: 1.05rem;
   font-weight: 700;
   line-height: 1;
   text-align: center;
@@ -21509,7 +22010,7 @@ button#nodeScenePasteModuleSettings.settings-paste-mismatch {
 
 .scene-context-timing-controls .node-header-timing-field {
   display: grid;
-  grid-template-columns: 5.75em 0.65em minmax(0, 1fr);
+  grid-template-columns: calc(8.5em - 30px) 0.65em minmax(0, 1fr);
   grid-template-rows: auto;
   align-items: center;
   column-gap: 0;
@@ -21523,6 +22024,30 @@ button#nodeScenePasteModuleSettings.settings-paste-mismatch {
 .scene-context-timing-controls .node-header-timing-field + .node-header-timing-field {
   border-top: 1px solid rgba(226, 168, 109, 0.24);
 }
+
+/* Command Center: keep the app plus cursor on scrubbable timing rows (not ew-resize). */
+.scene-context-timing-controls .node-header-timing-field[data-header-number-drag="true"],
+.scene-context-timing-controls .node-header-smoothing-field,
+.scene-context-timing-controls .node-header-speed-placeholder,
+.scene-context-timing-controls .node-header-timing-field[data-header-number-drag="true"] .node-header-timing-caption,
+.scene-context-timing-controls .node-header-timing-field[data-header-number-drag="true"] .node-header-timing-input,
+.scene-context-timing-controls .node-header-smoothing-field .node-header-timing-caption,
+.scene-context-timing-controls .node-header-smoothing-field .node-header-timing-input,
+.scene-context-timing-controls .node-header-speed-placeholder .node-header-timing-caption,
+.scene-context-timing-controls .node-header-speed-placeholder .node-header-timing-input,
+.scene-context-timing-controls .node-header-timing-input[readonly],
+.scene-context-timing-controls .node-header-timing-input[data-audio-field][readonly],
+.scene-context-timing-controls .node-header-timing-input[data-speed-limit][readonly],
+.scene-context-timing-controls .node-header-timing-input[data-global-smoothing-seconds][readonly],
+.scene-context-timing-controls .node-header-timing-input[data-speed-readout][readonly],
+.scene-context-timing-controls .node-header-timing-input[data-global-scope-input][readonly],
+.scene-context-global-smoothing-control,
+.scene-context-global-smoothing-label,
+.scene-context-global-smoothing-unit,
+.scene-context-global-smoothing-input[readonly] {
+  cursor: var(--node-dot-cursor);
+}
+
 
 .scene-context-timing-controls .node-header-timing-field span {
   display: flex;
@@ -21551,6 +22076,12 @@ button#nodeScenePasteModuleSettings.settings-paste-mismatch {
   background: transparent;
   font-size: 1.05rem;
   font-weight: 700;
+  text-align: left;
+}
+
+.scene-context-timing-controls .node-header-oversampling-select {
+  background-color: var(--bg);
+  color: #ffffff;
   text-align: left;
 }
 
@@ -21692,43 +22223,29 @@ button#nodeScenePasteModuleSettings.settings-paste-mismatch {
   }
 }
 
-/* Disable module — full-width row under Visibility → Hide unused. */
-#nodeSceneContextMenu .scene-context-disable-modules-button,
-.node-scene-context-menu .scene-context-disable-modules-button {
+/* Disable module — same .node-bypass-button chrome as module header row. */
+#nodeSceneContextMenu .scene-context-module-bypass-button,
+.node-scene-context-menu .scene-context-module-bypass-button {
   display: flex;
   width: 100%;
   box-sizing: border-box;
   align-items: center;
   justify-content: center;
-  min-height: var(--node-floating-window-button-height, 1.85rem);
+  min-height: calc(var(--node-floating-window-button-height, 1.85rem) + 0.15rem);
+  height: calc(var(--node-floating-window-button-height, 1.85rem) + 0.15rem);
   margin: 0;
-  padding: 0 8px;
+  padding: 0;
   border: 0;
   border-radius: 0;
-  text-align: center;
+  /* Match module header bypass cell sizing for the joystick glyph. */
+  --node-header-height: calc(var(--node-floating-window-button-height, 1.85rem) + 0.15rem);
+  container-type: size;
 }
 
-.scene-context-visibility-stack .scene-context-disable-modules-button {
-  min-height: calc(var(--node-floating-window-button-height, 1.85rem) + 0.15rem);
-  font-weight: 650;
-}
-
-#nodeSceneContextMenu .scene-context-disable-modules-button .scene-context-window-button-label,
-.node-scene-context-menu .scene-context-disable-modules-button .scene-context-window-button-label {
-  justify-items: center;
-  text-align: center;
-  width: 100%;
-}
-
-#nodeSceneContextMenu .scene-context-disable-modules-button:disabled,
-.node-scene-context-menu .scene-context-disable-modules-button:disabled {
+#nodeSceneContextMenu .scene-context-module-bypass-button:disabled,
+.node-scene-context-menu .scene-context-module-bypass-button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
-}
-
-#nodeSceneContextMenu .scene-context-disable-modules-button[aria-pressed="true"],
-.node-scene-context-menu .scene-context-disable-modules-button[aria-pressed="true"] {
-  background: color-mix(in srgb, rgba(226, 168, 109, 0.16) 70%, transparent);
 }
 
 .scene-context-patch-actions {
@@ -22656,6 +23173,11 @@ body.node-slider-dragging .node-param-port {
   pointer-events: none;
 }
 
+/* Setup params: same purple as ordinary param MOD (--node-mod-input-fill), square = not realtime. */
+.node-param-port.node-port-square::before {
+  border-radius: 1px;
+}
+
 .node-param-port.modulation-input {
   --node-patch-point-x: 0%;
   --node-param-hover-color: var(--node-mod-input-fill);
@@ -22832,47 +23354,6 @@ body.node-slider-dragging .node-param-port {
   opacity: 0.9;
 }
 
-.node-port.monitored-port,
-.node-param-port.monitored-port {
-  --node-monitor-color: #7fe8ff;
-}
-
-.node-port.monitored-port:not(.connected-port)::after,
-.node-param-port.monitored-port:not(.connected-port)::after {
-  content: "";
-  position: absolute;
-  z-index: 3;
-  top: 50%;
-  /* Keep the pip fully inside the overflow:hidden jack cell. */
-  left: 50%;
-  width: calc(var(--node-wire-patch-point-size) * 0.5);
-  height: calc(var(--node-wire-patch-point-size) * 0.5);
-  border-radius: 50%;
-  pointer-events: none;
-  /* Center monitor pip + soft glow only (no outer jack ring). */
-  background: color-mix(in srgb, var(--node-monitor-color) 72%, transparent);
-  box-shadow:
-    0 0 calc(var(--node-hover-glow-size) * 0.55) color-mix(in srgb, var(--node-monitor-color) 40%, transparent);
-  transform: translate(-50%, -50%);
-}
-
-.node-port.output.monitored-port,
-.node-param-port.parameter-output.monitored-port {
-  --node-patch-point-x: 100%;
-}
-
-.node-port.input.monitored-port,
-.node-param-port.modulation-input.monitored-port,
-.node-param-port.graph-input.monitored-port {
-  --node-patch-point-x: 0%;
-}
-
-.node-port.monitored-port.connected-port::after,
-.node-param-port.monitored-port.connected-port::after {
-  /* Glow only — no 1px ring stroke at the inlet. */
-  box-shadow:
-    0 0 calc(var(--node-hover-glow-size) * 0.75) color-mix(in srgb, var(--node-monitor-color) 54%, transparent);
-}
 
 /* No jack hover stroke restyle — permanent crescent is already the lit look.
    smoke token: color-mix(in srgb, var(--node-port-hover-fill) */
@@ -23103,7 +23584,6 @@ body.node-slider-dragging .node-param-port {
   font-size: 0.75rem;
   line-height: 1;
   cursor: var(--node-dot-cursor);
-  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 /* Conglomerate strip: overlap 1px so one seam is shared. Raise z-index so
@@ -23199,6 +23679,19 @@ button[data-transport-action="stop"],
 #nodeRenderedPlayerPlay {
   font-variant-emoji: text;
   font-feature-settings: "emoji" 0;
+}
+
+/* Ctrl+click lock: keep the play triangle as a text glyph; lock stays emoji. */
+.node-transport-play-glyph,
+.node-transport-play-lock {
+  display: inline-block;
+  line-height: 1;
+}
+.node-transport-play-lock {
+  font-variant-emoji: emoji;
+  font-feature-settings: normal;
+  font-size: 0.82em;
+  margin-left: 0.08em;
 }
 
 /* Play — grey idle, green playing. Pause is a separate button. */
@@ -23365,6 +23858,10 @@ button[data-transport-action="stop"]:disabled {
   text-align: center;
   text-overflow: clip;
   white-space: nowrap;
+  line-height: 1;
+  font-family: inherit;
+  font-weight: inherit;
+  font-size: clamp(0.72rem, calc(var(--node-toolbar-row-height) * 0.3), 1.05rem);
 }
 
 .node-live-toggle-palette .node-live-toggle:hover,
@@ -23529,12 +24026,7 @@ button[data-transport-action="stop"]:disabled {
 .json-token-keyword { color: rgba(211, 160, 112, 0.96); }
 .json-token-punct { color: rgba(156, 172, 176, 0.72); }
 
-/* "Render / Sample" stacked on two lines, styled to match the Input/Output/
-   MIDI live toggles beside it: same two-row grid, same casing (none), same
-   inherited family/weight. The per-line font SIZE is not set here either --
-   fitNodeLiveToggleText (node-graph-settings-text-fit.js) measures these
-   spans along with the live toggles and writes an inline font-size, so the
-   hardcoded 89% scale in fitNodeLiveToggleText drives both. */
+/* "Render / Sample" stacked on two lines, same type as Input/Output/MIDI. */
 .node-render-duration-control #nodeRenderButton {
   display: grid;
   grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
@@ -23574,11 +24066,6 @@ button[data-transport-action="stop"]:disabled {
   line-height: 1;
   font-family: inherit;
   font-weight: inherit;
-  /* Readable fallback. fitNodeLiveToggleText normally overrides this with an
-     inline px size (measured the same way as Input/Output/MIDI), but it sets
-     every span to 1px before measuring and bails early if the measuring
-     canvas is unavailable or the row is not laid out yet -- without a sane
-     stylesheet value the text can be left at 1px and effectively invisible. */
   font-size: clamp(0.72rem, calc(var(--node-toolbar-row-height) * 0.3), 1.05rem);
 }
 
@@ -24966,50 +25453,114 @@ code {
 .node-plugin-toggle-face,
 .node-plugin-momentary-face,
 .node-plugin-slider-face {
-  display: flex;
-  align-items: center;
-  justify-content: center;
   width: 100%;
   height: 100%;
   min-height: 0;
   box-sizing: border-box;
 }
 .node-plugin-slider-face {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.node-plugin-slider-face {
   padding: calc(var(--node-grid-size) * 0.15);
 }
 .node-plugin-toggle-face,
 .node-plugin-momentary-face {
-  padding: var(--plugin-btn-pad, 4px);
+  position: relative;
+  display: block;
+  padding: 0;
+  overflow: hidden;
   pointer-events: auto;
   z-index: 2;
+  container-type: size;
+  container-name: pluginbtn;
 }
 .dsp-node .node-plugin-toggle-face canvas,
 .dsp-node .node-plugin-momentary-face canvas {
   pointer-events: none !important;
 }
+.node-plugin-button-label {
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  right: 0;
+  margin: 0;
+  width: auto;
+  height: auto;
+  pointer-events: none;
+  color: var(--plugin-btn-text, #f4f7f8);
+  font-weight: 700;
+  font-size: calc(var(--plugin-label-font-px, 16) * 100cqmin / 96);
+  line-height: 1;
+  text-align: center;
+  text-fit: none;
+  white-space: nowrap;
+  user-select: none;
+  transform: none;
+}
+[data-label-align="topleft"] > .node-plugin-button-label { top: calc(var(--plugin-label-pad, 0) * 100%); left: 0; right: auto; transform: none; }
+[data-label-align="top"] > .node-plugin-button-label { top: calc(var(--plugin-label-pad, 0) * 100%); text-align: center; transform: none; }
+[data-label-align="topright"] > .node-plugin-button-label { top: calc(var(--plugin-label-pad, 0) * 100%); left: auto; right: 0; text-align: right; transform: none; }
+[data-label-align="midleft"] > .node-plugin-button-label { top: 50%; left: 0; right: auto; transform: translateY(-50%); }
+[data-label-align="mid"] > .node-plugin-button-label { top: 50%; transform: translateY(-50%); }
+[data-label-align="midright"] > .node-plugin-button-label { top: 50%; left: auto; right: 0; text-align: right; transform: translateY(-50%); }
+[data-label-align="bottomleft"] > .node-plugin-button-label { bottom: calc(var(--plugin-label-pad, 0) * 100%); left: 0; right: auto; transform: none; }
+[data-label-align="bottom"] > .node-plugin-button-label { bottom: calc(var(--plugin-label-pad, 0) * 100%); transform: none; }
+[data-label-align="bottomright"] > .node-plugin-button-label { bottom: calc(var(--plugin-label-pad, 0) * 100%); left: auto; right: 0; text-align: right; transform: none; }
+.btn-fit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  font-size: calc(var(--plugin-btn-font-px, 72) * 100cqmin / 96);
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  text-fit: none;
+  transform: none;
+}
+[data-plugin-button-display-settings-panel] [data-plugin-btn-text] {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font: inherit;
+  outline: none;
+}
 .node-plugin-toggle-button,
 .node-plugin-momentary-button {
-  position: relative;
+  position: absolute;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   box-sizing: border-box;
-  width: 100%;
-  height: 100%;
+  left: calc(var(--plugin-btn-pad-left, 0) * 100%);
+  right: calc(var(--plugin-btn-pad-right, 0) * 100%);
+  top: calc(var(--plugin-btn-pad-top, 0) * 100%);
+  bottom: calc(var(--plugin-btn-pad-bottom, 0) * 100%);
+  width: auto;
+  height: auto;
+  flex: 0 0 auto;
   min-width: 0;
   min-height: 0;
   margin: 0;
   padding: 0;
   appearance: none;
   -webkit-appearance: none;
-  border: var(--plugin-btn-stroke-w, 1px) solid var(--plugin-btn-stroke, hsl(200 20% 35% / 0.85));
-  border-radius: var(--plugin-btn-radius, 6px);
+  border: calc(var(--plugin-btn-stroke-scale, 0.06) * 8cqmin) solid var(--plugin-btn-stroke, #5c5071);
+  border-radius: calc(var(--plugin-btn-rounding, 0.18) * 50cqmin);
   corner-shape: var(--plugin-btn-corner-shape, squircle);
-  background: var(--plugin-btn-fill, hsl(210 16% 16%));
-  color: var(--plugin-btn-text, #d8e6ef);
+  color: var(--plugin-btn-text, #f4f7f8);
   font-weight: 700;
-  font-size: 12px;
   line-height: 1;
   letter-spacing: 0;
   text-align: center;
@@ -25017,40 +25568,18 @@ code {
   cursor: var(--node-dot-cursor);
   user-select: none;
   touch-action: none;
-}
-.node-plugin-toggle-button:hover,
-.node-plugin-momentary-button:hover {
-  filter: none;
-  border-color: var(--plugin-btn-stroke, hsl(200 20% 35% / 0.85));
-  color: var(--plugin-btn-text, #d8e6ef);
+  transition: none;
   background: color-mix(
     in srgb,
-    var(--plugin-btn-hover, transparent) calc(var(--plugin-btn-hover-alpha, 0.45) * 100%),
-    var(--plugin-btn-fill, hsl(210 16% 16%))
+    var(--plugin-btn-active, #2f8f86) calc(var(--plugin-btn-value, 0) * 100%),
+    var(--plugin-btn-inactive, #1a2228)
   );
 }
-.node-plugin-toggle-button.is-on,
-.node-plugin-momentary-button.is-down {
-  filter: none;
-  border-color: var(--plugin-btn-stroke, hsl(200 20% 35% / 0.85));
-  color: var(--plugin-btn-text, #d8e6ef);
-  background: color-mix(
-    in srgb,
-    var(--plugin-btn-on, transparent) calc(var(--plugin-btn-on-alpha, 0.7) * 100%),
-    var(--plugin-btn-fill, hsl(210 16% 16%))
-  );
-}
-.node-plugin-toggle-button.is-on:hover,
-.node-plugin-momentary-button.is-down:hover {
-  background: color-mix(
-    in srgb,
-    var(--plugin-btn-hover, transparent) calc(var(--plugin-btn-hover-alpha, 0.45) * 100%),
-    color-mix(
-      in srgb,
-      var(--plugin-btn-on, transparent) calc(var(--plugin-btn-on-alpha, 0.7) * 100%),
-      var(--plugin-btn-fill, hsl(210 16% 16%))
-    )
-  );
+.node-plugin-toggle-button:hover:not(.is-on),
+.node-plugin-momentary-button:hover:not(.is-held) {
+  border-color: var(--plugin-btn-stroke, #5c5071);
+  transition: none;
+  background: var(--plugin-btn-hover, #89bfc2);
 }
 .node-plugin-slider-face {
   pointer-events: auto;
@@ -25246,4 +25775,3 @@ code {
 .dsp-node[data-node-type="metamodule"] .node-io-row.input[data-port="Poly"] .node-port.input {
   border-radius: 2px;
 }
-

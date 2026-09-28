@@ -42,7 +42,7 @@ function nodeGraphModuleScopeDiscontinuitySkipSamplesForSlot(slot, buffer) {
   if (buffer?.nodeGraphScopeDisableDiscontinuitySkip === true) {
     return 0;
   }
-  if (nodeGraphModuleDisplayRendererForSlot(slot) === "trace") {
+  if (nodeGraphModuleDisplayRendererForSlot(slot) === "waterfall") {
     const enabled = buffer?.nodeGraphScopeSkipDiscontinuities
       ?? nodeGraphTraceDisplaySettingsForSlot(slot).skipDiscontinuities;
     return enabled ? nodeGraphModuleScopeDiscontinuityFixedSkipCount : 0;
@@ -65,7 +65,7 @@ function nodeGraphModuleScopeDiscontinuitySkipSamplesForPoints(points) {
 }
 
 function nodeGraphModuleScopeTraceEdgePaddingRatio(slot, rect) {
-  if (nodeGraphModuleDisplayRendererForSlot(slot) !== "trace") {
+  if (nodeGraphModuleDisplayRendererForSlot(slot) !== "waterfall") {
     return 0.08;
   }
   const settings = nodeGraphTraceDisplaySettingsForSlot(slot);
@@ -73,24 +73,30 @@ function nodeGraphModuleScopeTraceEdgePaddingRatio(slot, rect) {
   if (settings.dot1Enabled !== false && settings.brightness > 0) {
     activePasses.push({
       blur: clampNodeSliderValue(settings.lineThickness, 0, 1),
-      size: clampNodeSliderValue(settings.dot1Size, 0, 1),
+      size: typeof nodeGraphTraceDisplayNormalizeInkPx === "function"
+        ? nodeGraphTraceDisplayNormalizeInkPx(settings.dot1Size, 2)
+        : Math.max(0, nodeGraphFiniteNumber(settings.dot1Size, 2)),
     });
   }
-  const stereoTrace = typeof nodeGraphModuleUsesStereoTraceDisplay === "function"
-    ? nodeGraphModuleUsesStereoTraceDisplay(slot?.type)
+  const stereoTrace = typeof nodeGraphModuleUsesStereoWaterfall === "function"
+    ? nodeGraphModuleUsesStereoWaterfall(slot?.type)
     : slot?.type === "output";
   if (stereoTrace && settings.secondaryEnabled !== false && settings.secondaryBrightness > 0) {
     activePasses.push({
       blur: clampNodeSliderValue(settings.secondaryLineThickness, 0, 1),
-      size: clampNodeSliderValue(settings.secondarySize, 0, 1),
+      size: typeof nodeGraphTraceDisplayNormalizeInkPx === "function"
+        ? nodeGraphTraceDisplayNormalizeInkPx(settings.secondarySize, 2)
+        : Math.max(0, nodeGraphFiniteNumber(settings.secondarySize, 2)),
     });
   }
   // Match exp size map: diameter fraction = side^(t-1) ≈ size face occupancy.
   const faceSide = Math.max(1, nodeGraphFiniteNumber(rect?.height, nodeGraphFiniteNumber(rect?.width, 256)));
   const visualPadding = activePasses.reduce((largest, pass) => {
-    const diam = typeof nodeGraphScopeSize01ToDiameterPx === "function"
-      ? nodeGraphScopeSize01ToDiameterPx(faceSide, pass.size)
-      : Math.max(1, Math.pow(faceSide, clampNodeSliderValue(pass.size, 0, 1)));
+    const diam = typeof TraceStroke !== "undefined" && typeof TraceStroke.diameterPx === "function"
+      ? TraceStroke.diameterPx(faceSide, pass.size)
+      : (typeof faceInkPx === "function" && typeof clampAuthoredInkPx === "function"
+        ? faceInkPx(clampAuthoredInkPx(pass.size, 0), faceSide)
+        : Math.max(0, nodeGraphFiniteNumber(pass.size, 0)));
     const frac = diam / faceSide;
     const padding = frac * (0.22 + pass.blur * 0.16);
     return Math.max(largest, padding);
@@ -100,7 +106,7 @@ function nodeGraphModuleScopeTraceEdgePaddingRatio(slot, rect) {
 }
 
 function nodeGraphModuleScopeTraceHalfHeightRatio(slot, buffer, rect = null) {
-  if (nodeGraphModuleDisplayRendererForSlot(slot) !== "trace") {
+  if (nodeGraphModuleDisplayRendererForSlot(slot) !== "waterfall") {
     return 0.42;
   }
   return clampNodeSliderValue(0.5 - nodeGraphModuleScopeTraceEdgePaddingRatio(slot, rect), 0.24, 0.5);
@@ -132,14 +138,14 @@ function nodeGraphModuleScopeBufferSegmentPoints(
   if (drawSpan <= 0.001) {
     return points;
   }
-  const traceDisplayMode = nodeGraphModuleDisplayRendererForSlot(slot) === "trace";
-  const timing = traceDisplayMode ? options.traceTiming : null;
+  const waterfallMode = nodeGraphModuleDisplayRendererForSlot(slot) === "waterfall";
+  const timing = waterfallMode ? options.traceTiming : null;
   const bufferViewStartMs = timing ? nodeGraphModuleScopeNowMs() : 0;
   const view = nodeGraphModuleScopeBufferView(buffer, slot);
   if (timing) {
     timing.bufferViewMs += Math.max(0, nodeGraphModuleScopeNowMs() - bufferViewStartMs);
   }
-  if (traceDisplayMode && view.end <= view.start) {
+  if (waterfallMode && view.end <= view.start) {
     return points;
   }
   const visibleSamples = Math.max(1, view.end - view.start);

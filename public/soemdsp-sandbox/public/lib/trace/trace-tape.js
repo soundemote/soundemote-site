@@ -1,5 +1,5 @@
 // RGB stamp tape — phosphor-stamp geometry, no Ghost / Trail / Burn / LUT.
-// Instant Trace waterfall: scroll left, additive RGB dabs, blit to the face.
+// Instant Waterfall: scroll left, additive RGB dabs, blit to the face.
 // Stereo blends in the same buffer (lighter / additive), not a gradient.
 
 (function initTraceTape(global) {
@@ -566,10 +566,10 @@
       return 0;
     }
     const pathPoints = options.pathPoints;
-    const radius = Math.max(0.35, nodeGraphFiniteNumber(options.radius, 2));
+    const radius = Math.max(0, nodeGraphFiniteNumber(options.radius, 2));
     const blur = clamp01(options.blur, 0);
     const brightness = Math.max(0, Number(options.brightness) ?? 1);
-    if (brightness < 1e-6) {
+    if (brightness < 1e-6 || !(radius > 0)) {
       return 0;
     }
     const built = buildStampVertices(
@@ -771,7 +771,7 @@
     if (typeof PhosphorDrawer !== "undefined" && PhosphorDrawer.radiusFromSize) {
       return PhosphorDrawer.radiusFromSize(faceMinSide, size01);
     }
-    return Math.max(0.35, Math.max(1, nodeGraphFiniteNumber(faceMinSide, 1)) * clamp01(size01, 0.035) * 0.5);
+    return Math.max(0, faceInkPx(clampAuthoredInkPx(size01, 2), faceMinSide) * 0.5);
   }
 
   global.TraceTape = {

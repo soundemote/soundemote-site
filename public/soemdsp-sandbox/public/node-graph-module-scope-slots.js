@@ -75,10 +75,10 @@ function unregisterNodeGraphModuleScopeSlot(nodeId) {
   nodeGraphModuleScopeState.modelFrameTimes.delete(nodeId);
   nodeGraphModuleScopeState.clockPhasors.delete(nodeId);
   nodeGraphModuleScopeState.oscillatorPhasors.delete(nodeId);
-  if (typeof nodeGraphPhosphorWaveformClearViewKeys === "function") {
-    nodeGraphPhosphorWaveformClearViewKeys(nodeId);
-  } else if (typeof nodeGraphPhosphorWaveformViewStates !== "undefined") {
-    nodeGraphPhosphorWaveformViewStates.delete(nodeId);
+  if (typeof nodeGraphSampleWaveformClearViewKeys === "function") {
+    nodeGraphSampleWaveformClearViewKeys(nodeId);
+  } else if (typeof nodeGraphSampleWaveformViewStates !== "undefined") {
+    nodeGraphSampleWaveformViewStates.delete(nodeId);
   }
 }
 
@@ -261,8 +261,12 @@ function nodeGraphModuleScopeHasModelDisplay() {
       // Hypersaw face paints from data-bus Phases (no sample buffer).
       renderer === "hypersawBurn" ||
       nodeGraphModuleScopeIsOscillatorType(slot.type) ||
-      (["traceDisplay", "dotOscilloscope", "valueOscilloscope", "lineBurnOscilloscope", "led"].includes(slot.type) &&
+      (["waterfall", "dotOscilloscope", "valueOscilloscope", "lineBurnOscilloscope", "scope1dTrace", "led"].includes(slot.type) &&
         nodeGraphModuleScopeConnectionsTo(slot.nodeId, "In").length > 0) ||
+      (slot.type === "scope1dTraceStereo" && (
+        nodeGraphModuleScopeConnectionsTo(slot.nodeId, "Left").length > 0
+        || nodeGraphModuleScopeConnectionsTo(slot.nodeId, "Right").length > 0
+      )) ||
       (["scope2d", "scope2dTrace", "phosphorLight"].includes(renderer) && (
         // Prefer live X/Y wires. Do NOT treat dry Thru ports alone as a model:
         // pure 2D Phosphor faces now always declare outputs ["X","Y"] for thrus,

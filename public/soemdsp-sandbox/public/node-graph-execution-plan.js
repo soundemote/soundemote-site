@@ -67,6 +67,12 @@ function nodeGraphBuildDependencyMap(patch = nodeGraphMvp.patch) {
     addDependency(dependencies, connection.destinationNode, connection.sourceNode);
   }
 
+  if (typeof nodeGraphNamedPortalPairs === "function") {
+    for (const pair of nodeGraphNamedPortalPairs(nodeList)) {
+      addDependency(dependencies, pair.destId, pair.sourceId);
+    }
+  }
+
   for (const modulation of patch.modulations || []) {
     const source = nodeMap.get(modulation.sourceNode);
     const destination = nodeMap.get(modulation.destinationNode);
@@ -415,12 +421,27 @@ function nodeGraphValidateRuntimeRoute(issues, options = {}) {
 }
 
 function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
-  const graph = nodeGraphBuildDependencyMap(patch);
+  // Portals are wires. Expand them before reachability, or a node that is only
+  // fed through a portal (Gate, Reset, Frequency) is dropped from the live plan.
+  let planPatch = patch;
+  if (patch && typeof nodeGraphSpliceNamedPortalCables === "function") {
+    const spliced = nodeGraphSpliceNamedPortalCables(
+      patch.nodes,
+      patch.connections,
+      patch.modulations,
+    );
+    planPatch = {
+      ...patch,
+      connections: spliced.connections,
+      modulations: spliced.modulations,
+    };
+  }
+  const graph = nodeGraphBuildDependencyMap(planPatch);
   const issues = [...graph.issues];
   const outputNode = "output";
   const reachableNodes = new Set();
   const bypassedNodes = new Set(graph.bypassedNodes || []);
-  const passthroughTypes = new Set(["asciiscope", "matrixDisplay", "matrixWaterfall", "activeFilter", "allpass", "badvalMonitor", "bandpass", "crossover2", "crossover3", "crossover4", "crossover5", "crossover6", "modeResonator", "combResonator", "waveguide", "phaser", "flanger", "chorus", "bode", "phaseDisperse", "stftBlur", "bessel", "bias", "u2b", "b2u", "inv", "butterworth", "chaoticPhaseLockingFilter", "chebyshev", "cookbookFilter", "elliptic", "eqFilter", "flowerChildFilter", "formantFilter", "besselThomson", "massSpringDamper", "gain", "mix4", "mixStereo4", "mixStereo2", "mixStereo", "humanFilter", "inertialFilter", "ladderFilter", "linkwitzRiley", "papoulisFilter", "passiveFilter", "pll", "resonatorFilter", "reverbEffect", "sampleDelay", "sampleHold", "slewLimiter", "softClipper", "clipperLimiter", "speakerProtection", "speakerProtector2", "spectrogram", "speedColorInertia", "superloveFilter", "tb303Filter", "tiltFilter", "wallDelay", "yellowjacketFilter", "midSideEncode", "quadrature", "hilbert", "lookaheadLimiter", "limiter", "metamoduleIn", "metamoduleOut", "voiceFrequency", "voiceGate", "voiceTrigger"]);
+  const passthroughTypes = new Set(["asciiscope", "matrixDisplay", "matrixWaterfall", "activeFilter", "allpass", "badvalMonitor", "bandpass", "crossover2", "crossover3", "crossover4", "crossover5", "crossover6", "modeResonator", "combResonator", "waveguide", "phaser", "flanger", "chorus", "ensemble", "bode", "phaseDisperse", "stftBlur", "bessel", "bias", "u2b", "pitchHz", "ampDb", "b2u", "inv", "butterworth", "chaoticPhaseLockingFilter", "chebyshev", "cookbookFilter", "elliptic", "eqFilter", "graphicEq", "flowerChildFilter", "formantFilter", "besselThomson", "massSpringDamper", "gain", "attenumax", "gravityWalker", "degreeTuring", "degreePhrase", "noteGlide", "noteTranspose", "mix2", "mix4", "mixStereo4", "mixStereo2", "mixStereo", "humanFilter", "inertialFilter", "ladderFilter", "linkwitzRiley", "papoulisFilter", "passiveFilter", "pll", "resonatorFilter", "reverbEffect", "sampleDelay", "sampleHold", "slewLimiter", "softClipper", "speakerProtection", "speakerProtector2", "spectrogram", "speedColorInertia", "superloveFilter", "superloveRev2", "vcvrackSuperloveFilter", "tb303Filter", "tiltFilter", "wallDelay", "yellowjacketFilter", "midSideEncode", "quadrature", "hilbert", "lookaheadLimiter", "limiter", "metamoduleIn", "metamoduleOut", "namedPortalIn", "namedPortalOut", "voiceFrequency", "voiceGate", "voiceTrigger"]);
 
   function markReachable(nodeId) {
     if (reachableNodes.has(nodeId) || !graph.nodeMap.has(nodeId)) {
@@ -440,7 +461,8 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
   for (const node of graph.nodes) {
     if (
       (node?.type === "portalOutlet"
-        || (typeof nodeGraphPortalIsOutletType === "function" && nodeGraphPortalIsOutletType(node?.type)))
+        || (typeof nodeGraphPortalIsOutletType === "function" && nodeGraphPortalIsOutletType(node?.type))
+        || (typeof nodeGraphIsNamedPortalOutType === "function" && nodeGraphIsNamedPortalOutType(node?.type)))
       && !bypassedNodes.has(node.id)
     ) {
       markReachable(node.id);
@@ -450,29 +472,20 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
     if (nodeGraphVisualSinkActiveInPlan(node, { bypassedNodes })) {
       markReachable(node.id);
     }
-    // Interactive LayoutB chromeless faces (bug button, XY pad, …) always
-    // evaluate for their on-screen UI — not only when wired into the speaker
-    // path. XY Pad needs this so Phase+CV still runs through smoothing and
-    // phosphor even when Out X/Y are unconnected.
+    // Interactive CV / controller faces (NODE_GRAPH_LIVE_CONTROLLER_ALWAYS_REACHABLE_TYPES):
+    // always evaluate while Live even with no path to Output — smoothing,
+    // phosphor, Value LCD, Bias publish. Heavy audio DSP stays Output-gated.
     if (
       !bypassedNodes.has(node.id) &&
-      typeof nodeGraphChromelessModuleUsesSolidShell === "function" &&
-      nodeGraphChromelessModuleUsesSolidShell(node.type)
+      typeof nodeGraphModuleIsLiveControllerAlwaysReachable === "function" &&
+      nodeGraphModuleIsLiveControllerAlwaysReachable(node.type)
     ) {
       markReachable(node.id);
     }
-    // On-module faces (fBm X/Y phosphor, attractors, …): keep reachable so
-    // scope capture publishes even before the module is wired to Output.
-    // Native graph already processes every allowlisted node; this only gates
-    // plan order + face rings.
-    if (
-      !bypassedNodes.has(node.id)
-      && typeof nodeGraphModuleDisplayRendererForNode === "function"
-      && nodeGraphModuleDisplayRendererForNode(node) !== "layoutOwned"
-      && nodeGraphPatchNodeDisplayVisibleInPlan(node, { bypassedNodes })
-    ) {
-      markReachable(node.id);
-    }
+    // Do not pull a module into the DSP plan just because its face is open.
+    // Show/hide display must not add or remove audio nodes (that rebuilt the
+    // native graph and restarted sources such as Music Player). Scope capture
+    // still follows face visibility below.
     // Meters/analyzers: stay live when any declared signal input is wired,
     // even with nothing routed to Output. Do not hardcode "In" — RMS Stereo
     // / Noise Detector / LUFS use Left/Right/Mono.
@@ -503,6 +516,23 @@ function compileNodeGraphExecutionPlan(patch = nodeGraphMvp.patch) {
         if (String(node?.ownerMetamoduleId || "") === metaId) {
           markReachable(node.id);
         }
+      }
+    }
+  }
+  // A cable out of a live node must keep its destination. Otherwise Portal ← → Gate
+  // (or the spliced Keyboard → Gate) is deleted because the envelope is not
+  // itself on the path into Output, and the filter never opens.
+  {
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const connection of graph.connections) {
+        if (!reachableNodes.has(connection.sourceNode)) continue;
+        if (reachableNodes.has(connection.destinationNode)) continue;
+        if (!graph.nodeMap.has(connection.destinationNode)) continue;
+        const before = reachableNodes.size;
+        markReachable(connection.destinationNode);
+        if (reachableNodes.size > before) grew = true;
       }
     }
   }
@@ -770,6 +800,27 @@ function nodeGraphCompiledScopeCaptureNodeIds(graph, reachableNodes) {
       }
     }
   }
+  // Instant Waterfall faces that lock Sync to dry inputs need the feeding
+  // node's output ring even when that source face is hidden.
+  const inputSyncSources = new Set();
+  for (const node of graph.nodes) {
+    if (bypassedNodes.has(node.id) || !reachableNodes.has(node.id)) {
+      continue;
+    }
+    const spec = nodeGraphModuleDefinitions[node.type]?.syncTraceFromInputs;
+    if (!spec) {
+      continue;
+    }
+    const names = [spec.mono, spec.left, spec.right].filter(Boolean);
+    for (const port of names) {
+      const conns = graph.inputConnections.get(nodeGraphInputKey(node.id, port)) || [];
+      for (const connection of conns) {
+        if (connection?.sourceNode) {
+          inputSyncSources.add(String(connection.sourceNode));
+        }
+      }
+    }
+  }
   return graph.nodes
     .filter((node) =>
       reachableNodes.has(node.id) &&
@@ -782,6 +833,7 @@ function nodeGraphCompiledScopeCaptureNodeIds(graph, reachableNodes) {
         nodeGraphModuleIsGraphType(node.type) ||
         modulationSources.has(String(node.id)) ||
         visualFeedSources.has(String(node.id)) ||
+        inputSyncSources.has(String(node.id)) ||
         (
           typeof nodeGraphChromelessModuleUsesSolidShell === "function"
           && nodeGraphChromelessModuleUsesSolidShell(node.type)
@@ -806,22 +858,23 @@ const NODE_GRAPH_VISUAL_LATEST_WRITE_HZ = 60;
 
 function nodeGraphVisualDisplayNeedsWaveformRing(node) {
   // Use the renderer the face actually paints with. Modules that omit
-  // displayType still fall back to Instant Trace ("trace") — treating them
+  // displayType still fall back to Instant Waterfall ("waterfall") — treating them
   // as LCD (60 Hz) is what made Gain a dotted "custom oscilloscope".
   const displayType = typeof nodeGraphModuleDisplayRendererForNode === "function"
     ? String(nodeGraphModuleDisplayRendererForNode(node) || "")
     : String(nodeGraphModuleDefinitions[node?.type]?.displayType || node?.displayType || "");
   return (
-    displayType === "trace" ||
+    displayType === "waterfall" ||
     displayType === "scope2d" ||
     displayType === "scope2dTrace" ||
+displayType === "scope1dTrace" ||
     displayType === "lineBurn" ||
     displayType === "hypersawBurn" ||
+    displayType === "ensembleCloud" ||
     displayType === "videoscopeBurn" ||
     displayType === "oscilloscopeBankBurn" ||
     displayType === "spectrogramBurn" ||
     displayType === "phosphorLight" ||
-    displayType === "customDisplay" ||
     displayType === "matrixFace" ||
     displayType === "matrixWaterfallFace" ||
     displayType === "matrixDisplayFace" ||
@@ -833,8 +886,8 @@ function nodeGraphVisualDisplayNeedsWaveformRing(node) {
     displayType === "rasterRgbFace" ||
     displayType === "vectorRgbFace" ||
     displayType === "gradientVectorscopeFace" ||
-    displayType === "traceRgb" ||
-    displayType === "traceXyz"
+    displayType === "waterfallRgb" ||
+    displayType === "waterfallXyz"
   );
 }
 

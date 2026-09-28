@@ -1,10 +1,10 @@
 // Boundary thru portals (flat-graph safe â€” no mic bleed / speaker mix).
-// TitleBarAndPorts: title + In/Out jacks only (no face, no compactTile port hack).
+// InletOutletLayout: title + In/Out jacks only (no face, no compactTile port hack).
 registerNodeGraphChromelessModule("metamoduleIn", {
-  label: "Meta In",
+  label: "Metamodule In",
   compactTile: false,
   definition: {
-    chrome: "TitleBarAndPorts",
+    chrome: "InletOutletLayout",
     planRole: "processor",
     planFreeRun: true,
     // Spawn size only â€” user may still resize freely (no min clamp).
@@ -21,15 +21,15 @@ registerNodeGraphChromelessModule("metamoduleIn", {
   catalog: {
     category: "portal",
     description: "Metamodule boundary inlet (unity thru). Place inside a Metamodule.",
-    notes: ["metamodule", "portal", "inlet", "boundary"],
+    notes: ["metamodule", "portal", "inlet", "boundary", "meta in"],
   },
 });
 
 registerNodeGraphChromelessModule("metamoduleOut", {
-  label: "Meta Out",
+  label: "Metamodule Out",
   compactTile: false,
   definition: {
-    chrome: "TitleBarAndPorts",
+    chrome: "InletOutletLayout",
     planRole: "processor",
     planFreeRun: true,
     // Spawn size only â€” user may still resize freely (no min clamp).
@@ -46,7 +46,7 @@ registerNodeGraphChromelessModule("metamoduleOut", {
   catalog: {
     category: "portal",
     description: "Metamodule boundary outlet (unity thru). Place inside a Metamodule.",
-    notes: ["metamodule", "portal", "outlet", "boundary"],
+    notes: ["metamodule", "portal", "outlet", "boundary", "meta out"],
   },
 });
 
@@ -87,7 +87,7 @@ registerNodeGraphChromelessModule("metamodule", {
         min: "-4",
         nonlinearSlider: false,
         step: "1",
-        tooltip: "Shared octave offset into Voice Frequency.",
+        tooltip: "Shared octave offset into Voice Inc.",
       },
       {
         defaultValue: "0",
@@ -98,7 +98,7 @@ registerNodeGraphChromelessModule("metamodule", {
         min: "-12",
         nonlinearSlider: false,
         step: "1",
-        tooltip: "Shared semitone offset into Voice Frequency.",
+        tooltip: "Shared semitone offset into Voice Inc.",
       },
       {
         defaultValue: "0",
@@ -109,7 +109,7 @@ registerNodeGraphChromelessModule("metamodule", {
         min: "-100",
         nonlinearSlider: false,
         step: "1",
-        tooltip: "Shared cents offset into Voice Frequency.",
+        tooltip: "Shared cents offset into Voice Inc.",
       },
       {
         defaultValue: "0",
@@ -126,17 +126,17 @@ registerNodeGraphChromelessModule("metamodule", {
   },
   catalog: {
     category: "portal",
-    description: "Voice container. Shell: Voices in (mix of Play Keys / Arp Keys / Chord Memory), Left/Right out. Inside: owned modules = a voice; plus per-voice Frequency/Gate/Trigger/Idle.",
+    description: "Voice container. Shell: Voices in (mix of Play Keys / Arp Keys / Chord Memory), Left/Right out. Inside: owned modules = a voice; plus per-voice Inc/Gate/Trigger/Idle. Wire Voice Inc → oscillator inc.",
     notes: ["metamodule", "voice container", "voices", "polyphony", "voice manager", "container", "portal"],
   },
 });
 
 // Built-in per-voice buses on the Meta container (one signal per voice).
 registerNodeGraphChromelessModule("voiceFrequency", {
-  label: "Voice Frequency",
+  label: "Voice Inc",
   compactTile: false,
   definition: {
-    chrome: "TitleBarAndPorts",
+    chrome: "InletOutletLayout",
     planRole: "processor",
     planFreeRun: true,
     defaultWidthGu: 4,
@@ -144,14 +144,22 @@ registerNodeGraphChromelessModule("voiceFrequency", {
     hasFace: false,
     defaultUi: { buttonsHidden: true },
     inputs: [],
-    outputs: ["Frequency"],
-    outputAliases: { Out: "Frequency", Freq: "Frequency", f: "Frequency" },
+    outputs: ["Increment"],
+    outputLabels: { Increment: "inc" },
+    outputAliases: {
+      Out: "Increment",
+      Frequency: "Increment",
+      Freq: "Increment",
+      f: "Increment",
+      "ƒ": "Increment",
+      Inc: "Increment",
+    },
     parameters: [],
   },
   catalog: {
     category: "portal",
-    description: "Metamodule voice pitch CV (Hz). Place/seeded inside a Metamodule; wire to oscillator pitch.",
-    notes: ["metamodule", "voice", "frequency", "portal"],
+    description: "This voice's phase increment (cycles/sample). Wire to oscillator inc. Same family as PolyBLEP Reset/inc.",
+    notes: ["metamodule", "voice", "increment", "inc", "frequency", "portal"],
   },
 });
 
@@ -159,7 +167,7 @@ registerNodeGraphChromelessModule("voiceGate", {
   label: "Voice Gate",
   compactTile: false,
   definition: {
-    chrome: "TitleBarAndPorts",
+    chrome: "InletOutletLayout",
     planRole: "processor",
     planFreeRun: true,
     defaultWidthGu: 4,
@@ -182,7 +190,7 @@ registerNodeGraphChromelessModule("voiceTrigger", {
   label: "Voice Trigger",
   compactTile: false,
   definition: {
-    chrome: "TitleBarAndPorts",
+    chrome: "InletOutletLayout",
     planRole: "processor",
     planFreeRun: true,
     defaultWidthGu: 4,
@@ -206,7 +214,7 @@ registerNodeGraphChromelessModule("voiceIdle", {
   label: "Voice Idle",
   compactTile: false,
   definition: {
-    chrome: "TitleBarAndPorts",
+    chrome: "InletOutletLayout",
     planRole: "monitor",
     planFreeRun: true,
     defaultWidthGu: 4,
@@ -246,7 +254,7 @@ registerNodeGraphChromelessModule("group", {
   },
   catalog: {
     category: "portal",
-    description: "Simple group / copy-paste circuit box (one nesting level). Amplitude inlet scales Meta Outs. Use Metamodule for voice hosting.",
+    description: "Simple group / copy-paste circuit box (one nesting level). Amplitude inlet scales Metamodule Outs. Use Metamodule for voice hosting.",
     notes: ["group", "container", "box", "portal", "nesting"],
   },
 });

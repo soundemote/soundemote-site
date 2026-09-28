@@ -17,13 +17,20 @@ function syncNodeGraphPatchMetadataFromSlider(slider, options = {}) {
   if (!patchNode) {
     return;
   }
+  // Prefer explicit editor metadata when provided — face paint can rewrite
+  // slider.dataset.paramMax from stale paramMeta between setNodeSliderMetadata
+  // and this sync, which used to snap Bias max back (e.g. 150 → 130).
+  const liveMeta = (options.metadata && typeof options.metadata === "object")
+    ? options.metadata
+    : nodeSliderMetadata(slider);
+  let nextMeta = normalizeNodeGraphPatchParameterMetadata(
+    patchNode.type,
+    key,
+    liveMeta,
+  );
   patchNode.paramMeta = {
     ...(patchNode.paramMeta || {}),
-    [key]: normalizeNodeGraphPatchParameterMetadata(
-      patchNode.type,
-      key,
-      nodeSliderMetadata(slider),
-    ),
+    [key]: nextMeta,
   };
   patchNode.params = {
     ...(patchNode.params || {}),
@@ -63,7 +70,7 @@ function syncNodeGraphPatchMetadataFromSlider(slider, options = {}) {
       || key === "smoothingMode"
       || key === "steps"
       || key === "segmentShape"
-      || key === "curveOffset"
+      || key === "skewOffset" || key === "curveOffset"
     ) &&
     nodeGraphModuleIsGraphType(patchNode.type)
   );
@@ -91,6 +98,34 @@ function syncNodeGraphPatchMetadataFromSlider(slider, options = {}) {
   }
 }
 
+
+/** Queue a one-shot smoother snap for the next live param push (alt-click jump). */
+function nodeGraphRequestControllerParamSnap(nodeId, paramKey) {
+  const id = String(nodeId || "").trim();
+  const key = String(paramKey || "").trim();
+  if (!id || !key) return;
+  if (!nodeGraphMvp.pendingControllerParamSnaps) {
+    nodeGraphMvp.pendingControllerParamSnaps = new Map();
+  }
+  let set = nodeGraphMvp.pendingControllerParamSnaps.get(id);
+  if (!set) {
+    set = new Set();
+    nodeGraphMvp.pendingControllerParamSnaps.set(id, set);
+  }
+  set.add(key);
+}
+
+/** Take queued alt-click snaps for one node (clears that node). */
+function nodeGraphTakePendingParamSnaps(nodeId) {
+  const map = nodeGraphMvp?.pendingControllerParamSnaps;
+  if (!map) return null;
+  const id = String(nodeId || "");
+  const set = map.get(id);
+  if (!set || !set.size) return null;
+  map.delete(id);
+  return [...set];
+}
+
 function syncNodeGraphPatchParameterFromSlider(slider, options = {}) {
   const node = slider?.closest(".dsp-node")?.dataset.node;
   const key = slider?.dataset.param;
@@ -101,20 +136,25 @@ function syncNodeGraphPatchParameterFromSlider(slider, options = {}) {
   if (!patchNode) {
     return;
   }
-  patchNode.paramMeta = {
-    ...(patchNode.paramMeta || {}),
-    [key]: normalizeNodeGraphPatchParameterMetadata(
-      patchNode.type,
-      key,
-      patchNode.paramMeta?.[key] || nodeSliderMetadata(slider),
-    ),
-  };
+  if (options.bypassSmoothing && typeof nodeGraphRequestControllerParamSnap === "function") {
+    nodeGraphRequestControllerParamSnap(node, key);
+  }
+  const priorMeta = patchNode.paramMeta?.[key] || nodeSliderMetadata(slider);
+  let nextMeta = normalizeNodeGraphPatchParameterMetadata(
+    patchNode.type,
+    key,
+    priorMeta,
+  );
   // Prefer explicit domain value (typed entry may exceed HTML range min/max).
   const rawDomain = options.domainValue != null
     ? Number(options.domainValue)
     : (Number.isFinite(Number(slider?.dataset?.domainValue))
       ? Number(slider.dataset.domainValue)
       : nodeGraphReadNodeNumber(node, key));
+  patchNode.paramMeta = {
+    ...(patchNode.paramMeta || {}),
+    [key]: nextMeta,
+  };
   patchNode.params = {
     ...(patchNode.params || {}),
     [key]: normalizeNodeGraphPatchParameter(
@@ -143,25 +183,15 @@ function syncNodeGraphPatchParameterFromSlider(slider, options = {}) {
   ) {
     nodeGraphMetamoduleSyncShellFromChild(patchNode, key, nodeGraphMvp.patch);
   }
-  // Pitch Quantizer: preset Scale slider writes the face keyboard mask so
-  // audio + keyboard stay in sync. Custom (choice 6) leaves scaleMask alone.
-  if (patchNode.type === "pitchQuantizer" && key === "scale") {
-    const choice = Math.round(nodeGraphFiniteNumber(patchNode.params.scale));
-    if (
-      choice >= 0
-      && choice <= 5
-      && typeof nodeGraphPitchQuantizerMaskFromChoice === "function"
-    ) {
-      const mask = nodeGraphPitchQuantizerMaskFromChoice(choice);
-      patchNode.params.scaleMask = normalizeNodeGraphPatchParameter(
-        patchNode.type,
-        "scaleMask",
-        mask,
-        patchNode.paramMeta?.scaleMask,
-      );
-      if (typeof syncNodeGraphPitchQuantizerFace === "function") {
-        syncNodeGraphPitchQuantizerFace(node);
-      }
+
+  if (
+    patchNode.type === "chordPad"
+    && (key === "key" || key === "mode" || key === "degree")
+    && typeof syncNodeGraphChordPadFace === "function"
+  ) {
+    syncNodeGraphChordPadFace(node);
+    if (typeof syncNodeGraphPitchQuantizersFedByChordPad === "function") {
+      syncNodeGraphPitchQuantizersFedByChordPad(node);
     }
   }
   // Value-only writes (mid-frame drag coalesce): domain is already on the
@@ -215,7 +245,7 @@ function syncNodeGraphPatchParameterFromSlider(slider, options = {}) {
         || key === "smoothingMode"
         || key === "steps"
         || key === "segmentShape"
-        || key === "curveOffset"
+        || key === "skewOffset" || key === "curveOffset"
       ) &&
       typeof syncNodeGraphGraphDisplaysForNode === "function"
     ) {
@@ -226,24 +256,7 @@ function syncNodeGraphPatchParameterFromSlider(slider, options = {}) {
     // here on every pointer sample — that was thrashing layout.
     return;
   }
-  // transport's "BPM" param mirrors the patch-wide tempo, not an independent
-  // per-node value -- committing it here writes patch.timing.tempoBpm too
-  // (via the same clone-then-commit path the header's own BPM field uses) so
-  // the change reaches the worklet's this.timing and every other transport
-  // node's own BPM slider, instead of only updating this one node's params.
-  if (patchNode.type === "transport" && key === "bpm") {
-    const nextPatch = cloneNodeGraphPatch(nodeGraphMvp.patch);
-    nextPatch.timing = normalizeNodeGraphPatchTiming({
-      ...nextPatch.timing,
-      tempoBpm: patchNode.params.bpm,
-    });
-    syncNodeGraphTransportBpmParams(nextPatch, nextPatch.timing);
-    commitNodeGraphPatch(nextPatch, {
-      markPending: false,
-      status: "bpm synced",
-    });
-    return;
-  }
+
   syncNodeGraphScriptView(options.status || "parameter synced", true);
   renderNodeGraphExecutionPlanDebug();
   syncNodeGraphGhostSliders();
@@ -269,7 +282,13 @@ function updateNodeSliderCurrentValue(slider, rawValue) {
 
   const normalizedValue = String(rawValue).trim();
   const choiceIndex = nodeSliderChoiceIndexFromText(slider, normalizedValue);
-  const value = choiceIndex ?? parseNodeSliderMathExpression(normalizedValue);
+  // choiceIndex is an array index (0..n-1). Map it through min/max/step so
+  // typing the label "-1" writes domain -1, not index 0.
+  const value = choiceIndex != null
+    ? (typeof nodeSliderChoiceValueFromIndex === "function"
+      ? nodeSliderChoiceValueFromIndex(slider, choiceIndex)
+      : Number(slider.min) + choiceIndex)
+    : parseNodeSliderMathExpression(normalizedValue);
   if (!Number.isFinite(value)) {
     syncNodeSliderReadout(slider);
     return;
@@ -368,7 +387,32 @@ function commitNodeSliderDragValue(slider, status = "parameter changed") {
   scheduleNodeGraphModuleScopeDrawIfNeeded();
 }
 
+function nodeSliderCtrlClickDefaultValue(slider) {
+  const abs = Number(slider?.dataset?.paramDefault);
+  if (Number.isFinite(abs)) {
+    return abs;
+  }
+  const ui = Number(slider?.dataset?.default);
+  return Number.isFinite(ui) ? ui : NaN;
+}
+
 function setNodeSliderValue(slider, value, options = {}) {
+  if (window.soemdspPerformMode && window.soemdspPerform && typeof window.soemdspPerform._handleControllerWrite === "function") {
+    const nodeId = window.soemdspPerform._nodeIdFromSlider
+      ? window.soemdspPerform._nodeIdFromSlider(slider)
+      : String(slider?.dataset?.node || "").trim();
+    const pluginId = nodeId && window.soemdspPerform._pluginIdForNodeId
+      ? window.soemdspPerform._pluginIdForNodeId(nodeId)
+      : null;
+    if (pluginId != null) {
+      const phase = options?.performPhase || "set";
+      const open = window.soemdspPerform._openGestures?.has(pluginId);
+      const dragCommit = options?.interaction === "drag" && !open && phase === "set";
+      if (window.soemdspPerform._handleControllerWrite(nodeId, value, phase, { dragCommit })) {
+        return;
+      }
+    }
+  }
   const isDrag = options.interaction === "drag";
   const domain = normalizeNodeSliderValue(slider, value);
   slider.dataset.domainValue = String(domain);
@@ -395,7 +439,7 @@ function setNodeSliderValue(slider, value, options = {}) {
     slider?.dataset?.param === "smoothingMode" ||
     slider?.dataset?.param === "steps" ||
     slider?.dataset?.param === "segmentShape" ||
-    slider?.dataset?.param === "curveOffset"
+    slider?.dataset?.param === "skewOffset" || slider?.dataset?.param === "curveOffset"
   );
   // Always write domain into the patch (live sync reads from patch, rAF-coalesced).
   syncNodeGraphPatchParameterFromSlider(slider, {
@@ -407,6 +451,7 @@ function setNodeSliderValue(slider, value, options = {}) {
     // Mid-frame drag: still write domain, skip graph-face side effects.
     // Graph curve params need every sample for live face animation.
     skipGraphFace: alreadyPending && !graphCurveLiveParam,
+    bypassSmoothing: Boolean(options.bypassSmoothing),
   });
   if (!alreadyPending || graphCurveLiveParam) {
     scheduleNodeGraphModuleScopeDrawIfNeeded();
@@ -451,7 +496,9 @@ function nodeSliderSegmentValueFromPointer(slider, surface, clientX) {
   const scale = nodeSliderElementVisualScale(surface);
   const progress = clampNodeSliderValue(((clientX - rect.left) / scale) / width, 0, 0.999999);
   const index = Math.min(choices.length - 1, Math.floor(progress * choices.length));
-  return Number(slider.min) + index;
+  return typeof nodeSliderChoiceValueFromIndex === "function"
+    ? nodeSliderChoiceValueFromIndex(slider, index)
+    : Number(slider.min) + index;
 }
 
 function setNodeChoiceSliderFromPointer(slider, surface, clientX, options = {}) {
@@ -506,8 +553,11 @@ if (typeof document !== "undefined") {
   });
 }
 
-function nodeSliderValueFromPointer(slider, surface, clientX) {
-  return nodeSliderValueFromPointerTravel(slider, nodeSliderTravelFromPointer(slider, surface, clientX));
+function nodeSliderValueFromPointer(slider, surface, clientX, clientY) {
+  return nodeSliderValueFromPointerTravel(
+    slider,
+    nodeSliderTravelFromPointer(slider, surface, clientX, clientY),
+  );
 }
 
 function nodeSliderFineTuneScale(event) {
@@ -542,10 +592,9 @@ function nodeSliderKeyboardStep(slider, event) {
 // MUST share the same modifier vocabulary:
 //
 //   ctrl/cmd + click          reset to default
-//   alt + click (range)       jump thumb to pointer
+//   alt + click               jump to pointer and snap smoother
+//   then drag                 same as a normal click-drag (smoothing on)
 //   shift / ctrl / cmd        fine   (nodeGraphNumericDragMultiplier)
-//   alt                       coarse
-//   shift+ctrl, shift+ctrl+alt finer tiers (same helper)
 //
 // Range drag is relative (like beginNodeSliderDrag), not browser thumb-jump,
 // so holding Ctrl while dragging fine-tunes instead of resetting / snapping.
@@ -661,8 +710,11 @@ function bindNodeGraphNativeSliderModifiers(input, defaultValue) {
     }
     // Ctrl/Cmd click = reset (same as module face sliders).
     if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) {
-      if (Number.isFinite(Number(input.dataset.default))) {
-        emit(clamp(Number(input.dataset.default)));
+      const reset = typeof nodeSliderCtrlClickDefaultValue === "function"
+        ? nodeSliderCtrlClickDefaultValue(input)
+        : Number(input.dataset.paramDefault ?? input.dataset.default);
+      if (Number.isFinite(reset)) {
+        emit(clamp(reset));
         event.preventDefault();
         event.stopPropagation();
       }
@@ -675,11 +727,16 @@ function bindNodeGraphNativeSliderModifiers(input, defaultValue) {
     const { min, max, span } = nodeGraphNativeRangeSpan(input);
     const rect = input.getBoundingClientRect();
     const travelWidth = Math.max(48, rect.width || 0);
-    // Alt click = jump to pointer (same as module face sliders).
+    // Alt click = jump to pointer and snap smoother (same as module face sliders).
     const jumpToPointer = event.altKey && !(event.shiftKey && (event.ctrlKey || event.metaKey));
     if (jumpToPointer && travelWidth > 0) {
       const t = Math.max(0, Math.min(1, (event.clientX - rect.left) / travelWidth));
       emit(clamp(min + t * span), { inputOnly: true });
+      const nodeId = input.closest?.(".dsp-node")?.dataset?.node;
+      const paramKey = input.dataset?.param;
+      if (nodeId && paramKey && typeof nodeGraphRequestControllerParamSnap === "function") {
+        nodeGraphRequestControllerParamSnap(nodeId, paramKey);
+      }
     }
     nodeGraphNativeRangeDrag = {
       input,
@@ -762,17 +819,10 @@ function bindNodeGraphNativeSliderModifiers(input, defaultValue) {
   }, { passive: false });
 
   input.addEventListener("keydown", (event) => {
-    const direction = event.key === "ArrowUp" || event.key === "ArrowRight"
-      ? 1
-      : event.key === "ArrowDown" || event.key === "ArrowLeft"
-        ? -1
-        : 0;
-    if (!direction) {
+    if (event.key === "ArrowUp" || event.key === "ArrowRight"
+        || event.key === "ArrowDown" || event.key === "ArrowLeft") {
       return;
     }
-    event.preventDefault();
-    event.stopPropagation();
-    nudge(event, direction);
   });
 }
 
@@ -799,6 +849,14 @@ function bindNodeGraphNativeSliderModifiersIn(root, defaultsByKey = null) {
   }
 }
 
+function nodeGraphKnobFaceIsSliderLook(face) {
+  return Boolean(
+    face?.classList?.contains("is-slider-look")
+    || face?.dataset?.knobLook === "slider"
+    || face?.dataset?.nodeType === "pluginSlider",
+  );
+}
+
 /** Circular hit for a knob dial (not the rectangular parent plate). */
 function nodeGraphCircularKnobHitElement(host) {
   if (!host) {
@@ -816,6 +874,14 @@ function nodeGraphCircularKnobHitElement(host) {
 function nodeSliderKnobDragMetrics(surface) {
   if (!surface?.classList?.contains("node-knob-face")) {
     return null;
+  }
+  if (nodeGraphKnobFaceIsSliderLook(surface)) {
+    const bar = surface.querySelector(".node-macro-knob-dial") || surface;
+    const rect = bar.getBoundingClientRect?.();
+    if (!rect || !(rect.width > 2) || !(rect.height > 1)) {
+      return null;
+    }
+    return { rect, travelWidth: Math.max(8, rect.width), visualScale: 1 };
   }
   const el = nodeGraphCircularKnobHitElement(surface) || surface;
   const rect = el.getBoundingClientRect?.();
@@ -863,22 +929,33 @@ function nodeSliderDragSurfaceFromEvent(event) {
   return event?.target?.closest?.(".node-slider-readout, .node-knob-face, .node-plugin-slider-face") || null;
 }
 
-/** Type-in edit for a surface (face → linked Bias readout so we never replace the face DOM). */
+/** Type-in edit for a surface (knob face → face overlay; plugin face → body readout). */
 function beginNodeSliderSurfaceEdit(surface) {
-  if (!surface || typeof beginNodeSliderReadoutEdit !== "function") {
+  if (!surface) {
     return;
   }
-  if (
-    surface.classList.contains("node-knob-face")
-    || surface.classList.contains("node-plugin-slider-face")
-  ) {
+  // Knob: face-local type-in (canvas-safe). Never the Bias body row readout.
+  if (surface.classList.contains("node-knob-face")) {
+    if (typeof beginNodeGraphKnobFaceValueEdit === "function") {
+      beginNodeGraphKnobFaceValueEdit(surface);
+    }
+    return;
+  }
+  if (typeof beginNodeSliderReadoutEdit !== "function") {
+    return;
+  }
+  if (surface.classList.contains("node-plugin-slider-face")) {
     const sliderId = String(surface.dataset.sliderTarget || "").trim();
     if (!sliderId) {
       return;
     }
-    const linked = document.querySelector(
+    let linked = document.querySelector(
       `.node-slider-readout[data-slider-target="${CSS.escape(sliderId)}"]`,
     );
+    if (!linked) {
+      const slider = document.getElementById(sliderId);
+      linked = slider?.closest?.("label")?.querySelector?.(".node-slider-readout") || null;
+    }
     if (linked) {
       beginNodeSliderReadoutEdit(linked);
     }
@@ -888,6 +965,10 @@ function beginNodeSliderSurfaceEdit(surface) {
 }
 
 function stepNodeSliderFromKeyboard(event) {
+  if (event?.key === "ArrowUp" || event?.key === "ArrowDown"
+      || event?.key === "ArrowLeft" || event?.key === "ArrowRight") {
+    return false;
+  }
   const surface = nodeSliderDragSurfaceFromEvent(event);
   const slider = document.getElementById(surface?.dataset?.sliderTarget || "");
   if (!surface || !slider) {
@@ -961,7 +1042,7 @@ function nodeSliderValueAtPointer(slider, surface, event) {
   }
   return nodeSliderShouldDisplayChoices(slider) && nodeSliderShouldDivideChoicesVisibly(slider)
     ? nodeSliderSegmentValueFromPointer(slider, surface, event.clientX)
-    : nodeSliderValueFromPointer(slider, surface, event.clientX);
+    : nodeSliderValueFromPointer(slider, surface, event.clientX, event.clientY);
 }
 
 function setNodeSliderValueAtPointer(slider, surface, event, options = {}) {
@@ -969,7 +1050,11 @@ function setNodeSliderValueAtPointer(slider, surface, event, options = {}) {
   if (!Number.isFinite(value)) {
     return false;
   }
-  setNodeSliderValue(slider, quantizeNodeSliderDragValue(slider, value), options);
+  // Alt absolute jump: set domain and snap smoother for this write only.
+  setNodeSliderValue(slider, quantizeNodeSliderDragValue(slider, value), {
+    ...options,
+    bypassSmoothing: options.bypassSmoothing !== false,
+  });
   return true;
 }
 
@@ -1003,6 +1088,7 @@ function beginNodeSliderDrag(event) {
   }
   if (
     surface.classList.contains("node-knob-face")
+    && !nodeGraphKnobFaceIsSliderLook(surface)
     && !nodeGraphPointInCircularKnob(surface, event.clientX, event.clientY)
   ) {
     return;
@@ -1015,18 +1101,18 @@ function beginNodeSliderDrag(event) {
   // instead of a second drag. Face surfaces edit the linked Bias readout.
   const lastDown = nodeGraphMvp.sliderLastPointerDown;
   const now = performance.now();
-  const isDoubleClick =
+  const altClick = Boolean(event.altKey);
+  const isDoubleClick = !altClick && (
     event.detail > 1 ||
     (lastDown &&
       lastDown.surface === surface &&
       now - lastDown.time < 400 &&
       Math.abs(event.clientX - lastDown.x) < 6 &&
-      Math.abs(event.clientY - lastDown.y) < 6);
+      Math.abs(event.clientY - lastDown.y) < 6)
+  );
   nodeGraphMvp.sliderLastPointerDown = { surface, time: now, x: event.clientX, y: event.clientY };
-  // Knob / button faces: double-click must not open type-in or Module Settings.
-  // Type a value on the numeric readout instead.
-  const skipTypeIn = surface.classList.contains("node-knob-face")
-    || surface.classList.contains("node-plugin-slider-face")
+  // Button faces: double-click must not open type-in. Knob face does (Bias type-in).
+  const skipTypeIn = surface.classList.contains("node-plugin-slider-face")
     || surface.classList.contains("node-plugin-toggle-button")
     || surface.closest?.(".node-plugin-button-shell, .node-bug-button-face, .node-plugin-toggle-button");
   if (isDoubleClick && skipTypeIn) {
@@ -1080,6 +1166,18 @@ function beginNodeSliderDrag(event) {
   };
   surface.classList.add("value-dragging");
   document.body.classList.add("node-slider-dragging");
+  // soemdspPerformDragBegin
+  if (window.soemdspPerformMode && window.soemdspPerform && slider) {
+    const nodeId = window.soemdspPerform._nodeIdFromSlider
+      ? window.soemdspPerform._nodeIdFromSlider(slider)
+      : String(slider?.dataset?.node || "").trim();
+    const domain = Number(slider.dataset?.domainValue);
+    window.soemdspPerform._handleControllerWrite?.(
+      nodeId,
+      Number.isFinite(domain) ? domain : Number(slider.value),
+      "begin",
+    );
+  }
   nodeGraphWireInteractions?.clearHover?.();
   if (event.pointerId !== undefined) {
     try { surface.setPointerCapture(event.pointerId); } catch (_) {}
@@ -1115,14 +1213,8 @@ function dragNodeSlider(event) {
     drag.moved = true;
   }
 
-  // ALT+click: jump slider to pointer position.
-  if (event.altKey && !(event.shiftKey && (event.ctrlKey || event.metaKey))) {
-    if (setNodeSliderValueAtPointer(drag.slider, drag.surface, event, { interaction: "drag" })) {
-      reanchorNodeSliderDragAtPointer(drag, event);
-    }
-    event.preventDefault();
-    return;
-  }
+  // Alt-click already snapped on pointerdown. Further motion (incl. alt-drag)
+  // is relative chase so Parameter Settings smoothing runs again.
 
   // Fine/coarse scale from modifier keys — live per-event.
   // Re-anchor travel AND pointer origin when scale changes so releasing Shift
@@ -1161,6 +1253,18 @@ function dragNodeSlider(event) {
 
 function endNodeSliderDrag(event) {
   const drag = nodeGraphMvp.sliderDragging;
+  // soemdspPerformEndHook
+  if (window.soemdspPerformMode && drag?.slider && window.soemdspPerform?._handleControllerWrite) {
+    const nodeId = window.soemdspPerform._nodeIdFromSlider
+      ? window.soemdspPerform._nodeIdFromSlider(drag.slider)
+      : String(drag.slider?.dataset?.node || "").trim();
+    const domain = Number(drag.slider?.dataset?.domainValue);
+    window.soemdspPerform._handleControllerWrite(
+      nodeId,
+      Number.isFinite(domain) ? domain : Number(drag.slider?.value),
+      "end",
+    );
+  }
   if (
     !drag ||
     (drag.pointerId !== null && event.pointerId !== undefined && drag.pointerId !== event.pointerId)
@@ -1174,7 +1278,10 @@ function endNodeSliderDrag(event) {
     drag.surface.releasePointerCapture(event.pointerId);
   }
   if (drag.resetToDefaultOnClick && !drag.moved) {
-    setNodeSliderValue(drag.slider, Number(drag.slider.dataset.default), { interaction: "drag" });
+    const reset = nodeSliderCtrlClickDefaultValue(drag.slider);
+    if (Number.isFinite(reset)) {
+      setNodeSliderValue(drag.slider, reset, { interaction: "drag" });
+    }
   }
   commitNodeSliderDragValue(
     drag.slider,
@@ -1237,3 +1344,4 @@ function flushNodeSliderReadoutUpdates() {
     syncNodeGraphCurrentSavedPatchHeader();
   }
 }
+

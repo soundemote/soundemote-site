@@ -152,18 +152,12 @@ NodeLiveAudioProcessor.prototype.applyNativeModuleExports = function applyNative
             this.destroySoftClipperState?.(state);
           }
         }
-        if (this.clipperLimiterStates) {
-          for (const state of this.clipperLimiterStates.values()) {
-            this.destroySoftClipperState?.(state);
-          }
-        }
         this.nativeSoftClipper = exports;
         this.nativeSoftClipperReady = Boolean(
           this.nativeSoftClipper?.soemdsp_soft_clipper_create &&
           this.nativeSoftClipper?.soemdsp_soft_clipper_set_params &&
           this.nativeSoftClipper?.soemdsp_soft_clipper_process_block &&
-          (this.nativeSoftClipper?.soemdsp_soft_clipper_sample
-            || this.nativeSoftClipper?.soemdsp_soft_clipper_sample_aa),
+          this.nativeSoftClipper?.soemdsp_soft_clipper_sample,
         );
         this.port.postMessage({
           type: "nativeModuleStatus",
@@ -1173,6 +1167,20 @@ NodeLiveAudioProcessor.prototype.applyNativeModuleExports = function applyNative
         });
         return;
       }
+
+      if (name === "robin_oscillator" || targetType === "robinOscillator") {
+        this.nativeRobinOscillator = exports;
+        this.nativeRobinOscillatorReady = Boolean(
+          this.nativeRobinOscillator?.soemdsp_robin_oscillator_create &&
+          this.nativeRobinOscillator?.soemdsp_robin_oscillator_sample,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "robin_oscillator",
+          status: this.nativeRobinOscillatorReady ? "ready" : "missing exports",
+        });
+        return;
+      }
       if (name === "robin_sinusoid" || targetType === "robinSinusoid") {
         if (this.robinSinusoidStates) {
           for (const state of this.robinSinusoidStates.values()) {
@@ -1772,24 +1780,6 @@ NodeLiveAudioProcessor.prototype.applyNativeModuleExports = function applyNative
         });
         return;
       }
-      if (name === "clipper_limiter" || targetType === "clipperLimiter") {
-        if (this.clipperLimiterStates) {
-          for (const state of this.clipperLimiterStates.values()) {
-            this.destroyClipperLimiterNativeState?.(state);
-          }
-        }
-        this.nativeClipperLimiter = exports;
-        this.nativeClipperLimiterReady = Boolean(
-          this.nativeClipperLimiter?.soemdsp_clipper_limiter_create &&
-          this.nativeClipperLimiter?.soemdsp_clipper_limiter_sample,
-        );
-        this.port.postMessage({
-          type: "nativeModuleStatus",
-          name: "clipper_limiter",
-          status: this.nativeClipperLimiterReady ? "ready" : "missing exports",
-        });
-        return;
-      }
       if (name === "eq_filter" || targetType === "eqFilter") {
         if (this.eqFilterStates) {
           for (const bundle of this.eqFilterStates.values()) {
@@ -1879,6 +1869,36 @@ NodeLiveAudioProcessor.prototype.applyNativeModuleExports = function applyNative
           type: "nativeModuleStatus",
           name: "audio_player",
           status: this.nativeAudioPlayerReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "sample_player" || targetType === "samplePlayer") {
+        this.nativeSamplePlayer = exports;
+        this.nativeSamplePlayerReady = Boolean(
+          this.nativeSamplePlayer?.soemdsp_sample_player_create &&
+          this.nativeSamplePlayer?.soemdsp_sample_player_sample &&
+          this.nativeSamplePlayer?.soemdsp_sample_player_set_pcm &&
+          this.nativeSamplePlayer?.soemdsp_sample_player_l_ptr,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "sample_player",
+          status: this.nativeSamplePlayerReady ? "ready" : "missing exports",
+        });
+        return;
+      }
+      if (name === "wavetable_2d" || targetType === "wavetable2d") {
+        this.nativeWavetable2d = exports;
+        this.nativeWavetable2dReady = Boolean(
+          this.nativeWavetable2d?.soemdsp_wavetable_2d_create &&
+          this.nativeWavetable2d?.soemdsp_wavetable_2d_sample &&
+          this.nativeWavetable2d?.soemdsp_wavetable_2d_set_pcm &&
+          this.nativeWavetable2d?.soemdsp_wavetable_2d_l_ptr,
+        );
+        this.port.postMessage({
+          type: "nativeModuleStatus",
+          name: "wavetable_2d",
+          status: this.nativeWavetable2dReady ? "ready" : "missing exports",
         });
         return;
       }

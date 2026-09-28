@@ -42,6 +42,6 @@ export const SOUNDEMOTE_BANK: BankItem[] = [
   { slug: "reverb", label: "reverb", url: "/soemdsp-sandbox/patches/reverb.json" },
 ];
 
-/** Default Hero bank index when the route has no patch slug — prefer Additive beta. */
-export const SOUNDEMOTE_BANK_DEFAULT_SLUG = "additive-beta";
+/** Default Hero media slug when the route has no media slug - first video. */
+export const SOUNDEMOTE_BANK_DEFAULT_SLUG = "hero-video";
 

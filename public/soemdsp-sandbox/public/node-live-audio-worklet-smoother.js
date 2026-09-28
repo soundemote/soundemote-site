@@ -46,47 +46,70 @@ NodeLiveAudioProcessor.prototype.smoothingTypeFromMetadata = function smoothingT
     return "onePole";
 };
 
-NodeLiveAudioProcessor.prototype.resolveSmoothingSecondsForMode = function resolveSmoothingSecondsForMode(mode, smoothingSamples, frames, rate = sampleRate, globalSeconds = this.autoSmoothingSeconds) {
+// Off ≡ Internal with samples 0. Samples ≤ 1 are instant (LinearSmoother uses
+// max(1.0, timeInSamples_) — one step lands on target, so skip multi-step chase).
+NodeLiveAudioProcessor.prototype.effectiveSmoothingSamplesForMode = function effectiveSmoothingSamplesForMode(
+  mode,
+  smoothingSamples,
+  rate = sampleRate,
+  globalSeconds = this.autoSmoothingSeconds,
+) {
     const safeRate = Math.max(1, nodeGraphFiniteNumber(rate, 44100));
+    const samples = Math.max(0, Math.round(Number(smoothingSamples) || 0));
     const safeGlobal = Number.isFinite(Number(globalSeconds)) ? Math.max(0, Number(globalSeconds)) : 0;
-    const internalSeconds = smoothingSamples > 0 ? smoothingSamples / safeRate : 0;
+    const globalSamples = Math.max(0, Math.round(safeGlobal * safeRate));
     switch (mode) {
       case "off":
-        return 0;
       case "blockSize":
-        // Under construction: behaves as no smoothing until implemented.
         return 0;
       case "global":
-        return safeGlobal;
-      case "internalGlobal":
-        return internalSeconds + safeGlobal;
+        return globalSamples;
+      case "internalGlobal": {
+        const internal = samples <= 1 ? 0 : samples;
+        return internal + globalSamples;
+      }
       case "internal":
       default:
-        if (internalSeconds > 0) {
-          return internalSeconds;
-        }
-        return typeof nodeGraphModuleSmoothingDefaultSeconds === "function"
-          ? nodeGraphModuleSmoothingDefaultSeconds()
-          : 0.0333;
+        // Explicit 0/1 samples = bypass (do NOT fall back to a default time).
+        return samples <= 1 ? 0 : samples;
     }
+};
+
+NodeLiveAudioProcessor.prototype.resolveSmoothingSecondsForMode = function resolveSmoothingSecondsForMode(mode, smoothingSamples, frames, rate = sampleRate, globalSeconds = this.autoSmoothingSeconds) {
+    const safeRate = Math.max(1, nodeGraphFiniteNumber(rate, 44100));
+    const effective = this.effectiveSmoothingSamplesForMode(mode, smoothingSamples, rate, globalSeconds);
+    if (effective <= 1) {
+      return 0;
+    }
+    return effective / safeRate;
 };
 
 NodeLiveAudioProcessor.prototype.createSmoother = function createSmoother(initialValue, metadata = {}) {
     const value = Number(initialValue);
     const safeValue = Number.isFinite(value) ? value : 0;
     const signal = this.parameterValueToNormalizedSignal(safeValue, metadata);
+    const smoothingMode = this.smoothingModeFromMetadata(metadata);
     const smoothingType = this.smoothingTypeFromMetadata(metadata);
+    // Off ≡ Internal with samples 0 — leftover Lin/1P/seconds must not keep chase.
+    let smoothingSamples = this.smoothingSecondsFromMetadata(metadata);
+    if (smoothingMode === "off" || smoothingMode === "blockSize") {
+      smoothingSamples = 0;
+    }
     const usesFilter = typeof nodeGraphParameterSmootherUsesFilter === "function"
       ? nodeGraphParameterSmootherUsesFilter(smoothingType)
       : (smoothingType !== "none" && metadata?.linearSmoothing !== false);
+    const rate = Math.max(1, nodeGraphFiniteNumber(this.engineSampleRate || sampleRate, 44100));
+    const effectiveSamples = this.effectiveSmoothingSamplesForMode(smoothingMode, smoothingSamples, rate);
+    // samples ≤ 1 → always output target (no multi-step chase). Keep type as authored.
+    const linearSmoothing = usesFilter && effectiveSamples > 1;
     const smoother = {
       current: safeValue,
-      linearSmoothing: usesFilter,
+      linearSmoothing,
       max: Number.isFinite(Number(metadata?.max)) ? Number(metadata.max) : 1,
       metadata,
       min: Number.isFinite(Number(metadata?.min)) ? Number(metadata.min) : 0,
-      smoothingMode: this.smoothingModeFromMetadata(metadata),
-      smoothingSeconds: this.smoothingSecondsFromMetadata(metadata),
+      smoothingMode,
+      smoothingSeconds: smoothingSamples,
       smoothingType,
       outputBuffer: signal,
       targetSignal: signal,
@@ -120,10 +143,10 @@ NodeLiveAudioProcessor.prototype.syncNestedAutoSmoothingSeconds = function syncN
 };
 
 NodeLiveAudioProcessor.prototype.smootherNeedsWork = function smootherNeedsWork(smoother) {
-    // Shared floor with main-thread smoothers (filters.js). Planck.
+    // Shared floor with main-thread smoothers (filters.js). Epsilon.
     const eps = typeof nodeGraphParameterSmootherConvergenceEpsilon === "number"
       ? nodeGraphParameterSmootherConvergenceEpsilon
-      : (typeof NODE_GRAPH_PLANCK === "number" ? NODE_GRAPH_PLANCK : 1e-7);
+      : (typeof NODE_GRAPH_EPSILON === "number" ? NODE_GRAPH_EPSILON : 1e-7);
     return Math.abs((smoother.outputBuffer ?? 0) - (smoother.targetSignal ?? 0)) > eps;
 };
 
@@ -244,15 +267,34 @@ NodeLiveAudioProcessor.prototype.runActiveSmoothers = function runActiveSmoother
 NodeLiveAudioProcessor.prototype.updateSmoother = function updateSmoother(smoother, targetValue, metadata = {}, smootherKey = null) {
     const value = Number(targetValue);
     const nextTarget = Number.isFinite(value) ? value : smoother.target;
+    const nextMode = this.smoothingModeFromMetadata(metadata);
     const nextType = this.smoothingTypeFromMetadata(metadata);
+    let nextSamples = this.smoothingSecondsFromMetadata(metadata);
+    if (nextMode === "off" || nextMode === "blockSize") {
+      nextSamples = 0;
+    }
     const key = smootherKey || smoother._activeKey || null;
+    const rate = Math.max(1, nodeGraphFiniteNumber(this.engineSampleRate || sampleRate, 44100));
+    const usesFilter = typeof nodeGraphParameterSmootherUsesFilter === "function"
+      ? nodeGraphParameterSmootherUsesFilter(nextType)
+      : (nextType !== "none" && metadata?.linearSmoothing !== false);
+    const effectiveSamples = this.effectiveSmoothingSamplesForMode(nextMode, nextSamples, rate);
+    const nextLinear = usesFilter && effectiveSamples > 1;
     // setParams / setPlan push every knob on every sync. If the domain value
     // did not move, do not rewrite targetSignal (normalize can ulp-jitter)
     // or the linear ramp treats that as a brand-new move and stays dirty.
-    if (nextTarget === smoother.target && smoother.smoothingType === nextType) {
+    if (nextTarget === smoother.target && smoother.smoothingType === nextType && smoother.smoothingMode === nextMode) {
       smoother.metadata = metadata || smoother.metadata;
-      smoother.smoothingMode = this.smoothingModeFromMetadata(metadata);
-      smoother.smoothingSeconds = this.smoothingSecondsFromMetadata(metadata);
+      smoother.smoothingMode = nextMode;
+      smoother.smoothingSeconds = nextSamples;
+      smoother.linearSmoothing = nextLinear;
+      if (!smoother.linearSmoothing) {
+        this.settleSmoother(smoother);
+        if (key) {
+          this.deactivateSmoother(key, smoother);
+        }
+        return;
+      }
       if (key && this.smootherNeedsWork(smoother)) {
         this.activateSmoother(key, smoother);
       }
@@ -262,8 +304,8 @@ NodeLiveAudioProcessor.prototype.updateSmoother = function updateSmoother(smooth
     smoother.max = Number.isFinite(Number(metadata?.max)) ? Number(metadata.max) : smoother.max;
     smoother.metadata = metadata;
     smoother.min = Number.isFinite(Number(metadata?.min)) ? Number(metadata.min) : smoother.min;
-    smoother.smoothingMode = this.smoothingModeFromMetadata(metadata);
-    smoother.smoothingSeconds = this.smoothingSecondsFromMetadata(metadata);
+    smoother.smoothingMode = nextMode;
+    smoother.smoothingSeconds = nextSamples;
     if (smoother.smoothingType !== nextType) {
       if (smoother.filterState?.nativeHandle) {
         this.destroyPapoulisParameterSmootherNativeState(smoother);
@@ -274,9 +316,7 @@ NodeLiveAudioProcessor.prototype.updateSmoother = function updateSmoother(smooth
     } else {
       smoother.smoothingType = nextType;
     }
-    smoother.linearSmoothing = typeof nodeGraphParameterSmootherUsesFilter === "function"
-      ? nodeGraphParameterSmootherUsesFilter(nextType)
-      : (nextType !== "none" && metadata?.linearSmoothing !== false);
+    smoother.linearSmoothing = nextLinear;
     smoother.targetSignal = this.parameterValueToNormalizedSignal(smoother.target, metadata);
     smoother.wraparound = Boolean(metadata?.wraparound);
     if (!smoother.linearSmoothing || !this.smootherNeedsWork(smoother)) {
@@ -406,17 +446,44 @@ NodeLiveAudioProcessor.prototype.readEffectiveParameter = function readEffective
     // per-sample cost behind Sabrina Reverb's real-time audio underruns
     // (measured, not guessed: 8 parameters x this unconditional work was
     // enough to push ctx.currentTime ~5% behind wall-clock).
-    if (!modulations || !modulations.length) {
-      return base;
-    }
+    // Fold / outputDomain early-out SSOT: nodeGraphParamFoldOrBase.
     const metadata = node?.paramMeta?.[key] || {};
-    const sources = modulations.map((modulation) => this.normalizeParameterModulationInput(this.readRuntimePortOutput(
-      frameValues,
-      modulation.sourceNode,
-      modulation.sourcePort,
-      frame,
-      frames,
-    ), metadata));
+    if (!modulations || !modulations.length) {
+      if (typeof nodeGraphParamFoldOrBase === "function") {
+        return nodeGraphParamFoldOrBase(base, [], metadata);
+      }
+      if (!(metadata && metadata.outputDomain === true)) {
+        return base;
+      }
+      if (typeof nodeGraphParamFoldModSources === "function") {
+        return nodeGraphParamFoldModSources(base, [], metadata);
+      }
+      const off = typeof nodeGraphParamDomainOffset === "function"
+        ? nodeGraphParamDomainOffset(metadata)
+        : Number(metadata.domainOffset);
+      return Number.isFinite(off) ? off : 0;
+    }
+    const sources = modulations.map((modulation) => {
+      const sample = this.normalizeParameterModulationInput(this.readRuntimePortOutput(
+        frameValues,
+        modulation.sourceNode,
+        modulation.sourcePort,
+        frame,
+        frames,
+      ), metadata);
+      const srcNode = this.nodes?.get?.(modulation.sourceNode);
+      const srcPort = String(modulation.sourcePort || "");
+      const srcParamMeta = srcNode?.paramMeta?.[srcPort] || {};
+      const srcType = String(srcNode?.type || "");
+      const taggedDomain = srcParamMeta.outputDomain === true
+        || srcType === "range"
+        || srcType === "Range"
+        || metadata.outputDomain === true;
+      return taggedDomain ? { value: Number(sample), domain: true } : sample;
+    });
+    if (typeof nodeGraphParamFoldOrBase === "function") {
+      return nodeGraphParamFoldOrBase(base, sources, metadata);
+    }
     if (typeof nodeGraphParamFoldModSources === "function") {
       return nodeGraphParamFoldModSources(base, sources, metadata);
     }

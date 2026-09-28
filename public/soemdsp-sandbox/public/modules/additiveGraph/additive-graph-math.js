@@ -24,6 +24,35 @@ function additiveGraphRationalCurve(t, c) {
   return (cv + x) / den;
 }
 
+/** Odd around 0.5. Skew 0 = identity (linear). */
+function additiveGraphBipolarRationalCurve(t, c) {
+  const x = additiveGraphClamp(t, 0, 1);
+  const u = x * 2 - 1;
+  const a = u < 0 ? -u : u;
+  const r = additiveGraphRationalCurve(a, c);
+  const s = u < 0 ? -r : r;
+  return (s + 1) * 0.5;
+}
+
+function additiveGraphNormalizeLinearFilterCurveMode(mode) {
+  const n = Math.round(Number(mode));
+  if (n === 1) return 1;
+  const s = String(mode ?? "").trim().toLowerCase();
+  if (s === "1" || s === "bipolar" || s === "bipolarrational" || s === "bipolar rational") {
+    return 1;
+  }
+  return 0;
+}
+
+function additiveGraphLinearFilterShape(t, skew, curveMode) {
+  const x = additiveGraphClamp(t, 0, 1);
+  const c = additiveGraphClamp(nodeGraphFiniteNumber(skew), -0.9999, 0.9999);
+  if (additiveGraphNormalizeLinearFilterCurveMode(curveMode) === 1) {
+    return additiveGraphBipolarRationalCurve(x, c);
+  }
+  return additiveGraphRationalCurve(x, -c);
+}
+
 /** Exponential 0…1 map. c∈(−1…+1): + = slow start / fast end. */
 function additiveGraphExpCurve(t, c) {
   const x = additiveGraphClamp(t, 0, 1);
@@ -114,25 +143,25 @@ function additiveGraphWaveformPartial(waveform, harmonic, pwm = 0) {
   const pulseAmp = Math.sin(Math.PI * h * pulseDuty) / h;
 
   switch (wf) {
-    case 0: // Saw — full odd+even 1/n
+    case 0: // Saw — 1/n all harmonics, jump at cycle wrap (face shows a ramp)
       amplitude = 1 / h;
-      phase = odd ? 0.5 : 0;
+      phase = 0;
       break;
-    case 1: // Square — odds only 1/n
+    case 1: // Square — odds only 1/n; 0.5 puts the edges in the middle of the cycle
       amplitude = odd ? 1 / h : 0;
       phase = 0.5;
       break;
-    case 2: // PulseCenter — PWM width
+    case 2: // PulseCenter — PWM width, cosine-aligned (peak at cycle center)
       amplitude = pulseAmp;
       phase = 0.25;
       break;
-    case 3: // PulseLeft — rising edge at cycle start
+    case 3: // PulseLeft — same width as Center, rising edge at cycle start
       amplitude = pulseAmp;
-      phase = h * pulseDuty * 0.5;
+      phase = h * pulseDuty * 0.5 + 0.25;
       break;
-    case 4: // PulseRight — falling edge at cycle end
+    case 4: // PulseRight — same width as Center, falling edge at cycle end
       amplitude = pulseAmp;
-      phase = 1 - (h * pulseDuty * 0.5);
+      phase = h * (-pulseDuty * 0.5) + 0.25;
       break;
     case 5: // Tri — odds / n²
       amplitude = odd ? 1 / (h * h) : 0;
@@ -725,7 +754,7 @@ function additiveGraphDisplayFreqAxis(sampleRate) {
   const sr = Math.max(1, nodeGraphFiniteNumber(sampleRate, 44100));
   const xMaxHz = typeof nodeGraphProjectSpeedLimitHz === "function"
     ? Math.max(1, nodeGraphProjectSpeedLimitHz())
-    : Math.max(1, nodeGraphFiniteNumber(typeof nodeGraphMvp !== "undefined" ? nodeGraphMvp?.live?.speedLimit : 0, 20000));
+    : Math.max(1, nodeGraphFiniteNumber(typeof nodeGraphMvp !== "undefined" ? nodeGraphMvp?.live?.speedLimit : 0, 22050));
   const xMinHz = Math.min(20, xMaxHz * 0.5);
   const logXMin = Math.log(Math.max(1e-6, xMinHz));
   const logXSpan = Math.max(1e-9, Math.log(Math.max(xMinHz * 1.0001, xMaxHz)) - logXMin);
@@ -954,17 +983,18 @@ function additiveGraphFilterResponseCurve(mode, cutoffNorm, slopeDbOct, curveKin
  * Returns { ys, axis, cutoffT }.
  */
 function additiveGraphFilterResponseCurveLogHz(
-  mode, cutoffHz, slope, curveKind, skew, sampleRate, samples = 128,
+  mode, cutoffHz, slope, curveKind, skew, sampleRate, samples = 128, linearCurveMode = 0,
 ) {
   const axis = additiveGraphDisplayFreqAxis(sampleRate);
   const n = Math.max(2, Math.round(nodeGraphFiniteNumber(samples, 128)));
   const ys = new Float32Array(n);
-  const rational = curveKind === "rational" || curveKind === "linear";
+  const rational = curveKind === "rational" || curveKind === "linear"
+    || curveKind === "bipolarRational";
   for (let i = 0; i < n; i += 1) {
     const t = n <= 1 ? 0 : i / (n - 1);
     const hz = axis.tToHz(t);
     ys[i] = rational
-      ? additiveGraphFilterResponseGainRational(hz, mode, cutoffHz, slope, skew)
+      ? additiveGraphFilterResponseGainRational(hz, mode, cutoffHz, slope, skew, linearCurveMode)
       : additiveGraphFilterResponseGainHz(hz, mode, cutoffHz, slope, "analog", skew);
   }
   return {
@@ -1044,43 +1074,44 @@ function additiveGraphResolveFundamentalHz({
  */
 /**
  * Rational-curve spectral filter (Linear Filter module).
- * Cutoff Hz (LP @ 0 → silence). Slope 0…1 = brickwall → gradual (octaves).
- * Skew = rationalCurve bend on the skirt (−1…+1).
+ * Cutoff Hz (LP @ 0 → silence). Slope −1…+1: |s| = width, sign reverses pass/stop.
+ * Skew = rationalCurve bend (−1…+1). 0 = linear ramp.
  */
-function additiveGraphFilterResponseGainRational(freqHz, mode, cutoffHz, slope01, skew) {
+function additiveGraphFilterResponseGainRational(freqHz, mode, cutoffHz, slope01, skew, curveMode = 0) {
   const m = additiveGraphNormalizeFilterMode(mode);
   const fc = Math.max(0, nodeGraphFiniteNumber(cutoffHz));
-  const slope = additiveGraphClamp(slope01, 0, 1);
+  const slope = additiveGraphClamp(slope01, -1, 1);
+  const mag = slope < 0 ? -slope : slope;
+  const reverse = slope < 0;
   const f = Math.max(0, nodeGraphFiniteNumber(freqHz));
-  const skewC = additiveGraphClamp(nodeGraphFiniteNumber(skew), -0.9999, 0.9999);
-  const shape = (t) => additiveGraphRationalCurve(additiveGraphClamp(t, 0, 1), skewC);
-  // half-width in octaves around fc (slope 0 → brickwall / tiny).
-  const halfOct = slope <= 1e-6 ? 0 : (0.05 + slope * 5);
+  const shape = (t) => additiveGraphLinearFilterShape(t, skew, curveMode);
+  const halfOct = mag <= 1e-6 ? 0 : (0.05 + mag * 5);
+  const apply = (g) => (reverse ? 1 - g : g);
 
   if (m === "lp") {
-    if (!(fc > 0)) return 0;
-    if (!(f > 0)) return 1;
-    if (halfOct <= 0) return f <= fc ? 1 : 0;
+    if (!(fc > 0)) return apply(0);
+    if (!(f > 0)) return apply(1);
+    if (halfOct <= 0) return apply(f <= fc ? 1 : 0);
     const oct = Math.log(f / fc) / Math.LN2;
     const t = additiveGraphClamp((oct + halfOct) / (2 * halfOct), 0, 1);
-    return 1 - shape(t);
+    return apply(1 - shape(t));
   }
   if (m === "hp") {
-    if (!(fc > 0)) return 1;
-    if (!(f > 0)) return 0;
-    if (halfOct <= 0) return f >= fc ? 1 : 0;
+    if (!(fc > 0)) return apply(1);
+    if (!(f > 0)) return apply(0);
+    if (halfOct <= 0) return apply(f >= fc ? 1 : 0);
     const oct = Math.log(f / fc) / Math.LN2;
     const t = additiveGraphClamp((oct + halfOct) / (2 * halfOct), 0, 1);
-    return shape(t);
+    return apply(shape(t));
   }
-  // bp — pass near fc; slope widens band + edges (mirrored rational skirts)
-  if (!(fc > 0) || !(f > 0)) return 0;
+  // bp — pass near fc; |slope| widens band + edges. Negative slope inverts (notch-like).
+  if (!(fc > 0) || !(f > 0)) return apply(0);
   const passOct = halfOct <= 0 ? 0.02 : Math.max(0.02, halfOct * 0.35);
   const edgeOct = halfOct <= 0 ? 0.01 : Math.max(0.02, halfOct * 0.65);
   const a = Math.abs(Math.log(f / fc) / Math.LN2);
-  if (a <= passOct) return 1;
-  if (a >= passOct + edgeOct) return 0;
-  return shape(1 - ((a - passOct) / edgeOct));
+  if (a <= passOct) return apply(1);
+  if (a >= passOct + edgeOct) return apply(0);
+  return apply(shape(1 - ((a - passOct) / edgeOct)));
 }
 
 /**
@@ -1131,7 +1162,7 @@ function additiveGraphApplyAnalogFilter(graph, mode, cutoffHz, slopeDbOct, skew,
 }
 
 /** Apply rational-curve spectral filter (Linear Filter module). */
-function additiveGraphApplyLinearFilter(graph, mode, cutoffHz, slope01, skew, fundHz, sampleRate) {
+function additiveGraphApplyLinearFilter(graph, mode, cutoffHz, slope01, skew, fundHz, sampleRate, curveMode = 0) {
   const H = graph.harmonics;
   if (H <= 0) return graph;
   const f0 = Math.max(0, nodeGraphFiniteNumber(fundHz));
@@ -1144,7 +1175,7 @@ function additiveGraphApplyLinearFilter(graph, mode, cutoffHz, slope01, skew, fu
     additiveGraphScaleHarmonicAmp(
       graph,
       i,
-      additiveGraphFilterResponseGainRational(partialHz, mode, fc, slopeSafe, sk),
+      additiveGraphFilterResponseGainRational(partialHz, mode, fc, slopeSafe, sk, curveMode),
     );
   }
   return graph;
@@ -1154,9 +1185,10 @@ function additiveGraphApplyLinearFilter(graph, mode, cutoffHz, slope01, skew, fu
 function additiveGraphApplySlopeFilter(
   graph, mode, cutoffHz, slope, curveKind, skew, fundHz, sampleRate,
 ) {
-  if (curveKind === "rational" || curveKind === "linear") {
+  if (curveKind === "rational" || curveKind === "linear" || curveKind === "bipolarRational") {
     return additiveGraphApplyLinearFilter(
       graph, mode, cutoffHz, slope, skew, fundHz, sampleRate,
+      curveKind === "bipolarRational" ? 1 : 0,
     );
   }
   return additiveGraphApplyButterworthFilter(

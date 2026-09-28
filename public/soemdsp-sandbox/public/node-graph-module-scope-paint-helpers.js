@@ -438,14 +438,12 @@ function nodeGraphOneDimensionalBurnFramePoints(canvas, buffer, settings, resetB
   let horizStride = 1;
   if (horizontalBurn) {
     const dotSpace = Math.max(1, Math.min(width, height));
-    const size01 = typeof clampNodeSliderValue === "function"
-      ? clampNodeSliderValue(nodeGraphFiniteNumber(settings?.dot1Size), 0, 1)
-      : Math.max(0, Math.min(1, nodeGraphFiniteNumber(settings?.dot1Size)));
-    let radius = Math.max(0.5, dotSpace * size01 * 0.5);
+    const authoredSize = nodeGraphFiniteNumber(settings?.dot1Size, 2);
+    let radius = Math.max(0.35, (typeof faceInkPx === "function" ? faceInkPx(authoredSize, dotSpace) : authoredSize) * 0.5);
     if (typeof nodeGraphScopeSize01ToRadiusPx === "function") {
-      radius = Math.max(0.35, nodeGraphScopeSize01ToRadiusPx(dotSpace, size01));
+      radius = Math.max(0.35, nodeGraphScopeSize01ToRadiusPx(dotSpace, authoredSize));
     } else if (typeof PhosphorDrawer !== "undefined" && typeof PhosphorDrawer.size01ToRadiusPx === "function") {
-      radius = Math.max(0.35, PhosphorDrawer.size01ToRadiusPx(dotSpace, size01));
+      radius = Math.max(0.35, PhosphorDrawer.size01ToRadiusPx(dotSpace, authoredSize));
     }
     const blurRaw = Number(settings?.lineThickness);
     const blur = typeof nodeGraphTraceDisplayClampStampBlur === "function"
@@ -1081,6 +1079,9 @@ function nodeGraphScopeSize01ToRadiusPx(faceMinSide, size01) {
     return TraceStroke.radiusPx(faceMinSide, size01);
   }
   const side = Math.max(1, nodeGraphFiniteNumber(faceMinSide, 1));
+  if (typeof faceInkPx === "function") {
+    return Math.max(0, faceInkPx(size01, side) * 0.5);
+  }
   const t = clampNodeSliderValue(Number(size01), 0, 1);
   return side * t * 0.5;
 }
@@ -1094,6 +1095,9 @@ function nodeGraphScopeSize01ToDiameterPx(faceMinSide, size01) {
     return TraceStroke.diameterPx(faceMinSide, size01);
   }
   const side = Math.max(1, nodeGraphFiniteNumber(faceMinSide, 1));
+  if (typeof faceInkPx === "function") {
+    return Math.max(0, faceInkPx(size01, side));
+  }
   const t = clampNodeSliderValue(Number(size01), 0, 1);
   return side * t;
 }
@@ -1408,11 +1412,15 @@ function drawNodeGraphTraceDisplayCanvasLayer(context, points, layer, canvas, op
     });
     return;
   }
-  const size = clampNodeSliderValue(layer.size, 0, 1);
+  const size = typeof nodeGraphTraceDisplayNormalizeInkPx === "function"
+    ? nodeGraphTraceDisplayNormalizeInkPx(layer.size, 2)
+    : Math.max(0, nodeGraphFiniteNumber(layer.size, 2));
   const rgb = nodeGraphScopeRgbFloatsToCanvasRgb(nodeGraphScopeHexColorToRgb(layer.color));
-  const lineWidth = typeof nodeGraphScopeSize01ToDiameterPx === "function"
-    ? nodeGraphScopeSize01ToDiameterPx(face, size)
-    : Math.max(1, face * size);
+  const lineWidth = typeof TraceStroke !== "undefined" && typeof TraceStroke.diameterPx === "function"
+    ? TraceStroke.diameterPx(face, size)
+    : (typeof faceInkPx === "function" && typeof clampAuthoredInkPx === "function"
+      ? faceInkPx(clampAuthoredInkPx(size, 0), face)
+      : size);
   context.save();
   context.globalCompositeOperation = blend === "combine" ? "source-over" : blend;
   context.imageSmoothingEnabled = false;
@@ -1427,48 +1435,48 @@ function drawNodeGraphTraceDisplayCanvasLayer(context, points, layer, canvas, op
   context.restore();
 }
 
-// Stereo Trace (Output / modules with stereoTracePorts):
+// Stereo Trace (Output / modules with stereoWaterfallPorts):
 // L/R colors + blend modes. Meet (combine): m=min(L,R);
 // pixel=(L-m)·C_L+(R-m)·C_R+m·C_meet (complement → red+blue→green).
 
 /** @returns {{ left: string, right: string } | null} */
-function nodeGraphModuleStereoTracePorts(type) {
+function nodeGraphModuleStereoWaterfallPorts(type) {
   const t = String(type || "").trim();
   if (!t) return null;
   const def = typeof nodeGraphModuleDefinitions === "object"
     ? nodeGraphModuleDefinitions[t]
     : null;
-  const ports = def?.stereoTracePorts;
+  const ports = def?.stereoWaterfallPorts;
   if (ports && ports.left != null && ports.right != null) {
     return { left: String(ports.left), right: String(ports.right) };
   }
   return null;
 }
 
-function nodeGraphModuleUsesStereoTraceDisplay(type) {
-  return Boolean(nodeGraphModuleStereoTracePorts(type));
+function nodeGraphModuleUsesStereoWaterfall(type) {
+  return Boolean(nodeGraphModuleStereoWaterfallPorts(type));
 }
 
-function nodeGraphModuleXyzTracePorts(type) {
+function nodeGraphModuleXyzWaterfallPorts(type) {
   const t = String(type || "").trim();
   if (!t) return null;
   const def = typeof nodeGraphModuleDefinitions === "object"
     ? nodeGraphModuleDefinitions[t]
     : null;
-  const ports = def?.xyzTracePorts;
+  const ports = def?.xyzWaterfallPorts;
   if (ports && ports.X != null && ports.Y != null && ports.Z != null) {
     return { X: String(ports.X), Y: String(ports.Y), Z: String(ports.Z) };
   }
   return null;
 }
 
-function nodeGraphModuleUsesXyzTraceDisplay(type) {
-  return Boolean(nodeGraphModuleXyzTracePorts(type));
+function nodeGraphModuleUsesXyzWaterfall(type) {
+  return Boolean(nodeGraphModuleXyzWaterfallPorts(type));
 }
 
-function nodeGraphXyzTraceBuffers(nodeId, type) {
+function nodeGraphXyzWaterfallBuffers(nodeId, type) {
   const id = String(nodeId || "");
-  const ports = nodeGraphModuleXyzTracePorts(type);
+  const ports = nodeGraphModuleXyzWaterfallPorts(type);
   if (!id || !ports || typeof nodeGraphModuleScopeState !== "object") {
     return null;
   }
@@ -1481,26 +1489,26 @@ function nodeGraphXyzTraceBuffers(nodeId, type) {
   return { X, Y, Z };
 }
 
-function nodeGraphModuleRgbTracePorts(type) {
+function nodeGraphModuleRgbWaterfallPorts(type) {
   const t = String(type || "").trim();
   if (!t) return null;
   const def = typeof nodeGraphModuleDefinitions === "object"
     ? nodeGraphModuleDefinitions[t]
     : null;
-  const ports = def?.rgbTracePorts;
+  const ports = def?.rgbWaterfallPorts;
   if (ports && ports.R != null && ports.G != null && ports.B != null) {
     return { R: String(ports.R), G: String(ports.G), B: String(ports.B) };
   }
   return null;
 }
 
-function nodeGraphModuleUsesRgbTraceDisplay(type) {
-  return Boolean(nodeGraphModuleRgbTracePorts(type));
+function nodeGraphModuleUsesRgbWaterfall(type) {
+  return Boolean(nodeGraphModuleRgbWaterfallPorts(type));
 }
 
-function nodeGraphRgbTraceBuffers(nodeId, type) {
+function nodeGraphRgbWaterfallBuffers(nodeId, type) {
   const id = String(nodeId || "");
-  const ports = nodeGraphModuleRgbTracePorts(type);
+  const ports = nodeGraphModuleRgbWaterfallPorts(type);
   if (!id || !ports || typeof nodeGraphModuleScopeState !== "object") {
     return null;
   }
@@ -1513,19 +1521,55 @@ function nodeGraphRgbTraceBuffers(nodeId, type) {
   return { R, G, B };
 }
 
+/** True when L or R jack is actually wired (audio cable or MOD).
+ *  Face probes like "Left Raw" are not jacks — also check the base name
+ *  ("Left") so stereoWaterfallPorts Raw rings still count as wired when the
+ *  real Left/Right outlets feed audio or parameter MOD.
+ */
+function nodeGraphStereoTracePortWired(nodeId, port) {
+  const id = String(nodeId || "");
+  const p = String(port || "");
+  if (!id || !p) return false;
+  const candidates = [p];
+  if (p.endsWith(" Raw")) {
+    const base = p.slice(0, -4).trim();
+    if (base) candidates.push(base);
+  }
+  for (let ci = 0; ci < candidates.length; ci += 1) {
+    const name = candidates[ci];
+    const to = typeof nodeGraphModuleScopeConnectionsTo === "function"
+      ? nodeGraphModuleScopeConnectionsTo(id, name).length > 0
+      : false;
+    const fr = typeof nodeGraphModuleScopeConnectionsFrom === "function"
+      ? nodeGraphModuleScopeConnectionsFrom(id, name).length > 0
+      : false;
+    if (to || fr) return true;
+    const mods = nodeGraphMvp?.patch?.modulations;
+    if (Array.isArray(mods)) {
+      for (let i = 0; i < mods.length; i += 1) {
+        const m = mods[i];
+        if (String(m?.sourceNode || "") === id && String(m?.sourcePort || "") === name) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 /** True when L or R jack is actually wired. Unwired L/R rings are silence. */
 function nodeGraphStereoTraceLrWired(nodeId, type) {
   const id = String(nodeId || "");
-  const ports = nodeGraphModuleStereoTracePorts(type);
-  if (!id || !ports || typeof nodeGraphModuleScopeConnectionsTo !== "function") {
+  const ports = nodeGraphModuleStereoWaterfallPorts(type);
+  if (!id || !ports) {
     return false;
   }
-  return nodeGraphModuleScopeConnectionsTo(id, ports.left).length > 0
-    || nodeGraphModuleScopeConnectionsTo(id, ports.right).length > 0;
+  return nodeGraphStereoTracePortWired(id, ports.left)
+    || nodeGraphStereoTracePortWired(id, ports.right);
 }
 
 /**
- * Instant Trace look (history, colors, sync) is per module/display.
+ * Instant Waterfall look (history, colors, sync) is per module/display.
  * The global Trace bucket is only a seed for modules that have never been
  * customized — editing one Sample & Hold must not rewrite every other 1D
  * Trace face.
@@ -1537,9 +1581,9 @@ function nodeGraphModuleKeepsPerNodeTraceDisplaySettings(type) {
   return Boolean(String(type || "").trim());
 }
 
-function nodeGraphStereoTraceBuffers(nodeId, type) {
+function nodeGraphStereoWaterfallBuffers(nodeId, type) {
   const id = String(nodeId || "");
-  const ports = nodeGraphModuleStereoTracePorts(type);
+  const ports = nodeGraphModuleStereoWaterfallPorts(type);
   if (!id || !ports) {
     return null;
   }
@@ -1549,22 +1593,29 @@ function nodeGraphStereoTraceBuffers(nodeId, type) {
   }
   // Same rings as 1D Stereo Trace: this node's visual L/R only.
   // Do not fall back to the wired source's capture buffer — that clock/rate
-  // mix is what made Output Instant Trace blob between 0 and the signal.
-  const left = nodeGraphModuleScopeState.buffers.get(`${id}:${ports.left}`);
-  const right = nodeGraphModuleScopeState.buffers.get(`${id}:${ports.right}`);
+  // mix is what made Output Instant Waterfall blob between 0 and the signal.
+  // Only include channels whose jack is wired (Left-only / Right-only / both).
+  const leftWired = nodeGraphStereoTracePortWired(id, ports.left);
+  const rightWired = nodeGraphStereoTracePortWired(id, ports.right);
+  const left = leftWired
+    ? nodeGraphModuleScopeState.buffers.get(`${id}:${ports.left}`)
+    : null;
+  const right = rightWired
+    ? nodeGraphModuleScopeState.buffers.get(`${id}:${ports.right}`)
+    : null;
   if (!left?.length && !right?.length) {
     return null;
   }
   return { left, right };
 }
 
-/** @deprecated Prefer nodeGraphStereoTraceBuffers(nodeId, type). */
+/** @deprecated Prefer nodeGraphStereoWaterfallBuffers(nodeId, type). */
 function nodeGraphOutputStereoTraceBuffers(nodeId) {
-  return nodeGraphStereoTraceBuffers(nodeId, "output");
+  return nodeGraphStereoWaterfallBuffers(nodeId, "output");
 }
 
 /**
- * Stereo Instant Trace (traceDisplayStereo SSOT). Meet = red+blue→green.
+ * Stereo Instant Waterfall (waterfallStereo SSOT). Meet = red+blue→green.
  */
 function paintNodeGraphTraceDisplayStereoStrokes(
   context,
@@ -1657,7 +1708,7 @@ function paintNodeGraphTraceDisplayStereoStrokes(
   return leftPts.length + rightPts.length;
 }
 
-function nodeGraphTraceDisplayPrimaryLayer(settings, color) {
+function nodeGraphWaterfallPrimaryLayer(settings, color) {
   return {
     enabled: settings.dot1Enabled,
     size: settings.dot1Size,
@@ -1676,6 +1727,8 @@ function nodeGraphTraceDisplayPrimaryLayer(settings, color) {
 const NODE_GRAPH_OUTPUT_PROTECT_BANNER = "♨️";
 const NODE_GRAPH_OUTPUT_PROTECT_FONT =
   '"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji","Twemoji Mozilla",sans-serif';
+const NODE_GRAPH_OUTPUT_PAUSE_FADE_MS = 1100;
+const NODE_GRAPH_OUTPUT_PROTECT_SOLID_MUTE = 0.98;
 
 function nodeGraphOutputProtectFaceSlot(slot) {
   const type = String(slot?.type || "");
@@ -1697,110 +1750,49 @@ function nodeGraphOutputTransportIsPaused() {
   return Number.isFinite(speed) && speed <= 0;
 }
 
-/** Dest-pixel ink (protect / pause). Lives on a layer that scrolls with Instant Trace. */
-const NODE_GRAPH_OUTPUT_INK_FADE_MS = 1100;
-const NODE_GRAPH_OUTPUT_PROTECT_REPRINT_MS = 400;
-let nodeGraphOutputInkHoldUntil = 0;
-
 function nodeGraphOutputInkNowMs() {
   return (typeof performance !== "undefined" && typeof performance.now === "function")
     ? performance.now()
     : Date.now();
 }
 
-function nodeGraphOutputInkArmFrames(extraMs = NODE_GRAPH_OUTPUT_INK_FADE_MS + 1400) {
-  const until = nodeGraphOutputInkNowMs() + Math.max(0, nodeGraphFiniteNumber(extraMs));
-  if (until > nodeGraphOutputInkHoldUntil) {
-    nodeGraphOutputInkHoldUntil = until;
-  }
-}
+let nodeGraphOutputMarksHoldUntil = 0;
+let nodeGraphOutputPauseHeld = false;
+let nodeGraphOutputPauseFadeUntil = 0;
 
 function nodeGraphOutputInkWantsFrames() {
   if ((nodeGraphFiniteNumber(globalThis.nodeGraphOutputProtectMute)) > 0.001) {
     return true;
   }
-  return nodeGraphOutputInkNowMs() < nodeGraphOutputInkHoldUntil;
+  if (nodeGraphOutputTransportIsPaused()) {
+    return true;
+  }
+  const now = nodeGraphOutputInkNowMs();
+  return now < nodeGraphOutputMarksHoldUntil || now < nodeGraphOutputPauseFadeUntil;
 }
 
-function nodeGraphOutputInkEnsure(canvas) {
-  if (!canvas || !(canvas.width > 0) || !(canvas.height > 0)) {
+function nodeGraphOutputBeginPauseFade() {
+  if (!nodeGraphOutputPauseHeld) {
+    return;
+  }
+  nodeGraphOutputPauseHeld = false;
+  const until = nodeGraphOutputInkNowMs() + NODE_GRAPH_OUTPUT_PAUSE_FADE_MS;
+  nodeGraphOutputPauseFadeUntil = until;
+  if (until > nodeGraphOutputMarksHoldUntil) {
+    nodeGraphOutputMarksHoldUntil = until;
+  }
+}
+
+function nodeGraphOutputHoldContext(canvas) {
+  const hold = canvas?._waterfallHold;
+  if (!hold || !(hold.width > 0) || !(hold.height > 0)) {
     return null;
   }
-  let layer = canvas._outputInkLayer;
-  if (!layer || layer.width !== canvas.width || layer.height !== canvas.height) {
-    const prev = layer;
-    layer = document.createElement("canvas");
-    layer.width = canvas.width;
-    layer.height = canvas.height;
-    const ctx = layer.getContext("2d");
-    if (!ctx) {
-      return null;
-    }
-    if (prev && prev.width > 0 && prev.height > 0) {
-      ctx.drawImage(prev, 0, 0);
-    }
-    canvas._outputInkLayer = layer;
-    canvas._outputInkCtx = ctx;
+  try {
+    return hold.getContext("2d");
+  } catch (_error) {
+    return null;
   }
-  return canvas._outputInkCtx
-    ? { layer: canvas._outputInkLayer, context: canvas._outputInkCtx }
-    : null;
-}
-
-function nodeGraphOutputInkScroll(canvas, dxPx) {
-  const dx = Math.round(nodeGraphFiniteNumber(dxPx));
-  if (!dx || !canvas?._outputInkLayer) {
-    return;
-  }
-  const ink = nodeGraphOutputInkEnsure(canvas);
-  if (!ink) {
-    return;
-  }
-  const { layer, context } = ink;
-  context.save();
-  context.setTransform(1, 0, 0, 1, 0, 0);
-  context.globalCompositeOperation = "copy";
-  context.drawImage(layer, -dx, 0);
-  context.globalCompositeOperation = "source-over";
-  context.clearRect(dx > 0 ? layer.width - dx : 0, 0, Math.abs(dx), layer.height);
-  context.restore();
-}
-
-function nodeGraphOutputInkFade(canvas, dtMs) {
-  const ink = canvas?._outputInkLayer ? nodeGraphOutputInkEnsure(canvas) : null;
-  if (!ink) {
-    return;
-  }
-  const dt = Math.max(0, nodeGraphFiniteNumber(dtMs));
-  if (!(dt > 0)) {
-    return;
-  }
-  const amount = 1 - Math.exp(-dt / NODE_GRAPH_OUTPUT_INK_FADE_MS);
-  if (!(amount > 0.002)) {
-    return;
-  }
-  const { layer, context } = ink;
-  context.save();
-  context.setTransform(1, 0, 0, 1, 0, 0);
-  context.globalCompositeOperation = "destination-out";
-  context.fillStyle = `rgba(0,0,0,${Math.min(1, amount).toFixed(4)})`;
-  context.fillRect(0, 0, layer.width, layer.height);
-  context.restore();
-}
-
-function nodeGraphOutputInkComposite(destCtx, canvas, alpha = 1) {
-  const layer = canvas?._outputInkLayer;
-  const a = Math.max(0, Math.min(1, nodeGraphFiniteNumber(alpha)));
-  if (!destCtx || !layer || !(a > 0.001)) {
-    return;
-  }
-  destCtx.save();
-  destCtx.setTransform(1, 0, 0, 1, 0, 0);
-  destCtx.globalCompositeOperation = "source-over";
-  destCtx.imageSmoothingEnabled = false;
-  destCtx.globalAlpha = a;
-  destCtx.drawImage(layer, 0, 0);
-  destCtx.restore();
 }
 
 function paintNodeGraphOutputFaceInk(context, canvas, text, options = {}) {
@@ -1862,16 +1854,20 @@ function paintNodeGraphOutputPauseBars(context, canvas, options = {}) {
   if (!context || !(canvas?.width > 0) || !(canvas?.height > 0)) {
     return false;
   }
+  const alpha = Math.max(0, Math.min(1, Number(options.alpha ?? 1)));
+  if (!(alpha > 0.001)) {
+    return false;
+  }
   const w = canvas.width;
   const h = canvas.height;
-  const fit = Math.max(8, Math.min(w, h) - Math.max(2, Math.round(Math.min(w, h) * 0.08)) * 2);
+  const side = Math.min(w, h);
+  const fit = Math.max(8, side - Math.max(2, Math.round(side * 0.08)) * 2);
   const barH = Math.max(8, Math.round(fit * 0.52));
   const barW = Math.max(3, Math.round(fit * 0.2));
   const gap = Math.max(2, Math.round(fit * 0.14));
   const totalW = barW * 2 + gap;
   const x0 = Math.round((w - totalW) * 0.5);
   const y0 = Math.round((h - barH) * 0.5);
-  const alpha = Math.max(0, Math.min(1, Number(options.alpha ?? 1)));
   const density = Number(options.density);
   context.save();
   context.setTransform(1, 0, 0, 1, 0, 0);
@@ -1894,133 +1890,71 @@ function paintNodeGraphOutputPauseBars(context, canvas, options = {}) {
   return true;
 }
 
-function nodeGraphOutputInkPrintPause(canvas, options = {}) {
-  const ink = nodeGraphOutputInkEnsure(canvas);
-  if (!ink) {
-    return false;
-  }
-  const ok = paintNodeGraphOutputPauseBars(ink.context, ink.layer, options);
-  if (ok) {
-    nodeGraphOutputInkArmFrames();
-  }
-  return ok;
-}
-
-function nodeGraphOutputInkPrintProtect(canvas, alpha, options = {}) {
-  const ink = nodeGraphOutputInkEnsure(canvas);
-  if (!ink) {
-    return false;
-  }
-  const ok = paintNodeGraphOutputFaceInk(ink.context, ink.layer, NODE_GRAPH_OUTPUT_PROTECT_BANNER, {
-    density: options.density,
+function nodeGraphOutputDrawProtect(context, canvas, alpha, density) {
+  return paintNodeGraphOutputFaceInk(context, canvas, NODE_GRAPH_OUTPUT_PROTECT_BANNER, {
+    density,
     alpha,
     fontFamily: NODE_GRAPH_OUTPUT_PROTECT_FONT,
     fill: "#ffffff",
   });
-  if (ok) {
-    nodeGraphOutputInkArmFrames();
-  }
-  return ok;
 }
 
-function nodeGraphOutputPausePlateEnsure(canvas) {
-  if (!canvas || !(canvas.width > 0) || !(canvas.height > 0)) {
-    return null;
-  }
-  let plate = canvas._outputPausePlate;
-  if (!plate || plate.width !== canvas.width || plate.height !== canvas.height) {
-    plate = document.createElement("canvas");
-    plate.width = canvas.width;
-    plate.height = canvas.height;
-    canvas._outputPausePlate = plate;
-    canvas._outputPausePlateReady = false;
-  }
-  return plate;
-}
-
-function paintNodeGraphOutputInkFrame(destCtx, canvas, slot, settings, density, options = {}) {
-  if (!nodeGraphOutputProtectFaceSlot(slot) || !canvas || !destCtx) {
+/** Solid = dest only. Fade = dest + hold so it scrolls with Instant Waterfall. */
+function nodeGraphOutputDrawMark(destCtx, canvas, kind, alpha, density, bake) {
+  const a = Math.max(0, Math.min(1, Number(alpha)));
+  if (!(a > 0.001) || !destCtx || !canvas) {
     return false;
   }
-  const now = nodeGraphOutputInkNowMs();
-  const last = Number(canvas._outputInkLastFadeMs);
-  const dt = Number.isFinite(last) ? Math.max(0, Math.min(80, now - last)) : 16;
-  canvas._outputInkLastFadeMs = now;
-  const scrollPx = Math.round(nodeGraphFiniteNumber(options.scrollPx));
-  const scrolled = options.scrolled === true || scrollPx > 0;
-  const paused = nodeGraphOutputTransportIsPaused();
-
-  if (paused) {
-    // Simulation off: one still stamp. No dest-out, no rAF.
-    if (!canvas._outputPauseBannerStamped) {
-      const plate = nodeGraphOutputPausePlateEnsure(canvas);
-      if (plate) {
-        const pctx = plate.getContext("2d");
-        if (pctx) {
-          pctx.setTransform(1, 0, 0, 1, 0, 0);
-          pctx.globalCompositeOperation = "copy";
-          pctx.drawImage(canvas, 0, 0);
-          canvas._outputPausePlateReady = true;
-        }
-      }
-      const ink = nodeGraphOutputInkEnsure(canvas);
-      if (ink) {
-        ink.context.save();
-        ink.context.setTransform(1, 0, 0, 1, 0, 0);
-        ink.context.clearRect(0, 0, ink.layer.width, ink.layer.height);
-        ink.context.restore();
-        paintNodeGraphOutputPauseBars(ink.context, ink.layer, { density, alpha: 1 });
-      }
-      paintNodeGraphOutputPauseBars(destCtx, canvas, { density, alpha: 1 });
-      canvas._outputPauseBannerStamped = true;
-      canvas._waterfallDestHistory = true;
+  const paint = (ctx, target) => {
+    if (kind === "pause") {
+      paintNodeGraphOutputPauseBars(ctx, target, { alpha: a, density });
+    } else {
+      nodeGraphOutputDrawProtect(ctx, target, a, density);
     }
-    return true;
+  };
+  paint(destCtx, canvas);
+  if (bake) {
+    const hold = canvas._waterfallHold;
+    const holdCtx = nodeGraphOutputHoldContext(canvas);
+    if (hold && holdCtx) {
+      paint(holdCtx, hold);
+    }
   }
-
-  // Play: dest is the tape. Previous dest pixels (last fade frame) already
-  // scrolled left. Stamp bars in place at falling alpha so the new frame is
-  // fainter and Instant Trace drifts the old frames leftward.
-  // If audio/scroll is dead (worklet still paused while UI says Live), still
-  // advance the fade on force or every ink frame so bars do not stick forever.
-  if (!Number.isFinite(Number(canvas._outputPauseFadeBorn))) {
-    canvas._outputPauseFadeBorn = now;
-  }
-  const born = Number(canvas._outputPauseFadeBorn);
-  const fadeAlpha = Math.max(0, 1 - (now - born) / NODE_GRAPH_OUTPUT_INK_FADE_MS);
-  if (fadeAlpha > 0.001 && (scrolled || options.force === true || options.fadeWithoutScroll === true)) {
-    paintNodeGraphOutputPauseBars(destCtx, canvas, { density, alpha: fadeAlpha });
-  }
-
-  const mute = Math.max(0, Math.min(1, nodeGraphFiniteNumber(globalThis.nodeGraphOutputProtectMute)));
-  const lastMute = nodeGraphFiniteNumber(canvas._outputProtectLastMute);
-  const falling = mute > 0.001 && mute < lastMute - 0.012;
-  canvas._outputProtectOverlayMute = (!falling && mute > 0.001) ? mute : 0;
-  // Print into dest tape only while mute is falling. Engaged = HUD overlay
-  // after dest is snapped (paintNodeGraphOutputProtectOverlay).
-  if (falling && (scrolled || options.force === true)) {
-    paintNodeGraphOutputFaceInk(destCtx, canvas, NODE_GRAPH_OUTPUT_PROTECT_BANNER, {
-      density,
-      alpha: mute,
-      fontFamily: NODE_GRAPH_OUTPUT_PROTECT_FONT,
-      fill: "#ffffff",
-    });
-  }
-  canvas._outputProtectLastMute = mute;
   return true;
 }
 
-function paintNodeGraphOutputProtectOverlay(destCtx, canvas, density) {
-  const mute = Math.max(0, Math.min(1, nodeGraphFiniteNumber(canvas?._outputProtectOverlayMute)));
-  if (!(mute > 0.001) || !destCtx || !canvas) {
+function paintNodeGraphOutputInkFrame(destCtx, canvas, slot, settings, density, _options = {}) {
+  if (!nodeGraphOutputProtectFaceSlot(slot) || !canvas || !destCtx) {
     return false;
   }
-  return paintNodeGraphOutputFaceInk(destCtx, canvas, NODE_GRAPH_OUTPUT_PROTECT_BANNER, {
-    density,
-    alpha: mute,
-    fontFamily: NODE_GRAPH_OUTPUT_PROTECT_FONT,
-    fill: "#ffffff",
-  });
+  void settings;
+  const now = nodeGraphOutputInkNowMs();
+  const paused = nodeGraphOutputTransportIsPaused();
+  if (paused) {
+    nodeGraphOutputPauseHeld = true;
+    nodeGraphOutputPauseFadeUntil = 0;
+    nodeGraphOutputDrawMark(destCtx, canvas, "pause", 1, density, false);
+  } else {
+    nodeGraphOutputBeginPauseFade();
+    if (nodeGraphOutputPauseFadeUntil > now) {
+      const fade = Math.max(0, Math.min(1, (nodeGraphOutputPauseFadeUntil - now) / NODE_GRAPH_OUTPUT_PAUSE_FADE_MS));
+      nodeGraphOutputDrawMark(destCtx, canvas, "pause", fade, density, true);
+    } else {
+      nodeGraphOutputPauseFadeUntil = 0;
+    }
+  }
+
+  const mute = Math.max(0, Math.min(1, nodeGraphFiniteNumber(globalThis.nodeGraphOutputProtectMute)));
+  if (mute >= NODE_GRAPH_OUTPUT_PROTECT_SOLID_MUTE) {
+    canvas._outputProtectWasSolid = true;
+    nodeGraphOutputDrawMark(destCtx, canvas, "protect", 1, density, false);
+  } else if (mute > 0.001 && canvas._outputProtectWasSolid) {
+    nodeGraphOutputDrawMark(destCtx, canvas, "protect", mute, density, true);
+  } else {
+    canvas._outputProtectWasSolid = false;
+  }
+  canvas._outputProtectLastMute = mute;
+  return true;
 }
 
 function paintNodeGraphOutputProtectBanner(context, canvas, settings = {}, options = {}) {
@@ -2034,14 +1968,14 @@ function paintNodeGraphOutputProtectBannerIfNeeded(context, canvas, slot, settin
 
 function paintNodeGraphOutputPauseBanner(context, canvas, settings = {}, options = {}) {
   void settings;
-  return nodeGraphOutputInkPrintPause(canvas, options);
+  return paintNodeGraphOutputInkFrame(context, canvas, { type: "output" }, settings, options.density, options);
 }
 
 function paintNodeGraphOutputPauseBannerIfNeeded(context, canvas, slot, settings, density, options = {}) {
   return paintNodeGraphOutputInkFrame(context, canvas, slot, settings, density, options);
 }
 
-function nodeGraphTraceDisplayPinWaterfallClocks(nowMs) {
+function nodeGraphWaterfallPinClocks(nowMs) {
   const now = Number.isFinite(Number(nowMs))
     ? Number(nowMs)
     : ((typeof performance !== "undefined" && typeof performance.now === "function")
@@ -2064,61 +1998,6 @@ function nodeGraphTraceDisplayPinWaterfallClocks(nowMs) {
         ":scope > canvas.node-module-scope-local-fallback-canvas",
       );
       pin(existing);
-    }
-  }
-}
-
-function nodeGraphOutputPauseBannerClearStampFlags() {
-  const clear = (canvas) => {
-    if (!canvas) {
-      return;
-    }
-    // Restore the pre-pause plate when present so pause bars do not stick on
-    // dest when Instant Trace is not scrolling (e.g. worklet still at speed 0).
-    if (canvas._outputPausePlateReady && canvas._outputPausePlate) {
-      try {
-        const ctx = canvas.getContext?.("2d");
-        if (ctx) {
-          ctx.save();
-          ctx.setTransform(1, 0, 0, 1, 0, 0);
-          ctx.globalCompositeOperation = "copy";
-          ctx.drawImage(canvas._outputPausePlate, 0, 0);
-          ctx.restore();
-        }
-      } catch (_error) {
-        // Best-effort restore.
-      }
-    }
-    const ink = canvas._outputInkLayer;
-    if (ink) {
-      try {
-        const ictx = ink.getContext?.("2d") || canvas._outputInkCtx;
-        if (ictx) {
-          ictx.save();
-          ictx.setTransform(1, 0, 0, 1, 0, 0);
-          ictx.clearRect(0, 0, ink.width, ink.height);
-          ictx.restore();
-        }
-      } catch (_error) {
-        // Best-effort.
-      }
-    }
-    canvas._outputPauseBannerStamped = false;
-    canvas._outputPausePlateReady = false;
-    canvas._outputPauseFadeBorn = nodeGraphOutputInkNowMs();
-    canvas._outputInkLastFadeMs = canvas._outputPauseFadeBorn;
-  };
-  if (typeof nodeGraphModuleScopePersistentCanvases?.forEach === "function") {
-    nodeGraphModuleScopePersistentCanvases.forEach(clear);
-  }
-  if (typeof nodeGraphModuleScopeSlots === "function") {
-    for (const slot of nodeGraphModuleScopeSlots() || []) {
-      if (!nodeGraphOutputProtectFaceSlot(slot)) {
-        continue;
-      }
-      clear(typeof nodeGraphModuleScopeLocalFallbackCanvas === "function"
-        ? nodeGraphModuleScopeLocalFallbackCanvas(slot)
-        : null);
     }
   }
 }
@@ -2180,8 +2059,8 @@ function paintNodeGraphTraceDisplayColdPlate(slot, pixelRatio = window.devicePix
       && nodeGraphModuleScopePhosphorFrozen());
   const settings = typeof nodeGraphTraceDisplaySettingsForSlot === "function"
     ? nodeGraphTraceDisplaySettingsForSlot(slot)
-    : (typeof nodeGraphTraceDisplaySettingsDefaults !== "undefined"
-      ? nodeGraphTraceDisplaySettingsDefaults
+    : (typeof nodeGraphWaterfallSettingsDefaults !== "undefined"
+      ? nodeGraphWaterfallSettingsDefaults
       : {});
   const canvas = typeof nodeGraphModuleScopeLocalFallbackCanvas === "function"
     ? nodeGraphModuleScopeLocalFallbackCanvas(slot)
@@ -2339,7 +2218,7 @@ function nodeGraphTraceWaterfallUndrawnWindow(canvas, buffer) {
   };
 }
 
-function nodeGraphTraceDisplayPaintWaterfall(spec) {
+function nodeGraphPaintWaterfallFace(spec) {
   return typeof nodeGraphWaterfallPaint === "function"
     ? nodeGraphWaterfallPaint(spec)
     : false;
@@ -2465,14 +2344,14 @@ function drawNodeGraphTraceDisplayCanvasItem(item, pixelRatio) {
   }
   const bg = nodeGraphFacePlateBackground(settings);
   nodeGraphFacePlateApplyCss(screenElement, bg);
-  const stereoBuffers = nodeGraphModuleUsesStereoTraceDisplay(slot?.type)
-    ? nodeGraphStereoTraceBuffers(slot.nodeId, slot.type)
+  const stereoBuffers = nodeGraphModuleUsesStereoWaterfall(slot?.type)
+    ? nodeGraphStereoWaterfallBuffers(slot.nodeId, slot.type)
     : null;
-  const rgbBuffers = (!stereoBuffers && nodeGraphModuleUsesRgbTraceDisplay(slot?.type))
-    ? nodeGraphRgbTraceBuffers(slot.nodeId, slot.type)
+  const rgbBuffers = (!stereoBuffers && nodeGraphModuleUsesRgbWaterfall(slot?.type))
+    ? nodeGraphRgbWaterfallBuffers(slot.nodeId, slot.type)
     : null;
-  const xyzBuffers = (!stereoBuffers && !rgbBuffers && nodeGraphModuleUsesXyzTraceDisplay(slot?.type))
-    ? nodeGraphXyzTraceBuffers(slot.nodeId, slot.type)
+  const xyzBuffers = (!stereoBuffers && !rgbBuffers && nodeGraphModuleUsesXyzWaterfall(slot?.type))
+    ? nodeGraphXyzWaterfallBuffers(slot.nodeId, slot.type)
     : null;
   const painted = nodeGraphWaterfallPaint({
     item,
@@ -2718,6 +2597,80 @@ function buildNodeGraphScope2dEvenPathPoints(square, buffer, maxPoints, settings
  * start from the newest window so we never fall into a catch-up death spiral.
  * (Used by segment / incremental modes.)
  */
+/**
+ * Leading points that still fuse into a line under `budget` stamps.
+ * The tail stays undrawn so the next frame can continue the wave.
+ */
+/**
+ * Budget: solid prefix, stop when the stamps run out.
+ * Length: if that prefix is short, skip samples and return dots across the whole path.
+ */
+function nodeGraphTraceApplyDrawMode(points, settings) {
+  const src = Array.isArray(points) ? points : [];
+  if (src.length < 2) {
+    return src;
+  }
+  const budget = Math.max(8, Math.round(nodeGraphFiniteNumber(settings?.dotBudget, 2048)));
+  const step = Math.max(0.35, nodeGraphFiniteNumber(settings?.dot1Size, 2) * 0.2);
+  const fit = nodeGraphTraceFusePrefixCount(src, budget, step);
+  if (!fit.truncated) {
+    return src;
+  }
+  if (String(settings?.drawMode || "budget") !== "length") {
+    return src.slice(0, Math.max(1, fit.keep));
+  }
+  const real = [];
+  for (let i = 0; i < src.length; i += 1) {
+    const p = src[i];
+    if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+      real.push(p);
+    }
+  }
+  if (real.length <= budget) {
+    return src;
+  }
+  const stride = Math.max(1, Math.ceil(real.length / budget));
+  const out = [];
+  for (let i = 0; i < real.length; i += stride) {
+    if (out.length) {
+      out.push(null);
+    }
+    out.push(real[i]);
+  }
+  const tail = real[real.length - 1];
+  if (tail && out[out.length - 1] !== tail) {
+    out.push(null);
+    out.push(tail);
+  }
+  return out;
+}
+
+function nodeGraphTraceFusePrefixCount(points, budget, stepPx) {
+  const cap = Math.max(8, Math.floor(nodeGraphFiniteNumber(budget, 2048)));
+  const step = Math.max(0.2, nodeGraphFiniteNumber(stepPx, 0.5));
+  const src = Array.isArray(points) ? points : [];
+  let stamps = 0;
+  let last = null;
+  let keep = 0;
+  for (let i = 0; i < src.length; i += 1) {
+    const p = src[i];
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+      last = null;
+      keep = i + 1;
+      continue;
+    }
+    const dist = last ? Math.hypot(p.x - last.x, p.y - last.y) : 0;
+    const add = !last ? 1 : (dist < 1e-4 ? 0 : Math.max(1, Math.ceil(dist / step)));
+    if (keep > 0 && stamps + add > cap) {
+      break;
+    }
+    stamps += add;
+    last = p;
+    keep = i + 1;
+  }
+  return { keep, truncated: keep < src.length };
+}
+
 function nodeGraphScope2dClampDrawStartIndex(startIndex, count, maxSamples) {
   const safeCount = Math.max(0, Math.floor(nodeGraphFiniteNumber(count)));
   const safeStart = Math.max(0, Math.min(safeCount, Math.floor(nodeGraphFiniteNumber(startIndex))));

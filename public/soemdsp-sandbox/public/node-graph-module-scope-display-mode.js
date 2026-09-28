@@ -5,14 +5,14 @@
  * Settings schema for a display renderer.
  * Only faces that actually have Display Settings fields get a schema.
  * Unknown renderers (clock, transportBpm, …) return "" —
- * NEVER Instant Trace / phosphor.
+ * NEVER Instant Waterfall / phosphor.
  */
 function nodeGraphDisplayModeSettingsSchemaForRenderer(renderer) {
   const r = String(renderer || "").trim();
   if (!r || r === "layoutOwned" || r === "blank" || r === "none") {
     return "";
   }
-  if (r === "traceRgb" || r === "traceXyz") {
+  if (r === "waterfallRgb" || r === "waterfallXyz") {
     return r;
   }
   if (typeof nodeGraphModuleDisplayTypeHasLocalSettings === "function") {
@@ -76,7 +76,7 @@ function normalizeNodeGraphDisplayMode(mode, type = "", index = 0) {
   const raw = mode && typeof mode === "object" ? mode : {};
   const rawRenderer = raw.renderer === "ledLamp"
     ? "vectorDot"
-    : (raw.renderer === "traceXyz" ? "trace" : raw.renderer);
+    : (raw.renderer === "waterfallXyz" || raw.renderer === "waterfallRgb" ? "waterfall" : raw.renderer);
   const renderer = nodeGraphDisplayModeRenderers.includes(rawRenderer)
     ? rawRenderer
     : nodeGraphModuleDeclaredDisplayTypeForType(type);
@@ -121,7 +121,7 @@ function nodeGraphModuleImplicitDisplayModeForType(type) {
   if (renderer === "layoutOwned") {
     return null;
   }
-  // Instant Trace face (explicit or LayoutA invent-trace) → Instant Trace settings.
+  // Instant Waterfall only when the type declares it (displayType / visualScope).
   // Custom layouts (envelopeCurve / filterCurve) never reach here (layoutOwned).
   return normalizeNodeGraphDisplayMode({
     key: renderer,
@@ -179,11 +179,23 @@ function nodeGraphModuleDisplayRendererForNode(node) {
 
 /**
  * Display Settings form schema for a node.
- * Mode.settingsSchema wins (including ""). Instant Trace faces (explicit or
- * LayoutA invent-trace) use Instant Trace settings. Custom layout faces
+ * Mode.settingsSchema wins (including ""). Instant Waterfall only when the
+ * module declares displayType "waterfall". Custom layout faces
  * (envelopeCurve / filterCurve → layoutOwned) have no mode → blank settings.
  */
 function nodeGraphModuleDisplaySettingsSchemaForNode(node) {
+  const type = String(node?.type || "").trim();
+  if (
+    type === "smoothGraph"
+    || type === "stepGraph"
+    || (typeof nodeGraphModuleDefinitions !== "undefined"
+      && nodeGraphModuleDefinitions?.[type]?.layout === "graph")
+  ) {
+    return "graphFace";
+  }
+  if (type === "phaser") {
+    return "phaserFace";
+  }
   const mode = nodeGraphModuleSelectedDisplayMode(node);
   if (mode && Object.prototype.hasOwnProperty.call(mode, "settingsSchema")) {
     return String(mode.settingsSchema || "");
@@ -206,8 +218,9 @@ function nodeGraphModuleDisplaySettingsSchemaForSlot(slot) {
 
 function nodeGraphModuleDisplayTypeHasLocalSettings(displayType) {
   return [
-    "trace",
-    "traceRgb",
+    "waterfall",
+    "waterfallRgb",
+    "waterfallXyz",
     "dot",
     "vectorDot",
     "pulseDot",
@@ -216,6 +229,7 @@ function nodeGraphModuleDisplayTypeHasLocalSettings(displayType) {
     "lineBurn",
     "scope2d",
     "scope2dTrace",
+    "scope1dTrace",
     "phosphorLight",
     "numberReadout",
     "xyPad",
@@ -224,6 +238,7 @@ function nodeGraphModuleDisplayTypeHasLocalSettings(displayType) {
     "oscilloscopeBankBurn",
     // Hypersaw / Hypersaw2 / RobinSupersaw face — line thickness only.
     "hypersawBurn",
+    "ensembleCloud",
     "matrixFace",
     "matrixWaterfallFace",
     "matrixDisplayFace",
@@ -234,19 +249,22 @@ function nodeGraphModuleDisplayTypeHasLocalSettings(displayType) {
     // Picture load + Image Burn phosphor stamp.
     "rgbPictureFace",
     "imageBurnFace",
-    // Macro Controls face: bg / arc colors / names (global bank).
-    "macroControlsFace",
     "keyboardControllerFace",
     // Knob module: macro dial colors, image layers, centered span, readout.
     "knobFace",
+    // Slider module: bar geometry, pins, Pill/Squircle rounding.
+    "pluginSliderFace",
+    // Toggle and momentary share one face look (scale + colors).
+    "toggleButtonFace",
+    "momentaryButtonFace",
     // Keypad look: fonts, weight, button size, Sound Color Widgets.
     "keypadFace",
     // Arp Keys: stroke/font hue + Music Player corners / padding.
     "arpKeysFace",
-    // Master Clock BPM face: optional beat lamp.
+    // Metronome BPM face: optional beat lamp.
     "transportBpm",
     // Music Player waveform / playlist look.
-    "phosphorWaveform",
+    "sampleWaveform",
     // Text Box look: mode, align, size, Sound Color Widgets.
     "textBoxFace",
     "portalFace",
@@ -263,6 +281,8 @@ function nodeGraphModuleDisplayTypeHasLocalSettings(displayType) {
     "vectorRgbFace",
     "rasterRgbFace",
     "gradientVectorscopeFace",
+    "graphFace",
+    "phaserFace",
   ].includes(displayType);
 }
 

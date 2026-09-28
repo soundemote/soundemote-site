@@ -5,6 +5,8 @@ import type { ComponentPropsWithoutRef } from "react";
 import { Link } from "react-router-dom";
 import { featuredArticles } from "@/data/featuredArticles";
 import { slugifyHeading } from "./TableOfContents";
+import { getSiteRole } from "@/lib/siteHost";
+import { isGithubUrl } from "@/lib/externalLinks";
 
 function MarkdownHeading({ level, children, ...rest }: { level: 2 | 3 } & ComponentPropsWithoutRef<"h2">) {
   const text = String(children);
@@ -38,7 +40,9 @@ const repoToRoute = new Map<string, string>(
 );
 
 function MarkdownAnchor({ href, children, ...rest }: ComponentPropsWithoutRef<"a">) {
+  const isDevSite = getSiteRole() === "dev";
   const isGithub = typeof href === "string" && /(^|\/\/)(www\.)?github\.com\//i.test(href);
+  if (isDevSite && typeof href === "string" && isGithubUrl(href)) return null;
   if (isGithub && href) {
     const key = normalizeRepo(href);
     const route = repoToRoute.get(key);

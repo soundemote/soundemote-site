@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import patchImage from "@/assets/soemdsp-patch.png";
-import { siteConfig } from "@/config/site";
-import { SOUNDEMOTE_BANK, SOUNDEMOTE_BANK_DEFAULT_SLUG } from "@/data/patchBank";
-import { SandboxNavLink } from "@/components/soundemote/Nav";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  SOUNDEMOTE_BANK,
+  type BankAudius,
+  type BankVideo,
+} from "@/data/patchBank";
 
 type TransportButtonProps = {
   label: string;
@@ -31,239 +32,42 @@ const TransportButton = ({ label, onClick, pressed, children }: TransportButtonP
 // ── Transport icon SVGs ──
 const ICON_PREV = <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden><rect x="5" y="4" width="3" height="16" fill="currentColor" /><polygon points="19,4 19,20 8,12" fill="currentColor" /></svg>;
 const ICON_NEXT = <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden><polygon points="5,4 5,20 16,12" fill="currentColor" /><rect x="16" y="4" width="3" height="16" fill="currentColor" /></svg>;
-const ICON_STOP = <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden><rect x="6" y="6" width="12" height="12" fill="currentColor" /></svg>;
-const ICON_PLAY = <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden><polygon points="7,4 7,20 20,12" fill="currentColor" /></svg>;
-const ICON_PAUSE = <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden><rect x="6" y="5" width="4" height="14" fill="currentColor" /><rect x="14" y="5" width="4" height="14" fill="currentColor" /></svg>;
 
-const ICON_DOWNLOAD = <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden><path d="M8 1v10M4 7l4 4 4-4M2 13h12" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg>;
+type HeroMedia = BankVideo | BankAudius;
 
+const MEDIA_VIEWPORT_HEIGHT = "560px";
 
+/** Hero playlist: videos + Audius only (no sandbox patch embeds). */
+function heroMediaBank(): HeroMedia[] {
+  return SOUNDEMOTE_BANK.filter(
+    (item): item is HeroMedia => item.kind === "video" || item.kind === "audius",
+  );
+}
 
 export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
-  // Mount the modular preview immediately (display-only). Audio stays cold
-  // until the user hits Play — no ?autostart, no delayed set-live-output.
-  const [sandboxLoaded, setSandboxLoaded] = useState(true);
-  // Live engine state synced from the sandbox via postMessage.
-  const [liveEnabled, setLiveEnabled] = useState(false);
-  const [liveSpeed, setLiveSpeed] = useState(1);
-  // If Play is pressed before the iframe exists, arm after load.
-  const pendingPlayRef = useRef(false);
-  // The route (e.g. /reverb, /shootingstar) selects which patch the single hero
-  // sandbox loads. Unknown/absent slugs fall back to Additive beta (not bank[0]
-  // video), so home opens on a silent modular Yellow Graph preview.
-  const routePatchIndex = SOUNDEMOTE_BANK.findIndex((p) => p.slug === patchSlug);
-  const defaultBankIndex = Math.max(
-    0,
-    SOUNDEMOTE_BANK.findIndex((p) => p.slug === SOUNDEMOTE_BANK_DEFAULT_SLUG),
-  );
-  const initialPatchIndex = routePatchIndex >= 0 ? routePatchIndex : defaultBankIndex;
-  const [currentBankIndex, setCurrentBankIndex] = useState(initialPatchIndex);
+  const mediaBank = useMemo(() => heroMediaBank(), []);
+  const routeMediaIndex = mediaBank.findIndex((item) => item.slug === patchSlug);
+  const initialIndex = routeMediaIndex >= 0 ? routeMediaIndex : 0;
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
 
-  // Sync local state when the route changes (someone navigated to a different URL).
   useEffect(() => {
-    setCurrentBankIndex(initialPatchIndex);
-  }, [patchSlug, initialPatchIndex]);
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
-  // -1 means "nothing posted yet" so the first onLoad always pushes the
-  // starting patch (shooting star) -- the sandbox's own built-in default
-  // patch is a different, unrelated placeholder graph, so it must not be
-  // assumed to already match index 0.
-  const lastPostedRef = useRef<number>(-1);
-  // Serialized body of the patch currently loaded in the sandbox, to detect
-  // "loaded but no visible diff" cases (e.g. two banks pointing at the same graph).
-  const lastBodyRef = useRef<string | null>(null);
-  const noDiffTimer = useRef<number | null>(null);
-  const postRetryTimers = useRef<number[]>([]);
-  const [noDiff, setNoDiff] = useState(false);
-  const sandboxViewportHeight = "560px";
-  // autoframe=1: zoom+pan to fit after each project-data commit.
-  // No autostart: init/home stays silent until Play (showcase/*-live keep their own URLs).
-  const sandboxEmbedSrc =
-    "/soemdsp-sandbox/index.html?sandboxView=modular-only&hideui=1&autoframe=1&v=20260901-hideui-cc";
-  const currentPatch = SOUNDEMOTE_BANK[currentBankIndex];
-  const isVideo = currentPatch.kind === "video";
-  const isAudius = currentPatch.kind === "audius";
+    setCurrentIndex(initialIndex);
+  }, [patchSlug, initialIndex]);
 
-  // Keep a live ref to the current patch label so the message listener
-  // (registered once) always uses the currently-selected patch's name.
-  const currentLabelRef = useRef(currentPatch.label);
-  useEffect(() => {
-    currentLabelRef.current = currentPatch.label;
-  }, [currentPatch.label]);
+  const current = mediaBank[currentIndex] ?? mediaBank[0];
+  const isVideo = current?.kind === "video";
+  const isAudius = current?.kind === "audius";
 
-  // Send a postMessage into the sandbox iframe.
-  const postToSandbox = useCallback((message: unknown) => {
-    try {
-      iframeRef.current?.contentWindow?.postMessage(message, "*");
-    } catch (_) { /* iframe not ready */ }
-  }, []);
-
-  const isPlaying = liveEnabled && liveSpeed > 0;
-  const isPaused = liveEnabled && liveSpeed === 0;
-
-  // Prev/next: cycle the patch locally without changing the URL.
   const gotoBank = useCallback(
     (delta: number) => {
-      const n = SOUNDEMOTE_BANK.length;
-      setCurrentBankIndex((prev) => (prev + delta + n) % n);
+      const n = mediaBank.length;
+      if (n === 0) return;
+      setCurrentIndex((prev) => (prev + delta + n) % n);
     },
-    [],
+    [mediaBank.length],
   );
 
-  const postPatchRef = useRef<() => void>(() => {});
-
-  const handlePreview = useCallback(() => {
-    if (!sandboxLoaded) {
-      setSandboxLoaded(true);
-      return;
-    }
-    lastPostedRef.current = -1;
-    postPatchRef.current();
-  }, [sandboxLoaded]);
-
-  // Transport: Play/resume — start the engine or resume from pause.
-  // If the current bank entry is video/Audius, jump to Additive beta first.
-  // If the sandbox hasn't been loaded yet, load it first then arm on load.
-  const handlePlay = useCallback(() => {
-    const entry = SOUNDEMOTE_BANK[currentBankIndex];
-    const needsModular =
-      entry?.kind === "video" || entry?.kind === "audius";
-    if (needsModular) {
-      pendingPlayRef.current = true;
-      setCurrentBankIndex(defaultBankIndex);
-      setSandboxLoaded(true);
-      return;
-    }
-    if (!sandboxLoaded) {
-      pendingPlayRef.current = true;
-      setSandboxLoaded(true);
-      return;
-    }
-    if (isPaused) {
-      postToSandbox({ type: "soundemote:set-live-speed", speed: 1 });
-    } else {
-      postToSandbox({ type: "soundemote:set-live-output", enabled: true });
-      postToSandbox({ type: "soundemote:set-live-speed", speed: 1 });
-    }
-  }, [currentBankIndex, defaultBankIndex, isPaused, postToSandbox, sandboxLoaded]);
-
-  // Transport: Pause — freeze the engine (speed → 0).
-  const handlePause = useCallback(() => {
-    postToSandbox({ type: "soundemote:set-live-speed", speed: 0 });
-  }, [postToSandbox]);
-
-  // Transport: Stop — tear down the audio engine entirely, reset speed.
-  const handleStop = useCallback(() => {
-    postToSandbox({ type: "soundemote:set-live-output", enabled: false });
-    postToSandbox({ type: "soundemote:set-live-speed", speed: 1 });
-  }, [postToSandbox]);
-
-  // Listen for messages from the sandbox.
-  useEffect(() => {
-    if (!sandboxLoaded) return;
-    const onMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type === "soundemote:live-output-changed") {
-        setLiveEnabled(Boolean(event.data.enabled));
-        const rawSpeed = event.data.speed;
-        setLiveSpeed(rawSpeed != null ? Number(rawSpeed) : 1);
-      }
-      if (event.data?.type === "soundemote:rendered-sample" && event.data?.url) {
-        const a = document.createElement("a");
-        a.href = event.data.url;
-        a.download = `${currentLabelRef.current.replace(/\s+/g, "_")}.wav`;
-        a.click();
-      }
-    };
-    window.addEventListener("message", onMessage);
-    // Also request current state in case the sandbox already started before we started listening.
-    postToSandbox({ type: "soundemote:request-live-state" });
-    return () => window.removeEventListener("message", onMessage);
-  }, [sandboxLoaded, postToSandbox]);
-
-  const postPatch = useCallback(async () => {
-    const win = iframeRef.current?.contentWindow;
-    if (!win) return;
-    const item = SOUNDEMOTE_BANK[currentBankIndex];
-    if (item.kind === "video" || item.kind === "audius") return;
-    // Nothing to do if this patch is already loaded in the sandbox.
-    if (lastPostedRef.current === currentBankIndex) return;
-    lastPostedRef.current = currentBankIndex;
-    try {
-      const res = await fetch(item.url);
-      const patchData = await res.json();
-      // Detect no-op loads: same graph body as what's already showing.
-      const body = JSON.stringify(patchData?.patch_data ?? patchData);
-      const identical = lastBodyRef.current !== null && lastBodyRef.current === body;
-      lastBodyRef.current = body;
-      setNoDiff(identical);
-      if (noDiffTimer.current) window.clearTimeout(noDiffTimer.current);
-      if (identical) {
-        noDiffTimer.current = window.setTimeout(() => setNoDiff(false), 1800);
-      }
-      // The sandbox expects a "sandbox_patch" share envelope, not a raw patch.
-      // If the file is already an envelope, forward it as-is; otherwise wrap it.
-      const projectData =
-        patchData?.kind === "sandbox_patch"
-          ? patchData
-          : {
-              kind: "sandbox_patch",
-              version: 1,
-              title: currentPatch.label,
-              bank_name: "soundemote",
-              patch_data: patchData,
-            };
-      postRetryTimers.current.forEach((timer) => window.clearTimeout(timer));
-      postRetryTimers.current = [];
-      const sendProjectData = () => {
-        iframeRef.current?.contentWindow?.postMessage(
-          { type: "soundemote:sandbox-project-data", projectData },
-          window.location.origin,
-        );
-        // No set-view here: the embed URL carries autoframe=1, so the sandbox
-        // auto-frames (zoom-to-fit) after each project-data commit. A fixed
-        // x/y/zoom would fight that and land off-center for other patches.
-      };
-      sendProjectData();
-      postRetryTimers.current = [250, 700, 1400, 2600, 4200].map((delay) =>
-        window.setTimeout(sendProjectData, delay),
-      );
-      // Arm only if Play was pressed before the iframe finished loading.
-      if (pendingPlayRef.current) {
-        pendingPlayRef.current = false;
-        postRetryTimers.current.push(
-          window.setTimeout(() => {
-            postToSandbox({ type: "soundemote:set-live-output", enabled: true });
-            postToSandbox({ type: "soundemote:set-live-speed", speed: 1 });
-          }, 400),
-        );
-      }
-    } catch {
-      /* ignore fetch/post errors */
-    }
-  }, [currentPatch.label, currentBankIndex, postToSandbox]);
-
-  useEffect(() => {
-    postPatchRef.current = postPatch;
-  }, [postPatch]);
-
-  // Re-send whenever the selected patch changes (after initial load).
-  useEffect(() => {
-    if (sandboxLoaded) postPatch();
-  }, [sandboxLoaded, postPatch]);
-
-  useEffect(
-    () => () => {
-      postRetryTimers.current.forEach((timer) => window.clearTimeout(timer));
-      if (noDiffTimer.current) window.clearTimeout(noDiffTimer.current);
-    },
-    [],
-  );
-
-
-  const previewFrameClass = sandboxLoaded
-    ? "soundemote-sandbox-preview-frame relative flex w-full max-w-[900px] mx-auto justify-center overflow-hidden bg-transparent"
-    : "soundemote-sandbox-preview-frame relative flex w-full justify-center overflow-hidden bg-background";
+  if (!current) return null;
 
   return (
     <section id="top" className="relative overflow-hidden py-6 md:py-8">
@@ -273,21 +77,16 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
         <h1 className="sr-only">
           Soundemote — audio-visual DSP instruments and signal-reactive visual tools for electronic music producers and VJs
         </h1>
-        <div className={sandboxLoaded
-          ? "mx-auto w-full animate-fade-in [animation-delay:200ms]"
-          : "mx-auto w-full max-w-[min(95vw,56rem)] animate-fade-in [animation-delay:200ms]"
-        }> 
-          <div
-            className={previewFrameClass}
-          >
+        <div className="mx-auto w-full animate-fade-in [animation-delay:200ms]">
+          <div className="relative flex w-full max-w-[900px] mx-auto justify-center overflow-hidden bg-transparent">
             {isVideo ? (
               <div
                 className="w-full overflow-hidden bg-black"
-                style={{ height: sandboxViewportHeight }}
+                style={{ height: MEDIA_VIEWPORT_HEIGHT }}
               >
                 <iframe
-                  title={currentPatch.label}
-                  src={`https://www.youtube.com/embed/${(currentPatch as { youtubeId: string }).youtubeId}?rel=0`}
+                  title={current.label}
+                  src={`https://www.youtube.com/embed/${current.youtubeId}?rel=0`}
                   className="h-full w-full border-0"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
                   allowFullScreen
@@ -296,55 +95,23 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
             ) : isAudius ? (
               <div
                 className="flex w-full items-center justify-center overflow-hidden bg-black"
-                style={{ height: sandboxViewportHeight }}
+                style={{ height: MEDIA_VIEWPORT_HEIGHT }}
               >
                 <iframe
-                  title={currentPatch.label}
-                  src={`https://audius.co/embed/playlist/${(currentPatch as { audiusId: string }).audiusId}?flavor=card`}
+                  title={current.label}
+                  src={`https://audius.co/embed/playlist/${current.audiusId}?flavor=card`}
                   className="h-full w-full max-w-[900px] border-0"
                   allow="encrypted-media"
                 />
               </div>
-            ) : sandboxLoaded ? (
-              <iframe
-                ref={iframeRef}
-                id="hero-sandbox-iframe"
-                title="soemdsp sandbox"
-                src={sandboxEmbedSrc}
-                className="w-full border-0 bg-transparent"
-                style={{ height: sandboxViewportHeight, width: "100%" }}
-                allow="autoplay; microphone"
-                onLoad={postPatch}
-              />
-            ) : (
-              <button
-                type="button"
-                className="group block border-0 bg-transparent p-0 text-left"
-                aria-label="Load soemdsp sandbox in this preview"
-                onClick={() => setSandboxLoaded(true)}
-              >
-                <img
-                  id="hero-patch-image"
-                  src={patchImage}
-                  alt="soemdsp modular patch - oscillators, noise, gain and output nodes"
-                  className="h-auto w-auto"
-                  decoding="async"
-                  fetchPriority="high"
-                />
-              </button>
-            )}
+            ) : null}
           </div>
         </div>
 
         <div className="mt-[2px] flex w-full flex-col items-center gap-[2px]">
           <span className="mono flex min-w-[10rem] flex-col items-center text-xs uppercase tracking-[0.18em] text-scope leading-none">
-              {currentPatch.label}
-              {noDiff && (
-                <span className="mt-0.5 text-[0.6rem] normal-case tracking-normal text-scope/60">
-                  loaded · identical to previous
-                </span>
-              )}
-            </span>
+            {current.label}
+          </span>
 
           {/* ── Outside Media Player ── */}
           <div
@@ -352,65 +119,14 @@ export const Hero = ({ patchSlug }: { patchSlug?: string }) => {
             aria-label="Media transport"
             className="inline-flex items-center gap-1 rounded-sm border border-scope/20 bg-[#0a0c14] p-1"
           >
-            <TransportButton label="Previous patch" onClick={() => gotoBank(-1)}>{ICON_PREV}</TransportButton>
-            <TransportButton label="Stop" onClick={handleStop} pressed={!liveEnabled}>{ICON_STOP}</TransportButton>
-            {isPlaying ? (
-              <TransportButton label="Pause" onClick={handlePause} pressed>{ICON_PAUSE}</TransportButton>
-            ) : (
-              <TransportButton label="Play" onClick={handlePlay} pressed={false}>{ICON_PLAY}</TransportButton>
-            )}
-            <TransportButton label="Next patch" onClick={() => gotoBank(1)}>{ICON_NEXT}</TransportButton>
-
-            {/* Download button */}
-            <a
-              href="https://github.com/soundemote/soemdsp-sandbox"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mono inline-flex h-9 items-center gap-1.5 rounded-sm border border-scope/30 px-3 text-[0.65rem] uppercase tracking-[0.14em] text-scope/80 transition-colors hover:border-scope/60 hover:bg-scope/10 hover:text-scope"
-              aria-label="Download the sandbox"
-              title="Download"
-            >
-              {ICON_DOWNLOAD}
-              Download
-            </a>
+            <TransportButton label="Previous track" onClick={() => gotoBank(-1)}>
+              {ICON_PREV}
+            </TransportButton>
+            <TransportButton label="Next track" onClick={() => gotoBank(1)}>
+              {ICON_NEXT}
+            </TransportButton>
           </div>
         </div>
-        <div className="mt-[2px] flex items-center justify-center gap-1 mono text-xs normal-case tracking-[0.06em] text-muted-foreground/80 leading-none">
-          <span>/*</span>
-          <SandboxNavLink href="/sandbox" label="sandbox" />
-          <span>{siteConfig.sandboxVersion}</span>
-          <span>*/</span>
-        </div>
-
-        <div className="mt-3 flex items-center justify-center gap-2">
-          <a
-            href="https://github.com/soundemote/soemdsp-sandbox"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mono inline-flex items-center gap-1.5 rounded-sm border border-dashed border-muted-foreground/30 px-3 py-1 text-[0.65rem] uppercase tracking-[0.18em] text-muted-foreground/60 transition-colors hover:border-muted-foreground/50 hover:text-muted-foreground/80"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              className="h-3 w-3"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-            >
-              <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
-              <path d="M14 2v4a2 2 0 0 0 2 2h4" />
-            </svg>
-            <span>additive beta</span>
-            <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-              <polyline points="15 3 21 3 21 9" />
-              <line x1="10" x2="21" y1="14" y2="3" />
-            </svg>
-          </a>
-        </div>
-
       </div>
     </section>
   );

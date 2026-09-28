@@ -25,7 +25,10 @@ function createNodeGraphPort(node, type, port, io) {
     }
   }
   const portLabel = nodeGraphPatchNodePortDisplayLabel(node, type, port, io);
-  const label = `${nodeGraphNodeLabels[type]} ${io} port ${portLabel}`;
+  const spoken = (typeof nodeGraphGateTriggerPortSpokenName === "function"
+    && nodeGraphGateTriggerPortSpokenName(type, port))
+    || portLabel;
+  const label = `${nodeGraphNodeLabels[type]} ${io} port ${spoken}`;
   button.setAttribute("aria-label", label);
   const portTip = nodeGraphPortTooltipText(type, port, io);
   if (portTip) {
@@ -70,10 +73,22 @@ function nodeGraphPortTooltipText(type, port, io) {
 }
 
 function nodeGraphPortDisplayLabel(type, port, io) {
+  const glyph = typeof nodeGraphGateTriggerPortDisplayLabel === "function"
+    ? nodeGraphGateTriggerPortDisplayLabel(type, port)
+    : "";
+  if (glyph) {
+    return nodeGraphStereoJackDisplayLabel(glyph, type, port);
+  }
   const labels = io === "output"
     ? nodeGraphModuleDefinitions[type]?.outputLabels
     : nodeGraphModuleDefinitions[type]?.inputLabels;
   const raw = labels?.[port] || port;
+  const thru = typeof nodeGraphThruPairPortDisplayLabel === "function"
+    ? nodeGraphThruPairPortDisplayLabel(type, port, raw)
+    : "";
+  if (thru) {
+    return nodeGraphStereoJackDisplayLabel(thru, type, port);
+  }
   const freq = typeof nodeGraphFrequencyValuePortDisplayLabel === "function"
     ? nodeGraphFrequencyValuePortDisplayLabel(raw)
     : raw;
@@ -86,11 +101,34 @@ function nodeGraphPatchNodePortDisplayLabel(node, type, port, io) {
   if (alias) {
     return nodeGraphStereoJackDisplayLabel(alias, type, port);
   }
+  const resolvedType = type || patchNode?.type;
+  // Named portals: jack/IO label = effective Display (follows Title until override).
+  // Bus identity stays on Title/alias (SyncBusAlias / wirelessRole unchanged).
+  // Empty alias falls back to defaultAlias ("A"), not the catalog type label.
+  if (
+    typeof nodeGraphIsNamedPortalType === "function"
+    && nodeGraphIsNamedPortalType(resolvedType)
+  ) {
+    const override = typeof nodeGraphPatchNodeDisplayOverride === "function"
+      ? String(nodeGraphPatchNodeDisplayOverride(patchNode) || "").trim()
+      : "";
+    if (override) {
+      return override;
+    }
+    const title = typeof normalizeNodeGraphPatchNodeAlias === "function"
+      ? normalizeNodeGraphPatchNodeAlias(patchNode?.alias)
+      : String(patchNode?.alias || "").trim();
+    if (title) {
+      return title;
+    }
+    const defAlias = nodeGraphModuleDefinitions?.[resolvedType]?.defaultAlias;
+    return String(defAlias || "A").trim() || "A";
+  }
   // Metamodule shell: dynamic boundary names are the label (Left / ƒ / Poly).
   // Keep full Left/Right words — LayoutB stereo compaction would shrink to L/R.
   if (
     typeof nodeGraphIsContainerShellType === "function"
-    && nodeGraphIsContainerShellType(type || patchNode?.type)
+    && nodeGraphIsContainerShellType(resolvedType)
   ) {
     const raw = String(port || "").trim();
     return typeof nodeGraphFrequencyValuePortDisplayLabel === "function"
@@ -107,6 +145,7 @@ function nodeGraphPatchNodePortDisplayLabel(node, type, port, io) {
  * commit paths prefer domainValue over the HTML range thumb), and sets the
  * thumb to an in-range display value when domain exceeds min/max.
  */
+
 function applyNodeGraphInputUnboundedValue(input, value) {
   if (!input?.dataset) {
     return;
@@ -148,9 +187,12 @@ function createNodeGraphIoColumn(node, type, ports, io) {
     row.dataset.alias = nodeGraphLabel(node, port);
     const portLabel = nodeGraphPatchNodePortDisplayLabel(node, type, port, io);
     maxLabelChars = Math.max(maxLabelChars, String(portLabel || "").length);
+    const spoken = (typeof nodeGraphGateTriggerPortSpokenName === "function"
+      && nodeGraphGateTriggerPortSpokenName(type, port))
+      || portLabel;
     row.setAttribute(
       "aria-label",
-      `${nodeGraphNodeLabels[type]} ${io} port ${portLabel} interaction area`,
+      `${nodeGraphNodeLabels[type]} ${io} port ${spoken} interaction area`,
     );
     const portTip = nodeGraphPortTooltipText(type, port, io);
     if (portTip) {
@@ -180,8 +222,10 @@ function createNodeGraphIoColumn(node, type, ports, io) {
     // Colored buses (Polyphony/black, Play/blue, Arp/gold) are not digital-white.
     const jackCh = row.dataset.jackChannel || "";
     const coloredBus = jackCh === "black" || jackCh === "blue" || jackCh === "gold";
-    if (!coloredBus && nodeGraphPortIsDigitalSignal(type, port, io)) {
-      // White digital: Scale bitmasks, ƒ, Gate/Trigger, digitalInputs/Outputs.
+    const codeSignal = typeof nodeGraphPortIsCodeSignal === "function"
+      && nodeGraphPortIsCodeSignal(type, port, io);
+    if (!coloredBus && (nodeGraphPortIsDigitalSignal(type, port, io) || codeSignal)) {
+      // White digital: Scale bitmasks, ƒ, pitch (♯/♭), Gate/Trigger, digitalInputs/Outputs.
       row.dataset.digitalSignal = io;
     }
     column.append(row);
@@ -241,9 +285,12 @@ function createNodeParameterModulationPort(node, type, parameter) {
   button.dataset.port = parameter.key;
   button.dataset.io = "modulation";
   button.dataset.alias = `${nodeGraphNodeDisplayName(node)}.${parameter.key} mod`;
-  // Additive CMYK C — Parameter mod jacks paint cyan (not purple).
-  if (typeof nodeGraphModuleUsesCmykParameterChrome === "function"
+  if (parameter?.setup === true) {
+    button.classList.add("node-port-square");
+    button.dataset.portType = "setup";
+  } else if (typeof nodeGraphModuleUsesCmykParameterChrome === "function"
     && nodeGraphModuleUsesCmykParameterChrome(type)) {
+    // Additive CMYK C — Parameter mod jacks paint cyan (not purple).
     button.dataset.jackChannel = "cyan";
   }
   const label = `${nodeGraphNodeLabels[type]} ${parameter.label} modulation input`;
@@ -260,7 +307,10 @@ function createNodeParameterOutputPort(node, type, parameter) {
   button.dataset.port = parameter.key;
   button.dataset.io = "output";
   button.dataset.alias = `${nodeGraphNodeDisplayName(node)}.${parameter.key} slider`;
-  if (typeof nodeGraphModuleUsesCmykParameterChrome === "function"
+  if (parameter?.setup === true) {
+    button.classList.add("node-port-square");
+    button.dataset.portType = "setup";
+  } else if (typeof nodeGraphModuleUsesCmykParameterChrome === "function"
     && nodeGraphModuleUsesCmykParameterChrome(type)) {
     button.dataset.jackChannel = "cyan";
   }
@@ -273,6 +323,7 @@ function syncNodeGraphModulePortLabels(element, patchNode) {
   if (!element || !patchNode) {
     return;
   }
+  const maxByIo = { input: 1, output: 1 };
   for (const row of element.querySelectorAll(".node-io-row")) {
     const io = row.dataset.io;
     const port = row.dataset.port;
@@ -288,6 +339,7 @@ function syncNodeGraphModulePortLabels(element, patchNode) {
         label.textContent = portLabel;
       }
     }
+    maxByIo[io] = Math.max(maxByIo[io], String(portLabel || "").length);
     row.setAttribute(
       "aria-label",
       `${nodeGraphNodeLabels[patchNode.type]} ${io} port ${portLabel} interaction area`,
@@ -296,6 +348,12 @@ function syncNodeGraphModulePortLabels(element, patchNode) {
     if (button) {
       button.setAttribute("aria-label", `${nodeGraphNodeLabels[patchNode.type]} ${io} port ${portLabel}`);
     }
+  }
+  for (const io of ["input", "output"]) {
+    const column = element.querySelector(`.node-io-column.${io}`);
+    if (!column) continue;
+    column.style.setProperty("--node-io-label-min-ch", String(maxByIo[io]));
+    column.dataset.maxLabelChars = String(maxByIo[io]);
   }
 }
 
@@ -515,64 +573,6 @@ function refreshNodeGraphScreenSpaceShaderBodyStatus(body) {
   status.textContent = `${script.inputs.length} inputs / ${script.visualInputs.length} controls`;
 }
 
-// node is optional -- see the comment on createNodeGraphKeyboardControllerBody;
-// same reuse pattern for the standalone performance dock.
-// The knob bank IS the module display (no title/status chrome).
-function createNodeGraphMacroControlsBody(node = null) {
-  const section = document.createElement("section");
-  section.className = "node-macro-controls-panel node-macro-controls-module node-module-scope-window";
-  if (node) {
-    section.dataset.node = node;
-  }
-  section.dataset.macroControlsDisplay = "true";
-  section.setAttribute("aria-label", "Macro controls");
-  const row = document.createElement("div");
-  row.className = "node-macro-controls-row";
-  row.setAttribute("aria-label", "Macro knob row");
-  for (let index = 0; index < 8; index += 1) {
-    const knob = document.createElement("button");
-    knob.className = "node-macro-knob";
-    knob.type = "button";
-    knob.dataset.macroIndex = String(index);
-    knob.setAttribute("aria-label", `Macro ${index + 1}`);
-    knob.setAttribute("aria-valuemin", "0");
-    knob.setAttribute("aria-valuemax", "1");
-    knob.setAttribute("aria-valuenow", "0");
-    knob.setAttribute("role", "slider");
-    const face = typeof nodeGraphMacroControlsFaceSettings === "function"
-      ? nodeGraphMacroControlsFaceSettings()
-      : null;
-    // Shared layout: title above dial, value centered in the circle.
-    const label = document.createElement("span");
-    label.className = "node-macro-knob-label";
-    label.dataset.macroKnobLabel = "true";
-    label.textContent = face?.labels?.[index] || `M${index + 1}`;
-    const dial = document.createElement("span");
-    dial.className = "node-macro-knob-dial";
-    dial.dataset.macroKnobDial = "true";
-    const value = document.createElement("strong");
-    value.className = "node-macro-knob-value";
-    value.dataset.macroValue = String(index);
-    value.textContent = "0.00";
-    const indicator = document.createElement("i");
-    indicator.className = "node-macro-knob-arc";
-    indicator.dataset.macroKnobArc = "true";
-    indicator.setAttribute("aria-hidden", "true");
-    dial.append(value, indicator);
-    knob.append(label, dial);
-    knob.setAttribute("aria-label", label.textContent);
-    row.append(knob);
-  }
-  section.append(row);
-  if (typeof applyNodeGraphMacroControlsFaceSettings === "function") {
-    // Defer so CSS vars apply after insert (dock + module).
-    requestAnimationFrame(() => applyNodeGraphMacroControlsFaceSettings());
-  }
-  return section;
-}
-
-// node is optional -- see the comment on createNodeGraphKeyboardControllerBody;
-// same reuse pattern for the standalone performance dock.
 function nodeGraphPerformanceWheelSpecs() {
   return [
     { className: "pitch", key: "pitchWheel", label: "Pitch", max: "1", min: "-1" },
@@ -679,13 +679,13 @@ function createNodeGraphMidiListenControls() {
   const channelLabel = document.createElement("span");
   channelLabel.textContent = "Channel";
   const channel = createNodeGraphPlusMinusControl({
-    ariaLabel: "MIDI listen channel",
+    ariaLabel: "MIDI listen channel (All or 1-16)",
     downKey: "midiListenChannelDown",
     valueKey: "midiListenChannelValue",
     upKey: "midiListenChannelUp",
     downAria: "MIDI channel down",
     upAria: "MIDI channel up",
-    valueText: "0",
+    valueText: "All",
   });
   channelRow.append(channelLabel, channel);
   host.append(inputRow, channelRow);
@@ -744,8 +744,6 @@ function createNodeGraphKeyboardControllerBody(node = null) {
     ["frequency", "freq", "-"],
     ["pitch", "pitch", "-"],
     ["midi", "midi", "-"],
-    ["x", "x", "0.000"],
-    ["y", "y", "0.000"],
     ["velocity", "vel", "-"],
   ]) {
     const item = document.createElement("span");
@@ -756,39 +754,37 @@ function createNodeGraphKeyboardControllerBody(node = null) {
     item.append(value);
     liveReadouts.append(item);
   }
-  const velRow = document.createElement("div");
-  velRow.className = "node-midi-keyboard-vel-range";
-  velRow.setAttribute("aria-label", "Pointer velocity range");
   const velMinLabel = document.createElement("label");
   velMinLabel.className = "node-midi-keyboard-vel-field";
   const velMinCaption = document.createElement("span");
-  velMinCaption.textContent = "Vel Min";
+  velMinCaption.textContent = "Min Vel";
   const velMinInput = document.createElement("input");
   velMinInput.type = "number";
   velMinInput.min = "0";
   velMinInput.max = "127";
   velMinInput.step = "1";
   velMinInput.dataset.midiKeyboardVelMin = "true";
-  velMinInput.setAttribute("aria-label", "Velocity minimum 0 to 127");
+  velMinInput.setAttribute("aria-label", "Minimum velocity 0 to 127");
   velMinInput.value = "127";
   velMinLabel.append(velMinCaption, velMinInput);
   const velMaxLabel = document.createElement("label");
   velMaxLabel.className = "node-midi-keyboard-vel-field";
   const velMaxCaption = document.createElement("span");
-  velMaxCaption.textContent = "Vel Max";
+  velMaxCaption.textContent = "Max Vel";
   const velMaxInput = document.createElement("input");
   velMaxInput.type = "number";
   velMaxInput.min = "0";
   velMaxInput.max = "127";
   velMaxInput.step = "1";
   velMaxInput.dataset.midiKeyboardVelMax = "true";
-  velMaxInput.setAttribute("aria-label", "Velocity maximum 0 to 127");
+  velMaxInput.setAttribute("aria-label", "Maximum velocity 0 to 127");
   velMaxInput.value = "127";
   velMaxLabel.append(velMaxCaption, velMaxInput);
-  velRow.append(velMinLabel, velMaxLabel);
 
-  controls.append(modeLabel, octave, keyCount, liveReadouts);
-  heading.append(controls, velRow);
+  // Same row as Mode / octave / key-count: Mode, Min Vel, Max Vel, then -/+.
+  // Overflow clips into the left module wall (CSS nowrap + overflow visible).
+  controls.append(modeLabel, velMinLabel, velMaxLabel, octave, keyCount, liveReadouts);
+  heading.append(controls);
 
   const performance = document.createElement("div");
   performance.className = "node-midi-keyboard-performance";
@@ -816,9 +812,8 @@ function createNodeGraphKeyboardControllerBody(node = null) {
     ["gate", "Gate", "0"],
     ["gatePulse", "Trigger", "0"],
     ["octave", "Octave", "+0"],
-    ["double", "Note#/127", "-"],
-    ["velocity01", "Velocity#/127", "-"],
-    ["tenthVoltPerOctave", "0.1V/Oct", "-"],
+    ["double", "♯/♭", "-"],
+    ["velocity01", "Velocity", "-"],
     ["frequency", "Frequency", "-"],
   ];
   for (const [key, labelText, valueText] of signals) {
@@ -896,13 +891,18 @@ function createNodeGraphParameter(node, type, parameter) {
   input.step = metadata?.step > 0 ? String(metadata.step) : "any";
   // Prefer live patch value (critical for Metamodule mx_* mirrors).
   const patchValue = patchNode?.params?.[parameter.key];
+  const patchDef = Number(patchNode?.paramMeta?.[parameter.key]?.def);
   const seedValue = (patchValue != null && Number.isFinite(Number(patchValue)))
     ? patchValue
-    : (metadata?.def ?? parameter.defaultValue);
+    : (Number.isFinite(patchDef) ? patchDef : (metadata?.def ?? parameter.defaultValue));
   input.value = String(seedValue);
   input.dataset.step = metadata?.step > 0 ? String(metadata.step) : "any";
   input.dataset.mid = String(metadata?.mid ?? parameter.mid);
-  input.dataset.default = String(metadata?.def ?? parameter.defaultValue);
+  const defValue = Number.isFinite(patchDef)
+    ? patchDef
+    : (metadata?.def ?? parameter.defaultValue);
+  input.dataset.paramDefault = String(defValue);
+  input.dataset.default = String(defValue);
   input.dataset.kind = metadata?.kind || "decimal";
   input.dataset.maxDigits = String(
     normalizeNodeGraphMetadataMaxDigits(metadata?.maxDigits, metadata?.kind),
@@ -1021,20 +1021,22 @@ function nodeGraphModuleResourceConstraintsForType(type) {
   const display = String(def?.displayType || "");
   if (
     def?.visualSink
-    || display === "trace"
+    || display === "waterfall"
     || display === "scope2d"
     || display === "scope2dTrace"
+    || display === "scope1dTrace"
     || display === "lineBurn"
     || display === "dot"
     || display === "vectorDot"
     || display === "lcdDot"
     || display === "value"
     || display === "hypersawBurn"
+    || display === "ensembleCloud"
     || display === "videoscopeBurn"
     || display === "oscilloscopeBankBurn"
     || display === "vectorRgbFace"
     || display === "gradientVectorscopeFace"
-    || display === "traceXyz"
+    || display === "waterfallXyz"
     || display === "phosphorLight"
     || display.endsWith("Burn")
   ) {

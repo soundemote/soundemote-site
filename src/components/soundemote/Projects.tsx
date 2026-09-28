@@ -1,6 +1,7 @@
 import { featuredArticles, type FeaturedArticle } from "@/data/featuredArticles";
 import { useNavigate } from "react-router-dom";
 import { ElectricBurst, useElectricBurst } from "./ElectricBurst";
+import { getSiteRole } from "@/lib/siteHost";
 
 type RepositoryLink = {
     emoji: string;
@@ -133,12 +134,13 @@ type RepositoryCardProps = {
     article?: FeaturedArticle;
     isSelected: boolean;
     onActivate: () => void;
+    isDevSite: boolean;
 };
 
-// The whole card -- emoji, name, and github label -- is one button: a
+// The whole card -- emoji, name, and optional github label -- is one button: a
 // subtle hover highlight, an electric burst on mousedown, and the actual
 // navigation (feature the article, or open github) fires on mouseup.
-const RepositoryCard = ({ repo, article, isSelected, onActivate }: RepositoryCardProps) => {
+const RepositoryCard = ({ repo, article, isSelected, onActivate, isDevSite }: RepositoryCardProps) => {
     const { bursts, triggerBurst } = useElectricBurst();
 
     return (
@@ -146,13 +148,13 @@ const RepositoryCard = ({ repo, article, isSelected, onActivate }: RepositoryCar
             type="button"
             onMouseDown={triggerBurst}
             onMouseUp={onActivate}
-            className={`group relative flex w-full min-w-0 items-start gap-3 overflow-hidden px-3 py-2.5 text-left transition-colors hover:bg-scope/5 ${
+            className={`group relative flex w-full min-w-0 items-center gap-3 overflow-hidden px-3 py-2.5 text-left transition-colors hover:bg-scope/5 ${
                 isSelected ? "bg-scope/10" : ""
             }`}
         >
             <span className={`absolute inset-y-0 left-0 w-px ${isSelected ? "bg-scope/70" : "bg-scope/0"}`} />
             <span
-                className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded border border-border/70 bg-background/70 text-base leading-none ${
+                className={`grid h-7 w-7 shrink-0 place-items-center rounded border border-border/70 bg-background/70 text-base leading-none ${
                     repo.pulse ? "animate-pulse" : ""
                 }`}
                 aria-hidden
@@ -168,8 +170,8 @@ const RepositoryCard = ({ repo, article, isSelected, onActivate }: RepositoryCar
                     {repo.name}
                 </span>
                 <span className="mono flex items-center gap-1.5 text-[0.62rem] leading-snug text-scope/80">
-                    {article && <span className="text-warm-white/80">{isSelected ? "★" : "↑"}</span>}
-                    <span>github ↗</span>
+                    {article && isSelected && <span className="text-warm-white/80">★</span>}
+                    {!isDevSite && <span>github ↗</span>}
                 </span>
             </span>
             <ElectricBurst bursts={bursts} />
@@ -179,6 +181,7 @@ const RepositoryCard = ({ repo, article, isSelected, onActivate }: RepositoryCar
 
 export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => {
     const navigate = useNavigate();
+    const isDevSite = getSiteRole() === "dev";
     const handleSelect = (slug: string) => {
         onSelectArticle(slug);
         scrollToFeaturedArticle();
@@ -201,17 +204,6 @@ export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => {
                             <p className="mono text-[0.65rem] uppercase tracking-[0.24em] text-scope">
                                 local repository constellation
                             </p>
-                            <div className="flex items-center gap-3">
-                                <button
-                                    type="button"
-                                    onClick={scrollToFeaturedArticle}
-                                    title="Jump to the top of the featured article"
-                                    aria-label="Jump to the top of the featured article"
-                                    className="mono flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-scope/50 text-scope transition-colors hover:bg-scope/10"
-                                >
-                                    ↑
-                                </button>
-                            </div>
                         </div>
                     </div>
 
@@ -225,6 +217,7 @@ export const Projects = ({ selectedSlug, onSelectArticle }: ProjectsProps) => {
                                     repo={repo}
                                     article={article}
                                     isSelected={isSelected}
+                                    isDevSite={isDevSite}
                                     onActivate={() =>
                                         article
                                             ? handleSelect(article.slug)

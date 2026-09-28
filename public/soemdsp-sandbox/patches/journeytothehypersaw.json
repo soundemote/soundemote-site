@@ -4,8 +4,7 @@
     "targetSampleRate": 44100,
     "pitchReferenceMidiNote": 48,
     "pitchReferenceHz": 100,
-    "pitchOffsetOctaves": 0,
-    "speedLimitHz": 20000
+    "pitchOffsetOctaves": 0
   },
   "bypassedNodes": [],
   "cameras": [
@@ -38,13 +37,6 @@
       "destinationPort": "Idle",
       "sourceNode": "expAdsr-1",
       "sourcePort": "isIdle",
-      "tracePoints": []
-    },
-    {
-      "destinationNode": "hypersaw2-4",
-      "destinationPort": "f",
-      "sourceNode": "metamodule-1__voiceFrequency",
-      "sourcePort": "Frequency",
       "tracePoints": []
     },
     {
@@ -101,13 +93,6 @@
       "destinationPort": "Arp Keys",
       "sourceNode": "keyboard-1",
       "sourcePort": "Chord Memory",
-      "tracePoints": []
-    },
-    {
-      "destinationNode": "polyBlep-1",
-      "destinationPort": "f",
-      "sourceNode": "arp-1",
-      "sourcePort": "f",
       "tracePoints": []
     },
     {
@@ -204,7 +189,7 @@
     "bankName": "",
     "category": "",
     "description": "Init — PolyBLEP into Output (same as patches/init.json)",
-    "name": "Init",
+    "name": "",
     "program": 0,
     "tags": "init,default"
   },
@@ -237,6 +222,20 @@
       "sourceNode": "knob-1",
       "sourcePort": "Bias",
       "tracePoints": []
+    },
+    {
+      "sourceNode": "metamodule-1__voiceFrequency",
+      "sourcePort": "Frequency",
+      "tracePoints": [],
+      "destinationNode": "hypersaw2-4",
+      "destinationParam": "frequency"
+    },
+    {
+      "sourceNode": "arp-1",
+      "sourcePort": "f",
+      "tracePoints": [],
+      "destinationNode": "polyBlep-1",
+      "destinationParam": "frequency"
     }
   ],
   "monitors": [],

@@ -3,10 +3,11 @@
 
 function nodeGraphDisplaySettingsIsVectorTraceFormType(type) {
   const key = String(type || "").trim();
-  return key === "trace"
-    || key === "traceXyz"
-    || key === "traceRgb"
+  return key === "waterfall"
+    || key === "waterfallXyz"
+    || key === "waterfallRgb"
     || key === "scope2dTrace"
+    || key === "scope1dTrace"
     || key === "gradientVectorscopeFace"
     || key === "value";
 }
@@ -35,7 +36,7 @@ const nodeGraphDisplaySettingsSharedStackOrder = Object.freeze([
   "pixelDensity",
 ]);
 
-/** Instant Trace stack (subset of the shared order + 2D fade). */
+/** Instant Waterfall stack (subset of the shared order + 2D fade). */
 const nodeGraphInstantTraceDisplayFieldOrder = Object.freeze([
   "scale",
   "historyHz",
@@ -52,7 +53,7 @@ const nodeGraphInstantTraceDisplayFieldOrder = Object.freeze([
   "fade",
 ]);
 
-/** Instant Trace Right / secondary: Size → Blur → Bright. */
+/** Instant Waterfall Right / secondary: Size → Blur → Bright. */
 const nodeGraphTraceDisplaySecondaryInkFieldOrder = Object.freeze([
   "secondarySize",
   "secondaryLineThickness",
@@ -98,10 +99,13 @@ function nodeGraphDisplaySettingsClipboardFamily(formType) {
   if (!key) {
     return "";
   }
-  if (key === "trace" || key === "traceRgb" || key === "value") {
+  if (key === "waterfall" || key === "waterfallRgb" || key === "value") {
     return "trace1d";
   }
-  if (key === "scope2dTrace" || key === "gradientVectorscopeFace" || key === "traceXyz") {
+  if (key === "scope1dTrace") {
+    return "scope1dTrace";
+  }
+  if (key === "scope2dTrace" || key === "gradientVectorscopeFace" || key === "waterfallXyz") {
     return "trace2d";
   }
   if (key === "lineBurn" || key === "oscilloscopeBankBurn") {
@@ -128,8 +132,11 @@ function nodeGraphDisplaySettingsClipboardFamilyLabel(family) {
   if (family === "trace1d") {
     return "1D Waterfall";
   }
+  if (family === "scope1dTrace") {
+    return "1D Trace";
+  }
   if (family === "trace2d") {
-    return "2D Instant Trace";
+    return "2D Instant Waterfall";
   }
   return "";
 }
@@ -170,13 +177,31 @@ const nodeGraphTraceDisplaySettingControlKeys = Object.freeze({
     "buttonHeight",
     "labelSize",
     "valueSize",
+    "maxDigits",
+    "sliderLength",
+    "sliderHeight",
+    "sliderPadding",
+    "sliderLabelPadding",
+    "sliderLabelScale",
+    "sliderNumberPadding",
+    "sliderNumberScale",
+    "sliderUnitPadding",
+    "sliderUnitScale",
+    "strokeScale",
+    "buttonPadLeft",
+    "buttonPadRight",
+    "buttonPadTop",
+    "buttonPadBottom",
+    "fontSize",
+    "labelPadding",
+    "labelSize",
     "backgroundBrightness",
     "backgroundHue",
     "shapeParam",
     "pill",
     "squircle",
   ],
-  colors: ["dot1Color", "secondaryColor", "tertiaryColor", "backgroundColor", "ghostColor", "buttonColor", "hoverColor", "downColor", "textColor", "strokeColor", "dotColor"],
+  colors: ["dot1Color", "secondaryColor", "tertiaryColor", "backgroundColor", "ghostColor", "buttonColor", "hoverColor", "downColor", "textColor", "strokeColor", "dotColor", "arcFill", "arcTrack", "sliderColor", "sliderNumberColor", "sliderTextColor", "sliderUnitColor", "inactiveColor", "activeColor"],
   // Every control key that exists in the shared popover MUST be listed here.
   // setNodeGraphTraceDisplaySettingsFormType only show/hides keys from these
   // lists — anything missing leaks onto every module (e.g. Output saw
@@ -192,6 +217,13 @@ const nodeGraphTraceDisplaySettingControlKeys = Object.freeze({
     "removeTrailingZeros",
     "squareRatio",
     "rotate90",
+    "sliderShowLabel",
+    "sliderShowNumber",
+    "sliderShowUnit",
+    "sliderLabelInside",
+    "sliderNumberInside",
+    "sliderUnitInside",
+    "buttonShowLabel",
   ],
   choices: [
     "syncChannel",
@@ -210,15 +242,32 @@ const nodeGraphTraceDisplaySettingControlKeys = Object.freeze({
     "labelPosition",
     "valuePosition",
     "xyzLayout",
+    "sliderAlign",
+    "sliderLabelAlign",
+    "sliderNumberAlign",
+    "sliderUnitAlign",
+    "labelAlign",
   ],
 });
 
 const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
+  blank: Object.freeze({
+    fields: Object.freeze([]),
+    colors: Object.freeze([]),
+    toggles: Object.freeze([]),
+    choices: Object.freeze([]),
+  }),
+  ensembleCloud: Object.freeze({
+    fields: Object.freeze(["cloudSpeed"]),
+    colors: Object.freeze([]),
+    toggles: Object.freeze([]),
+    choices: Object.freeze([]),
+  }),
   // 1D history plot (Output / Music Player). RGB stroke — no phosphor residual.
-  // Fade is XYZ / vectorscope Instant Trace only (not 2D Trace).
+  // Fade is XYZ / vectorscope Instant Waterfall only (not 2D Trace).
   // Output stereo: Left = Size, Right = secondary Size/Bright.
-  // Instant Trace waterfalls: shared stamp path (Size + Blur + Dot density).
-  trace: Object.freeze({
+  // Instant Waterfall waterfalls: shared stamp path (Size + Blur + Dot density).
+  waterfall: Object.freeze({
     fields: Object.freeze([
       "scale",
       "historyHz",
@@ -301,7 +350,7 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
     colors: Object.freeze([]),
     // Skip at top; packing row: Sync | Clear (continuous packing always on)
     toggles: Object.freeze(["skipDiscontinuities", "sourceSync"]),
-    choices: Object.freeze([]),
+    choices: Object.freeze(["drawMode"]),
   }),
   // 0D Value: WebGL beam (no face bitmap / pixelDensity / residual).
   value: Object.freeze({
@@ -340,7 +389,27 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
     colors: Object.freeze([]),
     // Skip at top. Packing row: Clear (no Sync — 2D has no sweep).
     toggles: Object.freeze(["skipDiscontinuities"]),
-    choices: Object.freeze([]),
+    choices: Object.freeze(["drawMode"]),
+  }),
+  // 1D Trace: woscope beam + heart-monitor Sweep/Sync/Reset (not Waterfall scroll).
+  scope1dTrace: Object.freeze({
+    fields: Object.freeze([
+      "sweepHz",
+      "scale",
+      "backgroundBrightness",
+      "backgroundHue",
+      "dot1Size",
+      "secondarySize",
+      "pixelDensity",
+      "dot1Brightness",
+      "secondaryBrightness",
+      "ghost",
+      "trail",
+      "dotBudget",
+    ]),
+    colors: Object.freeze(["dot1Color", "secondaryColor"]),
+    toggles: Object.freeze(["skipDiscontinuities", "sourceSync"]),
+    choices: Object.freeze(["drawMode"]),
   }),
   // 2D Trace = woscope XY beam. Ink is hue + plausible brightness.
   // No History (live samples only). Ghost/Trail dest fade is internal.
@@ -352,10 +421,11 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
       "dot1Size",
       "pixelDensity",
       "dot1Brightness",
+      "dotBudget",
     ]),
     colors: Object.freeze(["dot1Color"]),
     toggles: Object.freeze(["skipDiscontinuities"]),
-    choices: Object.freeze([]),
+    choices: Object.freeze(["drawMode"]),
   }),
   vectorRgbFace: Object.freeze({
     fields: Object.freeze([
@@ -391,7 +461,7 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
     toggles: Object.freeze(["rotate90"]),
     choices: Object.freeze([]),
   }),
-  traceXyz: Object.freeze({
+  waterfallXyz: Object.freeze({
     fields: Object.freeze([
       "scale",
       "historyHz",
@@ -409,7 +479,7 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
     choices: Object.freeze(["stereoBlend", "xyzLayout"]),
   }),
   // 1D Waterfall RGB — Size / Blur / Dot density / Bright; RGB Add or CMY Multiply.
-  traceRgb: Object.freeze({
+  waterfallRgb: Object.freeze({
     fields: Object.freeze([
       "scale",
       "historyHz",
@@ -479,11 +549,13 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
   }),
   lcdDot: Object.freeze({
     fields: Object.freeze([
-      "backgroundBrightness",
-      "dot1Brightness",
       "dot1Size",
       "lineThickness",
       "shapeParam",
+      "backgroundBrightness",
+      "backgroundSaturation",
+      "dot1Brightness",
+      "dot1Saturation",
       "unlitSegments",
       "innerShadowDistance",
       "innerShadowSharpness",
@@ -579,7 +651,7 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
     ]),
     colors: Object.freeze([]),
     toggles: Object.freeze([]),
-    choices: Object.freeze([]),
+    choices: Object.freeze(["drawMode"]),
   }),
   // Same controls as scope2d — leftover formType="phosphorLight".
   phosphorLight: Object.freeze({
@@ -599,7 +671,7 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
     ])),
     colors: Object.freeze([]),
     toggles: Object.freeze([]),
-    choices: Object.freeze([]),
+    choices: Object.freeze(["drawMode"]),
   }),
   // Spectrogram: FFT + analysis choices. History / Min·Max Freq are module sliders.
   // Gradient separate.
@@ -610,7 +682,7 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
     choices: Object.freeze(["fftSize", "window", "overlap", "freqOverlap", "freqScale"]),
   }),
   // Videoscope / bank / hypersaw: mono energy phosphor (same knobs as 2D Phosphor).
-  // MUST NOT fall through to "trace" — that is Output's Left/Right page.
+  // MUST NOT fall through to "waterfall" — that is Output's Left/Right page.
   // Videoscope Bright lives on the module face param — not in Display Settings.
   videoscopeBurn: Object.freeze({
     fields: Object.freeze(nodeGraphPhosphorDisplayFieldsFor([
@@ -628,7 +700,7 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
     ])),
     colors: Object.freeze([]),
     toggles: Object.freeze([]),
-    choices: Object.freeze([]),
+    choices: Object.freeze(["drawMode"]),
   }),
   oscilloscopeBankBurn: Object.freeze({
     fields: Object.freeze(nodeGraphPhosphorDisplayFieldsFor([
@@ -646,7 +718,7 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
     ])),
     colors: Object.freeze([]),
     toggles: Object.freeze([]),
-    choices: Object.freeze([]),
+    choices: Object.freeze(["drawMode"]),
   }),
   // Hypersaw / RobinSupersaw: stem thickness only (no full phosphor stack).
   hypersawBurn: Object.freeze({
@@ -655,16 +727,18 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
     toggles: Object.freeze([]),
     choices: Object.freeze([]),
   }),
-  // Knob face: macro dial look + image layers + arc geometry (Display Settings only).
-  // Span is centered (no Offset) — left and right open together.
-  // dialSize 0…1 scales only the arc (1 = fill available space).
+  // Knob face: independent knob / label / value (toggle-style pins).
+  // dialSize 0…1 scales only the arc graphic (1 = fill display).
   knobFace: Object.freeze({
     fields: Object.freeze([
+      "labelSize",
       "decimals",
+      "maxDigits",
       "rotationDegrees",
       "dialSize",
-      "labelSize",
+      "dialOffsetY",
       "valueSize",
+      "valueOffsetY",
       "innerRadius",
     ]),
     colors: Object.freeze(["backgroundColor", "arcFill", "arcTrack"]),
@@ -672,58 +746,83 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
     choices: Object.freeze(["labelPosition", "valuePosition"]),
   }),
   pluginSliderFace: Object.freeze({
-    fields: Object.freeze([]),
+    fields: Object.freeze([
+      "sliderLength",
+      "sliderHeight",
+      "sliderPadding",
+      "sliderLabelPadding",
+      "sliderLabelScale",
+      "maxDigits",
+      "sliderNumberPadding",
+      "sliderNumberScale",
+      "sliderUnitPadding",
+      "sliderUnitScale",
+    ]),
+    colors: Object.freeze([
+      "backgroundColor",
+      "sliderColor",
+      "sliderNumberColor",
+      "sliderTextColor",
+      "sliderUnitColor",
+    ]),
+    toggles: Object.freeze([
+      "sliderShowLabel",
+      "sliderShowNumber",
+      "sliderShowUnit",
+      "sliderLabelInside",
+      "sliderNumberInside",
+      "sliderUnitInside",
+    ]),
+    choices: Object.freeze([
+      "sliderAlign",
+      "sliderLabelAlign",
+      "sliderNumberAlign",
+      "sliderUnitAlign",
+    ]),
+  }),
+  graphFace: Object.freeze({
+    fields: Object.freeze(["zoomMin", "zoomMax"]),
+    colors: Object.freeze([]),
+    toggles: Object.freeze([]),
+    choices: Object.freeze([]),
+  }),
+  phaserFace: Object.freeze({
+    fields: Object.freeze(["barThickness", "curveThickness"]),
     colors: Object.freeze([]),
     toggles: Object.freeze([]),
     choices: Object.freeze([]),
   }),
   toggleButtonFace: Object.freeze({
     fields: Object.freeze([
-      "textBrightness",
-      "textSize",
+      "strokeScale",
+      "buttonPadLeft",
+      "buttonPadRight",
+      "buttonPadTop",
+      "buttonPadBottom",
+      "fontSize",
+      "labelPadding",
+      "labelSize",
       "rounding",
-      "buttonBrightness",
-      "buttonStrokeBrightness",
-      "buttonStrokeThickness",
-      "padPx",
-      "hoverBrightness",
-      "hoverAlpha",
-      "onBrightness",
-      "onAlpha",
     ]),
-    colors: Object.freeze([
-      "textColor",
-      "buttonColor",
-      "buttonStrokeColor",
-      "hoverColor",
-      "onColor",
-    ]),
-    toggles: Object.freeze([]),
-    choices: Object.freeze(["font"]),
+    colors: Object.freeze(["strokeColor", "inactiveColor", "activeColor", "hoverColor", "textColor"]),
+    toggles: Object.freeze(["buttonShowLabel"]),
+    choices: Object.freeze(["labelAlign"]),
   }),
   momentaryButtonFace: Object.freeze({
     fields: Object.freeze([
-      "textBrightness",
-      "textSize",
+      "strokeScale",
+      "buttonPadLeft",
+      "buttonPadRight",
+      "buttonPadTop",
+      "buttonPadBottom",
+      "fontSize",
+      "labelPadding",
+      "labelSize",
       "rounding",
-      "buttonBrightness",
-      "buttonStrokeBrightness",
-      "buttonStrokeThickness",
-      "padPx",
-      "hoverBrightness",
-      "hoverAlpha",
-      "onBrightness",
-      "onAlpha",
     ]),
-    colors: Object.freeze([
-      "textColor",
-      "buttonColor",
-      "buttonStrokeColor",
-      "hoverColor",
-      "onColor",
-    ]),
-    toggles: Object.freeze([]),
-    choices: Object.freeze(["font"]),
+    colors: Object.freeze(["strokeColor", "inactiveColor", "activeColor", "hoverColor", "textColor"]),
+    toggles: Object.freeze(["buttonShowLabel"]),
+    choices: Object.freeze(["labelAlign"]),
   }),
   keypadFace: Object.freeze({
     fields: Object.freeze(["textSize", "textWeight", "buttonWidth", "buttonHeight", "buttonSize", "padPx"]),
@@ -811,13 +910,6 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
     ]),
     choices: Object.freeze([]),
   }),
-  // Custom body (colors + 8 name fields) — see macro-controls-settings.js.
-  macroControlsFace: Object.freeze({
-    fields: Object.freeze([]),
-    colors: Object.freeze([]),
-    toggles: Object.freeze([]),
-    choices: Object.freeze([]),
-  }),
   keyboardControllerFace: Object.freeze({
     fields: Object.freeze([]),
     colors: Object.freeze([]),
@@ -844,13 +936,18 @@ function nodeGraphTraceDisplayActiveControlsForType(type = nodeGraphTraceDisplay
     }
     return spec;
   }
-  // Energy / *Burn faces → scope2d controls. Never default unknown types to
-  // "trace" (Output stereo page) — that leaked syncChannel/stereoBlend onto
-  // Videoscope and friends.
+  // Energy / *Burn faces → scope2d controls.
   if (key.endsWith("Burn") || key === "transportBpm" || key === "clock" || key === "phoneToneFace" || key === "harmonicSeriesFace" || key === "vectorRgbFace" || key === "rasterRgbFace" || key === "gradientVectorscopeFace") {
     return nodeGraphTraceDisplayActiveControlsByType.scope2d;
   }
-  return nodeGraphTraceDisplayActiveControlsByType.trace;
+  // Unknown form types: BLANK. Never Instant Waterfall (red plate + dead knobs).
+  return nodeGraphTraceDisplayActiveControlsByType.blank
+    || Object.freeze({
+      fields: Object.freeze([]),
+      colors: Object.freeze([]),
+      toggles: Object.freeze([]),
+      choices: Object.freeze([]),
+    });
 }
 
 function nodeGraphTraceDisplayActiveControlSet(kind, type = nodeGraphTraceDisplaySettingsFormType()) {
@@ -886,17 +983,20 @@ const nodeGraphTraceDisplaySectionControls = Object.freeze({
     toggles: Object.freeze(["secondaryEnabled"]),
     choices: Object.freeze([]),
   }),
-  trace: Object.freeze({
+  waterfall: Object.freeze({
     // Residual + framing. Ghost once only (was listed twice → double "Ghost" rows).
     // Phosphor residual order: Ghost → Trail → Scale → Pixel density → Dot Budget.
     // Stamp size/blur/bright live only under the Dot/Stamp section.
     fields: Object.freeze([
       "decimals",
+      "maxDigits",
       "residual",
       "rotationDegrees",
       "dialSize",
+      "dialOffsetY",
       "labelSize",
       "valueSize",
+      "valueOffsetY",
       "innerRadius",
       "sweepHz",
       "ghost",
@@ -911,6 +1011,7 @@ const nodeGraphTraceDisplaySectionControls = Object.freeze({
       "innerShadowOffsetY",
       "zoomSeconds",
       "historySeconds",
+      "cloudSpeed",
       "scale",
       "pixelDensity",
       "dotBudget",
@@ -1018,6 +1119,30 @@ const nodeGraphDisplaySettingsFieldMeta = Object.freeze({
     inputmode: "decimal",
     id: "nodeTraceDisplayImageSize",
     title: "Zoom 0…4 (exp). Fine near 0; 1 = fit face; >1 = zoom past edges.",
+  }),
+  barThickness: Object.freeze({
+    label: "Bar thickness",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayPhaserBarThickness",
+    title: "Peak bar width 0…1 of the face min side. Scales with canvas size.",
+  }),
+  curveThickness: Object.freeze({
+    label: "Curve thickness",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayPhaserCurveThickness",
+    title: "Analytic curve stroke 0…1 of the face min side. Scales with canvas size.",
+  }),
+  zoomMin: Object.freeze({
+    label: "Zoom Min",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayGraphZoomMin",
+    title: "Bottom of the graph face Y view (display only; point data stays 0..1).",
+  }),
+  zoomMax: Object.freeze({
+    label: "Zoom Max",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayGraphZoomMax",
+    title: "Top of the graph face Y view (display only; point data stays 0..1).",
   }),
   image: Object.freeze({
     label: "Image",
@@ -1200,6 +1325,12 @@ const nodeGraphDisplaySettingsFieldMeta = Object.freeze({
     id: "nodeTraceDisplaySweepCycles",
     title: "Sync On: cycles in view (smooth — e.g. 1.5 = 1½ periods). Pass restarts on the next rising zero-crossing.",
   }),
+  cloudSpeed: Object.freeze({
+    label: "Speed",
+    inputmode: "decimal",
+    id: "nodeEnsembleCloudSpeed",
+    title: "Waterfall scroll. 0 = freeze. 1 = default. Higher = faster.",
+  }),
   historyHz: Object.freeze({
     label: "History (Hz)",
     inputmode: "decimal",
@@ -1227,6 +1358,12 @@ const nodeGraphDisplaySettingsFieldMeta = Object.freeze({
     title:
       "Digits after the decimal point (0–8). Capped by Digits budget via limit_decimals (min/max decimal economy).",
   }),
+  maxDigits: Object.freeze({
+    label: "Max digits",
+    inputmode: "numeric",
+    id: "nodeTraceDisplayFaceMaxDigits",
+    title: "Face number accuracy, 0–12. Counts whole digits and fraction. Raise it to show more of the value. 0 = whole number only.",
+  }),
   rotationDegrees: Object.freeze({
     label: "Span °",
     inputmode: "numeric",
@@ -1237,25 +1374,139 @@ const nodeGraphDisplaySettingsFieldMeta = Object.freeze({
     label: "Knob size",
     inputmode: "decimal",
     id: "nodeTraceDisplayKnobDialSize",
-    title: "Dial ring size 0…1. 1 = fill available dial cell (no padding). Scales only the arc — label and value stay put.",
+    title: "Knob graphic size 0…1. 1 = fill the entire display; 0 = disappear. Scales only the arc — not label or value.",
+  }),
+  dialOffsetY: Object.freeze({
+    label: "Knob Y offset",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayKnobDialOffsetY",
+    title: "Knob graphic vertical offset −1…1 face heights. Positive moves the graphic lower; label and value stay put.",
+  }),
+  valueOffsetY: Object.freeze({
+    label: "Value Y offset",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayKnobValueOffsetY",
+    title: "Value vertical offset −1…1 face heights. Top: positive moves down. Bottom: positive lifts off the edge. Mid / Mid knob: positive moves down from face mid or dial center.",
   }),
   labelSize: Object.freeze({
     label: "Label size",
     inputmode: "decimal",
     id: "nodeTraceDisplayKnobLabelSize",
-    title: "Title size 0…1 as a fraction of the knob square (min side of the dial × Knob size). 1 = one square.",
+    title: "Label size 0…1 of the display min-edge. Independent of knob size and position.",
   }),
   valueSize: Object.freeze({
     label: "Value size",
     inputmode: "decimal",
     id: "nodeTraceDisplayKnobValueSize",
-    title: "Bias readout size 0…1 on the Knob face. Independent of knob size.",
+    title: "Number / unit size 0…1 of the display min-edge. Independent of knob size and position.",
   }),
   innerRadius: Object.freeze({
     label: "Inner radius",
     inputmode: "decimal",
     id: "nodeTraceDisplayKnobInnerRadius",
     title: "Arc hole size 0…1. 0 = solid disk; ~0.7 default ring; higher = thinner outer ring.",
+  }),
+  sliderLength: Object.freeze({
+    label: "Length",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayKnobSliderLength",
+    title: "Bar width 0…1 of the face. 0 = hidden, 1 = full width.",
+  }),
+  sliderHeight: Object.freeze({
+    label: "Height",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayKnobSliderHeight",
+    title: "Bar height 0…1 of the face. 0 = hidden, 1 = full height.",
+  }),
+  sliderPadding: Object.freeze({
+    label: "Pad",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayKnobSliderPadding",
+    title: "Inset from the aligned edge, 0…0.5 of the face. Moves a top or bottom bar off the edge. Mid stays centered.",
+  }),
+  sliderLabelPadding: Object.freeze({
+    label: "Label pad",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayKnobSliderLabelPad",
+    title: "Label inset 0…1 from the aligned edge.",
+  }),
+  sliderLabelScale: Object.freeze({
+    label: "Label scale",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayKnobSliderLabelScale",
+    title: "Label font size 0…1 (one character box, not string width).",
+  }),
+  sliderNumberPadding: Object.freeze({
+    label: "Number pad",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayKnobSliderNumberPad",
+    title: "Number inset 0…1 from the aligned edge.",
+  }),
+  sliderNumberScale: Object.freeze({
+    label: "Number scale",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayKnobSliderNumberScale",
+    title: "Number font size 0…1 (one character box).",
+  }),
+  sliderUnitPadding: Object.freeze({
+    label: "Unit pad",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayKnobSliderUnitPad",
+    title: "Unit inset 0…1 from the aligned edge.",
+  }),
+  sliderUnitScale: Object.freeze({
+    label: "Unit scale",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayKnobSliderUnitScale",
+    title: "Unit font size 0…1 (one character box).",
+  }),
+  strokeScale: Object.freeze({
+    label: "Stroke scale",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayButtonStrokeScale",
+    title: "Button outline thickness 0…1 of half the button min side.",
+  }),
+  buttonPadLeft: Object.freeze({
+    label: "Left pad",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayButtonPadLeft",
+    title: "Inset from the left of the face. 0…1.",
+  }),
+  buttonPadRight: Object.freeze({
+    label: "Right pad",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayButtonPadRight",
+    title: "Inset from the right of the face. 0…1.",
+  }),
+  buttonPadTop: Object.freeze({
+    label: "Top pad",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayButtonPadTop",
+    title: "Inset from the top of the face. 0…1.",
+  }),
+  buttonPadBottom: Object.freeze({
+    label: "Bottom pad",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayButtonPadBottom",
+    title: "Inset from the bottom of the face. 0…1.",
+  }),
+  fontSize: Object.freeze({
+    label: "Text px",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayButtonFontSize",
+    title: "Off/On size in CSS px at a 96 px face min-edge. Grows with the display.",
+  }),
+  labelPadding: Object.freeze({
+    label: "Label pad",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayButtonLabelPad",
+    title: "Label inset 0…1 from the aligned edge.",
+  }),
+  labelSize: Object.freeze({
+    label: "Label px",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayButtonLabelSize",
+    title: "Module name size in CSS px at a 96 px face min-edge. Grows with the display.",
   }),
   hue: Object.freeze({
     label: "Hue",
@@ -1267,7 +1518,7 @@ const nodeGraphDisplaySettingsFieldMeta = Object.freeze({
     label: "Rounding",
     inputmode: "decimal",
     id: "nodeTraceDisplayRounding",
-    title: "Button corner rounding percent (0 = square, 100 = full capsule/circle).",
+    title: "Corner radius 0…1 of half the button min-edge. 0 = square, 1 = full capsule/circle. Pairs with Pill or Squircle.",
   }),
   cornerRadius: Object.freeze({
     label: "Rounding",
@@ -1323,7 +1574,7 @@ const nodeGraphDisplaySettingsFieldMeta = Object.freeze({
     label: "Bright",
     inputmode: "decimal",
     id: "nodeTraceDisplayBrightness",
-    title: "Peak deposit / present light 0–1 (1 = full). Number Readout LED: live light grey→hue→white (never black); also deposit energy.",
+    title: "Peak deposit / present light 0–1 (1 = full). Number Readout LED: live light black→hue→white; Ghost/Trail stay on the gradient.",
   }),
   lineThickness: Object.freeze({
     label: "Blur",
@@ -1392,7 +1643,7 @@ const nodeGraphDisplaySettingsFieldMeta = Object.freeze({
     label: "Size",
     inputmode: "decimal",
     id: "nodeTraceDisplayDot1Size",
-    title: "Stroke/dot diameter vs face square min side. 0 = 1px (min), 1 = full square. Linear ratio.",
+    title: "Stroke diameter in CSS pixels at a 96px face. 0 = gone. Grows with the module.",
   }),
   shapeParam: Object.freeze({
     label: "Shape",
@@ -1474,6 +1725,41 @@ const nodeGraphDisplaySettingsToggleMeta = Object.freeze({
     id: "nodeTraceDisplayFullDotEconomy",
     title:
       "How densely stamps are packed along the path. Off (default): thrifty fuse spacing so soft dots blend into a continuous trail without burning the Dot Budget. On: pack as many stamps as Dot Budget allows (brighter, more solid trails). If the path still needs more stamps than budget, spacing widens evenly over the whole path — the head is never cut off. When Dots only is on, this mainly controls even sample skipping under budget.",
+  }),
+  sliderShowLabel: Object.freeze({
+    label: "Label",
+    id: "nodeTraceDisplayKnobSliderShowLabel",
+    title: "Show the slider label (Display name).",
+  }),
+  buttonShowLabel: Object.freeze({
+    label: "Label",
+    id: "nodeTraceDisplayButtonShowLabel",
+    title: "Show the button label on the face.",
+  }),
+  sliderShowNumber: Object.freeze({
+    label: "Number",
+    id: "nodeTraceDisplayKnobSliderShowNumber",
+    title: "Show the numeric Bias readout.",
+  }),
+  sliderShowUnit: Object.freeze({
+    label: "Unit",
+    id: "nodeTraceDisplayKnobSliderShowUnit",
+    title: "Show the Bias unit if the parameter has one.",
+  }),
+  sliderLabelInside: Object.freeze({
+    label: "Inside slider",
+    id: "nodeTraceDisplayKnobSliderLabelInside",
+    title: "Align the label to the bar itself, after length, height, and padding. Off uses the whole face.",
+  }),
+  sliderNumberInside: Object.freeze({
+    label: "Inside slider",
+    id: "nodeTraceDisplayKnobSliderNumberInside",
+    title: "Align the number to the bar itself, after length, height, and padding. Off uses the whole face.",
+  }),
+  sliderUnitInside: Object.freeze({
+    label: "Inside slider",
+    id: "nodeTraceDisplayKnobSliderUnitInside",
+    title: "Align the unit to the bar itself, after length, height, and padding. Off uses the whole face.",
   }),
   rotate90: Object.freeze({
     label: "90°",
@@ -1597,6 +1883,30 @@ const nodeGraphDisplaySettingsColorMeta = Object.freeze({
     defaultValue: "#3a3428",
     id: "nodeTraceDisplayArcTrack",
   }),
+  sliderColor: Object.freeze({
+    label: "Slider",
+    aria: "Slider fill color",
+    defaultValue: "#4a6a78",
+    id: "nodeTraceDisplayKnobSliderColor",
+  }),
+  sliderNumberColor: Object.freeze({
+    label: "Number",
+    aria: "Slider number color",
+    defaultValue: "#ffffff",
+    id: "nodeTraceDisplayKnobSliderNumberColor",
+  }),
+  sliderTextColor: Object.freeze({
+    label: "Text",
+    aria: "Slider label color",
+    defaultValue: "#cfdde5",
+    id: "nodeTraceDisplayKnobSliderTextColor",
+  }),
+  sliderUnitColor: Object.freeze({
+    label: "Unit",
+    aria: "Slider unit color",
+    defaultValue: "#7fc7d9",
+    id: "nodeTraceDisplayKnobSliderUnitColor",
+  }),
   buttonColor: Object.freeze({
     label: "",
     aria: "Keypad button color",
@@ -1608,6 +1918,18 @@ const nodeGraphDisplaySettingsColorMeta = Object.freeze({
     aria: "Keypad mouse hover color",
     defaultValue: "#ddd9d2",
     id: "nodeTraceDisplayKeypadHoverColor",
+  }),
+  inactiveColor: Object.freeze({
+    label: "",
+    aria: "Button inactive color",
+    defaultValue: "#1a2228",
+    id: "nodeTraceDisplayButtonInactiveColor",
+  }),
+  activeColor: Object.freeze({
+    label: "",
+    aria: "Button active color",
+    defaultValue: "#2f8f86",
+    id: "nodeTraceDisplayButtonActiveColor",
   }),
   downColor: Object.freeze({
     label: "",
@@ -1636,16 +1958,112 @@ const nodeGraphDisplaySettingsColorMeta = Object.freeze({
 });
 
 const nodeGraphDisplaySettingsChoiceMeta = Object.freeze({
+  sliderAlign: Object.freeze({
+    label: "Bar align",
+    aria: "Slider bar vertical alignment",
+    id: "nodeTraceDisplayKnobSliderAlign",
+    title: "Bar: top, mid, or bottom of the face.",
+    options: Object.freeze([
+      Object.freeze({ value: "top", label: "Top" }),
+      Object.freeze({ value: "mid", label: "Mid" }),
+      Object.freeze({ value: "bottom", label: "Bottom" }),
+    ]),
+  }),
+  sliderLabelAlign: Object.freeze({
+    label: "Label align",
+    aria: "Label alignment on the face",
+    id: "nodeTraceDisplayKnobSliderLabelAlign",
+    title: "Nine-way label position on the face.",
+    options: Object.freeze([
+      Object.freeze({ value: "topleft", label: "Top left" }),
+      Object.freeze({ value: "top", label: "Top" }),
+      Object.freeze({ value: "topright", label: "Top right" }),
+      Object.freeze({ value: "midleft", label: "Mid left" }),
+      Object.freeze({ value: "mid", label: "Mid" }),
+      Object.freeze({ value: "midright", label: "Mid right" }),
+      Object.freeze({ value: "bottomleft", label: "Bottom left" }),
+      Object.freeze({ value: "bottom", label: "Bottom" }),
+      Object.freeze({ value: "bottomright", label: "Bottom right" }),
+    ]),
+  }),
+  sliderNumberAlign: Object.freeze({
+    label: "Number align",
+    aria: "Number alignment on the face",
+    id: "nodeTraceDisplayKnobSliderNumberAlign",
+    title: "Nine-way number position on the face.",
+    options: Object.freeze([
+      Object.freeze({ value: "topleft", label: "Top left" }),
+      Object.freeze({ value: "top", label: "Top" }),
+      Object.freeze({ value: "topright", label: "Top right" }),
+      Object.freeze({ value: "midleft", label: "Mid left" }),
+      Object.freeze({ value: "mid", label: "Mid" }),
+      Object.freeze({ value: "midright", label: "Mid right" }),
+      Object.freeze({ value: "bottomleft", label: "Bottom left" }),
+      Object.freeze({ value: "bottom", label: "Bottom" }),
+      Object.freeze({ value: "bottomright", label: "Bottom right" }),
+    ]),
+  }),
+  sliderUnitAlign: Object.freeze({
+    label: "Unit align",
+    aria: "Unit alignment on the face",
+    id: "nodeTraceDisplayKnobSliderUnitAlign",
+    title: "Nine-way unit position on the face.",
+    options: Object.freeze([
+      Object.freeze({ value: "topleft", label: "Top left" }),
+      Object.freeze({ value: "top", label: "Top" }),
+      Object.freeze({ value: "topright", label: "Top right" }),
+      Object.freeze({ value: "midleft", label: "Mid left" }),
+      Object.freeze({ value: "mid", label: "Mid" }),
+      Object.freeze({ value: "midright", label: "Mid right" }),
+      Object.freeze({ value: "bottomleft", label: "Bottom left" }),
+      Object.freeze({ value: "bottom", label: "Bottom" }),
+      Object.freeze({ value: "bottomright", label: "Bottom right" }),
+    ]),
+  }),
+  buttonAlign: Object.freeze({
+    label: "Button align",
+    aria: "Button alignment on the face",
+    id: "nodeTraceDisplayButtonAlign",
+    title: "Nine-way button position on the face.",
+    options: Object.freeze([
+      Object.freeze({ value: "topleft", label: "Top left" }),
+      Object.freeze({ value: "top", label: "Top" }),
+      Object.freeze({ value: "topright", label: "Top right" }),
+      Object.freeze({ value: "midleft", label: "Mid left" }),
+      Object.freeze({ value: "mid", label: "Mid" }),
+      Object.freeze({ value: "midright", label: "Mid right" }),
+      Object.freeze({ value: "bottomleft", label: "Bottom left" }),
+      Object.freeze({ value: "bottom", label: "Bottom" }),
+      Object.freeze({ value: "bottomright", label: "Bottom right" }),
+    ]),
+  }),
+  labelAlign: Object.freeze({
+    label: "Label align",
+    aria: "Label alignment on the face",
+    id: "nodeTraceDisplayButtonLabelAlign",
+    title: "Nine-way label position on the face.",
+    options: Object.freeze([
+      Object.freeze({ value: "topleft", label: "Top left" }),
+      Object.freeze({ value: "top", label: "Top" }),
+      Object.freeze({ value: "topright", label: "Top right" }),
+      Object.freeze({ value: "midleft", label: "Mid left" }),
+      Object.freeze({ value: "mid", label: "Mid" }),
+      Object.freeze({ value: "midright", label: "Mid right" }),
+      Object.freeze({ value: "bottomleft", label: "Bottom left" }),
+      Object.freeze({ value: "bottom", label: "Bottom" }),
+      Object.freeze({ value: "bottomright", label: "Bottom right" }),
+    ]),
+  }),
   labelPosition: Object.freeze({
-    label: "Title",
-    aria: "Title off, above, mid, or below knob",
+    label: "Label",
+    aria: "Label off, top, mid, or bottom on the display",
     id: "nodeTraceDisplayKnobLabelPosition",
-    title: "Title: off, or above / mid / below the knob.",
+    title: "Label align on the display: off, top, mid, or bottom. Independent of value; overlap is OK.",
     options: Object.freeze([
       Object.freeze({ value: "off", label: "Off" }),
-      Object.freeze({ value: "above", label: "Above" }),
+      Object.freeze({ value: "top", label: "Top" }),
       Object.freeze({ value: "mid", label: "Mid" }),
-      Object.freeze({ value: "below", label: "Below" }),
+      Object.freeze({ value: "bottom", label: "Bottom" }),
     ]),
   }),
   xyzLayout: Object.freeze({
@@ -1659,14 +2077,16 @@ const nodeGraphDisplaySettingsChoiceMeta = Object.freeze({
     ]),
   }),
   valuePosition: Object.freeze({
-    aria: "Value off, above, mid, or below knob",
+    label: "Value",
+    aria: "Value off, top, mid, mid knob, or bottom on the display",
     id: "nodeTraceDisplayKnobValuePosition",
-    title: "Value: off, or above / mid / below the knob.",
+    title: "Number / unit align: off, top, mid (face center), mid knob (dial/arc center), or bottom. Independent of label; overlap is OK. Value Y offset nudges from the chosen pin.",
     options: Object.freeze([
       Object.freeze({ value: "off", label: "Off" }),
-      Object.freeze({ value: "above", label: "Above" }),
+      Object.freeze({ value: "top", label: "Top" }),
       Object.freeze({ value: "mid", label: "Mid" }),
-      Object.freeze({ value: "below", label: "Below" }),
+      Object.freeze({ value: "midknob", label: "Mid knob" }),
+      Object.freeze({ value: "bottom", label: "Bottom" }),
     ]),
   }),
   // Soft Fractal: Stop 0.00 (solid gradient t=0) / Gradient (soft palette exterior).
@@ -1678,6 +2098,16 @@ const nodeGraphDisplaySettingsChoiceMeta = Object.freeze({
     options: Object.freeze([
       Object.freeze({ value: "stop0", label: "Stop 0.00" }),
       Object.freeze({ value: "gradient", label: "Gradient" }),
+    ]),
+  }),
+  drawMode: Object.freeze({
+    label: "Draw",
+    aria: "How Dot Budget is spent",
+    id: "nodeTraceDisplayDrawMode",
+    title: "Budget spends the dots on a solid line and stops. Length skips samples and draws dots across the full path.",
+    options: Object.freeze([
+      Object.freeze({ value: "budget", label: "Budget" }),
+      Object.freeze({ value: "length", label: "Length" }),
     ]),
   }),
   polarity: Object.freeze({
@@ -1858,13 +2288,14 @@ const nodeGraphDisplaySettingsChoiceMeta = Object.freeze({
 });
 
 const nodeGraphDisplaySettingsFormTypeTitles = Object.freeze({
-  trace: "Trace",
+  waterfall: "Waterfall",
   value: "Value",
   lineBurn: "Burn",
   scope2d: "2D",
   scope2dTrace: "Trace",
-  traceXyz: "XYZ Trace",
-  traceRgb: "1D Waterfall RGB",
+  scope1dTrace: "1D Trace",
+  waterfallXyz: "1D Waterfall XYZ",
+  waterfallRgb: "1D Waterfall RGB",
   vectorRgbFace: "Vector RGB",
   rasterRgbFace: "Pixel Grid",
   gradientVectorscopeFace: "Vectorscope",
@@ -1891,12 +2322,13 @@ const nodeGraphDisplaySettingsFormTypeTitles = Object.freeze({
   oscilloscopeBankBurn: "Bank",
   hypersawBurn: "Hypersaw",
   knobFace: "Knob",
+  pluginSliderFace: "Slider",
+  graphFace: "Graph",
+  phaserFace: "Phaser",
   keypadFace: "Keypad",
   roundShapeFace: "RoundShape",
   sinCos4Face: "SinCos4",
   textBoxFace: "Text Box",
-  pluginSliderFace: "Slider",
-  macroControlsFace: "Macro Controls",
   keyboardControllerFace: "MIDI Keyboard",
   toggleButtonFace: "Toggle",
   momentaryButtonFace: "Momentary",
@@ -1904,7 +2336,7 @@ const nodeGraphDisplaySettingsFormTypeTitles = Object.freeze({
 });
 
 const nodeGraphDisplaySettingsSectionOrder = Object.freeze([
-  "trace",
+  "waterfall",
   "value",
   "dot1",
   "secondary",
@@ -1912,11 +2344,11 @@ const nodeGraphDisplaySettingsSectionOrder = Object.freeze([
   "caps",
 ]);
 
-// Instant Trace: Size → Blur → Bright first (Left then Right), then History / Scale.
+// Instant Waterfall: Size → Blur → Bright first (Left then Right), then History / Scale.
 const nodeGraphTraceDisplaySettingsSectionOrder = Object.freeze([
   "dot1",
   "secondary",
-  "trace",
+  "waterfall",
   "value",
   "gradient",
   "caps",
@@ -1926,7 +2358,7 @@ const nodeGraphTraceDisplaySettingsSectionOrder = Object.freeze([
 // Yields: Bright → Size → Blur → Ghost → Trail → Scale → Pixel density → Dot Budget
 const nodeGraphPhosphorDisplaySettingsSectionOrder = Object.freeze([
   "dot1",
-  "trace",
+  "waterfall",
   "value",
   "secondary",
   "gradient",

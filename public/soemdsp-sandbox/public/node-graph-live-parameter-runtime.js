@@ -211,23 +211,63 @@ function readNodeGraphLiveEffectiveParam(
 ) {
   const base = readNodeGraphLiveSmoothedParam(runtime, node, key, fallback, frame, frames);
   const modulations = runtime.modulationConnections?.get(nodeGraphParameterKey(node?.id, key));
-  // Skip unit-space round trip when nothing modulates this parameter.
-  if (!modulations || !modulations.length) {
-    return base;
-  }
   const metadata = node?.paramMeta?.[key] || {};
-  const sources = modulations.map((modulation) =>
-    normalizeNodeGraphParameterModulationInput(readNodeGraphRuntimePortOutput(
+  // Fold / outputDomain early-out SSOT: nodeGraphParamFoldOrBase.
+  if (!modulations || !modulations.length) {
+    if (typeof nodeGraphParamFoldOrBase === "function") {
+      return nodeGraphParamFoldOrBase(base, [], metadata);
+    }
+    if (!(metadata && metadata.outputDomain === true)) {
+      return base;
+    }
+    if (typeof nodeGraphParamFoldModSources === "function") {
+      return nodeGraphParamFoldModSources(base, [], metadata);
+    }
+    const off = typeof nodeGraphParamDomainOffset === "function"
+      ? nodeGraphParamDomainOffset(metadata)
+      : Number(metadata.domainOffset);
+    return Number.isFinite(off) ? off : 0;
+  }
+  const sources = modulations.map((modulation) => {
+    const sample = normalizeNodeGraphParameterModulationInput(readNodeGraphRuntimePortOutput(
       runtime,
       frameValues,
       modulation.sourceNode,
       modulation.sourcePort,
       frame,
       frames,
-    ), metadata),
-  );
+    ), metadata);
+    const srcNode = runtime.nodes?.get(modulation.sourceNode);
+    const srcPort = modulation.sourcePort;
+    const srcParamMeta = srcNode?.paramMeta?.[srcPort] || {};
+    const srcType = String(srcNode?.type || "");
+    if (typeof nodeGraphNormPitchFrequencyModFromSource === "function") {
+      const converted = nodeGraphNormPitchFrequencyModFromSource(
+        String(node?.type || ""),
+        key,
+        srcType,
+        srcNode,
+        sample,
+      );
+      if (converted) {
+        return converted;
+      }
+    }
+    const taggedDomain = srcParamMeta.outputDomain === true
+      || srcType === "range"
+      || srcType === "Range"
+      || metadata.outputDomain === true;
+    return taggedDomain ? { value: Number(sample), domain: true } : sample;
+  });
+  if (typeof nodeGraphParamFoldOrBase === "function") {
+    return nodeGraphParamFoldOrBase(base, sources, metadata);
+  }
   if (typeof nodeGraphParamFoldModSources === "function") {
     return nodeGraphParamFoldModSources(base, sources, metadata);
   }
-  return nodeGraphApplyParameterModulation(base, sources.reduce((a, b) => a + b, 0), metadata);
+  const modSum = sources.reduce((a, b) => {
+    const n = Number(b && typeof b === "object" ? b.value : b);
+    return a + (Number.isFinite(n) ? n : 0);
+  }, 0);
+  return nodeGraphApplyParameterModulation(base, modSum, metadata);
 }

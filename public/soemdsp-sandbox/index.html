@@ -8,28 +8,99 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders:wght@100..900&family=JetBrains+Mono:wght@400;500;600;700&family=Poiret+One&family=Tenor+Sans&family=Thasadith:ital,wght@0,400;0,700;1,400;1,700&family=Zen+Loop&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./public/styles.css?v=knob-label-sq-1">
-  <link rel="stylesheet" href="./public/modules/portal/portal-ui.css?v=portal-thru-1">
+  <link rel="stylesheet" href="./public/styles.css?v=settings-bypass-portal-ident-1">
+  <link rel="stylesheet" href="./public/modules/portal/portal-ui.css?v=inlet-outlet-layout-1">
   <link rel="stylesheet" href="./public/modules/keypad/keypad-ui.css?v=keypad-press-once-1">
   <link rel="stylesheet" href="./public/modules/patch/patch-ui.css?v=patch-face-1">
-  <link rel="stylesheet" href="./public/modules/stepGrid/step-grid.css?v=module-bottom-inset-half-1">
-  <link rel="stylesheet" href="./public/modules/pitchQuantizer/pitch-quantizer-ui.css?v=chord-pad-1">
+  <link rel="stylesheet" href="./public/modules/stepGrid/step-grid.css?v=no-ui-fade-1">
+  <link rel="stylesheet" href="./public/modules/pitchQuantizer/pitch-quantizer-ui.css?v=scale-red-1">
   <link rel="stylesheet" href="./public/modules/chordPad/chord-pad-ui.css?v=chord-pad-1">
   <link rel="stylesheet" href="./public/modules/sequencer/sequencer.css?v=voices-mix-1">
   <link rel="stylesheet" href="./public/modules/arp/arp-display.css?v=arp-slide-1">
   <link rel="stylesheet" href="./public/modules/asciiscope/asciiscope-ui.css?v=mw-ds-glyphs-1">
   <link rel="stylesheet" href="./public/modules/matrixDisplay/matrix-display-ui.css?v=matrix-lcd-zoom-1">
   <link rel="stylesheet" href="./public/modules/textStream/text-stream-ui.css?v=text-stream-1">
+  <link rel="stylesheet" href="./public/modules/codeBox/code-box-ui.css?v=code-box-json-1">
 </head>
 <body class="debug-collapsed keyboard-debug-hidden node-boot-waiting node-boot-loading" data-build-mode-value="release">
   <div class="node-boot-loading-screen" role="status" aria-live="polite" aria-label="Sandbox" data-build-mode-value="release">
     <div class="node-boot-loading-panel">
-      <button
-        id="nodeBootStartButton"
-        class="node-boot-start-button"
-        type="button">
-        START SANDBOX
-      </button>
+      <h1 id="nodeBootHeroTitle" class="node-boot-hero-title">Soundemote.io</h1>
+      <div class="node-boot-menu-links" id="nodeBootMenuLinks">
+        <button
+          id="nodeBootStartButton"
+          class="node-boot-start-button"
+          type="button">
+          START SANDBOX
+        </button>
+        <a
+          class="node-boot-discord-button"
+          href="https://discord.gg/hjpBC8kZ3s"
+          target="_blank"
+          rel="noopener noreferrer">
+          <svg class="node-boot-discord-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+          </svg>
+          <span>Join Discord</span>
+        </a>
+        <a
+          class="node-boot-menu-rect"
+          href="https://github.com/soundemote/soemdsp-sandbox/discussions/categories/feature-requests"
+          target="_blank"
+          rel="noopener noreferrer">
+          <span aria-hidden="true">✨</span>
+          <span>Request Feature</span>
+        </a>
+        <a
+          class="node-boot-menu-rect"
+          href="https://github.com/soundemote/soemdsp-sandbox/issues/new"
+          target="_blank"
+          rel="noopener noreferrer">
+          <span aria-hidden="true">🐞</span>
+          <span>Report Bug</span>
+        </a>
+        <div class="node-boot-menu-bottom-row">
+          <div class="node-boot-menu-squares node-boot-menu-squares-left" role="group" aria-label="Contact">
+            <a
+              class="node-boot-email-button"
+              href="mailto:soundemote@gmail.com"
+              title="soundemote@gmail.com"
+              aria-label="Email soundemote@gmail.com">
+              <span class="node-boot-email-emoji" aria-hidden="true">✉️</span>
+            </a>
+          </div>
+          <div class="node-boot-menu-half-pair">
+            <a
+              class="node-boot-menu-rect node-boot-menu-rect-half" data-site-preview="com"
+              href="https://soundemote.com/"
+              target="_blank"
+              rel="noopener noreferrer">
+              soundemote.com
+            </a>
+            <a
+              class="node-boot-menu-rect node-boot-menu-rect-half" data-site-preview="dev"
+              href="https://soundemote.dev/"
+              target="_blank"
+              rel="noopener noreferrer">
+              soundemote.dev
+            </a>
+          </div>
+          <div class="node-boot-menu-squares node-boot-menu-squares-right" role="group" aria-label="Social">
+            <a
+              class="node-boot-youtube-button"
+              href="https://www.youtube.com/@soundemote0"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="YouTube @soundemote0"
+              aria-label="YouTube @soundemote0">
+              <svg class="node-boot-youtube-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <rect x="1" y="4" width="22" height="16" rx="4" fill="currentColor"/>
+                <polygon fill="#fff" points="10,8.5 10,15.5 16,12"/>
+              </svg>
+            </a>
+          </div>
+        </div>
+      </div>
       <span id="nodeBootLoadingLabel" class="node-boot-loading-label" hidden>loading</span>
       <div
         id="nodeBootLoadingBar"
@@ -43,7 +114,7 @@
         <span id="nodeBootLoadingBarFill" style="width: 0%;"></span>
       </div>
       <div class="node-boot-loading-meta">
-        <span class="node-boot-build-number">v0.7.0 ADDITIVE BETA &nbsp;·&nbsp; build 2026.9.4.1 &nbsp;·&nbsp; 070A</span>
+        <span class="node-boot-build-number">Sandbox Alpha 0.8.0 &nbsp;·&nbsp; build 2026.9.4.1 &nbsp;·&nbsp; SAND</span>
         <span id="nodeBootSysinfo" class="node-boot-sysinfo" hidden></span>
       </div>
       <div id="nodeBootLoadingMessages" class="node-boot-loading-messages" aria-live="polite" hidden></div>
@@ -148,7 +219,8 @@
       </button>
     </div>
   </div>
-  <script src="./public/boot-loading.js?v=page-visibility-1"></script>
+  <script src="./public/boot-loading.js?v=boot-hero-1"></script>
+  <script src="./public/perform-boot.js?v=mobile-canvas-1"></script>
   <main class="shell">
     <section class="status-strip" aria-label="Sandbox status">
       <div>
@@ -348,12 +420,12 @@
           <span
             id="nodeBuildNumberReadout"
             class="node-build-number-readout"
-            aria-label="Version v0.7.0 ADDITIVE BETA, build 2026.9.4.1, stamp 070A"
-            title="Version v0.7.0 ADDITIVE BETA · build 2026.9.4.1 · 070A"
+            aria-label="Version Sandbox Alpha 0.8.0, build 2026.9.4.1, stamp SAND"
+            title="Version Sandbox Alpha 0.8.0 · build 2026.9.4.1 · SAND"
             data-build-mode-value="release">
-            <span data-sandbox-version>v0.7.0 ADDITIVE BETA</span>
+            <span data-sandbox-version>Sandbox Alpha 0.8.0</span>
             <span data-build-number-value>2026.9.4.1</span>
-            <span data-build-token-value>070A</span>
+            <span data-build-token-value>SAND</span>
           </span>
         </div>
       </div>
@@ -437,7 +509,7 @@
           <div class="node-hotkeys-row"><kbd>D</kbd><span>Debug</span></div>
           <div class="node-hotkeys-row"><kbd>F</kbd><span>Canvas: off → perform → edit layout → off (same as 📱)</span></div>
           <div class="node-hotkeys-row"><kbd>Z</kbd><span>Center view on modules (selection, else all) at current zoom</span></div>
-          <div class="node-hotkeys-row"><kbd>?</kbd><span>Command Center</span></div>
+          <div class="node-hotkeys-row"><kbd>? / `</kbd><span>Command Center</span></div>
           <div class="node-hotkeys-row"><kbd>Space</kbd><span>Pause / play</span></div>
           <div class="node-hotkeys-row"><kbd>Ctrl</kbd><span>+ click on play button: keep project playing when unfocused</span></div>
           <div class="node-hotkeys-row"><kbd>Alt</kbd><span>+ click enables or disables a module</span></div>
@@ -515,8 +587,8 @@
       </div>
 
       <div
-        id="nodePhosphorWaveformSettingsWindow"
-        class="node-phosphor-waveform-settings-window"
+        id="nodeSampleWaveformSettingsWindow"
+        class="node-sample-waveform-settings-window"
         hidden
         aria-hidden="true"></div>
 
@@ -589,37 +661,45 @@
           aria-label="Return to full modular view"
           data-tooltip-key="workspace.backToFull">&larr;</button>
         <div id="nodeGridHeatmap" class="node-grid-heatmap" aria-hidden="true"></div>
-        <div id="nodeGraphZoomSurface" class="node-graph-zoom-surface">
-          <div
-            id="nodeGraphOriginMarker"
-            class="node-graph-origin-marker"
-            aria-hidden="true"
-            data-tooltip-key="workspace.origin"
-            title="World origin: X 0, Y 0"></div>
-          <svg
-            id="nodeWireSvg"
-            class="node-wire-svg"
-            aria-hidden="true"
-            focusable="false"></svg>
-          <div id="nodeGraphNodes" class="node-graph-nodes"></div>
-          <!-- Contact disks above modules so full circles sit mid-jack (wires stay under). -->
-          <svg
-            id="nodeWireEndpointSvg"
-            class="node-wire-endpoint-svg"
-            aria-hidden="true"
-            focusable="false"></svg>
-          <div id="nodeCameraOverlayLayer" class="node-camera-overlay-layer" aria-hidden="true"></div>
-          <div id="nodeSelectionMarquee" class="node-selection-marquee" hidden></div>
-          <!-- Hitpoint select trail: thick phosphor dotted snake while dragging -->
-          <svg
-            id="nodeSelectionHitTrail"
-            class="node-selection-hit-trail"
-            aria-hidden="true"
-            focusable="false"
-            hidden>
-            <path id="nodeSelectionHitTrailPath" class="node-selection-hit-trail-path"></path>
-          </svg>
+        <!-- Text Box annotations sit under #nodeWireSvg (B-055). Same camera
+             transform as #nodeGraphWorldLayer via shared --node-graph-pan/zoom. -->
+        <div id="nodeGraphAnnotationWorldLayer" class="node-graph-world-layer node-graph-annotation-world-layer">
+          <div id="nodeGraphAnnotationNodes" class="node-graph-nodes node-graph-annotation-nodes"></div>
         </div>
+        <!-- Screen-space wire SVGs: camera via viewBox, not CSS scale on a parent. -->
+        <svg
+          id="nodeWireSvg"
+          class="node-wire-svg"
+          aria-hidden="true"
+          focusable="false"></svg>
+        <div id="nodeGraphZoomSurface" class="node-graph-zoom-surface">
+          <div id="nodeGraphWorldLayer" class="node-graph-world-layer">
+            <div
+              id="nodeGraphOriginMarker"
+              class="node-graph-origin-marker"
+              aria-hidden="true"
+              data-tooltip-key="workspace.origin"
+              title="World origin: X 0, Y 0"></div>
+            <div id="nodeGraphNodes" class="node-graph-nodes"></div>
+            <div id="nodeCameraOverlayLayer" class="node-camera-overlay-layer" aria-hidden="true"></div>
+            <div id="nodeSelectionMarquee" class="node-selection-marquee" hidden></div>
+            <!-- Hitpoint select trail: thick phosphor dotted snake while dragging -->
+            <svg
+              id="nodeSelectionHitTrail"
+              class="node-selection-hit-trail"
+              aria-hidden="true"
+              focusable="false"
+              hidden>
+              <path id="nodeSelectionHitTrailPath" class="node-selection-hit-trail-path"></path>
+            </svg>
+          </div>
+        </div>
+        <!-- Contact disks above modules so full circles sit mid-jack (cables stay under). -->
+        <svg
+          id="nodeWireEndpointSvg"
+          class="node-wire-endpoint-svg"
+          aria-hidden="true"
+          focusable="false"></svg>
         <canvas
           id="nodeModuleScopeCanvas"
           class="node-module-scope-canvas"
@@ -787,7 +867,6 @@
             <div id="nodeCodeScreenLookupTarget" class="node-code-screen-lookup-target" aria-label="Lookup insert target">
               <span>send to</span>
               <button type="button" data-code-screen-snippet-target="script" aria-pressed="true">Script</button>
-              <button type="button" data-code-screen-snippet-target="codeblock" aria-pressed="false">Codeblock</button>
             </div>
             <output id="nodeCodeScreenLookupTargetSummary" class="node-code-screen-lookup-target-summary" aria-live="polite">inserts into Workspace Script</output>
             <label>
@@ -817,8 +896,8 @@
         <div class="node-code-screen-main">
           <div class="scene-context-heading scene-context-heading-static">
             <div class="scene-context-title">
-              <span id="nodeCodeScreenEyebrow">Codeblocks</span>
-              <small id="nodeCodeScreenTitle">Circuit Debug Codeblocks</small>
+              <span id="nodeCodeScreenEyebrow">Code Screen</span>
+              <small id="nodeCodeScreenTitle">Workspace Script &amp; Helpers</small>
             </div>
             <span id="nodeCodeScreenStatus" class="pill scene-context-heading-meta">ready</span>
           </div>
@@ -1949,15 +2028,14 @@
             <div class="scene-context-button-group scene-context-button-group-1" role="group" aria-label="Disable module">
               <button
                 id="nodeSceneToggleModuleEnabled"
-                class="scene-context-window-button scene-context-disable-modules-button"
+                class="node-bypass-button scene-context-module-bypass-button"
                 type="button"
                 role="menuitem"
                 hidden
                 disabled
                 aria-pressed="false"
-                title="Select one or more modules to disable or enable.">
-                <span class="scene-context-window-button-label">Disable module</span>
-              </button>
+                aria-label="Disable module"
+                title="Select one or more modules to disable or enable.">&#x1F5F2;</button>
             </div>
           </div>
         </div>
@@ -2013,24 +2091,63 @@
           <span class="scene-context-selected-module-label" hidden></span>
           <strong>none</strong>
           <label id="nodeSceneAliasControl" class="scene-context-alias-control" hidden>
+            <span id="nodeSceneAliasLabel" hidden>Title</span>
             <input
               id="nodeSceneAliasInput"
               type="text"
               autocomplete="off"
               spellcheck="false"
-              aria-label="Module title"
-              placeholder="module title">
+              aria-label="Title"
+              placeholder="title">
           </label>
-          <label id="nodeSceneKnobTextControl" class="scene-context-alias-control" hidden>
+          <label id="nodeSceneKnobTextControl" class="scene-context-alias-control node-knob-settings-field" hidden>
+            <span>Display</span>
             <input
               id="nodeSceneKnobTextInput"
               type="text"
               autocomplete="off"
               spellcheck="false"
               maxlength="48"
-              aria-label="Knob face text"
-              placeholder="knob text">
+              aria-label="Display"
+              placeholder="Display">
           </label>
+          <div id="nodeSceneKnobPluginIdentity" class="node-knob-plugin-identity" hidden>
+            <label class="scene-context-alias-control node-knob-settings-field" title="CLAP param group (module path). Example: Filter">
+              <span>Folder</span>
+              <input
+                id="nodeSceneKnobPluginFolder"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                maxlength="48"
+                aria-label="Folder"
+                placeholder="Filter">
+            </label>
+            <label class="scene-context-alias-control node-knob-settings-field" title="Plugin param name. Empty uses Display, then Title.">
+              <span>Control</span>
+              <input
+                id="nodeSceneKnobPluginName"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                maxlength="48"
+                aria-label="Control"
+                placeholder="Control">
+            </label>
+            <label class="scene-context-alias-control node-knob-settings-field" title="Plugin knob index (0-31). Assigned uniquely on save if empty or clashing.">
+              <span>Index</span>
+              <input
+                id="nodeSceneKnobPluginId"
+                type="number"
+                min="0"
+                max="31"
+                step="1"
+                inputmode="numeric"
+                autocomplete="off"
+                aria-label="Index"
+                placeholder="0">
+            </label>
+          </div>
         </div>
         <div id="nodeSceneHomeModules" class="scene-context-home-modules" hidden></div>
         <div id="nodeSceneWireTypeControl" class="scene-context-wire-type-control" hidden>
@@ -2059,6 +2176,7 @@
             <button id="nodeSceneWireB2u" type="button">to Unipolar</button>
             <button id="nodeSceneWireInv" type="button">Invert</button>
             <button id="nodeSceneWireSlew" type="button">Up/Down Slew</button>
+            <button id="nodeSceneWirePortal" type="button">Portal</button>
           </div>
         </div>
         <div id="nodeSceneWidthControls" class="scene-context-width-controls" hidden>
@@ -2067,11 +2185,11 @@
           <button id="nodeSceneWidthIncrease" type="button" aria-label="Increase module width">+</button>
           <span id="nodeSceneWidthValue" class="scene-context-gu-value" aria-live="polite">7 gu</span>
         </div>
-        <!-- Module OUTER height (grid cells). +/- steps face 1-60; min outer is face=1. -->
+        <!-- Face modules: Display Height (ui.displayHeightGu 0-60; 0=Off). Outer = content+face. -->
         <div id="nodeSceneDisplayHeightControls" class="scene-context-width-controls" hidden>
-          <span id="nodeSceneDisplayHeightLabel" class="scene-context-gu-label">Height</span>
-          <button id="nodeSceneDisplayHeightDecrease" type="button" aria-label="Decrease module height">-</button>
-          <button id="nodeSceneDisplayHeightIncrease" type="button" aria-label="Increase module height">+</button>
+          <span id="nodeSceneDisplayHeightLabel" class="scene-context-gu-label">Display Height</span>
+          <button id="nodeSceneDisplayHeightDecrease" type="button" aria-label="Decrease display height">-</button>
+          <button id="nodeSceneDisplayHeightIncrease" type="button" aria-label="Increase display height">+</button>
           <span id="nodeSceneDisplayHeightValue" class="scene-context-gu-value" aria-live="polite">2 gu</span>
         </div>
         <div id="nodeSceneTextBoxHeightControls" class="scene-context-width-controls" hidden>
@@ -2094,37 +2212,6 @@
             rows="4"
             placeholder="text box content"></textarea>
         </label>
-        <div id="nodeSceneCodeblockControls" class="scene-context-codeblock-controls" hidden>
-          <button id="nodeSceneCodeblockOpenCodeScreen" type="button">Open Code Box</button>
-          <label>
-            <span>inputs</span>
-            <input
-              id="nodeSceneCodeblockInputs"
-              type="text"
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="In1, freq, gate">
-          </label>
-          <label>
-            <span>outputs</span>
-            <input
-              id="nodeSceneCodeblockOutputs"
-              type="text"
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="Out1, env">
-          </label>
-          <button id="nodeSceneCodeblockApplyPorts" type="button">Apply ports</button>
-          <label>
-            <span>code</span>
-            <textarea
-              id="nodeSceneCodeblockSource"
-              spellcheck="false"
-              rows="7"
-              placeholder="Out1 = In1;"></textarea>
-          </label>
-          <output id="nodeSceneCodeblockStatus" aria-live="polite">code ok</output>
-        </div>
         <div id="nodeSceneTextBoxPortScriptControls" class="scene-context-codeblock-controls" hidden>
           <label>
             <span>title script</span>
@@ -2171,43 +2258,6 @@
               aria-label="Metamodule voice count"
               data-tooltip-key="moduleSettings.metamoduleVoiceCount">
           </label>
-        </div>
-        <div id="nodeSceneGraphControls" class="scene-context-codeblock-controls scene-context-graph-controls" hidden>
-          <label>
-            <span>cursor x</span>
-            <input
-              id="nodeSceneGraphCursorX"
-              type="number"
-              min="0"
-              max="1"
-              step="0.001"
-              inputmode="decimal"
-              autocomplete="off">
-          </label>
-          <!-- Node rows: # | x | y | [curve | shape] | ✕ ; [+] under last node. -->
-          <div
-            id="nodeSceneGraphNodeList"
-            class="scene-context-graph-node-list"
-            aria-label="Graph node values"></div>
-          <div class="scene-context-graph-node-actions">
-            <button id="nodeSceneGraphReset" type="button">reset</button>
-          </div>
-          <div id="nodeSceneGraphPresetControls" class="scene-context-graph-preset-controls">
-            <button type="button" data-graph-preset="ramp">ramp</button>
-            <button type="button" data-graph-preset="sine">sine</button>
-            <button type="button" data-graph-preset="triangle">triangle</button>
-            <button type="button" data-graph-preset="envelope">envelope</button>
-            <button type="button" data-graph-preset="steps">steps</button>
-          </div>
-          <div id="nodeSceneGraphTransformControls" class="scene-context-graph-transform-controls">
-            <span>transform</span>
-            <button type="button" data-graph-transform="flipY">flip y</button>
-            <button type="button" data-graph-transform="reverseX">reverse x</button>
-          </div>
-          <div class="scene-context-graph-clipboard-controls">
-            <button id="nodeSceneGraphCopy" type="button">copy graph</button>
-            <button id="nodeSceneGraphPaste" type="button">paste graph</button>
-          </div>
         </div>
         <div id="nodeSceneImageControls" class="scene-context-text-box-controls" hidden>
           <span>image</span>
@@ -2406,8 +2456,8 @@
               class="scene-context-window-button"
               type="button"
               aria-pressed="false"
-              title="Hide unused inlets and outlets"
-              aria-label="Hide unused inlets and outlets">
+              title="Hide unused inlets and outlets on every module"
+              aria-label="Hide unused inlets and outlets on every module">
               <span class="scene-context-window-button-label">Hide Unused</span>
             </button>
           </div>
@@ -2469,17 +2519,6 @@
               aria-label="Patch category">
           </label>
           <label class="node-patch-defaults-field">
-            <span>Tags</span>
-            <input
-              id="nodePatchDefaultsTags"
-              type="text"
-              autocomplete="off"
-              spellcheck="false"
-              data-patch-info-field="tags"
-              placeholder="tag1, tag2"
-              aria-label="Patch tags">
-          </label>
-          <label class="node-patch-defaults-field">
             <span>Author</span>
             <input
               id="nodePatchDefaultsAuthor"
@@ -2490,6 +2529,17 @@
               placeholder="Author"
               aria-label="Patch author">
           </label>
+          <label class="node-patch-defaults-field">
+            <span>Associated emoji</span>
+            <input
+              id="nodePatchDefaultsEmoji"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              data-patch-info-field="emoji"
+              placeholder="🎵"
+              aria-label="Associated emoji">
+          </label>
           <label class="node-patch-defaults-field node-patch-defaults-field-wide">
             <span>Description</span>
             <textarea
@@ -2499,6 +2549,17 @@
               spellcheck="true"
               placeholder="What this patch is, for someone opening it for the first time."
               aria-label="Patch description"></textarea>
+          </label>
+          <label class="node-patch-defaults-field">
+            <span>Tags</span>
+            <input
+              id="nodePatchDefaultsTags"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              data-patch-info-field="tags"
+              placeholder="tag1, tag2"
+              aria-label="Patch tags">
           </label>
           <output id="nodePatchDefaultsStatus" class="node-patch-defaults-status" aria-live="polite"></output>
         </div>
@@ -2901,9 +2962,26 @@
         </div>
         <div class="metadata-popover-grid">
           <div class="metadata-field-actions" aria-label="Metaparameter actions">
-            <button id="metadataRestoreFieldsButton" type="button">Restore</button>
             <button id="metadataSetCurrentAsDefaultButton" type="button" title="Set the parameter's current value as its new default">Set Default</button>
             <button id="metadataRestoreDefaultButton" type="button" title="Reset this parameter's metadata to the standard template for its kind">Restore Default</button>
+            <div class="metadata-make-wrap">
+              <button
+                id="metadataMakeControllerButton"
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded="false"
+                title="Spawn a Slider, Knob, Toggle, or Momentary wired to this parameter">Make</button>
+              <div id="metadataMakeControllerMenu" class="metadata-make-menu" hidden role="menu">
+                <button type="button" role="menuitem" data-make-kind="pluginSlider">Slider</button>
+                <button type="button" role="menuitem" data-make-kind="knob">Knob</button>
+                <button type="button" role="menuitem" data-make-kind="toggleButton">Toggle</button>
+                <button type="button" role="menuitem" data-make-kind="momentaryButton">Momentary</button>
+              </div>
+            </div>
+            <label class="metadata-checkbox-label metadata-pin-canvas-label" title="Pin the new controller face on the canvas">
+              <input id="metadataPinToCanvasValue" type="checkbox">
+              Pin to canvas
+            </label>
           </div>
           <label class="metadata-full-row metadata-parameter-picker-row" data-tooltip-key="parameterSettings.parameter">
             <span>PARAMETER</span>
@@ -3087,11 +3165,19 @@
               hidden
             >
               <input id="metadataShowMetaparameterValue" type="checkbox">
-              Show metaparameter
+              Show on metamodule
+            </label>
+            <label class="metadata-checkbox-label" data-tooltip-key="parameterSettings.reverse" title="Knob left is max, knob right is min. Domain numbers stay in order.">
+              <input id="metadataReverseValue" type="checkbox">
+              Reverse
             </label>
             <label class="metadata-checkbox-label" data-tooltip-key="parameterSettings.bipolar">
               <input id="metadataBipolarValue" type="checkbox">
               Bipolar fill
+            </label>
+            <label class="metadata-checkbox-label" data-tooltip-key="parameterSettings.outputDomain">
+              <input id="metadataOutputDomainValue" type="checkbox">
+              Use real mod values
             </label>
             <label class="metadata-checkbox-label" data-tooltip-key="parameterSettings.showSign">
               <input id="metadataShowSignValue" type="checkbox">
@@ -3142,7 +3228,7 @@
             <button
               id="metadataScriptRefresh"
               type="button"
-              title="Restore script text from the selected parameter's current metadata.">Restore</button>
+              title="Reload script text from the selected parameter's current metadata.">Reload script</button>
             <button id="metadataScriptKindTemplate" type="button">Kind Template</button>
             <button id="metadataScriptNormalize" type="button">Normalize</button>
             <button id="metadataScriptCopy" type="button">Copy</button>
@@ -3629,164 +3715,170 @@
   <script data-boot-defer type="text/plain" src="./public/waveform-interactions.js?v=waveform-interactions-refactor-1780375200000"></script>
   <script data-boot-defer type="text/plain" src="./public/manifest-view.js?v=manifest-view-refactor-1780360800000"></script>
   <script data-boot-defer type="text/plain" src="./public/manifest-loader.js?v=manifest-loader-refactor-1780389600000"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-wires.js?v=robin-algo-order-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-wires.js?v=named-portal-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-floating-windows.js?v=cc-shrink-ssot-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-unified-window.js?v=cc-stay-closed-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-emoji-page.js?v=emoji-glow-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-pages.js?v=pages-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-file-actions.js?v=copy-no-confirm-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-default-buttons.js?v=patch-save-refresh-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-cookbook-filter.js?v=expo-pluck2-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-emoji-page.js?v=audio-emoji-2"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-pages.js?v=patch-name-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-file-actions.js?v=patch-picker-location-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-default-buttons.js?v=emoji-utf8-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-cookbook-filter.js?v=ink-px-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-papoulis-filter.js?v=mouse-smooth-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-phosphor-draw-sample.js?v=phosphor-draw-sample-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-color-standards.js?v=color-standards-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-chromeless-module-registry.js?v=unique-in-patch-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-chrome.js?v=metamodule-layout-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-chrome.js?v=inlet-outlet-layout-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/led/led-register.js?v=rename-value-led-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/lcdDot/lcd-dot-register.js?v=led-lcd-update-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/rgbShape/rgb-shape-register.js?v=clock-range-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/lcdDot/lcd-dot-register.js?v=lcd-dot-drawer-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/rgbShape/rgb-shape-register.js?v=inc-policy-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/rgbPicture/rgb-picture-register.js?v=rgb-picture-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/imageBurn/image-burn-register.js?v=image-ghost-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/rgbFractal/rgb-fractal-register.js?v=soft-structure-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/imageBurn/image-burn-register.js?v=image-ghost-bright-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/rgbFractal/rgb-fractal-register.js?v=picture-io-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/evolveField/evolve-field-register.js?v=evolve-field-uc-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/fbmField/fbm-field-register.js?v=fbf-combined-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/fbmField/fbm-field-register.js?v=picture-io-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/bugButton/bug-button-register.js?v=bug-button-io-order-20260724"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/xyPad/xy-pad-dsp.js?v=xy-amp-xy-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/xyPad/xy-pad-register.js?v=xy-amp-xy-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/numberReadout/number-readout-register.js?v=led-lcd-update-1"></script>
-    <script data-boot-defer type="text/plain" src="./public/modules/valueLcd/value-lcd-register.js?v=led-lcd-update-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/xyPad/xy-pad-dsp.js?v=xy-pad-live-outs-smooth-2"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/xyPad/xy-pad-register.js?v=live-ctrl-always-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/theremin/theremin-register.js?v=theremin-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/numberReadout/number-readout-register.js?v=led-lcd-search-1"></script>
+    <script data-boot-defer type="text/plain" src="./public/modules/valueLcd/value-lcd-register.js?v=led-lcd-search-1"></script>
 <script data-boot-defer type="text/plain" src="./public/modules/rayBouncer/ray-bouncer-register.js?v=ray-bouncer-solid-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/stepGrid/step-grid-register.js?v=stepgrid-variable-steps-20260715"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/keypad/keypad-register.js?v=keypad-index-hover-2"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/metamodule/metamodule-register.js?v=voices-mix-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/portal/portal-lanes.js?v=title-bar-ports-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/keypad/keypad-register.js?v=live-ctrl-always-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/metamodule/metamodule-register.js?v=inlet-outlet-layout-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/portal/portal-lanes.js?v=inlet-outlet-layout-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/portal/portal-named.js?v=portal-io-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/portal/portal-named-register.js?v=portal-io-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/portal/portal-inlet-register.js?v=portal-mlr-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/portal/portal-outlet-register.js?v=portal-mlr-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/simulationTime/simulation-time-register.js?v=sim-time-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/patch/patch-register.js?v=patch-buttons-on-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-definitions.js?v=fm-passive-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-plan-roles.js?v=plan-roles-b0"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-efficient-product.js?v=fm-shop-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-controls.js?v=f-cancel-ssot-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-definitions.js?v=wf-paint-key-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-plan-roles.js?v=live-ctrl-always-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-efficient-product.js?v=wf-rename-2"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-controls.js?v=topbar-title-7"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-data-bus.js?v=data-plane-merge-20260711"></script>
   <!-- module-store moved after default-patch -->
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-sizing.js?v=face-hide-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-sizing.js?v=b057-hide-unused-lip-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-metadata-kinds.js?v=param-sens-hint-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-parameter-smoother-filters.js?v=smooth-gpu-3p-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-parameter-metadata.js?v=range-out-10-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-parameter-smoother-filters.js?v=smooth-gpu-3p-1-cherry-knob-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-parameter-metadata.js?v=picture-io-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-metadata-defaults.js?v=decimal-template-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-app-fonts.js?v=font-weight-shared-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-text-box-utils.js?v=textbox-vertical-simple-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-port-script.js?v=nuke-scriptbox-20260719"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-text-box-utils.js?v=textbox-vertical-continuous-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-port-script.js?v=picture-io-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-image-utils.js?v=image-burn-6"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-graph-utils.js?v=contour-planck-soft-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-samples.js?v=mp-stutter-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/audioPlayer/audio-player-library.js?v=mp-stutter-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/audioPlayer/audio-player-playlist.js?v=mp-ignore-info-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/lib/visual/display-scale.js?v=face-01-2"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-graph-utils.js?v=graph-phase-ghost-2"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-graph-face-extras.js?v=graph-face-strip-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-samples.js?v=wt-rect-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/audioPlayer/audio-player-library.js?v=mp-multi-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/audioPlayer/audio-player-playlist.js?v=ink-px-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/lib/visual/display-scale.js?v=facescale-1"></script>
   <script data-boot-defer type="text/plain" src="./public/lib/visual/display-face-metrics.js?v=paint-layout-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-phosphor-waveform.js?v=arp-keys-look-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-stdlib/node-graph-phasor-helpers.js?v=phasor-helpers-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-stdlib/node-graph-param-surface-helpers.js?v=f-cancel-ssot-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-musical-engines.js?v=musical-engines-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-sample-waveform.js?v=wt-rows-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-stdlib/node-graph-phasor-helpers.js?v=freq-ref-440-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-stdlib/node-graph-param-surface-helpers.js?v=slope-range-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-musical-engines.js?v=midi-pitch-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-phosphillator.js?v=phasor-stdlib-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-embed-config.js?v=embed-config-20260701"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-resources.js?v=embed-config-20260701"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/textBox/text-box-widget.js?v=edit-dblclick-word-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/textBox/text-box-widget.js?v=textbox-canvas-scale-b071-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/textBox/text-box-animated.js?v=title-label-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/textBox/text-box-host.js?v=textbox-lineheight-fix-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/textBox/text-box-settings.js?v=textbox-vertical-simple-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/textBox/text-box-settings.js?v=textbox-vertical-continuous-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-text-box-rendering.js?v=textbox-light-50-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-patch-normalizers.js?v=canvas-pins-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-audio-derivation.js?v=sr-info-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-patch-normalizers.js?v=patch-name-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-audio-derivation.js?v=render-host-match-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-grid-utils.js?v=center-origin-view-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-patch-runtime.js?v=arp-latch-persist-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-code-screen-model.js?v=code-screen-1"></script>
   <!-- Code Screen UI is a satellite (CORE_REDUCTION_PLAN.md); loaded on demand. -->
-  <script data-boot-defer type="text/plain" src="./public/node-graph-code-screen-loader.js?v=no-script-hl-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-code-screen-loader.js?v=picture-io-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-patch-serialization.js?v=keys-abs-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-settings-fields.js?v=slider-unit-color-1780307400000"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-settings-view.js?v=eff-pass-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-settings-text-fit.js?v=title-label-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-settings-view.js?v=topbar-title-7"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-settings-text-fit.js?v=title-fit-2d-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-default-preset.js?v=restore-session-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-script-status.js?v=book-ui-script-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-view-controls.js?v=vm-log-2"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-workspace-geometry.js?v=wf-gl-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-viewport-perf.js?v=canvas-teleport-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-view-controls.js?v=fps-60-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-workspace-geometry.js?v=screen-cam-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-viewport-perf.js?v=screen-cam-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-workspace-zoom.js?v=pixelated-zoom-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-workspace-view.js?v=pan-log-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-camera-view.js?v=mag-trace-2"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-camera-view.js?v=b055-annotation-layer-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-marquee-selection.js?v=mouse-smooth-17-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-node-dragging.js?v=arp-slide-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-context-menu.js?v=no-k-dock-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-node-dragging.js?v=display-no-module-drag-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-context-menu.js?v=settings-bypass-portal-ident-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-magnifier.js?v=mag-trace-2"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-actions.js?v=height-face-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-actions.js?v=portal-io-1"></script>
   <!-- node-graph-code-screen.js loaded by node-graph-code-screen-loader.js on demand -->
   <script data-boot-defer type="text/plain" src="./public/lib/phosphor/phosphor-residual.js?v=trail-ssot-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/lib/phosphor/phosphor-energy-gl.js?v=trail-ssot-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/lib/phosphor/phosphor-drawer.js?v=trail-ssot-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/lib/phosphor/phosphor-energy-gl.js?v=draw-mode-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/lib/phosphor/phosphor-drawer.js?v=ink-px-1"></script>
   <script data-boot-defer type="text/plain" src="./public/lib/visual/display-layer-compositor.js?v=meta-zoom-vel-range-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-phosphor-energy-gl.js?v=burn-sticky-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/lib/trace/trace-stroke.js?v=wf-meet-hard-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/lib/trace/trace-stroke.js?v=ink-px-1"></script>
   <script data-boot-defer type="text/plain" src="./public/lib/trace/trace-woscope.js?v=woscope-persist-1"></script>
   <script data-boot-defer type="text/plain" src="./public/lib/trace/trace-rgb-points.js?v=rgb-points-1"></script>
   <script data-boot-defer type="text/plain" src="./public/lib/trace/trace-waveform.js?v=disc-break-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/lib/trace/trace-history-draw.js?v=rbg-meet-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/lib/trace/trace-tape.js?v=scale-stamp-budget-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/lib/trace/trace-history-draw.js?v=ink-px-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/lib/trace/trace-tape.js?v=trace-thick-1"></script>
   <script data-boot-defer type="text/plain" src="./public/lib/trace/trace-shape.js?v=heart-ssot-1"></script>
   <script data-boot-defer type="text/plain" src="./public/lib/trace/trace-dot-sprite.js?v=heart-ssot-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-phosphor-gaussian-drawer.js?v=gaussian-beam-continuous-1"></script>
-  <script data-boot-defer type="text/plain" data-boot-module="1" src="./public/color-widget-boot.js?v=hue-reset-red-1"></script>
+  <script data-boot-defer type="text/plain" data-boot-module="1" src="./public/color-widget-boot.js?v=hue-drag-num-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/spectrogram/spectrogram-gradient-editor.js?v=grad-no-highlight-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-defaults.js?v=knob-label-sq-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-normalize.js?v=lcd-led-sat-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-display-mode.js?v=gate-blink-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-face-canvas.js?v=meta-canvas-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-defaults.js?v=wf-rename-2"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-normalize.js?v=wf-rename-2"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-display-mode.js?v=wf-rename-2"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-face-canvas.js?v=wf-rename-2"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-phosphor.js?v=face-ssot-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/latch-button.js?v=ui-improvements-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-settings-form.js?v=knob-label-sq-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-settings-controls.js?v=lcd-led-sat-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/latch-button.js?v=css-size-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-settings-form.js?v=wf-rename-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-settings-controls.js?v=wf-rename-1"></script>
   <!-- Display Settings peel: form-io → field-edit → apply → window → thin ui anchor -->
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-settings-form-io.js?v=lcd-led-sat-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-settings-field-edit.js?v=display-seed-editing-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-settings-apply.js?v=gate-blink-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-settings-window.js?v=kb-not-single-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-settings-form-io.js?v=wf-rename-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-settings-field-edit.js?v=slider-settings-roundtrip-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-settings-apply.js?v=wf-rename-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-settings-window.js?v=wf-rename-2"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-settings-ui.js?v=one-face-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-capture.js?v=rms-4"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-number-readout.js?v=led-lut-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-draw-basic.js?v=value-line-zero-ok-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-draw-burn.js?v=hypersaw-oldest-voice-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scopes.js?v=clear-pause-bright-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-capture.js?v=sh-ghost-left-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-number-readout.js?v=led-decay-plate-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-draw-basic.js?v=trace-thick-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-draw-burn.js?v=draw-mode-trace-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scopes.js?v=graph-phase-ghost-2"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-spectrum.js?v=cycles-rename-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-buffer-io.js?v=pause-hold-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-sync.js?v=cycles-rename-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-metrics.js?v=gpu-stamps-2"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-geometry.js?v=scope-paint-loop-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-sync.js?v=wf-sync-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-metrics.js?v=measured-hz-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-geometry.js?v=trace-thick-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-webgl.js?v=trace-line-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-vertices.js?v=face-ssot-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-offline.js?v=kb-pin-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-screen-items.js?v=canvas-cull-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-slots.js?v=hypersaw-nobuffer-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-offline.js?v=wf-rename-2"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-screen-items.js?v=picture-io-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-slots.js?v=1d-trace-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-buffer-view.js?v=waterfall-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-monitors.js?v=scope-monitors-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-monitors.js?v=scope-monitors-2"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-scene-controls.js?v=screen-solo-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-shader-settings.js?v=scope-shader-settings-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-trace-controls.js?v=knob-label-sq-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-trace-controls.js?v=wf-rename-2"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-wipe.js?v=pixelgrid-grade-wasm-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-graph-query.js?v=sim-fps-face-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-graph-query.js?v=fc-sync-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-settings.js?v=scope-sync-off-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-lifecycle.js?v=pause-hold-3"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-paint-gate.js?v=meta-display-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-canvas.js?v=paint-gate-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-waterfall.js?v=scale-stamp-budget-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-paint-helpers.js?v=lcd-led-sat-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-draw-orchestrator.js?v=arp-keys-look-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-waterfall.js?v=wf-rename-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-paint-helpers.js?v=wf-rename-2"></script>
+<script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-1d-trace.js?v=wf-rename-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-scope-draw-orchestrator.js?v=wf-paint-key-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/lookaheadLimiter/lookahead-limiter-display.js?v=limiter-gain-face-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/phosphorLight/phosphor-light-display.js?v=alias-only-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/oscilloscopeBank/oscilloscope-bank-display.js?v=burn-sticky-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/ensemble/ensemble-cloud-display.js?v=ensemble-predepth-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/videoscope/videoscope-display.js?v=burn-sticky-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/spectrogram/spectrogram-display.js?v=screen-f-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/transport/transport-display.js?v=gate-blink-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/transport/transport-display.js?v=metronome-2"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/vectorRgb/vector-rgb-display.js?v=empty-num-fallback-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/rasterRgb/raster-rgb-math.js?v=bipolar-grade-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/rasterRgb/raster-rgb-display.js?v=edge-01-1"></script>
@@ -3794,7 +3886,7 @@
 
   <script data-boot-defer type="text/plain" src="./public/node-graph-room-dimmer.js?v=light-up-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-canvas-script.js?v=floating-chrome-unify-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-factories.js?v=vm-dbg-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-factories.js?v=display-follows-title-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/led/led-ui.js?v=led-lcd-update-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/lcdDot/lcd-dot-display.js?v=lcd-dot-2"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/rgbShape/rgb-shape-math.js?v=heart-ssot-1"></script>
@@ -3802,103 +3894,108 @@
   <script data-boot-defer type="text/plain" src="./public/modules/rgbShape/rgb-shape-ui.js?v=sim-fps-face-3"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/rgbPicture/rgb-picture-ui.js?v=rgb-picture-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/rgbPicture/rgb-picture-display.js?v=keypad-bgi-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/imageBurn/image-burn-ui.js?v=image-ghost-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/imageBurn/image-burn-gl.js?v=image-ghost-blur-scale-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/imageBurn/image-burn-display.js?v=image-ghost-blur-scale-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/rgbFractal/rgb-fractal-gl.js?v=soft-structure-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/imageBurn/image-burn-ui.js?v=image-ghost-clock-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/lib/visual/picture-device.js?v=picture-io-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/imageBurn/image-burn-gl.js?v=picture-io-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/imageBurn/image-burn-display.js?v=image-ghost-clock-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/rgbFractal/rgb-fractal-gl.js?v=picture-io-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/rgbFractal/rgb-fractal-ui.js?v=outer-stop0-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/rgbFractal/rgb-fractal-display.js?v=soft-structure-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/rgbFractal/rgb-fractal-display.js?v=picture-io-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/evolveField/evolve-field-gl.js?v=evolve-field-uc-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/evolveField/evolve-field-ui.js?v=evolve-field-uc-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/evolveField/evolve-field-display.js?v=evolve-field-uc-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-fbm-field.js?v=fbf-combined-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/fbmField/fbm-field-gl.js?v=fbm-field-21"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/fbmField/fbm-field-gl.js?v=picture-io-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/fbmField/fbm-field-ui.js?v=sim-fps-face-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/fbmField/fbm-field-display.js?v=fbf-fps-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/fbmField/fbm-field-display.js?v=picture-io-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/bugButton/bug-button-ui.js?v=bug-button-settings-edit-20260723"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/xyPad/xy-pad-ui.js?v=xy-domain-hold-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/xyPad/xy-pad-ui.js?v=xy-pad-live-outs-smooth-2"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/theremin/theremin-ui.js?v=theremin-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/numberReadout/number-readout-ui.js?v=led-lcd-update-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/rayBouncer/ray-bouncer-ui.js?v=ray-bouncer-solid-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/stepGrid/step-grid-ui.js?v=stepgrid-variable-steps-20260715"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/keypad/keypad-math.js?v=font-weight-shared-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/keypad/keypad-settings.js?v=font-weight-shared-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/keypad/keypad-ui.js?v=keypad-glow-50-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/metamodule/metamodule-core.js?v=meta-canvas-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/metamodule/metamodule-core.js?v=b055-annotation-mount-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/metamodule/metamodule-display-mirror.js?v=meta-face-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/metamodule/metamodule-ui.js?v=meta-canvas-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/metamodule/metamodule-ui.js?v=inlet-outlet-layout-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/patch/patch-ui.js?v=patch-face-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/portal/portal-math.js?v=portal-lanes-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/portal/portal-live-evaluator.js?v=named-portal-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/portal/portal-settings.js?v=portal-lanes-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/portal/portal-ui.js?v=portal-thru-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-header-rendering.js?v=edit-dblclick-word-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-rendering.js?v=seq-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/portal/portal-ui.js?v=inlet-outlet-layout-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-header-rendering.js?v=settings-bypass-portal-ident-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-rendering.js?v=wf-rename-2"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-module-frame.js?v=paint-layout-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-history.js?v=book-ui-script-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-visual-utils.js?v=lcd-led-sat-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-patch-clone.js?v=gate-blink-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-slider-metadata.js?v=history-hz-decimal-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-slider-values.js?v=knob-dial-drag-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-slider-dragging.js?v=knob-dial-drag-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-node-accessors.js?v=cleanup-20260725-smoothing-time-20260701"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-selection.js?v=no-k-dock-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-patch-clone.js?v=settings-bypass-portal-ident-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-slider-metadata.js?v=b061-sci-notation-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-slider-values.js?v=slope-range-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-slider-dragging.js?v=knob-choice-neg-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-node-accessors.js?v=b055-annotation-mount-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-selection.js?v=no-macro-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-module-geometry.js?v=meta-chrome-ssot-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-port-geometry.js?v=wire-simple-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-jack-chrome.js?v=canvas-teleport-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-slider-readout.js?v=cv-skip-3"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/knob/knob-face.js?v=knob-label-sq-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/plugin/plugin-button-settings.js?v=btn-on-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/plugin/plugin-controls-ui.js?v=toggle-live-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-slider-readout-controls.js?v=jacks-slider-2"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-ghost-sliders.js?v=meta-mx-ghost-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-port-geometry.js?v=portal-source-alias-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-jack-chrome.js?v=portal-io-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-port-types.js?v=portal-wireless-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-slider-readout.js?v=slope-range-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/knob/knob-face.js?v=knob-midknob-value-y-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/slider/slider-face.js?v=label-section-first-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/plugin/plugin-button-settings.js?v=label-section-first-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/plugin/plugin-controls-ui.js?v=text-fit-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-slider-readout-controls.js?v=alt-no-dblclick-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-ghost-sliders.js?v=sh-ghost-left-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-code-settings-editor.js?v=json-highlight-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-metadata-editor.js?v=meta-expose-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-metadata-editor.js?v=make-controller-5"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-render-settings.js?v=render-range-dedupe-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-semath.js?v=planck-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/speakerProtector2/speaker-protector-2-math.js?v=planck-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-ear-protection.js?v=protect-banner-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-patch-load-fault.js?v=patch-load-fault-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-debug-console.js?v=vm-live-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-patch-load-fault.js?v=disconnect-invalid-wire-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-debug-console.js?v=no-ui-fade-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-module-diagnostics.js?v=uc-silence-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-rendered-audio.js?v=custom-player-20260723"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-rendered-player.js?v=transport-play-palette-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-rendered-visual-output.js?v=beta-polish-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-rendered-output-canvases.js?v=beta-polish-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-execution-wires.js?v=external-graph-inputs-1780816800000"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-bypass.js?v=seq-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-execution-plan.js?v=seq-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-bypass.js?v=crossfade-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-execution-plan.js?v=wf-rename-2"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-execution-summary.js?v=slider-unit-color-1780307400000"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-wire-actions.js?v=range-out-10-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-wire-actions.js?v=wf-rename-2"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-trace-router.js?v=no-self-burst-1780321400000"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-wire-rendering.js?v=wire-simple-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-render-output.js?v=render-sample-start-skip-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-tooltips.js?v=gpu-stamps-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-interaction-help.js?v=v-cycle-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-wire-rendering.js?v=screen-cam-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-render-output.js?v=render-host-match-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-tooltips.js?v=show-on-metamodule-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-interaction-help.js?v=screen-cam-1"></script>
   <script data-boot-defer type="text/plain" src="./public/presets/useruisettings.js?v=wire-endpoint-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-ui-settings-definitions.js?v=wire-endpoint-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-ui-settings-utils.js?v=slider-unit-color-1780307400000"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-user-ui-settings-controls.js?v=macro-cleanup-2"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-ui-settings-panels.js?v=uidev-page-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-ui-settings-persistence.js?v=mouse-smooth-17-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-ui-settings-persistence.js?v=no-macro-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-ui-settings-sync.js?v=wire-endpoint-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-keyboard-shortcuts.js?v=f-type-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-keyboard-shortcuts.js?v=backtick-command-center-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-live-status-text.js?v=live-plan-preserve-20260634"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-live-status-controls.js?v=slider-unit-color-1780307400000"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-live-meter-controls.js?v=audio-overrun-meter-2"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-live-input-status.js?v=slider-unit-color-1780307400000"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-live-evidence.js?v=badval-face-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-live-control-rendering.js?v=keep-play-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-default-patch.js?v=persist-size-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-module-store.js?v=fm-passive-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-live-evidence.js?v=no-js-fallback-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-live-control-rendering.js?v=speed-22050-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-default-patch.js?v=picture-io-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-module-store.js?v=robin-oscillator-11"></script>
   <script data-boot-defer type="text/plain" src="./public/lib/polyphony-voices.js?v=gold-oct-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/lib/note-mask-128.js?v=mask128-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/lib/note-mask-128.js?v=scale-octaves-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-keyboard-chord-memory.js?v=mask128-2"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-state.js?v=seq-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-state.js?v=speed-22050-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-external-ui-events.js?v=xy-pad-impulse-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-patch-migrations.js?v=voices-mix-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-patch-core.js?v=cm-up-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-live-plan-runtime.js?v=chord-seq-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-live-parameter-runtime.js?v=rgb-shape-3"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-oscillator-runtime.js?v=sincos4-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-patch-core.js?v=b055-b057-layout-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-live-plan-runtime.js?v=settings-bypass-portal-ident-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-live-parameter-runtime.js?v=knob-norm-freq-2"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-oscillator-runtime.js?v=ellipsoid-osc-3"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-gpu-additive-backend.js?v=external-graph-inputs-1780816800000"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-jerobeam-spiral.js?v=node-graph-jerobeam-spiral-refactor-1780371000000"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-fractal-spiral.js?v=fractal-spiral-1-20260703"></script>
@@ -3919,14 +4016,14 @@
   <script data-boot-defer type="text/plain" src="./public/node-graph-jerobeam-nyquist-shannon.js?v=fast-sin-turns-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-jerobeam-radar.js?v=jerobeam-radar-1-20260702"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-chord-memory.js?v=musical-engines-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-turing-machine.js?v=musical-engines-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-pitch-quantizer.js?v=chord-pad-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/pitchQuantizer/pitch-quantizer-ui.js?v=chord-pad-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-chord-pad.js?v=chord-pad-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/chordPad/chord-pad-ui.js?v=chord-pad-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-turing-machine.js?v=scale-notemask-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-pitch-quantizer.js?v=arp-keys-scale-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/pitchQuantizer/pitch-quantizer-ui.js?v=quantizer-unpatch-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-chord-pad.js?v=scale-notemask-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/chordPad/chord-pad-ui.js?v=chord-pad-mirror-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-softwave-oscillator.js?v=native-core-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/softwaveOsc/softwave-osc-math.js?v=softwave-face-morph-4"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/softwaveOsc/softwave-osc-display.js?v=softwave-face-morph-4"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/softwaveOsc/softwave-osc-math.js?v=softwave-morph-restore-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/softwaveOsc/softwave-osc-display.js?v=softwave-real-cycle-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/curveOsc/curve-osc-math.js?v=curve-osc-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/snowflake/snowflake-math.js?v=snowflake-iter-bufs-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/asciiscope/asciiscope-core.js?v=cv-skip-2"></script>
@@ -3936,6 +4033,7 @@
   <script data-boot-defer type="text/plain" src="./public/modules/asciiscope/asciiscope-ui.js?v=rclick-keep-sel-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/textStream/text-stream-core.js?v=text-stream-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/textStream/text-stream-ui.js?v=text-stream-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/codeBox/code-box-ui.js?v=code-box-json-3"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/matrixDisplay/matrix-display-core.js?v=burn-sticky-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/matrixDisplay/matrix-display-display.js?v=screen-solo-3"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/matrixDisplay/matrix-display-ui.js?v=matrix-scope-overlay-fix-1"></script>
@@ -3953,12 +4051,12 @@
   <script data-boot-defer type="text/plain" src="./public/node-graph-stdlib/node-graph-visual-control-helpers.js?v=planck-eps-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-stdlib/node-graph-seeded-rng-helpers.js?v=stdlib-batch3-20260715"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-stdlib/node-graph-shared-dsp-helpers.js?v=ladder-face-math-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-stdlib/node-graph-control-bus-helpers.js?v=toggle-range-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-stdlib/node-graph-control-bus-helpers.js?v=make-controller-5"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-stdlib/node-graph-shared-app-helpers.js?v=stdlib-app-helpers-20260725"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-stdlib/node-graph-sinc-kernel.js?v=sinc-bandlimit-20260725"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/_shared/output-amplitude.js?v=bt-msd-uc-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/_shared/display-thru-live-evaluators.js?v=image-burn-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/imageBurn/image-burn-live-evaluator.js?v=image-burn-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/_shared/display-thru-live-evaluators.js?v=wf-rename-2"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/imageBurn/image-burn-live-evaluator.js?v=image-ghost-bright-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/logisticMap/logistic-map-math.js?v=logistic-map-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/henonMap/henon-map-math.js?v=henon-map-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/chuaAttractor/chua-attractor-math.js?v=chua-1"></script>
@@ -3971,8 +4069,9 @@
   <script data-boot-defer type="text/plain" src="./public/modules/bitConverter/bit-converter-math.js?v=bit-converter-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/robinSinusoid/robin-sinusoid-math.js?v=robin-sin-fm-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/phoneTone/phone-tone-math.js?v=tone-lr-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/pitchManager/pitch-manager-live-evaluator.js?v=arp-inc-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/phoneTone/phone-tone-display.js?v=sim-fps-face-3"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/tSeries/t-series-math.js?v=t-open-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/tSeries/t-series-math.js?v=t-mux-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/wallDelay/wall-delay-room-display.js?v=wall-delay-nudge-helper-20260718"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/noiseDetector/noise-detector-math.js?v=noise-detector-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/rms/rms-math.js?v=rms-9"></script>
@@ -3982,8 +4081,8 @@
   <script data-boot-defer type="text/plain" src="./public/modules/lookaheadLimiter/lookahead-limiter-math.js?v=dip-no-clamp-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/inertialFilter/inertial-filter-math.js?v=smooth-attack-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/tiltFilter/tilt-filter-math.js?v=tilt-eq-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/eqFilter/eq-filter-math.js?v=eq-zero-hz-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/scientificIir/scientific-iir-math.js?v=scientific-iir-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/eqFilter/eq-filter-math.js?v=eq-iso-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/scientificIir/scientific-iir-math.js?v=sci-iir-dedupe-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/crossover/crossover-math.js?v=xo-native-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/modeResonator/mode-resonator-math.js?v=mode-resonator-clip-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/combResonator/comb-resonator-math.js?v=comb-resonator-clip-1"></script>
@@ -3991,7 +4090,7 @@
   <script data-boot-defer type="text/plain" src="./public/modules/phaseDisperse/phase-disperse-math.js?v=phase-disperse-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/bode/bode-math.js?v=bode-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/stftBlur/stft-blur-math.js?v=stft-blur-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/sampleHold/sample-hold-math.js?v=sample-hold-ext-3"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/sampleHold/sample-hold-math.js?v=sh-smooth-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/expAdsr/exp-adsr-math.js?v=exp-adsr-mono-8"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/additiveGraph/additive-mod-control.js?v=mod-proof-2"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/attackDecay/attack-decay-math.js?v=attack-decay-1"></script>
@@ -4016,63 +4115,66 @@
   <script data-boot-defer type="text/plain" src="./public/modules/cheapWalk/cheap-walk-math.js?v=cheap-walk-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/clock/clock-math.js?v=master-clock-t-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/simulationTime/simulation-time-math.js?v=sim-time-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/transport/transport-math.js?v=beat-f-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/transport/transport-math.js?v=metronome-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/randomClock/random-clock-math.js?v=random-clock-range-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/delayedTrigger/delayed-trigger-math.js?v=delayed-trigger-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/triggerCounter/trigger-counter-math.js?v=trigger-counter-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/triggerDivider/trigger-divider-math.js?v=trigger-divider-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/sequencer/sequencer-math.js?v=seq-23"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/sequencer/sequencer-ui.js?v=seq-wrap-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/arp/arp-settings.js?v=arp-keys-look-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/arp/arp-display.js?v=arp-hover-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/keyboardController/keyboard-layout-settings.js?v=kb-not-single-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/keyboardController/keyboard-controller-live-evaluator.js?v=voices-mix-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/gridKeyboard/grid-keyboard.js?v=mask128-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/macroControls/macro-controls-settings.js?v=macro-knob-size-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/arp/arp-settings.js?v=gravity-walker-face-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/arp/arp-display.js?v=arp-override-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/keyboardController/keyboard-layout-settings.js?v=kb-canvas-face-2"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/keyboardController/keyboard-controller-live-evaluator.js?v=arp-inc-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/gridKeyboard/grid-keyboard.js?v=kb-hide-info-1"></script>
+
   <script data-boot-defer type="text/plain" src="./public/modules/gain/gain-math.js?v=output-db-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/mixStereo/mix-stereo-math.js?v=mixstereo-no-mono-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/crossfade/crossfade-math.js?v=crossfade-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/rgbFractal/rgb-fractal-math.js?v=orbit-speed-1"></script>
 
   <script data-boot-defer type="text/plain" src="./public/modules/bias/bias-math.js?v=bias-io-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/attenuverter/attenuverter-math.js?v=attenuverter-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/attenumax/attenumax-math.js?v=am-index-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/range/range-math.js?v=range-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/softClipper/soft-clipper-math.js?v=soft-clipper-os-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/clipperLimiter/clipper-limiter-math.js?v=clipper-order-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/softClipper/soft-clipper-display.js?v=soft-clip-1"></script>
+<script data-boot-defer type="text/plain" src="./public/modules/tubeSaturation/tube-saturation-math.js?v=tube-sat-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/rotate3dTo2d/rotate-3d-to-2d-math.js?v=rotate-3d-to-2d-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/vectorscopeTransform/vectorscope-transform-math.js?v=vs-rotate-param-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/speedColorInertia/speed-color-inertia-math.js?v=speed-color-inertia-2"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/badvalMonitor/badval-monitor-ui.js?v=badval-face-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/helmholtzPitch/helmholtz-pitch-ui.js?v=pitch-lcd-ghost-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/helmholtzPitch/helmholtz-pitch-ui.js?v=pd-inc-1"></script>
   <script data-boot-defer type="text/plain" src="./public/lib/sample-interpolate.js?v=mp-aa-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/audioPlayer/audio-player-math.js?v=mp-time-io-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/basicShape/basic-shape-display.js?v=disc-break-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/sineWavetable/sine-wavetable-display.js?v=sincos4-solo-square-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/ellipsoid/ellipsoid-settings.js?v=softwave-face-3"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/ellipsoid/ellipsoid-display.js?v=sim-fps-face-3"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/additiveGraph/additive-graph-math.js?v=opt-80db-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/ellipsoid/ellipsoid-settings.js?v=softwave-real-cycle-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/ellipsoid/ellipsoid-display.js?v=ellipsoid-osc-3"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/additiveGraph/additive-graph-math.js?v=speed-22050-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/additiveGraph/additive-param-smooth.js?v=main-guard-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/additiveGraph/additive-filter-curve-display.js?v=sim-fps-face-3"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/harmonicLines/harmonic-count-display.js?v=sim-fps-face-3"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/additiveGraph/additive-filter-curve-display.js?v=ink-px-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/harmonicLines/harmonic-count-display.js?v=harm-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/additiveGrowl/additive-bubble-display.js?v=sim-fps-face-3"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/additiveBlaster/additive-blaster-display.js?v=sim-fps-face-3"></script>
-  <script data-boot-defer type="text/plain" src="./public/modules/harmonicLines/harmonic-lines-display.js?v=sim-fps-face-3"></script>
+  <script data-boot-defer type="text/plain" src="./public/modules/harmonicLines/harmonic-lines-display.js?v=ink-px-1"></script>
   <script data-boot-defer type="text/plain" src="./public/modules/additiveGenerator/additive-waveform-display.js?v=sim-fps-face-3"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-pulse-explosion-display.js?v=shared-canvas-sizing-20260725"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-live-runtime.js?v=fm-passive-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-live-runtime.js?v=sh-smooth-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-wire-controller-bootstrap.js?v=wire-break-trigger-0129"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-screen-solo.js?v=canvas-teleport-2"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-layout-canvas.js?v=kb-not-single-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-screen-solo.js?v=canvas-workspace-split-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-layout-canvas.js?v=canvas-workspace-split-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-workspace-event-bindings.js?v=constraint-debug-hide-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-render-live-event-bindings.js?v=transport-click-delegate-1"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-header-event-bindings.js?v=meta-canvas-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-header-event-bindings.js?v=sample-wf-guard-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-help-event-bindings.js?v=remove-workspace-view-0002"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-scene-menu-event-bindings.js?v=no-k-dock-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-scene-menu-event-bindings.js?v=wire-portal-menu-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-uidev-event-bindings.js?v=wire-endpoint-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-settings-event-bindings.js?v=book-ui-script-1"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-slider-event-bindings.js?v=node-graph-slider-event-bindings-refactor-1780369200000"></script>
   <script data-boot-defer type="text/plain" src="./public/node-graph-event-bindings.js?v=remove-dead-uiview-bind-20260724"></script>
-  <script data-boot-defer type="text/plain" src="./public/node-graph-bootstrap.js?v=no-k-dock-1"></script>
+  <script data-boot-defer type="text/plain" src="./public/node-graph-bootstrap.js?v=b055-annotation-mount-1"></script>
   <script data-boot-defer type="text/plain" src="./public/app-event-bindings.js?v=app-event-bindings-refactor-1780361400000"></script>
   <script data-boot-defer type="text/plain" src="./public/app.js?v=loading-steps-1"></script>
+  <script src="./public/site-preview-local.js?v=site-preview-local-1"></script>
 </body>
 </html>

@@ -54,6 +54,19 @@
       "wasmAvailable": true
     },
     {
+      "name": "amp_db",
+      "label": "Amp \u2194 dB",
+      "targetType": "ampDb",
+      "kind": "utility",
+      "source": "native_modules/amp_db/amp_db.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/amp_db/amp_db.cpp",
+      "localSourceUrl": "/native_modules/amp_db/amp_db.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/amp_db/amp_db.wasm",
+      "wasmUrl": "native_modules/amp_db/amp_db.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "antisaw",
       "label": "Antisaw",
       "targetType": "antisaw",
@@ -103,6 +116,19 @@
       "libUrl": "",
       "wasm": "native_modules/attack_decay/attack_decay.wasm",
       "wasmUrl": "native_modules/attack_decay/attack_decay.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "attenumax",
+      "label": "AM Index",
+      "targetType": "attenumax",
+      "kind": "dynamics",
+      "source": "native_modules/attenumax/attenumax.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/attenumax/attenumax.cpp",
+      "localSourceUrl": "/native_modules/attenumax/attenumax.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/attenumax/attenumax.wasm",
+      "wasmUrl": "native_modules/attenumax/attenumax.wasm",
       "wasmAvailable": true
     },
     {
@@ -340,6 +366,19 @@
       "wasmAvailable": true
     },
     {
+      "name": "chorus",
+      "label": "Chorus",
+      "targetType": "chorus",
+      "kind": "effect",
+      "source": "native_modules/chorus/chorus.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/chorus/chorus.cpp",
+      "localSourceUrl": "/native_modules/chorus/chorus.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/chorus/chorus.wasm",
+      "wasmUrl": "native_modules/chorus/chorus.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "chua_attractor",
       "label": "Chua Attractor",
       "targetType": "chuaAttractor",
@@ -350,19 +389,6 @@
       "libUrl": "",
       "wasm": "native_modules/chua_attractor/chua_attractor.wasm",
       "wasmUrl": "native_modules/chua_attractor/chua_attractor.wasm",
-      "wasmAvailable": true
-    },
-    {
-      "name": "clipper_limiter",
-      "label": "Clipper Limiter",
-      "targetType": "clipperLimiter",
-      "kind": "dynamics",
-      "source": "native_modules/clipper_limiter/clipper_limiter.cpp",
-      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/clipper_limiter/clipper_limiter.cpp",
-      "localSourceUrl": "/native_modules/clipper_limiter/clipper_limiter.cpp",
-      "libUrl": "",
-      "wasm": "native_modules/clipper_limiter/clipper_limiter.wasm",
-      "wasmUrl": "native_modules/clipper_limiter/clipper_limiter.wasm",
       "wasmAvailable": true
     },
     {
@@ -402,6 +428,32 @@
       "libUrl": "",
       "wasm": "native_modules/comparator/comparator.wasm",
       "wasmUrl": "native_modules/comparator/comparator.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "cookbook_filter",
+      "label": "Cookbook Filter",
+      "targetType": "cookbookFilter",
+      "kind": "filter",
+      "source": "native_modules/cookbook_filter/cookbook_filter.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/cookbook_filter/cookbook_filter.cpp",
+      "localSourceUrl": "/native_modules/cookbook_filter/cookbook_filter.cpp",
+      "libUrl": "https://github.com/RobinSchmidt/RS-MET",
+      "wasm": "native_modules/cookbook_filter/cookbook_filter.wasm",
+      "wasmUrl": "native_modules/cookbook_filter/cookbook_filter.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "crossfade",
+      "label": "Crossfade4",
+      "targetType": "crossfade4",
+      "kind": "dynamics",
+      "source": "native_modules/crossfade/crossfade.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/crossfade/crossfade.cpp",
+      "localSourceUrl": "/native_modules/crossfade/crossfade.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/crossfade/crossfade.wasm",
+      "wasmUrl": "native_modules/crossfade/crossfade.wasm",
       "wasmAvailable": true
     },
     {
@@ -522,8 +574,21 @@
       "wasmAvailable": true
     },
     {
+      "name": "ensemble",
+      "label": "Ensemble",
+      "targetType": "ensemble",
+      "kind": "effect",
+      "source": "native_modules/ensemble/ensemble.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/ensemble/ensemble.cpp",
+      "localSourceUrl": "/native_modules/ensemble/ensemble.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/ensemble/ensemble.wasm",
+      "wasmUrl": "native_modules/ensemble/ensemble.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "eq_filter",
-      "label": "EQ Filter",
+      "label": "EQ Filter ZDF",
       "targetType": "eqFilter",
       "kind": "dynamics",
       "source": "native_modules/eq_filter/eq_filter.cpp",
@@ -584,6 +649,19 @@
       "libUrl": "",
       "wasm": "native_modules/fbm_field/fbm_field.wasm",
       "wasmUrl": "native_modules/fbm_field/fbm_field.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "flanger",
+      "label": "Flanger",
+      "targetType": "flanger",
+      "kind": "effect",
+      "source": "native_modules/flanger/flanger.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/flanger/flanger.cpp",
+      "localSourceUrl": "/native_modules/flanger/flanger.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/flanger/flanger.wasm",
+      "wasmUrl": "native_modules/flanger/flanger.wasm",
       "wasmAvailable": true
     },
     {
@@ -662,6 +740,19 @@
       "libUrl": "",
       "wasm": "native_modules/graph_engine/graph_engine.wasm",
       "wasmUrl": "native_modules/graph_engine/graph_engine.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "graphic_eq",
+      "label": "Graphic EQ",
+      "targetType": "graphicEq",
+      "kind": "dynamics",
+      "source": "native_modules/graphic_eq/graphic_eq.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/graphic_eq/graphic_eq.cpp",
+      "localSourceUrl": "/native_modules/graphic_eq/graphic_eq.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/graphic_eq/graphic_eq.wasm",
+      "wasmUrl": "native_modules/graphic_eq/graphic_eq.wasm",
       "wasmAvailable": true
     },
     {
@@ -1159,6 +1250,19 @@
       "wasmAvailable": true
     },
     {
+      "name": "phaser",
+      "label": "Phaser",
+      "targetType": "phaser",
+      "kind": "filter",
+      "source": "native_modules/phaser/phaser.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/phaser/phaser.cpp",
+      "localSourceUrl": "/native_modules/phaser/phaser.cpp",
+      "libUrl": "https://github.com/RobinSchmidt/RS-MET",
+      "wasm": "native_modules/phaser/phaser.wasm",
+      "wasmUrl": "native_modules/phaser/phaser.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "phone_tone",
       "label": "Phone Tone",
       "targetType": "phoneTone",
@@ -1381,7 +1485,7 @@
     },
     {
       "name": "resonator_filter",
-      "label": "Resonator Filter",
+      "label": "Shaped Resonator Filter",
       "targetType": "resonatorFilter",
       "kind": "filter",
       "source": "native_modules/resonator_filter/resonator_filter.cpp",
@@ -1390,6 +1494,32 @@
       "libUrl": "",
       "wasm": "native_modules/resonator_filter/resonator_filter.wasm",
       "wasmUrl": "native_modules/resonator_filter/resonator_filter.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "ring_mod",
+      "label": "RingMod",
+      "targetType": "ringMod",
+      "kind": "dynamics",
+      "source": "native_modules/ring_mod/ring_mod.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/ring_mod/ring_mod.cpp",
+      "localSourceUrl": "/native_modules/ring_mod/ring_mod.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/ring_mod/ring_mod.wasm",
+      "wasmUrl": "native_modules/ring_mod/ring_mod.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "robin_oscillator",
+      "label": "RobinOscillator",
+      "targetType": "robinOscillator",
+      "kind": "oscillator",
+      "source": "native_modules/robin_oscillator/robin_oscillator.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/robin_oscillator/robin_oscillator.cpp",
+      "localSourceUrl": "/native_modules/robin_oscillator/robin_oscillator.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/robin_oscillator/robin_oscillator.wasm",
+      "wasmUrl": "native_modules/robin_oscillator/robin_oscillator.wasm",
       "wasmAvailable": true
     },
     {
@@ -1471,6 +1601,19 @@
       "wasmAvailable": true
     },
     {
+      "name": "sample_player",
+      "label": "Sample Player",
+      "targetType": "samplePlayer",
+      "kind": "player",
+      "source": "native_modules/sample_player/sample_player.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/sample_player/sample_player.cpp",
+      "localSourceUrl": "/native_modules/sample_player/sample_player.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/sample_player/sample_player.wasm",
+      "wasmUrl": "native_modules/sample_player/sample_player.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "shooting_star_explosion",
       "label": "Shooting Star Explosion",
       "targetType": "shootingStarExplosion",
@@ -1494,6 +1637,19 @@
       "libUrl": "",
       "wasm": "native_modules/sinc/sinc.wasm",
       "wasmUrl": "native_modules/sinc/sinc.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "sine_warp",
+      "label": "SineWarp",
+      "targetType": "sineWarp",
+      "kind": "oscillator",
+      "source": "native_modules/sine_warp/sine_warp.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/sine_warp/sine_warp.cpp",
+      "localSourceUrl": "/native_modules/sine_warp/sine_warp.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/sine_warp/sine_warp.wasm",
+      "wasmUrl": "native_modules/sine_warp/sine_warp.wasm",
       "wasmAvailable": true
     },
     {
@@ -1640,6 +1796,19 @@
       "wasmAvailable": true
     },
     {
+      "name": "superlove_rev2",
+      "label": "Superlove Rev2",
+      "targetType": "superloveRev2",
+      "kind": "filter",
+      "source": "native_modules/superlove_rev2/superlove_rev2.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/superlove_rev2/superlove_rev2.cpp",
+      "localSourceUrl": "/native_modules/superlove_rev2/superlove_rev2.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/superlove_rev2/superlove_rev2.wasm",
+      "wasmUrl": "native_modules/superlove_rev2/superlove_rev2.wasm",
+      "wasmAvailable": true
+    },
+    {
       "name": "surge_oscillator",
       "label": "Surge Oscillator",
       "targetType": "surgeOscillator",
@@ -1680,7 +1849,7 @@
     },
     {
       "name": "transport",
-      "label": "Master Clock",
+      "label": "Metronome",
       "targetType": "transport",
       "kind": "utility",
       "source": "native_modules/transport/transport.cpp",
@@ -1715,6 +1884,19 @@
       "libUrl": "",
       "wasm": "native_modules/trigger_divider/trigger_divider.wasm",
       "wasmUrl": "native_modules/trigger_divider/trigger_divider.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "tube_saturation",
+      "label": "Tube Saturation",
+      "targetType": "tubeSaturation",
+      "kind": "dynamics",
+      "source": "native_modules/tube_saturation/tube_saturation.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/tube_saturation/tube_saturation.cpp",
+      "localSourceUrl": "/native_modules/tube_saturation/tube_saturation.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/tube_saturation/tube_saturation.wasm",
+      "wasmUrl": "native_modules/tube_saturation/tube_saturation.wasm",
       "wasmAvailable": true
     },
     {
@@ -1754,6 +1936,19 @@
       "libUrl": "",
       "wasm": "native_modules/vactrol_envelope/vactrol_envelope.wasm",
       "wasmUrl": "native_modules/vactrol_envelope/vactrol_envelope.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "vcvrack_superlove_filter",
+      "label": "VCVRack Superlove Filter",
+      "targetType": "vcvrackSuperloveFilter",
+      "kind": "filter",
+      "source": "native_modules/vcvrack_superlove_filter/vcvrack_superlove_filter.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/vcvrack_superlove_filter/vcvrack_superlove_filter.cpp",
+      "localSourceUrl": "/native_modules/vcvrack_superlove_filter/vcvrack_superlove_filter.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/vcvrack_superlove_filter/vcvrack_superlove_filter.wasm",
+      "wasmUrl": "native_modules/vcvrack_superlove_filter/vcvrack_superlove_filter.wasm",
       "wasmAvailable": true
     },
     {
@@ -1832,6 +2027,19 @@
       "libUrl": "",
       "wasm": "native_modules/wall_delay/wall_delay.wasm",
       "wasmUrl": "native_modules/wall_delay/wall_delay.wasm",
+      "wasmAvailable": true
+    },
+    {
+      "name": "wavetable_2d",
+      "label": "Wavetable 2D",
+      "targetType": "wavetable2d",
+      "kind": "oscillator",
+      "source": "native_modules/wavetable_2d/wavetable_2d.cpp",
+      "sourceUrl": "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/wavetable_2d/wavetable_2d.cpp",
+      "localSourceUrl": "/native_modules/wavetable_2d/wavetable_2d.cpp",
+      "libUrl": "",
+      "wasm": "native_modules/wavetable_2d/wavetable_2d.wasm",
+      "wasmUrl": "native_modules/wavetable_2d/wavetable_2d.wasm",
       "wasmAvailable": true
     },
     {

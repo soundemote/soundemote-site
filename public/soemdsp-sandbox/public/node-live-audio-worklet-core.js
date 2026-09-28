@@ -43,7 +43,7 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
   static ROBIN_SINUSOID_NATIVE_BLOCK_SIZE = 128;
 
   // RobinSupersaw generator block — same 128-sample quantum when pitch
-  // jacks are unconnected. A 0.1V/Oct or `f` jack falls back to
+  // jacks are unconnected. A pitch or `f` jack falls back to
   // soemdsp_robin_supersaw_sample (4 WASM hops per sample).
   static ROBIN_SUPERSAW_NATIVE_BLOCK_SIZE = 128;
 
@@ -85,7 +85,6 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.meterProtectionMuteCount = 0;
     this.meterSamples = 0;
     this.meterSquareSum = 0;
-    this.macroControls = new Array(8).fill(0);
     this.externalButtonEvents = new Map();
     this.wireBreakEvent = { pulseSamples: 0, gateSamples: 0 };
     this.wireConnectEvent = { pulseSamples: 0 };
@@ -117,10 +116,10 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.hostSampleRate = sampleRate;
     this.oversamplingRatio = 1;
     // Stay paused until the host posts setSpeed after setPlan + native preload.
-    // Starting at 1 let LFOs into 0.1V/Oct advance during WASM load so PolyBLEP
+    // Starting at 1 let LFOs into pitch advance during WASM load so PolyBLEP
     // pitch sounded randomly phased on every Stop→Play.
     this.speedMultiplier = 0;
-    this.speedLimit = 20000;
+    this.speedLimit = 22050;
     this.raptEllipticDecimatorLeft = this.createRaptEllipticDecimatorState();
     this.raptEllipticDecimatorRight = this.createRaptEllipticDecimatorState();
     this.raptEllipticDecimatorRatio = 1;
@@ -176,8 +175,6 @@ class NodeLiveAudioProcessor extends AudioWorkletProcessor {
     this.nativeVectorscopeTransformReady = false;
     this.nativeRotate3dTo2d = null;
     this.nativeRotate3dTo2dReady = false;
-    this.nativeClipperLimiter = null;
-    this.nativeClipperLimiterReady = false;
     this.nativeEqFilter = null;
     this.nativeEqFilterReady = false;
     this.nativeInertialFilter = null;

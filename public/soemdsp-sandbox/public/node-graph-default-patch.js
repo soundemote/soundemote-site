@@ -83,7 +83,7 @@ function createNodeGraphPatchNode(type, options = {}) {
       : { slots: opts.chordMemory.slots || opts.chordMemory };
   }
   // Explicit opts.ui wins. Else module definition.defaultUi (e.g. Vectorscope
-  // Rotation). textBox still defaults buttons off when nothing else is set.
+  // Rotation). Buttons default off except Input/Output (shown, still hideable).
   let uiSource = opts.ui;
   if (!Object.hasOwn(opts, "ui")) {
     const defUi = nodeGraphModuleDefinitions[resolvedType]?.defaultUi;
@@ -175,15 +175,14 @@ function createNodeGraphPatchNode(type, options = {}) {
   if (nodeGraphModuleIsGraphType(resolvedType)) {
     node.graph = normalizeNodeGraphGraph(opts.graph);
   }
-  if (resolvedType === "codeblock") {
-    node.codeblock = normalizeNodeGraphCodeblock(opts.codeblock);
+  if (resolvedType === "codeBox" || nodeGraphModuleDefinitions[resolvedType]?.layout === "codeBox") {
+    node.codeBox = typeof normalizeNodeGraphCodeBox === "function"
+      ? normalizeNodeGraphCodeBox(opts.codeBox)
+      : { localText: String(opts.codeBox?.localText ?? "") };
   }
   const defDisplay = nodeGraphModuleDefinitions[resolvedType]?.defaultDisplaySettings;
   if (defDisplay && typeof defDisplay === "object") {
     node.traceDisplaySettings = { ...defDisplay };
-  }
-  if (resolvedType === "customDisplay") {
-    node.customDisplay = normalizeNodeGraphCustomDisplay(opts.customDisplay);
   }
   if (resolvedType === "matrixWaterfall" && typeof normalizeNodeGraphMatrixWaterfall === "function") {
     node.matrixWaterfall = normalizeNodeGraphMatrixWaterfall(
@@ -253,10 +252,12 @@ const nodeGraphDefaultConnections = Object.freeze([
 const nodeGraphDefaultPatch = Object.freeze({
   activeCameraId: "camera-1",
   audio: {
+    oversamplingFactor: 1,
     targetSampleRate: 44100,
-    pitchReferenceMidiNote: 48,
-    pitchReferenceHz: 100,
+    pitchReferenceMidiNote: 69,
+    pitchReferenceHz: 440,
     pitchOffsetOctaves: 0,
+    speedLimitHz: 22050,
   },
   bypassedNodes: [],
   cameras: [
@@ -277,6 +278,7 @@ const nodeGraphDefaultPatch = Object.freeze({
   info: {
     author: "",
     description: "Offline fallback — live Init is patches/init.json",
+    emoji: "",
     name: "Init",
     tags: "init,default",
   },

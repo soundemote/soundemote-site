@@ -48,7 +48,7 @@ function drawNodeGraphKnobFaceItem(_renderer, item, _pixelRatio) {
 }
 
 const nodeGraphModuleScopeCustomRenderers = {
-  trace: drawNodeGraphTraceDisplayItem,
+  waterfall: drawNodeGraphTraceDisplayItem,
   dot: drawNodeGraphVectorDotItem,
   vectorDot: drawNodeGraphVectorDotItem,
   pulseDot: drawNodeGraphVectorDotItem,
@@ -56,18 +56,26 @@ const nodeGraphModuleScopeCustomRenderers = {
   value: drawNodeGraphValueOscilloscopeItem,
   lineBurn: drawNodeGraphLineBurnOscilloscopeItem,
   hypersawBurn: drawNodeGraphHypersawBurnItem,
+  ensembleCloud: typeof drawNodeGraphEnsembleCloudItem === "function"
+    ? drawNodeGraphEnsembleCloudItem
+    : () => {},
   scope2dTrace: drawNodeGraphScope2dTraceItem,
+  scope1dTrace: drawNodeGraphScope1dTraceItem,
   scope2d: drawNodeGraphScope2dItem,
   numberReadout: drawNodeGraphNumberReadoutItem,
-  customDisplay: drawNodeGraphCustomDisplayItem,
-  phosphorWaveform: () => {},
+  customDisplay: () => {},
+  sampleWaveform: () => {},
   selfPaintFace: drawNodeGraphSelfPaintFaceItem,
   matrixFace: drawNodeGraphSelfPaintFaceItem,
   matrixWaterfallFace: drawNodeGraphSelfPaintFaceItem,
   matrixDisplayFace: drawNodeGraphSelfPaintFaceItem,
   knobFace: drawNodeGraphKnobFaceItem,
-  pluginSliderFace: (renderer, item) => {
-    item?.screenElement?.syncFromParameters?.();
+  pluginSliderFace: (renderer, item, pixelRatio) => {
+    if (typeof paintNodeGraphSliderFaceLive === "function") {
+      const face = item?.screenElement || item?.slot?.scopeElement;
+      const nodeId = item?.slot?.nodeId || item?.nodeId;
+      if (face && nodeId) paintNodeGraphSliderFaceLive(face, nodeId, item?.buffer);
+    }
   },
   toggleButtonFace: (renderer, item) => {
     item?.screenElement?.syncFromParameters?.();
@@ -104,6 +112,56 @@ function drawNodeGraphModuleScopeTypedItem(renderer, item, pixelRatio) {
     return true;
   }
   return false;
+}
+
+
+/**
+ * Re-open room-dimmer punches on every visible scope face after Stop wipe.
+ * Stop sets data-light-strength=0 on Trace/Output/etc.; Value LCD/LED rearm
+ * alone left those screens veiled until the first full buffer draw.
+ * Does not touch empty Knob plates (image-only light) beyond knob sync.
+ */
+function nodeGraphModuleScopeRearmScreenLightsAfterLiveStart() {
+  if (typeof nodeGraphVisibleModuleScopeSlots !== "function") {
+    return;
+  }
+  for (const slot of nodeGraphVisibleModuleScopeSlots()) {
+    const face = slot?.scopeElement;
+    if (!face) {
+      continue;
+    }
+    if (face.classList?.contains("node-knob-face")) {
+      if (typeof nodeGraphKnobFaceSyncLightSource === "function") {
+        nodeGraphKnobFaceSyncLightSource(face);
+      } else if (typeof nodeGraphModuleScopeMarkScreenLit === "function") {
+        nodeGraphModuleScopeMarkScreenLit(
+          face,
+          face.classList.contains("has-image") ? 1 : 0,
+        );
+      }
+      continue;
+    }
+    if (typeof nodeGraphNumberReadoutIsLcdFaceElement === "function"
+      && nodeGraphNumberReadoutIsLcdFaceElement(face)) {
+      const lcdS = typeof nodeGraphLcdDisplayLightStrength === "number"
+        ? nodeGraphLcdDisplayLightStrength
+        : 2 / 3;
+      if (typeof nodeGraphModuleScopeMarkScreenLit === "function") {
+        nodeGraphModuleScopeMarkScreenLit(face, lcdS);
+      }
+      continue;
+    }
+    if (typeof nodeGraphModuleScopeMarkScreenLit === "function") {
+      nodeGraphModuleScopeMarkScreenLit(face, 1);
+    }
+  }
+  if (typeof scheduleNodeGraphRoomDimmerDraw === "function") {
+    try {
+      scheduleNodeGraphRoomDimmerDraw();
+    } catch (_error) {
+      // Best-effort.
+    }
+  }
 }
 
 /** Room dimmer: mark a painted screen face as a light rect (full hole = 1). */
@@ -195,7 +253,7 @@ function paintNodeGraphModuleScopeColdPlatesOnly(pixelRatio = window.devicePixel
       continue;
     }
     if (
-      renderer !== "trace"
+      renderer !== "waterfall"
       && renderer !== "dot"
       && renderer !== "value"
       && renderer !== "lineBurn"
@@ -277,8 +335,9 @@ function drawNodeGraphModuleScopes(options = {}) {
   if (!canvas || !workspace || !nodeGraphModuleScopeBuffersCurrent()) {
     markNodeGraphModuleScopeDebugSkip(!canvas ? "no-canvas" : !workspace ? "no-workspace" : "stale-buffers");
     // Pause→stop→play: rings may be empty for a few frames while the worklet
-    // arms. Still repaint Value LCD/LED/lamp faces so they do not stay wiped
-    // black under the room dimmer until a full shared-canvas pass succeeds.
+    // arms. Still repaint Value LCD/LED/lamp faces AND reopen room-dimmer punches
+    // on every visible scope window — Stop zeros lightStrength on Trace/Output
+    // canvases; waiting for a full shared-canvas pass left those screens veiled.
     if (typeof paintNodeGraphValueFacesNow === "function") {
       try {
         paintNodeGraphValueFacesNow(window.devicePixelRatio || 1);
@@ -291,6 +350,37 @@ function drawNodeGraphModuleScopes(options = {}) {
         paintNodeGraphRasterRgbFacesNow(window.devicePixelRatio || 1);
       } catch (_error) {
         // Best-effort.
+      }
+    }
+    if (typeof nodeGraphModuleScopeRearmScreenLightsAfterLiveStart === "function") {
+      try {
+        nodeGraphModuleScopeRearmScreenLightsAfterLiveStart();
+      } catch (_error) {
+        // Best-effort.
+      }
+    } else if (typeof nodeGraphVisibleModuleScopeSlots === "function"
+      && typeof nodeGraphModuleScopeMarkScreenLit === "function") {
+      for (const slot of nodeGraphVisibleModuleScopeSlots()) {
+        const face = slot?.scopeElement;
+        if (!face) continue;
+        if (face.classList?.contains("node-knob-face")) {
+          if (typeof nodeGraphKnobFaceSyncLightSource === "function") {
+            nodeGraphKnobFaceSyncLightSource(face);
+          }
+          continue;
+        }
+        if (typeof nodeGraphNumberReadoutIsLcdFaceElement === "function"
+          && nodeGraphNumberReadoutIsLcdFaceElement(face)) {
+          const lcdS = typeof nodeGraphLcdDisplayLightStrength === "number"
+            ? nodeGraphLcdDisplayLightStrength
+            : 2 / 3;
+          nodeGraphModuleScopeMarkScreenLit(face, lcdS);
+          continue;
+        }
+        nodeGraphModuleScopeMarkScreenLit(face, 1);
+      }
+      if (typeof scheduleNodeGraphRoomDimmerDraw === "function") {
+        try { scheduleNodeGraphRoomDimmerDraw(); } catch (_e) { /* ignore */ }
       }
     }
     // Live but capture/layout not ready yet — keep ticking until rings exist.
@@ -319,7 +409,7 @@ function drawNodeGraphModuleScopes(options = {}) {
   }
   setNodeGraphModuleScopeDebugPhase("ready");
   // Cached workspace CSS size (ResizeObserver) — no getBoundingClientRect on
-  // the steady Instant Trace path (APP_POLICY §15 paint vs layout).
+  // the steady Instant Waterfall path (APP_POLICY §15 paint vs layout).
   const workspaceSize = typeof nodeGraphWorkspaceCssSize === "function"
     ? nodeGraphWorkspaceCssSize(workspace)
     : {
@@ -406,7 +496,7 @@ function drawNodeGraphModuleScopes(options = {}) {
     nodeGraphModuleScopeMarkScreenLit(face, 1);
   }
   flushNodeSliderReadoutUpdates();
-  // Instant Trace skip only when paint gate says idle (never while live).
+  // Instant Waterfall skip only when paint gate says idle (never while live).
   const allowTraceSkip = typeof scopePaintShouldSkipUnchangedTrace === "function"
     ? scopePaintShouldSkipUnchangedTrace()
     : scopePaused;
@@ -471,8 +561,20 @@ function drawNodeGraphModuleScopes(options = {}) {
     }
     gl.enable(gl.SCISSOR_TEST);
     const brightness = nodeGraphModuleScopeTraceBrightness(slot, scopeSettings);
-    const lineThickness = nodeGraphModuleScopeTraceLineThickness(slot, scopeSettings);
     const zoomScale = nodeGraphModuleScopeStrokeZoomScale();
+    const authoredStrokePx = typeof nodeGraphTraceDisplayNormalizeInkPx === "function"
+      ? nodeGraphTraceDisplayNormalizeInkPx(scopeSettings?.dot1Size, 2)
+      : Math.max(0, nodeGraphFiniteNumber(scopeSettings?.dot1Size, 2));
+    const faceMin = Math.max(
+      1,
+      Math.min(
+        nodeGraphFiniteNumber(visibleScopeRect?.width, 96),
+        nodeGraphFiniteNumber(visibleScopeRect?.height, 96),
+      ),
+    );
+    const strokePx = typeof TraceStroke !== "undefined" && typeof TraceStroke.diameterPx === "function"
+      ? TraceStroke.diameterPx(faceMin, authoredStrokePx)
+      : authoredStrokePx * zoomScale;
     const blendMode = nodeGraphModuleScopeTraceBlendMode(slot);
     const heatmapMode = blendMode === "heatmap";
     const colors = heatmapMode
@@ -497,7 +599,7 @@ function drawNodeGraphModuleScopes(options = {}) {
           ? undefined
           : nodeGraphModuleScopeTraceDotSizeScale(colors.coreSize, nodeGraphModuleScopeDefaultDotCores.dot1.size),
         intensity: (heatmapMode ? 0.34 : 1.0) * brightness * coreBrightness,
-        thicknessPx: 1.25 * zoomScale,
+        thicknessPx: strokePx,
         visibleProgressRange,
         visibleRect: visibleScopeRect,
       });
@@ -589,16 +691,26 @@ function scheduleNodeGraphModuleScopeDrawAfterSimClock() {
   // Setting FPS to 120 forced remainingMs ~8.3ms into the rAF path (smooth).
   // For fps >= 60, never use setTimeout: it cannot beat the display cadence.
   const vsyncMs = 1000 / 60;
+  // Run the draw on THIS callback. scheduleNodeGraphModuleScopeDraw() always
+  // nests another requestAnimationFrame, so rAF-wait -> scheduleDraw -> rAF
+  // skipped an extra refresh and felt like exact half Simulation FPS (60->30,
+  // 120->60) whenever the fps-gate deferred.
+  const runWhenDue = () => {
+    if (nodeGraphModuleScopeState.drawFrame || nodeGraphModuleScopeState.drawBusy) {
+      return;
+    }
+    runNodeGraphModuleScopeDrawFrame("sim-clock-wait", {});
+  };
   if (fps >= 60 || remainingMs <= vsyncMs + 1) {
     nodeGraphModuleScopeState.drawWaitRaf = window.requestAnimationFrame(() => {
       nodeGraphModuleScopeState.drawWaitRaf = 0;
-      scheduleNodeGraphModuleScopeDraw();
+      runWhenDue();
     });
     return;
   }
   nodeGraphModuleScopeState.drawWaitTimer = window.setTimeout(() => {
     nodeGraphModuleScopeState.drawWaitTimer = 0;
-    scheduleNodeGraphModuleScopeDraw();
+    runWhenDue();
   }, remainingMs);
 }
 

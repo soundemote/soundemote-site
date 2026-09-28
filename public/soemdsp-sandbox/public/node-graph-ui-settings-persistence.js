@@ -20,7 +20,7 @@ const nodeGraphWorkspaceWindowStateKeys = Object.freeze([
   "uiDev",
   "traceDisplaySettings",
   "tooltipWindow",
-  "phosphorWaveformSettings",
+  "sampleWaveformSettings",
   "emoji",
 ]);
 
@@ -37,7 +37,7 @@ const nodeGraphWorkspaceWindowElements = Object.freeze({
   uiDev: "nodeUiDevHelper",
   traceDisplaySettings: "nodeTraceDisplaySettingsPopover",
   tooltipWindow: "nodeTooltipWindow",
-  phosphorWaveformSettings: "nodePhosphorWaveformSettingsWindow",
+  sampleWaveformSettings: "nodeSampleWaveformSettingsWindow",
   emoji: "nodeEmojiPage",
 });
 
@@ -847,34 +847,8 @@ function normalizeNodeUiDevSettings(settings = {}) {
   const moduleScopeDiscontinuitySkipSamples = normalizeNodeGraphModuleScopeDiscontinuitySkipSamples(
     view.moduleScopeDiscontinuitySkipSamples ?? nodeGraphMvp.moduleScopeDiscontinuitySkipSamples ?? 1,
   );
-  const macroControlsFaceRaw = {
-    ...((view.macroControlsFace && typeof view.macroControlsFace === "object")
-      ? view.macroControlsFace
-      : (nodeGraphMvp.macroControlsFace && typeof nodeGraphMvp.macroControlsFace === "object"
-        ? nodeGraphMvp.macroControlsFace
-        : {})),
-  };
-  // Legacy UIDEV view keys fold into the face SSOT.
-  if (macroControlsFaceRaw.arcThickness == null) {
-    macroControlsFaceRaw.arcThickness = view.macroKnobArcThickness ?? nodeGraphMvp.macroKnobArcThickness;
-  }
-  if (macroControlsFaceRaw.arcGapBrightness == null) {
-    macroControlsFaceRaw.arcGapBrightness = view.macroKnobArcGapBrightness ?? nodeGraphMvp.macroKnobArcGapBrightness;
-  }
-  if (macroControlsFaceRaw.sizeScale == null) {
-    macroControlsFaceRaw.sizeScale = view.macroKnobSizeScale ?? nodeGraphMvp.macroKnobSizeScale;
-  }
-  if (macroControlsFaceRaw.labelPosition == null) {
-    macroControlsFaceRaw.labelPosition = view.macroKnobLabelPosition ?? nodeGraphMvp.macroKnobLabelPosition;
-  }
-  if (macroControlsFaceRaw.valuePosition == null) {
-    macroControlsFaceRaw.valuePosition = view.macroKnobValuePosition ?? nodeGraphMvp.macroKnobValuePosition;
-  }
-  const macroControlsFace = typeof normalizeNodeGraphMacroControlsFaceSettings === "function"
-    ? normalizeNodeGraphMacroControlsFaceSettings(macroControlsFaceRaw)
-    : macroControlsFaceRaw;
-  const traceSettings = typeof normalizeNodeGraphTraceDisplaySettings === "function"
-    ? normalizeNodeGraphTraceDisplaySettings(
+  const traceSettings = typeof normalizeNodeGraphWaterfallSettings === "function"
+    ? normalizeNodeGraphWaterfallSettings(
       typeof migrateNodeGraphLegacyDot2Settings === "function"
         ? migrateNodeGraphLegacyDot2Settings(view.traceSettings ?? nodeGraphMvp.traceSettings, false)
         : (view.traceSettings ?? nodeGraphMvp.traceSettings),
@@ -988,7 +962,6 @@ function normalizeNodeUiDevSettings(settings = {}) {
       moduleScopePointBudget,
       moduleScopeLineThickness,
       moduleScopeDiscontinuitySkipSamples,
-      macroControlsFace,
       traceSettings,
       sliderLayout,
       sliderAmountVisible,
@@ -1076,9 +1049,6 @@ function readNodeUiDevSettingsFromControls(options = {}) {
       moduleScopeDiscontinuitySkipSamples: normalizeNodeGraphModuleScopeDiscontinuitySkipSamples(
         nodeGraphMvp.moduleScopeDiscontinuitySkipSamples ?? 1,
       ),
-      macroControlsFace: typeof normalizeNodeGraphMacroControlsFaceSettings === "function"
-        ? normalizeNodeGraphMacroControlsFaceSettings(nodeGraphMvp.macroControlsFace)
-        : nodeGraphMvp.macroControlsFace,
       sliderLayout: normalizeNodeGraphSliderLayout(nodeGraphMvp.sliderLayout),
       sliderAmountVisible: Boolean(nodeGraphMvp.sliderAmountVisible),
       sliderPositionVisible: Boolean(nodeGraphMvp.sliderPositionVisible),
@@ -1354,7 +1324,7 @@ function normalizeNodeGraphUserSession(payload = {}) {
     savedPatchGridColumns,
     filePicker: typeof normalizeNodeGraphFilePickerState === "function"
       ? normalizeNodeGraphFilePickerState(payload.filePicker ?? view.filePicker ?? nodeGraphMvp?.filePicker)
-      : (payload.filePicker ?? view.filePicker ?? nodeGraphMvp?.filePicker ?? { startIn: "desktop" }),
+      : (payload.filePicker ?? view.filePicker ?? nodeGraphMvp?.filePicker ?? { startIn: "documents" }),
     viewMode: normalizeNodeGraphPersistedViewMode(
       payload.viewMode ?? view.viewMode ?? nodeGraphMvp?.viewMode,
     ),
@@ -1398,8 +1368,8 @@ function normalizeNodeGraphUserSession(payload = {}) {
           ?? nodeGraphMvp.moduleScopeFramesPerSecond
           ?? 60,
       )))),
-    traceSettings: typeof normalizeNodeGraphTraceDisplaySettings === "function"
-      ? normalizeNodeGraphTraceDisplaySettings(
+    traceSettings: typeof normalizeNodeGraphWaterfallSettings === "function"
+      ? normalizeNodeGraphWaterfallSettings(
         payload.traceSettings ?? view.traceSettings ?? nodeGraphMvp.traceSettings,
       )
       : (payload.traceSettings ?? view.traceSettings ?? nodeGraphMvp.traceSettings ?? null),
@@ -1485,8 +1455,8 @@ function readNodeGraphUserSessionFromState() {
     moduleScopeFramesPerSecond: typeof normalizeNodeGraphModuleScopeFramesPerSecond === "function"
       ? normalizeNodeGraphModuleScopeFramesPerSecond(nodeGraphMvp.moduleScopeFramesPerSecond ?? (typeof nodeGraphDefaultSimulationFps === "number" ? nodeGraphDefaultSimulationFps : 120))
       : Math.max(0, Math.min(240, Math.round(Number(nodeGraphMvp.moduleScopeFramesPerSecond) || (typeof nodeGraphDefaultSimulationFps === "number" ? nodeGraphDefaultSimulationFps : 120)))),
-    traceSettings: typeof normalizeNodeGraphTraceDisplaySettings === "function"
-      ? normalizeNodeGraphTraceDisplaySettings(nodeGraphMvp.traceSettings)
+    traceSettings: typeof normalizeNodeGraphWaterfallSettings === "function"
+      ? normalizeNodeGraphWaterfallSettings(nodeGraphMvp.traceSettings)
       : nodeGraphMvp.traceSettings,
     ...readNodeGraphSessionSelectionFromState(),
   };
@@ -1578,7 +1548,7 @@ function applyNodeGraphUserSession(session, options = {}) {
   }
   nodeGraphMvp.filePicker = typeof normalizeNodeGraphFilePickerState === "function"
     ? normalizeNodeGraphFilePickerState(normalized.filePicker)
-    : (normalized.filePicker || { startIn: "desktop" });
+    : (normalized.filePicker || { startIn: "documents" });
   nodeGraphMvp.currentSavedPatchFilename = String(normalized.currentSavedPatchFilename || "");
   nodeGraphMvp.patchDirtyState = ["saved", "edited", "untouched"].includes(normalized.patchDirtyState)
     ? normalized.patchDirtyState
@@ -1604,8 +1574,8 @@ function applyNodeGraphUserSession(session, options = {}) {
     }
   }
   if (normalized.traceSettings != null) {
-    nodeGraphMvp.traceSettings = typeof normalizeNodeGraphTraceDisplaySettings === "function"
-      ? normalizeNodeGraphTraceDisplaySettings(normalized.traceSettings)
+    nodeGraphMvp.traceSettings = typeof normalizeNodeGraphWaterfallSettings === "function"
+      ? normalizeNodeGraphWaterfallSettings(normalized.traceSettings)
       : normalized.traceSettings;
   }
   nodeGraphMvp.sessionSelection = {
@@ -1825,14 +1795,8 @@ function applyNodeUiDevSettings(settings) {
   nodeGraphMvp.moduleScopeDiscontinuitySkipSamples = normalizeNodeGraphModuleScopeDiscontinuitySkipSamples(
     normalized.view.moduleScopeDiscontinuitySkipSamples,
   );
-  if (typeof normalizeNodeGraphMacroControlsFaceSettings === "function") {
-    nodeGraphMvp.macroControlsFace = normalizeNodeGraphMacroControlsFaceSettings(normalized.view.macroControlsFace);
-    if (typeof applyNodeGraphMacroControlsFaceSettings === "function") {
-      applyNodeGraphMacroControlsFaceSettings();
-    }
-  }
-  nodeGraphMvp.traceSettings = typeof normalizeNodeGraphTraceDisplaySettings === "function"
-    ? normalizeNodeGraphTraceDisplaySettings(normalized.view.traceSettings)
+  nodeGraphMvp.traceSettings = typeof normalizeNodeGraphWaterfallSettings === "function"
+    ? normalizeNodeGraphWaterfallSettings(normalized.view.traceSettings)
     : normalized.view.traceSettings;
   nodeGraphMvp.sliderLayout = normalizeNodeGraphSliderLayout(normalized.view.sliderLayout);
   nodeGraphMvp.sliderAmountVisible = Boolean(normalized.view.sliderAmountVisible);

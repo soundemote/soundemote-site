@@ -1,4 +1,6 @@
-// Per-stage biquad is 2-pole (12 dB/oct); cascade Stages multiplies slope.
+// Face/plot twin of RS-MET rosic::CookbookFilter (RBJ biquad cascade).
+// Audio is native cookbook_filter.cpp. Per-stage biquad is 2-pole (12 dB/oct);
+// cascade Stages multiplies slope. Not analog ladder (RAPT::rsLadderFilter).
 // Compact labels match Active/TB-303 style (no spaces).
 const nodeGraphCookbookFilterModes = Object.freeze([
   "Bypass",
@@ -314,10 +316,14 @@ function nodeGraphLadderFilterMagnitudeAt(params, frequency, sampleRate) {
  * Live display value for a filter param (domain units only — Hz, Q, dB, …).
  * Prefers the slider’s domainValue (mid-drag before patch commit), then patch
  * params. Metaparameters own min/max mapping; do not invent unit→domain math here.
- * Ghost parameter-source mods still apply when present.
+ * Parameter MOD cables fold in via ghost (same effectiveDomain audio hears).
+ * Face pumps already tick at Simulation FPS; returning live folded values here
+ * lets the cutoff marker track MOD every frame.
  */
 function nodeGraphFilterCurveLiveParam(node, key, fallback = 0) {
-  const nodeId = node?.id || "";
+  const nodeId = (node && typeof node === "object")
+    ? String(node.id || "")
+    : String(node || "");
   const rawMeta = typeof nodeGraphReadPatchParameterMetadata === "function"
     ? nodeGraphReadPatchParameterMetadata(node, key)
     : (node?.paramMeta?.[key] || {});
@@ -341,11 +347,23 @@ function nodeGraphFilterCurveLiveParam(node, key, fallback = 0) {
       base = fromPatch;
     }
   }
-  // Ghost signal is base + param-source mods in normalized space.
-  if (typeof nodeGraphParameterGhostSignal === "function"
-    && typeof nodeGraphNormalizedSignalToParameterValue === "function") {
+  // Ghost returns { signal, effectiveDomain } (folded base + param MOD).
+  // Prefer effectiveDomain — same domain value sent to DSP / written on
+  // slider.dataset.sentDomainValue. Legacy numeric ghost still supported.
+  if (typeof nodeGraphParameterGhostSignal === "function") {
     const ghost = nodeGraphParameterGhostSignal(nodeId, key);
-    if (ghost !== null && Number.isFinite(ghost)) {
+    if (ghost != null && typeof ghost === "object") {
+      const folded = Number(ghost.effectiveDomain);
+      if (Number.isFinite(folded)) {
+        return folded;
+      }
+      const unit = Number(ghost.signal);
+      if (Number.isFinite(unit)
+        && typeof nodeGraphNormalizedSignalToParameterValue === "function") {
+        return nodeGraphNormalizedSignalToParameterValue(unit, metadata);
+      }
+    } else if (Number.isFinite(ghost)
+      && typeof nodeGraphNormalizedSignalToParameterValue === "function") {
       return nodeGraphNormalizedSignalToParameterValue(ghost, metadata);
     }
   }
@@ -354,7 +372,6 @@ function nodeGraphFilterCurveLiveParam(node, key, fallback = 0) {
   }
   return base;
 }
-
 function nodeGraphIsCrossoverType(type) {
   return /^crossover[2-6]$/.test(String(type || ""));
 }
@@ -511,31 +528,91 @@ function nodeGraphFilterCurveView(node) {
       drive: nodeGraphFilterCurveLiveParam(node, "drive", 0),
     };
   }
-  if (node.type === "eqFilter") {
+  if (nodeGraphIsScientificIirType(node.type)) {
     return {
       type: node.type,
-      mode: nodeGraphFilterCurveLiveParam(node, "mode", 1),
+      kind: nodeGraphScientificIirKinds[node.type],
+      mode: Math.round(nodeGraphFilterCurveLiveParam(node, "mode", 0)),
       frequency: nodeGraphFilterCurveLiveParam(node, "frequency", 1000),
-      q: nodeGraphFilterCurveLiveParam(node, "q", 0.707),
-      gain: nodeGraphFilterCurveLiveParam(node, "gain", 0),
+      order: nodeGraphFilterCurveLiveParam(node, "order", 4),
+      bandwidth: nodeGraphFilterCurveLiveParam(node, "bandwidth", 1),
+      ripple: nodeGraphFilterCurveLiveParam(node, "ripple", 1),
     };
   }
-  if (node.type === "bandpass") {
+  if (node.type === "phaser") {
+    const outs = nodeGraphPhaserWiredOuts(node);
+    const rate = nodeGraphFilterCurveLiveParam(node, "rate", 0.2);
+    const depth = nodeGraphFilterCurveLiveParam(node, "depth", 0.5);
+    const t = (typeof performance !== "undefined" ? performance.now() : 0) / 1000;
+    const sweep = (rate > 1e-9 || rate < -1e-9)
+      ? Math.sin(2 * Math.PI * t * rate) * depth
+      : 0;
+    const face = typeof normalizeNodeGraphPhaserFaceDisplaySettings === "function"
+      ? normalizeNodeGraphPhaserFaceDisplaySettings(node.traceDisplaySettings)
+      : nodeGraphPhaserFaceDisplaySettingsDefaults;
     return {
       type: node.type,
-      mode: 4, // Bandpass Peak
       frequency: nodeGraphFilterCurveLiveParam(node, "frequency", 1000),
+      bands: nodeGraphFilterCurveLiveParam(node, "stages", 4),
+      slope: nodeGraphFilterCurveLiveParam(node, "slope", 0),
+      spread: nodeGraphFilterCurveLiveParam(node, "spread", 0.5),
+      stereoSpread: nodeGraphFilterCurveLiveParam(node, "stereoSpread", 0),
       q: nodeGraphFilterCurveLiveParam(node, "q", 1),
-      gain: 0,
+      kernel: nodeGraphFilterCurveLiveParam(node, "mode", 0),
+      mix: nodeGraphFilterCurveLiveParam(node, "mix", 0.5),
+      leftOut: outs.left,
+      rightOut: outs.right,
+      sweep,
+      barThickness: face.barThickness,
+      curveThickness: face.curveThickness,
     };
   }
-  if (node.type === "allpass") {
+  if (node.type === "eqFilter") {
+    const uiMode = nodeGraphFilterCurveLiveParam(node, "mode", 1);
+    const ignoreBoost = typeof nodeGraphEqFilterUiIgnoresBoostCut === "function"
+      ? nodeGraphEqFilterUiIgnoresBoostCut(uiMode)
+      : uiMode <= 2;
+    const dspMode = typeof nodeGraphEqFilterUiToDsp === "function"
+      ? nodeGraphEqFilterUiToDsp(uiMode)
+      : uiMode;
     return {
       type: node.type,
-      mode: 6, // Allpass (flat magnitude — curve still draws ~0 dB)
+      mode: dspMode,
       frequency: nodeGraphFilterCurveLiveParam(node, "frequency", 1000),
       q: nodeGraphFilterCurveLiveParam(node, "q", 0.707),
+      gain: ignoreBoost ? 0 : nodeGraphFilterCurveLiveParam(node, "gain", 0),
+    };
+  }
+  if (node.type === "graphicEq") {
+    const bands = new Array(30);
+    for (let i = 0; i < 30; i += 1) {
+      bands[i] = nodeGraphFilterCurveLiveParam(node, `band${i}`, 0);
+    }
+    return {
+      type: node.type,
+      bands,
+      q: nodeGraphFilterCurveLiveParam(node, "q", 4.32),
+      mix: nodeGraphFilterCurveLiveParam(node, "mix", 1),
+      // Decade markers for log-frequency orientation (not all 30 ISO centers).
+      frequencies: [100, 1000, 10000],
+    };
+  }
+  if (node.type === "bandpass" || node.type === "allpass"
+      || node.type === "lowpass" || node.type === "highpass") {
+    const slope = Math.round(nodeGraphFilterCurveLiveParam(node, "slope", 0));
+    const zdfStages = Math.max(1, Math.min(4, slope + 1));
+    const mode = node.type === "bandpass" ? 4
+      : node.type === "allpass" ? 6
+      : node.type === "highpass" ? 1
+      : 2;
+    const q0 = node.type === "bandpass" ? 1 : 0.707;
+    return {
+      type: node.type,
+      mode,
+      frequency: nodeGraphFilterCurveLiveParam(node, "frequency", 1000),
+      q: nodeGraphFilterCurveLiveParam(node, "q", q0),
       gain: 0,
+      zdfStages,
     };
   }
   // cookbook / multi-stage family
@@ -544,7 +621,7 @@ function nodeGraphFilterCurveView(node) {
     mode: nodeGraphFilterCurveLiveParam(node, "mode", 0),
     frequency: nodeGraphFilterCurveLiveParam(node, "frequency", 1000),
     q: nodeGraphFilterCurveLiveParam(node, "q", 1),
-    gain: nodeGraphFilterCurveLiveParam(node, "gain", 0),
+    gain: 0,
     stages: nodeGraphFilterCurveLiveParam(node, "stages", 1),
   };
 }
@@ -553,6 +630,36 @@ function nodeGraphFilterCurveView(node) {
 function nodeGraphFilterCurveFiniteHz(value, fallback = 0) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
+}
+
+/** ISO 1/3-octave centers — must match native graphic_eq.cpp. */
+const nodeGraphGraphicEqCentersHz = Object.freeze([
+  25, 31.5, 40, 50, 63, 80, 100, 125, 160, 200,
+  250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000,
+  2500, 3150, 4000, 5000, 6300, 8000, 10000, 12500, 16000, 20000,
+]);
+
+/** Cascade of peaking bands. Mix blends toward flat. */
+function nodeGraphGraphicEqMagnitudeAt(view, probeHz, sampleRate) {
+  const bands = Array.isArray(view?.bands) ? view.bands : null;
+  if (!bands || bands.length < 1) {
+    return 1;
+  }
+  const q = Math.max(0.05, nodeGraphFiniteNumber(view?.q, 4.32));
+  let mag = 1;
+  if (typeof nodeGraphEqFilterMagnitudeAt === "function") {
+    for (let i = 0; i < bands.length && i < nodeGraphGraphicEqCentersHz.length; i += 1) {
+      const gainDb = nodeGraphFiniteNumber(bands[i]);
+      if (!(Math.abs(gainDb) > 1e-4)) continue;
+      const f0 = nodeGraphGraphicEqCentersHz[i];
+      const bandMag = nodeGraphEqFilterMagnitudeAt(7, f0, q, gainDb, probeHz, sampleRate);
+      if (Number.isFinite(bandMag) && bandMag > 0) mag *= bandMag;
+    }
+  }
+  const mix = Math.max(0, Math.min(1, nodeGraphFiniteNumber(view?.mix, 1)));
+  // Dry/wet on magnitude: flat → EQ.
+  mag = (1 - mix) * 1 + mix * mag;
+  return Number.isFinite(mag) && mag > 0 ? mag : 1e-6;
 }
 
 function nodeGraphFilterCurveResponseAt(node, frequency, sampleRate, view = null) {
@@ -633,16 +740,40 @@ function nodeGraphFilterCurveResponseAt(node, frequency, sampleRate, view = null
     }
     return 1;
   }
-  if (node.type === "eqFilter" || node.type === "bandpass" || node.type === "allpass") {
+  if (nodeGraphIsScientificIirType(node.type)) {
+    return nodeGraphScientificIirMagnitudeAt(
+      nodeGraphFiniteNumber(v.kind, nodeGraphScientificIirKinds[node.type] || 0),
+      Math.round(nodeGraphFiniteNumber(v.mode)),
+      nodeGraphFiniteNumber(v.order, 4),
+      nodeGraphFilterCurveFiniteHz(v.frequency, 1000),
+      nodeGraphFiniteNumber(v.bandwidth, 1),
+      nodeGraphFiniteNumber(v.ripple, 1),
+      frequency,
+      sampleRate,
+    );
+  }
+  if (node.type === "graphicEq") {
+    return nodeGraphGraphicEqMagnitudeAt(v, frequency, sampleRate);
+  }
+  if (node.type === "eqFilter" || node.type === "bandpass" || node.type === "allpass"
+      || node.type === "lowpass" || node.type === "highpass") {
     if (typeof nodeGraphEqFilterMagnitudeAt === "function") {
-      const mag = nodeGraphEqFilterMagnitudeAt(
-        Number(v.mode) || (node.type === "bandpass" ? 4 : node.type === "allpass" ? 6 : 1),
+      const rawMode = Number(v.mode);
+      const dspMode = Number.isFinite(rawMode)
+        ? rawMode
+        : (node.type === "bandpass" ? 4 : node.type === "allpass" ? 6 : 1);
+      let mag = nodeGraphEqFilterMagnitudeAt(
+        dspMode,
         nodeGraphFilterCurveFiniteHz(v.frequency, 1000),
         nodeGraphFiniteNumber(v.q, 0.707),
         nodeGraphFiniteNumber(v.gain),
         frequency,
         sampleRate,
       );
+      const copies = Math.max(1, Math.min(4, Math.round(nodeGraphFiniteNumber(v.zdfStages, 1))));
+      if (copies > 1 && Number.isFinite(mag) && mag > 0) {
+        mag **= copies;
+      }
       return Number.isFinite(mag) && mag > 0 ? mag : 1e-6;
     }
     return 1;
@@ -658,7 +789,7 @@ function nodeGraphFilterCurveResponseAt(node, frequency, sampleRate, view = null
 
 function nodeGraphFilterCurveCutoffFrequencies(node, view = null) {
   const v = view || nodeGraphFilterCurveView(node) || {};
-  if (nodeGraphIsCrossoverType(node.type) || Array.isArray(v.frequencies)) {
+  if (node.type === "graphicEq" || nodeGraphIsCrossoverType(node.type) || Array.isArray(v.frequencies)) {
     return (Array.isArray(v.frequencies) ? v.frequencies : [])
       .map((value) => nodeGraphFilterCurveFiniteHz(value, 0))
       .filter((value) => Number.isFinite(value) && value >= 0);
@@ -740,9 +871,31 @@ function nodeGraphFilterCurveLabel(node) {
     const modes = typeof nodeGraphTb303FilterModes !== "undefined" ? nodeGraphTb303FilterModes : null;
     return modes?.[Math.round(nodeGraphFiniteNumber(node.params?.mode, 4))] || "TB-303";
   }
+  if (nodeGraphIsScientificIirType(node.type)) {
+    const modes = ["LP", "HP", "BP", "BR"];
+    const mode = modes[Math.round(nodeGraphFiniteNumber(node.params?.mode))] || "LP";
+    const order = nodeGraphScientificIirClampOrder(node.params?.order);
+    return `${mode}${order * 6}`;
+  }
+  if (node.type === "phaser") {
+    return "";
+  }
   if (node.type === "eqFilter") {
     const modes = typeof nodeGraphEqFilterModes !== "undefined" ? nodeGraphEqFilterModes : null;
     return modes?.[Math.round(nodeGraphFiniteNumber(node.params?.mode, 1))] || "EQ";
+  }
+  if (node.type === "graphicEq") {
+    return "Graphic EQ";
+  }
+  if (node.type === "bandpass" || node.type === "allpass"
+      || node.type === "lowpass" || node.type === "highpass") {
+    const slope = Math.round(nodeGraphFiniteNumber(node.params?.slope));
+    const db = (Math.max(0, Math.min(3, slope)) + 1) * 12;
+    const prefix = node.type === "bandpass" ? "BP"
+      : node.type === "allpass" ? "AP"
+      : node.type === "highpass" ? "HP"
+      : "LP";
+    return `${prefix}${db}`;
   }
   if (node.type === "activeFilter") {
     const hp = Math.round(nodeGraphFiniteNumber(node.params?.hpSlope));
@@ -931,6 +1084,179 @@ function nodeGraphFilterCurveMeasureBox(section) {
   return { rawW, rawH };
 }
 
+const nodeGraphPhaserFaceDisplaySettingsDefaults = Object.freeze({
+  barThickness: 4,
+  curveThickness: 2,
+});
+
+function normalizeNodeGraphPhaserFaceDisplaySettings(source) {
+  const raw = source && typeof source === "object" ? source : {};
+  const bar = Number(raw.barThickness);
+  const curve = Number(raw.curveThickness);
+  return {
+    barThickness: Number.isFinite(bar)
+      ? Math.max(0, Math.min(16, clampAuthoredInkPx(bar, nodeGraphPhaserFaceDisplaySettingsDefaults.barThickness)))
+      : nodeGraphPhaserFaceDisplaySettingsDefaults.barThickness,
+    curveThickness: Number.isFinite(curve)
+      ? Math.max(0, Math.min(16, clampAuthoredInkPx(curve, nodeGraphPhaserFaceDisplaySettingsDefaults.curveThickness)))
+      : nodeGraphPhaserFaceDisplaySettingsDefaults.curveThickness,
+  };
+}
+
+function nodeGraphPhaserWiredOuts(node) {
+  const id = node?.id;
+  const conns = (typeof nodeGraphMvp === "object" && nodeGraphMvp?.connections) || [];
+  let left = false;
+  let right = false;
+  if (!id) return { left, right };
+  for (let i = 0; i < conns.length; i += 1) {
+    const c = conns[i];
+    if (!c || c.sourceNode !== id) continue;
+    const p = String(c.sourcePort || "");
+    if (p === "Left") left = true;
+    else if (p === "Right") right = true;
+  }
+  return { left, right };
+}
+
+function nodeGraphPhaserBpMag(freq, f0, q, cascade) {
+  const f = Math.max(1e-9, freq);
+  const fC = Math.max(1e-9, f0);
+  const ratio = f / fC - fC / f;
+  const den = Math.sqrt(1 + (q * q) * (ratio * ratio));
+  let h = den > 0 ? 1 / den : 0;
+  if (cascade > 1) h **= cascade;
+  return h;
+}
+
+function nodeGraphPhaserApComplex(freq, f0, q, cascade) {
+  const f = Math.max(1e-9, freq);
+  const fC = Math.max(1e-9, f0);
+  const u = q * (f / fC - fC / f);
+  const d = 1 + u * u;
+  let re = (1 - u * u) / d;
+  let im = (-2 * u) / d;
+  const n = Math.max(1, cascade);
+  for (let k = 1; k < n; k += 1) {
+    const nr = re * ((1 - u * u) / d) - im * ((-2 * u) / d);
+    const ni = re * ((-2 * u) / d) + im * ((1 - u * u) / d);
+    re = nr;
+    im = ni;
+  }
+  return { re, im };
+}
+
+function drawNodeGraphPhaserPeakMarks(context, view, box) {
+  const width = box.width;
+  const height = box.height;
+  const logMin = box.logMin;
+  const logRange = box.logRange;
+  const n = Math.max(1, Math.min(8, Math.round(nodeGraphFiniteNumber(view?.bands, 4))));
+  const f0 = Math.max(1e-6, nodeGraphFilterCurveFiniteHz(view?.frequency, 1000));
+  const spread = nodeGraphFiniteNumber(view?.spread, 0.5);
+  const stereo = nodeGraphFiniteNumber(view?.stereoSpread);
+  const sweep = nodeGraphFiniteNumber(view?.sweep);
+  const q = Math.max(0.01, nodeGraphFiniteNumber(view?.q, 1));
+  const cascade = Math.max(1, Math.min(4, Math.round(nodeGraphFiniteNumber(view?.slope)) + 1));
+  const mid = 0.5 * (n - 1);
+  const faceMin = faceMinSide(width, height);
+  const barT = faceInkPx(clampAuthoredInkPx(view?.barThickness, 4), faceMin);
+  const curveT = faceInkPx(clampAuthoredInkPx(view?.curveThickness, 2), faceMin);
+  const barW = barT > 0 ? Math.max(0.5, barT) : 0;
+  const curveW = curveT > 0 ? Math.max(0.5, curveT) : 0;
+  const leftOut = view?.leftOut === true;
+  const rightOut = view?.rightOut === true;
+  const stereoOut = leftOut || rightOut;
+  const xOf = (hz) => {
+    const h = Math.max(1e-9, hz);
+    return ((Math.log10(h) - logMin) / logRange) * width;
+  };
+  const centers = (octOffset) => {
+    const list = [];
+    for (let i = 0; i < n; i += 1) {
+      list.push(f0 * (2 ** ((i - mid) * spread + octOffset + sweep)));
+    }
+    return list;
+  };
+  const kernel = Math.round(nodeGraphFiniteNumber(view?.kernel));
+  const mix = nodeGraphFiniteNumber(view?.mix, 0.5);
+  const magAt = (hz, octOffset) => {
+    const list = centers(octOffset);
+    if (kernel === 1) {
+      let re = 1;
+      let im = 0;
+      for (let i = 0; i < list.length; i += 1) {
+        const ap = nodeGraphPhaserApComplex(hz, list[i], q, cascade);
+        const nr = re * ap.re - im * ap.im;
+        const ni = re * ap.im + im * ap.re;
+        re = nr;
+        im = ni;
+      }
+      const wr = (1 - mix) + mix * re;
+      const wi = mix * im;
+      return Math.hypot(wr, wi);
+    }
+    let sum = 0;
+    for (let i = 0; i < list.length; i += 1) {
+      sum += nodeGraphPhaserBpMag(hz, list[i], q, cascade);
+    }
+    return Math.abs(1 - mix) * 1 + Math.abs(mix) * sum;
+  };
+  const drawBars = (octOffset, color) => {
+    if (!(barW > 0)) return;
+    context.fillStyle = color;
+    const list = centers(octOffset);
+    for (let i = 0; i < list.length; i += 1) {
+      const x = xOf(list[i]);
+      if (!Number.isFinite(x)) continue;
+      context.fillRect(x - barW * 0.5, 0, barW, height);
+    }
+  };
+  const drawCurve = (octOffset, color) => {
+    if (!(curveW > 0)) return;
+    const step = Math.max(2, Math.ceil(width / 96));
+    let peak = 1e-9;
+    const ys = [];
+    for (let x = 0; x < width; x += step) {
+      const progress = width <= 1 ? 0 : x / (width - 1);
+      const hz = 10 ** (logMin + progress * logRange);
+      const m = magAt(hz, octOffset);
+      ys.push({ x, m });
+      if (m > peak) peak = m;
+    }
+    context.strokeStyle = color;
+    context.lineWidth = curveW;
+    context.lineJoin = "round";
+    context.lineCap = "round";
+    context.beginPath();
+    for (let i = 0; i < ys.length; i += 1) {
+      const y = height * (1 - ys[i].m / peak);
+      if (i === 0) context.moveTo(ys[i].x, y);
+      else context.lineTo(ys[i].x, y);
+    }
+    context.stroke();
+  };
+  const colorL = "rgb(255, 128, 128)";
+  const colorR = "rgb(128, 128, 255)";
+  const colorM = "rgb(80, 220, 110)";
+  context.save();
+  context.globalCompositeOperation = "lighter";
+  if (!stereoOut) {
+    drawBars(0, colorM);
+    drawCurve(0, "rgb(160, 255, 180)");
+  } else {
+    if (leftOut || !rightOut) {
+      drawBars(-0.5 * stereo, colorL);
+      drawCurve(-0.5 * stereo, colorL);
+    }
+    if (rightOut || !leftOut) {
+      drawBars(0.5 * stereo, colorR);
+      drawCurve(0.5 * stereo, colorR);
+    }
+  }
+  context.restore();
+}
+
 function drawNodeGraphFilterCurveDisplayInner(section) {
   if (section) {
     section.hidden = false;
@@ -948,19 +1274,30 @@ function drawNodeGraphFilterCurveDisplayInner(section) {
   // unchanged AND we already painted a real layout-sized face. Never treat a
   // 1×1 pre-layout paint as final (that froze crossover faces blank).
   const view = nodeGraphFilterCurveView(node);
-  const signature = JSON.stringify(view);
-  if (
-    section._filterCurveSignature === signature
-    && !section._filterCurveForceDraw
-    && section._filterCurveLaidOut === true
-  ) {
-    return;
+  const amplitude = Math.max(0, nodeGraphFilterCurveLiveParam(node, "amplitude", 1));
+  const signature = JSON.stringify(view) + "|a=" + amplitude;
+  // Drop provisional px width/height from older pre-layout fallback. That stamp
+  // overrode CSS width:100% and froze the face when the module was widened.
+  if (section.style.width || section.style.height) {
+    section.style.width = "";
+    section.style.height = "";
   }
   // Layout size: offsetWidth avoids getBoundingClientRect (cheaper; zoom is
   // applied via CSS transform on the workspace, not on face layout size).
   const measured = nodeGraphFilterCurveMeasureBox(section);
   const rawW = measured.rawW;
   const rawH = measured.rawH;
+  const cssW = Math.max(1, rawW);
+  const cssH = Math.max(1, rawH);
+  if (
+    section._filterCurveSignature === signature
+    && section._filterCurveCssW === cssW
+    && section._filterCurveCssH === cssH
+    && !section._filterCurveForceDraw
+    && section._filterCurveLaidOut === true
+  ) {
+    return;
+  }
   if (rawW < 8 || rawH < 8) {
     // Face not laid out yet — do not cache signature; keep retrying.
     section._filterCurveLaidOut = false;
@@ -976,21 +1313,6 @@ function drawNodeGraphFilterCurveDisplayInner(section) {
     return;
   }
   section._filterCurveRetryCount = 0;
-  if ((nodeGraphFiniteNumber(section.clientWidth)) < 8 || (nodeGraphFiniteNumber(section.clientHeight)) < 8) {
-    section.style.width = `${Math.max(8, rawW)}px`;
-    section.style.height = `${Math.max(8, rawH)}px`;
-  }
-  const cssW = Math.max(1, rawW);
-  const cssH = Math.max(1, rawH);
-  if (
-    section._filterCurveSignature === signature
-    && section._filterCurveCssW === cssW
-    && section._filterCurveCssH === cssH
-    && !section._filterCurveForceDraw
-    && section._filterCurveLaidOut === true
-  ) {
-    return;
-  }
   const metrics = nodeGraphSizeDisplayCanvas(section, canvas, { pixelDensity: 1 });
   if (!metrics) {
     return;
@@ -1007,6 +1329,15 @@ function drawNodeGraphFilterCurveDisplayInner(section) {
   const maxFreq = Math.max(minFreq * 2, Math.min(20000, sampleRate * 0.5));
   const minDb = -48;
   const maxDb = 18;
+  const faceMin = faceMinSide(width, height);
+  const strokeGrid = faceInkPx(1, faceMin);
+  const strokeCurve = faceInkPx(1.5, faceMin);
+  const strokeCutoff = faceInkPx(1, faceMin);
+  const fontPx = Math.max(8, faceInkPx(11, faceMin));
+  const titlePx = Math.max(8, faceInkPx(12, faceMin));
+  const labelGap = faceInkPx(2, faceMin);
+  const titlePad = faceInkPx(4, faceMin);
+  const staggerPx = faceInkPx(12, faceMin);
   section._filterCurveSignature = signature;
   section._filterCurveCssW = cssW;
   section._filterCurveCssH = cssH;
@@ -1015,9 +1346,30 @@ function drawNodeGraphFilterCurveDisplayInner(section) {
   context.clearRect(0, 0, width, height);
   context.fillStyle = "rgba(2, 6, 9, 0.88)";
   context.fillRect(0, 0, width, height);
+  const isPhaser = node.type === "phaser";
+  const zeroDbY = (1 - ((0 - minDb) / (maxDb - minDb))) * height;
+  if (!isPhaser && Number.isFinite(zeroDbY)) {
+    context.strokeStyle = "rgba(255, 255, 255, 0.22)";
+    context.lineWidth = strokeGrid;
+    context.beginPath();
+    context.moveTo(0, zeroDbY);
+    context.lineTo(width, zeroDbY);
+    context.stroke();
+  }
   const logMin = Math.log10(minFreq);
   const logRange = Math.log10(maxFreq) - logMin;
-  const cutoffLineWidth = 1;
+  if (isPhaser) {
+    drawNodeGraphPhaserPeakMarks(context, view, {
+      width,
+      height,
+      logMin,
+      logRange,
+      minFreq,
+      maxFreq,
+      zeroDbY,
+    });
+  }
+  const cutoffLineWidth = strokeCutoff;
   const cutoffInset = cutoffLineWidth * 0.5;
   const cutoffDrawableWidth = Math.max(1, width - cutoffLineWidth);
   const cutoffs = nodeGraphFilterCurveCutoffFrequencies(node, view);
@@ -1025,12 +1377,14 @@ function drawNodeGraphFilterCurveDisplayInner(section) {
 
   // Crossover faces: split lines + Hz only (no magnitude curves / band titles).
   // Keeps 1gu display height readable and cheap to paint.
-  if (!isCrossover) {
+  if (!isCrossover && !isPhaser) {
     // Cap sample density for filter magnitude paths.
     const maxSamples = 220;
     const step = Math.max(1, Math.ceil(width / maxSamples));
     context.strokeStyle = "rgba(61, 224, 255, 0.95)";
-    context.lineWidth = 1.5;
+    context.lineWidth = strokeCurve;
+    context.lineJoin = "round";
+    context.lineCap = "round";
     context.beginPath();
     let started = false;
     for (let x = 0; x < width; x += step) {
@@ -1040,6 +1394,7 @@ function drawNodeGraphFilterCurveDisplayInner(section) {
       if (!Number.isFinite(magnitude) || magnitude <= 0) {
         magnitude = 1e-6;
       }
+      magnitude *= amplitude;
       const db = clampNodeSliderValue(20 * Math.log10(Math.max(1e-6, magnitude)), minDb, maxDb);
       const y = (1 - ((db - minDb) / (maxDb - minDb))) * height;
       if (!Number.isFinite(y)) {
@@ -1060,6 +1415,7 @@ function drawNodeGraphFilterCurveDisplayInner(section) {
       if (!Number.isFinite(magnitude) || magnitude <= 0) {
         magnitude = 1e-6;
       }
+      magnitude *= amplitude;
       const db = clampNodeSliderValue(20 * Math.log10(Math.max(1e-6, magnitude)), minDb, maxDb);
       const y = (1 - ((db - minDb) / (maxDb - minDb))) * height;
       if (Number.isFinite(y)) {
@@ -1071,15 +1427,13 @@ function drawNodeGraphFilterCurveDisplayInner(section) {
     }
   }
 
-  // Vertical frequency markers (+ Hz labels for crossovers / multi-cutoff).
+  // Vertical frequency markers + Hz labels (incl. single-cutoff LP/HP).
   context.strokeStyle = "rgba(226, 168, 109, 0.85)";
   context.lineWidth = cutoffLineWidth;
-  // Fit labels on 1gu faces (~28px): single baseline, compact type.
-  const fontPx = height < 36 ? 8 : 9;
   context.font = `600 ${fontPx}px system-ui, sans-serif`;
   context.textBaseline = "middle";
   const labelY = height * 0.5;
-  cutoffs.forEach((frequency, index) => {
+  if (!isPhaser) cutoffs.forEach((frequency, index) => {
     // 0 Hz (and anything below the log axis floor) → left edge, not minFreq.
     const cutoffRatio = nodeGraphFilterCurveCutoffRatio(frequency, minFreq, maxFreq);
     const cutoffX = cutoffInset + cutoffRatio * cutoffDrawableWidth;
@@ -1087,34 +1441,33 @@ function drawNodeGraphFilterCurveDisplayInner(section) {
     context.moveTo(cutoffX, 0);
     context.lineTo(cutoffX, height);
     context.stroke();
-    if (isCrossover || cutoffs.length > 1) {
+    if (cutoffs.length > 0) {
       const label = nodeGraphFilterCurveFormatHz(frequency);
       const textW = context.measureText(label).width;
-      let textX = cutoffX + 3;
-      if (textX + textW > width - 2) {
-        textX = Math.max(2, cutoffX - textW - 3);
+      let textX = cutoffX + labelGap;
+      if (textX + textW > width - labelGap) {
+        textX = Math.max(labelGap, cutoffX - textW - labelGap);
       }
-      // Slight vertical stagger only when the face is tall enough.
-      const stagger = height >= 40 ? ((index % 3) - 1) * 10 : 0;
+      const stagger = height >= fontPx * 4 ? ((index % 3) - 1) * staggerPx : 0;
       const textY = Math.max(fontPx * 0.55, Math.min(height - fontPx * 0.55, labelY + stagger));
       context.fillStyle = "rgba(2, 6, 9, 0.75)";
-      context.fillRect(textX - 1, textY - fontPx * 0.55, textW + 3, fontPx + 2);
+      context.fillRect(textX - labelGap * 0.35, textY - fontPx * 0.55, textW + labelGap, fontPx + labelGap * 0.7);
       context.fillStyle = "rgba(255, 220, 170, 0.95)";
       context.fillText(label, textX, textY);
     }
   });
 
   // Non-crossover filter title (crossovers stay markers-only).
-  if (!isCrossover) {
+  if (!isCrossover && !isPhaser) {
     const title = nodeGraphFilterCurveLabel(node);
-    context.font = "600 10px system-ui, sans-serif";
+    context.font = `600 ${titlePx}px system-ui, sans-serif`;
     context.textBaseline = "top";
     const titleW = context.measureText(title).width;
-    const titleY = 3;
+    const titleY = titlePad * 0.5;
     context.fillStyle = "rgba(2, 6, 9, 0.65)";
-    context.fillRect(6, titleY - 1, titleW + 4, 12);
+    context.fillRect(titlePad, titleY - titlePad * 0.15, titleW + titlePad * 0.7, titlePx + titlePad * 0.35);
     context.fillStyle = "rgba(229, 238, 242, 0.82)";
-    context.fillText(title, 8, titleY);
+    context.fillText(title, titlePad * 1.3, titleY);
   }
 
   // Keep the dimmer hole open after paint. Stop wipe used to leave strength 0

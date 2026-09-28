@@ -106,6 +106,8 @@ function nodeGraphModuleOutputPorts(type) {
   if (!definition) {
     return [];
   }
+  // List each jack once: outputs OR dataOutputs, never both. codeOutputs only tags styling.
+  nodeGraphAssertJackListsDisjoint(definition.outputs, definition.dataOutputs, `${type || "module"} outputs`);
   return [
     ...(definition.outputs || []),
     ...(definition.dataOutputs || []),
@@ -252,14 +254,29 @@ function normalizeNodeGraphCodeblock(value = {}) {
   };
 }
 
+
+
+/** inputs+dataInputs (and outs) are both jack lists. Overlap is a definition bug — throw, do not silence. */
+function nodeGraphAssertJackListsDisjoint(signalPorts, dataPorts, where) {
+  const signal = Array.isArray(signalPorts) ? signalPorts : [];
+  const data = Array.isArray(dataPorts) ? dataPorts : [];
+  const signalSet = new Set(signal.map((p) => String(p || "").trim()).filter(Boolean));
+  const overlap = [];
+  for (const port of data) {
+    const name = String(port || "").trim();
+    if (name && signalSet.has(name)) overlap.push(name);
+  }
+  if (overlap.length) {
+    throw new Error(
+      `${where}: jack name(s) listed in both signal and data port lists: ${overlap.join(", ")}. `
+      + "List each jack once (inputs OR dataInputs / outputs OR dataOutputs). "
+      + "codeInputs/codeOutputs only tag Code styling — they are not jack lists.",
+    );
+  }
+}
+
 function nodeGraphPatchNodeInputPorts(node) {
   const patchNode = typeof node === "string" ? nodeGraphPatchNode(node) : node;
-  if (patchNode?.type === "codeblock") {
-    return normalizeNodeGraphCodeblock(patchNode.codeblock).inputs;
-  }
-  if (patchNode?.type === "customDisplay") {
-    return normalizeNodeGraphCustomDisplay(patchNode.customDisplay).inputs;
-  }
   if (patchNode?.type === "canvas") {
     return normalizeNodeGraphCanvasScript(patchNode.canvasScript).inputs;
   }
@@ -278,6 +295,8 @@ function nodeGraphPatchNodeInputPorts(node) {
     ? nodeGraphModuleDefinition(patchNode?.type)
     : nodeGraphModuleDefinitions[patchNode?.type];
   // Data-plane inlets (e.g. Additive Graph) stack above signal CV so Graph stays on top.
+  // List each jack once: inputs OR dataInputs, never both. codeInputs only tags styling.
+  nodeGraphAssertJackListsDisjoint(definition?.inputs, definition?.dataInputs, `${patchNode?.type || "module"} inputs`);
   return [
     ...(definition?.dataInputs || []),
     ...(definition?.inputs || []),
@@ -286,12 +305,6 @@ function nodeGraphPatchNodeInputPorts(node) {
 
 function nodeGraphPatchNodeOutputPorts(node) {
   const patchNode = typeof node === "string" ? nodeGraphPatchNode(node) : node;
-  if (patchNode?.type === "codeblock") {
-    return normalizeNodeGraphCodeblock(patchNode.codeblock).outputs;
-  }
-  if (patchNode?.type === "customDisplay") {
-    return [];
-  }
   if (
     typeof nodeGraphIsContainerShellType === "function"
     && nodeGraphIsContainerShellType(patchNode?.type)
@@ -463,6 +476,7 @@ function nodeGraphParameterDefinitionMetadata(parameter) {
     maxDigits: normalizeNodeGraphMetadataMaxDigits(parameter.maxDigits, kind),
     mid: safeMid,
     min: safeMin,
+    reverse: Boolean(parameter.reverse),
     nonlinearSlider: Object.hasOwn(parameter, "nonlinearSlider")
       ? Boolean(parameter.nonlinearSlider)
       : midInsideRange && Math.abs(safeMid - (safeMin + safeMax) / 2) > Number.EPSILON,
@@ -591,38 +605,6 @@ function normalizeNodeGraphPatchMetadataAlias(alias) {
   return String(alias ?? "").trim().slice(0, 64);
 }
 
-/** Yellow Graph modules: param-out / readouts / DSP use DOMAIN (real units). */
-function nodeGraphModuleUsesYellowGraphDomainParamOut(type) {
-  const t = String(type || "");
-  if (
-    t === "additiveGenerator"
-    || t === "additiveLinearFilter"
-    || t === "additiveAnalogFilter"
-    || t === "additiveLadderFilter"
-    || t === "additiveBubble"
-    || t === "additiveFrequencySkew"
-    || t === "additiveQuantizeFreq"
-    || t === "additiveQuantizePhase"
-    || t === "additiveNoisyFreq"
-    || t === "additiveNoisyPhase"
-    || t === "additiveNoisyPan"
-    || t === "additiveNoisyAmp"
-    || t === "additiveImage"
-    || t === "additiveOut"
-  ) {
-    return true;
-  }
-  const def = typeof nodeGraphModuleDefinitions !== "undefined"
-    ? nodeGraphModuleDefinitions[t]
-    : null;
-  if (!def) {
-    return false;
-  }
-  const dataIns = Array.isArray(def.dataInputs) ? def.dataInputs : [];
-  const dataOuts = Array.isArray(def.dataOutputs) ? def.dataOutputs : [];
-  return dataIns.includes("Graph") || dataOuts.includes("Graph");
-}
-
 function normalizeNodeGraphPatchParameterMetadata(type, key, metadata = {}) {
   let parameter = nodeGraphModuleDefinitions[type]?.parameters?.find(
     (candidate) => candidate.key === key,
@@ -668,8 +650,14 @@ function normalizeNodeGraphPatchParameterMetadata(type, key, metadata = {}) {
   if (!Number.isFinite(max)) {
     max = fallback.max;
   }
+  // Backwards typed range means "knob left is the first number". Store min<=max
+  // and turn Reverse on so the mapping math can keep assuming a positive span.
+  let reverse = Object.hasOwn(source, "reverse")
+    ? Boolean(source.reverse)
+    : Boolean(fallback.reverse);
   if (min > max) {
     [min, max] = [max, min];
+    reverse = true;
   }
   if (max <= min) {
     max = min + 1;
@@ -755,15 +743,16 @@ function normalizeNodeGraphPatchParameterMetadata(type, key, metadata = {}) {
       def = Number.isFinite(fallback.def) ? fallback.def : 0;
     }
   }
-  // Range Out: spawn domain is −10…+10 (was ±20000 / ±10000 / ±1000).
+  // Range In/Out: spawn domain is −10…+10 (was ±20000 leftover slider chrome).
   if (
     type === "range"
-    && (key === "outLow" || key === "outHigh")
+    && (key === "inLow" || key === "inHigh" || key === "outLow" || key === "outHigh")
     && Number.isFinite(fallback.min)
     && Number.isFinite(fallback.max)
     && fallback.min === -10
     && fallback.max === 10
-    && (min < -10 || max > 10)
+    && min === -20000
+    && max === 20000
   ) {
     min = -10;
     max = 10;
@@ -811,6 +800,7 @@ function normalizeNodeGraphPatchParameterMetadata(type, key, metadata = {}) {
     ),
     mid: clampNodeSliderValue(Number.isFinite(mid) ? mid : fallback.mid, min, max),
     min,
+    reverse,
     nonlinearSlider: Object.hasOwn(source, "nonlinearSlider")
       ? Boolean(source.nonlinearSlider)
       : fallback.nonlinearSlider,
@@ -895,7 +885,7 @@ function normalizeNodeGraphPatchParameterMetadata(type, key, metadata = {}) {
   }
   // XY pad mouse/phase targets are instant UI only (audio path owns Papoulis).
   if (
-    type === "xyPad"
+    (type === "xyPad" || type === "theremin")
     && (
       (typeof nodeGraphXyPadDspIsUnsmoothedParamKey === "function"
         && nodeGraphXyPadDspIsUnsmoothedParamKey(key))
@@ -911,13 +901,20 @@ function normalizeNodeGraphPatchParameterMetadata(type, key, metadata = {}) {
   if (nodeGraphIsHardcodedIoVolumeParam(type, key)) {
     nodeGraphApplyHardcodedIoVolumeSmoothing(normalized);
   }
-  // Yellow Graph: param-out jacks emit DOMAIN (e.g. Phase Skew 0…1000), not 0…1.
-  if (nodeGraphModuleUsesYellowGraphDomainParamOut(type)) {
-    normalized.outputDomain = true;
+  // Choice sliders are always 0…N. outputDomain is a per-param opt-in on the
+  // module definition (PWM, Phase Rotation, Hz, …). Stale paramMeta from the
+  // old Additive type-wide force must not keep Harmonics (etc.) as ±max offsets.
+  if (Array.isArray(normalized.choices) && normalized.choices.length > 0) {
+    normalized.outputDomain = false;
   } else if (Object.hasOwn(source, "outputDomain")) {
     normalized.outputDomain = Boolean(source.outputDomain);
   } else {
     normalized.outputDomain = Boolean(fallback.outputDomain);
+  }
+  // Domain-mode offset ("Use real mod values"): separate from absolute params[key].
+  {
+    const n = Number(Object.hasOwn(source, "domainOffset") ? source.domainOffset : 0);
+    normalized.domainOffset = Number.isFinite(n) ? n : 0;
   }
   return normalized;
 }

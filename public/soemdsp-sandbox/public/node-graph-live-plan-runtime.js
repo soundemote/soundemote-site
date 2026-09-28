@@ -178,6 +178,25 @@ function nodeGraphBuildLiveParameterNodes(activeNodeIds = null, bypassedNodes = 
         params,
         type: node.type,
       };
+      const portalTitle = (
+        typeof nodeGraphIsNamedPortalType === "function"
+        && nodeGraphIsNamedPortalType(node.type)
+        && typeof normalizeNodeGraphNamedPortalAlias === "function"
+      )
+        ? normalizeNodeGraphNamedPortalAlias(node.alias)
+        : (typeof normalizeNodeGraphPatchNodeAlias === "function"
+          ? normalizeNodeGraphPatchNodeAlias(node.alias)
+          : String(node.alias || "").trim());
+      if (portalTitle) {
+        runtimeNode.alias = portalTitle;
+        runtimeNode.portalTitle = portalTitle;
+      }
+      if (typeof nodeGraphTakePendingParamSnaps === "function") {
+        const snaps = nodeGraphTakePendingParamSnaps(node.id);
+        if (snaps && snaps.length) {
+          runtimeNode._pendingSnapParams = snaps;
+        }
+      }
       // Metamodule / Group ownership — required for Polyphony voice lanes.
       if (node.ownerMetamoduleId) {
         runtimeNode.ownerMetamoduleId = String(node.ownerMetamoduleId);
@@ -203,18 +222,21 @@ function nodeGraphBuildLiveParameterNodes(activeNodeIds = null, bypassedNodes = 
         runtimeNode.bypassed = true;
         runtimeNode.bypassSpec = nodeGraphModuleBypassSpec(node.type);
       }
-      if (node.type === "codeblock") {
-        runtimeNode.codeblock = normalizeNodeGraphCodeblock(node.codeblock);
-      }
-      if (node.type === "samplePlayer" || node.type === "sampleLooper" || node.type === "audioPlayer") {
+      if (node.type === "samplePlayer" || node.type === "sampleLooper" || node.type === "audioPlayer" || node.type === "wavetable2d") {
         runtimeNode.sample = typeof normalizeNodeGraphNodeSamplePointer === "function"
           ? normalizeNodeGraphNodeSamplePointer(node.sample)
           : { id: normalizeNodeGraphSampleId(node.sample?.id) };
       }
-      if (node.type === "audioPlayer" && Number.isFinite(Number(node.samplePhase))) {
+      if (
+        (node.type === "audioPlayer" || node.type === "samplePlayer")
+        && Number.isFinite(Number(node.samplePhase))
+      ) {
         runtimeNode.samplePhase = Math.max(0, Math.min(1, Number(node.samplePhase)));
       }
-      if (node.type === "audioPlayer" && Number.isFinite(Number(node.samplePhaseSeek))) {
+      if (
+        (node.type === "audioPlayer" || node.type === "samplePlayer")
+        && Number.isFinite(Number(node.samplePhaseSeek))
+      ) {
         runtimeNode.samplePhaseSeek = Math.max(0, Math.round(Number(node.samplePhaseSeek)) || 0);
       }
       if (node.type === "phosphillator" && Array.isArray(node.drawnPath?.points)) {
@@ -266,6 +288,25 @@ function nodeGraphBuildLiveParameterNodesForPatch(patch, activeNodeIds = null, b
         params,
         type: node.type,
       };
+      const portalTitle = (
+        typeof nodeGraphIsNamedPortalType === "function"
+        && nodeGraphIsNamedPortalType(node.type)
+        && typeof normalizeNodeGraphNamedPortalAlias === "function"
+      )
+        ? normalizeNodeGraphNamedPortalAlias(node.alias)
+        : (typeof normalizeNodeGraphPatchNodeAlias === "function"
+          ? normalizeNodeGraphPatchNodeAlias(node.alias)
+          : String(node.alias || "").trim());
+      if (portalTitle) {
+        runtimeNode.alias = portalTitle;
+        runtimeNode.portalTitle = portalTitle;
+      }
+      if (typeof nodeGraphTakePendingParamSnaps === "function") {
+        const snaps = nodeGraphTakePendingParamSnaps(node.id);
+        if (snaps && snaps.length) {
+          runtimeNode._pendingSnapParams = snaps;
+        }
+      }
       if (node.ownerMetamoduleId) {
         runtimeNode.ownerMetamoduleId = String(node.ownerMetamoduleId);
       }
@@ -289,18 +330,21 @@ function nodeGraphBuildLiveParameterNodesForPatch(patch, activeNodeIds = null, b
         runtimeNode.bypassed = true;
         runtimeNode.bypassSpec = nodeGraphModuleBypassSpec(node.type);
       }
-      if (node.type === "codeblock") {
-        runtimeNode.codeblock = normalizeNodeGraphCodeblock(node.codeblock);
-      }
-      if (node.type === "samplePlayer" || node.type === "sampleLooper" || node.type === "audioPlayer") {
+      if (node.type === "samplePlayer" || node.type === "sampleLooper" || node.type === "audioPlayer" || node.type === "wavetable2d") {
         runtimeNode.sample = typeof normalizeNodeGraphNodeSamplePointer === "function"
           ? normalizeNodeGraphNodeSamplePointer(node.sample)
           : { id: normalizeNodeGraphSampleId(node.sample?.id) };
       }
-      if (node.type === "audioPlayer" && Number.isFinite(Number(node.samplePhase))) {
+      if (
+        (node.type === "audioPlayer" || node.type === "samplePlayer")
+        && Number.isFinite(Number(node.samplePhase))
+      ) {
         runtimeNode.samplePhase = Math.max(0, Math.min(1, Number(node.samplePhase)));
       }
-      if (node.type === "audioPlayer" && Number.isFinite(Number(node.samplePhaseSeek))) {
+      if (
+        (node.type === "audioPlayer" || node.type === "samplePlayer")
+        && Number.isFinite(Number(node.samplePhaseSeek))
+      ) {
         runtimeNode.samplePhaseSeek = Math.max(0, Math.round(Number(node.samplePhaseSeek)) || 0);
       }
       if (node.type === "phosphillator" && Array.isArray(node.drawnPath?.points)) {
@@ -421,7 +465,6 @@ function createNodeGraphLiveRuntime(plan, previousRuntime = null) {
   const speedColorInertiaStates = new Map();
   const inertialFilterStates = new Map();
   const softClipperStates = new Map();
-  const clipperLimiterStates = new Map();
   const speakerProtector2States = new Map();
   const tiltFilterStates = new Map();
   const eqFilterStates = new Map();
@@ -709,9 +752,6 @@ function createNodeGraphLiveRuntime(plan, previousRuntime = null) {
     if (node.type === "softClipper" && typeof createNodeGraphSoftClipperState === "function") {
       softClipperStates.set(node.id, createNodeGraphSoftClipperState());
     }
-    if (node.type === "clipperLimiter" && typeof createNodeGraphSoftClipperState === "function") {
-      clipperLimiterStates.set(node.id, createNodeGraphSoftClipperState());
-    }
     if (node.type === "speakerProtector2" && typeof createNodeGraphSpeakerProtector2State === "function") {
       speakerProtector2States.set(node.id, createNodeGraphSpeakerProtector2State());
     }
@@ -774,7 +814,7 @@ function createNodeGraphLiveRuntime(plan, previousRuntime = null) {
     if (node.type === "sampleHold") {
       sampleHoldStates.set(node.id, createNodeGraphStereoSampleHoldState());
     }
-    if (node.type === "samplePlayer" || node.type === "sampleLooper" || node.type === "audioPlayer") {
+    if (node.type === "samplePlayer" || node.type === "sampleLooper" || node.type === "audioPlayer" || node.type === "wavetable2d") {
       samplePlaybackStates.set(node.id, createNodeGraphSamplePlaybackState());
     }
     if (node.type === "nextPatch" || node.type === "previousPatch") {
@@ -859,12 +899,8 @@ function createNodeGraphLiveRuntime(plan, previousRuntime = null) {
     if (node.type === "antisaw") {
       antisawStates.set(node.id, createNodeGraphAntisawState());
     }
-    if (node.type === "fractalBrownianNoise") {
-      fractalBrownianNoiseStates.set(node.id, createNodeGraphFractalBrownianNoiseState());
-    }
-    if (node.type === "fbmField") {
-      fbmFieldStates.set(node.id, createNodeGraphFbmFieldState());
-    }
+    // fractalBrownianNoise / fbmField: no main-thread JS audio state.
+    // Motion DSP is native graph type 87; Field face uses fbm-field.js wasm.
     if (node.type === "rgbFractal") {
       const kept = previousRgbFractalStates?.get(node.id);
       rgbFractalStates.set(
@@ -983,7 +1019,6 @@ function createNodeGraphLiveRuntime(plan, previousRuntime = null) {
     speedColorInertiaStates,
     inertialFilterStates,
     softClipperStates,
-    clipperLimiterStates,
     speakerProtector2States,
     tiltFilterStates,
     eqFilterStates,
@@ -1035,7 +1070,6 @@ function createNodeGraphLiveRuntime(plan, previousRuntime = null) {
     meterSamples: 0,
     meterSquareSum: 0,
     modulationConnections,
-    macroControls: Array.isArray(nodeGraphMvp?.macroControls) ? [...nodeGraphMvp.macroControls] : new Array(10).fill(0),
     externalButtonEvents: new Map(),
     wireBreakEvent: { pulseSamples: 0, gateSamples: 0 },
     wireConnectEvent: { pulseSamples: 0 },
@@ -1228,9 +1262,6 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
   }
   if (!runtime.softClipperStates) {
     runtime.softClipperStates = new Map();
-  }
-  if (!runtime.clipperLimiterStates) {
-    runtime.clipperLimiterStates = new Map();
   }
   if (!runtime.speakerProtector2States) {
     runtime.speakerProtector2States = new Map();
@@ -1700,13 +1731,6 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
       runtime.softClipperStates.set(node.id, createNodeGraphSoftClipperState());
     }
     if (
-      node.type === "clipperLimiter"
-      && typeof createNodeGraphSoftClipperState === "function"
-      && !runtime.clipperLimiterStates.has(node.id)
-    ) {
-      runtime.clipperLimiterStates.set(node.id, createNodeGraphSoftClipperState());
-    }
-    if (
       node.type === "speakerProtector2"
       && typeof createNodeGraphSpeakerProtector2State === "function"
       && !runtime.speakerProtector2States.has(node.id)
@@ -1780,7 +1804,7 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     if (node.type === "sampleHold" && !runtime.sampleHoldStates.has(node.id)) {
       runtime.sampleHoldStates.set(node.id, createNodeGraphStereoSampleHoldState());
     }
-    if ((node.type === "samplePlayer" || node.type === "sampleLooper" || node.type === "audioPlayer") && !runtime.samplePlaybackStates.has(node.id)) {
+    if ((node.type === "samplePlayer" || node.type === "sampleLooper" || node.type === "audioPlayer" || node.type === "wavetable2d") && !runtime.samplePlaybackStates.has(node.id)) {
       runtime.samplePlaybackStates.set(node.id, createNodeGraphSamplePlaybackState());
     }
     if ((node.type === "nextPatch" || node.type === "previousPatch") && !runtime.patchCommandStates.has(node.id)) {
@@ -1864,12 +1888,7 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     if (node.type === "antisaw" && !runtime.antisawStates.has(node.id)) {
       runtime.antisawStates.set(node.id, createNodeGraphAntisawState());
     }
-    if (node.type === "fractalBrownianNoise" && !runtime.fractalBrownianNoiseStates.has(node.id)) {
-      runtime.fractalBrownianNoiseStates.set(node.id, createNodeGraphFractalBrownianNoiseState());
-    }
-    if (node.type === "fbmField" && !runtime.fbmFieldStates.has(node.id)) {
-      runtime.fbmFieldStates.set(node.id, createNodeGraphFbmFieldState());
-    }
+    // fractalBrownianNoise / fbmField: skip retired JS audio state bags.
     if (!runtime.rgbFractalStates) {
       runtime.rgbFractalStates = new Map();
     }
@@ -2310,13 +2329,6 @@ function updateNodeGraphLiveRuntimePlan(runtime, plan) {
     for (const id of [...runtime.softClipperStates.keys()]) {
       if (!nodeIds.has(id)) {
         runtime.softClipperStates.delete(id);
-      }
-    }
-  }
-  if (runtime.clipperLimiterStates) {
-    for (const id of [...runtime.clipperLimiterStates.keys()]) {
-      if (!nodeIds.has(id)) {
-        runtime.clipperLimiterStates.delete(id);
       }
     }
   }

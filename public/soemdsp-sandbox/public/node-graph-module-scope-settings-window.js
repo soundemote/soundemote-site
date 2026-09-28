@@ -11,7 +11,7 @@ function nodeGraphTraceDisplaySettingsElement() {
   popover.id = "nodeTraceDisplaySettingsPopover";
   popover.className = "node-parameter-metadata-popover node-trace-display-settings-popover";
   popover.hidden = true;
-  popover.setAttribute("aria-label", "Trace Display drawing settings");
+  popover.setAttribute("aria-label", "Waterfall drawing settings");
   // Shell only: schema body is mounted per open (schema-exclusive controls).
   popover.innerHTML = `
     <div class="scene-context-heading">
@@ -51,7 +51,7 @@ function nodeGraphTraceDisplaySettingsElement() {
     <div
       id="nodeTraceDisplaySettingsCornerDrag"
       class="scene-context-resize-handle"
-      aria-label="Resize Trace Display drawing settings"
+      aria-label="Resize Waterfall drawing settings"
       role="button"
       tabindex="0"></div>`;
   (document.querySelector(".node-wiring-panel") || document.body).append(popover);
@@ -371,7 +371,7 @@ function setNodeGraphTraceDisplaySettingsFormType(node = null) {
       : "")
     : "";
   // Never fall back to phosphor/trace for modules without a schema — blank body.
-  // Global defaults editor (node null) still uses plain Trace.
+  // Global defaults editor (node null) still uses Instant Waterfall.
   const hasLocal = Boolean(
     settingsSchema
     && typeof nodeGraphModuleDisplayTypeHasLocalSettings === "function"
@@ -379,7 +379,7 @@ function setNodeGraphTraceDisplaySettingsFormType(node = null) {
   );
   const formType = node
     ? (hasLocal ? settingsSchema : "blank")
-    : (settingsSchema || "trace");
+    : (settingsSchema || "waterfall");
   // Schema-exclusive body: rebuild when form type or primary node changes
   // (LCD↔LED / module A→B). Multi-select cohort only updates dataset + form write.
   const nodeId = node?.id ? String(node.id) : "";
@@ -688,7 +688,18 @@ function syncOpenNodeGraphTraceDisplaySettingsToSelection() {
   }
   const primaryId = nodeGraphTraceDisplaySettingsPrimaryFromSelection();
   if (!primaryId) {
-    // Empty / non-display selection: keep pinned form (don't wipe mid-edit).
+    // Nothing selected (or no display-capable selection): do not keep editing
+    // an unselected module — show the blank picker instead.
+    const pinned = String(nodeGraphMvp.traceDisplaySettingsTargetNode || "").trim();
+    if (!pinned || pinned === "__globalTraceSettings") {
+      nodeGraphMvp.traceDisplaySettingsFollowedSelectionKey = followKey;
+      return false;
+    }
+    if (typeof openBlankNodeGraphTraceDisplaySettings === "function") {
+      openBlankNodeGraphTraceDisplaySettings({});
+      nodeGraphMvp.traceDisplaySettingsFollowedSelectionKey = followKey;
+      return true;
+    }
     return false;
   }
   const changed = syncOpenNodeGraphTraceDisplaySettingsToNode(primaryId);
@@ -879,12 +890,6 @@ function bindNodeGraphTraceDisplaySettingsEvents(popover) {
 }
 
 function openNodeGraphTraceDisplaySettings(nodeId, event = {}) {
-  // Macro Controls face is a global bank — open dedicated face settings.
-  if (nodeId === "__macroControlsFace") {
-    return typeof openNodeGraphMacroControlsDisplaySettings === "function"
-      ? openNodeGraphMacroControlsDisplaySettings(event)
-      : false;
-  }
   if (nodeId === "__keyboardControllerFace") {
     const keyboard = Array.isArray(nodeGraphMvp?.patch?.nodes)
       ? nodeGraphMvp.patch.nodes.find((n) => n?.type === "keyboard")
@@ -903,12 +908,9 @@ function openNodeGraphTraceDisplaySettings(nodeId, event = {}) {
   if (!node) {
     return false;
   }
-  if (node.type === "macroControls" && typeof openNodeGraphMacroControlsDisplaySettings === "function") {
-    return openNodeGraphMacroControlsDisplaySettings(event);
-  }
   // Every module opens Display Settings (blank body if no face schema).
-  // Do not change graph selection. Pin the form to this face; follow-key is
-  // the current selection so wire redraws do not steal the inspector.
+  // Callers should select the module first (ensureNodeGraphModuleSelectedForContext).
+  // Follow-key tracks selection so the open form stays in sync.
   // Multi-select: if every selected module shares this display schema, edit all.
   const multiTargetIds = nodeGraphTraceDisplaySettingsResolveMultiTargetIds(node.id);
   const multiKey = multiTargetIds.join(",");

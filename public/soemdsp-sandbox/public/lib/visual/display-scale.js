@@ -1,15 +1,14 @@
-// Display length scale — app-wide SSOT for canvas / face geometry.
-//
-// Every face-relative length is stored as 0..1 of min(faceW, faceH) in the
-// coordinate space being drawn (CSS for DOM chrome, device pixels for canvas).
-// Resolve at draw: px = unit01 * min(width, height)
-//
-// See docs/APP_POLICY.md §15.
+// FaceScale — layout CSS box is the only size signal.
+// minSide is min(metrics.cssW, metrics.cssH). Never canvas.width (dpr),
+// never getBoundingClientRect (zoom). Workspace zoom is a CSS camera.
+// See docs/APP_POLICY.md §15 and docs/DISPLAY_SCALE_REWRITE.md.
 
 (function initDisplayScale(global) {
   "use strict";
 
-  function displayFaceMinSide(width, height) {
+  const FACE_INK_REF_PX = 96;
+
+  function faceMinSide(width, height) {
     const w = Number(width);
     const h = Number(height);
     const ww = Number.isFinite(w) ? w : 0;
@@ -26,13 +25,26 @@
     return Math.max(0, Math.min(1, n));
   }
 
-  /**
-   * @param {number} unit01  0..1 of face min-edge
-   * @param {number} faceMinSide  min(width, height) in the draw space
-   * @returns {number} pixels in the same space as faceMinSide
-   */
-  function displayScaleToPx(unit01, faceMinSide) {
-    const side = Number(faceMinSide);
+  function clampAuthoredInkPx(authoredPx, fallback = 0) {
+    const n = Number(authoredPx);
+    if (Number.isFinite(n)) {
+      return Math.max(0, n);
+    }
+    const fb = Number(fallback);
+    return Number.isFinite(fb) ? Math.max(0, fb) : 0;
+  }
+
+  function faceInkPx(authoredPx, minSide) {
+    const authored = clampAuthoredInkPx(authoredPx, 0);
+    const side = Number(minSide);
+    if (!(side > 0) || !(FACE_INK_REF_PX > 0)) {
+      return 0;
+    }
+    return authored * (side / FACE_INK_REF_PX);
+  }
+
+  function faceFracPx(unit01, minSide) {
+    const side = Number(minSide);
     if (!(side > 0)) {
       return 0;
     }
@@ -40,9 +52,12 @@
   }
 
   const api = {
-    displayFaceMinSide,
+    FACE_INK_REF_PX,
+    faceMinSide,
     clampDisplayUnit01,
-    displayScaleToPx,
+    clampAuthoredInkPx,
+    faceInkPx,
+    faceFracPx,
   };
 
   Object.assign(global, api);

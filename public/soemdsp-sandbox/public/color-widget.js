@@ -386,7 +386,6 @@ const css = `
     font-size: min(72cqh, 12cqw);
     opacity: 0;
     pointer-events: none;
-    transition: opacity 120ms ease;
   }
   .scw-copy-toast[data-visible="true"] {
     opacity: 1;
@@ -598,7 +597,7 @@ export class SoundColorWidget {
     this.color = this.channels === "bw"
       ? { h: 0, s: 0, l: rawColor.l, a: 1 }
       : this.channels === "hue"
-        // Pure hue stop (s=100, l=50) — Bright does grey→hue→white outside the widget.
+        // Pure hue stop (s=100, l=50) — Bright does black→hue→white outside the widget.
         ? { h: rawColor.h, s: 100, l: 50, a: 1 }
         : rawColor;
     // Ctrl+click snaps here. 0 is a valid hue (red) — do not treat it as missing.
@@ -768,7 +767,9 @@ export class SoundColorWidget {
     }
     const hexInput = this.root.querySelector(".scw-hex");
     if (hexInput && document.activeElement !== hexInput) {
-      hexInput.value = hex;
+      hexInput.value = this.drag?.part === "hue"
+        ? String(Math.round(wrapHueDeg(this.color.h)))
+        : hex;
     }
     const ariaName = titled ? this.label : "Color";
     const plane = this.root.querySelector(".scw-plane");

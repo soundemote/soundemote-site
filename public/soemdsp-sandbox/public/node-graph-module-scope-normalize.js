@@ -24,7 +24,7 @@ function nodeGraphDisplaySettingsNormalizePlateLook(source = {}, defaults = {}) 
     ? Number(defs.backgroundBrightness)
     : 0;
   const rawHex = src.background ?? src.backgroundColor ?? defs.background;
-  // Plate fallback is black — Instant Trace red must not leak into phosphor faces.
+  // Plate fallback is black — Instant Waterfall red must not leak into phosphor faces.
   const hex = typeof normalizeNodeGraphTraceDisplayColor === "function"
     ? normalizeNodeGraphTraceDisplayColor(rawHex, defs.background || "#000000")
     : String(rawHex || "#000000");
@@ -451,7 +451,14 @@ function normalizeNodeGraphXyPadDisplaySettings(settings = {}) {
     ),
     dot1Color: normalizeNodeGraphTraceDisplayColor(peak, defaults.dot1Color),
     dot1Enabled: true,
-    dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
+    // Authored ink px at a 96px face (same as phosphor). Not a 0…1 fraction.
+    dot1Size: typeof nodeGraphTraceDisplayClampInkPx === "function"
+      ? nodeGraphTraceDisplayClampInkPx(
+        source.dot1Size != null && source.dot1Size !== ""
+          ? source.dot1Size
+          : defaults.dot1Size,
+      )
+      : normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 32),
     dotBudget: typeof nodeGraphTraceDisplayClampDotBudget === "function"
       ? nodeGraphTraceDisplayClampDotBudget(source.dotBudget ?? defaults.dotBudget)
       : Math.max(1, Math.min(8192, Math.round(nodeGraphFiniteNumber(source.dotBudget ?? defaults.dotBudget, 1024)))),
@@ -487,8 +494,21 @@ function nodeGraphXyPadDisplaySettingsForNode(node) {
   return normalizeNodeGraphXyPadDisplaySettings(node.traceDisplaySettings);
 }
 
+/** Authored stroke/dot diameter in CSS px at a 96px face. 0 = gone. Not 0…1. */
+function nodeGraphTraceDisplayNormalizeInkPx(value, fallback = 2) {
+  const n = Number(value);
+  const raw = Number.isFinite(n) ? n : Number(fallback);
+  if (typeof nodeGraphTraceDisplayClampInkPx === "function") {
+    return nodeGraphTraceDisplayClampInkPx(Number.isFinite(raw) ? raw : 0);
+  }
+  if (!Number.isFinite(raw)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(32, raw));
+}
 
-function normalizeNodeGraphTraceDisplayColor(value, fallback = nodeGraphTraceDisplaySettingsDefaults.color) {
+
+function normalizeNodeGraphTraceDisplayColor(value, fallback = nodeGraphWaterfallSettingsDefaults.color) {
   const color = String(value || "").trim();
   if (/^#[0-9a-f]{6}$/i.test(color)) {
     return color.toLowerCase();
@@ -675,11 +695,14 @@ function normalizeNodeGraphLineBurnSettings(settings = {}) {
     dot1Color: normalizeNodeGraphTraceDisplayColor(peak, defaults.dot1Color),
     // Always on — hide the display if you don't want the pen.
     dot1Enabled: true,
-    dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
+    // Authored CSS px at a 96px face (APP_POLICY §15). Not a 0…1 fraction —
+    // clamping to 0…1 pegged every Size ≥ 1 to the same stamp (B-072).
+    dot1Size: nodeGraphTraceDisplayNormalizeInkPx(source.dot1Size, defaults.dot1Size),
     // Dot Budget + Full Dot Economy persist (toggle was dropped before).
     dotBudget: typeof nodeGraphTraceDisplayClampDotBudget === "function"
       ? nodeGraphTraceDisplayClampDotBudget(source.dotBudget ?? defaults.dotBudget)
       : Math.max(1, Math.min(8192, Math.round(nodeGraphFiniteNumber(source.dotBudget ?? defaults.dotBudget, 1024)))),
+    drawMode: String(source.drawMode || defaults.drawMode || "budget") === "length" ? "length" : "budget",
     // Shared packing toggles. Fall back to lineBurn defaults (Full Dot Economy ON
     // for c1091b42 fused CRT look). Explicit false stays off.
     // Packing toggles retired — always chord-pack continuous trails.
@@ -733,7 +756,9 @@ function normalizeNodeGraphZeroDBurnSettings(settings = {}) {
     ),
     dot1Color: normalizeNodeGraphTraceDisplayColor(peak, defaults.dot1Color),
     dot1Enabled: true,
-    dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
+    // Authored CSS px at a 96px face (APP_POLICY §15). Not a 0…1 fraction —
+    // clamping to 0…1 pegged every Size ≥ 1 to the same stamp (B-072).
+    dot1Size: nodeGraphTraceDisplayNormalizeInkPx(source.dot1Size, defaults.dot1Size),
     gradientStops,
     lineThickness: nodeGraphTraceDisplayClampStampBlur(
       source.lineThickness ?? source.dot1Blur ?? defaults.lineThickness,
@@ -748,9 +773,9 @@ function normalizeNodeGraphZeroDBurnSettings(settings = {}) {
 }
 
 
-function normalizeNodeGraphTraceDisplaySettings(settings = {}) {
+function normalizeNodeGraphWaterfallSettings(settings = {}) {
   const source = settings && typeof settings === "object" ? settings : {};
-  const defaults = nodeGraphTraceDisplaySettingsDefaults;
+  const defaults = nodeGraphWaterfallSettingsDefaults;
   const legacyWindowMs = source.windowMs === undefined ? undefined : Number(source.windowMs) / 1000;
   const zoomSeconds = source.zoomSeconds ?? source.windowSeconds ?? legacyWindowMs;
   return {
@@ -761,23 +786,16 @@ function normalizeNodeGraphTraceDisplaySettings(settings = {}) {
     ),
     color: normalizeNodeGraphTraceDisplayColor(source.color ?? source.dot1Color, defaults.color),
     dot1Enabled: true,
-    dot1Size: normalizeNodeGraphTraceDisplayNumber(
-      source.dot1Size,
-      defaults.dot1Size,
-      0,
-      1,
-    ),
+    dot1Size: nodeGraphTraceDisplayNormalizeInkPx(source.dot1Size, defaults.dot1Size),
     secondaryBrightness: normalizeNodeGraphTraceDisplayBrightness(
       source.secondaryBrightness,
       defaults.secondaryBrightness,
     ),
     secondaryColor: normalizeNodeGraphTraceDisplayColor(source.secondaryColor, defaults.secondaryColor),
     secondaryEnabled: source.secondaryEnabled !== false,
-    secondarySize: normalizeNodeGraphTraceDisplayNumber(
+    secondarySize: nodeGraphTraceDisplayNormalizeInkPx(
       source.secondarySize,
       defaults.secondarySize,
-      0,
-      1,
     ),
     secondaryLineThickness: typeof nodeGraphTraceDisplayClampStampBlur === "function"
       ? nodeGraphTraceDisplayClampStampBlur(
@@ -922,7 +940,7 @@ function normalizeNodeGraphValueOscilloscopeSettings(settings = {}) {
     dot1Color: normalizeNodeGraphTraceDisplayColor(source.dot1Color ?? source.color, defaults.color),
     trail: residual.trail,
     dot1Enabled: true,
-    dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
+    dot1Size: nodeGraphTraceDisplayNormalizeInkPx(source.dot1Size, defaults.dot1Size),
     lineLength: normalizeNodeGraphTraceDisplayNumber(source.lineLength, defaults.lineLength, 0, 1),
     lineThickness: normalizeNodeGraphTraceDisplayNumber(source.lineThickness, defaults.lineThickness, 0, 1),
     pixelDensity: normalizeNodeGraphTraceDisplayNumber(
@@ -1288,6 +1306,14 @@ function normalizeNodeGraphNumberReadoutSettings(settings = {}, defaultsOverride
 }
 
 
+function nodeGraphFaceClampMaxDigits(value, fallback = 2) {
+  const missing = value == null || value === "";
+  const n = Math.round(Number(missing ? fallback : value));
+  const fb = Math.round(Number(fallback));
+  const safe = Number.isFinite(n) ? n : (Number.isFinite(fb) ? fb : 2);
+  return Math.max(0, Math.min(12, safe));
+}
+
 function normalizeNodeGraphKnobFaceDisplaySettings(settings = {}) {
   const source = settings && typeof settings === "object" ? settings : {};
   const defaults = nodeGraphKnobFaceDisplaySettingsDefaults;
@@ -1311,6 +1337,10 @@ function normalizeNodeGraphKnobFaceDisplaySettings(settings = {}) {
       8,
       true,
     ),
+    maxDigits: nodeGraphFaceClampMaxDigits(
+      source.maxDigits,
+      source.decimals ?? source.numDecimals ?? defaults.maxDigits ?? defaults.decimals ?? 2,
+    ),
     background: parseColor(
       source.background ?? source.backgroundColor,
       defaults.background,
@@ -1325,35 +1355,49 @@ function normalizeNodeGraphKnobFaceDisplaySettings(settings = {}) {
       1440,
       true,
     ),
-    // Dial ring size 0…1 (1 = fill dial cell; only scales the arc widget).
+    // Knob graphic size 0…1 (1 = fill display; only scales the arc widget).
     dialSize: normalizeNodeGraphTraceDisplayNumber(
       source.dialSize ?? source.knobSize ?? source.size,
       defaults.dialSize ?? 1,
       0,
       1,
     ),
+    // Positive Y offset moves only the knob graphic down; label/value stay pinned.
+    dialOffsetY: normalizeNodeGraphTraceDisplayNumber(
+      source.dialOffsetY ?? source.dialY ?? source.knobY ?? source.knobOffsetY ?? source.offsetY,
+      defaults.dialOffsetY ?? 0,
+      -1,
+      1,
+    ),
     labelSize: normalizeNodeGraphTraceDisplayNumber(
       source.labelSize ?? source.titleSize,
-      defaults.labelSize ?? 0.45,
+      defaults.labelSize ?? 0.2,
       0,
       1,
     ),
     valueSize: normalizeNodeGraphTraceDisplayNumber(
       source.valueSize ?? source.readoutSize,
-      defaults.valueSize ?? 0.45,
+      defaults.valueSize ?? 0.2,
       0,
+      1,
+    ),
+    // Positive Y: top→down, bottom→lift off edge, mid/midknob→down from center/dial.
+    valueOffsetY: normalizeNodeGraphTraceDisplayNumber(
+      source.valueOffsetY ?? source.readoutOffsetY ?? source.valueY ?? source.numberOffsetY,
+      defaults.valueOffsetY ?? 0,
+      -1,
       1,
     ),
     labelPosition: normalizeNodeGraphKnobFaceTextPosition(
       source.showLabel === false || source.showLabel === "false"
         ? "off"
-        : (source.labelPosition ?? source.titlePosition),
-      defaults.labelPosition || "above",
+        : (source.labelPosition ?? source.titlePosition ?? source.labelAlign),
+      defaults.labelPosition || "top",
     ),
     valuePosition: normalizeNodeGraphKnobFaceTextPosition(
       source.showReadout === false || source.showReadout === "false"
         ? "off"
-        : (source.valuePosition ?? source.readoutPosition),
+        : (source.valuePosition ?? source.readoutPosition ?? source.unitAlign ?? source.numberAlign),
       defaults.valuePosition || "mid",
     ),
     // Arc ring hole 0…1 (maps to 1 − thickness of the conic mask).
@@ -1372,26 +1416,148 @@ function normalizeNodeGraphKnobFaceDisplaySettings(settings = {}) {
   };
 }
 
-const nodeGraphKnobFaceTextPositions = Object.freeze(["off", "above", "mid", "below"]);
+const nodeGraphKnobSliderBarAligns = Object.freeze(["top", "mid", "bottom"]);
+const nodeGraphKnobPinAligns = Object.freeze([
+  "topleft", "top", "topright",
+  "midleft", "mid", "midright",
+  "bottomleft", "bottom", "bottomright",
+]);
+
+function normalizeNodeGraphKnobSliderBarAlign(value, fallback = "mid") {
+  const raw = String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+  if (raw === "middle" || raw === "center") {
+    return "mid";
+  }
+  if (nodeGraphKnobSliderBarAligns.includes(raw)) {
+    return raw;
+  }
+  const fb = String(fallback || "mid").trim().toLowerCase();
+  return nodeGraphKnobSliderBarAligns.includes(fb) ? fb : "mid";
+}
+
+function normalizeNodeGraphKnobPinAlign(value, fallback = "mid") {
+  const raw = String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+  const aliases = {
+    topleft: "topleft",
+    topcenter: "top",
+    topmiddle: "top",
+    topright: "topright",
+    middleleft: "midleft",
+    centerleft: "midleft",
+    center: "mid",
+    middle: "mid",
+    middleright: "midright",
+    centerright: "midright",
+    bottomleft: "bottomleft",
+    bottomcenter: "bottom",
+    bottommiddle: "bottom",
+    bottomright: "bottomright",
+  };
+  if (aliases[raw]) {
+    return aliases[raw];
+  }
+  if (nodeGraphKnobPinAligns.includes(raw)) {
+    return raw;
+  }
+  const fb = String(fallback || "mid").trim().toLowerCase().replace(/[\s_-]+/g, "");
+  return nodeGraphKnobPinAligns.includes(fb) ? fb : "mid";
+}
+
+const nodeGraphKnobFaceTextPositions = Object.freeze(["off", "top", "mid", "midknob", "bottom"]);
 
 function normalizeNodeGraphKnobFaceTextPosition(value, fallback = "mid") {
   const raw = String(value || "").trim().toLowerCase();
-  if (raw === "top") {
-    return "above";
+  const compact = raw.replace(/[\s_-]+/g, "");
+  // Legacy above/below → top/bottom (toggle/unit-style align names).
+  if (raw === "above") {
+    return "top";
+  }
+  if (raw === "below") {
+    return "bottom";
+  }
+  // Mid knob = center of the dial/arc circle (tracks dialOffsetY), not face mid.
+  if (
+    compact === "midknob"
+    || compact === "knobmid"
+    || compact === "dialmid"
+    || compact === "dialcenter"
+    || compact === "knobcenter"
+    || compact === "arccenter"
+  ) {
+    return "midknob";
   }
   if (raw === "middle" || raw === "center") {
     return "mid";
   }
-  if (raw === "bottom") {
-    return "below";
-  }
   if (nodeGraphKnobFaceTextPositions.includes(raw)) {
     return raw;
   }
-  const fb = String(fallback || "mid").trim().toLowerCase();
+  let fb = String(fallback || "mid").trim().toLowerCase();
+  if (fb === "above") fb = "top";
+  if (fb === "below") fb = "bottom";
+  const fbCompact = fb.replace(/[\s_-]+/g, "");
+  if (
+    fbCompact === "midknob"
+    || fbCompact === "knobmid"
+    || fbCompact === "dialmid"
+  ) {
+    return "midknob";
+  }
   return nodeGraphKnobFaceTextPositions.includes(fb) ? fb : "mid";
 }
 
+
+function normalizeNodeGraphSliderFaceDisplaySettings(settings = {}, defaultsOverride = null) {
+  const source = settings && typeof settings === "object" ? settings : {};
+  const defaults = defaultsOverride && typeof defaultsOverride === "object"
+    ? defaultsOverride
+    : nodeGraphSliderFaceDisplaySettingsDefaults;
+  const parseColor = (value, fallback) => {
+    const hex = String(value || "").trim();
+    return /^#[0-9a-fA-F]{6}$/.test(hex) ? hex : fallback;
+  };
+  return {
+    decimals: Math.max(0, Math.min(6, Math.round(Number(source.decimals ?? defaults.decimals ?? 2)) || 0)),
+    maxDigits: nodeGraphFaceClampMaxDigits(
+      source.maxDigits,
+      source.decimals ?? defaults.maxDigits ?? defaults.decimals ?? 2,
+    ),
+    background: parseColor(source.background ?? source.backgroundColor, defaults.background || "#000000"),
+    arcTrack: parseColor(source.arcTrack, defaults.arcTrack || "#1a2226"),
+    sliderLength: normalizeNodeGraphTraceDisplayNumber(source.sliderLength, defaults.sliderLength ?? 1, 0, 1),
+    sliderHeight: normalizeNodeGraphTraceDisplayNumber(source.sliderHeight, defaults.sliderHeight ?? 0.22, 0, 1),
+    sliderPadding: normalizeNodeGraphTraceDisplayNumber(source.sliderPadding, defaults.sliderPadding ?? 0, 0, 0.5),
+    sliderAlign: normalizeNodeGraphKnobSliderBarAlign(source.sliderAlign, defaults.sliderAlign || "mid"),
+    sliderColor: parseColor(source.sliderColor, defaults.sliderColor || "#4a6a78"),
+    sliderNumberColor: parseColor(source.sliderNumberColor, defaults.sliderNumberColor || "#ffffff"),
+    sliderTextColor: parseColor(source.sliderTextColor, defaults.sliderTextColor || "#cfdde5"),
+    sliderUnitColor: parseColor(source.sliderUnitColor, defaults.sliderUnitColor || "#7fc7d9"),
+    sliderShowLabel: source.sliderShowLabel !== false && source.sliderShowLabel !== "false",
+    sliderShowNumber: source.sliderShowNumber !== false && source.sliderShowNumber !== "false",
+    sliderShowUnit: source.sliderShowUnit !== false && source.sliderShowUnit !== "false",
+    sliderLabelInside: source.sliderLabelInside === true || source.sliderLabelInside === "true",
+    sliderNumberInside: source.sliderNumberInside == null
+      ? defaults.sliderNumberInside !== false
+      : source.sliderNumberInside === true || source.sliderNumberInside === "true",
+    sliderUnitInside: source.sliderUnitInside === true || source.sliderUnitInside === "true",
+    sliderLabelAlign: normalizeNodeGraphKnobPinAlign(source.sliderLabelAlign, defaults.sliderLabelAlign || "topleft"),
+    sliderLabelPadding: normalizeNodeGraphTraceDisplayNumber(source.sliderLabelPadding, defaults.sliderLabelPadding ?? 0.04, 0, 1),
+    sliderLabelScale: normalizeNodeGraphTraceDisplayNumber(source.sliderLabelScale, defaults.sliderLabelScale ?? 0.22, 0, 1),
+    sliderNumberAlign: normalizeNodeGraphKnobPinAlign(source.sliderNumberAlign, defaults.sliderNumberAlign || "mid"),
+    sliderNumberPadding: normalizeNodeGraphTraceDisplayNumber(source.sliderNumberPadding, defaults.sliderNumberPadding ?? 0, 0, 1),
+    sliderNumberScale: normalizeNodeGraphTraceDisplayNumber(source.sliderNumberScale, defaults.sliderNumberScale ?? 0.22, 0, 1),
+    sliderUnitAlign: normalizeNodeGraphKnobPinAlign(source.sliderUnitAlign, defaults.sliderUnitAlign || "topright"),
+    sliderUnitPadding: normalizeNodeGraphTraceDisplayNumber(source.sliderUnitPadding, defaults.sliderUnitPadding ?? 0.04, 0, 1),
+    sliderUnitScale: normalizeNodeGraphTraceDisplayNumber(source.sliderUnitScale, defaults.sliderUnitScale ?? 0.18, 0, 1),
+    sliderCornerShape: String(source.sliderCornerShape || defaults.sliderCornerShape || "squircle").trim().toLowerCase() === "square"
+      ? "square"
+      : "squircle",
+    sliderRounding: normalizeNodeGraphTraceDisplayNumber(source.sliderRounding ?? source.cornerRadius, defaults.sliderRounding ?? 0.5, 0, 1),
+    labelText: typeof nodeGraphKnobFaceNormalizeLabelText === "function"
+      ? nodeGraphKnobFaceNormalizeLabelText(source.labelText ?? source.knobText ?? source.text)
+      : String(source.labelText ?? defaults.labelText ?? "Slider").replace(/\s+/g, " ").trim().slice(0, 48),
+  };
+}
 
 function nodeGraphKnobFaceDisplaySettingsForNode(node) {
   if (!node) {
@@ -1437,10 +1603,13 @@ function normalizeNodeGraphScope2dSettings(settings = {}, defaultsOverride = nul
     ),
     dot1Color: normalizeNodeGraphTraceDisplayColor(peak, defaults.dot1Color),
     dot1Enabled: true,
-    dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
+    // Authored CSS px at a 96px face (APP_POLICY §15). Not a 0…1 fraction —
+    // clamping to 0…1 pegged every Size ≥ 1 to the same stamp (B-072).
+    dot1Size: nodeGraphTraceDisplayNormalizeInkPx(source.dot1Size, defaults.dot1Size),
     dotBudget: typeof nodeGraphTraceDisplayClampDotBudget === "function"
       ? nodeGraphTraceDisplayClampDotBudget(source.dotBudget ?? defaults.dotBudget)
       : Math.max(1, Math.min(8192, Math.round(nodeGraphFiniteNumber(source.dotBudget ?? defaults.dotBudget, 1024)))),
+    drawMode: String(source.drawMode || defaults.drawMode || "budget") === "length" ? "length" : "budget",
     // Full Dots / Dots only — shared phosphor packing (scope2d SSOT).
     // Accept bool true and common form/patch coercions (1 / "1" / "true" / "on").
     // Packing toggles retired — always chord-pack continuous trails.
@@ -1502,7 +1671,7 @@ function normalizeNodeGraphScope2dTraceSettings(settings = {}, typeDefaults = nu
     dot1Brightness: inkBright,
     dot1Color: inkHueHex,
     dot1Enabled: true,
-    dot1Size: normalizeNodeGraphTraceDisplayNumber(source.dot1Size, defaults.dot1Size, 0, 1),
+    dot1Size: nodeGraphTraceDisplayNormalizeInkPx(source.dot1Size, defaults.dot1Size),
     ghost: typeof PhosphorResidual !== "undefined" && PhosphorResidual.migrateGhost
       ? PhosphorResidual.migrateGhost(source, defaults.ghost)
       : normalizeNodeGraphTraceDisplayNumber(source.ghost, defaults.ghost, 0, 1),
@@ -1519,9 +1688,117 @@ function normalizeNodeGraphScope2dTraceSettings(settings = {}, typeDefaults = nu
     skipDiscontinuities: nodeGraphDisplaySettingsToggleIsOn(
       source.skipDiscontinuities ?? defaults.skipDiscontinuities,
     ),
+    dotBudget: typeof nodeGraphTraceDisplayClampDotBudget === "function"
+      ? nodeGraphTraceDisplayClampDotBudget(source.dotBudget ?? defaults.dotBudget)
+      : Math.max(8, Math.min(8192, Math.round(nodeGraphFiniteNumber(source.dotBudget ?? defaults.dotBudget, 2048)))),
+    drawMode: String(source.drawMode || defaults.drawMode || "budget") === "length" ? "length" : "budget",
   };
 }
 
+
+
+
+function normalizeNodeGraphScope1dTraceSettings(settings = {}) {
+  const source = settings && typeof settings === "object" ? settings : {};
+  const defaults = typeof nodeGraphScope1dTraceSettingsDefaults !== "undefined"
+    ? nodeGraphScope1dTraceSettingsDefaults
+    : {};
+  const rawInk = source.dot1Color ?? source.color ?? defaults.dot1Color;
+  const inkHex = typeof normalizeNodeGraphTraceDisplayColor === "function"
+    ? normalizeNodeGraphTraceDisplayColor(rawInk, defaults.dot1Color)
+    : String(rawInk || "#ff0000");
+  const mappedInk = typeof nodeGraphHueBrightnessFromHex === "function"
+    ? nodeGraphHueBrightnessFromHex(inkHex, 0, defaults.dot1Brightness)
+    : { hue: 0, brightness: defaults.dot1Brightness };
+  const hueRaw = Number(source.dot1Hue);
+  const inkHue = Number.isFinite(hueRaw)
+    ? Math.max(0, Math.min(360, hueRaw))
+    : mappedInk.hue;
+  const inkHueHex = typeof nodeGraphHueUnitHex === "function"
+    ? nodeGraphHueUnitHex(inkHue)
+    : inkHex;
+  const inkBright = source.dot1Brightness != null || source.brightness != null
+    ? normalizeNodeGraphTraceDisplayBrightness(
+      source.dot1Brightness ?? source.brightness,
+      defaults.dot1Brightness,
+    )
+    : mappedInk.brightness;
+  const rawSec = source.secondaryColor ?? defaults.secondaryColor;
+  const secHex = typeof normalizeNodeGraphTraceDisplayColor === "function"
+    ? normalizeNodeGraphTraceDisplayColor(rawSec, defaults.secondaryColor)
+    : String(rawSec || "#0000ff");
+  const mappedSec = typeof nodeGraphHueBrightnessFromHex === "function"
+    ? nodeGraphHueBrightnessFromHex(secHex, 240, defaults.secondaryBrightness)
+    : { hue: 240, brightness: defaults.secondaryBrightness };
+  const secHueRaw = Number(source.secondaryHue);
+  const secHue = Number.isFinite(secHueRaw)
+    ? Math.max(0, Math.min(360, secHueRaw))
+    : mappedSec.hue;
+  const secHueHex = typeof nodeGraphHueUnitHex === "function"
+    ? nodeGraphHueUnitHex(secHue)
+    : secHex;
+  const secBright = source.secondaryBrightness != null
+    ? normalizeNodeGraphTraceDisplayBrightness(
+      source.secondaryBrightness,
+      defaults.secondaryBrightness,
+    )
+    : mappedSec.brightness;
+  const sweepDefaults = typeof nodeGraphLineBurnSettingsDefaults !== "undefined"
+    ? nodeGraphLineBurnSettingsDefaults
+    : { sweepHz: 4, sweepCycles: 4 };
+  return {
+    ...nodeGraphDisplaySettingsNormalizePlateLook(source, {
+      ...defaults,
+      backgroundBrightness: defaults.backgroundBrightness ?? 0,
+      backgroundHue: defaults.backgroundHue ?? 0,
+    }),
+    dot1Brightness: inkBright,
+    dot1Color: inkHueHex,
+    dot1Enabled: true,
+    dot1Size: nodeGraphTraceDisplayNormalizeInkPx(source.dot1Size, defaults.dot1Size),
+    secondaryBrightness: secBright,
+    secondaryColor: secHueHex,
+    secondaryEnabled: source.secondaryEnabled !== false,
+    secondarySize: nodeGraphTraceDisplayNormalizeInkPx(
+      source.secondarySize ?? source.dot1Size,
+      defaults.secondarySize ?? defaults.dot1Size,
+    ),
+    ghost: typeof PhosphorResidual !== "undefined" && PhosphorResidual.migrateGhost
+      ? PhosphorResidual.migrateGhost(source, defaults.ghost)
+      : normalizeNodeGraphTraceDisplayNumber(source.ghost, defaults.ghost, 0, 1),
+    trail: typeof PhosphorResidual !== "undefined" && PhosphorResidual.migrateTrail
+      ? PhosphorResidual.migrateTrail(source, defaults.trail)
+      : normalizeNodeGraphTraceDisplayNumber(source.trail, defaults.trail, 0, 1),
+    pixelDensity: normalizeNodeGraphTraceDisplayNumber(
+      source.pixelDensity,
+      defaults.pixelDensity,
+      0,
+      1,
+    ),
+    scale: normalizeNodeGraphTraceDisplayNumber(source.scale, defaults.scale, 0.01, 100),
+    skipDiscontinuities: nodeGraphDisplaySettingsToggleIsOn(
+      source.skipDiscontinuities ?? defaults.skipDiscontinuities,
+    ),
+    sourceSync: nodeGraphDisplaySettingsToggleIsOn(
+      source.sourceSync ?? source.sync ?? defaults.sourceSync,
+    ),
+    ...normalizeNodeGraphLineBurnSweepPair(source, {
+      sweepHz: defaults.sweepHz ?? sweepDefaults.sweepHz,
+      sweepCycles: defaults.sweepCycles ?? sweepDefaults.sweepCycles,
+    }),
+    dotBudget: typeof nodeGraphTraceDisplayClampDotBudget === "function"
+      ? nodeGraphTraceDisplayClampDotBudget(source.dotBudget ?? defaults.dotBudget)
+      : Math.max(8, Math.min(8192, Math.round(nodeGraphFiniteNumber(source.dotBudget ?? defaults.dotBudget, 2048)))),
+    drawMode: String(source.drawMode || defaults.drawMode || "budget") === "length" ? "length" : "budget",
+  };
+}
+
+function nodeGraphScope1dTraceSettingsForNode(node) {
+  if (!node) {
+    return normalizeNodeGraphScope1dTraceSettings();
+  }
+  return normalizeNodeGraphScope1dTraceSettings(node.traceDisplaySettings);
+}
 
 function nodeGraphZeroDBurnSettingsForNode(node) {
   if (!node) {
@@ -1659,9 +1936,27 @@ function normalizeNodeGraphLcdDotSettings(settings = {}) {
   return {
     ...merged,
     faceStyle: "lcd",
+    backgroundSaturation: normalizeNodeGraphTraceDisplayNumber(
+      source.backgroundSaturation,
+      lcdDefaults.backgroundSaturation ?? 0,
+      0,
+      1,
+    ),
+    dot1Saturation: normalizeNodeGraphTraceDisplayNumber(
+      source.dot1Saturation ?? source.colorSaturation,
+      lcdDefaults.dot1Saturation ?? lcdDefaults.colorSaturation ?? 0.9,
+      0,
+      1,
+    ),
+    colorSaturation: normalizeNodeGraphTraceDisplayNumber(
+      source.colorSaturation ?? source.dot1Saturation,
+      lcdDefaults.colorSaturation ?? lcdDefaults.dot1Saturation ?? 0.9,
+      0,
+      1,
+    ),
     unlitSegments: normalizeNodeGraphTraceDisplayNumber(
       source.unlitSegments,
-      lcdDefaults.unlitSegments ?? 0.22,
+      lcdDefaults.unlitSegments ?? 0.1,
       0,
       1,
     ),
@@ -1714,7 +2009,14 @@ function nodeGraphVectorDotSettingsForNode(node) {
     || node?.lcdDotSettings
     || node?.zeroDBurnSettings
     || node?.traceDisplaySettings;
-  if (node?.type === "lcdDot" && typeof normalizeNodeGraphLcdDotSettings === "function") {
+  const mode = typeof nodeGraphModuleSelectedDisplayMode === "function"
+    ? nodeGraphModuleSelectedDisplayMode(node)
+    : null;
+  const lcd = node?.type === "lcdDot"
+    || mode?.renderer === "lcdDot"
+    || mode?.settingsSchema === "lcdDot"
+    || String(node?.ui?.displayModeKey || "") === "lcdDot";
+  if (lcd && typeof normalizeNodeGraphLcdDotSettings === "function") {
     return normalizeNodeGraphLcdDotSettings(bag);
   }
   return normalizeNodeGraphVectorDotSettings(bag);
@@ -1749,24 +2051,29 @@ function nodeGraphMigrateLimiterGainFaceToTraceSettings(source = {}) {
 
 function nodeGraphTraceDisplaySettingsForNode(node) {
   if (!node) {
-    return normalizeNodeGraphTraceDisplaySettings();
+    return normalizeNodeGraphWaterfallSettings();
   }
   const settingsSchema = nodeGraphModuleDisplaySettingsSchemaForNode(node);
   if (settingsSchema === "value") {
     return normalizeNodeGraphValueOscilloscopeSettings(node.traceDisplaySettings);
   }
-  // Instant Trace: seed from the global bucket until this module is edited.
-  if (settingsSchema === "trace" || settingsSchema === "traceRgb") {
+  // Instant Waterfall: seed from the global bucket until this module is edited.
+  if (settingsSchema === "waterfall" || settingsSchema === "waterfallRgb") {
     const local = (node.type === "lookaheadLimiter" || node.type === "limiter")
       ? nodeGraphMigrateLimiterGainFaceToTraceSettings(node.traceDisplaySettings)
       : node.traceDisplaySettings;
     const hasLocal = Boolean(local && typeof local === "object" && Object.keys(local).length);
     if (!hasLocal) {
       const seeded = nodeGraphGlobalTraceSettings();
+      const defDisp = typeof nodeGraphModuleDefinitions === "object"
+        && nodeGraphModuleDefinitions?.[node.type]?.defaultDisplaySettings;
+      const withDef = defDisp && typeof defDisp === "object"
+        ? { ...seeded, ...defDisp }
+        : seeded;
       // RGB waterfall defaults: hard pixels, full bright, additive guns.
-      if (settingsSchema === "traceRgb") {
-        return normalizeNodeGraphTraceDisplaySettings({
-          ...seeded,
+      if (settingsSchema === "waterfallRgb") {
+        return normalizeNodeGraphWaterfallSettings({
+          ...withDef,
           lineThickness: 0,
           brightness: 0.95,
           dot1Brightness: 0.95,
@@ -1774,11 +2081,16 @@ function nodeGraphTraceDisplaySettingsForNode(node) {
           cmyMode: false,
         });
       }
-      return seeded;
+      return typeof normalizeNodeGraphWaterfallSettings === "function"
+        ? normalizeNodeGraphWaterfallSettings(withDef)
+        : withDef;
     }
-    return normalizeNodeGraphTraceDisplaySettings(local);
+    return normalizeNodeGraphWaterfallSettings(local);
   }
-  return normalizeNodeGraphTraceDisplaySettings(node.traceDisplaySettings);
+  if (settingsSchema === "waterfallXyz") {
+    return normalizeNodeGraphWaterfallSettings(node.traceDisplaySettings);
+  }
+  return {};
 }
 
 
@@ -1908,7 +2220,7 @@ function nodeGraphScope2dTraceSettingsForNode(node) {
 
 
 function nodeGraphGlobalTraceSettings() {
-  return normalizeNodeGraphTraceDisplaySettings(nodeGraphMvp?.traceSettings);
+  return normalizeNodeGraphWaterfallSettings(nodeGraphMvp?.traceSettings);
 }
 
 
@@ -1917,14 +2229,14 @@ function nodeGraphTraceDisplaySettingsEditingGlobal() {
 }
 
 
-function nodeGraphTraceDisplaySettingsEditingTraceDefaults() {
+function nodeGraphWaterfallSettingsEditingDefaults() {
   if (nodeGraphTraceDisplaySettingsEditingGlobal()) {
     return true;
   }
   const node = nodeGraphPatchNode(nodeGraphMvp?.traceDisplaySettingsTargetNode);
-  // Instant Trace is per-module. Only the explicit Global page writes
+  // Instant Waterfall is per-module. Only the explicit Global page writes
   // nodeGraphMvp.traceSettings (a seed for unedited faces).
-  if (nodeGraphModuleDisplaySettingsSchemaForNode(node) !== "trace") {
+  if (nodeGraphModuleDisplaySettingsSchemaForNode(node) !== "waterfall") {
     return false;
   }
   if (typeof nodeGraphModuleKeepsPerNodeTraceDisplaySettings === "function") {

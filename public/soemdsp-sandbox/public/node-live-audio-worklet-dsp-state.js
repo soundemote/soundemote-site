@@ -34,6 +34,39 @@ NodeLiveAudioProcessor.prototype.resetRaptEllipticDecimator = function resetRapt
     this.raptEllipticDecimatorRatio = this.oversamplingRatio;
 };
 
+/** Apply oversamplingFactor / engineSampleRate from a plan or connection message.
+ *  Updates JS process() ratio, resets Rapt-elliptic decimator on ratio change, and
+ *  pushes engine rate into the live native graph without clearing topology.
+ *  @returns {boolean} true when ratio or engine rate changed
+ */
+NodeLiveAudioProcessor.prototype.applyOversamplingFromMessage = function applyOversamplingFromMessage(message = {}) {
+    const prevRatio = this.oversamplingRatio;
+    const prevEngine = this.engineSampleRate;
+    if (Number.isFinite(Number(message.sampleRate)) && Number(message.sampleRate) > 0) {
+      this.hostSampleRate = Math.max(1, Number(message.sampleRate));
+    }
+    const rawFactor = Math.round(Number(
+      message.oversamplingFactor ?? message.oversamplingRatio ?? this.oversamplingRatio ?? 1,
+    ));
+    const factor = (rawFactor === 2 || rawFactor === 4) ? rawFactor : 1;
+    this.oversamplingRatio = factor;
+    this.oversamplingFactor = factor;
+    const engineFromMsg = Number(message.engineSampleRate);
+    const host = Math.max(1, nodeGraphFiniteNumber(this.hostSampleRate, nodeGraphFiniteNumber(sampleRate, 44100)));
+    this.engineSampleRate = Number.isFinite(engineFromMsg) && engineFromMsg > 0
+      ? engineFromMsg
+      : host * factor;
+    if (this.raptEllipticDecimatorRatio !== this.oversamplingRatio) {
+      this.resetRaptEllipticDecimator();
+    }
+    const changed = prevRatio !== this.oversamplingRatio || prevEngine !== this.engineSampleRate;
+    if (changed && typeof this.applyNativeGraphSampleRate === "function") {
+      this.applyNativeGraphSampleRate();
+    }
+    return changed;
+};
+
+
 NodeLiveAudioProcessor.prototype.processRaptEllipticDecimatorSample = function processRaptEllipticDecimatorSample(input, states) {
     let y = nodeGraphFiniteNumber(input);
     for (let section = 0; section < nodeLiveRaptEllipticQuarterbandSos.length; section += 1) {
@@ -46,6 +79,32 @@ NodeLiveAudioProcessor.prototype.processRaptEllipticDecimatorSample = function p
       y = sectionOut;
     }
     return y;
+};
+
+NodeLiveAudioProcessor.prototype.decimateRaptEllipticChannel = function decimateRaptEllipticChannel(
+  source,
+  dest,
+  factor,
+  states,
+) {
+    const ratio = (factor === 2 || factor === 4) ? factor : 1;
+    const outFrames = dest?.length || 0;
+    if (!source || !dest || ratio <= 1) {
+      if (source && dest) {
+        const n = Math.min(source.length, dest.length);
+        for (let i = 0; i < n; i += 1) dest[i] = source[i];
+      }
+      return;
+    }
+    let last = 0;
+    for (let frame = 0; frame < outFrames; frame += 1) {
+      for (let sub = 0; sub < ratio; sub += 1) {
+        const idx = frame * ratio + sub;
+        const input = idx < source.length ? source[idx] : 0;
+        last = this.processRaptEllipticDecimatorSample(input, states);
+      }
+      dest[frame] = last;
+    }
 };
 
 NodeLiveAudioProcessor.prototype.outputSampleClipped = function outputSampleClipped(value) {
@@ -189,6 +248,35 @@ NodeLiveAudioProcessor.prototype.createLowpassState = function createLowpassStat
 
 NodeLiveAudioProcessor.prototype.createStereoFilterState = function createStereoFilterState(createFn) {
     return { left: createFn(), mono: createFn(), right: createFn() };
+};
+
+// Sample & Hold lane bundle (Efficient Live DSP is native graph; setPlan still
+// allocates these for destroy/clear bookkeeping after the JS evaluator retired).
+NodeLiveAudioProcessor.prototype.createSampleHoldState = function createSampleHoldState() {
+  return {
+    clockPhase: 0,
+    held: 0,
+    from: 0,
+    out: 0,
+    samplesInSegment: 0,
+    segmentSamples: 1,
+    lastIntervalSamples: 0,
+    samplesSinceFire: 0,
+    lastTrigger: 0,
+    pendingFireSamples: 0,
+    noise: typeof this.createNoiseGeneratorChannelState === "function"
+      ? this.createNoiseGeneratorChannelState()
+      : { seed: 1 },
+    nativeHandle: 0,
+  };
+};
+
+NodeLiveAudioProcessor.prototype.createStereoSampleHoldState = function createStereoSampleHoldState() {
+  return {
+    ext: this.createSampleHoldState(),
+    left: this.createSampleHoldState(),
+    right: this.createSampleHoldState(),
+  };
 };
 
 // Mono-only patches must not pay for three independent channel instances.
@@ -364,3 +452,17 @@ NodeLiveAudioProcessor.prototype.normalizePatchTiming = function normalizePatchT
     };
 };
 
+
+
+/** Pitch Detector state stub (DSP is native graph type 191). */
+NodeLiveAudioProcessor.prototype.createHelmholtzState = function createHelmholtzState() {
+  return { nativeHandle: 0, nativeParamKey: "", nativeSampleRate: 0 };
+};
+
+NodeLiveAudioProcessor.prototype.destroyHelmholtzState = function destroyHelmholtzState(state) {
+  if (!state?.nativeHandle || !this.nativeHelmholtz?.soemdsp_helmholtz_destroy) return;
+  try {
+    this.nativeHelmholtz.soemdsp_helmholtz_destroy(state.nativeHandle);
+  } catch (_e) { /* ignore */ }
+  state.nativeHandle = 0;
+};

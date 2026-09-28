@@ -1,6 +1,6 @@
-// Jack chrome SSOT — analog/digital + red/green/blue channel (+ CMYK yellow/cyan).
+// Jack chrome SSOT â€” analog/digital + red/green/blue channel (+ CMYK yellow/cyan).
 // Generic analog In/Out stay uncolored (gold). Explicit Mono = green; L/R = red/blue.
-// APP_POLICY §13. Cables never use this. Pairing (L↔R) stays in node-graph-wire-actions.js.
+// APP_POLICY Â§13. Cables never use this. Pairing (Lâ†”R) stays in node-graph-wire-actions.js.
 
 const nodeGraphJackRgbTypeCache = new Map();
 const nodeGraphJackQuadTypeCache = new Map();
@@ -51,7 +51,7 @@ function nodeGraphJackAxisToken(port, label) {
   const tryOne = (value) => {
     const raw = String(value || "").trim();
     const low = raw.toLowerCase();
-    // Combined X/Y (or XY) is not a single axis — do not steal "Y" from "X/Y".
+    // Combined X/Y (or XY) is not a single axis â€” do not steal "Y" from "X/Y".
     if (!low || low === "x/y" || low === "xy" || low.includes("/")) {
       return "";
     }
@@ -100,15 +100,21 @@ function nodeGraphJackLastToken(value) {
 
 function nodeGraphPortIsNoteBus(port) {
   const key = String(port || "").trim();
+  // Scale is a pitch-class bus (red). Play/Arp/Chord Memory are 128-key masks.
   return key === "Play Keys"
     || key === "Arp Keys"
+    || key === "Keys"
     || key === "Chord Memory"
     || key === "Polyphony"
     || key === "Monophony"
-    || key === "Voices";
+    || key === "Voices"
+    || key === "Scale";
 }
 
 function nodeGraphJackSignalKind(type, port, io = null) {
+  if (typeof nodeGraphPortIsCodeSignal === "function" && nodeGraphPortIsCodeSignal(type, port, io)) {
+    return "digital";
+  }
   if (typeof nodeGraphPortIsDigitalSignal === "function" && nodeGraphPortIsDigitalSignal(type, port, io)) {
     return "digital";
   }
@@ -145,11 +151,11 @@ function nodeGraphJackChannelCssColor(channel) {
       ? nodeGraphCssColor("--node-jack-blue", "#4d8dff")
       : "#4d8dff";
   }
-  // Keyboard Arp Keys — same gold as piano `.held` / default analog fill.
+  // Arp Keys digital gold — brighter than analog #e2a86d (matches piano `.held`).
   if (channel === "gold") {
     return typeof nodeGraphCssColor === "function"
-      ? nodeGraphCssColor("--node-output-fill", "#e2a86d")
-      : "#e2a86d";
+      ? nodeGraphCssColor("--node-jack-gold", "#f0b84a")
+      : "#f0b84a";
   }
   if (channel === "purple") {
     return typeof nodeGraphCssColor === "function"
@@ -168,19 +174,19 @@ function nodeGraphJackChannelCssColor(channel) {
       : "#ffe600";
   }
   if (channel === "turquoise") {
-    // Legacy alias → cyan (block-rate Parameter). Prefer "cyan".
+    // Legacy alias â†’ cyan (block-rate Parameter). Prefer "cyan".
     return typeof nodeGraphCssColor === "function"
       ? nodeGraphCssColor("--node-jack-cyan", "#00e5ff")
       : "#00e5ff";
   }
   if (channel === "magenta") {
-    // Reserved (CMYK M) — unused for live jack assignment.
+    // Reserved (CMYK M) â€” unused for live jack assignment.
     return typeof nodeGraphCssColor === "function"
       ? nodeGraphCssColor("--node-jack-magenta", "#e040fb")
       : "#e040fb";
   }
   if (channel === "black" || channel === "k") {
-    // Polyphony / Voices / CMYK K — charcoal on #000 workspace.
+    // Polyphony / Voices / CMYK K â€” charcoal on #000 workspace.
     return typeof nodeGraphCssColor === "function"
       ? nodeGraphCssColor("--node-jack-black", "#6a6a6a")
       : "#6a6a6a";
@@ -195,9 +201,9 @@ function nodeGraphJackChannelCssColor(channel) {
  */
 function nodeGraphJackWireColor(type, port, io = "output") {
   const channel = nodeGraphJackChannel(type, port, io);
-  // Colored digital buses (Play Keys blue, Arp Keys gold, Chord Memory green)
-  // + Polyphony/Voices black.
-  if (channel === "blue" || channel === "gold" || channel === "green" || channel === "black") {
+  // Colored digital buses (Play Keys blue, Arp Keys gold, Chord Memory green,
+  // Scale red) + Polyphony/Voices black.
+  if (channel === "blue" || channel === "gold" || channel === "green" || channel === "black" || channel === "red") {
     return nodeGraphJackChannelCssColor(channel) || "";
   }
   if (nodeGraphJackSignalKind(type, port, io) === "digital") {
@@ -215,7 +221,7 @@ function nodeGraphJackRgbLetterChannel(type, value) {
     return "";
   }
   const low = key.toLowerCase();
-  if (low === "rgba" || key === "📺") {
+  if (low === "rgba" || key === "ðŸ“º") {
     return "";
   }
   if (low === "red") {
@@ -277,7 +283,7 @@ function nodeGraphJackQuadratureChannel(type, port) {
   return "";
 }
 
-/** SinCos4 A/B/C taps — RGB like XYZ chaos, D stays uncolored. */
+/** SinCos4 A/B/C taps â€” RGB like XYZ chaos, D stays uncolored. */
 function nodeGraphJackSinCos4Channel(type, port) {
   if (String(type || "") !== "sineWavetable") {
     return "";
@@ -310,7 +316,7 @@ function nodeGraphJackStereoChannel(value) {
   if (raw === "m" || raw === "mono" || first === "mono" || last === "mono") {
     return "green";
   }
-  // Bare In/Out/Input/Output = generic analog → uncolored (gold). Not purple.
+  // Bare In/Out/Input/Output = generic analog â†’ uncolored (gold). Not purple.
   // Explicit Mono (name or label) is green above; Left/Right are red/blue.
   if (/^r\d+$/.test(raw) || raw === "right" || first === "right" || last === "right" || raw === "toner") {
     return "blue";
@@ -323,9 +329,9 @@ function nodeGraphJackStereoChannel(value) {
  * (+ reserved "magenta" / "black" unused)
  *
  * CMYK additive non-realtime plane (Yellow Graph):
- *   Yellow → Graph chunk in/out (data-plane, once per quantum)
- *   Cyan   → Parameter / block-rate ZOH in/out (once per quantum, held)
- *   Magenta / K → reserved unused
+ *   Yellow â†’ Graph chunk in/out (data-plane, once per quantum)
+ *   Cyan   â†’ Parameter / block-rate ZOH in/out (once per quantum, held)
+ *   Magenta / K â†’ reserved unused
  * Digital ports have no channel.
  */
 /** Explicit module jack channel: "" | red | green | blue | purple | cyan | yellow. */
@@ -360,24 +366,31 @@ function nodeGraphJackChannel(type, port, io = "output") {
   if (key === "Play Keys") {
     return "blue";
   }
-  if (key === "Arp Keys") {
+  if (key === "Arp Keys" || key === "Keys") {
     return "gold";
   }
   if (key === "Chord Memory") {
     return "green";
   }
+  if (key === "Scale") {
+    return "red";
+  }
   const def = nodeGraphJackTypeDefinition(type);
-  // Explicit module channels win before digital→white.
+  // Explicit module channels win before digitalâ†’white.
   const fromExplicit = nodeGraphJackExplicitChannel(def, key, io);
   if (
     fromExplicit === "blue"
     || fromExplicit === "gold"
     || fromExplicit === "green"
     || fromExplicit === "black"
+    || fromExplicit === "red"
   ) {
     return fromExplicit;
   }
   if (nodeGraphJackSignalKind(type, key, io) === "digital") {
+    return "";
+  }
+  if (typeof nodeGraphPortIsCodeSignal === "function" && nodeGraphPortIsCodeSignal(type, key, io)) {
     return "";
   }
   if (typeof nodeGraphPortIsGraphChunkSignal === "function" && nodeGraphPortIsGraphChunkSignal(type, key, io)) {
@@ -386,8 +399,8 @@ function nodeGraphJackChannel(type, port, io = "output") {
   if (typeof nodeGraphPortIsBlockRateSignal === "function" && nodeGraphPortIsBlockRateSignal(type, key, io)) {
     return "cyan";
   }
-  // Module-declared channel (e.g. polyBlep Wave → green). Wins over name heuristics.
-  // RGB/XYZ stacks still use letter/axis rules — do not put green first there.
+  // Module-declared channel (e.g. polyBlep Wave â†’ green). Wins over name heuristics.
+  // RGB/XYZ stacks still use letter/axis rules â€” do not put green first there.
   if (fromExplicit) {
     return fromExplicit;
   }
@@ -438,7 +451,7 @@ function nodeGraphJackChannel(type, port, io = "output") {
       const fromAlias = nodeGraphJackStereoChannel(alias);
       // Legacy Out/In/Mono aliases must not recolor a renamed jack
       // (use outputChannels/inputChannels when a main out should be green).
-      // Left/Right→In/Out (Range) must stay gold — not stereo red/blue.
+      // Left/Rightâ†’In/Out (Range) must stay gold â€” not stereo red/blue.
       if (fromAlias === "green" || fromAlias === "red" || fromAlias === "blue") {
         const aliasKey = String(alias || "").trim().toLowerCase();
         const portKey = String(key || "").trim().toLowerCase();
@@ -482,30 +495,116 @@ function nodeGraphApplyJackChrome(element, type, port, io = "output") {
     return "";
   }
   const direction = io || element.dataset?.io || "output";
-  const channel = nodeGraphJackChannel(type, port, direction);
+  let channel = nodeGraphJackChannel(type, port, direction);
+  let digital = typeof nodeGraphPortIsDigitalSignal === "function"
+    && nodeGraphPortIsDigitalSignal(type, port, direction);
+  // Named portals: paint from the cable into Portal In (Out mirrors that In).
+  // Locked wirelessRole also drives digital/square when no cable yet.
+  const nodeId = String(element?.dataset?.node || "").trim();
+  let portalWirelessRole = null;
+  let portalColorSrcPort = null;
+  if (
+    nodeId
+    && typeof nodeGraphIsNamedPortalType === "function"
+    && nodeGraphIsNamedPortalType(type)
+  ) {
+    const portalNode = typeof nodeGraphPatchNode === "function"
+      ? nodeGraphPatchNode(nodeId)
+      : null;
+    if (typeof nodeGraphNamedPortalWirelessRole === "function") {
+      portalWirelessRole = nodeGraphNamedPortalWirelessRole(portalNode);
+    } else if (portalNode) {
+      portalWirelessRole = String(portalNode.wirelessRole || "").trim() || null;
+    }
+    // Well-known Title (ChordKeys / PlayKeys / …) reuses outlet name→color/shape
+    // tables — same look as choosing that named portal / splicing from that jack.
+    let portalAliasPaintPort = null;
+    if (
+      portalNode
+      && typeof nodeGraphNamedPortalBusPaintFromAlias === "function"
+    ) {
+      const paint = nodeGraphNamedPortalBusPaintFromAlias(portalNode.alias);
+      if (paint?.port) {
+        portalAliasPaintPort = paint.port;
+        const fromAlias = nodeGraphJackChannel(type, paint.port, "output");
+        if (fromAlias) {
+          channel = fromAlias;
+        }
+        if (paint.role === "noteMask" || paint.role === "digital" || paint.role === "code") {
+          digital = true;
+          if (!portalWirelessRole && paint.role) {
+            portalWirelessRole = paint.role;
+          }
+        }
+      }
+    }
+    if (!portalAliasPaintPort && typeof nodeGraphNamedPortalColorSource === "function") {
+      const colorSrc = nodeGraphNamedPortalColorSource(nodeId);
+      if (colorSrc) {
+        portalColorSrcPort = colorSrc.port;
+        const srcNode = typeof nodeGraphPatchNode === "function"
+          ? nodeGraphPatchNode(colorSrc.nodeId)
+          : null;
+        const srcType = srcNode?.type || "";
+        const inherited = nodeGraphJackChannel(srcType, colorSrc.port, "output");
+        const srcDigital = typeof nodeGraphPortIsDigitalSignal === "function"
+          && nodeGraphPortIsDigitalSignal(srcType, colorSrc.port, "output");
+        if (inherited) {
+          channel = inherited;
+        } else if (srcDigital) {
+          channel = "";
+        }
+        digital = Boolean(srcDigital);
+      }
+    }
+    if (!digital && (
+      portalWirelessRole === "noteMask"
+      || portalWirelessRole === "digital"
+      || portalWirelessRole === "code"
+    )) {
+      digital = true;
+    }
+    if (portalAliasPaintPort) {
+      portalColorSrcPort = portalAliasPaintPort;
+    }
+  }
   element.classList.remove("node-outlet-mono", "node-outlet-left", "node-outlet-right");
   delete element.dataset.outletChannel;
-  if (channel) {
-    element.dataset.jackChannel = channel;
-    // Keep channel on the jack itself so CSS/port paint don't miss row-only marks.
-    const jack = element.classList?.contains("node-port")
-      ? element
-      : element.querySelector?.(".node-port:not(.node-param-port)");
-    if (jack) {
-      jack.dataset.jackChannel = channel;
-    }
-  } else {
-    delete element.dataset.jackChannel;
-  }
-  const jackEl = element.classList?.contains("node-port")
+  const jack = element.classList?.contains("node-port")
     ? element
     : element.querySelector?.(".node-port:not(.node-param-port)");
-  if (jackEl && typeof nodeGraphPortIsNoteBus === "function") {
-    jackEl.classList.toggle("node-port-square", nodeGraphPortIsNoteBus(port));
+  const row = element.classList?.contains("node-io-row")
+    ? element
+    : element.closest?.(".node-io-row");
+  if (channel) {
+    element.dataset.jackChannel = channel;
+    if (jack) jack.dataset.jackChannel = channel;
+    if (row) row.dataset.jackChannel = channel;
+  } else {
+    delete element.dataset.jackChannel;
+    if (jack) delete jack.dataset.jackChannel;
+    if (row && row !== element) delete row.dataset.jackChannel;
+  }
+  if (digital) {
+    if (row) row.dataset.digitalSignal = direction;
+    if (jack) jack.dataset.digitalSignal = direction;
+  } else {
+    if (row) delete row.dataset.digitalSignal;
+    if (jack) delete jack.dataset.digitalSignal;
+  }
+  if (jack) {
+    const square = (
+      (typeof nodeGraphPortIsNoteBus === "function" && nodeGraphPortIsNoteBus(port))
+      || (typeof nodeGraphPortIsNoteBus === "function" && portalColorSrcPort
+        && nodeGraphPortIsNoteBus(portalColorSrcPort))
+      || portalWirelessRole === "noteMask"
+      || portalWirelessRole === "code"
+      || (typeof nodeGraphPortIsCodeSignal === "function" && nodeGraphPortIsCodeSignal(type, port, io))
+    );
+    jack.classList.toggle("node-port-square", square);
   }
   return channel;
 }
-
 function nodeGraphApplyOutletChannelMark(element, type, port) {
   return nodeGraphApplyJackChrome(element, type, port, element?.dataset?.io || "output");
 }
@@ -527,7 +626,7 @@ function nodeGraphJackElementVisibility(element) {
       reasons: ["missing-element"],
     };
   }
-  // Off-screen cull uses display:none on the whole .dsp-node — ports are 0×0
+  // Off-screen cull uses display:none on the whole .dsp-node â€” ports are 0Ã—0
   // by design there. Do not treat them as a jack-chrome failure.
   const hostNode = element.closest?.(".dsp-node");
   const viewportAsleep = Boolean(hostNode?.classList.contains("viewport-asleep"));
@@ -565,7 +664,7 @@ function nodeGraphJackElementVisibility(element) {
   const height = nodeGraphFiniteNumber(rect.height);
   const hiddenHost = Boolean(element.hidden || element.closest?.("[hidden]"));
   const ioHidden = Boolean(element.closest?.(".io-hidden"));
-  const unusedHost = Boolean(element.closest?.(".unused-hidden, .patch-unused-ports-hidden"));
+  const unusedHost = Boolean(element.closest?.(".unused-hidden"));
   const connected = Boolean(element.classList?.contains("connected-port"));
   const painted = display !== "none"
     && visibility !== "hidden"
@@ -653,7 +752,7 @@ function nodeGraphJackVisibilityCensus(root) {
     asleepSkipped: rows.filter((row) => row.viewportAsleep || row.skipped).length,
     ioHiddenModules: modules.filter((node) => node.classList.contains("io-hidden")).length,
     unusedHiddenModules: modules.filter((node) => node.classList.contains("unused-hidden")).length,
-    workspaceUnusedHidden: Boolean(workspace?.classList.contains("patch-unused-ports-hidden")),
+    workspaceUnusedHidden: false, // retired global overlay
     applyFn: typeof nodeGraphApplyJackChrome === "function",
     sample: painted.slice(0, 24),
     hidden: considered.filter((row) => !row.painted).slice(0, 16),
@@ -697,7 +796,7 @@ function nodeGraphScheduleJackVisibilityLog(reason = "census") {
     nodeGraphJackVisibilityLogTimer = 0;
     const run = (attempt = 0) => {
       const report = nodeGraphLogJackVisibility(reason);
-      // patch-dom can fire before zoom/layout settles — awake ports briefly 0×0.
+      // patch-dom can fire before zoom/layout settles â€” awake ports briefly 0Ã—0.
       // Retry once after another frame instead of a hard false FAIL.
       if (
         report

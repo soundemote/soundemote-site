@@ -114,6 +114,11 @@ function bindNodeGraphSceneMenuEvents() {
       slewSelectedNodeGraphWires();
     }
   });
+  bindNodeGraphSceneElementEvent("nodeSceneWirePortal", "click", () => {
+    if (typeof portalSelectedNodeGraphWires === "function") {
+      portalSelectedNodeGraphWires();
+    }
+  });
   bindNodeGraphSceneElementEvent("nodeSceneCopyModule", "click", copyNodeGraphModuleFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneCopyModuleSettings", "click", copyNodeGraphModuleSettingsFromContext);
   bindNodeGraphSceneElementEvent("nodeScenePasteModuleSettings", "click", pasteNodeGraphModuleSettingsFromContext);
@@ -275,6 +280,15 @@ function bindNodeGraphSceneMenuEvents() {
   bindNodeGraphSceneElementEvent("nodeSceneKnobTextInput", "change", () => setNodeGraphKnobTextFromContext({ record: true }));
   bindNodeGraphSceneElementEvent("nodeSceneKnobTextInput", "keydown", (event) => event.stopPropagation());
   bindNodeGraphSceneElementEvent("nodeSceneKnobTextInput", "keyup", (event) => event.stopPropagation());
+  bindNodeGraphSceneElementEvent("nodeSceneKnobPluginFolder", "change", () => setNodeGraphKnobPluginIdentityFromContext());
+  bindNodeGraphSceneElementEvent("nodeSceneKnobPluginName", "change", () => setNodeGraphKnobPluginIdentityFromContext());
+  bindNodeGraphSceneElementEvent("nodeSceneKnobPluginId", "change", () => setNodeGraphKnobPluginIdentityFromContext());
+  bindNodeGraphSceneElementEvent("nodeSceneKnobPluginFolder", "keydown", (event) => event.stopPropagation());
+  bindNodeGraphSceneElementEvent("nodeSceneKnobPluginName", "keydown", (event) => event.stopPropagation());
+  bindNodeGraphSceneElementEvent("nodeSceneKnobPluginId", "keydown", (event) => event.stopPropagation());
+  bindNodeGraphSceneElementEvent("nodeSceneKnobPluginFolder", "keyup", (event) => event.stopPropagation());
+  bindNodeGraphSceneElementEvent("nodeSceneKnobPluginName", "keyup", (event) => event.stopPropagation());
+  bindNodeGraphSceneElementEvent("nodeSceneKnobPluginId", "keyup", (event) => event.stopPropagation());
   bindNodeGraphSceneElementEvent("nodeSceneToggleButtons", "click", toggleNodeGraphModuleButtonsFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneToggleModuleEnabled", "click", toggleNodeGraphModuleEnabledFromContext);
   bindNodeGraphSceneElementEvent("nodeSceneOpenNativeCode", "click", openNodeGraphNativeModuleCodeFromContext);
@@ -341,43 +355,11 @@ function bindNodeGraphSceneMenuEvents() {
     bindNodeGraphSceneElementEvent("nodeSceneAliasInput", "keydown", (event) => event.stopPropagation());
     bindNodeGraphSceneElementEvent("nodeSceneAliasInput", "keyup", (event) => event.stopPropagation());
   }
-  bindNodeGraphSceneElementEvent("nodeSceneCodeblockApplyPorts", "click", applyNodeGraphCodeblockPortsFromContext);
-  bindNodeGraphSceneElementEvent("nodeSceneCodeblockOpenCodeScreen", "click", () => openNodeGraphCodeBoxWindowForNode());
-  bindNodeGraphSceneElementEvent("nodeSceneCodeblockSource", "input", () => setNodeGraphCodeblockSourceFromContext({ record: false }));
-  bindNodeGraphSceneElementEvent("nodeSceneCodeblockSource", "change", () => setNodeGraphCodeblockSourceFromContext({ record: true }));
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxTitleScript", "input", () => setNodeGraphTextBoxPortScriptFromContext("Title", { record: false }));
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxTitleScript", "change", () => setNodeGraphTextBoxPortScriptFromContext("Title", { record: true }));
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxTextScript", "input", () => setNodeGraphTextBoxPortScriptFromContext("Text", { record: false }));
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxTextScript", "change", () => setNodeGraphTextBoxPortScriptFromContext("Text", { record: true }));
-  bindNodeGraphSceneElementEvent("nodeSceneGraphCursorX", "input", () => setNodeGraphGraphCursorFromContext({ record: false }));
-  bindNodeGraphSceneElementEvent("nodeSceneGraphCursorX", "change", () => setNodeGraphGraphCursorFromContext({ record: true }));
-  bindNodeGraphSceneElementEvent("nodeSceneMetamodulePlaymode", "change", () => {
-    if (typeof nodeGraphMetamoduleApplyVoiceSettingsFromContext === "function") {
-      nodeGraphMetamoduleApplyVoiceSettingsFromContext();
-    }
-  });
-  bindNodeGraphSceneElementEvent("nodeSceneMetamoduleVoiceCount", "change", () => {
-    if (typeof nodeGraphMetamoduleApplyVoiceSettingsFromContext === "function") {
-      nodeGraphMetamoduleApplyVoiceSettingsFromContext();
-    }
-  });
-  // List owns node edit / select / remove / add ([+] under last row, ✕ per row).
-  bindNodeGraphSceneElementEvent("nodeSceneGraphNodeList", "click", handleNodeGraphGraphNodeListClick);
-  bindNodeGraphSceneElementEvent("nodeSceneGraphNodeList", "input", handleNodeGraphGraphNodeListInput);
-  bindNodeGraphSceneElementEvent("nodeSceneGraphNodeList", "change", handleNodeGraphGraphNodeListChange);
-  bindNodeGraphSceneElementEvent("nodeSceneGraphReset", "click", resetNodeGraphGraphFromContext);
-  document
-    .querySelectorAll("#nodeSceneGraphPresetControls [data-graph-preset]")
-    .forEach((button) => {
-      button.addEventListener("click", () => setNodeGraphGraphPresetFromContext(button.dataset.graphPreset));
-    });
-  document
-    .querySelectorAll("#nodeSceneGraphTransformControls [data-graph-transform]")
-    .forEach((button) => {
-      button.addEventListener("click", () => transformNodeGraphGraphFromContext(button.dataset.graphTransform));
-    });
-  bindNodeGraphSceneElementEvent("nodeSceneGraphCopy", "click", copyNodeGraphGraphFromContext);
-  bindNodeGraphSceneElementEvent("nodeSceneGraphPaste", "click", pasteNodeGraphGraphFromContext);
+  // Smooth/Step Graph Module Settings editor removed (face-only).
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxAlignLeft", "click", () => setNodeGraphTextBoxHorizontalAlignFromContext("left"));
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxAlignCenter", "click", () => setNodeGraphTextBoxHorizontalAlignFromContext("center"));
   bindNodeGraphSceneElementEvent("nodeSceneTextBoxAlignRight", "click", () => setNodeGraphTextBoxHorizontalAlignFromContext("right"));

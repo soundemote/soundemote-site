@@ -1,11 +1,12 @@
 {
   "activeCameraId": "camera-1",
   "audio": {
+    "oversamplingFactor": 1,
     "targetSampleRate": 44100,
-    "pitchReferenceMidiNote": 48,
-    "pitchReferenceHz": 100,
+    "pitchReferenceMidiNote": 69,
+    "pitchReferenceHz": 440,
     "pitchOffsetOctaves": 0,
-    "speedLimitHz": 20000
+    "speedLimitHz": 22050
   },
   "bypassedNodes": [],
   "cameras": [
@@ -38,13 +39,6 @@
       "destinationPort": "Play Keys",
       "sourceNode": "keyboardController-1",
       "sourcePort": "Play Keys",
-      "tracePoints": []
-    },
-    {
-      "destinationNode": "hypersaw2-1",
-      "destinationPort": "f",
-      "sourceNode": "metamodule-1__voiceFrequency",
-      "sourcePort": "Frequency",
       "tracePoints": []
     },
     {
@@ -87,13 +81,6 @@
       "destinationPort": "Env",
       "sourceNode": "pluckEnvelope3-2",
       "sourcePort": "Out",
-      "tracePoints": []
-    },
-    {
-      "destinationNode": "softwaveOsc-1",
-      "destinationPort": "f",
-      "sourceNode": "arp-1",
-      "sourcePort": "f",
       "tracePoints": []
     },
     {
@@ -160,13 +147,6 @@
       "tracePoints": []
     },
     {
-      "destinationNode": "keyboard-1",
-      "destinationPort": "Chord Memory",
-      "sourceNode": "sequencer-1",
-      "sourcePort": "Play Keys",
-      "tracePoints": []
-    },
-    {
       "destinationNode": "pluckEnvelope3-2",
       "destinationPort": "Trigger",
       "sourceNode": "metamodule-1__voiceTrigger",
@@ -174,8 +154,29 @@
       "tracePoints": []
     },
     {
-      "destinationNode": "metamodule-1",
-      "destinationPort": "Voices",
+      "destinationNode": "hypersaw2-1",
+      "destinationPort": "Increment",
+      "sourceNode": "metamodule-1__voiceFrequency",
+      "sourcePort": "Increment",
+      "tracePoints": []
+    },
+    {
+      "destinationNode": "keyboard-1",
+      "destinationPort": "Chord Memory",
+      "sourceNode": "sequencer-1",
+      "sourcePort": "Play Keys",
+      "tracePoints": []
+    },
+    {
+      "destinationNode": "softwaveOsc-1",
+      "destinationPort": "Increment",
+      "sourceNode": "arp-1",
+      "sourcePort": "inc",
+      "tracePoints": []
+    },
+    {
+      "destinationNode": "namedPortalIn-1",
+      "destinationPort": "In",
       "sourceNode": "keyboard-1",
       "sourcePort": "Chord Memory",
       "tracePoints": []
@@ -183,6 +184,34 @@
     {
       "destinationNode": "arp-1",
       "destinationPort": "Arp Keys",
+      "sourceNode": "namedPortalOut-1",
+      "sourcePort": "Out",
+      "tracePoints": []
+    },
+    {
+      "destinationNode": "namedPortalIn-3",
+      "destinationPort": "In",
+      "sourceNode": "knob-1",
+      "sourcePort": "Bias",
+      "tracePoints": []
+    },
+    {
+      "destinationNode": "namedPortalIn-4",
+      "destinationPort": "In",
+      "sourceNode": "knob-2",
+      "sourcePort": "Bias",
+      "tracePoints": []
+    },
+    {
+      "destinationNode": "metamodule-1",
+      "destinationPort": "Voices",
+      "sourceNode": "keyboard-1",
+      "sourcePort": "Play Keys",
+      "tracePoints": []
+    },
+    {
+      "destinationNode": "metamodule-1",
+      "destinationPort": "Voices",
       "sourceNode": "keyboard-1",
       "sourcePort": "Chord Memory",
       "tracePoints": []
@@ -204,7 +233,8 @@
     "bankName": "",
     "category": "",
     "description": "Init — PolyBLEP into Output (same as patches/init.json)",
-    "name": "Init",
+    "emoji": "",
+    "name": "",
     "program": 0,
     "tags": "init,default"
   },
@@ -234,16 +264,22 @@
     {
       "destinationNode": "passiveFilter-2",
       "destinationParam": "sweep",
-      "sourceNode": "knob-1",
-      "sourcePort": "Bias",
+      "sourceNode": "namedPortalOut-5",
+      "sourcePort": "Out",
+      "tracePoints": []
+    },
+    {
+      "destinationNode": "hypersaw2-1",
+      "destinationParam": "jitterDistance",
+      "sourceNode": "namedPortalOut-6",
+      "sourcePort": "Out",
       "tracePoints": []
     }
   ],
-  "monitors": [],
   "nodes": [
     {
-      "gx": 42,
-      "gy": 4,
+      "gx": 26,
+      "gy": -10,
       "id": "output",
       "paramMeta": {
         "volume": {
@@ -259,6 +295,7 @@
           "maxDigits": 3,
           "mid": -3,
           "min": -140,
+          "reverse": false,
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
@@ -277,7 +314,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "pan": {
           "alias": "",
@@ -292,6 +330,7 @@
           "maxDigits": 3,
           "mid": 0,
           "min": -1,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -310,7 +349,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         }
       },
       "params": {
@@ -355,28 +395,29 @@
       }
     },
     {
-      "gx": 15,
-      "gy": -4,
+      "gx": -32,
+      "gy": -20,
       "id": "textBox-1",
       "paramMeta": {},
       "params": {},
       "type": "textBox",
       "alias": "The Journey Starts Here",
-      "widthGu": 32,
-      "heightGu": 8,
+      "widthGu": 39,
+      "heightGu": 7,
       "layout": {
+        "backgroundAlpha": 0.78,
         "backgroundColor": "#020407",
         "font": "cascadia-mono",
         "horizontalAlign": "center",
         "kind": "textBox",
         "text": "Journey to the Hypersaw\n|\\ /\\ /|",
         "textColor": "#f3f1ec",
-        "textSizePercent": 639,
+        "textSizePercent": 533,
         "textWeight": 400,
         "lineHeight": 1.2,
         "textMode": "multiline",
         "verticalAlignSchema": 2,
-        "verticalAlignPercent": 51
+        "verticalAlignPercent": 49.476432
       },
       "ui": {
         "buttonsHidden": true,
@@ -396,8 +437,8 @@
       }
     },
     {
-      "gx": 15,
-      "gy": 4,
+      "gx": 7,
+      "gy": -13,
       "id": "metamodule-1",
       "paramMeta": {
         "octave": {
@@ -413,12 +454,13 @@
           "maxDigits": 3,
           "mid": 0,
           "min": -4,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
           "removeTrailingZeros": false,
           "smoothingMode": "internal",
-          "smoothingSeconds": 0.0333,
+          "smoothingSeconds": 1469,
           "smoothingType": "linear",
           "step": 1,
           "tooltip": "Shared octave offset into Voice Frequency.",
@@ -429,9 +471,10 @@
           "constraint": "",
           "unit": "",
           "wraparound": false,
-          "visible": true,
+          "visible": false,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "semitones": {
           "alias": "",
@@ -446,12 +489,13 @@
           "maxDigits": 3,
           "mid": 0,
           "min": -12,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
           "removeTrailingZeros": false,
           "smoothingMode": "internal",
-          "smoothingSeconds": 0.0333,
+          "smoothingSeconds": 1469,
           "smoothingType": "linear",
           "step": 1,
           "tooltip": "Shared semitone offset into Voice Frequency.",
@@ -462,9 +506,10 @@
           "constraint": "",
           "unit": "",
           "wraparound": false,
-          "visible": true,
+          "visible": false,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "cents": {
           "alias": "",
@@ -479,12 +524,13 @@
           "maxDigits": 3,
           "mid": 0,
           "min": -100,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
           "removeTrailingZeros": false,
           "smoothingMode": "internal",
-          "smoothingSeconds": 0.0333,
+          "smoothingSeconds": 1469,
           "smoothingType": "linear",
           "step": 1,
           "tooltip": "Shared cents offset into Voice Frequency.",
@@ -495,9 +541,10 @@
           "constraint": "",
           "unit": "",
           "wraparound": false,
-          "visible": true,
+          "visible": false,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "frequency": {
           "alias": "",
@@ -512,12 +559,13 @@
           "maxDigits": 5,
           "mid": 0,
           "min": -100,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
           "removeTrailingZeros": false,
           "smoothingMode": "internal",
-          "smoothingSeconds": 0.0333,
+          "smoothingSeconds": 1469,
           "smoothingType": "linear",
           "step": 0.1,
           "tooltip": "Shared Hz offset after octave/semitone/cents (param domain).",
@@ -528,9 +576,10 @@
           "constraint": "",
           "unit": "",
           "wraparound": false,
-          "visible": true,
+          "visible": false,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         }
       },
       "params": {
@@ -580,7 +629,7 @@
       "ui": {
         "buttonsHidden": false,
         "buttonsForceShow": false,
-        "displayHeightOffsetGu": 3,
+        "displayHeightOffsetGu": 0,
         "displayModeKey": "",
         "ioHidden": false,
         "hideUnused": false,
@@ -591,7 +640,8 @@
         "oscilloscopeForceShow": false,
         "slidersHidden": false,
         "slidersForceShow": false,
-        "titleHidden": false
+        "titleHidden": false,
+        "displayHeightGu": 6
       },
       "metamodule": {
         "boundary": [
@@ -615,13 +665,7 @@
         "displays": [],
         "paramVisibility": {
           "hypersaw2-1|jitterDistance": true,
-          "hypersaw2-1|jitterSpeed": true,
           "hypersaw2-1|jitterTilt": true,
-          "hypersaw2-1|waveform": true,
-          "hypersaw2-1|morph": true,
-          "hypersaw2-1|vibratoDistance": true,
-          "hypersaw2-1|vibratoSpeed": true,
-          "hypersaw2-1|vibratoPhaseVary": true,
           "hypersaw2-1|jitterSpeedRef": true,
           "passiveFilter-2|sweep": true
         },
@@ -674,6 +718,22 @@
         "fade": 0,
         "xyzLayout": "stack"
       },
+      "ui": {
+        "buttonsHidden": true,
+        "buttonsForceShow": false,
+        "displayHeightOffsetGu": 0,
+        "displayModeKey": "",
+        "ioHidden": false,
+        "hideUnused": false,
+        "interfaceControlsHidden": false,
+        "interfaceControlsForceShow": false,
+        "movementLocked": false,
+        "oscilloscopeHidden": false,
+        "oscilloscopeForceShow": false,
+        "slidersHidden": false,
+        "slidersForceShow": false,
+        "titleHidden": false
+      },
       "ownerMetamoduleId": "metamodule-1"
     },
     {
@@ -721,17 +781,33 @@
         "fade": 0,
         "xyzLayout": "stack"
       },
+      "ui": {
+        "buttonsHidden": true,
+        "buttonsForceShow": false,
+        "displayHeightOffsetGu": 0,
+        "displayModeKey": "",
+        "ioHidden": false,
+        "hideUnused": false,
+        "interfaceControlsHidden": false,
+        "interfaceControlsForceShow": false,
+        "movementLocked": false,
+        "oscilloscopeHidden": false,
+        "oscilloscopeForceShow": false,
+        "slidersHidden": false,
+        "slidersForceShow": false,
+        "titleHidden": false
+      },
       "ownerMetamoduleId": "metamodule-1"
     },
     {
-      "gx": -22,
-      "gy": -7,
+      "gx": -32,
+      "gy": -13,
       "id": "keyboard-1",
       "paramMeta": {},
       "params": {},
       "type": "keyboard",
       "alias": "Keyboard & Chord Memory",
-      "widthGu": 37,
+      "widthGu": 39,
       "traceDisplaySettings": {
         "backgroundHue": 0,
         "backgroundBrightness": 0,
@@ -770,10 +846,10 @@
       "ui": {
         "buttonsHidden": false,
         "buttonsForceShow": false,
-        "displayHeightOffsetGu": 2,
+        "displayHeightOffsetGu": 0,
         "displayModeKey": "",
         "ioHidden": false,
-        "hideUnused": false,
+        "hideUnused": true,
         "interfaceControlsHidden": false,
         "interfaceControlsForceShow": false,
         "movementLocked": false,
@@ -781,7 +857,8 @@
         "oscilloscopeForceShow": false,
         "slidersHidden": false,
         "slidersForceShow": false,
-        "titleHidden": false
+        "titleHidden": false,
+        "displayHeightGu": 8
       },
       "chordMemory": {
         "slots": {
@@ -875,12 +952,13 @@
       }
     },
     {
-      "gx": -30,
-      "gy": -7,
+      "gx": -39,
+      "gy": -19,
       "id": "keyboardController-1",
       "paramMeta": {},
       "params": {},
       "type": "keyboardController",
+      "widthGu": 7,
       "traceDisplaySettings": {
         "backgroundHue": 0,
         "backgroundBrightness": 0,
@@ -915,6 +993,22 @@
         "zoomSeconds": 0.25,
         "fade": 0,
         "xyzLayout": "stack"
+      },
+      "ui": {
+        "buttonsHidden": true,
+        "buttonsForceShow": false,
+        "displayHeightOffsetGu": 0,
+        "displayModeKey": "",
+        "ioHidden": false,
+        "hideUnused": false,
+        "interfaceControlsHidden": false,
+        "interfaceControlsForceShow": false,
+        "movementLocked": false,
+        "oscilloscopeHidden": false,
+        "oscilloscopeForceShow": false,
+        "slidersHidden": false,
+        "slidersForceShow": false,
+        "titleHidden": false
       }
     },
     {
@@ -924,7 +1018,7 @@
       "paramMeta": {},
       "params": {},
       "type": "voiceFrequency",
-      "alias": "Voice Frequency",
+      "alias": "Voice Inc",
       "widthGu": 4,
       "heightGu": 3,
       "ui": {
@@ -1047,6 +1141,7 @@
           "maxDigits": 3,
           "mid": 16,
           "min": 1,
+          "reverse": false,
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
@@ -1065,7 +1160,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "centerSide": {
           "alias": "",
@@ -1080,6 +1176,7 @@
           "maxDigits": 3,
           "mid": 0.5,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -1098,7 +1195,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "waveform": {
           "alias": "",
@@ -1121,6 +1219,7 @@
           "maxDigits": 3,
           "mid": 1,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
@@ -1139,7 +1238,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": false,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "morph": {
           "alias": "",
@@ -1154,6 +1254,7 @@
           "maxDigits": 5,
           "mid": 0.5,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": true,
           "sliderCurve": "bipolarRational",
           "showSign": false,
@@ -1172,7 +1273,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "frequency": {
           "alias": "",
@@ -1187,6 +1289,7 @@
           "maxDigits": 5,
           "mid": 220,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -1205,7 +1308,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "phase": {
           "alias": "",
@@ -1220,6 +1324,7 @@
           "maxDigits": 3,
           "mid": 0.5,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -1238,7 +1343,8 @@
           "wraparound": true,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "phaseCollapse": {
           "alias": "",
@@ -1256,6 +1362,7 @@
           "maxDigits": 3,
           "mid": 0,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -1274,7 +1381,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": false,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "randomizePhase": {
           "alias": "",
@@ -1289,6 +1397,7 @@
           "maxDigits": 3,
           "mid": 0.5,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -1307,7 +1416,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "jitterDistance": {
           "alias": "",
@@ -1318,12 +1428,13 @@
           "divideChoicesVisibly": false,
           "kind": "decimal",
           "bipolar": false,
-          "max": 100,
+          "max": 7.28,
           "maxDigits": 3,
-          "mid": 10,
-          "min": 0,
-          "nonlinearSlider": true,
-          "sliderCurve": "custom",
+          "mid": 7.28,
+          "min": 1,
+          "reverse": false,
+          "nonlinearSlider": false,
+          "sliderCurve": "linear",
           "showSign": false,
           "removeTrailingZeros": false,
           "smoothingMode": "internal",
@@ -1340,7 +1451,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "vibratoDistance": {
           "alias": "",
@@ -1355,6 +1467,7 @@
           "maxDigits": 3,
           "mid": 10,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": true,
           "sliderCurve": "custom",
           "showSign": false,
@@ -1373,7 +1486,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "jitterSpeed": {
           "alias": "",
@@ -1388,6 +1502,7 @@
           "maxDigits": 5,
           "mid": 10,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
@@ -1406,7 +1521,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "vibratoSpeed": {
           "alias": "",
@@ -1421,6 +1537,7 @@
           "maxDigits": 5,
           "mid": 5,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
@@ -1439,7 +1556,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "jitterSteps": {
           "alias": "",
@@ -1457,6 +1575,7 @@
           "maxDigits": 3,
           "mid": 0,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -1475,7 +1594,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": false,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "jitterFilter": {
           "alias": "",
@@ -1490,6 +1610,7 @@
           "maxDigits": 5,
           "mid": 20,
           "min": 0.1,
+          "reverse": false,
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
@@ -1508,7 +1629,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "jitterDistanceTiltSource": {
           "alias": "",
@@ -1526,6 +1648,7 @@
           "maxDigits": 3,
           "mid": 0,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -1544,7 +1667,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": false,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "vibratoDistanceTiltSource": {
           "alias": "",
@@ -1562,6 +1686,7 @@
           "maxDigits": 3,
           "mid": 0,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -1580,7 +1705,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": false,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "vibratoPhaseVary": {
           "alias": "",
@@ -1595,6 +1721,7 @@
           "maxDigits": 3,
           "mid": 0.5,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -1613,7 +1740,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "seed": {
           "alias": "",
@@ -1628,6 +1756,7 @@
           "maxDigits": 0,
           "mid": 1,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
@@ -1646,7 +1775,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": false,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "amplitude": {
           "alias": "",
@@ -1661,6 +1791,7 @@
           "maxDigits": 3,
           "mid": 0.5,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -1679,7 +1810,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         }
       },
       "params": {
@@ -1687,14 +1819,14 @@
         "centerSide": 1,
         "waveform": 1,
         "morph": 0.5,
-        "frequency": 208.50994564272867,
+        "frequency": 0,
         "phase": 0,
         "phaseCollapse": 1,
         "randomizePhase": 2.970384733102537,
-        "jitterDistance": 11.16060076231405,
+        "jitterDistance": 1,
         "vibratoDistance": 0.32009038906022796,
         "jitterSpeed": 0.05922263870095852,
-        "vibratoSpeed": 0.9787400493219194,
+        "vibratoSpeed": 0.9787,
         "jitterSteps": 0,
         "jitterFilter": 35.397278317453484,
         "jitterDistanceTiltSource": 0,
@@ -1731,7 +1863,7 @@
     },
     {
       "gx": -11,
-      "gy": 9,
+      "gy": 8,
       "id": "pluckEnvelope3-2",
       "paramMeta": {
         "recalculateOnTrigger": {
@@ -1750,6 +1882,7 @@
           "maxDigits": 3,
           "mid": 1,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -1768,7 +1901,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": false,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "attack": {
           "alias": "",
@@ -1783,6 +1917,7 @@
           "maxDigits": 5,
           "mid": 0.01,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
@@ -1801,7 +1936,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "decay": {
           "alias": "",
@@ -1816,6 +1952,7 @@
           "maxDigits": 3,
           "mid": 0.5,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -1834,7 +1971,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "amplitude": {
           "alias": "",
@@ -1849,6 +1987,7 @@
           "maxDigits": 3,
           "mid": 1,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -1867,7 +2006,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         }
       },
       "params": {
@@ -1877,6 +2017,7 @@
         "amplitude": 1
       },
       "type": "pluckEnvelope3",
+      "alias": "Ping Envelope",
       "widthGu": 7,
       "ui": {
         "buttonsHidden": false,
@@ -1919,6 +2060,7 @@
           "maxDigits": 3,
           "mid": 1,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -1937,7 +2079,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": false,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "slope": {
           "alias": "",
@@ -1957,6 +2100,7 @@
           "maxDigits": 3,
           "mid": 1.5,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -1975,7 +2119,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": false,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "stagger": {
           "alias": "",
@@ -1990,6 +2135,7 @@
           "maxDigits": 3,
           "mid": 1.6,
           "min": 1,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -2008,7 +2154,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "lowFrequency": {
           "alias": "",
@@ -2023,6 +2170,7 @@
           "maxDigits": 5,
           "mid": 200,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
@@ -2041,7 +2189,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "highFrequency": {
           "alias": "",
@@ -2056,6 +2205,7 @@
           "maxDigits": 5,
           "mid": 1000,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
@@ -2074,7 +2224,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "sweep": {
           "alias": "",
@@ -2089,6 +2240,7 @@
           "maxDigits": 3,
           "mid": 0,
           "min": -480,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": true,
@@ -2107,7 +2259,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "gainCompensation": {
           "alias": "",
@@ -2125,6 +2278,7 @@
           "maxDigits": 3,
           "mid": 1,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -2143,7 +2297,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": false,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "amplitude": {
           "alias": "",
@@ -2158,6 +2313,7 @@
           "maxDigits": 3,
           "mid": 1,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -2176,7 +2332,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         }
       },
       "params": {
@@ -2231,6 +2388,7 @@
           "maxDigits": 3,
           "mid": 1,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -2249,7 +2407,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": false,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         }
       },
       "params": {
@@ -2313,8 +2472,8 @@
       "ownerMetamoduleId": "metamodule-1"
     },
     {
-      "gx": -1,
-      "gy": 11,
+      "gx": -10,
+      "gy": -2,
       "id": "arp-1",
       "paramMeta": {
         "mode": {
@@ -2336,6 +2495,7 @@
           "maxDigits": 3,
           "mid": 0,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -2354,7 +2514,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": false,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "rate": {
           "alias": "",
@@ -2369,6 +2530,7 @@
           "maxDigits": 5,
           "mid": 8,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
@@ -2387,7 +2549,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "steps": {
           "alias": "",
@@ -2402,6 +2565,7 @@
           "maxDigits": 0,
           "mid": 8,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -2420,7 +2584,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "seed": {
           "alias": "",
@@ -2435,6 +2600,7 @@
           "maxDigits": 0,
           "mid": 1,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
@@ -2453,7 +2619,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": false,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "octaveOffset": {
           "alias": "",
@@ -2468,6 +2635,7 @@
           "maxDigits": 0,
           "mid": 0,
           "min": -4,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -2486,7 +2654,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "sequenceOffset": {
           "alias": "",
@@ -2501,6 +2670,7 @@
           "maxDigits": 0,
           "mid": 0,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -2519,7 +2689,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         }
       },
       "params": {
@@ -2535,6 +2706,7 @@
       "arpKeysSettings": {
         "strokeColor": "#00ffbf",
         "strokeBrightness": 0.5,
+        "strokeThickness": 0.017463,
         "fontColor": "#00ffbf",
         "fontBrightness": 0.5,
         "cornerShape": "squircle",
@@ -2560,8 +2732,8 @@
       }
     },
     {
-      "gx": 8,
-      "gy": 11,
+      "gx": 4,
+      "gy": -2,
       "id": "softwaveOsc-1",
       "paramMeta": {
         "waveform": {
@@ -2588,6 +2760,7 @@
           "maxDigits": 3,
           "mid": 4,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -2606,7 +2779,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": false,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "frequency": {
           "alias": "",
@@ -2621,12 +2795,13 @@
           "maxDigits": 5,
           "mid": 220,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
           "removeTrailingZeros": false,
           "smoothingMode": "internal",
-          "smoothingSeconds": 0.0333,
+          "smoothingSeconds": 1469,
           "smoothingType": "linear",
           "step": 0,
           "tooltip": "Default slider 0…20 kHz. Pitch MOD can run down through 0. Thru-zero: enable Bipolar on Frequency (domain-add MOD). Domain min/max are slider guides.",
@@ -2639,7 +2814,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": true,
+          "domainOffset": 847.5976690899638
         },
         "morph": {
           "alias": "",
@@ -2654,6 +2830,7 @@
           "maxDigits": 3,
           "mid": 0.5,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -2672,7 +2849,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "phase": {
           "alias": "",
@@ -2687,6 +2865,7 @@
           "maxDigits": 3,
           "mid": 0.5,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -2705,7 +2884,8 @@
           "wraparound": true,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "antialias": {
           "alias": "",
@@ -2720,6 +2900,7 @@
           "maxDigits": 3,
           "mid": 0.5,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -2738,7 +2919,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "amplitude": {
           "alias": "",
@@ -2753,31 +2935,33 @@
           "maxDigits": 3,
           "mid": 1,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
           "removeTrailingZeros": false,
           "smoothingMode": "internal",
-          "smoothingSeconds": 0.0333,
+          "smoothingSeconds": 1469,
           "smoothingType": "linear",
           "step": 0.01,
           "tooltip": "",
-          "modClamp": true,
+          "modClamp": false,
           "hardClamp": false,
           "modMultiply": false,
           "vca": false,
           "constraint": "",
           "unit": "",
           "wraparound": false,
-          "visible": false,
+          "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         }
       },
       "params": {
         "waveform": 4,
-        "frequency": 100,
-        "morph": 0.756,
+        "frequency": 3.477592057602134e-9,
+        "morph": 1,
         "phase": 0,
         "antialias": 0,
         "amplitude": 1
@@ -2785,7 +2969,25 @@
       "type": "softwaveOsc",
       "widthGu": 7,
       "traceDisplaySettings": {
+        "lineHue": 165,
+        "lineBrightness": 0.5,
         "lineThickness": 3,
+        "lineBlur": 0,
+        "dotHue": 165,
+        "dotBrightness": 1,
+        "dotThickness": 5,
+        "backgroundHue": 200,
+        "backgroundBrightness": 0.03,
+        "pixelDensity": 1,
+        "strokeColor": "#00ffbf",
+        "color": "#00ffbf",
+        "dot1Color": "#00ffbf",
+        "dotColor": "#00ffbf",
+        "backgroundColor": "#00aaff",
+        "background": "#00aaff",
+        "strokePaint": "rgb(0 255 191)",
+        "dotPaint": "rgb(255 255 255)",
+        "backgroundPaint": "rgb(0 21 32)",
         "showDot": false
       },
       "ui": {
@@ -2807,8 +3009,8 @@
       }
     },
     {
-      "gx": -8,
-      "gy": 11,
+      "gx": -17,
+      "gy": -1,
       "id": "transport-1",
       "paramMeta": {
         "bpm": {
@@ -2824,6 +3026,7 @@
           "maxDigits": 3,
           "mid": 160,
           "min": 1,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -2842,7 +3045,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "pulseWidth": {
           "alias": "",
@@ -2857,6 +3061,7 @@
           "maxDigits": 3,
           "mid": 0.5,
           "min": 0.01,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -2875,7 +3080,43 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
+        },
+        "beats": {
+          "alias": "",
+          "choices": [],
+          "curveAmount": 0,
+          "def": 4,
+          "displayChoices": false,
+          "divideChoicesVisibly": false,
+          "kind": "decimal",
+          "bipolar": false,
+          "max": 16,
+          "maxDigits": 3,
+          "mid": 4,
+          "min": 1,
+          "reverse": false,
+          "nonlinearSlider": true,
+          "sliderCurve": "skew",
+          "showSign": false,
+          "removeTrailingZeros": false,
+          "smoothingMode": "global",
+          "smoothingSeconds": null,
+          "smoothingType": "none",
+          "step": 1,
+          "tooltip": "Beats per bar for the click. Beat 1 = hi click (downbeat); other beats = lo click.",
+          "modClamp": true,
+          "hardClamp": false,
+          "modMultiply": false,
+          "vca": false,
+          "constraint": "",
+          "unit": "",
+          "wraparound": false,
+          "visible": true,
+          "linearSmoothing": false,
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "timeNumerator": {
           "alias": "",
@@ -2890,6 +3131,7 @@
           "maxDigits": 2,
           "mid": 1,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -2908,7 +3150,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": false,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "timeDenominator": {
           "alias": "",
@@ -2923,6 +3166,7 @@
           "maxDigits": 2,
           "mid": 8,
           "min": 1,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -2941,7 +3185,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": false,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "timingMode": {
           "alias": "",
@@ -2960,6 +3205,7 @@
           "maxDigits": 3,
           "mid": 0,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -2978,7 +3224,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": false,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "amplitude": {
           "alias": "",
@@ -2993,6 +3240,7 @@
           "maxDigits": 4,
           "mid": 1,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -3011,12 +3259,14 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         }
       },
       "params": {
         "bpm": 120,
         "pulseWidth": 0.5,
+        "beats": 4,
         "timeNumerator": 1,
         "timeDenominator": 16,
         "timingMode": 0,
@@ -3046,8 +3296,8 @@
       }
     },
     {
-      "gx": 35,
-      "gy": 4,
+      "gx": 19,
+      "gy": -10,
       "id": "mixStereo2-1",
       "paramMeta": {
         "volume1": {
@@ -3063,6 +3313,7 @@
           "maxDigits": 3,
           "mid": 0,
           "min": -140,
+          "reverse": false,
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
@@ -3081,7 +3332,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "volume2": {
           "alias": "",
@@ -3096,6 +3348,7 @@
           "maxDigits": 3,
           "mid": 0,
           "min": -140,
+          "reverse": false,
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
@@ -3114,7 +3367,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "pan1": {
           "alias": "",
@@ -3129,6 +3383,7 @@
           "maxDigits": 3,
           "mid": 0,
           "min": -1,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -3147,7 +3402,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "pan2": {
           "alias": "",
@@ -3162,6 +3418,7 @@
           "maxDigits": 3,
           "mid": 0,
           "min": -1,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -3180,7 +3437,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "amplitude": {
           "alias": "",
@@ -3195,6 +3453,7 @@
           "maxDigits": 3,
           "mid": 0,
           "min": -140,
+          "reverse": false,
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
@@ -3213,7 +3472,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         }
       },
       "params": {
@@ -3270,7 +3530,7 @@
         "interfaceControlsHidden": false,
         "interfaceControlsForceShow": false,
         "movementLocked": false,
-        "oscilloscopeHidden": false,
+        "oscilloscopeHidden": true,
         "oscilloscopeForceShow": false,
         "slidersHidden": false,
         "slidersForceShow": false,
@@ -3279,8 +3539,8 @@
       }
     },
     {
-      "gx": 27,
-      "gy": 4,
+      "gx": 11,
+      "gy": -2,
       "id": "eqFilter-2",
       "paramMeta": {
         "mode": {
@@ -3307,6 +3567,7 @@
           "maxDigits": 3,
           "mid": 1,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -3325,7 +3586,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": false,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "frequency": {
           "alias": "",
@@ -3340,6 +3602,7 @@
           "maxDigits": 5,
           "mid": 1000,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
@@ -3358,7 +3621,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "q": {
           "alias": "",
@@ -3373,6 +3637,7 @@
           "maxDigits": 3,
           "mid": 0.707,
           "min": 0.05,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -3391,7 +3656,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "gain": {
           "alias": "",
@@ -3406,6 +3672,7 @@
           "maxDigits": 3,
           "mid": 0,
           "min": -24,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": true,
@@ -3424,7 +3691,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "amplitude": {
           "alias": "",
@@ -3439,6 +3707,7 @@
           "maxDigits": 3,
           "mid": 1,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -3457,7 +3726,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         }
       },
       "params": {
@@ -3488,8 +3758,8 @@
       }
     },
     {
-      "gx": 8,
-      "gy": 24,
+      "gx": -1,
+      "gy": 2,
       "id": "robinSinusoid-1",
       "paramMeta": {
         "frequency": {
@@ -3505,6 +3775,7 @@
           "maxDigits": 5,
           "mid": 440,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": true,
           "sliderCurve": "skew",
           "showSign": false,
@@ -3523,7 +3794,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "amplitude": {
           "alias": "",
@@ -3538,6 +3810,7 @@
           "maxDigits": 3,
           "mid": 0.5,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -3556,7 +3829,8 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "phase": {
           "alias": "",
@@ -3571,6 +3845,7 @@
           "maxDigits": 3,
           "mid": 0.5,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -3589,7 +3864,8 @@
           "wraparound": true,
           "visible": false,
           "linearSmoothing": true,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         }
       },
       "params": {
@@ -3598,7 +3874,7 @@
         "phase": 0
       },
       "type": "robinSinusoid",
-      "widthGu": 7,
+      "widthGu": 5,
       "traceDisplaySettings": {
         "backgroundHue": 0,
         "backgroundBrightness": 0,
@@ -3607,7 +3883,7 @@
         "brightness": 0.95,
         "color": "#ff0000",
         "dot1Enabled": true,
-        "dot1Size": 0.035,
+        "dot1Size": 2.3315,
         "secondaryBrightness": 0.95,
         "secondaryColor": "#0000ff",
         "secondaryEnabled": true,
@@ -3640,7 +3916,7 @@
         "displayHeightOffsetGu": 0,
         "displayModeKey": "",
         "ioHidden": false,
-        "hideUnused": false,
+        "hideUnused": true,
         "interfaceControlsHidden": false,
         "interfaceControlsForceShow": false,
         "movementLocked": false,
@@ -3653,13 +3929,13 @@
       }
     },
     {
-      "gx": -58,
-      "gy": 3,
+      "gx": -67,
+      "gy": -10,
       "id": "sequencer-1",
       "paramMeta": {},
       "params": {},
       "type": "sequencer",
-      "widthGu": 36,
+      "widthGu": 35,
       "sequencer": {
         "loopTicks": 1024,
         "snap": 128,
@@ -3715,6 +3991,42 @@
             "midi": 12,
             "start": 0,
             "length": 128,
+            "vel": 100
+          },
+          {
+            "midi": 12,
+            "start": 1024,
+            "length": 128,
+            "vel": 100
+          },
+          {
+            "midi": 14,
+            "start": 1152,
+            "length": 128,
+            "vel": 100
+          },
+          {
+            "midi": 9,
+            "start": 1280,
+            "length": 128,
+            "vel": 100
+          },
+          {
+            "midi": 10,
+            "start": 1408,
+            "length": 128,
+            "vel": 100
+          },
+          {
+            "midi": 17,
+            "start": 1536,
+            "length": 128,
+            "vel": 100
+          },
+          {
+            "midi": 11,
+            "start": 1024,
+            "length": 640,
             "vel": 100
           }
         ]
@@ -3773,8 +4085,8 @@
       }
     },
     {
-      "gx": -22,
-      "gy": 11,
+      "gx": -32,
+      "gy": -2,
       "id": "knob-1",
       "paramMeta": {
         "offset": {
@@ -3790,6 +4102,7 @@
           "maxDigits": 3,
           "mid": 0,
           "min": -0.06711182369805968,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -3808,144 +4121,8 @@
           "wraparound": false,
           "visible": false,
           "linearSmoothing": true,
-          "outputDomain": false
-        },
-        "rangeMin": {
-          "alias": "",
-          "choices": [],
-          "curveAmount": 0,
-          "def": 0,
-          "displayChoices": false,
-          "divideChoicesVisibly": false,
-          "kind": "decimal",
-          "bipolar": true,
-          "max": 10,
-          "maxDigits": 3,
-          "mid": 0,
-          "min": -10,
-          "nonlinearSlider": true,
-          "sliderCurve": "skew",
-          "showSign": false,
-          "removeTrailingZeros": false,
-          "smoothingMode": "global",
-          "smoothingSeconds": null,
-          "smoothingType": "none",
-          "step": 0,
-          "tooltip": "Output range low. Default 0.",
-          "modClamp": true,
-          "hardClamp": false,
-          "modMultiply": false,
-          "vca": false,
-          "constraint": "",
-          "unit": "",
-          "wraparound": false,
-          "visible": true,
-          "linearSmoothing": false,
-          "outputDomain": false
-        },
-        "rangeMax": {
-          "alias": "",
-          "choices": [],
-          "curveAmount": 0,
-          "def": 1,
-          "displayChoices": false,
-          "divideChoicesVisibly": false,
-          "kind": "decimal",
-          "bipolar": false,
-          "max": 10,
-          "maxDigits": 3,
-          "mid": 1,
-          "min": -10,
-          "nonlinearSlider": true,
-          "sliderCurve": "skew",
-          "showSign": false,
-          "removeTrailingZeros": false,
-          "smoothingMode": "global",
-          "smoothingSeconds": null,
-          "smoothingType": "none",
-          "step": 0,
-          "tooltip": "Output range high. Default 1.",
-          "modClamp": true,
-          "hardClamp": false,
-          "modMultiply": false,
-          "vca": false,
-          "constraint": "",
-          "unit": "",
-          "wraparound": false,
-          "visible": true,
-          "linearSmoothing": false,
-          "outputDomain": false
-        },
-        "smoothingSeconds": {
-          "alias": "",
-          "choices": [],
-          "curveAmount": 0,
-          "def": 0.0333,
-          "displayChoices": false,
-          "divideChoicesVisibly": false,
-          "kind": "decimal",
-          "bipolar": false,
-          "max": 10,
-          "maxDigits": 3,
-          "mid": 0.1,
-          "min": 0,
-          "nonlinearSlider": true,
-          "sliderCurve": "skew",
-          "showSign": false,
-          "removeTrailingZeros": false,
-          "smoothingMode": "off",
-          "smoothingSeconds": 0,
-          "smoothingType": "linear",
-          "step": 0,
-          "tooltip": "Time the output takes to reach the mouse target. 0 = snap.",
-          "modClamp": true,
-          "hardClamp": false,
-          "modMultiply": false,
-          "vca": false,
-          "constraint": "",
-          "unit": "s",
-          "wraparound": false,
-          "visible": true,
-          "linearSmoothing": false,
-          "outputDomain": false
-        },
-        "smoothingType": {
-          "alias": "",
-          "choices": [
-            "Lin",
-            "1P",
-            "2P",
-            "Papoulis"
-          ],
-          "curveAmount": 0,
-          "def": 0,
-          "displayChoices": true,
-          "divideChoicesVisibly": true,
-          "kind": "decimal",
-          "bipolar": false,
-          "max": 3,
-          "maxDigits": 3,
-          "mid": 0,
-          "min": 0,
-          "nonlinearSlider": false,
-          "sliderCurve": "linear",
-          "showSign": false,
-          "removeTrailingZeros": false,
-          "smoothingMode": "global",
-          "smoothingSeconds": null,
-          "smoothingType": "none",
-          "step": 1,
-          "tooltip": "Lin = constant-time ramp. 1P / 2P = exponential. Papoulis = 3rd-order settle.",
-          "modClamp": true,
-          "hardClamp": false,
-          "modMultiply": false,
-          "vca": false,
-          "constraint": "",
-          "unit": "",
-          "wraparound": false,
-          "visible": true,
-          "linearSmoothing": false,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         },
         "displaySource": {
           "alias": "",
@@ -3963,6 +4140,7 @@
           "maxDigits": 3,
           "mid": 0,
           "min": 0,
+          "reverse": false,
           "nonlinearSlider": false,
           "sliderCurve": "linear",
           "showSign": false,
@@ -3981,68 +4159,32 @@
           "wraparound": false,
           "visible": true,
           "linearSmoothing": false,
-          "outputDomain": false
-        },
-        "polarity": {
-          "alias": "",
-          "choices": [
-            "Unipolar",
-            "Bipolar"
-          ],
-          "curveAmount": 0,
-          "def": 0,
-          "displayChoices": false,
-          "divideChoicesVisibly": true,
-          "kind": "decimal",
-          "bipolar": false,
-          "max": 1,
-          "maxDigits": 3,
-          "mid": 0,
-          "min": 0,
-          "nonlinearSlider": false,
-          "sliderCurve": "linear",
-          "showSign": false,
-          "removeTrailingZeros": false,
-          "smoothingMode": "global",
-          "smoothingSeconds": null,
-          "smoothingType": "none",
-          "step": 1,
-          "tooltip": "Legacy. Bipolar with Min at 0 maps Bias to −Max…+Max.",
-          "modClamp": true,
-          "hardClamp": false,
-          "modMultiply": false,
-          "vca": false,
-          "constraint": "",
-          "unit": "",
-          "wraparound": false,
-          "visible": false,
-          "linearSmoothing": false,
-          "outputDomain": false
+          "outputDomain": false,
+          "domainOffset": 0
         }
       },
       "params": {
-        "offset": 0.004962984619212726,
-        "rangeMin": -0.06711182369805968,
-        "rangeMax": 0.055985823118891886,
-        "smoothingSeconds": 0.0333,
-        "smoothingType": 0,
-        "displaySource": 0,
-        "polarity": 0
+        "offset": 0.036743344496757396,
+        "displaySource": 0
       },
       "type": "knob",
-      "widthGu": 14,
+      "pluginId": 0,
+      "widthGu": 7,
       "traceDisplaySettings": {
         "decimals": 2,
+        "maxDigits": 2,
         "background": "#000000",
         "arcFill": "#f1b84b",
         "arcTrack": "#3a3428",
         "rotationDegrees": 270,
-        "dialSize": 0.9182,
-        "labelSize": 0.1546,
-        "valueSize": 0.1636,
-        "labelPosition": "above",
-        "valuePosition": "mid",
-        "innerRadius": 0.5591,
+        "dialSize": 0.7273,
+        "dialOffsetY": 0.1945,
+        "labelSize": 0.2819,
+        "valueSize": 0.1454,
+        "valueOffsetY": 0,
+        "labelPosition": "top",
+        "valuePosition": "midknob",
+        "innerRadius": 0.7273,
         "labelText": "Cutoff"
       },
       "ui": {
@@ -4060,7 +4202,291 @@
         "slidersHidden": true,
         "slidersForceShow": false,
         "titleHidden": true,
-        "displayHeightGu": 12
+        "displayHeightGu": 6
+      }
+    },
+    {
+      "gx": 7,
+      "gy": -14,
+      "id": "namedPortalIn-1",
+      "paramMeta": {},
+      "params": {},
+      "type": "namedPortalIn",
+      "alias": "ChordKeys",
+      "widthGu": 4,
+      "heightGu": 1,
+      "ui": {
+        "buttonsHidden": true,
+        "buttonsForceShow": false,
+        "displayHeightOffsetGu": 0,
+        "displayModeKey": "",
+        "ioHidden": false,
+        "hideUnused": false,
+        "interfaceControlsHidden": false,
+        "interfaceControlsForceShow": false,
+        "movementLocked": false,
+        "oscilloscopeHidden": false,
+        "oscilloscopeForceShow": false,
+        "slidersHidden": false,
+        "slidersForceShow": false,
+        "titleHidden": true
+      }
+    },
+    {
+      "gx": -15,
+      "gy": -2,
+      "id": "namedPortalOut-1",
+      "paramMeta": {},
+      "params": {},
+      "type": "namedPortalOut",
+      "alias": "ChordKeys",
+      "widthGu": 5,
+      "heightGu": 1,
+      "ui": {
+        "buttonsHidden": true,
+        "buttonsForceShow": false,
+        "displayHeightOffsetGu": 0,
+        "displayModeKey": "",
+        "ioHidden": false,
+        "hideUnused": false,
+        "interfaceControlsHidden": false,
+        "interfaceControlsForceShow": false,
+        "movementLocked": false,
+        "oscilloscopeHidden": false,
+        "oscilloscopeForceShow": false,
+        "slidersHidden": false,
+        "slidersForceShow": false,
+        "titleHidden": true
+      }
+    },
+    {
+      "gx": -29,
+      "gy": 4,
+      "id": "namedPortalIn-3",
+      "paramMeta": {},
+      "params": {},
+      "type": "namedPortalIn",
+      "alias": "Cutoff",
+      "widthGu": 4,
+      "heightGu": 1,
+      "ui": {
+        "buttonsHidden": true,
+        "buttonsForceShow": false,
+        "displayHeightOffsetGu": 0,
+        "displayModeKey": "",
+        "ioHidden": false,
+        "hideUnused": false,
+        "interfaceControlsHidden": false,
+        "interfaceControlsForceShow": false,
+        "movementLocked": false,
+        "oscilloscopeHidden": false,
+        "oscilloscopeForceShow": false,
+        "slidersHidden": false,
+        "slidersForceShow": false,
+        "titleHidden": true
+      }
+    },
+    {
+      "gx": 11,
+      "gy": -14,
+      "id": "namedPortalOut-5",
+      "paramMeta": {},
+      "params": {},
+      "type": "namedPortalOut",
+      "alias": "Cutoff",
+      "widthGu": 4,
+      "heightGu": 1,
+      "ui": {
+        "buttonsHidden": true,
+        "buttonsForceShow": false,
+        "displayHeightOffsetGu": 0,
+        "displayModeKey": "",
+        "ioHidden": false,
+        "hideUnused": false,
+        "interfaceControlsHidden": false,
+        "interfaceControlsForceShow": false,
+        "movementLocked": false,
+        "oscilloscopeHidden": false,
+        "oscilloscopeForceShow": false,
+        "slidersHidden": false,
+        "slidersForceShow": false,
+        "titleHidden": true
+      }
+    },
+    {
+      "gx": -25,
+      "gy": -2,
+      "id": "knob-2",
+      "paramMeta": {
+        "offset": {
+          "alias": "",
+          "choices": [],
+          "curveAmount": 0,
+          "def": 0.5,
+          "displayChoices": false,
+          "divideChoicesVisibly": false,
+          "kind": "decimal",
+          "bipolar": false,
+          "max": 1,
+          "maxDigits": 3,
+          "mid": 0.5,
+          "min": 0,
+          "reverse": false,
+          "nonlinearSlider": false,
+          "sliderCurve": "linear",
+          "showSign": false,
+          "removeTrailingZeros": false,
+          "smoothingMode": "internal",
+          "smoothingSeconds": 44100,
+          "smoothingType": "linear",
+          "step": 0,
+          "tooltip": "",
+          "modClamp": true,
+          "hardClamp": false,
+          "modMultiply": false,
+          "vca": false,
+          "constraint": "",
+          "unit": "",
+          "wraparound": false,
+          "visible": false,
+          "linearSmoothing": true,
+          "outputDomain": false,
+          "domainOffset": 0
+        },
+        "displaySource": {
+          "alias": "",
+          "choices": [
+            "Mouse",
+            "Smoothed"
+          ],
+          "curveAmount": 0,
+          "def": 0,
+          "displayChoices": true,
+          "divideChoicesVisibly": true,
+          "kind": "decimal",
+          "bipolar": false,
+          "max": 1,
+          "maxDigits": 3,
+          "mid": 0,
+          "min": 0,
+          "reverse": false,
+          "nonlinearSlider": false,
+          "sliderCurve": "linear",
+          "showSign": false,
+          "removeTrailingZeros": false,
+          "smoothingMode": "global",
+          "smoothingSeconds": null,
+          "smoothingType": "none",
+          "step": 1,
+          "tooltip": "Mouse = target the pointer set. Smoothed = actual output chasing that target.",
+          "modClamp": true,
+          "hardClamp": false,
+          "modMultiply": false,
+          "vca": false,
+          "constraint": "",
+          "unit": "",
+          "wraparound": false,
+          "visible": true,
+          "linearSmoothing": false,
+          "outputDomain": false,
+          "domainOffset": 0
+        }
+      },
+      "params": {
+        "offset": 1,
+        "displaySource": 0
+      },
+      "type": "knob",
+      "alias": "Modulation",
+      "pluginId": 1,
+      "widthGu": 8,
+      "traceDisplaySettings": {
+        "decimals": 2,
+        "maxDigits": 2,
+        "background": "#000000",
+        "arcFill": "#f1b84b",
+        "arcTrack": "#3a3428",
+        "rotationDegrees": 270,
+        "dialSize": 0.7273,
+        "dialOffsetY": 0.1945,
+        "labelSize": 0.1546,
+        "valueSize": 0.1454,
+        "valueOffsetY": 0,
+        "labelPosition": "top",
+        "valuePosition": "midknob",
+        "innerRadius": 0.7273,
+        "labelText": ""
+      },
+      "ui": {
+        "buttonsHidden": false,
+        "buttonsForceShow": false,
+        "displayHeightOffsetGu": 0,
+        "displayModeKey": "",
+        "ioHidden": false,
+        "hideUnused": false,
+        "interfaceControlsHidden": false,
+        "interfaceControlsForceShow": false,
+        "movementLocked": false,
+        "oscilloscopeHidden": false,
+        "oscilloscopeForceShow": false,
+        "slidersHidden": true,
+        "slidersForceShow": false,
+        "titleHidden": true,
+        "displayHeightGu": 6
+      }
+    },
+    {
+      "gx": -22,
+      "gy": 4,
+      "id": "namedPortalIn-4",
+      "paramMeta": {},
+      "params": {},
+      "type": "namedPortalIn",
+      "alias": "Modulation",
+      "widthGu": 5,
+      "heightGu": 1,
+      "ui": {
+        "buttonsHidden": true,
+        "buttonsForceShow": false,
+        "displayHeightOffsetGu": 0,
+        "displayModeKey": "",
+        "ioHidden": false,
+        "hideUnused": false,
+        "interfaceControlsHidden": false,
+        "interfaceControlsForceShow": false,
+        "movementLocked": false,
+        "oscilloscopeHidden": false,
+        "oscilloscopeForceShow": false,
+        "slidersHidden": false,
+        "slidersForceShow": false,
+        "titleHidden": true
+      }
+    },
+    {
+      "gx": 10,
+      "gy": -15,
+      "id": "namedPortalOut-6",
+      "paramMeta": {},
+      "params": {},
+      "type": "namedPortalOut",
+      "alias": "Modulation",
+      "widthGu": 5,
+      "heightGu": 1,
+      "ui": {
+        "buttonsHidden": true,
+        "buttonsForceShow": false,
+        "displayHeightOffsetGu": 0,
+        "displayModeKey": "",
+        "ioHidden": false,
+        "hideUnused": false,
+        "interfaceControlsHidden": false,
+        "interfaceControlsForceShow": false,
+        "movementLocked": false,
+        "oscilloscopeHidden": false,
+        "oscilloscopeForceShow": false,
+        "slidersHidden": false,
+        "slidersForceShow": false,
+        "titleHidden": true
       }
     }
   ],
@@ -4075,7 +4501,7 @@
   "view": {
     "heightGu": 24,
     "widthGu": 48,
-    "zoom": 0.5782662426244615,
+    "zoom": 0.5368205527437513,
     "gridVisible": true,
     "gridLightVisible": true,
     "wireLengthsVisible": true,
@@ -4096,47 +4522,74 @@
           {
             "nodeId": "arp-1",
             "enabled": true,
-            "x": 0.3734375000000001,
-            "y": 0.3809024134312697,
-            "w": 0.3723958333333333,
-            "h": 0.3997481636935993,
-            "z": 1900
+            "x": 0.3796875,
+            "y": 0.37460650577124877,
+            "w": 0.3182291666666666,
+            "h": 0.3934522560335783,
+            "z": 2900
           },
           {
             "nodeId": "sequencer-1",
             "enabled": true,
             "x": 0,
-            "y": 0.37460650577124877,
-            "w": 0.37395833333333317,
+            "y": 0,
+            "w": 0.38281249999999983,
             "h": 0.375613850996852,
-            "z": 2701
+            "z": 3001
           },
           {
             "nodeId": "knob-1",
             "enabled": true,
-            "x": 0.38114583333333335,
-            "y": 0,
-            "w": 0.34854166666666664,
-            "h": 0.38190975865687304,
-            "z": 1502
+            "x": 0.22395833333333337,
+            "y": 0.6264428121720882,
+            "w": 0.08,
+            "h": 0.13427072402938092,
+            "z": 3902
           },
           {
             "nodeId": "keyboard-1",
             "enabled": true,
             "x": 0,
-            "y": 0.7712906610703043,
+            "y": 0.7702413431269675,
             "w": 1,
             "h": 0.2287093389296957,
-            "z": 1203
+            "z": 1303
           },
           {
             "nodeId": "robinSinusoid-1",
             "enabled": true,
-            "x": 0.7426041666666666,
-            "y": 0.38455403987408177,
-            "w": 0.25739583333333327,
-            "h": 0.39135362014690456,
-            "z": 704
+            "x": 0.6957291666666667,
+            "y": 0.37301154249737667,
+            "w": 0.09958333333333329,
+            "h": 0.38820566631689407,
+            "z": 1204
+          },
+          {
+            "nodeId": "softwaveOsc-1",
+            "enabled": true,
+            "x": 0.7978125,
+            "y": 0.37282266526757596,
+            "w": 0.20218749999999996,
+            "h": 0.3903043022035677,
+            "z": 806
+          },
+          {
+            "nodeId": "output",
+            "enabled": true,
+            "x": 0.5655208333333334,
+            "y": 0,
+            "w": 0.43447916666666664,
+            "h": 0.3703672612801679,
+            "z": 306
+          },
+          {
+            "nodeId": "knob-2",
+            "enabled": true,
+            "x": 0.3072916666666667,
+            "y": 0.6222455403987408,
+            "w": 0.08135416666666667,
+            "h": 0.14371458551941238,
+            "z": 407
           }
         ]
       },

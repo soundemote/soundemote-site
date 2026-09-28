@@ -1,11 +1,11 @@
 {
-    "sandboxVersion":  "0.7.0 ADDITIVE BETA",
-    "syncedUtc":  "2026-09-15T01:12:41.3833638Z",
+    "sandboxVersion":  "Sandbox Alpha 0.8.0",
+    "syncedUtc":  "2026-09-28T20:00:29.5207152Z",
     "buildNumber":  "2026.9.4.1",
     "kind":  "soemdsp-sandbox-release-tree",
-    "buildToken":  "070A",
+    "buildToken":  "SAND",
     "version":  1,
     "buildMode":  "release",
-    "combinedWasmSha256":  "954951904abff026c1d7dc0c3d58b1c23533bb998b06d204b595e391b11398d9",
-    "combinedWasmBytes":  1091106
+    "combinedWasmSha256":  "34287c1ddc2f38cfe6f5339085a1421772da442d3206b367839093a38fb3df0d",
+    "combinedWasmBytes":  1358853
 }

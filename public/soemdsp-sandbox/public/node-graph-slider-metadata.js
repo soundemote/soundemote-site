@@ -7,7 +7,43 @@ const nodeSliderNumberFormatSmokeCases = Object.freeze([
   { value: -0.123456, maxDigits: 5, expected: "-0.1235" },
   { value: 0.123456, maxDigits: 5, showSign: true, expected: "+0.1235" },
   { value: 0.123456, maxDigits: 5, reserveSignSpace: true, expected: " 0.1235" },
+  // |n| < 1e-6 → String(n) is scientific ("8.0357e-7"). Without plain-decimal
+  // expansion, limit_decimals truncates at "e" and shows the mantissa ("8.0357").
+  { value: 8.0357e-7, maxDigits: 12, removeTrailingZeros: true, expected: "0.00000080357" },
+  { value: 1e-7, maxDigits: 12, removeTrailingZeros: true, expected: "0.0000001" },
+  { value: -8.0357e-7, maxDigits: 12, removeTrailingZeros: true, expected: "-0.00000080357" },
 ]);
+
+/**
+ * Plain decimal string for limit_decimals (never scientific notation).
+ * JS String(n) uses "8.0357e-7" when |n| < 1e-6 (or |n| >= 1e21); limit_decimals
+ * only parses whole.fraction, so the exponent would be dropped ("8.0357").
+ */
+function nodeSliderPlainDecimalSource(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return String(value ?? "").trim() || "0";
+  }
+  if (n === 0) {
+    return Object.is(n, -0) ? "-0" : "0";
+  }
+  const raw = String(n);
+  if (!/[eE]/.test(raw)) {
+    return raw;
+  }
+  try {
+    return n.toLocaleString("en-US", {
+      useGrouping: false,
+      maximumFractionDigits: 20,
+    });
+  } catch {
+    try {
+      return n.toFixed(20).replace(/0+$/, "").replace(/\.$/, "") || "0";
+    } catch {
+      return "0";
+    }
+  }
+}
 
 function limit_decimals(
   value,
@@ -17,7 +53,14 @@ function limit_decimals(
   removeTrailingZeros = true,
   allowExtraDecimalForLeadingZero = false,
 ) {
-  const source = String(value ?? "").trimStart();
+  let source = String(value ?? "").trimStart();
+  // Expand scientific notation before whole.fraction parse (B-061).
+  if (/[eE]/.test(source)) {
+    const expanded = nodeSliderPlainDecimalSource(source);
+    if (expanded) {
+      source = expanded;
+    }
+  }
   const signMatch = source.match(/^[+-]/);
   const sign = signMatch ? signMatch[0] : "";
   const unsigned = sign ? source.slice(1) : source;
@@ -114,7 +157,13 @@ function formatNodeSliderNumber(value, options = {}) {
   }
   const maxDigits = normalizeNodeGraphMetadataMaxDigits(options.maxDigits, options.kind);
   const text = Number.isFinite(number)
-    ? limit_decimals(String(number), maxDigits, maxDigits, maxDigits, Boolean(options.removeTrailingZeros))
+    ? limit_decimals(
+      nodeSliderPlainDecimalSource(number),
+      maxDigits,
+      maxDigits,
+      maxDigits,
+      Boolean(options.removeTrailingZeros),
+    )
     : "";
   if (options.showSign && number >= 0) {
     return `+${text}`;
@@ -349,6 +398,60 @@ function parseNodeMetadataChoices(value) {
     .filter(Boolean);
 }
 
+/** Domain value → choice index using param min/max/step (not raw value-as-index). */
+function nodeGraphPatchChoiceIndexFromValue(metadata, value) {
+  const choices = Array.isArray(metadata?.choices) ? metadata.choices : [];
+  const n = choices.length;
+  if (n <= 0) {
+    return 0;
+  }
+  const min = Number(metadata?.min);
+  const max = Number(metadata?.max);
+  const v = Number(value);
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min || !Number.isFinite(v)) {
+    return Math.max(0, Math.min(n - 1, Math.round(v)));
+  }
+  const step = Number(metadata?.step);
+  const integerChoices = Number.isFinite(step) && step > 0
+    && Math.abs((max - min) / step + 1 - n) < 1e-6;
+  if (integerChoices) {
+    return Math.max(0, Math.min(n - 1, Math.round((v - min) / step)));
+  }
+  const t = (v - min) / (max - min);
+  return Math.max(0, Math.min(n - 1, Math.round(t * (n - 1))));
+}
+
+function nodeSliderChoiceIndexFromValue(slider, value) {
+  const choices = parseNodeMetadataChoices(slider?.dataset?.choices || "");
+  return nodeGraphPatchChoiceIndexFromValue({
+    choices,
+    min: Number(slider?.min),
+    max: Number(slider?.max),
+    step: Number(slider?.dataset?.step),
+  }, value);
+}
+
+function nodeSliderChoiceValueFromIndex(slider, index) {
+  const choices = parseNodeMetadataChoices(slider?.dataset?.choices || "");
+  const n = choices.length;
+  const min = Number(slider?.min);
+  const max = Number(slider?.max);
+  const i = Math.max(0, Math.min(Math.max(0, n - 1), Math.round(Number(index))));
+  if (!Number.isFinite(min)) {
+    return i;
+  }
+  if (n <= 1 || !Number.isFinite(max) || max <= min) {
+    return min;
+  }
+  const step = Number(slider?.dataset?.step);
+  const integerChoices = Number.isFinite(step) && step > 0
+    && Math.abs((max - min) / step + 1 - n) < 1e-6;
+  if (integerChoices) {
+    return min + i * step;
+  }
+  return min + (i / (n - 1)) * (max - min);
+}
+
 function formatNodeMetadataChoices(choices) {
   return choices.join(", ");
 }
@@ -359,7 +462,9 @@ function nodeSliderChoiceLabel(slider) {
     return null;
   }
 
-  const index = Math.round(Number(slider.value));
+  const index = typeof nodeSliderChoiceIndexFromValue === "function"
+    ? nodeSliderChoiceIndexFromValue(slider, slider.value)
+    : Math.round(Number(slider.value));
   if (!Number.isFinite(index)) {
     return null;
   }
@@ -371,7 +476,12 @@ function nodeGraphPatchChoiceLabel(metadata, value) {
   if (!metadata?.displayChoices || !metadata.choices?.length) {
     return null;
   }
-  const index = Math.round(Number(value));
+  // Map domain value → index via min/max/step. Do NOT treat the value as an
+  // array index: choices −1/0/+1 with min=-1 would clamp −1 to index 0 and
+  // also map 0 → index 0, so the face looked like −1 was ignored.
+  const index = typeof nodeGraphPatchChoiceIndexFromValue === "function"
+    ? nodeGraphPatchChoiceIndexFromValue(metadata, value)
+    : Math.round(Number(value));
   if (!Number.isFinite(index)) {
     return null;
   }
@@ -402,15 +512,38 @@ function nodeSliderChoiceIndexFromText(slider, value) {
 }
 
 function nodeSliderMetadata(slider) {
-  const min = Number(slider.min);
-  const mid = Number(slider.dataset.mid);
-  const max = Number(slider.max);
-  const def = Number(slider.dataset.default);
+  // Prefer absolute param range datasets so domain-offset UI (±max) never
+  // writes the offset span back into paramMeta.min/max.
+  const min = Number(
+    slider.dataset.paramMin != null && slider.dataset.paramMin !== ""
+      ? slider.dataset.paramMin
+      : slider.min,
+  );
+  const max = Number(
+    slider.dataset.paramMax != null && slider.dataset.paramMax !== ""
+      ? slider.dataset.paramMax
+      : slider.max,
+  );
+  const mid = Number(
+    slider.dataset.paramMid != null && slider.dataset.paramMid !== ""
+      ? slider.dataset.paramMid
+      : slider.dataset.mid,
+  );
+  const def = Number(
+    slider.dataset.paramDefault != null && slider.dataset.paramDefault !== ""
+      ? slider.dataset.paramDefault
+      : slider.dataset.default,
+  );
   const cur = Number(slider.value);
   const step =
     slider.dataset.step && slider.dataset.step !== "any"
       ? Number(slider.dataset.step)
       : 0;
+  const outputDomain = slider.dataset.outputDomain === "true";
+  const domainOffsetRaw = outputDomain
+    ? Number(slider.dataset.domainValue)
+    : Number(slider.dataset.domainOffset);
+  const domainOffset = Number.isFinite(domainOffsetRaw) ? domainOffsetRaw : 0;
   return {
     alias: slider.dataset.alias ?? "",
     choices: parseNodeMetadataChoices(slider.dataset.choices || ""),
@@ -420,6 +553,9 @@ function nodeSliderMetadata(slider) {
     displayChoices: nodeSliderShouldDisplayChoices(slider),
     divideChoicesVisibly: nodeSliderShouldDivideChoicesVisibly(slider),
     bipolar: slider.dataset.bipolar === "true",
+    reverse: slider.dataset.reverse === "true",
+    outputDomain,
+    domainOffset,
     linearSmoothing: nodeSliderShouldUseLinearSmoothing(slider),
     nonlinearSlider: nodeSliderShouldUseNonlinearSlider(slider),
     sliderCurve: nodeSliderCurve(slider),

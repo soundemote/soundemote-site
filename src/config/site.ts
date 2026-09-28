@@ -7,6 +7,10 @@ export type WebringLink = {
 };
 
 // -----------------------------------------------------------------------------
+// Domains (same Lovable deploy, branched in src/lib/siteHost.ts):
+//   soundemote.io  -> sandbox product at /
+//   soundemote.dev -> this articles / video-hero site at /
+//   soundemote.com -> logo splash only
 // SITE SETTINGS — edit this file to change basic website behavior.
 //
 // This is the one place to tweak "template" level things: which article the
@@ -17,7 +21,7 @@ export type WebringLink = {
 // -----------------------------------------------------------------------------
 
 export const siteConfig = {
-  /** Article featured on the home page ("/"). Must match a slug in featuredArticles.ts. */
+  /** Article featured on soundemote.dev home ("/") and /home. Must match a slug in featuredArticles.ts. */
   homeFeaturedSlug: "phosphor",
 
   /**

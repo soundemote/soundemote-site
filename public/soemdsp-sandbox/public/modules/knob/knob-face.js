@@ -1,10 +1,9 @@
-// Knob face = shared macro-knob dial renderer (arc + label + value).
-// Colors / readout options live in per-node Display Settings (not the global
-// Macro Controls bank). Bank look (thickness, span, size) is the Macro
-// Controls display-settings face. Drag still drives Bias via the offset slider.
+// Knob face = dial renderer (arc + label + value).
+// Colors / readout options live in per-node Display Settings.
+// Drag still drives Bias via the offset slider.
 //
-// Legacy image-layer APIs remain for old Module Settings / patches; the live
-// face no longer paints stacked images.
+// Image-layer APIs remain for Module Settings / patches; the live
+// face no longer paints stacked images unless art is loaded.
 
 const nodeGraphKnobFaceAcceptedTypes = Object.freeze([
   "image/png",
@@ -21,23 +20,118 @@ function nodeGraphKnobFaceNormalizeLabelText(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, NODE_GRAPH_KNOB_FACE_LABEL_TEXT_MAX);
 }
 
-function nodeGraphKnobFaceLabelTextForNode(node) {
-  const settings = typeof nodeGraphKnobFaceDisplaySettingsForNode === "function"
-    ? nodeGraphKnobFaceDisplaySettingsForNode(node)
-    : node?.traceDisplaySettings;
-  const text = nodeGraphKnobFaceNormalizeLabelText(settings?.labelText);
-  if (text) {
-    return text;
+function nodeGraphKnobDisplayNameForNode(node) {
+  const settings = nodeGraphControllerFaceSettingsForNode(node);
+  return nodeGraphKnobFaceNormalizeLabelText(settings?.labelText);
+}
+
+function nodeGraphKnobTitleForNode(node) {
+  return typeof normalizeNodeGraphPatchNodeAlias === "function"
+    ? normalizeNodeGraphPatchNodeAlias(node?.alias)
+    : String(node?.alias || "").trim();
+}
+
+function nodeGraphKnobModuleTitleForNode(node) {
+  const alias = nodeGraphKnobTitleForNode(node);
+  if (alias) {
+    return alias;
   }
-  return String(nodeGraphNodeLabels?.knob || "Knob");
+  if (typeof nodeGraphDefaultNodeTitle === "function") {
+    return String(nodeGraphDefaultNodeTitle(node?.type, node?.id) || "").trim();
+  }
+  return String(nodeGraphNodeLabels?.[node?.type] || node?.type || "").trim();
+}
+
+function nodeGraphKnobResolvedDisplayNameForNode(node) {
+  return nodeGraphKnobDisplayNameForNode(node) || nodeGraphKnobModuleTitleForNode(node);
+}
+
+function nodeGraphKnobPortalNameForNode(node) {
+  const portal = String(node?.pluginName || "").trim();
+  if (portal) {
+    return portal;
+  }
+  return nodeGraphKnobResolvedDisplayNameForNode(node);
+}
+
+function nodeGraphKnobFaceLabelTextForNode(node) {
+  return nodeGraphKnobResolvedDisplayNameForNode(node);
+}
+
+function nodeGraphNextFreeKnobPortalIndex(used) {
+  for (let i = 0; i < 32; i += 1) {
+    if (!used.has(i)) {
+      return i;
+    }
+  }
+  return null;
+}
+
+/** Unique 0–31 pluginId on every Knob. First claim wins; clashes/empty take next free. */
+function nodeGraphAssignKnobPortalIndexes(patch) {
+  const nodes = patch?.nodes;
+  if (!Array.isArray(nodes)) {
+    return false;
+  }
+  const used = new Set();
+  let changed = false;
+  for (const node of nodes) {
+    if (
+      !node
+      || (
+        node.type !== "knob"
+        && node.type !== "pluginSlider"
+        && node.type !== "toggleButton"
+        && node.type !== "momentaryButton"
+      )
+    ) {
+      continue;
+    }
+    const raw = node.pluginId;
+    const has = raw === 0 || (raw != null && raw !== "");
+    let id = has ? Math.round(Number(raw)) : NaN;
+    if (!Number.isFinite(id) || id < 0 || id > 31 || used.has(id)) {
+      id = nodeGraphNextFreeKnobPortalIndex(used);
+    }
+    if (id == null) {
+      if (Object.hasOwn(node, "pluginId")) {
+        delete node.pluginId;
+        changed = true;
+      }
+      continue;
+    }
+    if (node.pluginId !== id) {
+      node.pluginId = id;
+      changed = true;
+    }
+    used.add(id);
+  }
+  return changed;
 }
 
 function nodeGraphKnobFaceApplyLabelTextToDom(nodeId, text) {
-  const shown = nodeGraphKnobFaceNormalizeLabelText(text) || String(nodeGraphNodeLabels?.knob || "Knob");
-  const face = document.querySelector(`.node-knob-face[data-node="${CSS.escape(String(nodeId || ""))}"]`);
-  const label = face?.querySelector?.("[data-knob-face-label]");
-  if (label && label.dataset.editing !== "true") {
-    label.textContent = shown;
+  const patchNode = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  const shown = nodeGraphKnobFaceNormalizeLabelText(text)
+    || (typeof nodeGraphKnobResolvedDisplayNameForNode === "function"
+      ? nodeGraphKnobResolvedDisplayNameForNode(patchNode)
+      : "")
+    || nodeGraphKnobModuleTitleForNode(patchNode)
+    || String(nodeGraphNodeLabels?.[patchNode?.type] || "Knob");
+  const knobFace = document.querySelector(`.node-knob-face[data-node="${CSS.escape(String(nodeId || ""))}"]`);
+  const knobLabel = knobFace?.querySelector?.("[data-knob-face-label]");
+  if (knobLabel && knobLabel.dataset.editing !== "true") {
+    knobLabel.textContent = shown;
+  }
+  const btnFace = document.querySelector(
+    `.node-plugin-toggle-face[data-node="${CSS.escape(String(nodeId || ""))}"], .node-plugin-momentary-face[data-node="${CSS.escape(String(nodeId || ""))}"]`,
+  );
+  const btnLabel = btnFace?.querySelector?.("[data-plugin-btn-label]");
+  if (btnLabel && btnLabel.dataset.editing !== "true") {
+    btnLabel.textContent = shown;
+    btnLabel.hidden = !shown;
+  }
+  if (btnFace && typeof nodeGraphPluginButtonPaintFace === "function") {
+    nodeGraphPluginButtonPaintFace(btnFace, patchNode?.traceDisplaySettings);
   }
   const settingsInput = document.getElementById("nodeSceneKnobTextInput");
   if (settingsInput && document.activeElement !== settingsInput) {
@@ -50,24 +144,49 @@ function nodeGraphKnobFaceApplyLabelTextToDom(nodeId, text) {
   }
 }
 
+function nodeGraphControllerFaceSettingsForNode(node) {
+  if (node?.type === "pluginSlider" && typeof nodeGraphSliderFaceDisplaySettingsForNode === "function") {
+    return nodeGraphSliderFaceDisplaySettingsForNode(node);
+  }
+  if (
+    (node?.type === "toggleButton" || node?.type === "momentaryButton")
+    && typeof nodeGraphPluginButtonDisplaySettingsForNode === "function"
+  ) {
+    return nodeGraphPluginButtonDisplaySettingsForNode(node);
+  }
+  return typeof nodeGraphKnobFaceDisplaySettingsForNode === "function"
+    ? nodeGraphKnobFaceDisplaySettingsForNode(node)
+    : {};
+}
+
+function nodeGraphControllerFaceNormalizeSettings(node, settings) {
+  if (node?.type === "pluginSlider" && typeof normalizeNodeGraphSliderFaceDisplaySettings === "function") {
+    return normalizeNodeGraphSliderFaceDisplaySettings(settings);
+  }
+  if (
+    (node?.type === "toggleButton" || node?.type === "momentaryButton")
+    && typeof normalizeNodeGraphPluginButtonDisplaySettings === "function"
+  ) {
+    return normalizeNodeGraphPluginButtonDisplaySettings(settings, node.type);
+  }
+  return typeof normalizeNodeGraphKnobFaceDisplaySettings === "function"
+    ? normalizeNodeGraphKnobFaceDisplaySettings(settings)
+    : settings;
+}
+
 function nodeGraphKnobFaceWriteLabelText(nodeId, rawText, { record = true } = {}) {
   const id = String(nodeId || "").trim();
   if (!id) {
     return;
   }
-  const text = nodeGraphKnobFaceNormalizeLabelText(rawText);
-  const stored = text || "Knob";
+  const stored = nodeGraphKnobFaceNormalizeLabelText(rawText);
   if (!record) {
     const live = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(id) : null;
     if (!live) {
       return;
     }
-    const current = typeof nodeGraphKnobFaceDisplaySettingsForNode === "function"
-      ? nodeGraphKnobFaceDisplaySettingsForNode(live)
-      : {};
-    live.traceDisplaySettings = typeof normalizeNodeGraphKnobFaceDisplaySettings === "function"
-      ? normalizeNodeGraphKnobFaceDisplaySettings({ ...current, labelText: stored })
-      : { ...(live.traceDisplaySettings || {}), labelText: stored };
+    const current = nodeGraphControllerFaceSettingsForNode(live);
+    live.traceDisplaySettings = nodeGraphControllerFaceNormalizeSettings(live, { ...current, labelText: stored });
     if (nodeGraphMvp) {
       nodeGraphMvp.patchDirtyState = "edited";
     }
@@ -82,18 +201,14 @@ function nodeGraphKnobFaceWriteLabelText(nodeId, rawText, { record = true } = {}
   if (!target) {
     return;
   }
-  const current = typeof nodeGraphKnobFaceDisplaySettingsForNode === "function"
-    ? nodeGraphKnobFaceDisplaySettingsForNode(target)
-    : {};
-  const next = typeof normalizeNodeGraphKnobFaceDisplaySettings === "function"
-    ? normalizeNodeGraphKnobFaceDisplaySettings({ ...current, labelText: stored })
-    : { ...(target.traceDisplaySettings || {}), labelText: stored };
+  const current = nodeGraphControllerFaceSettingsForNode(target);
+  const next = nodeGraphControllerFaceNormalizeSettings(target, { ...current, labelText: stored });
   if (nodeGraphKnobFaceNormalizeLabelText(current.labelText) === next.labelText) {
     nodeGraphKnobFaceApplyLabelTextToDom(id, next.labelText);
     return;
   }
   target.traceDisplaySettings = next;
-  commitNodeGraphPatch(patch, { status: "knob text changed" });
+  commitNodeGraphPatch(patch, { status: "display name changed" });
 }
 
 function beginNodeGraphKnobFaceLabelEdit(label, nodeId) {
@@ -314,95 +429,106 @@ function nodeGraphKnobFaceForNode(node) {
   return normalizeNodeGraphKnobFace(patchNode?.knobFace);
 }
 
-/** Fixed decimal places for the face readout (Display Settings → Num decimals). */
-function nodeGraphKnobFaceReadoutDecimals(patchNode) {
+function nodeGraphControllerFaceReadoutSettings(patchNode) {
+  const type = String(patchNode?.type || "");
+  if (type === "pluginSlider" && typeof nodeGraphSliderFaceDisplaySettingsForNode === "function") {
+    return nodeGraphSliderFaceDisplaySettingsForNode(patchNode);
+  }
   if (typeof nodeGraphKnobFaceDisplaySettingsForNode === "function") {
-    const settings = nodeGraphKnobFaceDisplaySettingsForNode(patchNode);
-    const n = Math.round(Number(settings?.decimals));
-    if (Number.isFinite(n)) {
-      return Math.max(0, Math.min(8, n));
-    }
+    return nodeGraphKnobFaceDisplaySettingsForNode(patchNode);
   }
-  const raw = Number(
-    patchNode?.traceDisplaySettings?.decimals
-    ?? patchNode?.knobFace?.decimals,
-  );
-  if (Number.isFinite(raw)) {
-    return Math.max(0, Math.min(8, Math.round(raw)));
-  }
-  return 2;
-}
-
-/** Format live Bias for the face plate using Display Settings decimals. */
-function nodeGraphKnobFaceFormatReadout(value, patchNode, slider = null) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) {
-    return "0";
-  }
-  const places = nodeGraphKnobFaceReadoutDecimals(patchNode);
-  const showSign = typeof nodeSliderShouldShowSign === "function" && slider
-    ? nodeSliderShouldShowSign(slider)
-    : true;
-  const absText = number.toFixed(places);
-  if (showSign && number >= 0) {
-    return `+${absText}`;
-  }
-  if (number >= 0) {
-    return ` ${absText}`;
-  }
-  return absText;
+  return patchNode?.traceDisplaySettings && typeof patchNode.traceDisplaySettings === "object"
+    ? patchNode.traceDisplaySettings
+    : {};
 }
 
 /**
- * Knob square in px: min side of the dial cell × Knob size.
- * Label size and Value size 0…1 are fractions of this square.
+ * Format the face readout from the node's Bias parameter metadata.
+ * The body slider and both controller faces therefore share one formatter:
+ * maxDigits, kind, sign policy, trailing-zero policy, and choice labels all
+ * come directly from Bias instead of Display Settings.
  */
-function nodeGraphKnobFaceSquarePx(face) {
+function nodeGraphKnobFaceFormatReadout(value, patchNode) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "";
+  }
+  const metadata = nodeGraphKnobFaceOffsetMetadata(patchNode);
+  const choiceLabel = typeof nodeGraphPatchChoiceLabel === "function"
+    ? nodeGraphPatchChoiceLabel(metadata, number)
+    : null;
+  if (choiceLabel != null) {
+    return ` ${choiceLabel}`;
+  }
+  if (typeof formatNodeSliderNumber === "function") {
+    return formatNodeSliderNumber(number, {
+      kind: metadata.kind,
+      maxDigits: metadata.maxDigits,
+      reserveSignSpace: true,
+      showSign: metadata.showSign,
+      removeTrailingZeros: metadata.removeTrailingZeros,
+    });
+  }
+  return String(number);
+}
+/**
+ * Dial cell min side in px (unscaled). Kept for geometry probes only —
+ * do not publish this onto the shared face root (module + layout-canvas
+ * reparent the same DOM; absolute px leaks canvas size onto the plate).
+ */
+function nodeGraphKnobFaceDialCellPx(face) {
   if (!face) {
     return 0;
   }
   const dial = face.querySelector?.("[data-knob-face-dial], .node-macro-knob-dial") || face;
+  return Math.min(dial.clientWidth || 0, dial.clientHeight || 0);
+}
+
+/** @deprecated Prefer nodeGraphKnobFaceDialCellPx; kept for older call sites. */
+function nodeGraphKnobFaceSquarePx(face) {
+  if (!face) {
+    return 0;
+  }
   const raw = face.style?.getPropertyValue?.("--knob-dial-size")
     || getComputedStyle(face).getPropertyValue("--knob-dial-size");
   const dialScale = Math.max(0, Math.min(1, Number.parseFloat(raw) || 1));
-  return Math.min(dial.clientWidth || 0, dial.clientHeight || 0) * dialScale;
-}
-
-function nodeGraphKnobFaceFitTextEl(el, face, sizeVar, fallback) {
-  if (!el || el.hidden || el.getAttribute("aria-hidden") === "true") {
-    return;
-  }
-  const style = el.style;
-  if (!style) {
-    return;
-  }
-  const host = face || el.closest?.(".node-knob-face") || el.parentElement;
-  if (!host) {
-    return;
-  }
-  const raw = host.style?.getPropertyValue?.(sizeVar) || getComputedStyle(host).getPropertyValue(sizeVar);
-  const n = Number.parseFloat(raw);
-  const scale = Math.max(0, Math.min(1, Number.isFinite(n) ? n : fallback));
-  const side = nodeGraphKnobFaceSquarePx(host);
-  if (!(side > 0)) {
-    return;
-  }
-  style.fontSize = `${(side * scale).toFixed(2)}px`;
-  style.lineHeight = "1";
-  style.letterSpacing = "";
-  style.transform = "";
+  return nodeGraphKnobFaceDialCellPx(face) * dialScale;
 }
 
 /**
- * Value size 0…1 = fraction of the knob square (min side of the dial cell
- * × Knob size). Same ratio on the module and on canvas.
+ * Clear canvas/module-shared size px vars + legacy inline fontSize.
+ * Label/value scale via CSS container queries (cqmin) on the face/dial so
+ * layout-canvas tile size cannot stick on the module plate.
  */
-function nodeGraphKnobFaceFitReadout(readout, face = null) {
-  nodeGraphKnobFaceFitTextEl(readout, face, "--knob-value-size", 0.45);
+function nodeGraphKnobFaceSyncCellVar(face) {
+  if (!face) {
+    return;
+  }
+  if (face.style) {
+    face.style.removeProperty("--knob-cell");
+    face.style.removeProperty("--knob-face-min");
+  }
+  const readout = face.querySelector?.("[data-knob-face-readout]");
+  if (readout?.style) {
+    readout.style.fontSize = "";
+    readout.style.lineHeight = "";
+  }
+  const label = face.querySelector?.("[data-knob-face-label]");
+  if (label?.style) {
+    label.style.fontSize = "";
+    label.style.lineHeight = "";
+  }
 }
 
-function nodeGraphKnobFaceFitLabel(label, face = null) {
-  nodeGraphKnobFaceFitTextEl(label, face, "--knob-label-size", 0.45);
+/** Value/label sizes are CSS: size × 100cqmin of the display face (not dial). */
+function nodeGraphKnobFaceFitReadout(_readout, face = null) {
+  const host = face || _readout?.closest?.(".node-knob-face");
+  nodeGraphKnobFaceSyncCellVar(host);
+}
+
+function nodeGraphKnobFaceFitLabel(_label, face = null) {
+  const host = face || _label?.closest?.(".node-knob-face");
+  nodeGraphKnobFaceSyncCellVar(host);
 }
 
 function attachNodeGraphKnobFaceReadoutFit(face) {
@@ -411,14 +537,7 @@ function attachNodeGraphKnobFaceReadoutFit(face) {
   }
   face._knobReadoutFitBound = true;
   const run = () => {
-    const readout = face.querySelector?.("[data-knob-face-readout]");
-    if (readout) {
-      nodeGraphKnobFaceFitReadout(readout, face);
-    }
-    const label = face.querySelector?.("[data-knob-face-label]");
-    if (label) {
-      nodeGraphKnobFaceFitLabel(label, face);
-    }
+    nodeGraphKnobFaceSyncCellVar(face);
   };
   if (typeof ResizeObserver === "function") {
     const ro = new ResizeObserver(() => {
@@ -428,9 +547,12 @@ function attachNodeGraphKnobFaceReadoutFit(face) {
       face._knobReadoutFitRaf = requestAnimationFrame(run);
     });
     ro.observe(face);
+    const dial = face.querySelector?.("[data-knob-face-dial], .node-macro-knob-dial");
+    if (dial) {
+      ro.observe(dial);
+    }
     face._knobReadoutFitRo = ro;
   }
-  // First layout pass after insert.
   requestAnimationFrame(run);
 }
 
@@ -585,39 +707,43 @@ function nodeGraphKnobFaceLiveOffset(nodeId) {
   return inputSum + slider;
 }
 
-/** Live Min/Max (legacy Polarity) → Bias domain [min, max] for dial mapping. */
+/** Bias domain from Bias parameter min/max (Parameter Settings). */
 function nodeGraphKnobFaceBiasRange(patchNode) {
-  const id = patchNode?.id;
-  let rangeMin = 0;
-  let rangeMax = 1;
-  let polarity = 0;
-  if (id && typeof nodeGraphReadNodeNumber === "function") {
-    const rn = nodeGraphReadNodeNumber(id, "rangeMin");
-    const rm = nodeGraphReadNodeNumber(id, "rangeMax");
-    const pol = nodeGraphReadNodeNumber(id, "polarity");
-    if (Number.isFinite(rn)) rangeMin = rn;
-    if (Number.isFinite(rm)) rangeMax = rm;
-    if (Number.isFinite(pol)) polarity = pol;
-  } else {
-    const rn = Number(patchNode?.params?.rangeMin);
-    const rm = Number(patchNode?.params?.rangeMax);
-    const pol = Number(patchNode?.params?.polarity);
-    if (Number.isFinite(rn)) rangeMin = rn;
-    if (Number.isFinite(rm)) rangeMax = rm;
-    if (Number.isFinite(pol)) polarity = pol;
+  if (typeof nodeGraphDspKnobOffsetDomain === "function") {
+    return nodeGraphDspKnobOffsetDomain(patchNode);
   }
-  if (typeof nodeGraphDspControllerRange === "function") {
-    return nodeGraphDspControllerRange(rangeMin, rangeMax, polarity);
+  let meta = null;
+  if (typeof nodeGraphReadPatchParameterMetadata === "function" && patchNode) {
+    meta = nodeGraphReadPatchParameterMetadata(patchNode, "offset");
   }
-  if (typeof nodeGraphDspKnobBiasRange === "function") {
-    return nodeGraphDspKnobBiasRange(rangeMax, polarity);
+  if (!meta || typeof meta !== "object") {
+    meta = patchNode?.paramMeta?.offset && typeof patchNode.paramMeta.offset === "object"
+      ? patchNode.paramMeta.offset
+      : {};
   }
-  const hi = Math.abs(rangeMax) > 0 ? Math.abs(rangeMax) : 1;
-  const bipolar = Math.round(polarity) >= 1;
-  return { min: bipolar ? -hi : rangeMin, max: hi, bipolar };
+  const lo = Number(meta.min);
+  const hi = Number(meta.max);
+  if (Number.isFinite(lo) && Number.isFinite(hi)) {
+    const bipolar = meta.bipolar === true || (lo < 0 && hi > 0);
+    return { bipolar, max: hi >= lo ? hi : lo, min: hi >= lo ? lo : hi };
+  }
+  return { bipolar: false, max: 1, min: 0 };
+}
+
+function nodeGraphKnobFaceOffsetMetadata(patchNode) {
+  if (typeof nodeGraphReadPatchParameterMetadata === "function" && patchNode) {
+    const meta = nodeGraphReadPatchParameterMetadata(patchNode, "offset");
+    if (meta && typeof meta === "object") return meta;
+  }
+  const raw = patchNode?.paramMeta?.offset;
+  return raw && typeof raw === "object" ? raw : {};
 }
 
 function nodeGraphKnobFaceUnitFromValue(value, patchNode) {
+  const meta = nodeGraphKnobFaceOffsetMetadata(patchNode);
+  if (typeof nodeGraphParamControlPosition === "function") {
+    return nodeGraphParamControlPosition(value, meta);
+  }
   const range = nodeGraphKnobFaceBiasRange(patchNode);
   const lo = range.min;
   const hi = range.max;
@@ -627,7 +753,7 @@ function nodeGraphKnobFaceUnitFromValue(value, patchNode) {
   return Math.max(0, Math.min(1, (Number(value) - lo) / (hi - lo)));
 }
 
-/** Keep hidden offset slider + face ARIA in sync with Max / Polarity. */
+/** Keep Bias slider + face ARIA matched to Bias Parameter Settings min/max. */
 function nodeGraphKnobFaceSyncOffsetDomain(patchNode) {
   if (!patchNode?.id) {
     return null;
@@ -637,25 +763,18 @@ function nodeGraphKnobFaceSyncOffsetDomain(patchNode) {
     ? document.getElementById(`node-${patchNode.id}-offset`)
     : null;
   if (slider) {
+    // Interactive thumb range only. Do NOT rewrite dataset.paramMin/paramMax —
+    // those are Parameter Settings SSOT; stomping them from paramMeta every
+    // paint raced metadata apply and snapped max back (e.g. 150 → 130).
     slider.min = String(range.min);
     slider.max = String(range.max);
     if (slider.dataset) {
       slider.dataset.min = String(range.min);
       slider.dataset.max = String(range.max);
+      slider.dataset.bipolar = range.bipolar ? "true" : "false";
     }
   }
-  if (patchNode.paramMeta && typeof patchNode.paramMeta === "object") {
-    const meta = patchNode.paramMeta.offset && typeof patchNode.paramMeta.offset === "object"
-      ? patchNode.paramMeta.offset
-      : {};
-    patchNode.paramMeta.offset = {
-      ...meta,
-      bipolar: Boolean(range.bipolar),
-      min: range.min,
-      max: range.max,
-      mid: range.bipolar ? 0 : range.max * 0.5,
-    };
-  }
+  // Do not write Bias min/max / paramMin / paramMax here — Parameter Settings owns them.
   const face = typeof document !== "undefined"
     ? document.querySelector(`.node-knob-face[data-node="${CSS.escape(String(patchNode.id))}"]`)
     : null;
@@ -698,24 +817,48 @@ function nodeGraphKnobFaceApplyMacroStyle(face, settings) {
   face.style.setProperty("--macro-arc-start-deg", `${start}deg`);
   face.style.setProperty("--macro-arc-span-deg", `${span}deg`);
 
-  // Dial Size 0…1: only the arc widget (1 = fill available dial cell).
-  const dialSize = Number.isFinite(Number(s.dialSize))
-    ? Math.max(0, Math.min(1, Number(s.dialSize)))
+  // Knob size 0…1: only the arc graphic (1 = fill display, 0 = gone).
+  const dialSize = Number.isFinite(Number(s.dialSize ?? s.knobSize))
+    ? Math.max(0, Math.min(1, Number(s.dialSize ?? s.knobSize)))
     : 1;
   face.style.setProperty("--knob-dial-size", String(dialSize));
 
+  // Positive Y offset moves only the graphic; label/value remain face pins.
+  const dialOffsetY = Number.isFinite(Number(s.dialOffsetY))
+    ? Math.max(-1, Math.min(1, Number(s.dialOffsetY)))
+    : 0;
+  face.style.setProperty("--knob-dial-offset-y", String(dialOffsetY));
+
+  // Value Y offset −1…1 face heights (CSS pins interpret per valuePosition).
+  const valueOffsetY = Number.isFinite(Number(s.valueOffsetY))
+    ? Math.max(-1, Math.min(1, Number(s.valueOffsetY)))
+    : 0;
+  face.style.setProperty("--knob-value-offset-y", String(valueOffsetY));
+
+  // Label / value size 0…1 of display min-edge — independent of knob size/pos.
   const labelSize = Number.isFinite(Number(s.labelSize))
     ? Math.max(0, Math.min(1, Number(s.labelSize)))
-    : 0.45;
+    : 0.2;
   const valueSize = Number.isFinite(Number(s.valueSize))
     ? Math.max(0, Math.min(1, Number(s.valueSize)))
-    : 0.45;
+    : 0.2;
   face.style.setProperty("--knob-label-size", String(labelSize));
   face.style.setProperty("--knob-value-size", String(valueSize));
+  nodeGraphKnobFaceSyncCellVar(face);
+
+  // Keep label + value as face pins (legacy DOM had value inside the dial).
+  const pinLabel = face.querySelector?.("[data-knob-face-label]");
+  const pinValue = face.querySelector?.("[data-knob-face-readout], .node-macro-knob-value");
+  if (pinLabel && pinLabel.parentElement !== face) {
+    face.append(pinLabel);
+  }
+  if (pinValue && pinValue.parentElement !== face) {
+    face.append(pinValue);
+  }
 
   const labelPos = typeof normalizeNodeGraphKnobFaceTextPosition === "function"
-    ? normalizeNodeGraphKnobFaceTextPosition(s.labelPosition, "above")
-    : (s.labelPosition || "above");
+    ? normalizeNodeGraphKnobFaceTextPosition(s.labelPosition, "top")
+    : (s.labelPosition || "top");
   const valuePos = typeof normalizeNodeGraphKnobFaceTextPosition === "function"
     ? normalizeNodeGraphKnobFaceTextPosition(s.valuePosition, "mid")
     : (s.valuePosition || "mid");
@@ -736,6 +879,13 @@ function nodeGraphKnobFaceApplyMacroStyle(face, settings) {
  * When any image layer is loaded, hide macro chrome and show layers only.
  */
 function paintNodeGraphKnobFaceLive(face, nodeId, buffer = null) {
+  if (face?.classList?.contains("is-slider-look") && typeof paintNodeGraphSliderFaceLive === "function") {
+    paintNodeGraphSliderFaceLive(face, nodeId, buffer);
+    return;
+  }
+  if (face?.dataset?.knobFaceEditing === "true") {
+    return;
+  }
   if (!face || !nodeId) {
     return;
   }
@@ -753,20 +903,26 @@ function paintNodeGraphKnobFaceLive(face, nodeId, buffer = null) {
     ? nodeGraphDspControllerDisplayIsMouse(patchNode)
     : true;
   let value = null;
-  if (!wantsMouse && buffer?.length) {
-    const sample = Number(buffer[buffer.length - 1]);
-    if (Number.isFinite(sample)) {
-      value = sample;
-    }
-  }
-  if (value == null) {
-    if (wantsMouse) {
-      let base = typeof nodeGraphReadNodeNumber === "function"
+  const offsetSlider = document.getElementById(`node-${nodeId}-offset`);
+  if (wantsMouse) {
+    // Arc follows the stored Bias the finger wrote, not the scope sample.
+    const domain = Number(offsetSlider?.dataset?.domainValue);
+    if (Number.isFinite(domain)) {
+      value = domain;
+    } else {
+      const base = typeof nodeGraphReadNodeNumber === "function"
         ? nodeGraphReadNodeNumber(nodeId, "offset")
         : Number(patchNode?.params?.offset);
       value = Number.isFinite(base) ? base : 0;
-    } else {
-      value = nodeGraphKnobFaceLiveOffset(nodeId);
+    }
+  } else {
+    // Display = Smoothed: prefer live Bias (scope / published out), not mouse target.
+    value = nodeGraphKnobFaceLiveOffset(nodeId);
+    if (!Number.isFinite(value) && buffer?.length) {
+      const sample = Number(buffer[buffer.length - 1]);
+      if (Number.isFinite(sample)) {
+        value = sample;
+      }
     }
   }
   if (!Number.isFinite(value)) {
@@ -824,10 +980,13 @@ function paintNodeGraphKnobFaceLive(face, nodeId, buffer = null) {
   if (readout) {
     if (showReadout) {
       const slider = document.getElementById(`node-${nodeId}-offset`);
+      // Arc/position stays on base (value); number follows ghost target when set.
+      const sentRaw = Number(slider?.dataset?.sentDomainValue);
+      const numberValue = Number.isFinite(sentRaw) ? sentRaw : value;
       readout.hidden = false;
       readout.style.display = "";
       readout.setAttribute("aria-hidden", "false");
-      readout.textContent = nodeGraphKnobFaceFormatReadout(value, patchNode, slider);
+      readout.textContent = nodeGraphKnobFaceFormatReadout(numberValue, patchNode, slider);
       if (typeof nodeGraphKnobFaceFitReadout === "function") {
         nodeGraphKnobFaceFitReadout(readout, face);
       }
@@ -885,6 +1044,145 @@ function nodeGraphKnobFaceMakeLayerImg(layerId) {
 }
 
 /**
+ * Canvas-safe Bias type-in: overlay an input on the face readout (or dial).
+ * Does not use the module body Bias/offset readout (missing on layout canvas).
+ * Writes through the hidden offset slider → same DSP path as the Bias slider.
+ */
+function beginNodeGraphKnobFaceValueEdit(face, event = null) {
+  if (!face || face.dataset.knobFaceEditing === "true") {
+    return false;
+  }
+  const nodeId = String(face.dataset.node || "").trim();
+  if (!nodeId) {
+    return false;
+  }
+  const slider = document.getElementById(`node-${nodeId}-offset`);
+  if (!slider) {
+    return false;
+  }
+  if (event) {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+  }
+
+  const readout = face.querySelector("[data-knob-face-readout]");
+  const dial = face.querySelector("[data-knob-face-dial], .node-macro-knob-dial") || face;
+  const host = readout || dial;
+  if (!host) {
+    return false;
+  }
+
+  face.dataset.knobFaceEditing = "true";
+  const priorHidden = readout ? readout.hidden : false;
+  if (readout) {
+    readout.hidden = true;
+  }
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "node-knob-face-value-input";
+  input.inputMode = "decimal";
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  const domainRaw = Number(slider.dataset?.domainValue);
+  const editValue = Number.isFinite(domainRaw) ? domainRaw : Number(slider.value);
+  const patchNode = typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(nodeId) : null;
+  input.value = typeof nodeGraphKnobFaceFormatReadout === "function"
+    ? nodeGraphKnobFaceFormatReadout(editValue, patchNode, slider)
+    : String(editValue);
+  input.setAttribute("aria-label", `${nodeGraphNodeDisplayName?.(nodeId) || "Knob"} Bias`);
+  input.dataset.node = nodeId;
+  input.dataset.sliderTarget = slider.id;
+
+  const stop = (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+  };
+  for (const name of ["pointerdown", "mousedown", "click", "dblclick", "pointerup", "mouseup"]) {
+    input.addEventListener(name, stop);
+  }
+
+  let finished = false;
+  const finish = (commit) => {
+    if (finished) return;
+    finished = true;
+    face.dataset.knobFaceEditing = "false";
+    document.removeEventListener("pointerdown", closeOutside, true);
+    if (commit) {
+      if (typeof updateNodeSliderCurrentValue === "function") {
+        updateNodeSliderCurrentValue(slider, input.value);
+      }
+    }
+    input.remove();
+    if (readout) {
+      readout.hidden = priorHidden;
+      if (typeof paintNodeGraphKnobFaceLive === "function") {
+        paintNodeGraphKnobFaceLive(face, nodeId, null);
+      } else if (typeof syncNodeGraphKnobFaceFromSlider === "function") {
+        syncNodeGraphKnobFaceFromSlider(slider);
+      }
+    }
+  };
+
+  const closeOutside = (ev) => {
+    if (!document.contains(input) || finished) {
+      document.removeEventListener("pointerdown", closeOutside, true);
+      return;
+    }
+    if (ev.target === input || input.contains?.(ev.target)) {
+      return;
+    }
+    finish(true);
+  };
+
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      ev.stopPropagation();
+      finish(true);
+    } else if (ev.key === "Escape") {
+      ev.preventDefault();
+      ev.stopPropagation();
+      finish(false);
+    }
+  });
+  input.addEventListener("blur", () => {
+    if (!finished) finish(true);
+  });
+
+  // Overlay on face so edit tracks valuePosition + valueOffsetY (canvas + module).
+  const wrap = face;
+  const valuePos = String(face.dataset.knobValuePosition || "mid").trim().toLowerCase();
+  const vOff = Number.parseFloat(face.style.getPropertyValue("--knob-value-offset-y")) || 0;
+  const dOff = Number.parseFloat(face.style.getPropertyValue("--knob-dial-offset-y")) || 0;
+  input.style.position = "absolute";
+  input.style.left = "50%";
+  input.style.right = "auto";
+  input.style.bottom = "auto";
+  input.style.zIndex = "20";
+  if (valuePos === "top" || valuePos === "above") {
+    input.style.top = `calc(2px + ${vOff} * 100%)`;
+    input.style.transform = "translateX(-50%)";
+  } else if (valuePos === "bottom" || valuePos === "below") {
+    input.style.top = "auto";
+    input.style.bottom = `calc(2px + ${vOff} * 100%)`;
+    input.style.transform = "translateX(-50%)";
+  } else if (valuePos === "midknob") {
+    input.style.top = `calc(50% + ${dOff} * 100cqmin + ${vOff} * 100%)`;
+    input.style.transform = "translate(-50%, -50%)";
+  } else {
+    // mid (face center) and fallback
+    input.style.top = `calc(50% + ${vOff} * 100%)`;
+    input.style.transform = "translate(-50%, -50%)";
+  }
+  wrap.append(input);
+  document.addEventListener("pointerdown", closeOutside, true);
+  input.focus();
+  input.select();
+  return true;
+}
+
+/**
  * Face is a full drag surface for Bias (offset), same path/modifiers as
  * `.node-slider-readout` (beginNodeSliderDrag / nodeSliderFineTuneScale / etc.).
  */
@@ -906,8 +1204,17 @@ function attachNodeGraphKnobFaceDrag(face) {
   face.addEventListener("dblclick", (event) => {
     event.preventDefault();
     event.stopPropagation();
+    if (event.altKey) {
+      return;
+    }
+    if (typeof beginNodeGraphKnobFaceValueEdit === "function") {
+      beginNodeGraphKnobFaceValueEdit(face, event);
+    }
   });
 }
+
+
+
 
 /**
  * Room dimmer cutout only when face art is loaded.
@@ -941,7 +1248,7 @@ function nodeGraphKnobFaceSyncLightSource(face, hasImage = null) {
 
 /**
  * Build the LayoutB face DOM (called from factories).
- * Shared macro layout: title above dial · value centered in the circle.
+ * Dial fills the display; label + value pin independently (top/mid/bottom).
  * Image layers stay in the tree; when any art is loaded, macro dial hides.
  */
 function createNodeGraphKnobFace(node, type) {
@@ -949,7 +1256,7 @@ function createNodeGraphKnobFace(node, type) {
   face.className = "node-knob-face node-module-scope-window node-knob-module-macro node-macro-knob";
   face.dataset.node = node;
   face.dataset.nodeType = type || "knob";
-  face.dataset.knobLabelPosition = "above";
+  face.dataset.knobLabelPosition = "top";
   face.dataset.knobValuePosition = "mid";
   face.dataset.sliderTarget = `node-${node}-offset`;
   face.dataset.lightStrength = "1";
@@ -997,9 +1304,11 @@ function createNodeGraphKnobFace(node, type) {
   arc.dataset.macroKnobArc = "true";
   arc.setAttribute("aria-hidden", "true");
 
-  dial.append(readout, arc);
-  face.append(label, dial);
+  // Arc alone in the dial cell; label + value are face pins (may overlap).
+  dial.append(arc);
+  face.append(dial, label, readout);
   attachNodeGraphKnobFaceDrag(face);
+  attachNodeGraphKnobFaceReadoutFit(face);
   renderNodeGraphKnobFace(face, node);
   return face;
 }
@@ -1141,6 +1450,13 @@ function renderNodeGraphKnobFace(faceOrNodeId, nodeIdOpt) {
 
 function refreshNodeGraphKnobFaces() {
   for (const face of document.querySelectorAll(".node-knob-face")) {
+    if (face.classList.contains("is-slider-look")) {
+      const id = face.dataset?.node;
+      if (id && typeof paintNodeGraphSliderFaceLive === "function") {
+        paintNodeGraphSliderFaceLive(face, id, null);
+      }
+      continue;
+    }
     renderNodeGraphKnobFace(face);
   }
 }
@@ -1151,7 +1467,8 @@ function syncNodeGraphKnobFaceFromSlider(slider) {
     return;
   }
   const module = slider.closest?.(".dsp-node");
-  if (!module || module.dataset.nodeType !== "knob") {
+  const type = module?.dataset?.nodeType;
+  if (!module || (type !== "knob" && type !== "pluginSlider")) {
     return;
   }
   const face = module.querySelector(".node-knob-face");
@@ -1159,26 +1476,29 @@ function syncNodeGraphKnobFaceFromSlider(slider) {
     return;
   }
   const nodeId = module.dataset.node;
-  // Prefer full live paint (includes In + mod) when available.
+  if (type === "pluginSlider" || face.classList.contains("is-slider-look")) {
+    if (typeof paintNodeGraphSliderFaceLive === "function" && nodeId) {
+      paintNodeGraphSliderFaceLive(face, nodeId, null);
+    }
+    return;
+  }
   if (typeof paintNodeGraphKnobFaceLive === "function" && nodeId) {
     paintNodeGraphKnobFaceLive(face, nodeId, null);
     return;
   }
   const readout = face.querySelector("[data-knob-face-readout]");
-  const displayValue = Number(slider.value);
+  const domainRaw = Number(slider.dataset?.domainValue);
+  const baseValue = Number.isFinite(domainRaw) ? domainRaw : Number(slider.value);
+  const sentRaw = Number(slider.dataset?.sentDomainValue);
+  const numberValue = Number.isFinite(sentRaw) ? sentRaw : baseValue;
   const patchNode = typeof nodeGraphPatchNode === "function"
     ? nodeGraphPatchNode(nodeId)
     : null;
   if (readout && !readout.hidden) {
-    readout.textContent = nodeGraphKnobFaceFormatReadout(displayValue, patchNode, slider);
+    readout.textContent = nodeGraphKnobFaceFormatReadout(numberValue, patchNode, slider);
   }
-  const min = Number(slider.min);
-  const max = Number(slider.max);
-  let u = 0.5;
-  if (Number.isFinite(min) && Number.isFinite(max) && max !== min) {
-    u = (displayValue - min) / (max - min);
-  }
-  u = Math.max(0, Math.min(1, u));
+  // Control position / arc follows editable base, not modulated target.
+  const u = nodeGraphKnobFaceUnitFromValue(baseValue, patchNode);
   face.style.setProperty("--macro-value", String(u));
 }
 
@@ -1508,11 +1828,66 @@ function buildNodeGraphKnobFaceLayersDisplaySettingsHtml() {
   return `
     <div class="metadata-section-title">Image layers</div>
     <div class="metadata-field-section node-knob-face-display-layers" data-knob-face-display-settings-panel>
-      <p class="node-knob-face-display-hint">Back (1) → front (${layerCount}). Optional art replaces the macro dial.</p>
+      <p class="node-knob-face-display-hint">Back (1) → front (${layerCount}). Optional art replaces the dial.</p>
       <div class="node-knob-face-layer-stack">
         ${rows.join("\n")}
       </div>
     </div>`;
+}
+
+function commitNodeGraphKnobPluginIdentity() {
+  const moduleId = typeof nodeGraphModuleActionTargetNodeId === "function"
+    ? nodeGraphModuleActionTargetNodeId()
+    : "";
+  const { patch, targetNode } = nodeGraphKnobFacePatchTarget(moduleId);
+  if (
+    !patch
+    || !targetNode
+    || (
+      targetNode.type !== "knob"
+      && targetNode.type !== "pluginSlider"
+      && targetNode.type !== "toggleButton"
+      && targetNode.type !== "momentaryButton"
+    )
+  ) {
+    return;
+  }
+  const folderEl = document.getElementById("nodeSceneKnobPluginFolder");
+  const nameEl = document.getElementById("nodeSceneKnobPluginName");
+  const idEl = document.getElementById("nodeSceneKnobPluginId");
+  if (!folderEl && !nameEl && !idEl) {
+    return;
+  }
+  const folder = String(folderEl?.value || "").trim();
+  const name = String(nameEl?.value || "").trim();
+  const idRaw = String(idEl?.value || "").trim();
+  if (folder) {
+    targetNode.pluginFolder = folder;
+  } else {
+    delete targetNode.pluginFolder;
+  }
+  if (name) {
+    targetNode.pluginName = name;
+  } else {
+    delete targetNode.pluginName;
+  }
+  if (idRaw === "") {
+    delete targetNode.pluginId;
+  } else {
+    let n = Math.round(Number(idRaw));
+    if (!Number.isFinite(n)) {
+      delete targetNode.pluginId;
+    } else {
+      n = Math.max(0, Math.min(31, n));
+      targetNode.pluginId = n;
+      if (idEl && String(idEl.value) !== String(n) && document.activeElement !== idEl) {
+        idEl.value = String(n);
+      }
+    }
+  }
+  if (typeof commitNodeGraphPatch === "function") {
+    commitNodeGraphPatch(patch, { record: true, status: "plugin identity", softDom: true, markPending: false });
+  }
 }
 
 function bindNodeGraphKnobFaceDisplaySettingsEvents(root) {
@@ -1546,7 +1921,9 @@ function bindNodeGraphKnobFaceDisplaySettingsEvents(root) {
 }
 
 function syncNodeGraphKnobFaceDisplaySettingsControls(root) {
-  const panel = root?.querySelector?.("[data-knob-face-display-settings-panel]")
+  const host = root
+    || document.getElementById("nodeTraceDisplaySettingsPopover");
+  const panel = host?.querySelector?.("[data-knob-face-display-settings-panel]")
     || document.querySelector("#nodeTraceDisplaySettingsPopover [data-knob-face-display-settings-panel]");
   if (!panel) {
     return;
@@ -1597,12 +1974,15 @@ function openNodeKnobFaceContextMenu(event) {
   const patchNode = nodeId && typeof nodeGraphPatchNode === "function"
     ? nodeGraphPatchNode(nodeId)
     : null;
-  if (!patchNode || patchNode.type !== "knob") {
+  if (!patchNode || (patchNode.type !== "knob" && patchNode.type !== "pluginSlider")) {
     return false;
   }
   event.preventDefault();
   event.stopPropagation();
   event.stopImmediatePropagation?.();
+  if (typeof ensureNodeGraphModuleSelectedForContext === "function") {
+    ensureNodeGraphModuleSelectedForContext(nodeId);
+  }
   if (nodeGraphMvp) {
     nodeGraphMvp.sceneContextTargetNode = nodeId;
     nodeGraphMvp.lastModuleActionTargetNode = nodeId;

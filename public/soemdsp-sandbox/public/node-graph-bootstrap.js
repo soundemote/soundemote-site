@@ -138,22 +138,8 @@ async function initNodeGraphMvp() {
   if (typeof renderNodeGraphWiresAboveModulesToggle === "function") {
     renderNodeGraphWiresAboveModulesToggle();
   }
-  bindNodeGraphMacroControlModuleEvents();
   bindNodeGraphKeyboardControllerModuleEvents();
   bindNodeGraphMetadataPopoverEvents();
-  renderNodeGraphMacroControls();
-  if (typeof applyNodeGraphMacroControlsFaceSettings === "function") {
-    applyNodeGraphMacroControlsFaceSettings();
-  } else {
-    applyNodeGraphMacroKnobArcThickness();
-    applyNodeGraphMacroKnobArcGapBrightness();
-    applyNodeGraphMacroKnobSizeScale();
-    applyNodeGraphMacroKnobLabelPosition();
-    applyNodeGraphMacroKnobValuePosition();
-  }
-  if (typeof bindNodeGraphMacroControlsDisplayContextMenu === "function") {
-    bindNodeGraphMacroControlsDisplayContextMenu();
-  }
   renderNodeGraphKeyboardControllerModules();
   renderNodeGraphModuleVisibilityToggles();
   renderNodeGraphPatchTimingControls();
@@ -203,8 +189,10 @@ function clearNodeGraphStartupPatchRecoveryStorage() {
 }
 
 function ensureNodeGraphStartupModulesVisible() {
-  const container = document.getElementById("nodeGraphNodes");
-  if (!container || container.querySelector(".dsp-node")) {
+  const containers = typeof nodeGraphModuleMountContainers === "function"
+    ? nodeGraphModuleMountContainers()
+    : [document.getElementById("nodeGraphNodes")].filter(Boolean);
+  if (!containers.length || containers.some((c) => c.querySelector(".dsp-node"))) {
     return;
   }
   // If we already have a working patch with nodes but the DOM is empty, re-apply

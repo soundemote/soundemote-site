@@ -90,8 +90,8 @@ const nodeGraphScopePhosphorLookDefaults = Object.freeze({
   burn: 0,
   burnAmount: 1,
   residualSchema: 3,
-  // Size 0…1 linear diameter map — thin usable CRT line (not a fat sausage).
-  size: 0.02,
+  // Size: CSS px diameter @ zoom 1.
+  size: 2,
   // Stamp blur 0 hard … 1 soft (aesthetic; continuity comes from path packing).
   blur: 0.35,
   // Max phosphor stamps / frame (economy spreads when over).
@@ -114,8 +114,8 @@ const nodeGraphScopeCyanGradientStops = Object.freeze([
 ]);
 
 
-const nodeGraphTraceDisplaySettingsDefaults = Object.freeze({
-  // Instant Trace is a VECTOR stroke, not phosphor energy — do NOT inherit the
+const nodeGraphWaterfallSettingsDefaults = Object.freeze({
+  // Instant Waterfall is a VECTOR stroke, not phosphor energy — do NOT inherit the
   // phosphor look brightness (0.08) / size (0.02). Those made Output Meet
   // strokes nearly invisible so only the plate color seemed to work.
   background: "#ff0000",
@@ -126,8 +126,8 @@ const nodeGraphTraceDisplaySettingsDefaults = Object.freeze({
   // Mono / primary stroke (Output Left). Pure red so Meet (red+blue) is green.
   color: "#ff0000",
   dot1Enabled: true,
-  // ~2–3 CSS px on typical faces (size 0 still floors at 1 device px).
-  dot1Size: 0.035,
+  // Stroke diameter: authored CSS px at a 96px face (APP_POLICY §15). 0 = gone.
+  dot1Size: 2,
   // Output stereo: combine (Meet) | lighter | screen | source-over | multiply | …
   stereoBlend: "combine",
   // Meet always auto from Left/Right (complement + soft screen lift).
@@ -135,7 +135,7 @@ const nodeGraphTraceDisplaySettingsDefaults = Object.freeze({
   secondaryBrightness: 0.95,
   secondaryColor: "#0000ff",
   secondaryEnabled: true,
-  secondarySize: 0.035,
+  secondarySize: 2,
   secondaryLineThickness: 0,
   tertiaryColor: "#00ff00",
   cycles: 2,
@@ -186,18 +186,20 @@ const nodeGraphLineBurnSettingsDefaults = Object.freeze({
   trail: nodeGraphScopePhosphorLookDefaults.trail,
   scale: nodeGraphScopePhosphorLookDefaults.scale,
   dot1Brightness: nodeGraphScopePhosphorLookDefaults.brightness,
-  // Cyan scope LUT (shared with scope2d) — not Instant Trace red.
+  // Cyan scope LUT (shared with scope2d) — not Instant Waterfall red.
   dot1Color: "#75ebff",
   dot1Enabled: true,
   dot1Size: nodeGraphScopePhosphorLookDefaults.size,
   lineThickness: nodeGraphScopePhosphorLookDefaults.blur,
   pixelDensity: nodeGraphScopePhosphorLookDefaults.pixelDensity,
   dotBudget: nodeGraphScopePhosphorLookDefaults.dotBudget,
+  // budget = solid line until the dots run out. length = dots across the full path.
+  drawMode: "budget",
   fullDotEconomy: nodeGraphScopePhosphorLookDefaults.fullDotEconomy,
   // false = pack stamps along chords between samples (continuous CRT line).
   dotsOnly: false,
   // Rising-edge auto-trigger on In (snaps pen left). Off unless the user
-  // turns Sync on — same default as Instant Trace / other 1D faces.
+  // turns Sync on — same default as Instant Waterfall / other 1D faces.
   sourceSync: false,
   // Saw / square / pulse wrap jumps look like ink spikes without this.
   skipDiscontinuities: true,
@@ -230,6 +232,8 @@ const nodeGraphZeroDBurnSettingsDefaults = Object.freeze({
   // 0 = 1×1 pixel … 1 layout×dpr … 4 AA.
   pixelDensity: nodeGraphScopePhosphorLookDefaults.pixelDensity,
   dotBudget: nodeGraphScopePhosphorLookDefaults.dotBudget,
+  // budget = solid line until the dots run out. length = dots across the full path.
+  drawMode: "budget",
   fullDotEconomy: nodeGraphScopePhosphorLookDefaults.fullDotEconomy,
   sourceSync: false,
   gradientStops: nodeGraphScopePhosphorLookDefaults.gradientStops,
@@ -255,8 +259,8 @@ const nodeGraphValueOscilloscopeSettingsDefaults = Object.freeze({
   burnAmount: 1,
   residualSchema: 3,
   dot1Enabled: true,
-  // Stroke diameter: 0 = 1px, 1 = face square min side.
-  dot1Size: 0.04,
+  // Stroke diameter: authored CSS px at a 96px face. 0 = gone.
+  dot1Size: 2,
   lineLength: 1,
   // Edge soft (beam uBlur). Mild default = AA without a big glow; draw floors ~0.12.
   lineThickness: 0.18,
@@ -275,10 +279,12 @@ const nodeGraphNumberReadoutSettingsDefaults = Object.freeze({
   // Digit hue saturation 0…1 (0 = grey, 1 = full hue).
   dot1Saturation: 1,
   colorSaturation: 1,
-  // Bright 0…1: 0 = mid grey, 0.5 = full Hue, 1 = white (never black).
+  // Bright 0…1: live light black → full hue at 0.5 → white at 1. Residual uses Ghost Gradient.
   brightness: 0.5,
-  // Live digit “light” — single solid color (not the residual gradient).
-  color: nodeGraphScopePhosphorLookDefaults.peakColor,
+  // Spawn live hue 52. Ghost Gradient stays the phosphor LUT.
+  color: typeof nodeGraphHueUnitHex === "function"
+    ? nodeGraphHueUnitHex(52)
+    : "#ffdd00",
   // Trail / Ghost — same phosphor drawer SSOT as 1D/2D scopes.
   trail: nodeGraphScopePhosphorLookDefaults.trail,
   ghost: nodeGraphScopePhosphorLookDefaults.ghost,
@@ -292,9 +298,8 @@ const nodeGraphNumberReadoutSettingsDefaults = Object.freeze({
   residual: nodeGraphScopePhosphorLookDefaults.trail,
   ghostBrightness: nodeGraphScopePhosphorLookDefaults.ghost,
   // Total digit budget (whole + fractional) for limit_decimals / GROW-off bins.
-  // Default 8 ≈ former hard-coded 6 integer slots + 2 decimals.
-  digits: 8,
-  decimals: 2,
+  digits: 5,
+  decimals: 4,
   // When true: lock digit size to fixed Digits+Decimals bins (stable width).
   // When false (GROW): resize digits to fill available space for the live value.
   // Default OFF (GROW off) so Digit bins can hold a realistic meter.
@@ -323,16 +328,14 @@ const nodeGraphValueLcdSettingsDefaults = Object.freeze({
   background: typeof nodeGraphHueUnitHex === "function"
     ? nodeGraphHueUnitHex(nodeGraphValueLcdDefaultHueDeg)
     : "#a2ff00",
-  backgroundBrightness: 0.88,
-  // Plate chroma 0…1 (0 = grey at the same brightness, 1 = full selected hue).
-  backgroundSaturation: 1,
-  // Foreground ink: same hue family, dark end of the brightness cone.
+  backgroundBrightness: 0.9,
+  backgroundSaturation: 0,
   color: typeof nodeGraphHueUnitHex === "function"
-    ? nodeGraphHueUnitHex(nodeGraphValueLcdDefaultHueDeg)
-    : "#a2ff00",
-  brightness: 0.18,
-  dot1Saturation: 1,
-  colorSaturation: 1,
+    ? nodeGraphHueUnitHex(210)
+    : "#00aaff",
+  brightness: 0,
+  dot1Saturation: 0.9,
+  colorSaturation: 0.9,
   // Residual hang unused on LCD (kept 0 so old patches don’t re-enable burn path).
   trail: 0,
   ghost: 0,
@@ -341,9 +344,8 @@ const nodeGraphValueLcdSettingsDefaults = Object.freeze({
   residualSchema: 3,
   residual: 0,
   ghostBrightness: 0,
-  // Total digit budget (whole + fractional). Default 9 ≈ 6 int + 3 decimals.
-  digits: 9,
-  decimals: 3,
+  digits: 5,
+  decimals: 4,
   // Same budget policy as Value LED (GROW off / digit bins on).
   decimalBudget: true,
   digitBins: true,
@@ -353,13 +355,11 @@ const nodeGraphValueLcdSettingsDefaults = Object.freeze({
   polarity: "bipolar",
   removeTrailingZeros: false,
   // LCD Ghost: permanent “8” skeleton amount 0…1 (soft fade from 0).
-  unlitSegments: 0.22,
-  // Inner shadow (screen glass): Gaussian soft inset + CSS-like offset.
+  unlitSegments: 0.1,
   innerShadowDistance: 1,
-  innerShadowSharpness: 0.732,
-  // Offset −1…1 (0 = centered). Positive X/Y darkens left/top (light from +X/+Y).
-  innerShadowOffsetX: 0,
-  innerShadowOffsetY: 0.135,
+  innerShadowSharpness: 0.7,
+  innerShadowOffsetX: 0.03,
+  innerShadowOffsetY: 0.05,
   gradientStops: Object.freeze([]),
 });
 
@@ -373,14 +373,14 @@ const nodeGraphVectorDotSettingsDefaults = Object.freeze({
     ? nodeGraphHueUnitHex(220)
     : "#0055ff",
   dot1Color: typeof nodeGraphHueUnitHex === "function"
-    ? nodeGraphHueUnitHex(25)
-    : "#ff6a00",
+    ? nodeGraphHueUnitHex(30)
+    : "#ff8000",
   color: typeof nodeGraphHueUnitHex === "function"
-    ? nodeGraphHueUnitHex(25)
-    : "#ff6a00",
-  hue: 25,
-  dot1Brightness: 0.5,
-  brightness: 0.5,
+    ? nodeGraphHueUnitHex(30)
+    : "#ff8000",
+  hue: 30,
+  dot1Brightness: 0.9,
+  brightness: 0.9,
   dot1Size: 0.85,
   lineThickness: 0.35,
   blur: 0.35,
@@ -392,33 +392,28 @@ const nodeGraphVectorDotSettingsDefaults = Object.freeze({
   squircle: 0,
 });
 
-// LCD Dot — Vector Dot shape + LCD Value plate/ink/glass.
+// LCD Dot — Vector Dot shape + LCD Value plate/ink/glass (same spawn as Value LCD).
 const nodeGraphLcdDotSettingsDefaults = Object.freeze({
   faceStyle: "lcd",
   background: typeof nodeGraphHueUnitHex === "function"
-    ? nodeGraphHueUnitHex(typeof nodeGraphValueLcdDefaultHueDeg === "number"
-      ? nodeGraphValueLcdDefaultHueDeg
-      : 82)
+    ? nodeGraphHueUnitHex(nodeGraphValueLcdDefaultHueDeg)
     : "#a2ff00",
-  backgroundBrightness: 0.88,
+  backgroundBrightness: 0.9,
+  backgroundSaturation: 0,
   backgroundColor: typeof nodeGraphHueUnitHex === "function"
-    ? nodeGraphHueUnitHex(typeof nodeGraphValueLcdDefaultHueDeg === "number"
-      ? nodeGraphValueLcdDefaultHueDeg
-      : 82)
+    ? nodeGraphHueUnitHex(nodeGraphValueLcdDefaultHueDeg)
     : "#a2ff00",
   dot1Color: typeof nodeGraphHueUnitHex === "function"
-    ? nodeGraphHueUnitHex(typeof nodeGraphValueLcdDefaultHueDeg === "number"
-      ? nodeGraphValueLcdDefaultHueDeg
-      : 82)
-    : "#a2ff00",
+    ? nodeGraphHueUnitHex(210)
+    : "#00aaff",
   color: typeof nodeGraphHueUnitHex === "function"
-    ? nodeGraphHueUnitHex(typeof nodeGraphValueLcdDefaultHueDeg === "number"
-      ? nodeGraphValueLcdDefaultHueDeg
-      : 82)
-    : "#a2ff00",
-  hue: typeof nodeGraphValueLcdDefaultHueDeg === "number" ? nodeGraphValueLcdDefaultHueDeg : 82,
-  dot1Brightness: 0.18,
-  brightness: 0.18,
+    ? nodeGraphHueUnitHex(210)
+    : "#00aaff",
+  hue: 210,
+  dot1Brightness: 0,
+  brightness: 0,
+  dot1Saturation: 0.9,
+  colorSaturation: 0.9,
   dot1Size: 0.72,
   lineThickness: 0.12,
   blur: 0.12,
@@ -427,34 +422,73 @@ const nodeGraphLcdDotSettingsDefaults = Object.freeze({
   shapeParam: 0.5,
   pill: 0,
   squircle: 0,
-  unlitSegments: 0.22,
+  unlitSegments: 0.1,
   innerShadowDistance: 1,
-  innerShadowSharpness: 0.732,
-  innerShadowOffsetX: 0,
-  innerShadowOffsetY: 0.135,
+  innerShadowSharpness: 0.7,
+  innerShadowOffsetX: 0.03,
+  innerShadowOffsetY: 0.05,
 });
 
 
 /** Knob module face: macro-dial look; colors + rotation are per-node Display Settings. */
 const nodeGraphKnobFaceDisplaySettingsDefaults = Object.freeze({
   decimals: 2,
+  // Face number digit budget (whole + fraction). 0 = integer.
+  maxDigits: 2,
   background: "#000000",
   arcFill: "#f1b84b",
   arcTrack: "#3a3428",
   // Centered arc span (degrees Bias 0→1). Start is always −span/2 (no Offset).
   rotationDegrees: 270,
-  // Dial ring size 0…1 (1 = fill available dial cell; label/value unchanged).
-  dialSize: 1,
-  // Title / value size 0…1 = fraction of the knob square (same scale).
-  labelSize: 0.45,
-  valueSize: 0.45,
-  // Title / value vs the dial: above | mid | below.
-  labelPosition: "above",
-  valuePosition: "mid",
+  // Knob graphic size 0…1 (1 = fill entire display; 0 = disappear). Arc only.
+  dialSize: 0.84,
+  // Knob graphic vertical offset in face-height units; positive moves lower.
+  dialOffsetY: 0.14,
+  // Label / value size 0…1 of display min-edge (independent of knob size/position).
+  labelSize: 0.2,
+  valueSize: 0.2,
+  // Value vertical offset −1…1 face heights (edge inset for top/bottom; bipolar for mid/midknob).
+  valueOffsetY: 0,
+  // Label / value align: off | top | mid | midknob | bottom (independent; may overlap).
+  labelPosition: "top",
+  valuePosition: "midknob",
   // Face name — independent of module alias / header title.
   labelText: "Knob",
   // Hole size 0…1 (0 = solid disk, ~0.7 default, 1 = thin outer ring).
   innerRadius: 0.7,
+});
+
+const nodeGraphSliderFaceDisplaySettingsDefaults = Object.freeze({
+  decimals: 2,
+  maxDigits: 5,
+  labelText: "",
+  background: "#000000",
+  arcTrack: "#1a2226",
+  sliderLength: 0.8909,
+  sliderHeight: 0.6473,
+  sliderPadding: 0.05,
+  sliderAlign: "bottom",
+  sliderColor: "#5491ab",
+  sliderNumberColor: "#ffffff",
+  sliderTextColor: "#cad3d8",
+  sliderUnitColor: "#7fc7d9",
+  sliderShowLabel: true,
+  sliderShowNumber: true,
+  sliderShowUnit: true,
+  sliderLabelInside: false,
+  sliderNumberInside: true,
+  sliderUnitInside: false,
+  sliderLabelAlign: "topleft",
+  sliderLabelPadding: 0.035,
+  sliderLabelScale: 0.26,
+  sliderNumberAlign: "mid",
+  sliderNumberPadding: 0,
+  sliderNumberScale: 0.35,
+  sliderUnitAlign: "topright",
+  sliderUnitPadding: 0.04,
+  sliderUnitScale: 0.18,
+  sliderCornerShape: "squircle",
+  sliderRounding: 0.47,
 });
 
 
@@ -503,6 +537,8 @@ const nodeGraphScope2dSettingsDefaults = Object.freeze({
   dot1Enabled: true,
   dot1Size: nodeGraphScopePhosphorLookDefaults.size,
   dotBudget: nodeGraphScopePhosphorLookDefaults.dotBudget,
+  // budget = solid line until the dots run out. length = dots across the full path.
+  drawMode: "budget",
   fullDotEconomy: nodeGraphScopePhosphorLookDefaults.fullDotEconomy,
   dotsOnly: false,
   sourceSync: false,
@@ -577,6 +613,8 @@ const nodeGraphScope2dTraceSettingsDefaults = Object.freeze({
   pixelDensity: nodeGraphScopePhosphorLookDefaults.pixelDensity,
   scale: nodeGraphScopePhosphorLookDefaults.scale,
   skipDiscontinuities: false,
+  dotBudget: 2048,
+  drawMode: "budget",
 });
 
 /** Optional per-type 2D Trace defaults. */
@@ -594,5 +632,41 @@ function nodeGraphScope2dTraceSettingsDefaultsForModuleType(type) {
     ...overrides,
   });
 }
+
+
+const nodeGraphScope1dTraceSettingsDefaults = Object.freeze({
+  // Trace-family plate + woscope beam; sweep from 1D Phosphor.
+  background: nodeGraphScopePhosphorLookDefaults.background,
+  backgroundHue: nodeGraphScopePhosphorLookDefaults.backgroundHue,
+  backgroundBrightness: 0,
+  dot1Brightness: 0.5,
+  // Left / mono default red (stereo Meet-friendly with blue Right).
+  dot1Color: typeof nodeGraphHueUnitHex === "function"
+    ? nodeGraphHueUnitHex(0)
+    : "#ff0000",
+  dot1Enabled: true,
+  dot1Size: nodeGraphScope2dTraceSettingsDefaults.dot1Size,
+  secondaryBrightness: 0.5,
+  secondaryColor: typeof nodeGraphHueUnitHex === "function"
+    ? nodeGraphHueUnitHex(240)
+    : "#0000ff",
+  secondaryEnabled: true,
+  secondarySize: nodeGraphScope2dTraceSettingsDefaults.dot1Size,
+  ghost: typeof PhosphorResidual !== "undefined"
+    ? PhosphorResidual.DEFAULT_GHOST
+    : nodeGraphScopePhosphorLookDefaults.ghost,
+  trail: typeof PhosphorResidual !== "undefined"
+    ? PhosphorResidual.DEFAULT_TRAIL
+    : nodeGraphScopePhosphorLookDefaults.trail,
+  pixelDensity: nodeGraphScopePhosphorLookDefaults.pixelDensity,
+  scale: nodeGraphScopePhosphorLookDefaults.scale,
+  skipDiscontinuities: true,
+  sourceSync: false,
+  sweepHz: 4,
+  sweepCycles: 4,
+  dotBudget: 2048,
+  drawMode: "budget",
+});
+
 
 

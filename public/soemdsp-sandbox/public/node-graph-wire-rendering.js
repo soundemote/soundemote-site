@@ -1,3 +1,18 @@
+function nodeGraphWireJackIsSquare(node, port, io) {
+  if (typeof nodeGraphPortIsNoteBus === "function" && nodeGraphPortIsNoteBus(port)) {
+    return true;
+  }
+  if (typeof nodeGraphPortIsCodeSignal === "function"
+    && nodeGraphPortIsCodeSignal(node, port, io)) {
+    return true;
+  }
+  if (typeof nodeGraphPortIsSetupParam === "function"
+    && nodeGraphPortIsSetupParam(node, port, io)) {
+    return true;
+  }
+  return false;
+}
+
 function nodeGraphTraceModuleRect(nodeId) {
   const surface = nodeGraphZoomSurface();
   const node = nodeGraphNodeElement(nodeId);
@@ -24,6 +39,11 @@ function nodeGraphSelfTraceModuleRect(nodeId) {
   return nodeGraphTraceModuleRect(nodeId);
 }
 
+function nodeGraphTracePad() {
+  return Math.max(nodeGraphGridWidth(), nodeGraphGridHeight()) * 0.75;
+}
+
+// Feedback wrap: out right, under the lowest endpoint module, in from the left.
 function nodeGraphSelfTracePoints(wire, from, to) {
   const sourceNode = wire?.sourceNode;
   const destinationNode = wire?.destinationNode;
@@ -34,19 +54,54 @@ function nodeGraphSelfTracePoints(wire, from, to) {
   if (!rect) {
     return [];
   }
-  const distance = Math.max(nodeGraphGridWidth(), nodeGraphGridHeight()) * 0.75;
-  const centerX = (rect.left + rect.right) * 0.5;
-  const fromDirection = from.x < centerX ? -1 : 1;
-  const toDirection = to.x < centerX ? -1 : 1;
-  const outX = from.x + fromDirection * distance;
-  const destinationSideX = to.x + toDirection * distance;
-  const aboveY = Math.max(0.5, rect.top - distance);
-  const belowTitleY = Math.max(to.y, rect.titleBottom + 0.5);
+  const pad = nodeGraphTracePad();
+  const outX = Math.max(from.x + pad, rect.right + pad);
+  const inX = Math.min(to.x - pad, rect.left - pad);
+  const belowY = rect.bottom + pad;
   return [
     { x: outX, y: from.y },
-    { x: outX, y: aboveY },
-    { x: destinationSideX, y: aboveY },
-    { x: destinationSideX, y: belowTitleY },
+    { x: outX, y: belowY },
+    { x: inX, y: belowY },
+    { x: inX, y: to.y },
+  ];
+}
+
+function nodeGraphForwardTraceSpan(from, to) {
+  const dx = to.x - from.x;
+  const dy = Math.abs(to.y - from.y);
+  if (!(dx > 0)) {
+    return 0;
+  }
+  const curve = typeof nodeGraphWireCurve === "function" ? nodeGraphWireCurve() : 1;
+  const raw = Math.min(96, (dx * 0.48 + dy * 0.12) * (Number.isFinite(curve) ? curve : 1));
+  const grid = Math.max(1, Number(typeof nodeGraphGridWidth === "function" ? nodeGraphGridWidth() : 28) || 28);
+  let span = Math.round(raw / grid) * grid;
+  if (span < grid) {
+    span = grid;
+  }
+  const maxSpan = dx - grid;
+  if (maxSpan > 0 && span > maxSpan) {
+    span = Math.max(grid, Math.round(maxSpan / grid) * grid);
+  }
+  if (from.x + span >= to.x) {
+    span = dx * 0.5;
+  }
+  return span;
+}
+
+// Forward trace: Manhattan of the normal cable cubic (leave H, arrive H).
+function nodeGraphForwardTracePoints(from, to) {
+  if (!from || !to || !(to.x > from.x)) {
+    return [];
+  }
+  const span = nodeGraphForwardTraceSpan(from, to);
+  if (!(span > 0)) {
+    return [];
+  }
+  const midX = from.x + span;
+  return [
+    { x: midX, y: from.y },
+    { x: midX, y: to.y },
   ];
 }
 
@@ -61,14 +116,14 @@ function nodeGraphBackwardTracePoints(wire, from, to) {
   if (!sourceRect || !destinationRect) {
     return [];
   }
-  const distance = Math.max(nodeGraphGridWidth(), nodeGraphGridHeight()) * 0.75;
-  const aboveY = Math.max(0.5, Math.min(sourceRect.top, destinationRect.top) - distance);
-  const sourceSideX = Math.max(from.x + distance, sourceRect.right + distance);
-  const destinationSideX = Math.min(to.x - distance, destinationRect.left - distance);
+  const pad = nodeGraphTracePad();
+  const belowY = Math.max(sourceRect.bottom, destinationRect.bottom) + pad;
+  const sourceSideX = Math.max(from.x + pad, sourceRect.right + pad);
+  const destinationSideX = Math.min(to.x - pad, destinationRect.left - pad);
   return [
     { x: sourceSideX, y: from.y },
-    { x: sourceSideX, y: aboveY },
-    { x: destinationSideX, y: aboveY },
+    { x: sourceSideX, y: belowY },
+    { x: destinationSideX, y: belowY },
     { x: destinationSideX, y: to.y },
   ];
 }
@@ -80,11 +135,19 @@ function nodeGraphManualTracePathOptions(wire, from, to) {
   }
   const manualTracePoints = normalizeNodeGraphTracePoints(wire?.tracePoints);
   const selfTracePoints = manualTracePoints.length ? [] : nodeGraphSelfTracePoints(wire, from, to);
+  const backwardTracePoints = manualTracePoints.length || selfTracePoints.length
+    ? []
+    : nodeGraphBackwardTracePoints(wire, from, to);
+  const forwardTracePoints = manualTracePoints.length || selfTracePoints.length || backwardTracePoints.length
+    ? []
+    : nodeGraphForwardTracePoints(from, to);
   const tracePoints = manualTracePoints.length
     ? manualTracePoints
     : selfTracePoints.length
       ? selfTracePoints
-      : nodeGraphBackwardTracePoints(wire, from, to);
+      : backwardTracePoints.length
+        ? backwardTracePoints
+        : forwardTracePoints;
   return {
     pathData: nodeGraphTracePathFromPoints(from, tracePoints, to),
     tracePoints,
@@ -211,10 +274,16 @@ function nodeGraphDrawWireWithOptionalPath(svg, options) {
       to,
       skipHitPath,
       wireColors: [fromColor, toColor],
-      squareFrom: typeof nodeGraphPortIsNoteBus === "function"
-        && nodeGraphPortIsNoteBus(pathOptions.sourcePort),
-      squareTo: typeof nodeGraphPortIsNoteBus === "function"
-        && nodeGraphPortIsNoteBus(pathOptions.destinationPort),
+      squareFrom: nodeGraphWireJackIsSquare(
+        pathOptions.sourceNode,
+        pathOptions.sourcePort,
+        "output"
+      ),
+      squareTo: nodeGraphWireJackIsSquare(
+        pathOptions.destinationNode,
+        pathOptions.destinationPort,
+        pathOptions.kind === "modulation" ? "modulation" : "input"
+      ),
     });
     return true;
   }
@@ -331,9 +400,12 @@ function nodeGraphDrawSignalWire(svg, connection, index, context) {
     ? (nodeGraphWireHelpers.wireEndpointCapCenter(to, "to") || to)
     : to;
   const fromColor = nodeGraphPortWireColor(connection.sourceNode, connection.sourcePort, "output");
-  const toColor = nodeGraphPortWireColor(connection.destinationNode, connection.destinationPort, "input");
+  // Cable color is owned by the output jack — no from→to color transition.
+  const toColor = fromColor;
   nodeGraphDrawWireWithOptionalPath(svg, {
+    sourceNode: connection.sourceNode,
     sourcePort: connection.sourcePort,
+    destinationNode: connection.destinationNode,
     destinationPort: connection.destinationPort,
     alias: `${nodeGraphLabel(connection.sourceNode, connection.sourcePort)} -> ${nodeGraphLabel(
       connection.destinationNode,
@@ -386,9 +458,13 @@ function nodeGraphDrawModulationWire(svg, modulation, index, context) {
     ? (nodeGraphWireHelpers.wireEndpointCapCenter(to, "to") || to)
     : to;
   const fromColor = nodeGraphPortWireColor(modulation.sourceNode, modulation.sourcePort, "output");
-  const toColor = nodeGraphPortWireColor(modulation.destinationNode, modulation.destinationParam, "modulation");
+  const toColor = fromColor;
   const both = nodeGraphWirePointIsFinite(from) && nodeGraphWirePointIsFinite(to);
   nodeGraphDrawWireWithOptionalPath(svg, {
+    sourceNode: modulation.sourceNode,
+    sourcePort: modulation.sourcePort,
+    destinationNode: modulation.destinationNode,
+    destinationPort: modulation.destinationParam,
     alias: `${nodeGraphLabel(modulation.sourceNode, modulation.sourcePort)} -> ${nodeGraphNodeDisplayName(
       modulation.destinationNode,
     )}.${modulation.destinationParam} mod`,
@@ -442,9 +518,13 @@ function nodeGraphDrawGraphWire(svg, connection, index, context) {
     ? (nodeGraphWireHelpers.wireEndpointCapCenter(to, "to") || to)
     : to;
   const fromColor = nodeGraphPortWireColor(connection.sourceNode, connection.sourcePort, "output");
-  const toColor = nodeGraphPortWireColor(connection.destinationNode, connection.destinationGraphInput, "graph");
+  const toColor = fromColor;
   const both = nodeGraphWirePointIsFinite(from) && nodeGraphWirePointIsFinite(to);
   nodeGraphDrawWireWithOptionalPath(svg, {
+    sourceNode: connection.sourceNode,
+    sourcePort: connection.sourcePort,
+    destinationNode: connection.destinationNode,
+    destinationPort: connection.destinationGraphInput,
     alias: `${nodeGraphLabel(connection.sourceNode, connection.sourcePort)} -> ${nodeGraphNodeDisplayName(
       connection.destinationNode,
     )}.${connection.destinationGraphInput} graph`,
@@ -627,8 +707,13 @@ function drawNodeGraphWires(options = {}) {
   const feedbackSets = nodeGraphFeedbackIdentitySets(plan);
   const activeNodeIds = nodeGraphActiveNodeIds(plan);
 
-  const graphRect = nodeGraphGraphRect();
-  const viewBox = `0 0 ${graphRect.width} ${graphRect.height}`;
+  const cam = typeof nodeGraphWireCameraViewBox === "function"
+    ? nodeGraphWireCameraViewBox()
+    : null;
+  const graphRect = cam || nodeGraphGraphRect();
+  const viewBox = cam
+    ? `${cam.x} ${cam.y} ${cam.width} ${cam.height}`
+    : `0 0 ${graphRect.width} ${graphRect.height}`;
   svg.setAttribute("viewBox", viewBox);
   svg.replaceChildren();
   const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
@@ -708,9 +793,6 @@ function drawNodeGraphWires(options = {}) {
     nodeGraphDrawGraphWire(svg, graphConnection, index, context);
   }
 
-  if (!lite && typeof syncNodeGraphMonitorIndicators === "function") {
-    syncNodeGraphMonitorIndicators();
-  }
 
   if (nodeGraphMvp.portConnectionMode) {
     const mode = nodeGraphMvp.portConnectionMode;
@@ -761,11 +843,18 @@ function drawNodeGraphWires(options = {}) {
 
 function syncNodeGraphWireSvgViewBox() {
   const svg = document.getElementById("nodeWireSvg");
-  if (!svg || typeof nodeGraphGraphRect !== "function") {
+  if (!svg) {
     return;
   }
-  const graphRect = nodeGraphGraphRect();
-  const viewBox = `0 0 ${graphRect.width} ${graphRect.height}`;
+  const cam = typeof nodeGraphWireCameraViewBox === "function"
+    ? nodeGraphWireCameraViewBox()
+    : (typeof nodeGraphGraphRect === "function" ? nodeGraphGraphRect() : null);
+  if (!cam) {
+    return;
+  }
+  const viewBox = Number.isFinite(cam.x)
+    ? `${cam.x} ${cam.y} ${cam.width} ${cam.height}`
+    : `0 0 ${cam.width} ${cam.height}`;
   if (svg.getAttribute("viewBox") !== viewBox) {
     svg.setAttribute("viewBox", viewBox);
   }

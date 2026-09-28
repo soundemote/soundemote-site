@@ -356,10 +356,20 @@ function nodeGraphCssColor(property, fallback) {
 }
 
 const NODE_GRAPH_FREQUENCY_VALUE_GLYPH = "\u0192"; // ƒ
+/** Clock Digital Out — held high. App-wide Gate jack mark. */
+const NODE_GRAPH_GATE_GLYPH = "\u25AE"; // ▮
+/** Monostable pulse. App-wide Trigger jack mark. */
+const NODE_GRAPH_TRIGGER_GLYPH = "\u238D"; // ⎍
+/** App-wide Reset jack mark. */
+const NODE_GRAPH_RESET_GLYPH = "\u21BA"; // ↺
+/** Thru pair: In on a module that is only In + Out. */
+const NODE_GRAPH_IN_GLYPH = "\u2192"; // →
+/** Thru pair: Out on a module that is only In + Out. */
+const NODE_GRAPH_OUT_GLYPH = "\u2190"; // ←
 
 /**
  * Hz-as-a-number jacks (Pitch Detector Frequency, MIDI ƒ…).
- * Not oscillator Frequency sliders, not 0.1V/Oct pitch CV.
+ * Not oscillator Frequency sliders, not pitch (♯/♭) pitch.
  */
 function nodeGraphPortIsFrequencyValue(port) {
   const key = String(port || "").trim();
@@ -403,17 +413,90 @@ function nodeGraphFrequencyValuePortDisplayLabel(port) {
   return key;
 }
 
-/** True for Gate / Trigger (and common aliases) — white digital cables app-wide. */
-function nodeGraphPortIsGateOrTrigger(port) {
+/** True for Gate (held high) and Clock Digital Out. */
+function nodeGraphPortIsGate(port, type) {
   const raw = String(port || "").trim();
   if (!raw) return false;
-  if (raw === "Gate" || raw === "Trigger") return true;
   const lower = raw.toLowerCase();
-  return lower === "gate"
-    || lower === "trigger"
-    || lower === "trig"
-    || lower === "gatepulse"
-    || lower === "gate pulse";
+  if (lower === "gate" || lower.startsWith("gate ")) return true;
+  if (lower === "gatepulse" || lower === "gate pulse") return true;
+  const kind = String(type || "").trim();
+  if (kind === "clock" && (raw === "Digital Out" || lower === "digital out")) {
+    return true;
+  }
+  return false;
+}
+
+/** True for Trigger / Trig / Pulse / Clock T. */
+function nodeGraphPortIsTrigger(port, type) {
+  const raw = String(port || "").trim();
+  if (!raw) return false;
+  if (raw === "T") return true;
+  const lower = raw.toLowerCase();
+  if (lower === "trigger" || lower === "trig" || lower === "pulse") return true;
+  if (lower.startsWith("trig ") || lower.startsWith("trigger ")) return true;
+  const kind = String(type || "").trim();
+  if (kind === "clock" && (lower === "t" || lower === "pulse")) {
+    return true;
+  }
+  return false;
+}
+
+function nodeGraphGateTriggerPortDisplayLabel(type, port) {
+  if (nodeGraphPortIsReset(port)) {
+    return NODE_GRAPH_RESET_GLYPH;
+  }
+  if (nodeGraphPortIsTrigger(port, type)) {
+    return NODE_GRAPH_TRIGGER_GLYPH;
+  }
+  if (nodeGraphPortIsGate(port, type)) {
+    return NODE_GRAPH_GATE_GLYPH;
+  }
+  return "";
+}
+
+function nodeGraphGateTriggerPortSpokenName(type, port) {
+  if (nodeGraphPortIsReset(port)) return "Reset";
+  if (nodeGraphPortIsTrigger(port, type)) return "Trigger";
+  if (nodeGraphPortIsGate(port, type)) return "Gate";
+  return "";
+}
+
+/** True when the module's signal IO is exactly In and Out (no L/R/extra jacks). */
+function nodeGraphModuleIsInOutThruPair(type) {
+  const def = typeof nodeGraphModuleDefinitions !== "undefined"
+    ? nodeGraphModuleDefinitions[type]
+    : null;
+  if (!def) {
+    return false;
+  }
+  if (typeof nodeGraphIsContainerShellType === "function" && nodeGraphIsContainerShellType(type)) {
+    return false;
+  }
+  const ins = Array.isArray(def.inputs) ? def.inputs : [];
+  const outs = Array.isArray(def.outputs) ? def.outputs : [];
+  return ins.length === 1 && ins[0] === "In" && outs.length === 1 && outs[0] === "Out";
+}
+
+/** → / ← when the only jacks are In and Out and the label is still the word In/Out. */
+function nodeGraphThruPairPortDisplayLabel(type, port, rawLabel) {
+  if (!nodeGraphModuleIsInOutThruPair(type)) {
+    return "";
+  }
+  const key = String(port || "").trim();
+  const raw = String(rawLabel || key).trim();
+  if (key === "In" && (raw === "In" || raw === key)) {
+    return NODE_GRAPH_IN_GLYPH;
+  }
+  if (key === "Out" && (raw === "Out" || raw === key)) {
+    return NODE_GRAPH_OUT_GLYPH;
+  }
+  return "";
+}
+
+/** True for Gate / Trigger (and common aliases) — white digital cables app-wide. */
+function nodeGraphPortIsGateOrTrigger(port, type) {
+  return nodeGraphPortIsGate(port, type) || nodeGraphPortIsTrigger(port, type);
 }
 
 /** True for Reset (and common aliases) — white digital cables app-wide. */
@@ -428,24 +511,54 @@ function nodeGraphPortIsReset(port) {
     || lower === "phaserest";
 }
 
+
+/** True for pitch (♯/♭) ports — white digital cables app-wide (MIDI note number). */
+function nodeGraphPortIsPitch(port) {
+  const raw = String(port || "").trim();
+  if (!raw) return false;
+  if (raw === "pitch" || raw === "♯/♭") return true;
+  if (typeof normalizeNodeGraphPitchPortName === "function") {
+    if (normalizeNodeGraphPitchPortName(raw) === "pitch") return true;
+  }
+  // Aliases sometimes appear before module canonical resolve.
+  if (
+    raw === "Pitch"
+    || raw === "MIDI"
+    || raw === "Note#"
+    || raw === "Note#/127"
+    || raw === "NoteNumber"
+    || raw === "0.1V/Oct"
+    || raw === "0.1v/Oct"
+  ) {
+    return true;
+  }
+  return false;
+}
+
 // App-wide policy: white wire == digital cable.
-//   • bitmasks (Scale, Play Keys, Arp Keys, …)
+//   • noteMask buses (Scale, Play Keys, Arp Keys, Chord Memory, …)
 //   • ƒ real-value jacks (Hz reports: Frequency, Df1/Df2, ƒ1/ƒ2) on inlets and outlets
+//   • pitch (♯/♭) MIDI-note ports on inlets and outlets
 //   • Gate / Trigger / Reset (all modules — inlets and outlets)
 //   • anything listed in digitalInputs / digitalOutputs
-// 0.1V/Oct pitch CV stays analog (not white) — it is a smoothly-varying voltage.
 function nodeGraphPortIsDigitalSignal(typeOrNode, port, io = null) {
-  if (
-    port === "Scale"
-    || nodeGraphPortIsFrequencyValue(port)
-    || nodeGraphPortIsGateOrTrigger(port)
-    || nodeGraphPortIsReset(port)
-  ) {
+  if (typeof nodeGraphPortIsCodeSignal === "function" && nodeGraphPortIsCodeSignal(typeOrNode, port, io)) {
+    return true;
+  }
+  if (typeof nodeGraphPortIsNoteBus === "function" && nodeGraphPortIsNoteBus(port)) {
     return true;
   }
   const type = typeof typeOrNode === "string" && nodeGraphModuleDefinitions[typeOrNode]
     ? typeOrNode
     : nodeGraphPatchNodeType(typeOrNode);
+  if (
+    nodeGraphPortIsFrequencyValue(port)
+    || nodeGraphPortIsPitch(port)
+    || nodeGraphPortIsGateOrTrigger(port, type)
+    || nodeGraphPortIsReset(port)
+  ) {
+    return true;
+  }
   const definition = nodeGraphModuleDefinitions[type];
   if (!definition) {
     return false;
@@ -457,7 +570,11 @@ function nodeGraphPortIsDigitalSignal(typeOrNode, port, io = null) {
   } else if (io === "output" && typeof nodeGraphCanonicalOutputPort === "function") {
     canonical = nodeGraphCanonicalOutputPort(type, canonical) || canonical;
   }
-  if (nodeGraphPortIsGateOrTrigger(canonical) || nodeGraphPortIsReset(canonical)) {
+  if (
+    nodeGraphPortIsPitch(canonical)
+    || nodeGraphPortIsGateOrTrigger(canonical, type)
+    || nodeGraphPortIsReset(canonical)
+  ) {
     return true;
   }
   if (io !== "output" && definition.digitalInputs?.includes(port)) {
@@ -480,6 +597,43 @@ function nodeGraphPortIsDigitalSignal(typeOrNode, port, io = null) {
  * chunks, strings, …). Declared on dataInputs / dataOutputs, or
  * graphChunkInputs / graphChunkOutputs. Not sample-accurate CV/audio.
  */
+
+/** True for Code jacks (white square, data bus).
+ * codeInputs / codeOutputs TAG port names that already appear in inputs/outputs
+ * (or dataInputs/dataOutputs). They do not create jacks by themselves.
+ */
+function nodeGraphPortIsCodeSignal(typeOrNode, port, io = null) {
+  const type = typeof typeOrNode === "string" && nodeGraphModuleDefinitions[typeOrNode]
+    ? typeOrNode
+    : nodeGraphPatchNodeType(typeOrNode);
+  const definition = nodeGraphModuleDefinitions[type];
+  if (!definition || !port) {
+    return false;
+  }
+  const name = String(port || "").trim();
+  if (!name) {
+    return false;
+  }
+  if (io !== "output") {
+    if (Array.isArray(definition.codeInputs) && definition.codeInputs.includes(name)) {
+      return true;
+    }
+  }
+  if (io !== "input") {
+    if (Array.isArray(definition.codeOutputs) && definition.codeOutputs.includes(name)) {
+      return true;
+    }
+  }
+  // Convention: port named Code on modules that declare code I/O lists.
+  if (name === "Code" && (
+    Array.isArray(definition.codeInputs)
+    || Array.isArray(definition.codeOutputs)
+  )) {
+    return true;
+  }
+  return false;
+}
+
 function nodeGraphPortIsDataPlane(typeOrNode, port, io = null) {
   const type = typeof typeOrNode === "string" && nodeGraphModuleDefinitions[typeOrNode]
     ? typeOrNode
@@ -499,6 +653,9 @@ function nodeGraphPortIsDataPlane(typeOrNode, port, io = null) {
     if (Array.isArray(definition.graphChunkInputs) && definition.graphChunkInputs.includes(name)) {
       return true;
     }
+    if (Array.isArray(definition.codeInputs) && definition.codeInputs.includes(name)) {
+      return true;
+    }
   }
   if (io !== "input") {
     if (Array.isArray(definition.dataOutputs) && definition.dataOutputs.includes(name)) {
@@ -507,6 +664,12 @@ function nodeGraphPortIsDataPlane(typeOrNode, port, io = null) {
     if (Array.isArray(definition.graphChunkOutputs) && definition.graphChunkOutputs.includes(name)) {
       return true;
     }
+    if (Array.isArray(definition.codeOutputs) && definition.codeOutputs.includes(name)) {
+      return true;
+    }
+  }
+  if (typeof nodeGraphPortIsCodeSignal === "function" && nodeGraphPortIsCodeSignal(typeOrNode, port, io)) {
+    return true;
   }
   return false;
 }
@@ -566,6 +729,11 @@ function nodeGraphWireEndpointsDimensionMismatch(a, b) {
   if (!a || !b) {
     return false;
   }
+  // Strict port types (audio/digital/code/…) — mismatch plays wire-break.
+  if (typeof nodeGraphWireEndpointsPortTypeMismatch === "function"
+    && nodeGraphWireEndpointsPortTypeMismatch(a, b)) {
+    return true;
+  }
   return nodeGraphWireEndpointIsDataPlane(a) !== nodeGraphWireEndpointIsDataPlane(b);
 }
 
@@ -623,6 +791,20 @@ function nodeGraphPortWireColor(node, port, io) {
     const proxy = nodeGraphMetamoduleWireVisualEndpoint(node, port, io);
     if (proxy) {
       return nodeGraphPortWireColor(proxy.nodeId, proxy.port, proxy.io);
+    }
+  }
+  // Named portals: cable color follows the wire into Portal In (Out mirrors In).
+  if (
+    typeof nodeGraphIsNamedPortalType === "function"
+    && typeof nodeGraphNamedPortalColorSource === "function"
+    && typeof nodeGraphPatchNodeType === "function"
+    && nodeGraphIsNamedPortalType(nodeGraphPatchNodeType(node))
+  ) {
+    const colorSrc = nodeGraphNamedPortalColorSource(
+      typeof node === "string" ? node : node?.id,
+    );
+    if (colorSrc) {
+      return nodeGraphPortWireColor(colorSrc.nodeId, colorSrc.port, colorSrc.io || "output");
     }
   }
   const canonicalPort = nodeGraphCanonicalPortForNode(node, port, io);

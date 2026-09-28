@@ -106,11 +106,18 @@ function nodeGraphPatchIsLocked(patch = nodeGraphMvp?.patch) {
   return Boolean(view?.locked);
 }
 
+/** True when every module has per-module ui.hideUnused (toolbar pressed state). */
 function nodeGraphPatchHidesUnusedPorts(patch = nodeGraphMvp?.patch) {
-  const view = typeof normalizeNodeGraphPatchView === "function"
-    ? normalizeNodeGraphPatchView(patch?.view)
-    : patch?.view;
-  return Boolean(view?.hideUnusedPorts);
+  const nodes = Array.isArray(patch?.nodes) ? patch.nodes : [];
+  if (!nodes.length) {
+    return false;
+  }
+  return nodes.every((node) => {
+    const ui = typeof normalizeNodeGraphPatchNodeUi === "function"
+      ? normalizeNodeGraphPatchNodeUi(node.ui, node.type)
+      : node?.ui;
+    return Boolean(ui?.hideUnused);
+  });
 }
 
 function commitNodeGraphPatchViewFlags(nextFlags = {}, status = "view updated") {
@@ -145,8 +152,8 @@ function syncNodeGraphReadyPanelChrome() {
   if (hideBtn) {
     hideBtn.setAttribute("aria-pressed", String(hideUnused));
     hideBtn.title = hideUnused
-      ? "Show unused inlets and outlets"
-      : "Hide unused inlets and outlets";
+      ? "Unused ports already hidden on all modules (disable per module in the scene menu)"
+      : "Hide unused inlets and outlets on every module";
   }
 }
 
@@ -155,16 +162,153 @@ function toggleNodeGraphPatchLocked() {
   commitNodeGraphPatchViewFlags({ locked: next }, next ? "patch locked" : "patch unlocked");
 }
 
+/**
+ * Toolbar "Hide Unused": batch-set each module's per-module ui.hideUnused to on.
+ * Not a global workspace overlay — individual modules can turn hideUnused off and it sticks.
+ * Also clears retired view.hideUnusedPorts if present.
+ */
 function toggleNodeGraphPatchHideUnusedPorts() {
-  const next = !nodeGraphPatchHidesUnusedPorts();
-  commitNodeGraphPatchViewFlags(
-    { hideUnusedPorts: next },
-    next ? "unused ports hidden" : "unused ports shown",
-  );
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const view = typeof normalizeNodeGraphPatchView === "function"
+    ? normalizeNodeGraphPatchView(patch.view)
+    : { ...(patch.view || {}) };
+  let changed = false;
+  if (view.hideUnusedPorts) {
+    view.hideUnusedPorts = false;
+    patch.view = view;
+    changed = true;
+  } else {
+    patch.view = view;
+  }
+  const nodeIds = [];
+  for (const targetNode of Array.isArray(patch.nodes) ? patch.nodes : []) {
+    nodeIds.push(targetNode.id);
+    const ui = normalizeNodeGraphPatchNodeUi(targetNode.ui, targetNode.type);
+    if (ui.hideUnused) {
+      continue;
+    }
+    ui.hideUnused = true;
+    applyNodeGraphPatchNodeUi(targetNode, ui);
+    changed = true;
+  }
+  if (changed) {
+    commitNodeGraphPatch(patch, nodeGraphChromeCommitOptions(nodeIds, {
+      status: "unused ports hidden on all modules",
+    }));
+  }
+  syncNodeGraphReadyPanelChrome();
+  if (typeof configureNodeSceneContextMenu === "function") {
+    configureNodeSceneContextMenu("module");
+  }
+}
+
+/** Grid offset between Portal IO In (drop) and paired Out. */
+const NODE_GRAPH_PORTAL_IO_PAIR_OFFSET_GU = { gx: 5, gy: 0 };
+
+/**
+ * Catalog **Portal IO**: place linked namedPortalIn + namedPortalOut (same Title).
+ * Returns the In node id (primary for ghost drag); Out id is on placement.pairNodeIds.
+ */
+function showNodeGraphPortalIoPair(point = null, options = {}) {
+  if (typeof nodeGraphPatchIsLocked === "function" && nodeGraphPatchIsLocked()) {
+    if (typeof setNodeInteractionHelp === "function") {
+      setNodeInteractionHelp("Patch is locked.");
+    }
+    return "";
+  }
+  const live = nodeGraphMvp.patch;
+  const counts = typeof nextNodeGraphTypeCounts === "function"
+    ? nextNodeGraphTypeCounts(live.nodes)
+    : {};
+  counts.namedPortalIn = (counts.namedPortalIn || 0) + 1;
+  counts.namedPortalOut = (counts.namedPortalOut || 0) + 1;
+  const inId = `namedPortalIn-${counts.namedPortalIn}`;
+  const outId = `namedPortalOut-${counts.namedPortalOut}`;
+  const gridPoint = point
+    ? (typeof nodeGraphPixelToGrid === "function" ? nodeGraphPixelToGrid(point) : point)
+    : (typeof defaultNodeGraphModuleGridPoint === "function"
+      ? defaultNodeGraphModuleGridPoint("namedPortalIn")
+      : { gx: 8, gy: 8 });
+  const off = NODE_GRAPH_PORTAL_IO_PAIR_OFFSET_GU;
+  const portalUi = { buttonsHidden: true, titleHidden: false };
+  // Unique seed so SyncBusAlias only ties this fresh pair (not an existing "A" bus),
+  // then normalize both to defaultAlias "A" (or paint-aware Title later on rename).
+  const seedAlias = `__portal_io_${counts.namedPortalIn}`;
+  const inNode = createNodeGraphPatchNode("namedPortalIn", {
+    id: inId,
+    gx: gridPoint.gx,
+    gy: gridPoint.gy,
+    alias: seedAlias,
+    ui: portalUi,
+  });
+  const outNode = createNodeGraphPatchNode("namedPortalOut", {
+    id: outId,
+    gx: Number(gridPoint.gx) + Number(off.gx || 0),
+    gy: Number(gridPoint.gy) + Number(off.gy || 0),
+    alias: seedAlias,
+    ui: portalUi,
+  });
+  if (typeof nodeGraphMetamoduleClaimPlacedNode === "function") {
+    nodeGraphMetamoduleClaimPlacedNode(inNode, live);
+    nodeGraphMetamoduleClaimPlacedNode(outNode, live);
+  }
+  const patch = {
+    ...live,
+    nodes: [
+      ...(live.nodes || []),
+      inNode,
+      outNode,
+    ],
+  };
+  const defaultAlias = (
+    typeof nodeGraphModuleDefinitions === "object"
+    && nodeGraphModuleDefinitions?.namedPortalIn?.defaultAlias
+  ) || "A";
+  if (typeof nodeGraphNamedPortalSyncBusAlias === "function") {
+    nodeGraphNamedPortalSyncBusAlias(patch, inId, defaultAlias);
+  } else {
+    inNode.alias = defaultAlias;
+    outNode.alias = defaultAlias;
+  }
+  const commitAdd = () => {
+    commitNodeGraphPatch(patch, {
+      status: options.status || "portal IO added",
+      topologyEdit: true,
+      record: options.record,
+      autosaveWorkingPatch: options.autosaveWorkingPatch,
+      skipLivePlan: options.skipLivePlan,
+      deferUiPanels: options.deferUiPanels !== false,
+    });
+  };
+  // Stash before commit so beginPlacement / shop select can read pair ids.
+  if (nodeGraphMvp) {
+    nodeGraphMvp._pendingPortalIoPair = {
+      inId,
+      outId,
+      offsetGu: { ...off },
+    };
+  }
+  if (options.record !== false) {
+    if (typeof noteNodeGraphHeavyHistoryAction === "function") {
+      noteNodeGraphHeavyHistoryAction("add");
+    }
+    if (typeof runNodeGraphHistoryAfterGlow === "function") {
+      runNodeGraphHistoryAfterGlow("last", commitAdd);
+      return inId;
+    }
+  }
+  commitAdd();
+  return inId;
 }
 
 function showNodeGraphModule(node, point = null, options = {}) {
   const type = node;
+  if (
+    (typeof nodeGraphIsPortalIoCatalogType === "function" && nodeGraphIsPortalIoCatalogType(type))
+    || type === "portalIo"
+  ) {
+    return showNodeGraphPortalIoPair(point, options);
+  }
   if (!Object.hasOwn(nodeGraphModuleDefinitions, type)) {
     return "";
   }
@@ -188,8 +332,8 @@ function showNodeGraphModule(node, point = null, options = {}) {
     if (typeof setNodeInteractionHelp === "function") {
       setNodeInteractionHelp(
         nodeGraphIsMetamoduleVoicePortalType?.(type)
-          ? "Open a Metamodule (double-click) to use Voice Frequency / Gate / Trigger."
-          : "Open a Metamodule (double-click) to place Meta In / Meta Out.",
+          ? "Open a Metamodule (double-click) to use Voice Inc / Gate / Trigger."
+          : "Open a Metamodule (double-click) to place Metamodule In / Metamodule Out.",
       );
     }
     return "";
@@ -356,7 +500,13 @@ function addNodeGraphModuleFromShop(button) {
     : nodeGraphMvp.sceneContextPoint;
   const nodeId = showNodeGraphModule(type, point, { status: "module added" });
   if (nodeId) {
-    setNodeGraphNodeSelection([nodeId]);
+    const pendingPair = nodeGraphMvp?._pendingPortalIoPair;
+    if (pendingPair && pendingPair.inId === nodeId) {
+      setNodeGraphNodeSelection([pendingPair.inId, pendingPair.outId]);
+      nodeGraphMvp._pendingPortalIoPair = null;
+    } else {
+      setNodeGraphNodeSelection([nodeId]);
+    }
   }
   nodeGraphMvp.sceneContextPoint = null;
 }
@@ -461,14 +611,25 @@ function cancelNodeGraphModulePlacement(status = "module placement cancelled") {
     return true;
   }
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
-  patch.nodes = patch.nodes.filter((node) => node.id !== placement.nodeId);
+  const dropIds = new Set(
+    [placement.nodeId, ...(Array.isArray(placement.pairNodeIds) ? placement.pairNodeIds : [])]
+      .map((id) => String(id || ""))
+      .filter(Boolean),
+  );
+  for (const pairId of dropIds) {
+    const el = nodeGraphNodeElement(pairId);
+    el?.classList.remove("placing", "dragging");
+  }
+  patch.nodes = patch.nodes.filter((node) => !dropIds.has(String(node.id)));
   patch.connections = patch.connections.filter((connection) =>
-    connection.sourceNode !== placement.nodeId && connection.destinationNode !== placement.nodeId
+    !dropIds.has(String(connection.sourceNode || ""))
+    && !dropIds.has(String(connection.destinationNode || ""))
   );
   patch.modulations = patch.modulations.filter((modulation) =>
-    modulation.sourceNode !== placement.nodeId && modulation.destinationNode !== placement.nodeId
+    !dropIds.has(String(modulation.sourceNode || ""))
+    && !dropIds.has(String(modulation.destinationNode || ""))
   );
-  patch.bypassedNodes = (patch.bypassedNodes || []).filter((nodeId) => nodeId !== placement.nodeId);
+  patch.bypassedNodes = (patch.bypassedNodes || []).filter((nodeId) => !dropIds.has(String(nodeId)));
   nodeGraphMvp.modulePlacement = null;
   // Ghost was never history/autosave/live-plan committed — keep cancel light too.
   commitNodeGraphPatch(patch, {
@@ -505,6 +666,20 @@ function applyNodeGraphPendingModuleCursor(cursorPoint) {
   }
   const point = nodeGraphModulePlacementPixelFromCursor(cursorPoint, element);
   positionNodeGraphNode(element, point, { clamp: false, snap: false });
+  if (Array.isArray(placement.pairNodeIds) && placement.pairNodeIds.length > 1) {
+    const outId = placement.pairNodeIds.find((id) => String(id) !== String(placement.nodeId))
+      || placement.pairNodeIds[1];
+    const outEl = nodeGraphNodeElement(outId);
+    if (outEl) {
+      const off = placement.pairOffsetGu || NODE_GRAPH_PORTAL_IO_PAIR_OFFSET_GU;
+      const gu = typeof nodeGraphGridWidth === "function" ? nodeGraphGridWidth() : 16;
+      const gv = typeof nodeGraphGridHeight === "function" ? nodeGraphGridHeight() : 16;
+      positionNodeGraphNode(outEl, {
+        x: point.x + Number(off.gx || 0) * gu,
+        y: point.y + Number(off.gy || 0) * gv,
+      }, { clamp: false, snap: false });
+    }
+  }
   placement.cursorPoint = cursorPoint;
   placement.point = point;
   syncNodeGraphPlacementSnapGhost(element, placement.overWorkspace !== false);
@@ -553,14 +728,20 @@ function beginNodeGraphModulePlacement(type, point = null, options = {}) {
     }
     return "";
   }
-  if (!type || !Object.hasOwn(nodeGraphModuleDefinitions, type)) {
+  const isPortalIo = (
+    (typeof nodeGraphIsPortalIoCatalogType === "function" && nodeGraphIsPortalIoCatalogType(type))
+    || type === "portalIo"
+  );
+  if (!type || (!isPortalIo && !Object.hasOwn(nodeGraphModuleDefinitions, type))) {
     return "";
   }
   if (nodeGraphMvp.modulePlacement?.nodeId) {
     cancelNodeGraphModulePlacement();
   }
 
-  const cursorPoint = point || nodeGraphGridToPixel(defaultNodeGraphModuleGridPoint(type));
+  const cursorPoint = point || nodeGraphGridToPixel(
+    defaultNodeGraphModuleGridPoint(isPortalIo ? "namedPortalIn" : type),
+  );
   const overWorkspace = options.overWorkspace !== false;
   const existingUnique = typeof nodeGraphModuleTypeIsUniqueInPatch === "function"
     && nodeGraphModuleTypeIsUniqueInPatch(type)
@@ -595,16 +776,31 @@ function beginNodeGraphModulePlacement(type, point = null, options = {}) {
   }
 
   const element = nodeGraphNodeElement(id);
+  const pendingPair = nodeGraphMvp._pendingPortalIoPair;
+  const pairNodeIds = (
+    pendingPair && pendingPair.inId === id
+      ? [pendingPair.inId, pendingPair.outId]
+      : null
+  );
+  if (pendingPair && pendingPair.inId === id) {
+    nodeGraphMvp._pendingPortalIoPair = null;
+  }
+  const outEl = pairNodeIds
+    ? nodeGraphNodeElement(pairNodeIds[1])
+    : null;
   nodeGraphMvp.modulePlacement = {
     cursorPoint,
     nodeId: id,
+    pairNodeIds,
+    pairOffsetGu: pendingPair?.offsetGu || null,
     overWorkspace,
     point: cursorPoint,
     pointerId: null,
     type,
   };
   element?.classList.add("placing", "dragging");
-  setNodeGraphNodeSelection([id]);
+  outEl?.classList.add("placing", "dragging");
+  setNodeGraphNodeSelection(pairNodeIds || [id]);
   positionNodeGraphPendingModuleAtCursor(cursorPoint);
   return id;
 }
@@ -705,16 +901,37 @@ function finishNodeGraphModulePlacementAtCurrentPosition(status = "module placed
     patchNode.gx = gridPoint.gx;
     patchNode.gy = gridPoint.gy;
   }
+  const pairIds = Array.isArray(placement.pairNodeIds) ? placement.pairNodeIds : [];
+  for (const pairId of pairIds) {
+    if (String(pairId) === String(placement.nodeId)) continue;
+    const pairEl = nodeGraphNodeElement(pairId);
+    pairEl?.classList.remove("placing", "dragging");
+    const pairPatch = typeof nodeGraphPatchNode === "function"
+      ? nodeGraphPatchNode(pairId)
+      : nodeGraphMvp.patch?.nodes?.find((candidate) => candidate.id === pairId);
+    if (pairEl && pairPatch) {
+      const px = Number.parseFloat(pairEl.style.getPropertyValue("--node-x")) || 0;
+      const py = Number.parseFloat(pairEl.style.getPropertyValue("--node-y")) || 0;
+      const pg = nodeGraphPixelToGrid({ x: px, y: py });
+      pairPatch.gx = pg.gx;
+      pairPatch.gy = pg.gy;
+    }
+  }
+  const selectAfter = pairIds.length ? [...pairIds] : [placement.nodeId];
   nodeGraphMvp.modulePlacement = null;
   const commitDrop = () => {
     // Position is already on the DOM. Ghost create skipped live plan — start it now.
     commitNodeGraphPatch(nodeGraphMvp.patch, {
-      status,
+      status: pairIds.length > 1 ? "portal IO placed" : status,
       layoutEdit: true,
       skipValidate: true,
       livePlan: true,
     });
-    clearNodeGraphSelection();
+    if (typeof setNodeGraphNodeSelection === "function") {
+      setNodeGraphNodeSelection(selectAfter);
+    } else {
+      clearNodeGraphSelection();
+    }
   };
   if (typeof noteNodeGraphHeavyHistoryAction === "function") {
     noteNodeGraphHeavyHistoryAction("add");
@@ -846,10 +1063,11 @@ function handleNodeGraphModuleStoreKeydown(event) {
 }
 
 function nodeGraphModuleActionTargetNodeIds() {
-  const targetNodeId = nodeGraphModuleActionTargetNodeId();
-  const selectedIds = [...nodeGraphSelectedNodeIds()].filter((id) => nodeGraphPatchNode(id));
-  const ids = selectedIds.length ? selectedIds : targetNodeId ? [targetNodeId] : [];
-  return [...new Set(ids)].filter((id) => nodeGraphPatchNode(id));
+  // Multi-edit applies to the live selection only — never an unselected context pin.
+  const ordered = typeof nodeGraphSelectedNodeIdsInOrder === "function"
+    ? nodeGraphSelectedNodeIdsInOrder()
+    : [...nodeGraphSelectedNodeIds()];
+  return ordered.filter((id) => nodeGraphPatchNode(id));
 }
 
 function nodeGraphDeepCloneModuleField(value) {
@@ -878,7 +1096,7 @@ function nodeGraphCopiedModuleSizeOptions(sourceNode) {
   const heightCapability = typeof nodeGraphModuleSizingCapabilities === "function"
     ? nodeGraphModuleSizingCapabilities(sourceNode.type)?.moduleHeight
     : "";
-  // Face modules store height as ui.displayHeightOffsetGu — do not invent a
+  // Face modules store Display Height as ui.displayHeightGu — do not invent a
   // heightGu that fights that offset. Freehand-height modules always pin heightGu.
   if (Object.hasOwn(sourceNode, "heightGu")) {
     options.heightGu = sourceNode.heightGu;
@@ -915,7 +1133,7 @@ function copyNodeGraphModule(sourceNode) {
     && nodeGraphIsMetamoduleBoundaryType(sourceNode?.type)
   ) {
     if (typeof setNodeInteractionHelp === "function") {
-      setNodeInteractionHelp("Duplicate Meta In/Out is not supported. Place a new one inside the Metamodule.");
+      setNodeInteractionHelp("Duplicate Metamodule In/Out is not supported. Place a new one inside the Metamodule.");
     }
     return;
   }
@@ -945,7 +1163,6 @@ function copyNodeGraphModule(sourceNode) {
     layout: sourceNode.layout,
     led: sourceNode.led,
     graph: sourceNode.graph,
-    codeblock: sourceNode.codeblock,
     ui: nodeGraphDeepCloneModuleField(sourceNode.ui),
     ...sizingOptions,
   });
@@ -997,7 +1214,6 @@ const nodeGraphModuleSettingsFields = Object.freeze([
   "layout",
   "led",
   "graph",
-  "codeblock",
   "customDisplay",
   "knobFace",
   "canvasScript",
@@ -1565,17 +1781,38 @@ function commitNodeGraphModuleTitleFromHeaderInput(nodeId, value, { multiIds = n
     return;
   }
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
-  const alias = normalizeNodeGraphPatchNodeAlias(value);
   let changed = 0;
+  const portalBusSeeds = [];
+  const aliasForNode = (node, raw) => {
+    if (
+      node
+      && typeof nodeGraphIsNamedPortalType === "function"
+      && nodeGraphIsNamedPortalType(node.type)
+      && typeof normalizeNodeGraphNamedPortalAlias === "function"
+    ) {
+      return normalizeNodeGraphNamedPortalAlias(raw);
+    }
+    return normalizeNodeGraphPatchNodeAlias(raw);
+  };
   for (const id of ids) {
     const targetNode = patch.nodes.find((node) => node.id === id);
     if (!targetNode) {
       continue;
     }
-    const prev = normalizeNodeGraphPatchNodeAlias(targetNode.alias) || "";
+    const alias = aliasForNode(targetNode, value);
+    const prev = aliasForNode(targetNode, targetNode.alias) || "";
     const next = alias || "";
     if (prev === next && Boolean(targetNode.alias) === Boolean(alias)) {
       continue;
+    }
+    if (
+      typeof nodeGraphIsNamedPortalType === "function"
+      && nodeGraphIsNamedPortalType(targetNode.type)
+      && prev
+      && next
+      && prev.toLowerCase() !== next.toLowerCase()
+    ) {
+      portalBusSeeds.push({ id: String(targetNode.id), oldAlias: prev, nextAlias: alias });
     }
     if (alias) {
       targetNode.alias = alias;
@@ -1584,7 +1821,37 @@ function commitNodeGraphModuleTitleFromHeaderInput(nodeId, value, { multiIds = n
     }
     changed += 1;
   }
+  for (const seed of portalBusSeeds) {
+    const node = patch.nodes.find((n) => n && String(n.id) === seed.id);
+    if (!node || typeof nodeGraphNamedPortalSyncBusAlias !== "function") continue;
+    // Peers still hold oldAlias; temporarily restore seed key then sync whole bus.
+    node.alias = seed.oldAlias;
+    nodeGraphNamedPortalSyncBusAlias(patch, seed.id, seed.nextAlias);
+  }
+  // Title paint (ChordKeys → noteMask/green) even when SyncBusAlias did not run
+  // (e.g. empty prior Title). SyncBusAlias path already applies paint.
+  if (typeof nodeGraphNamedPortalApplyAliasPaint === "function") {
+    for (const id of ids) {
+      const node = patch.nodes.find((n) => n && String(n.id) === String(id));
+      if (
+        node
+        && typeof nodeGraphIsNamedPortalType === "function"
+        && nodeGraphIsNamedPortalType(node.type)
+      ) {
+        nodeGraphNamedPortalApplyAliasPaint(patch, id);
+      }
+    }
+  }
   if (!changed) {
+    return;
+  }
+  if (
+    typeof nodeGraphNamedPortalWouldFeedback === "function"
+    && nodeGraphNamedPortalWouldFeedback(patch)
+  ) {
+    if (typeof nodeGraphArmPortalFeedbackBreak === "function") {
+      nodeGraphArmPortalFeedbackBreak();
+    }
     return;
   }
   // Meta In/Out alias → Root shell jack label.
@@ -1605,11 +1872,32 @@ function commitNodeGraphModuleTitleFromHeaderInput(nodeId, value, { multiIds = n
       nodeGraphMetamoduleSyncBoundaryShellPorts(metaId, patch);
     }
   }
+  const anyAlias = Boolean(String(value ?? "").trim());
   commitNodeGraphPatch(patch, {
     status: changed > 1
-      ? (alias ? "module titles changed" : "module titles cleared")
-      : (alias ? "module title changed" : "module title cleared"),
+      ? (anyAlias ? "module titles changed" : "module titles cleared")
+      : (anyAlias ? "module title changed" : "module title cleared"),
   });
+  if (portalBusSeeds.length && typeof nodeGraphNamedPortalRefreshModules === "function") {
+    const refreshIds = [];
+    for (const seed of portalBusSeeds) {
+      refreshIds.push(seed.id);
+      const livePatch = nodeGraphMvp?.patch;
+      const key = String(seed.nextAlias || "").trim().toLowerCase();
+      const universe = (() => {
+        const n = livePatch?.nodes?.find((node) => node && String(node.id) === seed.id);
+        return String(n?.ownerMetamoduleId || "").trim();
+      })();
+      for (const node of (livePatch?.nodes || [])) {
+        if (!node || typeof nodeGraphIsNamedPortalType !== "function") continue;
+        if (!nodeGraphIsNamedPortalType(node.type)) continue;
+        if (String(node.ownerMetamoduleId || "").trim() !== universe) continue;
+        if (String(node.alias || "").trim().toLowerCase() !== key) continue;
+        refreshIds.push(String(node.id));
+      }
+    }
+    nodeGraphNamedPortalRefreshModules(refreshIds);
+  }
   for (const metaId of ownerMetaIds) {
     if (typeof nodeGraphMetamoduleRemountShell === "function") {
       nodeGraphMetamoduleRemountShell(metaId);
@@ -1617,14 +1905,86 @@ function commitNodeGraphModuleTitleFromHeaderInput(nodeId, value, { multiIds = n
   }
 }
 
-function setNodeGraphKnobTextFromContext({ record = true } = {}) {
+function setNodeGraphModuleDisplayFromContext({ record = true } = {}) {
   const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode || sourceNode.type !== "knob") {
+  if (!sourceNode) {
     return;
   }
   const input = document.getElementById("nodeSceneKnobTextInput");
-  if (typeof nodeGraphKnobFaceWriteLabelText === "function") {
-    nodeGraphKnobFaceWriteLabelText(sourceNode.id, input?.value, { record });
+  const type = sourceNode.type;
+  if (
+    typeof nodeGraphModuleUsesFaceLabelDisplay === "function"
+      ? nodeGraphModuleUsesFaceLabelDisplay(type)
+      : (type === "knob" || type === "pluginSlider" || type === "toggleButton" || type === "momentaryButton")
+  ) {
+    if (typeof nodeGraphKnobFaceWriteLabelText === "function") {
+      nodeGraphKnobFaceWriteLabelText(sourceNode.id, input?.value, { record });
+    }
+    return;
+  }
+
+  const display = typeof normalizeNodeGraphPatchNodeDisplay === "function"
+    ? normalizeNodeGraphPatchNodeDisplay(input?.value)
+    : String(input?.value ?? "").replace(/\s+/g, " ").trim().slice(0, 48);
+  const hadFocus = Boolean(input && document.activeElement === input);
+  const selectionStart = input?.selectionStart ?? null;
+  const selectionEnd = input?.selectionEnd ?? selectionStart;
+
+  if (!record) {
+    if (display) {
+      sourceNode.display = display;
+    } else {
+      delete sourceNode.display;
+    }
+    if (nodeGraphMvp) {
+      nodeGraphMvp.patchDirtyState = "edited";
+    }
+    const moduleEl = document.querySelector(`.dsp-node[data-node="${CSS.escape(sourceNode.id)}"]`);
+    // Title bar stays on Title; portal jack labels follow effective Display.
+    if (
+      moduleEl
+      && typeof nodeGraphIsNamedPortalType === "function"
+      && nodeGraphIsNamedPortalType(sourceNode.type)
+      && typeof syncNodeGraphModulePortLabels === "function"
+    ) {
+      syncNodeGraphModulePortLabels(moduleEl, sourceNode);
+    }
+    return;
+  }
+
+  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
+  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
+  if (!targetNode) {
+    return;
+  }
+  if (display) {
+    targetNode.display = display;
+  } else {
+    delete targetNode.display;
+  }
+  commitNodeGraphPatch(patch, {
+    record,
+    status: display ? "module display changed" : "module display cleared",
+  });
+  if (hadFocus && input?.isConnected) {
+    input.focus({ preventScroll: true });
+    if (selectionStart !== null && typeof input.setSelectionRange === "function") {
+      try {
+        input.setSelectionRange(selectionStart, selectionEnd ?? selectionStart);
+      } catch {
+        // ignore
+      }
+    }
+  }
+}
+
+function setNodeGraphKnobTextFromContext({ record = true } = {}) {
+  setNodeGraphModuleDisplayFromContext({ record });
+}
+
+function setNodeGraphKnobPluginIdentityFromContext() {
+  if (typeof commitNodeGraphKnobPluginIdentity === "function") {
+    commitNodeGraphKnobPluginIdentity();
   }
 }
 
@@ -1639,7 +1999,14 @@ function setNodeGraphModuleAliasFromContext({ record = true } = {}) {
   const hadFocus = Boolean(input && document.activeElement === input);
   const selectionStart = input?.selectionStart ?? null;
   const selectionEnd = input?.selectionEnd ?? selectionStart;
-  const alias = normalizeNodeGraphPatchNodeAlias(input?.value);
+  const aliasRaw = input?.value;
+  const alias = (
+    typeof nodeGraphIsNamedPortalType === "function"
+    && nodeGraphIsNamedPortalType(sourceNode.type)
+    && typeof normalizeNodeGraphNamedPortalAlias === "function"
+  )
+    ? normalizeNodeGraphNamedPortalAlias(aliasRaw)
+    : normalizeNodeGraphPatchNodeAlias(aliasRaw);
 
   // Live typing (input event, record:false): mutate the live patch + soft-update
   // alias consumers (header title, Knob face) without a full commit
@@ -1653,7 +2020,7 @@ function setNodeGraphModuleAliasFromContext({ record = true } = {}) {
     if (nodeGraphMvp) {
       nodeGraphMvp.patchDirtyState = "edited";
     }
-    // Header title tracks alias live while Module Settings is open.
+    // Header title tracks Title (alias) live while Module Settings is open.
     const moduleEl = document.querySelector(`.dsp-node[data-node="${CSS.escape(sourceNode.id)}"]`);
     const headerTitle = moduleEl?.querySelector?.(".node-header-title");
     if (headerTitle && document.activeElement !== headerTitle) {
@@ -1664,6 +2031,15 @@ function setNodeGraphModuleAliasFromContext({ record = true } = {}) {
         headerTitle.textContent = display;
       }
     }
+    // Named portals: jack I/O label = effective Display (live).
+    if (
+      moduleEl
+      && typeof nodeGraphIsNamedPortalType === "function"
+      && nodeGraphIsNamedPortalType(sourceNode.type)
+      && typeof syncNodeGraphModulePortLabels === "function"
+    ) {
+      syncNodeGraphModulePortLabels(moduleEl, sourceNode);
+    }
     return;
   }
 
@@ -1672,10 +2048,34 @@ function setNodeGraphModuleAliasFromContext({ record = true } = {}) {
   if (!targetNode) {
     return;
   }
+  const prevAlias = (
+    typeof nodeGraphIsNamedPortalType === "function"
+    && nodeGraphIsNamedPortalType(targetNode.type)
+    && typeof normalizeNodeGraphNamedPortalAlias === "function"
+  )
+    ? (normalizeNodeGraphNamedPortalAlias(targetNode.alias) || "")
+    : (normalizeNodeGraphPatchNodeAlias(targetNode.alias) || "");
   if (alias) {
     targetNode.alias = alias;
   } else {
     delete targetNode.alias;
+  }
+  if (
+    typeof nodeGraphIsNamedPortalType === "function"
+    && nodeGraphIsNamedPortalType(targetNode.type)
+    && prevAlias
+    && alias
+    && prevAlias.toLowerCase() !== alias.toLowerCase()
+    && typeof nodeGraphNamedPortalSyncBusAlias === "function"
+  ) {
+    targetNode.alias = prevAlias;
+    nodeGraphNamedPortalSyncBusAlias(patch, targetNode.id, alias);
+  } else if (
+    typeof nodeGraphIsNamedPortalType === "function"
+    && nodeGraphIsNamedPortalType(targetNode.type)
+    && typeof nodeGraphNamedPortalApplyAliasPaint === "function"
+  ) {
+    nodeGraphNamedPortalApplyAliasPaint(patch, targetNode.id);
   }
   const ownerMetaId = (
     typeof nodeGraphIsMetamoduleBoundaryType === "function"
@@ -1689,6 +2089,24 @@ function setNodeGraphModuleAliasFromContext({ record = true } = {}) {
     record,
     status: alias ? "module alias changed" : "module alias cleared",
   });
+  if (
+    typeof nodeGraphIsNamedPortalType === "function"
+    && nodeGraphIsNamedPortalType(targetNode.type)
+    && typeof nodeGraphNamedPortalRefreshModules === "function"
+  ) {
+    const live = nodeGraphMvp?.patch;
+    const key = String(alias || "").trim().toLowerCase();
+    const universe = String(targetNode.ownerMetamoduleId || "").trim();
+    const refreshIds = [String(targetNode.id)];
+    for (const node of (live?.nodes || [])) {
+      if (!node || !nodeGraphIsNamedPortalType(node.type)) continue;
+      if (String(node.ownerMetamoduleId || "").trim() !== universe) continue;
+      if (String(node.alias || "").trim().toLowerCase() !== key) continue;
+      refreshIds.push(String(node.id));
+    }
+    nodeGraphNamedPortalRefreshModules(refreshIds);
+  }
+
   if (ownerMetaId && typeof nodeGraphMetamoduleRemountShell === "function") {
     nodeGraphMetamoduleRemountShell(ownerMetaId);
   }
@@ -1719,195 +2137,44 @@ function nodeGraphGraphTargetFromContext(patch = cloneNodeGraphPatch(nodeGraphMv
   return { patch, targetNode };
 }
 
+/** Selected graph node index for face / patch edits (no Module Settings list). */
 function selectedNodeGraphGraphIndex(graph, fallback = undefined) {
-  const input = document.getElementById("nodeSceneGraphNodeIndex");
-  const rawIndex = Number(input?.value);
   const maxIndex = Math.max(0, (graph?.nodes?.length || 1) - 1);
-  const hasFallback = Number.isFinite(Number(fallback));
-  const index = hasFallback
-    ? Number(fallback)
-    : Number.isFinite(rawIndex)
-      ? rawIndex
-      : maxIndex;
-  return Math.max(0, Math.min(maxIndex, Math.round(index)));
+  if (Number.isFinite(Number(fallback))) {
+    return Math.max(0, Math.min(maxIndex, Math.round(Number(fallback))));
+  }
+  return maxIndex;
 }
 
-function populateNodeGraphGraphNodeIndexSelect(graph, selectedIndex = selectedNodeGraphGraphIndex(graph)) {
-  const select = document.getElementById("nodeSceneGraphNodeIndex");
-  if (!select) {
-    return;
-  }
-  const graphData = normalizeNodeGraphGraph(graph);
-  select.replaceChildren();
-  graphData.nodes.forEach((node, index) => {
-    const option = document.createElement("option");
-    option.value = String(index);
-    option.textContent = `${index + 1}: x ${node.x.toFixed(3)}`;
-    select.append(option);
-  });
-  select.value = String(selectedNodeGraphGraphIndex(graphData, selectedIndex));
-}
-
-function createNodeGraphGraphRowNumberInput(index, field, value, options = {}) {
-  const input = document.createElement("input");
-  input.type = "number";
-  input.min = String(options.min ?? 0);
-  input.max = String(options.max ?? 1);
-  input.step = String(options.step ?? 0.001);
-  input.inputMode = "decimal";
-  input.autocomplete = "off";
-  input.value = Number(value).toFixed(3);
-  input.dataset.graphNodeRow = String(index);
-  input.dataset.graphNodeField = field;
-  input.setAttribute("aria-label", `Graph node ${index + 1} ${field}`);
-  if (options.disabled) {
-    input.disabled = true;
-  }
-  return input;
-}
-
-function createNodeGraphGraphRowShapeSelect(index, value, options = {}) {
-  const select = document.createElement("select");
-  select.dataset.graphNodeRow = String(index);
-  select.dataset.graphNodeField = "shape";
-  select.setAttribute("aria-label", `Graph node ${index + 1} shape`);
-  for (const shape of nodeGraphGraphShapes) {
-    const option = document.createElement("option");
-    option.value = shape;
-    option.textContent = shape;
-    select.append(option);
-  }
-  select.value = normalizeNodeGraphGraphShape(value);
-  if (options.disabled) {
-    select.disabled = true;
-  }
-  return select;
-}
-
-function renderNodeGraphGraphNodeList(graph, selectedIndex = selectedNodeGraphGraphIndex(graph), options = {}) {
-  const list = document.getElementById("nodeSceneGraphNodeList");
-  if (!list) {
-    return;
-  }
-  const graphData = normalizeNodeGraphGraph(graph);
-  // Step Graph: x/y + curve + shape on one row. Smooth Graph: x/y only.
-  const usesPerNodeContour = Boolean(options.usesPerNodeContour);
-  const usesPerNodeShapeSelect = Boolean(options.usesPerNodeShapeSelect);
-  const activeIndex = selectedNodeGraphGraphIndex(graphData, selectedIndex);
-  const canRemove = graphData.nodes.length > 2;
-  list.replaceChildren();
-  const header = document.createElement("div");
-  header.className = "scene-context-graph-node-row scene-context-graph-node-row-header";
-  const labels = usesPerNodeContour
-    ? (usesPerNodeShapeSelect
-      ? ["#", "x", "y", "curve", "shape", ""]
-      : ["#", "x", "y", "curve", ""])
-    : ["#", "x", "y", ""];
-  for (const label of labels) {
-    const span = document.createElement("span");
-    span.textContent = label;
-    header.append(span);
-  }
-  list.append(header);
-  list.dataset.graphListMode = usesPerNodeContour
-    ? (usesPerNodeShapeSelect ? "curve-shape" : "curve")
-    : "points";
-  graphData.nodes.forEach((node, index) => {
-    const row = document.createElement("div");
-    row.className = "scene-context-graph-node-row";
-    row.dataset.graphNodeRow = String(index);
-    row.dataset.selected = index === activeIndex ? "true" : "false";
-
-    const label = document.createElement("button");
-    label.type = "button";
-    label.textContent = String(index + 1);
-    label.dataset.graphNodeSelect = String(index);
-    label.setAttribute("aria-pressed", index === activeIndex ? "true" : "false");
-    label.title = "Select node";
-    row.append(label);
-    row.append(createNodeGraphGraphRowNumberInput(index, "x", node.x));
-    row.append(createNodeGraphGraphRowNumberInput(index, "y", node.y));
-    if (usesPerNodeContour) {
-      // Curve + shape sit on the same row (never a separate editor block).
-      row.append(createNodeGraphGraphRowNumberInput(index, "c", node.c, {
-        min: -1,
-        max: 1,
-      }));
-      if (usesPerNodeShapeSelect) {
-        row.append(createNodeGraphGraphRowShapeSelect(index, node.shape));
-      }
-    }
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "scene-context-graph-node-remove";
-    remove.textContent = "✕";
-    remove.dataset.graphNodeRemove = String(index);
-    remove.setAttribute("aria-label", `Remove graph node ${index + 1}`);
-    remove.title = canRemove ? "Remove node" : "Need at least 2 nodes";
-    remove.disabled = !canRemove;
-    row.append(remove);
-    list.append(row);
-  });
-  // [+] square under the last node — only add affordance.
-  const addRow = document.createElement("div");
-  addRow.className = "scene-context-graph-node-add-row";
-  const addButton = document.createElement("button");
-  addButton.type = "button";
-  addButton.id = "nodeSceneGraphAddNode";
-  addButton.className = "scene-context-graph-node-add";
-  addButton.textContent = "+";
-  addButton.setAttribute("aria-label", "Add graph node");
-  addButton.title = "Add node";
-  addRow.append(addButton);
-  list.append(addRow);
-}
-
+/**
+ * Sync Smooth/Step Graph face after edits.
+ * Module Settings point-list / presets / transform / clipboard UI was removed —
+ * the face is the editor.
+ */
 function syncNodeGraphGraphControls(graph, selectedIndex = selectedNodeGraphGraphIndex(graph), options = {}) {
   const graphData = normalizeNodeGraphGraph(graph);
   const index = selectedNodeGraphGraphIndex(graphData, selectedIndex);
-  // Prefer an explicit node id (drag / caller). Falling back to the module
-  // actions target is fine for panel edits, but must never paint face A with
-  // graph data meant for face B.
   const nodeId = String(options.nodeId || nodeGraphModuleActionTargetNodeId() || "").trim();
   const patchNode = nodeGraphPatchNode(nodeId);
   const graphNodeType = patchNode?.type || "";
-  const usesPerNodeContour = typeof nodeGraphGraphUsesPerNodeContour === "function"
-    ? nodeGraphGraphUsesPerNodeContour(graphNodeType)
-    : nodeGraphGraphUsesPerNodeShapes(graphNodeType);
-  const usesPerNodeShapeSelect = typeof nodeGraphGraphUsesPerNodeShapeSelect === "function"
-    ? nodeGraphGraphUsesPerNodeShapeSelect(graphNodeType)
-    : false;
   const paintFace = options.face !== false;
-  if (nodeGraphModuleIsGraphType(graphNodeType)) {
-    setNodeGraphGraphSelectedNodeIndex(nodeId, graphData, index);
-    if (paintFace) {
-      // Only ever paint the workspace face for this exact node id.
-      const moduleElement = typeof nodeGraphGraphLiveDisplayForNodeId === "function"
-        ? nodeGraphGraphLiveDisplayForNodeId(nodeId)?.closest?.(".dsp-node")
-        : nodeGraphNodeElement(nodeId);
-      if (moduleElement) {
-        syncNodeGraphGraphElement(moduleElement, {
-          ...patchNode,
-          graph: graphData,
-          id: nodeId,
-        });
-      }
-    }
-  }
-  renderNodeGraphGraphNodeList(graphData, index, { usesPerNodeContour, usesPerNodeShapeSelect });
-  const cursorInput = document.getElementById("nodeSceneGraphCursorX");
-  if (cursorInput) {
-    cursorInput.value = graphData.cursorX.toFixed(3);
-  }
-}
-
-function setNodeGraphGraphSelectedIndex(index) {
-  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode || !nodeGraphModuleIsGraphType(sourceNode.type)) {
+  if (!nodeGraphModuleIsGraphType(graphNodeType)) {
     return;
   }
-  const graph = nodeGraphGraphForNode(sourceNode);
-  syncNodeGraphGraphControls(graph, nodeGraphGraphNodeIndexFromValue(graph, index));
+  setNodeGraphGraphSelectedNodeIndex(nodeId, graphData, index);
+  if (!paintFace) {
+    return;
+  }
+  const moduleElement = typeof nodeGraphGraphLiveDisplayForNodeId === "function"
+    ? nodeGraphGraphLiveDisplayForNodeId(nodeId)?.closest?.(".dsp-node")
+    : nodeGraphNodeElement(nodeId);
+  if (moduleElement) {
+    syncNodeGraphGraphElement(moduleElement, {
+      ...patchNode,
+      graph: graphData,
+      id: nodeId,
+    });
+  }
 }
 
 function commitNodeGraphGraphEdit(patch, targetNode, status, options = {}) {
@@ -1915,8 +2182,7 @@ function commitNodeGraphGraphEdit(patch, targetNode, status, options = {}) {
   targetNode.graph = nodeGraphGraphEndpointYLockEnabledForNode(targetNode)
     ? nodeGraphGraphWithLockedEndpointY(targetNode.graph, selectedIndex)
     : normalizeNodeGraphGraph(targetNode.graph);
-  syncNodeGraphGraphPhaseParameterFromCursor(targetNode);
-  if (Number.isFinite(options.selectedX)) {
+  if (options.selectedX != null && Number.isFinite(Number(options.selectedX))) {
     selectedIndex = targetNode.graph.nodes.reduce((bestIndex, node, index) => {
       const best = targetNode.graph.nodes[bestIndex];
       return Math.abs(node.x - options.selectedX) < Math.abs(best.x - options.selectedX)
@@ -1925,275 +2191,14 @@ function commitNodeGraphGraphEdit(patch, targetNode, status, options = {}) {
     }, 0);
   }
   commitNodeGraphPatch(patch, { record: options.record ?? true, status });
-  syncNodeGraphGraphControls(targetNode.graph, selectedIndex);
-}
-
-function setNodeGraphGraphCursorFromContext({ record = true } = {}) {
-  const { patch, targetNode } = nodeGraphGraphTargetFromContext();
-  if (!targetNode) {
-    return;
-  }
-  const input = document.getElementById("nodeSceneGraphCursorX");
-  targetNode.graph = normalizeNodeGraphGraph({
-    ...targetNode.graph,
-    cursorX: normalizeNodeGraphGraphNumber(input?.value, targetNode.graph.cursorX),
-  });
-  commitNodeGraphGraphEdit(patch, targetNode, "graph cursor changed", { record });
-}
-
-function selectNodeGraphGraphNodeFromContext() {
-  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode || !nodeGraphModuleIsGraphType(sourceNode.type)) {
-    return;
-  }
-  syncNodeGraphGraphControls(nodeGraphGraphForNode(sourceNode));
-}
-
-function setNodeGraphGraphNodeListValueFromContext(event, { record = true } = {}) {
-  const field = event.target?.dataset?.graphNodeField;
-  const rowIndex = event.target?.dataset?.graphNodeRow;
-  if (!field || rowIndex === undefined) {
-    return;
-  }
-  const { patch, targetNode } = nodeGraphGraphTargetFromContext();
-  if (!targetNode) {
-    return;
-  }
-  const usesPerNodeContour = typeof nodeGraphGraphUsesPerNodeContour === "function"
-    ? nodeGraphGraphUsesPerNodeContour(targetNode.type)
-    : nodeGraphGraphUsesPerNodeShapes(targetNode.type);
-  const usesPerNodeShapeSelect = typeof nodeGraphGraphUsesPerNodeShapeSelect === "function"
-    ? nodeGraphGraphUsesPerNodeShapeSelect(targetNode.type)
-    : false;
-  if (field === "c" && !usesPerNodeContour) {
-    return;
-  }
-  if (field === "shape" && !usesPerNodeShapeSelect) {
-    return;
-  }
-  // While typing, intermediate values like "" or "0." are not finite yet.
-  // Keep focus and wait for a complete number; shape selects always apply.
-  if (field !== "shape") {
-    const raw = String(event.target.value ?? "").trim();
-    if (raw === "" || raw === "-" || raw === "." || raw === "-." || raw.endsWith("e") || raw.endsWith("E") || raw.endsWith("-")) {
-      return;
-    }
-    if (!Number.isFinite(Number(raw))) {
-      return;
-    }
-  }
-  const graph = normalizeNodeGraphGraph(targetNode.graph);
-  const selectedIndex = nodeGraphGraphNodeIndexFromValue(graph, rowIndex);
-  const node = graph.nodes[selectedIndex];
-  graph.nodes[selectedIndex] = normalizeNodeGraphGraphNode({
-    ...node,
-    [field]: event.target.value,
-  }, selectedIndex);
-  targetNode.graph = graph;
-
-  if (!record) {
-    // Live typing path: update curve + worklet graph WITHOUT rebuilding the
-    // node list (which would steal focus from the input being edited).
-    const liveNode = nodeGraphMvp?.patch?.nodes?.find?.((candidate) => candidate.id === targetNode.id);
-    if (liveNode) {
-      liveNode.graph = nodeGraphGraphEndpointYLockEnabledForNode(liveNode)
-        ? nodeGraphGraphWithLockedEndpointY(graph, selectedIndex)
-        : normalizeNodeGraphGraph(graph);
-      syncNodeGraphGraphDisplaysForNode(targetNode.id, liveNode);
-    }
-    if (typeof scheduleNodeGraphLivePlanSync === "function") {
-      scheduleNodeGraphLivePlanSync();
-    }
-    if (typeof setNodeGraphPatchDirtyState === "function") {
-      setNodeGraphPatchDirtyState("edited");
-    } else {
-      nodeGraphMvp.patchDirtyState = "edited";
-    }
-    return;
-  }
-
-  // Blur/change: commit to history and full-sync controls.
-  commitNodeGraphGraphEdit(patch, targetNode, "graph node changed", { record: true, selectedIndex });
-}
-
-function handleNodeGraphGraphNodeListClick(event) {
-  const addButton = event.target?.closest?.("#nodeSceneGraphAddNode, .scene-context-graph-node-add");
-  if (addButton) {
-    addNodeGraphGraphNodeFromContext();
-    return;
-  }
-  const removeButton = event.target?.closest?.("[data-graph-node-remove]");
-  if (removeButton) {
-    removeNodeGraphGraphNodeFromContext(removeButton.dataset.graphNodeRemove);
-    return;
-  }
-  const selectButton = event.target?.closest?.("[data-graph-node-select]");
-  if (!selectButton) {
-    return;
-  }
-  setNodeGraphGraphSelectedIndex(selectButton.dataset.graphNodeSelect);
-}
-
-function handleNodeGraphGraphNodeListInput(event) {
-  setNodeGraphGraphNodeListValueFromContext(event, { record: false });
-}
-
-function handleNodeGraphGraphNodeListChange(event) {
-  setNodeGraphGraphNodeListValueFromContext(event, { record: true });
-}
-
-function addNodeGraphGraphNodeFromContext() {
-  const { patch, targetNode } = nodeGraphGraphTargetFromContext();
-  if (!targetNode) {
-    return;
-  }
-  const addition = addNodeGraphGraphNodeData(targetNode.graph);
-  if (!addition.added) {
-    return;
-  }
-  targetNode.graph = addition.graph;
-  commitNodeGraphGraphEdit(patch, targetNode, "graph node added", {
-    selectedIndex: addition.selectedIndex,
+  syncNodeGraphGraphControls(targetNode.graph, selectedIndex, {
+    nodeId: targetNode.id,
+    face: options.face,
   });
 }
 
-function removeNodeGraphGraphNodeFromContext(indexOverride = null) {
-  const { patch, targetNode } = nodeGraphGraphTargetFromContext();
-  if (!targetNode) {
-    return;
-  }
-  const graph = normalizeNodeGraphGraph(targetNode.graph);
-  if (graph.nodes.length <= 2) {
-    return;
-  }
-  const selectedIndex = indexOverride != null && String(indexOverride).trim() !== ""
-    ? nodeGraphGraphNodeIndexFromValue(graph, indexOverride)
-    : selectedNodeGraphGraphIndex(graph);
-  graph.nodes.splice(selectedIndex, 1);
-  targetNode.graph = graph;
-  const nextIndex = Math.max(0, Math.min(selectedIndex, graph.nodes.length - 1));
-  setNodeGraphGraphSelectedNodeIndex(targetNode.id, graph, nextIndex);
-  commitNodeGraphGraphEdit(patch, targetNode, "graph node removed", {
-    selectedIndex: nextIndex,
-  });
-}
 
-function resetNodeGraphGraphFromContext() {
-  const { patch, targetNode } = nodeGraphGraphTargetFromContext();
-  if (!targetNode) {
-    return;
-  }
-  targetNode.graph = normalizeNodeGraphGraph();
-  commitNodeGraphGraphEdit(patch, targetNode, "graph reset", { selectedIndex: 1 });
-}
 
-function setNodeGraphGraphPresetFromContext(preset) {
-  const { patch, targetNode } = nodeGraphGraphTargetFromContext();
-  if (!targetNode) {
-    return;
-  }
-  targetNode.graph = nodeGraphGraphPresetData(preset);
-  commitNodeGraphGraphEdit(patch, targetNode, `graph preset: ${preset}`, {
-    selectedIndex: Math.min(1, targetNode.graph.nodes.length - 1),
-  });
-}
-
-function transformNodeGraphGraphFromContext(transform) {
-  const { patch, targetNode } = nodeGraphGraphTargetFromContext();
-  if (!targetNode) {
-    return;
-  }
-  targetNode.graph = nodeGraphGraphTransformedData(targetNode.graph, transform);
-  commitNodeGraphGraphEdit(patch, targetNode, `graph transformed: ${transform}`, {
-    selectedIndex: Math.min(1, targetNode.graph.nodes.length - 1),
-  });
-}
-
-async function copyNodeGraphGraphFromContext() {
-  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode || !nodeGraphModuleIsGraphType(sourceNode.type)) {
-    return;
-  }
-  const graph = nodeGraphGraphForNode(sourceNode);
-  const text = serializeNodeGraphGraphClipboard(graph);
-  nodeGraphMvp.graphClipboard = text;
-  try {
-    await copyTextToClipboard(text);
-  } catch (_error) {
-    // Local clipboard remains available when browser clipboard access is blocked.
-  }
-  configureNodeSceneContextMenu("module");
-}
-
-async function pasteNodeGraphGraphFromContext() {
-  const { patch, targetNode } = nodeGraphGraphTargetFromContext();
-  if (!targetNode) {
-    return;
-  }
-  let text = nodeGraphMvp.graphClipboard || "";
-  try {
-    text = await navigator.clipboard?.readText?.() || text;
-  } catch (_error) {
-    // Browser clipboard read may be unavailable; use the local graph clipboard.
-  }
-  const graph = parseNodeGraphGraphClipboard(text);
-  if (!graph) {
-    configureNodeSceneContextMenu("module");
-    return;
-  }
-  nodeGraphMvp.graphClipboard = serializeNodeGraphGraphClipboard(graph);
-  targetNode.graph = graph;
-  commitNodeGraphGraphEdit(patch, targetNode, "graph pasted", {
-    selectedIndex: Math.min(1, graph.nodes.length - 1),
-  });
-}
-
-function nodeGraphCodeblockBuildFunctionBody(codeblock) {
-  const context = [
-    "const state = __state;",
-    "const __ctx = __context || {};",
-    "const sampleRate = nodeGraphFiniteNumber(__ctx.sampleRate, 44100);",
-    "const frame = nodeGraphFiniteNumber(__ctx.frame);",
-    "const frames = nodeGraphFiniteNumber(__ctx.frames, 1);",
-    "const time = nodeGraphFiniteNumber(__ctx.time);",
-    "const dt = 1 / sampleRate;",
-  ].join("\n");
-  const inputs = codeblock.inputs
-    .map((port, index) => `const ${port} = __inputs[${index}] || 0;`)
-    .join("\n");
-  const outputs = codeblock.outputs.map((port) => `let ${port} = 0;`).join("\n");
-  const writes = codeblock.outputs
-    .map((port) => `__outputs[${JSON.stringify(port)}] = ${port};`)
-    .join("\n");
-  const shadows = nodeGraphCodeblockShadowedGlobals
-    .filter((name) => name !== "eval")
-    .map((name) => `const ${name} = undefined;`)
-    .join("\n");
-  return `"use strict";\n${shadows}\n${context}\n${inputs}\n${outputs}\n${codeblock.code}\n${writes}\nreturn __outputs;`;
-}
-
-function nodeGraphCodeblockCompileStatus(codeblock) {
-  try {
-    const normalized = normalizeNodeGraphCodeblock(codeblock);
-    Function(
-      "__inputs",
-      "__outputs",
-      "__state",
-      "__context",
-      nodeGraphCodeblockBuildFunctionBody(normalized),
-    );
-    return { ok: true, message: "code ok" };
-  } catch (error) {
-    return { ok: false, message: error?.message || "compile error" };
-  }
-}
-
-function nodeGraphCodeblockPortsFromInput(id, fallbackPrefix) {
-  return normalizeNodeGraphCodeblockPortList(
-    document.getElementById(id)?.value,
-    fallbackPrefix,
-  );
-}
 
 function pruneNodeGraphConnectionsForCodeblockPortChange(patch, nodeId, inputs, outputs) {
   const inputSet = new Set(inputs);
@@ -2212,57 +2217,6 @@ function pruneNodeGraphConnectionsForCodeblockPortChange(patch, nodeId, inputs, 
   ));
 }
 
-function applyNodeGraphCodeblockPortsFromContext() {
-  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode || sourceNode.type !== "codeblock") {
-    return;
-  }
-  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
-  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
-  if (!targetNode) {
-    return;
-  }
-  const current = normalizeNodeGraphCodeblock(targetNode.codeblock);
-  const next = normalizeNodeGraphCodeblock({
-    ...current,
-    inputs: nodeGraphCodeblockPortsFromInput("nodeSceneCodeblockInputs", "In"),
-    outputs: nodeGraphCodeblockPortsFromInput("nodeSceneCodeblockOutputs", "Out"),
-  });
-  targetNode.codeblock = next;
-  pruneNodeGraphConnectionsForCodeblockPortChange(patch, targetNode.id, next.inputs, next.outputs);
-  commitNodeGraphPatch(patch, { status: "codeblock ports changed" });
-  configureNodeSceneContextMenu("module");
-}
-
-function setNodeGraphCodeblockSourceFromContext({ record = true } = {}) {
-  const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
-  if (!sourceNode || sourceNode.type !== "codeblock") {
-    return;
-  }
-  const sourceInput = document.getElementById("nodeSceneCodeblockSource");
-  const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
-  const targetNode = patch.nodes.find((node) => node.id === sourceNode.id);
-  if (!targetNode) {
-    return;
-  }
-  const codeblock = normalizeNodeGraphCodeblock(targetNode.codeblock);
-  targetNode.codeblock = normalizeNodeGraphCodeblock({
-    ...codeblock,
-    code: sourceInput?.value ?? nodeGraphCodeblockDefaultCode,
-  });
-  const status = nodeGraphCodeblockCompileStatus(targetNode.codeblock);
-  const statusOutput = document.getElementById("nodeSceneCodeblockStatus");
-  if (statusOutput) {
-    statusOutput.textContent = status.ok ? "code ok" : `compile error: ${status.message}`;
-  }
-  commitNodeGraphPatch(patch, {
-    record,
-    status: status.ok ? "codeblock code changed" : "codeblock compile error",
-  });
-  if (document.activeElement === sourceInput) {
-    sourceInput.focus();
-  }
-}
 
 function setNodeGraphTextBoxPortScriptFromContext(port, { record = true } = {}) {
   const sourceNode = nodeGraphPatchNode(nodeGraphModuleActionTargetNodeId());
@@ -2764,7 +2718,7 @@ function toggleNodeGraphModuleOscilloscopeFromContext() {
 function applyNodeGraphPatchNodeUi(targetNode, ui) {
   const normalizedUi = normalizeNodeGraphPatchNodeUi(ui, targetNode?.type);
   // Persist ui when any non-default chrome flag OR stored face size is set.
-  // displayHeightGu must persist — dropping ui here made Height +/- a no-op.
+  // displayHeightGu must persist — dropping ui here made Display Height +/- a no-op.
   const hasFaceSize = Number.isFinite(Number(normalizedUi.displayHeightGu))
     || Number(normalizedUi.displayHeightOffsetGu) !== 0;
   if (
@@ -2892,12 +2846,15 @@ function toggleNodeGraphModuleHideUnusedFromContext() {
     changedCount += 1;
   }
   if (changedCount) {
-    commitNodeGraphPatch(patch, {
+    // Chrome path refreshes --node-grid-height-units from outer SSOT after
+    // unused-hidden class flips (same refresh as Displays / param visibility).
+    commitNodeGraphPatch(patch, nodeGraphChromeCommitOptions(targetNodeIds, {
       status: wantHidden
         ? (changedCount > 1 ? "unused ports hidden" : "unused ports hidden")
         : (changedCount > 1 ? "unused ports shown" : "unused ports shown"),
-    });
+    }));
   }
+  syncNodeGraphReadyPanelChrome();
   configureNodeSceneContextMenu("module");
 }
 

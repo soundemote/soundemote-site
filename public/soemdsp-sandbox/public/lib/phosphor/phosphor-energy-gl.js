@@ -922,20 +922,18 @@
       }
     }
     idealCount = Math.max(1, idealCount);
-    // Full economy: pack toward the full maxDots budget along the path
-    // (solid hard trails). Floor step so a 1px twitch cannot dump 2k stamps.
-    // Over budget: widen evenly across the FULL path (beautiful skips).
+    // Keep fuse spacing. Do not thin the whole path into sparse dots.
+    // Over budget the walk stops; the caller leaves the rest for the next frame.
     let step = idealStep;
-    if (fullEconomy && totalLen > 1e-4) {
+    if (fullEconomy && totalLen > 1e-4 && idealCount <= maxDots) {
       const budgetStep = totalLen / Math.max(1, maxDots - Math.max(1, pieces.length));
-      // Dense floor (~0.28px / radius*0.12); spend budget when path is longer.
       step = Math.max(0.28, Math.min(denseStep, budgetStep));
     }
-    if (idealCount > maxDots && totalLen > 1e-4) {
-      step = Math.max(step, totalLen / Math.max(1, maxDots - Math.max(1, pieces.length)));
-    }
-    // Hard ceiling is always maxDots only — never a short idealCount cap.
     const stampCap = maxDots;
+    let consumedPoints = 0;
+    let realSeen = 0;
+    let truncated = false;
+    const totalReal = pieces.reduce((n, pts) => n + pts.length, 0);
 
     const stamps = [];
     const pushStamp = (x, y) => {
@@ -946,8 +944,31 @@
       return true;
     };
 
-    // Oldest→newest so even sparse coverage maps the whole shape.
-    outer: for (let p = 0; p < pieces.length; p += 1) {
+    const coverLength = options.coverLength === true && idealCount > stampCap;
+    if (coverLength) {
+      // Budget cannot fuse a solid line across the whole path. Skip samples
+      // and place one dot each so the shape still spans the full window.
+      const real = [];
+      for (let p = 0; p < pieces.length; p += 1) {
+        const pts = pieces[p];
+        for (let i = 0; i < pts.length; i += 1) {
+          real.push(pts[i]);
+        }
+      }
+      const stride = Math.max(1, Math.ceil(real.length / Math.max(1, stampCap)));
+      for (let i = 0; i < real.length; i += stride) {
+        pushStamp(real[i].x, real[i].y);
+      }
+      if (real.length > 1) {
+        const tail = real[real.length - 1];
+        pushStamp(tail.x, tail.y);
+      }
+      consumedPoints = totalReal;
+      truncated = false;
+    }
+
+    // Oldest→newest. Budget mode stops when the stamps run out.
+    if (!coverLength) outer: for (let p = 0; p < pieces.length; p += 1) {
       const pts = pieces[p];
       if (samplesOnly) {
         // Evenly skip samples when over Dot Budget (same spirit as fuse-over-budget).
@@ -956,20 +977,28 @@
           : 1;
         for (let i = 0; i < pts.length; i += stride) {
           if (!pushStamp(pts[i].x, pts[i].y)) {
+            truncated = true;
             break outer;
           }
+          consumedPoints += 1;
         }
         continue;
       }
       if (pts.length === 1) {
+        realSeen += 1;
         if (!pushStamp(pts[0].x, pts[0].y)) {
+          truncated = true;
           break;
         }
+        consumedPoints = realSeen;
         continue;
       }
+      realSeen += 1;
       if (!pushStamp(pts[0].x, pts[0].y)) {
+        truncated = true;
         break;
       }
+      consumedPoints = realSeen;
       for (let i = 1; i < pts.length; i += 1) {
         const a = pts[i - 1];
         const b = pts[i];
@@ -977,17 +1006,36 @@
         const dy = b.y - a.y;
         const dist = Math.hypot(dx, dy);
         if (dist < 1e-4) {
+          realSeen += 1;
+          consumedPoints = realSeen;
           continue;
         }
         const n = Math.max(1, Math.ceil(dist / step));
+        let placed = 0;
         for (let s = 1; s <= n; s += 1) {
           const t = s / n;
           if (!pushStamp(a.x + dx * t, a.y + dy * t)) {
+            truncated = true;
             break outer;
           }
+          placed += 1;
         }
+        if (placed < n) {
+          truncated = true;
+          break outer;
+        }
+        realSeen += 1;
+        consumedPoints = realSeen;
       }
     }
+    // Both modes finish this window. Budget drops the unstamped tail.
+    // Length already placed dots across the whole path.
+    buildDotVertices.lastStats = {
+      truncated: false,
+      consumedPoints: totalReal,
+      totalPoints: totalReal,
+    };
+    void truncated;
     void pairCount;
 
     const vertices = [];
@@ -1531,7 +1579,9 @@
           dotsOnly: options.dotsOnly === true
             || options.verticesOnly === true
             || options.samplesOnly === true,
+          coverLength: options.coverLength === true,
         });
+        renderer.lastPathStats = buildDotVertices.lastStats || null;
       }
     } else if (!Array.isArray(depositVertices) || depositVertices.length < 5) {
       depositVertices = buildBeamVertices(pathPoints);

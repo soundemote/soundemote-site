@@ -36,7 +36,7 @@ function invalidateNodeGraphNumberReadoutPaintCache(canvas) {
   canvas._nodeGraphNumberReadoutPaintAt = 0;
   canvas._numberReadoutEnergyMask = null;
   canvas._nodeGraphNumberReadoutFrozenHoldSig = null;
-  // Pause absorb stamps these; if they survive Stop wipe, Instant Trace /
+  // Pause absorb stamps these; if they survive Stop wipe, Instant Waterfall /
   // burn cursors can believe the new session is already fully drawn.
   canvas._nodeGraphScope2dLastDrawnFrame = undefined;
   canvas._nodeGraphOneDimensionalBurnLastDrawnFrame = undefined;
@@ -59,10 +59,14 @@ function invalidateNodeGraphNumberReadoutPaintCache(canvas) {
  * After a cold engine start (esp. pause→stop→play), drop freeze-hold state so
  * Value LCD/LED paint live samples again instead of early-outing as "still paused".
  */
-function nodeGraphNumberReadoutRearmAllFacesAfterLiveStart() {
+function nodeGraphNumberReadoutRearmAllFacesAfterLiveStart(options = {}) {
   if (typeof document === "undefined") {
     return;
   }
+  // hard=true: cold start after Stop (drop held reading). Soft (default): plain
+  // unpause keeps lastGoodValueText so pause residual hold is not wiped.
+  const hard = options === true
+    || (options && typeof options === "object" && options.hard === true);
   for (const canvas of document.querySelectorAll("canvas.node-number-readout-canvas")) {
     if (!(canvas instanceof HTMLCanvasElement)) {
       continue;
@@ -75,7 +79,54 @@ function nodeGraphNumberReadoutRearmAllFacesAfterLiveStart() {
     canvas._nodeGraphNumberReadoutText = null;
     canvas._nodeGraphNumberReadoutSettingsSig = null;
     canvas._numberReadoutLastValueText = "";
-    canvas._numberReadoutLastGoodValueText = "";
+    if (hard) {
+      canvas._numberReadoutLastGoodValueText = "";
+    }
+    // Stop wipe / empty-ring races can leave canvas lightStrength at 0 while the
+    // face still expects a room-dimmer hole. Re-open punches even if paint cannot
+    // run yet (no slots / stale buffers).
+    const face = canvas.parentElement;
+    const isLcd = (typeof nodeGraphNumberReadoutIsLcdFaceElement === "function"
+      && nodeGraphNumberReadoutIsLcdFaceElement(face))
+      || String(face?.dataset?.valueFaceStyle || "").toLowerCase() === "lcd";
+    if (isLcd && typeof nodeGraphNumberReadoutApplyLcdLightCutout === "function") {
+      nodeGraphNumberReadoutApplyLcdLightCutout(face, canvas);
+    } else {
+      const s = "1";
+      for (const el of [face, canvas].filter(Boolean)) {
+        el.classList?.add?.("node-light-source");
+        if (el.dataset) {
+          el.dataset.lightSource = "screen";
+          el.dataset.lightStrength = s;
+        }
+        if (typeof setNodeGraphLightStrength === "function") {
+          setNodeGraphLightStrength(el, 1);
+        }
+      }
+    }
+  }
+  // Pitch Detector outer body is also a light source (not only the LCD plate).
+  for (const face of document.querySelectorAll(".node-pitch-detector-face, .node-pitch-detector-lcd")) {
+    if (!(face instanceof HTMLElement)) continue;
+    if (typeof nodeGraphNumberReadoutApplyLcdLightCutout === "function"
+      && (face.classList?.contains("node-pitch-detector-lcd")
+        || face.classList?.contains("node-value-lcd-face"))) {
+      nodeGraphNumberReadoutApplyLcdLightCutout(face, face.querySelector?.(":scope > .node-number-readout-canvas"));
+    } else if (typeof setNodeGraphLightStrength === "function") {
+      face.classList?.add?.("node-light-source");
+      if (face.dataset) {
+        face.dataset.lightSource = "screen";
+        face.dataset.lightStrength = "1";
+      }
+      setNodeGraphLightStrength(face, 1);
+    }
+  }
+  if (typeof scheduleNodeGraphRoomDimmerDraw === "function") {
+    try {
+      scheduleNodeGraphRoomDimmerDraw();
+    } catch (_error) {
+      // Best-effort.
+    }
   }
 }
 
@@ -157,13 +208,15 @@ function paintNodeGraphValueFacesNow(pixelRatio = window.devicePixelRatio || 1) 
         if (typeof nodeGraphModuleScopeMarkScreenLit === "function") {
           nodeGraphModuleScopeMarkScreenLit(face, s);
         }
-        if (canvas?.dataset) {
-          canvas.dataset.lightSource = "screen";
-          canvas.dataset.lightStrength = String(s);
-        }
-        if (face?.dataset) {
-          face.dataset.lightSource = "screen";
-          face.dataset.lightStrength = String(s);
+        for (const el of [face, canvas].filter(Boolean)) {
+          el.classList?.add?.("node-light-source");
+          if (el.dataset) {
+            el.dataset.lightSource = "screen";
+            el.dataset.lightStrength = String(s);
+          }
+          if (typeof setNodeGraphLightStrength === "function") {
+            setNodeGraphLightStrength(el, s);
+          }
         }
         painted += 1;
       }
@@ -623,90 +676,30 @@ function nodeGraphNumberReadoutDrawLcdInnerShadow(
 }
 
 /**
- * Live digit light color: Hue (from settings.color) × Bright ramp.
- *   Bright 0   → mid grey (never black)
- *   Bright 0.5 → full pure hue (s=100, l=50)
+ * Live digit light (top layer only). Same physically-based cone as LCD:
+ *   Bright 0   → black
+ *   Bright 0.5 → full hue
  *   Bright 1   → white
- * Residual gradient is separate; blend mode composites light over ghost.
+ * Sat 0 = grey at that brightness; sat 1 = the hue×brightness color.
+ * Ghost/Trail residual still uses the Ghost Gradient LUT, not this RGB.
  */
 function nodeGraphNumberReadoutLightRgb(settings) {
   const hex = settings?.color
     || nodeGraphNumberReadoutSettingsDefaults?.color
     || "#fcfdbf";
+  const hue = typeof nodeGraphHueDegFromHex === "function"
+    ? nodeGraphHueDegFromHex(hex)
+    : 50;
   const bright = Number.isFinite(Number(settings?.brightness))
     ? clampNodeSliderValue(Number(settings.brightness), 0, 1)
-    : 1;
-  // Extract hue from stored pure-hue (or legacy) hex.
-  let h = 50;
-  if (typeof nodeGraphTraceDisplayHexToHsl === "function") {
-    h = nodeGraphFiniteNumber(nodeGraphTraceDisplayHexToHsl(hex).h);
-  } else {
-    const m = String(hex).match(/^#?([0-9a-f]{6})$/i);
-    if (m) {
-      const n = Number.parseInt(m[1], 16);
-      const r = ((n >> 16) & 255) / 255;
-      const g = ((n >> 8) & 255) / 255;
-      const b = (n & 255) / 255;
-      const max = Math.max(r, g, b);
-      const min = Math.min(r, g, b);
-      if (max !== min) {
-        const d = max - min;
-        let hh = 0;
-        if (max === r) hh = (g - b) / d + (g < b ? 6 : 0);
-        else if (max === g) hh = (b - r) / d + 2;
-        else hh = (r - g) / d + 4;
-        h = Math.round((hh / 6) * 360) % 360;
-      }
-    }
-  }
-  // Pure hue RGB at s=100%, l=50%.
-  const pure = (() => {
-    const s = 1;
-    const l = 0.5;
-    const c = (1 - Math.abs(2 * l - 1)) * s;
-    const hp = (((h % 360) + 360) % 360) / 60;
-    const x = c * (1 - Math.abs((hp % 2) - 1));
-    let r = 0;
-    let g = 0;
-    let b = 0;
-    if (hp >= 0 && hp < 1) [r, g, b] = [c, x, 0];
-    else if (hp < 2) [r, g, b] = [x, c, 0];
-    else if (hp < 3) [r, g, b] = [0, c, x];
-    else if (hp < 4) [r, g, b] = [0, x, c];
-    else if (hp < 5) [r, g, b] = [x, 0, c];
-    else [r, g, b] = [c, 0, x];
-    const m = l - c / 2;
-    return [
-      Math.round((r + m) * 255),
-      Math.round((g + m) * 255),
-      Math.round((b + m) * 255),
-    ];
-  })();
-  const grey = [128, 128, 128];
-  const white = [255, 255, 255];
-  const mix = (a, b, t) => {
-    const u = clampNodeSliderValue(t, 0, 1);
-    return [
-      Math.round(a[0] + (b[0] - a[0]) * u),
-      Math.round(a[1] + (b[1] - a[1]) * u),
-      Math.round(a[2] + (b[2] - a[2]) * u),
-    ];
-  };
+    : 0.5;
   const satN = Number(settings?.dot1Saturation ?? settings?.colorSaturation);
   const sat = Number.isFinite(satN) ? clampNodeSliderValue(satN, 0, 1) : 1;
-  let rgb;
-  if (bright <= 0.5) {
-    rgb = mix(grey, pure, bright * 2);
-  } else {
-    rgb = mix(pure, white, (bright - 0.5) * 2);
+  if (typeof nodeGraphHueBrightnessRgb01 === "function") {
+    const [r, g, b] = nodeGraphHueBrightnessRgb01(hue, bright, sat);
+    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
   }
-  if (sat >= 1 - 1e-9) {
-    return rgb;
-  }
-  const achromatic = bright <= 0.5
-    ? grey
-    : mix(grey, white, (bright - 0.5) * 2);
-  return mix(achromatic, rgb, sat);
+  return [252, 253, 191];
 }
 
 /**
@@ -881,7 +874,7 @@ function wipeNodeGraphNumberReadoutScreensToColdBoot() {
     return;
   }
   for (const face of document.querySelectorAll(
-    ".node-number-readout-face, .dsp-node.number-readout-layout .node-module-scope-window, .dsp-node.value-lcd-layout .node-module-scope-window, .node-value-lcd-face, .node-pitch-detector-lcd",
+    ".node-number-readout-face, .dsp-node.number-readout-layout .node-module-scope-window, .dsp-node.value-lcd-layout .node-module-scope-window, .node-value-lcd-face, .node-value-led-face, .node-pitch-detector-lcd",
   )) {
     let canvas = face.querySelector?.(":scope > .node-number-readout-canvas")
       || face.querySelector?.(".node-number-readout-canvas");
@@ -1058,6 +1051,10 @@ function nodeGraphNumberReadoutSafeDigits(digits) {
  * limit_decimals only parses whole.fraction — "1e-7" would become "1".
  */
 function nodeGraphNumberReadoutPlainDecimalSource(value) {
+  // Prefer shared helper from slider-metadata (same B-061 expansion).
+  if (typeof nodeSliderPlainDecimalSource === "function") {
+    return nodeSliderPlainDecimalSource(value);
+  }
   const n = Number(value);
   if (!Number.isFinite(n)) {
     return "0";
@@ -2273,6 +2270,11 @@ function drawNodeGraphNumberReadoutItem(renderer, item, pixelRatio) {
     const textChanged = canvas._nodeGraphNumberReadoutText == null
       || canvas._nodeGraphNumberReadoutText !== text;
     if (!textChanged && !styleChanged) {
+      // Still refresh the room-dimmer punch — pause→stop→play can leave the
+      // canvas at strength 0 while the digit cache already matches.
+      if (typeof nodeGraphNumberReadoutApplyLcdLightCutout === "function") {
+        nodeGraphNumberReadoutApplyLcdLightCutout(screenElement, canvas);
+      }
       return;
     }
     // High-quality glyph AA at the on-screen pixel grid.
@@ -2574,30 +2576,34 @@ function drawNodeGraphNumberReadoutItem(renderer, item, pixelRatio) {
   const depositActive = hangOn && depositEnergy > 0.008;
   // Hanging deposits need continuous present (no static Ghost floor).
   const needsContinuous = !frozen && depositActive;
+  // Room dimmer punches the canvas (not only the face). Set BOTH + notify the
+  // dimmer before any early-out — pause→stop→play can leave canvas at strength 0
+  // while the digit cache already matches; dataset-only writes never schedule a
+  // veil redraw, so faces stayed dark under the room dimmer.
+  const punchN = Math.max(0.001, nodeGraphFiniteNumber(bright));
+  const punch = punchN.toFixed(3);
+  const punchTargets = [canvas, canvas?.parentElement, screenElement].filter(Boolean);
+  for (const el of punchTargets) {
+    el.classList?.add?.("node-light-source");
+    if (el.dataset) {
+      el.dataset.lightSource = "screen";
+      el.dataset.lightStrength = punch;
+    }
+    if (el === canvas?.parentElement || el === screenElement) {
+      if (el.dataset) el.dataset.valueFaceStyle = "led";
+    }
+    if (typeof setNodeGraphLightStrength === "function") {
+      setNodeGraphLightStrength(el, punchN);
+    }
+  }
   if (!textChanged && !styleChanged && !needsContinuous) {
     return;
   }
 
-  // Live LED light RGB (grey→hue→white from Bright).
+  // Live LED light RGB (black→hue→white from Bright). Residual stays gradient.
   const rgb = nodeGraphNumberReadoutLightRgb(settings);
   const bg = nodeGraphFacePlateBackground(settings);
   const alpha = 1;
-  // Room dimmer punches the canvas (not only the face). Always set both —
-  // stop wipe used to leave canvas at strength 0 and veil painted digits.
-  const punch = Math.max(0.001, nodeGraphFiniteNumber(bright)).toFixed(3);
-  if (canvas?.dataset) {
-    canvas.dataset.lightSource = "screen";
-    canvas.dataset.lightStrength = punch;
-  }
-  if (canvas?.parentElement?.dataset) {
-    canvas.parentElement.dataset.lightSource = "screen";
-    canvas.parentElement.dataset.lightStrength = punch;
-    canvas.parentElement.dataset.valueFaceStyle = "led";
-  }
-  if (screenElement?.dataset) {
-    screenElement.dataset.lightSource = "screen";
-    screenElement.dataset.lightStrength = punch;
-  }
 
   context.setTransform(1, 0, 0, 1, 0, 0);
   const largeUnit = hasUnit && String(unit || "").trim().toLowerCase() === "hz";
@@ -2653,26 +2659,54 @@ function drawNodeGraphNumberReadoutItem(renderer, item, pixelRatio) {
   };
 
   // ── Present (Value LED) ──
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  context.save();
-  context.setTransform(1, 0, 0, 1, 0, 0);
-  context.fillStyle = bg;
-  context.fillRect(left, top, width, height);
-
-  // Deposit plate: previous readings; each pixel's energy maps the Ghost Gradient.
-  if (depositActive && burnPlate?.width > 0) {
-    nodeGraphNumberReadoutPresentBurnPlate(context, burnPlate, gradientStops, peakHex);
-  }
-
-  // Max padding: one phosphor pixel of live light.
-  // Pitch DSEG "-" no-lock glyph is intentional ink (IsEmptyPlaceholder would skip it).
+  // Brightness is stamped into the decay plate. The face blits that plate.
+  // Do not clear the visible canvas and redraw every digit on top.
   const pitchNoLockGlyph = slot?.type === "helmholtzPitch"
     && typeof nodeGraphPitchDetectorZeroDisplay === "function"
     && String(valueText) === String(nodeGraphPitchDetectorZeroDisplay(pitchMode, decimals));
   const drawLiveDigits = alpha > 0.001
     && (pitchNoLockGlyph || !nodeGraphNumberReadoutIsEmptyPlaceholder(valueText));
-  if (layout.pixelPin) {
-    if (drawLiveDigits) {
+  if (burnCtx && burnPlate?.width > 0 && !frozen && drawLiveDigits) {
+    burnCtx.setTransform(1, 0, 0, 1, 0, 0);
+    burnCtx.save();
+    burnCtx.globalCompositeOperation = "source-over";
+    if (layout.pixelPin) {
+      nodeGraphNumberReadoutDrawPixelPin(
+        burnCtx,
+        layout,
+        left,
+        top,
+        width,
+        height,
+        rgb,
+        alpha,
+      );
+    } else if (digitFontSize > 0.25) {
+      nodeGraphNumberReadoutDrawDigits(burnCtx, {
+        text: valueText,
+        centerX: digitX,
+        centerY: digitY,
+        fontFamily: digitFontFamily,
+        fontSize: digitFontSize,
+        cellW,
+        rgb,
+        alpha,
+        softBlurPx: 0,
+        glow: 0,
+        plate: false,
+        composite: "source-over",
+      });
+    }
+    burnCtx.restore();
+  }
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.globalCompositeOperation = "source-over";
+  context.fillStyle = bg;
+  context.fillRect(left, top, width, height);
+  if (burnPlate?.width > 0) {
+    context.drawImage(burnPlate, 0, 0);
+  } else if (drawLiveDigits) {
+    if (layout.pixelPin) {
       nodeGraphNumberReadoutDrawPixelPin(
         context,
         layout,
@@ -2683,25 +2717,25 @@ function drawNodeGraphNumberReadoutItem(renderer, item, pixelRatio) {
         rgb,
         alpha,
       );
+    } else if (digitFontSize > 0.25) {
+      nodeGraphNumberReadoutDrawDigits(context, {
+        text: valueText,
+        centerX: digitX,
+        centerY: digitY,
+        fontFamily: digitFontFamily,
+        fontSize: digitFontSize,
+        cellW,
+        rgb,
+        alpha,
+        softBlurPx: 0,
+        glow: 0,
+        plate: false,
+        composite: "source-over",
+      });
     }
-  } else if (digitFontSize > 0.25 && drawLiveDigits) {
-    nodeGraphNumberReadoutDrawDigits(context, {
-      text: valueText,
-      centerX: digitX,
-      centerY: digitY,
-      fontFamily: digitFontFamily,
-      fontSize: digitFontSize,
-      cellW,
-      rgb,
-      alpha,
-      softBlurPx: 0,
-      glow: 0,
-      plate: false,
-      composite: "source-over",
-    });
   }
 
-  if (hasUnit && labelHeight > 0.25 && digitFontSize > 0.25) {
+  if (!burnPlate && hasUnit && labelHeight > 0.25 && digitFontSize > 0.25) {
     const labelFontSize = nodeGraphNumberReadoutUnitFontSize(
       labelHeight,
       layout.contentW || width,
@@ -2718,8 +2752,6 @@ function drawNodeGraphNumberReadoutItem(renderer, item, pixelRatio) {
       top + padPxY + digitAreaHeight + labelHeight * 0.5,
     );
   }
-
-  context.restore();
 
   canvas._numberReadoutLastValueText = valueText;
   nodeGraphNumberReadoutRememberGoodValue(canvas, valueText);

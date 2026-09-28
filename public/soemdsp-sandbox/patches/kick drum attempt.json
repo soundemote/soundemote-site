@@ -4,8 +4,7 @@
     "targetSampleRate": 44100,
     "pitchReferenceMidiNote": 48,
     "pitchReferenceHz": 100,
-    "pitchOffsetOctaves": 0,
-    "speedLimitHz": 20000
+    "pitchOffsetOctaves": 0
   },
   "bypassedNodes": [],
   "cameras": [
@@ -52,13 +51,6 @@
       "destinationPort": "In",
       "sourceNode": "ampCurve-2",
       "sourcePort": "Curve",
-      "tracePoints": []
-    },
-    {
-      "destinationNode": "polyBlep-1",
-      "destinationPort": "f",
-      "sourceNode": "range-1",
-      "sourcePort": "Out",
       "tracePoints": []
     },
     {
@@ -162,7 +154,7 @@
     "bankName": "",
     "category": "",
     "description": "",
-    "name": "ellipsoid",
+    "name": "",
     "program": 0,
     "tags": "circle"
   },
@@ -174,6 +166,13 @@
       "sourceNode": "inv-1",
       "sourcePort": "Out",
       "tracePoints": []
+    },
+    {
+      "sourceNode": "range-1",
+      "sourcePort": "Out",
+      "tracePoints": [],
+      "destinationNode": "polyBlep-1",
+      "destinationParam": "frequency"
     }
   ],
   "monitors": [],

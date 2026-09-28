@@ -1,7 +1,7 @@
 // Pure control/bus DSP primitives shared by live evaluators and the worklet.
 // No DOM, no nodeGraphMvp — safe to load into the AudioWorklet Blob.
 //
-// Used by: knob, pluginSlider, toggle/momentary, audioInput,
+// Used by: knob, toggle/momentary, audioInput,
 // output (and similar).
 
 function nodeGraphDspClamp(n, lo, hi) {
@@ -39,13 +39,100 @@ function nodeGraphDspKnobBiasRange(rangeMax, polarity) {
  */
 function nodeGraphDspBiasFromIn(offset, inSample, rangeMin = null, rangeMax = null) {
   let off = nodeGraphFiniteNumber(offset);
-  if (Number.isFinite(Number(rangeMin)) && Number.isFinite(Number(rangeMax))) {
-    off = nodeGraphDspClamp(off, Number(rangeMin), Number(rangeMax));
+  // Only clamp when the caller actually passed a range. Number(null) is 0, so
+  // `Number.isFinite(Number(null))` used to snap every omitted-range call to 0.
+  const lo = Number(rangeMin);
+  const hi = Number(rangeMax);
+  if (
+    rangeMin != null
+    && rangeMax != null
+    && Number.isFinite(lo)
+    && Number.isFinite(hi)
+  ) {
+    off = nodeGraphDspClamp(off, lo, hi);
   }
   const input = nodeGraphFiniteNumber(inSample);
   const value = input + off;
   return { Bias: value, Out: value, offset: off, value: off };
 }
+
+/** Controller Bias target: params[key] + domainOffset when Use real mod values. */
+function nodeGraphDspControllerBiasTarget(node, controlKey, fallback) {
+  const raw = Number(node?.params?.[controlKey]);
+  const base = Number.isFinite(raw) ? raw : fallback;
+  const meta = node?.paramMeta?.[controlKey] && typeof node.paramMeta[controlKey] === "object"
+    ? node.paramMeta[controlKey]
+    : {};
+  if (typeof nodeGraphParamFoldOrBase === "function") {
+    const folded = Number(nodeGraphParamFoldOrBase(base, [], meta));
+    return Number.isFinite(folded) ? folded : base;
+  }
+  if (meta.outputDomain === true) {
+    const off = Number(meta.domainOffset);
+    return base + (Number.isFinite(off) ? off : 0);
+  }
+  return base;
+}
+
+/** Knob Bias domain from Parameter Settings on `offset` (min/max). */
+function nodeGraphDspKnobOffsetDomain(node) {
+  const meta = node?.paramMeta?.offset && typeof node.paramMeta.offset === "object"
+    ? node.paramMeta.offset
+    : {};
+  let lo = Number(meta.min);
+  let hi = Number(meta.max);
+  // Read-only legacy fallback when Settings unset — does not write/migrate patch.
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) {
+    const params = node?.params && typeof node.params === "object" ? node.params : {};
+    const rn = Number(params.rangeMin);
+    const rm = Number(params.rangeMax);
+    const pol = Number(params.polarity);
+    if (Number.isFinite(rn) || Number.isFinite(rm)) {
+      if (typeof nodeGraphDspControllerRange === "function") {
+        const range = nodeGraphDspControllerRange(
+          Number.isFinite(rn) ? rn : 0,
+          Number.isFinite(rm) ? rm : 1,
+          Number.isFinite(pol) ? pol : 0,
+        );
+        lo = Number(range.min);
+        hi = Number(range.max);
+      } else {
+        if (!Number.isFinite(lo) && Number.isFinite(rn)) lo = rn;
+        if (!Number.isFinite(hi) && Number.isFinite(rm)) hi = rm;
+      }
+    }
+  }
+  if (!Number.isFinite(lo)) lo = 0;
+  if (!Number.isFinite(hi)) hi = 1;
+  if (lo > hi) {
+    const swap = lo;
+    lo = hi;
+    hi = swap;
+  }
+  if (!(hi > lo)) hi = lo + 1e-9;
+  return {
+    bipolar: lo < 0 && hi > 0,
+    max: hi,
+    min: lo,
+  };
+}
+
+function nodeGraphDspControllerSmoothingSamples(meta, params, sampleRate) {
+  const rate = Math.max(1, Number(sampleRate) || 44100);
+  let v = Number(meta && meta.smoothingSeconds);
+  if (!Number.isFinite(v) && params && typeof params === "object"
+      && Object.prototype.hasOwnProperty.call(params, "smoothingSeconds")) {
+    v = Number(params.smoothingSeconds);
+  }
+  if (!Number.isFinite(v) || v <= 0) {
+    return 0;
+  }
+  if (v > 0 && v < 1) {
+    return Math.max(1, Math.round(v * rate));
+  }
+  return Math.max(1, Math.round(v));
+}
+
 
 /** Latch / toggle / gate style binary out from a continuous param. */
 function nodeGraphDspBinaryOut(raw) {
@@ -124,6 +211,11 @@ function nodeGraphDspApplyControllerSmoothingMeta(node, controlKey) {
   const existing = node.paramMeta[controlKey] && typeof node.paramMeta[controlKey] === "object"
     ? node.paramMeta[controlKey]
     : {};
+  const hasModuleSmooth = Object.prototype.hasOwnProperty.call(params, "smoothingSeconds");
+  if (!hasModuleSmooth) {
+    // Knob: Bias Parameter Settings own smooth — do not invent / stomp.
+    return existing;
+  }
   const seconds = Number(params.smoothingSeconds);
   const snap = !Number.isFinite(seconds) || seconds <= 0;
   const type = nodeGraphDspControllerSmoothingTypeFromIndex(params.smoothingType);
@@ -140,24 +232,32 @@ function nodeGraphDspApplyControllerSmoothingMeta(node, controlKey) {
 
 function nodeGraphDspApplyControllerLiveSmoothing(runtimeNode) {
   const type = String(runtimeNode?.type || "");
-  if (type !== "knob" && type !== "toggleButton" && type !== "momentaryButton") {
+  if (type !== "knob" && type !== "pluginSlider" && type !== "toggleButton" && type !== "momentaryButton") {
     return runtimeNode;
   }
-  const controlKey = type === "knob" ? "offset" : "value";
-  nodeGraphDspApplyControllerSmoothingMeta(runtimeNode, controlKey);
-  if (type === "knob") {
-    const params = runtimeNode.params || {};
-    const range = nodeGraphDspControllerRange(params.rangeMin, params.rangeMax, params.polarity);
-    const meta = runtimeNode.paramMeta[controlKey] || {};
-    runtimeNode.paramMeta[controlKey] = {
-      ...meta,
-      bipolar: range.bipolar,
-      max: range.max,
-      mid: range.bipolar ? 0 : range.min + (range.max - range.min) * 0.5,
-      min: range.min,
-    };
-  }
+  nodeGraphDspApplyControllerSmoothingMeta(runtimeNode, "offset");
   return runtimeNode;
+}
+
+function nodeGraphDspControllerBiasEnds(node, key = "offset") {
+  const meta = node?.paramMeta?.[key] && typeof node.paramMeta[key] === "object"
+    ? node.paramMeta[key]
+    : {};
+  let lo = Number(meta.min);
+  let hi = Number(meta.max);
+  if (!Number.isFinite(lo)) lo = 0;
+  if (!Number.isFinite(hi)) hi = 1;
+  return { min: lo, max: hi };
+}
+
+function nodeGraphDspControllerBiasIsOn(value, ends) {
+  const v = Number(value);
+  if (!Number.isFinite(v)) return false;
+  const lo = Number(ends?.min);
+  const hi = Number(ends?.max);
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return v > 0.5;
+  if (Math.abs(hi - lo) < 1e-12) return v > 0.5;
+  return Math.abs(v - hi) <= Math.abs(v - lo);
 }
 
 function nodeGraphDspControllerDisplayIsMouse(node) {
@@ -239,7 +339,8 @@ function nodeGraphDspExternalStereoFrame(externalInput, frame, level) {
 }
 
 /**
- * Plugin / keyboard MIDI → Gate, MIDI, Velocity, 0.1V/Oct, Frequency.
+ * Plugin / keyboard MIDI → Gate, MIDI, Velocity, pitch (♯/♭), Frequency.
+ * pitch = MIDI note number. Frequency is A440.
  * signal: { gate, rawMidi|midi, velocity }
  */
 function nodeGraphDspMidiKeyboardPorts(signal, defaultNote) {
@@ -255,7 +356,7 @@ function nodeGraphDspMidiKeyboardPorts(signal, defaultNote) {
     Trigger: Number(sig.gatePulse) > 0 ? velocity : 0,
     MIDI: midi,
     Velocity: velocity,
-    "0.1V/Oct": midi / 120,
+    "pitch": midi,
     Frequency: nodeGraphDspMidiNoteToHz(midi),
   };
 }

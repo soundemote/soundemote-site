@@ -62,8 +62,8 @@ function nodeGraphTraceDisplayStepperQuantum(input, currentValue = null, directi
   if (!input) {
     return 0.1;
   }
-  const key = input.dataset?.traceDisplayField;
-  if (["cycles", "decimals", "textSizePx"].includes(key)) {
+  const key = input.dataset?.waterfallField;
+  if (["cycles", "decimals", "maxDigits", "textSizePx"].includes(key)) {
     return 1;
   }
   if (key === "textWeight") {
@@ -99,9 +99,9 @@ function nodeGraphTraceDisplayStepperQuantum(input, currentValue = null, directi
     && key !== "capSize") {
     return 0.04;
   }
-  // Instant Trace Blur: control-space step (exp map) — fine near a hard line.
-  if (typeof nodeGraphTraceDisplayInstantTraceBlurField === "function"
-    && nodeGraphTraceDisplayInstantTraceBlurField(key)) {
+  // Instant Waterfall Blur: control-space step (exp map) — fine near a hard line.
+  if (typeof nodeGraphWaterfallBlurField === "function"
+    && nodeGraphWaterfallBlurField(key)) {
     return 0.03;
   }
   // Image Burn Blur: exp map — micro soften (~0.004) needs fine steps near 0.
@@ -128,8 +128,8 @@ function nodeGraphTraceDisplaySizeControlField(key) {
   return ["dot1Size", "secondarySize", "capSize", "imageSize"].includes(key);
 }
 
-/** Instant Trace Blur (not phosphor stamp blur). */
-function nodeGraphTraceDisplayInstantTraceBlurField(key) {
+/** Instant Waterfall Blur (not phosphor stamp blur). */
+function nodeGraphWaterfallBlurField(key) {
   if (key !== "lineThickness" && key !== "secondaryLineThickness") {
     return false;
   }
@@ -165,10 +165,23 @@ function nodeGraphTraceDisplayHistoryControlField(key) {
  * 0…1 unit sliders (Bright, Ghost Bright, Residual, …).
  * Linear drag — same pixel→value gain for all (no exp curve mismatch).
  */
+function nodeGraphPluginButtonInkPxField(key) {
+  if (key !== "fontSize" && key !== "labelSize") {
+    return false;
+  }
+  const type = typeof nodeGraphTraceDisplaySettingsFormType === "function"
+    ? nodeGraphTraceDisplaySettingsFormType()
+    : "";
+  return type === "toggleButtonFace" || type === "momentaryButtonFace";
+}
+
 function nodeGraphTraceDisplayUnitDragField(key) {
   // Image Burn Blur uses exp control-space (not linear unit drag).
   if (typeof nodeGraphTraceDisplayImageBurnBlurField === "function"
     && nodeGraphTraceDisplayImageBurnBlurField(key)) {
+    return false;
+  }
+  if (nodeGraphPluginButtonInkPxField(key)) {
     return false;
   }
   return [
@@ -192,9 +205,28 @@ function nodeGraphTraceDisplayUnitDragField(key) {
     "innerShadowOffsetX",
     "innerShadowOffsetY",
     "dialSize",
+    "dialOffsetY",
     "labelSize",
     "valueSize",
+    "valueOffsetY",
     "innerRadius",
+    "sliderLength",
+    "sliderHeight",
+    "sliderLabelPadding",
+    "sliderLabelScale",
+    "sliderNumberPadding",
+    "sliderNumberScale",
+    "sliderUnitPadding",
+    "sliderUnitScale",
+    "sliderRounding",
+    "strokeScale",
+    "buttonPadLeft",
+    "buttonPadRight",
+    "buttonPadTop",
+    "buttonPadBottom",
+    "labelPadding",
+    "barThickness",
+    "curveThickness",
     "buttonWidth",
     "buttonHeight",
     "textSize",
@@ -228,7 +260,7 @@ function nodeGraphTraceDisplayUnitDragField(key) {
 
 /** Drag/clamp range for unit-style fields (most are 0…1; shadow offset bipolar). */
 function nodeGraphTraceDisplayUnitDragRange(key) {
-  if (key === "innerShadowOffsetX" || key === "innerShadowOffsetY") {
+  if (key === "innerShadowOffsetX" || key === "innerShadowOffsetY" || key === "dialOffsetY" || key === "valueOffsetY") {
     return { min: -1, max: 1 };
   }
   // Image Burn Contrast: 0 = unchanged, 2 = max black crush (only this form uses it).
@@ -264,15 +296,15 @@ const nodeGraphTraceDisplayUnitDragPixels = 220;
  */
 const nodeGraphTraceDisplaySizeDragPixels = 520;
 
-/** Instant Trace Blur: longer travel than Bright (visual halo is hot near 0). */
+/** Instant Waterfall Blur: longer travel than Bright (visual halo is hot near 0). */
 const nodeGraphTraceDisplayBlurDragPixels = 640;
 
 function nodeGraphTraceDisplaySensitiveControlField(key) {
   // Brightness / residual are linear unit drags — not size-style exp maps.
-  // Exp remains for stamp size, Instant Trace blur, Image Burn blur, pixel density, history.
+  // Exp remains for stamp size, Instant Waterfall blur, Image Burn blur, pixel density, history.
   return nodeGraphTraceDisplaySizeControlField(key) ||
     nodeGraphTraceDisplayHistoryControlField(key) ||
-    nodeGraphTraceDisplayInstantTraceBlurField(key) ||
+    nodeGraphWaterfallBlurField(key) ||
     nodeGraphTraceDisplayImageBurnBlurField(key) ||
     key === "pixelDensity";
 }
@@ -289,6 +321,10 @@ function nodeGraphTraceDisplaySensitiveControlMax(key) {
   // Image Burn zoom: 0 = off, 1 = fit face, up to 4 = zoom past face.
   if (key === "imageSize") {
     return 4;
+  }
+  // Stroke size is authored ink px (0…32 at a 96px face), not a 0…1 fraction.
+  if (key === "dot1Size" || key === "secondarySize") {
+    return 32;
   }
   // Bright is 0…1 energy app-wide (1 = full tip / full deposit).
   return 1;
@@ -313,7 +349,7 @@ function nodeGraphTraceDisplayHistoryControlRange(key) {
   const maxZ = Number(typeof nodeGraphTraceDisplayMaxZoomSeconds !== "undefined"
     ? nodeGraphTraceDisplayMaxZoomSeconds
     : 10);
-  return { min: 0, max: Number.isFinite(maxZ) && maxZ > 0 ? maxZ : 10 };
+  return { min: 0, max: Number.isFinite(maxZ) ? maxZ : 10 };
 }
 
 /**
@@ -383,6 +419,10 @@ function adjustNodeGraphTraceDisplaySettingByControlDelta(key, startValue, delta
 }
 function nodeGraphTraceDisplayClampUnit(value) {
   return clampNodeSliderValue(nodeGraphFiniteNumber(value), 0, 1);
+}
+
+function nodeGraphTraceDisplayClampInkPx(value) {
+  return clampNodeSliderValue(nodeGraphFiniteNumber(value), 0, 32);
 }
 
 function nodeGraphTraceDisplayClampNonNegative(value) {
@@ -496,10 +536,12 @@ const nodeGraphTraceDisplaySharedValueClamps = Object.freeze({
   innerShadowSharpness: nodeGraphTraceDisplayClampUnit,
   innerShadowOffsetX: nodeGraphTraceDisplayClampBipolarUnit,
   innerShadowOffsetY: nodeGraphTraceDisplayClampBipolarUnit,
-  // Knob dial / label / value size 0…1.
+  // Knob dial / label / value size 0…1; Y offset is bipolar face-height units.
   dialSize: nodeGraphTraceDisplayClampUnit,
+  dialOffsetY: nodeGraphTraceDisplayClampBipolarUnit,
   labelSize: nodeGraphTraceDisplayClampUnit,
   valueSize: nodeGraphTraceDisplayClampUnit,
+  valueOffsetY: nodeGraphTraceDisplayClampBipolarUnit,
   dotBudget: nodeGraphTraceDisplayClampDotBudget,
   digits: (value) => {
     const n = Math.round(Number(value));
@@ -509,8 +551,15 @@ const nodeGraphTraceDisplaySharedValueClamps = Object.freeze({
     return Math.max(1, Math.min(12, n));
   },
   decimals: (value) => Math.max(0, Math.min(8, Math.round(nodeGraphFiniteNumber(value)))),
+  maxDigits: (value) => {
+    const n = Math.round(Number(value));
+    if (!Number.isFinite(n)) {
+      return 2;
+    }
+    return Math.max(0, Math.min(12, n));
+  },
   dot1Brightness: nodeGraphTraceDisplayClampBrightness,
-  dot1Size: nodeGraphTraceDisplayClampUnit,
+  dot1Size: nodeGraphTraceDisplayClampInkPx,
   ghost: nodeGraphTraceDisplayClampUnit,
   historySeconds: nodeGraphTraceDisplayClampHistorySeconds,
   fade: nodeGraphTraceDisplayClampUnit,
@@ -524,7 +573,7 @@ const nodeGraphTraceDisplaySharedValueClamps = Object.freeze({
   scale: nodeGraphTraceDisplayClampNonNegative,
   secondaryBrightness: nodeGraphTraceDisplayClampBrightness,
   secondaryLineThickness: nodeGraphTraceDisplayClampNonNegative,
-  secondarySize: nodeGraphTraceDisplayClampUnit,
+  secondarySize: nodeGraphTraceDisplayClampInkPx,
   sweepHz: (value) => (typeof nodeGraphTraceDisplayClampSweepHz === "function"
     ? nodeGraphTraceDisplayClampSweepHz(value, 4)
     : clampNodeSliderValue(nodeGraphFiniteNumber(value, 4), 0, 100)),
@@ -551,6 +600,22 @@ const nodeGraphTraceDisplaySharedValueClamps = Object.freeze({
     return clampNodeSliderValue(n, 1, 24000);
   },
   zoomSeconds: nodeGraphTraceDisplayClampHistorySeconds,
+  zoomMin: (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? clampNodeSliderValue(n, -1, 2) : 0;
+  },
+  zoomMax: (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? clampNodeSliderValue(n, -1, 2) : 1;
+  },
+  zoomMin: (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? clampNodeSliderValue(n, -1, 2) : 0;
+  },
+  zoomMax: (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? clampNodeSliderValue(n, -1, 2) : 1;
+  },
   backgroundBrightness: nodeGraphTraceDisplayClampUnit,
   backgroundSaturation: nodeGraphTraceDisplayClampUnit,
   dot1Saturation: nodeGraphTraceDisplayClampUnit,
@@ -613,7 +678,7 @@ const nodeGraphTraceDisplayFormTypeValueClampOverrides = Object.freeze({
   }),
   vectorDot: Object.freeze({
     lineThickness: nodeGraphTraceDisplayClampUnit,
-    dot1Size: nodeGraphTraceDisplayClampUnit,
+    dot1Size: nodeGraphTraceDisplayClampInkPx,
     shapeParam: nodeGraphTraceDisplayClampUnit,
     dot1Brightness: nodeGraphTraceDisplayClampBrightness,
     backgroundBrightness: nodeGraphTraceDisplayClampUnit,
@@ -623,17 +688,24 @@ const nodeGraphTraceDisplayFormTypeValueClampOverrides = Object.freeze({
   }),
   pulseDot: Object.freeze({
     lineThickness: nodeGraphTraceDisplayClampUnit,
-    dot1Size: nodeGraphTraceDisplayClampUnit,
+    dot1Size: nodeGraphTraceDisplayClampInkPx,
     shapeParam: nodeGraphTraceDisplayClampUnit,
     dot1Brightness: nodeGraphTraceDisplayClampBrightness,
     backgroundBrightness: nodeGraphTraceDisplayClampUnit,
   }),
   lcdDot: Object.freeze({
     lineThickness: nodeGraphTraceDisplayClampUnit,
-    dot1Size: nodeGraphTraceDisplayClampUnit,
+    dot1Size: nodeGraphTraceDisplayClampInkPx,
     shapeParam: nodeGraphTraceDisplayClampUnit,
     dot1Brightness: nodeGraphTraceDisplayClampBrightness,
     backgroundBrightness: nodeGraphTraceDisplayClampUnit,
+    backgroundSaturation: nodeGraphTraceDisplayClampUnit,
+    dot1Saturation: nodeGraphTraceDisplayClampUnit,
+    unlitSegments: nodeGraphTraceDisplayClampUnit,
+    innerShadowDistance: nodeGraphTraceDisplayClampUnit,
+    innerShadowSharpness: nodeGraphTraceDisplayClampUnit,
+    innerShadowOffsetX: nodeGraphTraceDisplayClampBipolarUnit,
+    innerShadowOffsetY: nodeGraphTraceDisplayClampBipolarUnit,
   }),
   // 1D Phosphor: stamp blur + sweep rate.
   lineBurn: Object.freeze({
@@ -652,6 +724,54 @@ const nodeGraphTraceDisplayFormTypeValueClampOverrides = Object.freeze({
   oscilloscopeBankBurn: Object.freeze({
     lineThickness: nodeGraphTraceDisplayClampStampBlur,
   }),
+  toggleButtonFace: Object.freeze({
+    strokeScale: nodeGraphTraceDisplayClampUnit,
+    buttonPadLeft: nodeGraphTraceDisplayClampUnit,
+    buttonPadRight: nodeGraphTraceDisplayClampUnit,
+    buttonPadTop: nodeGraphTraceDisplayClampUnit,
+    buttonPadBottom: nodeGraphTraceDisplayClampUnit,
+    fontSize: (value) => clampNodeSliderValue(nodeGraphFiniteNumber(value), 0, 256),
+    labelPadding: nodeGraphTraceDisplayClampUnit,
+    labelSize: (value) => clampNodeSliderValue(nodeGraphFiniteNumber(value), 0, 256),
+    rounding: nodeGraphTraceDisplayClampUnit,
+  }),
+  momentaryButtonFace: Object.freeze({
+    strokeScale: nodeGraphTraceDisplayClampUnit,
+    buttonPadLeft: nodeGraphTraceDisplayClampUnit,
+    buttonPadRight: nodeGraphTraceDisplayClampUnit,
+    buttonPadTop: nodeGraphTraceDisplayClampUnit,
+    buttonPadBottom: nodeGraphTraceDisplayClampUnit,
+    fontSize: (value) => clampNodeSliderValue(nodeGraphFiniteNumber(value), 0, 256),
+    labelPadding: nodeGraphTraceDisplayClampUnit,
+    labelSize: (value) => clampNodeSliderValue(nodeGraphFiniteNumber(value), 0, 256),
+    rounding: nodeGraphTraceDisplayClampUnit,
+  }),
+  pluginSliderFace: Object.freeze({
+    sliderLength: nodeGraphTraceDisplayClampUnit,
+    sliderHeight: nodeGraphTraceDisplayClampUnit,
+    sliderPadding: (value) => clampNodeSliderValue(nodeGraphFiniteNumber(value), 0, 0.5),
+    sliderLabelPadding: nodeGraphTraceDisplayClampUnit,
+    sliderLabelScale: nodeGraphTraceDisplayClampUnit,
+    sliderNumberPadding: nodeGraphTraceDisplayClampUnit,
+    sliderNumberScale: nodeGraphTraceDisplayClampUnit,
+    sliderUnitPadding: nodeGraphTraceDisplayClampUnit,
+    sliderUnitScale: nodeGraphTraceDisplayClampUnit,
+    sliderRounding: nodeGraphTraceDisplayClampUnit,
+  }),
+  knobFace: Object.freeze({
+    dialSize: nodeGraphTraceDisplayClampUnit,
+    dialOffsetY: nodeGraphTraceDisplayClampBipolarUnit,
+    labelSize: nodeGraphTraceDisplayClampUnit,
+    valueSize: nodeGraphTraceDisplayClampUnit,
+    valueOffsetY: nodeGraphTraceDisplayClampBipolarUnit,
+    innerRadius: (value) => clampNodeSliderValue(nodeGraphFiniteNumber(value), 0, 0.95),
+  }),
+  ensembleCloud: Object.freeze({
+    cloudSpeed: (value) => {
+      const n = Number(value);
+      return clampNodeSliderValue(Number.isFinite(n) ? n : 1, 0, 4);
+    },
+  }),
   hypersawBurn: Object.freeze({
     // Stem width as 0…1 of face width (1 = full screen). Allow true 0.
     lineThickness: (value) => {
@@ -660,9 +780,6 @@ const nodeGraphTraceDisplayFormTypeValueClampOverrides = Object.freeze({
     },
   }),
   xyPad: Object.freeze({
-    lineThickness: nodeGraphTraceDisplayClampStampBlur,
-  }),
-  scope2dTrace: Object.freeze({
     lineThickness: nodeGraphTraceDisplayClampStampBlur,
   }),
   roundShapeFace: Object.freeze({
@@ -692,10 +809,31 @@ const nodeGraphTraceDisplayFormTypeValueClampOverrides = Object.freeze({
   sinCos4Face: Object.freeze({
     backgroundBrightness: (value) => clampNodeSliderValue(nodeGraphFiniteNumber(value), 0, 1),
   }),
-  // 1D Waterfall / Output: blur 0 hard … 1 soft skirt (instant, no persistence).
-  trace: Object.freeze({
+  // 1D Waterfall / Output: Size = CSS px stroke; Blur 0 hard … 1 soft skirt.
+  waterfall: Object.freeze({
+    dot1Size: nodeGraphTraceDisplayClampInkPx,
+    secondarySize: nodeGraphTraceDisplayClampInkPx,
     lineThickness: nodeGraphTraceDisplayClampStampBlur,
     secondaryLineThickness: nodeGraphTraceDisplayClampStampBlur,
+  }),
+  waterfallRgb: Object.freeze({
+    dot1Size: nodeGraphTraceDisplayClampInkPx,
+    lineThickness: nodeGraphTraceDisplayClampStampBlur,
+  }),
+  waterfallXyz: Object.freeze({
+    dot1Size: nodeGraphTraceDisplayClampInkPx,
+    lineThickness: nodeGraphTraceDisplayClampStampBlur,
+  }),
+  value: Object.freeze({
+    dot1Size: nodeGraphTraceDisplayClampInkPx,
+  }),
+  scope2dTrace: Object.freeze({
+    dot1Size: nodeGraphTraceDisplayClampInkPx,
+    lineThickness: nodeGraphTraceDisplayClampStampBlur,
+  }),
+  scope1dTrace: Object.freeze({
+    dot1Size: nodeGraphTraceDisplayClampInkPx,
+    secondarySize: nodeGraphTraceDisplayClampInkPx,
   }),
 });
 

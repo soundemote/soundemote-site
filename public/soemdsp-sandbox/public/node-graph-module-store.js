@@ -96,8 +96,6 @@ const nodeGraphModuleCatalogShelfIdSet = Object.freeze(new Set(nodeGraphModuleCa
 // native stub diagnostics silenced). Edit this array; do not keep a second set.
 const nodeGraphModuleCatalogUnderConstructionSort = Object.freeze([
   "canvas",
-  "humanFilter",
-  "chaoticPhaseLockingFilter",
   "metallicRatio",
   "shootingStarTail",
   "wallDelay",
@@ -106,8 +104,6 @@ const nodeGraphModuleCatalogUnderConstructionSort = Object.freeze([
   "formantFilter",
   "besselThomson",
   "massSpringDamper",
-  "theremin",
-  "wavetable2d",
   "wavetable3d",
   "pixelGrid",
   "chromaColor",
@@ -115,9 +111,7 @@ const nodeGraphModuleCatalogUnderConstructionSort = Object.freeze([
   "rgbaHsla",
   "screenSpaceShader",
   "waveguide",
-  "phaser",
-  "flanger",
-  "chorus",
+  "vocoder",
   "electroKick",
   "electroSnare",
   "electroHat",
@@ -132,21 +126,18 @@ const nodeGraphModuleCatalogUnderConstructionSort = Object.freeze([
   "lufs",
   "osc",
   "additiveImage",
+  "animatedTextBox",
   // Efficient-shop gaps: defined modules that are not on the live-audio /
   // observer allowlist. Park them as UC cards so search does not silently omit them.
   // audioInput: intentionally not shop-listed in efficient mode (APP_POLICY §0b).
   "bitConverter",
   "bode",
   "buttonEvents",
-  "codeblock",
-  "cookbookFilter",
   "curveOsc",
-  "ellipsoidOsc",
   "kickEnvelope",
   "nextPatch",
   "previousPatch",
   "sampleLooper",
-  "samplePlayer",
   "shootingStarExplosion",
   "sineKick",
   "sinepulse",
@@ -187,6 +178,17 @@ const nodeGraphModuleCatalogRetiredFromUnderConstruction = Object.freeze([
   "clockDivider",
   "oscilloscopeBank",
   "chaosfly",
+  "humanFilter",
+  "chaoticPhaseLockingFilter",
+  "cookbookFilter",
+  "samplePlayer",
+  "wavetable2d",
+  "phaser",
+  "flanger",
+  "chorus",
+  "ensemble",
+  "vcvrackSuperloveFilter",
+  "ellipsoidOsc",
 ]);
 
 /** Short shop-card reminder for under-construction modules (title tooltip). */
@@ -201,18 +203,19 @@ const nodeGraphModuleConstructionPlans = Object.freeze({
   pixelGrid: "Lo-fi pixel-grid looks. Parked until RGB face pass.",
   asciiscope: "XY character-grid phosphor. Parked; cannot spawn yet.",
 
+  animatedTextBox: "Wireable animated text plate. Parked until the text animation pass.",
   evolveField: "Field evolve visual. Parked until RGB/shader pass.",
   phosphillator: "Draw a path, play it as X/Y. Parked until the draw engine is ready.",
-  wavetable2d: "Multi-frame 2D table morph. Parked until wavetable playback exists.",
+  wavetable2d: "Morph (4 frames, wrap) × Warp (13 baked knots). Additive Nyquist.",
+  sineWarp: "Live rational phasewarp + rectSin PolyBLAMP (or clean sine). Reset→PolyBLEP.",
   wavetable3d: "Dual-axis table morph. Parked until wavetable playback exists.",
   formantFilter: "Vocal formant bank. Parked until the scientific-filter pass.",
   besselThomson: "Maximally flat group-delay filter. Parked until that filter lands.",
   massSpringDamper: "2-pole mechanical resonator. Parked until that analog lands.",
-  humanFilter: "Vocal-ish dual-phasor filter. Shelf-parked until analog-filter pass.",
   waveguide: "Full waveguide. Use Comb/Mode resonators for now.",
-  phaser: "Modulated phaser FX. Parked until the analog FX pass.",
-  flanger: "Short-delay flanger. Parked until the space FX pass.",
-  chorus: "Multi-voice chorus. Parked until the space FX pass.",
+
+  vocoder: "Filter-bank vocoder. Parked until the analog-filter / bandpass-bank pass.",
+
   wallDelay: "Geometric room/wall delay. Parked until ray-room DSP lands.",
   electroKick: "Electro kick voice. Parked until the drum shelf ships.",
   electroSnare: "Electro snare voice. Parked until the drum shelf ships.",
@@ -223,7 +226,6 @@ const nodeGraphModuleConstructionPlans = Object.freeze({
   gravity: "Few-body Newtonian orbits on phosphor. First Doppler puzzle piece. Parked — write pairwise + leapfrog ourselves.",
   ePiano: "GM electric piano. Parked until sample/MIDI voices exist.",
   percussion: "GM channel-10 kit. Parked until sample/MIDI voices exist.",
-  theremin: "Proximity pitch/volume. Parked on Object until that controller lands.",
   additiveImage: "Image→partials. Parked until image analysis ships.",
   audioInput: "Live mic/line in. Parked until host capture is wired.",
   shootingStarTail: "Shooting-star trail events. Parked until that game trigger lands.",
@@ -240,7 +242,7 @@ const nodeGraphModuleConstructionPlans = Object.freeze({
 // strings and mismatched keys between them.
 const nodeGraphModuleStoreDepartments = Object.freeze([
   { id: "portal",       emoji: "🌐", label: "Portal",       symbol: "IO",  title: "Portals",   pitch: "Patch boundary portals for moving left, right, and mono signal lanes between rooms, templates, and larger circuits." },
-  { id: "controller",   emoji: "🕹️", label: "Controller",   symbol: "⌘",   title: "Controllers", pitch: "Face controls and input bridges: knobs, sliders, buttons, XY pads, macros, and external gestures." },
+  { id: "controller",   emoji: "🕹️", label: "Controller",   symbol: "⌘",   title: "Controllers", pitch: "Face controls and input bridges: knobs, buttons, XY pads, and external gestures." },
   { id: "oscillator",   emoji: "〰️", label: "Oscillator",   symbol: "∿",   title: "Oscillator", pitch: "Voices and raw tones: classic waves, tables, sync, supersaws, and other things that start a sound." },
   { id: "oms",          emoji: "♻️", label: "Oscillator 2D", symbol: "2D",  title: "Oscillator 2D", pitch: "2D motion oscillators: spirals, orbits, and ornamental X/Y voices." },
   { id: "modulator",    emoji: "♾️", label: "Modulator",    symbol: "⇄",   title: "Modulator", pitch: "Motion sources for pitch, amplitude, time, and texture. Small control engines that make patches move." },
@@ -253,10 +255,11 @@ const nodeGraphModuleStoreDepartments = Object.freeze([
   { id: "scientificFilter", emoji: "💧", label: "Scientific Filter", symbol: "🔬", title: "Scientific Filter", pitch: "Textbook responses. Hz, order, clean controls — Tilt, Butterworth, and other predictable spectral tools." },
   { id: "analogFilter",     emoji: "🔥", label: "Analog Filter",     symbol: "≈",  title: "Analog Filter",     pitch: "Circuit-style filters — Dual Ladder, Ladder, Passive, 303, Flower Child, SuperLove, and other engines with personality." },
   { id: "musical",      emoji: "🎼", label: "Musical",      symbol: "𝄞",  title: "Musical",  pitch: "Pitch, scale, and harmony tools: quantizers, chord pickers, progressions, and other note-theory building blocks." },
-  { id: "space",        emoji: "⛪", label: "Space",        symbol: "FX",  title: "Space",     pitch: "Delay, reverb, distortion, and performance processors for shaping finished sound." },
+  { id: "space",        emoji: "⛪", label: "Space",        symbol: "FX",  title: "Space",     pitch: "Space and multifx: delay, reverb, flanger, phaser, and other processors for shaping finished sound." },
   // Id stays clock (saved settings / catalog). Shelf label is Time.
   { id: "clock",        emoji: "⌚", label: "Clock",        symbol: "♪",   title: "Clock",     pitch: "Clocks, sequencers, dividers, counters, and trigger timing — everything that decides WHEN the rest of the patch fires." },
   { id: "digital",      emoji: "🔬", label: "Digital",      symbol: "{ }", title: "Digital",   pitch: "Patch-local code surfaces, exact value conversion, and digital/visual programming tools inside the sandbox." },
+  { id: "text",         emoji: "📝", label: "Text",         symbol: "Aa",  title: "Text",      pitch: "Text and code surfaces: labels, streams, and control-plane Code boxes. Not audio DSP." },
   { id: "sample",       emoji: "🎶", label: "Sample Player", symbol: "▣", title: "Sample Player", pitch: "Sample and music-file playback: one-shots, loops, and scrubbable players that turn stored audio into patch signal." },
   { id: "object",       emoji: "🧊", label: "Object",       symbol: "●",   title: "Object",    pitch: "Things you place in the world rather than wire into the signal path -- indicator lights, label plates, and other in-world props." },
   { id: "rgb",          emoji: "🌈", label: "RGB",          symbol: "◍",   title: "RGB",       pitch: "RGB analog picture and vector faces — Pixel Grid, Vector RGB, and other color-path scopes." },
@@ -294,6 +297,10 @@ const nodeGraphModuleStoreDepartmentAliasToId = Object.freeze({
   Debug:             "debug",
   Delay:             "space",
   Digital:           "digital",
+  Text:              "text",
+  text:              "text",
+  Texts:             "text",
+  texts:             "text",
   Drum:              "drum",
   Dynamics:          "dynamics",
   Envelope:          "envelope",
@@ -365,9 +372,9 @@ const nodeGraphModuleStoreDepartmentAliasToId = Object.freeze({
 const nodeGraphModuleStoreCatalog = Object.freeze({
   polyBlep: {
     category: "oscillator",
-    description: "Clean multi-wave oscillator when you want saw/square/tri/sine without harsh aliasing.",
+    description: "Clean multi-wave oscillator when you want saw/square/tri/sine without harsh aliasing. Analog Square = same-direction peaks; Trisaw Center = opposing peaks toward a saw (zeros at 0 / 0.5).",
     label: "PolyBLEP",
-    notes: ["anti-aliasing", "polyblep", "realtime oscillator"],
+    notes: ["anti-aliasing", "polyblep", "analog square", "trisaw center", "realtime oscillator"],
   },
   blit: {
     category: "oscillator",
@@ -407,9 +414,9 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   wavetable2d: {
     category: "oscillator",
-    description: "Placeholder: multi-frame 2D wavetable morph—use later for evolving table tones.",
-    label: "Wavetable2D",
-    notes: ["under construction", "wavetable", "2d", "morph", "oscillator", "frame"],
+    description: "Morph (RectSine → Sine → inv-RectSine 180° → Sine, wrap) × Warp (13 baked knots, both signs). Additive with Hmax at Nyquist.",
+    label: "Wavetable 2D",
+    notes: ["wavetable", "oscillator", "rectified sine", "warp", "phase"],
   },
   wavetable3d: {
     category: "oscillator",
@@ -441,6 +448,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "RobinSinusoid",
     notes: ["RS-MET", "rosic", "recursive sine", "self-oscillating", "sinusoid"],
   },
+  robinOscillator: {
+    category: "oscillator",
+    description: "Cycle-dither AA multi-wave oscillator (RS-MET). Update chooses On cycle / Warp remaining / Snap remaining. Morph is universal (Pulse width / Trisaw Center opposing peaks / Analog Square same-direction peaks).",
+    label: "Robin Oscillator",
+    notes: ["RS-MET", "cycle dither", "AA", "saw", "trisaw center", "analog square", "pulse", "morph", "freqUpdate", "mid-cycle warp"],
+  },
   // additiveOsc / gpuAdditiveOsc retired — Yellow Graph chain replaces them.
   additiveGenerator: {
     category: "additive",
@@ -450,9 +463,9 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   additiveLinearFilter: {
     category: "additive",
-    description: "Rational-curve spectral filter (LP/BP/HP). Cutoff Hz; Slope brickwall→gradual; Skew bends the skirt.",
+    description: "Rational / bipolar-rational spectral filter (LP/BP/HP). Slope = skirt width; Skew 0 is linear.",
     label: "Linear Filter",
-    notes: ["additive", "yellow graph", "filter", "rational", "skew", "LP", "BP", "HP"],
+    notes: ["additive", "yellow graph", "filter", "rational", "bipolar", "skew", "LP", "BP", "HP"],
   },
   additiveAnalogFilter: {
     category: "additive",
@@ -566,13 +579,13 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     category: "modulator",
     description: "Sine→square ellipse shapes for soft-to-hard tones and dual uni/bi X/Y outs.",
     label: "RoundShape",
-    notes: ["RoundShape", "getSineToSquare", "Uni X", "Uni Y", "Bi X", "Bi Y", "Limit AA", "f", "native"],
+    notes: ["RoundShape", "getSineToSquare", "Uni X", "Uni Y", "Bi X", "Bi Y", "AA Off|Limit", "f", "native"],
   },
   ellipsoidOsc: {
-    category: "oscillator",
-    description: "Full parametric ellipsoid path for rich 2D-scope-friendly oscillators.",
+    category: "oms",
+    description: "soemdsp Ellipsoid::getEllipsoid — Offset/Shape/Scale stereo ellipse oscillator (Left/Right) with AA Off|Limit.",
     label: "Ellipsoid",
-    notes: ["ellipsoid", "offset", "shape", "scale", "Limit AA", "X/Y", "native"],
+    notes: ["ellipsoid", "getEllipsoid", "offset", "shape", "scale", "AA Off|Limit", "stereo", "Left", "Right", "native", "oms"],
   },
   basicShape: {
     category: "modulator",
@@ -600,9 +613,15 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   transport: {
     category: "clock",
-    description: "On-the-beat gates locked to Live playhead. Lamp and beat f follow project tempo (one beat). Numer/Denom/Sync re-grid the clock outs; never free-runs.",
-    label: "Master Clock",
-    notes: ["master clock", "transport", "project BPM", "Numer/Denom", "Normal/Dotted/Triplet", "master time", "beat f"],
+    description: "Metronome: per-clock BPM, playhead-locked phase, Reset, hi/lo clicks. Two metronomes stay in sync only if reset together at the same BPM.",
+    label: "Metronome",
+    notes: ["metronome", "clock", "BPM", "reset", "click", "Numer/Denom", "gate", "trigger"],
+  },
+  hostBpm: {
+    category: "clock",
+    label: "Host BPM",
+    description: "Dump project BPM (standalone) or host BPM (CLAP/VST). Cable = raw BPM number (120 = 120 beats/min), not Hz.",
+    notes: ["host bpm", "project bpm", "tempo", "clock", "native"],
   },
   clockDivider: {
     category: "clock",
@@ -661,63 +680,123 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   t1: {
     category: "digital",
-    description: "Two transistor paths (0, 1). Digital one-hot; analog 0–1 crossfades. Open In = 1.",
-    label: "1t",
-    notes: ["transistor", "1t"],
+    description: "1 in → outs 0, 1. Digital one-hot; analog 0–1 crossfades. Open In = 1.",
+    label: "t1",
+    notes: ["transistor", "t1", "demux"],
   },
   t2: {
     category: "digital",
-    description: "Three transistor paths (0, 1, 2). Digital one-hot; analog 0–1 crossfades. Open In = 1.",
-    label: "2t",
-    notes: ["transistor", "2t"],
+    description: "1 in → outs 0…2. Digital one-hot; analog 0–1 crossfades. Open In = 1.",
+    label: "t2",
+    notes: ["transistor", "t2", "demux"],
   },
   t3: {
     category: "digital",
-    description: "Four transistor paths (0–3). Digital one-hot; analog 0–1 crossfades. Open In = 1.",
-    label: "3t",
-    notes: ["transistor", "3t"],
+    description: "1 in → outs 0…3. Digital one-hot; analog 0–1 crossfades. Open In = 1.",
+    label: "t3",
+    notes: ["transistor", "t3", "demux"],
   },
   t4: {
     category: "digital",
-    description: "Five transistor paths (0–4). Digital one-hot; analog 0–1 crossfades. Open In = 1.",
-    label: "4t",
-    notes: ["transistor", "4t"],
+    description: "1 in → outs 0…4. Digital one-hot; analog 0–1 crossfades. Open In = 1.",
+    label: "t4",
+    notes: ["transistor", "t4", "demux"],
   },
   t5: {
     category: "digital",
-    description: "Six transistor paths (0–5). Digital one-hot; analog 0–1 crossfades. Open In = 1.",
-    label: "5t",
-    notes: ["transistor", "5t"],
+    description: "1 in → outs 0…5. Digital one-hot; analog 0–1 crossfades. Open In = 1.",
+    label: "t5",
+    notes: ["transistor", "t5", "demux"],
   },
   t6: {
     category: "digital",
-    description: "Seven transistor paths (0–6). Digital one-hot; analog 0–1 crossfades. Open In = 1.",
-    label: "6t",
-    notes: ["transistor", "6t"],
+    description: "1 in → outs 0…6. Digital one-hot; analog 0–1 crossfades. Open In = 1.",
+    label: "t6",
+    notes: ["transistor", "t6", "demux"],
   },
   t7: {
     category: "digital",
-    description: "Eight transistor paths (0–7). Digital one-hot; analog 0–1 crossfades. Open In = 1.",
-    label: "7t",
-    notes: ["transistor", "7t"],
+    description: "1 in → outs 0…7. Digital one-hot; analog 0–1 crossfades. Open In = 1.",
+    label: "t7",
+    notes: ["transistor", "t7", "demux"],
   },
   t8: {
     category: "digital",
-    description: "Nine transistor paths (0–8). Digital one-hot; analog 0–1 crossfades. Open In = 1.",
-    label: "8t",
-    notes: ["transistor", "8t"],
+    description: "1 in → outs 0…8. Digital one-hot; analog 0–1 crossfades. Open In = 1.",
+    label: "t8",
+    notes: ["transistor", "t8", "demux"],
   },
   t9: {
     category: "digital",
-    description: "Ten transistor paths (0–9). Digital one-hot; analog 0–1 crossfades. Open In = 1.",
-    label: "9t",
-    notes: ["transistor", "9t"],
+    description: "1 in → outs 0…9. Digital one-hot; analog 0–1 crossfades. Open In = 1.",
+    label: "t9",
+    notes: ["transistor", "t9", "demux"],
   },
   t10: {
     category: "digital",
-    description: "Eleven transistor paths (0–10). Digital one-hot; analog 0–1 crossfades. Open In = 1.",
+    description: "1 in → outs 0…10. Digital one-hot; analog 0–1 crossfades. Open In = 1.",
+    label: "t10",
+    notes: ["transistor", "t10", "demux"],
+  },
+  "1t": {
+    category: "digital",
+    description: "Ins 0, 1 + A/D → Out. D discrete index; A −1…+1 relative to D (or full-range crossfade alone).",
+    label: "1t",
+    notes: ["transistor", "1t", "mux"],
+  },
+  "2t": {
+    category: "digital",
+    description: "Ins 0…2 + A/D → Out. D discrete; A −1…+1 around D.",
+    label: "2t",
+    notes: ["transistor", "2t", "mux"],
+  },
+  "3t": {
+    category: "digital",
+    description: "Ins 0…3 + A/D → Out. D discrete; A −1…+1 around D.",
+    label: "3t",
+    notes: ["transistor", "3t", "mux"],
+  },
+  "4t": {
+    category: "digital",
+    description: "Ins 0…4 + A/D → Out. D discrete; A −1…+1 around D.",
+    label: "4t",
+    notes: ["transistor", "4t", "mux"],
+  },
+  "5t": {
+    category: "digital",
+    description: "Ins 0…5 + A/D → Out. D discrete; A −1…+1 around D.",
+    label: "5t",
+    notes: ["transistor", "5t", "mux"],
+  },
+  "6t": {
+    category: "digital",
+    description: "Ins 0…6 + A/D → Out. D discrete; A −1…+1 around D.",
+    label: "6t",
+    notes: ["transistor", "6t", "mux"],
+  },
+  "7t": {
+    category: "digital",
+    description: "Ins 0…7 + A/D → Out. D discrete; A −1…+1 around D.",
+    label: "7t",
+    notes: ["transistor", "7t", "mux"],
+  },
+  "8t": {
+    category: "digital",
+    description: "Ins 0…8 + A/D → Out. D discrete; A −1…+1 around D.",
+    label: "8t",
+    notes: ["transistor", "8t", "mux"],
+  },
+  "9t": {
+    category: "digital",
+    description: "Ins 0…9 + A/D → Out. D discrete; A −1…+1 around D.",
+    label: "9t",
+    notes: ["transistor", "9t", "mux"],
+  },
+  "10t": {
+    category: "digital",
+    description: "Ins 0…10 + A/D → Out. D discrete; A −1…+1 around D.",
     label: "10t",
-    notes: ["transistor", "10t"],
+    notes: ["transistor", "10t", "mux"],
   },
   sequencer: {
     category: "musical",
@@ -781,6 +860,12 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "Softwave Oscillator",
     notes: ["softwave", "tube", "tanh", "morph", "analog waves", "walter", "face"],
   },
+  sineWarp: {
+    category: "oscillator",
+    description: "Live antialiased warped sine — rational phasewarp + rectified/clipping sine (PolyBLAMP) or clean sine. Hard Reset uses PolyBLEP on the value jump.",
+    label: "SineWarp",
+    notes: ["oscillator", "polyblamp", "polyblep", "phasewarp", "rectified sine", "native", "antialiasing"],
+  },
   curveOsc: {
     category: "oscillator",
     description: "Play math curves (rose, Lissajous, etc.) as mono audio or X/Y scope art.",
@@ -813,7 +898,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   vibratoGenerator: {
     category: "modulator",
-    description: "soemdsp VibratoGenerator — cheap sine-wavetable LFO with optional S&H random freq/amp. Shared core with Hypersaw per-saw vibrato.",
+    description: "Wavetable sine + AM Index (Top Morph) and sine→phase (Side Morph). f = Speed × (1 + sine × Top Morph).",
     label: "Vibrato Generator",
     notes: ["modulator", "vibrato", "lfo", "sine wavetable", "native", "soemdsp"],
   },
@@ -951,15 +1036,11 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "Pi Spigot Noise",
     notes: ["bbp", "pi", "hex", "bits", "sum", "term", "spigot", "native"],
   },
-  codeblock: {
-    category: "digital",
-    description: "Write JS DSP inline when no stock module does the exact math you need.",
-    notes: ["dynamic ports", "JavaScript body", "local patch code"],
-  },
-  customDisplay: {
-    category: "oscilloscope",
-    description: "Draw a custom face with JS for patch-specific meters, art, or debug visuals.",
-    notes: ["custom draw", "JavaScript display", "visual sink"],
+  codeBox: {
+    category: "text",
+    description: "Control-plane code editor. Apply text data out a white square Code jack — never runs in the audio path.",
+    label: "Code",
+    notes: ["codeBox", "data-plane", "localText", "not DSP"],
   },
   smoothGraph: {
     category: "modulator",
@@ -1019,6 +1100,24 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "MixStereo2",
     notes: ["mixer", "stereo", "pan", "volume", "2-channel", "utility", "native"],
   },
+  crossfade2: {
+    category: "dynamics",
+    description: "Two stereo pairs → Left/Right. Crossfade 0…1 blends adjacent pairs.",
+    label: "Crossfade2",
+    notes: ["crossfade", "xfade", "stereo", "mixer", "utility", "native", "1t"],
+  },
+  crossfade3: {
+    category: "dynamics",
+    description: "Three stereo pairs → Left/Right. Crossfade 0…2 blends adjacent pairs.",
+    label: "Crossfade3",
+    notes: ["crossfade", "xfade", "stereo", "mixer", "utility", "native", "2t"],
+  },
+  crossfade4: {
+    category: "dynamics",
+    description: "Four stereo pairs → Left/Right. Crossfade 0…3 blends adjacent pairs.",
+    label: "Crossfade4",
+    notes: ["crossfade", "xfade", "stereo", "mixer", "utility", "native", "3t"],
+  },
   // Legacy id for MixStereo4.
   mixStereo: {
     category: "dynamics",
@@ -1052,17 +1151,43 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "Attenuverter",
     notes: ["attenuverter", "scale", "invert", "offset", "utility", "native"],
   },
+  attenumax: {
+    category: "dynamics",
+    description: "AM Index: Out = Bias + In × Bias × Amplitude. Amplitude is a normalized index. Amp 0 still outputs Bias.",
+    label: "AM Index",
+    notes: ["am", "index", "amplitude", "bias", "modulator", "utility", "native"],
+  },
   range: {
     category: "utility",
     description: "Linear map from [In Low, In High] to [Out Low, Out High]. Default −1…+1 → −10…+10.",
     label: "Range",
     notes: ["range", "map", "scale", "remap", "utility", "dynamics", "native"],
   },
+
+  pitchManager: {
+    category: "musical",
+    description: "MIDI offsets → Hz (Tuning) → Multiply/Add. Simultaneous inc (Hz/sr), ƒ (Hz), and ♯/♭ thru.",
+    label: "Pitch Manager",
+    notes: ["pitch", "midi", "hz", "frequency", "increment", "tuning", "transpose", "musical", "♯/♭", "pitch manager"],
+  },
+  pitchHz: {
+    category: "musical",
+    description: "Convert MIDI-style pitch ↔ Hz. Pitch→Hz: tuning·2^((p−69)/12). Hz→Pitch: 69+12·log2(hz/tuning). A4 = Tuning Hz.",
+    label: "Pitch ↔ Hz",
+    notes: ["pitch", "hz", "frequency", "midi", "a4", "tuning", "p2f", "f2p", "convert", "musical", "pitch to hz", "hz to pitch"],
+  },
+  ampDb: {
+    category: "dynamics",
+    description: "Convert linear amplitude ↔ dB (20·log10). dB→Amp: 10^(dB/20). Amp→dB: 20·log10(amp). 0 dB = 1.",
+    label: "Amp ↔ dB",
+    notes: ["amplitude", "db", "decibel", "gain", "convert", "lin", "dynamics", "amp to db", "db to amp"],
+  },
+
   fm: {
-    category: "modulator",
-    description: "Mix ƒ cables, then × Multiply × 2^(Octave+Semitones/12+Cents/1200) + Add. Frequency CV / FM utility.",
-    label: "fM",
-    notes: ["fm", "frequency", "ƒ", "multiply", "octave", "semitone", "cents", "pitch", "modulator", "utility"],
+    category: "musical",
+    description: "Mix ƒ cables + optional inc (cycles/sample→Hz), then × Multiply × 2^(Octave+Semitones/12+Cents/1200) + Add. Outs: ƒ (Hz) and inc (Hz/sr).",
+    label: "Freq Manager",
+    notes: ["freq manager", "pitch", "fm", "frequency", "ƒ", "inc", "increment", "multiply", "octave", "semitone", "cents", "musical", "utility"],
   },
   u2b: {
     category: "dynamics",
@@ -1082,17 +1207,23 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "Inv",
     notes: ["invert", "negate", "flip", "phase invert", "utility"],
   },
+  ringMod: {
+    category: "dynamics",
+    description: "True ring modulation — four-quadrant Carrier × Mod multiply (bipolar×bipolar, no DC bias / balanced AM).",
+    label: "RingMod",
+    notes: ["ring mod", "ringmod", "multiply", "balanced am", "four quadrant", "carrier", "modulator", "dynamics", "utility", "native"],
+  },
+  tubeSaturation: {
+    category: "dynamics",
+    description: "First-order Koren-style tube saturation — Drive/Bias/Load/Mix with precomputed load-line tables (no same-sample feedback).",
+    label: "Tube Saturation",
+    notes: ["tube", "saturation", "koren", "load line", "drive", "bias", "triode", "dynamics", "native"],
+  },
   softClipper: {
     category: "dynamics",
-    description: "Gentle saturation/limiting when peaks need taming without hard digital clip.",
+    description: "Drive / Threshold / Knee / Amplitude soft-knee saturator (memoryless tanh). Face shows the transfer transition and knee.",
     label: "Soft Clipper",
-    notes: ["soft clipping", "tanh", "gain", "ADAA", "dynamics"],
-  },
-  clipperLimiter: {
-    category: "dynamics",
-    description: "Drive with Gain, then Soft Clip last: below Min dB is dry; Min→Max is the shared Soft Clipper tanh knee (wider span = more gradual).",
-    label: "Clipper Limiter",
-    notes: ["soft clip", "limiter", "dB", "tanh", "ADAA", "dynamics", "native"],
+    notes: ["soft clipping", "tanh", "drive", "threshold", "knee", "dynamics", "native"],
   },
   rotate3dTo2d: {
     category: "dynamics",
@@ -1142,7 +1273,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   knob: {
     category: "controller",
-    description: "Macro face control for one Bias value you want always visible and tweakable.",
+    description: "Face Bias control. Dial on the module.",
     label: "Knob",
     notes: [
       "plugin",
@@ -1161,7 +1292,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   pluginSlider: {
     category: "controller",
-    description: "Vertical Bias control on the face—performance levels and slow rides.",
+    description: "Face Bias control. Horizontal slider on the module.",
     label: "Slider",
     notes: ["plugin", "fader", "slider", "bias", "display", "control"],
   },
@@ -1241,7 +1372,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     category: "controller",
     description: "Local piano. Holds Play Keys / Arp Keys / Chord Memory on this module. Mix those buses into Meta Voices. Not MIDI — wire a MIDI module into Play Keys for a device.",
     label: "Keyboard",
-    notes: ["keyboard", "piano", "play keys", "arp keys", "chord memory", "controller", "performance", "gate", "trigger", "velocity", "note"],
+    notes: ["keyboard", "piano", "play keys", "arp keys", "chord memory", "controller", "performance", "gate", "trigger", "velocity", "note", "inc", "increment"],
   },
   gridKeyboard: {
     category: "controller",
@@ -1249,23 +1380,23 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "Grid Keyboard",
     notes: ["grid", "array mbira", "circle of fifths", "keyboard", "play keys", "arp keys", "chord memory", "controller"],
   },
-  macroControls: {
-    category: "controller",
-    description: "Eight always-on macros (M1–M8) for performance control of a whole patch.",
-    label: "Macro Controls",
-    notes: ["macro row", "manual control", "eight outputs", "knob", "slider", "macro", "pot", "display"],
-  },
   pitchModWheel: {
     category: "controller",
     description: "Read pitch bend and mod wheel next to the keyboard for expression.",
     label: "Pitch Mod Wheel",
     notes: ["pitch wheel", "mod wheel", "performance control", "pitch", "mod"],
   },
+  wavetable2d: {
+    category: "oscillator",
+    description: "Morph (RectSine → Sine → inv-RectSine 180° → Sine, wrap) × Warp (13 baked knots). Additive Nyquist.",
+    label: "Wavetable 2D",
+    notes: ["wavetable", "oscillator", "rectified sine", "warp", "phase"],
+  },
   samplePlayer: {
     category: "sample",
-    description: "One-shot stereo samples on trigger—hits, stabs, and short clips.",
+    description: "Gate-driven stereo sample player with One-shot, Hold, and Loop modes.",
     label: "Sample Player",
-    notes: ["sample playback", "one shot", "audio source", "stereo"],
+    notes: ["sample playback", "one shot", "hold", "loop", "gate", "velocity", "audio source", "stereo"],
   },
   audioPlayer: {
     category: "sample",
@@ -1299,9 +1430,9 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["tilt", "shelf", "tone balance", "first order", "Robin Schmidt", "RS-MET", "scientific"],
   },
   eqFilter: {
-    category: "dynamics",
+    category: "scientificFilter",
     description: "Zero-latency multipurpose EQ band (LP/HP/peak/shelf…) for clean tone fixes.",
-    label: "EQ Filter",
+    label: "EQ Filter ZDF",
     notes: [
       "eq",
       "eq filter",
@@ -1324,6 +1455,24 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
       "native",
     ],
   },
+  graphicEq: {
+    category: "scientificFilter",
+    description: "ISO 1/3-octave graphic EQ — 30 peaking bands in dB (±12) with dry/wet mix.",
+    label: "Graphic EQ",
+    notes: [
+      "eq",
+      "graphic eq",
+      "graphic equalizer",
+      "1/3 octave",
+      "ISO",
+      "bands",
+      "peaking",
+      "RBJ",
+      "tone",
+      "dB",
+      "native",
+    ],
+  },
   papoulisFilter: {
     category: "scientificFilter",
     description: "Smooth lowpass with steeper roll-off than Butterworth for the same order.",
@@ -1332,9 +1481,9 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   cookbookFilter: {
     category: "scientificFilter",
-    description: "Stack RBJ biquads for steeper multi-stage slopes when one band isn’t enough.",
-    label: "Multi Stage Filter",
-    notes: ["mode selection", "biquad stages", "magnitude plot", "RBJ", "cascade", "scientific"],
+    description: "RS-MET CookbookFilter: stacked identical RBJ biquads (Bristow-Johnson). Stages steepen slope; not an analog ladder.",
+    label: "Cookbook Filter",
+    notes: ["RBJ", "biquad cascade", "CookbookFilter", "Robin Schmidt", "RS-MET", "scientific"],
   },
   activeFilter: {
     category: "analogFilter",
@@ -1393,15 +1542,27 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   bandpass: {
     category: "scientificFilter",
-    description: "Resonant pitched bandpass for formants, peaks, and ringing filters.",
-    label: "Bandpass Filter",
-    notes: ["bandpass", "resonant", "2-pole", "SVF", "ZDF", "scientific", "Robin Schmidt", "RS-MET", "0.1V"],
+    description: "ZDF SVF bandpass. Slope stacks identical 12 dB stages (12/24/36/48).",
+    label: "Bandpass Filter ZDF",
+    notes: ["bandpass", "resonant", "SVF", "ZDF", "scientific", "Robin Schmidt", "RS-MET"],
   },
   allpass: {
     category: "scientificFilter",
-    description: "Phase-only filtering for phasers, correction, and delay-ish lag without EQ.",
-    label: "Allpass Filter",
+    description: "ZDF SVF allpass. Slope stacks identical 12 dB stages (12/24/36/48).",
+    label: "Allpass Filter ZDF",
     notes: ["allpass", "phase", "SVF", "ZDF", "scientific", "Robin Schmidt", "RS-MET", "not a delay line"],
+  },
+  lowpass: {
+    category: "scientificFilter",
+    description: "ZDF SVF lowpass. Slope stacks identical 12 dB stages (12/24/36/48).",
+    label: "Lowpass Filter ZDF",
+    notes: ["lowpass", "SVF", "ZDF", "scientific", "Robin Schmidt", "RS-MET"],
+  },
+  highpass: {
+    category: "scientificFilter",
+    description: "ZDF SVF highpass. Slope stacks identical 12 dB stages (12/24/36/48).",
+    label: "Highpass Filter ZDF",
+    notes: ["highpass", "SVF", "ZDF", "scientific", "Robin Schmidt", "RS-MET"],
   },
   crossover2: {
     category: "dynamics",
@@ -1569,12 +1730,6 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "Percussion (10)",
     notes: ["under construction", "sample", "percussion", "drums", "GM", "channel 10", "midi", "soundfont"],
   },
-  theremin: {
-    category: "object",
-    description: "Placeholder space-controlled pitch/volume controller.",
-    label: "Theremin",
-    notes: ["under construction", "theremin", "object", "proximity", "pitch", "performance"],
-  },
   // --- Analog Filter: character / named circuits ---
   yellowjacketFilter: {
     category: "analogFilter",
@@ -1585,8 +1740,31 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   superloveFilter: {
     category: "analogFilter",
     description: "Warm self-oscillating ladder-ish resonator for bass-heavy love tones.",
-    label: "SuperLove Filter",
+    label: "Superlove Filter Rev1",
     notes: ["trisaw oscillator", "4 modes", "stable self-oscillation", "analog"],
+  },
+  superloveRev2: {
+    category: "analogFilter",
+    description: "Superlove Filter Rev2 — Softwave-triangle LP18/LP24; HP6/BP6 trisaw. Morph, Phase, Noise 0…1.",
+    label: "Superlove Filter Rev2",
+    notes: [
+      "superlove",
+      "rev2",
+      "softwave",
+      "triangle",
+      "lp18",
+      "lp24",
+      "hp6",
+      "bp6",
+      "filter",
+      "native",
+    ],
+  },
+  vcvrackSuperloveFilter: {
+    category: "object",
+    description: "VCV Rack Super Love DSP in the sandbox: phase-feedback wavetable filter, LP18/LP24/HP/BP, Drive and Noise.",
+    label: "VCVRack Superlove Filter",
+    notes: ["vcvrack", "superlove", "filter", "native", "trace"],
   },
   chaoticPhaseLockingFilter: {
     category: "analogFilter",
@@ -1642,28 +1820,40 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     ],
   },
   phaseDisperse: {
-    category: "scientificFilter",
+    category: "space",
     description: "Cascade allpass smear—group-delay wash without changing magnitude.",
     label: "Phase Disperse",
-    notes: ["allpass", "group delay", "disperser", "scientific", "phase", "cpu"],
+    notes: ["allpass", "group delay", "disperser", "space", "multifx", "phase", "cpu"],
   },
   phaser: {
-    category: "analogFilter",
-    description: "Placeholder classic modulated phaser FX.",
+    category: "space",
+    description: "Up to 8 ZDF stages: Bandpass (parallel) or Allpass (series, classic notches). Slope 12–48, LFO, mix, feedback.",
     label: "Phaser",
-    notes: ["under construction", "phaser", "allpass", "modulation", "analog"],
+    notes: ["phaser", "bandpass", "ZDF", "SVF", "space", "Robin Schmidt"],
+  },
+  vocoder: {
+    category: "analogFilter",
+    description: "Placeholder analog vocoder — parallel bandpass bank, envelopes, carrier.",
+    label: "Vocoder",
+    notes: ["under construction", "vocoder", "filter bank", "bandpass", "envelope", "analog"],
   },
   flanger: {
     category: "space",
-    description: "Placeholder classic short-delay flanger FX.",
+    description: "Short interpolating delay comb + LFO. Harmonic notches at n/delay. Mix, feedback, stereo time offset.",
     label: "Flanger",
-    notes: ["under construction", "flanger", "delay", "modulation", "space"],
+    notes: ["flanger", "delay", "comb", "modulation", "space", "multifx"],
   },
   chorus: {
     category: "space",
-    description: "Placeholder multi-voice chorus thickening.",
+    description: "Multi-voice interpolating delay. Shared vibrato with per-voice seeds. Wet chorus through 6 dB HP→LP, then Mix.",
     label: "Chorus",
-    notes: ["under construction", "chorus", "delay", "modulation", "space"],
+    notes: ["chorus", "delay", "vibrato", "modulation", "space", "multifx", "native"],
+  },
+  ensemble: {
+    category: "space",
+    description: "Chorus delay bank with SoEm Reverb Random Walk or FBM instead of vibrato. Wet through 6 dB HP→LP, then Mix.",
+    label: "Ensemble",
+    notes: ["ensemble", "chorus", "delay", "random walk", "fbm", "modulation", "space", "native"],
   },
   bode: {
     category: "space",
@@ -1680,7 +1870,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   resonatorFilter: {
     category: "analogFilter",
     description: "Chaotic dual-phasor resonator for wild FM-ish filter voices.",
-    label: "Resonator Filter",
+    label: "Shaped Resonator Filter",
     notes: ["dual-phasor FM", "3 waveform modes", "chaotic", "analog"],
   },
   humanFilter: {
@@ -1866,13 +2056,13 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   pll: {
     category: "clock",
-    description: "Lock a VCO to an input (Doepfer-style PLL)—tracking tones and lock gates.",
+    description: "Lock a VCO to an input. Outs: VCO audio, ƒ (Hz), PC error, Loop (0–1 pull), Locked.",
     label: "PLL",
     notes: ["phase locked loop", "A-196", "vco", "frequency tracking"],
   },
   helmholtzPitch: {
     category: "multimeter",
-    description: "Track monophonic pitch: Hz, fidelity, and lock gate for analysis or follow.",
+    description: "Track monophonic pitch: Hz, inc (cycles/sample), fidelity, detune, and lock gate.",
     label: "Pitch Detector",
     notes: ["pitch tracking", "pitch detector", "mcleod", "autocorrelation", "frequency follower", "gate"],
   },
@@ -1948,8 +2138,8 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
   },
   sampleHold: {
     category: "modulator",
-    description: "Grab on Clock: Ext In→Ext Out plus internal noise on Left/Right, same clock. Interpolate Off/Linear/Smoothstep.",
-    notes: ["clock capture", "ext in out", "internal noise", "left right", "interpolate"],
+    description: "Grab on Clock: Ext In→Ext Out plus internal noise on Left/Right. Phase Offset desyncs Right. Interpolate Off/Linear/Smoothstep.",
+    notes: ["clock capture", "ext in out", "internal noise", "left right", "interpolate", "phase offset"],
   },
   expAdsr: {
     category: "envelope",
@@ -2162,13 +2352,13 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "Display",
     notes: ["multi-mode", "2D Trace", "2D Phosphor", "1D Waterfall", "1D Phosphor", "visual sink"],
   },
-  traceDisplay: {
+  waterfall: {
     category: "oscilloscope",
     description: "1D waterfall tape—pen on the right, history scrolls left.",
-    label: "1D Waterfall Mono",
+    label: "1D Waterfall",
     notes: ["1D Waterfall", "waterfall", "waveform", "display testbed"],
   },
-  traceDisplayStereo: {
+  waterfallStereo: {
     category: "oscilloscope",
     description: "Stereo 1D waterfall—Left/Right colors, same dest tape as Mono.",
     label: "1D Waterfall Stereo",
@@ -2183,10 +2373,10 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
       "display testbed",
     ],
   },
-  traceDisplayXyz: {
+  waterfallXyz: {
     hidden: true,
     category: "oscilloscope",
-    description: "Retired alias. Use 1D Waterfall XYZ (traceXyz).",
+    description: "Retired alias. Use 1D Waterfall XYZ (waterfallXyz).",
     label: "1D Waterfall XYZ",
     notes: ["retired"],
   },
@@ -2205,7 +2395,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["retired"],
   },
   videoscope: {
-    category: "rgb",
+    category: "oscilloscope",
     description: "Triggered dual-channel scope (A/B) with freeze—stable waveforms of audio.",
     label: "Videoscope",
     notes: ["oscilloscope", "trigger", "dot", "line", "xy", "native", "phosphor display"],
@@ -2223,7 +2413,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["info plate", "serial", "lcd residual", "text stream", "multimeter"],
   },
   textStream: {
-    category: "digital",
+    category: "text",
     description: "Type once, emit characters over time—serial text into matrix faces.",
     label: "Text Stream",
     notes: ["serial", "character", "digital", "text box"],
@@ -2235,7 +2425,7 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["under construction", "xy", "glyph ramp", "phosphor decay", "character trail", "oscilloscope"],
   },
   spectrogram: {
-    category: "oscilloscope",
+    category: "multimeter",
     description: "See frequency content over time (STFT) while passing audio through.",
     label: "Spectrogram",
     notes: ["fft", "spectrum", "frequency waterfall", "spectral display", "thru"],
@@ -2251,7 +2441,10 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Lit LED digits for the latest value—meters with phosphor residual hang.",
     label: "LED Value",
     notes: [
+      "led",
+      "lcd",
       "led value",
+      "lcd value",
       "led readout",
       "number readout",
       "latest value",
@@ -2273,8 +2466,10 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     description: "Reflective LCD-style digits—cheap multimeter look for numbers.",
     label: "LCD Value",
     notes: [
-      "lcd value",
+      "led",
       "lcd",
+      "led value",
+      "lcd value",
       "lcd readout",
       "numeric display",
       "digital readout",
@@ -2306,6 +2501,18 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "2D Phosphor (legacy)",
     notes: ["legacy", "migrates to scope2d", "hidden"],
   },
+  scope1dTrace: {
+    category: "oscilloscope",
+    description: "1D Trace mono—woscope Gaussian beam, sweep left→right, hard reset at the right edge (not Waterfall scroll).",
+    label: "1D Trace",
+    notes: ["1D Trace", "woscope", "sweep", "reset", "sync", "waveform", "display testbed"],
+  },
+  scope1dTraceStereo: {
+    category: "oscilloscope",
+    description: "1D Trace stereo—Left/Right woscope beams on one shared sweep frame.",
+    label: "1D Trace Stereo",
+    notes: ["1D Trace", "stereo", "left", "right", "woscope", "sweep", "reset", "waveform", "display testbed"],
+  },
   scope2dTrace: {
     category: "oscilloscope",
     description: "Instant X/Y vector history without phosphor—crisp 2D traces.",
@@ -2330,14 +2537,14 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     label: "Gradient Vectorscope",
     notes: ["vectorscope", "gradient", "xy trace", "90", "oscilloscope"],
   },
-  traceXyz: {
+  waterfallXyz: {
     category: "oscilloscope",
     description: "XYZ 1D waterfall—X red, Y blue, Z green on the same dest tape as Mono.",
     label: "1D Waterfall XYZ",
     notes: ["1D Waterfall", "xyz", "X", "Y", "Z", "waveform", "display testbed"],
   },
-  traceRgb: {
-    category: "rgb",
+  waterfallRgb: {
+    category: "oscilloscope",
     description: "1D waterfall with fixed R/G/B guns. Blur 0 = hard pixels; 1 = soft smoothstep. Bright scales ink.",
     label: "1D Waterfall RGB",
     notes: ["1D Waterfall", "rgb", "R", "G", "B", "blur", "waveform", "display testbed"],
@@ -2359,14 +2566,14 @@ const nodeGraphModuleStoreCatalog = Object.freeze({
     notes: ["speaker protection", "slew", "mute", "hold", "VCA", "safety"],
   },
   textBox: {
-    category: "object",
+    category: "text",
     description: "Static in-world label for notes, lore, and instructions on the patch.",
     notes: ["annotation", "layout", "field notes"],
   },
   animatedTextBox: {
-    category: "object",
-    description: "Wireable title/text plate so messages can be driven by the patch.",
-    notes: ["data-plane ports", "port scripts", "wired label"],
+    category: "text",
+    description: "Under construction. Wireable title/text plate so messages can be driven by the patch.",
+    notes: ["under construction", "data-plane ports", "port scripts", "wired label"],
   },
   phoneTone: {
     category: "object",
@@ -2713,9 +2920,21 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
     source: "native_modules/robin_sinusoid/robin_sinusoid.cpp",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/robin_sinusoid/robin_sinusoid.cpp",
   },
+  robinOscillator: {
+    source: "native_modules/robin_oscillator/robin_oscillator.cpp",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/robin_oscillator/robin_oscillator.cpp",
+  },
   allpass: {
-    source: "public/modules/scientificIir/scientific-iir-math.js",
-    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/scientificIir/scientific-iir-math.js",
+    source: "native_modules/eq_filter/eq_filter.cpp",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/eq_filter/eq_filter.cpp",
+  },
+  phaser: {
+    source: "native_modules/phaser/phaser.cpp",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/phaser/phaser.cpp",
+  },
+  flanger: {
+    source: "native_modules/flanger/flanger.cpp",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/flanger/flanger.cpp",
   },
   antisaw: {
     source: "public/modules/antisaw/antisaw-worklet-evaluator.js",
@@ -2742,8 +2961,16 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/badvalMonitor/badval-monitor-worklet-evaluator.js",
   },
   bandpass: {
-    source: "public/modules/scientificIir/scientific-iir-math.js",
-    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/scientificIir/scientific-iir-math.js",
+    source: "native_modules/eq_filter/eq_filter.cpp",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/eq_filter/eq_filter.cpp",
+  },
+  lowpass: {
+    source: "native_modules/eq_filter/eq_filter.cpp",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/eq_filter/eq_filter.cpp",
+  },
+  highpass: {
+    source: "native_modules/eq_filter/eq_filter.cpp",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/eq_filter/eq_filter.cpp",
   },
   bessel: {
     source: "public/modules/scientificIir/scientific-iir-math.js",
@@ -2757,6 +2984,10 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
     source: "public/modules/attenuverter/attenuverter-math.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/attenuverter/attenuverter-math.js",
   },
+  attenumax: {
+    source: "public/modules/attenumax/attenumax-math.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/attenumax/attenumax-math.js",
+  },
   ampCurve: {
     source: "native_modules/amp_curve/amp_curve.cpp",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/amp_curve/amp_curve.cpp",
@@ -2765,6 +2996,20 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
     source: "native_modules/range/range.cpp",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/range/range.cpp",
   },
+
+  pitchManager: {
+    source: "native_modules/graph_engine/graph_engine.cpp",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/graph_engine/graph_engine.cpp",
+  },
+  pitchHz: {
+    source: "native_modules/graph_engine/graph_engine.cpp",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/graph_engine/graph_engine.cpp",
+  },
+  ampDb: {
+    source: "native_modules/amp_db/amp_db.cpp",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/amp_db/amp_db.cpp",
+  },
+
   u2b: {
     source: "native_modules/u2b/u2b.cpp",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/u2b/u2b.cpp",
@@ -2776,6 +3021,10 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
   inv: {
     source: "native_modules/inv/inv.cpp",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/inv/inv.cpp",
+  },
+  ringMod: {
+    source: "native_modules/ring_mod/ring_mod.cpp",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/ring_mod/ring_mod.cpp",
   },
   bitConverter: {
     source: "public/modules/bitConverter/bit-converter-math.js",
@@ -2849,10 +3098,6 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
     source: "public/modules/clockDivider/clock-divider-live-evaluator.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/clockDivider/clock-divider-live-evaluator.js",
   },
-  codeblock: {
-    source: "public/modules/codeblock/codeblock-worklet-evaluator.js",
-    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/codeblock/codeblock-worklet-evaluator.js",
-  },
   combResonator: {
     source: "native_modules/comb_resonator/comb_resonator.cpp",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/comb_resonator/comb_resonator.cpp",
@@ -2862,8 +3107,8 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/comparator/comparator-math.js",
   },
   cookbookFilter: {
-    source: "public/modules/cookbookFilter/cookbook-filter-worklet-evaluator.js",
-    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/cookbookFilter/cookbook-filter-worklet-evaluator.js",
+    source: "native_modules/cookbook_filter/cookbook_filter.cpp",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/cookbook_filter/cookbook_filter.cpp",
   },
   crossover: {
     source: "native_modules/crossover/crossover.cpp",
@@ -2981,6 +3226,18 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
     source: "public/modules/mixStereo/mix-stereo-math.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/mixStereo/mix-stereo-math.js",
   },
+  crossfade2: {
+    source: "native_modules/crossfade/crossfade.cpp",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/crossfade/crossfade.cpp",
+  },
+  crossfade3: {
+    source: "native_modules/crossfade/crossfade.cpp",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/crossfade/crossfade.cpp",
+  },
+  crossfade4: {
+    source: "native_modules/crossfade/crossfade.cpp",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/crossfade/crossfade.cpp",
+  },
   mixStereo: {
     source: "public/modules/mixStereo/mix-stereo-math.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/mixStereo/mix-stereo-math.js",
@@ -3004,6 +3261,14 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
         sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/portal/portal-live-evaluator.js",
       },
     }),
+  namedPortalIn: {
+    source: "public/modules/portal/portal-live-evaluator.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/portal/portal-live-evaluator.js",
+  },
+  namedPortalOut: {
+    source: "public/modules/portal/portal-live-evaluator.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/portal/portal-live-evaluator.js",
+  },
   helmholtzPitch: {
     source: "public/modules/helmholtzPitch/helmholtz-pitch-worklet-evaluator.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/helmholtzPitch/helmholtz-pitch-worklet-evaluator.js",
@@ -3103,10 +3368,6 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
   lutCell: {
     source: "public/modules/lutCell/lut-cell-worklet-evaluator.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/lutCell/lut-cell-worklet-evaluator.js",
-  },
-  macroControls: {
-    source: "public/modules/macroControls/macro-controls-live-evaluator.js",
-    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/macroControls/macro-controls-live-evaluator.js",
   },
   matrixDisplay: {
     source: "public/modules/matrixDisplay/matrix-display-live-evaluator.js",
@@ -3368,13 +3629,13 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
     source: "public/modules/soemReverb/soem-reverb-worklet-evaluator.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/soemReverb/soem-reverb-worklet-evaluator.js",
   },
-  softClipper: {
-    source: "public/modules/softClipper/soft-clipper-math.js",
-    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/softClipper/soft-clipper-math.js",
+  tubeSaturation: {
+    source: "public/modules/tubeSaturation/tube-saturation-math.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/tubeSaturation/tube-saturation-math.js",
   },
-  clipperLimiter: {
-    source: "public/modules/clipperLimiter/clipper-limiter-math.js",
-    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/clipperLimiter/clipper-limiter-math.js",
+  softClipper: {
+    source: "native_modules/soft_clipper/soft_clipper.cpp",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/soft_clipper/soft_clipper.cpp",
   },
   softpopOscillator: {
     source: "public/modules/softpopOscillator/softpop-oscillator-math.js",
@@ -3383,6 +3644,10 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
   softwaveOsc: {
     source: "public/modules/softwaveOsc/softwave-osc-math.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/softwaveOsc/softwave-osc-math.js",
+  },
+  sineWarp: {
+    source: "native_modules/sine_warp/sine_warp.cpp",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/sine_warp/sine_warp.cpp",
   },
   speakerProtection: {
     source: "public/modules/speakerProtection/speaker-protection-worklet-evaluator.js",
@@ -3420,6 +3685,10 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
     source: "public/modules/superloveFilter/superlove-filter-worklet-evaluator.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/superloveFilter/superlove-filter-worklet-evaluator.js",
   },
+  vcvrackSuperloveFilter: {
+    source: "native_modules/vcvrack_superlove_filter/vcvrack_superlove_filter.cpp",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/vcvrack_superlove_filter/vcvrack_superlove_filter.cpp",
+  },
   surgeOscillator: {
     source: "public/modules/surgeOscillator/surge-oscillator-worklet-evaluator.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/surgeOscillator/surge-oscillator-worklet-evaluator.js",
@@ -3439,6 +3708,10 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
   torus: {
     source: "public/modules/torus/torus-worklet-evaluator.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/torus/torus-worklet-evaluator.js",
+  },
+  hostBpm: {
+    source: "native_modules/graph_engine/graph_engine.cpp",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/native_modules/graph_engine/graph_engine.cpp",
   },
   transport: {
     source: "public/modules/transport/transport-math.js",
@@ -3483,6 +3756,10 @@ const nodeGraphJsSourceEntriesByType = Object.freeze({
   xyPad: {
     source: "public/modules/xyPad/xy-pad-dsp.js",
     sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/xyPad/xy-pad-dsp.js",
+  },
+  theremin: {
+    source: "public/modules/theremin/theremin-register.js",
+    sourceUrl: "https://github.com/soundemote/soemdsp-sandbox/blob/master/public/modules/theremin/theremin-register.js",
   },
   yellowjacketFilter: {
     source: "public/modules/yellowjacketFilter/yellowjacket-filter-worklet-evaluator.js",
@@ -4085,7 +4362,7 @@ function nodeGraphModuleStoreDemoPatch(type) {
     });
   }
   return validateNodeGraphPatch({
-    audio: { targetSampleRate: 44100 },
+    audio: { oversamplingFactor: 1, targetSampleRate: 44100 },
     bypassedNodes: [],
     connections,
     format: { ...nodeGraphPatchFormat },

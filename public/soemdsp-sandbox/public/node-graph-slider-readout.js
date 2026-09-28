@@ -351,10 +351,14 @@ function syncNodeSliderReadout(slider) {
   const labelText = readout.querySelector(".node-slider-readout-label");
   const valueText = readout.querySelector(".node-slider-readout-value");
   const unitText = readout.querySelector(".node-slider-readout-unit");
-  // Prefer unbounded domain value (typed Amplitude etc.); thumb may be clamped.
+  // Thumb tracks editable base (domainValue). When a modulation ghost is
+  // active, the in-slider number shows the modulated *target*
+  // (sentDomainValue / effectiveDomain) — not smoothed audio.
   const domainRaw = Number(slider.dataset?.domainValue);
-  const displayValue = Number.isFinite(domainRaw) ? domainRaw : Number(slider.value);
-  const position = nodeSliderTravelFromValue(slider, displayValue) * 100;
+  const baseValue = Number.isFinite(domainRaw) ? domainRaw : Number(slider.value);
+  const sentRaw = Number(slider.dataset?.sentDomainValue);
+  const displayValue = Number.isFinite(sentRaw) ? sentRaw : baseValue;
+  const position = nodeSliderTravelFromValue(slider, baseValue) * 100;
   let unit = (slider.dataset.unit || "").trim();
   let formattedValue = displayValue;
   let formattedKind = slider.dataset.kind;
@@ -420,7 +424,14 @@ function syncNodeSliderReadout(slider) {
     readout.style.removeProperty("--value-end");
     readout.classList.remove("is-bipolar");
     readout.style.setProperty("--choice-divider-background", "none");
-    syncNodeSliderChoiceDebugSquares(readout, choices, true, Number(slider.value));
+    syncNodeSliderChoiceDebugSquares(
+      readout,
+      choices,
+      true,
+      typeof nodeSliderChoiceIndexFromValue === "function"
+        ? nodeSliderChoiceIndexFromValue(slider, slider.value)
+        : Number(slider.value),
+    );
     syncNodeSliderPortalHandle(readout, slider, position, false);
   } else {
     const travel = Math.max(0, Math.min(1, position / 100));

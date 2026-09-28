@@ -11,7 +11,7 @@ const NODE_GRAPH_SCREEN_SOLO_FACE_SEL = [
   ".node-phone-tone-display",
   ".node-harmonic-series-display",
   ".node-pulse-curve-display",
-  ".node-phosphor-waveform-display",
+  ".node-sample-waveform-display",
   ".node-wall-room-display",
   ".node-asciiscope-face",
   ".node-matrix-display-face",
@@ -24,7 +24,7 @@ const NODE_GRAPH_SCREEN_SOLO_FACE_SEL = [
   ".node-xy-pad",
   ".node-raster-rgb-face",
   ".node-ray-bouncer-face",
-  ".node-module-graph-display",
+  ".node-module-graph-display, .node-module-graph-face, .node-module-graph-point-strip",
   ".node-additive-filter-curve-display",
   ".node-text-box-body",
   ".node-midi-keyboard-module",
@@ -347,13 +347,13 @@ function nodeGraphScreenSoloWakeFace(face) {
       installNodeGraphMidiKeyboardLayoutResizeObserver();
     }
   }
-  if (face.classList.contains("node-phosphor-waveform-display")
-    || face.querySelector?.(".node-phosphor-waveform-display")) {
-    const phosphor = face.classList.contains("node-phosphor-waveform-display")
+  if (face.classList.contains("node-sample-waveform-display")
+    || face.querySelector?.(".node-sample-waveform-display")) {
+    const phosphor = face.classList.contains("node-sample-waveform-display")
       ? face
-      : face.querySelector(".node-phosphor-waveform-display");
-    if (phosphor && typeof nodeGraphPhosphorWaveformEnsureLoop === "function") {
-      nodeGraphPhosphorWaveformEnsureLoop(phosphor);
+      : face.querySelector(".node-sample-waveform-display");
+    if (phosphor && typeof nodeGraphSampleWaveformEnsureLoop === "function") {
+      nodeGraphSampleWaveformEnsureLoop(phosphor);
     }
   }
   if (typeof requestNodeGraphModuleScopeRepaint === "function") {
@@ -395,7 +395,7 @@ function nodeGraphScreenSoloClearFitClasses() {
 
 function nodeGraphScreenSoloFacePrefersFill(face) {
   return Boolean(
-    face?.classList?.contains("node-phosphor-waveform-display")
+    face?.classList?.contains("node-sample-waveform-display")
     || face?.classList?.contains("node-module-scope-window"),
   );
 }
@@ -646,14 +646,27 @@ function nodeGraphScreenSoloRestoreItem(item) {
   if (!face) {
     return;
   }
-  face.classList.remove("node-screen-solo-face");
+  nodeGraphScreenSoloRestoreSubtree(item.savedFaceDom);
+  if (typeof nodeGraphTextBoxClearCanvasScaleSource === "function") {
+    nodeGraphTextBoxClearCanvasScaleSource(face);
+  }
+  face.classList.remove("node-screen-solo-face", "node-layout-canvas-face");
   face.removeAttribute("data-solo-fit");
-  face.style.removeProperty("--node-screen-solo-item-w");
-  face.style.removeProperty("--node-screen-solo-item-h");
-  nodeGraphScreenSoloApplySavedFaceLayout(face, item.savedLayout);
+  if (item.hostWasOscilloscopeHidden) {
+    item.host?.classList.add("oscilloscope-hidden");
+  }
+  nodeGraphScreenSoloInvalidateFaceMeasure(face);
   nodeGraphScreenSoloInsertFace(item);
   if (item.placeholder?.isConnected) {
     item.placeholder.remove();
+  }
+  if (typeof nodeGraphKnobFaceSyncCellVar === "function") {
+    const host = face;
+    window.requestAnimationFrame(() => {
+      if (typeof nodeGraphKnobFaceSyncCellVar === "function") {
+        nodeGraphKnobFaceSyncCellVar(host);
+      }
+    });
   }
 }
 
@@ -665,6 +678,61 @@ function nodeGraphScreenSoloRelayoutHost(host, nodeId) {
     ? nodeGraphPatchNode(nodeId)
     : null;
   applyNodeGraphModuleLayout(host, patch || undefined);
+}
+
+/**
+ * Canvas placement (tile x/y/w/h) and the workspace plate share one face DOM.
+ * Snapshot inline geometry before the tile stretches it. Restore on exit so
+ * canvas size cannot stick. 0–1 paint scale is unchanged — it remeasures
+ * whatever box the face is in.
+ */
+function nodeGraphScreenSoloSnapshotSubtree(root) {
+  if (!(root instanceof Element)) {
+    return [];
+  }
+  const list = [root, ...root.querySelectorAll("*")];
+  return list.map((el) => ({
+    el,
+    style: el.getAttribute("style"),
+    hidden: el.hidden === true || el.hasAttribute("hidden"),
+  }));
+}
+
+function nodeGraphScreenSoloRestoreSubtree(rows) {
+  if (!Array.isArray(rows)) {
+    return;
+  }
+  for (const row of rows) {
+    const el = row?.el;
+    if (!(el instanceof Element)) {
+      continue;
+    }
+    if (row.style == null) {
+      el.removeAttribute("style");
+    } else {
+      el.setAttribute("style", row.style);
+    }
+    if (row.hidden) {
+      el.hidden = true;
+    } else {
+      el.hidden = false;
+      el.removeAttribute("hidden");
+    }
+  }
+}
+
+function nodeGraphScreenSoloInvalidateFaceMeasure(face) {
+  if (!(face instanceof Element)) {
+    return;
+  }
+  face._filterCurveLaidOut = false;
+  face._filterCurveForceDraw = true;
+  face._roundShapeLaidOut = false;
+  face._roundShapeForceDraw = true;
+  face._basicShapeLaidOut = false;
+  face._basicShapeForceDraw = true;
+  face._sinCos4LaidOut = false;
+  face._sinCos4ForceDraw = true;
 }
 
 function nodeGraphScreenSoloCollectFaces(nodeIds) {
@@ -681,6 +749,9 @@ function nodeGraphScreenSoloCollectFaces(nodeIds) {
     if (found.face?.classList?.contains("node-module-display-placeholder")) {
       continue;
     }
+    // Snapshot before canvas/solo mutates shared face geometry.
+    found.savedFaceDom = nodeGraphScreenSoloSnapshotSubtree(found.face);
+    found.hostWasOscilloscopeHidden = Boolean(found.host?.classList?.contains("oscilloscope-hidden"));
     // Solo must show the face even if the module currently hides scopes / faces.
     found.host?.classList.remove("oscilloscope-hidden");
     found.face.hidden = false;
@@ -746,6 +817,9 @@ function beginNodeGraphScreenSoloGrid(nodeIds) {
     entry.face.classList.add("node-screen-solo-face");
     let sourceWidth = Math.max(1, sourceBox.width || entry.face.clientWidth || 1);
     let sourceHeight = Math.max(1, sourceBox.height || entry.face.clientHeight || 1);
+    if (typeof nodeGraphTextBoxCaptureCanvasScaleSource === "function") {
+      nodeGraphTextBoxCaptureCanvasScaleSource(entry.face, sourceBox);
+    }
     // SinCos4 (and round orbit faces) author a centered unit square. Preserve a
     // square contain aspect so F fit uses the full cell instead of the short
     // filter-curve band (which looked top-aligned with empty space below).
@@ -762,6 +836,8 @@ function beginNodeGraphScreenSoloGrid(nodeIds) {
       placeholder,
       nextSibling,
       savedLayout,
+      savedFaceDom: entry.savedFaceDom,
+      hostWasOscilloscopeHidden: entry.hostWasOscilloscopeHidden,
       sourceWidth,
       sourceHeight,
     });

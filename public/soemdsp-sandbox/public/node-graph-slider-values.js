@@ -51,17 +51,13 @@ function nodeGraphNumericModifierReserved() {
 }
 
 function nodeGraphNumericDragMultiplier(event) {
-  if (event?.shiftKey && (event.ctrlKey || event.metaKey) && event.altKey) {
-    return 0.001;
-  }
+  // Alt is snap-to-value on click, not a drag-speed multiplier. After an
+  // alt-jump, holding Alt and dragging must match a normal click-drag.
   if (event?.shiftKey && (event.ctrlKey || event.metaKey)) {
     return 0.01;
   }
   if (event?.shiftKey || event?.ctrlKey || event?.metaKey) {
     return 0.1;
-  }
-  if (event?.altKey) {
-    return 10;
   }
   return 1;
 }
@@ -105,6 +101,21 @@ function nodeGraphPointerDragTravelDelta(startClientX, startClientY, clientX, cl
   const scale = Number.isFinite(Number(fineScale)) ? Number(fineScale) : 1;
   const { combined } = nodeGraphPointerDragScreenDelta(startClientX, startClientY, clientX, clientY);
   return (combined / width) * scale;
+}
+
+/**
+ * Absolute 0…1 travel from a point in a square, same axes as drag:
+ * right and up increase. Lower-left = 0, upper-right = 1, center = 0.5.
+ * `spanPx` is the square side (knob dial min(width,height)).
+ */
+function nodeGraphPointerAbsoluteTravel(clientX, clientY, rect, spanPx) {
+  const span = Math.max(1, nodeGraphFiniteNumber(spanPx, 1));
+  const box = rect && typeof rect === "object" ? rect : { left: 0, top: 0, width: span, height: span };
+  const left = nodeGraphFiniteNumber(box.left) + (nodeGraphFiniteNumber(box.width, span) - span) * 0.5;
+  const top = nodeGraphFiniteNumber(box.top) + (nodeGraphFiniteNumber(box.height, span) - span) * 0.5;
+  const u = (nodeGraphFiniteNumber(clientX) - left) / span;
+  const v = (top + span - nodeGraphFiniteNumber(clientY)) / span;
+  return (u + v) * 0.5;
 }
 
 /**
@@ -548,7 +559,16 @@ function nodeSliderThumbDisplayValue(slider, domainValue) {
   if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
     return n;
   }
-  return clampNodeSliderValue(n, min, max);
+  const shown = clampNodeSliderValue(n, min, max);
+  if (
+    slider?.dataset?.reverse === "true"
+    && !String(slider.dataset.choices || "").trim()
+    && typeof nodeGraphParamControlPosition === "function"
+  ) {
+    const pos = nodeGraphParamControlPosition(shown, nodeSliderMetadata(slider));
+    return min + pos * (max - min);
+  }
+  return shown;
 }
 
 function normalizedNodeSliderMid(slider) {
@@ -717,6 +737,9 @@ function nodeSliderValueFromTravel(slider, travel) {
     return min;
   }
 
+  if (typeof nodeGraphParamDomainFromControlPosition === "function") {
+    return nodeGraphParamDomainFromControlPosition(travel, nodeSliderMetadata(slider));
+  }
   return min + range * nodeSliderCurveValueFromTravel(slider, travel);
 }
 
@@ -727,7 +750,9 @@ function nodeSliderValueFromPointerTravel(slider, travel) {
   if (!Number.isFinite(range) || range <= 0) {
     return min;
   }
-
+  if (typeof nodeGraphParamDomainFromControlPosition === "function") {
+    return nodeGraphParamDomainFromControlPosition(travel, nodeSliderMetadata(slider));
+  }
   return min + range * nodeSliderCurveValueFromTravel(slider, travel);
 }
 
@@ -751,6 +776,9 @@ function nodeSliderTravelFromValue(slider, value) {
     return 0;
   }
 
+  if (typeof nodeGraphParamControlPosition === "function") {
+    return nodeGraphParamControlPosition(value, nodeSliderMetadata(slider));
+  }
   const normalizedValue = clampNodeSliderValue((value - min) / range, 0, 1);
   return nodeSliderCurveTravelFromValue(slider, normalizedValue);
 }
@@ -850,14 +878,16 @@ function nodeSliderHandleRangeFromTravel(slider, surface, travel) {
   };
 }
 
-function nodeSliderTravelFromPointer(slider, surface, clientX) {
+function nodeSliderTravelFromPointer(slider, surface, clientX, clientY) {
   const drag = nodeGraphMvp?.sliderDragging;
   const knob = typeof nodeSliderKnobDragMetrics === "function"
     ? nodeSliderKnobDragMetrics(surface)
     : null;
   if (knob) {
-    const x = clientX - knob.rect.left;
-    return normalizeNodeSliderTravel(slider, x / Math.max(1, knob.travelWidth));
+    const travel = typeof nodeGraphPointerAbsoluteTravel === "function"
+      ? nodeGraphPointerAbsoluteTravel(clientX, clientY, knob.rect, knob.travelWidth)
+      : (clientX - knob.rect.left) / Math.max(1, knob.travelWidth);
+    return normalizeNodeSliderTravel(slider, travel);
   }
   const rect = (drag && drag.surface === surface && drag.surfaceRect)
     ? drag.surfaceRect
@@ -893,12 +923,31 @@ function setNodeSliderMetadata(slider, metadata) {
       `${nextLabel} current value`,
     );
   }
-  slider.min = String(metadata.min);
-  slider.max = String(metadata.max);
-  slider.dataset.mid = String(clampNodeSliderValue(metadata.mid, metadata.min, metadata.max));
-  slider.dataset.default = String(
-    clampNodeSliderValue(metadata.def, metadata.min, metadata.max),
+  // Absolute param range always stored on the slider (offset mode must not
+  // overwrite paramMeta.min/max when syncing metadata back from the DOM).
+  const absMin = Number(metadata.min);
+  const absMax = Number(metadata.max);
+  const absMid = Number(metadata.mid);
+  const absDef = Number(metadata.def);
+  slider.dataset.paramMin = String(absMin);
+  slider.dataset.paramMax = String(absMax);
+  slider.dataset.paramMid = String(
+    clampNodeSliderValue(absMid, absMin, absMax),
   );
+  slider.dataset.paramDefault = String(
+    clampNodeSliderValue(absDef, absMin, absMax),
+  );
+  const destDomain = metadata.outputDomain === true;
+  // outputDomain tags MOD/param-out in real units. The slider always spans
+  // the parameter min…max (not a ±max offset thumb).
+  const uiMin = absMin;
+  const uiMax = absMax;
+  const uiMid = absMid;
+  const uiDef = absDef;
+  slider.min = String(uiMin);
+  slider.max = String(uiMax);
+  slider.dataset.mid = String(clampNodeSliderValue(uiMid, uiMin, uiMax));
+  slider.dataset.default = String(clampNodeSliderValue(uiDef, uiMin, uiMax));
   slider.step = metadata.step > 0 ? String(metadata.step) : "any";
   slider.dataset.step = slider.step;
   slider.dataset.kind = metadata.kind || "decimal";
@@ -929,20 +978,29 @@ function setNodeSliderMetadata(slider, metadata) {
   slider.dataset.showSign = metadata.showSign ? "true" : "false";
   slider.dataset.removeTrailingZeros = metadata.removeTrailingZeros ? "true" : "false";
   slider.dataset.bipolar = metadata.bipolar ? "true" : "false";
+  slider.dataset.outputDomain = destDomain ? "true" : "false";
+  {
+    const offN = Number(metadata.domainOffset);
+    slider.dataset.domainOffset = String(Number.isFinite(offN) ? offN : 0);
+  }
+  // Keep readout in sync — CSS/drag use the visual .node-slider-readout, not the hidden input.
+  if (readout) {
+    readout.dataset.outputDomain = slider.dataset.outputDomain;
+    readout.classList.toggle("output-domain-mod", destDomain);
+  }
   // Clear legacy overshoot keys if present (older sessions).
   if (slider.dataset.unboundedMax != null) delete slider.dataset.unboundedMax;
   if (slider.dataset.unboundedMin != null) delete slider.dataset.unboundedMin;
   if (slider.dataset.unboundedValue != null) delete slider.dataset.unboundedValue;
   slider.dataset.wraparound = metadata.wraparound ? "true" : "false";
+  slider.dataset.reverse = metadata.reverse ? "true" : "false";
   if (Object.hasOwn(metadata, "visible")) {
     slider.dataset.visible = metadata.visible === false ? "false" : "true";
   }
-  // Prefer existing domainValue so metadata edits do not snap the parameter to
-  // a clamped HTML thumb (or leave domainValue stale relative to value).
   const domainSource = Number.isFinite(Number(slider.dataset.domainValue))
     ? Number(slider.dataset.domainValue)
     : Number(slider.value);
-  const domain = normalizeNodeSliderValue(slider, domainSource, metadata.min, metadata.max);
+  const domain = normalizeNodeSliderValue(slider, domainSource, uiMin, uiMax);
   slider.dataset.domainValue = String(domain);
   slider.value = String(
     typeof nodeSliderThumbDisplayValue === "function"

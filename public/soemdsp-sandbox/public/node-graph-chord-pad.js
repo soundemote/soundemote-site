@@ -1,8 +1,9 @@
-// Chord Pad — pick a diatonic chord; emit Scale (12-bit pitch-class mask) + Root
-// (0.1V/Oct) for Pitch Quantizer and bass/voice routing.
+// Chord Pad — pick a diatonic chord; emit Scale (noteMask128 bus) + Root
+// (pitch/♯/♭) for Pitch Quantizer and bass/voice routing.
 //
-// Scale convention matches Chord Sequencer / Turing Machine / Pitch Quantizer:
-// bit i = pitch class i (0=C … 11=B).
+// Scale jack shares Play/Arp/Chord Keys noteMask128. Internally a 12-bit
+// pitch-class mask (bit i = class i) expands to all octaves on the bus;
+// consumers fold lit MIDI notes via n%12.
 
 const nodeGraphChordPadMajorTriadMask = 0x91; // bits 0, 4, 7
 const nodeGraphChordPadMinorTriadMask = 0x89; // bits 0, 3, 7
@@ -108,7 +109,7 @@ function nodeGraphChordPadResolve(options = {}) {
     quality,
     rootPc,
     Scale: scale,
-    // Same 0.1V/Oct convention as Chord Sequencer: MIDI 60 + pitch class.
+    // Same pitch/♯/♭ convention as Chord Sequencer: MIDI 60 + pitch class.
     Root: (60 + rootPc) / 120,
     Gate: gateLevel,
   };

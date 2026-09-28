@@ -1,12 +1,12 @@
 // Step Graph segment Shape keys (global Shape param + per-node `shape`).
 //   linear / rational / exponential / log / smoothstep / hold
 //
-// Contour / Curve Offset domain is always −1…+1. Rational / exp / log evaluate
+// Contour / Skew Offset domain is always −1…+1. Rational / exp / log evaluate
 // continuous with a Planck soft-cap (±(1 − 1e−7)) so kernels never see exact ±1.
 //
 // smoothGraph vs stepGraph:
 //   Smooth: one global curve through free dots (smoothingMode + tension).
-//   Step:   global Shape + Curve Offset; per-node contour `c` still local
+//   Step:   global Shape + Skew Offset; per-node contour `c` still local
 //           (effective contour = c + curveOffset). Empty-circle handles edit bend;
 //           node drag snaps X to the step grid (Ctrl = free X).
 const nodeGraphGraphShapes = Object.freeze([
@@ -94,36 +94,6 @@ function nodeGraphGraphPresetData(name) {
   return normalizeNodeGraphGraph(nodeGraphGraphPresets[String(name || "").trim()] || nodeGraphDefaultGraphData);
 }
 
-function nodeGraphGraphTransformedData(graphValue, transform) {
-  const graph = normalizeNodeGraphGraph(graphValue);
-  const type = String(transform || "").trim();
-  if (type === "flipY") {
-    return normalizeNodeGraphGraph({
-      cursorX: graph.cursorX,
-      nodes: graph.nodes.map((node) => ({
-        ...node,
-        y: 1 - node.y,
-      })),
-    });
-  }
-  if (type === "reverseX") {
-    const nodes = graph.nodes.map((node, index) => {
-      const segmentSource = graph.nodes[index + 1] || node;
-      return {
-        c: -nodeGraphGraphNormalizeContour(segmentSource.c, 0),
-        shape: segmentSource.shape,
-        x: 1 - node.x,
-        y: node.y,
-      };
-    });
-    return normalizeNodeGraphGraph({
-      cursorX: 1 - graph.cursorX,
-      nodes,
-    });
-  }
-  return graph;
-}
-
 function addNodeGraphGraphNodeData(graphValue, pointValue = {}) {
   const graph = normalizeNodeGraphGraph(graphValue);
   if (graph.nodes.length >= 32) {
@@ -193,26 +163,6 @@ function duplicateNodeGraphGraphNodeData(graphValue, selectedIndex = 0) {
     selectedIndex: duplicateIndex,
     selectedX: x,
   };
-}
-
-function serializeNodeGraphGraphClipboard(graphValue) {
-  return JSON.stringify({
-    graph: normalizeNodeGraphGraph(graphValue),
-    type: "soemdsp.graph",
-    version: 1,
-  }, null, 2);
-}
-
-function parseNodeGraphGraphClipboard(text) {
-  try {
-    const payload = JSON.parse(String(text || ""));
-    if (payload?.type !== "soemdsp.graph") {
-      return null;
-    }
-    return normalizeNodeGraphGraph(payload.graph);
-  } catch (_error) {
-    return null;
-  }
 }
 
 function normalizeNodeGraphGraphShape(value) {
@@ -370,7 +320,7 @@ function nodeGraphGraphSegmentOptionsForNode(patchNode) {
   }
   const params = patchNode?.params || {};
   return {
-    curveOffset: normalizeNodeGraphGraphNumber(params.curveOffset, 0, -1, 1),
+    curveOffset: normalizeNodeGraphGraphNumber(params.skewOffset ?? params.curveOffset, 0, -1, 1),
     segmentShape: nodeGraphGraphSegmentShapeFromParam(
       params.segmentShape != null && params.segmentShape !== ""
         ? params.segmentShape
@@ -957,8 +907,8 @@ function nodeGraphGraphModeCurve(position, mode, index = 0) {
  * @param {{ segmentShape?: string, curveOffset?: number }} [options]
  */
 function nodeGraphGraphLegacySegmentShape(p, right, options = {}) {
-  const offset = normalizeNodeGraphGraphNumber(options.curveOffset, 0, -1, 1);
-  // Per-node c + global Curve Offset, clamped to ±1 (Planck soft-cap in kernels).
+  const offset = normalizeNodeGraphGraphNumber((options.skewOffset ?? options.curveOffset), 0, -1, 1);
+  // Per-node c + global Skew Offset, clamped to ±1 (Planck soft-cap in kernels).
   const contour = nodeGraphGraphNormalizeContour((nodeGraphFiniteNumber(right?.c)) + offset, 0);
   // Global Shape wins (same as worklet + native step_graph). Per-node shape is legacy only.
   const shape = options.segmentShape != null && String(options.segmentShape).trim() !== ""
@@ -1181,25 +1131,20 @@ function normalizeNodeGraphStepCount(value) {
 }
 
 function nodeGraphGraphStepCountForNode(patchNode) {
-  // Step grid is Step Graph (stepGraph) only.
-  if (String(patchNode?.type || "").trim() !== "stepGraph") {
+  // Face grid / X snap: Smooth Graph + Step Graph. 0 = grid off.
+  const type = String(patchNode?.type || "").trim();
+  if (type !== "stepGraph" && type !== "smoothGraph") {
     return 0;
   }
   const raw = Number(patchNode?.params?.steps);
-  // Unset / non-numeric → default 8 (matches parameter defaultValue).
-  // Explicit 0 → free X (no grid, no quantize).
+  // Unset / non-numeric → 0 (matches spawn defaultValue). Explicit 0 → free X.
   if (!Number.isFinite(raw)) {
-    return 8;
+    return 0;
   }
   return normalizeNodeGraphStepCount(raw);
 }
 
-/**
- * Snap an x position (0..1) onto the Step Graph vertical grid.
- * steps=0 → no snap (identity).
- * steps=1 → only 0 or 1 (whichever is closer).
- * steps=n → i/n for i = 0..n (same lines as the face grid).
- */
+
 function nodeGraphGraphSnapXToStepGrid(x, stepCount) {
   const steps = normalizeNodeGraphStepCount(stepCount);
   if (steps <= 0) {
@@ -1354,8 +1299,8 @@ function renderNodeGraphGraphDisplay(element, graphValue, selectedIndex = null, 
     class: "node-module-graph-curve",
     d: nodeGraphGraphCurvePath(graph, 96, smoothingMode, tension, segmentOptions),
   }));
-  // Face dots/rings stay invisible until a specific index is hot (hover or drag).
-  // No selected styling — panel selection does not lighten face chrome.
+  // Idle: dots/rings opacity 0. Face hover (.is-hover-reveal) shows all;
+  // .is-hot still brightens the active hit. Panel selection does not light face chrome.
   const hitRadii = nodeGraphGraphScreenRoundRadii(element, 5.4);
   const nodeRadii = nodeGraphGraphScreenRoundRadii(element, 1.5);
   const contourRadii = nodeGraphGraphScreenRoundRadii(element, 2.4);
@@ -1524,12 +1469,25 @@ function nodeGraphGraphPhaseHitFromEventTarget(target) {
  *  • phase line stays dim unless pointer is on the phase hit (or scrubbing it)
  *  • only the node under the pointer (and its contour ring) is dim-visible
  */
+function setNodeGraphGraphFaceHoverReveal(display, on) {
+  if (!display) {
+    return;
+  }
+  display.classList.toggle("is-hover-reveal", Boolean(on));
+}
+
 function bindNodeGraphGraphFaceHover(display) {
   if (!display || display.dataset.graphHoverBound === "true") {
     return;
   }
   display.dataset.graphHoverBound = "true";
+  // Pointer over the face = show all value points + contour handles.
+  // Hot index still brightens the active hit for precise editing.
+  display.addEventListener("pointerenter", () => {
+    setNodeGraphGraphFaceHoverReveal(display, true);
+  });
   display.addEventListener("pointermove", (event) => {
+    setNodeGraphGraphFaceHoverReveal(display, true);
     const drag = nodeGraphMvp?.graphNodeDragging;
     const onThisFace = drag && (drag.display === display || drag.nodeId === display.dataset.graphNode);
     if (onThisFace) {
@@ -1571,6 +1529,7 @@ function bindNodeGraphGraphFaceHover(display) {
   display.addEventListener("pointerleave", () => {
     const drag = nodeGraphMvp?.graphNodeDragging;
     if (drag && (drag.display === display || drag.nodeId === display.dataset.graphNode)) {
+      setNodeGraphGraphFaceHoverReveal(display, true);
       if (drag.mode === "cursor") {
         clearNodeGraphGraphHotMarks(display);
         setNodeGraphGraphPhaseHot(display, true);
@@ -1586,6 +1545,7 @@ function bindNodeGraphGraphFaceHover(display) {
       }
       return;
     }
+    setNodeGraphGraphFaceHoverReveal(display, false);
     clearNodeGraphGraphHotMarks(display);
     clearNodeGraphGraphPhaseHot(display);
   });
@@ -2378,7 +2338,7 @@ function dragNodeGraphGraphNode(event) {
     const nodes = [...(drag.graph.nodes || [])];
     const current = nodes[drag.index] || normalizeNodeGraphGraphNode({}, drag.index);
     // Handle is drawn at effective contour (c + curveOffset). Store residual c
-    // so nonzero Curve Offset does not double-apply / slam to hard step.
+    // so nonzero Skew Offset does not double-apply / slam to hard step.
     const curveOffset = normalizeNodeGraphGraphNumber(
       faceRenderOptions?.segmentOptions?.curveOffset,
       0,
@@ -2711,6 +2671,10 @@ function selectFocusedNodeGraphGraphNodeOffset(offset) {
 }
 
 function nudgeFocusedNodeGraphGraphNode(event) {
+  if (event?.key === "ArrowUp" || event?.key === "ArrowDown"
+      || event?.key === "ArrowLeft" || event?.key === "ArrowRight") {
+    return false;
+  }
   const display = document.activeElement?.closest?.(".node-module-graph-display");
   const moves = {
     ArrowDown: { x: 0, y: -1 },
@@ -2790,15 +2754,11 @@ function syncNodeGraphGraphLivePlayheads() {
   }
 }
 
-// Registering this at top-level script scope (rather than inside an init
-// function) used to throw ReferenceError: node-graph-module-scopes.js --
-// which defines addNodeGraphModuleScopeSnapshotListener -- loads AFTER this
-// file in index.html, so the identifier didn't exist yet when this line ran.
-// That uncaught exception didn't stop OTHER scripts from loading (each
-// <script> tag is its own execution context), but it's still a real crash
-// worth not having. Deferring to DOMContentLoaded guarantees every
-// synchronous, non-deferred <script> tag (all of them, here) has already
-// run by the time this fires.
-document.addEventListener("DOMContentLoaded", () => {
+// graph-utils loads before module-scopes in the boot-defer list, and those
+// scripts execute after DOMContentLoaded — so waiting on that event never
+// attaches the purple ghost. Queue if scopes is not up yet.
+if (typeof addNodeGraphModuleScopeSnapshotListener === "function") {
   addNodeGraphModuleScopeSnapshotListener(syncNodeGraphGraphLivePlayheads);
-});
+} else {
+  (globalThis.__nodeGraphScopeSnapshotPending ||= []).push(syncNodeGraphGraphLivePlayheads);
+}

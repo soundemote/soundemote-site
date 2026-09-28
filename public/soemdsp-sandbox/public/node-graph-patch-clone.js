@@ -32,6 +32,13 @@ function normalizeNodeGraphPatchPortMeta(portMeta = {}) {
   };
 }
 
+function nodeGraphModuleButtonsVisibleByDefault(type = "") {
+  // Input + Output spawn with buttons shown (not hidden). That is only a
+  // default — never force-show; every module must allow hiding buttons.
+  const t = String(type || "");
+  return t === "audioInput" || t === "output";
+}
+
 function normalizeNodeGraphPatchNodeUi(ui = {}, type = "") {
   const source = ui && typeof ui === "object" ? ui : {};
   const alwaysHideSliders = type
@@ -43,10 +50,23 @@ function normalizeNodeGraphPatchNodeUi(ui = {}, type = "") {
     ? Boolean(source.titleHidden)
     : false;
   const absoluteFace = Number(source.displayHeightGu);
+  // Default: buttons hidden for most modules; Input/Output show buttons.
+  // buttonsForceShow is NEVER implied by type — only an explicit local override
+  // (e.g. show buttons while the global Buttons visibility switch is off).
+  const buttonsVisibleByDefault = nodeGraphModuleButtonsVisibleByDefault(type);
+  const buttonsHidden = Object.prototype.hasOwnProperty.call(source, "buttonsHidden")
+    ? Boolean(source.buttonsHidden)
+    : !buttonsVisibleByDefault;
+  const buttonsForceShow = (
+    Object.prototype.hasOwnProperty.call(source, "buttonsForceShow")
+    || Object.prototype.hasOwnProperty.call(source, "buttonsShown")
+  )
+    ? Boolean(source.buttonsForceShow || source.buttonsShown)
+    : false;
   const normalized = {
-    buttonsHidden: Boolean(source.buttonsHidden),
+    buttonsHidden,
     // Force-show override when Visibility has the section globally hidden.
-    buttonsForceShow: Boolean(source.buttonsForceShow || source.buttonsShown),
+    buttonsForceShow,
     displayHeightOffsetGu: type
       ? normalizeNodeGraphModuleDisplayHeightOffsetUnits(type, source.displayHeightOffsetGu)
       : normalizeNodeGraphModuleDisplayHeightOffsetUnits(source.displayHeightOffsetGu),
@@ -70,10 +90,12 @@ function normalizeNodeGraphPatchNodeUi(ui = {}, type = "") {
     titleHidden,
   };
   // Absolute face height (spawn/resize). Preferred over offset-from-type-default.
-  if (Number.isFinite(absoluteFace) && absoluteFace > 0) {
+  // 0 is Off (omit the face track). A stored 0 must not fall through to the
+  // type default — that brought the face back and let it share a row with I/O.
+  if (Number.isFinite(absoluteFace) && absoluteFace >= 0) {
     normalized.displayHeightGu = type
       ? normalizeNodeGraphModuleDisplayHeightUnits(absoluteFace, type)
-      : Math.max(1, Math.round(absoluteFace));
+      : Math.max(0, Math.round(absoluteFace));
   }
   return normalized;
 }
@@ -236,6 +258,8 @@ function nodeGraphDefaultNodeTitle(type, id) {
  * Same resolution as nodeGraphPatchNodeTitle for ordinary modules.
  */
 function nodeGraphModuleChromeTitle(node) {
+  // Chrome / rename identity = Title (alias). Visible Display override is separate
+  // (faces, portal jack labels) via nodeGraphPatchNodeEffectiveDisplay.
   if (typeof nodeGraphPatchNodeTitle === "function") {
     return nodeGraphPatchNodeTitle(node);
   }
@@ -258,6 +282,63 @@ function nodeGraphPatchNodeTitle(node) {
   return normalizeNodeGraphPatchNodeAlias(patchNode.alias) || nodeGraphDefaultNodeTitle(patchNode.type, patchNode.id);
 }
 
+
+/** Max length for Module Settings Display override (same as knob face label). */
+const NODE_GRAPH_MODULE_DISPLAY_TEXT_MAX = 48;
+
+/**
+ * Policy B — Display follows Title until the user sets Display.
+ * Normalize a stored Display override (empty ⇒ unset ⇒ follow title).
+ */
+function normalizeNodeGraphPatchNodeDisplay(value) {
+  if (typeof nodeGraphKnobFaceNormalizeLabelText === "function") {
+    return nodeGraphKnobFaceNormalizeLabelText(value);
+  }
+  return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, NODE_GRAPH_MODULE_DISPLAY_TEXT_MAX);
+}
+
+/** Types that store Display in face settings labelText (not node.display). */
+function nodeGraphModuleUsesFaceLabelDisplay(type) {
+  return type === "knob"
+    || type === "pluginSlider"
+    || type === "toggleButton"
+    || type === "momentaryButton";
+}
+
+/**
+ * Stored Display override only (may be ""). Empty means follow title — never a blank label.
+ * Knobs/buttons: face labelText. Everyone else: node.display.
+ */
+function nodeGraphPatchNodeDisplayOverride(node) {
+  const patchNode = typeof node === "string"
+    ? (typeof nodeGraphPatchNode === "function" ? nodeGraphPatchNode(node) : null)
+    : node;
+  if (!patchNode || typeof patchNode !== "object") {
+    return "";
+  }
+  if (nodeGraphModuleUsesFaceLabelDisplay(patchNode.type)) {
+    if (typeof nodeGraphKnobDisplayNameForNode === "function") {
+      return nodeGraphKnobDisplayNameForNode(patchNode);
+    }
+    return "";
+  }
+  return normalizeNodeGraphPatchNodeDisplay(patchNode.display);
+}
+
+/**
+ * Effective display label app-wide: non-empty Display override, else module title.
+ * Clearing Display snaps back to title (no blank labels).
+ */
+function nodeGraphPatchNodeEffectiveDisplay(node) {
+  const override = nodeGraphPatchNodeDisplayOverride(node);
+  if (override) {
+    return override;
+  }
+  return typeof nodeGraphPatchNodeTitle === "function"
+    ? nodeGraphPatchNodeTitle(node)
+    : "";
+}
+
 function cloneNodeGraphTypedDisplaySettings(node) {
   const displayType = typeof nodeGraphModuleDisplaySettingsSchemaForNode === "function"
     ? nodeGraphModuleDisplaySettingsSchemaForNode(node)
@@ -266,10 +347,18 @@ function cloneNodeGraphTypedDisplaySettings(node) {
   const migrate = typeof migrateNodeGraphLegacyDot2Settings === "function"
     ? migrateNodeGraphLegacyDot2Settings
     : (settings) => settings;
-  const bag = migrate(node?.traceDisplaySettings, displayType === "trace" && isOutput);
+  const bag = migrate(node?.traceDisplaySettings, displayType === "waterfall" && isOutput);
   switch (displayType) {
     case "dot":
       return { zeroDBurnSettings: normalizeNodeGraphZeroDBurnSettings(migrate(node.zeroDBurnSettings, false)) };
+    case "lcdDot": {
+      const packed = node.vectorDotSettings || node.lcdDotSettings || {};
+      return {
+        vectorDotSettings: typeof normalizeNodeGraphLcdDotSettings === "function"
+          ? normalizeNodeGraphLcdDotSettings(packed)
+          : packed,
+      };
+    }
     case "vectorDot":
     case "pulseDot": {
       const packed = node.vectorDotSettings
@@ -288,6 +377,12 @@ function cloneNodeGraphTypedDisplaySettings(node) {
       return { traceDisplaySettings: normalizeNodeGraphLineBurnSettings(bag) };
     case "value":
       return { traceDisplaySettings: normalizeNodeGraphValueOscilloscopeSettings(bag) };
+    case "ensembleCloud":
+      return {
+        traceDisplaySettings: typeof normalizeNodeGraphEnsembleCloudSettings === "function"
+          ? normalizeNodeGraphEnsembleCloudSettings(bag)
+          : { cloudSpeed: 0.5 },
+      };
     case "hypersawBurn": {
       return {
         traceDisplaySettings: typeof normalizeNodeGraphHypersawBurnSettings === "function"
@@ -312,6 +407,8 @@ function cloneNodeGraphTypedDisplaySettings(node) {
         : null;
       return { traceDisplaySettings: normalizeNodeGraphScope2dSettings(mapped, typeDefaults) };
     }
+    case "scope1dTrace":
+      return { traceDisplaySettings: normalizeNodeGraphScope1dTraceSettings(bag) };
     case "scope2dTrace": {
       const typeDefaults = typeof nodeGraphScope2dTraceSettingsDefaultsForModuleType === "function"
         ? nodeGraphScope2dTraceSettingsDefaultsForModuleType(node?.type)
@@ -339,11 +436,11 @@ function cloneNodeGraphTypedDisplaySettings(node) {
           : merged,
       };
     }
-    case "phosphorWaveform":
+    case "sampleWaveform":
       return {
-        phosphorWaveformSettings: typeof normalizeNodeGraphPhosphorWaveformSettings === "function"
-          ? normalizeNodeGraphPhosphorWaveformSettings(node.phosphorWaveformSettings)
-          : (node.phosphorWaveformSettings || {}),
+        sampleWaveformSettings: typeof normalizeNodeGraphSampleWaveformSettings === "function"
+          ? normalizeNodeGraphSampleWaveformSettings(node.sampleWaveformSettings)
+          : (node.sampleWaveformSettings || {}),
       };
     case "arpKeysFace":
       return {
@@ -357,12 +454,27 @@ function cloneNodeGraphTypedDisplaySettings(node) {
           ? normalizeNodeGraphTransportSettings(node.transportSettings)
           : (node.transportSettings || { gateBlink: false }),
       };
+    case "harmonicLines":
+      return {
+        harmonicLinesSettings: typeof normalizeNodeGraphHarmonicLinesSettings === "function"
+          ? normalizeNodeGraphHarmonicLinesSettings(node.harmonicLinesSettings)
+          : (node.harmonicLinesSettings || { lineWidth: 2 }),
+      };
     case "knobFace":
       return {
         traceDisplaySettings: typeof normalizeNodeGraphKnobFaceDisplaySettings === "function"
           ? normalizeNodeGraphKnobFaceDisplaySettings(bag)
           : (bag || {}),
       };
+    case "graphFace":
+      return typeof normalizeNodeGraphGraphFaceDisplaySettings === "function"
+        ? { traceDisplaySettings: normalizeNodeGraphGraphFaceDisplaySettings(bag) }
+        : { traceDisplaySettings: bag || {} };
+    case "phaserFace":
+      return typeof normalizeNodeGraphPhaserFaceDisplaySettings === "function"
+        ? { traceDisplaySettings: normalizeNodeGraphPhaserFaceDisplaySettings(bag) }
+        : { traceDisplaySettings: bag || {} };
+
     case "portalFace": {
       const channel = typeof nodeGraphPortalClampChannel === "function"
         ? nodeGraphPortalClampChannel(node?.params?.channel)
@@ -379,7 +491,7 @@ function cloneNodeGraphTypedDisplaySettings(node) {
     case "momentaryButtonFace":
       return {
         traceDisplaySettings: typeof normalizeNodeGraphPluginButtonDisplaySettings === "function"
-          ? normalizeNodeGraphPluginButtonDisplaySettings(bag)
+          ? normalizeNodeGraphPluginButtonDisplaySettings(bag, displayType)
           : (bag || {}),
       };
     case "keypadFace":
@@ -476,10 +588,10 @@ function cloneNodeGraphTypedDisplaySettings(node) {
             : (settings || {})),
       };
     }
-    case "trace":
-    case "traceXyz":
-    case "traceRgb":
-      return { traceDisplaySettings: normalizeNodeGraphTraceDisplaySettings(bag) };
+    case "waterfall":
+    case "waterfallXyz":
+    case "waterfallRgb":
+      return { traceDisplaySettings: normalizeNodeGraphWaterfallSettings(bag) };
     default:
       if (node?.traceDisplaySettings && typeof node.traceDisplaySettings === "object") {
         return { traceDisplaySettings: { ...node.traceDisplaySettings } };
@@ -509,7 +621,6 @@ function cloneNodeGraphPatch(patch) {
       ...modulation,
       tracePoints: normalizeNodeGraphTracePoints(modulation.tracePoints),
     })),
-    monitors: normalizeNodeGraphPatchMonitors(patch.monitors, patch),
     nodes: (patch.nodes || []).map((rawNode) => {
       const node = typeof migrateNodeGraphPhosphorLightToScope2d === "function"
         ? migrateNodeGraphPhosphorLightToScope2d(rawNode)
@@ -522,8 +633,16 @@ function cloneNodeGraphPatch(patch) {
       }
       return {
         ...node,
-        ...(normalizeNodeGraphPatchNodeAlias(node.alias)
-          ? { alias: normalizeNodeGraphPatchNodeAlias(node.alias) }
+        ...((() => {
+          const isPortal = typeof nodeGraphIsNamedPortalType === "function"
+            && nodeGraphIsNamedPortalType(node.type);
+          const alias = isPortal && typeof normalizeNodeGraphNamedPortalAlias === "function"
+            ? normalizeNodeGraphNamedPortalAlias(node.alias)
+            : normalizeNodeGraphPatchNodeAlias(node.alias);
+          return alias ? { alias } : {};
+        })()),
+        ...(normalizeNodeGraphPatchNodeDisplay(node.display)
+          ? { display: normalizeNodeGraphPatchNodeDisplay(node.display) }
           : {}),
         ...(nodeGraphModuleDefinitions[node.type]?.layout === "textBox"
           ? { layout: normalizeNodeGraphTextBoxLayout(node.layout) }
@@ -553,18 +672,19 @@ function cloneNodeGraphPatch(patch) {
               : nodeGraphGraphWithPhaseCursor(node),
           }
           : {}),
+    ...(node.type === "codeBox"
+      ? {
+          codeBox: typeof normalizeNodeGraphCodeBox === "function"
+            ? normalizeNodeGraphCodeBox(node.codeBox)
+            : (node.codeBox || { localText: "" }),
+        }
+      : {}),
         ...(node.type === "sequencer"
           ? {
             sequencer: typeof sequencerCloneClip === "function"
               ? sequencerCloneClip(node.sequencer)
               : (node.sequencer && typeof node.sequencer === "object" ? { ...node.sequencer } : undefined),
           }
-          : {}),
-        ...(node.type === "codeblock"
-          ? { codeblock: normalizeNodeGraphCodeblock(node.codeblock) }
-          : {}),
-        ...(node.type === "customDisplay"
-          ? { customDisplay: normalizeNodeGraphCustomDisplay(node.customDisplay) }
           : {}),
         ...(node.type === "matrixWaterfall" && typeof normalizeNodeGraphMatrixWaterfall === "function"
           ? {
@@ -602,7 +722,7 @@ function cloneNodeGraphPatch(patch) {
         ...(Object.hasOwn(node, "scopeShader")
           ? { scopeShader: normalizeNodeGraphScopeShader(node.scopeShader) }
           : {}),
-        ...((node.type === "samplePlayer" || node.type === "sampleLooper" || node.type === "audioPlayer") && node.sample
+        ...((node.type === "samplePlayer" || node.type === "sampleLooper" || node.type === "audioPlayer" || node.type === "wavetable2d") && node.sample
           ? (() => {
             const pointer = typeof normalizeNodeGraphNodeSamplePointer === "function"
               ? normalizeNodeGraphNodeSamplePointer(node.sample)
@@ -610,8 +730,13 @@ function cloneNodeGraphPatch(patch) {
             return pointer ? { sample: pointer } : {};
           })()
           : {}),
-        ...(node.type === "audioPlayer" && Object.hasOwn(node, "phosphorWaveformSettings")
-          ? { phosphorWaveformSettings: normalizeNodeGraphPhosphorWaveformSettings(node.phosphorWaveformSettings) }
+        ...((node.type === "audioPlayer" || node.type === "samplePlayer" || node.type === "wavetable2d")
+          && Object.hasOwn(node, "sampleWaveformSettings")
+          ? {
+            sampleWaveformSettings: typeof normalizeNodeGraphSampleWaveformSettings === "function"
+              ? normalizeNodeGraphSampleWaveformSettings(node.sampleWaveformSettings)
+              : (node.sampleWaveformSettings || {}),
+          }
           : {}),
         ...(node.type === "arp" && Object.hasOwn(node, "arpKeysSettings")
           ? {

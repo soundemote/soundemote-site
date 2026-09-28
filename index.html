@@ -10,6 +10,34 @@
     <meta name="theme-color" content="#39e6a3" />
     <link rel="canonical" href="https://soundemote.io/" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- .com uses favicon-com.svg; .io/.dev keep favicon.svg. Swap early so the tab icon is correct before React. -->
+    <script>
+      (function () {
+        try {
+          var h = (location.hostname || "").toLowerCase().replace(/\.$/, "");
+          var q = new URLSearchParams(location.search).get("site");
+          var isCom = h === "soundemote.com" || h === "www.soundemote.com" || q === "com";
+          if (!isCom) return;
+          var link = document.querySelector('link[rel="icon"]');
+          if (link) {
+            link.setAttribute("href", "/favicon-com.svg?v=e97e76105648");
+          } else {
+            link = document.createElement("link");
+            link.rel = "icon";
+            link.type = "image/svg+xml";
+            link.href = "/favicon-com.svg?v=e97e76105648";
+            document.head.appendChild(link);
+          }
+          var apple = document.querySelector('link[rel="apple-touch-icon"]');
+          if (!apple) {
+            apple = document.createElement("link");
+            apple.rel = "apple-touch-icon";
+            document.head.appendChild(apple);
+          }
+          apple.setAttribute("href", "/favicon-com.svg?v=e97e76105648");
+        } catch (e) { /* ignore */ }
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Symbols:wght@400;700&family=Noto+Sans+Symbols+2&display=swap" rel="stylesheet" />

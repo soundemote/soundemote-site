@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import ShareProjectDialog from "./ShareProjectDialog";
 import { useAuth } from "@/hooks/useAuth";
 import soundemoteLogo from "@/assets/soundemote-logo.svg.asset.json";
+import { getSiteRole } from "@/lib/siteHost";
 
 type Burst = {
   id: number;
@@ -168,19 +169,21 @@ export const Nav = () => {
 
 
 
-        <a
-          href="https://github.com/soundemote"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex h-6 w-6 items-center justify-center rounded-sm hover:opacity-80"
-          aria-label="GitHub"
-        >
-          <img
-            src="/social/github.svg"
-            alt="GitHub"
-            className="h-4 w-4"
-          />
-        </a>
+        {getSiteRole() !== "dev" && (
+          <a
+            href="https://github.com/soundemote"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-sm hover:opacity-80"
+            aria-label="GitHub"
+          >
+            <img
+              src="/social/github.svg"
+              alt="GitHub"
+              className="h-4 w-4"
+            />
+          </a>
+        )}
         <a
           href="https://www.youtube.com/@soundemote0"
           target="_blank"

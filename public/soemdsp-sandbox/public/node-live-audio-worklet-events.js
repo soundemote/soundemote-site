@@ -71,12 +71,15 @@ NodeLiveAudioProcessor.prototype.setSpeed = function setSpeed(speed, options) {
 
 NodeLiveAudioProcessor.prototype.setSpeedLimit = function setSpeedLimit(limit) {
     const value = Number(limit);
-    this.speedLimit = Number.isFinite(value) && value > 0 ? value : 20000;
+    this.speedLimit = Number.isFinite(value) && value > 0 ? value : 22050;
+    if (typeof this.applyNativeGraphSpeedLimit === "function") {
+      this.applyNativeGraphSpeedLimit();
+    }
 };
 
 NodeLiveAudioProcessor.prototype.speedLimitHz = function speedLimitHz() {
     const value = Number(this.speedLimit);
-    return Number.isFinite(value) && value > 0 ? value : 20000;
+    return Number.isFinite(value) && value > 0 ? value : 22050;
 };
 
 /**
@@ -96,7 +99,7 @@ NodeLiveAudioProcessor.prototype.readFInputHz = function readFInputHz(mixInput, 
 };
 
 /**
- * Wired ƒ = absolute Hz; else 0.1V/Oct pitches the Frequency / cutoff knob.
+ * Wired ƒ = absolute Hz; else pitch pitches the Frequency / cutoff knob.
  * Worklet twin of nodeGraphFrequencyHzFromKnobOrF.
  */
 NodeLiveAudioProcessor.prototype.frequencyHzFromKnobOrF = function frequencyHzFromKnobOrF(
@@ -182,6 +185,10 @@ NodeLiveAudioProcessor.prototype.setBugButtonInteraction = function setBugButton
 };
 
 NodeLiveAudioProcessor.prototype.setConnections = function setConnections(plan, message = {}) {
+    // Live OS / engine-rate updates arrive on setConnections (plan shape unchanged).
+    if (typeof this.applyOversamplingFromMessage === "function") {
+      this.applyOversamplingFromMessage(message);
+    }
     this.patchFingerprint = message.patchFingerprint || plan?.patchFingerprint || this.patchFingerprint || "";
     this.planSerial = message.planSerial || this.planSerial || 0;
     this.sessionId = message.sessionId || this.sessionId || 0;
@@ -213,6 +220,12 @@ NodeLiveAudioProcessor.prototype.setConnections = function setConnections(plan, 
         this.applyNativeGraphPitchOffset();
       }
     }
+    if (typeof this.applyNativeGraphPitchReference === "function") {
+      this.applyNativeGraphPitchReference();
+    }
+    if (Number.isFinite(Number(message.speedLimit))) {
+      this.setSpeedLimit(message.speedLimit);
+    }
     if (Number.isFinite(Number(message.displayFps))) {
       this.displayFps = Math.max(0, Math.min(240, Math.round(Number(message.displayFps))));
     }
@@ -233,6 +246,9 @@ NodeLiveAudioProcessor.prototype.setConnections = function setConnections(plan, 
           continue;
         }
         current.bypassed = Boolean(node.bypassed) || bypassed.has(node.id);
+        if (Object.hasOwn(node, "alias")) {
+          current.alias = node.alias ? String(node.alias) : undefined;
+        }
         if (node.bypassSpec && typeof node.bypassSpec === "object") {
           current.bypassSpec = node.bypassSpec;
         }
@@ -328,6 +344,9 @@ NodeLiveAudioProcessor.prototype.setParams = function setParams(nodes, message =
         current.samplePhaseSeek = Math.max(0, Math.round(Number(node.samplePhaseSeek)) || 0);
       }
       parameterCount += Object.keys(current.params || {}).length;
+      if (Array.isArray(node._pendingSnapParams) && node._pendingSnapParams.length) {
+        current._pendingSnapParams = node._pendingSnapParams.slice();
+      }
       // Legacy JS chase only for ?product=full — efficient path is write-only.
       if (!this.efficientProduct) {
         for (const [key, value] of Object.entries(current.params || {})) {
@@ -345,9 +364,15 @@ NodeLiveAudioProcessor.prototype.setParams = function setParams(nodes, message =
       this.activeSmoothers = [];
       this.activeSmootherKeys?.clear?.();
     }
+    if (typeof this.applyPendingParamSnaps === "function") {
+      this.applyPendingParamSnaps();
+    }
     // Efficient mode: push Control targets into native graph (no recompile).
     if (this.efficientProduct && typeof this.syncNativeGraphParams === "function") {
       this.syncNativeGraphParams();
+    }
+    if (typeof this.clearPendingParamSnaps === "function") {
+      this.clearPendingParamSnaps();
     }
     this.port.postMessage({
       nodeCount: this.nodes.size,
@@ -456,13 +481,9 @@ NodeLiveAudioProcessor.prototype._normalizeKeyboardSignalPayload = function _nor
         0,
         1,
       ),
-      tenthVoltPerOctave: this.clampValue(
-        Number.isFinite(Number(source.tenthVoltPerOctave))
-          ? Number(source.tenthVoltPerOctave)
-          : midi / 120,
-        0,
-        1,
-      ),
+      tenthVoltPerOctave: Number.isFinite(Number(source.tenthVoltPerOctave))
+        ? Number(source.tenthVoltPerOctave)
+        : midi / 120,
       increment: Math.max(
         0,
         Number.isFinite(Number(source.increment)) && Number(source.increment) > 0
@@ -487,12 +508,6 @@ NodeLiveAudioProcessor.prototype.setKeyboardModuleSignal = function setKeyboardM
       pulse: true,
       previous: this.keyboardModuleSignal,
     });
-};
-
-NodeLiveAudioProcessor.prototype.setMacroControls = function setMacroControls(values) {
-    this.macroControls = Array.from({ length: 8 }, (_, index) => (
-      this.clampValue(nodeGraphFiniteNumber(values?.[index]), 0, 1)
-    ));
 };
 
 NodeLiveAudioProcessor.prototype.setMidiKeyboardPlayKeysBitmask = function setMidiKeyboardPlayKeysBitmask(mask) {

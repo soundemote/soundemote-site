@@ -2,6 +2,38 @@ function nodeGraphBypassGlyph(bypassed) {
   return "\u{1F5F2}";
 }
 
+/**
+ * Shared enable/disable (bypass) control look + pressed state.
+ * Module header buttons and Module Settings use the same button chrome.
+ */
+function syncNodeGraphBypassButtonElement(button, options = {}) {
+  if (!button) {
+    return;
+  }
+  const bypassed = Boolean(options.bypassed);
+  const pressed = bypassed ? "true" : "false";
+  const glyph = typeof nodeGraphBypassGlyph === "function"
+    ? nodeGraphBypassGlyph(bypassed)
+    : "\u{1F5F2}";
+  if (options.disabled != null) {
+    button.disabled = Boolean(options.disabled);
+  }
+  if (options.hidden != null) {
+    button.hidden = Boolean(options.hidden);
+  }
+  button.classList.add("node-bypass-button");
+  button.setAttribute("aria-pressed", pressed);
+  if (button.textContent !== glyph) {
+    button.textContent = glyph;
+  }
+  if (options.title != null) {
+    button.title = String(options.title);
+  }
+  if (options.ariaLabel != null) {
+    button.setAttribute("aria-label", String(options.ariaLabel));
+  }
+}
+
 function normalizeNodeGraphPatchParameter(type, key, value, metadata = null) {
   let parameter = nodeGraphModuleDefinitions[type]?.parameters?.find(
     (candidate) => candidate.key === key,
@@ -88,6 +120,7 @@ const nodeGraphRetiredNodeTypes = new Set([
   "moduleHome",
   "moduleShop",
   "scriptBox",
+  "codeblock",
   // Replaced by Yellow Graph chain: Additive Generator → filters/Growl/Noisy → Out.
   "additiveOsc",
   "gpuAdditiveOsc",
@@ -317,23 +350,6 @@ function validateNodeGraphPatch(patch) {
               && Object.hasOwn(rawParams, "shape")
               ? rawParams.shape
               : parameter.defaultValue)));
-      // Range: exact old defaults Out −10…+10 peg Morph MOD (|v|>1 = domain-add).
-      // Rewrite only that pair (and matching In −1…+1) to unit CV 0…1.
-      // Intentional Hz maps (Out High 1000, etc.) are left alone.
-      if (type === "range") {
-        const oLo = Number(rawParams.outLow);
-        const oHi = Number(rawParams.outHigh);
-        if (oLo === -10 && oHi === 10) {
-          if (parameter.key === "outLow") value = 0;
-          if (parameter.key === "outHigh") value = 1;
-          const iLo = Number(rawParams.inLow);
-          const iHi = Number(rawParams.inHigh);
-          if (iLo === -1 && iHi === 1) {
-            if (parameter.key === "inLow") value = 0;
-            if (parameter.key === "inHigh") value = 1;
-          }
-        }
-      }
       // Pluck Envelope: Dampen (0=long…1=short) → Decay (0=short…1=long), inverted.
       if (
         type === "pluckEnvelope3"
@@ -416,6 +432,32 @@ function validateNodeGraphPatch(patch) {
           value = (Math.log(100) - Math.log(r)) / (Math.log(100) - Math.log(1e-4));
         }
       }
+      // Graphic EQ: old unit −1…+1 × Range (±6/±12/±18) → absolute dB (±12 UI).
+      // Run once on the first parameter so every band sees converted rawParams.
+      if (type === "graphicEq" && Number(rawParams._graphicEqDbBands) !== 1) {
+        const sampleMetaMax = Number(rawParamMeta.band0?.max ?? rawParamMeta.band16?.max);
+        const legacy = Object.hasOwn(rawParams, "range")
+          || (Number.isFinite(sampleMetaMax) && sampleMetaMax <= 1.0001);
+        if (legacy) {
+          let rangeDb = 12;
+          const rangeChoice = Number(rawParams.range);
+          if (Number.isFinite(rangeChoice)) {
+            if (rangeChoice <= 0) rangeDb = 6;
+            else if (rangeChoice >= 2) rangeDb = 18;
+            else rangeDb = 12;
+          }
+          for (let i = 0; i < 30; i += 1) {
+            const key = `band${i}`;
+            if (!Object.hasOwn(rawParams, key)) continue;
+            const n = Number(rawParams[key]);
+            if (Number.isFinite(n)) rawParams[key] = n * rangeDb;
+          }
+        }
+        rawParams._graphicEqDbBands = 1;
+        if (Object.hasOwn(rawParams, "range")) delete rawParams.range;
+        if (Object.hasOwn(rawParamMeta, "range")) delete rawParamMeta.range;
+        if (Object.hasOwn(rawParams, parameter.key)) value = rawParams[parameter.key];
+      }
       // Chaosfly LP/HP/Pitch: old 0…1 amount → −10…+10 octave offset.
       // Stale values in (0,1] are meaningless as octaves; snap to 0 (at master).
       if (
@@ -464,6 +506,14 @@ function validateNodeGraphPatch(patch) {
             ? 20000
             : (n <= 0 ? 0 : -44100 * Math.log(1 - n) / (2 * Math.PI));
         }
+      }
+      if (type === "stepGraph" && node.params && Object.prototype.hasOwnProperty.call(node.params, "curveOffset") && !Object.prototype.hasOwnProperty.call(node.params, "skewOffset")) {
+        node.params.skewOffset = node.params.curveOffset;
+        delete node.params.curveOffset;
+      }
+      if (type === "stepGraph" && node.paramMeta && node.paramMeta.curveOffset && !node.paramMeta.skewOffset) {
+        node.paramMeta.skewOffset = node.paramMeta.curveOffset;
+        delete node.paramMeta.curveOffset;
       }
       if (type === "smoothGraph" && parameter.key === "smoothingMode") {
         const sourceMax = Number(node.paramMeta?.[parameter.key]?.max);
@@ -517,6 +567,23 @@ function validateNodeGraphPatch(patch) {
       ...(normalizeNodeGraphPatchNodeAlias(node.alias)
         ? { alias: normalizeNodeGraphPatchNodeAlias(node.alias) }
         : {}),
+      ...((type === "knob" || type === "pluginSlider" || type === "toggleButton" || type === "momentaryButton")
+        && String(node.pluginFolder || "").trim()
+        ? { pluginFolder: String(node.pluginFolder).trim() }
+        : {}),
+      ...((type === "knob" || type === "pluginSlider" || type === "toggleButton" || type === "momentaryButton")
+        && String(node.pluginName || "").trim()
+        ? { pluginName: String(node.pluginName).trim() }
+        : {}),
+      ...((type === "knob" || type === "pluginSlider" || type === "toggleButton" || type === "momentaryButton") && (() => {
+        if (node.pluginId !== 0 && !node.pluginId) {
+          return false;
+        }
+        const n = Math.round(Number(node.pluginId));
+        return Number.isFinite(n);
+      })()
+        ? { pluginId: Math.max(0, Math.min(31, Math.round(Number(node.pluginId)))) }
+        : {}),
       ...(hasCustomWidth ? { widthGu } : {}),
       ...(hasCustomModuleHeight ? { heightGu } : {}),
     };
@@ -546,16 +613,15 @@ function validateNodeGraphPatch(patch) {
         ? nodeGraphGraphWithLockedEndpointY(phaseLinkedGraph)
         : phaseLinkedGraph;
     }
-    if (type === "codeblock") {
-      normalizedNode.codeblock = normalizeNodeGraphCodeblock(node.codeblock);
+    if (type === "codeBox") {
+      normalizedNode.codeBox = typeof normalizeNodeGraphCodeBox === "function"
+        ? normalizeNodeGraphCodeBox(node.codeBox)
+        : { localText: String(node?.codeBox?.localText ?? "") };
     }
     if (type === "sequencer") {
       normalizedNode.sequencer = typeof sequencerCloneClip === "function"
         ? sequencerCloneClip(node.sequencer)
         : (node.sequencer && typeof node.sequencer === "object" ? node.sequencer : undefined);
-    }
-    if (type === "customDisplay") {
-      normalizedNode.customDisplay = normalizeNodeGraphCustomDisplay(node.customDisplay);
     }
     if (type === "bugButton") {
       normalizedNode.bugButton = {
@@ -619,7 +685,7 @@ function validateNodeGraphPatch(patch) {
       normalizedNode.scopeShader = normalizeNodeGraphScopeShader(node.scopeShader);
     }
     if (
-      (type === "samplePlayer" || type === "sampleLooper" || type === "audioPlayer") &&
+      (type === "samplePlayer" || type === "sampleLooper" || type === "audioPlayer" || type === "wavetable2d") &&
       node.sample
     ) {
       const pointer = typeof normalizeNodeGraphNodeSamplePointer === "function"
@@ -629,13 +695,23 @@ function validateNodeGraphPatch(patch) {
         normalizedNode.sample = pointer;
       }
     }
-    if (type === "audioPlayer" && Object.hasOwn(node, "phosphorWaveformSettings")) {
-      normalizedNode.phosphorWaveformSettings = normalizeNodeGraphPhosphorWaveformSettings(node.phosphorWaveformSettings);
+    if (
+      (type === "audioPlayer" || type === "samplePlayer" || type === "wavetable2d")
+      && Object.hasOwn(node, "sampleWaveformSettings")
+    ) {
+      normalizedNode.sampleWaveformSettings = typeof normalizeNodeGraphSampleWaveformSettings === "function"
+        ? normalizeNodeGraphSampleWaveformSettings(node.sampleWaveformSettings)
+        : (node.sampleWaveformSettings || {});
     }
     if (type === "arp" && Object.hasOwn(node, "arpKeysSettings")) {
       normalizedNode.arpKeysSettings = typeof normalizeNodeGraphArpKeysSettings === "function"
         ? normalizeNodeGraphArpKeysSettings(node.arpKeysSettings)
         : node.arpKeysSettings;
+    }
+    if (type === "additiveOut" && Object.hasOwn(node, "harmonicLinesSettings")) {
+      normalizedNode.harmonicLinesSettings = typeof normalizeNodeGraphHarmonicLinesSettings === "function"
+        ? normalizeNodeGraphHarmonicLinesSettings(node.harmonicLinesSettings)
+        : node.harmonicLinesSettings;
     }
     // Remembered playhead (0..1) so Music Player restores position after refresh.
     if (type === "audioPlayer" && Object.hasOwn(node, "samplePhase")) {
@@ -659,6 +735,14 @@ function validateNodeGraphPatch(patch) {
     // Drop legacy multi-mode face selection (one display type per module now).
     if (ui.displayModeKey) {
       ui.displayModeKey = "";
+    }
+    // Legacy: Input/Output/Patch implied buttonsForceShow, which made Hide
+    // Buttons a no-op. Keep buttons visible by default, but never force-show.
+    if (ui.buttonsForceShow && (type === "output" || type === "audioInput" || type === "patch")) {
+      ui.buttonsForceShow = false;
+      if (!Object.prototype.hasOwnProperty.call(node.ui || {}, "buttonsHidden")) {
+        ui.buttonsHidden = false;
+      }
     }
     if (
       ui.buttonsHidden
@@ -767,16 +851,25 @@ function validateNodeGraphPatch(patch) {
       }
       throw new Error("connection references missing node");
     }
+    sourcePort = normalizeNodeGraphKeyboardNoteOutputPort(sourceType, sourcePort);
+    if (typeof normalizeNodeGraphPitchPortName === "function") {
+      sourcePort = normalizeNodeGraphPitchPortName(sourcePort);
+    }
     sourcePort = nodeGraphCanonicalOutputPort(sourceType, sourcePort);
     if (!nodeGraphPatchNodeOutputPorts(nodeById.get(sourceNode)).includes(sourcePort)) {
-      throw new Error(`connection source port invalid: ${sourceNode}.${sourcePort}`);
+      loadWarnings.push(`connection source port invalid: ${sourceNode}.${sourcePort}`);
+      return [];
     }
     if (destinationType === "output" && destinationPort === "In") {
       destinationPort = "Mono";
     }
+    if (typeof normalizeNodeGraphPitchPortName === "function") {
+      destinationPort = normalizeNodeGraphPitchPortName(destinationPort);
+    }
     destinationPort = nodeGraphCanonicalInputPort(destinationType, destinationPort);
     if (!nodeGraphPatchNodeInputPorts(nodeById.get(destinationNode)).includes(destinationPort)) {
-      throw new Error(`connection destination port invalid: ${destinationNode}.${destinationPort}`);
+      loadWarnings.push(`connection destination port invalid: ${destinationNode}.${destinationPort}`);
+      return [];
     }
     const key = `${sourceNode}.${sourcePort}->${destinationNode}.${destinationPort}`;
     if (connectionKeys.has(key)) {
@@ -819,13 +912,19 @@ function validateNodeGraphPatch(patch) {
         }
         throw new Error("modulation references missing node");
       }
+      sourcePort = normalizeNodeGraphKeyboardNoteOutputPort(sourceType, sourcePort);
+    if (typeof normalizeNodeGraphPitchPortName === "function") {
+      sourcePort = normalizeNodeGraphPitchPortName(sourcePort);
+    }
       sourcePort = nodeGraphCanonicalOutputPort(sourceType, sourcePort);
       if (!nodeGraphPatchNodeOutputPorts(nodeById.get(sourceNode)).includes(sourcePort)) {
-        throw new Error(`modulation source port invalid: ${sourceNode}.${sourcePort}`);
+        loadWarnings.push(`modulation source port invalid: ${sourceNode}.${sourcePort}`);
+        return [];
       }
       const destinationPatchNode = nodeById.get(destinationNode);
       if (!nodeGraphPatchNodeParameterDefinitions(destinationPatchNode).some((parameter) => parameter.key === destinationParam)) {
-        throw new Error(`modulation destination parameter invalid: ${destinationNode}.${destinationParam}`);
+        loadWarnings.push(`modulation destination parameter invalid: ${destinationNode}.${destinationParam}`);
+        return [];
       }
       const key = `${sourceNode}.${sourcePort}->${destinationNode}.${destinationParam}`;
       if (modulationKeys.has(key)) {
@@ -869,12 +968,18 @@ function validateNodeGraphPatch(patch) {
       }
       throw new Error("graph connection references missing node");
     }
+    sourcePort = normalizeNodeGraphKeyboardNoteOutputPort(sourceType, sourcePort);
+    if (typeof normalizeNodeGraphPitchPortName === "function") {
+      sourcePort = normalizeNodeGraphPitchPortName(sourcePort);
+    }
     sourcePort = nodeGraphCanonicalOutputPort(sourceType, sourcePort);
     if (!nodeGraphModuleIsGraphType(sourceType) || sourcePort !== "Out") {
-      throw new Error(`graph connection source must be Graph.Out or Graph 2.Out: ${sourceNode}.${sourcePort}`);
+      loadWarnings.push(`graph connection source invalid: ${sourceNode}.${sourcePort}`);
+      return [];
     }
     if (!nodeGraphModuleGraphInputs(destinationType).includes(destinationGraphInput)) {
-      throw new Error(`graph connection destination invalid: ${destinationNode}.${destinationGraphInput}`);
+      loadWarnings.push(`graph connection destination invalid: ${destinationNode}.${destinationGraphInput}`);
+      return [];
     }
     const key = `${sourceNode}.${sourcePort}->${destinationNode}.${destinationGraphInput}`;
     if (graphConnectionKeys.has(key)) {
@@ -935,10 +1040,6 @@ function validateNodeGraphPatch(patch) {
     info: normalizeNodeGraphPatchInfo(patch.info),
     modularOnlyControlsVisible: Boolean(patch.modularOnlyControlsVisible),
     modulations: metaHygiene.modulations,
-    monitors: normalizeNodeGraphPatchMonitors(patch.monitors, {
-      ...patch,
-      nodes: metaHygiene.nodes,
-    }),
     nodes: metaHygiene.nodes,
     requiredAssets: typeof nodeGraphRequiredAssetsForPatch === "function"
       ? nodeGraphRequiredAssetsForPatch({
@@ -1091,7 +1192,7 @@ function nodeGraphPatchThrowLoadFailure(sourceText, error) {
 
 /**
  * Load + validate a patch from JSON text. Hard-fails with line context for
- * parse / structural errors. Unknown module types are dropped (like delete)
+ * parse / structural errors. Unknown modules and invalid wires are dropped
  * and reported via the patch-load fault dialog; the cleaned patch is returned.
  */
 function loadNodeGraphPatchFromScript(text) {
@@ -1122,7 +1223,7 @@ function loadNodeGraphPatchFromScript(text) {
           prettyClean = source;
         }
       }
-      // Cite first unknown type line in the original pretty source when possible.
+      // Cite first unknown-type / invalid-port line in the original pretty source.
       let prettySource = source;
       try {
         prettySource = JSON.stringify(data, null, 2);
@@ -1131,23 +1232,45 @@ function loadNodeGraphPatchFromScript(text) {
       }
       const firstDetail = warnings[0] || "unknown node type";
       const typeMatch = firstDetail.match(/unknown node type\s+(\S+)/i);
-      const line = typeMatch
-        ? nodeGraphPatchFindLineNumber(prettySource, `"type": "${typeMatch[1]}"`)
+      const portMatch = firstDetail.match(
+        /(?:source port invalid|destination port invalid|destination parameter invalid|graph connection (?:source|destination) invalid):\s*([A-Za-z0-9_.:-]+)/i,
+      );
+      let line = 1;
+      if (typeMatch) {
+        line = nodeGraphPatchFindLineNumber(prettySource, `"type": "${typeMatch[1]}"`)
           || nodeGraphPatchFindLineNumber(prettySource, `"type":"${typeMatch[1]}"`)
-          || 1
-        : 1;
+          || 1;
+      } else if (portMatch) {
+        const nodeId = String(portMatch[1]).split(".")[0];
+        if (nodeId) {
+          line = nodeGraphPatchFindLineNumber(prettySource, `"id": "${nodeId}"`)
+            || nodeGraphPatchFindLineNumber(prettySource, `"id":"${nodeId}"`)
+            || 1;
+        }
+      }
+      const hasUnknown = warnings.some((w) => /unknown node type/i.test(w));
+      const hasWire = warnings.some((w) => /port invalid|parameter invalid|graph connection/i.test(w));
+      const footer = [
+        hasUnknown ? "Unknown modules were removed (as if deleted)." : "",
+        hasWire ? "Invalid wires were disconnected." : "",
+        "Close to keep the cleaned patch in the script editor.",
+      ].filter(Boolean).join(" ");
       const message = [
         nodeGraphPatchLoadFailureMessage(prettySource, line, firstDetail),
         ...(warnings.length > 1 ? warnings.slice(1) : []),
         "",
-        "Unknown modules were removed (as if deleted). Close to keep the cleaned patch in the script editor.",
+        footer,
       ].join("\n");
       if (typeof nodeGraphShowPatchLoadFault === "function") {
         try {
           nodeGraphShowPatchLoadFault({
             message,
             script: prettyClean,
-            title: "Unknown modules removed",
+            title: hasUnknown && hasWire
+              ? "Patch loaded with removals"
+              : hasUnknown
+                ? "Unknown modules removed"
+                : "Disconnected wires",
             softRecovered: true,
           });
         } catch (_error) {
@@ -1272,7 +1395,9 @@ function syncNodeGraphModuleChromeElement(element, patchNode) {
     } else {
       titleText.textContent = chromeTitle;
     }
-    if (typeof scheduleNodeGraphModuleTitleTextFit === "function") {
+    if (typeof nodeGraphModuleTitleSyncChars === "function") {
+      nodeGraphModuleTitleSyncChars(titleText);
+    } else if (typeof scheduleNodeGraphModuleTitleTextFit === "function") {
       scheduleNodeGraphModuleTitleTextFit();
     }
   }
@@ -1327,8 +1452,7 @@ function syncNodeGraphModuleChromeElement(element, patchNode) {
   element.classList.toggle("bypassed", bypassed);
   const bypassButton = element.querySelector(".node-bypass-button");
   if (bypassButton) {
-    bypassButton.setAttribute("aria-pressed", bypassed ? "true" : "false");
-    bypassButton.textContent = nodeGraphBypassGlyph(bypassed);
+    syncNodeGraphBypassButtonElement(bypassButton, { bypassed });
     nodeGraphApplyTooltip(
       bypassButton,
       patchNode.id === "output"
@@ -1337,6 +1461,10 @@ function syncNodeGraphModuleChromeElement(element, patchNode) {
       {},
       { title: false },
     );
+  }
+  // Hide-unused / Displays / etc. change band heights — refresh stack rows (B-057).
+  if (typeof applyNodeGraphModuleLayout === "function") {
+    applyNodeGraphModuleLayout(element, patchNode);
   }
 }
 
@@ -1367,10 +1495,8 @@ function syncNodeGraphModuleParamElement(element, patchNode) {
             : null);
       }
     }
-    setNodeSliderMetadata(
-      input,
-      metaEntry || nodeGraphParameterDefinitionMetadata(parameter),
-    );
+    const resolvedMeta = metaEntry || nodeGraphParameterDefinitionMetadata(parameter);
+    setNodeSliderMetadata(input, resolvedMeta);
     let value = patchNode.params?.[parameter.key];
     if (
       (value == null || !Number.isFinite(Number(value)))
@@ -1429,7 +1555,9 @@ function syncNodeGraphModuleParamElement(element, patchNode) {
 }
 
 function applyNodeGraphModuleElementFromPatch(patchNode, options = {}) {
-  const container = document.getElementById("nodeGraphNodes");
+  const container = typeof nodeGraphModuleMountContainer === "function"
+    ? nodeGraphModuleMountContainer(patchNode?.type)
+    : document.getElementById("nodeGraphNodes");
   if (!container || !patchNode) {
     return null;
   }
@@ -1449,6 +1577,10 @@ function applyNodeGraphModuleElementFromPatch(patchNode, options = {}) {
     element = null;
   } else if (element) {
     reusedUnchanged = true;
+    // B-055: move Text Box between annotation / module hosts if type host changed.
+    if (element.parentElement !== container) {
+      container.append(element);
+    }
   }
   if (!element) {
     element = createNodeGraphModuleElement(patchNode.type, patchNode.id);
@@ -1540,8 +1672,10 @@ function applyNodeGraphPatchToDom(options = {}) {
       endNodeGraphScreenSolo({ silent: true });
     }
   }
-  const container = document.getElementById("nodeGraphNodes");
-  if (!container) {
+  const containers = typeof nodeGraphModuleMountContainers === "function"
+    ? nodeGraphModuleMountContainers()
+    : [document.getElementById("nodeGraphNodes")].filter(Boolean);
+  if (!containers.length) {
     return;
   }
   const skipExistingSync = Boolean(options.skipExistingSync);
@@ -1559,10 +1693,12 @@ function applyNodeGraphPatchToDom(options = {}) {
   }
 
   let liveControlsDomMutated = false;
-  for (const element of [...container.querySelectorAll(".dsp-node")]) {
-    if (!nodeGraphPatchNode(element.dataset.node)) {
-      element.remove();
-      liveControlsDomMutated = true;
+  for (const container of containers) {
+    for (const element of [...container.querySelectorAll(".dsp-node")]) {
+      if (!nodeGraphPatchNode(element.dataset.node)) {
+        element.remove();
+        liveControlsDomMutated = true;
+      }
     }
   }
 
@@ -1581,15 +1717,15 @@ function applyNodeGraphPatchToDom(options = {}) {
       nodeGraphMetamoduleSeedExposedParamsFromChildren(patchNode);
     }
     const existing = nodeGraphNodeElement(patchNode.id);
-    const syncThis = skipExistingSync
-      ? !existing
-      : (paramSyncIds ? paramSyncIds.has(patchNode.id) : true);
+    const syncThis = paramSyncIds
+      ? paramSyncIds.has(patchNode.id)
+      : (skipExistingSync ? !existing : true);
     if (!existing) {
       liveControlsDomMutated = true;
     }
     const element = applyNodeGraphModuleElementFromPatch(patchNode, {
       paramSync: syncThis,
-      skipExistingChrome: Boolean(existing) && (skipExistingSync || (paramSyncIds && !syncThis)),
+      skipExistingChrome: Boolean(existing) && !syncThis,
     });
     if (element && typeof nodeGraphViewportCullObserve === "function") {
       nodeGraphViewportCullObserve(element);
@@ -1601,9 +1737,6 @@ function applyNodeGraphPatchToDom(options = {}) {
     invalidateNodeGraphLiveControlsPaintCache();
   }
   syncNodeGraphInputModuleLiveState();
-  if (typeof bindNodeGraphMacroControlModuleEvents === "function") {
-    bindNodeGraphMacroControlModuleEvents();
-  }
   if (typeof renderNodeGraphKeyboardControllerModules === "function") {
     renderNodeGraphKeyboardControllerModules();
   }
@@ -1725,6 +1858,22 @@ function commitNodeGraphPatch(patch, options = {}) {
     applyNodeGraphLayoutPositionsToDom(nodeGraphMvp.patch);
   } else if (isChromeEdit) {
     applyNodeGraphChromeNodesToDom(options.chromeNodeIds);
+  } else if (isWireEdit) {
+    if (typeof syncNodeGraphAllPitchQuantizerFaces === "function") {
+      syncNodeGraphAllPitchQuantizerFaces();
+    }
+    // B-057: hide-unused IO height follows connected ports — refresh those modules.
+    const hideUnusedIds = (nodeGraphMvp.patch?.nodes || [])
+      .filter((node) => {
+        const ui = typeof normalizeNodeGraphPatchNodeUi === "function"
+          ? normalizeNodeGraphPatchNodeUi(node.ui, node.type)
+          : node.ui;
+        return Boolean(ui?.hideUnused);
+      })
+      .map((node) => node.id);
+    if (hideUnusedIds.length && typeof applyNodeGraphChromeNodesToDom === "function") {
+      applyNodeGraphChromeNodesToDom(hideUnusedIds);
+    }
   } else if (!isWireEdit && !isSoftDom) {
     applyNodeGraphPatchToDom({
       skipExistingSync: isTopologyEdit,
@@ -1733,7 +1882,6 @@ function commitNodeGraphPatch(patch, options = {}) {
     if (!isTopologyEdit && typeof applyNodeGraphZoom === "function") {
       applyNodeGraphZoom();
     }
-    syncNodeGraphMonitorIndicators();
     pruneNodeGraphSelectionAfterPatch();
   }
   // Positions / face cosmetics / chrome size do not change offline render output.
@@ -1748,16 +1896,11 @@ function commitNodeGraphPatch(patch, options = {}) {
   } else if (options.autosaveWorkingPatch !== false) {
     nodeGraphMvp.patchDirtyState = "edited";
   }
-  // Audio graph topology/params are unchanged by gx/gy, size, or most chrome.
-  // Hide-display may defer a plan sync so the click stays responsive.
+  // Audio graph topology/params are unchanged by gx/gy, size, or chrome.
+  // Show/hide display is face chrome only. Do not setPlan — that recompiled
+  // the native graph and restarted Music Player from the top.
   if (isChromeEdit && options.deferLivePlan) {
-    window.requestAnimationFrame(() => {
-      window.setTimeout(() => {
-        if (typeof scheduleNodeGraphLivePlanSync === "function") {
-          scheduleNodeGraphLivePlanSync();
-        }
-      }, 0);
-    });
+    // Intentionally no live plan sync.
   } else if (options.liveParamsOnly) {
     if (typeof scheduleNodeGraphLiveParameterSync === "function") {
       scheduleNodeGraphLiveParameterSync();
@@ -2139,3 +2282,4 @@ function nodeGraphStableSeed(text) {
   }
   return seed || 0x12345678;
 }
+

@@ -4,8 +4,7 @@
     "targetSampleRate": 44100,
     "pitchReferenceMidiNote": 48,
     "pitchReferenceHz": 100,
-    "pitchOffsetOctaves": 0,
-    "speedLimitHz": 20000
+    "pitchOffsetOctaves": 0
   },
   "bypassedNodes": [],
   "cameras": [
@@ -69,13 +68,6 @@
       "tracePoints": []
     },
     {
-      "destinationNode": "polyBlep-1",
-      "destinationPort": "f",
-      "sourceNode": "keyboard-1",
-      "sourcePort": "f",
-      "tracePoints": []
-    },
-    {
       "destinationNode": "curveAttackRelease-1",
       "destinationPort": "Gate",
       "sourceNode": "transport-1",
@@ -93,7 +85,7 @@
       "destinationNode": "inv-2",
       "destinationPort": "In",
       "sourceNode": "keyboard-1",
-      "sourcePort": "Note#/127",
+      "sourcePort": "Note#",
       "tracePoints": []
     },
     {
@@ -141,7 +133,7 @@
     "bankName": "",
     "category": "",
     "description": "Init — PolyBLEP into Output (same as patches/init.json)",
-    "name": "Init",
+    "name": "",
     "program": 0,
     "tags": "init,default"
   },
@@ -167,6 +159,13 @@
       "sourceNode": "ampCurve-3",
       "sourcePort": "Curve",
       "tracePoints": []
+    },
+    {
+      "sourceNode": "keyboard-1",
+      "sourcePort": "f",
+      "tracePoints": [],
+      "destinationNode": "polyBlep-1",
+      "destinationParam": "frequency"
     }
   ],
   "monitors": [],

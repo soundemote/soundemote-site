@@ -68,7 +68,7 @@ function wipeNodeGraphModuleScopeScreensToColdBoot() {
   const phosphorKeys = ["_phosphorEnergyGl", "_xyPadPhosphorEnergyGl"];
   const canvases = new Set();
   for (const canvas of document.querySelectorAll(
-    "canvas.node-module-scope-local-fallback-canvas, canvas.node-xy-pad-canvas, canvas.node-spectrogram-canvas, canvas.node-phosphor-waveform-canvas",
+    "canvas.node-module-scope-local-fallback-canvas, canvas.node-xy-pad-canvas, canvas.node-spectrogram-canvas, canvas.node-sample-waveform-canvas",
   )) {
     if (canvas instanceof HTMLCanvasElement) {
       canvases.add(canvas);
@@ -135,7 +135,7 @@ function wipeNodeGraphModuleScopeScreensToColdBoot() {
     if (!context || !(canvas.width > 0) || !(canvas.height > 0)) {
       continue;
     }
-    // Master Clock (and similar) skip redraw when cache keys match — drop them
+    // Metronome (and similar) skip redraw when cache keys match — drop them
     // so the next paint restores BPM / gate after this plate fill.
     if (canvas._nodeGraphTransportBpmDigits !== undefined) {
       canvas._nodeGraphTransportBpmDigits = null;
@@ -510,14 +510,14 @@ function clearNodeGraphDisplaySettingsPhosphor(nodeIdOrIds = null, options = {})
       }
     }
 
-    // Instant Trace skips redraw when the sample signature is unchanged. Clear
+    // Instant Waterfall skips redraw when the sample signature is unchanged. Clear
     // blacks the face without new samples — without busting this cache, unpause
     // after Clear-while-paused early-outs as "unchanged" until Stop+Play.
     if (typeof nodeGraphModuleScopeState === "object" && nodeGraphModuleScopeState) {
       try {
-        nodeGraphModuleScopeState.traceDisplayDrawCache?.delete?.(id);
-        nodeGraphModuleScopeState.traceDisplayScratch?.delete?.(id);
-        nodeGraphModuleScopeState.traceDisplaySyncLocks?.delete?.(id);
+        nodeGraphModuleScopeState.waterfallDrawCache?.delete?.(id);
+        nodeGraphModuleScopeState.waterfallScratch?.delete?.(id);
+        nodeGraphModuleScopeState.waterfallSyncLocks?.delete?.(id);
       } catch (_error) {
         // Best-effort.
       }
@@ -568,9 +568,9 @@ function clearNodeGraphModuleScopeBuffers(options = {}) {
   }
   if (!preserveBuffers) {
     nodeGraphModuleScopeState.buffers.clear();
-    nodeGraphModuleScopeState.traceDisplayDrawCache.clear();
-    nodeGraphModuleScopeState.traceDisplayScratch.clear();
-    nodeGraphModuleScopeState.traceDisplaySyncLocks.clear();
+    nodeGraphModuleScopeState.waterfallDrawCache.clear();
+    nodeGraphModuleScopeState.waterfallScratch.clear();
+    nodeGraphModuleScopeState.waterfallSyncLocks.clear();
     nodeGraphModuleScopeState.lightDisplayStates.clear();
     nodeGraphModuleScopeState.frames = 0;
     nodeGraphModuleScopeState.monitorFingerprint = "";
@@ -608,9 +608,9 @@ function clearNodeGraphRenderedModuleScopeBuffers() {
     && !nodeGraphModuleScopePaused()
   ) {
     nodeGraphModuleScopeState.buffers.clear();
-    nodeGraphModuleScopeState.traceDisplayDrawCache.clear();
-    nodeGraphModuleScopeState.traceDisplayScratch.clear();
-    nodeGraphModuleScopeState.traceDisplaySyncLocks.clear();
+    nodeGraphModuleScopeState.waterfallDrawCache.clear();
+    nodeGraphModuleScopeState.waterfallScratch.clear();
+    nodeGraphModuleScopeState.waterfallSyncLocks.clear();
     nodeGraphModuleScopeState.frames = 0;
     nodeGraphModuleScopeState.monitorFingerprint = "";
     nodeGraphModuleScopeState.mode = "model";
@@ -628,4 +628,4 @@ function clearNodeGraphRenderedModuleScopeBuffers() {
   clearNodeGraphModuleScopeBuffers();
 }
 
-// Scope monitors → node-graph-module-scope-monitors.js
+// Scope capture helpers → node-graph-module-scope-monitors.js

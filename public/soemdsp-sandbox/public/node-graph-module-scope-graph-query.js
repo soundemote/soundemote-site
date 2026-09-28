@@ -185,6 +185,11 @@ function nodeGraphModuleScopeConnectionsTo(nodeId, port = "In") {
     .filter((connection) => connection.destinationNode === nodeId && connection.destinationPort === port);
 }
 
+function nodeGraphModuleScopeConnectionsFrom(nodeId, port = "Out") {
+  return (Array.isArray(nodeGraphMvp?.patch?.connections) ? nodeGraphMvp.patch.connections : [])
+    .filter((connection) => connection.sourceNode === nodeId && connection.sourcePort === port);
+}
+
 function nodeGraphModuleScopeConnectedSourceBuffer(nodeId, port = "In") {
   const connection = nodeGraphModuleScopeConnectionsTo(nodeId, port)
     .find((candidate) => candidate?.sourceNode && candidate?.sourcePort);
@@ -194,6 +199,34 @@ function nodeGraphModuleScopeConnectedSourceBuffer(nodeId, port = "In") {
   return nodeGraphModuleScopeState.buffers.get(`${connection.sourceNode}:${connection.sourcePort}`) ||
     nodeGraphModuleScopeState.buffers.get(connection.sourceNode) ||
     null;
+}
+
+/** Instant Waterfall Sync source: dry In, or average of wired Left+Right inputs. */
+function nodeGraphModuleTraceInputSyncBuffer(nodeId, type) {
+  const id = String(nodeId || "");
+  const spec = (typeof nodeGraphModuleDefinitions === "object"
+    && nodeGraphModuleDefinitions?.[type]?.syncTraceFromInputs)
+    || null;
+  if (!id || !spec) {
+    return null;
+  }
+  const aligned = nodeGraphModuleScopeState.buffers.get(`${id}:__inSync`);
+  if (aligned?.length) {
+    return aligned;
+  }
+  const left = spec.left ? nodeGraphModuleScopeConnectedSourceBuffer(id, spec.left) : null;
+  const right = spec.right ? nodeGraphModuleScopeConnectedSourceBuffer(id, spec.right) : null;
+  const mono = spec.mono ? nodeGraphModuleScopeConnectedSourceBuffer(id, spec.mono) : null;
+  if (left?.length && right?.length && typeof nodeGraphTraceDisplayMonoSyncBuffer === "function") {
+    return nodeGraphTraceDisplayMonoSyncBuffer(left, right) || left;
+  }
+  if (left?.length) {
+    return left;
+  }
+  if (right?.length) {
+    return right;
+  }
+  return mono?.length ? mono : null;
 }
 
 function nodeGraphModuleScopeLatestOutputValue(nodeId, port, fallback = null) {

@@ -27,26 +27,14 @@ function syncNodeGraphHeaderTimingWidgets() {
   if (typeof syncNodeGraphGlobalSmoothingControl === "function") {
     syncNodeGraphGlobalSmoothingControl();
   }
-}
-
-// Keeps every transport node's own "BPM" parameter mirrored to the patch-wide
-// tempo -- transport nodes have no independent tempo of their own, the param
-// exists so the node can display/edit the same global value in place. Mutates
-// the given patch object in place; caller is expected to pass a clone that's
-// about to be committed (matches updateNodeGraphPatchTimingFromHeader's own
-// clone-then-commit shape).
-function syncNodeGraphTransportBpmParams(patch, timing) {
-  const tempoBpm = normalizeNodeGraphPatchTiming(timing).tempoBpm;
-  for (const node of patch?.nodes || []) {
-    if (node.type !== "transport") {
-      continue;
-    }
-    node.params = {
-      ...(node.params || {}),
-      bpm: normalizeNodeGraphPatchParameter(node.type, "bpm", tempoBpm, node.paramMeta?.bpm),
-    };
+  syncNodeGraphOversamplingReadouts();
+  if (typeof syncNodeGraphHeaderPatchTitle === "function") {
+    syncNodeGraphHeaderPatchTitle();
   }
 }
+
+// Metronome BPM is per-node. Do not copy patch.timing.tempoBpm onto clocks.
+function syncNodeGraphTransportBpmParams(_patch, _timing) {}
 
 function updateNodeGraphPatchTimingFromHeader(input) {
   const key = input?.dataset?.timingField;
@@ -68,7 +56,6 @@ function updateNodeGraphPatchTimingFromHeader(input) {
   }
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
   patch.timing = next;
-  syncNodeGraphTransportBpmParams(patch, next);
   commitNodeGraphPatch(patch, {
     markPending: false,
     status: "timing synced",
@@ -81,20 +68,43 @@ function updateNodeGraphPatchAudioFromHeader(input) {
     return;
   }
   const current = normalizeNodeGraphPatchAudio(nodeGraphMvp.patch.audio);
-  const next = normalizeNodeGraphPatchAudio({
+  let nextValue = input.value;
+  if (key === "oversamplingFactor") {
+    const n = Math.round(Number(nextValue));
+    nextValue = (n === 2 || n === 4) ? n : 1;
+  }
+  const draft = {
     ...current,
-    [key]: input.value,
-  });
-  if (current[key] === next[key]) {
-    input.value = String(next[key]);
+    [key]: nextValue,
+  };
+  if (key === "oversamplingFactor") {
+    const host = typeof nodeGraphBaseSampleRate === "function"
+      ? nodeGraphBaseSampleRate()
+      : (nodeGraphMvp?.sampleRate || 44100);
+    draft.oversamplingFactor = nextValue;
+    draft.targetSampleRate = Math.round(host * nextValue);
+  }
+  const next = normalizeNodeGraphPatchAudio(draft);
+  if (current[key] === next[key]
+    && (key !== "oversamplingFactor" || current.oversamplingFactor === next.oversamplingFactor)) {
+    if (key === "oversamplingFactor") {
+      input.value = String(next.oversamplingFactor);
+    } else {
+      input.value = String(next[key]);
+    }
     return;
   }
   const patch = cloneNodeGraphPatch(nodeGraphMvp.patch);
   patch.audio = next;
   commitNodeGraphPatch(patch, {
     markPending: false,
-    status: key === "pitchOffsetOctaves" ? "pitch synced" : "pitch reference synced",
+    status: key === "oversamplingFactor"
+      ? `oversampling x${next.oversamplingFactor}`
+      : (key === "pitchOffsetOctaves" ? "pitch synced" : "pitch reference synced"),
   });
+  if (key === "oversamplingFactor") {
+    syncNodeGraphOversamplingReadouts();
+  }
 }
 
 function commitNodeGraphHeaderNumberInput(input) {
@@ -107,6 +117,12 @@ function commitNodeGraphHeaderNumberInput(input) {
     || input.classList?.contains("node-header-render-end-input")
     || input.closest?.(".node-header-render-range-field")
   ) {
+    return;
+  }
+  if (input.tagName === "SELECT") {
+    if (input.dataset.audioField) {
+      updateNodeGraphPatchAudioFromHeader(input);
+    }
     return;
   }
   if (input.dataset.timingField) {
@@ -124,7 +140,7 @@ function commitNodeGraphHeaderNumberInput(input) {
         ? nodeGraphProjectSpeedLimitHz()
         : (typeof nodeGraphLiveSpeedLimitHz === "function"
           ? nodeGraphLiveSpeedLimitHz()
-          : 20000),
+          : 22050),
     );
   } else if (input.dataset.globalScopeInput) {
     setNodeGraphScopeNumberInputValue(input, input.value);
@@ -135,6 +151,9 @@ function commitNodeGraphHeaderNumberInput(input) {
 function bindNodeGraphHeaderTimingWidgets(root = document) {
   for (const input of root.querySelectorAll(".node-header-timing-input")) {
     if (input.dataset.timingBound === "true") {
+      continue;
+    }
+    if (input.tagName === "SELECT" || input.classList.contains("node-header-oversampling-select")) {
       continue;
     }
     // Render Sample Start/End: own handlers in createNodeGraphHeaderRenderRangeInput
@@ -254,7 +273,7 @@ function createNodeGraphHeaderAudioInput(key, label, options = {}) {
   input.dataset.globalScopeNumberDrag = "true";
   input.inputMode = "decimal";
   input.min = String(options.min ?? 0.01);
-  input.max = String(options.max ?? 20000);
+  input.max = String(options.max ?? 22050);
   // "any", not a numeric step. Pitch reference frequency is continuous --
   // normalizeNodeGraphPatchAudio only clamps it to 0.01..20000. With a step
   // of 1 and a min of 0.01 the browser considers the valid values to be
@@ -328,20 +347,28 @@ function createNodeGraphHeaderSpeedPlaceholder() {
 }
 
 // Project Speed Limit (Hz): live pitch/f + DSP ceiling only (not knob metaparam max).
-// No project minimum frequency (0 allowed). Default 20000; user-adjustable.
+// No project minimum frequency (0 allowed). Default 22050; user-adjustable.
 // Same interaction as BPM / pitch ref: drag to tune, double-click to type.
-function createNodeGraphHeaderSpeedLimitField() {
+function createNodeGraphHeaderSpeedLimitField(options = {}) {
   const field = document.createElement("label");
   field.className = "node-header-timing-field node-header-scope-field";
   field.setAttribute("aria-label", "Project speed limit in Hertz");
   field.dataset.headerNumberDrag = "true";
   field.title =
-    "Project Speed Limit (Hz): runtime max for pitch / f jacks / DSP frequency resolve. Does not rewrite frequency knob ranges. No minimum frequency. Default 20000. Drag to tune; double-click to type.";
+    "Project Speed Limit (Hz): runtime max for pitch / f jacks / DSP frequency resolve. Does not rewrite frequency knob ranges. No minimum frequency. Default 22050. Drag to tune; double-click to type.";
 
   const caption = document.createElement("span");
   caption.className = "node-header-timing-caption";
   caption.textContent = "Speed Limit";
   field.append(caption);
+  if (options.nameValue) {
+    field.classList.add("is-name-value");
+    const colon = document.createElement("span");
+    colon.className = "node-header-timing-colon";
+    colon.textContent = ":";
+    colon.setAttribute("aria-hidden", "true");
+    field.append(colon);
+  }
 
   const input = document.createElement("input");
   input.className = "node-header-timing-input";
@@ -365,7 +392,7 @@ function createNodeGraphHeaderSpeedLimitField() {
       ? nodeGraphProjectSpeedLimitHz()
       : (typeof nodeGraphLiveSpeedLimitHz === "function"
         ? nodeGraphLiveSpeedLimitHz()
-        : (nodeGraphMvp?.live?.speedLimit ?? 20000)),
+        : (nodeGraphMvp?.live?.speedLimit ?? 22050)),
   );
   input.setAttribute("aria-label", "Project speed limit Hertz");
   input.title = field.title;
@@ -449,6 +476,14 @@ function createNodeGraphHeaderScopeInput(id, label, value, options = {}) {
   caption.className = "node-header-timing-caption";
   caption.textContent = label;
   field.append(caption);
+  if (options.nameValue) {
+    field.classList.add("is-name-value");
+    const colon = document.createElement("span");
+    colon.className = "node-header-timing-colon";
+    colon.textContent = ":";
+    colon.setAttribute("aria-hidden", "true");
+    field.append(colon);
+  }
 
   const input = document.createElement("input");
   input.id = id;
@@ -502,7 +537,6 @@ function handleNodeGraphTapTempo() {
     ...patch.timing,
     tempoBpm,
   });
-  syncNodeGraphTransportBpmParams(patch, patch.timing);
   commitNodeGraphPatch(patch, {
     markPending: false,
     status: "tap tempo synced",
@@ -546,6 +580,172 @@ function createNodeGraphHeaderRenderRangeInput(className, label, defaultValue, o
   return field;
 }
 
+function nodeGraphHeaderPatchTitleSource() {
+  const name = typeof normalizeNodeGraphPatchInfo === "function"
+    ? normalizeNodeGraphPatchInfo(nodeGraphMvp?.patch?.info).name
+    : String(nodeGraphMvp?.patch?.info?.name || "").trim();
+  const pathOrSlug = nodeGraphMvp?.currentSavedPatchFilename
+    || nodeGraphMvp?.selectedSavedPatchFilename
+    || "";
+  const filled = typeof nodeGraphPatchNameIsFilled === "function"
+    ? nodeGraphPatchNameIsFilled(name)
+    : Boolean(String(name || "").trim());
+  const text = typeof nodeGraphPatchDisplayTitle === "function"
+    ? nodeGraphPatchDisplayTitle(name, pathOrSlug)
+    : (String(name || "").trim() || "Untitled");
+  return {
+    name: String(name || "").trim(),
+    text,
+    filled,
+    hasFile: Boolean(String(nodeGraphMvp?.currentSavedPatchFilename || "").trim()),
+  };
+}
+
+function nodeGraphHeaderPatchTitleText() {
+  return nodeGraphHeaderPatchTitleSource().text;
+}
+
+function syncNodeGraphHeaderPatchTitle() {
+  const el = document.getElementById("nodeHeaderPatchTitle");
+  if (!el || el.dataset.editing === "true") {
+    return;
+  }
+  const source = nodeGraphHeaderPatchTitleSource();
+  if (el.textContent !== source.text) {
+    el.textContent = source.text;
+  }
+  el.title = source.filled ? source.text : `${source.text} — double-click to name`;
+  el.classList.toggle("is-fallback", !source.filled);
+}
+
+function nodeGraphSetStoredPatchName(name) {
+  if (!nodeGraphMvp?.patch) return;
+  const trimmed = String(name || "").replace(/\s+/g, " ").trim();
+  const info = typeof normalizeNodeGraphPatchInfo === "function"
+    ? normalizeNodeGraphPatchInfo(nodeGraphMvp.patch.info)
+    : { ...(nodeGraphMvp.patch.info || {}) };
+  info.name = trimmed;
+  nodeGraphMvp.patch.info = info;
+  const field = document.getElementById("nodePatchDefaultsName")
+    || document.getElementById("patchNameValue");
+  if (field) field.value = trimmed;
+  if (typeof setNodeGraphPatchDirtyState === "function") {
+    setNodeGraphPatchDirtyState("edited");
+  }
+  syncNodeGraphHeaderPatchTitle();
+}
+
+function nodeGraphFinishPatchTitleEdit(input, commit) {
+  const host = input?.closest?.("#nodeHeaderPatchTitle");
+  if (!host) return;
+  host.dataset.editing = "false";
+  if (commit) {
+    nodeGraphSetStoredPatchName(input.value);
+  }
+  host.replaceChildren();
+  syncNodeGraphHeaderPatchTitle();
+}
+
+function nodeGraphBeginInlinePatchTitleEdit(host) {
+  if (!host || host.dataset.editing === "true") return;
+  const source = nodeGraphHeaderPatchTitleSource();
+  host.dataset.editing = "true";
+  host.classList.remove("is-fallback");
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "node-header-patch-title-input";
+  input.value = source.filled ? source.name : "";
+  input.placeholder = source.hasFile ? source.text : "Untitled";
+  input.setAttribute("aria-label", "Patch title");
+  input.addEventListener("keydown", (event) => {
+    event.stopPropagation();
+    if (event.key === "Enter") {
+      event.preventDefault();
+      nodeGraphFinishPatchTitleEdit(input, true);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      nodeGraphFinishPatchTitleEdit(input, false);
+    }
+  });
+  input.addEventListener("blur", () => nodeGraphFinishPatchTitleEdit(input, true));
+  input.addEventListener("pointerdown", (event) => event.stopPropagation());
+  host.replaceChildren(input);
+  input.focus();
+  input.select();
+}
+
+function nodeGraphCloseSaveBeforeNamingDialog(dialog) {
+  dialog?.remove();
+}
+
+function nodeGraphOpenSaveBeforeNamingDialog() {
+  if (document.querySelector(".node-patch-name-dialog")) return;
+  const dialog = document.createElement("div");
+  dialog.className = "node-patch-name-dialog";
+  dialog.innerHTML = `
+    <form class="node-patch-name-dialog-card">
+      <p>Save the patch before naming it.</p>
+      <label>Title
+        <input type="text" name="title" maxlength="180" autocomplete="off" spellcheck="false">
+      </label>
+      <div class="node-patch-name-dialog-actions">
+        <button type="submit">Save</button>
+        <button type="button" data-close>Close</button>
+      </div>
+    </form>`;
+  const form = dialog.querySelector("form");
+  const input = dialog.querySelector("input");
+  const previousName = nodeGraphHeaderPatchTitleSource().name;
+  const previousDirty = nodeGraphMvp?.patchDirtyState || "untouched";
+  dialog.querySelector("[data-close]")?.addEventListener("click", () => {
+    nodeGraphCloseSaveBeforeNamingDialog(dialog);
+  });
+  dialog.addEventListener("pointerdown", (event) => {
+    if (event.target === dialog) nodeGraphCloseSaveBeforeNamingDialog(dialog);
+  });
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const typed = String(input?.value || "");
+    nodeGraphSetStoredPatchName(typed);
+    nodeGraphCloseSaveBeforeNamingDialog(dialog);
+    const saved = typeof saveNodeGraphPatchWithNativeDialog === "function"
+      ? await saveNodeGraphPatchWithNativeDialog()
+      : false;
+    if (!saved) {
+      nodeGraphSetStoredPatchName(previousName);
+      if (typeof setNodeGraphPatchDirtyState === "function") {
+        setNodeGraphPatchDirtyState(previousDirty);
+      }
+    }
+  });
+  document.body.append(dialog);
+  input?.focus();
+}
+
+function createNodeGraphHeaderPatchTitle() {
+  const el = document.createElement("div");
+  el.id = "nodeHeaderPatchTitle";
+  el.className = "node-header-patch-title";
+  el.setAttribute("aria-label", "Patch name");
+  el.title = "Double-click to name this patch";
+  el.addEventListener("dblclick", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (nodeGraphHeaderPatchTitleSource().hasFile) {
+      nodeGraphBeginInlinePatchTitleEdit(el);
+    } else {
+      nodeGraphOpenSaveBeforeNamingDialog();
+    }
+  });
+  el.addEventListener("pointerdown", (event) => {
+    if (el.dataset.editing === "true") event.stopPropagation();
+  });
+  const text = nodeGraphHeaderPatchTitleText();
+  el.textContent = text;
+  syncNodeGraphHeaderPatchTitle();
+  return el;
+}
+
 function createNodeGraphHeaderTimingWidgets() {
   const group = document.createElement("div");
   group.className = "node-header-timing-widgets";
@@ -570,7 +770,7 @@ function createNodeGraphHeaderTimingWidgets() {
       },
     ),
     createNodeGraphHeaderSpeedPlaceholder(),
-    createNodeGraphHeaderSpeedLimitField(),
+    createNodeGraphHeaderPatchTitle(),
     createNodeGraphHeaderSmoothingTimeField(),
     createNodeGraphHeaderRenderRangeInput("node-header-render-start-input", "Start", nodeGraphMvp.renderStartSeconds ?? 0, { ariaLabel: "Render start time in seconds", min: 0, max: 3599, tooltip: "Sets the Render Sample start point (seconds)" }),
     createNodeGraphHeaderRenderRangeInput("node-header-render-end-input", "End", nodeGraphMvp.renderEndSeconds ?? (nodeGraphMvp.seconds ?? 2), { ariaLabel: "Render end time in seconds", min: 0.05, max: 3600, tooltip: "Sets the Render Sample end point (seconds)" }),
@@ -583,6 +783,90 @@ function nodeGraphPlanckReadoutText() {
     ? nodeGraphPlanck()
     : (typeof NODE_GRAPH_PLANCK === "number" ? NODE_GRAPH_PLANCK : 1e-7);
   return Number.isFinite(n) ? n.toFixed(7) : "0.0000001";
+}
+
+
+function nodeGraphOversamplingFactorReadout() {
+  if (typeof nodeGraphOversamplingFactorFromPatch === "function") {
+    return nodeGraphOversamplingFactorFromPatch(nodeGraphMvp?.patch);
+  }
+  const n = Math.round(Number(normalizeNodeGraphPatchAudio(nodeGraphMvp?.patch?.audio).oversamplingFactor));
+  return (n === 2 || n === 4) ? n : 1;
+}
+
+function syncNodeGraphOversamplingReadouts() {
+  const factor = nodeGraphOversamplingFactorReadout();
+  const host = typeof nodeGraphBaseSampleRate === "function"
+    ? nodeGraphBaseSampleRate()
+    : Math.round(Number(nodeGraphMvp?.live?.context?.sampleRate || nodeGraphMvp?.sampleRate || 44100));
+  const simulated = host * factor;
+  const select = document.getElementById("nodeHeaderOversamplingFactor");
+  if (select && String(select.value) !== String(factor)) {
+    select.value = String(factor);
+  }
+  const hostEl = document.querySelector(".node-header-sample-rate-value");
+  if (hostEl) {
+    hostEl.textContent = typeof nodeGraphFormatSampleRate === "function"
+      ? nodeGraphFormatSampleRate(host)
+      : `${host} Hz`;
+  }
+  const simEl = document.querySelector(".node-header-simulated-rate-value");
+  if (simEl) {
+    simEl.textContent = typeof nodeGraphFormatSampleRate === "function"
+      ? nodeGraphFormatSampleRate(simulated)
+      : `${simulated} Hz`;
+  }
+}
+
+function createNodeGraphOversamplingFactorField() {
+  const field = document.createElement("label");
+  field.className = "node-header-timing-field node-header-oversampling-field is-name-value";
+  field.setAttribute("aria-label", "Oversampling");
+  field.dataset.tooltipKey = "timing.oversamplingFactor";
+  const caption = document.createElement("span");
+  caption.className = "node-header-timing-caption";
+  caption.textContent = "Oversample";
+  const colon = document.createElement("span");
+  colon.className = "node-header-timing-colon";
+  colon.textContent = ":";
+  colon.setAttribute("aria-hidden", "true");
+  const select = document.createElement("select");
+  select.id = "nodeHeaderOversamplingFactor";
+  select.className = "node-header-timing-input node-header-oversampling-select";
+  select.dataset.audioField = "oversamplingFactor";
+  select.setAttribute("aria-label", "Oversampling factor");
+  for (const factor of [1, 2, 4]) {
+    const opt = document.createElement("option");
+    opt.value = String(factor);
+    opt.textContent = `x${factor}`;
+    select.append(opt);
+  }
+  select.value = String(nodeGraphOversamplingFactorReadout());
+  select.addEventListener("change", () => {
+    updateNodeGraphPatchAudioFromHeader(select);
+  });
+  field.append(caption, colon, select);
+  return field;
+}
+
+function createNodeGraphSampleRateReadout(kind, label) {
+  const field = document.createElement("div");
+  field.className = `node-header-timing-field node-header-${kind}-readout is-name-value`;
+  field.setAttribute("aria-label", label);
+  const caption = document.createElement("span");
+  caption.className = "node-header-timing-caption";
+  caption.textContent = label;
+  const colon = document.createElement("span");
+  colon.className = "node-header-timing-colon";
+  colon.textContent = ":";
+  colon.setAttribute("aria-hidden", "true");
+  const value = document.createElement("span");
+  value.className = kind === "sample-rate"
+    ? "node-header-sample-rate-value"
+    : "node-header-simulated-rate-value";
+  value.textContent = "—";
+  field.append(caption, colon, value);
+  return field;
 }
 
 function createNodeGraphPlanckReadout() {
@@ -609,12 +893,12 @@ function createNodeGraphCommandCenterTimingWidgets() {
   group.setAttribute("aria-label", "Command Center patch timing");
   const nv = { nameValue: true };
   group.append(
-    createNodeGraphHeaderTimingInput("tempoBpm", "BPM", { ...nv, max: 320 }),
     createNodeGraphHeaderTimingInput("timeSignatureNumerator", "Beats", nv),
     createNodeGraphHeaderTimingInput("timeSignatureDenominator", "Unit", nv),
+    createNodeGraphHeaderSpeedLimitField(nv),
     createNodeGraphHeaderAudioInput("pitchReferenceHz", "Freq Ref", {
       ...nv,
-      ariaLabel: "Pitch Reference Frequency in Hz (0.1V/Oct reference)",
+      ariaLabel: "Pitch Reference Frequency in Hz (♯/♭ reference)",
       tooltipKey: "timing.pitchReferenceHz",
       min: 0.01,
       max: 20000,
@@ -628,6 +912,9 @@ function createNodeGraphCommandCenterTimingWidgets() {
       step: "any",
     }),
     createNodeGraphPlanckReadout(),
+    createNodeGraphOversamplingFactorField(),
+    createNodeGraphSampleRateReadout("sample-rate", "Sample Rate"),
+    createNodeGraphSampleRateReadout("simulated-rate", "Simulated"),
   );
   return group;
 }
@@ -637,31 +924,43 @@ function renderNodeGraphCommandCenterTimingControls() {
   if (!host) {
     return;
   }
+  const osSelect = host.querySelector("#nodeHeaderOversamplingFactor");
+  const osCaption = host.querySelector(".node-header-oversampling-field .node-header-timing-caption");
   if (
     !host.querySelector(".node-command-center-timing-widgets")
     || !host.querySelector(".node-header-planck-readout")
+    || !osSelect
+    || (osCaption && osCaption.textContent !== "Oversample")
+    || (osSelect && osSelect.dataset.timingBound === "true")
+    || !host.querySelector(".node-header-sample-rate-value")
     || !host.querySelector('.node-header-timing-input[data-audio-field="pitchOffsetOctaves"]')
+    || host.querySelector("#nodeMasterScopeFps")
+    || !host.querySelector('[data-speed-limit="true"]')
   ) {
     host.replaceChildren(createNodeGraphCommandCenterTimingWidgets());
   }
   bindNodeGraphHeaderTimingWidgets(host);
+  syncNodeGraphOversamplingReadouts();
 }
 
 function renderNodeGraphPatchTimingControls() {
-  renderNodeGraphCommandCenterTimingControls();
   const host = document.getElementById("nodePatchTimingControls");
-  if (!host) {
-    syncNodeGraphHeaderTimingWidgets();
-    return;
+  if (host) {
+    // Speed Limit stays in Command Center (removed from top bar for patch title space). Keep Speed. FPS lives on this bar.
+    if (
+      !host.querySelector(".node-header-timing-widgets")
+      || !host.querySelector(".node-header-tap-tempo-button")
+      || !host.querySelector('[data-timing-field="tempoBpm"]')
+      || !host.querySelector("#nodeMasterScopeFps")
+      || !host.querySelector("#nodeHeaderGlobalSmoothingSeconds")
+      || !host.querySelector("#nodeHeaderPatchTitle")
+      || host.querySelector('[data-speed-limit="true"]')
+    ) {
+      host.replaceChildren(createNodeGraphHeaderTimingWidgets());
+    }
+    bindNodeGraphHeaderTimingWidgets(host);
   }
-  // Rebuild if missing the widget group or the Smooth Time field (added next to Speed Limit).
-  if (
-    !host.querySelector(".node-header-timing-widgets")
-    || !host.querySelector("#nodeHeaderGlobalSmoothingSeconds")
-  ) {
-    host.replaceChildren(createNodeGraphHeaderTimingWidgets());
-  }
-  bindNodeGraphHeaderTimingWidgets(host);
+  renderNodeGraphCommandCenterTimingControls();
   syncNodeGraphHeaderTimingWidgets();
   syncNodeGraphRenderRangeToUI();
   moveNodeGraphRenderRangeToDurationControl();
@@ -731,6 +1030,9 @@ function createNodeGraphModuleHeader(type, node, definition) {
   titleText.textContent = typeof nodeGraphPatchNodeTitle === "function"
     ? nodeGraphPatchNodeTitle(node)
     : (nodeGraphNodeLabels?.[type] || type);
+  if (typeof nodeGraphModuleTitleSyncChars === "function") {
+    nodeGraphModuleTitleSyncChars(titleText);
+  }
   nodeGraphApplyTooltip(titleText, "module.titleMove", {}, { title: false });
   titleText.addEventListener("pointerdown", (event) => {
     if (titleText.dataset.titleEditing === "1") {
@@ -760,8 +1062,25 @@ function createNodeGraphModuleHeader(type, node, definition) {
     if (typeof syncNodeGraphModuleTitleEditPeers === "function") {
       syncNodeGraphModuleTitleEditPeers(titleText);
     }
-    if (typeof scheduleNodeGraphModuleTitleTextFit === "function") {
-      scheduleNodeGraphModuleTitleTextFit();
+    if (typeof nodeGraphModuleTitleSyncChars === "function") {
+      nodeGraphModuleTitleSyncChars(titleText);
+    }
+    // Named portals: jack I/O label tracks the title while editing.
+    const nodeId = String(titleText.dataset.node || "");
+    const patchNode = nodeId && typeof nodeGraphPatchNode === "function"
+      ? nodeGraphPatchNode(nodeId)
+      : null;
+    if (
+      patchNode
+      && typeof nodeGraphIsNamedPortalType === "function"
+      && nodeGraphIsNamedPortalType(patchNode.type)
+      && typeof syncNodeGraphModulePortLabels === "function"
+    ) {
+      const moduleEl = titleText.closest?.(".dsp-node");
+      if (moduleEl) {
+        const live = { ...patchNode, alias: clean };
+        syncNodeGraphModulePortLabels(moduleEl, live);
+      }
     }
   });
   titleText.addEventListener("paste", (event) => {

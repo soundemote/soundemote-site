@@ -25,6 +25,7 @@ function nodeGraphArpKeysLookForNodeId(nodeId) {
     cornerShape: "squircle",
     cornerRadius: 0,
     edgeSpacing: 0.05,
+    strokeThickness: 0.01,
   };
 }
 
@@ -32,18 +33,9 @@ function nodeGraphArpAlign(x, dpr) {
   return Math.round(Number(x) * dpr) / dpr;
 }
 
-/** On-screen CSS scale of this canvas (workspace zoom, canvas tiles, meta face). */
-function nodeGraphArpCanvasScreenScale(canvas) {
-  const rect = canvas?.getBoundingClientRect?.();
-  const cw = Math.max(1, Number(canvas?.clientWidth) || 0);
-  const ch = Math.max(1, Number(canvas?.clientHeight) || 0);
-  if (!rect) {
-    return 1;
-  }
-  const sx = rect.width / cw;
-  const sy = rect.height / ch;
-  const s = Math.min(sx, sy);
-  return Number.isFinite(s) && s > 0 ? s : 1;
+/** Layout CSS scale only. Workspace zoom must not enlarge backing or stroke. */
+function nodeGraphArpCanvasScreenScale(_canvas) {
+  return 1;
 }
 
 /**
@@ -127,10 +119,14 @@ function nodeGraphArpKeysAddCornerRectPath(ctx, x, y, w, h, radius, squircle) {
   ctx.closePath();
 }
 
-function createNodeGraphArpKeysDisplay(nodeId) {
+function createNodeGraphArpKeysDisplay(nodeIdOrEl, _type) {
+  const nodeId = nodeIdOrEl && typeof nodeIdOrEl === "object"
+    ? String(nodeIdOrEl.dataset?.node || nodeIdOrEl.id || "")
+    : String(nodeIdOrEl || "");
   const section = document.createElement("div");
   section.className = "node-module-scope-window node-arp-keys-face";
   section.dataset.arpNode = nodeId;
+  section.dataset.node = nodeId;
   const canvas = document.createElement("canvas");
   canvas.className = "node-arp-keys-canvas";
   section.append(canvas);
@@ -179,8 +175,13 @@ function createNodeGraphArpKeysDisplay(nodeId) {
   }
 
   function sendOverride(midi) {
-    if (typeof sendNodeGraphArpOverride === "function") {
-      sendNodeGraphArpOverride(nodeId, midi);
+    const send = (typeof sendNodeGraphArpOverride === "function")
+      ? sendNodeGraphArpOverride
+      : (typeof globalThis !== "undefined" && typeof globalThis.sendNodeGraphArpOverride === "function"
+        ? globalThis.sendNodeGraphArpOverride
+        : null);
+    if (typeof send === "function") {
+      send(nodeId, midi);
     }
   }
 
@@ -228,10 +229,9 @@ function createNodeGraphArpKeysDisplay(nodeId) {
     const { notes, play, projectOn } = faceState();
     const look = nodeGraphArpKeysLookForNodeId(nodeId);
     const dpr = Math.max(1, window.devicePixelRatio || 1);
-    const rect = canvas.getBoundingClientRect();
     const screenScale = nodeGraphArpCanvasScreenScale(canvas);
-    const bw = Math.max(1, Math.round((rect.width > 0 ? rect.width : (canvas.clientWidth || 1)) * dpr));
-    const bh = Math.max(1, Math.round((rect.height > 0 ? rect.height : (canvas.clientHeight || 1)) * dpr));
+    const bw = Math.max(1, Math.round((canvas.clientWidth || 1) * dpr));
+    const bh = Math.max(1, Math.round((canvas.clientHeight || 1) * dpr));
     const lookSig = [
       look.strokeColor,
       look.strokeBrightness,
@@ -240,6 +240,7 @@ function createNodeGraphArpKeysDisplay(nodeId) {
       look.cornerShape,
       look.cornerRadius,
       look.edgeSpacing,
+      look.strokeThickness,
     ].join(":");
     const sig = `${bw}x${bh}:${screenScale.toFixed(4)}:${play}:${projectOn ? 1 : 0}:${notes.join(",")}:${lookSig}`;
     if (sig === lastSig && canvas.width === bw && canvas.height === bh) return;
@@ -271,12 +272,11 @@ function createNodeGraphArpKeysDisplay(nodeId) {
     const innerW = Math.max(0, x1 - x0);
     const innerH = Math.max(0, y1 - y0);
     const squircle = look.cornerShape === "squircle";
-    // Face-relative hairline: scales with canvas-tile size, not workspace zoom.
-    // Divide by screenScale so graph zoom keeps on-screen thickness; quantize after.
-    const strokeDev = Math.max(
-      1,
-      Math.round(Math.min(bw, bh) / (120 * Math.max(screenScale, 0.0001))),
-    );
+    // Fraction of the short side, in backing pixels. clientWidth already tracks
+    // the module and the canvas tile. Zoom is a CSS scale of that bitmap, so
+    // the stroke grows with the face instead of being a fixed screen pixel.
+    const thickness = Math.max(0, Math.min(1, Number(look.strokeThickness) || 0));
+    const strokeDev = Math.max(1, Math.round(thickness * Math.min(bw, bh)));
     const half = strokeDev * 0.5;
     const maxRadius = Math.max(0, Math.min(innerW, innerH) / 2);
     const radius = Math.round(look.cornerRadius * maxRadius);

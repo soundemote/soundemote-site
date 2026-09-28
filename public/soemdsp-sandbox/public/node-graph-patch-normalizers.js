@@ -1,3 +1,44 @@
+/** Canonicalize legacy keyboard pitch/velocity outlet names on patch load. */
+function normalizeNodeGraphKeyboardNoteOutputPort(type, port) {
+  const value = String(port || "").trim();
+  if (type !== "keyboard" && type !== "keyboardController") return value;
+  if (
+    value === "Note#/127"
+    || value === "Note#"
+    || value === "NoteNumber"
+    || value === "MIDI"
+    || value === "Pitch"
+    || value === "0.1V/Oct"
+    || value === "0.1v/Oct"
+  ) {
+    return "pitch";
+  }
+  if (
+    value === "Velo#/127"
+    || value === "Velocity#/127"
+    || value === "Velocity#"
+  ) {
+    return "Velocity";
+  }
+  return value;
+}
+
+/** Remap legacy app-wide pitch CV port names → canonical "pitch" (♯/♭). */
+function normalizeNodeGraphPitchPortName(port) {
+  const value = String(port || "").trim();
+  if (
+    value === "0.1V/Oct"
+    || value === "0.1v/Oct"
+    || value === "Note#"
+    || value === "Note#/127"
+    || value === "NoteNumber"
+    || value === "♯/♭"
+  ) {
+    return "pitch";
+  }
+  return value;
+}
+
 function normalizeNodeGraphPatchInfo(info = {}) {
   const bank = Math.round(Number(info.bank));
   const program = Math.round(Number(info.program));
@@ -7,23 +48,48 @@ function normalizeNodeGraphPatchInfo(info = {}) {
     bankName: nodeGraphOneLineText(info.bankName),
     category: nodeGraphOneLineText(info.category),
     description: String(info.description ?? "").trim(),
+    emoji: nodeGraphOneLineText(info.emoji),
     name: nodeGraphOneLineText(info.name),
     program: Number.isFinite(program) ? Math.max(0, Math.min(127, program)) : 0,
     tags: nodeGraphOneLineText(info.tags),
   };
 }
 
+
+/** Last path segment of a patch slug/filename, without .json. */
+function nodeGraphPatchFileStem(pathOrSlug = "") {
+  return String(pathOrSlug || "")
+    .replace(/\\/g, "/")
+    .replace(/\.json$/i, "")
+    .split("/")
+    .filter(Boolean)
+    .pop() || "";
+}
+
+/** True when info.name is filled in (non-empty after trim). */
+function nodeGraphPatchNameIsFilled(name = "") {
+  return Boolean(String(name || "").trim());
+}
+
+/**
+ * Single source of truth for patch title display:
+ * filled info.name -> that name; otherwise file stem; else "Untitled".
+ */
+function nodeGraphPatchDisplayTitle(name = "", pathOrSlug = "") {
+  if (nodeGraphPatchNameIsFilled(name)) {
+    return String(name).trim();
+  }
+  return nodeGraphPatchFileStem(pathOrSlug) || "Untitled";
+}
+
 function normalizeNodeGraphPatchAudio(audio = {}) {
   const targetSampleRate = Number(audio?.targetSampleRate);
-  // Global 0.1V/Oct pitch reference: "pitchReferenceHz" is the frequency
-  // sounded at "pitchReferenceMidiNote" (0.1V/Oct = midi/120 in this
-  // sandbox's keyboard/pitch-quantizer convention). Any oscillator that
-  // sets its own Frequency parameter equal to this value is, by
-  // definition, in tune with a MIDI keyboard -- and doubling that
-  // Frequency transposes the whole instrument up exactly one octave.
-  // Defaults to C3 @ 100Hz (this sandbox's chosen standard) rather than
-  // the more common A4/440Hz convention, which is available as a preset
-  // in the Patch Settings panel for anyone who wants it instead.
+  // Global pitch (♯/♭) pitch reference.
+  //   Pitch cable = MIDI note number (69 = A4). Not midi/120 and not midi/127.
+  //   pitchReferenceHz is the Hz sounded at pitchReferenceMidiNote when a
+  //   leftover pitch consumer converts MIDI → Hz. Keyboard ƒ is already
+  //   concert A440 (independent of this). Missing fields default A4 @ 440;
+  //   saved patches that store 100 Hz @ MIDI 48 keep those values.
   const pitchReferenceMidiNote = Number(audio?.pitchReferenceMidiNote);
   const pitchReferenceHz = Number(audio?.pitchReferenceHz);
   // Global pitch transpose in octaves: multiplies every pitched Hz
@@ -31,28 +97,41 @@ function normalizeNodeGraphPatchAudio(audio = {}) {
   // One header knob sweeps the whole patch together. Range ±10 octaves.
   const pitchOffsetOctaves = Number(audio?.pitchOffsetOctaves);
   // Project Speed Limit: absolute max Hz for frequency domains / f-jack /
-  // DSP clamps. User-adjustable (header + patch settings). Default 20000.
+  // DSP clamps. User-adjustable (header + patch settings). Default 22050.
   // There is no project minimum frequency (0 is allowed on signals).
   const speedLimitHz = Number(audio?.speedLimitHz);
   const defaultLimit = typeof nodeGraphProjectSpeedLimitDefaultHz === "function"
     ? nodeGraphProjectSpeedLimitDefaultHz()
-    : 20000;
+    : 22050;
   const controlMax = typeof NODE_GRAPH_PROJECT_SPEED_LIMIT_CONTROL_MAX_HZ === "number"
     ? NODE_GRAPH_PROJECT_SPEED_LIMIT_CONTROL_MAX_HZ
     : 192000;
   const safeSpeedLimit = Number.isFinite(speedLimitHz) && speedLimitHz > 0
     ? Math.min(controlMax, speedLimitHz)
     : defaultLimit;
+  const oversamplingFactorRaw = Number(audio?.oversamplingFactor);
+  let oversamplingFactor = 1;
+  if (oversamplingFactorRaw === 2 || oversamplingFactorRaw === 4) {
+    oversamplingFactor = oversamplingFactorRaw;
+  } else if (Number.isFinite(targetSampleRate) && targetSampleRate > 0) {
+    // Infer from legacy target when factor missing.
+    const host = typeof nodeGraphBaseSampleRate === "function" ? nodeGraphBaseSampleRate() : 44100;
+    const ratio = targetSampleRate / Math.max(1, host);
+    if (Math.abs(ratio - 2) < 0.05) oversamplingFactor = 2;
+    else if (Math.abs(ratio - 4) < 0.05) oversamplingFactor = 4;
+  }
+  const resolvedTarget = Number.isFinite(targetSampleRate)
+    ? Math.max(8000, Math.min(768000, targetSampleRate))
+    : Math.round((typeof nodeGraphBaseSampleRate === "function" ? nodeGraphBaseSampleRate() : 44100) * oversamplingFactor);
   return {
-    targetSampleRate: Number.isFinite(targetSampleRate)
-      ? Math.max(8000, Math.min(768000, targetSampleRate))
-      : 44100,
+    oversamplingFactor,
+    targetSampleRate: resolvedTarget,
     pitchReferenceMidiNote: Number.isFinite(pitchReferenceMidiNote)
       ? Math.max(0, Math.min(127, pitchReferenceMidiNote))
-      : 48,
+      : 69,
     pitchReferenceHz: Number.isFinite(pitchReferenceHz) && pitchReferenceHz > 0
       ? Math.max(0.01, Math.min(safeSpeedLimit, pitchReferenceHz))
-      : 100,
+      : 440,
     pitchOffsetOctaves: Number.isFinite(pitchOffsetOctaves)
       ? pitchOffsetOctaves
       : 0,
@@ -79,9 +158,15 @@ function normalizeNodeGraphPatchTiming(timing = {}) {
 
 function normalizeNodeGraphPatchGrid(grid = {}) {
   const fallbackSize = Number(grid?.sizePx);
+  const gridDefault = (typeof nodeGraphGrid !== "undefined"
+    && nodeGraphGrid
+    && Number.isFinite(Number(nodeGraphGrid.sizePx))
+    && Number(nodeGraphGrid.sizePx) > 0)
+    ? Number(nodeGraphGrid.sizePx)
+    : 28;
   const fallback = Number.isFinite(fallbackSize) && fallbackSize > 0
     ? fallbackSize
-    : nodeGraphGrid.sizePx;
+    : gridDefault;
   const width = Number(grid?.widthPx);
   const height = Number(grid?.heightPx);
   const widthPx = Number.isFinite(width) && width > 0 ? width : fallback;
@@ -958,7 +1043,8 @@ function normalizeNodeGraphPatchView(view = {}) {
     sliderPositionVisible: flag("sliderPositionVisible", true),
     tooltipEmbedded: flag("tooltipEmbedded", true),
     locked: flag("locked", false),
-    hideUnusedPorts: flag("hideUnusedPorts", false),
+    // Retired global overlay; toolbar batches per-module ui.hideUnused. Always false so it cannot override.
+    hideUnusedPorts: false,
     ...(moduleScopeFramesPerSecond != null ? { moduleScopeFramesPerSecond } : {}),
     ...(hasPins || (canvases && Object.hasOwn(source, "canvases"))
       ? { canvases: canvases || { root: { elements: [] }, byMetamodule: {} } }

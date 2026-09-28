@@ -40,6 +40,7 @@ function nodeGraphPatchWithLiveHeaderInfo(patch = nodeGraphMvp.patch) {
     program,
     tags: field("tags", "nodePatchDefaultsTags", "patchTagsValue") || nextPatch.info?.tags,
     author: field("author", "nodePatchDefaultsAuthor", "patchAuthorValue") || nextPatch.info?.author,
+    emoji: field("emoji", "nodePatchDefaultsEmoji", "patchEmojiValue") || nextPatch.info?.emoji,
     category: field("category", "nodePatchDefaultsCategory", "patchCategoryValue") || nextPatch.info?.category,
   });
   return nextPatch;
@@ -398,7 +399,15 @@ function saveCurrentNodeGraphPatchPreset() {
     setNodeGraphScriptStatus("preset needs a name", false);
     return;
   }
-  const text = serializeNodeGraphPatch();
+  const presetPatch = typeof cloneNodeGraphPatch === "function"
+    ? cloneNodeGraphPatch(nodeGraphMvp.patch)
+    : nodeGraphMvp.patch;
+  if (typeof nodeGraphAssignKnobPortalIndexes === "function") {
+    nodeGraphAssignKnobPortalIndexes(presetPatch);
+  }
+  const text = typeof serializeNodeGraphPatch === "function"
+    ? serializeNodeGraphPatch(presetPatch)
+    : JSON.stringify(presetPatch, null, 2);
   const entries = loadNodeGraphPatchPresetEntries().filter((entry) => entry.name !== name);
   entries.push({ name, text, updatedAt: Date.now() });
   try {
@@ -549,6 +558,9 @@ function nodeGraphPatchExportPayload() {
   if (!patchToSave) {
     return null;
   }
+  if (typeof nodeGraphAssignKnobPortalIndexes === "function") {
+    nodeGraphAssignKnobPortalIndexes(patchToSave);
+  }
   const patchText = typeof serializeNodeGraphPatch === "function"
     ? serializeNodeGraphPatch(patchToSave)
     : JSON.stringify(patchToSave, null, 2);
@@ -559,12 +571,20 @@ function nodeGraphPatchExportPayload() {
 }
 
 const nodeGraphFilePickerWellKnown = Object.freeze(["desktop", "documents", "downloads"]);
+// File System Access accepts well-known roots or handles, not an app-relative
+// path such as ./patches. This id lets the browser remember the patches folder
+// independently, while Documents is the first-run fallback for this repo.
+const nodeGraphFilePickerId = "soemdsp-sandbox-patches";
+const nodeGraphFilePickerDefaultStartIn = "documents";
 
 function normalizeNodeGraphFilePickerState(raw = null) {
   const source = raw && typeof raw === "object" ? raw : {};
-  const startIn = String(source.startIn || "desktop").toLowerCase();
+  const requestedStartIn = String(source.startIn || nodeGraphFilePickerDefaultStartIn).toLowerCase();
+  // "desktop" was the old implicit default; migrate it so existing sessions
+  // also get the project-friendly first-run location.
+  const startIn = requestedStartIn === "desktop" ? nodeGraphFilePickerDefaultStartIn : requestedStartIn;
   return {
-    startIn: nodeGraphFilePickerWellKnown.includes(startIn) ? startIn : "desktop",
+    startIn: nodeGraphFilePickerWellKnown.includes(startIn) ? startIn : nodeGraphFilePickerDefaultStartIn,
     lastSettingsName: String(source.lastSettingsName || "useruisettings.json").slice(0, 180) || "useruisettings.json",
     lastPatchName: String(source.lastPatchName || "").slice(0, 180),
   };
@@ -673,7 +693,7 @@ async function nodeGraphFilePickerStartIn({ allowHandle = true } = {}) {
       }
     }
   }
-  return nodeGraphFilePickerState().startIn || "desktop";
+  return nodeGraphFilePickerState().startIn || nodeGraphFilePickerDefaultStartIn;
 }
 
 /** Persist the folder (not the file) so later Save opens there without an edit prompt. */
@@ -714,6 +734,7 @@ async function nodeGraphSaveTextFileWithNativeDialog({
   if (typeof window.showSaveFilePicker === "function") {
     try {
       const handle = await window.showSaveFilePicker({
+        id: nodeGraphFilePickerId,
         suggestedName: name,
         startIn: await nodeGraphFilePickerStartIn({ allowHandle: true }),
         types: [{ description, accept }],
@@ -743,6 +764,7 @@ async function nodeGraphOpenTextFileWithNativeDialog({
   if (typeof window.showOpenFilePicker === "function") {
     try {
       const [handle] = await window.showOpenFilePicker({
+        id: nodeGraphFilePickerId,
         multiple: false,
         startIn: await nodeGraphFilePickerStartIn(),
         types: [{ description, accept }],
@@ -880,6 +902,9 @@ async function saveNodeGraphScript() {
   }
   try {
     const patchToSave = nodeGraphPatchWithLiveHeaderInfo();
+    if (typeof nodeGraphAssignKnobPortalIndexes === "function") {
+      nodeGraphAssignKnobPortalIndexes(patchToSave);
+    }
     const patchText = serializeNodeGraphPatch(patchToSave);
     const info = normalizeNodeGraphPatchInfo(patchToSave.info);
     const response = await fetch(
@@ -1346,7 +1371,15 @@ async function updateDefaultNodeGraphPreset() {
   if (!nodeGraphScriptReadyForGraphAction("save init")) {
     return false;
   }
-  const text = serializeNodeGraphPatch();
+  const initPatch = typeof cloneNodeGraphPatch === "function"
+    ? cloneNodeGraphPatch(nodeGraphMvp.patch)
+    : nodeGraphMvp.patch;
+  if (typeof nodeGraphAssignKnobPortalIndexes === "function") {
+    nodeGraphAssignKnobPortalIndexes(initPatch);
+  }
+  const text = typeof serializeNodeGraphPatch === "function"
+    ? serializeNodeGraphPatch(initPatch)
+    : JSON.stringify(initPatch, null, 2);
   try {
     const response = await fetch("/api/presets/default", {
       method: "POST",
