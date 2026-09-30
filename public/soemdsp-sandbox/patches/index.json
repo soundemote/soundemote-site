@@ -166,6 +166,15 @@
       "emoji": ""
     },
     {
+      "slug": "ditheredoscillator",
+      "label": "ditheredoscillator",
+      "name": "",
+      "url": "/soemdsp-sandbox/patches/ditheredoscillator.json",
+      "author": "",
+      "tags": "circle",
+      "emoji": ""
+    },
+    {
       "slug": "feedbackdetector",
       "label": "feedbackdetector",
       "name": "",
