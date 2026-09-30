@@ -2686,6 +2686,24 @@ function readNodeMetadataEditorValues(slider) {
     mid: parseNodeMetadataNumber(sanitizeMetadataNumberInput("metadataMidValue"), current.mid),
     min,
     choices: parseNodeMetadataChoices(document.getElementById("metadataChoicesValue").value),
+    // B-079: keep catalog origin unless this edit redefines a full-span choice set.
+    choiceOriginMin: (() => {
+      const choices = parseNodeMetadataChoices(document.getElementById("metadataChoicesValue").value);
+      const stepN = Math.max(0, parseNodeMetadataNumber(stepInput, current.step));
+      if (
+        choices.length
+        && Number.isFinite(stepN) && stepN > 0
+        && Number.isFinite(min) && Number.isFinite(max)
+        && Math.abs((max - min) / stepN + 1 - choices.length) < 1e-6
+      ) {
+        return min;
+      }
+      const prior = Number(current.choiceOriginMin);
+      if (Number.isFinite(prior)) {
+        return prior;
+      }
+      return undefined;
+    })(),
     bipolar: Boolean(document.getElementById("metadataBipolarValue")?.checked),
     reverse,
     outputDomain: Boolean(document.getElementById("metadataOutputDomainValue")?.checked),
@@ -2714,6 +2732,9 @@ function readNodeMetadataEditorValues(slider) {
 }
 
 function applyNodeMetadataEditor(options = {}) {
+  if (typeof nodeGraphPatchIsLocked === "function" && nodeGraphPatchIsLocked()) {
+    return;
+  }
   const slider = document.getElementById(nodeGraphMvp.metadataEditorTarget);
   if (!slider) {
     return;
@@ -3034,6 +3055,10 @@ function nodeGraphMakeControllerForOpenParameter(kind) {
 }
 
 function applyNodeMetadataScriptEditor() {
+  if (typeof nodeGraphPatchIsLocked === "function" && nodeGraphPatchIsLocked()) {
+    metadataScriptStatus("patch locked", true);
+    return false;
+  }
   const slider = document.getElementById(nodeGraphMvp.metadataEditorTarget);
   if (!slider) {
     metadataScriptStatus("no parameter", true);

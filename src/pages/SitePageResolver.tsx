@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { featuredArticles } from "@/data/featuredArticles";
+import { resolveStaticPagePatch, type StaticPagePatch } from "@/lib/staticPagePatch";
 
 type SitePageStyle = "homepage" | "wiki" | "sandbox";
 type SitePageRow = {
@@ -33,7 +34,7 @@ export default function SitePageResolver({ slug: slugProp }: { slug?: string } =
   const { loading: roleLoading, session, isTrusted } = useWikiRole();
   const [loading, setLoading] = useState(true);
   const [row, setRow] = useState<SitePageRow | null>(null);
-  const [hasStaticPatch, setHasStaticPatch] = useState(false);
+  const [patchHit, setPatchHit] = useState<StaticPagePatch | null>(null);
 
   useEffect(() => {
     let cancel = false;
@@ -42,11 +43,7 @@ export default function SitePageResolver({ slug: slugProp }: { slug?: string } =
       return;
     }
     setLoading(true);
-    const staticCheck = fetch(`/soemdsp-sandbox/patches/${encodeURIComponent(slug)}.json`, {
-      cache: "no-store",
-    })
-      .then((res) => res.ok)
-      .catch(() => false);
+    const staticCheck = resolveStaticPagePatch(slug).catch(() => null);
 
     const pageCheck = supabaseConfigError
       ? Promise.resolve(null)
@@ -57,9 +54,9 @@ export default function SitePageResolver({ slug: slugProp }: { slug?: string } =
           .maybeSingle()
           .then(({ data }) => (data as SitePageRow | null) ?? null);
 
-    Promise.all([staticCheck, pageCheck]).then(([staticOk, pageRow]) => {
+    Promise.all([staticCheck, pageCheck]).then(([hit, pageRow]) => {
       if (cancel) return;
-      setHasStaticPatch(Boolean(staticOk));
+      setPatchHit(hit);
       setRow(pageRow);
       setLoading(false);
     });
@@ -76,9 +73,15 @@ export default function SitePageResolver({ slug: slugProp }: { slug?: string } =
     );
   }
 
-  // Static file wins: drop soemdsp-sandbox/patches/{slug}.json → live at /{slug}.
-  if (hasStaticPatch) {
-    return <SandboxPage view="showcase" pagePatch={slug} />;
+  // Catalog file wins: patches/index.json url for this slug → live at /{slug}.
+  if (patchHit) {
+    return (
+      <SandboxPage
+        view="showcase"
+        staticPatchUrl={patchHit.url}
+        pagePatch={patchHit.slug}
+      />
+    );
   }
 
   if (row) {

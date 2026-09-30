@@ -78,8 +78,18 @@ function nodeGraphTraceDisplayStepperQuantum(input, currentValue = null, directi
   if (key === "fftSize") {
     return 1; // stepped via table in stepNodeGraphTraceDisplaySetting
   }
-  // History (s): control-space step (exp map) — fine near short windows.
-  if (key === "historySeconds" || key === "zoomSeconds") {
+  // History (s): control-space step on the existing skew/exp map.
+  // Live rows use data-trace-display-field. dataset.waterfallField is unset,
+  // so this branch never ran and History used magnitude quanta (0.1 / 1 / 10)
+  // inside 0..1 control space. A few pixels then covered the whole window.
+  // Trace-field lookup is History-only so hue / blur / other keys stay as they are.
+  const historyKey = input.dataset?.traceDisplayField
+    || input.getAttribute?.("data-trace-display-field")
+    || "";
+  if (
+    key === "historySeconds" || key === "zoomSeconds" || key === "detail"
+    || historyKey === "historySeconds" || historyKey === "zoomSeconds" || historyKey === "detail"
+  ) {
     return 0.025;
   }
   // Fixed sub-unit fields that are not magnitude-stepped.
@@ -155,6 +165,7 @@ function nodeGraphTraceDisplayImageBurnBlurField(key) {
 function nodeGraphTraceDisplayHistoryControlField(key) {
   return key === "historySeconds"
     || key === "zoomSeconds"
+    || key === "detail"
     || key === "historyHz"
     || key === "historyCycles"
     || key === "sweepHz"
@@ -188,7 +199,6 @@ function nodeGraphTraceDisplayUnitDragField(key) {
     "dot1Brightness",
     "secondaryBrightness",
     "brightness",
-    "fade",
     "ghostBrightness",
     "residual",
     "ghost",
@@ -311,8 +321,44 @@ function nodeGraphTraceDisplaySensitiveControlField(key) {
 
 /** Exp curve for stamp size — higher = more of the travel near small sizes. */
 const nodeGraphTraceDisplaySensitiveControlExponent = 3;
-/** History: stronger exp so most useful short windows sit near control 0. */
+/** History fallback when the field has no parameter skew. Higher = more travel near 0. */
 const nodeGraphTraceDisplayHistoryControlExponent = 3.5;
+
+/**
+ * History control-space exponent.
+ * Field meta sliderCurve/curveAmount uses the parameter skew law (same as
+ * long-range knobs). Still the existing t^exp seconds map — not a second mapper.
+ * Exponent > 1 keeps 0 at pause and slows the approach to max.
+ */
+function nodeGraphTraceDisplayHistoryCurveExponent(key) {
+  const meta = (typeof nodeGraphDisplaySettingsFieldMeta !== "undefined" && nodeGraphDisplaySettingsFieldMeta)
+    ? nodeGraphDisplaySettingsFieldMeta[key]
+    : null;
+  const curve = String(meta?.sliderCurve || "").trim().toLowerCase();
+  // custom skew: curveAmount -1..+1 -> power via the shared sensitivity law.
+  // -1 = exponent 4 (fine near 0, slow at max). Do not use the skew-from-mid
+  // fallback: History has no mid, and that path returns exponent 1 (linear).
+  if (curve === "custom" || curve === "sens" || curve === "sensitivity") {
+    const amount = typeof normalizeNodeSliderCurveAmount === "function"
+      ? normalizeNodeSliderCurveAmount(meta.curveAmount)
+      : Math.max(-1, Math.min(1, Number(meta.curveAmount) || 0));
+    if (typeof nodeSliderSkewExponentFromSensitivity === "function") {
+      const exp = Number(nodeSliderSkewExponentFromSensitivity(amount));
+      if (Number.isFinite(exp) && exp > 0) {
+        return exp;
+      }
+    }
+  }
+  if (meta && (meta.sliderCurve || meta.nonlinearSlider === true)
+    && typeof nodeGraphParamSkewExponent === "function") {
+    const exp = Number(nodeGraphParamSkewExponent(meta));
+    if (Number.isFinite(exp) && exp > 1) {
+      return exp;
+    }
+  }
+  return nodeGraphTraceDisplayHistoryControlExponent;
+}
+
 
 function nodeGraphTraceDisplaySensitiveControlMax(key) {
   if (key === "pixelDensity") {
@@ -335,6 +381,12 @@ function nodeGraphTraceDisplayHistoryControlRange(key) {
   const formType = typeof nodeGraphTraceDisplaySettingsFormType === "function"
     ? nodeGraphTraceDisplaySettingsFormType()
     : "";
+  // Waterfall Detail shares History's control-space skew (field meta), not a private mapper.
+  if (key === "detail") {
+    const lo = typeof NODE_GRAPH_WATERFALL_DETAIL_MIN === "number" ? NODE_GRAPH_WATERFALL_DETAIL_MIN : 0;
+    const hi = typeof NODE_GRAPH_WATERFALL_DETAIL_MAX === "number" ? NODE_GRAPH_WATERFALL_DETAIL_MAX : 1;
+    return { min: lo, max: hi };
+  }
   // Hz dials: Hz domain (0 allowed = freeze). Never reuse the seconds 0…10 range.
   if (key === "historyHz" || key === "sweepHz") {
     return { min: 0, max: 100 };
@@ -356,11 +408,11 @@ function nodeGraphTraceDisplayHistoryControlRange(key) {
  * Map stored seconds → 0…1 control. Exponential so short windows have fine drag.
  * min≤0: t = (s/max)^(1/exp); min>0: t = log(s/min)/log(max/min).
  */
-function nodeGraphTraceDisplaySecondsToControlValue(seconds, min, max) {
+function nodeGraphTraceDisplaySecondsToControlValue(seconds, min, max, key = "") {
   const lo = Math.max(0, nodeGraphFiniteNumber(min));
   const hi = Math.max(lo + 1e-9, nodeGraphFiniteNumber(max, 10));
   const s = clampNodeSliderValue(nodeGraphFiniteNumber(seconds), lo, hi);
-  const exp = nodeGraphTraceDisplayHistoryControlExponent;
+  const exp = nodeGraphTraceDisplayHistoryCurveExponent(key);
   if (lo <= 0) {
     if (s <= 0) {
       return 0;
@@ -371,11 +423,11 @@ function nodeGraphTraceDisplaySecondsToControlValue(seconds, min, max) {
 }
 
 /** Map 0…1 control → stored seconds (inverse of SecondsToControl). */
-function nodeGraphTraceDisplayControlToSecondsValue(control, min, max) {
+function nodeGraphTraceDisplayControlToSecondsValue(control, min, max, key = "") {
   const t = clampNodeSliderValue(nodeGraphFiniteNumber(control), 0, 1);
   const lo = Math.max(0, nodeGraphFiniteNumber(min));
   const hi = Math.max(lo + 1e-9, nodeGraphFiniteNumber(max, 10));
-  const exp = nodeGraphTraceDisplayHistoryControlExponent;
+  const exp = nodeGraphTraceDisplayHistoryCurveExponent(key);
   if (lo <= 0) {
     return Math.pow(t, exp) * hi;
   }
@@ -399,9 +451,10 @@ function adjustNodeGraphTraceDisplaySettingByControlDelta(key, startValue, delta
   if (nodeGraphTraceDisplayHistoryControlField(key)) {
     const { min, max } = nodeGraphTraceDisplayHistoryControlRange(key);
     return nodeGraphTraceDisplayControlToSecondsValue(
-      nodeGraphTraceDisplaySecondsToControlValue(startValue, min, max) + delta,
+      nodeGraphTraceDisplaySecondsToControlValue(startValue, min, max, key) + delta,
       min,
       max,
+      key,
     );
   }
   // Linear 0…1 unit fields (Bright / Ghost Bright / Residual share one gain).
@@ -418,11 +471,19 @@ function adjustNodeGraphTraceDisplaySettingByControlDelta(key, startValue, delta
   );
 }
 function nodeGraphTraceDisplayClampUnit(value) {
-  return clampNodeSliderValue(nodeGraphFiniteNumber(value), 0, 1);
+  const n = nodeGraphFiniteNumber(value);
+  if (typeof clampNodeSliderValue === "function") {
+    return clampNodeSliderValue(n, 0, 1);
+  }
+  return Math.max(0, Math.min(1, n));
 }
 
 function nodeGraphTraceDisplayClampInkPx(value) {
-  return clampNodeSliderValue(nodeGraphFiniteNumber(value), 0, 32);
+  const n = nodeGraphFiniteNumber(value);
+  if (typeof clampNodeSliderValue === "function") {
+    return clampNodeSliderValue(n, 0, 32);
+  }
+  return Math.max(0, Math.min(32, n));
 }
 
 function nodeGraphTraceDisplayClampNonNegative(value) {
@@ -561,10 +622,12 @@ const nodeGraphTraceDisplaySharedValueClamps = Object.freeze({
   dot1Brightness: nodeGraphTraceDisplayClampBrightness,
   dot1Size: nodeGraphTraceDisplayClampInkPx,
   ghost: nodeGraphTraceDisplayClampUnit,
-  historySeconds: nodeGraphTraceDisplayClampHistorySeconds,
-  fade: nodeGraphTraceDisplayClampUnit,
+  historySeconds: (value) => (typeof nodeGraphWaterfallClampHistorySeconds === "function"
+    ? nodeGraphWaterfallClampHistorySeconds(value, 0.25)
+    : nodeGraphTraceDisplayClampHistorySeconds(value)),
   lineLength: nodeGraphTraceDisplayClampUnit,
   lineThickness: nodeGraphTraceDisplayClampNonNegative,
+  faceBlur: nodeGraphTraceDisplayClampUnit,
   lineBlur: (value) => clampNodeSliderValue(nodeGraphFiniteNumber(value), 0, 8),
   stampDensity: nodeGraphTraceDisplayClampUnit,
   shapeParam: nodeGraphTraceDisplayClampUnit,
@@ -580,9 +643,13 @@ const nodeGraphTraceDisplaySharedValueClamps = Object.freeze({
   sweepCycles: (value) => (typeof nodeGraphTraceDisplayClampSweepCycles === "function"
     ? nodeGraphTraceDisplayClampSweepCycles(value, 4)
     : clampNodeSliderValue(nodeGraphFiniteNumber(value, 4), 0.05, 100)),
-  historyHz: (value) => (typeof nodeGraphTraceDisplayClampHistoryHz === "function"
-    ? nodeGraphTraceDisplayClampHistoryHz(value, 4)
-    : Math.max(0, Math.min(100, nodeGraphFiniteNumber(value, 4)))),
+  historyHz: (value) => {
+    // Non-waterfall faces only. Instant Waterfall uses historySeconds.
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 4;
+    if (!(n > 0)) return 0;
+    return Math.min(100, n);
+  },
   historyCycles: (value) => (typeof nodeGraphTraceDisplayClampHistoryCycles === "function"
     ? nodeGraphTraceDisplayClampHistoryCycles(value, 4)
     : clampNodeSliderValue(nodeGraphFiniteNumber(value, 4), 0.05, 100)),
@@ -600,6 +667,13 @@ const nodeGraphTraceDisplaySharedValueClamps = Object.freeze({
     return clampNodeSliderValue(n, 1, 24000);
   },
   zoomSeconds: nodeGraphTraceDisplayClampHistorySeconds,
+  detail: (value) => {
+    const n = Number(value);
+    const lo = typeof NODE_GRAPH_WATERFALL_DETAIL_MIN === "number" ? NODE_GRAPH_WATERFALL_DETAIL_MIN : 0;
+    const hi = typeof NODE_GRAPH_WATERFALL_DETAIL_MAX === "number" ? NODE_GRAPH_WATERFALL_DETAIL_MAX : 1;
+    if (!Number.isFinite(n)) return 1;
+    return clampNodeSliderValue(n, lo, hi);
+  },
   zoomMin: (value) => {
     const n = Number(value);
     return Number.isFinite(n) ? clampNodeSliderValue(n, -1, 2) : 0;
@@ -809,20 +883,34 @@ const nodeGraphTraceDisplayFormTypeValueClampOverrides = Object.freeze({
   sinCos4Face: Object.freeze({
     backgroundBrightness: (value) => clampNodeSliderValue(nodeGraphFiniteNumber(value), 0, 1),
   }),
-  // 1D Waterfall / Output: Size = CSS px stroke; Blur 0 hard … 1 soft skirt.
+  // Instant Waterfall: Bright/Blur (filled bars); Size legacy only.
+  // Column Detail is the shared `detail` clamp (not the removed phosphor Detail).
   waterfall: Object.freeze({
     dot1Size: nodeGraphTraceDisplayClampInkPx,
     secondarySize: nodeGraphTraceDisplayClampInkPx,
     lineThickness: nodeGraphTraceDisplayClampStampBlur,
+    faceBlur: nodeGraphTraceDisplayClampUnit,
     secondaryLineThickness: nodeGraphTraceDisplayClampStampBlur,
+    brightness: nodeGraphTraceDisplayClampBrightness,
+    dot1Brightness: nodeGraphTraceDisplayClampBrightness,
+    secondaryBrightness: nodeGraphTraceDisplayClampBrightness,
+    barThickness: nodeGraphTraceDisplayClampUnit,
   }),
   waterfallRgb: Object.freeze({
     dot1Size: nodeGraphTraceDisplayClampInkPx,
     lineThickness: nodeGraphTraceDisplayClampStampBlur,
+    faceBlur: nodeGraphTraceDisplayClampUnit,
+    brightness: nodeGraphTraceDisplayClampBrightness,
+    dot1Brightness: nodeGraphTraceDisplayClampBrightness,
+    barThickness: nodeGraphTraceDisplayClampUnit,
   }),
   waterfallXyz: Object.freeze({
     dot1Size: nodeGraphTraceDisplayClampInkPx,
     lineThickness: nodeGraphTraceDisplayClampStampBlur,
+    faceBlur: nodeGraphTraceDisplayClampUnit,
+    brightness: nodeGraphTraceDisplayClampBrightness,
+    dot1Brightness: nodeGraphTraceDisplayClampBrightness,
+    barThickness: nodeGraphTraceDisplayClampUnit,
   }),
   value: Object.freeze({
     dot1Size: nodeGraphTraceDisplayClampInkPx,

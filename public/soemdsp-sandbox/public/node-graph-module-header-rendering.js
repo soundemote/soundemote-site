@@ -100,7 +100,7 @@ function updateNodeGraphPatchAudioFromHeader(input) {
     markPending: false,
     status: key === "oversamplingFactor"
       ? `oversampling x${next.oversamplingFactor}`
-      : (key === "pitchOffsetOctaves" ? "pitch synced" : "pitch reference synced"),
+      : "pitch reference synced",
   });
   if (key === "oversamplingFactor") {
     syncNodeGraphOversamplingReadouts();
@@ -117,6 +117,17 @@ function commitNodeGraphHeaderNumberInput(input) {
     || input.classList?.contains("node-header-render-end-input")
     || input.closest?.(".node-header-render-range-field")
   ) {
+    return;
+  }
+  if (
+    input.tagName !== "SELECT"
+    && typeof nodeGraphPatchIsLocked === "function"
+    && nodeGraphPatchIsLocked()
+  ) {
+    input.readOnly = true;
+    if (typeof syncNodeGraphHeaderTimingWidgets === "function") {
+      syncNodeGraphHeaderTimingWidgets();
+    }
     return;
   }
   if (input.tagName === "SELECT") {
@@ -219,6 +230,10 @@ function createNodeGraphHeaderTimingInput(key, label, options = {}) {
   const caption = document.createElement("span");
   caption.className = "node-header-timing-caption";
   caption.textContent = label;
+  if (key === "tempoBpm") {
+    field.classList.add("node-header-bpm-field");
+    bindNodeGraphBpmTapCaption(caption);
+  }
   field.append(caption);
   if (options.nameValue) {
     field.classList.add("is-name-value");
@@ -292,25 +307,30 @@ function createNodeGraphHeaderAudioInput(key, label, options = {}) {
   return field;
 }
 
-function createNodeGraphTapTempoButton() {
-  const button = document.createElement("button");
-  button.className = "node-header-tap-tempo-button";
-  button.type = "button";
-  button.textContent = "Tap";
-  button.title = "Tap tempo";
-  button.setAttribute("aria-label", "Tap tempo for patch BPM");
-  button.addEventListener("click", (event) => {
+function bindNodeGraphBpmTapCaption(caption) {
+  caption.classList.add("node-header-bpm-tap");
+  caption.tabIndex = 0;
+  caption.setAttribute("role", "button");
+  caption.title = "Tap tempo";
+  caption.setAttribute("aria-label", "Tap tempo for patch BPM");
+  caption.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
     handleNodeGraphTapTempo();
   });
-  button.addEventListener("pointerdown", (event) => {
+  caption.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
     event.stopPropagation();
   });
-  button.addEventListener("keydown", (event) => {
+  caption.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      event.stopPropagation();
+      handleNodeGraphTapTempo();
+      return;
+    }
     event.stopPropagation();
   });
-  return button;
 }
 
 function createNodeGraphHeaderSpeedPlaceholder() {
@@ -359,7 +379,7 @@ function createNodeGraphHeaderSpeedLimitField(options = {}) {
 
   const caption = document.createElement("span");
   caption.className = "node-header-timing-caption";
-  caption.textContent = "Speed Limit";
+  caption.textContent = options.label || "Speed Limit";
   field.append(caption);
   if (options.nameValue) {
     field.classList.add("is-name-value");
@@ -752,25 +772,11 @@ function createNodeGraphHeaderTimingWidgets() {
   group.setAttribute("aria-label", "Patch timing");
 
   group.append(
-    createNodeGraphTapTempoButton(),
     createNodeGraphHeaderTimingInput("tempoBpm", "BPM", { max: 320 }),
     createNodeGraphHeaderTimingInput("timeSignatureNumerator", "Beats"),
     createNodeGraphHeaderTimingInput("timeSignatureDenominator", "Unit"),
-    createNodeGraphHeaderScopeInput(
-      "nodeMasterScopeFps",
-      "FPS",
-      normalizeNodeGraphModuleScopeFramesPerSecond(nodeGraphMvp.moduleScopeFramesPerSecond ?? 60),
-      {
-        ariaLabel: "Display frames per second",
-        inputMode: "numeric",
-        max: 240,
-        min: 0,
-        scopeInput: "framesPerSecond",
-        step: 1,
-      },
-    ),
-    createNodeGraphHeaderSpeedPlaceholder(),
     createNodeGraphHeaderPatchTitle(),
+    createNodeGraphHeaderSpeedPlaceholder(),
     createNodeGraphHeaderSmoothingTimeField(),
     createNodeGraphHeaderRenderRangeInput("node-header-render-start-input", "Start", nodeGraphMvp.renderStartSeconds ?? 0, { ariaLabel: "Render start time in seconds", min: 0, max: 3599, tooltip: "Sets the Render Sample start point (seconds)" }),
     createNodeGraphHeaderRenderRangeInput("node-header-render-end-input", "End", nodeGraphMvp.renderEndSeconds ?? (nodeGraphMvp.seconds ?? 2), { ariaLabel: "Render end time in seconds", min: 0.05, max: 3600, tooltip: "Sets the Render Sample end point (seconds)" }),
@@ -893,24 +899,24 @@ function createNodeGraphCommandCenterTimingWidgets() {
   group.setAttribute("aria-label", "Command Center patch timing");
   const nv = { nameValue: true };
   group.append(
+    createNodeGraphHeaderSpeedLimitField({ ...nv, label: "Speed" }),
+    createNodeGraphHeaderTimingInput("tempoBpm", "BPM", { ...nv, max: 320 }),
     createNodeGraphHeaderTimingInput("timeSignatureNumerator", "Beats", nv),
-    createNodeGraphHeaderTimingInput("timeSignatureDenominator", "Unit", nv),
-    createNodeGraphHeaderSpeedLimitField(nv),
-    createNodeGraphHeaderAudioInput("pitchReferenceHz", "Freq Ref", {
-      ...nv,
-      ariaLabel: "Pitch Reference Frequency in Hz (♯/♭ reference)",
-      tooltipKey: "timing.pitchReferenceHz",
-      min: 0.01,
-      max: 20000,
-    }),
-    createNodeGraphHeaderAudioInput("pitchOffsetOctaves", "Pitch", {
-      ...nv,
-      ariaLabel: "Global pitch offset in octaves (−10…+10). Sweeps oscillators, Chaosfly, and filter cutoffs together.",
-      tooltipKey: "timing.pitchOffsetOctaves",
-      min: -10,
-      max: 10,
-      step: "any",
-    }),
+    createNodeGraphHeaderTimingInput("timeSignatureDenominator", "Units", nv),
+    createNodeGraphHeaderScopeInput(
+      "nodeMasterScopeFps",
+      "FPS",
+      normalizeNodeGraphModuleScopeFramesPerSecond(nodeGraphMvp.moduleScopeFramesPerSecond ?? 60),
+      {
+        ...nv,
+        ariaLabel: "Display frames per second",
+        inputMode: "numeric",
+        max: 240,
+        min: 0,
+        scopeInput: "framesPerSecond",
+        step: 1,
+      },
+    ),
     createNodeGraphPlanckReadout(),
     createNodeGraphOversamplingFactorField(),
     createNodeGraphSampleRateReadout("sample-rate", "Sample Rate"),
@@ -926,6 +932,7 @@ function renderNodeGraphCommandCenterTimingControls() {
   }
   const osSelect = host.querySelector("#nodeHeaderOversamplingFactor");
   const osCaption = host.querySelector(".node-header-oversampling-field .node-header-timing-caption");
+  const firstCaption = host.querySelector(".node-command-center-timing-widgets .node-header-timing-caption");
   if (
     !host.querySelector(".node-command-center-timing-widgets")
     || !host.querySelector(".node-header-planck-readout")
@@ -933,9 +940,11 @@ function renderNodeGraphCommandCenterTimingControls() {
     || (osCaption && osCaption.textContent !== "Oversample")
     || (osSelect && osSelect.dataset.timingBound === "true")
     || !host.querySelector(".node-header-sample-rate-value")
-    || !host.querySelector('.node-header-timing-input[data-audio-field="pitchOffsetOctaves"]')
-    || host.querySelector("#nodeMasterScopeFps")
+    || host.querySelector('[data-audio-field="pitchReferenceHz"]')
+    || !host.querySelector("#nodeMasterScopeFps")
+    || !host.querySelector(".node-header-bpm-tap")
     || !host.querySelector('[data-speed-limit="true"]')
+    || firstCaption?.textContent !== "Speed"
   ) {
     host.replaceChildren(createNodeGraphCommandCenterTimingWidgets());
   }
@@ -946,12 +955,14 @@ function renderNodeGraphCommandCenterTimingControls() {
 function renderNodeGraphPatchTimingControls() {
   const host = document.getElementById("nodePatchTimingControls");
   if (host) {
-    // Speed Limit stays in Command Center (removed from top bar for patch title space). Keep Speed. FPS lives on this bar.
+    // Speed Limit stays in Command Center (labeled Speed). Top bar keeps the Speed placeholder.
+    // FPS lives in Command Center. BPM captions are the tap-tempo control (no separate Tap button).
     if (
       !host.querySelector(".node-header-timing-widgets")
-      || !host.querySelector(".node-header-tap-tempo-button")
+      || host.querySelector(".node-header-tap-tempo-button")
+      || !host.querySelector(".node-header-bpm-tap")
       || !host.querySelector('[data-timing-field="tempoBpm"]')
-      || !host.querySelector("#nodeMasterScopeFps")
+      || host.querySelector("#nodeMasterScopeFps")
       || !host.querySelector("#nodeHeaderGlobalSmoothingSeconds")
       || !host.querySelector("#nodeHeaderPatchTitle")
       || host.querySelector('[data-speed-limit="true"]')

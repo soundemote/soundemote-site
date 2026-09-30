@@ -49,6 +49,12 @@ function renderNodeGraphSceneScopeControls(nodeId = nodeGraphScopeControlTargetN
 function handleNodeGraphSceneScopeNumericInput(event) {
   const input = event.currentTarget;
   const nodeId = nodeGraphScopeControlTargetNodeId();
+  if (typeof nodeGraphPatchIsLocked === "function" && nodeGraphPatchIsLocked()) {
+    if (nodeId) {
+      renderNodeGraphSceneScopeControls(nodeId);
+    }
+    return;
+  }
   if (!nodeId) {
     return;
   }
@@ -309,6 +315,9 @@ function beginNodeGraphScopeNumberDrag(event) {
   if (event.button > 0 || event.detail > 1) {
     return;
   }
+  if (event.target?.closest?.(".node-header-bpm-tap")) {
+    return;
+  }
   if (typeof nodeGraphNumericModifierReserved === "function" && nodeGraphNumericModifierReserved(event)) {
     event.preventDefault();
     event.stopPropagation();
@@ -387,6 +396,14 @@ function endNodeGraphScopeNumberDrag(event) {
 }
 
 function beginNodeGraphScopeNumberEdit(event) {
+  if (event.target?.closest?.(".node-header-bpm-tap")) {
+    return;
+  }
+  if (typeof nodeGraphPatchIsLocked === "function" && nodeGraphPatchIsLocked()) {
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
   const input = nodeGraphScopeNumberDragInputFromTarget(event.currentTarget);
   if (!input) {
     return;

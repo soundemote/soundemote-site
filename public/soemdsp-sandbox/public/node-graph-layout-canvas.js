@@ -156,39 +156,8 @@ function nodeGraphLayoutCanvasIsPinned(nodeId, patch = nodeGraphMvp?.patch) {
   );
 }
 
-function nodeGraphLayoutCanvasClamp01(n, fallback = 0) {
-  const v = Number(n);
-  if (!Number.isFinite(v)) {
-    return fallback;
-  }
-  return Math.max(0, Math.min(1, v));
-}
-
 function nodeGraphLayoutCanvasNormalizeRect(raw, index = 0) {
-  const i = Math.max(0, Math.round(Number(index) || 0));
-  // Default: center-ish tile — NOT an auto-grid of all pins.
-  const base = {
-    x: 0.08 + (i % 5) * 0.02,
-    y: 0.08 + (i % 5) * 0.02,
-    w: 0.36,
-    h: 0.32,
-    z: i,
-  };
-  const src = raw && typeof raw === "object" ? raw : {};
-  let w = nodeGraphLayoutCanvasClamp01(src.w, base.w);
-  let h = nodeGraphLayoutCanvasClamp01(src.h, base.h);
-  w = Math.max(0.08, w);
-  h = Math.max(0.08, h);
-  let x = nodeGraphLayoutCanvasClamp01(src.x, base.x);
-  let y = nodeGraphLayoutCanvasClamp01(src.y, base.y);
-  if (x + w > 1) {
-    x = Math.max(0, 1 - w);
-  }
-  if (y + h > 1) {
-    y = Math.max(0, 1 - h);
-  }
-  const z = Number.isFinite(Number(src.z)) ? Math.round(Number(src.z)) : base.z;
-  return { x, y, w, h, z };
+  return SoemMath.normalizeCanvasTileRect(raw, index);
 }
 
 function nodeGraphLayoutCanvasElementForNode(nodeId, patch = nodeGraphMvp?.patch) {
@@ -824,7 +793,29 @@ function nodeGraphLayoutCanvasBindTileInteractions(stage) {
   });
 
   window.addEventListener("resize", () => {
-    if (nodeGraphLayoutCanvasMode() === "off") {
+    // Defer: F11 browser fullscreen often only fires resize (no fullscreenchange).
+    nodeGraphLayoutCanvasHandleViewportChange({ rebuild: false, defer: true });
+  });
+}
+
+/**
+ * Viewport changed (window resize or browser F11 fullscreen).
+ * Light path re-applies freeform tile rects; rebuild path matches F-cycle recycle
+ * (nodeGraphLayoutCanvasRefreshOpenStage) so enter/exit fullscreen does not leave
+ * a shuffled canvas (B-076).
+ */
+function nodeGraphLayoutCanvasHandleViewportChange(options = {}) {
+  if (nodeGraphLayoutCanvasMode() === "off") {
+    return;
+  }
+  const rebuild = options.rebuild === true;
+  const run = () => {
+    if (rebuild) {
+      nodeGraphLayoutCanvasRefreshOpenStage();
+      return;
+    }
+    const stage = document.getElementById("nodeScreenSoloStage");
+    if (!(stage instanceof HTMLElement)) {
       return;
     }
     const tiles = stage.querySelectorAll(".node-layout-canvas-tile");
@@ -839,7 +830,22 @@ function nodeGraphLayoutCanvasBindTileInteractions(stage) {
       }, stage);
     });
     nodeGraphLayoutCanvasSyncPhoneGuides(stage);
-  });
+    if (typeof nodeGraphScreenSoloRefreshPaint === "function") {
+      nodeGraphScreenSoloRefreshPaint();
+    }
+  };
+  if (options.defer) {
+    // F11: wait until the browser has applied the new viewport size.
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(run);
+    });
+    return;
+  }
+  run();
+}
+
+function handleNodeGraphLayoutCanvasFullscreenChange() {
+  nodeGraphLayoutCanvasHandleViewportChange({ rebuild: true, defer: true });
 }
 
 function bindNodeGraphLayoutCanvasSettingsControl() {
@@ -848,15 +854,33 @@ function bindNodeGraphLayoutCanvasSettingsControl() {
     return;
   }
   input.dataset.bound = "true";
-  input.addEventListener("change", () => {
-    const id = typeof nodeGraphTraceDisplaySettingsTargetNodeId === "function"
+  input.addEventListener("change", (event) => {
+    // Not a display-settings field. Do not let the popover change listener
+    // treat this as a full-form edit (B-085).
+    event.stopPropagation();
+    const fromSelection = typeof nodeGraphTraceDisplaySettingsActiveTargetIds === "function"
+      ? nodeGraphTraceDisplaySettingsActiveTargetIds()
+      : [];
+    const fallback = typeof nodeGraphTraceDisplaySettingsTargetNodeId === "function"
       ? String(nodeGraphTraceDisplaySettingsTargetNodeId() || "").trim()
       : String(nodeGraphMvp?.traceDisplaySettingsTargetNode || "").trim();
-    if (!id) {
+    const ids = (Array.isArray(fromSelection) && fromSelection.length ? fromSelection : [fallback])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean);
+    if (!ids.length) {
       input.checked = false;
       return;
     }
-    nodeGraphLayoutCanvasSetPinned(id, input.checked);
+    const pinned = input.checked;
+    ids.forEach((id, index) => {
+      nodeGraphLayoutCanvasSetPinned(id, pinned, {
+        persist: false,
+        refresh: index === ids.length - 1,
+      });
+    });
+    if (typeof markNodeGraphPatchDirty === "function") {
+      markNodeGraphPatchDirty();
+    }
     if (typeof setNodeInteractionHelp === "function") {
       setNodeInteractionHelp(
         input.checked
@@ -872,6 +896,8 @@ function bindNodeGraphLayoutCanvasEvents() {
     return;
   }
   document.documentElement.dataset.layoutCanvasBound = "true";
+  document.addEventListener("fullscreenchange", handleNodeGraphLayoutCanvasFullscreenChange);
+  document.addEventListener("webkitfullscreenchange", handleNodeGraphLayoutCanvasFullscreenChange);
   bindNodeGraphLayoutCanvasSettingsControl();
   document.addEventListener("nodegraph-selection-changed", () => {
     syncNodeGraphLayoutCanvasSettingsControl();

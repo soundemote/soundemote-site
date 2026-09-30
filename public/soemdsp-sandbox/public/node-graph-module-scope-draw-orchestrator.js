@@ -88,6 +88,7 @@ const nodeGraphModuleScopeCustomRenderers = {
   portalFace: () => {},
   roundShapeFace: () => {},
   basicShapeFace: () => {},
+  sinCosFace: () => {},
   softwaveOscFace: () => {},
   sinCos4Face: () => {},
   // Shape paints its own canvas on rAF (rgb-shape-ui.js). Orchestrator no-op
@@ -542,6 +543,8 @@ function drawNodeGraphModuleScopes(options = {}) {
       console.error("node graph typed module scope draw failed", {
         displayType: nodeGraphModuleDisplayRendererForSlot(slot),
         error,
+        message: error && (error.message || String(error)),
+        stack: error && error.stack,
         nodeId: slot?.nodeId,
         type: slot?.type,
       });

@@ -46,6 +46,13 @@ function createNodeGraphPatchNode(type, options = {}) {
       if (!Object.hasOwn(paramsOverride, key)) {
         continue;
       }
+      const choiceKeys = typeof nodeGraphParameterChoiceKeys === "function"
+        ? nodeGraphParameterChoiceKeys(resolvedType, key)
+        : null;
+      if (choiceKeys && choiceKeys.includes(String(paramsOverride[key] ?? "").trim())) {
+        node.params[key] = String(paramsOverride[key]).trim();
+        continue;
+      }
       const value = Number(paramsOverride[key]);
       if (Number.isFinite(value)) {
         node.params[key] = value;
@@ -256,7 +263,6 @@ const nodeGraphDefaultPatch = Object.freeze({
     targetSampleRate: 44100,
     pitchReferenceMidiNote: 69,
     pitchReferenceHz: 440,
-    pitchOffsetOctaves: 0,
     speedLimitHz: 22050,
   },
   bypassedNodes: [],

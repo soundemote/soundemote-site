@@ -115,18 +115,17 @@ const nodeGraphScopeCyanGradientStops = Object.freeze([
 
 
 const nodeGraphWaterfallSettingsDefaults = Object.freeze({
-  // Instant Waterfall is a VECTOR stroke, not phosphor energy — do NOT inherit the
-  // phosphor look brightness (0.08) / size (0.02). Those made Output Meet
-  // strokes nearly invisible so only the plate color seemed to work.
+  // Instant Waterfall = filled peak-to-peak strip chart (not phosphor / Trace stroke).
+  // Bright / Blur are display-only; no audio DSP.
   background: "#ff0000",
   backgroundHue: 0,
   backgroundBrightness: 0,
-  // Full-ish ink so Left/Right colors read as chosen (Brightness still 0…1).
+  // Full-ish ink so Left/Right colors read as chosen (Brightness still 0–1).
   brightness: 0.95,
-  // Mono / primary stroke (Output Left). Pure red so Meet (red+blue) is green.
+  // Mono / primary ink (Output Left). Pure red so Meet (red+blue) is green.
   color: "#ff0000",
   dot1Enabled: true,
-  // Stroke diameter: authored CSS px at a 96px face (APP_POLICY §15). 0 = gone.
+  // Legacy Size (CSS px @ 96). Filled-bar path ignores Size; kept for old patches / preview.
   dot1Size: 2,
   // Output stereo: combine (Meet) | lighter | screen | source-over | multiply | …
   stereoBlend: "combine",
@@ -139,33 +138,37 @@ const nodeGraphWaterfallSettingsDefaults = Object.freeze({
   secondaryLineThickness: 0,
   tertiaryColor: "#00ff00",
   cycles: 2,
-  // Stroke softness 0…1 (hard → soft skirt). History plot, not phosphor burn.
+  // Blur 0–1: hard column → soft skirt on filled bars (also aliased as blur).
   lineThickness: 0.15,
-  // Stamp packing along the path 0…1 (sparse → dense). Diagnoses soft-blur washout.
+  blur: 0.15,
+  // Face gaussian. 0 = sharp bars. Legacy lineThickness does not turn this on.
+  faceBlur: 0,
+  // Legacy stroke packing / lo-fi buffer knobs (kept for older patches; UI hidden).
   stampDensity: 0.5,
-  // Max verts before the drawer switches to sparse dots.
   dotBudget: 1024,
-  // Vector stroke into a density-scaled face buffer (lo-fi look when < 1).
-  // Not a phosphor energy grid — still one polyline; density only sets buffer size.
   pixelDensity: 1,
   padding: 0,
-  // Amplitude zoom for quieter signals (1 = full-scale ±1 fills the face).
+  // Display gain (sample * scale). 1 = full-scale.
   scale: 1,
   skipDiscontinuities: false,
   // off | left | right | mono — Output stereo chooses which channel triggers the shared window.
-  // Non-output single traces treat any non-off as "sync on" for that buffer.
   sourceSync: false,
   syncChannel: "off",
-  // Sync off: history window rate (Hz → seconds = 1/Hz). Sync on: cycles in view.
-  // Stored separately so toggling Sync keeps both dials.
-  historyHz: 4,
-  historyCycles: 4,
-  // Legacy aliases kept for older callers / capture paths (derived from Hz).
-  zoomSeconds: 0.25,
+  // Sync off: History window duration in seconds (0 = pause). Sync on: cycles in view.
+  // Stored separately so toggling Sync keeps both dials. Instant Waterfall only — no Hz.
   historySeconds: 0.25,
-  // Lengthwise history fade: 0 = even ink, 1 = oldest gone / newest full.
-  fade: 0,
-  // XYZ Trace: stack all three on one plot, or split the face into three bands.
+  historyCycles: 4,
+  // Alias of historySeconds for older capture paths.
+  zoomSeconds: 0.25,
+  // Column start rate vs layout pixels. Range 0..1, default 1.
+  // 1 = one bar per layout pixel (max). Lower holds a longer min/max stretch
+  // (fewer columns). Stored values above 1 clamp to 1. Not bar thickness.
+  detail: 1,
+  // Filled-bar width inside the column. 1 = full column. 0 = gone.
+  barThickness: 1,
+  // Off: keep scrolling. On: silence (linear amp at or below Planck) holds the plate.
+  pauseOnSilence: false,
+  // XYZ: stack all three on one plot, or split the face into three bands.
   xyzLayout: "stack",
 });
 
@@ -592,6 +595,7 @@ const nodeGraphScope2dTraceSettingsDefaults = Object.freeze({
   background: nodeGraphScopePhosphorLookDefaults.background,
   backgroundHue: nodeGraphScopePhosphorLookDefaults.backgroundHue,
   backgroundBrightness: 0,
+  gradientStops: nodeGraphScopePhosphorLookDefaults.gradientStops,
   // Beam ink: unit hue hex + plausible brightness (black → hue @ 0.5 → white).
   dot1Brightness: 0.5,
   dot1Color: typeof nodeGraphHueUnitHex === "function"
@@ -603,6 +607,9 @@ const nodeGraphScope2dTraceSettingsDefaults = Object.freeze({
     : nodeGraphScopePhosphorLookDefaults.peakColor,
   dot1Enabled: true,
   dot1Size: nodeGraphScopePhosphorLookDefaults.size,
+  secondaryColor: typeof nodeGraphHueUnitHex === "function"
+    ? nodeGraphHueUnitHex(240)
+    : "#0000ff",
   ghost: typeof PhosphorResidual !== "undefined"
     ? PhosphorResidual.DEFAULT_GHOST
     : nodeGraphScopePhosphorLookDefaults.ghost,
@@ -639,14 +646,15 @@ const nodeGraphScope1dTraceSettingsDefaults = Object.freeze({
   background: nodeGraphScopePhosphorLookDefaults.background,
   backgroundHue: nodeGraphScopePhosphorLookDefaults.backgroundHue,
   backgroundBrightness: 0,
-  dot1Brightness: 0.5,
+  // Phosphor-style Bright → TraceWoscope intensity (1 = full).
+  dot1Brightness: 1,
   // Left / mono default red (stereo Meet-friendly with blue Right).
   dot1Color: typeof nodeGraphHueUnitHex === "function"
     ? nodeGraphHueUnitHex(0)
     : "#ff0000",
   dot1Enabled: true,
   dot1Size: nodeGraphScope2dTraceSettingsDefaults.dot1Size,
-  secondaryBrightness: 0.5,
+  secondaryBrightness: 1,
   secondaryColor: typeof nodeGraphHueUnitHex === "function"
     ? nodeGraphHueUnitHex(240)
     : "#0000ff",
@@ -661,9 +669,12 @@ const nodeGraphScope1dTraceSettingsDefaults = Object.freeze({
   pixelDensity: nodeGraphScopePhosphorLookDefaults.pixelDensity,
   scale: nodeGraphScopePhosphorLookDefaults.scale,
   skipDiscontinuities: true,
-  sourceSync: false,
+  // Rising-edge auto-trigger on In — ON for new 1D Trace modules (Tube Sat too).
+  sourceSync: true,
   sweepHz: 4,
   sweepCycles: 4,
+  // Shared colormap LUT: |sample| energy → color on TraceWoscope. Tube Sat overrides crt-amber.
+  gradientStops: nodeGraphScopePhosphorLookDefaults.gradientStops,
   dotBudget: 2048,
   drawMode: "budget",
 });

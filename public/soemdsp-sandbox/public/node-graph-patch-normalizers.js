@@ -92,10 +92,8 @@ function normalizeNodeGraphPatchAudio(audio = {}) {
   //   saved patches that store 100 Hz @ MIDI 48 keep those values.
   const pitchReferenceMidiNote = Number(audio?.pitchReferenceMidiNote);
   const pitchReferenceHz = Number(audio?.pitchReferenceHz);
-  // Global pitch transpose in octaves: multiplies every pitched Hz
-  // (oscillators, Chaosfly, filter cutoffs, …) by 2^pitchOffsetOctaves.
-  // One header knob sweeps the whole patch together. Range ±10 octaves.
-  const pitchOffsetOctaves = Number(audio?.pitchOffsetOctaves);
+  // Legacy patch-wide pitch offset is ignored and not copied forward.
+  // Pitch offsets belong on individual modules.
   // Project Speed Limit: absolute max Hz for frequency domains / f-jack /
   // DSP clamps. User-adjustable (header + patch settings). Default 22050.
   // There is no project minimum frequency (0 is allowed on signals).
@@ -132,9 +130,6 @@ function normalizeNodeGraphPatchAudio(audio = {}) {
     pitchReferenceHz: Number.isFinite(pitchReferenceHz) && pitchReferenceHz > 0
       ? Math.max(0.01, Math.min(safeSpeedLimit, pitchReferenceHz))
       : 440,
-    pitchOffsetOctaves: Number.isFinite(pitchOffsetOctaves)
-      ? pitchOffsetOctaves
-      : 0,
     speedLimitHz: safeSpeedLimit,
   };
 }
@@ -943,33 +938,18 @@ function normalizeNodeGraphPatchViewZoom(value) {
 /** Layout canvas pins: Show in canvas (root + per-metamodule buckets). */
 function normalizeNodeGraphPatchViewCanvases(canvases) {
   const src = canvases && typeof canvases === "object" ? canvases : {};
-  const clamp01 = (n, fallback = 0) => {
-    const v = Number(n);
-    if (!Number.isFinite(v)) return fallback;
-    return Math.max(0, Math.min(1, v));
-  };
   const normalizeElement = (raw, index = 0) => {
     if (!raw || typeof raw !== "object") return null;
     const nodeId = String(raw.nodeId || "").trim();
     if (!nodeId) return null;
-    const i = Math.max(0, Math.round(Number(index) || 0));
-    let w = Math.max(0.08, clamp01(raw.w, 0.36));
-    let h = Math.max(0.08, clamp01(raw.h, 0.32));
-    let x = clamp01(raw.x, 0.08 + (i % 5) * 0.02);
-    let y = clamp01(raw.y, 0.08 + (i % 5) * 0.02);
-    if (x + w > 1) x = Math.max(0, 1 - w);
-    if (y + h > 1) y = Math.max(0, 1 - h);
-    const z = Number.isFinite(Number(raw.z)) ? Math.round(Number(raw.z)) : i;
+    const rect = SoemMath.normalizeCanvasTileRect(raw, index);
     return {
       nodeId,
       enabled: raw.enabled !== false,
-      x,
-      y,
-      w,
-      h,
-      z,
+      ...rect,
     };
   };
+
   const normalizeBucket = (bucket) => {
     const els = Array.isArray(bucket?.elements) ? bucket.elements : [];
     const seen = new Set();
@@ -1043,8 +1023,6 @@ function normalizeNodeGraphPatchView(view = {}) {
     sliderPositionVisible: flag("sliderPositionVisible", true),
     tooltipEmbedded: flag("tooltipEmbedded", true),
     locked: flag("locked", false),
-    // Retired global overlay; toolbar batches per-module ui.hideUnused. Always false so it cannot override.
-    hideUnusedPorts: false,
     ...(moduleScopeFramesPerSecond != null ? { moduleScopeFramesPerSecond } : {}),
     ...(hasPins || (canvases && Object.hasOwn(source, "canvases"))
       ? { canvases: canvases || { root: { elements: [] }, byMetamodule: {} } }

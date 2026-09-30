@@ -407,8 +407,14 @@ function cloneNodeGraphTypedDisplaySettings(node) {
         : null;
       return { traceDisplaySettings: normalizeNodeGraphScope2dSettings(mapped, typeDefaults) };
     }
-    case "scope1dTrace":
-      return { traceDisplaySettings: normalizeNodeGraphScope1dTraceSettings(bag) };
+    case "scope1dTrace": {
+      const typeDefaults = typeof nodeGraphModuleDefinitions === "object"
+        && nodeGraphModuleDefinitions?.[node?.type]?.defaultDisplaySettings;
+      const merged = typeDefaults && typeof typeDefaults === "object"
+        ? { ...typeDefaults, ...(bag || {}) }
+        : bag;
+      return { traceDisplaySettings: normalizeNodeGraphScope1dTraceSettings(merged || {}) };
+    }
     case "scope2dTrace": {
       const typeDefaults = typeof nodeGraphScope2dTraceSettingsDefaultsForModuleType === "function"
         ? nodeGraphScope2dTraceSettingsDefaultsForModuleType(node?.type)
@@ -592,6 +598,16 @@ function cloneNodeGraphTypedDisplaySettings(node) {
     case "waterfallXyz":
     case "waterfallRgb":
       return { traceDisplaySettings: normalizeNodeGraphWaterfallSettings(bag) };
+    case "keyboardControllerFace": {
+      if (!bag || typeof bag !== "object") {
+        return {};
+      }
+      return {
+        traceDisplaySettings: typeof normalizeNodeGraphKeyboardControllerFaceSettings === "function"
+          ? normalizeNodeGraphKeyboardControllerFaceSettings(bag)
+          : { ...bag },
+      };
+    }
     default:
       if (node?.traceDisplaySettings && typeof node.traceDisplaySettings === "object") {
         return { traceDisplaySettings: { ...node.traceDisplaySettings } };
@@ -684,6 +700,15 @@ function cloneNodeGraphPatch(patch) {
             sequencer: typeof sequencerCloneClip === "function"
               ? sequencerCloneClip(node.sequencer)
               : (node.sequencer && typeof node.sequencer === "object" ? { ...node.sequencer } : undefined),
+          }
+          : {}),
+        ...(node.type === "acidSequencer"
+          ? {
+            acidSequencer: {
+              steps: Array.isArray(node.acidSequencer && node.acidSequencer.steps)
+                ? node.acidSequencer.steps.map((step) => (step && typeof step === "object" ? { ...step } : step))
+                : [],
+            },
           }
           : {}),
         ...(node.type === "matrixWaterfall" && typeof normalizeNodeGraphMatrixWaterfall === "function"

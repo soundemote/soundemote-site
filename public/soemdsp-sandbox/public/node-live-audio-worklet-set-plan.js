@@ -100,9 +100,6 @@ NodeLiveAudioProcessor.prototype._setPlanImpl = function _setPlanImpl(plan, mess
     } else if (!Number.isFinite(Number(this.pitchReferenceHz))) {
       this.pitchReferenceHz = 440;
     }
-    if (Number.isFinite(Number(message.pitchOffsetOctaves))) {
-      this.pitchOffsetOctaves = Number(message.pitchOffsetOctaves);
-    }
     this.hostSampleRate = Math.max(1, nodeGraphFiniteNumber(message.sampleRate, nodeGraphFiniteNumber(sampleRate, 44100)));
     if (Number.isFinite(Number(message.displayFps))) {
       this.displayFps = Math.max(0, Math.min(240, Math.round(Number(message.displayFps))));
@@ -155,6 +152,7 @@ NodeLiveAudioProcessor.prototype._setPlanImpl = function _setPlanImpl(plan, mess
         ? node._pendingSnapParams.slice()
         : null,
       sequencer: node.sequencer && typeof node.sequencer === "object" ? node.sequencer : null,
+      acidSequencer: node.acidSequencer && typeof node.acidSequencer === "object" ? node.acidSequencer : null,
       chordMemory: node.chordMemory && typeof node.chordMemory === "object" ? node.chordMemory : null,
       sample: node.sample || null,
       samplePhase: Number.isFinite(Number(node.samplePhase)) ? Number(node.samplePhase) : null,
@@ -237,6 +235,13 @@ NodeLiveAudioProcessor.prototype._setPlanImpl = function _setPlanImpl(plan, mess
       // Efficient + full: native GraphEngine owns DSP state. Missing native = silence/refuse.
       // Do not restore create*State / evaluator maps here (smoke enforces).
       continue;
+    }
+
+    // Spectrogram FFT is face analysis, not a DSP voice. The loop above must
+    // not call create*State. This map is what posts Spectrum; without it the
+    // face never receives a signal (audio keeps running).
+    if (typeof this.syncSpectrogramDisplayAnalysis === "function") {
+      this.syncSpectrogramDisplayAnalysis(ids, sessionRestarted);
     }
 
     // Efficient: drop any leftover JS smoother state (C++ owns the chase).

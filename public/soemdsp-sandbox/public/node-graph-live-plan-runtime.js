@@ -165,10 +165,19 @@ function nodeGraphBuildLiveParameterNodes(activeNodeIds = null, bypassedNodes = 
       const params = {};
       const paramMeta = {};
       for (const parameter of definition.parameters || []) {
+        if (typeof nodeGraphParameterChoiceKeys === "function"
+          && nodeGraphParameterChoiceKeys(node.type, parameter.key)) {
+          params[parameter.key] = nodeGraphChoiceIdForKey(
+            node.type,
+            parameter.key,
+            node.params?.[parameter.key],
+          );
+        } else {
         const value = nodeGraphReadPatchParameterValue(node, parameter.key);
         params[parameter.key] = Number.isFinite(value)
           ? value
           : nodeGraphParameterFallback(node.type, parameter.key);
+        }
         paramMeta[parameter.key] = nodeGraphReadPatchParameterMetadata(node, parameter.key);
       }
       nodeGraphInjectSpectrogramWorkletParams(node, params);
@@ -250,6 +259,12 @@ function nodeGraphBuildLiveParameterNodes(activeNodeIds = null, bypassedNodes = 
           ? sequencerCloneClip(node.sequencer)
           : (node.sequencer || null);
       }
+      if (node.type === "acidSequencer") {
+        const steps = Array.isArray(node.acidSequencer && node.acidSequencer.steps)
+          ? node.acidSequencer.steps.map((step) => (step && typeof step === "object" ? { ...step } : step))
+          : [];
+        runtimeNode.acidSequencer = { steps };
+      }
       if ((node.type === "keyboard" || node.type === "gridKeyboard") && node.chordMemory) {
         runtimeNode.chordMemory = typeof nodeGraphChordMemoryNormalizeSlots === "function"
           ? { slots: nodeGraphChordMemoryNormalizeSlots(node.chordMemory) }
@@ -271,10 +286,19 @@ function nodeGraphBuildLiveParameterNodesForPatch(patch, activeNodeIds = null, b
       const params = {};
       const paramMeta = {};
       for (const parameter of definition.parameters || []) {
+        if (typeof nodeGraphParameterChoiceKeys === "function"
+          && nodeGraphParameterChoiceKeys(node.type, parameter.key)) {
+          params[parameter.key] = nodeGraphChoiceIdForKey(
+            node.type,
+            parameter.key,
+            node.params?.[parameter.key],
+          );
+        } else {
         const value = Number(node.params?.[parameter.key]);
         params[parameter.key] = Number.isFinite(value)
           ? value
           : nodeGraphParameterFallback(node.type, parameter.key);
+        }
         paramMeta[parameter.key] = normalizeNodeGraphPatchParameterMetadata(
           node.type,
           parameter.key,
@@ -357,6 +381,12 @@ function nodeGraphBuildLiveParameterNodesForPatch(patch, activeNodeIds = null, b
         runtimeNode.sequencer = typeof sequencerCloneClip === "function"
           ? sequencerCloneClip(node.sequencer)
           : (node.sequencer || null);
+      }
+      if (node.type === "acidSequencer") {
+        const steps = Array.isArray(node.acidSequencer && node.acidSequencer.steps)
+          ? node.acidSequencer.steps.map((step) => (step && typeof step === "object" ? { ...step } : step))
+          : [];
+        runtimeNode.acidSequencer = { steps };
       }
       if ((node.type === "keyboard" || node.type === "gridKeyboard") && node.chordMemory) {
         runtimeNode.chordMemory = typeof nodeGraphChordMemoryNormalizeSlots === "function"

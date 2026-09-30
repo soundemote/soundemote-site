@@ -465,7 +465,7 @@ function nodeGraphTraceDisplayRenderPointBudget() {
 // nodeGraphGlobalTraceSettings → node-graph-module-scope-normalize.js
 // nodeGraphTraceDisplaySettingsEditingGlobal → node-graph-module-scope-normalize.js
 // nodeGraphWaterfallSettingsEditingDefaults → node-graph-module-scope-normalize.js
-const nodeGraphDisplayModeRenderers = Object.freeze(["waterfall", "waterfallRgb", "clock", "dot", "vectorDot", "pulseDot", "lcdDot", "value", "lineBurn", "hypersawBurn", "ensembleCloud", "oscilloscopeBankBurn", "videoscopeBurn", "spectrogramBurn", "transportBpm", "scope2d", "scope2dTrace", "scope1dTrace", "phosphorLight", "sampleWaveform", "numberReadout", "xyPad", "customDisplay", "spectrum", "selfPaintFace", "matrixFace", "matrixWaterfallFace", "matrixDisplayFace", "knobFace", "pluginSliderFace", "toggleButtonFace", "momentaryButtonFace", "rgbShapeFace", "rgbPictureFace", "imageBurnFace", "rgbFractalFace", "evolveFieldFace", "fbmFieldFace", "speedColorInertiaFace", "patchFace", "keypadFace", "keyboardControllerFace", "textBoxFace", "phoneToneFace", "harmonicSeriesFace", "vectorRgbFace", "rasterRgbFace", "gradientVectorscopeFace", "waterfallXyz", "portalFace", "roundShapeFace", "basicShapeFace", "softwaveOscFace", "sinCos4Face", "limiterGainFace", "arpKeysFace"]);
+const nodeGraphDisplayModeRenderers = Object.freeze(["waterfall", "waterfallRgb", "clock", "dot", "vectorDot", "pulseDot", "lcdDot", "value", "lineBurn", "hypersawBurn", "ensembleCloud", "oscilloscopeBankBurn", "videoscopeBurn", "spectrogramBurn", "transportBpm", "scope2d", "scope2dTrace", "scope1dTrace", "phosphorLight", "sampleWaveform", "numberReadout", "xyPad", "customDisplay", "spectrum", "selfPaintFace", "matrixFace", "matrixWaterfallFace", "matrixDisplayFace", "knobFace", "pluginSliderFace", "toggleButtonFace", "momentaryButtonFace", "rgbShapeFace", "rgbPictureFace", "imageBurnFace", "rgbFractalFace", "evolveFieldFace", "fbmFieldFace", "speedColorInertiaFace", "patchFace", "keypadFace", "keyboardControllerFace", "textBoxFace", "phoneToneFace", "harmonicSeriesFace", "vectorRgbFace", "rasterRgbFace", "gradientVectorscopeFace", "waterfallXyz", "portalFace", "roundShapeFace", "basicShapeFace", "sinCosFace", "softwaveOscFace", "sinCos4Face", "limiterGainFace", "arpKeysFace"]);
 const nodeGraphDisplayModeSignalKinds = Object.freeze(["scalar", "xy", "buffer"]);
 
 // nodeGraphDisplayModeSettingsSchemaForRenderer → node-graph-module-scope-display-mode.js
@@ -550,7 +550,7 @@ function nodeGraphModuleDisplayTypeForSlot(slot) {
 }
 
 function nodeGraphModuleScopeSlotUsesWiredInputs(slot) {
-  return ["waterfall", "waterfallStereo", "waterfallXyz", "dotOscilloscope", "valueOscilloscope", "lineBurnOscilloscope", "scope2d", "scope2dTrace", "phosphorLight", "visualOscilloscope", "numberReadout", "valueLcd", "led", "vectorDot", "lcdDot", "imageBurn", "rgbPicture", "vectorRgb", "rasterRgb", "gradientVectorscope", "waterfallXyz", "waterfallRgb"].includes(slot?.type);
+  return ["waterfall", "waterfallStereo", "waterfallXyz", "dotOscilloscope", "valueOscilloscope", "lineBurnOscilloscope", "scope1dTrace", "scope1dTraceStereo", "scope2d", "scope2dTrace", "phosphorLight", "visualOscilloscope", "numberReadout", "valueLcd", "led", "vectorDot", "lcdDot", "imageBurn", "rgbPicture", "vectorRgb", "rasterRgb", "gradientVectorscope", "waterfallXyz", "waterfallRgb"].includes(slot?.type);
 }
 
 function nodeGraphModuleDisplaySourceForSlot(slot) {
@@ -562,9 +562,13 @@ function nodeGraphModuleDisplaySourceForSlot(slot) {
   const outputs = typeof nodeGraphPatchNodeOutputPorts === "function"
     ? nodeGraphPatchNodeOutputPorts(node)
     : [];
-  // PolyBLEP / BLIT / Surge: face follows the live outlet (Wave preferred).
+  // Copy the declared display source. Wave-jack follow only refines a
+  // declaration that is itself Wave / Wave Out (PolyBLEP / BLIT / Surge).
+  const declared = String(modeSource?.value || "").trim();
+  const followWaveJack = !declared || declared === "Wave" || declared === "Wave Out";
   if (
-    typeof nodeGraphOscillatorSelectedOutputPort === "function"
+    followWaveJack
+    && typeof nodeGraphOscillatorSelectedOutputPort === "function"
     && (outputs.includes("Wave") || outputs.includes("Wave Out"))
   ) {
     const port = nodeGraphOscillatorSelectedOutputPort(node);
@@ -647,16 +651,34 @@ function prepareNodeGraphTraceDisplayBuffer(buffer, settings = nodeGraphWaterfal
   if (!buffer?.length) {
     return buffer;
   }
-  const traceSettings = normalizeNodeGraphWaterfallSettings(settings);
+  // Paint hot path: only needs skipDiscontinuities. Do NOT call
+  // normalizeNodeGraphWaterfallSettings here — that pulls ClampInkPx →
+  // clampNodeSliderValue and threw ReferenceError while Instant Waterfall
+  // painted before slider-values.js finished loading (console error:{}).
+  const bag = settings && typeof settings === "object" ? settings : {};
+  const rawSkip = bag.skipDiscontinuities;
+  const skip = rawSkip === true || rawSkip === 1 || rawSkip === "1" || rawSkip === "true"
+    ? true
+    : (rawSkip === false || rawSkip === 0 || rawSkip === "0" || rawSkip === "false"
+      ? false
+      : (typeof nodeGraphWaterfallSettingsDefaults !== "undefined"
+        && nodeGraphWaterfallSettingsDefaults?.skipDiscontinuities === true));
   buffer.nodeGraphScopeDrawFullWindow = true;
   buffer.nodeGraphScopeDrawProgress = 1;
   buffer.nodeGraphScopeDrawStartProgress = 0;
   buffer.nodeGraphScopeDrawWrap = false;
   buffer.nodeGraphScopeHoldPoint = false;
-  buffer.nodeGraphScopeSkipDiscontinuities = traceSettings.skipDiscontinuities;
+  buffer.nodeGraphScopeSkipDiscontinuities = skip;
   buffer.nodeGraphScopeTracePadding = 0;
   buffer.nodeGraphScopeMinPointSpacingPx = 0.5;
-  buffer.nodeGraphScopeVisualPointLimit = nodeGraphTraceDisplayRenderPointBudget();
+  // Point budget normalize uses clampNodeSliderValue (loads later). Safe default
+  // during early Instant Waterfall frames so paint never throws ReferenceError.
+  buffer.nodeGraphScopeVisualPointLimit = (typeof clampNodeSliderValue === "function"
+    && typeof nodeGraphTraceDisplayRenderPointBudget === "function")
+    ? nodeGraphTraceDisplayRenderPointBudget()
+    : (typeof nodeGraphTraceDisplayRenderPointBudgetDefault === "number"
+      ? nodeGraphTraceDisplayRenderPointBudgetDefault
+      : 4096);
   buffer.nodeGraphScopeUseFullWindow = true;
   return buffer;
 }

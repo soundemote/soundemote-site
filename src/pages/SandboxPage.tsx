@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from "react-router-dom";
 import { supabase, supabaseConfigError } from "@/lib/supabase";
 import { ClaimUrlDialog } from "@/components/soundemote/ClaimUrlDialog";
 import { useAuth } from "@/hooks/useAuth";
+import { resolveStaticPagePatch } from "@/lib/staticPagePatch";
 
 type SandboxRouteParams = {
   user?: string;
@@ -247,8 +248,14 @@ const SandboxPage = ({
       };
     }
     if (staticPatchUrl) {
-      fetch(staticPatchUrl)
-        .then((res) => res.json())
+      fetch(staticPatchUrl, { cache: "no-store" })
+        .then(async (res) => {
+          const type = String(res.headers.get("content-type") || "").toLowerCase();
+          if (!res.ok || !type.includes("json")) {
+            throw new Error(`No static patch at ${staticPatchUrl} (${res.status})`);
+          }
+          return res.json();
+        })
         .then((data) => {
           if (cancelled) return;
           // The sandbox expects a "sandbox_patch" envelope, not a raw graph patch.
@@ -271,14 +278,18 @@ const SandboxPage = ({
         cancelled = true;
       };
     }
-    // Registered page URLs (/init, /reverb, …) load from static files next to
-    // the sandbox embed: /soemdsp-sandbox/patches/{slug}.json
+    // Registered page URLs (/init, /tubesaturation, …) load the catalog file
+    // (patches/index.json). A flat /patches/{slug}.json guess is HTML on the SPA.
     if (pagePatch) {
-      const staticUrl = `/soemdsp-sandbox/patches/${encodeURIComponent(pagePatch)}.json`;
-      fetch(staticUrl, { cache: "no-store" })
-        .then(async (res) => {
-          if (!res.ok) {
-            throw new Error(`No static patch at ${staticUrl} (${res.status})`);
+      resolveStaticPagePatch(pagePatch)
+        .then(async (hit) => {
+          if (!hit?.url) {
+            throw new Error(`No static patch for /${pagePatch}`);
+          }
+          const res = await fetch(hit.url, { cache: "no-store" });
+          const type = String(res.headers.get("content-type") || "").toLowerCase();
+          if (!res.ok || !type.includes("json")) {
+            throw new Error(`No static patch at ${hit.url} (${res.status})`);
           }
           return res.json();
         })

@@ -434,11 +434,13 @@ function nodeGraphModuleLayoutClassNames(type, definition, layout) {
   }
   const layoutClasses = {
     filterCurve: "filter-curve-layout",
+    softClipperCurve: "filter-curve-layout",
     envelopeCurve: "filter-curve-layout",
     roundShape: "filter-curve-layout",
     basicShape: "filter-curve-layout",
     softwaveOsc: "filter-curve-layout",
     sinCos4: "filter-curve-layout",
+    sinCos: "filter-curve-layout",
     graph: "graph-node-layout",
     image: "image-node-layout",
     keyboardController: "keyboard-controller-layout",
@@ -446,6 +448,7 @@ function nodeGraphModuleLayoutClassNames(type, definition, layout) {
     gridKeyboard: "grid-keyboard-layout",
     pitchQuantizer: "pitch-quantizer-layout",
     chordPad: "chord-pad-layout",
+    acidSequencer: "acid-sequencer-layout",
     asciiscope: "asciiscope-layout",
     matrixDisplay: "matrix-display-layout",
     matrixWaterfall: "matrix-waterfall-layout",
@@ -1288,6 +1291,20 @@ function createNodeGraphModuleElement(type, node) {
       : !patchNodeUi.oscilloscopeHidden)
       && typeof createNodeGraphPitchQuantizerFace === "function") {
       article.append(createNodeGraphPitchQuantizerFace(node));
+    }
+    appendNodeGraphModuleIoSection(
+      article,
+      createNodeGraphLayoutAIoSection(node, type, inputPorts, outputPorts),
+      node,
+      inputPorts,
+      outputPorts,
+    );
+  } else if (definition.layout === "acidSequencer") {
+    if ((typeof nodeGraphModuleShouldMountDisplayFace === "function"
+      ? nodeGraphModuleShouldMountDisplayFace(type, patchNode.ui)
+      : !patchNodeUi.oscilloscopeHidden)
+      && typeof createNodeGraphAcidSequencerFace === "function") {
+      article.append(createNodeGraphAcidSequencerFace(node));
     }
     appendNodeGraphModuleIoSection(
       article,

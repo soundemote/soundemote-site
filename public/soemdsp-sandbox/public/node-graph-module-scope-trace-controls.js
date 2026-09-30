@@ -19,7 +19,7 @@ function nodeGraphDisplaySettingsIsVectorTraceFormType(type) {
  */
 const nodeGraphDisplaySettingsSharedStackOrder = Object.freeze([
   "scale",
-  "historyHz",
+  "historySeconds",
   "historyCycles",
   "sweepHz",
   "sweepCycles",
@@ -51,6 +51,19 @@ const nodeGraphInstantTraceDisplayFieldOrder = Object.freeze([
   "dotBudget",
   "pixelDensity",
   "fade",
+]);
+
+// Instant Waterfall: History / Detail / Bright / Blur.
+// Detail is column start rate (shared skew). Persist / Bloom / stamp-density stay off.
+const nodeGraphInstantWaterfallDisplayFieldOrder = Object.freeze([
+  "scale",
+  "historySeconds",
+  "detail",
+  "barThickness",
+  "backgroundBrightness",
+  "backgroundHue",
+  "dot1Brightness",
+  "faceBlur",
 ]);
 
 /** Instant Waterfall Right / secondary: Size → Blur → Bright. */
@@ -269,19 +282,18 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
   // Instant Waterfall waterfalls: shared stamp path (Size + Blur + Dot density).
   waterfall: Object.freeze({
     fields: Object.freeze([
-      "scale",
-      "historyHz",
+      "historySeconds",
+      "detail",
+      "barThickness",
       "backgroundBrightness",
       "backgroundHue",
-      "dot1Size",
-      "lineThickness",
-      "stampDensity",
-      "pixelDensity",
-      "secondarySize",
+      "dot1Brightness",
+      "faceBlur",
+      "secondaryBrightness",
     ]),
     colors: Object.freeze(["dot1Color", "secondaryColor", "tertiaryColor", "backgroundColor"]),
-    toggles: Object.freeze(["skipDiscontinuities", "sourceSync"]),
-    choices: Object.freeze(["stereoBlend", "syncChannel"]),
+    toggles: Object.freeze(["skipDiscontinuities", "pauseOnSilence"]),
+    choices: Object.freeze(["stereoBlend"]),
   }),
   // Phosphor energy faces: color via shared Gradient editor (not single swatches).
   // Field order = nodeGraphPhosphorDisplayFieldOrder (Bright…residual…Burn ⨉…Dot Budget).
@@ -342,7 +354,6 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
         "trail",
         "burn",
         "burnAmount",
-        "scale",
         "pixelDensity",
         "dotBudget",
       ]),
@@ -392,27 +403,27 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
     choices: Object.freeze(["drawMode"]),
   }),
   // 1D Trace: woscope beam + heart-monitor Sweep/Sync/Reset (not Waterfall scroll).
+  // Color via shared Gradient editor → TraceWoscope LUT (not hue swatches).
+  // 2D Trace uses the same brightness->LUT path; its two hues are the stops.
   scope1dTrace: Object.freeze({
     fields: Object.freeze([
-      "sweepHz",
       "scale",
+      "sweepHz",
       "backgroundBrightness",
       "backgroundHue",
       "dot1Size",
-      "secondarySize",
       "pixelDensity",
       "dot1Brightness",
-      "secondaryBrightness",
       "ghost",
       "trail",
       "dotBudget",
     ]),
-    colors: Object.freeze(["dot1Color", "secondaryColor"]),
+    colors: Object.freeze([]),
     toggles: Object.freeze(["skipDiscontinuities", "sourceSync"]),
     choices: Object.freeze(["drawMode"]),
   }),
-  // 2D Trace = woscope XY beam. Ink is hue + plausible brightness.
-  // No History (live samples only). Ghost/Trail dest fade is internal.
+  // 2D Trace = woscope XY beam. Same gradient editor as 1D Trace.
+  // No History (live samples only). Ghost/Trail live in the brightness buffer.
   scope2dTrace: Object.freeze({
     fields: Object.freeze([
       "scale",
@@ -423,7 +434,7 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
       "dot1Brightness",
       "dotBudget",
     ]),
-    colors: Object.freeze(["dot1Color"]),
+    colors: Object.freeze([]),
     toggles: Object.freeze(["skipDiscontinuities"]),
     choices: Object.freeze(["drawMode"]),
   }),
@@ -463,36 +474,31 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
   }),
   waterfallXyz: Object.freeze({
     fields: Object.freeze([
-      "scale",
-      "historyHz",
+      "historySeconds",
+      "detail",
+      "barThickness",
       "backgroundBrightness",
       "backgroundHue",
-      "fade",
-      "dot1Size",
-      "lineThickness",
-      "stampDensity",
-      "pixelDensity",
-      "dotBudget",
+      "dot1Brightness",
+      "faceBlur",
     ]),
     colors: Object.freeze(["backgroundColor"]),
-    toggles: Object.freeze([]),
+    toggles: Object.freeze(["pauseOnSilence"]),
     choices: Object.freeze(["stereoBlend", "xyzLayout"]),
   }),
   // 1D Waterfall RGB — Size / Blur / Dot density / Bright; RGB Add or CMY Multiply.
   waterfallRgb: Object.freeze({
     fields: Object.freeze([
-      "scale",
-      "historyHz",
+      "historySeconds",
+      "detail",
+      "barThickness",
       "backgroundBrightness",
       "backgroundHue",
-      "dot1Size",
-      "lineThickness",
-      "stampDensity",
       "dot1Brightness",
-      "pixelDensity",
+      "faceBlur",
     ]),
     colors: Object.freeze(["backgroundColor"]),
-    toggles: Object.freeze(["cmyMode", "skipDiscontinuities", "sourceSync"]),
+    toggles: Object.freeze(["cmyMode", "skipDiscontinuities", "pauseOnSilence"]),
     choices: Object.freeze([]),
   }),
   numberReadout: Object.freeze({
@@ -911,10 +917,17 @@ const nodeGraphTraceDisplayActiveControlsByType = Object.freeze({
     choices: Object.freeze([]),
   }),
   keyboardControllerFace: Object.freeze({
-    fields: Object.freeze([]),
+    fields: Object.freeze([
+      "keyCount",
+      "octave",
+      "velMin",
+      "velMax",
+      "blackKeyWidth",
+      "blackKeyHeight",
+    ]),
     colors: Object.freeze([]),
-    toggles: Object.freeze([]),
-    choices: Object.freeze([]),
+    toggles: Object.freeze(["hideKeyboardInfo"]),
+    choices: Object.freeze(["mode", "keyLabels"]),
   }),
 });
 
@@ -1011,6 +1024,8 @@ const nodeGraphTraceDisplaySectionControls = Object.freeze({
       "innerShadowOffsetY",
       "zoomSeconds",
       "historySeconds",
+      "detail",
+      "barThickness",
       "cloudSpeed",
       "scale",
       "pixelDensity",
@@ -1265,10 +1280,26 @@ const nodeGraphDisplaySettingsFieldMeta = Object.freeze({
     title: "LCD Value: inset shadow vertical offset −1…1 (0 = centered). Positive darkens the top edge (light from below).",
   }),
   historySeconds: Object.freeze({
-    label: "History (s)",
+    label: "History (seconds)",
     inputmode: "decimal",
     id: "nodeTraceDisplayHistorySeconds",
-    title: "Legacy seconds field — prefer History (Hz).",
+    // Parameter custom skew. curveAmount -1 => exponent 4 (finest toward min).
+    // Live drag: seconds = max * t^4. Most travel stays near 0; max is the slow end. 0 is one bar.
+    nonlinearSlider: true,
+    sliderCurve: "custom",
+    curveAmount: -1,
+    title: "Seconds of history across the Instant Waterfall face. Longer = slower scroll. Drag is skewed so short windows have more travel and the top of the range approaches slowly. At 0 the face is the current bar.",
+  }),
+  detail: Object.freeze({
+    label: "Detail",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayWaterfallDetail",
+    // Same custom skew as History. Not a private drag mapper.
+    // 0..1, default 1 = one bar per layout pixel (max). Exponent 4 keeps travel near coarser slices.
+    nonlinearSlider: true,
+    sliderCurve: "custom",
+    curveAmount: -1,
+    title: "How often a new bar starts. 1 = one bar per layout pixel (cap). Lower holds each bar across a longer stretch (fewer columns, chunkier fills). The bar still fills its column. Not thickness. 0 = one column.",
   }),
   fftSize: Object.freeze({
     label: "FFT size",
@@ -1335,7 +1366,7 @@ const nodeGraphDisplaySettingsFieldMeta = Object.freeze({
     label: "History (Hz)",
     inputmode: "decimal",
     id: "nodeTraceDisplayHistoryHz",
-    title: "Sync Off: history window rate in Hz (seconds = 1/Hz). 0 = freeze / now-line. Sync On uses Cycles instead.",
+    title: "Sync Off: history window rate in Hz (seconds = 1/Hz). 0 = pause (freeze plate). Sync On uses Cycles instead.",
   }),
   historyCycles: Object.freeze({
     label: "Cycles",
@@ -1564,24 +1595,24 @@ const nodeGraphDisplaySettingsFieldMeta = Object.freeze({
     title: "Key height as a fraction of its cell (0.5–1).",
   }),
   lineLength: Object.freeze({ label: "Line length", inputmode: "decimal", id: "nodeTraceDisplayValueLineLength" }),
-  fade: Object.freeze({
-    label: "Fade",
-    inputmode: "decimal",
-    id: "nodeTraceDisplayFade",
-    title: "Fade the stroke along history. 0 = even ink. 1 = oldest gone, newest full.",
-  }),
   dot1Brightness: Object.freeze({
     label: "Bright",
     inputmode: "decimal",
     id: "nodeTraceDisplayBrightness",
     title: "Peak deposit / present light 0–1 (1 = full). Number Readout LED: live light black→hue→white; Ghost/Trail stay on the gradient.",
   }),
+  faceBlur: Object.freeze({
+    label: "Blur",
+    inputmode: "decimal",
+    id: "nodeTraceDisplayWaterfallBlur",
+    title: "Gaussian blur of the waterfall face, 0 to 1. 0 = sharp bars. 1 = full blur.",
+  }),
   lineThickness: Object.freeze({
     label: "Blur",
     inputmode: "decimal",
     id: "nodeTraceDisplayLineThickness",
     title:
-      "1D Waterfall: 0 = hard pixel disc at Size; 1 = smoothstep center→edge (Size fixed). Phosphor / 0D Value: stamp or beam edge soft 0…1.",
+      "Instant Waterfall: soft vertical skirt on filled bars 0-1 (hard column to soft tips). Phosphor: stamp edge soft 0-1.",
   }),
   stampDensity: Object.freeze({
     label: "Dot density",
@@ -1698,7 +1729,7 @@ const nodeGraphDisplaySettingsToggleMeta = Object.freeze({
     label: "Sync",
     id: "nodeTraceDisplaySourceSync",
     title:
-      "1D Waterfall: Off = History (Hz) scroll window. On = Cycles in view (smooth), stretched full-width to a rising zero-crossing. 1D Phosphor: Sync Off = Sweep (Hz); Sync On = Sweep (c) cycles in view, restart each pass on a rising zero-crossing; Reset jack still snaps.",
+      "1D Phosphor / 1D Trace: Sync Off = Sweep (Hz). Sync On = Sweep (c) cycles in view, restart each pass on a rising zero-crossing. Reset jack still snaps. Not used on Instant Waterfall.",
   }),
   showDot: Object.freeze({
     label: "Show Dot",
@@ -1710,6 +1741,12 @@ const nodeGraphDisplaySettingsToggleMeta = Object.freeze({
     id: "nodeTraceDisplayCmyMode",
     title:
       "Off = RGB additive guns (overlaps → white). On = CMY multiply guns on white (overlaps → black). R→Cyan, G→Magenta, B→Yellow.",
+  }),
+  pauseOnSilence: Object.freeze({
+    label: "Pause on silence",
+    id: "nodeTraceDisplayPauseOnSilence",
+    title:
+      "While on, Instant Waterfall stops scrolling when every enabled channel is at or below Planck amplitude. Off (default) keeps scrolling. History at 0 is the current bar either way.",
   }),
   skipDiscontinuities: Object.freeze({
     label: "Skip Discontinuity",
@@ -2288,14 +2325,14 @@ const nodeGraphDisplaySettingsChoiceMeta = Object.freeze({
 });
 
 const nodeGraphDisplaySettingsFormTypeTitles = Object.freeze({
-  waterfall: "Waterfall",
+  waterfall: "Instant Waterfall",
   value: "Value",
   lineBurn: "Burn",
   scope2d: "2D",
   scope2dTrace: "Trace",
   scope1dTrace: "1D Trace",
-  waterfallXyz: "1D Waterfall XYZ",
-  waterfallRgb: "1D Waterfall RGB",
+  waterfallXyz: "Instant Waterfall XYZ",
+  waterfallRgb: "Instant Waterfall RGB",
   vectorRgbFace: "Vector RGB",
   rasterRgbFace: "Pixel Grid",
   gradientVectorscopeFace: "Vectorscope",

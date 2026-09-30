@@ -343,19 +343,19 @@ function nodeGraphTraceDisplayHistorySampleCount(buffer, settings, options = {})
     if (Number.isFinite(period) && period >= 2) {
       return Math.max(1, Math.round(period * cycles));
     }
-    // No period lock yet — fall back to free-run Hz window so the face isn't empty.
+    // No period lock yet — fall back to free-run History (seconds) so the face isn't empty.
   }
-  // Sync off: History (Hz) → window seconds = 1/Hz.
-  const historyHz = typeof nodeGraphTraceDisplayClampHistoryHz === "function"
-    ? nodeGraphTraceDisplayClampHistoryHz(
-      safeSettings.historyHz,
-      nodeGraphWaterfallSettingsDefaults?.historyHz ?? 4,
+  // Sync off: Instant Waterfall History (seconds) window.
+  const historySeconds = typeof nodeGraphWaterfallClampHistorySeconds === "function"
+    ? nodeGraphWaterfallClampHistorySeconds(
+      safeSettings.historySeconds,
+      nodeGraphWaterfallSettingsDefaults?.historySeconds ?? 0.25,
     )
-    : Math.max(0, nodeGraphFiniteNumber(safeSettings.historyHz, 4));
-  if (!(historyHz > 0)) {
+    : Math.max(0, nodeGraphFiniteNumber(safeSettings.historySeconds, 0.25));
+  if (!(historySeconds > 0)) {
     return Math.max(1, buffer?.length || 1);
   }
-  return Math.max(1, Math.round(sr / historyHz));
+  return Math.max(1, Math.round(sr * historySeconds));
 }
 
 function nodeGraphTraceDisplayVisibleSamples(buffer, settings) {
@@ -565,11 +565,11 @@ function nodeGraphTraceDisplayStabilizedSyncStart(lock, buffer, syncBuffer, cycl
 }
 
 /**
- * 1D Waterfall + 1D Phosphor share one Sync feature.
- * Stereo waterfall uses syncChannel (off/left/right/mono);
- * everything else uses sourceSync on/off (stored as mono/off).
+ * 1D Phosphor + 1D Trace Sync. Instant Waterfall does not sync
+ * (scroll+stamp history is time, not a zero-crossing lock).
+ * sourceSync on/off is stored as syncChannel mono/off.
  */
-const NODE_GRAPH_DISPLAY_1D_SYNC_FORM_TYPES = Object.freeze(["waterfall", "lineBurn", "scope1dTrace", "dot"]);
+const NODE_GRAPH_DISPLAY_1D_SYNC_FORM_TYPES = Object.freeze(["lineBurn", "scope1dTrace", "dot"]);
 
 function nodeGraphDisplayFormTypeHas1dSync(formType) {
   return NODE_GRAPH_DISPLAY_1D_SYNC_FORM_TYPES.includes(String(formType || "").trim());

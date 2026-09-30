@@ -13,8 +13,8 @@ const nodeGraphNodeLabels = Object.freeze({
   sineWavetable: "SinCos4",
   sinCos: "SinCos",
   aliasSine: "Alias Sine",
-  robinSinusoid: "RobinSinusoid",
-  robinOscillator: "RobinOscillator",
+  robinSinusoid: "Robin Sinusoid",
+  robinOscillator: "Robin Oscillator",
   phoneTone: "Phone Tone",
   additiveGenerator: "Additive Generator",
   additiveLinearFilter: "Linear Filter",
@@ -58,7 +58,6 @@ const nodeGraphNodeLabels = Object.freeze({
   sampleDelay: "Sample Delay",
   bitConverter: "Bit Converter",
   t: "t",
-  t1: "t1",
   t2: "t2",
   t3: "t3",
   t4: "t4",
@@ -68,7 +67,7 @@ const nodeGraphNodeLabels = Object.freeze({
   t8: "t8",
   t9: "t9",
   t10: "t10",
-  "1t": "1t",
+  t11: "t11",
   "2t": "2t",
   "3t": "3t",
   "4t": "4t",
@@ -78,6 +77,8 @@ const nodeGraphNodeLabels = Object.freeze({
   "8t": "8t",
   "9t": "9t",
   "10t": "10t",
+  "11t": "11t",
+  acidSequencer: "Acid Sequencer",
   sequencer: "Sequencer",
   spiral: "Spiral",
   fractalSpiral: "Fractal Spiral",
@@ -109,7 +110,7 @@ const nodeGraphNodeLabels = Object.freeze({
   curveOsc: "Curve Oscillator",
   snowflake: "Snowflake",
   dsfOscillator: "DSF Oscillator",
-  robinSupersaw: "RobinSupersaw",
+  robinSupersaw: "Robin Supersaw",
   hypersaw2: "Hypersaw",
   vibratoGenerator: "Vibrato Generator",
   wowAndFlutter: "Wow And Flutter",
@@ -228,6 +229,7 @@ const nodeGraphNodeLabels = Object.freeze({
   delayEffect: "Delay",
   pingPongDelay: "Ping Pong Delay",
   wallDelay: "Wall Delay",
+  doppler: "Doppler",
   reverbEffect: "Sabrina Reverb",
   soemReverb: "SoEmReverb",
   pll: "PLL",
@@ -262,6 +264,7 @@ const nodeGraphNodeLabels = Object.freeze({
   linearAttackRelease: "Linear AR",
   curveAttackRelease: "Curve AR",
   thumpEnvelope: "Thump Envelope",
+  acousticPluck: "Acoustic Pluck",
   pluckEnvelope: "Pluck Envelope",
   expoPluckEnvelope: "Expo Pluck Envelope",
   expoPluckEnvelope2: "Expo Pluck Envelope 2",
@@ -529,7 +532,7 @@ function nodeGraphTSeriesModuleDefinition(lastIndex) {
   };
 }
 
-/** Nt mux: inputs 0…N + A/D → Out. Mirror of tN demux. */
+/** Nt mux: inputs 0…(N-1) + A/D → Out. Mirror of tN demux. Name digit = path count. */
 function nodeGraphTSeriesMuxModuleDefinition(lastIndex) {
   const last = Math.max(1, Math.min(10, Math.round(nodeGraphFiniteNumber(lastIndex))));
   return {
@@ -1000,16 +1003,15 @@ const nodeGraphModuleDefinitions = (
         defaultValue: "1",
         key: "amplitude",
         label: "Amplitude",
-        // Slider guide 0…1 (full-scale wave). Domain is not hard-clamped —
-        // type larger values or use MOD if you want overdrive / CV gain.
+        // Slider guide 0…1 (full-scale wave). DOMAIN typing may exceed; unit-band MOD clamps (B-082).
         max: "1",
         mid: "0.5",
         min: "0",
         nonlinearSlider: false,
         step: "any",
-        modClamp: false,
+        modClamp: true,
         tooltip:
-          "Output level. Slider 0…1 = full-scale bipolar wave. Min/max are guides only — type large values for gain past unity (domain not hard-clamped)."
+          "Output level. Slider 0…1 = full-scale bipolar wave. Post-MOD stays in min…max (Gate+Toggle cannot boost past Amp max)."
       },
     ]
   },
@@ -1189,7 +1191,23 @@ const nodeGraphModuleDefinitions = (
   },
   sinCos: {
     planRole: "source",
-    displayType: "waterfall",
+    // Cheap 1D one-cycle sine/cosine + one phase dot per drawn line (BasicShape family).
+    // Not waterfall. Line visibility is patch wires, not audio-thread usage.
+    layout: "sinCos",
+    chrome: "LayoutA",
+    customDisplayArea: true,
+    displayType: "sinCosFace",
+    displayHeightGu: 4,
+    spectrumCompanion: false,
+    displayModes: [
+      {
+        key: "face",
+        label: "Face",
+        renderer: "sinCosFace",
+        settingsSchema: "",
+      },
+    ],
+    defaultDisplayMode: "face",
     inputs: ["Reset", "Increment"],
     inputLabels: {
       Increment: "inc",},
@@ -1355,7 +1373,7 @@ const nodeGraphModuleDefinitions = (
         mid: "1",
         min: "0",
         step: "1",
-        tooltip: "When ƒ changes mid-cycle: On cycle waits for wrap; Warp remaining keeps dither offset; Snap remaining re-dithers the remaining length."
+        tooltip: "When ƒ combined increment (Frequency/sampleRate + inc) changes mid-cycle: On cycle waits for wrap; Warp remaining keeps dither offset; Snap remaining re-dithers the remaining length."
       },
       {
         choices: ["Saw", "Ramp", "Square", "Trisaw Center", "Sine", "Pulse", "Analog Square"],
@@ -1385,7 +1403,7 @@ const nodeGraphModuleDefinitions = (
         smoothingType: "onePole",
         step: "any",
         unit: "Hz",
-        tooltip: "Absolute Hz. Mid-cycle Hz changes warp the remaining period (phase-continuous)."
+        tooltip: "Absolute Hz. Converted to cycles/sample and added to inc before cycle-dither. Update chooses how a mid-cycle increment change warps the remaining period (phase-continuous)."
       },
       {
         defaultValue: "0",
@@ -2850,6 +2868,21 @@ const nodeGraphModuleDefinitions = (
         min: "0",
         step: "1",
         tooltip: "On: envelope knobs latch on Gate rise (same as Curve Envelope). Off: live.",
+      },
+      {
+        choices: ["Delay Start", "Delay All"],
+        defaultValue: "0",
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        key: "delayTrigger",
+        label: "Delay Trigger",
+        linearSmoothing: false,
+        max: "1",
+        mid: "0",
+        min: "0",
+        nonlinearSlider: false,
+        step: "1",
+        tooltip: "Delay Start: wait Delay only when not already releasing (a gate during release goes straight to Attack). Delay All: wait Delay on every gate rise, including during release.",
       },
       {
         defaultValue: "0",
@@ -5166,18 +5199,21 @@ const nodeGraphModuleDefinitions = (
   vibratoGenerator: {
     planRole: "source",
     planFreeRun: true,
-    // Waterfall amp-per-frame bars (reference consumer for the redesign).
+    // Face reads Wave Raw = y * depthEnv (before Amplitude). Wave jack stays y * amp * depthEnv.
     displayType: "waterfall",
     displayModes: [
-      { key: "waterfall", label: "Waterfall", renderer: "waterfall", settingsSchema: "waterfall", source: { value: "Wave" } },
+      { key: "waterfall", label: "Waterfall", renderer: "waterfall", settingsSchema: "waterfall", source: { value: "Wave Raw" } },
     ],
     defaultDisplayMode: "waterfall",
     displaySignals: [
-      { key: "Wave", kind: "scalar" },
+      { key: "Wave Raw", label: "Wave", kind: "scalar" },
     ],
-    inputs: ["Gate", "Reset"],
-    outputChannels: { Wave: "green" },
-    outputs: ["Wave"],
+    digitalInputs: ["isIdle"],
+    digitalOutputs: ["isIdle"],
+    inputs: ["Gate", "isIdle", "Reset"],
+    outputChannels: { Wave: "green", isIdle: "black" },
+    outputLabels: { isIdle: "isIdle" },
+    outputs: ["Wave", "isIdle"],
     parameters: [
       {
         key: "frequency",
@@ -5267,6 +5303,36 @@ const nodeGraphModuleDefinitions = (
         tooltip: "Seed for vibrato S&H randomizers.",
       },
       {
+        choices: ["Start", "StartEnd", "Gate"],
+        choiceKeys: ["start", "startEnd", "gate"],
+        choiceIds: [0, 1, 2],
+        defaultValue: "start",
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        key: "delayMode",
+        label: "Delay Mode",
+        linearSmoothing: false,
+        max: "2",
+        mid: "0",
+        min: "0",
+        nonlinearSlider: false,
+        step: "1",
+        tooltip: "Start: delay Attack unless depth is already releasing (a gate during release goes straight to Attack). Gate close starts Release immediately. StartEnd: same attack rule, and also delay Release when the gate closes. Gate: delay the entire gate, including gate-off; Attack and Release follow that delayed gate.",
+      },
+      {
+        defaultValue: "0",
+        key: "delay",
+        kind: "time",
+        label: "Delay",
+        max: "10",
+        maxDigits: 5,
+        mid: "0.1",
+        min: "0",
+        step: "any",
+        unit: "s",
+        tooltip: "Hold before Attack after Gate rises. 0 = no delay. No Gate cable skips straight to sustain (Attack does not run).",
+      },
+      {
         defaultValue: "0.01",
         key: "attack",
         kind: "time",
@@ -5277,7 +5343,7 @@ const nodeGraphModuleDefinitions = (
         min: "0",
         step: "any",
         unit: "s",
-        tooltip: "Exponential depth fade-in time when Gate goes high. 0 = instant snap. Unpatched Gate stays at full depth.",
+        tooltip: "Exponential depth fade-in after Delay when Gate is high. 0 = instant snap. No Gate cable skips Attack and stays at full depth.",
       },
       {
         defaultValue: "0.1",
@@ -5290,7 +5356,55 @@ const nodeGraphModuleDefinitions = (
         min: "0",
         step: "any",
         unit: "s",
-        tooltip: "Exponential depth fade-out time when Gate goes low. 0 = instant snap.",
+        tooltip: "Depth release time when Gate goes low and the isIdle input is not true. 0 = instant snap.",
+      },
+      {
+        defaultValue: "0.1",
+        key: "isIdleRelease",
+        kind: "time",
+        label: "IsIdleRelease",
+        max: "10",
+        maxDigits: 5,
+        mid: "0.5",
+        min: "0",
+        step: "any",
+        unit: "s",
+        tooltip: "Release time used instead of Release while the isIdle input is true (a cable is plugged and that signal's amplitude is at or below Planck). No cable: this param does nothing. 0 = instant snap.",
+      },
+      {
+        choices: ["Log", "Lin", "Exp"],
+        choiceKeys: ["log", "lin", "exp"],
+        choiceIds: [0, 1, 2],
+        defaultValue: "exp",
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        hidden: true,
+        key: "attackShape",
+        label: "Attack Shape",
+        linearSmoothing: false,
+        max: "2",
+        mid: "1",
+        min: "0",
+        nonlinearSlider: false,
+        step: "1",
+        tooltip: "Attack curve: Log starts slow and finishes fast; Lin rises linearly; Exp keeps the existing exponential rise. Hidden — enable from the parameter visibility menu.",
+      },
+      {
+        choices: ["Log", "Lin", "Exp"],
+        choiceKeys: ["log", "lin", "exp"],
+        choiceIds: [0, 1, 2],
+        defaultValue: "exp",
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        key: "releaseShape",
+        label: "Release Shape",
+        linearSmoothing: false,
+        max: "2",
+        mid: "1",
+        min: "0",
+        nonlinearSlider: false,
+        step: "1",
+        tooltip: "Release curve: Log starts slow and finishes fast; Lin falls linearly; Exp keeps the existing exponential fall.",
       },
       {
         key: "amplitude",
@@ -6268,6 +6382,30 @@ const nodeGraphModuleDefinitions = (
       { defaultValue: "1", key: "level", label: "Level", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any" },
     ]
   },
+  acidSequencer: {
+    planRole: "source",
+    planFreeRun: true,
+    customDisplayArea: true,
+    layout: "acidSequencer",
+    defaultWidthGu: 24,
+    displayHeightGu: 14,
+    digitalOutputs: ["Gate", "Trigger", "pitch", "f", "inc"],
+    inputs: [],
+    outputs: ["Gate", "Trigger", "pitch", "f", "inc"],
+    outputLabels: {
+      pitch: "\u266f/\u266d",
+      f: "\u0192",
+      inc: "inc",
+    },
+    parameters: [
+      { defaultValue: "120", key: "bpm", label: "BPM", max: "320", maxDigits: 3, mid: "120", min: "1", nonlinearSlider: false, step: "1", tooltip: "Local tempo. Each step is a 16th note. Clocked to transport start/stop." },
+      { defaultValue: "16", key: "stepLength", label: "Steps", linearSmoothing: false, max: "32", mid: "16", min: "1", nonlinearSlider: false, step: "1", tooltip: "Active step count (1-32). Stored steps outside this length are kept." },
+      { defaultValue: "1", key: "gateHeight", label: "Gate Height", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any", tooltip: "Gate level while a step is on or tied." },
+      { defaultValue: "1", key: "accentHeight", label: "Accent Height", max: "1", mid: "0.5", min: "0", nonlinearSlider: false, step: "any", tooltip: "Trigger level for a 1 ms accent pulse." },
+      { defaultValue: "0.06", key: "slideTime", kind: "time", label: "Slide Time", max: "2", maxDigits: 4, mid: "0.06", min: "0", step: "any", unit: "s", tooltip: "Linear glide toward the next step pitch when that step's Slide is on. 0 = instant." },
+      { defaultValue: "0", key: "semitoneOffset", label: "Semitone Offset", linearSmoothing: false, max: "48", mid: "0", min: "-48", nonlinearSlider: false, showSign: true, step: "1", unit: "st", tooltip: "Integer semitone shift of every pitch out. Use this to pick another root or jump octaves." },
+    ],
+  },
   sequencer: {
     planRole: "source",
     digitalOutputs: ["Play Keys"],
@@ -6384,26 +6522,26 @@ const nodeGraphModuleDefinitions = (
     ]
   },
   t: nodeGraphTSeriesSingleModuleDefinition(),
-  t1: nodeGraphTSeriesModuleDefinition(1),
-  t2: nodeGraphTSeriesModuleDefinition(2),
-  t3: nodeGraphTSeriesModuleDefinition(3),
-  t4: nodeGraphTSeriesModuleDefinition(4),
-  t5: nodeGraphTSeriesModuleDefinition(5),
-  t6: nodeGraphTSeriesModuleDefinition(6),
-  t7: nodeGraphTSeriesModuleDefinition(7),
-  t8: nodeGraphTSeriesModuleDefinition(8),
-  t9: nodeGraphTSeriesModuleDefinition(9),
-  t10: nodeGraphTSeriesModuleDefinition(10),
-  "1t": nodeGraphTSeriesMuxModuleDefinition(1),
-  "2t": nodeGraphTSeriesMuxModuleDefinition(2),
-  "3t": nodeGraphTSeriesMuxModuleDefinition(3),
-  "4t": nodeGraphTSeriesMuxModuleDefinition(4),
-  "5t": nodeGraphTSeriesMuxModuleDefinition(5),
-  "6t": nodeGraphTSeriesMuxModuleDefinition(6),
-  "7t": nodeGraphTSeriesMuxModuleDefinition(7),
-  "8t": nodeGraphTSeriesMuxModuleDefinition(8),
-  "9t": nodeGraphTSeriesMuxModuleDefinition(9),
-  "10t": nodeGraphTSeriesMuxModuleDefinition(10),
+  t2: nodeGraphTSeriesModuleDefinition(1),
+  t3: nodeGraphTSeriesModuleDefinition(2),
+  t4: nodeGraphTSeriesModuleDefinition(3),
+  t5: nodeGraphTSeriesModuleDefinition(4),
+  t6: nodeGraphTSeriesModuleDefinition(5),
+  t7: nodeGraphTSeriesModuleDefinition(6),
+  t8: nodeGraphTSeriesModuleDefinition(7),
+  t9: nodeGraphTSeriesModuleDefinition(8),
+  t10: nodeGraphTSeriesModuleDefinition(9),
+  t11: nodeGraphTSeriesModuleDefinition(10),
+  "2t": nodeGraphTSeriesMuxModuleDefinition(1),
+  "3t": nodeGraphTSeriesMuxModuleDefinition(2),
+  "4t": nodeGraphTSeriesMuxModuleDefinition(3),
+  "5t": nodeGraphTSeriesMuxModuleDefinition(4),
+  "6t": nodeGraphTSeriesMuxModuleDefinition(5),
+  "7t": nodeGraphTSeriesMuxModuleDefinition(6),
+  "8t": nodeGraphTSeriesMuxModuleDefinition(7),
+  "9t": nodeGraphTSeriesMuxModuleDefinition(8),
+  "10t": nodeGraphTSeriesMuxModuleDefinition(9),
+  "11t": nodeGraphTSeriesMuxModuleDefinition(10),
   gain: {
     planRole: "processor",
     displayType: "waterfall",
@@ -7123,7 +7261,7 @@ const nodeGraphModuleDefinitions = (
         min: "-4",
         nonlinearSlider: false,
         step: "1",
-        tooltip: "MIDI offset in octaves before Hz conversion.",
+        tooltip: "Add octaves to the zero-based pitch before Hz conversion.",
       },
       {
         defaultValue: "0",
@@ -7134,7 +7272,7 @@ const nodeGraphModuleDefinitions = (
         min: "-12",
         nonlinearSlider: false,
         step: "1",
-        tooltip: "MIDI offset in semitones before Hz conversion.",
+        tooltip: "Add semitones to the zero-based pitch before Hz conversion.",
       },
       {
         defaultValue: "0",
@@ -7145,7 +7283,7 @@ const nodeGraphModuleDefinitions = (
         min: "-100",
         nonlinearSlider: false,
         step: "1",
-        tooltip: "Fine MIDI offset in cents before Hz conversion.",
+        tooltip: "Add cents / 100 to the zero-based pitch before Hz conversion.",
       },
       {
         defaultValue: "1",
@@ -7517,6 +7655,41 @@ const nodeGraphModuleDefinitions = (
   },
   tubeSaturation: {
     planRole: "processor",
+    // 1D Trace = TraceWoscope beam (not lineBurn / 1D Phosphor).
+    // LayoutA default mounts the scope face (same pattern as PolyBLEP/Limiter —
+    // no layout:"scopeFace"). displayHeightGu stamps spawn face size.
+    displayHeightGu: 2,
+    displayType: "scope1dTrace",
+    displayModes: [
+      {
+        key: "scope1dTrace",
+        label: "1D Trace",
+        renderer: "scope1dTrace",
+        settingsSchema: "scope1dTrace",
+        source: { value: "Out" },
+      },
+    ],
+    defaultDisplayMode: "scope1dTrace",
+    // Shared colormap id crt-amber → photorealistic P3 CRT amber LUT on the beam.
+    defaultDisplaySettings: {
+      background: "#050200",
+      backgroundBrightness: 0,
+      sourceSync: true,
+      skipDiscontinuities: true,
+      dot1Color: "#ffb020",
+      // Phosphor-style Bright → TraceWoscope intensity (1 = full).
+      dot1Brightness: 1,
+      gradientStops: [
+        { t: 0, color: "#050200" },
+        { t: 0.08, color: "#1a0a00" },
+        { t: 0.22, color: "#4a1c00" },
+        { t: 0.42, color: "#8a3a00" },
+        { t: 0.62, color: "#d07008" },
+        { t: 0.78, color: "#ffb020" },
+        { t: 0.9, color: "#ffe08a" },
+        { t: 1, color: "#fff6d8" },
+      ],
+    },
     inputAliases: { Mono: "In" },
     inputLabels: { In: "Mono" },
     inputs: ["In", "Left", "Right"],
@@ -7527,7 +7700,6 @@ const nodeGraphModuleDefinitions = (
     defaultHeightGu: 5,
     defaultUi: {
       buttonsHidden: true,
-      oscilloscopeHidden: true,
     },
     parameters: [
       {
@@ -7566,6 +7738,7 @@ const nodeGraphModuleDefinitions = (
       },
       {
         defaultValue: "1",
+        hidden: true,
         key: "mix",
         label: "Mix",
         max: "1",
@@ -7590,7 +7763,8 @@ const nodeGraphModuleDefinitions = (
     outputs: ["Out", "Left", "Right"],
     parameters: [
       {
-        defaultValue: "1",
+        defaultValue: "0.5",
+        hidden: true,
         key: "drive",
         label: "Drive",
         max: "8",
@@ -7601,7 +7775,8 @@ const nodeGraphModuleDefinitions = (
         tooltip: "Input push into the soft-knee curve."
       },
       {
-        defaultValue: "1",
+        defaultValue: "0",
+        hidden: true,
         key: "threshold",
         label: "Threshold",
         max: "1",
@@ -7612,13 +7787,15 @@ const nodeGraphModuleDefinitions = (
         tooltip: "Amplitude (0...1) where limiting starts. Below this the driven signal is unchanged."
       },
       {
-        defaultValue: "0.5",
+        curveAmount: "-0.9",
+        defaultValue: "1",
         key: "knee",
         label: "Knee",
         max: "1",
         mid: "0.5",
         min: "0",
-        nonlinearSlider: false,
+        nonlinearSlider: true,
+        sliderCurve: "custom",
         step: "any",
         tooltip: "How gradual the transition from Threshold toward full scale is. 0 = hard at Threshold."
       },
@@ -7876,18 +8053,20 @@ const nodeGraphModuleDefinitions = (
     outputs: ["Out", "Left", "Right"],
     parameters: [
       {
-        choices: ["LP", "BP", "HP"],
-        defaultValue: "0",
+        choices: ["Bypass", "LP", "BP", "HP"],
+        // 1 = LP (first usable mode after Bypass)
+        defaultValue: "1",
         displayChoices: true,
+        divideChoicesVisibly: true,
         key: "mode",
         label: "Mode",
         linearSmoothing: false,
-        max: "2",
-        mid: "1",
+        max: "3",
+        mid: "1.5",
         min: "0",
         nonlinearSlider: false,
         step: "1",
-        tooltip: "Real-pole stacks. LP / HP use LPF / HPF. BP is HP→LP in series (no cutoff swap — HPF above LPF collapses the band)."
+        tooltip: "Real-pole stacks. Bypass = dry. LP / HP use LPF / HPF. BP is HP→LP in series (no cutoff swap — HPF above LPF collapses the band)."
       },
       {
         choices: ["6", "12", "18", "24"],
@@ -12385,6 +12564,18 @@ const nodeGraphModuleDefinitions = (
   },
   delayEffect: {
     planRole: "processor",
+    // Instant Waterfall (Blur only; full-face waveform, no amplitude law) — stereo Mix Out.
+    displayType: "waterfall",
+    spectrumCompanion: false,
+    displayModes: [
+      { key: "waterfall", label: "Waterfall", renderer: "waterfall", settingsSchema: "waterfall" },
+    ],
+    defaultDisplayMode: "waterfall",
+    stereoWaterfallPorts: { left: "Mix L", right: "Mix R" },
+    displaySignals: [
+      { key: "Mix L", kind: "scalar" },
+      { key: "Mix R", kind: "scalar" },
+    ],
     // Stereo Mix L/R — mono folds via Left in (or wire Mono→Left).
     inputAliases: { In: "Left", Mono: "Left" },
     inputLabels: { Left: "Left", Right: "Right" },
@@ -12468,13 +12659,18 @@ const nodeGraphModuleDefinitions = (
   // Ping Pong: Mix L/R = audio; LFO L/R = gold CV (raw bipolar LFO before Amp).
   pingPongDelay: {
     planRole: "processor",
+    // Instant Waterfall (Blur only; full-face waveform, no amplitude law) — stereo Mix Out (not LFO CV).
     displayType: "waterfall",
     spectrumCompanion: false,
     displayModes: [
       { key: "waterfall", label: "Waterfall", renderer: "waterfall", settingsSchema: "waterfall" },
     ],
     defaultDisplayMode: "waterfall",
-    stereoWaterfallPorts: { left: "LFO L", right: "LFO R" },
+    stereoWaterfallPorts: { left: "Mix L", right: "Mix R" },
+    displaySignals: [
+      { key: "Mix L", kind: "scalar" },
+      { key: "Mix R", kind: "scalar" },
+    ],
     inputAliases: { In: "Mono" },
     inputLabels: { Mono: "Mono", Left: "Left", Right: "Right" },
     inputs: ["Mono", "Left", "Right"],
@@ -12699,6 +12895,13 @@ const nodeGraphModuleDefinitions = (
       },
     ]
   },
+  // Under construction: Doppler card only (Space shelf). No DSP or runtime implementation.
+  doppler: {
+    planRole: "processor",
+    inputs: [],
+    outputs: [],
+    parameters: [],
+  },
   wallDelay: {
     planRole: "processor",
     layout: "wallRoomDisplay",
@@ -12725,13 +12928,19 @@ const nodeGraphModuleDefinitions = (
   reverbEffect: {
     planRole: "processor",
     planFreeRun: true,
+    // Instant Waterfall (Blur only; full-face waveform, no amplitude law) — stereo Mix Out.
     displayType: "waterfall",
+    spectrumCompanion: false,
     displayModes: [
       { key: "waterfall", label: "Waterfall", renderer: "waterfall", settingsSchema: "waterfall" },
     ],
     defaultDisplayMode: "waterfall",
     // Dry = pure input; Mix = dry/wet blend (no wet-only jacks).
     stereoWaterfallPorts: { left: "Mix L", right: "Mix R" },
+    displaySignals: [
+      { key: "Mix L", kind: "scalar" },
+      { key: "Mix R", kind: "scalar" },
+    ],
     inputAliases: { In: "Mono" },
     inputs: ["Mono", "Left", "Right"],
     inputLabels: { Mono: "Mono", Left: "Left", Right: "Right" },
@@ -12778,7 +12987,7 @@ const nodeGraphModuleDefinitions = (
   soemReverb: {
     planRole: "processor",
     planFreeRun: true,
-    // Same stereo Trace face as Output (L/R colors, syncChannel, stereoBlend).
+    // Instant Waterfall (Blur only; full-face waveform, no amplitude law) — stereo Mix Out.
     displayType: "waterfall",
     spectrumCompanion: false,
     displayModes: [
@@ -12786,6 +12995,10 @@ const nodeGraphModuleDefinitions = (
     ],
     defaultDisplayMode: "waterfall",
     stereoWaterfallPorts: { left: "Mix L", right: "Mix R" },
+    displaySignals: [
+      { key: "Mix L", kind: "scalar" },
+      { key: "Mix R", kind: "scalar" },
+    ],
     inputs: ["Mono", "Left", "Right"],
     // Dry = pure input; Mix = full dry/wet blend (no wet-only jacks).
     outputAliases: {
@@ -15038,6 +15251,134 @@ const nodeGraphModuleDefinitions = (
       nodeGraphOutputAmplitudeParam,
     ],
   },
+  acousticPluck: {
+    planRole: "processor",
+    planFreeRun: true,
+    layout: "envelopeCurve",
+    digitalInputs: ["KT"],
+    portTypes: { KT: "noteMask" },
+    inputs: ["KT", "Gate"],
+    inputAliases: { Trigger: "Gate", Trig: "Gate", In: "Gate" },
+    inputLabels: { KT: "KT", Gate: "Gate" },
+    outputs: ["Out"],
+    outputAliases: { Env: "Out", Amp: "Out" },
+    parameters: [
+      {
+        choices: ["Off", "On"],
+        defaultValue: "0",
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        key: "updateOnTrigger",
+        label: "UpdateOnTrigger",
+        linearSmoothing: false,
+        smoothingType: "none",
+        max: "1",
+        mid: "0",
+        min: "0",
+        step: "1",
+        tooltip: "On: latch Attack/Release/curves/Feedback/Bias/Amplitude on Gate rise. Off (default): params apply live. Feedback into Release stays live either way.",
+      },
+      {
+        choices: ["Gate", "Trigger"],
+        defaultValue: "1",
+        displayChoices: true,
+        divideChoicesVisibly: true,
+        key: "inputMode",
+        label: "Input",
+        linearSmoothing: false,
+        max: "1",
+        mid: "1",
+        min: "0",
+        nonlinearSlider: false,
+        step: "1",
+        tooltip: "Gate = follow high/low. Trigger (default) = rising edge fires one Attack then Release (breadboard).",
+      },
+      {
+        defaultValue: "0",
+        key: "attack",
+        kind: "time",
+        label: "Attack",
+        max: "5",
+        maxDigits: 5,
+        mid: "0.1",
+        min: "0",
+        step: "any",
+        unit: "s",
+        tooltip: "Rise time 0 to 1. Breadboard spawn 0. KT applies the baked -KT*0.31250587099718496-0.1 unit MOD path.",
+      },
+      {
+        defaultValue: "-0.07",
+        key: "attackShape",
+        label: "Attack Curve",
+        max: "1",
+        maxDigits: 3,
+        mid: "0",
+        min: "-1",
+        nonlinearSlider: false,
+        step: "any",
+        tooltip: "Bipolar segment shape. Breadboard spawn -0.07.",
+      },
+      {
+        defaultValue: "0.11715292599242004",
+        key: "release",
+        kind: "time",
+        label: "Release",
+        max: "10",
+        maxDigits: 5,
+        mid: "0.5",
+        min: "0",
+        step: "any",
+        unit: "s",
+        tooltip: "Base fall time before feedback MOD. Breadboard spawn ~0.117 s.",
+      },
+      {
+        defaultValue: "1",
+        key: "releaseShape",
+        label: "Fall Curve",
+        max: "1",
+        maxDigits: 3,
+        mid: "0",
+        min: "-1",
+        nonlinearSlider: false,
+        step: "any",
+        tooltip: "Bipolar fall shape. Breadboard spawn +1 (expo).",
+      },
+      {
+        defaultValue: "0.6804373070396221",
+        key: "feedback",
+        label: "Feedback",
+        max: "2",
+        mid: "0.68",
+        min: "0",
+        nonlinearSlider: false,
+        step: "any",
+        tooltip: "Attenuverter amplitude on inverted env into Amp Curve Exp (breadboard knob-2).",
+      },
+      {
+        defaultValue: "0.9435542410230598",
+        key: "bias",
+        label: "Bias",
+        max: "2",
+        mid: "0.94",
+        min: "-1",
+        nonlinearSlider: false,
+        step: "any",
+        tooltip: "Attenuverter offset after invert (breadboard knob-3).",
+      },
+      {
+        defaultValue: "1",
+        key: "amplitude",
+        label: "Amplitude",
+        max: "1",
+        mid: "1",
+        min: "0",
+        nonlinearSlider: false,
+        step: "any",
+        modClamp: false,
+        tooltip: "Output scale 0 to 1.",
+      },
+    ],
+  },
   pluckEnvelope: {
     planRole: "processor",
     planFreeRun: true,
@@ -16799,11 +17140,11 @@ const nodeGraphModuleDefinitions = (
         tooltip: "How long to stay muted after the last danger sample."
       },
       {
-        defaultValue: "0.75",
+        defaultValue: "0.375",
         key: "riseSeconds",
         label: "Rise",
         max: "4",
-        mid: "0.75",
+        mid: "0.375",
         min: "0",
         nonlinearSlider: false,
         step: "any",
