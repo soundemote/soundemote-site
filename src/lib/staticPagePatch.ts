@@ -28,6 +28,10 @@ export async function resolveStaticPagePatch(routeSlug: string): Promise<StaticP
   const hit = exact || (stemHits.length === 1 ? stemHits[0] : null);
   const url = String(hit?.url || "").trim();
   const slug = String(hit?.slug || "").trim();
-  if (!url || !slug) return null;
-  return { slug, url };
+  if (url && slug) return { slug, url };
+  // No file for this name. /sandbox and /init still open, on the init patch.
+  if (want === "sandbox" || want === "init") {
+    return { slug: want, url: "/soemdsp-sandbox/patches/init.json" };
+  }
+  return null;
 }

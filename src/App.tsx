@@ -60,8 +60,6 @@ const ProductRoutes = ({ homeIsArticles }: { homeIsArticles: boolean }) => (
           )
         }
       />
-      <Route path="/init" element={<SandboxPage view="sandbox" pagePatch="init" autostart />} />
-      <Route path="/sandbox" element={<SandboxPage view="sandbox" pagePatch="init" autostart />} />
       <Route path="/home" element={<Index />} />
       <Route path="/learning-lab" element={<LearningLab />} />
       <Route path="/circle-test" element={<CircleTestPage />} />
